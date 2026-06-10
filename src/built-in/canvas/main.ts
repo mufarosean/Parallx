@@ -224,6 +224,13 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   _dataService = new CanvasDataService();
   context.subscriptions.push(_dataService);
 
+  // 2z. Database engine (Notion-style databases over migrations 006/007).
+  // Created before the AI tools registration so the database tools get a live
+  // service reference.
+  _databaseService = new DatabaseDataService(_dataService);
+  context.subscriptions.push(_databaseService);
+  void _databaseService.ensureIdsLoaded();
+
   // 2a. Publish read-only page query service to DI for cross-tool access (M56)
   api.services.registerInstance(ICanvasPageQueryService, _dataService);
 
@@ -292,6 +299,8 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         }
         return { hub: hub.title, linked, missing };
       },
+      // Database AI tools (create / add row / query).
+      databaseService: _databaseService ?? undefined,
       // canvas_create_page parentId support — atomic sub-page creation (page
       // row + the parent's sub-page card in one transaction).
       createChildPage: async (parentId, title) => {
@@ -399,11 +408,6 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   _sidebar.onExpandStateChanged = (expandedIds) => {
     context.workspaceState.update('canvas.expandedPages', [...expandedIds]);
   };
-
-  // 3z. Database engine (Notion-style databases over migrations 006/007).
-  _databaseService = new DatabaseDataService(_dataService);
-  context.subscriptions.push(_databaseService);
-  void _databaseService.ensureIdsLoaded();
 
   // 4. Register editor provider for Canvas panes (Cap 5)
   const editorProvider = new CanvasEditorProvider(_dataService, api.window);

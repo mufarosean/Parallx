@@ -79,6 +79,7 @@ const TOOL_PROFILES: Record<OpenclawToolProfile, {
     allow: [
       // Workspace files (read-only)
       'fs_list_files', 'fs_read_file', 'fs_search_files', 'fs_grep_search',
+      'canvas_query_database',
       // Canvas pages (read-only) — canvas_* prefix per Parallx tool-namespace
       // convention so filesystem and canvas tools never collide in the model's
       // attention.
@@ -110,7 +111,7 @@ const TOOL_PROFILES: Record<OpenclawToolProfile, {
       'fs_write_file', 'fs_edit_file',
       'canvas_create_page', 'canvas_edit_page', 'canvas_set_page_property', 'canvas_set_page_style',
       'canvas_edit_block', 'canvas_insert_block_after', 'canvas_link_block', 'canvas_relate_pages',
-      'canvas_compose_page',
+      'canvas_compose_page', 'canvas_query_database', 'canvas_create_database', 'canvas_add_database_row',
     ],
     deny: [],
   },

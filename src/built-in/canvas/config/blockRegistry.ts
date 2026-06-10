@@ -77,6 +77,8 @@ export interface EditorExtensionContext {
 export interface InsertActionBaseContext {
   readonly pageId?: string;
   readonly dataService?: ICanvasDataService;
+  /** Database engine — used by the /database slash command. */
+  readonly databaseService?: import('../database/databaseDataService.js').DatabaseDataService;
   readonly openEditor?: OpenEditorFn;
 }
 
@@ -827,6 +829,65 @@ const definitions: BlockDefinition[] = [
       openEditor: ctx.openEditor,
       showIconPicker: ctx.showIconPicker,
     }),
+  },
+  {
+    // /database — creates a Notion-style DATABASE as a child page and drops its
+    // card at the cursor (the card opens the database editor: table/board views,
+    // typed columns, rows-as-pages). Reuses the pageBlock node — a database IS a
+    // page — so no new node type; `extension` stays undefined (pageBlock's own
+    // definition registers the node).
+    id: 'database',
+    name: 'pageBlock',
+    label: 'Database',
+    icon: 'table',
+    source: 'custom',
+    kind: 'atom',
+    capabilities: CUSTOM_DRAG,
+    slashMenu: { description: 'New database — table & board views', order: 1, category: 'basic' },
+    turnInto: undefined,
+    defaultContent: undefined,
+    insertAction: async (editor, range, context) => {
+      if (!context?.dataService || !context.databaseService || !context.pageId) return;
+      let dbId: string | null = null;
+      try {
+        // Same manual-flow discipline as /page: the editor doc is the source of
+        // truth for the parent's content; the final flush persists it.
+        context.dataService.cancelPendingSave(context.pageId);
+
+        // 1. Create the database as a ROOT page (no auto-card — the card goes
+        //    at the cursor), then reparent the row only.
+        const info = await context.databaseService.createDatabase({ title: 'Untitled database' });
+        dbId = info.id;
+        await context.dataService.movePage(info.id, context.pageId);
+
+        // 2. Card at the cursor.
+        const attrs = { pageId: info.id, title: info.title, icon: info.icon };
+        const inserted = editor.chain().insertContentAt(range, { type: 'pageBlock', attrs }).focus().run();
+        if (!inserted) {
+          const nodeType = editor.state.schema.nodes.pageBlock;
+          if (!nodeType) throw new Error('pageBlock schema node is unavailable');
+          const tr = editor.state.tr.replaceWith(range.from, range.to, nodeType.create(attrs));
+          editor.view.dispatch(tr);
+          editor.commands.focus();
+        }
+
+        // 3. Persist the parent with the card, then open the database.
+        await context.dataService.flushContentSave(context.pageId, editor.getJSON());
+        if (context.openEditor) {
+          await context.openEditor({
+            typeId: 'database',
+            title: info.title,
+            icon: info.icon ?? undefined,
+            instanceId: info.id,
+          });
+        }
+      } catch (error) {
+        console.error('[Canvas] /database insert failed:', error);
+        if (dbId) {
+          try { await context.dataService.deletePage(dbId); } catch { /* best-effort rollback */ }
+        }
+      }
+    },
   },
   {
     id: 'tableOfContents',

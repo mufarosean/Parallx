@@ -26,6 +26,8 @@ import {
 import { createBlockTools } from './blockTools.js';
 import { createRelatePagesTool, type RelatePagesFn } from './relatePagesTool.js';
 import { createComposePageTool, type ComposePageFn } from './composePageTool.js';
+import { createDatabaseTools } from './databaseTools.js';
+import type { DatabaseDataService } from '../database/databaseDataService.js';
 
 /** Canvas's stable tool id — attributes the tools to canvas in the AI tool
  *  picker and the Tool Gallery membership view. */
@@ -59,6 +61,9 @@ export interface ICanvasAIToolDeps {
   /** Atomically create a SUB-page (page row + the parent's sub-page card in
    *  one transaction). Lets canvas_create_page accept parentId. */
   readonly createChildPage?: (parentId: string, title: string) => Promise<string>;
+  /** Database engine — registers canvas_create_database / add_database_row /
+   *  query_database when provided. */
+  readonly databaseService?: DatabaseDataService;
 }
 
 /**
@@ -66,7 +71,7 @@ export interface ICanvasAIToolDeps {
  * Returns disposables that deregister them.
  */
 export function registerCanvasAITools(deps: ICanvasAIToolDeps): IDisposable[] {
-  const { toolsService, db, getCurrentPageId, workspaceRoot, pageMutationNotifier, templateApi, relatePages, composePage, createChildPage } = deps;
+  const { toolsService, db, getCurrentPageId, workspaceRoot, pageMutationNotifier, templateApi, relatePages, composePage, createChildPage, databaseService } = deps;
 
   const tools: IChatTool[] = [
     createFindPagesTool(db),
@@ -80,6 +85,7 @@ export function registerCanvasAITools(deps: ICanvasAIToolDeps): IDisposable[] {
     ...createBlockTools(db, pageMutationNotifier),
     ...(relatePages ? [createRelatePagesTool(relatePages)] : []),
     ...(composePage ? [createComposePageTool(composePage)] : []),
+    ...(databaseService ? createDatabaseTools(databaseService) : []),
   ];
 
   return tools.map((tool) =>

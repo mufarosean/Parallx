@@ -75,4 +75,39 @@ test.describe('Canvas Databases', () => {
     // ── The database page shows in the sidebar tree (a database IS a page) ──
     await expect(window.locator('.canvas-node', { hasText: 'Untitled database' }).first()).toBeVisible();
   });
+
+  test('/database slash command creates a nested database with its card at the cursor', async ({ window, electronApp, workspacePath }) => {
+    test.setTimeout(120_000);
+    await openFolderViaMenu(electronApp, window, workspacePath);
+    await window.waitForTimeout(2000);
+    await openCanvasSidebar(window);
+
+    // Create + open a regular page (remember its id — the tree will gain the
+    // nested database node after the slash).
+    const idsBefore = await window.locator('.canvas-node[role="treeitem"]').evaluateAll((nodes) =>
+      nodes.map((n) => n.getAttribute('data-page-id')).filter((id): id is string => !!id));
+    await window.locator('.canvas-sidebar-add-btn').click();
+    await window.waitForSelector('.canvas-node', { timeout: 5_000 });
+    const idsAfter = await window.locator('.canvas-node[role="treeitem"]').evaluateAll((nodes) =>
+      nodes.map((n) => n.getAttribute('data-page-id')).filter((id): id is string => !!id));
+    const parentId = idsAfter.find((id) => !idsBefore.includes(id)) ?? idsAfter[idsAfter.length - 1];
+    await window.locator(`.canvas-node[role="treeitem"][data-page-id="${parentId}"]`).first().click();
+    await window.waitForSelector('.canvas-editor-wrapper', { timeout: 10_000 });
+
+    // Slash /database.
+    const tiptap = window.locator('.tiptap').first();
+    await tiptap.click();
+    await window.keyboard.type('/database');
+    const item = window.locator('.canvas-slash-item', { hasText: 'Database' }).first();
+    await expect(item).toBeVisible({ timeout: 5_000 });
+    await item.click();
+
+    // The database editor opens (table view with the seeded schema)…
+    await expect(window.locator('.canvas-db-pane')).toBeVisible({ timeout: 10_000 });
+    await expect(window.locator('.canvas-db-th', { hasText: 'Status' })).toBeVisible();
+
+    // …and the parent page got the database card at the cursor.
+    await window.locator(`.canvas-node[role="treeitem"][data-page-id="${parentId}"]`).first().click();
+    await expect(window.locator('.canvas-page-block')).toBeVisible({ timeout: 10_000 });
+  });
 });

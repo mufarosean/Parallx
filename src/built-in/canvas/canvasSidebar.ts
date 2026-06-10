@@ -369,7 +369,10 @@ export class CanvasSidebar {
           if (this._selectedPageId === page.id) row.classList.add('canvas-node--selected');
 
           const iconArea = $('span.canvas-node-icon-area');
-          const iconEl = createIconElement(resolvePageIcon(page.icon), 14);
+          const iconEl = createIconElement(
+            !page.icon && this._isDatabasePage?.(page.id) ? 'table' : resolvePageIcon(page.icon),
+            14,
+          );
           iconEl.classList.add('canvas-node-icon');
           iconArea.appendChild(iconEl);
           row.appendChild(iconArea);
@@ -567,9 +570,13 @@ export class CanvasSidebar {
       if (isExpanded) row.classList.add('canvas-node--expanded');
     }
 
-    // Icon area (consistent alignment with tree nodes)
+    // Icon area (consistent alignment with tree nodes). Databases without a
+    // custom icon get the table glyph so they read as databases in the tree.
     const iconArea = $('span.canvas-node-icon-area');
-    const iconEl = createIconElement(resolvePageIcon(page.icon), 14);
+    const iconEl = createIconElement(
+      !page.icon && this._isDatabasePage?.(page.id) ? 'table' : resolvePageIcon(page.icon),
+      14,
+    );
     iconEl.classList.add('canvas-node-icon');
     iconArea.appendChild(iconEl);
 

@@ -361,6 +361,7 @@ class CanvasEditorPane implements IDisposable {
   get container(): HTMLElement { return this._container; }
   get editorContainer(): HTMLElement | null { return this._editorContainer; }
   get dataService(): ICanvasDataService { return this._dataService; }
+  get databaseService(): import('./database/databaseDataService.js').DatabaseDataService | undefined { return this._provider.databaseService; }
   get pageId(): string { return this._pageId; }
   get suppressUpdate(): boolean { return this._suppressUpdate; }
   set suppressUpdate(v: boolean) { this._suppressUpdate = v; }
