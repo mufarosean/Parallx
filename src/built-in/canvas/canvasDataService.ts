@@ -446,13 +446,28 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
    * Used for copy-style drops where source content is unchanged.
    */
   async appendBlocksToPage(targetPageId: string, appendedNodes: any[]): Promise<IPage> {
+    // Guard: pageBlock cards are NOT content — appending one here would put a
+    // card on this page while the child's parent_id points elsewhere (the
+    // sidebar/page desync). Cards must go through movePageWithBlocks /
+    // createChildPageWithBlock. Filter them out and proceed with the rest.
+    if (Array.isArray(appendedNodes)) {
+      const cards = appendedNodes.filter((n) => n?.type === 'pageBlock');
+      if (cards.length > 0) {
+        console.warn(
+          `[CanvasDataService] appendBlocksToPage: filtered ${cards.length} pageBlock card(s) — reparent pages via movePageWithBlocks instead.`,
+        );
+        appendedNodes = appendedNodes.filter((n) => n?.type !== 'pageBlock');
+      }
+    }
     if (!Array.isArray(appendedNodes) || appendedNodes.length === 0) {
       const existing = await this.getPage(targetPageId);
       if (!existing) throw new Error(`[CanvasDataService] Page "${targetPageId}" not found`);
       return existing;
     }
 
-    this._cancelPendingSave(targetPageId);
+    // Flush (not cancel) the target's pending save so the merge lands on the
+    // user's latest content instead of dropping their in-flight edits.
+    await this.flushPendingSaveNow(targetPageId);
 
     const target = await this.getPage(targetPageId);
     if (!target) throw new Error(`[CanvasDataService] Page "${targetPageId}" not found`);
@@ -482,6 +497,9 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     // external callers; internal sidebar/editor flows use the atomic
     // movePageWithBlocks / createChildPageWithBlock helpers.
     await this._retryOnRevisionConflict(async () => {
+      // Flush-before-merge: land the user's in-flight edits before merging
+      // into the parent's stored content (see flushPendingSaveNow).
+      await this.flushPendingSaveNow(parentPageId);
       const [parent, child] = await Promise.all([
         this.getPage(parentPageId),
         this.getPage(childPageId),
@@ -503,6 +521,9 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     // hits a revision conflict; re-read and re-prune from the new
     // revision instead of failing the operation.
     await this._retryOnRevisionConflict(async () => {
+      // Flush-before-merge: land the user's in-flight edits before pruning
+      // from the parent's stored content (see flushPendingSaveNow).
+      await this.flushPendingSaveNow(parentPageId);
       const parent = await this.getPage(parentPageId);
       if (!parent) return;
 
@@ -539,11 +560,14 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
       throw new Error('[CanvasDataService] Cannot move empty block set');
     }
 
+    // FLUSH pending saves BEFORE resolving expected revisions: the flush bumps
+    // the revision, so resolving first would guarantee a spurious conflict —
+    // and cancelling (the old behaviour) dropped the user's in-flight edits.
+    await this.flushPendingSaveNow(sourcePageId);
+    await this.flushPendingSaveNow(targetPageId);
+
     const resolvedExpectedSource = expectedSourceRevision ?? this._knownRevisions.get(sourcePageId);
     const resolvedExpectedTarget = expectedTargetRevision ?? this._knownRevisions.get(targetPageId);
-
-    this._cancelPendingSave(sourcePageId);
-    this._cancelPendingSave(targetPageId);
 
     // ── Phase 1: Pre-read pages (parallel IPC) ──
     const [sourceRowResult, targetRowResult] = await Promise.all([
@@ -832,12 +856,13 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
       return;
     }
 
-    // Cancel pending saves on both parents (and the moved page) so we
-    // don't race with a debounced auto-save that would clobber our
-    // content update.
-    if (oldParentId) this._cancelPendingSave(oldParentId);
-    if (newParentId) this._cancelPendingSave(newParentId);
-    this._cancelPendingSave(pageId);
+    // FLUSH pending saves on both parents (and the moved page) so the
+    // content merge happens on the user's latest edits — cancelling
+    // dropped in-flight edits and let a stale open editor save over the
+    // merged content afterwards.
+    if (oldParentId) await this.flushPendingSaveNow(oldParentId);
+    if (newParentId) await this.flushPendingSaveNow(newParentId);
+    await this.flushPendingSaveNow(pageId);
 
     // Read both parents in parallel with their current revisions. Either
     // can be null (root-level moves).
@@ -964,7 +989,6 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
           page: refreshed,
           changedFields: ['content', 'contentSchemaVersion'],
         });
-        this._onRequestContentReload.fire(oldParentId);
       }
     }
     if (newParentUpdate && newParentId) {
@@ -976,9 +1000,16 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
           page: refreshed,
           changedFields: ['content', 'contentSchemaVersion'],
         });
-        this._onRequestContentReload.fire(newParentId);
       }
     }
+    // Fire content reloads for BOTH parents UNCONDITIONALLY (not only when
+    // their stored content changed). If a parent's content was already
+    // desynced (e.g. the card was missing before the move), the conditional
+    // reload left any open editor permanently stale; an unconditional reload
+    // self-heals — and is cheap, since reloads now apply as a surgical diff
+    // (no-op when nothing differs).
+    if (oldParentId) this._onRequestContentReload.fire(oldParentId);
+    if (newParentId && newParentId !== oldParentId) this._onRequestContentReload.fire(newParentId);
   }
 
   /**
@@ -1030,11 +1061,13 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     const initialContent = encodeCanvasContentFromDoc({ type: 'doc', content: [{ type: 'paragraph' }] });
 
     // Read parent (if any) so we can compute the updated content with
-    // the new page block appended. Cancel its pending save so a
-    // debounced auto-save can't race with our update.
+    // the new page block appended. FLUSH its pending save first so the
+    // merge happens on the user's latest content — cancelling here dropped
+    // their in-flight edits, and an open parent editor's stale doc would
+    // later save over the merge and wipe the new card.
     let parentUpdate: { storedContent: string; schemaVersion: number; revision: number } | null = null;
     if (parentId !== null) {
-      this._cancelPendingSave(parentId);
+      await this.flushPendingSaveNow(parentId);
       const parent = await this.getPage(parentId);
       if (!parent) {
         throw new Error(`[CanvasDataService] Parent page "${parentId}" not found`);
@@ -1184,11 +1217,12 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
    * @param orderedIds — page IDs in desired order
    */
   async reorderPages(_parentId: string | null, orderedIds: string[]): Promise<void> {
-    // Cancel pending content saves for all affected pages (belt-and-suspenders:
-    // reorder only writes sort_order, not content, but cancelling avoids any
-    // updated_at timestamp conflicts with a concurrent content save).
+    // FLUSH pending content saves for all affected pages (belt-and-suspenders:
+    // reorder only writes sort_order, not content). The old CANCEL here
+    // silently dropped a page's in-flight content edits whenever the user
+    // reordered the sidebar while typing.
     for (const id of orderedIds) {
-      this._cancelPendingSave(id);
+      await this.flushPendingSaveNow(id);
     }
 
     for (let i = 0; i < orderedIds.length; i++) {
@@ -1306,32 +1340,59 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     const pending = [...this._pendingSaves.entries()];
     this._pendingSaves.clear();
 
-    for (const [pageId, { timer, content }] of pending) {
-      clearTimeout(timer);
-      // M77 Phase 9.1 — refresh expectedRevision at flush time instead of
-      // trusting the value captured at schedule time. The pending entry's
-      // captured revision could be stale by the time flush runs.
-      const expectedRevision = this._knownRevisions.get(pageId);
-      this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Flushing, source: 'flush' });
-      try {
-        const normalized = normalizeCanvasContentForStorage(content);
-        const page = await this.updatePage(pageId, {
-          content: normalized.storedContent,
-          contentSchemaVersion: normalized.schemaVersion,
-          expectedRevision,
-        });
-        this._knownRevisions.set(pageId, page.revision);
-        this._onDidSavePage.fire({ pageId, page });
-        this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Saved, source: 'flush' });
-      } catch (err) {
-        console.error(`[CanvasDataService] Flush failed for page "${pageId}":`, err);
-        this._onDidChangeSaveState.fire({
-          pageId,
-          kind: SaveStateKind.Failed,
-          source: 'flush',
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
+    for (const [pageId, entry] of pending) {
+      await this._flushPendingEntry(pageId, entry);
+    }
+  }
+
+  /**
+   * Force-save ONE page's pending auto-save immediately (no-op when none).
+   *
+   * This is the flush-before-merge invariant: every operation that MERGES into
+   * a page's STORED content (appending/pruning pageBlock cards on a parent,
+   * moving blocks between pages, …) must flush that page's pending debounced
+   * save FIRST. The old behaviour was to CANCEL the pending save, which
+   * silently dropped the user's in-flight edits — and worse, when the parent
+   * was open in an editor, the editor's stale doc would later save over the
+   * merged content and wipe the freshly-appended card (the "subpage created
+   * from the sidebar loses its card" bug).
+   */
+  async flushPendingSaveNow(pageId: string): Promise<void> {
+    const entry = this._pendingSaves.get(pageId);
+    if (!entry) return;
+    this._pendingSaves.delete(pageId);
+    clearTimeout(entry.timer);
+    await this._flushPendingEntry(pageId, entry);
+  }
+
+  private async _flushPendingEntry(
+    pageId: string,
+    { timer, content }: { timer: ReturnType<typeof setTimeout>; content: string },
+  ): Promise<void> {
+    clearTimeout(timer);
+    // M77 Phase 9.1 — refresh expectedRevision at flush time instead of
+    // trusting the value captured at schedule time. The pending entry's
+    // captured revision could be stale by the time flush runs.
+    const expectedRevision = this._knownRevisions.get(pageId);
+    this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Flushing, source: 'flush' });
+    try {
+      const normalized = normalizeCanvasContentForStorage(content);
+      const page = await this.updatePage(pageId, {
+        content: normalized.storedContent,
+        contentSchemaVersion: normalized.schemaVersion,
+        expectedRevision,
+      });
+      this._knownRevisions.set(pageId, page.revision);
+      this._onDidSavePage.fire({ pageId, page });
+      this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Saved, source: 'flush' });
+    } catch (err) {
+      console.error(`[CanvasDataService] Flush failed for page "${pageId}":`, err);
+      this._onDidChangeSaveState.fire({
+        pageId,
+        kind: SaveStateKind.Failed,
+        source: 'flush',
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 

@@ -574,6 +574,7 @@ export function createCreatePageTool(
   db: IBuiltInToolDatabase | undefined,
   notifyPageMutated?: PageMutationNotifier,
   templateApi?: CanvasTemplateApi,
+  createChildPage?: (parentId: string, title: string) => Promise<string>,
 ): IChatTool {
   return {
     name: 'canvas_create_page',
@@ -592,6 +593,7 @@ export function createCreatePageTool(
       required: ['title'],
       properties: {
         title: { type: 'string', description: 'Page title.' },
+        parentId: { type: 'string', description: 'Optional UUID of an EXISTING page to nest the new page under. Creates a proper SUB-PAGE: the parent page gets a sub-page card and the sidebar nests it. Omit for a top-level page.' },
         templateId: { type: 'string', description: 'Template id from `canvas_list_templates`. Seeds the new page with that template\'s structure. When provided, `markdown` is ignored.' },
         markdown: { type: 'string', description: 'Markdown body. Used only when `templateId` is not provided.' },
         content: { type: 'string', description: 'Deprecated: plain text body (use markdown instead).' },
@@ -653,6 +655,30 @@ export function createCreatePageTool(
       }
 
       const encoded = encodeCanvasContentFromDoc(doc as Parameters<typeof encodeCanvasContentFromDoc>[0]);
+
+      // Sub-page path: parentId present → atomic create (page row + the
+      // pageBlock card on the parent in ONE transaction, via the data
+      // service), then fill in the body/icon with a follow-up update.
+      const parentId = typeof args['parentId'] === 'string' ? (args['parentId'] as string).trim() : '';
+      if (parentId) {
+        if (!createChildPage) {
+          return { content: 'Sub-page creation is unavailable (no canvas data service).', isError: true };
+        }
+        const parentRow = await db!.get<{ id: string }>('SELECT id FROM pages WHERE id = ?', [parentId]);
+        if (!parentRow) {
+          return { content: `Parent page not found: ${parentId}. Pass an existing page UUID (resolve titles via canvas_find_pages).`, isError: true };
+        }
+        let childId: string;
+        try { childId = await createChildPage(parentId, title); }
+        catch (err) { return { content: `Sub-page creation failed: ${err instanceof Error ? err.message : String(err)}`, isError: true }; }
+        await db!.run(
+          'UPDATE pages SET icon = ?, content = ?, content_schema_version = ?, updated_at = ?, revision = revision + 1 WHERE id = ?',
+          [icon, encoded.storedContent, encoded.schemaVersion, now, childId],
+        );
+        try { notifyPageMutated?.(childId, 'updated'); } catch { /* non-fatal */ }
+        const subBlockCount = doc.content.length;
+        return { content: `Created sub-page "${title}" (id: ${childId}) under ${parentId} with ${subBlockCount} block${subBlockCount === 1 ? '' : 's'} — the parent page got its sub-page card.` };
+      }
 
       await db!.run(
         'INSERT INTO pages (id, title, icon, content, content_schema_version, is_archived, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?)',

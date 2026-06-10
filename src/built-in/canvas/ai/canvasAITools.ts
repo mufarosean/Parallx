@@ -56,6 +56,9 @@ export interface ICanvasAIToolDeps {
   /** Stream-compose a page body live into the open editor
    *  (canvas_compose_page). Omitted → tool not registered. */
   readonly composePage?: ComposePageFn;
+  /** Atomically create a SUB-page (page row + the parent's sub-page card in
+   *  one transaction). Lets canvas_create_page accept parentId. */
+  readonly createChildPage?: (parentId: string, title: string) => Promise<string>;
 }
 
 /**
@@ -63,13 +66,13 @@ export interface ICanvasAIToolDeps {
  * Returns disposables that deregister them.
  */
 export function registerCanvasAITools(deps: ICanvasAIToolDeps): IDisposable[] {
-  const { toolsService, db, getCurrentPageId, workspaceRoot, pageMutationNotifier, templateApi, relatePages, composePage } = deps;
+  const { toolsService, db, getCurrentPageId, workspaceRoot, pageMutationNotifier, templateApi, relatePages, composePage, createChildPage } = deps;
 
   const tools: IChatTool[] = [
     createFindPagesTool(db),
     createReadPageTool(db, getCurrentPageId),
     createListTemplatesTool(templateApi),
-    createCreatePageTool(db, pageMutationNotifier, templateApi),
+    createCreatePageTool(db, pageMutationNotifier, templateApi, createChildPage),
     createEditPageTool(db, pageMutationNotifier),
     createListPropertyDefinitionsTool(db),
     createSetPagePropertyTool(db),

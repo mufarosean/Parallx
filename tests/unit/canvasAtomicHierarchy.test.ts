@@ -386,3 +386,97 @@ describe('CanvasDataService — reconcileParentBlockState (M77 Phase 1)', () => 
     expect(removed).toBe(0);
   });
 });
+
+describe('CanvasDataService — flush-before-merge invariant (sidebar card-loss fix)', () => {
+  let env: ReturnType<typeof createMockDb>;
+  let service: CanvasDataService;
+
+  function userDoc(text: string): string {
+    return JSON.stringify({
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
+    });
+  }
+
+  beforeEach(() => {
+    env = createMockDb([
+      makeRow({ id: 'A', title: 'A', sort_order: 1, content: emptyDoc() }),
+      makeRow({ id: 'B', title: 'B', sort_order: 2, content: emptyDoc() }),
+      makeRow({ id: 'child', title: 'Child', parent_id: 'B', sort_order: 1, content: emptyDoc() }),
+    ]);
+    (globalThis as any).window = { parallxElectron: { database: env.mock } };
+    service = new CanvasDataService(60_000); // long debounce — saves stay pending unless flushed
+  });
+
+  afterEach(() => {
+    service.dispose();
+    delete (globalThis as any).window;
+  });
+
+  it('createChildPageWithBlock lands the parent\'s PENDING user edits before merging the card (the "subpage from sidebar loses its card / edits" bug)', async () => {
+    await service.getPage('B'); // prime known revision (an open editor has read its page)
+    // The user typed something — debounced save still pending.
+    service.scheduleContentSave('B', userDoc('user typed this'));
+    expect(service.hasPendingSave('B')).toBe(true);
+
+    const child = await service.createChildPageWithBlock({ parentId: 'B', title: 'New sub' });
+
+    const parent = env.rows.get('B')!;
+    // BOTH survive: the user's in-flight edit AND the new sub-page card.
+    expect(parent.content).toContain('user typed this');
+    expect(parent.content).toContain(`"pageId":"${child.id}"`);
+    expect(service.hasPendingSave('B')).toBe(false); // flushed, not dropped
+  });
+
+  it('moveBlocksBetweenPagesAtomic flushes the target\'s pending edits before appending', async () => {
+    await service.getPage('A');
+    service.scheduleContentSave('A', userDoc('target draft'));
+
+    await service.moveBlocksBetweenPagesAtomic({
+      sourcePageId: 'B',
+      targetPageId: 'A',
+      sourceDoc: { type: 'doc', content: [{ type: 'paragraph' }] },
+      appendedNodes: [{ type: 'paragraph', content: [{ type: 'text', text: 'moved block' }] }],
+    });
+
+    const target = env.rows.get('A')!;
+    expect(target.content).toContain('target draft');
+    expect(target.content).toContain('moved block');
+  });
+
+  it('reorderPages flushes (not drops) pending content edits', async () => {
+    await service.getPage('A');
+    service.scheduleContentSave('A', userDoc('do not lose me'));
+
+    await service.reorderPages(null, ['B', 'A']);
+
+    // The old behaviour CANCELLED the pending save here — the edit vanished.
+    expect(env.rows.get('A')!.content).toContain('do not lose me');
+    expect(service.hasPendingSave('A')).toBe(false);
+  });
+
+  it('appendBlocksToPage filters pageBlock cards (cards are hierarchy, not content)', async () => {
+    await service.appendBlocksToPage('A', [
+      { type: 'paragraph', content: [{ type: 'text', text: 'legit content' }] },
+      { type: 'pageBlock', attrs: { pageId: 'child', title: 'Child', icon: null } },
+    ]);
+
+    const target = env.rows.get('A')!;
+    expect(target.content).toContain('legit content');
+    expect(target.content).not.toContain('"pageId":"child"'); // card filtered
+    expect(env.rows.get('child')!.parent_id).toBe('B');       // hierarchy untouched
+  });
+
+  it('movePageWithBlocks fires content reloads for BOTH parents even when the old parent was already desynced (self-heal)', async () => {
+    // Desync setup: child.parent_id = B, but B's content has NO card.
+    const reloads: string[] = [];
+    service.onRequestContentReload((id) => reloads.push(id));
+
+    await service.movePageWithBlocks({ pageId: 'child', newParentId: 'A' });
+
+    expect(reloads).toContain('B'); // old parent reloads even though prune changed nothing
+    expect(reloads).toContain('A');
+    expect(env.rows.get('child')!.parent_id).toBe('A');
+    expect(env.rows.get('A')!.content).toContain('"pageId":"child"');
+  });
+});

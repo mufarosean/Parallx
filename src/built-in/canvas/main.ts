@@ -288,6 +288,13 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         }
         return { hub: hub.title, linked, missing };
       },
+      // canvas_create_page parentId support — atomic sub-page creation (page
+      // row + the parent's sub-page card in one transaction).
+      createChildPage: async (parentId, title) => {
+        if (!_dataService) throw new Error('Canvas data service unavailable.');
+        const page = await _dataService.createChildPageWithBlock({ parentId, title });
+        return page.id;
+      },
       // canvas_compose_page — stream a model-composed body into the open editor
       // (live typing); falls back to a direct write when the page isn't open.
       composePage: createComposePageRuntime({

@@ -127,31 +127,26 @@ export async function moveBlockToLinkedPage(params: CrossPageMoveParams): Promis
   const blockIds = draggedJson
     .map((n: any) => n.attrs?.id)
     .filter((id: any): id is string => typeof id === 'string' && id.length > 0);
-  const canUseAtomic = shouldDeleteSource && blockIds.length === draggedJson.length && blockIds.length > 0;
 
-  // ── pageBlock move path ──────────────────────────────────────────────────
+  // ── Partition the drag set: pageBlock cards vs regular content ──────────
   //
-  // When the dragged set is purely pageBlock cards (and we're moving,
-  // not copying), the right operation isn't "move blocks between pages"
-  // — it's "reparent the child page". A plain content move leaves the
-  // child's `parent_id` stale, producing the bug where the sidebar
-  // shows the page under the source parent while the parent's content
-  // has no pageBlock anymore (or the dual: target has the block but the
-  // child isn't its child).
-  //
-  // We route through `movePageWithBlocks`, which atomically: (a) updates
-  // the child row's parent_id, (b) strips the pageBlock from the old
-  // parent's content, (c) appends it to the new parent's content. After
-  // that we mirror the deletion in the editor (tagged so the reconciler
-  // doesn't second-guess us and archive the child).
-  const isPureMovedPageBlockDrag =
-    shouldDeleteSource &&
-    draggedJson.length > 0 &&
-    draggedJson.every((n: any) => n?.type === 'pageBlock' && typeof n?.attrs?.pageId === 'string');
+  // A pageBlock card is not content — it IS the child page. Moving one means
+  // "reparent the child page" (`movePageWithBlocks`: atomically updates the
+  // child row's parent_id, strips the card from the old parent's content,
+  // appends it to the new parent's). Treating a card as plain content leaves
+  // the child's `parent_id` stale — the sidebar shows the page under the old
+  // parent while the card lives elsewhere. The old code only special-cased
+  // PURE card drags (`every(...)`); cards caught inside a MIXED drag fell
+  // through to the content paths and desynced. Partitioning fixes the mixed
+  // case: cards are reparented, regular blocks move as content.
+  const isPageBlockCard = (n: any): boolean =>
+    n?.type === 'pageBlock' && typeof n?.attrs?.pageId === 'string';
+  const pageBlockNodes = draggedJson.filter(isPageBlockCard);
+  const regularNodes = draggedJson.filter((n: any) => !isPageBlockCard(n));
 
-  if (isPureMovedPageBlockDrag) {
+  if (shouldDeleteSource && pageBlockNodes.length > 0) {
     try {
-      for (const node of draggedJson) {
+      for (const node of pageBlockNodes) {
         await dataService.movePageWithBlocks({
           pageId: node.attrs.pageId as string,
           newParentId: targetPageId,
@@ -162,26 +157,51 @@ export async function moveBlockToLinkedPage(params: CrossPageMoveParams): Promis
       clearActiveCanvasDragSession();
       return false;
     }
+    if (regularNodes.length === 0) {
+      // Pure card drag — mirror the source deletion locally. Tagged with the
+      // cross-page-move meta so the editor reconciler doesn't see "pageBlock
+      // removed" and archive the (already-correctly-reparented) child.
+      // movePageWithBlocks already fired content-reload for both parents.
+      _mirrorSourceDelete(editor, blockIds);
+      clearActiveCanvasDragSession();
+      return true;
+    }
+    // Mixed drag: cards are reparented; fall through to move the regular
+    // blocks as content.
+  }
 
-    // Mirror the source deletion locally. Tagged with the cross-page-move
-    // meta so the editor reconciler doesn't see "pageBlock removed" and
-    // archive the (already-correctly-reparented) child.
-    _mirrorSourceDelete(editor, blockIds);
-
-    // movePageWithBlocks already fires content-reload for both parents.
+  // COPY-drag (alt key): a pageBlock card cannot be duplicated as content —
+  // a second card would point the same child page at two parents. Copy only
+  // the regular blocks; the cards stay where they are.
+  if (!shouldDeleteSource && pageBlockNodes.length > 0) {
+    console.warn(
+      '[Canvas] Skipped copying %d sub-page card(s) — a page cannot live in two parents. Move them instead.',
+      pageBlockNodes.length,
+    );
+  }
+  if (regularNodes.length === 0) {
+    // Nothing left to transfer as content (copy-drag of cards only).
     clearActiveCanvasDragSession();
     return true;
   }
 
+  const regularIds = regularNodes
+    .map((n: any) => n.attrs?.id)
+    .filter((id: any): id is string => typeof id === 'string' && id.length > 0);
+  const canUseAtomic =
+    shouldDeleteSource && blockIds.length === draggedJson.length && regularIds.length === regularNodes.length;
+
   // ── Move path: persist atomically (single transaction) ───────────────────
   if (canUseAtomic) {
+    // Strip ALL dragged ids (cards included — their reparent above already
+    // pruned them from the stored source; the editor doc still shows them).
     const sourceDocPostDelete = removeNodesByIds(editor.getJSON(), new Set(blockIds));
     try {
       await dataService.moveBlocksBetweenPagesAtomic({
         sourcePageId: currentPageId,
         targetPageId,
         sourceDoc: sourceDocPostDelete,
-        appendedNodes: draggedJson,
+        appendedNodes: regularNodes,
       });
     } catch (atomicErr) {
       console.warn('[Canvas] Atomic cross-page move failed; aborting:', atomicErr);
@@ -191,9 +211,7 @@ export async function moveBlockToLinkedPage(params: CrossPageMoveParams): Promis
 
     // Mirror the deletion in the local editor so the user sees it disappear.
     // Tagged with the cross-page-move meta so the editor's pageBlock
-    // reconciler treats this as relocation, not a user-initiated delete
-    // (otherwise it would archive any pageBlock child that happened to
-    // be inside a mixed-block drag).
+    // reconciler treats this as relocation, not a user-initiated delete.
     _mirrorSourceDelete(editor, blockIds);
 
     dataService.fireContentReload(targetPageId);
@@ -206,8 +224,11 @@ export async function moveBlockToLinkedPage(params: CrossPageMoveParams): Promis
   // attrs that can't be safely computed in JSON.
 
   // ── Paste: append blocks to target page (immediate DB write) ──
+  // Only regular content blocks — pageBlock cards were either reparented
+  // above (move) or skipped (copy); appending one as content would desync
+  // the child's parent_id.
   try {
-    await dataService.appendBlocksToPage(targetPageId, draggedJson);
+    await dataService.appendBlocksToPage(targetPageId, regularNodes);
   } catch (appendErr) {
     // appendBlocksToPage can throw if a side-effect listener fails
     // (e.g. pageBlock title sync) even though the DB write succeeded.
@@ -225,6 +246,9 @@ export async function moveBlockToLinkedPage(params: CrossPageMoveParams): Promis
 
       const deleteTr = editor.state.tr;
       deleteTr.setMeta('addToHistory', true);
+      // Tag as a cross-page move so the pageBlock reconciler treats any card
+      // in the deleted set as relocated, not user-deleted (no child archive).
+      deleteTr.setMeta(CANVAS_CROSS_PAGE_MOVE_META, true);
 
       if (blockIds.length > 0) {
         // Delete blocks by unique ID (immune to position drift)
