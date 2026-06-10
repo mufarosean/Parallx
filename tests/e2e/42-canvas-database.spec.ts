@@ -69,8 +69,8 @@ test.describe('Canvas Databases', () => {
     const firstRow = pane.locator('.canvas-db-row').first();
     await firstRow.hover();
     await firstRow.locator('.canvas-db-openbtn').click();
-    await expect(window.locator('.canvas-db-rowprops')).toBeVisible({ timeout: 10_000 });
-    await expect(window.locator('.canvas-db-rowprops__name', { hasText: 'Status' })).toBeVisible();
+    await expect(window.locator('.canvas-property-bar')).toBeVisible({ timeout: 10_000 });
+    await expect(window.locator('.canvas-property-row__label', { hasText: 'Status' })).toBeVisible();
     await window.screenshot({ path: 'test-results/db-row-page.png', fullPage: true });
 
     // ── The database page shows in the sidebar tree (a database IS a page) ──
@@ -132,12 +132,13 @@ test.describe('Canvas Databases', () => {
 
     // The page itself shows its database properties (membership groups).
     await window.locator(`.canvas-node[role="treeitem"][data-page-id="${pageId}"]`).first().click();
-    await expect(window.locator('.canvas-db-rowprops')).toBeVisible({ timeout: 10_000 });
-    await expect(window.locator('.canvas-db-rowprops__pill', { hasText: 'work' }).first()).toBeVisible();
+    await expect(window.locator('.canvas-property-bar')).toBeVisible({ timeout: 10_000 });
+    await expect(window.locator('.canvas-prop-tag', { hasText: 'work' }).first()).toBeVisible();
+    await window.screenshot({ path: 'test-results/db-migrated-page-panel.png', fullPage: true });
 
     // "Pages tagged X" popover opens from the pill (M85 parity).
-    await window.locator('.canvas-db-rowprops__pill', { hasText: 'work' }).first().click();
-    await expect(window.locator('.canvas-db-popover')).toBeVisible({ timeout: 5_000 });
+    await window.locator('.canvas-prop-tag', { hasText: 'work' }).first().click();
+    await expect(window.locator('.canvas-prop-value-popover')).toBeVisible({ timeout: 5_000 });
 
     // The backup JSON landed in the workspace.
     const fs = await import('fs/promises');
