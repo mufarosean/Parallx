@@ -1,16 +1,18 @@
 // rowPropertiesSection.ts — the PROPERTY PANEL shown on EVERY canvas page
 // (the same UI the pre-database PropertyBar had — same DOM classes, same
-// stylesheet). Only the BACKEND changed: properties live in DATABASES, shared
-// by member pages. The plumbing is invisible:
+// stylesheet). Only the BACKEND changed: properties live in the page's HOME
+// DATABASE, shared by all its member pages. SINGLE-HOME INVARIANT: a page
+// belongs to at most one database; the panel IS that database's schema viewed
+// from one row. The plumbing stays invisible:
 //
-//   - the Tags row is ALWAYS present — tagging a page lazily creates the
-//     workspace 'Tags' database and joins the page to it;
-//   - membership databases contribute their property rows (grouped + labeled
-//     when a page is in more than one);
+//   - the Tags row is ALWAYS present — on a homeless page the first tag
+//     lazily creates the workspace 'Tags' database and makes it the page's
+//     home; on a page whose home lacks tags, it adds a Tags COLUMN to the
+//     home (what a Notion user would do);
 //   - created / modified render read-only from the page row itself;
-//   - '+ Add property' works on any page — it adds a COLUMN to the page's
-//     database, or to the lazily-created 'Page properties' workspace database
-//     (joining the page) when it has none.
+//   - '+ Add property' adds a COLUMN to the page's home — or to the lazily
+//     created 'Page properties' database (which becomes the home) when the
+//     page has none.
 
 import '../properties/propertyBar.css';
 import type { IDisposable } from '../../../platform/lifecycle.js';
@@ -45,7 +47,7 @@ function formatTimestamp(iso: string | undefined | null): string {
   return d.toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
-interface IMembershipGroup {
+interface IHome {
   readonly databaseId: string;
   readonly title: string;
   readonly props: IDatabaseProperty[];
@@ -54,8 +56,8 @@ interface IMembershipGroup {
 
 /**
  * Mount the property panel for `pageId` into `host` (before `beforeEl` —
- * Notion order: title, properties, content). Always mounts; membership rows
- * stay live as the page joins/leaves databases.
+ * Notion order: title, properties, content). Always mounts; the home's rows
+ * stay live as schema/values/membership change.
  */
 export async function mountRowPropertiesSection(
   host: HTMLElement,
@@ -67,8 +69,6 @@ export async function mountRowPropertiesSection(
   /** Page timestamps for the read-only created/modified rows. */
   getPageMeta?: () => Promise<{ createdAt: string; updatedAt: string } | null>,
 ): Promise<IDisposable | null> {
-  let databaseIds = await db.listDatabasesForPage(pageId);
-
   const disposables = new DisposableStore();
   let disposed = false;
 
@@ -101,11 +101,11 @@ export async function mountRowPropertiesSection(
   const closePopover = (): void => { activePopover?.remove(); activePopover = null; };
   disposables.add({ dispose: closePopover });
 
-  const showPagesForValue = async (group: IMembershipGroup, propertyName: string, value: string, anchor: HTMLElement): Promise<void> => {
+  const showPagesForValue = async (home: IHome, propertyName: string, value: string, anchor: HTMLElement): Promise<void> => {
     closePopover();
-    const prop = group.props.find((p) => p.name === propertyName);
+    const prop = home.props.find((p) => p.name === propertyName);
     if (!prop) return;
-    const rows = applyFilter(await db.listRows(group.databaseId), {
+    const rows = applyFilter(await db.listRows(home.databaseId), {
       conjunction: 'and',
       rules: [{ propertyId: prop.id, op: 'contains', value }],
     }).filter((r) => r.pageId !== pageId);
@@ -159,39 +159,39 @@ export async function mountRowPropertiesSection(
     return { row, value };
   };
 
-  const createMembershipRow = (group: IMembershipGroup, prop: IDatabaseProperty): HTMLElement => {
+  const createHomeRow = (home: IHome, prop: IDatabaseProperty): HTMLElement => {
     const { row, value } = buildRowShell(prop.name, prop.type, prop.name);
-    const editor = createPropertyEditor(asDefinition(prop), group.values[prop.id] ?? null, (newValue) => {
-      db.setCellValue(group.databaseId, pageId, prop.id, newValue).catch((err) => {
+    const editor = createPropertyEditor(asDefinition(prop), home.values[prop.id] ?? null, (newValue) => {
+      db.setCellValue(home.databaseId, pageId, prop.id, newValue).catch((err) => {
         console.error(`[PropertyPanel] Failed to save property "${prop.name}":`, err);
       });
     }, {
-      onValueClick: (propertyName, tagValue, anchor) => void showPagesForValue(group, propertyName, tagValue, anchor),
+      onValueClick: (propertyName, tagValue, anchor) => void showPagesForValue(home, propertyName, tagValue, anchor),
     });
     value.appendChild(editor);
 
-    // × — clear this page's value (the database column itself stays).
+    // × — clear this page's value (the column itself stays).
     const clearBtn = document.createElement('button');
     clearBtn.className = 'canvas-property-row__delete';
     clearBtn.textContent = '×';
     clearBtn.title = `Clear ${prop.name} on this page`;
     clearBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      db.setCellValue(group.databaseId, pageId, prop.id, null).catch((err) => {
+      db.setCellValue(home.databaseId, pageId, prop.id, null).catch((err) => {
         console.error(`[PropertyPanel] Failed to clear property "${prop.name}":`, err);
       });
     });
     row.appendChild(clearBtn);
 
-    // 🗑 — delete the property (column) from the database, everywhere.
+    // 🗑 — delete the property (column) from the home database, everywhere.
     const deleteDefinitionBtn = document.createElement('button');
     deleteDefinitionBtn.className = 'canvas-property-row__delete-definition';
-    deleteDefinitionBtn.title = `Delete property "${prop.name}" from "${group.title}" everywhere`;
+    deleteDefinitionBtn.title = `Delete property "${prop.name}" from "${home.title}" everywhere`;
     deleteDefinitionBtn.appendChild(createIconElement('trash', 14));
     deleteDefinitionBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (window.confirm(`Delete property "${prop.name}" from the "${group.title}" database and all its pages?`)) {
-        void db.deleteProperty(group.databaseId, prop.id);
+      if (window.confirm(`Delete property "${prop.name}" from the "${home.title}" database and all its pages?`)) {
+        void db.deleteProperty(home.databaseId, prop.id);
       }
     });
     row.appendChild(deleteDefinitionBtn);
@@ -199,18 +199,24 @@ export async function mountRowPropertiesSection(
     return row;
   };
 
-  /** The always-present Tags row for a page NOT yet in the Tags database:
-   *  first tag lazily creates/joins the workspace Tags database. */
-  const createSyntheticTagsRow = (): HTMLElement => {
+  /** The always-present Tags row when the page's schema has no tags yet:
+   *  homeless page → first tag creates/joins the 'Tags' database (it becomes
+   *  the home); home without tags → adds a Tags COLUMN to the home. */
+  const createSyntheticTagsRow = (home: IHome | null): HTMLElement => {
     const { row, value } = buildRowShell('tags', 'tags', 'Tags');
     const definition: IPropertyDefinition = { name: 'Tags', type: 'tags', config: { options: [] }, sortOrder: 0, createdAt: '', updatedAt: '' };
     const editor = createPropertyEditor(definition, [], (newValue) => {
       void (async () => {
         try {
-          const { databaseId, propertyId } = await db.ensureWorkspaceDatabase(TAGS_DB_TITLE, { name: 'Tags', type: 'tags', config: { options: [] } });
-          await db.addExistingPageAsRow(databaseId, pageId);
-          await db.setCellValue(databaseId, pageId, propertyId!, newValue);
-          // Events re-render the panel; the row becomes a real membership row.
+          if (home) {
+            const prop = await db.addProperty(home.databaseId, 'Tags', 'tags', { options: [] });
+            await db.setCellValue(home.databaseId, pageId, prop.id, newValue);
+          } else {
+            const { databaseId, propertyId } = await db.ensureWorkspaceDatabase(TAGS_DB_TITLE, { name: 'Tags', type: 'tags', config: { options: [] } });
+            await db.addExistingPageAsRow(databaseId, pageId);
+            await db.setCellValue(databaseId, pageId, propertyId!, newValue);
+          }
+          // Events re-render; the row becomes a real home row.
         } catch (err) {
           console.error('[PropertyPanel] Failed to tag page:', err);
         }
@@ -240,36 +246,31 @@ export async function mountRowPropertiesSection(
     rendering = true;
     renderQueued = false;
 
-    const [groups, meta] = await Promise.all([
-      Promise.all(databaseIds.map(async (databaseId) => ({
-        databaseId,
-        title: (await db.getDatabase(databaseId))?.title ?? 'Database',
-        props: await db.listProperties(databaseId),
-        values: await db.getRowValues(databaseId, pageId),
-      }))),
+    const homeId = await db.getHomeDatabaseForPage(pageId);
+    const [home, meta] = await Promise.all([
+      (async (): Promise<IHome | null> => {
+        if (!homeId) return null;
+        return {
+          databaseId: homeId,
+          title: (await db.getDatabase(homeId))?.title ?? 'Database',
+          props: await db.listProperties(homeId),
+          values: await db.getRowValues(homeId, pageId),
+        };
+      })(),
       getPageMeta?.() ?? Promise.resolve(null),
     ]);
     if (disposed) { rendering = false; return; }
 
     body.textContent = '';
 
-    // Membership rows, grouped + labeled when in more than one database.
-    for (const group of groups) {
-      if (groups.length > 1) {
-        const groupLabel = document.createElement('div');
-        groupLabel.className = 'canvas-db-rowprops__group';
-        groupLabel.textContent = group.title;
-        body.appendChild(groupLabel);
-      }
-      for (const prop of group.props) {
-        body.appendChild(createMembershipRow(group, prop));
-      }
+    // The home schema's rows — the page's row of its database, vertically.
+    if (home) {
+      for (const prop of home.props) body.appendChild(createHomeRow(home, prop));
     }
 
-    // The Tags row is ALWAYS present — synthetic when the page isn't a Tags
-    // member yet (first tag joins it).
-    const hasTagsRow = groups.some((g) => g.props.some((p) => p.type === 'tags' && p.name.toLowerCase() === 'tags'));
-    if (!hasTagsRow) body.appendChild(createSyntheticTagsRow());
+    // The Tags row is ALWAYS present — synthetic when the schema has none.
+    const hasTagsRow = home?.props.some((p) => p.type === 'tags' && p.name.toLowerCase() === 'tags') ?? false;
+    if (!hasTagsRow) body.appendChild(createSyntheticTagsRow(home));
 
     // created / modified — read-only, from the page itself.
     if (meta) {
@@ -277,8 +278,8 @@ export async function mountRowPropertiesSection(
       body.appendChild(createTimestampRow('modified', meta.updatedAt));
     }
 
-    // '+ Add property' — adds a COLUMN to the page's database; pages in no
-    // database get the lazily-created 'Page properties' workspace database.
+    // '+ Add property' — a COLUMN on the page's home; homeless pages get the
+    // lazily-created 'Page properties' database as their home.
     const addBtn = document.createElement('button');
     addBtn.className = 'canvas-property-add';
     const addIcon = document.createElement('span');
@@ -290,20 +291,18 @@ export async function mountRowPropertiesSection(
     addBtn.appendChild(addLabel);
     addBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      // Prefer a non-Tags membership (real schema); else Tags; else the bucket.
-      const target = groups.find((g) => g.title !== TAGS_DB_TITLE) ?? groups[0];
-      const existing = target ? target.props.map((p) => p.name) : [];
+      const existing = home ? home.props.map((p) => p.name) : [];
       showPropertyPicker(
         addBtn,
         existing,
-        target ? target.props.map(asDefinition) : [],
-        () => { /* every database property already applies to every member page */ },
+        home ? home.props.map(asDefinition) : [],
+        () => { /* every column of the home already applies to this page */ },
         (propName: string, type: PropertyType) => {
           void (async () => {
             try {
               const config = type === 'select' || type === 'tags' ? { options: [] } : {};
-              if (target) {
-                await db.addProperty(target.databaseId, propName, type, config);
+              if (home) {
+                await db.addProperty(home.databaseId, propName, type, config);
               } else {
                 const { databaseId } = await db.ensureWorkspaceDatabase(BUCKET_DB_TITLE);
                 await db.addExistingPageAsRow(databaseId, pageId);
@@ -322,15 +321,8 @@ export async function mountRowPropertiesSection(
     if (renderQueued) { renderQueued = false; void render(); }
   };
 
-  // ── Live membership + data reactivity ──
-  const onChange = (): void => {
-    void (async () => {
-      const next = await db.listDatabasesForPage(pageId);
-      if (disposed) return;
-      databaseIds = next;
-      await render();
-    })();
-  };
+  // ── Live home + data reactivity ──
+  const onChange = (): void => { void render(); };
   disposables.add(db.onDidChangeRows(onChange));
   disposables.add(db.onDidChangeStructure(onChange));
   await render();

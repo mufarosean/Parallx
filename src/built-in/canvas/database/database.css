@@ -204,11 +204,6 @@
 .canvas-db-options__color:hover, .canvas-db-options__del:hover { color: var(--vscode-editor-foreground, #ddd); }
 
 /* ── Row-page property panel ──
-   The panel itself reuses the PropertyBar DOM + propertyBar.css (same UI as
-   before the migration — Notion's database-page property panel anatomy);
-   only the membership group label is database-specific. */
-.canvas-db-rowprops__group {
-  font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
-  color: var(--vscode-descriptionForeground, #888);
-  padding: 8px 0 2px;
-}
+   The panel reuses the PropertyBar DOM + propertyBar.css (same UI as before
+   the migration — Notion's database-page property panel anatomy). It renders
+   the page's single HOME database schema; no panel-specific styles needed. */

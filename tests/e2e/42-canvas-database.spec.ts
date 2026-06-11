@@ -84,23 +84,29 @@ test.describe('Canvas Databases', () => {
     await window.waitForTimeout(2000);
     await openCanvasSidebar(window);
 
-    // Create a page and find its id.
+    // Create TWO pages: A gets tags only, B gets tags + a custom property —
+    // exercising the SINGLE-HOME split (A → Tags; B → Migrated properties
+    // with its tags merged THERE, never two memberships).
     await window.locator('.canvas-sidebar-add-btn').click();
     await window.waitForSelector('.canvas-node', { timeout: 5_000 });
-    const pageId = await window.locator('.canvas-node[role="treeitem"]').last().getAttribute('data-page-id');
-    expect(pageId).toBeTruthy();
+    const pageA = await window.locator('.canvas-node[role="treeitem"]').last().getAttribute('data-page-id');
+    await window.locator('.canvas-sidebar-add-btn').click();
+    await window.waitForTimeout(500);
+    const ids = await window.locator('.canvas-node[role="treeitem"]').evaluateAll((nodes) =>
+      nodes.map((n) => n.getAttribute('data-page-id')).filter((id): id is string => !!id));
+    const pageB = ids.find((id) => id !== pageA);
+    expect(pageA).toBeTruthy();
+    expect(pageB).toBeTruthy();
 
     // The property panel is on EVERY page (the old bar's behavior — Tags row
     // always present, database-backed underneath).
-    await window.locator(`.canvas-node[role="treeitem"][data-page-id="${pageId}"]`).first().click();
+    await window.locator(`.canvas-node[role="treeitem"][data-page-id="${pageA}"]`).first().click();
     await window.waitForSelector('.canvas-editor-wrapper', { timeout: 10_000 });
     await expect(window.locator('.canvas-property-bar')).toBeVisible({ timeout: 10_000 });
     await expect(window.locator('.canvas-property-row__label', { hasText: 'Tags' }).first()).toBeVisible();
 
     // Seed LEGACY property data directly (the pre-database system's tables).
-    // Unique ids: the shared test workspace persists across runs, so fixed PKs
-    // would silently collide with rows from a previous run.
-    await window.evaluate(async (pid) => {
+    await window.evaluate(async ({ a, b }) => {
       const db = (window as any).parallxElectron.database;
       const uid = () => `legacy-${Math.random().toString(36).slice(2)}`;
       await db.run(
@@ -110,31 +116,41 @@ test.describe('Canvas Databases', () => {
         "INSERT OR IGNORE INTO property_definitions (name, type, config, sort_order) VALUES ('priority','select','{}',1)",
       );
       await db.run(
-        `INSERT INTO page_properties (id, page_id, key, value_type, value) VALUES ('${uid()}','${pid}','tags','tags','["work","deep"]')`,
+        `INSERT INTO page_properties (id, page_id, key, value_type, value) VALUES ('${uid()}','${a}','tags','tags','["reading"]')`,
       );
       await db.run(
-        `INSERT INTO page_properties (id, page_id, key, value_type, value) VALUES ('${uid()}','${pid}','priority','select','"High"')`,
+        `INSERT INTO page_properties (id, page_id, key, value_type, value) VALUES ('${uid()}','${b}','tags','tags','["work","deep"]')`,
       );
-    }, pageId);
+      await db.run(
+        `INSERT INTO page_properties (id, page_id, key, value_type, value) VALUES ('${uid()}','${b}','priority','select','"High"')`,
+      );
+    }, { a: pageA, b: pageB });
 
     // Force the migration (support hook; normally runs once at activation).
     await window.evaluate(() => window.dispatchEvent(new CustomEvent('parallx:canvas-run-legacy-migration')));
     await window.waitForTimeout(2500);
 
-    // The Tags + Migrated properties databases exist in the tree.
+    // Both target databases exist in the tree.
     await expect(window.locator('.canvas-node', { hasText: 'Tags' }).first()).toBeVisible({ timeout: 10_000 });
     await expect(window.locator('.canvas-node', { hasText: 'Migrated properties' }).first()).toBeVisible();
 
-    // The tagged page is a ROW of the Tags database with its tags intact.
+    // Tag-only page A is a row of Tags.
     await window.locator('.canvas-node', { hasText: 'Tags' }).first().click();
     const pane = window.locator('.canvas-db-pane');
     await expect(pane).toBeVisible({ timeout: 10_000 });
-    await expect(pane.locator('.canvas-db-pill', { hasText: 'work' }).first()).toBeVisible({ timeout: 5_000 });
-    await expect(pane.locator('.canvas-db-pill', { hasText: 'deep' }).first()).toBeVisible();
+    await expect(pane.locator('.canvas-db-pill', { hasText: 'reading' }).first()).toBeVisible({ timeout: 5_000 });
 
-    // The page itself shows its database properties (membership groups).
-    await window.locator(`.canvas-node[role="treeitem"][data-page-id="${pageId}"]`).first().click();
+    // Page B (custom prop) lives ONLY in Migrated properties — its tags merged
+    // there as a Tags column.
+    await window.locator('.canvas-node', { hasText: 'Migrated properties' }).first().click();
+    await expect(pane.locator('.canvas-db-th', { hasText: 'priority' })).toBeVisible({ timeout: 10_000 });
+    await expect(pane.locator('.canvas-db-th', { hasText: 'Tags' })).toBeVisible();
+    await expect(pane.locator('.canvas-db-pill', { hasText: 'work' }).first()).toBeVisible();
+
+    // B's page panel shows its ONE home schema: priority + Tags rows.
+    await window.locator(`.canvas-node[role="treeitem"][data-page-id="${pageB}"]`).first().click();
     await expect(window.locator('.canvas-property-bar')).toBeVisible({ timeout: 10_000 });
+    await expect(window.locator('.canvas-property-row__label', { hasText: 'priority' }).first()).toBeVisible();
     await expect(window.locator('.canvas-prop-tag', { hasText: 'work' }).first()).toBeVisible();
     await window.screenshot({ path: 'test-results/db-migrated-page-panel.png', fullPage: true });
 

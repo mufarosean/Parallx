@@ -228,6 +228,12 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   _databaseService = new DatabaseDataService(_dataService);
   context.subscriptions.push(_databaseService);
   void _databaseService.ensureIdsLoaded();
+  // Single-home invariant: collapse any multi-membership left by earlier
+  // versions (values merge into the surviving home). Idempotent + cheap
+  // (no-op unless some page has >1 membership), so it runs every activation.
+  void _databaseService.reconcileSingleHome().then((n) => {
+    if (n > 0) console.log(`[Canvas] Single-home reconciliation: merged ${n} multi-membership page(s).`);
+  }).catch((err) => console.warn('[Canvas] Single-home reconciliation failed:', err));
 
   // 2z-ii. One-time legacy property migration (workspace-gated): moves the old
   // per-page property data into databases (tags → "Tags", custom → "Migrated

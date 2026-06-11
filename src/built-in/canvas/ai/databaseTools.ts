@@ -122,10 +122,12 @@ export function createDatabaseTools(db: DatabaseDataService): IChatTool[] {
     },
     {
       name: 'canvas_add_page_to_database',
-      displaySummary: 'Add an existing page to a database.',
+      displaySummary: 'Make a database the home of an existing page.',
       description:
-        'Add an EXISTING page as a row of a database — membership only; the page keeps its place in the ' +
-        'sidebar tree. After this, set its cells with canvas_set_page_property. ' +
+        'Set an EXISTING page\'s HOME database — the page becomes a row of it and the database\'s schema ' +
+        'becomes the page\'s properties. The page keeps its place in the sidebar tree. A page has at most ' +
+        'ONE home; this fails (with the current home named) if the page already belongs to another database. ' +
+        'After this, set its cells with canvas_set_page_property. ' +
         'Use canvas_add_database_row instead when the row page should be created fresh.',
       parameters: {
         type: 'object',
@@ -144,8 +146,12 @@ export function createDatabaseTools(db: DatabaseDataService): IChatTool[] {
         if (!databaseId || !pageId) return { content: 'databaseId and pageId are required', isError: true };
         const info = await db.getDatabase(databaseId);
         if (!info) return { content: `Database not found: ${databaseId}`, isError: true };
-        await db.addExistingPageAsRow(databaseId, pageId);
-        return { content: `Added page ${pageId} as a row of "${info.title}". Its place in the page tree is unchanged.` };
+        try {
+          await db.addExistingPageAsRow(databaseId, pageId);
+        } catch (err) {
+          return { content: err instanceof Error ? err.message : String(err), isError: true };
+        }
+        return { content: `"${info.title}" is now the home database of page ${pageId} (its schema is the page's properties). Tree position unchanged.` };
       },
     },
     {

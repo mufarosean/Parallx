@@ -129,53 +129,81 @@ export async function runLegacyPropertyMigration(deps: IMigrationDeps): Promise<
   let migratedCustomValues = 0;
   const skippedArchived = values.length - liveValues.length;
 
-  // 3. Tags → the "Tags" database.
-  const nonEmptyTags = tagValues
-    .map((v) => ({ pageId: v.page_id as string, tags: decode(v.value) }))
-    .filter((v) => Array.isArray(v.tags) && v.tags.length > 0);
-  if (nonEmptyTags.length > 0) {
-    let tagsDbId = await findDatabaseByTitle(bridge, 'Tags');
-    if (!tagsDbId) {
-      tagsDbId = (await db.createDatabase({ title: 'Tags', seedDefaults: false })).id;
+  // SINGLE-HOME INVARIANT: a page belongs to exactly ONE database — its home,
+  // whose schema is the page's properties. Pages with custom properties get
+  // "Migrated properties" as their home (their tags merge into a Tags column
+  // THERE — never a second membership); pages with ONLY tags get "Tags".
+  // Re-run safe: a page that already has a home (earlier run, or a real
+  // database) receives the columns + values on THAT home instead.
+  const tagsByPage = new Map<string, unknown>();
+  for (const v of tagValues) {
+    const tags = decode(v.value);
+    if (Array.isArray(tags) && tags.length > 0) tagsByPage.set(v.page_id as string, tags);
+  }
+  const customByPage = new Map<string, { key: string; value: unknown }[]>();
+  for (const v of customValues) {
+    const pageId = v.page_id as string;
+    if (!customByPage.has(pageId)) customByPage.set(pageId, []);
+    customByPage.get(pageId)!.push({ key: v.key as string, value: decode(v.value) });
+  }
+  const legacyTagsDef = defs.find((d) => d.name === 'tags');
+  const tagsConfig = mapOptions(decode(legacyTagsDef?.config ?? '{}') as Record<string, unknown>);
+
+  // Lazily-created targets.
+  let customDbId: string | null = null;
+  const ensureCustomDb = async (): Promise<string> => {
+    if (customDbId) return customDbId;
+    customDbId = await findDatabaseByTitle(bridge, 'Migrated properties');
+    if (!customDbId) customDbId = (await db.createDatabase({ title: 'Migrated properties', seedDefaults: false })).id;
+    return customDbId;
+  };
+  let tagsDbId: string | null = null;
+  const ensureTagsDb = async (): Promise<string> => {
+    if (tagsDbId) return tagsDbId;
+    tagsDbId = await findDatabaseByTitle(bridge, 'Tags');
+    if (!tagsDbId) tagsDbId = (await db.createDatabase({ title: 'Tags', seedDefaults: false })).id;
+    return tagsDbId;
+  };
+
+  /** Property id by name on a database, creating the column when missing. */
+  const ensureColumn = async (databaseId: string, name: string, type: PropertyType, config: Record<string, unknown>): Promise<string> => {
+    const props = await db.listProperties(databaseId);
+    const found = props.find((p) => p.name.toLowerCase() === name.toLowerCase());
+    if (found) return found.id;
+    return (await db.addProperty(databaseId, name, type, config)).id;
+  };
+
+  const allPages = new Set<string>([...customByPage.keys(), ...tagsByPage.keys()]);
+  for (const pageId of allPages) {
+    const customs = customByPage.get(pageId) ?? [];
+    const tags = tagsByPage.get(pageId);
+
+    // Resolve the page's home: keep an existing one; else custom pages go to
+    // "Migrated properties", tag-only pages to "Tags".
+    let home = await db.getHomeDatabaseForPage(pageId);
+    if (!home) {
+      home = customs.length > 0 ? await ensureCustomDb() : await ensureTagsDb();
+      await db.addExistingPageAsRow(home, pageId);
     }
-    let tagsProp = (await db.listProperties(tagsDbId)).find((p) => p.name === 'Tags');
-    if (!tagsProp) {
-      const legacyTagsDef = defs.find((d) => d.name === 'tags');
-      const config = mapOptions(decode(legacyTagsDef?.config ?? '{}') as Record<string, unknown>);
-      tagsProp = await db.addProperty(tagsDbId, 'Tags', 'tags', config);
+
+    for (const { key, value } of customs) {
+      const def = defs.find((d) => d.name === key);
+      const type = (def?.type as PropertyType) ?? 'text';
+      const config = mapOptions(decode(def?.config ?? '{}') as Record<string, unknown>);
+      const propId = await ensureColumn(home, key, type, config);
+      await db.setCellValue(home, pageId, propId, value);
+      migratedCustomValues++;
     }
-    for (const { pageId, tags } of nonEmptyTags) {
-      await db.addExistingPageAsRow(tagsDbId, pageId);
-      await db.setCellValue(tagsDbId, pageId, tagsProp.id, tags);
+    if (tags) {
+      const tagsPropId = await ensureColumn(home, 'Tags', 'tags', tagsConfig);
+      await db.setCellValue(home, pageId, tagsPropId, tags);
       migratedTagPages++;
     }
   }
 
-  // 4. Custom definitions → the "Migrated properties" database.
-  const customDefNames = [...new Set(customValues.map((v) => v.key as string))];
-  if (customDefNames.length > 0) {
-    let customDbId = await findDatabaseByTitle(bridge, 'Migrated properties');
-    if (!customDbId) {
-      customDbId = (await db.createDatabase({ title: 'Migrated properties', seedDefaults: false })).id;
-    }
-    const existing = await db.listProperties(customDbId);
-    const propIdByName = new Map(existing.map((p) => [p.name, p.id]));
-    for (const name of customDefNames) {
-      if (propIdByName.has(name)) continue;
-      const def = defs.find((d) => d.name === name);
-      const type = (def?.type as PropertyType) ?? 'text';
-      const config = mapOptions(decode(def?.config ?? '{}') as Record<string, unknown>);
-      const prop = await db.addProperty(customDbId, name, type, config);
-      propIdByName.set(name, prop.id);
-    }
-    for (const v of customValues) {
-      const propId = propIdByName.get(v.key as string);
-      if (!propId) continue;
-      await db.addExistingPageAsRow(customDbId, v.page_id as string);
-      await db.setCellValue(customDbId, v.page_id as string, propId, decode(v.value));
-      migratedCustomValues++;
-    }
-  }
+  // Collapse any multi-membership left by EARLIER migration versions
+  // (values merged into the surviving home, extra memberships dropped).
+  await db.reconcileSingleHome();
 
   return { migratedTagPages, migratedCustomValues, skippedArchived };
 }

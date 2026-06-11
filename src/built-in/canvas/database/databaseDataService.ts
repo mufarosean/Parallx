@@ -387,10 +387,19 @@ export class DatabaseDataService extends Disposable {
   /**
    * Add an EXISTING page as a row — membership only, the page keeps its place
    * in the tree (database membership is the database_pages table, not
-   * parent_id). Used by the legacy-property migration and the
-   * canvas_add_page_to_database tool. Idempotent.
+   * parent_id). SINGLE-HOME INVARIANT: a page belongs to AT MOST ONE database
+   * (its home — Notion semantics; the home's schema IS the page's properties).
+   * Adding a page that already has a DIFFERENT home throws. Idempotent for
+   * the same home.
    */
   async addExistingPageAsRow(databaseId: string, pageId: string): Promise<void> {
+    const home = await this.getHomeDatabaseForPage(pageId);
+    if (home && home !== databaseId) {
+      const info = await this.getDatabase(home);
+      throw new Error(
+        `Page ${pageId} already belongs to the database "${info?.title ?? home}" — a page has exactly one home database.`,
+      );
+    }
     const orderRes = await this._db.get(
       'SELECT MAX(sort_order) as max_sort FROM database_pages WHERE database_id = ?',
       [databaseId],
@@ -402,6 +411,71 @@ export class DatabaseDataService extends Disposable {
     );
     if (res.error) throw new Error(res.error.message);
     this._onDidChangeRows.fire(databaseId);
+  }
+
+  /** The page's HOME database (single-home invariant), or null. */
+  async getHomeDatabaseForPage(pageId: string): Promise<string | null> {
+    const res = await this._db.get(
+      'SELECT database_id FROM database_pages WHERE page_id = ? ORDER BY created_at LIMIT 1',
+      [pageId],
+    );
+    return res.row ? (res.row.database_id as string) : null;
+  }
+
+  /**
+   * Collapse any multi-membership left by earlier versions into the
+   * single-home model: the page's home is its first NON-"Tags" membership
+   * (richer schema) — else the first membership. Every other membership's
+   * values are MERGED into the home (same-named columns created as needed,
+   * values copied when the home's cell is empty), then dropped. Idempotent and
+   * cheap (no-op when no page has more than one membership).
+   */
+  async reconcileSingleHome(): Promise<number> {
+    const multi = await this._db.all(
+      'SELECT page_id FROM database_pages GROUP BY page_id HAVING COUNT(*) > 1',
+    );
+    const pageIds = (multi.rows ?? []).map((r) => r.page_id as string);
+    if (pageIds.length === 0) return 0;
+
+    for (const pageId of pageIds) {
+      const memberships = await this._db.all(
+        `SELECT dp.database_id, p.title FROM database_pages dp JOIN pages p ON p.id = dp.database_id
+          WHERE dp.page_id = ? ORDER BY dp.created_at`,
+        [pageId],
+      );
+      const rows = memberships.rows ?? [];
+      if (rows.length <= 1) continue;
+      const home = (rows.find((r) => r.title !== 'Tags') ?? rows[0]).database_id as string;
+      const homeProps = await this.listProperties(home);
+      const homeValues = await this.getRowValues(home, pageId);
+
+      for (const m of rows) {
+        const otherId = m.database_id as string;
+        if (otherId === home) continue;
+        const otherProps = await this.listProperties(otherId);
+        const otherValues = await this.getRowValues(otherId, pageId);
+        for (const prop of otherProps) {
+          const value = otherValues[prop.id];
+          if (value === null || value === undefined) continue;
+          let target = homeProps.find((p) => p.name.toLowerCase() === prop.name.toLowerCase());
+          if (!target) {
+            target = await this.addProperty(home, prop.name, prop.type, prop.config);
+            homeProps.push(target);
+          }
+          const existing = homeValues[target.id];
+          const empty = existing === null || existing === undefined || existing === '' || (Array.isArray(existing) && existing.length === 0);
+          if (empty) await this.setCellValue(home, pageId, target.id, value);
+        }
+        // Drop the extra membership + its cells (values merged above).
+        await this._db.runTransaction([
+          { type: 'run', sql: 'DELETE FROM page_property_values WHERE page_id = ? AND database_id = ?', params: [pageId, otherId] },
+          { type: 'run', sql: 'DELETE FROM database_pages WHERE database_id = ? AND page_id = ?', params: [otherId, pageId] },
+        ]);
+        this._onDidChangeRows.fire(otherId);
+      }
+      this._onDidChangeRows.fire(home);
+    }
+    return pageIds.length;
   }
 
   /** Remove a row: drop membership + its cell values, and archive the page (trash). */
