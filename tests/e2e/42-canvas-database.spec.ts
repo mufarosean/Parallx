@@ -90,10 +90,12 @@ test.describe('Canvas Databases', () => {
     const pageId = await window.locator('.canvas-node[role="treeitem"]').last().getAttribute('data-page-id');
     expect(pageId).toBeTruthy();
 
-    // The legacy property bar must be GONE from regular pages.
+    // The property panel is on EVERY page (the old bar's behavior — Tags row
+    // always present, database-backed underneath).
     await window.locator(`.canvas-node[role="treeitem"][data-page-id="${pageId}"]`).first().click();
     await window.waitForSelector('.canvas-editor-wrapper', { timeout: 10_000 });
-    await expect(window.locator('.canvas-property-bar')).toHaveCount(0);
+    await expect(window.locator('.canvas-property-bar')).toBeVisible({ timeout: 10_000 });
+    await expect(window.locator('.canvas-property-row__label', { hasText: 'Tags' }).first()).toBeVisible();
 
     // Seed LEGACY property data directly (the pre-database system's tables).
     // Unique ids: the shared test workspace persists across runs, so fixed PKs
@@ -144,6 +146,34 @@ test.describe('Canvas Databases', () => {
     const fs = await import('fs/promises');
     const backups = await fs.readdir(`${workspacePath}/.parallx-backups`).catch(() => [] as string[]);
     expect(backups.some((f) => f.startsWith('legacy-properties-'))).toBe(true);
+  });
+
+  test('tagging a regular page from the panel lazily joins it to the Tags database', async ({ window, electronApp }) => {
+    const workspacePath = await createTestWorkspace();
+    test.setTimeout(120_000);
+    await openFolderViaMenu(electronApp, window, workspacePath, { force: true });
+    await window.waitForTimeout(2000);
+    await openCanvasSidebar(window);
+
+    // Fresh page → panel with the synthetic Tags row.
+    await window.locator('.canvas-sidebar-add-btn').click();
+    await window.waitForSelector('.canvas-node', { timeout: 5_000 });
+    await window.locator('.canvas-node[role="treeitem"]').last().click();
+    await window.waitForSelector('.canvas-editor-wrapper', { timeout: 10_000 });
+    await expect(window.locator('.canvas-property-bar')).toBeVisible({ timeout: 10_000 });
+    await window.screenshot({ path: 'test-results/db-regular-page-panel.png', fullPage: true });
+
+    // Type a tag into the Tags editor.
+    const tagsInput = window.locator('.canvas-property-bar .canvas-prop-tags input').first();
+    await tagsInput.click();
+    await tagsInput.fill('focus');
+    await tagsInput.press('Enter');
+    await window.waitForTimeout(1500);
+
+    // The page joined the lazily-created Tags database: the database appears in
+    // the tree and the panel re-renders the row as a real membership row.
+    await expect(window.locator('.canvas-node', { hasText: 'Tags' }).first()).toBeVisible({ timeout: 10_000 });
+    await expect(window.locator('.canvas-property-bar .canvas-prop-tag', { hasText: 'focus' }).first()).toBeVisible({ timeout: 10_000 });
   });
 
   test('/database slash command creates a nested database with its card at the cursor', async ({ window, electronApp }) => {

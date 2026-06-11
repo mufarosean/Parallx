@@ -705,8 +705,12 @@ class CanvasEditorPane implements IDisposable {
           });
         });
       };
+      const getPageMeta = async (): Promise<{ createdAt: string; updatedAt: string } | null> => {
+        const page = await this._dataService.getPage(this._pageId);
+        return page ? { createdAt: page.createdAt, updatedAt: page.updatedAt } : null;
+      };
       import('./database/rowPropertiesSection.js')
-        .then((m) => m.mountRowPropertiesSection(this._editorContainer!, this._pageId, dbService, editorDom, openMemberPage))
+        .then((m) => m.mountRowPropertiesSection(this._editorContainer!, this._pageId, dbService, editorDom, openMemberPage, getPageMeta))
         .then((d) => { if (d) this._saveDisposables.add(d); })
         .catch((err) => console.warn('[CanvasEditorPane] Row-properties section failed:', err));
     }

@@ -435,6 +435,40 @@ export class DatabaseDataService extends Disposable {
     this._onDidChangeRows.fire(databaseId);
   }
 
+  /** Find a live database by exact page title (e.g. the workspace 'Tags'). */
+  async findDatabaseByTitle(title: string): Promise<string | null> {
+    const res = await this._db.get(
+      'SELECT d.id FROM databases d JOIN pages p ON p.id = d.id WHERE p.title = ? AND p.is_archived = 0',
+      [title],
+    );
+    return res.row ? (res.row.id as string) : null;
+  }
+
+  /**
+   * Ensure a well-known workspace database exists (created lazily, no Status
+   * seed), optionally with one seeded property. Returns the database id and —
+   * when a seed property name is given — that property's id.
+   *
+   * Backs the always-present property panel: the 'Tags' database (every page
+   * can be tagged; tagging joins the page to it) and the 'Page properties'
+   * bucket ('+ Add property' on a page that's in no other database).
+   */
+  async ensureWorkspaceDatabase(
+    title: string,
+    seedProperty?: { name: string; type: PropertyType; config?: Record<string, unknown> },
+  ): Promise<{ databaseId: string; propertyId?: string }> {
+    let databaseId = await this.findDatabaseByTitle(title);
+    if (!databaseId) {
+      databaseId = (await this.createDatabase({ title, seedDefaults: false })).id;
+    }
+    if (!seedProperty) return { databaseId };
+    const props = await this.listProperties(databaseId);
+    const existing = props.find((p) => p.name.toLowerCase() === seedProperty.name.toLowerCase());
+    if (existing) return { databaseId, propertyId: existing.id };
+    const created = await this.addProperty(databaseId, seedProperty.name, seedProperty.type, seedProperty.config ?? {});
+    return { databaseId, propertyId: created.id };
+  }
+
   /** Notify listeners that a database's rows/cells changed via an external
    *  writer (e.g. the canvas_set_page_property tool's raw upsert) so open
    *  database editors and row sections refresh. */
