@@ -114,6 +114,14 @@ contextBridge.exposeInMainWorld('parallxElectron', {
     registerExtraRoots: (roots) => ipcRenderer.invoke('fs:registerExtraRoots', roots),
 
     /**
+     * Returns { ok: boolean } — whether `filePath` is an allowed WRITE target
+     * (inside the workspace root / data dir / extra roots) AND a workspace is
+     * actually open. Use this to validate paths handed to a spawned process
+     * (e.g. ffmpeg), which bypasses the fs:* gate entirely.
+     */
+    isInWorkspace: (filePath) => ipcRenderer.invoke('fs:isInWorkspace', filePath),
+
+    /**
      * Subscribe to file change events.
      * Callback receives { watchId, events: [{ type: 'created'|'changed'|'deleted', path }] }
      * or { watchId, error }.
@@ -123,6 +131,22 @@ contextBridge.exposeInMainWorld('parallxElectron', {
       const handler = (_event, payload) => callback(payload);
       ipcRenderer.on('fs:change', handler);
       return () => ipcRenderer.removeListener('fs:change', handler);
+    },
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Screen Recorder API (media-organizer)
+  // ══════════════════════════════════════════════════════════════════════════
+  // Opens a transparent always-on-top framing window; ffmpeg (in main) records
+  // the hollow inner rect to the caller-provided, in-workspace output path.
+  recorder: {
+    /** Open the framing window. opts: { ffmpegPath, outputPath, fps, width, height, audio }. Returns { frameId } or { error }. */
+    openFrame: (opts) => ipcRenderer.invoke('recorder:openFrame', opts),
+    /** Fires when a recording finishes/cancels: { frameId, path, ok, cancelled? }. Returns an unsubscribe fn. */
+    onComplete: (callback) => {
+      const handler = (_event, payload) => { try { callback(payload); } catch { /* ignore */ } };
+      ipcRenderer.on('recorder:complete', handler);
+      return () => ipcRenderer.removeListener('recorder:complete', handler);
     },
   },
 

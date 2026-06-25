@@ -1,7 +1,7 @@
 // electron/main.cjs — Electron main process
 // Uses CommonJS because Electron's main process doesn't support ESM by default.
 
-const { app, BrowserWindow, ipcMain, dialog, shell, screen, safeStorage, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, screen, safeStorage, nativeImage, session, desktopCapturer } = require('electron');
 const http = require('http');
 const path = require('path');
 const fs = require('fs/promises');
@@ -1667,6 +1667,21 @@ ipcMain.handle('fs:copy', async (_event, source, destination) => {
   }
 });
 
+// ── fs:isInWorkspace ──
+// Containment check exposed to the renderer/extensions. Returns whether a path
+// is an allowed WRITE target (workspace root / data dir / extra roots). Used by
+// features that write via a SPAWNED process (e.g. ffmpeg), which bypasses the
+// fs:* gate — so they must validate their output path themselves first. Note
+// _isAllowedWritePath returns true when no workspace is registered, so callers
+// must independently confirm a workspace is actually open.
+ipcMain.handle('fs:isInWorkspace', (_event, filePath) => {
+  try {
+    return { ok: typeof filePath === 'string' && filePath.length > 0 && !!_fsWorkspaceRoot && _isAllowedWritePath(filePath) };
+  } catch {
+    return { ok: false };
+  }
+});
+
 // ════════════════════════════════════════════════════════════════════════════════
 // File Dialog IPC Handlers (M4 Cap 0 — Task 0.2)
 // ════════════════════════════════════════════════════════════════════════════════
@@ -2517,6 +2532,373 @@ ipcMain.handle('terminal:getOutput', async (_event, lineCount) => {
   const count = lineCount || TERMINAL_BUFFER_MAX_LINES;
   const lines = _terminalOutputBuffer.slice(-count);
   return { output: lines.join('\n'), lineCount: lines.length };
+});
+
+// ════════════════════════════════════════════════════════════════════════════════
+// Screen Recorder (media-organizer) — transparent framing window + ffmpeg gdigrab
+// ════════════════════════════════════════════════════════════════════════════════
+// A floating, transparent, always-on-top, resizable "frame" window the user
+// positions over the screen region they want. ffmpeg records the HOLLOW inner
+// rect (so the frame's own border + toolbar are never captured), writing to a
+// path the extension already validated as in-workspace (we re-check here). On
+// stop, 'q' is sent to ffmpeg's stdin for a clean finalize, then the resulting
+// path is handed back to the renderer via the 'recorder:complete' event.
+const RECORDER_BORDER = 2;    // px — MUST match recorderFrame.html (border around the capture area only)
+const RECORDER_TOOLBAR = 44;  // px — MUST match recorderFrame.html
+const _recorderFrames = new Map(); // frameId -> { win, proc, outputPath, ffmpegPath, fps, recording }
+let _recorderIdCounter = 0;
+
+// Persist the frame's size + position app-wide (like the main window), so it
+// reopens where the user last left it — ScreenToGif-style. Saved on move/resize
+// (debounced); restored on open if still on a connected display.
+const RECORDER_STATE_FILE = path.join(APP_ROOT, 'data', 'recorder-frame-state.json');
+let _recorderSaveTimer = null;
+function loadRecorderFrameState() {
+  try {
+    const s = JSON.parse(fsSync.readFileSync(RECORDER_STATE_FILE, 'utf8'));
+    if (s && Number.isFinite(s.x) && Number.isFinite(s.y) &&
+        Number.isFinite(s.width) && Number.isFinite(s.height) &&
+        s.width >= 200 && s.height >= 160) return s;
+  } catch { /* none yet */ }
+  return null;
+}
+function saveRecorderFrameState(bounds) {
+  if (!bounds) return;
+  if (_recorderSaveTimer) clearTimeout(_recorderSaveTimer);
+  _recorderSaveTimer = setTimeout(() => {
+    try {
+      fsSync.writeFileSync(RECORDER_STATE_FILE, JSON.stringify({
+        x: Math.round(bounds.x), y: Math.round(bounds.y),
+        width: Math.round(bounds.width), height: Math.round(bounds.height),
+      }), 'utf8');
+    } catch { /* non-critical */ }
+  }, 400);
+}
+
+function _recorderSendState(frameId, state) {
+  const entry = _recorderFrames.get(frameId);
+  if (entry && entry.win && !entry.win.isDestroyed()) {
+    entry.win.webContents.send('recorder:state', state);
+  }
+}
+
+// Physical-pixel capture rect of the hollow centre, from the frame's DIP bounds
+// (DPI-correct: dipToScreenPoint for the origin, scaleFactor for the size).
+function _recorderCaptureRect(win) {
+  const b = win.getBounds(); // DIP
+  const innerDip = {
+    x: b.x + RECORDER_BORDER,
+    y: b.y + RECORDER_BORDER,
+    w: Math.max(2, b.width - RECORDER_BORDER * 2),
+    h: Math.max(2, b.height - RECORDER_BORDER * 2 - RECORDER_TOOLBAR),
+  };
+  const disp = screen.getDisplayNearestPoint({ x: innerDip.x, y: innerDip.y });
+  const sf = (disp && disp.scaleFactor) || 1;
+  const tl = screen.dipToScreenPoint({ x: innerDip.x, y: innerDip.y });
+  let pw = Math.round(innerDip.w * sf);
+  let ph = Math.round(innerDip.h * sf);
+  if (pw % 2 !== 0) pw -= 1;   // even dims required by libx264 + yuv420p
+  if (ph % 2 !== 0) ph -= 1;
+  return { x: Math.round(tl.x), y: Math.round(tl.y), w: Math.max(2, pw), h: Math.max(2, ph) };
+}
+
+// ── Audio capture (WASAPI loopback via Electron) ────────────────────────────
+// ffmpeg/DirectShow can't tap an output device (Bluetooth/USB/HDMI). Instead the
+// frame renderer captures audio through Chromium: getDisplayMedia + this handler
+// returns `audio: 'loopback'` to grab whatever the OS is playing (any device),
+// or the renderer uses getUserMedia for the mic. The captured audio is sent back
+// and muxed with the gdigrab video. The handler is set once, lazily.
+let _recorderLoopbackHandlerSet = false;
+function _ensureLoopbackAudioHandler() {
+  if (_recorderLoopbackHandlerSet) return;
+  _recorderLoopbackHandlerSet = true;
+  try {
+    session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+      // getDisplayMedia requires a video source; the recorder frame discards it
+      // and keeps only the loopback audio track.
+      desktopCapturer.getSources({ types: ['screen'] }).then((sources) => {
+        callback(sources && sources.length ? { video: sources[0], audio: 'loopback' } : {});
+      }).catch(() => { try { callback({}); } catch { /* ignore */ } });
+    }, { useSystemPicker: false });
+  } catch { /* older Electron — frame falls back to video-only */ }
+}
+
+ipcMain.handle('recorder:openFrame', async (_event, opts) => {
+  try {
+    const fps = Math.max(1, Math.min(60, parseInt(opts?.fps, 10) || 30));
+    const ffmpegPath = String(opts?.ffmpegPath || '');
+    const outputPath = String(opts?.outputPath || '');
+    // Re-validate containment in main — spawned ffmpeg bypasses the fs gate, and
+    // _isAllowedWritePath returns true when no workspace is set, so require one.
+    if (!ffmpegPath || !outputPath || !_fsWorkspaceRoot || !_isAllowedWritePath(outputPath)) {
+      return { error: { code: 'BAD_ARGS', message: 'Missing ffmpeg/output, or output is outside the workspace' } };
+    }
+    const frameId = `rec-${++_recorderIdCounter}`;
+    // Restore last size/position if it's still on a connected display, else
+    // fall back to the caller's defaults (centred).
+    const saved = loadRecorderFrameState();
+    const useSaved = saved && boundsOnScreen(saved);
+    const initW = useSaved ? saved.width : Math.max(240, parseInt(opts?.width, 10) || 640) + RECORDER_BORDER * 2;
+    const initH = useSaved ? saved.height : Math.max(160, parseInt(opts?.height, 10) || 360) + RECORDER_BORDER * 2 + RECORDER_TOOLBAR;
+    const win = new BrowserWindow({
+      width: initW,
+      height: initH,
+      ...(useSaved ? { x: saved.x, y: saved.y } : {}),
+      minWidth: 200,
+      minHeight: 160,
+      frame: false,
+      transparent: true,
+      hasShadow: false,
+      resizable: true,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      fullscreenable: false,
+      maximizable: false,
+      // Non-activating (WS_EX_NOACTIVATE on Windows): the frame receives mouse
+      // clicks / drag / resize but never becomes the foreground window. Without
+      // this, clicking the frame steals foreground from a fullscreen app being
+      // recorded, so Windows un-hides the taskbar and drops the app out of
+      // fullscreen mid-record.
+      focusable: false,
+      backgroundColor: '#00000000',
+      webPreferences: {
+        preload: path.join(__dirname, 'recorderFramePreload.cjs'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: false,
+      },
+    });
+    win.setAlwaysOnTop(true, 'screen-saver');
+    // Audio capture mode: 'off' | 'system' (loopback) | 'mic'. Capture itself
+    // happens in the frame renderer; the toolbar speaker button mutes it
+    // locally. Main only needs the mode to pass to the frame.
+    const audioMode = ['system', 'mic'].includes(opts?.audio) ? opts.audio : 'off';
+    // gdigrab writes video to a temp; final output is muxed (video + captured
+    // audio) into outputPath on stop. videoPath is a sibling temp file.
+    const videoPath = outputPath.replace(/\.mp4$/i, '') + '.video.mp4';
+    const entry = {
+      win, proc: null, outputPath, videoPath, audioPath: null, ffmpegPath, fps,
+      recording: false, audioMode,
+    };
+    _recorderFrames.set(frameId, entry);
+    if (audioMode === 'system') _ensureLoopbackAudioHandler();
+    const search = new URLSearchParams({ frameId, fps: String(fps), audio: audioMode }).toString();
+    win.loadFile(path.join(__dirname, 'recorderFrame.html'), { search });
+    // Unexpected close (OS, app quit) that didn't go through stop/cancel: tear
+    // down the recording and tell the renderer it was cancelled so it doesn't
+    // wait forever. stop/cancel delete from the map first, so they no-op here.
+    win.on('closed', () => {
+      const e = _recorderFrames.get(frameId);
+      if (!e) return;
+      if (e.proc) { try { e.proc.kill('SIGKILL'); } catch { /* ignore */ } }
+      _recorderFrames.delete(frameId);
+      _recorderCleanupTemps(e);
+      if (e.outputPath) fs.unlink(e.outputPath).catch(() => {});
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('recorder:complete', { frameId, path: null, ok: false, cancelled: true });
+      }
+    });
+    return { frameId, error: null };
+  } catch (err) {
+    return { error: { code: 'OPEN_FAILED', message: err.message } };
+  }
+});
+
+// Manual move/resize for the transparent frame (-webkit-app-region: drag does
+// not work on transparent windows on Windows, and frameless transparent windows
+// get no native resize). The renderer computes the new DIP bounds and sends them.
+ipcMain.handle('recorder:setBounds', (_event, frameId, bounds) => {
+  const entry = _recorderFrames.get(frameId);
+  if (!entry || !entry.win || entry.win.isDestroyed() || entry.recording || !bounds) return { error: null };
+  try {
+    entry.win.setBounds({
+      x: Math.round(bounds.x), y: Math.round(bounds.y),
+      width: Math.max(200, Math.round(bounds.width)),
+      height: Math.max(160, Math.round(bounds.height)),
+    });
+    saveRecorderFrameState(entry.win.getBounds()); // persist last position/size (debounced)
+  } catch { /* ignore */ }
+  return { error: null };
+});
+
+// Toggle window-wide click-through. The renderer flips this on every region
+// transition so the hollow centre passes clicks to the app being recorded,
+// while the border / corners / toolbar stay interactive. forward:true keeps
+// mousemove events flowing to the renderer even while click-through, so it can
+// detect when the cursor re-enters the chrome.
+ipcMain.handle('recorder:setIgnoreMouse', (_event, frameId, ignore) => {
+  const entry = _recorderFrames.get(frameId);
+  if (entry && entry.win && !entry.win.isDestroyed()) {
+    try { entry.win.setIgnoreMouseEvents(!!ignore, { forward: true }); } catch { /* ignore */ }
+  }
+  return { error: null };
+});
+
+function _recorderCleanupTemps(entry) {
+  if (!entry) return;
+  if (entry.videoPath) fs.unlink(entry.videoPath).catch(() => {});
+  if (entry.audioPath) fs.unlink(entry.audioPath).catch(() => {});
+}
+
+// Header-only duration probe via ffprobe (sibling of ffmpeg). Returns 0 on any
+// failure so the caller can fall back to wall-clock timing. Fast + size-
+// independent, unlike loading the whole file in the renderer.
+function _recorderProbeDuration(ffmpegPath, file) {
+  return new Promise((resolve) => {
+    const ffprobe = ffmpegPath.replace(/ffmpeg(\.exe)?$/i, (m, e) => 'ffprobe' + (e || ''));
+    let out = '', done = false;
+    const finish = (v) => { if (!done) { done = true; resolve(v); } };
+    try {
+      const p = spawn(ffprobe, ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1', file], { windowsHide: true });
+      p.stdout.on('data', (d) => { out += d.toString(); });
+      p.on('exit', () => { const n = parseFloat(out.trim()); finish(Number.isFinite(n) && n > 0 ? n : 0); });
+      p.on('error', () => finish(0));
+      setTimeout(() => { try { p.kill(); } catch { /* ignore */ } finish(0); }, 5000);
+    } catch { finish(0); }
+  });
+}
+
+// Produce the final output. If the frame captured audio, mux it with the
+// gdigrab video (copy video, encode audio to aac); otherwise just promote the
+// temp video. Falls back to video-only if muxing fails, so the user always
+// gets something. Resolves true when outputPath exists.
+function _recorderFinalize(entry) {
+  return new Promise((resolve) => {
+    const { ffmpegPath, videoPath, audioPath, outputPath } = entry;
+    if (!videoPath || !fsSync.existsSync(videoPath)) { resolve(false); return; }
+    const moveVideoOnly = () => {
+      try { if (!fsSync.existsSync(outputPath)) fsSync.renameSync(videoPath, outputPath); } catch { /* ignore */ }
+      return fsSync.existsSync(outputPath);
+    };
+    if (!audioPath || !fsSync.existsSync(audioPath)) { resolve(moveVideoOnly()); return; }
+    const args = ['-y', '-i', videoPath, '-i', audioPath, '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-shortest', outputPath];
+    let done = false;
+    const finish = (val) => { if (!done) { done = true; _recorderCleanupTemps(entry); resolve(val); } };
+    try {
+      const p = spawn(ffmpegPath, args, { stdio: ['ignore', 'ignore', 'ignore'], windowsHide: true });
+      p.on('exit', (code) => finish(code === 0 && fsSync.existsSync(outputPath)));
+      p.on('error', () => finish(moveVideoOnly()));
+      setTimeout(() => { if (!done) { try { p.kill('SIGKILL'); } catch { /* ignore */ } finish(moveVideoOnly()); } }, 30000);
+    } catch {
+      finish(moveVideoOnly());
+    }
+  });
+}
+
+ipcMain.handle('recorder:start', async (_event, frameId) => {
+  const entry = _recorderFrames.get(frameId);
+  if (!entry || !entry.win || entry.win.isDestroyed()) return { error: { code: 'NO_FRAME', message: 'No frame' } };
+  if (entry.recording) return { error: null };
+  try {
+    const rect = _recorderCaptureRect(entry.win);
+    // Video only — gdigrab to a temp file. Audio is captured by the frame
+    // renderer (loopback / mic) and muxed in on stop.
+    const args = [
+      '-y',
+      '-thread_queue_size', '1024',
+      '-f', 'gdigrab',
+      '-framerate', String(entry.fps),
+      '-offset_x', String(rect.x),
+      '-offset_y', String(rect.y),
+      '-video_size', `${rect.w}x${rect.h}`,
+      '-i', 'desktop',
+      '-c:v', 'libx264',
+      '-preset', 'ultrafast',
+      '-pix_fmt', 'yuv420p',
+      entry.videoPath,
+    ];
+    const proc = spawn(entry.ffmpegPath, args, { stdio: ['pipe', 'ignore', 'pipe'], windowsHide: true });
+    entry.proc = proc;
+    entry.recording = true;
+    entry.startedAt = Date.now();
+    proc.on('error', (err) => {
+      entry.recording = false; entry.proc = null;
+      _recorderSendState(frameId, { recording: false, error: err.message });
+    });
+    proc.on('exit', (code) => {
+      // recorder:stop removes the entry from the map BEFORE awaiting exit, so if
+      // it's still here + recording this is an unexpected death — reset the frame.
+      const e = _recorderFrames.get(frameId);
+      if (e && e.recording && e.proc === proc) {
+        e.recording = false; e.proc = null;
+        _recorderSendState(frameId, { recording: false, error: 'Recording stopped unexpectedly (code ' + code + ')' });
+      }
+    });
+    _recorderSendState(frameId, { recording: true });
+    return { error: null };
+  } catch (err) {
+    entry.recording = false;
+    return { error: { code: 'START_FAILED', message: err.message } };
+  }
+});
+
+// The frame renderer captures audio (loopback/mic) and sends the encoded
+// webm/opus bytes just before stop. We stash it to a temp file for muxing.
+ipcMain.handle('recorder:sendAudio', async (_event, frameId, buffer) => {
+  const entry = _recorderFrames.get(frameId);
+  if (!entry) return { error: null };
+  try {
+    const buf = buffer ? Buffer.from(buffer) : null;
+    if (buf && buf.length > 0) {
+      const audioPath = entry.outputPath.replace(/\.mp4$/i, '') + '.audio.webm';
+      await fs.writeFile(audioPath, buf);
+      entry.audioPath = audioPath;
+    }
+  } catch { entry.audioPath = null; }
+  return { error: null };
+});
+
+ipcMain.handle('recorder:stop', async (_event, frameId) => {
+  const entry = _recorderFrames.get(frameId);
+  if (!entry) return { error: { code: 'NO_FRAME', message: 'No frame' }, ok: false };
+  const proc = entry.proc;
+  _recorderFrames.delete(frameId); // claim it so win.on('closed') no-ops
+  if (!proc || !entry.recording) {
+    if (entry.win && !entry.win.isDestroyed()) entry.win.close();
+    _recorderCleanupTemps(entry);
+    return { error: null, path: null, ok: false };
+  }
+  _recorderSendState(frameId, { recording: false, processing: true });
+  const stopAt = Date.now();
+  // Stop gdigrab gracefully so the temp video finalizes. Allow time for longer
+  // recordings to flush + write the moov atom before we hard-kill.
+  await new Promise((resolve) => {
+    let done = false;
+    const finish = () => { if (!done) { done = true; resolve(); } };
+    if (proc.exitCode !== null || proc.killed) { finish(); return; }
+    proc.once('exit', finish);
+    proc.once('error', finish);
+    try { proc.stdin.write('q'); } catch { /* fall through to timeout */ }
+    setTimeout(() => { if (!done) { try { proc.kill('SIGKILL'); } catch { /* ignore */ } finish(); } }, 12000);
+  });
+  let ok = false;
+  try { ok = await _recorderFinalize(entry); } catch { ok = false; }
+  // Report the duration ourselves (exact via ffprobe, wall-clock fallback) so
+  // the renderer never has to load the whole file to read it.
+  let duration = 0;
+  if (ok) {
+    duration = await _recorderProbeDuration(entry.ffmpegPath, entry.outputPath);
+    if (!duration && entry.startedAt) duration = Math.max(0, (stopAt - entry.startedAt) / 1000);
+  }
+  if (entry.win && !entry.win.isDestroyed()) entry.win.close();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('recorder:complete', { frameId, path: ok ? entry.outputPath : null, ok, duration });
+  }
+  return { error: null, path: ok ? entry.outputPath : null, ok };
+});
+
+ipcMain.handle('recorder:cancel', async (_event, frameId) => {
+  const entry = _recorderFrames.get(frameId);
+  if (!entry) return { error: null };
+  _recorderFrames.delete(frameId); // claim it so win.on('closed') no-ops
+  if (entry.proc) { try { entry.proc.kill('SIGKILL'); } catch { /* ignore */ } }
+  if (entry.win && !entry.win.isDestroyed()) entry.win.close();
+  _recorderCleanupTemps(entry);
+  if (entry.outputPath) fs.unlink(entry.outputPath).catch(() => {});
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('recorder:complete', { frameId, path: null, ok: false, cancelled: true });
+  }
+  return { error: null };
 });
 
 // Note: watcher, terminal, database, and docling cleanup are handled by the

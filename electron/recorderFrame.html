@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
+<style>
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
+    font-family: system-ui, "Segoe UI", sans-serif; user-select: none; cursor: default; }
+  #frame { position: fixed; inset: 0; display: flex; flex-direction: column; }
+  /* The border outlines ONLY the recorded area. 2px MUST match RECORDER_BORDER.
+     A 1px dark outer ring keeps it visible on any background. */
+  #capture { flex: 1; box-sizing: border-box; background: transparent;
+    border: 2px solid #3b82f6; box-shadow: 0 0 0 1px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(0,0,0,0.35); }
+  #capture.recording { border-color: #ef4444; }
+  /* 44px toolbar MUST match RECORDER_TOOLBAR. Plain dark bar, no coloured border. */
+  #toolbar { flex: 0 0 44px; height: 44px; box-sizing: border-box;
+    background: #1c1c1e; border-top: 1px solid #000; color: #ddd; font-size: 12px;
+    display: flex; align-items: center; gap: 10px; padding: 0 12px; }
+  #recBtn { display: flex; align-items: center; gap: 6px; background: #ef4444; color: #fff;
+    border: none; border-radius: 4px; padding: 5px 12px; cursor: pointer; font-weight: 600; }
+  #recBtn:disabled { opacity: 0.6; cursor: default; }
+  #recBtn.recording { background: #555; }
+  #recDot { width: 9px; height: 9px; border-radius: 50%; background: #fff; }
+  #audioBtn { background: none; border: none; color: #ddd; cursor: pointer; font-size: 14px; padding: 2px 4px; line-height: 1; }
+  #audioBtn.muted { opacity: 0.4; }
+  #audioBtn:disabled { cursor: default; }
+  #hint { opacity: 0.55; }
+  #hint.warn { opacity: 0.95; color: #fbbf24; }
+  .spacer { flex: 1; }
+  #size { font-variant-numeric: tabular-nums; opacity: 0.85; }
+  #closeBtn { background: none; border: none; color: #aaa; cursor: pointer; font-size: 15px; padding: 2px 6px; line-height: 1; }
+  #closeBtn:hover { color: #fff; }
+</style>
+</head>
+<body>
+  <div id="frame">
+    <div id="capture"></div>
+    <div id="toolbar">
+      <button id="recBtn"><span id="recDot"></span><span id="recLabel">Record</span></button>
+      <button id="audioBtn" title="Audio">&#128266;</button>
+      <span id="hint"></span>
+      <span class="spacer"></span>
+      <span id="size">—</span>
+      <button id="closeBtn" title="Close">&#10005;</button>
+    </div>
+  </div>
+  <script>
+    const api = window.recorderFrame || {};
+    const capEl = document.getElementById('capture');
+    const recBtn = document.getElementById('recBtn');
+    const recLabel = document.getElementById('recLabel');
+    const sizeEl = document.getElementById('size');
+    const hintEl = document.getElementById('hint');
+    const audioBtn = document.getElementById('audioBtn');
+    hintEl.textContent = (api.fps || 30) + ' fps · edge: move · corner: resize';
+
+    // Audio toggle — only shown when an audio mode is configured. Default on.
+    let audioOn = api.audio && api.audio !== 'off';
+    if (!audioOn && api.audio === 'off') {
+      audioBtn.style.display = 'none';
+    } else {
+      const label = api.audio === 'mic' ? 'Microphone' : 'System audio';
+      audioBtn.title = label + ': on — click to mute';
+      audioBtn.addEventListener('click', () => {
+        if (recording) return;
+        audioOn = !audioOn;
+        audioBtn.innerHTML = audioOn ? '&#128266;' : '&#128263;';
+        audioBtn.classList.toggle('muted', !audioOn);
+        audioBtn.title = label + (audioOn ? ': on — click to mute' : ': muted — click to enable');
+      });
+    }
+
+    // ── Audio capture (in-renderer; works for ANY output incl. Bluetooth) ──
+    // 'system' → getDisplayMedia with main returning audio:'loopback'; we keep
+    // only the audio track. 'mic' → getUserMedia. The encoded webm is sent to
+    // main on stop and muxed with the gdigrab video.
+    let audioStream = null, mediaRecorder = null, audioChunks = [];
+    async function startAudioCapture() {
+      if (!audioOn || !api.audio || api.audio === 'off') return false;
+      try {
+        let stream;
+        // Chromium applies echo-cancellation / noise-suppression / auto-gain by
+        // default — tuned for a mic, they wreck music/video system audio
+        // (warbly, pumping, muffled). Disable them for loopback capture.
+        const rawAudio = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
+        if (api.audio === 'mic') {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        } else {
+          const ds = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: rawAudio });
+          ds.getVideoTracks().forEach((t) => t.stop()); // we only want the loopback audio
+          stream = new MediaStream(ds.getAudioTracks());
+          // Belt-and-braces: force the constraints on the track too (some paths
+          // ignore them in the getDisplayMedia call).
+          for (const t of stream.getAudioTracks()) { try { await t.applyConstraints(rawAudio); } catch { /* ignore */ } }
+        }
+        if (!stream || stream.getAudioTracks().length === 0) return false;
+        audioStream = stream;
+        audioChunks = [];
+        mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm', audioBitsPerSecond: 192000 });
+        mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size) audioChunks.push(e.data); };
+        mediaRecorder.start();
+        return true;
+      } catch (err) {
+        audioStream = null; mediaRecorder = null;
+        return false;
+      }
+    }
+    async function stopAudioCapture(send = true) {
+      if (!mediaRecorder) return;
+      await new Promise((resolve) => { mediaRecorder.onstop = resolve; try { mediaRecorder.stop(); } catch { resolve(); } });
+      try { audioStream && audioStream.getTracks().forEach((t) => t.stop()); } catch { /* ignore */ }
+      const blob = new Blob(audioChunks, { type: 'audio/webm' });
+      audioChunks = []; mediaRecorder = null; audioStream = null;
+      // send=false on aborts (failed video start / error) so we don't write an
+      // orphan audio temp with no video to mux it into.
+      if (send && blob.size > 0 && api.sendAudio) {
+        try { await api.sendAudio(await blob.arrayBuffer()); } catch { /* video-only */ }
+      }
+    }
+    const BORDER = 2, TOOLBAR = 44, EDGE = 12, CORNER = 20, MIN_W = 200, MIN_H = 160; // BORDER/TOOLBAR match main.cjs
+    const CURSORS = { move: 'move', nw: 'nwse-resize', se: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize' };
+    let recording = false, dragging = false, ignoring = false;
+
+    function updateSize() {
+      const w = Math.max(0, window.innerWidth - BORDER * 2);
+      const h = Math.max(0, window.innerHeight - TOOLBAR - BORDER * 2);
+      sizeEl.textContent = w + ' × ' + h;
+    }
+    window.addEventListener('resize', updateSize);
+    updateSize();
+
+    function setIgnore(v) { if (v !== ignoring) { ignoring = v; api.setIgnoreMouse(v); } }
+
+    // Interactive zone at (x, y). Corners are the WHOLE window's corners
+    // (top corners of the capture area, bottom corners in the toolbar).
+    function regionAt(x, y) {
+      const W = window.innerWidth, H = window.innerHeight, tb = H - TOOLBAR;
+      const L = x < CORNER, R = x > W - CORNER, T = y < CORNER, B = y > H - CORNER;
+      if (T && L) return 'nw'; if (T && R) return 'ne';
+      if (B && L) return 'sw'; if (B && R) return 'se';
+      if (y >= tb) return 'toolbar';               // move handle (+ buttons)
+      if (x < EDGE || x > W - EDGE || y < EDGE || y > tb - EDGE) return 'move';
+      return 'center';                             // click-through
+    }
+
+    document.addEventListener('mousemove', (e) => {
+      if (dragging) return;
+      // Buttons always win (clickable + default cursor).
+      if (e.target.closest && e.target.closest('button')) { setIgnore(false); document.body.style.cursor = 'default'; return; }
+      if (recording) {
+        // Only the toolbar stays interactive (Stop); the rest is click-through.
+        setIgnore(e.clientY < window.innerHeight - TOOLBAR);
+        document.body.style.cursor = 'default';
+        return;
+      }
+      const r = regionAt(e.clientX, e.clientY);
+      if (r === 'center') { setIgnore(true); document.body.style.cursor = 'default'; return; }
+      setIgnore(false);
+      document.body.style.cursor = CURSORS[r] || 'default';
+    });
+
+    function winBounds() {
+      return { x: window.screenX, y: window.screenY,
+               w: window.outerWidth || window.innerWidth, h: window.outerHeight || window.innerHeight };
+    }
+    function beginDrag(e, edge) {
+      e.preventDefault();
+      dragging = true;
+      const sx = e.screenX, sy = e.screenY, b0 = winBounds();
+      const onMove = (ev) => {
+        const dx = ev.screenX - sx, dy = ev.screenY - sy;
+        let { x, y, w, h } = b0;
+        if (!edge) { x = b0.x + dx; y = b0.y + dy; }
+        else {
+          if (edge.includes('e')) w = Math.max(MIN_W, b0.w + dx);
+          if (edge.includes('s')) h = Math.max(MIN_H, b0.h + dy);
+          if (edge.includes('w')) { w = Math.max(MIN_W, b0.w - dx); x = b0.x + b0.w - w; }
+          if (edge.includes('n')) { h = Math.max(MIN_H, b0.h - dy); y = b0.y + b0.h - h; }
+        }
+        api.setBounds({ x: Math.round(x), y: Math.round(y), width: Math.round(w), height: Math.round(h) });
+      };
+      const onUp = () => {
+        dragging = false;
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    }
+
+    document.addEventListener('mousedown', (e) => {
+      if (e.button !== 0 || recording) return;
+      if (e.target.closest && e.target.closest('button')) return; // buttons win
+      const r = regionAt(e.clientX, e.clientY);
+      if (r === 'center') return;
+      if (r === 'nw' || r === 'ne' || r === 'sw' || r === 'se') beginDrag(e, r); // resize
+      else beginDrag(e, null);                                                   // move
+    });
+
+    recBtn.addEventListener('click', async () => {
+      if (!recording) {
+        // Kick off audio + video together. startAudioCapture() is listed first
+        // so getDisplayMedia/getUserMedia is invoked within this click's user-
+        // activation; running them concurrently keeps the two streams tightly
+        // aligned (video no longer waits for audio setup).
+        const [audioStarted, res] = await Promise.all([startAudioCapture(), api.start()]);
+        if (res && res.error) { await stopAudioCapture(false); return; }
+        recording = true;
+        capEl.classList.add('recording');
+        recBtn.classList.add('recording');
+        recLabel.textContent = 'Stop';
+        if (audioOn && api.audio !== 'off' && !audioStarted) {
+          hintEl.textContent = 'Audio capture unavailable — recording video only.';
+          hintEl.classList.add('warn');
+        }
+      } else {
+        recLabel.textContent = 'Saving…';
+        recBtn.disabled = true;
+        await stopAudioCapture(); // finalize + send audio before stopping video
+        await api.stop();
+      }
+    });
+
+    document.getElementById('closeBtn').addEventListener('click', async () => {
+      if (recording) {
+        // Finish the recording (don't lose it). Must send the captured audio
+        // before stopping the video, same as the Stop button.
+        recLabel.textContent = 'Saving…';
+        recBtn.disabled = true;
+        await stopAudioCapture();
+        api.stop();
+      } else {
+        api.cancel();
+      }
+    });
+
+    if (api.onState) api.onState((s) => {
+      if (s && s.error) {
+        recording = false;
+        capEl.classList.remove('recording');
+        recBtn.classList.remove('recording');
+        recLabel.textContent = 'Record';
+        recBtn.disabled = false;
+        stopAudioCapture(false);
+      }
+    });
+  </script>
+</body>
+</html>
