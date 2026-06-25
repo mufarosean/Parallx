@@ -597,11 +597,17 @@ export function createListTemplatesTool(templateApi: CanvasTemplateApi | undefin
   };
 }
 
+/** Streams an already-known markdown body into the open editor block-by-block
+ *  (the live-typing effect). Returns true when it streamed + committed; false →
+ *  the caller must write the body to the DB itself. Implemented in main.ts. */
+export type StreamPageBodyFn = (pageId: string, markdown: string, waitMs?: number) => Promise<boolean>;
+
 export function createCreatePageTool(
   db: IBuiltInToolDatabase | undefined,
   notifyPageMutated?: PageMutationNotifier,
   templateApi?: CanvasTemplateApi,
   createChildPage?: (parentId: string, title: string) => Promise<string>,
+  streamPageBody?: StreamPageBodyFn,
 ): IChatTool {
   return {
     name: 'canvas_create_page',
@@ -609,6 +615,7 @@ export function createCreatePageTool(
     description:
       'CREATE a NEW canvas page in the canvas page DB. The UUID is generated automatically — do NOT pass one. ' +
       'Use this only when the page does not yet exist. ' +
+      'The result returns the new page\'s id — for ANY follow-up edits to that page (the user asks for "more", a new section, a rewrite) REUSE that id with `canvas_edit_page`. Do NOT call `canvas_create_page` again for the same page; that creates a duplicate. ' +
       'To edit an EXISTING page (you have its UUID), use `canvas_edit_page`. ' +
       'For files on disk (.md, .txt, code, etc.) use `fs_write_file` instead.\n\n' +
       'TEMPLATE GUIDANCE: Before creating a blank page, call `canvas_list_templates` to check whether an existing template matches the request. ' +
@@ -707,6 +714,29 @@ export function createCreatePageTool(
         return { content: `Created sub-page "${title}" (id: ${childId}) under ${parentId} with ${subBlockCount} block${subBlockCount === 1 ? '' : 's'} — the parent page got its sub-page card.` };
       }
 
+      // Streaming create: a plain markdown body (no template) and a stream fn →
+      // insert an EMPTY page, open it, and TYPE the body in live. Falls back to
+      // a normal write if the page can't be opened/streamed.
+      const mdBody = typeof args['markdown'] === 'string' ? (args['markdown'] as string) : '';
+      if (streamPageBody && !templateId && mdBody.trim()) {
+        const emptyEnc = encodeCanvasContentFromDoc({ type: 'doc', content: [{ type: 'paragraph' }] } as Parameters<typeof encodeCanvasContentFromDoc>[0]);
+        await db!.run(
+          'INSERT INTO pages (id, title, icon, content, content_schema_version, is_archived, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?)',
+          [id, title, icon, emptyEnc.storedContent, emptyEnc.schemaVersion, now, now],
+        );
+        try { notifyPageMutated?.(id, 'created'); } catch { /* opens the blank page + refreshes the sidebar */ }
+        const streamed = await streamPageBody(id, mdBody, 2500);
+        if (!streamed) {
+          await db!.run(
+            'UPDATE pages SET content = ?, content_schema_version = ?, updated_at = ?, revision = revision + 1 WHERE id = ?',
+            [encoded.storedContent, encoded.schemaVersion, new Date().toISOString(), id],
+          );
+          try { notifyPageMutated?.(id, 'updated'); } catch { /* non-fatal */ }
+        }
+        const blocks = doc.content.length;
+        return { content: `Created page "${title}" (id: ${id}) — ${streamed ? 'streamed live into the editor' : 'written'} (${blocks} block${blocks === 1 ? '' : 's'}).` };
+      }
+
       await db!.run(
         'INSERT INTO pages (id, title, icon, content, content_schema_version, is_archived, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?)',
         [id, title, icon, encoded.storedContent, encoded.schemaVersion, now, now],
@@ -725,7 +755,7 @@ export function createCreatePageTool(
 }
 
 /**
- * compose_page — author or update a canvas page using markdown.
+ * edit_page — update an existing canvas page from markdown.
  *
  * Parses the provided markdown into TipTap JSON via `markdownToTiptapJson`,
  * combines it with the page's current content per `mode`, encodes it via the
@@ -738,9 +768,10 @@ export function createCreatePageTool(
  *
  * If a `notifyPageMutated` callback is wired, fires `'updated'` after the
  * write so the canvas data service re-reads the page, fires `onDidChangePage`
- * (sidebar refresh), and signals `onRequestContentReload` so any open editor
- * reloads the new content. Local unsaved edits in the open editor will be
- * blown away by the reload — acceptable trade for AI/user co-authoring.
+ * (sidebar refresh), and signals `onRequestContentReload`. An open editor then
+ * STREAMS the change in block-by-block (the animated reload) — unless the user
+ * is editing inside the changed span, in which case it applies instantly so
+ * their cursor isn't disturbed.
  */
 export function createEditPageTool(
   db: IBuiltInToolDatabase | undefined,
@@ -754,7 +785,7 @@ export function createEditPageTool(
       'Use `canvas_create_page` to make a new page (which auto-assigns the UUID). ' +
       'Use `canvas_read_page` or `canvas_find_pages` first if you only have a title and need the UUID. ' +
       '`mode` controls how `markdown` combines with the existing body: `replace` (default) wipes and rewrites; `append` adds after; `prepend` adds before. ' +
-      'For SUBSTANTIAL writes or full rewrites prefer `canvas_compose_page` — it streams the body into the page live so the user watches it being written. ' +
+      'When the page is open in the editor, the change streams in live, block-by-block — you don\'t need to reopen it. ' +
       'For files on disk use `fs_write_file` or `fs_edit_file` instead.',
     parameters: {
       type: 'object',
@@ -816,6 +847,8 @@ export function createEditPageTool(
 
       const encoded = encodeCanvasContentFromDoc(finalDoc);
       const now = new Date().toISOString();
+      // The open editor streams this in block-by-block on reload (the animated
+      // _applyExternalDoc path) — every mode (replace/append/prepend) types live.
       // M77 Phase 10.1 — bump `revision` so the canvas data service's
       // optimistic-concurrency tracking sees this external write. Without
       // the bump a user's pending auto-save (captured with the pre-AI

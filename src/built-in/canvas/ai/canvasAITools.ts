@@ -22,10 +22,10 @@ import {
   createListPropertyDefinitionsTool,
   createSetPagePropertyTool,
   createSetPageStyleTool,
+  type StreamPageBodyFn,
 } from './pageTools.js';
 import { createBlockTools } from './blockTools.js';
 import { createRelatePagesTool, type RelatePagesFn } from './relatePagesTool.js';
-import { createComposePageTool, type ComposePageFn } from './composePageTool.js';
 import { createDatabaseTools } from './databaseTools.js';
 import type { DatabaseDataService } from '../database/databaseDataService.js';
 
@@ -55,9 +55,9 @@ export interface ICanvasAIToolDeps {
   /** Nest related pages under a hub (canvas_relate_pages). Omitted → tool not
    *  registered. Implemented over the live data service in canvas/main.ts. */
   readonly relatePages?: RelatePagesFn;
-  /** Stream-compose a page body live into the open editor
-   *  (canvas_compose_page). Omitted → tool not registered. */
-  readonly composePage?: ComposePageFn;
+  /** Stream the (already-known) body of a created/edited page into the open
+   *  editor block-by-block. Omitted → create/edit write instantly. */
+  readonly streamPageBody?: StreamPageBodyFn;
   /** Atomically create a SUB-page (page row + the parent's sub-page card in
    *  one transaction). Lets canvas_create_page accept parentId. */
   readonly createChildPage?: (parentId: string, title: string) => Promise<string>;
@@ -71,20 +71,19 @@ export interface ICanvasAIToolDeps {
  * Returns disposables that deregister them.
  */
 export function registerCanvasAITools(deps: ICanvasAIToolDeps): IDisposable[] {
-  const { toolsService, db, getCurrentPageId, workspaceRoot, pageMutationNotifier, templateApi, relatePages, composePage, createChildPage, databaseService } = deps;
+  const { toolsService, db, getCurrentPageId, workspaceRoot, pageMutationNotifier, templateApi, relatePages, streamPageBody, createChildPage, databaseService } = deps;
 
   const tools: IChatTool[] = [
     createFindPagesTool(db),
     createReadPageTool(db, getCurrentPageId),
     createListTemplatesTool(templateApi),
-    createCreatePageTool(db, pageMutationNotifier, templateApi, createChildPage),
+    createCreatePageTool(db, pageMutationNotifier, templateApi, createChildPage, streamPageBody),
     createEditPageTool(db, pageMutationNotifier),
     createListPropertyDefinitionsTool(db),
     createSetPagePropertyTool(db, databaseService ? (id) => databaseService.notifyRowsChanged(id) : undefined),
     createSetPageStyleTool(db, pageMutationNotifier, workspaceRoot),
     ...createBlockTools(db, pageMutationNotifier),
     ...(relatePages ? [createRelatePagesTool(relatePages)] : []),
-    ...(composePage ? [createComposePageTool(composePage)] : []),
     ...(databaseService ? createDatabaseTools(databaseService) : []),
   ];
 

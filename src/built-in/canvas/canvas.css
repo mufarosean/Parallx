@@ -4508,9 +4508,9 @@
   transition: background-color 0.4s ease-out, outline-color 0.4s ease-out;
 }
 
-/* ── Live AI compose (canvas_compose_page streaming into the open editor) ── */
-/* The pane is read-only while the AI writes; a soft accent pulse on the left
-   edge signals "being written" without obscuring the typing content. */
+/* ── Live AI writing (create/edit_page streaming into the open editor) ── */
+/* A soft accent pulse on the left edge signals "being written" while the AI's
+   edit types into the page, without obscuring the content. */
 .canvas-ai-writing {
   position: relative;
   cursor: progress;

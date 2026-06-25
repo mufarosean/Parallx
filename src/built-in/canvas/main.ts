@@ -17,12 +17,10 @@ import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { LinksApi } from '../../links/linksApi.js';
 import { ICanvasPageQueryService, IIndexingPipelineService, IVectorStoreService, IDatabaseService, IEditorService } from '../../services/serviceTypes.js';
-import { ILanguageModelToolsService, ILanguageModelsService } from '../../services/chatTypes.js';
+import { ILanguageModelToolsService } from '../../services/chatTypes.js';
 import { registerCanvasAITools, canvasPageIdFromEditorId } from './ai/canvasAITools.js';
-import { createComposePageRuntime } from './ai/composePageRuntime.js';
-import { tiptapJsonToMarkdown } from './markdownExport.js';
 import { markdownToTiptapJson } from './markdownImport.js';
-import { decodeCanvasContent, encodeCanvasContentFromDoc } from './contentSchema.js';
+import { encodeCanvasContentFromDoc } from './contentSchema.js';
 import { CanvasDataService } from './canvasDataService.js';
 import type { ICanvasDataService } from './canvasTypes.js';
 import { PageChangeKind } from './canvasTypes.js';
@@ -359,35 +357,30 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         const page = await _dataService.createChildPageWithBlock({ parentId, title });
         return page.id;
       },
-      // canvas_compose_page — stream a model-composed body into the open editor
-      // (live typing); falls back to a direct write when the page isn't open.
-      composePage: createComposePageRuntime({
-        getPage: async (pageId) => {
-          const page = await _dataService?.getPage(pageId);
-          if (!page) return null;
-          let bodyMarkdown = '';
-          try { bodyMarkdown = tiptapJsonToMarkdown(decodeCanvasContent(page.content).doc); }
-          catch { bodyMarkdown = ''; }
-          return { title: page.title, bodyMarkdown };
-        },
-        getSink: (pageId) => _editorProvider?.getStreamSink(pageId),
-        sendChatRequest: (messages, signal) => {
-          if (!api.services.has(ILanguageModelsService)) {
-            throw new Error('No language model service available.');
-          }
-          const lm = api.services.get<import('../../services/chatTypes.js').ILanguageModelsService>(ILanguageModelsService);
-          return lm.sendChatRequest(messages, undefined, signal);
-        },
-        writeBody: async (pageId, markdown) => {
-          const ds = _dataService;
-          if (!ds) throw new Error('Canvas data service unavailable.');
+      // canvas_create_page writes its (already-known) body into a freshly-opened
+      // empty page via the SAME path as every edit: write the content, then fire
+      // a content reload — the pane animates it in block-by-block. Returns true
+      // once written + reloaded; false (page never opened) → caller writes direct.
+      streamPageBody: async (pageId: string, markdown: string, waitMs = 2500): Promise<boolean> => {
+        // The pane's initial load + reload listener are live by the time it
+        // reports open (init awaits _loadContent before registering the menu
+        // handler), so isPageOpen is a safe "ready to animate a reload" signal.
+        const deadline = Date.now() + waitMs;
+        while (!_editorProvider?.isPageOpen(pageId) && Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, 40));
+        }
+        if (!_editorProvider?.isPageOpen(pageId) || !_dataService) return false;
+        try {
           const doc = markdownToTiptapJson(markdown);
           const encoded = encodeCanvasContentFromDoc(doc as Parameters<typeof encodeCanvasContentFromDoc>[0]);
-          await ds.updatePage(pageId, { content: encoded.storedContent, contentSchemaVersion: encoded.schemaVersion });
-          // Ensure any (re)opened editor reloads the committed body.
-          await ds.notifyExternalPageMutation(pageId, 'updated');
-        },
-      }),
+          await _dataService.updatePage(pageId, { content: encoded.storedContent, contentSchemaVersion: encoded.schemaVersion });
+          _dataService.fireContentReload(pageId); // → pane reload → _animateExternalDoc types it in
+          return true;
+        } catch (err) {
+          console.warn('[Canvas] streamPageBody failed for', pageId, err);
+          return false;
+        }
+      },
     });
     for (const d of canvasToolDisposables) context.subscriptions.push(d);
   }

@@ -75,6 +75,18 @@ Use the prefix to pick the right family before reading any description.
 - If `canvas_find_pages` returns multiple candidates, surface the top
   results to the user and ask which one — do not guess.
 
+### Editing a page you just created (or are working on)
+- After `canvas_create_page`, **reuse the id it returns** for every follow-up
+  edit to that page (`canvas_edit_page`, `canvas_set_page_property`). Do NOT
+  call `canvas_create_page` again for the same page — that makes a duplicate.
+  If you lost the id, resolve it with `canvas_find_pages` by title first.
+- `canvas_edit_page` mode `replace` (the default) **overwrites the entire page
+  body**. To ADD to an existing page use `append` or `prepend`, or you will
+  wipe the current content.
+- When the page is open in the editor, `canvas_create_page` and
+  `canvas_edit_page` stream the content in live, block-by-block — the edit
+  applies in place, so you never need to re-open the page.
+
 ### Filesystem
 - When context from files is already in the message (via automatic
   retrieval), use it directly — do not re-read the file.
