@@ -31,7 +31,10 @@
       { "id": "media-organizer.emptyTrash", "title": "Empty Trash", "category": "Media Organizer" },
       { "id": "media-organizer.openTimeline", "title": "Open Timeline View", "category": "Media Organizer" },
       { "id": "media-organizer.openMap", "title": "Open Map View", "category": "Media Organizer" },
-      { "id": "media-organizer.revealInMO", "title": "Reveal in Media Organizer", "category": "Media Organizer" }
+      { "id": "media-organizer.revealInMO", "title": "Reveal in Media Organizer", "category": "Media Organizer" },
+      { "id": "media-organizer.showShortcuts", "title": "Keyboard Shortcuts", "category": "Media Organizer" },
+      { "id": "media-organizer.toggleScreenRecorder", "title": "Toggle Screen Recorder", "category": "Media Organizer" },
+      { "id": "media-organizer.recordGif", "title": "Record GIF (Screen)", "category": "Media Organizer" }
     ],
     "viewContainers": [
       {
@@ -62,6 +65,22 @@
             "type": "boolean",
             "default": true,
             "description": "Show each item's tags on the grid card next to the date. Turn off to declutter the grid; tags remain visible in the detail view and sidebar."
+          },
+          "mediaOrganizer.enableScreenRecorder": {
+            "type": "boolean",
+            "default": false,
+            "description": "Show a 'Record GIF' screen recorder in the keyboard-shortcuts panel. Records a screen region to a temporary video (inside the workspace) and opens it straight into the clip/GIF exporter; the temp video is securely erased afterward."
+          },
+          "mediaOrganizer.screenRecorderTempDir": {
+            "type": "string",
+            "default": "",
+            "description": "Folder for temporary screen recordings before they are clipped. Must be inside the open workspace. Leave empty to use .parallx/extensions/media-organizer/recordings."
+          },
+          "mediaOrganizer.screenRecorderAudio": {
+            "type": "string",
+            "default": "system",
+            "enum": ["off", "system", "mic"],
+            "description": "Record audio into screen recordings. The sound is saved in the temp video, so MP4/WebM clip exports keep it (GIFs have no audio). 'system' captures whatever is playing on any output device (speakers, Bluetooth, USB, HDMI) via Windows loopback; 'mic' captures the default microphone; 'off' disables audio."
           }
         }
       }

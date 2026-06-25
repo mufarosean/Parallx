@@ -4871,7 +4871,7 @@ const MO_CSS = `
 .mo-rubber-band {
   display: none;
   position: absolute;
-  border: 1px solid var(--vscode-focusBorder, #9333ea);
+  border: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea));
   background: rgba(147, 51, 234, 0.15);
   pointer-events: none;
   z-index: 10;
@@ -4899,7 +4899,7 @@ const MO_CSS = `
   font-family: inherit;
   outline: none;
 }
-.mo-toolbar-search:focus { border-color: var(--vscode-focusBorder, #9333ea); }
+.mo-toolbar-search:focus { border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea)); }
 .mo-toolbar-search::placeholder { color: var(--vscode-input-placeholderForeground, #888); }
 .mo-toolbar-group {
   display: flex;
@@ -4920,7 +4920,7 @@ const MO_CSS = `
   gap: 4px;
 }
 .mo-toolbar-btn:hover { background: var(--vscode-button-secondaryHoverBackground, #4a4a4a); }
-.mo-toolbar-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder, #9333ea); outline-offset: -1px; }
+.mo-toolbar-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea)); outline-offset: -1px; }
 .mo-toolbar-select {
   background: var(--vscode-input-background, var(--px-border));
   color: var(--vscode-input-foreground, #ccc);
@@ -4951,6 +4951,21 @@ const MO_CSS = `
   padding: 8px;
   align-content: start;
 }
+/* #1 Sticky day header spanning the full grid row when grouping by date. */
+.mo-grid-group-header {
+  grid-column: 1 / -1;
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  margin: 4px 0 -2px;
+  padding: 6px 2px;
+  font-size: var(--parallx-fontSize-md, 13px);
+  font-weight: 600;
+  color: var(--vscode-foreground, var(--px-text));
+  background: var(--vscode-editor-background, var(--px-bg));
+  border-bottom: 1px solid var(--vscode-panel-border, var(--px-divider));
+}
+.mo-grid.mo-grouped { padding-top: 0; }
 
 /* ═══ Card ═══ */
 .mo-card {
@@ -4971,9 +4986,9 @@ const MO_CSS = `
   content-visibility: auto;
   contain-intrinsic-size: 280px 240px;
 }
-.mo-card:hover { border-color: var(--vscode-focusBorder, #9333ea); }
-.mo-card:focus-visible { outline: 1px solid var(--vscode-focusBorder, #9333ea); outline-offset: -1px; }
-.mo-card.mo-selected { border-color: var(--vscode-focusBorder, #9333ea); box-shadow: 0 0 0 1px var(--vscode-focusBorder, #9333ea); }
+.mo-card:hover { border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea)); }
+.mo-card:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea)); outline-offset: -1px; }
+.mo-card.mo-selected { border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea)); box-shadow: 0 0 0 1px var(--vscode-focusBorder, var(--px-accent, #9333ea)); }
 /* Items currently being securely erased by Eraser — visible-but-pending. */
 .mo-card.mo-card-erasing { opacity: 0.55; pointer-events: none; filter: grayscale(0.4); position: relative; }
 .mo-card.mo-card-erasing::after {
@@ -5002,6 +5017,36 @@ const MO_CSS = `
   object-fit: cover;
   display: block;
 }
+/* #2 Video hover-preview — fills the thumb above the cover frame */
+.mo-card-hover-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #000;
+  z-index: 1;
+}
+/* #6 Thumbnail loading skeleton */
+.mo-card-skeleton {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    var(--px-bg-inset, rgba(128,128,128,0.10)) 30%,
+    var(--px-bg, rgba(128,128,128,0.20)) 50%,
+    var(--px-bg-inset, rgba(128,128,128,0.10)) 70%
+  );
+  background-size: 200% 100%;
+  animation: mo-skeleton-shimmer 1.3s ease-in-out infinite;
+}
+@keyframes mo-skeleton-shimmer {
+  0% { background-position: 150% 0; }
+  100% { background-position: -50% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mo-card-skeleton { animation: none; }
+}
 .mo-card-badge {
   position: absolute;
   top: 4px;
@@ -5023,7 +5068,7 @@ const MO_CSS = `
   font-size: var(--parallx-fontSize-xs, 10px);
   padding: 1px 6px;
   border-radius: 999px;
-  background: var(--vscode-focusBorder, #9333ea);
+  background: var(--vscode-focusBorder, var(--px-accent, #9333ea));
   color: #fff;
   font-weight: 700;
   pointer-events: none;
@@ -5054,7 +5099,7 @@ const MO_CSS = `
   display: flex; align-items: center; justify-content: center;
   border: 1px solid transparent;
 }
-.mo-timeline-tile:hover { border-color: var(--vscode-focusBorder, #9333ea); }
+.mo-timeline-tile:hover { border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea)); }
 .mo-timeline-tile img { width: 100%; height: 100%; object-fit: cover; }
 .mo-timeline-tile-ph { opacity: 0.5; }
 .mo-map-dialog { width: 940px; max-width: 96vw; }
@@ -5220,7 +5265,6 @@ const MO_CSS = `
 }
 
 
-
 /* ═══ Pagination ═══ */
 .mo-pagination {
   display: flex;
@@ -5242,7 +5286,7 @@ const MO_CSS = `
   cursor: pointer;
 }
 .mo-page-btn:hover { background: var(--vscode-button-secondaryHoverBackground, #4a4a4a); }
-.mo-page-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder, #9333ea); outline-offset: -1px; }
+.mo-page-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea)); outline-offset: -1px; }
 .mo-page-btn:disabled { opacity: 0.4; cursor: default; }
 .mo-page-info { color: var(--vscode-descriptionForeground, #888); }
 /* Center the bare-number label in the per-page dropdown; the chevron stays
@@ -5269,14 +5313,27 @@ const MO_CSS = `
 }
 .mo-sidebar-sections {
   flex: 1;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
 }
-.mo-sidebar-section {}
+/* Each section is a flex column: fixed header (+ optional search), growing
+   body. Expanded sections share the leftover vertical space via an inline
+   flex-grow weight set by the layout manager; collapsed shrink to the header. */
+.mo-sidebar-section {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.mo-sidebar-section.mo-section-collapsed { flex: 0 0 auto; }
 .mo-sidebar-section-header {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 6px 10px;
+  flex: 0 0 auto;
   font-size: var(--parallx-fontSize-sm, 11px);
   font-weight: 600;
   text-transform: uppercase;
@@ -5292,8 +5349,70 @@ const MO_CSS = `
   transition: transform 0.15s;
 }
 .mo-sidebar-section-header.collapsed .mo-chevron { transform: rotate(-90deg); }
-.mo-sidebar-section-body { padding: 2px 0; }
+.mo-sidebar-section-body {
+  padding: 2px 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
 .mo-sidebar-section-body.collapsed { display: none; }
+/* Resize handle between two expanded sections (VS Code Explorer sash).
+   Straddles the boundary via negative margins so it adds no visible height. */
+.mo-sidebar-sash {
+  flex: 0 0 auto;
+  height: 6px;
+  margin: -3px 0;
+  cursor: ns-resize;
+  background: transparent;
+  position: relative;
+  z-index: 5;
+}
+.mo-sidebar-sash:hover,
+.mo-sidebar-sash.mo-sash-active {
+  background: var(--vscode-sash-hoverBorder, var(--vscode-focusBorder, var(--px-accent, #9333ea)));
+}
+/* Sidebar footer + keyboard-shortcuts launcher */
+.mo-sidebar-footer {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
+  padding: 4px 8px;
+}
+.mo-sidebar-help-btn {
+  display: flex; align-items: center; gap: 6px; width: 100%;
+  background: none; border: none; cursor: pointer; text-align: left;
+  color: var(--vscode-sideBar-foreground, #ccc); opacity: 0.78;
+  padding: 4px 6px; border-radius: 4px;
+  font-size: var(--parallx-fontSize-sm, 11px);
+}
+.mo-sidebar-help-btn:hover { opacity: 1; background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.06)); }
+.mo-sidebar-help-btn svg { width: 13px; height: 13px; flex-shrink: 0; }
+/* Keyboard-shortcuts cheat sheet */
+.mo-cheat-modal { min-width: 620px; max-width: 860px; }
+.mo-cheat-grid {
+  flex: 1 1 auto; overflow-y: auto; padding: 14px 16px;
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 28px;
+  align-content: start;
+}
+.mo-cheat-group { break-inside: avoid; margin-bottom: 10px; }
+.mo-cheat-group-title {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+  opacity: 0.6; font-weight: 700; margin: 6px 0 4px;
+}
+.mo-cheat-row { display: flex; align-items: baseline; gap: 10px; padding: 2px 0; }
+.mo-cheat-keys { flex: 0 0 42%; display: flex; flex-wrap: wrap; gap: 3px; }
+.mo-cheat-desc { flex: 1; font-size: 12px; opacity: 0.9; }
+kbd.mo-key {
+  display: inline-block; min-width: 16px; text-align: center;
+  padding: 1px 6px; font-size: 11px;
+  font-family: var(--parallx-fontFamily-ui, system-ui, sans-serif);
+  line-height: 1.5; color: var(--vscode-foreground, #ddd);
+  background: var(--vscode-keybindingLabel-background, rgba(128,128,128,0.17));
+  border: 1px solid var(--vscode-keybindingLabel-border, rgba(128,128,128,0.4));
+  border-bottom-width: 2px; border-radius: 4px;
+}
+.mo-cheat-hint { flex: 1; font-size: 11px; opacity: 0.65; }
+.mo-cheat-record-btn { display: inline-flex; align-items: center; gap: 6px; }
+.mo-cheat-record-btn svg { width: 13px; height: 13px; }
 .mo-sidebar-item {
   display: flex;
   align-items: center;
@@ -5305,8 +5424,8 @@ const MO_CSS = `
   text-overflow: ellipsis;
 }
 .mo-sidebar-item:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
-.mo-sidebar-item:focus-visible { outline: 1px solid var(--vscode-focusBorder, #9333ea); outline-offset: -1px; }
-.mo-sidebar-item.mo-drop-target { background: var(--vscode-list-dropBackground, rgba(0,100,200,0.18)); outline: 1px dashed var(--vscode-focusBorder, #9333ea); }
+.mo-sidebar-item:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea)); outline-offset: -1px; }
+.mo-sidebar-item.mo-drop-target { background: var(--vscode-list-dropBackground, rgba(0,100,200,0.18)); outline: 1px dashed var(--vscode-focusBorder, var(--px-accent, #9333ea)); }
 .mo-sidebar-item-label { flex: 1; overflow: hidden; text-overflow: ellipsis; }
 .mo-sidebar-item-count {
   font-size: var(--parallx-fontSize-xs, 10px);
@@ -5332,14 +5451,111 @@ const MO_CSS = `
 .mo-album-children.mo-collapsed { display: none; }
 .mo-sidebar-item.mo-reparent-target {
   background: var(--vscode-list-dropBackground, rgba(0,100,200,0.18));
-  outline: 1px dashed var(--vscode-focusBorder, #9333ea);
+  outline: 1px dashed var(--vscode-focusBorder, var(--px-accent, #9333ea));
+}
+/* #9 Tag tree */
+.mo-tag-chevron {
+  flex: 0 0 auto;
+  width: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0.7;
+  margin-right: 1px;
+}
+.mo-tag-chevron:hover { opacity: 1; }
+.mo-tag-chevron.mo-tag-chevron-spacer { cursor: default; visibility: hidden; }
+.mo-tag-chevron svg { width: 12px; height: 12px; }
+.mo-tag-multihome {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  opacity: 0.5;
+  margin-left: 2px;
+}
+.mo-tag-multihome svg { width: 11px; height: 11px; }
+.mo-tag-row.mo-tag-instance-hl {
+  background: var(--vscode-list-inactiveSelectionBackground, rgba(128,128,128,0.16));
 }
 .mo-empty {
+  grid-column: 1 / -1;
   text-align: center;
   padding: 24px 16px;
   color: var(--vscode-descriptionForeground, #888);
   font-size: var(--parallx-fontSize-md, 13px);
 }
+/* #4 Rich empty / first-run state */
+.mo-empty-rich {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 8px;
+  padding: 56px 24px;
+  min-height: 240px;
+  color: var(--vscode-descriptionForeground, #888);
+}
+.mo-empty-rich-icon {
+  opacity: 0.45;
+  margin-bottom: 4px;
+}
+.mo-empty-rich-icon svg { width: 40px; height: 40px; }
+.mo-empty-rich-title {
+  font-size: var(--parallx-fontSize-lg, 15px);
+  font-weight: 600;
+  color: var(--vscode-foreground, #ddd);
+}
+.mo-empty-rich-sub {
+  font-size: var(--parallx-fontSize-md, 13px);
+  max-width: 360px;
+  line-height: 1.5;
+}
+.mo-empty-rich-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+/* #5 Search-operator help popover */
+.mo-search-help-popover {
+  position: fixed;
+  z-index: 9998;
+  min-width: 320px;
+  max-width: 380px;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background, var(--px-bg)));
+  color: var(--vscode-foreground, var(--px-text));
+  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border, var(--px-border)));
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  padding: 12px 14px;
+  font-size: 12px;
+}
+.mo-search-help-title { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+.mo-search-help-note { opacity: 0.7; margin-bottom: 10px; line-height: 1.4; }
+.mo-search-help-list { display: flex; flex-direction: column; gap: 6px; }
+.mo-search-help-row { display: flex; align-items: baseline; gap: 10px; }
+.mo-search-help-op {
+  flex: 0 0 auto;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
+  background: var(--vscode-textCodeBlock-background, rgba(128,128,128,0.17));
+  border: 1px solid var(--vscode-panel-border, var(--px-border));
+  border-radius: 4px;
+  padding: 1px 6px;
+  color: var(--vscode-textPreformat-foreground, var(--px-accent, #c8a4ff));
+  cursor: pointer;
+}
+.mo-search-help-op:hover { background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.08)); }
+.mo-search-help-desc { opacity: 0.85; }
+.mo-search-help-example {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--vscode-panel-border, var(--px-divider));
+  opacity: 0.8;
+}
+.mo-search-help-example code { font-family: var(--vscode-editor-font-family, monospace); }
 .mo-thumb-placeholder {
   width: 100%;
   height: 100%;
@@ -5377,7 +5593,7 @@ const MO_CSS = `
   -webkit-user-select: none;
 }
 .mo-list-row:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
-.mo-list-row:focus-visible { outline: 1px solid var(--vscode-focusBorder, #9333ea); outline-offset: -1px; }
+.mo-list-row:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea)); outline-offset: -1px; }
 .mo-list-row.mo-selected { background: var(--vscode-list-activeSelectionBackground, #094771); }
 .mo-list-thumb {
   width: 40px;
@@ -5398,15 +5614,15 @@ const MO_CSS = `
   display: none;
   flex-direction: row;
   flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 18px 24px;
-  padding: 10px 12px;
+  align-items: flex-start;
+  gap: 16px 24px;
+  padding: 12px 14px;
   border-bottom: 1px solid var(--vscode-panel-border, #333);
   background: var(--vscode-sideBar-background, var(--px-bg));
   font-size: var(--parallx-fontSize-sm, 11px);
 }
-.mo-filter-section { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.mo-filter-section.mo-filter-section-tags { flex: 1 1 320px; max-width: 520px; }
+.mo-filter-section { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.mo-filter-section.mo-filter-section-tags { flex: 1 1 340px; max-width: 560px; }
 .mo-filter-section-label {
   font-weight: 600;
   font-size: var(--parallx-fontSize-xs, 10px);
@@ -5452,7 +5668,7 @@ const MO_CSS = `
   line-height: 1;
 }
 .mo-tag-pill-remove:hover { opacity: 1; }
-.mo-tag-pill-remove:focus-visible { outline: 1px solid var(--vscode-focusBorder, #9333ea); border-radius: 2px; }
+.mo-tag-pill-remove:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea)); border-radius: 2px; }
 .mo-filter-tag-select {
   flex: 1;
   max-width: 200px;
@@ -5464,7 +5680,7 @@ const MO_CSS = `
   border-radius: var(--parallx-radius-sm, 3px);
 }
 .mo-filter-tag-select:focus-visible, .mo-filter-date:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder, #9333ea);
+  outline: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea));
   outline-offset: -1px;
 }
 .mo-filter-depth-label {
@@ -5490,7 +5706,7 @@ const MO_CSS = `
 }
 .mo-star.filled, .mo-star.active { color: var(--mo-rating-color, #f5c518); }
 .mo-star:hover { color: var(--mo-rating-color, #f5c518); }
-.mo-star:focus-visible { outline: 1px solid var(--vscode-focusBorder, #9333ea); outline-offset: 1px; border-radius: 2px; }
+.mo-star:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea)); outline-offset: 1px; border-radius: 2px; }
 .mo-filter-date-row {
   display: flex;
   align-items: center;
@@ -5507,7 +5723,7 @@ const MO_CSS = `
 }
 .mo-filter-clear {
   margin-left: auto;
-  align-self: flex-end;
+  align-self: flex-start;
   padding: 4px 10px;
   font-size: var(--parallx-fontSize-xs, 10px);
   background: var(--vscode-button-secondaryBackground, #3a3d41);
@@ -5521,6 +5737,73 @@ const MO_CSS = `
   font-size: var(--parallx-fontSize-xs, 10px);
   color: var(--vscode-descriptionForeground, #666);
   font-style: italic;
+}
+/* Searchable tag-filter picker */
+.mo-tagpick-search {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 8px;
+  margin: 4px 0 2px;
+  font-size: var(--parallx-fontSize-xs, 11px);
+  border-radius: var(--parallx-radius-sm, 3px);
+  border: 1px solid var(--vscode-input-border, var(--px-border, #3a3a3a));
+  background: var(--vscode-input-background, #2a2a2a);
+  color: var(--vscode-input-foreground, #ddd);
+}
+.mo-tagpick-search:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea)); }
+.mo-tagpick-hint { font-size: 10px; opacity: 0.5; margin: 2px 0 4px; }
+.mo-tagpick-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 5px;
+  max-height: 132px;
+  overflow-y: auto;
+  padding: 7px;
+  border: 1px solid var(--vscode-input-border, var(--px-border, #3a3a3a));
+  border-radius: var(--parallx-radius-sm, 4px);
+  background: var(--vscode-input-background, rgba(0, 0, 0, 0.18));
+}
+.mo-tagpick-chip {
+  font-size: var(--parallx-fontSize-xs, 11px);
+  padding: 3px 10px;
+  border-radius: 11px;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  border: 1px solid var(--vscode-input-border, var(--px-border, #3a3a3a));
+  background: var(--vscode-button-secondaryBackground, #3a3d41);
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground, #ddd));
+}
+.mo-tagpick-chip:hover { border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea)); }
+.mo-tagpick-chip.is-inc {
+  background: var(--vscode-button-background, var(--px-accent, #9333ea));
+  border-color: var(--vscode-button-background, var(--px-accent, #9333ea));
+  color: var(--vscode-button-foreground, #fff);
+}
+.mo-tagpick-chip.is-exc {
+  background: var(--vscode-inputValidation-errorBackground, #5a1d1d);
+  border-color: var(--vscode-inputValidation-errorBorder, #be1100);
+  color: #fff;
+}
+/* All/Any (AND/OR) segmented toggle */
+.mo-tagmatch { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+.mo-tagmatch-label { font-size: 10px; opacity: 0.6; text-transform: uppercase; letter-spacing: 0.4px; }
+.mo-tagmatch-group { display: inline-flex; border-radius: var(--parallx-radius-sm, 4px); overflow: hidden; }
+.mo-tagmatch-btn {
+  font-size: 10px;
+  padding: 3px 11px;
+  cursor: pointer;
+  border: 1px solid var(--vscode-input-border, var(--px-border, #3a3a3a));
+  background: var(--vscode-input-background, #2a2a2a);
+  color: var(--vscode-foreground, #ccc);
+}
+.mo-tagmatch-btn + .mo-tagmatch-btn { border-left: none; }
+.mo-tagmatch-btn:hover { color: var(--vscode-foreground, #fff); }
+.mo-tagmatch-btn.active {
+  background: var(--vscode-button-background, var(--px-accent, #9333ea));
+  border-color: var(--vscode-button-background, var(--px-accent, #9333ea));
+  color: var(--vscode-button-foreground, #fff);
 }
 .mo-filter-badge {
   position: absolute;
@@ -5556,7 +5839,7 @@ const MO_CSS = `
   width: 24px;
   height: 24px;
   border: 2px solid var(--vscode-panel-border, #555);
-  border-top-color: var(--vscode-focusBorder, #9333ea);
+  border-top-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
   border-radius: 50%;
   animation: mo-spin 0.6s linear infinite;
 }
@@ -5668,7 +5951,7 @@ const MO_CSS = `
   opacity: 0.7;
 }
 .mo-detail-tab-btn.active {
-  border-bottom-color: var(--vscode-focusBorder, #9333ea);
+  border-bottom-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
   opacity: 1;
 }
 .mo-detail-tab-btn:hover {
@@ -5747,7 +6030,7 @@ const MO_CSS = `
 }
 .mo-detail-field input:focus,
 .mo-detail-field textarea:focus {
-  border-color: var(--vscode-focusBorder, #9333ea);
+  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
   outline: none;
 }
 .mo-detail-field textarea {
@@ -5805,7 +6088,7 @@ const MO_CSS = `
   font-size: var(--parallx-fontSize-xs, 11px);
 }
 .mo-detail-autocomplete input:focus {
-  border-color: var(--vscode-focusBorder, #9333ea);
+  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
   outline: none;
 }
 .mo-detail-autocomplete-list {
@@ -5873,16 +6156,16 @@ const MO_CSS = `
   .mo-detail-preview { min-height: 200px; }
 }
 .mo-detail-star:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder, #9333ea);
+  outline: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea));
   outline-offset: 1px;
   border-radius: 2px;
 }
 .mo-detail-tab-btn:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder, #9333ea);
+  outline: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea));
   outline-offset: -1px;
 }
 .mo-detail-tag-pill button:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder, #9333ea);
+  outline: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea));
   border-radius: 2px;
 }
 /* D8: Selection Toolbar */
@@ -6085,7 +6368,7 @@ const MO_CSS = `
   font-size: var(--parallx-fontSize-sm, 12px);
 }
 .mo-bulk-tag-search:focus {
-  border-color: var(--vscode-focusBorder, #9333ea);
+  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
   outline: none;
 }
 .mo-bulk-tag-browse-section { margin-bottom: 4px; }
@@ -6178,7 +6461,7 @@ const MO_CSS = `
 .mo-selection-bar button:focus-visible,
 .mo-bulk-dialog-footer button:focus-visible,
 .mo-bulk-mode-btns button:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder, #9333ea);
+  outline: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea));
   outline-offset: -1px;
 }
 /* D8: Album Editor */
@@ -6228,7 +6511,7 @@ const MO_CSS = `
 .mo-album-field input:focus,
 .mo-album-field textarea:focus {
   outline: none;
-  border-color: var(--vscode-focusBorder, #9333ea);
+  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
 }
 .mo-album-field textarea {
   min-height: 60px;
@@ -6282,10 +6565,10 @@ const MO_CSS = `
 .mo-album-drag-handle:active { cursor: grabbing; }
 .mo-album-mini-card.mo-dragging { opacity: 0.4; }
 .mo-album-mini-card.mo-drop-before {
-  box-shadow: -2px 0 0 0 var(--vscode-focusBorder, #9333ea);
+  box-shadow: -2px 0 0 0 var(--vscode-focusBorder, var(--px-accent, #9333ea));
 }
 .mo-album-mini-card.mo-drop-after {
-  box-shadow: 2px 0 0 0 var(--vscode-focusBorder, #9333ea);
+  box-shadow: 2px 0 0 0 var(--vscode-focusBorder, var(--px-accent, #9333ea));
 }
 .mo-album-empty {
   opacity: 0.6;
@@ -6294,8 +6577,8 @@ const MO_CSS = `
 }
 
 /* ═══ Focus Indicator (F2) ═══ */
-.mo-card.mo-focused { outline: 2px solid var(--vscode-focusBorder, #9333ea); outline-offset: -2px; }
-.mo-list-row.mo-focused { outline: 2px solid var(--vscode-focusBorder, #9333ea); outline-offset: -2px; }
+.mo-card.mo-focused { outline: 2px solid var(--vscode-focusBorder, var(--px-accent, #9333ea)); outline-offset: -2px; }
+.mo-list-row.mo-focused { outline: 2px solid var(--vscode-focusBorder, var(--px-accent, #9333ea)); outline-offset: -2px; }
 
 /* ═══ Context Menu (F1) ═══ */
 .mo-context-menu {
@@ -6397,7 +6680,7 @@ const MO_CSS = `
 }
 .mo-lightbox-nav:hover {
   opacity: 1;
-  border-color: var(--vscode-focusBorder, #9333ea);
+  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
   background: rgba(255,255,255,0.14);
 }
 .mo-lightbox-nav.prev { left: 12px; }
@@ -6436,10 +6719,10 @@ const MO_CSS = `
   line-height: 18px;
   transition: background 0.15s, border-color 0.15s;
 }
-.mo-lightbox-bar button:hover { background: rgba(255,255,255,0.16); border-color: var(--vscode-focusBorder, #9333ea); }
+.mo-lightbox-bar button:hover { background: rgba(255,255,255,0.16); border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea)); }
 .mo-lightbox-bar button.active {
-  background: var(--vscode-focusBorder, #9333ea);
-  border-color: var(--vscode-focusBorder, #9333ea);
+  background: var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
   color: var(--vscode-button-foreground, #fff);
 }
 /* Harmonize the speed dropdown with the rest of the bar so the lightbox
@@ -6456,16 +6739,16 @@ const MO_CSS = `
 }
 .mo-lightbox-bar .mo-dropdown__button:hover {
   background: rgba(255,255,255,0.16);
-  border-color: var(--vscode-focusBorder, #9333ea);
+  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
 }
 .mo-lightbox-bar .mo-dropdown--open .mo-dropdown__button {
-  border-color: var(--vscode-focusBorder, #9333ea);
+  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
 }
 .mo-lightbox-bar .mo-dropdown__list {
   /* The dropdown list pops above the bar — give it a solid (non-translucent)
      background so option text stays readable over arbitrary media. */
   background: var(--vscode-quickInput-background, var(--vscode-editorWidget-background, var(--px-bg)));
-  border-color: var(--vscode-focusBorder, #9333ea);
+  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
 }
 .mo-lightbox-close {
   position: absolute;
@@ -6488,7 +6771,7 @@ const MO_CSS = `
 .mo-lightbox-close:hover {
   opacity: 1;
   background: rgba(255,255,255,0.18);
-  border-color: var(--vscode-focusBorder, #9333ea);
+  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
 }
 
 /* ═══ M59 P10 / F15 — Compare View ═══
@@ -6526,11 +6809,11 @@ const MO_CSS = `
 }
 .mo-compare-bar button:hover {
   background: rgba(255,255,255,0.16);
-  border-color: var(--vscode-focusBorder, #9333ea);
+  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
 }
 .mo-compare-bar button.active {
-  background: var(--vscode-focusBorder, #9333ea);
-  border-color: var(--vscode-focusBorder, #9333ea);
+  background: var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
   color: var(--vscode-button-foreground, #fff);
 }
 .mo-compare-bar .mo-cmp-zoom-indicator {
@@ -6561,7 +6844,7 @@ const MO_CSS = `
   overflow: hidden;
 }
 .mo-compare-pane.mo-cmp-active {
-  border-color: var(--vscode-focusBorder, #9333ea);
+  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
 }
 .mo-cmp-canvas {
   flex: 1;
@@ -6628,7 +6911,7 @@ const MO_CSS = `
 .mo-compare-close:hover {
   opacity: 1;
   background: rgba(255,255,255,0.18);
-  border-color: var(--vscode-focusBorder, #9333ea);
+  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
 }
 
 /* ═══ Custom Dropdown (replaces native <select>) ═══ */
@@ -6659,10 +6942,10 @@ const MO_CSS = `
   gap: 4px;
 }
 .mo-dropdown__button:hover {
-  border-color: var(--vscode-focusBorder, #9333ea);
+  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
 }
 .mo-dropdown__button:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder, #9333ea);
+  outline: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea));
   outline-offset: -1px;
 }
 .mo-dropdown__text {
@@ -6709,10 +6992,10 @@ const MO_CSS = `
 }
 .mo-dropdown__item--selected {
   color: var(--vscode-list-activeSelectionForeground, #fff);
-  background: var(--vscode-list-activeSelectionBackground, #9333ea);
+  background: var(--vscode-list-activeSelectionBackground, var(--px-accent, #9333ea));
 }
 .mo-dropdown__item--selected:hover {
-  background: var(--vscode-list-activeSelectionBackground, #9333ea);
+  background: var(--vscode-list-activeSelectionBackground, var(--px-accent, #9333ea));
 }
 
 /* ═══ Styled Date Input ═══ */
@@ -6727,7 +7010,7 @@ const MO_CSS = `
   outline: none;
   width: 100px;
 }
-.mo-filter-date:focus { border-color: var(--vscode-focusBorder, #9333ea); }
+.mo-filter-date:focus { border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea)); }
 .mo-filter-date::placeholder { color: var(--vscode-input-placeholderForeground, #888); }
 .mo-filter-date::-webkit-calendar-picker-indicator { display: none; }
 
@@ -6739,8 +7022,8 @@ const MO_CSS = `
   height: 6px;
   border-radius: 3px;
   background: linear-gradient(to right,
-    var(--vscode-button-background, #9333ea) 0%,
-    var(--vscode-button-background, #9333ea) var(--slider-fill, 50%),
+    var(--vscode-button-background, var(--px-accent, #9333ea)) 0%,
+    var(--vscode-button-background, var(--px-accent, #9333ea)) var(--slider-fill, 50%),
     var(--vscode-scrollbarSlider-background, rgba(121,121,121,0.4)) var(--slider-fill, 50%),
     var(--vscode-scrollbarSlider-background, rgba(121,121,121,0.4)) 100%);
   outline: none;
@@ -6753,7 +7036,7 @@ const MO_CSS = `
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: var(--vscode-button-background, #9333ea);
+  background: var(--vscode-button-background, var(--px-accent, #9333ea));
   border: 2px solid var(--vscode-editor-background, var(--px-bg));
   box-shadow: 0 0 0 1px rgba(255,255,255,0.1);
   cursor: pointer;
@@ -6770,8 +7053,11 @@ const MO_CSS = `
 .mo-lightbox-content.mo-lb-zoomed img,
 .mo-lightbox-content.mo-lb-zoomed video {
   cursor: grab;
-  max-width: none !important;
-  max-height: none !important;
+  /* Keep the fitted base size when zoomed — scale() does the zooming. Swapping
+     to intrinsic size here jumped the base size on the first wheel step (huge
+     for large images), which threw the cursor-anchored zoom off. The browser
+     re-rasterizes the <img> under scale() from the full-res source, so this
+     stays sharp without the size swap. */
 }
 .mo-lightbox-content.mo-lb-zoomed.mo-lb-dragging img,
 .mo-lightbox-content.mo-lb-zoomed.mo-lb-dragging video {
@@ -6839,7 +7125,7 @@ const MO_CSS = `
 }
 .mo-player-progress-buf { background: rgba(255,255,255,0.35); width: 0; }
 .mo-player-progress-played {
-  background: var(--vscode-focusBorder, #9333ea);
+  background: var(--vscode-focusBorder, var(--px-accent, #9333ea));
   width: 0; z-index: 1;
 }
 .mo-player-loop-range {
@@ -6854,7 +7140,7 @@ const MO_CSS = `
 .mo-player-progress-thumb {
   position: absolute; top: 50%; transform: translate(-50%, -50%);
   width: 11px; height: 11px; border-radius: 50%;
-  background: var(--vscode-focusBorder, #9333ea);
+  background: var(--vscode-focusBorder, var(--px-accent, #9333ea));
   border: 2px solid #fff; display: none; z-index: 3;
   pointer-events: none;
 }
@@ -6881,8 +7167,8 @@ const MO_CSS = `
   align-items: center; justify-content: center; min-width: 28px; height: 28px;
 }
 .mo-player-btn:hover { background: rgba(255,255,255,0.15); }
-.mo-player-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder, #9333ea); outline-offset: -1px; }
-.mo-player-btn-active { color: var(--vscode-focusBorder, #9333ea); }
+.mo-player-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea)); outline-offset: -1px; }
+.mo-player-btn-active { color: var(--vscode-focusBorder, var(--px-accent, #9333ea)); }
 .mo-player-time {
   color: #fff; font-size: 12px; font-variant-numeric: tabular-nums;
   margin: 0 8px; opacity: 0.9;
@@ -6900,11 +7186,11 @@ const MO_CSS = `
   padding: 4px 8px; text-align: left; font-size: 12px; border-radius: 3px;
 }
 .mo-player-speed-item:hover { background: rgba(255,255,255,0.15); }
-.mo-player-speed-item:focus-visible { outline: 1px solid var(--vscode-focusBorder, #9333ea); outline-offset: -1px; }
+.mo-player-speed-item:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea)); outline-offset: -1px; }
 .mo-hidden { display: none !important; }
 .mo-player-vol { display: flex; align-items: center; gap: 4px; }
 .mo-player-vol-slider {
-  width: 60px; height: 4px; cursor: pointer; accent-color: var(--vscode-focusBorder, #9333ea);
+  width: 60px; height: 4px; cursor: pointer; accent-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
 }
 .mo-player-rail-btn {
   width: 36px; height: 36px; border-radius: 50%;
@@ -6913,11 +7199,11 @@ const MO_CSS = `
   display: flex; align-items: center; justify-content: center;
 }
 .mo-player-rail-btn:hover { background: rgba(0,0,0,0.85); border-color: rgba(255,255,255,0.3); }
-.mo-player-rail-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder, #9333ea); outline-offset: 2px; }
+.mo-player-rail-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea)); outline-offset: 2px; }
 .mo-player-rail-btn:disabled { opacity: 0.4; cursor: default; }
 .mo-player-rail-btn.mo-active {
-  background: var(--vscode-focusBorder, #9333ea);
-  border-color: var(--vscode-focusBorder, #9333ea);
+  background: var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
 }
 
 /* M59 P10 / F16 — Filmstrip thumbnail row.
@@ -6950,12 +7236,12 @@ const MO_CSS = `
   transition: border-color 0.1s, transform 0.1s;
 }
 .mo-player-fs-thumb:hover {
-  border-color: var(--vscode-focusBorder, #9333ea);
+  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
   transform: translateY(-1px);
 }
 .mo-player-fs-thumb.mo-active {
-  border-color: var(--vscode-focusBorder, #9333ea);
-  box-shadow: 0 0 0 1px var(--vscode-focusBorder, #9333ea);
+  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder, var(--px-accent, #9333ea));
 }
 .mo-player-fs-thumb canvas {
   width: 100%;
@@ -7070,7 +7356,7 @@ const MO_CSS = `
 }
 .mo-crop-rect {
   position: absolute;
-  border: 1.5px dashed var(--vscode-focusBorder, #9333ea);
+  border: 1.5px dashed var(--vscode-focusBorder, var(--px-accent, #9333ea));
   background: transparent;
   cursor: move;
   box-sizing: border-box;
@@ -7083,7 +7369,7 @@ const MO_CSS = `
 }
 .mo-crop-handle {
   position: absolute; width: 10px; height: 10px;
-  background: var(--vscode-focusBorder, #9333ea);
+  background: var(--vscode-focusBorder, var(--px-accent, #9333ea));
   border: 1px solid #fff;
   box-sizing: border-box;
   border-radius: 2px;
@@ -7108,15 +7394,15 @@ const MO_CSS = `
 }
 .mo-scrub-range {
   position: absolute; top: 0; bottom: 0;
-  background: color-mix(in srgb, var(--vscode-focusBorder, #9333ea) 22%, transparent);
-  border-left: 1px solid var(--vscode-focusBorder, #9333ea);
-  border-right: 1px solid var(--vscode-focusBorder, #9333ea);
+  background: color-mix(in srgb, var(--vscode-focusBorder, var(--px-accent, #9333ea)) 22%, transparent);
+  border-left: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  border-right: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea));
   pointer-events: none;
 }
 .mo-scrub-handle {
   position: absolute; top: -2px; bottom: -2px;
   width: 3px; margin-left: -1px;
-  background: var(--vscode-focusBorder, #9333ea);
+  background: var(--vscode-focusBorder, var(--px-accent, #9333ea));
   border-radius: 1px;
   cursor: ew-resize;
   box-shadow: 0 0 0 1px rgba(0,0,0,0.5);
@@ -7130,7 +7416,7 @@ const MO_CSS = `
   background: transparent;
 }
 .mo-scrub-handle:hover, .mo-scrub-handle.mo-dragging {
-  background: color-mix(in srgb, var(--vscode-focusBorder, #9333ea) 100%, white 25%);
+  background: color-mix(in srgb, var(--vscode-focusBorder, var(--px-accent, #9333ea)) 100%, white 25%);
   width: 4px; margin-left: -2px;
 }
 .mo-scrub-playhead {
@@ -7172,7 +7458,7 @@ const MO_CSS = `
   border: 0; padding: 4px 10px; font-size: 11px; cursor: pointer;
 }
 .mo-clip-mode-toggle button.mo-active {
-  background: var(--vscode-focusBorder, #9333ea); color: #fff;
+  background: var(--vscode-focusBorder, var(--px-accent, #9333ea)); color: #fff;
 }
 
 /* M59 P2: frame strip + waveform */
@@ -7222,7 +7508,7 @@ const MO_CSS = `
 .mo-clip-frame-delay {
   position: absolute; top: 2px; right: 2px;
   font-size: 9px; line-height: 1; padding: 1px 3px;
-  background: var(--vscode-focusBorder, #9333ea); color: #fff;
+  background: var(--vscode-focusBorder, var(--px-accent, #9333ea)); color: #fff;
   border-radius: 2px; font-variant-numeric: tabular-nums;
 }
 .mo-clip-frame-deleted img { opacity: 0.25; filter: grayscale(1); }
@@ -7253,7 +7539,7 @@ const MO_CSS = `
 }
 .mo-clip-input:focus {
   outline: none;
-  border-color: var(--vscode-focusBorder, #9333ea);
+  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
 }
 select.mo-clip-input { appearance: none; padding-right: 22px; background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%); background-position: calc(100% - 12px) 50%, calc(100% - 7px) 50%; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; }
 select.mo-clip-input.mo-select-bound { cursor: pointer; }
@@ -7279,7 +7565,7 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
   min-width: 120px;
   background: var(--vscode-quickInput-background, var(--vscode-editorWidget-background, var(--px-bg)));
   color: var(--vscode-foreground, #ddd);
-  border: 1px solid var(--vscode-focusBorder, #9333ea);
+  border: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea));
   border-radius: 4px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
   padding: 4px;
@@ -7299,11 +7585,11 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
   background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
 }
 .mo-select-popup-item.mo-active {
-  background: color-mix(in srgb, var(--vscode-focusBorder, #9333ea) 28%, transparent);
+  background: color-mix(in srgb, var(--vscode-focusBorder, var(--px-accent, #9333ea)) 28%, transparent);
   color: var(--vscode-foreground, #fff);
 }
 .mo-select-popup-item.mo-active:hover {
-  background: color-mix(in srgb, var(--vscode-focusBorder, #9333ea) 40%, transparent);
+  background: color-mix(in srgb, var(--vscode-focusBorder, var(--px-accent, #9333ea)) 40%, transparent);
 }
 .mo-clip-check { margin: 0 6px 0 0; }
 
@@ -7337,8 +7623,8 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
   background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.08));
 }
 .mo-clip-queue-row.mo-active {
-  background: color-mix(in srgb, var(--vscode-focusBorder, #9333ea) 22%, transparent);
-  outline: 1px solid var(--vscode-focusBorder, #9333ea);
+  background: color-mix(in srgb, var(--vscode-focusBorder, var(--px-accent, #9333ea)) 22%, transparent);
+  outline: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea));
 }
 .mo-clip-queue-num {
   flex: 0 0 auto; min-width: 22px;
@@ -7366,8 +7652,8 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
 .mo-clip-queue-del:hover { opacity: 1; color: var(--vscode-errorForeground, #f48771); }
 
 .mo-clip-queue-row.mo-dragging { opacity: 0.4; }
-.mo-clip-queue-row.mo-drop-above { box-shadow: 0 -2px 0 0 var(--vscode-focusBorder, #9333ea); }
-.mo-clip-queue-row.mo-drop-below { box-shadow: 0 2px 0 0 var(--vscode-focusBorder, #9333ea); }
+.mo-clip-queue-row.mo-drop-above { box-shadow: 0 -2px 0 0 var(--vscode-focusBorder, var(--px-accent, #9333ea)); }
+.mo-clip-queue-row.mo-drop-below { box-shadow: 0 2px 0 0 var(--vscode-focusBorder, var(--px-accent, #9333ea)); }
 .mo-clip-queue-handle {
   flex: 0 0 auto; cursor: grab; opacity: 0.4;
   font-size: 11px; line-height: 1; user-select: none;
@@ -7391,7 +7677,7 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
 }
 .mo-clip-queue-name:focus {
   outline: none;
-  border-color: var(--vscode-focusBorder, #9333ea);
+  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
 }
 .mo-clip-queue-dup {
   flex: 0 0 auto; background: transparent; border: 0; color: inherit;
@@ -7416,8 +7702,8 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
   background: var(--vscode-button-secondaryHoverBackground, #45494e);
 }
 .mo-clip-aspect-btn.mo-active {
-  background: color-mix(in srgb, var(--vscode-focusBorder, #9333ea) 28%, transparent);
-  border-color: var(--vscode-focusBorder, #9333ea);
+  background: color-mix(in srgb, var(--vscode-focusBorder, var(--px-accent, #9333ea)) 28%, transparent);
+  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
 }
 .mo-clip-presets-row {
   display: flex; gap: 4px; flex-wrap: wrap; align-items: center;
@@ -7431,7 +7717,7 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
   border: 0; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;
 }
 .mo-clip-preset-chip:hover {
-  background: color-mix(in srgb, var(--vscode-focusBorder, #9333ea) 28%, transparent);
+  background: color-mix(in srgb, var(--vscode-focusBorder, var(--px-accent, #9333ea)) 28%, transparent);
 }
 .mo-clip-preset-chip-x {
   opacity: 0.5; cursor: pointer; padding: 0 1px;
@@ -7446,7 +7732,7 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
   font-family: inherit;
 }
 .mo-btn-primary {
-  background: var(--vscode-focusBorder, #9333ea); color: #fff; border-color: transparent;
+  background: var(--vscode-focusBorder, var(--px-accent, #9333ea)); color: #fff; border-color: transparent;
 }
 .mo-btn-primary:disabled { opacity: 0.5; cursor: default; }
 .mo-btn-secondary {
@@ -7561,6 +7847,8 @@ if (typeof globalThis !== 'undefined') {
 
 // Session-level state: survives grid editor re-opens within the same session
 let _sessionZoomWidth = MO_ZOOM_DEFAULT;
+// #1 Grid grouping mode ('none' | 'date'), persisted across sessions.
+let _sessionGroupBy = 'none';
 const _sessionGridState = new Map(); // keyed by instanceId
 
 // Adapted from stash: GridCard.tsx — calculateCardWidth()
@@ -7765,17 +8053,74 @@ function renderMediaCard(item, options) {
   img.draggable = false;
   img.alt = item.title || '';
   img.loading = 'lazy';
-  if (item._gifSourcePath || item.thumbnailPath) {
+
+  // #6 Loading skeleton — a shimmer shown until the thumbnail loads. On
+  // resolution failure it's swapped for the static placeholder icon.
+  const skeleton = moEl('div', 'mo-card-skeleton');
+  thumb.appendChild(skeleton);
+  const clearSkeleton = () => { if (skeleton.parentNode) skeleton.remove(); };
+  const showIconPlaceholder = () => {
+    clearSkeleton();
+    if (thumb.querySelector('.mo-thumb-placeholder')) return;
+    thumb.appendChild(moEl('div', 'mo-thumb-placeholder', { innerHTML: moIcon('image', 32) }));
+  };
+  card._clearSkeleton = clearSkeleton;
+  card._showIconPlaceholder = showIconPlaceholder;
+
+  const initialSrc = item._gifSourcePath || item.thumbnailPath;
+  if (initialSrc) {
     // Prefer animated GIF source over static JPEG thumbnail
-    setThumbImgSrc(img, item._gifSourcePath || item.thumbnailPath);
+    setThumbImgSrc(img, initialSrc, { onPlaceholderRemove: clearSkeleton });
   } else {
-    // Placeholder
-    const placeholder = moEl('div', 'mo-thumb-placeholder', { innerHTML: moIcon('image', 32) });
-    thumb.appendChild(placeholder);
     img.style.display = 'none';
+    // Skeleton stays until the lazy resolver sets the src (clearing it on
+    // load) or reports no thumbnail (showIconPlaceholder).
   }
-  img.addEventListener('error', () => { img.style.display = 'none'; });
+  img.addEventListener('load', clearSkeleton);
+  img.addEventListener('error', () => { img.style.display = 'none'; showIconPlaceholder(); });
   thumb.appendChild(img);
+
+  // #2 Video hover-preview — on sustained hover, play the real video muted +
+  // looping over the cover frame. GIFs already animate via their image source,
+  // so this is video-only. Bounded: one preview at a time, skipped for very
+  // large files; the blob URL is the shared LRU cache's to manage.
+  if (item.type === 'video') {
+    const MAX_PREVIEW_BYTES = 150 * 1024 * 1024;
+    let hoverTimer = null;
+    let previewVid = null;
+    const startPreview = async () => {
+      if (previewVid) return;
+      const path = card._filePath || item._sourcePath;
+      if (!path) return;
+      if (typeof item.size === 'number' && item.size > MAX_PREVIEW_BYTES) return;
+      const url = await localFileToUrl(path);
+      if (!url || previewVid) return;
+      if (!card.matches(':hover')) return; // pointer left during the file read
+      previewVid = moEl('video', 'mo-card-hover-video');
+      previewVid.muted = true;
+      previewVid.loop = true;
+      previewVid.playsInline = true;
+      previewVid.preload = 'auto';
+      previewVid.src = url;
+      thumb.appendChild(previewVid);
+      previewVid.play().catch(() => {});
+    };
+    const stopPreview = () => {
+      if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
+      if (previewVid) {
+        try { previewVid.pause(); } catch { /* ignore */ }
+        previewVid.removeAttribute('src');
+        previewVid.remove();
+        previewVid = null;
+      }
+    };
+    card.addEventListener('mouseenter', () => {
+      if (hoverTimer || previewVid) return;
+      hoverTimer = setTimeout(() => { hoverTimer = null; startPreview(); }, 350);
+    });
+    card.addEventListener('mouseleave', stopPreview);
+    card._stopHoverPreview = stopPreview;
+  }
 
   // Badge (type or duration)
   const badgeText = item.type === 'video' && item.duration
@@ -7968,8 +8313,8 @@ function renderMediaCard(item, options) {
     e.stopPropagation();
     card.classList.remove('mo-drop-target');
     try {
-      const tagId = parseInt(e.dataTransfer.getData('application/x-mo-tag'), 10);
-      if (!Number.isFinite(tagId)) return;
+      const tagIds = moTagChainFromDrop(e.dataTransfer);
+      if (tagIds.length === 0) return;
       const myKey = `${item.type}:${item.id}`;
       // Source of truth for the live selection is the DOM \u2014 the .mo-selected
       // class is kept in sync by cardGrid.setSelection() on every selection
@@ -7986,10 +8331,13 @@ function renderMediaCard(item, options) {
       // selection regardless of which card the user dropped on. When the
       // selection has 0\u20131 items, fall back to single-target drop.
       const targetKeys = (selSet.size > 1) ? [...selSet] : [myKey];
-      const n = await moApplyTagToKeys(tagId, targetKeys);
+      // Store exactly the branch you dragged from (the dragged instance's
+      // ancestor→leaf path). Fruit › Portrait and Face › Portrait are distinct;
+      // we never auto-derive a tag's OTHER parents.
+      const n = await moApplyTagsToKeys(tagIds, targetKeys);
       const apiRef = options.api || _api;
-      if (apiRef && apiRef.statusBar) apiRef.statusBar.setMessage(`Applied tag to ${n} item${n === 1 ? '' : 's'}`, 2000);
-      document.dispatchEvent(new CustomEvent('mo:tag-applied', { detail: { tagId, keys: targetKeys } }));
+      if (apiRef && apiRef.statusBar) apiRef.statusBar.setMessage(`Applied ${tagIds.length === 1 ? 'tag' : tagIds.length + ' tags'} to ${n} item${n === 1 ? '' : 's'}`, 2000);
+      for (const tid of tagIds) document.dispatchEvent(new CustomEvent('mo:tag-applied', { detail: { tagId: tid, keys: targetKeys } }));
     } catch (err) {
       console.warn('[mo] tag-drop failed', err);
     }
@@ -8138,8 +8486,8 @@ function renderMediaListRow(item, options) {
     e.stopPropagation();
     row.classList.remove('mo-drop-target');
     try {
-      const tagId = parseInt(e.dataTransfer.getData('application/x-mo-tag'), 10);
-      if (!Number.isFinite(tagId)) return;
+      const tagIds = moTagChainFromDrop(e.dataTransfer);
+      if (tagIds.length === 0) return;
       const myKey = `${item.type}:${item.id}`;
       // Read the live selection from the DOM (see card-variant comment).
       const selectedKeys = Array.from(
@@ -8149,10 +8497,13 @@ function renderMediaListRow(item, options) {
       const selSet = new Set(selectedKeys);
       // Same rule as the card variant: active multi-selection always wins.
       const targetKeys = (selSet.size > 1) ? [...selSet] : [myKey];
-      const n = await moApplyTagToKeys(tagId, targetKeys);
+      // Store exactly the branch you dragged from (the dragged instance's
+      // ancestor→leaf path). Fruit › Portrait and Face › Portrait are distinct;
+      // we never auto-derive a tag's OTHER parents.
+      const n = await moApplyTagsToKeys(tagIds, targetKeys);
       const apiRef = options.api || _api;
-      if (apiRef && apiRef.statusBar) apiRef.statusBar.setMessage(`Applied tag to ${n} item${n === 1 ? '' : 's'}`, 2000);
-      document.dispatchEvent(new CustomEvent('mo:tag-applied', { detail: { tagId, keys: targetKeys } }));
+      if (apiRef && apiRef.statusBar) apiRef.statusBar.setMessage(`Applied ${tagIds.length === 1 ? 'tag' : tagIds.length + ' tags'} to ${n} item${n === 1 ? '' : 's'}`, 2000);
+      for (const tid of tagIds) document.dispatchEvent(new CustomEvent('mo:tag-applied', { detail: { tagId: tid, keys: targetKeys } }));
     } catch (err) {
       console.warn('[mo] tag-drop failed', err);
     }
@@ -8161,6 +8512,27 @@ function renderMediaListRow(item, options) {
   row._imgEl = img;
   row._thumbEl = thumb;
   return row;
+}
+
+// #1 Date-grouping helpers. The group key is the local day of an item's
+// takenAt (falling back to createdAt). Both stored timestamps begin with a
+// YYYY-MM-DD prefix, so slicing avoids timezone parsing for the key.
+function _moDateGroupKey(item) {
+  const raw = item.takenAt || item.createdAt;
+  if (!raw) return 'unknown';
+  return String(raw).slice(0, 10);
+}
+function _moDateGroupLabel(key) {
+  if (key === 'unknown') return 'No date';
+  const d = new Date(key + 'T00:00:00');
+  if (isNaN(d.getTime())) return key;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((today.getTime() - d.getTime()) / 86400000);
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Yesterday';
+  const opts = { month: 'long', day: 'numeric' };
+  if (d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
+  return d.toLocaleDateString(undefined, opts);
 }
 
 function renderCardGrid(container, items, options) {
@@ -8270,8 +8642,21 @@ function renderCardGrid(container, items, options) {
     } else {
       const zw = opts.zoomWidth ?? zoomWidth;
       grid.style.setProperty('--mo-card-min-width', `${zw || MO_ZOOM_DEFAULT}px`);
+      // #1 Date grouping — interleave full-width sticky day headers. Headers
+      // are not .mo-card, so rubber-band, selection and keyboard nav (which
+      // operate on cards / state.items) are unaffected.
+      const grouping = opts.groupBy === 'date';
+      grid.classList.toggle('mo-grouped', grouping);
+      let lastGroupKey = null;
       for (let idx = 0; idx < itemList.length; idx++) {
         const item = itemList[idx];
+        if (grouping) {
+          const gk = _moDateGroupKey(item);
+          if (gk !== lastGroupKey) {
+            lastGroupKey = gk;
+            newChildren.push(moEl('div', 'mo-grid-group-header', { textContent: _moDateGroupLabel(gk) }));
+          }
+        }
         const card = renderMediaCard(item, {
           selecting: opts.selecting ?? selecting,
           isSelected: opts.selectedIds ? opts.selectedIds.has(`${item.type}:${item.id}`) : false,
@@ -8317,18 +8702,26 @@ function renderCardGrid(container, items, options) {
           originalPath: result.originalPath || null,
         });
         const img = card._imgEl;
-        if (img) {
-          // For GIFs, show the original animated file instead of the static thumbnail
-          const displayPath = result.sourcePath || result.path;
+        // For GIFs, show the original animated file instead of the static thumbnail
+        const displayPath = result.sourcePath || result.path;
+        if (img && displayPath) {
           setThumbImgSrc(img, displayPath, {
             onPlaceholderRemove: () => {
+              if (card._clearSkeleton) card._clearSkeleton();
               const ph = card._thumbEl?.querySelector('.mo-thumb-placeholder');
               if (ph) ph.remove();
             },
           });
+        } else if (card._showIconPlaceholder) {
+          card._showIconPlaceholder();
         }
+      } else if (card._showIconPlaceholder) {
+        // Resolved, but no thumbnail available — swap shimmer for the icon.
+        card._showIconPlaceholder();
       }
-    } catch { /* thumbnail resolution failure — leave placeholder */ }
+    } catch {
+      if (card._showIconPlaceholder) card._showIconPlaceholder();
+    }
   }
 
 
@@ -8437,6 +8830,137 @@ function renderCardGrid(container, items, options) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 23B: KEYBOARD SHORTCUTS CHEAT SHEET
+// ═══════════════════════════════════════════════════════════════════════════════
+// A self-contained modal listing every grid/sidebar/viewer shortcut. Opened
+// from the sidebar footer button, the `?` key in the grid, or the
+// "Keyboard Shortcuts" command. Toggles closed if already open.
+
+let _moCheatSheetEl = null;
+let _moCheatKeyHandler = null;
+
+function dismissShortcutsCheatSheet() {
+  if (_moCheatKeyHandler) {
+    document.removeEventListener('keydown', _moCheatKeyHandler, true);
+    _moCheatKeyHandler = null;
+  }
+  if (_moCheatSheetEl) { _moCheatSheetEl.remove(); _moCheatSheetEl = null; }
+}
+
+function moShowShortcutsCheatSheet() {
+  if (_moCheatSheetEl) { dismissShortcutsCheatSheet(); return; } // toggle
+
+  const isMac = (window.parallxElectron && window.parallxElectron.platform) === 'darwin';
+  const mod = isMac ? '⌘' : 'Ctrl';
+
+  // Each item: [ [keycaps...], description ]. Keys verified against the live
+  // handlers in handleGridKeydown / lightbox / video player / sidebar.
+  const groups = [
+    { title: 'Grid navigation', items: [
+      [['↑', '↓', '←', '→'], 'Move focus between items'],
+      [['Home'], 'Jump to first item'],
+      [['End'], 'Jump to last item'],
+      [['Enter'], 'Open the focused item'],
+      [['Esc'], 'Clear selection, then focus'],
+    ]},
+    { title: 'Selection', items: [
+      [['Space'], 'Toggle-select the focused item'],
+      [[mod, 'A'], 'Select all on this page'],
+      [[mod, 'I'], 'Invert selection'],
+      [['Shift', '↑↓←→'], 'Extend selection'],
+      [['Drag'], 'Box-select (hold ' + mod + ' to add) — auto-scrolls at edges'],
+    ]},
+    { title: 'Rate & label', items: [
+      [['0', '–', '5'], 'Set star rating (0 clears)'],
+      [['6'], 'Red label'],
+      [['7'], 'Yellow label'],
+      [['8'], 'Green label'],
+      [['9'], 'Blue label (repeat key clears)'],
+    ]},
+    { title: 'Tag & organize', items: [
+      [['T'], 'Tag the selected / focused item(s)'],
+      [['Drag tag'], 'Drop a sidebar tag on a card to apply it'],
+      [['Delete'], 'Move selected to Trash'],
+      [[mod, 'Shift', 'E'], 'Reveal focused item in file explorer'],
+    ]},
+    { title: 'Sidebar', items: [
+      [['/'], 'Focus the tag / folder filter'],
+      [['F2'], 'Rename the focused tag (or double-click)'],
+      [['Delete'], 'Delete the focused tag'],
+      [['Drag'], 'Drag the sash between sections to resize'],
+    ]},
+    { title: 'Lightbox & video', items: [
+      [['←', '→'], 'Previous / next (lightbox)'],
+      [['+', '−'], 'Zoom in / out'],
+      [['0'], 'Reset zoom'],
+      [['Space', 'K'], 'Play / pause (video)'],
+      [['J', 'L'], 'Step back / forward (video)'],
+      [['Esc'], 'Close'],
+    ]},
+  ];
+
+  const overlay = moEl('div', 'mo-modal-overlay');
+  const modal = moEl('div', 'mo-modal mo-cheat-modal');
+  modal.setAttribute('tabindex', '-1');
+
+  const header = moEl('div', 'mo-modal-header');
+  header.appendChild(moEl('div', 'mo-modal-title', { textContent: 'Keyboard Shortcuts' }));
+  const closeBtn = moEl('button', 'mo-modal-close', { type: 'button', textContent: '×', title: 'Close' });
+  closeBtn.addEventListener('click', dismissShortcutsCheatSheet);
+  header.appendChild(closeBtn);
+  modal.appendChild(header);
+
+  const body = moEl('div', 'mo-cheat-grid');
+  for (const group of groups) {
+    const col = moEl('div', 'mo-cheat-group');
+    col.appendChild(moEl('div', 'mo-cheat-group-title', { textContent: group.title }));
+    for (const [keys, desc] of group.items) {
+      const row = moEl('div', 'mo-cheat-row');
+      const keyWrap = moEl('div', 'mo-cheat-keys');
+      keys.forEach((kk, idx) => {
+        keyWrap.appendChild(moEl('kbd', 'mo-key', { textContent: kk }));
+        if (idx < keys.length - 1) keyWrap.appendChild(document.createTextNode(' '));
+      });
+      row.appendChild(keyWrap);
+      row.appendChild(moEl('div', 'mo-cheat-desc', { textContent: desc }));
+      col.appendChild(row);
+    }
+    body.appendChild(col);
+  }
+  modal.appendChild(body);
+
+  const footer = moEl('div', 'mo-modal-footer');
+  // Record GIF — only when the screen recorder is enabled in settings. Closes
+  // the sheet and opens the framing window.
+  if (_enableScreenRecorder) {
+    const recBtn = moEl('button', 'mo-btn-primary mo-cheat-record-btn', { type: 'button' });
+    recBtn.innerHTML = `${moIcon('video', 13)}<span>Record GIF</span>`;
+    recBtn.addEventListener('click', () => {
+      dismissShortcutsCheatSheet();
+      if (_api) moStartScreenRecording(_api);
+    });
+    footer.appendChild(recBtn);
+  }
+  footer.appendChild(moEl('span', 'mo-cheat-hint', {
+    textContent: 'Press ?  anytime to open this. Shortcuts act on the focused or selected items.',
+  }));
+  modal.appendChild(footer);
+
+  overlay.appendChild(modal);
+  overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) dismissShortcutsCheatSheet(); });
+  document.body.appendChild(overlay);
+  _moCheatSheetEl = overlay;
+  // Pull focus out of the grid/sidebar so their key handlers go idle.
+  try { modal.focus(); } catch { /* ignore */ }
+
+  // Esc closes — capture phase so it beats the grid/lightbox handlers.
+  _moCheatKeyHandler = (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); dismissShortcutsCheatSheet(); }
+  };
+  document.addEventListener('keydown', _moCheatKeyHandler, true);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 24: SIDEBAR VIEW
 // ═══════════════════════════════════════════════════════════════════════════════
 // Adapted from stash: sidebar navigation pattern
@@ -8448,6 +8972,137 @@ function renderBrowserSidebar(container, api) {
 
   const sections = moEl('div', 'mo-sidebar-sections');
   root.appendChild(sections);
+
+  // ── Resizable sections (VS Code Explorer-style) ───────────────────────────
+  // Expanded sections share the leftover vertical space via a flex-grow
+  // "weight" (≈ pixel height). Sashes between adjacent expanded sections let
+  // the user drag space between them. Weights + collapsed state persist in
+  // mo_settings under 'sidebar_layout' so the layout survives reloads.
+  const _moSectionRegistry = []; // { id, section, header, body }
+  const _moSectionWeights = {};  // id -> flex-grow weight (≈ px)
+  const _MO_SECTION_DEFAULT_W = { 'quick-filters': 200, 'folders': 240, 'tags': 300, 'albums': 240 };
+  const _MO_SECTION_MIN_PX = 64;
+  let _moLayoutPersistTimer = null;
+
+  const _moSlug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const _moIsCollapsed = (rec) => rec.header.classList.contains('collapsed');
+
+  function applySidebarLayout() {
+    for (const s of sections.querySelectorAll('.mo-sidebar-sash')) s.remove();
+
+    for (const rec of _moSectionRegistry) {
+      const collapsed = _moIsCollapsed(rec);
+      rec.section.classList.toggle('mo-section-collapsed', collapsed);
+      if (collapsed) {
+        rec.section.style.flex = '0 0 auto';
+        rec.section.style.flexGrow = '';
+      } else {
+        const w = _moSectionWeights[rec.id] ?? _MO_SECTION_DEFAULT_W[rec.id] ?? 200;
+        _moSectionWeights[rec.id] = w;
+        rec.section.style.flex = '';
+        rec.section.style.flexGrow = String(w);
+        rec.section.style.flexShrink = '1';
+        rec.section.style.flexBasis = '0';
+        rec.body.style.maxHeight = 'none'; // override the legacy 260px cap
+      }
+    }
+
+    // A sash sits between each expanded section and the next expanded one.
+    for (let i = 0; i < _moSectionRegistry.length; i++) {
+      if (_moIsCollapsed(_moSectionRegistry[i])) continue;
+      let j = -1;
+      for (let k = i + 1; k < _moSectionRegistry.length; k++) {
+        if (!_moIsCollapsed(_moSectionRegistry[k])) { j = k; break; }
+      }
+      if (j === -1) break;
+      const sash = _buildSidebarSash(_moSectionRegistry[i], _moSectionRegistry[j]);
+      // Place the handle at the top edge of the lower expanded section so it
+      // reads correctly even when a collapsed section sits between the two.
+      _moSectionRegistry[j].section.insertAdjacentElement('beforebegin', sash);
+      i = j - 1; // resume scanning from the lower neighbour
+    }
+  }
+
+  function _buildSidebarSash(aboveRec, belowRec) {
+    const sash = moEl('div', 'mo-sidebar-sash');
+    sash.title = 'Drag to resize';
+    sash.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      sash.classList.add('mo-sash-active');
+      const startY = e.clientY;
+      const wa = _moSectionWeights[aboveRec.id] ?? _MO_SECTION_DEFAULT_W[aboveRec.id] ?? 200;
+      const wb = _moSectionWeights[belowRec.id] ?? _MO_SECTION_DEFAULT_W[belowRec.id] ?? 200;
+      const aboveH = aboveRec.section.getBoundingClientRect().height;
+      const belowH = belowRec.section.getBoundingClientRect().height;
+      // px-per-weight scale so a pixel drag maps 1:1 to the boundary.
+      const kA = aboveH > 0 && wa > 0 ? aboveH / wa : 1;
+      const kB = belowH > 0 && wb > 0 ? belowH / wb : 1;
+      const k = (kA + kB) / 2 || 1;
+      const minW = _MO_SECTION_MIN_PX / k;
+      try { sash.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+      const onMove = (ev) => {
+        const dW = (ev.clientY - startY) / k;
+        let na = wa + dW;
+        let nb = wb - dW;
+        if (na < minW) { nb -= (minW - na); na = minW; }
+        if (nb < minW) { na -= (minW - nb); nb = minW; }
+        _moSectionWeights[aboveRec.id] = na;
+        _moSectionWeights[belowRec.id] = nb;
+        aboveRec.section.style.flexGrow = String(na);
+        belowRec.section.style.flexGrow = String(nb);
+      };
+      const onUp = () => {
+        sash.classList.remove('mo-sash-active');
+        sash.removeEventListener('pointermove', onMove);
+        sash.removeEventListener('pointerup', onUp);
+        sash.removeEventListener('pointercancel', onUp);
+        persistSidebarLayout();
+      };
+      sash.addEventListener('pointermove', onMove);
+      sash.addEventListener('pointerup', onUp);
+      sash.addEventListener('pointercancel', onUp);
+    });
+    return sash;
+  }
+
+  function persistSidebarLayout() {
+    if (_moLayoutPersistTimer) clearTimeout(_moLayoutPersistTimer);
+    _moLayoutPersistTimer = setTimeout(() => {
+      _moLayoutPersistTimer = null;
+      const collapsed = {};
+      for (const rec of _moSectionRegistry) collapsed[rec.id] = _moIsCollapsed(rec);
+      moSetSetting('sidebar_layout', JSON.stringify({ weights: _moSectionWeights, collapsed })).catch(() => {});
+    }, 250);
+  }
+
+  async function initSidebarLayout() {
+    try {
+      const raw = await moGetSetting('sidebar_layout', null);
+      if (raw) {
+        const saved = JSON.parse(raw);
+        if (saved && saved.weights) {
+          for (const [id, w] of Object.entries(saved.weights)) {
+            const n = Number(w);
+            if (Number.isFinite(n) && n > 0) _moSectionWeights[id] = n;
+          }
+        }
+        if (saved && saved.collapsed) {
+          for (const rec of _moSectionRegistry) {
+            const want = saved.collapsed[rec.id];
+            if (want === true && !_moIsCollapsed(rec)) {
+              rec.header.classList.add('collapsed');
+              rec.body.classList.add('collapsed');
+            } else if (want === false && _moIsCollapsed(rec)) {
+              rec.header.classList.remove('collapsed');
+              rec.body.classList.remove('collapsed');
+            }
+          }
+        }
+      }
+    } catch { /* fall back to defaults */ }
+    applySidebarLayout();
+  }
 
   function openGrid(filterKey, title, icon) {
     api.editors.openEditor({
@@ -8470,9 +9125,15 @@ function renderBrowserSidebar(container, api) {
     const body = moEl('div', `mo-sidebar-section-body${collapsed ? ' collapsed' : ''}`);
     section.appendChild(body);
 
+    const id = _moSlug(title);
+    section.dataset.moSection = id;
+    _moSectionRegistry.push({ id, section, header, body });
+
     header.addEventListener('click', () => {
       header.classList.toggle('collapsed');
       body.classList.toggle('collapsed');
+      applySidebarLayout();
+      persistSidebarLayout();
     });
 
     return { section, body };
@@ -8805,18 +9466,89 @@ function renderBrowserSidebar(container, api) {
   // buildTagRow: a single tag row in the sidebar. Encapsulates highlight (#2),
   // favorite star (#7), drag-source (#6), keyboard nav (#8), inline rename (#9),
   // and the existing right-click menu.
-  function buildTagRow(tag) {
+  // ── Tag tree state ────────────────────────────────────────────────────────
+  const _tagExpanded = new Set();   // expanded tag ids (shared across instances)
+  let _tagLoadSeq = 0;              // guards against overlapping loadTags renders
+  let _tagExpandedLoaded = false;
+  async function ensureTagExpandedLoaded() {
+    if (_tagExpandedLoaded) return;
+    _tagExpandedLoaded = true;
+    try {
+      const raw = await moGetSetting('tag_tree_expanded', null);
+      if (raw) { const arr = JSON.parse(raw); if (Array.isArray(arr)) for (const id of arr) _tagExpanded.add(Number(id)); }
+    } catch { /* default: all collapsed */ }
+  }
+  function persistTagExpanded() {
+    moSetSetting('tag_tree_expanded', JSON.stringify([..._tagExpanded])).catch(() => {});
+  }
+  function sortTags(arr) {
+    const sortValue = tagSortModes[tagSortIdx].value;
+    const cmpName = (a, b) => a.name.localeCompare(b.name);
+    let baseSort;
+    if (sortValue === 'az')         baseSort = cmpName;
+    else if (sortValue === 'za')    baseSort = (a, b) => b.name.localeCompare(a.name);
+    else if (sortValue === 'most')  baseSort = (a, b) => b._count - a._count || cmpName(a, b);
+    else if (sortValue === 'least') baseSort = (a, b) => a._count - b._count || cmpName(a, b);
+    else                            baseSort = cmpName;
+    arr.sort((a, b) => {
+      const fa = a.favorite ? 1 : 0, fb = b.favorite ? 1 : 0;
+      if (fa !== fb) return fb - fa;
+      return baseSort(a, b);
+    });
+    return arr;
+  }
+  // Re-parent: make the dragged tag a child of `parentId` (additive — keeps any
+  // existing parents). Cycles / duplicates are guarded by the backend.
+  async function reparentTag(childId, parentId) {
+    if (childId === parentId) return;
+    try {
+      await TagQueries.addParent(childId, parentId);
+      // Auto-expand the new parent so the moved child is visible.
+      _tagExpanded.add(parentId);
+      persistTagExpanded();
+      api.statusBar?.setMessage?.('Tag nested', 1500);
+      _notifySidebarRefresh();
+    } catch (err) {
+      api.window.showWarningMessage('Could not nest tag: ' + (err && err.message ? err.message : String(err)));
+    }
+  }
+
+  function buildTagRow(tag, ctx = {}) {
+    const { depth = 0, path = [], parentId = null, parentName = null, hasChildren = false, multiHome = false, expanded = false, flat = false, branchCount = null } = ctx;
+    // The branch this instance represents (root→leaf ids), encoded for the grid
+    // so it can filter by the whole branch (Face AND Portrait) in Branch view,
+    // or just the leaf in Unique view. Flat (search) rows carry only the leaf.
+    const branchKey = 'tag:' + (flat ? String(tag.id) : [...path, tag.id].join('-'));
     const row = moEl('div', 'mo-sidebar-item mo-tag-row');
     row.setAttribute('tabindex', '0');
     row.setAttribute('draggable', 'true');
     row.dataset.tagId = String(tag.id);
+    row.dataset.tagInstance = String(tag.id);
+    if (!flat) row.style.paddingLeft = (10 + depth * 14) + 'px';
+
+    // Expand/collapse chevron (tags with children, tree mode only). A spacer
+    // keeps leaf rows aligned with rows that have a chevron.
+    if (!flat) {
+      if (hasChildren) {
+        const chev = moEl('span', 'mo-tag-chevron', { innerHTML: moIcon(expanded ? 'chevron-down' : 'chevron-right', 12) });
+        chev.addEventListener('click', (e) => {
+          e.preventDefault(); e.stopPropagation();
+          if (_tagExpanded.has(tag.id)) _tagExpanded.delete(tag.id); else _tagExpanded.add(tag.id);
+          persistTagExpanded();
+          loadTags();
+        });
+        row.appendChild(chev);
+      } else {
+        row.appendChild(moEl('span', 'mo-tag-chevron mo-tag-chevron-spacer'));
+      }
+    }
 
     // Icon (★ if favorite, else generic tag icon).
     const iconWrap = moEl('span', 'mo-icon-wrap', { innerHTML: moIcon(tag.favorite ? 'star' : 'tag', 14) });
     if (tag.favorite) iconWrap.style.color = 'var(--vscode-charts-yellow, #e2b714)';
     row.appendChild(iconWrap);
 
-    // Label with optional substring highlight (#2).
+    // Label with optional substring highlight (search mode).
     const label = moEl('span', 'mo-sidebar-item-label');
     const name = String(tag.name || '');
     if (tagFilterText) {
@@ -8835,38 +9567,78 @@ function renderBrowserSidebar(container, api) {
     }
     row.appendChild(label);
 
-    if (tag._count > 0) {
-      row.appendChild(moEl('span', 'mo-sidebar-item-count', { textContent: String(tag._count) }));
+    // Multi-home indicator (tag filed under more than one parent).
+    if (multiHome) {
+      const mh = moEl('span', 'mo-tag-multihome', { innerHTML: moIcon('git-branch', 11) });
+      mh.title = 'Filed under multiple parents';
+      row.appendChild(mh);
     }
 
-    // Open grid filtered by this tag.
-    row.addEventListener('click', () => openGrid(`tag:${tag.id}`, tag.name, 'tag'));
+    // Badge shows the per-branch count (#5) when provided (items matching this
+    // whole branch), else the tag's global usage. The right-click menu still
+    // gets tag._count (global) for accurate Delete/Merge messaging.
+    const displayCount = (ctx.branchCount != null) ? ctx.branchCount : tag._count;
+    if (displayCount > 0) {
+      row.appendChild(moEl('span', 'mo-sidebar-item-count', { textContent: String(displayCount) }));
+    }
 
-    // Right-click — Rename / Merge / Delete / Favorite.
+    // Hovering one instance highlights every appearance of the same tag.
+    row.addEventListener('mouseenter', () => {
+      for (const el of tagBody.querySelectorAll(`[data-tag-instance="${tag.id}"]`)) el.classList.add('mo-tag-instance-hl');
+    });
+    row.addEventListener('mouseleave', () => {
+      for (const el of tagBody.querySelectorAll(`[data-tag-instance="${tag.id}"]`)) el.classList.remove('mo-tag-instance-hl');
+    });
+
+    // Open grid filtered by this tag.
+    row.addEventListener('click', () => openGrid(branchKey, tag.name, 'tag'));
+
+    // Right-click — Favorite / Rename / Merge / Delete + hierarchy ops.
     row.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      showTagContextMenu(e.clientX, e.clientY, tag, tag._count);
+      showTagContextMenu(e.clientX, e.clientY, tag, tag._count, { parentId, parentName });
     });
 
-    // Inline rename on double-click (#9). Replaces label with an <input>.
+    // Inline rename on double-click.
     row.addEventListener('dblclick', (e) => {
       e.preventDefault();
       e.stopPropagation();
       startInlineRename(row, label, tag);
     });
 
-    // Drag-source: tag id flows via 'application/x-mo-tag' (#6).
+    // Drag-source: carries the single tag id AND the full ancestor→leaf path,
+    // so a drop on a card cascades the whole branch (Italy › 2024 › Building).
     row.addEventListener('dragstart', (e) => {
       try {
+        const chain = [...path, tag.id];
         e.dataTransfer.setData('application/x-mo-tag', String(tag.id));
+        e.dataTransfer.setData('application/x-mo-tag-path', JSON.stringify(chain));
         e.dataTransfer.setData('text/plain', tag.name || `tag:${tag.id}`);
         e.dataTransfer.effectAllowed = 'copy';
-        console.log('[mo-dnd] tag dragstart', { tagId: tag.id, name: tag.name });
       } catch (err) { console.warn('[mo-dnd] tag dragstart failed', err); }
     });
 
-    // Keyboard nav (#8): Up/Down move focus, Enter opens, F2 renames, Delete deletes.
+    // Drop-target: nest the dragged tag under this one (add parent).
+    row.addEventListener('dragover', (e) => {
+      if (e.dataTransfer && e.dataTransfer.types && e.dataTransfer.types.includes('application/x-mo-tag')) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+        row.classList.add('mo-reparent-target');
+      }
+    });
+    row.addEventListener('dragleave', () => row.classList.remove('mo-reparent-target'));
+    row.addEventListener('drop', async (e) => {
+      if (!(e.dataTransfer && e.dataTransfer.types && e.dataTransfer.types.includes('application/x-mo-tag'))) return;
+      e.preventDefault();
+      e.stopPropagation();
+      row.classList.remove('mo-reparent-target');
+      const draggedId = parseInt(e.dataTransfer.getData('application/x-mo-tag'), 10);
+      if (Number.isFinite(draggedId) && draggedId !== tag.id) await reparentTag(draggedId, tag.id);
+    });
+
+    // Keyboard nav: Up/Down focus, Enter opens, F2 renames, Delete deletes,
+    // Left/Right collapse/expand.
     row.addEventListener('keydown', (e) => {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
@@ -8878,13 +9650,18 @@ function renderBrowserSidebar(container, api) {
         if (prev && prev.classList.contains('mo-sidebar-item')) prev.focus();
       } else if (e.key === 'Enter') {
         e.preventDefault();
-        openGrid(`tag:${tag.id}`, tag.name, 'tag');
+        openGrid(branchKey, tag.name, 'tag');
       } else if (e.key === 'F2') {
         e.preventDefault();
         startInlineRename(row, label, tag);
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
         triggerTagDelete(tag);
+      } else if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && hasChildren && !flat) {
+        e.preventDefault();
+        const wantOpen = e.key === 'ArrowRight';
+        if (wantOpen && !_tagExpanded.has(tag.id)) { _tagExpanded.add(tag.id); persistTagExpanded(); loadTags(); }
+        else if (!wantOpen && _tagExpanded.has(tag.id)) { _tagExpanded.delete(tag.id); persistTagExpanded(); loadTags(); }
       }
     });
 
@@ -8896,7 +9673,7 @@ function renderBrowserSidebar(container, api) {
   function startInlineRename(row, label, tag) {
     if (row.querySelector('.mo-tag-rename-input')) return;
     const input = moEl('input', 'mo-tag-rename-input', { type: 'text', value: tag.name || '' });
-    input.style.cssText = 'flex:1;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-focusBorder,#9333ea);border-radius:3px;padding:1px 4px;font-size:inherit;min-width:0;';
+    input.style.cssText = 'flex:1;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-focusBorder,var(--px-accent,#9333ea));border-radius:3px;padding:1px 4px;font-size:inherit;min-width:0;';
     label.style.display = 'none';
     label.parentNode.insertBefore(input, label.nextSibling);
     // Disable row drag while editing — otherwise Chromium intercepts mousedown
@@ -8965,18 +9742,10 @@ function renderBrowserSidebar(container, api) {
   }
 
   async function loadTags() {
+    const seq = ++_tagLoadSeq;
     try {
-      const result = await TagQueries.findMany(
-        { hasParents: false },
-        { field: 'name', direction: 'ASC' },
-        { page: 1, perPage: 500 }
-      );
-      tagBody.innerHTML = '';
-      const itemsRaw = result.items || [];
-      if (itemsRaw.length === 0) {
-        tagBody.appendChild(moEl('div', 'mo-empty', { textContent: 'No tags created yet' }));
-        return;
-      }
+      await ensureTagExpandedLoaded();
+      const allRaw = (await TagQueries.findMany({}, { field: 'name', direction: 'ASC' }, { page: 1, perPage: 5000 })).items || [];
 
       // Per-tag usage counts (best effort; one round-trip).
       const counts = new Map();
@@ -8991,35 +9760,108 @@ function renderBrowserSidebar(container, api) {
         for (const r of rows || []) counts.set(r.tag_id, r.n || 0);
       } catch {}
 
-      // Filter + sort.
-      let items = itemsRaw.map(t => ({ ...t, _count: counts.get(t.id) || 0 }));
-      if (tagCountSpan) tagCountSpan.textContent = itemsRaw.length > 0 ? `(${itemsRaw.length})` : '';
-      if (tagFilterText) items = items.filter(t => t.name.toLowerCase().includes(tagFilterText));
-      const sortValue = tagSortModes[tagSortIdx].value;
-      const cmpName = (a, b) => a.name.localeCompare(b.name);
-      let baseSort;
-      if (sortValue === 'az')         baseSort = cmpName;
-      else if (sortValue === 'za')    baseSort = (a, b) => b.name.localeCompare(a.name);
-      else if (sortValue === 'most')  baseSort = (a, b) => b._count - a._count || cmpName(a, b);
-      else if (sortValue === 'least') baseSort = (a, b) => a._count - b._count || cmpName(a, b);
-      else                            baseSort = cmpName;
-      // Favorites pin to the top regardless of chosen sort (#7).
-      items.sort((a, b) => {
-        const fa = a.favorite ? 1 : 0;
-        const fb = b.favorite ? 1 : 0;
-        if (fa !== fb) return fb - fa;
-        return baseSort(a, b);
-      });
+      // Relation graph (for tree mode). Loaded up-front so all awaits finish
+      // BEFORE any DOM mutation.
+      let rels = [];
+      try { rels = await db.all('SELECT parent_id, child_id FROM mo_tags_relations'); } catch {}
 
-      if (items.length === 0) {
-        tagBody.appendChild(moEl('div', 'mo-empty', { textContent: 'No tags match filter' }));
+      // If a newer loadTags() started while we awaited, abandon this render so
+      // the two don't both append to tagBody (the duplication bug).
+      if (seq !== _tagLoadSeq) return;
+
+      if (tagCountSpan) tagCountSpan.textContent = allRaw.length ? `(${allRaw.length})` : '';
+      if (allRaw.length === 0) {
+        tagBody.innerHTML = '';
+        tagBody.appendChild(moEl('div', 'mo-empty', { textContent: 'No tags created yet' }));
         return;
       }
 
-      for (const tag of items) {
-        tagBody.appendChild(buildTagRow(tag));
+      const tagById = new Map();
+      for (const t of allRaw) tagById.set(t.id, { ...t, _count: counts.get(t.id) || 0 });
+
+      // SEARCH MODE — flat filtered list (the tree is for browsing, not finding).
+      if (tagFilterText) {
+        const matches = sortTags([...tagById.values()].filter(t => t.name.toLowerCase().includes(tagFilterText)));
+        tagBody.innerHTML = '';
+        if (matches.length === 0) {
+          tagBody.appendChild(moEl('div', 'mo-empty', { textContent: 'No tags match filter' }));
+          return;
+        }
+        for (const tag of matches) tagBody.appendChild(buildTagRow(tag, { flat: true }));
+        return;
+      }
+
+      // TREE MODE — build the relation graph.
+      const childrenOf = new Map();  // parentId -> [childId]
+      const parentsOf = new Map();   // childId  -> [parentId]
+      for (const r of rels || []) {
+        if (!childrenOf.has(r.parent_id)) childrenOf.set(r.parent_id, []);
+        childrenOf.get(r.parent_id).push(r.child_id);
+        if (!parentsOf.has(r.child_id)) parentsOf.set(r.child_id, []);
+        parentsOf.get(r.child_id).push(r.parent_id);
+      }
+
+      const childTagsOf = (id, ancestorPath) =>
+        sortTags((childrenOf.get(id) || [])
+          .filter(cid => !ancestorPath.includes(cid))   // cycle guard for corrupt data
+          .map(cid => tagById.get(cid))
+          .filter(Boolean));
+
+      // Collect the rows that will actually render (expand-aware, lazy) so we
+      // only compute counts for what's on screen.
+      const visible = [];
+      const collect = (tagsAtLevel, depth, ancestorPath, immediateParent) => {
+        for (const tag of tagsAtLevel) {
+          const kids = childTagsOf(tag.id, [...ancestorPath, tag.id]);
+          const hasChildren = kids.length > 0;
+          const expanded = _tagExpanded.has(tag.id);
+          visible.push({
+            tag, depth, path: ancestorPath,
+            parentId: immediateParent ? immediateParent.id : null,
+            parentName: immediateParent ? immediateParent.name : null,
+            hasChildren,
+            multiHome: (parentsOf.get(tag.id) || []).length > 1,
+            expanded,
+          });
+          if (hasChildren && expanded) collect(kids, depth + 1, [...ancestorPath, tag.id], tag);
+        }
+      };
+      const roots = sortTags([...tagById.values()].filter(t => !(parentsOf.get(t.id)?.length)));
+      collect(roots, 0, [], null);
+
+      // #5 Per-branch counts — a nested instance shows items matching its whole
+      // branch (Face AND Portrait), not the tag's global usage. Roots reuse the
+      // global count; only visible nested rows trigger a query.
+      const branchCounts = await Promise.all(visible.map((v) => {
+        if (v.path.length === 0) return Promise.resolve(v.tag._count);
+        const ids = [...v.path, v.tag.id];
+        const ph = ids.map(() => '?').join(',');
+        return db.get(
+          `SELECT (SELECT COUNT(*) FROM (SELECT photo_id FROM mo_photos_tags WHERE tag_id IN (${ph}) GROUP BY photo_id HAVING COUNT(DISTINCT tag_id) = ${ids.length}))
+                + (SELECT COUNT(*) FROM (SELECT video_id FROM mo_videos_tags WHERE tag_id IN (${ph}) GROUP BY video_id HAVING COUNT(DISTINCT tag_id) = ${ids.length})) AS n`,
+          [...ids, ...ids]
+        ).then((row) => (row ? (row.n || 0) : 0)).catch(() => v.tag._count);
+      }));
+
+      // A newer load may have started while we computed counts.
+      if (seq !== _tagLoadSeq) return;
+
+      tagBody.innerHTML = '';
+      for (let i = 0; i < visible.length; i++) {
+        const v = visible[i];
+        tagBody.appendChild(buildTagRow(v.tag, {
+          depth: v.depth,
+          path: v.path,
+          parentId: v.parentId,
+          parentName: v.parentName,
+          hasChildren: v.hasChildren,
+          multiHome: v.multiHome,
+          expanded: v.expanded,
+          branchCount: branchCounts[i],
+        }));
       }
     } catch (err) {
+      if (seq !== _tagLoadSeq) return;
       tagBody.innerHTML = '';
       tagBody.appendChild(moEl('div', 'mo-empty', { textContent: 'Could not load tags' }));
     }
@@ -9027,18 +9869,47 @@ function renderBrowserSidebar(container, api) {
 
   // Right-click on a tag row in the sidebar — Rename / Merge / Delete.
   // Uses the already-tested TagQueries primitives.
-  function showTagContextMenu(x, y, tag, usageCount) {
-    showContextMenu(x, y, [
-      { label: tag.favorite ? 'Unmark Favorite' : 'Mark Favorite', handler: async () => {
+  function showTagContextMenu(x, y, tag, usageCount, ctx = {}) {
+    const actions = [];
+    // Nested tags: left-click opens the Branch view (this exact path); the menu
+    // offers the Unique view — every item with this tag, ignoring the branch.
+    if (ctx.parentId != null) {
+      actions.push({ label: `View "${tag.name}" as unique tag`, handler: () => openGrid('tag:' + tag.id, tag.name, 'tag') });
+      actions.push({ separator: true });
+    }
+    actions.push({ label: tag.favorite ? 'Unmark Favorite' : 'Mark Favorite', handler: async () => {
+      try {
+        await TagQueries.update(tag.id, { favorite: !tag.favorite });
+        api.statusBar?.setMessage?.(tag.favorite ? `Unfavorited "${tag.name}"` : `Favorited "${tag.name}"`, 2000);
+        _notifySidebarRefresh();
+      } catch (err) {
+        api.window.showErrorMessage('Favorite toggle failed: ' + (err && err.message ? err.message : String(err)));
+      }
+    }});
+    // Hierarchy ops \u2014 only in tree mode, where we know this instance's parent.
+    if (ctx.parentId != null) {
+      actions.push({ separator: true });
+      actions.push({ label: `Remove from "${ctx.parentName || 'parent'}"`, handler: async () => {
         try {
-          await TagQueries.update(tag.id, { favorite: !tag.favorite });
-          api.statusBar?.setMessage?.(tag.favorite ? `Unfavorited "${tag.name}"` : `Favorited "${tag.name}"`, 2000);
+          await TagQueries.removeParent(tag.id, ctx.parentId);
+          api.statusBar?.setMessage?.(`Removed "${tag.name}" from "${ctx.parentName || 'parent'}"`, 2500);
           _notifySidebarRefresh();
         } catch (err) {
-          api.window.showErrorMessage('Favorite toggle failed: ' + (err && err.message ? err.message : String(err)));
+          api.window.showErrorMessage('Failed: ' + (err && err.message ? err.message : String(err)));
         }
-      }},
-      { separator: true },
+      }});
+      actions.push({ label: 'Move to top level', handler: async () => {
+        try {
+          await db.run('DELETE FROM mo_tags_relations WHERE child_id = ?', [tag.id]);
+          api.statusBar?.setMessage?.(`"${tag.name}" moved to top level`, 2500);
+          _notifySidebarRefresh();
+        } catch (err) {
+          api.window.showErrorMessage('Failed: ' + (err && err.message ? err.message : String(err)));
+        }
+      }});
+    }
+    actions.push({ separator: true });
+    actions.push(
       { label: 'Rename\u2026', handler: async () => {
         const next = await api.window.showInputBox({
           prompt: `Rename tag "${tag.name}"`,
@@ -9112,7 +9983,8 @@ function renderBrowserSidebar(container, api) {
           api.window.showErrorMessage('Delete failed: ' + (err && err.message ? err.message : String(err)));
         }
       }},
-    ]);
+    );
+    showContextMenu(x, y, actions);
   }
 
   // Albums section (D8)
@@ -9393,6 +10265,22 @@ function renderBrowserSidebar(container, api) {
   loadTags();
   loadAlbums();
 
+  // Apply the section layout immediately (defaults — no flash), then hydrate
+  // persisted weights/collapsed state and re-apply.
+  applySidebarLayout();
+  initSidebarLayout();
+
+  // ── Footer: keyboard shortcuts cheat sheet ────────────────────────────────
+  const footer = moEl('div', 'mo-sidebar-footer');
+  const helpBtn = moEl('button', 'mo-sidebar-help-btn', {
+    type: 'button',
+    title: 'Keyboard shortcuts (?)',
+    innerHTML: `${moIcon('keyboard', 13)}<span>Keyboard shortcuts</span>`,
+  });
+  helpBtn.addEventListener('click', () => moShowShortcutsCheatSheet());
+  footer.appendChild(helpBtn);
+  root.appendChild(footer);
+
   // Register for refresh after scan completes
   const refreshAll = () => { loadFolders(); loadTags(); loadAlbums(); };
   _sidebarRefreshCallbacks.push(refreshAll);
@@ -9418,7 +10306,15 @@ function renderGridBrowser(container, api, input) {
   const instanceId = (input && input.id) || 'grid:all';
   const parts = instanceId.replace(/^grid:/, '').split(':');
   const filterType = parts[0] || 'all';
-  const filterId = parts[1] ? parseInt(parts[1], 10) : null;
+  // For tags, parts[1] may be a dash-joined branch path (e.g. "5-12" = Face ›
+  // Portrait). The leaf (last id) is the filterId used for labels; the full
+  // path drives Branch-view filtering.
+  let filterTagPath = null;
+  let filterId = parts[1] ? parseInt(parts[1], 10) : null;
+  if (filterType === 'tag' && parts[1]) {
+    filterTagPath = parts[1].split('-').map((s) => parseInt(s, 10)).filter(Number.isFinite);
+    if (filterTagPath.length) filterId = filterTagPath[filterTagPath.length - 1];
+  }
 
   // Restore session state if available for this grid instance
   const cached = _sessionGridState.get(instanceId);
@@ -9428,6 +10324,7 @@ function renderGridBrowser(container, api, input) {
     zoomWidth: _sessionZoomWidth,
     sortBy: cached?.sortBy ?? 'created_at',
     sortDir: cached?.sortDir ?? 'DESC',
+    groupBy: cached?.groupBy ?? _sessionGroupBy,
     mediaType: cached?.mediaType ?? ((filterType === 'photos' || filterType === 'videos') ? filterType : 'all'),
     displayMode: cached?.displayMode ?? 'grid',
     totalCount: 0,
@@ -9440,6 +10337,7 @@ function renderGridBrowser(container, api, input) {
       tagIds: [],
       excludeTagIds: [],
       tagDepth: 0,
+      tagMatch: 'and', // 'and' = has ALL selected tags, 'or' = has ANY
       ratingMin: null,
       dateFrom: null,
       dateTo: null,
@@ -9457,6 +10355,7 @@ function renderGridBrowser(container, api, input) {
       perPage: state.perPage,
       sortBy: state.sortBy,
       sortDir: state.sortDir,
+      groupBy: state.groupBy,
       mediaType: state.mediaType,
       displayMode: state.displayMode,
       scrollTop: _lastScrollTop,
@@ -9464,6 +10363,7 @@ function renderGridBrowser(container, api, input) {
         tagIds: [...state.filters.tagIds],
         excludeTagIds: [...state.filters.excludeTagIds],
         tagDepth: state.filters.tagDepth,
+        tagMatch: state.filters.tagMatch,
         ratingMin: state.filters.ratingMin,
         dateFrom: state.filters.dateFrom,
         dateTo: state.filters.dateTo,
@@ -9499,6 +10399,66 @@ function renderGridBrowser(container, api, input) {
   });
   toolbar.appendChild(searchInput);
 
+  // #5 Search-operator help — a "?" button next to the search opens a popover
+  // documenting tag:/rating:/folder:/taken:/type: with click-to-insert examples.
+  const searchHelpBtn = moEl('button', 'mo-toolbar-btn mo-search-help-btn', { type: 'button', title: 'Search syntax' });
+  searchHelpBtn.innerHTML = moIcon('circle-help', 12);
+  searchHelpBtn.setAttribute('aria-label', 'Search syntax help');
+  toolbar.appendChild(searchHelpBtn);
+  let _searchHelpPopover = null;
+  const _searchHelpOutside = (e) => {
+    if (_searchHelpPopover && !_searchHelpPopover.contains(e.target) && !searchHelpBtn.contains(e.target)) dismissSearchHelp();
+  };
+  const _searchHelpKey = (e) => { if (e.key === 'Escape') dismissSearchHelp(); };
+  function dismissSearchHelp() {
+    if (_searchHelpPopover) { _searchHelpPopover.remove(); _searchHelpPopover = null; }
+    document.removeEventListener('mousedown', _searchHelpOutside, true);
+    document.removeEventListener('keydown', _searchHelpKey, true);
+  }
+  function toggleSearchHelp() {
+    if (_searchHelpPopover) { dismissSearchHelp(); return; }
+    const rows = [
+      { op: 'tag:beach', desc: 'Has the tag “beach”' },
+      { op: '-tag:blurry', desc: 'Excludes a tag' },
+      { op: 'rating:>=4', desc: 'Rating at least 4 (or rating:3..5)' },
+      { op: 'folder:vacation', desc: 'In a folder matching the term' },
+      { op: 'taken:2024-06', desc: 'Taken in a year or month' },
+      { op: 'type:video', desc: 'Only photos or only videos' },
+    ];
+    const pop = moEl('div', 'mo-search-help-popover');
+    pop.appendChild(moEl('div', 'mo-search-help-title', { textContent: 'Search operators' }));
+    pop.appendChild(moEl('div', 'mo-search-help-note', { textContent: 'Plain text searches titles, tags, folders & filenames. Combine operators freely — click one to insert it.' }));
+    const list = moEl('div', 'mo-search-help-list');
+    for (const r of rows) {
+      const row = moEl('div', 'mo-search-help-row');
+      const op = moEl('button', 'mo-search-help-op', { type: 'button', textContent: r.op, title: 'Insert into search' });
+      op.addEventListener('click', () => {
+        const cur = searchInput.value.trim();
+        searchInput.value = (cur ? cur + ' ' : '') + r.op;
+        searchInput.focus();
+        state.currentPage = 1; loadPage();
+        dismissSearchHelp();
+      });
+      row.appendChild(op);
+      row.appendChild(moEl('span', 'mo-search-help-desc', { textContent: r.desc }));
+      list.appendChild(row);
+    }
+    pop.appendChild(list);
+    const ex = moEl('div', 'mo-search-help-example');
+    ex.appendChild(moEl('span', null, { textContent: 'Example: ' }));
+    ex.appendChild(moEl('code', null, { textContent: 'cat tag:beach rating:>=4' }));
+    pop.appendChild(ex);
+
+    document.body.appendChild(pop);
+    const r = searchHelpBtn.getBoundingClientRect();
+    pop.style.top = (r.bottom + 4) + 'px';
+    pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - pop.offsetWidth - 8)) + 'px';
+    _searchHelpPopover = pop;
+    document.addEventListener('mousedown', _searchHelpOutside, true);
+    document.addEventListener('keydown', _searchHelpKey, true);
+  }
+  searchHelpBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleSearchHelp(); });
+
   // Sort controls
   const sortGroup = moEl('div', 'mo-toolbar-group');
   const sortDropdown = moDropdown({
@@ -9518,6 +10478,22 @@ function renderGridBrowser(container, api, input) {
   sortDirBtn.setAttribute('aria-label', 'Sort direction');
   sortGroup.appendChild(sortDirBtn);
   toolbar.appendChild(sortGroup);
+
+  // #1 Group control — None / Date. When grouping by date, the grid shows
+  // sticky day headers and the query orders by COALESCE(taken_at, created_at)
+  // so groups are contiguous regardless of the sort column.
+  const groupGroup = moEl('div', 'mo-toolbar-group');
+  groupGroup.appendChild(moEl('span', 'mo-toolbar-label', { textContent: 'Group' }));
+  const groupDropdown = moDropdown({
+    items: [
+      { value: 'none', label: 'None' },
+      { value: 'date', label: 'Date' },
+    ],
+    selected: state.groupBy,
+    ariaLabel: 'Group by',
+  });
+  groupGroup.appendChild(groupDropdown.el);
+  toolbar.appendChild(groupGroup);
 
   // Zoom slider
   const zoomGroup = moEl('div', 'mo-toolbar-group');
@@ -9645,7 +10621,13 @@ function renderGridBrowser(container, api, input) {
       else if (filterType === 'recent') instanceLabel = 'Recent';
       else if (filterType === 'duplicates') instanceLabel = 'Duplicates';
       else if (filterType === 'trash') instanceLabel = 'Trash';
-      else if (filterType === 'tag' && filterId != null) instanceLabel = `Tag: ${tagMap.get(filterId) || `#${filterId}`}`;
+      else if (filterType === 'tag' && filterId != null) {
+        // Branch view shows the whole path (Face › Portrait) so it's clear the
+        // grid is "Face's portraits", not every portrait; Unique shows the leaf.
+        instanceLabel = (filterTagPath && filterTagPath.length > 1)
+          ? 'Tag: ' + filterTagPath.map((id) => tagMap.get(id) || `#${id}`).join(' › ')
+          : `Tag: ${tagMap.get(filterId) || `#${filterId}`}`;
+      }
       else if (filterType === 'folder' && filterId != null) instanceLabel = `Folder #${filterId}`;
       if (instanceLabel) mkChip(instanceLabel, null);
     }
@@ -9654,14 +10636,14 @@ function renderGridBrowser(container, api, input) {
       const name = tagMap.get(id) || `#${id}`;
       mkChip(`Tag: ${name}`, () => {
         state.filters.tagIds = state.filters.tagIds.filter(i => i !== id);
-        renderTagPills(); refreshTagDropdown(); state.currentPage = 1; loadPage();
+        _afterFilterChange();
       });
     }
     for (const id of state.filters.excludeTagIds) {
       const name = tagMap.get(id) || `#${id}`;
       mkChip(`Not: ${name}`, () => {
         state.filters.excludeTagIds = state.filters.excludeTagIds.filter(i => i !== id);
-        renderTagPills(); refreshTagDropdown(); state.currentPage = 1; loadPage();
+        _afterFilterChange();
       });
     }
     if (state.filters.ratingMin != null) {
@@ -9710,39 +10692,39 @@ function renderGridBrowser(container, api, input) {
   filterPanel.style.display = 'none';
   root.appendChild(filterPanel);
 
-  // -- Tag filter section --
+  // -- Tag filter section: a fast searchable picker --
+  // Type to filter, left-click a tag to include, right-click to exclude.
+  // Tags match as UNIQUE (leaf) by default; "Include sub-tags" pulls in
+  // descendants. The active include/exclude summary lives in the top chip bar.
   const tagSection = moEl('div', 'mo-filter-section mo-filter-section-tags');
-  tagSection.appendChild(moEl('div', 'mo-filter-section-label', { textContent: 'Tags' }));
-
-  const tagIncludeRow = moEl('div', 'mo-filter-tag-row');
-  tagIncludeRow.appendChild(moEl('span', 'mo-filter-row-label', { textContent: 'Include' }));
-  const tagIncludePills = moEl('div', 'mo-filter-pills');
-  tagIncludeRow.appendChild(tagIncludePills);
-  tagSection.appendChild(tagIncludeRow);
-
-  const tagExcludeRow = moEl('div', 'mo-filter-tag-row');
-  tagExcludeRow.appendChild(moEl('span', 'mo-filter-row-label', { textContent: 'Exclude' }));
-  const tagExcludePills = moEl('div', 'mo-filter-pills');
-  tagExcludeRow.appendChild(tagExcludePills);
-  tagSection.appendChild(tagExcludeRow);
-
-  const tagAddRow = moEl('div', 'mo-filter-tag-row');
-  const tagAddDropdown = moDropdown({
-    items: [],
-    placeholder: '+ Add tag...',
-    ariaLabel: 'Add tag filter',
-  });
-  tagAddRow.appendChild(tagAddDropdown.el);
-  const tagAddExcludeBtn = moEl('button', 'mo-toolbar-btn', { textContent: 'Exclude', title: 'Add as excluded tag' });
-  tagAddExcludeBtn.setAttribute('aria-label', 'Exclude selected tag');
-  tagAddRow.appendChild(tagAddExcludeBtn);
+  const tagHeaderRow = moEl('div', 'mo-filter-tag-row');
+  tagHeaderRow.appendChild(moEl('div', 'mo-filter-section-label', { textContent: 'Tags' }));
+  // All/Any (AND/OR) toggle — applies to the included tags.
+  const tagMatchWrap = moEl('div', 'mo-tagmatch');
+  tagMatchWrap.appendChild(moEl('span', 'mo-tagmatch-label', { textContent: 'Match' }));
+  const tagMatchAnd = moEl('button', 'mo-tagmatch-btn', { type: 'button', textContent: 'All' });
+  tagMatchAnd.title = 'Show items that have ALL selected tags (AND)';
+  const tagMatchOr = moEl('button', 'mo-tagmatch-btn', { type: 'button', textContent: 'Any' });
+  tagMatchOr.title = 'Show items that have ANY selected tag (OR)';
+  const tagMatchGroup = moEl('div', 'mo-tagmatch-group');
+  tagMatchGroup.appendChild(tagMatchAnd);
+  tagMatchGroup.appendChild(tagMatchOr);
+  tagMatchWrap.appendChild(tagMatchGroup);
+  tagHeaderRow.appendChild(tagMatchWrap);
   const tagDepthCb = moEl('input', null, { type: 'checkbox' });
   tagDepthCb.setAttribute('aria-label', 'Include sub-tags');
   const tagDepthLabel = moEl('label', 'mo-filter-depth-label');
   tagDepthLabel.appendChild(tagDepthCb);
   tagDepthLabel.appendChild(document.createTextNode(' Include sub-tags'));
-  tagAddRow.appendChild(tagDepthLabel);
-  tagSection.appendChild(tagAddRow);
+  tagHeaderRow.appendChild(tagDepthLabel);
+  tagSection.appendChild(tagHeaderRow);
+
+  const tagPickerSearch = moEl('input', 'mo-tagpick-search', { type: 'text', placeholder: 'Type to filter tags…' });
+  tagPickerSearch.setAttribute('aria-label', 'Filter tags');
+  tagSection.appendChild(tagPickerSearch);
+  tagSection.appendChild(moEl('div', 'mo-tagpick-hint', { textContent: 'Click to include · right-click to exclude' }));
+  const tagChipList = moEl('div', 'mo-tagpick-list');
+  tagSection.appendChild(tagChipList);
   filterPanel.appendChild(tagSection);
 
   // -- Rating filter section --
@@ -9793,69 +10775,58 @@ function renderGridBrowser(container, api, input) {
     return _filterTagCache;
   }
 
-  function refreshTagDropdown() {
-    const usedIds = new Set([...state.filters.tagIds, ...state.filters.excludeTagIds]);
-    const items = [];
-    if (_filterTagCache) {
-      for (const tag of _filterTagCache) {
-        if (!usedIds.has(tag.id)) {
-          items.push({ value: String(tag.id), label: tag.name });
-        }
-      }
+  // Render the searchable tag chips. Active tags (include/exclude) sort to the
+  // front and are colour-coded; the rest follow alphabetically, filtered by the
+  // search box.
+  function renderTagChips() {
+    if (!tagChipList) return;
+    tagChipList.innerHTML = '';
+    if (!_filterTagCache) return;
+    const filter = (tagPickerSearch.value || '').trim().toLowerCase();
+    const inc = new Set(state.filters.tagIds);
+    const exc = new Set(state.filters.excludeTagIds);
+    const matches = _filterTagCache.filter((t) => !filter || t.name.toLowerCase().includes(filter));
+    matches.sort((a, b) => {
+      const aA = inc.has(a.id) || exc.has(a.id), bA = inc.has(b.id) || exc.has(b.id);
+      if (aA !== bA) return aA ? -1 : 1;
+      return String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' });
+    });
+    if (matches.length === 0) {
+      tagChipList.appendChild(moEl('span', 'mo-filter-empty', { textContent: filter ? 'No tags match' : 'No tags yet' }));
+      return;
     }
-    tagAddDropdown.setItems(items);
-    tagAddDropdown.setValue('');
+    for (const tag of matches) {
+      const mode = inc.has(tag.id) ? 'inc' : (exc.has(tag.id) ? 'exc' : 'off');
+      const chip = moEl('button', 'mo-tagpick-chip' + (mode === 'inc' ? ' is-inc' : mode === 'exc' ? ' is-exc' : ''), { type: 'button' });
+      chip.textContent = tag.name;
+      chip.title = `${tag.name} \u2014 click to include, right-click to exclude`;
+      chip.setAttribute('aria-label', `${tag.name}, ${mode === 'inc' ? 'included' : mode === 'exc' ? 'excluded' : 'not filtered'}`);
+      chip.addEventListener('click', () => toggleTagFilter(tag.id, 'inc'));
+      chip.addEventListener('contextmenu', (e) => { e.preventDefault(); toggleTagFilter(tag.id, 'exc'); });
+      tagChipList.appendChild(chip);
+    }
   }
 
-  function renderTagPills() {
-    tagIncludePills.innerHTML = '';
-    tagExcludePills.innerHTML = '';
-    if (!_filterTagCache) return;
-    const tagMap = new Map(_filterTagCache.map((t) => [t.id, t.name]));
-    for (const id of state.filters.tagIds) {
-      const pill = moEl('span', 'mo-tag-pill');
-      const tagName = tagMap.get(id) || `Tag ${id}`;
-      pill.textContent = tagName;
-      const removeBtn = moEl('span', 'mo-tag-pill-remove', { textContent: '\u00D7' });
-      removeBtn.setAttribute('role', 'button');
-      removeBtn.setAttribute('tabindex', '0');
-      removeBtn.setAttribute('aria-label', `Remove tag ${tagName}`);
-      removeBtn.addEventListener('click', () => {
-        state.filters.tagIds = state.filters.tagIds.filter((tid) => tid !== id);
-        renderTagPills(); refreshTagDropdown();
-        state.currentPage = 1; loadPage();
-      });
-      removeBtn.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); removeBtn.click(); } });
-      pill.appendChild(removeBtn);
-      tagIncludePills.appendChild(pill);
-    }
-    for (const id of state.filters.excludeTagIds) {
-      const pill = moEl('span', 'mo-tag-pill exclude');
-      const tagName = tagMap.get(id) || `Tag ${id}`;
-      pill.textContent = tagName;
-      const removeBtn = moEl('span', 'mo-tag-pill-remove', { textContent: '\u00D7' });
-      removeBtn.setAttribute('role', 'button');
-      removeBtn.setAttribute('tabindex', '0');
-      removeBtn.setAttribute('aria-label', `Remove tag ${tagName}`);
-      removeBtn.addEventListener('click', () => {
-        state.filters.excludeTagIds = state.filters.excludeTagIds.filter((tid) => tid !== id);
-        renderTagPills(); refreshTagDropdown();
-        state.currentPage = 1; loadPage();
-      });
-      removeBtn.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); removeBtn.click(); } });
-      pill.appendChild(removeBtn);
-      tagExcludePills.appendChild(pill);
-    }
-    if (state.filters.tagIds.length === 0) {
-      tagIncludeRow.style.display = 'none';
-    } else {
-      tagIncludeRow.style.display = '';
-    }
-    if (state.filters.excludeTagIds.length === 0) {
-      tagExcludeRow.style.display = 'none';
-    } else {
-      tagExcludeRow.style.display = '';
-    }
+  // Left-click cycles include on/off; right-click cycles exclude on/off. The two
+  // are mutually exclusive for a given tag.
+  function toggleTagFilter(id, mode) {
+    const wasInc = state.filters.tagIds.includes(id);
+    const wasExc = state.filters.excludeTagIds.includes(id);
+    const inc = state.filters.tagIds.filter((i) => i !== id);
+    const exc = state.filters.excludeTagIds.filter((i) => i !== id);
+    if (mode === 'inc' && !wasInc) inc.push(id);   // off/exclude \u2192 include
+    if (mode === 'exc' && !wasExc) exc.push(id);   // off/include \u2192 exclude
+    state.filters.tagIds = inc;
+    state.filters.excludeTagIds = exc;
+    _afterFilterChange();
+  }
+
+  // Re-render the picker + the top chip-bar summary, then reload from page 1.
+  function _afterFilterChange() {
+    renderTagChips();
+    updateFilterBadge();
+    state.currentPage = 1;
+    loadPage();
   }
 
   function updateStarBar() {
@@ -9875,27 +10846,29 @@ function renderGridBrowser(container, api, input) {
     filterPanel.style.display = visible ? 'none' : 'flex';
     filterToggleBtn.classList.toggle('active', !visible);
     if (!visible) {
-      loadFilterTags().then(() => { refreshTagDropdown(); renderTagPills(); });
+      _filterTagCache = null; // refresh so newly-created/renamed tags appear
+      loadFilterTags().then(() => { renderTagChips(); try { tagPickerSearch.focus(); } catch { /* ignore */ } });
     }
   });
 
-  tagAddDropdown.onChange = (value) => {
-    const tagId = parseInt(value, 10);
-    if (!tagId || state.filters.tagIds.includes(tagId)) return;
-    state.filters.tagIds.push(tagId);
-    tagAddDropdown.setValue('');
-    renderTagPills(); refreshTagDropdown();
-    state.currentPage = 1; loadPage();
-  };
+  tagPickerSearch.addEventListener('input', () => renderTagChips());
 
-  tagAddExcludeBtn.addEventListener('click', () => {
-    const tagId = parseInt(tagAddDropdown.getValue(), 10);
-    if (!tagId || state.filters.excludeTagIds.includes(tagId)) return;
-    state.filters.excludeTagIds.push(tagId);
-    tagAddDropdown.setValue('');
-    renderTagPills(); refreshTagDropdown();
+  function updateTagMatchUI() {
+    const isOr = state.filters.tagMatch === 'or';
+    tagMatchAnd.classList.toggle('active', !isOr);
+    tagMatchOr.classList.toggle('active', isOr);
+    tagMatchAnd.setAttribute('aria-pressed', String(!isOr));
+    tagMatchOr.setAttribute('aria-pressed', String(isOr));
+  }
+  function setTagMatch(mode) {
+    if (state.filters.tagMatch === mode) return;
+    state.filters.tagMatch = mode;
+    updateTagMatchUI();
     state.currentPage = 1; loadPage();
-  });
+  }
+  tagMatchAnd.addEventListener('click', () => setTagMatch('and'));
+  tagMatchOr.addEventListener('click', () => setTagMatch('or'));
+  updateTagMatchUI();
 
   tagDepthCb.addEventListener('change', () => {
     state.filters.tagDepth = tagDepthCb.checked ? -1 : 0;
@@ -9926,17 +10899,111 @@ function renderGridBrowser(container, api, input) {
   });
 
   clearFiltersBtn.addEventListener('click', () => {
-    state.filters = { tagIds: [], excludeTagIds: [], tagDepth: 0, ratingMin: null, dateFrom: null, dateTo: null };
+    state.filters = { tagIds: [], excludeTagIds: [], tagDepth: 0, tagMatch: 'and', ratingMin: null, dateFrom: null, dateTo: null };
     tagDepthCb.checked = false;
     dateFrom.value = '';
     dateTo.value = '';
-    updateStarBar(); renderTagPills(); refreshTagDropdown();
+    tagPickerSearch.value = '';
+    updateStarBar(); renderTagChips(); updateTagMatchUI(); updateFilterBadge();
     state.currentPage = 1; loadPage();
   });
 
   // ── refreshOpts helper ──
   function refreshOpts() {
-    return { zoomWidth: state.zoomWidth, displayMode: state.displayMode, selecting: state.selecting, selectedIds: state.selectedIds, focusedIndex: state.focusedIndex, onSelect: handleSelect, onClick: handleCardClick, onDblClick: handleCardOpen };
+    return { zoomWidth: state.zoomWidth, displayMode: state.displayMode, groupBy: state.groupBy, selecting: state.selecting, selectedIds: state.selectedIds, focusedIndex: state.focusedIndex, onSelect: handleSelect, onClick: handleCardClick, onDblClick: handleCardOpen };
+  }
+
+  // Shared tag-chip ordering (#4): cards show stored tags root → leaf by
+  // hierarchy depth. The parent map is refreshed by loadPage; the surgical
+  // tag-applied / rename handlers reuse it so chip order never flips between an
+  // in-place update and a full reload.
+  let _tagParentCache = new Map(); // childId -> [parentId]
+  function _tagAncestorCount(id) {
+    const seen = new Set([id]);
+    const stack = [...(_tagParentCache.get(id) || [])];
+    let n = 0;
+    while (stack.length) {
+      const p = stack.pop();
+      if (seen.has(p)) continue;
+      seen.add(p); n++;
+      for (const gp of (_tagParentCache.get(p) || [])) if (!seen.has(gp)) stack.push(gp);
+    }
+    return n;
+  }
+  function _sortItemTags(tags) {
+    if (!Array.isArray(tags)) return tags;
+    const depth = new Map();
+    for (const t of tags) depth.set(t.id, _tagAncestorCount(t.id));
+    tags.sort((x, y) => (depth.get(x.id) - depth.get(y.id)) ||
+      String(x.name).localeCompare(String(y.name), undefined, { sensitivity: 'base' }));
+    return tags;
+  }
+
+  // #4 Context-aware empty state — replaces the bare "no items" text in the
+  // grid. Distinguishes an empty library (offer Scan), a filtered/searched
+  // view with no matches (offer Clear), and an otherwise-empty view.
+  async function renderEmptyState() {
+    const grid = gridArea.querySelector('.mo-grid');
+    if (!grid) return;
+    const hasQuery = searchInput.value.trim() !== '';
+    const f = state.filters;
+    const hasPanelFilters = (f.tagIds && f.tagIds.length) || (f.excludeTagIds && f.excludeTagIds.length)
+      || f.ratingMin != null || f.dateFrom || f.dateTo;
+    const baseView = !filterType || filterType === 'all' || filterType === 'photos' || filterType === 'videos';
+
+    // Empty library, or just an empty filtered view?
+    let libraryEmpty = false;
+    if (baseView && !hasQuery && !hasPanelFilters) {
+      try {
+        const row = await db.get(
+          `SELECT (SELECT COUNT(*) FROM mo_photos WHERE deleted_at IS NULL)
+                + (SELECT COUNT(*) FROM mo_videos WHERE deleted_at IS NULL) AS n`
+        );
+        libraryEmpty = !row || (row.n || 0) === 0;
+      } catch { libraryEmpty = true; }
+    }
+
+    // Grid may have re-rendered during the await — bail if so.
+    const liveGrid = gridArea.querySelector('.mo-grid');
+    if (!liveGrid || liveGrid.querySelector('.mo-card, .mo-list-row')) return;
+
+    const wrap = moEl('div', 'mo-empty-rich');
+    let iconName, title, sub;
+    const actions = [];
+    if (libraryEmpty) {
+      iconName = 'image';
+      title = 'Your media library is empty';
+      sub = 'Scan a folder of photos and videos to start organizing.';
+      actions.push({ label: 'Scan a Folder…', primary: true, onClick: () => api.commands.executeCommand('media-organizer.scan') });
+    } else if (hasQuery || hasPanelFilters) {
+      iconName = 'search';
+      title = 'No matches';
+      sub = 'No media matches your current search and filters.';
+      actions.push({ label: 'Clear search & filters', primary: true, onClick: () => {
+        searchInput.value = '';
+        state.filters = { tagIds: [], excludeTagIds: [], tagDepth: 0, tagMatch: 'and', ratingMin: null, dateFrom: null, dateTo: null };
+        tagDepthCb.checked = false; dateFrom.value = ''; dateTo.value = ''; tagPickerSearch.value = '';
+        updateStarBar(); renderTagChips(); updateTagMatchUI(); updateFilterBadge();
+        state.currentPage = 1; loadPage();
+      }});
+    } else {
+      iconName = 'inbox';
+      title = 'Nothing here yet';
+      sub = 'This view has no media.';
+    }
+    wrap.appendChild(moEl('div', 'mo-empty-rich-icon', { innerHTML: moIcon(iconName, 40) }));
+    wrap.appendChild(moEl('div', 'mo-empty-rich-title', { textContent: title }));
+    wrap.appendChild(moEl('div', 'mo-empty-rich-sub', { textContent: sub }));
+    if (actions.length) {
+      const actRow = moEl('div', 'mo-empty-rich-actions');
+      for (const a of actions) {
+        const btn = moEl('button', a.primary ? 'mo-btn-primary' : 'mo-btn-secondary', { textContent: a.label });
+        btn.addEventListener('click', a.onClick);
+        actRow.appendChild(btn);
+      }
+      wrap.appendChild(actRow);
+    }
+    liveGrid.replaceChildren(wrap);
   }
 
   // ── Grid area ──
@@ -10024,11 +11091,17 @@ function renderGridBrowser(container, api, input) {
     const tagTable = alias === 'p' ? 'mo_photos_tags' : 'mo_videos_tags';
     const tagFk = alias === 'p' ? 'photo_id' : 'video_id';
 
-    // Tag include via subquery with AND semantics (stash: IncludesAll — media must have ALL included tags)
+    // Tag include via subquery. AND (default): media must have ALL included
+    // tags (HAVING COUNT = N). OR: media with ANY included tag (drop the count).
     if (filters.resolvedTagIds && filters.resolvedTagIds.length > 0) {
       const placeholders = filters.resolvedTagIds.map(() => '?').join(',');
-      where.push(`${alias}.id IN (SELECT ${tagFk} FROM ${tagTable} WHERE tag_id IN (${placeholders}) GROUP BY ${tagFk} HAVING COUNT(DISTINCT tag_id) = ?)`);
-      params.push(...filters.resolvedTagIds, filters.resolvedTagIds.length);
+      if (filters.tagMatch === 'or') {
+        where.push(`${alias}.id IN (SELECT ${tagFk} FROM ${tagTable} WHERE tag_id IN (${placeholders}))`);
+        params.push(...filters.resolvedTagIds);
+      } else {
+        where.push(`${alias}.id IN (SELECT ${tagFk} FROM ${tagTable} WHERE tag_id IN (${placeholders}) GROUP BY ${tagFk} HAVING COUNT(DISTINCT tag_id) = ?)`);
+        params.push(...filters.resolvedTagIds, filters.resolvedTagIds.length);
+      }
     }
 
     // Tag exclude via subquery
@@ -10088,10 +11161,16 @@ function renderGridBrowser(container, api, input) {
       videoJoinParts.push(` JOIN mo_videos_files vf ON vf.video_id = v.id JOIN mo_files f2 ON f2.id = vf.file_id`);
       videoWhere.push('f2.folder_id = ?'); videoParams.push(filterId);
     } else if (filterType === 'tag' && filterId) {
-      photoJoinParts.push(` JOIN mo_photos_tags pt ON pt.photo_id = p.id`);
-      photoWhere.push('pt.tag_id = ?'); photoParams.push(filterId);
-      videoJoinParts.push(` JOIN mo_videos_tags vt ON vt.video_id = v.id`);
-      videoWhere.push('vt.tag_id = ?'); videoParams.push(filterId);
+      // Branch view passes the full path (AND each tag → must have all of them);
+      // Unique view passes just the leaf (one EXISTS). One EXISTS per tag so a
+      // card is never row-duplicated.
+      const tagIds = (filters && Array.isArray(filters.instanceTagIds) && filters.instanceTagIds.length) ? filters.instanceTagIds : [filterId];
+      for (const tid of tagIds) {
+        photoWhere.push(`EXISTS (SELECT 1 FROM mo_photos_tags pt WHERE pt.photo_id = p.id AND pt.tag_id = ?)`);
+        photoParams.push(tid);
+        videoWhere.push(`EXISTS (SELECT 1 FROM mo_videos_tags vt WHERE vt.video_id = v.id AND vt.tag_id = ?)`);
+        videoParams.push(tid);
+      }
     } else if (filterType === 'favorites') {
       photoWhere.push('p.rating >= 5'); videoWhere.push('v.rating >= 5');
     } else if (filterType === 'untagged') {
@@ -10146,7 +11225,12 @@ function renderGridBrowser(container, api, input) {
 
     const photoModTime = needsFileSort ? `, ${photoFileAlias}.mod_time AS file_mod_time` : '';
     const videoModTime = needsFileSort ? `, ${videoFileAlias}.mod_time AS file_mod_time` : '';
-    const effectiveSort = safeColumn === 'file_mod_time' ? 'file_mod_time' : safeColumn;
+    // When grouping by date, order by the same key the grid groups on
+    // (COALESCE(taken_at, created_at)) so day-groups are contiguous regardless
+    // of the sort column. Both columns exist in the unified result.
+    const effectiveSort = state.groupBy === 'date'
+      ? 'COALESCE(taken_at, created_at)'
+      : (safeColumn === 'file_mod_time' ? 'file_mod_time' : safeColumn);
 
     // Correlated size subquery — pulls the primary file's bytes WITHOUT a
     // JOIN (a LEFT JOIN here would risk row multiplication when the WHERE
@@ -10191,10 +11275,14 @@ function renderGridBrowser(container, api, input) {
       joinParts.push(` JOIN ${joinTable} jf ON jf.${joinCol} = ${alias}.id JOIN mo_files f ON f.id = jf.file_id`);
       where.push('f.folder_id = ?'); params.push(filterId);
     } else if (filterType === 'tag' && filterId) {
+      // Branch view: AND each tag in the path. Unique view: just the leaf.
       const tagTable = type === 'photo' ? 'mo_photos_tags' : 'mo_videos_tags';
       const tagCol = type === 'photo' ? 'photo_id' : 'video_id';
-      joinParts.push(` JOIN ${tagTable} jt ON jt.${tagCol} = ${alias}.id`);
-      where.push('jt.tag_id = ?'); params.push(filterId);
+      const tagIds = (filters && Array.isArray(filters.instanceTagIds) && filters.instanceTagIds.length) ? filters.instanceTagIds : [filterId];
+      for (const tid of tagIds) {
+        where.push(`EXISTS (SELECT 1 FROM ${tagTable} jt WHERE jt.${tagCol} = ${alias}.id AND jt.tag_id = ?)`);
+        params.push(tid);
+      }
     } else if (filterType === 'favorites') {
       where.push(`${alias}.rating >= 5`);
     } else if (filterType === 'untagged') {
@@ -10354,6 +11442,7 @@ function renderGridBrowser(container, api, input) {
       ratingMax: parsed.ratingMax,
       dateFrom: parsed.dateFrom || state.filters.dateFrom,
       dateTo: parsed.dateTo || state.filters.dateTo,
+      tagMatch: state.filters.tagMatch || 'and', // AND (has all) vs OR (has any) for included tags
     };
 
     // Merge UI tag filters with parsed tag: operators
@@ -10430,6 +11519,14 @@ function renderGridBrowser(container, api, input) {
     // LIKE fallback when FTS missed — feed leftover free text into title LIKE.
     if (usedLikeFallback && parsed.freeText) {
       fallbackSearchText = parsed.freeText;
+    }
+
+    // The tag click encodes the view: Branch (left-click) passes the whole
+    // path (Face-Portrait → AND, "only Face's portraits"); Unique (right-click
+    // → "View as unique") passes just the leaf ("every Portrait"). The query
+    // ANDs whatever ids are here.
+    if (filterType === 'tag' && filterId) {
+      resolvedFilters.instanceTagIds = (filterTagPath && filterTagPath.length) ? filterTagPath : [filterId];
     }
 
     try {
@@ -10516,9 +11613,23 @@ function renderGridBrowser(container, api, input) {
           arr.push({ id: r.tid, name: r.tname });
         }
       }
+      // A card shows EXACTLY the tags applied to it (the branch you dragged
+      // from) — never auto-derived from the tree, so Fruit › Portrait and
+      // Face › Portrait stay distinct. Refresh the parent cache, then sort each
+      // item's stored tags root → leaf via the shared helper (so a drop's
+      // surgical update and this reload order chips identically).
+      const parentOf = new Map(); // childId -> [parentId]
+      try {
+        const rels = await db.all('SELECT parent_id, child_id FROM mo_tags_relations');
+        for (const r of rels || []) {
+          if (!parentOf.has(r.child_id)) parentOf.set(r.child_id, []);
+          parentOf.get(r.child_id).push(r.parent_id);
+        }
+      } catch {}
+      _tagParentCache = parentOf;
       for (const it of items) {
         const arr = byKey.get(`${it.type}:${it.id}`);
-        if (arr) it.tags = arr;
+        it.tags = arr ? _sortItemTags(arr) : [];
       }
     } catch (err) {
       console.error('[MO-Grid] tag batch load failed:', err);
@@ -10526,6 +11637,10 @@ function renderGridBrowser(container, api, input) {
 
     if (cardGrid) {
       cardGrid.refresh(items, refreshOpts());
+    }
+    // #4 Swap the bare empty text for a context-aware empty / first-run state.
+    if (items.length === 0) {
+      renderEmptyState().catch(() => {});
     }
 
     // Scroll: reset only when filter/sort/page state actually changed.
@@ -10543,6 +11658,7 @@ function renderGridBrowser(container, api, input) {
       p: state.currentPage,
       sb: state.sortBy,
       sd: state.sortDir,
+      gb: state.groupBy,
       mt: state.mediaType,
       f: state.filters,
     });
@@ -10725,9 +11841,7 @@ function renderGridBrowser(container, api, input) {
         if (!it) continue;
         if (!Array.isArray(it.tags)) it.tags = [];
         if (!it.tags.some((tg) => tg.id === tagId)) {
-          it.tags = [...it.tags, { id: tagId, name: tagName }].sort((a, b) =>
-            String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' })
-          );
+          it.tags = _sortItemTags([...it.tags, { id: tagId, name: tagName }]);
         }
       }
       // Surgical per-card update: re-render ONLY the affected cards in place.
@@ -10767,9 +11881,7 @@ function renderGridBrowser(container, api, input) {
         const tg = it.tags.find((t) => t.id === tagId);
         if (tg && tg.name !== newName) {
           tg.name = newName;
-          it.tags = [...it.tags].sort((a, b) =>
-            String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' })
-          );
+          it.tags = _sortItemTags([...it.tags]);
           mutatedKeys.push(`${it.type}:${it.id}`);
         }
       }
@@ -10851,9 +11963,7 @@ function renderGridBrowser(container, api, input) {
       } catch { /* skip — patch will use id as fallback */ }
     }
     const tagIdSet = new Set(tagIds);
-    const sortTags = (arr) => arr.sort((a, b) =>
-      String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' })
-    );
+    const sortTags = (arr) => _sortItemTags(arr); // shared depth-based order (#4)
     for (const key of keys) {
       const it = state.items.find((x) => `${x.type}:${x.id}` === key);
       if (!it) continue;
@@ -10890,6 +12000,14 @@ function renderGridBrowser(container, api, input) {
 
   sortDropdown.onChange = (value) => {
     state.sortBy = value;
+    state.currentPage = 1;
+    loadPage();
+  };
+
+  groupDropdown.onChange = (value) => {
+    state.groupBy = (value === 'date') ? 'date' : 'none';
+    _sessionGroupBy = state.groupBy;
+    moSetSetting('grid_group_by', state.groupBy).catch(() => {});
     state.currentPage = 1;
     loadPage();
   };
@@ -11080,6 +12198,16 @@ function renderGridBrowser(container, api, input) {
     // Skip when focus is in input/textarea/select
     const tag = e.target.tagName;
     const inInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+
+    // ? \u2014 open the keyboard shortcuts cheat sheet (Shift+/)
+    if (e.key === '?' && !inInput) {
+      e.preventDefault();
+      moShowShortcutsCheatSheet();
+      return;
+    }
+    // While the cheat sheet is open it owns the keyboard \u2014 don't let grid
+    // shortcuts fire underneath it (its own handler closes it on Esc).
+    if (_moCheatSheetEl) return;
 
     // Escape \u2014 deselect all (or clear focus)
     if (e.key === 'Escape') {
@@ -11342,12 +12470,68 @@ function renderGridBrowser(container, api, input) {
     }
   }
 
+  // Select every photo visually similar to `item` (across the whole library,
+  // not just this page) so the cluster can be tagged / rated / deleted in one
+  // action. Selection is page-independent — bulk ops act on the keys.
+  async function selectSimilarPhotos(item) {
+    if (!item || item.type !== 'photo') {
+      api.window.showInformationMessage('Select Similar works on photos only.');
+      return;
+    }
+    try { api.statusBar?.setMessage?.('Finding similar photos…', 1500); } catch { /* ignore */ }
+    let ids;
+    try {
+      ids = await moComputeSimilarPhotoIds(item.id, MO_PHASH_SIMILAR_THRESHOLD);
+    } catch (err) {
+      console.warn('[MediaOrganizer] select-similar failed:', err);
+      api.window.showErrorMessage('Select Similar failed: ' + (err && err.message ? err.message : String(err)));
+      return;
+    }
+    if (ids == null) {
+      api.window.showInformationMessage('Could not compute a perceptual hash for this photo (ffmpeg required, or the file is unreadable).');
+      return;
+    }
+    if (ids.length <= 1) {
+      // Distinguish "genuinely unique" from "index not built yet" — otherwise
+      // a fresh library that never ran the indexer always reports no matches.
+      const cov = await db.get(
+        `SELECT (SELECT COUNT(*) FROM mo_image_files WHERE phash IS NOT NULL) AS hashed,
+                (SELECT COUNT(*) FROM mo_image_files) AS total`
+      );
+      if (cov && cov.total > 1 && (cov.hashed || 0) <= 1) {
+        const pick = await api.window.showInformationMessage(
+          'No perceptual hashes have been built yet, so there is nothing to compare against. Build them now?',
+          { title: 'Build Hashes' }, { title: 'Cancel' }
+        );
+        if (pick && pick.title === 'Build Hashes') {
+          api.commands.executeCommand('media-organizer.buildPHashes');
+        }
+        return;
+      }
+    }
+
+    state.selectedIds = new Set(ids.map((id) => 'photo:' + id));
+    const fi = state.items.findIndex((it) => it.type === 'photo' && it.id === item.id);
+    state.focusedIndex = fi >= 0 ? fi : null;
+    applySelectionChange();
+
+    const onPage = ids.filter((id) => state.items.some((it) => it.type === 'photo' && it.id === id)).length;
+    const offPage = ids.length - onPage;
+    const msg = ids.length <= 1
+      ? 'No other visually similar photos found.'
+      : `Selected ${ids.length} similar photos` + (offPage > 0 ? ` (${onPage} on this page, ${offPage} on other pages).` : '.');
+    api.window.showInformationMessage(msg);
+  }
+
   function buildContextMenuActions(item, isMulti) {
     const actions = [];
     if (!isMulti) {
       // Single-item actions
       actions.push({ label: 'View Full Size', handler: () => handleCardViewFullSize(item) });
       actions.push({ label: 'Edit Details', handler: () => handleCardOpen(item) });
+      if (item.type === 'photo') {
+        actions.push({ label: 'Select Similar Photos', handler: () => selectSimilarPhotos(item) });
+      }
       actions.push({ separator: true });
       actions.push({ label: 'Tag\u2026', handler: () => {
         const tmpState = { selectedIds: new Set([`${item.type}:${item.id}`]) };
@@ -11507,35 +12691,21 @@ function renderGridBrowser(container, api, input) {
   const rubberBand = moEl('div', 'mo-rubber-band');
   gridArea.appendChild(rubberBand);
   let _drag = null;
+  let _autoScrollRAF = null;
+  let _autoScrollV = 0;
 
   function rectsOverlap(a, b) {
     return !(a.right < b.left || a.left > b.right || a.bottom < b.top || a.top > b.bottom);
   }
 
-  gridArea.addEventListener('pointerdown', (e) => {
-    // Only left button, only on grid background (not on a card/row/checkbox)
-    if (e.button !== 0) return;
-    const target = e.target;
-    if (target.closest('.mo-card, .mo-list-row, .mo-card-select, .mo-list-select, button, input, select, a')) return;
-
-    e.preventDefault();
-    const rect = gridArea.getBoundingClientRect();
-    const startX = e.clientX - rect.left + gridArea.scrollLeft;
-    const startY = e.clientY - rect.top + gridArea.scrollTop;
-    _drag = { startX, startY, rect, active: false };
-
-    // Save pre-drag selection for additive mode (Ctrl held)
-    _drag.additive = e.ctrlKey || e.metaKey;
-    _drag.priorSelection = _drag.additive ? new Set(state.selectedIds) : new Set();
-
-    gridArea.setPointerCapture(e.pointerId);
-  });
-
-  gridArea.addEventListener('pointermove', (e) => {
+  // Recompute the rubber band rect + selection for a pointer position.
+  // clientX/clientY are viewport coords; converted into gridArea content space
+  // (scroll offset included) so the band keeps growing while we auto-scroll.
+  function updateMarquee(clientX, clientY) {
     if (!_drag) return;
     const rect = _drag.rect;
-    const curX = e.clientX - rect.left + gridArea.scrollLeft;
-    const curY = e.clientY - rect.top + gridArea.scrollTop;
+    const curX = clientX - rect.left + gridArea.scrollLeft;
+    const curY = clientY - rect.top + gridArea.scrollTop;
 
     // Start showing rubber band after 4px of movement
     if (!_drag.active) {
@@ -11560,21 +12730,13 @@ function renderGridBrowser(container, api, input) {
     const newSelection = new Set(_drag.priorSelection);
     const grid = gridArea.querySelector('.mo-grid');
     if (grid) {
-      // Use the card's own data-key as the source of truth, NOT a
-      // positional state.items[i] lookup. The state.items array can be
-      // replaced mid-drag by a watcher event, refresh, or re-sort; when
-      // that happens index i no longer matches the mounted card at DOM
-      // position i, and selectedIds ends up populated with keys that
-      // don't correspond to any rendered card — setSelection then can't
-      // find the DOM node and the user sees missing checkmarks (most
-      // visibly on the first card, since that's the one whose
-      // misalignment is closest to the drag origin).
+      // Use the card's own data-key as the source of truth, NOT a positional
+      // state.items[i] lookup — state.items can be replaced mid-drag.
       const cards = grid.querySelectorAll('.mo-card[data-key], .mo-list-row[data-key]');
       for (const cardEl of cards) {
         const key = cardEl.dataset.key;
         if (!key) continue;
         const cr = cardEl.getBoundingClientRect();
-        // Convert card rect to gridArea-relative coords
         const cardRelRect = {
           left: cr.left - rect.left + gridArea.scrollLeft,
           top: cr.top - rect.top + gridArea.scrollTop,
@@ -11591,21 +12753,87 @@ function renderGridBrowser(container, api, input) {
     state.selectedIds = newSelection;
     state.selecting = newSelection.size > 0;
     if (selectionBar) selectionBar.update();
-    // Hot path: marquee fires on every pointermove. cardGrid.refresh() would
-    // tear down and re-render every card DOM node on each frame, which is
-    // why the rubber band felt janky. setSelection() does a Set diff and
-    // only touches the .mo-selected class + checkbox on the cards whose
-    // membership actually flipped this frame — no DOM teardown, no thumbnail
-    // re-resolution, no IntersectionObserver re-attach.
+    // Hot path: setSelection() does a Set diff and only flips the .mo-selected
+    // class + checkbox on cards whose membership changed this frame — no DOM
+    // teardown, no thumbnail re-resolution, no IntersectionObserver re-attach.
     if (cardGrid && typeof cardGrid.setSelection === 'function') {
       cardGrid.setSelection(newSelection, state.selecting);
     } else if (cardGrid) {
       cardGrid.refresh(state.items, refreshOpts());
     }
+  }
+
+  // Edge auto-scroll: when the pointer nears the top/bottom of the visible
+  // grid during a marquee drag, scroll so the selection can extend past the
+  // viewport. Velocity ramps with how deep into the edge zone the pointer is.
+  const _AS_EDGE = 56;     // px hot zone at top & bottom of the grid viewport
+  const _AS_MAX_V = 24;    // px/frame at full penetration
+  function updateAutoScroll(clientY) {
+    if (!_drag) { stopAutoScroll(); return; }
+    const r = gridArea.getBoundingClientRect();
+    let v = 0;
+    if (clientY < r.top + _AS_EDGE) {
+      v = -_AS_MAX_V * Math.min(1, (r.top + _AS_EDGE - clientY) / _AS_EDGE);
+    } else if (clientY > r.bottom - _AS_EDGE) {
+      v = _AS_MAX_V * Math.min(1, (clientY - (r.bottom - _AS_EDGE)) / _AS_EDGE);
+    }
+    _autoScrollV = v;
+    if (v !== 0) startAutoScroll();
+    else stopAutoScroll();
+  }
+  function startAutoScroll() {
+    if (_autoScrollRAF != null) return;
+    const step = () => {
+      if (!_drag || _autoScrollV === 0) { _autoScrollRAF = null; return; }
+      const before = gridArea.scrollTop;
+      const max = gridArea.scrollHeight - gridArea.clientHeight;
+      const next = Math.max(0, Math.min(max, before + _autoScrollV));
+      if (next !== before) {
+        gridArea.scrollTop = next;
+        // Re-run the hit-test at the last known pointer position so the band
+        // sweeps over cards revealed by the scroll even when the pointer is
+        // held still at the edge.
+        updateMarquee(_drag.lastClientX, _drag.lastClientY);
+      }
+      _autoScrollRAF = requestAnimationFrame(step);
+    };
+    _autoScrollRAF = requestAnimationFrame(step);
+  }
+  function stopAutoScroll() {
+    if (_autoScrollRAF != null) { cancelAnimationFrame(_autoScrollRAF); _autoScrollRAF = null; }
+    _autoScrollV = 0;
+  }
+
+  gridArea.addEventListener('pointerdown', (e) => {
+    // Only left button, only on grid background (not on a card/row/checkbox)
+    if (e.button !== 0) return;
+    const target = e.target;
+    if (target.closest('.mo-card, .mo-list-row, .mo-card-select, .mo-list-select, button, input, select, a')) return;
+
+    e.preventDefault();
+    const rect = gridArea.getBoundingClientRect();
+    const startX = e.clientX - rect.left + gridArea.scrollLeft;
+    const startY = e.clientY - rect.top + gridArea.scrollTop;
+    _drag = { startX, startY, rect, active: false, lastClientX: e.clientX, lastClientY: e.clientY };
+
+    // Save pre-drag selection for additive mode (Ctrl held)
+    _drag.additive = e.ctrlKey || e.metaKey;
+    _drag.priorSelection = _drag.additive ? new Set(state.selectedIds) : new Set();
+
+    gridArea.setPointerCapture(e.pointerId);
+  });
+
+  gridArea.addEventListener('pointermove', (e) => {
+    if (!_drag) return;
+    _drag.lastClientX = e.clientX;
+    _drag.lastClientY = e.clientY;
+    updateMarquee(e.clientX, e.clientY);
+    updateAutoScroll(e.clientY);
   });
 
   function endDrag() {
     if (!_drag) return;
+    stopAutoScroll();
     rubberBand.style.display = 'none';
     _drag = null;
   }
@@ -11667,6 +12895,10 @@ function renderGridBrowser(container, api, input) {
       // _lastScrollTop and the cached _sessionGridState entry, snapping the
       // grid to the top on the next remount.
       _disposing = true;
+      // Cancel any in-flight marquee auto-scroll RAF so a mid-drag teardown
+      // can't leave the loop running against a detached grid.
+      stopAutoScroll();
+      dismissSearchHelp();
       clearTimeout(searchTimer);
       // Flush pending debounced writes so closing the pane immediately after
       // scrolling or moving the zoom slider doesn't lose the final value.
@@ -14450,23 +15682,45 @@ function parseSelectedIds(selectedIds) {
   return { photos, videos };
 }
 
-// Apply a tag to a target set of media keys. Used by drag-tag-onto-card (#6).
-async function moApplyTagToKeys(tagId, keys) {
-  if (!Array.isArray(keys) || keys.length === 0) return 0;
+// Apply a SET of tag ids (the dragged branch's ancestor→leaf chain) to a set
+// of media keys in one transaction. Used by cascade-on-apply (#9): dropping a
+// child tag from the tree onto a card stores Italy + 2024 + Building as real
+// independent tags.
+async function moApplyTagsToKeys(tagIds, keys) {
+  if (!Array.isArray(keys) || keys.length === 0 || !Array.isArray(tagIds) || tagIds.length === 0) return 0;
   const ops = [];
   for (const k of keys) {
     const [type, idStr] = String(k).split(':');
     const id = parseInt(idStr, 10);
     if (!Number.isFinite(id)) continue;
-    if (type === 'photo') {
-      ops.push({ type: 'run', sql: 'INSERT OR IGNORE INTO mo_photos_tags (photo_id, tag_id) VALUES (?, ?)', params: [id, tagId] });
-    } else if (type === 'video') {
-      ops.push({ type: 'run', sql: 'INSERT OR IGNORE INTO mo_videos_tags (video_id, tag_id) VALUES (?, ?)', params: [id, tagId] });
+    for (const tg of tagIds) {
+      const tid = parseInt(tg, 10);
+      if (!Number.isFinite(tid)) continue;
+      if (type === 'photo') {
+        ops.push({ type: 'run', sql: 'INSERT OR IGNORE INTO mo_photos_tags (photo_id, tag_id) VALUES (?, ?)', params: [id, tid] });
+      } else if (type === 'video') {
+        ops.push({ type: 'run', sql: 'INSERT OR IGNORE INTO mo_videos_tags (video_id, tag_id) VALUES (?, ?)', params: [id, tid] });
+      }
     }
   }
   if (ops.length === 0) return 0;
   await db.transaction(ops);
   return keys.length;
+}
+
+// Pull the tag-id chain out of a drag's DataTransfer: prefer the cascade path
+// (ancestor→leaf), fall back to the single tag id.
+function moTagChainFromDrop(dataTransfer) {
+  try {
+    const pathRaw = dataTransfer.getData('application/x-mo-tag-path');
+    if (pathRaw) {
+      const arr = JSON.parse(pathRaw);
+      const ids = (Array.isArray(arr) ? arr : []).map((n) => parseInt(n, 10)).filter(Number.isFinite);
+      if (ids.length) return ids;
+    }
+  } catch { /* fall through */ }
+  const single = parseInt(dataTransfer.getData('application/x-mo-tag'), 10);
+  return Number.isFinite(single) ? [single] : [];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -15190,7 +16444,7 @@ function showCreateTagDialog(api, onComplete) {
   section.appendChild(moEl('label', null, { textContent: 'Names' }));
   const input = moEl('textarea', 'mo-bulk-tag-search', {
     rows: 4,
-    placeholder: 'One tag per line, or comma-separated\u2026',
+    placeholder: 'One tag per line, or comma-separated.\nUse Parent/Child/Grandchild to nest\u2026',
   });
   input.setAttribute('aria-label', 'Tag names');
   // Textarea-friendly sizing alongside the bulk-tag input styling
@@ -15199,7 +16453,7 @@ function showCreateTagDialog(api, onComplete) {
   section.appendChild(input);
 
   const hint = moEl('div', 'mo-bulk-mode-hint', {
-    textContent: 'Enter to create. Shift+Enter for a new line.',
+    textContent: 'Enter to create \u00b7 Shift+Enter for a new line \u00b7 "Italy/2024/Building" nests under Italy \u203a 2024.',
   });
   section.appendChild(hint);
 
@@ -15238,28 +16492,44 @@ function showCreateTagDialog(api, onComplete) {
   });
 
   async function submit() {
-    const names = parseNames();
-    if (names.length === 0) return;
+    const entries = parseNames();
+    if (entries.length === 0) return;
     createBtn.disabled = true;
     cancelBtn.disabled = true;
-    const created = [];
-    const skipped = [];
+    let created = 0;
+    let reused = 0;
     const failed = [];
-    for (const name of names) {
+    // Each entry may be a "Parent/Child/Grandchild" path. Walk it, reusing
+    // existing tags by name and linking parent \u2192 child (globally-unique tags,
+    // multi-parent hierarchy). Cycle/duplicate links are ignored.
+    for (const entry of entries) {
+      const segments = entry.split('/').map((s) => s.trim()).filter(Boolean);
+      if (segments.length === 0) continue;
+      let parentId = null;
       try {
-        await TagQueries.create({ name });
-        created.push(name);
+        for (const seg of segments) {
+          // Case-insensitive reuse so "Italy/2024" and "italy/2024" don't make
+          // two roots — match an existing tag regardless of case.
+          let tag = await db.get('SELECT * FROM mo_tags WHERE name = ? COLLATE NOCASE', [seg]);
+          if (tag && tag.id) {
+            reused++;
+          } else {
+            tag = await TagQueries.create({ name: seg });
+            created++;
+          }
+          if (parentId != null && parentId !== tag.id) {
+            try { await TagQueries.addParent(tag.id, parentId); } catch { /* cycle / already linked */ }
+          }
+          parentId = tag.id;
+        }
       } catch (err) {
-        const msg = err?.message || String(err);
-        if (/duplicate|unique|already/i.test(msg)) skipped.push(name);
-        else failed.push({ name, msg });
+        failed.push({ name: entry, msg: err?.message || String(err) });
       }
     }
     if (failed.length === 0) {
-      // Status bar summary
       const parts = [];
-      if (created.length > 0) parts.push(`Created ${created.length} tag${created.length === 1 ? '' : 's'}`);
-      if (skipped.length > 0) parts.push(`${skipped.length} already existed`);
+      if (created > 0) parts.push(`Created ${created} tag${created === 1 ? '' : 's'}`);
+      if (reused > 0) parts.push(`reused ${reused} existing`);
       api.statusBar?.setMessage?.(parts.join(' \u00b7 ') || 'No tags created', 3000);
       overlay.remove();
       try { onComplete?.(); } catch {}
@@ -15269,17 +16539,12 @@ function showCreateTagDialog(api, onComplete) {
     createBtn.disabled = false;
     cancelBtn.disabled = false;
     const lines = [];
-    if (created.length > 0) lines.push(`Created ${created.length}.`);
-    if (skipped.length > 0) lines.push(`${skipped.length} already existed.`);
+    if (created > 0) lines.push(`Created ${created}.`);
     lines.push(`Failed: ${failed.map((f) => `"${f.name}"`).join(', ')}`);
     statusLine.textContent = lines.join(' ');
     statusLine.style.color = 'var(--vscode-errorForeground, #f48771)';
     statusLine.style.fontStyle = 'normal';
-    // If any tags were created, the sidebar should reflect that even if we
-    // keep the dialog open for the failures.
-    if (created.length > 0) {
-      try { onComplete?.(); } catch {}
-    }
+    if (created > 0) { try { onComplete?.(); } catch {} }
   }
 
   createBtn.addEventListener('click', submit);
@@ -15876,7 +17141,178 @@ async function _moExtractFrame(api, opts) {
 // explicit save step. Cleared per-entry after a successful batch export.
 const _moClipQueueByVideo = new Map();
 
-async function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut) {
+// ═══════════════════════════════════════════════════════════════════════════════
+// SCREEN RECORDER — record a screen region → existing clip/GIF exporter → erase
+// ═══════════════════════════════════════════════════════════════════════════════
+// All temp recordings live INSIDE the workspace and are securely erased after
+// use. ffmpeg runs in the Electron main process (gdigrab) and bypasses the fs
+// gate, so we derive + validate the output path here (never accept arbitrary
+// input) and require a workspace to be open.
+
+const MO_REC_PREFIX = 'rec_';
+
+// Confirm a path is an allowed in-workspace write target via the main-process
+// gate. (Spawned ffmpeg bypasses the fs:* IPC, so this is our containment guard.)
+async function moPathInWorkspace(p) {
+  try {
+    const res = await window.parallxElectron.fs.isInWorkspace(p);
+    return !!(res && res.ok);
+  } catch { return false; }
+}
+
+// The in-workspace recordings dir: .parallx/extensions/media-organizer/recordings
+// (sibling of thumbnails, derived from getThumbDir so it's guaranteed in-workspace).
+// An optional user setting may override it, but only if it validates in-workspace.
+// Returns null when no workspace is open.
+async function moGetRecordingsDir(api) {
+  const thumbDir = getThumbDir(api);
+  if (!thumbDir) return null;
+  const sep = _isWindows ? '\\' : '/';
+  let dir = thumbDir.replace(/[\\/]thumbnails$/i, '') + sep + 'recordings';
+  const override = (_screenRecorderTempDir || '').trim();
+  if (override && await moPathInWorkspace(override)) {
+    dir = override.replace(/[\\/]$/, '');
+  }
+  return dir;
+}
+
+// Entry point — validate everything, then open the framing window.
+async function moStartScreenRecording(api) {
+  if (_moRecordingInFlight) {
+    api.window.showInformationMessage('A screen recording is already in progress.');
+    return;
+  }
+  if (!window.parallxElectron?.recorder?.openFrame) {
+    api.window.showErrorMessage('Screen recorder is not available in this build.');
+    return;
+  }
+  await detectAllTools();
+  if (!_toolPaths.ffmpeg) {
+    api.window.showErrorMessage('ffmpeg not found on PATH — required for screen recording.');
+    return;
+  }
+  const dir = await moGetRecordingsDir(api);
+  if (!dir) {
+    api.window.showWarningMessage('Open a workspace folder first — recordings must be stored inside it.');
+    return;
+  }
+  try { await window.parallxElectron.fs.mkdir(dir); } catch { /* openFrame re-validates */ }
+  const sep = _isWindows ? '\\' : '/';
+  const outputPath = dir + sep + MO_REC_PREFIX + Date.now() + '.mp4';
+  // Final containment gate before handing the path to a spawned process.
+  if (!(await moPathInWorkspace(outputPath))) {
+    api.window.showErrorMessage('Recording path is outside the workspace — aborted to prevent data leakage.');
+    return;
+  }
+  _moRecordingInFlight = true;
+  try {
+    const res = await window.parallxElectron.recorder.openFrame({
+      ffmpegPath: _toolPaths.ffmpeg, outputPath, fps: 30, width: 640, height: 400,
+      audio: _screenRecorderAudio,
+    });
+    if (!res || res.error) {
+      _moRecordingInFlight = false;
+      api.window.showErrorMessage('Could not open the recorder: ' + (res?.error?.message || 'unknown error'));
+      return;
+    }
+    api.statusBar?.setMessage?.('Position the recorder frame, then press Record.', 4000);
+    // _moRecordingInFlight is cleared in moOnRecordingComplete.
+  } catch (err) {
+    _moRecordingInFlight = false;
+    api.window.showErrorMessage('Recorder failed: ' + (err && err.message ? err.message : String(err)));
+  }
+}
+
+// Fired by the host when a recording finishes/cancels.
+async function moOnRecordingComplete(api, payload) {
+  _moRecordingInFlight = false;
+  const recPath = payload && payload.path;
+  if (!payload || payload.cancelled || !payload.ok || !recPath) {
+    if (recPath) moSecureEraseRecording(api, recPath); // erase any partial
+    return;
+  }
+  let okFile = false;
+  try {
+    const st = await window.parallxElectron.fs.stat(recPath);
+    okFile = st && !st.error && st.size > 1024;
+  } catch { okFile = false; }
+  if (!okFile) {
+    api.window.showWarningMessage('Recording produced no usable video.');
+    moSecureEraseRecording(api, recPath);
+    return;
+  }
+  // Main reports the duration (exact via ffprobe, wall-clock fallback) so we
+  // avoid loading the whole file in the renderer — which timed out and failed
+  // for ~1-minute recordings. Fall back to the local probe only if absent.
+  let duration = (payload.duration && payload.duration > 0) ? payload.duration : 0;
+  if (!duration) duration = await moProbeDuration(recPath);
+  if (!duration || duration <= 0) {
+    api.window.showWarningMessage('Could not read the recording duration.');
+    moSecureEraseRecording(api, recPath);
+    return;
+  }
+  // Open the existing clip/GIF exporter; erase the temp source when it closes.
+  let erased = false;
+  await moOpenClipDialog(api, recPath, duration, 0, Math.min(duration, 6), {
+    onClose: () => { if (!erased) { erased = true; moSecureEraseRecording(api, recPath); } },
+  });
+}
+
+// Probe a recording's duration. Primary: ffprobe (cheap). Fallback: a hidden
+// <video> element (ffprobe-independent), so a recording isn't discarded just
+// because only ffmpeg (not ffprobe) is on PATH.
+async function moProbeDuration(path) {
+  try { const m = await extractVideoMeta(path); if (m && m.duration > 0) return m.duration; } catch { /* fall through */ }
+  try {
+    const url = await localFileToUrl(path);
+    if (!url) return 0;
+    return await new Promise((resolve) => {
+      const v = document.createElement('video');
+      let settled = false;
+      const done = (d) => { if (!settled) { settled = true; try { v.src = ''; } catch {} resolve(d || 0); } };
+      v.preload = 'metadata';
+      v.onloadedmetadata = () => done(isFinite(v.duration) ? v.duration : 0);
+      v.onerror = () => done(0);
+      v.src = url;
+      setTimeout(() => done(isFinite(v.duration) ? v.duration : 0), 5000);
+    });
+  } catch { return 0; }
+}
+
+// Securely erase a temp recording. Eraser must run FIRST: when it accepts the
+// task it OVERWRITES the file and then removes it itself, so we must NOT unlink
+// the file ourselves while Eraser is queued — a plain delete would win the race
+// and leave Eraser nothing to wipe (defeating the secure erase). We only fall
+// back to a hard delete (never the recycle bin) when Eraser isn't available at
+// all (non-Windows or not installed), where _tryEraseWithEraser returns false.
+// Also drop any cached blob URL so the bytes aren't held in memory.
+async function moSecureEraseRecording(api, filePath) {
+  if (!filePath) return;
+  try { _revokeCachedBlobUrlsFor([filePath]); } catch { /* ignore */ }
+  let queuedToEraser = false;
+  try { queuedToEraser = await _tryEraseWithEraser(api, [filePath]); } catch { queuedToEraser = false; }
+  if (queuedToEraser) return; // Eraser now owns the secure overwrite + removal
+  try { await window.parallxElectron.fs.delete(filePath, { useTrash: false }); } catch { /* may already be gone */ }
+}
+
+// Crash-safe cleanup on activate: securely erase any leftover temp recordings
+// from a session that crashed/quit mid-record. Mirrors moPurgeMissingFiles.
+async function moPurgeOrphanRecordings(api) {
+  try {
+    const dir = await moGetRecordingsDir(api);
+    if (!dir) return;
+    const res = await window.parallxElectron.fs.readdir(dir);
+    if (!res || res.error || !Array.isArray(res.entries)) return;
+    const sep = _isWindows ? '\\' : '/';
+    for (const e of res.entries) {
+      if (!e || e.type === 'directory' || !e.name) continue;
+      if (!/^rec_.*\.(mp4|mkv|webm)$/i.test(e.name)) continue; // incl. .video.mp4 / .audio.webm temps
+      await moSecureEraseRecording(api, dir + sep + e.name);
+    }
+  } catch { /* best effort */ }
+}
+
+async function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut, opts = {}) {
   // Tool detection only runs during a scan, so a fresh session that opens
   // an already-indexed video and clicks "trim" would see _toolPaths.ffmpeg
   // as null even though ffmpeg is on PATH. Detect on demand.
@@ -17424,6 +18860,30 @@ async function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut)
             });
             okCount++;
             exportedIds.add(c.id);
+            // Auto-optimize safety net — mirror the single-clip path so queued
+            // GIFs are optimized too. Previously the batch loop skipped this
+            // entirely, so queue-exported GIFs came out unoptimized while a
+            // single export (and grid "Optimize") worked. GIF only; non-fatal —
+            // a failed optimize must not undo a successful export.
+            if ((c.format === 'gif' || ext === 'gif') && autoOptChk.checked) {
+              try {
+                const st = await window.parallxElectron.fs.stat(candidate);
+                const actualBytes = st && st.size ? st.size : 0;
+                const thresholdBytes = Math.max(0.5, parseFloat(autoOptThreshold.value) || 8) * 1024 * 1024;
+                if (actualBytes > thresholdBytes) {
+                  status.textContent = `Optimizing ${i + 1} / ${clipQueue.length}…`;
+                  await moOptimizeGifFile(candidate, {
+                    targetBytes: thresholdBytes,
+                    dither: c.dither || 'bayer',
+                    allowTrim: false,
+                    backup: false,
+                  });
+                }
+              } catch (optErr) {
+                // eslint-disable-next-line no-console
+                console.warn('[media-organizer] batch auto-optimize failed', optErr);
+              }
+            }
           } catch (err) {
             failCount++;
             // eslint-disable-next-line no-console
@@ -17604,6 +19064,19 @@ async function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut)
     if (e.target === overlay) { if (previewTimer) clearInterval(previewTimer); cleanupStripDir(); overlay.remove(); }
   });
   document.body.appendChild(overlay);
+
+  // Notify the caller exactly once when the dialog is dismissed (any path:
+  // close button, cancel, Escape, click-outside, or after export). Used by the
+  // screen recorder to securely erase its temp source video afterward.
+  if (typeof opts.onClose === 'function') {
+    const obs = new MutationObserver(() => {
+      if (!overlay.isConnected) {
+        obs.disconnect();
+        try { opts.onClose(); } catch { /* ignore */ }
+      }
+    });
+    obs.observe(document.body, { childList: true });
+  }
 }
 
 async function moExportClip(api, opts) {
@@ -18955,6 +20428,57 @@ async function moRunPHashIndexer(api) {
   }
   _phashRunning = false;
   api.window.showInformationMessage(`Perceptual hash: ${done - fail} indexed, ${fail} skipped.`);
+}
+
+// ── Select Similar (perceptual hash) ──
+// Threshold (Hamming distance over the 64-bit dHash) for "visually similar".
+// Looser than the ≤8 used for near-duplicate clustering so a burst of shots
+// with motion still groups together, but tight enough to avoid false hits
+// (random images differ by ~32 bits).
+const MO_PHASH_SIMILAR_THRESHOLD = 10;
+
+// Resolve a photo's dHash, computing + persisting it on demand if the indexer
+// hasn't reached this image yet. Returns a 64-bit BigInt or null (no ffmpeg /
+// unreadable file / not an image).
+async function moGetOrComputePhotoPhash(photoId) {
+  const row = await db.get(`
+    SELECT pf.file_id AS file_id, imf.phash AS phash, fo.path AS folder_path, f.basename AS basename
+      FROM mo_photos_files pf
+      JOIN mo_files f ON f.id = pf.file_id
+      JOIN mo_folders fo ON fo.id = f.folder_id
+ LEFT JOIN mo_image_files imf ON imf.file_id = pf.file_id
+     WHERE pf.photo_id = ? AND pf.is_primary = 1`, [photoId]);
+  if (!row) return null;
+  if (row.phash != null) return moSqliteToBigInt(row.phash);
+  // Not indexed yet — compute lazily and persist for next time.
+  await detectAllTools();
+  if (!_toolPaths.ffmpeg) return null;
+  const sep = _isWindows ? '\\' : '/';
+  const hash = await moComputePHash(row.folder_path + sep + row.basename);
+  if (hash == null) return null;
+  await db.run('INSERT OR IGNORE INTO mo_image_files (file_id) VALUES (?)', [row.file_id]);
+  await db.run('UPDATE mo_image_files SET phash = ? WHERE file_id = ?', [moBigIntToSqlite(hash), row.file_id]);
+  return hash;
+}
+
+// Find every non-trashed photo id whose dHash is within `threshold` Hamming
+// distance of the seed photo (the seed is included). Returns null when the
+// seed's hash can't be resolved.
+async function moComputeSimilarPhotoIds(photoId, threshold) {
+  const seed = await moGetOrComputePhotoPhash(photoId);
+  if (seed == null) return null;
+  const rows = await db.all(`
+    SELECT p.id AS photo_id, imf.phash AS phash
+      FROM mo_photos p
+      JOIN mo_photos_files pf ON pf.photo_id = p.id AND pf.is_primary = 1
+      JOIN mo_image_files imf ON imf.file_id = pf.file_id
+     WHERE imf.phash IS NOT NULL AND p.deleted_at IS NULL`);
+  const ids = [];
+  for (const r of rows) {
+    if (moHammingDistance(seed, moSqliteToBigInt(r.phash)) <= threshold) ids.push(r.photo_id);
+  }
+  if (!ids.includes(photoId)) ids.push(photoId);
+  return ids;
 }
 
 // ── Duplicate Finder ──
@@ -21301,6 +22825,14 @@ let _api = null;
 // add an async hop to a hot path. Default mirrors the manifest default.
 let _showCardTags = true;
 
+// Screen-recorder settings (mirror manifest defaults). The app Settings hub and
+// the extension's ConfigurationService are separate stores (same as
+// showCardTags), so the authoritative writes go through cfg.update() here.
+let _enableScreenRecorder = false;
+let _screenRecorderTempDir = '';   // '' = use the default in-workspace recordings dir
+let _screenRecorderAudio = 'system'; // 'off' | 'system' | 'mic' (mirrors manifest default)
+let _moRecordingInFlight = false;   // guards against overlapping recordings
+
 async function ensureDatabase(api) {
   // Open the per-extension database (creates it if needed)
   const openResult = await api.database.open();
@@ -21381,6 +22913,12 @@ export async function activate(api, context) {
     }
   } catch { /* fall back to default */ }
 
+  // Hydrate the grid grouping mode so it survives across sessions.
+  try {
+    const g = await moGetSetting('grid_group_by', null);
+    if (g === 'date' || g === 'none') _sessionGroupBy = g;
+  } catch { /* fall back to default */ }
+
   // Hydrate the show-card-tags toggle and watch for changes. When it flips
   // we dispatch a grid refresh so cards re-render immediately without the
   // user having to scroll, change page, or reopen the grid.
@@ -21399,6 +22937,38 @@ export async function activate(api, context) {
     });
     if (sub && typeof sub.dispose === 'function') _commandDisposables.push(sub);
   }
+
+  // Hydrate screen-recorder settings + watch for changes (re-renders the cheat
+  // sheet's Record button live).
+  const _readRecorderCfg = () => {
+    const cfg = api.workspace.getConfiguration('mediaOrganizer');
+    _enableScreenRecorder = cfg.get('enableScreenRecorder', false) === true;
+    _screenRecorderTempDir = cfg.get('screenRecorderTempDir', '') || '';
+    const audio = cfg.get('screenRecorderAudio', 'system');
+    _screenRecorderAudio = ['off', 'system', 'mic'].includes(audio) ? audio : 'system';
+  };
+  try { _readRecorderCfg(); } catch { /* keep defaults */ }
+  if (api.workspace.onDidChangeConfiguration) {
+    const sub2 = api.workspace.onDidChangeConfiguration((e) => {
+      if (!e.affectsConfiguration('mediaOrganizer.enableScreenRecorder') &&
+          !e.affectsConfiguration('mediaOrganizer.screenRecorderTempDir') &&
+          !e.affectsConfiguration('mediaOrganizer.screenRecorderAudio')) return;
+      try { _readRecorderCfg(); } catch { /* ignore */ }
+      document.dispatchEvent(new CustomEvent('mo:screen-recorder-config-changed'));
+    });
+    if (sub2 && typeof sub2.dispose === 'function') _commandDisposables.push(sub2);
+  }
+
+  // Screen-recorder: handle a finished recording, and sweep orphaned temp clips
+  // left by a crash/quit mid-record (see moPurgeOrphanRecordings).
+  if (window.parallxElectron?.recorder?.onComplete) {
+    const unsub = window.parallxElectron.recorder.onComplete((payload) => {
+      moOnRecordingComplete(api, payload).catch((err) =>
+        console.warn('[MediaOrganizer] recording-complete handler failed:', err));
+    });
+    if (typeof unsub === 'function') _commandDisposables.push({ dispose: unsub });
+  }
+  moPurgeOrphanRecordings(api).catch(() => {});
 
   // Status bar item for scan progress
   _statusBarItem = api.window.createStatusBarItem(1, 100);
@@ -21568,6 +23138,42 @@ export async function activate(api, context) {
       });
     })
   );
+
+  // Keyboard shortcuts cheat sheet — also reachable via the sidebar footer
+  // button and the `?` key in the grid.
+  _commandDisposables.push(
+    api.commands.registerCommand('media-organizer.showShortcuts', () => moShowShortcutsCheatSheet())
+  );
+
+  // Toggle the screen recorder. This is the authoritative on/off switch: the
+  // app Settings hub shows the setting but its store isn't bridged to the
+  // extension's ConfigurationService (same as showCardTags), so cfg.update()
+  // here is what actually drives it.
+  _commandDisposables.push(
+    api.commands.registerCommand('media-organizer.toggleScreenRecorder', async () => {
+      const next = !_enableScreenRecorder;
+      try {
+        await api.workspace.getConfiguration('mediaOrganizer').update('enableScreenRecorder', next);
+        _enableScreenRecorder = next;
+        api.window.showInformationMessage(`Screen recorder ${next ? 'enabled' : 'disabled'}. Open Keyboard Shortcuts (?) to ${next ? 'find the Record GIF button' : ''}.`.trim());
+      } catch (err) {
+        api.window.showErrorMessage('Could not toggle screen recorder: ' + (err && err.message ? err.message : String(err)));
+      }
+    })
+  );
+
+  // Start a screen recording directly (also reachable from the cheat sheet's
+  // Record GIF button when enabled).
+  _commandDisposables.push(
+    api.commands.registerCommand('media-organizer.recordGif', () => {
+      if (!_enableScreenRecorder) {
+        api.window.showInformationMessage('Enable the screen recorder first (run "Media Organizer: Toggle Screen Recorder").');
+        return;
+      }
+      moStartScreenRecording(api);
+    })
+  );
+
 
   // D8: Create Album command
   _commandDisposables.push(
