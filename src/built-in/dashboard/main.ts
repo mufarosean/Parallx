@@ -25,6 +25,7 @@ import { DashboardEditorProvider } from './dashboardEditorProvider.js';
 import { DashboardSidebar } from './dashboardSidebar.js';
 import type { DashboardRegistry, WidgetTypeRegistration } from './dashboardTypes.js';
 import { registerBuiltInDashboardWidgets } from './widgets/builtInWidgets.js';
+import { IEditorService } from '../../services/serviceTypes.js';
 
 // ─── Minimal Parallx API surface (kept narrow on purpose) ────────────────────
 
@@ -80,6 +81,20 @@ let _dataService: DashboardDataService | null = null;
 let _registry: DashboardWidgetRegistry | null = null;
 let _scheduler: DashboardRefreshScheduler | null = null;
 
+// Recency-ordered list of opened files + canvas pages (Recent Items widget).
+interface RecentItem {
+  /** Dedup key: `file:<uri>` or `page:<pageId>`. */
+  readonly key: string;
+  readonly kind: 'file' | 'page';
+  readonly title: string;
+  /** File URI (kind 'file') or page id (kind 'page') — used to reopen. */
+  readonly target: string;
+  readonly ts: number;
+}
+const RECENT_ITEMS_KEY = 'dashboard.recentItems';
+const RECENT_ITEMS_CAP = 30;
+let _recentItems: RecentItem[] = [];
+
 // ─── Activate ───────────────────────────────────────────────────────────────
 
 export async function activate(api: ParallxApi, context: ToolContext): Promise<void> {
@@ -106,6 +121,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       editors: api.editors,
       commands: api.commands,
       window: api.window,
+      services: api.services,
     },
   );
   context.subscriptions.push(
@@ -197,6 +213,9 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
 
   // 6. Register commands the user / picker can invoke.
   _registerCommands(api, context);
+
+  // 6b. Track recently-opened files + canvas pages for the Recent Items widget.
+  _setupRecentItems(api, context);
 
   // 7. Auto-open the dashboard on first workspace open. After that the user
   //    drives. We track this in workspaceState so reopen behaviour is
@@ -335,4 +354,64 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
       document.dispatchEvent(new CustomEvent('parallx.dashboard.refreshAll'));
     }),
   );
+}
+
+// ─── Recent items ─────────────────────────────────────────────────────────────
+//
+// ONE recency-ordered list of everything the user opened — explorer files AND
+// canvas pages — captured from the editor service's active-editor changes, the
+// single signal both surfaces flow through (which is why the old Ctrl+P-only
+// list never saw explorer/canvas opens). Persisted per-workspace so it survives
+// reloads; the Recent Items widget reads it via `dashboard.getRecentItems`.
+
+function _setupRecentItems(api: ParallxApi, context: ToolContext): void {
+  try {
+    const saved = context.workspaceState.get<RecentItem[]>(RECENT_ITEMS_KEY, []);
+    if (Array.isArray(saved)) {
+      _recentItems = saved.filter((x): x is RecentItem => !!x && typeof x.key === 'string' && typeof x.title === 'string');
+    }
+  } catch { /* fresh start */ }
+
+  // Expose the read command regardless — if the editor service is unavailable
+  // the widget still shows whatever was persisted.
+  context.subscriptions.push(
+    api.commands.registerCommand('dashboard.getRecentItems', () => _recentItems),
+  );
+
+  let editorService: IEditorService | undefined;
+  try {
+    editorService = api.services.has(IEditorService) ? api.services.get<IEditorService>(IEditorService) : undefined;
+  } catch { editorService = undefined; }
+  if (!editorService) return;
+
+  const record = (input: { readonly id: string; readonly name: string; readonly uri?: { toString(): string } } | undefined): void => {
+    if (!input) return;
+    let item: RecentItem | null = null;
+    if (input.uri) {
+      const uri = input.uri.toString();
+      item = { key: 'file:' + uri, kind: 'file', title: input.name || _basename(uri), target: uri, ts: Date.now() };
+    } else {
+      // Canvas editor ids look like `parallx.canvas:canvas:<pageId>` /
+      // `…:database:<pageId>`. Anything else (dashboard, welcome) is skipped.
+      const parts = (input.id || '').split(':');
+      if (parts.length >= 3 && (parts[1] === 'canvas' || parts[1] === 'database')) {
+        const pageId = parts.slice(2).join(':');
+        item = { key: 'page:' + pageId, kind: 'page', title: input.name || 'Untitled', target: pageId, ts: Date.now() };
+      }
+    }
+    if (!item) return;
+    const next = item;
+    _recentItems = [next, ..._recentItems.filter((r) => r.key !== next.key)].slice(0, RECENT_ITEMS_CAP);
+    void context.workspaceState.update(RECENT_ITEMS_KEY, _recentItems);
+  };
+
+  record(editorService.activeEditor);
+  context.subscriptions.push(editorService.onDidActiveEditorChange(record));
+}
+
+function _basename(uri: string): string {
+  const clean = uri.split('?')[0].replace(/\\/g, '/').replace(/\/+$/, '');
+  const idx = clean.lastIndexOf('/');
+  const name = idx >= 0 ? clean.slice(idx + 1) : clean;
+  try { return decodeURIComponent(name) || uri; } catch { return name || uri; }
 }

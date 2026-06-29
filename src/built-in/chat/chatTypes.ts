@@ -423,6 +423,9 @@ export interface IChatWidgetServices {
   readonly getSystemPrompt?: () => Promise<string>;
   readonly readFileRelative?: (relativePath: string) => Promise<string | null>;
   readonly writeFileRelative?: (relativePath: string, content: string) => Promise<void>;
+  /** Resolve a canvas block's CURRENT content (markdown) for a live block
+   *  reference attachment. Wired to the `canvas.resolveBlockForChat` command. */
+  readonly resolveCanvasBlock?: (pageId: string, blockId: string) => Promise<{ markdown: string; blockType?: string; pageTitle?: string } | null>;
   readonly searchSessions?: (query: string) => Promise<Array<{ sessionId: string; sessionTitle: string; matchingContent: string }>>;
   readonly openAISettings?: () => void;
   readonly getIndexingProgress?: () => import('../../services/indexingPipeline.js').IndexingProgress;

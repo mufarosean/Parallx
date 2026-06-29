@@ -78,9 +78,19 @@ export interface ISelectionActionPayload {
  * Programmatic access to the chat panel from outside the chat component.
  * Used by action handlers to drive the chat input.
  */
+/** Payload for attaching one or more LIVE canvas-block references to chat. */
+export interface ICanvasBlockReferencePayload {
+  readonly pageId: string;
+  readonly pageTitle?: string;
+  readonly blocks: ReadonlyArray<{ blockId: string; blockType?: string; preview?: string }>;
+}
+
 export interface IChatProgrammaticAccess {
   /** Add a selection attachment to the chat input. */
   addSelectionAttachment(attachment: IChatSelectionAttachment): void;
+
+  /** Add LIVE canvas-block reference attachment(s) to the chat input. */
+  addCanvasBlockReference(payload: ICanvasBlockReferencePayload): Promise<void>;
 
   /** Set the text input contents. */
   setInputValue(text: string): void;

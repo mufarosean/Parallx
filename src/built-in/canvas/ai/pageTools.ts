@@ -234,6 +234,7 @@ export function createReadPageTool(
     description:
       'Reads a canvas page from the workspace page database (not a file on disk). ' +
       'Returns the page body, metadata (title, id, icon, timestamps, archived state, block count), and any custom properties. ' +
+      'Each top-level block in the body is prefixed with its `[blockId]` — pass that id to `canvas_edit_block` or `canvas_read_block` to target a specific block. ' +
       '`pageId` accepts a page UUID, a case-insensitive page title, or the literal "current" for the page open in the editor. ' +
       'Use this directly when you know the page title — do NOT call `canvas_find_pages` first to resolve a known title. ' +
       'For files on disk use `fs_read_file`. ' +
@@ -328,7 +329,7 @@ export function createReadPageTool(
         [page.id],
       );
 
-      const text = extractTextContent(page.content);
+      const text = extractBlocksWithIds(page.content);
       const lines: (string | null)[] = [
         `**${page.title}** (id: ${page.id})${isCurrent ? ' — currently open' : ''}`,
         page.icon ? `**Icon:** ${page.icon}` : null,
@@ -356,6 +357,41 @@ export function createReadPageTool(
 // M81 Phase 9 — `createGetPageTool` was folded into `createReadPageTool`. The
 // merged tool returns body + metadata + custom properties in one call. For
 // workspace-wide property definitions, use `canvas_list_property_definitions`.
+
+/** Plain text of a Tiptap node (concatenated text leaves). */
+function nodeTextOf(node: unknown): string {
+  if (!node || typeof node !== 'object') return '';
+  const n = node as { type?: string; text?: string; content?: unknown[] };
+  if (n.type === 'text' && typeof n.text === 'string') return n.text;
+  if (Array.isArray(n.content)) return n.content.map(nodeTextOf).join('');
+  return '';
+}
+
+/**
+ * Render the page body as one line per TOP-LEVEL block, each prefixed with its
+ * stable `[blockId]`, so the model can target a block with `canvas_edit_block`
+ * / `canvas_read_block`. Falls back to flat text when the content can't be
+ * parsed as a Tiptap doc.
+ */
+function extractBlocksWithIds(content: string): string {
+  try {
+    const parsed = JSON.parse(content) as { doc?: { content?: unknown[] }; content?: unknown[] };
+    const doc = (parsed.doc && typeof parsed.doc === 'object') ? parsed.doc : parsed;
+    const blocks = Array.isArray(doc.content) ? doc.content : [];
+    if (blocks.length === 0) return '';
+    const lines: string[] = [];
+    for (const b of blocks) {
+      const block = b as { type?: string; attrs?: Record<string, unknown> };
+      const id = block.attrs?.['id'];
+      const idTag = typeof id === 'string' && id ? `[${id}] ` : '';
+      const text = nodeTextOf(b).trim();
+      lines.push(`${idTag}${text || `(${block.type ?? 'block'})`}`);
+    }
+    return lines.join('\n');
+  } catch {
+    return extractTextContent(content);
+  }
+}
 
 /** Format a JSON-stored property value for display. */
 function formatPropertyValue(raw: string, _type: string): string {

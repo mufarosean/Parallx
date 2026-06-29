@@ -17,8 +17,8 @@ import type { Event } from '../../../platform/events.js';
 import { $ } from '../../../ui/dom.js';
 import { chatIcons } from '../chatIcons.js';
 import { getFileTypeIcon } from '../../../ui/iconRegistry.js';
-import { isChatImageAttachment } from '../../../services/chatTypes.js';
-import type { IChatAttachment, IChatImageAttachment, IChatSelectionAttachment } from '../../../services/chatTypes.js';
+import { isChatImageAttachment, isChatCanvasBlockAttachment } from '../../../services/chatTypes.js';
+import type { IChatAttachment, IChatImageAttachment, IChatSelectionAttachment, IChatCanvasBlockAttachment } from '../../../services/chatTypes.js';
 import type { IOpenEditorFile, IAttachmentServices } from '../chatTypes.js';
 
 // IOpenEditorFile, IWorkspaceFileEntry, IAttachmentServices — now defined in chatTypes.ts (M13 Phase 1)
@@ -237,6 +237,14 @@ export class ChatContextAttachments extends Disposable {
     this._onDidChange.fire();
   }
 
+  /** Add (or refresh) a LIVE canvas-block reference attachment. Keyed by
+   *  page+block so re-sending the same block doesn't duplicate the chip. */
+  addCanvasBlockAttachment(attachment: IChatCanvasBlockAttachment): void {
+    this._explicit.set(attachment.id, attachment);
+    this._render();
+    this._onDidChange.fire();
+  }
+
   /** Remove an explicit attachment. */
   removeAttachment(fullPath: string): void {
     if (this._explicit.delete(fullPath)) {
@@ -314,6 +322,7 @@ export class ChatContextAttachments extends Disposable {
   private _createChip(attachment: IChatAttachment, _isImplicit: boolean, onRemove: () => void): HTMLElement {
     const chip = $('div.parallx-chat-context-chip');
     const isSelection = (attachment as IChatSelectionAttachment).kind === 'selection';
+    const isCanvasBlock = isChatCanvasBlockAttachment(attachment);
     if (isChatImageAttachment(attachment)) {
       chip.classList.add('parallx-chat-context-chip--image');
       if (!this._visionSupported) {
@@ -327,6 +336,11 @@ export class ChatContextAttachments extends Disposable {
       const lines = sel.startLine && sel.endLine ? ` (lines ${sel.startLine}–${sel.endLine})` : '';
       const page = sel.pageNumber ? ` (page ${sel.pageNumber})` : '';
       chip.title = `Selected text from ${sel.name}${lines}${page}`;
+    }
+    if (isCanvasBlock) {
+      const blk = attachment as IChatCanvasBlockAttachment;
+      chip.classList.add('parallx-chat-context-chip--canvas-block');
+      chip.title = `Live reference to a ${blk.blockType ?? 'block'} on "${blk.pageTitle ?? 'a canvas page'}" — the AI reads its current content and can edit it in place.`;
     }
 
     // File icon
@@ -342,7 +356,7 @@ export class ChatContextAttachments extends Disposable {
       glyph.className = 'parallx-chat-context-chip-glyph';
       glyph.innerHTML = chatIcons.image;
       icon.appendChild(glyph);
-    } else if (isSelection) {
+    } else if (isSelection || isCanvasBlock) {
       icon.innerHTML = chatIcons.selection;
     } else {
       const extMatch = attachment.name.match(/\.([a-zA-Z0-9]+)$/);
@@ -359,6 +373,9 @@ export class ChatContextAttachments extends Disposable {
         ? sel.selectedText.slice(0, 37) + '…'
         : sel.selectedText;
       name.textContent = `"${preview}" — ${sel.name}`;
+    } else if (isCanvasBlock) {
+      const blk = attachment as IChatCanvasBlockAttachment;
+      name.textContent = blk.pageTitle ? `${blk.name} — ${blk.pageTitle}` : blk.name;
     } else {
       name.textContent = attachment.name;
     }

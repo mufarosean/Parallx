@@ -16,7 +16,7 @@ import { $ } from '../../../ui/dom.js';
 import { renderContentPart, createAgentPresence } from './chatContentParts.js';
 import { chatIcons } from '../chatIcons.js';
 import { getFileTypeIcon } from '../../../ui/iconRegistry.js';
-import { isChatImageAttachment, isChatSelectionAttachment } from '../../../services/chatTypes.js';
+import { isChatImageAttachment, isChatSelectionAttachment, isChatCanvasBlockAttachment } from '../../../services/chatTypes.js';
 import type { IChatRequestResponsePair, IChatAssistantResponse, IChatUserMessage } from '../../../services/chatTypes.js';
 import { ChatContentPartKind } from '../../../services/chatTypes.js';
 import type { OpenAttachmentHandler, RegenerateMessageHandler } from '../chatTypes.js';
@@ -575,6 +575,26 @@ export class ChatListRenderer extends Disposable {
           chip.addEventListener('click', () => {
             this._onOpenAttachment?.(attachment.fullPath);
           });
+        } else if (isChatCanvasBlockAttachment(attachment)) {
+          // Live canvas-block reference — show the block label + page.
+          chip.classList.add('parallx-chat-message-attachment-chip--selection');
+
+          const icon = document.createElement('span');
+          icon.className = 'parallx-chat-message-attachment-icon';
+          icon.innerHTML = chatIcons.selection;
+          chip.appendChild(icon);
+
+          const excerpt = document.createElement('span');
+          excerpt.className = 'parallx-chat-message-attachment-excerpt';
+          excerpt.textContent = attachment.name;
+          chip.appendChild(excerpt);
+
+          const source = document.createElement('span');
+          source.className = 'parallx-chat-message-attachment-source';
+          source.textContent = attachment.pageTitle ? `— ${attachment.pageTitle}` : '— canvas block';
+          chip.appendChild(source);
+
+          chip.title = `Live reference to a ${attachment.blockType ?? 'block'}${attachment.pageTitle ? ` on "${attachment.pageTitle}"` : ''} — the AI reads its current content and can edit it.`;
         } else if (isChatImageAttachment(attachment)) {
           chip.classList.add('parallx-chat-message-attachment-chip--image');
 

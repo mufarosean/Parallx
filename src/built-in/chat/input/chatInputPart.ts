@@ -20,7 +20,7 @@ import { $, addDisposableListener } from '../../../ui/dom.js';
 import { chatIcons } from '../chatIcons.js';
 import { ChatContextAttachments } from './chatContextAttachments.js';
 import type { IAttachmentServices, IWorkspaceFileEntry } from '../chatTypes.js';
-import type { IChatAttachment, IChatSelectionAttachment, IContextPill } from '../../../services/chatTypes.js';
+import type { IChatAttachment, IChatSelectionAttachment, IChatCanvasBlockAttachment, IContextPill } from '../../../services/chatTypes.js';
 import { ChatContextPills } from './chatContextPills.js';
 import { ChatMentionAutocomplete } from './chatMentionAutocomplete.js';
 import type { IMentionSuggestionProvider, ISlashCommandProvider } from '../chatTypes.js';
@@ -365,6 +365,11 @@ export class ChatInputPart extends Disposable {
   /** Add a text selection as context (M48). */
   addSelectionAttachment(attachment: IChatSelectionAttachment): void {
     this._contextRibbon.addSelectionAttachment(attachment);
+  }
+
+  /** Add a LIVE canvas-block reference as context. */
+  addCanvasBlockAttachment(attachment: IChatCanvasBlockAttachment): void {
+    this._contextRibbon.addCanvasBlockAttachment(attachment);
   }
 
   /** Add a file or folder as context attachment. */

@@ -5,6 +5,13 @@
 // All database rows map to IPage. Tree assembly produces IPageTreeNode.
 
 import type { Event } from '../../platform/events.js';
+import { createServiceIdentifier } from '../../platform/types.js';
+
+// Service identifier for the FULL canvas data service, so other tools (e.g. the
+// dashboard's notes widget hosting a canvas page) can resolve it via
+// `api.services.get(ICanvasDataService)`. Value+type merge with the interface
+// below — same pattern as ILifecycleService et al.
+export const ICanvasDataService = createServiceIdentifier<ICanvasDataService>('ICanvasDataService');
 
 // ─── Page Model ──────────────────────────────────────────────────────────────
 

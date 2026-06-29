@@ -134,7 +134,11 @@ const SOURCE_TYPES = new Set<string>(['page_block', 'file_chunk']);
 const DEFAULT_DEBOUNCE_MS = 5_000;
 const DEFAULT_PROCESS_YIELD_MS = 25;
 const DEFAULT_RETRY_WHILE_INDEXING_MS = 5_000;
-const DEFAULT_TOP_LINKS_PER_SOURCE = 3;
+// 5 (was 3): keep a few more neighbours per source so a related item of a
+// DIFFERENT type (e.g. a markdown journal vs a canvas-page journal) isn't
+// crowded out of the top slots by same-type neighbours. Applies on the next
+// recompute of each source (content-hash gated) or a full rebuild.
+const DEFAULT_TOP_LINKS_PER_SOURCE = 5;
 const DEFAULT_MIN_SCORE = 0.72;
 const DEFAULT_MAX_CACHED_EDGES = 500;
 const DEFAULT_CANDIDATE_K = 60;

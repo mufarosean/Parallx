@@ -94,6 +94,7 @@ const _PERSIST_KEYS = [
   'edgeColor', 'edgeWidth', 'edgeHoverWidth',
   'labelZoomStart', 'labelZoomFull',
   'showFiles', 'showCanvasPages', 'showSessions', 'edgeKindVisibility',
+  'crossToolEdgesDefaulted',
 ];
 
 async function _loadSettings(api) {
@@ -118,6 +119,13 @@ async function _loadSettings(api) {
     // older than the current EDGE_KINDS list).
     for (const k of EDGE_KINDS) {
       if (GS.edgeKindVisibility[k] === undefined) GS.edgeKindVisibility[k] = false;
+    }
+    // One-time migration: cross-tool connections now ship ON. Flip the two
+    // cheap automatic kinds on for any workspace saved before this default,
+    // then mark it so the user's subsequent toggles stick.
+    if (!GS.crossToolEdgesDefaulted) {
+      GS.edgeKindVisibility = { ...GS.edgeKindVisibility, 'similar-to': true, 'references': true };
+      GS.crossToolEdgesDefaulted = true;
     }
     console.log('[WorkspaceGraph] Settings loaded from workspace');
   } catch (err) {
@@ -190,8 +198,12 @@ const GS = {
   // `_loadSettings`. Phase 1 only renders 'similar-to' since the other kinds
   // have no producers yet, but the UI surfaces just the one checkbox.
   edgeKindVisibility: {
-    'similar-to':    false,
-    'references':    false,
+    // Cross-tool connections are the whole point — show the two cheap,
+    // automatic kinds by default. The LLM-driven kinds (extends/refutes/
+    // member-of) stay off until the user runs a Refresh; the noisier
+    // metadata kinds (co-occurrence/same-folder) are opt-in.
+    'similar-to':    true,
+    'references':    true,
     'co-occurrence': false,
     'same-folder':   false,
     'same-author':   false,
@@ -489,6 +501,7 @@ const DOMAIN_COLORS = {
   'file': '#6bd385',
   'canvas-page': '#b4a7d6',
   'session': '#e9973f',
+  'memory': '#c792ea',
 };
 
 const EXT_COLORS = {
@@ -609,6 +622,7 @@ async function buildGraphData(api) {
     _collectFiles(api, nodes, edges),
     _collectCanvasPages(api, nodes, edges),
     _collectSessions(api, nodes, edges),
+    _collectMemory(api, nodes, edges),
   ]);
   // Run providers after core collectors so the dedup `seen` set in
   // _collectProviders captures all file/page/session nodes first.
@@ -718,6 +732,38 @@ async function _collectSessions(api, nodes, edges) {
     const nodeId = 'session:' + entry.name;
     const label = entry.name.replace('.json', '');
     nodes.push(_makeNode(nodeId, label, 'session', DOMAIN_COLORS.session, 3, { type: 'session', fileName: entry.name }));
+  }
+}
+
+// .parallx/memory markdown (MEMORY.md, USER.md, dailies, lessons/<slug>.md).
+// These index as file_chunk (sourceId '.parallx/memory/…'), so their node ids
+// MUST match the semantic engine's `file:<root>/.parallx/memory/…` form — built
+// here by the same root-uri + path join the file collector uses — so the
+// distinctly-coloured memory node dedups with (and wins over) the semantic
+// provider's self-supplied file endpoint. Runs before _collectProviders.
+async function _collectMemory(api, nodes, edges) {
+  const folders = api.workspace.workspaceFolders;
+  if (!folders || folders.length === 0 || !api.requestCapability) return;
+  const wfs = api.requestCapability('fs', { scope: 'workspace-files', modes: ['read'] });
+
+  const rootUri = folders[0].uri;
+  const memUri = rootUri.endsWith('/') ? rootUri + '.parallx/memory' : rootUri + '/.parallx/memory';
+  let exists;
+  try { exists = await wfs.exists(memUri); } catch { return; }
+  if (!exists) return;
+
+  const queue = [memUri];
+  while (queue.length > 0) {
+    const dirUri = queue.shift();
+    let entries;
+    try { entries = await wfs.readdir(dirUri); } catch { continue; }
+    for (const entry of entries) {
+      const childUri = dirUri.endsWith('/') ? dirUri + entry.name : dirUri + '/' + entry.name;
+      if (entry.type === 2) { queue.push(childUri); continue; } // descend into lessons/
+      if (!entry.name.endsWith('.md')) continue;
+      const nodeId = 'file:' + childUri;
+      nodes.push(_makeNode(nodeId, entry.name, 'memory', DOMAIN_COLORS.memory, 4, { type: 'memory', uri: childUri }));
+    }
   }
 }
 
@@ -869,7 +915,7 @@ function _fileLabelFromNodeId(nodeId) {
   try { return decodeURIComponent(label); } catch { return label; }
 }
 
-function _makeSemanticEndpointNode(nodeId, conceptMetaById) {
+function _makeSemanticEndpointNode(nodeId, conceptMetaById, pageTitleById) {
   // M76 Phase 5 — concept node endpoints (member-of edges point at these).
   if (nodeId.startsWith('concept:')) {
     const stableId = nodeId.slice(8);
@@ -887,6 +933,23 @@ function _makeSemanticEndpointNode(nodeId, conceptMetaById) {
         stableId,
         memberCount: meta ? meta.memberCount : 0,
       },
+    };
+  }
+  // Canvas page endpoints. SELF-SUPPLY the node (with a title from the page
+  // map) so cross-type edges (file<->page) render even when the page isn't in
+  // the structural page-tree collector — e.g. a database-member page. When the
+  // collector DID emit this page, its richer node wins via the dedup in
+  // _collectProviders; this is the fallback that stops the edge being pruned.
+  if (nodeId.startsWith('page:')) {
+    const pageId = nodeId.slice(5);
+    const title = pageTitleById ? pageTitleById.get(pageId) : null;
+    return {
+      id: nodeId,
+      label: title || 'Canvas page',
+      domain: 'canvas-page',
+      color: DOMAIN_COLORS['canvas-page'],
+      weight: 4,
+      meta: { type: 'canvas-page', pageId, title: title || undefined, semanticPlaceholder: true },
     };
   }
   if (!nodeId.startsWith('file:')) return null;
@@ -954,6 +1017,25 @@ function _registerSemanticGraphProvider(api, context) {
         }
       }
 
+      // Page endpoints self-supply their node (so cross-type edges survive even
+      // when the page isn't in the structural tree). Resolve real titles from
+      // the page tree where possible; database/non-tree pages fall back cleanly.
+      let pageTitleById = null;
+      try {
+        if (api.workspace && typeof api.workspace.getCanvasPageTree === 'function') {
+          pageTitleById = new Map();
+          const flatten = (list) => {
+            for (const p of (list || [])) {
+              pageTitleById.set(p.id, p.title || 'Untitled');
+              if (p.children && p.children.length) flatten(p.children);
+            }
+          };
+          flatten(await api.workspace.getCanvasPageTree());
+        }
+      } catch (err) {
+        console.warn('[WorkspaceGraph] page title map failed:', err && err.message);
+      }
+
       const nodes = [];
       const seenNodes = new Set();
       const edges = [];
@@ -966,7 +1048,7 @@ function _registerSemanticGraphProvider(api, context) {
         }
         for (const nodeId of [edge.sourceNodeId, edge.targetNodeId]) {
           if (seenNodes.has(nodeId)) continue;
-          const node = _makeSemanticEndpointNode(nodeId, conceptMetaById);
+          const node = _makeSemanticEndpointNode(nodeId, conceptMetaById, pageTitleById);
           if (node) {
             seenNodes.add(nodeId);
             nodes.push(node);

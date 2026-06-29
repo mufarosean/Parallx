@@ -9,7 +9,7 @@ import type {
   ICancellationToken,
   IChatFollowup,
 } from '../../services/chatTypes.js';
-import { ChatMode, ChatContentPartKind, isChatFileAttachment } from '../../services/chatTypes.js';
+import { ChatMode, ChatContentPartKind, isChatFileAttachment, isChatCanvasBlockAttachment } from '../../services/chatTypes.js';
 import { isChatSelectionAttachment } from '../../services/selectionActionTypes.js';
 import type {
   IDefaultParticipantServices,
@@ -246,12 +246,34 @@ async function runOpenclawDefaultTurn(
     }
   }
 
+  // Canvas block LIVE references — the user attached specific block(s); the
+  // current content was resolved at send time. Hand the model the pageId +
+  // blockId so it can edit THIS block in place (canvas_edit_block) and re-read
+  // its latest content (canvas_read_block) — this is a live pointer, not a copy.
+  const canvasBlockBlocks: string[] = [];
+  if (request.attachments?.length) {
+    const blockAttachments = request.attachments.filter(isChatCanvasBlockAttachment);
+    for (const att of blockAttachments) {
+      const where = att.pageTitle ? ` on page "${att.pageTitle}"` : '';
+      const content = att.resolvedContent ?? '(current content unavailable — read it with canvas_read_block)';
+      canvasBlockBlocks.push(
+        `## Canvas Block (${att.blockType ?? 'block'})${where}\n`
+        + `pageId: ${att.pageId}\nblockId: ${att.blockId}\n\n`
+        + `Current content:\n> ${content.split('\n').join('\n> ')}\n\n`
+        + `This is a LIVE reference to that block. To change it, call `
+        + `canvas_edit_block with the pageId and blockId above; to see its latest `
+        + `content, call canvas_read_block.`,
+      );
+    }
+  }
+
   // Combine context blocks with explicit attachments FIRST (highest priority).
   // User-attached files/selections are deliberate context — they take precedence
   // over @mention and #variable resolved content.
   const allContextBlocks = [
     ...fileAttachmentBlocks,
     ...selectionAttachmentBlocks,
+    ...canvasBlockBlocks,
     ...(mentionResult.contextBlocks.length > 0 ? mentionResult.contextBlocks : []),
     ...(variableResult.contextBlocks.length > 0 ? variableResult.contextBlocks : []),
   ];

@@ -1,30 +1,31 @@
-// notesWidget.ts — a freeform sticky-note widget.
+// notesWidget.ts — a real canvas page, embedded as a dashboard widget.
 //
-// The user types Markdown; it renders as formatted text in view mode and flips
-// to a plain textarea on click. The note body is persisted directly in
-// `cached_output` via ctx.setCachedOutput — same store the image widget uses
-// for its data URL — so there is no extra storage column and the note survives
-// reloads. No refresh handler: the content is purely user-owned.
+// The note IS a canvas page: it shows in the canvas sidebar, lands in the
+// workspace graph, and opens full-screen — so mind-mapping / grouping works.
+// The widget just hosts CanvasEditorView (the actual canvas editor — every
+// block, the real slash menu, bubble, handles), and edits sync both ways with
+// the full page via the data service's reload events. No parallel editor.
 
 import type {
   WidgetContext,
   WidgetHandle,
   WidgetTypeRegistration,
 } from '../dashboardTypes.js';
-import { renderMarkdownToDom } from './markdownRenderer.js';
+import { CanvasEditorView } from '../../canvas/canvasEditorView.js';
+import { ICanvasDataService } from '../../canvas/canvasTypes.js';
 
 interface NotesConfig {
-  /** Visual scale of the note text — small / normal / large. */
   readonly textSize: 'sm' | 'md' | 'lg';
 }
 
 const DEFAULT_CONFIG: NotesConfig = { textSize: 'md' };
 
-// Keep the note comfortably under MAX_CACHED_OUTPUT_BYTES (256 KB). A note is
-// text — this ceiling is generous and only guards against runaway paste.
-const MAX_NOTE_CHARS = 100_000;
-
 const ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9z"/><path d="M15 3v6h6"/><path d="M8 13h6"/><path d="M8 17h4"/></svg>';
+
+interface DashboardApi {
+  services?: { get<T>(id: { readonly id: string }): T; has(id: { readonly id: string }): boolean };
+  commands?: { executeCommand<T = unknown>(id: string, ...args: unknown[]): Promise<T> };
+}
 
 function normalizeConfig(raw: unknown): NotesConfig {
   const cfg = (raw ?? {}) as Partial<NotesConfig>;
@@ -35,10 +36,10 @@ function normalizeConfig(raw: unknown): NotesConfig {
 export const NOTES_WIDGET: WidgetTypeRegistration<NotesConfig> = {
   typeId: 'parallx.dashboard.notes',
   displayName: 'Notes',
-  description: 'A freeform sticky note. Click to edit, type Markdown, click away to save. Stays put across reloads.',
+  description: 'A real canvas page, embedded. Type "/" for any block — it also shows in the canvas sidebar and the workspace graph.',
   icon: ICON_SVG,
   category: 'static',
-  defaultSize: { colSpan: 4, rowSpan: 3 },
+  defaultSize: { colSpan: 4, rowSpan: 4 },
   defaultConfig: DEFAULT_CONFIG,
   configSchema: {
     fields: {
@@ -58,204 +59,100 @@ export const NOTES_WIDGET: WidgetTypeRegistration<NotesConfig> = {
   createWidget(container: HTMLElement, ctx: WidgetContext<NotesConfig>): WidgetHandle {
     container.classList.add('ntw');
     let config = normalizeConfig(ctx.config);
-    let text = typeof ctx.cachedOutput === 'string' ? ctx.cachedOutput : '';
-    let editing = false;
-
-    function applyTextSize(): void {
+    const applyTextSize = (): void => {
       container.classList.remove('ntw--sm', 'ntw--md', 'ntw--lg');
       container.classList.add(`ntw--${config.textSize}`);
-    }
+    };
+    applyTextSize();
 
-    const view = document.createElement('div');
-    view.className = 'ntw__view';
+    // Toolbar (open full page in canvas) + the editor host.
+    const bar = document.createElement('div');
+    bar.className = 'ntw__bar';
+    const openBtn = document.createElement('button');
+    openBtn.type = 'button';
+    openBtn.className = 'ntw__open';
+    openBtn.title = 'Open this page in the canvas';
+    openBtn.innerHTML = '<span>↗</span> Open in canvas';
+    bar.appendChild(openBtn);
 
-    const editor = document.createElement('textarea');
-    editor.className = 'ntw__editor';
-    editor.spellcheck = true;
-    editor.placeholder = 'Write a note… Markdown works (# heading, - bullet, **bold**).';
+    const host = document.createElement('div');
+    host.className = 'ntw__host';
+    container.append(bar, host);
 
-    container.appendChild(view);
-    container.appendChild(editor);
+    const api = ctx.api as DashboardApi;
+    const dataService = (() => {
+      try {
+        return api.services?.has(ICanvasDataService) ? api.services.get<ICanvasDataService>(ICanvasDataService) : null;
+      } catch { return null; }
+    })();
 
-    // ── Selection formatting bubble ──
-    // Highlight text in the editor and a small Markdown toolbar floats above the
-    // selection. Buttons keep focus in the editor (mousedown is prevented) so a
-    // click never blurs → commits → tears the editor down.
-    const bubble = document.createElement('div');
-    bubble.className = 'ntw-bubble';
-    bubble.style.display = 'none';
+    let view: CanvasEditorView | null = null;
+    let pageId = '';
+    let disposed = false;
+    openBtn.addEventListener('click', () => {
+      if (pageId) void api.commands?.executeCommand?.('canvas.openPage', pageId);
+    });
 
-    function wrapSelection(before: string, after: string): void {
-      const s = editor.selectionStart ?? 0;
-      const e = editor.selectionEnd ?? 0;
-      const sel = editor.value.slice(s, e);
-      editor.value = editor.value.slice(0, s) + before + sel + after + editor.value.slice(e);
-      editor.setSelectionRange(s + before.length, s + before.length + sel.length);
-      editor.focus();
-    }
-    function prefixLines(prefix: string): void {
-      const s = editor.selectionStart ?? 0;
-      const e = editor.selectionEnd ?? 0;
-      const v = editor.value;
-      const lineStart = v.lastIndexOf('\n', s - 1) + 1;
-      const block = v.slice(lineStart, e);
-      const out = block.split('\n').map((l) => prefix + l).join('\n');
-      editor.value = v.slice(0, lineStart) + out + v.slice(e);
-      editor.setSelectionRange(lineStart, lineStart + out.length);
-      editor.focus();
-    }
-
-    const FORMATS: ReadonlyArray<{ html: string; title: string; run: () => void }> = [
-      { html: '<b>B</b>', title: 'Bold', run: () => wrapSelection('**', '**') },
-      { html: '<i>I</i>', title: 'Italic', run: () => wrapSelection('*', '*') },
-      { html: '<s>S</s>', title: 'Strikethrough', run: () => wrapSelection('~~', '~~') },
-      { html: 'H', title: 'Heading', run: () => prefixLines('## ') },
-      { html: '&bull;', title: 'Bullet list', run: () => prefixLines('- ') },
-      { html: '&#10078;', title: 'Quote', run: () => prefixLines('> ') },
-      { html: '&lt;&gt;', title: 'Code', run: () => wrapSelection('`', '`') },
-      { html: '&#128279;', title: 'Link', run: () => wrapSelection('[', '](https://)') },
-    ];
-    for (const f of FORMATS) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.innerHTML = f.html;
-      btn.title = f.title;
-      btn.addEventListener('mousedown', (e) => e.preventDefault()); // keep editor focus
-      btn.addEventListener('click', (e) => { e.preventDefault(); f.run(); updateBubble(); });
-      bubble.appendChild(btn);
-    }
-    document.body.appendChild(bubble);
-
-    // Pixel position of the caret at `pos`, via a hidden mirror div that copies
-    // the textarea's box + text metrics — textareas don't expose this directly.
-    function caretPoint(pos: number): { top: number; left: number; bottom: number } {
-      const cs = window.getComputedStyle(editor);
-      const mirror = document.createElement('div');
-      const copy = ['box-sizing', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
-        'border-top-width', 'border-right-width', 'border-bottom-width', 'border-left-width',
-        'font-family', 'font-size', 'font-weight', 'font-style', 'letter-spacing', 'line-height',
-        'text-transform', 'word-spacing', 'text-indent'];
-      for (const p of copy) mirror.style.setProperty(p, cs.getPropertyValue(p));
-      mirror.style.position = 'absolute';
-      mirror.style.visibility = 'hidden';
-      mirror.style.whiteSpace = 'pre-wrap';
-      mirror.style.wordWrap = 'break-word';
-      mirror.style.overflow = 'hidden';
-      mirror.style.width = `${editor.clientWidth}px`;
-      mirror.textContent = editor.value.slice(0, pos);
-      const marker = document.createElement('span');
-      marker.textContent = editor.value.slice(pos) || '.';
-      mirror.appendChild(marker);
-      document.body.appendChild(mirror);
-      const r = editor.getBoundingClientRect();
-      const lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.55;
-      const top = r.top + marker.offsetTop - editor.scrollTop;
-      const left = r.left + marker.offsetLeft - editor.scrollLeft;
-      document.body.removeChild(mirror);
-      return { top, left, bottom: top + lh };
-    }
-
-    function hideBubble(): void { bubble.style.display = 'none'; }
-    function updateBubble(): void {
-      if (!editing) { hideBubble(); return; }
-      const s = editor.selectionStart;
-      const e = editor.selectionEnd;
-      if (s == null || e == null || s === e) { hideBubble(); return; }
-      const pt = caretPoint(Math.min(s, e));
-      bubble.style.display = 'flex';
-      bubble.style.visibility = 'hidden';
-      const bw = bubble.offsetWidth || 240;
-      const bh = bubble.offsetHeight || 30;
-      const left = Math.max(8, Math.min(pt.left, window.innerWidth - bw - 8));
-      let top = pt.top - bh - 6;
-      if (top < 8) top = pt.bottom + 6; // flip below the line if no room above
-      bubble.style.left = `${Math.round(left)}px`;
-      bubble.style.top = `${Math.round(top)}px`;
-      bubble.style.visibility = 'visible';
-    }
-    const onWindowChange = () => hideBubble();
-    editor.addEventListener('mouseup', () => window.setTimeout(updateBubble, 0));
-    editor.addEventListener('keyup', updateBubble);
-    editor.addEventListener('scroll', hideBubble);
-    window.addEventListener('scroll', onWindowChange, true);
-    window.addEventListener('resize', onWindowChange);
-
-    function paintView(): void {
-      view.innerHTML = '';
-      if (!text.trim()) {
-        const empty = document.createElement('div');
-        empty.className = 'ntw__empty';
-        empty.innerHTML = '<strong>Empty note</strong><p>Click anywhere to start writing.</p>';
-        view.appendChild(empty);
+    async function setup(): Promise<void> {
+      if (!dataService) {
+        host.innerHTML = '<div class="ntw__empty"><strong>Canvas unavailable</strong><p>The canvas tool isn’t active, so this note can’t be hosted.</p></div>';
         return;
       }
-      view.appendChild(renderMarkdownToDom(text));
-    }
 
-    function enterEdit(): void {
-      if (editing) return;
-      editing = true;
-      editor.value = text;
-      container.classList.add('ntw--editing');
-      editor.focus();
-      // Place the caret at the end so typing continues the note.
-      const len = editor.value.length;
-      editor.setSelectionRange(len, len);
-    }
+      // Resolve the backing page from the widget's stored state.
+      let legacyDoc: unknown = null;
+      try {
+        const saved = ctx.cachedOutput ? JSON.parse(ctx.cachedOutput) : null;
+        if (saved && typeof saved.pageId === 'string') pageId = saved.pageId;
+        else if (saved && saved.type === 'doc') legacyDoc = saved; // interim ProseMirror note → migrate
+      } catch { /* legacy markdown string — handled below */ }
 
-    function commit(): void {
-      if (!editing) return;
-      editing = false;
-      hideBubble();
-      container.classList.remove('ntw--editing');
-      let next = editor.value;
-      if (next.length > MAX_NOTE_CHARS) next = next.slice(0, MAX_NOTE_CHARS);
-      if (next !== text) {
-        text = next;
-        ctx.setCachedOutput(text);
+      // Validate an existing page (it may have been deleted from the canvas).
+      if (pageId) {
+        try { if (!(await dataService.getPage(pageId))) pageId = ''; } catch { pageId = ''; }
       }
-      paintView();
-    }
+      if (disposed) return;
 
-    view.addEventListener('click', enterEdit);
-    editor.addEventListener('blur', commit);
-    editor.addEventListener('keydown', (e) => {
-      // Escape cancels (revert), Ctrl/Cmd+Enter commits.
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        editing = false;
-        hideBubble();
-        container.classList.remove('ntw--editing');
-        paintView();
-        view.focus();
-      } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-        e.preventDefault();
-        commit();
+      // First run (or page gone): mint a real canvas page for this note.
+      if (!pageId) {
+        try {
+          const page = await dataService.createPage(null, 'Note');
+          pageId = page.id;
+          ctx.setCachedOutput(JSON.stringify({ pageId }));
+        } catch (err) {
+          console.warn('[Dashboard] notes: createPage failed:', err);
+          host.innerHTML = '<div class="ntw__empty"><strong>Couldn’t create the note page</strong></div>';
+          return;
+        }
       }
-    });
+      if (disposed) return;
+
+      const v = new CanvasEditorView(host, pageId, dataService, {});
+      view = v;
+      await v.init();
+      if (disposed) { v.dispose(); return; }
+
+      // One-time migration of the previous in-widget note into the new page.
+      if (legacyDoc) {
+        try { v.editor?.commands.setContent(legacyDoc as never); } catch { /* non-fatal */ }
+      } else if (ctx.cachedOutput && !ctx.cachedOutput.trim().startsWith('{')) {
+        // Oldest format: a raw markdown/text note. Seed it as plain text so the
+        // content isn't lost; the user reformats with the real block tools.
+        try { v.editor?.commands.setContent(ctx.cachedOutput); } catch { /* non-fatal */ }
+      }
+    }
+    void setup();
 
     const sub = ctx.onDidChangeConfig((next) => {
       config = normalizeConfig(next);
       applyTextSize();
     });
 
-    applyTextSize();
-    paintView();
-
     return {
-      refreshFromCache(cached: string | null) {
-        // Don't clobber an in-progress edit — only re-sync the view.
-        if (editing) return;
-        text = typeof cached === 'string' ? cached : '';
-        paintView();
-      },
       dispose() {
-        // Persist any pending edit if the pane is torn down mid-edit.
-        if (editing) commit();
-        window.removeEventListener('scroll', onWindowChange, true);
-        window.removeEventListener('resize', onWindowChange);
-        bubble.remove();
+        disposed = true;
         sub.dispose();
+        view?.dispose();
       },
     };
   },

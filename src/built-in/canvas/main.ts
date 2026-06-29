@@ -20,9 +20,10 @@ import { ICanvasPageQueryService, IIndexingPipelineService, IVectorStoreService,
 import { ILanguageModelToolsService } from '../../services/chatTypes.js';
 import { registerCanvasAITools, canvasPageIdFromEditorId } from './ai/canvasAITools.js';
 import { markdownToTiptapJson } from './markdownImport.js';
-import { encodeCanvasContentFromDoc } from './contentSchema.js';
+import { tiptapJsonToMarkdown } from './markdownExport.js';
+import { decodeCanvasContent, encodeCanvasContentFromDoc } from './contentSchema.js';
 import { CanvasDataService } from './canvasDataService.js';
-import type { ICanvasDataService } from './canvasTypes.js';
+import { ICanvasDataService } from './canvasTypes.js';
 import { PageChangeKind } from './canvasTypes.js';
 import type { IPage, IPageTreeNode, PageChangeEvent, PageMutationField } from './canvasTypes.js';
 import { CanvasSidebar } from './canvasSidebar.js';
@@ -282,6 +283,9 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
 
   // 2a. Publish read-only page query service to DI for cross-tool access (M56)
   api.services.registerInstance(ICanvasPageQueryService, _dataService);
+  // Publish the FULL data service too, so the dashboard's notes widget can host
+  // a real canvas page (create/get/save + live reload) via the shared editor view.
+  api.services.registerInstance(ICanvasDataService, _dataService);
 
   // 2a2. M84 — register canvas's AI tools. Canvas owns the page/block tools it
   // exposes to the chat agent (they were previously created inside the chat
@@ -800,6 +804,35 @@ async function _restoreLastOpenedPage(api: ParallxApi, context: ToolContext, dat
 // â”€â”€â”€ Commands â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function _registerCommands(api: ParallxApi, context: ToolContext): void {
+  // canvas.resolveBlockForChat — resolve a single block's CURRENT markdown for a
+  // LIVE block-reference chat attachment. Returns null when the page/block is
+  // gone (the block may have been deleted/merged since it was referenced).
+  context.subscriptions.push(
+    api.commands.registerCommand('canvas.resolveBlockForChat', async (...args: unknown[]) => {
+      const pageId = String(args[0] ?? '');
+      const blockId = String(args[1] ?? '');
+      if (!pageId || !blockId || !_dataService) return null;
+      const page = await _dataService.getPage(pageId);
+      if (!page) return null;
+      let doc: { type?: string; content?: unknown[] };
+      try { doc = decodeCanvasContent(page.content).doc as { type?: string; content?: unknown[] }; }
+      catch { return null; }
+      const find = (node: unknown): { type?: string; attrs?: Record<string, unknown>; content?: unknown[] } | null => {
+        if (!node || typeof node !== 'object') return null;
+        const n = node as { attrs?: Record<string, unknown>; content?: unknown[] };
+        if (n.attrs && n.attrs['id'] === blockId) return n;
+        if (Array.isArray(n.content)) {
+          for (const child of n.content) { const hit = find(child); if (hit) return hit; }
+        }
+        return null;
+      };
+      const block = find(doc);
+      if (!block) return null;
+      let markdown = '';
+      try { markdown = tiptapJsonToMarkdown({ type: 'doc', content: [block] }).trim(); } catch { markdown = ''; }
+      return { markdown, blockType: block.type, pageTitle: page.title };
+    }),
+  );
   // canvas.newPage â€” Create a new page at root level
   context.subscriptions.push(
     api.commands.registerCommand('canvas.newDatabase', async () => {

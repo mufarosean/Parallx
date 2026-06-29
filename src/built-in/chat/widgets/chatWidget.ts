@@ -32,8 +32,8 @@ import type {
   ILanguageModelInfo,
 } from '../../../services/chatTypes.js';
 import { ChatRequestQueueKind } from '../../../services/chatTypes.js';
-import type { IChatSelectionAttachment, IChatAttachment, IChatFileAttachment } from '../../../services/chatTypes.js';
-import { isChatFileAttachment } from '../../../services/chatTypes.js';
+import type { IChatSelectionAttachment, IChatAttachment, IChatFileAttachment, IChatCanvasBlockAttachment } from '../../../services/chatTypes.js';
+import { isChatFileAttachment, isChatCanvasBlockAttachment } from '../../../services/chatTypes.js';
 import type {
   IChatWidgetServices,
   ICodeActionRequest,
@@ -492,6 +492,11 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     this._inputPart.addSelectionAttachment(attachment);
   }
 
+  /** Add a LIVE canvas-block reference as context. */
+  addCanvasBlockAttachment(attachment: IChatCanvasBlockAttachment): void {
+    this._inputPart.addCanvasBlockAttachment(attachment);
+  }
+
   /** Add a file or folder as context attachment. */
   addFileAttachment(file: { name: string; fullPath: string }): void {
     this._inputPart.addFileAttachment(file);
@@ -561,7 +566,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     // File attachments carry only fullPath at attachment time. We read file
     // content here so the participant receives pre-resolved content inline —
     // same reliability as selection attachments which carry selectedText.
-    const attachments = await this._resolveFileAttachmentContent(rawAttachments);
+    const attachments = await this._resolveAttachmentContent(rawAttachments);
 
     // If a request is already in progress, queue the message
     if (session.requestInProgress) {
@@ -604,34 +609,33 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
    * If a file cannot be read, it is dropped and a warning is logged.
    * Non-file attachments (images, selections) pass through unchanged.
    */
-  private async _resolveFileAttachmentContent(attachments: readonly IChatAttachment[]): Promise<IChatAttachment[]> {
+  private async _resolveAttachmentContent(attachments: readonly IChatAttachment[]): Promise<IChatAttachment[]> {
     if (attachments.length === 0) {
       return [];
-    }
-    console.log(`[ChatWidget] Resolving ${attachments.length} attachment(s), readFileRelative available: ${!!this._services.readFileRelative}`);
-
-    if (!this._services.readFileRelative) {
-      // No file reader — pass attachments through as-is (participant fallback will try)
-      return [...attachments];
     }
 
     const resolved: IChatAttachment[] = [];
     for (const att of attachments) {
-      if (isChatFileAttachment(att) && !att.resolvedContent) {
-        console.log(`[ChatWidget] Reading file attachment: ${att.name} (${att.fullPath})`);
+      if (isChatFileAttachment(att) && !att.resolvedContent && this._services.readFileRelative) {
         try {
           const content = await this._services.readFileRelative(att.fullPath);
-          if (content) {
-            console.log(`[ChatWidget] Resolved file attachment: ${att.name} (${content.length} chars)`);
-            resolved.push({ ...att, resolvedContent: content } as IChatFileAttachment);
-          } else {
-            // Content empty/null — still pass the attachment so participant can inform model
-            console.warn(`[ChatWidget] File attachment returned empty: ${att.name}`);
-            resolved.push(att);
-          }
+          // Content empty/null → still pass the attachment so the participant
+          // can inform the model rather than silently dropping it.
+          resolved.push(content ? ({ ...att, resolvedContent: content } as IChatFileAttachment) : att);
         } catch (err) {
-          // Read failed — still pass the attachment through (don't silently drop)
           console.warn(`[ChatWidget] Failed to read attached file: ${att.name}`, err);
+          resolved.push(att);
+        }
+      } else if (isChatCanvasBlockAttachment(att) && this._services.resolveCanvasBlock) {
+        // LIVE block reference: read the block's CURRENT content at send time,
+        // so the model sees the latest (not a click-time snapshot).
+        try {
+          const res = await this._services.resolveCanvasBlock(att.pageId, att.blockId);
+          resolved.push(res
+            ? { ...att, resolvedContent: res.markdown, blockType: res.blockType ?? att.blockType, pageTitle: res.pageTitle ?? att.pageTitle }
+            : att);
+        } catch (err) {
+          console.warn(`[ChatWidget] Failed to resolve canvas block: ${att.blockId}`, err);
           resolved.push(att);
         }
       } else {

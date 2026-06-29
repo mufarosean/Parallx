@@ -115,7 +115,7 @@ import {
 import { SelectionActionDispatcher } from '../../services/selectionActionDispatcher.js';
 import { createBuiltInActionHandlers } from '../../services/selectionActionHandlers.js';
 import { ChatProgrammaticAccess } from './chatProgrammaticAccess.js';
-import type { IChatSelectionAttachment } from '../../services/selectionActionTypes.js';
+import type { IChatSelectionAttachment, ICanvasBlockReferencePayload } from '../../services/selectionActionTypes.js';
 
 // ── Local API type — only the subset we use ──
 
@@ -2339,6 +2339,12 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     api.commands.executeCommand('ai-settings.open');
   };
 
+  // Live block-reference resolver: a canvas-block attachment resolves its
+  // CURRENT content at send time via the canvas command (so it's never a stale
+  // snapshot). Canvas owns the markdown serialization; we just bridge the call.
+  (widgetServices as unknown as Record<string, unknown>).resolveCanvasBlock = (pageId: string, blockId: string) =>
+    api.commands.executeCommand('canvas.resolveBlockForChat', pageId, blockId);
+
   // Wire token bar services into widget services (for in-widget token indicator)
   const tokenBarServices = dataService.buildTokenBarServices();
   (widgetServices as unknown as Record<string, unknown>).tokenBarServices = tokenBarServices;
@@ -2947,6 +2953,17 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     }),
   );
 
+  // LIVE canvas-block reference → chat input (driven by the canvas block menu's
+  // "Send to Chat"). Resolves current content at send time, not here.
+  context.subscriptions.push(
+    api.commands.registerCommand('chat.addCanvasBlockReference', async (...args: unknown[]) => {
+      const payload = args[0] as ICanvasBlockReferencePayload | undefined;
+      if (_chatProgrammaticAccess && payload?.pageId && Array.isArray(payload.blocks) && payload.blocks.length) {
+        await _chatProgrammaticAccess.addCanvasBlockReference(payload);
+      }
+    }),
+  );
+
   context.subscriptions.push(_selectionDispatcher);
 
   // Global listener for bubbling selection-action events from editor panes
@@ -2963,6 +2980,22 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   document.addEventListener('parallx-selection-action', onSelectionAction);
   context.subscriptions.push({
     dispose: () => document.removeEventListener('parallx-selection-action', onSelectionAction),
+  });
+
+  // LIVE canvas-block references dispatched by the canvas block menu's
+  // "Send to Chat" — resolved to current content at send time.
+  const onCanvasBlockToChat = (e: globalThis.Event): void => {
+    const detail = (e as CustomEvent).detail;
+    if (!detail?.pageId || !Array.isArray(detail.blocks) || detail.blocks.length === 0) return;
+    void _chatProgrammaticAccess?.addCanvasBlockReference({
+      pageId: detail.pageId,
+      pageTitle: detail.pageTitle,
+      blocks: detail.blocks,
+    });
+  };
+  document.addEventListener('parallx-canvas-block-to-chat', onCanvasBlockToChat);
+  context.subscriptions.push({
+    dispose: () => document.removeEventListener('parallx-canvas-block-to-chat', onCanvasBlockToChat),
   });
 
   // ── 11. Workspace switch ──

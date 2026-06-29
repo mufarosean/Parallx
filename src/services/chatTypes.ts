@@ -323,7 +323,27 @@ export interface IChatSelectionAttachment extends IChatAttachmentBase {
   readonly pageNumber?: number;
 }
 
-export type IChatAttachment = IChatFileAttachment | IChatImageAttachment | IChatSelectionAttachment;
+/**
+ * A LIVE reference to a single canvas block. Unlike a selection attachment
+ * (which freezes the text at click time), this stores only the block's identity
+ * — the current content is resolved at SEND time, so the model always sees the
+ * latest version and can edit the block in place via `canvas_edit_block`.
+ */
+export interface IChatCanvasBlockAttachment extends IChatAttachmentBase {
+  readonly kind: 'canvas-block';
+  /** UUID of the page the block lives on. */
+  readonly pageId: string;
+  /** Stable block id (Tiptap UniqueID attr) within the page doc. */
+  readonly blockId: string;
+  /** Page title, for the chip label and the resolved context heading. */
+  readonly pageTitle?: string;
+  /** Block node type (paragraph, heading, …) for the chip glyph/label. */
+  readonly blockType?: string;
+  /** Current block markdown, resolved live at send time (absent until then). */
+  readonly resolvedContent?: string;
+}
+
+export type IChatAttachment = IChatFileAttachment | IChatImageAttachment | IChatSelectionAttachment | IChatCanvasBlockAttachment;
 
 export function isChatImageAttachment(attachment: IChatAttachment): attachment is IChatImageAttachment {
   return attachment.kind === 'image';
@@ -335,6 +355,10 @@ export function isChatFileAttachment(attachment: IChatAttachment): attachment is
 
 export function isChatSelectionAttachment(attachment: IChatAttachment): attachment is IChatSelectionAttachment {
   return attachment.kind === 'selection';
+}
+
+export function isChatCanvasBlockAttachment(attachment: IChatAttachment): attachment is IChatCanvasBlockAttachment {
+  return attachment.kind === 'canvas-block';
 }
 
 /**

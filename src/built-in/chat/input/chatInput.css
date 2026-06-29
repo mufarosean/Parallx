@@ -481,6 +481,16 @@
   font-style: italic;
 }
 
+/* Live canvas-block reference — accent tint so it reads as a "live pointer"
+   distinct from file/selection chips. */
+.parallx-chat-context-chip--canvas-block {
+  border-color: color-mix(in srgb, var(--vscode-focusBorder, #007acc) 55%, transparent);
+  background: color-mix(in srgb, var(--vscode-focusBorder, #007acc) 14%, var(--vscode-badge-background, #4d4d4d) 70%);
+}
+.parallx-chat-context-chip--canvas-block .parallx-chat-context-chip-icon {
+  color: var(--vscode-focusBorder, #007acc);
+}
+
 .parallx-chat-context-chip-icon {
   display: inline-flex;
   align-items: center;

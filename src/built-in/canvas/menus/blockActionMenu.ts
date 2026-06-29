@@ -50,6 +50,8 @@ export interface IMenuBlockSelection {
 
 export interface BlockActionMenuHost {
   readonly editor: Editor | null;
+  /** UUID of the page this pane is editing — used to build live block references. */
+  readonly pageId: string;
   /**
    * Optional multi-block selection controller. When the action-menu's
    * anchor block is part of an active selection, actions (delete,
@@ -297,6 +299,14 @@ export class BlockActionMenuController implements ICanvasMenu {
     dupItem.addEventListener('mousedown', (e) => { e.preventDefault(); this._duplicateBlock(); });
     this._blockActionMenu.appendChild(dupItem);
 
+    // Send to Chat — attach a LIVE reference to the targeted block(s) so the AI
+    // can read their current content and edit them in place.
+    const chatItem = this._createActionItem(
+      isBatch ? 'Send blocks to Chat' : 'Send to Chat', svgIcon('comment'), false,
+    );
+    chatItem.addEventListener('mousedown', (e) => { e.preventDefault(); this._sendBlocksToChat(); });
+    this._blockActionMenu.appendChild(chatItem);
+
     // Delete
     const delItem = this._createActionItem('Delete', svgIcon('trash'), false, 'Del');
     delItem.classList.add('block-action-item--danger');
@@ -313,6 +323,34 @@ export class BlockActionMenuController implements ICanvasMenu {
     this._blockActionMenu.style.display = 'none';
     this._hideTurnIntoSubmenu();
     this._hideColorSubmenu();
+  }
+
+  /** Dispatch a LIVE reference to the targeted block(s) to the chat input — the
+   *  anchor block, or the whole multi-selection when the anchor is part of it.
+   *  Chat resolves the current content at send time (this is a pointer, not a
+   *  copy). Blocks without a stable id are skipped. */
+  private _sendBlocksToChat(): void {
+    const editor = this._host.editor;
+    if (!editor) { this._hideBlockActionMenu(); return; }
+    const sel = this._host.blockSelection;
+    const positions = (sel?.hasSelection && sel.positions.includes(this._actionBlockPos))
+      ? [...sel.positions].sort((a, b) => a - b)
+      : [this._actionBlockPos];
+    const blocks: Array<{ blockId: string; blockType?: string; preview?: string }> = [];
+    for (const pos of positions) {
+      const node = editor.state.doc.nodeAt(pos);
+      const blockId = node?.attrs?.['id'];
+      if (!node || typeof blockId !== 'string' || !blockId) continue;
+      const preview = (node.textContent ?? '').trim().slice(0, 120);
+      blocks.push({ blockId, blockType: node.type.name, preview });
+    }
+    this._host.blockSelection?.clear();
+    this._hideBlockActionMenu();
+    if (blocks.length === 0) return;
+    document.dispatchEvent(new CustomEvent('parallx-canvas-block-to-chat', {
+      bubbles: true,
+      detail: { pageId: this._host.pageId, blocks },
+    }));
   }
 
   private _createActionItem(label: string, iconHtml: string, hasSubmenu: boolean, shortcut?: string): HTMLElement {

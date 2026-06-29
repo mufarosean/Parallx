@@ -50,6 +50,12 @@ interface DashboardApiSurface {
     showWarningMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
     showErrorMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
   };
+  // DI access, so widgets can resolve cross-tool services (e.g. the notes
+  // widget hosting a canvas page via ICanvasDataService).
+  services?: {
+    get<T>(id: { readonly id: string }): T;
+    has(id: { readonly id: string }): boolean;
+  };
 }
 
 // ─── DOM helpers ─────────────────────────────────────────────────────────────
