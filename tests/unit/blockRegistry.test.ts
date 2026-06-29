@@ -135,8 +135,8 @@ describe('blockRegistry', () => {
       }
     });
 
-    it('returns 27 slash menu items', () => {
-      expect(getSlashMenuBlocks()).toHaveLength(27);
+    it('returns 28 slash menu items', () => {
+      expect(getSlashMenuBlocks()).toHaveLength(28);
     });
 
     it('includes Page as the first item (order 0)', () => {
@@ -202,9 +202,10 @@ describe('blockRegistry', () => {
   });
 
   describe('SLASH_MENU_ITEMS parity', () => {
-    /** Original labels from the hardcoded SLASH_MENU_ITEMS, in order. */
+    /** Original labels from the hardcoded SLASH_MENU_ITEMS, in order.
+     *  'Database' was added with the databases feature (pageBlock variant). */
     const ORIGINAL_SLASH_LABELS = [
-      'Page', 'Heading 1', 'Heading 2', 'Heading 3',
+      'Page', 'Database', 'Heading 1', 'Heading 2', 'Heading 3',
       'Bullet List', 'Numbered List', 'To-Do List',
       'Quote', 'Code Block', 'Divider',
       'Toggle List', 'Callout', 'Table',
@@ -215,8 +216,8 @@ describe('blockRegistry', () => {
       'Bookmark', 'Table of Contents',
     ];
 
-    it('produces 27 items', () => {
-      expect(SLASH_MENU_ITEMS).toHaveLength(27);
+    it('produces 28 items', () => {
+      expect(SLASH_MENU_ITEMS).toHaveLength(28);
     });
 
     it('preserves all original labels', () => {

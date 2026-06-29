@@ -4,7 +4,7 @@
 //
 // Task 6.2: Source citation Reference rendering (clickable pills)
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 
 // ── Task 6.2: Reference content part rendering ──
 
@@ -125,7 +125,15 @@ describe('renderContentPart — Thinking provenance visibility', () => {
 // ── Task 6.2: Source citation emission from defaultParticipant ──
 
 describe('retrieveContext — source citation metadata (Task 6.2)', () => {
-  it('returns both text and source citations', async () => {
+  let extractCitationLabel: typeof import('../../src/built-in/chat/data/chatDataService').extractCitationLabel;
+
+  // Warm the (heavy) chatDataService import once, with headroom — a cold dynamic
+  // import inside an individual 5s test times out under parallel transform load.
+  beforeAll(async () => {
+    ({ extractCitationLabel } = await import('../../src/built-in/chat/data/chatDataService'));
+  }, 30_000);
+
+  it('returns both text and source citations', () => {
     // Simulate what chatTool.ts closure does
     const mockChunks = [
       { sourceType: 'page', sourceId: 'page-1', contextPrefix: '[Source: "Design Notes"]', text: 'chunk1', score: 0.9, sources: [], tokenCount: 50 },
@@ -134,7 +142,6 @@ describe('retrieveContext — source citation metadata (Task 6.2)', () => {
     ];
 
     // Build sources the same way chatTool.ts does (using extractCitationLabel)
-    const { extractCitationLabel } = await import('../../src/built-in/chat/data/chatDataService');
     const seen = new Set<string>();
     const sources: Array<{ uri: string; label: string }> = [];
     for (const chunk of mockChunks) {
@@ -154,8 +161,7 @@ describe('retrieveContext — source citation metadata (Task 6.2)', () => {
     expect(sources[1]).toEqual({ uri: 'src/main.ts', label: 'main.ts' });
   });
 
-  it('uses fallback labels when contextPrefix is missing', async () => {
-    const { extractCitationLabel } = await import('../../src/built-in/chat/data/chatDataService');
+  it('uses fallback labels when contextPrefix is missing', () => {
     const mockChunks = [
       { sourceType: 'page', sourceId: 'page-1', contextPrefix: undefined, text: 'chunk1', score: 0.9, sources: [], tokenCount: 50 },
       { sourceType: 'file', sourceId: 'readme.md', contextPrefix: undefined, text: 'chunk2', score: 0.8, sources: [], tokenCount: 50 },

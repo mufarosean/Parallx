@@ -48,6 +48,7 @@ const GATE_IMPORT_RULES: Record<string, string[]> = {
 
 const EXEMPT_FILES = new Set([
   'canvasEditorProvider.ts',       // Top-level orchestrator
+  'canvasEditorView.ts',           // Embeddable editor host — orchestrator that wires the same gates as the provider
   'canvasTypes.ts',                // Shared type definitions
   'canvasDataService.ts',          // Data layer (no gate interaction)
   'canvasIcons.ts',                // Raw icon data (consumed only by IconRegistry)
@@ -64,10 +65,7 @@ const EXEMPT_FILES = new Set([
   'database/rowPropertiesSection.ts', // Row-page database properties section
   'database/legacyPropertyMigration.ts', // One-time legacy property migration
   'canvasDocDiff.ts',              // Pure block-diff core for surgical live updates
-  'composeStreamSession.ts',       // Pure compose-stream patch session
   'ai/relatePagesTool.ts',         // canvas_relate_pages tool (dep-injected)
-  'ai/composePageTool.ts',         // canvas_compose_page tool (dep-injected)
-  'ai/composePageRuntime.ts',      // compose streaming runtime (dep-injected)
   'ai/databaseTools.ts',           // database AI tools (dep-injected)
   'properties/propertyTypes.ts',   // Property type definitions (M55)
   'properties/propertyEditors.ts', // Type-specific editors (M55 D3)

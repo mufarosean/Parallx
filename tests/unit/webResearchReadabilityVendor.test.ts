@@ -61,5 +61,5 @@ describe('Mozilla Readability — vendored at pinned SHA (M65 F1)', () => {
     const r = new mod.Readability(Document);
     expect(r).toBeTruthy();
     expect(typeof r.parse).toBe('function');
-  });
+  }, 30_000); // heavy vendored import + DOM construction — headroom for parallel load
 });
