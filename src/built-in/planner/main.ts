@@ -24,6 +24,9 @@ import { registerPlannerChatTools } from './plannerChatTools.js';
 import { registerPlannerDashboardWidgets } from './widgets/registerPlannerWidgets.js';
 import { createPlannerSettingsPanel } from './plannerSettingsPanel.js';
 import { settingsPanelRegistry } from '../../services/settingsPanelRegistry.js';
+import { PlannerSyncOrchestrator } from './sync/plannerSyncOrchestrator.js';
+import { GoogleCalendarSyncProvider } from './sync/googleCalendarSyncProvider.js';
+import { googleSync } from './sync/googleClient.js';
 
 // ─── API surface ────────────────────────────────────────────────────────────
 
@@ -72,6 +75,8 @@ interface ParallxApi {
 
 let _data: PlannerDataService | null = null;
 let _scheduler: PlannerReminderScheduler | null = null;
+let _orchestrator: PlannerSyncOrchestrator | null = null;
+let _googleProviderReg: IDisposable | null = null;
 const _syncProviders = new Map<string, ICalendarSyncProvider>();
 
 // ─── Public registry surface (planner.getRegistry command) ──────────────────
@@ -109,9 +114,40 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     });
   }
 
-  // 2b. Settings panel in the unified Settings hub. The sidebar's Settings row
+  // 2b. Sync registry + orchestrator. The registry hook (registerSyncProvider)
+  //     has existed since M82; the orchestrator is what finally drives it —
+  //     pulling/pushing for every registered provider on a timer + on demand.
+  const publicRegistry: PlannerRegistry = {
+    registerSyncProvider: (provider: ICalendarSyncProvider) => {
+      _syncProviders.set(provider.id, provider);
+      return toDisposable(() => { _syncProviders.delete(provider.id); });
+    },
+    listSyncProviders: () => [..._syncProviders.values()],
+    get data() { return _data!; },
+  };
+
+  // Built-in Google provider lifecycle: registered iff a Google account is
+  // connected. Called on activate and whenever the user connects/disconnects.
+  const ensureGoogleProvider = async (): Promise<void> => {
+    const status = await googleSync.status();
+    if (status.connected && !_googleProviderReg) {
+      _googleProviderReg = publicRegistry.registerSyncProvider(new GoogleCalendarSyncProvider(_data!));
+    } else if (!status.connected && _googleProviderReg) {
+      _googleProviderReg.dispose();
+      _googleProviderReg = null;
+    }
+  };
+
+  _orchestrator = new PlannerSyncOrchestrator({
+    data: _data,
+    getProviders: () => [..._syncProviders.values()],
+    ensureProviders: ensureGoogleProvider,
+  });
+  context.subscriptions.push(_orchestrator);
+
+  // 2c. Settings panel in the unified Settings hub. The sidebar's Settings row
   //     deep-links straight here via settings.open('planner').
-  context.subscriptions.push(settingsPanelRegistry.register(createPlannerSettingsPanel(_data)));
+  context.subscriptions.push(settingsPanelRegistry.register(createPlannerSettingsPanel(_data, _orchestrator)));
 
   // 3. Sidebar view (lists tasks with filter chips).
   const sidebar = new PlannerSidebar(_data, {
@@ -156,14 +192,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   }
 
   // 7. Public registry surface (sync providers + data service handle).
-  const publicRegistry: PlannerRegistry = {
-    registerSyncProvider: (provider: ICalendarSyncProvider) => {
-      _syncProviders.set(provider.id, provider);
-      return toDisposable(() => { _syncProviders.delete(provider.id); });
-    },
-    listSyncProviders: () => [..._syncProviders.values()],
-    get data() { return _data!; },
-  };
+  //    publicRegistry is created in step 2b; here we just expose it as a command.
   context.subscriptions.push(
     api.commands.registerCommand('planner.getRegistry', () => publicRegistry),
   );
@@ -204,6 +233,11 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   // 9. Commands.
   _registerCommands(api, context);
 
+  // 10. Start the sync engine. start() registers the Google provider if an
+  //     account is already connected, then runs an initial reconcile; the timer
+  //     keeps it going. No-op until the user connects an account.
+  _orchestrator.start();
+
   if (isDevMode) console.log('[Planner] activated');
 }
 
@@ -211,8 +245,12 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
 
 export async function deactivate(): Promise<void> {
   _scheduler?.dispose();
+  _orchestrator?.dispose();
+  _googleProviderReg?.dispose();
   _data?.dispose();
   _scheduler = null;
+  _orchestrator = null;
+  _googleProviderReg = null;
   _data = null;
   _syncProviders.clear();
 }

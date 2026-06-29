@@ -15,6 +15,7 @@ const doclingBridge = require('./doclingBridge.cjs');
 const { setupMcpBridge, killAllMcpProcesses } = require('./mcpBridge.cjs');
 const { setupStorageHandlers } = require('./storageHandlers.cjs');
 const { setupWebFetchBridge } = require('./webFetchBridge.cjs');
+const { setupGoogleSyncBridge } = require('./googleSyncBridge.cjs');
 
 // ════════════════════════════════════════════════════════════════════════════════
 // Workspace Teardown Registry
@@ -142,6 +143,11 @@ try { app.setPath('logs', path.join(APP_ROOT, 'data', 'logs')); } catch { /* ign
 
 setupStorageHandlers(ipcMain, APP_ROOT);
 setupWebFetchBridge(ipcMain, APP_ROOT, _readSecretString);
+setupGoogleSyncBridge(ipcMain, APP_ROOT, {
+  readSecret: _readSecretString,
+  writeSecret: _writeSecretString,
+  deleteSecret: _deleteSecretString,
+});
 doclingBridge.setAppRoot(APP_ROOT);
 
 const USER_EXTENSIONS_DIR = path.join(APP_ROOT, 'data', 'extensions');
@@ -1576,6 +1582,36 @@ async function _readSecretString(key) {
     return Buffer.from(valueB64, 'base64').toString('utf8');
   } catch {
     return null;
+  }
+}
+
+// Main-process-only writer/deleter, symmetric with _readSecretString. Used by
+// the Google sync bridge so the OAuth refresh token is persisted/cleared from
+// main without round-tripping through the renderer. `value` is plain UTF-8;
+// we base64-encode it to match the renderer round-trip contract
+// (see secretStorageService.ts).
+async function _writeSecretString(key, value) {
+  if (!_secretKeyValid(key) || typeof value !== 'string') return false;
+  if (!safeStorage.isEncryptionAvailable()) return false;
+  try {
+    await _ensureSecretsDir();
+    const valueB64 = Buffer.from(value, 'utf8').toString('base64');
+    const encrypted = safeStorage.encryptString(valueB64);
+    await fs.writeFile(_secretFilePath(key), encrypted);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function _deleteSecretString(key) {
+  if (!_secretKeyValid(key)) return false;
+  try {
+    await fs.unlink(_secretFilePath(key));
+    return true;
+  } catch (err) {
+    // Treat "already gone" as success — delete is idempotent.
+    return !!(err && err.code === 'ENOENT');
   }
 }
 

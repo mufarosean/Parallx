@@ -1387,6 +1387,25 @@
 }
 .planner-settings__cal-add:hover { background: var(--vscode-button-secondaryHoverBackground, rgba(255,255,255,0.1)); }
 
+/* Google sync */
+.planner-settings__google { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.planner-settings__google-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.planner-settings__google-account { font-size: 13px; color: var(--vscode-foreground, #ddd); }
+.planner-settings__google-account .is-dim { color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent); }
+.planner-settings__btn {
+  padding: 5px 12px; font: inherit; font-size: 12px; color: var(--vscode-foreground, #ddd);
+  background: var(--vscode-button-secondaryBackground, rgba(255,255,255,0.06));
+  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 12%, transparent);
+  border-radius: 5px; cursor: pointer;
+}
+.planner-settings__btn:hover { background: var(--vscode-button-secondaryHoverBackground, rgba(255,255,255,0.1)); }
+.planner-settings__btn--primary { color: var(--vscode-button-foreground, #fff); background: var(--vscode-button-background, #0e639c); border-color: transparent; }
+.planner-settings__btn--primary:hover { background: var(--vscode-button-hoverBackground, #1177bb); }
+.planner-settings__btn:disabled { opacity: 0.55; cursor: default; }
+.planner-settings__google-status { font-size: 12px; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent); }
+.planner-settings__google-status.is-error { color: var(--px-danger, #f85149); }
+.planner-settings__google-help code { font-size: 11px; padding: 1px 4px; border-radius: 3px; background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 10%, transparent); }
+
 /* ───────────────────────────────────────────────────────────────────
    All-day band (Outlook-style) — week + day views
    Multi-day / all-day events live in a horizontal band above the time

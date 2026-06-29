@@ -504,6 +504,25 @@ contextBridge.exposeInMainWorld('parallxElectron', {
   },
 
   // ══════════════════════════════════════════════════════════════════════════
+  // Google Sync API — planner two-way Google Calendar / Tasks sync
+  // ══════════════════════════════════════════════════════════════════════════
+  //
+  // OAuth + all Google REST calls run in the main process (electron/
+  // googleSyncBridge.cjs). The refresh token lives only in main + safeStorage;
+  // the renderer never sees it. `fetch` is host-allowlisted to www.googleapis.com.
+
+  google: {
+    /** Run the OAuth consent flow. Opens the browser; resolves { ok, email }. */
+    authorize: (scopes) => ipcRenderer.invoke('google:authorize', scopes),
+    /** { connected, email, hasClient } — whether a token + OAuth client exist. */
+    status: () => ipcRenderer.invoke('google:status'),
+    /** Clear the stored refresh token + cached account. */
+    disconnect: () => ipcRenderer.invoke('google:disconnect'),
+    /** Authenticated Google API call: { method, url, body? } → { ok, status, data, error? }. */
+    fetch: (opts) => ipcRenderer.invoke('google:fetch', opts),
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════
   // Storage API (M53 — Portable file-backed storage)
   // ══════════════════════════════════════════════════════════════════════════
 

@@ -188,25 +188,74 @@ export interface SyncedEvent extends Partial<PlannerEvent> {
   readonly sourceId: string;
 }
 
+/** A pending local deletion that still needs propagating to a provider. */
+export interface SyncDeletion {
+  readonly provider: string;
+  readonly sourceId: string;
+  readonly kind: 'event' | 'task';
+  readonly remoteParent: string | null;
+}
+
+/** Cursor handed to a provider on each pull. */
+export interface SyncPullState {
+  /** Opaque incremental cursor from the provider's previous pull (e.g. Google
+   *  syncToken). Undefined on the first pull or after a reset. */
+  readonly token?: string;
+  /** Floor timestamp (ms epoch) for providers that can only filter by time. */
+  readonly sinceMs: number;
+}
+
+/** Result of a provider pull — remote upserts, deletions, and the next cursor. */
+export interface SyncPullResult {
+  readonly upsertedEvents: readonly SyncedEvent[];
+  readonly deletedEventSourceIds: readonly string[];
+  readonly upsertedTasks?: readonly SyncedTask[];
+  readonly deletedTaskSourceIds?: readonly string[];
+  /** Opaque cursor to pass back on the next pull. */
+  readonly nextToken?: string;
+  /** True when the incremental cursor expired and the provider returned a full
+   *  snapshot — the orchestrator should not infer deletions from absence. */
+  readonly reset?: boolean;
+}
+
 /**
- * Contract a future Google Calendar (or other) extension implements to
- * sync events / tasks into the planner. The planner exposes
- * `registerSyncProvider(provider)` from its activate(); providers can be
- * registered at any time and removed via the returned disposable.
+ * Contract a Google Calendar (or other) provider implements to sync events /
+ * tasks with the planner. The planner exposes `registerSyncProvider(provider)`
+ * from its activate(); the sync orchestrator (plannerSyncOrchestrator.ts) drives
+ * every registered provider on a timer and on demand.
  *
- * No sync provider ships in M82 — this is the shape so we don't paint
- * ourselves into a corner.
+ * The shape intentionally evolved from the M82 placeholder: `pull()` replaces
+ * `pullEvents()` so a provider can report deletions and an incremental cursor in
+ * one round-trip. `deleteEvent`/`deleteTask` propagate local deletions upstream.
  */
 export interface ICalendarSyncProvider {
   readonly id: string;
   readonly displayName: string;
-  /** Pull events newer than `sinceMs`. Provider returns whatever it has. */
-  pullEvents(sinceMs: number): Promise<readonly SyncedEvent[]>;
-  /** Push a local event upstream. Returns the provider's id for the row. */
+
+  /** Pull remote changes since `state`. Returns upserts, deletions, next cursor. */
+  pull(state: SyncPullState): Promise<SyncPullResult>;
+
+  /** Push a local event upstream. Returns the provider's id to store as source_id. */
   pushEvent?(local: PlannerEvent): Promise<{ providerId: string }>;
-  /** Optional: same shape for tasks if the provider supports them. */
-  pullTasks?(sinceMs: number): Promise<readonly SyncedTask[]>;
+  /** Delete an event upstream by its provider id. `remoteParentId` is the
+   *  container recorded at delete time (Google calendar id). */
+  deleteEvent?(sourceId: string, remoteParentId?: string): Promise<void>;
+
+  /** Push a local task upstream. Returns the provider's id to store as source_id. */
   pushTask?(local: PlannerTask): Promise<{ providerId: string }>;
+  /** Delete a task upstream by its provider id. `remoteParentId` is the tasklist id. */
+  deleteTask?(sourceId: string, remoteParentId?: string): Promise<void>;
+
+  /** Whether the user has opted this provider into task sync. When false the
+   *  orchestrator skips pushing local tasks (the provider still self-gates its
+   *  pull). Absent ⇒ tasks are not pushed. */
+  wantsTaskSync?(): Promise<boolean>;
+
+  /** @deprecated M82 placeholder, superseded by `pull()`. Kept optional so any
+   *  external implementer of the published shape still type-checks. */
+  pullEvents?(sinceMs: number): Promise<readonly SyncedEvent[]>;
+  /** @deprecated superseded by `pull()`. */
+  pullTasks?(sinceMs: number): Promise<readonly SyncedTask[]>;
 }
 
 // ─── Change events ───────────────────────────────────────────────────────────
