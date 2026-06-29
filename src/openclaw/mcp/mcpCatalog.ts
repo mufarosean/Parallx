@@ -193,6 +193,35 @@ export const MCP_CATALOG: readonly IMcpCatalogEntry[] = Object.freeze([
     args: ['-y', '@modelcontextprotocol/server-fetch'],
     env: [],
   },
+  {
+    id: 'anki',
+    displayName: 'Anki',
+    description:
+      'Create, search, and review Anki spaced-repetition flashcards. Requires the Anki desktop app to be running with the AnkiConnect add-on installed (add-on code 2055492159).',
+    category: 'Study',
+    homepage: 'https://github.com/ankimcp/anki-mcp-server',
+    command: 'npx',
+    // `--stdio` is required: without it the server starts in HTTP mode and
+    // never speaks JSON-RPC over stdio, so Parallx's transport can't connect.
+    args: ['-y', '@ankimcp/anki-mcp-server', '--stdio'],
+    env: [
+      {
+        key: 'ANKI_CONNECT_URL',
+        label: 'AnkiConnect URL',
+        description:
+          'Where AnkiConnect is listening. Leave blank for the default (http://localhost:8765). Change only if you set a custom bind address/port in the AnkiConnect add-on config.',
+        required: false,
+      },
+      {
+        key: 'ANKI_CONNECT_API_KEY',
+        label: 'AnkiConnect API key',
+        description:
+          'Only needed if you set an apiKey in the AnkiConnect add-on config. Leave blank otherwise.',
+        required: false,
+        secret: true,
+      },
+    ],
+  },
 ]);
 
 /** Look up a catalog entry by id. */
