@@ -51,15 +51,16 @@ describe('PredictionLoop — real prediction graded by reality', () => {
     expect(mind.current().some(e => e.kind === 'prediction' && e.resolved)).toBe(true);
   });
 
-  it('flags surprise and remembers it when reality contradicts the forecast', async () => {
+  it('flags surprise when reality contradicts the forecast, WITHOUT writing a belief', async () => {
     const { mind, loop } = build();
     for (const x of ['a.ts', 'a.ts', 'a.ts']) await loop.observe(x); // forecast strongly favors a.ts
     const res = await loop.observe('totally-new.ts'); // unforecast → high brier
     expect(res.surprised).toBe(true);
     expect(res.brier).toBeGreaterThanOrEqual(0.5);
-    // the surprise is remembered as continuity the next review will see
+    // Surprise drives attention via the accumulator; it is deliberately NOT
+    // written to the belief store (the MIND is curated only by mind_remember).
     const threads = mind.current().filter(e => e.kind === 'thread');
-    expect(threads.some(t => t.content.includes('Surprised') && t.content.includes('totally-new.ts'))).toBe(true);
+    expect(threads).toHaveLength(0);
   });
 
   it('moves the fidelity meter as predictions resolve', async () => {

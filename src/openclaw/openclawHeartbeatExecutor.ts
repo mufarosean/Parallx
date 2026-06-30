@@ -78,7 +78,6 @@ import { extractFinalAssistantText } from './openclawSubagentExecutor.js';
 import { buildHeartbeatSnapshot, formatAppContext, formatEventLine, hasNoteworthySignals, buildWorkspaceContext, buildTasksContext } from './openclawHeartbeatContext.js';
 import type { IHeartbeatAppSnapshot, IWorkspacePageInfo, IWorkspaceTaskInfo } from './openclawHeartbeatContext.js';
 import type { AgentActionKind } from './mind/actionLedger.js';
-import type { IDiagnosticResult } from '../services/serviceTypes.js';
 import type {
   IEphemeralSessionHandle,
   IEphemeralSessionSeed,
@@ -169,14 +168,8 @@ export interface IHeartbeatRealTurnDeps {
   };
   readonly getAutonomyLevel?: () => import('../agent/agentTypes.js').AgentAutonomyLevel | undefined;
   /**
-   * Latest background diagnostics, read fresh each review and folded into the
-   * app-context snapshot the model sees. Optional — absent → snapshot reports
-   * diagnostics as unavailable, the review still runs on workspace activity.
-   */
-  readonly getDiagnostics?: () => readonly IDiagnosticResult[] | undefined;
-  /**
    * The user's actual canvas pages (lightweight metadata), so the review knows
-   * their real work instead of only events + diagnostics. This is what lets the
+   * their real work instead of only events. This is what lets the
    * agent give substantive help ("you have X and Y — link them?") rather than
    * reporting status the user can already see.
    */
@@ -213,12 +206,10 @@ function formatTickText(reason: HeartbeatReason, eventCount: number): string {
 /**
  * Cheap, stable key over the *noteworthy* content of a snapshot. The idle gate
  * uses it to skip an interval review when nothing has changed since the last one
- * (so a standing diagnostic failure isn't re-reviewed by the model every tick).
+ * (so the same pending events aren't re-reviewed by the model every tick).
  */
 function snapshotKey(s: IHeartbeatAppSnapshot): string {
-  const d = s.diagnosticsAttention.map(a => `${a.name}:${a.status}`).join('|');
-  const e = s.events.map(ev => `${ev.type}:${ev.count}`).join('|');
-  return `${d}#${e}`;
+  return s.events.map(ev => `${ev.type}:${ev.count}`).join('|');
 }
 
 /**
@@ -451,7 +442,7 @@ export function createHeartbeatTurnExecutor(
     // Assemble the app-wide situational snapshot (the heartbeat's "senses")
     // fresh each turn, and fold it into the seed so the model reviews app state,
     // not just the triggering event.
-    const snapshot = buildHeartbeatSnapshot(realTurnDeps.getDiagnostics?.(), events);
+    const snapshot = buildHeartbeatSnapshot(events);
     const mind = realTurnDeps.mind;
 
     // Slow loop (Build-10): once a day the interval tick becomes a REFLECTION —
@@ -502,11 +493,6 @@ export function createHeartbeatTurnExecutor(
       try { return await mind.record(kind, summary.slice(0, 300), `heartbeat:${reason}`, detail); }
       catch { return undefined; }
     };
-    const rememberThread = async (content: string, confidence: number, receiptHash?: string): Promise<void> => {
-      if (!mind) return;
-      try { await mind.remember('thread', content.slice(0, 280), confidence, [receiptHash ?? `heartbeat:${reason}:${now()}`]); }
-      catch { /* continuity is best-effort; never throw into the loop */ }
-    };
 
     const handle = realTurnDeps.chatService.createEphemeralSession(parentId, {
       systemMessage,
@@ -549,7 +535,6 @@ export function createHeartbeatTurnExecutor(
           // ledger it and keep it as continuity, but DON'T interrupt them.
           console.debug('[HeartbeatExecutor] NOTE throttled by nag budget — not surfaced');
           await recordOutcome('deferred', `note throttled (nag budget): ${noteText}`);
-          await rememberThread(`Noted (held back — not surfaced): ${noteText}`, 0.4);
         } else {
           recordDelivery(normalized, ts);
           await router.sendWithOrigin(
@@ -568,8 +553,7 @@ export function createHeartbeatTurnExecutor(
             },
             ORIGIN_HEARTBEAT,
           );
-          const rec = await recordOutcome('note', noteText);
-          await rememberThread(`Noted: ${noteText}`, 0.5, rec?.hash);
+          await recordOutcome('note', noteText);
         }
       } else {
         const normalized = normalizeForDedup(trimmed);
@@ -594,8 +578,7 @@ export function createHeartbeatTurnExecutor(
             },
             ORIGIN_HEARTBEAT,
           );
-          const rec = await recordOutcome('act', resultText);
-          await rememberThread(`Acted: ${resultText}`, 0.6, rec?.hash);
+          await recordOutcome('act', resultText);
         }
       }
       // Daily reflection: consolidate (prune stale beliefs) + mark reflected.

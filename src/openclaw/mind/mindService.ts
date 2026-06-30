@@ -375,6 +375,23 @@ export class MindService {
   }
 
   /**
+   * The human wipes the MIND to a clean slate — used when the accumulated
+   * beliefs are noise they no longer trust. Ledgered with origin 'user' so the
+   * reset itself is auditable. Returns the number of entries cleared.
+   */
+  async clearAll(): Promise<number> {
+    const n = this._entries.length;
+    if (n === 0) return 0;
+    this._entries = [];
+    await this._store.save(this._entries, this._now());
+    await this._ledger.append(
+      { kind: 'belief-update', summary: `cleared all ${n} belief(s) (user reset)`, origin: 'user' },
+      this._now(),
+    );
+    return n;
+  }
+
+  /**
    * The human corrects the agent's model: forget a belief by id. Ledgered with
    * origin 'user' so the correction itself is auditable. Returns false if not
    * found. This is the human steering the mind — the highest-trust affordance.

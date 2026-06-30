@@ -241,9 +241,14 @@ export function meanBrier(entries: readonly IMindEntry[]): number {
  * flagged. Beliefs the model can no longer justify (decayed) simply don't appear.
  */
 export function summarizeMind(entries: readonly IMindEntry[], nowMs: number, maxItems = 12): string {
+  // Seed floor (0.35) is much higher than the compact/prune floor (0.05): a
+  // belief is KEPT in the store as it decays, but only surfaces in the review
+  // seed while the agent is still genuinely confident in it. This stops weakly-
+  // held or aging entries from being repeated to the model every tick.
+  const SEED_MIN_CONFIDENCE = 0.35;
   const live = entries
     .map(e => ({ e, c: decayedConfidence(e, nowMs) }))
-    .filter(x => x.c >= 0.05 || (x.e.kind === 'prediction' && !x.e.resolved))
+    .filter(x => x.c >= SEED_MIN_CONFIDENCE || (x.e.kind === 'prediction' && !x.e.resolved))
     .sort((a, b) => b.c - a.c)
     .slice(0, maxItems);
 

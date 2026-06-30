@@ -360,7 +360,6 @@ describe('M58-real integration scenarios', () => {
     chatService: ChatService,
     router: SurfaceRouterService,
     parentId: string,
-    getDiagnostics?: () => readonly { name: string; status: 'pass' | 'warn' | 'fail'; detail: string; timestamp: number }[],
   ) {
     return createHeartbeatTurnExecutor(
       router,
@@ -373,41 +372,39 @@ describe('M58-real integration scenarios', () => {
           getSession: (sid) => chatService.getSession(sid),
         },
         getParentSessionId: () => parentId,
-        getDiagnostics,
       },
     );
   }
 
-  it('periodic interval review assembles the app snapshot (incl. a failing diagnostic) and delivers an ACT result', async () => {
-    const { svc: chatService, seeds } = buildCapturingChatService('Ollama is unreachable — restart it to restore the model.');
+  it('an activity-driven review assembles the app snapshot and delivers an ACT result (no diagnostics)', async () => {
+    const { svc: chatService, seeds } = buildCapturingChatService('Linked the two related pages for you.');
     const parent = chatService.createSession();
     const router = new SurfaceRouterService();
     const chat = new FakeSurfacePlugin(SURFACE_CHAT);
     router.registerSurface(new FakeSurfacePlugin(SURFACE_STATUS));
     router.registerSurface(chat);
 
-    const executor = wireExecutor(chatService, router, parent.id, () => [
-      { name: 'Ollama Connection', status: 'fail', detail: 'Cannot reach Ollama at localhost:11434', timestamp: 0 },
-      { name: 'RAG Engine', status: 'pass', detail: 'idle', timestamp: 0 },
-    ]);
+    const executor = wireExecutor(chatService, router, parent.id);
     const runner = new HeartbeatRunner(executor, () => ({ enabled: true, intervalMs: 60_000 }));
     runner.start();
 
-    // A periodic review — NO file events; the app-context snapshot drives it.
-    runner.wake('interval');
+    // Real workspace activity drives the review — the snapshot is activity-led;
+    // diagnostics are no longer one of the heartbeat's senses.
+    runner.pushEvent({ type: 'file-change', payload: { path: '/notes/plan.ts' }, timestamp: Date.now() });
     await new Promise((r) => setTimeout(r, 10));
 
-    // The model was seeded with the app snapshot (now activity-led), with the
-    // failing check demoted to the health footnote.
+    // The model was seeded with the activity snapshot — and NOTHING about diagnostics.
     expect(seeds).toHaveLength(1);
     expect(seeds[0]).toContain('Recent activity');
-    expect(seeds[0]).toContain('[FAIL] Ollama Connection');
+    expect(seeds[0]).toContain('/notes/plan.ts');
+    expect(seeds[0]).not.toContain('Background health');
+    expect(seeds[0]).not.toMatch(/diagnostic/i);
 
-    // Its ACT response was delivered as a heartbeatResult for reason=interval.
+    // Its ACT response was delivered as a heartbeatResult.
     const deliveries = chat.deliveries.filter((d) => getDeliveryOrigin(d) === ORIGIN_HEARTBEAT);
     expect(deliveries).toHaveLength(1);
-    expect(deliveries[0].content).toContain('Ollama is unreachable');
-    expect((deliveries[0].metadata as Record<string, unknown>).reason).toBe('interval');
+    expect(deliveries[0].content).toContain('Linked the two related pages');
+    expect((deliveries[0].metadata as Record<string, unknown>).reason).toBe('system-event');
 
     expect(chatService.getSessions().map((s) => s.id)).toEqual([parent.id]); // no ephemeral leak
     runner.dispose();

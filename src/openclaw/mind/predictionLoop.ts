@@ -3,13 +3,15 @@
 // Ties the cheap predictor to the MIND and to REALITY: on each observed item it
 //   1. grades the prediction it made last time against what actually happened
 //      (Brier, computed by the MIND from an external outcome — never self-graded),
-//   2. when the gap is large enough, remembers the SURPRISE as continuity (so the
-//      next review sees "I expected X but you did Y" and can reflect — the impasse
-//      that drives attention), and
+//   2. flags a SURPRISE when the gap is large enough (the impasse that drives
+//      attention — surfaced via the surprise accumulator, NOT written to the
+//      belief store), and
 //   3. issues a fresh prediction for the next item.
 //
 // No model call anywhere here — forecasting and grading are arithmetic. Surprise
-// is what later JUSTIFIES spending an LLM review, not the other way round.
+// is what later JUSTIFIES spending an LLM review, not the other way round. It is
+// deliberately NOT auto-remembered as a belief: the MIND is filled only by the
+// model's curated mind_remember, never by loop machinery.
 
 import type { SequencePredictor } from './sequencePredictor.js';
 
@@ -22,7 +24,6 @@ export interface IPredictionMind {
     provenance: readonly string[],
   ): Promise<{ id: string } | undefined>;
   resolve(predictionId: string, actual: string): Promise<number | undefined>;
-  remember(kind: 'belief' | 'thread', content: string, confidence: number, provenance: readonly string[]): Promise<boolean>;
 }
 
 export interface IPredictionLoopOptions {
@@ -34,8 +35,6 @@ export interface IPredictionLoopOptions {
   readonly surpriseThreshold?: number;
   /** Don't predict until the predictor has this many observations. Default 3. */
   readonly minHistory?: number;
-  /** Confidence stamped on a remembered surprise. Default 0.5. */
-  readonly surpriseConfidence?: number;
 }
 
 export interface IObserveResult {
@@ -47,14 +46,12 @@ export interface IObserveResult {
 
 export class PredictionLoop {
   private _pendingId?: string;
-  private _pendingTop?: string;
   private _lastBrier = NaN;
 
   private readonly _subject: string;
   private readonly _horizonMs: number;
   private readonly _surpriseThreshold: number;
   private readonly _minHistory: number;
-  private readonly _surpriseConfidence: number;
 
   constructor(
     private readonly _mind: IPredictionMind,
@@ -65,7 +62,6 @@ export class PredictionLoop {
     this._horizonMs = opts.horizonMs ?? 10 * 60 * 1000;
     this._surpriseThreshold = opts.surpriseThreshold ?? 0.5;
     this._minHistory = Math.max(1, opts.minHistory ?? 3);
-    this._surpriseConfidence = opts.surpriseConfidence ?? 0.5;
   }
 
   /** Brier of the most recently resolved prediction (NaN if none). */
@@ -87,18 +83,10 @@ export class PredictionLoop {
       this._pendingId = undefined;
       if (brier !== undefined) {
         this._lastBrier = brier;
-        if (brier >= this._surpriseThreshold) {
-          surprised = true;
-          const expected = this._pendingTop ?? '(unsure)';
-          await this._mind.remember(
-            'thread',
-            `Surprised: I expected "${expected}" next, but you touched "${actual}".`,
-            this._surpriseConfidence,
-            [`prediction:brier=${brier.toFixed(2)}`],
-          );
-        }
+        // Surprise drives attention via the accumulator; it is deliberately NOT
+        // written to the belief store (the MIND is curated by mind_remember only).
+        if (brier >= this._surpriseThreshold) surprised = true;
       }
-      this._pendingTop = undefined;
     }
 
     this._predictor.observe(actual);
@@ -108,7 +96,6 @@ export class PredictionLoop {
       if (options.length > 0) {
         const pred = await this._mind.predict(this._subject, options, this._horizonMs, [`observed:${actual}`]);
         this._pendingId = pred?.id;
-        this._pendingTop = options[0]?.label;
       }
     }
 

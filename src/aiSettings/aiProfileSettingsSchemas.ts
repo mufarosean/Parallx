@@ -380,18 +380,6 @@ const SCHEMAS: readonly IBoundSchema[] = ([
   } as IBoundSchema<number>,
   {
     schema: {
-      key: 'autonomy.heartbeat.senseDiagnostics',
-      type: 'boolean',
-      default: true,
-      scope: 'workspace',
-      description: 'Let the heartbeat review background diagnostics (and react when a check newly fails). Turn off if you don’t want app-health checks to drive proactive check-ins.',
-      category: 'Autonomy',
-    },
-    read: (c) => c.heartbeat.senseDiagnostics,
-    write: (v) => ({ heartbeat: { senseDiagnostics: v as boolean } }),
-  } as IBoundSchema<boolean>,
-  {
-    schema: {
       key: 'autonomy.heartbeat.senseExtensionSignals',
       type: 'boolean',
       default: true,

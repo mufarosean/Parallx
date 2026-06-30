@@ -62,7 +62,6 @@ import { SequencePredictor } from '../../openclaw/mind/sequencePredictor.js';
 import { SurpriseAccumulator } from '../../openclaw/mind/surpriseAccumulator.js';
 import { cronForMinuteOfDay } from '../../openclaw/mind/habitDetector.js';
 import { createMindRememberTool } from './tools/mindTools.js';
-import { risingFailures } from '../../openclaw/openclawHeartbeatContext.js';
 import { signalToSystemEvent } from '../../openclaw/openclawAutonomySignal.js';
 import { IAutonomySignalService } from '../../services/autonomySignalService.js';
 import { shouldHeartbeatAcceptPath } from '../../openclaw/openclawHeartbeatFileFilter.js';
@@ -1965,10 +1964,6 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   // The runner is guarded on surfaceRouter + unifiedConfigService availability.
   // Missing either → heartbeat is inert (no timer, no event queue growth).
   if (surfaceRouter && unifiedConfigService) {
-    // The background diagnostics service — the heartbeat's first app-wide sense.
-    const _heartbeatDiagnostics = api.services.has(IDiagnosticsService)
-      ? api.services.get<import('../../services/serviceTypes.js').IDiagnosticsService>(IDiagnosticsService)
-      : undefined;
     // Human-readable autonomy-log note for a heartbeat tick. Describes the tick
     // itself; the model's actual findings (NOTE/ACT) surface as their own log
     // entries, so we never overclaim "all clear" here.
@@ -2052,6 +2047,10 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     let _predictChain: Promise<unknown> = Promise.resolve();
     const observeForPrediction = (path: string): void => {
       if (!predictionLoop) return;
+      // Never let Parallx's own internal files (.parallx/** — skills, SOUL/USER/
+      // AGENTS/TOOLS/MEMORY, daily logs) enter prediction history or the fluency
+      // probe; they're the app's files, not the user's work.
+      if (path.replace(/\\/g, '/').includes('/.parallx/')) return;
       _predictChain = _predictChain.then(async () => {
         // The human just did work — the conscience denominator, and (with the
         // file as the recurring "skill") the held-out fluency probe.
@@ -2110,13 +2109,6 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
             }
           : undefined,
         getAutonomyLevel: () => unifiedConfigService.getEffectiveConfig().heartbeat.autonomy,
-        // The heartbeat's first non-file "sense": the background diagnostics the
-        // app already runs. Read fresh each review (cheap, cached) and folded
-        // into the app-context snapshot the model sees. Gated by the
-        // senseDiagnostics setting.
-        getDiagnostics: () => unifiedConfigService.getEffectiveConfig().heartbeat.senseDiagnostics
-          ? _heartbeatDiagnostics?.getLastResults()
-          : undefined,
         // The user's ACTUAL canvas pages — real workspace awareness, so the review
         // knows their work and can give substantive help, not just report status.
         getWorkspacePages: async () => {
@@ -2188,6 +2180,12 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
           const hb = unifiedConfigService.getEffectiveConfig().heartbeat;
           for (const ev of events) {
             const uri = ev.uri.toString();
+            // Hard guard: Parallx's OWN internal dir (.parallx/** — skills,
+            // SOUL/USER/AGENTS/TOOLS/MEMORY, daily logs, the heartbeat's own
+            // memory writes) is never a user-work signal. Drop it unconditionally,
+            // independent of user config — this also covers a stale persisted
+            // watchExcludeGlobs from before `**/.parallx/**` was a default.
+            if (uri.replace(/\\/g, '/').includes('/.parallx/')) continue;
             // Fix 3 — honor user-configured include/exclude. Path filtering
             // is scoped to file-change events only (index/workspace events
             // bypass). The runner's coalesce window collapses surviving
@@ -2230,29 +2228,6 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
             payload: { added: e.added.length, removed: e.removed.length },
             timestamp: Date.now(),
           });
-        }),
-      );
-    }
-
-    // ── Phase 2 · Reactive diagnostics ──
-    // The periodic review already reads diagnostics from the snapshot, but a
-    // newly-FAILING background check is worth a prompt reaction rather than
-    // waiting up to a full cadence. Push a system-event only on the rising edge
-    // (a check that wasn't failing before), so a persistent failure doesn't
-    // re-fire every 30s auto-refresh.
-    if (_heartbeatDiagnostics) {
-      let prevFailed = new Set<string>();
-      context.subscriptions.push(
-        _heartbeatDiagnostics.onDidChange((results) => {
-          const newlyFailed = risingFailures(prevFailed, results);
-          prevFailed = new Set(results.filter(r => r.status === 'fail').map(r => r.name));
-          if (newlyFailed.length > 0 && unifiedConfigService.getEffectiveConfig().heartbeat.senseDiagnostics) {
-            heartbeatRunner.pushEvent({
-              type: 'diagnostic-fail',
-              payload: { checks: newlyFailed },
-              timestamp: Date.now(),
-            });
-          }
         }),
       );
     }
@@ -2334,6 +2309,14 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         const id = (raw as { id?: unknown } | undefined)?.id;
         return (typeof id === 'string' && mindService) ? await mindService.forget(id) : false;
       }),
+    );
+
+    // The human wipes the whole MIND — a clean slate when the accumulated
+    // beliefs are noise. Returns how many were cleared.
+    context.subscriptions.push(
+      api.commands.registerCommand('parallx.mind.clearAll', async () =>
+        mindService ? await mindService.clearAll() : 0,
+      ),
     );
 
     // Nag governor's external sensor: the user's response to a surfaced

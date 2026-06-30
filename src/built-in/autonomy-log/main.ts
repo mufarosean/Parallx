@@ -354,6 +354,22 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
       const hint = $('div.autonomy-mind-panel__hint');
       hint.textContent = 'What the agent believes about you & your work. Forget (✕) anything wrong — you steer the mind.';
       panel.appendChild(hint);
+
+      // Clean slate: wipe every belief at once (for when the accumulated set is
+      // noise the user no longer trusts — quicker than forgetting one by one).
+      const clearAll = $('button.autonomy-mind-panel__clear') as HTMLButtonElement;
+      clearAll.textContent = `Clear all ${beliefs.length} beliefs`;
+      clearAll.title = 'Wipe the agent’s entire belief set and start fresh';
+      clearAll.addEventListener('click', () => {
+        if (!confirm(`Clear all ${beliefs.length} of the agent’s beliefs? This can’t be undone.`)) return;
+        void runCommand?.('parallx.mind.clearAll').then(() => { panel.innerHTML = '';
+          const empty = $('div.autonomy-mind-panel__empty');
+          empty.textContent = 'Beliefs cleared — the agent will form fresh ones as it reviews your work.';
+          panel.appendChild(empty);
+        }).catch(() => {});
+      });
+      panel.appendChild(clearAll);
+
       for (const b of beliefs) {
         const row = $('div.autonomy-mind-belief');
         const text = $('span.autonomy-mind-belief__text');

@@ -292,13 +292,10 @@ export interface IUnifiedHeartbeatConfig {
   readonly autonomy: import('../agent/agentTypes.js').AgentAutonomyLevel;
   /**
    * Sense toggles — which app-wide signals the heartbeat reviews. Default on.
-   *   - `senseDiagnostics`: include background diagnostics in the review
-   *     snapshot AND react promptly when a check newly fails.
    *   - `senseExtensionSignals`: forward `api.autonomy.signal(...)` events from
    *     extensions onto the heartbeat queue.
    * (File-change sensing is governed by `watchIncludeExtensions` / `watchExcludeGlobs`.)
    */
-  readonly senseDiagnostics: boolean;
   readonly senseExtensionSignals: boolean;
 }
 
@@ -590,7 +587,6 @@ export const DEFAULT_UNIFIED_CONFIG: IUnifiedAIConfig = {
     coalesceWindowMs: 2000,           // 2s burst window
     outputDedupWindowMs: 24 * 60 * 60 * 1000, // 24h (OpenClaw parity)
     autonomy: 'allow-safe-actions',
-    senseDiagnostics: true,
     senseExtensionSignals: true,
   },
 };
