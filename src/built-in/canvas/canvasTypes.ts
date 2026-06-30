@@ -105,7 +105,31 @@ export type PageUpdateData = Partial<Pick<IPage,
   'title' | 'icon' | 'content' | 'coverUrl' | 'coverYOffset' |
   'fontFamily' | 'fullWidth' | 'smallText' | 'isLocked' | 'isFavorited' |
   'contentSchemaVersion'
->> & { expectedRevision?: number };
+>> & {
+  expectedRevision?: number;
+  /** Tags the version-history checkpoint produced by this write. Not persisted
+   *  to the page row. Defaults to 'user'. */
+  editSource?: RevisionSource;
+};
+
+// ─── Version history ─────────────────────────────────────────────────────────
+
+export type RevisionSource = 'user' | 'ai' | 'restore';
+
+/** A page version-history entry (metadata only — content fetched on demand). */
+export interface IPageRevision {
+  readonly id: string;
+  readonly pageId: string;
+  readonly title: string | null;
+  readonly source: RevisionSource;
+  readonly createdAt: string;
+}
+
+/** A version-history entry with its stored content (for preview / restore). */
+export interface IPageRevisionContent extends IPageRevision {
+  readonly content: string;
+  readonly contentSchemaVersion: number;
+}
 
 export type PageUpdateField = Exclude<keyof PageUpdateData, 'expectedRevision'>;
 
@@ -233,6 +257,16 @@ export interface ICanvasDataService {
   getPageTree(): Promise<IPageTreeNode[]>;
   updatePage(pageId: string, updates: PageUpdateData): Promise<IPage>;
   deletePage(pageId: string): Promise<void>;
+
+  // ── Version history ──
+
+  /** Newest-first list of a page's version-history checkpoints (metadata only). */
+  listPageRevisions(pageId: string): Promise<IPageRevision[]>;
+  /** Fetch one revision including its stored content. */
+  getPageRevision(revisionId: string): Promise<IPageRevisionContent | null>;
+  /** Restore a page to a prior revision. Snapshots the current state first
+   *  (so the restore is itself undoable) and reloads any open editor. */
+  restorePageRevision(pageId: string, revisionId: string): Promise<void>;
 
   // ── Content operations ──
 

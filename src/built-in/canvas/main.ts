@@ -19,6 +19,8 @@ import type { LinksApi } from '../../links/linksApi.js';
 import { ICanvasPageQueryService, IIndexingPipelineService, IVectorStoreService, IDatabaseService, IEditorService } from '../../services/serviceTypes.js';
 import { ILanguageModelToolsService } from '../../services/chatTypes.js';
 import { registerCanvasAITools, canvasPageIdFromEditorId } from './ai/canvasAITools.js';
+import { CANVAS_AI_PAGE_FULL_WIDTH_KEY, CANVAS_AI_PAGE_SMALL_TEXT_KEY } from './ai/pageTools.js';
+import { getGlobalSettingsRegistry } from '../../services/settingsRegistryService.js';
 import { markdownToTiptapJson } from './markdownImport.js';
 import { tiptapJsonToMarkdown } from './markdownExport.js';
 import { decodeCanvasContent, encodeCanvasContentFromDoc } from './contentSchema.js';
@@ -360,6 +362,28 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         if (!_dataService) throw new Error('Canvas data service unavailable.');
         const page = await _dataService.createChildPageWithBlock({ parentId, title });
         return page.id;
+      },
+      // canvas_move_page — re-parent an existing page via the atomic
+      // movePageWithBlocks (keeps the parent's sub-page card in sync).
+      movePage: async (pageId, newParentId, afterSiblingId) => {
+        if (!_dataService) throw new Error('Canvas data service unavailable.');
+        await _dataService.movePageWithBlocks({ pageId, newParentId, afterSiblingId });
+      },
+      // Layout defaults for AI-created pages, read live from the settings
+      // registry (both default ON; the user can toggle them in Settings →
+      // Canvas). Falls back to ON when the registry isn't wired yet.
+      getNewPageDefaults: () => {
+        const read = (key: string): boolean => {
+          try {
+            const reg = getGlobalSettingsRegistry();
+            if (reg?.getSchema(key)) return reg.getValue<boolean>(key) !== false;
+          } catch { /* registry not ready — use the default */ }
+          return true;
+        };
+        return {
+          fullWidth: read(CANVAS_AI_PAGE_FULL_WIDTH_KEY),
+          smallText: read(CANVAS_AI_PAGE_SMALL_TEXT_KEY),
+        };
       },
       // canvas_create_page writes its (already-known) body into a freshly-opened
       // empty page via the SAME path as every edit: write the content, then fire

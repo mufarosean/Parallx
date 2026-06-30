@@ -79,6 +79,7 @@ const EXEMPT_FILES = new Set([
   'canvasTemplates.ts',            // M77 Phase 11.4 — pure data, no canvas imports
   'canvasTemplatePicker.ts',       // M77 Phase 11.4 — standalone modal, only imports its own template data
   'canvasShortcutsOverlay.ts',     // M77 Phase 11.6 — standalone modal, no canvas-internal imports
+  'canvasVersionHistoryPanel.ts',  // standalone version-history modal (list/preview/restore)
 ]);
 
 // ── Child → allowed gate path fragments ─────────────────────────────────────
@@ -101,7 +102,7 @@ const GATE_RULES: Record<string, string[]> = {
   'extensions/mediaNodes.ts':              ['config/blockRegistry'],
   'extensions/bookmarkNode.ts':            ['config/blockRegistry'],
   'extensions/pageBlockNode.ts':           ['config/blockRegistry'],
-  'header/pageChrome.ts':                  ['config/blockRegistry'],
+  'header/pageChrome.ts':                  ['config/blockRegistry', 'canvasVersionHistoryPanel'],
   'canvasSidebar.ts':                      ['config/blockRegistry', 'database/databaseRegistry', 'canvasSidebarDragState'],
 
   // tiptapExtensions.ts — assembler role: imports from blockRegistry +

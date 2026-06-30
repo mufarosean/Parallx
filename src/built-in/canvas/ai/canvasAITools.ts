@@ -19,10 +19,13 @@ import {
   createListTemplatesTool,
   createCreatePageTool,
   createEditPageTool,
+  createMovePageTool,
   createListPropertyDefinitionsTool,
   createSetPagePropertyTool,
   createSetPageStyleTool,
   type StreamPageBodyFn,
+  type MovePageFn,
+  type NewPageLayoutDefaults,
 } from './pageTools.js';
 import { createBlockTools } from './blockTools.js';
 import { createRelatePagesTool, type RelatePagesFn } from './relatePagesTool.js';
@@ -61,6 +64,12 @@ export interface ICanvasAIToolDeps {
   /** Atomically create a SUB-page (page row + the parent's sub-page card in
    *  one transaction). Lets canvas_create_page accept parentId. */
   readonly createChildPage?: (parentId: string, title: string) => Promise<string>;
+  /** Re-parent an existing page (atomic, keeps the pageBlock card in sync).
+   *  Omitted → canvas_move_page is not registered. */
+  readonly movePage?: MovePageFn;
+  /** Layout defaults applied to AI-created pages (full-width / small-text).
+   *  Omitted → new pages use the schema column defaults (off). */
+  readonly getNewPageDefaults?: () => NewPageLayoutDefaults;
   /** Database engine — registers canvas_create_database / add_database_row /
    *  query_database when provided. */
   readonly databaseService?: DatabaseDataService;
@@ -71,14 +80,15 @@ export interface ICanvasAIToolDeps {
  * Returns disposables that deregister them.
  */
 export function registerCanvasAITools(deps: ICanvasAIToolDeps): IDisposable[] {
-  const { toolsService, db, getCurrentPageId, workspaceRoot, pageMutationNotifier, templateApi, relatePages, streamPageBody, createChildPage, databaseService } = deps;
+  const { toolsService, db, getCurrentPageId, workspaceRoot, pageMutationNotifier, templateApi, relatePages, streamPageBody, createChildPage, movePage, getNewPageDefaults, databaseService } = deps;
 
   const tools: IChatTool[] = [
     createFindPagesTool(db),
     createReadPageTool(db, getCurrentPageId),
     createListTemplatesTool(templateApi),
-    createCreatePageTool(db, pageMutationNotifier, templateApi, createChildPage, streamPageBody),
+    createCreatePageTool(db, pageMutationNotifier, templateApi, createChildPage, streamPageBody, getNewPageDefaults),
     createEditPageTool(db, pageMutationNotifier),
+    ...(movePage ? [createMovePageTool(db, movePage)] : []),
     createListPropertyDefinitionsTool(db),
     createSetPagePropertyTool(db, databaseService ? (id) => databaseService.notifyRowsChanged(id) : undefined),
     createSetPageStyleTool(db, pageMutationNotifier, workspaceRoot),

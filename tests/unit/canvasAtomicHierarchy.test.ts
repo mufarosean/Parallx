@@ -186,14 +186,33 @@ function createMockDb(initialRows: RowShape[]) {
   const get = vi.fn(async (sql: string, params: unknown[] = []) => getSync(sql, params));
   const run = vi.fn(async (sql: string, params: unknown[] = []) => runSync(sql, params));
 
-  const runTransaction = vi.fn(async (ops: Array<{ type: string; sql: string; params?: unknown[] }>) => {
+  // Faithful to electron/database.cjs: applies ops atomically. An op flagged
+  // `expectChanges` that matches 0 rows throws → the WHOLE transaction rolls
+  // back (we restore a pre-txn snapshot) and returns an { error } with a
+  // "revision conflict" message, mirroring normalizeDatabaseError.
+  const runTransaction = vi.fn(async (ops: Array<{ type: string; sql: string; params?: unknown[]; expectChanges?: boolean }>) => {
+    const snapshot = new Map([...rows.entries()].map(([k, v]) => [k, { ...v }]));
     const results: unknown[] = [];
-    for (const op of ops) {
-      if (op.type === 'run') results.push(runSync(op.sql, op.params ?? []));
-      else if (op.type === 'get') results.push(getSync(op.sql, op.params ?? []));
-      else results.push({ error: null, rows: [] });
+    try {
+      for (const op of ops) {
+        if (op.type === 'run') {
+          const r = runSync(op.sql, op.params ?? []);
+          if (op.expectChanges && r.changes === 0) {
+            throw new Error('revision conflict: guarded transaction op affected 0 rows');
+          }
+          results.push(r);
+        } else if (op.type === 'get') {
+          results.push(getSync(op.sql, op.params ?? []));
+        } else {
+          results.push({ error: null, rows: [] });
+        }
+      }
+      return { error: null, results };
+    } catch (err) {
+      rows.clear();
+      for (const [k, v] of snapshot) rows.set(k, v);
+      return { error: { code: 'SQLITE_ERROR', message: (err as Error).message } };
     }
-    return { error: null, results };
   });
 
   return { rows, writes, mock: { all, get, run, runTransaction } };
@@ -325,6 +344,37 @@ describe('CanvasDataService — createChildPageWithBlock (M77 Phase 1)', () => {
     const ops = opsArg as Array<{ sql: string }>;
     expect(ops.length).toBe(1);
     expect(ops[0].sql).toMatch(/INSERT INTO pages/);
+  });
+
+  it('flags the parent content update with expectChanges (atomic abort on conflict)', async () => {
+    await service.createChildPageWithBlock({ parentId: 'parent', title: 'New' });
+    const [opsArg] = env.mock.runTransaction.mock.calls[0];
+    const ops = opsArg as Array<{ sql: string; expectChanges?: boolean }>;
+    // INSERT child (no guard) + UPDATE parent content (guarded).
+    expect(ops[1].expectChanges).toBe(true);
+  });
+
+  it('rolls back the child INSERT on a parent-revision conflict — no orphan sub-page (the "nested in sidebar, no card" bug)', async () => {
+    // Simulate a concurrent writer: getPage reports a STALE parent revision, so
+    // the guarded parent-content UPDATE matches 0 rows on every attempt.
+    const origGet = env.mock.get;
+    env.mock.get = vi.fn(async (sql: string, params: unknown[] = []) => {
+      const r = await origGet(sql, params);
+      const row = (r as { row?: RowShape | null }).row;
+      if (row && row.id === 'parent') {
+        return { error: null, row: { ...row, revision: row.revision - 1 } };
+      }
+      return r;
+    });
+
+    await expect(
+      service.createChildPageWithBlock({ parentId: 'parent', title: 'New sub' }),
+    ).rejects.toThrow(/revision conflict|failed after/i);
+
+    // Atomicity: every attempt rolled back — only the parent remains, no orphan
+    // child row, and the parent never got a half-applied card.
+    expect([...env.rows.keys()]).toEqual(['parent']);
+    expect(env.rows.get('parent')!.content).not.toContain('pageBlock');
   });
 });
 

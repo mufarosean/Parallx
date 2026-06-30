@@ -368,6 +368,48 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       category: 'General',
     });
 
+    // Canvas page-creation layout defaults for AI-created pages. Registered here
+    // (the settings bootstrap) to avoid a chat→canvas import cycle; canvas reads
+    // them via getNewPageDefaults(). Keys must match canvas/ai/pageTools.ts
+    // CANVAS_AI_PAGE_{FULL_WIDTH,SMALL_TEXT}_KEY.
+    settingsRegistry.register({
+      key: 'canvas.aiPages.fullWidth',
+      type: 'boolean',
+      default: true,
+      scope: 'user',
+      description: 'New pages the AI creates use the full canvas width.',
+      category: 'Canvas',
+    });
+    settingsRegistry.register({
+      key: 'canvas.aiPages.smallText',
+      type: 'boolean',
+      default: true,
+      scope: 'user',
+      description: 'New pages the AI creates use the smaller text size.',
+      category: 'Canvas',
+    });
+
+    // Canvas page version history (keys match canvasDataService.ts
+    // VERSION_HISTORY_* constants).
+    settingsRegistry.register({
+      key: 'canvas.versionHistory.maxPerPage',
+      type: 'number',
+      default: 50,
+      min: 1,
+      scope: 'user',
+      description: 'How many version-history checkpoints to keep per canvas page (older ones are pruned).',
+      category: 'Canvas',
+    });
+    settingsRegistry.register({
+      key: 'canvas.versionHistory.intervalMinutes',
+      type: 'number',
+      default: 5,
+      min: 1,
+      scope: 'user',
+      description: 'How often (minutes) to checkpoint a changed canvas page for version history. Applies after restart.',
+      category: 'Canvas',
+    });
+
     // Bind the autonomy flags. (The non-flag autonomy settings the runtime reads
     // live in the unified AI config — the old unwired substrate schemas were removed.)
     registerAutonomyFlagSettings(settingsRegistry, autonomyFlags);

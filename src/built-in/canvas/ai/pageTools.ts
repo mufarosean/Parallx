@@ -638,12 +638,26 @@ export function createListTemplatesTool(templateApi: CanvasTemplateApi | undefin
  *  the caller must write the body to the DB itself. Implemented in main.ts. */
 export type StreamPageBodyFn = (pageId: string, markdown: string, waitMs?: number) => Promise<boolean>;
 
+/** Layout defaults applied to AI-created pages (backed by registry settings;
+ *  see CANVAS_AI_PAGE_*_KEY). Both default ON in production. */
+export interface NewPageLayoutDefaults {
+  readonly fullWidth: boolean;
+  readonly smallText: boolean;
+}
+
+/** Registry setting keys for AI-created-page layout defaults. Registered in
+ *  chat/main.ts (the settings bootstrap); kept as plain literals there to avoid
+ *  a chat→canvas import cycle — keep both in sync. */
+export const CANVAS_AI_PAGE_FULL_WIDTH_KEY = 'canvas.aiPages.fullWidth';
+export const CANVAS_AI_PAGE_SMALL_TEXT_KEY = 'canvas.aiPages.smallText';
+
 export function createCreatePageTool(
   db: IBuiltInToolDatabase | undefined,
   notifyPageMutated?: PageMutationNotifier,
   templateApi?: CanvasTemplateApi,
   createChildPage?: (parentId: string, title: string) => Promise<string>,
   streamPageBody?: StreamPageBodyFn,
+  getNewPageDefaults?: () => NewPageLayoutDefaults,
 ): IChatTool {
   return {
     name: 'canvas_create_page',
@@ -684,6 +698,12 @@ export function createCreatePageTool(
       const icon = args['icon'] ? String(args['icon']) : null;
       const templateId = args['templateId'] ? String(args['templateId']) : '';
       const now = new Date().toISOString();
+
+      // Layout defaults for AI-created pages (registry-backed; default ON in
+      // production, off when unwired e.g. in tests).
+      const layout = getNewPageDefaults?.() ?? { fullWidth: false, smallText: false };
+      const fullWidthCol = layout.fullWidth ? 1 : 0;
+      const smallTextCol = layout.smallText ? 1 : 0;
 
       let doc: { type: 'doc'; content: unknown[] };
       let fromTemplate = false;
@@ -742,8 +762,8 @@ export function createCreatePageTool(
         try { childId = await createChildPage(parentId, title); }
         catch (err) { return { content: `Sub-page creation failed: ${err instanceof Error ? err.message : String(err)}`, isError: true }; }
         await db!.run(
-          'UPDATE pages SET icon = ?, content = ?, content_schema_version = ?, updated_at = ?, revision = revision + 1 WHERE id = ?',
-          [icon, encoded.storedContent, encoded.schemaVersion, now, childId],
+          'UPDATE pages SET icon = ?, content = ?, content_schema_version = ?, full_width = ?, small_text = ?, updated_at = ?, revision = revision + 1 WHERE id = ?',
+          [icon, encoded.storedContent, encoded.schemaVersion, fullWidthCol, smallTextCol, now, childId],
         );
         try { notifyPageMutated?.(childId, 'updated'); } catch { /* non-fatal */ }
         const subBlockCount = doc.content.length;
@@ -757,8 +777,8 @@ export function createCreatePageTool(
       if (streamPageBody && !templateId && mdBody.trim()) {
         const emptyEnc = encodeCanvasContentFromDoc({ type: 'doc', content: [{ type: 'paragraph' }] } as Parameters<typeof encodeCanvasContentFromDoc>[0]);
         await db!.run(
-          'INSERT INTO pages (id, title, icon, content, content_schema_version, is_archived, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?)',
-          [id, title, icon, emptyEnc.storedContent, emptyEnc.schemaVersion, now, now],
+          'INSERT INTO pages (id, title, icon, content, content_schema_version, is_archived, full_width, small_text, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)',
+          [id, title, icon, emptyEnc.storedContent, emptyEnc.schemaVersion, fullWidthCol, smallTextCol, now, now],
         );
         try { notifyPageMutated?.(id, 'created'); } catch { /* opens the blank page + refreshes the sidebar */ }
         const streamed = await streamPageBody(id, mdBody, 2500);
@@ -774,8 +794,8 @@ export function createCreatePageTool(
       }
 
       await db!.run(
-        'INSERT INTO pages (id, title, icon, content, content_schema_version, is_archived, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?)',
-        [id, title, icon, encoded.storedContent, encoded.schemaVersion, now, now],
+        'INSERT INTO pages (id, title, icon, content, content_schema_version, is_archived, full_width, small_text, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)',
+        [id, title, icon, encoded.storedContent, encoded.schemaVersion, fullWidthCol, smallTextCol, now, now],
       );
 
       // Notify the canvas data service so the sidebar (and other listeners)
@@ -904,6 +924,88 @@ export function createEditPageTool(
       const verb = mode === 'replace' ? 'Replaced' : mode === 'append' ? 'Appended to' : 'Prepended to';
       return {
         content: `${verb} page "${page.title}" — ${blockCount} block${blockCount === 1 ? '' : 's'}.`,
+      };
+    },
+  };
+}
+
+/** Re-parent a page (and keep its embedded pageBlock card in sync). Implemented
+ *  in main.ts over the data service's atomic `movePageWithBlocks`. */
+export type MovePageFn = (
+  pageId: string,
+  newParentId: string | null,
+  afterSiblingId?: string,
+) => Promise<void>;
+
+/**
+ * move_page — re-parent an EXISTING page: nest it under another page, move it to
+ * the top level, or reorder it under its parent. Unlike `canvas_create_page`
+ * (which only sets a parent at creation), this moves a page that already exists.
+ *
+ * Goes through the atomic `movePageWithBlocks` path, so the parent's embedded
+ * sub-page CARD is added/removed in the same transaction as the hierarchy change
+ * — no "nested in the sidebar but no card" desync.
+ */
+export function createMovePageTool(
+  db: IBuiltInToolDatabase | undefined,
+  movePage: MovePageFn,
+): IChatTool {
+  return {
+    name: 'canvas_move_page',
+    displaySummary: 'Move a canvas page under another page (or to the top level).',
+    description:
+      'RE-PARENT an existing canvas page: nest it under another page (creating the parent\'s sub-page card), ' +
+      'move it back to the top level, or reorder it under its current parent. ' +
+      'Use this to turn an existing page into a sub-page of another — `canvas_create_page` only sets a parent for BRAND-NEW pages. ' +
+      'Both ids must be page UUIDs (resolve titles via `canvas_find_pages` / `canvas_read_page` first). ' +
+      'Cycle-safe: a page cannot be moved under itself or its own descendant.',
+    parameters: {
+      type: 'object',
+      required: ['pageId'],
+      properties: {
+        pageId: { type: 'string', description: 'UUID of the page to move (not a title).' },
+        newParentId: { type: 'string', description: 'UUID of the destination parent page. Omit or pass an empty string to move the page to the TOP LEVEL (no parent).' },
+        afterSiblingId: { type: 'string', description: 'Optional UUID of a sibling under the new parent; the page is placed directly after it. Omit to append last.' },
+      },
+    },
+    requiresConfirmation: true,
+    permissionLevel: 'requires-approval' as ToolPermissionLevel,
+    category: 'canvas',
+    async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
+      requireDb(db);
+      const pageId = String(args['pageId'] || '').trim();
+      if (!pageId) {
+        return { content: 'pageId is required', isError: true };
+      }
+      const newParentRaw = typeof args['newParentId'] === 'string' ? (args['newParentId'] as string).trim() : '';
+      const newParentId = newParentRaw === '' ? null : newParentRaw;
+      const afterSiblingId = typeof args['afterSiblingId'] === 'string' && args['afterSiblingId'].trim()
+        ? (args['afterSiblingId'] as string).trim()
+        : undefined;
+
+      const page = await db!.get<{ id: string; title: string }>('SELECT id, title FROM pages WHERE id = ?', [pageId]);
+      if (!page) {
+        return { content: `Page not found: ${pageId}. Pass an existing page UUID (resolve titles via canvas_find_pages).`, isError: true };
+      }
+      let parentTitle = 'the top level';
+      if (newParentId) {
+        const parent = await db!.get<{ id: string; title: string }>('SELECT id, title FROM pages WHERE id = ?', [newParentId]);
+        if (!parent) {
+          return { content: `Destination parent not found: ${newParentId}. Pass an existing page UUID.`, isError: true };
+        }
+        parentTitle = `"${parent.title}"`;
+      }
+
+      try {
+        await movePage(pageId, newParentId, afterSiblingId);
+      } catch (err) {
+        return { content: `Move failed: ${err instanceof Error ? err.message : String(err)}`, isError: true };
+      }
+
+      return {
+        content: newParentId
+          ? `Moved page "${page.title}" under ${parentTitle} — the parent now shows its sub-page card.`
+          : `Moved page "${page.title}" to the top level.`,
       };
     },
   };

@@ -19,9 +19,13 @@ import {
   type PageUpdateData,
   type CrossPageMoveParams,
   type SaveStateEvent,
+  type IPageRevision,
+  type IPageRevisionContent,
+  type RevisionSource,
   PageChangeKind,
   SaveStateKind,
 } from './canvasTypes.js';
+import { getGlobalSettingsRegistry } from '../../services/settingsRegistryService.js';
 import {
   CURRENT_CANVAS_CONTENT_SCHEMA_VERSION,
   decodeCanvasContent,
@@ -36,13 +40,19 @@ import {
 export { SaveStateKind } from './canvasTypes.js';
 export type { SaveStateEvent } from './canvasTypes.js';
 
+// ─── Version-history settings (registered in chat/main.ts — keep keys in sync) ──
+const VERSION_HISTORY_MAX_KEY = 'canvas.versionHistory.maxPerPage';
+const VERSION_HISTORY_INTERVAL_KEY = 'canvas.versionHistory.intervalMinutes';
+const DEFAULT_VERSION_HISTORY_MAX = 50;
+const DEFAULT_VERSION_HISTORY_INTERVAL_MIN = 5;
+
 // ─── Database Bridge Type ────────────────────────────────────────────────────
 
 interface DatabaseBridge {
   run(sql: string, params?: unknown[]): Promise<{ error: { code: string; message: string } | null; changes?: number; lastInsertRowid?: number }>;
   get(sql: string, params?: unknown[]): Promise<{ error: { code: string; message: string } | null; row?: Record<string, unknown> | null }>;
   all(sql: string, params?: unknown[]): Promise<{ error: { code: string; message: string } | null; rows?: Record<string, unknown>[] }>;
-  runTransaction(operations: { type: 'run' | 'get' | 'all'; sql: string; params?: unknown[] }[]): Promise<{ error: { code: string; message: string } | null; results?: unknown[] }>;
+  runTransaction(operations: { type: 'run' | 'get' | 'all'; sql: string; params?: unknown[]; expectChanges?: boolean }[]): Promise<{ error: { code: string; message: string } | null; results?: unknown[] }>;
 }
 
 // ─── Row → IPage mapping ────────────────────────────────────────────────────
@@ -128,6 +138,9 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
       page,
     });
     if (kind === 'updated') {
+      // Version history: AI tools write content via raw SQL (bypassing
+      // updatePage) and announce it here — mark dirty so it's checkpointed.
+      this._dirtyPages.set(pageId, 'ai');
       this._onRequestContentReload.fire(pageId);
     }
   }
@@ -157,9 +170,20 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
   /** Debounce interval in ms. */
   private readonly _autoSaveMs: number;
 
+  // ── Version-history checkpoint state ──
+  /** Pages edited since their last checkpoint → captured on the interval tick.
+   *  Value is the source to attribute the next checkpoint to. */
+  private readonly _dirtyPages = new Map<string, RevisionSource>();
+  private _checkpointTimer: ReturnType<typeof setInterval> | null = null;
+
   constructor(autoSaveMs = 500) {
     super();
     this._autoSaveMs = autoSaveMs;
+
+    // Version history: checkpoint changed pages on a fixed interval (read from
+    // settings with a fallback; registry may not be wired yet at construct).
+    const intervalMs = Math.max(1, this._readSettingNumber(VERSION_HISTORY_INTERVAL_KEY, DEFAULT_VERSION_HISTORY_INTERVAL_MIN)) * 60_000;
+    this._checkpointTimer = setInterval(() => { void this._checkpointDirtyPages(); }, intervalMs);
   }
 
   // ── Bridge accessor ──
@@ -387,6 +411,11 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     if (!page) throw new Error(`[CanvasDataService] Page "${pageId}" not found after update`);
 
     this._rememberPageState(page);
+    // Version history: mark the page dirty so the next interval tick checkpoints
+    // its new content. Covers user auto-save (→ updatePage) and streamed writes.
+    if (updates.content !== undefined) {
+      this._dirtyPages.set(pageId, updates.editSource ?? 'user');
+    }
     this._onDidChangePage.fire({ kind: PageChangeKind.Updated, pageId, page, changedFields });
 
     // ── Reconcile denormalized pageBlock attrs ─────────────────────────────
@@ -916,7 +945,7 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     // updates. Each parent update has a revision check so a concurrent
     // save during our read-compute window will surface as 0 changes
     // and abort the transaction.
-    const ops: { type: 'run'; sql: string; params?: unknown[] }[] = [
+    const ops: { type: 'run'; sql: string; params?: unknown[]; expectChanges?: boolean }[] = [
       {
         type: 'run',
         sql: `UPDATE pages SET parent_id = ?, sort_order = ?, updated_at = datetime('now') WHERE id = ?`,
@@ -930,6 +959,9 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
                 SET content = ?, content_schema_version = ?, revision = revision + 1, updated_at = datetime('now')
               WHERE id = ? AND revision = ?`,
         params: [oldParentUpdate.storedContent, oldParentUpdate.schemaVersion, oldParentId, oldParentUpdate.revision],
+        // expectChanges: a 0-row match = revision conflict → roll back the whole
+        // move (incl. the parent_id change above) instead of half-applying.
+        expectChanges: true,
       });
     }
     if (newParentUpdate && newParentId) {
@@ -939,6 +971,7 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
                 SET content = ?, content_schema_version = ?, revision = revision + 1, updated_at = datetime('now')
               WHERE id = ? AND revision = ?`,
         params: [newParentUpdate.storedContent, newParentUpdate.schemaVersion, newParentId, newParentUpdate.revision],
+        expectChanges: true,
       });
     }
 
@@ -1091,7 +1124,7 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
       }
     }
 
-    const ops: { type: 'run'; sql: string; params?: unknown[] }[] = [
+    const ops: { type: 'run'; sql: string; params?: unknown[]; expectChanges?: boolean }[] = [
       {
         type: 'run',
         sql: `INSERT INTO pages (id, parent_id, title, content, content_schema_version, sort_order) VALUES (?, ?, ?, ?, ?, ?)`,
@@ -1105,6 +1138,10 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
                 SET content = ?, content_schema_version = ?, revision = revision + 1, updated_at = datetime('now')
               WHERE id = ? AND revision = ?`,
         params: [parentUpdate.storedContent, parentUpdate.schemaVersion, parentId, parentUpdate.revision],
+        // expectChanges: a 0-row match = revision conflict on the parent → roll
+        // back the child INSERT too, so we never leave a sub-page nested in the
+        // sidebar with no card in the parent. The caller retries cleanly.
+        expectChanges: true,
       });
     }
 
@@ -2303,7 +2340,146 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
 
 
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // Version history
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /** Read a positive-number setting with a fallback (registry may be unwired). */
+  private _readSettingNumber(key: string, fallback: number): number {
+    try {
+      const reg = getGlobalSettingsRegistry();
+      if (reg?.getSchema(key)) {
+        const v = reg.getValue<number>(key);
+        if (typeof v === 'number' && Number.isFinite(v) && v > 0) return v;
+      }
+    } catch { /* registry not ready — use the fallback */ }
+    return fallback;
+  }
+
+  private _maxRevisionsPerPage(): number {
+    return Math.floor(this._readSettingNumber(VERSION_HISTORY_MAX_KEY, DEFAULT_VERSION_HISTORY_MAX));
+  }
+
+  /** Capture the dirty set as version-history checkpoints. Runs on the interval. */
+  private async _checkpointDirtyPages(): Promise<void> {
+    if (this._dirtyPages.size === 0) return;
+    // Bail quietly if the DB bridge is gone (e.g. teardown) so we don't log on
+    // a fire-and-forget flush after the renderer has torn down.
+    if (!(window as { parallxElectron?: { database?: unknown } }).parallxElectron?.database) {
+      this._dirtyPages.clear();
+      return;
+    }
+    const entries = [...this._dirtyPages.entries()];
+    this._dirtyPages.clear();
+    const maxPerPage = this._maxRevisionsPerPage();
+    for (const [pageId, source] of entries) {
+      try {
+        await this._captureRevision(pageId, source, maxPerPage);
+      } catch (err) {
+        console.warn('[CanvasDataService] version checkpoint failed for', pageId, err);
+      }
+    }
+  }
+
+  /** Flush pending checkpoints immediately (e.g. on dispose / app close). */
+  async flushCheckpoints(): Promise<void> {
+    await this._checkpointDirtyPages();
+  }
+
+  /** Insert a checkpoint of the page's CURRENT content, deduped + pruned. */
+  private async _captureRevision(pageId: string, source: RevisionSource, maxPerPage: number): Promise<void> {
+    const page = await this.getPage(pageId);
+    if (!page) return;
+    // Dedupe: skip when the newest revision already holds this exact content.
+    const last = await this._db.get(
+      'SELECT content FROM page_revisions WHERE page_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1',
+      [pageId],
+    );
+    if (!last.error && last.row && (last.row.content as string) === page.content) return;
+
+    const res = await this._db.run(
+      `INSERT INTO page_revisions (id, page_id, content, content_schema_version, title, source)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [crypto.randomUUID(), pageId, page.content, page.contentSchemaVersion, page.title, source],
+    );
+    if (res.error) throw new Error(res.error.message);
+    await this._pruneRevisions(pageId, maxPerPage);
+  }
+
+  /** Keep only the newest `maxPerPage` revisions for a page. */
+  private async _pruneRevisions(pageId: string, maxPerPage: number): Promise<void> {
+    await this._db.run(
+      `DELETE FROM page_revisions
+        WHERE page_id = ?
+          AND id NOT IN (
+            SELECT id FROM page_revisions WHERE page_id = ?
+            ORDER BY created_at DESC, rowid DESC LIMIT ?
+          )`,
+      [pageId, pageId, Math.max(1, maxPerPage)],
+    );
+  }
+
+  async listPageRevisions(pageId: string): Promise<IPageRevision[]> {
+    const res = await this._db.all(
+      'SELECT id, page_id, title, source, created_at FROM page_revisions WHERE page_id = ? ORDER BY created_at DESC, rowid DESC',
+      [pageId],
+    );
+    if (res.error) {
+      console.error('[CanvasDataService] listPageRevisions failed:', res.error.message);
+      return [];
+    }
+    return (res.rows ?? []).map((r) => ({
+      id: r.id as string,
+      pageId: r.page_id as string,
+      title: (r.title as string) ?? null,
+      source: ((r.source as string) ?? 'user') as RevisionSource,
+      createdAt: r.created_at as string,
+    }));
+  }
+
+  async getPageRevision(revisionId: string): Promise<IPageRevisionContent | null> {
+    const res = await this._db.get(
+      'SELECT id, page_id, content, content_schema_version, title, source, created_at FROM page_revisions WHERE id = ?',
+      [revisionId],
+    );
+    if (res.error || !res.row) return null;
+    const r = res.row;
+    return {
+      id: r.id as string,
+      pageId: r.page_id as string,
+      content: r.content as string,
+      contentSchemaVersion: (r.content_schema_version as number) ?? CURRENT_CANVAS_CONTENT_SCHEMA_VERSION,
+      title: (r.title as string) ?? null,
+      source: ((r.source as string) ?? 'user') as RevisionSource,
+      createdAt: r.created_at as string,
+    };
+  }
+
+  async restorePageRevision(pageId: string, revisionId: string): Promise<void> {
+    const rev = await this.getPageRevision(revisionId);
+    if (!rev || rev.pageId !== pageId) {
+      throw new Error(`[CanvasDataService] Revision "${revisionId}" not found for page "${pageId}"`);
+    }
+    // Snapshot the CURRENT state first so the restore is itself undoable.
+    await this._captureRevision(pageId, 'restore', this._maxRevisionsPerPage());
+    // Write the revision's content back through the normal update path, then
+    // reload any open editor so the restored content animates in.
+    await this.updatePage(pageId, {
+      content: rev.content,
+      contentSchemaVersion: rev.contentSchemaVersion,
+      editSource: 'restore',
+    });
+    this.fireContentReload(pageId);
+  }
+
   override dispose(): void {
+    // Version history: stop the interval and flush any pending checkpoints.
+    if (this._checkpointTimer) {
+      clearInterval(this._checkpointTimer);
+      this._checkpointTimer = null;
+    }
+    void this.flushCheckpoints().catch(() => { /* best-effort on teardown */ });
+
     // Cancel all pending debounce timers
     for (const { timer } of this._pendingSaves.values()) {
       clearTimeout(timer);

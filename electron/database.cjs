@@ -241,6 +241,17 @@ class DatabaseManager {
         switch (op.type) {
           case 'run':
             result = this._db.prepare(op.sql).run(...params);
+            // Atomicity guard: an op flagged `expectChanges` that matches 0 rows
+            // means its optimistic-concurrency `WHERE ... revision = ?` clause
+            // missed (a concurrent writer bumped the revision). Throw so
+            // better-sqlite3 rolls back the ENTIRE transaction. Without this, a
+            // prior INSERT in the same op list commits while this guarded UPDATE
+            // silently no-ops — the canvas sub-page "nested in the sidebar but no
+            // card in the parent" half-apply. The message contains "revision
+            // conflict" so callers' retry-on-conflict logic re-runs cleanly.
+            if (op.expectChanges && result.changes === 0) {
+              throw new Error('revision conflict: guarded transaction op affected 0 rows');
+            }
             if (result.lastInsertRowid != null) {
               lastRowId = typeof result.lastInsertRowid === 'bigint'
                 ? Number(result.lastInsertRowid)

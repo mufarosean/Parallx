@@ -13,6 +13,7 @@ import type { OpenEditorFn } from '../canvasEditorProvider.js';
 import { $, layoutPopup, attachPopupDismiss } from '../../../ui/dom.js';
 import { tiptapJsonToMarkdown } from '../markdownExport.js';
 import { createIconElement, resolvePageIcon, svgIcon, renderPageIconHtml } from '../config/blockRegistry.js';
+import { showVersionHistoryPanel } from '../canvasVersionHistoryPanel.js';
 
 // Default gradient presets for "Add cover" — same set as the cover picker gallery.
 const DEFAULT_COVER_GRADIENTS = [
@@ -1052,6 +1053,17 @@ export class PageChromeController {
           } catch (err) {
             console.error('[Canvas] Save as template failed:', err);
           }
+        },
+      },
+      {
+        label: 'Version history',
+        iconId: 'clock',
+        action: () => {
+          this.dismissPopups();
+          void showVersionHistoryPanel({
+            dataService: this._host.dataService,
+            pageId: this._host.pageId,
+          });
         },
       },
       {
