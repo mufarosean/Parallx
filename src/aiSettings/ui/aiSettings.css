@@ -245,13 +245,78 @@
   max-width: 120px;
 }
 
-/* ── Claude (cloud) API key row ── */
+/* ── Providers group (enable providers + enter API keys) ── */
 
-.ai-settings-key-row .ai-settings-row__control {
+.ai-settings-subheading {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vscode-descriptionForeground, #8a8f98);
+  margin: 2px 0 4px;
+}
+.ai-settings-provider__grouphelp {
+  font-size: var(--parallx-fontSize-xs, 12px);
+  color: var(--vscode-descriptionForeground, #8a8f98);
+  line-height: 1.4;
+  margin-bottom: 6px;
+}
+.ai-settings-provider {
+  padding: 10px 0;
+  border-top: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 10%, transparent);
+}
+.ai-settings-provider:first-of-type {
+  border-top: none;
+  padding-top: 2px;
+}
+.ai-settings-provider__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ai-settings-provider__name {
+  font-weight: 500;
+  color: var(--vscode-foreground, #ddd);
+}
+.ai-settings-provider__badge {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 4px;
+  color: var(--vscode-descriptionForeground, #9aa0aa);
+  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
+}
+.ai-settings-provider__status {
+  font-size: var(--parallx-fontSize-xs, 12px);
+  color: var(--vscode-descriptionForeground, #9aa0aa);
+}
+.ai-settings-provider__toggle {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--parallx-fontSize-xs, 12px);
+  color: var(--vscode-foreground, #ddd);
+  cursor: pointer;
+}
+.ai-settings-provider__keyhelp {
+  font-size: var(--parallx-fontSize-xs, 12px);
+  color: var(--vscode-descriptionForeground, #9aa0aa);
+  line-height: 1.4;
+  margin: 8px 0 0;
+}
+.ai-settings-provider__key {
   display: flex;
   gap: 8px;
   align-items: center;
   flex-wrap: wrap;
+  margin-top: 8px;
+}
+.ai-settings-provider__key .ui-input-box {
+  flex: 1 1 220px;
+  max-width: 320px;
 }
 .ai-settings-key-btn {
   padding: 5px 12px;

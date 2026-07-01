@@ -1,19 +1,17 @@
-// modelSection.ts — Default Model + Default Context Length (workspace-scoped)
+// modelSection.ts — Providers + Default Model + Default Context Length.
 //
-// Two settings:
-//   - Default Model       (string  → unified config `model.chatModel`)
-//   - Default Context Length (number → unified config `model.contextWindow`)
+// The section leads with a PROVIDERS group where the user enables the model
+// providers they want in this workspace and enters API keys for cloud ones:
+//   - Ollama (local)        — enable toggle (default on).
+//   - Claude (Anthropic)    — enable toggle (default off) + API key entry.
+// Enabling/disabling a provider registers/unregisters it live (its models
+// appear/vanish in the Default Model picker below). Enable state is a
+// workspace-scoped registry setting (`ai.providers.<id>.enabled`); the Claude
+// API key is sent straight to the main process (safeStorage) and never held in
+// the renderer.
 //
-// Both are workspace-scoped: edits write to the workspace override layer
-// via IUnifiedAIConfigService.updateWorkspaceOverride. The scope badge
-// rendered by createSettingRow reflects this automatically.
-//
-// On startup, src/built-in/chat/main.ts reads
-//   unifiedConfigService.getEffectiveConfig().model.chatModel
-//   unifiedConfigService.getEffectiveConfig().model.contextWindow
-// and applies them via ILanguageModelsService.setDefaultModel /
-// OllamaProvider.setContextLengthOverride. It also subscribes to
-// onDidChangeConfig so edits take effect live without a restart.
+// Below Providers: Default Model + Default Context Length (workspace-scoped
+// unified config, unchanged).
 
 import { addDisposableListener } from '../../../ui/dom.js';
 import { InputBox } from '../../../ui/inputBox.js';
@@ -29,6 +27,7 @@ import type {
   ILanguageModelsService,
   ILanguageModelInfo,
 } from '../../../services/chatTypes.js';
+import { getGlobalSettingsRegistry } from '../../../services/settingsRegistryService.js';
 
 // Minimal view of the main-process Claude key bridge (electron/anthropicBridge.cjs).
 // Accessed inline (not imported from built-in/chat) to keep the settings UI layer
@@ -42,6 +41,33 @@ function cloudKeyBridge(): ICloudKeyBridge | undefined {
   return (globalThis as { parallxElectron?: { anthropic?: ICloudKeyBridge } })
     .parallxElectron?.anthropic;
 }
+
+/** Declarative provider catalog for the Providers group. Extend to add providers. */
+interface IProviderDescriptor {
+  readonly id: string;
+  readonly name: string;
+  readonly kind: 'Local' | 'Cloud';
+  /** Workspace-scoped registry key toggling this provider. */
+  readonly enabledKey: string;
+  readonly enabledDefault: boolean;
+  /** Cloud providers show an inline API-key field backed by the main bridge. */
+  readonly hasApiKey: boolean;
+  readonly keyPlaceholder?: string;
+  readonly keyHelp?: string;
+}
+
+const PROVIDERS: readonly IProviderDescriptor[] = [
+  {
+    id: 'ollama', name: 'Ollama', kind: 'Local',
+    enabledKey: 'ai.providers.ollama.enabled', enabledDefault: true, hasApiKey: false,
+  },
+  {
+    id: 'anthropic', name: 'Claude (Anthropic)', kind: 'Cloud',
+    enabledKey: 'ai.providers.anthropic.enabled', enabledDefault: false, hasApiKey: true,
+    keyPlaceholder: 'sk-ant-…',
+    keyHelp: 'Anthropic API key. Stored encrypted on this machine — never in settings files or the renderer. Get one at console.anthropic.com.',
+  },
+];
 
 // ─── ModelSection ────────────────────────────────────────────────────────────
 
@@ -66,10 +92,13 @@ export class ModelSection extends SettingsSection {
   build(): void {
     const defaults = DEFAULT_UNIFIED_CONFIG.model;
 
+    // ── Providers ────────────────────────────────────────────────────────
+    this._buildProvidersGroup();
+
     // ── Default Model (dropdown) ─────────────────────────────────────────
     const modelRow = createSettingRow({
       label: 'Default Model',
-      description: 'The model used by new chat sessions. Leave on “Auto” to pick the first available model.',
+      description: 'The model used by new chat sessions. Leave on “Auto” to pick the first available model. Only enabled providers appear here.',
       key: 'model.chatModel',
       onReset: () => {
         void this._writeWorkspace({ model: { chatModel: defaults.chatModel } })
@@ -83,7 +112,6 @@ export class ModelSection extends SettingsSection {
     this._modelSelect = document.createElement('select');
     this._modelSelect.className = 'ai-settings-select';
     this._modelSelect.setAttribute('aria-label', 'Default model');
-    // Placeholder option until models load
     this._appendOption('', 'Auto — first available', true);
     modelRow.controlSlot.appendChild(this._modelSelect);
 
@@ -95,7 +123,7 @@ export class ModelSection extends SettingsSection {
 
     this._addRow(modelRow.row);
 
-    // Populate now + on provider/model changes
+    // Populate now + on provider/model changes (toggling a provider fires these).
     void this._refreshModels();
     if (this._lms) {
       this._register(this._lms.onDidChangeModels(() => void this._refreshModels()));
@@ -146,39 +174,111 @@ export class ModelSection extends SettingsSection {
     this._register(addDisposableListener(this._contextInput.inputElement, 'blur', saveContext));
 
     this._addRow(ctxRow.row);
-
-    // ── Claude (cloud) API key ───────────────────────────────────────────
-    this._buildCloudKeyRow();
   }
 
-  /**
-   * Claude API key entry. The key is sent to the main process (safeStorage) and
-   * never returned to the renderer — this row only sets/clears it and shows
-   * whether one is stored. Cloud models are additionally gated per-workspace by
-   * the `ai.allowCloudModels` toggle (auto-rendered in the Settings hub).
-   */
-  private _buildCloudKeyRow(): void {
-    const keyRow = createSettingRow({
-      label: 'Claude (cloud) API key',
-      description: 'Anthropic API key, used when cloud models are enabled for a workspace. Stored encrypted on this machine — never in settings files or the renderer. Get one at console.anthropic.com. Enable cloud models per-workspace via Settings → AI → “Allow cloud models”.',
-      key: 'ai.anthropic.apiKey',
-    });
-    keyRow.row.classList.add('ai-settings-key-row');
+  update(_profile: AISettingsProfile): void {
+    const current = this._currentModelId();
+    if (this._modelSelect && this._modelSelect.value !== current) {
+      const has = Array.from(this._modelSelect.options).some(o => o.value === current);
+      if (has) this._modelSelect.value = current;
+    }
+    if (this._contextInput) {
+      const ctx = String(this._currentContextWindow());
+      if (this._contextInput.value !== ctx) this._contextInput.value = ctx;
+    }
+  }
 
+  // ─── Providers group ──────────────────────────────────────────────────
+
+  private _buildProvidersGroup(): void {
+    const registry = getGlobalSettingsRegistry();
+
+    const heading = document.createElement('div');
+    heading.className = 'ai-settings-subheading';
+    heading.textContent = 'Providers';
+    this.contentElement.appendChild(heading);
+
+    const help = document.createElement('div');
+    help.className = 'ai-settings-provider__grouphelp';
+    help.textContent = 'Choose which model providers are available in this workspace. Local Ollama runs on your machine; Claude sends data to Anthropic’s cloud — enable it only for workspaces without sensitive material.';
+    this.contentElement.appendChild(help);
+
+    const isOn = (d: IProviderDescriptor): boolean => {
+      try { const v = registry?.getValue<boolean>(d.enabledKey); return v === undefined ? d.enabledDefault : v === true; }
+      catch { return d.enabledDefault; }
+    };
+
+    // Keep toggles in sync if the setting changes elsewhere (e.g. Settings hub).
+    const toggles = new Map<string, HTMLInputElement>();
+    if (registry) {
+      this._register(registry.onDidChange((c) => {
+        const cb = toggles.get(c.key);
+        if (cb) cb.checked = c.value === true;
+      }));
+    }
+
+    for (const d of PROVIDERS) {
+      const wrap = document.createElement('div');
+      wrap.className = 'ai-settings-provider';
+
+      const head = document.createElement('div');
+      head.className = 'ai-settings-provider__head';
+
+      const name = document.createElement('span');
+      name.className = 'ai-settings-provider__name';
+      name.textContent = d.name;
+
+      const badge = document.createElement('span');
+      badge.className = 'ai-settings-provider__badge';
+      badge.textContent = d.kind;
+
+      const status = document.createElement('span');
+      status.className = 'ai-settings-provider__status';
+
+      const toggleLabel = document.createElement('label');
+      toggleLabel.className = 'ai-settings-provider__toggle';
+      const toggle = document.createElement('input');
+      toggle.type = 'checkbox';
+      toggle.checked = isOn(d);
+      toggle.setAttribute('aria-label', `Enable ${d.name} in this workspace`);
+      const toggleText = document.createElement('span');
+      toggleText.textContent = 'Enabled';
+      toggleLabel.append(toggle, toggleText);
+      toggles.set(d.enabledKey, toggle);
+
+      this._register(addDisposableListener(toggle, 'change', () => {
+        if (!registry) return;
+        void registry.setValue(d.enabledKey, toggle.checked).catch(() => { toggle.checked = !toggle.checked; });
+      }));
+
+      head.append(name, badge, status, toggleLabel);
+      wrap.appendChild(head);
+
+      if (d.hasApiKey) {
+        this._buildProviderKey(wrap, status, d);
+      } else {
+        status.textContent = 'Runs locally';
+      }
+
+      this.contentElement.appendChild(wrap);
+    }
+  }
+
+  /** Inline API-key entry for a cloud provider (currently Claude/Anthropic). */
+  private _buildProviderKey(wrap: HTMLElement, status: HTMLElement, d: IProviderDescriptor): void {
     const bridge = cloudKeyBridge();
     if (!bridge) {
-      const na = document.createElement('span');
-      na.className = 'ai-settings-key-status';
-      na.textContent = 'Cloud models are unavailable in this build.';
-      keyRow.controlSlot.appendChild(na);
-      this._addRow(keyRow.row);
+      status.textContent = 'Unavailable in this build';
       return;
     }
 
-    const input = this._register(new InputBox(keyRow.controlSlot, {
+    const keyRow = document.createElement('div');
+    keyRow.className = 'ai-settings-provider__key';
+
+    const input = this._register(new InputBox(keyRow, {
       value: '',
-      placeholder: 'sk-ant-…',
-      ariaLabel: 'Claude API key',
+      placeholder: d.keyPlaceholder ?? '',
+      ariaLabel: `${d.name} API key`,
     }));
     input.inputElement.type = 'password';
     input.inputElement.autocomplete = 'off';
@@ -193,25 +293,26 @@ export class ModelSection extends SettingsSection {
     clearBtn.className = 'ai-settings-key-btn';
     clearBtn.textContent = 'Clear';
 
-    const status = document.createElement('span');
-    status.className = 'ai-settings-key-status';
+    const keyStatus = document.createElement('span');
+    keyStatus.className = 'ai-settings-key-status';
 
-    keyRow.controlSlot.append(saveBtn, clearBtn, status);
+    keyRow.append(saveBtn, clearBtn, keyStatus);
 
     const refresh = async (): Promise<void> => {
       const has = await bridge.hasKey().catch(() => false);
-      status.textContent = has ? '✓ Key saved' : 'No key set';
+      status.textContent = has ? 'API key set' : 'No API key';
+      keyStatus.textContent = has ? '✓ Key saved' : '';
       clearBtn.style.display = has ? '' : 'none';
     };
     void refresh();
 
     this._register(addDisposableListener(saveBtn, 'click', () => {
       const value = input.value.trim();
-      if (!value) { status.textContent = 'Enter a key first'; return; }
-      status.textContent = 'Saving…';
+      if (!value) { keyStatus.textContent = 'Enter a key first'; return; }
+      keyStatus.textContent = 'Saving…';
       void bridge.setKey(value).then((r) => {
         if (r && r.ok) { input.value = ''; void refresh(); }
-        else { status.textContent = `Couldn’t save: ${r?.error ?? 'unknown error'}`; }
+        else { keyStatus.textContent = `Couldn’t save: ${r?.error ?? 'unknown error'}`; }
       });
     }));
 
@@ -219,25 +320,16 @@ export class ModelSection extends SettingsSection {
       void bridge.clearKey().then(() => { input.value = ''; void refresh(); });
     }));
 
-    this._addRow(keyRow.row);
+    if (d.keyHelp) {
+      const kh = document.createElement('div');
+      kh.className = 'ai-settings-provider__keyhelp';
+      kh.textContent = d.keyHelp;
+      wrap.appendChild(kh);
+    }
+    wrap.appendChild(keyRow);
   }
 
-  update(_profile: AISettingsProfile): void {
-    // Re-sync controls in case workspace override or active preset changed
-    // out from under us.
-    const current = this._currentModelId();
-    if (this._modelSelect && this._modelSelect.value !== current) {
-      // Only update if the option exists (avoid wiping selection mid-load)
-      const has = Array.from(this._modelSelect.options).some(o => o.value === current);
-      if (has) this._modelSelect.value = current;
-    }
-    if (this._contextInput) {
-      const ctx = String(this._currentContextWindow());
-      if (this._contextInput.value !== ctx) this._contextInput.value = ctx;
-    }
-  }
-
-  // ─── Helpers ──────────────────────────────────────────────────────────
+  // ─── Helpers (Default Model / Context) ────────────────────────────────
 
   private _currentModelId(): string {
     const cfg = this._unifiedService?.getEffectiveConfig().model;
@@ -267,7 +359,6 @@ export class ModelSection extends SettingsSection {
     this._modelSelect.replaceChildren();
     this._appendOption('', 'Auto — first available', current === '');
 
-    // Group by family for readability
     const sorted = [...models].sort((a, b) => {
       if (a.family !== b.family) return a.family.localeCompare(b.family);
       return a.displayName.localeCompare(b.displayName);
@@ -279,8 +370,6 @@ export class ModelSection extends SettingsSection {
       this._appendOption(m.id, label, m.id === current);
     }
 
-    // If the persisted model isn't present (e.g. uninstalled), keep it
-    // visible so the user can see what was set.
     if (current && !sorted.some(m => m.id === current)) {
       this._appendOption(current, `${current} (not installed)`, true);
     }

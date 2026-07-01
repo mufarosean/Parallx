@@ -410,16 +410,24 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       category: 'Canvas',
     });
 
-    // Cloud/frontier models (Claude) opt-in — PER WORKSPACE, default OFF. Nothing
-    // leaves the machine unless the user explicitly turns this on for a workspace
-    // without sensitive data. The Claude API key is set in AI Settings → Model and
-    // lives only in the main process (never the renderer).
+    // Model providers — each is enabled PER WORKSPACE from AI Settings → Model →
+    // Providers. Ollama (local) defaults ON; Claude (cloud) defaults OFF so
+    // nothing leaves the machine unless the user turns it on for a non-sensitive
+    // workspace. The Claude API key lives in the main process (never the renderer).
     settingsRegistry.register({
-      key: 'ai.allowCloudModels',
+      key: 'ai.providers.ollama.enabled',
+      type: 'boolean',
+      default: true,
+      scope: 'workspace',
+      description: 'Enable the local Ollama model provider in this workspace.',
+      category: 'AI',
+    });
+    settingsRegistry.register({
+      key: 'ai.providers.anthropic.enabled',
       type: 'boolean',
       default: false,
       scope: 'workspace',
-      description: 'Allow cloud/frontier models (Claude) in THIS workspace. Off by default — enable only for workspaces without sensitive data. Set the Claude API key in AI Settings → Model.',
+      description: 'Enable Claude (Anthropic) cloud models in this workspace. Off by default — turn on only for workspaces without sensitive data. Set the API key in AI Settings → Model → Providers.',
       category: 'AI',
     });
 
@@ -837,8 +845,54 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     _ollamaProvider.setContextLengthOverride(configuredContextLength);
   }
 
-  const providerRegistration = languageModelsService.registerProvider(_ollamaProvider);
-  context.subscriptions.push(providerRegistration);
+  // ── 2b. Provider registration — each provider is enabled PER WORKSPACE ──
+  //
+  // Both Ollama (local) and Claude (cloud) register with ILanguageModelsService
+  // only when enabled for THIS workspace, so the model picker shows exactly the
+  // providers the user turned on (AI Settings → Model → Providers). OllamaProvider
+  // is always CONSTRUCTED (ChatDataService depends on it) but its registration is
+  // gated. Flipping a toggle registers/unregisters live. The Claude API key lives
+  // only in the main process — the renderer never holds it.
+  {
+    const settingsReg = api.services.has(ISettingsRegistryService)
+      ? api.services.get<ISettingsRegistryService>(ISettingsRegistryService)
+      : getGlobalSettingsRegistry();
+    const anthropicBridge = getAnthropicBridge();
+    const ollama = _ollamaProvider;
+    let ollamaReg: { dispose(): void } | undefined;
+    let anthropicProvider: AnthropicProvider | undefined;
+    let anthropicReg: { dispose(): void } | undefined;
+
+    const isEnabled = (key: string, fallback: boolean): boolean => {
+      try { const v = settingsReg?.getValue<boolean>(key); return v === undefined ? fallback : v === true; }
+      catch { return fallback; }
+    };
+
+    const syncProviders = (): void => {
+      const ollamaOn = isEnabled('ai.providers.ollama.enabled', true);
+      if (ollamaOn && ollama && !ollamaReg) { ollamaReg = languageModelsService.registerProvider(ollama); }
+      else if (!ollamaOn && ollamaReg) { ollamaReg.dispose(); ollamaReg = undefined; }
+
+      const anthropicOn = isEnabled('ai.providers.anthropic.enabled', false);
+      if (anthropicOn && anthropicBridge && !anthropicReg) {
+        anthropicProvider = new AnthropicProvider(anthropicBridge);
+        anthropicReg = languageModelsService.registerProvider(anthropicProvider);
+      } else if ((!anthropicOn || !anthropicBridge) && anthropicReg) {
+        anthropicReg.dispose(); anthropicReg = undefined;
+        anthropicProvider?.dispose(); anthropicProvider = undefined;
+      }
+    };
+
+    syncProviders();
+    if (settingsReg) {
+      context.subscriptions.push(settingsReg.onDidChange((c) => {
+        if (c.key === 'ai.providers.ollama.enabled' || c.key === 'ai.providers.anthropic.enabled') syncProviders();
+      }));
+    }
+    context.subscriptions.push({
+      dispose: () => { ollamaReg?.dispose(); anthropicReg?.dispose(); anthropicProvider?.dispose(); },
+    });
+  }
 
   // Set configured default model (after provider registered, so models are discoverable).
   // Use setDefaultModel so the workspace default wins over the persisted
@@ -863,45 +917,6 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         }
       }),
     );
-  }
-
-  // ── 2b. Cloud provider (Claude) — gated by the per-workspace opt-in ──
-  //
-  // Registered ONLY when `ai.allowCloudModels` is true for this workspace, so a
-  // sensitive workspace physically can't send data to the cloud. Flipping the
-  // setting registers/unregisters the provider live (models appear/vanish in the
-  // picker). The API key lives in the main process; the renderer never holds it.
-  {
-    const anthropicBridge = getAnthropicBridge();
-    const settingsReg = api.services.has(ISettingsRegistryService)
-      ? api.services.get<ISettingsRegistryService>(ISettingsRegistryService)
-      : getGlobalSettingsRegistry();
-    let anthropicProvider: AnthropicProvider | undefined;
-    let anthropicReg: { dispose(): void } | undefined;
-
-    const syncCloudProvider = (): void => {
-      let allow = false;
-      try { allow = settingsReg?.getValue<boolean>('ai.allowCloudModels') === true; } catch { allow = false; }
-      if (allow && anthropicBridge && !anthropicReg) {
-        anthropicProvider = new AnthropicProvider(anthropicBridge);
-        anthropicReg = languageModelsService.registerProvider(anthropicProvider);
-      } else if ((!allow || !anthropicBridge) && anthropicReg) {
-        anthropicReg.dispose();
-        anthropicReg = undefined;
-        anthropicProvider?.dispose();
-        anthropicProvider = undefined;
-      }
-    };
-
-    syncCloudProvider();
-    if (settingsReg) {
-      context.subscriptions.push(
-        settingsReg.onDidChange((c) => { if (c.key === 'ai.allowCloudModels') syncCloudProvider(); }),
-      );
-    }
-    context.subscriptions.push({
-      dispose: () => { anthropicReg?.dispose(); anthropicProvider?.dispose(); },
-    });
   }
 
   // ── 3. Create ChatDataService (M13 Phase 2) ──
