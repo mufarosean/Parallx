@@ -105,6 +105,7 @@ const FOLDER_RULES: Record<string, string[]> = {
 
   // ── providers/ — LLM providers ──────────────────────────────────────────
   'providers/ollamaProvider.ts': [],
+  'providers/anthropicProvider.ts': [],
 
   // ── commands/ — slash/init commands ─────────────────────────────────────
   'commands/initCommand.ts': ['skills/'],

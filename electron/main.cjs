@@ -16,6 +16,7 @@ const { setupMcpBridge, killAllMcpProcesses } = require('./mcpBridge.cjs');
 const { setupStorageHandlers } = require('./storageHandlers.cjs');
 const { setupWebFetchBridge } = require('./webFetchBridge.cjs');
 const { setupGoogleSyncBridge } = require('./googleSyncBridge.cjs');
+const { setupAnthropicBridge } = require('./anthropicBridge.cjs');
 
 // ════════════════════════════════════════════════════════════════════════════════
 // Workspace Teardown Registry
@@ -144,6 +145,11 @@ try { app.setPath('logs', path.join(APP_ROOT, 'data', 'logs')); } catch { /* ign
 setupStorageHandlers(ipcMain, APP_ROOT);
 setupWebFetchBridge(ipcMain, APP_ROOT, _readSecretString);
 setupGoogleSyncBridge(ipcMain, APP_ROOT, {
+  readSecret: _readSecretString,
+  writeSecret: _writeSecretString,
+  deleteSecret: _deleteSecretString,
+});
+setupAnthropicBridge(ipcMain, {
   readSecret: _readSecretString,
   writeSecret: _writeSecretString,
   deleteSecret: _deleteSecretString,

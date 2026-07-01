@@ -523,6 +523,33 @@ contextBridge.exposeInMainWorld('parallxElectron', {
   },
 
   // ══════════════════════════════════════════════════════════════════════════
+  // Claude (Anthropic) cloud model bridge
+  // ══════════════════════════════════════════════════════════════════════════
+  //
+  // The API key lives ONLY in the main process (safeStorage); the renderer never
+  // sees it. Streaming /v1/messages runs in main and is relayed here as
+  // `anthropic:event` pushes. See electron/anthropicBridge.cjs.
+
+  anthropic: {
+    /** Whether an API key is stored. */
+    hasKey: () => ipcRenderer.invoke('anthropic:hasKey'),
+    /** Store the API key (main-process safeStorage). */
+    setKey: (key) => ipcRenderer.invoke('anthropic:setKey', key),
+    /** Delete the stored API key. */
+    clearKey: () => ipcRenderer.invoke('anthropic:clearKey'),
+    /** Begin a streaming request; chunks arrive via onStreamEvent. */
+    startStream: (requestId, body) => ipcRenderer.invoke('anthropic:start', { requestId, body }),
+    /** Cancel an in-flight request. */
+    abortStream: (requestId) => ipcRenderer.invoke('anthropic:abort', requestId),
+    /** Subscribe to relayed stream events; returns an unsubscribe fn. */
+    onStreamEvent: (cb) => {
+      const listener = (_e, payload) => { try { cb(payload); } catch { /* consumer error */ } };
+      ipcRenderer.on('anthropic:event', listener);
+      return () => ipcRenderer.removeListener('anthropic:event', listener);
+    },
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════
   // Storage API (M53 — Portable file-backed storage)
   // ══════════════════════════════════════════════════════════════════════════
 

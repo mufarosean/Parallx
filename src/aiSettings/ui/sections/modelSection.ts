@@ -30,6 +30,19 @@ import type {
   ILanguageModelInfo,
 } from '../../../services/chatTypes.js';
 
+// Minimal view of the main-process Claude key bridge (electron/anthropicBridge.cjs).
+// Accessed inline (not imported from built-in/chat) to keep the settings UI layer
+// free of a dependency on the chat extension. The API key lives only in main.
+interface ICloudKeyBridge {
+  hasKey(): Promise<boolean>;
+  setKey(key: string): Promise<{ ok: boolean; error?: string }>;
+  clearKey(): Promise<unknown>;
+}
+function cloudKeyBridge(): ICloudKeyBridge | undefined {
+  return (globalThis as { parallxElectron?: { anthropic?: ICloudKeyBridge } })
+    .parallxElectron?.anthropic;
+}
+
 // ─── ModelSection ────────────────────────────────────────────────────────────
 
 export class ModelSection extends SettingsSection {
@@ -133,6 +146,80 @@ export class ModelSection extends SettingsSection {
     this._register(addDisposableListener(this._contextInput.inputElement, 'blur', saveContext));
 
     this._addRow(ctxRow.row);
+
+    // ── Claude (cloud) API key ───────────────────────────────────────────
+    this._buildCloudKeyRow();
+  }
+
+  /**
+   * Claude API key entry. The key is sent to the main process (safeStorage) and
+   * never returned to the renderer — this row only sets/clears it and shows
+   * whether one is stored. Cloud models are additionally gated per-workspace by
+   * the `ai.allowCloudModels` toggle (auto-rendered in the Settings hub).
+   */
+  private _buildCloudKeyRow(): void {
+    const keyRow = createSettingRow({
+      label: 'Claude (cloud) API key',
+      description: 'Anthropic API key, used when cloud models are enabled for a workspace. Stored encrypted on this machine — never in settings files or the renderer. Get one at console.anthropic.com. Enable cloud models per-workspace via Settings → AI → “Allow cloud models”.',
+      key: 'ai.anthropic.apiKey',
+    });
+    keyRow.row.classList.add('ai-settings-key-row');
+
+    const bridge = cloudKeyBridge();
+    if (!bridge) {
+      const na = document.createElement('span');
+      na.className = 'ai-settings-key-status';
+      na.textContent = 'Cloud models are unavailable in this build.';
+      keyRow.controlSlot.appendChild(na);
+      this._addRow(keyRow.row);
+      return;
+    }
+
+    const input = this._register(new InputBox(keyRow.controlSlot, {
+      value: '',
+      placeholder: 'sk-ant-…',
+      ariaLabel: 'Claude API key',
+    }));
+    input.inputElement.type = 'password';
+    input.inputElement.autocomplete = 'off';
+
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.className = 'ai-settings-key-btn';
+    saveBtn.textContent = 'Save';
+
+    const clearBtn = document.createElement('button');
+    clearBtn.type = 'button';
+    clearBtn.className = 'ai-settings-key-btn';
+    clearBtn.textContent = 'Clear';
+
+    const status = document.createElement('span');
+    status.className = 'ai-settings-key-status';
+
+    keyRow.controlSlot.append(saveBtn, clearBtn, status);
+
+    const refresh = async (): Promise<void> => {
+      const has = await bridge.hasKey().catch(() => false);
+      status.textContent = has ? '✓ Key saved' : 'No key set';
+      clearBtn.style.display = has ? '' : 'none';
+    };
+    void refresh();
+
+    this._register(addDisposableListener(saveBtn, 'click', () => {
+      const value = input.value.trim();
+      if (!value) { status.textContent = 'Enter a key first'; return; }
+      status.textContent = 'Saving…';
+      void bridge.setKey(value).then((r) => {
+        if (r && r.ok) { input.value = ''; void refresh(); }
+        else { status.textContent = `Couldn’t save: ${r?.error ?? 'unknown error'}`; }
+      });
+    }));
+
+    this._register(addDisposableListener(clearBtn, 'click', () => {
+      void bridge.clearKey().then(() => { input.value = ''; void refresh(); });
+    }));
+
+    this._addRow(keyRow.row);
   }
 
   update(_profile: AISettingsProfile): void {

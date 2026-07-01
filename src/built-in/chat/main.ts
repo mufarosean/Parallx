@@ -14,6 +14,7 @@ import type { IDisposable } from '../../platform/lifecycle.js';
 import type { Event } from '../../platform/events.js';
 import type { LinksApi } from '../../links/linksApi.js';
 import { OllamaProvider } from './providers/ollamaProvider.js';
+import { AnthropicProvider, getAnthropicBridge } from './providers/anthropicProvider.js';
 import { createChatView } from './widgets/chatView.js';
 import type { ChatWidget } from './widgets/chatWidget.js';
 
@@ -41,7 +42,7 @@ import type {
   IChatResponseChunk,
 } from '../../services/chatTypes.js';
 import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService, IDiagnosticsService, IDocumentExtractionService, IObservabilityService, IRuntimeHookRegistry, ILayoutService, IEmbeddingService, IWorkspaceStorageService, IGlobalStorageService, ISurfaceRouterService, IAutonomyLogService, ISettingsRegistryService, IAutonomyTaskRailService, IAutonomyPatternMemoryService, IAutonomyFeatureFlagsService, ISemanticGraphService, IMindMapRefreshOrchestrator, ICanvasPageQueryService, IPlannerQueryService } from '../../services/serviceTypes.js';
-import { SettingsRegistryService, setGlobalSettingsRegistry } from '../../services/settingsRegistryService.js';
+import { SettingsRegistryService, setGlobalSettingsRegistry, getGlobalSettingsRegistry } from '../../services/settingsRegistryService.js';
 import { createSecretStorageService } from '../../services/secretStorageService.js';
 import { PolicyDecisionPoint as _PolicyDecisionPoint } from '../../services/policyDecisionPoint.js';
 import { registerAutonomyFlagSettings } from '../../services/autonomySettingsSchemas.js';
@@ -407,6 +408,19 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       scope: 'user',
       description: 'How often (minutes) to checkpoint a changed canvas page for version history. Applies after restart.',
       category: 'Canvas',
+    });
+
+    // Cloud/frontier models (Claude) opt-in — PER WORKSPACE, default OFF. Nothing
+    // leaves the machine unless the user explicitly turns this on for a workspace
+    // without sensitive data. The Claude API key is set in AI Settings → Model and
+    // lives only in the main process (never the renderer).
+    settingsRegistry.register({
+      key: 'ai.allowCloudModels',
+      type: 'boolean',
+      default: false,
+      scope: 'workspace',
+      description: 'Allow cloud/frontier models (Claude) in THIS workspace. Off by default — enable only for workspaces without sensitive data. Set the Claude API key in AI Settings → Model.',
+      category: 'AI',
     });
 
     // Bind the autonomy flags. (The non-flag autonomy settings the runtime reads
@@ -849,6 +863,45 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         }
       }),
     );
+  }
+
+  // ── 2b. Cloud provider (Claude) — gated by the per-workspace opt-in ──
+  //
+  // Registered ONLY when `ai.allowCloudModels` is true for this workspace, so a
+  // sensitive workspace physically can't send data to the cloud. Flipping the
+  // setting registers/unregisters the provider live (models appear/vanish in the
+  // picker). The API key lives in the main process; the renderer never holds it.
+  {
+    const anthropicBridge = getAnthropicBridge();
+    const settingsReg = api.services.has(ISettingsRegistryService)
+      ? api.services.get<ISettingsRegistryService>(ISettingsRegistryService)
+      : getGlobalSettingsRegistry();
+    let anthropicProvider: AnthropicProvider | undefined;
+    let anthropicReg: { dispose(): void } | undefined;
+
+    const syncCloudProvider = (): void => {
+      let allow = false;
+      try { allow = settingsReg?.getValue<boolean>('ai.allowCloudModels') === true; } catch { allow = false; }
+      if (allow && anthropicBridge && !anthropicReg) {
+        anthropicProvider = new AnthropicProvider(anthropicBridge);
+        anthropicReg = languageModelsService.registerProvider(anthropicProvider);
+      } else if ((!allow || !anthropicBridge) && anthropicReg) {
+        anthropicReg.dispose();
+        anthropicReg = undefined;
+        anthropicProvider?.dispose();
+        anthropicProvider = undefined;
+      }
+    };
+
+    syncCloudProvider();
+    if (settingsReg) {
+      context.subscriptions.push(
+        settingsReg.onDidChange((c) => { if (c.key === 'ai.allowCloudModels') syncCloudProvider(); }),
+      );
+    }
+    context.subscriptions.push({
+      dispose: () => { anthropicReg?.dispose(); anthropicProvider?.dispose(); },
+    });
   }
 
   // ── 3. Create ChatDataService (M13 Phase 2) ──
