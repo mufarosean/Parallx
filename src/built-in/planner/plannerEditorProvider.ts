@@ -110,6 +110,9 @@ class PlannerEditorPane implements IDisposable {
   /** Persists the currently-selected filter inside the Tasks tab. */
   private _tasksFilter: string = 'all';
   private _disposed = false;
+  /** Re-entrancy guard for _renderTab (async clear-then-append must not overlap). */
+  private _rendering = false;
+  private _renderQueued = false;
   private readonly _disposables: IDisposable[] = [];
 
   constructor(
@@ -303,7 +306,27 @@ class PlannerEditorPane implements IDisposable {
     }
   }
 
+  /**
+   * Re-entrancy-safe tab render. `_renderTabOnce` clears the body up front but
+   * appends its content only AFTER awaiting data — so two overlapping calls
+   * (e.g. a burst of onDidChange events during a sync) would each clear-then-
+   * append and stack DUPLICATE grids. Serialize them: only one runs at a time,
+   * and a call arriving mid-render coalesces into a single trailing re-render.
+   */
   private async _renderTab(): Promise<void> {
+    if (this._rendering) { this._renderQueued = true; return; }
+    this._rendering = true;
+    try {
+      do {
+        this._renderQueued = false;
+        await this._renderTabOnce();
+      } while (this._renderQueued && !this._disposed);
+    } finally {
+      this._rendering = false;
+    }
+  }
+
+  private async _renderTabOnce(): Promise<void> {
     const body = this._bodyEl;
     const actions = this._root?.querySelector('[data-role="tab-actions"]') as HTMLElement | null;
     if (!body || !actions) return;
