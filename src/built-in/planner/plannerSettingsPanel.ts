@@ -8,7 +8,7 @@
 
 import { DisposableStore, type IDisposable } from '../../platform/lifecycle.js';
 import type { ISettingsPanel } from '../../services/settingsPanelRegistry.js';
-import type { PlannerDataService } from './plannerDataService.js';
+import { DEFAULT_EVENT_CALENDAR_KEY, type PlannerDataService } from './plannerDataService.js';
 import type { PlannerCalendar } from './plannerTypes.js';
 import { buildICalendar } from './plannerICal.js';
 import { googleSync } from './sync/googleClient.js';
@@ -406,6 +406,40 @@ function renderGoogleSyncSection(
       const e = el('div', 'planner-settings__google-status is-error');
       e.textContent = `Couldn’t load calendars: ${err instanceof Error ? err.message : String(err)}`;
       calBox.appendChild(e);
+    }
+
+    // Where new events land when the user (or the AI) doesn't pick a calendar.
+    // Defaulting this to a Google-synced calendar is what makes "add a meeting"
+    // — from chat or quick-add — actually appear on the user's Google calendar.
+    try {
+      const cals = await data.listCalendars();
+      const current = (await data.getSetting(DEFAULT_EVENT_CALENDAR_KEY)) || '';
+
+      const defRow = el('div', 'planner-settings__google-row');
+      defRow.style.marginTop = '10px';
+      const defLabel = el('span');
+      defLabel.textContent = 'New events go to';
+      const sel = document.createElement('select');
+      sel.className = 'planner-settings__select';
+
+      const auto = document.createElement('option');
+      auto.value = '';
+      auto.textContent = 'Auto — your synced Google calendar';
+      sel.appendChild(auto);
+      for (const c of cals) {
+        const o = document.createElement('option');
+        o.value = c.id;
+        o.textContent = c.name + (c.sourceProvider === GOOGLE_PROVIDER_ID ? ' (Google)' : '');
+        if (c.id === current) o.selected = true;
+        sel.appendChild(o);
+      }
+      sel.addEventListener('change', () => {
+        void data.setSetting(DEFAULT_EVENT_CALENDAR_KEY, sel.value);
+      });
+      defRow.append(defLabel, sel);
+      section.appendChild(defRow);
+    } catch {
+      // non-fatal — the picker is a convenience over the auto default.
     }
   };
 

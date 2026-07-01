@@ -10,6 +10,7 @@
 
 import { toDisposable, type IDisposable } from '../../platform/lifecycle.js';
 import type { PlannerDataService } from './plannerDataService.js';
+import type { IPlannerSyncController } from './sync/plannerSyncOrchestrator.js';
 import type { TaskStatus } from './plannerTypes.js';
 
 interface ChatApi {
@@ -51,6 +52,33 @@ function err(message: string): { content: string; isError: true } {
   return { content: message, isError: true };
 }
 
+/**
+ * Resolve the calendar an item should land in from `calendarId` / `calendarName`
+ * args. Returns `{ calendarId }` (undefined = let the data service pick the
+ * default), or `{ error }` when a named/id'd calendar can't be found — so the
+ * agent gets a correctable message rather than a silent wrong-calendar write.
+ */
+async function resolveCalendarArg(
+  data: PlannerDataService,
+  args: Record<string, unknown>,
+): Promise<{ calendarId?: string; error?: string }> {
+  const rawId = typeof args.calendarId === 'string' ? args.calendarId.trim() : '';
+  const rawName = typeof args.calendarName === 'string' ? args.calendarName.trim() : '';
+  if (!rawId && !rawName) return {}; // no target named → default resolution downstream
+
+  if (rawId) {
+    const cal = await data.getCalendar(rawId);
+    if (!cal) return { error: `Calendar not found: "${rawId}". Call planner.read what="calendars" to list valid calendars.` };
+    return { calendarId: cal.id };
+  }
+  const cals = await data.listCalendars();
+  const needle = rawName.toLowerCase();
+  const match = cals.find((c) => c.name.toLowerCase() === needle)
+    ?? cals.find((c) => c.name.toLowerCase().includes(needle));
+  if (!match) return { error: `No calendar matches "${rawName}". Call planner.read what="calendars" to list valid calendars.` };
+  return { calendarId: match.id };
+}
+
 // ─── Tool: planner.captureTask ───────────────────────────────────────────────
 
 const CAPTURE_TASK_PARAMETERS = {
@@ -85,6 +113,14 @@ const CAPTURE_TASK_PARAMETERS = {
       type: 'array',
       items: { type: 'string' },
       description: 'Optional tag list. Replaces existing tags on update.',
+    },
+    calendarId: {
+      type: 'string',
+      description: 'Optional calendar id to file the task under (see planner.read what="calendars"). Tasks sync to Google Tasks whenever Google task sync is on, regardless of calendar. Omit to use the default.',
+    },
+    calendarName: {
+      type: 'string',
+      description: 'Optional calendar name (case-insensitive) as an alternative to calendarId.',
     },
     sourceUri: {
       type: 'string',
@@ -126,6 +162,14 @@ const CAPTURE_EVENT_PARAMETERS = {
       type: 'string',
       description: 'Optional location string.',
     },
+    calendarId: {
+      type: 'string',
+      description: 'Calendar id the event belongs to (see planner.read what="calendars"). To make an event appear on the user\'s GOOGLE calendar, use a calendar whose syncsToGoogle is true. Omit to use the default (which targets the Google-synced calendar when connected).',
+    },
+    calendarName: {
+      type: 'string',
+      description: 'Calendar name (case-insensitive) as an alternative to calendarId — e.g. "Work" or the account email for the primary Google calendar.',
+    },
   },
 };
 
@@ -137,8 +181,8 @@ const READ_PARAMETERS = {
   properties: {
     what: {
       type: 'string',
-      enum: ['tasks', 'events', 'free-slot'],
-      description: 'Discriminator. "tasks" returns matching tasks; "events" returns events in a time window; "free-slot" returns the first open calendar block of the requested duration.',
+      enum: ['tasks', 'events', 'free-slot', 'calendars'],
+      description: 'Discriminator. "tasks" returns matching tasks; "events" returns events in a time window; "free-slot" returns the first open calendar block of the requested duration; "calendars" lists the user\'s calendars with which ones sync to Google (use this to pick where an event should land).',
     },
     // tasks-only filters
     status: {
@@ -197,8 +241,18 @@ const READ_PARAMETERS = {
 export function registerPlannerChatTools(
   chat: ChatApi,
   data: PlannerDataService,
+  sync?: IPlannerSyncController,
 ): IDisposable {
   const disposables: IDisposable[] = [];
+
+  // After an agent write, kick a reconcile so the change reaches Google promptly
+  // (instead of waiting for the next timer tick). Best-effort: never block or
+  // throw into the tool result — if it's already running or offline, the timer
+  // still catches up.
+  const nudgeSync = (): void => {
+    if (!sync || sync.isRunning) return;
+    void Promise.resolve(sync.syncNow()).catch(() => { /* timer will retry */ });
+  };
 
   disposables.push(chat.registerTool('planner.captureTask', {
     description:
@@ -217,6 +271,9 @@ export function registerPlannerChatTools(
       const sourceUri = typeof args.sourceUri === 'string' ? args.sourceUri : undefined;
 
       try {
+        const cal = await resolveCalendarArg(data, args);
+        if (cal.error) return err(cal.error);
+
         if (taskId) {
           const updated = await data.updateTask(taskId, {
             title: title || undefined,
@@ -225,8 +282,10 @@ export function registerPlannerChatTools(
             dueAt: dueAt ?? undefined,
             reminderAt: reminderAt ?? undefined,
             tags,
+            calendarId: cal.calendarId,
           });
           if (!updated) return err(`Task not found: ${taskId}`);
+          nudgeSync();
           return ok({ task: updated });
         }
         if (!title) return err('createTask requires a title.');
@@ -238,8 +297,10 @@ export function registerPlannerChatTools(
           dueAt: dueAt ?? Date.now() + 5 * 86_400_000,
           reminderAt: reminderAt ?? null,
           tags,
+          calendarId: cal.calendarId,
           sourceUri,
         });
+        nudgeSync();
         return ok({ task: created });
       } catch (e) {
         return err(`captureTask failed: ${e instanceof Error ? e.message : String(e)}`);
@@ -249,7 +310,7 @@ export function registerPlannerChatTools(
 
   disposables.push(chat.registerTool('planner.captureEvent', {
     description:
-      'Create or update a planner calendar event. Present an eventId to update; omit it to create. startAt is required on create.',
+      'Create or update a planner calendar event. Present an eventId to update; omit it to create. startAt is required on create. To place an event on the user\'s GOOGLE calendar, target a calendar whose syncsToGoogle is true (call planner.read what="calendars" first to find it, or omit calendarId to use the default, which targets the Google-synced calendar when connected). Created/updated events reconcile to Google automatically.',
     parameters: CAPTURE_EVENT_PARAMETERS,
     requiresConfirmation: false,
     handler: async (raw) => {
@@ -263,6 +324,9 @@ export function registerPlannerChatTools(
       const location = typeof args.location === 'string' ? args.location : undefined;
 
       try {
+        const cal = await resolveCalendarArg(data, args);
+        if (cal.error) return err(cal.error);
+
         if (eventId) {
           const updated = await data.updateEvent(eventId, {
             title: title || undefined,
@@ -271,8 +335,10 @@ export function registerPlannerChatTools(
             endAt: endAt ?? undefined,
             allDay,
             location,
+            calendarId: cal.calendarId,
           });
           if (!updated) return err(`Event not found: ${eventId}`);
+          nudgeSync();
           return ok({ event: updated });
         }
         if (!title) return err('createEvent requires a title.');
@@ -284,7 +350,9 @@ export function registerPlannerChatTools(
           endAt: endAt ?? undefined,
           allDay: allDay ?? false,
           location,
+          calendarId: cal.calendarId,
         });
+        nudgeSync();
         return ok({ event: created });
       } catch (e) {
         return err(`captureEvent failed: ${e instanceof Error ? e.message : String(e)}`);
@@ -294,7 +362,7 @@ export function registerPlannerChatTools(
 
   disposables.push(chat.registerTool('planner.read', {
     description:
-      'Read planner data. `what="tasks"` returns matching tasks (status / dueWithinDays / tags / includeUndated). `what="events"` returns events in a time window (from / to). `what="free-slot"` returns the first open calendar block of the requested durationMinutes within withinDays.',
+      'Read planner data. `what="tasks"` returns matching tasks (status / dueWithinDays / tags / includeUndated). `what="events"` returns events in a time window (from / to). `what="free-slot"` returns the first open calendar block of the requested durationMinutes within withinDays. `what="calendars"` lists the user\'s calendars with `syncsToGoogle` and `isDefaultForNewEvents` — call this to decide which calendar an event should land in.',
     parameters: READ_PARAMETERS,
     requiresConfirmation: false,
     handler: async (raw) => {
@@ -335,7 +403,21 @@ export function registerPlannerChatTools(
           if (!slot) return ok({ slot: null, message: 'No open slot found in the requested window.' });
           return ok({ slot });
         }
-        return err(`Unknown what: "${what}". Use "tasks", "events", or "free-slot".`);
+        if (what === 'calendars') {
+          const cals = await data.listCalendars();
+          const defaultId = await data.resolveDefaultEventCalendarId();
+          return ok({
+            calendars: cals.map((c) => ({
+              id: c.id,
+              name: c.name,
+              color: c.color,
+              syncsToGoogle: c.sourceProvider === 'google',
+              googleCalendarId: c.sourceId ?? null,
+              isDefaultForNewEvents: c.id === defaultId,
+            })),
+          });
+        }
+        return err(`Unknown what: "${what}". Use "tasks", "events", "free-slot", or "calendars".`);
       } catch (e) {
         return err(`read failed: ${e instanceof Error ? e.message : String(e)}`);
       }

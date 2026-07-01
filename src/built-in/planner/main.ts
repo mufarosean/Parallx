@@ -186,7 +186,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
 
   // 6. Chat tools (captureTask / captureEvent / read).
   if (api.chat?.registerTool) {
-    context.subscriptions.push(registerPlannerChatTools(api.chat, _data));
+    context.subscriptions.push(registerPlannerChatTools(api.chat, _data, _orchestrator ?? undefined));
   } else if (isDevMode) {
     console.warn('[Planner] api.chat.registerTool not available — chat tools skipped.');
   }

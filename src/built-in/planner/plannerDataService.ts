@@ -26,6 +26,14 @@ import type {
 } from './plannerTypes.js';
 import { expandRecurrence } from './plannerRecurrence.js';
 
+/**
+ * Setting key: which calendar new events land in when a caller (quick-add, the
+ * chat agent) doesn't name one. Empty = "auto": prefer a Google-synced calendar
+ * so agent/quick-added events reach Google by default, else the local Personal
+ * calendar. Stored in planner_settings (same mechanism as the Google toggles).
+ */
+export const DEFAULT_EVENT_CALENDAR_KEY = 'planner.defaultEventCalendar';
+
 interface DatabaseBridge {
   run(sql: string, params?: unknown[]): Promise<{ error: { code: string; message: string } | null; changes?: number }>;
   get(sql: string, params?: unknown[]): Promise<{ error: { code: string; message: string } | null; row?: Record<string, unknown> | null }>;
@@ -370,12 +378,29 @@ export class PlannerDataService extends Disposable {
     return rowToEvent(res.row);
   }
 
+  /**
+   * Which calendar a new event lands in when the caller doesn't name one.
+   * Order: the user's configured default (if it still exists) → any Google-synced
+   * calendar (so agent/quick-added events reach Google by default) → the local
+   * Personal calendar. This is the seam that makes "put a meeting on my Google
+   * calendar" actually reach Google without the caller knowing calendar ids.
+   */
+  async resolveDefaultEventCalendarId(): Promise<string> {
+    const all = await this.listCalendars();
+    const configured = (await this.getSetting(DEFAULT_EVENT_CALENDAR_KEY)) || '';
+    if (configured && all.some((c) => c.id === configured)) return configured;
+    const synced = all.find((c) => !!c.sourceProvider); // a mirror of a remote (Google) calendar
+    if (synced) return synced.id;
+    return all.some((c) => c.id === 'cal-personal') ? 'cal-personal' : (all[0]?.id ?? 'cal-personal');
+  }
+
   async createEvent(input: CreateEventInput): Promise<PlannerEvent> {
     const id = generateId('event');
     const now = Date.now();
     const startAt = input.startAt;
     const endAt = input.endAt ?? startAt + (await this.getDefaultEventMinutes()) * 60 * 1000;
     if (endAt < startAt) throw new Error('createEvent: endAt must be >= startAt');
+    const calendarId = input.calendarId ?? (await this.resolveDefaultEventCalendarId());
 
     const res = await this._db.run(
       `INSERT INTO planner_events
@@ -390,7 +415,7 @@ export class PlannerDataService extends Disposable {
         endAt,
         input.allDay ? 1 : 0,
         input.location ?? null,
-        input.calendarId ?? 'cal-personal',
+        calendarId,
         input.color ?? null,
         input.recurrence ?? null,
         input.sourceProvider ?? null,
