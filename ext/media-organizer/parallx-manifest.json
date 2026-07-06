@@ -55,6 +55,10 @@
       {
         "typeId": "media-organizer-grid",
         "displayName": "Media Grid"
+      },
+      {
+        "typeId": "media-organizer-clip",
+        "displayName": "Clip Editor"
       }
     ],
     "configuration": [

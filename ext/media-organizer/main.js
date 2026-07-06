@@ -7304,6 +7304,121 @@ kbd.mo-key {
 
 /* ── M59 P4: large two-column clip dialog ── */
 .mo-clip-dialog { width: 1180px; max-width: 96vw; }
+
+/* ── Clip exporter as a standalone editor PAGE ── */
+/* Render the PROVEN dialog layout inside the tab. We only remove the floating-
+   modal shell (backdrop/border/shadow/fixed width) and make it scroll in the
+   pane — everything inside (.mo-clip-body / .mo-clip-grid / .mo-clip-stage /
+   .mo-clip-controls / rows) keeps its original, working sizing. Do NOT add
+   flex:1 / align-items:stretch here — that stretches the grid and flings the
+   controls out of their column. */
+.mo-clip-page {
+  position: absolute; inset: 0; overflow: auto; outline: none;
+  background: var(--vscode-editor-background, var(--px-bg, #1f1f1f));
+  color: var(--vscode-foreground, #ddd);
+}
+.mo-clip-dialog--page {
+  width: 100%; max-width: none; margin: 0;
+  min-width: 0; max-height: none;
+  border: none; border-radius: 0; box-shadow: none; background: transparent;
+}
+.mo-clip-dialog--page .mo-modal-header {
+  padding: 16px 24px 12px;
+  border-bottom: 1px solid var(--vscode-panel-border, #444);
+}
+.mo-clip-dialog--page .mo-modal-title { font-size: 15px; }
+.mo-clip-dialog--page .mo-clip-body { padding: 18px 24px; }
+/* Fill the width, but keep the preview a sane 16:9 sized by height and CENTERED,
+   with the scrubber matching its width — so large screens don't leave a void and
+   the preview never balloons into a wide letterbox. */
+.mo-clip-dialog--page .mo-clip-stage,
+.mo-clip-dialog--page .mo-clip-scrubber {
+  width: 100%; max-width: calc(70vh * 16 / 9); margin-left: auto; margin-right: auto;
+}
+.mo-clip-dialog--page .mo-clip-stage { max-height: 70vh; }
+/* Footer pinned to the bottom of the scroll area. */
+.mo-clip-dialog--page .mo-modal-footer {
+  position: sticky; bottom: 0;
+  background: var(--vscode-editor-background, var(--px-bg, #1f1f1f));
+  border-top: 1px solid var(--vscode-panel-border, #444);
+}
+
+/* ── Professional control components ── */
+
+/* Section headers group the settings into scannable blocks. */
+.mo-clip-section-head {
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase;
+  color: var(--vscode-descriptionForeground, #8a8f98);
+  margin: 16px 0 4px; padding-top: 12px;
+  border-top: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 9%, transparent);
+}
+.mo-clip-section-head:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+
+/* Range sliders (Scale, Quality) — draggable + paired with a precise number. */
+.mo-clip-slider {
+  -webkit-appearance: none; appearance: none; height: 4px; border-radius: 3px;
+  flex: 1 1 auto; min-width: 60px; margin: 0 2px; cursor: pointer;
+  background: var(--vscode-panel-border, #555);
+}
+.mo-clip-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 15px; height: 15px; border-radius: 50%;
+  background: var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  border: 2px solid var(--vscode-editor-background, #1f1f1f); cursor: pointer;
+}
+.mo-clip-slider:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vscode-focusBorder, #9333ea) 40%, transparent);
+}
+.mo-clip-dialog--page .mo-clip-controls .mo-clip-slider-row { gap: 8px; }
+.mo-clip-dialog--page .mo-clip-controls .mo-clip-slider-row .mo-clip-input {
+  flex: 0 0 58px; width: 58px; max-width: 58px; text-align: center;
+}
+
+/* Checkboxes → switches, grouped left with their label. */
+.mo-clip-dialog--page .mo-clip-controls .mo-clip-row:has(.mo-clip-check) { justify-content: flex-start; }
+.mo-clip-check {
+  appearance: none; -webkit-appearance: none; margin: 0; flex: 0 0 auto;
+  width: 36px; height: 20px; border-radius: 10px; position: relative; cursor: pointer;
+  background: var(--vscode-input-background, rgba(255, 255, 255, 0.08));
+  border: 1px solid var(--vscode-panel-border, #444);
+  transition: background 0.15s, border-color 0.15s;
+}
+.mo-clip-check::after {
+  content: ''; position: absolute; top: 50%; left: 2px; transform: translateY(-50%);
+  width: 15px; height: 15px; border-radius: 50%;
+  background: var(--vscode-foreground, #ccc); transition: transform 0.15s, background 0.15s;
+}
+.mo-clip-check:checked { background: var(--vscode-focusBorder, var(--px-accent, #9333ea)); border-color: transparent; }
+.mo-clip-check:checked::after { transform: translate(16px, -50%); background: #fff; }
+.mo-clip-check:focus-visible { outline: 2px solid var(--vscode-focusBorder, #9333ea); outline-offset: 2px; }
+
+/* Trim range slider (scrubber). */
+.mo-clip-dialog--page .mo-clip-scrubber { height: 32px; }
+/* Preview fills the left column instead of a fixed 16:9 letterbox. */
+.mo-clip-dialog--page .mo-clip-stage {
+  flex: 1 1 auto; aspect-ratio: auto; max-height: none; min-height: 320px;
+}
+/* Footer pinned at the bottom of the page. */
+.mo-clip-dialog--page .mo-modal-footer {
+  padding: 14px 28px; position: sticky; bottom: 0;
+  background: var(--vscode-editor-background, var(--px-bg, #1f1f1f));
+  border-top: 1px solid var(--vscode-panel-border, #444);
+}
+
+.mo-clip-unavailable {
+  display: flex; align-items: center; justify-content: center;
+  height: 100%; padding: 40px; text-align: center;
+  color: var(--vscode-descriptionForeground, #9aa0aa); font-size: 13px;
+}
+
+/* Custom-styled CLOSED dropdown trigger — strip the native OS arrow so bound
+   selects match the Parallx listbox popup shown on open (no native chrome). */
+select.mo-select-bound {
+  appearance: none; -webkit-appearance: none; padding-right: 26px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%23888' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat; background-position: right 9px center; cursor: pointer;
+}
+select.mo-select-bound:hover { border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea)); }
+select.mo-select-bound:disabled { opacity: 0.55; cursor: default; }
 .mo-frame-dialog { width: 880px; max-width: 92vw; }
 .mo-frame-dialog .mo-clip-grid { grid-template-columns: minmax(0, 1fr) 260px; }
 .mo-clip-body {
@@ -17141,6 +17256,19 @@ async function _moExtractFrame(api, opts) {
 // explicit save step. Cleared per-entry after a successful batch export.
 const _moClipQueueByVideo = new Map();
 
+// Clip-editor page params keyed by instanceId. Carries the source path + the
+// non-serializable onClose callback (screen-recording secure-erase) from the
+// opener to the editor provider's createEditorPane, since openEditor input only
+// forwards typeId/title/icon/instanceId.
+const _moClipEditors = new Map();
+// Pending secure-erase timers keyed by instanceId. The workbench DISPOSES +
+// RECREATES editor panes on every tab switch (editorPane saveViewState/dispose/
+// restoreViewState), so we must NOT erase the temp recording on pane dispose —
+// only on a genuine close. dispose() schedules the erase after a grace window;
+// createEditorPane cancels it if the same editor re-opens (tab switch back).
+const _moClipPendingErase = new Map();
+const MO_CLIP_ERASE_GRACE_MS = 6000;
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // SCREEN RECORDER — record a screen region → existing clip/GIF exporter → erase
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -17207,7 +17335,9 @@ async function moStartScreenRecording(api) {
   _moRecordingInFlight = true;
   try {
     const res = await window.parallxElectron.recorder.openFrame({
-      ffmpegPath: _toolPaths.ffmpeg, outputPath, fps: 30, width: 640, height: 400,
+      // 60 fps capture for smooth motion (mouse, video, animations). The export
+      // FPS dropdown can still downsample per-clip.
+      ffmpegPath: _toolPaths.ffmpeg, outputPath, fps: 60, width: 640, height: 400,
       audio: _screenRecorderAudio,
     });
     if (!res || res.error) {
@@ -17312,6 +17442,10 @@ async function moPurgeOrphanRecordings(api) {
   } catch { /* best effort */ }
 }
 
+// Opener: validate, then open the clip/GIF exporter as a STANDALONE EDITOR PAGE
+// (was a body-appended modal). Params — including the non-serializable onClose
+// erase callback — are handed to the provider via _moClipEditors keyed by a
+// fresh instanceId, since openEditor only forwards typeId/title/icon/instanceId.
 async function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut, opts = {}) {
   // Tool detection only runs during a scan, so a fresh session that opens
   // an already-indexed video and clicks "trim" would see _toolPaths.ffmpeg
@@ -17321,20 +17455,42 @@ async function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut,
   }
   if (!_toolPaths.ffmpeg) {
     api.window.showErrorMessage('ffmpeg not available — cannot export clips.');
+    if (typeof opts?.onClose === 'function') { try { opts.onClose(); } catch { /* ignore */ } }
     return;
   }
   if (!duration || duration <= 0) {
     api.window.showErrorMessage('Video duration unknown — cannot export.');
+    if (typeof opts?.onClose === 'function') { try { opts.onClose(); } catch { /* ignore */ } }
     return;
   }
+  const instanceId = 'clip:' + Date.now() + ':' + Math.random().toString(36).slice(2, 8);
+  _moClipEditors.set(instanceId, { videoPath, duration, inT: initialIn, outT: initialOut, opts: opts || {} });
+  const base = String(videoPath).split(/[\\/]/).pop() || 'clip';
+  try {
+    await api.editors.openEditor({ typeId: 'media-organizer-clip', title: 'Clip · ' + base, icon: 'file-media', instanceId });
+  } catch (err) {
+    _moClipEditors.delete(instanceId);
+    if (typeof opts?.onClose === 'function') { try { opts.onClose(); } catch { /* ignore */ } }
+    api.window.showErrorMessage('Could not open the clip editor: ' + (err && err.message || err));
+  }
+}
 
-  const overlay = moEl('div', 'mo-modal-overlay');
-  const dialog = moEl('div', 'mo-modal mo-clip-dialog');
+// Builds the clip/GIF exporter into an editor pane `container` and returns a
+// pane handle. dispose() (called by the workbench when the tab closes) tears
+// down timers/observers/preview, wipes the temp frame strip, and fires the
+// caller's onClose (secure-erase for screen recordings). Everything below the
+// shell is the former modal's logic verbatim — `overlay` is now an in-pane root
+// rather than a fixed backdrop, so the existing overlay.* wiring still works.
+function moBuildClipEditor(api, container, instanceId, videoPath, duration, initialIn, initialOut, opts = {}) {
+  const overlay = moEl('div', 'mo-clip-page');
+  overlay.tabIndex = -1;
+  const dialog = moEl('div', 'mo-modal mo-clip-dialog mo-clip-dialog--page');
   overlay.appendChild(dialog);
 
   const header = moEl('div', 'mo-modal-header');
   header.appendChild(moEl('div', 'mo-modal-title', { textContent: 'Export Clip / GIF' }));
   const closeBtn = moEl('button', 'mo-modal-close', { textContent: '×' });
+  closeBtn.style.display = 'none'; // the editor tab provides its own close (X)
   closeBtn.addEventListener('click', () => overlay.remove());
   header.appendChild(closeBtn);
   dialog.appendChild(header);
@@ -17424,6 +17580,28 @@ async function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut,
   grid.appendChild(controls);
   const lbl = (t) => moEl('label', 'mo-clip-label', { textContent: t });
 
+  // ── Redesign helpers ─────────────────────────────────────────────────────
+  // Section header — groups the settings into scannable blocks.
+  const addSectionHead = (t) => controls.appendChild(moEl('div', 'mo-clip-section-head', { textContent: t }));
+  // Give a numeric field a synced range slider: draggable AND type-precise. The
+  // number input stays the value source read by export/snapshot; the slider just
+  // drives it, firing the same input/change events. Returns the slider element.
+  const addSlider = (numberInput, min, max, step) => {
+    const s = document.createElement('input');
+    s.type = 'range'; s.min = String(min); s.max = String(max); s.step = String(step);
+    s.value = numberInput.value; s.className = 'mo-clip-slider'; s.setAttribute('aria-hidden', 'true');
+    s.addEventListener('input', () => { numberInput.value = s.value; numberInput.dispatchEvent(new Event('input', { bubbles: true })); });
+    s.addEventListener('change', () => numberInput.dispatchEvent(new Event('change', { bubbles: true })));
+    numberInput.addEventListener('input', () => { if (s.value !== numberInput.value) s.value = numberInput.value; });
+    if (numberInput.parentElement) {
+      numberInput.parentElement.insertBefore(s, numberInput);
+      numberInput.parentElement.classList.add('mo-clip-slider-row');
+    }
+    return s;
+  };
+
+  addSectionHead('Trim');
+
   // Mode toggle (Out point vs Duration)
   const modeRow = moEl('div', 'mo-clip-row');
   modeRow.appendChild(lbl('Mode'));
@@ -17466,6 +17644,8 @@ async function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut,
   lenRow.appendChild(lengthLabel);
   controls.appendChild(lenRow);
 
+  addSectionHead('Output');
+
   // Format
   const fmtRow = moEl('div', 'mo-clip-row');
   fmtRow.appendChild(lbl('Format'));
@@ -17500,6 +17680,7 @@ async function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut,
   sizeInput.className = 'mo-clip-input';
   sizeRow.appendChild(sizeInput);
   controls.appendChild(sizeRow);
+  addSlider(sizeInput, 10, 200, 5);
 
   // Speed
   const speedRow = moEl('div', 'mo-clip-row');
@@ -17513,6 +17694,8 @@ async function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut,
   }
   speedRow.appendChild(speedSel);
   controls.appendChild(speedRow);
+
+  addSectionHead('Adjust');
 
   // Crop toggle
   const cropRow = moEl('div', 'mo-clip-row');
@@ -17607,6 +17790,8 @@ async function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut,
   revRow.appendChild(revLabel);
   controls.appendChild(revRow);
 
+  addSectionHead('Export settings');
+
   // GIF-only: dither
   const gifBox = moEl('div', 'mo-clip-row mo-clip-gif-only');
   gifBox.appendChild(lbl('Dither'));
@@ -17691,23 +17876,31 @@ async function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut,
   encModeSel.className = 'mo-clip-input';
   encModeSel.innerHTML = '<option value="crf">Quality (CRF)</option><option value="size">Target size (MB)</option>';
   crfBox.appendChild(encModeSel);
+  controls.appendChild(crfBox);
+
+  // Quality (CRF) \u2014 its own row: draggable slider + precise number. Shown when
+  // encode mode = Quality.
+  const crfRow = moEl('div', 'mo-clip-row mo-clip-vid-only');
+  crfRow.appendChild(lbl('Quality'));
   const crfInput = document.createElement('input');
   crfInput.type = 'number'; crfInput.min = '15'; crfInput.max = '35'; crfInput.value = '23';
-  crfInput.className = 'mo-clip-input mo-clip-input--num'; crfInput.title = 'Lower = better quality, larger file';
-  crfBox.appendChild(crfInput);
+  crfInput.className = 'mo-clip-input mo-clip-input--num'; crfInput.title = 'Lower CRF = better quality, larger file';
+  crfRow.appendChild(crfInput);
+  controls.appendChild(crfRow);
+  addSlider(crfInput, 15, 35, 1);
+
+  // Target size (MB) \u2014 its own row with quick-pick chips. Shown when encode
+  // mode = Target size.
+  const sizeMbRow = moEl('div', 'mo-clip-row mo-clip-vid-only');
+  sizeMbRow.appendChild(lbl('Target size'));
   const sizeInputMB = document.createElement('input');
   sizeInputMB.type = 'number'; sizeInputMB.min = '0.5'; sizeInputMB.max = '500'; sizeInputMB.step = '0.5';
   sizeInputMB.value = '8';
   sizeInputMB.className = 'mo-clip-input mo-clip-input--num';
-  sizeInputMB.title = 'Target size in megabytes. Two-pass encode \u2014 actual size is usually within 5%';
-  sizeInputMB.style.display = 'none';
-  const mbLabel = moEl('span', 'mo-clip-unit', { textContent: 'MB' });
-  mbLabel.style.display = 'none';
-  crfBox.appendChild(sizeInputMB);
-  crfBox.appendChild(mbLabel);
-  // Quick-pick chips for common social-media size targets
+  sizeInputMB.title = 'Target size in megabytes. Two-pass encode; actual size is usually within 5%';
+  sizeMbRow.appendChild(sizeInputMB);
+  sizeMbRow.appendChild(moEl('span', 'mo-clip-unit', { textContent: 'MB' }));
   const sizeChips = moEl('span', 'mo-clip-chiprow');
-  sizeChips.style.display = 'none';
   for (const [label, mb] of [['8', 8], ['25', 25], ['50', 50], ['100', 100]]) {
     const chip = moEl('button', 'mo-clip-chip', { textContent: label });
     chip.addEventListener('click', () => {
@@ -17716,15 +17909,17 @@ async function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut,
     });
     sizeChips.appendChild(chip);
   }
-  crfBox.appendChild(sizeChips);
-  encModeSel.addEventListener('change', () => {
+  sizeMbRow.appendChild(sizeChips);
+  controls.appendChild(sizeMbRow);
+
+  // Quality XOR Target-size row, by encode mode.
+  const syncEncodeMode = () => {
     const isSize = encModeSel.value === 'size';
-    crfInput.style.display = isSize ? 'none' : '';
-    sizeInputMB.style.display = isSize ? '' : 'none';
-    mbLabel.style.display = isSize ? '' : 'none';
-    sizeChips.style.display = isSize ? '' : 'none';
-  });
-  controls.appendChild(crfBox);
+    crfRow.style.display = isSize ? 'none' : '';
+    sizeMbRow.style.display = isSize ? '' : 'none';
+  };
+  encModeSel.addEventListener('change', syncEncodeMode);
+  syncEncodeMode();
 
   // GPU acceleration row (auto-detected encoders only). Only relevant for
   // MP4 \u2014 WebM/VP9 hardware support is rare and inconsistent across vendors,
@@ -17752,6 +17947,8 @@ async function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut,
       gpuSel.disabled = true;
       gpuSel.title = 'No GPU encoder detected. ffmpeg was built without nvenc/qsv/amf support, or the drivers are missing.';
     }
+    // Bind the styled popup now that the options exist.
+    moBindCustomSelect(gpuSel);
   });
 
   // ── Frame strip lives below the grid (full width) ──
@@ -17776,6 +17973,9 @@ async function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut,
     loopRow.style.display = isGif ? '' : 'none';
     revFrRow.style.display = isGif ? '' : 'none';
     crfBox.style.display = isGif ? 'none' : '';
+    // Quality / Target-size rows follow the encode mode when video, hidden on GIF.
+    if (isGif) { crfRow.style.display = 'none'; sizeMbRow.style.display = 'none'; }
+    else { syncEncodeMode(); }
     // GPU encoders are H.264 (NVENC/QSV/AMF) only \u2014 hide for WebM/GIF.
     gpuBox.style.display = isMp4 ? '' : 'none';
   }
@@ -17787,6 +17987,8 @@ async function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut,
   moBindCustomSelect(fpsSel);
   moBindCustomSelect(speedSel);
   moBindCustomSelect(ditherSel);
+  moBindCustomSelect(encModeSel);
+  // gpuSel is bound after its async detectHwEncoders() population below.
 
   // ── Mode toggle (Out vs Duration) ──
   function setMode(mode) {
@@ -18073,7 +18275,13 @@ async function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut,
 
     const ff = shellInvoke(_toolPaths.ffmpeg);
     const fpsExpr = (FRAME_COUNT / len).toFixed(4);
-    const vf = `fps=${fpsExpr},scale=80:45:force_original_aspect_ratio=decrease,pad=80:45:(ow-iw)/2:(oh-ih)/2:color=black`;
+    // Scale to a fixed EVEN height (auto even width); the strip cells use
+    // object-fit:cover, so no letterbox/pad is needed. The old
+    // `scale=80:45...,pad=80:45` used ODD target dims → the scaled frame rounded
+    // to 46px, padding to 45 failed ("Padded dimensions cannot be smaller than
+    // input"), and image2 wrote zero frames — the perennial "Frame extract
+    // failed" error. Fixed height + no pad is bulletproof for any region aspect.
+    const vf = `fps=${fpsExpr},scale=-2:90`;
     const outPattern = dir + sepCh + 'frame_%03d.jpg';
     const cmd = [
       ff, '-hide_banner', '-loglevel', 'error', '-y',
@@ -18685,6 +18893,7 @@ async function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut,
   const footer = moEl('div', 'mo-modal-footer');
   const estimateEl = moEl('div', 'mo-clip-estimate', { textContent: '' });
   const cancelBtn = moEl('button', 'mo-btn-secondary', { textContent: 'Close' });
+  cancelBtn.style.display = 'none'; // editor tab close (X) tears the pane down
   cancelBtn.addEventListener('click', () => { if (previewTimer) clearInterval(previewTimer); cleanupStripDir(); overlay.remove(); });
   const exportBtn = moEl('button', 'mo-btn-primary', { textContent: 'Export…' });
   const status = moEl('div', 'mo-clip-status');
@@ -19060,23 +19269,45 @@ async function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut,
     }
   });
 
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) { if (previewTimer) clearInterval(previewTimer); cleanupStripDir(); overlay.remove(); }
-  });
-  document.body.appendChild(overlay);
+  container.appendChild(overlay);
+  // Focus the page so the I/O/Space hotkeys work without a click first.
+  try { overlay.focus(); } catch { /* ignore */ }
 
-  // Notify the caller exactly once when the dialog is dismissed (any path:
-  // close button, cancel, Escape, click-outside, or after export). Used by the
-  // screen recorder to securely erase its temp source video afterward.
-  if (typeof opts.onClose === 'function') {
-    const obs = new MutationObserver(() => {
-      if (!overlay.isConnected) {
-        obs.disconnect();
+  // Editor-page lifecycle. IMPORTANT: the workbench disposes + recreates panes on
+  // every TAB SWITCH (editorPane saveViewState/dispose/restoreViewState), not
+  // only on close — so dispose() must NOT immediately erase the temp recording,
+  // or switching tabs would destroy an un-exported clip. Instead:
+  //   • tear this pane's timers/observers/preview down NOW (cheap, per-pane), and
+  //   • schedule the secure-erase after a grace window; createEditorPane cancels
+  //     it if the editor re-opens (tab switch back). Only a genuine close (no
+  //     re-open within the window) lets the erase fire.
+  // saveViewState/restoreViewState preserve trim + all export settings across the
+  // switch (reusing the queue snapshot pair) so nothing resets.
+  let _disposed = false;
+  const dispose = () => {
+    if (_disposed) return;
+    _disposed = true;
+    try { if (previewTimer) clearInterval(previewTimer); } catch { /* ignore */ }
+    try { if (regenTimer) clearTimeout(regenTimer); } catch { /* ignore */ }
+    try { cropResizeObs.disconnect(); } catch { /* ignore */ }
+    try { preview.pause(); preview.removeAttribute('src'); preview.load(); } catch { /* ignore */ }
+    cleanupStripDir().catch(() => {});
+    if (typeof opts.onClose === 'function' && instanceId) {
+      const t = setTimeout(() => {
+        _moClipPendingErase.delete(instanceId);
+        _moClipEditors.delete(instanceId);
         try { opts.onClose(); } catch { /* ignore */ }
-      }
-    });
-    obs.observe(document.body, { childList: true });
-  }
+      }, MO_CLIP_ERASE_GRACE_MS);
+      _moClipPendingErase.set(instanceId, t);
+    } else if (instanceId) {
+      _moClipEditors.delete(instanceId);
+    }
+  };
+  return {
+    dispose,
+    saveViewState() { try { return snapshotCurrent(); } catch { return null; } },
+    restoreViewState(state) { if (state) { try { loadSnapshot(state); } catch { /* ignore */ } } },
+  };
 }
 
 async function moExportClip(api, opts) {
@@ -23124,6 +23355,32 @@ export async function activate(api, context) {
           return renderAlbumEditor(container, api, input);
         }
         return renderGridBrowser(container, api, input);
+      },
+    })
+  );
+
+  // Clip / GIF exporter — a standalone editor page. Params are looked up from
+  // _moClipEditors (set by the opener). If they're gone (e.g. a workspace
+  // restore after the temp recording was erased), show a friendly placeholder.
+  _commandDisposables.push(
+    api.editors.registerEditorProvider('media-organizer-clip', {
+      createEditorPane(container, input) {
+        const instanceId = (input && input.id) || '';
+        const params = _moClipEditors.get(instanceId);
+        if (!params) {
+          const msg = moEl('div', 'mo-clip-unavailable', {
+            textContent: 'This clip is no longer available. Open a video or record a screen clip to start a new one.',
+          });
+          container.appendChild(msg);
+          return { dispose() { /* nothing to tear down */ } };
+        }
+        // The pane is (re)opening — cancel any grace-window erase scheduled by a
+        // previous dispose (tab switch away → back). Keep the params so the pane
+        // can be rebuilt on every tab switch; they're removed only when the erase
+        // actually fires (genuine close).
+        const pending = _moClipPendingErase.get(instanceId);
+        if (pending) { clearTimeout(pending); _moClipPendingErase.delete(instanceId); }
+        return moBuildClipEditor(api, container, instanceId, params.videoPath, params.duration, params.inT, params.outT, params.opts);
       },
     })
   );
