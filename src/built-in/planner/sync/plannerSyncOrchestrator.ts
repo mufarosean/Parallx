@@ -158,6 +158,11 @@ export class PlannerSyncOrchestrator extends Disposable implements IPlannerSyncC
         await data.applyRemoteEventDeletion(provider.id, delId);
         pulledDeletes++;
       }
+      // Remote per-occurrence exceptions (edits/cancels of a single instance).
+      for (const ov of pull.upsertedOverrides ?? []) {
+        await data.applyOverrideFromSync(provider.id, ov);
+        pulledUpserts++;
+      }
 
       // ── Push (create local-only, update locally-won edits) ──
       if (provider.pushEvent) {
@@ -168,6 +173,19 @@ export class PlannerSyncOrchestrator extends Disposable implements IPlannerSyncC
             pushed++;
           } catch (err) {
             console.warn(`[PlannerSync] push failed for event ${ev.id}:`, err);
+          }
+        }
+      }
+
+      // ── Push local exceptions (this/following/all "this event" edits) ──
+      if (provider.pushOverride) {
+        for (const { baseSourceId, override } of await data.listOverridesToPush(provider.id)) {
+          try {
+            const { providerId } = await provider.pushOverride(baseSourceId, override);
+            await data.markOverrideSynced(override.id, providerId);
+            pushed++;
+          } catch (err) {
+            console.warn(`[PlannerSync] push failed for override ${override.id}:`, err);
           }
         }
       }

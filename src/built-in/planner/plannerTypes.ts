@@ -129,6 +129,42 @@ export interface EventQuery {
   readonly limit?: number;
 }
 
+/** How a change to one occurrence of a recurring series applies (Google-parity). */
+export type SeriesEditScope = 'this' | 'following' | 'all';
+
+/**
+ * A per-occurrence exception on a recurring series, pinned by its ORIGINAL start
+ * slot. `cancelled` removes that occurrence; otherwise the non-null fields
+ * replace the base for that one instance. Mirrors Google's exception model.
+ */
+export interface EventOverride {
+  readonly id: string;
+  readonly baseId: string;
+  readonly originalStartAt: number;
+  readonly cancelled: boolean;
+  readonly title: string | null;
+  readonly description: string | null;
+  readonly startAt: number | null;
+  readonly endAt: number | null;
+  readonly allDay: boolean | null;
+  readonly location: string | null;
+  readonly color: string | null;
+  readonly sourceId: string | null;
+}
+
+/** Fields an override can carry (all optional; omitted = inherit from base). */
+export interface OverridePatch {
+  readonly cancelled?: boolean;
+  readonly title?: string | null;
+  readonly description?: string | null;
+  readonly startAt?: number | null;
+  readonly endAt?: number | null;
+  readonly allDay?: boolean | null;
+  readonly location?: string | null;
+  readonly color?: string | null;
+  readonly sourceId?: string | null;
+}
+
 // ─── Calendars ───────────────────────────────────────────────────────────────
 
 export interface PlannerCalendar {
@@ -205,10 +241,30 @@ export interface SyncPullState {
   readonly sinceMs: number;
 }
 
+/** A remote per-occurrence exception (Google instance edit/cancel) to ingest. */
+export interface SyncedEventOverride {
+  /** The remote recurring MASTER id (Google recurringEventId) — links to a local base. */
+  readonly baseSourceId: string;
+  /** The occurrence slot this exception overrides (ms epoch, from originalStartTime). */
+  readonly originalStartAt: number;
+  readonly cancelled: boolean;
+  readonly title?: string | null;
+  readonly description?: string | null;
+  readonly startAt?: number | null;
+  readonly endAt?: number | null;
+  readonly allDay?: boolean | null;
+  readonly location?: string | null;
+  /** The remote exception event id (stored so we PATCH the right instance). */
+  readonly sourceId: string;
+  readonly updatedAt?: number;
+}
+
 /** Result of a provider pull — remote upserts, deletions, and the next cursor. */
 export interface SyncPullResult {
   readonly upsertedEvents: readonly SyncedEvent[];
   readonly deletedEventSourceIds: readonly string[];
+  /** Per-occurrence exceptions on recurring series (Google instance edits/cancels). */
+  readonly upsertedOverrides?: readonly SyncedEventOverride[];
   readonly upsertedTasks?: readonly SyncedTask[];
   readonly deletedTaskSourceIds?: readonly string[];
   /** Opaque cursor to pass back on the next pull. */
@@ -240,6 +296,11 @@ export interface ICalendarSyncProvider {
   /** Delete an event upstream by its provider id. `remoteParentId` is the
    *  container recorded at delete time (Google calendar id). */
   deleteEvent?(sourceId: string, remoteParentId?: string): Promise<void>;
+
+  /** Push a single-occurrence exception upstream. `baseSourceId` is the remote
+   *  recurring master id; `override` carries the local exception. Returns the
+   *  remote instance id to store as the override's source_id. */
+  pushOverride?(baseSourceId: string, override: EventOverride): Promise<{ providerId: string }>;
 
   /** Push a local task upstream. Returns the provider's id to store as source_id. */
   pushTask?(local: PlannerTask): Promise<{ providerId: string }>;

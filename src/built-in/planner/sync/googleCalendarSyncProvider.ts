@@ -13,10 +13,12 @@
 
 import type { PlannerDataService } from '../plannerDataService.js';
 import type {
+  EventOverride,
   ICalendarSyncProvider,
   PlannerEvent,
   PlannerTask,
   SyncedEvent,
+  SyncedEventOverride,
   SyncedTask,
   SyncPullResult,
   SyncPullState,
@@ -45,7 +47,8 @@ interface GCalEvent {
   start?: GCalDate;
   end?: GCalDate;
   recurrence?: string[];
-  recurringEventId?: string;  // present on instance exceptions (skipped in v1)
+  recurringEventId?: string;  // present on instance exceptions → master id
+  originalStartTime?: GCalDate; // the occurrence slot this exception overrides
   colorId?: string;           // Google's per-event colour index (1–11)
   updated?: string;           // RFC3339
 }
@@ -127,6 +130,48 @@ export function mapGoogleEventToSynced(
     sourceProvider: GOOGLE_PROVIDER_ID,
     sourceId: item.id,
   };
+}
+
+/** A Google recurring INSTANCE exception (edited or cancelled single occurrence)
+ *  → a SyncedEventOverride keyed by its original slot. Null if unrepresentable. */
+export function mapGoogleExceptionToOverride(item: GCalEvent): SyncedEventOverride | null {
+  if (!item.id || !item.recurringEventId || !item.originalStartTime) return null;
+  const orig = item.originalStartTime;
+  const origMs = orig.date ? parseAllDayDate(orig.date) : Date.parse(orig.dateTime ?? '');
+  if (!Number.isFinite(origMs)) return null;
+  const updatedAt = item.updated ? Date.parse(item.updated) : Date.now();
+  if (item.status === 'cancelled') {
+    return { baseSourceId: item.recurringEventId, originalStartAt: origMs, cancelled: true, sourceId: item.id, updatedAt };
+  }
+  const allDay = !!item.start?.date;
+  const startAt = allDay ? parseAllDayDate(item.start!.date!) : Date.parse(item.start?.dateTime ?? '');
+  const endAt = allDay
+    ? (item.end?.date ? parseAllDayDate(item.end.date) : startAt + 86_400_000)
+    : Date.parse(item.end?.dateTime ?? '');
+  return {
+    baseSourceId: item.recurringEventId,
+    originalStartAt: origMs,
+    cancelled: false,
+    title: item.summary?.trim() || null,
+    description: item.description ?? null,
+    startAt: Number.isFinite(startAt) ? startAt : null,
+    endAt: Number.isFinite(endAt) ? endAt : null,
+    allDay,
+    location: item.location ?? null,
+    sourceId: item.id,
+    updatedAt,
+  };
+}
+
+/** Deterministic Google instance-event id: `{masterId}_{originalStartCompactUTC}`.
+ *  Timed → `..._YYYYMMDDTHHMMSSZ`; all-day → `..._YYYYMMDD`. */
+export function googleInstanceId(masterId: string, originalStartAt: number, allDay: boolean): string {
+  const d = new Date(originalStartAt);
+  const p = (n: number): string => String(n).padStart(2, '0');
+  const suffix = allDay
+    ? `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}`
+    : `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}T${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())}Z`;
+  return `${masterId}_${suffix}`;
 }
 
 /** Planner event → Google event request body. */
@@ -241,6 +286,7 @@ export class GoogleCalendarSyncProvider implements ICalendarSyncProvider {
     const cals = await this._data.listSyncedCalendars(this.id);
     const upsertedEvents: SyncedEvent[] = [];
     const deletedEventSourceIds: string[] = [];
+    const upsertedOverrides: SyncedEventOverride[] = [];
     let anyReset = false;
 
     for (const cal of cals) {
@@ -248,6 +294,7 @@ export class GoogleCalendarSyncProvider implements ICalendarSyncProvider {
       const r = await this._pullCalendar(cal.sourceId, cal.id, state.sinceMs);
       upsertedEvents.push(...r.upserted);
       deletedEventSourceIds.push(...r.deleted);
+      upsertedOverrides.push(...r.overrides);
       if (r.reset) anyReset = true;
     }
 
@@ -259,7 +306,7 @@ export class GoogleCalendarSyncProvider implements ICalendarSyncProvider {
       deletedTaskSourceIds = t.deleted;
     }
 
-    return { upsertedEvents, deletedEventSourceIds, upsertedTasks, deletedTaskSourceIds, reset: anyReset };
+    return { upsertedEvents, deletedEventSourceIds, upsertedOverrides, upsertedTasks, deletedTaskSourceIds, reset: anyReset };
   }
 
   /** Pull the default tasklist. Tasks API has no syncToken — we page by
@@ -305,9 +352,10 @@ export class GoogleCalendarSyncProvider implements ICalendarSyncProvider {
     googleCalId: string,
     plannerCalId: string,
     sinceMs: number,
-  ): Promise<{ upserted: SyncedEvent[]; deleted: string[]; reset: boolean }> {
+  ): Promise<{ upserted: SyncedEvent[]; deleted: string[]; overrides: SyncedEventOverride[]; reset: boolean }> {
     const upserted: SyncedEvent[] = [];
     const deleted: string[] = [];
+    const overrides: SyncedEventOverride[] = [];
     let reset = false;
 
     let token = (await this._data.getSetting(this._tokenKey(googleCalId))) || undefined;
@@ -342,6 +390,14 @@ export class GoogleCalendarSyncProvider implements ICalendarSyncProvider {
 
       const body = res.data ?? {};
       for (const item of body.items ?? []) {
+        // A single-occurrence exception (edit or cancel) — carries recurringEventId.
+        // Route it to an override rather than treating a cancelled occurrence as
+        // a whole-series delete.
+        if (item.recurringEventId) {
+          const ov = mapGoogleExceptionToOverride(item);
+          if (ov) overrides.push(ov);
+          continue;
+        }
         if (item.status === 'cancelled') {
           if (item.id) deleted.push(item.id);
           continue;
@@ -356,7 +412,7 @@ export class GoogleCalendarSyncProvider implements ICalendarSyncProvider {
     }
 
     if (nextSyncToken) await this._data.setSetting(this._tokenKey(googleCalId), nextSyncToken);
-    return { upserted, deleted, reset };
+    return { upserted, deleted, overrides, reset };
   }
 
   async pushEvent(local: PlannerEvent): Promise<{ providerId: string }> {
@@ -389,6 +445,48 @@ export class GoogleCalendarSyncProvider implements ICalendarSyncProvider {
     if (!res.ok && res.status !== 404 && res.status !== 410) {
       throw new Error(`Google Calendar delete failed: ${res.error ?? 'unknown'}`);
     }
+  }
+
+  /**
+   * Push a single-occurrence exception. Google addresses the instance by the
+   * deterministic id `{masterId}_{originalStartUTC}`; PATCHing it with new
+   * start/end materializes a modified exception, PATCHing status=cancelled
+   * removes just that occurrence. originalStartTime must NOT change — it's the
+   * pin to the slot being overridden.
+   */
+  async pushOverride(baseSourceId: string, override: EventOverride): Promise<{ providerId: string }> {
+    const base = await this._data.getEventBySource(this.id, baseSourceId);
+    const cal = base ? await this._data.getCalendar(base.calendarId ?? '') : null;
+    const googleCalId = cal?.sourceProvider === this.id ? cal.sourceId : null;
+    if (!googleCalId) throw new Error('Override master is not in a Google-synced calendar');
+
+    const allDay = override.allDay ?? base?.allDay ?? false;
+    const instanceId = googleInstanceId(baseSourceId, override.originalStartAt, allDay);
+    const url = `${CAL_BASE}/${encodeURIComponent(googleCalId)}/events/${encodeURIComponent(instanceId)}`;
+
+    let body: Record<string, unknown>;
+    if (override.cancelled) {
+      body = { status: 'cancelled' };
+    } else {
+      body = {};
+      if (override.title != null) body.summary = override.title;
+      if (override.description != null) body.description = override.description;
+      if (override.location != null) body.location = override.location;
+      const start = override.startAt ?? override.originalStartAt;
+      const dur = base ? base.endAt - base.startAt : 3_600_000;
+      const end = override.endAt ?? start + dur;
+      if (allDay) {
+        body.start = { date: toAllDayDateStr(start) };
+        body.end = { date: toAllDayDateStr(end > start ? end : start + 86_400_000) };
+      } else {
+        body.start = { dateTime: new Date(start).toISOString() };
+        body.end = { dateTime: new Date(end).toISOString() };
+      }
+    }
+
+    const res = await googleSync.fetch<GCalEvent>({ method: 'PATCH', url, body });
+    if (!res.ok) throw new Error(`Google Calendar override push failed: ${res.error ?? 'unknown'}`);
+    return { providerId: res.data?.id ?? instanceId };
   }
 
   async pushTask(local: PlannerTask): Promise<{ providerId: string }> {

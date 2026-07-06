@@ -8,14 +8,18 @@ import type {
   CreateCalendarInput,
   CreateEventInput,
   CreateTaskInput,
+  EventOverride,
   EventQuery,
   FreeSlot,
   FreeSlotRequest,
+  OverridePatch,
   PlannerCalendar,
   PlannerChangeEvent,
   PlannerEvent,
   PlannerTask,
+  SeriesEditScope,
   SyncedEvent,
+  SyncedEventOverride,
   SyncedTask,
   SyncDeletion,
   TaskQuery,
@@ -24,7 +28,7 @@ import type {
   UpdateEventInput,
   UpdateTaskInput,
 } from './plannerTypes.js';
-import { expandRecurrence } from './plannerRecurrence.js';
+import { expandRecurrence, setRRuleUntil } from './plannerRecurrence.js';
 
 /**
  * Setting key: which calendar new events land in when a caller (quick-add, the
@@ -87,6 +91,43 @@ function rowToEvent(row: Record<string, unknown>): PlannerEvent {
   };
 }
 
+function rowToOverride(row: Record<string, unknown>): EventOverride {
+  return {
+    id: row.id as string,
+    baseId: row.base_id as string,
+    originalStartAt: (row.original_start_at as number) ?? 0,
+    cancelled: ((row.cancelled as number) ?? 0) !== 0,
+    title: (row.title as string) ?? null,
+    description: (row.description as string) ?? null,
+    startAt: (row.start_at as number) ?? null,
+    endAt: (row.end_at as number) ?? null,
+    allDay: row.all_day == null ? null : (row.all_day as number) !== 0,
+    location: (row.location as string) ?? null,
+    color: (row.color as string) ?? null,
+    sourceId: (row.source_id as string) ?? null,
+  };
+}
+
+/** Merge a modified override onto its base occurrence → the shown instance.
+ *  id stays keyed by the ORIGINAL slot so it remains stable + re-editable. */
+function applyOverrideToInstance(base: PlannerEvent, originalStart: number, ov: EventOverride): PlannerEvent {
+  const dur = Math.max(0, base.endAt - base.startAt);
+  const startAt = ov.startAt ?? originalStart;
+  const endAt = ov.endAt ?? startAt + dur;
+  return {
+    ...base,
+    id: `${base.id}::${originalStart}`,
+    title: ov.title ?? base.title,
+    description: ov.description ?? base.description,
+    startAt,
+    endAt,
+    allDay: ov.allDay ?? base.allDay,
+    location: ov.location ?? base.location,
+    color: ov.color ?? base.color,
+    seriesId: base.id,
+  };
+}
+
 function rowToCalendar(row: Record<string, unknown>): PlannerCalendar {
   return {
     id: row.id as string,
@@ -113,6 +154,15 @@ function generateId(prefix: string): string {
 function baseEventId(id: string): string {
   const i = id.indexOf('::');
   return i >= 0 ? id.slice(0, i) : id;
+}
+
+/** The ORIGINAL occurrence slot (ms) encoded in an instance id, or null if the
+ *  id is a plain base-event id (not an expanded occurrence). */
+function instanceOriginalStart(id: string): number | null {
+  const i = id.indexOf('::');
+  if (i < 0) return null;
+  const n = parseInt(id.slice(i + 2), 10);
+  return Number.isFinite(n) ? n : null;
 }
 
 // ─── Service ─────────────────────────────────────────────────────────────────
@@ -345,18 +395,31 @@ export class PlannerDataService extends Disposable {
     }
     const events: PlannerEvent[] = (baseRes.rows ?? []).map(rowToEvent);
 
-    // 2. Recurring base rows whose series could reach the window, expanded.
+    // 2. Recurring base rows whose series could reach the window, expanded,
+    //    with per-occurrence overrides (exceptions) applied.
     const recRes = await this._db.all(
       `SELECT * FROM planner_events
         WHERE recurrence IS NOT NULL AND recurrence != '' AND start_at <= ?`,
       [query.to],
     );
-    if (!recRes.error) {
-      for (const row of recRes.rows ?? []) {
+    const recRows = recRes.error ? [] : (recRes.rows ?? []);
+    if (recRows.length > 0) {
+      const ovByBase = await this._loadOverrides(recRows.map(r => r.id as string));
+      for (const row of recRows) {
         const baseEvent = rowToEvent(row);
         if (!baseEvent.recurrence) continue;
         const durationMs = Math.max(0, baseEvent.endAt - baseEvent.startAt);
+        // Copy so we can consume matched overrides and emit any leftovers.
+        const overrides = new Map(ovByBase.get(baseEvent.id) ?? []);
         for (const occ of expandRecurrence(baseEvent.startAt, durationMs, baseEvent.recurrence, query.from, query.to)) {
+          const ov = overrides.get(occ.startAt);
+          if (ov) {
+            overrides.delete(occ.startAt);
+            if (ov.cancelled) continue;                 // occurrence removed
+            const inst = applyOverrideToInstance(baseEvent, occ.startAt, ov);
+            if (inst.endAt >= query.from && inst.startAt <= query.to) events.push(inst);
+            continue;
+          }
           events.push({
             ...baseEvent,
             id: `${baseEvent.id}::${occ.startAt}`,
@@ -364,6 +427,13 @@ export class PlannerDataService extends Disposable {
             endAt: occ.endAt,
             seriesId: baseEvent.id,
           });
+        }
+        // Overrides whose ORIGINAL slot fell outside the window but whose MOVED
+        // time lands inside it (an occurrence dragged into view).
+        for (const ov of overrides.values()) {
+          if (ov.cancelled) continue;
+          const inst = applyOverrideToInstance(baseEvent, ov.originalStartAt, ov);
+          if (inst.endAt >= query.from && inst.startAt <= query.to) events.push(inst);
         }
       }
     }
@@ -466,9 +536,223 @@ export class PlannerDataService extends Disposable {
     // so the orchestrator can delete the upstream copy on the next sync.
     const existing = await this.getEvent(id);
     if (existing) await this._recordEventTombstone(existing);
-    const res = await this._db.run(`DELETE FROM planner_events WHERE id = ?`, [baseEventId(id)]);
+    const baseId = baseEventId(id);
+    const res = await this._db.run(`DELETE FROM planner_events WHERE id = ?`, [baseId]);
     if (res.error) throw new Error(`removeEvent failed: ${res.error.message}`);
-    this._onDidChange.fire({ kind: 'event-removed', eventId: baseEventId(id) });
+    // Drop this series' exceptions too (no FK-cascade guarantee across builds).
+    await this._db.run(`DELETE FROM planner_event_overrides WHERE base_id = ?`, [baseId]);
+    this._onDidChange.fire({ kind: 'event-removed', eventId: baseId });
+  }
+
+  // ── Recurring-series exceptions (per-occurrence overrides) ─────────────
+
+  /** Overrides for a set of base ids, grouped by base id then original slot. */
+  private async _loadOverrides(baseIds: string[]): Promise<Map<string, Map<number, EventOverride>>> {
+    const map = new Map<string, Map<number, EventOverride>>();
+    if (baseIds.length === 0) return map;
+    const placeholders = baseIds.map(() => '?').join(',');
+    const res = await this._db.all(
+      `SELECT * FROM planner_event_overrides WHERE base_id IN (${placeholders})`,
+      baseIds,
+    );
+    if (res.error) return map;
+    for (const row of res.rows ?? []) {
+      const ov = rowToOverride(row);
+      let inner = map.get(ov.baseId);
+      if (!inner) { inner = new Map(); map.set(ov.baseId, inner); }
+      inner.set(ov.originalStartAt, ov);
+    }
+    return map;
+  }
+
+  /** All exceptions for one series (used by the sync push). */
+  async listOverrides(baseId: string): Promise<EventOverride[]> {
+    const res = await this._db.all(
+      `SELECT * FROM planner_event_overrides WHERE base_id = ? ORDER BY original_start_at ASC`,
+      [baseId],
+    );
+    if (res.error) return [];
+    return (res.rows ?? []).map(rowToOverride);
+  }
+
+  /** Create or replace the exception for one occurrence slot. */
+  async upsertOverride(baseId: string, originalStartAt: number, patch: OverridePatch): Promise<void> {
+    const now = Date.now();
+    const bool = (b: boolean | null | undefined): number | null => (b == null ? null : b ? 1 : 0);
+    const existing = await this._db.get(
+      `SELECT * FROM planner_event_overrides WHERE base_id = ? AND original_start_at = ?`,
+      [baseId, originalStartAt],
+    );
+    if (existing.row) {
+      const cur = rowToOverride(existing.row);
+      const pick = <T>(next: T | undefined, prev: T): T => (next !== undefined ? next : prev);
+      await this._db.run(
+        `UPDATE planner_event_overrides
+            SET cancelled=?, title=?, description=?, start_at=?, end_at=?, all_day=?, location=?, color=?, source_id=?, updated_at=?
+          WHERE id=?`,
+        [
+          (patch.cancelled ?? cur.cancelled) ? 1 : 0,
+          pick(patch.title, cur.title),
+          pick(patch.description, cur.description),
+          pick(patch.startAt, cur.startAt),
+          pick(patch.endAt, cur.endAt),
+          bool(pick(patch.allDay, cur.allDay)),
+          pick(patch.location, cur.location),
+          pick(patch.color, cur.color),
+          pick(patch.sourceId, cur.sourceId),
+          now,
+          cur.id,
+        ],
+      );
+    } else {
+      await this._db.run(
+        `INSERT INTO planner_event_overrides
+           (id, base_id, original_start_at, cancelled, title, description, start_at, end_at, all_day, location, color, source_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          generateId('ovr'), baseId, originalStartAt, patch.cancelled ? 1 : 0,
+          patch.title ?? null, patch.description ?? null, patch.startAt ?? null, patch.endAt ?? null,
+          bool(patch.allDay), patch.location ?? null, patch.color ?? null, patch.sourceId ?? null, now, now,
+        ],
+      );
+    }
+    this._onDidChange.fire({ kind: 'event-updated', eventId: baseId });
+  }
+
+  /** Drop exceptions at/after a slot — used when splitting/truncating a series. */
+  async deleteOverridesFrom(baseId: string, sinceMs: number): Promise<void> {
+    await this._db.run(
+      `DELETE FROM planner_event_overrides WHERE base_id = ? AND original_start_at >= ?`,
+      [baseId, sinceMs],
+    );
+  }
+
+  /**
+   * Apply an edit to a recurring occurrence with Google-parity scope. `patch`
+   * carries the NEW absolute start/end for THIS occurrence.
+   *  - 'all'       → whole series (a time change shifts every occurrence by the
+   *                  same delta; non-time fields set directly on the base).
+   *  - 'this'      → an override for just this slot.
+   *  - 'following' → cap the base RRULE just before this slot + start a new
+   *                  series here with the change applied.
+   */
+  async applySeriesEdit(instanceId: string, patch: UpdateEventInput, scope: SeriesEditScope): Promise<void> {
+    const baseId = baseEventId(instanceId);
+    const originalStart = instanceOriginalStart(instanceId);
+    const base = await this.getEvent(baseId);
+    if (!base) return;
+
+    if (!base.recurrence || originalStart == null || scope === 'all') {
+      if (scope === 'all' && base.recurrence && originalStart != null && (patch.startAt != null || patch.endAt != null)) {
+        const startDelta = patch.startAt != null ? patch.startAt - originalStart : 0;
+        const endDelta = patch.endAt != null ? patch.endAt - (originalStart + (base.endAt - base.startAt)) : startDelta;
+        await this.updateEvent(baseId, { ...patch, startAt: base.startAt + startDelta, endAt: base.endAt + endDelta });
+        return;
+      }
+      await this.updateEvent(baseId, patch);
+      return;
+    }
+
+    if (scope === 'this') {
+      await this.upsertOverride(baseId, originalStart, {
+        title: patch.title, description: patch.description,
+        startAt: patch.startAt, endAt: patch.endAt, allDay: patch.allDay,
+        location: patch.location, color: patch.color, cancelled: false,
+      });
+      return;
+    }
+    await this._splitSeries(base, originalStart, patch);
+  }
+
+  private async _splitSeries(base: PlannerEvent, originalStart: number, patch: UpdateEventInput): Promise<void> {
+    if (!base.recurrence) return;
+    const dur = base.endAt - base.startAt;
+    // Cap the original series just before this occurrence (UNTIL is inclusive).
+    await this.updateEvent(base.id, { recurrence: setRRuleUntil(base.recurrence, originalStart - 1000) });
+    // Start a fresh series at the change point with the edit applied.
+    const newStart = patch.startAt != null ? patch.startAt : originalStart;
+    const newEnd = patch.endAt != null ? patch.endAt : newStart + dur;
+    await this.createEvent({
+      title: patch.title ?? base.title,
+      description: patch.description !== undefined ? patch.description : base.description,
+      startAt: newStart,
+      endAt: newEnd,
+      allDay: patch.allDay ?? base.allDay,
+      location: patch.location !== undefined ? patch.location : base.location,
+      calendarId: patch.calendarId !== undefined ? patch.calendarId : base.calendarId,
+      color: patch.color !== undefined ? patch.color : base.color,
+      recurrence: base.recurrence,   // original rule, minus the cap we just added
+    });
+    // Exceptions after the change point belonged to the old series; Google
+    // resets them on a split, so drop them.
+    await this.deleteOverridesFrom(base.id, originalStart);
+  }
+
+  /**
+   * Delete a recurring occurrence with scope: 'this' cancels just this slot,
+   * 'following' truncates the series before it, 'all' deletes the series.
+   */
+  async deleteOccurrence(instanceId: string, scope: SeriesEditScope): Promise<void> {
+    const baseId = baseEventId(instanceId);
+    const originalStart = instanceOriginalStart(instanceId);
+    const base = await this.getEvent(baseId);
+    if (!base) return;
+    if (!base.recurrence || originalStart == null || scope === 'all') {
+      await this.removeEvent(baseId);
+      return;
+    }
+    if (scope === 'this') {
+      await this.upsertOverride(baseId, originalStart, { cancelled: true });
+      return;
+    }
+    await this.updateEvent(baseId, { recurrence: setRRuleUntil(base.recurrence, originalStart - 1000) });
+    await this.deleteOverridesFrom(baseId, originalStart);
+  }
+
+  // ── Override sync (Google instance exceptions) ────────────────────────
+
+  /** Apply a remote per-occurrence exception. Resolves the local base by its
+   *  remote master id; no-op if that series isn't synced locally yet. */
+  async applyOverrideFromSync(provider: string, ov: SyncedEventOverride): Promise<void> {
+    const base = await this.getEventBySource(provider, ov.baseSourceId);
+    if (!base) return;
+    await this.upsertOverride(base.id, ov.originalStartAt, {
+      cancelled: ov.cancelled,
+      title: ov.title, description: ov.description,
+      startAt: ov.startAt, endAt: ov.endAt, allDay: ov.allDay,
+      location: ov.location, sourceId: ov.sourceId,
+    });
+    // Echo-proof: mark synced so the next push doesn't send it back.
+    await this._db.run(
+      `UPDATE planner_event_overrides SET synced_at = updated_at WHERE base_id = ? AND original_start_at = ?`,
+      [base.id, ov.originalStartAt],
+    );
+  }
+
+  /** Local exceptions needing a push: dirty (edited since last reconcile) AND on
+   *  a series that is itself synced to this provider. */
+  async listOverridesToPush(provider: string): Promise<{ baseSourceId: string; override: EventOverride }[]> {
+    const res = await this._db.all(
+      `SELECT o.*, e.source_id AS base_source_id
+         FROM planner_event_overrides o
+         JOIN planner_events e ON e.id = o.base_id
+        WHERE e.source_provider = ? AND e.source_id IS NOT NULL
+          AND (o.synced_at IS NULL OR o.updated_at > o.synced_at)`,
+      [provider],
+    );
+    if (res.error) return [];
+    return (res.rows ?? []).map((row) => ({
+      baseSourceId: row.base_source_id as string,
+      override: rowToOverride(row),
+    }));
+  }
+
+  async markOverrideSynced(overrideId: string, sourceId: string): Promise<void> {
+    const now = Date.now();
+    await this._db.run(
+      `UPDATE planner_event_overrides SET source_id = ?, synced_at = ?, updated_at = ? WHERE id = ?`,
+      [sourceId, now, now, overrideId],
+    );
   }
 
   // ── Calendars ─────────────────────────────────────────────────────────

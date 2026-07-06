@@ -1756,3 +1756,21 @@
   outline: 1px dashed color-mix(in srgb, var(--vscode-button-background, #0e639c) 60%, transparent);
   outline-offset: -2px;
 }
+
+/* Recurring-event scope chooser (This / This-and-following / All events). */
+.planner-scope-menu { width: 300px; }
+.planner-scope-body { display: flex; flex-direction: column; padding: 6px; gap: 2px; }
+.planner-scope-opt {
+  text-align: left;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--vscode-editor-foreground, #d4d4d4);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.planner-scope-opt:hover {
+  background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 18%, transparent);
+}

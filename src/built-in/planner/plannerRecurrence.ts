@@ -154,6 +154,27 @@ export function expandRecurrence(
   return out;
 }
 
+/**
+ * Cap a recurrence at an inclusive UNTIL (ms epoch), dropping any existing
+ * UNTIL/COUNT (RFC 5545 forbids both). Used to split a series ("this and
+ * following") or truncate it ("delete this and following"). Formats UNTIL as a
+ * UTC "Z" datetime — Google-correct for timed series, and it round-trips through
+ * parseRRule/expandRecurrence exactly (which compare absolute ms).
+ */
+export function setRRuleUntil(rule: string, untilMs: number): string {
+  const kept = rule.replace(/^RRULE:/i, '').split(';').filter((seg) => {
+    const k = seg.split('=')[0]?.trim().toUpperCase();
+    return k && k !== 'UNTIL' && k !== 'COUNT';
+  });
+  const d = new Date(untilMs);
+  const p = (n: number): string => String(n).padStart(2, '0');
+  const until =
+    `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}` +
+    `T${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())}Z`;
+  kept.push(`UNTIL=${until}`);
+  return kept.join(';');
+}
+
 /** Human label for a stored RRULE, for chips/popovers. Falls back to "Custom". */
 export function describeRRule(rule: string | null | undefined): string {
   if (!rule) return 'Does not repeat';

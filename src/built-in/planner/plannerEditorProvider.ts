@@ -5,7 +5,7 @@
 
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { PlannerDataService } from './plannerDataService.js';
-import type { PlannerCalendar, PlannerEvent, PlannerTask, TaskStatus, UpdateEventInput } from './plannerTypes.js';
+import type { PlannerCalendar, PlannerEvent, PlannerTask, SeriesEditScope, TaskStatus, UpdateEventInput } from './plannerTypes.js';
 import type { IPlannerSyncController } from './sync/plannerSyncOrchestrator.js';
 import { takePendingPlannerTab } from './plannerNavState.js';
 import { buildSimpleRRule, describeRRule, rruleToPreset } from './plannerRecurrence.js';
@@ -945,17 +945,10 @@ class PlannerEditorPane implements IDisposable {
       `
       : `<strong>${escapeHtml(ev.title)}</strong><span>${escapeHtml(formatTimeRange(ev))}</span>`;
     // Direct manipulation: drag the body to move (and, in week view, change
-    // day), drag the top / bottom edge to resize. A bare click (no drag)
-    // opens the edit popover. Recurring instances stay click-only — dragging
-    // one occurrence would shift the whole series, which would surprise.
-    if (ev.seriesId) {
-      bar.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this._openEventPopover({ mode: 'edit', event: ev }, bar.getBoundingClientRect());
-      });
-    } else {
-      this._installEventInteractions(bar, ev, variant);
-    }
+    // day), drag the top / bottom edge to resize. A bare click (no drag) opens
+    // the editor. Series occurrences drag too — the commit prompts the
+    // this/following/all scope (_commitEventMove).
+    this._installEventInteractions(bar, ev, variant);
     return bar;
   }
 
@@ -967,10 +960,88 @@ class PlannerEditorPane implements IDisposable {
    * threshold is treated as a click and opens the editor instead.
    */
   /**
+   * Ask which occurrences a series change applies to (Google-parity). Resolves
+   * to the chosen scope, or null if cancelled.
+   */
+  private _askSeriesScope(kind: 'edit' | 'delete', anchor: DOMRect): Promise<SeriesEditScope | null> {
+    return new Promise((resolve) => {
+      let settled = false;
+      const overlay = el('div', 'planner-popover-overlay');
+      const done = (scope: SeriesEditScope | null): void => {
+        if (settled) return;
+        settled = true;
+        try { overlay.remove(); } catch { /* noop */ }
+        document.removeEventListener('keydown', onKey);
+        resolve(scope);
+      };
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) done(null); });
+
+      const pop = el('div', 'planner-popover planner-scope-menu');
+      pop.style.position = 'fixed';
+      const head = el('div', 'planner-popover__head');
+      const heading = el('h3', 'planner-popover__title');
+      heading.textContent = kind === 'delete' ? 'Delete recurring event' : 'Edit recurring event';
+      head.appendChild(heading);
+      pop.appendChild(head);
+
+      const bodyEl = el('div', 'planner-scope-body');
+      const opts: { scope: SeriesEditScope; label: string }[] = [
+        { scope: 'this', label: 'This event' },
+        { scope: 'following', label: 'This and following events' },
+        { scope: 'all', label: 'All events' },
+      ];
+      for (const o of opts) {
+        const btn = el('button', 'planner-scope-opt');
+        btn.type = 'button';
+        btn.textContent = o.label;
+        btn.addEventListener('click', () => done(o.scope));
+        bodyEl.appendChild(btn);
+      }
+      pop.appendChild(bodyEl);
+
+      const foot = el('div', 'planner-popover__foot');
+      const spacer = el('span', 'planner-popover__spacer');
+      foot.appendChild(spacer);
+      const cancel = el('button', 'planner-popover__btn');
+      cancel.type = 'button';
+      cancel.textContent = 'Cancel';
+      cancel.addEventListener('click', () => done(null));
+      foot.appendChild(cancel);
+      pop.appendChild(foot);
+
+      const onKey = (e: KeyboardEvent): void => { if (e.key === 'Escape') done(null); };
+      document.addEventListener('keydown', onKey);
+
+      overlay.appendChild(pop);
+      document.body.appendChild(overlay);
+      const m = pop.getBoundingClientRect();
+      const vw = window.innerWidth, vh = window.innerHeight;
+      const left = Math.max(12, Math.min(anchor.left, vw - m.width - 12));
+      let top = anchor.bottom + 6;
+      if (top + m.height > vh - 12) top = Math.max(12, anchor.top - m.height - 6);
+      pop.style.left = `${left}px`;
+      pop.style.top = `${top}px`;
+    });
+  }
+
+  /**
+   * Commit a drag-move/resize. Non-series events update directly; a series
+   * occurrence prompts the this/following/all scope and routes accordingly.
+   * A cancelled prompt re-renders so the dragged bar snaps back.
+   */
+  private async _commitEventMove(ev: PlannerEvent, patch: UpdateEventInput, anchor: DOMRect): Promise<void> {
+    if (ev.seriesId) {
+      const scope = await this._askSeriesScope('edit', anchor);
+      if (!scope) { void this._renderTab(); return; }
+      await this._data.applySeriesEdit(ev.id, patch, scope);
+    } else {
+      await this._data.updateEvent(ev.id, patch);
+    }
+  }
+
+  /**
    * Month-view drag: drop an event chip on another day cell to move it by whole
    * days (time-of-day preserved). A sub-threshold press opens the editor instead.
-   * Series occurrences are excluded upstream (they need the this/following/all
-   * chooser first).
    */
   private _installMonthChipDrag(chip: HTMLElement, ev: PlannerEvent, sourceDayStart: number): void {
     const THRESHOLD_PX = 4;
@@ -1019,7 +1090,7 @@ class PlannerEditorPane implements IDisposable {
         }
         const dayDelta = targetDayStart - sourceDayStart;
         if (dayDelta !== 0) {
-          void this._data.updateEvent(ev.id, { startAt: ev.startAt + dayDelta, endAt: ev.endAt + dayDelta });
+          void this._commitEventMove(ev, { startAt: ev.startAt + dayDelta, endAt: ev.endAt + dayDelta }, chip.getBoundingClientRect());
         }
       };
 
@@ -1120,7 +1191,7 @@ class PlannerEditorPane implements IDisposable {
           return;
         }
         if (curStart !== ev.startAt || curEnd !== ev.endAt) {
-          void this._data.updateEvent(ev.id, { startAt: curStart, endAt: curEnd });
+          void this._commitEventMove(ev, { startAt: curStart, endAt: curEnd }, bar.getBoundingClientRect());
         }
       };
 
@@ -1253,11 +1324,8 @@ class PlannerEditorPane implements IDisposable {
       if (continuesRight) bar.classList.add('planner-week__alldaybar--clip-right');
       bar.innerHTML = `<span class="planner-week__alldaybar-title">${escapeHtml(ev.title)}</span>`;
       bar.title = ev.title;
-      if (ev.seriesId) {
-        bar.addEventListener('click', () => this._openEventPopover({ mode: 'edit', event: ev }, bar.getBoundingClientRect()));
-      } else {
-        this._installAllDayBarInteractions(bar, ev, grid, weekStartMs);
-      }
+      // Series occurrences drag too — the commit prompts this/following/all.
+      this._installAllDayBarInteractions(bar, ev, grid, weekStartMs);
       grid.appendChild(bar);
     }
 
@@ -1376,7 +1444,7 @@ class PlannerEditorPane implements IDisposable {
           return;
         }
         if (curStart !== ev.startAt || curEnd !== ev.endAt) {
-          void this._data.updateEvent(ev.id, { startAt: curStart, endAt: curEnd, allDay: true });
+          void this._commitEventMove(ev, { startAt: curStart, endAt: curEnd, allDay: true }, bar.getBoundingClientRect());
         }
       };
       try { bar.setPointerCapture(e.pointerId); } catch { /* ok */ }
@@ -1591,13 +1659,8 @@ class PlannerEditorPane implements IDisposable {
         label.textContent = ev.title;
         chip.appendChild(label);
         chip.title = `${ev.title}\n${formatTimeRange(ev)}`;
-        if (ev.seriesId) {
-          // Series occurrences stay click-only until the this/following/all
-          // exception model exists — dragging one would shift the whole series.
-          chip.addEventListener('click', (e) => { e.stopPropagation(); this._openEventPopover({ mode: 'edit', event: ev }, chip.getBoundingClientRect()); });
-        } else {
-          this._installMonthChipDrag(chip, ev, dayStart);
-        }
+        // Series occurrences drag too — the commit prompts this/following/all.
+        this._installMonthChipDrag(chip, ev, dayStart);
         evWrap.appendChild(chip);
         shown++;
       }
@@ -2394,7 +2457,13 @@ class PlannerEditorPane implements IDisposable {
       delBtn.textContent = 'Delete';
       delBtn.addEventListener('click', async () => {
         if (!seed.eventId) return;
-        await this._data.removeEvent(seed.eventId);
+        if (init.mode === 'edit' && init.event.seriesId) {
+          const scope = await this._askSeriesScope('delete', delBtn.getBoundingClientRect());
+          if (!scope) return;
+          await this._data.deleteOccurrence(seed.eventId, scope);
+        } else {
+          await this._data.removeEvent(seed.eventId);
+        }
         close();
       });
       foot.appendChild(delBtn);
@@ -2432,21 +2501,25 @@ class PlannerEditorPane implements IDisposable {
       const isSeries = isEdit && init.mode === 'edit' && !!init.event.seriesId;
       try {
         if (isEdit && seed.eventId) {
-          // For a recurring instance, only move the series anchor when the user
-          // actually changed the time — otherwise a title edit would drag the
-          // whole series forward to this occurrence.
           const patch: UpdateEventInput = {
             title,
+            startAt: startMs,
+            endAt: endMs,
             allDay: allDayInput.checked,
             location: locationInput.value.trim() || null,
             description: descInput.value.trim() || null,
             calendarId,
             color: pendingColor,
-            ...((!isSeries || startMs !== seed.startAt) ? { startAt: startMs } : {}),
-            ...((!isSeries || endMs !== seed.endAt) ? { endAt: endMs } : {}),
             ...(recurrence !== undefined ? { recurrence } : {}),
           };
-          await this._data.updateEvent(seed.eventId, patch);
+          if (isSeries) {
+            // Recurring occurrence → ask which occurrences the edit applies to.
+            const scope = await this._askSeriesScope('edit', save.getBoundingClientRect());
+            if (!scope) return; // keep the popover open; user can retry or cancel
+            await this._data.applySeriesEdit(seed.eventId, patch, scope);
+          } else {
+            await this._data.updateEvent(seed.eventId, patch);
+          }
         } else {
           await this._data.createEvent({
             title,

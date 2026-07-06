@@ -5,6 +5,7 @@ import {
   buildSimpleRRule,
   rruleToPreset,
   describeRRule,
+  setRRuleUntil,
 } from '../../src/built-in/planner/plannerRecurrence.js';
 
 const DAY = 86_400_000;
@@ -83,6 +84,31 @@ describe('plannerRecurrence', () => {
       expect(describeRRule(null)).toBe('Does not repeat');
       expect(describeRRule('FREQ=WEEKLY;BYDAY=MO,WE')).toContain('Mon');
       expect(describeRRule('FREQ=MONTHLY')).toBe('Repeats monthly');
+    });
+  });
+
+  describe('setRRuleUntil (series split / truncate)', () => {
+    it('adds a UTC Z UNTIL and preserves other parts', () => {
+      const capped = setRRuleUntil('FREQ=WEEKLY;BYDAY=MO', base);
+      expect(capped).toContain('FREQ=WEEKLY');
+      expect(capped).toContain('BYDAY=MO');
+      expect(capped).toMatch(/UNTIL=\d{8}T\d{6}Z$/);
+    });
+    it('replaces any existing UNTIL/COUNT (RFC forbids both)', () => {
+      const capped = setRRuleUntil('FREQ=DAILY;COUNT=10;UNTIL=20260101T000000Z', base);
+      expect(capped).not.toContain('COUNT');
+      expect((capped.match(/UNTIL=/g) ?? []).length).toBe(1);
+    });
+    it('round-trips through parseRRule to the capped instant', () => {
+      const capped = setRRuleUntil('FREQ=DAILY', base - 1000);
+      expect(parseRRule(capped)!.until).toBe(Math.floor((base - 1000) / 1000) * 1000);
+    });
+    it('capping a daily series before day 3 keeps days 0-2 and drops 3+', () => {
+      // Split at the day-3 occurrence: cap the base 1s before it.
+      const changePoint = base + 3 * DAY;
+      const capped = setRRuleUntil('FREQ=DAILY', changePoint - 1000);
+      const occ = expandRecurrence(base, HOUR, capped, base, base + 30 * DAY);
+      expect(occ.map(o => o.startAt)).toEqual([base, base + DAY, base + 2 * DAY]);
     });
   });
 });

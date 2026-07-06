@@ -7,6 +7,8 @@ import {
   mapPlannerEventToGoogle,
   mapGoogleTaskToSynced,
   mapPlannerTaskToGoogle,
+  mapGoogleExceptionToOverride,
+  googleInstanceId,
 } from '../../../src/built-in/planner/sync/googleCalendarSyncProvider.js';
 import type { PlannerEvent, PlannerTask } from '../../../src/built-in/planner/plannerTypes.js';
 
@@ -115,5 +117,45 @@ describe('task mappers', () => {
 
   it('maps non-done → needsAction', () => {
     expect(mapPlannerTaskToGoogle(makeTask({ status: 'planned' })).status).toBe('needsAction');
+  });
+});
+
+describe('recurring-instance exceptions', () => {
+  it('maps a MODIFIED instance exception to an override', () => {
+    const ov = mapGoogleExceptionToOverride({
+      id: 'g1_20260706T170000Z', recurringEventId: 'g1',
+      originalStartTime: { dateTime: '2026-07-06T17:00:00Z' },
+      start: { dateTime: '2026-07-06T18:30:00Z' }, end: { dateTime: '2026-07-06T19:30:00Z' },
+      summary: 'Moved', updated: '2026-07-01T00:00:00Z',
+    });
+    expect(ov).not.toBeNull();
+    expect(ov!.baseSourceId).toBe('g1');
+    expect(ov!.cancelled).toBe(false);
+    expect(ov!.originalStartAt).toBe(Date.parse('2026-07-06T17:00:00Z'));
+    expect(ov!.startAt).toBe(Date.parse('2026-07-06T18:30:00Z'));
+    expect(ov!.title).toBe('Moved');
+    expect(ov!.sourceId).toBe('g1_20260706T170000Z');
+  });
+
+  it('maps a CANCELLED instance exception (deleted one occurrence)', () => {
+    const ov = mapGoogleExceptionToOverride({
+      id: 'g1_20260707T170000Z', recurringEventId: 'g1', status: 'cancelled',
+      originalStartTime: { dateTime: '2026-07-07T17:00:00Z' },
+    });
+    expect(ov!.cancelled).toBe(true);
+    expect(ov!.baseSourceId).toBe('g1');
+    expect(ov!.originalStartAt).toBe(Date.parse('2026-07-07T17:00:00Z'));
+  });
+
+  it('returns null without a recurringEventId or originalStartTime', () => {
+    expect(mapGoogleExceptionToOverride({ id: 'x', recurringEventId: 'g1' })).toBeNull();
+    expect(mapGoogleExceptionToOverride({ id: 'x', originalStartTime: { dateTime: '2026-07-07T17:00:00Z' } })).toBeNull();
+  });
+
+  it('constructs the deterministic Google instance id (timed UTC Z, all-day date)', () => {
+    expect(googleInstanceId('g1', Date.parse('2026-07-06T17:00:00Z'), false)).toBe('g1_20260706T170000Z');
+    // All-day suffix is the UTC date of the slot.
+    const allDaySlot = Date.parse('2026-07-06T00:00:00Z');
+    expect(googleInstanceId('g1', allDaySlot, true)).toBe('g1_20260706');
   });
 });
