@@ -25,7 +25,7 @@ import { registerPlannerDashboardWidgets } from './widgets/registerPlannerWidget
 import { createPlannerSettingsPanel } from './plannerSettingsPanel.js';
 import { settingsPanelRegistry } from '../../services/settingsPanelRegistry.js';
 import { PlannerSyncOrchestrator } from './sync/plannerSyncOrchestrator.js';
-import { GoogleCalendarSyncProvider } from './sync/googleCalendarSyncProvider.js';
+import { GoogleCalendarSyncProvider, GOOGLE_PROVIDER_ID } from './sync/googleCalendarSyncProvider.js';
 import { googleSync } from './sync/googleClient.js';
 
 // ─── API surface ────────────────────────────────────────────────────────────
@@ -138,6 +138,24 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     }
   };
 
+  // One-time full re-pull. Per-event colour import (Google colorId → hex) was
+  // added AFTER existing calendars were first synced. Because the events pull is
+  // incremental (syncToken), those events are never re-fetched — so they'd keep
+  // the calendar colour forever. Clear the stored syncTokens ONCE so the next
+  // pull re-imports every event with its Google colour; incremental resumes after.
+  const COLOR_REIMPORT_KEY = `sync.${GOOGLE_PROVIDER_ID}.colorReimport.v1`;
+  try {
+    if ((await _data.getSetting(COLOR_REIMPORT_KEY)) !== '1') {
+      const syncedCals = await _data.listSyncedCalendars(GOOGLE_PROVIDER_ID);
+      for (const c of syncedCals) {
+        if (c.sourceId) await _data.setSetting(`sync.${GOOGLE_PROVIDER_ID}.cal.${c.sourceId}.token`, '');
+      }
+      await _data.setSetting(COLOR_REIMPORT_KEY, '1');
+    }
+  } catch (err) {
+    console.warn('[Planner] colour re-import migration failed:', err);
+  }
+
   _orchestrator = new PlannerSyncOrchestrator({
     data: _data,
     getProviders: () => [..._syncProviders.values()],
@@ -170,7 +188,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     commands: api.commands,
     links: api.links,
     window: api.window,
-  });
+  }, _orchestrator ?? undefined);
   context.subscriptions.push(
     api.editors.registerEditorProvider('planner', {
       createEditorPane(container: HTMLElement, input?: unknown): IDisposable {

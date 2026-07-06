@@ -46,8 +46,18 @@ interface GCalEvent {
   end?: GCalDate;
   recurrence?: string[];
   recurringEventId?: string;  // present on instance exceptions (skipped in v1)
+  colorId?: string;           // Google's per-event colour index (1–11)
   updated?: string;           // RFC3339
 }
+
+// Google Calendar's 11 event colours (colorId → hex). Mirrors PLANNER_COLORS in
+// plannerEditorProvider so imported events keep the colour the user set in
+// Google. Kept local to avoid the sync layer importing the renderer UI module.
+const GCAL_EVENT_COLOR_HEX: Readonly<Record<string, string>> = {
+  '1': '#7986cb', '2': '#33b679', '3': '#8e24aa', '4': '#e67c73',
+  '5': '#f6bf26', '6': '#f4511e', '7': '#039be5', '8': '#616161',
+  '9': '#3f51b5', '10': '#0b8043', '11': '#d50000',
+};
 interface GCalEventsResponse {
   items?: GCalEvent[];
   nextPageToken?: string;
@@ -109,6 +119,9 @@ export function mapGoogleEventToSynced(
     allDay,
     location: item.location ?? null,
     calendarId: plannerCalendarId,
+    // Import Google's per-event colour so synced events keep their real colour
+    // instead of all inheriting the one calendar colour.
+    color: item.colorId ? (GCAL_EVENT_COLOR_HEX[item.colorId] ?? null) : null,
     recurrence: extractRrule(item.recurrence),
     updatedAt: item.updated ? Date.parse(item.updated) : Date.now(),
     sourceProvider: GOOGLE_PROVIDER_ID,

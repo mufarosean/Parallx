@@ -6,6 +6,7 @@
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { PlannerDataService } from './plannerDataService.js';
 import type { PlannerCalendar, PlannerEvent, PlannerTask, TaskStatus, UpdateEventInput } from './plannerTypes.js';
+import type { IPlannerSyncController } from './sync/plannerSyncOrchestrator.js';
 import { takePendingPlannerTab } from './plannerNavState.js';
 import { buildSimpleRRule, describeRRule, rruleToPreset } from './plannerRecurrence.js';
 import { packLanes } from './plannerLayout.js';
@@ -52,11 +53,63 @@ const REPEAT_LABEL_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="13" hei
 const LINK_WEB_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
 const LINK_DOC_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
 const LINK_PLUS_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/></svg>';
+const COLOR_LABEL_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.563-2.512 5.563-5.563C22 6.31 17.51 2 12 2z"/></svg><span>Color</span>';
+const SYNC_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>';
+
+// Google Calendar's event palette (colorId → hex). Used by the colour pickers
+// AND to import synced event colours (see mapGoogleEventToSynced).
+export const PLANNER_COLORS: readonly { readonly id: string; readonly name: string; readonly hex: string }[] = [
+  { id: '11', name: 'Tomato',    hex: '#d50000' },
+  { id: '4',  name: 'Flamingo',  hex: '#e67c73' },
+  { id: '6',  name: 'Tangerine', hex: '#f4511e' },
+  { id: '5',  name: 'Banana',    hex: '#f6bf26' },
+  { id: '2',  name: 'Sage',      hex: '#33b679' },
+  { id: '10', name: 'Basil',     hex: '#0b8043' },
+  { id: '7',  name: 'Peacock',   hex: '#039be5' },
+  { id: '9',  name: 'Blueberry', hex: '#3f51b5' },
+  { id: '1',  name: 'Lavender',  hex: '#7986cb' },
+  { id: '3',  name: 'Grape',     hex: '#8e24aa' },
+  { id: '8',  name: 'Graphite',  hex: '#616161' },
+];
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string): HTMLElementTagNameMap[K] {
   const node = document.createElement(tag);
   if (className) node.className = className;
   return node;
+}
+
+/**
+ * A row of colour swatches. `current` is the selected hex (or null = "default").
+ * When `allowDefault`, a leading hollow chip clears the override (use the
+ * calendar's colour). Calls `onPick(hex|null)` and re-highlights the selection.
+ */
+function buildColorSwatches(
+  current: string | null,
+  onPick: (hex: string | null) => void,
+  allowDefault: boolean,
+): HTMLElement {
+  const wrap = el('div', 'planner-swatches');
+  let selected = current;
+  const chips: { el: HTMLElement; hex: string | null }[] = [];
+  const same = (a: string | null, b: string | null): boolean =>
+    (a ?? null) === (b ?? null) || (a != null && b != null && a.toLowerCase() === b.toLowerCase());
+  const refresh = (): void => {
+    for (const c of chips) c.el.classList.toggle('planner-swatch--on', same(c.hex, selected));
+  };
+  const addChip = (hex: string | null, title: string): void => {
+    const chip = el('button', 'planner-swatch');
+    chip.type = 'button';
+    chip.title = title;
+    if (hex) chip.style.setProperty('--sw', hex);
+    else chip.classList.add('planner-swatch--default');
+    chip.addEventListener('click', () => { selected = hex; refresh(); onPick(hex); });
+    chips.push({ el: chip, hex });
+    wrap.appendChild(chip);
+  };
+  if (allowDefault) addChip(null, 'Use calendar colour');
+  for (const c of PLANNER_COLORS) addChip(c.hex, c.name);
+  refresh();
+  return wrap;
 }
 
 function startOfDay(date: Date): Date { const d = new Date(date); d.setHours(0, 0, 0, 0); return d; }
@@ -90,10 +143,11 @@ export class PlannerEditorProvider {
   constructor(
     private readonly _data: PlannerDataService,
     private readonly _api: PlannerEditorApi,
+    private readonly _sync?: IPlannerSyncController,
   ) {}
 
   createEditorPane(container: HTMLElement, input?: PlannerEditorInput): IDisposable {
-    const pane = new PlannerEditorPane(container, input, this._data, this._api);
+    const pane = new PlannerEditorPane(container, input, this._data, this._api, this._sync);
     pane.init().catch(err => console.error('[PlannerEditorProvider] pane init failed:', err));
     return pane;
   }
@@ -120,6 +174,7 @@ class PlannerEditorPane implements IDisposable {
     private readonly _input: PlannerEditorInput | undefined,
     private readonly _data: PlannerDataService,
     private readonly _api: PlannerEditorApi,
+    private readonly _sync?: IPlannerSyncController,
   ) {}
 
   async init(): Promise<void> {
@@ -666,6 +721,49 @@ class PlannerEditorPane implements IDisposable {
     viewBtn.addEventListener('click', () => this._openViewMenu(viewBtn));
     actions.appendChild(viewBtn);
 
+    // Sync — pull/push Google Calendar right from the planner (no trip to Settings).
+    if (this._sync) {
+      const sync = this._sync;
+      const syncBtn = el('button', 'planner-iconbtn');
+      syncBtn.type = 'button';
+      syncBtn.title = 'Sync with Google Calendar';
+      syncBtn.innerHTML = SYNC_SVG;
+      syncBtn.addEventListener('click', async () => {
+        if (syncBtn.classList.contains('planner-iconbtn--busy')) return;
+        syncBtn.classList.add('planner-iconbtn--busy');
+        syncBtn.disabled = true;
+        try {
+          const results = await sync.syncNow();
+          if (results.length === 0) {
+            await this._api.window.showInformationMessage('No calendar connected. Connect Google Calendar in Settings → Planner.');
+          } else {
+            const failed = results.find(r => !r.ok);
+            if (failed) {
+              await this._api.window.showErrorMessage(`Sync failed: ${failed.error ?? 'unknown error'}`);
+            } else {
+              const changes = results.reduce((n, r) => n + r.pulledUpserts + r.pulledDeletes + r.pushed + r.pushedDeletes, 0);
+              await this._api.window.showInformationMessage(changes > 0 ? `Synced — ${changes} change${changes === 1 ? '' : 's'}.` : 'Synced — already up to date.');
+            }
+          }
+        } catch (err) {
+          await this._api.window.showErrorMessage(`Sync failed: ${err instanceof Error ? err.message : String(err)}`);
+        } finally {
+          syncBtn.classList.remove('planner-iconbtn--busy');
+          syncBtn.disabled = false;
+          void this._renderTab();
+        }
+      });
+      actions.appendChild(syncBtn);
+    }
+
+    // Calendars — manage colours, visibility, and create new calendars.
+    const calsBtn = el('button', 'planner-iconbtn');
+    calsBtn.type = 'button';
+    calsBtn.title = 'Calendars';
+    calsBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>';
+    calsBtn.addEventListener('click', () => void this._openCalendarsMenu(calsBtn.getBoundingClientRect()));
+    actions.appendChild(calsBtn);
+
     // Primary CTA.
     const addEvt = el('button', 'planner-cta');
     addEvt.type = 'button';
@@ -830,9 +928,14 @@ class PlannerEditorPane implements IDisposable {
     const heightPct = Math.max(variant === 'day' ? 3 : 2, ((evEnd - evStart) / DAY_MS) * 100);
     const bar = el('button', `planner-${variant}__event`);
     bar.type = 'button';
-    bar.style.top = `${topPct}%`;
-    bar.style.height = `${heightPct}%`;
+    // Inset 1px top + bottom so back-to-back events (one ends as the next begins)
+    // show a hairline gap instead of reading as a single fused block.
+    bar.style.top = `calc(${topPct}% + 1px)`;
+    bar.style.height = `calc(${heightPct}% - 2px)`;
     bar.style.setProperty('--cal-color', colorOf(ev.calendarId, ev.color));
+    // Past events (already ended) render faded — the only special-case styling
+    // on an event, matching Google Calendar.
+    if (ev.endAt < Date.now()) bar.classList.add(`planner-${variant}__event--past`);
     bar.title = `${ev.title}\n${formatTimeRange(ev)}`;
     bar.innerHTML = variant === 'day'
       ? `
@@ -2150,6 +2253,16 @@ class PlannerEditorPane implements IDisposable {
       if (want) calSelect.value = want;
     });
 
+    // Colour — overrides the calendar's colour for this event/series. Default
+    // (hollow chip) inherits the calendar colour.
+    let pendingColor: string | null = isEdit ? (init.event.color ?? null) : null;
+    const colorRow = el('div', 'planner-popover__row planner-popover__row--labeled');
+    const colorLabel = el('span', 'planner-popover__rowlabel');
+    colorLabel.innerHTML = COLOR_LABEL_SVG;
+    colorRow.appendChild(colorLabel);
+    colorRow.appendChild(buildColorSwatches(pendingColor, (hex) => { pendingColor = hex; }, true));
+    body.appendChild(colorRow);
+
     // Repeats — simple RRULE presets; the "Weekly on X" label tracks the start date.
     const repeatRow = el('div', 'planner-popover__row planner-popover__row--labeled');
     const repeatLabel = el('span', 'planner-popover__rowlabel');
@@ -2257,6 +2370,7 @@ class PlannerEditorPane implements IDisposable {
             location: locationInput.value.trim() || null,
             description: descInput.value.trim() || null,
             calendarId,
+            color: pendingColor,
             ...((!isSeries || startMs !== seed.startAt) ? { startAt: startMs } : {}),
             ...((!isSeries || endMs !== seed.endAt) ? { endAt: endMs } : {}),
             ...(recurrence !== undefined ? { recurrence } : {}),
@@ -2271,6 +2385,7 @@ class PlannerEditorPane implements IDisposable {
             location: locationInput.value.trim() || null,
             description: descInput.value.trim() || null,
             calendarId,
+            color: pendingColor,
             recurrence: recurrence ?? null,
           });
         }
@@ -2307,6 +2422,128 @@ class PlannerEditorPane implements IDisposable {
     // If anchor is in the right half, prefer left-align to its right edge so
     // long popovers don't fall off-screen.
     if (anchor.left + m.width > vw - 12) left = Math.max(12, vw - m.width - 12);
+    if (top + m.height > vh - 12) top = Math.max(12, anchor.top - m.height - 6);
+    pop.style.left = `${left}px`;
+    pop.style.top = `${top}px`;
+  }
+
+  /**
+   * Calendars manager — a popover to create calendars, recolour them (Google
+   * palette), toggle visibility, rename, and delete. All backed by the existing
+   * calendar CRUD; re-renders the grid on every change.
+   */
+  private async _openCalendarsMenu(anchor: DOMRect): Promise<void> {
+    const overlay = el('div', 'planner-popover-overlay');
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    const pop = el('div', 'planner-popover planner-cals-menu');
+    pop.style.position = 'fixed';
+
+    const head = el('div', 'planner-popover__head');
+    const heading = el('h3', 'planner-popover__title');
+    heading.textContent = 'Calendars';
+    head.appendChild(heading);
+    const closeBtn = el('button', 'planner-popover__close');
+    closeBtn.type = 'button';
+    closeBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    closeBtn.addEventListener('click', () => overlay.remove());
+    head.appendChild(closeBtn);
+    pop.appendChild(head);
+
+    const list = el('div', 'planner-cals-list');
+    pop.appendChild(list);
+
+    const rerenderGrid = (): void => { void this._renderTab(); };
+
+    const renderList = async (): Promise<void> => {
+      const cals = await this._data.listCalendars();
+      list.innerHTML = '';
+      for (const cal of cals) {
+        const row = el('div', 'planner-cals-row');
+
+        const swatch = el('button', 'planner-cals-swatch');
+        swatch.type = 'button';
+        swatch.style.setProperty('--sw', cal.color);
+        swatch.title = 'Change colour';
+        row.appendChild(swatch);
+
+        const name = el('input', 'planner-cals-name') as HTMLInputElement;
+        name.type = 'text';
+        name.value = cal.name;
+        const saveName = (): void => {
+          const v = name.value.trim();
+          if (v && v !== cal.name) void this._data.updateCalendar(cal.id, { name: v }).then(rerenderGrid);
+        };
+        name.addEventListener('blur', saveName);
+        name.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); name.blur(); } });
+        row.appendChild(name);
+
+        const vis = el('button', 'planner-cals-icon');
+        vis.type = 'button';
+        vis.title = cal.visible ? 'Hide on calendar' : 'Show on calendar';
+        vis.classList.toggle('planner-cals-icon--off', !cal.visible);
+        vis.innerHTML = cal.visible
+          ? '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
+          : '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+        vis.addEventListener('click', () => void this._data.updateCalendar(cal.id, { visible: !cal.visible }).then(() => { rerenderGrid(); void renderList(); }));
+        row.appendChild(vis);
+
+        if (!cal.isDefault) {
+          const del = el('button', 'planner-cals-icon planner-cals-icon--danger');
+          del.type = 'button';
+          del.title = 'Delete calendar';
+          del.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+          del.addEventListener('click', async () => {
+            const res = await this._data.deleteCalendar(cal.id);
+            if (!res.ok) { await this._api.window.showErrorMessage(res.reason || 'Cannot delete this calendar.'); return; }
+            rerenderGrid();
+            void renderList();
+          });
+          row.appendChild(del);
+        }
+
+        list.appendChild(row);
+
+        // Inline palette, revealed by the swatch — recolours the calendar.
+        const palette = buildColorSwatches(cal.color, (hex) => {
+          if (!hex) return;
+          swatch.style.setProperty('--sw', hex);
+          void this._data.updateCalendar(cal.id, { color: hex }).then(rerenderGrid);
+        }, false);
+        palette.classList.add('planner-cals-palette');
+        list.appendChild(palette);
+        swatch.addEventListener('click', () => palette.classList.toggle('planner-cals-palette--open'));
+      }
+    };
+    await renderList();
+
+    const newRow = el('div', 'planner-cals-new');
+    const newInput = el('input', 'planner-cals-name') as HTMLInputElement;
+    newInput.type = 'text';
+    newInput.placeholder = 'New calendar name';
+    const addBtn = el('button', 'planner-popover__btn planner-popover__btn--primary');
+    addBtn.type = 'button';
+    addBtn.textContent = 'Add';
+    const doAdd = async (): Promise<void> => {
+      const v = newInput.value.trim();
+      if (!v) { newInput.focus(); return; }
+      const hex = PLANNER_COLORS[Math.floor(Math.random() * PLANNER_COLORS.length)].hex;
+      await this._data.createCalendar({ name: v, color: hex });
+      newInput.value = '';
+      rerenderGrid();
+      void renderList();
+    };
+    addBtn.addEventListener('click', () => void doAdd());
+    newInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); void doAdd(); } });
+    newRow.append(newInput, addBtn);
+    pop.appendChild(newRow);
+
+    overlay.appendChild(pop);
+    document.body.appendChild(overlay);
+
+    const m = pop.getBoundingClientRect();
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const left = Math.max(12, Math.min(anchor.left, vw - m.width - 12));
+    let top = anchor.bottom + 6;
     if (top + m.height > vh - 12) top = Math.max(12, anchor.top - m.height - 6);
     pop.style.left = `${left}px`;
     pop.style.top = `${top}px`;

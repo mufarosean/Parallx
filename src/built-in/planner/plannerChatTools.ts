@@ -52,6 +52,25 @@ function err(message: string): { content: string; isError: true } {
   return { content: message, isError: true };
 }
 
+// Models misread raw epoch ms — hand them local human-readable strings alongside
+// the numbers so they read times instead of (mis)computing them.
+function fmtLocal(ms: number): string {
+  const d = new Date(ms);
+  const p = (n: number): string => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function fmtDay(ms: number): string {
+  return new Date(ms).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+}
+function startOfTodayMs(): number {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+function localTimezone(): string {
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'local'; } catch { return 'local'; }
+}
+
 /**
  * Resolve the calendar an item should land in from `calendarId` / `calendarName`
  * args. Returns `{ calendarId }` (undefined = let the data service pick the
@@ -206,11 +225,11 @@ const READ_PARAMETERS = {
     // events-only filters
     from: {
       type: 'string',
-      description: '(events) Window start (ISO 8601 / YYYY-MM-DD / relative). Defaults to now.',
+      description: '(events) Window start (ISO 8601 / YYYY-MM-DD / relative). Defaults to the START OF TODAY (local). For a single specific day, pass that day\'s date (00:00).',
     },
     to: {
       type: 'string',
-      description: '(events) Window end. Defaults to "+7d".',
+      description: '(events) Window end. Defaults to "+7d". For a single day, pass the END of that day (e.g. the next date at 00:00) so you get exactly that day, not the whole week.',
     },
     // free-slot
     durationMinutes: {
@@ -362,7 +381,7 @@ export function registerPlannerChatTools(
 
   disposables.push(chat.registerTool('planner.read', {
     description:
-      'Read planner data. `what="tasks"` returns matching tasks (status / dueWithinDays / tags / includeUndated). `what="events"` returns events in a time window (from / to). `what="free-slot"` returns the first open calendar block of the requested durationMinutes within withinDays. `what="calendars"` lists the user\'s calendars with `syncsToGoogle` and `isDefaultForNewEvents` — call this to decide which calendar an event should land in.',
+      'Read planner data. `what="tasks"` returns matching tasks (status / dueWithinDays / tags / includeUndated). `what="events"` returns events in a time window (from / to) — recurring events are already expanded into per-day instances. `what="free-slot"` returns the first open calendar block of the requested durationMinutes within withinDays. `what="calendars"` lists the user\'s calendars with `syncsToGoogle` and `isDefaultForNewEvents`. For "what\'s on my calendar today", call what="events" with from = start of today and to = start of tomorrow. Each result includes local human-readable `start`/`end`/`day` plus a top-level `now`/`timezone` — READ THOSE for times; do not recompute from the raw epoch `startAt`/`endAt`, and never invent events that are not in the returned list.',
     parameters: READ_PARAMETERS,
     requiresConfirmation: false,
     handler: async (raw) => {
@@ -380,10 +399,17 @@ export function registerPlannerChatTools(
             tags: Array.isArray(args.tags) ? (args.tags as unknown[]).filter((t): t is string => typeof t === 'string') : undefined,
             limit: typeof args.limit === 'number' ? args.limit : 50,
           });
-          return ok({ tasks });
+          return ok({
+            now: fmtLocal(Date.now()),
+            timezone: localTimezone(),
+            tasks: tasks.map((t) => ({ ...t, due: t.dueAt != null ? fmtLocal(t.dueAt) : null })),
+          });
         }
         if (what === 'events') {
-          const from = args.from !== undefined ? parseDateInput(args.from) : Date.now();
+          // Default the window to the START OF TODAY (not "now") so a bare "what's
+          // on my calendar today" includes events that already started/ended this
+          // morning — otherwise the model sees a half-day and invents the rest.
+          const from = args.from !== undefined ? parseDateInput(args.from) : startOfTodayMs();
           const to = args.to !== undefined ? parseDateInput(args.to) : Date.now() + 7 * 86_400_000;
           if (from === null || to === null) return err('events: from / to must parse to dates.');
           const events = await data.listEvents({
@@ -391,7 +417,26 @@ export function registerPlannerChatTools(
             to,
             limit: typeof args.limit === 'number' ? args.limit : 50,
           });
-          return ok({ events });
+          return ok({
+            now: fmtLocal(Date.now()),
+            timezone: localTimezone(),
+            windowStart: fmtLocal(from),
+            windowEnd: fmtLocal(to),
+            events: events.map((e) => ({
+              id: e.id,
+              title: e.title,
+              start: fmtLocal(e.startAt),
+              end: fmtLocal(e.endAt),
+              day: fmtDay(e.startAt),
+              allDay: e.allDay,
+              location: e.location,
+              description: e.description,
+              calendarId: e.calendarId,
+              seriesId: e.seriesId ?? null,
+              startAt: e.startAt,
+              endAt: e.endAt,
+            })),
+          });
         }
         if (what === 'free-slot') {
           const durationMinutes = typeof args.durationMinutes === 'number' ? args.durationMinutes : NaN;
@@ -401,7 +446,7 @@ export function registerPlannerChatTools(
           const endHour = typeof args.endHour === 'number' ? args.endHour : undefined;
           const slot = await data.findFreeSlot({ durationMinutes, withinDays, startHour, endHour });
           if (!slot) return ok({ slot: null, message: 'No open slot found in the requested window.' });
-          return ok({ slot });
+          return ok({ slot: { ...slot, start: fmtLocal(slot.startAt), end: fmtLocal(slot.endAt) } });
         }
         if (what === 'calendars') {
           const cals = await data.listCalendars();

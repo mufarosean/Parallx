@@ -604,7 +604,9 @@ export class PlannerDataService extends Disposable {
       const sets: string[] = ['updated_at = ?'];
       const params: unknown[] = [now];
       if (patch.name !== undefined && patch.name !== cal.name) { sets.push('name = ?'); params.push(patch.name); }
-      if (patch.color !== undefined && patch.color !== cal.color) { sets.push('color = ?'); params.push(patch.color); }
+      // Colour is deliberately NOT re-synced after first import: once a calendar
+      // exists locally, the user's chosen colour (via the Calendars manager) wins
+      // and is preserved across syncs. Google's colour only seeds the INSERT below.
       if (sets.length > 1) {
         params.push(cal.id);
         await this._db.run(`UPDATE planner_calendars SET ${sets.join(', ')} WHERE id = ?`, params);
