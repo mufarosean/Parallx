@@ -1747,3 +1747,12 @@
 .planner-iconbtn--busy { opacity: 0.8; cursor: default; }
 .planner-iconbtn--busy svg { animation: planner-spin 0.75s linear infinite; transform-origin: 50% 50%; }
 @keyframes planner-spin { to { transform: rotate(360deg); } }
+
+/* Month-view drag-to-move: chip is grabbable, target day cell highlights. */
+.planner-month__chip--draggable { cursor: grab; }
+.planner-month__chip--draggable.planner-evt--dragging { cursor: grabbing; opacity: 0.55; }
+.planner-month__cell--drop {
+  background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 16%, transparent);
+  outline: 1px dashed color-mix(in srgb, var(--vscode-button-background, #0e639c) 60%, transparent);
+  outline-offset: -2px;
+}

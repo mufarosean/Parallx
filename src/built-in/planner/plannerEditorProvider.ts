@@ -966,6 +966,70 @@ class PlannerEditorPane implements IDisposable {
    * change just the start or end. Snaps to 15 minutes. A movement under the
    * threshold is treated as a click and opens the editor instead.
    */
+  /**
+   * Month-view drag: drop an event chip on another day cell to move it by whole
+   * days (time-of-day preserved). A sub-threshold press opens the editor instead.
+   * Series occurrences are excluded upstream (they need the this/following/all
+   * chooser first).
+   */
+  private _installMonthChipDrag(chip: HTMLElement, ev: PlannerEvent, sourceDayStart: number): void {
+    const THRESHOLD_PX = 4;
+    chip.classList.add('planner-month__chip--draggable');
+    // Swallow the click so a chip press never drills the cell into day view.
+    chip.addEventListener('click', (e) => e.stopPropagation());
+
+    chip.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const startX = e.clientX;
+      const startY = e.clientY;
+      let dragging = false;
+      let targetDayStart = sourceDayStart;
+
+      const clearDrop = (): void => {
+        for (const c of Array.from(document.querySelectorAll('.planner-month__cell--drop'))) {
+          c.classList.remove('planner-month__cell--drop');
+        }
+      };
+      const onMove = (pe: PointerEvent): void => {
+        if (!dragging) {
+          if (Math.abs(pe.clientX - startX) > THRESHOLD_PX || Math.abs(pe.clientY - startY) > THRESHOLD_PX) dragging = true;
+          else return;
+        }
+        chip.classList.add('planner-evt--dragging');
+        clearDrop();
+        const under = document.elementFromPoint(pe.clientX, pe.clientY) as HTMLElement | null;
+        const cell = under?.closest('.planner-month__cell') as HTMLElement | null;
+        if (cell?.dataset.dayStart) {
+          targetDayStart = Number(cell.dataset.dayStart);
+          cell.classList.add('planner-month__cell--drop');
+        }
+      };
+      const onUp = (pe: PointerEvent): void => {
+        chip.removeEventListener('pointermove', onMove);
+        chip.removeEventListener('pointerup', onUp);
+        chip.removeEventListener('pointercancel', onUp);
+        try { chip.releasePointerCapture(pe.pointerId); } catch { /* ok */ }
+        chip.classList.remove('planner-evt--dragging');
+        clearDrop();
+        if (!dragging) {
+          this._openEventPopover({ mode: 'edit', event: ev }, chip.getBoundingClientRect());
+          return;
+        }
+        const dayDelta = targetDayStart - sourceDayStart;
+        if (dayDelta !== 0) {
+          void this._data.updateEvent(ev.id, { startAt: ev.startAt + dayDelta, endAt: ev.endAt + dayDelta });
+        }
+      };
+
+      try { chip.setPointerCapture(e.pointerId); } catch { /* ok */ }
+      chip.addEventListener('pointermove', onMove);
+      chip.addEventListener('pointerup', onUp);
+      chip.addEventListener('pointercancel', onUp);
+    });
+  }
+
   private _installEventInteractions(bar: HTMLElement, ev: PlannerEvent, variant: 'week' | 'day'): void {
     const SNAP_MS = 15 * 60_000;
     const DAY_MS = 24 * 3_600_000;
@@ -1504,6 +1568,7 @@ class PlannerEditorPane implements IDisposable {
       const dayTasks = tasks.filter(t => t.dueAt! >= dayStart && t.dueAt! <= dayEnd);
 
       const cell = el('div', 'planner-month__cell');
+      cell.dataset.dayStart = String(dayStart);
       if (day.getMonth() !== this._cursorDate.getMonth()) cell.classList.add('planner-month__cell--other-month');
       if (sameDay(day, new Date())) cell.classList.add('planner-month__cell--today');
 
@@ -1526,7 +1591,13 @@ class PlannerEditorPane implements IDisposable {
         label.textContent = ev.title;
         chip.appendChild(label);
         chip.title = `${ev.title}\n${formatTimeRange(ev)}`;
-        chip.addEventListener('click', (e) => { e.stopPropagation(); this._openEventPopover({ mode: 'edit', event: ev }, chip.getBoundingClientRect()); });
+        if (ev.seriesId) {
+          // Series occurrences stay click-only until the this/following/all
+          // exception model exists — dragging one would shift the whole series.
+          chip.addEventListener('click', (e) => { e.stopPropagation(); this._openEventPopover({ mode: 'edit', event: ev }, chip.getBoundingClientRect()); });
+        } else {
+          this._installMonthChipDrag(chip, ev, dayStart);
+        }
         evWrap.appendChild(chip);
         shown++;
       }
