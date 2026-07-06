@@ -2800,31 +2800,81 @@ function _recorderProbeDuration(ffmpegPath, file) {
   });
 }
 
-// Produce the final output. If the frame captured audio, mux it with the
-// gdigrab video (copy video, encode audio to aac); otherwise just promote the
-// temp video. Falls back to video-only if muxing fails, so the user always
-// gets something. Resolves true when outputPath exists.
-function _recorderFinalize(entry) {
-  return new Promise((resolve) => {
-    const { ffmpegPath, videoPath, audioPath, outputPath } = entry;
-    if (!videoPath || !fsSync.existsSync(videoPath)) { resolve(false); return; }
-    const moveVideoOnly = () => {
-      try { if (!fsSync.existsSync(outputPath)) fsSync.renameSync(videoPath, outputPath); } catch { /* ignore */ }
-      return fsSync.existsSync(outputPath);
-    };
-    if (!audioPath || !fsSync.existsSync(audioPath)) { resolve(moveVideoOnly()); return; }
-    const args = ['-y', '-i', videoPath, '-i', audioPath, '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-shortest', outputPath];
+// Produce the final output from the lossless capture temp. This is the OFFLINE
+// stage (no real-time constraint), so it does the heavy lifting the live capture
+// deliberately skipped:
+//   1. Drift correction — retime the video so it plays back over its REAL
+//      wall-clock capture span (gdigrab's CFR assumption can drift from real
+//      time; the renderer-captured audio is the real-time reference). This is
+//      why audio no longer slides out of sync over the clip.
+//   2. A/V start alignment — the audio (MediaRecorder, started on getDisplayMedia
+//      latency) and video (gdigrab) begin at different instants; `-itsoffset`
+//      shifts whichever started later so t=0 lines up.
+//   3. High-quality encode — libx264 crf 18 medium from the near-lossless
+//      yuv420p capture temp (light, GPU-decodable), replacing the old live
+//      ultrafast/crf-default encode.
+// Graceful fallbacks so a take is never lost: plain re-encode, then promote the
+// temp as-is. Resolves true when outputPath exists.
+async function _recorderFinalize(entry) {
+  const { ffmpegPath, videoPath, audioPath, outputPath } = entry;
+  if (!videoPath || !fsSync.existsSync(videoPath)) return false;
+  const hasAudio = !!(audioPath && fsSync.existsSync(audioPath));
+
+  // Drift factor: play the video over its real wall-clock span. factor > 1 slows
+  // a time-compressed capture (dropped frames) back to real time.
+  const videoDur = await _recorderProbeDuration(ffmpegPath, videoPath);
+  let factor = 1;
+  if (videoDur > 0 && entry.wallDur > 0) {
+    const f = entry.wallDur / videoDur;
+    if (Number.isFinite(f) && f > 0.5 && f < 2.0) factor = f;
+  }
+
+  // A/V start offset (same wall clock). >0 → audio started later → delay audio;
+  // <0 → video started later → delay video. Sanity-bounded.
+  let offset = 0;
+  if (hasAudio && entry.audioStartedAt && entry.videoFirstFrameAt) {
+    const o = (entry.audioStartedAt - entry.videoFirstFrameAt) / 1000;
+    if (Number.isFinite(o) && Math.abs(o) <= 10) offset = o;
+  }
+
+  const runFfmpeg = (args, timeoutMs) => new Promise((resolve) => {
     let done = false;
-    const finish = (val) => { if (!done) { done = true; _recorderCleanupTemps(entry); resolve(val); } };
+    const finish = (v) => { if (!done) { done = true; resolve(v); } };
     try {
       const p = spawn(ffmpegPath, args, { stdio: ['ignore', 'ignore', 'ignore'], windowsHide: true });
       p.on('exit', (code) => finish(code === 0 && fsSync.existsSync(outputPath)));
-      p.on('error', () => finish(moveVideoOnly()));
-      setTimeout(() => { if (!done) { try { p.kill('SIGKILL'); } catch { /* ignore */ } finish(moveVideoOnly()); } }, 30000);
-    } catch {
-      finish(moveVideoOnly());
-    }
+      p.on('error', () => finish(false));
+      setTimeout(() => { if (!done) { try { p.kill('SIGKILL'); } catch { /* ignore */ } finish(false); } }, timeoutMs);
+    } catch { finish(false); }
   });
+  // Re-encode can take a while; scale the cap with clip length but bound it.
+  const encodeTimeout = Math.min(600000, 60000 + Math.round((entry.wallDur || 0) * 4000));
+
+  // ── Primary: retime + align + high-quality re-encode (+ mux) ──
+  const args = ['-y'];
+  if (offset < 0) args.push('-itsoffset', (-offset).toFixed(3));
+  args.push('-i', videoPath);
+  if (hasAudio) {
+    if (offset > 0) args.push('-itsoffset', offset.toFixed(3));
+    args.push('-i', audioPath);
+  }
+  if (Math.abs(factor - 1) > 0.005) args.push('-vf', `setpts=${factor.toFixed(6)}*PTS`);
+  args.push('-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p');
+  if (hasAudio) args.push('-c:a', 'aac', '-b:a', '192k', '-shortest');
+  else args.push('-an');
+  args.push('-movflags', '+faststart', outputPath);
+  if (await runFfmpeg(args, encodeTimeout)) { _recorderCleanupTemps(entry); return true; }
+
+  // ── Fallback: plain video-only re-encode (still high quality) ──
+  try { if (fsSync.existsSync(outputPath)) fsSync.unlinkSync(outputPath); } catch { /* ignore */ }
+  const fb = ['-y', '-i', videoPath, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-pix_fmt', 'yuv420p', '-an', '-movflags', '+faststart', outputPath];
+  if (await runFfmpeg(fb, encodeTimeout)) { _recorderCleanupTemps(entry); return true; }
+
+  // ── Last resort: promote the lossless temp as-is (large, but never lose it) ──
+  try { if (!fsSync.existsSync(outputPath)) fsSync.renameSync(videoPath, outputPath); } catch { /* ignore */ }
+  const okFinal = fsSync.existsSync(outputPath);
+  _recorderCleanupTemps(entry);
+  return okFinal;
 }
 
 ipcMain.handle('recorder:start', async (_event, frameId) => {
@@ -2844,15 +2894,37 @@ ipcMain.handle('recorder:start', async (_event, frameId) => {
       '-offset_y', String(rect.y),
       '-video_size', `${rect.w}x${rect.h}`,
       '-i', 'desktop',
+      // Capture stage: LIGHT, GPU-DECODABLE, near-lossless. `ultrafast` keeps CPU
+      // low so gdigrab holds its frame rate on long recordings (dropped frames =
+      // stutter + A/V drift); `crf 18` is visually near-lossless; `yuv420p` is
+      // hardware-decodable, so the preview and long clips play back SMOOTHLY.
+      // (The previous lossless 4:4:4 was not GPU-decodable → software-decode
+      // stutter, and its huge bitrate stalled long captures + broke the frame
+      // strip.) The final export re-encodes from this temp.
       '-c:v', 'libx264',
       '-preset', 'ultrafast',
+      '-crf', '18',
       '-pix_fmt', 'yuv420p',
+      // Progress on stdout so we can timestamp the FIRST captured frame, used to
+      // align audio (which starts on its own clock) against video in the mux.
+      '-progress', 'pipe:1',
       entry.videoPath,
     ];
-    const proc = spawn(entry.ffmpegPath, args, { stdio: ['pipe', 'ignore', 'pipe'], windowsHide: true });
+    const proc = spawn(entry.ffmpegPath, args, { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true });
     entry.proc = proc;
     entry.recording = true;
     entry.startedAt = Date.now();
+    entry.videoFirstFrameAt = 0;
+    // ffmpeg -progress emits key=value lines; the first update carrying a frame
+    // count marks the first captured frame. Stamp it once (same wall clock as the
+    // renderer's audio start) for the A/V start-offset math on finalize.
+    if (proc.stdout) {
+      proc.stdout.on('data', (d) => {
+        if (entry.videoFirstFrameAt) return;
+        const m = /frame=\s*(\d+)/.exec(d.toString());
+        if (m && parseInt(m[1], 10) >= 1) entry.videoFirstFrameAt = Date.now();
+      });
+    }
     proc.on('error', (err) => {
       entry.recording = false; entry.proc = null;
       _recorderSendState(frameId, { recording: false, error: err.message });
@@ -2876,7 +2948,7 @@ ipcMain.handle('recorder:start', async (_event, frameId) => {
 
 // The frame renderer captures audio (loopback/mic) and sends the encoded
 // webm/opus bytes just before stop. We stash it to a temp file for muxing.
-ipcMain.handle('recorder:sendAudio', async (_event, frameId, buffer) => {
+ipcMain.handle('recorder:sendAudio', async (_event, frameId, buffer, startedAt) => {
   const entry = _recorderFrames.get(frameId);
   if (!entry) return { error: null };
   try {
@@ -2885,6 +2957,9 @@ ipcMain.handle('recorder:sendAudio', async (_event, frameId, buffer) => {
       const audioPath = entry.outputPath.replace(/\.mp4$/i, '') + '.audio.webm';
       await fs.writeFile(audioPath, buf);
       entry.audioPath = audioPath;
+      // Wall-clock instant audio actually started (MediaRecorder.onstart) — same
+      // clock as entry.videoFirstFrameAt, so their difference is the A/V offset.
+      entry.audioStartedAt = Number.isFinite(startedAt) && startedAt > 0 ? startedAt : 0;
     }
   } catch { entry.audioPath = null; }
   return { error: null };
@@ -2913,6 +2988,11 @@ ipcMain.handle('recorder:stop', async (_event, frameId) => {
     try { proc.stdin.write('q'); } catch { /* fall through to timeout */ }
     setTimeout(() => { if (!done) { try { proc.kill('SIGKILL'); } catch { /* ignore */ } finish(); } }, 12000);
   });
+  // Real capture span (wall clock) — the ground truth the video is retimed to on
+  // finalize, since gdigrab's CFR assumption can drift from real time. Prefer the
+  // first-frame stamp; fall back to spawn time.
+  const videoStart = entry.videoFirstFrameAt || entry.startedAt || 0;
+  entry.wallDur = videoStart ? Math.max(0, (stopAt - videoStart) / 1000) : 0;
   let ok = false;
   try { ok = await _recorderFinalize(entry); } catch { ok = false; }
   // Report the duration ourselves (exact via ffprobe, wall-clock fallback) so

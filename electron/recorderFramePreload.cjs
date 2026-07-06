@@ -15,7 +15,7 @@ contextBridge.exposeInMainWorld('recorderFrame', {
   cancel: () => ipcRenderer.invoke('recorder:cancel', frameId),
   setBounds: (bounds) => ipcRenderer.invoke('recorder:setBounds', frameId, bounds),
   setIgnoreMouse: (ignore) => ipcRenderer.invoke('recorder:setIgnoreMouse', frameId, ignore),
-  sendAudio: (buffer) => ipcRenderer.invoke('recorder:sendAudio', frameId, buffer),
+  sendAudio: (buffer, startedAt) => ipcRenderer.invoke('recorder:sendAudio', frameId, buffer, startedAt),
   onState: (cb) => {
     const h = (_e, s) => { try { cb(s); } catch { /* ignore */ } };
     ipcRenderer.on('recorder:state', h);

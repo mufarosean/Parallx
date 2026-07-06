@@ -75,6 +75,10 @@
     // only the audio track. 'mic' → getUserMedia. The encoded webm is sent to
     // main on stop and muxed with the gdigrab video.
     let audioStream = null, mediaRecorder = null, audioChunks = [];
+    // Wall-clock instant the audio actually began recording (MediaRecorder.onstart).
+    // Sent to main so the mux can align the two independently-started streams
+    // (audio here vs. gdigrab video) instead of naively pinning both to t=0.
+    let audioStartedAt = 0;
     async function startAudioCapture() {
       if (!audioOn || !api.audio || api.audio === 'off') return false;
       try {
@@ -98,6 +102,9 @@
         audioChunks = [];
         mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm', audioBitsPerSecond: 192000 });
         mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size) audioChunks.push(e.data); };
+        // Stamp the true audio start so main can compute the A/V start offset.
+        audioStartedAt = 0;
+        mediaRecorder.onstart = () => { audioStartedAt = Date.now(); };
         mediaRecorder.start();
         return true;
       } catch (err) {
@@ -114,7 +121,7 @@
       // send=false on aborts (failed video start / error) so we don't write an
       // orphan audio temp with no video to mux it into.
       if (send && blob.size > 0 && api.sendAudio) {
-        try { await api.sendAudio(await blob.arrayBuffer()); } catch { /* video-only */ }
+        try { await api.sendAudio(await blob.arrayBuffer(), audioStartedAt); } catch { /* video-only */ }
       }
     }
     const BORDER = 2, TOOLBAR = 44, EDGE = 12, CORNER = 20, MIN_W = 200, MIN_H = 160; // BORDER/TOOLBAR match main.cjs
