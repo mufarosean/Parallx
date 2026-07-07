@@ -219,6 +219,15 @@ class PlannerEditorPane implements IDisposable {
     // the pane is connected and the user isn't typing in an input.
     const onKey = (e: KeyboardEvent) => {
       if (!this._root?.isConnected) return;
+      // Focus scope: these are BARE-KEY shortcuts (m / w / d / c / arrows …).
+      // Only act when the planner is the focused surface — otherwise a planner
+      // open in another split or a background tab would steal those letters and
+      // arrows from whatever editor/surface the user is actually working in
+      // (the same "surface eats another surface's keys" bug as the titlebar).
+      // Allow when nothing specific is focused (activeElement is body/null) so
+      // the shortcuts still work right after the calendar renders.
+      const active = document.activeElement;
+      if (active && active !== document.body && !this._root.contains(active)) return;
       const target = e.target as HTMLElement | null;
       // Skip when focus is inside any input / textarea / contenteditable —
       // those characters belong to the user's typing.
