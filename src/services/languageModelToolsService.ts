@@ -190,6 +190,8 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
   setToolEnablementService(service: {
     isEnabled(toolId: string): boolean;
     has(toolId: string): boolean;
+    canChangeEnablement?(toolId: string): boolean;
+    setEnablement?(toolId: string, enabled: boolean): Promise<void>;
     onDidChangeEnablement: Event<{ toolId: string }>;
   }): void {
     this._toolEnablement = service;
@@ -203,6 +205,8 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
   private _toolEnablement?: {
     isEnabled(toolId: string): boolean;
     has(toolId: string): boolean;
+    canChangeEnablement?(toolId: string): boolean;
+    setEnablement?(toolId: string, enabled: boolean): Promise<void>;
   };
 
   /**
@@ -482,6 +486,33 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
   }
 
   setToolEnabled(name: string, enabled: boolean): void {
+    // External (extension-bridge) tools are gated per-workspace by the
+    // extension-enablement service, NOT the local _disabledTools set. A
+    // tool from a disabled extension reports isToolEnabled() === false via
+    // _isOwnerExtensionDisabled, so toggling only _disabledTools would be a
+    // no-op — the checkbox would re-render unchecked and appear un-clickable.
+    // When ENABLING such a tool we must turn its owning extension on; the
+    // extension is the enablement granularity, so this lights up all of its
+    // tools (the user can then disable individual ones below via _disabledTools).
+    const tool = this._tools.get(name);
+    const ownerExt =
+      tool && tool.source === 'bridge' && tool.ownerToolId &&
+      this._toolEnablement?.has(tool.ownerToolId)
+        ? tool.ownerToolId
+        : undefined;
+
+    if (
+      enabled && ownerExt &&
+      this._toolEnablement?.setEnablement &&
+      !this._toolEnablement.isEnabled(ownerExt) &&
+      (this._toolEnablement.canChangeEnablement?.(ownerExt) ?? true)
+    ) {
+      // Enable the owning extension. setEnablement mutates its in-memory
+      // state synchronously (before persisting) and fires onDidChangeEnablement,
+      // which is wired to onDidChangeTools so pickers re-render.
+      void this._toolEnablement.setEnablement(ownerExt, true);
+    }
+
     const changed = enabled
       ? this._disabledTools.delete(name)
       : !this._disabledTools.has(name) && (this._disabledTools.add(name), true);
@@ -494,7 +525,9 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
   getEnabledCount(): number {
     let count = 0;
     for (const tool of this._tools.values()) {
-      if (!this._disabledTools.has(tool.name)) {
+      // Mirror isToolEnabled: a tool from a disabled extension is not
+      // enabled even though it isn't in _disabledTools.
+      if (!this._disabledTools.has(tool.name) && !this._isOwnerExtensionDisabled(tool)) {
         count++;
       }
     }

@@ -2444,6 +2444,8 @@ export class Workbench extends Layout {
       (lmts as any).setToolEnablementService({
         isEnabled: (id: string) => this._toolEnablementService.isEnabled(id),
         has: (id: string) => registry.getById(id) !== undefined,
+        canChangeEnablement: (id: string) => this._toolEnablementService.canChangeEnablement(id),
+        setEnablement: (id: string, enabled: boolean) => this._toolEnablementService.setEnablement(id, enabled),
         onDidChangeEnablement: this._toolEnablementService.onDidChangeEnablement,
       });
     }

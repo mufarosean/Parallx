@@ -26,6 +26,30 @@ function createTool(overrides: Partial<IChatTool> = {}): IChatTool {
   };
 }
 
+/**
+ * Minimal stand-in for the workbench's ToolEnablementService binding. Tracks
+ * per-extension enablement in a map, mutating it synchronously in setEnablement
+ * (like the real service, which updates memory before persisting).
+ */
+function createFakeEnablement(initial: Record<string, boolean>) {
+  const enabled = new Map(Object.entries(initial));
+  const listeners: Array<(e: { toolId: string }) => void> = [];
+  const setEnablement = vi.fn(async (toolId: string, en: boolean) => {
+    enabled.set(toolId, en);
+    listeners.forEach((l) => l({ toolId }));
+  });
+  return {
+    isEnabled: (id: string) => enabled.get(id) ?? false,
+    has: (id: string) => enabled.has(id),
+    canChangeEnablement: (_id: string) => true,
+    setEnablement,
+    onDidChangeEnablement: ((listener: (e: { toolId: string }) => void) => {
+      listeners.push(listener);
+      return { dispose: () => {} };
+    }) as any,
+  };
+}
+
 // ── Tests ──
 
 describe('LanguageModelToolsService', () => {
@@ -397,6 +421,67 @@ describe('LanguageModelToolsService', () => {
       expect(confirm).toHaveBeenCalled();
       expect(handler).toHaveBeenCalled();
       expect(result.content).toBe('created');
+    });
+  });
+
+  // ── External-tool enablement routing ──
+
+  describe('external tool enablement routing', () => {
+    it('enabling a tool from a disabled extension turns the owning extension on', () => {
+      // Regression: the settings/chat tool picker showed web-research's tools
+      // but their checkboxes appeared un-clickable — enabling only touched the
+      // local disabled set, so isToolEnabled stayed false (extension still off)
+      // and the box re-rendered unchecked.
+      const enablement = createFakeEnablement({ 'parallx.web-research': false });
+      service.setToolEnablementService(enablement as any);
+      service.registerTool(createTool({ name: 'webSearch', source: 'bridge', ownerToolId: 'parallx.web-research' }));
+
+      // Extension disabled → tool reports disabled even though not locally disabled.
+      expect(service.isToolEnabled('webSearch')).toBe(false);
+
+      service.setToolEnabled('webSearch', true);
+
+      expect(enablement.setEnablement).toHaveBeenCalledWith('parallx.web-research', true);
+      expect(service.isToolEnabled('webSearch')).toBe(true);
+    });
+
+    it('disabling an external tool suppresses just that tool, leaving the extension on', () => {
+      const enablement = createFakeEnablement({ 'parallx.web-research': true });
+      service.setToolEnablementService(enablement as any);
+      service.registerTool(createTool({ name: 'webSearch', source: 'bridge', ownerToolId: 'parallx.web-research' }));
+      service.registerTool(createTool({ name: 'webFetch', source: 'bridge', ownerToolId: 'parallx.web-research' }));
+
+      expect(service.isToolEnabled('webSearch')).toBe(true);
+      service.setToolEnabled('webSearch', false);
+
+      // Extension is never toggled off; the sibling tool keeps working.
+      expect(enablement.setEnablement).not.toHaveBeenCalled();
+      expect(service.isToolEnabled('webSearch')).toBe(false);
+      expect(service.isToolEnabled('webFetch')).toBe(true);
+    });
+
+    it('built-in tools still toggle via the local disabled set, not the extension service', () => {
+      const enablement = createFakeEnablement({});
+      service.setToolEnablementService(enablement as any);
+      service.registerTool(createTool({ name: 'canvas_read' })); // no source/owner → built-in
+
+      service.setToolEnabled('canvas_read', false);
+      expect(enablement.setEnablement).not.toHaveBeenCalled();
+      expect(service.isToolEnabled('canvas_read')).toBe(false);
+    });
+
+    it('does not double-enable an extension that is already on', () => {
+      const enablement = createFakeEnablement({ 'parallx.web-research': true });
+      service.setToolEnablementService(enablement as any);
+      service.registerTool(createTool({ name: 'webSearch', source: 'bridge', ownerToolId: 'parallx.web-research' }));
+      service.setToolEnabled('webSearch', false); // locally suppress
+      enablement.setEnablement.mockClear();
+
+      service.setToolEnabled('webSearch', true); // re-enable
+
+      // Extension already on → only the local suppression is lifted.
+      expect(enablement.setEnablement).not.toHaveBeenCalled();
+      expect(service.isToolEnabled('webSearch')).toBe(true);
     });
   });
 
