@@ -313,8 +313,14 @@ export class TitlebarPart extends Part {
       this._commandExecutor?.executeCommand(item.id);
     });
 
-    // When dismissed (Escape, click outside, or selection), clean up
+    // When dismissed (Escape, click outside, or selection), clean up.
+    // CRITICAL: remove the document-level capture keydown listener here too.
+    // The old code only cleared `_activeDropdown` and left `onLateralNav`
+    // attached — so after opening a titlebar menu once, its capture-phase
+    // ArrowLeft/ArrowRight `stopImmediatePropagation` leaked and swallowed
+    // those arrows GLOBALLY (e.g. the text editor's cursor stopped moving).
     ctxMenu.onDidDismiss(() => {
+      document.removeEventListener('keydown', onLateralNav, true);
       this._activeDropdown = undefined;
       anchor.classList.remove('titlebar-menu-item--active');
     });
