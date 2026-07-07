@@ -16,11 +16,13 @@ import { ServiceCollection } from '../services/serviceCollection.js';
 import {
   ICommandService,
   IContextKeyService,
+  IKeybindingService,
   IEditorService,
   IWorkspaceService,
   IWorkspaceBoundaryService,
   IFileService,
 } from '../services/serviceTypes.js';
+import { reservedKeyOwner } from '../contributions/keybindingContribution.js';
 import type { ContextKeyValue } from '../context/contextKey.js';
 import type { IToolDescription } from '../tools/toolManifest.js';
 import type { ToolRegistry, IToolEntry } from '../tools/toolRegistry.js';
@@ -112,6 +114,10 @@ export interface ParallxApiObject {
   /** Shared UI performance helpers (see parallx.d.ts `ui` namespace). */
   readonly ui: {
     rafThrottle<A extends unknown[]>(fn: (...args: A) => void): ((...args: A) => void) & { dispose(): void; flush(): void };
+  };
+  /** Register keybindings into the single workbench dispatcher (see `keybindings` namespace). */
+  readonly keybindings: {
+    register(key: string, commandId: string, when?: string): IDisposable;
   };
   readonly commands: {
     registerCommand(id: string, handler: (...args: unknown[]) => unknown | Promise<unknown>): IDisposable;
@@ -352,6 +358,10 @@ export function createToolApi(
     ? deps.services.get(IContextKeyService)
     : undefined;
 
+  const keybindingService = deps.services.has(IKeybindingService)
+    ? deps.services.get(IKeybindingService)
+    : undefined;
+
   const editorService = deps.services.has(IEditorService)
     ? deps.services.get(IEditorService)
     : undefined;
@@ -470,6 +480,25 @@ export function createToolApi(
     // layout work is coalesced to one run per frame everywhere.
     ui: Object.freeze({
       rafThrottle,
+    }),
+
+    // Keybindings feed the SAME single dispatcher the built-in workbench uses.
+    // Prefer this (or manifest `contributes.keybindings`) over attaching your own
+    // document keydown listener — scope with a `when` clause (e.g.
+    // `activeEditor == 'my-editor'`, `focusedView == 'my-view'`) so keys route to
+    // your surface only when it's focused, with no cross-surface conflicts.
+    keybindings: Object.freeze({
+      register: (key: string, commandId: string, when?: string): IDisposable => {
+        if (!keybindingService) return { dispose() { /* no service */ } };
+        // Same reserved-key guard as the manifest path: a core shortcut can't be
+        // silently shadowed by an extension pointing it at another command.
+        const owner = reservedKeyOwner(key);
+        if (owner && owner !== commandId) {
+          console.warn(`[api.keybindings] "${key}" from "${toolId}" → "${commandId}" ignored: reserved for "${owner}".`);
+          return { dispose() { /* rejected */ } };
+        }
+        return keybindingService.registerKeybinding(key, commandId, when, `ext:${toolId}`);
+      },
     }),
 
     commands: Object.freeze({
