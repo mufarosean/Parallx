@@ -12,24 +12,29 @@
   #capture { flex: 1; box-sizing: border-box; background: transparent;
     border: 2px solid #3b82f6; box-shadow: 0 0 0 1px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(0,0,0,0.35); }
   #capture.recording { border-color: #ef4444; }
-  /* 44px toolbar MUST match RECORDER_TOOLBAR. Plain dark bar, no coloured border. */
+  /* 44px toolbar MUST match RECORDER_TOOLBAR. */
   #toolbar { flex: 0 0 44px; height: 44px; box-sizing: border-box;
-    background: #1c1c1e; border-top: 1px solid #000; color: #ddd; font-size: 12px;
-    display: flex; align-items: center; gap: 10px; padding: 0 12px; }
-  #recBtn { display: flex; align-items: center; gap: 6px; background: #ef4444; color: #fff;
-    border: none; border-radius: 4px; padding: 5px 12px; cursor: pointer; font-weight: 600; }
+    background: #212124; border-top: 1px solid rgba(0,0,0,0.6); color: #d6d6d9; font-size: 12px;
+    display: flex; align-items: center; gap: 6px; padding: 0 8px 0 10px; }
+  #recBtn { display: flex; align-items: center; gap: 7px; background: #ef4444; color: #fff;
+    border: none; border-radius: 6px; padding: 6px 14px; cursor: pointer; font-weight: 600; font-size: 12px; }
+  #recBtn:hover { background: #f15b5b; }
   #recBtn:disabled { opacity: 0.6; cursor: default; }
-  #recBtn.recording { background: #555; }
-  #recDot { width: 9px; height: 9px; border-radius: 50%; background: #fff; }
-  #audioBtn { display: inline-flex; align-items: center; background: none; border: none; color: #ddd; cursor: pointer; padding: 3px 4px; line-height: 0; border-radius: 4px; }
-  #audioBtn:hover { background: rgba(255,255,255,0.08); }
-  #audioBtn.muted { color: #888; }
+  #recBtn.recording { background: #3a3a3e; }
+  #recDot { width: 8px; height: 8px; border-radius: 50%; background: #fff; }
+  #recBtn.recording #recDot { border-radius: 2px; }
+  /* ghost icon/text buttons */
+  #audioBtn, #sizeBtn, #closeBtn { background: none; border: none; color: #c6c6ca; cursor: pointer;
+    border-radius: 6px; display: inline-flex; align-items: center; }
+  #audioBtn:hover, #sizeBtn:hover, #closeBtn:hover { background: rgba(255,255,255,0.09); color: #fff; }
+  #audioBtn { padding: 5px; line-height: 0; }
+  #audioBtn.muted { color: #77777b; }
   #audioBtn:disabled { cursor: default; }
   #audioBtn svg { display: block; }
-  #sizeBtn { display: inline-flex; align-items: center; gap: 4px; background: none; border: none; color: #ddd; cursor: pointer; font-size: 12px; padding: 3px 7px; border-radius: 4px; }
-  #sizeBtn:hover { background: rgba(255,255,255,0.08); }
+  #sizeBtn { gap: 5px; font-size: 12px; padding: 5px 10px; }
+  #sizeBtn .caret { opacity: 0.5; font-size: 8px; }
   #sizeBtn.hidden { display: none; }
-  #sizeBtn .caret { opacity: 0.55; font-size: 9px; }
+  #sep { width: 1px; height: 18px; background: rgba(255,255,255,0.11); margin: 0 3px; }
   #sizePanel { position: fixed; left: 10px; bottom: 50px; z-index: 10; background: #1c1c1e; border: 1px solid #000;
     border-radius: 7px; padding: 4px; box-shadow: 0 6px 22px rgba(0,0,0,0.55); display: none; flex-direction: column;
     max-height: calc(100vh - 56px); overflow-y: auto; min-width: 158px; }
@@ -40,12 +45,12 @@
   #sizePanel button:hover { background: #3b82f6; color: #fff; }
   #sizePanel button small { opacity: 0.5; font-size: 11px; font-variant-numeric: tabular-nums; }
   #sizePanel button:hover small { opacity: 0.85; }
-  #hint { opacity: 0.55; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #hint.warn { opacity: 0.95; color: #fbbf24; }
+  #hint { color: #fbbf24; font-size: 11px; opacity: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #hint.warn { opacity: 0.95; }
   .spacer { flex: 1; }
-  #size { font-variant-numeric: tabular-nums; opacity: 0.85; }
-  #closeBtn { background: none; border: none; color: #aaa; cursor: pointer; font-size: 15px; padding: 2px 6px; line-height: 1; }
-  #closeBtn:hover { color: #fff; }
+  #meta { display: flex; align-items: center; gap: 6px; color: #86868b; font-variant-numeric: tabular-nums; white-space: nowrap; flex-shrink: 0; }
+  #meta .d { opacity: 0.4; }
+  #closeBtn { font-size: 14px; padding: 5px 8px; margin-left: 2px; }
 </style>
 </head>
 <body>
@@ -53,11 +58,12 @@
     <div id="capture"></div>
     <div id="toolbar">
       <button id="recBtn"><span id="recDot"></span><span id="recLabel">Record</span></button>
+      <span id="sep"></span>
       <button id="audioBtn" title="Audio"></button>
       <button id="sizeBtn" title="Preset sizes">Size<span class="caret">&#9662;</span></button>
       <span id="hint"></span>
       <span class="spacer"></span>
-      <span id="size">—</span>
+      <span id="meta"><span id="size">—</span><span class="d">·</span><span id="fps"></span></span>
       <button id="closeBtn" title="Close">&#10005;</button>
     </div>
     <div id="sizePanel"></div>
@@ -72,7 +78,8 @@
     const audioBtn = document.getElementById('audioBtn');
     const sizeBtn = document.getElementById('sizeBtn');
     const sizePanel = document.getElementById('sizePanel');
-    hintEl.textContent = (api.fps || 30) + ' fps · drag edge to move · corner to resize';
+    const fpsEl = document.getElementById('fps');
+    fpsEl.textContent = (api.fps || 30) + ' fps';
 
     // Crisp monochrome speaker glyphs (no colour emoji).
     const SPK_ON  = '<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 9v6h4l5 4V5L8 9H4z"/><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" d="M16.4 8.6a5 5 0 010 6.8"/></svg>';
@@ -291,6 +298,7 @@
 
     recBtn.addEventListener('click', async () => {
       if (!recording) {
+        hintEl.textContent = ''; hintEl.classList.remove('warn'); // clear any stale audio warning
         // Kick off audio + video together. startAudioCapture() is listed first
         // so getDisplayMedia/getUserMedia is invoked within this click's user-
         // activation; running them concurrently keeps the two streams tightly
@@ -305,7 +313,7 @@
         sizePanel.classList.remove('open');
         sizeBtn.classList.add('hidden');
         if (audioOn && api.audio !== 'off' && !audioStarted) {
-          hintEl.textContent = 'Audio capture unavailable — recording video only.';
+          hintEl.textContent = 'Audio unavailable — video only';
           hintEl.classList.add('warn');
         }
       } else {
