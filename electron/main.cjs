@@ -2858,8 +2858,17 @@ async function _recorderFinalize(entry) {
     if (offset > 0) args.push('-itsoffset', offset.toFixed(3));
     args.push('-i', audioPath);
   }
-  if (Math.abs(factor - 1) > 0.005) args.push('-vf', `setpts=${factor.toFixed(6)}*PTS`);
-  args.push('-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p');
+  const needsRetime = Math.abs(factor - 1) > 0.005;
+  if (needsRetime) {
+    // Drift correction needs a re-encode — do it near-lossless (one-time export).
+    args.push('-vf', `setpts=${factor.toFixed(6)}*PTS`);
+    args.push('-c:v', 'libx264', '-preset', 'medium', '-crf', '14', '-pix_fmt', 'yuv420p');
+  } else {
+    // No retiming needed → copy the captured video stream verbatim. This drops
+    // the whole second lossy generation (capture was already near-lossless) and
+    // makes the export much faster — the recording keeps the full capture quality.
+    args.push('-c:v', 'copy');
+  }
   if (hasAudio) args.push('-c:a', 'aac', '-b:a', '192k', '-shortest');
   else args.push('-an');
   args.push('-movflags', '+faststart', outputPath);
@@ -2903,7 +2912,7 @@ ipcMain.handle('recorder:start', async (_event, frameId) => {
       // strip.) The final export re-encodes from this temp.
       '-c:v', 'libx264',
       '-preset', 'ultrafast',
-      '-crf', '18',
+      '-crf', '14',
       '-pix_fmt', 'yuv420p',
       // Progress on stdout so we can timestamp the FIRST captured frame, used to
       // align audio (which starts on its own clock) against video in the mux.
