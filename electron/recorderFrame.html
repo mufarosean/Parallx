@@ -16,13 +16,21 @@
   #toolbar { flex: 0 0 44px; height: 44px; box-sizing: border-box;
     background: #212124; border-top: 1px solid rgba(0,0,0,0.6); color: #d6d6d9; font-size: 12px;
     display: flex; align-items: center; gap: 6px; padding: 0 8px 0 10px; }
-  #recBtn { display: flex; align-items: center; gap: 7px; background: #ef4444; color: #fff;
-    border: none; border-radius: 6px; padding: 6px 14px; cursor: pointer; font-weight: 600; font-size: 12px; }
-  #recBtn:hover { background: #f15b5b; }
-  #recBtn:disabled { opacity: 0.6; cursor: default; }
-  #recBtn.recording { background: #3a3a3e; }
-  #recDot { width: 8px; height: 8px; border-radius: 50%; background: #fff; }
-  #recBtn.recording #recDot { border-radius: 2px; }
+  /* Circular record control: red dot -> red square when recording -> spinner while saving. */
+  #recBtn { width: 30px; height: 30px; min-width: 30px; padding: 0; border-radius: 50%;
+    background: rgba(255,255,255,0.09); border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; transition: background 120ms ease; }
+  #recBtn:hover { background: rgba(255,255,255,0.16); }
+  #recBtn:disabled { cursor: default; }
+  #recShape { width: 15px; height: 15px; border-radius: 50%; background: #ef4444; transition: width .16s ease, height .16s ease, border-radius .16s ease; }
+  #recBtn:hover #recShape { background: #f4605f; }
+  #recBtn.recording #recShape { width: 12px; height: 12px; border-radius: 3px; }
+  #recBtn.saving #recShape { display: none; }
+  #recSpinner { display: none; width: 15px; height: 15px; box-sizing: border-box;
+    border: 2px solid rgba(255,255,255,0.25); border-top-color: #fff; border-radius: 50%;
+    animation: spin .7s linear infinite; }
+  #recBtn.saving #recSpinner { display: block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
   /* ghost icon/text buttons */
   #audioBtn, #sizeBtn, #closeBtn { background: none; border: none; color: #c6c6ca; cursor: pointer;
     border-radius: 6px; display: inline-flex; align-items: center; }
@@ -57,7 +65,7 @@
   <div id="frame">
     <div id="capture"></div>
     <div id="toolbar">
-      <button id="recBtn"><span id="recDot"></span><span id="recLabel">Record</span></button>
+      <button id="recBtn" title="Record"><span id="recShape"></span><span id="recSpinner"></span></button>
       <span id="sep"></span>
       <button id="audioBtn" title="Audio"></button>
       <button id="sizeBtn" title="Preset sizes">Size<span class="caret">&#9662;</span></button>
@@ -72,7 +80,14 @@
     const api = window.recorderFrame || {};
     const capEl = document.getElementById('capture');
     const recBtn = document.getElementById('recBtn');
-    const recLabel = document.getElementById('recLabel');
+    // Reflect record state through the button's shape (CSS) + tooltip, and a
+    // saving state (spinner). Small helper so every entry point stays in sync.
+    function setRecState(state) {
+      recBtn.classList.toggle('recording', state === 'recording');
+      recBtn.classList.toggle('saving', state === 'saving');
+      recBtn.disabled = state === 'saving';
+      recBtn.title = state === 'recording' ? 'Stop recording' : state === 'saving' ? 'Saving…' : 'Record';
+    }
     const sizeEl = document.getElementById('size');
     const hintEl = document.getElementById('hint');
     const audioBtn = document.getElementById('audioBtn');
@@ -307,8 +322,7 @@
         if (res && res.error) { await stopAudioCapture(false); return; }
         recording = true;
         capEl.classList.add('recording');
-        recBtn.classList.add('recording');
-        recLabel.textContent = 'Stop';
+        setRecState('recording');
         // Can't change the frame size mid-recording — hide the preset picker.
         sizePanel.classList.remove('open');
         sizeBtn.classList.add('hidden');
@@ -317,8 +331,7 @@
           hintEl.classList.add('warn');
         }
       } else {
-        recLabel.textContent = 'Saving…';
-        recBtn.disabled = true;
+        setRecState('saving');
         await stopAudioCapture(); // finalize + send audio before stopping video
         await api.stop();
       }
@@ -328,8 +341,7 @@
       if (recording) {
         // Finish the recording (don't lose it). Must send the captured audio
         // before stopping the video, same as the Stop button.
-        recLabel.textContent = 'Saving…';
-        recBtn.disabled = true;
+        setRecState('saving');
         await stopAudioCapture();
         api.stop();
       } else {
@@ -341,9 +353,7 @@
       if (s && s.error) {
         recording = false;
         capEl.classList.remove('recording');
-        recBtn.classList.remove('recording');
-        recLabel.textContent = 'Record';
-        recBtn.disabled = false;
+        setRecState('idle');
         sizeBtn.classList.remove('hidden');
         stopAudioCapture(false);
       }
