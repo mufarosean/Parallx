@@ -60,6 +60,7 @@ class EditorDropOverlay extends Disposable {
   readonly onDidDispose: Event<void> = this._onDidDispose.event;
 
   private _enterCounter = 0;
+  private _disposed = false;
 
   constructor(
     private readonly _groupElement: HTMLElement,
@@ -248,6 +249,11 @@ class EditorDropOverlay extends Disposable {
   }
 
   override dispose(): void {
+    // Idempotent: firing onDidDispose runs a handler in EditorDropTarget that
+    // clears the overlay's DisposableStore, which re-enters this dispose. Guard
+    // so the re-entrant call is a no-op instead of recursing / double-firing.
+    if (this._disposed) return;
+    this._disposed = true;
     this._container.remove();
     this._onDidDispose.fire();
     super.dispose();
@@ -322,13 +328,32 @@ export class EditorDropTarget extends Disposable {
       }
     };
 
+    // Guaranteed teardown when the drag ENDS, independent of the per-overlay
+    // listeners. Those rely on `dragend` bubbling from the drag SOURCE tab —
+    // but a successful split/move removes that tab from the DOM, and Chromium
+    // does NOT fire `dragend` for a removed source. The overlay (position
+    // absolute, inset 0, z-index 10000, pointer-events auto) would then stay
+    // over the pane and swallow every scroll/click — the "blue dot that blocks
+    // the PDF" bug. Listen in CAPTURE so a target handler's stopPropagation()
+    // can't hide the event, and on `drop` defer one tick so the overlay's own
+    // drop handler (which fires the split) runs first.
+    const onDocumentDrop = (): void => {
+      if (!this._activeOverlay) return;
+      setTimeout(() => this._clearOverlay(), 0);
+    };
+    const onDocumentDragEnd = (): void => this._clearOverlay();
+
     el.addEventListener('dragover', onDragOver, { capture: true });
     document.addEventListener('dragover', onDocumentDragOver);
+    document.addEventListener('drop', onDocumentDrop, { capture: true });
+    document.addEventListener('dragend', onDocumentDragEnd, { capture: true });
 
     this._register({
       dispose: () => {
         el.removeEventListener('dragover', onDragOver, { capture: true });
         document.removeEventListener('dragover', onDocumentDragOver);
+        document.removeEventListener('drop', onDocumentDrop, { capture: true });
+        document.removeEventListener('dragend', onDocumentDragEnd, { capture: true });
       },
     });
   }
