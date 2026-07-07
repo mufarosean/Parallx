@@ -150,8 +150,12 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
   /** Per-page debounce timers for content auto-save.
    * `schemaVersion` is captured alongside the content so the coalesce-by-equality
    * check (scheduleContentSave) doesn't drop a schedule that differs only in
-   * schema version (M77 Phase 9.3). */
-  private readonly _pendingSaves = new Map<string, { timer: ReturnType<typeof setTimeout>; content: string; schemaVersion: number; expectedRevision?: number }>();
+   * schema version (M77 Phase 9.3).
+   * `baseContent` is the last-known stored content at schedule time — the state
+   * the editor's edit is based on. If a DIFFERENT writer (an AI tool streaming a
+   * page, a sidebar merge) commits new content before this debounce fires, the
+   * queued doc is stale and must not clobber the newer content (_pendingSaveIsStale). */
+  private readonly _pendingSaves = new Map<string, { timer: ReturnType<typeof setTimeout>; content: string; schemaVersion: number; expectedRevision?: number; baseContent?: string }>();
 
   /** Per-page retry state for failed auto-saves (exponential backoff). */
   private readonly _retryQueue = new Map<string, { timer: ReturnType<typeof setTimeout>; content: string; retries: number; expectedRevision?: number }>();
@@ -343,6 +347,16 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     }
     if (updates.content !== undefined) {
       const normalized = normalizeCanvasContentForStorage(updates.content);
+      // DIAGNOSTIC (canvas content-loss hunt): flag any write that blanks a page
+      // that currently holds real content, with the caller stack. The auto-save
+      // paths are already guarded; this catches a blanking write arriving through
+      // any OTHER path (streamPageBody, reconcile, restore, raw editor flush).
+      if (
+        this._isEffectivelyEmptyStored(normalized.storedContent) &&
+        !this._isEffectivelyEmptyStored(this._knownStoredContent.get(pageId))
+      ) {
+        console.warn(`[canvas-diag] content-blanking write to populated page "${pageId}" editSource=${updates.editSource ?? 'user'} expRev=${expectedRevision ?? 'none'}. Caller: ${this._shortStack()}`);
+      }
       sets.push('content = ?');
       params.push(normalized.storedContent);
       sets.push('content_schema_version = ?');
@@ -1288,6 +1302,66 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
    * @param pageId — page to save
    * @param content — stringified Tiptap JSON content
    */
+  /**
+   * True when a DIFFERENT writer committed new content to this page after the
+   * debounced save was queued — so writing the queued (now stale) editor doc
+   * would clobber it. This is the "AI streams a page / sidebar merges a card →
+   * the editor's older doc saves over it" data-loss class.
+   *
+   * Detected on CONTENT, not revision: the title/icon reconciler bumps revision
+   * without touching content, and must NOT be mistaken for a competing edit
+   * (that would resurrect the M77 Phase 9.1 spurious-conflict problem).
+   */
+  private _pendingSaveIsStale(pageId: string, baseContent: string | undefined, targetStored: string): boolean {
+    if (baseContent === undefined) return false;
+    const currentStored = this._knownStoredContent.get(pageId);
+    return currentStored !== undefined
+      && currentStored !== baseContent    // committed content moved since we queued
+      && currentStored !== targetStored;  // and it isn't already what we're about to write
+  }
+
+  /** True when stored content decodes to a doc with no text and no real blocks
+   *  (an empty page — just blank paragraph(s)). Errs toward `false` (not empty)
+   *  so an unparseable doc is never mistaken for empty. */
+  private _isEffectivelyEmptyStored(stored: string | undefined): boolean {
+    if (!stored) return true;
+    try {
+      const { doc } = decodeCanvasContent(stored);
+      const blocks: unknown[] = Array.isArray(doc?.content) ? doc.content : [];
+      if (blocks.length === 0) return true;
+      const hasRealContent = blocks.some((b) => {
+        if (!b || typeof b !== 'object') return false;
+        const block = b as { type?: string; content?: unknown[] };
+        if (block.type && block.type !== 'paragraph') return true;      // any non-paragraph block
+        return Array.isArray(block.content) && block.content.length > 0; // paragraph with inline content
+      });
+      return !hasRealContent;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Safety invariant for the auto-save/flush paths: a background debounced save
+   * must never silently blank a page that currently holds real content. This is
+   * the final backstop for every "a stale editor doc (never loaded the streamed
+   * content, or an embed still on the empty placeholder) saves empty over it"
+   * data-loss path — including ones the content-staleness check can't see
+   * because the editor's base already matches the stored content.
+   *
+   * A genuine user "select-all → delete" clears blocks but the editor keeps the
+   * content it loaded, so this only ever fires for stale/never-populated docs.
+   */
+  private _autoSaveWouldBlankPopulated(pageId: string, targetStored: string): boolean {
+    return this._isEffectivelyEmptyStored(targetStored)
+      && !this._isEffectivelyEmptyStored(this._knownStoredContent.get(pageId));
+  }
+
+  /** A few frames of the current call stack, for diagnostics. */
+  private _shortStack(): string {
+    return (new Error().stack ?? '').split('\n').slice(3, 8).map((s) => s.trim()).join(' <- ');
+  }
+
   scheduleContentSave(pageId: string, content: string): void {
     const normalized = normalizeCanvasContentForStorage(content);
     const knownContent = this._knownStoredContent.get(pageId);
@@ -1317,8 +1391,25 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     // New content supersedes any pending retry (newer content wins)
     this._cancelRetry(pageId);
 
+    // The stored state this edit is based on — used to detect a competing
+    // external write (AI stream, sidebar merge) that landed before we fire.
+    const scheduleBase = knownContent;
+
     const timer = setTimeout(async () => {
       this._pendingSaves.delete(pageId);
+      // Drop the write if a different writer committed new content while this
+      // save sat in the debounce window — otherwise the editor's stale doc
+      // (e.g. the empty placeholder of a page the AI is still streaming into)
+      // clobbers the freshly-written content. The reload re-seeds the editor.
+      if (this._pendingSaveIsStale(pageId, scheduleBase, normalized.storedContent)) {
+        this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Saved, source: 'debounce' });
+        return;
+      }
+      if (this._autoSaveWouldBlankPopulated(pageId, normalized.storedContent)) {
+        console.warn(`[CanvasDataService] Blocked auto-save that would blank populated page "${pageId}" (stale/never-loaded editor doc). Caller: ${this._shortStack()}`);
+        this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Saved, source: 'debounce' });
+        return;
+      }
       // M77 Phase 9.1 — capture `expectedRevision` at FIRE TIME, not at
       // schedule time. Between schedule and fire (up to `_autoSaveMs`),
       // another writer (title/icon reconciler, AI page tool, etc.) may
@@ -1365,6 +1456,7 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
       content: normalized.storedContent,
       schemaVersion: normalized.schemaVersion,
       expectedRevision: this._knownRevisions.get(pageId),
+      baseContent: scheduleBase,
     });
     this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Pending, source: 'debounce' });
   }
@@ -1404,16 +1496,29 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
 
   private async _flushPendingEntry(
     pageId: string,
-    { timer, content }: { timer: ReturnType<typeof setTimeout>; content: string },
+    { timer, content, baseContent }: { timer: ReturnType<typeof setTimeout>; content: string; baseContent?: string },
   ): Promise<void> {
     clearTimeout(timer);
+    const normalized = normalizeCanvasContentForStorage(content);
+    // Same stale-write guard as the debounce timer: if another writer committed
+    // new content since this save was queued, flushing the editor's older doc
+    // would clobber it. (A flush-before-merge runs BEFORE the merge writes, so
+    // its base still matches and it proceeds normally.)
+    if (this._pendingSaveIsStale(pageId, baseContent, normalized.storedContent)) {
+      this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Saved, source: 'flush' });
+      return;
+    }
+    if (this._autoSaveWouldBlankPopulated(pageId, normalized.storedContent)) {
+      console.warn(`[CanvasDataService] Blocked flush that would blank populated page "${pageId}" (stale/never-loaded editor doc). Caller: ${this._shortStack()}`);
+      this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Saved, source: 'flush' });
+      return;
+    }
     // M77 Phase 9.1 — refresh expectedRevision at flush time instead of
     // trusting the value captured at schedule time. The pending entry's
     // captured revision could be stale by the time flush runs.
     const expectedRevision = this._knownRevisions.get(pageId);
     this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Flushing, source: 'flush' });
     try {
-      const normalized = normalizeCanvasContentForStorage(content);
       const page = await this.updatePage(pageId, {
         content: normalized.storedContent,
         contentSchemaVersion: normalized.schemaVersion,

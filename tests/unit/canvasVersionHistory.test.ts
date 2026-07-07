@@ -75,13 +75,21 @@ function createMockDb() {
       }
       return { error: null, changes: 1 };
     }
-    if (/^UPDATE pages SET .*content = \?.*WHERE id = \?$/is.test(sql)) {
-      // params: [content, schemaVersion, id]  (updated_at/revision are SQL literals)
-      const id = params[params.length - 1] as string;
+    if (/^UPDATE pages SET .*content = \?/is.test(sql)) {
+      // params: [content, schemaVersion, id] or [content, schemaVersion, id, expectedRevision]
+      // (updated_at/revision are SQL literals). The optimistic-concurrency guard
+      // appends `AND revision = ?`; a mismatch = 0 rows changed (conflict).
+      const content = params[0];
+      const schemaVersion = params[1];
+      const id = params[2] as string;
+      const expectedRevision = /revision = \?/i.test(sql) ? (params[3] as number) : undefined;
       const row = pages.get(id);
       if (!row) return { error: null, changes: 0 };
-      row.content = params[0];
-      row.content_schema_version = params[1];
+      if (expectedRevision !== undefined && (row.revision as number) !== expectedRevision) {
+        return { error: null, changes: 0 };
+      }
+      row.content = content;
+      row.content_schema_version = schemaVersion;
       row.revision = (row.revision as number) + 1;
       return { error: null, changes: 1 };
     }
@@ -151,6 +159,55 @@ describe('CanvasDataService — version history', () => {
       await service.flushCheckpoints();
     }
     expect(await service.listPageRevisions('p1')).toHaveLength(2); // oldest pruned
+  });
+
+  it('a stale debounced editor save does not clobber a newer AI content write', async () => {
+    // Repro for the "AI creates a page → close → reopen → content gone" bug:
+    // a freshly-opened page queues a debounced save of its (placeholder) doc,
+    // then an AI tool streams the real body in; the stale debounce must NOT
+    // overwrite it just because it fires last. Typing would reschedule with
+    // real content — which is why the bug "only happens without typing".
+    vi.useFakeTimers();
+    try {
+      await service.getPage('p1');                                  // editor loads → base = 'original'
+      service.scheduleContentSave('p1', doc('stale editor doc'));   // debounce queued
+      await service.updatePage('p1', { content: doc('AI streamed body'), editSource: 'ai' });
+      expect(env.pages.get('p1')!.content).toContain('AI streamed body');
+
+      await vi.advanceTimersByTimeAsync(2000);                      // debounce fires
+
+      expect(env.pages.get('p1')!.content).toContain('AI streamed body');
+      expect(env.pages.get('p1')!.content).not.toContain('stale editor doc');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('still saves a genuine edit when no competing write landed', async () => {
+    vi.useFakeTimers();
+    try {
+      await service.getPage('p1');                                  // base = 'original'
+      service.scheduleContentSave('p1', doc('user typed this'));
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(env.pages.get('p1')!.content).toContain('user typed this');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a background auto-save cannot silently blank a page that holds real content', async () => {
+    // Backstop for the "AI page content vanishes on close/reopen" bug: a stale or
+    // never-populated editor doc (e.g. an embed still on the empty placeholder)
+    // must not persist an empty doc over the page's real content.
+    vi.useFakeTimers();
+    try {
+      await service.getPage('p1');                                   // content = 'original'
+      service.scheduleContentSave('p1', JSON.stringify({ type: 'doc', content: [{ type: 'paragraph' }] }));
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(env.pages.get('p1')!.content).toContain('original');    // NOT blanked
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('restores a prior revision and snapshots the (uncaptured) current state first — non-destructive', async () => {
