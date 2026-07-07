@@ -46,24 +46,33 @@ const TEXTUAL_BLOCK_TYPES: ReadonlySet<string> = new Set([
   'toggleHeading',
 ]);
 
+/**
+ * List item wrappers. The drag handle resolves a list row to its `listItem` /
+ * `taskItem` (so you can drag/move the whole row), which means the block-action
+ * menu operates on these node types. They are content-bearing (each wraps a
+ * paragraph), so they participate in every content capability — the operations
+ * (color, turn-into) target the item's content, not the wrapper. Excluding
+ * them silently disabled Turn Into AND colour for every list row.
+ */
+export const LIST_ITEM_TYPES: ReadonlySet<string> = new Set(['listItem', 'taskItem']);
+
 /** Whether `nodeTypeName` blocks accept a text-color mark on their content. */
 export function canTakeTextColor(nodeTypeName: string): boolean {
-  return TEXTUAL_BLOCK_TYPES.has(nodeTypeName);
+  return TEXTUAL_BLOCK_TYPES.has(nodeTypeName) || LIST_ITEM_TYPES.has(nodeTypeName);
 }
 
 /** Whether `nodeTypeName` blocks accept a `backgroundColor` attribute. */
 export function canTakeBackgroundColor(nodeTypeName: string): boolean {
-  return BG_CAPABLE_TYPES.includes(nodeTypeName);
+  return BG_CAPABLE_TYPES.includes(nodeTypeName) || LIST_ITEM_TYPES.has(nodeTypeName);
 }
 
 /**
  * Whether `nodeTypeName` blocks can be the SOURCE of a turn-into operation.
- * Equivalent to "is a textual block": image/divider/etc. cannot be turned
- * into anything because turnBlockWithSharedStrategy needs text/inline
- * content to seed the new block.
+ * Textual blocks and list items qualify; image/divider/etc. cannot because
+ * turnBlockWithSharedStrategy needs text/inline content to seed the new block.
  */
 export function canTurnInto(nodeTypeName: string): boolean {
-  return TEXTUAL_BLOCK_TYPES.has(nodeTypeName);
+  return TEXTUAL_BLOCK_TYPES.has(nodeTypeName) || LIST_ITEM_TYPES.has(nodeTypeName);
 }
 
 // ── Linked-page block deletion hook ──────────────────────────────────────────
@@ -195,6 +204,24 @@ export function applyBackgroundColorToBlock(
   color: string | null,
 ): void {
   const { tr } = editor.state;
+
+  // List items carry no `backgroundColor` attribute (not in BLOCK_BG_TYPES),
+  // so paint their bg-capable child blocks instead — the same content the
+  // handle-resolved list row visually represents. Mirrors how text color
+  // already colours the row's inline text via a range.
+  if (LIST_ITEM_TYPES.has(node.type.name)) {
+    let childPos = pos + 1; // position of the item's first child
+    node.forEach((child: PMNode) => {
+      if (BG_CAPABLE_TYPES.includes(child.type.name)) {
+        tr.setNodeMarkup(childPos, undefined, { ...child.attrs, backgroundColor: color });
+      }
+      childPos += child.nodeSize;
+    });
+    editor.view.dispatch(tr);
+    editor.commands.focus();
+    return;
+  }
+
   tr.setNodeMarkup(pos, undefined, { ...node.attrs, backgroundColor: color });
   editor.view.dispatch(tr);
   editor.commands.focus();

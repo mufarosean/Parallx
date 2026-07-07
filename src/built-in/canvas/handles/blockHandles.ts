@@ -732,6 +732,15 @@ export class BlockHandlesController {
     clientX: number,
     clientY: number,
   ): { pos: number; node: any } | null {
+    // Atom blocks (mathBlock) render non-ProseMirror DOM (KaTeX), which
+    // posAtCoords cannot map back to a document position. Inside a column the
+    // generic resolution then collapses onto the column wrapper (resolved to
+    // null → no handle), so a moved-into-a-column equation loses its handle.
+    // Resolve such atoms straight from their NodeView root, which IS PM-mapped,
+    // so they get a handle in ANY container (top level, column, callout, …).
+    const atomTarget = this._resolveAtomBlockAtCoords(view, clientX, clientY);
+    if (atomTarget) return atomTarget;
+
     const isListWrapper = (node: any): boolean => {
       const name = node?.type?.name;
       return name === 'bulletList' || name === 'orderedList' || name === 'taskList';
@@ -765,6 +774,37 @@ export class BlockHandlesController {
       if (resolved) return { pos: resolved.pos, node: resolved.node };
     }
 
+    return null;
+  }
+
+  /**
+   * Resolve an atom block (currently mathBlock — a leaf node whose NodeView
+   * renders non-PM DOM) directly from the element under the cursor. Atom
+   * NodeView roots ARE mapped by ProseMirror, so posAtDOM gives a reliable
+   * position even when posAtCoords over the inner KaTeX DOM does not, and even
+   * when the atom is nested inside a column/callout. Returns null when the
+   * cursor isn't over such an atom, so the caller falls back to generic
+   * resolution.
+   */
+  private _resolveAtomBlockAtCoords(
+    view: any,
+    clientX: number,
+    clientY: number,
+  ): { pos: number; node: any } | null {
+    const el = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
+    const atomEl = el?.closest('[data-type="mathBlock"]') as HTMLElement | null;
+    if (!atomEl || !view.dom.contains(atomEl)) return null;
+    try {
+      const pos = view.posAtDOM(atomEl, 0);
+      const direct = view.state.doc.nodeAt(pos);
+      if (direct && direct.isAtom && direct.type.name !== 'column' && direct.type.name !== 'columnList') {
+        return { pos, node: direct };
+      }
+      const resolved = this._resolveBlockFromDocPos(view, pos);
+      if (resolved && resolved.node?.isAtom) {
+        return { pos: resolved.pos, node: resolved.node };
+      }
+    } catch { /* fall through to generic resolution */ }
     return null;
   }
 

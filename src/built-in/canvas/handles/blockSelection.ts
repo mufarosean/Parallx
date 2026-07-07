@@ -14,7 +14,7 @@
 import type { Editor } from '@tiptap/core';
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
-import { resolveBlockAncestry, normalizeAllColumnLists, notifyLinkedPageBlocksDeleted } from './handleRegistry.js';
+import { resolveMovableBlock, normalizeAllColumnLists, notifyLinkedPageBlocksDeleted } from './handleRegistry.js';
 import { isDevMode } from '../../../platform/devMode.js';
 
 // ── Decoration Plugin ───────────────────────────────────────────────────────
@@ -230,31 +230,27 @@ export class BlockSelectionController {
     const anchor = this._anchor !== null && this._selected.has(this._anchor)
       ? this._anchor
       : Math.min(...this._selected);
-    const $anchor = editor.state.doc.resolve(anchor);
-    const $target = editor.state.doc.resolve(pos);
 
-    // Find parent container for both positions
-    const anchorCtx = resolveBlockAncestry($anchor);
-    const targetCtx = resolveBlockAncestry($target);
+    // Resolve each block's DIRECT parent container (the node whose children
+    // include the block). For a nested list item this is its sub-list — NOT
+    // the nearest page-container. The former resolveBlockAncestry() walk
+    // stopped at doc/column, so range-selecting nested list items collapsed
+    // to sibling indices at the DOCUMENT level, i.e. the whole top-level list.
+    const anchorCtx = this._containerCtx(anchor);
+    const targetCtx = this._containerCtx(pos);
 
-    // Only extend within the same parent container
-    if (anchorCtx.containerDepth !== targetCtx.containerDepth) {
+    // Only extend across blocks that share the same direct parent container.
+    if (!anchorCtx || !targetCtx || anchorCtx.parent !== targetCtx.parent) {
       this.select(pos);
       return;
     }
 
-    const containerDepth = anchorCtx.containerDepth;
-    const container = containerDepth === 0 ? editor.state.doc : $anchor.node(containerDepth);
-    const parentPos = containerDepth === 0 ? 0 : $anchor.before(containerDepth);
-
-    // Collect all block positions within the range
-    const anchorIndex = $anchor.index(containerDepth);
-    const targetIndex = $target.index(containerDepth);
-    const fromIndex = Math.min(anchorIndex, targetIndex);
-    const toIndex = Math.max(anchorIndex, targetIndex);
+    const container = anchorCtx.parent;
+    const fromIndex = Math.min(anchorCtx.index, targetCtx.index);
+    const toIndex = Math.max(anchorCtx.index, targetCtx.index);
 
     this._selected.clear();
-    let offset = parentPos + (containerDepth === 0 ? 0 : 1); // skip container open token
+    let offset = anchorCtx.contentStart;
     for (let i = 0; i < container.childCount; i++) {
       if (i >= fromIndex && i <= toIndex) {
         this._selected.add(offset);
@@ -269,6 +265,36 @@ export class BlockSelectionController {
   }
 
   /**
+   * Resolve the sibling-container context for the block whose "before"
+   * position is `pos`. The container is the block's DIRECT parent: resolving
+   * a block's before-position lands INSIDE that parent with `.index()` = the
+   * block's sibling index and `.depth` = the container depth.
+   *
+   * This is the correct notion of "container" for selection/movement: it
+   * follows list nesting (the parent is the immediate sub-list, callout, or
+   * column), unlike resolveBlockAncestry() which walks up to the nearest
+   * page-container and treats an entire top-level list as one block.
+   */
+  private _containerCtx(pos: number): {
+    parent: any;
+    contentStart: number;
+    containerBefore: number | null;
+    index: number;
+  } | null {
+    const editor = this._host.editor;
+    if (!editor) return null;
+    if (pos < 0 || pos > editor.state.doc.content.size) return null;
+    const $pos = editor.state.doc.resolve(pos);
+    const depth = $pos.depth;
+    return {
+      parent: $pos.parent,
+      contentStart: $pos.start(depth),
+      containerBefore: depth === 0 ? null : $pos.before(depth),
+      index: $pos.index(depth),
+    };
+  }
+
+  /**
    * Select the block at the current cursor position (for Esc key).
    */
   selectAtCursor(): boolean {
@@ -276,15 +302,14 @@ export class BlockSelectionController {
     if (!editor) return false;
 
     const { $head } = editor.state.selection;
-    const { blockDepth } = resolveBlockAncestry($head);
+    // resolveMovableBlock finds the innermost list item (or the block itself),
+    // matching what the drag handle selects. The former resolveBlockAncestry
+    // blockDepth resolved a nested list item up to the whole top-level list.
+    const movable = resolveMovableBlock($head);
+    if (!movable) return false;
+    if (!editor.state.doc.nodeAt(movable.pos)) return false;
 
-    if ($head.depth < blockDepth) return false;
-
-    const blockPos = $head.before(blockDepth);
-    const node = editor.state.doc.nodeAt(blockPos);
-    if (!node) return false;
-
-    this.select(blockPos);
+    this.select(movable.pos);
     return true;
   }
 
@@ -506,15 +531,18 @@ export class BlockSelectionController {
 
     const sorted = this.positions; // sorted asc
 
-    // Resolve the parent container of the first selected block
-    const $first = editor.state.doc.resolve(sorted[0]);
-    const { containerDepth } = resolveBlockAncestry($first);
-    const container = containerDepth === 0 ? editor.state.doc : $first.node(containerDepth);
-    const parentPos = containerDepth === 0 ? 0 : $first.before(containerDepth);
+    // Resolve the DIRECT parent container of the first selected block (the
+    // block's sibling list/column/callout — see _containerCtx). Using the
+    // page-container depth here would move nested list items at the wrong
+    // level once nested multi-selection became possible.
+    const ctx = this._containerCtx(sorted[0]);
+    if (!ctx) return false;
+    const container = ctx.parent;
+    const parentPos = ctx.containerBefore;
 
     // Build a list of child positions in the container
     const childPositions: number[] = [];
-    let off = parentPos + (containerDepth === 0 ? 0 : 1);
+    let off = ctx.contentStart;
     for (let i = 0; i < container.childCount; i++) {
       childPositions.push(off);
       off += container.child(i).nodeSize;
@@ -574,18 +602,19 @@ export class BlockSelectionController {
     // will auto-clear.  We immediately re-select at the new positions.
     editor.view.dispatch(tr);
 
-    // Re-walk the (now updated) container to find positions at newIndices
-    const newContainer = containerDepth === 0
+    // Re-walk the (now updated) container to find positions at newIndices.
+    // The swap reorders siblings within the same container without changing
+    // its size or position, so containerBefore / contentStart stay valid.
+    const newContainer = parentPos === null
       ? editor.state.doc
       : editor.state.doc.nodeAt(parentPos);
     if (!newContainer) { this.clear(); return true; }
 
-    const resolvedContainer = containerDepth === 0 ? editor.state.doc : newContainer;
     const newChildPositions: number[] = [];
-    let newOff = parentPos + (containerDepth === 0 ? 0 : 1);
-    for (let i = 0; i < resolvedContainer.childCount; i++) {
+    let newOff = ctx.contentStart;
+    for (let i = 0; i < newContainer.childCount; i++) {
       newChildPositions.push(newOff);
-      newOff += resolvedContainer.child(i).nodeSize;
+      newOff += newContainer.child(i).nodeSize;
     }
 
     const reselect = newIndices
@@ -622,19 +651,14 @@ export class BlockSelectionController {
    * Stays within the same parent container. Returns null if at boundary.
    */
   private _findAdjacentBlockPos(pos: number, direction: 'up' | 'down'): number | null {
-    const editor = this._host.editor;
-    if (!editor) return null;
-
-    const $pos = editor.state.doc.resolve(pos);
-    const { containerDepth } = resolveBlockAncestry($pos);
-    const container = containerDepth === 0 ? editor.state.doc : $pos.node(containerDepth);
-    const parentPos = containerDepth === 0 ? 0 : $pos.before(containerDepth);
-    const index = $pos.index(containerDepth);
+    const ctx = this._containerCtx(pos);
+    if (!ctx) return null;
+    const { parent: container, contentStart, index } = ctx;
 
     if (direction === 'up') {
       if (index <= 0) return null; // already first child
       // Walk to the previous sibling's start position
-      let offset = parentPos + (containerDepth === 0 ? 0 : 1);
+      let offset = contentStart;
       for (let i = 0; i < index - 1; i++) {
         offset += container.child(i).nodeSize;
       }
@@ -642,7 +666,7 @@ export class BlockSelectionController {
     } else {
       if (index >= container.childCount - 1) return null; // already last child
       // Walk to the next sibling's start position
-      let offset = parentPos + (containerDepth === 0 ? 0 : 1);
+      let offset = contentStart;
       for (let i = 0; i <= index; i++) {
         offset += container.child(i).nodeSize;
       }

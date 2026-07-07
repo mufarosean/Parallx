@@ -14,6 +14,17 @@ export function turnBlockWithSharedStrategy(
   targetType: string,
   attrs?: any,
 ): void {
+  const srcType = node.type.name;
+
+  // List rows resolve to their `listItem` / `taskItem`. Those can't be replaced
+  // in place (a list may only contain items), so they get list-aware handling:
+  // convert the list type directly, or lift the row out to a normal block and
+  // then run the standard transform on it.
+  if (srcType === 'listItem' || srcType === 'taskItem') {
+    turnListItemInto(editor, pos, targetType, attrs);
+    return;
+  }
+
   if (targetType === 'columnList') {
     const columnCount = Number(attrs?.columns ?? attrs?.count ?? 2);
     const converted = turnBlockIntoColumns(editor, pos, node, columnCount);
@@ -22,7 +33,6 @@ export function turnBlockWithSharedStrategy(
     }
   }
 
-  const srcType = node.type.name;
   const simpleTextBlock = ['paragraph', 'heading'].includes(srcType);
   const simpleTarget = ['paragraph', 'heading', 'bulletList', 'orderedList', 'taskList', 'blockquote', 'codeBlock'].includes(targetType);
 
@@ -64,6 +74,66 @@ export function turnBlockWithSharedStrategy(
 
 // turnBlockIntoColumns lives in columnCreation.ts — re-exported through
 // the facade above.  blockTransforms consumes it for "Turn Into → Columns".
+
+const LIST_TARGET_TYPES = new Set(['bulletList', 'orderedList', 'taskList']);
+
+/**
+ * Turn a list row (`listItem` / `taskItem`) into `targetType`.
+ *
+ * A list row can't be swapped in place (the list schema only permits items),
+ * so we reuse Tiptap's list-aware commands, which already own the surgery:
+ *   • target is another list type → toggle it (Tiptap rewraps the row);
+ *   • any other target → toggle OFF the current list (lifting the row's content
+ *     to a normal block), then run the standard transform on that block.
+ *
+ * `pos` is the row's "before" position; `pos + 2` lands inside its first text
+ * block (item → paragraph → text), which is what the list commands act on.
+ */
+function turnListItemInto(
+  editor: Editor,
+  pos: number,
+  targetType: string,
+  attrs?: any,
+): void {
+  const insidePos = pos + 2;
+  const currentListType = editor.state.doc.resolve(pos).parent.type.name;
+
+  const toggleList = (chain: any, listType: string): any => {
+    if (listType === 'bulletList') return chain.toggleBulletList();
+    if (listType === 'orderedList') return chain.toggleOrderedList();
+    return chain.toggleTaskList();
+  };
+
+  // Convert to another list type — a single toggle rewraps the row.
+  if (LIST_TARGET_TYPES.has(targetType)) {
+    if (targetType === currentListType) return; // already this type
+    toggleList(editor.chain().setTextSelection(insidePos), targetType).focus().run();
+    return;
+  }
+
+  // Non-list target: lift the row out of its list by toggling the current list
+  // off, which converts the row's content into a paragraph at the list's level.
+  if (!LIST_TARGET_TYPES.has(currentListType)) return;
+  const lifted = toggleList(editor.chain().setTextSelection(insidePos), currentListType).run();
+  if (!lifted) return;
+
+  if (targetType === 'paragraph') {
+    editor.commands.focus();
+    return;
+  }
+
+  // Re-resolve the now-lifted paragraph (holds the selection) and run the
+  // standard transform on it — this covers headings, quote, code, callout,
+  // toggle, math, and columns without duplicating their logic here.
+  const $lift = editor.state.selection.$from;
+  const liftedPos = $lift.before($lift.depth);
+  const liftedNode = editor.state.doc.nodeAt(liftedPos);
+  if (!liftedNode || liftedNode.type.name !== 'paragraph') {
+    editor.commands.focus();
+    return;
+  }
+  turnBlockWithSharedStrategy(editor, liftedPos, liftedNode, targetType, attrs);
+}
 
 // ── Private helpers ─────────────────────────────────────────────────────────
 

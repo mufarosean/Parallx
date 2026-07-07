@@ -201,6 +201,29 @@ export class BlockMarqueeController {
         return;
       }
 
+      // List items are selectable blocks that ALSO contain nested sub-lists.
+      // Hit-test the item's OWN line (its first child block), not the full
+      // <li> rect — the <li> spans all nested descendants, so testing it would
+      // grab the parent whenever the marquee covers any nested row. Then
+      // descend into the item's nested lists so those rows are hit-tested on
+      // their own lines. This is what makes box-selecting N nested rows select
+      // exactly those rows instead of collapsing to the parent item.
+      if (name === 'listItem' || name === 'taskItem') {
+        const lineRect = this._listItemLineRect(view, absPos, node);
+        if (lineRect && this._rectsOverlap(marqueeRect, lineRect)) {
+          out.push(absPos);
+        }
+        let childPos = absPos + 1; // the item's content start
+        node.forEach((child: any) => {
+          const cName: string = child.type.name;
+          if (cName === 'bulletList' || cName === 'orderedList' || cName === 'taskList') {
+            this._collectBlocks(child, childPos + 1, view, marqueeRect, out);
+          }
+          childPos += child.nodeSize;
+        });
+        return;
+      }
+
       // Selectable block — hit-test against marquee
       try {
         const dom = view.nodeDOM(absPos) as HTMLElement | null;
@@ -210,6 +233,32 @@ export class BlockMarqueeController {
         }
       } catch { /* unmapped node — skip */ }
     });
+  }
+
+  /**
+   * The bounding rect of a list item's OWN line — the DOM rect of its first
+   * child block (the item's paragraph/heading), which excludes any nested
+   * sub-list beneath it. Falls back to the first line-height band of the whole
+   * item if the child DOM can't be resolved.
+   */
+  private _listItemLineRect(view: any, itemPos: number, itemNode: any): DOMRect | null {
+    if (itemNode.childCount > 0) {
+      try {
+        const firstChildDom = view.nodeDOM(itemPos + 1) as HTMLElement | null;
+        if (firstChildDom && firstChildDom.nodeType === Node.ELEMENT_NODE) {
+          return firstChildDom.getBoundingClientRect();
+        }
+      } catch { /* fall through */ }
+    }
+    try {
+      const liDom = view.nodeDOM(itemPos) as HTMLElement | null;
+      if (liDom && liDom.nodeType === Node.ELEMENT_NODE) {
+        const r = liDom.getBoundingClientRect();
+        const lineH = parseFloat(window.getComputedStyle(liDom).lineHeight) || r.height;
+        return new DOMRect(r.left, r.top, r.width, Math.min(lineH, r.height));
+      }
+    } catch { /* unmapped — skip */ }
+    return null;
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────
