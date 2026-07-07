@@ -21,10 +21,26 @@
   #recBtn:disabled { opacity: 0.6; cursor: default; }
   #recBtn.recording { background: #555; }
   #recDot { width: 9px; height: 9px; border-radius: 50%; background: #fff; }
-  #audioBtn { background: none; border: none; color: #ddd; cursor: pointer; font-size: 14px; padding: 2px 4px; line-height: 1; }
-  #audioBtn.muted { opacity: 0.4; }
+  #audioBtn { display: inline-flex; align-items: center; background: none; border: none; color: #ddd; cursor: pointer; padding: 3px 4px; line-height: 0; border-radius: 4px; }
+  #audioBtn:hover { background: rgba(255,255,255,0.08); }
+  #audioBtn.muted { color: #888; }
   #audioBtn:disabled { cursor: default; }
-  #hint { opacity: 0.55; }
+  #audioBtn svg { display: block; }
+  #sizeBtn { display: inline-flex; align-items: center; gap: 4px; background: none; border: none; color: #ddd; cursor: pointer; font-size: 12px; padding: 3px 7px; border-radius: 4px; }
+  #sizeBtn:hover { background: rgba(255,255,255,0.08); }
+  #sizeBtn.hidden { display: none; }
+  #sizeBtn .caret { opacity: 0.55; font-size: 9px; }
+  #sizePanel { position: fixed; left: 10px; bottom: 50px; z-index: 10; background: #1c1c1e; border: 1px solid #000;
+    border-radius: 7px; padding: 4px; box-shadow: 0 6px 22px rgba(0,0,0,0.55); display: none; flex-direction: column;
+    max-height: calc(100vh - 56px); overflow-y: auto; min-width: 158px; }
+  #sizePanel.open { display: flex; }
+  #sizePanel .hdr { color: #7c7c80; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; padding: 5px 8px 3px; }
+  #sizePanel button { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; background: none;
+    border: none; color: #eee; cursor: pointer; font-size: 12px; padding: 6px 8px; border-radius: 4px; text-align: left; width: 100%; }
+  #sizePanel button:hover { background: #3b82f6; color: #fff; }
+  #sizePanel button small { opacity: 0.5; font-size: 11px; font-variant-numeric: tabular-nums; }
+  #sizePanel button:hover small { opacity: 0.85; }
+  #hint { opacity: 0.55; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #hint.warn { opacity: 0.95; color: #fbbf24; }
   .spacer { flex: 1; }
   #size { font-variant-numeric: tabular-nums; opacity: 0.85; }
@@ -37,12 +53,14 @@
     <div id="capture"></div>
     <div id="toolbar">
       <button id="recBtn"><span id="recDot"></span><span id="recLabel">Record</span></button>
-      <button id="audioBtn" title="Audio">&#128266;</button>
+      <button id="audioBtn" title="Audio"></button>
+      <button id="sizeBtn" title="Preset sizes">Size<span class="caret">&#9662;</span></button>
       <span id="hint"></span>
       <span class="spacer"></span>
       <span id="size">—</span>
       <button id="closeBtn" title="Close">&#10005;</button>
     </div>
+    <div id="sizePanel"></div>
   </div>
   <script>
     const api = window.recorderFrame || {};
@@ -52,7 +70,13 @@
     const sizeEl = document.getElementById('size');
     const hintEl = document.getElementById('hint');
     const audioBtn = document.getElementById('audioBtn');
-    hintEl.textContent = (api.fps || 30) + ' fps · edge: move · corner: resize';
+    const sizeBtn = document.getElementById('sizeBtn');
+    const sizePanel = document.getElementById('sizePanel');
+    hintEl.textContent = (api.fps || 30) + ' fps · drag edge to move · corner to resize';
+
+    // Crisp monochrome speaker glyphs (no colour emoji).
+    const SPK_ON  = '<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 9v6h4l5 4V5L8 9H4z"/><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" d="M16.4 8.6a5 5 0 010 6.8"/></svg>';
+    const SPK_OFF = '<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 9v6h4l5 4V5L8 9H4z"/><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" d="M16 9.5l5 5M21 9.5l-5 5"/></svg>';
 
     // Audio toggle — only shown when an audio mode is configured. Default on.
     let audioOn = api.audio && api.audio !== 'off';
@@ -60,15 +84,70 @@
       audioBtn.style.display = 'none';
     } else {
       const label = api.audio === 'mic' ? 'Microphone' : 'System audio';
+      audioBtn.innerHTML = SPK_ON;
       audioBtn.title = label + ': on — click to mute';
       audioBtn.addEventListener('click', () => {
         if (recording) return;
         audioOn = !audioOn;
-        audioBtn.innerHTML = audioOn ? '&#128266;' : '&#128263;';
+        audioBtn.innerHTML = audioOn ? SPK_ON : SPK_OFF;
         audioBtn.classList.toggle('muted', !audioOn);
         audioBtn.title = label + (audioOn ? ': on — click to mute' : ': muted — click to enable');
       });
     }
+
+    // ── Preset sizes ──────────────────────────────────────────────────────
+    // One-click standard recording resolutions, so a user doesn't have to
+    // hand-resize. Presets are OUTPUT pixels; the on-screen box is derived by
+    // dividing out the display scale (devicePixelRatio) so the RECORDING lands
+    // at the requested resolution regardless of Windows display scaling.
+    const PRESETS = [
+      { g: 'Landscape (16:9)', items: [
+        { label: '480p',  w: 854,  h: 480 },
+        { label: '720p',  w: 1280, h: 720 },
+        { label: '1080p', w: 1920, h: 1080 },
+        { label: '1440p', w: 2560, h: 1440 },
+        { label: '4K',    w: 3840, h: 2160 },
+      ]},
+      { g: 'Other', items: [
+        { label: 'Square',   w: 1080, h: 1080 },
+        { label: 'Vertical', w: 1080, h: 1920 },
+      ]},
+    ];
+
+    function applyPreset(outW, outH) {
+      const dpr = window.devicePixelRatio || 1;
+      let winW = Math.round(outW / dpr) + BORDER * 2;
+      let winH = Math.round(outH / dpr) + TOOLBAR + BORDER * 2;
+      // Can't capture more pixels than the screen has — clamp to the work area.
+      const availW = window.screen.availWidth || window.innerWidth;
+      const availH = window.screen.availHeight || window.innerHeight;
+      const availX = window.screen.availLeft || 0, availY = window.screen.availTop || 0;
+      winW = Math.max(MIN_W + BORDER * 2, Math.min(winW, availW));
+      winH = Math.max(MIN_H + TOOLBAR + BORDER * 2, Math.min(winH, availH));
+      // Keep the current top-left, nudged fully on-screen.
+      let x = Math.max(availX, Math.min(window.screenX, availX + availW - winW));
+      let y = Math.max(availY, Math.min(window.screenY, availY + availH - winH));
+      api.setBounds({ x: Math.round(x), y: Math.round(y), width: Math.round(winW), height: Math.round(winH) });
+      sizePanel.classList.remove('open');
+    }
+
+    for (const group of PRESETS) {
+      const hdr = document.createElement('div'); hdr.className = 'hdr'; hdr.textContent = group.g;
+      sizePanel.appendChild(hdr);
+      for (const p of group.items) {
+        const b = document.createElement('button');
+        b.innerHTML = '<span>' + p.label + '</span><small>' + p.w + ' × ' + p.h + '</small>';
+        b.addEventListener('click', () => applyPreset(p.w, p.h));
+        sizePanel.appendChild(b);
+      }
+    }
+
+    sizeBtn.addEventListener('click', (e) => { e.stopPropagation(); sizePanel.classList.toggle('open'); });
+    document.addEventListener('mousedown', (e) => {
+      if (sizePanel.classList.contains('open') && !sizePanel.contains(e.target) && !sizeBtn.contains(e.target)) {
+        sizePanel.classList.remove('open');
+      }
+    }, true);
 
     // ── Audio capture (in-renderer; works for ANY output incl. Bluetooth) ──
     // 'system' → getDisplayMedia with main returning audio:'loopback'; we keep
@@ -129,9 +208,15 @@
     let recording = false, dragging = false, ignoring = false;
 
     function updateSize() {
-      const w = Math.max(0, window.innerWidth - BORDER * 2);
-      const h = Math.max(0, window.innerHeight - TOOLBAR - BORDER * 2);
+      // Show the OUTPUT resolution (the recorded pixels) = framed area × display
+      // scale, forced even to match the encoder. This is what actually lands in
+      // the file, and it lines up with the preset labels.
+      const dpr = window.devicePixelRatio || 1;
+      let w = Math.max(0, Math.round((window.innerWidth - BORDER * 2) * dpr));
+      let h = Math.max(0, Math.round((window.innerHeight - TOOLBAR - BORDER * 2) * dpr));
+      w -= w % 2; h -= h % 2;
       sizeEl.textContent = w + ' × ' + h;
+      sizeEl.title = 'Recording resolution (pixels)';
     }
     window.addEventListener('resize', updateSize);
     updateSize();
@@ -152,8 +237,8 @@
 
     document.addEventListener('mousemove', (e) => {
       if (dragging) return;
-      // Buttons always win (clickable + default cursor).
-      if (e.target.closest && e.target.closest('button')) { setIgnore(false); document.body.style.cursor = 'default'; return; }
+      // Buttons + the open preset panel always win (clickable + default cursor).
+      if (e.target.closest && (e.target.closest('button') || e.target.closest('#sizePanel'))) { setIgnore(false); document.body.style.cursor = 'default'; return; }
       if (recording) {
         // Only the toolbar stays interactive (Stop); the rest is click-through.
         setIgnore(e.clientY < window.innerHeight - TOOLBAR);
@@ -216,6 +301,9 @@
         capEl.classList.add('recording');
         recBtn.classList.add('recording');
         recLabel.textContent = 'Stop';
+        // Can't change the frame size mid-recording — hide the preset picker.
+        sizePanel.classList.remove('open');
+        sizeBtn.classList.add('hidden');
         if (audioOn && api.audio !== 'off' && !audioStarted) {
           hintEl.textContent = 'Audio capture unavailable — recording video only.';
           hintEl.classList.add('warn');
@@ -248,6 +336,7 @@
         recBtn.classList.remove('recording');
         recLabel.textContent = 'Record';
         recBtn.disabled = false;
+        sizeBtn.classList.remove('hidden');
         stopAudioCapture(false);
       }
     });
