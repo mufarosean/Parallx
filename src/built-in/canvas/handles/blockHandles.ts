@@ -15,6 +15,7 @@
 import type { Editor } from '@tiptap/core';
 import { Fragment, Slice } from '@tiptap/pm/model';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
+import { rafThrottle } from '../../../platform/rafThrottle.js';
 import type { BlockSelectionController } from './handleRegistry.js';
 import type { IBlockActionMenu } from './handleRegistry.js';
 import {
@@ -50,6 +51,7 @@ export class BlockHandlesController {
 
   // Pointer tracking
   private _lastPointerClient: { x: number; y: number } | null = null;
+  private _lastMoveTarget: HTMLElement | null = null;
   private _scrollSyncRaf: number | null = null;
 
   // Block resolution — set during mousemove, read on click/drag.
@@ -210,19 +212,32 @@ export class BlockHandlesController {
   };
 
   private readonly _onEditorMouseMove = (event: MouseEvent): void => {
+    // Only cheap bookkeeping runs per event. The expensive resolve + reposition
+    // (posAtCoords + getBoundingClientRect + getComputedStyle — all forced
+    // layout) is coalesced to one run per animation frame, since mousemove
+    // fires far more often than the display refreshes.
+    this._lastPointerClient = { x: event.clientX, y: event.clientY };
+    this._lastMoveTarget = event.target as HTMLElement | null;
+    this._processMoveThrottled();
+  };
+
+  /** rAF-coalesced body of the mousemove handler — see `_onEditorMouseMove`. */
+  private readonly _processMoveThrottled = rafThrottle((): void => this._processMove());
+
+  private _processMove(): void {
     const editor = this._host.editor;
     if (!editor) return;
     const view = editor.view;
-    this._lastPointerClient = { x: event.clientX, y: event.clientY };
-    const target = event.target as HTMLElement | null;
-    if (!target) return;
+    const pt = this._lastPointerClient;
+    const target = this._lastMoveTarget;
+    if (!pt || !target) return;
     if (!view.dom.contains(target)) return;
     if (this._isIgnoredOverlayElement(target)) return;
     if (!editor.isEditable) return;
 
     if (
-      this._isPointerWithinStickyHandleZone(event.clientX, event.clientY) &&
-      !this._shouldRefreshStickyContainerTarget(view, event.clientX, event.clientY)
+      this._isPointerWithinStickyHandleZone(pt.x, pt.y) &&
+      !this._shouldRefreshStickyContainerTarget(view, pt.x, pt.y)
     ) {
       return;
     }
@@ -234,7 +249,7 @@ export class BlockHandlesController {
     }
 
     // ── Resolve block at mouse position ──
-    const resolved = this._resolveBlockAtCoords(view, event.clientX, event.clientY);
+    const resolved = this._resolveBlockAtCoords(view, pt.x, pt.y);
     if (!resolved) {
       this._hideHandle();
       return;
@@ -242,7 +257,7 @@ export class BlockHandlesController {
 
     // ── Position handle & + button ──
     this._positionHandleForBlock(resolved.pos, resolved.node, view);
-  };
+  }
 
   private readonly _onEditorMouseLeave = (e: MouseEvent): void => {
     const related = e.relatedTarget as HTMLElement | null;
@@ -1430,10 +1445,12 @@ export class BlockHandlesController {
       window.cancelAnimationFrame(this._scrollSyncRaf);
       this._scrollSyncRaf = null;
     }
+    this._processMoveThrottled.dispose();
     this._setHandleInteractionLock(false);
     if (this._blockAddBtn) { this._blockAddBtn.remove(); this._blockAddBtn = null; }
     if (this._dragHandleEl) { this._dragHandleEl.remove(); this._dragHandleEl = null; }
     this._lastPointerClient = null;
+    this._lastMoveTarget = null;
     this._resolvedBlockPos = null;
   }
 }

@@ -10,6 +10,7 @@
 
 import { IDisposable } from '../platform/lifecycle.js';
 import { Emitter } from '../platform/events.js';
+import { rafThrottle } from '../platform/rafThrottle.js';
 import { URI } from '../platform/uri.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import {
@@ -107,6 +108,10 @@ export interface ParallxApiObject {
   readonly views: {
     registerViewProvider(viewId: string, provider: { createView(container: HTMLElement): IDisposable }, options?: { name?: string; icon?: string; defaultContainerId?: string; when?: string }): IDisposable;
     setBadge(containerId: string, badge: { count?: number; dot?: boolean } | undefined): void;
+  };
+  /** Shared UI performance helpers (see parallx.d.ts `ui` namespace). */
+  readonly ui: {
+    rafThrottle<A extends unknown[]>(fn: (...args: A) => void): ((...args: A) => void) & { dispose(): void; flush(): void };
   };
   readonly commands: {
     registerCommand(id: string, handler: (...args: unknown[]) => unknown | Promise<unknown>): IDisposable;
@@ -457,6 +462,14 @@ export function createToolApi(
         viewsBridge.registerViewProvider(viewId, provider, options),
       setBadge: (containerId, badge) =>
         viewsBridge.setBadge(containerId, badge),
+    }),
+
+    // Shared UI performance primitives. Extensions building editor pages/panes
+    // should route their own mousemove/scroll/resize handlers through
+    // rafThrottle — the SAME helper the built-in workbench uses — so hot-path
+    // layout work is coalesced to one run per frame everywhere.
+    ui: Object.freeze({
+      rafThrottle,
     }),
 
     commands: Object.freeze({

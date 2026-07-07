@@ -14,6 +14,7 @@ import { EditorPane, type EditorPaneViewState } from '../../editor/editorPane.js
 import type { IEditorInput } from '../../editor/editorInput.js';
 import { DisposableStore } from '../../platform/lifecycle.js';
 import { Emitter, Event } from '../../platform/events.js';
+import { rafThrottle } from '../../platform/rafThrottle.js';
 import { FileEditorInput } from './fileEditorInput.js';
 import { UntitledEditorInput } from './untitledEditorInput.js';
 import { FindReplaceWidget } from '../../ui/findReplaceWidget.js';
@@ -112,8 +113,10 @@ export class TextEditorPane extends EditorPane {
     this._textarea.addEventListener('click', this._updateCursorPosition);
     this._textarea.addEventListener('select', this._updateCursorPosition);
 
-    // Scroll sync: gutter follows textarea vertical scroll
-    this._textarea.addEventListener('scroll', this._syncGutterScroll);
+    // Scroll: keep the gutter and the minimap slider in sync. Both reads/writes
+    // are coalesced to one run per frame — scroll fires far more often, and per
+    // event this forced layout on a large file (two separate listeners before).
+    this._textarea.addEventListener('scroll', this._onTextareaScroll);
 
     this._editorBody.appendChild(this._textarea);
 
@@ -141,7 +144,6 @@ export class TextEditorPane extends EditorPane {
 
     // Minimap interactions
     this._minimapContainer.addEventListener('mousedown', this._onMinimapMouseDown);
-    this._textarea.addEventListener('scroll', this._updateMinimapSlider);
 
     // Selection changes → redraw minimap to show highlight
     this._textarea.addEventListener('select', this._renderMinimap.bind(this));
@@ -511,6 +513,12 @@ export class TextEditorPane extends EditorPane {
     this._syncGutterScroll();
   }
 
+  /** Single rAF-coalesced textarea scroll handler (gutter + minimap slider). */
+  private readonly _onTextareaScroll = rafThrottle((): void => {
+    this._syncGutterScroll();
+    this._updateMinimapSlider();
+  });
+
   /** Keep gutter scroll in sync with textarea. */
   private readonly _syncGutterScroll = (): void => {
     if (this._gutter && this._textarea) {
@@ -820,8 +828,8 @@ export class TextEditorPane extends EditorPane {
     this._textarea?.removeEventListener('keyup', this._updateCursorPosition);
     this._textarea?.removeEventListener('click', this._updateCursorPosition);
     this._textarea?.removeEventListener('select', this._updateCursorPosition);
-    this._textarea?.removeEventListener('scroll', this._syncGutterScroll);
-    this._textarea?.removeEventListener('scroll', this._updateMinimapSlider);
+    this._textarea?.removeEventListener('scroll', this._onTextareaScroll);
+    this._onTextareaScroll.dispose();
     this._textarea?.removeEventListener('contextmenu', this._onContextMenu);
     this._gutter?.removeEventListener('mousedown', this._onGutterClick);
     this._minimapContainer?.removeEventListener('mousedown', this._onMinimapMouseDown);
