@@ -61,6 +61,11 @@ export class EditorGroupView extends Disposable implements IGridView {
   private _ribbonContainer!: HTMLElement;
   private _breadcrumbsBar!: BreadcrumbsBar;
   private _ribbonDisposable: IDisposable | undefined;
+  /** Cached custom-ribbon height, refreshed by a ResizeObserver. Reading
+   *  offsetHeight inside layout() (right after writing width/height) forced a
+   *  synchronous reflow every sash-drag frame — layout thrash on heavy panes. */
+  private _cachedRibbonHeight = 0;
+  private _ribbonResizeObserver: ResizeObserver | undefined;
   private _paneContainer!: HTMLElement;
   private _emptyMessage!: HTMLElement;
   private _workspaceFolders: readonly { uri: URI; name: string }[] = [];
@@ -187,9 +192,14 @@ export class EditorGroupView extends Disposable implements IGridView {
     if (!this._ribbonContainer || this._ribbonContainer.classList.contains('hidden')) {
       return 0;
     }
-    // Custom ribbon is sized by its content
+    // Custom ribbon is sized by its content — read the cached height (kept
+    // fresh by _ribbonResizeObserver) instead of forcing a reflow here.
     if (this._ribbonDisposable) {
-      return this._ribbonContainer.offsetHeight || 0;
+      // Seed the cache on first use (before the observer has fired).
+      if (this._cachedRibbonHeight === 0) {
+        this._cachedRibbonHeight = this._ribbonContainer.offsetHeight || 0;
+      }
+      return this._cachedRibbonHeight;
     }
     // Default breadcrumbs bar
     return this._breadcrumbsBar?.effectiveHeight ?? 0;
@@ -312,6 +322,24 @@ export class EditorGroupView extends Disposable implements IGridView {
     this._ribbonContainer.classList.add('editor-ribbon');
     this._element.appendChild(this._ribbonContainer);
 
+    // Keep the custom-ribbon height cached off the layout hot path. The
+    // observer updates it asynchronously when the ribbon's box actually
+    // changes (content, or wrapping at a new width) and reflows the pane once
+    // — so layout() never has to read offsetHeight (a forced reflow) per frame.
+    if (typeof ResizeObserver !== 'undefined') {
+      this._ribbonResizeObserver = new ResizeObserver(() => {
+        if (!this._ribbonDisposable) return; // only custom ribbons measure by box
+        const h = this._ribbonContainer.offsetHeight || 0;
+        if (h === this._cachedRibbonHeight) return;
+        this._cachedRibbonHeight = h;
+        if (this._width > 0 && this._height > 0) {
+          this.layout(this._width, this._height, Orientation.Horizontal);
+        }
+      });
+      this._ribbonResizeObserver.observe(this._ribbonContainer);
+      this._register({ dispose: () => { this._ribbonResizeObserver?.disconnect(); this._ribbonResizeObserver = undefined; } });
+    }
+
     // Default content: file-path breadcrumbs (hidden when custom ribbon is active)
     this._breadcrumbsBar = this._register(new BreadcrumbsBar(this._ribbonContainer));
 
@@ -416,6 +444,9 @@ export class EditorGroupView extends Disposable implements IGridView {
       this._ribbonDisposable.dispose();
       this._ribbonDisposable = undefined;
     }
+    // Ribbon content is changing — drop the cached height so the next layout
+    // re-seeds it (the observer will also refresh it once the new box settles).
+    this._cachedRibbonHeight = 0;
 
     if (!input) {
       this._breadcrumbsBar.hide();

@@ -55,6 +55,11 @@ export class ViewContainer extends Disposable implements IGridView {
   private _height = 0;
   private _tabBarHeight = 35;
   private _resizeObserver: ResizeObserver | undefined;
+  /** Last measured box `_doLayout` acted on — used to drop redundant
+   *  ResizeObserver fires (the grid already drives layout on a sash drag),
+   *  which halves the per-frame reflow and can't feed a ResizeObserver loop. */
+  private _lastLayoutW = -1;
+  private _lastLayoutH = -1;
 
   // ── Stacked mode ──
 
@@ -172,7 +177,17 @@ export class ViewContainer extends Disposable implements IGridView {
     // views on every real size change, from any source, so the JS layout and the
     // CSS can never drift out of sync again — the root cause of off-centre cards.
     if (typeof ResizeObserver !== 'undefined') {
-      this._resizeObserver = new ResizeObserver(() => this._doLayout());
+      // Skip the observer fire when the measured box hasn't changed since the
+      // last layout — during a sash drag the grid calls layout() each frame,
+      // so the observer would otherwise re-run the exact same _doLayout (double
+      // the forced reflow) and, if a child resize echoes back, spin a loop.
+      this._resizeObserver = new ResizeObserver(() => {
+        if (this._element.clientWidth === this._lastLayoutW &&
+            this._element.clientHeight === this._lastLayoutH) {
+          return;
+        }
+        this._doLayout();
+      });
       this._resizeObserver.observe(this._element);
       this._register({ dispose: () => { this._resizeObserver?.disconnect(); this._resizeObserver = undefined; } });
     }
@@ -261,6 +276,8 @@ export class ViewContainer extends Disposable implements IGridView {
     if (w <= 0 || h <= 0) return; // not rendered yet — the observer will re-fire
     this._width = w;
     this._height = h;
+    this._lastLayoutW = w;
+    this._lastLayoutH = h;
 
     if (this._mode === 'stacked') {
       this._layoutStacked();
