@@ -2474,8 +2474,13 @@
 .canvas-top-ribbon-right {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   flex-shrink: 0;
+  /* Breathing room between the ⋯ button and the pane edge.  Carried by the
+     cluster itself (not only the ribbon's padding) so it survives whatever
+     the hosting slot does to the ribbon box — the button was rendering flush
+     against the editor border. */
+  padding-right: 10px;
 }
 
 .canvas-top-ribbon .canvas-breadcrumbs {
