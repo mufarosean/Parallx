@@ -541,7 +541,14 @@ export class BlockActionMenuController implements ICanvasMenu {
         if (targetType !== 'heading') continue;
         if (attrs?.level && node.attrs?.level === attrs.level) continue;
       }
-      turnBlockWithSharedStrategy(editor, pos, node, targetType, attrs);
+      // One row's failure must not abandon the rest of the batch — an
+      // uncaught dispatch error here previously converted only the first
+      // (bottom-most) block of a box-selection and silently dropped the rest.
+      try {
+        turnBlockWithSharedStrategy(editor, pos, node, targetType, attrs);
+      } catch (err) {
+        console.warn('[BlockActionMenu] batch turn-into failed for block at', pos, err);
+      }
     }
     this._host.blockSelection?.clear();
   }

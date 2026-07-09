@@ -196,4 +196,99 @@ test.describe('Batch Turn Into via marquee + handle menu', () => {
     expect(result.text).toContain('ChildOne');
     expect(result.text).toContain('ChildTwo');
   });
+
+  test('nested sibling rows → Numbered list converts ALL of them (user-reported)', async ({
+    window: page,
+    electronApp,
+    workspacePath,
+  }) => {
+    // The reported failure: box-select 4 nested bullet rows, Turn into →
+    // Numbered list converted ONLY the bottom row (AutoJoiner's join step
+    // tripping UniqueID's combineTransactionSteps killed the batch loop).
+    await setupCanvasPage(page, electronApp, workspacePath);
+    await waitForEditor(page);
+
+    await setContent(page, [
+      { type: 'bulletList', content: [
+        { type: 'listItem', content: [
+          { type: 'paragraph', content: [{ type: 'text', text: 'Comparing Patterns' }] },
+          { type: 'bulletList', content: [
+            { type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'NestOne' }] }] },
+            { type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'NestTwo' }] }] },
+            { type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'NestThree' }] }] },
+            { type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'NestFour' }] }] },
+          ]},
+        ]},
+      ]},
+    ]);
+    await page.waitForTimeout(400);
+
+    // Marquee over the four NESTED rows only (not the parent's line).
+    const coords = await page.evaluate(() => {
+      const pm = document.querySelector('.ProseMirror')!;
+      const pmRect = pm.getBoundingClientRect();
+      const nested = pm.querySelectorAll('li li');
+      const first = nested[0]!.getBoundingClientRect();
+      const last = nested[nested.length - 1]!.getBoundingClientRect();
+      return {
+        startX: pmRect.left + 5,
+        startY: first.top + 2,
+        endX: pmRect.right - 5,
+        endY: last.bottom - 2,
+      };
+    });
+    await page.mouse.move(coords.startX, coords.startY);
+    await page.mouse.down();
+    await page.mouse.move(coords.startX + 15, coords.startY + 8, { steps: 3 });
+    await page.mouse.move(coords.endX, coords.endY, { steps: 8 });
+    await page.mouse.up();
+    await page.waitForTimeout(250);
+
+    const selected = await page.locator('.block-selected').count();
+    console.log(`[BATCH-E2E:numbered] selected after marquee: ${selected}`);
+    expect(selected).toBe(4);
+
+    const rowTwo = page.locator('.ProseMirror li li', { hasText: 'NestTwo' });
+    await rowTwo.hover();
+    await page.waitForTimeout(200);
+    const handle = page.locator('.drag-handle:not(.hide)');
+    await expect(handle).toBeVisible({ timeout: 2_000 });
+    await handle.click();
+    await page.waitForTimeout(250);
+
+    const menu = page.locator('.block-action-menu');
+    await expect(menu).toBeVisible({ timeout: 2_000 });
+    const header = await menu.locator('.block-action-header').textContent();
+    console.log(`[BATCH-E2E:numbered] header: "${header}"`);
+    expect(header).toContain('4');
+
+    const turnInto = menu.locator('.block-action-item', { hasText: 'Turn into' });
+    await turnInto.hover();
+    const submenu = page.locator('.block-action-submenu');
+    await expect(submenu).toBeVisible({ timeout: 2_000 });
+    await submenu.locator('.block-action-item', { hasText: 'Numbered list' }).dispatchEvent('mousedown');
+    await page.waitForTimeout(500);
+
+    const result = await page.evaluate(() => {
+      const pm = document.querySelector('.ProseMirror')!;
+      const ols = pm.querySelectorAll('ol');
+      const olRows = pm.querySelectorAll('ol > li');
+      const remainingNestedBullets = pm.querySelectorAll('ul ul > li');
+      return {
+        orderedLists: ols.length,
+        orderedRows: olRows.length,
+        remainingNestedBullets: remainingNestedBullets.length,
+        text: (pm as HTMLElement).innerText.replace(/\s+/g, ' ').trim(),
+      };
+    });
+    console.log(`[BATCH-E2E:numbered] result:`, JSON.stringify(result));
+
+    // EVERY selected row converted, merged into ONE numbered list.
+    expect(result.orderedRows).toBe(4);
+    expect(result.orderedLists).toBe(1);
+    expect(result.remainingNestedBullets).toBe(0);
+    for (const t of ['NestOne', 'NestTwo', 'NestThree', 'NestFour']) {
+      expect(result.text).toContain(t);
+    }
+  });
 });

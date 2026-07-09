@@ -19,6 +19,8 @@ import TaskItem from '@tiptap/extension-task-item';
 // after every dispatch — included so the batch loop is exercised against the
 // same position-shifting append-transactions the app has.
 import AutoJoiner from 'tiptap-extension-auto-joiner';
+import UniqueID from '@tiptap/extension-unique-id';
+import { UNIQUE_ID_BLOCK_TYPES } from '../../src/built-in/canvas/config/tiptapExtensions';
 import { Callout } from '../../src/built-in/canvas/extensions/calloutNode';
 import { BlockActionMenuController } from '../../src/built-in/canvas/menus/blockActionMenu';
 import { enumerateBlockUnits } from '../../src/built-in/canvas/config/blockStateRegistry/blockUnit';
@@ -160,5 +162,63 @@ describe('box-select + Turn Into converts EVERY selected block', () => {
     batchTurnInto(ed, ['already-quote', 'make-me-quote'], 'blockquote');
     expect(countType(ed, 'blockquote')).toBe(2);
     expect(allText(ed)).toEqual(['already-quote', 'make-me-quote']);
+  });
+});
+
+describe('nested sibling rows with the FULL plugin stack (UniqueID + AutoJoiner)', () => {
+  // The user-reported failure: box-select nested bullet rows, Turn into ->
+  // Numbered list converted ONLY the bottom row.  Root cause: each splice
+  // left ol(row) adjacent to the previous iteration's ol -> AutoJoiner
+  // appended a join step -> UniqueID's combineTransactionSteps threw
+  // "Inconsistent open depths" -> the batch loop died after iteration 1.
+  // The splice now absorbs adjacent same-type lists itself (no join step).
+  function makeFullEditor(content: any): Editor {
+    return new Editor({
+      element: document.createElement('div'),
+      extensions: [
+        StarterKit, TaskList, TaskItem.configure({ nested: true }), Callout, AutoJoiner,
+        UniqueID.configure({ types: UNIQUE_ID_BLOCK_TYPES }),
+      ],
+      content,
+    });
+  }
+
+  it('4 nested bullet rows -> numbered list: ALL convert into one merged list', () => {
+    const ed = makeFullEditor({ type: 'doc', content: [
+      { type: 'bulletList', content: [
+        { type: 'listItem', content: [
+          p('Comparing Emergence Patterns'),
+          { type: 'bulletList', content: [li('rowA'), li('rowB'), li('rowC'), li('rowD')] },
+        ]},
+        { type: 'listItem', content: [p('Iterative Method')] },
+      ]},
+    ]});
+    batchTurnInto(ed, ['rowA', 'rowB', 'rowC', 'rowD'], 'orderedList');
+
+    let orderedRows = 0;
+    let orderedLists = 0;
+    ed.state.doc.descendants((n) => {
+      if (n.type.name === 'orderedList') { orderedLists++; orderedRows += n.childCount; }
+      return true;
+    });
+    expect(orderedLists).toBe(1);   // merged, not four fragments
+    expect(orderedRows).toBe(4);    // EVERY selected row converted
+    expect(allText(ed)).toEqual([
+      'Comparing Emergence Patterns', 'rowA', 'rowB', 'rowC', 'rowD', 'Iterative Method',
+    ]);
+  });
+
+  it('nested rows -> quote with the full stack: all convert (no join, still safe)', () => {
+    const ed = makeFullEditor({ type: 'doc', content: [
+      { type: 'bulletList', content: [
+        { type: 'listItem', content: [
+          p('parent'),
+          { type: 'bulletList', content: [li('qa'), li('qb'), li('qc')] },
+        ]},
+      ]},
+    ]});
+    batchTurnInto(ed, ['qa', 'qb', 'qc'], 'blockquote');
+    expect(countType(ed, 'blockquote')).toBe(3);
+    expect(allText(ed)).toEqual(['parent', 'qa', 'qb', 'qc']);
   });
 });

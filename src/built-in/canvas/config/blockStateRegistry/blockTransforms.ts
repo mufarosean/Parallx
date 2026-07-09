@@ -141,17 +141,47 @@ function spliceListRowInto(
     rowNode.attrs?.backgroundColor ?? null,
   );
 
-  let converted: any[];
-  if (LIST_TARGET_TYPES.has(targetType)) {
-    // Row → row of another list type: rebuild just this row, children nested.
-    const built = buildBlock(targetType, parts, attrs);
-    converted = built ? [built.node, ...built.trailing] : [];
-  } else {
-    const built = buildBlock(targetType, parts, attrs);
-    if (!built) return;
+  const built = buildBlock(targetType, parts, attrs);
+  if (!built) return;
+  let converted: any[] = [built.node, ...built.trailing];
+  if (converted.length === 0) return;
+
+  // Replacement range — may grow to absorb adjacent same-type lists below.
+  let from = listPos;
+  let to = listPos + list.nodeSize;
+
+  // List-type targets: absorb ADJACENT sibling lists of the target type into
+  // the converted list instead of leaving them for AutoJoiner.  Two reasons:
+  // it's the correct end state anyway (consecutive same-type lists merge),
+  // and AutoJoiner's appended join step trips UniqueID's
+  // combineTransactionSteps ("TransformError: Inconsistent open depths"),
+  // which killed batch turn-into after the first row (only the bottom row of
+  // a box-selection converted).
+  if (LIST_TARGET_TYPES.has(targetType) && built.node?.type === targetType) {
+    const $list = editor.state.doc.resolve(listPos);
+    const parentNode = $list.parent;
+    const listIndex = $list.index($list.depth);
+    const convertedRows: any[] = Array.isArray(built.node.content) ? built.node.content : [];
+
+    if (rowsAfter.length === 0 && listIndex + 1 < parentNode.childCount) {
+      const nextSibling = parentNode.child(listIndex + 1);
+      if (nextSibling.type.name === targetType) {
+        nextSibling.forEach((row: any) => convertedRows.push(row.toJSON()));
+        to += nextSibling.nodeSize;
+      }
+    }
+    if (rowsBefore.length === 0 && listIndex > 0) {
+      const prevSibling = parentNode.child(listIndex - 1);
+      if (prevSibling.type.name === targetType) {
+        const prevRows: any[] = [];
+        prevSibling.forEach((row: any) => prevRows.push(row.toJSON()));
+        convertedRows.unshift(...prevRows);
+        from -= prevSibling.nodeSize;
+      }
+    }
+    built.node.content = convertedRows;
     converted = [built.node, ...built.trailing];
   }
-  if (converted.length === 0) return;
 
   const listJson = (rows: any[]): Record<string, any> => ({
     type: list.type.name,
@@ -165,7 +195,7 @@ function spliceListRowInto(
   if (rowsAfter.length > 0) replacement.push(listJson(rowsAfter));
 
   editor.chain()
-    .insertContentAt({ from: listPos, to: listPos + list.nodeSize }, replacement)
+    .insertContentAt({ from, to }, replacement)
     .focus()
     .run();
 }
