@@ -106,7 +106,10 @@ html, body {
 /* ── Titlebar ── */
 .part-workbench-parts-titlebar {
   background: var(--vscode-titleBar-activeBackground);
-  border-bottom: 1px solid var(--px-chrome-line);
+  /* The titlebar and the workbench below share --px-bg, so the whisper-grade
+     --px-chrome-line vanishes on this seam — it needs DIVIDER weight to read
+     as a boundary. Imported VS Code themes can override via titleBar.border. */
+  border-bottom: 1px solid var(--vscode-titleBar-border, var(--px-divider));
   z-index: 10;
 }
 
