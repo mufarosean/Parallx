@@ -963,6 +963,33 @@
   margin: 2px 0;
 }
 
+/* ── Block background colour — one clean rounded region (Notion-style) ──
+   The colour lands on the block's own element via the `canvas-block-bg` class
+   (added by extensions/blockBackground.ts). For a list ITEM that element is the
+   <li>, which already contains the item's line AND its nested sub-list — so the
+   fill wraps the whole subtree as ONE continuous region rather than striping
+   each child row. */
+.canvas-tiptap-editor .canvas-block-bg {
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+
+/* A coloured bullet/number item: extend the fill left across the marker gutter
+   so the "1." / "•" sits inside the region (as Notion does). The list adds
+   1.625em of left padding for markers; pull the <li> back over it, then re-pad
+   so the text stays put. */
+.canvas-tiptap-editor ul:not([data-type="taskList"]) > li.canvas-block-bg,
+.canvas-tiptap-editor ol > li.canvas-block-bg {
+  margin-left: -1.625em;
+  padding-left: calc(1.625em + 6px);
+}
+
+/* Task items render their checkbox inside the flex row already — only pad. */
+.canvas-tiptap-editor ul[data-type="taskList"] > li.canvas-block-bg {
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+
 /* ── Task list — custom Notion-style checkboxes ── */
 
 .canvas-tiptap-editor ul[data-type="taskList"] {

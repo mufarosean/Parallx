@@ -31,6 +31,10 @@ import { resolveBlockAncestry } from './blockStateRegistry.js';
 export const BG_CAPABLE_TYPES: readonly string[] = [
   'paragraph', 'heading', 'blockquote', 'codeBlock',
   'callout', 'details', 'bulletList', 'orderedList', 'taskList',
+  // List items hold the colour on their own <li> so it wraps the item + its
+  // nested sub-list as one region. Kept in sync with BLOCK_BG_TYPES (extension)
+  // by tests/unit/canvasCapabilityDrift.test.ts.
+  'listItem', 'taskItem',
 ];
 
 /**
@@ -63,7 +67,9 @@ export function canTakeTextColor(nodeTypeName: string): boolean {
 
 /** Whether `nodeTypeName` blocks accept a `backgroundColor` attribute. */
 export function canTakeBackgroundColor(nodeTypeName: string): boolean {
-  return BG_CAPABLE_TYPES.includes(nodeTypeName) || LIST_ITEM_TYPES.has(nodeTypeName);
+  // listItem/taskItem are members of BG_CAPABLE_TYPES now (they hold the colour
+  // on their own <li>), so the list membership already covers them.
+  return BG_CAPABLE_TYPES.includes(nodeTypeName);
 }
 
 /**
@@ -203,30 +209,13 @@ export function applyBackgroundColorToBlock(
   node: PMNode,
   color: string | null,
 ): void {
+  // Every bg-capable block — including list ITEMS (listItem/taskItem) — carries
+  // the colour as an attribute on its OWN element. For a list item that element
+  // is the <li>, which already contains the item's line AND its nested sub-list
+  // in the DOM, so the fill wraps the whole subtree as ONE region (Notion-style)
+  // instead of striping each child. So this is a single, uniform set-markup for
+  // all block kinds — no special list-item child-painting.
   const { tr } = editor.state;
-
-  // List items carry no `backgroundColor` attribute (not in BLOCK_BG_TYPES),
-  // so paint their bg-capable child blocks instead — the same content the
-  // handle-resolved list row visually represents. Mirrors how text color
-  // already colours the row's inline text via a range.
-  if (LIST_ITEM_TYPES.has(node.type.name)) {
-    let childPos = pos + 1; // position of the item's first child
-    node.forEach((child: PMNode) => {
-      // Colour ONLY the item's own content lines (paragraph / heading / code),
-      // never its nested sub-lists. Painting a child bulletList/orderedList
-      // flooded the whole nested subtree with the parent's colour, so the
-      // indentation read as "nesting destroyed". A textblock check leaves the
-      // nested rows untouched (the user colours those individually).
-      if (child.isTextblock && BG_CAPABLE_TYPES.includes(child.type.name)) {
-        tr.setNodeMarkup(childPos, undefined, { ...child.attrs, backgroundColor: color });
-      }
-      childPos += child.nodeSize;
-    });
-    if (tr.docChanged) editor.view.dispatch(tr);
-    editor.commands.focus();
-    return;
-  }
-
   tr.setNodeMarkup(pos, undefined, { ...node.attrs, backgroundColor: color });
   editor.view.dispatch(tr);
   editor.commands.focus();

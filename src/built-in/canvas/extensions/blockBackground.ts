@@ -14,6 +14,10 @@ import { Extension } from '@tiptap/core';
 export const BLOCK_BG_TYPES: readonly string[] = [
   'paragraph', 'heading', 'blockquote', 'codeBlock',
   'callout', 'details', 'bulletList', 'orderedList', 'taskList',
+  // List ITEMS carry the colour on their own <li>, which already contains the
+  // item's line AND its nested sub-list in the DOM — so the fill wraps the
+  // whole subtree as ONE region (Notion-style), never per-child stripes.
+  'listItem', 'taskItem',
 ];
 
 export const BlockBackgroundColor = Extension.create({
@@ -29,7 +33,10 @@ export const BlockBackgroundColor = Extension.create({
             parseHTML: (element: HTMLElement) => element.style.backgroundColor || null,
             renderHTML: (attributes: Record<string, any>) => {
               if (!attributes.backgroundColor) return {};
-              return { style: `background-color: ${attributes.backgroundColor}` };
+              // The class is a stable CSS hook for the rounded single-region
+              // styling (padding, border-radius, marker inclusion) — see
+              // canvas.css `.canvas-block-bg`.
+              return { style: `background-color: ${attributes.backgroundColor}`, class: 'canvas-block-bg' };
             },
           },
         },
