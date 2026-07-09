@@ -170,6 +170,23 @@ export class BlockSelectionController {
   }
 
   /**
+   * The selected position whose block CONTAINS `pos` (or `pos` itself when
+   * directly selected), else null.  Selection is normalized to top-most units,
+   * so clicking a nested row inside a selected parent must resolve to the
+   * parent — exact-membership checks would wrongly collapse the selection.
+   */
+  owningSelectedBlock(pos: number): number | null {
+    const editor = this._host.editor;
+    if (!editor) return null;
+    if (this._selected.has(pos)) return pos;
+    for (const selPos of this._selected) {
+      const node = editor.state.doc.nodeAt(selPos);
+      if (node && pos > selPos && pos < selPos + node.nodeSize) return selPos;
+    }
+    return null;
+  }
+
+  /**
    * Select a single block, clearing any previous selection.
    * @param pos Absolute document position of the block node.
    */
@@ -188,11 +205,41 @@ export class BlockSelectionController {
    */
   selectMultiple(positions: number[]): void {
     this._selected.clear();
-    for (const pos of positions) {
+    for (const pos of this._normalizeToTopmost(positions)) {
       this._selected.add(pos);
     }
     this._anchor = null;
     this._syncDecorations();
+  }
+
+  /**
+   * A selection never contains a block AND one of its ancestors: selecting a
+   * parent row already owns its whole subtree (delete/duplicate/turn-into/drag
+   * all operate on the node range).  The marquee can legitimately hit a parent
+   * row's line AND its nested rows' lines in one drag — keeping both painted
+   * the translucent `.block-selected` background twice over the nested rows
+   * (the parent's box spans its subtree), the "overlap colour" artifact.
+   * Keep only the top-most units; descendants are absorbed.
+   */
+  private _normalizeToTopmost(positions: number[]): number[] {
+    const editor = this._host.editor;
+    if (!editor || positions.length < 2) return positions;
+    const doc = editor.state.doc;
+    const sorted = [...positions].sort((a, b) => a - b);
+    const kept: number[] = [];
+    let coveredEnd = -1;
+    let coveredStart = -1;
+    for (const pos of sorted) {
+      const node = doc.nodeAt(pos);
+      if (!node) continue;
+      // Sorted ascending, an ancestor always precedes its descendants and
+      // covers them: [coveredStart, coveredEnd] is the last kept unit's range.
+      if (pos > coveredStart && pos + node.nodeSize <= coveredEnd) continue;
+      kept.push(pos);
+      coveredStart = pos;
+      coveredEnd = pos + node.nodeSize;
+    }
+    return kept;
   }
 
   /**

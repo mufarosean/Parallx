@@ -355,16 +355,32 @@ export class BlockHandlesController {
     // Plain click on a handle OUTSIDE the current selection → replace with
     // single-block (existing behavior, matches Notion).
     const sel = this._host.blockSelection;
+    let menuPos = block.pos;
+    let menuNode = block.node;
     if (e.shiftKey) {
       sel.extendTo(block.pos);
-    } else if (sel.hasSelection && sel.count > 1 && sel.positions.includes(block.pos)) {
-      // Preserve existing multi-selection — no-op on the selection model.
     } else {
-      sel.select(block.pos);
+      // Containment-aware guard: the selection is normalized to TOP-MOST
+      // units, so a click on a nested row inside a selected parent must
+      // resolve to the parent (exact-membership would wrongly collapse the
+      // multi-selection to the clicked child).
+      const owner = sel.hasSelection ? sel.owningSelectedBlock(block.pos) : null;
+      if (owner !== null && (sel.count > 1 || owner !== block.pos)) {
+        // Preserve the selection; anchor the menu on the OWNING selected
+        // block so batch/single targeting operates on what the user selected.
+        const editor = this._host.editor;
+        const ownerNode = editor?.state.doc.nodeAt(owner);
+        if (ownerNode) {
+          menuPos = owner;
+          menuNode = ownerNode;
+        }
+      } else {
+        sel.select(block.pos);
+      }
     }
 
     const handleRect = this._dragHandleEl!.getBoundingClientRect();
-    this._actionMenu.show(block.pos, block.node, handleRect, this._dragHandleEl!);
+    this._actionMenu.show(menuPos, menuNode, handleRect, this._dragHandleEl!);
   }
 
   // ── Drag Handle Drag Lifecycle (single owner) ──
