@@ -769,11 +769,12 @@ export function columnDropPlugin(): Plugin {
               if (target.isListItem && target.listType && draggedListType === target.listType) {
                 moveBlockAboveBelow(tr, content, insertPos, dragFrom, dragTo, isDuplicate);
               } else {
-                if (target.isListItem && target.listPos !== null && target.listNode) {
-                  insertPos = target.zone === 'above'
-                    ? target.listPos
-                    : target.listPos + target.listNode.nodeSize;
-                }
+                // Different list type (or non-row target): insert the rows
+                // wrapped in their own list AT THE ROW BOUNDARY the user
+                // aimed at.  ProseMirror's replace-fitting splits the target
+                // list around the insertion — Notion semantics.  (The old
+                // code teleported insertPos to the whole list's edge, so a
+                // mid-list drop landed above/below the entire list.)
                 if (!draggedListType) return false;
                 const wrappedList = wrapDraggedListItemsForDrop(schema, content, draggedListType);
                 tr.insert(insertPos, wrappedList);

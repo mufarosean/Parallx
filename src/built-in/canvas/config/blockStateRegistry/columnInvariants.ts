@@ -12,7 +12,7 @@
 //
 // Part of blockStateRegistry — the single authority for block state operations.
 
-import { PAGE_CONTAINERS } from './blockStateRegistry.js';
+import { PAGE_CONTAINERS, growEmptiedAncestorRange } from './blockStateRegistry.js';
 
 // ── Block Ancestry Resolution ───────────────────────────────────────────────
 
@@ -421,7 +421,14 @@ export function deleteDraggedSource(
   const mFrom = tr.mapping.map(dragFrom);
   const mTo = tr.mapping.map(dragTo);
 
-  if (mTo > mFrom) tr.delete(mFrom, mTo);
+  if (mTo > mFrom) {
+    // Emptied-wrapper policy (same rule as deleteBlockAt): dragging the only
+    // row(s) out of a list takes the emptied list wrapper down with it —
+    // otherwise ProseMirror's replace-fitting resurrects an empty ghost row
+    // at the source.
+    const grown = growEmptiedAncestorRange(tr.doc, mFrom, mTo);
+    tr.delete(grown.from, grown.to);
+  }
 
   // Non-column containers (toggle / callout / blockquote) stay even after
   // their last child is dragged out — ProseMirror's schema auto-fills an

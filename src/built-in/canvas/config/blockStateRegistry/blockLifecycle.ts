@@ -160,16 +160,31 @@ export function growEmptiedAncestorDeletion(
   pos: number,
   node: PMNode,
 ): { from: number; to: number; survivorDepth: number } {
-  const $pos = doc.resolve(pos);
-  let from = pos;
-  let to = pos + node.nodeSize;
-  let d = $pos.depth;
+  const grown = growEmptiedAncestorRange(doc, pos, pos + node.nodeSize);
+  return { ...grown, survivorDepth: grown.survivorDepth };
+}
+
+/**
+ * Range form of the emptied-wrapper policy: grow [from, to] over each
+ * ancestor wrapper the deletion would leave empty (the range covers the
+ * wrapper's entire content) when that wrapper dissolves on empty.  Used by
+ * the drag-source deletion, where a drag may cover several sibling blocks.
+ */
+export function growEmptiedAncestorRange(
+  doc: PMNode,
+  from: number,
+  to: number,
+): { from: number; to: number; survivorDepth: number } {
+  const $from = doc.resolve(from);
+  let d = $from.depth;
   while (d >= 1) {
-    const parent = $pos.node(d);
+    const parent = $from.node(d);
     if (!DISSOLVES_WHEN_EMPTY.has(parent.type.name)) break;
-    if (parent.childCount > 1) break; // siblings remain — the wrapper survives
-    from = $pos.before(d);
-    to = $pos.after(d);
+    // Only grow while the range covers the parent's ENTIRE content —
+    // otherwise siblings remain and the wrapper survives.
+    if ($from.start(d) !== from || $from.end(d) !== to) break;
+    from = $from.before(d);
+    to = $from.after(d);
     d--;
   }
   return { from, to, survivorDepth: d };
