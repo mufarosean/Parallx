@@ -1020,6 +1020,30 @@ export const ATOM_BLOCK_TYPES: ReadonlySet<string> = new Set(
     .map((d) => d.name),
 );
 
+/**
+ * Node types whose blocks carry a `backgroundColor` attribute — THE single
+ * source for block colouring.  Drives BOTH the Tiptap global-attribute
+ * registration (extensions/blockBackground.ts receives this via configure)
+ * AND the canTakeBackgroundColor() capability predicate in blockLifecycle.
+ *
+ * listItem/taskItem hold the colour on their own <li>, which wraps the row's
+ * line AND its nested sub-list — one continuous region (Notion-style).
+ * They have no BlockDefinition (rows are schema-level, not insertables),
+ * so they are listed explicitly rather than derived.
+ */
+export const BLOCK_BG_TYPES: readonly string[] = [
+  'paragraph', 'heading', 'blockquote', 'codeBlock',
+  'callout', 'details', 'bulletList', 'orderedList', 'taskList',
+  'listItem', 'taskItem',
+];
+
+/** Container blocks that accept Tab-indented children (kind: 'container'). */
+export const INDENT_CONTAINER_TYPES: ReadonlySet<string> = new Set(
+  definitions
+    .filter((d) => d.kind === 'container')
+    .map((d) => d.name),
+);
+
 /** Block-level nodes that can live inside a column. */
 export const COLUMN_BLOCK_NODE_TYPES: readonly string[] = (() => {
   const seen = new Set<string>();
@@ -1175,6 +1199,17 @@ export function getTransformShape(typeName: string): TransformShape {
   if (override) return override;
   return isContainerBlockType(typeName) ? WRAPPER_SHAPE : TEXTBLOCK_SHAPE;
 }
+
+/**
+ * Containers whose block content lives inside a nested wrapper child
+ * (details/toggleHeading → detailsContent) — derived from transform shapes.
+ * Declared after the shape tables so the module-eval derivation sees them.
+ */
+export const CONTENT_WRAPPER_TYPES: ReadonlySet<string> = new Set(
+  [...INDENT_CONTAINER_TYPES].filter(
+    (name) => getTransformShape(name).kind === 'summary-content',
+  ),
+);
 
 /**
  * Look up placeholder text for a specific node from the registry.

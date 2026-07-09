@@ -12,7 +12,7 @@
 import type { Editor } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { TextSelection } from '@tiptap/pm/state';
-import { resolveBlockAncestry } from './blockStateRegistry.js';
+import { resolveBlockAncestry, BLOCK_BG_TYPES } from './blockStateRegistry.js';
 
 // ── Capability predicates ────────────────────────────────────────────────────
 // Used by the block action menu (and any future bulk-action consumer) to
@@ -21,34 +21,13 @@ import { resolveBlockAncestry } from './blockStateRegistry.js';
 // block selection, blocks that don't support an action are skipped silently
 // rather than causing the action to fail or producing inconsistent state.
 //
-// The set below is intentionally duplicated from extensions/blockBackground.ts
-// (BLOCK_BG_TYPES) — blockLifecycle.ts is gate-isolated to its own folder
-// per CANVAS_STRUCTURAL_MODEL §gate-rules. The drift-detection test in
-// `tests/unit/canvasCapabilityDrift.test.ts` pins the two lists together.
-// Exported only for that test — canvas-internal code MUST go through
-// canTakeBackgroundColor() / canTakeTextColor() / canTurnInto() instead.
-
-export const BG_CAPABLE_TYPES: readonly string[] = [
-  'paragraph', 'heading', 'blockquote', 'codeBlock',
-  'callout', 'details', 'bulletList', 'orderedList', 'taskList',
-  // List items hold the colour on their own <li> so it wraps the item + its
-  // nested sub-list as one region. Kept in sync with BLOCK_BG_TYPES (extension)
-  // by tests/unit/canvasCapabilityDrift.test.ts.
-  'listItem', 'taskItem',
-];
-
-/**
- * Authoritative set of node-type names whose blocks contain (or wrap) text
- * content that can take a text-color mark.  Mirrors BG_CAPABLE_TYPES plus
- * toggleHeading, which contains a heading title and inner blocks.
- *
- * Excluded: image, divider, bookmark, video, audio, fileAttachment,
- * pageBlock, mathBlock (renders LaTeX, no inline marks), tables, columnList.
- */
-const TEXTUAL_BLOCK_TYPES: ReadonlySet<string> = new Set([
-  ...BG_CAPABLE_TYPES,
-  'toggleHeading',
-]);
+// The type list lives in config/blockRegistry.ts (BLOCK_BG_TYPES — the single
+// source, imported via the facade).  This file previously kept a duplicated
+// copy pinned by a drift test; the facade import removes the duplication.
+//
+// ⚠️ CYCLE SAFETY: BLOCK_BG_TYPES crosses the permitted blockRegistry ↔
+// blockStateRegistry cycle, so it may ONLY be read inside function bodies
+// (runtime), never at module top level (TDZ crash at startup).
 
 /**
  * List item wrappers. The drag handle resolves a list row to its `listItem` /
@@ -60,16 +39,28 @@ const TEXTUAL_BLOCK_TYPES: ReadonlySet<string> = new Set([
  */
 export const LIST_ITEM_TYPES: ReadonlySet<string> = new Set(['listItem', 'taskItem']);
 
+/**
+ * Whether `nodeTypeName` blocks contain (or wrap) text content that can take
+ * a text-color mark: the colourable set plus toggleHeading (heading title +
+ * inner blocks).  Excluded: image, divider, bookmark, video, audio,
+ * fileAttachment, pageBlock, mathBlock (renders LaTeX, no inline marks),
+ * tables, columnList.
+ */
+function isTextualBlockType(nodeTypeName: string): boolean {
+  // Lazy read — BLOCK_BG_TYPES crosses the module cycle (see header note).
+  return BLOCK_BG_TYPES.includes(nodeTypeName) || nodeTypeName === 'toggleHeading';
+}
+
 /** Whether `nodeTypeName` blocks accept a text-color mark on their content. */
 export function canTakeTextColor(nodeTypeName: string): boolean {
-  return TEXTUAL_BLOCK_TYPES.has(nodeTypeName) || LIST_ITEM_TYPES.has(nodeTypeName);
+  return isTextualBlockType(nodeTypeName) || LIST_ITEM_TYPES.has(nodeTypeName);
 }
 
 /** Whether `nodeTypeName` blocks accept a `backgroundColor` attribute. */
 export function canTakeBackgroundColor(nodeTypeName: string): boolean {
-  // listItem/taskItem are members of BG_CAPABLE_TYPES now (they hold the colour
-  // on their own <li>), so the list membership already covers them.
-  return BG_CAPABLE_TYPES.includes(nodeTypeName);
+  // listItem/taskItem are members of BLOCK_BG_TYPES (they hold the colour on
+  // their own <li>), so the list membership already covers them.
+  return BLOCK_BG_TYPES.includes(nodeTypeName);
 }
 
 /**
@@ -78,7 +69,7 @@ export function canTakeBackgroundColor(nodeTypeName: string): boolean {
  * turnBlockWithSharedStrategy needs text/inline content to seed the new block.
  */
 export function canTurnInto(nodeTypeName: string): boolean {
-  return TEXTUAL_BLOCK_TYPES.has(nodeTypeName) || LIST_ITEM_TYPES.has(nodeTypeName);
+  return isTextualBlockType(nodeTypeName) || LIST_ITEM_TYPES.has(nodeTypeName);
 }
 
 // ── Linked-page block deletion hook ──────────────────────────────────────────

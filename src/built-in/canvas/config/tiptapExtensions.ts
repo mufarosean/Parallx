@@ -22,6 +22,7 @@ import { structuralRepairPlugin } from '../plugins/structuralRepair.js';
 import {
   getNodePlaceholder,
   getBlockExtensions,
+  BLOCK_BG_TYPES,
 } from './blockRegistry.js';
 import type { EditorExtensionContext } from './blockRegistry.js';
 
@@ -326,7 +327,9 @@ export function createEditorExtensions(lowlight: any, context?: EditorExtensionC
         return [structuralRepairPlugin(), structuralInvariantPlugin()];
       },
     }),
-    BlockBackgroundColor,
+    // Registry-fed: blockRegistry.BLOCK_BG_TYPES is the single source for
+    // which types carry the backgroundColor attribute.
+    BlockBackgroundColor.configure({ types: [...BLOCK_BG_TYPES] }),
     Dataview,
   ];
 }

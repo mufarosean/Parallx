@@ -1,32 +1,32 @@
 // blockBackground.ts — Block-level background color extension
 //
-// Adds a `backgroundColor` GlobalAttribute to all block-level node types.
+// Adds a `backgroundColor` GlobalAttribute to block-level node types.
 // Applied via the block action menu's Color submenu.
+//
+// The type list is NOT declared here: config/blockRegistry.ts owns the single
+// source (BLOCK_BG_TYPES) and tiptapExtensions.ts passes it in via
+// `BlockBackgroundColor.configure({ types })`.  This file previously kept a
+// duplicated copy pinned by a drift test; the configure pattern removes the
+// duplication entirely.
 
 import { Extension } from '@tiptap/core';
 
-// NOTE: blockLifecycle.ts (in the BSR) keeps a sibling copy of this list
-// (BG_CAPABLE_TYPES) for its canTakeBackgroundColor() predicate, because
-// gate rules forbid blockLifecycle from importing `extensions/`.
-// `tests/unit/canvasCapabilityDrift.test.ts` pins the two lists together
-// so they cannot drift.  Exported only for that test — canvas-internal
-// code MUST go through canTakeBackgroundColor() instead.
-export const BLOCK_BG_TYPES: readonly string[] = [
-  'paragraph', 'heading', 'blockquote', 'codeBlock',
-  'callout', 'details', 'bulletList', 'orderedList', 'taskList',
-  // List ITEMS carry the colour on their own <li>, which already contains the
-  // item's line AND its nested sub-list in the DOM — so the fill wraps the
-  // whole subtree as ONE region (Notion-style), never per-child stripes.
-  'listItem', 'taskItem',
-];
+export interface BlockBackgroundColorOptions {
+  /** Node type names that carry the backgroundColor attribute. */
+  types: string[];
+}
 
-export const BlockBackgroundColor = Extension.create({
+export const BlockBackgroundColor = Extension.create<BlockBackgroundColorOptions>({
   name: 'blockBackgroundColor',
+
+  addOptions() {
+    return { types: [] };
+  },
 
   addGlobalAttributes() {
     return [
       {
-        types: [...BLOCK_BG_TYPES],
+        types: [...this.options.types],
         attributes: {
           backgroundColor: {
             default: null,

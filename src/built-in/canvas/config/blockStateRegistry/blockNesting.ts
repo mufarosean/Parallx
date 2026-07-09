@@ -11,23 +11,26 @@
 
 import type { Editor } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
-import { resolveBlockAncestry, PAGE_CONTAINERS } from './blockStateRegistry.js';
+import {
+  resolveBlockAncestry,
+  PAGE_CONTAINERS,
+  INDENT_CONTAINER_TYPES,
+  CONTENT_WRAPPER_TYPES,
+} from './blockStateRegistry.js';
 
 // ── Types ───────────────────────────────────────────────────────────────────
-
-/** Container types that accept nested blocks via Tab indent. */
-const INDENT_CONTAINERS = new Set([
-  'callout',
-  'blockquote',
-  'details',
-  'toggleHeading',
-]);
-
-/** Containers whose block content lives in a nested `detailsContent` child. */
-const CONTENT_WRAPPER_CONTAINERS = new Set([
-  'details',
-  'toggleHeading',
-]);
+// Container sets are registry-derived (blockRegistry): INDENT_CONTAINERS =
+// every kind:'container' definition; CONTENT_WRAPPER_CONTAINERS = containers
+// whose blocks live in a wrapper child (summary-content transform shapes).
+// A new container block type gets Tab-indent behavior from its one registry
+// entry — no list to update here.
+// ⚠️ Both cross the permitted module cycle — read only inside function bodies.
+const INDENT_CONTAINERS = {
+  has: (name: string): boolean => INDENT_CONTAINER_TYPES.has(name),
+};
+const CONTENT_WRAPPER_CONTAINERS = {
+  has: (name: string): boolean => CONTENT_WRAPPER_TYPES.has(name),
+};
 
 // ── Indent (Tab) ────────────────────────────────────────────────────────────
 
