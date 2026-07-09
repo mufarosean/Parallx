@@ -96,7 +96,43 @@ export function resolveMovableBlock($pos: any): MovableBlockContext | null {
 
   for (let depth = $pos.depth; depth >= 1; depth--) {
     const node = $pos.node(depth);
-    if (!isListItemNodeName(node?.type?.name)) continue;
+    const typeName = node?.type?.name;
+
+    // A page-container boundary (quote / callout / details / column) ends
+    // the row search: blocks inside it are units of their own even when the
+    // container sits INSIDE a list row.  In-place row conversion creates
+    // exactly that shape (quote-in-row) — without this stop, hovering or
+    // acting on the converted block resolved to the OUTER row, so the menu
+    // silently operated on the wrong node.  (Only ancestors count: when the
+    // position's innermost node is itself the container, it's the unit.)
+    if (depth < $pos.depth && PAGE_CONTAINERS.has(typeName)) break;
+
+    if (!isListItemNodeName(typeName)) continue;
+
+    // The row's own line is its FIRST child.  Any other child block of the
+    // row (trailing blocks from leaf conversions, extra paragraphs) is a
+    // unit of its own — nested list rows were already matched deeper in
+    // this walk, so reaching here with index > 0 means a non-list child.
+    if (depth < $pos.depth && $pos.index(depth) > 0) {
+      const childDepth = depth + 1;
+      const childNode = $pos.node(childDepth);
+      if (childNode && !isListNodeName(childNode.type?.name)) {
+        return {
+          ...ancestry,
+          pos: $pos.before(childDepth),
+          node: childNode,
+          depth: childDepth,
+          parentDepth: depth,
+          parentPos: $pos.before(depth),
+          parentNode: node,
+          isListItem: false,
+          listDepth: null,
+          listPos: null,
+          listNode: null,
+          listType: null,
+        };
+      }
+    }
 
     const parentDepth = depth - 1;
     if (parentDepth < 0) continue;

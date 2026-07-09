@@ -13,13 +13,20 @@ type MockResolvedPos = {
   doc: MockNode;
   node: (depth: number) => MockNode;
   before: (depth: number) => number;
+  index: (depth: number) => number;
 };
 
 function namedNode(name: string): MockNode {
   return { type: { name } };
 }
 
-function makeResolvedPos(names: string[], positions: number[]): MockResolvedPos {
+/**
+ * Mock chain of ancestors.  `childIndexes[d]` is the index of the child of
+ * the node at depth `d` that contains the position (resolveMovableBlock's
+ * non-first-child rule reads it for list items); defaults to 0 — the "row's
+ * own line" case.
+ */
+function makeResolvedPos(names: string[], positions: number[], childIndexes?: number[]): MockResolvedPos {
   const nodes = names.map(namedNode);
 
   return {
@@ -30,6 +37,9 @@ function makeResolvedPos(names: string[], positions: number[]): MockResolvedPos 
     },
     before(depth: number) {
       return positions[depth];
+    },
+    index(depth: number) {
+      return childIndexes?.[depth] ?? 0;
     },
   };
 }

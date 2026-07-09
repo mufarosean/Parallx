@@ -110,11 +110,16 @@ function collectUnits(parent: any, parentContentStart: number, out: BlockUnitEnt
 
     if (isListItemNodeName(name)) {
       out.push({ pos: absPos, node, isListItem: true });
-      // Nested sub-lists hold further units of their own.
+      // Beyond the row's own first line: nested sub-lists hold further row
+      // units, and any OTHER child block (quote-in-row, trailing blocks from
+      // in-place conversion) is a unit of its own — mirroring
+      // resolveMovableBlock's non-first-child rule.
       let childPos = absPos + 1;
-      node.forEach((child: any) => {
+      node.forEach((child: any, _off: number, index: number) => {
         if (isListNodeName(child.type.name)) {
           collectUnits(child, childPos + 1, out);
+        } else if (index > 0) {
+          out.push({ pos: childPos, node: child, isListItem: false });
         }
         childPos += child.nodeSize;
       });
