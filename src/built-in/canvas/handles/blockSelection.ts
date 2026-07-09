@@ -446,21 +446,27 @@ export class BlockSelectionController {
   /**
    * Delete all selected blocks.
    * Processes from last to first to maintain position validity.
+   *
+   * @param options.notifyLinkedPages — default true. Cut passes false: the
+   *   blocks are expected to be pasted back, so page-linked blocks
+   *   (pageBlock/databaseInline) must NOT trigger child-page deletion.
    */
-  deleteSelected(): void {
+  deleteSelected(options?: { notifyLinkedPages?: boolean }): void {
     const editor = this._host.editor;
     if (!editor || this._selected.size === 0) return;
 
     const positions = this.positions.reverse(); // process from end to start
     const { tr } = editor.state;
 
-    // Collect page-linked nodes before deleting so we can trigger page deletion.
-    const linkedNodes: any[] = [];
-    for (const pos of positions) {
-      const node = tr.doc.nodeAt(pos);
-      if (node) linkedNodes.push(node);
+    if (options?.notifyLinkedPages !== false) {
+      // Collect page-linked nodes before deleting so we can trigger page deletion.
+      const linkedNodes: any[] = [];
+      for (const pos of positions) {
+        const node = tr.doc.nodeAt(pos);
+        if (node) linkedNodes.push(node);
+      }
+      notifyLinkedPageBlocksDeleted(linkedNodes);
     }
-    notifyLinkedPageBlocksDeleted(linkedNodes);
 
     for (const pos of positions) {
       const node = tr.doc.nodeAt(pos);

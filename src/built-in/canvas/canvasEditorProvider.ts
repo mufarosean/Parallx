@@ -34,7 +34,7 @@ import { Editor } from '@tiptap/core';
 import { common, createLowlight } from 'lowlight';
 import { $ } from '../../ui/dom.js';
 import { createEditorExtensions, PageChromeController, renderPageIconHtml } from './config/blockRegistry.js';
-import { BlockHandlesController, BlockSelectionController, BlockMarqueeController, createBlockSelectionPlugin } from './handles/handleRegistry.js';
+import { BlockHandlesController, BlockSelectionController, BlockMarqueeController, BlockClipboardController, createBlockSelectionPlugin } from './handles/handleRegistry.js';
 import { CanvasMenuRegistry, type IBlockActionMenu } from './menus/canvasMenuRegistry.js';
 import type { SendChatRequestFn, RetrieveContextFn } from './menus/canvasMenuRegistry.js';
 
@@ -278,6 +278,7 @@ class CanvasEditorPane implements IDisposable {
 
   // ── Block marquee (box-drag lasso selection) ──
   private _blockMarquee!: BlockMarqueeController;
+  private _blockClipboard!: BlockClipboardController;
 
   // ── Property bar ──
 
@@ -564,6 +565,8 @@ class CanvasEditorPane implements IDisposable {
     // Setup block marquee (box-drag selection)
     this._blockMarquee = new BlockMarqueeController(this);
     this._blockMarquee.setup();
+    this._blockClipboard = new BlockClipboardController(this);
+    this._blockClipboard.setup();
 
     // Wire block-selection callbacks into the extension storage.
     //
@@ -1043,6 +1046,7 @@ class CanvasEditorPane implements IDisposable {
     this._blockHandles?.dispose();
     this._blockSelection?.dispose();
     this._blockMarquee?.dispose();
+    this._blockClipboard?.dispose();
 
 
     // Dispose save-state subscriptions
