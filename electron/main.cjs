@@ -9,7 +9,10 @@ const fsSync = require('fs');
 const os = require('os');
 const crypto = require('crypto');
 const AdmZip = require('adm-zip');
-const { databaseManager, extensionDatabaseManager } = require('./database.cjs');
+// SQLite runs in a worker thread (databaseWorker.cjs) so its synchronous
+// execution never blocks the main process, which routes user input.  These
+// are async proxies with the same API (see databaseClient.cjs).
+const { databaseManager, extensionDatabaseManager } = require('./databaseClient.cjs');
 const { extractText, extractEpubReadingData, isRichDocument, RICH_DOCUMENT_EXTENSIONS } = require('./documentExtractor.cjs');
 const doclingBridge = require('./doclingBridge.cjs');
 const { setupMcpBridge, killAllMcpProcesses } = require('./mcpBridge.cjs');
@@ -71,11 +74,17 @@ registerTeardown('mcp-servers', 'workspace', () => {
 });
 
 registerTeardown('shared-database', 'workspace', () => {
-  databaseManager.close();
+  // Async proxy; WAL-mode SQLite recovers cleanly if quit outruns the close.
+  void databaseManager.close().catch(() => {});
 });
 
 registerTeardown('extension-databases', 'workspace', () => {
-  extensionDatabaseManager.closeAll();
+  // NOTE: do NOT disposeDatabaseWorker() here — this teardown also fires on
+  // workspace SWITCH, and terminating the worker races the queued close()
+  // (a killed thread can leak a locked DB file handle on Windows).  The
+  // worker is long-lived and unref'd; process exit reaps it at quit.
+  // (disposeDatabaseWorker stays exported for tests/dev tooling.)
+  void extensionDatabaseManager.closeAll().catch(() => {});
 });
 
 // Docling is app-global — shutting down on workspace switch is unnecessary
@@ -1906,11 +1915,11 @@ ipcMain.handle('database:open', async (_event, workspacePath, migrationsDir) => 
   try {
     const dbDir = path.join(workspacePath, '.parallx');
     const dbPath = path.join(dbDir, 'data.db');
-    databaseManager.open(dbPath);
+    await databaseManager.open(dbPath);
 
     // Run migrations if a directory is provided
     if (migrationsDir) {
-      databaseManager.migrate(migrationsDir);
+      await databaseManager.migrate(migrationsDir);
     }
 
     return { error: null, dbPath };
@@ -1923,7 +1932,7 @@ ipcMain.handle('database:open', async (_event, workspacePath, migrationsDir) => 
 // Run migrations from a directory on the currently-open database.
 ipcMain.handle('database:migrate', async (_event, migrationsDir) => {
   try {
-    databaseManager.migrate(migrationsDir);
+    await databaseManager.migrate(migrationsDir);
     return { error: null };
   } catch (err) {
     return { error: normalizeDatabaseError(err) };
@@ -1933,7 +1942,7 @@ ipcMain.handle('database:migrate', async (_event, migrationsDir) => {
 // ── database:close ──
 ipcMain.handle('database:close', async () => {
   try {
-    databaseManager.close();
+    await databaseManager.close();
     return { error: null };
   } catch (err) {
     return { error: normalizeDatabaseError(err) };
@@ -1999,7 +2008,7 @@ function normalizeDbParams(params) {
 // Execute SQL (INSERT, UPDATE, DELETE, CREATE, etc.)
 ipcMain.handle('database:run', timedDbHandler('database:run', async (_event, sql, params) => {
   try {
-    const result = databaseManager.run(sql, normalizeDbParams(params));
+    const result = await databaseManager.run(sql, normalizeDbParams(params));
     return {
       error: null,
       changes: result.changes,
@@ -2016,7 +2025,7 @@ ipcMain.handle('database:run', timedDbHandler('database:run', async (_event, sql
 // Fetch a single row. Returns null if no match.
 ipcMain.handle('database:get', timedDbHandler('database:get', async (_event, sql, params) => {
   try {
-    const row = databaseManager.get(sql, normalizeDbParams(params));
+    const row = await databaseManager.get(sql, normalizeDbParams(params));
     return { error: null, row: row || null };
   } catch (err) {
     return { error: normalizeDatabaseError(err) };
@@ -2027,7 +2036,7 @@ ipcMain.handle('database:get', timedDbHandler('database:get', async (_event, sql
 // Fetch all matching rows.
 ipcMain.handle('database:all', timedDbHandler('database:all', async (_event, sql, params) => {
   try {
-    const rows = databaseManager.all(sql, normalizeDbParams(params));
+    const rows = await databaseManager.all(sql, normalizeDbParams(params));
     return { error: null, rows };
   } catch (err) {
     return { error: normalizeDatabaseError(err) };
@@ -2047,7 +2056,7 @@ ipcMain.handle('database:dropToolData', async (_event, migrationPrefix, tablePre
     if (!databaseManager.isOpen) {
       return { error: { code: 'DB_NOT_OPEN', message: 'No database is open' } };
     }
-    const result = databaseManager.dropToolData(migrationPrefix, tablePrefix);
+    const result = await databaseManager.dropToolData(migrationPrefix, tablePrefix);
     return { error: null, ...result };
   } catch (err) {
     return { error: { code: 'DROP_FAILED', message: err.message } };
@@ -2063,7 +2072,7 @@ ipcMain.handle('database:runTransaction', timedDbHandler('database:runTransactio
       ...op,
       params: normalizeDbParams(op.params),
     }));
-    const rawResults = databaseManager.runTransaction(normalizedOps);
+    const rawResults = await databaseManager.runTransaction(normalizedOps);
     // Normalize results for IPC (BigInt → Number for lastInsertRowid)
     const results = rawResults.map((r, i) => {
       const op = operations[i];
@@ -2107,7 +2116,7 @@ ipcMain.handle('ext-database:open', async (_event, extensionId, workspacePath) =
   try {
     if (!validateExtensionId(extensionId)) return { error: { code: 'INVALID_ID', message: 'Invalid extension ID' } };
     if (!workspacePath || typeof workspacePath !== 'string') return { error: { code: 'INVALID_PATH', message: 'Invalid workspace path' } };
-    const dbPath = extensionDatabaseManager.open(extensionId, workspacePath);
+    const dbPath = await extensionDatabaseManager.open(extensionId, workspacePath);
     return { error: null, dbPath };
   } catch (err) {
     return { error: normalizeDatabaseError(err) };
@@ -2117,7 +2126,7 @@ ipcMain.handle('ext-database:open', async (_event, extensionId, workspacePath) =
 ipcMain.handle('ext-database:close', async (_event, extensionId) => {
   try {
     if (!validateExtensionId(extensionId)) return { error: { code: 'INVALID_ID', message: 'Invalid extension ID' } };
-    extensionDatabaseManager.close(extensionId);
+    await extensionDatabaseManager.close(extensionId);
     return { error: null };
   } catch (err) {
     return { error: normalizeDatabaseError(err) };
@@ -2127,7 +2136,7 @@ ipcMain.handle('ext-database:close', async (_event, extensionId) => {
 ipcMain.handle('ext-database:migrate', async (_event, extensionId, migrationsDir) => {
   try {
     if (!validateExtensionId(extensionId)) return { error: { code: 'INVALID_ID', message: 'Invalid extension ID' } };
-    extensionDatabaseManager.migrate(extensionId, migrationsDir);
+    await extensionDatabaseManager.migrate(extensionId, migrationsDir);
     return { error: null };
   } catch (err) {
     return { error: normalizeDatabaseError(err) };
@@ -2137,7 +2146,7 @@ ipcMain.handle('ext-database:migrate', async (_event, extensionId, migrationsDir
 ipcMain.handle('ext-database:run', async (_event, extensionId, sql, params) => {
   try {
     if (!validateExtensionId(extensionId)) return { error: { code: 'INVALID_ID', message: 'Invalid extension ID' } };
-    const result = extensionDatabaseManager.run(extensionId, sql, normalizeDbParams(params));
+    const result = await extensionDatabaseManager.run(extensionId, sql, normalizeDbParams(params));
     return {
       error: null,
       changes: result.changes,
@@ -2153,7 +2162,7 @@ ipcMain.handle('ext-database:run', async (_event, extensionId, sql, params) => {
 ipcMain.handle('ext-database:get', async (_event, extensionId, sql, params) => {
   try {
     if (!validateExtensionId(extensionId)) return { error: { code: 'INVALID_ID', message: 'Invalid extension ID' } };
-    const row = extensionDatabaseManager.get(extensionId, sql, normalizeDbParams(params));
+    const row = await extensionDatabaseManager.get(extensionId, sql, normalizeDbParams(params));
     return { error: null, row: row || null };
   } catch (err) {
     return { error: normalizeDatabaseError(err) };
@@ -2163,7 +2172,7 @@ ipcMain.handle('ext-database:get', async (_event, extensionId, sql, params) => {
 ipcMain.handle('ext-database:all', async (_event, extensionId, sql, params) => {
   try {
     if (!validateExtensionId(extensionId)) return { error: { code: 'INVALID_ID', message: 'Invalid extension ID' } };
-    const rows = extensionDatabaseManager.all(extensionId, sql, normalizeDbParams(params));
+    const rows = await extensionDatabaseManager.all(extensionId, sql, normalizeDbParams(params));
     return { error: null, rows: rows || [] };
   } catch (err) {
     return { error: normalizeDatabaseError(err) };
@@ -2177,7 +2186,7 @@ ipcMain.handle('ext-database:isOpen', async (_event, extensionId) => {
 
 ipcMain.handle('ext-database:closeAll', async () => {
   try {
-    extensionDatabaseManager.closeAll();
+    await extensionDatabaseManager.closeAll();
     return { error: null };
   } catch (err) {
     return { error: normalizeDatabaseError(err) };
@@ -2191,7 +2200,7 @@ ipcMain.handle('ext-database:runTransaction', async (_event, extensionId, operat
       ...op,
       params: normalizeDbParams(op.params),
     }));
-    const rawResults = extensionDatabaseManager.runTransaction(extensionId, normalizedOps);
+    const rawResults = await extensionDatabaseManager.runTransaction(extensionId, normalizedOps);
     const results = rawResults.map((r, i) => {
       const op = operations[i];
       if (op.type === 'run') {
