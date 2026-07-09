@@ -268,3 +268,81 @@ describe('generic transform engine — simple textblock conversions still work',
     expect(allText(ed)).toEqual(['bullet me']);
   });
 });
+
+// ── Delete policy — emptied wrappers dissolve, no ghost rows ─────────────────
+
+import { deleteBlockAt } from '../../src/built-in/canvas/config/blockStateRegistry/blockLifecycle';
+
+describe('delete policy — emptied-wrapper dissolution', () => {
+  it('deleting the ONLY row of a list removes the list itself (no ghost bullet)', () => {
+    const ed = makeEditor({ type: 'doc', content: [
+      { type: 'bulletList', content: [{ type: 'listItem', content: [p('only row')] }] },
+      p('after'),
+    ]});
+    const li = ed.state.doc.nodeAt(1)!;
+    expect(li.type.name).toBe('listItem');
+    deleteBlockAt(ed, 1, li);
+    expect(topLevelTypes(ed)).toEqual(['paragraph']);
+    expect(allText(ed)).toEqual(['after']);
+  });
+
+  it('deleting one of several rows keeps the list and the other rows', () => {
+    const ed = makeEditor({ type: 'doc', content: [
+      { type: 'bulletList', content: [
+        { type: 'listItem', content: [p('keep me')] },
+        { type: 'listItem', content: [p('delete me')] },
+      ]},
+    ]});
+    // second row position: 1 (before first li) + firstLi.nodeSize
+    const first = ed.state.doc.nodeAt(1)!;
+    const secondPos = 1 + first.nodeSize;
+    const second = ed.state.doc.nodeAt(secondPos)!;
+    expect(second.type.name).toBe('listItem');
+    deleteBlockAt(ed, secondPos, second);
+    expect(topLevelTypes(ed)).toEqual(['bulletList']);
+    expect(allText(ed)).toEqual(['keep me']);
+  });
+
+  it('deleting the only row of a NESTED list dissolves just the nested list', () => {
+    const ed = makeEditor({ type: 'doc', content: [
+      { type: 'bulletList', content: [
+        { type: 'listItem', content: [
+          p('parent'),
+          { type: 'bulletList', content: [{ type: 'listItem', content: [p('nested only')] }] },
+        ]},
+      ]},
+    ]});
+    // nested li position: doc(0) bulletList(1) listItem(1..) → paragraph 'parent'
+    // nested bulletList starts after the paragraph.
+    let nestedLiPos = -1;
+    ed.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'listItem' && node.textContent === 'nested only') {
+        nestedLiPos = pos;
+        return false;
+      }
+      return true;
+    });
+    const nestedLi = ed.state.doc.nodeAt(nestedLiPos)!;
+    deleteBlockAt(ed, nestedLiPos, nestedLi);
+    expect(allText(ed)).toEqual(['parent']);
+    // outer list + row survive; the emptied nested list is gone entirely
+    const outerItem = ed.state.doc.child(0).child(0);
+    expect(outerItem.childCount).toBe(1);
+    expect(outerItem.child(0).type.name).toBe('paragraph');
+  });
+
+  it('deleting a whole task list block leaves clean siblings', () => {
+    const ed = makeEditor({ type: 'doc', content: [
+      p('before'),
+      { type: 'taskList', content: [{ type: 'taskItem', attrs: { checked: false }, content: [p('todo')] }] },
+      p('rest'),
+    ]});
+    const before = ed.state.doc.child(0);
+    const taskItemPos = before.nodeSize + 1;
+    const taskItem = ed.state.doc.nodeAt(taskItemPos)!;
+    expect(taskItem.type.name).toBe('taskItem');
+    deleteBlockAt(ed, taskItemPos, taskItem);
+    expect(topLevelTypes(ed)).toEqual(['paragraph', 'paragraph']);
+    expect(allText(ed)).toEqual(['before', 'rest']);
+  });
+});

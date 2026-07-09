@@ -144,6 +144,46 @@ export function duplicateBlockAt(
   return insertPos;
 }
 
+/**
+ * Wrapper types that DISSOLVE when their last child is deleted.  Deleting the
+ * only row of a list removes the list itself — otherwise ProseMirror's
+ * replace-fitting resurrects an empty row and the user sees a ghost bullet
+ * that "won't delete".  Required containers (column, callout, detailsContent)
+ * are NOT here: they survive with a backfilled empty paragraph instead.
+ */
+const DISSOLVES_WHEN_EMPTY: ReadonlySet<string> = new Set([
+  'bulletList', 'orderedList', 'taskList', 'listItem', 'taskItem',
+]);
+
+/**
+ * Grow a block's deletion range over every ancestor wrapper that the delete
+ * would leave empty and that dissolves when emptied.  One uniform policy for
+ * every delete path (single action-menu delete, multi-select delete).
+ *
+ * @param doc — the CURRENT doc the delete will run against (use `tr.doc` when
+ *              batching so earlier deletions are visible to the emptiness check).
+ * @returns the final range plus the depth of the nearest surviving ancestor.
+ */
+export function growEmptiedAncestorDeletion(
+  doc: PMNode,
+  pos: number,
+  node: PMNode,
+): { from: number; to: number; survivorDepth: number } {
+  const $pos = doc.resolve(pos);
+  let from = pos;
+  let to = pos + node.nodeSize;
+  let d = $pos.depth;
+  while (d >= 1) {
+    const parent = $pos.node(d);
+    if (!DISSOLVES_WHEN_EMPTY.has(parent.type.name)) break;
+    if (parent.childCount > 1) break; // siblings remain — the wrapper survives
+    from = $pos.before(d);
+    to = $pos.after(d);
+    d--;
+  }
+  return { from, to, survivorDepth: d };
+}
+
 export function deleteBlockAt(editor: Editor, pos: number, node: PMNode): void {
   // If the block owns a child page, trigger the normal page deletion process.
   notifyLinkedPageBlocksDeleted([node]);
@@ -154,8 +194,12 @@ export function deleteBlockAt(editor: Editor, pos: number, node: PMNode): void {
   const columnDepth = ancestry.columnDepth;
   const columnStartPos = columnDepth !== null ? $pos.before(columnDepth) : null;
 
+  // Uniform emptied-wrapper policy: the delete takes any list wrappers it
+  // would leave empty down with it (no ghost rows).
+  const { from, to } = growEmptiedAncestorDeletion(editor.state.doc, pos, node);
+
   const { tr } = editor.state;
-  tr.delete(pos, pos + node.nodeSize);
+  tr.delete(from, to);
 
   // Column schema safety: column content is `(block)+` — one or more children.
   // If the delete emptied the column, insert an empty paragraph to keep the

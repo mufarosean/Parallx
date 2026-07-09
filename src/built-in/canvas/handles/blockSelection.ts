@@ -14,7 +14,7 @@
 import type { Editor } from '@tiptap/core';
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
-import { resolveMovableBlock, normalizeAllColumnLists, notifyLinkedPageBlocksDeleted } from './handleRegistry.js';
+import { resolveMovableBlock, normalizeAllColumnLists, notifyLinkedPageBlocksDeleted, growEmptiedAncestorDeletion } from './handleRegistry.js';
 import { isDevMode } from '../../../platform/devMode.js';
 
 // ── Decoration Plugin ───────────────────────────────────────────────────────
@@ -425,7 +425,11 @@ export class BlockSelectionController {
     for (const pos of positions) {
       const node = tr.doc.nodeAt(pos);
       if (node) {
-        tr.delete(pos, pos + node.nodeSize);
+        // Same emptied-wrapper policy as single delete: computed against
+        // tr.doc so earlier deletions count toward a wrapper's emptiness —
+        // deleting every row of a list removes the list itself.
+        const { from, to } = growEmptiedAncestorDeletion(tr.doc, pos, node);
+        tr.delete(from, to);
       }
     }
 
