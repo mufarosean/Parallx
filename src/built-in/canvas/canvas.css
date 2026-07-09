@@ -968,26 +968,19 @@
    (added by extensions/blockBackground.ts). For a list ITEM that element is the
    <li>, which already contains the item's line AND its nested sub-list — so the
    fill wraps the whole subtree as ONE continuous region rather than striping
-   each child row. */
+   each child row.
+
+   ALIGNMENT INVARIANT: colouring a block must not move its text or its list
+   marker by a single pixel relative to uncoloured siblings.  The 4px left
+   padding is cancelled by an equal negative margin (a slight bleed into the
+   gap, never into the marker gutter), and vertical padding is symmetric.
+   List markers render outside the fill — native ::marker boxes cannot take a
+   background, and pulling the <li> across the marker gutter (the previous
+   attempt) dragged markers out of column alignment. */
 .canvas-tiptap-editor .canvas-block-bg {
   border-radius: 4px;
-  padding: 2px 6px;
-}
-
-/* A coloured bullet/number item: extend the fill left across the marker gutter
-   so the "1." / "•" sits inside the region (as Notion does). The list adds
-   1.625em of left padding for markers; pull the <li> back over it, then re-pad
-   so the text stays put. */
-.canvas-tiptap-editor ul:not([data-type="taskList"]) > li.canvas-block-bg,
-.canvas-tiptap-editor ol > li.canvas-block-bg {
-  margin-left: -1.625em;
-  padding-left: calc(1.625em + 6px);
-}
-
-/* Task items render their checkbox inside the flex row already — only pad. */
-.canvas-tiptap-editor ul[data-type="taskList"] > li.canvas-block-bg {
-  border-radius: 4px;
-  padding: 2px 6px;
+  padding: 2px 6px 2px 4px;
+  margin-left: -4px;
 }
 
 /* ── Task list — custom Notion-style checkboxes ── */

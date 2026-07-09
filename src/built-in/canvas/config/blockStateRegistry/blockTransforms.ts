@@ -5,25 +5,32 @@
 // operations.
 //
 // ── The generic transform engine ─────────────────────────────────────────────
-// Every conversion runs through one decompose → build pipeline:
+// EVERY conversion runs through one decompose → build pipeline (no parallel
+// Tiptap-command path — one code path means one behavior):
 //
-//   decompose(node)  →  BlockParts { inline, plainText, children }
+//   decompose(node)  →  BlockParts { inline, plainText, children, bg }
 //   build(target)    →  { node, trailing }
 //
 // `inline` is the block's first line of rich content, `children` is every
 // other block it holds.  Targets place the parts where their shape dictates
-// (registry TransformShape) — and any child blocks a target cannot hold are
-// emitted as `trailing` siblings after it.
+// (registry TransformShape); child blocks a target cannot hold are emitted
+// as `trailing` siblings after it.
 //
-// INVARIANT: a transform NEVER destroys child blocks.  Content either moves
-// into the new block or lands as siblings directly after it — matching
-// Notion, where turning a populated callout into a heading re-parents the
-// body blocks rather than deleting them.
+// INVARIANTS (each pinned by tests/unit/canvasTransformBehavior.test.ts):
+//   1. A transform NEVER destroys child blocks — they move into the new block
+//      or land directly after it.
+//   2. A transform NEVER changes the block's position in the tree.  A list
+//      row converts IN PLACE: the list splits around it and the converted
+//      block takes the row's exact spot — nested rows keep their indent,
+//      siblings keep their list type.
+//   3. Block styling travels: a coloured block stays coloured after
+//      conversion (when the target can carry a background).
 
 import type { Editor } from '@tiptap/core';
 import {
   getTransformShape,
   turnBlockIntoColumns,
+  canTakeBackgroundColor,
   type TransformShape,
 } from './blockStateRegistry.js';
 
@@ -36,6 +43,8 @@ interface BlockParts {
   readonly plainText: string;
   /** JSON of every other block the node holds.  NEVER dropped. */
   readonly children: any[];
+  /** The source block's background colour, carried to the target when it can hold one. */
+  readonly backgroundColor: string | null;
 }
 
 interface BuiltBlock {
@@ -44,6 +53,8 @@ interface BuiltBlock {
   /** Blocks the target could not hold — inserted as siblings after it. */
   readonly trailing: any[];
 }
+
+const LIST_TARGET_TYPES = new Set(['bulletList', 'orderedList', 'taskList']);
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
@@ -56,12 +67,9 @@ export function turnBlockWithSharedStrategy(
 ): void {
   const srcType = node.type.name;
 
-  // List rows resolve to their `listItem` / `taskItem`. Those can't be replaced
-  // in place (a list may only contain items), so they get list-aware handling:
-  // convert the list type directly, or lift the row out to a normal block and
-  // then run the standard transform on it.
+  // List rows convert IN PLACE via list-splice surgery (invariant 2).
   if (srcType === 'listItem' || srcType === 'taskItem') {
-    turnListItemInto(editor, pos, targetType, attrs);
+    spliceListRowInto(editor, pos, node, targetType, attrs);
     return;
   }
 
@@ -73,21 +81,14 @@ export function turnBlockWithSharedStrategy(
     }
   }
 
-  // Simple textblock → simple target: Tiptap's own commands preserve marks,
-  // selection, and list surgery better than a JSON rebuild — use them.
-  const srcShape = getTransformShape(srcType);
-  if (srcShape.kind === 'textblock' && SIMPLE_COMMAND_TARGETS.has(targetType)) {
-    if (runSimpleCommand(editor, pos, targetType, attrs)) return;
-  }
-
   // Container → paragraph is an UNWRAP: the container's blocks keep their own
   // types and land at the container's level (Notion "turn into text").
+  const srcShape = getTransformShape(srcType);
   if (targetType === 'paragraph' && isUnwrappableShape(srcShape)) {
     unwrapContainer(editor, pos, node, srcShape);
     return;
   }
 
-  // Generic path: decompose to parts, rebuild as the target shape.
   const parts = decomposeBlock(node, srcShape);
   const built = buildBlock(targetType, parts, attrs);
   if (!built) return;
@@ -98,97 +99,91 @@ export function turnBlockWithSharedStrategy(
     .run();
 }
 
-// ── Simple Tiptap-command path ───────────────────────────────────────────────
+// ── List-row conversions: in-place splice ────────────────────────────────────
+//
+// Converting row R inside list L replaces L with (up to) three nodes AT L's
+// POSITION:   [ L(rows before R) ]  converted(R) (+trailing)  [ L(rows after R) ]
+//
+// One rule at every depth: a nested list lives inside a parent listItem whose
+// content spec (`paragraph block*`) accepts any block, so the converted node
+// stays exactly where the row was — indent retained, siblings untouched,
+// children kept (inside container targets / nested under list targets /
+// trailing after leaf targets).  This replaces the old Tiptap toggle-lift
+// approach, which ejected nested rows to the top level, silently converted
+// sibling rows on list-type changes, detached children, and no-op'd on
+// attribute-carrying rows.
 
-const SIMPLE_COMMAND_TARGETS: ReadonlySet<string> = new Set([
-  'paragraph', 'heading', 'bulletList', 'orderedList', 'taskList', 'blockquote', 'codeBlock',
-]);
-
-function runSimpleCommand(editor: Editor, pos: number, targetType: string, attrs?: any): boolean {
-  const chain = editor.chain().setTextSelection(pos + 1);
-  switch (targetType) {
-    case 'paragraph': return chain.setParagraph().focus().run();
-    case 'heading': return chain.setHeading(attrs).focus().run();
-    case 'bulletList': return chain.toggleBulletList().focus().run();
-    case 'orderedList': return chain.toggleOrderedList().focus().run();
-    case 'taskList': return chain.toggleTaskList().focus().run();
-    case 'blockquote': return chain.toggleBlockquote().focus().run();
-    case 'codeBlock': return chain.toggleCodeBlock().focus().run();
-    default: return false;
-  }
-}
-
-// ── List-row conversions ─────────────────────────────────────────────────────
-
-const LIST_TARGET_TYPES = new Set(['bulletList', 'orderedList', 'taskList']);
-
-/**
- * Turn a list row (`listItem` / `taskItem`) into `targetType`.
- *
- * A list row can't be swapped in place (the list schema only permits items),
- * so we reuse Tiptap's list-aware commands, which already own the surgery:
- *   • target is another list type → toggle it (Tiptap rewraps the row);
- *   • any other target → toggle OFF the current list (lifting the row's content
- *     to a normal block), then run the standard transform on that block.
- * Nested sub-lists survive both paths — Tiptap's toggles re-parent them.
- *
- * `pos` is the row's "before" position; `pos + 2` lands inside its first text
- * block (item → paragraph → text), which is what the list commands act on.
- */
-function turnListItemInto(
+function spliceListRowInto(
   editor: Editor,
-  pos: number,
+  rowPos: number,
+  rowNode: any,
   targetType: string,
   attrs?: any,
 ): void {
-  const insidePos = pos + 2;
-  const currentListType = editor.state.doc.resolve(pos).parent.type.name;
+  const $row = editor.state.doc.resolve(rowPos);
+  const list = $row.parent;
+  if (!LIST_TARGET_TYPES.has(list.type.name)) return; // defensive: row not in a list
+  if (targetType === list.type.name) return;          // already this list type — no-op
 
-  const toggleList = (chain: any, listType: string): any => {
-    if (listType === 'bulletList') return chain.toggleBulletList();
-    if (listType === 'orderedList') return chain.toggleOrderedList();
-    return chain.toggleTaskList();
-  };
+  const listPos = $row.before($row.depth);
+  const rowIndex = $row.index($row.depth);
 
-  // Convert to another list type — a single toggle rewraps the row.
+  const rowsBefore: any[] = [];
+  const rowsAfter: any[] = [];
+  list.forEach((child: any, _off: number, i: number) => {
+    if (i < rowIndex) rowsBefore.push(child.toJSON());
+    else if (i > rowIndex) rowsAfter.push(child.toJSON());
+  });
+
+  // Decompose the row: first line + everything else (nested lists, extra blocks).
+  const parts = withBg(
+    decomposeChildSequence(collectChildren(rowNode), rowNode.textContent || ''),
+    rowNode.attrs?.backgroundColor ?? null,
+  );
+
+  let converted: any[];
   if (LIST_TARGET_TYPES.has(targetType)) {
-    if (targetType === currentListType) return; // already this type
-    toggleList(editor.chain().setTextSelection(insidePos), targetType).focus().run();
-    return;
+    // Row → row of another list type: rebuild just this row, children nested.
+    const built = buildBlock(targetType, parts, attrs);
+    converted = built ? [built.node, ...built.trailing] : [];
+  } else {
+    const built = buildBlock(targetType, parts, attrs);
+    if (!built) return;
+    converted = [built.node, ...built.trailing];
   }
+  if (converted.length === 0) return;
 
-  // Non-list target: lift the row out of its list by toggling the current list
-  // off, which converts the row's content into a paragraph at the list's level.
-  if (!LIST_TARGET_TYPES.has(currentListType)) return;
-  const lifted = toggleList(editor.chain().setTextSelection(insidePos), currentListType).run();
-  if (!lifted) return;
+  const listJson = (rows: any[]): Record<string, any> => ({
+    type: list.type.name,
+    ...(hasMeaningfulAttrs(list.attrs) ? { attrs: { ...list.attrs } } : {}),
+    content: rows,
+  });
 
-  if (targetType === 'paragraph') {
-    editor.commands.focus();
-    return;
-  }
+  const replacement: any[] = [];
+  if (rowsBefore.length > 0) replacement.push(listJson(rowsBefore));
+  replacement.push(...converted);
+  if (rowsAfter.length > 0) replacement.push(listJson(rowsAfter));
 
-  // Re-resolve the now-lifted paragraph (holds the selection) and run the
-  // standard transform on it — this covers headings, quote, code, callout,
-  // toggle, math, and columns without duplicating their logic here.
-  const $lift = editor.state.selection.$from;
-  const liftedPos = $lift.before($lift.depth);
-  const liftedNode = editor.state.doc.nodeAt(liftedPos);
-  if (!liftedNode || liftedNode.type.name !== 'paragraph') {
-    editor.commands.focus();
-    return;
-  }
-  turnBlockWithSharedStrategy(editor, liftedPos, liftedNode, targetType, attrs);
+  editor.chain()
+    .insertContentAt({ from: listPos, to: listPos + list.nodeSize }, replacement)
+    .focus()
+    .run();
+}
+
+function hasMeaningfulAttrs(attrs: Record<string, any> | null | undefined): boolean {
+  if (!attrs) return false;
+  return Object.values(attrs).some((v) => v !== null && v !== undefined);
 }
 
 // ── Decompose ────────────────────────────────────────────────────────────────
 
 function decomposeBlock(node: any, shape: TransformShape): BlockParts {
   const plainText = node.textContent || '';
+  const bg = node.attrs?.backgroundColor ?? null;
 
   switch (shape.kind) {
     case 'textblock':
-      return { inline: node.content?.toJSON() ?? [], plainText, children: [] };
+      return { inline: node.content?.toJSON() ?? [], plainText, children: [], backgroundColor: bg };
 
     case 'atom-text': {
       const text = String(node.attrs?.[shape.textAttr] ?? '');
@@ -196,11 +191,12 @@ function decomposeBlock(node: any, shape: TransformShape): BlockParts {
         inline: text ? [{ type: 'text', text }] : [],
         plainText: text,
         children: [],
+        backgroundColor: bg,
       };
     }
 
     case 'wrapper':
-      return decomposeChildSequence(collectChildren(node), plainText);
+      return withBg(decomposeChildSequence(collectChildren(node), plainText), bg);
 
     case 'summary-content': {
       let inline: any[] = [];
@@ -212,7 +208,7 @@ function decomposeBlock(node: any, shape: TransformShape): BlockParts {
           children = children.concat(collectChildren(child));
         }
       });
-      return { inline, plainText, children };
+      return { inline, plainText, children, backgroundColor: bg };
     }
 
     case 'list': {
@@ -220,7 +216,7 @@ function decomposeBlock(node: any, shape: TransformShape): BlockParts {
       // first row's nested blocks and all remaining rows (rewrapped in the
       // same list type) — is preserved as children.
       const rows = collectChildren(node);
-      if (rows.length === 0) return { inline: [], plainText, children: [] };
+      if (rows.length === 0) return { inline: [], plainText, children: [], backgroundColor: bg };
 
       const firstRowBlocks: any[] = Array.isArray(rows[0]?.content) ? rows[0].content : [];
       const seq = decomposeChildSequence(firstRowBlocks, plainText);
@@ -228,9 +224,13 @@ function decomposeBlock(node: any, shape: TransformShape): BlockParts {
       if (rows.length > 1) {
         children.push({ type: node.type.name, content: rows.slice(1) });
       }
-      return { inline: seq.inline, plainText, children };
+      return { inline: seq.inline, plainText, children, backgroundColor: bg };
     }
   }
+}
+
+function withBg(parts: BlockParts, bg: string | null): BlockParts {
+  return bg === parts.backgroundColor ? parts : { ...parts, backgroundColor: bg };
 }
 
 /** JSON of a node's direct children. */
@@ -246,16 +246,17 @@ function collectChildren(node: any): any[] {
  * first child is an image), everything is children and inline is empty.
  */
 function decomposeChildSequence(blocks: any[], plainText: string): BlockParts {
-  if (blocks.length === 0) return { inline: [], plainText, children: [] };
+  if (blocks.length === 0) return { inline: [], plainText, children: [], backgroundColor: null };
   const first = blocks[0];
   if (isTextblockJson(first)) {
     return {
       inline: Array.isArray(first.content) ? first.content : [],
       plainText,
       children: blocks.slice(1),
+      backgroundColor: null,
     };
   }
-  return { inline: [], plainText, children: blocks };
+  return { inline: [], plainText, children: blocks, backgroundColor: null };
 }
 
 function isTextblockJson(blockJson: any): boolean {
@@ -266,6 +267,23 @@ function isTextblockJson(blockJson: any): boolean {
 
 // ── Build ────────────────────────────────────────────────────────────────────
 
+/**
+ * Merge the carried background colour into a target's attrs (invariant 3).
+ * An explicit caller-supplied backgroundColor wins; targets that can't hold
+ * a background (mathBlock, …) drop it.
+ */
+function mergeAttrs(
+  targetType: string,
+  attrs: Record<string, any> | undefined,
+  parts: BlockParts,
+): Record<string, any> | undefined {
+  const carryBg = parts.backgroundColor !== null
+    && attrs?.backgroundColor === undefined
+    && canTakeBackgroundColor(targetType);
+  if (!carryBg) return attrs;
+  return { ...(attrs ?? {}), backgroundColor: parts.backgroundColor };
+}
+
 function buildBlock(targetType: string, parts: BlockParts, attrs?: any): BuiltBlock | null {
   const shape = getTransformShape(targetType);
 
@@ -273,14 +291,17 @@ function buildBlock(targetType: string, parts: BlockParts, attrs?: any): BuiltBl
     case 'textblock': {
       if (targetType === 'codeBlock') {
         // Code holds plain text only; marks/inline nodes can't survive.
-        const node = {
+        const node: Record<string, any> = {
           type: 'codeBlock',
           content: parts.plainText ? [{ type: 'text', text: parts.plainText }] : [],
         };
+        const merged = mergeAttrs(targetType, attrs, parts);
+        if (merged) node.attrs = merged;
         return { node, trailing: parts.children };
       }
       const node: Record<string, any> = { type: targetType, content: parts.inline };
-      if (attrs) node.attrs = attrs;
+      const merged = mergeAttrs(targetType, attrs, parts);
+      if (merged) node.attrs = merged;
       return { node, trailing: parts.children };
     }
 
@@ -291,20 +312,26 @@ function buildBlock(targetType: string, parts: BlockParts, attrs?: any): BuiltBl
 
     case 'list': {
       // The row hosts the inline as its paragraph and adopts the child blocks
-      // as nested content (listItem content spec: paragraph block*).
+      // as nested content (listItem content spec: paragraph block*).  The
+      // carried colour lands on the ROW (list items are the colourable unit).
       const itemContent: any[] = [{ type: 'paragraph', content: parts.inline }, ...parts.children];
       const item: Record<string, any> = { type: shape.itemType, content: itemContent };
-      if (shape.itemAttrs) item.attrs = { ...shape.itemAttrs };
+      const itemAttrs: Record<string, any> = { ...(shape.itemAttrs ?? {}) };
+      if (parts.backgroundColor !== null && canTakeBackgroundColor(shape.itemType)) {
+        itemAttrs.backgroundColor = parts.backgroundColor;
+      }
+      if (Object.keys(itemAttrs).length > 0) item.attrs = itemAttrs;
       return { node: { type: targetType, content: [item] }, trailing: [] };
     }
 
     case 'wrapper': {
       const content: any[] = [{ type: 'paragraph', content: parts.inline }, ...parts.children];
       const node: Record<string, any> = { type: targetType, content };
-      const defaultedAttrs = targetType === 'callout'
-        ? { emoji: attrs?.emoji || 'lightbulb' }
+      const baseAttrs = targetType === 'callout'
+        ? { emoji: attrs?.emoji || 'lightbulb', ...(attrs ?? {}) }
         : attrs;
-      if (defaultedAttrs) node.attrs = defaultedAttrs;
+      const merged = mergeAttrs(targetType, baseAttrs, parts);
+      if (merged) node.attrs = merged;
       return { node, trailing: [] };
     }
 
@@ -317,8 +344,9 @@ function buildBlock(targetType: string, parts: BlockParts, attrs?: any): BuiltBl
           { type: shape.contentType, content: body },
         ],
       };
-      if (targetType === 'toggleHeading') node.attrs = { level: attrs?.level || 1 };
-      else if (attrs) node.attrs = attrs;
+      const baseAttrs = targetType === 'toggleHeading' ? { level: attrs?.level || 1 } : attrs;
+      const merged = mergeAttrs(targetType, baseAttrs, parts);
+      if (merged) node.attrs = merged;
       return { node, trailing: [] };
     }
   }
