@@ -26,6 +26,7 @@ import {
   isColumnEffectivelyEmpty,
   resolveBlockAncestry,
   resolveMovableBlock,
+  resolveBlockUnit,
   moveBlockAcrossColumnBoundary,
   moveBlockDownWithinPageFlow,
   moveBlockUpWithinPageFlow,
@@ -265,54 +266,23 @@ export const ColumnList = Node.create({
 
       // Tab — indent block into the nearest preceding container sibling.
       // Passes through when inside a list (Tiptap handles list indent).
+      // The unit resolver replaces a hand-rolled walk that only knew about
+      // columns — Tab inside a callout used to grab the WHOLE callout instead
+      // of the paragraph under the cursor.
       'Tab': ({ editor }) => {
-        const { $from } = editor.state.selection;
-
-        // Let Tiptap handle list item indentation
-        for (let d = $from.depth; d >= 1; d--) {
-          const name = $from.node(d).type.name;
-          if (name === 'listItem' || name === 'taskItem') return false;
-        }
-
-        // Resolve the closest block
-        let blockDepth = -1;
-        for (let d = $from.depth; d >= 1; d--) {
-          if ($from.node(d).type.name === 'column') { blockDepth = d + 1; break; }
-        }
-        if (blockDepth < 0) blockDepth = 1;
-        if (blockDepth > $from.depth) return false;
-
-        const blockPos = $from.before(blockDepth);
-        const blockNode = editor.state.doc.nodeAt(blockPos);
-        if (!blockNode) return false;
-
-        return indentBlock(editor, blockPos, blockNode);
+        const unit = resolveBlockUnit(editor.state.selection.$from);
+        if (!unit) return false;
+        if (unit.isListItem) return false; // Tiptap owns list row indentation
+        return indentBlock(editor, unit.pos, unit.node);
       },
 
       // Shift+Tab — outdent block from its current container.
       // Passes through when inside a list (Tiptap handles list outdent).
       'Shift-Tab': ({ editor }) => {
-        const { $from } = editor.state.selection;
-
-        // Let Tiptap handle list item outdentation
-        for (let d = $from.depth; d >= 1; d--) {
-          const name = $from.node(d).type.name;
-          if (name === 'listItem' || name === 'taskItem') return false;
-        }
-
-        // Resolve the closest block
-        let blockDepth = -1;
-        for (let d = $from.depth; d >= 1; d--) {
-          if ($from.node(d).type.name === 'column') { blockDepth = d + 1; break; }
-        }
-        if (blockDepth < 0) blockDepth = 1;
-        if (blockDepth > $from.depth) return false;
-
-        const blockPos = $from.before(blockDepth);
-        const blockNode = editor.state.doc.nodeAt(blockPos);
-        if (!blockNode) return false;
-
-        return outdentBlock(editor, blockPos, blockNode);
+        const unit = resolveBlockUnit(editor.state.selection.$from);
+        if (!unit) return false;
+        if (unit.isListItem) return false; // Tiptap owns list row outdentation
+        return outdentBlock(editor, unit.pos, unit.node);
       },
     };
   },

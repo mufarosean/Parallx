@@ -25,6 +25,8 @@ import {
   setActiveCanvasDragSession,
   PAGE_CONTAINERS,
   resolveMovableBlock,
+  resolveBlockUnitFromDOM,
+  listItemContentElement,
   isContainerBlockType,
 } from './handleRegistry.js';
 
@@ -807,19 +809,14 @@ export class BlockHandlesController {
     clientY: number,
   ): { pos: number; node: any } | null {
     const el = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
-    const atomEl = el?.closest('[data-type="mathBlock"]') as HTMLElement | null;
-    if (!atomEl || !view.dom.contains(atomEl)) return null;
-    try {
-      const pos = view.posAtDOM(atomEl, 0);
-      const direct = view.state.doc.nodeAt(pos);
-      if (direct && direct.isAtom && direct.type.name !== 'column' && direct.type.name !== 'columnList') {
-        return { pos, node: direct };
-      }
-      const resolved = this._resolveBlockFromDocPos(view, pos);
-      if (resolved && resolved.node?.isAtom) {
-        return { pos: resolved.pos, node: resolved.node };
-      }
-    } catch { /* fall through to generic resolution */ }
+    if (!el) return null;
+    // Canonical DOM resolution (blockUnit) — handles every registry atom
+    // (mathBlock, image, bookmark, …), not just mathBlock.  Only atom results
+    // short-circuit; anything else falls through to the generic hover logic.
+    const unit = resolveBlockUnitFromDOM(view, el);
+    if (unit && unit.node?.isAtom) {
+      return { pos: unit.pos, node: unit.node };
+    }
     return null;
   }
 
@@ -1102,11 +1099,8 @@ export class BlockHandlesController {
         }
         if (liBest) probe = liBest.el;
       }
-      const directChild = probe.firstElementChild as HTMLElement | null;
-      const contentEl = directChild?.tagName === 'LABEL'
-        ? (directChild.nextElementSibling as HTMLElement | null) ?? directChild
-        : directChild;
-      const domPos = view.posAtDOM(contentEl ?? probe, 0);
+      const probeContent = probe.tagName === 'LI' ? listItemContentElement(probe) : probe;
+      const domPos = view.posAtDOM(probeContent, 0);
       const r2 = this._resolveBlockFromDocPos(view, domPos);
       if (r2 && r2.pos !== resolved.pos) return r2;
     } catch { /* fall through */ }
@@ -1119,13 +1113,9 @@ export class BlockHandlesController {
   ): { pos: number; node: any; depth: number } | null {
     const listItem = element.closest('li') as HTMLElement | null;
     if (listItem && view.dom.contains(listItem)) {
-      const directChild = listItem.firstElementChild as HTMLElement | null;
-      const contentEl = directChild?.tagName === 'LABEL'
-        ? (directChild.nextElementSibling as HTMLElement | null) ?? directChild
-        : directChild;
-
       try {
-        const domPos = view.posAtDOM(contentEl ?? listItem, 0);
+        // Canonical row→content mapping (blockUnit.listItemContentElement).
+        const domPos = view.posAtDOM(listItemContentElement(listItem), 0);
         const resolved = this._resolveBlockFromDocPos(view, domPos);
         if (resolved) return resolved;
       } catch {

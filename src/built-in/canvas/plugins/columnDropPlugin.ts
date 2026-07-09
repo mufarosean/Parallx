@@ -27,6 +27,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import {
   resolveMovableBlock,
+  listItemContentElement,
   getActiveCanvasDragSession,
   classifyPageBlockDropZone,
   areAllDraggedNodesListItems,
@@ -231,16 +232,10 @@ export function columnDropPlugin(): Plugin {
 
   function resolveBlockTarget(view: EditorView, blockEl: HTMLElement): Omit<DropTarget, 'zone'> | null {
     try {
-      let inner: number;
-      if (blockEl.tagName === 'LI') {
-        const directChild = blockEl.firstElementChild as HTMLElement | null;
-        const contentEl = directChild?.tagName === 'LABEL'
-          ? (directChild.nextElementSibling as HTMLElement | null) ?? directChild
-          : directChild;
-        inner = view.posAtDOM(contentEl ?? blockEl, 0);
-      } else {
-        inner = view.posAtDOM(blockEl, 0);
-      }
+      // List rows must be probed at their own content element (shared
+      // canonical mapping — see blockUnit.listItemContentElement).
+      const probeEl = blockEl.tagName === 'LI' ? listItemContentElement(blockEl) : blockEl;
+      const inner = view.posAtDOM(probeEl, 0);
       const $p = view.state.doc.resolve(inner);
       const movable = resolveMovableBlock($p);
       if (!movable) return null;

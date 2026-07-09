@@ -21,7 +21,14 @@ export { CANVAS_BLOCK_DRAG_MIME, clearActiveCanvasDragSession, setActiveCanvasDr
 
 /** @see {@link import('../config/blockStateRegistry/columnInvariants.js')} — origin */
 export { resolveBlockAncestry, resolveMovableBlock, normalizeAllColumnLists, notifyLinkedPageBlocksDeleted, growEmptiedAncestorDeletion } from '../config/blockStateRegistry/blockStateRegistry.js';
-export type { BlockAncestry, MovableBlockContext } from '../config/blockStateRegistry/blockStateRegistry.js';
+export {
+  resolveBlockUnit,
+  resolveUnitContainer,
+  enumerateBlockUnits,
+  resolveBlockUnitFromDOM,
+  listItemContentElement,
+} from '../config/blockStateRegistry/blockStateRegistry.js';
+export type { BlockAncestry, MovableBlockContext, BlockUnitEntry, BlockUnitContainer, DomBlockUnit } from '../config/blockStateRegistry/blockStateRegistry.js';
 
 // ── Re-exports from BlockRegistry (source owner) ────────────────────────────
 // BlockRegistry owns PAGE_CONTAINERS and isContainerBlockType — computed from

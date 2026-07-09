@@ -126,6 +126,7 @@ const GATE_RULES: Record<string, string[]> = {
   'menus/bookmarkInsertPopup.ts':          ['menus/inputPasteContextMenu', 'menus/inputIsolation'],  // pure UI
 
   // ── BlockStateRegistry children ─────────────────────────────────────────
+  'config/blockStateRegistry/blockUnit.ts':           ['config/blockStateRegistry/blockStateRegistry'],
   'config/blockStateRegistry/blockLifecycle.ts':      ['config/blockStateRegistry/blockStateRegistry'],
   'config/blockStateRegistry/blockTransforms.ts':     ['config/blockStateRegistry/blockStateRegistry'],
   'config/blockStateRegistry/blockMovement.ts':       ['config/blockStateRegistry/blockStateRegistry'],

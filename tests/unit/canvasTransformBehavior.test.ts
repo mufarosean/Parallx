@@ -346,3 +346,48 @@ describe('delete policy — emptied-wrapper dissolution', () => {
     expect(allText(ed)).toEqual(['before', 'rest']);
   });
 });
+
+// ── Block unit enumeration — the marquee's model walk ────────────────────────
+
+import { enumerateBlockUnits } from '../../src/built-in/canvas/config/blockStateRegistry/blockUnit';
+
+describe('enumerateBlockUnits — one definition of the interaction unit', () => {
+  it('nested list: every row is a unit; wrappers are transparent', () => {
+    const ed = makeEditor({ type: 'doc', content: [
+      p('intro'),
+      { type: 'bulletList', content: [
+        { type: 'listItem', content: [
+          p('parent'),
+          { type: 'orderedList', content: [
+            { type: 'listItem', content: [p('nested 1')] },
+            { type: 'listItem', content: [p('nested 2')] },
+          ]},
+        ]},
+        { type: 'listItem', content: [p('sibling')] },
+      ]},
+    ]});
+    const units = enumerateBlockUnits(ed.state.doc);
+    const summary = units.map(u => `${u.node.type.name}:${u.node.textContent.slice(0, 8)}`);
+    expect(summary).toEqual([
+      'paragraph:intro',
+      'listItem:parentne',   // parent row (textContent spans descendants)
+      'listItem:nested 1',
+      'listItem:nested 2',
+      'listItem:sibling',
+    ]);
+    expect(units.filter(u => u.isListItem)).toHaveLength(4);
+    // Every unit position must resolve back to its node.
+    for (const u of units) {
+      expect(ed.state.doc.nodeAt(u.pos)?.type.name).toBe(u.node.type.name);
+    }
+  });
+
+  it('containers (callout) are single units from outside; atoms are units', () => {
+    const ed = makeEditor({ type: 'doc', content: [
+      { type: 'callout', content: [p('inside 1'), p('inside 2')] },
+      { type: 'mathBlock', attrs: { latex: 'x^2' } },
+    ]});
+    const types = enumerateBlockUnits(ed.state.doc).map(u => u.node.type.name);
+    expect(types).toEqual(['callout', 'mathBlock']);
+  });
+});

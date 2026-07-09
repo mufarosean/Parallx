@@ -1013,6 +1013,13 @@ export const PAGE_CONTAINERS: ReadonlySet<string> = new Set(
     .map((d) => d.name),
 );
 
+/** Atom block types (kind: 'atom') — no editable inner content, resolved as whole units. */
+export const ATOM_BLOCK_TYPES: ReadonlySet<string> = new Set(
+  definitions
+    .filter((d) => d.kind === 'atom')
+    .map((d) => d.name),
+);
+
 /** Block-level nodes that can live inside a column. */
 export const COLUMN_BLOCK_NODE_TYPES: readonly string[] = (() => {
   const seen = new Set<string>();
@@ -1261,6 +1268,11 @@ export {
   outdentBlock,
   resolveBlockAncestry,
   resolveMovableBlock,
+  resolveBlockUnit,
+  resolveUnitContainer,
+  enumerateBlockUnits,
+  resolveBlockUnitFromDOM,
+  listItemContentElement,
   setOnLinkedPageBlockDeleted,
 } from './blockStateRegistry/blockStateRegistry.js';
 

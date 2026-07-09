@@ -7,6 +7,7 @@
 // Gate: handles/ — imports only from handleRegistry.ts.
 
 import type { Editor } from '@tiptap/core';
+import { enumerateBlockUnits } from './handleRegistry.js';
 import type { BlockSelectionController } from './handleRegistry.js';
 
 // ── Host Interface ──────────────────────────────────────────────────────────
@@ -156,8 +157,22 @@ export class BlockMarqueeController {
     const marqueeRect = marquee.getBoundingClientRect();
     if (marqueeRect.width < 2 || marqueeRect.height < 2) return;
 
+    // The MODEL decides what the units are (enumerateBlockUnits — the same
+    // definition the drag handle and action menu use); this controller only
+    // owns the GEOMETRY: hit-testing each unit's visual extent against the
+    // marquee.  List rows are hit-tested on their OWN line, not the full
+    // <li> rect — the <li> spans all nested descendants, so testing it would
+    // grab the parent whenever the marquee covers any nested row.
     const positions: number[] = [];
-    this._collectBlocks(editor.state.doc, 0, editor.view, marqueeRect, positions);
+    const view = editor.view;
+    for (const unit of enumerateBlockUnits(editor.state.doc)) {
+      const rect = unit.isListItem
+        ? this._listItemLineRect(view, unit.pos, unit.node)
+        : this._blockRect(view, unit.pos);
+      if (rect && this._rectsOverlap(marqueeRect, rect)) {
+        positions.push(unit.pos);
+      }
+    }
 
     if (positions.length > 0) {
       this._host.blockSelection.selectMultiple(positions);
@@ -165,74 +180,15 @@ export class BlockMarqueeController {
     }
   }
 
-  /**
-   * Recursively walk `parent`'s children.  `parentContentStart` is the
-   * absolute document position where `parent`'s content begins (0 for
-   * the doc node, `nodePos + 1` for every other node).
-   *
-   * Structural nodes (columnList, column) are recursed into; all other
-   * nodes are treated as selectable blocks and hit-tested via the DOM.
-   */
-  private _collectBlocks(
-    parent: any,
-    parentContentStart: number,
-    view: any,
-    marqueeRect: DOMRect,
-    out: number[],
-  ): void {
-    parent.forEach((node: any, offset: number) => {
-      const absPos = parentContentStart + offset;
-      const name: string = node.type.name;
-
-      // Structural wrappers — recurse, never select the wrapper itself.
-      //
-      // List containers (bulletList / orderedList / taskList) are wrappers
-      // around their items: the user perceives each listItem / taskItem as
-      // the selectable block, not the list as a whole. Without this recursion
-      // the marquee records a single position (the list) but the drag handle
-      // resolves clicks to individual list items, so `_handleClickAction`'s
-      // "preserve multi-selection" check fails and clicking one item's handle
-      // collapses the perceived multi-selection down to a single item.
-      if (
-        name === 'columnList' || name === 'column' ||
-        name === 'bulletList' || name === 'orderedList' || name === 'taskList'
-      ) {
-        this._collectBlocks(node, absPos + 1, view, marqueeRect, out);
-        return;
-      }
-
-      // List items are selectable blocks that ALSO contain nested sub-lists.
-      // Hit-test the item's OWN line (its first child block), not the full
-      // <li> rect — the <li> spans all nested descendants, so testing it would
-      // grab the parent whenever the marquee covers any nested row. Then
-      // descend into the item's nested lists so those rows are hit-tested on
-      // their own lines. This is what makes box-selecting N nested rows select
-      // exactly those rows instead of collapsing to the parent item.
-      if (name === 'listItem' || name === 'taskItem') {
-        const lineRect = this._listItemLineRect(view, absPos, node);
-        if (lineRect && this._rectsOverlap(marqueeRect, lineRect)) {
-          out.push(absPos);
-        }
-        let childPos = absPos + 1; // the item's content start
-        node.forEach((child: any) => {
-          const cName: string = child.type.name;
-          if (cName === 'bulletList' || cName === 'orderedList' || cName === 'taskList') {
-            this._collectBlocks(child, childPos + 1, view, marqueeRect, out);
-          }
-          childPos += child.nodeSize;
-        });
-        return;
-      }
-
-      // Selectable block — hit-test against marquee
-      try {
-        const dom = view.nodeDOM(absPos) as HTMLElement | null;
-        if (!dom || dom.nodeType !== Node.ELEMENT_NODE) return;
-        if (this._rectsOverlap(marqueeRect, dom.getBoundingClientRect())) {
-          out.push(absPos);
-        }
-      } catch { /* unmapped node — skip */ }
-    });
+  /** The DOM bounding rect of a non-list unit, or null when unmapped. */
+  private _blockRect(view: any, pos: number): DOMRect | null {
+    try {
+      const dom = view.nodeDOM(pos) as HTMLElement | null;
+      if (!dom || dom.nodeType !== Node.ELEMENT_NODE) return null;
+      return dom.getBoundingClientRect();
+    } catch {
+      return null;
+    }
   }
 
   /**

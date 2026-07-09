@@ -14,7 +14,7 @@
 import type { Editor } from '@tiptap/core';
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
-import { resolveMovableBlock, normalizeAllColumnLists, notifyLinkedPageBlocksDeleted, growEmptiedAncestorDeletion } from './handleRegistry.js';
+import { resolveMovableBlock, resolveUnitContainer, normalizeAllColumnLists, notifyLinkedPageBlocksDeleted, growEmptiedAncestorDeletion } from './handleRegistry.js';
 import { isDevMode } from '../../../platform/devMode.js';
 
 // ── Decoration Plugin ───────────────────────────────────────────────────────
@@ -283,15 +283,8 @@ export class BlockSelectionController {
   } | null {
     const editor = this._host.editor;
     if (!editor) return null;
-    if (pos < 0 || pos > editor.state.doc.content.size) return null;
-    const $pos = editor.state.doc.resolve(pos);
-    const depth = $pos.depth;
-    return {
-      parent: $pos.parent,
-      contentStart: $pos.start(depth),
-      containerBefore: depth === 0 ? null : $pos.before(depth),
-      index: $pos.index(depth),
-    };
+    // Canonical direct-parent resolution — blockUnit.resolveUnitContainer.
+    return resolveUnitContainer(editor.state.doc, pos);
   }
 
   /**
