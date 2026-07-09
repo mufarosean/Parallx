@@ -24,6 +24,27 @@ This is the "Everything is a Page" principle:
 Once you see this, the entire interaction model simplifies to a single question:
 _"How do blocks behave inside a Page?"_ — answer that once, and it applies everywhere.
 
+### Enforcement (2026-07)
+
+This model is load-bearing in code, not just prose:
+
+- **`config/blockStateRegistry/blockUnit.ts`** is the ONLY definition of "which
+  block is this?" — `resolveBlockUnit` (position), `resolveBlockUnitFromDOM`
+  (element), `enumerateBlockUnits` (doc walk), `resolveUnitContainer`
+  (direct parent). Never add another depth/DOM walk; extend blockUnit.
+- **`blockTransforms.ts`** is a generic decompose→build engine driven by
+  registry `TransformShape`s. Invariant: a transform never destroys child
+  blocks — overflow becomes trailing siblings. New block type = one shape
+  entry; the engine does not change.
+- **Capability tables** (`BLOCK_BG_TYPES`, `INDENT_CONTAINER_TYPES`,
+  `CONTENT_WRAPPER_TYPES`, `ATOM_BLOCK_TYPES`) live in `blockRegistry.ts`
+  only, and are read lazily across the module cycle (never at module
+  top level — TDZ).
+- **Delete policy** (`growEmptiedAncestorDeletion`): emptied list wrappers
+  dissolve with the deleted row; required containers backfill a paragraph.
+- Pinned by `tests/unit/canvasTransformBehavior.test.ts` (real headless
+  editor) and the capability canaries in `canvasCapabilityDrift.test.ts`.
+
 ---
 
 ## 2. Structural Primitives
