@@ -272,29 +272,28 @@ html, body {
   gap: 7px;
   width: clamp(220px, 30vw, 360px);
   height: 24px;
-  padding: 0 5px 0 11px;
-  border: 1px solid var(--px-border);
+  padding: 0 9px 0 11px;
+  /* Quiet flat pill — ONE effect, not five. The old recessed-well treatment
+     (hard border + gradient + inset sheen + drop shadow + accent icon +
+     boxed keycaps) read as clunky chrome at 24px. Transparent border keeps
+     the box size stable for the hover hairline. */
+  border: 1px solid transparent;
   border-radius: var(--px-radius-md);
-  /* Recessed well: a hair darker than the frame, with a 1px top sheen. */
-  background:
-    linear-gradient(var(--px-bg-inset), color-mix(in srgb, var(--px-bg-inset) 88%, #000));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 1px 2px rgba(0, 0, 0, 0.18);
+  background: var(--px-bg-inset);
   color: var(--px-text-muted);
   font-size: var(--px-text-sm);
   cursor: text;
   user-select: none;
   transition:
     border-color var(--px-dur-fast) var(--px-ease),
-    box-shadow var(--px-dur-base) var(--px-ease),
+    background-color var(--px-dur-fast) var(--px-ease),
     color var(--px-dur-fast) var(--px-ease);
 }
 
 .titlebar-command-center:hover {
-  border-color: var(--px-border-strong);
+  background: var(--px-surface-hover);
+  border-color: var(--px-border);
   color: var(--px-text-secondary);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.05),
-    0 0 0 3px var(--px-accent-faint);
 }
 
 .titlebar-command-center:focus-visible {
@@ -308,8 +307,8 @@ html, body {
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
-  color: var(--px-accent);
-  opacity: 0.9;
+  color: currentColor;
+  opacity: 0.75;
 }
 
 .titlebar-command-center-label {
@@ -319,11 +318,12 @@ html, body {
   white-space: nowrap;
 }
 
-/* Keycap hint — a little stack of caps, dimmed until you hover the pill. */
+/* Shortcut hint — quiet text, no boxed keycaps (three bordered chips inside
+   an already-bordered pill was the busiest corner of the titlebar). */
 .titlebar-command-center-kbd {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 3px;
   flex-shrink: 0;
   opacity: 0.55;
   transition: opacity var(--px-dur-fast) var(--px-ease);
@@ -334,19 +334,20 @@ html, body {
 .titlebar-command-center-kbd kbd {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
-  border-radius: var(--px-radius-sm);
-  background: var(--px-bg-elevated);
-  border: 1px solid var(--px-border);
-  border-bottom-color: var(--px-border-strong);
+  background: none;
+  border: 0;
+  padding: 0;
   color: var(--px-text-faint);
   font-family: var(--parallx-fontFamily-ui);
-  font-size: 9px;
-  font-weight: 600;
+  font-size: 10px;
+  font-weight: 500;
   line-height: 1;
+}
+/* Join the caps with quiet plus signs: "Ctrl+⇧+P". */
+.titlebar-command-center-kbd kbd + kbd::before {
+  content: '+';
+  margin-right: 1px;
+  opacity: 0.6;
 }
 
 /* ── Titlebar dropdown menus (M3 Cap 1.2) ──
