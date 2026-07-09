@@ -23,12 +23,13 @@ import {
   CANVAS_BLOCK_DRAG_MIME,
   clearActiveCanvasDragSession,
   setActiveCanvasDragSession,
-  PAGE_CONTAINERS,
+  resolveBlockAncestry,
   resolveMovableBlock,
   resolveBlockUnitFromDOM,
   listItemContentElement,
   isContainerBlockType,
 } from './handleRegistry.js';
+import { pickBandIndex, pickListItemAtY, descendToRowAtY } from './handleGeometry.js';
 
 // ── Host Interface ──────────────────────────────────────────────────────────
 
@@ -685,59 +686,24 @@ export class BlockHandlesController {
     }
 
     // When the cursor lands directly on the container wrapper (in its
-    // padding or in a gap between child blocks), elementFromPoint
-    // returns the container itself rather than a descendant block. The
-    // earlier guard "if hit === _resolvedBlockDom return false" then
-    // locked the handle to the container's anchor — typically the very
-    // top, which for an open toggle is its summary row. The user sees
-    // the handle stuck at "Road Safety" even when their cursor is over
-    // a task item further down. Fix: find the nested descendant block
-    // whose Y range contains the cursor (or is nearest) and treat that
-    // as the refresh target.
+    // padding or in a gap between child blocks), elementFromPoint returns
+    // the container itself rather than a descendant block, which would
+    // lock the handle to the container's anchor row (the "Road Safety"
+    // toggle bug).  _reanchorContainerToCursor already owns the "which
+    // descendant is the cursor Y actually over" walk — reuse it instead
+    // of a parallel scan.
     if (hit === this._resolvedBlockDom) {
-      const nestedByY = this._findNestedBlockByCursorY(view, this._resolvedBlockDom, clientY);
-      return !!nestedByY && nestedByY.pos !== this._resolvedBlockPos;
+      const current = { pos: this._resolvedBlockPos, node: currentNode, depth: 0 };
+      const reanchored = this._reanchorContainerToCursor(view, current, clientY);
+      return reanchored.pos !== this._resolvedBlockPos;
     }
 
     const nested = this._resolveBlockFromDomElement(view, hit);
     return !!nested && nested.pos !== this._resolvedBlockPos;
   }
 
-  /**
-   * Walk descendant elements of `containerDom` that map to ProseMirror
-   * blocks, and pick the one whose bounding rect contains `cursorY`
-   * (or is closest by vertical edge). Used to recover from the case
-   * where elementFromPoint returns the container wrapper itself.
-   */
-  private _findNestedBlockByCursorY(
-    view: any,
-    containerDom: HTMLElement,
-    cursorY: number,
-  ): { pos: number; node: any; depth: number } | null {
-    // Collect candidate child elements at any depth inside the container
-    // that ProseMirror knows how to map back to a doc position. Limit
-    // to common block-rendering tags so we don't enumerate text nodes.
-    const candidates = Array.from(
-      containerDom.querySelectorAll<HTMLElement>(
-        'p, li, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, table, [data-type="detailsSummary"], [data-type="detailsContent"], [data-type="taskItem"]',
-      ),
-    );
-    let best: { el: HTMLElement; dist: number } | null = null;
-    for (const el of candidates) {
-      const r = el.getBoundingClientRect();
-      if (r.height === 0) continue;
-      if (cursorY >= r.top && cursorY <= r.bottom) { best = { el, dist: 0 }; break; }
-      const dist = cursorY < r.top ? r.top - cursorY : cursorY - r.bottom;
-      if (!best || dist < best.dist) best = { el, dist };
-    }
-    if (!best) return null;
-    return this._resolveBlockFromDomElement(view, best.el);
-  }
-
 
   // ── Block Resolution ────────────────────────────────────────────────────
-
-  // PAGE_CONTAINERS imported from blockRegistry (no local definition).
 
   /**
    * Resolve the block at screen coordinates using ProseMirror's native
@@ -890,12 +856,15 @@ export class BlockHandlesController {
   /**
    * Find the block the drag handle is currently next to.
    *
-   * Primary: reads `_resolvedBlockPos` set during the last mousemove.
-   * This is the same position used to position the handle visually,
-   * guaranteeing click/drag always targets the visible block.
+   * Primary: reads `_resolvedBlockPos` set during the last mousemove —
+   * the same position used to position the handle visually, guaranteeing
+   * click/drag always targets the visible block.
    *
-   * Fallback: elementsFromPoint scan for edge cases (scroll sync,
-   * programmatic handle show, etc.).
+   * Fallback (stale/cleared position — scroll sync edge cases): re-run the
+   * SAME resolution pipeline the hover path uses, aimed at the block area
+   * right of the handle.  Sharing the pipeline means the click target can
+   * never disagree with what hovering at that spot would have resolved —
+   * the previous bespoke elementsFromPoint scan with its own scoring could.
    */
   private _resolveBlockFromHandle(): { pos: number; node: any } | null {
     const editor = this._host.editor;
@@ -908,66 +877,31 @@ export class BlockHandlesController {
       if (node) return { pos: this._resolvedBlockPos, node };
     }
 
-    // ── Fallback: scan from handle position via elementsFromPoint ──
+    // ── Fallback: hover pipeline aimed just right of the handle ──
     const handleRect = this._dragHandleEl.getBoundingClientRect();
     const handleY = handleRect.top + handleRect.height / 2;
-    const scanX = handleRect.right + 50;
-    const sampleYs = [
-      handleRect.top - 8,
-      handleRect.top + 1,
-      handleRect.top + 2,
-      handleY,
-      handleRect.bottom - 2,
-    ].map((y) => Math.max(1, Math.min(window.innerHeight - 1, y)));
-
-    let best: { pos: number; node: any; depth: number; distance: number } | null = null;
-
-    for (const sampleY of sampleYs) {
-      const hits = document.elementsFromPoint(scanX, sampleY);
-      for (const hit of hits) {
-        const element = hit as HTMLElement;
-        if (!view.dom.contains(element)) continue;
-        if (this._isIgnoredOverlayElement(element)) continue;
-
-        const resolved = this._resolveBlockFromDomElement(view, element);
-        if (!resolved) continue;
-
-        const distance = this._distanceFromHandleToBlockCenter(handleY, resolved.pos, view);
-        if (
-          !best ||
-          this._shouldPreferCandidate(best, {
-            pos: resolved.pos,
-            node: resolved.node,
-            depth: resolved.depth,
-            distance,
-          })
-        ) {
-          best = { ...resolved, distance };
-        }
-      }
+    const scanXs = [handleRect.right + 50, handleRect.right + 8];
+    for (const x of scanXs) {
+      const resolved = this._resolveBlockAtCoords(view, Math.min(x, window.innerWidth - 1), handleY);
+      if (resolved) return resolved;
     }
-
-    if (best) {
-      return { pos: best.pos, node: best.node };
-    }
-
-    return this._resolveBlockFallback(handleY);
+    return null;
   }
 
   /**
    * When ProseMirror's `posAtCoords` resolves to a `listItem`/`taskItem`,
-   * verify the cursor Y is actually inside THAT item's DOM rect. If not,
-   * find the sibling list item whose vertical range contains the cursor
-   * (or the nearest by edge distance) and return it instead.
+   * verify the cursor Y is on THAT row's OWN LINE — never its full <li> box,
+   * which spans every nested descendant row.  Two correction cases:
    *
-   * Why: bullet/numbered lists (`<ul>` / `<ol>`) have a left gutter (the
-   * 40px browser-default ul padding where bullet/number markers sit).
-   * When the cursor is in that gutter, the cursor is INSIDE the list's
-   * rect but not inside any specific `<li>` rect. `posAtCoords` picks
-   * SOME item — frequently the first — and the handle anchors there
-   * regardless of the actual vertical cursor position. TaskList has
-   * `padding-left: 0` per the canvas CSS, so this codepath only manifests
-   * for bullet/numbered. M81 P13.
+   * • Cursor over a NESTED row: the parent's full rect contains the cursor,
+   *   so the old full-rect check kept the PARENT and the handle appeared on
+   *   the wrong (outer) row.  descendToRowAtY walks into the nested lists
+   *   and picks the row whose line band holds the cursor.
+   * • Cursor in the list's left marker gutter, outside every <li> rect
+   *   (bullet/numbered only — taskList has no gutter padding): pick the
+   *   sibling row nearest by Y.  M81 P13.
+   *
+   * All band math lives in handleGeometry — the ONE implementation.
    */
   private _reanchorListItemToCursor(
     view: any,
@@ -978,31 +912,24 @@ export class BlockHandlesController {
     if (name !== 'listItem' && name !== 'taskItem') return resolved;
     const dom = view.nodeDOM(resolved.pos) as HTMLElement | null;
     if (!dom) return resolved;
+
+    let targetEl: HTMLElement | null = null;
     const r = dom.getBoundingClientRect();
-    if (clientY >= r.top && clientY <= r.bottom) return resolved;
-
-    // Cursor is outside the resolved item's vertical range. Look at the
-    // parent list's siblings and pick the closest by Y.
-    const listEl = dom.parentElement;
-    if (!listEl || (listEl.tagName !== 'UL' && listEl.tagName !== 'OL')) return resolved;
-    const items = Array.from(listEl.children).filter(
-      (c): c is HTMLElement => c instanceof HTMLElement && c.tagName === 'LI',
-    );
-    let best: { el: HTMLElement; dist: number } | null = null;
-    for (const li of items) {
-      const lr = li.getBoundingClientRect();
-      if (clientY >= lr.top && clientY <= lr.bottom) { best = { el: li, dist: 0 }; break; }
-      const dist = clientY < lr.top ? lr.top - clientY : clientY - lr.bottom;
-      if (!best || dist < best.dist) best = { el: li, dist };
+    if (clientY >= r.top && clientY <= r.bottom) {
+      // Inside the row's subtree box — land on the row whose OWN line holds Y.
+      targetEl = descendToRowAtY(dom, clientY);
+    } else {
+      // Outside the row entirely (marker gutter / row gap) — nearest sibling,
+      // then refine into ITS subtree the same way.
+      const listEl = dom.parentElement;
+      if (!listEl || (listEl.tagName !== 'UL' && listEl.tagName !== 'OL')) return resolved;
+      const sibling = pickListItemAtY(listEl, clientY);
+      if (sibling) targetEl = descendToRowAtY(sibling, clientY);
     }
-    if (!best || best.el === dom) return resolved;
+    if (!targetEl || targetEl === dom) return resolved;
 
-    const directChild = best.el.firstElementChild as HTMLElement | null;
-    const contentEl = directChild?.tagName === 'LABEL'
-      ? (directChild.nextElementSibling as HTMLElement | null) ?? directChild
-      : directChild;
     try {
-      const domPos = view.posAtDOM(contentEl ?? best.el, 0);
+      const domPos = view.posAtDOM(listItemContentElement(targetEl), 0);
       const r2 = this._resolveBlockFromDocPos(view, domPos);
       if (r2) return r2;
     } catch { /* fall through */ }
@@ -1060,9 +987,8 @@ export class BlockHandlesController {
       }
     }
 
-    // Collect candidate descendant blocks (one level deep into the
-    // container's content area) and pick the one whose Y range contains
-    // the cursor, or the closest by edge distance.
+    // Pick the direct child block of the container's content area whose Y
+    // band holds the cursor (shared band math — handleGeometry).
     const contentRoot: HTMLElement = (() => {
       if (name === 'details') {
         return (dom.querySelector(':scope [data-type="detailsContent"]') as HTMLElement | null) ?? dom;
@@ -1072,32 +998,19 @@ export class BlockHandlesController {
     const candidates = Array.from(contentRoot.children).filter(
       (c): c is HTMLElement => c instanceof HTMLElement,
     );
-    let best: { el: HTMLElement; dist: number } | null = null;
-    for (const el of candidates) {
+    const idx = pickBandIndex(candidates.map((el) => {
       const r = el.getBoundingClientRect();
-      if (r.height === 0) continue;
-      if (clientY >= r.top && clientY <= r.bottom) { best = { el, dist: 0 }; break; }
-      const dist = clientY < r.top ? r.top - clientY : clientY - r.bottom;
-      if (!best || dist < best.dist) best = { el, dist };
-    }
-    if (!best) return resolved;
+      return { top: r.top, bottom: r.bottom };
+    }), clientY);
+    if (idx === null) return resolved;
 
     try {
-      // Resolve the picked element back to a doc position. For list
-      // wrappers we drill into the closest li by Y.
-      let probe: HTMLElement = best.el;
+      // Resolve the picked element back to a doc position.  List wrappers
+      // drill to the row (and nested row) whose own line holds the cursor.
+      let probe: HTMLElement = candidates[idx];
       if (probe.tagName === 'UL' || probe.tagName === 'OL') {
-        const lis = Array.from(probe.children).filter(
-          (c): c is HTMLElement => c instanceof HTMLElement && c.tagName === 'LI',
-        );
-        let liBest: { el: HTMLElement; dist: number } | null = null;
-        for (const li of lis) {
-          const lr = li.getBoundingClientRect();
-          if (clientY >= lr.top && clientY <= lr.bottom) { liBest = { el: li, dist: 0 }; break; }
-          const dist = clientY < lr.top ? lr.top - clientY : clientY - lr.bottom;
-          if (!liBest || dist < liBest.dist) liBest = { el: li, dist };
-        }
-        if (liBest) probe = liBest.el;
+        const row = pickListItemAtY(probe, clientY);
+        if (row) probe = descendToRowAtY(row, clientY);
       }
       const probeContent = probe.tagName === 'LI' ? listItemContentElement(probe) : probe;
       const domPos = view.posAtDOM(probeContent, 0);
@@ -1125,38 +1038,18 @@ export class BlockHandlesController {
 
     // Cursor lands in a list wrapper (`<ul>` / `<ol>` / taskList) but NOT
     // inside any specific `<li>` — typical when the pointer is in a row
-    // gap or in the list's left padding. Default behavior was to walk up
-    // and `posAtDOM(ul, 0)` which always resolves to the FIRST item, so
-    // the handle stuck on item 1 until the cursor drifted clearly into
-    // another item. Instead, pick the `<li>` whose vertical range
-    // contains the cursor Y — or the closest one if the cursor is just
-    // outside any item rect. M81 P13 — caught 2026-05-27.
+    // gap or in the list's left padding. posAtDOM(ul, 0) would always
+    // resolve to the FIRST item, so pick the row (and nested row) whose
+    // vertical band holds the cursor instead. M81 P13 — shared band math
+    // in handleGeometry.
     const listEl = element.closest('ul, ol') as HTMLElement | null;
     const pointerY = this._lastPointerClient?.y;
     if (listEl && view.dom.contains(listEl) && pointerY != null) {
-      const items = Array.from(listEl.children).filter(
-        (c): c is HTMLElement => c instanceof HTMLElement && c.tagName === 'LI',
-      );
-      let best: { el: HTMLElement; dist: number } | null = null;
-      for (const li of items) {
-        const r = li.getBoundingClientRect();
-        // Containment first — pointer Y inside the item's vertical range
-        // wins outright (zero distance).
-        if (pointerY >= r.top && pointerY <= r.bottom) {
-          best = { el: li, dist: 0 };
-          break;
-        }
-        // Otherwise track the nearest by vertical edge distance.
-        const dist = pointerY < r.top ? r.top - pointerY : pointerY - r.bottom;
-        if (!best || dist < best.dist) best = { el: li, dist };
-      }
-      if (best) {
-        const directChild = best.el.firstElementChild as HTMLElement | null;
-        const contentEl = directChild?.tagName === 'LABEL'
-          ? (directChild.nextElementSibling as HTMLElement | null) ?? directChild
-          : directChild;
+      const row = pickListItemAtY(listEl, pointerY);
+      if (row) {
         try {
-          const domPos = view.posAtDOM(contentEl ?? best.el, 0);
+          const target = descendToRowAtY(row, pointerY);
+          const domPos = view.posAtDOM(listItemContentElement(target), 0);
           const resolved = this._resolveBlockFromDocPos(view, domPos);
           if (resolved) return resolved;
         } catch {
@@ -1189,13 +1082,8 @@ export class BlockHandlesController {
       return { pos: movable.pos, node: movable.node, depth: movable.depth };
     }
 
-    let containerDepth = 0;
-    for (let d = 1; d <= $pos.depth; d++) {
-      if (PAGE_CONTAINERS.has($pos.node(d).type.name)) {
-        containerDepth = d;
-      }
-    }
-
+    // Canonical container walk (blockUnit/columnInvariants) — no local copy.
+    const containerDepth = resolveBlockAncestry($pos).containerDepth;
     const targetDepth = containerDepth + 1;
     let blockPos: number;
 
@@ -1273,45 +1161,6 @@ export class BlockHandlesController {
     return null;
   }
 
-  private _shouldPreferCandidate(
-    current: { pos: number; node: any; depth: number; distance: number },
-    next: { pos: number; node: any; depth: number; distance: number },
-  ): boolean {
-    const distanceDelta = next.distance - current.distance;
-
-    if (distanceDelta < -1) {
-      return true;
-    }
-
-    const withinSameLane = Math.abs(distanceDelta) <= 8;
-    if (withinSameLane) {
-      if (next.depth > current.depth) {
-        return true;
-      }
-
-      const nextName = next.node?.type?.name ?? '';
-      const currentName = current.node?.type?.name ?? '';
-      const nextContainer = isContainerBlockType(nextName) || nextName === 'columnList' || nextName === 'column';
-      const currentContainer = isContainerBlockType(currentName) || currentName === 'columnList' || currentName === 'column';
-      if (currentContainer && !nextContainer) {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  private _distanceFromHandleToBlockCenter(handleY: number, blockPos: number, view: any): number {
-    try {
-      const blockDom = view.nodeDOM(blockPos) as HTMLElement | null;
-      if (!blockDom) return Number.POSITIVE_INFINITY;
-      const rect = blockDom.getBoundingClientRect();
-      return Math.abs((rect.top + rect.bottom) / 2 - handleY);
-    } catch {
-      return Number.POSITIVE_INFINITY;
-    }
-  }
-
   private _isIgnoredOverlayElement(element: HTMLElement): boolean {
     return (
       element.classList.contains('drag-handle') ||
@@ -1325,72 +1174,6 @@ export class BlockHandlesController {
       !!element.closest('.block-action-menu') ||
       !!element.closest('.block-action-submenu')
     );
-  }
-
-  private _isPageContainerDom(el: HTMLElement | null, proseMirrorRoot: HTMLElement): boolean {
-    if (!el) return false;
-    if (el === proseMirrorRoot) return true;
-
-    return (
-      el.classList.contains('canvas-column') ||
-      el.classList.contains('canvas-callout-content') ||
-      el.matches?.('[data-type=detailsContent]') ||
-      el.tagName === 'BLOCKQUOTE'
-    );
-  }
-
-  private _collectBlockDomCandidates(view: any): HTMLElement[] {
-    const proseMirrorRoot = view.dom as HTMLElement;
-    const all = [proseMirrorRoot, ...Array.from(proseMirrorRoot.querySelectorAll('*'))] as HTMLElement[];
-
-    const result: HTMLElement[] = [];
-    const seen = new Set<HTMLElement>();
-
-    for (const element of all) {
-      if (this._isIgnoredOverlayElement(element)) continue;
-      const parent = element.parentElement;
-      if (!this._isPageContainerDom(parent, proseMirrorRoot)) continue;
-      if (seen.has(element)) continue;
-      seen.add(element);
-      result.push(element);
-    }
-
-    return result;
-  }
-
-  /** Fallback resolution: nearest block candidate by vertical proximity. */
-  private _resolveBlockFallback(handleY: number): { pos: number; node: any } | null {
-    const editor = this._host.editor;
-    if (!editor) return null;
-    const view = editor.view;
-    const candidates = this._collectBlockDomCandidates(view);
-    let best: { pos: number; node: any; depth: number; distance: number } | null = null;
-
-    for (const candidate of candidates) {
-      const rect = candidate.getBoundingClientRect();
-      const distance = handleY < rect.top
-        ? rect.top - handleY
-        : handleY > rect.bottom
-          ? handleY - rect.bottom
-          : 0;
-
-      const resolved = this._resolveBlockFromDomElement(view, candidate);
-      if (!resolved) continue;
-
-      if (
-        !best ||
-        this._shouldPreferCandidate(best, {
-          pos: resolved.pos,
-          node: resolved.node,
-          depth: resolved.depth,
-          distance,
-        })
-      ) {
-        best = { ...resolved, distance };
-      }
-    }
-
-    return best ? { pos: best.pos, node: best.node } : null;
   }
 
   private _isResizeInteractionActive(): boolean {

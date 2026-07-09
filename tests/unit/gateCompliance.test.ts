@@ -144,9 +144,10 @@ const GATE_RULES: Record<string, string[]> = {
   'plugins/structuralRepair.ts':           [],  // M85 — zero canvas imports (PM only)
 
   // ── HandleRegistry children ─────────────────────────────────────────────
-  'handles/blockHandles.ts':               ['handles/handleRegistry'],
+  'handles/blockHandles.ts':               ['handles/handleRegistry', 'handles/handleGeometry'],
   'handles/blockSelection.ts':             ['handles/handleRegistry'],
   'handles/blockMarquee.ts':               ['handles/handleRegistry'],
+  'handles/handleGeometry.ts':             ['handles/handleRegistry'],
 
   // ── Infrastructure extensions (gate-exempt leaves) ──────────────────────
   // These have zero canvas-internal relative imports (only @tiptap).
