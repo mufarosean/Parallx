@@ -212,12 +212,17 @@ export function applyBackgroundColorToBlock(
   if (LIST_ITEM_TYPES.has(node.type.name)) {
     let childPos = pos + 1; // position of the item's first child
     node.forEach((child: PMNode) => {
-      if (BG_CAPABLE_TYPES.includes(child.type.name)) {
+      // Colour ONLY the item's own content lines (paragraph / heading / code),
+      // never its nested sub-lists. Painting a child bulletList/orderedList
+      // flooded the whole nested subtree with the parent's colour, so the
+      // indentation read as "nesting destroyed". A textblock check leaves the
+      // nested rows untouched (the user colours those individually).
+      if (child.isTextblock && BG_CAPABLE_TYPES.includes(child.type.name)) {
         tr.setNodeMarkup(childPos, undefined, { ...child.attrs, backgroundColor: color });
       }
       childPos += child.nodeSize;
     });
-    editor.view.dispatch(tr);
+    if (tr.docChanged) editor.view.dispatch(tr);
     editor.commands.focus();
     return;
   }
