@@ -1126,6 +1126,49 @@ export function isContainerBlockType(typeName: string): boolean {
   return def?.kind === 'container';
 }
 
+// ── Transform shapes ─────────────────────────────────────────────────────────
+// Declarative description of how a block type decomposes into / rebuilds from
+// universal parts (inline title content + child blocks + attrs).  The generic
+// transform engine in blockStateRegistry/blockTransforms.ts is driven entirely
+// by these shapes — adding a block type never requires editing the engine.
+
+export type TransformShape =
+  /** Textblock: inline content directly inside the node (paragraph, heading, codeBlock). */
+  | { readonly kind: 'textblock' }
+  /** Wrapper: child blocks directly inside the node (callout, blockquote). */
+  | { readonly kind: 'wrapper' }
+  /** Title child + body child holding blocks (details, toggleHeading). */
+  | { readonly kind: 'summary-content'; readonly summaryType: string; readonly contentType: string }
+  /** List: rows of `itemType`, each row a paragraph + optional nested blocks. */
+  | { readonly kind: 'list'; readonly itemType: 'listItem' | 'taskItem'; readonly itemAttrs?: Record<string, any> }
+  /** Atom whose text lives in an attribute (mathBlock's latex). */
+  | { readonly kind: 'atom-text'; readonly textAttr: string };
+
+const TEXTBLOCK_SHAPE: TransformShape = { kind: 'textblock' };
+const WRAPPER_SHAPE: TransformShape = { kind: 'wrapper' };
+
+/** Shape overrides for types whose structure the kind-based default can't infer. */
+const TRANSFORM_SHAPE_OVERRIDES: Record<string, TransformShape> = {
+  details: { kind: 'summary-content', summaryType: 'detailsSummary', contentType: 'detailsContent' },
+  toggleHeading: { kind: 'summary-content', summaryType: 'toggleHeadingText', contentType: 'detailsContent' },
+  bulletList: { kind: 'list', itemType: 'listItem' },
+  orderedList: { kind: 'list', itemType: 'listItem' },
+  taskList: { kind: 'list', itemType: 'taskItem', itemAttrs: { checked: false } },
+  mathBlock: { kind: 'atom-text', textAttr: 'latex' },
+};
+
+/**
+ * Resolve the transform shape for a node type.  Explicit overrides win;
+ * otherwise registry `kind: 'container'` types are wrappers and everything
+ * else is treated as a textblock (correct for all turn-into sources, which
+ * canTurnInto() restricts to content-bearing types).
+ */
+export function getTransformShape(typeName: string): TransformShape {
+  const override = TRANSFORM_SHAPE_OVERRIDES[typeName];
+  if (override) return override;
+  return isContainerBlockType(typeName) ? WRAPPER_SHAPE : TEXTBLOCK_SHAPE;
+}
+
 /**
  * Look up placeholder text for a specific node from the registry.
  * Returns `undefined` when the registry has no configured placeholder,

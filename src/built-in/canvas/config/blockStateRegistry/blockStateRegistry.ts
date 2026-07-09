@@ -15,7 +15,8 @@
 // ── Inward gate: dependencies children need from blockRegistry ──────────
 // Uses `export { } from` (live re-export) — safe across the cycle.
 /** @see {@link import('../blockRegistry.js').PAGE_CONTAINERS} — original source */
-export { PAGE_CONTAINERS, isContainerBlockType } from '../blockRegistry.js';
+export { PAGE_CONTAINERS, isContainerBlockType, getTransformShape } from '../blockRegistry.js';
+export type { TransformShape } from '../blockRegistry.js';
 
 // ── Outward gate: public APIs from children ─────────────────────────────
 export * from './columnInvariants.js';
