@@ -852,6 +852,13 @@ html, body {
   background: var(--px-window);
   border: 0;
 }
+/* EXCEPTION: the titlebar↔workbench seam still needs a readable line — the
+   card gaps don't separate the top ribbon from the part headers below it.
+   This must live AFTER the `border: 0` chrome-flattening rule above (same
+   specificity — cascade order is what makes it win). */
+.part-workbench-parts-titlebar {
+  border-bottom: 1px solid var(--vscode-titleBar-border, var(--px-divider));
+}
 .part-workbench-parts-activitybar {
   background: var(--px-window);
   box-shadow: none;
