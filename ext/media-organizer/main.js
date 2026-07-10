@@ -17496,12 +17496,16 @@ async function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut,
 // export is the source of truth. Chains avoid quotes/spaces so they survive
 // shellQuote on every platform.
 const MO_CLIP_FILTERS = [
-  { id: 'none',  label: 'None',           vf: null,                                                        css: 'none' },
-  { id: 'mono',  label: 'Mono (B&W)',     vf: 'hue=s=0',                                                   css: 'grayscale(1)' },
-  { id: 'warm',  label: 'Warm',           vf: 'eq=saturation=1.12:gamma_r=1.07:gamma_b=0.93',              css: 'sepia(0.18) saturate(1.22) hue-rotate(-8deg)' },
-  { id: 'cool',  label: 'Cool',           vf: 'eq=saturation=1.08:gamma_b=1.08:gamma_r=0.94',              css: 'saturate(1.08) hue-rotate(9deg) brightness(1.01)' },
-  { id: 'vivid', label: 'Vivid',          vf: 'eq=contrast=1.13:saturation=1.38',                          css: 'contrast(1.13) saturate(1.38)' },
-  { id: 'fade',  label: 'Fade (matte)',   vf: 'colorlevels=rimin=0.05:gimin=0.05:bimin=0.05:rimax=0.96:gimax=0.96:bimax=0.96,eq=saturation=0.85', css: 'contrast(0.88) brightness(1.06) saturate(0.85)' },
+  { id: 'none',      label: 'None',            vf: null,                                                        css: 'none' },
+  { id: 'mono',      label: 'Mono (B&W)',      vf: 'hue=s=0',                                                   css: 'grayscale(1)' },
+  { id: 'noir',      label: 'Noir',            vf: 'hue=s=0,eq=contrast=1.28:brightness=-0.02',                 css: 'grayscale(1) contrast(1.28) brightness(0.98)' },
+  { id: 'sepia',     label: 'Sepia',           vf: 'colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131', css: 'sepia(0.85)' },
+  { id: 'warm',      label: 'Warm',            vf: 'eq=saturation=1.12:gamma_r=1.07:gamma_b=0.93',              css: 'sepia(0.18) saturate(1.22) hue-rotate(-8deg)' },
+  { id: 'cool',      label: 'Cool',            vf: 'eq=saturation=1.08:gamma_b=1.08:gamma_r=0.94',              css: 'saturate(1.08) hue-rotate(9deg) brightness(1.01)' },
+  { id: 'vivid',     label: 'Vivid',           vf: 'eq=contrast=1.13:saturation=1.38',                          css: 'contrast(1.13) saturate(1.38)' },
+  { id: 'fade',      label: 'Fade (matte)',    vf: 'colorlevels=rimin=0.05:gimin=0.05:bimin=0.05:rimax=0.96:gimax=0.96:bimax=0.96,eq=saturation=0.85', css: 'contrast(0.88) brightness(1.06) saturate(0.85)' },
+  { id: 'cinematic', label: 'Cinematic',       vf: 'colorbalance=rs=-0.06:gs=-0.02:bs=0.08:rh=0.08:gh=0.02:bh=-0.06,eq=saturation=1.12:contrast=1.06', css: 'contrast(1.06) saturate(1.15)' },
+  { id: 'vintage',   label: 'Vintage',         vf: 'colorlevels=rimin=0.06:gimin=0.06:bimin=0.06,eq=saturation=0.8:gamma_r=1.06:gamma_b=0.92,vignette', css: 'sepia(0.28) contrast(0.9) brightness(1.05) saturate(0.85)' },
 ];
 
 /** The ffmpeg vf segment for a preset id ('' when none). */
@@ -18040,6 +18044,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   moBindCustomSelect(fmtSel);
   moBindCustomSelect(fpsSel);
   moBindCustomSelect(speedSel);
+  moBindCustomSelect(filterSel);
   moBindCustomSelect(ditherSel);
   moBindCustomSelect(encModeSel);
   // gpuSel is bound after its async detectHwEncoders() population below.
