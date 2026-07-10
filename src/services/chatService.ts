@@ -443,7 +443,7 @@ class ChatResponseStream implements IChatResponseStream {
       parts.push({
         kind: ChatContentPartKind.Thinking,
         content: '',
-        isCollapsed: true,
+        isCollapsed: false,
         progressMessage: message,
         startTime: Date.now(),
       });
@@ -472,7 +472,7 @@ class ChatResponseStream implements IChatResponseStream {
       parts.push({
         kind: ChatContentPartKind.Thinking,
         content: '',
-        isCollapsed: true,
+        isCollapsed: false,
         provenance: [entry],
         startTime: Date.now(),
       });
@@ -511,7 +511,10 @@ class ChatResponseStream implements IChatResponseStream {
       parts.push({
         kind: ChatContentPartKind.Thinking,
         content,
-        isCollapsed: true,
+        // Streaming bursts start EXPANDED — Claude-style: the live thoughts
+        // are visible while they happen; _sealTrailingThinking()/finalize
+        // collapse the burst once the turn moves on.
+        isCollapsed: false,
         startTime: Date.now(),
       });
     }

@@ -1274,10 +1274,13 @@
   50% { border-left-color: color-mix(in srgb, var(--px-accent, #569cd6) 16%, transparent); }
 }
 
+/* ── Thinking — Claude-style quiet prose, not a widget ──
+   Collapsed: a single muted "Thought for Xs" line with a small chevron.
+   Streaming: shimmering "Thinking…" label with the LIVE thoughts visible in
+   a bottom-anchored window that fades out at the top as it scrolls.
+   No accent rail, no box — it reads as part of the conversation. */
 .parallx-chat-thinking {
   margin: 2px 0 8px;
-  border-left: 2px solid color-mix(in srgb, var(--px-accent, #569cd6) 30%, transparent);
-  padding-left: 12px;
 }
 
 .parallx-chat-thinking--streaming {
@@ -1322,17 +1325,20 @@
 }
 
 .parallx-chat-thinking-arrow {
-  display: inline-block;
-  font-size: 7px;
+  display: inline-flex;
+  align-items: center;
   flex-shrink: 0;
-  opacity: 0.6;
-  transition: transform 150ms ease;
-  transform: rotate(90deg);
-  font-style: normal;
+  opacity: 0.5;
+  transition: transform 150ms ease, opacity 120ms ease;
+  transform: rotate(90deg); /* expanded: chevron points down */
 }
 
 .parallx-chat-thinking--collapsed .parallx-chat-thinking-arrow {
-  transform: rotate(0deg);
+  transform: rotate(0deg); /* collapsed: points right */
+}
+
+.parallx-chat-thinking-toggle:hover .parallx-chat-thinking-arrow {
+  opacity: 0.9;
 }
 
 .parallx-chat-thinking-label {
@@ -1352,10 +1358,26 @@
 }
 
 .parallx-chat-thinking-content {
-  padding: 5px 0 3px;
+  margin: 4px 0 3px 4px;
+  padding: 2px 0 2px 12px;
+  border-left: 1px solid var(--px-divider, rgba(255, 255, 255, 0.08));
   font-size: var(--px-text-sm, 12px);
   color: var(--px-text-muted, var(--vscode-descriptionForeground, #868686));
   line-height: var(--px-leading-base, 1.55);
+}
+
+/* Streaming window — the Claude signature: live thoughts visible in a
+   bottom-anchored viewport that clips old lines and fades them out at the
+   top. Flex column + justify-end keeps the newest lines pinned without JS
+   scrolling; the mask does the fade. */
+.parallx-chat-thinking--streaming:not(.parallx-chat-thinking--collapsed) .parallx-chat-thinking-content {
+  max-height: 120px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, black 34px);
+  mask-image: linear-gradient(to bottom, transparent 0, black 34px);
 }
 
 .parallx-chat-thinking-text {
