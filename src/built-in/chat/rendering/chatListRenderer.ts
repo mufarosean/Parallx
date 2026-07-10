@@ -360,28 +360,24 @@ export class ChatListRenderer extends Disposable {
 
     // If parts count is the same, update changed parts
     if (existingParts.length === newPartCount && newPartCount > 0) {
-      // Always re-render the thinking part (index 0) if it exists — thinking
-      // content streams incrementally and may have grown since last render.
-      if (response.parts[0]?.kind === ChatContentPartKind.Thinking && existingParts.length > 0) {
-        const thinkingEl = existingParts[0] as HTMLElement;
-        const newThinkingEl = renderContentPart(response.parts[0]);
-        thinkingEl.replaceWith(newThinkingEl);
-      }
-
-      // Re-render tool invocation parts whose status may have changed
+      // Re-render every part that can mutate in place mid-stream:
+      //   • Thinking — bursts stream incrementally, AND parts are now
+      //     chronological (a turn can hold several thinking bursts anywhere
+      //     in the sequence, not one pinned at index 0);
+      //   • ToolInvocation — status/result changes;
+      //   • the LAST part — streaming appends into the trailing markdown.
+      const rerendered = new Set<number>();
       for (let i = 0; i < newPartCount; i++) {
-        if (response.parts[i].kind === ChatContentPartKind.ToolInvocation) {
-          const oldEl = existingParts[i] as HTMLElement;
-          oldEl.replaceWith(renderContentPart(response.parts[i]));
+        const kind = response.parts[i].kind;
+        if (kind === ChatContentPartKind.Thinking || kind === ChatContentPartKind.ToolInvocation) {
+          (existingParts[i] as HTMLElement).replaceWith(renderContentPart(response.parts[i]));
+          rerendered.add(i);
         }
       }
-
-      // Re-render the last part (streaming appends to last markdown part)
-      const lastIdx2 = existingParts.length - 1;
-      if (lastIdx2 > 0 || response.parts[0]?.kind !== ChatContentPartKind.Thinking) {
+      const lastIdx2 = newPartCount - 1;
+      if (!rerendered.has(lastIdx2)) {
         const lastPartEl = existingParts[lastIdx2] as HTMLElement;
-        const newPartEl = renderContentPart(response.parts[newPartCount - 1]);
-        lastPartEl.replaceWith(newPartEl);
+        lastPartEl.replaceWith(renderContentPart(response.parts[lastIdx2]));
       }
     } else if (newPartCount > existingParts.length) {
       // New parts added — append them

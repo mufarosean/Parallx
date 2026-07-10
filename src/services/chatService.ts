@@ -339,28 +339,19 @@ class ChatResponseStream implements IChatResponseStream {
       }
     }
 
-    // Clear the ephemeral progress message now that we're done, and
-    // auto-collapse the thinking block — it stays expanded while streaming
-    // (so the user sees reasoning happen live) and tucks away on completion.
-    const thinkingPart = parts.find(
-      (p) => p.kind === ChatContentPartKind.Thinking,
-    ) as IChatThinkingContent | undefined;
-    if (thinkingPart) {
-      thinkingPart.progressMessage = undefined;
-      thinkingPart.isCollapsed = true;
-      // Freeze the thinking duration at the real completion moment so the
-      // "Thought for Xs" label reflects actual reasoning time (and never
-      // inflates on later expand/collapse clicks).
-      if (thinkingPart.startTime != null && thinkingPart.endTime == null) {
-        thinkingPart.endTime = Date.now();
+    // Settle EVERY thinking burst: clear ephemeral progress, collapse, and
+    // freeze each burst's duration so per-burst "Thought for Xs" labels stay
+    // accurate. Parts are NOT reordered — the whole point of per-burst
+    // sequencing is that the turn reads chronologically
+    // (think -> tools -> think -> text), like Claude.
+    for (const part of parts) {
+      if (part.kind !== ChatContentPartKind.Thinking) continue;
+      const t = part as IChatThinkingContent;
+      t.progressMessage = undefined;
+      t.isCollapsed = true;
+      if (t.startTime != null && t.endTime == null) {
+        t.endTime = Date.now();
       }
-    }
-
-    // Ensure thinking is first in the parts list (before markdown)
-    const thinkingIdx = parts.findIndex(p => p.kind === ChatContentPartKind.Thinking);
-    if (thinkingIdx > 0) {
-      const [t] = parts.splice(thinkingIdx, 1);
-      parts.unshift(t);
     }
 
     this._scheduleUpdate();
@@ -412,6 +403,7 @@ class ChatResponseStream implements IChatResponseStream {
 
   markdown(content: string): void {
     this.throwIfDone();
+    this._sealTrailingThinking();
 
     // Merge adjacent markdown parts
     const parts = this._response.parts as IChatContentPart[];
@@ -428,6 +420,7 @@ class ChatResponseStream implements IChatResponseStream {
 
   codeBlock(code: string, language?: string): void {
     this.throwIfDone();
+    this._sealTrailingThinking();
     (this._response.parts as IChatContentPart[]).push({
       kind: ChatContentPartKind.CodeBlock,
       code,
@@ -440,18 +433,14 @@ class ChatResponseStream implements IChatResponseStream {
     this.throwIfDone();
     const parts = this._response.parts as IChatContentPart[];
 
-    // Fold progress into the existing thinking part so the UI shows
-    // a single unified "Thinking..." section instead of a disjoint
-    // spinner + source pills.
-    const thinkingPart = parts.find(
-      (p) => p.kind === ChatContentPartKind.Thinking,
-    ) as IChatThinkingContent | undefined;
-
-    if (thinkingPart) {
-      thinkingPart.progressMessage = message;
+    // Fold progress into the CURRENT (trailing) thinking part so the status
+    // rides the burst that is actually happening; create one at the end
+    // otherwise — chronological, like every other part.
+    const last = parts.length > 0 ? parts[parts.length - 1] : undefined;
+    if (last && last.kind === ChatContentPartKind.Thinking) {
+      (last as IChatThinkingContent).progressMessage = message;
     } else {
-      // No thinking part yet — create one to host the progress message
-      parts.unshift({
+      parts.push({
         kind: ChatContentPartKind.Thinking,
         content: '',
         isCollapsed: true,
@@ -478,7 +467,9 @@ class ChatResponseStream implements IChatResponseStream {
         thinkingPart.provenance.push(entry);
       }
     } else {
-      parts.unshift({
+      // Create at the END — never reorder existing parts. (Pre-turn
+      // provenance arrives while parts is empty, so it still lands first.)
+      parts.push({
         kind: ChatContentPartKind.Thinking,
         content: '',
         isCollapsed: true,
@@ -504,18 +495,20 @@ class ChatResponseStream implements IChatResponseStream {
   thinking(content: string): void {
     this.throwIfDone();
 
-    // Merge into the existing thinking part (which may have been created
-    // earlier by progress() or reference()) rather than appending a new one.
+    // CHRONOLOGICAL sequencing (Claude-style): deltas merge into the thinking
+    // part only while it is the LAST part — i.e. the same contiguous
+    // reasoning burst. Once a tool call or text lands after it, the next
+    // thinking delta starts a NEW part, so multi-round agentic turns read
+    // top-to-bottom in the order things actually happened
+    // (think -> tools -> think -> text) instead of pooling all reasoning
+    // into one front-pinned blob.
     const parts = this._response.parts as IChatContentPart[];
-    const existing = parts.find(
-      (p) => p.kind === ChatContentPartKind.Thinking,
-    ) as IChatThinkingContent | undefined;
+    const last = parts.length > 0 ? parts[parts.length - 1] : undefined;
 
-    if (existing) {
-      existing.content += content;
+    if (last && last.kind === ChatContentPartKind.Thinking) {
+      (last as IChatThinkingContent).content += content;
     } else {
-      // No thinking part yet — create at front so it appears first
-      parts.unshift({
+      parts.push({
         kind: ChatContentPartKind.Thinking,
         content,
         isCollapsed: true,
@@ -524,6 +517,22 @@ class ChatResponseStream implements IChatResponseStream {
     }
 
     this._scheduleUpdate();
+  }
+
+  /**
+   * Seal a trailing thinking burst the moment a non-thinking part follows it:
+   * freeze its duration (per-burst "Thought for Xs") and collapse it — the
+   * turn has visibly moved on. Called by every part-appending method.
+   */
+  private _sealTrailingThinking(): void {
+    const parts = this._response.parts as IChatContentPart[];
+    const last = parts.length > 0 ? parts[parts.length - 1] : undefined;
+    if (last && last.kind === ChatContentPartKind.Thinking) {
+      const t = last as IChatThinkingContent;
+      if (t.endTime == null && t.startTime != null) t.endTime = Date.now();
+      t.isCollapsed = true;
+      t.progressMessage = undefined;
+    }
   }
 
   warning(message: string): void {
@@ -544,6 +553,7 @@ class ChatResponseStream implements IChatResponseStream {
 
   confirmation(message: string, data: unknown): void {
     this.throwIfDone();
+    this._sealTrailingThinking();
     (this._response.parts as IChatContentPart[]).push({
       kind: ChatContentPartKind.Confirmation,
       message,
@@ -554,6 +564,7 @@ class ChatResponseStream implements IChatResponseStream {
 
   beginToolInvocation(toolCallId: string, toolName: string, data?: unknown): void {
     this.throwIfDone();
+    this._sealTrailingThinking();
     (this._response.parts as IChatContentPart[]).push({
       kind: ChatContentPartKind.ToolInvocation,
       toolCallId,

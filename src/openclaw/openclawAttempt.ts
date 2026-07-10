@@ -350,6 +350,7 @@ export async function executeOpenclawAttempt(
 
   const loopSafety = new ChatToolLoopSafety();
   let markdown = '';
+  let markdownFlushedThisRound = false;
   let thinking = '';
   let toolCallCount = 0;
   let promptTokens: number | undefined;
@@ -437,6 +438,17 @@ export async function executeOpenclawAttempt(
       break;
     }
     lastHadToolCalls = true;
+
+    // Stream this round's narration BEFORE its tool calls so the transcript
+    // reads chronologically, Claude-style: thinking → text → tools → next
+    // round. Previously this text was silently dropped (`markdown = ''` at
+    // the end of each round streamed only the FINAL round's text), so
+    // between-tool narration never rendered. The `markdown` variable itself
+    // stays intact — the next round's history message still needs it.
+    if (markdown.trim().length > 0) {
+      response.markdown(markdown);
+      markdownFlushedThisRound = true;
+    }
 
     // Process tool calls
     if (!context.invokeToolWithRuntimeControl) {
@@ -593,8 +605,10 @@ export async function executeOpenclawAttempt(
     }
 
     iterations++;
-    // Preserve accumulated markdown for streaming; next iteration appends
+    // Reset for the next round — this round's text is already streamed (the
+    // pre-tool flush above) and already captured in the history messages.
     markdown = '';
+    markdownFlushedThisRound = false;
   }
 
   // 6. Validate citations before streaming — remap mismatched indices
@@ -602,8 +616,11 @@ export async function executeOpenclawAttempt(
   const validated = validateCitations(markdown, [...assembled.ragSources]);
   const displayMarkdown = validated.markdown;
 
-  // 7. Stream final markdown to response
-  if (displayMarkdown) {
+  // 7. Stream final markdown to response — unless this exact text already
+  // streamed via the pre-tool flush and the loop exited before its reset
+  // (cancellation / loop-safety break). Streaming it again would duplicate
+  // the visible paragraph.
+  if (displayMarkdown && !markdownFlushedThisRound) {
     response.markdown(displayMarkdown);
   }
 

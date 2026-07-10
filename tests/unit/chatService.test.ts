@@ -935,7 +935,7 @@ describe('ChatService', () => {
       expect(parts[0].kind).toBe(ChatContentPartKind.Thinking);
     });
 
-    it('thinking part appears first after close()', async () => {
+    it('parts stay CHRONOLOGICAL after close() — thinking is never moved first', async () => {
       const agent: IChatParticipant = {
         id: 'parallx.chat.default',
         displayName: 'Test',
@@ -954,8 +954,65 @@ describe('ChatService', () => {
       const session = cs.createSession();
       await cs.sendRequest(session.id, 'test');
 
+      // Claude-style ordering: the turn reads in the order things happened.
       const parts = session.messages[0].response.parts;
-      expect(parts[0].kind).toBe(ChatContentPartKind.Thinking); // Thinking is first
+      expect(parts.map(p => p.kind)).toEqual([
+        ChatContentPartKind.Markdown,
+        ChatContentPartKind.Thinking,
+        ChatContentPartKind.Markdown,
+      ]);
+    });
+
+    it('multi-round agentic turn interleaves thinking, tools, and text in order', async () => {
+      const agent: IChatParticipant = {
+        id: 'parallx.chat.default',
+        displayName: 'Test',
+        description: 'Test',
+        commands: [],
+        handler: async (_req, _ctx, response) => {
+          // Round 1: think → tool
+          response.thinking('planning round one');
+          response.thinking(' — more of the same burst');
+          response.beginToolInvocation('t1', 'search', { q: 'a' });
+          response.updateToolInvocation('t1', { status: 'completed', isComplete: true });
+          // Round 2: think again → tool
+          response.thinking('round two reasoning');
+          response.beginToolInvocation('t2', 'read', { f: 'b' });
+          response.updateToolInvocation('t2', { status: 'completed', isComplete: true });
+          // Final: answer
+          response.markdown('Final answer');
+          return {};
+        },
+      };
+      const svc = new ChatAgentService();
+      svc.registerAgent(agent);
+      const cs = new ChatService(svc, modeService, lmService);
+      const session = cs.createSession();
+      await cs.sendRequest(session.id, 'test');
+
+      const parts = session.messages[0].response.parts;
+      expect(parts.map(p => p.kind)).toEqual([
+        ChatContentPartKind.Thinking,
+        ChatContentPartKind.ToolInvocation,
+        ChatContentPartKind.Thinking,
+        ChatContentPartKind.ToolInvocation,
+        ChatContentPartKind.Markdown,
+      ]);
+
+      // Contiguous deltas merged into ONE burst; bursts hold their own text.
+      const t0 = parts[0] as any;
+      const t2 = parts[2] as any;
+      expect(t0.content).toBe('planning round one — more of the same burst');
+      expect(t2.content).toBe('round two reasoning');
+
+      // Every burst is sealed: duration frozen, collapsed.
+      for (const t of [t0, t2]) {
+        expect(t.endTime).not.toBeUndefined();
+        expect(t.isCollapsed).toBe(true);
+      }
+      // The first burst was sealed WHEN the tool began — not at turn end —
+      // so per-burst "Thought for Xs" reflects that burst alone.
+      expect(t0.endTime).toBeLessThanOrEqual(t2.startTime);
     });
   });});
 
