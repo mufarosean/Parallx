@@ -2674,6 +2674,21 @@ function _ensureLoopbackAudioHandler() {
   } catch { /* older Electron — frame falls back to video-only */ }
 }
 
+// Belt for app teardown: per-window 'closed' handlers normally kill capture
+// procs, but make quit unconditionally sweep anything still running so an
+// ffmpeg can never outlive the app (an orphan keeps recording the screen to
+// disk forever and holds its temp file locked).
+app.on('before-quit', () => {
+  for (const [, e] of _recorderFrames) {
+    if (e && e.proc) { try { e.proc.kill('SIGKILL'); } catch { /* ignore */ } }
+  }
+});
+
+// Lets the media-organizer self-heal a wedged "recording in progress" flag:
+// if it believes a recording is active but no recorder frame actually exists,
+// the flag is stale (a missed completion event) and can be cleared safely.
+ipcMain.handle('recorder:anyActive', () => ({ active: _recorderFrames.size > 0 }));
+
 ipcMain.handle('recorder:openFrame', async (_event, opts) => {
   try {
     const fps = Math.max(1, Math.min(60, parseInt(opts?.fps, 10) || 30));
@@ -2928,11 +2943,20 @@ ipcMain.handle('recorder:start', async (_event, frameId) => {
       '-progress', 'pipe:1',
       entry.videoPath,
     ];
-    const proc = spawn(entry.ffmpegPath, args, { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true });
+    const proc = spawn(entry.ffmpegPath, args, { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
     entry.proc = proc;
     entry.recording = true;
     entry.startedAt = Date.now();
     entry.videoFirstFrameAt = 0;
+    // Keep the tail of ffmpeg's stderr — when capture dies, this is the ONLY
+    // place the real reason lives (gdigrab/encoder/disk errors). Previously
+    // stderr was 'ignore'd and failures surfaced as a bare exit code.
+    entry.lastStderr = '';
+    if (proc.stderr) {
+      proc.stderr.on('data', (d) => {
+        entry.lastStderr = (entry.lastStderr + d.toString()).slice(-2000);
+      });
+    }
     // ffmpeg -progress emits key=value lines; the first update carrying a frame
     // count marks the first captured frame. Stamp it once (same wall clock as the
     // renderer's audio start) for the A/V start-offset math on finalize.
@@ -2945,7 +2969,8 @@ ipcMain.handle('recorder:start', async (_event, frameId) => {
     }
     proc.on('error', (err) => {
       entry.recording = false; entry.proc = null;
-      _recorderSendState(frameId, { recording: false, error: err.message });
+      console.error('[recorder] ffmpeg failed to start:', err.message);
+      _recorderSendState(frameId, { recording: false, error: 'ffmpeg failed to start: ' + err.message });
     });
     proc.on('exit', (code) => {
       // recorder:stop removes the entry from the map BEFORE awaiting exit, so if
@@ -2953,7 +2978,12 @@ ipcMain.handle('recorder:start', async (_event, frameId) => {
       const e = _recorderFrames.get(frameId);
       if (e && e.recording && e.proc === proc) {
         e.recording = false; e.proc = null;
-        _recorderSendState(frameId, { recording: false, error: 'Recording stopped unexpectedly (code ' + code + ')' });
+        const tail = (e.lastStderr || '').trim().split(/\r?\n/).filter(Boolean).slice(-3).join(' | ');
+        console.error('[recorder] capture died (code ' + code + '):', e.lastStderr || '(no stderr)');
+        _recorderSendState(frameId, {
+          recording: false,
+          error: 'Recording failed (code ' + code + ')' + (tail ? ': ' + tail : ''),
+        });
       }
     });
     _recorderSendState(frameId, { recording: true });

@@ -17307,8 +17307,21 @@ async function moGetRecordingsDir(api) {
 // Entry point — validate everything, then open the framing window.
 async function moStartScreenRecording(api) {
   if (_moRecordingInFlight) {
-    api.window.showInformationMessage('A screen recording is already in progress.');
-    return;
+    // Self-heal: the flag clears on the host's recorder:complete event; if
+    // that event was ever missed (error mid-teardown), the flag wedges the
+    // whole session. Trust the host — when it says no recorder frame is
+    // actually open, the flag is stale and recording may proceed.
+    let reallyActive = true;
+    try {
+      const r = await window.parallxElectron?.recorder?.anyActive?.();
+      if (r && r.active === false) reallyActive = false;
+    } catch { /* keep the conservative answer */ }
+    if (reallyActive) {
+      api.window.showInformationMessage('A screen recording is already in progress.');
+      return;
+    }
+    console.warn('[media-organizer] cleared stale recording-in-progress flag (no recorder frame open)');
+    _moRecordingInFlight = false;
   }
   if (!window.parallxElectron?.recorder?.openFrame) {
     api.window.showErrorMessage('Screen recorder is not available in this build.');

@@ -142,6 +142,8 @@ contextBridge.exposeInMainWorld('parallxElectron', {
   recorder: {
     /** Open the framing window. opts: { ffmpegPath, outputPath, fps, width, height, audio }. Returns { frameId } or { error }. */
     openFrame: (opts) => ipcRenderer.invoke('recorder:openFrame', opts),
+    /** Whether any recorder frame is currently open ({ active }). Used to self-heal a stale in-progress flag. */
+    anyActive: () => ipcRenderer.invoke('recorder:anyActive'),
     /** Fires when a recording finishes/cancels: { frameId, path, ok, cancelled? }. Returns an unsubscribe fn. */
     onComplete: (callback) => {
       const handler = (_event, payload) => { try { callback(payload); } catch { /* ignore */ } };

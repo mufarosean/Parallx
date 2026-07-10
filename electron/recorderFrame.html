@@ -319,7 +319,12 @@
         // activation; running them concurrently keeps the two streams tightly
         // aligned (video no longer waits for audio setup).
         const [audioStarted, res] = await Promise.all([startAudioCapture(), api.start()]);
-        if (res && res.error) { await stopAudioCapture(false); return; }
+        if (res && res.error) {
+          await stopAudioCapture(false);
+          hintEl.textContent = 'Could not start: ' + (res.error.message || 'unknown error');
+          hintEl.classList.add('warn');
+          return;
+        }
         recording = true;
         capEl.classList.add('recording');
         setRecState('recording');
@@ -356,6 +361,10 @@
         setRecState('idle');
         sizeBtn.classList.remove('hidden');
         stopAudioCapture(false);
+        // Surface the reason — a silent reset made every capture failure look
+        // like "clicked record, nothing happened".
+        hintEl.textContent = String(s.error);
+        hintEl.classList.add('warn');
       }
     });
   </script>
