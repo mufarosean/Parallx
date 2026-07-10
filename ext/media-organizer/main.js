@@ -17475,6 +17475,28 @@ async function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut,
   }
 }
 
+// ── Clip filter presets ─────────────────────────────────────────────────────
+// Each preset is one ffmpeg video-filter chain segment (`vf`) injected into
+// the shared filter pipeline (so MP4 / WebM / GIF / GIF-frame-edits all get
+// it) plus a CSS `filter` approximation applied to the preview <video> for
+// instant visual feedback. CSS previews are close, not bit-exact — the
+// export is the source of truth. Chains avoid quotes/spaces so they survive
+// shellQuote on every platform.
+const MO_CLIP_FILTERS = [
+  { id: 'none',  label: 'None',           vf: null,                                                        css: 'none' },
+  { id: 'mono',  label: 'Mono (B&W)',     vf: 'hue=s=0',                                                   css: 'grayscale(1)' },
+  { id: 'warm',  label: 'Warm',           vf: 'eq=saturation=1.12:gamma_r=1.07:gamma_b=0.93',              css: 'sepia(0.18) saturate(1.22) hue-rotate(-8deg)' },
+  { id: 'cool',  label: 'Cool',           vf: 'eq=saturation=1.08:gamma_b=1.08:gamma_r=0.94',              css: 'saturate(1.08) hue-rotate(9deg) brightness(1.01)' },
+  { id: 'vivid', label: 'Vivid',          vf: 'eq=contrast=1.13:saturation=1.38',                          css: 'contrast(1.13) saturate(1.38)' },
+  { id: 'fade',  label: 'Fade (matte)',   vf: 'colorlevels=rimin=0.05:gimin=0.05:bimin=0.05:rimax=0.96:gimax=0.96:bimax=0.96,eq=saturation=0.85', css: 'contrast(0.88) brightness(1.06) saturate(0.85)' },
+];
+
+/** The ffmpeg vf segment for a preset id ('' when none). */
+function moClipFilterVf(id) {
+  const f = MO_CLIP_FILTERS.find((x) => x.id === id);
+  return f && f.vf ? f.vf : '';
+}
+
 // Builds the clip/GIF exporter into an editor pane `container` and returns a
 // pane handle. dispose() (called by the workbench when the tab closes) tears
 // down timers/observers/preview, wipes the temp frame strip, and fires the
@@ -17696,6 +17718,25 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   controls.appendChild(speedRow);
 
   addSectionHead('Adjust');
+
+  // Filter preset — applied at export via ffmpeg; previewed live via a CSS
+  // approximation on the <video> element.
+  const filterRow = moEl('div', 'mo-clip-row');
+  filterRow.appendChild(lbl('Filter'));
+  const filterSel = document.createElement('select');
+  filterSel.className = 'mo-clip-input';
+  for (const f of MO_CLIP_FILTERS) {
+    const o = document.createElement('option'); o.value = f.id; o.textContent = f.label;
+    if (f.id === 'none') o.selected = true;
+    filterSel.appendChild(o);
+  }
+  filterRow.appendChild(filterSel);
+  controls.appendChild(filterRow);
+  const applyFilterPreview = () => {
+    const f = MO_CLIP_FILTERS.find((x) => x.id === filterSel.value);
+    preview.style.filter = f && f.css !== 'none' ? f.css : '';
+  };
+  filterSel.addEventListener('change', applyFilterPreview);
 
   // Crop toggle
   const cropRow = moEl('div', 'mo-clip-row');
@@ -18428,6 +18469,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       // isn't actually available (e.g. preset cloned from another machine).
       hwAccel: gpuSel.value,
       dither: ditherSel.value,
+      filter: filterSel.value,
       loops: parseInt(loopInput.value, 10) || 0,
       cropEnabled,
       cropNorm: { ...cropNorm },
@@ -18490,6 +18532,8 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       gpuSel.value = 'off';
     }
     ditherSel.value = c.dither;
+    filterSel.value = (c.filter && MO_CLIP_FILTERS.some((f) => f.id === c.filter)) ? c.filter : 'none';
+    applyFilterPreview();
     loopInput.value = String(c.loops);
     cropEnabled = !!c.cropEnabled;
     cropChk.checked = cropEnabled;
@@ -19058,6 +19102,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
               targetMB: c.targetMB,
               hwAccel: c.hwAccel,
               dither: c.dither,
+              filter: c.filter || 'none',
               loops: c.loops,
               crop: c.cropEnabled ? { ...c.cropNorm } : null,
               frameEdits: null,
@@ -19174,6 +19219,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
         targetMB: Math.max(0.5, parseFloat(sizeInputMB.value) || 8),
         hwAccel: gpuSel.value,
         dither: ditherSel.value,
+        filter: filterSel.value,
         loops: parseInt(loopInput.value, 10) || 0,
         // M59 P4: crop region (normalized [0..1] relative to source frame)
         crop: cropEnabled ? { ...cropNorm } : null,
@@ -19354,6 +19400,11 @@ async function moExportClip(api, opts) {
   } else {
     // ensure even dims for video formats
     if (opts.format !== 'gif') filters.push('scale=trunc(iw/2)*2:trunc(ih/2)*2');
+  }
+  // Filter preset (colour grade) — after geometry, before timing.
+  {
+    const presetVf = moClipFilterVf(opts.filter);
+    if (presetVf) filters.push(presetVf);
   }
   if (opts.speed && opts.speed !== 1) {
     // setpts inverse: 0.5x speed ⇒ setpts=PTS/0.5
@@ -19629,6 +19680,10 @@ async function moExportGifWithFrameEdits(api, opts, outPath) {
       extractParts.push(`crop=trunc(iw*${cw}/2)*2:trunc(ih*${ch}/2)*2:trunc(iw*${cx}):trunc(ih*${cy})`);
     }
     extractParts.push(`scale=trunc(iw*${scaleS}/2)*2:trunc(ih*${scaleS}/2)*2`);
+    {
+      const presetVf = moClipFilterVf(opts.filter);
+      if (presetVf) extractParts.push(presetVf);
+    }
     const vfExtract = extractParts.join(',');
     const pattern = workDir + sep + 'f_%04d.png';
     const cmdEx = [
