@@ -17,158 +17,157 @@
 }
 
 /* ── Toolbar ───────────────────────────────────────────────────────────── */
+/* Quiet bar in the house style (canvas ribbon): muted ghost buttons, no
+   group dividers — separation comes from spacing — and two bordered pills
+   for the page and zoom values. Semantic --px tokens only. */
 
 .pdf-toolbar {
   display: flex;
   align-items: center;
-  gap: 2px;
-  height: 38px;
-  min-height: 38px;
-  padding: 0 6px;
-  background: var(--vscode-editorWidget-background, #252526);
-  border-bottom: 1px solid var(--vscode-editorWidget-border, #454545);
+  gap: 12px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0 10px;
+  background: var(--px-bg);
+  border-bottom: 1px solid var(--px-divider);
   user-select: none;
   z-index: 10;
 }
 
-/* ── Toolbar groups — logical clusters with dividers ──────────────────── */
-
-.pdf-toolbar-group {
+.pdf-toolbar-cluster {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  padding: 0 4px;
-}
-
-/* Dividers between groups (not before first, not after last) */
-.pdf-toolbar-group + .pdf-toolbar-group::before {
-  content: '';
-  display: block;
-  width: 1px;
-  height: 18px;
-  margin-right: 4px;
-  background: var(--vscode-editorWidget-border, #454545);
-  opacity: 0.6;
-  flex-shrink: 0;
-}
-
-/* No divider before center spacer or after it */
-.pdf-toolbar-spacer + .pdf-toolbar-group::before {
-  display: none;
 }
 
 .pdf-toolbar-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--px-radius-sm);
   background: transparent;
-  color: var(--vscode-foreground, #ccc);
+  color: var(--px-text-secondary);
   cursor: pointer;
   padding: 0;
-  transition: background 0.12s ease, color 0.12s ease;
-  position: relative;
+  transition: background var(--px-dur-fast) ease, color var(--px-dur-fast) ease;
 }
 
 .pdf-toolbar-btn svg {
-  width: var(--parallx-icon-size-sm, 16px);
-  height: var(--parallx-icon-size-sm, 16px);
+  width: 15px;
+  height: 15px;
   flex-shrink: 0;
 }
 
 .pdf-toolbar-btn:hover {
-  background: var(--vscode-toolbar-hoverBackground, #5a5d5e50);
-  color: var(--vscode-foreground, #fff);
+  background: var(--px-surface-hover);
+  color: var(--px-text);
 }
 
 .pdf-toolbar-btn:active {
-  background: var(--vscode-toolbar-activeBackground, #5a5d5e80);
-  transform: scale(0.95);
+  background: var(--px-surface-active);
 }
 
-/* Tooltip-like title handled by native title attribute */
+/* Toggled-on state (outline / thumbnails / night reading). */
+.pdf-toolbar-btn.active {
+  color: var(--px-accent);
+  background: var(--px-accent-faint);
+}
+
+.pdf-toolbar-btn.active:hover {
+  background: var(--px-accent-soft);
+}
+
+.pdf-toolbar-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.pdf-toolbar-btn:disabled:hover {
+  background: transparent;
+  color: var(--px-text-secondary);
+}
+
+/* Pills — bordered value containers for page number and zoom level. */
+.pdf-toolbar-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  margin: 0 4px;
+  padding: 0 2px;
+  border: 1px solid var(--px-divider);
+  border-radius: var(--px-radius-sm);
+  transition: border-color var(--px-dur-fast) ease;
+}
+
+.pdf-toolbar-pill:hover {
+  border-color: var(--px-border);
+}
+
+.pdf-toolbar-pill:focus-within {
+  border-color: var(--px-accent);
+}
 
 .pdf-toolbar-page-input {
-  width: 44px;
-  height: 24px;
+  width: 34px;
+  height: 100%;
   text-align: center;
-  border: 1px solid var(--vscode-input-border, #3c3c3c);
-  border-radius: var(--parallx-radius-sm);
-  background: var(--vscode-input-background, #3c3c3c);
-  color: var(--vscode-input-foreground, #ccc);
-  font-size: var(--parallx-fontSize-base);
+  border: none;
+  background: transparent;
+  color: var(--px-text);
+  font-size: var(--px-text-sm);
+  font-variant-numeric: tabular-nums;
   outline: none;
-  padding: 0 2px;
-  transition: border-color 0.15s ease;
-}
-
-.pdf-toolbar-page-input:focus {
-  border-color: var(--vscode-focusBorder, #007fd4);
+  padding: 0;
 }
 
 .pdf-toolbar-page-sep {
-  color: var(--vscode-descriptionForeground, #999);
-  font-size: var(--parallx-fontSize-base);
-  margin: 0 2px;
-  opacity: 0.7;
+  color: var(--px-text-faint);
+  font-size: var(--px-text-sm);
 }
 
 .pdf-toolbar-page-total {
-  color: var(--vscode-descriptionForeground, #999);
-  font-size: var(--parallx-fontSize-base);
-  min-width: 20px;
+  color: var(--px-text-muted);
+  font-size: var(--px-text-sm);
+  font-variant-numeric: tabular-nums;
+  padding: 0 6px 0 4px;
 }
 
 .pdf-toolbar-spacer {
   flex: 1;
 }
 
-.pdf-toolbar-zoom-label {
-  color: var(--vscode-descriptionForeground, #999);
-  font-size: var(--parallx-fontSize-sm);
-  min-width: 42px;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-}
-
 .pdf-toolbar-zoom-input {
   width: 48px;
-  height: 24px;
+  height: 100%;
   text-align: center;
-  border: 1px solid transparent;
-  border-radius: var(--parallx-radius-sm);
+  border: none;
   background: transparent;
-  color: var(--vscode-descriptionForeground, #999);
-  font-size: var(--parallx-fontSize-sm);
+  color: var(--px-text-secondary);
+  font-size: var(--px-text-sm);
   font-variant-numeric: tabular-nums;
   outline: none;
-  padding: 0 2px;
-  transition: border-color 0.15s ease, background 0.15s ease;
-}
-
-.pdf-toolbar-zoom-input:hover {
-  background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.08));
+  padding: 0;
 }
 
 .pdf-toolbar-zoom-input:focus {
-  border-color: var(--vscode-focusBorder, #007fd4);
-  background: var(--vscode-input-background, #3c3c3c);
-  color: var(--vscode-input-foreground, #ccc);
+  color: var(--px-text);
 }
 
+/* Preset chevron lives inside the zoom pill. */
 .pdf-toolbar-zoom-preset {
-  width: 18px !important;
-  min-width: 18px;
-  padding: 0 !important;
-  margin-left: -4px;
+  width: 16px;
+  min-width: 16px;
+  height: 20px;
+  border-radius: 3px;
+  color: var(--px-text-muted);
 }
 
 .pdf-toolbar-zoom-preset svg {
-  width: 12px;
-  height: 12px;
+  width: 11px;
+  height: 11px;
 }
 
 /* ── Search bar ────────────────────────────────────────────────────────── */
@@ -179,9 +178,9 @@
   gap: 6px;
   height: 34px;
   min-height: 34px;
-  padding: 0 8px;
-  background: var(--vscode-editorWidget-background, #252526);
-  border-bottom: 1px solid var(--vscode-editorWidget-border, #454545);
+  padding: 0 10px;
+  background: var(--px-bg);
+  border-bottom: 1px solid var(--px-divider);
   z-index: 10;
   animation: pdf-slide-down 0.12s ease-out;
 }
@@ -881,57 +880,13 @@
   user-select: none;
 }
 
-/* ── Page label in toolbar ─────────────────────────────────────────────── */
+/* ── Page label in toolbar (custom labels like i, ii, iii) ─────────────── */
 
 .pdf-toolbar-page-label {
-  color: var(--vscode-descriptionForeground, #999);
-  font-size: var(--parallx-fontSize-sm);
-  margin: 0 2px;
+  color: var(--px-text-muted);
+  font-size: var(--px-text-sm);
+  padding-right: 6px;
   white-space: nowrap;
-  opacity: 0.8;
-}
-
-/* ── Text selection context menu ───────────────────────────────────────── */
-
-.pdf-context-menu {
-  position: absolute;
-  z-index: 100;
-  min-width: 140px;
-  padding: 4px 0;
-  background: var(--vscode-menu-background, #252526);
-  border: 1px solid var(--vscode-menu-border, #454545);
-  border-radius: var(--parallx-radius-md);
-  box-shadow: 0 4px 16px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.4));
-  animation: pdf-menu-in 0.1s ease-out;
-}
-
-@keyframes pdf-menu-in {
-  from { opacity: 0; transform: scale(0.96); }
-  to   { opacity: 1; transform: scale(1); }
-}
-
-.pdf-context-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 28px;
-  padding: 0 12px;
-  font-size: var(--parallx-fontSize-base);
-  color: var(--vscode-menu-foreground, #ccc);
-  cursor: pointer;
-  transition: background 0.1s ease;
-}
-
-.pdf-context-menu-item:hover {
-  background: var(--vscode-menu-selectionBackground, #094771);
-  color: var(--vscode-menu-selectionForeground, #fff);
-}
-
-.pdf-context-menu-item svg {
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
-  opacity: 0.8;
 }
 
 /* ── Loading ───────────────────────────────────────────────────────────── */

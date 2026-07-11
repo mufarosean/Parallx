@@ -91,17 +91,14 @@ const ICON = {
   search:       getIcon('search')!,
   listTree:     getIcon('list-tree')!,
   grid:         getIcon('grid')!,
-  rotate:       getIcon('rotate')!,
-  spread:       getIcon('spread')!,
-  print:        getIcon('printer')!,
-  openExt:      getIcon('open')!,
+  more:         getIcon('ellipsis')!,
+  check:        getIcon('check')!,
   close:        getIcon('close')!,
   chevronDownSm:getIcon('chevron-down')!,
   highlighter:  getIcon('highlighter')!,
   note:         getIcon('sticky-note')!,
   moon:         getIcon('moon')!,
   sun:          getIcon('sun')!,
-  scroll:       getIcon('scroll')!,
   chat:         getIcon('message-circle')!,
   sparkles:     getIcon('sparkles')!,
   openExtSm:    getIcon('external-link')!,
@@ -207,9 +204,8 @@ export class PdfEditorPane extends EditorPane {
   private _pageTotalEl!: HTMLElement;
   private _outlineBtn!: HTMLButtonElement;
   private _thumbBtn!: HTMLButtonElement;
-  private _spreadBtn!: HTMLButtonElement;
-  private _scrollBtn!: HTMLButtonElement;
   private _invertBtn!: HTMLButtonElement;
+  private _fitBtn!: HTMLButtonElement;
   private _zoomInput!: HTMLInputElement;
 
   // Search bar elements
@@ -1531,12 +1527,15 @@ export class PdfEditorPane extends EditorPane {
   // ── Toolbar ──────────────────────────────────────────────────────────
 
   private _buildToolbar(): void {
-    // ── Group 1: Page navigation ──
-    const navGroup = $('div');
-    navGroup.classList.add('pdf-toolbar-group');
+    // ── Left: page navigation ──
+    const nav = $('div');
+    nav.classList.add('pdf-toolbar-cluster');
 
     const prev = this._btn(ICON.chevronLeft, 'Previous page');
     prev.addEventListener('click', () => this._pdfViewer?.previousPage());
+
+    const pagePill = $('div');
+    pagePill.classList.add('pdf-toolbar-pill');
 
     this._pageInput = document.createElement('input');
     this._pageInput.type = 'text';
@@ -1569,19 +1568,24 @@ export class PdfEditorPane extends EditorPane {
     this._pageLabelEl.classList.add('pdf-toolbar-page-label');
     hide(this._pageLabelEl);
 
+    pagePill.append(this._pageInput, sep, this._pageTotalEl, this._pageLabelEl);
+
     const next = this._btn(ICON.chevronRight, 'Next page');
     next.addEventListener('click', () => this._pdfViewer?.nextPage());
 
-    navGroup.append(prev, this._pageInput, sep, this._pageTotalEl, this._pageLabelEl, next);
+    nav.append(prev, pagePill, next);
 
-    // ── Group 2: Zoom controls ──
-    const zoomGroup = $('div');
-    zoomGroup.classList.add('pdf-toolbar-group');
+    // ── Zoom ──
+    const zoom = $('div');
+    zoom.classList.add('pdf-toolbar-cluster');
 
     const zoomOut = this._btn(ICON.zoomOut, 'Zoom out');
     zoomOut.addEventListener('click', () => this._pdfViewer?.decreaseScale());
 
-    // Editable zoom percentage input.
+    // One pill: editable % input + preset dropdown chevron.
+    const zoomPill = $('div');
+    zoomPill.classList.add('pdf-toolbar-pill');
+
     this._zoomInput = document.createElement('input');
     this._zoomInput.type = 'text';
     this._zoomInput.classList.add('pdf-toolbar-zoom-input');
@@ -1598,70 +1602,136 @@ export class PdfEditorPane extends EditorPane {
     zoomPreset.classList.add('pdf-toolbar-zoom-preset');
     zoomPreset.addEventListener('click', (e) => {
       const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-      this._showZoomPresets(r.left, r.bottom);
+      this._showZoomPresets(r.left, r.bottom + 4);
     });
+
+    zoomPill.append(this._zoomInput, zoomPreset);
 
     const zoomIn = this._btn(ICON.zoomIn, 'Zoom in');
     zoomIn.addEventListener('click', () => this._pdfViewer?.increaseScale());
 
-    const fitW = this._btn(ICON.fitWidth, 'Fit width');
-    fitW.addEventListener('click', () => this._setScaleValue('page-width'));
+    // Single fit button that alternates between the two fit modes.
+    this._fitBtn = this._btn(ICON.fitWidth, 'Fit width');
+    this._fitBtn.addEventListener('click', () => this._toggleFitMode());
 
-    const fitP = this._btn(ICON.fitPage, 'Fit page');
-    fitP.addEventListener('click', () => this._setScaleValue('page-fit'));
-
-    zoomGroup.append(zoomOut, this._zoomInput, zoomPreset, zoomIn, fitW, fitP);
+    zoom.append(zoomOut, zoomPill, zoomIn, this._fitBtn);
 
     // ── Center spacer ──
     const spacer = $('span');
     spacer.classList.add('pdf-toolbar-spacer');
 
-    // ── Group 3: View & navigation panels ──
-    const viewGroup = $('div');
-    viewGroup.classList.add('pdf-toolbar-group');
+    // ── Right: search, panels, night reading, overflow ──
+    const right = $('div');
+    right.classList.add('pdf-toolbar-cluster');
 
     const searchBtn = this._btn(ICON.search, 'Find (Ctrl+F)');
     searchBtn.addEventListener('click', () => this._toggleSearch());
 
     this._outlineBtn = this._btn(ICON.listTree, 'Outline');
+    this._outlineBtn.disabled = true; // enabled when a document provides one
     this._outlineBtn.addEventListener('click', () => this._toggleOutline());
 
     this._thumbBtn = this._btn(ICON.grid, 'Thumbnails');
     this._thumbBtn.addEventListener('click', () => this._toggleThumbnails());
 
-    viewGroup.append(searchBtn, this._outlineBtn, this._thumbBtn);
-
-    // ── Group 4: Layout & transform ──
-    const layoutGroup = $('div');
-    layoutGroup.classList.add('pdf-toolbar-group');
-
-    const rotateBtn = this._btn(ICON.rotate, 'Rotate (R)');
-    rotateBtn.addEventListener('click', () => this._rotate());
-
-    this._spreadBtn = this._btn(ICON.spread, 'Spread view');
-    this._spreadBtn.addEventListener('click', () => this._cycleSpreadMode());
-
-    this._scrollBtn = this._btn(ICON.scroll, 'Scroll mode: Vertical (click to cycle)');
-    this._scrollBtn.addEventListener('click', () => this._cycleScrollMode());
-
     this._invertBtn = this._btn(ICON.moon, 'Night reading (invert colors)');
     this._invertBtn.addEventListener('click', () => this._toggleReadingDark());
 
-    layoutGroup.append(rotateBtn, this._spreadBtn, this._scrollBtn, this._invertBtn);
+    // Rarely-used actions live in the ⋯ menu (rotate, spread, scroll, print, open).
+    const moreBtn = this._btn(ICON.more, 'More actions');
+    moreBtn.addEventListener('click', (e) => {
+      this._showOverflowMenu(e.currentTarget as HTMLElement);
+    });
 
-    // ── Group 5: Document actions ──
-    const actionGroup = $('div');
-    actionGroup.classList.add('pdf-toolbar-group');
+    right.append(searchBtn, this._outlineBtn, this._thumbBtn, this._invertBtn, moreBtn);
 
-    const printBtn = this._btn(ICON.print, 'Print (Ctrl+P)');
-    printBtn.addEventListener('click', () => this._print());
+    this._toolbar.append(nav, zoom, spacer, right);
+  }
 
-    const openExtBtn = this._btn(ICON.openExt, 'Open in system viewer');
-    openExtBtn.addEventListener('click', () => this._openExternal());
+  /** One fit button that alternates fit-width ↔ fit-page (advertises the mode it switches TO). */
+  private _toggleFitMode(): void {
+    const next = this._pdfViewer?.currentScaleValue === 'page-width' ? 'page-fit' : 'page-width';
+    this._setScaleValue(next);
+    this._syncZoomInput();
+    this._updateFitButton();
+  }
 
-    actionGroup.append(printBtn, openExtBtn);
+  private _updateFitButton(): void {
+    if (!this._fitBtn) return;
+    const isWidth = this._pdfViewer?.currentScaleValue === 'page-width';
+    this._fitBtn.innerHTML = isWidth ? ICON.fitPage : ICON.fitWidth;
+    setupTooltip(this._fitBtn, isWidth ? 'Fit page' : 'Fit width');
+  }
 
-    this._toolbar.append(navGroup, zoomGroup, spacer, viewGroup, layoutGroup, actionGroup);
+  // ── Overflow menu (rotate / spread / scroll / print / open) ────────────
+
+  private _showOverflowMenu(anchor: HTMLElement): void {
+    this._dismissContextMenu();
+    const r = anchor.getBoundingClientRect();
+    const spread = this._pdfViewer?.spreadMode ?? SpreadMode.NONE;
+    const scroll = this._pdfViewer?.scrollMode ?? ScrollMode.VERTICAL;
+    // Every submenu item gets an icon slot so labels stay aligned; only the
+    // current mode draws the check. The icon span has no CSS sizing of its
+    // own, so size it (and the SVG) inline — same as viewContainer's menu.
+    const checked = (on: boolean) => (el: HTMLElement) => {
+      el.style.width = '16px';
+      el.style.display = 'inline-flex';
+      el.style.alignItems = 'center';
+      if (on) {
+        el.innerHTML = ICON.check;
+        const svg = el.querySelector('svg');
+        if (svg) { svg.style.width = '13px'; svg.style.height = '13px'; }
+      }
+    };
+
+    const menu = ContextMenu.show({
+      items: [
+        { id: 'pdf.rotate', label: 'Rotate 90°', keybinding: 'R' },
+        {
+          id: 'pdf.spread',
+          label: 'Two-page spread',
+          submenu: [
+            { id: 'pdf.spread.none', label: 'Off',        renderIcon: checked(spread === SpreadMode.NONE) },
+            { id: 'pdf.spread.odd',  label: 'Odd pages',  renderIcon: checked(spread === SpreadMode.ODD) },
+            { id: 'pdf.spread.even', label: 'Even pages', renderIcon: checked(spread === SpreadMode.EVEN) },
+          ],
+        },
+        {
+          id: 'pdf.scroll',
+          label: 'Scroll direction',
+          submenu: [
+            { id: 'pdf.scroll.vertical',   label: 'Vertical',    renderIcon: checked(scroll === ScrollMode.VERTICAL) },
+            { id: 'pdf.scroll.horizontal', label: 'Horizontal',  renderIcon: checked(scroll === ScrollMode.HORIZONTAL) },
+            { id: 'pdf.scroll.wrapped',    label: 'Wrapped',     renderIcon: checked(scroll === ScrollMode.WRAPPED) },
+            { id: 'pdf.scroll.page',       label: 'Single page', renderIcon: checked(scroll === ScrollMode.PAGE) },
+          ],
+        },
+        { id: 'pdf.print', label: 'Print…', keybinding: 'Ctrl+P', group: 'doc' },
+        { id: 'pdf.openExternal', label: 'Open in system viewer', group: 'doc' },
+      ],
+      anchor: { x: r.left, y: r.bottom + 4 },
+    });
+
+    menu.onDidSelect((e) => {
+      const id = e.item.id;
+      if (id === 'pdf.rotate') this._rotate();
+      else if (id === 'pdf.print') this._print();
+      else if (id === 'pdf.openExternal') this._openExternal();
+      else if (id.startsWith('pdf.spread.') && this._pdfViewer) {
+        const mode = id.slice('pdf.spread.'.length);
+        this._pdfViewer.spreadMode =
+          mode === 'odd' ? SpreadMode.ODD : mode === 'even' ? SpreadMode.EVEN : SpreadMode.NONE;
+      } else if (id.startsWith('pdf.scroll.') && this._pdfViewer) {
+        const mode = id.slice('pdf.scroll.'.length);
+        this._pdfViewer.scrollMode =
+          mode === 'horizontal' ? ScrollMode.HORIZONTAL
+          : mode === 'wrapped' ? ScrollMode.WRAPPED
+          : mode === 'page' ? ScrollMode.PAGE
+          : ScrollMode.VERTICAL;
+      }
+    });
+
+    this._activeContextMenu = menu;
   }
 
   private _btn(svgOrText: string, title: string): HTMLButtonElement {
@@ -1747,7 +1817,8 @@ export class PdfEditorPane extends EditorPane {
   // ── Outline sidebar ──────────────────────────────────────────────────
 
   private _toggleOutline(forceState?: boolean): void {
-    this._outlineVisible = forceState ?? !this._outlineVisible;
+    this._outlineVisible = (forceState ?? !this._outlineVisible) && !!this._outline;
+    this._outlineBtn?.classList.toggle('active', this._outlineVisible);
     if (this._outlineVisible && this._outline) {
       show(this._outlineSidebar);
       show(this._outlineSash);
@@ -2080,6 +2151,7 @@ export class PdfEditorPane extends EditorPane {
 
       this._eventBus.on('scalechanging', (evt: any) => {
         this._zoomInput.value = `${Math.round(evt.scale * 100)}%`;
+        this._updateFitButton();
         this._pdfViewer?.update();
         this._scheduleSelectionOverlayUpdate();
         this._renderAllHighlights();
@@ -2160,6 +2232,7 @@ export class PdfEditorPane extends EditorPane {
         }
 
         this._zoomInput.value = `${Math.round(this._pdfViewer!.currentScale * 100)}%`;
+        this._updateFitButton();
         this._pdfViewer!.update();
         this._scheduleSelectionOverlayUpdate();
         this._renderAllHighlights();
@@ -2183,10 +2256,12 @@ export class PdfEditorPane extends EditorPane {
       if (outline?.length) {
         this._outline = outline;
         this._renderOutline(outline);
-        this._outlineBtn.style.opacity = '1';
+        this._outlineBtn.disabled = false;
+        setupTooltip(this._outlineBtn, 'Outline');
       } else {
         this._outline = null;
-        this._outlineBtn.style.opacity = '0.4';
+        this._outlineBtn.disabled = true;
+        setupTooltip(this._outlineBtn, 'No outline in this document');
       }
 
       // ── Build thumbnails ───────────────────────────────────────────
@@ -2259,22 +2334,13 @@ export class PdfEditorPane extends EditorPane {
     if (!this._viewerContainer) return;
     this._viewerContainer.classList.toggle('pdf-reading-dark', this._readingDark);
     if (this._invertBtn) {
+      this._invertBtn.classList.toggle('active', this._readingDark);
       this._invertBtn.innerHTML = this._readingDark ? ICON.sun : ICON.moon;
       setupTooltip(
         this._invertBtn,
         this._readingDark ? 'Day reading (normal colors)' : 'Night reading (invert colors)',
       );
     }
-  }
-
-  private _cycleScrollMode(): void {
-    if (!this._pdfViewer) return;
-    const order = [ScrollMode.VERTICAL, ScrollMode.HORIZONTAL, ScrollMode.WRAPPED, ScrollMode.PAGE];
-    const labels = ['Vertical', 'Horizontal', 'Wrapped', 'Single page'];
-    const idx = order.indexOf(this._pdfViewer.scrollMode);
-    const nextIdx = (idx + 1) % order.length;
-    this._pdfViewer.scrollMode = order[nextIdx];
-    setupTooltip(this._scrollBtn, `Scroll mode: ${labels[nextIdx]} (click to cycle)`);
   }
 
   // ── Rotation ─────────────────────────────────────────────────────────
@@ -2288,6 +2354,7 @@ export class PdfEditorPane extends EditorPane {
 
   private _toggleThumbnails(forceState?: boolean): void {
     this._thumbnailVisible = forceState ?? !this._thumbnailVisible;
+    this._thumbBtn?.classList.toggle('active', this._thumbnailVisible);
     if (this._thumbnailVisible) {
       show(this._thumbnailSidebar);
       // Re-observe thumbnails for lazy rendering
@@ -2406,23 +2473,6 @@ export class PdfEditorPane extends EditorPane {
     }
   }
 
-  // ── Spread & scroll modes ────────────────────────────────────────────
-
-  private _cycleSpreadMode(): void {
-    if (!this._pdfViewer) return;
-    const current = this._pdfViewer.spreadMode;
-    if (current === SpreadMode.NONE) {
-      this._pdfViewer.spreadMode = SpreadMode.ODD;
-      setupTooltip(this._spreadBtn, 'Spread: Odd (click to cycle)');
-    } else if (current === SpreadMode.ODD) {
-      this._pdfViewer.spreadMode = SpreadMode.EVEN;
-      setupTooltip(this._spreadBtn, 'Spread: Even (click to cycle)');
-    } else {
-      this._pdfViewer.spreadMode = SpreadMode.NONE;
-      setupTooltip(this._spreadBtn, 'Spread: Off (click to cycle)');
-    }
-  }
-
   // ── Page labels ──────────────────────────────────────────────────────
 
   private _updatePageLabel(pageNum: number): void {
@@ -2489,7 +2539,7 @@ export class PdfEditorPane extends EditorPane {
       // Ignore mouseups that originate from our own overlay UI (highlight
       // margin tabs, the highlight popover, or the context menu itself) so
       // clicking those never re-triggers the text-selection context menu.
-      if ((e.target as HTMLElement | null)?.closest('.pdf-highlight-tab, .pdf-highlight-popover, .pdf-context-menu')) {
+      if ((e.target as HTMLElement | null)?.closest('.pdf-highlight-tab, .pdf-highlight-popover, .context-menu')) {
         return;
       }
       requestAnimationFrame(() => {
