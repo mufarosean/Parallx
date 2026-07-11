@@ -161,6 +161,29 @@ export enum ChatMode {
  *
  * VS Code reference: IChatModel (model/chatModel.ts)
  */
+/** One step of a session's active plan. */
+export interface IChatSessionPlanStep {
+  readonly text: string;
+  readonly status: 'pending' | 'active' | 'done';
+}
+
+/**
+ * The agent's durable working plan for a session (M85 — the planning organ).
+ *
+ * Written by the `plan_update` tool, persisted with the session, re-injected
+ * into EVERY context assembly as its own section OUTSIDE conversation history
+ * — so it survives compaction and history trimming by construction. Hard caps
+ * (enforced by the tool) keep it a mission statement, not a scratchpad.
+ */
+export interface IChatSessionPlan {
+  /** One-line mission statement. */
+  readonly goal: string;
+  readonly steps: readonly IChatSessionPlanStep[];
+  /** Current-state note: what's in flight, what's next. */
+  readonly note?: string;
+  readonly updatedAt: number;
+}
+
 export interface IChatSession {
   /** Unique session identifier (UUID). */
   readonly id: string;
@@ -191,6 +214,8 @@ export interface IChatSession {
   requestInProgress: boolean;
   /** Pending messages queued while a request is in progress. */
   readonly pendingRequests: IChatPendingRequest[];
+  /** M85 — the agent's durable working plan (undefined until first plan_update). */
+  plan?: IChatSessionPlan;
 }
 
 // ── Queued / Pending Requests ──
@@ -1009,6 +1034,7 @@ export type ToolGrantDecision = 'allow-once' | 'allow-session' | 'always-allow' 
 export type ToolCategory =
   | 'canvas'         // canvas page DB ops (find/read/create/edit/properties + block-level)
   | 'file-system'    // workspace files on disk (list/read/write/edit/delete/search/grep/RAG)
+  | 'plan'           // the session's durable working plan (plan_update)
   | 'memory'         // .parallx/memory/ files (lessons, dailies, USER.md, MEMORY.md index)
   | 'transcript'     // .parallx/sessions/ transcripts
   | 'cron'           // scheduled tasks (cron_*)
@@ -1024,6 +1050,15 @@ export type ToolCategory =
  *
  * VS Code reference: IToolData + handler (languageModelToolsService.ts)
  */
+/**
+ * Per-invocation context passed to a tool handler (third parameter).
+ * `sessionId` is the chat session the turn belongs to — present whenever the
+ * invocation came through the runtime tool loop.
+ */
+export interface IChatToolInvocationCallContext {
+  readonly sessionId?: string;
+}
+
 export interface IChatTool {
   /** Tool name (unique identifier). */
   readonly name: string;
@@ -1031,8 +1066,10 @@ export interface IChatTool {
   readonly description: string;
   /** JSON Schema for parameters. */
   readonly parameters: Record<string, unknown>;
-  /** Execution handler. */
-  readonly handler: (args: Record<string, unknown>, token: ICancellationToken) => Promise<IToolResult>;
+  /** Execution handler. The optional third parameter carries per-invocation
+   *  context (the session the turn runs in) — session-scoped tools (plan,
+   *  read-registry) need it; handlers that don't can ignore it. */
+  readonly handler: (args: Record<string, unknown>, token: ICancellationToken, invocation?: IChatToolInvocationCallContext) => Promise<IToolResult>;
   /** Whether this tool requires user confirmation before execution. @deprecated Use permissionLevel. */
   readonly requiresConfirmation: boolean;
   /** 3-tier permission level (M11 Task 2.1). Defaults to 'always-allowed' if not set. */
@@ -1186,6 +1223,12 @@ export interface IChatService extends IDisposable {
   setRuntimeParticipantResolver?(resolver: ((participantId: string) => string) | undefined): void;
   /** Update the model ID for an existing session and persist. */
   updateSessionModel(sessionId: string, modelId: string): void;
+
+  /** M85 — read a session's durable plan (the planning organ). */
+  getSessionPlan?(sessionId: string): IChatSessionPlan | undefined;
+  /** M85 — write (or clear, with undefined) a session's durable plan.
+   *  Fires onDidChangeSession and schedules a persist. */
+  setSessionPlan?(sessionId: string, plan: IChatSessionPlan | undefined): void;
 
   /**
    * Update the per-session context window override.

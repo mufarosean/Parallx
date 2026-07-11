@@ -27,6 +27,7 @@ import { buildToolDefinitionFromSkillCatalogEntry } from '../../openclaw/opencla
 import { registerOpenclawParticipants } from '../../openclaw/registerOpenclawParticipants.js';
 import { createOpenclawCommandRegistry } from '../../openclaw/openclawDefaultRuntimeSupport.js';
 import { registerBuiltInTools } from './tools/builtInTools.js';
+import { createPlanUpdateTool, formatSessionPlan } from './tools/planTools.js';
 import type { IBuiltInToolFileWriter } from './chatTypes.js';
 import {
   ILanguageModelsService,
@@ -1215,6 +1216,13 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     hasSessionMemory: memoryService ? (s) => dataService.hasSessionMemory(s) : undefined,
     getSessionMemoryMessageCount: memoryService ? (s) => dataService.getSessionMemoryMessageCount(s) : undefined,
     getPreferencesForPrompt: (memoryService || workspaceMemoryService) ? () => dataService.getPreferencesForPrompt() : undefined,
+    // M85 — the session's durable plan, formatted for the "## Active Plan"
+    // context section. Read fresh per assembly so mid-turn plan_update calls
+    // are reflected after compaction re-assembly.
+    getSessionPlanText: (sid: string) => {
+      const plan = chatService.getSessionPlan?.(sid);
+      return plan ? formatSessionPlan(plan) : undefined;
+    },
     // M66 — Snapshot every registered `parallx://` link contract for the
     // system prompt builder. Flattened to the descriptor shape that the
     // openclaw layer expects, so adding a new extension contract surfaces
@@ -1934,6 +1942,15 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     for (const d of toolDisposables) {
       context.subscriptions.push(d);
     }
+
+    // M85 — `plan_update`: the agent's durable working plan (the planning
+    // organ). Registered separately so it closes over the ChatService's
+    // session-plan accessors without threading them through the big
+    // registerBuiltInTools(...) signature.
+    context.subscriptions.push(languageModelToolsService.registerTool(createPlanUpdateTool({
+      readPlan: (sid) => chatService.getSessionPlan?.(sid),
+      writePlan: (sid, plan) => chatService.setSessionPlan?.(sid, plan),
+    })));
 
     // M66 §4a — `link_create` chat tool. Registered separately so it can
     // close over the `api.links` snapshot without threading it through the

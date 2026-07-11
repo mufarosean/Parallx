@@ -202,6 +202,12 @@ export function buildOpenclawSystemPrompt(params: IOpenclawSystemPromptParams): 
   //     dependency.
   sections.push(buildMemorySection());
 
+  // 3a-ii. M85 — Planning discipline. Gated on plan_update availability so
+  //        the guidance never references a tool the model can't call.
+  if (params.tools.some((t) => t.name === 'plan_update')) {
+    sections.push(buildPlanningSection());
+  }
+
   // 3b. M66 — Linking templates. Auto-generated from registered LinkContracts;
   //     adding a new extension contract surfaces its URI templates here with
   //     zero core changes.
@@ -558,6 +564,30 @@ export function buildMemorySection(): string {
     '**Cap discipline** — USER.md and the MEMORY.md index are bounded. When `memory_write add` would exceed the cap, the tool returns the current entries and an error. Pick the least-relevant existing lesson and `memory_write file=lesson action=remove slug=<old>` before retrying the add. The cap is a curation forcing function: only the most durable, generally-applicable lessons stay in the index.',
     '',
     'If memory contains a claim that names a specific file, function, or value, verify it against the current workspace before acting on it — memory can go stale.',
+  ].join('\n');
+}
+
+/**
+ * M85 — Planning discipline section (the planning organ). Rendered only when
+ * `plan_update` is in the tool catalog. The behavioral contract mirrors what
+ * makes harness-managed agents stay on track over long multi-step work: an
+ * externalized plan, updated AS the work proceeds, that survives context
+ * compaction because it lives outside conversation history.
+ */
+export function buildPlanningSection(): string {
+  return [
+    '## Planning',
+    'You have a durable working plan for this session, maintained with `plan_update`. It is re-shown to you every turn under `## Active Plan` and SURVIVES context compaction — treat it as your mission anchor, not decoration.',
+    '',
+    'When to plan:',
+    '- Any task with 3+ distinct steps, any task that will span multiple tool calls or messages, or any task the user describes as a project/milestone → call `plan_update` BEFORE starting work: one-line `goal`, the ordered `steps`, and `note` = your immediate next action.',
+    '- Single-step or purely conversational requests → no plan needed.',
+    '',
+    'While working:',
+    '- Mark the step you are working on `active` (one at a time) and completed steps `done` AS YOU FINISH THEM — not in a batch at the end. The statuses are how you re-orient after an interruption or compaction.',
+    '- Keep `note` current: what is in flight right now + what happens next. After any context compaction, re-read the Active Plan and the note before doing anything else.',
+    '- If the user changes direction, update the plan FIRST, then proceed — a stale plan is worse than no plan.',
+    '- When every step is done and verified, call `plan_update` with `clear: true`.',
   ].join('\n');
 }
 

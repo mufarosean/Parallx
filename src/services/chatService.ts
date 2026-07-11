@@ -969,6 +969,26 @@ export class ChatService extends Disposable implements IChatService {
     return this._sessions.get(sessionId);
   }
 
+  // ── M85 — durable session plan (the planning organ) ──
+
+  getSessionPlan(sessionId: string): IChatSession['plan'] {
+    return this._sessions.get(sessionId)?.plan;
+  }
+
+  /**
+   * Write (or clear, with undefined) a session's durable plan. Fires the
+   * session-change event so the plan card re-renders live, and schedules a
+   * persist so the plan survives app restarts — it is the agent's mission
+   * anchor across compactions and reloads.
+   */
+  setSessionPlan(sessionId: string, plan: IChatSession['plan']): void {
+    const session = this._sessions.get(sessionId);
+    if (!session) { return; }
+    session.plan = plan;
+    this._onDidChangeSession.fire(sessionId);
+    this._schedulePersist(sessionId);
+  }
+
   getSessions(): readonly IChatSession[] {
     // W5-A: ephemeral (scratch) sessions MUST NOT appear in any UI session
     // list. Filtering here centralises the invariant — every list consumer

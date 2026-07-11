@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
   mode                    TEXT NOT NULL DEFAULT 'agent',
   model_id                TEXT NOT NULL DEFAULT '',
   context_window_override INTEGER,
+  plan_json               TEXT,
   created_at              INTEGER NOT NULL,
   updated_at              INTEGER NOT NULL
 )`;
@@ -147,6 +148,11 @@ export async function ensureChatTables(db: IChatPersistenceDatabase): Promise<vo
     if (!hasCtxOverride) {
       await db.run(`ALTER TABLE chat_sessions ADD COLUMN context_window_override INTEGER`);
     }
+    // M85 — durable session plan (the planning organ).
+    const hasPlan = cols.some((c) => c.name === 'plan_json');
+    if (!hasPlan) {
+      await db.run(`ALTER TABLE chat_sessions ADD COLUMN plan_json TEXT`);
+    }
   } catch (e) {
     // Migration failure is non-fatal — new tables already have the column
     console.warn('[ChatPersistence] workspace_id migration check failed:', e);
@@ -164,8 +170,8 @@ export async function saveSession(db: IChatPersistenceDatabase, session: IChatSe
   // W5-A: ephemeral sessions never touch SQLite. Isolation invariant.
   if (isEphemeralSessionId(session.id)) { return; }
 
-  const sessionInsertSql = `INSERT OR REPLACE INTO chat_sessions (id, workspace_id, title, mode, model_id, context_window_override, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
+  const sessionInsertSql = `INSERT OR REPLACE INTO chat_sessions (id, workspace_id, title, mode, model_id, context_window_override, plan_json, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
   const sessionInsertParams = [
     session.id,
     workspaceId,
@@ -173,6 +179,7 @@ export async function saveSession(db: IChatPersistenceDatabase, session: IChatSe
     session.mode,
     session.modelId,
     session.contextWindowOverride ?? null,
+    session.plan ? JSON.stringify(session.plan) : null,
     session.createdAt,
     Date.now(),
   ];
@@ -263,9 +270,10 @@ export async function loadSessions(db: IChatPersistenceDatabase, workspaceId: st
     mode: string;
     model_id: string;
     context_window_override: number | null;
+    plan_json: string | null;
     created_at: number;
     updated_at: number;
-  }>(`SELECT id, title, mode, model_id, context_window_override, created_at, updated_at FROM chat_sessions WHERE workspace_id = ? ORDER BY updated_at DESC`, [workspaceId]);
+  }>(`SELECT id, title, mode, model_id, context_window_override, plan_json, created_at, updated_at FROM chat_sessions WHERE workspace_id = ? ORDER BY updated_at DESC`, [workspaceId]);
 
   const sessions: IChatSession[] = [];
 
@@ -326,6 +334,18 @@ export async function loadSessions(db: IChatPersistenceDatabase, workspaceId: st
 
     const sessionResource = URI.from({ scheme: CHAT_SESSION_SCHEME, path: `/${row.id}` });
 
+    // M85 — hydrate the durable plan (best-effort; a corrupt blob never
+    // blocks session load).
+    let plan: IChatSession['plan'];
+    if (row.plan_json) {
+      try {
+        const parsed = JSON.parse(row.plan_json);
+        if (parsed && typeof parsed.goal === 'string' && Array.isArray(parsed.steps)) {
+          plan = parsed;
+        }
+      } catch { /* corrupt plan_json — ignore */ }
+    }
+
     const session: IChatSession = {
       id: row.id,
       sessionResource,
@@ -337,6 +357,7 @@ export async function loadSessions(db: IChatPersistenceDatabase, workspaceId: st
       messages: normalizedMessages,
       requestInProgress: false,
       pendingRequests: [],
+      plan,
     };
 
     sessions.push(session);

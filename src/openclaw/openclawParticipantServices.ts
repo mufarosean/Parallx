@@ -32,6 +32,7 @@ export interface IOpenclawDefaultParticipantAdapterDeps {
   readonly hasSessionMemory?: IDefaultParticipantServices['hasSessionMemory'];
   readonly getSessionMemoryMessageCount?: IDefaultParticipantServices['getSessionMemoryMessageCount'];
   readonly getPreferencesForPrompt?: IDefaultParticipantServices['getPreferencesForPrompt'];
+  readonly getSessionPlanText?: IDefaultParticipantServices['getSessionPlanText'];
   readonly getPromptOverlay?: IDefaultParticipantServices['getPromptOverlay'];
   readonly listFilesRelative?: IDefaultParticipantServices['listFilesRelative'];
   readonly readFileRelative?: IDefaultParticipantServices['readFileRelative'];
@@ -159,6 +160,7 @@ export function buildOpenclawDefaultParticipantServices(
     hasSessionMemory: deps.hasSessionMemory,
     getSessionMemoryMessageCount: deps.getSessionMemoryMessageCount,
     getPreferencesForPrompt: deps.getPreferencesForPrompt,
+    getSessionPlanText: deps.getSessionPlanText,
     getPromptOverlay: deps.getPromptOverlay,
     listFilesRelative: deps.listFilesRelative,
     readFileRelative: deps.readFileRelative,

@@ -205,6 +205,37 @@ describe('OpenclawContextEngine', () => {
       expect(contextMsg!.content).toContain('Recalled Transcripts');
     });
 
+    it('M85 — injects the active plan as the FIRST context section', async () => {
+      await engine.bootstrap({ sessionId: 's1', tokenBudget: 8192 });
+      const result = await engine.assemble({
+        sessionId: 's1',
+        history: [],
+        tokenBudget: 8192,
+        prompt: 'continue',
+        planText: 'Goal: ship it\nSteps:\n[>] step one',
+      });
+
+      const contextMsg = result.messages.find((m) => m.content.includes('## Active Plan'));
+      expect(contextMsg).toBeDefined();
+      expect(contextMsg!.role).toBe('user');
+      expect(contextMsg!.content).toContain('Goal: ship it');
+      expect(contextMsg!.content).toContain('plan_update');
+      // Mission first: the plan section precedes retrieval sections.
+      expect(contextMsg!.content.indexOf('## Active Plan'))
+        .toBeLessThan(contextMsg!.content.indexOf('## Retrieved Context'));
+    });
+
+    it('M85 — no plan section when planText is absent', async () => {
+      await engine.bootstrap({ sessionId: 's1', tokenBudget: 8192 });
+      const result = await engine.assemble({
+        sessionId: 's1',
+        history: [],
+        tokenBudget: 8192,
+        prompt: 'continue',
+      });
+      expect(result.messages.some((m) => m.content.includes('## Active Plan'))).toBe(false);
+    });
+
     it('respects sub-lane budget limits', async () => {
       // Create huge RAG result that exceeds lane budget
       const hugeText = 'x'.repeat(100_000); // 25000 tokens — way over budget

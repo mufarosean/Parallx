@@ -170,6 +170,13 @@ export interface IOpenclawTurnContext {
   // M2: Mention context blocks to inject
   readonly mentionContextBlocks?: readonly string[];
 
+  /**
+   * M85 — reads the session's CURRENT plan, formatted for the prompt.
+   * A getter (not a snapshot) so mid-turn re-assembly after compaction picks
+   * up plan_update calls made earlier in the same tool loop.
+   */
+  readonly getPlanText?: () => string | undefined;
+
   // Model parameters from config
   readonly temperature?: number;
   readonly maxTokens?: number;
@@ -589,6 +596,7 @@ export async function executeOpenclawAttempt(
           history: context.history,
           tokenBudget: context.tokenBudget,
           prompt: request.text,
+          planText: context.getPlanText?.(),
         });
         // Rebuild messages: system prompt stays, use re-assembled history,
         // keep recent tool exchange, add user message (with context prepended)

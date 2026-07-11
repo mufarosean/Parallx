@@ -251,6 +251,9 @@ export interface IDefaultParticipantServices {
   hasSessionMemory?(sessionId: string): Promise<boolean>;
   getSessionMemoryMessageCount?(sessionId: string): Promise<number | null>;
   getPreferencesForPrompt?(): Promise<string | undefined>;
+  /** M85 — the session's durable plan, formatted for prompt injection.
+   *  Read fresh on every context assembly (mid-turn plan_update included). */
+  getSessionPlanText?(sessionId: string): string | undefined;
   getPromptOverlay?(activeFilePath?: string): Promise<string | undefined>;
   listFilesRelative?(relativePath: string): Promise<{ name: string; type: 'file' | 'directory' }[]>;
   readFileRelative?(relativePath: string): Promise<string | null>;

@@ -586,6 +586,10 @@ async function buildOpenclawTurnContext(
     skillState,
     runtimeInfo,
     preferencesPrompt: await services.getPreferencesForPrompt?.(),
+    // M85 — a getter (not a snapshot) so mid-turn re-assembly after
+    // compaction reads the LATEST plan, including plan_update calls made
+    // earlier in the same tool loop.
+    getPlanText: () => services.getSessionPlanText?.(context.sessionId),
     linkContracts: services.getLinkContractDescriptors?.(),
     temperature: resolvedAgentConfig?.temperature ?? effectiveConfig?.model?.temperature,
     maxTokens: resolvedAgentConfig?.maxTokens ?? effectiveConfig?.model?.maxTokens,

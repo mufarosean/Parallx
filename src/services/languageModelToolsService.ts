@@ -424,7 +424,9 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
     }
 
     try {
-      const result = await tool.handler(args, token);
+      // Session-scoped tools (plan, read-registry) receive the session the
+      // turn runs in via the invocation context — the ONLY place it's known.
+      const result = await tool.handler(args, token, { sessionId });
       // Taint the session turn if a red tool succeeded (M65 Layer 5).
       // Taint is set ONLY here, ONLY on success, ONLY when sessionId is in scope.
       if (!result.isError && sessionId && decision.willTaintOnSuccess) {

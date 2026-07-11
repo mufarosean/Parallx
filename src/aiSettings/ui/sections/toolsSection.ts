@@ -38,6 +38,7 @@ interface ToolSubGroup {
 const CATEGORY_DISPLAY: Record<ToolCategoryKind, { label: string; order: number }> = {
   'canvas':      { label: 'Canvas',       order: 10 },
   'file-system': { label: 'File System',  order: 20 },
+  'plan':        { label: 'Planning',     order: 25 },
   'memory':      { label: 'Memory',       order: 30 },
   'transcript':  { label: 'Transcripts',  order: 40 },
   'linking':     { label: 'Linking',      order: 50 },

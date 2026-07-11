@@ -77,6 +77,10 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
   private readonly _mainArea: HTMLElement;
   private readonly _messageListContainer: HTMLElement;
   private readonly _taskRailContainer: HTMLElement;
+  /** M85 — active plan card host (hidden when the session has no plan). */
+  private readonly _planCardContainer: HTMLElement;
+  /** Signature of the last rendered plan — skips re-render when unchanged. */
+  private _renderedPlanSig = '';
   private readonly _pendingMessagesContainer: HTMLElement;
   private readonly _scrollBtn: HTMLElement;
   private readonly _inputAreaContainer: HTMLElement;
@@ -157,6 +161,11 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     if (titleActionsContainer) {
       this._buildTitleActions(titleActionsContainer);
     }
+
+    // M85 — Active plan card (the agent's durable working plan). Pinned
+    // between the title bar and the message list; hidden when no plan.
+    this._planCardContainer = $('div.parallx-chat-plan-card-container');
+    this._mainArea.appendChild(this._planCardContainer);
 
     // Message list (scrollable)
     this._messageListContainer = $('div.parallx-chat-message-list');
@@ -944,6 +953,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     );
 
     this._renderAgentTasks();
+    this._renderPlanCard();
 
     this._updateVisibility();
 
@@ -988,6 +998,71 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     if (tasks.length > 0) {
       this._taskRailContainer.appendChild(renderAgentTaskRail(tasks, this._expandedTaskIds));
     }
+  }
+
+  // ── M85: Active plan card ──────────────────────────────────────────────
+
+  private _planCardCollapsed = false;
+
+  /**
+   * Render the session's durable plan (written by the agent via plan_update).
+   * Signature-skipped so streaming ticks never rebuild an unchanged card.
+   */
+  private _renderPlanCard(): void {
+    const plan = this._session?.plan;
+    const sig = plan ? `${this._session!.id}:${plan.updatedAt}` : '';
+    if (sig === this._renderedPlanSig) { return; }
+    this._renderedPlanSig = sig;
+
+    this._planCardContainer.replaceChildren();
+    this._planCardContainer.style.display = plan ? '' : 'none';
+    if (!plan) { return; }
+
+    const card = $('div.parallx-chat-plan-card');
+    card.classList.toggle('parallx-chat-plan-card--collapsed', this._planCardCollapsed);
+
+    const doneCount = plan.steps.filter((s) => s.status === 'done').length;
+
+    const header = $('div.parallx-chat-plan-header');
+    const goalEl = $('span.parallx-chat-plan-goal');
+    goalEl.textContent = plan.goal;
+    header.appendChild(goalEl);
+    if (plan.steps.length > 0) {
+      const progress = $('span.parallx-chat-plan-progress', `${doneCount}/${plan.steps.length}`);
+      header.appendChild(progress);
+    }
+    const chevron = $('span.parallx-chat-plan-chevron');
+    chevron.innerHTML = chatIcons.chevronDown;
+    header.appendChild(chevron);
+    header.addEventListener('click', () => {
+      this._planCardCollapsed = !this._planCardCollapsed;
+      card.classList.toggle('parallx-chat-plan-card--collapsed', this._planCardCollapsed);
+    });
+    card.appendChild(header);
+
+    const body = $('div.parallx-chat-plan-body');
+    if (plan.steps.length > 0) {
+      const list = $('div.parallx-chat-plan-steps');
+      for (const step of plan.steps) {
+        const row = $('div.parallx-chat-plan-step');
+        row.classList.add(`parallx-chat-plan-step--${step.status}`);
+        const marker = $('span.parallx-chat-plan-step-marker');
+        row.appendChild(marker);
+        const text = $('span.parallx-chat-plan-step-text');
+        text.textContent = step.text;
+        row.appendChild(text);
+        list.appendChild(row);
+      }
+      body.appendChild(list);
+    }
+    if (plan.note) {
+      const note = $('div.parallx-chat-plan-note');
+      note.textContent = plan.note;
+      body.appendChild(note);
+    }
+    card.appendChild(body);
+
+    this._planCardContainer.appendChild(card);
   }
 
   // ── Scroll ──

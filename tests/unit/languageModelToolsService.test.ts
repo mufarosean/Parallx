@@ -179,7 +179,8 @@ describe('LanguageModelToolsService', () => {
       service.registerTool(createTool({ name: 'my_search', handler }));
 
       const result = await service.invokeTool('my_search', { query: 'test' }, createToken());
-      expect(handler).toHaveBeenCalledWith({ query: 'test' }, expect.any(Object));
+      // M85 — handlers receive a third per-invocation context arg ({ sessionId }).
+      expect(handler).toHaveBeenCalledWith({ query: 'test' }, expect.any(Object), expect.any(Object));
       expect(result.content).toBe('search results');
       expect(result.isError).toBeUndefined();
     });

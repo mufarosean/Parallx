@@ -427,4 +427,94 @@ describe('chatSessionPersistence', () => {
       expect(updateCalls[0].params).toEqual(['ws-new']);
     });
   });
+
+  // ── M85: durable session plan (the planning organ) ──
+
+  describe('session plan persistence', () => {
+    it('schema includes plan_json column', async () => {
+      await ensureChatTables(db);
+      const createSessionSql = db._runCalls
+        .map((c) => c.sql)
+        .find((s) => s.includes('CREATE TABLE') && s.includes('chat_sessions'));
+      expect(createSessionSql).toContain('plan_json');
+    });
+
+    it('saveSession serializes the plan into plan_json', async () => {
+      const session = createTestSession();
+      session.plan = {
+        goal: 'Ship it',
+        steps: [{ text: 'one', status: 'done' }, { text: 'two', status: 'active' }],
+        note: 'two is in flight',
+        updatedAt: 42,
+      };
+      await saveSession(db, session, 'ws-1');
+
+      const insertCalls = db._runCalls.filter((c) =>
+        c.sql.includes('chat_sessions') && c.sql.includes('INSERT'),
+      );
+      expect(insertCalls.length).toBe(1);
+      expect(insertCalls[0].sql).toContain('plan_json');
+      const planParam = (insertCalls[0].params as unknown[]).find(
+        (p) => typeof p === 'string' && (p as string).includes('"goal":"Ship it"'),
+      );
+      expect(planParam).toBeDefined();
+      expect(JSON.parse(planParam as string).steps).toHaveLength(2);
+    });
+
+    it('saveSession writes null plan_json when no plan', async () => {
+      const session = createTestSession();
+      await saveSession(db, session, 'ws-1');
+      const insertCalls = db._runCalls.filter((c) =>
+        c.sql.includes('chat_sessions') && c.sql.includes('INSERT'),
+      );
+      // plan_json is the 7th param (index 6): id, workspace, title, mode,
+      // model, ctx-override, plan_json, created, updated
+      expect((insertCalls[0].params as unknown[])[6]).toBeNull();
+    });
+
+    it('loadSessions hydrates the plan from plan_json', async () => {
+      db.all = async <T>(sql: string): Promise<T[]> => {
+        if (sql.includes('FROM chat_sessions')) {
+          return [{
+            id: 'session-1',
+            title: 'S',
+            mode: 'agent',
+            model_id: 'qwen',
+            context_window_override: null,
+            plan_json: JSON.stringify({ goal: 'G', steps: [{ text: 'a', status: 'pending' }], updatedAt: 7 }),
+            created_at: 1,
+            updated_at: 2,
+          }] as T[];
+        }
+        return [];
+      };
+
+      const sessions = await loadSessions(db, 'ws-1');
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0].plan?.goal).toBe('G');
+      expect(sessions[0].plan?.steps).toHaveLength(1);
+    });
+
+    it('loadSessions tolerates corrupt plan_json', async () => {
+      db.all = async <T>(sql: string): Promise<T[]> => {
+        if (sql.includes('FROM chat_sessions')) {
+          return [{
+            id: 'session-1',
+            title: 'S',
+            mode: 'agent',
+            model_id: 'qwen',
+            context_window_override: null,
+            plan_json: '{not valid json',
+            created_at: 1,
+            updated_at: 2,
+          }] as T[];
+        }
+        return [];
+      };
+
+      const sessions = await loadSessions(db, 'ws-1');
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0].plan).toBeUndefined();
+    });
+  });
 });

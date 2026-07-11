@@ -2736,3 +2736,121 @@
   width: 14px;
   height: 14px;
 }
+
+/* ── M85: Active plan card (the agent's durable working plan) ──────────── */
+
+.parallx-chat-plan-card-container {
+  padding: 8px 12px 0;
+  flex-shrink: 0;
+}
+
+.parallx-chat-plan-card {
+  border: 1px solid var(--px-divider);
+  border-radius: var(--px-radius-md);
+  background: var(--px-bg-elevated);
+  overflow: hidden;
+}
+
+.parallx-chat-plan-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.parallx-chat-plan-header:hover {
+  background: var(--px-surface-hover);
+}
+
+.parallx-chat-plan-goal {
+  flex: 1;
+  font-size: var(--px-text-sm);
+  font-weight: 600;
+  color: var(--px-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.parallx-chat-plan-progress {
+  font-size: var(--px-text-xs);
+  color: var(--px-text-muted);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.parallx-chat-plan-chevron {
+  display: inline-flex;
+  color: var(--px-text-muted);
+  transition: transform var(--px-dur-fast) ease;
+  flex-shrink: 0;
+}
+
+.parallx-chat-plan-chevron svg { width: 12px; height: 12px; }
+
+.parallx-chat-plan-card--collapsed .parallx-chat-plan-chevron {
+  transform: rotate(-90deg);
+}
+
+.parallx-chat-plan-body {
+  padding: 0 10px 8px;
+}
+
+.parallx-chat-plan-card--collapsed .parallx-chat-plan-body {
+  display: none;
+}
+
+.parallx-chat-plan-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.parallx-chat-plan-step {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: var(--px-text-sm);
+  line-height: var(--px-leading-base);
+  color: var(--px-text-secondary);
+}
+
+.parallx-chat-plan-step-marker {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--px-text-faint);
+  align-self: center;
+}
+
+.parallx-chat-plan-step--active .parallx-chat-plan-step-marker {
+  border-color: var(--px-accent);
+  background: var(--px-accent-soft);
+}
+
+.parallx-chat-plan-step--active .parallx-chat-plan-step-text {
+  color: var(--px-text);
+}
+
+.parallx-chat-plan-step--done .parallx-chat-plan-step-marker {
+  border-color: var(--px-success);
+  background: var(--px-success);
+}
+
+.parallx-chat-plan-step--done .parallx-chat-plan-step-text {
+  color: var(--px-text-muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--px-text-faint);
+}
+
+.parallx-chat-plan-note {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--px-divider);
+  font-size: var(--px-text-xs);
+  color: var(--px-text-muted);
+  line-height: var(--px-leading-base);
+}

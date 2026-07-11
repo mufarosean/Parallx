@@ -71,6 +71,13 @@ export interface IOpenclawAssembleParams {
   readonly history: readonly IChatMessage[];
   readonly tokenBudget: number;
   readonly prompt: string;
+  /**
+   * M85 — the session's durable plan, pre-formatted for the prompt.
+   * Injected as a GUARANTEED section outside history and outside the RAG
+   * budget lanes (the plan_update tool hard-caps its size), so the mission
+   * survives compaction and history trimming by construction.
+   */
+  readonly planText?: string;
 }
 
 /**
@@ -277,6 +284,18 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
     const contextSections: string[] = [];
     let usedRagTokens = 0;
 
+    // ── M85: Active plan — GUARANTEED first section, outside the RAG lanes ──
+    // The plan is the agent's durable mission anchor. It is deliberately NOT
+    // budget-competed (plan_update hard-caps its size) and NOT part of
+    // history, so compaction and history trimming can never eat it.
+    if (params.planText) {
+      contextSections.push(
+        '## Active Plan\n'
+        + 'This is YOUR durable working plan for this session (maintain it with plan_update; it survives context compaction).\n\n'
+        + params.planText,
+      );
+    }
+
     // ── RAG: retrieve workspace context relevant to prompt ──
     if (ragResult?.text) {
       const ragTokens = estimateTokens(ragResult.text);
@@ -320,7 +339,7 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
     if (contextSections.length > 0) {
       messages.push({
         role: 'user' as const,
-        content: `The following is retrieved context relevant to the conversation. Use it to inform your responses.\n\n${contextSections.join('\n\n---\n\n')}`,
+        content: `The following is standing context for this conversation (your plan, retrieved workspace content, recalled memories). Use it to inform your responses.\n\n${contextSections.join('\n\n---\n\n')}`,
       });
     }
 

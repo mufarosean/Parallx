@@ -92,6 +92,11 @@ const TOOL_PROFILES: Record<OpenclawToolProfile, {
       'cron_status', 'cron_list', 'cron_runs', 'surface_list',
       // Autonomy log (read-only)
       'autonomy_log',
+      // M85 — the durable session plan. Writing your OWN plan is safe in
+      // every profile: it mutates only the session's plan field (no
+      // workspace side effects), and planning discipline matters most in
+      // constrained profiles.
+      'plan_update',
     ],
     deny: [],
   },
@@ -107,6 +112,7 @@ const TOOL_PROFILES: Record<OpenclawToolProfile, {
       'transcript_get', 'transcript_search',
       'cron_status', 'cron_list', 'cron_runs', 'surface_list',
       'autonomy_log',
+      'plan_update',
       // Safe writes:
       'fs_write_file', 'fs_edit_file',
       'canvas_create_page', 'canvas_edit_page', 'canvas_set_page_property', 'canvas_set_page_style',
