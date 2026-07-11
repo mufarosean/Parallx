@@ -36,6 +36,18 @@ import type {
 const CHAT_MARKDOWN = _createChatMarkdownRenderer();
 
 /**
+ * A rendered part element that can bring itself up to date IN PLACE when its
+ * part mutates mid-stream. Returns true when the update was applied; false
+ * means the caller must fall back to a full re-render (structural change,
+ * or a different part object). Preserving element identity across stream
+ * ticks is what keeps CSS animations (shimmer, pulse, node bloom) running
+ * smoothly instead of restarting on every token.
+ */
+export interface ChatPartElement extends HTMLElement {
+  __parallxUpdatePart?: (part: IChatContentPart) => boolean;
+}
+
+/**
  * Render a single content part into the given container.
  * Returns the created DOM element.
  */
@@ -990,10 +1002,11 @@ function _renderThinking(part: IChatThinkingContent): HTMLElement {
   const content = $('div.parallx-chat-thinking-content');
 
   // Thinking text
+  let textEl: HTMLElement | null = null;
   if (part.content) {
-    const text = $('div.parallx-chat-thinking-text');
-    text.textContent = part.content;
-    content.appendChild(text);
+    textEl = $('div.parallx-chat-thinking-text');
+    textEl.textContent = part.content;
+    content.appendChild(textEl);
   }
 
   // Source reference pills
@@ -1046,6 +1059,29 @@ function _renderThinking(part: IChatThinkingContent): HTMLElement {
   }
 
   root.appendChild(content);
+
+  // In-place stream updater: thinking tokens arrive many times per second,
+  // and rebuilding the whole element each tick restarts the shimmer/pulse
+  // animations — visible as flicker. Mutating the text node (and only
+  // rebuilding the toggle when the streaming→done state actually flips)
+  // keeps the element identity and animation phase stable.
+  const renderedSourceCount = sourceEntries.length;
+  let renderedDone = part.endTime != null;
+  (root as ChatPartElement).__parallxUpdatePart = (next: IChatContentPart): boolean => {
+    if (next !== part) return false;
+    // Sources appearing (provenance lands at finalize) is structural → rebuild.
+    if ((part.provenance?.length ?? 0) !== renderedSourceCount) return false;
+    // First content arriving after an empty render needs the text div → rebuild.
+    if (part.content && !textEl) return false;
+    if (textEl) textEl.textContent = part.content;
+    root.classList.toggle('parallx-chat-thinking--collapsed', part.isCollapsed);
+    const isDone = part.endTime != null;
+    if (isDone !== renderedDone) {
+      renderedDone = isDone;
+      _rebuildToggle();
+    }
+    return true;
+  };
 
   return root;
 }

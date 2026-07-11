@@ -10,6 +10,7 @@
 import './chatWidget.css';
 
 import { Disposable, DisposableStore, toDisposable } from '../../../platform/lifecycle.js';
+import { rafThrottle } from '../../../platform/rafThrottle.js';
 import { Emitter } from '../../../platform/events.js';
 import type { Event } from '../../../platform/events.js';
 import { $, append, addDisposableListener } from '../../../ui/dom.js';
@@ -374,12 +375,25 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
 
     // ── Service listeners ──
 
-    this._register(this._services.onDidChangeSession((sessionId) => {
-      if (this._session && sessionId === this._session.id) {
+    // Streaming fires onDidChangeSession once per chunk — far faster than the
+    // display refreshes. Coalesce to one re-render per painted frame (the
+    // shared rAF throttle); the flag remembers whether ANY coalesced fire was
+    // for the active session, so a burst mixing sessions never drops a render.
+    let activeSessionDirty = false;
+    const flushSessionChange = rafThrottle(() => {
+      if (activeSessionDirty) {
+        activeSessionDirty = false;
         this._renderMessages();
       }
       // Always refresh sidebar so new sessions / title changes appear immediately
       this._sessionSidebar.refresh();
+    });
+    this._register(toDisposable(() => flushSessionChange.dispose()));
+    this._register(this._services.onDidChangeSession((sessionId) => {
+      if (this._session && sessionId === this._session.id) {
+        activeSessionDirty = true;
+      }
+      flushSessionChange();
     }));
 
     this._register(this._services.onDidChangeProviderStatus(() => {

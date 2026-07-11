@@ -14,10 +14,19 @@
 import { Disposable } from '../../../platform/lifecycle.js';
 import { $ } from '../../../ui/dom.js';
 import { renderContentPart, createAgentPresence } from './chatContentParts.js';
+import type { ChatPartElement } from './chatContentParts.js';
 import { chatIcons } from '../chatIcons.js';
 import { getFileTypeIcon } from '../../../ui/iconRegistry.js';
 import { isChatImageAttachment, isChatSelectionAttachment, isChatCanvasBlockAttachment } from '../../../services/chatTypes.js';
-import type { IChatRequestResponsePair, IChatAssistantResponse, IChatUserMessage } from '../../../services/chatTypes.js';
+import type {
+  IChatRequestResponsePair,
+  IChatAssistantResponse,
+  IChatUserMessage,
+  IChatContentPart,
+  IChatMarkdownContent,
+  IChatThinkingContent,
+  IChatToolInvocationContent,
+} from '../../../services/chatTypes.js';
 import { ChatContentPartKind } from '../../../services/chatTypes.js';
 import type { OpenAttachmentHandler, RegenerateMessageHandler } from '../chatTypes.js';
 
@@ -40,6 +49,33 @@ function _settleThinkingPart(response: IChatAssistantResponse): void {
       // ("Thought") rather than inflating against the current clock.
       thinking.endTime = thinking.startTime ?? Date.now();
     }
+  }
+}
+
+/**
+ * Cheap fingerprint of a part's render-relevant state. The streaming update
+ * path re-renders a part ONLY when this changes — rebuilding unchanged parts
+ * on every stream tick replayed their entrance animations (tool nodes blinked
+ * at token rate during think→tools→think turns) and reset DOM-local state
+ * like an expanded tool output. Empty string = kind not fingerprinted, treat
+ * as always-changed.
+ */
+function _partSignature(part: IChatContentPart): string {
+  switch (part.kind) {
+    case ChatContentPartKind.Thinking: {
+      const p = part as IChatThinkingContent;
+      return `t:${p.content?.length ?? 0}:${p.isCollapsed ? 1 : 0}:${p.endTime ?? ''}:${p.provenance?.length ?? 0}`;
+    }
+    case ChatContentPartKind.ToolInvocation: {
+      const p = part as IChatToolInvocationContent;
+      return `i:${p.status}:${p.isComplete ? 1 : 0}:${p.isError ? 1 : 0}:${p.result?.content?.length ?? 0}`;
+    }
+    case ChatContentPartKind.Markdown: {
+      const p = part as IChatMarkdownContent;
+      return `m:${p.content.length}:${p.citations?.length ?? 0}`;
+    }
+    default:
+      return '';
   }
 }
 
@@ -360,29 +396,29 @@ export class ChatListRenderer extends Disposable {
 
     // If parts count is the same, update changed parts
     if (existingParts.length === newPartCount && newPartCount > 0) {
-      // Re-render every part that can mutate in place mid-stream:
-      //   • Thinking — bursts stream incrementally, AND parts are now
-      //     chronological (a turn can hold several thinking bursts anywhere
-      //     in the sequence, not one pinned at index 0);
+      // Refresh every part that can mutate in place mid-stream:
+      //   • Thinking — bursts stream incrementally, AND parts are chronological
+      //     (a turn can hold several thinking bursts anywhere in the sequence);
       //   • ToolInvocation — status/result changes;
       //   • the LAST part — streaming appends into the trailing markdown.
-      const rerendered = new Set<number>();
+      // _refreshPart touches the DOM only when the part actually changed.
+      const refreshed = new Set<number>();
       for (let i = 0; i < newPartCount; i++) {
         const kind = response.parts[i].kind;
         if (kind === ChatContentPartKind.Thinking || kind === ChatContentPartKind.ToolInvocation) {
-          (existingParts[i] as HTMLElement).replaceWith(renderContentPart(response.parts[i]));
-          rerendered.add(i);
+          this._refreshPart(existingParts[i] as HTMLElement, response.parts[i]);
+          refreshed.add(i);
         }
       }
       const lastIdx2 = newPartCount - 1;
-      if (!rerendered.has(lastIdx2)) {
-        const lastPartEl = existingParts[lastIdx2] as HTMLElement;
-        lastPartEl.replaceWith(renderContentPart(response.parts[lastIdx2]));
+      if (!refreshed.has(lastIdx2)) {
+        this._refreshPart(existingParts[lastIdx2] as HTMLElement, response.parts[lastIdx2]);
       }
     } else if (newPartCount > existingParts.length) {
       // New parts added — append them
       for (let i = existingParts.length; i < newPartCount; i++) {
         const partEl = renderContentPart(response.parts[i]);
+        partEl.dataset.parallxPartSig = _partSignature(response.parts[i]);
         // Insert before cursor/actions
         const cursor = body.querySelector('.parallx-chat-streaming-cursor');
         if (cursor) {
@@ -443,6 +479,27 @@ export class ChatListRenderer extends Disposable {
 
     lastPair.assistantEl.dataset.requestId = latestRequest.requestId;
     lastPair.partCount = newPartCount;
+  }
+
+  /**
+   * Bring a rendered part element up to date, touching the DOM as little as
+   * possible. Three tiers:
+   *   1. signature unchanged → leave the element alone entirely;
+   *   2. the element carries an in-place updater (streaming thinking) → mutate;
+   *   3. otherwise → replace with a fresh render (rare: real state transitions,
+   *      which are exactly the moments entrance animations SHOULD play).
+   */
+  private _refreshPart(el: HTMLElement, part: IChatContentPart): void {
+    const sig = _partSignature(part);
+    if (sig && el.dataset.parallxPartSig === sig) { return; }
+    const updater = (el as ChatPartElement).__parallxUpdatePart;
+    if (updater && updater(part)) {
+      el.dataset.parallxPartSig = sig;
+      return;
+    }
+    const fresh = renderContentPart(part);
+    fresh.dataset.parallxPartSig = sig;
+    el.replaceWith(fresh);
   }
 
   /** Full re-render — tear down and rebuild all messages. */
@@ -664,6 +721,9 @@ export class ChatListRenderer extends Disposable {
     } else {
       for (const part of parts) {
         const partEl = renderContentPart(part);
+        // Stamp the streaming-diff signature so the first incremental tick
+        // after a full render doesn't needlessly rebuild unchanged parts.
+        partEl.dataset.parallxPartSig = _partSignature(part);
         body.appendChild(partEl);
       }
     }
