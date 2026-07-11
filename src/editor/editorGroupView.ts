@@ -38,6 +38,13 @@ const TAB_HEIGHT = 35;
  *  margin-top in workbench.css — the pane-height calc subtracts it so the JS
  *  layout stays in step with that CSS margin (no bottom clip). */
 const TAB_STRIP_TOP_GAP = 5;
+/** Horizontal chrome of the `.editor-pane-container` floating card: 5px margin
+ *  + 1px border on each side. MUST match workbench.css
+ *  (`.part-workbench-parts-editor .editor-pane-container`). The pane inside is
+ *  sized with explicit pixels, so JS must subtract this — otherwise every pane
+ *  is 12px wider than the card and its right edge is clipped (flush-right
+ *  toolbar buttons touch/vanish at the pane border). */
+const PANE_CONTAINER_CHROME_X = 12;
 const MIN_GROUP_WIDTH = 200;
 const MIN_GROUP_HEIGHT = 120;
 
@@ -180,7 +187,7 @@ export class EditorGroupView extends Disposable implements IGridView {
     if (this._paneContainer) {
       this._paneContainer.style.height = `${paneH}px`;
     }
-    this._activePane?.layout(width, paneH);
+    this._activePane?.layout(Math.max(0, width - PANE_CONTAINER_CHROME_X), paneH);
   }
 
   /**
@@ -789,7 +796,7 @@ export class EditorGroupView extends Disposable implements IGridView {
     // (otherwise scrollTop = N clamps against an empty viewport).
     const ribbonH = this._getRibbonHeight();
     const paneH = Math.max(0, this._height - TAB_STRIP_TOP_GAP - TAB_HEIGHT - ribbonH);
-    pane.layout(this._width, paneH);
+    pane.layout(Math.max(0, this._width - PANE_CONTAINER_CHROME_X), paneH);
 
     // Restore cached view state for this input, if any. setInput has already
     // populated the pane's DOM by this point, and layout has been applied,
