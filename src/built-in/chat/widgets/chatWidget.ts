@@ -354,7 +354,19 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       const tokenBar = this._register(new ChatTokenStatusBar(services.tokenBarServices));
       this._inputPart.mountTokenMeter(tokenBar.element);
       tokenBar.update().catch(() => {});
-      this._register(services.onDidChangeSession(() => { tokenBar.update().catch(() => {}); }));
+      // onDidChangeSession fires once per stream chunk; update() walks the
+      // whole session and awaits the provider's context length. Coalesce the
+      // stream-time refreshes to one every 300ms — the meter is a gauge, not
+      // a live counter.
+      let tokenBarTimer: ReturnType<typeof setTimeout> | null = null;
+      this._register(toDisposable(() => { if (tokenBarTimer) clearTimeout(tokenBarTimer); }));
+      this._register(services.onDidChangeSession(() => {
+        if (tokenBarTimer) return;
+        tokenBarTimer = setTimeout(() => {
+          tokenBarTimer = null;
+          tokenBar.update().catch(() => {});
+        }, 300);
+      }));
       if (services.modePicker) {
         this._register(services.modePicker.onDidChangeMode(() => { tokenBar.update().catch(() => {}); }));
       }

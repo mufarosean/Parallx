@@ -296,6 +296,18 @@
   gap: 10px;
   padding: 12px 22px;
   position: relative;
+  /* Off-screen turns skip layout and paint entirely, so per-frame work during
+     streaming (scroll pinning, re-render of the live turn) stays O(viewport)
+     instead of growing with session length. `auto` height memoizes the last
+     rendered size so scroll position never jumps. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 96px;
+}
+
+/* The live (last) turn must always lay out — its height changes every frame
+   while streaming, and the scroll pinning reads it. */
+.parallx-chat-message:last-child {
+  content-visibility: visible;
 }
 
 /* No separator between messages — spacing handles it */
