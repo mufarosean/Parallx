@@ -181,6 +181,8 @@ export type IOpenclawContextEngineServices = Pick<
   | 'recallTranscripts'
   | 'storeSessionMemory'
   | 'sendSummarizationRequest'
+  | 'readCompactionCache'
+  | 'writeCompactionCache'
 >;
 
 // ---------------------------------------------------------------------------
@@ -231,20 +233,83 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
     // assemble() uses the compacted version — not the original from the participant.
     // We use a generation counter instead of length comparison because compact()
     // may produce the same number of messages (e.g., 2 summary + 2 last exchange).
-    const effectiveHistory = (this._compactGeneration > this._lastAssembleGeneration)
-      ? this._lastHistory
-      : params.history;
+    const usedMidTurnState = this._compactGeneration > this._lastAssembleGeneration;
+    let effectiveHistory = usedMidTurnState ? this._lastHistory : params.history;
     this._lastAssembleGeneration = this._compactGeneration;
+
+    // ── M85 Slice B: boundary continuation cache ──
+    // The engine is per-turn, so a compaction done last turn is gone by now —
+    // without this cache, history over budget would be re-summarized EVERY
+    // turn (or, before Slice B, silently dropped oldest-first). Substitute
+    // the cached summary for the prefix it covers; the fingerprint guards
+    // against replay/regenerate splices rewriting the covered past.
+    if (!usedMidTurnState && this.services.readCompactionCache) {
+      const cache = this.services.readCompactionCache(params.sessionId);
+      if (cache
+          && cache.coveredCount > 0
+          && cache.coveredCount <= effectiveHistory.length
+          && historyFingerprint(effectiveHistory, cache.coveredCount) === cache.fingerprint) {
+        effectiveHistory = [
+          { role: 'user' as const, content: `[Context summary]\n${cache.summaryText}` },
+          { role: 'assistant' as const, content: 'Understood, I have the conversation context.' },
+          ...effectiveHistory.slice(cache.coveredCount),
+        ];
+      }
+    }
+
     // Cache for compact() — always the history we're actually using
     this._lastHistory = effectiveHistory;
 
-    const historyTokenEstimate = estimateMessagesTokens(effectiveHistory);
+    let historyTokenEstimate = estimateMessagesTokens(effectiveHistory);
     const userTokenEstimate = estimateTokens(params.prompt);
-    const budget = computeElasticBudget({
+    let budget = computeElasticBudget({
       contextWindow: params.tokenBudget,
       historyActual: historyTokenEstimate,
       userActual: userTokenEstimate,
     });
+
+    // ── M85 Slice B: summarize-then-fit at the trim boundary ──
+    // trimHistoryToBudget below silently drops oldest messages — a data-loss
+    // path. When history exceeds its lane and a summarizer is available, fold
+    // the overflow into a continuation summary FIRST, and cache it for
+    // subsequent turns (keyed to the session, fingerprinted against splices).
+    if (historyTokenEstimate > budget.history
+        && this.services.sendSummarizationRequest
+        && effectiveHistory.length > 2) {
+      const originalLength = params.history.length;
+      try {
+        const compactResult = await this.compact({ sessionId: params.sessionId, tokenBudget: params.tokenBudget });
+        if (compactResult.compacted) {
+          effectiveHistory = [...this._lastHistory];
+          const summaryMsg = effectiveHistory[0];
+          if (!usedMidTurnState
+              && this.services.writeCompactionCache
+              && summaryMsg?.content.startsWith('[Context summary]\n')) {
+            // The compacted shape is [summary, ack, ...keptTail]; the tail
+            // messages align 1:1 with the END of the session history, so the
+            // covered prefix is everything before them.
+            const keptTail = effectiveHistory.length - 2;
+            const coveredCount = originalLength - keptTail;
+            if (coveredCount > 0 && coveredCount <= originalLength) {
+              this.services.writeCompactionCache(params.sessionId, {
+                coveredCount,
+                summaryText: summaryMsg.content.slice('[Context summary]\n'.length),
+                fingerprint: historyFingerprint(params.history, coveredCount),
+              });
+            }
+          }
+          historyTokenEstimate = estimateMessagesTokens(effectiveHistory);
+          budget = computeElasticBudget({
+            contextWindow: params.tokenBudget,
+            historyActual: historyTokenEstimate,
+            userActual: userTokenEstimate,
+          });
+        }
+      } catch {
+        // Boundary compaction is best-effort — trimHistoryToBudget below
+        // still guarantees the assembled context fits.
+      }
+    }
     const messages: IChatMessage[] = [];
     let ragSources: { uri: string; label: string; index: number }[] = [];
     let systemPromptAddition: string | undefined;
@@ -649,17 +714,39 @@ export const QUALITY_THRESHOLD = 0.6;
  * D6-1: Identifier-aware summarization prompt.
  * Enumerates explicit identifier classes to preserve during compaction.
  */
+/**
+ * M85 Slice B — the compaction prompt is a CONTINUATION CONTRACT, not an
+ * information digest. The summary's consumer is the same agent continuing the
+ * same work with less context, so it is optimized for "what would change what
+ * I do next": mission, state, failures, and the immediate next step — plus
+ * verbatim identifiers (the quality audit in auditCompactionQuality scores
+ * identifier coverage, so the Key Facts requirements must stay).
+ */
 export const COMPACTION_SUMMARIZATION_PROMPT = [
-  'You are a conversation summarizer. Condense the following conversation history into a concise context summary.',
-  'You MUST preserve:',
+  'You are compacting an agent conversation so the SAME agent can seamlessly continue the work with less context. Write a continuation summary with EXACTLY these sections:',
+  '',
+  '## Mission',
+  "What the user is trying to achieve overall, in their words where possible. If the user gave constraints or preferences about HOW to work, restate them.",
+  '',
+  '## State',
+  'What has been done so far and the current state: decisions made (and why), approaches chosen, things created or changed.',
+  '',
+  '## Key Facts',
+  'Concrete identifiers that MUST appear verbatim:',
   '- Document titles and page names',
   '- File paths, URIs, and code references',
   '- Dates, timestamps, and version numbers',
   '- Proper names (people, systems, organizations, entities)',
   '- Numeric values (amounts, IDs, policy numbers, thresholds)',
-  '- Decisions made and action items agreed upon',
   '- Key technical terms and domain-specific identifiers',
-  'Output ONLY the summary.',
+  '',
+  '## Failures',
+  "Errors hit and how they were (or weren't) resolved, so they are not repeated. Omit the section if there were none.",
+  '',
+  '## Next',
+  'What remains to be done, in order, then the single immediate next action.',
+  '',
+  'Be concise, but lose NOTHING that would change what the continuing agent does next. Output ONLY the summary.',
 ].join('\n');
 
 /**
@@ -740,6 +827,21 @@ export function auditCompactionQuality(
  * This matches the upstream pattern where context overflow triggers
  * compaction of older turns.
  */
+/**
+ * M85 Slice B — cheap shape check of the first `count` history messages, used
+ * to validate the boundary compaction cache. Replay/regenerate splices change
+ * message content in place; a stale summary of a rewritten past would poison
+ * every later turn, so any prefix change must invalidate the cache.
+ */
+export function historyFingerprint(history: readonly IChatMessage[], count: number): string {
+  const covered = history.slice(0, count);
+  let chars = 0;
+  for (const m of covered) { chars += m.content.length; }
+  const first = covered[0]?.content ?? '';
+  const last = covered[covered.length - 1]?.content ?? '';
+  return `${count}:${chars}:${first.slice(0, 24)}:${last.length}`;
+}
+
 function trimHistoryToBudget(
   history: readonly IChatMessage[],
   budgetTokens: number,

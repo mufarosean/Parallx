@@ -1185,6 +1185,11 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     return result;
   };
 
+  // M85 Slice B — per-session boundary-compaction cache (see the
+  // readCompactionCache wiring below). Entries are dropped with their session.
+  const _compactionCache = new Map<string, import('../../openclaw/openclawTypes.js').IOpenclawCompactionCacheEntry>();
+  context.subscriptions.push(chatService.onDidDeleteSession((sid) => { _compactionCache.delete(sid); }));
+
   const openclawDefaultParticipantServices = buildOpenclawDefaultParticipantServices({
     sendChatRequest: (m, o, s) => dataService.sendChatRequest(m, o, s),
     getActiveModel: () => dataService.getActiveModel(),
@@ -1212,6 +1217,13 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     recallMemories: (memoryService || workspaceMemoryService) ? (q, s) => dataService.recallMemories(q, s) : undefined,
     recallTranscripts: retrievalService ? (q) => dataService.recallTranscripts(q) : undefined,
     storeSessionMemory: (memoryService || workspaceMemoryService) ? (s, su, m) => dataService.storeSessionMemory(s, su, m) : undefined,
+    // M85 Slice B — session-keyed boundary-compaction cache. Lives here (the
+    // long-lived services layer) because the context engine is per-turn; an
+    // app restart costs at most one re-summarization per session.
+    readCompactionCache: (sid: string) => _compactionCache.get(sid),
+    writeCompactionCache: (sid: string, entry: import('../../openclaw/openclawTypes.js').IOpenclawCompactionCacheEntry | undefined) => {
+      if (entry) { _compactionCache.set(sid, entry); } else { _compactionCache.delete(sid); }
+    },
     isSessionEligibleForSummary: memoryService ? (m) => dataService.isSessionEligibleForSummary(m) : undefined,
     hasSessionMemory: memoryService ? (s) => dataService.hasSessionMemory(s) : undefined,
     getSessionMemoryMessageCount: memoryService ? (s) => dataService.getSessionMemoryMessageCount(s) : undefined,

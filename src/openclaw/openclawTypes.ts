@@ -60,6 +60,20 @@ import type {
 
 // ── OpenClaw-only types ──
 
+/**
+ * M85 Slice B — one session's cached boundary compaction. Covers the first
+ * `coveredCount` messages of the session's flattened history with
+ * `summaryText`. `fingerprint` is a cheap shape check of the covered prefix —
+ * replay/regenerate splices change history in place, and a stale summary of a
+ * rewritten past silently poisons every later turn, so on mismatch the cache
+ * is dropped and the boundary re-summarizes.
+ */
+export interface IOpenclawCompactionCacheEntry {
+  readonly coveredCount: number;
+  readonly summaryText: string;
+  readonly fingerprint: string;
+}
+
 export type WorkflowType =
   | 'generic-grounded'
   | 'scoped-topic'
@@ -246,6 +260,15 @@ export interface IDefaultParticipantServices {
   recallMemories?(query: string, sessionId?: string): Promise<string | undefined>;
   recallTranscripts?(query: string): Promise<string | undefined>;
   storeSessionMemory?(sessionId: string, summary: string, messageCount: number): Promise<void>;
+  /**
+   * M85 Slice B — session-keyed compaction cache. The context engine is
+   * per-turn, so without this the boundary compaction would re-summarize the
+   * same history EVERY turn once it exceeds budget. The cache lives in the
+   * long-lived services layer (in-memory; app restart costs at most one
+   * re-summarization per session).
+   */
+  readCompactionCache?(sessionId: string): IOpenclawCompactionCacheEntry | undefined;
+  writeCompactionCache?(sessionId: string, entry: IOpenclawCompactionCacheEntry | undefined): void;
   isSessionEligibleForSummary?(messageCount: number): boolean;
 
   hasSessionMemory?(sessionId: string): Promise<boolean>;

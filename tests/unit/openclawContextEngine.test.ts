@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
-import { OpenclawContextEngine, type IOpenclawContextEngineServices } from '../../src/openclaw/openclawContextEngine';
+import { OpenclawContextEngine, historyFingerprint, COMPACTION_SUMMARIZATION_PROMPT, type IOpenclawContextEngineServices } from '../../src/openclaw/openclawContextEngine';
+import type { IOpenclawCompactionCacheEntry } from '../../src/openclaw/openclawTypes';
 import { computeTokenBudget, computeElasticBudget, estimateMessagesTokens, estimateTokens, trimTextToBudget } from '../../src/openclaw/openclawTokenBudget';
 import type { IChatMessage, IChatResponseChunk } from '../../src/services/chatTypes';
 
@@ -234,6 +235,129 @@ describe('OpenclawContextEngine', () => {
         prompt: 'continue',
       });
       expect(result.messages.some((m) => m.content.includes('## Active Plan'))).toBe(false);
+    });
+
+    // ── M85 Slice B: summarize-then-fit at the trim boundary ──
+
+    // History big enough to overflow the history lane of a 2048-token budget
+    // (history lane ≈ 30% ≈ 614 tokens ≈ 2.4k chars).
+    function overBudgetHistory(): IChatMessage[] {
+      const filler = 'The Mack chain ladder discussion continues with detail. '.repeat(20); // ~1.1k chars
+      return [
+        { role: 'user', content: `Q1 ${filler}` },
+        { role: 'assistant', content: `A1 ${filler}` },
+        { role: 'user', content: `Q2 ${filler}` },
+        { role: 'assistant', content: `A2 ${filler}` },
+        { role: 'user', content: 'Q3 final question' },
+        { role: 'assistant', content: 'A3 final answer' },
+      ];
+    }
+
+    it('M85 — summarizes instead of silently dropping when history exceeds its lane', async () => {
+      async function* mockSummarize(): AsyncIterable<IChatResponseChunk> {
+        yield { content: 'Mission: continue the Mack analysis.' } as IChatResponseChunk;
+      }
+      const cacheStore = new Map<string, IOpenclawCompactionCacheEntry>();
+      const sumServices = createMockServices({
+        sendSummarizationRequest: vi.fn(() => mockSummarize()),
+        readCompactionCache: vi.fn((sid: string) => cacheStore.get(sid)),
+        writeCompactionCache: vi.fn((sid: string, e?: IOpenclawCompactionCacheEntry) => {
+          if (e) { cacheStore.set(sid, e); } else { cacheStore.delete(sid); }
+        }),
+      });
+      const sumEngine = new OpenclawContextEngine(sumServices);
+      await sumEngine.bootstrap({ sessionId: 's1', tokenBudget: 2048 });
+
+      const history = overBudgetHistory();
+      const result = await sumEngine.assemble({
+        sessionId: 's1',
+        history,
+        tokenBudget: 2048,
+        prompt: 'continue',
+      });
+
+      // The summary replaces the overflow instead of the old silent drop.
+      const summaryMsg = result.messages.find((m) => m.content.startsWith('[Context summary]'));
+      expect(summaryMsg).toBeDefined();
+      expect(summaryMsg!.content).toContain('Mission: continue the Mack analysis.');
+      // The most recent exchange is preserved verbatim.
+      expect(result.messages.some((m) => m.content === 'A3 final answer')).toBe(true);
+      // The cache was written for subsequent turns.
+      expect(sumServices.writeCompactionCache).toHaveBeenCalled();
+      const entry = cacheStore.get('s1')!;
+      expect(entry.coveredCount).toBe(4); // 6 messages minus the kept last exchange
+      expect(entry.summaryText).toContain('Mission');
+      expect(entry.fingerprint).toBe(historyFingerprint(history, 4));
+    });
+
+    it('M85 — reuses the cached summary on later turns without re-summarizing', async () => {
+      const history = overBudgetHistory();
+      const cacheStore = new Map<string, IOpenclawCompactionCacheEntry>([['s1', {
+        coveredCount: 4,
+        summaryText: 'Cached mission summary.',
+        fingerprint: historyFingerprint(history, 4),
+      }]]);
+      const summarizer = vi.fn();
+      const cachedServices = createMockServices({
+        sendSummarizationRequest: summarizer,
+        readCompactionCache: (sid: string) => cacheStore.get(sid),
+        writeCompactionCache: vi.fn(),
+      });
+      const cachedEngine = new OpenclawContextEngine(cachedServices);
+      await cachedEngine.bootstrap({ sessionId: 's1', tokenBudget: 2048 });
+
+      const result = await cachedEngine.assemble({
+        sessionId: 's1',
+        history,
+        tokenBudget: 2048,
+        prompt: 'continue',
+      });
+
+      const summaryMsg = result.messages.find((m) => m.content.startsWith('[Context summary]'));
+      expect(summaryMsg).toBeDefined();
+      expect(summaryMsg!.content).toContain('Cached mission summary.');
+      // The substituted history fits the lane — no fresh summarization.
+      expect(summarizer).not.toHaveBeenCalled();
+    });
+
+    it('M85 — a fingerprint mismatch (replay splice) drops the cache', async () => {
+      const history = overBudgetHistory();
+      const cacheStore = new Map<string, IOpenclawCompactionCacheEntry>([['s1', {
+        coveredCount: 4,
+        summaryText: 'STALE summary of a rewritten past.',
+        fingerprint: 'not-the-real-fingerprint',
+      }]]);
+      async function* mockSummarize(): AsyncIterable<IChatResponseChunk> {
+        yield { content: 'Fresh summary.' } as IChatResponseChunk;
+      }
+      const services2 = createMockServices({
+        sendSummarizationRequest: vi.fn(() => mockSummarize()),
+        readCompactionCache: (sid: string) => cacheStore.get(sid),
+        writeCompactionCache: vi.fn(),
+      });
+      const engine2 = new OpenclawContextEngine(services2);
+      await engine2.bootstrap({ sessionId: 's1', tokenBudget: 2048 });
+
+      const result = await engine2.assemble({
+        sessionId: 's1',
+        history,
+        tokenBudget: 2048,
+        prompt: 'continue',
+      });
+
+      expect(result.messages.some((m) => m.content.includes('STALE summary'))).toBe(false);
+      const summaryMsg = result.messages.find((m) => m.content.startsWith('[Context summary]'));
+      expect(summaryMsg?.content).toContain('Fresh summary.');
+    });
+
+    it('M85 — the compaction prompt is a continuation contract', () => {
+      expect(COMPACTION_SUMMARIZATION_PROMPT).toContain('## Mission');
+      expect(COMPACTION_SUMMARIZATION_PROMPT).toContain('## State');
+      expect(COMPACTION_SUMMARIZATION_PROMPT).toContain('## Key Facts');
+      expect(COMPACTION_SUMMARIZATION_PROMPT).toContain('## Failures');
+      expect(COMPACTION_SUMMARIZATION_PROMPT).toContain('## Next');
+      // Identifier requirements stay — the quality audit scores them.
+      expect(COMPACTION_SUMMARIZATION_PROMPT).toContain('File paths, URIs, and code references');
     });
 
     it('respects sub-lane budget limits', async () => {
