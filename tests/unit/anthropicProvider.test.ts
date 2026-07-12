@@ -95,13 +95,36 @@ describe('buildAnthropicRequestBody', () => {
     expect(body.model).toBe('claude-opus-4-8');
     expect(body.stream).toBe(true);
     expect(body.max_tokens).toBe(ANTHROPIC_DEFAULT_MAX_TOKENS);
-    expect(body.system).toBe('sys');
+    // M85 Slice E — system is a content-block array carrying the prompt-cache
+    // breakpoint (caches tools + system across every agent round).
+    expect(body.system).toEqual([{ type: 'text', text: 'sys', cache_control: { type: 'ephemeral' } }]);
     expect(body.tools).toEqual([{ name: 'search', description: 'find', input_schema: { type: 'object' } }]);
     // frontier Claude rejects these — must not be forwarded
     expect(body).not.toHaveProperty('temperature');
     expect(body).not.toHaveProperty('top_p');
     expect(body).not.toHaveProperty('seed');
     expect(body).not.toHaveProperty('thinking');
+  });
+
+  it('M85 — marks the last message block as an incremental cache breakpoint', () => {
+    const { body, messages } = buildAnthropicRequestBody(
+      'claude-opus-4-8',
+      msgs([
+        { role: 'system', content: 'sys' },
+        { role: 'user', content: 'hi' },
+        { role: 'assistant', content: 'hello' },
+        { role: 'user', content: 'follow-up' },
+      ]),
+      {},
+      { defaultMaxTokens: ANTHROPIC_DEFAULT_MAX_TOKENS },
+    );
+    const last = messages[messages.length - 1];
+    const lastBlock = last.content[last.content.length - 1] as { cache_control?: unknown };
+    expect(lastBlock.cache_control).toEqual({ type: 'ephemeral' });
+    // Earlier messages carry no breakpoint (max 4 allowed — we spend 2).
+    const first = messages[0].content[0] as { cache_control?: unknown };
+    expect(first.cache_control).toBeUndefined();
+    expect(body.messages).toBe(messages);
   });
 
   it('honours an explicit maxTokens and omits system when there are no system turns', () => {

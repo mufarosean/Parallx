@@ -108,10 +108,12 @@ const NO_KEY_TIP = 'No Anthropic API key set — add it in AI Settings → Model
 
 // ── Content-block shapes (exported for tests) ─────────────────────────────────
 
-interface AnthropicTextBlock { type: 'text'; text: string }
-interface AnthropicImageBlock { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
-interface AnthropicToolUseBlock { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
-interface AnthropicToolResultBlock { type: 'tool_result'; tool_use_id: string; content: string }
+/** M85 Slice E — prompt-cache breakpoint marker (all block types except thinking). */
+interface AnthropicCacheControl { cache_control?: { type: 'ephemeral' } }
+interface AnthropicTextBlock extends AnthropicCacheControl { type: 'text'; text: string }
+interface AnthropicImageBlock extends AnthropicCacheControl { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
+interface AnthropicToolUseBlock extends AnthropicCacheControl { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
+interface AnthropicToolResultBlock extends AnthropicCacheControl { type: 'tool_result'; tool_use_id: string; content: string }
 /** A signed extended-thinking block — must be replayed verbatim (text may be empty). */
 export interface AnthropicThinkingBlock { type: 'thinking'; thinking: string; signature: string }
 type AnthropicContentBlock =
@@ -256,13 +258,29 @@ export function buildAnthropicRequestBody(
     stream: true,
     messages: anthMessages,
   };
-  if (system) body['system'] = system;
+  // M85 Slice E — prompt caching. Anthropic's cache prefix order is
+  // tools → system → messages, so ONE breakpoint on the system block caches
+  // the whole stable per-session prefix (tool schemas + system prompt) across
+  // every round of an agent turn — previously re-billed in full each round.
+  if (system) {
+    body['system'] = [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } } satisfies AnthropicTextBlock];
+  }
   if (options?.tools && options.tools.length > 0) {
     body['tools'] = options.tools.map((t) => ({
       name: t.name,
       description: t.description,
       input_schema: t.parameters,
     }));
+  }
+  // Second breakpoint on the LAST message block: it moves forward each round,
+  // so the growing conversation re-reads earlier rounds from cache instead of
+  // re-billing them (incremental agent-loop caching). Thinking blocks can't
+  // carry cache_control — in practice the last message is always a user turn
+  // (prompt or tool results), but guard anyway.
+  const lastMsg = anthMessages[anthMessages.length - 1];
+  const lastBlock = lastMsg?.content[lastMsg.content.length - 1];
+  if (lastBlock && lastBlock.type !== 'thinking') {
+    lastBlock.cache_control = { type: 'ephemeral' };
   }
   if (opts.enableThinking) {
     body['thinking'] = { type: 'adaptive', display: 'summarized' };
