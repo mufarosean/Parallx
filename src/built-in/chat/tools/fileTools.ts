@@ -5,11 +5,13 @@ import type {
   IToolResult,
   ICancellationToken,
   ToolPermissionLevel,
+  IChatToolInvocationCallContext,
 } from '../../../services/chatTypes.js';
 import type {
   IBuiltInToolFileSystem,
   IBuiltInToolRetrieval,
 } from '../chatTypes.js';
+import { markResourceSeen, fileResourceKey } from '../../../services/toolResourceRegistry.js';
 
 // ── Constants ──
 
@@ -149,7 +151,7 @@ export function createReadFileTool(fs: IBuiltInToolFileSystem | undefined): ICha
     requiresConfirmation: false,
     permissionLevel: 'always-allowed' as ToolPermissionLevel,
     category: 'file-system',
-    async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
+    async handler(args: Record<string, unknown>, _token: ICancellationToken, invocation?: IChatToolInvocationCallContext): Promise<IToolResult> {
       requireFs(fs);
       const relPath = String(args['path'] || '').replace(/\\/g, '/');
       const startLine = typeof args['start_line'] === 'number' ? Math.max(1, Math.floor(args['start_line'])) : undefined;
@@ -170,6 +172,12 @@ export function createReadFileTool(fs: IBuiltInToolFileSystem | undefined): ICha
         }
 
         const result = await fs!.readFileContent(relPath);
+
+        // M85 Slice C — a successful read (even a range) marks the file as
+        // seen for this session, unlocking fs_edit_file on it.
+        if (invocation?.sessionId) {
+          markResourceSeen(invocation.sessionId, fileResourceKey(relPath));
+        }
 
         if (result.type === 'rich-document') {
           const dotIdx = relPath.lastIndexOf('.');

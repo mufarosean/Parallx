@@ -28,6 +28,7 @@ import { registerOpenclawParticipants } from '../../openclaw/registerOpenclawPar
 import { createOpenclawCommandRegistry } from '../../openclaw/openclawDefaultRuntimeSupport.js';
 import { registerBuiltInTools } from './tools/builtInTools.js';
 import { createPlanUpdateTool, formatSessionPlan } from './tools/planTools.js';
+import { clearResourceRegistry } from '../../services/toolResourceRegistry.js';
 import type { IBuiltInToolFileWriter } from './chatTypes.js';
 import {
   ILanguageModelsService,
@@ -1188,7 +1189,11 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   // M85 Slice B — per-session boundary-compaction cache (see the
   // readCompactionCache wiring below). Entries are dropped with their session.
   const _compactionCache = new Map<string, import('../../openclaw/openclawTypes.js').IOpenclawCompactionCacheEntry>();
-  context.subscriptions.push(chatService.onDidDeleteSession((sid) => { _compactionCache.delete(sid); }));
+  context.subscriptions.push(chatService.onDidDeleteSession((sid) => {
+    _compactionCache.delete(sid);
+    // M85 Slice C — drop the session's read-before-edit registry with it.
+    clearResourceRegistry(sid);
+  }));
 
   const openclawDefaultParticipantServices = buildOpenclawDefaultParticipantServices({
     sendChatRequest: (m, o, s) => dataService.sendChatRequest(m, o, s),

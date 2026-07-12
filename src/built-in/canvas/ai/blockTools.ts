@@ -23,8 +23,10 @@ import type {
   IToolResult,
   ICancellationToken,
   ToolPermissionLevel,
+  IChatToolInvocationCallContext,
 } from '../../../services/chatTypes.js';
 import type { IBuiltInToolDatabase, PageMutationNotifier } from '../../chat/chatTypes.js';
+import { markResourceSeen, wasResourceSeen, pageResourceKey } from '../../../services/toolResourceRegistry.js';
 import {
   decodeDocContent,
   encodeDocContent,
@@ -90,7 +92,7 @@ export function createReadBlockTool(db: IBuiltInToolDatabase | undefined): IChat
     requiresConfirmation: false,
     permissionLevel: 'always-allowed' as ToolPermissionLevel,
     category: 'canvas',
-    async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
+    async handler(args: Record<string, unknown>, _token: ICancellationToken, invocation?: IChatToolInvocationCallContext): Promise<IToolResult> {
       requireDb(db);
       const pageId = String(args['pageId'] || '');
       const blockId = String(args['blockId'] || '');
@@ -102,6 +104,12 @@ export function createReadBlockTool(db: IBuiltInToolDatabase | undefined): IChat
 
       const hit = findBlockById(page.doc, blockId);
       if (!hit) return { content: `Block "${blockId}" not found in page "${page.title}".`, isError: true };
+
+      // M85 Slice C — block ids only come from a page read, and this read
+      // shows current content: mark the page seen for the mutation tools.
+      if (invocation?.sessionId) {
+        markResourceSeen(invocation.sessionId, pageResourceKey(pageId));
+      }
 
       const text = nodeToPlainText(hit.node);
       const json = JSON.stringify(hit.node, null, 2);
@@ -138,13 +146,23 @@ export function createEditBlockTool(
     requiresConfirmation: true,
     permissionLevel: 'requires-approval' as ToolPermissionLevel,
     category: 'canvas',
-    async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
+    async handler(args: Record<string, unknown>, _token: ICancellationToken, invocation?: IChatToolInvocationCallContext): Promise<IToolResult> {
       requireDb(db);
       const pageId = String(args['pageId'] || '');
       const blockId = String(args['blockId'] || '');
       const newContent = String(args['newContent'] ?? '');
       const idempotencyKey = args['idempotencyKey'] ? String(args['idempotencyKey']) : null;
       if (!pageId || !blockId) return { content: 'pageId and blockId are required', isError: true };
+
+      // M85 Slice C — read-before-edit (canvas). Block ids come from a page
+      // read; a block edit without one is working from stale context.
+      if (invocation?.sessionId && !wasResourceSeen(invocation.sessionId, pageResourceKey(pageId))) {
+        return {
+          content: `You have not read page ${pageId} this session. `
+            + `Read it first with canvas_read_page (or canvas_read_block), then retry with a block id from the CURRENT content.`,
+          isError: true,
+        };
+      }
 
       const page = await loadPageDoc(db!, pageId);
       if (!page) return { content: `Page "${pageId}" not found.`, isError: true };
@@ -193,13 +211,22 @@ export function createInsertBlockAfterTool(
     requiresConfirmation: true,
     permissionLevel: 'requires-approval' as ToolPermissionLevel,
     category: 'canvas',
-    async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
+    async handler(args: Record<string, unknown>, _token: ICancellationToken, invocation?: IChatToolInvocationCallContext): Promise<IToolResult> {
       requireDb(db);
       const pageId = String(args['pageId'] || '');
       const anchorId = String(args['anchorBlockId'] || '');
       const content = String(args['content'] ?? '');
       const idempotencyKey = args['idempotencyKey'] ? String(args['idempotencyKey']) : null;
       if (!pageId || !anchorId) return { content: 'pageId and anchorBlockId are required', isError: true };
+
+      // M85 Slice C — read-before-edit (canvas): anchor ids come from a page read.
+      if (invocation?.sessionId && !wasResourceSeen(invocation.sessionId, pageResourceKey(pageId))) {
+        return {
+          content: `You have not read page ${pageId} this session. `
+            + `Read it first with canvas_read_page, then retry with an anchor block id from the CURRENT content.`,
+          isError: true,
+        };
+      }
 
       const page = await loadPageDoc(db!, pageId);
       if (!page) return { content: `Page "${pageId}" not found.`, isError: true };

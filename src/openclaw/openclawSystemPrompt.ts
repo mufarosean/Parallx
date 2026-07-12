@@ -400,6 +400,7 @@ export function buildToolSummariesSection(_tools: readonly IToolSummary[]): stri
     '- "what did I say earlier in another session" → `transcript_*` tools.',
     '- Ambiguous ("open my notes") → `canvas_find_pages` first; it matches title and body.',
     'When two tools could apply, prefer the more specific one (`canvas_read_page` over `canvas_find_pages` when you know the title; `fs_grep_search` over `fs_search_knowledge` for exact-text matches).',
+    '- **Read before you edit** — enforced by the tools: `fs_edit_file` (and overwriting an existing file) requires a prior `fs_read_file` this session; `canvas_edit_page` / `canvas_edit_block` / `canvas_insert_block_after` require a prior `canvas_read_page` (or `canvas_read_block`). Edit against the CURRENT content you just read, never from memory of an earlier state.',
     '',
     'TOOLS.md (in the workspace, when present) carries workspace-specific usage guidance, not tool availability.',
   ].join('\n');

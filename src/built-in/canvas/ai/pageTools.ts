@@ -7,7 +7,9 @@ import type {
   IToolResult,
   ICancellationToken,
   ToolPermissionLevel,
+  IChatToolInvocationCallContext,
 } from '../../../services/chatTypes.js';
+import { markResourceSeen, wasResourceSeen, pageResourceKey } from '../../../services/toolResourceRegistry.js';
 import type {
   IBuiltInToolDatabase,
   CurrentPageIdGetter,
@@ -249,7 +251,7 @@ export function createReadPageTool(
     requiresConfirmation: false,
     permissionLevel: 'always-allowed' as ToolPermissionLevel,
     category: 'canvas',
-    async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
+    async handler(args: Record<string, unknown>, _token: ICancellationToken, invocation?: IChatToolInvocationCallContext): Promise<IToolResult> {
       requireDb(db);
       const identifier = String(args['pageId'] || '').trim();
       if (!identifier) {
@@ -304,6 +306,12 @@ export function createReadPageTool(
 
       if (!page) {
         return { content: `Page "${identifier}" not found. Use canvas_find_pages to see available pages.`, isError: true };
+      }
+
+      // M85 Slice C — a successful read marks the RESOLVED page as seen for
+      // this session, unlocking the canvas mutation tools on it.
+      if (invocation?.sessionId) {
+        markResourceSeen(invocation.sessionId, pageResourceKey(page.id));
       }
 
       // Folded from the former canvas_get_page tool: include block count + properties.
@@ -687,7 +695,7 @@ export function createCreatePageTool(
     requiresConfirmation: true,
     permissionLevel: 'requires-approval' as ToolPermissionLevel,
     category: 'canvas',
-    async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
+    async handler(args: Record<string, unknown>, _token: ICancellationToken, invocation?: IChatToolInvocationCallContext): Promise<IToolResult> {
       requireDb(db);
       const title = String(args['title'] || '').trim();
       if (!title) {
@@ -695,6 +703,12 @@ export function createCreatePageTool(
       }
 
       const id = generateId();
+      // M85 Slice C — the creator authored this page's content: mark it seen
+      // so follow-up edits in the same session aren't blocked. (Marked up
+      // front — every success path below returns separately.)
+      if (invocation?.sessionId) {
+        markResourceSeen(invocation.sessionId, pageResourceKey(id));
+      }
       const icon = args['icon'] ? String(args['icon']) : null;
       const templateId = args['templateId'] ? String(args['templateId']) : '';
       const now = new Date().toISOString();
@@ -761,6 +775,10 @@ export function createCreatePageTool(
         let childId: string;
         try { childId = await createChildPage(parentId, title); }
         catch (err) { return { content: `Sub-page creation failed: ${err instanceof Error ? err.message : String(err)}`, isError: true }; }
+        // Sub-pages get a data-service id, not the pre-generated one.
+        if (invocation?.sessionId) {
+          markResourceSeen(invocation.sessionId, pageResourceKey(childId));
+        }
         await db!.run(
           'UPDATE pages SET icon = ?, content = ?, content_schema_version = ?, full_width = ?, small_text = ?, updated_at = ?, revision = revision + 1 WHERE id = ?',
           [icon, encoded.storedContent, encoded.schemaVersion, fullWidthCol, smallTextCol, now, childId],
@@ -859,7 +877,7 @@ export function createEditPageTool(
     requiresConfirmation: true,
     permissionLevel: 'requires-approval' as ToolPermissionLevel,
     category: 'canvas',
-    async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
+    async handler(args: Record<string, unknown>, _token: ICancellationToken, invocation?: IChatToolInvocationCallContext): Promise<IToolResult> {
       requireDb(db);
 
       const pageId = String(args['pageId'] || '').trim();
@@ -878,6 +896,18 @@ export function createEditPageTool(
       );
       if (!page) {
         return { content: `Page not found: ${pageId}`, isError: true };
+      }
+
+      // M85 Slice C — read-before-edit, canvas surface. Mutating a page the
+      // session has never read is how content gets clobbered or duplicated
+      // (replace wipes unseen work; append/prepend re-add sections that are
+      // already there). Same discipline as fs_edit_file.
+      if (invocation?.sessionId && !wasResourceSeen(invocation.sessionId, pageResourceKey(page.id))) {
+        return {
+          content: `You have not read page "${page.title}" (${page.id}) this session. `
+            + `Read it first with canvas_read_page, then retry the edit against its CURRENT content.`,
+          isError: true,
+        };
       }
 
       const incomingDoc = markdownToTiptapJson(markdown);
@@ -919,6 +949,11 @@ export function createEditPageTool(
       // Notify the canvas data service so the sidebar refreshes and any
       // open editor for this page reloads its content.
       try { notifyPageMutated?.(pageId, 'updated'); } catch { /* never block the tool result on notifier errors */ }
+
+      // The editor now reflects content this session authored — keep it seen.
+      if (invocation?.sessionId) {
+        markResourceSeen(invocation.sessionId, pageResourceKey(page.id));
+      }
 
       const blockCount = finalDoc.content.length;
       const verb = mode === 'replace' ? 'Replaced' : mode === 'append' ? 'Appended to' : 'Prepended to';

@@ -5,11 +5,13 @@ import type {
   IToolResult,
   ICancellationToken,
   ToolPermissionLevel,
+  IChatToolInvocationCallContext,
 } from '../../../services/chatTypes.js';
 import type {
   IBuiltInToolFileSystem,
   IBuiltInToolFileWriter,
 } from '../chatTypes.js';
+import { markResourceSeen, wasResourceSeen, fileResourceKey } from '../../../services/toolResourceRegistry.js';
 
 // ── Tool helpers ──
 
@@ -79,7 +81,7 @@ export function createWriteFileTool(
     requiresConfirmation: true,
     permissionLevel: 'requires-approval' as ToolPermissionLevel,
     category: 'file-system',
-    async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
+    async handler(args: Record<string, unknown>, _token: ICancellationToken, invocation?: IChatToolInvocationCallContext): Promise<IToolResult> {
       requireWriter(writer);
 
       const rawPath = String(args['path'] || '');
@@ -98,7 +100,24 @@ export function createWriteFileTool(
           try { existed = await fs.exists(cleanPath); } catch { /* ignore */ }
         }
 
+        // M85 Slice C — read-before-overwrite. Replacing an EXISTING file the
+        // session has never read destroys content the agent has not seen.
+        // Creating a new file is always allowed.
+        if (existed && invocation?.sessionId && !wasResourceSeen(invocation.sessionId, fileResourceKey(cleanPath))) {
+          return {
+            content: `"${cleanPath}" already exists and you have not read it this session. `
+              + `Read it first with fs_read_file — overwriting unseen content is not allowed. `
+              + `(If you intend a partial change, use fs_edit_file after reading.)`,
+            isError: true,
+          };
+        }
+
         await writer.writeFile(cleanPath, content);
+
+        // The writer knows the file's exact content now — unlock edits on it.
+        if (invocation?.sessionId) {
+          markResourceSeen(invocation.sessionId, fileResourceKey(cleanPath));
+        }
 
         const action = existed ? 'Overwrote' : 'Created';
         const lineCount = content.split('\n').length;
@@ -131,7 +150,7 @@ export function createEditFileTool(
     requiresConfirmation: true,
     permissionLevel: 'requires-approval' as ToolPermissionLevel,
     category: 'file-system',
-    async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
+    async handler(args: Record<string, unknown>, _token: ICancellationToken, invocation?: IChatToolInvocationCallContext): Promise<IToolResult> {
       requireFs(fs);
       requireWriter(writer);
 
@@ -148,6 +167,17 @@ export function createEditFileTool(
 
       try {
         const cleanPath = sanitizeRelativePath(rawPath, writer);
+
+        // M85 Slice C — read-before-edit. An anchor recalled from a stale
+        // context can still match text whose surroundings changed; editing a
+        // file the session has never read is how those edits land wrong.
+        if (invocation?.sessionId && !wasResourceSeen(invocation.sessionId, fileResourceKey(cleanPath))) {
+          return {
+            content: `You have not read "${cleanPath}" this session. `
+              + `Read it first with fs_read_file, then retry the edit with an anchor from the CURRENT content.`,
+            isError: true,
+          };
+        }
 
         const currentResult = await fs!.readFileContent(cleanPath);
         const currentContent = currentResult.content;
@@ -178,11 +208,24 @@ export function createEditFileTool(
 
         await writer.writeFile(cleanPath, newFile);
 
-        // Report simple stats
+        if (invocation?.sessionId) {
+          markResourceSeen(invocation.sessionId, fileResourceKey(cleanPath));
+        }
+
+        // Report stats + a verification snippet: the edited region with two
+        // lines of surrounding context from the NEW file, so the model can
+        // confirm the edit landed where it intended without a follow-up read.
         const oldLines = oldContent.split('\n').length;
         const newLines = newContent.split('\n').length;
+        const beforeLineCount = newFile.slice(0, idx).split('\n').length; // 1-indexed line of edit start
+        const fileLines = newFile.split('\n');
+        const snippetStart = Math.max(0, beforeLineCount - 1 - 2);
+        const snippetEnd = Math.min(fileLines.length, beforeLineCount - 1 + newLines + 2);
+        const snippet = fileLines.slice(snippetStart, snippetEnd)
+          .map((l, i) => `${snippetStart + i + 1}| ${l}`)
+          .join('\n');
         return {
-          content: `Edited "${cleanPath}": replaced ${oldLines} line(s) with ${newLines} line(s)`,
+          content: `Edited "${cleanPath}": replaced ${oldLines} line(s) with ${newLines} line(s).\n\nResult (lines ${snippetStart + 1}-${snippetEnd}):\n\`\`\`\n${snippet}\n\`\`\``,
         };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
