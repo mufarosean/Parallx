@@ -59,6 +59,10 @@ export interface ISettingSchema {
   readonly scope: SettingScope;
   /** Human-readable description shown in the editor. */
   readonly description: string;
+  /** Optional human title shown in the editor. When omitted, the editor
+   *  derives one from the key (`canvas.versionHistory.maxPerPage` →
+   *  "Version History › Max Per Page"). */
+  readonly label?: string;
   /** Optional grouping label (e.g. "Autonomy", "Canvas"). */
   readonly category?: string;
   /** Optional deprecation notice (rendered as a warning). */

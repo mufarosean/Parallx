@@ -21,9 +21,12 @@ function createMockStorage(): IStorage {
   };
 }
 
-async function setup(): Promise<{ registry: SettingsRegistryService; editor: SettingsEditor; root: HTMLElement }> {
+async function setup(
+  extraSchemas: readonly Parameters<SettingsRegistryService['register']>[0][] = [],
+): Promise<{ registry: SettingsRegistryService; editor: SettingsEditor; root: HTMLElement }> {
   const registry = new SettingsRegistryService(createMockStorage(), createMockStorage());
   await registry.initialize();
+  for (const schema of extraSchemas) registry.register(schema);
 
   registry.register({
     key: 'autonomy.flag',
@@ -95,12 +98,72 @@ describe('SettingsEditor — D2', () => {
     editor.dispose();
   });
 
-  it('lists schema categories in the nav', async () => {
+  it('routes categories through the curated taxonomy (M85 IA)', async () => {
     const { editor } = await setup();
-    const cats = Array.from(document.querySelectorAll('.settings-editor__nav-item')).map(
+    const items = Array.from(document.querySelectorAll('.settings-editor__nav-item')).map(
       (n) => n.textContent,
     );
-    expect(cats).toEqual(expect.arrayContaining(['Autonomy', 'Canvas']));
+    // 'Canvas' is a single-member group → renders flat under the group name.
+    expect(items).toContain('Canvas');
+    // 'Autonomy' is claimed by the AI group; as its only present member the
+    // group collapses to one flat item carrying the GROUP's name.
+    expect(items).toContain('AI');
+    expect(items).not.toContain('Autonomy');
+    editor.dispose();
+  });
+
+  it('renders group headers when a group has multiple members', async () => {
+    // Autonomy + Persona are both AI-group members → header + two children.
+    const { editor } = await setup([{
+      key: 'persona.name',
+      type: 'string',
+      default: '',
+      scope: 'user',
+      description: 'Persona display name',
+      category: 'Persona',
+    }]);
+    const headers = Array.from(document.querySelectorAll('.settings-editor__nav-group')).map((n) => n.textContent);
+    expect(headers).toContain('AI');
+    const children = Array.from(document.querySelectorAll('.settings-editor__nav-item--child')).map((n) => n.textContent);
+    expect(children).toEqual(expect.arrayContaining(['Autonomy', 'Persona']));
+    editor.dispose();
+  });
+
+  it('routes unknown categories into the Extensions group', async () => {
+    const { editor } = await setup([
+      {
+        key: 'someext.feature.enabled',
+        type: 'boolean',
+        default: false,
+        scope: 'user',
+        description: 'An extension setting with an unclaimed category',
+        category: 'Some Extension',
+      },
+      {
+        key: 'otherext.mode',
+        type: 'string',
+        default: '',
+        scope: 'user',
+        description: 'Another unclaimed extension category',
+        category: 'Other Extension',
+      },
+    ]);
+    const headers = Array.from(document.querySelectorAll('.settings-editor__nav-group')).map((n) => n.textContent);
+    expect(headers).toContain('Extensions');
+    const children = Array.from(document.querySelectorAll('.settings-editor__nav-item--child')).map((n) => n.textContent);
+    expect(children).toEqual(expect.arrayContaining(['Other Extension', 'Some Extension']));
+    editor.dispose();
+  });
+
+  it('rows lead with a humanized title; the raw key is metadata', async () => {
+    const { editor } = await setup();
+    // Select the Canvas nav item so its row renders.
+    const canvasItem = Array.from(document.querySelectorAll<HTMLElement>('.settings-editor__nav-item'))
+      .find((n) => n.textContent === 'Canvas')!;
+    canvasItem.click();
+    const row = document.querySelector<HTMLElement>('[data-key="canvas.propertyBar.collapsed"]')!;
+    expect(row.querySelector('.settings-editor__row-title')?.textContent).toBe('Property Bar › Collapsed');
+    expect(row.querySelector('.settings-editor__row-key')?.textContent).toBe('canvas.propertyBar.collapsed');
     editor.dispose();
   });
 
@@ -131,6 +194,10 @@ describe('SettingsEditor — D2', () => {
 
   it('re-renders when registry fires onDidChange', async () => {
     const { editor, registry } = await setup();
+    // Select the AI item (Autonomy's group) so its rows are the visible page.
+    const aiItem = Array.from(document.querySelectorAll<HTMLElement>('.settings-editor__nav-item'))
+      .find((n) => n.textContent === 'AI')!;
+    aiItem.click();
     await registry.setValue('autonomy.flag', true);
     // After re-render, the row should still exist with data-key
     const row = document.querySelector<HTMLElement>('[data-key="autonomy.flag"]');

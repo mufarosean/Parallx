@@ -131,6 +131,23 @@
 }
 .settings-editor__nav-item:active { transform: var(--px-press, translateY(0.5px)); }
 
+/* Curated group header — a quiet section label, not a control. */
+.settings-editor__nav-group {
+  padding: 12px 12px 4px;
+  font-size: var(--px-text-xs, 11px);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--px-text-faint);
+  user-select: none;
+}
+.settings-editor__nav-group:first-child { padding-top: 4px; }
+
+/* Members of a group sit indented under their header. */
+.settings-editor__nav-item--child {
+  padding-left: 20px;
+}
+
 .settings-editor__content {
   flex: 1 1 auto;
   min-width: 0;
@@ -226,11 +243,17 @@
   flex-wrap: wrap;
 }
 
+/* Human title leads the row; the raw key is demoted to metadata. */
+.settings-editor__row-title {
+  font-size: var(--px-text-base, 13px);
+  color: var(--px-text);
+  font-weight: 600;
+}
+
 .settings-editor__row-key {
   font-family: var(--vscode-editor-font-family, monospace);
-  font-size: 0.85rem;
-  color: var(--vscode-foreground);
-  font-weight: 500;
+  font-size: var(--px-text-xs, 11px);
+  color: var(--px-text-faint);
 }
 
 .settings-editor__row-scope {
