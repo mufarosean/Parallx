@@ -2,8 +2,46 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildOpenclawBootstrapContext,
+  loadOpenclawBootstrapEntries,
   type IOpenclawBootstrapEntry,
 } from '../../src/openclaw/participants/openclawParticipantRuntime';
+
+// ── M85 Slice D: the memory INDEX is guaranteed context every turn ──────────
+
+describe('loadOpenclawBootstrapEntries — memory index guarantee', () => {
+  it('loads the canonical .parallx/memory/MEMORY.md index', async () => {
+    const files = new Map<string, string>([
+      ['.parallx/memory/MEMORY.md', '# Memory Index\n- [Lesson](lessons/a.md) — a lesson'],
+    ]);
+    const entries = await loadOpenclawBootstrapEntries(async (p) => files.get(p) ?? null);
+    const memory = entries.find((e) => e.name === '.parallx/memory/MEMORY.md');
+    expect(memory).toBeDefined();
+    expect(memory!.missing).toBe(false);
+    expect(memory!.content).toContain('Memory Index');
+  });
+
+  it('falls back to a legacy root MEMORY.md when the canonical index is absent', async () => {
+    const files = new Map<string, string>([['MEMORY.md', 'legacy root index']]);
+    const entries = await loadOpenclawBootstrapEntries(async (p) => files.get(p) ?? null);
+    const memory = entries.find((e) => e.name === 'MEMORY.md');
+    expect(memory?.content).toBe('legacy root index');
+  });
+
+  it('prefers the canonical index over the legacy root file', async () => {
+    const files = new Map<string, string>([
+      ['.parallx/memory/MEMORY.md', 'canonical'],
+      ['MEMORY.md', 'legacy'],
+    ]);
+    const entries = await loadOpenclawBootstrapEntries(async (p) => files.get(p) ?? null);
+    expect(entries.some((e) => e.content === 'canonical')).toBe(true);
+    expect(entries.some((e) => e.content === 'legacy')).toBe(false);
+  });
+
+  it('adds no memory entry when no index exists anywhere', async () => {
+    const entries = await loadOpenclawBootstrapEntries(async () => null);
+    expect(entries.some((e) => e.name.toLowerCase().includes('memory'))).toBe(false);
+  });
+});
 
 describe('openclawParticipantRuntime bootstrap accounting', () => {
   it('keeps missing markers and reports raw vs injected sizes', () => {

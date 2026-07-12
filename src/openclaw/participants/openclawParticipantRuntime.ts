@@ -128,7 +128,13 @@ export async function loadOpenclawBootstrapEntries(
     entries.push({ name: path, path, missing: true });
   }
 
-  for (const path of ['MEMORY.md', 'memory.md'] as const) {
+  // M85 Slice D — the memory INDEX is a guaranteed part of every turn's
+  // context ("index always loaded, bodies on demand"). The canonical index
+  // lives at .parallx/memory/MEMORY.md (workspaceMemoryService); the root
+  // paths are legacy fallbacks. Before this fix only the ROOT paths were
+  // probed, so the canonical index was silently never loaded and the memory
+  // prompt's "the index is in your context every turn" was false.
+  for (const path of ['.parallx/memory/MEMORY.md', 'MEMORY.md', 'memory.md'] as const) {
     const content = await readWorkspaceFile(path);
     if (typeof content === 'string') {
       const trimmed = content.trim();
