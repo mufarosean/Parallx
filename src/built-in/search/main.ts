@@ -11,6 +11,8 @@
 //   src/vs/workbench/contrib/search/browser/searchView.ts
 //   src/vs/workbench/services/search/common/textSearchManager.ts
 
+import './search.css';
+
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { $,  hide, show } from '../../ui/dom.js';
