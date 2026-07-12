@@ -116,6 +116,35 @@ describe('buildOpenclawSystemPrompt', () => {
     expect(prompt).not.toContain('## Tooling');
   });
 
+  // ── M85: capability sections are gated on their tool's presence ──
+
+  it('renders ## Planning only when plan_update is in the catalog', () => {
+    const without = buildOpenclawSystemPrompt(createBaseParams());
+    expect(without).not.toContain('## Planning');
+
+    const withPlan = buildOpenclawSystemPrompt(createBaseParams({
+      tools: [...createTools(), { name: 'plan_update', description: 'Maintain your plan' }],
+    }));
+    expect(withPlan).toContain('## Planning');
+    expect(withPlan).toContain('plan_update');
+    expect(withPlan).toContain('SURVIVES context compaction');
+  });
+
+  it('renders ## Subagents only when sessions_spawn is in the catalog', () => {
+    const without = buildOpenclawSystemPrompt(createBaseParams());
+    expect(without).not.toContain('## Subagents');
+
+    const withSpawn = buildOpenclawSystemPrompt(createBaseParams({
+      tools: [...createTools(), { name: 'sessions_spawn', description: 'Delegate to a subagent' }],
+    }));
+    expect(withSpawn).toContain('## Subagents');
+    expect(withSpawn).toContain('sessions_spawn');
+    // The delegation policy: the model is taught WHEN, not just THAT.
+    expect(withSpawn).toContain('When to delegate');
+    expect(withSpawn).toContain('When NOT to delegate');
+    expect(withSpawn).toContain('knows NOTHING about this conversation');
+  });
+
   it('includes workspace context section (persona split out to Identity)', () => {
     const prompt = buildOpenclawSystemPrompt(createBaseParams());
     expect(prompt).toContain('## Workspace Context');

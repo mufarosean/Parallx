@@ -68,7 +68,12 @@ export function createSessionsSpawnTool(
   const name = 'sessions_spawn';
   return {
     name,
-    description: 'Spawn a subagent for a delegated task. Returns its final response. Max depth 1.',
+    displaySummary: 'Delegate a self-contained task to an isolated subagent.',
+    description: 'Delegate a self-contained task to a subagent that runs in its OWN isolated session and returns only its final answer. '
+      + 'Use it to keep your context lean: bulk work whose intermediate output would flood this conversation — sweeping many files, digesting a long document, researching a side question — comes back as one distilled result instead of raw dumps. '
+      + 'The subagent starts FRESH: it shares none of this conversation, so the task prompt must be fully self-contained (include paths/page titles, constraints, and the exact shape of the answer you want back). '
+      + 'Do not use it for trivial single-tool work (just call the tool), and treat its answer as a report to verify, not ground truth. '
+      + 'Each spawn is a real model run and requires user approval. Max depth 1 — subagents cannot spawn further subagents.',
     parameters: {
       type: 'object',
       required: ['task'],

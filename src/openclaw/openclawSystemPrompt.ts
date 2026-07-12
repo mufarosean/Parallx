@@ -208,6 +208,13 @@ export function buildOpenclawSystemPrompt(params: IOpenclawSystemPromptParams): 
     sections.push(buildPlanningSection());
   }
 
+  // 3a-iii. M85 follow-up — Delegation discipline. Same "the model must be
+  //         told the subsystem exists" reasoning as the Memory section:
+  //         sessions_spawn was never called because nothing taught WHEN.
+  if (params.tools.some((t) => t.name === 'sessions_spawn')) {
+    sections.push(buildSubagentsSection());
+  }
+
   // 3b. M66 — Linking templates. Auto-generated from registered LinkContracts;
   //     adding a new extension contract surfaces its URI templates here with
   //     zero core changes.
@@ -390,6 +397,7 @@ export function buildToolSummariesSection(_tools: readonly IToolSummary[]): stri
     '- `transcript_*` — past chat sessions.',
     '- `terminal_run_command` — shell commands on the host.',
     '- `link_create` — mint a `parallx://` citation URI.',
+    '- `sessions_spawn` — delegate a self-contained bulk task to an isolated subagent (see the Subagents section).',
     '- `app__*` — Parallx workbench commands (open views, change settings).',
     '- extension families — `budget_*`, `planner_*`, `cron_*`, `dashboard_*`, plus `webSearch` / `webFetch`. Read each description.',
     '',
@@ -565,6 +573,33 @@ export function buildMemorySection(): string {
     '**Cap discipline** — USER.md and the MEMORY.md index are bounded. When `memory_write add` would exceed the cap, the tool returns the current entries and an error. Pick the least-relevant existing lesson and `memory_write file=lesson action=remove slug=<old>` before retrying the add. The cap is a curation forcing function: only the most durable, generally-applicable lessons stay in the index.',
     '',
     'If memory contains a claim that names a specific file, function, or value, verify it against the current workspace before acting on it — memory can go stale.',
+  ].join('\n');
+}
+
+/**
+ * M85 follow-up — Delegation discipline. Rendered only when `sessions_spawn`
+ * is in the tool catalog. The core sell is context conservation: bulk work
+ * comes back as one distilled answer instead of raw dumps in the main
+ * conversation.
+ */
+export function buildSubagentsSection(): string {
+  return [
+    '## Subagents',
+    'You can delegate a self-contained task to a subagent with `sessions_spawn`. The subagent runs in an ISOLATED session with its own fresh context and full tools, does the work, and returns only its final answer to you.',
+    '',
+    'When to delegate — the test is "would doing this inline flood my context with material I only need a conclusion from?":',
+    '- Sweeping many files or pages to answer one question ("scan src/services and list every service that touches SQLite").',
+    '- Digesting a long document into a structured summary.',
+    '- Researching a side question whose intermediate findings you don\'t need verbatim.',
+    '',
+    'When NOT to delegate: single-tool jobs (just call the tool), tasks needing conversation context the subagent won\'t have, or edits you must supervise step-by-step.',
+    '',
+    'How to write the task prompt — the subagent knows NOTHING about this conversation:',
+    '- Include every path, page title, constraint, and definition it needs.',
+    '- State the exact shape of the answer you want back (a list, a table, a yes/no with evidence).',
+    '- Treat the returned answer as a report to spot-check, not ground truth — verify load-bearing claims before acting on them.',
+    '',
+    'Each spawn is a real model run and requires user approval; subagents cannot spawn further subagents.',
   ].join('\n');
 }
 
