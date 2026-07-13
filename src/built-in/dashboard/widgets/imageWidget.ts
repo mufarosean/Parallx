@@ -1,9 +1,11 @@
-// imageWidget.ts — user-uploaded image widget.
+// imageWidget.ts — user-uploaded image / GIF widget.
 //
-// The user drops or picks an image; it's downscaled client-side to fit the
-// per-instance cache budget (MAX_CACHED_OUTPUT_BYTES) and persisted as a data
-// URL via ctx.setCachedOutput. On reload the image is restored from
-// ctx.cachedOutput — no extra storage column needed.
+// The user drops, picks, or links an image. Uploads are written to disk by the
+// asset bridge (electron/dashboardAssetBridge.cjs) and referenced by id — the
+// widget's cache holds only a tiny `asset:<id>` string, so a GIF of ANY size
+// renders with its animation intact (no 256 KB inline-cache flattening). A
+// remote Image URL renders directly. Legacy widgets that stored a `data:` URL
+// still work. Fallback (no bridge / tests): inline data URL, capped.
 
 import type {
   WidgetContext,
@@ -27,6 +29,20 @@ const ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22"
 // so the cache layer never truncates it (which would corrupt the image).
 const MAX_DATA_URL_CHARS = 240_000;
 const MAX_EDGE_PX = 1280;
+
+// ── File-backed asset store (parallx-asset://) ───────────────────────────────
+// Uploads are written to disk and referenced by id, so a GIF of ANY size loads
+// with its animation intact — the 256 KB inline text cache never holds it.
+interface DashboardAssetBridge {
+  save(bytes: ArrayBuffer, mime: string): Promise<{ id?: string; error?: string }>;
+  delete(id: string): Promise<{ ok: boolean }>;
+}
+function assetBridge(): DashboardAssetBridge | undefined {
+  return (globalThis as { parallxElectron?: { dashboardAssets?: DashboardAssetBridge } })
+    .parallxElectron?.dashboardAssets;
+}
+const ASSET_REF = 'asset:';
+function assetSrc(id: string): string { return `parallx-asset://asset/${id}`; }
 
 function normalizeConfig(raw: unknown): ImageWidgetConfig {
   const cfg = (raw ?? {}) as Partial<ImageWidgetConfig>;
@@ -131,7 +147,7 @@ export const IMAGE_WIDGET: WidgetTypeRegistration<ImageWidgetConfig> = {
   createWidget(container: HTMLElement, ctx: WidgetContext<ImageWidgetConfig>): WidgetHandle {
     container.classList.add('iw');
     let config = normalizeConfig(ctx.config);
-    let dataUrl: string | null = ctx.cachedOutput;
+    let stored: string | null = ctx.cachedOutput;
 
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
@@ -158,44 +174,66 @@ export const IMAGE_WIDGET: WidgetTypeRegistration<ImageWidgetConfig> = {
     container.appendChild(empty);
     container.appendChild(replace);
 
+    // A bad/blocked URL, network failure, or corrupt data leaves an <img>
+    // blank — never let the widget silently show nothing.
+    img.addEventListener('error', () => {
+      img.style.display = 'none';
+      empty.style.display = '';
+      replace.style.display = 'none';
+    });
+
     function applyConfig(): void {
       img.style.objectFit = config.fit;
       container.classList.toggle('iw--rounded', config.rounded);
     }
 
+    // `stored` is the cache reference: 'asset:<id>' (file-backed), a legacy
+    // 'data:…' URL, or null.
     function render(): void {
-      // A remote URL wins when set; otherwise fall back to the uploaded image.
       const url = config.url.trim();
-      const src = /^https?:\/\//i.test(url)
-        ? url
-        : (typeof dataUrl === 'string' && dataUrl.startsWith('data:') ? dataUrl : '');
+      let src = '';
+      if (/^https?:\/\//i.test(url)) {
+        src = url; // a remote URL wins when set
+      } else if (typeof stored === 'string') {
+        if (stored.startsWith(ASSET_REF)) src = assetSrc(stored.slice(ASSET_REF.length));
+        else if (stored.startsWith('data:')) src = stored;
+      }
       const has = !!src;
       if (has) img.src = src;
       img.style.display = has ? '' : 'none';
-      // The upload affordances only matter when there's no URL driving it.
       const urlDriven = /^https?:\/\//i.test(url);
       empty.style.display = has ? 'none' : '';
+      // The upload affordances only matter when a URL isn't driving it.
       replace.style.display = has && !urlDriven ? '' : 'none';
     }
 
     async function ingest(file: File | undefined | null): Promise<void> {
       if (!file || !file.type.startsWith('image/')) return;
       container.classList.add('iw--loading');
+      const prev = stored;
+      const bridge = assetBridge();
       try {
-        let next: string | null;
-        if (file.type === 'image/gif' || file.type === 'image/webp' || file.type === 'image/apng') {
-          // Preserve animation — never canvas-flatten. Only inline if it fits
-          // the cache budget; a bigger GIF should use the Image URL field.
-          const raw = await fileToDataUrl(file);
-          next = raw && raw.length <= MAX_DATA_URL_CHARS ? raw : null;
-          if (!next) console.warn('[ImageWidget] Animated image too large to embed (%d bytes) — use the Image URL field.', file.size);
-        } else {
-          next = await fileToBoundedDataUrl(file);
+        let next: string | null = null;
+        if (bridge) {
+          // File-backed: store the ORIGINAL bytes (any size, animation intact)
+          // and reference them by id — the 256 KB text cache never sees them.
+          const res = await bridge.save(await file.arrayBuffer(), file.type);
+          if (res?.id) next = `${ASSET_REF}${res.id}`;
+          else console.warn('[ImageWidget] Asset save failed:', res?.error);
+        }
+        if (!next) {
+          // No bridge (tests/browser): inline. Animated formats keep animation
+          // if they fit the cache; otherwise a downscaled still.
+          const animated = file.type === 'image/gif' || file.type === 'image/webp' || file.type === 'image/apng';
+          const raw = animated ? await fileToDataUrl(file) : null;
+          next = raw && raw.length <= MAX_DATA_URL_CHARS ? raw : await fileToBoundedDataUrl(file);
         }
         if (!next) return;
-        dataUrl = next;
+        stored = next;
         ctx.setCachedOutput(next);
         render();
+        // Free the previous file-backed asset, best-effort.
+        if (prev && prev.startsWith(ASSET_REF)) void bridge?.delete(prev.slice(ASSET_REF.length));
       } finally {
         container.classList.remove('iw--loading');
       }
@@ -231,7 +269,7 @@ export const IMAGE_WIDGET: WidgetTypeRegistration<ImageWidgetConfig> = {
 
     return {
       refreshFromCache(cached) {
-        dataUrl = cached;
+        stored = cached;
         render();
       },
       dispose() {

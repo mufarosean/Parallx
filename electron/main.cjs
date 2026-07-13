@@ -1,7 +1,7 @@
 // electron/main.cjs — Electron main process
 // Uses CommonJS because Electron's main process doesn't support ESM by default.
 
-const { app, BrowserWindow, ipcMain, dialog, shell, screen, safeStorage, nativeImage, session, desktopCapturer } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, screen, safeStorage, nativeImage, session, desktopCapturer, protocol } = require('electron');
 const http = require('http');
 const path = require('path');
 const fs = require('fs/promises');
@@ -19,6 +19,11 @@ const { setupMcpBridge, killAllMcpProcesses } = require('./mcpBridge.cjs');
 const { setupStorageHandlers } = require('./storageHandlers.cjs');
 const { setupWebFetchBridge } = require('./webFetchBridge.cjs');
 const { setupGoogleSyncBridge } = require('./googleSyncBridge.cjs');
+const { registerDashboardAssetScheme, setupDashboardAssetBridge } = require('./dashboardAssetBridge.cjs');
+
+// The parallx-asset:// scheme (dashboard image/GIF assets) must be registered
+// as privileged BEFORE app 'ready'; the handler itself is wired in whenReady.
+registerDashboardAssetScheme(protocol);
 const { setupAnthropicBridge } = require('./anthropicBridge.cjs');
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -665,6 +670,9 @@ ipcMain.handle('editableMenu:addToDictionary', (event, word) => {
 
 app.whenReady().then(async () => {
   if (!HAS_SINGLE_INSTANCE_LOCK) return;
+
+  // File-backed dashboard image/GIF assets (served over parallx-asset://).
+  setupDashboardAssetBridge(ipcMain, protocol, APP_ROOT);
   // ── M53: Migrate tools from ~/.parallx/tools/ → data/extensions/ ──
   const oldToolsDir = path.join(app.getPath('home'), '.parallx', 'tools');
   try {

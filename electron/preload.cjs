@@ -377,6 +377,14 @@ contextBridge.exposeInMainWorld('parallxElectron', {
     richExtensions: () => ipcRenderer.invoke('document:richExtensions'),
   },
 
+  // ── Dashboard image/GIF assets (file-backed, served over parallx-asset://) ──
+  dashboardAssets: {
+    /** Persist uploaded image bytes to disk. Returns { id } or { error }. */
+    save: (bytes, mime) => ipcRenderer.invoke('dashboardAsset:save', bytes, mime),
+    /** Delete a stored asset by id (best-effort). */
+    delete: (id) => ipcRenderer.invoke('dashboardAsset:delete', id),
+  },
+
   // ══════════════════════════════════════════════════════════════════════════
   // Terminal API (M11 Phase 4 — Task 4.1)
   // ══════════════════════════════════════════════════════════════════════════
