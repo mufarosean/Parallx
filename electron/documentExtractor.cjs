@@ -677,9 +677,83 @@ async function extractText(filePath) {
   }
 }
 
+/**
+ * Render a Word (.docx) file as HTML for the editor viewer. mammoth's
+ * convertToHtml preserves headings, bold/italic, lists, tables, and inline
+ * images (as data: URIs). The RENDERER allowlist-sanitizes this HTML before it
+ * ever touches the live DOM, so no script/handler/remote-resource survives.
+ * Kept separate from extractText(), which wants compact plain text for indexing.
+ * @param {string} filePath
+ * @returns {Promise<{ format: 'docx'; title: string; html: string; messages: string[] }>}
+ */
+async function extractDocxReadingData(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext !== '.docx') {
+    throw new Error(`Unsupported Word reader format: ${ext}`);
+  }
+  const stat = await fs.stat(filePath);
+  if (stat.size > MAX_RICH_DOC_SIZE) {
+    throw new Error(`File exceeds ${MAX_RICH_DOC_SIZE} byte limit (${stat.size} bytes)`);
+  }
+  const buffer = await fs.readFile(filePath);
+  const mammoth = getMammoth();
+  const result = await mammoth.convertToHtml({ buffer });
+  return {
+    format: 'docx',
+    title: path.basename(filePath, ext),
+    html: result.value || '',
+    messages: (result.messages || []).map((m) => String((m && m.message) || m)).slice(0, 25),
+  };
+}
+
+/**
+ * Read a spreadsheet into structured per-sheet rows for the editor viewer.
+ * Returns array-of-arrays of pre-formatted cell strings (raw:false) — the
+ * renderer builds the table with textContent, so there's no HTML-injection
+ * surface. Rows/cols are capped so a huge workbook can't lock the UI.
+ * @param {string} filePath
+ * @returns {Promise<{ format: 'spreadsheet'; title: string; sheets: Array<{ name: string; rows: string[][]; cols: number; truncated: boolean }> }>}
+ */
+async function extractSpreadsheetReadingData(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  const stat = await fs.stat(filePath);
+  if (stat.size > MAX_RICH_DOC_SIZE) {
+    throw new Error(`File exceeds ${MAX_RICH_DOC_SIZE} byte limit (${stat.size} bytes)`);
+  }
+  const buffer = await fs.readFile(filePath);
+  const XLSX = getXlsx();
+  const readOpts = { type: 'buffer', cellDates: true };
+  if (ext === '.tsv') { readOpts.FS = '\t'; }
+
+  const workbook = XLSX.read(buffer, readOpts);
+  const MAX_ROWS = 5000;
+  const MAX_COLS = 200;
+  const sheets = [];
+
+  for (const name of workbook.SheetNames) {
+    const sheet = workbook.Sheets[name];
+    if (!sheet) continue;
+    // header:1 → array of row-arrays; raw:false → SheetJS's formatted text
+    // (so dates/percentages/currency read the way the workbook shows them).
+    const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, blankrows: false, defval: '', raw: false });
+    let cols = 0;
+    const rows = [];
+    for (const r of rawRows.slice(0, MAX_ROWS)) {
+      const cells = (Array.isArray(r) ? r : []).slice(0, MAX_COLS).map((c) => (c == null ? '' : String(c)));
+      cols = Math.max(cols, cells.length);
+      rows.push(cells);
+    }
+    sheets.push({ name: String(name), rows, cols, truncated: rawRows.length > MAX_ROWS });
+  }
+
+  return { format: 'spreadsheet', title: path.basename(filePath, ext), sheets };
+}
+
 module.exports = {
   extractText,
   extractEpubReadingData,
+  extractDocxReadingData,
+  extractSpreadsheetReadingData,
   isRichDocument,
   RICH_DOCUMENT_EXTENSIONS,
   MAX_RICH_DOC_SIZE,

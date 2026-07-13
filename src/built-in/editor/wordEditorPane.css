@@ -1,0 +1,124 @@
+/* wordEditorPane.css — Word (.docx) reader
+ *
+ * A read-only document view: quiet toolbar + a centered "page" that renders the
+ * sanitized mammoth HTML. All on --px tokens, so it reads in light and dark.
+ */
+
+.word-editor-pane {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--px-bg);
+  color: var(--px-text);
+  overflow: hidden;
+}
+
+/* ── Toolbar ── */
+.word-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--px-space-1);
+  flex-shrink: 0;
+  min-height: 34px;
+  padding: 0 var(--px-space-2);
+  border-bottom: 1px solid var(--px-divider);
+}
+.word-toolbar-title-group { display: flex; align-items: center; gap: var(--px-space-2); min-width: 0; }
+.word-toolbar-icon { display: inline-flex; color: var(--px-text-muted); flex-shrink: 0; }
+.word-toolbar-icon svg { width: 15px; height: 15px; }
+.word-toolbar-title {
+  font-size: var(--px-text-sm);
+  color: var(--px-text-secondary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.word-toolbar-spacer { flex: 1 1 auto; }
+.word-toolbar-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 24px; padding: 0;
+  border: none; background: transparent; color: var(--px-text-muted);
+  border-radius: var(--px-radius-sm); cursor: pointer;
+}
+.word-toolbar-btn:hover { background: var(--px-surface-hover); color: var(--px-text); }
+.word-toolbar-btn svg { width: 15px; height: 15px; }
+.word-toolbar-zoom-label {
+  font-size: var(--px-text-xs); color: var(--px-text-muted);
+  min-width: 40px; text-align: center; font-variant-numeric: tabular-nums;
+}
+
+/* ── Scroll surface + page ── */
+.word-reader-scroll {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  padding: var(--px-space-6) var(--px-space-4);
+  outline: none;
+  display: flex; justify-content: center;
+}
+.word-reader-content {
+  --word-font-scale: 1;
+  width: 100%;
+  max-width: 780px;
+  align-self: flex-start;
+  margin: 0 auto;
+  background: var(--px-bg-elevated);
+  border: 1px solid var(--px-divider);
+  border-radius: var(--px-radius-lg);
+  padding: 56px 64px;
+  font-size: calc(15px * var(--word-font-scale));
+  line-height: 1.7;
+  color: var(--px-text);
+}
+
+/* Document typography */
+.word-reader-content h1, .word-reader-content h2, .word-reader-content h3,
+.word-reader-content h4, .word-reader-content h5, .word-reader-content h6 {
+  color: var(--px-text); font-weight: 600; line-height: 1.3;
+  margin: 1.4em 0 0.5em;
+}
+.word-reader-content > :first-child { margin-top: 0; }
+.word-reader-content h1 { font-size: calc(26px * var(--word-font-scale)); }
+.word-reader-content h2 { font-size: calc(21px * var(--word-font-scale)); }
+.word-reader-content h3 { font-size: calc(17px * var(--word-font-scale)); }
+.word-reader-content p { margin: 0 0 0.9em; }
+.word-reader-content ul, .word-reader-content ol { margin: 0 0 0.9em; padding-left: 1.6em; }
+.word-reader-content li { margin-bottom: 0.3em; }
+.word-reader-content a { color: var(--px-accent); text-decoration: none; border-bottom: 1px solid color-mix(in srgb, var(--px-accent) 35%, transparent); }
+.word-reader-content a:hover { border-color: var(--px-accent); }
+.word-reader-content strong, .word-reader-content b { font-weight: 650; color: var(--px-text); }
+.word-reader-content code {
+  font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
+  font-size: 0.88em; padding: 1px 5px; border-radius: 4px;
+  background: var(--px-surface-hover);
+}
+.word-reader-content pre {
+  background: var(--px-bg-inset); border: 1px solid var(--px-divider);
+  border-radius: var(--px-radius-md); padding: 12px 14px; overflow-x: auto;
+}
+.word-reader-content blockquote {
+  margin: 0 0 0.9em; padding: 4px 0 4px 16px;
+  border-left: 3px solid var(--px-border-strong); color: var(--px-text-muted);
+}
+.word-reader-content img { max-width: 100%; height: auto; border-radius: 4px; }
+.word-reader-content hr { border: none; border-top: 1px solid var(--px-divider); margin: 1.5em 0; }
+
+/* Tables */
+.word-reader-content table {
+  border-collapse: collapse; width: 100%; margin: 0 0 1em;
+  font-size: calc(13.5px * var(--word-font-scale));
+}
+.word-reader-content th, .word-reader-content td {
+  border: 1px solid var(--px-divider); padding: 6px 10px; text-align: left; vertical-align: top;
+}
+.word-reader-content th { background: var(--px-surface-hover); font-weight: 600; }
+
+.word-reader-empty { color: var(--px-text-faint); font-style: italic; }
+
+/* ── Loading / error overlays ── */
+.word-reader-message {
+  position: absolute; inset: 34px 0 0 0;
+  display: flex; align-items: center; justify-content: center;
+  padding: var(--px-space-6); text-align: center;
+  color: var(--px-text-muted); font-size: var(--px-text-sm);
+  pointer-events: none;
+}
+.word-reader-error { color: var(--px-danger); }

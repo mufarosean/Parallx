@@ -1,0 +1,145 @@
+/* excelEditorPane.css — Spreadsheet reader
+ *
+ * A read-only grid: quiet toolbar, a scrollable sheet with sticky column
+ * letters + row numbers, and an Excel-style tab bar. All on --px tokens.
+ */
+
+.excel-editor-pane {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--px-bg);
+  color: var(--px-text);
+  overflow: hidden;
+}
+
+/* ── Toolbar ── */
+.excel-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--px-space-2);
+  flex-shrink: 0;
+  min-height: 34px;
+  padding: 0 var(--px-space-2);
+  border-bottom: 1px solid var(--px-divider);
+}
+.excel-toolbar-title-group { display: flex; align-items: center; gap: var(--px-space-2); min-width: 0; }
+.excel-toolbar-icon { display: inline-flex; color: var(--px-text-muted); flex-shrink: 0; }
+.excel-toolbar-icon svg { width: 15px; height: 15px; }
+.excel-toolbar-title {
+  font-size: var(--px-text-sm); color: var(--px-text-secondary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.excel-toolbar-spacer { flex: 1 1 auto; }
+.excel-toolbar-meta { font-size: var(--px-text-xs); color: var(--px-text-faint); font-variant-numeric: tabular-nums; }
+
+/* ── Grid ── */
+.excel-grid-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  outline: none;
+}
+.excel-grid {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--px-text-sm);
+  color: var(--px-text);
+}
+.excel-grid th, .excel-grid td {
+  border-right: 1px solid var(--px-divider);
+  border-bottom: 1px solid var(--px-divider);
+  padding: 4px 9px;
+  white-space: nowrap;
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: top;
+}
+
+/* Column-letter header (sticky top) */
+.excel-grid thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--px-bg-inset);
+  color: var(--px-text-muted);
+  font-weight: 600;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+/* Row-number gutter (sticky left) */
+.excel-rownum {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--px-bg-inset);
+  color: var(--px-text-faint);
+  font-weight: 500;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  min-width: 44px;
+}
+/* Corner cell sits above both */
+.excel-corner {
+  position: sticky;
+  left: 0;
+  top: 0;
+  z-index: 3;
+  background: var(--px-bg-inset);
+  min-width: 44px;
+}
+.excel-grid tbody td { background: var(--px-bg); }
+.excel-grid tbody tr:hover td { background: var(--px-surface-hover); }
+
+.excel-truncation-note {
+  padding: 10px 14px;
+  font-size: var(--px-text-xs);
+  color: var(--px-text-faint);
+  border-top: 1px solid var(--px-divider);
+  background: var(--px-bg-inset);
+}
+
+/* ── Sheet tabs ── */
+.excel-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  flex-shrink: 0;
+  padding: 3px var(--px-space-2);
+  border-top: 1px solid var(--px-divider);
+  background: var(--px-bg);
+  overflow-x: auto;
+}
+.excel-tab {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--px-text-muted);
+  font-size: var(--px-text-xs);
+  padding: 3px 12px;
+  border-radius: var(--px-radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.excel-tab:hover { background: var(--px-surface-hover); color: var(--px-text); }
+.excel-tab.is-active {
+  background: var(--px-bg-inset);
+  color: var(--px-text);
+  border-color: var(--px-divider);
+  font-weight: 600;
+}
+
+/* ── Loading / error overlays ── */
+.excel-message {
+  position: absolute; inset: 34px 0 0 0;
+  display: flex; align-items: center; justify-content: center;
+  padding: var(--px-space-6); text-align: center;
+  color: var(--px-text-muted); font-size: var(--px-text-sm);
+  pointer-events: none;
+}
+.excel-error { color: var(--px-danger); }

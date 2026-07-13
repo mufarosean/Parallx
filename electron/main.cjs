@@ -13,7 +13,7 @@ const AdmZip = require('adm-zip');
 // execution never blocks the main process, which routes user input.  These
 // are async proxies with the same API (see databaseClient.cjs).
 const { databaseManager, extensionDatabaseManager } = require('./databaseClient.cjs');
-const { extractText, extractEpubReadingData, isRichDocument, RICH_DOCUMENT_EXTENSIONS } = require('./documentExtractor.cjs');
+const { extractText, extractEpubReadingData, extractDocxReadingData, extractSpreadsheetReadingData, isRichDocument, RICH_DOCUMENT_EXTENSIONS } = require('./documentExtractor.cjs');
 const doclingBridge = require('./doclingBridge.cjs');
 const { setupMcpBridge, killAllMcpProcesses } = require('./mcpBridge.cjs');
 const { setupStorageHandlers } = require('./storageHandlers.cjs');
@@ -1842,6 +1842,24 @@ ipcMain.handle('document:readEpub', async (_event, filePath) => {
     return result;
   } catch (err) {
     return { error: { code: 'EPUB_READ_FAILED', message: err.message || String(err), path: filePath } };
+  }
+});
+
+// ── document:readDocx — formatted Word HTML for the viewer ──
+ipcMain.handle('document:readDocx', async (_event, filePath) => {
+  try {
+    return await extractDocxReadingData(filePath);
+  } catch (err) {
+    return { error: { code: 'DOCX_READ_FAILED', message: err.message || String(err), path: filePath } };
+  }
+});
+
+// ── document:readSpreadsheet — per-sheet rows for the viewer ──
+ipcMain.handle('document:readSpreadsheet', async (_event, filePath) => {
+  try {
+    return await extractSpreadsheetReadingData(filePath);
+  } catch (err) {
+    return { error: { code: 'SPREADSHEET_READ_FAILED', message: err.message || String(err), path: filePath } };
   }
 });
 

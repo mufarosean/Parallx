@@ -36,6 +36,8 @@ import { ReadonlyMarkdownInput } from '../built-in/editor/readonlyMarkdownInput.
 import { ImageEditorInput } from '../built-in/editor/imageEditorInput.js';
 import { PdfEditorInput } from '../built-in/editor/pdfEditorInput.js';
 import { EpubEditorInput } from '../built-in/editor/epubEditorInput.js';
+import { WordEditorInput } from '../built-in/editor/wordEditorInput.js';
+import { ExcelEditorInput } from '../built-in/editor/excelEditorInput.js';
 import { KeybindingsEditorInput } from '../built-in/editor/keybindingsEditorInput.js';
 import { SettingsEditorInput } from '../built-in/editor/settingsEditorInput.js';
 
@@ -45,6 +47,8 @@ import { MarkdownEditorPane } from '../built-in/editor/markdownEditorPane.js';
 import { ImageEditorPane } from '../built-in/editor/imageEditorPane.js';
 import { PdfEditorPane } from '../built-in/editor/pdfEditorPane.js';
 import { EpubEditorPane } from '../built-in/editor/epubEditorPane.js';
+import { WordEditorPane } from '../built-in/editor/wordEditorPane.js';
+import { ExcelEditorPane } from '../built-in/editor/excelEditorPane.js';
 import { KeybindingsEditorPane } from '../built-in/editor/keybindingsEditorPane.js';
 import { SettingsEditorPane } from '../built-in/editor/settingsEditorPane.js';
 
@@ -152,6 +156,27 @@ function _initFileEditorResolver(
     createPane: () => new EpubEditorPane(),
   }));
 
+  // Word (.docx) reader
+  disposables.add(resolver.registerEditor({
+    id: WordEditorInput.TYPE_ID,
+    name: 'Word Viewer',
+    extensions: ['.docx'],
+    priority: EditorResolverPriority.Default,
+    createInput: (uri) => WordEditorInput.create(uri),
+    createPane: () => new WordEditorPane(),
+  }));
+
+  // Spreadsheet reader (Excel family + ODS/Numbers; CSV/TSV stay in the text
+  // editor since they're human-editable plain text).
+  disposables.add(resolver.registerEditor({
+    id: ExcelEditorInput.TYPE_ID,
+    name: 'Spreadsheet Viewer',
+    extensions: ['.xlsx', '.xls', '.xlsm', '.xlsb', '.ods', '.numbers'],
+    priority: EditorResolverPriority.Default,
+    createInput: (uri) => ExcelEditorInput.create(uri),
+    createPane: () => new ExcelEditorPane(),
+  }));
+
   // Text editor (fallback — matches everything)
   disposables.add(resolver.registerEditor({
     id: FileEditorInput.TYPE_ID,
@@ -169,6 +194,8 @@ function _initFileEditorResolver(
     if (input instanceof ImageEditorInput) return new ImageEditorPane();
     if (input instanceof PdfEditorInput) return createPdfPane();
     if (input instanceof EpubEditorInput) return new EpubEditorPane();
+    if (input instanceof WordEditorInput) return new WordEditorPane();
+    if (input instanceof ExcelEditorInput) return new ExcelEditorPane();
 
     if (input instanceof KeybindingsEditorInput) {
       const kbService = services.has(IKeybindingService)
@@ -249,6 +276,8 @@ export function findOpenEditorInput(editorPart: EditorPart, uri: URI): IEditorIn
       if (editor instanceof ImageEditorInput && editor.uri.equals(uri)) return editor;
       if (editor instanceof PdfEditorInput && editor.uri.equals(uri)) return editor;
       if (editor instanceof EpubEditorInput && editor.uri.equals(uri)) return editor;
+      if (editor instanceof WordEditorInput && editor.uri.equals(uri)) return editor;
+      if (editor instanceof ExcelEditorInput && editor.uri.equals(uri)) return editor;
     }
   }
   return undefined;

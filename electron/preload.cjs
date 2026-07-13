@@ -364,6 +364,12 @@ contextBridge.exposeInMainWorld('parallxElectron', {
     /** Extract sanitized EPUB reader chapters. Returns { title, chapters, metadata } or { error }. */
     readEpub: (filePath) => ipcRenderer.invoke('document:readEpub', filePath),
 
+    /** Render a Word (.docx) file as HTML for the viewer. Returns { title, html, messages } or { error }. */
+    readDocx: (filePath) => ipcRenderer.invoke('document:readDocx', filePath),
+
+    /** Read a spreadsheet into per-sheet rows for the viewer. Returns { title, sheets } or { error }. */
+    readSpreadsheet: (filePath) => ipcRenderer.invoke('document:readSpreadsheet', filePath),
+
     /** Check if a file extension is a supported rich document format. Returns boolean. */
     isRichDocument: (ext) => ipcRenderer.invoke('document:isRichDocument', ext),
 
