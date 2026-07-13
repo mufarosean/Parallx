@@ -11,6 +11,11 @@ export interface GoogleStatus {
   readonly email: string | null;
   /** Whether an OAuth client (client_id/secret) was found in main. */
   readonly hasClient: boolean;
+  /**
+   * A refresh token is stored but Google rejected it (invalid_grant — expired
+   * or revoked). The account looks connected but can't sync until re-consented.
+   */
+  readonly needsReauth: boolean;
 }
 
 export interface GoogleAuthorizeResult {
@@ -52,11 +57,11 @@ export const googleSync = {
 
   async status(): Promise<GoogleStatus> {
     const b = bridge();
-    if (!b) return { connected: false, email: null, hasClient: false };
+    if (!b) return { connected: false, email: null, hasClient: false, needsReauth: false };
     try {
       return await b.status();
     } catch {
-      return { connected: false, email: null, hasClient: false };
+      return { connected: false, email: null, hasClient: false, needsReauth: false };
     }
   },
 

@@ -296,6 +296,36 @@ function renderGoogleSyncSection(
     acctRow.appendChild(disconnect);
     section.appendChild(acctRow);
 
+    // Token expired / revoked — the account row alone is misleading. Surface a
+    // one-click Reconnect that re-runs OAuth (prompt=consent mints a fresh
+    // refresh token; no need to disconnect first).
+    if (status.needsReauth) {
+      const warn = el('div', 'planner-settings__google-status is-error');
+      warn.textContent = 'Your Google connection expired or was revoked — reconnect to resume syncing.';
+      section.appendChild(warn);
+      const reconnect = el('button', 'planner-settings__btn planner-settings__btn--primary');
+      reconnect.type = 'button';
+      reconnect.textContent = 'Reconnect Google';
+      reconnect.addEventListener('click', async () => {
+        if (busy) return;
+        busy = true;
+        reconnect.disabled = true;
+        warn.classList.remove('is-error');
+        warn.textContent = 'Opening your browser… approve access, then return here.';
+        const res = await googleSync.authorize();
+        busy = false;
+        if (res.ok) {
+          await sync?.refreshProviders();
+          void refresh();
+        } else {
+          reconnect.disabled = false;
+          warn.classList.add('is-error');
+          warn.textContent = `Couldn’t reconnect: ${friendlyAuthError(res.error)}`;
+        }
+      });
+      section.appendChild(reconnect);
+    }
+
     // Sync now + last-sync status.
     if (sync) {
       const syncRow = el('div', 'planner-settings__google-row');

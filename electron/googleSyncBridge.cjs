@@ -44,6 +44,12 @@ const DEFAULT_SCOPES = [
 // Single-account: the in-memory access token never touches disk.
 let _accessTokenCache = null; // { token: string, expiresAtMs: number }
 
+// Set when a refresh fails with invalid_grant (the stored refresh token was
+// expired or revoked). Surfaced via google:status so the planner can show a
+// one-click Reconnect instead of a misleading "Connected". Cleared on a
+// successful authorize or disconnect; in-memory, so a fresh sync re-detects it.
+let _needsReauth = false;
+
 // ─── OAuth client credentials (public-by-design for desktop apps) ─────────────
 // Lookup order mirrors tools/gmail-mcp-server/src/bundledOAuthClient.ts but
 // generalized: env → ~/.parallx/google → reuse ~/.parallx/gmail-mcp if the user
@@ -205,11 +211,21 @@ async function _getAccessToken(secrets, { forceRefresh = false } = {}) {
   if (!refreshToken) throw new Error('not-connected');
   const client = loadOAuthClient();
   if (!client.clientId || !client.clientSecret) throw new Error('no-oauth-client');
-  const tok = await _refreshAccessToken({
-    clientId: client.clientId,
-    clientSecret: client.clientSecret,
-    refreshToken,
-  });
+  let tok;
+  try {
+    tok = await _refreshAccessToken({
+      clientId: client.clientId,
+      clientSecret: client.clientSecret,
+      refreshToken,
+    });
+  } catch (err) {
+    // A dead refresh token (invalid_grant) can't be recovered by retrying — it
+    // needs fresh user consent. Flag it so google:status reports needsReauth.
+    if (err && typeof err.message === 'string' && /invalid_grant/i.test(err.message)) {
+      _needsReauth = true;
+    }
+    throw err;
+  }
   if (typeof tok.access_token !== 'string' || typeof tok.expires_in !== 'number') {
     throw new Error('malformed-token-response');
   }
@@ -257,6 +273,7 @@ async function _authorize(secrets, scopes) {
     if (typeof tokens.refresh_token !== 'string') return { ok: false, error: 'no-refresh-token' };
 
     await secrets.writeSecret(REFRESH_TOKEN_SECRET_KEY, tokens.refresh_token);
+    _needsReauth = false; // fresh token — the connection is healthy again
     _accessTokenCache = {
       token: tokens.access_token,
       expiresAtMs: Date.now() + (tokens.expires_in || 3600) * 1000,
@@ -347,11 +364,18 @@ function setupGoogleSyncBridge(ipcMain, _appRoot, secrets) {
   ipcMain.handle('google:status', async () => {
     const refresh = await secrets.readSecret(REFRESH_TOKEN_SECRET_KEY);
     const email = await secrets.readSecret(ACCOUNT_SECRET_KEY);
-    return { connected: !!refresh, email: email || null, hasClient: !!loadOAuthClient().clientId };
+    return {
+      connected: !!refresh,
+      email: email || null,
+      hasClient: !!loadOAuthClient().clientId,
+      // Only meaningful while a (dead) token is still stored.
+      needsReauth: !!refresh && _needsReauth,
+    };
   });
 
   ipcMain.handle('google:disconnect', async () => {
     _accessTokenCache = null;
+    _needsReauth = false;
     await secrets.deleteSecret(REFRESH_TOKEN_SECRET_KEY);
     await secrets.deleteSecret(ACCOUNT_SECRET_KEY);
     return { ok: true };

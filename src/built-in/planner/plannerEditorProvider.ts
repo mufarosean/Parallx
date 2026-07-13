@@ -7,6 +7,7 @@ import type { IDisposable } from '../../platform/lifecycle.js';
 import type { PlannerDataService } from './plannerDataService.js';
 import type { PlannerCalendar, PlannerEvent, PlannerTask, SeriesEditScope, TaskStatus, UpdateEventInput } from './plannerTypes.js';
 import type { IPlannerSyncController } from './sync/plannerSyncOrchestrator.js';
+import { googleSync } from './sync/googleClient.js';
 import { takePendingPlannerTab } from './plannerNavState.js';
 import { buildSimpleRRule, describeRRule, rruleToPreset } from './plannerRecurrence.js';
 import { packLanes } from './plannerLayout.js';
@@ -741,6 +742,30 @@ class PlannerEditorPane implements IDisposable {
         if (syncBtn.classList.contains('planner-iconbtn--busy')) return;
         syncBtn.classList.add('planner-iconbtn--busy');
         syncBtn.disabled = true;
+
+        // An expired/revoked Google token surfaces as a sync error. Rather than
+        // a dead-end "Sync failed" toast, offer a one-click Reconnect that
+        // re-runs OAuth (mints a fresh refresh token) and resumes syncing.
+        const presentFailure = async (errorMsg: string): Promise<void> => {
+          const authInvalid = /invalid_grant|token refresh failed|expired or revoked/i.test(errorMsg);
+          if (!authInvalid) {
+            await this._api.window.showErrorMessage(`Sync failed: ${errorMsg}`);
+            return;
+          }
+          const choice = await this._api.window.showErrorMessage(
+            'Google sync stopped — your connection expired or was revoked. Reconnect to resume syncing.',
+            { title: 'Reconnect' },
+          );
+          if (choice?.title !== 'Reconnect') return;
+          const res = await googleSync.authorize();
+          if (res.ok) {
+            await sync.refreshProviders();
+            await this._api.window.showInformationMessage('Reconnected to Google — syncing will resume.');
+          } else {
+            await this._api.window.showErrorMessage(`Couldn’t reconnect: ${res.error ?? 'unknown error'}`);
+          }
+        };
+
         try {
           const results = await sync.syncNow();
           if (results.length === 0) {
@@ -748,14 +773,14 @@ class PlannerEditorPane implements IDisposable {
           } else {
             const failed = results.find(r => !r.ok);
             if (failed) {
-              await this._api.window.showErrorMessage(`Sync failed: ${failed.error ?? 'unknown error'}`);
+              await presentFailure(failed.error ?? 'unknown error');
             } else {
               const changes = results.reduce((n, r) => n + r.pulledUpserts + r.pulledDeletes + r.pushed + r.pushedDeletes, 0);
               await this._api.window.showInformationMessage(changes > 0 ? `Synced — ${changes} change${changes === 1 ? '' : 's'}.` : 'Synced — already up to date.');
             }
           }
         } catch (err) {
-          await this._api.window.showErrorMessage(`Sync failed: ${err instanceof Error ? err.message : String(err)}`);
+          await presentFailure(err instanceof Error ? err.message : String(err));
         } finally {
           syncBtn.classList.remove('planner-iconbtn--busy');
           syncBtn.disabled = false;
