@@ -27,6 +27,7 @@ import {
   type WidgetPlacement,
   type WidgetTypeRegistration,
 } from './dashboardTypes.js';
+import { renderMarkdownToDom } from './widgets/markdownRenderer.js';
 
 // ─── Minimal local API shape (avoids cross-tool import) ──────────────────────
 
@@ -1373,6 +1374,35 @@ class DashboardEditorPane implements IDisposable {
         ta.value = String(current[name] ?? field.default ?? '');
         if (field.placeholder) ta.placeholder = field.placeholder;
         block.appendChild(ta);
+        inputs.set(name, () => ta.value);
+      } else if (field.type === 'markdown') {
+        addLabelAndHint();
+        // Live-preview markdown editor: a textarea whose formatted result
+        // renders beneath it as you type. Reuses the dashboard's shared
+        // markdown renderer, so the input reads the way the widget output will.
+        const wrap = document.createElement('div');
+        wrap.className = 'dashboard-field__markdown';
+        const ta = document.createElement('textarea');
+        ta.className = 'dashboard-field__textarea dashboard-field__markdown-input';
+        ta.value = String(current[name] ?? field.default ?? '');
+        if (field.placeholder) ta.placeholder = field.placeholder;
+        const preview = document.createElement('div');
+        // Reuse dashboard-md__body so the preview matches the widget's own
+        // rendered output exactly.
+        preview.className = 'dashboard-field__markdown-preview dashboard-md__body';
+        let rafId = 0;
+        const renderPreview = (): void => {
+          rafId = 0;
+          preview.replaceChildren(renderMarkdownToDom(ta.value));
+          preview.classList.toggle('is-empty', ta.value.trim() === '');
+        };
+        ta.addEventListener('input', () => {
+          if (!rafId) rafId = requestAnimationFrame(renderPreview);
+        });
+        renderPreview();
+        wrap.appendChild(ta);
+        wrap.appendChild(preview);
+        block.appendChild(wrap);
         inputs.set(name, () => ta.value);
       } else if (field.type === 'string-list') {
         addLabelAndHint();

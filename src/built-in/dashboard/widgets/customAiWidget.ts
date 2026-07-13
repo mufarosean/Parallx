@@ -47,7 +47,7 @@ export const CUSTOM_AI_WIDGET: WidgetTypeRegistration<CustomAiConfig> = {
   configSchema: {
     fields: {
       prompt: {
-        type: 'textarea',
+        type: 'markdown',
         label: 'Prompt',
         description: 'What should the AI gather or write? It runs in your active chat session with all its tools.',
         placeholder: 'e.g. "Summarize my unread email into a short bulleted list."',

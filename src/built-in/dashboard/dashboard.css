@@ -1188,6 +1188,29 @@
   color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 80%, transparent);
 }
 .dashboard-md__error strong { display: block; margin-bottom: 4px; color: var(--px-danger); font-weight: 600; }
+
+/* ── Live-preview markdown config field (widget settings drawer) ── */
+.dashboard-field__markdown {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.dashboard-field__markdown-input {
+  min-height: 96px;
+  resize: vertical;
+}
+.dashboard-field__markdown-preview {
+  border: 1px solid var(--px-divider);
+  border-radius: var(--px-radius-md, 6px);
+  background: var(--px-bg-inset);
+  padding: 10px 12px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+/* Nothing typed yet → hide the box; just show the textarea. */
+.dashboard-field__markdown-preview.is-empty { display: none; }
+/* Trim the trailing margin of the last rendered block. */
+.dashboard-field__markdown-preview > :last-child { margin-bottom: 0; }
 .dashboard-md__error p { margin: 0; line-height: 1.55; }
 
 /* ── Live (AI HTML) widget ──────────────────────────────────────────────────

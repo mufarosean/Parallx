@@ -40,7 +40,7 @@ export interface WidgetSizeBounds {
 
 // ─── Config schema (form-driven) ─────────────────────────────────────────────
 
-export type WidgetConfigFieldType = 'string' | 'number' | 'boolean' | 'enum' | 'textarea' | 'string-list';
+export type WidgetConfigFieldType = 'string' | 'number' | 'boolean' | 'enum' | 'textarea' | 'markdown' | 'string-list';
 
 export interface WidgetConfigField {
   readonly type: WidgetConfigFieldType;
