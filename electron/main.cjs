@@ -154,7 +154,12 @@ try { app.setPath('logs', path.join(APP_ROOT, 'data', 'logs')); } catch { /* ign
 // One database owner per user-data root. Multiple Parallx instances can hold
 // different in-memory Canvas documents and autosave stale content over each
 // other, which no renderer-local revision guard can prevent.
-const HAS_SINGLE_INSTANCE_LOCK = app.requestSingleInstanceLock({ userData: USER_DATA_DIR });
+// Test mode is exempt: the e2e harness launches Electron against the shared
+// user-data dir (and can overlap a dev instance), and must never be quit by
+// the lock.
+const HAS_SINGLE_INSTANCE_LOCK = process.env.PARALLX_TEST_MODE === '1'
+  ? true
+  : app.requestSingleInstanceLock({ userData: USER_DATA_DIR });
 if (!HAS_SINGLE_INSTANCE_LOCK) {
   app.quit();
 } else {
