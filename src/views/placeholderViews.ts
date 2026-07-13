@@ -247,8 +247,13 @@ export const outputViewDescriptor: IViewDescriptor = ViewDescriptorBuilder
 export const allPlaceholderViewDescriptors: readonly IViewDescriptor[] = [
   explorerViewDescriptor,
   searchViewDescriptor,
-  terminalViewDescriptor,
-  outputViewDescriptor,
+  // view.terminal / view.output are NOT pre-registered here anymore (M86).
+  // Both are declared in their tools' manifests; pre-registering a core
+  // placeholder made the workbench materialize an EMPTY placeholder instance
+  // at startup that the tool's later registerViewProvider could never
+  // replace — the Console tab rendered as a permanent void. The
+  // ViewContributionProcessor owns their whole lifecycle now (waiting
+  // placeholder → live content), same as Indexing / Diagnostics / Autonomy.
 ];
 
 // ─── Auxiliary Bar Views ────────────────────────────────────────────────────

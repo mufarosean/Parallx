@@ -137,6 +137,7 @@ import { WorkbenchContributionHandler } from './workbenchContributionHandler.js'
 import * as ExplorerTool from '../built-in/explorer/main.js';
 import * as SearchTool from '../built-in/search/main.js';
 import * as WelcomeTool from '../built-in/welcome/main.js';
+import * as TerminalTool from '../built-in/terminal/main.js';
 import * as OutputTool from '../built-in/output/main.js';
 import * as IndexingLogTool from '../built-in/indexing-log/main.js';
 import * as ToolGalleryTool from '../built-in/tool-gallery/main.js';
@@ -156,6 +157,7 @@ import {
   SEARCH_MANIFEST,
   TEXT_EDITOR_MANIFEST,
   WELCOME_MANIFEST,
+  TERMINAL_MANIFEST,
   OUTPUT_MANIFEST,
   INDEXING_LOG_MANIFEST,
   TOOL_GALLERY_MANIFEST,
@@ -2079,10 +2081,11 @@ export class Workbench extends Layout {
   private _setupPanelViews(): ViewContainer {
     const container = new ViewContainer('panel');
 
-    const terminalView = this._viewManager.createViewSync('view.terminal')!;
-    const outputView = this._viewManager.createViewSync('view.output')!;
-    container.addView(terminalView);
-    container.addView(outputView);
+    // No eager view creation here (M86): every panel view (Terminal, Output,
+    // Indexing, Diagnostics, Autonomy Log) is a manifest contribution added
+    // by the contribution handler when its tool activates. Eagerly creating
+    // view.terminal / view.output from core placeholder descriptors froze
+    // them as empty voids the tools' registerViewProvider could never fill.
 
     // Cache panel views slot (note: also set in _initializeParts via contributionHandler)
     const panelViewsSlot = this._panel.element.querySelector('.panel-views') as HTMLElement;
@@ -2889,6 +2892,9 @@ export class Workbench extends Layout {
       { manifest: SEARCH_MANIFEST, module: SearchTool },
       { manifest: TEXT_EDITOR_MANIFEST, module: FileEditorTool },
       { manifest: WELCOME_MANIFEST, module: WelcomeTool },
+      // Terminal before Output so the panel tab order reads
+      // Terminal · Output · Indexing · AI Diagnostics · Autonomy Log.
+      { manifest: TERMINAL_MANIFEST, module: TerminalTool },
       { manifest: OUTPUT_MANIFEST, module: OutputTool },
       { manifest: INDEXING_LOG_MANIFEST, module: IndexingLogTool },
       { manifest: DIAGNOSTICS_MANIFEST, module: DiagnosticsTool },

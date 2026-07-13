@@ -151,6 +151,21 @@ try { app.setPath('crashDumps', path.join(APP_ROOT, 'data', 'crash-dumps')); } c
 // and by some native modules. Pin it to be safe.
 try { app.setPath('logs', path.join(APP_ROOT, 'data', 'logs')); } catch { /* ignore */ }
 
+// One database owner per user-data root. Multiple Parallx instances can hold
+// different in-memory Canvas documents and autosave stale content over each
+// other, which no renderer-local revision guard can prevent.
+const HAS_SINGLE_INSTANCE_LOCK = app.requestSingleInstanceLock({ userData: USER_DATA_DIR });
+if (!HAS_SINGLE_INSTANCE_LOCK) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  });
+}
+
 setupStorageHandlers(ipcMain, APP_ROOT);
 setupWebFetchBridge(ipcMain, APP_ROOT, _readSecretString);
 setupGoogleSyncBridge(ipcMain, APP_ROOT, {
@@ -629,6 +644,7 @@ ipcMain.handle('editableMenu:addToDictionary', (event, word) => {
 });
 
 app.whenReady().then(async () => {
+  if (!HAS_SINGLE_INSTANCE_LOCK) return;
   // ── M53: Migrate tools from ~/.parallx/tools/ → data/extensions/ ──
   const oldToolsDir = path.join(app.getPath('home'), '.parallx', 'tools');
   try {
