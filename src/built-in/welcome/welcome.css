@@ -1,171 +1,159 @@
-/* ── Welcome Page ────────────────────────────────────────────────────────── */
+/* welcome.css — Welcome page (M86 surface refresh, item 4)
+ *
+ * Cohesion pass: migrated off dead --parallx-fontSize-* tokens and raw
+ * --vscode grays onto the --px visual-identity system, so the first screen a
+ * user sees reads like the rest of the app in both light and dark.
+ */
 
-/* Container — full-height centered layout */
 .welcome-container {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   height: 100%;
-  padding: 40px;
+  padding: var(--px-space-8, 32px) var(--px-space-6, 24px);
   overflow-y: auto;
-  background: var(--vscode-editor-background, #1e1e1e);
-  color: var(--vscode-foreground, #cccccc);
-  font-family: var(--parallx-fontFamily-ui);
+  background: var(--px-bg);
+  color: var(--px-text);
+  font-size: var(--px-text-base);
 }
 
 .welcome-wrapper {
-  max-width: 700px;
+  max-width: 720px;
   width: 100%;
   text-align: center;
 }
 
-/* Logo */
+/* Logo — adopts the theme accent so the brand mark matches the app identity. */
 .welcome-logo {
-  margin-bottom: 12px;
+  margin-bottom: var(--px-space-3);
   user-select: none;
   display: flex;
   justify-content: center;
+  color: var(--px-accent);
 }
 
-/* App title */
 .welcome-title {
   font-size: 28px;
   font-weight: 300;
-  color: var(--vscode-foreground, #e0e0e0);
-  margin: 0 0 4px;
+  letter-spacing: 0.2px;
+  color: var(--px-text);
+  margin: 0 0 2px;
 }
 
-/* Version label */
 .welcome-version {
-  font-size: var(--parallx-fontSize-md);
-  color: var(--vscode-descriptionForeground, #888);
-  margin-bottom: 32px;
+  font-size: var(--px-text-sm);
+  color: var(--px-text-faint);
+  margin-bottom: var(--px-space-6);
 }
 
-/* Divider */
 .welcome-divider {
   border: none;
-  border-top: 1px solid var(--vscode-panel-border, #333);
-  width: 60%;
-  margin: 0 auto 24px;
+  border-top: 1px solid var(--px-divider);
+  width: 100%;
+  margin: 0 auto var(--px-space-6);
 }
 
-/* Two-column layout */
+/* ── Two-column layout: Start (left) · Recent (right) ── */
 .welcome-columns {
   display: flex;
-  gap: 40px;
+  gap: var(--px-space-8, 32px);
   text-align: left;
-  margin-bottom: 32px;
+  margin-bottom: var(--px-space-6);
 }
 
-.welcome-col {
+.welcome-col { flex: 1; min-width: 0; }
+
+.welcome-section-title {
+  font-size: var(--px-text-base);
+  font-weight: 600;
+  color: var(--px-text);
+  margin: 0 0 var(--px-space-2);
+}
+.welcome-section-title--help,
+.welcome-section-title--ai { margin-top: var(--px-space-5); }
+
+/* ── Action rows (Start / Help / AI Quick Start) ── */
+.welcome-action-row {
+  display: flex;
+  align-items: center;
+  gap: var(--px-space-2);
+  padding: 5px var(--px-space-2);
+  margin: 0 calc(-1 * var(--px-space-2));
+  border-radius: var(--px-radius-sm);
+  font-size: var(--px-text-base);
+  cursor: pointer;
+}
+.welcome-action-row:hover { background: var(--px-surface-hover); }
+
+.welcome-action-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--px-text-muted);
+}
+.welcome-action-row:hover .welcome-action-icon { color: var(--px-accent); }
+
+.welcome-action-text {
+  color: var(--px-text);
   flex: 1;
   min-width: 0;
 }
 
-/* Section headings (Start, Help, Recent) */
-.welcome-section-title {
-  font-size: var(--parallx-fontSize-xl);
-  font-weight: 600;
-  color: var(--vscode-foreground, #e0e0e0);
-  margin: 0 0 12px;
-}
-
-.welcome-section-title--help {
-  margin-top: 20px;
-}
-
-.welcome-section-title--ai {
-  margin-top: 20px;
-}
-
-/* ── Action rows (start items, help items) ────────────────────────────── */
-
-.welcome-action-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 0;
-  font-size: var(--parallx-fontSize-md);
-  cursor: pointer;
-}
-
-.welcome-action-row:hover {
-  background: var(--vscode-list-hoverBackground, #2a2d2e);
-}
-
-.welcome-action-icon {
-  font-size: var(--parallx-fontSize-xl);
-}
-
-.welcome-action-text {
-  color: var(--vscode-textLink-foreground, #3794ff);
-}
-
 .welcome-action-hint {
-  color: var(--vscode-descriptionForeground, #888);
-  font-size: var(--parallx-fontSize-base);
+  color: var(--px-text-faint);
+  font-size: var(--px-text-xs);
+  font-variant-numeric: tabular-nums;
   margin-left: auto;
 }
 
-/* ── Recent section ───────────────────────────────────────────────────── */
-
-/* Category labels (Workspaces / Files) */
+/* ── Recent section ── */
 .welcome-category-label {
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-xs);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: var(--vscode-descriptionForeground, #888);
-  margin-bottom: 6px;
+  color: var(--px-text-faint);
+  margin-bottom: var(--px-space-1);
 }
+.welcome-category-label--files { margin-top: var(--px-space-3); }
 
-.welcome-category-label--files {
-  margin-top: 12px;
-}
-
-/* Empty placeholder */
 .welcome-empty {
-  font-size: var(--parallx-fontSize-md);
-  color: var(--vscode-descriptionForeground, #888);
-  padding: 4px 0;
+  font-size: var(--px-text-sm);
+  color: var(--px-text-faint);
+  padding: var(--px-space-1) 0;
 }
 
-/* Recent item rows */
 .welcome-recent-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 3px 4px;
-  font-size: var(--parallx-fontSize-md);
+  gap: var(--px-space-2);
+  padding: 4px var(--px-space-2);
+  margin: 0 calc(-1 * var(--px-space-2));
+  font-size: var(--px-text-sm);
   cursor: pointer;
-  border-radius: var(--parallx-radius-sm);
+  border-radius: var(--px-radius-sm);
 }
-
-.welcome-recent-row:hover {
-  background: var(--vscode-list-hoverBackground, #2a2d2e);
-}
+.welcome-recent-row:hover { background: var(--px-surface-hover); }
 
 .welcome-recent-icon {
-  font-size: var(--parallx-fontSize-lg);
+  display: inline-flex;
+  align-items: center;
   flex-shrink: 0;
+  color: var(--px-text-muted);
 }
 
-.welcome-recent-text-wrap {
-  min-width: 0;
-  overflow: hidden;
-}
+.welcome-recent-text-wrap { min-width: 0; overflow: hidden; }
 
 .welcome-recent-name {
-  color: var(--vscode-textLink-foreground, #3794ff);
+  color: var(--px-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .welcome-recent-detail {
-  color: var(--vscode-descriptionForeground, #888);
-  font-size: var(--parallx-fontSize-sm);
+  color: var(--px-text-faint);
+  font-size: var(--px-text-xs);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -173,8 +161,8 @@
 
 /* Footer */
 .welcome-footer {
-  font-size: var(--parallx-fontSize-base);
-  color: var(--vscode-descriptionForeground, #555);
-  margin-top: 24px;
+  font-size: var(--px-text-xs);
+  color: var(--px-text-faint);
+  margin-top: var(--px-space-6);
   text-align: center;
 }

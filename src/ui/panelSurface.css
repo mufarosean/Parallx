@@ -1,0 +1,137 @@
+/* panelSurface.css — one shared surface language for the bottom-panel tools
+ * (M86 surface refresh, item 2)
+ *
+ * Terminal (Console), Output, Indexing, AI Diagnostics, and Autonomy Log used
+ * to each ship a bespoke toolbar and dead --parallx-fontSize-* tokens (never
+ * defined → font-size silently inherited). This replaces all of that with one
+ * --px-token language: a quiet toolbar, a scrollable body, monospace log rows,
+ * and a real empty state. Colors flow through the M83 --px system directly, so
+ * every panel reads as one app in both light and dark.
+ */
+
+.px-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--px-bg);
+  color: var(--px-text);
+  font-size: var(--px-text-base);
+}
+
+/* ── Toolbar ─────────────────────────────────────────────────────────────── */
+
+.px-panel-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--px-space-1);
+  flex-shrink: 0;
+  min-height: 30px;
+  padding: 0 var(--px-space-2);
+  border-bottom: 1px solid var(--px-divider);
+}
+
+.px-panel-toolbar-title {
+  font-size: var(--px-text-xs);
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--px-text-muted);
+  user-select: none;
+  white-space: nowrap;
+}
+
+/* A live status string (e.g. "Indexing pages… 12/40"). Truncates before the
+   toolbar buttons so it never pushes them off the edge. */
+.px-panel-toolbar-status {
+  min-width: 0;
+  flex-shrink: 1;
+  font-size: var(--px-text-xs);
+  color: var(--px-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.px-panel-toolbar-spacer { flex: 1 1 auto; min-width: 0; }
+
+.px-panel-toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--px-space-1);
+  height: 22px;
+  min-width: 22px;
+  padding: 0 5px;
+  border: none;
+  background: transparent;
+  color: var(--px-text-muted);
+  border-radius: var(--px-radius-sm);
+  cursor: pointer;
+  font-size: var(--px-text-xs);
+  transition: background var(--px-dur-fast, 120ms) ease, color var(--px-dur-fast, 120ms) ease;
+}
+.px-panel-toolbar-btn:hover { background: var(--px-surface-hover); color: var(--px-text); }
+.px-panel-toolbar-btn.is-active { background: var(--px-accent-soft); color: var(--px-accent); }
+.px-panel-toolbar-btn svg { width: 15px; height: 15px; }
+
+/* ── Body / scroll region ────────────────────────────────────────────────── */
+
+.px-panel-body {
+  position: relative;   /* anchors the empty-state overlay */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* ── Log rows (monospace stream) ─────────────────────────────────────────── */
+
+.px-panel-log { padding: var(--px-space-1) 0; }
+
+.px-panel-log-row {
+  padding: 1px var(--px-space-2);
+  font-family: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: var(--px-text-sm);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--px-text-secondary);
+}
+.px-panel-log-row.is-warn { color: var(--px-warning); }
+.px-panel-log-row.is-error { color: var(--px-danger); }
+
+/* ── Empty state ─────────────────────────────────────────────────────────── */
+
+.px-panel-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--px-space-2);
+  padding: var(--px-space-6);
+  text-align: center;
+  user-select: none;
+  pointer-events: none;
+}
+
+.px-panel-empty-icon {
+  display: flex;
+  color: var(--px-text-faint);
+}
+.px-panel-empty-icon svg { width: 30px; height: 30px; stroke-width: 1.5; }
+
+.px-panel-empty-title {
+  font-size: var(--px-text-sm);
+  color: var(--px-text-muted);
+}
+
+.px-panel-empty-hint {
+  font-size: var(--px-text-xs);
+  color: var(--px-text-faint);
+  max-width: 34ch;
+  line-height: 1.5;
+}

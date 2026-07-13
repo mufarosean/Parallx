@@ -7,6 +7,7 @@ import './output.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { $ } from '../../ui/dom.js';
+import { createPanelToolbarButton, createPanelEmptyState } from '../../ui/panelSurface.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -37,6 +38,7 @@ interface OutputChannel {
 const logEntries: LogEntry[] = [];
 let showTimestamps = true;
 let listEl: HTMLElement | null = null;
+let emptyEl: HTMLElement | null = null;
 let outputChannel: OutputChannel | null = null;
 
 interface LogEntry {
@@ -103,16 +105,15 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       console.warn = origWarn;
       console.error = origError;
       listEl = null;
+      emptyEl = null;
     },
   });
-
-  // Seed with initial entry
-  addEntry('info', 'Output panel ready');
 }
 
 export function deactivate(): void {
   outputChannel = null;
   listEl = null;
+  emptyEl = null;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -129,7 +130,9 @@ function refreshList(): void {
   listEl.innerHTML = '';
   for (const entry of logEntries) {
     const row = $('div');
-    row.classList.add('output-row', `output-${entry.source}`);
+    row.className = 'px-panel-log-row';
+    if (entry.source === 'warn') row.classList.add('is-warn');
+    else if (entry.source === 'error') row.classList.add('is-error');
 
     let text = '';
     if (showTimestamps) {
@@ -143,55 +146,76 @@ function refreshList(): void {
     listEl.appendChild(row);
   }
 
+  if (emptyEl) emptyEl.hidden = logEntries.length > 0;
+
   // Auto-scroll to bottom
   listEl.scrollTop = listEl.scrollHeight;
 }
 
 function renderOutputView(container: HTMLElement): IDisposable {
-  container.classList.add('output-container');
+  container.classList.add('px-panel');
 
-  // Toolbar
+  // ── Toolbar ──
   const toolbar = $('div');
-  toolbar.classList.add('output-toolbar');
+  toolbar.className = 'px-panel-toolbar';
 
   const title = $('span');
-  title.classList.add('output-toolbar-title');
-  title.textContent = 'OUTPUT';
+  title.className = 'px-panel-toolbar-title';
+  title.textContent = 'Output';
   toolbar.appendChild(title);
 
-  const tsBtn = $('button');
-  tsBtn.classList.add('output-toolbar-btn');
-  tsBtn.textContent = '⏱ Timestamps';
-  tsBtn.title = 'Toggle timestamps';
-  tsBtn.addEventListener('click', () => {
-    showTimestamps = !showTimestamps;
-    refreshList();
+  const spacer = $('div');
+  spacer.className = 'px-panel-toolbar-spacer';
+  toolbar.appendChild(spacer);
+
+  const tsBtn = createPanelToolbarButton({
+    icon: 'clock',
+    title: 'Toggle timestamps',
+    onClick: () => {
+      showTimestamps = !showTimestamps;
+      tsBtn.classList.toggle('is-active', showTimestamps);
+      refreshList();
+    },
   });
+  tsBtn.classList.toggle('is-active', showTimestamps);
   toolbar.appendChild(tsBtn);
 
-  const clearBtn = $('button');
-  clearBtn.classList.add('output-toolbar-btn');
-  clearBtn.textContent = 'Clear';
-  clearBtn.title = 'Clear output';
-  clearBtn.addEventListener('click', () => {
-    logEntries.length = 0;
-    refreshList();
-  });
-  toolbar.appendChild(clearBtn);
+  toolbar.appendChild(createPanelToolbarButton({
+    icon: 'eraser',
+    title: 'Clear output',
+    onClick: () => {
+      logEntries.length = 0;
+      refreshList();
+    },
+  }));
 
   container.appendChild(toolbar);
 
-  // Log list
+  // ── Body: scrollable log + empty-state overlay ──
+  const body = $('div');
+  body.className = 'px-panel-body';
+
   const list = $('div');
-  list.classList.add('output-list');
-  container.appendChild(list);
+  list.className = 'px-panel-log';
+  body.appendChild(list);
+
+  const empty = createPanelEmptyState({
+    icon: 'scroll-text',
+    title: 'No output yet',
+    hint: 'Log messages from the app and its tools show up here.',
+  });
+  body.appendChild(empty);
+
+  container.appendChild(body);
 
   listEl = list;
+  emptyEl = empty;
   refreshList();
 
   return {
     dispose() {
       listEl = null;
+      emptyEl = null;
       container.innerHTML = '';
     },
   };

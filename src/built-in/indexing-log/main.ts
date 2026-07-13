@@ -14,6 +14,7 @@ import type { IIndexingPipelineService as IndexingPipelineServiceShape } from '.
 import type { IndexingProgress, IndexingSourceResult } from '../../services/indexingPipeline.js';
 
 import { getIcon, getFileTypeIcon } from '../../ui/iconRegistry.js';
+import { createPanelToolbarButton, createPanelEmptyState } from '../../ui/panelSurface.js';
 
 // ── SVG Icons — from the central Lucide icon registry ────────────────────────
 
@@ -21,8 +22,6 @@ const ICON_CHECK = getIcon('check')!;
 const ICON_SKIP = getIcon('ban')!;
 const ICON_ERROR = getIcon('close')!;
 const ICON_PAGE = getIcon('page')!;
-const ICON_CLEAR = getIcon('circle-x')!;
-const ICON_FILTER = getIcon('db-filter')!;
 
 // ── Local API type ───────────────────────────────────────────────────────────
 
@@ -268,42 +267,45 @@ function updatePhaseHeader(progress: IndexingProgress): void {
 // ── View Rendering ───────────────────────────────────────────────────────────
 
 function renderIndexingLogView(container: HTMLElement): IDisposable {
-  container.classList.add('indexing-log-container');
+  container.classList.add('indexing-log-container', 'px-panel');
 
-  // ── Header bar ──
-  const header = $('div.indexing-log-header');
+  // ── Toolbar ──
+  const header = $('div');
+  header.className = 'px-panel-toolbar';
 
-  const phaseSpan = $('span.indexing-log-phase');
+  const phaseSpan = $('span');
+  phaseSpan.className = 'px-panel-toolbar-status indexing-log-phase';
   phaseSpan.textContent = `Status: ${currentPhaseLabel}`;
   header.appendChild(phaseSpan);
 
-  // Spacer
-  header.appendChild($('span.indexing-log-spacer'));
+  const spacer = $('div');
+  spacer.className = 'px-panel-toolbar-spacer';
+  header.appendChild(spacer);
 
-  // Filter button
-  const filterBtn = $('button.indexing-log-toolbar-btn');
-  filterBtn.innerHTML = ICON_FILTER;
-  filterBtn.title = 'Toggle: show errors only';
-  filterBtn.addEventListener('click', () => {
-    currentFilter = currentFilter === 'error' ? null : 'error';
-    filterBtn.classList.toggle('indexing-log-toolbar-btn--active', currentFilter === 'error');
-    refreshList();
+  const filterBtn = createPanelToolbarButton({
+    icon: 'db-filter',
+    title: 'Show errors only',
+    onClick: () => {
+      currentFilter = currentFilter === 'error' ? null : 'error';
+      filterBtn.classList.toggle('is-active', currentFilter === 'error');
+      refreshList();
+    },
   });
+  filterBtn.classList.toggle('is-active', currentFilter === 'error');
   header.appendChild(filterBtn);
 
-  // Clear button
-  const clearBtn = $('button.indexing-log-toolbar-btn');
-  clearBtn.innerHTML = ICON_CLEAR;
-  clearBtn.title = 'Clear log';
-  clearBtn.addEventListener('click', () => {
-    entries.length = 0;
-    totalCount = 0;
-    indexedCount = 0;
-    skippedCount = 0;
-    errorCount = 0;
-    refreshView();
-  });
-  header.appendChild(clearBtn);
+  header.appendChild(createPanelToolbarButton({
+    icon: 'eraser',
+    title: 'Clear log',
+    onClick: () => {
+      entries.length = 0;
+      totalCount = 0;
+      indexedCount = 0;
+      skippedCount = 0;
+      errorCount = 0;
+      refreshView();
+    },
+  }));
 
   container.appendChild(header);
 
@@ -330,6 +332,7 @@ function renderIndexingLogView(container: HTMLElement): IDisposable {
 
   // ── Scrollable log list ──
   const list = $('div.indexing-log-list');
+  list.classList.add('px-panel-body');
   container.appendChild(list);
 
   // Store refs
@@ -396,7 +399,15 @@ function refreshList(): void {
   }
 
   listEl.innerHTML = '';
-  listEl.appendChild(fragment);
+  if (filtered.length === 0) {
+    listEl.appendChild(createPanelEmptyState(
+      currentFilter === 'error'
+        ? { icon: 'check', title: 'No indexing errors', hint: 'Every source indexed cleanly.' }
+        : { icon: 'database', title: 'Nothing indexed yet', hint: 'Open a folder with documents and Parallx indexes them for search and AI context.' },
+    ));
+  } else {
+    listEl.appendChild(fragment);
+  }
 
   // Auto-scroll
   if (autoScroll) {

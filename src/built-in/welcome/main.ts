@@ -133,8 +133,8 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi, recentWorksp
   const logo = $('div');
   logo.classList.add('welcome-logo');
   logo.innerHTML = `<svg width="96" height="96" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <rect x="6" y="8" width="16" height="16" rx="1.5" transform="skewX(-8)" fill="#a21caf" opacity="0.45"/>
-    <rect x="10" y="6" width="16" height="16" rx="1.5" transform="skewX(-8)" fill="#a21caf"/>
+    <rect x="6" y="8" width="16" height="16" rx="1.5" transform="skewX(-8)" fill="currentColor" opacity="0.4"/>
+    <rect x="10" y="6" width="16" height="16" rx="1.5" transform="skewX(-8)" fill="currentColor"/>
   </svg>`;
   wrapper.appendChild(logo);
 
@@ -324,7 +324,7 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi, recentWorksp
   // Footer
   const footer = $('div');
   footer.classList.add('welcome-footer');
-  footer.textContent = 'Built-in tool — validates manifest loading, activation, editor API, commands, and state.';
+  footer.textContent = 'Tip: press Ctrl+Shift+P to open the Command Palette.';
   wrapper.appendChild(footer);
 
   container.appendChild(wrapper);

@@ -8,6 +8,7 @@ import './terminal.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { $ } from '../../ui/dom.js';
+import { createPanelToolbarButton, createPanelEmptyState } from '../../ui/panelSurface.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -45,6 +46,8 @@ interface ElectronTerminalBridge {
 // ─── State ───────────────────────────────────────────────────────────────────
 
 let _outputEl: HTMLElement | null = null;
+let _scrollEl: HTMLElement | null = null;
+let _emptyEl: HTMLElement | null = null;
 let _terminalId: string | null = null;
 let _unsubData: (() => void) | null = null;
 let _unsubExit: (() => void) | null = null;
@@ -68,6 +71,17 @@ function stripAnsi(text: string): string {
   return text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
 }
 
+/** Toggle the empty-state overlay based on whether any output exists. */
+function syncTerminalEmpty(): void {
+  if (_emptyEl) { _emptyEl.hidden = (_outputEl?.textContent?.length ?? 0) > 0; }
+}
+
+/** Clear the visible output and restore the empty state. */
+function clearTerminalOutput(): void {
+  if (_outputEl) { _outputEl.textContent = ''; }
+  syncTerminalEmpty();
+}
+
 /** Append text to the output element, auto-scroll, and trim excess lines. */
 function appendOutput(text: string): void {
   if (!_outputEl) { return; }
@@ -83,8 +97,19 @@ function appendOutput(text: string): void {
     _outputEl.textContent = content;
   }
 
-  // Auto-scroll to bottom
-  _outputEl.scrollTop = _outputEl.scrollHeight;
+  syncTerminalEmpty();
+
+  // Auto-scroll to bottom (the panel body is the scroll container).
+  const scroller = _scrollEl ?? _outputEl;
+  scroller.scrollTop = scroller.scrollHeight;
+}
+
+/** Lazy-spawn guard: at most one shell, created on first interaction. */
+let _spawning = false;
+async function ensureShell(): Promise<void> {
+  if (_terminalId || _spawning) return;
+  _spawning = true;
+  try { await spawnShell(); } finally { _spawning = false; }
 }
 
 /** Spawn the interactive shell. */
@@ -147,38 +172,53 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   const viewDisposable = api.views.registerViewProvider('view.terminal', {
     createView(container: HTMLElement): IDisposable {
       const root = $('div.parallx-terminal');
+      root.classList.add('px-panel');
 
       // ── Toolbar ──
-      const toolbar = $('div.parallx-terminal-toolbar');
+      const toolbar = $('div');
+      toolbar.className = 'px-panel-toolbar';
 
-      const clearBtn = document.createElement('button');
-      clearBtn.className = 'parallx-terminal-toolbar-btn';
-      clearBtn.title = 'Clear';
-      clearBtn.textContent = '⌫ Clear';
-      clearBtn.addEventListener('click', () => {
-        if (_outputEl) { _outputEl.textContent = ''; }
-      });
-      toolbar.appendChild(clearBtn);
+      const title = $('span');
+      title.className = 'px-panel-toolbar-title';
+      title.textContent = 'Terminal';
+      toolbar.appendChild(title);
 
-      const restartBtn = document.createElement('button');
-      restartBtn.className = 'parallx-terminal-toolbar-btn';
-      restartBtn.title = 'Restart Shell';
-      restartBtn.textContent = '↻ Restart';
-      restartBtn.addEventListener('click', () => {
-        if (_outputEl) { _outputEl.textContent = ''; }
-        void spawnShell();
-      });
-      toolbar.appendChild(restartBtn);
+      const spacer = $('div');
+      spacer.className = 'px-panel-toolbar-spacer';
+      toolbar.appendChild(spacer);
+
+      toolbar.appendChild(createPanelToolbarButton({
+        icon: 'eraser',
+        title: 'Clear',
+        onClick: () => clearTerminalOutput(),
+      }));
+      toolbar.appendChild(createPanelToolbarButton({
+        icon: 'rotate-cw',
+        title: 'Restart shell',
+        onClick: () => { clearTerminalOutput(); void spawnShell(); },
+      }));
 
       root.appendChild(toolbar);
 
-      // ── Output area ──
+      // ── Body: scrollable output + empty-state overlay ──
+      const body = $('div');
+      body.className = 'px-panel-body';
+
       const outputArea = $('div.parallx-terminal-output');
-      const welcome = $('div.parallx-terminal-welcome');
-      welcome.textContent = 'Terminal ready. Type a command below or use @terminal in chat.';
-      outputArea.appendChild(welcome);
-      root.appendChild(outputArea);
+      body.appendChild(outputArea);
+
+      const empty = createPanelEmptyState({
+        icon: 'square-terminal',
+        title: 'Terminal ready',
+        hint: 'Type a command below, or use @terminal in chat to give the agent shell access.',
+      });
+      body.appendChild(empty);
+
+      root.appendChild(body);
       _outputEl = outputArea;
+      _scrollEl = body;
+      _emptyEl = empty;
+      syncTerminalEmpty();
 
       // ── Input line ──
       const inputLine = $('div.parallx-terminal-input-line');
@@ -224,12 +264,13 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       root.appendChild(inputLine);
 
       // Focus on click anywhere in the terminal
-      outputArea.addEventListener('click', () => input.focus());
+      body.addEventListener('click', () => input.focus());
 
       container.appendChild(root);
 
-      // Spawn the shell
-      void spawnShell();
+      // Spawn the shell LAZILY on first interaction — the tab merely existing
+      // must not cost a shell process at every app start.
+      input.addEventListener('focus', () => { void ensureShell(); });
 
       return {
         dispose() {
@@ -241,6 +282,8 @@ export function activate(api: ParallxApi, context: ToolContext): void {
           }
           _terminalId = null;
           _outputEl = null;
+          _scrollEl = null;
+          _emptyEl = null;
           root.remove();
         },
       };
@@ -253,13 +296,13 @@ export function activate(api: ParallxApi, context: ToolContext): void {
 
   context.subscriptions.push(
     api.commands.registerCommand('terminal.clear', () => {
-      if (_outputEl) { _outputEl.textContent = ''; }
+      clearTerminalOutput();
     }),
   );
 
   context.subscriptions.push(
     api.commands.registerCommand('terminal.restart', () => {
-      if (_outputEl) { _outputEl.textContent = ''; }
+      clearTerminalOutput();
       void spawnShell();
     }),
   );

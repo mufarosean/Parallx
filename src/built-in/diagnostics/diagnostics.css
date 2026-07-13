@@ -1,159 +1,80 @@
-/* D3: Diagnostics panel styles — matches indexing-log visual style */
+/* diagnostics.css — AI Diagnostics panel
+ *
+ * Toolbar, scroll body, and empty state come from the shared bottom-panel
+ * surface (src/ui/panelSurface.css). Diagnostics-specific pieces — status
+ * badges, the "last checked" line, and result rows — live here on --px tokens.
+ */
 
-.diagnostics-container {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  background: var(--vscode-panel-background);
-  overflow: hidden;
-}
-
-/* ── Header ── */
-
-.diagnostics-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 8px;
-  background: var(--vscode-panel-background);
-  border-bottom: 1px solid var(--vscode-panel-border, #333);
-  flex-shrink: 0;
-}
-
+/* ── Status badges (in the toolbar) ── */
 .diagnostics-badge-bar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--px-space-3);
+  min-width: 0;
 }
-
 .diagnostics-badge {
-  font-size: var(--parallx-fontSize-sm);
-  color: var(--vscode-descriptionForeground, #999);
+  font-size: var(--px-text-xs);
+  color: var(--px-text-muted);
 }
+.diagnostics-badge--pass { color: var(--px-success); }
+.diagnostics-badge--warn { color: var(--px-warning); }
+.diagnostics-badge--fail { color: var(--px-danger); font-weight: 600; }
 
-.diagnostics-badge--pass { color: var(--vscode-testing-iconPassed, #73c991); }
-.diagnostics-badge--warn { color: var(--vscode-notificationsWarningIcon-foreground, #cca700); }
-.diagnostics-badge--fail { color: var(--vscode-notificationsErrorIcon-foreground, #f44747); font-weight: 600; }
-
-.diagnostics-spacer {
-  flex: 1;
-}
-
-.diagnostics-toolbar-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  background: none;
-  border: none;
-  color: var(--vscode-icon-foreground, #c5c5c5);
-  cursor: pointer;
-  border-radius: var(--parallx-radius-sm);
-  padding: 0;
-}
-
-.diagnostics-toolbar-btn:hover {
-  background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
-}
-
-.diagnostics-toolbar-btn svg {
-  width: 16px;
-  height: 16px;
-}
-
-.diagnostics-spinning svg {
-  animation: diagnostics-spin 0.8s linear infinite;
-}
-
+/* Spin the refresh icon while checks run. */
+.diagnostics-spinning svg { animation: diagnostics-spin 0.8s linear infinite; }
 @keyframes diagnostics-spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
 
 /* ── Status line ── */
-
 .diagnostics-status {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 3px 8px;
-  background: var(--vscode-panel-background);
-  border-bottom: 1px solid var(--vscode-panel-border, #2a2a2a);
+  gap: var(--px-space-2);
+  padding: 3px var(--px-space-2);
+  border-bottom: 1px solid var(--px-divider);
   flex-shrink: 0;
-  color: var(--vscode-descriptionForeground, #999);
-  font-size: var(--parallx-fontSize-sm);
+  color: var(--px-text-muted);
+  font-size: var(--px-text-xs);
 }
 
-/* ── List ── */
-
-.diagnostics-list {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-
-.diagnostics-empty {
-  padding: 24px;
-  text-align: center;
-  color: var(--vscode-descriptionForeground);
-  font-size: var(--parallx-fontSize-sm);
-}
-
-/* ── Row ── */
-
+/* ── Rows ── */
 .diagnostics-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 2px 8px;
-  font-family: var(--parallx-fontFamily-mono);
-  font-size: var(--parallx-fontSize-base);
-  border-bottom: 1px solid var(--vscode-panel-border, rgba(42, 42, 42, 0.5));
+  gap: var(--px-space-2);
+  padding: 2px var(--px-space-2);
+  font-family: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: var(--px-text-sm);
+  border-bottom: 1px solid var(--px-divider);
   min-height: 22px;
 }
-
-.diagnostics-row:hover {
-  background: var(--vscode-list-hoverBackground, rgba(42, 45, 46, 0.31));
-}
-
-.diagnostics-row--fail {
-  background: var(--vscode-inputValidation-errorBackground, rgba(244, 71, 71, 0.06));
-}
-
-.diagnostics-row--warn {
-  background: rgba(204, 167, 0, 0.04);
-}
-
-/* Row elements */
+.diagnostics-row:hover { background: var(--px-surface-hover); }
+.diagnostics-row--fail { background: var(--px-danger-soft); }
+.diagnostics-row--warn { background: var(--px-warning-soft); }
 
 .diagnostics-row-icon {
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  width: var(--parallx-icon-size-sm, 16px);
-  height: var(--parallx-icon-size-sm, 16px);
+  width: 16px;
+  height: 16px;
 }
-
-.diagnostics-row-icon svg {
-  width: var(--parallx-icon-size-sm, 16px);
-  height: var(--parallx-icon-size-sm, 16px);
-}
-
-.diagnostics-row--pass .diagnostics-row-icon { color: var(--vscode-testing-iconPassed, #73c991); }
-.diagnostics-row--fail .diagnostics-row-icon { color: var(--vscode-notificationsErrorIcon-foreground, #f44747); }
-.diagnostics-row--warn .diagnostics-row-icon { color: var(--vscode-notificationsWarningIcon-foreground, #cca700); }
+.diagnostics-row-icon svg { width: 16px; height: 16px; }
+.diagnostics-row--pass .diagnostics-row-icon { color: var(--px-success); }
+.diagnostics-row--fail .diagnostics-row-icon { color: var(--px-danger); }
+.diagnostics-row--warn .diagnostics-row-icon { color: var(--px-warning); }
 
 .diagnostics-row-name {
-  color: var(--vscode-foreground);
+  color: var(--px-text);
   flex-shrink: 0;
   white-space: nowrap;
 }
-
 .diagnostics-row-detail {
   flex: 1;
-  color: var(--vscode-descriptionForeground, #666);
-  font-size: var(--parallx-fontSize-sm);
+  color: var(--px-text-muted);
+  font-size: var(--px-text-xs);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

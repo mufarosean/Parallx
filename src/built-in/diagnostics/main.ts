@@ -9,13 +9,13 @@ import type { IDiagnosticResult } from '../../services/serviceTypes.js';
 import { IDiagnosticsService } from '../../services/serviceTypes.js';
 
 import { getIcon } from '../../ui/iconRegistry.js';
+import { createPanelToolbarButton, createPanelEmptyState } from '../../ui/panelSurface.js';
 
 // ── SVG Icons — from the central Lucide icon registry ────────────────────────
 
 const ICON_PASS = getIcon('check')!;
 const ICON_FAIL = getIcon('close')!;
 const ICON_WARN = getIcon('alert-triangle')!;
-const ICON_REFRESH = getIcon('refresh')!;
 
 // ── Local API type ───────────────────────────────────────────────────────────
 
@@ -100,27 +100,30 @@ export function deactivate(): void {
 const STATUS_ORDER: Record<string, number> = { fail: 0, warn: 1, pass: 2 };
 
 function renderDiagnosticsView(container: HTMLElement): IDisposable {
-  container.classList.add('diagnostics-container');
+  container.classList.add('diagnostics-container', 'px-panel');
 
-  // Header — summary counts + refresh button
-  const header = $('div.diagnostics-header');
+  // ── Toolbar — summary counts + refresh ──
+  const header = $('div');
+  header.className = 'px-panel-toolbar';
 
   const badgeBar = $('span.diagnostics-badge-bar');
   header.appendChild(badgeBar);
 
-  const spacer = $('span.diagnostics-spacer');
+  const spacer = $('div');
+  spacer.className = 'px-panel-toolbar-spacer';
   header.appendChild(spacer);
 
-  const refreshBtn = $('button.diagnostics-toolbar-btn');
-  refreshBtn.title = 'Re-run checks';
-  refreshBtn.innerHTML = ICON_REFRESH;
-  refreshBtn.addEventListener('click', async () => {
-    if (diagnosticsService) {
-      refreshBtn.classList.add('diagnostics-spinning');
-      currentResults = await diagnosticsService.runChecks();
-      refreshBtn.classList.remove('diagnostics-spinning');
-      renderResults();
-    }
+  const refreshBtn = createPanelToolbarButton({
+    icon: 'refresh',
+    title: 'Re-run checks',
+    onClick: async () => {
+      if (diagnosticsService) {
+        refreshBtn.classList.add('diagnostics-spinning');
+        currentResults = await diagnosticsService.runChecks();
+        refreshBtn.classList.remove('diagnostics-spinning');
+        renderResults();
+      }
+    },
   });
   header.appendChild(refreshBtn);
 
@@ -129,6 +132,7 @@ function renderDiagnosticsView(container: HTMLElement): IDisposable {
 
   // Results list
   const listContainer = $('div.diagnostics-list');
+  listContainer.classList.add('px-panel-body');
 
   container.appendChild(header);
   container.appendChild(statusLine);
@@ -163,9 +167,11 @@ function renderDiagnosticsView(container: HTMLElement): IDisposable {
     // List
     listContainer.textContent = '';
     if (results.length === 0) {
-      const empty = $('div.diagnostics-empty');
-      empty.textContent = 'No diagnostic results yet. Click refresh to run checks.';
-      listContainer.appendChild(empty);
+      listContainer.appendChild(createPanelEmptyState({
+        icon: 'activity',
+        title: 'No diagnostics yet',
+        hint: 'Checks run automatically — or hit refresh to run them now.',
+      }));
       return;
     }
 
