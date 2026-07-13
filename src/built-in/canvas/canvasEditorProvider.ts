@@ -1031,15 +1031,19 @@ class CanvasEditorPane implements IDisposable {
     this._blockSelection?.clear();
     this._pageChrome?.dismissPopups();
 
-    // M77 Phase 8.1 — flush any pending debounced save BEFORE we destroy
-    // the editor. The debounce timer can hold the user's last keystrokes
-    // for up to `_autoSaveMs`; if the pane is disposed (tab closed, app
-    // shutdown) inside that window, those bytes are otherwise dropped.
-    // Best-effort: a flush failure here can't be surfaced (the pane is
-    // going away), but the data service has its own retry queue.
-    if (this._pageId && this._dataService.hasPendingSave(this._pageId)) {
-      void this._dataService.flushPendingSaves().catch((err) => {
-        console.warn(`[CanvasEditorPane] Failed to flush pending saves on dispose for "${this._pageId}":`, err);
+    // M86 — on close, commit the editor's final content as the page's LATEST
+    // version and snapshot it into version history ("what you closed with is
+    // saved"). getJSON is captured synchronously here, before the editor is
+    // destroyed below; commitPageClose then flushes any pending debounced save,
+    // persists this doc (blank-guarded so a stale/never-loaded pane can't blank
+    // a populated page), and checkpoints it. _initialContentLoaded gates the
+    // doc so a pane that never loaded content hands over nothing to persist.
+    if (this._pageId) {
+      const finalJson = (this._editor && this._initialContentLoaded)
+        ? JSON.stringify(this._editor.getJSON())
+        : undefined;
+      void this._dataService.commitPageClose(this._pageId, finalJson).catch((err) => {
+        console.warn(`[CanvasEditorPane] Failed to commit page close for "${this._pageId}":`, err);
       });
     }
 

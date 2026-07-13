@@ -235,4 +235,57 @@ describe('CanvasDataService — version history', () => {
     // Open editor was asked to reload.
     expect(reloads).toContain('p1');
   });
+
+  // ── Close-commit pipeline (the "pipeline of truth") ──────────────────────
+
+  it('commitPageClose persists the editor final content as the latest version AND checkpoints it', async () => {
+    await service.getPage('p1'); // editor loads → base = 'original'
+    await service.commitPageClose('p1', doc('final content at close'));
+
+    // Persisted to the pages table as the latest content.
+    expect(env.pages.get('p1')!.content).toContain('final content at close');
+    // And snapshotted into version history.
+    const revs = await service.listPageRevisions('p1');
+    expect(revs).toHaveLength(1);
+    const rev = await service.getPageRevision(revs[0].id);
+    expect(rev?.content).toContain('final content at close');
+  });
+
+  it('commitPageClose refuses to blank a populated page with a stale/empty editor doc', async () => {
+    await service.updatePage('p1', { content: doc('real content') });
+    await service.commitPageClose('p1', JSON.stringify({ type: 'doc', content: [{ type: 'paragraph' }] }));
+    expect(env.pages.get('p1')!.content).toContain('real content'); // NOT blanked
+  });
+
+  it('an AI edit is checkpointed immediately — surviving a close before the interval tick', async () => {
+    // The headline "AI edits a page → close → reopen → blank" repro: the AI
+    // write must land in history WITHOUT waiting for the interval checkpoint.
+    await service.updatePage('p1', { content: doc('AI authored body'), editSource: 'ai' });
+    await service.notifyExternalPageMutation('p1', 'updated');
+
+    // No flushCheckpoints() — the checkpoint must already exist.
+    const revs = await service.listPageRevisions('p1');
+    expect(revs).toHaveLength(1);
+    expect(revs[0].source).toBe('ai');
+
+    // User closes the page handing back the AI content; it survives.
+    await service.commitPageClose('p1', doc('AI authored body'));
+    const page = await service.getPage('p1');
+    expect(page!.content).toContain('AI authored body');
+  });
+
+  it('a restored revision survives a subsequent page close', async () => {
+    await service.updatePage('p1', { content: doc('v1') });
+    await service.flushCheckpoints();
+    const [rev1] = await service.listPageRevisions('p1');
+
+    await service.updatePage('p1', { content: doc('v2') });
+    await service.restorePageRevision('p1', rev1.id);
+    expect(env.pages.get('p1')!.content).toContain('v1');
+
+    // Editor reloaded v1; user closes handing v1 back — it stays restored.
+    await service.commitPageClose('p1', doc('v1'));
+    expect(env.pages.get('p1')!.content).toContain('v1');
+    expect(env.pages.get('p1')!.content).not.toContain('v2');
+  });
 });

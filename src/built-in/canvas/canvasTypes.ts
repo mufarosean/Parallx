@@ -336,6 +336,13 @@ export interface ICanvasDataService {
   flushPendingSaves(): Promise<void>;
   hasPendingSave(pageId: string): boolean;
   /**
+   * Commit a page's final state when its editor closes: flush any pending
+   * save, persist the editor's last content as the latest version (blank-
+   * guarded), then snapshot it into version history. `editorContent` is the
+   * pane's final serialized doc; omit it to only flush + checkpoint the DB.
+   */
+  commitPageClose(pageId: string, editorContent?: string): Promise<void>;
+  /**
    * Cancel any pending debounced auto-save for a page. Used by callers
    * that are about to mutate that page's content through a non-debounced
    * path (atomic helpers, externally-orchestrated transactions) so a

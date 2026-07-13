@@ -139,8 +139,17 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     });
     if (kind === 'updated') {
       // Version history: AI tools write content via raw SQL (bypassing
-      // updatePage) and announce it here — mark dirty so it's checkpointed.
+      // updatePage) and announce it here. Checkpoint the AI's result
+      // immediately so it always lands in history — not only on the interval
+      // tick, which a quick page close would miss. _captureRevision dedupes,
+      // so a repeat with identical content is a no-op.
       this._dirtyPages.set(pageId, 'ai');
+      try {
+        await this._captureRevision(pageId, 'ai', this._maxRevisionsPerPage());
+        this._dirtyPages.delete(pageId);
+      } catch (err) {
+        console.warn('[CanvasDataService] AI-edit checkpoint failed for', pageId, err);
+      }
       this._onRequestContentReload.fire(pageId);
     }
   }
@@ -2489,6 +2498,54 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
   /** Flush pending checkpoints immediately (e.g. on dispose / app close). */
   async flushCheckpoints(): Promise<void> {
     await this._checkpointDirtyPages();
+  }
+
+  /**
+   * Commit a page's final state when its editor closes: flush any pending
+   * save, persist the editor's last content as the latest version (blank-
+   * guarded, so a stale/never-loaded doc can't blank a populated page), then
+   * snapshot it into version history. This is the single "what you closed with
+   * is the truth" guarantee — restored and AI-authored content both survive a
+   * close instead of relying on the interval checkpoint firing first.
+   */
+  async commitPageClose(pageId: string, editorContent?: string): Promise<void> {
+    // 1. Land any debounced keystrokes still in flight (its own guards apply).
+    await this.flushPendingSaveNow(pageId);
+
+    // 2. Persist the editor's final doc as the latest version — unless it would
+    //    blank a populated page (never-loaded / stale pane) or it already IS the
+    //    committed content. A revision conflict means a newer external write has
+    //    won; keep that, don't clobber it.
+    if (editorContent !== undefined) {
+      const normalized = normalizeCanvasContentForStorage(editorContent);
+      if (
+        this._knownStoredContent.get(pageId) !== normalized.storedContent &&
+        !this._autoSaveWouldBlankPopulated(pageId, normalized.storedContent)
+      ) {
+        try {
+          const page = await this.updatePage(pageId, {
+            content: normalized.storedContent,
+            contentSchemaVersion: normalized.schemaVersion,
+            expectedRevision: this._knownRevisions.get(pageId),
+          });
+          this._knownRevisions.set(pageId, page.revision);
+        } catch (err) {
+          console.warn(`[CanvasDataService] commitPageClose persist skipped for "${pageId}":`, err);
+        }
+      }
+    }
+
+    // 3. Snapshot the final persisted state into version history (deduped).
+    const source = this._dirtyPages.get(pageId) ?? 'user';
+    this._dirtyPages.delete(pageId);
+    try {
+      await this._captureRevision(pageId, source, this._maxRevisionsPerPage());
+    } catch (err) {
+      // Leave it dirty so the interval checkpoint retries if close-time capture
+      // fails.
+      this._dirtyPages.set(pageId, source);
+      console.warn(`[CanvasDataService] commitPageClose checkpoint failed for "${pageId}":`, err);
+    }
   }
 
   /** Insert a checkpoint of the page's CURRENT content, deduped + pruned. */
