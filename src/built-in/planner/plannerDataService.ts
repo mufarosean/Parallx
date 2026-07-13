@@ -165,6 +165,20 @@ function instanceOriginalStart(id: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * Apply the local time-of-day of `timeSourceMs` onto the calendar date of
+ * `dateMs`. Google Tasks are date-only (the API discards the time), so a task's
+ * time lives only in Parallx — this keeps a timed task from collapsing to
+ * midnight when its date syncs, and carries the time onto a new date if the
+ * user moves the task on Google's side. Exported for unit tests.
+ */
+export function carryTimeOfDay(dateMs: number, timeSourceMs: number): number {
+  const t = new Date(timeSourceMs);
+  const d = new Date(dateMs);
+  d.setHours(t.getHours(), t.getMinutes(), t.getSeconds(), t.getMilliseconds());
+  return d.getTime();
+}
+
 // ─── Service ─────────────────────────────────────────────────────────────────
 
 export class PlannerDataService extends Disposable {
@@ -1017,11 +1031,21 @@ export class PlannerDataService extends Disposable {
     const sourceId = synced.sourceId;
     const existing = await this.getTaskBySource(provider, sourceId);
     const status: TaskStatus = synced.status ?? 'planned';
+    // Google Tasks are date-only (the API discards the time). The time-of-day
+    // lives ONLY in Parallx, so carry the existing local time onto whatever DATE
+    // Google returns — whether the date round-tripped unchanged or the user
+    // moved the task on Google's side. Without this a timed task collapses to
+    // midnight on every sync. `synced.dueAt` is already local midnight of the
+    // pulled calendar day (see parseGoogleTaskDue).
+    let dueAt: number | null = synced.dueAt ?? null;
+    if (existing?.dueAt != null && dueAt != null) {
+      dueAt = carryTimeOfDay(dueAt, existing.dueAt);
+    }
     const vals = [
       synced.title,
       synced.description ?? null,
       status,
-      synced.dueAt ?? null,
+      dueAt,
       synced.completedAt ?? (status === 'done' ? now : null),
       JSON.stringify(synced.tags ?? []),
       synced.calendarId ?? 'cal-tasks',

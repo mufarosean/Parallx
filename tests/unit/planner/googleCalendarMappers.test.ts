@@ -95,11 +95,23 @@ describe('mapPlannerEventToGoogle', () => {
 });
 
 describe('task mappers', () => {
-  it('maps needsAction → planned and parses due', () => {
+  it('maps needsAction → planned and parses due to the LOCAL calendar day', () => {
     const t = mapGoogleTaskToSynced({ id: 't1', title: 'Do', status: 'needsAction', due: '2026-07-01T00:00:00.000Z' }, 'cal-tasks');
     expect(t!.status).toBe('planned');
-    expect(t!.dueAt).toBe(Date.parse('2026-07-01T00:00:00.000Z'));
+    // Google's UTC-midnight date maps to local midnight of the SAME calendar
+    // day — not Date.parse of the UTC instant (which shifts a day in -offsets).
+    expect(t!.dueAt).toBe(parseAllDayDate('2026-07-01'));
     expect(t!.calendarId).toBe('cal-tasks');
+  });
+
+  it('round-trips a task due date without shifting the day (push → Google → pull)', () => {
+    // A task due July 1 at 14:30 LOCAL (Google Tasks can't store the time).
+    const localDue = parseAllDayDate('2026-07-01') + 14.5 * 3_600_000;
+    const body = mapPlannerTaskToGoogle(makeTask({ dueAt: localDue }));
+    const back = mapGoogleTaskToSynced({ id: 't1', status: 'needsAction', due: String(body.due) }, 'cal-tasks');
+    // Lands on the SAME local calendar day (not the day before), at local midnight.
+    expect(toAllDayDateStr(back!.dueAt!)).toBe('2026-07-01');
+    expect(back!.dueAt).toBe(parseAllDayDate('2026-07-01'));
   });
 
   it('maps completed → done with completedAt', () => {

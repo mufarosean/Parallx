@@ -82,6 +82,18 @@ export function parseAllDayDate(dateStr: string): number {
   return Date.parse(`${dateStr}T00:00:00`);
 }
 
+/**
+ * Parse Google Tasks' date-only `due` (RFC3339 anchored to 00:00:00 UTC) to
+ * LOCAL midnight of that calendar date. Parsing the UTC instant directly (the
+ * old bug) shifts the task to the PREVIOUS day in negative-offset timezones —
+ * a task created in Parallx jumped a day (and lost its time) after a sync
+ * round-trip. Only the calendar date is meaningful for a Google task.
+ */
+export function parseGoogleTaskDue(due: string): number {
+  const local = parseAllDayDate(due.slice(0, 10)); // 'YYYY-MM-DD'
+  return Number.isFinite(local) ? local : Date.parse(due);
+}
+
 /** First RRULE line out of Google's recurrence[] (EXDATE/RDATE dropped in v1). */
 export function extractRrule(recurrence: readonly string[] | undefined): string | null {
   if (!recurrence) return null;
@@ -218,7 +230,7 @@ export function mapGoogleTaskToSynced(item: GTask, plannerCalendarId: string): S
     title: item.title?.trim() || '(no title)',
     description: item.notes ?? null,
     status: done ? 'done' : 'planned',
-    dueAt: item.due ? Date.parse(item.due) : null,
+    dueAt: item.due ? parseGoogleTaskDue(item.due) : null,
     completedAt: item.completed ? Date.parse(item.completed) : null,
     calendarId: plannerCalendarId,
     updatedAt: item.updated ? Date.parse(item.updated) : Date.now(),
