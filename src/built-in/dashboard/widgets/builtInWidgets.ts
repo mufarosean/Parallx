@@ -11,6 +11,7 @@ import { NEWS_BRIEF_WIDGET } from './newsBriefWidget.js';
 import { CUSTOM_AI_WIDGET } from './customAiWidget.js';
 import { LIVE_WIDGET } from './liveWidget.js';
 import { IMAGE_WIDGET } from './imageWidget.js';
+import { VIDEO_WIDGET } from './videoWidget.js';
 import { AUTONOMY_ACTIVITY_WIDGET } from './autonomyActivityWidget.js';
 import { NOTES_WIDGET } from './notesWidget.js';
 import { TASKS_WIDGET } from './tasksWidget.js';
@@ -38,6 +39,7 @@ export function registerBuiltInDashboardWidgets(
     registry.registerWidgetType(CUSTOM_AI_WIDGET),
     registry.registerWidgetType(LIVE_WIDGET),
     registry.registerWidgetType(IMAGE_WIDGET),
+    registry.registerWidgetType(VIDEO_WIDGET),
     registry.registerWidgetType(AUTONOMY_ACTIVITY_WIDGET),
     registry.registerWidgetType(NOTES_WIDGET),
     registry.registerWidgetType(TASKS_WIDGET),

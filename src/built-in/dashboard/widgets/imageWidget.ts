@@ -16,9 +16,10 @@ type ImageFit = 'cover' | 'contain';
 interface ImageWidgetConfig {
   readonly fit: ImageFit;
   readonly rounded: boolean;
+  readonly url: string;
 }
 
-const DEFAULT_CONFIG: ImageWidgetConfig = { fit: 'cover', rounded: true };
+const DEFAULT_CONFIG: ImageWidgetConfig = { fit: 'cover', rounded: true, url: '' };
 
 const ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>';
 
@@ -32,6 +33,7 @@ function normalizeConfig(raw: unknown): ImageWidgetConfig {
   return {
     fit: cfg.fit === 'contain' ? 'contain' : 'cover',
     rounded: cfg.rounded !== false,
+    url: typeof cfg.url === 'string' ? cfg.url : '',
   };
 }
 
@@ -65,6 +67,17 @@ async function fileToBoundedDataUrl(file: File): Promise<string | null> {
     if (url.length <= MAX_DATA_URL_CHARS) return url;
   }
   return url.length <= MAX_DATA_URL_CHARS ? url : null;
+}
+
+/** Read a file to a data URL verbatim — preserves GIF/WebP/APNG animation
+ *  (never canvas-flattened). */
+function fileToDataUrl(file: File): Promise<string | null> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
 }
 
 function loadImage(file: File): Promise<HTMLImageElement | null> {
@@ -104,6 +117,12 @@ export const IMAGE_WIDGET: WidgetTypeRegistration<ImageWidgetConfig> = {
       rounded: {
         type: 'boolean',
         label: 'Rounded corners',
+      },
+      url: {
+        type: 'string',
+        label: 'Image URL (optional)',
+        description: 'Point at a remote image or GIF — animated GIFs play at full size, no upload needed. Leave blank to use an uploaded image.',
+        placeholder: 'https://…/animation.gif',
       },
     },
   },
@@ -145,18 +164,34 @@ export const IMAGE_WIDGET: WidgetTypeRegistration<ImageWidgetConfig> = {
     }
 
     function render(): void {
-      const has = typeof dataUrl === 'string' && dataUrl.startsWith('data:');
-      if (has) img.src = dataUrl as string;
+      // A remote URL wins when set; otherwise fall back to the uploaded image.
+      const url = config.url.trim();
+      const src = /^https?:\/\//i.test(url)
+        ? url
+        : (typeof dataUrl === 'string' && dataUrl.startsWith('data:') ? dataUrl : '');
+      const has = !!src;
+      if (has) img.src = src;
       img.style.display = has ? '' : 'none';
+      // The upload affordances only matter when there's no URL driving it.
+      const urlDriven = /^https?:\/\//i.test(url);
       empty.style.display = has ? 'none' : '';
-      replace.style.display = has ? '' : 'none';
+      replace.style.display = has && !urlDriven ? '' : 'none';
     }
 
     async function ingest(file: File | undefined | null): Promise<void> {
       if (!file || !file.type.startsWith('image/')) return;
       container.classList.add('iw--loading');
       try {
-        const next = await fileToBoundedDataUrl(file);
+        let next: string | null;
+        if (file.type === 'image/gif' || file.type === 'image/webp' || file.type === 'image/apng') {
+          // Preserve animation — never canvas-flatten. Only inline if it fits
+          // the cache budget; a bigger GIF should use the Image URL field.
+          const raw = await fileToDataUrl(file);
+          next = raw && raw.length <= MAX_DATA_URL_CHARS ? raw : null;
+          if (!next) console.warn('[ImageWidget] Animated image too large to embed (%d bytes) — use the Image URL field.', file.size);
+        } else {
+          next = await fileToBoundedDataUrl(file);
+        }
         if (!next) return;
         dataUrl = next;
         ctx.setCachedOutput(next);
@@ -188,6 +223,7 @@ export const IMAGE_WIDGET: WidgetTypeRegistration<ImageWidgetConfig> = {
     const configSub = ctx.onDidChangeConfig((next) => {
       config = normalizeConfig(next);
       applyConfig();
+      render(); // pick up a URL change (or its removal)
     });
 
     applyConfig();

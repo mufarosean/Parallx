@@ -507,10 +507,25 @@ async function createWindow() {
       nodeIntegration: false,
       sandbox: false,
       spellcheck: true,
+      // Enables <webview> for the dashboard Video widget's page fallback
+      // (embedding arbitrary video sites that block plain iframes). Every
+      // webview is hardened in will-attach-webview below.
+      webviewTag: true,
     },
   };
 
   mainWindow = new BrowserWindow(opts);
+
+  // Harden every <webview> the renderer attaches (dashboard Video widget page
+  // fallback): no Node, isolated, sandboxed, no inherited preload. It only ever
+  // loads a remote page to show its video — it must never touch app internals.
+  mainWindow.webContents.on('will-attach-webview', (_event, webPreferences) => {
+    webPreferences.nodeIntegration = false;
+    webPreferences.nodeIntegrationInSubFrames = false;
+    webPreferences.contextIsolation = true;
+    webPreferences.sandbox = true;
+    delete webPreferences.preload;
+  });
 
   // Tell Windows taskbar this is "Parallx", not "Electron"
   mainWindow.setAppDetails({

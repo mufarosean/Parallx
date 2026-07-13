@@ -1211,6 +1211,43 @@
 .dashboard-field__markdown-preview.is-empty { display: none; }
 /* Trim the trailing margin of the last rendered block. */
 .dashboard-field__markdown-preview > :last-child { margin-bottom: 0; }
+
+/* ── Video widget ── */
+.vw { width: 100%; height: 100%; }
+.vw__surface {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: #000;
+  overflow: hidden;
+  border-radius: inherit;
+}
+.vw__fill {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+}
+video.vw__fill { object-fit: contain; background: #000; }
+.vw--empty .vw__surface { background: var(--px-bg-inset); }
+.vw__empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--px-space-3);
+  padding: var(--px-space-6);
+  text-align: center;
+  color: var(--px-text-faint);
+}
+.vw__empty svg { width: 30px; height: 30px; color: var(--px-text-faint); }
+.vw__empty-text { display: flex; flex-direction: column; gap: 4px; max-width: 34ch; }
+.vw__empty-text strong { color: var(--px-text-muted); font-size: var(--px-text-sm); }
+.vw__empty-text span { color: var(--px-text-faint); font-size: var(--px-text-xs); line-height: 1.5; }
 .dashboard-md__error p { margin: 0; line-height: 1.55; }
 
 /* ── Live (AI HTML) widget ──────────────────────────────────────────────────
