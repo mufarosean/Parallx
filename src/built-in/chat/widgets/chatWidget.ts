@@ -115,6 +115,9 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
   // ── State ──
 
   private _isAtBottom = true;
+  /** Set when the user sends: the next render must land at the bottom, even if
+   *  a full rebuild reset the scroll and the stale _isAtBottom flag says no. */
+  private _pinBottomNextRender = false;
   private readonly _expandedTaskIds = new Set<string>();
   private _visionSyncRequestId = 0;
   private _responsiveLayoutObserver: ResizeObserver | undefined;
@@ -162,11 +165,6 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       this._buildTitleActions(titleActionsContainer);
     }
 
-    // M85 — Active plan card (the agent's durable working plan). Pinned
-    // between the title bar and the message list; hidden when no plan.
-    this._planCardContainer = $('div.parallx-chat-plan-card-container');
-    this._mainArea.appendChild(this._planCardContainer);
-
     // Message list (scrollable)
     this._messageListContainer = $('div.parallx-chat-message-list');
     this._mainArea.appendChild(this._messageListContainer);
@@ -182,6 +180,13 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     this._scrollBtn = $('div.parallx-chat-scroll-btn');
     this._scrollBtn.innerHTML = chatIcons.chevronDown;
     this._mainArea.appendChild(this._scrollBtn);
+
+    // M85 — Active plan card (the agent's durable working plan). Docked just
+    // above the input (VS Code-style), where the user's attention already is,
+    // instead of eating space at the top of the conversation. Hidden when no
+    // plan; collapsible via its header.
+    this._planCardContainer = $('div.parallx-chat-plan-card-container');
+    this._mainArea.appendChild(this._planCardContainer);
 
     // Input area (bottom-pinned)
     this._inputAreaContainer = $('div.parallx-chat-input-area');
@@ -589,6 +594,10 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       return;
     }
 
+    // The user just sent a message — the next render must land at the bottom
+    // so they see it, regardless of where they'd scrolled.
+    this._pinBottomNextRender = true;
+
     // Ensure we have a session (created sessions inherit the chosen context
     // window, so a first message never resets "Ctx" back to auto).
     const session = this.ensureSession();
@@ -945,6 +954,16 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       return;
     }
 
+    // Decide whether to stay pinned to the bottom BEFORE rendering. A new
+    // message changes the pair count, forcing the list renderer's full-rebuild
+    // path, which resets scrollTop to 0 — and the async scroll event hasn't
+    // updated _isAtBottom yet. So read the live scroll position here rather
+    // than trusting the flag, and always pin after the user sends.
+    const el = this._messageListContainer;
+    const stickToBottom = this._pinBottomNextRender
+      || (el.scrollHeight - el.scrollTop - el.clientHeight < 40);
+    this._pinBottomNextRender = false;
+
     // Delegate to the list renderer
     this._listRenderer.renderMessages(
       this._messageListContainer,
@@ -957,8 +976,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
 
     this._updateVisibility();
 
-    // Auto-scroll if user was at bottom
-    if (this._isAtBottom) {
+    if (stickToBottom) {
       this._scrollToBottom();
     }
   }

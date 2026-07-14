@@ -2740,7 +2740,9 @@
 /* ── M85: Active plan card (the agent's durable working plan) ──────────── */
 
 .parallx-chat-plan-card-container {
-  padding: 8px 12px 0;
+  /* Docked just above the input: small gap above (from the conversation) and
+     below (toward the input box). */
+  padding: 6px 12px 8px;
   flex-shrink: 0;
 }
 
