@@ -151,12 +151,6 @@
 .dashboard-reveal:hover .dashboard-reveal__actions {
   opacity: 1;
 }
-/* In edit mode the reveal strip stays fully visible so the active "Edit
-   layout" button (highlighted) is always discoverable while the header is
-   hidden — that's the only way back out of edit mode. */
-.dashboard-pane--edit .dashboard-reveal__actions {
-  opacity: 1;
-}
 .dashboard-btn--small {
   height: 28px;
   padding: 0 10px;
@@ -353,6 +347,27 @@
 }
 .dashboard-widget__drag:active { cursor: grabbing; }
 .dashboard-widget__drag:hover { color: var(--vscode-editor-foreground, #d4d4d4); }
+
+/* Move strip — the top edge; a hover-revealed grab bar that drags the widget.
+   Universal (every card has a top edge), so widgets without a title bar are
+   draggable too. The top-edge RESIZE is dropped in favour of this; the NW/NE
+   corners still resize the top. */
+.dashboard-widget__move {
+  position: absolute;
+  top: -3px;
+  left: 8px;
+  right: 8px;
+  height: 12px;
+  cursor: grab;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 140ms ease, background 140ms ease;
+  z-index: 3;
+  border-radius: 6px;
+}
+.dashboard-widget:hover .dashboard-widget__move { opacity: 1; pointer-events: auto; }
+.dashboard-widget__move:hover { background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 45%, transparent); }
+.dashboard-widget--dragging .dashboard-widget__move { cursor: grabbing; }
 
 .dashboard-widget__title {
   flex: 1 1 auto;
@@ -574,31 +589,11 @@
 }
 
 
-/* ── Edit mode chrome ───────────────────────────────────────────────────── */
-
-.dashboard-pane--edit .dashboard-widget {
-  border-color: color-mix(in srgb, var(--vscode-button-background, #0e639c) 30%, transparent);
-  border-style: dashed;
-  cursor: grab;
-}
-/* In edit mode the whole card is the drag surface, so don't let body content
-   (links, etc.) intercept the press. Header actions/resize stay interactive
-   because they live outside the body. */
-.dashboard-pane--edit .dashboard-widget__body {
-  pointer-events: none;
-}
-.dashboard-pane--edit .dashboard-widget__drag {
-  opacity: 1;
-  color: var(--vscode-button-background, #0e639c);
-}
-.dashboard-pane--edit .dashboard-widget__actions {
-  opacity: 1;
-}
-
-/* Resize handles: all four edges + corners, only interactive in edit mode.
-   Edges are thin strips along each side; corners are small squares that sit
-   on top of the edges. The visible corner "grip" only shows on the SE corner
-   (classic affordance), but every handle is draggable in edit mode. */
+/* ── Live-edit affordances (hover-revealed; no separate edit mode) ───────── */
+/* The grip + action buttons already reveal on widget hover (above). Resize
+   handles do the same — they're the widget's edges/corners, so they never
+   fight the body content the way a whole-card drag surface would. Drag is
+   grip-only, so the body stays fully interactive at all times. */
 .dashboard-widget__resize {
   position: absolute;
   opacity: 0;
@@ -622,21 +617,21 @@
     linear-gradient(135deg, transparent 50%, color-mix(in srgb, var(--vscode-button-background, #0e639c) 70%, transparent) 50%) center / 12px 12px no-repeat;
   border-bottom-right-radius: 12px;
 }
-.dashboard-pane--edit .dashboard-widget__resize {
+.dashboard-widget:hover .dashboard-widget__resize {
   opacity: 1;
   pointer-events: auto;
 }
-.dashboard-pane--edit .dashboard-widget__resize--se { opacity: 0.8; }
-.dashboard-pane--edit .dashboard-widget__resize--se:hover { opacity: 1; }
+.dashboard-widget:hover .dashboard-widget__resize--se { opacity: 0.8; }
+.dashboard-widget:hover .dashboard-widget__resize--se:hover { opacity: 1; }
 /* Edge/corner handles (besides SE) reveal a subtle accent line on hover so
    the user can see which side they're grabbing. */
-.dashboard-pane--edit .dashboard-widget__resize--n:hover,
-.dashboard-pane--edit .dashboard-widget__resize--s:hover { background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 55%, transparent); border-radius: 4px; }
-.dashboard-pane--edit .dashboard-widget__resize--e:hover,
-.dashboard-pane--edit .dashboard-widget__resize--w:hover { background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 55%, transparent); border-radius: 4px; }
-.dashboard-pane--edit .dashboard-widget__resize--ne:hover,
-.dashboard-pane--edit .dashboard-widget__resize--nw:hover,
-.dashboard-pane--edit .dashboard-widget__resize--sw:hover { background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 55%, transparent); border-radius: 4px; }
+.dashboard-widget:hover .dashboard-widget__resize--n:hover,
+.dashboard-widget:hover .dashboard-widget__resize--s:hover { background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 55%, transparent); border-radius: 4px; }
+.dashboard-widget:hover .dashboard-widget__resize--e:hover,
+.dashboard-widget:hover .dashboard-widget__resize--w:hover { background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 55%, transparent); border-radius: 4px; }
+.dashboard-widget:hover .dashboard-widget__resize--ne:hover,
+.dashboard-widget:hover .dashboard-widget__resize--nw:hover,
+.dashboard-widget:hover .dashboard-widget__resize--sw:hover { background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 55%, transparent); border-radius: 4px; }
 
 /* Ghost overlay shown while dragging / resizing — previews the snap target. */
 .dashboard-widget__ghost {

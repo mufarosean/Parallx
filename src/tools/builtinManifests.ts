@@ -470,8 +470,6 @@ export const DASHBOARD_MANIFEST: IToolManifest = {
         aiInvocable: true, aiDescription: 'Create a new dashboard page.' },
       { id: 'dashboard.addWidget', title: 'Dashboard: Add Widget…',
         aiInvocable: true, aiDescription: 'Open the widget picker on the active dashboard page.' },
-      { id: 'dashboard.toggleEditMode', title: 'Dashboard: Toggle Edit Layout',
-        aiInvocable: true, aiDescription: 'Toggle the dashboard between view mode and edit-layout mode.' },
       { id: 'dashboard.refreshAll', title: 'Dashboard: Refresh All Widgets',
         aiInvocable: true, aiDescription: 'Manually refresh every widget on the active dashboard page.' },
     ],

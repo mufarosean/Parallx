@@ -193,7 +193,6 @@ class DashboardEditorPane implements IDisposable {
   private _gridEl: HTMLElement | null = null;
   private _emptyEl: HTMLElement | null = null;
   private _pageId: string;
-  private _editMode = false;
   private _disposed = false;
   private _disposables: IDisposable[] = [];
 
@@ -256,18 +255,15 @@ class DashboardEditorPane implements IDisposable {
     // dashboards open simultaneously each install these but only the focused
     // one is in the DOM.
     const onAdd = () => { if (this._root?.isConnected) void this._openWidgetPicker(); };
-    const onToggle = () => { if (this._root?.isConnected) this._toggleEditMode(); };
     const onRefreshAll = () => {
       if (!this._root?.isConnected) return;
       for (const id of this._instances.keys()) void this._triggerManualRefresh(id);
     };
     document.addEventListener('parallx.dashboard.addWidget', onAdd);
-    document.addEventListener('parallx.dashboard.toggleEditMode', onToggle);
     document.addEventListener('parallx.dashboard.refreshAll', onRefreshAll);
     this._disposables.push({
       dispose() {
         document.removeEventListener('parallx.dashboard.addWidget', onAdd);
-        document.removeEventListener('parallx.dashboard.toggleEditMode', onToggle);
         document.removeEventListener('parallx.dashboard.refreshAll', onRefreshAll);
       },
     });
@@ -304,13 +300,6 @@ class DashboardEditorPane implements IDisposable {
     addBtn.addEventListener('click', () => void this._openWidgetPicker());
     actions.appendChild(addBtn);
 
-    const editBtn = el('button', 'dashboard-btn dashboard-btn--ghost');
-    editBtn.type = 'button';
-    editBtn.dataset.role = 'edit-toggle';
-    editBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg><span>Edit layout</span>';
-    editBtn.addEventListener('click', () => this._toggleEditMode());
-    actions.appendChild(editBtn);
-
     const collapseBtn = el('button', 'dashboard-btn dashboard-btn--ghost dashboard-btn--icon-only');
     collapseBtn.type = 'button';
     collapseBtn.title = 'Hide header';
@@ -333,14 +322,6 @@ class DashboardEditorPane implements IDisposable {
     revealAdd.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Add widget</span>';
     revealAdd.addEventListener('click', () => void this._openWidgetPicker());
     revealActions.appendChild(revealAdd);
-
-    const revealEdit = el('button', 'dashboard-btn dashboard-btn--ghost dashboard-btn--small');
-    revealEdit.type = 'button';
-    revealEdit.dataset.role = 'reveal-edit-toggle';
-    revealEdit.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>';
-    revealEdit.title = 'Edit layout';
-    revealEdit.addEventListener('click', () => this._toggleEditMode());
-    revealActions.appendChild(revealEdit);
 
     const revealExpand = el('button', 'dashboard-btn dashboard-btn--ghost dashboard-btn--small dashboard-btn--icon-only');
     revealExpand.type = 'button';
@@ -425,27 +406,6 @@ class DashboardEditorPane implements IDisposable {
     }
   }
 
-  // ── Edit mode ──────────────────────────────────────────────────────────
-
-  private _toggleEditMode(): void {
-    this._editMode = !this._editMode;
-    this._root?.classList.toggle('dashboard-pane--edit', this._editMode);
-    const editBtn = this._root?.querySelector('[data-role="edit-toggle"]') as HTMLElement | null;
-    if (editBtn) {
-      editBtn.classList.toggle('dashboard-btn--active', this._editMode);
-      const label = editBtn.querySelector('span');
-      if (label) label.textContent = this._editMode ? 'Done' : 'Edit layout';
-    }
-    // The reveal strip (shown when the header is hidden) has its own edit
-    // toggle — keep it in sync so the active state and tooltip are obvious
-    // there too, otherwise there's no way to tell you're in edit mode.
-    const revealEditBtn = this._root?.querySelector('[data-role="reveal-edit-toggle"]') as HTMLElement | null;
-    if (revealEditBtn) {
-      revealEditBtn.classList.toggle('dashboard-btn--active', this._editMode);
-      revealEditBtn.title = this._editMode ? 'Done editing' : 'Edit layout';
-    }
-  }
-
   // ── Widget rendering ───────────────────────────────────────────────────
 
   private async _renderAllWidgets(): Promise<void> {
@@ -496,7 +456,7 @@ class DashboardEditorPane implements IDisposable {
     // Header
     const header = el('header', 'dashboard-widget__header');
     const drag = el('span', 'dashboard-widget__drag');
-    drag.title = 'Drag to move (in edit mode)';
+    drag.title = 'Drag to move';
     drag.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="5" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="19" r="1"/></svg>';
     header.appendChild(drag);
 
@@ -547,22 +507,30 @@ class DashboardEditorPane implements IDisposable {
     header.appendChild(actions);
     card.appendChild(header);
 
-    // Resize handles — all four edges and corners, only active in edit mode.
-    // Edge handles resize along one axis; corner handles resize both. West/
-    // north handles also move the widget's origin so the opposite edge stays
-    // pinned (you can grow/shrink from any side, not just bottom-right).
-    const resizeDirs: ResizeDir[] = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'];
+    // Resize handles — every edge and corner EXCEPT the top ('n'): the top edge
+    // is the universal move strip (below), so widgets with no title bar (bare
+    // image/video) are still draggable. The NW/NE corners still resize the top.
+    // Edge handles resize along one axis; corners resize both, moving the
+    // origin so the opposite edge stays pinned.
+    const resizeDirs: ResizeDir[] = ['s', 'e', 'w', 'ne', 'nw', 'se', 'sw'];
     for (const dir of resizeDirs) {
       const h = el('span', `dashboard-widget__resize dashboard-widget__resize--${dir}`);
       h.dataset.role = 'resize';
       h.dataset.dir = dir;
-      h.title = 'Drag to resize (in edit mode)';
+      h.title = 'Drag to resize';
       card.appendChild(h);
       this._installDragResize(card, h, row.id, dir);
     }
 
-    // Wire drag-to-move (resize handles were wired above, one per direction).
-    this._installDragMove(card, row.id);
+    // Move strip — the TOP EDGE is the drag-to-move surface for EVERY widget
+    // type (title bar or not), hover-revealed like the resize handles. The
+    // header grip drags too (a nicer target on widgets that show a header).
+    const moveStrip = el('span', 'dashboard-widget__move');
+    moveStrip.dataset.role = 'move';
+    moveStrip.title = 'Drag to move';
+    card.appendChild(moveStrip);
+    this._installDragMove(moveStrip, card, row.id);
+    this._installDragMove(drag, card, row.id);
 
     // Body
     const body = el('div', 'dashboard-widget__body');
@@ -898,40 +866,34 @@ class DashboardEditorPane implements IDisposable {
 
   // ── Drag-to-move ───────────────────────────────────────────────────────
 
-  private _installDragMove(card: HTMLElement, widgetId: string): void {
-    card.addEventListener('pointerdown', (e) => {
-      if (!this._editMode) return;
-      // The whole card is a drag surface in edit mode (the dedicated grip is
-      // just an affordance, and minimal/bare widgets hide it). Ignore presses
-      // on the action buttons or the resize handle so they keep working.
-      const target = e.target as HTMLElement | null;
-      if (target?.closest('.dashboard-widget__btn, .dashboard-widget__resize')) return;
-      e.preventDefault();
-      card.setPointerCapture(e.pointerId);
+  private _installDragMove(handle: HTMLElement, card: HTMLElement, widgetId: string): void {
+    // Live editing: dragging the widget's HEADER (title bar) moves it — a big,
+    // obvious target — while the body stays fully interactive. A small movement
+    // threshold distinguishes a drag from a plain click (so the title can still
+    // rename); buttons and resize handles opt out.
+    handle.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return; // primary button only
+      const t = e.target as HTMLElement | null;
+      if (t?.closest('.dashboard-widget__btn, .dashboard-widget__resize')) return;
 
+      const inst = this._instances.get(widgetId);
+      if (!inst) return;
+      const origPlacement = inst.row.placement;
       const gridRect = this._gridEl!.getBoundingClientRect();
       const cellWidth = gridRect.width / DASHBOARD_GRID_COLS;
       const cellHeight = this._rowHeight();
       const startX = e.clientX;
       const startY = e.clientY;
-      const inst = this._instances.get(widgetId);
-      if (!inst) return;
-      const origPlacement = inst.row.placement;
 
-      card.classList.add('dashboard-widget--dragging');
-      // Ghost overlay to preview the snap target.
-      const ghost = el('div', 'dashboard-widget__ghost');
-      this._gridEl!.appendChild(ghost);
-      this._placeAt(ghost, origPlacement);
-
+      let dragging = false;
+      let ghost: HTMLElement | null = null;
       let lastTarget = origPlacement;
-      // The card follows the pointer continuously via transform (GPU
-      // composited, no layout) so motion feels smooth; the ghost snaps to
-      // whole grid cells to preview where the widget will land. rAF batches
-      // updates so we touch the DOM at most once per frame.
       let pendingDx = 0;
       let pendingDy = 0;
       let rafId = 0;
+
+      // The card follows the pointer via transform (GPU-composited, no layout);
+      // the ghost snaps to whole cells to preview where it lands. rAF-batched.
       const flush = () => {
         rafId = 0;
         card.style.transform = `translate(${pendingDx}px, ${pendingDy}px)`;
@@ -939,27 +901,44 @@ class DashboardEditorPane implements IDisposable {
         const deltaRow = Math.round(pendingDy / cellHeight);
         const targetCol = Math.max(0, Math.min(DASHBOARD_GRID_COLS - origPlacement.colSpan, origPlacement.col + deltaCol));
         const targetRow = Math.max(0, origPlacement.row + deltaRow);
-        if (targetCol !== lastTarget.col || targetRow !== lastTarget.row) {
+        if (ghost && (targetCol !== lastTarget.col || targetRow !== lastTarget.row)) {
           lastTarget = { ...origPlacement, col: targetCol, row: targetRow };
           this._placeAt(ghost, lastTarget);
         }
       };
+
+      const beginDrag = () => {
+        dragging = true;
+        card.classList.add('dashboard-widget--dragging');
+        ghost = el('div', 'dashboard-widget__ghost');
+        this._gridEl!.appendChild(ghost);
+        this._placeAt(ghost, origPlacement);
+      };
+
       const onMove = (ev: PointerEvent) => {
         pendingDx = ev.clientX - startX;
         pendingDy = ev.clientY - startY;
+        if (!dragging) {
+          if (Math.hypot(pendingDx, pendingDy) < 4) return; // still a click
+          beginDrag();
+        }
         if (!rafId) rafId = requestAnimationFrame(flush);
       };
-      const onUp = async (ev: PointerEvent) => {
+
+      const onUp = async () => {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        window.removeEventListener('pointercancel', onUp);
+        if (!dragging) return; // never crossed the threshold — let the click be
         if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
-        card.removeEventListener('pointermove', onMove);
-        card.removeEventListener('pointerup', onUp);
-        card.removeEventListener('pointercancel', onUp);
-        try { card.releasePointerCapture(ev.pointerId); } catch { /* noop */ }
-        ghost.remove();
+        ghost?.remove();
         card.classList.remove('dashboard-widget--dragging');
         card.style.transform = '';
+        // Swallow the click that fires after the drag so the title doesn't rename.
+        const cancelClick = (ce: Event) => { ce.stopPropagation(); ce.preventDefault(); };
+        card.addEventListener('click', cancelClick, { capture: true, once: true });
+        setTimeout(() => card.removeEventListener('click', cancelClick, { capture: true } as EventListenerOptions), 60);
         if (lastTarget.col !== origPlacement.col || lastTarget.row !== origPlacement.row) {
-          // Commit + visually move the card without a full re-render.
           card.style.gridRow = `${lastTarget.row + 1} / span ${lastTarget.rowSpan}`;
           card.style.gridColumn = `${lastTarget.col + 1} / span ${lastTarget.colSpan}`;
           try {
@@ -970,9 +949,10 @@ class DashboardEditorPane implements IDisposable {
           }
         }
       };
-      card.addEventListener('pointermove', onMove);
-      card.addEventListener('pointerup', onUp);
-      card.addEventListener('pointercancel', onUp);
+
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+      window.addEventListener('pointercancel', onUp);
     });
   }
 
@@ -985,7 +965,7 @@ class DashboardEditorPane implements IDisposable {
     const affectsRow = dir.includes('n') || dir.includes('s');
 
     handle.addEventListener('pointerdown', (e) => {
-      if (!this._editMode) return;
+      if (e.button !== 0) return; // primary button only
       e.preventDefault();
       e.stopPropagation();
       handle.setPointerCapture(e.pointerId);

@@ -335,18 +335,13 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
     }),
   );
 
-  // dashboard.addWidget / dashboard.toggleEditMode / dashboard.refreshAll —
-  // forward to whatever dashboard editor pane is currently active. Phase 1
+  // dashboard.addWidget / dashboard.refreshAll — forward to whatever dashboard
+  // editor pane is currently active. Phase 1
   // wires them as command-palette entries; the pane reacts via DOM events
   // (simpler than threading editor focus tracking now).
   context.subscriptions.push(
     api.commands.registerCommand('dashboard.addWidget', () => {
       document.dispatchEvent(new CustomEvent('parallx.dashboard.addWidget'));
-    }),
-  );
-  context.subscriptions.push(
-    api.commands.registerCommand('dashboard.toggleEditMode', () => {
-      document.dispatchEvent(new CustomEvent('parallx.dashboard.toggleEditMode'));
     }),
   );
   context.subscriptions.push(
