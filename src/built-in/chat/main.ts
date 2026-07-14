@@ -3026,19 +3026,40 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   if (fsAccessor && fileService && workspaceService && _permissionService) {
     import('../../services/permissionsFileService.js').then(({ PermissionsFileService }) => {
       const permsFileService = new PermissionsFileService();
+      // Persist per-workspace to <folder>/.parallx/permissions.json when a folder
+      // is open; otherwise (or if that write fails for any reason — missing
+      // folder, absent .parallx dir, etc.) fall back to global app storage so
+      // "Always allow" is NEVER silently lost. The old code threw + swallowed the
+      // error when no folder was open, which is why grants didn't persist for a
+      // folderless session.
+      const PERMS_GLOBAL_KEY = 'parallx.permissions.overrides';
+      const hasWorkspaceFolder = () => (workspaceService!.folders?.length ?? 0) > 0;
       permsFileService.setFileSystem({
-        readFile: async (path: string) => { const r = await fsAccessor!.readFileContent(path); return r.content; },
-        exists: (path: string) => fsAccessor!.exists(path),
+        readFile: async (path: string) => {
+          if (hasWorkspaceFolder()) {
+            try { const r = await fsAccessor!.readFileContent(path); if (r.content) return r.content; }
+            catch { /* fall through to global */ }
+          }
+          return context.globalState.get<string>(PERMS_GLOBAL_KEY) ?? '';
+        },
+        exists: async (path: string) => {
+          if (hasWorkspaceFolder()) {
+            try { if (await fsAccessor!.exists(path)) return true; } catch { /* fall through */ }
+          }
+          return context.globalState.get<string>(PERMS_GLOBAL_KEY) != null;
+        },
       });
       permsFileService.setFileWriter({
         writeFile: async (relativePath: string, content: string) => {
-          const folders = workspaceService!.folders;
-          if (!folders || folders.length === 0) {
-            throw new Error('No workspace folder is open — cannot write permissions');
+          if (hasWorkspaceFolder()) {
+            try {
+              const rootUri = workspaceService!.folders[0].uri;
+              const clean = normalizeWorkspaceRelativePath(relativePath);
+              await fileService!.writeFile(rootUri.joinPath(clean), content);
+              return;
+            } catch { /* fall through to global storage */ }
           }
-          const rootUri = folders[0].uri;
-          const clean = normalizeWorkspaceRelativePath(relativePath);
-          await fileService!.writeFile(rootUri.joinPath(clean), content);
+          await context.globalState.update(PERMS_GLOBAL_KEY, content);
         },
       });
       permsFileService.setPermissionService(_permissionService!);

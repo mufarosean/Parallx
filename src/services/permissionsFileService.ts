@@ -34,6 +34,7 @@ export class PermissionsFileService extends Disposable {
   private _writeFs: IPermissionsFileWriter | undefined;
   private _loaded = false;
   private _saveQueued = false;
+  private _saveTimer: ReturnType<typeof setTimeout> | undefined;
 
   // ── Setup ──
 
@@ -97,12 +98,27 @@ export class PermissionsFileService extends Disposable {
     this._saveQueued = true;
 
     // Debounce: save after 500ms
-    setTimeout(() => {
+    this._saveTimer = setTimeout(() => {
       this._saveQueued = false;
+      this._saveTimer = undefined;
       this._save().catch(() => {
         // Swallow save errors silently
       });
     }, 500);
+  }
+
+  /** Flush a pending debounced save so a grant made right before shutdown isn't
+   *  lost to the 500ms window. */
+  override dispose(): void {
+    if (this._saveTimer) {
+      clearTimeout(this._saveTimer);
+      this._saveTimer = undefined;
+    }
+    if (this._saveQueued) {
+      this._saveQueued = false;
+      void this._save().catch(() => { /* best-effort on shutdown */ });
+    }
+    super.dispose();
   }
 
   /**
