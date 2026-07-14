@@ -101,7 +101,7 @@ export function filterToSubquery(filter: IPropertyFilter): { subquery: string; p
 
 // ─── Doc-tree walking (C2/C3) ────────────────────────────────────────────
 
-interface DocNode {
+export interface DocNode {
   type: string;
   attrs?: Record<string, unknown>;
   content?: DocNode[];
@@ -214,6 +214,40 @@ export function insertAfter(doc: DocNode, path: number[], node: DocNode): DocNod
     children.splice(head! + 1, 0, node);
   } else {
     children[head!] = insertAfter(children[head!]!, tail, node);
+  }
+  return { ...doc, content: children };
+}
+
+/** Replace the node at `path` with `nodes` (splice in 0..n replacements).
+ *  Returns a new doc; does not mutate input. Lets a single-block edit expand
+ *  into several blocks (e.g. one block → a markdown list). */
+export function replaceWithMany(doc: DocNode, path: number[], nodes: DocNode[]): DocNode {
+  if (path.length === 0) throw new Error('replaceWithMany: cannot replace the doc root');
+  const [head, ...tail] = path;
+  const children = Array.isArray(doc.content) ? [...doc.content] : [];
+  if (head! < 0 || head! >= children.length) {
+    throw new Error(`replaceWithMany: index ${head} out of range`);
+  }
+  if (tail.length === 0) {
+    children.splice(head!, 1, ...nodes);
+  } else {
+    children[head!] = replaceWithMany(children[head!]!, tail, nodes);
+  }
+  return { ...doc, content: children };
+}
+
+/** Insert `nodes` (0..n) immediately after the block at `path`. New doc. */
+export function insertManyAfter(doc: DocNode, path: number[], nodes: DocNode[]): DocNode {
+  if (path.length === 0) throw new Error('insertManyAfter: cannot insert after the doc root');
+  const [head, ...tail] = path;
+  const children = Array.isArray(doc.content) ? [...doc.content] : [];
+  if (head! < 0 || head! >= children.length) {
+    throw new Error(`insertManyAfter: index ${head} out of range`);
+  }
+  if (tail.length === 0) {
+    children.splice(head! + 1, 0, ...nodes);
+  } else {
+    children[head!] = insertManyAfter(children[head!]!, tail, nodes);
   }
   return { ...doc, content: children };
 }

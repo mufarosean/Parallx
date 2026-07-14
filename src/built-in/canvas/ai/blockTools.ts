@@ -32,11 +32,20 @@ import {
   encodeDocContent,
   findBlockById,
   nodeToPlainText,
-  replaceAt,
+  replaceWithMany,
   insertAfter,
+  insertManyAfter,
   paragraphFromText,
   generateBlockId,
+  type DocNode,
 } from './blockApi.js';
+import { markdownToTiptapJson } from '../markdownImport.js';
+
+/** Parse markdown into canvas block nodes (each stamped with a stable id). */
+function markdownToBlocks(markdown: string): DocNode[] {
+  const doc = markdownToTiptapJson(markdown, { assignBlockIds: true });
+  return (doc.content ?? []) as unknown as DocNode[];
+}
 
 function requireDb(db: IBuiltInToolDatabase | undefined): asserts db is IBuiltInToolDatabase {
   if (!db || !db.isOpen) throw new Error('Database is not available');
@@ -132,14 +141,14 @@ export function createEditBlockTool(
   return {
     name: 'canvas_edit_block',
     displaySummary: 'Replace a block on a canvas page (approval).',
-    description: 'Replace the plain-text content of a single block inside a CANVAS PAGE. Operates on the canvas page DB. For file edits use `fs_edit_file`. The block becomes a paragraph; markdown formatting is NOT parsed — pass plain text. For richer edits use canvas_edit_page (which accepts markdown).',
+    description: 'Replace a single block inside a CANVAS PAGE. `newContent` is parsed as MARKDOWN, so the block takes the RIGHT type: `## X` → heading, `- [ ] X` → to-do, `- X` → bullet, `1. X` → numbered, `> [!note] …` → callout, `> X` → quote, fenced code → code block. It may expand into several blocks (e.g. a multi-line list); the primary block keeps its blockId. Operates on the canvas page DB — for file edits use `fs_edit_file`; for whole-page authoring use canvas_edit_page.',
     parameters: {
       type: 'object',
       required: ['pageId', 'blockId', 'newContent'],
       properties: {
         pageId: { type: 'string', description: 'Page UUID (not a title). Resolve titles with canvas_find_pages first.' },
         blockId: { type: 'string', description: 'Block ID to replace (from canvas_read_page).' },
-        newContent: { type: 'string', description: 'Plain replacement text. The block keeps its blockId; markdown is NOT parsed.' },
+        newContent: { type: 'string', description: 'Markdown for the replacement block(s). Parsed to the correct block type(s) — heading / list / to-do / callout / quote / code. The first block keeps the original blockId.' },
         idempotencyKey: { type: 'string', description: 'Optional dedup key so retried calls don\'t double-edit on transient failures.' },
       },
     },
@@ -172,14 +181,20 @@ export function createEditBlockTool(
       if (!hit) return { content: `Block "${blockId}" not found in page "${page.title}".`, isError: true };
 
       const before = nodeToPlainText(hit.node);
-      const replacement = paragraphFromText(newContent, blockId);
-      const newDoc = replaceAt(page.doc, hit.path, replacement);
+      // Parse markdown so the block adopts the correct type(s). Keep the
+      // original blockId on the first block so anchors/links to it stay stable.
+      const blocks = markdownToBlocks(newContent);
+      if (blocks.length > 0) {
+        blocks[0]!.attrs = { ...(blocks[0]!.attrs ?? {}), id: blockId };
+      }
+      const newDoc = replaceWithMany(page.doc, hit.path, blocks);
       await persistDoc(db!, pageId, newDoc, notifyPageMutated);
 
+      const expanded = blocks.length > 1 ? ` (expanded into ${blocks.length} blocks)` : '';
       const keyNote = idempotencyKey ? `\n\n_idempotencyKey: ${idempotencyKey}_` : '';
       return {
         content:
-          `Edited block ${blockId} in **${page.title}**.\n\n` +
+          `Edited block ${blockId} in **${page.title}**${expanded}.\n\n` +
           `**Before:** ${before || '(empty)'}\n` +
           `**After:**  ${newContent || '(empty)'}` +
           keyNote,
@@ -197,14 +212,14 @@ export function createInsertBlockAfterTool(
   return {
     name: 'canvas_insert_block_after',
     displaySummary: 'Insert a block into a canvas page (approval).',
-    description: 'Insert a new paragraph block into a CANVAS PAGE, immediately after anchorBlockId. Returns the new blockId. Operates on the canvas page DB. The inserted block is a plain paragraph; markdown is NOT parsed (use canvas_edit_page for multi-block markdown).',
+    description: 'Insert one or more new blocks into a CANVAS PAGE, immediately after anchorBlockId. `content` is parsed as MARKDOWN, so blocks take the RIGHT type: headings, bullet/numbered lists, to-dos (`- [ ]`), callouts (`> [!note]`), quotes, fenced code. Returns the new blockId(s). Operates on the canvas page DB.',
     parameters: {
       type: 'object',
       required: ['pageId', 'anchorBlockId', 'content'],
       properties: {
         pageId: { type: 'string', description: 'Page UUID (not a title). Resolve titles with canvas_find_pages first.' },
-        anchorBlockId: { type: 'string', description: 'Block ID after which the new block is inserted (from canvas_read_page).' },
-        content: { type: 'string', description: 'Plain text for the new paragraph block. Markdown is NOT parsed.' },
+        anchorBlockId: { type: 'string', description: 'Block ID after which the new block(s) are inserted (from canvas_read_page).' },
+        content: { type: 'string', description: 'Markdown for the new block(s) — parsed to the correct block type(s): heading / list / to-do / callout / quote / code.' },
         idempotencyKey: { type: 'string', description: 'Optional dedup key so retried calls don\'t double-insert.' },
       },
     },
@@ -238,16 +253,17 @@ export function createInsertBlockAfterTool(
         return { content: 'Cannot insert after the document root.', isError: true };
       }
 
-      const newBlockId = generateBlockId();
-      const newNode = paragraphFromText(content, newBlockId);
-      const newDoc = insertAfter(page.doc, hit.path, newNode);
+      // Parse markdown so inserted blocks get the correct type(s).
+      const blocks = markdownToBlocks(content);
+      const newDoc = insertManyAfter(page.doc, hit.path, blocks);
       await persistDoc(db!, pageId, newDoc, notifyPageMutated);
 
+      const newBlockIds = blocks.map((b) => (b.attrs?.['id'] as string) || '').filter(Boolean);
       const keyNote = idempotencyKey ? `\n\n_idempotencyKey: ${idempotencyKey}_` : '';
       return {
         content:
-          `Inserted new block after ${anchorId} in **${page.title}**.\n\n` +
-          `**New blockId:** ${newBlockId}\n` +
+          `Inserted ${blocks.length} block${blocks.length === 1 ? '' : 's'} after ${anchorId} in **${page.title}**.\n\n` +
+          `**New blockId${newBlockIds.length === 1 ? '' : 's'}:** ${newBlockIds.join(', ') || '(none)'}\n` +
           `**Content:** ${content || '(empty)'}` +
           keyNote,
       };
