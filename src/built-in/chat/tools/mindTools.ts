@@ -34,7 +34,8 @@ export function createMindRememberTool(mind: IMindWriter): IChatTool {
       'feedback"). Set `confidence` 0–1. Every belief REQUIRES a `reason` (the evidence) — one with no reason is ' +
       'rejected. Beliefs decay unless you reaffirm them, so only record things worth carrying forward. Keep each ' +
       'to one line. This is YOUR model — the user can see it, but you maintain it. Do not record secrets or raw ' +
-      'user content; record understanding.',
+      'user content; record understanding. For HARD facts, conventions, or lessons the user should be able to ' +
+      'rely on, use `memory_write` instead — the MIND is your softer, self-maintained model that decays.',
     parameters: {
       type: 'object',
       required: ['content', 'reason'],

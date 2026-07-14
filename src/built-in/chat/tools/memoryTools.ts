@@ -424,7 +424,8 @@ export function createMemoryEditTool(
     name: 'memory_write',
     displaySummary: 'Add, replace, or remove an entry in workspace memory.',
     description:
-      'Adds, replaces, or removes an entry in one of the workspace memory files. ' +
+      'Adds, replaces, or removes an entry in one of the workspace memory files — the canonical, durable record. ' +
+      '(For your OWN soft, evolving beliefs or hunches about the user that decay over time, use `mind_remember` instead.) ' +
       'Use `file=USER` for facts about the user (identity, preferences, current focus). ' +
       'Use `file=MEMORY` for durable workspace facts (decisions, conventions, project state). ' +
       'Use `file=daily` to log dated events (today by default). ' +
