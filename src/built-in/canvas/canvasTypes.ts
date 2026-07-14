@@ -248,6 +248,14 @@ export interface ICanvasDataService {
    */
   notifyExternalPageMutation(pageId: string, kind: 'created' | 'updated' | 'deleted'): Promise<void>;
 
+  /**
+   * Snapshot a page's CURRENT content into version history immediately, with no
+   * UI side effects. Used to capture a revert point BEFORE a destructive AI edit
+   * (e.g. `canvas_edit_page` replace) so the pre-edit content is always
+   * recoverable. Deduped + pruned like any checkpoint.
+   */
+  checkpointPageNow(pageId: string, source?: RevisionSource): Promise<void>;
+
   // ── Page CRUD ──
 
   createPage(parentId?: string | null, title?: string): Promise<IPage>;

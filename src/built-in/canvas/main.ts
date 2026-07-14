@@ -325,6 +325,9 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
           void openPageInEditor(pageId);
         }
       },
+      // Capture a revert point BEFORE a destructive AI edit lands (canvas_edit_page
+      // replace), so wiping a page is always recoverable from version history.
+      pageCheckpoint: (pageId) => _dataService?.checkpointPageNow(pageId, 'ai'),
       // canvas_relate_pages — nest related pages (by title) under a hub page via
       // the integrity-preserving movePageWithBlocks. Makes the agent's most common
       // useful review intent ("link these related pages") an actual, reversible op.

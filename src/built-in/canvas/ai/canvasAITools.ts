@@ -54,6 +54,10 @@ export interface ICanvasAIToolDeps {
   readonly getCurrentPageId: CurrentPageIdGetter;
   readonly workspaceRoot: string | undefined;
   readonly pageMutationNotifier?: PageMutationNotifier;
+  /** Snapshot a page's current content into version history BEFORE a destructive
+   *  AI edit, so a replace/overwrite is always revertable. Wired to the data
+   *  service in canvas/main.ts. Omitted → no pre-edit checkpoint. */
+  readonly pageCheckpoint?: (pageId: string) => void | Promise<void>;
   readonly templateApi?: CanvasTemplateApi;
   /** Nest related pages under a hub (canvas_relate_pages). Omitted → tool not
    *  registered. Implemented over the live data service in canvas/main.ts. */
@@ -80,14 +84,14 @@ export interface ICanvasAIToolDeps {
  * Returns disposables that deregister them.
  */
 export function registerCanvasAITools(deps: ICanvasAIToolDeps): IDisposable[] {
-  const { toolsService, db, getCurrentPageId, workspaceRoot, pageMutationNotifier, templateApi, relatePages, streamPageBody, createChildPage, movePage, getNewPageDefaults, databaseService } = deps;
+  const { toolsService, db, getCurrentPageId, workspaceRoot, pageMutationNotifier, pageCheckpoint, templateApi, relatePages, streamPageBody, createChildPage, movePage, getNewPageDefaults, databaseService } = deps;
 
   const tools: IChatTool[] = [
     createFindPagesTool(db),
     createReadPageTool(db, getCurrentPageId),
     createListTemplatesTool(templateApi),
     createCreatePageTool(db, pageMutationNotifier, templateApi, createChildPage, streamPageBody, getNewPageDefaults),
-    createEditPageTool(db, pageMutationNotifier),
+    createEditPageTool(db, pageMutationNotifier, pageCheckpoint),
     ...(movePage ? [createMovePageTool(db, movePage)] : []),
     createListPropertyDefinitionsTool(db),
     createSetPagePropertyTool(db, databaseService ? (id) => databaseService.notifyRowsChanged(id) : undefined),

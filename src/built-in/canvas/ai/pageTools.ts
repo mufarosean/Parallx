@@ -850,6 +850,7 @@ export function createCreatePageTool(
 export function createEditPageTool(
   db: IBuiltInToolDatabase | undefined,
   notifyPageMutated?: PageMutationNotifier,
+  checkpointPage?: (pageId: string) => void | Promise<void>,
 ): IChatTool {
   return {
     name: 'canvas_edit_page',
@@ -933,6 +934,12 @@ export function createEditPageTool(
 
       const encoded = encodeCanvasContentFromDoc(finalDoc);
       const now = new Date().toISOString();
+
+      // Capture the pre-edit content as a version-history revision BEFORE we
+      // overwrite it. A `replace` that wipes more than intended (the classic
+      // "AI replaced a section but cleared the whole page") must always be
+      // revertable — the post-write checkpoint alone can't recover the original.
+      try { await checkpointPage?.(pageId); } catch { /* never block the edit on checkpoint errors */ }
       // The open editor streams this in block-by-block on reload (the animated
       // _applyExternalDoc path) — every mode (replace/append/prepend) types live.
       // M77 Phase 10.1 — bump `revision` so the canvas data service's

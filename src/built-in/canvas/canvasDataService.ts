@@ -2548,6 +2548,19 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     }
   }
 
+  /** Snapshot a page's CURRENT content into version history now, with no UI
+   *  side effects. Called BEFORE a destructive AI edit (e.g. canvas_edit_page
+   *  `replace`) so the pre-edit content is always a recoverable revision — the
+   *  post-edit checkpoint alone would leave nothing to revert to. Deduped +
+   *  pruned like any checkpoint. */
+  async checkpointPageNow(pageId: string, source: RevisionSource = 'ai'): Promise<void> {
+    try {
+      await this._captureRevision(pageId, source, this._maxRevisionsPerPage());
+    } catch (err) {
+      console.warn('[CanvasDataService] checkpointPageNow failed for', pageId, err);
+    }
+  }
+
   /** Insert a checkpoint of the page's CURRENT content, deduped + pruned. */
   private async _captureRevision(pageId: string, source: RevisionSource, maxPerPage: number): Promise<void> {
     const page = await this.getPage(pageId);
