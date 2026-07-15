@@ -112,6 +112,11 @@ export class CanvasEditorProvider {
    * The ribbon's ⋯ button invokes these to show the full PageChromeController menu.
    */
   private readonly _pageMenuHandlers = new Map<string, () => void>();
+  /** pageId → commit hook (flush + persist the editor's getJSON + checkpoint).
+   *  Panes register these so a workspace switch / app close can save open pages
+   *  even though the panes are never disposed on those paths (the renderer just
+   *  reloads, so their dispose→commitPageClose never runs). */
+  private readonly _commitHandlers = new Map<string, () => Promise<void>>();
 
   /** Inline AI provider functions (set after chat tool activation). */
   private _inlineAISendChat: SendChatRequestFn | undefined;
@@ -202,6 +207,25 @@ export class CanvasEditorProvider {
   registerPageMenuHandler(pageId: string, handler: () => void): IDisposable {
     this._pageMenuHandlers.set(pageId, handler);
     return { dispose: () => { this._pageMenuHandlers.delete(pageId); } };
+  }
+
+  /** Panes register a commit hook so a workspace switch or app close can save
+   *  open pages — those paths reload the renderer WITHOUT disposing the panes,
+   *  so their dispose→commitPageClose never fires. */
+  registerCommitHandler(pageId: string, handler: () => Promise<void>): IDisposable {
+    this._commitHandlers.set(pageId, handler);
+    return { dispose: () => { this._commitHandlers.delete(pageId); } };
+  }
+
+  /** Commit every open canvas page (flush pending save, persist the editor's
+   *  current content blank-guarded, checkpoint). Awaited on workspace switch /
+   *  app close so open pages — including a just-restored version — survive. */
+  async commitAllOpenPages(): Promise<void> {
+    await Promise.all(
+      [...this._commitHandlers.values()].map((fn) =>
+        fn().catch((err) => console.warn('[CanvasEditorProvider] commitAllOpenPages: a page failed:', err)),
+      ),
+    );
   }
 
   /** Get the page-menu handler (called by ribbon ⋯ button). */
@@ -646,6 +670,11 @@ class CanvasEditorPane implements IDisposable {
         this._pageChrome.showPageMenu();
       }),
     );
+    // Commit-on-teardown: workspace switch / app close reloads the renderer
+    // without disposing this pane, so register a commit the provider can await.
+    this._saveDisposables.add(
+      this._provider.registerCommitHandler(this._pageId, () => this._commitNow()),
+    );
 
     this._initComplete = true;
 
@@ -1021,6 +1050,19 @@ class CanvasEditorPane implements IDisposable {
 
   // ══════════════════════════════════════════════════════════════════════════════  // Dispose
   // ══════════════════════════════════════════════════════════════════════════
+
+  /** Flush + persist the editor's CURRENT content as the page's latest version
+   *  and checkpoint it — the same guarantee dispose() gives on page close, but
+   *  callable on teardown (workspace switch / app close) while the editor is
+   *  still alive. The blank-guard in commitPageClose protects a never-loaded
+   *  pane from wiping a populated page. */
+  private async _commitNow(): Promise<void> {
+    if (!this._pageId) return;
+    const finalJson = (this._editor && this._initialContentLoaded)
+      ? JSON.stringify(this._editor.getJSON())
+      : undefined;
+    await this._dataService.commitPageClose(this._pageId, finalJson);
+  }
 
   dispose(): void {
     if (this._disposed) return;

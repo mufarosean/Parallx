@@ -559,6 +559,16 @@ export class Workbench extends Layout {
       const appPath = window.parallxElectron!.appPath;
       await bridge.writeJson(`${appPath}/data/last-workspace.json`, { path: folderPath });
 
+      // 3b. Deactivate all tools so they flush pending data (Canvas open-page
+      //     commit + auto-save) BEFORE the DB closes and we reload. The app-close
+      //     path already does this; a workspace switch must too, or open canvas
+      //     pages lose unsaved edits / a just-restored version on switch.
+      if (this._toolActivator) {
+        await this._toolActivator.deactivateAll().catch((err) => {
+          console.warn('[Workbench] deactivateAll before workspace switch failed:', err);
+        });
+      }
+
       // 4. Close the database cleanly (best-effort).
       if (this._databaseService?.isOpen) {
         await this._databaseService.close().catch(() => {});

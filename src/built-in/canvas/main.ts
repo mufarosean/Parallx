@@ -760,7 +760,12 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
 }
 
 export async function deactivate(): Promise<void> {
-  // Flush any pending auto-saves before teardown
+  // Commit every OPEN canvas page (flush + persist the editor's current content
+  // + checkpoint), then flush any other pending saves — so a workspace switch or
+  // app close saves open pages the same way closing a single page does.
+  try { await _editorProvider?.commitAllOpenPages(); }
+  catch (err) { console.warn('[Canvas] commitAllOpenPages on deactivate failed:', err); }
+  // Flush any remaining pending auto-saves before teardown
   if (_dataService) {
     await _dataService.flushPendingSaves();
   }
