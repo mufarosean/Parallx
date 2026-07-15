@@ -47,8 +47,8 @@ beforeEach(async () => {
   });
 });
 
-describe('per-turn search cap (3)', () => {
-  it('soft-errors on the 4th search in the same turn', async () => {
+describe('per-turn search cap (default 20, configurable)', () => {
+  it('soft-errors once the default per-turn search cap is reached', async () => {
     for (let i = 0; i < ext.__test__.PER_TURN_SEARCH_CAP; i++) {
       // eslint-disable-next-line no-await-in-loop
       const r = await ext.__test__.webSearchTool({ query: `q${i}` }, 'turn-a');
@@ -73,10 +73,22 @@ describe('per-turn search cap (3)', () => {
     const freshTurn = await ext.__test__.webSearchTool({ query: 'next response' }, 'turn-b');
     expect(freshTurn.isError).toBe(false);
   });
+
+  it('honours a per-turn search cap configured in storage', async () => {
+    stored['webResearch.perTurnSearchCap'] = '2';
+    for (let i = 0; i < 2; i++) {
+      // eslint-disable-next-line no-await-in-loop
+      const r = await ext.__test__.webSearchTool({ query: `q${i}` }, 'turn-a');
+      expect(r.isError).toBe(false);
+    }
+    const capped = await ext.__test__.webSearchTool({ query: 'q3' }, 'turn-a');
+    expect(capped.isError).toBe(true);
+    expect(capped.errorCode).toBe('TURN_SEARCH_CAP');
+  });
 });
 
-describe('per-turn fetch cap (5)', () => {
-  it('soft-errors on the 6th fetch in the same turn', async () => {
+describe('per-turn fetch cap (default 20, configurable)', () => {
+  it('soft-errors once the default per-turn fetch cap is reached', async () => {
     // Seed provenance with one URL we will fetch repeatedly.
     ext.__test__.seedTurnFromUserMessage('turn-a', 'check https://result.example/x');
     for (let i = 0; i < ext.__test__.PER_TURN_FETCH_CAP; i++) {

@@ -24,8 +24,10 @@
 // SECTION 1 — Constants & module state
 // ═══════════════════════════════════════════════════════════════════════════
 
-const PER_TURN_SEARCH_CAP = 3;            // C11
-const PER_TURN_FETCH_CAP  = 5;            // C11
+// Per-turn caps are DEFAULTS — overridable in Settings → Web Research
+// (webResearch.perTurnSearchCap / perTurnFetchCap in global storage).
+const PER_TURN_SEARCH_CAP = 20;           // C11 (default; configurable)
+const PER_TURN_FETCH_CAP  = 20;           // C11 (default; configurable)
 const DEFAULT_DAILY_BUDGET = 100;         // C11
 const MAX_SANITIZED_BYTES = 50 * 1024;    // 50 KB (C8 — AFTER sanitization)
 
@@ -34,6 +36,8 @@ const MAX_SANITIZED_BYTES = 50 * 1024;    // 50 KB (C8 — AFTER sanitization)
 // bridge (electron/webFetchBridge.cjs) so the secret never enters the
 // renderer prompt context.
 const KEY_DAILY_BUDGET     = 'webResearch.dailyBudget';
+const KEY_PER_TURN_SEARCH_CAP = 'webResearch.perTurnSearchCap';
+const KEY_PER_TURN_FETCH_CAP  = 'webResearch.perTurnFetchCap';
 const KEY_AMBIENT_ENABLED  = 'webResearch.ambientEnabled';
 const KEY_DAILY_COUNTER    = 'webResearch.dailyCounter'; // JSON {date,count}
 // Iter 3 — Research Hub storage keys (see M65 §"Correction to earlier sketch").
@@ -162,6 +166,20 @@ async function _readDailyBudget() {
   const raw = await _globalStorage.get(KEY_DAILY_BUDGET);
   const n = Number(raw);
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : DEFAULT_DAILY_BUDGET;
+}
+
+async function _readPerTurnSearchCap() {
+  if (!_globalStorage) return PER_TURN_SEARCH_CAP;
+  const raw = await _globalStorage.get(KEY_PER_TURN_SEARCH_CAP);
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : PER_TURN_SEARCH_CAP;
+}
+
+async function _readPerTurnFetchCap() {
+  if (!_globalStorage) return PER_TURN_FETCH_CAP;
+  const raw = await _globalStorage.get(KEY_PER_TURN_FETCH_CAP);
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : PER_TURN_FETCH_CAP;
 }
 
 async function _readDailyCounter() {
@@ -361,8 +379,9 @@ async function webSearchTool(args, turnId) {
   if (query.length === 0) return softError('BAD_QUERY', 'query must be a non-empty string');
 
   const t = _ensureTurn(turnId);
-  if (t.searches >= PER_TURN_SEARCH_CAP) {
-    return softError('TURN_SEARCH_CAP', `per-turn search cap (${PER_TURN_SEARCH_CAP}) reached`);
+  const searchCap = await _readPerTurnSearchCap();
+  if (t.searches >= searchCap) {
+    return softError('TURN_SEARCH_CAP', `per-turn search cap (${searchCap}) reached`);
   }
 
   const budget = await _readDailyBudget();
@@ -410,8 +429,9 @@ async function webFetchTool(args, turnId) {
   if (url.length === 0) return softError('BAD_URL', 'url must be a non-empty string');
 
   const t = _ensureTurn(turnId);
-  if (t.fetches >= PER_TURN_FETCH_CAP) {
-    return softError('TURN_FETCH_CAP', `per-turn fetch cap (${PER_TURN_FETCH_CAP}) reached`);
+  const fetchCap = await _readPerTurnFetchCap();
+  if (t.fetches >= fetchCap) {
+    return softError('TURN_FETCH_CAP', `per-turn fetch cap (${fetchCap}) reached`);
   }
 
   // C5 — provenance gate. URL must be in the per-turn set seeded from the
@@ -716,7 +736,7 @@ function _registerTools(api) {
   };
 
   _commandDisposables.push(api.chat.registerTool('webSearch', {
-    description: 'Search the public web via Brave Search. Returns up to 10 results as {title,url,snippet}. Use this BEFORE webFetch to find candidate URLs. Hard caps: 3 searches/turn, 100 searches/day (configurable). All returned URLs become eligible for webFetch this turn.',
+    description: 'Search the public web via Brave Search. Returns up to 10 results as {title,url,snippet}. Use this BEFORE webFetch to find candidate URLs. Caps (all adjustable in Settings → Web Research): 20 searches/turn by default, 100 searches/day. All returned URLs become eligible for webFetch this turn.',
     parameters: {
       type: 'object',
       properties: {
@@ -729,7 +749,7 @@ function _registerTools(api) {
   }));
 
   _commandDisposables.push(api.chat.registerTool('webFetch', {
-    description: 'Fetch a single URL through the secure egress chokepoint, sanitize the page, and return it framed as <untrusted_web_content>. CRITICAL: the URL must come from (a) the current user message, (b) a prior webSearch result this turn, or (c) the final URL of a prior webFetch this turn. You cannot synthesize URLs. Hard cap: 5 fetches/turn. Links inside fetched pages are NOT automatically fetchable (depth-1 stop).',
+    description: 'Fetch a single URL through the secure egress chokepoint, sanitize the page, and return it framed as <untrusted_web_content>. CRITICAL: the URL must come from (a) the current user message, (b) a prior webSearch result this turn, or (c) the final URL of a prior webFetch this turn. You cannot synthesize URLs. Cap: 20 fetches/turn by default (adjustable in Settings → Web Research). Links inside fetched pages are NOT automatically fetchable (depth-1 stop).',
     parameters: {
       type: 'object',
       properties: {

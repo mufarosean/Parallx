@@ -16,7 +16,11 @@ import { createSecretStorageService } from '../../../services/secretStorageServi
 const KEY_BRAVE_API_KEY   = 'webResearch.braveApiKey';
 const KEY_DAILY_BUDGET    = 'webResearch.dailyBudget';
 const KEY_AMBIENT_ENABLED = 'webResearch.ambientEnabled';
+const KEY_PER_TURN_SEARCH_CAP = 'webResearch.perTurnSearchCap';
+const KEY_PER_TURN_FETCH_CAP  = 'webResearch.perTurnFetchCap';
 const DEFAULT_DAILY_BUDGET = 100;
+const DEFAULT_PER_TURN_SEARCH_CAP = 20;
+const DEFAULT_PER_TURN_FETCH_CAP  = 20;
 
 export class WebResearchSection extends SettingsSection {
 
@@ -107,6 +111,56 @@ export class WebResearchSection extends SettingsSection {
         budgetInput.value = v ?? String(DEFAULT_DAILY_BUDGET);
       });
     }
+
+    // ── Per-turn caps (numbers) ──
+    // How many webSearch / webFetch calls the agent may make within ONE response
+    // turn. The extension reads these at runtime; blank/invalid → the defaults.
+    const addCapRow = (label: string, description: string, key: string, def: number): void => {
+      const row = createSettingRow({
+        label,
+        description,
+        key,
+        onReset: () => {
+          input.value = String(def);
+          void this._storage!.set(key, String(def)).then(() => this._notifySaved(key));
+        },
+      });
+      const input = this._register(new InputBox(row.controlSlot, {
+        value: String(def),
+        placeholder: String(def),
+        ariaLabel: label,
+        validationFn: (raw) => {
+          const n = Number(raw);
+          return Number.isFinite(n) && n >= 1 ? null : 'Enter a whole number greater than 0';
+        },
+      }));
+      input.element.classList.add('ai-settings-number-input');
+      input.inputElement.type = 'number';
+      input.inputElement.min = '1';
+      input.inputElement.step = '1';
+      const save = () => {
+        const n = Math.max(1, Math.floor(Number(input.value) || def));
+        input.value = String(n);
+        void this._storage!.set(key, String(n)).then(() => this._notifySaved(key));
+      };
+      this._register(input.onDidSubmit(save));
+      this._register(addDisposableListener(input.inputElement, 'blur', save));
+      this._addRow(row.row);
+      void this._storage!.get(key).then((v) => { input.value = v ?? String(def); });
+    };
+
+    addCapRow(
+      'Per-turn search cap',
+      'Maximum webSearch calls the agent may make within a single response turn. Higher = deeper research per turn (still bounded by the daily budget). Default 20.',
+      KEY_PER_TURN_SEARCH_CAP,
+      DEFAULT_PER_TURN_SEARCH_CAP,
+    );
+    addCapRow(
+      'Per-turn fetch cap',
+      'Maximum webFetch calls (page reads) the agent may make within a single response turn. Default 20.',
+      KEY_PER_TURN_FETCH_CAP,
+      DEFAULT_PER_TURN_FETCH_CAP,
+    );
 
     // ── Ambient enabled (checkbox) ──
     {
