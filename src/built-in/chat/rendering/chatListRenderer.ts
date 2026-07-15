@@ -338,13 +338,22 @@ export class ChatListRenderer extends Disposable {
     messages: readonly IChatRequestResponsePair[],
     requestInProgress: boolean,
   ): void {
-    // Check if we can do an incremental update
+    // Same pair count, last turn streaming → update the last body in place.
     if (this._canIncrementalUpdate(container, messages)) {
       this._incrementalUpdate(container, messages, requestInProgress);
       return;
     }
 
-    // Full re-render (on session switch, new messages, etc.)
+    // Pure append (e.g. the user just sent a message): every previously-rendered
+    // pair is still present and unchanged, only new pairs were added. Append just
+    // those to the existing DOM — this PRESERVES scroll position, whereas a full
+    // teardown+rebuild collapses the list and resets scrollTop to the top.
+    if (this._canAppendOnly(container, messages)) {
+      this._appendNewPairs(container, messages, requestInProgress);
+      return;
+    }
+
+    // Otherwise (session switch, edit/regenerate, removals) → full rebuild.
     this._fullRender(container, messages, requestInProgress);
   }
 
@@ -514,54 +523,96 @@ export class ChatListRenderer extends Disposable {
     this._renderedPairs.clear();
 
     for (let i = 0; i < messages.length; i++) {
-      const pair = messages[i];
-      const isLast = i === messages.length - 1;
-      const isStreamingTurn = requestInProgress && isLast;
-
-      // Backfill endTime on any thinking part that belongs to a settled turn
-      // (restored sessions, or any turn that isn't the one actively streaming).
-      // Old saved sessions predate the endTime field; without this they'd read
-      // as "still thinking" and pulse forever.
-      if (!isStreamingTurn) {
-        _settleThinkingPart(pair.response);
-      }
-
-      // User message
-      const userEl = this._renderUserMessage(pair.request);
-      container.appendChild(userEl);
-
-      // Assistant response
-      const assistantEl = this._renderAssistantMessage(
-        pair.request,
-        pair.response,
-        requestInProgress && i === messages.length - 1,
-        i === messages.length - 1,
-      );
-      container.appendChild(assistantEl);
-
-      this._renderedPairs.set(i, {
-        userEl,
-        assistantEl,
-        partCount: pair.response.parts.length,
-      });
-      assistantEl.dataset.requestId = pair.request.requestId;
+      this._renderPairInto(container, messages[i], i, i === messages.length - 1, requestInProgress);
     }
+    this._applyStreamingTail(container, messages, requestInProgress);
+  }
 
-    // Show streaming cursor on the last assistant message if in progress
-    if (requestInProgress && messages.length > 0) {
-      const lastAssistant = container.querySelector('.parallx-chat-message:last-child .parallx-chat-message-body');
-      if (lastAssistant) {
-        // If no content yet and no typing indicator already present, show one
-        const lastResponse = messages[messages.length - 1].response;
-        if (lastResponse.parts.length === 0 && !lastAssistant.querySelector('.parallx-chat-typing-indicator')) {
-          const typing = this._createTypingIndicator();
-          lastAssistant.appendChild(typing);
-        }
-        // Pen-tip cursor only while text streams — not during the thinking phase.
-        if (lastResponse.parts.length > 0) {
-          lastAssistant.appendChild($('span.parallx-chat-streaming-cursor'));
-        }
-      }
+  /**
+   * Append only the pairs ADDED since the last render (typically the one the
+   * user just sent), leaving every existing pair — and the scroll position —
+   * untouched. This is the fix for "send jumps to the top": a full rebuild
+   * collapses the list and resets scrollTop to 0; appending never touches it.
+   */
+  private _appendNewPairs(
+    container: HTMLElement,
+    messages: readonly IChatRequestResponsePair[],
+    requestInProgress: boolean,
+  ): void {
+    const start = this._renderedPairs.size;
+    // The previously-last turn is no longer last — strip any streaming cursor /
+    // typing indicator it may still carry.
+    this._renderedPairs.get(start - 1)?.assistantEl
+      .querySelectorAll('.parallx-chat-streaming-cursor, .parallx-chat-typing-indicator')
+      .forEach((el) => el.remove());
+    for (let i = start; i < messages.length; i++) {
+      this._renderPairInto(container, messages[i], i, i === messages.length - 1, requestInProgress);
+    }
+    this._applyStreamingTail(container, messages, requestInProgress);
+  }
+
+  /** True when the only change since the last render is newly-appended pairs:
+   *  every previously-rendered pair is still in the DOM and still matches by
+   *  request id, and the array only grew. */
+  private _canAppendOnly(
+    container: HTMLElement,
+    messages: readonly IChatRequestResponsePair[],
+  ): boolean {
+    const prevCount = this._renderedPairs.size;
+    if (prevCount === 0 || messages.length <= prevCount) { return false; }
+    for (let i = 0; i < prevCount; i++) {
+      const rendered = this._renderedPairs.get(i);
+      if (!rendered || !container.contains(rendered.assistantEl)) { return false; }
+      if (rendered.assistantEl.dataset.requestId !== messages[i].request.requestId) { return false; }
+    }
+    return true;
+  }
+
+  /** Render one request/response pair, append it to the container, and track it
+   *  in `_renderedPairs`. Shared by full render and append. */
+  private _renderPairInto(
+    container: HTMLElement,
+    pair: IChatRequestResponsePair,
+    index: number,
+    isLast: boolean,
+    requestInProgress: boolean,
+  ): void {
+    const isStreamingTurn = requestInProgress && isLast;
+    // Backfill endTime on any thinking part that belongs to a settled turn
+    // (restored sessions, or any turn that isn't actively streaming), else it
+    // reads as "still thinking" and pulses forever.
+    if (!isStreamingTurn) {
+      _settleThinkingPart(pair.response);
+    }
+    const userEl = this._renderUserMessage(pair.request);
+    container.appendChild(userEl);
+    const assistantEl = this._renderAssistantMessage(pair.request, pair.response, isStreamingTurn, isLast);
+    container.appendChild(assistantEl);
+    this._renderedPairs.set(index, {
+      userEl,
+      assistantEl,
+      partCount: pair.response.parts.length,
+    });
+    assistantEl.dataset.requestId = pair.request.requestId;
+  }
+
+  /** Show the typing indicator / streaming cursor on the last assistant message
+   *  while a request is in progress. */
+  private _applyStreamingTail(
+    container: HTMLElement,
+    messages: readonly IChatRequestResponsePair[],
+    requestInProgress: boolean,
+  ): void {
+    if (!requestInProgress || messages.length === 0) { return; }
+    const lastAssistant = container.querySelector('.parallx-chat-message:last-child .parallx-chat-message-body');
+    if (!lastAssistant) { return; }
+    const lastResponse = messages[messages.length - 1].response;
+    if (lastResponse.parts.length === 0 && !lastAssistant.querySelector('.parallx-chat-typing-indicator')) {
+      lastAssistant.appendChild(this._createTypingIndicator());
+    }
+    // Pen-tip cursor only while text streams — not during the thinking phase.
+    if (lastResponse.parts.length > 0) {
+      lastAssistant.appendChild($('span.parallx-chat-streaming-cursor'));
     }
   }
 

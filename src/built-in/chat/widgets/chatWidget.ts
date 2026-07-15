@@ -1095,7 +1095,15 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
 
   private _scrollToBottom(): void {
     const el = this._messageListContainer;
+    // Force an INSTANT jump. The list's CSS `scroll-behavior: smooth` turns
+    // `scrollTop = …` into an ANIMATED scroll; after a send the list fully
+    // rebuilds (scrollTop → 0) and the streaming re-renders that follow keep
+    // interrupting/restarting that animation, so it never reaches the bottom and
+    // strands the view near the top. Override to instant for this jump.
+    const prev = el.style.scrollBehavior;
+    el.style.scrollBehavior = 'auto';
     el.scrollTop = el.scrollHeight;
+    el.style.scrollBehavior = prev;
     this._isAtBottom = true;
     this._scrollBtn.classList.remove('parallx-chat-scroll-btn--visible');
   }
