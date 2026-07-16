@@ -1298,6 +1298,18 @@ html, body {
   contain: strict;
 }
 
+/* Grid children are sized exclusively by the grid model (inline width/height
+   from Grid layout). Pin them rigid so the flex algorithm can never
+   redistribute space behind the model's back — mid-frame forced reflows
+   (e.g. a ResizeObserver or clientWidth read between the two zero-sum width
+   writes in resizeSash) must observe model sizes, not flex-shrunk ones. */
+.grid-branch > * {
+  flex-shrink: 0;
+  flex-grow: 0;
+  min-width: 0;
+  min-height: 0;
+}
+
 /* ── Drop overlay ── */
 .parallx-drop-overlay {
   pointer-events: none;

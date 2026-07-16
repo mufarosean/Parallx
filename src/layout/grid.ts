@@ -649,9 +649,6 @@ export class Grid extends Disposable {
     // Visual feedback: add active class to sash during drag
     target.classList.add('active');
 
-    // Hint the browser to optimise compositing for dimensions that change during drag
-    this._setWillChange(branch, sashIndex, true);
-
     // Use rAF-throttling so layout runs at most once per frame
     let rafId = 0;
     let pendingDelta = 0;
@@ -718,7 +715,6 @@ export class Grid extends Disposable {
         cancelAnimationFrame(rafId);
         rafId = 0;
       }
-      this._setWillChange(branch, sashIndex, false);
       target.classList.remove('active');
       this._sashDragState = null;
       document.removeEventListener('mousemove', onMouseMove);
@@ -746,26 +742,12 @@ export class Grid extends Disposable {
     startDrag(isHorizontal ? 'col-resize' : 'row-resize');
   };
 
-  /**
-   * Toggle `will-change` on the two children adjacent to a sash so the
-   * browser can optimise compositing during drag.
-   */
-  private _setWillChange(branch: GridBranchNode, sashIndex: number, active: boolean): void {
-    // Use 'transform' instead of 'width, height' — will-change on layout
-    // properties doesn't help (browser still needs main-thread reflow);
-    // 'transform' promotes the element to its own compositor layer.
-    const value = active ? 'transform' : '';
-    const childA = branch.getChild(sashIndex);
-    const childB = branch.getChild(sashIndex + 1);
-    if (childA) {
-      const elA = childA.type === GridNodeType.Leaf ? childA.view.element : childA.element;
-      elA.style.willChange = value;
-    }
-    if (childB) {
-      const elB = childB.type === GridNodeType.Leaf ? childB.view.element : childB.element;
-      elB.style.willChange = value;
-    }
-  }
+  // NOTE: sash drags deliberately do NOT set `will-change: transform` on the
+  // adjacent children. Promoting a pane subtree (PDF canvases, TipTap doc) to
+  // its own compositor layer while animating WIDTH forces a full layer
+  // re-raster every frame; under raster pressure Chromium paints the stale
+  // texture stretched/clipped to the new bounds — the pane visually "jumps"
+  // to a wrong size mid-drag even though DOM layout is correct.
 
   // ── Private: Sash State ──
 
