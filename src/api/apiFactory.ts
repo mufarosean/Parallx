@@ -50,6 +50,7 @@ import {
   WorkspaceGraphBridge,
   type GraphProvider,
 } from './bridges/workspaceGraphBridge.js';
+import { DashboardBridge, type WidgetTypeRegistration } from './bridges/dashboardBridge.js';
 import { ILinkResolverService, type LinkContract, type LinkMetadata } from '../links/linkResolverService.js';
 import type { ParsedLink } from '../links/parallxUri.js';
 import type { IThemeService } from '../services/serviceTypes.js';
@@ -214,6 +215,17 @@ export interface ParallxApiObject {
     onDidChange(listener: () => void): IDisposable;
     /** Return all currently-registered providers across every tool. */
     getAll(): readonly GraphProvider[];
+  };
+  readonly dashboard: {
+    /**
+     * Contribute a dashboard widget type. typeIds are namespaced under the
+     * contributing tool's id (`<toolId>.<name>`). Registration is
+     * activation-order independent — the dashboard picks up contributions
+     * whenever it activates. Returns a disposable that deregisters.
+     */
+    registerWidgetType<TConfig = Record<string, unknown>>(registration: WidgetTypeRegistration<TConfig>): IDisposable;
+    /** Metadata snapshot of every contributed widget type, across all tools. */
+    listWidgetTypes(): readonly import('./bridges/dashboardBridge.js').WidgetTypeDescriptor[];
   };
   readonly tools: {
     getAll(): { id: string; name: string; version: string; publisher: string; description: string; isBuiltin: boolean; toolPath: string; state: string; activationEvents: readonly string[]; contributes: Record<string, unknown> }[];
@@ -464,6 +476,11 @@ export function createToolApi(
   // M66+ — Workspace graph contributor API. Pure registry; no service needed.
   const workspaceGraphBridge = new WorkspaceGraphBridge(toolId, subscriptions);
   subscriptions.push(workspaceGraphBridge);
+
+  // M86 — Dashboard widget contribution API. Pure hub; the dashboard tool
+  // mirrors it into its registry, so registration order doesn't matter.
+  const dashboardBridge = new DashboardBridge(toolId, subscriptions);
+  subscriptions.push(dashboardBridge);
 
   // ── Build API object ──
   const api: ParallxApiObject = {
@@ -717,6 +734,12 @@ export function createToolApi(
       notifyChange: () => workspaceGraphBridge.notifyChange(),
       onDidChange: (listener: () => void) => workspaceGraphBridge.onDidChange(listener),
       getAll: () => workspaceGraphBridge.getAll(),
+    }),
+
+    dashboard: Object.freeze({
+      registerWidgetType: <TConfig = Record<string, unknown>>(registration: WidgetTypeRegistration<TConfig>) =>
+        dashboardBridge.registerWidgetType(registration),
+      listWidgetTypes: () => dashboardBridge.listWidgetTypes(),
     }),
 
     tools: Object.freeze({

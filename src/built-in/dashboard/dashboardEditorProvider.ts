@@ -243,11 +243,19 @@ class DashboardEditorPane implements IDisposable {
       void this._reconcile(e.kind, e.widgetId);
     }));
 
-    // Re-render the picker contents if the registry changes (extension activated/
-    // deactivated mid-session).
+    // Registry changed mid-session (extension activated / deactivated /
+    // re-registered): live placeholder ⇄ widget swap. Re-mount any mounted
+    // instance whose type registration object changed, so a late-activating
+    // contributor upgrades its placeholders without reopening the page and a
+    // deactivated one degrades to placeholders instead of dangling renderers.
     this._disposables.push(this._registry.onDidChange(() => {
       if (this._disposed) return;
-      // No live picker to refresh — re-opening picks up the new list.
+      for (const [id, inst] of [...this._instances]) {
+        const current = this._registry.getWidgetType(inst.row.widgetTypeId);
+        if (current !== inst.typeReg) {
+          void this._remountWidget(id);
+        }
+      }
     }));
 
     // Command-side hooks (AI-invocable commands fire DOM events the active
@@ -554,11 +562,16 @@ class DashboardEditorPane implements IDisposable {
     let handle: WidgetHandle | null = null;
 
     if (!typeReg) {
-      // Unavailable placeholder.
+      // Unavailable placeholder. Never evict the instance — layout, config,
+      // and cached output all survive until the providing tool returns.
+      const esc = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const source = row.providerToolId
+        ? `Provided by <code>${esc(row.providerToolId)}</code>, which isn't currently active.`
+        : `The "<code>${esc(row.widgetTypeId)}</code>" widget type is not registered.`;
       body.innerHTML = `
         <div class="dashboard-widget__unavailable">
           <strong>Widget unavailable</strong>
-          <p>The "<code>${row.widgetTypeId}</code>" widget type is not registered.<br/>The extension providing it may be disabled.</p>
+          <p>${source}<br/>Enable the providing extension to bring it back, or remove the widget.</p>
         </div>
       `;
       status.dataset.value = 'stale';
@@ -717,6 +730,25 @@ class DashboardEditorPane implements IDisposable {
     this._updateFooter(inst);
   }
 
+  /**
+   * Dispose one mounted instance and mount it again from a fresh DB row.
+   * Used when its type's availability changed (placeholder ⇄ live widget).
+   */
+  private async _remountWidget(widgetId: string): Promise<void> {
+    const inst = this._instances.get(widgetId);
+    if (!inst) return;
+    try { inst.handle?.dispose(); } catch { /* noop */ }
+    inst.configEmitter.dispose();
+    this._scheduler.cancel(widgetId);
+    inst.cardEl.remove();
+    this._instances.delete(widgetId);
+
+    const row = await this._data.getWidget(widgetId);
+    if (this._disposed || !row || row.pageId !== this._pageId) return;
+    if (this._instances.has(widgetId)) return; // re-mounted concurrently
+    this._mountWidget(row);
+  }
+
   // ── Remove ─────────────────────────────────────────────────────────────
 
   private async _removeWidget(widgetId: string): Promise<void> {
@@ -841,6 +873,7 @@ class DashboardEditorPane implements IDisposable {
       placement,
       config: { ...(reg.defaultConfig as Record<string, unknown>) },
       refreshPolicy: reg.defaultRefreshPolicy ?? { kind: 'manual' },
+      providerToolId: this._registry.getWidgetTypeOwner(reg.typeId),
     });
   }
 

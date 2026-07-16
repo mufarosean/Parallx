@@ -14,9 +14,11 @@ import './explorer.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { LinksApi } from '../../links/linksApi.js';
+import type { WidgetTypeRegistration } from '../../api/bridges/dashboardBridge.js';
 import { ContextMenu, type IContextMenuItem } from '../../ui/contextMenu.js';
 import { $ } from '../../ui/dom.js';
 import { getFileTypeIcon, getFolderIcon } from '../../ui/iconRegistry.js';
+import { RECENT_ITEMS_WIDGET, setupRecentItemsTracking } from './recentItemsWidget.js';
 
 // ─── Types (avoid circular imports) ──────────────────────────────────────────
 
@@ -67,6 +69,13 @@ interface ParallxApi {
     onDidChangeOpenEditors(listener: () => void): IDisposable;
   };
   links: LinksApi;
+  services: {
+    get<T>(id: { readonly id: string }): T;
+    has(id: { readonly id: string }): boolean;
+  };
+  dashboard: {
+    registerWidgetType<TConfig = Record<string, unknown>>(registration: WidgetTypeRegistration<TConfig>): IDisposable;
+  };
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -148,6 +157,11 @@ export function activate(api: ParallxApi, context: ToolContext): void {
 
   // Register commands
   registerCommands(api, context);
+
+  // M86: recent-items recency tracking + the "Recent items" dashboard widget.
+  // The explorer owns file/page recency; the dashboard just displays it.
+  setupRecentItemsTracking(api, context);
+  context.subscriptions.push(api.dashboard.registerWidgetType(RECENT_ITEMS_WIDGET));
 
   // Subscribe to folder changes
   context.subscriptions.push(

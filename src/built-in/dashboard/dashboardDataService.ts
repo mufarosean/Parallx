@@ -90,6 +90,7 @@ function rowToWidget(row: Record<string, unknown>): DashboardWidgetRow {
     cachedAt: (row.cached_at as number) ?? null,
     status,
     errorMessage: (row.error_message as string) ?? null,
+    providerToolId: (row.provider_tool_id as string) ?? null,
     createdAt: (row.created_at as number) ?? 0,
     updatedAt: (row.updated_at as number) ?? 0,
   };
@@ -212,7 +213,7 @@ export class DashboardDataService extends Disposable {
     const res = await this._db.all(
       `SELECT id, page_id, widget_type_id, row, col, row_span, col_span, position,
               config_json, refresh_policy_json, appearance_json, cached_output, cached_at, status,
-              error_message, created_at, updated_at
+              error_message, provider_tool_id, created_at, updated_at
          FROM dashboard_widgets
         WHERE page_id = ?
         ORDER BY row ASC, col ASC, position ASC`,
@@ -229,7 +230,7 @@ export class DashboardDataService extends Disposable {
     const res = await this._db.get(
       `SELECT id, page_id, widget_type_id, row, col, row_span, col_span, position,
               config_json, refresh_policy_json, appearance_json, cached_output, cached_at, status,
-              error_message, created_at, updated_at
+              error_message, provider_tool_id, created_at, updated_at
          FROM dashboard_widgets WHERE id = ?`,
       [id],
     );
@@ -250,7 +251,7 @@ export class DashboardDataService extends Disposable {
     const res = await this._db.all(
       `SELECT id, page_id, widget_type_id, row, col, row_span, col_span, position,
               config_json, refresh_policy_json, appearance_json, cached_output, cached_at, status,
-              error_message, created_at, updated_at
+              error_message, provider_tool_id, created_at, updated_at
          FROM dashboard_widgets`,
     );
     if (res.error) {
@@ -269,6 +270,8 @@ export class DashboardDataService extends Disposable {
     placement: WidgetPlacement;
     config: Record<string, unknown>;
     refreshPolicy: WidgetRefreshPolicy;
+    /** Tool providing the widget type — recorded so the unavailable-placeholder can name it. */
+    providerToolId?: string;
   }): Promise<DashboardWidgetRow> {
     const id = generateId('widget');
     const now = Date.now();
@@ -283,14 +286,15 @@ export class DashboardDataService extends Disposable {
     const res = await this._db.run(
       `INSERT INTO dashboard_widgets
          (id, page_id, widget_type_id, row, col, row_span, col_span, position,
-          config_json, refresh_policy_json, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ok', ?, ?)`,
+          config_json, refresh_policy_json, status, provider_tool_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ok', ?, ?, ?)`,
       [
         id, input.pageId, input.widgetTypeId,
         input.placement.row, input.placement.col,
         input.placement.rowSpan, input.placement.colSpan, nextPos,
         JSON.stringify(input.config),
         JSON.stringify(input.refreshPolicy),
+        input.providerToolId ?? null,
         now, now,
       ],
     );
@@ -309,6 +313,7 @@ export class DashboardDataService extends Disposable {
       cachedAt: null,
       status: 'ok',
       errorMessage: null,
+      providerToolId: input.providerToolId ?? null,
       createdAt: now,
       updatedAt: now,
     };

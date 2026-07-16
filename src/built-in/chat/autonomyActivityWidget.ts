@@ -1,8 +1,14 @@
 // autonomyActivityWidget.ts — query-backed widget showing recent autonomy events.
 //
-// Reads the chat extension's autonomy task rail via the read-only
-// `chat.getRecentAutonomyEvents` command (same decoupling pattern the news
-// brief uses for `chat.getInlineAIProvider`). Each row is one background
+// M86 ownership: this widget belongs to the chat/autonomy tool (it renders
+// the autonomy task rail), contributed to the dashboard via `api.dashboard`.
+// The typeId keeps its pre-M86 value ('parallx.dashboard.autonomy-activity')
+// so persisted dashboard instances keep working. Visual styles (`aaw__*`)
+// intentionally remain in dashboard.css — the widget renders inside the
+// dashboard pane's DOM.
+//
+// Reads the autonomy task rail via the read-only
+// `chat.getRecentAutonomyEvents` command. Each row is one background
 // agent / automation chain: when it fired, what triggered it, how it ended,
 // how long it took, and how many tools it called.
 //
@@ -19,7 +25,7 @@ import type {
   WidgetHandle,
   WidgetRefreshContext,
   WidgetTypeRegistration,
-} from '../dashboardTypes.js';
+} from '../../api/bridges/dashboardBridge.js';
 
 interface AutonomyActivityConfig {
   readonly maxItems: number;

@@ -466,6 +466,79 @@ api.env.appVersion    // semver
 api.env.toolPath      // absolute path to this extension's directory
 ```
 
+### 4.15 `api.dashboard` — contribute dashboard widgets (M86)
+
+Any extension can add widget types to the user's dashboards. Registration is
+**activation-order independent**: call it from `activate()` whenever it runs;
+the dashboard picks the type up live, including upgrading "unavailable"
+placeholder cards the moment your type registers. When your extension is
+disabled, mounted instances degrade to placeholders — the user's layout,
+config, and cached content are never lost.
+
+```js
+api.dashboard.registerWidgetType(reg)   // → IDisposable (push to _disposables)
+api.dashboard.listWidgetTypes()         // → metadata for every contributed type
+```
+
+Rules enforced at the boundary (throws on violation):
+
+- `typeId` MUST start with `"<yourExtensionId>."` — e.g. `parallx.budget.mtd-spend`.
+- `defaultSize` must fit the 12-column grid (`1 ≤ colSpan ≤ 12`).
+- `defaultRefreshPolicy` intervals must be ≥ 60 000 ms; cron must be 5-field.
+- A `typeId` registered by another extension cannot be taken over.
+
+Registration shape (all the same fields the built-in widgets use):
+
+```js
+const d = api.dashboard.registerWidgetType({
+  typeId: 'myExt.my-widget',            // namespaced under your extension id
+  displayName: 'My widget',
+  description: 'One sentence for the picker. Give two unrelated example uses.',
+  icon: '<svg …></svg>',                // inline SVG or codicon name
+  category: 'query',                    // 'static' | 'query' | 'ai'
+  defaultSize: { colSpan: 4, rowSpan: 3 },
+  defaultConfig: { maxItems: 8 },
+  configSchema: {                       // renders the settings drawer for free
+    fields: {
+      maxItems: { type: 'number', label: 'How many to show' },
+    },
+  },
+  defaultRefreshPolicy: { kind: 'interval', ms: 30 * 60_000 },
+
+  // Pure data fetch. Runs headless (scheduler) AND on manual refresh.
+  // Return a string (usually JSON.stringify of your data), ≤ 256 KiB.
+  async refresh(ctx) {
+    const data = await computeMyData(ctx.config);
+    return JSON.stringify(data);
+  },
+
+  // DOM render into the widget card body. Parse ctx.cachedOutput to paint.
+  createWidget(container, ctx) {
+    function paint(cached) { /* build DOM from JSON.parse(cached) */ }
+    paint(ctx.cachedOutput);
+    const sub = ctx.onDidChangeConfig(() => ctx.requestRefresh());
+    ctx.requestRefresh(); // refresh on mount if your data changes out-of-band
+    return {
+      refreshFromCache(cached) { paint(cached); },
+      renderError(message) { /* show message; null = cleared */ },
+      dispose() { sub.dispose(); },
+    };
+  },
+});
+_disposables.push(d);
+```
+
+Design rules for widgets:
+
+- **A widget is a door, not a poster** — clicking it should navigate into
+  your extension's own surface (`api.editors.openEditor(...)` / a command).
+- **Domain-blind config**: don't hardcode a use case that config could
+  express. State two unrelated instantiations in `description`.
+- Reuse the data paths your extension already has (the budget widget calls
+  the same summary query as its chat tool — see `ext/budget/main.js`,
+  `buildMtdSpendWidget`, for the reference implementation).
+- Guard for older shells: `if (api.dashboard?.registerWidgetType) { … }`.
+
 ---
 
 ## 5. Patterns (copy verbatim)

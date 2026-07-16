@@ -53,6 +53,7 @@ const FOLDER_RULES: Record<string, string[]> = {
 
   // ── Root leaves ─────────────────────────────────────────────────────────
   // chatTypes.ts and chatIcons.ts have their own purity tests below.
+  'autonomyActivityWidget.ts': [],  // M86 — dashboard widget contribution (contract types come from api/bridges, outside chat)
 
   // ── config/ — imports only chatTypes ────────────────────────────────────
 

@@ -221,23 +221,10 @@ export class DashboardRefreshScheduler extends Disposable {
 /**
  * Lightweight validator for `WidgetRefreshPolicy` at registration time.
  * Rejects sub-60s intervals (rather than silently clamping at runtime).
+ * Canonical implementation lives with the contribution contract in the
+ * API bridge so extension-side and dashboard-side validation can't drift.
  */
-export function validateRefreshPolicy(policy: WidgetRefreshPolicy): void {
-  if (policy.kind === 'interval') {
-    if (!Number.isFinite(policy.ms) || policy.ms < DASHBOARD_LIMITS.MIN_REFRESH_INTERVAL_MS) {
-      throw new Error(`Refresh interval must be ≥ ${DASHBOARD_LIMITS.MIN_REFRESH_INTERVAL_MS}ms`);
-    }
-  } else if (policy.kind === 'cron') {
-    // We can't reject arbitrary cron schedules that happen to fire every minute,
-    // but we can validate parseability up front so a bad expression fails fast.
-    const parts = policy.cron.trim().split(/\s+/);
-    if (parts.length !== 5) throw new Error('Cron expression must have 5 fields');
-    const ranges: [number, number][] = [[0, 59], [0, 23], [1, 31], [1, 12], [0, 6]];
-    for (let i = 0; i < 5; i++) parseCronField(parts[i], ranges[i][0], ranges[i][1]);
-  } else if (policy.kind !== 'manual') {
-    throw new Error(`Unsupported refresh policy kind: ${(policy as { kind?: string }).kind ?? 'undefined'}`);
-  }
-}
+export { validateWidgetRefreshPolicy as validateRefreshPolicy } from '../../api/bridges/dashboardBridge.js';
 
 // Re-export parseDuration so widgets writing UIs that take "5m"-style strings
 // can validate user input consistently with the scheduler.

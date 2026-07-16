@@ -6,13 +6,11 @@
 import { toDisposable, type IDisposable } from '../../../platform/lifecycle.js';
 import type { DashboardRegistry } from '../dashboardTypes.js';
 import { CLOCK_AND_LINKS_WIDGET } from './clockAndLinksWidget.js';
-import { RECENT_FILES_WIDGET } from './recentFilesWidget.js';
 import { NEWS_BRIEF_WIDGET } from './newsBriefWidget.js';
 import { CUSTOM_AI_WIDGET } from './customAiWidget.js';
 import { LIVE_WIDGET } from './liveWidget.js';
 import { IMAGE_WIDGET } from './imageWidget.js';
 import { VIDEO_WIDGET } from './videoWidget.js';
-import { AUTONOMY_ACTIVITY_WIDGET } from './autonomyActivityWidget.js';
 import { NOTES_WIDGET } from './notesWidget.js';
 import { TASKS_WIDGET } from './tasksWidget.js';
 import { COUNTDOWN_WIDGET } from './countdownWidget.js';
@@ -32,15 +30,17 @@ export function registerBuiltInDashboardWidgets(
   // editor pane stuffs it into the context object). Nothing to capture here
   // beyond registration.
 
+  // M86: organ-owned widgets are NOT registered here — they are contributed
+  // by the tool that owns their data via `api.dashboard.registerWidgetType`
+  // (recent-files → explorer; autonomy-activity → chat). Their typeIds are
+  // unchanged, so persisted instances keep working.
   const disposables: IDisposable[] = [
     registry.registerWidgetType(CLOCK_AND_LINKS_WIDGET),
-    registry.registerWidgetType(RECENT_FILES_WIDGET),
     registry.registerWidgetType(NEWS_BRIEF_WIDGET),
     registry.registerWidgetType(CUSTOM_AI_WIDGET),
     registry.registerWidgetType(LIVE_WIDGET),
     registry.registerWidgetType(IMAGE_WIDGET),
     registry.registerWidgetType(VIDEO_WIDGET),
-    registry.registerWidgetType(AUTONOMY_ACTIVITY_WIDGET),
     registry.registerWidgetType(NOTES_WIDGET),
     registry.registerWidgetType(TASKS_WIDGET),
     registry.registerWidgetType(COUNTDOWN_WIDGET),

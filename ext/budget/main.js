@@ -8450,6 +8450,148 @@ async function budgetToolSummary(args) {
   };
 }
 
+// ─── M86: dashboard widget — Month-to-date spend ────────────────────────────
+//
+// The budget extension contributes a widget to the user's dashboards through
+// `api.dashboard.registerWidgetType` — the reference example of an EXTERNAL
+// extension contributing a widget (typeId namespaced under this extension's
+// id; activation-order independent; placeholder-safe when budget is disabled).
+// Data comes from the same query the `budget.summary` chat tool uses.
+
+const BMTD_STYLE_ID = 'budget-mtd-widget-style';
+
+function _ensureMtdWidgetStyle() {
+  if (document.getElementById(BMTD_STYLE_ID)) return;
+  const style = document.createElement('style');
+  style.id = BMTD_STYLE_ID;
+  style.textContent = `
+    .bmtd { display: flex; flex-direction: column; gap: 8px; height: 100%; cursor: pointer; }
+    .bmtd__net { font-size: 26px; font-weight: 700; line-height: 1.1; }
+    .bmtd__sub { font-size: 11px; opacity: .75; }
+    .bmtd__cats { display: flex; flex-direction: column; gap: 4px; margin-top: 2px; }
+    .bmtd__cat { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; font-size: 12px; align-items: baseline; }
+    .bmtd__catname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bmtd__catbar { grid-column: 1 / -1; height: 3px; border-radius: 2px; background: var(--px-accent, #7aa2f7); opacity: .55; }
+    .bmtd__empty { font-size: 12px; opacity: .7; }
+  `;
+  document.head.appendChild(style);
+  _disposables.push({ dispose() { style.remove(); } });
+}
+
+function buildMtdSpendWidget(api) {
+  return {
+    typeId: 'parallx.budget.mtd-spend',
+    displayName: 'Budget: Month to date',
+    description: 'Net spend so far this month with your top categories. Click through to the Budget overview.',
+    icon: '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>',
+    category: 'query',
+    defaultSize: { colSpan: 4, rowSpan: 3 },
+    defaultConfig: { topCategories: 4 },
+    configSchema: {
+      fields: {
+        topCategories: {
+          type: 'number',
+          label: 'Top categories to show',
+          description: '0-8. Zero hides the breakdown.',
+        },
+      },
+    },
+    defaultRefreshPolicy: { kind: 'interval', ms: 30 * 60_000 },
+
+    async refresh() {
+      if (!db) throw new Error('Budget database not ready — open the Budget tool once, then refresh.');
+      const summary = await budgetToolSummary({});
+      if (!summary.ok) throw new Error(summary.error || 'Budget summary failed.');
+      return JSON.stringify(summary);
+    },
+
+    createWidget(container, ctx) {
+      _ensureMtdWidgetStyle();
+      container.classList.add('bmtd');
+      container.title = 'Open Budget overview';
+      container.addEventListener('click', () => {
+        api.commands.executeCommand('budget.openDashboard').catch(() => {});
+      });
+
+      const fmtUsd = (n) => (Number(n) || 0).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+
+      function clampTop(n) {
+        const v = Math.floor(Number(n));
+        return Number.isFinite(v) ? Math.max(0, Math.min(8, v)) : 4;
+      }
+
+      function paintFrom(cached) {
+        container.textContent = '';
+        let s = null;
+        if (cached) { try { s = JSON.parse(cached); } catch { /* malformed */ } }
+        if (!s || !s.ok) {
+          const empty = document.createElement('div');
+          empty.className = 'bmtd__empty';
+          empty.textContent = 'No budget data yet. Run a sync, then refresh.';
+          container.appendChild(empty);
+          return;
+        }
+
+        const net = document.createElement('div');
+        net.className = 'bmtd__net';
+        net.textContent = fmtUsd(s.net);
+        container.appendChild(net);
+
+        const sub = document.createElement('div');
+        sub.className = 'bmtd__sub';
+        const bits = [`${fmtUsd(s.spend)} spend`];
+        if (s.refunds > 0) bits.push(`${fmtUsd(s.refunds)} refunded`);
+        bits.push(`${s.transactionCount} transaction${s.transactionCount === 1 ? '' : 's'}`);
+        sub.textContent = `${s.from} → ${s.to} · ` + bits.join(' · ');
+        container.appendChild(sub);
+
+        const top = clampTop(ctx.config && ctx.config.topCategories);
+        const cats = Array.isArray(s.byCategory) ? s.byCategory.slice(0, top) : [];
+        if (cats.length > 0) {
+          const wrap = document.createElement('div');
+          wrap.className = 'bmtd__cats';
+          const maxSpend = Math.max(...cats.map((c) => Math.abs(c.spend)), 0.01);
+          for (const c of cats) {
+            const row = document.createElement('div');
+            row.className = 'bmtd__cat';
+            const name = document.createElement('span');
+            name.className = 'bmtd__catname';
+            name.textContent = c.category;
+            row.appendChild(name);
+            const amt = document.createElement('span');
+            amt.textContent = fmtUsd(c.spend);
+            row.appendChild(amt);
+            const bar = document.createElement('span');
+            bar.className = 'bmtd__catbar';
+            bar.style.width = `${Math.max(4, Math.round((Math.abs(c.spend) / maxSpend) * 100))}%`;
+            row.appendChild(bar);
+            wrap.appendChild(row);
+          }
+          container.appendChild(wrap);
+        }
+      }
+
+      paintFrom(ctx.cachedOutput);
+      const sub = ctx.onDidChangeConfig(() => ctx.requestRefresh());
+      // Refresh on mount — the ledger changes out-of-band (syncs, edits).
+      ctx.requestRefresh();
+
+      return {
+        refreshFromCache(cached) { paintFrom(cached); },
+        renderError(message) {
+          if (!message) { paintFrom(ctx.cachedOutput); return; }
+          container.textContent = '';
+          const err = document.createElement('div');
+          err.className = 'bmtd__empty';
+          err.textContent = message;
+          container.appendChild(err);
+        },
+        dispose() { sub.dispose(); },
+      };
+    },
+  };
+}
+
 async function budgetToolSearch(args) {
   const limit = Math.max(1, Math.min(200, Number(args.limit) || 50));
   const where = [`t.status='confirmed'`];
@@ -8741,6 +8883,17 @@ export async function activate(api, context) {
   _disposables.push(api.editors.registerEditorProvider('budget.editor', {
     createEditorPane(container, input) { return renderEditorPane(container, api, input); },
   }));
+
+  // ── M86: dashboard widget contribution ───────────────────────────────
+  // Month-to-date spend card. Guarded so the extension still loads on
+  // shells that predate the `parallx.dashboard` namespace.
+  if (api.dashboard && typeof api.dashboard.registerWidgetType === 'function') {
+    try {
+      _disposables.push(api.dashboard.registerWidgetType(buildMtdSpendWidget(api)));
+    } catch (err) {
+      console.error('[Budget] Dashboard widget registration failed:', err);
+    }
+  }
 
   // ── "Open <section>" commands ────────────────────────────────────────
   // Top-level sidebar sections open directly. Sections wrapped under Plan or

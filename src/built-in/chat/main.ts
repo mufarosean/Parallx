@@ -17,6 +17,7 @@ import { OllamaProvider } from './providers/ollamaProvider.js';
 import { AnthropicProvider, getAnthropicBridge } from './providers/anthropicProvider.js';
 import { createChatView } from './widgets/chatView.js';
 import type { ChatWidget } from './widgets/chatWidget.js';
+import { AUTONOMY_ACTIVITY_WIDGET } from './autonomyActivityWidget.js';
 
 import {
   buildOpenclawCanvasParticipantServices,
@@ -161,6 +162,11 @@ interface ParallxApi {
     openFileEditor(uri: string, options?: { pinned?: boolean }): Promise<void>;
   };
   links: LinksApi;
+  dashboard: {
+    registerWidgetType<TConfig = Record<string, unknown>>(
+      registration: import('../../api/bridges/dashboardBridge.js').WidgetTypeRegistration<TConfig>,
+    ): IDisposable;
+  };
 }
 
 function normalizeWorkspaceRelativePath(relativePath: string): string {
@@ -294,6 +300,13 @@ let _loadWriterIgnore: (() => Promise<unknown>) | undefined;
 
 export async function activate(api: ParallxApi, context: ToolContext): Promise<void> {
   _api = api;
+
+  // ── M86: dashboard widget contribution ──
+  //
+  // The "Autonomy activity" widget renders this tool's autonomy task rail,
+  // so this tool owns and contributes it. Registration is inert until the
+  // dashboard mirrors it (activation-order independent).
+  context.subscriptions.push(api.dashboard.registerWidgetType(AUTONOMY_ACTIVITY_WIDGET));
 
   // ── M58 W4 cron ↔ W2 heartbeat forward-link ──
   //

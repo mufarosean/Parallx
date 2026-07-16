@@ -16,7 +16,12 @@
 import { isDevMode } from '../../platform/devMode.js';
 import './dashboard.css';
 
-import type { IDisposable } from '../../platform/lifecycle.js';
+import { toDisposable, type IDisposable } from '../../platform/lifecycle.js';
+import {
+  getContributedDashboardWidgetTypes,
+  onDashboardWidgetContributionsDidChange,
+  type ContributedWidgetType,
+} from '../../api/bridges/dashboardBridge.js';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import { DashboardDataService } from './dashboardDataService.js';
 import { DashboardWidgetRegistry } from './dashboardWidgetRegistry.js';
@@ -25,7 +30,6 @@ import { DashboardEditorProvider } from './dashboardEditorProvider.js';
 import { DashboardSidebar } from './dashboardSidebar.js';
 import type { DashboardRegistry, WidgetTypeRegistration } from './dashboardTypes.js';
 import { registerBuiltInDashboardWidgets } from './widgets/builtInWidgets.js';
-import { IEditorService } from '../../services/serviceTypes.js';
 
 // ─── Minimal Parallx API surface (kept narrow on purpose) ────────────────────
 
@@ -81,20 +85,6 @@ let _dataService: DashboardDataService | null = null;
 let _registry: DashboardWidgetRegistry | null = null;
 let _scheduler: DashboardRefreshScheduler | null = null;
 
-// Recency-ordered list of opened files + canvas pages (Recent Items widget).
-interface RecentItem {
-  /** Dedup key: `file:<uri>` or `page:<pageId>`. */
-  readonly key: string;
-  readonly kind: 'file' | 'page';
-  readonly title: string;
-  /** File URI (kind 'file') or page id (kind 'page') — used to reopen. */
-  readonly target: string;
-  readonly ts: number;
-}
-const RECENT_ITEMS_KEY = 'dashboard.recentItems';
-const RECENT_ITEMS_CAP = 30;
-let _recentItems: RecentItem[] = [];
-
 // ─── Activate ───────────────────────────────────────────────────────────────
 
 export async function activate(api: ParallxApi, context: ToolContext): Promise<void> {
@@ -149,6 +139,8 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   );
 
   // 4. Expose a public registry surface so widget-contributing tools can find it.
+  //    (Legacy path — new code should use `api.dashboard.registerWidgetType`,
+  //    which works regardless of activation order.)
   const publicRegistry: DashboardRegistry = {
     registerWidgetType: <T = Record<string, unknown>>(registration: WidgetTypeRegistration<T>) => {
       // Validate refresh policy up front so bad widgets fail fast.
@@ -164,9 +156,57 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     api.commands.registerCommand('dashboard.getRegistry', () => publicRegistry),
   );
 
-  // 5. Register built-in widgets contributed by this tool itself.
+  // 4b. Mirror the `parallx.dashboard` contribution hub into the registry
+  //     (M86). Tools register widget types through their own api bridge at
+  //     any point — before or after this activate — and the mirror keeps
+  //     the registry in sync, including live placeholder⇄widget swaps when
+  //     an extension is disabled or (re-)enabled mid-session.
+  const mirrored = new Map<string, { entry: ContributedWidgetType; disposable: IDisposable }>();
+  const syncHub = (): void => {
+    if (!_registry) return;
+    const hub = new Map(getContributedDashboardWidgetTypes().map((e) => [e.registration.typeId, e]));
+    // Drop mirrors whose hub entry vanished or was replaced.
+    for (const [typeId, m] of [...mirrored]) {
+      if (hub.get(typeId) !== m.entry) {
+        m.disposable.dispose();
+        mirrored.delete(typeId);
+      }
+    }
+    // Register new / replaced contributions.
+    for (const [typeId, entry] of hub) {
+      if (mirrored.has(typeId)) continue;
+      try {
+        if (entry.registration.defaultRefreshPolicy) {
+          validateRefreshPolicy(entry.registration.defaultRefreshPolicy);
+        }
+        const disposable = _registry.registerWidgetType(entry.registration, entry.ownerToolId);
+        mirrored.set(typeId, { entry, disposable });
+      } catch (err) {
+        console.error(`[Dashboard] Rejected widget contribution "${typeId}" from "${entry.ownerToolId}":`, err);
+      }
+    }
+  };
+  syncHub();
+  context.subscriptions.push(onDashboardWidgetContributionsDidChange(syncHub));
+  context.subscriptions.push(toDisposable(() => {
+    for (const m of mirrored.values()) m.disposable.dispose();
+    mirrored.clear();
+  }));
+
+  // 5. Register built-in widgets contributed by this tool itself. These go
+  //    straight into the registry (the dashboard owns them) with an explicit
+  //    owner id so provider metadata is uniform across core and contributed.
+  const coreRegistrar: DashboardRegistry = {
+    registerWidgetType: <T = Record<string, unknown>>(registration: WidgetTypeRegistration<T>) => {
+      if (registration.defaultRefreshPolicy) {
+        validateRefreshPolicy(registration.defaultRefreshPolicy);
+      }
+      return _registry!.registerWidgetType(registration, 'parallx.dashboard');
+    },
+    listWidgetTypes: () => _registry!.listWidgetTypes(),
+  };
   context.subscriptions.push(
-    registerBuiltInDashboardWidgets(publicRegistry, api),
+    registerBuiltInDashboardWidgets(coreRegistrar, api),
   );
 
   // 5b. Register the shared `dashboard_render_widget` AI tool. This is the single
@@ -214,8 +254,8 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   // 6. Register commands the user / picker can invoke.
   _registerCommands(api, context);
 
-  // 6b. Track recently-opened files + canvas pages for the Recent Items widget.
-  _setupRecentItems(api, context);
+  // (Recent-items tracking moved to the explorer tool in M86 — the explorer
+  // owns file/page recency and contributes the "Recent items" widget.)
 
   // 7. Auto-open the dashboard on first workspace open. After that the user
   //    drives. We track this in workspaceState so reopen behaviour is
@@ -351,62 +391,3 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
   );
 }
 
-// ─── Recent items ─────────────────────────────────────────────────────────────
-//
-// ONE recency-ordered list of everything the user opened — explorer files AND
-// canvas pages — captured from the editor service's active-editor changes, the
-// single signal both surfaces flow through (which is why the old Ctrl+P-only
-// list never saw explorer/canvas opens). Persisted per-workspace so it survives
-// reloads; the Recent Items widget reads it via `dashboard.getRecentItems`.
-
-function _setupRecentItems(api: ParallxApi, context: ToolContext): void {
-  try {
-    const saved = context.workspaceState.get<RecentItem[]>(RECENT_ITEMS_KEY, []);
-    if (Array.isArray(saved)) {
-      _recentItems = saved.filter((x): x is RecentItem => !!x && typeof x.key === 'string' && typeof x.title === 'string');
-    }
-  } catch { /* fresh start */ }
-
-  // Expose the read command regardless — if the editor service is unavailable
-  // the widget still shows whatever was persisted.
-  context.subscriptions.push(
-    api.commands.registerCommand('dashboard.getRecentItems', () => _recentItems),
-  );
-
-  let editorService: IEditorService | undefined;
-  try {
-    editorService = api.services.has(IEditorService) ? api.services.get<IEditorService>(IEditorService) : undefined;
-  } catch { editorService = undefined; }
-  if (!editorService) return;
-
-  const record = (input: { readonly id: string; readonly name: string; readonly uri?: { toString(): string } } | undefined): void => {
-    if (!input) return;
-    let item: RecentItem | null = null;
-    if (input.uri) {
-      const uri = input.uri.toString();
-      item = { key: 'file:' + uri, kind: 'file', title: input.name || _basename(uri), target: uri, ts: Date.now() };
-    } else {
-      // Canvas editor ids look like `parallx.canvas:canvas:<pageId>` /
-      // `…:database:<pageId>`. Anything else (dashboard, welcome) is skipped.
-      const parts = (input.id || '').split(':');
-      if (parts.length >= 3 && (parts[1] === 'canvas' || parts[1] === 'database')) {
-        const pageId = parts.slice(2).join(':');
-        item = { key: 'page:' + pageId, kind: 'page', title: input.name || 'Untitled', target: pageId, ts: Date.now() };
-      }
-    }
-    if (!item) return;
-    const next = item;
-    _recentItems = [next, ..._recentItems.filter((r) => r.key !== next.key)].slice(0, RECENT_ITEMS_CAP);
-    void context.workspaceState.update(RECENT_ITEMS_KEY, _recentItems);
-  };
-
-  record(editorService.activeEditor);
-  context.subscriptions.push(editorService.onDidActiveEditorChange(record));
-}
-
-function _basename(uri: string): string {
-  const clean = uri.split('?')[0].replace(/\\/g, '/').replace(/\/+$/, '');
-  const idx = clean.lastIndexOf('/');
-  const name = idx >= 0 ? clean.slice(idx + 1) : clean;
-  try { return decodeURIComponent(name) || uri; } catch { return name || uri; }
-}

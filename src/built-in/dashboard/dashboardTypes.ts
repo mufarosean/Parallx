@@ -1,158 +1,41 @@
 // dashboardTypes.ts — public types for the dashboard tool.
 //
-// Re-exported through the widget contribution API surface that tools call
-// from their `activate()`. Kept narrow and stable so third-party widget
-// contributions don't break when internal refactors land.
+// The widget contribution CONTRACT (WidgetTypeRegistration and friends) is
+// canonically defined in the API layer (`src/api/bridges/dashboardBridge.ts`)
+// so that any tool — built-in or external extension — contributes widgets
+// through `parallx.dashboard` against one definition. This file re-exports
+// the contract for dashboard-internal code and keeps the shapes that are
+// genuinely dashboard-private (DB rows, appearance, change events).
 
 import type { IDisposable } from '../../platform/lifecycle.js';
-import type { Event } from '../../platform/events.js';
+import type {
+  WidgetPlacement,
+  WidgetRefreshPolicy,
+  WidgetTypeRegistration,
+} from '../../api/bridges/dashboardBridge.js';
 
-// ─── Grid / Placement ────────────────────────────────────────────────────────
+// ─── Contribution contract (canonical home: api/bridges/dashboardBridge.ts) ──
 
-/** 12-column dashboard grid. */
-export const DASHBOARD_GRID_COLS = 12;
+export {
+  DASHBOARD_GRID_COLS,
+  DASHBOARD_LIMITS,
+} from '../../api/bridges/dashboardBridge.js';
 
-/** Hard limits enforced at the contribution / scheduler boundary. */
-export const DASHBOARD_LIMITS = {
-  /** Minimum interval / cron tick allowed at widget registration. */
-  MIN_REFRESH_INTERVAL_MS: 60_000,
-  /** Maximum concurrent AI-policy refreshes per workspace. */
-  MAX_CONCURRENT_AI_REFRESHES: 1,
-  /** Maximum bytes of cached_output we persist; anything larger is truncated. */
-  MAX_CACHED_OUTPUT_BYTES: 256 * 1024,
-  /** Per-refresh timeout — refresh that doesn't complete is killed. */
-  REFRESH_TIMEOUT_MS: 60_000,
-} as const;
-
-export interface WidgetPlacement {
-  readonly row: number;
-  readonly col: number;
-  readonly rowSpan: number;
-  readonly colSpan: number;
-}
-
-export interface WidgetSizeBounds {
-  readonly minColSpan?: number;
-  readonly maxColSpan?: number;
-  readonly minRowSpan?: number;
-  readonly maxRowSpan?: number;
-}
-
-// ─── Config schema (form-driven) ─────────────────────────────────────────────
-
-export type WidgetConfigFieldType = 'string' | 'number' | 'boolean' | 'enum' | 'textarea' | 'markdown' | 'string-list';
-
-export interface WidgetConfigField {
-  readonly type: WidgetConfigFieldType;
-  readonly label: string;
-  readonly description?: string;
-  /** Enum options (when type === 'enum'). */
-  readonly options?: readonly { readonly value: string; readonly label: string }[];
-  /** Default value (mirrors widget's defaultConfig — convenience for picker forms). */
-  readonly default?: unknown;
-  /** Optional placeholder for text inputs. */
-  readonly placeholder?: string;
-}
-
-export interface WidgetConfigSchema {
-  /** Keyed by config-property name. Renders in declaration order. */
-  readonly fields: Readonly<Record<string, WidgetConfigField>>;
-}
-
-// ─── Refresh policy ──────────────────────────────────────────────────────────
-
-export type WidgetRefreshPolicy =
-  | { readonly kind: 'manual' }
-  | { readonly kind: 'interval'; readonly ms: number }   // ms ≥ 60_000
-  | { readonly kind: 'cron'; readonly cron: string };    // standard 5-field cron
-
-// ─── Widget contribution interface ───────────────────────────────────────────
-
-export type WidgetCategory =
-  /** Static / no refresh (clock, links). */
-  | 'static'
-  /** Query-backed (filesystem, DB). */
-  | 'query'
-  /** AI-backed (background prompt). */
-  | 'ai';
-
-export interface WidgetRefreshContext<TConfig = unknown> {
-  readonly instanceId: string;
-  readonly pageId: string;
-  readonly config: TConfig;
-  /** Full Parallx API surface, scoped to the dashboard tool. */
-  readonly api: unknown;
-  /** Last cached output for this instance, if any. */
-  readonly cachedOutput: string | null;
-}
-
-export interface WidgetContext<TConfig = unknown> extends WidgetRefreshContext<TConfig> {
-  /** Last persisted error message for this instance, if the prior refresh failed. */
-  readonly errorMessage: string | null;
-  /** Fires when the user saves new config from the settings drawer. */
-  readonly onDidChangeConfig: Event<TConfig>;
-
-  /** Trigger a manual refresh — same code path as cron / interval. */
-  requestRefresh(): void;
-  /** Persist a fresh output string. Clears any prior error. */
-  setCachedOutput(output: string): void;
-  /** Flip the widget to error state with a user-visible message. */
-  setError(message: string): void;
-  /** Explicitly clear error state without writing new output. */
-  clearError(): void;
-}
-
-export interface WidgetHandle extends IDisposable {
-  /** Optional manual re-render hook the dashboard calls after `setCachedOutput`. */
-  refreshFromCache?(cachedOutput: string | null): void;
-  /**
-   * Optional hook the dashboard calls when a refresh fails, so the widget can
-   * surface the reason in its own body instead of relying on the small header
-   * status dot. Called with `null` when the error clears.
-   */
-  renderError?(message: string | null): void;
-}
-
-/**
- * Visual chrome preset for a widget instance.
- *
- * - 'card' (default): full chrome — card background, persistent header
- *   (title + status + actions), bottom footer for "updated N ago".
- * - 'minimal': transparent background and no footer. Header is hidden by
- *   default and reveals on hover so the widget body sits flush with the
- *   dashboard background. Good for time / counter / glance widgets.
- * - 'bare': no chrome at all. Just the widget body, edge to edge. Hover
- *   still reveals a tiny floating action strip in the top-right so the
- *   user can refresh / configure / remove without losing the look.
- */
-export type WidgetChromeStyle = 'card' | 'minimal' | 'bare';
-
-export interface WidgetTypeRegistration<TConfig = Record<string, unknown>> {
-  readonly typeId: string;
-  readonly displayName: string;
-  readonly description?: string;
-  /** Codicon name or pre-rendered SVG/HTML. */
-  readonly icon?: string;
-  /** Coarse category — drives picker grouping. */
-  readonly category: WidgetCategory;
-  readonly defaultSize: { readonly colSpan: number; readonly rowSpan: number };
-  readonly sizeBounds?: WidgetSizeBounds;
-  readonly defaultConfig: TConfig;
-  readonly configSchema?: WidgetConfigSchema;
-  readonly defaultRefreshPolicy?: WidgetRefreshPolicy;
-  /** Default chrome preset. User config may override per instance later. */
-  readonly chromeStyle?: WidgetChromeStyle;
-
-  /**
-   * Pure data fetch. Runs both headless (scheduler) and mounted (user click).
-   * Must return a string ≤ MAX_CACHED_OUTPUT_BYTES; anything larger is truncated.
-   * Omit for widgets with nothing to refresh.
-   */
-  refresh?(ctx: WidgetRefreshContext<TConfig>): Promise<string>;
-
-  /** DOM render. Receives cachedOutput via ctx.cachedOutput on first paint. */
-  createWidget(container: HTMLElement, ctx: WidgetContext<TConfig>): WidgetHandle;
-}
+export type {
+  WidgetPlacement,
+  WidgetSizeBounds,
+  WidgetConfigFieldType,
+  WidgetConfigField,
+  WidgetConfigSchema,
+  WidgetRefreshPolicy,
+  WidgetCategory,
+  WidgetRefreshContext,
+  WidgetContext,
+  WidgetHandle,
+  WidgetChromeStyle,
+  WidgetTypeRegistration,
+  WidgetTypeDescriptor,
+} from '../../api/bridges/dashboardBridge.js';
 
 // ─── Public registry surface (exposed to other built-ins / extensions) ───────
 
@@ -223,6 +106,12 @@ export interface DashboardWidgetRow {
   readonly cachedAt: number | null;
   readonly status: WidgetStatus;
   readonly errorMessage: string | null;
+  /**
+   * Tool that provided the widget type when this instance was added
+   * (M86, migration 004). Used by the unavailable-placeholder to say who
+   * to re-enable. Null for instances created before the column existed.
+   */
+  readonly providerToolId: string | null;
   readonly createdAt: number;
   readonly updatedAt: number;
 }
