@@ -11,8 +11,11 @@
 // Guardrails:
 //   - 60s minimum interval at scheduling time
 //   - Single-flight per instanceId (overlap → no-op)
-//   - AI-concurrency cap of 1 (queue the rest, FIFO)
-//   - 60s per-refresh timeout (wrapped via Promise.race)
+//   - AI-concurrency cap (queue the rest, FIFO). Live value comes from the
+//     `dashboard.aiRefreshConcurrency` setting via the constructor getter;
+//     falls back to DASHBOARD_LIMITS.MAX_CONCURRENT_AI_REFRESHES (M86 C4).
+//   - Per-refresh timeout via Promise.race: 60s for query/static widgets,
+//     5min for AI widgets (a background agent turn legitimately takes minutes)
 
 import { Disposable, toDisposable, type IDisposable } from '../../platform/lifecycle.js';
 import { parseDuration } from '../../openclaw/openclawCronService.js';
@@ -78,6 +81,23 @@ export class DashboardRefreshScheduler extends Disposable {
 
   /** Map instanceId → registration kind (so we know whether AI-cap applies). */
   private readonly _instanceTypeMap = new Map<string, WidgetTypeRegistration<unknown>>();
+
+  /**
+   * @param getAiConcurrency Live AI-concurrency cap (the
+   *   `dashboard.aiRefreshConcurrency` setting). Read at each admission
+   *   decision so setting changes apply without restart. Clamped to 1-8.
+   */
+  constructor(private readonly _getAiConcurrency?: () => number) {
+    super();
+  }
+
+  private _aiCap(): number {
+    const raw = this._getAiConcurrency?.();
+    const v = typeof raw === 'number' && Number.isFinite(raw)
+      ? Math.floor(raw)
+      : DASHBOARD_LIMITS.MAX_CONCURRENT_AI_REFRESHES;
+    return Math.max(1, Math.min(8, v));
+  }
 
   override dispose(): void {
     for (const t of this._timers.values()) clearTimeout(t);
@@ -162,9 +182,9 @@ export class DashboardRefreshScheduler extends Disposable {
     const isAI = typeReg?.category === 'ai';
 
     const start = async () => {
+      const timeoutMs = isAI ? DASHBOARD_LIMITS.AI_REFRESH_TIMEOUT_MS : DASHBOARD_LIMITS.REFRESH_TIMEOUT_MS;
       const timeoutPromise = new Promise<void>((_, reject) => {
-        setTimeout(() => reject(new Error(`Refresh timed out after ${DASHBOARD_LIMITS.REFRESH_TIMEOUT_MS}ms`)),
-          DASHBOARD_LIMITS.REFRESH_TIMEOUT_MS);
+        setTimeout(() => reject(new Error(`Refresh timed out after ${timeoutMs}ms`)), timeoutMs);
       });
       try {
         await Promise.race([invoke(), timeoutPromise]);
@@ -173,7 +193,7 @@ export class DashboardRefreshScheduler extends Disposable {
       }
     };
 
-    if (isAI && this._aiInFlight >= DASHBOARD_LIMITS.MAX_CONCURRENT_AI_REFRESHES) {
+    if (isAI && this._aiInFlight >= this._aiCap()) {
       // Queue behind any in-flight AI refresh.
       const promise = new Promise<void>((resolve, reject) => {
         this._aiQueue.push({
@@ -206,7 +226,7 @@ export class DashboardRefreshScheduler extends Disposable {
   private _drainAIQueue(): void {
     while (
       this._aiQueue.length > 0
-      && this._aiInFlight < DASHBOARD_LIMITS.MAX_CONCURRENT_AI_REFRESHES
+      && this._aiInFlight < this._aiCap()
     ) {
       const job = this._aiQueue.shift()!;
       this._aiInFlight++;

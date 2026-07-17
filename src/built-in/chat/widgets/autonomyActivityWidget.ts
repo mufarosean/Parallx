@@ -25,7 +25,7 @@ import type {
   WidgetHandle,
   WidgetRefreshContext,
   WidgetTypeRegistration,
-} from '../../api/bridges/dashboardBridge.js';
+} from '../../../api/bridges/dashboardBridge.js';
 
 interface AutonomyActivityConfig {
   readonly maxItems: number;

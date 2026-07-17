@@ -54,6 +54,7 @@ interface ParallxApi {
     readonly workspaceFolders: readonly { uri: string; name: string; index: number }[] | undefined;
     readonly name: string | undefined;
     readonly fs?: unknown;
+    getConfiguration(section?: string): { get<T>(key: string, defaultValue?: T): T | undefined };
   };
   window: {
     showInputBox?(options?: { prompt?: string; value?: string; placeholder?: string }): Promise<string | undefined>;
@@ -99,7 +100,16 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   _registry = new DashboardWidgetRegistry();
   context.subscriptions.push(_registry);
 
-  _scheduler = new DashboardRefreshScheduler();
+  // AI concurrency comes from the settings registry (M86 C4) — read live at
+  // each admission decision so changes apply without restart.
+  _scheduler = new DashboardRefreshScheduler(() => {
+    try {
+      const v = api.workspace.getConfiguration('dashboard').get<number>('aiRefreshConcurrency', 2);
+      return typeof v === 'number' ? v : 2;
+    } catch {
+      return 2;
+    }
+  });
   context.subscriptions.push(_scheduler);
 
   // 3. Editor provider for `typeId: 'dashboard'`.

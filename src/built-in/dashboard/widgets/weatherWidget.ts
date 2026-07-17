@@ -63,16 +63,26 @@ export const WEATHER_WIDGET: WidgetTypeRegistration<WeatherConfig> = {
   },
   defaultRefreshPolicy: { kind: 'manual' },
 
-  async refresh(ctx: WidgetRefreshContext<WeatherConfig>): Promise<string> {
+  async refresh(ctx: WidgetRefreshContext<WeatherConfig>): Promise<string | null> {
     const api = ctx.api as { commands?: { executeCommand<T>(id: string, arg?: unknown): Promise<T> } };
     if (!api.commands?.executeCommand) {
       throw new Error('Chat tool not available. Ensure the Chat extension is enabled.');
     }
     const cfg = normalize(ctx.config);
-
-    // Push model: hand the lookup to the active chat session and let it fetch
-    // real data with its tools; the result lands via dashboard_render_widget.
     const prompt = buildPrompt(cfg, ctx.instanceId);
+
+    // Default (M86 C4): isolated background agent turn; result lands via
+    // dashboard_render_widget mid-turn — return null to avoid clobbering it.
+    if (ctx.mode !== 'chat') {
+      const res = await api.commands.executeCommand<{ ok: boolean; error?: string }>(
+        'chat.runBackgroundPrompt',
+        { text: prompt, origin: 'dashboard', originLabel: `[dashboard · Weather · ${cfg.location}]` },
+      );
+      if (!res?.ok) throw new Error(res?.error || 'Background refresh failed.');
+      return null;
+    }
+
+    // Escape hatch ("Run in chat"): visible run through the active session.
     await api.commands.executeCommand('chat.submitPrompt', { text: prompt });
 
     const prior = stripRefreshBanner((ctx.cachedOutput ?? '').trim());

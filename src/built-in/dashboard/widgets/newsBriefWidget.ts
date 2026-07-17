@@ -61,7 +61,7 @@ export const NEWS_BRIEF_WIDGET: WidgetTypeRegistration<NewsBriefConfig> = {
   },
   defaultRefreshPolicy: { kind: 'manual' },
 
-  async refresh(ctx: WidgetRefreshContext<NewsBriefConfig>): Promise<string> {
+  async refresh(ctx: WidgetRefreshContext<NewsBriefConfig>): Promise<string | null> {
     const api = ctx.api as { commands?: { executeCommand<T>(id: string, arg?: unknown): Promise<T> } };
     if (!api.commands?.executeCommand) {
       throw new Error('Chat tool not available. Ensure the Chat extension is enabled.');
@@ -75,11 +75,22 @@ export const NEWS_BRIEF_WIDGET: WidgetTypeRegistration<NewsBriefConfig> = {
       source: 'dashboard', title: 'refresh AI News', severity: 'info',
     }).catch(() => { /* signal bus optional — never block a refresh */ });
 
-    // Push model: we don't compute the brief here. We ask the active chat
-    // session to do the research with its normal tools, then deliver the
-    // result back to this widget via the shared `dashboard_render_widget` tool. The
-    // brief arrives asynchronously and repaints the widget when it lands.
     const prompt = buildPrompt(cfg, ctx.instanceId);
+
+    // Default (M86 C4): isolated background agent turn — research runs on
+    // the ephemeral rail, the brief lands via dashboard_render_widget
+    // mid-turn, and the user's chat is never touched. Return null so the
+    // delivered brief isn't clobbered; failures become real widget errors.
+    if (ctx.mode !== 'chat') {
+      const res = await api.commands.executeCommand<{ ok: boolean; error?: string }>(
+        'chat.runBackgroundPrompt',
+        { text: prompt, origin: 'dashboard', originLabel: `[dashboard · News brief · ${cfg.location}]` },
+      );
+      if (!res?.ok) throw new Error(res?.error || 'Background refresh failed.');
+      return null;
+    }
+
+    // Escape hatch ("Run in chat"): visible run through the active session.
     await api.commands.executeCommand('chat.submitPrompt', { text: prompt });
 
     // Keep the last good brief visible while the new one is researched. We

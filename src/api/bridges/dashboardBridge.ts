@@ -29,12 +29,21 @@ export const DASHBOARD_GRID_COLS = 12;
 export const DASHBOARD_LIMITS = {
   /** Minimum interval / cron tick allowed at widget registration. */
   MIN_REFRESH_INTERVAL_MS: 60_000,
-  /** Maximum concurrent AI-policy refreshes per workspace. */
-  MAX_CONCURRENT_AI_REFRESHES: 1,
+  /**
+   * Default concurrent AI-policy refreshes per workspace. The live value
+   * comes from the `dashboard.aiRefreshConcurrency` setting (M86 C4);
+   * this constant is the fallback when the setting is unavailable.
+   */
+  MAX_CONCURRENT_AI_REFRESHES: 2,
   /** Maximum bytes of cached_output we persist; anything larger is truncated. */
   MAX_CACHED_OUTPUT_BYTES: 256 * 1024,
   /** Per-refresh timeout — refresh that doesn't complete is killed. */
   REFRESH_TIMEOUT_MS: 60_000,
+  /**
+   * Per-refresh timeout for AI-category widgets (M86 C4): a background
+   * agent turn (research, tools, delivery) legitimately takes minutes.
+   */
+  AI_REFRESH_TIMEOUT_MS: 300_000,
 } as const;
 
 export interface WidgetPlacement {
@@ -97,6 +106,14 @@ export interface WidgetRefreshContext<TConfig = unknown> {
   readonly api: unknown;
   /** Last cached output for this instance, if any. */
   readonly cachedOutput: string | null;
+  /**
+   * How an AI-category refresh should run (M86 C4). 'background' (default):
+   * an isolated agent turn on the ephemeral-session rail — the user's chat
+   * is never touched. 'chat': the pre-M86 visible path through the active
+   * chat session (the per-widget "Run in chat" escape hatch for debugging
+   * a prompt). Non-AI widgets can ignore this.
+   */
+  readonly mode?: 'background' | 'chat';
 }
 
 export interface WidgetContext<TConfig = unknown> extends WidgetRefreshContext<TConfig> {
@@ -158,10 +175,14 @@ export interface WidgetTypeRegistration<TConfig = Record<string, unknown>> {
 
   /**
    * Pure data fetch. Runs both headless (scheduler) and mounted (user click).
-   * Must return a string ≤ MAX_CACHED_OUTPUT_BYTES; anything larger is truncated.
-   * Omit for widgets with nothing to refresh.
+   * Return a string ≤ MAX_CACHED_OUTPUT_BYTES to persist it as the widget's
+   * cached output — or `null` to persist nothing, for widgets whose refresh
+   * delivers output through its own channel (e.g. an AI turn that calls
+   * `dashboard_render_widget` mid-run; returning a string afterwards would
+   * clobber the freshly delivered content). Omit for widgets with nothing
+   * to refresh.
    */
-  refresh?(ctx: WidgetRefreshContext<TConfig>): Promise<string>;
+  refresh?(ctx: WidgetRefreshContext<TConfig>): Promise<string | null>;
 
   /** DOM render. Receives cachedOutput via ctx.cachedOutput on first paint. */
   createWidget(container: HTMLElement, ctx: WidgetContext<TConfig>): WidgetHandle;

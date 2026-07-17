@@ -11,9 +11,25 @@
 > doc §4.15. **Deferred within C2:** news-brief → web-research — moving an
 > AI/markdown widget into a plain-JS extension needs a `renderMode:'markdown'`
 > contract (dashboard renders cached markdown itself) so external widgets
-> don't duplicate the renderer; land it alongside C4. C3, C4, C5 not started.
-> (M85 is the in-flight AI-agency milestone; overlap with M85 is confined to
-> the ephemeral-session substrate, which already exists.)
+> don't duplicate the renderer; land it alongside the renderMode work.
+>
+> **C4 core BUILT** (2026-07-16, same-day follow-up; tsc + 3,749 unit tests +
+> build green): `chat.runBackgroundPrompt` command on the ephemeral-session
+> rail (`chat/utilities/backgroundPromptRunner.ts` — create → sendRequest →
+> purge, cron-executor parity, every run appended to the autonomy log with
+> origin 'dashboard'); all five AI widgets (custom, live, news, weather,
+> market) default to background turns — the chat panel is never revealed —
+> with a per-widget "Run in chat" escape-hatch button (`WidgetRefreshContext.
+> mode`); `refresh` contract now allows returning `null` ("output delivered
+> via my own channel — don't clobber the cache"); manual refresh + new
+> "Refresh all" header button route through the scheduler's admission queue
+> (previously manual clicks bypassed the AI cap entirely);
+> `dashboard.aiRefreshConcurrency` settings-registry entry (default 2, live-
+> read, clamped 1-8) replaces the hardcoded cap; AI refreshes get a 5-minute
+> timeout (`AI_REFRESH_TIMEOUT_MS`) instead of 60s. **Remaining in C4:**
+> page-level refresh schedules ("weekdays 7:00 refresh this page"). C3 and
+> C5 not started. (M85 is the in-flight AI-agency milestone; overlap is
+> confined to the ephemeral-session substrate, which already exists.)
 >
 > **Boundary:** Dashboard built-in, a new `parallx.dashboard` API bridge in
 > `src/api/`, widget re-homing inside existing built-ins (planner, canvas,

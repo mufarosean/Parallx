@@ -483,6 +483,18 @@ export const DASHBOARD_MANIFEST: IToolManifest = {
       { id: 'view.dashboard', name: 'Dashboards', defaultContainerId: 'dashboard-container' },
     ],
     editors: [{ typeId: 'dashboard', displayName: 'Dashboard' }],
+    configuration: [
+      {
+        title: 'Dashboard',
+        properties: {
+          'dashboard.aiRefreshConcurrency': {
+            type: 'number',
+            default: 2,
+            description: 'How many AI widget refreshes may run as background agents at the same time (1-8). Applies to scheduled refreshes and "Refresh all"; extra refreshes queue.',
+          },
+        },
+      },
+    ],
   },
 };
 

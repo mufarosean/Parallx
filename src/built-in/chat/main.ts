@@ -17,7 +17,8 @@ import { OllamaProvider } from './providers/ollamaProvider.js';
 import { AnthropicProvider, getAnthropicBridge } from './providers/anthropicProvider.js';
 import { createChatView } from './widgets/chatView.js';
 import type { ChatWidget } from './widgets/chatWidget.js';
-import { AUTONOMY_ACTIVITY_WIDGET } from './autonomyActivityWidget.js';
+import { AUTONOMY_ACTIVITY_WIDGET } from './widgets/autonomyActivityWidget.js';
+import { createBackgroundPromptRunner } from './utilities/backgroundPromptRunner.js';
 
 import {
   buildOpenclawCanvasParticipantServices,
@@ -2815,6 +2816,40 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       _activeWidget.setInputValue(text);
       _activeWidget.acceptInput();
     }),
+  );
+
+  // chat.runBackgroundPrompt — the HEADLESS sibling of submitPrompt (M86 C4).
+  //
+  // Runs the prompt as one isolated agent turn on the ephemeral-session rail
+  // (same substrate as heartbeat/cron): the chat panel is never revealed and
+  // the user's visible session is never touched. Dashboard AI widgets refresh
+  // through this — their prompts instruct the model to deliver results via
+  // `dashboard_render_widget`, so the widget cache is written mid-turn.
+  //
+  // Contract: { text, origin?, originLabel?, systemMessage? }
+  //        → { ok: true, resultText } | { ok: false, error }.
+  const runBackgroundPrompt = createBackgroundPromptRunner({
+    chatService: {
+      createEphemeralSession: (parentId, seed) =>
+        (chatService as unknown as import('../../services/chatService.js').ChatService).createEphemeralSession(parentId, seed),
+      purgeEphemeralSession: (handle) =>
+        (chatService as unknown as import('../../services/chatService.js').ChatService).purgeEphemeralSession(handle),
+      sendRequest: (sid, msg, opts) => chatService.sendRequest(sid, msg, opts),
+      getSession: (sid) => chatService.getSession(sid),
+    },
+    // Ensure a parent session exists when the panel is mounted — without
+    // revealing it. A background run only fails when chat has never been
+    // opened at all in this window.
+    getParentSessionId: () => {
+      try { _activeWidget?.ensureSession(); } catch { /* widget not ready */ }
+      return _activeWidget?.getSession()?.id;
+    },
+    autonomyLog,
+  });
+  context.subscriptions.push(
+    api.commands.registerCommand('chat.runBackgroundPrompt', async (...args: unknown[]) =>
+      runBackgroundPrompt((args[0] ?? {}) as { text: string }),
+    ),
   );
 
 

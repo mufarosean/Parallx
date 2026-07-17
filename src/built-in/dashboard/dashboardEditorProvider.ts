@@ -308,6 +308,19 @@ class DashboardEditorPane implements IDisposable {
     addBtn.addEventListener('click', () => void this._openWidgetPicker());
     actions.appendChild(addBtn);
 
+    // Refresh all (M86 C4): one click refreshes every widget on the page.
+    // Query/static widgets run in parallel; AI widgets fan out to background
+    // agents through the scheduler's admission queue (concurrency-capped) —
+    // the chat panel is never touched.
+    const refreshAllBtn = el('button', 'dashboard-btn dashboard-btn--ghost');
+    refreshAllBtn.type = 'button';
+    refreshAllBtn.title = 'Refresh every widget on this page';
+    refreshAllBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg><span>Refresh all</span>';
+    refreshAllBtn.addEventListener('click', () => {
+      for (const id of this._instances.keys()) void this._triggerManualRefresh(id);
+    });
+    actions.appendChild(refreshAllBtn);
+
     const collapseBtn = el('button', 'dashboard-btn dashboard-btn--ghost dashboard-btn--icon-only');
     collapseBtn.type = 'button';
     collapseBtn.title = 'Hide header';
@@ -482,10 +495,22 @@ class DashboardEditorPane implements IDisposable {
     if (typeReg?.refresh) {
       const refreshBtn = el('button', 'dashboard-widget__btn');
       refreshBtn.type = 'button';
-      refreshBtn.title = 'Refresh';
+      refreshBtn.title = typeReg.category === 'ai' ? 'Refresh (background agent)' : 'Refresh';
       refreshBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>';
       refreshBtn.addEventListener('click', () => void this._triggerManualRefresh(row.id));
       actions.appendChild(refreshBtn);
+
+      // Escape hatch (M86 C4): run this AI widget's prompt through the
+      // visible chat session instead of a background agent — for debugging
+      // a prompt while watching the turn stream. Never the default path.
+      if (typeReg.category === 'ai') {
+        const chatBtn = el('button', 'dashboard-widget__btn');
+        chatBtn.type = 'button';
+        chatBtn.title = 'Run in chat (visible — for debugging the prompt)';
+        chatBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+        chatBtn.addEventListener('click', () => void this._triggerManualRefresh(row.id, 'chat'));
+        actions.appendChild(chatBtn);
+      }
     }
 
     if (typeReg?.configSchema) {
@@ -649,11 +674,17 @@ class DashboardEditorPane implements IDisposable {
 
   // ── Refresh ────────────────────────────────────────────────────────────
 
-  private async _triggerManualRefresh(widgetId: string): Promise<void> {
-    await this._runRefresh(widgetId);
+  /**
+   * User-initiated refresh. Routed through the scheduler's runOnce so manual
+   * clicks and Refresh-all get the same single-flight + AI-concurrency
+   * admission as scheduled refreshes (M86 C4 — previously manual refreshes
+   * bypassed the cap and N clicks meant N concurrent AI turns).
+   */
+  private async _triggerManualRefresh(widgetId: string, mode?: 'background' | 'chat'): Promise<void> {
+    await this._scheduler.runOnce(widgetId, () => this._runRefresh(widgetId, mode));
   }
 
-  private async _runRefresh(widgetId: string): Promise<void> {
+  private async _runRefresh(widgetId: string, mode?: 'background' | 'chat'): Promise<void> {
     const inst = this._instances.get(widgetId);
     if (!inst || !inst.typeReg?.refresh) return;
     const card = inst.cardEl;
@@ -668,9 +699,17 @@ class DashboardEditorPane implements IDisposable {
         config: inst.row.config,
         api: this._api,
         cachedOutput: inst.row.cachedOutput,
+        mode: mode ?? 'background',
       });
-      await this._data.setWidgetCachedOutput(widgetId, output);
-      // Re-read the row to pick up the new cachedAt.
+      // A string persists as the widget's cache. `null` means the refresh
+      // delivered its own output (e.g. an AI turn wrote the cache via
+      // dashboard_render_widget mid-run) — writing here would clobber it.
+      if (typeof output === 'string') {
+        await this._data.setWidgetCachedOutput(widgetId, output);
+      } else {
+        await this._data.clearWidgetError(widgetId);
+      }
+      // Re-read the row to pick up the new cachedAt / delivered content.
       const fresh = await this._data.getWidget(widgetId);
       if (fresh) {
         inst.row = fresh;

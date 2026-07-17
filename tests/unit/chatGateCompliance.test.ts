@@ -53,7 +53,6 @@ const FOLDER_RULES: Record<string, string[]> = {
 
   // ── Root leaves ─────────────────────────────────────────────────────────
   // chatTypes.ts and chatIcons.ts have their own purity tests below.
-  'autonomyActivityWidget.ts': [],  // M86 — dashboard widget contribution (contract types come from api/bridges, outside chat)
 
   // ── config/ — imports only chatTypes ────────────────────────────────────
 
@@ -100,6 +99,7 @@ const FOLDER_RULES: Record<string, string[]> = {
   'surfaces/chatSurface.ts': [],                // M58 W6 — ChatSurfacePlugin (trace logger)
 
   // ── widgets/ — chat widget components ───────────────────────────────────
+  'widgets/autonomyActivityWidget.ts': [],  // M86 — dashboard widget contribution (contract types from api/bridges, outside chat)
   'widgets/chatSessionSidebar.ts': ['chatIcons'],
   'widgets/chatTokenStatusBar.ts': ['chatIcons'],
   'widgets/chatView.ts':          ['providers/', 'widgets/'],
@@ -113,6 +113,7 @@ const FOLDER_RULES: Record<string, string[]> = {
   'commands/initCommand.ts': ['skills/'],
 
   // ── utilities/ — mention resolution, shared helpers ──────────────────
+  'utilities/backgroundPromptRunner.ts': [],  // M86 C4 — headless prompt turns (imports openclaw/services, outside chat)
   'utilities/chatAgentTaskWidgetAdapter.ts': [],
   'utilities/chatBridgeParticipantRuntime.ts': ['utilities/'],
   'utilities/chatGroundedResponseHelpers.ts': ['utilities/'],

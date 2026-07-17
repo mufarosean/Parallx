@@ -62,7 +62,7 @@ export const CUSTOM_AI_WIDGET: WidgetTypeRegistration<CustomAiConfig> = {
   },
   defaultRefreshPolicy: { kind: 'manual' },
 
-  async refresh(ctx: WidgetRefreshContext<CustomAiConfig>): Promise<string> {
+  async refresh(ctx: WidgetRefreshContext<CustomAiConfig>): Promise<string | null> {
     const api = ctx.api as { commands?: { executeCommand<T>(id: string, arg?: unknown): Promise<T> } };
     if (!api.commands?.executeCommand) {
       throw new Error('Chat tool not available. Ensure the Chat extension is enabled.');
@@ -72,11 +72,25 @@ export const CUSTOM_AI_WIDGET: WidgetTypeRegistration<CustomAiConfig> = {
       return '_No prompt set. Open this widget\u2019s settings and describe what you want the AI to produce._';
     }
 
-    // Push model: we don't compute anything here. We ask the active chat
-    // session to do the work with its normal tools, then deliver the finished
-    // Markdown back via the shared `dashboard_render_widget` tool. It arrives
-    // asynchronously and repaints the widget when it lands.
     const prompt = buildCustomAiPrompt(cfg, ctx.instanceId);
+
+    // Default (M86 C4): one isolated background agent turn on the ephemeral
+    // rail — the user's chat is never touched. The model delivers the
+    // finished Markdown via `dashboard_render_widget` mid-turn (writing the
+    // cache directly), so return null: writing anything here would clobber
+    // the delivered result. Old content stays visible while the header shows
+    // the running state; a failed turn surfaces as a real widget error.
+    if (ctx.mode !== 'chat') {
+      const res = await api.commands.executeCommand<{ ok: boolean; error?: string }>(
+        'chat.runBackgroundPrompt',
+        { text: prompt, origin: 'dashboard', originLabel: `[dashboard · AI widget ${ctx.instanceId}]` },
+      );
+      if (!res?.ok) throw new Error(res?.error || 'Background refresh failed.');
+      return null;
+    }
+
+    // Escape hatch ("Run in chat"): visible run through the active session —
+    // fire-and-forget; dashboard_render_widget delivers the result later.
     await api.commands.executeCommand('chat.submitPrompt', { text: prompt });
 
     // Keep the last good output visible while the new one is produced — prepend

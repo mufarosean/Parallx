@@ -66,7 +66,7 @@ export const LIVE_WIDGET: WidgetTypeRegistration<LiveWidgetConfig> = {
   },
   defaultRefreshPolicy: { kind: 'manual' },
 
-  async refresh(ctx: WidgetRefreshContext<LiveWidgetConfig>): Promise<string> {
+  async refresh(ctx: WidgetRefreshContext<LiveWidgetConfig>): Promise<string | null> {
     const api = ctx.api as { commands?: { executeCommand<T>(id: string, arg?: unknown): Promise<T> } };
     if (!api.commands?.executeCommand) {
       throw new Error('Chat tool not available. Ensure the Chat extension is enabled.');
@@ -77,6 +77,20 @@ export const LIVE_WIDGET: WidgetTypeRegistration<LiveWidgetConfig> = {
     }
 
     const prompt = buildLivePrompt(cfg, ctx.instanceId);
+
+    // Default (M86 C4): isolated background agent turn; the model delivers
+    // the finished HTML via dashboard_render_widget mid-turn, so return null
+    // to avoid clobbering it. Failures surface as real widget errors.
+    if (ctx.mode !== 'chat') {
+      const res = await api.commands.executeCommand<{ ok: boolean; error?: string }>(
+        'chat.runBackgroundPrompt',
+        { text: prompt, origin: 'dashboard', originLabel: `[dashboard · Live widget ${ctx.instanceId}]` },
+      );
+      if (!res?.ok) throw new Error(res?.error || 'Background refresh failed.');
+      return null;
+    }
+
+    // Escape hatch ("Run in chat"): visible run through the active session.
     await api.commands.executeCommand('chat.submitPrompt', { text: prompt });
 
     // Keep the last good panel on screen while the new one is built — the
