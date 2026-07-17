@@ -874,14 +874,20 @@ html, body {
   border: 0;
 }
 
-/* Panel: the whole part wraps in .part-content, so a single card covers it. */
+/* Panel: the whole part wraps in .part-content, so a single card covers it.
+   Top margin 0 — the editor pane's 5px bottom margin IS the seam (see the
+   seam arithmetic note below). Right margin 0 matches the editor pieces;
+   the :last-child variant restores it when the aux bar is hidden. */
 .part-workbench-parts-panel .part-content {
-  margin: 5px;
+  margin: 0 0 5px 5px;
   border: 1px solid var(--px-border);
   border-radius: var(--px-radius-sm);
   background: var(--px-bg);
   overflow: hidden;
   box-sizing: border-box;
+}
+.workbench-hgrid > .editor-column:last-child .part-workbench-parts-panel .part-content {
+  margin-right: 5px;
 }
 
 /* Editor: the part fills its slot with NO outer margin — the editor grid is
@@ -900,8 +906,11 @@ html, body {
 .part-workbench-parts-editor .editor-tab-bar {
   /* Top 5px matches the sidebar/aux cards' gap below the title bar so the tab
      strip floats the same distance down. (Must match TAB_STRIP_TOP_GAP in
-     editorGroupView.ts, which subtracts it from the pane height.) */
-  margin: 5px 5px 0 5px;
+     editorGroupView.ts, which subtracts it from the pane height.)
+     Right margin is 0 per the seam arithmetic above: the neighbour to the
+     right (aux bar card, or the next editor group in a split) brings the
+     5px. The :last-child variants below restore the outer right edge. */
+  margin: 5px 0 0 5px;
   background: var(--px-window);
 }
 /* The inner TabBar paints tabsBackground over the strip — make it transparent
@@ -910,14 +919,14 @@ html, body {
   background-color: transparent;
 }
 .part-workbench-parts-editor .editor-ribbon:not(.hidden) {
-  margin: 0 5px;
+  margin: 0 0 0 5px;
   border-left: 1px solid var(--px-border);
   border-right: 1px solid var(--px-border);
   background: var(--px-bg);
   box-sizing: border-box;
 }
 .part-workbench-parts-editor .editor-pane-container {
-  margin: 0 5px 5px;
+  margin: 0 0 5px 5px;
   border-left: 1px solid var(--px-border);
   border-right: 1px solid var(--px-border);
   border-bottom: 1px solid var(--px-border);
@@ -926,13 +935,37 @@ html, body {
   background: var(--px-bg);
   box-sizing: border-box;
 }
+/* Outer right edge: when the editor column is the right-most part (aux bar
+   hidden), the LAST editor group's pieces re-gain the 5px right margin.
+   (Known cosmetic edge: nested orthogonal splits at the right edge — only
+   the branch's last group matches :last-child.) */
+.workbench-hgrid > .editor-column:last-child .editor-group:last-child .editor-tab-bar {
+  margin-right: 5px;
+}
+.workbench-hgrid > .editor-column:last-child .editor-group:last-child .editor-ribbon:not(.hidden),
+.workbench-hgrid > .editor-column:last-child .editor-group:last-child .editor-pane-container {
+  margin-right: 5px;
+}
 
 /* Sidebar + aux have a SEPARATE title area above .part-content. The card must
    span both, or the rounding sits awkwardly under the title. Title = rounded
    top with no bottom border; content = rounded bottom with no top border; they
    meet seamlessly into one card whose border wraps all the sidebar content
    (icon strip + views included). */
-.sidebar-header,
+/* Seam arithmetic: every seam between two cards must read as ONE 5px gap —
+   the same width as the activity-strip↔sidebar gap (which is only the
+   sidebar card's left margin; the strip has no margin of its own). So each
+   card keeps its 5px margin on OUTER edges (window edge / activity strip)
+   and drops it on edges that FACE another card — the neighbour's margin is
+   the whole seam. Doubling up (5+5=10) is the bug this layout avoids. */
+.sidebar-header {
+  margin: 5px 0 0 5px;
+  border: 1px solid var(--px-border);
+  border-bottom: 0;
+  border-radius: var(--px-radius-sm) var(--px-radius-sm) 0 0;
+  background: var(--px-bg);
+  box-sizing: border-box;
+}
 .auxiliary-bar-header {
   margin: 5px 5px 0 5px;
   border: 1px solid var(--px-border);
@@ -941,7 +974,15 @@ html, body {
   background: var(--px-bg);
   box-sizing: border-box;
 }
-.part-workbench-parts-sidebar .part-content,
+.part-workbench-parts-sidebar .part-content {
+  margin: 0 0 5px 5px;
+  border: 1px solid var(--px-border);
+  border-top: 0;
+  border-radius: 0 0 var(--px-radius-sm) var(--px-radius-sm);
+  background: var(--px-bg);
+  overflow: hidden;
+  box-sizing: border-box;
+}
 .part-workbench-parts-auxiliarybar .part-content {
   margin: 0 5px 5px 5px;
   border: 1px solid var(--px-border);
