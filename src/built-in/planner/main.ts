@@ -193,6 +193,11 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     commands: api.commands,
     links: api.links,
     window: api.window,
+    // M86 — per-workspace UI-state persistence (calendar month/week/day).
+    viewState: {
+      get: <T>(key: string, defaultValue: T): T => context.workspaceState.get<T>(key, defaultValue),
+      set: (key: string, value: unknown): void => { void context.workspaceState.update(key, value); },
+    },
   }, _orchestrator ?? undefined);
   context.subscriptions.push(
     api.editors.registerEditorProvider('planner', {

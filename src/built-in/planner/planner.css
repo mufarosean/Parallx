@@ -835,11 +835,14 @@
   width: max-content;
   padding: 3px;
 }
+/* Items must STACK: inline-flex + width:auto let the buttons flow onto one
+   row inside the max-content menu (the "Month  Week  Day" strip bug) —
+   `display: flex` keeps each item a block-level row. */
 .planner-menu--narrow .planner-menu__item {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 6px;
-  width: auto;
+  width: 100%;
   min-width: 96px;
   height: 26px;
   padding: 0 8px;

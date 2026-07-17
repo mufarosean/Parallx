@@ -29,6 +29,11 @@ interface PlannerEditorApi {
     open(uri: string): Promise<boolean>;
     resolveMetadata(uri: string): Promise<{ title: string; icon?: string } | null>;
   };
+  /** M86 — per-workspace persistence for small UI state (calendar view). */
+  viewState?: {
+    get<T>(key: string, defaultValue: T): T;
+    set(key: string, value: unknown): void;
+  };
   window: {
     showInputBox?(options?: { prompt?: string; value?: string; placeholder?: string }): Promise<string | undefined>;
     showInformationMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
@@ -184,6 +189,11 @@ class PlannerEditorPane implements IDisposable {
     // first-open). The focusTab event below handles re-clicks while already open.
     const pendingTab = takePendingPlannerTab();
     if (pendingTab) this._activeTab = pendingTab;
+    // M86 — restore the last calendar view (month/week/day) for this workspace.
+    const savedView = this._api.viewState?.get<string>('planner.calendarView', 'month');
+    if (savedView === 'month' || savedView === 'week' || savedView === 'day') {
+      this._calendarView = savedView;
+    }
     this._input?.setName?.('Planner');
     this._input?.setIconHtml?.(PLANNER_ICON_SVG);
     this._buildShell();
@@ -282,21 +292,21 @@ class PlannerEditorPane implements IDisposable {
           break;
         case 'm':
           if (this._activeTab === 'calendar') {
-            this._calendarView = 'month';
+            this._setCalendarView('month');
             void this._renderTab();
             e.preventDefault();
           }
           break;
         case 'w':
           if (this._activeTab === 'calendar') {
-            this._calendarView = 'week';
+            this._setCalendarView('week');
             void this._renderTab();
             e.preventDefault();
           }
           break;
         case 'd':
           if (this._activeTab === 'calendar') {
-            this._calendarView = 'day';
+            this._setCalendarView('day');
             void this._renderTab();
             e.preventDefault();
           }
@@ -834,7 +844,7 @@ class PlannerEditorPane implements IDisposable {
       item.innerHTML = `${check}<span>${labelText}</span>`;
       item.addEventListener('click', () => {
         overlay.remove();
-        this._calendarView = v;
+        this._setCalendarView(v);
         void this._renderTab();
       });
       menu.appendChild(item);
@@ -857,6 +867,12 @@ class PlannerEditorPane implements IDisposable {
       if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', onKey); }
     };
     document.addEventListener('keydown', onKey);
+  }
+
+  /** Set the calendar view and persist it per-workspace (M86). */
+  private _setCalendarView(v: CalendarView): void {
+    this._calendarView = v;
+    this._api.viewState?.set('planner.calendarView', v);
   }
 
   private _navigateCalendar(direction: -1 | 1): void {
