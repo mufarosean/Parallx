@@ -299,6 +299,9 @@ export const CHAT_MANIFEST: IToolManifest = {
         aiInvocable: true, aiDescription: 'Stop the current AI generation.' },
       { id: 'chat.focus', title: 'Chat: Focus Input',
         aiInvocable: true, aiDescription: 'Move focus into the chat input.' },
+      // M86: deliberately NOT aiInvocable — the model has plan_update
+      // {clear:true}; this is the USER's escape hatch for stale plans.
+      { id: 'chat.clearPlan', title: 'Chat: Clear Plan' },
     ],
     keybindings: [
       { command: 'chat.toggle', key: 'Ctrl+Shift+I' },

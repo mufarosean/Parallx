@@ -1049,6 +1049,18 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       const progress = $('span.parallx-chat-plan-progress', `${doneCount}/${plan.steps.length}`);
       header.appendChild(progress);
     }
+    // M86 — user-side clear. The model is SUPPOSED to clear its plan when
+    // the work is done (plan_update {clear:true}), but models — local ones
+    // especially — forget; the user must never be stuck with a stale card.
+    const clearBtn = $('button.parallx-chat-plan-clear');
+    clearBtn.title = 'Clear this plan';
+    clearBtn.textContent = '✕';
+    clearBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const sid = this._session?.id;
+      if (sid) this._services.clearSessionPlan?.(sid);
+    });
+    header.appendChild(clearBtn);
     const chevron = $('span.parallx-chat-plan-chevron');
     chevron.innerHTML = chatIcons.chevronDown;
     header.appendChild(chevron);

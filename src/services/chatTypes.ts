@@ -182,6 +182,14 @@ export interface IChatSessionPlan {
   /** Current-state note: what's in flight, what's next. */
   readonly note?: string;
   readonly updatedAt: number;
+  /**
+   * Session message count at the last plan_update (M86). The context engine
+   * compares it against the live count to detect a DRIFTING plan — models
+   * (especially small local ones) reliably forget bookkeeping tool calls, so
+   * a staleness nudge is appended to the Active Plan section when the plan
+   * hasn't been touched for several messages.
+   */
+  readonly atMessageCount?: number;
 }
 
 export interface IChatSession {

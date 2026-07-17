@@ -2783,6 +2783,29 @@
   flex-shrink: 0;
 }
 
+/* M86 — user-side plan clear (the model forgets plan_update {clear:true}) */
+.parallx-chat-plan-clear {
+  flex-shrink: 0;
+  border: 0;
+  background: transparent;
+  color: var(--px-text-muted);
+  font: inherit;
+  font-size: var(--px-text-xs);
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms;
+}
+.parallx-chat-plan-header:hover .parallx-chat-plan-clear {
+  opacity: .7;
+}
+.parallx-chat-plan-clear:hover {
+  opacity: 1 !important;
+  background: color-mix(in srgb, var(--px-text-muted, #999) 15%, transparent);
+}
+
 .parallx-chat-plan-chevron {
   display: inline-flex;
   color: var(--px-text-muted);

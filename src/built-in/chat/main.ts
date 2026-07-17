@@ -1250,9 +1250,26 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     // M85 — the session's durable plan, formatted for the "## Active Plan"
     // context section. Read fresh per assembly so mid-turn plan_update calls
     // are reflected after compaction re-assembly.
+    //
+    // M86 — staleness nudge: telling models to "update as you work" in the
+    // system prompt is not enough (small local models reliably forget
+    // bookkeeping calls). When the plan hasn't been touched for several
+    // messages, append an imperative nudge to the section the model reads
+    // EVERY turn — update it or clear it, right now.
     getSessionPlanText: (sid: string) => {
       const plan = chatService.getSessionPlan?.(sid);
-      return plan ? formatSessionPlan(plan) : undefined;
+      if (!plan) return undefined;
+      let text = formatSessionPlan(plan);
+      if (typeof plan.atMessageCount === 'number') {
+        const now = chatService.getSession(sid)?.messages.length ?? plan.atMessageCount;
+        const drift = now - plan.atMessageCount;
+        if (drift >= 3) {
+          text += `\n\n⚠ This plan has not been updated for ${drift} messages. Before anything else: `
+            + 'if the work is finished, call plan_update with {"clear": true}; '
+            + 'otherwise update the step statuses and `note` to match reality NOW.';
+        }
+      }
+      return text;
     },
     // M66 — Snapshot every registered `parallx://` link contract for the
     // system prompt builder. Flattened to the descriptor shape that the
@@ -1980,7 +1997,13 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     // registerBuiltInTools(...) signature.
     context.subscriptions.push(languageModelToolsService.registerTool(createPlanUpdateTool({
       readPlan: (sid) => chatService.getSessionPlan?.(sid),
-      writePlan: (sid, plan) => chatService.setSessionPlan?.(sid, plan),
+      // Stamp the session's message count at write time (M86): the context
+      // engine compares it to the live count to detect a drifting plan and
+      // nudge the model to update or clear it.
+      writePlan: (sid, plan) => chatService.setSessionPlan?.(
+        sid,
+        plan ? { ...plan, atMessageCount: chatService.getSession(sid)?.messages.length ?? 0 } : undefined,
+      ),
     })));
 
     // M66 §4a — `link_create` chat tool. Registered separately so it can
@@ -2480,6 +2503,13 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     api.commands.executeCommand('ai-settings.open');
   };
 
+  // M86 — user-initiated plan removal (the ✕ on the plan card). The model
+  // has plan_update {clear:true}; the USER gets this. setSessionPlan fires
+  // onDidChangeSession, so the card disappears immediately.
+  (widgetServices as unknown as Record<string, unknown>).clearSessionPlan = (sessionId: string) => {
+    chatService.setSessionPlan?.(sessionId, undefined);
+  };
+
   // Live block-reference resolver: a canvas-block attachment resolves its
   // CURRENT content at send time via the canvas command (so it's never a stale
   // snapshot). Canvas owns the markdown serialization; we just bridge the call.
@@ -2519,6 +2549,16 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   context.subscriptions.push(
     api.commands.registerCommand('chat.toggle', () => {
       api.commands.executeCommand('workbench.action.toggleAuxiliaryBar');
+    }),
+  );
+
+  // M86: clear the active session's plan from the palette — the user-side
+  // counterpart of plan_update {clear:true} for when the model finishes the
+  // work but leaves its plan behind.
+  context.subscriptions.push(
+    api.commands.registerCommand('chat.clearPlan', () => {
+      const sid = _activeWidget?.getSession()?.id;
+      if (sid) chatService.setSessionPlan?.(sid, undefined);
     }),
   );
 

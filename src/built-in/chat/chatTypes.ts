@@ -409,6 +409,8 @@ export interface IChatWidgetServices {
   readonly getSession?: (sessionId: string) => IChatSession | undefined;
   readonly getSessions?: () => readonly IChatSession[];
   readonly deleteSession?: (sessionId: string) => void;
+  /** M86 — user-initiated plan removal (the ✕ on the plan card). */
+  readonly clearSessionPlan?: (sessionId: string) => void;
   readonly updateSessionModel?: (sessionId: string, modelId: string) => void;
   readonly updateSessionContextWindow?: (sessionId: string, contextWindow: number | undefined) => void;
   /**
