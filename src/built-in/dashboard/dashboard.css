@@ -1998,3 +1998,17 @@ video.vw__fill { object-fit: contain; background: #000; }
 }
 .dashboard-picker__template-name { font-size: 12px; font-weight: 600; }
 .dashboard-picker__template-desc { font-size: 11px; opacity: .75; line-height: 1.35; }
+
+/* Templates rail: keep the horizontal scrollbar visible (the global thumb
+   only shows on hover in some surfaces) and slim. Wheel scrolling is
+   translated to horizontal in the picker code. */
+.dashboard-picker__templates::-webkit-scrollbar {
+  height: 6px;
+}
+.dashboard-picker__templates::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-background, rgba(128,128,128,0.4));
+  border-radius: 3px;
+}
+.dashboard-picker__templates::-webkit-scrollbar-thumb:hover {
+  background: var(--vscode-scrollbarSlider-hoverBackground, rgba(128,128,128,0.6));
+}

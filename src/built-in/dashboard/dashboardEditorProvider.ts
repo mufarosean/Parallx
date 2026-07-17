@@ -1053,6 +1053,13 @@ class DashboardEditorPane implements IDisposable {
         tHead.textContent = 'Templates';
         sheet.appendChild(tHead);
         const rail = el('div', 'dashboard-picker__templates');
+        // A mouse wheel only produces vertical deltas, so a horizontal rail
+        // is unreachable without this: translate wheel to horizontal scroll.
+        rail.addEventListener('wheel', (e: WheelEvent) => {
+          if (e.deltaY === 0 || e.shiftKey) return;
+          e.preventDefault();
+          rail.scrollLeft += e.deltaY;
+        }, { passive: false });
         for (const recipe of recipes) {
           const tile = el('button', 'dashboard-picker__template');
           tile.setAttribute('type', 'button');
