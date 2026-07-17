@@ -187,13 +187,30 @@ class PlannerEditorPane implements IDisposable {
     if (this._disposed) return;
     // Honour a tab the sidebar requested before this pane existed (deterministic
     // first-open). The focusTab event below handles re-clicks while already open.
+    // M86 — restore the full view state for this workspace. The pane is
+    // rebuilt every time the user switches editor tabs away and back, so
+    // anything not persisted silently resets to defaults ("why am I on
+    // Tasks again?"). Restored: active tab, calendar view, tasks filter,
+    // calendar cursor date.
+    const vs = this._api.viewState;
+    if (vs) {
+      const savedTab = vs.get<string>('planner.activeTab', 'tasks');
+      if (savedTab === 'tasks' || savedTab === 'calendar') this._activeTab = savedTab;
+      const savedView = vs.get<string>('planner.calendarView', 'month');
+      if (savedView === 'month' || savedView === 'week' || savedView === 'day') {
+        this._calendarView = savedView;
+      }
+      const savedFilter = vs.get<string>('planner.tasksFilter', 'all');
+      if (savedFilter) this._tasksFilter = savedFilter;
+      const savedCursor = vs.get<string>('planner.cursorDate', '');
+      if (savedCursor) {
+        const d = new Date(savedCursor);
+        if (!Number.isNaN(d.getTime())) this._cursorDate = startOfDay(d);
+      }
+    }
+    // An EXPLICIT tab request from the sidebar wins over restored state.
     const pendingTab = takePendingPlannerTab();
     if (pendingTab) this._activeTab = pendingTab;
-    // M86 — restore the last calendar view (month/week/day) for this workspace.
-    const savedView = this._api.viewState?.get<string>('planner.calendarView', 'month');
-    if (savedView === 'month' || savedView === 'week' || savedView === 'day') {
-      this._calendarView = savedView;
-    }
     this._input?.setName?.('Planner');
     this._input?.setIconHtml?.(PLANNER_ICON_SVG);
     this._buildShell();
@@ -372,6 +389,23 @@ class PlannerEditorPane implements IDisposable {
     void this._renderTab();
   }
 
+  /**
+   * Persist the pane's view state per-workspace (M86). Deduped by signature
+   * so the render loop (which also fires on data changes) doesn't spam the
+   * memento with identical writes.
+   */
+  private _lastViewStateSig = '';
+  private _saveViewState(): void {
+    const vs = this._api.viewState;
+    if (!vs) return;
+    const sig = `${this._activeTab}|${this._calendarView}|${this._tasksFilter}|${this._cursorDate.getTime()}`;
+    if (sig === this._lastViewStateSig) return;
+    this._lastViewStateSig = sig;
+    vs.set('planner.activeTab', this._activeTab);
+    vs.set('planner.tasksFilter', this._tasksFilter);
+    vs.set('planner.cursorDate', this._cursorDate.toISOString());
+  }
+
   private _syncTabClass(): void {
     const tabsEl = this._root?.querySelectorAll('.planner-pane__tab');
     if (!tabsEl) return;
@@ -389,6 +423,9 @@ class PlannerEditorPane implements IDisposable {
    * and a call arriving mid-render coalesces into a single trailing re-render.
    */
   private async _renderTab(): Promise<void> {
+    // Every view-state mutation funnels through a render — one save hook
+    // covers tab switches, calendar navigation, and view changes.
+    this._saveViewState();
     if (this._rendering) { this._renderQueued = true; return; }
     this._rendering = true;
     try {
@@ -518,6 +555,7 @@ class PlannerEditorPane implements IDisposable {
       item.addEventListener('click', () => {
         activeKey = f.key;
         this._tasksFilter = activeKey;
+        this._saveViewState();
         for (const sibling of Array.from(nav.children)) {
           if (sibling instanceof HTMLElement && sibling.classList.contains('planner-tasks__navitem')) {
             sibling.classList.toggle('planner-tasks__navitem--active', sibling.dataset.key === activeKey);
