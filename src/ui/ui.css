@@ -221,13 +221,24 @@
      visible — so promoting a tab to active never shifts the layout. */
   border: 1px solid transparent;
   border-bottom: 1px solid var(--vscode-editorGroupHeader-tabsBorder);
-  border-top-left-radius: var(--px-radius-md);
-  border-top-right-radius: var(--px-radius-md);
+  /* Square by default: adjacent chips join into ONE continuous band. Rounding
+     every chip left V-shaped slivers between neighbouring corners where the
+     strip background peeked through (the "notches"). Only the two ENDS of the
+     run are rounded (below); the active tab re-rounds itself to pop out. */
+  border-radius: 0;
   transition:
     background-color var(--px-dur-fast) var(--px-ease),
     color var(--px-dur-fast) var(--px-ease);
   position: relative;
   box-sizing: border-box;
+}
+
+/* Round only the outer corners of the chip run. */
+.ui-tab:first-child {
+  border-top-left-radius: var(--px-radius-md);
+}
+.ui-tab:last-of-type {
+  border-top-right-radius: var(--px-radius-md);
 }
 
 /* Hairline divider between adjacent inactive tabs (suppressed next to the
