@@ -1886,3 +1886,115 @@ video.vw__fill { object-fit: contain; background: #000; }
   color: var(--vscode-button-background, #4daafc);
 }
 .cdw--done .cdw__title { color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 70%, transparent); }
+
+/* ── Page schedule popover (M86 C4) ── */
+.dashboard-schedule-pop {
+  position: fixed;
+  z-index: 1000;
+  width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  background: var(--vscode-editor-background, #1e1e1e);
+  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 14%, transparent);
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(0,0,0,0.4);
+}
+.dashboard-schedule-pop__title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vscode-editor-foreground, #d4d4d4);
+}
+.dashboard-schedule-pop__select,
+.dashboard-schedule-pop__time,
+.dashboard-schedule-pop__cron {
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 14%, transparent);
+  color: var(--vscode-editor-foreground, #d4d4d4);
+}
+.dashboard-schedule-pop__hint {
+  font-size: 11px;
+  opacity: .7;
+  min-height: 14px;
+}
+.dashboard-schedule-pop__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* ── Timer widget (M86 C3) ── */
+.dtimer { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; height: 100%; }
+.dtimer__face { font-size: 40px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
+.dtimer__face--done { color: var(--px-accent, #7aa2f7); }
+.dtimer__controls { display: flex; gap: 8px; }
+.dtimer__btn {
+  font: inherit; font-size: 12px; padding: 5px 12px; border-radius: 6px; cursor: pointer;
+  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 16%, transparent);
+  color: var(--vscode-editor-foreground, #d4d4d4);
+}
+.dtimer__btn--primary { background: var(--px-accent, #7aa2f7); border-color: transparent; color: #fff; }
+.dtimer__stats { font-size: 11px; opacity: .7; }
+
+/* ── Tracker board widget (M86 C3) ── */
+.dtracker { display: flex; flex-direction: column; gap: 8px; height: 100%; }
+.dtracker__summary { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.dtracker__strip { display: flex; flex: 1; height: 6px; border-radius: 3px; overflow: hidden; gap: 2px; }
+.dtracker__seg { background: var(--px-accent, #7aa2f7); border-radius: 2px; }
+.dtracker__count { font-size: 11px; opacity: .75; white-space: nowrap; }
+.dtracker__list { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
+.dtracker__row {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 4px 6px; border-radius: 6px; border: none; background: transparent; cursor: pointer;
+  color: inherit; font: inherit; text-align: left;
+}
+.dtracker__row:hover { background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 7%, transparent); }
+.dtracker__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.dtracker__chip {
+  flex-shrink: 0; font-size: 10px; padding: 2px 8px; border-radius: 10px;
+  background: var(--px-accent, #7aa2f7); color: #fff;
+}
+.dtracker__empty, .dtable__empty { font-size: 12px; opacity: .75; padding: 8px; }
+.dtracker__empty strong, .dtable__empty strong { display: block; margin-bottom: 4px; }
+
+/* ── Table/chart widget (M86 C3) ── */
+.dtable { height: 100%; }
+.dtable__host { height: 100%; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
+.dtable__table { border-collapse: collapse; font-size: 12px; width: 100%; }
+.dtable__table th, .dtable__table td {
+  text-align: left; padding: 3px 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 10%, transparent);
+}
+.dtable__table th { font-weight: 600; position: sticky; top: 0; background: var(--vscode-editor-background, #1e1e1e); }
+.dtable__chart { display: flex; flex-direction: column; gap: 3px; flex-shrink: 0; }
+.dtable__chartrow { display: grid; grid-template-columns: minmax(60px, 30%) 1fr auto; align-items: center; gap: 8px; font-size: 11px; }
+.dtable__chartlabel { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dtable__bar { height: 8px; border-radius: 4px; background: var(--px-accent, #7aa2f7); opacity: .8; }
+.dtable__chartvalue { font-variant-numeric: tabular-nums; opacity: .8; }
+.dtable__more { font-size: 11px; opacity: .6; }
+
+/* ── Picker templates rail (M86 C3) ── */
+.dashboard-picker__section {
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em;
+  opacity: .6; padding: 12px 20px 4px;
+}
+.dashboard-picker__templates {
+  display: flex; gap: 8px; overflow-x: auto; padding: 4px 20px 10px; flex-shrink: 0;
+}
+.dashboard-picker__template {
+  flex: 0 0 190px; display: flex; flex-direction: column; gap: 4px; text-align: left;
+  padding: 10px 12px; border-radius: 10px; cursor: pointer; font: inherit; color: inherit;
+  background: color-mix(in srgb, var(--px-accent, #7aa2f7) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--px-accent, #7aa2f7) 25%, transparent);
+}
+.dashboard-picker__template:hover {
+  background: color-mix(in srgb, var(--px-accent, #7aa2f7) 14%, transparent);
+}
+.dashboard-picker__template-name { font-size: 12px; font-weight: 600; }
+.dashboard-picker__template-desc { font-size: 11px; opacity: .75; line-height: 1.35; }

@@ -771,6 +771,116 @@ function _registerTools(api) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// SECTION 8b — Dashboard widget: News brief (M86)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// The news brief is a web-research consumer (webSearch + webFetch drive it),
+// so this extension owns and contributes it. Re-homed from the dashboard
+// core in M86; the typeId keeps its pre-M86 value so persisted dashboard
+// instances keep working (LEGACY_WIDGET_TYPE_OWNERS maps it to this
+// extension). renderMode 'markdown' means the DASHBOARD renders the cached
+// brief — no DOM code needed here.
+
+function _stripRefreshBanner(text) {
+  return text.replace(/^_(?:Refreshing|Researching)[^\n]*_\s*\n+/, '').trim();
+}
+
+function _buildNewsBriefPrompt(cfg, instanceId) {
+  const today = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  const lines = [
+    `Research today's (${today}) top ${cfg.topN} news stories relevant to ${cfg.location}, then deliver the brief to my dashboard widget.`,
+    '',
+    'Steps:',
+    `1. Use webSearch to find current stories for ${cfg.location}.`,
+    '2. webFetch 2-3 of the most relevant results to confirm the details. Use only what the sources actually say — never invent stories, numbers, or sources.',
+    `3. Write a Markdown brief: a short top heading, then a numbered list of up to ${cfg.topN} items. Each item is one concise sentence followed by a Markdown link to its source. No emojis, no preamble.`,
+    `4. Call the dashboard_render_widget tool with instanceId "${instanceId}" and the finished Markdown as content. This is how the brief reaches the widget — do not skip it.`,
+  ];
+  if (cfg.extraInstructions && cfg.extraInstructions.trim()) {
+    lines.push('', `Additional instructions: ${cfg.extraInstructions.trim()}`);
+  }
+  return lines.join('\n');
+}
+
+function _normalizeNewsBriefConfig(raw) {
+  const cfg = raw && typeof raw === 'object' ? raw : {};
+  const topN = Math.max(3, Math.min(20, Math.floor(Number(cfg.topN)) || 10));
+  return {
+    location: typeof cfg.location === 'string' && cfg.location.trim() ? cfg.location.trim() : 'San Antonio, Texas',
+    topN,
+    extraInstructions: typeof cfg.extraInstructions === 'string' ? cfg.extraInstructions : '',
+  };
+}
+
+function _registerNewsBriefWidget(api) {
+  if (!api.dashboard || typeof api.dashboard.registerWidgetType !== 'function') return;
+  try {
+    _commandDisposables.push(api.dashboard.registerWidgetType({
+      typeId: 'parallx.dashboard.news-brief',
+      displayName: 'News brief',
+      description: 'A short AI-written summary of today\'s top news for your area — researched with webSearch/webFetch. Works for any location or beat (local news, an industry, a team).',
+      icon: '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6z"/></svg>',
+      category: 'ai',
+      renderMode: 'markdown',
+      defaultSize: { colSpan: 8, rowSpan: 4 },
+      defaultConfig: { location: 'San Antonio, Texas', topN: 10, extraInstructions: '' },
+      configSchema: {
+        fields: {
+          location: {
+            type: 'string',
+            label: 'Location',
+            description: 'City, region, or topic the brief should focus on.',
+            placeholder: 'San Antonio, Texas',
+          },
+          topN: {
+            type: 'number',
+            label: 'Stories to summarize',
+            description: 'Anywhere from 3 to 20.',
+          },
+          extraInstructions: {
+            type: 'textarea',
+            label: 'Extra instructions (optional)',
+            description: 'Add focus areas, tone, or formatting preferences.',
+            placeholder: 'e.g. "Keep it neutral, two sentences per story."',
+          },
+        },
+      },
+      defaultRefreshPolicy: { kind: 'manual' },
+
+      async refresh(ctx) {
+        const cmd = ctx.api && ctx.api.commands;
+        if (!cmd || typeof cmd.executeCommand !== 'function') {
+          throw new Error('Chat tool not available. Ensure the Chat extension is enabled.');
+        }
+        const cfg = _normalizeNewsBriefConfig(ctx.config);
+        // Perception signal: feeds habit detection without waking a review.
+        void cmd.executeCommand('parallx.autonomy.signal', {
+          source: 'dashboard', title: 'refresh AI News', severity: 'info',
+        }).catch(() => { /* signal bus optional */ });
+
+        const prompt = _buildNewsBriefPrompt(cfg, ctx.instanceId);
+
+        if (ctx.mode !== 'chat') {
+          const res = await cmd.executeCommand('chat.runBackgroundPrompt', {
+            text: prompt, origin: 'dashboard', originLabel: `[dashboard · News brief · ${cfg.location}]`,
+          });
+          if (!res || !res.ok) throw new Error((res && res.error) || 'Background refresh failed.');
+          return null;
+        }
+
+        await cmd.executeCommand('chat.submitPrompt', { text: prompt });
+        const prior = _stripRefreshBanner((ctx.cachedOutput || '').trim());
+        if (prior) return `_Refreshing the news brief for ${cfg.location}…_\n\n${prior}`;
+        return `_Researching the latest news for ${cfg.location}… the brief will appear here when ready._`;
+      },
+    }));
+    console.log('[web-research] Registered news-brief dashboard widget');
+  } catch (err) {
+    console.error('[web-research] news-brief widget registration failed:', err);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // SECTION 9 — Activation
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -797,6 +907,7 @@ export async function activate(api, _context) {
 
   _registerTools(api);
   _registerLinkContract(api);
+  _registerNewsBriefWidget(api);
   console.log('[web-research] Activated');
 }
 

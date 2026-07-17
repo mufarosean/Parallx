@@ -173,11 +173,19 @@ export class DashboardRefreshScheduler extends Disposable {
   /**
    * Execute a single refresh now. Honors single-flight (overlapping calls
    * receive the same promise) and AI-concurrency caps.
+   *
+   * @param typeReg Optional registration for callers that never `schedule()`d
+   *   this instance (headless page-schedule refreshes, M86 C4) — recorded so
+   *   the AI cap and AI timeout apply, WITHOUT touching any timer an open
+   *   editor may have installed for the same instance.
    */
-  async runOnce(instanceId: string, invoke: () => Promise<void>): Promise<void> {
+  async runOnce(instanceId: string, invoke: () => Promise<void>, typeRegOverride?: WidgetTypeRegistration<unknown>): Promise<void> {
     const existing = this._inFlight.get(instanceId);
     if (existing) return existing;
 
+    if (typeRegOverride && !this._instanceTypeMap.has(instanceId)) {
+      this._instanceTypeMap.set(instanceId, typeRegOverride);
+    }
     const typeReg = this._instanceTypeMap.get(instanceId);
     const isAI = typeReg?.category === 'ai';
 

@@ -1,6 +1,35 @@
 # Milestone 86 — Dashboard as a System: Contribution, Ownership, Orchestration
 
-> **Status:** In progress. C1 BUILT + C2 largely BUILT (2026-07-16; tsc, unit
+> **Status: BUILT** (2026-07-16, third slice; tsc + unit suite + build green).
+> Everything below is implemented except three explicitly-deferred items:
+>
+> - **C4 page schedules — DONE**: `dashboard_pages.refresh_policy_json`
+>   (migration 005), headless schedule engine in dashboard main (fires
+>   whether or not the page is open; widgets refresh through the admission
+>   queue), and a page-header schedule popover (off / hourly / every 4h /
+>   daily / weekdays / custom cron; local→UTC conversion for times).
+> - **renderMode 'markdown' — DONE**: contract + validation + dashboard-side
+>   renderer with `parallx://` link routing through the link resolver.
+>   News-brief re-homed to the web-research extension as plain JS using it.
+> - **C3 — DONE**: timer (sessions logged as data), tracker board
+>   (items × stages), saved-query (retrieval + AI modes), table/chart over
+>   .csv/.tsv/.xlsx/.xls (new `dashboard:readTable` IPC parsing with the
+>   same `xlsx` package the indexer uses — the renderer fs bridge is
+>   utf-8-only), and the picker's Templates rail (8 recipes spanning study,
+>   home, finance, news domains; recipes hide when their type is absent).
+> - **C2 — DONE with a correction**: the planner ALREADY contributed three
+>   widgets (tasks-summary, calendar-agenda, calendar-view) via a
+>   `dashboard.getRegistry` polling workaround — migrated to
+>   `api.dashboard` (the polling bug the hub was designed to kill).
+>   Canvas now contributes `parallx.canvas.page-embed` (markdown render of
+>   any page, heading links back to the real page).
+>
+> **Deferred, with reasons:** (1) canvas *database-view* widget — needs a
+> row-query mapping through DatabaseDataService; follow-up slice. (2) tasks
+> widget planner source-switch — redundant: the planner's own tasks-summary
+> widget already IS the planner-backed task list; keeping the dashboard
+> tasks widget as the private checklist is the cleaner separation. (3) C5
+> USER_GUIDE rewrite is summarized rather than exhaustive.
 > suite, build green): `parallx.dashboard` bridge + hub with validation /
 > namespacing / legacy-owner table; hub→registry mirror in dashboard main;
 > live placeholder⇄widget re-mount on registry change; `provider_tool_id`

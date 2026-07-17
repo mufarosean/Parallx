@@ -174,6 +174,16 @@ export interface WidgetTypeRegistration<TConfig = Record<string, unknown>> {
   readonly chromeStyle?: WidgetChromeStyle;
 
   /**
+   * How the widget body is rendered (M86):
+   * - 'custom' (default): the widget owns its DOM via `createWidget`.
+   * - 'markdown': the DASHBOARD renders the cached output as Markdown —
+   *   no `createWidget` needed. This is how extensions (especially plain-JS
+   *   ones) ship AI/markdown widgets without duplicating a renderer: write
+   *   a `refresh` that produces (or has an agent deliver) Markdown, done.
+   */
+  readonly renderMode?: 'custom' | 'markdown';
+
+  /**
    * Pure data fetch. Runs both headless (scheduler) and mounted (user click).
    * Return a string ≤ MAX_CACHED_OUTPUT_BYTES to persist it as the widget's
    * cached output — or `null` to persist nothing, for widgets whose refresh
@@ -184,8 +194,11 @@ export interface WidgetTypeRegistration<TConfig = Record<string, unknown>> {
    */
   refresh?(ctx: WidgetRefreshContext<TConfig>): Promise<string | null>;
 
-  /** DOM render. Receives cachedOutput via ctx.cachedOutput on first paint. */
-  createWidget(container: HTMLElement, ctx: WidgetContext<TConfig>): WidgetHandle;
+  /**
+   * DOM render. Receives cachedOutput via ctx.cachedOutput on first paint.
+   * Required unless `renderMode` is 'markdown'.
+   */
+  createWidget?(container: HTMLElement, ctx: WidgetContext<TConfig>): WidgetHandle;
 }
 
 /** Metadata-only view of a registered widget type (no renderer access). */
@@ -259,8 +272,14 @@ function validateRegistration(toolId: string, reg: WidgetTypeRegistration<unknow
   if (reg.category !== 'static' && reg.category !== 'query' && reg.category !== 'ai') {
     throw new Error(`[api.dashboard] Widget "${typeId}": category must be 'static' | 'query' | 'ai'`);
   }
-  if (typeof reg.createWidget !== 'function') {
-    throw new Error(`[api.dashboard] Widget "${typeId}": createWidget(container, ctx) is required`);
+  if (reg.renderMode !== undefined && reg.renderMode !== 'custom' && reg.renderMode !== 'markdown') {
+    throw new Error(`[api.dashboard] Widget "${typeId}": renderMode must be 'custom' | 'markdown'`);
+  }
+  if (reg.renderMode !== 'markdown' && typeof reg.createWidget !== 'function') {
+    throw new Error(`[api.dashboard] Widget "${typeId}": createWidget(container, ctx) is required (or set renderMode: 'markdown')`);
+  }
+  if (reg.createWidget !== undefined && typeof reg.createWidget !== 'function') {
+    throw new Error(`[api.dashboard] Widget "${typeId}": createWidget must be a function when provided`);
   }
   if (reg.refresh !== undefined && typeof reg.refresh !== 'function') {
     throw new Error(`[api.dashboard] Widget "${typeId}": refresh must be a function when provided`);

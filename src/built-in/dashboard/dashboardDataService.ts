@@ -29,11 +29,19 @@ interface DatabaseBridge {
 // ─── Row mapping helpers ─────────────────────────────────────────────────────
 
 function rowToPage(row: Record<string, unknown>): DashboardPageRow {
+  let pagePolicy: WidgetRefreshPolicy | null = null;
+  if (typeof row.refresh_policy_json === 'string' && row.refresh_policy_json) {
+    try {
+      const parsed = JSON.parse(row.refresh_policy_json) as WidgetRefreshPolicy;
+      if (parsed && typeof parsed === 'object' && 'kind' in parsed) pagePolicy = parsed;
+    } catch { /* off */ }
+  }
   return {
     id: row.id as string,
     name: (row.name as string) ?? 'Untitled',
     position: (row.position as number) ?? 0,
     headerHidden: Number(row.header_hidden ?? 0) === 1,
+    refreshPolicy: pagePolicy,
     createdAt: (row.created_at as number) ?? 0,
     updatedAt: (row.updated_at as number) ?? 0,
   };
@@ -130,7 +138,7 @@ export class DashboardDataService extends Disposable {
 
   async listPages(): Promise<DashboardPageRow[]> {
     const res = await this._db.all(
-      `SELECT id, name, position, header_hidden, created_at, updated_at
+      `SELECT id, name, position, header_hidden, refresh_policy_json, created_at, updated_at
          FROM dashboard_pages
         ORDER BY position ASC, created_at ASC`,
     );
@@ -143,7 +151,7 @@ export class DashboardDataService extends Disposable {
 
   async getPage(id: string): Promise<DashboardPageRow | null> {
     const res = await this._db.get(
-      `SELECT id, name, position, header_hidden, created_at, updated_at
+      `SELECT id, name, position, header_hidden, refresh_policy_json, created_at, updated_at
          FROM dashboard_pages WHERE id = ?`,
       [id],
     );
@@ -168,7 +176,7 @@ export class DashboardDataService extends Disposable {
     );
     if (res.error) throw new Error(`createPage failed: ${res.error.message}`);
 
-    const page: DashboardPageRow = { id, name, position: nextPos, headerHidden: false, createdAt: now, updatedAt: now };
+    const page: DashboardPageRow = { id, name, position: nextPos, headerHidden: false, refreshPolicy: null, createdAt: now, updatedAt: now };
     this._onDidChange.fire({ kind: 'page-created', pageId: id });
     return page;
   }
@@ -195,6 +203,16 @@ export class DashboardDataService extends Disposable {
       [hidden ? 1 : 0, Date.now(), id],
     );
     if (res.error) throw new Error(`setPageHeaderHidden failed: ${res.error.message}`);
+  }
+
+  /** Set (or clear, with null) a page's headless refresh schedule (M86 C4). */
+  async setPageRefreshPolicy(id: string, policy: WidgetRefreshPolicy | null): Promise<void> {
+    const res = await this._db.run(
+      `UPDATE dashboard_pages SET refresh_policy_json = ?, updated_at = ? WHERE id = ?`,
+      [policy ? JSON.stringify(policy) : null, Date.now(), id],
+    );
+    if (res.error) throw new Error(`setPageRefreshPolicy failed: ${res.error.message}`);
+    this._onDidChange.fire({ kind: 'page-updated', pageId: id });
   }
 
   /**

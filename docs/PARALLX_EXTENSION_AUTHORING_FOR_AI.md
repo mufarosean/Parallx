@@ -528,10 +528,22 @@ const d = api.dashboard.registerWidgetType({
 _disposables.push(d);
 ```
 
+**`renderMode: 'markdown'` — widgets without DOM code.** Set it and omit
+`createWidget` entirely: the dashboard renders your widget's cached output
+as Markdown (empty/error states included). Perfect for plain-JS extensions
+and AI-backed widgets — your `refresh` either returns Markdown directly or
+has a background agent deliver it via `dashboard_render_widget` (return
+`null` in that case so you don't overwrite the delivered content).
+`parallx://` links in the rendered Markdown are automatically routed
+through the link resolver, so a heading link into your own surface gives
+the widget its click-through for free. Reference: the news-brief widget in
+`ext/web-research/main.js`.
+
 Design rules for widgets:
 
 - **A widget is a door, not a poster** — clicking it should navigate into
-  your extension's own surface (`api.editors.openEditor(...)` / a command).
+  your extension's own surface (`api.editors.openEditor(...)` / a command,
+  or a `parallx://` link in markdown mode).
 - **Domain-blind config**: don't hardcode a use case that config could
   express. State two unrelated instantiations in `description`.
 - Reuse the data paths your extension already has (the budget widget calls

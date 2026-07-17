@@ -383,6 +383,12 @@ contextBridge.exposeInMainWorld('parallxElectron', {
     save: (bytes, mime) => ipcRenderer.invoke('dashboardAsset:save', bytes, mime),
     /** Delete a stored asset by id (best-effort). */
     delete: (id) => ipcRenderer.invoke('dashboardAsset:delete', id),
+    /**
+     * M86 C3: read a .csv/.tsv/.xlsx/.xls as structured rows for the
+     * Table/Chart widget. Returns { header, rows, sheetNames, totalRows }
+     * or { error }.
+     */
+    readTable: (filePath, opts) => ipcRenderer.invoke('dashboard:readTable', filePath, opts),
   },
 
   // ══════════════════════════════════════════════════════════════════════════

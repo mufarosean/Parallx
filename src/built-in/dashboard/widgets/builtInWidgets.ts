@@ -6,7 +6,6 @@
 import { toDisposable, type IDisposable } from '../../../platform/lifecycle.js';
 import type { DashboardRegistry } from '../dashboardTypes.js';
 import { CLOCK_AND_LINKS_WIDGET } from './clockAndLinksWidget.js';
-import { NEWS_BRIEF_WIDGET } from './newsBriefWidget.js';
 import { CUSTOM_AI_WIDGET } from './customAiWidget.js';
 import { LIVE_WIDGET } from './liveWidget.js';
 import { IMAGE_WIDGET } from './imageWidget.js';
@@ -16,6 +15,10 @@ import { TASKS_WIDGET } from './tasksWidget.js';
 import { COUNTDOWN_WIDGET } from './countdownWidget.js';
 import { WEATHER_WIDGET } from './weatherWidget.js';
 import { MARKET_WIDGET } from './marketWidget.js';
+import { TIMER_WIDGET } from './timerWidget.js';
+import { TRACKER_BOARD_WIDGET } from './trackerBoardWidget.js';
+import { SAVED_QUERY_WIDGET } from './savedQueryWidget.js';
+import { TABLE_WIDGET } from './tableWidget.js';
 
 interface ApiSurfaceUsedByWidgets {
   commands: { executeCommand<T = unknown>(id: string, ...args: unknown[]): Promise<T> };
@@ -32,11 +35,11 @@ export function registerBuiltInDashboardWidgets(
 
   // M86: organ-owned widgets are NOT registered here — they are contributed
   // by the tool that owns their data via `api.dashboard.registerWidgetType`
-  // (recent-files → explorer; autonomy-activity → chat). Their typeIds are
-  // unchanged, so persisted instances keep working.
+  // (recent-files → explorer; autonomy-activity → chat; news-brief →
+  // web-research extension). Their typeIds are unchanged, so persisted
+  // instances keep working.
   const disposables: IDisposable[] = [
     registry.registerWidgetType(CLOCK_AND_LINKS_WIDGET),
-    registry.registerWidgetType(NEWS_BRIEF_WIDGET),
     registry.registerWidgetType(CUSTOM_AI_WIDGET),
     registry.registerWidgetType(LIVE_WIDGET),
     registry.registerWidgetType(IMAGE_WIDGET),
@@ -46,6 +49,11 @@ export function registerBuiltInDashboardWidgets(
     registry.registerWidgetType(COUNTDOWN_WIDGET),
     registry.registerWidgetType(WEATHER_WIDGET),
     registry.registerWidgetType(MARKET_WIDGET),
+    // M86 C3 — the generic slate: domain-blind, config-shaped widgets.
+    registry.registerWidgetType(TIMER_WIDGET),
+    registry.registerWidgetType(TRACKER_BOARD_WIDGET),
+    registry.registerWidgetType(SAVED_QUERY_WIDGET),
+    registry.registerWidgetType(TABLE_WIDGET),
   ];
 
   return toDisposable(() => {

@@ -28,6 +28,8 @@ import {
   type WidgetTypeRegistration,
 } from './dashboardTypes.js';
 import { renderMarkdownToDom } from './widgets/markdownRenderer.js';
+import { ILinkResolverService } from '../../links/linkResolverService.js';
+import { WIDGET_TEMPLATES } from './widgetTemplates.js';
 
 // ─── Minimal local API shape (avoids cross-tool import) ──────────────────────
 
@@ -321,6 +323,16 @@ class DashboardEditorPane implements IDisposable {
     });
     actions.appendChild(refreshAllBtn);
 
+    // Page schedule (M86 C4): "refresh this whole page on a schedule" —
+    // runs headlessly whether or not the page is open.
+    const scheduleBtn = el('button', 'dashboard-btn dashboard-btn--ghost dashboard-btn--icon-only');
+    scheduleBtn.type = 'button';
+    scheduleBtn.title = 'Schedule automatic refresh for this page';
+    scheduleBtn.dataset.role = 'page-schedule';
+    scheduleBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+    scheduleBtn.addEventListener('click', () => void this._openScheduleEditor(scheduleBtn));
+    actions.appendChild(scheduleBtn);
+
     const collapseBtn = el('button', 'dashboard-btn dashboard-btn--ghost dashboard-btn--icon-only');
     collapseBtn.type = 'button';
     collapseBtn.title = 'Hide header';
@@ -407,6 +419,140 @@ class DashboardEditorPane implements IDisposable {
     const root = this._root;
     if (!root) return;
     if (hidden) root.classList.add('dashboard-pane--header-hidden');
+  }
+
+  // ── Page schedule editor (M86 C4) ──────────────────────────────────────
+
+  /**
+   * Compact popover to set the page's headless refresh schedule.
+   * Preset-first (off / hourly / every 4h / daily / weekdays) with a raw
+   * cron field for power users. Daily/weekday times are entered in LOCAL
+   * time and converted to UTC (the cron evaluator runs in UTC). Note: for
+   * times where the UTC date differs from the local date, weekday schedules
+   * shift by a day at the boundary — acceptable for the target use
+   * ("weekdays 7:00"-style morning schedules).
+   */
+  private async _openScheduleEditor(anchor: HTMLElement): Promise<void> {
+    document.querySelector('.dashboard-schedule-pop')?.remove();
+    const page = await this._data.getPage(this._pageId);
+    const current = page?.refreshPolicy ?? null;
+
+    const pop = el('div', 'dashboard-schedule-pop');
+    const title = el('div', 'dashboard-schedule-pop__title');
+    title.textContent = 'Refresh this page automatically';
+    pop.appendChild(title);
+
+    const select = document.createElement('select');
+    select.className = 'dashboard-schedule-pop__select';
+    const options: { value: string; label: string }[] = [
+      { value: 'off', label: 'Off' },
+      { value: 'hourly', label: 'Every hour' },
+      { value: 'every4h', label: 'Every 4 hours' },
+      { value: 'daily', label: 'Daily at…' },
+      { value: 'weekdays', label: 'Weekdays at…' },
+      { value: 'cron', label: 'Custom cron…' },
+    ];
+    for (const o of options) {
+      const opt = document.createElement('option');
+      opt.value = o.value;
+      opt.textContent = o.label;
+      select.appendChild(opt);
+    }
+    pop.appendChild(select);
+
+    const timeInput = document.createElement('input');
+    timeInput.type = 'time';
+    timeInput.value = '07:00';
+    timeInput.className = 'dashboard-schedule-pop__time';
+    pop.appendChild(timeInput);
+
+    const cronInput = document.createElement('input');
+    cronInput.type = 'text';
+    cronInput.placeholder = '0 12 * * 1-5  (5-field cron, UTC)';
+    cronInput.className = 'dashboard-schedule-pop__cron';
+    pop.appendChild(cronInput);
+
+    const hint = el('div', 'dashboard-schedule-pop__hint');
+    pop.appendChild(hint);
+
+    // Initial state from the persisted policy.
+    if (!current) {
+      select.value = 'off';
+    } else if (current.kind === 'interval') {
+      select.value = current.ms === 4 * 3_600_000 ? 'every4h' : 'hourly';
+    } else if (current.kind === 'cron') {
+      // Try to recognise our own daily/weekday shapes; otherwise show raw.
+      const m = /^(\d{1,2}) (\d{1,2}) \* \* (\*|1-5)$/.exec(current.cron.trim());
+      if (m) {
+        const local = new Date();
+        local.setUTCHours(parseInt(m[2], 10), parseInt(m[1], 10), 0, 0);
+        timeInput.value = `${String(local.getHours()).padStart(2, '0')}:${String(local.getMinutes()).padStart(2, '0')}`;
+        select.value = m[3] === '1-5' ? 'weekdays' : 'daily';
+      } else {
+        select.value = 'cron';
+        cronInput.value = current.cron;
+      }
+    }
+
+    const syncVisibility = (): void => {
+      const v = select.value;
+      timeInput.style.display = v === 'daily' || v === 'weekdays' ? '' : 'none';
+      cronInput.style.display = v === 'cron' ? '' : 'none';
+      hint.textContent =
+        v === 'off' ? 'Widgets only refresh manually or on their own schedules.'
+        : v === 'cron' ? 'Standard 5-field cron, evaluated in UTC.'
+        : v === 'daily' || v === 'weekdays' ? 'Local time. AI widgets run as background agents.'
+        : 'AI widgets run as background agents; the chat is never opened.';
+    };
+    syncVisibility();
+    select.addEventListener('change', syncVisibility);
+
+    const row = el('div', 'dashboard-schedule-pop__actions');
+    const save = el('button', 'dashboard-btn dashboard-btn--primary');
+    save.textContent = 'Save';
+    save.addEventListener('click', async () => {
+      let policy: import('./dashboardTypes.js').WidgetRefreshPolicy | null = null;
+      const v = select.value;
+      if (v === 'hourly') policy = { kind: 'interval', ms: 3_600_000 };
+      else if (v === 'every4h') policy = { kind: 'interval', ms: 4 * 3_600_000 };
+      else if (v === 'daily' || v === 'weekdays') {
+        const [hh, mm] = (timeInput.value || '07:00').split(':').map((s) => parseInt(s, 10));
+        const local = new Date();
+        local.setHours(hh || 7, mm || 0, 0, 0);
+        policy = {
+          kind: 'cron',
+          cron: `${local.getUTCMinutes()} ${local.getUTCHours()} * * ${v === 'weekdays' ? '1-5' : '*'}`,
+        };
+      } else if (v === 'cron') {
+        const cron = cronInput.value.trim();
+        if (cron) policy = { kind: 'cron', cron };
+      }
+      try {
+        await this._data.setPageRefreshPolicy(this._pageId, policy);
+        pop.remove();
+      } catch (err) {
+        hint.textContent = err instanceof Error ? err.message : String(err);
+      }
+    });
+    row.appendChild(save);
+    const cancel = el('button', 'dashboard-btn dashboard-btn--ghost');
+    cancel.textContent = 'Cancel';
+    cancel.addEventListener('click', () => pop.remove());
+    row.appendChild(cancel);
+    pop.appendChild(row);
+
+    // Anchor under the button; dismiss on outside click.
+    const rect = anchor.getBoundingClientRect();
+    pop.style.top = `${rect.bottom + 6}px`;
+    pop.style.right = `${Math.max(8, window.innerWidth - rect.right)}px`;
+    document.body.appendChild(pop);
+    const dismiss = (e: MouseEvent): void => {
+      if (!pop.contains(e.target as Node) && e.target !== anchor) {
+        pop.remove();
+        document.removeEventListener('mousedown', dismiss, true);
+      }
+    };
+    document.addEventListener('mousedown', dismiss, true);
   }
 
   // ── Rename flow ────────────────────────────────────────────────────────
@@ -603,7 +749,12 @@ class DashboardEditorPane implements IDisposable {
     } else {
       const ctx = this._buildContext(row, configEmitter);
       try {
-        handle = typeReg.createWidget(body, ctx);
+        // renderMode 'markdown' (M86): the dashboard renders cached output
+        // itself, so contributed widgets (especially plain-JS extensions)
+        // don't need to ship a renderer.
+        handle = typeReg.createWidget
+          ? typeReg.createWidget(body, ctx)
+          : this._createMarkdownHandle(body, ctx);
       } catch (err) {
         console.error(`[Dashboard] widget renderer crashed for ${row.id}:`, err);
         body.innerHTML = `<div class="dashboard-widget__error">Widget failed to render.</div>`;
@@ -631,6 +782,72 @@ class DashboardEditorPane implements IDisposable {
       handle,
       configEmitter,
     });
+  }
+
+  /**
+   * Built-in body renderer for `renderMode: 'markdown'` widget types (M86):
+   * paints the cached output as Markdown, mirrors the AI widgets' empty and
+   * error states, and re-paints from cache on delivery.
+   */
+  private _createMarkdownHandle(body: HTMLElement, ctx: WidgetContext<unknown>): WidgetHandle {
+    body.classList.add('dashboard-md');
+    const surface = el('div', 'dashboard-md__surface');
+    body.appendChild(surface);
+
+    // Doors, not posters: parallx:// links in rendered markdown route
+    // through the link resolver (e.g. the canvas page-embed's heading link
+    // opens the real page). Plain web links open externally as usual.
+    surface.addEventListener('click', (e) => {
+      const a = (e.target as HTMLElement).closest('a');
+      if (!a) return;
+      const href = a.getAttribute('href') ?? '';
+      if (!href.startsWith('parallx://')) return;
+      e.preventDefault();
+      try {
+        const services = (this._api as { services?: { has(id: { id: string }): boolean; get<T>(id: { id: string }): T } }).services;
+        if (services?.has(ILinkResolverService)) {
+          void services.get<import('../../links/linkResolverService.js').ILinkResolverService>(ILinkResolverService).open(href);
+        }
+      } catch (err) {
+        console.warn('[Dashboard] parallx:// link open failed:', err);
+      }
+    });
+
+    const paint = (cached: string | null): void => {
+      surface.innerHTML = '';
+      if (!cached) {
+        const empty = el('div', 'dashboard-md__empty');
+        empty.innerHTML = '<strong>Nothing here yet</strong><p>Click the refresh icon above to fill this widget.</p>';
+        surface.appendChild(empty);
+        return;
+      }
+      const md = el('div', 'dashboard-md__body');
+      md.appendChild(renderMarkdownToDom(cached));
+      surface.appendChild(md);
+    };
+    const paintError = (message: string): void => {
+      surface.innerHTML = '';
+      const err = el('div', 'dashboard-md__error');
+      const title = document.createElement('strong');
+      title.textContent = 'Couldn’t update this widget';
+      const detail = document.createElement('p');
+      detail.textContent = message;
+      err.appendChild(title);
+      err.appendChild(detail);
+      surface.appendChild(err);
+    };
+
+    if (ctx.errorMessage && !ctx.cachedOutput) paintError(ctx.errorMessage);
+    else paint(ctx.cachedOutput);
+
+    return {
+      refreshFromCache(cached: string | null) { paint(cached); },
+      renderError(message: string | null) {
+        if (message) paintError(message);
+        else paint(ctx.cachedOutput);
+      },
+      dispose() { /* nothing owned */ },
+    };
   }
 
   private _buildContext(row: DashboardWidgetRow, configEmitter: Emitter<unknown>): WidgetContext<unknown> {
@@ -827,6 +1044,43 @@ class DashboardEditorPane implements IDisposable {
       `;
       sheet.appendChild(empty);
     } else {
+      // ── Templates rail (M86 C3): preconfigured recipes — one click adds
+      // a fully configured widget. Only recipes whose type is currently
+      // registered are shown, so a disabled extension hides its recipes.
+      const recipes = WIDGET_TEMPLATES.filter((r) => this._registry.getWidgetType(r.typeId));
+      if (recipes.length > 0) {
+        const tHead = el('div', 'dashboard-picker__section');
+        tHead.textContent = 'Templates';
+        sheet.appendChild(tHead);
+        const rail = el('div', 'dashboard-picker__templates');
+        for (const recipe of recipes) {
+          const tile = el('button', 'dashboard-picker__template');
+          tile.setAttribute('type', 'button');
+          const name = el('span', 'dashboard-picker__template-name');
+          name.textContent = recipe.name;
+          tile.appendChild(name);
+          const desc = el('span', 'dashboard-picker__template-desc');
+          desc.textContent = recipe.description;
+          tile.appendChild(desc);
+          tile.addEventListener('click', async () => {
+            const reg = this._registry.getWidgetType(recipe.typeId);
+            if (!reg) return;
+            const placement = await this._nextPlacement(reg.defaultSize);
+            await this._data.createWidget({
+              pageId: this._pageId,
+              widgetTypeId: reg.typeId,
+              placement,
+              config: { ...(reg.defaultConfig as Record<string, unknown>), ...recipe.config },
+              refreshPolicy: recipe.refreshPolicy ?? reg.defaultRefreshPolicy ?? { kind: 'manual' },
+              providerToolId: this._registry.getWidgetTypeOwner(reg.typeId),
+            });
+            overlay.remove();
+          });
+          rail.appendChild(tile);
+        }
+        sheet.appendChild(rail);
+      }
+
       const grid = el('div', 'dashboard-picker__grid');
       const grouped = new Map<string, WidgetTypeRegistration<unknown>[]>();
       for (const t of types) {

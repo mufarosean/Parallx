@@ -55,6 +55,11 @@ export interface DashboardPageRow {
   readonly name: string;
   readonly position: number;
   readonly headerHidden: boolean;
+  /**
+   * Page-level refresh schedule (M86 C4, migration 005). When set, firing
+   * refreshes every widget on the page headlessly. Null = off.
+   */
+  readonly refreshPolicy: WidgetRefreshPolicy | null;
   readonly createdAt: number;
   readonly updatedAt: number;
 }
@@ -118,7 +123,7 @@ export interface DashboardWidgetRow {
 
 // ─── Page-level events ───────────────────────────────────────────────────────
 
-export type DashboardChangeKind = 'page-created' | 'page-renamed' | 'page-removed' | 'widget-added' | 'widget-updated' | 'widget-removed' | 'widget-cache' | 'widget-status';
+export type DashboardChangeKind = 'page-created' | 'page-renamed' | 'page-updated' | 'page-removed' | 'widget-added' | 'widget-updated' | 'widget-removed' | 'widget-cache' | 'widget-status';
 
 export interface DashboardChangeEvent {
   readonly kind: DashboardChangeKind;

@@ -220,7 +220,37 @@ There is no global "preferences sync" — Parallx is intentionally local-first.
 
 ---
 
-## 5. Troubleshooting
+## 5. Dashboards
+
+A dashboard is the workspace's **glance-and-act layer**: widgets that show
+live state from the app's organs (planner, canvas, files, AI) and click
+through into them. Open one with `Ctrl+Shift+H` or **Dashboard: Open**.
+
+- **Add widget** opens the picker. The **Templates** rail at the top adds
+  fully-configured widgets in one click (pomodoro timer, tracker boards,
+  saved queries, an AI daily brief, a pinned canvas page…).
+- **Widgets come from tools.** The planner contributes agenda/tasks/calendar
+  widgets, the canvas contributes the page-embed, extensions contribute
+  their own (e.g. budget's month-to-date card, web-research's news brief).
+  If you disable a tool, its widgets stay on the page as placeholders and
+  come back live when you re-enable it.
+- **AI widgets run in the background.** Refreshing an AI widget (or
+  clicking **Refresh all**) launches isolated background agents — your chat
+  panel is never touched. How many run at once is the
+  `dashboard.aiRefreshConcurrency` setting (default 2). Every background
+  run is logged in the Autonomy Log. Each AI widget also has a
+  **Run in chat** button when you want to watch the turn stream (debugging
+  a prompt).
+- **Page schedules.** The clock button in the dashboard header schedules
+  the whole page ("weekdays at 7:00") — it refreshes headlessly even while
+  the page is closed, so it's already current when you open it.
+- **Table/chart widget** reads any `.csv`/`.xlsx` in the workspace;
+  **saved-query** keeps a standing question answered from your own files
+  (retrieval mode is instant and AI-free).
+
+---
+
+## 6. Troubleshooting
 
 ### Autonomy isn't firing
 
@@ -256,7 +286,7 @@ app but isn't in the overlay, that's a bug — file it against the
 
 ---
 
-## 6. Reference: keyboard shortcuts
+## 7. Reference: keyboard shortcuts
 
 | Action | Shortcut |
 |--------|----------|
@@ -266,7 +296,7 @@ app but isn't in the overlay, that's a bug — file it against the
 
 ---
 
-## 7. Where to next
+## 8. Where to next
 
 - `docs/PARALLX_WORKSPACE_SCHEMA.md` — full schema of the workspace
   state file.

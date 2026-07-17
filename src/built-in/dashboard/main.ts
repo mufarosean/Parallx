@@ -264,6 +264,13 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   // 6. Register commands the user / picker can invoke.
   _registerCommands(api, context);
 
+  // 6c. Page-level refresh schedules (M86 C4) — headless. A page with a
+  //     refresh policy fires whether or not it is open: every widget on it
+  //     refreshes through the scheduler's admission queue (AI cap applies),
+  //     writing results to the DB; any open editor repaints via the normal
+  //     widget-cache change events.
+  _setupPageSchedules(api, context);
+
   // (Recent-items tracking moved to the explorer tool in M86 — the explorer
   // owns file/page recency and contributes the "Recent items" widget.)
 
@@ -334,6 +341,124 @@ async function _maybeAutoOpen(api: ParallxApi, context: ToolContext): Promise<vo
 
 // Inline SVG for tab icon. Kept in sync with the editor provider's header icon.
 const _DASHBOARD_ICON_HTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>';
+
+// ─── Page-level refresh schedules (M86 C4) ─────────────────────────────────
+//
+// Pages are few, so on any page change we simply cancel and rebuild every
+// page schedule. Each fire enumerates the page's widgets and kicks their
+// refreshes through the scheduler's runOnce — single-flight and the AI
+// concurrency cap apply exactly as they do for per-widget schedules; the
+// page job itself does not await AI turns (they run for minutes and report
+// their own status/errors per widget).
+
+function _setupPageSchedules(api: ParallxApi, context: ToolContext): void {
+  const pageDisposables = new Map<string, IDisposable>();
+
+  const refreshWholePage = async (pageId: string): Promise<void> => {
+    if (!_dataService || !_registry || !_scheduler) return;
+    let rows;
+    try {
+      rows = await _dataService.listWidgets(pageId);
+    } catch (err) {
+      console.warn('[Dashboard] page-schedule fire failed to list widgets:', err);
+      return;
+    }
+    for (const row of rows) {
+      const typeReg = _registry.getWidgetType(row.widgetTypeId);
+      if (!typeReg?.refresh) continue;
+      void _scheduler.runOnce(row.id, () => _headlessWidgetRefresh(api, row.id), typeReg)
+        .catch((err) => console.warn(`[Dashboard] page-schedule refresh failed for ${row.id}:`, err));
+    }
+  };
+
+  const sync = async (): Promise<void> => {
+    if (!_dataService || !_scheduler) return;
+    let pages;
+    try {
+      pages = await _dataService.listPages();
+    } catch { return; }
+
+    const seen = new Set<string>();
+    for (const page of pages) {
+      const key = `page:${page.id}`;
+      seen.add(key);
+      // Rebuild unconditionally — schedule() is idempotent per instanceId
+      // and pages are few; diffing policies isn't worth the state.
+      pageDisposables.get(key)?.dispose();
+      pageDisposables.delete(key);
+      if (!page.refreshPolicy || page.refreshPolicy.kind === 'manual') continue;
+      try {
+        validateRefreshPolicy(page.refreshPolicy);
+      } catch (err) {
+        console.warn(`[Dashboard] invalid page schedule for "${page.name}":`, err);
+        continue;
+      }
+      // The page job itself is instant fan-out — treat it as 'query' so it
+      // never occupies an AI slot; individual AI widgets are admitted (and
+      // capped) by their own runOnce calls.
+      const pseudoType: WidgetTypeRegistration<Record<string, unknown>> = {
+        typeId: 'parallx.dashboard.__page-schedule__',
+        displayName: 'Page schedule',
+        category: 'query',
+        defaultSize: { colSpan: 1, rowSpan: 1 },
+        defaultConfig: {},
+        createWidget: () => ({ dispose() { /* never mounted */ } }),
+      };
+      const d = _scheduler.schedule(key, pseudoType, page.refreshPolicy, () => refreshWholePage(page.id));
+      pageDisposables.set(key, d);
+    }
+    for (const [key, d] of [...pageDisposables]) {
+      if (!seen.has(key)) {
+        d.dispose();
+        pageDisposables.delete(key);
+      }
+    }
+  };
+
+  void sync();
+  if (_dataService) {
+    context.subscriptions.push(_dataService.onDidChange((e) => {
+      if (e.kind.startsWith('page-')) void sync();
+    }));
+  }
+  context.subscriptions.push({
+    dispose() {
+      for (const d of pageDisposables.values()) d.dispose();
+      pageDisposables.clear();
+    },
+  });
+}
+
+/**
+ * Refresh one widget with no editor mounted: run its refresh handler and
+ * persist the outcome. Open editors repaint through the widget-cache /
+ * widget-status change events this write fires.
+ */
+async function _headlessWidgetRefresh(api: ParallxApi, widgetId: string): Promise<void> {
+  if (!_dataService || !_registry) return;
+  const row = await _dataService.getWidget(widgetId);
+  if (!row) return;
+  const typeReg = _registry.getWidgetType(row.widgetTypeId);
+  if (!typeReg?.refresh) return;
+  try {
+    const output = await typeReg.refresh({
+      instanceId: row.id,
+      pageId: row.pageId,
+      config: row.config,
+      api,
+      cachedOutput: row.cachedOutput,
+      mode: 'background',
+    });
+    if (typeof output === 'string') {
+      await _dataService.setWidgetCachedOutput(row.id, output);
+    } else {
+      await _dataService.clearWidgetError(row.id);
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    await _dataService.setWidgetError(row.id, msg);
+  }
+}
 
 // ─── Commands ──────────────────────────────────────────────────────────────
 

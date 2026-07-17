@@ -98,6 +98,16 @@ describe('validation', () => {
     expect(() => validateWidgetRefreshPolicy({ kind: 'interval', ms: 60_000 })).not.toThrow();
     expect(() => validateWidgetRefreshPolicy({ kind: 'cron', cron: '0 7 * * 1-5' })).not.toThrow();
   });
+
+  it("renderMode 'markdown' makes createWidget optional; 'custom' still requires it", () => {
+    const b = makeBridge('parallx.budget');
+    // markdown + no createWidget: fine — the dashboard renders the cache.
+    b.registerWidgetType(makeReg('parallx.budget.md', { renderMode: 'markdown', createWidget: undefined as never }));
+    // custom (default) without createWidget: rejected.
+    expect(() => b.registerWidgetType(makeReg('parallx.budget.broken', { createWidget: undefined as never }))).toThrow(/createWidget/);
+    // bogus renderMode: rejected.
+    expect(() => b.registerWidgetType(makeReg('parallx.budget.bogus', { renderMode: 'iframe' as never }))).toThrow(/renderMode/);
+  });
 });
 
 describe('ownership and id stability', () => {

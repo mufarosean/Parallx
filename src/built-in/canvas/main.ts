@@ -23,6 +23,7 @@ import { CANVAS_AI_PAGE_FULL_WIDTH_KEY, CANVAS_AI_PAGE_SMALL_TEXT_KEY } from './
 import { getGlobalSettingsRegistry } from '../../services/settingsRegistryService.js';
 import { markdownToTiptapJson } from './markdownImport.js';
 import { tiptapJsonToMarkdown } from './markdownExport.js';
+import { buildPageEmbedWidget } from './dashboardWidgets.js';
 import { decodeCanvasContent, encodeCanvasContentFromDoc } from './contentSchema.js';
 import { CanvasDataService } from './canvasDataService.js';
 import { ICanvasDataService } from './canvasTypes.js';
@@ -288,6 +289,15 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   // Publish the FULL data service too, so the dashboard's notes widget can host
   // a real canvas page (create/get/save + live reload) via the shared editor view.
   api.services.registerInstance(ICanvasDataService, _dataService);
+
+  // 2a1. M86 — canvas contributes the page-embed dashboard widget (the canvas
+  // owns page data, so it owns the widget). Activation-order independent.
+  if ((api as unknown as { dashboard?: { registerWidgetType(reg: unknown): IDisposable } }).dashboard) {
+    context.subscriptions.push(
+      (api as unknown as { dashboard: { registerWidgetType(reg: unknown): IDisposable } }).dashboard
+        .registerWidgetType(buildPageEmbedWidget(() => _dataService)),
+    );
+  }
 
   // 2a2. M84 — register canvas's AI tools. Canvas owns the page/block tools it
   // exposes to the chat agent (they were previously created inside the chat

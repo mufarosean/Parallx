@@ -35,6 +35,11 @@ interface ParallxApi {
     registerCommand(id: string, handler: (...args: unknown[]) => unknown): IDisposable;
     executeCommand<T = unknown>(id: string, ...args: unknown[]): Promise<T>;
   };
+  dashboard: {
+    registerWidgetType<TConfig = Record<string, unknown>>(
+      registration: import('../../api/bridges/dashboardBridge.js').WidgetTypeRegistration<TConfig>,
+    ): IDisposable;
+  };
   views: {
     registerViewProvider(viewId: string, provider: { createView(container: HTMLElement): IDisposable }, options?: Record<string, unknown>): IDisposable;
   };
@@ -215,38 +220,15 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     api.commands.registerCommand('planner.getRegistry', () => publicRegistry),
   );
 
-  // 8. Dashboard widgets — only if the dashboard tool is up.
+  // 8. Dashboard widgets — contributed through `api.dashboard` (M86 C1).
   //
-  // Built-in tools all activate in parallel via Promise.allSettled in the
-  // workbench (workbench.ts), so the dashboard tool may not have its
-  // `dashboard.getRegistry` command in place yet when we land here.
-  // Awaiting it once and silently swallowing the "Unknown command" throw
-  // was the bug that made the planner widgets invisible in the picker
-  // even though both tools were active.
-  //
-  // Fix: poll with a short backoff. If the dashboard is enabled at all it
-  // activates within a handful of microtasks; if it's actually disabled
-  // we give up cleanly after ~1.5s and move on.
-  void (async () => {
-    if (!_data) return;
-    const attempts = [0, 30, 60, 120, 250, 500, 750];
-    for (const delay of attempts) {
-      if (delay > 0) await new Promise(r => setTimeout(r, delay));
-      try {
-        const dashboardRegistry = await api.commands.executeCommand<unknown>('dashboard.getRegistry');
-        if (dashboardRegistry) {
-          context.subscriptions.push(
-            registerPlannerDashboardWidgets(dashboardRegistry as never, _data),
-          );
-          if (isDevMode) console.log('[Planner] dashboard widgets registered');
-          return;
-        }
-      } catch {
-        // command not registered yet — back off and try again
-      }
-    }
-    if (isDevMode) console.log('[Planner] dashboard tool not available; widgets not registered');
-  })();
+  // Pre-M86 this polled `dashboard.getRegistry` with a backoff because
+  // built-ins activate in parallel and the command might not exist yet.
+  // The contribution hub is activation-order independent, so the polling
+  // workaround is gone: register once, the dashboard picks it up whenever
+  // it activates.
+  context.subscriptions.push(registerPlannerDashboardWidgets(api.dashboard, _data));
+  if (isDevMode) console.log('[Planner] dashboard widgets contributed');
 
   // 9. Commands.
   _registerCommands(api, context);
