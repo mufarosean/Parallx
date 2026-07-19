@@ -297,6 +297,16 @@ export interface IUnifiedHeartbeatConfig {
    * (File-change sensing is governed by `watchIncludeExtensions` / `watchExcludeGlobs`.)
    */
   readonly senseExtensionSignals: boolean;
+  /**
+   * M87 deterministic triggers (docs/Parallx_Milestone_87.md §4) — thresholds
+   * for the model-free fact→finding rules.
+   */
+  /** UC1: days an active plan step may sit untouched before a nudge. */
+  readonly triggerStallDays: number;
+  /** UC2: review-queue size that warrants a triage nudge. */
+  readonly triggerReviewQueueSize: number;
+  /** UC3: days past due before an overdue follow-up. */
+  readonly triggerOverdueDays: number;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -588,6 +598,10 @@ export const DEFAULT_UNIFIED_CONFIG: IUnifiedAIConfig = {
     outputDedupWindowMs: 24 * 60 * 60 * 1000, // 24h (OpenClaw parity)
     autonomy: 'allow-safe-actions',
     senseExtensionSignals: true,
+    // M87 deterministic-trigger thresholds (approved defaults).
+    triggerStallDays: 4,
+    triggerReviewQueueSize: 5,
+    triggerOverdueDays: 1,
   },
 };
 

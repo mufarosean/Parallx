@@ -116,6 +116,34 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
           return tasks.map((t) => ({ title: t.title, dueAt: t.dueAt }));
         } catch { return []; }
       },
+      // M87 — full task facts for the heartbeat's deterministic senses.
+      listTaskFacts: async () => {
+        try {
+          const tasks = await data.listTasks({ status: ['reviewing', 'planned'], includeUndated: true });
+          return tasks.map((t) => ({
+            id: t.id, title: t.title, status: t.status, dueAt: t.dueAt, createdAt: t.createdAt,
+          }));
+        } catch { return []; }
+      },
+      // M87 — heartbeat follow-ups land in the review queue. The sourceUri
+      // carries the finding key so the same finding never creates a second
+      // OPEN task (completed/cancelled ones don't block a fresh follow-up).
+      captureHeartbeatTask: async (input: { title: string; description?: string; sourceKey: string }) => {
+        try {
+          const sourceUri = `parallx-heartbeat://${input.sourceKey}`;
+          const open = await data.listTasks({ status: ['reviewing', 'planned'], includeUndated: true });
+          if (open.some((t) => t.sourceUri === sourceUri)) return false;
+          await data.createTask({
+            title: input.title,
+            description: input.description ?? null,
+            status: 'reviewing',
+            dueAt: null,
+            tags: ['heartbeat'],
+            sourceUri,
+          });
+          return true;
+        } catch { return false; }
+      },
     });
   }
 

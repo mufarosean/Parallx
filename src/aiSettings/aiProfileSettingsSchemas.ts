@@ -390,6 +390,49 @@ const SCHEMAS: readonly IBoundSchema[] = ([
     read: (c) => c.heartbeat.senseExtensionSignals,
     write: (v) => ({ heartbeat: { senseExtensionSignals: v as boolean } }),
   } as IBoundSchema<boolean>,
+  // ── M87 deterministic-trigger thresholds ──
+  {
+    schema: {
+      key: 'autonomy.heartbeat.triggerStallDays',
+      type: 'number',
+      default: 4,
+      scope: 'workspace',
+      description: 'Days an active session-plan step may sit untouched before the heartbeat files a "plan stalled" follow-up in the review queue.',
+      category: 'Autonomy',
+      min: 1,
+      max: 60,
+    },
+    read: (c) => c.heartbeat.triggerStallDays,
+    write: (v) => ({ heartbeat: { triggerStallDays: v as number } }),
+  } as IBoundSchema<number>,
+  {
+    schema: {
+      key: 'autonomy.heartbeat.triggerReviewQueueSize',
+      type: 'number',
+      default: 5,
+      scope: 'workspace',
+      description: 'Captured-task count that makes the heartbeat nudge you to triage the review queue (oldest must also be 3+ days old).',
+      category: 'Autonomy',
+      min: 1,
+      max: 100,
+    },
+    read: (c) => c.heartbeat.triggerReviewQueueSize,
+    write: (v) => ({ heartbeat: { triggerReviewQueueSize: v as number } }),
+  } as IBoundSchema<number>,
+  {
+    schema: {
+      key: 'autonomy.heartbeat.triggerOverdueDays',
+      type: 'number',
+      default: 1,
+      scope: 'workspace',
+      description: 'Days past due before the heartbeat files a follow-up task for a still-open planned task.',
+      category: 'Autonomy',
+      min: 1,
+      max: 30,
+    },
+    read: (c) => c.heartbeat.triggerOverdueDays,
+    write: (v) => ({ heartbeat: { triggerOverdueDays: v as number } }),
+  } as IBoundSchema<number>,
 ] as readonly IBoundSchema<unknown>[]);
 
 // ─── Registration ──────────────────────────────────────────────────────────

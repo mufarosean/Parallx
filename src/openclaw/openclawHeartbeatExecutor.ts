@@ -176,6 +176,12 @@ export interface IHeartbeatRealTurnDeps {
   readonly getWorkspacePages?: () => Promise<readonly IWorkspacePageInfo[]>;
   /** The user's open planner tasks — the second surface the review should know. */
   readonly getWorkspaceTasks?: () => Promise<readonly IWorkspaceTaskInfo[]>;
+  /**
+   * M87 — the deterministic fact→trigger→delivery pass (no model, no chat
+   * session). Invoked on every interval beat BEFORE the idle gate: the gate
+   * exists to protect token spend, and this lane spends none.
+   */
+  readonly deterministicLane?: () => Promise<unknown>;
 }
 
 // ---------------------------------------------------------------------------
@@ -411,6 +417,19 @@ export function createHeartbeatTurnExecutor(
     if (realTurnDeps === undefined) {
       await resetStatus('idle');
       return;
+    }
+
+    // ── M87 deterministic lane ──
+    // Cheap fact→trigger→delivery pass. Runs on interval beats regardless of
+    // the idle gate (its economics are free) and without a parent session
+    // (its findings deliver to the review queue / notifications, not chat).
+    // Fail-soft: the lane must never break the beat.
+    if (reason === 'interval' && realTurnDeps.deterministicLane) {
+      try {
+        await realTurnDeps.deterministicLane();
+      } catch (err) {
+        console.warn('[HeartbeatExecutor] deterministic lane failed:', err);
+      }
     }
 
     // Real-turn path: interval (periodic review) / system-event / wake / hook

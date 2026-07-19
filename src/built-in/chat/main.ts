@@ -59,6 +59,9 @@ import { FilesystemSurfacePlugin } from '../../services/surfaces/filesystemSurfa
 import { CanvasSurfacePlugin } from '../canvas/surfaces/canvasSurface.js';
 import { HeartbeatRunner, type IHeartbeatConfig } from '../../openclaw/openclawHeartbeatRunner.js';
 import { createHeartbeatTurnExecutor } from '../../openclaw/openclawHeartbeatExecutor.js';
+import { runHeartbeatDeterministicLane } from '../../openclaw/heartbeatDeterministicLane.js';
+import { buildPlanFacts } from '../../openclaw/heartbeatTriggers.js';
+import { INotificationService } from '../../services/serviceTypes.js';
 import { MindService } from '../../openclaw/mind/mindService.js';
 import { MindStore } from '../../openclaw/mind/mindStore.js';
 import { ActionLedger } from '../../openclaw/mind/actionLedger.js';
@@ -2270,6 +2273,73 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         // Continuity + audit (Build-1d.3). The loop reads its prior beliefs into
         // the seed and ledgers every outcome. Best-effort: never breaks the tick.
         mind: mindService,
+        // M87 — deterministic fact→trigger→delivery lane (no model, no chat
+        // session; runs before the idle gate). Findings land in the planner
+        // review queue / notifications and mirror to the autonomy log.
+        deterministicLane: () => runHeartbeatDeterministicLane({
+          collectFacts: async () => {
+            const planner = api.services.has(IPlannerQueryService)
+              ? api.services.get<import('../../services/serviceTypes.js').IPlannerQueryService>(IPlannerQueryService)
+              : undefined;
+            const tasks = await (planner?.listTaskFacts?.() ?? Promise.resolve([]));
+            const plans = buildPlanFacts(chatService.getSessions().map((s) => ({
+              sessionId: s.id,
+              plan: s.plan,
+            })));
+            return { plans, tasks };
+          },
+          loadLedger: async () => {
+            try {
+              const storage = api.services.has(IWorkspaceStorageService)
+                ? api.services.get<import('../../platform/storage.js').IStorage>(IWorkspaceStorageService)
+                : undefined;
+              const raw = await storage?.get('parallx-heartbeat-trigger-ledger');
+              const parsed = raw ? JSON.parse(raw) : {};
+              return parsed && typeof parsed === 'object' ? parsed : {};
+            } catch { return {}; }
+          },
+          saveLedger: async (ledger) => {
+            const storage = api.services.has(IWorkspaceStorageService)
+              ? api.services.get<import('../../platform/storage.js').IStorage>(IWorkspaceStorageService)
+              : undefined;
+            await storage?.set('parallx-heartbeat-trigger-ledger', JSON.stringify(ledger));
+          },
+          deliverTask: async (finding) => {
+            const planner = api.services.has(IPlannerQueryService)
+              ? api.services.get<import('../../services/serviceTypes.js').IPlannerQueryService>(IPlannerQueryService)
+              : undefined;
+            if (!planner?.captureHeartbeatTask) return false;
+            return planner.captureHeartbeatTask({
+              title: finding.title,
+              description: finding.detail,
+              sourceKey: finding.key,
+            });
+          },
+          deliverNotification: async (finding) => {
+            const notifications = api.services.has(INotificationService)
+              ? api.services.get<import('../../services/serviceTypes.js').INotificationService>(INotificationService)
+              : undefined;
+            if (!notifications) return false;
+            void notifications.info(`${finding.title} — ${finding.detail}`);
+            return true;
+          },
+          log: (finding) => {
+            autonomyLog.append({
+              origin: 'heartbeat',
+              requestText: `[trigger] ${finding.kind}`,
+              content: `${finding.title} — ${finding.detail}`,
+              metadata: { findingKey: finding.key, delivery: finding.delivery },
+            });
+          },
+          getConfig: () => {
+            const hb = unifiedConfigService.getEffectiveConfig().heartbeat;
+            return {
+              stallDays: hb.triggerStallDays,
+              reviewQueueSize: hb.triggerReviewQueueSize,
+              overdueDays: hb.triggerOverdueDays,
+            };
+          },
+        }),
       },
     );
 

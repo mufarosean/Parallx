@@ -1665,6 +1665,14 @@ export const ICanvasPageQueryService = createServiceIdentifier<ICanvasPageQueryS
 export interface IPlannerQueryService {
   /** Open tasks (not done/cancelled), lightweight. */
   listOpenTasks(): Promise<{ title: string; dueAt: number | null }[]>;
+  /** M87 — full task facts for the heartbeat's deterministic senses. */
+  listTaskFacts?(): Promise<{ id: string; title: string; status: string; dueAt: number | null; createdAt: number }[]>;
+  /**
+   * M87 — heartbeat delivery: capture a follow-up into the review queue.
+   * `sourceKey` identifies the finding; when an OPEN heartbeat task with the
+   * same key already exists, no duplicate is created and false is returned.
+   */
+  captureHeartbeatTask?(input: { title: string; description?: string; sourceKey: string }): Promise<boolean>;
 }
 export const IPlannerQueryService = createServiceIdentifier<IPlannerQueryService>('IPlannerQueryService');
 

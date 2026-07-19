@@ -150,6 +150,8 @@ function buildHarness(overrides?: {
   nowRef?: { value: number };
   mind?: IHeartbeatMind;
   getWorkspacePages?: () => Promise<readonly { title: string; updatedAt?: string }[]>;
+  getWorkspaceTasks?: () => Promise<readonly { title: string; dueAt?: number | null }[]>;
+  deterministicLane?: () => Promise<unknown>;
 }) {
   const router = new SurfaceRouterService();
   const status = new FakeSurfacePlugin(SURFACE_STATUS);
@@ -178,6 +180,7 @@ function buildHarness(overrides?: {
       mind: overrides?.mind,
       getWorkspacePages: overrides?.getWorkspacePages,
       getWorkspaceTasks: overrides?.getWorkspaceTasks,
+      deterministicLane: overrides?.deterministicLane,
     },
   );
 
@@ -554,5 +557,40 @@ describe('HeartbeatTurnExecutor — MIND continuity wiring (Build-1d)', () => {
     // The turn still ran and delivered despite the MIND throwing everywhere.
     expect(h.chat_.calls.sendRequest).toHaveLength(1);
     expect(h.chat.deliveries).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// M87 S1 — deterministic lane integration
+// ---------------------------------------------------------------------------
+
+describe('HeartbeatTurnExecutor — deterministic lane (M87 S1)', () => {
+  it('interval beats run the lane even with NO events and NO parent session (idle gate does not apply)', async () => {
+    const lane = vi.fn(async () => ({ delivered: 1, suppressed: 0, failed: 0 }));
+    const h = buildHarness({ parentId: undefined, deterministicLane: lane });
+
+    await h.executor([], 'interval');
+
+    expect(lane).toHaveBeenCalledTimes(1);
+    // The LLM lane stayed silent: no session, no model turn.
+    expect(h.chat_.calls.sendRequest).toHaveLength(0);
+    expect(h.chat_.calls.createEphemeralSession).toHaveLength(0);
+  });
+
+  it('a throwing lane never breaks the beat', async () => {
+    const lane = vi.fn(async () => { throw new Error('lane exploded'); });
+    const h = buildHarness({ parentId: undefined, deterministicLane: lane });
+
+    await expect(h.executor([], 'interval')).resolves.toBeUndefined();
+    expect(lane).toHaveBeenCalledTimes(1);
+  });
+
+  it('system-event beats do NOT run the lane (interval-only in S1)', async () => {
+    const lane = vi.fn(async () => ({ delivered: 0, suppressed: 0, failed: 0 }));
+    const h = buildHarness({ deterministicLane: lane });
+
+    await h.executor([mkEvent('/notes/page.md')], 'system-event');
+
+    expect(lane).not.toHaveBeenCalled();
   });
 });
