@@ -112,3 +112,96 @@ describe('plannerRecurrence', () => {
     });
   });
 });
+
+// ─── Month-end / leap-year anchor semantics (RFC 5545 skip, no drift) ────────
+
+describe('expandRecurrence — anchor-day integrity', () => {
+  it('monthly on the 31st SKIPS short months and never drifts (Jan 31 → Mar 31, not Mar 3)', () => {
+    const jan31 = new Date(2026, 0, 31, 10, 0, 0).getTime();
+    const out = expandRecurrence(jan31, HOUR, 'FREQ=MONTHLY',
+      new Date(2026, 0, 1).getTime(), new Date(2026, 11, 31, 23, 59).getTime());
+
+    const days = out.map(o => {
+      const d = new Date(o.startAt);
+      return `${d.getMonth() + 1}/${d.getDate()}`;
+    });
+    // 31-day months of 2026 only — February/April/June/September/November skipped.
+    expect(days).toEqual(['1/31', '3/31', '5/31', '7/31', '8/31', '10/31', '12/31']);
+    // Every occurrence keeps the 10:00 wall-clock time.
+    for (const o of out) expect(new Date(o.startAt).getHours()).toBe(10);
+  });
+
+  it('monthly on the 30th skips only February', () => {
+    const jan30 = new Date(2026, 0, 30, 9, 0, 0).getTime();
+    const out = expandRecurrence(jan30, HOUR, 'FREQ=MONTHLY',
+      new Date(2026, 0, 1).getTime(), new Date(2026, 5, 30, 23, 59).getTime());
+    const days = out.map(o => new Date(o.startAt).getDate());
+    const months = out.map(o => new Date(o.startAt).getMonth() + 1);
+    expect(days.every(d => d === 30)).toBe(true);
+    expect(months).toEqual([1, 3, 4, 5, 6]); // no February
+  });
+
+  it('yearly on Feb 29 fires ONLY in leap years, never drifting to Mar 1', () => {
+    const feb29 = new Date(2024, 1, 29, 12, 0, 0).getTime();
+    const out = expandRecurrence(feb29, HOUR, 'FREQ=YEARLY',
+      new Date(2024, 0, 1).getTime(), new Date(2032, 11, 31).getTime());
+    const stamps = out.map(o => {
+      const d = new Date(o.startAt);
+      return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+    });
+    expect(stamps).toEqual(['2024-2-29', '2028-2-29', '2032-2-29']);
+  });
+
+  it('COUNT counts only REAL occurrences — skipped short months do not consume it', () => {
+    const jan31 = new Date(2026, 0, 31, 10, 0, 0).getTime();
+    const out = expandRecurrence(jan31, HOUR, 'FREQ=MONTHLY;COUNT=3',
+      new Date(2026, 0, 1).getTime(), new Date(2026, 11, 31).getTime());
+    const days = out.map(o => `${new Date(o.startAt).getMonth() + 1}/${new Date(o.startAt).getDate()}`);
+    expect(days).toEqual(['1/31', '3/31', '5/31']);
+  });
+});
+
+// ─── Long-lived series reach today's window (fast-forward) ───────────────────
+
+describe('expandRecurrence — old series stay visible', () => {
+  it('a daily series started 3+ years ago still appears in the current week', () => {
+    const threeYearsAgo = new Date(2023, 3, 10, 8, 0, 0).getTime();
+    const from = new Date(2026, 6, 13).getTime();
+    const to = new Date(2026, 6, 20).getTime();
+    const out = expandRecurrence(threeYearsAgo, 30 * 60_000, 'FREQ=DAILY', from, to);
+    expect(out.length).toBeGreaterThanOrEqual(7);
+    for (const o of out) expect(new Date(o.startAt).getHours()).toBe(8);
+  });
+
+  it('a weekly series started 5 years ago still appears', () => {
+    const fiveYearsAgo = new Date(2021, 5, 7, 14, 0, 0).getTime(); // a Monday
+    const from = new Date(2026, 6, 13).getTime(); // Monday
+    const to = new Date(2026, 6, 20).getTime();
+    const out = expandRecurrence(fiveYearsAgo, HOUR, 'FREQ=WEEKLY', from, to);
+    expect(out.length).toBe(1);
+    expect(new Date(out[0].startAt).getDay()).toBe(1); // still a Monday
+    expect(new Date(out[0].startAt).getHours()).toBe(14);
+  });
+
+  it('an old monthly-31st series is correct AND visible years later', () => {
+    const start = new Date(2022, 0, 31, 9, 0, 0).getTime();
+    const from = new Date(2026, 6, 1).getTime();
+    const to = new Date(2026, 8, 30).getTime();
+    const out = expandRecurrence(start, HOUR, 'FREQ=MONTHLY', from, to);
+    const days = out.map(o => `${new Date(o.startAt).getMonth() + 1}/${new Date(o.startAt).getDate()}`);
+    expect(days).toEqual(['7/31', '8/31']); // September has no 31st
+  });
+});
+
+// ─── Wall-clock stability across DST ─────────────────────────────────────────
+
+describe('expandRecurrence — DST wall-clock stability', () => {
+  it('a daily 9am series keeps 9am across the spring-forward boundary', () => {
+    // US DST 2026: begins Mar 8. Window spans the transition.
+    const start = new Date(2026, 2, 5, 9, 0, 0).getTime();
+    const out = expandRecurrence(start, HOUR, 'FREQ=DAILY',
+      new Date(2026, 2, 5).getTime(), new Date(2026, 2, 12).getTime());
+    expect(out.length).toBeGreaterThanOrEqual(7);
+    for (const o of out) expect(new Date(o.startAt).getHours()).toBe(9);
+  });
+});

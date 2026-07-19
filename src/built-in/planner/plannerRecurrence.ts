@@ -138,18 +138,70 @@ export function expandRecurrence(
     return out;
   }
 
-  // DAILY / WEEKLY(no BYDAY) / MONTHLY / YEARLY: step from the series start.
-  let occ = new Date(startAt);
-  for (let guard = 0; guard < HARD_CAP; guard++) {
-    const t = occ.getTime();
+  // DAILY / WEEKLY(no BYDAY) / MONTHLY / YEARLY: occurrence k is DERIVED
+  // FROM THE SERIES START every time — never stepped from the previous
+  // occurrence. Two bugs lived in the old cursor walk:
+  //   • month-end overflow corrupted the whole series (Jan 31 → "Feb 31" →
+  //     Mar 3, then Apr 3 forever). RFC 5545 semantics: months without the
+  //     anchor day are SKIPPED and the anchor is kept (Jan 31 → Mar 31);
+  //     same for Feb 29 yearly series in non-leap years.
+  //   • a series older than the step guard (e.g. a daily event created 2+
+  //     years ago) exhausted the guard before reaching the window and
+  //     silently vanished from every view. Deriving from k lets COUNT-less
+  //     series FAST-FORWARD near the window instead of replaying history.
+  const base = new Date(startAt);
+  const baseDay = base.getDate();
+  const baseMonth = base.getMonth();
+
+  const occurrenceAt = (k: number): number | null => {
+    if (parsed.freq === 'DAILY') {
+      const d = new Date(base);
+      d.setDate(d.getDate() + k * parsed.interval);
+      return d.getTime();
+    }
+    if (parsed.freq === 'WEEKLY') {
+      const d = new Date(base);
+      d.setDate(d.getDate() + k * 7 * parsed.interval);
+      return d.getTime();
+    }
+    if (parsed.freq === 'MONTHLY') {
+      const d = new Date(base);
+      d.setDate(1); // avoid overflow while changing the month
+      d.setMonth(d.getMonth() + k * parsed.interval);
+      d.setDate(baseDay);
+      return d.getDate() === baseDay ? d.getTime() : null; // short month → skip
+    }
+    const d = new Date(base);
+    d.setDate(1); // avoid Feb-29 overflow while changing the year
+    d.setFullYear(d.getFullYear() + k * parsed.interval);
+    d.setMonth(baseMonth, baseDay);
+    return (d.getMonth() === baseMonth && d.getDate() === baseDay)
+      ? d.getTime()
+      : null; // Feb 29 in a non-leap year → skip
+  };
+
+  // Fast-forward: COUNT-less series can start near the window (padded by a
+  // few steps for DST wobble and skip runs). COUNT series must replay from
+  // k=0 — skipped instances don't consume COUNT (RFC), so indexes and
+  // emission counts only line up when counted from the start.
+  let k = 0;
+  if (parsed.count == null && from > startAt) {
+    // Divisors deliberately OVERSTATE the true step (31-day months,
+    // 366-day years), so the estimated k UNDERSHOOTS — the loop can only
+    // start BEFORE the window, never past it (missing leading occurrences).
+    const stepMs =
+      parsed.freq === 'DAILY' ? parsed.interval * 86_400_000 :
+      parsed.freq === 'WEEKLY' ? parsed.interval * 7 * 86_400_000 :
+      parsed.freq === 'MONTHLY' ? parsed.interval * 31 * 86_400_000 :
+      parsed.interval * 366 * 86_400_000;
+    k = Math.max(0, Math.floor((from - dur - startAt) / stepMs) - 3);
+  }
+
+  for (let guard = 0; guard < HARD_CAP; guard++, k++) {
+    const t = occurrenceAt(k);
+    if (t === null) continue; // skipped instance (short month / non-leap year)
     if (t > ceiling) break;
     if (!tryEmit(t)) break;
-    const next = new Date(occ);
-    if (parsed.freq === 'DAILY') next.setDate(next.getDate() + parsed.interval);
-    else if (parsed.freq === 'WEEKLY') next.setDate(next.getDate() + 7 * parsed.interval);
-    else if (parsed.freq === 'MONTHLY') next.setMonth(next.getMonth() + parsed.interval);
-    else next.setFullYear(next.getFullYear() + parsed.interval);
-    occ = next;
   }
   return out;
 }
