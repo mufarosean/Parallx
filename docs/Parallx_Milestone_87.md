@@ -1,7 +1,12 @@
 # Milestone 87 — The Useful Heartbeat
 
-**Status: S1+S2 SHIPPED 2026-07-19 (deterministic core + UC1–UC3; HEARTBEAT.md
-purpose file + heartbeat_watch tool + UC6 prompt inclusion). S3–S4 pending.**
+**Status: COMPLETE 2026-07-19 — all four slices shipped.** S1 deterministic
+core (UC1–UC3); S2 HEARTBEAT.md + heartbeat_watch (UC6); S3 sync rising-edge
++ MORNING digest + AGENTS.md staleness (UC4/5/7); S4 status legibility
+(parallx.heartbeat.status carries the last trigger-lane pass; the autonomy
+status board renders "watchers: N filed / all quiet (M on cooldown)").
+Remaining threshold settings beyond the three shipped (digest window, quiet
+hours, per-sense toggles) deferred until real-use feedback.
 **Decisions (Mufaro):** thresholds = plan defaults (stall 4d, review-queue 5,
 overdue 1d); follow-up findings create review-queue TASKS (digests/alerts are
 notifications); **UC5 is a MORNING digest** (07:00–09:00 local: "Today: N

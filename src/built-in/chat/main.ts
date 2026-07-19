@@ -2224,6 +2224,10 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       }).catch(() => { /* best-effort; never break the bus */ });
     };
 
+    // M87 S4 — the deterministic lane's last result, surfaced through
+    // parallx.heartbeat.status so silence is legible on the status board.
+    let _lastTriggerLane: { at: number; delivered: number; suppressed: number; failed: number } | null = null;
+
     const executor = createHeartbeatTurnExecutor(
       surfaceRouter,
       () => ({ reasons: unifiedConfigService.getEffectiveConfig().heartbeat.reasons }),
@@ -2295,7 +2299,10 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         // M87 — deterministic fact→trigger→delivery lane (no model, no chat
         // session; runs before the idle gate). Findings land in the planner
         // review queue / notifications and mirror to the autonomy log.
-        deterministicLane: () => runHeartbeatDeterministicLane({
+        // S4: the last result is captured for parallx.heartbeat.status so
+        // the status board can say what the quiet lane actually checked.
+        deterministicLane: async () => {
+          const result = await runHeartbeatDeterministicLane({
           collectFacts: async () => {
             const planner = api.services.has(IPlannerQueryService)
               ? api.services.get<import('../../services/serviceTypes.js').IPlannerQueryService>(IPlannerQueryService)
@@ -2377,7 +2384,10 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
               overdueDays: hb.triggerOverdueDays,
             };
           },
-        }),
+          });
+          _lastTriggerLane = { at: Date.now(), ...result };
+          return result;
+        },
       },
     );
 
@@ -2538,7 +2548,11 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
 
     // Heartbeat state snapshot for UI (autonomy-log "last reviewed / next in").
     context.subscriptions.push(
-      api.commands.registerCommand('parallx.heartbeat.status', () => ({ ...heartbeatRunner.state })),
+      api.commands.registerCommand('parallx.heartbeat.status', () => ({
+        ...heartbeatRunner.state,
+        // M87 S4 — last deterministic-lane pass (null until the first beat).
+        triggerLane: _lastTriggerLane,
+      })),
     );
 
     // MIND snapshot for the Mind panel (transparency: the human can see what the

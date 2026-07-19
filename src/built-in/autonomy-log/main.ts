@@ -472,13 +472,27 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
       statusBoard.appendChild(hbRow);
       // One-shot enrichment: show when it last reviewed / when the next is due,
       // pulled from the live runner state. Updates on the next board repaint.
-      void runCommand?.<{ lastRunMs?: number; nextDueMs?: number }>('parallx.heartbeat.status').then((s) => {
+      void runCommand?.<{
+        lastRunMs?: number;
+        nextDueMs?: number;
+        triggerLane?: { at: number; delivered: number; suppressed: number; failed: number } | null;
+      }>('parallx.heartbeat.status').then((s) => {
         if (!s) return;
         const det = hbRow.querySelector('.autonomy-status__detail');
         if (!det) return;
         const parts = [`Reviews every ${iv}`];
         if (typeof s.lastRunMs === 'number' && s.lastRunMs > 0) parts.push(`last ${formatAgo(s.lastRunMs)}`);
         if (typeof s.nextDueMs === 'number' && s.nextDueMs > Date.now()) parts.push(`next ${formatUntil(s.nextDueMs)}`);
+        // M87 S4 — make the quiet lane legible: silence now reads as
+        // "checked, nothing needed" instead of "did nothing".
+        if (s.triggerLane) {
+          const t = s.triggerLane;
+          parts.push(t.delivered > 0
+            ? `watchers: ${t.delivered} filed${t.suppressed > 0 ? `, ${t.suppressed} on cooldown` : ''}`
+            : t.suppressed > 0
+              ? `watchers: all quiet (${t.suppressed} on cooldown)`
+              : 'watchers: all quiet');
+        }
         det.textContent = `${parts.join(' · ')} · reacts to changes, diagnostics & signals`;
       }).catch(() => { /* status unavailable — keep base detail */ });
     } else {
