@@ -52,6 +52,44 @@ function setup(overrides?: { defaultId?: string; isRunning?: boolean }) {
 const call = (tools: Map<string, ToolDef>, id: string, args: unknown) => tools.get(id)!.handler(args);
 const json = (r: { content: string }) => JSON.parse(r.content);
 
+describe('planner chat tools — date/time semantics', () => {
+  it('date-only "YYYY-MM-DD" parses to LOCAL midnight, not UTC midnight', async () => {
+    const { data, tools } = setup();
+    await call(tools, 'planner.captureEvent', { title: 'X', startAt: '2026-08-05' });
+    const startAt = data.createEvent.mock.calls[0][0].startAt as number;
+    const d = new Date(startAt);
+    expect([d.getFullYear(), d.getMonth() + 1, d.getDate()]).toEqual([2026, 8, 5]);
+    expect([d.getHours(), d.getMinutes()]).toEqual([0, 0]);
+  });
+
+  it('zone-less ISO datetime parses as LOCAL wall-clock time', async () => {
+    const { data, tools } = setup();
+    await call(tools, 'planner.captureEvent', { title: 'X', startAt: '2026-08-05T15:30' });
+    const d = new Date(data.createEvent.mock.calls[0][0].startAt as number);
+    expect([d.getHours(), d.getMinutes()]).toEqual([15, 30]);
+  });
+
+  it('relative "+2h" lands two hours from now', async () => {
+    const { data, tools } = setup();
+    const before = Date.now();
+    await call(tools, 'planner.captureTask', { title: 'X', dueAt: '+2h' });
+    const dueAt = data.createTask.mock.calls[0][0].dueAt as number;
+    expect(dueAt).toBeGreaterThanOrEqual(before + 2 * 3_600_000 - 1000);
+    expect(dueAt).toBeLessThanOrEqual(Date.now() + 2 * 3_600_000 + 1000);
+  });
+
+  it('capture results echo human-readable LOCAL times so the model reports what was stored', async () => {
+    const { tools } = setup();
+    const res = json(await call(tools, 'planner.captureEvent', { title: 'X', startAt: '2026-08-05T15:30', endAt: '2026-08-05T16:30' }));
+    expect(res.localTimes.startAt).toBe('2026-08-05 15:30');
+    expect(res.localTimes.endAt).toBe('2026-08-05 16:30');
+    expect(typeof res.localTimes.timezone).toBe('string');
+
+    const task = json(await call(tools, 'planner.captureTask', { title: 'T', dueAt: '2026-08-06' }));
+    expect(task.localTimes.dueAt).toBe('2026-08-06 00:00');
+  });
+});
+
 describe('planner chat tools — calendar targeting', () => {
   it('captureEvent honours an explicit calendarId and nudges a sync', async () => {
     const { data, sync, tools } = setup();

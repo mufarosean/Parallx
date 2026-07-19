@@ -663,48 +663,74 @@ describe('cron expression scheduling', () => {
     svc.dispose();
   });
 
-  it('0 9 * * 1 — Monday at 9am, from Monday 8am gives same-day 9am', () => {
+  // Cron fields are evaluated on the user's LOCAL wall clock ("0 9 * * *"
+  // = 9am where the user lives) — expectations are built with local Date
+  // constructors so these pins hold in any machine timezone.
+
+  it('0 9 * * 1 — Monday at 9am LOCAL, from Monday 8am gives same-day 9am', () => {
     // 2026-03-30 is a Monday
-    const mondayAt8am = new Date('2026-03-30T08:00:00.000Z').getTime();
+    const mondayAt8am = new Date(2026, 2, 30, 8, 0, 0).getTime();
     vi.setSystemTime(mondayAt8am);
 
     const svc = new CronService(vi.fn().mockResolvedValue(undefined), vi.fn().mockResolvedValue([]), null);
     const job = svc.addJob({ name: 'x', schedule: { cron: '0 9 * * 1' }, payload: {} });
 
-    const expected = new Date('2026-03-30T09:00:00.000Z').getTime();
+    const expected = new Date(2026, 2, 30, 9, 0, 0).getTime();
     expect(job.nextRunAt).toBe(expected);
 
     svc.dispose();
   });
 
-  it('0 9 * * 1 — Monday at 9am, from Monday 10am gives NEXT Monday', () => {
+  it('0 9 * * 1 — Monday at 9am LOCAL, from Monday 10am gives NEXT Monday', () => {
     // 2026-03-30 is a Monday
-    const mondayAt10am = new Date('2026-03-30T10:00:00.000Z').getTime();
+    const mondayAt10am = new Date(2026, 2, 30, 10, 0, 0).getTime();
     vi.setSystemTime(mondayAt10am);
 
     const svc = new CronService(vi.fn().mockResolvedValue(undefined), vi.fn().mockResolvedValue([]), null);
     const job = svc.addJob({ name: 'x', schedule: { cron: '0 9 * * 1' }, payload: {} });
 
-    const nextMonday9am = new Date('2026-04-06T09:00:00.000Z').getTime();
+    const nextMonday9am = new Date(2026, 3, 6, 9, 0, 0).getTime();
     expect(job.nextRunAt).toBe(nextMonday9am);
 
     svc.dispose();
   });
 
-  it('30 14 1 * * — 1st of month at 2:30pm', () => {
-    const march15 = new Date('2026-03-15T00:00:00.000Z').getTime();
+  it('30 14 1 * * — 1st of month at 2:30pm LOCAL', () => {
+    const march15 = new Date(2026, 2, 15, 0, 0, 0).getTime();
     vi.setSystemTime(march15);
 
     const svc = new CronService(vi.fn().mockResolvedValue(undefined), vi.fn().mockResolvedValue([]), null);
     const job = svc.addJob({ name: 'x', schedule: { cron: '30 14 1 * *' }, payload: {} });
 
-    // Next 1st-of-month at 14:30 — need to find a 1st that also matches day-of-week=*
+    // Next 1st-of-month at 14:30 local — day-of-week=* matches any 1st.
     expect(job.nextRunAt).not.toBeNull();
     const d = new Date(job.nextRunAt!);
-    expect(d.getUTCDate()).toBe(1);
-    expect(d.getUTCHours()).toBe(14);
-    expect(d.getUTCMinutes()).toBe(30);
+    expect(d.getDate()).toBe(1);
+    expect(d.getHours()).toBe(14);
+    expect(d.getMinutes()).toBe(30);
 
+    svc.dispose();
+  });
+
+  it('one-shot "at" with a date-only string fires at LOCAL midnight, not UTC', () => {
+    const now = new Date(2026, 7, 1, 12, 0, 0).getTime();
+    vi.setSystemTime(now);
+
+    const svc = new CronService(vi.fn().mockResolvedValue(undefined), vi.fn().mockResolvedValue([]), null);
+    const job = svc.addJob({ name: 'x', schedule: { at: '2026-08-05' }, payload: {} });
+
+    expect(job.nextRunAt).toBe(new Date(2026, 7, 5, 0, 0, 0).getTime());
+    svc.dispose();
+  });
+
+  it('one-shot "at" with a zone-less ISO datetime fires at LOCAL wall-clock time', () => {
+    const now = new Date(2026, 7, 1, 12, 0, 0).getTime();
+    vi.setSystemTime(now);
+
+    const svc = new CronService(vi.fn().mockResolvedValue(undefined), vi.fn().mockResolvedValue([]), null);
+    const job = svc.addJob({ name: 'x', schedule: { at: '2026-08-05T09:30' }, payload: {} });
+
+    expect(job.nextRunAt).toBe(new Date(2026, 7, 5, 9, 30, 0).getTime());
     svc.dispose();
   });
 

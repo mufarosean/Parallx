@@ -476,6 +476,18 @@ describe('buildRuntimeSection', () => {
     expect(section).toContain('Parallx version: 0.42.0');
   });
 
+  it('anchors the clock to the MACHINE timezone, never a hardcoded one', () => {
+    const section = buildRuntimeSection(createRuntimeInfo());
+    // The invariant is "whatever this machine reports" — the old code
+    // hardcoded America/Chicago, which only worked on machines that
+    // happen to BE in Central time.
+    const machineTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    expect(section).toContain(`Timezone: ${machineTz}`);
+    expect(section).not.toContain('(Central Time)');
+    // The model is told zone-less times are the user's local time.
+    expect(section).toContain('local timezone');
+  });
+
   it('includes optional OS/arch/shell when present', () => {
     const section = buildRuntimeSection(createRuntimeInfo({
       os: 'win32',

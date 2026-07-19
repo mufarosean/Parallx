@@ -494,20 +494,25 @@ export function buildRuntimeSection(runtimeInfo: IOpenclawRuntimeInfo): string {
   // for the wall clock; without this, asking "what's today's date?" returns
   // a stale or fabricated answer. Cost is ~2 lines (~30 tokens).
   const now = new Date();
-  const tz = 'America/Chicago';
-  let centralStr: string;
+  // The MACHINE's timezone — never a hardcoded one. Every downstream date
+  // consumer (planner tools, Date.parse of zone-less ISO strings, local
+  // formatting) works in machine-local time; anchoring the model's clock to
+  // any other zone makes it compute "tomorrow 3pm" against the wrong wall
+  // clock and every scheduled task lands hours off.
+  let tz = 'local';
+  try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'local'; } catch { /* keep 'local' */ }
+  let localStr: string;
   try {
-    centralStr = new Intl.DateTimeFormat('en-US', {
-      timeZone: tz,
+    localStr = new Intl.DateTimeFormat('en-US', {
       year: 'numeric', month: 'short', day: '2-digit',
       hour: '2-digit', minute: '2-digit', second: '2-digit',
       hour12: false, timeZoneName: 'short',
     }).format(now);
-  } catch { centralStr = now.toISOString(); }
+  } catch { localStr = now.toISOString(); }
   const lines = [
     '## Runtime',
-    `- Current date/time: ${centralStr} (UTC: ${now.toISOString()})`,
-    `- Timezone: ${tz} (Central Time)`,
+    `- Current date/time: ${localStr} (UTC: ${now.toISOString()})`,
+    `- Timezone: ${tz} — the user's local timezone. Times you pass to tools or say to the user are LOCAL; only add a Z/offset suffix when you explicitly mean UTC.`,
     `- Model: ${runtimeInfo.model}`,
     `- Provider: ${runtimeInfo.provider}`,
     `- Host: ${runtimeInfo.host}`,

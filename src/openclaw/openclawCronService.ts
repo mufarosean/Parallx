@@ -880,8 +880,8 @@ function validateSchedule(schedule: ICronSchedule): void {
   }
 
   if (schedule.at) {
-    const ts = Date.parse(schedule.at);
-    if (isNaN(ts)) {
+    const ts = parseAtTimestamp(schedule.at);
+    if (ts === null) {
       throw new Error(`Invalid "at" datetime: ${schedule.at}`);
     }
   }
@@ -935,7 +935,7 @@ function computeNextRun(
   anchorMs?: number,
 ): number | null {
   if (schedule.at) {
-    const target = Date.parse(schedule.at);
+    const target = parseAtTimestamp(schedule.at) ?? NaN;
     // One-shot: if already past, return null (will not fire again)
     return target > fromMs ? target : null;
   }
@@ -1061,6 +1061,25 @@ export function parseCronField(field: string, min: number, max: number): number[
  *
  * Upstream ref: src/cron/schedule.ts — computeNextRunAtMs()
  */
+/**
+ * Parse a one-shot "at" datetime string to epoch ms, or null when invalid.
+ *
+ * Semantics match the planner tools (plannerChatTools.parseDateInput):
+ * date-only "YYYY-MM-DD" is LOCAL midnight (Date.parse would return UTC
+ * midnight — the previous evening for UTC-negative timezones), and
+ * zone-less ISO datetimes are the user's local wall-clock time.
+ */
+export function parseAtTimestamp(at: string): number | null {
+  const trimmed = at.trim();
+  if (!trimmed) return null;
+  const dateOnly = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnly) {
+    return new Date(+dateOnly[1], +dateOnly[2] - 1, +dateOnly[3]).getTime();
+  }
+  const ts = Date.parse(trimmed);
+  return Number.isFinite(ts) ? ts : null;
+}
+
 function computeNextCronRun(expr: string, fromMs: number): number | null {
   const parts = expr.trim().split(/\s+/);
   if (parts.length !== 5) return null;
@@ -1077,43 +1096,48 @@ function computeNextCronRun(expr: string, fromMs: number): number | null {
   const monthSet = new Set(months);
   const dowSet = new Set(daysOfWeek);
 
-  // Start from the next whole minute after fromMs
+  // Evaluate in the machine's LOCAL timezone: "0 9 * * *" means 9am on the
+  // user's wall clock, matching every real-world crontab and what a user
+  // asking "every day at 9" obviously means. The original implementation
+  // walked UTC fields, so that job fired at 4am US-Central. Local Date
+  // setters also absorb DST jumps (setHours normalizes across transitions).
+  // Start from the next whole minute after fromMs.
   const start = new Date(fromMs);
-  start.setUTCSeconds(0, 0);
-  start.setUTCMinutes(start.getUTCMinutes() + 1);
+  start.setSeconds(0, 0);
+  start.setMinutes(start.getMinutes() + 1);
 
   const limit = fromMs + 366 * 86_400_000; // 366 days max lookahead
 
   const cursor = start;
   while (cursor.getTime() <= limit) {
-    const month = cursor.getUTCMonth() + 1; // 1-12
+    const month = cursor.getMonth() + 1; // 1-12
     if (!monthSet.has(month)) {
       // Skip to first day of next month
-      cursor.setUTCMonth(cursor.getUTCMonth() + 1, 1);
-      cursor.setUTCHours(0, 0, 0, 0);
+      cursor.setMonth(cursor.getMonth() + 1, 1);
+      cursor.setHours(0, 0, 0, 0);
       continue;
     }
 
-    const dom = cursor.getUTCDate();
-    const dow = cursor.getUTCDay(); // 0=Sun
+    const dom = cursor.getDate();
+    const dow = cursor.getDay(); // 0=Sun
     if (!domSet.has(dom) || !dowSet.has(dow)) {
       // Skip to next day
-      cursor.setUTCDate(cursor.getUTCDate() + 1);
-      cursor.setUTCHours(0, 0, 0, 0);
+      cursor.setDate(cursor.getDate() + 1);
+      cursor.setHours(0, 0, 0, 0);
       continue;
     }
 
-    const hour = cursor.getUTCHours();
+    const hour = cursor.getHours();
     if (!hourSet.has(hour)) {
       // Skip to next hour
-      cursor.setUTCHours(cursor.getUTCHours() + 1, 0, 0, 0);
+      cursor.setHours(cursor.getHours() + 1, 0, 0, 0);
       continue;
     }
 
-    const minute = cursor.getUTCMinutes();
+    const minute = cursor.getMinutes();
     if (!minuteSet.has(minute)) {
       // Skip to next minute
-      cursor.setUTCMinutes(cursor.getUTCMinutes() + 1, 0, 0);
+      cursor.setMinutes(cursor.getMinutes() + 1, 0, 0);
       continue;
     }
 

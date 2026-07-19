@@ -41,12 +41,29 @@ function parseDateInput(input: unknown): number | null {
     const ms = unit === 'd' ? n * 86_400_000 : unit === 'h' ? n * 3_600_000 : n * 60_000;
     return Date.now() + ms;
   }
+  // Date-only strings mean LOCAL midnight (what the tool schema promises).
+  // Date.parse('YYYY-MM-DD') would return UTC midnight — a different day
+  // for half the world's timezones.
+  const dateOnly = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnly) {
+    return new Date(+dateOnly[1], +dateOnly[2] - 1, +dateOnly[3]).getTime();
+  }
   const ts = Date.parse(trimmed);
   return Number.isFinite(ts) ? ts : null;
 }
 
 function ok(payload: unknown): { content: string; isError?: boolean } {
   return { content: JSON.stringify(payload) };
+}
+
+/** Local-time echo block for capture results — the model reads THESE back to
+ *  the user instead of (mis)computing from raw epoch numbers. */
+function localEcho(fields: Record<string, number | null | undefined>): Record<string, unknown> {
+  const out: Record<string, unknown> = { timezone: localTimezone() };
+  for (const [key, ms] of Object.entries(fields)) {
+    if (typeof ms === 'number' && Number.isFinite(ms)) out[key] = fmtLocal(ms);
+  }
+  return out;
 }
 function err(message: string): { content: string; isError: true } {
   return { content: message, isError: true };
@@ -122,11 +139,11 @@ const CAPTURE_TASK_PARAMETERS = {
     },
     dueAt: {
       type: 'string',
-      description: 'Due date as ISO 8601, "YYYY-MM-DD", or a relative shortcut like "+5d" / "+3h". On create the default is "+5d" so journaling-style capture doesn\'t pull the user into a date picker.',
+      description: 'Due date: "YYYY-MM-DD" (local midnight), zone-less ISO like "2026-07-20T15:00" (the user\'s LOCAL time — preferred; do NOT append "Z", that means UTC and lands hours off), or a relative shortcut like "+5d" / "+3h". On create the default is "+5d" so journaling-style capture doesn\'t pull the user into a date picker.',
     },
     reminderAt: {
       type: 'string',
-      description: 'Optional reminder time (same format as dueAt). Fires once via the in-app notification service.',
+      description: 'Optional reminder time (same format as dueAt — zone-less = user\'s local time). Fires once via the in-app notification service.',
     },
     tags: {
       type: 'array',
@@ -167,11 +184,11 @@ const CAPTURE_EVENT_PARAMETERS = {
     },
     startAt: {
       type: 'string',
-      description: 'Event start. ISO 8601, "YYYY-MM-DD" (interpreted as midnight local), or a relative shortcut like "+1d". Required on create.',
+      description: 'Event start. Zone-less ISO like "2026-07-20T15:00" is the user\'s LOCAL time (preferred — do NOT append "Z", that means UTC and shifts the event by the timezone offset); "YYYY-MM-DD" = local midnight; "+1d" style relatives also work. Required on create.',
     },
     endAt: {
       type: 'string',
-      description: 'Event end. Defaults to startAt + 1 hour. Must be >= startAt.',
+      description: 'Event end (same format as startAt — zone-less = local). Defaults to startAt + 1 hour. Must be >= startAt.',
     },
     allDay: {
       type: 'boolean',
@@ -305,7 +322,7 @@ export function registerPlannerChatTools(
           });
           if (!updated) return err(`Task not found: ${taskId}`);
           nudgeSync();
-          return ok({ task: updated });
+          return ok({ task: updated, localTimes: localEcho({ dueAt: updated.dueAt, reminderAt: updated.reminderAt }) });
         }
         if (!title) return err('createTask requires a title.');
         const created = await data.createTask({
@@ -320,7 +337,7 @@ export function registerPlannerChatTools(
           sourceUri,
         });
         nudgeSync();
-        return ok({ task: created });
+        return ok({ task: created, localTimes: localEcho({ dueAt: created.dueAt, reminderAt: created.reminderAt }) });
       } catch (e) {
         return err(`captureTask failed: ${e instanceof Error ? e.message : String(e)}`);
       }
@@ -358,7 +375,7 @@ export function registerPlannerChatTools(
           });
           if (!updated) return err(`Event not found: ${eventId}`);
           nudgeSync();
-          return ok({ event: updated });
+          return ok({ event: updated, localTimes: localEcho({ startAt: updated.startAt, endAt: updated.endAt }) });
         }
         if (!title) return err('createEvent requires a title.');
         if (startAt === undefined || startAt === null) return err('createEvent requires a startAt.');
@@ -372,7 +389,7 @@ export function registerPlannerChatTools(
           calendarId: cal.calendarId,
         });
         nudgeSync();
-        return ok({ event: created });
+        return ok({ event: created, localTimes: localEcho({ startAt: created.startAt, endAt: created.endAt }) });
       } catch (e) {
         return err(`captureEvent failed: ${e instanceof Error ? e.message : String(e)}`);
       }

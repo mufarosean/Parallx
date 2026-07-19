@@ -91,7 +91,7 @@ export function createDatabaseTools(db: DatabaseDataService): IChatTool[] {
         properties: {
           databaseId: { type: 'string', description: 'UUID of the database.' },
           title: { type: 'string', description: 'Row title (the page title).' },
-          values: { type: 'object', description: 'Cell values keyed by property NAME, e.g. {"Status": "Done", "Estimate": 5}.' },
+          values: { type: 'object', description: 'Cell values keyed by property NAME, e.g. {"Status": "Done", "Estimate": 5}. Formats: date = "YYYY-MM-DD"; datetime = "YYYY-MM-DDTHH:mm" (user\'s local time, no "Z"); checkbox = boolean; tags = array of strings.' },
         },
       },
       requiresConfirmation: true,

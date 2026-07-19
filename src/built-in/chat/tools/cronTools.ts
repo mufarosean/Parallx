@@ -70,6 +70,23 @@ function success(payload: Record<string, unknown>): IToolResult {
   return { content: JSON.stringify({ ok: true, ...payload }) };
 }
 
+// Models misread raw epoch ms — attach local human-readable times to every
+// job/run the model sees so it reports schedules instead of (mis)computing
+// them (same contract as the planner tools' localTimes echo).
+function fmtLocal(ms: number): string {
+  const d = new Date(ms);
+  const p = (n: number): string => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function jobWithLocalTimes(job: ICronJob): Record<string, unknown> {
+  return {
+    ...job,
+    nextRunAtLocal: job.nextRunAt !== null ? fmtLocal(job.nextRunAt) : null,
+    lastRunAtLocal: job.lastRunAt !== null ? fmtLocal(job.lastRunAt) : null,
+  };
+}
+
 function readString(v: unknown): string | undefined {
   return typeof v === 'string' && v.length > 0 ? v : undefined;
 }
@@ -121,9 +138,9 @@ const SCHEDULE_SCHEMA = {
   type: 'object',
   description: 'Exactly one of at / every / cron must be set.',
   properties: {
-    at: { type: 'string', description: 'ISO-8601 datetime (one-shot).' },
+    at: { type: 'string', description: 'One-shot datetime. Zone-less ISO like "2026-07-20T09:00" is the user\'s LOCAL time (preferred — do NOT append "Z", that means UTC and fires hours off); "YYYY-MM-DD" = local midnight.' },
     every: { type: 'string', description: 'Repeat interval (e.g. "5m", "1h").' },
-    cron: { type: 'string', description: '5-field cron expression.' },
+    cron: { type: 'string', description: '5-field cron expression, evaluated in the user\'s LOCAL timezone ("0 9 * * *" = 9am on their wall clock).' },
   },
 };
 
@@ -172,7 +189,7 @@ export function createCronListTool(host: ICronToolHost | undefined): IChatTool {
     source: 'built-in',
     handler: async (_args, _token): Promise<IToolResult> => {
       if (!host) return missingHost();
-      return success({ jobs: host.jobs });
+      return success({ now: fmtLocal(Date.now()), jobs: host.jobs.map(jobWithLocalTimes) });
     },
   };
 }
@@ -223,7 +240,7 @@ export function createCronAddTool(host: ICronToolHost | undefined): IChatTool {
           description: readOptionalString(args.description),
           deleteAfterRun: readBoolean(args.deleteAfterRun),
         });
-        return success({ job });
+        return success({ job: jobWithLocalTimes(job) });
       } catch (err) {
         return failure(err instanceof Error ? err.message : String(err));
       }
@@ -275,7 +292,7 @@ export function createCronUpdateTool(host: ICronToolHost | undefined): IChatTool
           deleteAfterRun: readBoolean(args.deleteAfterRun),
         };
         const job = host.updateJob(id, patch);
-        return success({ job });
+        return success({ job: jobWithLocalTimes(job) });
       } catch (err) {
         return failure(err instanceof Error ? err.message : String(err));
       }
