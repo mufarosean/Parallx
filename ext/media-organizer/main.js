@@ -4686,7 +4686,13 @@ function moBindCustomSelect(selectEl) {
     popup = null;
     document.removeEventListener('mousedown', onDocDown, true);
     window.removeEventListener('resize', close, true);
-    window.removeEventListener('scroll', close, true);
+    window.removeEventListener('scroll', onOutsideScroll, true);
+  }
+  // Close when the PAGE scrolls (anchor drifts), but not when the user
+  // scrolls inside the popup itself — the list is scrollable now.
+  function onOutsideScroll(e) {
+    if (popup && e.target instanceof Node && popup.contains(e.target)) return;
+    close();
   }
   function onDocDown(e) {
     if (popup && !popup.contains(e.target) && e.target !== selectEl) close();
@@ -4718,14 +4724,26 @@ function moBindCustomSelect(selectEl) {
       popup.appendChild(it);
     }
     document.body.appendChild(popup);
-    // Clamp into viewport vertically (open upward if no room below)
-    const pr = popup.getBoundingClientRect();
-    if (pr.bottom > window.innerHeight - 8) {
-      popup.style.top = Math.max(8, r.top - pr.height - 2) + 'px';
+    // Clamp into the viewport: fit below when possible, else open on the
+    // roomier side, capping height so long lists scroll in place instead of
+    // running off-screen (or being blindly flipped above and STILL not
+    // fitting, which is what the old flip did with 13+ items).
+    const margin = 8;
+    const below = window.innerHeight - (r.bottom + 2) - margin;
+    const above = r.top - 2 - margin;
+    let pr = popup.getBoundingClientRect();
+    if (pr.height > below) {
+      if (above > below) {
+        popup.style.maxHeight = Math.min(pr.height, above) + 'px';
+        pr = popup.getBoundingClientRect();
+        popup.style.top = Math.max(margin, r.top - pr.height - 2) + 'px';
+      } else {
+        popup.style.maxHeight = Math.max(80, below) + 'px';
+      }
     }
     document.addEventListener('mousedown', onDocDown, true);
     window.addEventListener('resize', close, true);
-    window.addEventListener('scroll', close, true);
+    window.addEventListener('scroll', onOutsideScroll, true);
   }
 
   selectEl.addEventListener('mousedown', (e) => {
@@ -7758,6 +7776,10 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
 .mo-select-popup {
   position: fixed; z-index: 10001;
   min-width: 120px;
+  /* Long option lists (e.g. 13 filter presets) scroll instead of running
+     off-screen; the host's document-delegated scrollbar reveal applies. */
+  max-height: 320px;
+  overflow-y: auto;
   background: var(--vscode-quickInput-background, var(--vscode-editorWidget-background, var(--px-bg)));
   color: var(--vscode-foreground, var(--px-text, #ddd));
   border: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
