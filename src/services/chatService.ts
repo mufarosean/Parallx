@@ -30,7 +30,8 @@ import { resolveChatRuntimeParticipantId } from './chatRuntimeSelector.js';
 import {
   ensureChatTables,
   saveSession,
-  loadSessions,
+  loadSessionMetas,
+  loadSessionMessages,
   deletePersistedSession,
   isEphemeralSessionId,
   EPHEMERAL_SESSION_ID_PREFIX,
@@ -672,6 +673,8 @@ export class ChatService extends Disposable implements IChatService {
   private _persistTimer: ReturnType<typeof setTimeout> | undefined;
   /** Session IDs with pending persist (for flush on dispose). */
   private readonly _pendingPersistIds = new Set<string>();
+  /** In-flight deferred-message loads, keyed by session id (dedupes concurrent hydrations). */
+  private readonly _hydrations = new Map<string, Promise<void>>();
 
   // ── Events ──
 
@@ -832,7 +835,11 @@ export class ChatService extends Disposable implements IChatService {
   async restoreSessions(): Promise<void> {
     if (!this._database) { return; }
     try {
-      const sessions = await loadSessions(this._database, this._workspaceId);
+      // Startup fast path: metadata only (2 queries total). Message bodies
+      // load on demand via ensureSessionHydrated — most sessions are never
+      // reopened, and the old per-session loads (N+1 through the DB worker)
+      // were a measured boot bottleneck.
+      const sessions = await loadSessionMetas(this._database, this._workspaceId);
 
       for (const session of sessions) {
         this._sessions.set(session.id, session);
@@ -844,6 +851,50 @@ export class ChatService extends Disposable implements IChatService {
     } catch {
       // Persistence failure is non-fatal — chat still works in-memory
     }
+  }
+
+  /**
+   * Load a restored session's deferred messages from SQLite.
+   *
+   * No-op when the session is unknown, already hydrated, or there is no
+   * database. Concurrent callers share a single in-flight load. Must be
+   * awaited before any code treats `session.messages` as history truth —
+   * sendRequest does this itself; UI surfaces call it on session open and
+   * repaint on the onDidChangeSession fire.
+   */
+  async ensureSessionHydrated(sessionId: string): Promise<void> {
+    const session = this._sessions.get(sessionId);
+    if (!session || session.messagesPendingLoad !== true || !this._database) { return; }
+
+    const inFlight = this._hydrations.get(sessionId);
+    if (inFlight) { return inFlight; }
+
+    const load = (async () => {
+      try {
+        const { messages, changed } = await loadSessionMessages(this._database!, sessionId);
+        // Re-check: the session may have been deleted (or compacted, which
+        // claims the in-memory array as truth) while the load was in flight.
+        const current = this._sessions.get(sessionId);
+        if (!current || current.messagesPendingLoad !== true) { return; }
+
+        current.messages.splice(0, current.messages.length, ...messages);
+        current.messagesPendingLoad = false;
+        this._onDidChangeSession.fire(sessionId);
+
+        // Replay-chain normalization healed the history — now that the
+        // session is hydrated, persisting it is safe (and desired).
+        if (changed) {
+          this._schedulePersist(sessionId);
+        }
+      } catch (e) {
+        console.error('[ChatService] session hydration failed:', e);
+      } finally {
+        this._hydrations.delete(sessionId);
+      }
+    })();
+
+    this._hydrations.set(sessionId, load);
+    return load;
   }
 
   /**
@@ -880,7 +931,9 @@ export class ChatService extends Disposable implements IChatService {
       if (session && this._database) {
         saveSession(this._database, session, this._workspaceId).catch((e) => { console.error('[ChatService] saveSession failed:', e); });
       }
-      if (session && this._transcriptService) {
+      // Never write a transcript from an unhydrated session — its empty
+      // messages array would replace a real transcript file.
+      if (session && this._transcriptService && session.messagesPendingLoad !== true) {
         this._transcriptService.writeSessionTranscript(session).catch((e) => { console.error('[ChatService] writeSessionTranscript failed:', e); });
       }
     }
@@ -1096,6 +1149,15 @@ export class ChatService extends Disposable implements IChatService {
     if (!session) {
       throw new Error(`Session '${sessionId}' not found.`);
     }
+
+    // Deferred restore: history must be real before we splice/append pairs
+    // and slice it for the participant. Await BEFORE the requestInProgress
+    // check so the check→set corridor below stays synchronous (no interleave
+    // window for double-send).
+    if (session.messagesPendingLoad === true) {
+      await this.ensureSessionHydrated(sessionId);
+    }
+
     if (session.requestInProgress) {
       throw new Error('A request is already in progress for this session.');
     }

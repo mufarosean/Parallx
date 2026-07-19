@@ -100,6 +100,13 @@ function _deriveDisplayTitle(session: IChatSession): string {
     }
   }
 
+  // Deferred restore: messages aren't loaded yet, but the metadata pass
+  // captured the first user message as previewText.
+  const preview = session.previewText?.trim();
+  if (session.messages.length === 0 && preview && !GREETING_PATTERN.test(preview)) {
+    return preview.length > 50 ? preview.slice(0, 47) + '\u2026' : preview;
+  }
+
   // Fallback: date-based name
   return 'Chat \u00B7 ' + new Date(session.createdAt).toLocaleDateString(undefined, {
     month: 'short',
@@ -343,7 +350,7 @@ export class ChatSessionSidebar extends Disposable {
         const title = (s.title || 'New Chat').toLowerCase();
         const preview = s.messages.length > 0
           ? s.messages[0].request.text.toLowerCase()
-          : '';
+          : (s.previewText ?? '').toLowerCase();
         return title.includes(this._filterText) || preview.includes(this._filterText);
       })
       : [...allSessions];

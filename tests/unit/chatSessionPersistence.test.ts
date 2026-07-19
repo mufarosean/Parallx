@@ -5,6 +5,8 @@ import {
   ensureChatTables,
   saveSession,
   loadSessions,
+  loadSessionMetas,
+  loadSessionMessages,
   adoptOrphanedSessions,
   deletePersistedSession,
 } from '../../src/services/chatSessionPersistence';
@@ -425,6 +427,120 @@ describe('chatSessionPersistence', () => {
       expect(updateCalls).toHaveLength(1);
       expect(updateCalls[0].sql).toContain("workspace_id = ''");
       expect(updateCalls[0].params).toEqual(['ws-new']);
+    });
+  });
+
+  // ── Deferred hydration (startup fast path) ──
+
+  describe('loadSessionMetas', () => {
+    function stubSessionRows(): void {
+      db.all = async <T>(sql: string, params?: unknown[]): Promise<T[]> => {
+        db._allCalls.push({ sql, params });
+
+        if (sql.includes('FROM chat_sessions')) {
+          return [
+            { id: 'session-1', title: 'S1', mode: 'agent', model_id: 'qwen', context_window_override: null, plan_json: null, created_at: 1, updated_at: 2 },
+            { id: 'session-2', title: 'New Chat', mode: 'agent', model_id: 'qwen', context_window_override: null, plan_json: null, created_at: 3, updated_at: 4 },
+          ] as T[];
+        }
+
+        if (sql.includes('FROM chat_messages')) {
+          // Preview aggregate — only session-1 has persisted messages
+          return [{ session_id: 'session-1', preview: 'How do I study reserving?' }] as T[];
+        }
+
+        return [];
+      };
+    }
+
+    it('issues no per-session message queries (fixed 2-query cost)', async () => {
+      stubSessionRows();
+      await loadSessionMetas(db, 'ws-1');
+
+      // One chat_sessions query + one aggregate preview query — regardless
+      // of session count. The old loadSessions path was 1 + N.
+      expect(db._allCalls.length).toBe(2);
+      expect(db._allCalls[1].sql).toContain('GROUP BY session_id');
+    });
+
+    it('flags sessions with persisted messages as pending-load with a preview', async () => {
+      stubSessionRows();
+      const sessions = await loadSessionMetas(db, 'ws-1');
+
+      expect(sessions).toHaveLength(2);
+      const s1 = sessions.find((s) => s.id === 'session-1')!;
+      expect(s1.messagesPendingLoad).toBe(true);
+      expect(s1.previewText).toBe('How do I study reserving?');
+      expect(s1.messages).toHaveLength(0);
+    });
+
+    it('leaves message-less sessions unflagged (empty array is already truth)', async () => {
+      stubSessionRows();
+      const sessions = await loadSessionMetas(db, 'ws-1');
+
+      const s2 = sessions.find((s) => s.id === 'session-2')!;
+      expect(s2.messagesPendingLoad).toBeUndefined();
+      expect(s2.previewText).toBeUndefined();
+    });
+  });
+
+  describe('loadSessionMessages', () => {
+    it('reconstructs and normalizes pairs for one session', async () => {
+      db.all = async <T>(sql: string, params?: unknown[]): Promise<T[]> => {
+        db._allCalls.push({ sql, params });
+        if (sql.includes('FROM chat_messages')) {
+          return [
+            { role: 'user', content: 'Hello', parts_json: JSON.stringify({ requestId: 'req-1', attempt: 0 }), model_id: '', is_complete: 1, timestamp: 10, sort_order: 0 },
+            { role: 'assistant', content: 'Hi', parts_json: JSON.stringify([{ kind: ChatContentPartKind.Markdown, content: 'Hi' }]), model_id: 'qwen', is_complete: 1, timestamp: 11, sort_order: 1 },
+          ] as T[];
+        }
+        return [];
+      };
+
+      const { messages, changed } = await loadSessionMessages(db, 'session-1');
+
+      expect(changed).toBe(false);
+      expect(messages).toHaveLength(1);
+      expect(messages[0].request.requestId).toBe('req-1');
+      expect(messages[0].response.parts[0]).toMatchObject({ kind: ChatContentPartKind.Markdown, content: 'Hi' });
+      expect(db._allCalls[0].params).toContain('session-1');
+    });
+  });
+
+  describe('saveSession while messagesPendingLoad', () => {
+    it('writes only the session row — never touches chat_messages', async () => {
+      const session = createTestSession();
+      session.title = 'Renamed while unhydrated';
+      session.messagesPendingLoad = true;
+      // messages: [] is the un-loaded placeholder — a full save would DELETE
+      // every persisted message and insert nothing (history wipe).
+
+      await saveSession(db, session, 'ws-1');
+
+      const sqls = db._runCalls.map((c) => c.sql);
+      expect(sqls.some((s) => s.includes('chat_sessions'))).toBe(true);
+      expect(sqls.some((s) => s.includes('chat_messages'))).toBe(false);
+
+      const insert = db._runCalls.find((c) => c.sql.includes('chat_sessions'))!;
+      expect(insert.params).toContain('Renamed while unhydrated');
+      expect(insert.params).toContain('ws-1');
+    });
+
+    it('rewrites messages normally once the flag is cleared', async () => {
+      const session = createTestSession();
+      session.messagesPendingLoad = false;
+      session.messages = [
+        {
+          request: { text: 'Hello', requestId: 'req-1', participantId: 'parallx.chat.default', attempt: 0, timestamp: Date.now() },
+          response: { parts: [{ kind: ChatContentPartKind.Markdown, content: 'Hi' }], isComplete: true },
+        },
+      ];
+
+      await saveSession(db, session, 'ws-1');
+
+      const sqls = db._runCalls.map((c) => c.sql);
+      expect(sqls.some((s) => s.includes('DELETE FROM chat_messages'))).toBe(true);
+      expect(sqls.some((s) => s.includes('INSERT INTO chat_messages'))).toBe(true);
     });
   });
 

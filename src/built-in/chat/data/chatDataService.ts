@@ -1768,6 +1768,9 @@ export class ChatDataService {
     const session = this._d.chatService.getSession(sessionId);
     if (!session) return;
     const messages = session.messages as IChatRequestResponsePair[];
+    // Replacing the whole history makes the in-memory array the truth —
+    // clear any deferred-hydration marker so persistence writes it through.
+    session.messagesPendingLoad = false;
     messages.splice(0, messages.length, {
       request: {
         text: '[Compacted conversation history]',
@@ -2041,6 +2044,7 @@ export class ChatDataService {
     const sessionServices = buildChatWidgetSessionServices({
       getSessions: () => this._d.chatService.getSessions(),
       getSession: (id: string) => this._d.chatService.getSession(id),
+      ensureSessionHydrated: (id: string) => this._d.chatService.ensureSessionHydrated?.(id) ?? Promise.resolve(),
       deleteSession: (id: string) => this._d.chatService.deleteSession(id),
       updateSessionModel: (id: string, modelId: string) => this._d.chatService.updateSessionModel(id, modelId),
       updateSessionContextWindow: (id: string, contextWindow: number | undefined) => this._d.chatService.updateSessionContextWindow(id, contextWindow),

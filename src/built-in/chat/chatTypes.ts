@@ -408,6 +408,9 @@ export interface IChatWidgetServices {
   readonly attachmentServices?: IAttachmentServices;
   readonly getSession?: (sessionId: string) => IChatSession | undefined;
   readonly getSessions?: () => readonly IChatSession[];
+  /** Load a restored session's deferred messages (no-op when already
+   *  hydrated). The service fires onDidChangeSession when they arrive. */
+  readonly ensureSessionHydrated?: (sessionId: string) => Promise<void>;
   readonly deleteSession?: (sessionId: string) => void;
   /** M86 — user-initiated plan removal (the ✕ on the plan card). */
   readonly clearSessionPlan?: (sessionId: string) => void;

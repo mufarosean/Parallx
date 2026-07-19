@@ -57,6 +57,7 @@ import {
 import type { SerializedEditorSnapshot, SerializedEditorInputSnapshot } from '../workspace/workspaceTypes.js';
 import { createDefaultLayoutState } from '../layout/layoutModel.js';
 import { registerBuiltinEditorDeserializers, deserializeEditorInput, hasEditorInputDeserializer } from '../editor/editorInputDeserializer.js';
+import type { IEditorInput } from '../editor/editorInput.js';
 
 // Commands
 import { CommandService } from '../commands/commandRegistry.js';
@@ -84,6 +85,7 @@ import type { FacadeFactoryHost } from './workbenchFacadeFactory.js';
 import { WindowService } from '../services/windowService.js';
 import { ContextMenu } from '../ui/contextMenu.js';
 import { EditableContextMenu } from '../contributions/editableContextMenu.js';
+import { installScrollbarReveal } from '../ui/scrollbarReveal.js';
 
 // Views
 import { ViewManager } from '../views/viewManager.js';
@@ -754,6 +756,11 @@ export class Workbench extends Layout {
 
       // Universal right-click context menu for all editable text surfaces
       this._register(new EditableContextMenu());
+
+      // App-wide scrollbar visibility: thumbs show while a scrollable
+      // surface is hovered or actively scrolling (workbench.css keys off
+      // the classes this controller toggles).
+      this._register(installScrollbarReveal(document));
 
       // Initialize tool activator and fire startup finished
       await this._initializeToolLifecycle();
@@ -1523,6 +1530,42 @@ export class Workbench extends Layout {
     // deserializer isn't registered yet (lazy-activated tools).
     const editorTypeOwners = this._collectEditorTypeOwners();
 
+    // ── Phase 1: activate all owning tools CONCURRENTLY (deduped) ──
+    // The old per-editor `await activate()` serialized every lazy tool
+    // activation into the boot path; unique tools can activate in parallel.
+    const toolsToActivate = new Set<string>();
+    for (const groupSnap of nonEmptyGroups) {
+      for (const editorSnap of groupSnap.editors) {
+        if (hasEditorInputDeserializer(editorSnap.typeId)) continue;
+        const ownerToolId =
+          (typeof editorSnap.data?.ownerToolId === 'string'
+            ? (editorSnap.data.ownerToolId as string)
+            : undefined)
+          ?? editorTypeOwners.get(editorSnap.typeId);
+        if (ownerToolId && this._toolActivator && !this._toolActivator.isActivated(ownerToolId)) {
+          toolsToActivate.add(ownerToolId);
+        }
+      }
+    }
+    if (toolsToActivate.size > 0 && this._toolActivator) {
+      await Promise.allSettled([...toolsToActivate].map(async (toolId) => {
+        try {
+          await this._toolActivator!.activate(toolId);
+        } catch (err) {
+          console.warn('[Workbench] Failed to activate tool "%s" for editor restore:', toolId, err);
+        }
+      }));
+    }
+
+    // ── Phase 2: insert tabs synchronously, instantiate ONE pane per group ──
+    // Background tabs go straight into the group MODEL (synchronous → tab
+    // order is exactly snapshot order, and no pane work happens). The old
+    // path awaited a full `openEditor` per tab, which rebuilt the group's
+    // active pane once per background tab — N sequential pane setInput()s
+    // of which only the last survived. Only the visible editor of each
+    // group needs a pane; groups restore concurrently.
+    const groupOpens: Promise<void>[] = [];
+
     for (let gi = 0; gi < nonEmptyGroups.length; gi++) {
       const groupSnap = nonEmptyGroups[gi];
 
@@ -1533,51 +1576,59 @@ export class Workbench extends Layout {
       }
       if (!group) continue;
 
-      // Open each editor in tab order
+      let activeRestore: { input: IEditorInput; pinned: boolean; state?: Record<string, unknown> } | undefined;
+      let firstRestore: { input: IEditorInput; pinned: boolean } | undefined;
+
       for (let ei = 0; ei < groupSnap.editors.length; ei++) {
         const editorSnap = groupSnap.editors[ei];
         try {
-          // If no deserializer is registered for this typeId yet, try to
-          // activate the owning tool (lazy activation). After activation, the
-          // tool's EditorsBridge will have registered the deserializer.
-          if (!hasEditorInputDeserializer(editorSnap.typeId)) {
-            const ownerToolId =
-              (typeof editorSnap.data?.ownerToolId === 'string'
-                ? (editorSnap.data.ownerToolId as string)
-                : undefined)
-              ?? editorTypeOwners.get(editorSnap.typeId);
-            if (ownerToolId && this._toolActivator) {
-              try {
-                if (!this._toolActivator.isActivated(ownerToolId)) {
-                  await this._toolActivator.activate(ownerToolId);
-                }
-              } catch (err) {
-                console.warn('[Workbench] Failed to activate tool "%s" for restored editor "%s":', ownerToolId, editorSnap.typeId, err);
-              }
-            }
-          }
-
           const input = deserializeEditorInput(editorSnap.typeId, editorSnap.data);
           if (!input) continue;
 
-          const isActive = ei === groupSnap.activeEditorIndex;
-          await editorPart.openEditor(input, {
+          group.model.openEditor(input, {
             pinned: editorSnap.pinned,
-            activation: isActive ? EditorActivation.Activate : EditorActivation.Restore,
-            preserveFocus: !isActive,
-          }, group.id);
+            activation: EditorActivation.Restore,
+          });
 
-          // Apply view state to the active editor's pane
-          if (isActive && editorSnap.state && group.activePane) {
-            try {
-              group.activePane.restoreViewState(editorSnap.state);
-            } catch { /* best-effort — pane may not support view state */ }
+          if (ei === groupSnap.activeEditorIndex) {
+            activeRestore = { input, pinned: editorSnap.pinned, state: editorSnap.state };
+          }
+          if (!firstRestore) {
+            firstRestore = { input, pinned: editorSnap.pinned };
           }
         } catch (err) {
           console.warn('[Workbench] Failed to restore editor "%s":', editorSnap.typeId, err);
         }
       }
+
+      // Show the group's visible editor (fall back to the first restorable
+      // one when the recorded active editor failed to deserialize, so the
+      // group never renders tabs over an empty pane).
+      const toShow = activeRestore ?? firstRestore;
+      if (toShow) {
+        const groupId = group.id;
+        groupOpens.push((async () => {
+          try {
+            await editorPart.openEditor(toShow.input, {
+              pinned: toShow.pinned,
+              activation: EditorActivation.Activate,
+            }, groupId);
+
+            // Apply view state to the active editor's pane
+            const state = activeRestore?.state;
+            if (state && group.activePane) {
+              try {
+                group.activePane.restoreViewState(state);
+              } catch { /* best-effort — pane may not support view state */ }
+            }
+          } catch (err) {
+            console.warn('[Workbench] Failed to show restored editor for group "%s":', groupId, err);
+          }
+        })());
+      }
     }
+
+    await Promise.allSettled(groupOpens);
 
     // Activate the correct group
     const targetGroupIdx = Math.min(snapshot.activeGroupIndex, editorPart.groups.length - 1);

@@ -1016,6 +1016,117 @@ describe('ChatService', () => {
     });
   });});
 
+// ── Deferred session hydration (startup fast path) ──
+
+describe('ChatService deferred hydration', () => {
+  function createHydrationDb() {
+    const runCalls: Array<{ sql: string; params?: unknown[] }> = [];
+    const allCalls: Array<{ sql: string; params?: unknown[] }> = [];
+    const db = {
+      isOpen: true,
+      async run(sql: string, params?: unknown[]): Promise<{ changes: number }> {
+        runCalls.push({ sql, params });
+        return { changes: 0 };
+      },
+      async get(): Promise<null> { return null; },
+      async all(sql: string, params?: unknown[]): Promise<Record<string, unknown>[]> {
+        allCalls.push({ sql, params });
+        if (sql.includes('FROM chat_sessions')) {
+          return [{ id: 'restored-1', title: 'Restored', mode: 'agent', model_id: 'qwen', context_window_override: null, plan_json: null, created_at: 1, updated_at: 2 }];
+        }
+        if (sql.includes('GROUP BY session_id')) {
+          return [{ session_id: 'restored-1', preview: 'earlier question' }];
+        }
+        if (sql.includes('FROM chat_messages')) {
+          return [
+            { role: 'user', content: 'earlier question', parts_json: JSON.stringify({ requestId: 'req-1', attempt: 0 }), model_id: '', is_complete: 1, timestamp: 10, sort_order: 0 },
+            { role: 'assistant', content: 'earlier answer', parts_json: JSON.stringify([{ kind: ChatContentPartKind.Markdown, content: 'earlier answer' }]), model_id: 'qwen', is_complete: 1, timestamp: 11, sort_order: 1 },
+          ];
+        }
+        return [];
+      },
+      runCalls,
+      allCalls,
+    };
+    return db;
+  }
+
+  function messageBodyQueries(db: ReturnType<typeof createHydrationDb>): number {
+    return db.allCalls.filter((c) => c.sql.includes('FROM chat_messages') && !c.sql.includes('GROUP BY')).length;
+  }
+
+  let chatService: ChatService;
+  let agentService: ChatAgentService;
+  let db: ReturnType<typeof createHydrationDb>;
+
+  beforeEach(async () => {
+    agentService = new ChatAgentService();
+    chatService = new ChatService(agentService, new ChatModeService(), new LanguageModelsService());
+    agentService.registerAgent(createDefaultAgent());
+    db = createHydrationDb();
+    chatService.setDatabase(db as never, 'ws-1');
+    await chatService.restoreSessions();
+  });
+
+  it('restoreSessions loads metadata only — no message-body queries', () => {
+    const session = chatService.getSession('restored-1')!;
+    expect(session).toBeDefined();
+    expect(session.messagesPendingLoad).toBe(true);
+    expect(session.previewText).toBe('earlier question');
+    expect(session.messages).toHaveLength(0);
+    expect(messageBodyQueries(db)).toBe(0);
+  });
+
+  it('ensureSessionHydrated loads messages, clears the flag, fires onDidChangeSession', async () => {
+    const listener = vi.fn();
+    chatService.onDidChangeSession(listener);
+
+    await chatService.ensureSessionHydrated('restored-1');
+
+    const session = chatService.getSession('restored-1')!;
+    expect(session.messagesPendingLoad).toBe(false);
+    expect(session.messages).toHaveLength(1);
+    expect(session.messages[0].request.requestId).toBe('req-1');
+    expect(listener).toHaveBeenCalledWith('restored-1');
+  });
+
+  it('concurrent hydrations share one load', async () => {
+    await Promise.all([
+      chatService.ensureSessionHydrated('restored-1'),
+      chatService.ensureSessionHydrated('restored-1'),
+    ]);
+    expect(messageBodyQueries(db)).toBe(1);
+  });
+
+  it('is a no-op for hydrated and unknown sessions', async () => {
+    await chatService.ensureSessionHydrated('restored-1');
+    await chatService.ensureSessionHydrated('restored-1');
+    await chatService.ensureSessionHydrated('never-existed');
+    expect(messageBodyQueries(db)).toBe(1);
+  });
+
+  it('sendRequest hydrates first so participants see real history', async () => {
+    let capturedHistory: readonly { request: { requestId: string } }[] = [];
+    agentService.registerAgent({
+      id: 'history-capture',
+      displayName: 'History Capture',
+      description: 'captures context.history',
+      commands: [],
+      handler: async (_request, context, response) => {
+        capturedHistory = context.history as never;
+        response.markdown('ok');
+        return {};
+      },
+    });
+
+    await chatService.sendRequest('restored-1', 'follow-up', { participantId: 'history-capture' });
+
+    expect(capturedHistory).toHaveLength(1);
+    expect(capturedHistory[0].request.requestId).toBe('req-1');
+    expect(chatService.getSession('restored-1')!.messagesPendingLoad).toBe(false);
+  });
+});
+
 describe('default participant integration helpers', () => {
   it('does not replace streamed markdown with an empty string after narration cleanup', async () => {
     const { createOpenclawDefaultParticipant } = await import('../../src/openclaw/participants/openclawDefaultParticipant');

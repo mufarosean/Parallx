@@ -458,6 +458,13 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     this._sessionDisposables.clear();
     this._session = session;
 
+    // Deferred restore: message bodies stay in SQLite until a session is
+    // actually opened. Fire-and-forget — the service fires onDidChangeSession
+    // when they arrive and the listener above re-renders this widget.
+    if (session.messagesPendingLoad) {
+      void this._services.ensureSessionHydrated?.(session.id);
+    }
+
     // Restore the session's model as the global active model
     if (session.modelId && this._services.modelPicker) {
       const currentModel = this._services.modelPicker.getActiveModel();
@@ -985,7 +992,10 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
 
   private _updateVisibility(): void {
     const hasSession = !!this._session;
-    const hasMessages = hasSession && this._session!.messages.length > 0;
+    // A pending-load session HAS messages (they're still in SQLite) — don't
+    // flash the empty-state hero during the hydration beat.
+    const hasMessages = hasSession
+      && (this._session!.messages.length > 0 || this._session!.messagesPendingLoad === true);
     const hasAgentTasks = (this._services.getAgentTasks?.().length ?? 0) > 0;
     const isOnline = this._services.getProviderStatus().available;
 

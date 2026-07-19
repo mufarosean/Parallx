@@ -4,6 +4,7 @@ import type { IChatWidgetServices } from '../chatTypes.js';
 export interface IChatWidgetSessionAdapterDeps {
   readonly getSessions: () => readonly IChatSession[];
   readonly getSession: (id: string) => IChatSession | undefined;
+  readonly ensureSessionHydrated?: (id: string) => Promise<void>;
   readonly deleteSession: (id: string) => void;
   readonly updateSessionModel?: (id: string, modelId: string) => void;
   readonly updateSessionContextWindow?: (id: string, contextWindow: number | undefined) => void;
@@ -17,11 +18,12 @@ export function buildChatWidgetSessionServices(
   deps: IChatWidgetSessionAdapterDeps,
 ): Pick<
   IChatWidgetServices,
-  'getSessions' | 'getSession' | 'deleteSession' | 'updateSessionModel' | 'updateSessionContextWindow' | 'getSystemPrompt' | 'readFileRelative' | 'writeFileRelative' | 'searchSessions'
+  'getSessions' | 'getSession' | 'ensureSessionHydrated' | 'deleteSession' | 'updateSessionModel' | 'updateSessionContextWindow' | 'getSystemPrompt' | 'readFileRelative' | 'writeFileRelative' | 'searchSessions'
 > {
   return {
     getSessions: deps.getSessions,
     getSession: deps.getSession,
+    ensureSessionHydrated: deps.ensureSessionHydrated,
     deleteSession: deps.deleteSession,
     updateSessionModel: deps.updateSessionModel,
     updateSessionContextWindow: deps.updateSessionContextWindow,

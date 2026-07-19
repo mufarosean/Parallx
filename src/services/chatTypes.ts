@@ -218,6 +218,19 @@ export interface IChatSession {
   contextWindowOverride?: number;
   /** Ordered list of request/response pairs. */
   readonly messages: IChatRequestResponsePair[];
+  /**
+   * Deferred hydration marker. True when the session was restored from
+   * SQLite as metadata only (startup fast path) — `messages` is an empty
+   * placeholder and the DATABASE is the truth until
+   * `IChatService.ensureSessionHydrated` loads it. While set, persistence
+   * writes the session row only and never rewrites chat_messages.
+   */
+  messagesPendingLoad?: boolean;
+  /**
+   * First user message snippet (≤200 chars) captured at metadata-only
+   * restore, so list UIs (sidebar titles/filter) work before hydration.
+   */
+  previewText?: string;
   /** Whether a request is currently being processed. */
   requestInProgress: boolean;
   /** Pending messages queued while a request is in progress. */
@@ -1211,8 +1224,17 @@ export interface IChatService extends IDisposable {
   getSession(sessionId: string): IChatSession | undefined;
   /** Get all sessions. */
   getSessions(): readonly IChatSession[];
-  /** Restore persisted sessions from database. Called once on startup. */
+  /** Restore persisted sessions from database. Called once on startup.
+   * Loads session METADATA only (deferred hydration) — message bodies load
+   * on demand via ensureSessionHydrated. */
   restoreSessions(): Promise<void>;
+  /**
+   * Load a restored session's messages from the database if they are still
+   * deferred (messagesPendingLoad). Resolves immediately for hydrated or
+   * unknown sessions; concurrent calls for the same session share one load.
+   * Fires onDidChangeSession after messages arrive.
+   */
+  ensureSessionHydrated?(sessionId: string): Promise<void>;
   /** Late-bind a database for persistence (called after DB opens in Phase 5).
    * @param workspaceId — the active workspace ID for session scoping */
   setDatabase(database: import('./chatSessionPersistence.js').IChatPersistenceDatabase, workspaceId?: string): void;

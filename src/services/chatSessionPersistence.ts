@@ -170,6 +170,30 @@ export async function saveSession(db: IChatPersistenceDatabase, session: IChatSe
   // W5-A: ephemeral sessions never touch SQLite. Isolation invariant.
   if (isEphemeralSessionId(session.id)) { return; }
 
+  // Deferred hydration: while messagesPendingLoad is set, the DB — not the
+  // in-memory array — is the truth for this session's messages. Persist only
+  // the session row (title renames, plan/model changes still stick); the
+  // delete-then-rewrite of chat_messages MUST NOT run or it would wipe the
+  // un-loaded history.
+  if (session.messagesPendingLoad === true) {
+    await db.run(
+      `INSERT OR REPLACE INTO chat_sessions (id, workspace_id, title, mode, model_id, context_window_override, plan_json, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        session.id,
+        workspaceId,
+        session.title,
+        session.mode,
+        session.modelId,
+        session.contextWindowOverride ?? null,
+        session.plan ? JSON.stringify(session.plan) : null,
+        session.createdAt,
+        Date.now(),
+      ],
+    );
+    return;
+  }
+
   const sessionInsertSql = `INSERT OR REPLACE INTO chat_sessions (id, workspace_id, title, mode, model_id, context_window_override, plan_json, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
   const sessionInsertParams = [
@@ -254,6 +278,61 @@ export async function saveSession(db: IChatPersistenceDatabase, session: IChatSe
   }
 }
 
+interface IPersistedMessageRow {
+  role: string;
+  content: string;
+  parts_json: string;
+  model_id: string;
+  is_complete: number;
+  timestamp: number;
+  sort_order: number;
+}
+
+/** Rebuild request/response pairs from ordered chat_messages rows. */
+function _reconstructPairs(messageRows: readonly IPersistedMessageRow[]): IChatRequestResponsePair[] {
+  const messages: IChatRequestResponsePair[] = [];
+  let pendingUser: IChatUserMessage | undefined;
+
+  for (const msg of messageRows) {
+    if (msg.role === 'user') {
+      const metadata = _deserializeUserMessageMetadata(msg.parts_json);
+      pendingUser = {
+        text: msg.content,
+        requestId: metadata.requestId ?? 'legacy-request',
+        participantId: metadata.participantId,
+        command: metadata.command,
+        variables: metadata.variables,
+        attachments: metadata.attachments,
+        attempt: metadata.attempt ?? 0,
+        replayOfRequestId: metadata.replayOfRequestId,
+        timestamp: msg.timestamp,
+      };
+    } else if (msg.role === 'assistant' && pendingUser) {
+      let parts: IChatContentPart[] = [];
+      try {
+        parts = JSON.parse(msg.parts_json);
+      } catch {
+        // Corrupted parts — fallback to empty
+      }
+
+      const response: IChatAssistantResponse = {
+        parts,
+        isComplete: msg.is_complete === 1,
+        modelId: msg.model_id,
+        timestamp: msg.timestamp,
+      };
+
+      messages.push({
+        request: pendingUser,
+        response,
+      });
+      pendingUser = undefined;
+    }
+  }
+
+  return messages;
+}
+
 /**
  * Load persisted sessions for a specific workspace from the database.
  * Returns fully hydrated IChatSession objects scoped to the given workspace.
@@ -264,102 +343,21 @@ export async function saveSession(db: IChatPersistenceDatabase, session: IChatSe
 export async function loadSessions(db: IChatPersistenceDatabase, workspaceId: string = ''): Promise<IChatSession[]> {
   if (!db.isOpen) { return []; }
 
-  const rows = await db.all<{
-    id: string;
-    title: string;
-    mode: string;
-    model_id: string;
-    context_window_override: number | null;
-    plan_json: string | null;
-    created_at: number;
-    updated_at: number;
-  }>(`SELECT id, title, mode, model_id, context_window_override, plan_json, created_at, updated_at FROM chat_sessions WHERE workspace_id = ? ORDER BY updated_at DESC`, [workspaceId]);
+  const rows = await db.all<IPersistedSessionRow>(
+    `SELECT id, title, mode, model_id, context_window_override, plan_json, created_at, updated_at FROM chat_sessions WHERE workspace_id = ? ORDER BY updated_at DESC`,
+    [workspaceId],
+  );
 
   const sessions: IChatSession[] = [];
 
   for (const row of rows) {
-    const messageRows = await db.all<{
-      role: string;
-      content: string;
-      parts_json: string;
-      model_id: string;
-      is_complete: number;
-      timestamp: number;
-      sort_order: number;
-    }>(`SELECT role, content, parts_json, model_id, is_complete, timestamp, sort_order
+    const messageRows = await db.all<IPersistedMessageRow>(
+      `SELECT role, content, parts_json, model_id, is_complete, timestamp, sort_order
         FROM chat_messages WHERE session_id = ? ORDER BY sort_order`, [row.id]);
 
-    // Reconstruct request/response pairs
-    const messages: IChatRequestResponsePair[] = [];
-    let pendingUser: IChatUserMessage | undefined;
+    const { messages: normalizedMessages, changed } = _normalizeReplayChains(_reconstructPairs(messageRows));
 
-    for (const msg of messageRows) {
-      if (msg.role === 'user') {
-        const metadata = _deserializeUserMessageMetadata(msg.parts_json);
-        pendingUser = {
-          text: msg.content,
-          requestId: metadata.requestId ?? 'legacy-request',
-          participantId: metadata.participantId,
-          command: metadata.command,
-          variables: metadata.variables,
-          attachments: metadata.attachments,
-          attempt: metadata.attempt ?? 0,
-          replayOfRequestId: metadata.replayOfRequestId,
-          timestamp: msg.timestamp,
-        };
-      } else if (msg.role === 'assistant' && pendingUser) {
-        let parts: IChatContentPart[] = [];
-        try {
-          parts = JSON.parse(msg.parts_json);
-        } catch {
-          // Corrupted parts — fallback to empty
-        }
-
-        const response: IChatAssistantResponse = {
-          parts,
-          isComplete: msg.is_complete === 1,
-          modelId: msg.model_id,
-          timestamp: msg.timestamp,
-        };
-
-        messages.push({
-          request: pendingUser,
-          response,
-        });
-        pendingUser = undefined;
-      }
-    }
-
-    const { messages: normalizedMessages, changed } = _normalizeReplayChains(messages);
-
-    const sessionResource = URI.from({ scheme: CHAT_SESSION_SCHEME, path: `/${row.id}` });
-
-    // M85 — hydrate the durable plan (best-effort; a corrupt blob never
-    // blocks session load).
-    let plan: IChatSession['plan'];
-    if (row.plan_json) {
-      try {
-        const parsed = JSON.parse(row.plan_json);
-        if (parsed && typeof parsed.goal === 'string' && Array.isArray(parsed.steps)) {
-          plan = parsed;
-        }
-      } catch { /* corrupt plan_json — ignore */ }
-    }
-
-    const session: IChatSession = {
-      id: row.id,
-      sessionResource,
-      createdAt: row.created_at,
-      title: row.title,
-      mode: _parseMode(row.mode),
-      modelId: row.model_id,
-      contextWindowOverride: row.context_window_override && row.context_window_override > 0 ? row.context_window_override : undefined,
-      messages: normalizedMessages,
-      requestInProgress: false,
-      pendingRequests: [],
-      plan,
-    };
-
+    const session = _buildSessionFromRow(row, normalizedMessages);
     sessions.push(session);
 
     if (changed) {
@@ -368,6 +366,122 @@ export async function loadSessions(db: IChatPersistenceDatabase, workspaceId: st
   }
 
   return sessions;
+}
+
+interface IPersistedSessionRow {
+  id: string;
+  title: string;
+  mode: string;
+  model_id: string;
+  context_window_override: number | null;
+  plan_json: string | null;
+  created_at: number;
+  updated_at: number;
+}
+
+const SESSION_ROW_COLUMNS = 'id, title, mode, model_id, context_window_override, plan_json, created_at, updated_at';
+
+function _buildSessionFromRow(row: IPersistedSessionRow, messages: IChatRequestResponsePair[]): IChatSession {
+  // M85 — hydrate the durable plan (best-effort; a corrupt blob never
+  // blocks session load).
+  let plan: IChatSession['plan'];
+  if (row.plan_json) {
+    try {
+      const parsed = JSON.parse(row.plan_json);
+      if (parsed && typeof parsed.goal === 'string' && Array.isArray(parsed.steps)) {
+        plan = parsed;
+      }
+    } catch { /* corrupt plan_json — ignore */ }
+  }
+
+  return {
+    id: row.id,
+    sessionResource: URI.from({ scheme: CHAT_SESSION_SCHEME, path: `/${row.id}` }),
+    createdAt: row.created_at,
+    title: row.title,
+    mode: _parseMode(row.mode),
+    modelId: row.model_id,
+    contextWindowOverride: row.context_window_override && row.context_window_override > 0 ? row.context_window_override : undefined,
+    messages,
+    requestInProgress: false,
+    pendingRequests: [],
+    plan,
+  };
+}
+
+/**
+ * Load session METADATA only for a workspace — no chat_messages reads.
+ *
+ * Startup-latency path: `loadSessions` issues one message query per session
+ * (N+1 through the DB worker) and JSON-parses every part of every message,
+ * even though most sessions are never reopened. This variant runs exactly two
+ * queries regardless of session count:
+ *   1. the session rows,
+ *   2. one aggregate over chat_messages for each session's FIRST user message
+ *      (the sidebar's preview/title fallback).
+ *
+ * Sessions that have persisted messages come back with `messages: []` and
+ * `messagesPendingLoad: true` — callers MUST hydrate via
+ * `loadSessionMessages` before treating the array as truth (ChatService
+ * exposes this as `ensureSessionHydrated`). `saveSession` refuses to rewrite
+ * chat_messages while the flag is set, so a metadata-only session can never
+ * clobber its own history.
+ */
+export async function loadSessionMetas(db: IChatPersistenceDatabase, workspaceId: string = ''): Promise<IChatSession[]> {
+  if (!db.isOpen) { return []; }
+
+  const rows = await db.all<IPersistedSessionRow>(
+    `SELECT ${SESSION_ROW_COLUMNS} FROM chat_sessions WHERE workspace_id = ? ORDER BY updated_at DESC`,
+    [workspaceId],
+  );
+  if (rows.length === 0) { return []; }
+
+  // First user message per session, in one pass. SQLite's bare-column rule
+  // with MIN() guarantees `content` comes from the row holding the minimum
+  // sort_order within each group.
+  let previews = new Map<string, string>();
+  try {
+    const previewRows = await db.all<{ session_id: string; preview: string }>(
+      `SELECT session_id, substr(content, 1, 200) AS preview, MIN(sort_order)
+       FROM chat_messages WHERE role = 'user'
+       GROUP BY session_id`,
+    );
+    previews = new Map(previewRows.map((r) => [r.session_id, r.preview]));
+  } catch (e) {
+    console.warn('[ChatPersistence] session preview query failed:', e);
+  }
+
+  return rows.map((row) => {
+    const session = _buildSessionFromRow(row, []);
+    const preview = previews.get(row.id);
+    if (preview !== undefined) {
+      // Has at least one persisted user message → messages exist in the DB
+      // but are not loaded. Sessions with no preview row have no messages at
+      // all, so their empty array already IS the truth — leave them unflagged.
+      session.messagesPendingLoad = true;
+      session.previewText = preview;
+    }
+    return session;
+  });
+}
+
+/**
+ * Load and reconstruct one session's messages (the hydration half of
+ * `loadSessionMetas`). Returns the normalized pairs plus whether replay-chain
+ * normalization changed them — when true, the caller should persist the
+ * healed session AFTER clearing its pending flag.
+ */
+export async function loadSessionMessages(
+  db: IChatPersistenceDatabase,
+  sessionId: string,
+): Promise<{ messages: IChatRequestResponsePair[]; changed: boolean }> {
+  if (!db.isOpen) { return { messages: [], changed: false }; }
+
+  const messageRows = await db.all<IPersistedMessageRow>(
+    `SELECT role, content, parts_json, model_id, is_complete, timestamp, sort_order
+        FROM chat_messages WHERE session_id = ? ORDER BY sort_order`, [sessionId]);
+
+  return _normalizeReplayChains(_reconstructPairs(messageRows));
 }
 
 /**
