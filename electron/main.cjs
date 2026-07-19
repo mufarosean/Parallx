@@ -2908,11 +2908,18 @@ async function _recorderFinalize(entry) {
 
   // Drift factor: play the video over its real wall-clock span. factor > 1 slows
   // a time-compressed capture (dropped frames) back to real time.
+  //
+  // The bounds are deliberately WIDE (0.2–8): when gdigrab can't sustain the
+  // declared framerate (busy screen, large region), media time accrues at a
+  // fraction of wall time and the factor is exactly 2, 3, 4× — the old
+  // 0.5–2.0 "sanity" clamp rejected precisely the worst compressions, which
+  // shipped recordings that played several times too fast. Only degenerate
+  // probe garbage should be rejected here.
   const videoDur = await _recorderProbeDuration(ffmpegPath, videoPath);
   let factor = 1;
   if (videoDur > 0 && entry.wallDur > 0) {
     const f = entry.wallDur / videoDur;
-    if (Number.isFinite(f) && f > 0.5 && f < 2.0) factor = f;
+    if (Number.isFinite(f) && f > 0.2 && f < 8.0) factor = f;
   }
 
   // A/V start offset (same wall clock). >0 → audio started later → delay audio;
@@ -2944,7 +2951,10 @@ async function _recorderFinalize(entry) {
     if (offset > 0) args.push('-itsoffset', offset.toFixed(3));
     args.push('-i', audioPath);
   }
-  const needsRetime = Math.abs(factor - 1) > 0.005;
+  // 3% tolerance: below it a speed error is imperceptible and stream-copy
+  // (fast, zero quality loss) wins; the old 0.5% threshold forced a full
+  // re-encode over probe noise. Above it, retiming is mandatory.
+  const needsRetime = Math.abs(factor - 1) > 0.03;
   if (needsRetime) {
     // Drift correction needs a re-encode — do it near-lossless (one-time export).
     args.push('-vf', `setpts=${factor.toFixed(6)}*PTS`);
@@ -2961,8 +2971,14 @@ async function _recorderFinalize(entry) {
   if (await runFfmpeg(args, encodeTimeout)) { _recorderCleanupTemps(entry); return true; }
 
   // ── Fallback: plain video-only re-encode (still high quality) ──
+  // The drift retime MUST survive into the fallback: this path fires exactly
+  // when the primary is struggling (long/heavy recordings) — the same cases
+  // where gdigrab fell behind — so dropping setpts here shipped the
+  // time-compressed temp at full speed.
   try { if (fsSync.existsSync(outputPath)) fsSync.unlinkSync(outputPath); } catch { /* ignore */ }
-  const fb = ['-y', '-i', videoPath, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-pix_fmt', 'yuv420p', '-an', '-movflags', '+faststart', outputPath];
+  const fb = ['-y', '-i', videoPath];
+  if (needsRetime) fb.push('-vf', `setpts=${factor.toFixed(6)}*PTS`);
+  fb.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-pix_fmt', 'yuv420p', '-an', '-movflags', '+faststart', outputPath);
   if (await runFfmpeg(fb, encodeTimeout)) { _recorderCleanupTemps(entry); return true; }
 
   // ── Last resort: promote the lossless temp as-is (large, but never lose it) ──
@@ -3022,10 +3038,14 @@ ipcMain.handle('recorder:start', async (_event, frameId) => {
     // ffmpeg -progress emits key=value lines; the first update carrying a frame
     // count marks the first captured frame. Stamp it once (same wall clock as the
     // renderer's audio start) for the A/V start-offset math on finalize.
+    // Accumulate a small rolling buffer: "frame=" can split across chunk
+    // boundaries, and a missed stamp silently degrades wallDur + A/V offset.
     if (proc.stdout) {
+      let progressTail = '';
       proc.stdout.on('data', (d) => {
         if (entry.videoFirstFrameAt) return;
-        const m = /frame=\s*(\d+)/.exec(d.toString());
+        progressTail = (progressTail + d.toString()).slice(-256);
+        const m = /frame=\s*(\d+)/.exec(progressTail);
         if (m && parseInt(m[1], 10) >= 1) entry.videoFirstFrameAt = Date.now();
       });
     }

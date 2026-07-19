@@ -8,6 +8,53 @@
 //
 // Upstream reference: github.com/stashapp/stash
 
+//
+// ── TABLE OF CONTENTS (sections appear in this order) ──
+//    1. DATABASE WRAPPER
+//    2. SHARED HELPERS
+//    3. FOLDER QUERIES
+//    4. FILE QUERIES
+//    5. FINGERPRINT QUERIES
+//    6. TAG QUERIES (with hierarchy)
+//    7. PHOTO QUERIES
+//    8. VIDEO QUERIES
+//    9. ALBUM QUERIES
+//   10. IMAGE FILE & VIDEO FILE QUERIES
+//   11. SCAN CONFIGURATION
+//   12. EXTERNAL TOOL DETECTION
+//   13. FINGERPRINT SERVICE
+//   14. METADATA EXTRACTION SERVICE
+//   15. DIRECTORY WALKER & FILTER PIPELINE
+//   16. SCAN ORCHESTRATOR
+//   17. FILE WATCHER & AUTO-SCAN
+//   18. THUMBNAIL CONFIGURATION
+//   19. THUMBNAIL SERVICE
+//   20. LAZY / ON-DEMAND THUMBNAIL RESOLUTION
+//   21. THUMBNAIL CACHE MANAGEMENT
+//   22. UI HELPERS & STYLES
+//   23. GRID CARD RENDERING
+//   24. KEYBOARD SHORTCUTS CHEAT SHEET
+//   25. SIDEBAR VIEW
+//   26. GRID BROWSER EDITOR
+//   27. DETAIL EDITOR — CORE LAYOUT
+//   28. DETAIL EDITOR — MEDIA PREVIEW
+//   29. DETAIL EDITOR — DETAILS TAB
+//   30. DETAIL EDITOR — FILE INFO TAB
+//   31. AUTO-ALBUM FROM DIRECTORY STRUCTURE (F31)
+//   32. ALBUM EDITOR VIEW (F32)
+//   33. LIGHTBOX / SLIDESHOW (F7)
+//   34. COMPARE VIEW (M59 P10 / F15)
+//   35. CONTEXT MENU (F1)
+//   36. BULK OPERATIONS (F33, F34)
+//   37. M59 PHASE 1 — CLIP/GIF EXPORT, FRAME CAPTURE, WEBP CONVERSION
+//   38. GIF OPTIMIZER — target-size re-encode for existing GIFs
+//   39. SEARCH (FTS5) + QUERY PARSER + SMART ALBUMS — M59 P3
+//   40. PERCEPTUAL HASH (dHash 64-bit) — M59 P3
+//   41. STACKS + TRASH — M59 P5
+//   42. TIMELINE + MAP — M59 P6
+//   43. AI CHAT TOOLS
+//   44. ACTIVATION
+//
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 1: DATABASE WRAPPER
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -55,6 +102,27 @@ const db = {
  * @param {{ mode: 'SET'|'ADD'|'REMOVE', ids: number[] }} updateIDs
  * @returns {Array<{ type: string, sql: string, params: any[] }>}
  */
+/**
+ * rAF-throttle a hot-path handler through the HOST's shared primitive when
+ * available (api.ui.rafThrottle — the same helper the built-in workbench
+ * uses), falling back to a local rAF coalescer. Returned fn has .dispose().
+ */
+function moRafThrottle(fn) {
+  if (_api && _api.ui && typeof _api.ui.rafThrottle === 'function') return _api.ui.rafThrottle(fn);
+  let handle = null; let latest = null;
+  const wrapped = (...args) => {
+    latest = args;
+    if (handle === null) {
+      handle = requestAnimationFrame(() => {
+        handle = null; const a = latest; latest = null; if (a) fn(...a);
+      });
+    }
+  };
+  wrapped.dispose = () => { if (handle !== null) cancelAnimationFrame(handle); handle = null; latest = null; };
+  wrapped.flush = () => {};
+  return wrapped;
+}
+
 function buildRelationOps(table, entityCol, relatedCol, entityId, updateIDs) {
   const ops = [];
   const { mode, ids } = updateIDs;
@@ -2010,7 +2078,7 @@ const VideoFileQueries = {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 12: SCAN CONFIGURATION
+// SECTION 11: SCAN CONFIGURATION
 // ═══════════════════════════════════════════════════════════════════════════════
 // Adapted from stash: pkg/manager/config.go — scan configuration defaults
 
@@ -2036,7 +2104,7 @@ const SCAN_DEFAULTS = {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 13: EXTERNAL TOOL DETECTION
+// SECTION 12: EXTERNAL TOOL DETECTION
 // ═══════════════════════════════════════════════════════════════════════════════
 // Adapted from stash: pkg/manager/manager.go — external binary detection
 
@@ -2145,7 +2213,7 @@ async function detectHwEncoders() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 14: FINGERPRINT SERVICE
+// SECTION 13: FINGERPRINT SERVICE
 // ═══════════════════════════════════════════════════════════════════════════════
 // Adapted from stash: pkg/file/hash.go — oshash + MD5 computation
 
@@ -2212,7 +2280,7 @@ async function fingerprintFile(filePath, fileType) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 15: METADATA EXTRACTION SERVICE
+// SECTION 14: METADATA EXTRACTION SERVICE
 // ═══════════════════════════════════════════════════════════════════════════════
 // Adapted from stash: pkg/ffmpeg/ffprobe.go — ffprobe JSON parsing
 // Adapted from stash: internal/manager/task_scan.go — EXIF extraction
@@ -2313,7 +2381,7 @@ async function extractMetadata(filePath, fileType) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 16: DIRECTORY WALKER & FILTER PIPELINE
+// SECTION 15: DIRECTORY WALKER & FILTER PIPELINE
 // ═══════════════════════════════════════════════════════════════════════════════
 // Adapted from stash: internal/manager/task_scan.go — recursive directory walk
 
@@ -2418,7 +2486,7 @@ async function walkDirectory(rootPath, options, onProgress) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 17: SCAN ORCHESTRATOR
+// SECTION 16: SCAN ORCHESTRATOR
 // ═══════════════════════════════════════════════════════════════════════════════
 // Adapted from stash: internal/manager/task_scan.go — scan orchestration
 
@@ -2758,7 +2826,7 @@ function cancelScan() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 17B: FILE WATCHER & AUTO-SCAN
+// SECTION 17: FILE WATCHER & AUTO-SCAN
 // ═══════════════════════════════════════════════════════════════════════════════
 // After the first manual scan, we watch scanned directories for changes and
 // auto-scan new/modified/deleted files incrementally. On relaunch we also run
@@ -4850,9 +4918,21 @@ function moDropdown(options = {}) {
 }
 
 const MO_CSS = `
+/* ── MO theme bridge (M83 citizenship) ──────────────────────────────────
+   Brand identity stays local (--mo-accent purple, --mo-star gold — flip
+   --mo-accent to var(--px-accent) to adopt the app accent). Everything
+   semantic derives from app tokens with the ORIGINAL value as fallback, so
+   the current look is pixel-identical while other themes now apply.
+   Deliberately NOT tokenized: #fff/#000 + black/white alpha (text-on-accent,
+   scrims, hover veils — these must not flip with the theme). */
+:root {
+  --mo-accent: #9333ea;
+  --mo-star: #f5c518;
+}
+
 /* ═══ Grid Browser ═══ */
 .mo-grid-browser {
-  --mo-rating-color: #f5c518;
+  --mo-rating-color: var(--mo-star);
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -4871,7 +4951,7 @@ const MO_CSS = `
 .mo-rubber-band {
   display: none;
   position: absolute;
-  border: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  border: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
   background: rgba(147, 51, 234, 0.15);
   pointer-events: none;
   z-index: 10;
@@ -4891,16 +4971,16 @@ const MO_CSS = `
   flex: 1;
   min-width: 120px;
   background: var(--vscode-input-background, var(--px-border));
-  color: var(--vscode-input-foreground, #ccc);
-  border: 1px solid var(--vscode-input-border, #555);
+  color: var(--vscode-input-foreground, var(--vscode-foreground, #ccc));
+  border: 1px solid var(--vscode-input-border, var(--px-border, #555));
   border-radius: var(--parallx-radius-sm, 3px);
   padding: 4px 8px;
   font-size: var(--parallx-fontSize-base, 12px);
   font-family: inherit;
   outline: none;
 }
-.mo-toolbar-search:focus { border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea)); }
-.mo-toolbar-search::placeholder { color: var(--vscode-input-placeholderForeground, #888); }
+.mo-toolbar-search:focus { border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); }
+.mo-toolbar-search::placeholder { color: var(--vscode-input-placeholderForeground, var(--vscode-descriptionForeground, #888)); }
 .mo-toolbar-group {
   display: flex;
   align-items: center;
@@ -4908,9 +4988,9 @@ const MO_CSS = `
 }
 .mo-toolbar-btn {
   position: relative;
-  background: var(--vscode-button-secondaryBackground, #3a3a3a);
-  color: var(--vscode-button-secondaryForeground, #ccc);
-  border: 1px solid var(--vscode-panel-border, #555);
+  background: var(--vscode-button-secondaryBackground, var(--vscode-input-background, #3a3a3a));
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground, #ccc));
+  border: 1px solid var(--vscode-panel-border, var(--px-border, #555));
   border-radius: var(--parallx-radius-sm, 3px);
   padding: 3px 8px;
   font-size: var(--parallx-fontSize-sm, 11px);
@@ -4920,11 +5000,11 @@ const MO_CSS = `
   gap: 4px;
 }
 .mo-toolbar-btn:hover { background: var(--vscode-button-secondaryHoverBackground, #4a4a4a); }
-.mo-toolbar-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea)); outline-offset: -1px; }
+.mo-toolbar-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); outline-offset: -1px; }
 .mo-toolbar-select {
   background: var(--vscode-input-background, var(--px-border));
-  color: var(--vscode-input-foreground, #ccc);
-  border: 1px solid var(--vscode-input-border, #555);
+  color: var(--vscode-input-foreground, var(--vscode-foreground, #ccc));
+  border: 1px solid var(--vscode-input-border, var(--px-border, #555));
   border-radius: var(--parallx-radius-sm, 3px);
   padding: 3px 6px;
   font-size: var(--parallx-fontSize-sm, 11px);
@@ -4933,12 +5013,12 @@ const MO_CSS = `
 }
 .mo-toolbar-label {
   font-size: var(--parallx-fontSize-sm, 11px);
-  color: var(--vscode-descriptionForeground, #888);
+  color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #888));
   white-space: nowrap;
 }
 .mo-toolbar-count {
   font-size: var(--parallx-fontSize-sm, 11px);
-  color: var(--vscode-descriptionForeground, #888);
+  color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #888));
   white-space: nowrap;
   margin-left: auto;
 }
@@ -4975,7 +5055,7 @@ const MO_CSS = `
   overflow: hidden;
   cursor: pointer;
   background: var(--vscode-editor-background);
-  border: 1px solid var(--vscode-panel-border, #333);
+  border: 1px solid var(--vscode-panel-border, var(--px-surface, #333));
   transition: border-color 0.15s;
   /* Prevent shift+click from triggering native text selection across cards.
      Without this, browsers select the text under the pointer instead of
@@ -4986,9 +5066,9 @@ const MO_CSS = `
   content-visibility: auto;
   contain-intrinsic-size: 280px 240px;
 }
-.mo-card:hover { border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea)); }
-.mo-card:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea)); outline-offset: -1px; }
-.mo-card.mo-selected { border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea)); box-shadow: 0 0 0 1px var(--vscode-focusBorder, var(--px-accent, #9333ea)); }
+.mo-card:hover { border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); }
+.mo-card:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); outline-offset: -1px; }
+.mo-card.mo-selected { border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); box-shadow: 0 0 0 1px var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); }
 /* Items currently being securely erased by Eraser — visible-but-pending. */
 .mo-card.mo-card-erasing { opacity: 0.55; pointer-events: none; filter: grayscale(0.4); position: relative; }
 .mo-card.mo-card-erasing::after {
@@ -5068,7 +5148,7 @@ const MO_CSS = `
   font-size: var(--parallx-fontSize-xs, 10px);
   padding: 1px 6px;
   border-radius: 999px;
-  background: var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  background: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
   color: #fff;
   font-weight: 700;
   pointer-events: none;
@@ -5082,9 +5162,9 @@ const MO_CSS = `
 }
 .mo-timeline-section-header {
   position: sticky; top: 0;
-  background: var(--vscode-editor-background, #1f1f1f);
+  background: var(--vscode-editor-background, var(--px-bg, #1f1f1f));
   font-weight: 600; font-size: 13px; padding: 10px 4px; margin-top: 8px;
-  border-bottom: 1px solid var(--vscode-panel-border, #444);
+  border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, #444));
   z-index: 1;
 }
 .mo-timeline-grid {
@@ -5099,7 +5179,7 @@ const MO_CSS = `
   display: flex; align-items: center; justify-content: center;
   border: 1px solid transparent;
 }
-.mo-timeline-tile:hover { border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea)); }
+.mo-timeline-tile:hover { border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); }
 .mo-timeline-tile img { width: 100%; height: 100%; object-fit: cover; }
 .mo-timeline-tile-ph { opacity: 0.5; }
 .mo-map-dialog { width: 940px; max-width: 96vw; }
@@ -5113,7 +5193,7 @@ const MO_CSS = `
   bottom: 4px;
   right: 4px;
   font-size: var(--parallx-fontSize-xs, 10px);
-  color: var(--mo-rating-color, #f5c518);
+  color: var(--mo-rating-color, var(--mo-star));
   pointer-events: none;
 }
 /* ── M59 P9 / F12 — Color labels ── */
@@ -5205,7 +5285,7 @@ const MO_CSS = `
 }
 .mo-card-detail {
   font-size: var(--parallx-fontSize-xs, 10px);
-  color: var(--vscode-descriptionForeground, #888);
+  color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #888));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -5225,7 +5305,7 @@ const MO_CSS = `
 }
 .mo-card-size {
   font-size: var(--parallx-fontSize-xs, 10px);
-  color: var(--vscode-descriptionForeground, #888);
+  color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #888));
   white-space: nowrap;
   flex-shrink: 0;
   opacity: 0.85;
@@ -5252,7 +5332,7 @@ const MO_CSS = `
 .mo-card-tag-pill {
   display: inline-block;
   padding: 0 5px;
-  background: var(--vscode-badge-background, #4d4d4d);
+  background: var(--vscode-badge-background, var(--px-border, #4d4d4d));
   color: var(--vscode-badge-foreground, #fff);
   border-radius: 8px;
   font-size: 9px;
@@ -5277,18 +5357,18 @@ const MO_CSS = `
   font-size: var(--parallx-fontSize-sm, 11px);
 }
 .mo-page-btn {
-  background: var(--vscode-button-secondaryBackground, #3a3a3a);
-  color: var(--vscode-button-secondaryForeground, #ccc);
-  border: 1px solid var(--vscode-panel-border, #555);
+  background: var(--vscode-button-secondaryBackground, var(--vscode-input-background, #3a3a3a));
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground, #ccc));
+  border: 1px solid var(--vscode-panel-border, var(--px-border, #555));
   border-radius: var(--parallx-radius-sm, 3px);
   padding: 2px 8px;
   font-size: var(--parallx-fontSize-sm, 11px);
   cursor: pointer;
 }
 .mo-page-btn:hover { background: var(--vscode-button-secondaryHoverBackground, #4a4a4a); }
-.mo-page-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea)); outline-offset: -1px; }
+.mo-page-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); outline-offset: -1px; }
 .mo-page-btn:disabled { opacity: 0.4; cursor: default; }
-.mo-page-info { color: var(--vscode-descriptionForeground, #888); }
+.mo-page-info { color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #888)); }
 /* Center the bare-number label in the per-page dropdown; the chevron stays
    on the right (its own flex item keeps space-between balanced). */
 .mo-pagination .mo-dropdown__button { justify-content: center; }
@@ -5301,7 +5381,7 @@ const MO_CSS = `
 
 /* ═══ Sidebar ═══ */
 .mo-sidebar {
-  --mo-rating-color: #f5c518;
+  --mo-rating-color: var(--mo-star);
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -5338,7 +5418,7 @@ const MO_CSS = `
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: var(--vscode-sideBarSectionHeader-foreground, #ccc);
+  color: var(--vscode-sideBarSectionHeader-foreground, var(--vscode-foreground, #ccc));
   background: var(--vscode-sideBarSectionHeader-background, transparent);
   border-bottom: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
   cursor: pointer;
@@ -5369,7 +5449,7 @@ const MO_CSS = `
 }
 .mo-sidebar-sash:hover,
 .mo-sidebar-sash.mo-sash-active {
-  background: var(--vscode-sash-hoverBorder, var(--vscode-focusBorder, var(--px-accent, #9333ea)));
+  background: var(--vscode-sash-hoverBorder, var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))));
 }
 /* Sidebar footer + keyboard-shortcuts launcher */
 .mo-sidebar-footer {
@@ -5380,7 +5460,7 @@ const MO_CSS = `
 .mo-sidebar-help-btn {
   display: flex; align-items: center; gap: 6px; width: 100%;
   background: none; border: none; cursor: pointer; text-align: left;
-  color: var(--vscode-sideBar-foreground, #ccc); opacity: 0.78;
+  color: var(--vscode-sideBar-foreground, var(--vscode-foreground, #ccc)); opacity: 0.78;
   padding: 4px 6px; border-radius: 4px;
   font-size: var(--parallx-fontSize-sm, 11px);
 }
@@ -5405,7 +5485,7 @@ kbd.mo-key {
   display: inline-block; min-width: 16px; text-align: center;
   padding: 1px 6px; font-size: 11px;
   font-family: var(--parallx-fontFamily-ui, system-ui, sans-serif);
-  line-height: 1.5; color: var(--vscode-foreground, #ddd);
+  line-height: 1.5; color: var(--vscode-foreground, var(--px-text, #ddd));
   background: var(--vscode-keybindingLabel-background, rgba(128,128,128,0.17));
   border: 1px solid var(--vscode-keybindingLabel-border, rgba(128,128,128,0.4));
   border-bottom-width: 2px; border-radius: 4px;
@@ -5424,12 +5504,12 @@ kbd.mo-key {
   text-overflow: ellipsis;
 }
 .mo-sidebar-item:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
-.mo-sidebar-item:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea)); outline-offset: -1px; }
-.mo-sidebar-item.mo-drop-target { background: var(--vscode-list-dropBackground, rgba(0,100,200,0.18)); outline: 1px dashed var(--vscode-focusBorder, var(--px-accent, #9333ea)); }
+.mo-sidebar-item:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); outline-offset: -1px; }
+.mo-sidebar-item.mo-drop-target { background: var(--vscode-list-dropBackground, rgba(0,100,200,0.18)); outline: 1px dashed var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); }
 .mo-sidebar-item-label { flex: 1; overflow: hidden; text-overflow: ellipsis; }
 .mo-sidebar-item-count {
   font-size: var(--parallx-fontSize-xs, 10px);
-  color: var(--vscode-descriptionForeground, #888);
+  color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #888));
   flex-shrink: 0;
 }
 .mo-sidebar-item .mo-icon-wrap { flex-shrink: 0; display: flex; align-items: center; }
@@ -5451,7 +5531,7 @@ kbd.mo-key {
 .mo-album-children.mo-collapsed { display: none; }
 .mo-sidebar-item.mo-reparent-target {
   background: var(--vscode-list-dropBackground, rgba(0,100,200,0.18));
-  outline: 1px dashed var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  outline: 1px dashed var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
 }
 /* #9 Tag tree */
 .mo-tag-chevron {
@@ -5482,7 +5562,7 @@ kbd.mo-key {
   grid-column: 1 / -1;
   text-align: center;
   padding: 24px 16px;
-  color: var(--vscode-descriptionForeground, #888);
+  color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #888));
   font-size: var(--parallx-fontSize-md, 13px);
 }
 /* #4 Rich empty / first-run state */
@@ -5496,7 +5576,7 @@ kbd.mo-key {
   gap: 8px;
   padding: 56px 24px;
   min-height: 240px;
-  color: var(--vscode-descriptionForeground, #888);
+  color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #888));
 }
 .mo-empty-rich-icon {
   opacity: 0.45;
@@ -5506,7 +5586,7 @@ kbd.mo-key {
 .mo-empty-rich-title {
   font-size: var(--parallx-fontSize-lg, 15px);
   font-weight: 600;
-  color: var(--vscode-foreground, #ddd);
+  color: var(--vscode-foreground, var(--px-text, #ddd));
 }
 .mo-empty-rich-sub {
   font-size: var(--parallx-fontSize-md, 13px);
@@ -5563,14 +5643,14 @@ kbd.mo-key {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--vscode-descriptionForeground, #555);
+  color: var(--vscode-descriptionForeground, var(--px-border, #555));
 }
 
 /* ═══ Display Mode Toggle ═══ */
 .mo-toolbar-btn.active {
-  background: var(--vscode-button-background, #0e639c);
+  background: var(--vscode-button-background, var(--vscode-button-background, #0e639c));
   color: var(--vscode-button-foreground, #fff);
-  border-color: var(--vscode-button-background, #0e639c);
+  border-color: var(--vscode-button-background, var(--vscode-button-background, #0e639c));
 }
 
 /* ═══ List Mode ═══ */
@@ -5593,8 +5673,8 @@ kbd.mo-key {
   -webkit-user-select: none;
 }
 .mo-list-row:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
-.mo-list-row:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea)); outline-offset: -1px; }
-.mo-list-row.mo-selected { background: var(--vscode-list-activeSelectionBackground, #094771); }
+.mo-list-row:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); outline-offset: -1px; }
+.mo-list-row.mo-selected { background: var(--vscode-list-activeSelectionBackground, var(--vscode-list-activeSelectionBackground, #094771)); }
 .mo-list-thumb {
   width: 40px;
   height: 40px;
@@ -5605,9 +5685,9 @@ kbd.mo-key {
 }
 .mo-list-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .mo-list-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--parallx-fontSize-md, 13px); }
-.mo-list-type { font-size: var(--parallx-fontSize-xs, 10px); text-transform: uppercase; color: var(--vscode-descriptionForeground, #888); width: 50px; flex-shrink: 0; }
-.mo-list-rating { font-size: var(--parallx-fontSize-sm, 11px); color: var(--mo-rating-color, #f5c518); width: 60px; flex-shrink: 0; }
-.mo-list-date { font-size: var(--parallx-fontSize-xs, 10px); color: var(--vscode-descriptionForeground, #888); width: 80px; flex-shrink: 0; text-align: right; }
+.mo-list-type { font-size: var(--parallx-fontSize-xs, 10px); text-transform: uppercase; color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #888)); width: 50px; flex-shrink: 0; }
+.mo-list-rating { font-size: var(--parallx-fontSize-sm, 11px); color: var(--mo-rating-color, var(--mo-star)); width: 60px; flex-shrink: 0; }
+.mo-list-date { font-size: var(--parallx-fontSize-xs, 10px); color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #888)); width: 80px; flex-shrink: 0; text-align: right; }
 
 /* ═══ Filter Panel ═══ */
 .mo-filter-panel {
@@ -5617,7 +5697,7 @@ kbd.mo-key {
   align-items: flex-start;
   gap: 16px 24px;
   padding: 12px 14px;
-  border-bottom: 1px solid var(--vscode-panel-border, #333);
+  border-bottom: 1px solid var(--vscode-panel-border, var(--px-surface, #333));
   background: var(--vscode-sideBar-background, var(--px-bg));
   font-size: var(--parallx-fontSize-sm, 11px);
 }
@@ -5627,13 +5707,13 @@ kbd.mo-key {
   font-weight: 600;
   font-size: var(--parallx-fontSize-xs, 10px);
   text-transform: uppercase;
-  color: var(--vscode-descriptionForeground, #888);
+  color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #888));
   letter-spacing: 0.5px;
 }
 .mo-filter-tag-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .mo-filter-row-label {
   font-size: var(--parallx-fontSize-xs, 10px);
-  color: var(--vscode-descriptionForeground, #888);
+  color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #888));
   flex-shrink: 0;
   text-transform: uppercase;
   letter-spacing: 0.4px;
@@ -5652,7 +5732,7 @@ kbd.mo-key {
   gap: 3px;
   padding: 2px 6px;
   border-radius: var(--parallx-radius-sm, 3px);
-  background: var(--vscode-badge-background, #4d4d4d);
+  background: var(--vscode-badge-background, var(--px-border, #4d4d4d));
   color: var(--vscode-badge-foreground, #fff);
   font-size: var(--parallx-fontSize-xs, 10px);
   white-space: nowrap;
@@ -5668,24 +5748,24 @@ kbd.mo-key {
   line-height: 1;
 }
 .mo-tag-pill-remove:hover { opacity: 1; }
-.mo-tag-pill-remove:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea)); border-radius: 2px; }
+.mo-tag-pill-remove:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); border-radius: 2px; }
 .mo-filter-tag-select {
   flex: 1;
   max-width: 200px;
   font-size: var(--parallx-fontSize-sm, 11px);
   padding: 2px 4px;
   background: var(--vscode-input-background, var(--px-border));
-  color: var(--vscode-input-foreground, #ccc);
-  border: 1px solid var(--vscode-input-border, #555);
+  color: var(--vscode-input-foreground, var(--vscode-foreground, #ccc));
+  border: 1px solid var(--vscode-input-border, var(--px-border, #555));
   border-radius: var(--parallx-radius-sm, 3px);
 }
 .mo-filter-tag-select:focus-visible, .mo-filter-date:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  outline: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
   outline-offset: -1px;
 }
 .mo-filter-depth-label {
   font-size: var(--parallx-fontSize-xs, 10px);
-  color: var(--vscode-descriptionForeground, #888);
+  color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #888));
   display: flex;
   align-items: center;
   gap: 4px;
@@ -5700,13 +5780,13 @@ kbd.mo-key {
   cursor: pointer;
   font-size: 18px;
   line-height: 1;
-  color: var(--vscode-descriptionForeground, #555);
+  color: var(--vscode-descriptionForeground, var(--px-border, #555));
   transition: color 0.1s;
   user-select: none;
 }
-.mo-star.filled, .mo-star.active { color: var(--mo-rating-color, #f5c518); }
-.mo-star:hover { color: var(--mo-rating-color, #f5c518); }
-.mo-star:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea)); outline-offset: 1px; border-radius: 2px; }
+.mo-star.filled, .mo-star.active { color: var(--mo-rating-color, var(--mo-star)); }
+.mo-star:hover { color: var(--mo-rating-color, var(--mo-star)); }
+.mo-star:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); outline-offset: 1px; border-radius: 2px; }
 .mo-filter-date-row {
   display: flex;
   align-items: center;
@@ -5716,8 +5796,8 @@ kbd.mo-key {
   font-size: var(--parallx-fontSize-sm, 11px);
   padding: 2px 4px;
   background: var(--vscode-input-background, var(--px-border));
-  color: var(--vscode-input-foreground, #ccc);
-  border: 1px solid var(--vscode-input-border, #555);
+  color: var(--vscode-input-foreground, var(--vscode-foreground, #ccc));
+  border: 1px solid var(--vscode-input-border, var(--px-border, #555));
   border-radius: var(--parallx-radius-sm, 3px);
   width: 130px;
 }
@@ -5726,13 +5806,13 @@ kbd.mo-key {
   align-self: flex-start;
   padding: 4px 10px;
   font-size: var(--parallx-fontSize-xs, 10px);
-  background: var(--vscode-button-secondaryBackground, #3a3d41);
-  color: var(--vscode-button-secondaryForeground, #ccc);
+  background: var(--vscode-button-secondaryBackground, var(--vscode-button-secondaryBackground, #3a3d41));
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground, #ccc));
   border: none;
   border-radius: var(--parallx-radius-sm, 3px);
   cursor: pointer;
 }
-.mo-filter-clear:hover { background: var(--vscode-button-secondaryHoverBackground, #45494e); }
+.mo-filter-clear:hover { background: var(--vscode-button-secondaryHoverBackground, var(--vscode-button-secondaryHoverBackground, #45494e)); }
 .mo-filter-empty {
   font-size: var(--parallx-fontSize-xs, 10px);
   color: var(--vscode-descriptionForeground, #666);
@@ -5746,11 +5826,11 @@ kbd.mo-key {
   margin: 4px 0 2px;
   font-size: var(--parallx-fontSize-xs, 11px);
   border-radius: var(--parallx-radius-sm, 3px);
-  border: 1px solid var(--vscode-input-border, var(--px-border, #3a3a3a));
+  border: 1px solid var(--vscode-input-border, var(--px-border, var(--vscode-input-background, #3a3a3a)));
   background: var(--vscode-input-background, #2a2a2a);
-  color: var(--vscode-input-foreground, #ddd);
+  color: var(--vscode-input-foreground, var(--px-text, #ddd));
 }
-.mo-tagpick-search:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea)); }
+.mo-tagpick-search:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); }
 .mo-tagpick-hint { font-size: 10px; opacity: 0.5; margin: 2px 0 4px; }
 .mo-tagpick-list {
   display: flex;
@@ -5760,7 +5840,7 @@ kbd.mo-key {
   max-height: 132px;
   overflow-y: auto;
   padding: 7px;
-  border: 1px solid var(--vscode-input-border, var(--px-border, #3a3a3a));
+  border: 1px solid var(--vscode-input-border, var(--px-border, var(--vscode-input-background, #3a3a3a)));
   border-radius: var(--parallx-radius-sm, 4px);
   background: var(--vscode-input-background, rgba(0, 0, 0, 0.18));
 }
@@ -5771,14 +5851,14 @@ kbd.mo-key {
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
-  border: 1px solid var(--vscode-input-border, var(--px-border, #3a3a3a));
-  background: var(--vscode-button-secondaryBackground, #3a3d41);
-  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground, #ddd));
+  border: 1px solid var(--vscode-input-border, var(--px-border, var(--vscode-input-background, #3a3a3a)));
+  background: var(--vscode-button-secondaryBackground, var(--vscode-button-secondaryBackground, #3a3d41));
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground, var(--px-text, #ddd)));
 }
-.mo-tagpick-chip:hover { border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea)); }
+.mo-tagpick-chip:hover { border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); }
 .mo-tagpick-chip.is-inc {
-  background: var(--vscode-button-background, var(--px-accent, #9333ea));
-  border-color: var(--vscode-button-background, var(--px-accent, #9333ea));
+  background: var(--vscode-button-background, var(--px-accent, var(--mo-accent)));
+  border-color: var(--vscode-button-background, var(--px-accent, var(--mo-accent)));
   color: var(--vscode-button-foreground, #fff);
 }
 .mo-tagpick-chip.is-exc {
@@ -5794,15 +5874,15 @@ kbd.mo-key {
   font-size: 10px;
   padding: 3px 11px;
   cursor: pointer;
-  border: 1px solid var(--vscode-input-border, var(--px-border, #3a3a3a));
+  border: 1px solid var(--vscode-input-border, var(--px-border, var(--vscode-input-background, #3a3a3a)));
   background: var(--vscode-input-background, #2a2a2a);
-  color: var(--vscode-foreground, #ccc);
+  color: var(--vscode-foreground, var(--vscode-foreground, #ccc));
 }
 .mo-tagmatch-btn + .mo-tagmatch-btn { border-left: none; }
 .mo-tagmatch-btn:hover { color: var(--vscode-foreground, #fff); }
 .mo-tagmatch-btn.active {
-  background: var(--vscode-button-background, var(--px-accent, #9333ea));
-  border-color: var(--vscode-button-background, var(--px-accent, #9333ea));
+  background: var(--vscode-button-background, var(--px-accent, var(--mo-accent)));
+  border-color: var(--vscode-button-background, var(--px-accent, var(--mo-accent)));
   color: var(--vscode-button-foreground, #fff);
 }
 .mo-filter-badge {
@@ -5812,7 +5892,7 @@ kbd.mo-key {
   min-width: 14px;
   height: 14px;
   border-radius: 7px;
-  background: var(--vscode-badge-background, #4d4d4d);
+  background: var(--vscode-badge-background, var(--px-border, #4d4d4d));
   color: var(--vscode-badge-foreground, #fff);
   font-size: var(--parallx-fontSize-xs, 10px);
   line-height: 14px;
@@ -5838,8 +5918,8 @@ kbd.mo-key {
 .mo-spinner {
   width: 24px;
   height: 24px;
-  border: 2px solid var(--vscode-panel-border, #555);
-  border-top-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  border: 2px solid var(--vscode-panel-border, var(--px-border, #555));
+  border-top-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
   border-radius: 50%;
   animation: mo-spin 0.6s linear infinite;
 }
@@ -5859,7 +5939,7 @@ kbd.mo-key {
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  border-bottom: 1px solid var(--vscode-panel-border, #333);
+  border-bottom: 1px solid var(--vscode-panel-border, var(--px-surface, #333));
   flex-shrink: 0;
 }
 .mo-detail-header-icon {
@@ -5881,15 +5961,15 @@ kbd.mo-key {
 }
 .mo-detail-header-actions button {
   background: none;
-  border: 1px solid var(--vscode-button-secondaryBackground, #333);
-  color: var(--vscode-button-secondaryForeground, #ccc);
+  border: 1px solid var(--vscode-button-secondaryBackground, var(--px-surface, #333));
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground, #ccc));
   padding: 3px 8px;
   border-radius: var(--parallx-radius-sm, 3px);
   cursor: pointer;
   font-size: var(--parallx-fontSize-xs, 11px);
 }
 .mo-detail-header-actions button:hover {
-  background: var(--vscode-button-secondaryHoverBackground, #444);
+  background: var(--vscode-button-secondaryHoverBackground, var(--vscode-widget-border, #444));
 }
 .mo-detail-body {
   display: flex;
@@ -5918,7 +5998,7 @@ kbd.mo-key {
   width: 320px;
   min-width: 260px;
   flex-shrink: 0;
-  border-left: 1px solid var(--vscode-panel-border, #333);
+  border-left: 1px solid var(--vscode-panel-border, var(--px-surface, #333));
   display: flex;
   flex-direction: column;
   overflow-y: auto;
@@ -5934,7 +6014,7 @@ kbd.mo-key {
 }
 .mo-detail-tab-bar {
   display: flex;
-  border-bottom: 1px solid var(--vscode-panel-border, #333);
+  border-bottom: 1px solid var(--vscode-panel-border, var(--px-surface, #333));
   flex-shrink: 0;
 }
 .mo-detail-tab-btn {
@@ -5942,7 +6022,7 @@ kbd.mo-key {
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
-  color: var(--vscode-foreground, #ccc);
+  color: var(--vscode-foreground, var(--vscode-foreground, #ccc));
   padding: 6px 12px;
   cursor: pointer;
   font-size: var(--parallx-fontSize-xs, 11px);
@@ -5951,7 +6031,7 @@ kbd.mo-key {
   opacity: 0.7;
 }
 .mo-detail-tab-btn.active {
-  border-bottom-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  border-bottom-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
   opacity: 1;
 }
 .mo-detail-tab-btn:hover {
@@ -5994,7 +6074,7 @@ kbd.mo-key {
 .mo-detail-star {
   cursor: pointer;
   font-size: var(--parallx-fontSize-md, 16px);
-  color: var(--vscode-panel-border, #555);
+  color: var(--vscode-panel-border, var(--px-border, #555));
   transition: color 0.1s;
   background: none;
   border: none;
@@ -6002,10 +6082,10 @@ kbd.mo-key {
   line-height: 1;
 }
 .mo-detail-star.filled {
-  color: var(--mo-rating-color, #f5c518);
+  color: var(--mo-rating-color, var(--mo-star));
 }
 .mo-detail-star:hover {
-  color: var(--mo-rating-color, #f5c518);
+  color: var(--mo-rating-color, var(--mo-star));
 }
 .mo-detail-field {
   margin-bottom: 8px;
@@ -6021,8 +6101,8 @@ kbd.mo-key {
   width: 100%;
   box-sizing: border-box;
   background: var(--vscode-input-background, var(--px-bg));
-  color: var(--vscode-input-foreground, #ccc);
-  border: 1px solid var(--vscode-input-border, #333);
+  color: var(--vscode-input-foreground, var(--vscode-foreground, #ccc));
+  border: 1px solid var(--vscode-input-border, var(--px-surface, #333));
   border-radius: var(--parallx-radius-sm, 3px);
   padding: 4px 6px;
   font-size: var(--parallx-fontSize-base, 13px);
@@ -6030,7 +6110,7 @@ kbd.mo-key {
 }
 .mo-detail-field input:focus,
 .mo-detail-field textarea:focus {
-  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
   outline: none;
 }
 .mo-detail-field textarea {
@@ -6055,7 +6135,7 @@ kbd.mo-key {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  background: var(--vscode-badge-background, #333);
+  background: var(--vscode-badge-background, var(--px-surface, #333));
   color: var(--vscode-badge-foreground, #fff);
   padding: 2px 6px;
   border-radius: var(--parallx-radius-sm, 3px);
@@ -6081,14 +6161,14 @@ kbd.mo-key {
   width: 100%;
   box-sizing: border-box;
   background: var(--vscode-input-background, var(--px-bg));
-  color: var(--vscode-input-foreground, #ccc);
-  border: 1px solid var(--vscode-input-border, #333);
+  color: var(--vscode-input-foreground, var(--vscode-foreground, #ccc));
+  border: 1px solid var(--vscode-input-border, var(--px-surface, #333));
   border-radius: var(--parallx-radius-sm, 3px);
   padding: 4px 6px;
   font-size: var(--parallx-fontSize-xs, 11px);
 }
 .mo-detail-autocomplete input:focus {
-  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
   outline: none;
 }
 .mo-detail-autocomplete-list {
@@ -6115,7 +6195,7 @@ kbd.mo-key {
 .mo-detail-nav-btn {
   background: none;
   border: none;
-  color: var(--vscode-foreground, #ccc);
+  color: var(--vscode-foreground, var(--vscode-foreground, #ccc));
   cursor: pointer;
   padding: 4px;
   opacity: 0.7;
@@ -6123,7 +6203,7 @@ kbd.mo-key {
 }
 .mo-detail-nav-btn:hover {
   opacity: 1;
-  background: var(--vscode-toolbar-hoverBackground, #333);
+  background: var(--vscode-toolbar-hoverBackground, var(--px-surface, #333));
 }
 .mo-detail-loading {
   display: flex;
@@ -6152,20 +6232,20 @@ kbd.mo-key {
 /* Responsive: stack to vertical below 520px editor width */
 @container (max-width: 520px) {
   .mo-detail-body { flex-direction: column; }
-  .mo-detail-panel { width: 100%; border-left: none; border-top: 1px solid var(--vscode-panel-border, #333); }
+  .mo-detail-panel { width: 100%; border-left: none; border-top: 1px solid var(--vscode-panel-border, var(--px-surface, #333)); }
   .mo-detail-preview { min-height: 200px; }
 }
 .mo-detail-star:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  outline: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
   outline-offset: 1px;
   border-radius: 2px;
 }
 .mo-detail-tab-btn:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  outline: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
   outline-offset: -1px;
 }
 .mo-detail-tag-pill button:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  outline: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
   border-radius: 2px;
 }
 /* D8: Selection Toolbar */
@@ -6175,7 +6255,7 @@ kbd.mo-key {
   gap: 8px;
   padding: 4px 8px;
   background: var(--vscode-toolbar-activeBackground, rgba(90,93,110,.31));
-  border-bottom: 1px solid var(--vscode-panel-border, #333);
+  border-bottom: 1px solid var(--vscode-panel-border, var(--px-surface, #333));
   font-size: var(--parallx-fontSize-sm, 12px);
 }
 .mo-selection-bar .mo-sel-count {
@@ -6184,15 +6264,15 @@ kbd.mo-key {
 }
 .mo-selection-bar button {
   background: none;
-  border: 1px solid var(--vscode-button-secondaryBackground, #444);
-  color: var(--vscode-button-secondaryForeground, #ccc);
+  border: 1px solid var(--vscode-button-secondaryBackground, var(--vscode-widget-border, #444));
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground, #ccc));
   padding: 2px 8px;
   border-radius: var(--parallx-radius-sm, 3px);
   cursor: pointer;
   font-size: var(--parallx-fontSize-xs, 10px);
 }
 .mo-selection-bar button:hover {
-  background: var(--vscode-button-secondaryHoverBackground, #555);
+  background: var(--vscode-button-secondaryHoverBackground, var(--px-border, #555));
 }
 .mo-selection-bar button:disabled {
   opacity: 0.45;
@@ -6203,16 +6283,16 @@ kbd.mo-key {
 }
 .mo-selection-bar .mo-sel-spacer { flex: 1; }
 .mo-selection-bar .mo-sel-delete {
-  border-color: var(--vscode-errorForeground, #f44747);
-  color: var(--vscode-errorForeground, #f44747);
+  border-color: var(--vscode-errorForeground, var(--vscode-errorForeground, #f44747));
+  color: var(--vscode-errorForeground, var(--vscode-errorForeground, #f44747));
 }
 .mo-selection-bar .mo-sel-delete:hover {
-  background: var(--vscode-errorForeground, #f44747);
+  background: var(--vscode-errorForeground, var(--vscode-errorForeground, #f44747));
   color: #fff;
 }
 .mo-bulk-dialog-warn {
   font-size: var(--parallx-fontSize-sm, 12px);
-  color: var(--vscode-descriptionForeground, #999);
+  color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #999));
   margin: 4px 0 8px;
 }
 .mo-bulk-dialog-opt {
@@ -6220,16 +6300,16 @@ kbd.mo-key {
   align-items: center;
   gap: 6px;
   font-size: var(--parallx-fontSize-sm, 12px);
-  color: var(--vscode-foreground, #ccc);
+  color: var(--vscode-foreground, var(--vscode-foreground, #ccc));
   margin: 4px 0 12px;
   cursor: pointer;
   user-select: none;
 }
 .mo-bulk-dialog-opt input { margin: 0; }
 .mo-bulk-dialog .mo-sel-delete {
-  background: var(--vscode-errorForeground, #f44747);
+  background: var(--vscode-errorForeground, var(--vscode-errorForeground, #f44747));
   color: #fff;
-  border-color: var(--vscode-errorForeground, #f44747);
+  border-color: var(--vscode-errorForeground, var(--vscode-errorForeground, #f44747));
 }
 .mo-bulk-dialog .mo-sel-delete:hover { opacity: 0.85; }
 /* D8: Bulk Dialog */
@@ -6244,7 +6324,7 @@ kbd.mo-key {
 }
 .mo-bulk-dialog {
   background: var(--vscode-editor-background, var(--px-bg));
-  border: 1px solid var(--vscode-panel-border, #333);
+  border: 1px solid var(--vscode-panel-border, var(--px-surface, #333));
   border-radius: var(--parallx-radius-sm, 3px);
   padding: 16px;
   min-width: 360px;
@@ -6264,15 +6344,15 @@ kbd.mo-key {
   display: block;
   font-size: var(--parallx-fontSize-sm, 12px);
   margin-bottom: 4px;
-  color: var(--vscode-descriptionForeground, #999);
+  color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #999));
 }
 .mo-bulk-dialog-section select,
 .mo-bulk-dialog-section input[type="number"] {
   width: 100%;
   padding: 4px 6px;
-  background: var(--vscode-input-background, #333);
-  color: var(--vscode-input-foreground, #ccc);
-  border: 1px solid var(--vscode-input-border, #555);
+  background: var(--vscode-input-background, var(--px-surface, #333));
+  color: var(--vscode-input-foreground, var(--vscode-foreground, #ccc));
+  border: 1px solid var(--vscode-input-border, var(--px-border, #555));
   border-radius: var(--parallx-radius-sm, 3px);
   font-size: var(--parallx-fontSize-sm, 12px);
 }
@@ -6284,17 +6364,17 @@ kbd.mo-key {
 .mo-bulk-mode-btns button {
   flex: 1;
   padding: 3px 0;
-  border: 1px solid var(--vscode-button-secondaryBackground, #444);
+  border: 1px solid var(--vscode-button-secondaryBackground, var(--vscode-widget-border, #444));
   background: none;
-  color: var(--vscode-button-secondaryForeground, #ccc);
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground, #ccc));
   cursor: pointer;
   font-size: var(--parallx-fontSize-xs, 10px);
   border-radius: var(--parallx-radius-sm, 3px);
 }
 .mo-bulk-mode-btns button.active {
-  background: var(--vscode-button-background, #0e639c);
+  background: var(--vscode-button-background, var(--vscode-button-background, #0e639c));
   color: var(--vscode-button-foreground, #fff);
-  border-color: var(--vscode-button-background, #0e639c);
+  border-color: var(--vscode-button-background, var(--vscode-button-background, #0e639c));
 }
 .mo-bulk-dialog-footer {
   display: flex;
@@ -6307,14 +6387,14 @@ kbd.mo-key {
   border-radius: var(--parallx-radius-sm, 3px);
   cursor: pointer;
   font-size: var(--parallx-fontSize-sm, 12px);
-  border: 1px solid var(--vscode-button-secondaryBackground, #444);
+  border: 1px solid var(--vscode-button-secondaryBackground, var(--vscode-widget-border, #444));
   background: none;
-  color: var(--vscode-button-secondaryForeground, #ccc);
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground, #ccc));
 }
 .mo-bulk-dialog-footer button.primary {
-  background: var(--vscode-button-background, #0e639c);
+  background: var(--vscode-button-background, var(--vscode-button-background, #0e639c));
   color: var(--vscode-button-foreground, #fff);
-  border-color: var(--vscode-button-background, #0e639c);
+  border-color: var(--vscode-button-background, var(--vscode-button-background, #0e639c));
 }
 /* Bulk Tag dialog — multi-select chips + searchable browse list */
 .mo-bulk-tag-dialog { min-width: 420px; max-width: 520px; }
@@ -6325,12 +6405,12 @@ kbd.mo-key {
   min-height: 26px;
   padding: 4px;
   background: var(--vscode-input-background, var(--px-bg));
-  border: 1px solid var(--vscode-input-border, #333);
+  border: 1px solid var(--vscode-input-border, var(--px-surface, #333));
   border-radius: var(--parallx-radius-sm, 3px);
 }
 .mo-bulk-tag-chips-empty {
   font-size: var(--parallx-fontSize-xs, 11px);
-  color: var(--vscode-descriptionForeground, #888);
+  color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #888));
   padding: 2px 4px;
   font-style: italic;
 }
@@ -6339,7 +6419,7 @@ kbd.mo-key {
   align-items: center;
   gap: 4px;
   padding: 2px 4px 2px 8px;
-  background: var(--vscode-badge-background, #4d4d4d);
+  background: var(--vscode-badge-background, var(--px-border, #4d4d4d));
   color: var(--vscode-badge-foreground, #fff);
   border-radius: 10px;
   font-size: var(--parallx-fontSize-xs, 11px);
@@ -6362,13 +6442,13 @@ kbd.mo-key {
   box-sizing: border-box;
   padding: 5px 8px;
   background: var(--vscode-input-background, var(--px-bg));
-  color: var(--vscode-input-foreground, #ccc);
-  border: 1px solid var(--vscode-input-border, #333);
+  color: var(--vscode-input-foreground, var(--vscode-foreground, #ccc));
+  border: 1px solid var(--vscode-input-border, var(--px-surface, #333));
   border-radius: var(--parallx-radius-sm, 3px);
   font-size: var(--parallx-fontSize-sm, 12px);
 }
 .mo-bulk-tag-search:focus {
-  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
   outline: none;
 }
 .mo-bulk-tag-browse-section { margin-bottom: 4px; }
@@ -6392,7 +6472,7 @@ kbd.mo-key {
   background: var(--vscode-list-hoverBackground, var(--px-surface-hover));
 }
 .mo-bulk-tag-row.is-picked {
-  background: var(--vscode-list-activeSelectionBackground, #094771);
+  background: var(--vscode-list-activeSelectionBackground, var(--vscode-list-activeSelectionBackground, #094771));
   color: var(--vscode-list-activeSelectionForeground, #fff);
 }
 .mo-bulk-tag-row input[type="checkbox"] { margin: 0; pointer-events: none; }
@@ -6415,19 +6495,19 @@ kbd.mo-key {
 }
 .mo-bulk-tag-row-state-none {
   background: transparent;
-  color: var(--vscode-descriptionForeground, #888);
-  border: 1px solid var(--vscode-input-border, #444);
+  color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #888));
+  border: 1px solid var(--vscode-input-border, var(--vscode-widget-border, #444));
 }
 .mo-bulk-tag-chip-all { outline: 1px solid var(--vscode-testing-iconPassed, #388a34); }
 .mo-bulk-tag-chip-some { outline: 1px solid var(--vscode-editorWarning-foreground, #b89500); }
 .mo-bulk-mode-hint {
   font-size: 10px;
-  color: var(--vscode-descriptionForeground, #888);
+  color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #888));
   margin-top: 2px;
   font-style: italic;
 }
 .mo-bulk-tag-dialog.mo-mode-replace .mo-bulk-mode-hint {
-  color: var(--vscode-errorForeground, #f48771);
+  color: var(--vscode-errorForeground, var(--vscode-errorForeground, #f48771));
   font-style: normal;
   font-weight: 600;
 }
@@ -6445,10 +6525,10 @@ kbd.mo-key {
   padding: 12px 8px;
   text-align: center;
   font-size: var(--parallx-fontSize-xs, 11px);
-  color: var(--vscode-descriptionForeground, #888);
+  color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #888));
 }
 .mo-bulk-dialog-footer button:hover {
-  background: var(--vscode-button-secondaryHoverBackground, #555);
+  background: var(--vscode-button-secondaryHoverBackground, var(--px-border, #555));
 }
 .mo-bulk-dialog-footer button.primary:hover {
   background: var(--vscode-button-hoverBackground, #1177bb);
@@ -6461,7 +6541,7 @@ kbd.mo-key {
 .mo-selection-bar button:focus-visible,
 .mo-bulk-dialog-footer button:focus-visible,
 .mo-bulk-mode-btns button:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  outline: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
   outline-offset: -1px;
 }
 /* D8: Album Editor */
@@ -6476,7 +6556,7 @@ kbd.mo-key {
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  border-bottom: 1px solid var(--vscode-panel-border, #333);
+  border-bottom: 1px solid var(--vscode-panel-border, var(--px-surface, #333));
 }
 .mo-album-header h2 {
   margin: 0;
@@ -6495,15 +6575,15 @@ kbd.mo-key {
   display: block;
   font-size: var(--parallx-fontSize-sm, 12px);
   margin-bottom: 4px;
-  color: var(--vscode-descriptionForeground, #999);
+  color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #999));
 }
 .mo-album-field input,
 .mo-album-field textarea {
   width: 100%;
   padding: 4px 6px;
-  background: var(--vscode-input-background, #333);
-  color: var(--vscode-input-foreground, #ccc);
-  border: 1px solid var(--vscode-input-border, #555);
+  background: var(--vscode-input-background, var(--px-surface, #333));
+  color: var(--vscode-input-foreground, var(--vscode-foreground, #ccc));
+  border: 1px solid var(--vscode-input-border, var(--px-border, #555));
   border-radius: var(--parallx-radius-sm, 3px);
   font-size: var(--parallx-fontSize-sm, 12px);
   box-sizing: border-box;
@@ -6511,7 +6591,7 @@ kbd.mo-key {
 .mo-album-field input:focus,
 .mo-album-field textarea:focus {
   outline: none;
-  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
 }
 .mo-album-field textarea {
   min-height: 60px;
@@ -6565,10 +6645,10 @@ kbd.mo-key {
 .mo-album-drag-handle:active { cursor: grabbing; }
 .mo-album-mini-card.mo-dragging { opacity: 0.4; }
 .mo-album-mini-card.mo-drop-before {
-  box-shadow: -2px 0 0 0 var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  box-shadow: -2px 0 0 0 var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
 }
 .mo-album-mini-card.mo-drop-after {
-  box-shadow: 2px 0 0 0 var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  box-shadow: 2px 0 0 0 var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
 }
 .mo-album-empty {
   opacity: 0.6;
@@ -6577,8 +6657,8 @@ kbd.mo-key {
 }
 
 /* ═══ Focus Indicator (F2) ═══ */
-.mo-card.mo-focused { outline: 2px solid var(--vscode-focusBorder, var(--px-accent, #9333ea)); outline-offset: -2px; }
-.mo-list-row.mo-focused { outline: 2px solid var(--vscode-focusBorder, var(--px-accent, #9333ea)); outline-offset: -2px; }
+.mo-card.mo-focused { outline: 2px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); outline-offset: -2px; }
+.mo-list-row.mo-focused { outline: 2px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); outline-offset: -2px; }
 
 /* ═══ Context Menu (F1) ═══ */
 .mo-context-menu {
@@ -6591,7 +6671,7 @@ kbd.mo-key {
   box-shadow: 0 4px 16px rgba(0,0,0,0.4);
   padding: 4px 0;
   font-size: var(--parallx-fontSize-md, 13px);
-  color: var(--vscode-menu-foreground, #ccc);
+  color: var(--vscode-menu-foreground, var(--vscode-foreground, #ccc));
 }
 .mo-context-menu-item {
   display: flex;
@@ -6602,14 +6682,14 @@ kbd.mo-key {
   white-space: nowrap;
 }
 .mo-context-menu-item:hover {
-  background: var(--vscode-menu-selectionBackground, #094771);
+  background: var(--vscode-menu-selectionBackground, var(--vscode-list-activeSelectionBackground, #094771));
   color: var(--vscode-menu-selectionForeground, #fff);
 }
 .mo-context-menu-item.mo-ctx-danger {
-  color: var(--vscode-errorForeground, #f44747);
+  color: var(--vscode-errorForeground, var(--vscode-errorForeground, #f44747));
 }
 .mo-context-menu-item.mo-ctx-danger:hover {
-  background: var(--vscode-errorForeground, #f44747);
+  background: var(--vscode-errorForeground, var(--vscode-errorForeground, #f44747));
   color: #fff;
 }
 .mo-context-menu-sep {
@@ -6680,7 +6760,7 @@ kbd.mo-key {
 }
 .mo-lightbox-nav:hover {
   opacity: 1;
-  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
   background: rgba(255,255,255,0.14);
 }
 .mo-lightbox-nav.prev { left: 12px; }
@@ -6695,7 +6775,7 @@ kbd.mo-key {
   font-size: var(--parallx-fontSize-md, 13px);
 }
 .mo-lightbox-bar .mo-lb-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mo-lightbox-bar .mo-lb-rating { color: var(--mo-rating-color, #f5c518); }
+.mo-lightbox-bar .mo-lb-rating { color: var(--mo-rating-color, var(--mo-star)); }
 .mo-lightbox-bar .mo-lb-counter { opacity: 0.7; font-variant-numeric: tabular-nums; }
 .mo-lightbox-bar .mo-lb-zoom-indicator {
   font-size: 11px;
@@ -6719,10 +6799,10 @@ kbd.mo-key {
   line-height: 18px;
   transition: background 0.15s, border-color 0.15s;
 }
-.mo-lightbox-bar button:hover { background: rgba(255,255,255,0.16); border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea)); }
+.mo-lightbox-bar button:hover { background: rgba(255,255,255,0.16); border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); }
 .mo-lightbox-bar button.active {
-  background: var(--vscode-focusBorder, var(--px-accent, #9333ea));
-  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  background: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
+  border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
   color: var(--vscode-button-foreground, #fff);
 }
 /* Harmonize the speed dropdown with the rest of the bar so the lightbox
@@ -6739,16 +6819,16 @@ kbd.mo-key {
 }
 .mo-lightbox-bar .mo-dropdown__button:hover {
   background: rgba(255,255,255,0.16);
-  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
 }
 .mo-lightbox-bar .mo-dropdown--open .mo-dropdown__button {
-  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
 }
 .mo-lightbox-bar .mo-dropdown__list {
   /* The dropdown list pops above the bar — give it a solid (non-translucent)
      background so option text stays readable over arbitrary media. */
   background: var(--vscode-quickInput-background, var(--vscode-editorWidget-background, var(--px-bg)));
-  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
 }
 .mo-lightbox-close {
   position: absolute;
@@ -6771,7 +6851,7 @@ kbd.mo-key {
 .mo-lightbox-close:hover {
   opacity: 1;
   background: rgba(255,255,255,0.18);
-  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
 }
 
 /* ═══ M59 P10 / F15 — Compare View ═══
@@ -6809,11 +6889,11 @@ kbd.mo-key {
 }
 .mo-compare-bar button:hover {
   background: rgba(255,255,255,0.16);
-  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
 }
 .mo-compare-bar button.active {
-  background: var(--vscode-focusBorder, var(--px-accent, #9333ea));
-  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  background: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
+  border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
   color: var(--vscode-button-foreground, #fff);
 }
 .mo-compare-bar .mo-cmp-zoom-indicator {
@@ -6844,7 +6924,7 @@ kbd.mo-key {
   overflow: hidden;
 }
 .mo-compare-pane.mo-cmp-active {
-  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
 }
 .mo-cmp-canvas {
   flex: 1;
@@ -6888,7 +6968,7 @@ kbd.mo-key {
   opacity: 0.7;
   font-variant-numeric: tabular-nums;
 }
-.mo-cmp-info .mo-cmp-rating { color: var(--mo-rating-color, #f5c518); }
+.mo-cmp-info .mo-cmp-rating { color: var(--mo-rating-color, var(--mo-star)); }
 .mo-compare-close {
   position: absolute;
   top: 8px;
@@ -6911,7 +6991,7 @@ kbd.mo-key {
 .mo-compare-close:hover {
   opacity: 1;
   background: rgba(255,255,255,0.18);
-  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
 }
 
 /* ═══ Custom Dropdown (replaces native <select>) ═══ */
@@ -6929,9 +7009,9 @@ kbd.mo-key {
   font-size: var(--parallx-fontSize-sm, 11px);
   font-family: inherit;
   line-height: 20px;
-  color: var(--vscode-dropdown-foreground, var(--vscode-foreground, #ccc));
+  color: var(--vscode-dropdown-foreground, var(--vscode-foreground, var(--vscode-foreground, #ccc)));
   background: var(--vscode-dropdown-background, var(--vscode-input-background, var(--px-border)));
-  border: 1px solid var(--vscode-dropdown-border, var(--vscode-input-border, #555));
+  border: 1px solid var(--vscode-dropdown-border, var(--vscode-input-border, var(--px-border, #555)));
   border-radius: var(--parallx-radius-sm, 3px);
   cursor: pointer;
   outline: none;
@@ -6942,10 +7022,10 @@ kbd.mo-key {
   gap: 4px;
 }
 .mo-dropdown__button:hover {
-  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
 }
 .mo-dropdown__button:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  outline: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
   outline-offset: -1px;
 }
 .mo-dropdown__text {
@@ -6980,7 +7060,7 @@ kbd.mo-key {
   padding: 4px 8px;
   font-size: var(--parallx-fontSize-sm, 11px);
   line-height: 20px;
-  color: var(--vscode-foreground, #ccc);
+  color: var(--vscode-foreground, var(--vscode-foreground, #ccc));
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
@@ -6992,17 +7072,17 @@ kbd.mo-key {
 }
 .mo-dropdown__item--selected {
   color: var(--vscode-list-activeSelectionForeground, #fff);
-  background: var(--vscode-list-activeSelectionBackground, var(--px-accent, #9333ea));
+  background: var(--vscode-list-activeSelectionBackground, var(--px-accent, var(--mo-accent)));
 }
 .mo-dropdown__item--selected:hover {
-  background: var(--vscode-list-activeSelectionBackground, var(--px-accent, #9333ea));
+  background: var(--vscode-list-activeSelectionBackground, var(--px-accent, var(--mo-accent)));
 }
 
 /* ═══ Styled Date Input ═══ */
 .mo-filter-date {
   background: var(--vscode-input-background, var(--px-border));
-  color: var(--vscode-input-foreground, #ccc);
-  border: 1px solid var(--vscode-input-border, #555);
+  color: var(--vscode-input-foreground, var(--vscode-foreground, #ccc));
+  border: 1px solid var(--vscode-input-border, var(--px-border, #555));
   border-radius: var(--parallx-radius-sm, 3px);
   padding: 3px 6px;
   font-size: var(--parallx-fontSize-sm, 11px);
@@ -7010,8 +7090,8 @@ kbd.mo-key {
   outline: none;
   width: 100px;
 }
-.mo-filter-date:focus { border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea)); }
-.mo-filter-date::placeholder { color: var(--vscode-input-placeholderForeground, #888); }
+.mo-filter-date:focus { border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); }
+.mo-filter-date::placeholder { color: var(--vscode-input-placeholderForeground, var(--vscode-descriptionForeground, #888)); }
 .mo-filter-date::-webkit-calendar-picker-indicator { display: none; }
 
 /* ═══ Styled Zoom Slider ═══ */
@@ -7022,8 +7102,8 @@ kbd.mo-key {
   height: 6px;
   border-radius: 3px;
   background: linear-gradient(to right,
-    var(--vscode-button-background, var(--px-accent, #9333ea)) 0%,
-    var(--vscode-button-background, var(--px-accent, #9333ea)) var(--slider-fill, 50%),
+    var(--vscode-button-background, var(--px-accent, var(--mo-accent))) 0%,
+    var(--vscode-button-background, var(--px-accent, var(--mo-accent))) var(--slider-fill, 50%),
     var(--vscode-scrollbarSlider-background, rgba(121,121,121,0.4)) var(--slider-fill, 50%),
     var(--vscode-scrollbarSlider-background, rgba(121,121,121,0.4)) 100%);
   outline: none;
@@ -7036,7 +7116,7 @@ kbd.mo-key {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: var(--vscode-button-background, var(--px-accent, #9333ea));
+  background: var(--vscode-button-background, var(--px-accent, var(--mo-accent)));
   border: 2px solid var(--vscode-editor-background, var(--px-bg));
   box-shadow: 0 0 0 1px rgba(255,255,255,0.1);
   cursor: pointer;
@@ -7125,7 +7205,7 @@ kbd.mo-key {
 }
 .mo-player-progress-buf { background: rgba(255,255,255,0.35); width: 0; }
 .mo-player-progress-played {
-  background: var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  background: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
   width: 0; z-index: 1;
 }
 .mo-player-loop-range {
@@ -7140,7 +7220,7 @@ kbd.mo-key {
 .mo-player-progress-thumb {
   position: absolute; top: 50%; transform: translate(-50%, -50%);
   width: 11px; height: 11px; border-radius: 50%;
-  background: var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  background: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
   border: 2px solid #fff; display: none; z-index: 3;
   pointer-events: none;
 }
@@ -7167,8 +7247,8 @@ kbd.mo-key {
   align-items: center; justify-content: center; min-width: 28px; height: 28px;
 }
 .mo-player-btn:hover { background: rgba(255,255,255,0.15); }
-.mo-player-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea)); outline-offset: -1px; }
-.mo-player-btn-active { color: var(--vscode-focusBorder, var(--px-accent, #9333ea)); }
+.mo-player-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); outline-offset: -1px; }
+.mo-player-btn-active { color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); }
 .mo-player-time {
   color: #fff; font-size: 12px; font-variant-numeric: tabular-nums;
   margin: 0 8px; opacity: 0.9;
@@ -7186,11 +7266,11 @@ kbd.mo-key {
   padding: 4px 8px; text-align: left; font-size: 12px; border-radius: 3px;
 }
 .mo-player-speed-item:hover { background: rgba(255,255,255,0.15); }
-.mo-player-speed-item:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea)); outline-offset: -1px; }
+.mo-player-speed-item:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); outline-offset: -1px; }
 .mo-hidden { display: none !important; }
 .mo-player-vol { display: flex; align-items: center; gap: 4px; }
 .mo-player-vol-slider {
-  width: 60px; height: 4px; cursor: pointer; accent-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  width: 60px; height: 4px; cursor: pointer; accent-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
 }
 .mo-player-rail-btn {
   width: 36px; height: 36px; border-radius: 50%;
@@ -7199,11 +7279,11 @@ kbd.mo-key {
   display: flex; align-items: center; justify-content: center;
 }
 .mo-player-rail-btn:hover { background: rgba(0,0,0,0.85); border-color: rgba(255,255,255,0.3); }
-.mo-player-rail-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea)); outline-offset: 2px; }
+.mo-player-rail-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); outline-offset: 2px; }
 .mo-player-rail-btn:disabled { opacity: 0.4; cursor: default; }
 .mo-player-rail-btn.mo-active {
-  background: var(--vscode-focusBorder, var(--px-accent, #9333ea));
-  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  background: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
+  border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
 }
 
 /* M59 P10 / F16 — Filmstrip thumbnail row.
@@ -7236,12 +7316,12 @@ kbd.mo-key {
   transition: border-color 0.1s, transform 0.1s;
 }
 .mo-player-fs-thumb:hover {
-  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
   transform: translateY(-1px);
 }
 .mo-player-fs-thumb.mo-active {
-  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
-  box-shadow: 0 0 0 1px var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
 }
 .mo-player-fs-thumb canvas {
   width: 100%;
@@ -7268,16 +7348,16 @@ kbd.mo-key {
   z-index: 9999;
 }
 .mo-modal {
-  background: var(--vscode-editor-background, #1f1f1f);
-  color: var(--vscode-foreground, #ddd);
-  border: 1px solid var(--vscode-panel-border, #444);
+  background: var(--vscode-editor-background, var(--px-bg, #1f1f1f));
+  color: var(--vscode-foreground, var(--px-text, #ddd));
+  border: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, #444));
   border-radius: 8px; min-width: 480px; max-width: 720px; max-height: 92vh;
   display: flex; flex-direction: column;
   box-shadow: 0 8px 32px rgba(0,0,0,0.5);
 }
 .mo-modal-header {
   display: flex; align-items: center; padding: 12px 16px;
-  border-bottom: 1px solid var(--vscode-panel-border, #444);
+  border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, #444));
 }
 .mo-modal-title { flex: 1; font-weight: 600; font-size: 14px; }
 .mo-modal-close {
@@ -7286,7 +7366,7 @@ kbd.mo-key {
 }
 .mo-modal-footer {
   display: flex; gap: 8px; padding: 12px 16px;
-  border-top: 1px solid var(--vscode-panel-border, #444);
+  border-top: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, #444));
   align-items: center;
 }
 .mo-modal-footer .mo-clip-status { flex: 1; font-size: 12px; opacity: 0.7; }
@@ -7296,7 +7376,7 @@ kbd.mo-key {
   opacity: 0.85;
   padding: 4px 10px;
   margin-right: 6px;
-  border: 1px solid var(--vscode-panel-border, #444);
+  border: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, #444));
   border-radius: 4px;
   background: var(--vscode-input-background, transparent);
   white-space: nowrap;
@@ -7314,8 +7394,8 @@ kbd.mo-key {
    controls out of their column. */
 .mo-clip-page {
   position: absolute; inset: 0; overflow: auto; outline: none;
-  background: var(--vscode-editor-background, var(--px-bg, #1f1f1f));
-  color: var(--vscode-foreground, #ddd);
+  background: var(--vscode-editor-background, var(--px-bg, var(--px-bg, #1f1f1f)));
+  color: var(--vscode-foreground, var(--px-text, #ddd));
 }
 .mo-clip-dialog--page {
   width: 100%; max-width: none; margin: 0;
@@ -7324,7 +7404,7 @@ kbd.mo-key {
 }
 .mo-clip-dialog--page .mo-modal-header {
   padding: 16px 24px 12px;
-  border-bottom: 1px solid var(--vscode-panel-border, #444);
+  border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, #444));
 }
 .mo-clip-dialog--page .mo-modal-title { font-size: 15px; }
 .mo-clip-dialog--page .mo-clip-body { padding: 18px 24px; }
@@ -7339,8 +7419,8 @@ kbd.mo-key {
 /* Footer pinned to the bottom of the scroll area. */
 .mo-clip-dialog--page .mo-modal-footer {
   position: sticky; bottom: 0;
-  background: var(--vscode-editor-background, var(--px-bg, #1f1f1f));
-  border-top: 1px solid var(--vscode-panel-border, #444);
+  background: var(--vscode-editor-background, var(--px-bg, var(--px-bg, #1f1f1f)));
+  border-top: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, #444));
 }
 
 /* ── Professional control components ── */
@@ -7358,15 +7438,15 @@ kbd.mo-key {
 .mo-clip-slider {
   -webkit-appearance: none; appearance: none; height: 4px; border-radius: 3px;
   flex: 1 1 auto; min-width: 60px; margin: 0 2px; cursor: pointer;
-  background: var(--vscode-panel-border, #555);
+  background: var(--vscode-panel-border, var(--px-border, #555));
 }
 .mo-clip-slider::-webkit-slider-thumb {
   -webkit-appearance: none; appearance: none; width: 15px; height: 15px; border-radius: 50%;
-  background: var(--vscode-focusBorder, var(--px-accent, #9333ea));
-  border: 2px solid var(--vscode-editor-background, #1f1f1f); cursor: pointer;
+  background: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
+  border: 2px solid var(--vscode-editor-background, var(--px-bg, #1f1f1f)); cursor: pointer;
 }
 .mo-clip-slider:focus-visible::-webkit-slider-thumb {
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vscode-focusBorder, #9333ea) 40%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vscode-focusBorder, var(--mo-accent)) 40%, transparent);
 }
 .mo-clip-dialog--page .mo-clip-controls .mo-clip-slider-row { gap: 8px; }
 .mo-clip-dialog--page .mo-clip-controls .mo-clip-slider-row .mo-clip-input {
@@ -7379,17 +7459,17 @@ kbd.mo-key {
   appearance: none; -webkit-appearance: none; margin: 0; flex: 0 0 auto;
   width: 36px; height: 20px; border-radius: 10px; position: relative; cursor: pointer;
   background: var(--vscode-input-background, rgba(255, 255, 255, 0.08));
-  border: 1px solid var(--vscode-panel-border, #444);
+  border: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, #444));
   transition: background 0.15s, border-color 0.15s;
 }
 .mo-clip-check::after {
   content: ''; position: absolute; top: 50%; left: 2px; transform: translateY(-50%);
   width: 15px; height: 15px; border-radius: 50%;
-  background: var(--vscode-foreground, #ccc); transition: transform 0.15s, background 0.15s;
+  background: var(--vscode-foreground, var(--vscode-foreground, #ccc)); transition: transform 0.15s, background 0.15s;
 }
-.mo-clip-check:checked { background: var(--vscode-focusBorder, var(--px-accent, #9333ea)); border-color: transparent; }
+.mo-clip-check:checked { background: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); border-color: transparent; }
 .mo-clip-check:checked::after { transform: translate(16px, -50%); background: #fff; }
-.mo-clip-check:focus-visible { outline: 2px solid var(--vscode-focusBorder, #9333ea); outline-offset: 2px; }
+.mo-clip-check:focus-visible { outline: 2px solid var(--vscode-focusBorder, var(--mo-accent)); outline-offset: 2px; }
 
 /* Trim range slider (scrubber). */
 .mo-clip-dialog--page .mo-clip-scrubber { height: 32px; }
@@ -7400,8 +7480,8 @@ kbd.mo-key {
 /* Footer pinned at the bottom of the page. */
 .mo-clip-dialog--page .mo-modal-footer {
   padding: 14px 28px; position: sticky; bottom: 0;
-  background: var(--vscode-editor-background, var(--px-bg, #1f1f1f));
-  border-top: 1px solid var(--vscode-panel-border, #444);
+  background: var(--vscode-editor-background, var(--px-bg, var(--px-bg, #1f1f1f)));
+  border-top: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, #444));
 }
 
 .mo-clip-unavailable {
@@ -7417,7 +7497,7 @@ select.mo-select-bound {
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%23888' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
   background-repeat: no-repeat; background-position: right 9px center; cursor: pointer;
 }
-select.mo-select-bound:hover { border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea)); }
+select.mo-select-bound:hover { border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); }
 select.mo-select-bound:disabled { opacity: 0.55; cursor: default; }
 .mo-frame-dialog { width: 880px; max-width: 92vw; }
 .mo-frame-dialog .mo-clip-grid { grid-template-columns: minmax(0, 1fr) 260px; }
@@ -7471,7 +7551,7 @@ select.mo-select-bound:disabled { opacity: 0.55; cursor: default; }
 }
 .mo-crop-rect {
   position: absolute;
-  border: 1.5px dashed var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  border: 1.5px dashed var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
   background: transparent;
   cursor: move;
   box-sizing: border-box;
@@ -7484,7 +7564,7 @@ select.mo-select-bound:disabled { opacity: 0.55; cursor: default; }
 }
 .mo-crop-handle {
   position: absolute; width: 10px; height: 10px;
-  background: var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  background: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
   border: 1px solid #fff;
   box-sizing: border-box;
   border-radius: 2px;
@@ -7503,21 +7583,21 @@ select.mo-select-bound:disabled { opacity: 0.55; cursor: default; }
   position: relative;
   height: 26px;
   background: var(--vscode-input-background, var(--px-bg-inset));
-  border: 1px solid var(--vscode-panel-border, #444);
+  border: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, #444));
   border-radius: 4px;
   cursor: pointer;
 }
 .mo-scrub-range {
   position: absolute; top: 0; bottom: 0;
-  background: color-mix(in srgb, var(--vscode-focusBorder, var(--px-accent, #9333ea)) 22%, transparent);
-  border-left: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea));
-  border-right: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  background: color-mix(in srgb, var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))) 22%, transparent);
+  border-left: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
+  border-right: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
   pointer-events: none;
 }
 .mo-scrub-handle {
   position: absolute; top: -2px; bottom: -2px;
   width: 3px; margin-left: -1px;
-  background: var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  background: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
   border-radius: 1px;
   cursor: ew-resize;
   box-shadow: 0 0 0 1px rgba(0,0,0,0.5);
@@ -7531,7 +7611,7 @@ select.mo-select-bound:disabled { opacity: 0.55; cursor: default; }
   background: transparent;
 }
 .mo-scrub-handle:hover, .mo-scrub-handle.mo-dragging {
-  background: color-mix(in srgb, var(--vscode-focusBorder, var(--px-accent, #9333ea)) 100%, white 25%);
+  background: color-mix(in srgb, var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))) 100%, white 25%);
   width: 4px; margin-left: -2px;
 }
 .mo-scrub-playhead {
@@ -7556,16 +7636,16 @@ select.mo-select-bound:disabled { opacity: 0.55; cursor: default; }
 .mo-mark-btn {
   flex: 0 0 auto;
   padding: 4px 8px; font-size: 11px; line-height: 1; border-radius: 3px;
-  background: var(--vscode-button-secondaryBackground, #3a3d41);
-  color: var(--vscode-button-secondaryForeground, #ddd);
-  border: 1px solid var(--vscode-panel-border, #444);
+  background: var(--vscode-button-secondaryBackground, var(--vscode-button-secondaryBackground, #3a3d41));
+  color: var(--vscode-button-secondaryForeground, var(--px-text, #ddd));
+  border: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, #444));
   cursor: pointer;
 }
 .mo-mark-btn:hover {
-  background: var(--vscode-button-secondaryHoverBackground, #45494e);
+  background: var(--vscode-button-secondaryHoverBackground, var(--vscode-button-secondaryHoverBackground, #45494e));
 }
 .mo-clip-mode-toggle {
-  display: inline-flex; border: 1px solid var(--vscode-panel-border, #444);
+  display: inline-flex; border: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, #444));
   border-radius: 3px; overflow: hidden;
 }
 .mo-clip-mode-toggle button {
@@ -7573,14 +7653,14 @@ select.mo-select-bound:disabled { opacity: 0.55; cursor: default; }
   border: 0; padding: 4px 10px; font-size: 11px; cursor: pointer;
 }
 .mo-clip-mode-toggle button.mo-active {
-  background: var(--vscode-focusBorder, var(--px-accent, #9333ea)); color: #fff;
+  background: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); color: #fff;
 }
 
 /* M59 P2: frame strip + waveform */
 .mo-clip-stripwrap {
   position: relative;
   background: var(--vscode-input-background, var(--px-bg));
-  border: 1px solid var(--vscode-panel-border, #444);
+  border: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, #444));
   border-radius: 4px;
   padding: 4px;
 }
@@ -7623,7 +7703,7 @@ select.mo-select-bound:disabled { opacity: 0.55; cursor: default; }
 .mo-clip-frame-delay {
   position: absolute; top: 2px; right: 2px;
   font-size: 9px; line-height: 1; padding: 1px 3px;
-  background: var(--vscode-focusBorder, var(--px-accent, #9333ea)); color: #fff;
+  background: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); color: #fff;
   border-radius: 2px; font-variant-numeric: tabular-nums;
 }
 .mo-clip-frame-deleted img { opacity: 0.25; filter: grayscale(1); }
@@ -7648,13 +7728,13 @@ select.mo-select-bound:disabled { opacity: 0.55; cursor: default; }
   flex: 0 1 120px; padding: 4px 8px; font-size: 12px;
   background: var(--vscode-input-background, var(--px-bg-inset));
   color: var(--vscode-input-foreground, inherit);
-  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border, #444));
+  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border, var(--vscode-widget-border, #444)));
   border-radius: 4px;
   font-family: inherit;
 }
 .mo-clip-input:focus {
   outline: none;
-  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
 }
 select.mo-clip-input { appearance: none; padding-right: 22px; background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%); background-position: calc(100% - 12px) 50%, calc(100% - 7px) 50%; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; }
 select.mo-clip-input.mo-select-bound { cursor: pointer; }
@@ -7666,21 +7746,21 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
 .mo-clip-chiprow { display: inline-flex; gap: 4px; margin-left: 4px; }
 .mo-clip-chip {
   padding: 2px 7px; font-size: 10px; line-height: 1; cursor: pointer;
-  background: var(--vscode-button-secondaryBackground, #3a3d41);
-  color: var(--vscode-button-secondaryForeground, #ddd);
-  border: 1px solid var(--vscode-panel-border, #444);
+  background: var(--vscode-button-secondaryBackground, var(--vscode-button-secondaryBackground, #3a3d41));
+  color: var(--vscode-button-secondaryForeground, var(--px-text, #ddd));
+  border: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, #444));
   border-radius: 3px;
   font-family: inherit;
 }
 .mo-clip-chip:hover {
-  background: var(--vscode-button-secondaryHoverBackground, #45494e);
+  background: var(--vscode-button-secondaryHoverBackground, var(--vscode-button-secondaryHoverBackground, #45494e));
 }
 .mo-select-popup {
   position: fixed; z-index: 10001;
   min-width: 120px;
   background: var(--vscode-quickInput-background, var(--vscode-editorWidget-background, var(--px-bg)));
-  color: var(--vscode-foreground, #ddd);
-  border: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  color: var(--vscode-foreground, var(--px-text, #ddd));
+  border: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
   border-radius: 4px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
   padding: 4px;
@@ -7700,11 +7780,11 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
   background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
 }
 .mo-select-popup-item.mo-active {
-  background: color-mix(in srgb, var(--vscode-focusBorder, var(--px-accent, #9333ea)) 28%, transparent);
+  background: color-mix(in srgb, var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))) 28%, transparent);
   color: var(--vscode-foreground, #fff);
 }
 .mo-select-popup-item.mo-active:hover {
-  background: color-mix(in srgb, var(--vscode-focusBorder, var(--px-accent, #9333ea)) 40%, transparent);
+  background: color-mix(in srgb, var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))) 40%, transparent);
 }
 .mo-clip-check { margin: 0 6px 0 0; }
 
@@ -7712,7 +7792,7 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
 .mo-clip-queue {
   display: flex; flex-direction: column; gap: 6px;
   margin-top: 4px; padding-top: 8px;
-  border-top: 1px solid var(--vscode-panel-border, #444);
+  border-top: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, #444));
 }
 .mo-clip-queue-head {
   display: flex; align-items: center; justify-content: space-between;
@@ -7738,8 +7818,8 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
   background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.08));
 }
 .mo-clip-queue-row.mo-active {
-  background: color-mix(in srgb, var(--vscode-focusBorder, var(--px-accent, #9333ea)) 22%, transparent);
-  outline: 1px solid var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  background: color-mix(in srgb, var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))) 22%, transparent);
+  outline: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
 }
 .mo-clip-queue-num {
   flex: 0 0 auto; min-width: 22px;
@@ -7764,11 +7844,11 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
   flex: 0 0 auto; background: transparent; border: 0; color: inherit;
   opacity: 0.55; cursor: pointer; padding: 0 4px; font-size: 14px; line-height: 1;
 }
-.mo-clip-queue-del:hover { opacity: 1; color: var(--vscode-errorForeground, #f48771); }
+.mo-clip-queue-del:hover { opacity: 1; color: var(--vscode-errorForeground, var(--vscode-errorForeground, #f48771)); }
 
 .mo-clip-queue-row.mo-dragging { opacity: 0.4; }
-.mo-clip-queue-row.mo-drop-above { box-shadow: 0 -2px 0 0 var(--vscode-focusBorder, var(--px-accent, #9333ea)); }
-.mo-clip-queue-row.mo-drop-below { box-shadow: 0 2px 0 0 var(--vscode-focusBorder, var(--px-accent, #9333ea)); }
+.mo-clip-queue-row.mo-drop-above { box-shadow: 0 -2px 0 0 var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); }
+.mo-clip-queue-row.mo-drop-below { box-shadow: 0 2px 0 0 var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); }
 .mo-clip-queue-handle {
   flex: 0 0 auto; cursor: grab; opacity: 0.4;
   font-size: 11px; line-height: 1; user-select: none;
@@ -7792,7 +7872,7 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
 }
 .mo-clip-queue-name:focus {
   outline: none;
-  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
 }
 .mo-clip-queue-dup {
   flex: 0 0 auto; background: transparent; border: 0; color: inherit;
@@ -7808,22 +7888,22 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
 }
 .mo-clip-aspect-btn {
   font-size: 10px; line-height: 1; padding: 3px 6px; border-radius: 3px;
-  background: var(--vscode-button-secondaryBackground, #3a3d41);
-  color: var(--vscode-button-secondaryForeground, #ddd);
-  border: 1px solid var(--vscode-panel-border, #444);
+  background: var(--vscode-button-secondaryBackground, var(--vscode-button-secondaryBackground, #3a3d41));
+  color: var(--vscode-button-secondaryForeground, var(--px-text, #ddd));
+  border: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, #444));
   cursor: pointer;
 }
 .mo-clip-aspect-btn:hover {
-  background: var(--vscode-button-secondaryHoverBackground, #45494e);
+  background: var(--vscode-button-secondaryHoverBackground, var(--vscode-button-secondaryHoverBackground, #45494e));
 }
 .mo-clip-aspect-btn.mo-active {
-  background: color-mix(in srgb, var(--vscode-focusBorder, var(--px-accent, #9333ea)) 28%, transparent);
-  border-color: var(--vscode-focusBorder, var(--px-accent, #9333ea));
+  background: color-mix(in srgb, var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))) 28%, transparent);
+  border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
 }
 .mo-clip-presets-row {
   display: flex; gap: 4px; flex-wrap: wrap; align-items: center;
   padding-top: 6px; margin-top: 4px;
-  border-top: 1px dashed var(--vscode-panel-border, #444);
+  border-top: 1px dashed var(--vscode-panel-border, var(--vscode-widget-border, #444));
 }
 .mo-clip-preset-chip {
   font-size: 10px; line-height: 1; padding: 3px 7px; border-radius: 10px;
@@ -7832,22 +7912,22 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
   border: 0; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;
 }
 .mo-clip-preset-chip:hover {
-  background: color-mix(in srgb, var(--vscode-focusBorder, var(--px-accent, #9333ea)) 28%, transparent);
+  background: color-mix(in srgb, var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))) 28%, transparent);
 }
 .mo-clip-preset-chip-x {
   opacity: 0.5; cursor: pointer; padding: 0 1px;
 }
-.mo-clip-preset-chip-x:hover { opacity: 1; color: var(--vscode-errorForeground, #f48771); }
+.mo-clip-preset-chip-x:hover { opacity: 1; color: var(--vscode-errorForeground, var(--vscode-errorForeground, #f48771)); }
 .mo-clip-length {
   font-size: 11px; opacity: 0.7; font-variant-numeric: tabular-nums;
 }
 .mo-btn-primary, .mo-btn-secondary {
   padding: 6px 14px; font-size: 12px; border-radius: 4px; cursor: pointer;
-  border: 1px solid var(--vscode-panel-border, #444);
+  border: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, #444));
   font-family: inherit;
 }
 .mo-btn-primary {
-  background: var(--vscode-focusBorder, var(--px-accent, #9333ea)); color: #fff; border-color: transparent;
+  background: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); color: #fff; border-color: transparent;
 }
 .mo-btn-primary:disabled { opacity: 0.5; cursor: default; }
 .mo-btn-secondary {
@@ -7859,7 +7939,7 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
 .mo-dup-body { padding: 12px 16px; max-height: 70vh; overflow-y: auto; }
 .mo-dup-summary { font-size: 12px; opacity: 0.8; margin-bottom: 12px; }
 .mo-dup-group {
-  border: 1px solid var(--vscode-panel-border, #444);
+  border: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, #444));
   border-radius: 4px; padding: 8px; margin-bottom: 10px;
 }
 .mo-dup-group-head { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px; }
@@ -8945,7 +9025,7 @@ function renderCardGrid(container, items, options) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 23B: KEYBOARD SHORTCUTS CHEAT SHEET
+// SECTION 24: KEYBOARD SHORTCUTS CHEAT SHEET
 // ═══════════════════════════════════════════════════════════════════════════════
 // A self-contained modal listing every grid/sidebar/viewer shortcut. Opened
 // from the sidebar footer button, the `?` key in the grid, or the
@@ -9076,7 +9156,7 @@ function moShowShortcutsCheatSheet() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 24: SIDEBAR VIEW
+// SECTION 25: SIDEBAR VIEW
 // ═══════════════════════════════════════════════════════════════════════════════
 // Adapted from stash: sidebar navigation pattern
 
@@ -10404,7 +10484,7 @@ function renderBrowserSidebar(container, api) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 25: GRID BROWSER EDITOR
+// SECTION 26: GRID BROWSER EDITOR
 // ═══════════════════════════════════════════════════════════════════════════════
 // Adapted from stash: ui/v2.5/src/components/List/ItemList — grid browser with toolbar + pagination
 
@@ -12519,10 +12599,7 @@ function renderGridBrowser(container, api, input) {
     return false;
   }
   function docKeyHandler(e) {
-    if (isGridActive()) {
-      console.log('[MO-KEY]', e.key, 'ctrl:', e.ctrlKey, 'target:', e.target?.tagName, 'active:', document.activeElement?.tagName, document.activeElement?.className?.slice(0,40));
-      handleGridKeydown(e);
-    }
+    if (isGridActive()) handleGridKeydown(e);
   }
   document.addEventListener('keydown', docKeyHandler, true);
 
@@ -12938,12 +13015,19 @@ function renderGridBrowser(container, api, input) {
     gridArea.setPointerCapture(e.pointerId);
   });
 
+  // Marquee updates coalesce to one per painted frame (house rafThrottle
+  // rule): pointermove fires far faster than the display refreshes, and
+  // updateMarquee does layout math + style writes on the grid hot path.
+  const _marqueeFrame = moRafThrottle((x, y) => {
+    if (!_drag) return;
+    updateMarquee(x, y);
+    updateAutoScroll(y);
+  });
   gridArea.addEventListener('pointermove', (e) => {
     if (!_drag) return;
     _drag.lastClientX = e.clientX;
     _drag.lastClientY = e.clientY;
-    updateMarquee(e.clientX, e.clientY);
-    updateAutoScroll(e.clientY);
+    _marqueeFrame(e.clientX, e.clientY);
   });
 
   function endDrag() {
@@ -13044,6 +13128,7 @@ function renderGridBrowser(container, api, input) {
       document.removeEventListener('mo:tag-applied', _tagAppliedHandler);
       document.removeEventListener('mo:tag-meta-changed', _tagMetaChangedHandler);
       document.removeEventListener('mo:tags-bulk-changed', _tagsBulkChangedHandler);
+      _marqueeFrame.dispose();
       if (cardGrid) cardGrid.dispose();
       container.innerHTML = '';
     },
@@ -13067,7 +13152,7 @@ function renderGridBrowser(container, api, input) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 26: DETAIL EDITOR — CORE LAYOUT
+// SECTION 27: DETAIL EDITOR — CORE LAYOUT
 // ═══════════════════════════════════════════════════════════════════════════════
 // Adapted from stash: ui/v2.5/src/components/Scenes/SceneDetails — detail view layout
 // Input ID format: 'detail:<type>:<id>' e.g. 'detail:photo:42'
@@ -13290,7 +13375,7 @@ function buildDetailLayout(ctx, api, bodyEl, onRefresh) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 27: DETAIL EDITOR — MEDIA PREVIEW
+// SECTION 28: DETAIL EDITOR — MEDIA PREVIEW
 // ═══════════════════════════════════════════════════════════════════════════════
 // Adapted from stash: ui/v2.5/src/components/Scenes/ScenePlayer
 
@@ -13357,6 +13442,21 @@ function buildPhotoPreview(container, fullPath) {
   // Pan via mouse drag when zoomed
   let dragging = false, dragStartX = 0, dragStartY = 0, startTx = 0, startTy = 0;
 
+  // Pan listeners are SESSION-SCOPED: attached on mousedown, removed on
+  // mouseup. The previous permanent anonymous window listeners leaked one
+  // pair per detail-editor open and kept firing against detached DOM.
+  const onPanMove = (e) => {
+    if (!dragging) return;
+    tx = startTx + (e.clientX - dragStartX);
+    ty = startTy + (e.clientY - dragStartY);
+    applyTransform();
+  };
+  const onPanUp = () => {
+    dragging = false;
+    container.style.cursor = '';
+    window.removeEventListener('mousemove', onPanMove);
+    window.removeEventListener('mouseup', onPanUp);
+  };
   container.addEventListener('mousedown', (e) => {
     if (scale <= MIN_SCALE) return;
     dragging = true;
@@ -13366,19 +13466,8 @@ function buildPhotoPreview(container, fullPath) {
     startTy = ty;
     container.style.cursor = 'grabbing';
     e.preventDefault();
-  });
-
-  window.addEventListener('mousemove', (e) => {
-    if (!dragging) return;
-    tx = startTx + (e.clientX - dragStartX);
-    ty = startTy + (e.clientY - dragStartY);
-    applyTransform();
-  });
-
-  window.addEventListener('mouseup', () => {
-    if (!dragging) return;
-    dragging = false;
-    container.style.cursor = '';
+    window.addEventListener('mousemove', onPanMove);
+    window.addEventListener('mouseup', onPanUp);
   });
 
   // Double-click to reset zoom
@@ -13868,14 +13957,25 @@ function buildVideoPlayer(container, fullPath, ctx) {
     if (dur > 0) video.currentTime = pctFromEvent(e) * dur;
   });
 
+  // Scrub listeners are SESSION-SCOPED (attach on mousedown, detach on
+  // mouseup) — permanent window listeners here leaked per editor open.
   let scrubbing = false;
-  progress.addEventListener('mousedown', (e) => { scrubbing = true; e.preventDefault(); });
-  window.addEventListener('mousemove', (e) => {
+  const onScrubMove = (e) => {
     if (!scrubbing) return;
     const dur = video.duration || 0;
     if (dur > 0) video.currentTime = pctFromEvent(e) * dur;
+  };
+  const onScrubUp = () => {
+    scrubbing = false;
+    window.removeEventListener('mousemove', onScrubMove);
+    window.removeEventListener('mouseup', onScrubUp);
+  };
+  progress.addEventListener('mousedown', (e) => {
+    scrubbing = true;
+    e.preventDefault();
+    window.addEventListener('mousemove', onScrubMove);
+    window.addEventListener('mouseup', onScrubUp);
   });
-  window.addEventListener('mouseup', () => { scrubbing = false; });
 
   // Hover preview thumbnail
   let previewSeekToken = 0;
@@ -13962,7 +14062,7 @@ function buildVideoPlayer(container, fullPath, ctx) {
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 28: DETAIL EDITOR — DETAILS TAB
+// SECTION 29: DETAIL EDITOR — DETAILS TAB
 // ═══════════════════════════════════════════════════════════════════════════════
 // Adapted from stash: ui/v2.5/src/components/Scenes/SceneEditPanel — edit/detail tab
 
@@ -14280,7 +14380,7 @@ function buildTagAutocomplete(container, getExistingTags, onAdd) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 29: DETAIL EDITOR — FILE INFO TAB
+// SECTION 30: DETAIL EDITOR — FILE INFO TAB
 // ═══════════════════════════════════════════════════════════════════════════════
 // Adapted from stash: ui/v2.5/src/components/Shared/DetailItem (definition list pattern)
 
@@ -14410,7 +14510,7 @@ function formatBitRate(bps) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 30: AUTO-ALBUM FROM DIRECTORY STRUCTURE (F31)
+// SECTION 31: AUTO-ALBUM FROM DIRECTORY STRUCTURE (F31)
 // ═══════════════════════════════════════════════════════════════════════════════
 // Adapted from stash: pkg/image/scan.go — getOrCreateFolderBasedGallery
 // During scan, each folder with media automatically gets an album entry.
@@ -14494,7 +14594,7 @@ async function moPruneOrphanFolderAlbums() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 31: ALBUM EDITOR VIEW (F32)
+// SECTION 32: ALBUM EDITOR VIEW (F32)
 // ═══════════════════════════════════════════════════════════════════════════════
 // Adapted from stash: ui/v2.5/src/components/Galleries/GalleryDetails/ — album detail + edit
 
@@ -14860,7 +14960,7 @@ async function resolveThumbnailForMiniCard(card, item) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 31A: LIGHTBOX / SLIDESHOW (F7)
+// SECTION 33: LIGHTBOX / SLIDESHOW (F7)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 let _activeLightbox = null;
@@ -15230,7 +15330,7 @@ function openLightbox(items, startIndex, resolveFilePath) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 31C: COMPARE VIEW (M59 P10 / F15)
+// SECTION 34: COMPARE VIEW (M59 P10 / F15)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 let _activeCompareView = null;
@@ -15511,7 +15611,7 @@ function openCompareView(items, resolveFilePath) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 31B: CONTEXT MENU (F1)
+// SECTION 35: CONTEXT MENU (F1)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 let _activeContextMenu = null;
@@ -15596,7 +15696,7 @@ function showContextMenu(x, y, actions) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 32: BULK OPERATIONS (F33, F34)
+// SECTION 36: BULK OPERATIONS (F33, F34)
 // ═══════════════════════════════════════════════════════════════════════════════
 // Adapted from stash: ui/v2.5/src/components/List/useListSelect, EditGalleriesDialog, MultiSet
 
@@ -16902,7 +17002,7 @@ function showOptimizeGifDialog(gifFiles, api, onComplete) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 10.5: M59 PHASE 1 — CLIP/GIF EXPORT, FRAME CAPTURE, WEBP CONVERSION
+// SECTION 37: M59 PHASE 1 — CLIP/GIF EXPORT, FRAME CAPTURE, WEBP CONVERSION
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // ─── Frame capture dialog: preview + crop + save-as ──
@@ -19779,7 +19879,7 @@ async function moExportGifWithFrameEdits(api, opts, outPath) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 10.6: GIF OPTIMIZER — target-size re-encode for existing GIFs
+// SECTION 38: GIF OPTIMIZER — target-size re-encode for existing GIFs
 // ═══════════════════════════════════════════════════════════════════════════════
 //
 // Why: the clip dialog's GIF size estimator was historically optimistic, so
@@ -20291,7 +20391,7 @@ async function moSetSetting(key, value) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 10B: SEARCH (FTS5) + QUERY PARSER + SMART ALBUMS — M59 P3
+// SECTION 39: SEARCH (FTS5) + QUERY PARSER + SMART ALBUMS — M59 P3
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // ── FTS5 rebuild ──
@@ -20602,7 +20702,7 @@ async function moManageSmartAlbums(api) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 10C: PERCEPTUAL HASH (dHash 64-bit) — M59 P3
+// SECTION 40: PERCEPTUAL HASH (dHash 64-bit) — M59 P3
 // ═══════════════════════════════════════════════════════════════════════════════
 // Computes a 64-bit difference hash by resizing each image to 9×8 grayscale,
 // then comparing adjacent horizontal pixels. Hamming distance ≤ 8 across two
@@ -20961,7 +21061,7 @@ function buildDupGroup(api, files, label) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 10D: STACKS + TRASH — M59 P5
+// SECTION 41: STACKS + TRASH — M59 P5
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // ── Stacks ──
@@ -21847,7 +21947,7 @@ async function moAutoEmptyTrashIfStale() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 10E: TIMELINE + MAP — M59 P6
+// SECTION 42: TIMELINE + MAP — M59 P6
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // ── Timeline view ──
@@ -22071,18 +22171,26 @@ async function moOpenMap(api) {
 
   draw();
 
-  canvas.addEventListener('mousedown', (e) => {
-    dragging = true;
-    dragStartX = e.clientX; dragStartY = e.clientY;
-    panStartX = panX; panStartY = panY;
-  });
-  window.addEventListener('mousemove', (e) => {
+  // Pan listeners are SESSION-SCOPED (attach on mousedown, detach on
+  // mouseup) — permanent window listeners here leaked per timeline open.
+  const onTlPanMove = (e) => {
     if (!dragging) return;
     panX = panStartX + (e.clientX - dragStartX);
     panY = panStartY + (e.clientY - dragStartY);
     draw();
+  };
+  const onTlPanUp = () => {
+    dragging = false;
+    window.removeEventListener('mousemove', onTlPanMove);
+    window.removeEventListener('mouseup', onTlPanUp);
+  };
+  canvas.addEventListener('mousedown', (e) => {
+    dragging = true;
+    dragStartX = e.clientX; dragStartY = e.clientY;
+    panStartX = panX; panStartY = panY;
+    window.addEventListener('mousemove', onTlPanMove);
+    window.addEventListener('mouseup', onTlPanUp);
   });
-  window.addEventListener('mouseup', () => { dragging = false; });
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
     const factor = e.deltaY < 0 ? 1.2 : 1 / 1.2;
@@ -22121,7 +22229,7 @@ async function moOpenMap(api) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 10F: AI CHAT TOOLS
+// SECTION 43: AI CHAT TOOLS
 // ═══════════════════════════════════════════════════════════════════════════════
 //
 // Tools registered via `api.chat.registerTool(name, def)` so the AI agent
@@ -23114,7 +23222,7 @@ function moRegisterAITools(api) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 11: ACTIVATION
+// SECTION 44: ACTIVATION
 // ═══════════════════════════════════════════════════════════════════════════════
 
 let _toolPath = '';
