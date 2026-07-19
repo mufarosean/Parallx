@@ -17595,16 +17595,25 @@ async function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut,
 // instant visual feedback. CSS previews are close, not bit-exact — the
 // export is the source of truth. Chains avoid quotes/spaces so they survive
 // shellQuote on every platform.
+// Lineup note (2026-07-19, per Mufaro): B&W (Mono/Noir) and Sepia removed;
+// the roster leans into graded, filmic color looks — Cinematic (the
+// favorite) plus five siblings in the same family. Saved clips referencing
+// a removed preset fall back to 'none' on restore (guard at the snapshot
+// loader). Every vf chain below is ffmpeg-validated (parse-clean) and
+// quote/space-free so it survives shellQuote on every platform.
 const MO_CLIP_FILTERS = [
   { id: 'none',      label: 'None',            vf: null,                                                        css: 'none' },
-  { id: 'mono',      label: 'Mono (B&W)',      vf: 'hue=s=0',                                                   css: 'grayscale(1)' },
-  { id: 'noir',      label: 'Noir',            vf: 'hue=s=0,eq=contrast=1.28:brightness=-0.02',                 css: 'grayscale(1) contrast(1.28) brightness(0.98)' },
-  { id: 'sepia',     label: 'Sepia',           vf: 'colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131', css: 'sepia(0.85)' },
+  { id: 'cinematic', label: 'Cinematic',       vf: 'colorbalance=rs=-0.06:gs=-0.02:bs=0.08:rh=0.08:gh=0.02:bh=-0.06,eq=saturation=1.12:contrast=1.06', css: 'contrast(1.06) saturate(1.15)' },
+  { id: 'tealorange', label: 'Teal & Orange',  vf: 'colorbalance=rs=-0.12:gs=-0.02:bs=0.12:rh=0.14:gh=0.02:bh=-0.12,eq=saturation=1.18:contrast=1.08', css: 'contrast(1.1) saturate(1.28)' },
+  { id: 'goldenhour', label: 'Golden Hour',    vf: 'eq=gamma_r=1.12:gamma_b=0.88:saturation=1.15:brightness=0.02', css: 'sepia(0.22) saturate(1.3) brightness(1.05) hue-rotate(-10deg)' },
+  { id: 'dusk',      label: 'Dusk',            vf: 'colorbalance=bs=0.1:rs=-0.05,eq=contrast=1.12:saturation=0.82:brightness=-0.03', css: 'contrast(1.12) saturate(0.82) brightness(0.97) hue-rotate(6deg)' },
+  { id: 'neon',      label: 'Neon',            vf: 'colorbalance=rs=0.08:bs=0.14:gh=-0.04,eq=saturation=1.45:contrast=1.1', css: 'saturate(1.5) contrast(1.1) hue-rotate(-6deg)' },
+  { id: 'punch',     label: 'Punch (crisp)',   vf: 'unsharp=5:5:0.8,eq=contrast=1.1:saturation=1.12',           css: 'contrast(1.12) saturate(1.15)' },
+  { id: 'pastel',    label: 'Pastel (soft)',   vf: 'colorlevels=rimin=0.04:gimin=0.04:bimin=0.04,eq=saturation=0.92:gamma=1.06', css: 'brightness(1.08) contrast(0.92) saturate(0.92)' },
   { id: 'warm',      label: 'Warm',            vf: 'eq=saturation=1.12:gamma_r=1.07:gamma_b=0.93',              css: 'sepia(0.18) saturate(1.22) hue-rotate(-8deg)' },
   { id: 'cool',      label: 'Cool',            vf: 'eq=saturation=1.08:gamma_b=1.08:gamma_r=0.94',              css: 'saturate(1.08) hue-rotate(9deg) brightness(1.01)' },
   { id: 'vivid',     label: 'Vivid',           vf: 'eq=contrast=1.13:saturation=1.38',                          css: 'contrast(1.13) saturate(1.38)' },
   { id: 'fade',      label: 'Fade (matte)',    vf: 'colorlevels=rimin=0.05:gimin=0.05:bimin=0.05:rimax=0.96:gimax=0.96:bimax=0.96,eq=saturation=0.85', css: 'contrast(0.88) brightness(1.06) saturate(0.85)' },
-  { id: 'cinematic', label: 'Cinematic',       vf: 'colorbalance=rs=-0.06:gs=-0.02:bs=0.08:rh=0.08:gh=0.02:bh=-0.06,eq=saturation=1.12:contrast=1.06', css: 'contrast(1.06) saturate(1.15)' },
   { id: 'vintage',   label: 'Vintage',         vf: 'colorlevels=rimin=0.06:gimin=0.06:bimin=0.06,eq=saturation=0.8:gamma_r=1.06:gamma_b=0.92,vignette', css: 'sepia(0.28) contrast(0.9) brightness(1.05) saturate(0.85)' },
 ];
 
