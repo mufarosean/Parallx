@@ -409,6 +409,9 @@
   background: var(--vscode-editor-background, #1e1e1e);
 }
 
+/* Thumb visibility follows the app-wide hover-or-scrolling rule
+   (workbench.css + ui/scrollbarReveal.ts) — no local scrollbar styling. */
+
 /* ── PDF.js Viewer theme overrides ─────────────────────────────────────── */
 
 /* Page background — keep white for readability (PDFs are authored on white) */

@@ -122,8 +122,3 @@
 .ui-icon-picker-content::-webkit-scrollbar-track {
   background: transparent;
 }
-
-.ui-icon-picker-content::-webkit-scrollbar-thumb {
-  background: var(--vscode-scrollbarSlider-background);
-  border-radius: var(--parallx-radius-sm);
-}

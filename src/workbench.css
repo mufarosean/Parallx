@@ -1109,7 +1109,18 @@ html, body {
   background-color: var(--vscode-statusBarItem-activeBackground);
 }
 
-/* ── Scrollbar tweaks ── */
+/* ── Scrollbars — ONE visibility rule for the whole app ──
+   THE RULE: a scrollable surface shows its thumb while the user is HOVERING
+   it or actively SCROLLING it — never otherwise.
+
+   Visibility is driven by two classes that ui/scrollbarReveal.ts toggles on
+   the scroll element itself (px-scrollbar-hover / px-scrollbar-scrolling).
+   Pure `:hover::-webkit-scrollbar-thumb` rules are NOT used: Chromium's
+   scrollbar repaint on dynamic pseudo-class changes is unreliable (the PDF
+   viewer never revealed under the old rules), which is how per-surface
+   always-on scrollbar CSS crept in. Surface stylesheets may SIZE their
+   scrollbars (width/height) but must not color thumbs and must never set
+   `scrollbar-width` (it disables ::-webkit-scrollbar styling entirely). */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
@@ -1122,54 +1133,26 @@ html, body {
 ::-webkit-scrollbar-thumb {
   background: transparent;
   border-radius: 5px;
-  transition: background 0.2s;
 }
 
 ::-webkit-scrollbar-corner {
   background: transparent;
 }
 
-/* Sidebar / panel / aux bar: when any of those parts is hovered, reveal
-   ALL scrollbar thumbs inside. They're narrow chrome with one primary
-   scrollable surface (the file tree, the chat list, etc.) — one
-   reveal-trigger for the whole part is the right granularity. */
-.part-workbench-parts-sidebar:hover ::-webkit-scrollbar-thumb,
-.part-workbench-parts-panel:hover ::-webkit-scrollbar-thumb,
-.part-workbench-parts-auxiliarybar:hover ::-webkit-scrollbar-thumb {
+.px-scrollbar-hover::-webkit-scrollbar-thumb,
+.px-scrollbar-scrolling::-webkit-scrollbar-thumb {
   background: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
 }
-.part-workbench-parts-sidebar:hover ::-webkit-scrollbar-thumb:hover,
-.part-workbench-parts-panel:hover ::-webkit-scrollbar-thumb:hover,
-.part-workbench-parts-auxiliarybar:hover ::-webkit-scrollbar-thumb:hover {
+
+.px-scrollbar-hover::-webkit-scrollbar-thumb:hover,
+.px-scrollbar-scrolling::-webkit-scrollbar-thumb:hover {
   background: var(--vscode-scrollbarSlider-hoverBackground, rgba(121, 121, 121, 0.7));
 }
-.part-workbench-parts-sidebar:hover ::-webkit-scrollbar-thumb:active,
-.part-workbench-parts-panel:hover ::-webkit-scrollbar-thumb:active,
-.part-workbench-parts-auxiliarybar:hover ::-webkit-scrollbar-thumb:active {
+
+.px-scrollbar-hover::-webkit-scrollbar-thumb:active,
+.px-scrollbar-scrolling::-webkit-scrollbar-thumb:active {
   background: var(--vscode-scrollbarSlider-activeBackground, rgba(191, 191, 191, 0.5));
 }
-
-/* Editor area: per-element scoping. The editor area can hold many
-   independently-scrollable surfaces (dashboard widgets, canvas pages,
-   planner panes, etc.). Hovering one widget shouldn't light up the
-   scrollbars on every other widget.
-
-   `:hover::-webkit-scrollbar-thumb` (no space between :hover and the
-   pseudo) styles the scrollbar of the specifically-hovered element,
-   not of descendants. Each widget gets its own reveal trigger. */
-.part-workbench-parts-editor :hover::-webkit-scrollbar-thumb {
-  background: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
-}
-.part-workbench-parts-editor :hover::-webkit-scrollbar-thumb:hover {
-  background: var(--vscode-scrollbarSlider-hoverBackground, rgba(121, 121, 121, 0.7));
-}
-.part-workbench-parts-editor :hover::-webkit-scrollbar-thumb:active {
-  background: var(--vscode-scrollbarSlider-activeBackground, rgba(191, 191, 191, 0.5));
-}
-
-/* Text editor textarea keeps its own scrollbar styling — long-form text
-   editing benefits from always-visible scroll affordances. See
-   src/built-in/editor/textEditorPane.css. */
 
 /* ── Blinking cursor animation ── */
 @keyframes blink {
@@ -1715,15 +1698,9 @@ html, body {
   flex-direction: row;
 }
 
-/* Hide scrollbar visually by default, show on hover (matches VS Code) */
+/* Slim scrollbar; visibility follows the app-wide hover-or-scrolling rule. */
 .parallx-breadcrumbs::-webkit-scrollbar {
   height: 3px;
-}
-.parallx-breadcrumbs::-webkit-scrollbar-thumb {
-  background-color: transparent;
-}
-.parallx-breadcrumbs:hover::-webkit-scrollbar-thumb {
-  background-color: var(--vscode-scrollbarSlider-background);
 }
 
 .parallx-breadcrumb-item {

@@ -1088,8 +1088,9 @@
   width: min(560px, calc(100vw - 48px));
   max-height: min(340px, 50vh);
   overflow: auto;
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--vscode-scrollbarSlider-background, #79797966) 90%, transparent) transparent;
+  /* No scrollbar-width/scrollbar-color here: setting them flips Chromium to
+     CSS Scrollbars mode, which disables ::-webkit-scrollbar styling AND the
+     app-wide hover-or-scrolling visibility rule (workbench.css). */
   padding: 10px;
   border: 1px solid var(--vscode-editorWidget-border, #454545);
   border-radius: 10px;
@@ -1106,17 +1107,7 @@
   background: transparent;
 }
 
-.parallx-chat-context-menu-panel::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--vscode-scrollbarSlider-background, #79797966) 90%, transparent);
-  border-radius: var(--parallx-radius-full);
-  border: 2px solid transparent;
-  background-clip: padding-box;
-}
-
-.parallx-chat-context-menu-panel::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--vscode-scrollbarSlider-hoverBackground, #646464b3) 90%, transparent);
-  background-clip: padding-box;
-}
+/* Thumb color/visibility comes from the app-wide hover-or-scrolling rule. */
 
 .parallx-chat-context-menu-header {
   display: flex;
