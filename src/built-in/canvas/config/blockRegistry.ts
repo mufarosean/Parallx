@@ -839,7 +839,10 @@ const definitions: BlockDefinition[] = [
     id: 'database',
     name: 'pageBlock',
     label: 'Database',
-    icon: 'table',
+    // 'database' is a REGISTERED icon id — the old 'table' wasn't, so the
+    // slash menu printed the literal word and turn-into fell back to the
+    // page icon.
+    icon: 'database',
     source: 'custom',
     kind: 'atom',
     capabilities: CUSTOM_DRAG,

@@ -187,26 +187,26 @@ export class SlashMenuController implements ICanvasMenu {
         row.classList.add('canvas-slash-item--selected');
       }
 
+      // House-style single-line row (matches .block-action-item): ghost
+      // icon + label; the description lives in the native tooltip instead
+      // of a permanent second line. The registry's iconIsText flag decides
+      // text-vs-SVG (the old hardcoded whitelist rendered any unlisted
+      // icon id as literal text — the "table" box).
       const iconEl = $('span.canvas-slash-icon');
-      // Render SVG icon if available, otherwise use text
-      const knownIcons = ['page','checklist','quote','code','divider','lightbulb','chevron-right','grid','image','bullet-list','numbered-list','math','math-block','columns','bookmark','globe','toc','video','audio','file-attachment','database','database-link'];
-      if (knownIcons.includes(item.icon)) {
+      if (item.iconIsText) {
+        iconEl.classList.add('canvas-slash-icon--text');
+        iconEl.textContent = item.icon;
+      } else {
         iconEl.innerHTML = svgIcon(item.icon as any);
         const svg = iconEl.querySelector('svg');
-        if (svg) { svg.setAttribute('width', '18'); svg.setAttribute('height', '18'); }
-      } else {
-        iconEl.textContent = item.icon;
+        if (svg) { svg.setAttribute('width', '16'); svg.setAttribute('height', '16'); }
       }
       row.appendChild(iconEl);
 
-      const textEl = $('div.canvas-slash-text');
-      const labelEl = $('div.canvas-slash-label');
+      const labelEl = $('span.canvas-slash-label');
       labelEl.textContent = item.label;
-      const descEl = $('div.canvas-slash-desc');
-      descEl.textContent = item.description;
-      textEl.appendChild(labelEl);
-      textEl.appendChild(descEl);
-      row.appendChild(textEl);
+      row.appendChild(labelEl);
+      row.title = item.description;
 
       row.addEventListener('mousedown', (e) => {
         e.preventDefault();

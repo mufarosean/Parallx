@@ -29,6 +29,8 @@ export interface SlashMenuItem {
   blockId: string;
   label: string;
   icon: string;
+  /** True when `icon` is a text glyph (H₁, T, …) rather than an icon id. */
+  iconIsText: boolean;
   description: string;
 }
 
@@ -49,6 +51,7 @@ export function buildSlashMenuItems(defs: readonly SlashBlockDef[]): SlashMenuIt
     blockId: def.id,
     label: def.slashMenu!.label ?? def.label,
     icon: def.icon,
+    iconIsText: def.iconIsText === true,
     description: def.slashMenu!.description,
   }));
 }

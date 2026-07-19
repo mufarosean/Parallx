@@ -963,6 +963,40 @@
   margin: 2px 0;
 }
 
+/* ── Depth-cycled list markers (Word/OneNote-style) ──
+   Each nesting level gets its own marker style so indented rows read as a
+   hierarchy at a glance instead of a wall of "1."s:
+
+     numbered:  1. 2. 3.  →  a. b. c.  →  i. ii. iii.  → (cycle)
+     bulleted:  •          →  ◦          →  ▪            → (cycle)
+
+   Depth counts SAME-TYPE ancestors (an ol inside a bulleted row is still
+   level-1 numbering — matches Word). Task lists are excluded from the
+   bullet chain (they render checkboxes, not markers). Two full cycles are
+   spelled out; levels deeper than six keep the last style — longer chains
+   have higher specificity, so each deeper rule wins over the shallower
+   ones. `start`/restart numbering keeps working: list-style-type only
+   changes how the counter is DRAWN. */
+
+.canvas-tiptap-editor ol { list-style-type: decimal; }
+.canvas-tiptap-editor ol ol { list-style-type: lower-alpha; }
+.canvas-tiptap-editor ol ol ol { list-style-type: lower-roman; }
+.canvas-tiptap-editor ol ol ol ol { list-style-type: decimal; }
+.canvas-tiptap-editor ol ol ol ol ol { list-style-type: lower-alpha; }
+.canvas-tiptap-editor ol ol ol ol ol ol { list-style-type: lower-roman; }
+
+.canvas-tiptap-editor ul:not([data-type='taskList']) { list-style-type: disc; }
+.canvas-tiptap-editor ul:not([data-type='taskList']) ul:not([data-type='taskList']) { list-style-type: circle; }
+.canvas-tiptap-editor ul:not([data-type='taskList']) ul:not([data-type='taskList']) ul:not([data-type='taskList']) { list-style-type: square; }
+.canvas-tiptap-editor ul:not([data-type='taskList']) ul:not([data-type='taskList']) ul:not([data-type='taskList']) ul:not([data-type='taskList']) { list-style-type: disc; }
+.canvas-tiptap-editor ul:not([data-type='taskList']) ul:not([data-type='taskList']) ul:not([data-type='taskList']) ul:not([data-type='taskList']) ul:not([data-type='taskList']) { list-style-type: circle; }
+.canvas-tiptap-editor ul:not([data-type='taskList']) ul:not([data-type='taskList']) ul:not([data-type='taskList']) ul:not([data-type='taskList']) ul:not([data-type='taskList']) ul:not([data-type='taskList']) { list-style-type: square; }
+
+/* Markers recede so content leads — Notion dims them the same way. */
+.canvas-tiptap-editor li::marker {
+  color: var(--px-text-muted, var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.5)));
+}
+
 /* ── Block background colour — one clean rounded region (Notion-style) ──
    The colour lands on the block's own element via the `canvas-block-bg` class
    (added by extensions/blockBackground.ts). For a list ITEM that element is the
@@ -1627,21 +1661,25 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
- * Slash Command Menu — Modern dropdown (Notion-style)
+ * Slash Command Menu — house menu style
+ * Visual sibling of the block action menu (.block-action-menu /
+ * .block-action-item): same surface, same compact single-line rows, same
+ * ghost icons. Descriptions live in the row tooltip, not a second line.
  * ───────────────────────────────────────────────────────────────────────────── */
 
 .canvas-slash-menu {
   position: fixed;
   z-index: 1000;
-  min-width: 280px;
+  min-width: 220px;
+  max-width: 320px;
   max-height: 340px;
   overflow-y: auto;
-  background: var(--vscode-menu-background);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.15);
-  padding: 6px;
-  animation: slashMenuFadeIn 0.12s ease-out;
+  background: var(--vscode-menu-background, #252525);
+  border: 1px solid var(--vscode-menu-border, rgba(255, 255, 255, 0.1));
+  border-radius: var(--parallx-radius-lg);
+  box-shadow: 0 4px 16px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.5)), 0 0 0 1px rgba(0, 0, 0, 0.2);
+  padding: 4px;
+  animation: slashMenuFadeIn 0.1s ease-out;
 }
 
 @keyframes slashMenuFadeIn {
@@ -1652,51 +1690,41 @@
 .canvas-slash-item {
   display: flex;
   align-items: center;
-  padding: 6px 8px;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 4px;
   cursor: pointer;
-  gap: 12px;
-  border-radius: var(--parallx-radius-md);
+  user-select: none;
+  font-size: var(--parallx-fontSize-md);
+  color: var(--vscode-foreground, rgba(255, 255, 255, 0.8));
   transition: background-color 0.08s ease;
 }
 
 .canvas-slash-item:hover,
 .canvas-slash-item--selected {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.08));
 }
 
 .canvas-slash-icon {
-  width: 36px;
-  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 22px;
+  height: 22px;
   flex-shrink: 0;
-  font-size: var(--parallx-fontSize-lg);
-  font-weight: 600;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: var(--parallx-radius-md);
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.5));
 }
 
-.canvas-slash-text {
-  flex: 1;
-  min-width: 0;
+.canvas-slash-icon--text {
+  font-weight: 700;
+  font-size: var(--parallx-fontSize-lg);
 }
 
 .canvas-slash-label {
-  font-size: var(--parallx-fontSize-lg);
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.9);
-}
-
-.canvas-slash-desc {
-  font-size: var(--parallx-fontSize-base);
-  color: rgba(255, 255, 255, 0.4);
+  flex: 1;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-  margin-top: 1px;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -2420,6 +2448,8 @@
  * Scrollbar styling for slash menu and editor
  * ───────────────────────────────────────────────────────────────────────────── */
 
+/* Sizing only — thumb visibility is owned by the app-wide rule in
+   workbench.css (hover-or-scrolling via ui/scrollbarReveal.ts). */
 .canvas-slash-menu::-webkit-scrollbar,
 .canvas-editor-wrapper::-webkit-scrollbar {
   width: 6px;
@@ -2428,17 +2458,6 @@
 .canvas-slash-menu::-webkit-scrollbar-track,
 .canvas-editor-wrapper::-webkit-scrollbar-track {
   background: transparent;
-}
-
-.canvas-slash-menu::-webkit-scrollbar-thumb,
-.canvas-editor-wrapper::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
-  border-radius: var(--parallx-radius-sm);
-}
-
-.canvas-slash-menu::-webkit-scrollbar-thumb:hover,
-.canvas-editor-wrapper::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -3914,11 +3933,6 @@
   background: transparent;
 }
 
-.canvas-trash-panel-list::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: var(--parallx-radius-sm);
-}
-
 /* ── Context menu with icon + label pattern ── */
 
 .canvas-context-menu {
@@ -4356,11 +4370,6 @@
 
 .canvas-ai-chat-messages::-webkit-scrollbar {
   width: 4px;
-}
-
-.canvas-ai-chat-messages::-webkit-scrollbar-thumb {
-  background: rgba(139, 92, 246, 0.3);
-  border-radius: 2px;
 }
 
 /* Context indicator */
