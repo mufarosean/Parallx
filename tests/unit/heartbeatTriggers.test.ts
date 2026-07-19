@@ -142,6 +142,125 @@ describe('UC3 — overdue follow-up', () => {
   });
 });
 
+// ─── UC4: sync failure (rising edge) ─────────────────────────────────────────
+
+describe('UC4 — sync failure rising edge', () => {
+  it('fires ONE notification when sync starts failing, then stays quiet while it persists', () => {
+    const first = evaluateTriggers(facts({ sync: { failed: true, detail: 'google: 401' } }), {}, NOW);
+    expect(first.findings).toHaveLength(1);
+    expect(first.findings[0]).toMatchObject({ key: 'sync-failure', kind: 'sync-failure', delivery: 'notification' });
+    expect(first.findings[0].detail).toContain('401');
+    // The engine marked the ongoing failure in the ledger it returned.
+    expect(typeof first.ledger['state:sync-failing']).toBe('number');
+
+    const second = evaluateTriggers(facts({ sync: { failed: true, detail: 'google: 401' } }), first.ledger, NOW + DAY);
+    expect(second.findings).toHaveLength(0);
+  });
+
+  it('recovery re-arms the edge: success clears the marker, a NEW failure fires again', () => {
+    const failing = evaluateTriggers(facts({ sync: { failed: true, detail: 'x' } }), {}, NOW);
+    const recovered = evaluateTriggers(facts({ sync: { failed: false, detail: null } }), failing.ledger, NOW + DAY);
+    expect(recovered.ledger['state:sync-failing']).toBeUndefined();
+
+    const again = evaluateTriggers(
+      facts({ sync: { failed: true, detail: 'y' } }),
+      recovered.ledger,
+      NOW + 2 * DAY,
+    );
+    expect(again.findings).toHaveLength(1);
+  });
+
+  it('unconfigured sync (null) never fires and never writes state', () => {
+    const r = evaluateTriggers(facts({ sync: null }), {}, NOW);
+    expect(r.findings).toHaveLength(0);
+    expect(r.ledger['state:sync-failing']).toBeUndefined();
+  });
+});
+
+// ─── UC5: morning digest ─────────────────────────────────────────────────────
+
+describe('UC5 — morning digest', () => {
+  const at = (h: number, m = 0) => new Date(2026, 6, 20, h, m).getTime();
+
+  it('fires inside [07:00,09:00) local on a busy day', () => {
+    const r = evaluateTriggers(facts({ today: { events: 2, tasksDue: 3 } }), {}, at(8));
+    expect(r.findings).toHaveLength(1);
+    expect(r.findings[0].key).toBe('morning-digest:2026-07-20');
+    expect(r.findings[0].title).toBe('Today: 2 events, 3 tasks due');
+    expect(r.findings[0].delivery).toBe('notification');
+  });
+
+  it('never fires outside the window', () => {
+    for (const h of [6, 9, 13, 21]) {
+      expect(evaluateTriggers(facts({ today: { events: 2, tasksDue: 1 } }), {}, at(h)).findings).toHaveLength(0);
+    }
+  });
+
+  it('never fires on an empty day', () => {
+    const r = evaluateTriggers(facts({ today: { events: 0, tasksDue: 0 } }), {}, at(8));
+    expect(r.findings).toHaveLength(0);
+  });
+
+  it('never fires twice in one day (date-keyed), but fires the NEXT day', () => {
+    const first = evaluateTriggers(facts({ today: { events: 1, tasksDue: 0 } }), {}, at(7, 10));
+    const ledger = { ...first.ledger, [first.findings[0].key]: at(7, 10) }; // lane stamped
+    const sameDay = evaluateTriggers(facts({ today: { events: 1, tasksDue: 0 } }), ledger, at(8, 30));
+    expect(sameDay.findings).toHaveLength(0);
+    expect(sameDay.suppressed).toBe(1);
+
+    const nextDay = evaluateTriggers(
+      facts({ today: { events: 1, tasksDue: 0 } }),
+      sameDay.ledger,
+      new Date(2026, 6, 21, 8).getTime(),
+    );
+    expect(nextDay.findings).toHaveLength(1);
+    expect(nextDay.findings[0].key).toBe('morning-digest:2026-07-21');
+  });
+
+  it('singular grammar: 1 event, 1 task', () => {
+    const r = evaluateTriggers(facts({ today: { events: 1, tasksDue: 1 } }), {}, at(8));
+    expect(r.findings[0].title).toBe('Today: 1 event, 1 task due');
+  });
+});
+
+// ─── UC7: AGENTS.md staleness ────────────────────────────────────────────────
+
+describe('UC7 — AGENTS.md staleness', () => {
+  const agents = (hash: string, churn: number) => facts({ agentsMd: { hashPrefix: hash, recentPageUpdates: churn } });
+
+  it('first sighting stamps the hash and stays silent', () => {
+    const r = evaluateTriggers(agents('abcd1234', 20), {}, NOW);
+    expect(r.findings).toHaveLength(0);
+    expect(r.ledger['agents-seen:abcd1234']).toBe(NOW);
+  });
+
+  it('same hash 30d later + churn ⇒ ONE refresh nudge', () => {
+    const seen = { 'agents-seen:abcd1234': NOW - 31 * DAY };
+    const r = evaluateTriggers(agents('abcd1234', 8), seen, NOW);
+    expect(r.findings).toHaveLength(1);
+    expect(r.findings[0]).toMatchObject({ key: 'agents-stale:abcd1234', kind: 'agents-stale', delivery: 'notification' });
+    expect(r.findings[0].detail).toContain('/init');
+  });
+
+  it('stale but QUIET workspace (low churn) stays silent', () => {
+    const seen = { 'agents-seen:abcd1234': NOW - 40 * DAY };
+    const r = evaluateTriggers(agents('abcd1234', 2), seen, NOW);
+    expect(r.findings).toHaveLength(0);
+  });
+
+  it('a regenerated file (new hash) resets the clock', () => {
+    const seen = { 'agents-seen:abcd1234': NOW - 40 * DAY };
+    const r = evaluateTriggers(agents('ffff0000', 20), seen, NOW);
+    expect(r.findings).toHaveLength(0);
+    expect(r.ledger['agents-seen:ffff0000']).toBe(NOW);
+  });
+
+  it('missing file (null hash) never fires', () => {
+    const r = evaluateTriggers(facts({ agentsMd: { hashPrefix: null, recentPageUpdates: 50 } }), {}, NOW);
+    expect(r.findings).toHaveLength(0);
+  });
+});
+
 // ─── Invariants: cooldowns, ledger, quiet days ───────────────────────────────
 
 describe('cooldowns and ledger', () => {

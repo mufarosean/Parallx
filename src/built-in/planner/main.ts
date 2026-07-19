@@ -144,6 +144,34 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
           return true;
         } catch { return false; }
       },
+      // M87 S3 — morning digest inputs: today's events + tasks due today
+      // (local calendar day).
+      getTodayDigest: async () => {
+        try {
+          const start = new Date(); start.setHours(0, 0, 0, 0);
+          const end = new Date(start.getTime()); end.setDate(end.getDate() + 1);
+          const [events, tasks] = await Promise.all([
+            data.listEvents({ from: start.getTime(), to: end.getTime(), limit: 200 }),
+            data.listTasks({ status: ['planned', 'reviewing'], dueFrom: start.getTime(), dueTo: end.getTime() }),
+          ]);
+          return { events: events.length, tasksDue: tasks.length };
+        } catch { return { events: 0, tasksDue: 0 }; }
+      },
+      // M87 S3 — sync health for the rising-edge failure alert. Reads the
+      // orchestrator lazily: it is constructed after this registration but
+      // long before any heartbeat asks.
+      getSyncHealth: async () => {
+        try {
+          const results = _orchestrator?.lastResults ?? [];
+          if (results.length === 0) return null; // never ran / not configured
+          const failing = results.filter((r) => !r.ok);
+          if (failing.length === 0) return { failed: false, detail: null };
+          const detail = failing
+            .map((r) => `${r.provider}: ${r.error ?? 'unknown error'}`)
+            .join('; ');
+          return { failed: true, detail };
+        } catch { return null; }
+      },
     });
   }
 

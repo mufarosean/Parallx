@@ -60,7 +60,7 @@ import { CanvasSurfacePlugin } from '../canvas/surfaces/canvasSurface.js';
 import { HeartbeatRunner, type IHeartbeatConfig } from '../../openclaw/openclawHeartbeatRunner.js';
 import { createHeartbeatTurnExecutor } from '../../openclaw/openclawHeartbeatExecutor.js';
 import { runHeartbeatDeterministicLane } from '../../openclaw/heartbeatDeterministicLane.js';
-import { buildPlanFacts } from '../../openclaw/heartbeatTriggers.js';
+import { buildPlanFacts, contentHashPrefix } from '../../openclaw/heartbeatTriggers.js';
 import { HEARTBEAT_PURPOSE_PATH, parseHeartbeatPurpose } from '../../openclaw/heartbeatPurpose.js';
 import { createHeartbeatWatchTool } from './tools/heartbeatWatchTool.js';
 import { INotificationService } from '../../services/serviceTypes.js';
@@ -2300,12 +2300,31 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
             const planner = api.services.has(IPlannerQueryService)
               ? api.services.get<import('../../services/serviceTypes.js').IPlannerQueryService>(IPlannerQueryService)
               : undefined;
-            const tasks = await (planner?.listTaskFacts?.() ?? Promise.resolve([]));
+            const [tasks, today, sync] = await Promise.all([
+              planner?.listTaskFacts?.() ?? Promise.resolve([]),
+              planner?.getTodayDigest?.() ?? Promise.resolve(null),
+              planner?.getSyncHealth?.() ?? Promise.resolve(null),
+            ]);
             const plans = buildPlanFacts(chatService.getSessions().map((s) => ({
               sessionId: s.id,
               plan: s.plan,
             })));
-            return { plans, tasks };
+            // UC7 — AGENTS.md staleness inputs: content hash + 30d page churn.
+            let agentsMd: { hashPrefix: string | null; recentPageUpdates: number } | null = null;
+            try {
+              const content = await dataService.readFileRelative('.parallx/AGENTS.md');
+              const canvas = api.services.has(ICanvasPageQueryService)
+                ? api.services.get<import('../../services/serviceTypes.js').ICanvasPageQueryService>(ICanvasPageQueryService)
+                : undefined;
+              const pages = canvas ? await canvas.getRootPages() : [];
+              const cutoff = Date.now() - 30 * 86_400_000;
+              const recentPageUpdates = pages.filter((p) => {
+                const t = p.updatedAt ? Date.parse(p.updatedAt) : NaN;
+                return Number.isFinite(t) && t >= cutoff;
+              }).length;
+              agentsMd = { hashPrefix: content ? contentHashPrefix(content) : null, recentPageUpdates };
+            } catch { agentsMd = null; }
+            return { plans, tasks, today, sync, agentsMd };
           },
           loadLedger: async () => {
             try {

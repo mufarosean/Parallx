@@ -1673,6 +1673,11 @@ export interface IPlannerQueryService {
    * same key already exists, no duplicate is created and false is returned.
    */
   captureHeartbeatTask?(input: { title: string; description?: string; sourceKey: string }): Promise<boolean>;
+  /** M87 S3 — today's schedule shape for the morning digest (local day). */
+  getTodayDigest?(): Promise<{ events: number; tasksDue: number }>;
+  /** M87 S3 — sync health for the rising-edge failure alert.
+   *  null = sync not configured/never ran. */
+  getSyncHealth?(): Promise<{ failed: boolean; detail: string | null } | null>;
 }
 export const IPlannerQueryService = createServiceIdentifier<IPlannerQueryService>('IPlannerQueryService');
 

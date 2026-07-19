@@ -37,6 +37,24 @@ export interface IHeartbeatTaskFact {
 export interface IHeartbeatFacts {
   readonly plans: readonly IHeartbeatPlanFact[];
   readonly tasks: readonly IHeartbeatTaskFact[];
+  /** UC4 — planner sync health. null/undefined = sync not configured. */
+  readonly sync?: { readonly failed: boolean; readonly detail: string | null } | null;
+  /** UC5 — today's schedule shape (events + tasks due today, local day). */
+  readonly today?: { readonly events: number; readonly tasksDue: number } | null;
+  /**
+   * UC7 — AGENTS.md staleness inputs: a short content hash (null = file
+   * missing) and how many canvas pages changed in the last 30 days.
+   */
+  readonly agentsMd?: { readonly hashPrefix: string | null; readonly recentPageUpdates: number } | null;
+}
+
+/** Tiny stable content hash (djb2, hex) for staleness identity — NOT crypto. */
+export function contentHashPrefix(content: string): string {
+  let h = 5381;
+  for (let i = 0; i < content.length; i++) {
+    h = ((h << 5) + h + content.charCodeAt(i)) | 0;
+  }
+  return (h >>> 0).toString(16).padStart(8, '0');
 }
 
 /** Narrow session-plan shape (mirrors IChatSessionPlan without importing chat types). */
@@ -68,7 +86,13 @@ export function buildPlanFacts(sessions: readonly ISessionPlanSnapshot[]): IHear
 
 // ── Findings ─────────────────────────────────────────────────────────────────
 
-export type HeartbeatFindingKind = 'stalled-plan' | 'review-queue' | 'overdue-task';
+export type HeartbeatFindingKind =
+  | 'stalled-plan'
+  | 'review-queue'
+  | 'overdue-task'
+  | 'sync-failure'
+  | 'morning-digest'
+  | 'agents-stale';
 
 export interface IHeartbeatFinding {
   /** Stable identity for cooldown/dedup (e.g. "overdue-task:task-42"). */
@@ -106,8 +130,21 @@ const REVIEW_QUEUE_MIN_AGE_MS = 3 * DAY_MS;
 const COOLDOWN_STALLED_PLAN_MS = 7 * DAY_MS;
 const COOLDOWN_REVIEW_QUEUE_MS = 3 * DAY_MS;
 const COOLDOWN_OVERDUE_TASK_MS = 3 * DAY_MS;
+/** UC4: after notifying a failure, stay quiet this long even if it persists. */
+const COOLDOWN_SYNC_FAILURE_MS = 6 * 3_600_000;
+/** UC5: morning digest window [start, end) in local hours (Mufaro: morning). */
+const MORNING_DIGEST_START_HOUR = 7;
+const MORNING_DIGEST_END_HOUR = 9;
+/** UC7: AGENTS.md unchanged this long + churn ⇒ suggest a /init refresh. */
+const AGENTS_STALE_MS = 30 * DAY_MS;
+const AGENTS_CHURN_THRESHOLD = 5;
+const COOLDOWN_AGENTS_STALE_MS = 30 * DAY_MS;
 /** Ledger entries older than this are pruned (bounds storage forever). */
 const LEDGER_RETENTION_MS = 60 * DAY_MS;
+/** Ledger key marking "sync is currently failing" (rising-edge state). */
+const SYNC_FAILING_STATE_KEY = 'state:sync-failing';
+/** Ledger key prefix recording when an AGENTS.md content hash was first seen. */
+const AGENTS_SEEN_KEY_PREFIX = 'agents-seen:';
 
 export interface ITriggerEvaluation {
   /** Findings due for delivery NOW (cooldowns already applied). */
@@ -184,12 +221,81 @@ export function evaluateTriggers(
     });
   }
 
-  // ── Cooldowns + ledger maintenance ──
+  // ── Ledger maintenance (prune first — state rules below write into it) ──
   const findings: IHeartbeatFinding[] = [];
   let suppressed = 0;
   const nextLedger: IHeartbeatLedger = {};
   for (const [key, at] of Object.entries(ledger)) {
     if (typeof at === 'number' && nowMs - at < LEDGER_RETENTION_MS) nextLedger[key] = at;
+  }
+
+  // ── UC4: sync failure (rising edge) ──
+  // The `state:sync-failing` ledger key marks an ongoing failure so a
+  // persistent outage notifies once, and a recovery re-arms the edge.
+  if (facts.sync != null) {
+    if (facts.sync.failed) {
+      const alreadyFailing = typeof nextLedger[SYNC_FAILING_STATE_KEY] === 'number';
+      if (!alreadyFailing) {
+        candidates.push({
+          key: 'sync-failure',
+          kind: 'sync-failure',
+          title: 'Planner sync is failing',
+          detail: facts.sync.detail?.trim() || 'The last sync run reported an error. Check Settings → Planner → Google sync.',
+          delivery: 'notification',
+          cooldownMs: COOLDOWN_SYNC_FAILURE_MS,
+        });
+      }
+      nextLedger[SYNC_FAILING_STATE_KEY] = nextLedger[SYNC_FAILING_STATE_KEY] ?? nowMs;
+    } else {
+      delete nextLedger[SYNC_FAILING_STATE_KEY];
+    }
+  }
+
+  // ── UC5: morning digest (once per local day, only on non-empty days) ──
+  if (facts.today != null) {
+    const local = new Date(nowMs);
+    const hour = local.getHours();
+    const p = (n: number): string => String(n).padStart(2, '0');
+    const dayKey = `${local.getFullYear()}-${p(local.getMonth() + 1)}-${p(local.getDate())}`;
+    const busy = facts.today.events > 0 || facts.today.tasksDue > 0;
+    if (busy && hour >= MORNING_DIGEST_START_HOUR && hour < MORNING_DIGEST_END_HOUR) {
+      candidates.push({
+        // The local date in the key makes "once per day" structural.
+        key: `morning-digest:${dayKey}`,
+        kind: 'morning-digest',
+        title: `Today: ${facts.today.events} event${facts.today.events === 1 ? '' : 's'}, ${facts.today.tasksDue} task${facts.today.tasksDue === 1 ? '' : 's'} due`,
+        detail: 'Open the planner for the full picture.',
+        delivery: 'notification',
+        cooldownMs: DAY_MS,
+      });
+    }
+  }
+
+  // ── UC7: AGENTS.md staleness ──
+  // First sighting of a content hash stamps `agents-seen:<hash>`; when that
+  // same hash is still current 30d later AND the workspace has churned,
+  // suggest a /init refresh. A regenerated file = new hash = clock resets.
+  // (Ledger pruning at 60d simply re-stamps an ancient hash — that only
+  // DELAYS the next nudge, never spams.)
+  if (facts.agentsMd != null && facts.agentsMd.hashPrefix) {
+    const seenKey = `${AGENTS_SEEN_KEY_PREFIX}${facts.agentsMd.hashPrefix}`;
+    const firstSeen = nextLedger[seenKey];
+    if (typeof firstSeen !== 'number') {
+      nextLedger[seenKey] = nowMs;
+    } else if (
+      nowMs - firstSeen >= AGENTS_STALE_MS
+      && facts.agentsMd.recentPageUpdates >= AGENTS_CHURN_THRESHOLD
+    ) {
+      const weeks = Math.floor((nowMs - firstSeen) / (7 * DAY_MS));
+      candidates.push({
+        key: `agents-stale:${facts.agentsMd.hashPrefix}`,
+        kind: 'agents-stale',
+        title: `AGENTS.md hasn't changed in ${weeks} weeks`,
+        detail: `${facts.agentsMd.recentPageUpdates} pages changed recently while AGENTS.md stayed frozen — run /init to refresh the workspace description.`,
+        delivery: 'notification',
+        cooldownMs: COOLDOWN_AGENTS_STALE_MS,
+      });
+    }
   }
   for (const f of candidates) {
     const last = nextLedger[f.key];
