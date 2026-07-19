@@ -1,6 +1,7 @@
 # Milestone 87 — The Useful Heartbeat
 
-**Status: S1 SHIPPED 2026-07-19 (deterministic core + UC1–UC3). S2–S4 pending.**
+**Status: S1+S2 SHIPPED 2026-07-19 (deterministic core + UC1–UC3; HEARTBEAT.md
+purpose file + heartbeat_watch tool + UC6 prompt inclusion). S3–S4 pending.**
 **Decisions (Mufaro):** thresholds = plan defaults (stall 4d, review-queue 5,
 overdue 1d); follow-up findings create review-queue TASKS (digests/alerts are
 notifications); **UC5 is a MORNING digest** (07:00–09:00 local: "Today: N

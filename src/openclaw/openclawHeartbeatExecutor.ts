@@ -76,6 +76,7 @@ import type {
 } from './openclawHeartbeatRunner.js';
 import { extractFinalAssistantText } from './openclawSubagentExecutor.js';
 import { buildHeartbeatSnapshot, formatAppContext, formatEventLine, hasNoteworthySignals, buildWorkspaceContext, buildTasksContext } from './openclawHeartbeatContext.js';
+import { formatWatchesBlock } from './heartbeatPurpose.js';
 import type { IHeartbeatAppSnapshot, IWorkspacePageInfo, IWorkspaceTaskInfo } from './openclawHeartbeatContext.js';
 import type { AgentActionKind } from './mind/actionLedger.js';
 import type {
@@ -182,6 +183,12 @@ export interface IHeartbeatRealTurnDeps {
    * exists to protect token spend, and this lane spends none.
    */
   readonly deterministicLane?: () => Promise<unknown>;
+  /**
+   * M87 S2 — the user's standing watches from .parallx/HEARTBEAT.md. Folded
+   * into every real-turn seed (reviews AND the daily reflection, so each
+   * watch is evaluated at least daily).
+   */
+  readonly getPurposeWatches?: () => Promise<readonly string[]>;
 }
 
 // ---------------------------------------------------------------------------
@@ -491,11 +498,16 @@ export function createHeartbeatTurnExecutor(
     // the loop on a failure.
     let workspaceBlock = '';
     try {
-      const [pages, tasks] = await Promise.all([
+      const [pages, tasks, watches] = await Promise.all([
         realTurnDeps.getWorkspacePages?.() ?? Promise.resolve([]),
         realTurnDeps.getWorkspaceTasks?.() ?? Promise.resolve([]),
+        realTurnDeps.getPurposeWatches?.() ?? Promise.resolve([]),
       ]);
-      workspaceBlock = [buildWorkspaceContext(pages), buildTasksContext(tasks)].filter((b) => b).join('\n\n');
+      workspaceBlock = [
+        buildWorkspaceContext(pages),
+        buildTasksContext(tasks),
+        formatWatchesBlock(watches),
+      ].filter((b) => b).join('\n\n');
     } catch { workspaceBlock = ''; }
 
     // MIND — continuity (its prior beliefs seed the review) + audit (outcomes are

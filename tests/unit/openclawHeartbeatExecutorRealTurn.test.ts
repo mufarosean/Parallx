@@ -152,6 +152,7 @@ function buildHarness(overrides?: {
   getWorkspacePages?: () => Promise<readonly { title: string; updatedAt?: string }[]>;
   getWorkspaceTasks?: () => Promise<readonly { title: string; dueAt?: number | null }[]>;
   deterministicLane?: () => Promise<unknown>;
+  getPurposeWatches?: () => Promise<readonly string[]>;
 }) {
   const router = new SurfaceRouterService();
   const status = new FakeSurfacePlugin(SURFACE_STATUS);
@@ -181,6 +182,7 @@ function buildHarness(overrides?: {
       getWorkspacePages: overrides?.getWorkspacePages,
       getWorkspaceTasks: overrides?.getWorkspaceTasks,
       deterministicLane: overrides?.deterministicLane,
+      getPurposeWatches: overrides?.getPurposeWatches,
     },
   );
 
@@ -592,5 +594,42 @@ describe('HeartbeatTurnExecutor — deterministic lane (M87 S1)', () => {
     await h.executor([mkEvent('/notes/page.md')], 'system-event');
 
     expect(lane).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// M87 S2 — standing watches (UC6 prompt inclusion)
+// ---------------------------------------------------------------------------
+
+describe('HeartbeatTurnExecutor — standing watches (M87 S2 / UC6)', () => {
+  it('a real-turn review includes each watch VERBATIM in the seed message', async () => {
+    const h = buildHarness({
+      getPurposeWatches: async () => ['Warn me if the Exam 7 page goes a week without edits.'],
+    });
+
+    await h.executor([mkEvent('/notes/page.md')], 'system-event');
+
+    expect(h.chat_.calls.sendRequest).toHaveLength(1);
+    const seed = h.chat_.calls.sendRequest[0].message;
+    expect(seed).toContain('STANDING WATCHES');
+    expect(seed).toContain('- Warn me if the Exam 7 page goes a week without edits.');
+  });
+
+  it('zero watches add NOTHING to the seed', async () => {
+    const h = buildHarness({ getPurposeWatches: async () => [] });
+
+    await h.executor([mkEvent('/notes/page.md')], 'system-event');
+
+    expect(h.chat_.calls.sendRequest).toHaveLength(1);
+    expect(h.chat_.calls.sendRequest[0].message).not.toContain('STANDING WATCHES');
+  });
+
+  it('a throwing watch loader never breaks the review', async () => {
+    const h = buildHarness({
+      getPurposeWatches: async () => { throw new Error('fs gone'); },
+    });
+
+    await expect(h.executor([mkEvent('/notes/page.md')], 'system-event')).resolves.toBeUndefined();
+    expect(h.chat_.calls.sendRequest).toHaveLength(1);
   });
 });

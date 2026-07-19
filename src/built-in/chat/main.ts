@@ -61,6 +61,8 @@ import { HeartbeatRunner, type IHeartbeatConfig } from '../../openclaw/openclawH
 import { createHeartbeatTurnExecutor } from '../../openclaw/openclawHeartbeatExecutor.js';
 import { runHeartbeatDeterministicLane } from '../../openclaw/heartbeatDeterministicLane.js';
 import { buildPlanFacts } from '../../openclaw/heartbeatTriggers.js';
+import { HEARTBEAT_PURPOSE_PATH, parseHeartbeatPurpose } from '../../openclaw/heartbeatPurpose.js';
+import { createHeartbeatWatchTool } from './tools/heartbeatWatchTool.js';
 import { INotificationService } from '../../services/serviceTypes.js';
 import { MindService } from '../../openclaw/mind/mindService.js';
 import { MindStore } from '../../openclaw/mind/mindStore.js';
@@ -2009,6 +2011,15 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       ),
     })));
 
+    // M87 S2 — `heartbeat_watch`: standing watches in .parallx/HEARTBEAT.md.
+    // "Watch this for me" becomes a durable gesture the heartbeat reads on
+    // every review. Registered separately (closes over the dataService's
+    // workspace-relative file access).
+    context.subscriptions.push(languageModelToolsService.registerTool(createHeartbeatWatchTool({
+      readFile: (p) => dataService.readFileRelative(p),
+      writeFile: (p, c) => dataService.writeFileRelative(p, c),
+    })));
+
     // M66 §4a — `link_create` chat tool. Registered separately so it can
     // close over the `api.links` snapshot without threading it through the
     // big `registerBuiltInTools(...)` signature. The tool's prompt
@@ -2260,6 +2271,14 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
           if (!canvas) return [];
           try { return (await canvas.getRootPages()).map((p) => ({ title: p.title, updatedAt: p.updatedAt })); }
           catch { return []; }
+        },
+        // M87 S2 — standing watches from HEARTBEAT.md, evaluated on every
+        // model review (and the daily reflection).
+        getPurposeWatches: async () => {
+          try {
+            const content = await dataService.readFileRelative(HEARTBEAT_PURPOSE_PATH);
+            return content ? parseHeartbeatPurpose(content).watches : [];
+          } catch { return []; }
         },
         // The user's open planner tasks — the second surface the review knows.
         getWorkspaceTasks: async () => {
