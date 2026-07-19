@@ -418,8 +418,14 @@ export function deleteDraggedSource(
   const sourceColumnStartPos = ancestry.columnDepth !== null ? $src.before(ancestry.columnDepth) : null;
   const sourceColumnListPos = ancestry.columnListDepth !== null ? $src.before(ancestry.columnListDepth) : null;
 
-  const mFrom = tr.mapping.map(dragFrom);
-  const mTo = tr.mapping.map(dragTo);
+  // Bias the range AWAY from content inserted at its boundaries: the drop
+  // flow inserts the dragged copy BEFORE this delete runs, and when the
+  // insertion lands exactly at dragFrom/dragTo (a drop adjacent to the
+  // source), default mapping would swallow the inserted copy too — the
+  // block silently vanishes. assoc 1 on from / -1 on to keeps boundary
+  // insertions OUTSIDE the deleted range.
+  const mFrom = tr.mapping.map(dragFrom, 1);
+  const mTo = tr.mapping.map(dragTo, -1);
 
   if (mTo > mFrom) {
     // Emptied-wrapper policy (same rule as deleteBlockAt): dragging the only

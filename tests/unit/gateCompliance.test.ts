@@ -158,6 +158,9 @@ const GATE_RULES: Record<string, string[]> = {
   // M77 Phase 11.6 — Mod-/ shortcut lazy-loads the canvasShortcutsOverlay
   // module to keep the extension light at import time.
   'extensions/blockKeyboardShortcuts.ts':  ['canvasShortcutsOverlay'],
+  // Notion-parity Backspace policy (list-row outdent + atom select) resolves
+  // its unit through the registry facade, same pattern as databaseInlineNode.
+  'extensions/listKeyboardPolicy.ts':      ['config/blockRegistry'],
   'extensions/detailsEnterHandler.ts':     [],
   'extensions/mathBlockNode.ts':           [],
   'extensions/tableOfContentsNode.ts':     [],

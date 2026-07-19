@@ -1,0 +1,90 @@
+// listKeyboardPolicy.ts — Notion-parity Backspace at block-start boundaries
+//
+// Two ProseMirror defaults are destructive and were never rederived onto the
+// canvas block model (the 2026-07-09 rebuild note flagged keyboard-boundary
+// editing as un-rederived; user reports 2026-07-18 confirmed both):
+//
+//   1. Backspace at the start of a list row whose PREVIOUS sibling is another
+//      row: joinBackward merges the two rows' textblocks — the row's bullet
+//      vanishes and its text glues onto the previous row ("child1child2").
+//      Notion instead OUTDENTS the row one level (top-level rows exit the
+//      list in place, splitting it). ProseMirror's liftListItem implements
+//      exactly those semantics for both nested and top-level rows.
+//
+//   2. Backspace at the start of a textblock right after an ATOM block
+//      (equation, video, …): joinBackward deletes the atom outright. Notion
+//      selects the atom first — the second Backspace confirms the delete.
+//
+// Only these two boundary cases are intercepted; everything else falls
+// through to the existing keymaps (columnNodes' columnList guards, Tiptap's
+// base chain — including the Notion-consistent paragraph-into-last-row merge
+// after a list).
+
+import { Extension } from '@tiptap/core';
+import { NodeSelection } from '@tiptap/pm/state';
+import { resolveMovableBlock } from '../config/blockRegistry.js';
+
+export const ListKeyboardPolicy = Extension.create({
+  name: 'listKeyboardPolicy',
+
+  addKeyboardShortcuts() {
+    return {
+      Backspace: ({ editor }) => {
+        const { selection } = editor.state;
+        const { $from } = selection;
+        if (!selection.empty || !$from.parent.isTextblock || $from.parentOffset !== 0) {
+          return false;
+        }
+
+        // ── Atom guard: Backspace right after an atom block SELECTS it ──
+        const blockDepth = $from.depth;
+        const parentDepth = blockDepth - 1;
+        const indexInParent = $from.index(parentDepth);
+        const parentNode = parentDepth === 0 ? editor.state.doc : $from.node(parentDepth);
+        const prevSibling = indexInParent > 0 ? parentNode.child(indexInParent - 1) : null;
+        if (prevSibling && prevSibling.isAtom && prevSibling.isBlock) {
+          const prevPos = $from.before(blockDepth) - prevSibling.nodeSize;
+          const tr = editor.state.tr.setSelection(NodeSelection.create(editor.state.doc, prevPos));
+          editor.view.dispatch(tr);
+          return true;
+        }
+
+        // ── List rows: outdent instead of merging into the previous row ──
+        const unit = resolveMovableBlock($from);
+        if (!unit || !unit.isListItem || unit.listPos === null) return false;
+        // Only the row's OWN line (its first child) gets list semantics —
+        // trailing blocks inside a row keep the default textblock merge.
+        if ($from.before(blockDepth) !== unit.pos + 1) return false;
+        // The FIRST nested row already lifts correctly via the default
+        // chain; intercepting every row keeps the behavior uniform and
+        // avoids the merge on middle/last rows.
+        return editor.chain().liftListItem(unit.node.type.name as 'listItem' | 'taskItem').run();
+      },
+
+      // Forward mirror of the atom guard: Delete at the end of a textblock
+      // right before an atom block deletes the atom outright in PM — select
+      // it instead; the second Delete confirms.
+      Delete: ({ editor }) => {
+        const { selection } = editor.state;
+        const { $from } = selection;
+        if (!selection.empty || !$from.parent.isTextblock) return false;
+        if ($from.parentOffset !== $from.parent.content.size) return false;
+
+        const blockDepth = $from.depth;
+        const parentDepth = blockDepth - 1;
+        const indexInParent = $from.index(parentDepth);
+        const parentNode = parentDepth === 0 ? editor.state.doc : $from.node(parentDepth);
+        const nextSibling = indexInParent < parentNode.childCount - 1
+          ? parentNode.child(indexInParent + 1)
+          : null;
+        if (nextSibling && nextSibling.isAtom && nextSibling.isBlock) {
+          const nextPos = $from.after(blockDepth);
+          const tr = editor.state.tr.setSelection(NodeSelection.create(editor.state.doc, nextPos));
+          editor.view.dispatch(tr);
+          return true;
+        }
+        return false;
+      },
+    };
+  },
+});

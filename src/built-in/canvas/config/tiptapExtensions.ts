@@ -16,6 +16,7 @@ import UniqueID from '@tiptap/extension-unique-id';
 import { BlockBackgroundColor } from '../extensions/blockBackground.js';
 import { DetailsEnterHandler } from '../extensions/detailsEnterHandler.js';
 import { BlockKeyboardShortcuts } from '../extensions/blockKeyboardShortcuts.js';
+import { ListKeyboardPolicy } from '../extensions/listKeyboardPolicy.js';
 import { Dataview } from '../extensions/dataviewNode.js';
 import { structuralInvariantPlugin } from '../plugins/structuralInvariantPlugin.js';
 import { structuralRepairPlugin } from '../plugins/structuralRepair.js';
@@ -318,6 +319,7 @@ export function createEditorExtensions(lowlight: any, context?: EditorExtensionC
     }),
     DetailsEnterHandler,
     BlockKeyboardShortcuts,
+    ListKeyboardPolicy,
     Extension.create({
       name: 'structuralInvariantGuard',
       priority: 1000,

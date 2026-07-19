@@ -59,6 +59,55 @@ export function gapGuideViewportTop(
   return neighborRect ? (blockRect.bottom + neighborRect.top) / 2 : blockRect.bottom + 1;
 }
 
+// ── Drop zone detection ──
+// Left/right edges → vertical guide (column create/extend).
+// Centre area → horizontal guide (above/below reorder).
+// columnList targets only allow above/below (Rule 9 nesting prevention).
+// Exported for tests.
+
+export function getZone(
+  blockEl: HTMLElement,
+  x: number,
+  y: number,
+  isColumnList: boolean,
+  isListItem: boolean,
+  isTable: boolean = false,
+): 'above' | 'below' | 'left' | 'right' {
+  const r = blockEl.getBoundingClientRect();
+  const rx = x - r.left;   // cursor X relative to block left edge
+
+  // Fixed-pixel edge zones: the leftmost / rightmost portion of the
+  // block are column-creation territory (left / right).  Everything
+  // else resolves to above / below by Y midpoint.  This matches
+  // Notion's behavior — column splits require a deliberate horizontal
+  // gesture into a narrow strip at the edge of the target block.
+  //
+  // For wide blocks (≥150px) use 50px edges; for narrower blocks
+  // scale down to 20% of width so side-drop always remains reachable.
+  const EDGE = r.width >= 150 ? 50 : Math.max(16, r.width * 0.2);
+
+  // Nesting constraint: columnList and list-item targets only allow
+  // above/below. Tables also forced above/below — a drop near the
+  // table's left/right edge previously created a new column which is
+  // almost never what the user wanted; the table itself is wide so
+  // the entire vertical strip near a table belongs to "drop above /
+  // drop below" rather than "split into columns".
+  const preventLeftRight = isColumnList || isListItem || isTable;
+
+  if (!preventLeftRight) {
+    // Allow a small negative margin on the left so the zone is
+    // reachable even when the cursor drifts slightly past the block's
+    // bounding-box edge (e.g. into padding or the handle gutter).
+    // During a drag the handle is inert, so there's no conflict.
+    const LEFT_MARGIN = 12;
+    if (rx >= -LEFT_MARGIN && rx < EDGE) return 'left';
+    if (rx <= r.width && rx > r.width - EDGE) return 'right';
+  }
+
+  const ry = y - r.top;
+  return ry < r.height / 2 ? 'above' : 'below';
+}
+
 export function columnDropPlugin(): Plugin {
   const pluginKey = new PluginKey('columnDrop');
 
@@ -500,54 +549,6 @@ export function columnDropPlugin(): Plugin {
     return null;
   }
 
-  // ── Drop zone detection ──
-  // Left/right edges → vertical guide (column create/extend).
-  // Centre area → horizontal guide (above/below reorder).
-  // columnList targets only allow above/below (Rule 9 nesting prevention).
-
-  function getZone(
-    blockEl: HTMLElement,
-    x: number,
-    y: number,
-    isColumnList: boolean,
-    isListItem: boolean,
-    isTable: boolean = false,
-  ): 'above' | 'below' | 'left' | 'right' {
-    const r = blockEl.getBoundingClientRect();
-    const rx = x - r.left;   // cursor X relative to block left edge
-
-    // Fixed-pixel edge zones: the leftmost / rightmost portion of the
-    // block are column-creation territory (left / right).  Everything
-    // else resolves to above / below by Y midpoint.  This matches
-    // Notion's behavior — column splits require a deliberate horizontal
-    // gesture into a narrow strip at the edge of the target block.
-    //
-    // For wide blocks (≥150px) use 50px edges; for narrower blocks
-    // scale down to 20% of width so side-drop always remains reachable.
-    const EDGE = r.width >= 150 ? 50 : Math.max(16, r.width * 0.2);
-
-    // Nesting constraint: columnList and list-item targets only allow
-    // above/below. Tables also forced above/below — a drop near the
-    // table's left/right edge previously created a new column which is
-    // almost never what the user wanted; the table itself is wide so
-    // the entire vertical strip near a table belongs to "drop above /
-    // drop below" rather than "split into columns".
-    const preventLeftRight = isColumnList || isListItem || isTable;
-
-    if (!preventLeftRight) {
-      // Allow a small negative margin on the left so the zone is
-      // reachable even when the cursor drifts slightly past the block's
-      // bounding-box edge (e.g. into padding or the handle gutter).
-      // During a drag the handle is inert, so there's no conflict.
-      const LEFT_MARGIN = 12;
-      if (rx >= -LEFT_MARGIN && rx < EDGE) return 'left';
-      if (rx <= r.width && rx > r.width - EDGE) return 'right';
-    }
-
-    const ry = y - r.top;
-    return ry < r.height / 2 ? 'above' : 'below';
-  }
-
   function isNoOpAboveBelowDrop(
     target: Omit<DropTarget, 'zone'>,
     zone: 'above' | 'below',
@@ -609,17 +610,6 @@ export function columnDropPlugin(): Plugin {
           if (!raw) { hideAll(); return false; }
 
           const draggedAreListItems = areAllDraggedNodesListItems(view.dragging.slice.content);
-          if (!draggedAreListItems && raw.isListItem && raw.listPos !== null && raw.listNode) {
-            raw = {
-              ...raw,
-              blockPos: raw.listPos,
-              blockNode: raw.listNode,
-              isListItem: false,
-              listPos: null,
-              listNode: null,
-              listType: null,
-            };
-          }
 
           if (raw.blockNode.type.name === 'pageBlock'
             && classifyPageBlockDropZone(raw.blockEl.getBoundingClientRect(), x, y) === 'interior') {
@@ -672,7 +662,34 @@ export function columnDropPlugin(): Plugin {
 
           const isCL = raw.blockNode.type.name === 'columnList';
           const isTable = raw.blockNode.type.name === 'table';
-          const zone = getZone(raw.blockEl, x, y, isCL, raw.isListItem, isTable);
+          let zone: 'above' | 'below' | 'left' | 'right';
+          if (!draggedAreListItems && raw.isListItem && raw.listPos !== null && raw.listNode) {
+            // Non-list content over a list row: the row's side strips mean
+            // "make columns with the WHOLE list" (rows can't take side drops
+            // themselves), while the center band means "insert at THIS row
+            // gap" — ProseMirror's replace-fitting splits the list there.
+            // The old code unconditionally retargeted rows to the whole
+            // list, so the guide showed the row gap but the drop teleported
+            // to the list's edge — mid-list drops of plain blocks (equation,
+            // paragraph, …) were impossible.
+            const probe = getZone(raw.blockEl, x, y, isCL, false, isTable);
+            if (probe === 'left' || probe === 'right') {
+              const listEl = (raw.blockEl.closest('ul, ol') as HTMLElement | null) ?? raw.blockEl;
+              raw = {
+                ...raw,
+                blockEl: listEl,
+                blockPos: raw.listPos,
+                blockNode: raw.listNode,
+                isListItem: false,
+                listPos: null,
+                listNode: null,
+                listType: null,
+              };
+            }
+            zone = probe;
+          } else {
+            zone = getZone(raw.blockEl, x, y, isCL, raw.isListItem, isTable);
+          }
 
           if ((zone === 'above' || zone === 'below') && isNoOpAboveBelowDrop(raw, zone, dF, dT)) {
             hideAll();

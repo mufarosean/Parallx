@@ -771,6 +771,16 @@ export class BlockHandlesController {
     if (element && view.dom.contains(element) && !this._isIgnoredOverlayElement(element)) {
       const resolved = this._resolveBlockFromDomElement(view, element);
       if (resolved) return { pos: resolved.pos, node: resolved.node };
+
+      // Universal last resort — the CANONICAL unit resolver (blockUnit.ts)
+      // resolves EVERY registry block type in every container (atom NodeView,
+      // list row, generic). Reached only when the coordinate + DOM-walk paths
+      // above already returned nothing, so it strictly ADDS handle coverage for
+      // the block types those divergent paths miss and cannot regress blocks
+      // that already resolve. First step toward routing ALL handle/movement
+      // resolution through this single resolver (see canvas standardization).
+      const unit = resolveBlockUnitFromDOM(view, element);
+      if (unit) return { pos: unit.pos, node: unit.node };
     }
 
     return null;

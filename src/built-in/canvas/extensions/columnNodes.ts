@@ -133,6 +133,38 @@ export const ColumnList = Node.create({
         const { $from } = selection;
         if (!selection.empty) return false;
 
+        // ── Boundary guard: cursor backing into a columnList ──
+        // ProseMirror can't join backward across the isolating columnList
+        // boundary, so the base keymap falls through to selectNodeBackward —
+        // node-selecting the ENTIRE layout, which the next keystroke then
+        // deletes. This walks the same ladder as PM's findCutBefore: from a
+        // block-start cursor, climb every level the cursor sits at the start
+        // of; if the neighbor across the cut is a columnList, enter its last
+        // column instead (Notion). Covers direct siblings AND deep cuts
+        // (first block of a callout/list right after a layout). An empty
+        // DIRECT-sibling source block is consumed on the way in.
+        if ($from.parentOffset === 0 && $from.parent.isTextblock && $from.depth >= 1) {
+          for (let i = $from.depth - 1; i >= 0; i--) {
+            if ($from.index(i) > 0) {
+              const container = i === 0 ? editor.state.doc : $from.node(i);
+              const neighbor = container.child($from.index(i) - 1);
+              if (neighbor.type.name === 'columnList') {
+                const { tr } = editor.state;
+                const cutBlockPos = $from.before(i + 1);
+                if (i + 1 === $from.depth && $from.parent.content.size === 0) {
+                  tr.delete(cutBlockPos, cutBlockPos + $from.parent.nodeSize);
+                }
+                const entryPos = tr.mapping.map(cutBlockPos);
+                tr.setSelection(TextSelection.near(tr.doc.resolve(entryPos), -1));
+                editor.view.dispatch(tr);
+                return true;
+              }
+              break; // real neighbor that isn't a layout — PM handles it
+            }
+            if (i > 0 && $from.node(i).type.spec.isolating) break;
+          }
+        }
+
         // Find if we're inside a column
         let columnDepth = -1;
         for (let d = $from.depth; d > 0; d--) {
@@ -188,6 +220,19 @@ export const ColumnList = Node.create({
           }
         }
 
+        // The first block is empty but the column still has content →
+        // delete just that block (Notion). The old handler swallowed the
+        // keystroke here, leaving an undeletable empty block at the top of
+        // the column.
+        if ($from.parent.content.size === 0 && columnNode.childCount > 1) {
+          const { tr } = editor.state;
+          const blockPos = $from.before($from.depth);
+          tr.delete(blockPos, blockPos + $from.parent.nodeSize);
+          tr.setSelection(TextSelection.near(tr.doc.resolve(tr.mapping.map(blockPos)), 1));
+          editor.view.dispatch(tr);
+          return true;
+        }
+
         // At start of column but content exists — just prevent destruction
         return true;
       },
@@ -198,6 +243,37 @@ export const ColumnList = Node.create({
         const { selection } = editor.state;
         const { $from } = selection;
         if (!selection.empty) return false;
+
+        // ── Boundary guard: cursor deleting forward into a columnList ──
+        // Mirror of the Backspace guard: joinForward can't cross the
+        // isolating boundary, so the base keymap falls through to
+        // selectNodeForward — node-selecting the whole layout. Walk the
+        // findCutAfter ladder (covers direct siblings AND deep cuts like the
+        // last list row before a layout) and enter the first column instead;
+        // an empty DIRECT-sibling source block is consumed.
+        if ($from.parentOffset === $from.parent.content.size && $from.parent.isTextblock && $from.depth >= 1) {
+          for (let i = $from.depth - 1; i >= 0; i--) {
+            const container = i === 0 ? editor.state.doc : $from.node(i);
+            if ($from.index(i) + 1 < container.childCount) {
+              const neighbor = container.child($from.index(i) + 1);
+              if (neighbor.type.name === 'columnList') {
+                const { tr } = editor.state;
+                if (i + 1 === $from.depth && $from.parent.content.size === 0) {
+                  const blockPos = $from.before($from.depth);
+                  tr.delete(blockPos, blockPos + $from.parent.nodeSize);
+                  tr.setSelection(TextSelection.near(tr.doc.resolve(tr.mapping.map(blockPos)), 1));
+                } else {
+                  const cutPos = $from.after(i + 1);
+                  tr.setSelection(TextSelection.near(tr.doc.resolve(cutPos), 1));
+                }
+                editor.view.dispatch(tr);
+                return true;
+              }
+              break; // real neighbor that isn't a layout — PM handles it
+            }
+            if (i > 0 && $from.node(i).type.spec.isolating) break;
+          }
+        }
 
         let columnDepth = -1;
         for (let d = $from.depth; d > 0; d--) {
