@@ -150,10 +150,8 @@ export class EditorsBridge {
           : `${entry.toolId}:${typeId}:${Date.now()}`;
         const name = typeof data?.name === 'string' ? (data.name as string) : typeId;
         const icon = typeof data?.icon === 'string' ? (data.icon as string) : undefined;
-        // iconHtml is intentionally NOT persisted — it's a pre-rendered
-        // view-layer artefact. After restore, the tool's own provider
-        // re-resolves the current icon and calls setIconHtml(...).
-        return new ToolEditorInput(typeId, name, icon, undefined, entry.provider, inputId, entry.toolId);
+        const iconHtml = typeof data?.iconHtml === 'string' ? (data.iconHtml as string) : undefined;
+        return new ToolEditorInput(typeId, name, icon, iconHtml, entry.provider, inputId, entry.toolId);
       });
     }
 
@@ -322,7 +320,7 @@ export class EditorsBridge {
 /**
  * An EditorInput backed by a tool's editor provider.
  */
-class ToolEditorInput extends EditorInput {
+export class ToolEditorInput extends EditorInput {
   readonly typeId: string;
   private _name: string;
   private readonly _icon: string | undefined;
@@ -395,6 +393,13 @@ class ToolEditorInput extends EditorInput {
         inputId: this.id,
         name: this._name,
         icon: this._icon,
+        // Persisted since the Open Editors icon fix (2026-07-20): the old
+        // "view artefact, re-resolved after restore" contract was only
+        // honored by canvas — planner/dashboard editors never re-seeded, so
+        // every tool editor lost its icon on restart. Providers that DO
+        // re-resolve (canvas) still overwrite via setIconHtml, so stale
+        // user-chosen icons self-correct.
+        iconHtml: this._iconHtml,
         ownerToolId: this.ownerToolId,
       },
     };

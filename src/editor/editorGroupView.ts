@@ -536,7 +536,10 @@ export class EditorGroupView extends Disposable implements IGridView {
       return {
         id: editor.id,
         label: editor.name,
-        icon: extMatch ? getFileTypeIcon(extMatch[1]) : undefined,
+        // Editor-supplied icon first (canvas pages, planner, dashboards);
+        // extension-derived only as the fallback — same order the Open
+        // Editors view uses (2026-07-20 icon fix).
+        icon: editor.iconHtml ?? (extMatch ? getFileTypeIcon(extMatch[1]) : undefined),
         tooltip: editor.description || editor.name,
         italic: this.model.isPreview(i),
         stickyContent: this.model.isSticky(i) ? 'pinned' : undefined,
