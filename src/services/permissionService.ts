@@ -30,6 +30,14 @@ export type ToolConfirmationHandler = (
   toolName: string,
   toolDescription: string,
   args: Record<string, unknown>,
+  /**
+   * Why this prompt could not be auto-approved despite user overrides
+   * (e.g. the M65 color gate after web content). Shown on the approval
+   * card so a safety-forced prompt is distinguishable from a broken
+   * "Always allow" (2026-07-20 fix — users read repeat prompts as the
+   * override not sticking).
+   */
+  forcedReason?: string,
 ) => Promise<ToolGrantDecision>;
 
 /**
@@ -546,7 +554,10 @@ export class PermissionService extends Disposable {
       return false;
     }
 
-    const decision = await this._confirmationHandler(toolName, toolDescription, args);
+    const forcedReason = forceApproval && check.autoApproved
+      ? 'Safety gate: this turn has read external web content, so consequential writes ask for approval even with "Always allow".'
+      : undefined;
+    const decision = await this._confirmationHandler(toolName, toolDescription, args, forcedReason);
 
     switch (decision) {
       case 'allow-once':

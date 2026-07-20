@@ -235,7 +235,9 @@ describe('LanguageModelToolsService', () => {
       service.setPermissionService(permissionService);
 
       const result = await service.invokeTool('test_tool', { title: 'New Page' }, createToken());
-      expect(confirm).toHaveBeenCalledWith('test_tool', 'A test tool', { title: 'New Page' });
+      // 4th arg = forcedReason (undefined on ordinary prompts — only the
+      // color-gate/forced path supplies one; see permissionService.test.ts).
+      expect(confirm).toHaveBeenCalledWith('test_tool', 'A test tool', { title: 'New Page' }, undefined);
       expect(handler).toHaveBeenCalled();
       expect(result.content).toBe('created');
     });

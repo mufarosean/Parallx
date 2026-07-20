@@ -94,3 +94,44 @@ describe('backgroundPromptRunner', () => {
     expect(logEntries[0].requestText).toContain('a very specific task');
   });
 });
+
+// ─── Autonomous permission routing (2026-07-20 widget-refresh fix) ───────────
+
+describe('background session permission marking', () => {
+  it('marks the ephemeral session BEFORE the turn and unmarks after (success)', async () => {
+    const { deps } = makeDeps();
+    const calls: string[] = [];
+    const permissionService = {
+      markHeartbeatSession: vi.fn((sid: string) => calls.push(`mark:${sid}`)),
+      unmarkHeartbeatSession: vi.fn((sid: string) => calls.push(`unmark:${sid}`)),
+    };
+    const run = createBackgroundPromptRunner({
+      ...deps,
+      permissionService,
+      getAutonomyLevel: () => 'allow-safe',
+    });
+    const res = await run({ text: 'refresh the news widget' });
+    expect(res.ok).toBe(true);
+    expect(calls).toEqual(['mark:eph-1', 'unmark:eph-1']);
+    expect(permissionService.markHeartbeatSession).toHaveBeenCalledWith('eph-1', 'allow-safe');
+  });
+
+  it('unmarks even when the turn THROWS (no session leaks into managed state)', async () => {
+    const { deps } = makeDeps({ sendRequest: async () => { throw new Error('model gone'); } });
+    const permissionService = {
+      markHeartbeatSession: vi.fn(),
+      unmarkHeartbeatSession: vi.fn(),
+    };
+    const run = createBackgroundPromptRunner({ ...deps, permissionService, getAutonomyLevel: () => undefined });
+    const res = await run({ text: 'x' });
+    expect(res.ok).toBe(false);
+    expect(permissionService.unmarkHeartbeatSession).toHaveBeenCalledWith('eph-1');
+  });
+
+  it('runs fine without a permission service (optional dep)', async () => {
+    const { deps } = makeDeps();
+    const run = createBackgroundPromptRunner(deps);
+    const res = await run({ text: 'x' });
+    expect(res.ok).toBe(true);
+  });
+});

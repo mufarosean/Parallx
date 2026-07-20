@@ -1506,7 +1506,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     // Inline DOM-based confirmation handler — creates a floating card in the
     // chat panel and returns a Promise that resolves when the user clicks.
     _permissionService.setConfirmationHandler(
-      (toolName: string, toolDescription: string, args: Record<string, unknown>): Promise<ToolGrantDecision> => {
+      (toolName: string, toolDescription: string, args: Record<string, unknown>, forcedReason?: string): Promise<ToolGrantDecision> => {
         return new Promise<ToolGrantDecision>((resolve) => {
           // Find the chat message list to append the confirmation card inline
           const chatContainer = document.querySelector('.parallx-chat-message-list');
@@ -1541,6 +1541,15 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
               .join('\n');
             argsBlock.appendChild(pre);
             card.appendChild(argsBlock);
+          }
+
+          // Forced-approval explanation (color gate etc.) — without it,
+          // repeat prompts read as "Always allow is broken".
+          if (forcedReason) {
+            const reason = document.createElement('div');
+            reason.className = 'parallx-chat-confirmation-reason';
+            reason.textContent = forcedReason;
+            card.appendChild(reason);
           }
 
           // Button bar
@@ -3009,6 +3018,13 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       sendRequest: (sid, msg, opts) => chatService.sendRequest(sid, msg, opts),
       getSession: (sid) => chatService.getSession(sid),
     },
+    permissionService: _permissionService
+      ? {
+          markHeartbeatSession: (sid, level) => _permissionService!.markHeartbeatSession(sid, level as never),
+          unmarkHeartbeatSession: (sid) => _permissionService!.unmarkHeartbeatSession(sid),
+        }
+      : undefined,
+    getAutonomyLevel: () => unifiedConfigService?.getEffectiveConfig().heartbeat.autonomy,
     // Ensure a parent session exists when the panel is mounted — without
     // revealing it. A background run only fails when chat has never been
     // opened at all in this window.

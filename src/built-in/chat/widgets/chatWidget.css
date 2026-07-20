@@ -2879,3 +2879,12 @@
   color: var(--px-text-muted);
   line-height: var(--px-leading-base);
 }
+
+/* Forced-approval reason (safety gate) on confirmation cards */
+.parallx-chat-confirmation-reason {
+  font-size: var(--parallx-fontSize-sm, 11px);
+  color: var(--px-warning, #d7ba7d);
+  opacity: 0.9;
+  padding: 4px 0 2px;
+  line-height: 1.4;
+}

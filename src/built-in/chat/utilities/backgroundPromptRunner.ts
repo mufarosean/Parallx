@@ -51,6 +51,21 @@ export interface IBackgroundPromptDeps {
   readonly getParentSessionId: () => string | undefined;
   /** Optional audit sink — every run (success or failure) is appended. */
   readonly autonomyLog?: IBackgroundPromptAutonomyLog;
+  /**
+   * Autonomous-session permission routing (2026-07-20 widget-refresh fix).
+   * A background turn is NON-INTERACTIVE: without marking, an
+   * approval-gated tool call appended a confirmation card to a chat panel
+   * nobody was watching — the promise never resolved and the refresh hung
+   * until the scheduler's timeout ("cycles forever, then stops with no
+   * update"). Marked sessions defer gated calls to the autonomy log
+   * instead, exactly like heartbeat/subagent turns.
+   */
+  readonly permissionService?: {
+    markHeartbeatSession(sessionId: string, autonomyLevel?: unknown): void;
+    unmarkHeartbeatSession(sessionId: string): void;
+  };
+  /** Autonomy dial for the marked session (heartbeat parity). */
+  readonly getAutonomyLevel?: () => unknown;
 }
 
 export interface IBackgroundPromptRequest {
@@ -102,6 +117,10 @@ export function createBackgroundPromptRunner(
       firstUserMessage: text,
     });
 
+    // Route approval-gated tools to the autonomy log (never a UI dialog).
+    try { deps.permissionService?.markHeartbeatSession(handle.sessionId, deps.getAutonomyLevel?.()); }
+    catch { /* marking is best-effort */ }
+
     try {
       await deps.chatService.sendRequest(handle.sessionId, text);
       const session = deps.chatService.getSession(handle.sessionId);
@@ -127,6 +146,7 @@ export function createBackgroundPromptRunner(
       });
       return { ok: false, error: msg };
     } finally {
+      try { deps.permissionService?.unmarkHeartbeatSession(handle.sessionId); } catch { /* best-effort */ }
       // Always purge — scratch state never leaks (cron-executor parity).
       deps.chatService.purgeEphemeralSession(handle);
     }
