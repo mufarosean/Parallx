@@ -66,8 +66,18 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
   context_window_override INTEGER,
   plan_json               TEXT,
   created_at              INTEGER NOT NULL,
-  updated_at              INTEGER NOT NULL
+  updated_at              INTEGER NOT NULL,
+  origin                  TEXT
 )`;
+
+// M91 — archived autonomous runs (heartbeat/cron/dashboard/subagent) are
+// stored in the SAME tables as chat, tagged by `origin`. NULL origin = an
+// interactive chat (the only rows the chat list shows). Index supports the
+// archive list + retention prune.
+const CREATE_SESSIONS_ORIGIN_INDEX = `
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_origin
+ON chat_sessions(origin, updated_at DESC)
+`;
 
 const CREATE_SESSIONS_WORKSPACE_INDEX = `
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_workspace
@@ -153,6 +163,12 @@ export async function ensureChatTables(db: IChatPersistenceDatabase): Promise<vo
     if (!hasPlan) {
       await db.run(`ALTER TABLE chat_sessions ADD COLUMN plan_json TEXT`);
     }
+    // M91 — archived autonomous-run origin.
+    const hasOrigin = cols.some((c) => c.name === 'origin');
+    if (!hasOrigin) {
+      await db.run(`ALTER TABLE chat_sessions ADD COLUMN origin TEXT`);
+    }
+    await db.run(CREATE_SESSIONS_ORIGIN_INDEX);
   } catch (e) {
     // Migration failure is non-fatal — new tables already have the column
     console.warn('[ChatPersistence] workspace_id migration check failed:', e);
@@ -208,44 +224,7 @@ export async function saveSession(db: IChatPersistenceDatabase, session: IChatSe
     Date.now(),
   ];
   const deleteMessagesSql = `DELETE FROM chat_messages WHERE session_id = ?`;
-  const messageInsertSql = `INSERT INTO chat_messages (session_id, role, content, parts_json, model_id, is_complete, timestamp, sort_order)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
-
-  const buildMessageOps = (): IChatPersistenceTxnOp[] => {
-    const ops: IChatPersistenceTxnOp[] = [];
-    for (let i = 0; i < session.messages.length; i++) {
-      const pair = session.messages[i];
-      ops.push({
-        type: 'run',
-        sql: messageInsertSql,
-        params: [
-          session.id,
-          'user',
-          pair.request.text,
-          JSON.stringify(_serializeUserMessageMetadata(pair.request)),
-          '',
-          1,
-          pair.request.timestamp,
-          i * 2,
-        ],
-      });
-      ops.push({
-        type: 'run',
-        sql: messageInsertSql,
-        params: [
-          session.id,
-          'assistant',
-          _extractTextContent(pair.response.parts),
-          JSON.stringify(pair.response.parts),
-          pair.response.modelId,
-          pair.response.isComplete ? 1 : 0,
-          pair.response.timestamp,
-          i * 2 + 1,
-        ],
-      });
-    }
-    return ops;
-  };
+  const buildMessageOps = (): IChatPersistenceTxnOp[] => _buildMessageInsertOps(session);
 
   // Fast path — one IPC round-trip. The main-process handler wraps every
   // op in a single IMMEDIATE transaction. This avoids issuing 2N+3 awaited
@@ -276,6 +255,156 @@ export async function saveSession(db: IChatPersistenceDatabase, session: IChatSe
     await db.run('ROLLBACK').catch(() => { /* rollback best-effort */ });
     throw err;
   }
+}
+
+const MESSAGE_INSERT_SQL = `INSERT INTO chat_messages (session_id, role, content, parts_json, model_id, is_complete, timestamp, sort_order)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
+
+/** Build the ordered user/assistant INSERT ops for a session's messages. */
+function _buildMessageInsertOps(session: IChatSession): IChatPersistenceTxnOp[] {
+  const ops: IChatPersistenceTxnOp[] = [];
+  for (let i = 0; i < session.messages.length; i++) {
+    const pair = session.messages[i];
+    ops.push({
+      type: 'run', sql: MESSAGE_INSERT_SQL,
+      params: [session.id, 'user', pair.request.text,
+        JSON.stringify(_serializeUserMessageMetadata(pair.request)), '', 1,
+        pair.request.timestamp, i * 2],
+    });
+    ops.push({
+      type: 'run', sql: MESSAGE_INSERT_SQL,
+      params: [session.id, 'assistant', _extractTextContent(pair.response.parts),
+        JSON.stringify(pair.response.parts), pair.response.modelId,
+        pair.response.isComplete ? 1 : 0, pair.response.timestamp, i * 2 + 1],
+    });
+  }
+  return ops;
+}
+
+// ── M91 — autonomous run archive ─────────────────────────────────────────────
+
+/** Origin tags for archived autonomous runs (NULL origin = interactive chat). */
+export type ArchivedRunOrigin = 'heartbeat' | 'cron' | 'dashboard' | 'subagent' | string;
+
+/** Metadata for one archived run (list view — no message bodies). */
+export interface IArchivedRunSummary {
+  readonly id: string;
+  readonly origin: string;
+  readonly title: string;
+  readonly createdAt: number;
+  readonly updatedAt: number;
+  readonly messageCount: number;
+}
+
+const DEFAULT_ARCHIVE_RETENTION = 100;
+
+/**
+ * Archive a completed autonomous run's FULL transcript (M91). Unlike
+ * `saveSession`, this INTENTIONALLY persists an ephemeral-id session — it is
+ * the one sanctioned bypass of the isolation guard, called from
+ * `purgeEphemeralSession` when the seed set `archiveOrigin`. Writes the
+ * session row tagged with `origin` + all its messages, then prunes to the
+ * retention cap. Archived rows carry a non-NULL origin so the chat list
+ * (which filters `origin IS NULL`) never shows them.
+ */
+export async function archiveSession(
+  db: IChatPersistenceDatabase,
+  session: IChatSession,
+  origin: ArchivedRunOrigin,
+  workspaceId: string = '',
+  retention: number = DEFAULT_ARCHIVE_RETENTION,
+  archivedAt: number = Date.now(),
+): Promise<void> {
+  if (!db.isOpen || session.messages.length === 0) return;
+
+  const updatedAt = archivedAt;
+  const sessionSql = `INSERT OR REPLACE INTO chat_sessions (id, workspace_id, title, mode, model_id, context_window_override, plan_json, created_at, updated_at, origin)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+  const sessionParams = [
+    session.id, workspaceId, session.title, session.mode, session.modelId,
+    session.contextWindowOverride ?? null,
+    session.plan ? JSON.stringify(session.plan) : null,
+    session.createdAt, updatedAt, origin,
+  ];
+  const deleteSql = `DELETE FROM chat_messages WHERE session_id = ?`;
+  const ops: IChatPersistenceTxnOp[] = [
+    { type: 'run', sql: sessionSql, params: sessionParams },
+    { type: 'run', sql: deleteSql, params: [session.id] },
+    ..._buildMessageInsertOps(session),
+  ];
+  if (typeof db.runTransaction === 'function') {
+    await db.runTransaction(ops);
+  } else {
+    await db.run('BEGIN IMMEDIATE');
+    try {
+      for (const op of ops) await db.run(op.sql, op.params);
+      await db.run('COMMIT');
+    } catch (err) {
+      await db.run('ROLLBACK').catch(() => { /* best-effort */ });
+      throw err;
+    }
+  }
+  await pruneArchivedRuns(db, workspaceId, retention);
+}
+
+/** List archived-run metadata for a workspace, newest first. */
+export async function loadArchivedRunSummaries(
+  db: IChatPersistenceDatabase,
+  workspaceId: string = '',
+  limit: number = DEFAULT_ARCHIVE_RETENTION,
+): Promise<IArchivedRunSummary[]> {
+  if (!db.isOpen) return [];
+  const rows = await db.all<{ id: string; origin: string; title: string; created_at: number; updated_at: number; n: number }>(
+    `SELECT s.id, s.origin, s.title, s.created_at, s.updated_at,
+            (SELECT COUNT(*) FROM chat_messages m WHERE m.session_id = s.id) AS n
+       FROM chat_sessions s
+      WHERE s.workspace_id = ? AND s.origin IS NOT NULL
+      ORDER BY s.updated_at DESC LIMIT ?`,
+    [workspaceId, limit],
+  );
+  return rows.map((r) => ({
+    id: r.id, origin: r.origin, title: r.title,
+    createdAt: r.created_at, updatedAt: r.updated_at, messageCount: r.n,
+  }));
+}
+
+/** Load ONE archived run's full transcript on demand (read-only viewer). */
+export async function loadArchivedRun(
+  db: IChatPersistenceDatabase,
+  sessionId: string,
+): Promise<IChatSession | null> {
+  if (!db.isOpen) return null;
+  const row = await db.get<IPersistedSessionRow & { origin: string | null }>(
+    `SELECT id, title, mode, model_id, context_window_override, plan_json, created_at, updated_at, origin
+       FROM chat_sessions WHERE id = ? AND origin IS NOT NULL`,
+    [sessionId],
+  );
+  if (!row) return null;
+  const messageRows = await db.all<IPersistedMessageRow>(
+    `SELECT role, content, parts_json, model_id, is_complete, timestamp, sort_order
+       FROM chat_messages WHERE session_id = ? ORDER BY sort_order`, [sessionId]);
+  const { messages } = _normalizeReplayChains(_reconstructPairs(messageRows));
+  return _buildSessionFromRow(row, messages);
+}
+
+/** Keep the newest `keep` archived runs per workspace; delete older (cascade). */
+export async function pruneArchivedRuns(
+  db: IChatPersistenceDatabase,
+  workspaceId: string = '',
+  keep: number = DEFAULT_ARCHIVE_RETENTION,
+): Promise<number> {
+  if (!db.isOpen) return 0;
+  const stale = await db.all<{ id: string }>(
+    `SELECT id FROM chat_sessions
+      WHERE workspace_id = ? AND origin IS NOT NULL
+      ORDER BY updated_at DESC LIMIT -1 OFFSET ?`,
+    [workspaceId, Math.max(0, keep)],
+  );
+  for (const s of stale) {
+    await db.run(`DELETE FROM chat_messages WHERE session_id = ?`, [s.id]);
+    await db.run(`DELETE FROM chat_sessions WHERE id = ?`, [s.id]);
+  }
+  return stale.length;
 }
 
 interface IPersistedMessageRow {
@@ -344,7 +473,9 @@ export async function loadSessions(db: IChatPersistenceDatabase, workspaceId: st
   if (!db.isOpen) { return []; }
 
   const rows = await db.all<IPersistedSessionRow>(
-    `SELECT id, title, mode, model_id, context_window_override, plan_json, created_at, updated_at FROM chat_sessions WHERE workspace_id = ? ORDER BY updated_at DESC`,
+    // M91 — `origin IS NULL` keeps archived autonomous runs out of the chat
+    // list; they surface only through the autonomy-log review surface.
+    `SELECT id, title, mode, model_id, context_window_override, plan_json, created_at, updated_at FROM chat_sessions WHERE workspace_id = ? AND origin IS NULL ORDER BY updated_at DESC`,
     [workspaceId],
   );
 
