@@ -4,6 +4,7 @@
 // week / day view). Pure DOM + CSS Grid; no layout engine.
 
 import type { IDisposable } from '../../platform/lifecycle.js';
+import { renderEmptyState } from '../../ui/emptyStates.js';
 import type { PlannerDataService } from './plannerDataService.js';
 import type { PlannerCalendar, PlannerEvent, PlannerTask, SeriesEditScope, TaskStatus, UpdateEventInput } from './plannerTypes.js';
 import type { IPlannerSyncController } from './sync/plannerSyncOrchestrator.js';
@@ -468,12 +469,7 @@ class PlannerEditorPane implements IDisposable {
     });
 
     if (all.length === 0) {
-      const empty = el('div', 'planner-empty');
-      empty.innerHTML = `
-        <h2>Nothing planned</h2>
-        <p>Capture a task with "Create", or ask the AI in chat. New tasks land in the review queue with a default due date — no need to break flow to plan immediately.</p>
-      `;
-      body.appendChild(empty);
+      body.appendChild(renderEmptyState('planner.day'));
       return;
     }
 
@@ -522,9 +518,7 @@ class PlannerEditorPane implements IDisposable {
       } else {
         // Single-filter view: one flat section with the matching rows.
         if (matching.length === 0) {
-          const empty = el('div', 'planner-empty');
-          empty.innerHTML = `<h2>Nothing here</h2><p>No tasks match this filter right now.</p>`;
-          content.appendChild(empty);
+          content.appendChild(renderEmptyState('planner.filter'));
           return;
         }
         // Completed reads best newest-first (by completion time).

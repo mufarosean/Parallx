@@ -13,6 +13,7 @@
 //   • Right-click page options popup (Task 10.7)
 
 import { DisposableStore, toDisposable } from '../../platform/lifecycle.js';
+import { EMPTY_STATES } from '../../ui/emptyStates.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { doesPageChangeAffectSidebar } from './canvasTypes.js';
 import type { IPage, IPageTreeNode, ICanvasDataService } from './canvasTypes.js';
@@ -468,11 +469,11 @@ export class CanvasSidebar {
       const empty = $('div.canvas-empty');
 
       const title = $('div.canvas-empty-title');
-      title.textContent = 'Start your knowledge base';
+      title.textContent = EMPTY_STATES['canvas.noPages'].headline;
       empty.appendChild(title);
 
       const subtitle = $('div.canvas-empty-subtitle');
-      subtitle.textContent = 'Pages are blocks of text, lists, headings, images, and more. Nest pages to build a tree of notes.';
+      subtitle.textContent = EMPTY_STATES['canvas.noPages'].hint;
       empty.appendChild(subtitle);
 
       const actions = $('div.canvas-empty-actions');

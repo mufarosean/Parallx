@@ -795,3 +795,29 @@
 .find-replace-row--replace {
   padding-left: 0;
 }
+
+/* ── Empty-state hero (M89 S2 — src/ui/emptyStates.ts) ─────────────────────
+   The app's voice on blank surfaces. Informational-opacity text per the
+   Linear hierarchy rule: the surface speaks quietly; actions keep color. */
+.px-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 32px 24px;
+  text-align: center;
+  animation: px-fade-in var(--px-dur-slow) var(--px-ease-out);
+}
+.px-empty__headline {
+  font-size: var(--parallx-fontSize-md, 14px);
+  font-weight: 600;
+  color: var(--px-text, #ddd);
+  opacity: 0.85;
+}
+.px-empty__hint {
+  font-size: var(--parallx-fontSize-sm, 12px);
+  color: var(--px-text-muted, #999);
+  max-width: 420px;
+  line-height: 1.5;
+}

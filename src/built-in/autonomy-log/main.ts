@@ -14,6 +14,8 @@
 // Pattern: Panel view contribution (same as indexing-log tool).
 
 import './autonomyLog.css';
+
+import { EMPTY_STATES } from '../../ui/emptyStates.js';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { $ } from '../../ui/dom.js';
@@ -347,7 +349,7 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
       const beliefs = s && s.available !== false ? (s.beliefs ?? []) : [];
       if (beliefs.length === 0) {
         const empty = $('div.autonomy-mind-panel__empty');
-        empty.textContent = 'No beliefs yet — the agent forms them as it reviews your work.';
+        empty.textContent = `${EMPTY_STATES['mind.noBeliefs'].headline} — ${EMPTY_STATES['mind.noBeliefs'].hint}`;
         panel.appendChild(empty);
         return;
       }

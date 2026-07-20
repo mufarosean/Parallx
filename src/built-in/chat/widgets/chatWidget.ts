@@ -10,6 +10,7 @@
 import './chatWidget.css';
 
 import { Disposable, DisposableStore, toDisposable } from '../../../platform/lifecycle.js';
+import { EMPTY_STATES } from '../../../ui/emptyStates.js';
 import { rafThrottle } from '../../../platform/rafThrottle.js';
 import { Emitter } from '../../../platform/events.js';
 import type { Event } from '../../../platform/events.js';
@@ -1383,9 +1384,10 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
 
     const icon = $('div.parallx-chat-empty-state-icon');
     icon.innerHTML = chatIcons.sparkle;
-    const title = $('div.parallx-chat-empty-state-title', 'How can I help you?');
+    // M89 S2 — copy lives in the voice registry (ui/emptyStates.ts).
+    const title = $('div.parallx-chat-empty-state-title', EMPTY_STATES['chat.newSession'].headline);
     const subtitle = $('div.parallx-chat-empty-state-subtitle',
-      'Ask questions, get explanations, or let AI help with your workspace.');
+      EMPTY_STATES['chat.newSession'].hint);
     const posture = $('div.parallx-chat-empty-state-note',
       'AI is always awake. Agent unlocks action tools and approval-gated changes.');
 
