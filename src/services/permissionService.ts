@@ -55,7 +55,7 @@ export interface IPermissionCheckResult {
   /** Whether the tool can proceed without asking the user. */
   readonly autoApproved: boolean;
   /** Source of the decision: 'default' | 'session' | 'persistent' | 'autonomy-allow-policy' | 'strictness'. */
-  readonly source: 'default' | 'session' | 'persistent' | 'autonomy-allow-policy' | 'strictness';
+  readonly source: 'default' | 'session' | 'persistent' | 'autonomy-allow-policy' | 'strictness' | 'user-consent';
 }
 
 /** A single entry in the approval audit log. */
@@ -137,7 +137,7 @@ export class PermissionService extends Disposable {
   private readonly _subagentAutonomy = new Map<string, AgentAutonomyLevel>();
 
   /** Optional autonomy log appender for queued-approval entries. */
-  private _autonomyLogAppender: { append(input: { origin: 'heartbeat' | 'subagent'; requestText: string; content: string; metadata?: Readonly<Record<string, unknown>>; sessionId?: string }): unknown } | undefined;
+  private _autonomyLogAppender: { append(input: { origin: 'heartbeat' | 'subagent' | 'user-task'; requestText: string; content: string; metadata?: Readonly<Record<string, unknown>>; sessionId?: string }): unknown } | undefined;
 
   // ── Events ──
 
@@ -162,6 +162,34 @@ export class PermissionService extends Disposable {
   /** Set the confirmation handler (called by UI layer to show approval dialog). */
   setConfirmationHandler(handler: ToolConfirmationHandler | undefined): void {
     this._confirmationHandler = handler;
+  }
+
+  // ── M90 consent model ──
+  // Sessions the USER triggered but that run headless (widget Refresh
+  // click, Refresh-all). Consent is implied by the gesture: everything is
+  // allowed except never-allowed bans and the destruction belt (which
+  // DEFERS to the autonomy log — nothing can prompt headless).
+  private readonly _userTaskSessions = new Set<string>();
+
+  /** Mark a headless session as USER-INITIATED (M90: gesture = consent). */
+  markUserTaskSession(sessionId: string): void {
+    this._userTaskSessions.add(sessionId);
+  }
+
+  unmarkUserTaskSession(sessionId: string): void {
+    this._userTaskSessions.delete(sessionId);
+  }
+
+  /**
+   * M90 — who started the turn this session is running. Decides consent:
+   * 'interactive' (normal chat; the user is present), 'user-task'
+   * (user-triggered headless run), 'autonomous' (the AI gave itself work).
+   */
+  getSessionInitiator(sessionId: string | undefined): 'interactive' | 'user-task' | 'autonomous' {
+    if (!sessionId) return 'interactive';
+    if (this._userTaskSessions.has(sessionId)) return 'user-task';
+    if (this._heartbeatSessions.has(sessionId)) return 'autonomous';
+    return 'interactive';
   }
 
   /** Mark an ephemeral chat session as originating from heartbeat. */
@@ -510,6 +538,32 @@ export class PermissionService extends Disposable {
         this._audit({ tool: toolName, decision: 'approved', source: 'autonomy-allow-policy', timestamp: Date.now() });
         return true;
       }
+    }
+
+    // M90 consent model — a user-task session was started by an explicit
+    // user gesture (e.g. widget Refresh). That gesture approved the work:
+    // everything proceeds except never-allowed bans and the destruction
+    // belt, which defers to the log (headless runs cannot prompt).
+    if (this._userTaskSessions.has(sessionId ?? '')) {
+      if (check.level === 'never-allowed') {
+        this._audit({ tool: toolName, decision: 'blocked', source: check.source, timestamp: Date.now() });
+        return false;
+      }
+      if (ALWAYS_REQUIRE_CONFIRMATION.has(toolName)) {
+        try {
+          this._autonomyLogAppender?.append({
+            origin: 'user-task',
+            requestText: `[user-task] tool ${toolName} deferred`,
+            content: `A user-triggered background run requested **${toolName}**, which always needs an explicit prompt. Headless runs cannot prompt — re-run from chat to authorize.`,
+            metadata: { kind: 'queued-approval', tool: toolName, args },
+            sessionId,
+          });
+        } catch { /* never break the gate */ }
+        this._audit({ tool: toolName, decision: 'rejected', source: check.source, timestamp: Date.now() });
+        return false;
+      }
+      this._audit({ tool: toolName, decision: 'approved', source: 'user-consent', timestamp: Date.now() });
+      return true;
     }
 
     // Auto-approved — proceed immediately (unless the PDP color gate forced approval)

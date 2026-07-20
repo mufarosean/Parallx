@@ -27,7 +27,7 @@
 
 import type { ToolPermissionLevel } from './chatTypes.js';
 import type { PermissionService, IPermissionCheckResult } from './permissionService.js';
-import { resolveColorGate, getToolColor } from '../openclaw/openclawToolPolicy.js';
+import { getToolColor } from '../openclaw/openclawToolPolicy.js';
 import { ALWAYS_REQUIRE_CONFIRMATION } from './permissionService.js';
 
 // ── Command blocklist ─────────────────────────────────────────────────────────
@@ -169,21 +169,38 @@ export class PolicyDecisionPoint {
       });
     }
 
-    // Rule 5 — M65 color gate: blue tool after red-tainted turn
-    if (resolveColorGate(name, sessionId) === 'requires-approval') {
-      reasons.push('color-gate-blue-post-red');
-      return this._emit(caller, name, {
-        outcome: 'require-approval', reasons, autoApproved: false,
-        permSource: permCheck.source, willTaintOnSuccess: willTaint,
-      });
-    }
+    // Rule 5 (M65 web-taint color gate) REMOVED — M90 consent model,
+    // Mufaro's explicit informed decision 2026-07-20 ("remove it entirely",
+    // injection risk shown and accepted; docs/Parallx_Milestone_90.md).
+    // Web-read-then-write no longer forces re-approval on any turn type.
+    // Taint bookkeeping still runs (markTurnTainted) but gates nothing; the
+    // transcript's tool cards are the visibility mechanism.
 
-    // Rule 6 — permission check says requires-approval
+    // Rule 6 — requires-approval gates ONLY autonomous sessions (M90).
+    // Interactive turns and user-task runs (a widget Refresh click) were
+    // started by an explicit user gesture — the gesture IS the approval, so
+    // ordinary consequential tools proceed. Autonomous sessions
+    // (heartbeat/cron/scheduled refresh) keep the gate; downstream they
+    // defer to the autonomy log per the dial.
     if (permCheck.level === 'requires-approval' && !permCheck.autoApproved) {
-      reasons.push(`requires-approval:${permCheck.source}`);
+      const initiator = this._permissionService?.getSessionInitiator(sessionId) ?? 'interactive';
+      // The destruction belt (shell, file-delete) still routes to
+      // require-approval on EVERY initiator — irreversible, low-frequency,
+      // and NOT part of the M90 relaxation (Mufaro kept it). Downstream:
+      // interactive prompts, user-task/autonomous defer to the log.
+      if (initiator === 'autonomous' || forceConfirm) {
+        reasons.push(forceConfirm ? 'destruction-belt' : `requires-approval:${permCheck.source}`);
+        return this._emit(caller, name, {
+          outcome: 'require-approval', reasons, autoApproved: false,
+          permSource: permCheck.source, willTaintOnSuccess: willTaint,
+        });
+      }
+      // Interactive or user-task turn, ordinary write — the user's gesture
+      // approved it (M90 consent model). Proceed without a prompt.
+      reasons.push('user-consent');
       return this._emit(caller, name, {
-        outcome: 'require-approval', reasons, autoApproved: false,
-        permSource: permCheck.source, willTaintOnSuccess: willTaint,
+        outcome: 'allow', reasons, autoApproved: true,
+        permSource: 'user-consent', willTaintOnSuccess: willTaint,
       });
     }
 

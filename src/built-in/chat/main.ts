@@ -3022,6 +3022,8 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       ? {
           markHeartbeatSession: (sid, level) => _permissionService!.markHeartbeatSession(sid, level as never),
           unmarkHeartbeatSession: (sid) => _permissionService!.unmarkHeartbeatSession(sid),
+          markUserTaskSession: (sid) => _permissionService!.markUserTaskSession(sid),
+          unmarkUserTaskSession: (sid) => _permissionService!.unmarkUserTaskSession(sid),
         }
       : undefined,
     getAutonomyLevel: () => unifiedConfigService?.getEffectiveConfig().heartbeat.autonomy,

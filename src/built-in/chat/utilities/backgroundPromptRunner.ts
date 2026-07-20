@@ -63,8 +63,10 @@ export interface IBackgroundPromptDeps {
   readonly permissionService?: {
     markHeartbeatSession(sessionId: string, autonomyLevel?: unknown): void;
     unmarkHeartbeatSession(sessionId: string): void;
+    markUserTaskSession(sessionId: string): void;
+    unmarkUserTaskSession(sessionId: string): void;
   };
-  /** Autonomy dial for the marked session (heartbeat parity). */
+  /** Autonomy dial for autonomous-initiator sessions (heartbeat parity). */
   readonly getAutonomyLevel?: () => unknown;
 }
 
@@ -77,6 +79,14 @@ export interface IBackgroundPromptRequest {
   readonly originLabel?: string;
   /** Optional seed system framing. A sensible default is applied when omitted. */
   readonly systemMessage?: string;
+  /**
+   * M90 consent model — who triggered this run. 'user' = an explicit user
+   * gesture (widget Refresh click): the run is consented, gated tools
+   * proceed (belt defers). 'autonomous' = the AI scheduled it
+   * (scheduled refresh): the autonomy dial governs. Default 'autonomous'
+   * (safer: an unlabeled background run gets the stricter policy).
+   */
+  readonly initiator?: 'user' | 'autonomous';
 }
 
 export type IBackgroundPromptResult =
@@ -117,9 +127,15 @@ export function createBackgroundPromptRunner(
       firstUserMessage: text,
     });
 
-    // Route approval-gated tools to the autonomy log (never a UI dialog).
-    try { deps.permissionService?.markHeartbeatSession(handle.sessionId, deps.getAutonomyLevel?.()); }
-    catch { /* marking is best-effort */ }
+    // M90 — the initiator sets the session's consent policy. 'user' runs
+    // (a Refresh click) are consented: gated tools proceed, the belt
+    // defers. 'autonomous' runs follow the autonomy dial. Either way the
+    // session is headless, so nothing can prompt — marking guarantees it.
+    const initiator = req.initiator === 'user' ? 'user' : 'autonomous';
+    try {
+      if (initiator === 'user') deps.permissionService?.markUserTaskSession(handle.sessionId);
+      else deps.permissionService?.markHeartbeatSession(handle.sessionId, deps.getAutonomyLevel?.());
+    } catch { /* marking is best-effort */ }
 
     try {
       await deps.chatService.sendRequest(handle.sessionId, text);
@@ -146,7 +162,10 @@ export function createBackgroundPromptRunner(
       });
       return { ok: false, error: msg };
     } finally {
-      try { deps.permissionService?.unmarkHeartbeatSession(handle.sessionId); } catch { /* best-effort */ }
+      try {
+        if (initiator === 'user') deps.permissionService?.unmarkUserTaskSession(handle.sessionId);
+        else deps.permissionService?.unmarkHeartbeatSession(handle.sessionId);
+      } catch { /* best-effort */ }
       // Always purge — scratch state never leaks (cron-executor parity).
       deps.chatService.purgeEphemeralSession(handle);
     }

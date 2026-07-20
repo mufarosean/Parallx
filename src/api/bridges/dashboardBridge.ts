@@ -114,6 +114,15 @@ export interface WidgetRefreshContext<TConfig = unknown> {
    * a prompt). Non-AI widgets can ignore this.
    */
   readonly mode?: 'background' | 'chat';
+  /**
+   * M90 consent model — who triggered this refresh. 'user' = a Refresh
+   * click / Refresh-all (the user's gesture consents the run). 'autonomous'
+   * = the scheduler fired it on a timer (the AI gave itself the work).
+   * AI-category widgets forward this to chat.runBackgroundPrompt so gated
+   * tools are handled correctly. Default 'autonomous' (safer for an
+   * unlabeled refresh). Non-AI widgets can ignore it.
+   */
+  readonly initiator?: 'user' | 'autonomous';
 }
 
 export interface WidgetContext<TConfig = unknown> extends WidgetRefreshContext<TConfig> {

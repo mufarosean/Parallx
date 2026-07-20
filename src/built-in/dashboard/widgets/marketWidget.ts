@@ -68,7 +68,7 @@ export const MARKET_WIDGET: WidgetTypeRegistration<MarketConfig> = {
     if (ctx.mode !== 'chat') {
       const res = await api.commands.executeCommand<{ ok: boolean; error?: string }>(
         'chat.runBackgroundPrompt',
-        { text: prompt, origin: 'dashboard', originLabel: `[dashboard · Market · ${cfg.symbols.join(', ')}]` },
+        { text: prompt, origin: 'dashboard', originLabel: `[dashboard · Market · ${cfg.symbols.join(', ')}]`, initiator: ctx.initiator },
       );
       if (!res?.ok) throw new Error(res?.error || 'Background refresh failed.');
       return null;

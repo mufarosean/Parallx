@@ -898,10 +898,15 @@ class DashboardEditorPane implements IDisposable {
    * bypassed the cap and N clicks meant N concurrent AI turns).
    */
   private async _triggerManualRefresh(widgetId: string, mode?: 'background' | 'chat'): Promise<void> {
-    await this._scheduler.runOnce(widgetId, () => this._runRefresh(widgetId, mode));
+    // A manual click / Refresh-all is a USER gesture — consented (M90).
+    await this._scheduler.runOnce(widgetId, () => this._runRefresh(widgetId, mode, 'user'));
   }
 
-  private async _runRefresh(widgetId: string, mode?: 'background' | 'chat'): Promise<void> {
+  private async _runRefresh(
+    widgetId: string,
+    mode?: 'background' | 'chat',
+    initiator: 'user' | 'autonomous' = 'autonomous',
+  ): Promise<void> {
     const inst = this._instances.get(widgetId);
     if (!inst || !inst.typeReg?.refresh) return;
     const card = inst.cardEl;
@@ -917,6 +922,7 @@ class DashboardEditorPane implements IDisposable {
         api: this._api,
         cachedOutput: inst.row.cachedOutput,
         mode: mode ?? 'background',
+        initiator,
       });
       // A string persists as the widget's cache. `null` means the refresh
       // delivered its own output (e.g. an AI turn wrote the cache via

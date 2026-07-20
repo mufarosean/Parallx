@@ -104,7 +104,7 @@ export const SAVED_QUERY_WIDGET: WidgetTypeRegistration<SavedQueryConfig> = {
       if (ctx.mode !== 'chat') {
         const res = await api.commands.executeCommand<{ ok: boolean; error?: string }>(
           'chat.runBackgroundPrompt',
-          { text: prompt, origin: 'dashboard', originLabel: `[dashboard · Saved query] ${cfg.query.slice(0, 60)}` },
+          { text: prompt, origin: 'dashboard', originLabel: `[dashboard · Saved query] ${cfg.query.slice(0, 60)}`, initiator: ctx.initiator },
         );
         if (!res?.ok) throw new Error(res?.error || 'Background refresh failed.');
         return null;

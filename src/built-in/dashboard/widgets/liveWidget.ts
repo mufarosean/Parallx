@@ -84,7 +84,7 @@ export const LIVE_WIDGET: WidgetTypeRegistration<LiveWidgetConfig> = {
     if (ctx.mode !== 'chat') {
       const res = await api.commands.executeCommand<{ ok: boolean; error?: string }>(
         'chat.runBackgroundPrompt',
-        { text: prompt, origin: 'dashboard', originLabel: `[dashboard · Live widget ${ctx.instanceId}]` },
+        { text: prompt, origin: 'dashboard', originLabel: `[dashboard · Live widget ${ctx.instanceId}]`, initiator: ctx.initiator },
       );
       if (!res?.ok) throw new Error(res?.error || 'Background refresh failed.');
       return null;

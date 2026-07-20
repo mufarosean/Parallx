@@ -83,7 +83,7 @@ export const CUSTOM_AI_WIDGET: WidgetTypeRegistration<CustomAiConfig> = {
     if (ctx.mode !== 'chat') {
       const res = await api.commands.executeCommand<{ ok: boolean; error?: string }>(
         'chat.runBackgroundPrompt',
-        { text: prompt, origin: 'dashboard', originLabel: `[dashboard · AI widget ${ctx.instanceId}]` },
+        { text: prompt, origin: 'dashboard', originLabel: `[dashboard · AI widget ${ctx.instanceId}]`, initiator: ctx.initiator },
       );
       if (!res?.ok) throw new Error(res?.error || 'Background refresh failed.');
       return null;
