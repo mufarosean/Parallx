@@ -23,7 +23,7 @@
   font-size: 12.5px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 140ms ease, border-color 140ms ease, color 140ms ease, transform 80ms ease;
+  transition: background var(--px-dur-base) var(--px-ease), border-color var(--px-dur-base) var(--px-ease), color var(--px-dur-base) var(--px-ease), transform var(--px-dur-instant) var(--px-ease);
 }
 .planner-btn:focus-visible {
   outline: 2px solid var(--vscode-focusBorder, #5b9bd5);
@@ -95,7 +95,7 @@
   cursor: pointer;
   user-select: none;
   position: relative;
-  transition: background 100ms ease, color 100ms ease;
+  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 .planner-sidebar__row:hover {
   background: color-mix(in srgb, var(--vscode-list-hoverBackground, #2a2d2e) 100%, transparent);
@@ -232,7 +232,7 @@
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: color 100ms ease, border-color 100ms ease;
+  transition: color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease);
 }
 .planner-pane__tab:hover { color: var(--vscode-editor-foreground, #d4d4d4); }
 .planner-pane__tab--active {
@@ -292,7 +292,7 @@
   cursor: pointer;
   user-select: none;
   position: relative;
-  transition: background 100ms ease, color 100ms ease;
+  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 .planner-tasks__navitem:hover {
   background: color-mix(in srgb, var(--vscode-list-hoverBackground, #2a2d2e) 100%, transparent);
@@ -364,7 +364,7 @@
   align-items: center;
   margin-right: 2px;
   color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 50%, transparent);
-  transition: transform 120ms ease;
+  transition: transform var(--px-dur-fast) var(--px-ease);
   transform: rotate(90deg); /* expanded — chevron points down */
 }
 .planner-section--collapsed .planner-section__caret { transform: rotate(0deg); } /* collapsed — points right */
@@ -396,7 +396,7 @@
   gap: 10px;
   padding: 8px 10px;
   border-radius: 7px;
-  transition: background 100ms ease, opacity 140ms ease;
+  transition: background var(--px-dur-fast) var(--px-ease), opacity var(--px-dur-base) var(--px-ease);
 }
 .planner-task:hover { background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent); }
 .planner-task--done { opacity: 0.55; }
@@ -413,7 +413,7 @@
   background: transparent;
   color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent);
   cursor: pointer;
-  transition: background 100ms ease, color 100ms ease;
+  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 .planner-task--done .planner-task__check { color: var(--px-success); }
 .planner-task__check:hover { background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 12%, transparent); color: var(--vscode-editor-foreground, #d4d4d4); }
@@ -443,7 +443,7 @@
   font: inherit;
   font-size: 11px;
   cursor: pointer;
-  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease);
 }
 .planner-task__due:hover { background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 12%, transparent); color: var(--vscode-button-background, #0e639c); border-color: color-mix(in srgb, var(--vscode-button-background, #0e639c) 38%, transparent); }
 .planner-task__due--empty { color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 45%, transparent); font-style: italic; }
@@ -459,7 +459,7 @@
   color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent);
   cursor: pointer;
   opacity: 0;
-  transition: opacity 120ms ease, background 120ms ease, color 120ms ease;
+  transition: opacity var(--px-dur-fast) var(--px-ease), background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 .planner-task:hover .planner-task__plan,
 .planner-task:hover .planner-task__more { opacity: 1; }
@@ -509,7 +509,7 @@
   background: transparent;
   color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent);
   cursor: pointer;
-  transition: background 100ms ease, color 100ms ease;
+  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 .planner-popover__close:hover { background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 12%, transparent); color: var(--vscode-editor-foreground, #d4d4d4); }
 
@@ -536,7 +536,7 @@
   font-size: 12.5px;
   font-weight: 500;
   cursor: pointer;
-  transition: color 100ms ease;
+  transition: color var(--px-dur-fast) var(--px-ease);
 }
 .planner-popover__kind:hover { color: var(--vscode-editor-foreground, #d4d4d4); }
 .planner-popover__kind--active { color: var(--vscode-editor-foreground, #f3f3f3); font-weight: 600; }
@@ -562,7 +562,7 @@
   color: var(--vscode-editor-foreground, #d4d4d4);
   font: inherit;
   font-size: 12.5px;
-  transition: border-color 100ms ease, background 100ms ease;
+  transition: border-color var(--px-dur-fast) var(--px-ease), background var(--px-dur-fast) var(--px-ease);
 }
 .planner-popover__title-input { font-size: 14px; font-weight: 500; }
 .planner-popover__textarea { min-height: 64px; resize: vertical; }
@@ -631,7 +631,7 @@
   font-size: 11.5px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 100ms ease, color 100ms ease;
+  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 .planner-popover__statusbtn + .planner-popover__statusbtn {
   border-left: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 14%, transparent);
@@ -673,7 +673,7 @@
   font: inherit;
   font-size: 12px;
   cursor: pointer;
-  transition: background 100ms ease, border-color 100ms ease, color 100ms ease;
+  transition: background var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 .planner-popover__btn:hover { background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 10%, transparent); }
 .planner-popover__btn--primary {
@@ -723,7 +723,7 @@
   font-size: 12px;
   text-align: left;
   cursor: pointer;
-  transition: background 100ms ease;
+  transition: background var(--px-dur-fast) var(--px-ease);
 }
 .planner-menu__item:hover { background: var(--vscode-menu-selectionBackground, color-mix(in srgb, var(--vscode-button-background, #0e639c) 40%, transparent)); color: var(--vscode-menu-selectionForeground, #fff); }
 .planner-menu__item--danger:hover { background: color-mix(in srgb, var(--px-danger) 22%, transparent); color: var(--px-danger); }
@@ -743,7 +743,7 @@
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 100ms ease, border-color 100ms ease;
+  transition: background var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease);
 }
 .planner-todaybtn:hover {
   background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent);
@@ -766,7 +766,7 @@
   background: transparent;
   color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 70%, transparent);
   cursor: pointer;
-  transition: background 100ms ease, color 100ms ease;
+  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 .planner-iconbtn:hover {
   background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
@@ -799,7 +799,7 @@
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 100ms ease, border-color 100ms ease;
+  transition: background var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease);
 }
 .planner-viewdrop:hover {
   background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent);
@@ -822,7 +822,7 @@
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: filter 120ms ease, transform 80ms ease;
+  transition: filter var(--px-dur-fast) var(--px-ease), transform var(--px-dur-instant) var(--px-ease);
 }
 .planner-cta:hover { filter: brightness(1.08); }
 .planner-cta:active { transform: translateY(0.5px); }
@@ -874,7 +874,7 @@
   border-top: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
   border-right: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
   cursor: pointer;
-  transition: background 100ms ease;
+  transition: background var(--px-dur-fast) var(--px-ease);
   min-height: 84px;
 }
 .planner-month__cell:nth-child(7n) { border-right: 0; }
@@ -967,7 +967,7 @@
   height: 48px;
   border-top: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 5%, transparent);
   cursor: cell;
-  transition: background 100ms ease;
+  transition: background var(--px-dur-fast) var(--px-ease);
 }
 .planner-week__cell:hover { background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 5%, transparent); }
 .planner-week__col { user-select: none; touch-action: none; }
@@ -1015,7 +1015,7 @@
   text-align: left;
   overflow: hidden;
   cursor: pointer;
-  transition: filter 120ms ease;
+  transition: filter var(--px-dur-fast) var(--px-ease);
 }
 .planner-week__event:hover { filter: brightness(1.08); }
 /* Past events (already ended) fade — the ONLY special-case event styling. */
@@ -1055,7 +1055,7 @@
   height: 56px;
   border-top: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 5%, transparent);
   cursor: cell;
-  transition: background 100ms ease;
+  transition: background var(--px-dur-fast) var(--px-ease);
 }
 .planner-day__cell:hover { background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 5%, transparent); }
 .planner-day__col { user-select: none; touch-action: none; }
@@ -1092,7 +1092,7 @@
   display: flex;
   align-items: flex-start;
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
-  transition: box-shadow 160ms ease, border-color 160ms ease;
+  transition: box-shadow var(--px-dur-base) var(--px-ease), border-color var(--px-dur-base) var(--px-ease);
 }
 .planner-cal__ghost--pending {
   border-color: color-mix(in srgb, var(--vscode-button-background, #0e639c) 100%, white);
@@ -1137,7 +1137,7 @@
   flex-direction: column;
   text-align: left;
   cursor: pointer;
-  transition: filter 120ms ease;
+  transition: filter var(--px-dur-fast) var(--px-ease);
 }
 .planner-day__event:hover { filter: brightness(1.08); }
 .planner-day__event--past { opacity: 0.45; }
@@ -1167,7 +1167,7 @@
   white-space: nowrap;
   cursor: pointer;
   z-index: 2;
-  transition: transform 120ms ease, box-shadow 120ms ease;
+  transition: transform var(--px-dur-fast) var(--px-ease), box-shadow var(--px-dur-fast) var(--px-ease);
 }
 .planner-week__task { left: 4px; right: 4px; }
 .planner-day__task { left: 8px; right: 8px; }
@@ -1427,7 +1427,7 @@
 .planner-week__allday-cell {
   border-left: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 5%, transparent);
   cursor: cell;
-  transition: background 100ms ease;
+  transition: background var(--px-dur-fast) var(--px-ease);
 }
 .planner-week__allday-cell:first-child { border-left: 0; }
 .planner-week__allday-cell:hover { background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 5%, transparent); }
@@ -1450,7 +1450,7 @@
   text-align: left;
   overflow: hidden;
   cursor: grab;
-  transition: filter 120ms ease;
+  transition: filter var(--px-dur-fast) var(--px-ease);
 }
 .planner-week__alldaybar:hover { filter: brightness(1.08); }
 .planner-week__alldaybar--clip-left { border-top-left-radius: 0; border-bottom-left-radius: 0; }
@@ -1520,7 +1520,7 @@
   font: inherit;
   font-size: 11px;
   cursor: pointer;
-  transition: box-shadow 120ms ease, transform 120ms ease;
+  transition: box-shadow var(--px-dur-fast) var(--px-ease), transform var(--px-dur-fast) var(--px-ease);
 }
 .planner-day__alldaybar:hover { transform: translateY(-1px); box-shadow: inset 0 1px 0 color-mix(in srgb, white 22%, transparent), 0 3px 8px rgba(0, 0, 0, 0.26); }
 
@@ -1582,7 +1582,7 @@
   font: inherit;
   font-size: 11px;
   cursor: pointer;
-  transition: background 100ms ease, border-color 100ms ease;
+  transition: background var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease);
 }
 .planner-popover__linkchip:hover {
   background: color-mix(in srgb, var(--vscode-focusBorder, #5b9bd5) 22%, transparent);
@@ -1627,7 +1627,7 @@
   font: inherit;
   font-size: 11.5px;
   cursor: pointer;
-  transition: background 100ms ease, color 100ms ease, border-color 100ms ease;
+  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease);
 }
 .planner-popover__notesbtn:hover {
   background: var(--vscode-button-secondaryHoverBackground, rgba(255, 255, 255, 0.1));
@@ -1654,7 +1654,7 @@
   cursor: pointer;
   background: var(--sw, #4c8bf5);
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
-  transition: transform 90ms ease;
+  transition: transform var(--px-dur-fast) var(--px-ease);
 }
 .planner-swatch:hover { transform: scale(1.12); }
 .planner-swatch--default {

@@ -63,7 +63,7 @@
   color: var(--vscode-foreground, #ccc);
   cursor: pointer;
   padding: 0;
-  transition: background 0.12s ease, color 0.12s ease;
+  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 
 .epub-toolbar-btn svg {

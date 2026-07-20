@@ -27,7 +27,7 @@
   cursor: pointer;
   color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.4));
   font-weight: 500;
-  transition: color 0.1s ease;
+  transition: color var(--px-dur-fast) var(--px-ease);
 }
 
 .canvas-property-bar__header:hover {
@@ -115,7 +115,7 @@
   border-radius: var(--parallx-radius-sm, 3px);
   font-size: 14px;
   padding: 0;
-  transition: opacity 0.1s ease, color 0.1s ease;
+  transition: opacity var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 
 .canvas-property-row:hover .canvas-property-row__delete {
@@ -147,7 +147,7 @@
   border-radius: var(--parallx-radius-sm, 3px);
   font-family: inherit;
   font-size: inherit;
-  transition: color 0.1s ease, background 0.1s ease;
+  transition: color var(--px-dur-fast) var(--px-ease), background var(--px-dur-fast) var(--px-ease);
 }
 
 .canvas-property-add__icon {
@@ -177,7 +177,7 @@
   font-size: inherit;
   padding: 2px 6px;
   outline: none;
-  transition: border-color 0.1s ease, background 0.1s ease;
+  transition: border-color var(--px-dur-fast) var(--px-ease), background var(--px-dur-fast) var(--px-ease);
   height: 28px;
   box-sizing: border-box;
 }
@@ -211,7 +211,7 @@
   text-align: left;
   cursor: pointer;
   outline: none;
-  transition: border-color 0.1s ease, background 0.1s ease;
+  transition: border-color var(--px-dur-fast) var(--px-ease), background var(--px-dur-fast) var(--px-ease);
 }
 
 .canvas-prop-date-trigger:hover {
@@ -415,7 +415,7 @@
   background: var(--vscode-widget-border, rgba(255, 255, 255, 0.15));
   cursor: pointer;
   position: relative;
-  transition: background 0.15s ease;
+  transition: background var(--px-dur-base) var(--px-ease);
   flex-shrink: 0;
 }
 
@@ -431,7 +431,7 @@
   position: absolute;
   top: 2px;
   left: 2px;
-  transition: transform 0.15s ease;
+  transition: transform var(--px-dur-base) var(--px-ease);
 }
 
 .canvas-prop-checkbox.checked .canvas-prop-checkbox__knob {
@@ -467,7 +467,7 @@
   opacity: 0.5;
   font-size: 10px;
   line-height: 1;
-  transition: opacity 0.1s ease;
+  transition: opacity var(--px-dur-fast) var(--px-ease);
 }
 
 .canvas-prop-tag__remove:hover {
@@ -529,7 +529,7 @@
   color: var(--vscode-editor-foreground, #cdd6f4);
   border: none;
   font-family: inherit;
-  transition: background 0.1s ease;
+  transition: background var(--px-dur-fast) var(--px-ease);
   white-space: nowrap;
 }
 
@@ -603,7 +603,7 @@
   cursor: pointer;
   color: var(--vscode-textLink-foreground, #89b4fa);
   border-radius: var(--parallx-radius-sm, 3px);
-  transition: background 0.1s ease;
+  transition: background var(--px-dur-fast) var(--px-ease);
   font-size: 14px;
   text-decoration: none;
 }
@@ -837,7 +837,7 @@
   font-family: inherit;
   font-size: var(--parallx-fontSize-md, 13px);
   cursor: pointer;
-  transition: background 0.1s ease;
+  transition: background var(--px-dur-fast) var(--px-ease);
 }
 
 .canvas-property-picker__new-form button:hover {

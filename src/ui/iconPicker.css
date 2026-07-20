@@ -96,7 +96,7 @@
   align-items: center;
   justify-content: center;
   color: var(--vscode-icon-foreground);
-  transition: background-color 0.08s ease, color 0.1s ease;
+  transition: background-color var(--px-dur-instant) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
   /* Skip rendering offscreen buttons so a large catalog (~2k icons) stays cheap. */
   content-visibility: auto;
   contain-intrinsic-size: 32px 32px;

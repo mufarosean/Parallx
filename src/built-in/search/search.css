@@ -55,7 +55,7 @@
   background: var(--px-bg-inset);
   border: 1px solid var(--px-divider);
   border-radius: var(--px-radius-sm);
-  transition: border-color var(--px-dur-fast) ease;
+  transition: border-color var(--px-dur-fast) var(--px-ease);
 }
 .search-input-row:focus-within { border-color: var(--px-accent); }
 

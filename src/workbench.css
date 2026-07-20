@@ -136,7 +136,7 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background-color 0.15s;
+  transition: background-color var(--px-dur-base) var(--px-ease);
 }
 
 .window-control-btn svg {
@@ -168,7 +168,7 @@ html, body {
   color: var(--px-text-muted);
   cursor: pointer;
   border-radius: var(--px-radius-sm);
-  transition: background var(--px-dur-fast, 120ms) ease, color var(--px-dur-fast, 120ms) ease;
+  transition: background var(--px-dur-fast, 120ms) var(--px-ease), color var(--px-dur-fast, 120ms) var(--px-ease);
 }
 .titlebar-layout-btn:hover {
   background: var(--px-surface-hover);
@@ -178,7 +178,7 @@ html, body {
 /* The filled pane region only shows when that pane is visible. */
 .titlebar-layout-btn .titlebar-layout-fill {
   opacity: 0;
-  transition: opacity var(--px-dur-fast, 120ms) ease;
+  transition: opacity var(--px-dur-fast, 120ms) var(--px-ease);
 }
 .titlebar-layout-btn.is-on .titlebar-layout-fill { opacity: 0.85; }
 
@@ -210,7 +210,7 @@ html, body {
   font-size: var(--parallx-fontSize-md);
   color: var(--vscode-titleBar-activeForeground);
   cursor: default;
-  transition: color 0.1s, background-color 0.1s;
+  transition: color var(--px-dur-fast) var(--px-ease), background-color var(--px-dur-fast) var(--px-ease);
 }
 
 .titlebar-menu-item:hover {
@@ -237,7 +237,7 @@ html, body {
   cursor: pointer;
   padding: 2px 8px;
   border-radius: 4px;
-  transition: color 0.1s, background-color 0.1s;
+  transition: color var(--px-dur-fast) var(--px-ease), background-color var(--px-dur-fast) var(--px-ease);
   user-select: none;
 }
 
@@ -377,7 +377,7 @@ html, body {
 
 /* Sidebar collapse / expand animation */
 .part-workbench-parts-sidebar.sidebar-animating {
-  transition: opacity 150ms ease-out, transform 150ms ease-out;
+  transition: opacity var(--px-dur-base) var(--px-ease), transform var(--px-dur-base) var(--px-ease);
 }
 .part-workbench-parts-sidebar.sidebar-collapsed {
   opacity: 0;
@@ -510,7 +510,7 @@ html, body {
   margin-right: -4px;
   flex-shrink: 0;
   opacity: 0;
-  transition: opacity 0.1s;
+  transition: opacity var(--px-dur-fast) var(--px-ease);
 }
 
 .view-section-header:hover .view-section-actions,
@@ -533,7 +533,7 @@ html, body {
   cursor: row-resize;
   background: transparent;
   z-index: 10;
-  transition: background-color 0.15s;
+  transition: background-color var(--px-dur-base) var(--px-ease);
 }
 
 .view-section-sash:hover {
@@ -716,13 +716,11 @@ html, body {
   border-radius: var(--parallx-radius-sm);
   box-sizing: border-box;
   opacity: 1;
-  transition: opacity 150ms ease-out;
+  transition: opacity var(--px-dur-base) var(--px-ease);
 }
 
 .editor-drop-overlay-indicator.overlay-move-transition {
-  transition: top 150ms ease-out, left 150ms ease-out,
-              width 150ms ease-out, height 150ms ease-out,
-              opacity 150ms ease-out;
+  transition: top var(--px-dur-base) var(--px-ease), left var(--px-dur-base) var(--px-ease), width var(--px-dur-base) var(--px-ease), height var(--px-dur-base) var(--px-ease), opacity var(--px-dur-base) var(--px-ease);
 }
 
 .editor-watermark {
@@ -1214,7 +1212,7 @@ html, body {
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
-  transition: color 0.12s;
+  transition: color var(--px-dur-fast) var(--px-ease);
   box-sizing: border-box;
   position: relative;
   margin-bottom: -1px;
@@ -1252,7 +1250,7 @@ html, body {
   background: transparent;
   flex-shrink: 0;
   z-index: 10;
-  transition: background-color 0.15s;
+  transition: background-color var(--px-dur-base) var(--px-ease);
 }
 
 .grid-sash:hover {
@@ -1396,7 +1394,7 @@ html, body {
   justify-content: space-between;
   padding: 6px 14px;
   cursor: pointer;
-  transition: background-color 0.08s;
+  transition: background-color var(--px-dur-instant) var(--px-ease);
 }
 
 .command-palette-item:hover,
@@ -1858,7 +1856,7 @@ html, body {
   opacity: 0.6;
   border-radius: var(--parallx-radius-sm);
   flex-shrink: 0;
-  transition: opacity 0.1s, transform 0.15s;
+  transition: opacity var(--px-dur-fast) var(--px-ease), transform var(--px-dur-base) var(--px-ease);
 }
 
 .search-toggle-replace:hover {
@@ -2417,7 +2415,7 @@ html, body {
   cursor: pointer;
   font-size: var(--parallx-fontSize-md);
   color: var(--vscode-quickInput-foreground);
-  transition: background-color 0.08s;
+  transition: background-color var(--px-dur-instant) var(--px-ease);
 }
 
 .theme-picker-item:hover,

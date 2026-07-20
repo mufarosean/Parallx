@@ -29,7 +29,7 @@
   max-height: 100%;
   object-fit: contain;
   image-rendering: auto;
-  transition: transform 0.1s ease;
+  transition: transform var(--px-dur-fast) var(--px-ease);
   user-select: none;
 }
 

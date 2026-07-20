@@ -22,7 +22,7 @@
   border-radius: 10px;
   background: var(--vscode-input-background, #3c3c3c);
   border: 1px solid var(--vscode-input-border, #3c3c3c);
-  transition: background-color 0.15s, border-color 0.15s;
+  transition: background-color var(--px-dur-base) var(--px-ease), border-color var(--px-dur-base) var(--px-ease);
   flex-shrink: 0;
 }
 
@@ -34,7 +34,7 @@
   height: 14px;
   border-radius: 50%;
   background: var(--vscode-descriptionForeground, #717171);
-  transition: transform 0.15s, background-color 0.15s;
+  transition: transform var(--px-dur-base) var(--px-ease), background-color var(--px-dur-base) var(--px-ease);
 }
 
 /* ── Checked state ── */

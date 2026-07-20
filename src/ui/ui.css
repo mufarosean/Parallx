@@ -33,7 +33,7 @@
   white-space: nowrap;
   user-select: none;
   outline: none;
-  transition: background-color 0.1s;
+  transition: background-color var(--px-dur-fast) var(--px-ease);
 }
 
 .ui-button:hover {

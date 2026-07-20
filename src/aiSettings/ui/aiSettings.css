@@ -149,7 +149,7 @@
   color: var(--vscode-descriptionForeground, #888);
   border-radius: 4px;
   padding: 5px 12px;
-  transition: color 0.15s, border-color 0.15s, background-color 0.15s;
+  transition: color var(--px-dur-base) var(--px-ease), border-color var(--px-dur-base) var(--px-ease), background-color var(--px-dur-base) var(--px-ease);
 }
 
 .ai-settings-preset-switcher__new .ui-button:hover {
@@ -380,7 +380,7 @@
   font-size: var(--parallx-fontSize-lg);
   padding: 2px 4px;
   opacity: 0;
-  transition: opacity 0.15s;
+  transition: opacity var(--px-dur-base) var(--px-ease);
   flex-shrink: 0;
 }
 
@@ -420,7 +420,7 @@
   border: 2px solid transparent;
   border-radius: var(--parallx-radius-md);
   cursor: pointer;
-  transition: border-color 0.15s, transform 0.1s;
+  transition: border-color var(--px-dur-base) var(--px-ease), transform var(--px-dur-fast) var(--px-ease);
   color: var(--vscode-descriptionForeground, rgba(204, 204, 204, 0.7));
   padding: 6px;
 }
@@ -669,7 +669,7 @@
   font-size: var(--parallx-fontSize-xs);
   color: var(--vscode-descriptionForeground, #888);
   cursor: pointer;
-  transition: color 0.12s;
+  transition: color var(--px-dur-fast) var(--px-ease);
 }
 
 .ai-settings-row .ui-slider__stop:hover {
@@ -731,7 +731,7 @@
   font-size: var(--parallx-fontSize-sm);
   color: var(--vscode-testing-iconPassed, #73c991);
   opacity: 0;
-  transition: opacity 0.2s ease-in-out;
+  transition: opacity var(--px-dur-base) var(--px-ease);
   pointer-events: none;
   vertical-align: middle;
 }
@@ -943,7 +943,7 @@
   border-radius: var(--parallx-radius-sm);
   line-height: 1;
   opacity: 0;
-  transition: opacity 0.12s, color 0.12s;
+  transition: opacity var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 
 .ai-settings-memory-item:hover .ai-settings-memory-delete-btn {
@@ -1017,7 +1017,7 @@
   height: 100%;
   background: var(--vscode-testing-iconPassed, #73c991);
   border-radius: var(--parallx-radius-sm);
-  transition: width 0.15s ease;
+  transition: width var(--px-dur-base) var(--px-ease);
 }
 
 .ai-settings-memory-decay {
@@ -1066,7 +1066,7 @@
   padding: 4px 12px;
   border-radius: var(--parallx-radius-sm);
   cursor: pointer;
-  transition: background 0.12s;
+  transition: background var(--px-dur-fast) var(--px-ease);
 }
 
 .ai-settings-memory-clear-btn:hover {
@@ -1494,7 +1494,7 @@
   padding: 8px 12px;
   cursor: pointer;
   user-select: none;
-  transition: background 0.1s;
+  transition: background var(--px-dur-fast) var(--px-ease);
 }
 
 .ai-settings-agent-card__summary:hover {
@@ -1549,7 +1549,7 @@
   gap: 2px;
   flex-shrink: 0;
   opacity: 0;
-  transition: opacity 0.12s;
+  transition: opacity var(--px-dur-fast) var(--px-ease);
 }
 
 .ai-settings-agent-card__summary:hover .ai-settings-agent-card__actions {
@@ -1607,7 +1607,7 @@
   font-size: var(--parallx-fontSize-base);
   font-family: var(--parallx-fontFamily-ui);
   outline: none;
-  transition: border-color 0.12s;
+  transition: border-color var(--px-dur-fast) var(--px-ease);
 }
 
 .ai-settings-agent-card__field-input:focus {
@@ -1639,7 +1639,7 @@ input[type="number"].ai-settings-agent-card__field-input {
   padding: 4px 14px;
   border-radius: var(--parallx-radius-sm);
   cursor: pointer;
-  transition: opacity 0.12s;
+  transition: opacity var(--px-dur-fast) var(--px-ease);
 }
 
 .ai-settings-agent-card__save-btn:hover {
@@ -1672,7 +1672,7 @@ input[type="number"].ai-settings-agent-card__field-input {
   cursor: pointer;
   margin-top: 8px;
   width: 100%;
-  transition: background 0.12s, border-color 0.12s;
+  transition: background var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease);
 }
 
 .ai-settings-agent-list__add-btn:hover {
@@ -1806,7 +1806,7 @@ input[type="number"].ai-settings-agent-card__field-input {
   border-radius: var(--parallx-radius-sm, 4px);
   font-size: var(--parallx-fontSize-sm);
   cursor: pointer;
-  transition: background-color 0.1s ease;
+  transition: background-color var(--px-dur-fast) var(--px-ease);
 }
 
 .ai-settings-cron-job__btn:hover {

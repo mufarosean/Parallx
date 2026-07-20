@@ -68,7 +68,7 @@
   flex-shrink: 0;
   border-radius: var(--parallx-radius-sm);
   padding: 0;
-  transition: background 80ms ease, color 80ms ease;
+  transition: background var(--px-dur-instant) var(--px-ease), color var(--px-dur-instant) var(--px-ease);
 }
 
 .tool-gallery-install-btn:hover {
@@ -138,7 +138,7 @@
   padding: 8px 12px;
   cursor: pointer;
   border-bottom: 1px solid var(--vscode-panel-border, #2a2a2a);
-  transition: background 80ms ease;
+  transition: background var(--px-dur-instant) var(--px-ease);
 }
 
 .tool-gallery-row:hover {
@@ -231,7 +231,7 @@
   padding: 3px 8px;
   cursor: pointer;
   border-radius: var(--parallx-radius-sm);
-  transition: background 80ms ease, border-color 80ms ease;
+  transition: background var(--px-dur-instant) var(--px-ease), border-color var(--px-dur-instant) var(--px-ease);
 }
 
 .tool-gallery-toggle:hover {
@@ -399,7 +399,7 @@
   cursor: pointer;
   border-bottom: 2px solid transparent;
   user-select: none;
-  transition: color 80ms ease;
+  transition: color var(--px-dur-instant) var(--px-ease);
 }
 
 .tool-editor-tab:hover {

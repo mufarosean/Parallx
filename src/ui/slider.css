@@ -32,7 +32,7 @@
     var(--slider-track-bg) var(--slider-fill),
     var(--slider-track-bg) 100%
   );
-  transition: opacity 0.15s;
+  transition: opacity var(--px-dur-base) var(--px-ease);
 }
 
 .ui-slider__input::-webkit-slider-runnable-track {
@@ -53,7 +53,7 @@
   border: 2px solid var(--vscode-editor-background, #1e1e1e);
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 1px 3px rgba(0, 0, 0, 0.3);
   cursor: pointer;
-  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  transition: transform var(--px-dur-fast) var(--px-ease), box-shadow var(--px-dur-fast) var(--px-ease);
   margin-top: calc((var(--slider-track-height) - var(--slider-thumb-size)) / 2);
 }
 
@@ -110,7 +110,7 @@
 .ui-slider__stop {
   white-space: nowrap;
   line-height: 18px;
-  transition: color 0.12s;
+  transition: color var(--px-dur-fast) var(--px-ease);
   text-align: center;
   flex: 0 0 auto;
 }

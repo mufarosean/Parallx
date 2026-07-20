@@ -79,7 +79,7 @@
   right: 14px;
   background-color: transparent;
   pointer-events: auto;
-  transition: background-color 0.15s;
+  transition: background-color var(--px-dur-base) var(--px-ease);
 }
 
 .text-editor-minimap:hover .text-editor-minimap-slider {
@@ -107,7 +107,7 @@
   width: 10px;
   border-radius: 5px;
   background-color: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
-  transition: background-color 0.1s;
+  transition: background-color var(--px-dur-fast) var(--px-ease);
 }
 
 .text-editor-minimap-scrollbar-thumb:hover {

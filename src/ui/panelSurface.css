@@ -70,7 +70,7 @@
   border-radius: var(--px-radius-sm);
   cursor: pointer;
   font-size: var(--px-text-xs);
-  transition: background var(--px-dur-fast, 120ms) ease, color var(--px-dur-fast, 120ms) ease;
+  transition: background var(--px-dur-fast, 120ms) var(--px-ease), color var(--px-dur-fast, 120ms) var(--px-ease);
 }
 .px-panel-toolbar-btn:hover { background: var(--px-surface-hover); color: var(--px-text); }
 .px-panel-toolbar-btn.is-active { background: var(--px-accent-soft); color: var(--px-accent); }

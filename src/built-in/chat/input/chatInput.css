@@ -148,7 +148,7 @@
   background: transparent;
   color: var(--vscode-descriptionForeground, #8b8b8b);
   cursor: pointer;
-  transition: background 100ms ease, color 100ms ease;
+  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 
 .parallx-chat-input-attach:hover {
@@ -224,7 +224,7 @@
   color: var(--vscode-descriptionForeground, #8b8b8b);
   cursor: pointer;
   flex-shrink: 0;
-  transition: background 100ms ease, color 100ms ease;
+  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 
 .parallx-chat-input-stop svg {
@@ -256,7 +256,7 @@
   font-family: var(--parallx-fontFamily-ui);
   cursor: pointer;
   white-space: nowrap;
-  transition: background 100ms ease, color 100ms ease;
+  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 
 .parallx-chat-picker-btn--model {
@@ -545,7 +545,7 @@
   cursor: pointer;
   flex-shrink: 0;
   opacity: 0.7;
-  transition: opacity 100ms ease, background 100ms ease;
+  transition: opacity var(--px-dur-fast) var(--px-ease), background var(--px-dur-fast) var(--px-ease);
 }
 
 .parallx-chat-context-chip-close:hover,
@@ -741,7 +741,7 @@
   background: transparent;
   color: var(--vscode-descriptionForeground, #8b8b8b);
   cursor: pointer;
-  transition: background 100ms ease, color 100ms ease;
+  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 
 .parallx-chat-input-tools:hover {
@@ -814,7 +814,7 @@
   background: transparent;
   color: var(--vscode-foreground, #cccccc);
   cursor: pointer;
-  transition: background 100ms ease;
+  transition: background var(--px-dur-fast) var(--px-ease);
 }
 
 .parallx-chat-tool-picker-close:hover {
@@ -901,7 +901,7 @@
   font-family: var(--parallx-fontFamily-ui);
   cursor: pointer;
   flex-shrink: 0;
-  transition: background 100ms ease;
+  transition: background var(--px-dur-fast) var(--px-ease);
 }
 
 .parallx-chat-tool-picker-ok:hover {
@@ -1057,7 +1057,7 @@
   font-size: var(--parallx-fontSize-sm);
   font-family: inherit;
   cursor: pointer;
-  transition: color 100ms ease, background 100ms ease;
+  transition: color var(--px-dur-fast) var(--px-ease), background var(--px-dur-fast) var(--px-ease);
 }
 
 .parallx-chat-context-menu-trigger:hover {
@@ -1188,7 +1188,7 @@
   background: color-mix(in srgb, var(--vscode-badge-background, #4d4d4d) 32%, transparent);
   color: var(--vscode-foreground, #cccccc);
   min-width: 0;
-  transition: background 100ms ease, border-color 100ms ease;
+  transition: background var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease);
 }
 
 .parallx-chat-context-item:hover,
@@ -1256,7 +1256,7 @@
   opacity: 0;
   font-size: var(--parallx-fontSize-base);
   line-height: 1;
-  transition: opacity 100ms ease, background 100ms ease;
+  transition: opacity var(--px-dur-fast) var(--px-ease), background var(--px-dur-fast) var(--px-ease);
 }
 
 .parallx-chat-context-item:hover .parallx-chat-context-item-action,
@@ -1345,7 +1345,7 @@
   padding: 4px 10px;
   cursor: pointer;
   border-radius: 0;
-  transition: background 60ms ease;
+  transition: background var(--px-dur-instant) var(--px-ease);
 }
 
 .parallx-mention-item:hover {

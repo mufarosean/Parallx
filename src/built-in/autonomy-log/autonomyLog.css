@@ -222,7 +222,7 @@
   cursor: pointer;
   font-size: var(--parallx-fontSize-sm, 12px);
   font-weight: 550;
-  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+  transition: background var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 .autonomy-status__btn:hover {
   background: var(--px-surface-hover, #2b2e34);
@@ -324,7 +324,7 @@
   cursor: pointer;
   font-size: var(--parallx-fontSize-sm, 12px);
   font-weight: 550;
-  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease, transform 0.08s ease;
+  transition: background var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease), transform var(--px-dur-instant) var(--px-ease);
 }
 .autonomy-guide__chip:hover {
   background: var(--px-surface-hover, #2b2e34);

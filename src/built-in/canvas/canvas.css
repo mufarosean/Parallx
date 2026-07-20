@@ -43,7 +43,7 @@
   border-radius: var(--parallx-radius-sm);
   padding: 0;
   flex-shrink: 0;
-  transition: background-color 0.1s ease, color 0.1s ease;
+  transition: background-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 
 .canvas-sidebar-add-btn:hover {
@@ -68,7 +68,7 @@
   font-size: var(--parallx-fontSize-base);
   font-family: inherit;
   flex-shrink: 0;
-  transition: background-color 0.1s ease, color 0.1s ease;
+  transition: background-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 
 .canvas-sidebar-trash-btn:hover {
@@ -172,7 +172,7 @@
   font-size: 11.5px;
   font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.1s ease;
+  transition: background-color var(--px-dur-fast) var(--px-ease);
 }
 .canvas-sidebar-toast-undo:hover {
   background: rgba(80, 140, 220, 0.16);
@@ -215,7 +215,7 @@
   text-align: left;
   cursor: pointer;
   border-radius: var(--parallx-radius-sm);
-  transition: background-color 0.1s ease, color 0.1s ease;
+  transition: background-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 .canvas-sidebar-recents-header:hover {
   background: rgba(255, 255, 255, 0.04);
@@ -224,7 +224,7 @@
 .canvas-sidebar-recents-chevron {
   display: inline-flex;
   align-items: center;
-  transition: transform 0.12s ease;
+  transition: transform var(--px-dur-fast) var(--px-ease);
   color: inherit;
 }
 .canvas-sidebar-recents-chevron--open {
@@ -302,7 +302,7 @@
   font-family: inherit;
   font-size: 12px;
   cursor: pointer;
-  transition: background-color 0.1s ease, border-color 0.1s ease;
+  transition: background-color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease);
 }
 .canvas-empty-action:hover {
   background: rgba(255, 255, 255, 0.08);
@@ -391,7 +391,7 @@
   text-align: left;
   color: var(--vscode-foreground);
   cursor: pointer;
-  transition: background-color 0.1s ease, border-color 0.1s ease, transform 0.05s ease;
+  transition: background-color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease), transform var(--px-dur-instant) var(--px-ease);
   font-family: inherit;
 }
 .canvas-template-card:hover,
@@ -470,7 +470,7 @@
   cursor: pointer;
   padding: 6px 10px;
   border-radius: var(--parallx-radius-sm);
-  transition: background-color 0.1s ease, color 0.1s ease;
+  transition: background-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 .canvas-template-picker-blank:hover,
 .canvas-template-picker-manage:hover,
@@ -725,7 +725,7 @@
   color: var(--vscode-foreground);
   opacity: 0;
   pointer-events: none;
-  transition: transform 0.15s ease;
+  transition: transform var(--px-dur-base) var(--px-ease);
   cursor: pointer;
   border-radius: var(--parallx-radius-sm);
 }
@@ -1062,7 +1062,7 @@
   cursor: pointer;
   display: grid;
   place-content: center;
-  transition: all 0.15s ease;
+  transition: all var(--px-dur-base) var(--px-ease);
   margin: 0;
 }
 
@@ -1166,7 +1166,7 @@
   text-decoration-color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.4));
   text-underline-offset: 3px;
   cursor: pointer;
-  transition: text-decoration-color 0.15s ease;
+  transition: text-decoration-color var(--px-dur-base) var(--px-ease);
 }
 
 .canvas-tiptap-editor a:hover,
@@ -1193,7 +1193,7 @@
   margin: 2px 0;
   padding: 0;
   display: block;
-  transition: filter 0.15s ease;
+  transition: filter var(--px-dur-base) var(--px-ease);
 }
 
 .canvas-tiptap-editor img:hover {
@@ -1210,7 +1210,7 @@
 .canvas-tiptap-editor:not(.dragging) .ProseMirror-selectednode {
   outline: none !important;
   background-color: var(--vscode-editor-selectionBackground, rgba(45, 170, 219, 0.15));
-  transition: background-color 0.15s ease;
+  transition: background-color var(--px-dur-base) var(--px-ease);
   border-radius: 4px;
 }
 
@@ -1251,7 +1251,7 @@
 /* ── Block drag source (visual during multi-block DnD) ── */
 .canvas-tiptap-editor .block-drag-source {
   opacity: 0.4;
-  transition: opacity 0.15s ease;
+  transition: opacity var(--px-dur-base) var(--px-ease);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -1306,7 +1306,7 @@
   opacity: 1 !important;
   background-color: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.08));
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10' style='fill: rgba(255, 255, 255, 0.7)'%3E%3Cpath d='M3,2 C2.44771525,2 2,1.55228475 2,1 C2,0.44771525 2.44771525,0 3,0 C3.55228475,0 4,0.44771525 4,1 C4,1.55228475 3.55228475,2 3,2 Z M3,6 C2.44771525,6 2,5.55228475 2,5 C2,4.44771525 2.44771525,4 3,4 C3.55228475,4 4,4.44771525 4,5 C4,5.55228475 3.55228475,6 3,6 Z M3,10 C2.44771525,10 2,9.55228475 2,9 C2,8.44771525 2.44771525,8 3,8 C3.55228475,8 4,8.44771525 4,9 C4,9.55228475 3.55228475,10 3,10 Z M7,2 C6.44771525,2 6,1.55228475 6,1 C6,0.44771525 6.44771525,0 7,0 C7.55228475,0 8,0.44771525 8,1 C8,1.55228475 7.55228475,2 7,2 Z M7,6 C6.44771525,6 6,5.55228475 6,5 C6,4.44771525 6.44771525,4 7,4 C7.55228475,4 8,4.44771525 8,5 C8,5.55228475 7.55228475,6 7,6 Z M7,10 C6.44771525,10 6,9.55228475 6,9 C6,8.44771525 6.44771525,8 7,8 C7.55228475,8 8,8.44771525 8,9 C8,9.55228475 7.55228475,10 7,10 Z'%3E%3C/path%3E%3C/svg%3E");
-  transition: background-color 0.15s ease;
+  transition: background-color var(--px-dur-base) var(--px-ease);
 }
 
 .drag-handle:active {
@@ -1426,7 +1426,7 @@
   user-select: none;
   font-size: var(--parallx-fontSize-md);
   color: var(--vscode-foreground, rgba(255, 255, 255, 0.8));
-  transition: background-color 0.08s ease;
+  transition: background-color var(--px-dur-instant) var(--px-ease);
 }
 
 .block-action-item:hover {
@@ -1510,7 +1510,7 @@
   cursor: pointer;
   font-size: var(--parallx-fontSize-md);
   color: rgba(255, 255, 255, 0.8);
-  transition: background-color 0.08s ease;
+  transition: background-color var(--px-dur-instant) var(--px-ease);
 }
 
 .block-color-item:hover {
@@ -1572,7 +1572,7 @@
   border-radius: 5px;
   padding: 0 6px;
   font-family: inherit;
-  transition: background-color 0.1s ease, color 0.1s ease;
+  transition: background-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 
 .canvas-bubble-btn:hover {
@@ -1619,7 +1619,7 @@
   outline: none;
   height: 28px;
   box-sizing: border-box;
-  transition: border-color 0.15s ease;
+  transition: border-color var(--px-dur-base) var(--px-ease);
 }
 
 .canvas-bubble-link-field:focus {
@@ -1641,7 +1641,7 @@
   align-items: center;
   justify-content: center;
   border-radius: 5px;
-  transition: background-color 0.1s ease, color 0.1s ease;
+  transition: background-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 
 .canvas-bubble-link-apply:hover {
@@ -1697,7 +1697,7 @@
   user-select: none;
   font-size: var(--parallx-fontSize-md);
   color: var(--vscode-foreground, rgba(255, 255, 255, 0.8));
-  transition: background-color 0.08s ease;
+  transition: background-color var(--px-dur-instant) var(--px-ease);
 }
 
 .canvas-slash-item:hover,
@@ -1812,7 +1812,7 @@
   justify-content: center;
   z-index: 1;
   border-radius: var(--parallx-radius-sm);
-  transition: background-color 0.1s ease;
+  transition: background-color var(--px-dur-fast) var(--px-ease);
 }
 
 .canvas-tiptap-editor [data-type="details"] > button:hover {
@@ -1828,7 +1828,7 @@
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.5)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18l6-6-6-6'/%3E%3C/svg%3E");
   background-size: contain;
   background-repeat: no-repeat;
-  transition: transform 0.15s ease;
+  transition: transform var(--px-dur-base) var(--px-ease);
 }
 
 /* Rotate chevron when open */
@@ -1894,7 +1894,7 @@
   justify-content: center;
   z-index: 1;
   border-radius: var(--parallx-radius-sm);
-  transition: background-color 0.1s ease;
+  transition: background-color var(--px-dur-fast) var(--px-ease);
 }
 
 .canvas-tiptap-editor .toggle-heading-chevron:hover {
@@ -1909,7 +1909,7 @@
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.5)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18l6-6-6-6'/%3E%3C/svg%3E");
   background-size: contain;
   background-repeat: no-repeat;
-  transition: transform 0.15s ease;
+  transition: transform var(--px-dur-base) var(--px-ease);
 }
 
 .canvas-tiptap-editor .canvas-toggle-heading.is-open .toggle-heading-chevron::before {
@@ -1964,7 +1964,7 @@
   border-radius: 4px;
   overflow: hidden;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background var(--px-dur-base) var(--px-ease);
   display: flex;
   margin: 4px 0;
 }
@@ -2034,7 +2034,7 @@
   border: 0;
   border-radius: 0;
   cursor: pointer;
-  transition: color 0.15s;
+  transition: color var(--px-dur-base) var(--px-ease);
   min-height: 0;
   background: transparent;
 }
@@ -2151,7 +2151,7 @@
   font-size: var(--parallx-fontSize-lg);
   color: rgba(255, 255, 255, 0.7);
   cursor: pointer;
-  transition: color 0.1s;
+  transition: color var(--px-dur-fast) var(--px-ease);
 }
 
 .canvas-toc-item:hover {
@@ -2238,7 +2238,7 @@
   border-radius: 4px;
   margin: 4px 0;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background var(--px-dur-base) var(--px-ease);
 }
 
 .canvas-tiptap-editor .canvas-file-attachment:hover {
@@ -2527,7 +2527,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  transition: opacity 0.18s ease, color 0.18s ease;
+  transition: opacity var(--px-dur-base) var(--px-ease), color var(--px-dur-base) var(--px-ease);
 }
 .canvas-top-ribbon-save::before {
   content: '';
@@ -2561,7 +2561,7 @@
   justify-content: center;
   border-radius: var(--parallx-radius-sm);
   cursor: pointer;
-  transition: background-color 0.1s ease, color 0.1s ease;
+  transition: background-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
   font-family: inherit;
   padding: 0;
 }
@@ -2609,7 +2609,7 @@
   display: flex;
   gap: 6px;
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transition: opacity var(--px-dur-base) var(--px-ease);
 }
 
 .canvas-cover-btn {
@@ -2620,7 +2620,7 @@
   padding: 4px 10px;
   border-radius: 4px;
   cursor: pointer;
-  transition: background-color 0.1s ease;
+  transition: background-color var(--px-dur-fast) var(--px-ease);
   font-family: inherit;
 }
 
@@ -2731,7 +2731,7 @@
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  transition: color 0.1s ease;
+  transition: color var(--px-dur-fast) var(--px-ease);
   max-width: 240px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2787,7 +2787,7 @@
   align-items: center;
   margin-bottom: 4px;
   user-select: none;
-  transition: transform 0.1s ease;
+  transition: transform var(--px-dur-fast) var(--px-ease);
   transform-origin: left center;
   color: var(--vscode-editor-foreground, rgba(255, 255, 255, 0.8));
 }
@@ -2806,7 +2806,7 @@
   display: flex;
   gap: 8px;
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transition: opacity var(--px-dur-base) var(--px-ease);
   margin-bottom: 6px;
   /* Reserve vertical room so hover-visible buttons don't reflow the
    * title row. Matches the button's actual height (icon + small text). */
@@ -2828,7 +2828,7 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  transition: background-color 0.1s ease, color 0.1s ease;
+  transition: background-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
   font-family: inherit;
 }
 
@@ -2909,7 +2909,7 @@
   font-size: var(--parallx-fontSize-md);
   cursor: pointer;
   text-align: center;
-  transition: background-color 0.1s ease, border-color 0.1s ease;
+  transition: background-color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease);
   font-family: inherit;
 }
 
@@ -2939,7 +2939,7 @@
   padding: 6px 8px;
   cursor: pointer;
   border-radius: 4px;
-  transition: background-color 0.1s ease;
+  transition: background-color var(--px-dur-fast) var(--px-ease);
 }
 
 .canvas-page-menu-toggle:hover {
@@ -2960,7 +2960,7 @@
   border-radius: 9px;
   background: rgba(255, 255, 255, 0.15);
   position: relative;
-  transition: background-color 0.15s ease;
+  transition: background-color var(--px-dur-base) var(--px-ease);
   flex-shrink: 0;
 }
 
@@ -2973,7 +2973,7 @@
   height: 14px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.7);
-  transition: transform 0.15s ease, background-color 0.15s ease;
+  transition: transform var(--px-dur-base) var(--px-ease), background-color var(--px-dur-base) var(--px-ease);
 }
 
 .canvas-page-menu-switch--on {
@@ -3004,7 +3004,7 @@
   font-size: var(--parallx-fontSize-lg);
   cursor: pointer;
   border-radius: 4px;
-  transition: background-color 0.1s ease;
+  transition: background-color var(--px-dur-fast) var(--px-ease);
   font-family: inherit;
 }
 
@@ -3052,7 +3052,7 @@
   padding: 4px 12px;
   cursor: pointer;
   border-radius: 4px;
-  transition: background-color 0.1s ease, color 0.1s ease;
+  transition: background-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
   font-family: inherit;
 }
 
@@ -3080,7 +3080,7 @@
   font-size: var(--parallx-fontSize-lg);
   cursor: pointer;
   text-align: center;
-  transition: background-color 0.1s ease, border-color 0.1s ease;
+  transition: background-color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease);
   font-family: inherit;
 }
 
@@ -3171,7 +3171,7 @@
   padding: 4px 12px;
   cursor: pointer;
   border-radius: 4px;
-  transition: background-color 0.1s ease, color 0.1s ease;
+  transition: background-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
   font-family: inherit;
 }
 
@@ -3199,7 +3199,7 @@
   font-size: var(--parallx-fontSize-lg);
   cursor: pointer;
   text-align: center;
-  transition: background-color 0.1s ease, border-color 0.1s ease;
+  transition: background-color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease);
   font-family: inherit;
 }
 
@@ -3388,7 +3388,7 @@
   padding: 4px 12px;
   cursor: pointer;
   border-radius: 4px;
-  transition: background-color 0.1s ease, color 0.1s ease;
+  transition: background-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
   font-family: inherit;
 }
 
@@ -3415,7 +3415,7 @@
   height: 48px;
   border-radius: var(--parallx-radius-md);
   cursor: pointer;
-  transition: transform 0.1s ease, box-shadow 0.1s ease;
+  transition: transform var(--px-dur-fast) var(--px-ease), box-shadow var(--px-dur-fast) var(--px-ease);
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
@@ -3435,7 +3435,7 @@
   font-size: var(--parallx-fontSize-lg);
   cursor: pointer;
   text-align: center;
-  transition: background-color 0.1s ease, border-color 0.1s ease;
+  transition: background-color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease);
   font-family: inherit;
 }
 
@@ -3521,7 +3521,7 @@
 /* ── Full Width Mode ── */
 
 .canvas-full-width .canvas-tiptap-editor {
-  transition: max-width 0.2s ease;
+  transition: max-width var(--px-dur-base) var(--px-ease);
 }
 
 .canvas-full-width {
@@ -3629,7 +3629,7 @@
   border-radius: var(--parallx-radius-sm);
   cursor: pointer;
   padding: 0;
-  transition: background-color 0.1s ease, color 0.1s ease;
+  transition: background-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 
 .canvas-node-action-btn:hover {
@@ -3796,7 +3796,7 @@
   padding: 2px 8px;
   border-radius: var(--parallx-radius-sm);
   font-family: inherit;
-  transition: background-color 0.1s ease, color 0.1s ease;
+  transition: background-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 
 .canvas-trash-panel-empty-btn:hover {
@@ -3815,7 +3815,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background-color 0.1s ease;
+  transition: background-color var(--px-dur-fast) var(--px-ease);
 }
 
 .canvas-trash-panel-close:hover {
@@ -3858,7 +3858,7 @@
   padding: 6px 12px;
   cursor: default;
   position: relative;
-  transition: background-color 0.08s ease;
+  transition: background-color var(--px-dur-instant) var(--px-ease);
 }
 
 .canvas-trash-panel-node:hover {
@@ -3896,7 +3896,7 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: opacity 0.1s ease, background-color 0.1s ease;
+  transition: opacity var(--px-dur-fast) var(--px-ease), background-color var(--px-dur-fast) var(--px-ease);
 }
 
 .canvas-trash-panel-node:hover .canvas-trash-restore-btn,
@@ -4073,7 +4073,7 @@
   border-radius: 4px;
   outline: none;
   box-sizing: border-box;
-  transition: border-color 0.15s ease;
+  transition: border-color var(--px-dur-base) var(--px-ease);
   resize: none;
   overflow: hidden;
   word-wrap: break-word;
@@ -4103,7 +4103,7 @@
   border-radius: 5px;
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.15s ease;
+  transition: background var(--px-dur-base) var(--px-ease);
 }
 
 .canvas-math-block-done:hover {
@@ -4142,7 +4142,7 @@
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 4px;
   outline: none;
-  transition: border-color 0.15s ease;
+  transition: border-color var(--px-dur-base) var(--px-ease);
   box-sizing: border-box;
 }
 
@@ -4214,7 +4214,7 @@
   border-radius: 4px;
   padding: 0;
   box-sizing: border-box;
-  transition: background-color 0.15s ease;
+  transition: background-color var(--px-dur-base) var(--px-ease);
 }
 
 /* When column has explicit width, use it instead of flex:1.
@@ -4278,7 +4278,7 @@
   border-radius: 2px;
   z-index: 50;
   pointer-events: none;
-  transition: top 0.08s ease, height 0.08s ease, left 0.08s ease;
+  transition: top var(--px-dur-instant) var(--px-ease), height var(--px-dur-instant) var(--px-ease), left var(--px-dur-instant) var(--px-ease);
 }
 
 /* Horizontal blue line shown when dragging a block above/below another. */
@@ -4290,7 +4290,7 @@
   border-radius: 2px;
   z-index: 50;
   pointer-events: none;
-  transition: top 0.08s ease, width 0.08s ease, left 0.08s ease;
+  transition: top var(--px-dur-instant) var(--px-ease), width var(--px-dur-instant) var(--px-ease), left var(--px-dur-instant) var(--px-ease);
 }
 
 /* Placeholder text style inside columns */
@@ -4455,7 +4455,7 @@
   padding: 3px 8px;
   border-radius: 5px;
   font-family: inherit;
-  transition: background-color 0.1s ease, color 0.1s ease, border-color 0.1s ease;
+  transition: background-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease);
 }
 
 .canvas-ai-chat-action-btn:hover {
@@ -4498,7 +4498,7 @@
   min-height: 32px;
   max-height: 80px;
   outline: none;
-  transition: border-color 0.15s ease;
+  transition: border-color var(--px-dur-base) var(--px-ease);
 }
 
 .canvas-ai-chat-input:focus {
@@ -4523,7 +4523,7 @@
   border-radius: var(--parallx-radius-md);
   padding: 0;
   flex-shrink: 0;
-  transition: background-color 0.1s ease;
+  transition: background-color var(--px-dur-fast) var(--px-ease);
 }
 
 .canvas-ai-chat-send:hover {
@@ -4539,7 +4539,7 @@
   outline: 2px solid var(--vscode-editor-findMatchHighlightBorder, rgba(234, 92, 0, 0.66));
   outline-offset: 2px;
   border-radius: 2px;
-  transition: background-color 0.4s ease-out, outline-color 0.4s ease-out;
+  transition: background-color var(--px-dur-slow) var(--px-ease), outline-color var(--px-dur-slow) var(--px-ease);
 }
 
 /* ── Live AI writing (create/edit_page streaming into the open editor) ── */
