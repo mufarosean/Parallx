@@ -11,7 +11,6 @@ import { TextStyle } from '@tiptap/extension-text-style';
 import { Color } from '@tiptap/extension-color';
 import Highlight from '@tiptap/extension-highlight';
 import CharacterCount from '@tiptap/extension-character-count';
-import AutoJoiner from 'tiptap-extension-auto-joiner';
 import UniqueID from '@tiptap/extension-unique-id';
 import { BlockBackgroundColor } from '../extensions/blockBackground.js';
 import { DetailsEnterHandler } from '../extensions/detailsEnterHandler.js';
@@ -103,6 +102,62 @@ export const UNIQUE_ID_BLOCK_TYPES: string[] = [
  * exempt history transactions unless they exist to enforce schema validity
  * (structuralRepair is the sanctioned exception).
  */
+/**
+ * History-aware replacement for tiptap-extension-auto-joiner (M-canvas
+ * determinism, 2026-07-20). Same product contract — adjacent same-type
+ * lists merge into one — but NEVER on undo/redo. The original joined lists
+ * on the undo transaction itself, and the join transaction then cascaded
+ * into UniqueID stamping the merged node: two originally-separate lists
+ * came back MERGED with fresh ids after a full undo (found by the rule
+ * fuzzer, seeds 2/5). Third violator of the house rule; see
+ * HistoryAwareTrailingNode below for the rule statement.
+ */
+const HistoryAwareAutoJoiner = Extension.create({
+  name: 'autoJoiner',
+  addProseMirrorPlugins() {
+    const key = new PluginKey('canvasAutoJoiner');
+    const JOINABLE = new Set(['bulletList', 'orderedList', 'taskList']);
+    return [
+      new Plugin({
+        key,
+        appendTransaction: (transactions, _oldState, state) => {
+          if (transactions.some((tr) => tr.getMeta('history$'))) return undefined;
+          if (!transactions.some((tr) => tr.docChanged)) return undefined;
+          const tr = state.tr;
+          let joined = false;
+          // Join adjacent same-type list siblings, deepest-last so earlier
+          // positions stay valid; repeat until stable (a join can create a
+          // new adjacency at the parent level).
+          for (let pass = 0; pass < 5; pass++) {
+            const joins: number[] = [];
+            const walk = (node: import('@tiptap/pm/model').Node, base: number): void => {
+              let offset = 0;
+              let prev: import('@tiptap/pm/model').Node | null = null;
+              node.forEach((child, childOffset) => {
+                if (prev && JOINABLE.has(child.type.name) && prev.type === child.type) {
+                  joins.push(base + childOffset);
+                }
+                prev = child;
+                offset = childOffset;
+              });
+              void offset;
+              node.forEach((child, childOffset) => {
+                if (!child.isTextblock && child.childCount > 0) walk(child, base + childOffset + 1);
+              });
+            };
+            walk(tr.doc, 0);
+            if (joins.length === 0) break;
+            for (const pos of joins.sort((a, b) => b - a)) {
+              try { tr.join(pos); joined = true; } catch { /* boundary moved — skip */ }
+            }
+          }
+          return joined ? tr : undefined;
+        },
+      }),
+    ];
+  },
+});
+
 const HistoryAwareTrailingNode = Extension.create({
   name: 'trailingNode',
   addProseMirrorPlugins() {
@@ -348,7 +403,7 @@ export function createEditorExtensions(lowlight: any, context?: EditorExtensionC
     // BlockHandlesController (handles/blockHandles.ts), which resolves blocks
     // via posAtCoords and positions the handle directly in its mousemove handler.
     CharacterCount,
-    AutoJoiner,
+    HistoryAwareAutoJoiner,
     clipboardImagePaste,
     imageFileDrop,
     UniqueID.configure({

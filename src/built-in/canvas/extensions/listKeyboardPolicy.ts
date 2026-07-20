@@ -42,7 +42,12 @@ export const ListKeyboardPolicy = Extension.create({
         const indexInParent = $from.index(parentDepth);
         const parentNode = parentDepth === 0 ? editor.state.doc : $from.node(parentDepth);
         const prevSibling = indexInParent > 0 ? parentNode.child(indexInParent - 1) : null;
-        if (prevSibling && prevSibling.isAtom && prevSibling.isBlock) {
+        // Join-hostile guard: atoms AND code-bearing blocks (spec.code).
+        // PM's joinBackward dissolves a codeBlock into the paragraph below,
+        // converting its newlines to hardBreaks — one keystroke silently
+        // liquefies the block (fuzzer find, seed 9). Same select-then-
+        // confirm contract as atoms.
+        if (prevSibling && prevSibling.isBlock && (prevSibling.isAtom || prevSibling.type.spec.code)) {
           const prevPos = $from.before(blockDepth) - prevSibling.nodeSize;
           const tr = editor.state.tr.setSelection(NodeSelection.create(editor.state.doc, prevPos));
           editor.view.dispatch(tr);
@@ -111,7 +116,7 @@ export const ListKeyboardPolicy = Extension.create({
         const nextSibling = indexInParent < parentNode.childCount - 1
           ? parentNode.child(indexInParent + 1)
           : null;
-        if (nextSibling && nextSibling.isAtom && nextSibling.isBlock) {
+        if (nextSibling && nextSibling.isBlock && (nextSibling.isAtom || nextSibling.type.spec.code)) {
           const nextPos = $from.after(blockDepth);
           const tr = editor.state.tr.setSelection(NodeSelection.create(editor.state.doc, nextPos));
           editor.view.dispatch(tr);
