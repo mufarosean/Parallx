@@ -59,6 +59,7 @@ import { FilesystemSurfacePlugin } from '../../services/surfaces/filesystemSurfa
 import { CanvasSurfacePlugin } from '../canvas/surfaces/canvasSurface.js';
 import { HeartbeatRunner, type IHeartbeatConfig } from '../../openclaw/openclawHeartbeatRunner.js';
 import { createHeartbeatTurnExecutor } from '../../openclaw/openclawHeartbeatExecutor.js';
+import { ARCHIVED_RUN_EDITOR_TYPE, renderArchivedRun } from './archivedRunViewer.js';
 import { runHeartbeatDeterministicLane } from '../../openclaw/heartbeatDeterministicLane.js';
 import { buildPlanFacts, contentHashPrefix } from '../../openclaw/heartbeatTriggers.js';
 import { HEARTBEAT_PURPOSE_PATH, parseHeartbeatPurpose } from '../../openclaw/heartbeatPurpose.js';
@@ -166,6 +167,10 @@ interface ParallxApi {
   editors: {
     openEditor(options: { typeId: string; title: string; icon?: string; instanceId?: string }): Promise<void>;
     openFileEditor(uri: string, options?: { pinned?: boolean }): Promise<void>;
+    registerEditorProvider(
+      typeId: string,
+      provider: { createEditorPane(container: HTMLElement, input?: unknown): { dispose(): void } },
+    ): { dispose(): void };
   };
   links: LinksApi;
   dashboard: {
@@ -3040,6 +3045,46 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     api.commands.registerCommand('chat.runBackgroundPrompt', async (...args: unknown[]) =>
       runBackgroundPrompt((args[0] ?? {}) as { text: string }),
     ),
+  );
+
+  // ── M91 — archived autonomous-run viewer ──
+  // Reopen a heartbeat/cron/dashboard/subagent run's FULL transcript as a
+  // read-only editor tab. openEditor forwards only instanceId, so the
+  // origin/title are stashed per-session for the pane to read.
+  const _archivedRunMeta = new Map<string, { origin?: string; title?: string }>();
+  const _archivedChatSvc = chatService as unknown as import('../../services/chatService.js').ChatService;
+  context.subscriptions.push(
+    api.editors.registerEditorProvider(ARCHIVED_RUN_EDITOR_TYPE, {
+      createEditorPane(container: HTMLElement, input?: unknown): { dispose(): void } {
+        const sessionId = (input as { id?: string } | undefined)?.id ?? '';
+        const meta = _archivedRunMeta.get(sessionId);
+        let handle: { dispose(): void } = { dispose() { /* replaced on load */ } };
+        void _archivedChatSvc.getArchivedRun(sessionId).then((run) => {
+          handle = renderArchivedRun(container, run, meta?.origin);
+        }).catch(() => {
+          handle = renderArchivedRun(container, null, meta?.origin);
+        });
+        return { dispose() { handle.dispose(); _archivedRunMeta.delete(sessionId); } };
+      },
+    }),
+  );
+  context.subscriptions.push(
+    api.commands.registerCommand('chat.openArchivedRun', async (...args: unknown[]) => {
+      const opts = (args[0] ?? {}) as { sessionId?: string; origin?: string; title?: string };
+      if (!opts.sessionId) return;
+      _archivedRunMeta.set(opts.sessionId, { origin: opts.origin, title: opts.title });
+      await api.editors.openEditor({
+        typeId: ARCHIVED_RUN_EDITOR_TYPE,
+        title: opts.title || 'Autonomous run',
+        instanceId: opts.sessionId,
+      });
+    }),
+  );
+  context.subscriptions.push(
+    api.commands.registerCommand('chat.getArchivedRunSummaries', async (...args: unknown[]) => {
+      const limit = (args[0] as { limit?: number } | undefined)?.limit;
+      return _archivedChatSvc.getArchivedRunSummaries(limit);
+    }),
   );
 
 

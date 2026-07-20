@@ -1,7 +1,8 @@
 # Milestone 91 — Autonomous Run Transcripts (reopen like chat)
 
-**Status: APPROVED 2026-07-20 (Mufaro chose "keep full transcripts").
-Branch m89-personality.**
+**Status: COMPLETE 2026-07-20 — S1 persistence (3a411e25), S2 archive-on-purge
+(9b686b27), S3 read-only viewer. Branch m89-personality; needs in-app
+verification (S3 is UI). Retention default 100 runs/workspace.**
 
 **Why:** chat sessions persist to SQLite and can be reopened forever; autonomous
 runs (heartbeat, cron, background widget refresh) run on ephemeral sessions

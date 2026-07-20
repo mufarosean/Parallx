@@ -787,6 +787,23 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
     body.textContent = entry.content;
     row.appendChild(body);
 
+    // M91 — reopen the full transcript of the autonomous run that produced
+    // this entry, read-only, like going back to a chat.
+    if (entry.sessionId && String(entry.sessionId).startsWith('ephemeral-')) {
+      const view = $('button.autonomy-log-entry__viewrun') as HTMLButtonElement;
+      view.type = 'button';
+      view.textContent = 'View full run →';
+      view.addEventListener('click', (e) => {
+        e.stopPropagation();
+        void runCommand?.('chat.openArchivedRun', {
+          sessionId: entry.sessionId,
+          origin: entry.origin,
+          title: entry.requestText,
+        });
+      });
+      row.appendChild(view);
+    }
+
     // Heartbeat 'ACT' results are actionable: let the user respond from here
     // rather than the dead end of a one-way card. (Skip error deliveries and
     // anything already handled this session.)

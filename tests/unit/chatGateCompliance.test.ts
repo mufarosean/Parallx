@@ -74,6 +74,7 @@ const FOLDER_RULES: Record<string, string[]> = {
   // ── rendering/ — message rendering ──────────────────────────────────────
   'rendering/chatCodeActions.ts':   [],
   'rendering/chatContentParts.ts':  ['chatIcons', 'rendering/'],
+  'archivedRunViewer.ts':           ['rendering/'],  // M91 — read-only archived-run transcript viewer
   'rendering/chatDiffViewer.ts':    [],
   'rendering/chatListRenderer.ts':  ['chatIcons', 'rendering/'],
   'rendering/chatTaskCards.ts':     [],
