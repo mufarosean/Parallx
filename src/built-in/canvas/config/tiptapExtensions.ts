@@ -93,6 +93,38 @@ export const UNIQUE_ID_BLOCK_TYPES: string[] = [
 ];
 
 /**
+ * History-aware replacement for StarterKit's TrailingNode (M-canvas
+ * determinism, 2026-07-20). Identical contract — keep an empty paragraph
+ * after a non-paragraph document tail so there is always a place to click —
+ * with ONE difference: it never fires on undo/redo transactions. The
+ * bundled version re-appended its paragraph on the undo transaction itself,
+ * so undo could not restore the pre-edit document (ghost empty line +
+ * phantom-dirty page). Rule of the house: appendTransaction plugins MUST
+ * exempt history transactions unless they exist to enforce schema validity
+ * (structuralRepair is the sanctioned exception).
+ */
+const HistoryAwareTrailingNode = Extension.create({
+  name: 'trailingNode',
+  addProseMirrorPlugins() {
+    const key = new PluginKey('canvasTrailingNode');
+    return [
+      new Plugin({
+        key,
+        appendTransaction: (transactions, _oldState, state) => {
+          if (transactions.some((tr) => tr.getMeta('history$'))) return undefined;
+          if (!transactions.some((tr) => tr.docChanged)) return undefined;
+          const last = state.doc.lastChild;
+          if (last && last.type.name === 'paragraph') return undefined;
+          const paragraph = state.schema.nodes.paragraph;
+          if (!paragraph) return undefined;
+          return state.tr.insert(state.doc.content.size, paragraph.create());
+        },
+      }),
+    ];
+  },
+});
+
+/**
  * Build the full set of TipTap extensions for a canvas editor instance.
  *
  * Extension sources:
@@ -269,7 +301,14 @@ export function createEditorExtensions(lowlight: any, context?: EditorExtensionC
       // Canvas provides its own drag/drop guides via columnDropPlugin.
       // Keep ProseMirror dropcursor disabled to avoid double indicators.
       dropcursor: false,
+      // Replaced by HistoryAwareTrailingNode below: the bundled TrailingNode
+      // re-appends its paragraph ON THE UNDO TRANSACTION (no history
+      // exclusion), so any edit+undo in a doc ending with a list/equation/
+      // table left a ghost empty paragraph and a phantom-dirty page — the
+      // same undo-identity defect class as the UniqueID id-restamp bug.
+      trailingNode: false,
     }),
+    HistoryAwareTrailingNode,
 
     // ── 2. Block extensions from registry ──
     ...getBlockExtensions(registryContext),

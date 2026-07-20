@@ -61,6 +61,40 @@ export const ListKeyboardPolicy = Extension.create({
         return editor.chain().liftListItem(unit.node.type.name as 'listItem' | 'taskItem').run();
       },
 
+      // ── The list-item EXIT rule (Notion parity, M-canvas 2026-07-20) ──
+      // A block (equation, image, code…) nested inside a list row leaves
+      // the caret in trailing paragraphs INSIDE that row. Without this
+      // rule every Enter just stacked more paragraphs into the same row —
+      // the user could never reach the next numbered step ("the list
+      // broke"; the equation-in-a-step complaint). Notion's contract:
+      // Enter on an EMPTY line under a bullet exits to a NEW SIBLING row.
+      // Split the row at the empty paragraph, then remove that paragraph
+      // from the left half — cursor lands in the new row, numbering
+      // continues at the same level.
+      Enter: ({ editor }) => {
+        const { state } = editor;
+        const { selection } = state;
+        const { $from } = selection;
+        if (!selection.empty) return false;
+        if ($from.parent.type.name !== 'paragraph' || $from.parent.content.size !== 0) return false;
+        const itemDepth = $from.depth - 1;
+        if (itemDepth < 1) return false;
+        const item = $from.node(itemDepth);
+        if (item.type.name !== 'listItem' && item.type.name !== 'taskItem') return false;
+        // First child = the row's own line; splitListItem already owns it.
+        if ($from.index(itemDepth) === 0) return false;
+
+        const paraPos = $from.before($from.depth);
+        try {
+          const tr = state.tr.split($from.pos, 2);
+          tr.delete(paraPos, paraPos + 2); // drop the emptied paragraph left behind
+          editor.view.dispatch(tr.scrollIntoView());
+          return true;
+        } catch {
+          return false; // structure didn't permit the split — fall through
+        }
+      },
+
       // Forward mirror of the atom guard: Delete at the end of a textblock
       // right before an atom block deletes the atom outright in PM — select
       // it instead; the second Delete confirms.
