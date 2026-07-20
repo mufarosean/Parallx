@@ -316,6 +316,16 @@ export function createEditorExtensions(lowlight: any, context?: EditorExtensionC
       types: UNIQUE_ID_BLOCK_TYPES,
       // attributeName defaults to 'id', rendered as data-id in HTML.
       // generateID defaults to uuid v4 — globally unique, collision-safe.
+      //
+      // Undo/redo must restore the document EXACTLY — ids included. The
+      // extension's appendTransaction has no history exclusion, so on pages
+      // holding pre-migration null-id blocks it re-stamped a FRESH id onto
+      // the very transaction undo produced: undo(edit) could never return
+      // to the stored doc and the page was left phantom-dirty (found by the
+      // real-data battery on the Exam 7 workspace, Enter@1 on an untouched
+      // "Untitled" page). Skipping history transactions lets undo restore
+      // the original attrs; redo replays the recorded stamp steps verbatim.
+      filterTransaction: (tr) => !tr.getMeta('history$'),
     }),
     DetailsEnterHandler,
     BlockKeyboardShortcuts,
