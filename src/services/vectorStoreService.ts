@@ -823,6 +823,42 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
     return { sourceType, sourceId, vector: centroid, chunkCount };
   }
 
+  /**
+   * M88 S2 — evenly-sampled per-chunk embeddings for segment-level
+   * similarity. A whole-document centroid smears topics (a chapter-level
+   * connection between two long texts dies in the average); comparing a
+   * bounded sample of chunk vectors finds partial overlap. Sampling is
+   * even across the document so early chapters don't monopolise the
+   * budget. Read-only, no model calls.
+   */
+  async getSourceChunkVectors(
+    sourceType: string,
+    sourceId: string,
+    limit: number = 12,
+  ): Promise<number[][]> {
+    const rows = await this._db.all<{ embedding: Uint8Array }>(
+      `SELECT embedding
+         FROM vec_embeddings
+        WHERE source_type = ? AND source_id = ?
+        ORDER BY CAST(chunk_index AS INTEGER) ASC`,
+      [sourceType, sourceId],
+    );
+    if (rows.length === 0) return [];
+    const take = Math.max(1, Math.min(limit, rows.length));
+    const step = rows.length / take;
+    const out: number[][] = [];
+    for (let i = 0; i < take; i++) {
+      const row = rows[Math.min(rows.length - 1, Math.floor(i * step))];
+      const f32 = new Float32Array(
+        row.embedding.buffer,
+        row.embedding.byteOffset,
+        row.embedding.byteLength / 4,
+      );
+      out.push(Array.from(f32));
+    }
+    return out;
+  }
+
   async getSourceChunks(
     sourceType: string,
     sourceId: string,

@@ -59,6 +59,11 @@ const ALL_EDGE_KINDS: readonly SemanticGraphEdgeKind[] = [
  * deterministic, written at 1.0 — floor 0 keeps them unconditional).
  * A single flat threshold across kinds is a category error.
  */
+/** M88 S2 — chunk vectors sampled per source for the segment-level pass. */
+const SEGMENT_SAMPLE_LIMIT = 12;
+/** M88 S2 — KNN k per sampled chunk (smaller than the centroid's k). */
+const SEGMENT_CANDIDATE_K = 5;
+
 const KIND_MIN_SCORE: Record<SemanticGraphEdgeKind, number> = {
   'similar-to': 0.72,
   'co-occurrence': 0.45,
@@ -961,7 +966,32 @@ export class SemanticGraphService extends Disposable {
     }
 
     const candidates = await this._vectorStore.vectorSearch(centroid.vector, this._candidateK);
-    const grouped = this._groupCandidates(sourceType, sourceId, candidates);
+
+    // M88 S2 — segment-level pass. The centroid smears topics: a strong
+    // chapter-level connection between two long texts dies in the average.
+    // Search a bounded, evenly-sampled set of this source's chunk vectors
+    // and pool the hits; _groupCandidates max-aggregates per target, so a
+    // single strong segment hit is enough to surface the link. Bounded at
+    // ≤SEGMENT_SAMPLE_LIMIT extra KNN calls per recompute, on the same
+    // debounced background queue — the M68 perf contract (no model calls,
+    // KNN only, incremental) is unchanged. Single-chunk sources skip the
+    // pass (their centroid IS the chunk).
+    let chunkHits: SearchResult[] = [];
+    try {
+      const chunkVectors = typeof this._vectorStore.getSourceChunkVectors === 'function'
+        ? await this._vectorStore.getSourceChunkVectors(sourceType, sourceId, SEGMENT_SAMPLE_LIMIT)
+        : [];
+      if (chunkVectors.length > 1) {
+        for (const vec of chunkVectors) {
+          const hits = await this._vectorStore.vectorSearch(vec, SEGMENT_CANDIDATE_K);
+          chunkHits.push(...hits);
+        }
+      }
+    } catch {
+      chunkHits = [];
+    }
+
+    const grouped = this._groupCandidates(sourceType, sourceId, [...candidates, ...chunkHits]);
     const edges: Array<{
       targetType: SemanticGraphSourceType;
       targetId: string;

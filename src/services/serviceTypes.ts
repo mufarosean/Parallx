@@ -1551,6 +1551,10 @@ export interface IVectorStoreService extends IDisposable {
   /** Compute a centroid from stored vectors for one indexed source. Does not embed. */
   getSourceCentroid(sourceType: string, sourceId: string): Promise<import('./vectorStoreService.js').SourceCentroid | undefined>;
 
+  /** M88 S2 — evenly-sampled per-chunk embeddings for segment-level
+   *  similarity (optional so lightweight fakes stay valid). Does not embed. */
+  getSourceChunkVectors?(sourceType: string, sourceId: string, limit?: number): Promise<number[][]>;
+
   /**
    * Fetch nearby section/page companion chunks for a retrieved anchor.
    * Used by retrieval-time structure-aware expansion on hard documents.

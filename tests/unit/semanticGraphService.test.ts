@@ -441,3 +441,77 @@ describe('getCachedEdges — per-kind floors (M88 S1)', () => {
     expect(out.filter((e) => e.kind === 'similar-to')).toHaveLength(2);
   });
 });
+
+// ─── M88 S2 — segment-level similarity ───────────────────────────────────────
+
+describe('segment-level similarity (M88 S2)', () => {
+  function harness() {
+    const db = createMockDb();
+    const vectorStore = createMockVectorStore();
+    (vectorStore as any).getSourceChunkVectors = vi.fn().mockResolvedValue([]);
+    const service = new SemanticGraphService(
+      db as any, vectorStore as any,
+      createMockPipeline() as any, createMockWorkspace() as any,
+    );
+    db.all.mockImplementation(async (sql: string) =>
+      sql.includes('PRAGMA') ? _migratedPragma() : []);
+    db.get.mockResolvedValue(null); // no prior content hash → recompute runs
+    vectorStore.getContentHash.mockImplementation(async (_t: string, id: string) => `hash-${id}`);
+    vectorStore.getSourceChunks.mockResolvedValue([]);
+    return { db, vectorStore, service };
+  }
+
+  function hit(sourceId: string, score: number, chunkIndex = 0) {
+    return {
+      rowid: 1, sourceType: 'page_block', sourceId, chunkIndex,
+      chunkText: '', contextPrefix: '', score, sources: ['vector'],
+    };
+  }
+
+  it('a single strong SEGMENT hit connects two sources whose centroids are dissimilar', async () => {
+    const { vectorStore, service } = harness();
+    vectorStore.getSourceCentroid.mockResolvedValue({
+      sourceType: 'page_block', sourceId: 'a', vector: [1, 0], chunkCount: 8,
+    });
+    // Centroid search finds nothing above threshold…
+    vectorStore.vectorSearch.mockImplementation(async (vec: number[]) => {
+      if (vec[0] === 1) return [hit('b', 0.41)]; // centroid query → weak
+      return [hit('b', 0.9)];                    // chunk query → strong
+    });
+    // …but one sampled chunk vector does.
+    (vectorStore as any).getSourceChunkVectors.mockResolvedValue([[0, 1], [0.5, 0.5]]);
+
+    await (service as any)._recomputeSource('page_block', 'a');
+
+    const edgeWrites = (vectorStore.getContentHash as any).mock.calls.filter((c: string[]) => c[1] === 'b');
+    expect(edgeWrites.length).toBeGreaterThan(0); // target b reached edge assembly
+    expect((vectorStore as any).getSourceChunkVectors).toHaveBeenCalledWith('page_block', 'a', 12);
+    // 1 centroid search + 2 chunk searches
+    expect(vectorStore.vectorSearch).toHaveBeenCalledTimes(3);
+  });
+
+  it('single-chunk sources SKIP the segment pass (centroid == chunk)', async () => {
+    const { vectorStore, service } = harness();
+    vectorStore.getSourceCentroid.mockResolvedValue({
+      sourceType: 'page_block', sourceId: 'a', vector: [1, 0], chunkCount: 1,
+    });
+    vectorStore.vectorSearch.mockResolvedValue([]);
+    (vectorStore as any).getSourceChunkVectors.mockResolvedValue([[1, 0]]);
+
+    await (service as any)._recomputeSource('page_block', 'a');
+
+    expect(vectorStore.vectorSearch).toHaveBeenCalledTimes(1); // centroid only
+  });
+
+  it('a store without getSourceChunkVectors still recomputes (optional API)', async () => {
+    const { vectorStore, service } = harness();
+    delete (vectorStore as any).getSourceChunkVectors;
+    vectorStore.getSourceCentroid.mockResolvedValue({
+      sourceType: 'page_block', sourceId: 'a', vector: [1, 0], chunkCount: 4,
+    });
+    vectorStore.vectorSearch.mockResolvedValue([]);
+
+    await expect((service as any)._recomputeSource('page_block', 'a')).resolves.toBe(true);
+    expect(vectorStore.vectorSearch).toHaveBeenCalledTimes(1);
+  });
+});
