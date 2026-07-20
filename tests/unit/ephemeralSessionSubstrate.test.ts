@@ -241,3 +241,81 @@ describe('Ephemeral session substrate (M58 W5-A)', () => {
     expect(touchedEphemeral).toBe(false);
   });
 });
+
+// ─── M91 — archive-on-purge ──────────────────────────────────────────────────
+
+describe('autonomous run archive on purge (M91 S2)', () => {
+  let agentService: ChatAgentService;
+  let modeService: ChatModeService;
+  let lmService: LanguageModelsService;
+  let chatService: ChatService;
+
+  function fakeDb() {
+    const runs: Array<{ sql: string; params?: unknown[] }> = [];
+    return {
+      runs,
+      db: {
+        isOpen: true,
+        run: async (sql: string, params?: unknown[]) => { runs.push({ sql, params }); return { changes: 0 }; },
+        get: async () => null,
+        all: async () => [],
+        runTransaction: async (ops: Array<{ sql: string; params?: unknown[] }>) => { for (const o of ops) runs.push(o); return ops.map(() => ({})); },
+      },
+    };
+  }
+
+  beforeEach(() => {
+    agentService = new ChatAgentService();
+    modeService = new ChatModeService();
+    lmService = new LanguageModelsService();
+    chatService = new ChatService(agentService, modeService, lmService);
+    agentService.registerAgent(createStubAgent());
+  });
+
+  function seedRun(handleId: string) {
+    // Inject a message pair so the run is non-empty (archive precondition).
+    const s = chatService.getSession(handleId)!;
+    (s.messages as unknown[]).push({
+      request: { text: 'q', timestamp: 1, id: 'u1' },
+      response: { parts: [{ kind: 'text', text: 'a' }], modelId: 'm', isComplete: true, timestamp: 2 },
+    });
+  }
+
+  it('archives when seed.archiveOrigin is set AND the run has messages', async () => {
+    const { runs, db } = fakeDb();
+    chatService.setDatabase(db as never, 'ws1');
+    const parent = chatService.createSession();
+    const handle = chatService.createEphemeralSession(parent.id, { archiveOrigin: 'heartbeat' });
+    seedRun(handle.sessionId);
+
+    chatService.purgeEphemeralSession(handle);
+    await new Promise((r) => setTimeout(r, 0)); // let the fire-and-forget archive run
+
+    const wroteOrigin = runs.some((r) => String(r.sql).includes('INSERT OR REPLACE INTO chat_sessions') && (r.params ?? []).includes('heartbeat'));
+    expect(wroteOrigin).toBe(true);
+    expect(chatService.getSession(handle.sessionId)).toBeUndefined(); // still purged
+  });
+
+  it('does NOT archive when archiveOrigin is absent', async () => {
+    const { runs, db } = fakeDb();
+    chatService.setDatabase(db as never, 'ws1');
+    const parent = chatService.createSession();
+    const handle = chatService.createEphemeralSession(parent.id); // no archiveOrigin
+    seedRun(handle.sessionId);
+
+    chatService.purgeEphemeralSession(handle);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(runs.some((r) => String(r.sql).includes('INSERT OR REPLACE INTO chat_sessions'))).toBe(false);
+  });
+
+  it('does NOT archive an empty run', async () => {
+    const { runs, db } = fakeDb();
+    chatService.setDatabase(db as never, 'ws1');
+    const parent = chatService.createSession();
+    const handle = chatService.createEphemeralSession(parent.id, { archiveOrigin: 'cron' });
+    // no messages seeded
+    chatService.purgeEphemeralSession(handle);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(runs.some((r) => String(r.sql).includes('INSERT OR REPLACE INTO chat_sessions'))).toBe(false);
+  });
+});

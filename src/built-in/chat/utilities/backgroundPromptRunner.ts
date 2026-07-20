@@ -125,6 +125,9 @@ export function createBackgroundPromptRunner(
     const handle = deps.chatService.createEphemeralSession(parentId, {
       systemMessage: req.systemMessage?.trim() || DEFAULT_SYSTEM_MESSAGE,
       firstUserMessage: text,
+      // M91 — archive the run's transcript under its origin (e.g. 'dashboard')
+      // so it's reopenable from the autonomy log like a chat session.
+      archiveOrigin: origin,
     });
 
     // M90 — the initiator sets the session's consent policy. 'user' runs

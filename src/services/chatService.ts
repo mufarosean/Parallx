@@ -35,6 +35,10 @@ import {
   deletePersistedSession,
   isEphemeralSessionId,
   EPHEMERAL_SESSION_ID_PREFIX,
+  archiveSession,
+  loadArchivedRunSummaries,
+  loadArchivedRun,
+  type IArchivedRunSummary,
 } from './chatSessionPersistence.js';
 import type { IChatPersistenceDatabase } from './chatSessionPersistence.js';
 import type { ISessionManager, IWorkspaceTranscriptService } from './serviceTypes.js';
@@ -94,6 +98,13 @@ export interface IEphemeralSessionSeed {
   readonly systemMessage?: string;
   /** Informational: the first user message the caller plans to send. */
   readonly firstUserMessage?: string;
+  /**
+   * M91 — when set, this autonomous run's FULL transcript is ARCHIVED to
+   * SQLite at purge time (reopenable via getArchivedRun), tagged with this
+   * origin ('heartbeat' | 'cron' | 'dashboard' | 'subagent'). Omit to keep
+   * the pre-M91 behavior (purge with no transcript).
+   */
+  readonly archiveOrigin?: string;
 }
 
 /**
@@ -649,6 +660,8 @@ export class ChatService extends Disposable implements IChatService {
    * system prompt for that session only; regular chat is never touched.
    */
   private readonly _ephemeralSystemPrompts = new Map<string, string>();
+  /** M91 — ephemeral sessions to archive at purge (id → origin tag). */
+  private readonly _ephemeralArchiveOrigins = new Map<string, string>();
 
   // ── Dependencies ──
 
@@ -1104,6 +1117,10 @@ export class ChatService extends Disposable implements IChatService {
     if (typeof seed.systemMessage === 'string' && seed.systemMessage.trim().length > 0) {
       this._ephemeralSystemPrompts.set(id, seed.systemMessage);
     }
+    // M91 — remember to archive this run's transcript at purge time.
+    if (typeof seed.archiveOrigin === 'string' && seed.archiveOrigin.trim().length > 0) {
+      this._ephemeralArchiveOrigins.set(id, seed.archiveOrigin.trim());
+    }
     // Deliberately DO NOT fire onDidCreateSession: ephemeral sessions must
     // not trigger chat-list re-renders or sidebar updates.
     return {
@@ -1132,10 +1149,47 @@ export class ChatService extends Disposable implements IChatService {
       cts.dispose();
       this._activeCancellations.delete(sessionId);
     }
+
+    // M91 — archive the full transcript BEFORE dropping it, when this run
+    // asked for it (seed.archiveOrigin). Capture the session + origin now;
+    // the async write runs on the captured reference so the synchronous
+    // delete below can't race it. Best-effort: a failed archive never
+    // blocks purge (scratch state must always be released).
+    const archiveOrigin = this._ephemeralArchiveOrigins.get(sessionId);
+    const session = this._sessions.get(sessionId);
+    if (archiveOrigin && session && session.messages.length > 0 && this._database) {
+      const db = this._database;
+      const wsId = this._workspaceId;
+      archiveSession(db, session, archiveOrigin, wsId)
+        .then(() => this._onDidArchiveRun.fire())
+        .catch((e) => console.warn('[ChatService] archiveSession failed:', e));
+    }
+
     this._sessions.delete(sessionId);
     this._pendingPersistIds.delete(sessionId);
     this._ephemeralSystemPrompts.delete(sessionId);
+    this._ephemeralArchiveOrigins.delete(sessionId);
     // No onDidDeleteSession event — listeners never saw this session created.
+  }
+
+  // ── M91 — autonomous run archive (read surface) ──
+
+  private readonly _onDidArchiveRun = this._register(new Emitter<void>());
+  /** Fires after an autonomous run's transcript is archived. */
+  readonly onDidArchiveRun = this._onDidArchiveRun.event;
+
+  /** List archived autonomous-run summaries (newest first). */
+  async getArchivedRunSummaries(limit?: number): Promise<readonly IArchivedRunSummary[]> {
+    if (!this._database) return [];
+    try { return await loadArchivedRunSummaries(this._database, this._workspaceId, limit); }
+    catch (e) { console.warn('[ChatService] getArchivedRunSummaries failed:', e); return []; }
+  }
+
+  /** Load one archived run's full transcript for the read-only viewer. */
+  async getArchivedRun(sessionId: string): Promise<IChatSession | null> {
+    if (!this._database) return null;
+    try { return await loadArchivedRun(this._database, sessionId); }
+    catch (e) { console.warn('[ChatService] getArchivedRun failed:', e); return null; }
   }
 
   // ── Request Orchestration ──

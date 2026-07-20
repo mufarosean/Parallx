@@ -197,6 +197,8 @@ export function createSubagentTurnExecutor(
 
     const seed: IEphemeralSessionSeed = {
       firstUserMessage: task,
+      // M91 — keep the transcript so subagent runs are reopenable like chat.
+      archiveOrigin: 'subagent',
     };
 
     const handle = opts.chatService.createEphemeralSession(parentId, seed);

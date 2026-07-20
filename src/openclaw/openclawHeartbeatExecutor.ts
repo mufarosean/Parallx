@@ -528,6 +528,8 @@ export function createHeartbeatTurnExecutor(
     const handle = realTurnDeps.chatService.createEphemeralSession(parentId, {
       systemMessage,
       firstUserMessage: userMessage,
+      // M91 — keep the full transcript so this run is reopenable like chat.
+      archiveOrigin: 'heartbeat',
     });
 
     // Mark this ephemeral session as heartbeat-originated so the permission

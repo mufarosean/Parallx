@@ -241,6 +241,8 @@ export function createCronTurnExecutor(
     const handle = realTurnDeps!.chatService.createEphemeralSession(parentId!, {
       systemMessage,
       firstUserMessage: userMessage,
+      // M91 — keep the transcript so cron runs are reopenable like chat.
+      archiveOrigin: 'cron',
     });
 
     let thrownError: unknown;
