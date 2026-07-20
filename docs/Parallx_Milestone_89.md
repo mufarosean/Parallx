@@ -1,6 +1,11 @@
 # Milestone 89 — Personality (Craft → Voice → Presence → Celebration)
 
-**Status: APPROVED 2026-07-20 — S1 in progress on branch `m89-personality`.**
+**Status: COMPLETE 2026-07-20 — S1 motion (d5f0db96), S2 voice (0c694889),
+S3 presence (84d0de86). S4 celebrations CUT by Mufaro's decision ("let's not
+do celebrations") — the craft/voice/presence layers ARE the personality;
+nothing performs. Remaining follow-up: the extension motion sweep
+(media-organizer, workspace-graph) after in-app approval of the S1 bands.
+Branch unmerged pending Mufaro's in-app verdict; master checkpoint fa00ed10.**
 Checkpoint: `master` @ fa00ed10 (rollback point; nothing merges until Mufaro
 has felt it in the app).
 
@@ -53,7 +58,7 @@ consistent, testable (registry shape + no orphan surfaces).
 - Optimistic-UI audit of the three highest-traffic actions (task check-off,
   page create, tab switch) — act instantly, reconcile after.
 
-### S4 — Celebration (rare, earned)
+### S4 — Celebration (rare, earned) — CUT 2026-07-20
 Last task of the day completed / review queue emptied → ONE brief
 confetti-class moment (CSS-only, ≤600ms, respects reduced-motion). Rare by
 construction: keyed to day-level events, cooldown-guarded like heartbeat
