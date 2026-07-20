@@ -94,7 +94,7 @@ const _PERSIST_KEYS = [
   'edgeColor', 'edgeWidth', 'edgeHoverWidth',
   'labelZoomStart', 'labelZoomFull',
   'showFiles', 'showCanvasPages', 'showSessions', 'edgeKindVisibility',
-  'crossToolEdgesDefaulted', 'meaningKindsDefaulted',
+  'crossToolEdgesDefaulted', 'meaningKindsDefaulted', 'viewMode',
 ];
 
 async function _loadSettings(api) {
@@ -202,6 +202,10 @@ const GS = {
   showFiles:       true,
   showCanvasPages: true,
   showSessions:    true,
+  // M88 S4 — 'workspace' = everything incl. the file tree; 'mindmap' =
+  // content only: canvas pages + concept hubs + semantically-connected
+  // files. No directory scaffolding, no sessions.
+  viewMode:        'workspace',
   // M76: per-edge-kind visibility. Default: all off. Legacy
   // `showConceptualLinks: true` settings migrate to `similar-to: true` in
   // `_loadSettings`. Phase 1 only renders 'similar-to' since the other kinds
@@ -629,12 +633,21 @@ async function buildGraphData(api) {
   const edges = [];
   _nodeIndex = 0; // reset phyllotaxis counter
 
-  await Promise.all([
-    _collectFiles(api, nodes, edges),
-    _collectCanvasPages(api, nodes, edges),
-    _collectSessions(api, nodes, edges),
-    _collectMemory(api, nodes, edges),
-  ]);
+  // M88 S4 — mindmap mode drops the scaffolding: no directory tree, no
+  // sessions, no memory internals. Canvas pages give the containment
+  // skeleton; concept hubs + semantically-connected files arrive via the
+  // providers (the semantic provider self-supplies file endpoints).
+  const mindmap = GS.viewMode === 'mindmap';
+  if (mindmap) {
+    await _collectCanvasPages(api, nodes, edges);
+  } else {
+    await Promise.all([
+      _collectFiles(api, nodes, edges),
+      _collectCanvasPages(api, nodes, edges),
+      _collectSessions(api, nodes, edges),
+      _collectMemory(api, nodes, edges),
+    ]);
+  }
   // Run providers after core collectors so the dedup `seen` set in
   // _collectProviders captures all file/page/session nodes first.
   await _collectProviders(api, nodes, edges);
@@ -830,11 +843,31 @@ function _isIgnoredWorkspaceInternalPath(value) {
   return false;
 }
 
+// M88 S4 — canonical form for cross-collector node-id comparison. The
+// four collectors and the semantic engine each build 'file:' ids from
+// their own uri joins; on Windows the same file can differ by drive-letter
+// case, separators, encoded spaces, or a trailing slash — which produced
+// DUPLICATE nodes (tree node + semantic placeholder). Comparison-only:
+// stored ids are never rewritten (no DB migration).
+function _normalizeGraphNodeId(id) {
+  if (typeof id !== 'string' || !id.startsWith('file:')) return id;
+  let p = id.slice(5).replace(/\\/g, '/');
+  try { p = decodeURI(p); } catch { /* keep raw */ }
+  p = p.replace(/\/+$/, '');
+  return 'file:' + p.toLowerCase();
+}
+
 async function _collectProviders(api, nodes, edges) {
   if (!api.workspaceGraph || typeof api.workspaceGraph.getAll !== 'function') return;
   const list = api.workspaceGraph.getAll();
   if (!list || list.length === 0) return;
   const seen = new Set(nodes.map(n => n.id));
+  // canonical id -> actual node id (collector nodes win); provider ids that
+  // normalize onto an existing node become ALIASES so their edges reattach
+  // to the real node instead of spawning a duplicate.
+  const byCanon = new Map();
+  for (const n of nodes) byCanon.set(_normalizeGraphNodeId(n.id), n.id);
+  const aliases = new Map();
   for (const provider of list) {
     if (IGNORED_PROVIDER_IDS.has(provider?.id)) continue;
 
@@ -849,7 +882,14 @@ async function _collectProviders(api, nodes, edges) {
     if (Array.isArray(snap.nodes)) {
       for (const pn of snap.nodes) {
         if (!pn || !pn.id || seen.has(pn.id)) continue;
+        const canon = _normalizeGraphNodeId(pn.id);
+        const existing = byCanon.get(canon);
+        if (existing !== undefined && existing !== pn.id) {
+          aliases.set(pn.id, existing); // duplicate spelling of a known node
+          continue;
+        }
         seen.add(pn.id);
+        byCanon.set(canon, pn.id);
         const label = (pn.icon ? pn.icon + ' ' : '') + (pn.label || pn.id);
         const color = pn.color || _domainColor(pn.domain || provider.id);
         const radius = pn.weight ? Math.max(2, Math.min(8, pn.weight)) : 3;
@@ -863,7 +903,11 @@ async function _collectProviders(api, nodes, edges) {
     if (Array.isArray(snap.edges)) {
       for (const pe of snap.edges) {
         if (!pe || !pe.source || !pe.target) continue;
-        edges.push({ source: pe.source, target: pe.target, kind: pe.kind, score: pe.score, weight: pe.weight });
+        edges.push({
+          source: aliases.get(pe.source) ?? pe.source,
+          target: aliases.get(pe.target) ?? pe.target,
+          kind: pe.kind, score: pe.score, weight: pe.weight,
+        });
       }
     }
   }
@@ -1381,10 +1425,16 @@ function createGraphEditor(container, api) {
   const edgesBtn = _btn('Hide Edges');
   const fitBtn = _btn('Fit All');
   const refreshBtn = _btn('Refresh');
+  // M88 S4 — the mind map is a first-class MODE, not a settings toggle;
+  // and the LLM refresh that produces lineage/concept edges lives on the
+  // toolbar where it can actually be discovered (the settings-panel copy
+  // remains for status + history).
+  const modeBtn = _btn(GS.viewMode === 'mindmap' ? 'Workspace view' : 'Mind map view');
+  const aiRefreshBtn = _btn('AI Refresh');
   const settingsBtn = _btn('\u2699 Settings');
   const nodeCount = _el('span', 'margin-left:auto;font-size:11px;color:var(--vscode-descriptionForeground,#666);');
 
-  toolbar.append(searchInput, physBtn, edgesBtn, fitBtn, refreshBtn, settingsBtn, nodeCount);
+  toolbar.append(searchInput, modeBtn, physBtn, edgesBtn, fitBtn, refreshBtn, aiRefreshBtn, settingsBtn, nodeCount);
   container.appendChild(toolbar);
 
   // ── Main area ──
@@ -1965,6 +2015,35 @@ function createGraphEditor(container, api) {
 
   fitBtn.addEventListener('click', _fitAndDraw);
   refreshBtn.addEventListener('click', _refresh);
+
+  // M88 S4 — mode toggle rebuilds with the other node universe.
+  modeBtn.addEventListener('click', () => {
+    GS.viewMode = GS.viewMode === 'mindmap' ? 'workspace' : 'mindmap';
+    modeBtn.textContent = GS.viewMode === 'mindmap' ? 'Workspace view' : 'Mind map view';
+    _saveSettings(api);
+    _refresh();
+  });
+
+  // M88 S4 — AI refresh (lineage classifier + concept clustering) from the
+  // graph itself. Same orchestrator the settings panel drives; the graph
+  // rebuilds when the run completes so new edges appear without a reopen.
+  aiRefreshBtn.addEventListener('click', async () => {
+    const orch = _getRefreshOrchestrator(api);
+    if (!orch) return;
+    const cur = orch.getStatus();
+    if (cur.isRefreshing) { orch.cancelRefresh(); aiRefreshBtn.textContent = 'AI Refresh'; return; }
+    if (orch.getRegisteredPasses().length === 0) {
+      aiRefreshBtn.textContent = 'No AI passes';
+      setTimeout(() => { aiRefreshBtn.textContent = 'AI Refresh'; }, 2000);
+      return;
+    }
+    aiRefreshBtn.textContent = 'Refreshing\u2026';
+    try { await orch.startRefresh(); } catch (err) {
+      console.warn('[WorkspaceGraph] AI refresh failed:', err && err.message);
+    }
+    aiRefreshBtn.textContent = 'AI Refresh';
+    _refresh();
+  });
 
   // Canvas interaction
   let dragNode = null;

@@ -1,6 +1,12 @@
 # Milestone 88 — The Mind Map That Means It
 
-**Status: APPROVED 2026-07-20 ("do all tiers") — implementation in progress.**
+**Status: COMPLETE 2026-07-20 — all four slices shipped.** S1 per-kind score
+floors + fair merge + meaning-kind defaults (478f4a22); S2 segment-level
+similarity (19730a43); S3 markdown/wiki links + title-mention citations
+(cda30a87); S4 mind-map view mode + toolbar AI Refresh + node-id
+normalization dedup. Pending real-use verification by Mufaro: run AI Refresh
+once, flip to Mind map view, judge edge quality; thresholds
+(KIND_MIN_SCORE, TITLE_MENTION caps) are the bake-and-tune knobs.
 
 **Verdict driving this milestone (Mufaro, 2026-07-20):** "the mind map is not
 useful because it fails to draw meaningful connections and it cannot make
