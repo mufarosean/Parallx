@@ -1555,6 +1555,10 @@ export interface IVectorStoreService extends IDisposable {
    *  similarity (optional so lightweight fakes stay valid). Does not embed. */
   getSourceChunkVectors?(sourceType: string, sourceId: string, limit?: number): Promise<number[][]>;
 
+  /** M88 S3 — one title per indexed source (page titles from chunk context
+   *  prefixes, file basenames otherwise). Optional, read-only. */
+  getSourceTitles?(): Promise<Array<{ sourceType: string; sourceId: string; title: string }>>;
+
   /**
    * Fetch nearby section/page companion chunks for a retrieved anchor.
    * Used by retrieval-time structure-aware expansion on hard documents.

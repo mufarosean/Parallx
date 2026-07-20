@@ -13,7 +13,13 @@ import type {
   IWorkspaceService,
 } from './serviceTypes.js';
 import type { SearchResult } from './vectorStoreService.js';
-import { extractWorkspaceReferences } from './referenceExtractor.js';
+import {
+  extractWorkspaceReferences,
+  extractMarkdownLinkTargets,
+  extractWikiLinkTitles,
+  resolveRelativeTarget,
+  findTitleMentions,
+} from './referenceExtractor.js';
 import { extractDistinctiveTerms } from './distinctiveTermExtractor.js';
 
 export type SemanticGraphSourceType = 'page_block' | 'file_chunk';
@@ -59,6 +65,11 @@ const ALL_EDGE_KINDS: readonly SemanticGraphEdgeKind[] = [
  * deterministic, written at 1.0 — floor 0 keeps them unconditional).
  * A single flat threshold across kinds is a category error.
  */
+/** M88 S3 — cap the title map scanned for wiki links + mentions. */
+const TITLE_MENTION_MAX_TITLES = 500;
+/** M88 S3 — cap reference edges per source (priority-ordered before cap). */
+const MAX_REFERENCE_EDGES_PER_SOURCE = 20;
+
 /** M88 S2 — chunk vectors sampled per source for the segment-level pass. */
 const SEGMENT_SAMPLE_LIMIT = 12;
 /** M88 S2 — KNN k per sampled chunk (smaller than the centroid's k). */
@@ -1079,7 +1090,69 @@ export class SemanticGraphService extends Disposable {
     }
 
     const text = chunks.map((c) => c.text).join('\n');
-    const refs = extractWorkspaceReferences(text);
+
+    // M88 S3 — references come from FOUR signals now, priority-ordered:
+    //   1.0  parallx:// URIs           (explicit, canonical)
+    //   1.0  markdown links to files   (explicit)
+    //   0.9  [[wiki links]] by title   (explicit but name-resolved)
+    //   0.8  title mentions ("cites")  (implicit — the cross-file-type
+    //        bridge: a PDF naming another paper's title links to it with
+    //        zero LLM cost)
+    // Same kind, same forward direction; score encodes explicitness.
+    const refs: Array<{ targetType: SemanticGraphSourceType; targetId: string; score: number }> =
+      extractWorkspaceReferences(text).map((r) => ({ ...r, score: 1.0 }));
+
+    const seenTargets = new Set(refs.map((r) => `${r.targetType}:${r.targetId}`));
+    const addRef = (targetType: SemanticGraphSourceType, targetId: string, score: number): void => {
+      const key = `${targetType}:${targetId}`;
+      if (seenTargets.has(key)) return;
+      seenTargets.add(key);
+      refs.push({ targetType, targetId, score });
+    };
+
+    try {
+      // Markdown links resolve relative to the linking FILE's folder (pages
+      // resolve from the workspace root). Only indexed files can match.
+      const mdTargets = extractMarkdownLinkTargets(text);
+      if (mdTargets.length > 0) {
+        const baseDir = sourceType === 'file_chunk' ? _parentFolder(sourceId) ?? '' : '';
+        for (const target of mdTargets) {
+          const resolved = resolveRelativeTarget(baseDir, target);
+          if (resolved) addRef('file_chunk', resolved, 1.0);
+        }
+      }
+
+      // Wiki links + title mentions share the one-query title map.
+      const wikiTitles = extractWikiLinkTitles(text);
+      const wantsTitles = wikiTitles.length > 0 || text.length > 0;
+      if (wantsTitles && typeof this._vectorStore.getSourceTitles === 'function') {
+        const titleRows = (await this._vectorStore.getSourceTitles())
+          .filter((t) => isSemanticGraphSourceType(t.sourceType)
+            && !(t.sourceType === sourceType && t.sourceId === sourceId))
+          .slice(0, TITLE_MENTION_MAX_TITLES);
+
+        if (wikiTitles.length > 0) {
+          const byTitle = new Map(titleRows.map((t) => [t.title.toLowerCase(), t]));
+          for (const w of wikiTitles) {
+            const hitRow = byTitle.get(w.toLowerCase());
+            if (hitRow) addRef(hitRow.sourceType as SemanticGraphSourceType, hitRow.sourceId, 0.9);
+          }
+        }
+
+        const mentionKeys = findTitleMentions(
+          text,
+          titleRows.map((t) => ({ key: `${t.sourceType}:${t.sourceId}`, title: t.title })),
+        );
+        for (const key of mentionKeys) {
+          const sep = key.indexOf(':');
+          addRef(key.slice(0, sep) as SemanticGraphSourceType, key.slice(sep + 1), 0.8);
+        }
+      }
+    } catch {
+      // Free signals are best-effort — a failure here must never block the
+      // parallx:// references already collected.
+    }
+
     if (refs.length === 0) {
       await this._replaceSourceEdges(sourceType, sourceId, 'references', 'forward', null, []);
       return;
@@ -1098,6 +1171,7 @@ export class SemanticGraphService extends Disposable {
     }> = [];
 
     for (const ref of refs) {
+      if (edges.length >= MAX_REFERENCE_EDGES_PER_SOURCE) break;
       // Skip self-references — a page that mentions its own parallx URI
       // (e.g. a "share this link" block) shouldn't produce a self-edge.
       if (ref.targetType === sourceType && ref.targetId === sourceId) continue;
@@ -1118,11 +1192,10 @@ export class SemanticGraphService extends Disposable {
         targetType: ref.targetType,
         targetId: ref.targetId,
         targetContentHash,
-        // References are explicit so they get a score of 1.0 — distinct from
-        // similarity's continuous score. The renderer can use this to draw
-        // references at full opacity vs similarity edges at score-scaled
-        // opacity. Producers that emit fuzzier signals can use < 1.0 here.
-        score: 1.0,
+        // Score encodes explicitness (1.0 explicit link, 0.9 wiki-resolved,
+        // 0.8 title mention) — the renderer scales opacity by it; the
+        // read-path floor for references is 0 so none are filtered.
+        score: ref.score,
       });
     }
 

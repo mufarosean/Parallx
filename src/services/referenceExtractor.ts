@@ -35,6 +35,98 @@ export interface ExtractedReference {
  * Performance: pure regex + URI parse, no I/O. Safe to call from the
  * indexing-time edge producer path.
  */
+/**
+ * M88 S3 — markdown link targets: `[label](target)`. Returns raw targets
+ * for the caller to resolve against indexed files. Excludes images
+ * (`![alt](…)`), external schemes, and pure-anchor links. Pure.
+ */
+export function extractMarkdownLinkTargets(text: string): string[] {
+  if (typeof text !== 'string' || text.length === 0) return [];
+  const out = new Set<string>();
+  // Negative lookbehind excludes image syntax; the target group stops at
+  // ')' and strips an optional "title" suffix and #fragment.
+  const re = /(?<!!)\[[^\]]*\]\(([^()\s]+)(?:\s+"[^"]*")?\)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    let target = m[1].trim();
+    if (!target || target.startsWith('#')) continue;
+    if (/^[a-z][a-z0-9+.-]*:/i.test(target)) continue; // http:, mailto:, parallx: …
+    const hash = target.indexOf('#');
+    if (hash >= 0) target = target.slice(0, hash);
+    try { target = decodeURIComponent(target); } catch { /* keep raw */ }
+    if (target) out.add(target);
+  }
+  return [...out];
+}
+
+/**
+ * M88 S3 — wiki-link titles: `[[Title]]` / `[[Title|alias]]`. Returns the
+ * title half; the caller resolves against known page/file titles. Pure.
+ */
+export function extractWikiLinkTitles(text: string): string[] {
+  if (typeof text !== 'string' || text.length === 0) return [];
+  const out = new Set<string>();
+  const re = /\[\[([^\][|]+)(?:\|[^\][]*)?\]\]/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const title = m[1].trim();
+    if (title) out.add(title);
+  }
+  return [...out];
+}
+
+/**
+ * M88 S3 — resolve a markdown link target relative to the linking file's
+ * folder into a normalized workspace-relative path ('/' separators, no
+ * './', '../' collapsed). `baseDir` is '' for root-level / page sources.
+ * Pure string math — no fs.
+ */
+export function resolveRelativeTarget(baseDir: string, target: string): string {
+  const joined = (target.startsWith('/') ? target.slice(1) : `${baseDir ? baseDir + '/' : ''}${target}`)
+    .replace(/\\/g, '/');
+  const parts: string[] = [];
+  for (const seg of joined.split('/')) {
+    if (seg === '' || seg === '.') continue;
+    if (seg === '..') { parts.pop(); continue; }
+    parts.push(seg);
+  }
+  return parts.join('/');
+}
+
+export interface TitleEntry {
+  readonly key: string;   // opaque id for the caller (e.g. "page_block:abc")
+  readonly title: string;
+}
+
+/**
+ * M88 S3 — the cross-type bridge: find which known TITLES a text mentions
+ * ("cites"). A PDF that names another paper's title links to it with no
+ * LLM involved. Guards against noise: titles under 6 chars are skipped,
+ * single lowercase common words are skipped, and matches must sit on word
+ * boundaries. Case-insensitive. Pure; O(titles × 1 indexOf scan).
+ */
+export function findTitleMentions(text: string, titles: readonly TitleEntry[]): string[] {
+  if (typeof text !== 'string' || text.length === 0 || titles.length === 0) return [];
+  const haystack = text.toLowerCase();
+  const out: string[] = [];
+  for (const entry of titles) {
+    const title = entry.title.trim();
+    if (title.length < 6) continue;
+    if (/^[a-z]+$/.test(title)) continue; // one bare lowercase word ≈ noise
+    const needle = title.toLowerCase();
+    let idx = haystack.indexOf(needle);
+    let hit = false;
+    while (idx >= 0 && !hit) {
+      const before = idx === 0 ? '' : haystack[idx - 1];
+      const after = idx + needle.length >= haystack.length ? '' : haystack[idx + needle.length];
+      if (!/[a-z0-9]/.test(before) && !/[a-z0-9]/.test(after)) hit = true;
+      else idx = haystack.indexOf(needle, idx + 1);
+    }
+    if (hit) out.push(entry.key);
+  }
+  return out;
+}
+
 export function extractWorkspaceReferences(text: string): ExtractedReference[] {
   if (typeof text !== 'string' || text.length === 0) return [];
 

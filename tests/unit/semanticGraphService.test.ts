@@ -515,3 +515,73 @@ describe('segment-level similarity (M88 S2)', () => {
     expect(vectorStore.vectorSearch).toHaveBeenCalledTimes(1);
   });
 });
+
+// ─── M88 S3 — cross-type reference signals in the recompute ──────────────────
+
+describe('reference edges from free signals (M88 S3)', () => {
+  it('a PDF mentioning a page TITLE gets a forward references edge to it', async () => {
+    const db = createMockDb();
+    const vectorStore = createMockVectorStore();
+    (vectorStore as any).getSourceChunkVectors = vi.fn().mockResolvedValue([]);
+    (vectorStore as any).getSourceTitles = vi.fn().mockResolvedValue([
+      { sourceType: 'page_block', sourceId: 'p-exam7', title: 'Exam 7 Study Plan' },
+      { sourceType: 'file_chunk', sourceId: 'papers/self.pdf', title: 'self' },
+    ]);
+    const service = new SemanticGraphService(
+      db as any, vectorStore as any,
+      createMockPipeline() as any, createMockWorkspace() as any,
+    );
+    const writes: any[] = [];
+    db.all.mockImplementation(async (sql: string) =>
+      sql.includes('PRAGMA') ? _migratedPragma() : []);
+    db.get.mockResolvedValue(null);
+    db.runTransaction.mockImplementation(async (ops: any[]) => { writes.push(...ops); return []; });
+    db.run.mockImplementation(async (sql: string, params: any[]) => {
+      writes.push({ sql, params });
+      return { changes: 0, lastInsertRowid: 0 };
+    });
+    vectorStore.getContentHash.mockImplementation(async (_t: string, id: string) => `hash-${id}`);
+    vectorStore.getSourceCentroid.mockResolvedValue(undefined); // no similarity path
+    vectorStore.getSourceChunks.mockResolvedValue([
+      { text: 'This chapter builds on the Exam 7 Study Plan material.', contextPrefix: '', chunkIndex: 0 },
+    ]);
+
+    await (service as any)._recomputeSource('file_chunk', 'papers/brehm.pdf');
+
+    const flat = JSON.stringify(writes);
+    expect(flat).toContain('references');
+    expect(flat).toContain('p-exam7');      // cross-type target reached storage
+    expect(flat).toContain('0.8');          // mention-strength score
+  });
+
+  it('a markdown link resolves relative to the linking file and emits a 1.0 reference', async () => {
+    const db = createMockDb();
+    const vectorStore = createMockVectorStore();
+    (vectorStore as any).getSourceChunkVectors = vi.fn().mockResolvedValue([]);
+    (vectorStore as any).getSourceTitles = vi.fn().mockResolvedValue([]);
+    const service = new SemanticGraphService(
+      db as any, vectorStore as any,
+      createMockPipeline() as any, createMockWorkspace() as any,
+    );
+    const writes: any[] = [];
+    db.all.mockImplementation(async (sql: string) =>
+      sql.includes('PRAGMA') ? _migratedPragma() : []);
+    db.get.mockResolvedValue(null);
+    db.runTransaction.mockImplementation(async (ops: any[]) => { writes.push(...ops); return []; });
+    db.run.mockImplementation(async (sql: string, params: any[]) => {
+      writes.push({ sql, params });
+      return { changes: 0, lastInsertRowid: 0 };
+    });
+    vectorStore.getContentHash.mockImplementation(async (_t: string, id: string) =>
+      id === 'study/refs/ch2.md' || id === 'study/notes.md' ? `hash-${id}` : null);
+    vectorStore.getSourceCentroid.mockResolvedValue(undefined);
+    vectorStore.getSourceChunks.mockResolvedValue([
+      { text: 'See [chapter two](refs/ch2.md) for the derivation.', contextPrefix: '', chunkIndex: 0 },
+    ]);
+
+    await (service as any)._recomputeSource('file_chunk', 'study/notes.md');
+
+    const flat = JSON.stringify(writes);
+    expect(flat).toContain('study/refs/ch2.md'); // resolved against study/
+  });
+});

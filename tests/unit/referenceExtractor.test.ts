@@ -62,3 +62,71 @@ describe('extractWorkspaceReferences', () => {
     expect(refs).toEqual([]);
   });
 });
+
+// ─── M88 S3 — markdown links, wiki links, title mentions ─────────────────────
+
+import {
+  extractMarkdownLinkTargets,
+  extractWikiLinkTitles,
+  resolveRelativeTarget,
+  findTitleMentions,
+} from '../../src/services/referenceExtractor.js';
+
+describe('extractMarkdownLinkTargets (M88 S3)', () => {
+  it('extracts relative file targets and decodes %20', () => {
+    expect(extractMarkdownLinkTargets(
+      'See [notes](study/Exam%207.md) and [ch2](../book/ch2.pdf).',
+    )).toEqual(['study/Exam 7.md', '../book/ch2.pdf']);
+  });
+
+  it('excludes images, external URLs, schemes, and pure anchors', () => {
+    expect(extractMarkdownLinkTargets(
+      '![img](pic.png) [ext](https://x.com/a) [mail](mailto:a@b.c) [top](#heading) [px](parallx://page/abc)',
+    )).toEqual([]);
+  });
+
+  it('strips fragments and titles', () => {
+    expect(extractMarkdownLinkTargets('[s](notes.md#sec2) [t](a.md "Title")')).toEqual(['notes.md', 'a.md']);
+  });
+});
+
+describe('extractWikiLinkTitles (M88 S3)', () => {
+  it('extracts titles and alias forms', () => {
+    expect(extractWikiLinkTitles('Link [[Brehm Correlation]] and [[Exam 7 Notes|notes]].'))
+      .toEqual(['Brehm Correlation', 'Exam 7 Notes']);
+  });
+
+  it('ignores empty and malformed brackets', () => {
+    expect(extractWikiLinkTitles('[[]] [not-wiki] [[  ]]')).toEqual([]);
+  });
+});
+
+describe('resolveRelativeTarget (M88 S3)', () => {
+  it('resolves ./, ../ and backslashes against the base dir', () => {
+    expect(resolveRelativeTarget('study/exam7', '../book/ch2.pdf')).toBe('study/book/ch2.pdf');
+    expect(resolveRelativeTarget('study', './notes.md')).toBe('study/notes.md');
+    expect(resolveRelativeTarget('', 'a\\b.md')).toBe('a/b.md');
+    expect(resolveRelativeTarget('study', '/root.md')).toBe('root.md');
+  });
+});
+
+describe('findTitleMentions (M88 S3)', () => {
+  const titles = [
+    { key: 'file_chunk:papers/Brehm-Correlation.pdf', title: 'Brehm-Correlation' },
+    { key: 'page_block:p1', title: 'Exam 7 Study Plan' },
+    { key: 'page_block:p2', title: 'notes' },        // short/lowercase → never matches
+    { key: 'page_block:p3', title: 'Robust Estimation' },
+  ];
+
+  it('finds word-boundary title mentions case-insensitively', () => {
+    const text = 'As shown in brehm-correlation, the exam 7 study plan holds.';
+    expect(findTitleMentions(text, titles).sort()).toEqual([
+      'file_chunk:papers/Brehm-Correlation.pdf',
+      'page_block:p1',
+    ]);
+  });
+
+  it('rejects substring hits inside larger words and noise titles', () => {
+    expect(findTitleMentions('xxbrehm-correlationyy discusses notes', titles)).toEqual([]);
+  });
+});

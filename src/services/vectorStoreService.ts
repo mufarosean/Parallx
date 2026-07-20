@@ -859,6 +859,38 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
     return out;
   }
 
+  /**
+   * M88 S3 — one title per indexed source, in a SINGLE grouped query.
+   * Page titles come from the chunk context prefix ("[Page: Title | …]");
+   * file titles fall back to the basename (sans extension) of the
+   * workspace-relative source id. Drives wiki-link resolution and
+   * title-mention ("cites") edges. Read-only, no model calls.
+   */
+  async getSourceTitles(): Promise<Array<{ sourceType: string; sourceId: string; title: string }>> {
+    const rows = await this._db.all<{
+      source_type: string;
+      source_id: string;
+      context_prefix: string | null;
+    }>(
+      `SELECT source_type, source_id, context_prefix
+         FROM vec_embeddings
+        GROUP BY source_type, source_id`,
+    );
+    const out: Array<{ sourceType: string; sourceId: string; title: string }> = [];
+    for (const row of rows) {
+      let title = '';
+      const m = /\[Page:\s*([^|\]]+)/.exec(row.context_prefix ?? '');
+      if (m) {
+        title = m[1].trim();
+      } else if (row.source_type === 'file_chunk') {
+        const base = row.source_id.split('/').pop() ?? row.source_id;
+        title = base.replace(/\.[^.]+$/, '').trim();
+      }
+      if (title) out.push({ sourceType: row.source_type, sourceId: row.source_id, title });
+    }
+    return out;
+  }
+
   async getSourceChunks(
     sourceType: string,
     sourceId: string,
