@@ -943,7 +943,7 @@ class CanvasEditorPane implements IDisposable {
       }
       if (!tr.docChanged) return true;
 
-      tr.setMeta('addToHistory', false);
+      tr.setMeta('addToHistory', false).setMeta('canvasExternalApply', true);
       tr.setSelection(sel.map(tr.doc, tr.mapping));
       view.dispatch(tr);
       return true;
@@ -1003,7 +1003,7 @@ class CanvasEditorPane implements IDisposable {
       if (newNodes.length === 0) {
         if (to > from) {
           const del = state.tr.delete(from, to);
-          del.setMeta('addToHistory', false);
+          del.setMeta('addToHistory', false).setMeta('canvasExternalApply', true);
           view.dispatch(del);
         }
         return true;
@@ -1019,7 +1019,7 @@ class CanvasEditorPane implements IDisposable {
         // maps a selection outside the span through each transaction, so a cursor
         // elsewhere stays put.
         const first = state.tr.replaceWith(from, to, newNodes[0]);
-        first.setMeta('addToHistory', false);
+        first.setMeta('addToHistory', false).setMeta('canvasExternalApply', true);
         view.dispatch(first);
         let insertPos = from + newNodes[0].nodeSize;
         const per = Math.max(18, Math.min(80, Math.floor(1900 / Math.max(1, newNodes.length))));
@@ -1028,7 +1028,7 @@ class CanvasEditorPane implements IDisposable {
           if (this._disposed || !isCurrent()) return false;
           const node = newNodes[i];
           const tr = view.state.tr.insert(insertPos, node);
-          tr.setMeta('addToHistory', false);
+          tr.setMeta('addToHistory', false).setMeta('canvasExternalApply', true);
           view.dispatch(tr);
           insertPos += node.nodeSize;
           // Keep the growing edit in view without disturbing the user's selection.

@@ -619,6 +619,13 @@ class PlannerEditorPane implements IDisposable {
       : '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg>';
     checkbox.addEventListener('click', () => {
       const next: TaskStatus = task.status === 'done' ? 'planned' : 'done';
+      // M89 S3 — optimistic UI: flip the visuals NOW (Linear rule: common
+      // actions feel instant); the data-change event repaints truth after
+      // the worker-thread round-trip.
+      row.classList.toggle('planner-task--done', next === 'done');
+      checkbox.innerHTML = next === 'done'
+        ? '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>'
+        : '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg>';
       void this._data.updateTask(task.id, { status: next });
     });
     row.appendChild(checkbox);

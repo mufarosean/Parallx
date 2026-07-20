@@ -2386,6 +2386,16 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
           },
           });
           _lastTriggerLane = { at: Date.now(), ...result };
+          // M89 S3 — presence: filed findings get one status-bar pulse.
+          if (surfaceRouter && (result as { delivered?: number }).delivered! > 0) {
+            const n = (result as { delivered: number }).delivered;
+            void surfaceRouter.sendWithOrigin({
+              surfaceId: 'status',
+              contentType: 'text',
+              content: `watchers: ${n} filed`,
+              metadata: { pulse: true, tooltip: 'Heartbeat filed follow-ups — see the planner review queue' },
+            }, 'heartbeat').catch(() => {});
+          }
           return result;
         },
       },

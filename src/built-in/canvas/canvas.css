@@ -4646,3 +4646,22 @@
 .canvas-vh-restore:disabled { opacity: 0.55; cursor: default; }
 .canvas-vh-status { font-size: 12px; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent); }
 .canvas-vh-status.is-error { color: var(--px-danger, #f85149); }
+
+/* ── AI-handoff shimmer (M89 S3 — presence) ────────────────────────────────
+   Marks blocks the assistant just wrote into. One soft accent sweep, then
+   gone; decoration-only, removed after ~1.4s. */
+@keyframes canvas-ai-shimmer-sweep {
+  from { background-position: -200% 0; }
+  to   { background-position: 200% 0; }
+}
+.canvas-ai-shimmer {
+  border-radius: var(--parallx-radius-sm, 3px);
+  background-image: linear-gradient(
+    100deg,
+    transparent 20%,
+    rgba(var(--px-accent-rgb), 0.10) 50%,
+    transparent 80%
+  );
+  background-size: 200% 100%;
+  animation: canvas-ai-shimmer-sweep var(--px-dur-slow) var(--px-ease-out) 2;
+}

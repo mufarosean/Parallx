@@ -29,6 +29,7 @@ import type { EditorExtensionContext } from './blockRegistry.js';
 import type { Extensions } from '@tiptap/core';
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import {
   hasImageExtension,
   fileUrlToPath,
@@ -152,6 +153,84 @@ const HistoryAwareAutoJoiner = Extension.create({
             }
           }
           return joined ? tr : undefined;
+        },
+      }),
+    ];
+  },
+});
+
+/**
+ * AI-handoff shimmer (M89 S3 — presence). When the assistant writes into an
+ * OPEN page, the doc-diff apply path stamps its transactions with
+ * `canvasExternalApply`; this decoration-only plugin marks the touched
+ * top-level blocks with `.canvas-ai-shimmer` for a moment so the handoff is
+ * visible (Notion-school presence cue). Decorations never modify the doc —
+ * no history/undo interaction by construction. Reduced-motion collapses the
+ * animation globally (px-motion.css).
+ */
+const AiPresenceShimmer = Extension.create({
+  name: 'aiPresenceShimmer',
+  addProseMirrorPlugins() {
+    interface ShimmerState { ranges: Array<[number, number]> }
+    const key = new PluginKey<ShimmerState>('canvasAiShimmer');
+    const SHIMMER_MS = 1400;
+    return [
+      new Plugin<ShimmerState>({
+        key,
+        state: {
+          init: () => ({ ranges: [] }),
+          apply: (tr, value) => {
+            if (tr.getMeta('canvasAiShimmerClear')) return { ranges: [] };
+            // Positions (not decorations) are stored: follow-up transactions
+            // like UniqueID id-stamping REPLACE the touched node
+            // (setNodeMarkup), which kills node decorations — plain ranges
+            // map through unharmed and the decorations rebuild lazily.
+            let ranges = value.ranges.map(([f, t]): [number, number] =>
+              [tr.mapping.map(f, -1), tr.mapping.map(t, 1)]);
+            if (tr.getMeta('canvasExternalApply') && tr.docChanged) {
+              tr.mapping.maps.forEach((map, i) => {
+                map.forEach((_os, _oe, ns, ne) => {
+                  const rest = tr.mapping.slice(i + 1);
+                  ranges.push([rest.map(ns, -1), rest.map(ne, 1)]);
+                });
+              });
+            }
+            if (ranges.length > 200) ranges = ranges.slice(-200);
+            return { ranges };
+          },
+        },
+        props: {
+          decorations(state) {
+            const st = key.getState(state);
+            if (!st || st.ranges.length === 0) return null;
+            const decos: Decoration[] = [];
+            state.doc.forEach((child, offset) => {
+              const start = offset;
+              const end = offset + child.nodeSize;
+              if (st.ranges.some(([f, t]) => f < end && t > start)) {
+                decos.push(Decoration.node(start, end, { class: 'canvas-ai-shimmer' }));
+              }
+            });
+            return decos.length > 0 ? DecorationSet.create(state.doc, decos) : null;
+          },
+        },
+        view(view) {
+          let timer: ReturnType<typeof setTimeout> | null = null;
+          return {
+            update(v, prevState) {
+              const now = key.getState(v.state);
+              const prev = key.getState(prevState);
+              if (now && now.ranges.length > 0 && now !== prev) {
+                if (timer) clearTimeout(timer);
+                timer = setTimeout(() => {
+                  timer = null;
+                  if (view.isDestroyed) return;
+                  view.dispatch(view.state.tr.setMeta('canvasAiShimmerClear', true).setMeta('addToHistory', false));
+                }, SHIMMER_MS);
+              }
+            },
+            destroy() { if (timer) clearTimeout(timer); },
+          };
         },
       }),
     ];
@@ -364,6 +443,7 @@ export function createEditorExtensions(lowlight: any, context?: EditorExtensionC
       trailingNode: false,
     }),
     HistoryAwareTrailingNode,
+    AiPresenceShimmer,
 
     // ── 2. Block extensions from registry ──
     ...getBlockExtensions(registryContext),

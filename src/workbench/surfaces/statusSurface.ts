@@ -72,6 +72,20 @@ export class StatusSurfacePlugin implements ISurfacePlugin {
       : undefined;
 
     this._accessor.update({ text, ...(tooltip !== undefined ? { tooltip } : {}) });
+
+    // M89 S3 — presence pulse: a delivery flagged `pulse` plays one brief
+    // accent pulse on the status entry so autonomous findings (heartbeat
+    // watchers filing follow-ups) get a visible moment without a popup.
+    if (delivery.metadata.pulse === true) {
+      const el = typeof document !== 'undefined' ? document.getElementById(ENTRY_ID) : null;
+      if (el) {
+        el.classList.remove('px-pulse');
+        // Force restart if a pulse is already mid-flight.
+        void (el as HTMLElement).offsetWidth;
+        el.classList.add('px-pulse');
+        setTimeout(() => el.classList.remove('px-pulse'), 1000);
+      }
+    }
     return true;
   }
 
