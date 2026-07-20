@@ -353,3 +353,91 @@ describe('SemanticGraphService', () => {
   });
 });
 
+
+// ─── M88 S1 — per-kind score floors + fair merge ─────────────────────────────
+
+describe('getCachedEdges — per-kind floors (M88 S1)', () => {
+  function edge(kind: string, score: number, n: number) {
+    return {
+      sourceNodeId: `page:s${n}`, targetNodeId: `page:t${n}`,
+      sourceType: 'page_block', sourceId: `s${n}`,
+      targetType: 'page_block', targetId: `t${n}`,
+      score, kind, direction: kind === 'extends' || kind === 'references' ? 'forward' : 'undirected',
+      sourceContentHash: null, targetContentHash: null,
+      updatedAt: '2026-07-20 00:00:00',
+    };
+  }
+
+  function bindEdges(db: ReturnType<typeof createMockDb>, edges: ReturnType<typeof edge>[]) {
+    db.all.mockImplementation(async (sql: string, params?: unknown[]) => {
+      if (sql.includes('PRAGMA')) return _migratedPragma();
+      if (sql.includes('FROM semantic_graph_edges') && sql.includes('WHERE kind = ?')) {
+        const [kind, floor, limit] = params as [string, number, number];
+        return edges
+          .filter((e) => e.kind === kind && e.score >= floor)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, limit);
+      }
+      return [];
+    });
+  }
+
+  function makeService(db: ReturnType<typeof createMockDb>) {
+    return new SemanticGraphService(
+      db as any, createMockVectorStore() as any,
+      createMockPipeline() as any, createMockWorkspace() as any,
+    );
+  }
+
+  it('lineage edges at classifier confidence (0.55–0.71) SURVIVE the read', async () => {
+    const db = createMockDb();
+    bindEdges(db, [
+      edge('similar-to', 0.88, 1),
+      edge('extends', 0.6, 2),      // the old flat 0.72 filter dropped this
+      edge('refutes', 0.57, 3),
+    ]);
+    const out = await makeService(db).getCachedEdges({ kinds: ['similar-to', 'extends', 'refutes'] });
+    expect(out.map((e) => e.kind).sort()).toEqual(['extends', 'refutes', 'similar-to']);
+  });
+
+  it('co-occurrence: two shared terms (0.458) passes, one (0.317) does not', async () => {
+    const db = createMockDb();
+    bindEdges(db, [
+      edge('co-occurrence', Math.log2(3) / Math.log2(11), 1),  // 2 shared → ~0.458
+      edge('co-occurrence', Math.log2(2) / Math.log2(11), 2),  // 1 shared → ~0.289
+    ]);
+    const out = await makeService(db).getCachedEdges({ kinds: ['co-occurrence'] });
+    expect(out).toHaveLength(1);
+    expect(out[0].score).toBeGreaterThan(0.45);
+  });
+
+  it('deterministic kinds (references/member-of) are unconditional', async () => {
+    const db = createMockDb();
+    bindEdges(db, [edge('references', 1.0, 1), edge('member-of', 1.0, 2)]);
+    const out = await makeService(db).getCachedEdges({ kinds: ['references', 'member-of'] });
+    expect(out).toHaveLength(2);
+  });
+
+  it('caller minScore tightens ONLY similar-to, never the other kinds', async () => {
+    const db = createMockDb();
+    bindEdges(db, [edge('similar-to', 0.88, 1), edge('extends', 0.6, 2)]);
+    const out = await makeService(db).getCachedEdges({ minScore: 0.9, kinds: ['similar-to', 'extends'] });
+    expect(out.map((e) => e.kind)).toEqual(['extends']);
+  });
+
+  it('fair merge: strong cosine edges cannot starve lineage out of the cap', async () => {
+    const db = createMockDb();
+    const edges = [
+      ...Array.from({ length: 6 }, (_, i) => edge('similar-to', 0.95 - i * 0.01, i)),
+      edge('extends', 0.6, 10),
+      edge('extends', 0.58, 11),
+    ];
+    bindEdges(db, edges);
+    const out = await makeService(db).getCachedEdges({ maxEdges: 4, kinds: ['similar-to', 'extends'] });
+    expect(out).toHaveLength(4);
+    // Old behavior: ORDER BY score DESC LIMIT 4 → all cosine. Now each kind
+    // keeps its quota (2 + 2).
+    expect(out.filter((e) => e.kind === 'extends')).toHaveLength(2);
+    expect(out.filter((e) => e.kind === 'similar-to')).toHaveLength(2);
+  });
+});

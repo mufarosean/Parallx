@@ -44,6 +44,33 @@ export type SemanticGraphEdgeKind =
  */
 export type SemanticGraphEdgeDirection = 'undirected' | 'forward';
 
+/** Every kind, for the per-kind read path when the caller doesn't filter. */
+const ALL_EDGE_KINDS: readonly SemanticGraphEdgeKind[] = [
+  'similar-to', 'references', 'co-occurrence', 'same-folder',
+  'same-author', 'same-date', 'extends', 'refutes', 'member-of',
+];
+
+/**
+ * M88 S1 — per-kind score floors. Scores mean DIFFERENT things per kind:
+ * cosine similarity (similar-to), shared-term mass (co-occurrence,
+ * log2(1+n)/log2(11) → 0.45 ≈ two shared terms), classifier confidence
+ * (extends/refutes — accepted from 0.55 at write time, so the read floor
+ * mirrors it), or nothing at all (references/member-of/metadata kinds are
+ * deterministic, written at 1.0 — floor 0 keeps them unconditional).
+ * A single flat threshold across kinds is a category error.
+ */
+const KIND_MIN_SCORE: Record<SemanticGraphEdgeKind, number> = {
+  'similar-to': 0.72,
+  'co-occurrence': 0.45,
+  'extends': 0.55,
+  'refutes': 0.55,
+  'references': 0,
+  'member-of': 0,
+  'same-folder': 0,
+  'same-author': 0,
+  'same-date': 0,
+};
+
 export interface NodeChunk {
   text: string;
   contextPrefix: string;
@@ -300,54 +327,85 @@ export class SemanticGraphService extends Disposable {
     if (maxEdges === 0) {
       return [];
     }
-    const minScore = options.minScore ?? this._minScore;
-    const kindFilter = options.kinds && options.kinds.length > 0 ? options.kinds : undefined;
+    const kinds: readonly SemanticGraphEdgeKind[] =
+      options.kinds && options.kinds.length > 0 ? options.kinds : ALL_EDGE_KINDS;
 
-    const params: unknown[] = [minScore];
-    let kindClause = '';
-    if (kindFilter) {
-      kindClause = ` AND kind IN (${kindFilter.map(() => '?').join(',')})`;
-      params.push(...kindFilter);
+    // M88 S1 — one query per kind with that kind's OWN score floor, then a
+    // fair merge. The old single query applied one flat minScore (0.72,
+    // calibrated for cosine) to every kind, silently discarding lineage
+    // edges written at confidence 0.55–0.71 and co-occurrence edges below
+    // five shared terms; and its global ORDER BY score let cosine edges
+    // crowd every other kind out of the cap. Per-kind reads make both
+    // impossible. ≤9 tiny indexed queries — cheaper than one big sort.
+    const perKind = new Map<SemanticGraphEdgeKind, SemanticGraphEdge[]>();
+    for (const kind of kinds) {
+      const floor = options.minScore !== undefined && kind === 'similar-to'
+        ? options.minScore
+        : (KIND_MIN_SCORE[kind] ?? 0);
+      const rows = await this._db.all<{
+        sourceNodeId: string;
+        targetNodeId: string;
+        sourceType: SemanticGraphSourceType;
+        sourceId: string;
+        targetType: SemanticGraphSourceType;
+        targetId: string;
+        score: number;
+        kind: SemanticGraphEdgeKind;
+        direction: SemanticGraphEdgeDirection;
+        sourceContentHash?: string | null;
+        targetContentHash?: string | null;
+        updatedAt: string;
+      }>(
+        `SELECT source_node_id as sourceNodeId,
+                target_node_id as targetNodeId,
+                source_type as sourceType,
+                source_id as sourceId,
+                target_type as targetType,
+                target_id as targetId,
+                score,
+                kind,
+                direction,
+                source_content_hash as sourceContentHash,
+                target_content_hash as targetContentHash,
+                updated_at as updatedAt
+           FROM semantic_graph_edges
+          WHERE kind = ? AND score >= ?
+          ORDER BY score DESC
+          LIMIT ?`,
+        [kind, floor, maxEdges],
+      );
+      if (rows.length > 0) {
+        perKind.set(kind, rows.map((row) => ({
+          ...row,
+          sourceContentHash: row.sourceContentHash ?? undefined,
+          targetContentHash: row.targetContentHash ?? undefined,
+        })));
+      }
     }
-    params.push(maxEdges);
 
-    const rows = await this._db.all<{
-      sourceNodeId: string;
-      targetNodeId: string;
-      sourceType: SemanticGraphSourceType;
-      sourceId: string;
-      targetType: SemanticGraphSourceType;
-      targetId: string;
-      score: number;
-      kind: SemanticGraphEdgeKind;
-      direction: SemanticGraphEdgeDirection;
-      sourceContentHash?: string | null;
-      targetContentHash?: string | null;
-      updatedAt: string;
-    }>(
-      `SELECT source_node_id as sourceNodeId,
-              target_node_id as targetNodeId,
-              source_type as sourceType,
-              source_id as sourceId,
-              target_type as targetType,
-              target_id as targetId,
-              score,
-              kind,
-              direction,
-              source_content_hash as sourceContentHash,
-              target_content_hash as targetContentHash,
-              updated_at as updatedAt
-         FROM semantic_graph_edges
-        WHERE score >= ?${kindClause}
-        ORDER BY score DESC
-        LIMIT ?`,
-      params,
-    );
-    return rows.map((row) => ({
-      ...row,
-      sourceContentHash: row.sourceContentHash ?? undefined,
-      targetContentHash: row.targetContentHash ?? undefined,
-    }));
+    // Fair merge under the cap: every kind keeps at least its quota
+    // (maxEdges / kinds present) before leftover capacity is filled by
+    // score. A workspace with 500 strong cosine edges can no longer starve
+    // the ten lineage edges the user explicitly paid a model to find.
+    const present = [...perKind.entries()];
+    let total = 0;
+    for (const [, list] of present) total += list.length;
+    if (total <= maxEdges) {
+      const all = present.flatMap(([, list]) => list);
+      all.sort((a, b) => b.score - a.score);
+      return all;
+    }
+    const quota = Math.max(1, Math.floor(maxEdges / present.length));
+    const taken: SemanticGraphEdge[] = [];
+    const leftovers: SemanticGraphEdge[] = [];
+    for (const [, list] of present) {
+      taken.push(...list.slice(0, quota));
+      leftovers.push(...list.slice(quota));
+    }
+    leftovers.sort((a, b) => b.score - a.score);
+    taken.push(...leftovers.slice(0, Math.max(0, maxEdges - taken.length)));
+    taken.sort((a, b) => b.score - a.score);
+    return taken.slice(0, maxEdges);
   }
 
   async getStats(): Promise<SemanticGraphStats> {

@@ -94,7 +94,7 @@ const _PERSIST_KEYS = [
   'edgeColor', 'edgeWidth', 'edgeHoverWidth',
   'labelZoomStart', 'labelZoomFull',
   'showFiles', 'showCanvasPages', 'showSessions', 'edgeKindVisibility',
-  'crossToolEdgesDefaulted',
+  'crossToolEdgesDefaulted', 'meaningKindsDefaulted',
 ];
 
 async function _loadSettings(api) {
@@ -126,6 +126,15 @@ async function _loadSettings(api) {
     if (!GS.crossToolEdgesDefaulted) {
       GS.edgeKindVisibility = { ...GS.edgeKindVisibility, 'similar-to': true, 'references': true };
       GS.crossToolEdgesDefaulted = true;
+    }
+    // M88 S1 one-time migration: meaning kinds now ship ON (per-kind score
+    // floors made them safe to show). Same stick-after pattern as above.
+    if (!GS.meaningKindsDefaulted) {
+      GS.edgeKindVisibility = {
+        ...GS.edgeKindVisibility,
+        'co-occurrence': true, 'extends': true, 'refutes': true, 'member-of': true,
+      };
+      GS.meaningKindsDefaulted = true;
     }
     console.log('[WorkspaceGraph] Settings loaded from workspace');
   } catch (err) {
@@ -198,19 +207,21 @@ const GS = {
   // `_loadSettings`. Phase 1 only renders 'similar-to' since the other kinds
   // have no producers yet, but the UI surfaces just the one checkbox.
   edgeKindVisibility: {
-    // Cross-tool connections are the whole point — show the two cheap,
-    // automatic kinds by default. The LLM-driven kinds (extends/refutes/
-    // member-of) stay off until the user runs a Refresh; the noisier
-    // metadata kinds (co-occurrence/same-folder) are opt-in.
+    // M88 S1 — meaning edges are the product; hiding one is a bug. Every
+    // kind with a producer ships ON: the LLM kinds (extends/refutes/
+    // member-of) simply render nothing until the user runs a Refresh, and
+    // co-occurrence now has a sane per-kind score floor service-side.
+    // Only same-folder stays opt-in (it duplicates the structural tree),
+    // plus the producer-less metadata kinds (same-author/same-date).
     'similar-to':    true,
     'references':    true,
-    'co-occurrence': false,
+    'co-occurrence': true,
     'same-folder':   false,
     'same-author':   false,
     'same-date':     false,
-    'extends':       false,
-    'refutes':       false,
-    'member-of':     false,
+    'extends':       true,
+    'refutes':       true,
+    'member-of':     true,
   },
 };
 const ALPHA_DECAY = 1 - Math.pow(0.001, 1 / 300); // ≈0.0228 → ~300 ticks
@@ -999,7 +1010,11 @@ function _registerSemanticGraphProvider(api, context) {
       if (typeof service.ensureCacheStarted === 'function') {
         service.ensureCacheStarted();
       }
-      const cached = await service.getCachedEdges({ maxEdges: 500, minScore: 0.72, kinds: visible });
+      // M88 S1 — no flat minScore: the service applies per-kind floors
+      // (cosine 0.72, lineage 0.55, co-occurrence 0.45, structural 0).
+      // The old uniform 0.72 silently discarded most lineage and
+      // co-occurrence edges even when the user toggled them on.
+      const cached = await service.getCachedEdges({ maxEdges: 500, kinds: visible });
 
       // M76 Phase 5 — concept-node metadata (labels + member counts) lives
       // in a separate table from the edges. Fetch it whenever the user has
