@@ -7443,14 +7443,40 @@ kbd.mo-key {
 
 /* ── Professional control components ── */
 
-/* Section headers group the settings into scannable blocks. */
-.mo-clip-section-head {
+/* Accordion sections: collapsed headers carry a live value summary so the
+   column stays short and nothing important is hidden while closed. */
+.mo-clip-acc {
+  border: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, #444));
+  border-radius: 5px;
+  overflow: hidden;
+}
+.mo-clip-acc-head {
+  display: flex; align-items: center; gap: 6px;
+  padding: 7px 9px;
+  cursor: pointer;
+  user-select: none;
+  background: color-mix(in srgb, var(--vscode-input-background, var(--px-bg-inset)) 60%, transparent);
+}
+.mo-clip-acc-head:hover { background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.05)); }
+.mo-clip-acc-chev { font-size: 9px; opacity: 0.6; width: 10px; flex: none; }
+.mo-clip-acc-title {
   font-size: 10.5px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase;
   color: var(--vscode-descriptionForeground, #8a8f98);
-  margin: 16px 0 4px; padding-top: 12px;
-  border-top: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 9%, transparent);
+  flex: none;
 }
-.mo-clip-section-head:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+.mo-clip-acc.mo-open .mo-clip-acc-title { color: inherit; }
+.mo-clip-acc-sum {
+  margin-left: auto; min-width: 0;
+  font-size: 10px; opacity: 0.62;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.mo-clip-acc-head > .mo-mark-btn { flex: none; margin-left: 6px; }
+.mo-clip-acc-body {
+  display: flex; flex-direction: column; gap: 9px;
+  padding: 9px;
+  border-top: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
+}
 
 /* Range sliders (Scale, Quality) — draggable + paired with a precise number. */
 .mo-clip-slider {
@@ -7642,6 +7668,67 @@ select.mo-select-bound:disabled { opacity: 0.55; cursor: default; }
   background: rgba(255,255,255,0.18); pointer-events: none;
 }
 
+/* Crop keyframe markers (animated crop / subject tracking) */
+.mo-scrub-keys { position: absolute; inset: 0; pointer-events: none; }
+.mo-scrub-key {
+  position: absolute; top: 50%;
+  width: 8px; height: 8px;
+  transform: translate(-50%, -50%) rotate(45deg);
+  background: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
+  border: 1px solid #fff;
+  border-radius: 1px;
+  box-sizing: border-box;
+  pointer-events: auto;
+  cursor: pointer;
+  z-index: 3;
+}
+.mo-scrub-key:hover {
+  transform: translate(-50%, -50%) rotate(45deg) scale(1.35);
+  background: color-mix(in srgb, var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))) 100%, white 25%);
+}
+
+/* Keyframe controls row */
+.mo-clip-keyrow { flex-wrap: wrap; }
+.mo-clip-keycount {
+  font-size: 10px; opacity: 0.7; margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Stage play/pause toggle */
+.mo-clip-play-toggle {
+  position: absolute; top: 8px; left: 8px;
+  font-size: 12px; line-height: 1; padding: 4px 9px; border-radius: 3px;
+  background: rgba(0,0,0,0.55); color: #eee;
+  border: 1px solid rgba(255,255,255,0.25);
+  cursor: pointer; z-index: 4;
+}
+.mo-clip-play-toggle:hover { background: rgba(0,0,0,0.78); }
+
+/* Camera-in-camera output preview */
+.mo-clip-cam-toggle {
+  position: absolute; top: 8px; right: 8px;
+  font-size: 11px; padding: 3px 8px; border-radius: 3px;
+  background: rgba(0,0,0,0.55); color: #eee;
+  border: 1px solid rgba(255,255,255,0.25);
+  cursor: pointer; z-index: 4;
+}
+.mo-clip-cam-toggle:hover { background: rgba(0,0,0,0.78); }
+.mo-clip-cam-toggle.mo-active {
+  background: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
+  border-color: transparent; color: #fff;
+}
+.mo-cam-mask {
+  position: absolute;
+  box-shadow: 0 0 0 9999px #000;
+  pointer-events: none;
+  display: none;
+  z-index: 2;
+}
+.mo-clip-stage.mo-cam-active .mo-cam-mask { display: block; }
+/* Keep the HUD overlays legible above the mask */
+.mo-clip-stage-hint, .mo-clip-stage-time { z-index: 3; }
+
 /* Controls column */
 .mo-clip-controls {
   display: flex; flex-direction: column; gap: 10px;
@@ -7812,9 +7899,8 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
 
 /* Clip queue (batch export) */
 .mo-clip-queue {
+  /* Lives inside an accordion body now — the section supplies the border. */
   display: flex; flex-direction: column; gap: 6px;
-  margin-top: 4px; padding-top: 8px;
-  border-top: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, #444));
 }
 .mo-clip-queue-head {
   display: flex; align-items: center; justify-content: space-between;
@@ -17645,6 +17731,251 @@ function moClipFilterVf(id) {
   return f && f.vf ? f.vf : '';
 }
 
+// ── Animated crop (camera-in-camera) helpers ────────────────────────────────
+// The crop window has a FIXED size per clip (ffmpeg's crop filter evaluates
+// out_w/out_h once at init); keyframes animate only the window's x/y. That is
+// the "camera in a camera" model: a constant-size viewport gliding over the
+// source to follow a subject. Keyframes are {t, x, y} with t in source-video
+// seconds and x/y the normalized [0..1] top-left of the window.
+
+// Smoothstep-interpolated window position at time t. Keys must be sorted by
+// t; positions are clamped so the wN×hN window stays inside the frame. This
+// is the single interpolation used by the editor preview, the auto-tracker
+// and (via moCropKeyExpr, which emits the same math) the ffmpeg export — the
+// three must agree or the preview lies.
+function moCropKeysAt(keys, t, wN, hN) {
+  let x = keys[keys.length - 1].x;
+  let y = keys[keys.length - 1].y;
+  if (t <= keys[0].t) {
+    x = keys[0].x; y = keys[0].y;
+  } else if (t < keys[keys.length - 1].t) {
+    for (let i = 1; i < keys.length; i++) {
+      if (t <= keys[i].t) {
+        const a = keys[i - 1], b = keys[i];
+        const f = Math.max(0, Math.min(1, (t - a.t) / Math.max(1e-6, b.t - a.t)));
+        const s = f * f * (3 - 2 * f);
+        x = a.x + (b.x - a.x) * s;
+        y = a.y + (b.y - a.y) * s;
+        break;
+      }
+    }
+  }
+  return { x: Math.max(0, Math.min(1 - wN, x)), y: Math.max(0, Math.min(1 - hN, y)) };
+}
+
+// ffmpeg expression for one animated coordinate ('x' or 'y'): piecewise
+// smoothstep between keys, flat before the first and after the last. Key
+// times must already be rebased to the encoded clip (t=0 at the in-point —
+// -ss precedes -i in every export command, which resets timestamps). The
+// caller wraps the result in '…' filter-arg quotes so the commas inside
+// if()/clip() survive filtergraph parsing; commands carrying these chains
+// must therefore go through argv spawn, never a shell string.
+function moCropKeyExpr(keys, comp) {
+  let expr = keys[keys.length - 1][comp].toFixed(5);
+  for (let i = keys.length - 2; i >= 0; i--) {
+    const a = keys[i], b = keys[i + 1];
+    const va = a[comp].toFixed(5), vb = b[comp].toFixed(5);
+    const dt = Math.max(0.001, b.t - a.t).toFixed(4);
+    const f = `clip((t-${a.t.toFixed(4)})/${dt},0,1)`;
+    expr = `if(lt(t,${b.t.toFixed(4)}),${va}+(${vb}-${va})*${f}*${f}*(3-2*${f}),${expr})`;
+  }
+  // crop docs: t is NAN when the input timestamp is unknown (can happen on
+  // the very first frame) — every lt() would be false and the window would
+  // flash to the LAST key. Pin unknown timestamps to the first key instead.
+  return `if(isnan(t),${keys[0][comp].toFixed(5)},${expr})`;
+}
+
+// Crop vf segment shared by every export path: static rect, or animated x/y
+// when ≥2 keyframes are present. Keys arrive in absolute source-video time
+// and are rebased against inPoint here.
+function moCropVfSegment(crop, cropKeys, inPoint) {
+  const cx = Math.max(0, Math.min(1, crop.x)).toFixed(4);
+  const cy = Math.max(0, Math.min(1, crop.y)).toFixed(4);
+  const cw = Math.max(0.01, Math.min(1, crop.w)).toFixed(4);
+  const ch = Math.max(0.01, Math.min(1, crop.h)).toFixed(4);
+  const keys = Array.isArray(cropKeys)
+    ? cropKeys
+        .filter((k) => Number.isFinite(k.t) && Number.isFinite(k.x) && Number.isFinite(k.y))
+        .map((k) => ({ t: Math.max(0, k.t - (inPoint || 0)), x: k.x, y: k.y }))
+        .sort((p, q) => p.t - q.t)
+    : null;
+  if (keys && keys.length >= 2) {
+    const xe = moCropKeyExpr(keys, 'x');
+    const ye = moCropKeyExpr(keys, 'y');
+    return `crop=trunc(iw*${cw}/2)*2:trunc(ih*${ch}/2)*2:x='iw*(${xe})':y='ih*(${ye})'`;
+  }
+  return `crop=trunc(iw*${cw}/2)*2:trunc(ih*${ch}/2)*2:trunc(iw*${cx}):trunc(ih*${cy})`;
+}
+
+// Thin dense tracker output into few, faithful keyframes: Ramer-Douglas-
+// Peucker over (t → x,y) with the tolerance raised until the count fits
+// under cap (keeps the ffmpeg expression bounded).
+function moSimplifyTrackKeys(keys, tol, cap) {
+  if (keys.length <= 2) return keys.slice();
+  const rdp = (eps) => {
+    const keep = new Array(keys.length).fill(false);
+    keep[0] = keep[keys.length - 1] = true;
+    const stack = [[0, keys.length - 1]];
+    while (stack.length) {
+      const [lo, hi] = stack.pop();
+      if (hi - lo < 2) continue;
+      const a = keys[lo], b = keys[hi];
+      const span = Math.max(1e-6, b.t - a.t);
+      let worst = -1, worstErr = 0;
+      for (let i = lo + 1; i < hi; i++) {
+        const f = (keys[i].t - a.t) / span;
+        const err = Math.max(
+          Math.abs(keys[i].x - (a.x + (b.x - a.x) * f)),
+          Math.abs(keys[i].y - (a.y + (b.y - a.y) * f)),
+        );
+        if (err > worstErr) { worstErr = err; worst = i; }
+      }
+      if (worst >= 0 && worstErr > eps) {
+        keep[worst] = true;
+        stack.push([lo, worst], [worst, hi]);
+      }
+    }
+    return keys.filter((_, i) => keep[i]);
+  };
+  let eps = Math.max(1e-4, tol);
+  let out = rdp(eps);
+  while (out.length > cap) { eps *= 1.5; out = rdp(eps); }
+  return out;
+}
+
+// ── Tracker core: ZNCC matching + variance-guided template selection ──
+// v1 used raw SAD on the blind center of the crop window and locked onto the
+// wrong object constantly on real screen content, for two reasons: (1) the
+// crop window is the OUTPUT framing, usually much larger than the subject,
+// so the center patch was mostly flat background; (2) SAD scores flat
+// regions and pixel-identical UI twins as "cheap" everywhere. The rewrite
+// scores STRUCTURE (zero-mean normalized cross-correlation: 1 = same
+// structure, ~0 = flat/unrelated), anchors the template to the most textured
+// patch near the window center, and adds a distance prior so an identical
+// twin across the frame can't outbid the subject at its predicted position.
+
+// Pick the most textured square patch near the window's center — the
+// subject is the structured thing the user framed; flat air can't be
+// tracked. Returns {lx, ly, t, varr} in frame pixels, or null.
+function moPickTemplateRect(gray, fw, fh, winX, winY, winW, winH) {
+  const t = Math.max(16, Math.min(72, Math.round(Math.min(winW, winH) * 0.5)));
+  if (t > fw || t > fh) return null;
+  const cx0 = winX + winW / 2, cy0 = winY + winH / 2;
+  const spanX = Math.max(0, winW * 0.8 - t) / 2;
+  const spanY = Math.max(0, winH * 0.8 - t) / 2;
+  const stepX = Math.max(2, Math.round(spanX / 3) || 2);
+  const stepY = Math.max(2, Math.round(spanY / 3) || 2);
+  const clampTo = (v, n) => Math.max(0, Math.min(n, Math.round(v)));
+  let best = null;
+  for (let oy = -spanY; oy <= spanY + 0.01; oy += stepY) {
+    for (let ox = -spanX; ox <= spanX + 0.01; ox += stepX) {
+      const lx = clampTo(cx0 + ox - t / 2, fw - t);
+      const ly = clampTo(cy0 + oy - t / 2, fh - t);
+      let s = 0, ss = 0, n = 0;
+      for (let y = 0; y < t; y += 2) {
+        for (let x = 0; x < t; x += 2) {
+          const p = gray[(ly + y) * fw + lx + x];
+          s += p; ss += p * p; n++;
+        }
+      }
+      const varr = ss / n - (s / n) * (s / n);
+      if (!best || varr > best.varr) best = { lx, ly, t, varr };
+    }
+  }
+  return best;
+}
+
+// Precompute zero-mean template samples for both strides so the per-candidate
+// ZNCC loop is a pure multiply-accumulate. Σt0 = 0 by construction per
+// stride, which reduces ZNCC to Σ(t0·P) / sqrt(ss·varP).
+function moTrackPrepTemplate(tpl, tw, th) {
+  const mk = (stride) => {
+    const dx = [], dy = [], raw = [];
+    for (let y = 0; y < th; y += stride) {
+      for (let x = 0; x < tw; x += stride) {
+        dx.push(x); dy.push(y); raw.push(tpl[y * tw + x]);
+      }
+    }
+    const n = raw.length;
+    let mean = 0;
+    for (const v of raw) mean += v;
+    mean /= Math.max(1, n);
+    const t0 = new Float32Array(n);
+    let ss = 0;
+    for (let i = 0; i < n; i++) { t0[i] = raw[i] - mean; ss += t0[i] * t0[i]; }
+    return { t0, ss: Math.max(1e-6, ss), dx: Int32Array.from(dx), dy: Int32Array.from(dy), n };
+  };
+  return { tw, th, s2: mk(2), s1: mk(1) };
+}
+
+function moTrackZncc(gray, fw, samp, lx, ly) {
+  const { t0, ss, dx, dy, n } = samp;
+  let sumP = 0, sumPP = 0, sumTP = 0;
+  for (let i = 0; i < n; i++) {
+    const p = gray[(ly + dy[i]) * fw + lx + dx[i]];
+    sumP += p; sumPP += p * p; sumTP += t0[i] * p;
+  }
+  const meanP = sumP / n;
+  const varP = sumPP - n * meanP * meanP;
+  if (varP < 1e-3) return 0; // flat candidate — no structure to correlate
+  return sumTP / Math.sqrt(ss * varP);
+}
+
+function moTrackMatch(gray, fw, fh, prep, predCx, predCy, radius) {
+  const { tw, th } = prep;
+  const clampTo = (v, n) => Math.max(0, Math.min(n, v));
+  const px = clampTo(Math.round(predCx - tw / 2), fw - tw);
+  const py = clampTo(Math.round(predCy - th / 2), fh - th);
+  // Distance prior: a lookalike at the edge of the search window must beat
+  // the candidate near the predicted position by this much raw correlation.
+  const DIST_W = 0.15;
+  const r2 = Math.max(1, radius);
+  const x0 = clampTo(px - radius, fw - tw), x1 = clampTo(px + radius, fw - tw);
+  const y0 = clampTo(py - radius, fh - th), y1 = clampTo(py + radius, fh - th);
+  let bestAdj = -Infinity, bx = px, by = py;
+  for (let y = y0; y <= y1; y += 3) {
+    for (let x = x0; x <= x1; x += 3) {
+      const z = moTrackZncc(gray, fw, prep.s2, x, y);
+      const adj = z - DIST_W * (Math.hypot(x - px, y - py) / r2);
+      if (adj > bestAdj) { bestAdj = adj; bx = x; by = y; }
+    }
+  }
+  let rAdj = -Infinity, rbx = bx, rby = by, rz = 0;
+  const ry0 = clampTo(by - 3, fh - th), ry1 = clampTo(by + 3, fh - th);
+  const rx0 = clampTo(bx - 3, fw - tw), rx1 = clampTo(bx + 3, fw - tw);
+  for (let y = ry0; y <= ry1; y++) {
+    for (let x = rx0; x <= rx1; x++) {
+      const z = moTrackZncc(gray, fw, prep.s1, x, y);
+      const adj = z - DIST_W * (Math.hypot(x - px, y - py) / r2);
+      if (adj > rAdj) { rAdj = adj; rbx = x; rby = y; rz = z; }
+    }
+  }
+  return { cx: rbx + tw / 2, cy: rby + th / 2, score: rz };
+}
+
+// Run ffmpeg via argv spawn (no shell parsing). Required wherever a filter
+// chain can carry animated-crop expressions: their quotes/commas don't
+// survive shell-string quoting, and argv also lifts the shell command-length
+// ceiling for long keyframe chains.
+async function moExecFFArgs(args, timeoutMs) {
+  let stderrTail = '';
+  const r = await window.parallxElectron.terminal.execStream(
+    { command: _toolPaths.ffmpeg, args, timeout: timeoutMs || 600000 },
+    { onStdout: () => {}, onStderr: (c) => { stderrTail = (stderrTail + c).slice(-4000); } },
+  );
+  // Spawn-level failures (bad exe path, kill on timeout) surface via r.error
+  // with no stderr — fold them in so callers never report a bare "unknown".
+  if (r.error && r.error.message) {
+    stderrTail = (stderrTail ? stderrTail + '\n' : '') + r.error.message;
+  }
+  if (r.exitCode !== 0) {
+    // Full argv in the console makes "export failed" reports actionable —
+    // the toast only carries the stderr tail.
+    console.warn('[MediaOrganizer] ffmpeg (argv) failed', { exitCode: r.exitCode, args, stderr: stderrTail });
+  }
+  return { exitCode: r.exitCode, stderr: stderrTail };
+}
+
 // Builds the clip/GIF exporter into an editor pane `container` and returns a
 // pane handle. dispose() (called by the workbench when the tab closes) tears
 // down timers/observers/preview, wipes the temp frame strip, and fires the
@@ -17673,6 +18004,20 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   let cropEnabled = false;
   // Crop in normalized [0..1] coords relative to the actual video frame
   let cropNorm = { x: 0.1, y: 0.1, w: 0.8, h: 0.8 };
+  // Animated crop: keyframes {t, x, y} in source-video seconds, sorted by t.
+  // The window SIZE stays cropNorm.w/h (fixed per clip — see moCropVfSegment);
+  // keyframes move only the window. With <2 keys the crop is static.
+  /** @type {Array<{t:number, x:number, y:number}>} */
+  let cropKeys = [];
+  // Camera-in-camera output preview: when active the stage shows the cropped
+  // view scaled to fill (what the export will actually look like).
+  let camActive = false;
+  // Suppresses playhead→rect sync while the user is dragging the crop rect,
+  // so interpolation doesn't fight the mouse.
+  let cropDragging = false;
+  // A crop drag that ends over the stage synthesizes a click on the common
+  // ancestor — this stamp lets the click-to-pause handler ignore it.
+  let lastCropDragEnd = 0;
 
   // Preview video (lives inside the stage). Audio plays during preview
   // regardless of export format — the user can audition the soundtrack
@@ -17721,10 +18066,56 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   stage.appendChild(cropOverlay);
 
   stage.appendChild(moEl('div', 'mo-clip-stage-hint', {
-    textContent: 'Scroll to scrub · Shift = ×10 · Alt = fine · I/O to mark · Space = play',
+    textContent: 'Scroll scrub · Shift ×10 · Alt fine · , . frame-step · I/O mark · K keyframe · Space/click pause',
   }));
   const stageTime = moEl('div', 'mo-clip-stage-time', { textContent: '0:00 / ' + moTimeStr(duration) });
   stage.appendChild(stageTime);
+
+  // Camera-in-camera preview: mask blacks out everything except the mapped
+  // crop window so the stage shows exactly what the export will frame.
+  const camMask = moEl('div', 'mo-cam-mask');
+  stage.appendChild(camMask);
+  const camBtn = moEl('button', 'mo-clip-cam-toggle', {
+    textContent: 'Preview crop',
+    title: 'Toggle output preview — the cropped view fills the stage and follows crop keyframes during playback',
+  });
+  camBtn.style.display = 'none';
+  stage.appendChild(camBtn);
+
+  // Visible play/pause — pausing is essential for keyframe placement, and a
+  // hotkey-only control (Space) is undiscoverable. Clicking the video/stage
+  // toggles too, like every media player.
+  const playBtn = moEl('button', 'mo-clip-play-toggle', { textContent: '▶', title: 'Play (Space, or click the video)' });
+  stage.appendChild(playBtn);
+  function togglePlayback() {
+    if (preview.paused) {
+      // Starting playback with the playhead OUTSIDE [in, out] (or after the
+      // video ended — play() on an ended element natively restarts from 0,
+      // the raw video start) must begin at the In point. Resuming from a
+      // pause inside the range keeps the paused position.
+      const [a, b] = getInOut();
+      if (b > a && (preview.ended || preview.currentTime < a - 0.001 || preview.currentTime >= b - 0.02)) {
+        try { preview.currentTime = a; } catch { /* ignore */ }
+      }
+      preview.play().catch(() => {});
+    } else {
+      preview.pause();
+    }
+  }
+  function syncPlayBtn() {
+    playBtn.textContent = preview.paused ? '▶' : '⏸';
+    playBtn.title = (preview.paused ? 'Play' : 'Pause') + ' (Space, or click the video)';
+  }
+  preview.addEventListener('play', syncPlayBtn);
+  preview.addEventListener('pause', syncPlayBtn);
+  playBtn.addEventListener('click', (e) => { e.stopPropagation(); togglePlayback(); });
+  stage.addEventListener('click', (e) => {
+    // Only bare video/stage clicks toggle — buttons, crop rect and handles
+    // keep their own behaviour, and a just-finished crop drag is ignored.
+    if (Date.now() - lastCropDragEnd < 250) return;
+    if (e.target !== stage && e.target !== preview && e.target !== cropOverlay && e.target !== camMask) return;
+    togglePlayback();
+  });
   stageWrap.appendChild(stage);
 
   // Scrubber timeline (full-duration with in/out markers + playhead)
@@ -17740,7 +18131,10 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   const scrubOutH = moEl('div', 'mo-scrub-handle');
   scrubOutH.dataset.role = 'out';
   const scrubPlayhead = moEl('div', 'mo-scrub-playhead');
-  scrub.append(scrubRange, scrubInH, scrubOutH, scrubPlayhead);
+  // Crop-keyframe markers (diamonds) live in their own layer so re-rendering
+  // them never disturbs the in/out handles.
+  const keysLayer = moEl('div', 'mo-scrub-keys');
+  scrub.append(scrubRange, keysLayer, scrubInH, scrubOutH, scrubPlayhead);
   stageWrap.appendChild(scrub);
 
   grid.appendChild(stageWrap);
@@ -17751,8 +18145,62 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   const lbl = (t) => moEl('label', 'mo-clip-label', { textContent: t });
 
   // ── Redesign helpers ─────────────────────────────────────────────────────
-  // Section header — groups the settings into scannable blocks.
-  const addSectionHead = (t) => controls.appendChild(moEl('div', 'mo-clip-section-head', { textContent: t }));
+  // Accordion sections (2026-07-20): every group collapses to a header with a
+  // live value summary, so the column stays short, related controls sit
+  // together, and format-dependent rows only ever reflow inside their own
+  // open section. Open/closed state persists per user in mo_settings.
+  /** @type {Record<string, {body:HTMLElement, sum:HTMLElement, apply:() => void}>} */
+  const accSections = {};
+  let accOpenState = { trim: 1, output: 0, crop: 1, look: 0, export: 0, queue: 0 };
+  const accSaveState = () => { moSetSetting('clipAccordionOpen_v1', JSON.stringify(accOpenState)).catch(() => {}); };
+  const addSection = (id, title, headerBtn) => {
+    const wrap = moEl('div', 'mo-clip-acc');
+    const head = moEl('div', 'mo-clip-acc-head');
+    const chev = moEl('span', 'mo-clip-acc-chev', { textContent: '▸' });
+    const ttl = moEl('span', 'mo-clip-acc-title', { textContent: title });
+    const sum = moEl('span', 'mo-clip-acc-sum', { textContent: '' });
+    head.append(chev, ttl, sum);
+    if (headerBtn) {
+      // Header-hosted action (e.g. the queue's Add button) must not toggle.
+      headerBtn.addEventListener('click', (e) => e.stopPropagation());
+      head.appendChild(headerBtn);
+    }
+    const body = moEl('div', 'mo-clip-acc-body');
+    wrap.append(head, body);
+    controls.appendChild(wrap);
+    const apply = () => {
+      const open = !!accOpenState[id];
+      wrap.classList.toggle('mo-open', open);
+      chev.textContent = open ? '▾' : '▸';
+      body.style.display = open ? '' : 'none';
+    };
+    head.addEventListener('click', () => {
+      accOpenState[id] = accOpenState[id] ? 0 : 1;
+      apply();
+      accSaveState();
+    });
+    apply();
+    accSections[id] = { body, sum, apply };
+    return body;
+  };
+  const secTrim = addSection('trim', 'Trim');
+  const secOutput = addSection('output', 'Output');
+  const secCrop = addSection('crop', 'Crop & motion');
+  const secLook = addSection('look', 'Look');
+  const secExport = addSection('export', 'Export');
+  // (the queue section is created further down, once its Add button exists)
+  // Restore the user's remembered open/closed layout (async; every section
+  // exists by the time the settings read resolves).
+  (async () => {
+    try {
+      const raw = await moGetSetting('clipAccordionOpen_v1', '');
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (parsed && typeof parsed === 'object') {
+        accOpenState = { ...accOpenState, ...parsed };
+        for (const s of Object.values(accSections)) s.apply();
+      }
+    } catch { /* defaults are fine */ }
+  })();
   // Give a numeric field a synced range slider: draggable AND type-precise. The
   // number input stays the value source read by export/snapshot; the slider just
   // drives it, firing the same input/change events. Returns the slider element.
@@ -17770,8 +18218,6 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     return s;
   };
 
-  addSectionHead('Trim');
-
   // Mode toggle (Out point vs Duration)
   const modeRow = moEl('div', 'mo-clip-row');
   modeRow.appendChild(lbl('Mode'));
@@ -17780,7 +18226,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   const modeDurBtn = moEl('button', null, { textContent: 'Duration' });
   modeWrap.append(modeOutBtn, modeDurBtn);
   modeRow.appendChild(modeWrap);
-  controls.appendChild(modeRow);
+  secTrim.appendChild(modeRow);
 
   // In row
   const inRow = moEl('div', 'mo-clip-row mo-clip-mark-row');
@@ -17792,7 +18238,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   inRow.appendChild(inInput);
   const setInBtn = moEl('button', 'mo-mark-btn', { textContent: 'Set here', title: 'Set In to current playhead (I)' });
   inRow.appendChild(setInBtn);
-  controls.appendChild(inRow);
+  secTrim.appendChild(inRow);
 
   // Out / Duration row
   const outRow = moEl('div', 'mo-clip-row mo-clip-mark-row');
@@ -17805,16 +18251,14 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   outRow.appendChild(outInput);
   const setOutBtn = moEl('button', 'mo-mark-btn', { textContent: 'Set here', title: 'Set Out to current playhead (O)' });
   outRow.appendChild(setOutBtn);
-  controls.appendChild(outRow);
+  secTrim.appendChild(outRow);
 
   // Length display
   const lenRow = moEl('div', 'mo-clip-row');
   lenRow.appendChild(lbl('Length'));
   const lengthLabel = moEl('span', 'mo-clip-length', { textContent: '0.00s' });
   lenRow.appendChild(lengthLabel);
-  controls.appendChild(lenRow);
-
-  addSectionHead('Output');
+  secTrim.appendChild(lenRow);
 
   // Format
   const fmtRow = moEl('div', 'mo-clip-row');
@@ -17827,7 +18271,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     fmtSel.appendChild(o);
   }
   fmtRow.appendChild(fmtSel);
-  controls.appendChild(fmtRow);
+  secOutput.appendChild(fmtRow);
 
   // FPS
   const fpsRow = moEl('div', 'mo-clip-row');
@@ -17840,7 +18284,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     fpsSel.appendChild(o);
   }
   fpsRow.appendChild(fpsSel);
-  controls.appendChild(fpsRow);
+  secOutput.appendChild(fpsRow);
 
   // Scale
   const sizeRow = moEl('div', 'mo-clip-row');
@@ -17849,7 +18293,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   sizeInput.type = 'number'; sizeInput.min = '10'; sizeInput.max = '200'; sizeInput.value = '100'; sizeInput.step = '5';
   sizeInput.className = 'mo-clip-input';
   sizeRow.appendChild(sizeInput);
-  controls.appendChild(sizeRow);
+  secOutput.appendChild(sizeRow);
   addSlider(sizeInput, 10, 200, 5);
 
   // Speed
@@ -17863,9 +18307,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     speedSel.appendChild(o);
   }
   speedRow.appendChild(speedSel);
-  controls.appendChild(speedRow);
-
-  addSectionHead('Adjust');
+  secOutput.appendChild(speedRow);
 
   // Filter preset — applied at export via ffmpeg; previewed live via a CSS
   // approximation on the <video> element.
@@ -17879,7 +18321,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     filterSel.appendChild(o);
   }
   filterRow.appendChild(filterSel);
-  controls.appendChild(filterRow);
+  secLook.appendChild(filterRow);
   const applyFilterPreview = () => {
     const f = MO_CLIP_FILTERS.find((x) => x.id === filterSel.value);
     preview.style.filter = f && f.css !== 'none' ? f.css : '';
@@ -17897,7 +18339,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   cropResetBtn.style.marginLeft = 'auto';
   cropResetBtn.style.display = 'none';
   cropRow.appendChild(cropResetBtn);
-  controls.appendChild(cropRow);
+  secCrop.appendChild(cropRow);
 
   // Aspect-ratio presets \u2014 active only when crop is enabled. Centers the crop
   // rect on the source frame and sizes it to the target ratio while staying
@@ -17927,7 +18369,43 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     return b;
   });
   aspectBtns[0].classList.add('mo-active');
-  controls.appendChild(aspectRow);
+  secCrop.appendChild(aspectRow);
+
+  // Crop keyframes (animated crop / subject tracking) — visible only while
+  // crop is enabled. "+ Keyframe" pins the window's position at the playhead;
+  // ≥2 keys make the window glide between them (camera-in-camera). Auto-track
+  // follows the subject inside the current window and writes keys for you.
+  const keyRow = moEl('div', 'mo-clip-row mo-clip-keyrow');
+  keyRow.style.display = 'none';
+  const addKeyBtn = moEl('button', 'mo-mark-btn', {
+    textContent: '+ Keyframe',
+    title: 'Add/update a crop keyframe at the playhead (K). Two or more keyframes animate the crop window between them.',
+  });
+  const trackBtn = moEl('button', 'mo-mark-btn', {
+    textContent: 'Auto-track',
+    title: 'Follow the subject inside the crop window across the In→Out range and generate keyframes automatically. Position the window over the subject first; click again to cancel.',
+  });
+  const clearKeysBtn = moEl('button', 'mo-mark-btn', { textContent: 'Clear keys', title: 'Remove all crop keyframes (back to a static crop)' });
+  const keyCount = moEl('span', 'mo-clip-keycount', { textContent: '' });
+  keyRow.append(addKeyBtn, trackBtn, clearKeysBtn, keyCount);
+  secCrop.appendChild(keyRow);
+  addKeyBtn.addEventListener('click', () => {
+    if (!cropEnabled) return;
+    upsertKeyAtPlayhead();
+    status.textContent = `Crop keyframe set at ${moTimeStr(preview.currentTime)}.`;
+  });
+  clearKeysBtn.addEventListener('click', () => {
+    if (cropKeys.length === 0) return;
+    cropKeys = [];
+    renderCropKeys();
+    status.textContent = 'Crop keyframes cleared — static crop.';
+  });
+  trackBtn.addEventListener('click', () => {
+    runAutoTrack().catch((err) => {
+      status.textContent = '';
+      api.window.showErrorMessage('Auto-track failed: ' + (err && err.message || err));
+    });
+  });
 
   // Compute crop rect (in normalized [0..1] source coords) sized to a ratio,
   // centered on the current crop center, and clamped to the source frame.
@@ -17955,6 +18433,9 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     xN = Math.max(0, Math.min(1 - wN, xN));
     yN = Math.max(0, Math.min(1 - hN, yN));
     cropNorm = { x: xN, y: yN, w: wN, h: hN };
+    // The window size changed — keep every keyframe's window inside the frame
+    // and record the recentered position at the playhead.
+    if (cropKeys.length) { clampKeysToWindow(); upsertKeyAtPlayhead(); }
     try { applyCropRect(); } catch { /* ignore */ }
   }
 
@@ -17968,7 +18449,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   muteRow.appendChild(muteChk);
   const muteLabel = lbl('Mute audio'); muteLabel.htmlFor = 'mo-clip-mute';
   muteRow.appendChild(muteLabel);
-  controls.appendChild(muteRow);
+  secLook.appendChild(muteRow);
 
   // Reverse playback
   const revRow = moEl('div', 'mo-clip-row');
@@ -17977,9 +18458,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   revRow.appendChild(revChk);
   const revLabel = lbl('Reverse playback'); revLabel.htmlFor = 'mo-clip-rev';
   revRow.appendChild(revLabel);
-  controls.appendChild(revRow);
-
-  addSectionHead('Export settings');
+  secLook.appendChild(revRow);
 
   // GIF-only: dither
   const gifBox = moEl('div', 'mo-clip-row mo-clip-gif-only');
@@ -17992,7 +18471,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     ditherSel.appendChild(o);
   }
   gifBox.appendChild(ditherSel);
-  controls.appendChild(gifBox);
+  secExport.appendChild(gifBox);
 
   // GIF-only: loop count
   const loopRow = moEl('div', 'mo-clip-row mo-clip-gif-only');
@@ -18001,7 +18480,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   loopInput.type = 'number'; loopInput.min = '0'; loopInput.max = '100'; loopInput.value = '0';
   loopInput.className = 'mo-clip-input'; loopInput.title = '0 = infinite';
   loopRow.appendChild(loopInput);
-  controls.appendChild(loopRow);
+  secExport.appendChild(loopRow);
 
   // GIF-only: reverse frame order (per-frame edits)
   const revFrRow = moEl('div', 'mo-clip-row mo-clip-gif-only');
@@ -18012,7 +18491,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   const revFrLabel = lbl('Reverse frame order'); revFrLabel.htmlFor = 'mo-clip-rev-frames';
   revFrLabel.title = 'Reverses the order of edited strip frames in GIF export';
   revFrRow.appendChild(revFrLabel);
-  controls.appendChild(revFrRow);
+  secExport.appendChild(revFrRow);
 
   // GIF-only: auto-optimize after export. The GIF estimator can still miss
   // by ±20% on unusual content; this safety net runs the optimizer in place
@@ -18035,7 +18514,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   autoOptThreshold.className = 'mo-clip-input mo-clip-input--num';
   autoOptRow.appendChild(autoOptThreshold);
   autoOptRow.appendChild(moEl('span', 'mo-clip-unit', { textContent: 'MB' }));
-  controls.appendChild(autoOptRow);
+  secExport.appendChild(autoOptRow);
   // Persist the user's last choice so it survives across dialog opens.
   (async () => {
     try {
@@ -18065,7 +18544,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   encModeSel.className = 'mo-clip-input';
   encModeSel.innerHTML = '<option value="crf">Quality (CRF)</option><option value="size">Target size (MB)</option>';
   crfBox.appendChild(encModeSel);
-  controls.appendChild(crfBox);
+  secExport.appendChild(crfBox);
 
   // Quality (CRF) \u2014 its own row: draggable slider + precise number. Shown when
   // encode mode = Quality.
@@ -18075,7 +18554,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   crfInput.type = 'number'; crfInput.min = '15'; crfInput.max = '35'; crfInput.value = '23';
   crfInput.className = 'mo-clip-input mo-clip-input--num'; crfInput.title = 'Lower CRF = better quality, larger file';
   crfRow.appendChild(crfInput);
-  controls.appendChild(crfRow);
+  secExport.appendChild(crfRow);
   addSlider(crfInput, 15, 35, 1);
 
   // Target size (MB) \u2014 its own row with quick-pick chips. Shown when encode
@@ -18099,7 +18578,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     sizeChips.appendChild(chip);
   }
   sizeMbRow.appendChild(sizeChips);
-  controls.appendChild(sizeMbRow);
+  secExport.appendChild(sizeMbRow);
 
   // Quality XOR Target-size row, by encode mode.
   const syncEncodeMode = () => {
@@ -18121,7 +18600,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   gpuSel.innerHTML = '<option value="off">Off (CPU \u2014 libx264)</option>';
   gpuSel.title = 'Use GPU hardware encoder \u2014 5\u201320\u00d7 faster, slightly lower quality at the same bitrate. MP4 only.';
   gpuBox.appendChild(gpuSel);
-  controls.appendChild(gpuBox);
+  secExport.appendChild(gpuBox);
   // Populate GPU dropdown asynchronously \u2014 detection runs ffmpeg, so we
   // don't block dialog open. The user is unlikely to click GPU in the
   // first ~50ms anyway.
@@ -18226,27 +18705,44 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     scrubRange.style.right = (100 - bPct) + '%';
     scrubInH.style.left = aPct + '%';
     scrubOutH.style.left = bPct + '%';
+    try { updateAccordionSummaries(); } catch { /* first call runs pre-init */ }
   }
   inInput.addEventListener('input', updateAll);
   outInput.addEventListener('input', updateAll);
   updateAll();
 
   // ── Loop preview over [in, out] ──
+  // An explicit pause is sacred: the loop only wraps while PLAYING (a user
+  // parked on a frame to set a crop keyframe must not be yanked back to the
+  // in-point), and in/out changes re-arm the loop without force-starting
+  // playback unless it was already running. Only the initial load autoplays.
   let previewTimer = null;
-  function loopPreview() {
+  function loopPreview(force) {
     if (previewTimer) clearInterval(previewTimer);
     const [a, b] = getInOut();
     if (b <= a) return;
-    try { preview.currentTime = a; preview.play().catch(() => {}); } catch {}
+    if (force || !preview.paused) {
+      try { preview.currentTime = a; preview.play().catch(() => {}); } catch {}
+    }
     previewTimer = setInterval(() => {
-      if (preview.currentTime >= b - 0.02) {
+      if (!preview.paused && preview.currentTime >= b - 0.02) {
         try { preview.currentTime = a; preview.play().catch(() => {}); } catch {}
       }
     }, 200);
   }
-  preview.addEventListener('loadedmetadata', loopPreview);
-  inInput.addEventListener('change', loopPreview);
-  outInput.addEventListener('change', loopPreview);
+  preview.addEventListener('loadedmetadata', () => loopPreview(true));
+  inInput.addEventListener('change', () => loopPreview(false));
+  outInput.addEventListener('change', () => loopPreview(false));
+  // An Out point at the video's tail can slip past the 200ms wrap timer and
+  // fire a natural 'ended' — keep the loop-preview behaviour: wrap to In and
+  // continue. ('ended' only fires when playback ran out on its own, so an
+  // explicit pause is never overridden here.)
+  preview.addEventListener('ended', () => {
+    const [a, b] = getInOut();
+    if (b > a) {
+      try { preview.currentTime = a; preview.play().catch(() => {}); } catch { /* ignore */ }
+    }
+  });
 
   // ── Playhead + time HUD ──
   preview.addEventListener('timeupdate', () => {
@@ -18280,9 +18776,18 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
     if (e.key === 'i' || e.key === 'I') { e.preventDefault(); setInBtn.click(); }
     else if (e.key === 'o' || e.key === 'O') { e.preventDefault(); setOutBtn.click(); }
+    else if (e.key === 'k' || e.key === 'K') { e.preventDefault(); if (cropEnabled) addKeyBtn.click(); }
+    else if (e.key === ',' || e.key === '.') {
+      // Frame-step (editor convention): pause and nudge by one output frame.
+      e.preventDefault();
+      preview.pause();
+      const stepS = 1 / Math.max(1, parseInt(fpsSel.value, 10) || 30);
+      const dir = e.key === '.' ? 1 : -1;
+      try { preview.currentTime = Math.max(0, Math.min(duration, preview.currentTime + dir * stepS)); } catch { /* ignore */ }
+    }
     else if (e.key === ' ') {
       e.preventDefault();
-      if (preview.paused) preview.play().catch(() => {}); else preview.pause();
+      togglePlayback();
     }
   });
 
@@ -18345,7 +18850,8 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     return { dx: (sw - dw) / 2, dy: (sh - dh) / 2, dw, dh };
   }
   function applyCropRect() {
-    if (!cropEnabled) { cropOverlay.style.display = 'none'; return; }
+    if (camActive) applyCameraView();
+    if (!cropEnabled || camActive) { cropOverlay.style.display = 'none'; return; }
     cropOverlay.style.display = '';
     const r = getVideoDisplayRect();
     cropRect.style.left = (r.dx + cropNorm.x * r.dw) + 'px';
@@ -18357,10 +18863,18 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     cropEnabled = cropChk.checked;
     cropOverlay.classList.toggle('mo-crop-active', cropEnabled);
     cropResetBtn.style.display = cropEnabled ? '' : 'none';
+    keyRow.style.display = cropEnabled ? '' : 'none';
+    camBtn.style.display = cropEnabled ? '' : 'none';
+    if (!cropEnabled && camActive) setCamActive(false);
+    renderCropKeys();
     applyCropRect();
   });
   cropResetBtn.addEventListener('click', () => {
     cropNorm = { x: 0.1, y: 0.1, w: 0.8, h: 0.8 };
+    // Reset means "start the crop over" — stale keyframes would snap the
+    // window right back on the next playhead sync, so they go too.
+    cropKeys = [];
+    renderCropKeys();
     applyCropRect();
   });
   preview.addEventListener('loadedmetadata', applyCropRect);
@@ -18370,6 +18884,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   cropRect.addEventListener('mousedown', (e) => {
     if (e.target !== cropRect) return;
     e.preventDefault(); e.stopPropagation();
+    cropDragging = true;
     const r0 = getVideoDisplayRect();
     const sx = e.clientX, sy = e.clientY;
     const start = { ...cropNorm };
@@ -18383,6 +18898,11 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     const up = () => {
       window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', up);
+      cropDragging = false;
+      lastCropDragEnd = Date.now();
+      // With keyframes present, moving the window IS a keyframe edit at the
+      // playhead (standard motion-editor behaviour).
+      if (cropKeys.length) upsertKeyAtPlayhead();
     };
     window.addEventListener('mousemove', move);
     window.addEventListener('mouseup', up);
@@ -18391,6 +18911,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     const handleEl = cropHandles[dir];
     handleEl.addEventListener('mousedown', (e) => {
       e.preventDefault(); e.stopPropagation();
+      cropDragging = true;
       const r0 = getVideoDisplayRect();
       const sx = e.clientX, sy = e.clientY;
       const start = { ...cropNorm };
@@ -18417,12 +18938,339 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       const up = () => {
         window.removeEventListener('mousemove', move);
         window.removeEventListener('mouseup', up);
+        cropDragging = false;
+        lastCropDragEnd = Date.now();
+        // Resizing changes the (per-clip) window size: re-clamp every
+        // keyframe against it and record the position at the playhead.
+        if (cropKeys.length) { clampKeysToWindow(); upsertKeyAtPlayhead(); }
       };
       window.addEventListener('mousemove', move);
       window.addEventListener('mouseup', up);
     });
   }
   HANDLE_DIRS.forEach(bindCropHandle);
+
+  // ── Crop keyframes: playhead sync, markers, camera preview, auto-track ──
+  function clampKeysToWindow() {
+    for (const k of cropKeys) {
+      k.x = Math.max(0, Math.min(1 - cropNorm.w, k.x));
+      k.y = Math.max(0, Math.min(1 - cropNorm.h, k.y));
+    }
+  }
+
+  function syncCropToPlayhead() {
+    if (!cropEnabled || cropDragging || cropKeys.length === 0) return;
+    const p = moCropKeysAt(cropKeys, preview.currentTime, cropNorm.w, cropNorm.h);
+    cropNorm.x = p.x; cropNorm.y = p.y;
+    applyCropRect();
+  }
+  preview.addEventListener('timeupdate', syncCropToPlayhead);
+  preview.addEventListener('seeked', syncCropToPlayhead);
+
+  // timeupdate only fires ~4×/s — far too coarse for a gliding window — so
+  // an rAF loop drives the sync while playing whenever keys can animate.
+  let camRaf = 0;
+  function camTick() {
+    camRaf = 0;
+    if (preview.paused || preview.ended) return;
+    syncCropToPlayhead();
+    camRaf = requestAnimationFrame(camTick);
+  }
+  function startCamLoop() {
+    if (!camRaf && cropEnabled && cropKeys.length >= 2) camRaf = requestAnimationFrame(camTick);
+  }
+  function stopCamLoop() {
+    if (camRaf) { cancelAnimationFrame(camRaf); camRaf = 0; }
+  }
+  preview.addEventListener('play', startCamLoop);
+  preview.addEventListener('pause', stopCamLoop);
+
+  // Camera-in-camera output preview: transform the <video> so the crop
+  // window fills the stage, and mask everything outside the mapped window
+  // (adjacent source content would otherwise leak into the letterbox).
+  function applyCameraView() {
+    if (!camActive) return;
+    const stageR = stage.getBoundingClientRect();
+    const r = getVideoDisplayRect();
+    const cw2 = Math.max(1e-3, cropNorm.w) * r.dw;
+    const ch2 = Math.max(1e-3, cropNorm.h) * r.dh;
+    if (!stageR.width || !stageR.height || !cw2 || !ch2) return;
+    const k = Math.min(stageR.width / cw2, stageR.height / ch2);
+    const ccx = r.dx + (cropNorm.x + cropNorm.w / 2) * r.dw;
+    const ccy = r.dy + (cropNorm.y + cropNorm.h / 2) * r.dh;
+    preview.style.transformOrigin = '0 0';
+    preview.style.transform =
+      `translate(${(stageR.width / 2 - k * ccx).toFixed(2)}px, ${(stageR.height / 2 - k * ccy).toFixed(2)}px) scale(${k.toFixed(4)})`;
+    const mw = k * cw2, mh = k * ch2;
+    camMask.style.left = ((stageR.width - mw) / 2) + 'px';
+    camMask.style.top = ((stageR.height - mh) / 2) + 'px';
+    camMask.style.width = mw + 'px';
+    camMask.style.height = mh + 'px';
+  }
+  function setCamActive(on) {
+    camActive = on;
+    camBtn.classList.toggle('mo-active', on);
+    camBtn.textContent = on ? 'Exit crop preview' : 'Preview crop';
+    stage.classList.toggle('mo-cam-active', on);
+    if (!on) preview.style.transform = '';
+    applyCropRect();
+  }
+  camBtn.addEventListener('click', () => setCamActive(!camActive));
+
+  function updateKeyCount() {
+    keyCount.textContent = cropKeys.length
+      ? (cropKeys.length === 1 ? '1 key — static until a 2nd is added' : `${cropKeys.length} keys`)
+      : 'No keys — static crop';
+  }
+  function renderCropKeys() {
+    keysLayer.innerHTML = '';
+    keysLayer.style.display = cropEnabled && cropKeys.length ? '' : 'none';
+    for (const k of cropKeys) {
+      const m = moEl('div', 'mo-scrub-key');
+      m.style.left = (duration > 0 ? (k.t / duration) * 100 : 0) + '%';
+      m.title = `Crop keyframe @ ${moTimeStr(k.t)} — click to seek · drag to retime · right-click to remove`;
+      m.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); beginKeyDrag(k, m, e); });
+      m.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); removeKey(k); });
+      keysLayer.appendChild(m);
+    }
+    updateKeyCount();
+    updateAccordionSummaries();
+    if (!preview.paused) startCamLoop();
+  }
+  function upsertKeyAtPlayhead() {
+    const t = Math.max(0, Math.min(duration, preview.currentTime));
+    const near = cropKeys.find((k) => Math.abs(k.t - t) < 0.05);
+    if (near) { near.x = cropNorm.x; near.y = cropNorm.y; }
+    else {
+      cropKeys.push({ t, x: cropNorm.x, y: cropNorm.y });
+      cropKeys.sort((a, b) => a.t - b.t);
+    }
+    renderCropKeys();
+  }
+  function removeKey(k) {
+    cropKeys = cropKeys.filter((x) => x !== k);
+    renderCropKeys();
+    syncCropToPlayhead();
+  }
+  function beginKeyDrag(k, m, e0) {
+    const startX = e0.clientX;
+    let moved = false;
+    const move = (ev) => {
+      if (!moved && Math.abs(ev.clientX - startX) < 3) return;
+      moved = true;
+      k.t = Math.max(0, Math.min(duration, pctFromEvent(ev) * duration));
+      m.style.left = (duration > 0 ? (k.t / duration) * 100 : 0) + '%';
+    };
+    const up = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+      if (moved) {
+        cropKeys.sort((a, b) => a.t - b.t);
+        renderCropKeys();
+        syncCropToPlayhead();
+      } else {
+        try { preview.currentTime = k.t; } catch { /* ignore */ }
+      }
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  }
+
+  // ── Auto-track: grayscale template matching over extracted frames ──
+  // No CV dependency: frames are extracted small via ffmpeg (same pattern as
+  // the strip), converted to luma in a canvas, and the subject patch from the
+  // anchor frame is followed by SAD search (moTrackMatch). The dense path is
+  // smoothed and RDP-simplified into keyframes the user can still hand-edit.
+  let tracking = false;
+  let trackGen = 0;
+  let trackDir = null;
+  const trackCanvas = document.createElement('canvas');
+  const trackCtx = trackCanvas.getContext('2d', { willReadFrequently: true });
+
+  async function cleanupTrackDir() {
+    if (!trackDir) return;
+    const d = trackDir;
+    trackDir = null;
+    await window.parallxElectron.fs.delete(d).catch(() => {});
+  }
+
+  async function runAutoTrack() {
+    if (tracking) { trackGen++; trackBtn.textContent = 'Cancelling…'; return; }
+    if (!cropEnabled) return;
+    if (!_toolPaths.ffmpeg) { api.window.showErrorMessage('ffmpeg not available — cannot auto-track.'); return; }
+    const [a, b] = getInOut();
+    if (b - a < 0.3) { api.window.showWarningMessage('Clip is too short to track — set In/Out first.'); return; }
+    const base = getThumbDir(api);
+    if (!base) { api.window.showErrorMessage('Workspace unavailable — cannot extract tracking frames.'); return; }
+
+    const myGen = ++trackGen;
+    tracking = true;
+    trackBtn.classList.add('mo-active');
+    trackBtn.textContent = 'Extracting…';
+    status.textContent = 'Auto-track: position the crop window over the subject, then wait…';
+    try {
+      const len = Math.max(0.05, b - a);
+      // Tracking cadence: fine enough to follow motion, cheap enough to stay
+      // interactive. Capped so long clips don't extract hundreds of frames —
+      // RDP simplification erases the density difference anyway.
+      let fpsT = Math.min(15, Math.max(4, Math.round(parseFloat(fpsSel.value) || 15)));
+      if (len * fpsT > 240) fpsT = 240 / len;
+      // 512 wide keeps small subjects (cursors, icons) above the matcher's
+      // noise floor; 360 lost them on high-res captures.
+      const targetW = Math.min(512, preview.videoWidth || 1280);
+
+      trackDir = base + sepCh + '.cliptrack-' + Date.now();
+      await window.parallxElectron.fs.mkdir(trackDir);
+      // Same two-stage seek as the frame strip: coarse input-side to a
+      // slightly earlier point, accurate output-side for the remainder.
+      const rEx = await moExecFFArgs([
+        '-hide_banner', '-loglevel', 'error', '-y',
+        '-ss', String(Math.max(0, a - 2)),
+        '-i', videoPath,
+        '-ss', String(Math.min(2, a)),
+        '-t', String(len),
+        '-vf', `fps=${(+fpsT).toFixed(4)},scale=${targetW}:-2`,
+        '-q:v', '4',
+        trackDir + sepCh + 't_%04d.jpg',
+      ], 300000);
+      if (myGen !== trackGen) return;
+      if (rEx.exitCode !== 0) {
+        throw new Error('frame extract: ' + ((rEx.stderr || 'failed').split(/\r?\n/).filter(Boolean).pop() || 'failed'));
+      }
+
+      const list = await window.parallxElectron.fs.readdir(trackDir);
+      const files = (list.entries || [])
+        .filter((e) => /^t_\d+\.jpg$/.test(e.name))
+        .sort((x, y) => x.name.localeCompare(y.name))
+        .map((e) => trackDir + sepCh + e.name);
+      if (files.length < 2) throw new Error('not enough frames extracted');
+
+      // Load + grayscale every frame (integer luma approximation).
+      /** @type {Array<Uint8ClampedArray|null>} */
+      const grays = [];
+      let fw = 0, fh = 0;
+      for (let i = 0; i < files.length; i++) {
+        if (myGen !== trackGen) return;
+        const url = await localFileToUrl(files[i]);
+        let g = null;
+        try {
+          const img = new Image();
+          img.src = url;
+          await img.decode();
+          if (!fw) { fw = img.naturalWidth; fh = img.naturalHeight; }
+          if (img.naturalWidth === fw && img.naturalHeight === fh) {
+            trackCanvas.width = fw; trackCanvas.height = fh;
+            trackCtx.drawImage(img, 0, 0);
+            const d = trackCtx.getImageData(0, 0, fw, fh).data;
+            g = new Uint8ClampedArray(fw * fh);
+            for (let di = 0, p = 0; p < g.length; di += 4, p++) {
+              g[p] = (d[di] * 77 + d[di + 1] * 150 + d[di + 2] * 29) >> 8;
+            }
+          }
+        } catch { /* unreadable frame — the tracker coasts over it */ }
+        grays.push(g);
+        if ((i & 7) === 0) {
+          trackBtn.textContent = `Reading… ${Math.round((i / files.length) * 40)}%`;
+          await new Promise((r) => setTimeout(r, 0));
+        }
+      }
+      if (!fw || !fh) throw new Error('could not decode extracted frames');
+
+      // Anchor: the frame nearest the playhead — the user has framed the
+      // subject there.
+      const frameT = (i) => a + i / fpsT;
+      let anchor = Math.round((Math.max(a, Math.min(b, preview.currentTime)) - a) * fpsT);
+      anchor = Math.max(0, Math.min(files.length - 1, anchor));
+      if (!grays[anchor]) {
+        anchor = grays.findIndex((g) => !!g);
+        if (anchor < 0) throw new Error('no decodable frames');
+      }
+      const pos0 = cropKeys.length
+        ? moCropKeysAt(cropKeys, frameT(anchor), cropNorm.w, cropNorm.h)
+        : { x: cropNorm.x, y: cropNorm.y };
+      const clampI = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+      // Template: the most textured patch near the window's center (the
+      // subject), not a blind center-crop — the window is the OUTPUT frame
+      // and is often much larger than the subject, so the blind crop sampled
+      // flat background and tracked the wrong thing.
+      const winX = pos0.x * fw, winY = pos0.y * fh;
+      const winW = Math.max(4, cropNorm.w * fw), winH = Math.max(4, cropNorm.h * fh);
+      const pick = moPickTemplateRect(grays[anchor], fw, fh, winX, winY, winW, winH);
+      if (!pick || pick.varr < 20) {
+        throw new Error('not enough detail inside the crop window to lock onto — tighten the window around the subject and re-run');
+      }
+      const tpx = pick.t;
+      const tpl = new Uint8ClampedArray(tpx * tpx);
+      for (let yy = 0; yy < tpx; yy++) {
+        tpl.set(grays[anchor].subarray((pick.ly + yy) * fw + pick.lx, (pick.ly + yy) * fw + pick.lx + tpx), yy * tpx);
+      }
+      const prep = moTrackPrepTemplate(tpl, tpx, tpx);
+      // The template may sit off the window's exact center (it snapped to the
+      // subject's detail); keep that offset so the window doesn't jump.
+      const offX = (pick.lx + tpx / 2) - (winX + winW / 2);
+      const offY = (pick.ly + tpx / 2) - (winY + winH / 2);
+
+      // Track outward from the anchor in both directions. The template stays
+      // FIXED (anchor appearance) — no adaptive-template drift. The search
+      // centers on a constant-velocity prediction; below LOCK_MIN correlation
+      // (occlusion, scene cut) the tracker coasts at the previous position
+      // instead of jumping to noise.
+      const radius = Math.max(12, Math.round(fw * 0.09));
+      const LOCK_MIN = 0.4;
+      let lockedCount = 0;
+      const centers = new Array(files.length).fill(null);
+      centers[anchor] = { x: pick.lx + tpx / 2, y: pick.ly + tpx / 2 };
+      const total = Math.max(1, files.length - 1);
+      let done = 0;
+      const step = async (i, from, from2) => {
+        const prev = centers[from];
+        const prev2 = (from2 >= 0 && from2 < centers.length && centers[from2]) ? centers[from2] : prev;
+        if (!grays[i]) { centers[i] = prev; return; }
+        const predX = clampI(prev.x + (prev.x - prev2.x), 0, fw);
+        const predY = clampI(prev.y + (prev.y - prev2.y), 0, fh);
+        const m = moTrackMatch(grays[i], fw, fh, prep, predX, predY, radius);
+        if (m.score < LOCK_MIN) { centers[i] = prev; }
+        else { centers[i] = { x: m.cx, y: m.cy }; lockedCount++; }
+        if (((done++) & 7) === 0) {
+          trackBtn.textContent = `Tracking… ${40 + Math.round((done / total) * 55)}%`;
+          await new Promise((r) => setTimeout(r, 0));
+        }
+      };
+      for (let i = anchor + 1; i < files.length; i++) { if (myGen !== trackGen) return; await step(i, i - 1, i - 2); }
+      for (let i = anchor - 1; i >= 0; i--) { if (myGen !== trackGen) return; await step(i, i + 1, i + 2); }
+
+      // Smooth (±2 moving average — the camera should glide, not jitter),
+      // convert tracked centers → window top-left keys (minus the template's
+      // in-window offset), then simplify.
+      const sm = centers.map((_, i) => {
+        let sx = 0, sy = 0, n = 0;
+        for (let j = Math.max(0, i - 2); j <= Math.min(centers.length - 1, i + 2); j++) {
+          sx += centers[j].x; sy += centers[j].y; n++;
+        }
+        return { x: sx / n, y: sy / n };
+      });
+      const dense = sm.map((c, i) => ({
+        t: frameT(i),
+        x: clampI((c.x - offX) / fw - cropNorm.w / 2, 0, 1 - cropNorm.w),
+        y: clampI((c.y - offY) / fh - cropNorm.h / 2, 0, 1 - cropNorm.h),
+      }));
+      const keys = moSimplifyTrackKeys(dense, 0.005, 48);
+      if (myGen !== trackGen) return;
+      cropKeys = keys;
+      renderCropKeys();
+      syncCropToPlayhead();
+      const lockedPct = Math.round((lockedCount / total) * 100);
+      status.textContent = `Auto-track done — ${keys.length} keyframes, locked ${lockedPct}% of frames.` +
+        (lockedPct < 60
+          ? ' Low lock rate — tighten the crop window around the subject and re-run.'
+          : ' Scrub to review; drag the window to correct.');
+    } finally {
+      tracking = false;
+      trackBtn.classList.remove('mo-active');
+      trackBtn.textContent = 'Auto-track';
+      cleanupTrackDir().catch(() => {});
+    }
+  }
 
   // ── M59 P2: Frame strip + waveform generator ──
   const FRAME_COUNT = 30;
@@ -18622,6 +19470,9 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       loops: parseInt(loopInput.value, 10) || 0,
       cropEnabled,
       cropNorm: { ...cropNorm },
+      // Animated-crop keyframes (absolute source-video seconds). Empty array
+      // = static crop; snapshots predating this field restore to [].
+      cropKeys: cropKeys.map((k) => ({ t: k.t, x: k.x, y: k.y })),
       name: '',
       thumb: null,
     };
@@ -18687,6 +19538,13 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     cropEnabled = !!c.cropEnabled;
     cropChk.checked = cropEnabled;
     cropNorm = { ...c.cropNorm };
+    cropKeys = Array.isArray(c.cropKeys)
+      ? c.cropKeys
+          .filter((k) => k && Number.isFinite(k.t) && Number.isFinite(k.x) && Number.isFinite(k.y))
+          .map((k) => ({ t: Math.max(0, Math.min(duration, k.t)), x: k.x, y: k.y }))
+          .sort((p, q) => p.t - q.t)
+      : [];
+    try { renderCropKeys(); } catch { /* markers layer may not be ready */ }
     try { applyCropRect(); } catch { /* ignore \u2014 overlay may not be ready */ }
     // Notify listeners
     for (const el of [inInput, outInput, sizeInput, crfInput, sizeInputMB, loopInput]) {
@@ -18699,19 +19557,17 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     try { if (Number.isFinite(c.inT)) preview.currentTime = c.inT; } catch { /* ignore */ }
   }
 
+  // Queue body: the "Batch queue" title and size total now live on the
+  // accordion section header (created below with the Add button), so the
+  // in-body head only surfaces the stop-editing affordance while editing.
   const queueWrap = moEl('div', 'mo-clip-queue');
   const queueHead = moEl('div', 'mo-clip-queue-head');
-  const queueHeadLeft = moEl('div');
-  queueHeadLeft.style.display = 'flex';
-  queueHeadLeft.style.alignItems = 'center';
-  queueHeadLeft.appendChild(moEl('span', null, { textContent: 'Batch queue' }));
-  const queueTotal = moEl('span', 'mo-clip-queue-total', { textContent: '' });
-  queueHeadLeft.appendChild(queueTotal);
-  queueHead.appendChild(queueHeadLeft);
+  queueHead.style.display = 'none';
   const queueHeadActions = moEl('div');
   queueHeadActions.style.display = 'flex';
   queueHeadActions.style.gap = '6px';
   queueHeadActions.style.alignItems = 'center';
+  queueHeadActions.style.marginLeft = 'auto';
   const stopEditBtn = moEl('button', 'mo-clip-queue-del', { textContent: '\u2715 stop editing', title: 'Cancel editing this clip (settings stay as-is)' });
   stopEditBtn.style.fontSize = '10px';
   stopEditBtn.style.opacity = '0.75';
@@ -18722,7 +19578,9 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     updateAddBtnLabel();
   });
   const addBtn = moEl('button', 'mo-mark-btn', { textContent: '+ Add to queue', title: 'Snapshot current settings as a clip in the batch (Q)' });
-  queueHeadActions.append(stopEditBtn, addBtn);
+  // addBtn is hosted on the queue section's accordion header (see below) so
+  // adding stays one click away even while the section is collapsed.
+  queueHeadActions.append(stopEditBtn);
   queueHead.appendChild(queueHeadActions);
   queueWrap.appendChild(queueHead);
   const queueList = moEl('div', 'mo-clip-queue-list');
@@ -18837,7 +19695,8 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     status.textContent = `Saved preset "${trimmed}".`;
   });
   loadPresetsFromStore().then(renderPresets);
-  controls.appendChild(queueWrap);
+  const secQueue = addSection('queue', 'Batch queue', addBtn);
+  secQueue.appendChild(queueWrap);
 
   // Estimate bytes for a snapshot (mirrors the live estimateBytes() used for
   // the current-editor controls, but reads from the snapshot rather than the
@@ -18867,15 +19726,17 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   }
 
   function updateQueueTotal() {
-    if (clipQueue.length === 0) { queueTotal.textContent = ''; return; }
+    if (!accSections.queue) return;
+    if (clipQueue.length === 0) { accSections.queue.sum.textContent = 'Empty'; return; }
     let total = 0;
     for (const c of clipQueue) total += estimateBytesForSnapshot(c);
-    queueTotal.textContent = `(\u2248 ${fmtBytes(total)} total)`;
+    accSections.queue.sum.textContent = `${clipQueue.length} queued \u00b7 \u2248 ${fmtBytes(total)}`;
   }
 
   function renderQueue() {
     queueList.innerHTML = '';
     stopEditBtn.style.display = editingId != null ? '' : 'none';
+    queueHead.style.display = editingId != null ? '' : 'none';
     if (clipQueue.length === 0) {
       queueList.appendChild(moEl('div', 'mo-clip-queue-empty', {
         textContent: 'No clips queued. Configure a clip and click "+ Add to queue" to batch-export multiple clips at once.',
@@ -18901,7 +19762,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
         row.appendChild(moEl('span', 'mo-clip-queue-num', { textContent: String(idx + 1) }));
         const dur = Math.max(0, (c.outT - c.inT) / Math.max(0.1, c.speed));
         row.appendChild(moEl('span', 'mo-clip-queue-meta', {
-          textContent: `${moTimeStr(c.inT)} \u2192 ${moTimeStr(c.outT)} \u00b7 ${dur.toFixed(2)}s${c.reverse ? ' \u00b7 rev' : ''}${c.cropEnabled ? ' \u00b7 crop' : ''}${c.mute ? ' \u00b7 mute' : ''}`,
+          textContent: `${moTimeStr(c.inT)} \u2192 ${moTimeStr(c.outT)} \u00b7 ${dur.toFixed(2)}s${c.reverse ? ' \u00b7 rev' : ''}${c.cropEnabled ? (Array.isArray(c.cropKeys) && c.cropKeys.length >= 2 ? ' \u00b7 crop+track' : ' \u00b7 crop') : ''}${c.mute ? ' \u00b7 mute' : ''}`,
         }));
         // Optional name (becomes the filename suffix if non-empty)
         const nameInput = document.createElement('input');
@@ -19059,6 +19920,8 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     }
     const snap = snapshotCurrent();
     clipQueue.push(snap);
+    // Show the row landing — open the queue section on the first add.
+    if (!accOpenState.queue) { accOpenState.queue = 1; accSections.queue.apply(); accSaveState(); }
     renderQueue();
     updateExportLabel();
     updateAddBtnLabel();
@@ -19180,6 +20043,42 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   try { new ResizeObserver(updateEstimate).observe(cropRect); } catch { /* ignore */ }
   updateEstimate();
 
+  // ── Live accordion summaries — collapsed headers must always tell the
+  // truth about what's inside them.
+  function updateAccordionSummaries() {
+    if (!accSections.trim) return;
+    const [aa, bb] = getInOut();
+    accSections.trim.sum.textContent = `${moTimeStr(aa)} → ${moTimeStr(bb)} · ${(bb - aa).toFixed(2)}s`;
+    const scalePct = parseInt(sizeInput.value, 10) || 100;
+    accSections.output.sum.textContent =
+      `${fmtSel.value.toUpperCase()} · ${fpsSel.value} fps` +
+      (scalePct !== 100 ? ` · ${scalePct}%` : '') +
+      (speedSel.value !== '1' ? ` · ${speedSel.value}×` : '');
+    accSections.crop.sum.textContent = !cropEnabled
+      ? 'Off'
+      : (cropKeys.length >= 2 ? `On · ${cropKeys.length} keys` : 'On · static');
+    const flt = MO_CLIP_FILTERS.find((x) => x.id === filterSel.value);
+    const lookBits = [flt && flt.id !== 'none' ? flt.label : 'No filter'];
+    if (muteChk.checked) lookBits.push('mute');
+    if (revChk.checked) lookBits.push('rev');
+    accSections.look.sum.textContent = lookBits.join(' · ');
+    if (fmtSel.value === 'gif') {
+      const loops = parseInt(loopInput.value, 10) || 0;
+      accSections.export.sum.textContent =
+        `${ditherSel.value === 'floyd_steinberg' ? 'F-S' : ditherSel.value} · loop ${loops === 0 ? '∞' : loops}` +
+        (autoOptChk.checked ? ` · opt ${autoOptThreshold.value} MB` : '');
+    } else {
+      accSections.export.sum.textContent =
+        (encModeSel.value === 'size' ? `${sizeInputMB.value} MB target` : `CRF ${crfInput.value}`) +
+        ` · ${gpuSel.value === 'off' ? 'CPU' : gpuSel.value.toUpperCase()}`;
+    }
+  }
+  for (const el of [inInput, outInput, fmtSel, fpsSel, sizeInput, speedSel, filterSel, cropChk, muteChk, revChk, crfInput, encModeSel, sizeInputMB, gpuSel, ditherSel, loopInput, autoOptChk, autoOptThreshold]) {
+    el.addEventListener('input', updateAccordionSummaries);
+    el.addEventListener('change', updateAccordionSummaries);
+  }
+  updateAccordionSummaries();
+
   // Cancel-batch flag (set by the in-flight cancel button below)
   let batchCancelled = false;
 
@@ -19254,6 +20153,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
               filter: c.filter || 'none',
               loops: c.loops,
               crop: c.cropEnabled ? { ...c.cropNorm } : null,
+              cropKeys: c.cropEnabled && Array.isArray(c.cropKeys) && c.cropKeys.length >= 2 ? c.cropKeys : null,
               frameEdits: null,
               onProgress: ({ pct, etaMs }) => {
                 const pctStr = (pct * 100).toFixed(0).padStart(2, ' ');
@@ -19287,6 +20187,8 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
                 console.warn('[media-organizer] batch auto-optimize failed', optErr);
               }
             }
+            // Index after any optimize pass so fingerprints match final bytes.
+            await moIndexExportedFile(candidate);
           } catch (err) {
             failCount++;
             // eslint-disable-next-line no-console
@@ -19372,6 +20274,8 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
         loops: parseInt(loopInput.value, 10) || 0,
         // M59 P4: crop region (normalized [0..1] relative to source frame)
         crop: cropEnabled ? { ...cropNorm } : null,
+        // Animated crop: ≥2 keyframes make the window glide (camera-in-camera)
+        cropKeys: cropEnabled && cropKeys.length >= 2 ? cropKeys.map((k) => ({ t: k.t, x: k.x, y: k.y })) : null,
         // M59 P2: per-frame edits (GIF only)
         frameEdits: useFrameEdits ? {
           frames: frames.map(f => ({ src: f.src, deleted: f.deleted, delayMs: f.delayMs })),
@@ -19454,6 +20358,10 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
         }
       }
 
+      // Index after the auto-optimizer so the fingerprint matches the final
+      // bytes on disk.
+      await moIndexExportedFile(result.outPath);
+
       status.textContent = 'Exported \u2713 ' + result.outPath + actual;
       api.window.showInformationMessage('Exported: ' + result.outPath);
     } catch (err) {
@@ -19485,6 +20393,9 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     try { if (previewTimer) clearInterval(previewTimer); } catch { /* ignore */ }
     try { if (regenTimer) clearTimeout(regenTimer); } catch { /* ignore */ }
     try { cropResizeObs.disconnect(); } catch { /* ignore */ }
+    try { stopCamLoop(); } catch { /* ignore */ }
+    trackGen++; // aborts any in-flight auto-track at its next generation check
+    cleanupTrackDir().catch(() => {});
     try { preview.pause(); preview.removeAttribute('src'); preview.load(); } catch { /* ignore */ }
     cleanupStripDir().catch(() => {});
     if (typeof opts.onClose === 'function' && instanceId) {
@@ -19503,6 +20414,26 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     saveViewState() { try { return snapshotCurrent(); } catch { return null; } },
     restoreViewState(state) { if (state) { try { loadSnapshot(state); } catch { /* ignore */ } } },
   };
+}
+
+// Index a just-exported file immediately and refresh the grid/sidebar.
+// The folder watchers only cover scan roots (and debounce in 500ms batches),
+// so an export outside a watched root — or racing the watcher — never
+// appeared in All Media until a manual rescan. An export the user just made
+// must show up deterministically. Reuses the watcher's own incremental
+// pipeline; internal .parallx paths (e.g. the recordings temp dir) are
+// deliberately not library content and stay unindexed.
+async function moIndexExportedFile(outPath) {
+  try {
+    if (!outPath || isInternalPath(outPath)) return;
+    const result = await processIncrementalCreate(outPath);
+    if (result && (result.action === 'created' || result.action === 'updated')) {
+      _notifySidebarRefresh();
+      try { document.dispatchEvent(new CustomEvent('mo:refresh-grid')); } catch { /* ignore */ }
+    }
+  } catch (err) {
+    console.warn('[MediaOrganizer] post-export index failed for', outPath, err);
+  }
 }
 
 async function moExportClip(api, opts) {
@@ -19527,21 +20458,19 @@ async function moExportClip(api, opts) {
     }
   }
 
-  const ff = shellInvoke(_toolPaths.ffmpeg);
   const startSs = String(opts.inPoint);
   const len = String(Math.max(0.01, opts.outPoint - opts.inPoint));
 
   // Build filter chain
   const filters = [];
   filters.push(`fps=${opts.fps}`);
-  // M59 P4: crop must precede scale so the user's normalized rect maps to source pixels
+  // M59 P4: crop must precede scale so the user's normalized rect maps to
+  // source pixels. With ≥2 cropKeys the segment carries per-frame x/y
+  // expressions (animated camera window); dimensions stay even either way.
+  // Crop also precedes setpts/reverse, so t here is source-clip time and
+  // keyframes stay correct under speed changes and reversal.
   if (opts.crop && opts.crop.w > 0 && opts.crop.h > 0) {
-    const cx = Math.max(0, Math.min(1, opts.crop.x)).toFixed(4);
-    const cy = Math.max(0, Math.min(1, opts.crop.y)).toFixed(4);
-    const cw = Math.max(0.01, Math.min(1, opts.crop.w)).toFixed(4);
-    const ch = Math.max(0.01, Math.min(1, opts.crop.h)).toFixed(4);
-    // Use trunc(/2)*2 so dimensions stay even for video codecs
-    filters.push(`crop=trunc(iw*${cw}/2)*2:trunc(ih*${ch}/2)*2:trunc(iw*${cx}):trunc(ih*${cy})`);
+    filters.push(moCropVfSegment(opts.crop, opts.cropKeys, opts.inPoint));
   }
   if (opts.scalePct !== 100) {
     const s = (opts.scalePct / 100).toFixed(3);
@@ -19566,29 +20495,29 @@ async function moExportClip(api, opts) {
     if (opts.frameEdits && opts.frameEdits.frames && opts.frameEdits.frames.length > 0) {
       return await moExportGifWithFrameEdits(api, opts, outPath);
     }
-    // Two-pass palette
+    // Two-pass palette. argv spawn (not a shell string): animated-crop
+    // expressions carry quotes/commas that no shell quoting survives, and
+    // argv is the mechanism already proven by the mp4/webm branch below.
     const tmpPalette = `${dir}${sep}.mo_palette_${Date.now()}.png`;
     const vfA = filters.concat(['palettegen=stats_mode=diff']).join(',');
-    const cmd1 = [
-      ff, '-hide_banner', '-loglevel', 'error', '-y',
-      '-ss', startSs, '-t', len, '-i', shellQuote(opts.videoPath),
-      '-vf', shellQuote(vfA),
-      shellQuote(tmpPalette),
-    ].join(' ');
-    const r1 = await window.parallxElectron.terminal.exec(cmd1, { timeout: 600000 });
+    const r1 = await moExecFFArgs([
+      '-hide_banner', '-loglevel', 'error', '-y',
+      '-ss', startSs, '-t', len, '-i', opts.videoPath,
+      '-vf', vfA,
+      tmpPalette,
+    ], 600000);
     if (r1.exitCode !== 0) throw new Error('palettegen: ' + (r1.stderr || 'unknown'));
 
     const dither = opts.dither || 'bayer';
     const vfB = filters.join(',') + `[x];[x][1:v]paletteuse=dither=${dither}`;
-    const cmd2 = [
-      ff, '-hide_banner', '-loglevel', 'error', '-y',
-      '-ss', startSs, '-t', len, '-i', shellQuote(opts.videoPath),
-      '-i', shellQuote(tmpPalette),
-      '-lavfi', shellQuote(vfB),
+    const r2 = await moExecFFArgs([
+      '-hide_banner', '-loglevel', 'error', '-y',
+      '-ss', startSs, '-t', len, '-i', opts.videoPath,
+      '-i', tmpPalette,
+      '-lavfi', vfB,
       '-loop', String(opts.loops || 0),
-      shellQuote(outPath),
-    ].join(' ');
-    const r2 = await window.parallxElectron.terminal.exec(cmd2, { timeout: 600000 });
+      outPath,
+    ], 600000);
     await window.parallxElectron.fs.delete(tmpPalette, { useTrash: false }).catch(() => {});
     if (r2.exitCode !== 0) throw new Error('paletteuse: ' + (r2.stderr || 'unknown'));
   } else {
@@ -19804,7 +20733,6 @@ async function moExportClip(api, opts) {
 // reverse, then build a concat demuxer file with explicit per-frame durations.
 // Two-pass palette gives consistent colors.
 async function moExportGifWithFrameEdits(api, opts, outPath) {
-  const ff = shellInvoke(_toolPaths.ffmpeg);
   const sep = _isWindows ? '\\' : '/';
   const len = Math.max(0.01, opts.outPoint - opts.inPoint);
   const totalFrames = opts.frameEdits.frames.length;
@@ -19818,15 +20746,15 @@ async function moExportGifWithFrameEdits(api, opts, outPath) {
   await window.parallxElectron.fs.mkdir(workDir);
 
   try {
-    // 1. Re-extract all frames at full size with the user's scale applied
+    // 1. Re-extract all frames at full size with the user's scale applied.
+    // The crop segment may carry animated x/y expressions — extraction runs
+    // from the source with -ss before -i, so t matches the rebased keyframes
+    // and the window's motion gets baked into the extracted frames. argv
+    // spawn because those expressions don't survive shell-string quoting.
     const scaleS = (opts.scalePct / 100).toFixed(3);
     const extractParts = [`fps=${stripFps.toFixed(4)}`];
     if (opts.crop && opts.crop.w > 0 && opts.crop.h > 0) {
-      const cx = Math.max(0, Math.min(1, opts.crop.x)).toFixed(4);
-      const cy = Math.max(0, Math.min(1, opts.crop.y)).toFixed(4);
-      const cw = Math.max(0.01, Math.min(1, opts.crop.w)).toFixed(4);
-      const ch = Math.max(0.01, Math.min(1, opts.crop.h)).toFixed(4);
-      extractParts.push(`crop=trunc(iw*${cw}/2)*2:trunc(ih*${ch}/2)*2:trunc(iw*${cx}):trunc(ih*${cy})`);
+      extractParts.push(moCropVfSegment(opts.crop, opts.cropKeys, opts.inPoint));
     }
     extractParts.push(`scale=trunc(iw*${scaleS}/2)*2:trunc(ih*${scaleS}/2)*2`);
     {
@@ -19835,15 +20763,14 @@ async function moExportGifWithFrameEdits(api, opts, outPath) {
     }
     const vfExtract = extractParts.join(',');
     const pattern = workDir + sep + 'f_%04d.png';
-    const cmdEx = [
-      ff, '-hide_banner', '-loglevel', 'error', '-y',
+    const rEx = await moExecFFArgs([
+      '-hide_banner', '-loglevel', 'error', '-y',
       '-ss', String(opts.inPoint), '-t', String(len),
-      '-i', shellQuote(opts.videoPath),
-      '-vf', shellQuote(vfExtract),
+      '-i', opts.videoPath,
+      '-vf', vfExtract,
       '-frames:v', String(totalFrames + 4),
-      shellQuote(pattern),
-    ].join(' ');
-    const rEx = await window.parallxElectron.terminal.exec(cmdEx, { timeout: 300000 });
+      pattern,
+    ], 300000);
     if (rEx.exitCode !== 0) throw new Error('frame extract: ' + (rEx.stderr || 'failed'));
 
     const list = await window.parallxElectron.fs.readdir(workDir);
@@ -19879,27 +20806,26 @@ async function moExportGifWithFrameEdits(api, opts, outPath) {
     const concatPath = workDir + sep + 'concat.txt';
     await window.parallxElectron.fs.writeFile(concatPath, concat, 'utf8');
 
-    // 4. Two-pass palette over the concat sequence
+    // 4. Two-pass palette over the concat sequence (argv spawn, matching the
+    // extraction above and the main export paths)
     const dither = opts.dither || 'bayer';
     const palettePath = workDir + sep + 'palette.png';
-    const cmd1 = [
-      ff, '-hide_banner', '-loglevel', 'error', '-y',
-      '-f', 'concat', '-safe', '0', '-i', shellQuote(concatPath),
-      '-vf', shellQuote('palettegen=stats_mode=diff'),
-      shellQuote(palettePath),
-    ].join(' ');
-    const r1 = await window.parallxElectron.terminal.exec(cmd1, { timeout: 300000 });
+    const r1 = await moExecFFArgs([
+      '-hide_banner', '-loglevel', 'error', '-y',
+      '-f', 'concat', '-safe', '0', '-i', concatPath,
+      '-vf', 'palettegen=stats_mode=diff',
+      palettePath,
+    ], 300000);
     if (r1.exitCode !== 0) throw new Error('palettegen: ' + (r1.stderr || 'failed'));
 
-    const cmd2 = [
-      ff, '-hide_banner', '-loglevel', 'error', '-y',
-      '-f', 'concat', '-safe', '0', '-i', shellQuote(concatPath),
-      '-i', shellQuote(palettePath),
-      '-lavfi', shellQuote(`paletteuse=dither=${dither}`),
+    const r2 = await moExecFFArgs([
+      '-hide_banner', '-loglevel', 'error', '-y',
+      '-f', 'concat', '-safe', '0', '-i', concatPath,
+      '-i', palettePath,
+      '-lavfi', `paletteuse=dither=${dither}`,
       '-loop', String(opts.loops || 0),
-      shellQuote(outPath),
-    ].join(' ');
-    const r2 = await window.parallxElectron.terminal.exec(cmd2, { timeout: 300000 });
+      outPath,
+    ], 300000);
     if (r2.exitCode !== 0) throw new Error('paletteuse: ' + (r2.stderr || 'failed'));
 
     return { outPath };
