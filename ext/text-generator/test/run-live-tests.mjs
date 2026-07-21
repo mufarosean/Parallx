@@ -103,7 +103,8 @@ async function main() {
   const { container } = await openChat(editorProviders, 't-basic');
   const r1 = await sendAndWait(container, captured, 'hello');
   hard('S1.1', 'num_ctx equals settings default (budget == num_ctx chain)', r1.options?.numCtx === CTX, `numCtx=${r1.options?.numCtx}`);
-  hard('S1.2', 'system prompt contains Cast + Turn Contract', sysPrompt(r1).includes('## Cast') && sysPrompt(r1).includes('## Turn Contract'));
+  hard('S1.2', 'system prompt contains Cast + Turn Contract + no-em-dash rule',
+    sysPrompt(r1).includes('## Cast') && sysPrompt(r1).includes('## Turn Contract') && sysPrompt(r1).includes('No em dashes'));
   hard('S1.3', 'active-turn directive rides the user turn', userTurn(r1).includes('Now write the next reply as Ada Lovelace'));
   hard('S1.4', 'wrong-speaker stop tokens sent', Array.isArray(r1.options?.stop) && r1.options.stop.includes('<<Anon>>'), `stop=${JSON.stringify(r1.options?.stop)}`);
   hard('S1.5', 'prompt fits context (rough estimate)', roughTokens(r1.messages.map((m) => m.content).join('\n')) <= CTX * 1.25);
@@ -112,6 +113,7 @@ async function main() {
   hard('S1.6', 'AI reply persisted with correct speaker', !!lastAi1 && lastAi1.name === 'Ada Lovelace', excerpt(lastAi1?.content, 100));
   hard('S1.7', 'no speaker-tag leak in stored reply', !!lastAi1 && !lastAi1.content.includes('<<') && !/^Ada(\s+Lovelace)?\s*:/i.test(lastAi1.content.trim()));
   soft('S1.8', 'reply is substantive (>50 chars)', (lastAi1?.content || '').length > 50, `${(lastAi1?.content || '').length} chars`);
+  hard('S1.9', 'no em/en dashes in stored reply (sanitizer guarantee)', !/[—–]/.test(lastAi1?.content || ''));
   await writeReport();
 
   // Drawer helpers ------------------------------------------------------

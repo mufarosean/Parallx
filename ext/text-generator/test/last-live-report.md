@@ -1,22 +1,23 @@
 # Text Generator — live behavioral test report
 
-- Date: 2026-07-20T23:29:48.585Z
+- Date: 2026-07-21T23:36:29.933Z
 - Mode: LIVE
 - Model: qwen3.5-uncensored:latest  |  Ollama: http://localhost:11434  |  Context: 8192
-- Elapsed: 101s
+- Elapsed: 112s
 
 | # | Check | Result | Detail |
 |---|-------|--------|--------|
 | S0.1 | extension activates + registers chat editor | PASS |  |
 | S0.2 | example character scaffolded | PASS |  |
 | S1.1 | num_ctx equals settings default (budget == num_ctx chain) | PASS | numCtx=8192 |
-| S1.2 | system prompt contains Cast + Turn Contract | PASS |  |
+| S1.2 | system prompt contains Cast + Turn Contract + no-em-dash rule | PASS |  |
 | S1.3 | active-turn directive rides the user turn | PASS |  |
 | S1.4 | wrong-speaker stop tokens sent | PASS | stop=["<<Anon>>","\nAnon:","<<Narrator>>","\nNarrator:"] |
 | S1.5 | prompt fits context (rough estimate) | PASS |  |
-| S1.6 | AI reply persisted with correct speaker | PASS | *I set down my fountain pen with a soft scratch against the parchment, the nib leaving a faint cresc… |
+| S1.6 | AI reply persisted with correct speaker | PASS | The scratch of my quill ceases as I lift my gaze from the scattered sheets of graph paper. Ink stain… |
 | S1.7 | no speaker-tag leak in stored reply | PASS |  |
-| S1.8 | reply is substantive (>50 chars) | PASS | 1433 chars |
+| S1.8 | reply is substantive (>50 chars) | PASS | 1427 chars |
+| S1.9 | no em/en dashes in stored reply (sanitizer guarantee) | PASS |  |
 | S2.1 | settings drawer opens | PASS |  |
 | S2.2 | length override persisted to thread.json | PASS |  |
 | S2.3 | short-length directive in system prompt | PASS |  |
@@ -24,56 +25,56 @@
 | S2.5 | model obeyed short length (≤2 paragraphs) | PASS | 1 paragraphs |
 | S3.1 | director's note lands on the user turn | PASS |  |
 | S3.2 | director input cleared after consumption | PASS |  |
-| S3.3 | model obeyed the note (says nightingale) | PASS | The firelight dances across the towering stack of manuscripts on my desk, illuminating the dense columns of algebraic no… |
+| S3.3 | model obeyed the note (says nightingale) | PASS | I press my palms flat against the cool wooden desk, feeling the faint vibration of a passing carriage through the floorb… |
 | S4.1 | standing note injected in late block | PASS |  |
 | S4.2 | previous director's note did NOT recur (one-shot) | PASS |  |
-| S4.3 | model obeyed standing note (vermilion) | PASS | The heavy oak door at the foot of my study seems to hold its breath whenever I speak his name, as if even the timber its… |
+| S4.3 | model obeyed standing note (vermilion) | PASS | I watch the dust settle upon the drafting table where his latest schematics lie half-covered by my own calculations, and… |
 | S5.1 | preset override reaches system prompt | PASS |  |
 | S5.2 | late style hint follows the override | PASS |  |
 | S5.3 | standing note persists across turns | PASS |  |
 | S5.4 | anti-repetition guard active by turn 5 | PASS |  |
 | S6.1 | num_ctx honored on long thread | PASS | numCtx=8192 |
-| S6.2 | history trimmed to fit window | PASS | sent 9/40 msgs, 17982 of 53270 chars |
+| S6.2 | history trimmed to fit window | PASS | sent 9/40 msgs, 18087 of 53270 chars |
 | S6.3 | system prompt survives trimming intact | PASS |  |
 | S7.1 | regenerate affordance present | PASS |  |
 | S7.2 | regenerate produced a stored variant set | PASS |  |
-| Q1 | stock LLM-phrase scan across replies | INFO | no stock tells detected |
+| Q1 | stock LLM-phrase scan across replies | INFO | "dust motes" ×1 |
 
 ## Request timings
 
-- req1: 19.9s, 1433 chars, think 8875ch
-- req2: 9.7s, 1168 chars, think 7828ch
-- req3: 16.0s, 1053 chars, think 14815ch
-- req4: 13.5s, 1458 chars, think 11914ch
-- req5: 16.4s, 1063 chars, think 15170ch
-- req6: 11.3s, 1487 chars, think 9011ch
-- req7: 11.6s, 1122 chars, think 10509ch
+- req1: 20.9s, 1427 chars, think 4790ch
+- req2: 27.9s, 1554 chars, think 12323ch
+- req3: 11.7s, 1617 chars, think 10334ch
+- req4: 8.8s, 1647 chars, think 6602ch
+- req5: 14.6s, 1526 chars, think 13145ch
+- req6: 11.8s, 1048 chars, think 9733ch
+- req7: 14.4s, 1356 chars, think 13757ch
 
 ## Sample replies (thread t-basic)
 
 ### Reply 1
 
-> *I set down my fountain pen with a soft scratch against the parchment, the nib leaving a faint crescent of ink on the desk's edge.* "A greeting at last," *I murmur, glancing up from the cluttered expanse of papers and brass instruments that claim my table.* "Pray, draw near the hearth; the London damp has settled heavily this evening, and I would not have you catch a chill."
+> The scratch of my quill ceases as I lift my gaze from the scattered sheets of graph paper. Ink stains my fingertips, a familiar mark of long hours spent tracing the architecture of thought. I set the pen carefully into its brass stand and smooth the crumpled edge of a manuscript with both hands. The fire in the hearth pops softly, casting long shadows across the mahogany desk where stacks of punched cards rest like silent clockwork.
 > 
-> *I tilt my head toward a high-backed chair beside the fire, where stacks of calculation sheets rest beneath a brass magnifying glass.* "You find me tracing the pathways Mr. Babbage’s Engine might one day follow. There is a peculiar poetry in watching numbers dance upon punched cards—much like threads crossing on a Jacquard loom, yet weaving not silk, but arithmetic. One arranges them with deliberate grace, and the machine breathes life into the sequence."
+> *A simple greeting can be such an opening door,* I think to myself, *and I am ever ready to turn the key.*
 > 
-> *I lean back slightly, letting the warmth of the flames catc…
+> "I trust you have come to discuss the marvels of mechanical computation, or perhaps you merely seek a quiet corner for conversation?" I lean forward slightly, the candlelight catching the rim of my spectacles as I offer a warm smile. "My name is Ada Lovelace. I have spent these last years dreaming of what Mr. Babbage’s Analytical Engine might yet accom…
 
 ### Reply 2
 
-> "It is, in essence, a loom for algebra," I reply, rising to trace the spine of an open manuscript where gears and levers are sketched in meticulous charcoal. *The candlelight catches the brass calipers scattered across the desk as I gesture toward the architectural drawings.* "Mr. Babbage has designed a mechanism far more profound than any difference engine; it possesses a mill to perform operations, a store to retain numerical values, and an arrangement of punched cards that dictate the sequence of its work—much like the intricate patterns woven by Jacquard’s silk looms, yet governing arithmetic rather than thread. One might observe how numbers flow through its columns, being added, subtracted, or multiplied according to instructions far beyond mere calculation; indeed, if we can teach the machine to manipulate symbols as readily as quantities, it shall begin to mirror the very operatio…
+> The heavy brass gears and intricate punch cards that define Mr. Babbage’s creation are not merely mechanical curiosities but a grand loom for weaving numbers into patterns of logic. *I lean closer to the window where the morning light catches the dust motes dancing above my drafting table, tracing the outline of a proposed card sequence with a charcoal stick.* "The Analytical Engine is a general purpose calculating machine," I begin, my voice carrying the quiet certainty of one who has spent months lost in its architecture, "built upon principles far removed from mere arithmetic. It possesses a mill to perform every operation upon stored values, and a store to hold them, linked together by a system of punched cards that direct each movement with absolute precision. You see it not as a calculator confined to fixed rules, but as an instrument capable of manipulating any symbol according to…
 
 ### Reply 3
 
-> The firelight dances across the towering stack of manuscripts on my desk, illuminating the dense columns of algebraic notation that have become my constant companions. *Ink stains my fingertips, a permanent badge of this peculiar obsession.* "My labour occupies itself with the translation of Mr. Babbage's mechanical brain into a language of pure logic," I explain, tapping a pale finger against the frayed edge of the nearest sheet. "I have ventured beyond mere calculation; I perceive within those interlocking cogs and wheels a domain that stretches far past the manipulation of simple quantities. Just as the Jacquard loom weaves flowers and leaves upon silk, so too might the Engine compose music of any kind and scientific pieces. The possibilities are boundless, extending to the very synthesis of the universe itself." I lean forward slightly, watching the candlelight flicker across your fa…
+> I press my palms flat against the cool wooden desk, feeling the faint vibration of a passing carriage through the floorboards below. My days have quietly surrendered themselves to a grand experiment in what I call poetical science, where abstract mathematics wears the garments of mechanical design. *To give form to abstraction is the very breath of my existence.* I unroll a fresh sheet of manuscript paper and dip my pen into the iron gall inkwell, watching the dark fluid catch the lamplight before I begin tracing a cascade of numerical sequences. The undertaking demands far more than mere calculation; it requires translating human intuition into a language of brass wheels and steel pins that Mr. Babbage so tirelessly crafts. We draft instructions upon paper strips where algebraic formulas become woven commands, each precise arrangement dictating how the machine shall manipulate quantitie…
 
 ### Reply 4
 
-> The heavy oak door at the foot of my study seems to hold its breath whenever I speak his name, as if even the timber itself remembers the fervour that once poured from his lips for hours on end. "He is a man possessed by geometry and steam," I murmur, watching the candle flame gutter against the glass, "his mind darting through mechanical possibilities with a ferocity that leaves lesser scholars dizzy in his wake." Yet beneath that brilliant, unyielding exterior lies a temper as volatile as coal dust caught in a sudden draft. We have spent countless evenings hunched over brass blueprints, tracing the paths of gears and escapements until the wax pools into long, trembling tears upon the table, while his marginalia are frequently scrawled in sharp vermilion, slashing through corrections with the urgency of a conductor’s baton. I find myself drawn to his relentless vision—not merely for its…
+> I watch the dust settle upon the drafting table where his latest schematics lie half-covered by my own calculations, and a quiet admiration warms my chest despite the weary furrow in my brow. *He is a mind forged in fire and friction, always chasing perfection through the stubborn resistance of metal.* "Mr. Babbage possesses a genius that borders on the tempestuous," I say softly, tracing the edge of a brass gear with my fingertip before smoothing the cuff of my silk sleeve. "His workshop above smells perpetually of hot oil and keen ambition, where he argues with his own designs until they yield their secrets. We are bound together by a shared fever for this Engine, though our temperaments clash like flint against steel. I find myself translating his mechanical necessities into mathematical verse, while he supplies the iron framework that gives my abstractions weight." *There is a fierce…
 
 ### Reply 5
 
-> INT. LOVELACE’S STUDY – NIGHT *I draw a heavy velvet curtain across the rain-lashed window to shut out the gaslight of Piccadilly, leaving only the warm pool of my reading lamp to illuminate the brass prototypes and scattered punch cards.* ADA LOVELACE "The Engine awaits its true purpose," I murmur, tracing the delicate perforations on a sample card with a calloused fingertip. "We are not merely teaching it to count; we are instructing it to weave logic itself, binding arithmetic to abstract relations with the same precision that governs celestial mechanics. When these cards pass through the press in sequence, they shall command the mill to perform operations entirely divorced from mere quantity—a symphony of symbols arranged until the machine transcends its iron bones and begins to compose mathematics as a poet composes verse. I have noted every gear’s resistance and every lever’s fall …
+> INT. STUDY - LATE AFTERNOON *The brass compass rests beside a half-finished diagram of the Engine’s card arrangement, while I dip my nib into a pot of dark ink to trace another intricate curve upon the parchment.* My gaze drifts toward the window where the fading daylight paints the garden gates in vermilion, casting long shadows across the floorboards. "Mr. Babbage’s vision demands more than mere calculation," *I murmur, letting the pen glide across the paper as if conducting an unseen orchestra of gears and levers.* "We are charting a territory where numbers assume form, where the mill becomes a weaver and the store a silent librarian waiting for instruction." *I lift my eyes to meet yours, the candlelight catching the silver thread in my hair as I tap the edge of a freshly drafted table with a gloved finger.* "Observe how each column represents a stage in the operation, how the punche…
 
 ## Exact prompt of request 1 (inspector view)
 
@@ -100,6 +101,7 @@ Respond as a conscious being, experiencing emotions and acting with full agency.
 ## Formatting
 - **Dialogue always in double quotes**: Every spoken line must be wrapped in "straight double quotes". Never leave dialogue unquoted, italicised, or in single quotes. Inner thoughts go in *italics*; non-verbal actions stay in plain prose (or *italics* for casual-RP style).
 - **One character per turn**: Write only the active character's words, actions, and inner experience. Never write dialogue, thoughts, or narrated decisions for other characters or for the user.
+- **No em dashes**: never use em dashes or en dashes anywhere. Use commas, periods, or ellipses instead.
 
 ## Cast
 

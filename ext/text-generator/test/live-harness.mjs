@@ -33,7 +33,7 @@ export function setupDom() {
   return dom;
 }
 
-export function makeFakeParallx({ workspaceDir, ollamaUrl = 'http://localhost:11434', model, mock = false, mockReplyFn = null, modelContextLength = 32768, log = () => {} }) {
+export function makeFakeParallx({ workspaceDir, ollamaUrl = 'http://localhost:11434', model, mock = false, mockReplyFn = null, mockDelayMs = 0, modelContextLength = 32768, log = () => {} }) {
   /** Every lm request the extension makes, with the streamed reply. */
   const captured = [];
   const openedEditors = [];
@@ -90,6 +90,18 @@ export function makeFakeParallx({ workspaceDir, ollamaUrl = 'http://localhost:11
     captured.push(rec);
     if (mock) {
       const text = (mockReplyFn || mockReply)(messages, options);
+      if (mockDelayMs > 0) {
+        // Slow streaming mode: word-by-word chunks so tests can act
+        // mid-stream (e.g. dispose a pane while generation is running).
+        for (const word of text.split(/(?<=\s)/)) {
+          rec.reply += word;
+          yield { content: word, done: false };
+          await new Promise((r) => setTimeout(r, mockDelayMs));
+        }
+        rec.endedAt = Date.now();
+        yield { content: '', done: true };
+        return;
+      }
       rec.reply = text;
       rec.endedAt = Date.now();
       yield { content: text, done: false };
@@ -104,10 +116,11 @@ export function makeFakeParallx({ workspaceDir, ollamaUrl = 'http://localhost:11
     if (Array.isArray(options?.stop) && options.stop.length > 0) ollamaOptions.stop = options.stop;
     const body = { model: modelId, messages, stream: true, options: ollamaOptions };
     if (options?.think) body.think = true;
+    else if (options?.think === false) body.think = false; // mirrors ollamaProvider: explicit off must be sent
     if (options?.format) body.format = options.format;
 
     let res = await fetch(`${ollamaUrl}/api/chat`, { method: 'POST', body: JSON.stringify(body) });
-    if (!res.ok && res.status === 400 && body.think) {
+    if (!res.ok && res.status === 400 && 'think' in body) {
       const errText = await res.text();
       if (errText.includes('does not support thinking')) {
         log(`[harness] ${modelId} rejected think:true — retrying without`);
