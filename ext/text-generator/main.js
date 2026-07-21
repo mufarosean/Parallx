@@ -12,6 +12,18 @@ const EXT_ROOT = '.parallx/extensions/text-generator';
 const SELF_SPEAKER = '__self__';
 const NARRATOR_SPEAKER = '__narrator__';
 
+// Context-window presets shared by the chat toolbar and the forge.
+// 0 = Auto (fall back to the settings default / Ollama's own num_ctx).
+const CTX_WINDOW_PRESETS = [
+  { label: 'Auto',  value: 0 },
+  { label: '4K',    value: 4_096 },
+  { label: '8K',    value: 8_192 },
+  { label: '16K',   value: 16_384 },
+  { label: '32K',   value: 32_768 },
+  { label: '64K',   value: 65_536 },
+  { label: '128K',  value: 131_072 },
+];
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 1A: ICON HELPERS (via parallx.icons API)
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1820,6 +1832,23 @@ function injectStyles() {
   color: var(--vscode-descriptionForeground);
 }
 .tg-forge-controls { display: flex; flex-direction: column; gap: 8px; }
+.tg-forge-section {
+  margin-top: 12px;
+  font-size: var(--parallx-fontSize-sm, 11px);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--vscode-descriptionForeground);
+}
+.tg-forge-section:first-child { margin-top: 0; }
+.tg-forge-row-value {
+  width: 46px;
+  flex-shrink: 0;
+  text-align: right;
+  font-size: var(--parallx-fontSize-sm, 11px);
+  color: var(--vscode-foreground);
+  font-variant-numeric: tabular-nums;
+}
 .tg-forge-row { display: flex; align-items: center; gap: 8px; }
 .tg-forge-row-label {
   width: 90px;
@@ -1839,6 +1868,8 @@ function injectStyles() {
 .tg-forge-slider { flex: 1; accent-color: var(--vscode-focusBorder, #007fd4); }
 .tg-forge-row--text .tg-ce-input { flex: 1; }
 .tg-forge-row .tg-ce-select { flex: 1; }
+.tg-forge-row-label--ctx { width: auto; }
+.tg-forge-ctx { flex: 0 0 84px; }
 .tg-forge-lock {
   display: inline-flex;
   align-items: center;
@@ -1926,6 +1957,33 @@ function injectStyles() {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+.tg-forge-final {
+  padding: 12px;
+  border: 1px solid var(--vscode-widget-border, rgba(255,255,255,0.1));
+  border-radius: var(--parallx-radius-sm, 3px);
+  background: var(--vscode-editorWidget-background, rgba(255,255,255,0.03));
+  color: var(--vscode-foreground);
+  font-size: var(--parallx-fontSize-base, 12px);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+/* ═══ Themed dropdown wrappers (api.ui.createDropdown adapter) ═══
+   The .ui-dropdown inside is styled by the core dropdown.css; these
+   classes only handle layout inside tg rows/forms. */
+.tg-dd { display: inline-flex; min-width: 0; vertical-align: middle; }
+.tg-dd .ui-dropdown { width: 100%; min-width: 0; }
+.tg-dd--inline { max-width: 220px; }
+.tg-dd--flex { flex: 1; }
+.tg-dd--full { width: 100%; }
+.tg-dd--ctx { flex: 0 0 84px; }
+/* Legacy chat-settings rows sized their selects flex:1 capped at 280px —
+   the themed wrapper must match or the row layout collapses. */
+.tg-cs-row .tg-dd { flex: 1; max-width: 280px; width: auto; }
   `;
   document.head.appendChild(style);
 }
@@ -2161,6 +2219,24 @@ function trimTextToBudget(text, budgetTokens) {
   // the safety margin keeps us under budget.
   const ratio = budgetTokens / total;
   return text.slice(0, Math.max(1, Math.floor(text.length * ratio)));
+}
+
+/**
+ * Hard no-em-dash guard (user rule): model output must never contain em
+ * or en dashes, anywhere. Prompt instructions reduce them; this strips
+ * whatever slips through, context-aware:
+ *   - numeric ranges keep a plain hyphen (2–3 -> 2-3)
+ *   - a dash opening a line (dialogue-dash affectation) is dropped
+ *   - a dash at a quote boundary / line end reads as interrupted speech -> ellipsis
+ *   - anything else is a pause -> comma
+ */
+function stripEmDashes(text) {
+  if (!text) return text;
+  return text
+    .replace(/(\d)\s*[—–]\s*(?=\d)/g, '$1-')
+    .replace(/^[—–]+\s*/gm, '')
+    .replace(/\s*[—–]+(?=["'”’)\]]|\s*$)/gm, '...')
+    .replace(/\s*[—–]+\s*/g, ', ');
 }
 
 function substituteVars(text, charName, userName) {
@@ -2826,6 +2902,7 @@ function buildSystemPrompt(params = {}) {
       '## Formatting',
       '- **Dialogue always in double quotes**: Every spoken line must be wrapped in "straight double quotes". Never leave dialogue unquoted, italicised, or in single quotes. Inner thoughts go in *italics*; non-verbal actions stay in plain prose (or *italics* for casual-RP style).',
       '- **One character per turn**: Write only the active character\'s words, actions, and inner experience. Never write dialogue, thoughts, or narrated decisions for other characters or for the user.',
+      '- **No em dashes**: never use em dashes or en dashes anywhere. Use commas, periods, or ellipses instead.',
     ].join('\n'));
   }
 
@@ -4289,8 +4366,83 @@ async function deleteThread(fs, workspaceUri, threadId) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 7D: ACTIVE GENERATION REGISTRY
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Editor panes are DISPOSED on every tab switch (editorGroupView tears the
+// active pane down and rebuilds it on return). Generations must survive
+// that: the stream itself keeps running inside the starting pane's
+// closure, so the SHARED state (in-flight flag, stop signal, transient
+// text) lives here, keyed by thread id. A remounted pane re-attaches by
+// registering a listener — the stream resumes on screen mid-sentence,
+// Stop works from any pane, and duplicate sends stay blocked.
+
+const _activeGenerations = new Map();
+
+function getGenState(threadId) {
+  let g = _activeGenerations.get(threadId);
+  if (!g) {
+    g = { isGenerating: false, stopRequested: false, transient: null, listeners: new Set() };
+    _activeGenerations.set(threadId, g);
+  }
+  return g;
+}
+
+/** kind: 'chunk' (transient text advanced) | 'state' (started / finished). */
+function notifyGen(g, kind) {
+  for (const listener of [...g.listeners]) {
+    try { listener(kind); } catch (err) { console.warn('[TextGenerator] Generation listener failed:', err); }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 8: DOM HELPERS
 // ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Single-select control that uses the workbench's themed dropdown
+ * primitive (api.ui.createDropdown — the same .ui-dropdown the core UI
+ * uses) instead of a native <select>, whose popup list is drawn by
+ * Chromium and cannot be themed. Falls back to a native <select> when
+ * the host predates the API (also the headless-test path).
+ *
+ * Returns a uniform facade: { element, value (get/set), setItems(list) }.
+ * `items` are { value, label } pairs. `layout`: 'inline' | 'flex' |
+ * 'full' | 'ctx' — maps to the tg-dd-- wrapper classes.
+ */
+function tgSelect(parallx, { className = '', layout = 'full', title = '', items = [], value = '', onChange = null } = {}) {
+  if (parallx?.ui?.createDropdown) {
+    const host = el('span', `tg-dd tg-dd--${layout}`);
+    if (title) host.title = title;
+    const dd = parallx.ui.createDropdown(host, { items, selected: value });
+    if (onChange) dd.onDidChange(onChange);
+    return {
+      element: host,
+      get value() { return dd.value ?? ''; },
+      set value(v) { dd.value = v; },
+      setItems(list) { dd.setItems(list); },
+    };
+  }
+  const sel = el('select', className);
+  if (title) sel.title = title;
+  const fill = (list) => {
+    sel.innerHTML = '';
+    for (const it of list) {
+      const o = el('option', null, { text: it.label });
+      o.value = it.value;
+      sel.appendChild(o);
+    }
+  };
+  fill(items);
+  if (value !== undefined) sel.value = value;
+  if (onChange) sel.addEventListener('change', () => onChange(sel.value));
+  return {
+    element: sel,
+    get value() { return sel.value; },
+    set value(v) { sel.value = v; },
+    setItems: fill,
+  };
+}
 
 function el(tag, className, attrs) {
   const e = document.createElement(tag);
@@ -4504,30 +4656,37 @@ function renderChatEditor(container, parallx, input) {
 
   const toolbar = el('div', 'tg-chat-toolbar');
   const modelLabel = el('span', 'tg-chat-toolbar-label', { text: 'Model' });
-  const modelSelect = el('select', 'tg-chat-toolbar-select');
+  const modelSelect = tgSelect(parallx, {
+    className: 'tg-chat-toolbar-select',
+    layout: 'inline',
+    onChange: (v) => {
+      selectedModelId = v || null;
+      if (thread && selectedModelId) {
+        surfaceSaveError(updateThreadMeta(fs, workspaceUri, threadId, { modelId: selectedModelId }), parallx, 'model selection');
+      }
+    },
+  });
   // Per-thread context-window override picker. Lives next to the model
-  // select so users can pick a heavier model + clamp the context to
-  // keep KV cache in VRAM. Mirrors the chat's ChatContextWindowPicker
-  // but uses a plain `<select>` for visual parity with the model
-  // dropdown that's already in this toolbar.
+  // dropdown so users can pick a heavier model + clamp the context to
+  // keep KV cache in VRAM. 0 = Auto clears the override.
   const ctxLabel = el('span', 'tg-chat-toolbar-label', { text: 'Ctx' });
-  const ctxSelect = el('select', 'tg-chat-toolbar-select');
-  ctxSelect.title = 'Context window for this thread — sets both the token budget and Ollama num_ctx (lower = faster, less VRAM)';
-  const CTX_PRESETS = [
-    { label: 'Auto',  value: 0 },
-    { label: '4K',    value: 4_096 },
-    { label: '8K',    value: 8_192 },
-    { label: '16K',   value: 16_384 },
-    { label: '32K',   value: 32_768 },
-    { label: '64K',   value: 65_536 },
-    { label: '128K',  value: 131_072 },
-  ];
-  for (const p of CTX_PRESETS) {
-    const opt = document.createElement('option');
-    opt.value = String(p.value);
-    opt.textContent = p.label;
-    ctxSelect.appendChild(opt);
-  }
+  const ctxSelect = tgSelect(parallx, {
+    className: 'tg-chat-toolbar-select',
+    layout: 'inline',
+    title: 'Context window for this thread — sets both the token budget and Ollama num_ctx (lower = faster, less VRAM)',
+    items: CTX_WINDOW_PRESETS.map((p) => ({ value: String(p.value), label: p.label })),
+    onChange: (raw) => {
+      const v = Number(raw) || 0;
+      if (thread) {
+        thread.contextWindowOverride = v > 0 ? v : null;
+        surfaceSaveError(
+          updateThreadMeta(fs, workspaceUri, threadId, { contextWindowOverride: thread.contextWindowOverride }),
+          parallx,
+          'context window',
+        );
+      }
+    },
+  });
 
   const spacer = el('span', 'tg-chat-toolbar-spacer');
   const summaryEl = el('span', 'tg-chat-toolbar-charname');
@@ -4541,7 +4700,7 @@ function renderChatEditor(container, parallx, input) {
   // thread JSON.
   const sceneBtn = el('button', 'tg-chat-toolbar-btn', { html: icon('map', 16) });
   sceneBtn.title = 'View / edit scene state';
-  toolbar.append(modelLabel, modelSelect, ctxLabel, ctxSelect, spacer, tokenCountEl, sceneBtn, viewPromptBtn, summaryEl);
+  toolbar.append(modelLabel, modelSelect.element, ctxLabel, ctxSelect.element, spacer, tokenCountEl, sceneBtn, viewPromptBtn, summaryEl);
   root.appendChild(toolbar);
 
   // ── Scene state panel (collapsible) ──
@@ -4725,11 +4884,12 @@ function renderChatEditor(container, parallx, input) {
   let selectedModelId = null;
   let currentSettings = null;
   let lastAssembledContext = null;
-  let isGenerating = false;
-  let stopRequested = false;
+  // Generation state is SHARED across panes of this thread (see the
+  // active-generation registry): a tab switch disposes this pane but the
+  // stream keeps running, and the next pane re-attaches through `gen`.
+  const gen = getGenState(threadId);
   let selectedComposeSpeaker = SELF_SPEAKER;
   let selectedReplySpeaker = null;
-  let transientMessage = null;
   let renderQueued = false;
   let fileWatcher = null;
   // Streaming fast-path target: the transient message's body node, so
@@ -4881,8 +5041,8 @@ function renderChatEditor(container, parallx, input) {
       // per frame rebuilt every message row (listeners included) and
       // forced scrollTop to the bottom — long chats stuttered and the
       // user couldn't scroll up to re-read while the AI was writing.
-      if (transientMessage && _transientBodyEl && _transientBodyEl.isConnected) {
-        _transientBodyEl.innerHTML = renderMessageMarkup(transientMessage.content || '');
+      if (gen.transient && _transientBodyEl && _transientBodyEl.isConnected) {
+        _transientBodyEl.innerHTML = renderMessageMarkup(gen.transient.content || '');
         const nearBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 120;
         if (nearBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
         return;
@@ -4944,7 +5104,7 @@ function renderChatEditor(container, parallx, input) {
       tokenCountEl.title = '';
       tokenCountEl.classList.remove('tg-token-warn');
     }
-    if (isGenerating) {
+    if (gen.isGenerating) {
       sendBtn.innerHTML = icon('square', 16);
       sendBtn.title = 'Stop generating';
       sendBtn.classList.add('tg-input-send--stop');
@@ -5079,7 +5239,7 @@ function renderChatEditor(container, parallx, input) {
    * and highlights <placeholder> text for quick editing.
    */
   function executeShortcut(sc) {
-    if (isGenerating) return;
+    if (gen.isGenerating) return;
     const message = resolveShortcutTemplate(sc.message || '');
     const insertionType = (sc.insertionType || 'replace').toLowerCase();
     const autoSend = (sc.autoSend || 'yes').toLowerCase() !== 'no';
@@ -5338,34 +5498,38 @@ function renderChatEditor(container, parallx, input) {
     body.appendChild(mkField('Message text to add/send when button is clicked:', msgInput));
 
     // Insertion type
-    const insertSelect = el('select');
-    insertSelect.style.cssText = inputStyle;
-    for (const [val, txt] of [['replace', 'Replace existing reply box text (if any)'], ['append', 'Append to existing reply box text'], ['newline', 'Append on new line']]) {
-      const opt = el('option', null, { text: txt });
-      opt.value = val;
-      insertSelect.appendChild(opt);
-    }
-    body.appendChild(mkField('Insertion type (what happens when you click the shortcut):', insertSelect));
+    const insertSelect = tgSelect(parallx, {
+      layout: 'full',
+      items: [
+        { value: 'replace', label: 'Replace existing reply box text (if any)' },
+        { value: 'append', label: 'Append to existing reply box text' },
+        { value: 'newline', label: 'Append on new line' },
+      ],
+      value: 'replace',
+    });
+    body.appendChild(mkField('Insertion type (what happens when you click the shortcut):', insertSelect.element));
 
     // Auto-send
-    const autoSendSelect = el('select');
-    autoSendSelect.style.cssText = inputStyle;
-    for (const [val, txt] of [['yes', 'Yes, send on click'], ['no', 'No, just insert into reply box']]) {
-      const opt = el('option', null, { text: txt });
-      opt.value = val;
-      autoSendSelect.appendChild(opt);
-    }
-    body.appendChild(mkField('Auto-send?', autoSendSelect));
+    const autoSendSelect = tgSelect(parallx, {
+      layout: 'full',
+      items: [
+        { value: 'yes', label: 'Yes, send on click' },
+        { value: 'no', label: 'No, just insert into reply box' },
+      ],
+      value: 'yes',
+    });
+    body.appendChild(mkField('Auto-send?', autoSendSelect.element));
 
     // Clear after send
-    const clearSelect = el('select');
-    clearSelect.style.cssText = inputStyle;
-    for (const [val, txt] of [['yes', 'Yes, clear it'], ['no', 'No, keep it']]) {
-      const opt = el('option', null, { text: txt });
-      opt.value = val;
-      clearSelect.appendChild(opt);
-    }
-    body.appendChild(mkField('Clear reply box after sending?', clearSelect));
+    const clearSelect = tgSelect(parallx, {
+      layout: 'full',
+      items: [
+        { value: 'yes', label: 'Yes, clear it' },
+        { value: 'no', label: 'No, keep it' },
+      ],
+      value: 'yes',
+    });
+    body.appendChild(mkField('Clear reply box after sending?', clearSelect.element));
 
     modal.appendChild(body);
 
@@ -5658,7 +5822,7 @@ function renderChatEditor(container, parallx, input) {
         forkBtn.title = 'Fork chat from here';
         forkBtn.addEventListener('click', async (event) => {
           event.stopPropagation();
-          if (isGenerating || index === null || !messageHistory[index]) return;
+          if (gen.isGenerating || index === null || !messageHistory[index]) return;
           try {
             const newMeta = await forkThread(fs, workspaceUri, threadId, index);
             showToast('Forked into "' + newMeta.title + '"', 'Open', async () => {
@@ -5694,7 +5858,7 @@ function renderChatEditor(container, parallx, input) {
         regenBtn.title = 'Regenerate this turn';
         regenBtn.addEventListener('click', async (event) => {
           event.stopPropagation();
-          if (isGenerating || !messageHistory[index]) return;
+          if (gen.isGenerating || !messageHistory[index]) return;
           const target = messageHistory[index];
           // Warn if regenerating will delete messages after this one
           const messagesAfter = messageHistory.length - 1 - index;
@@ -5755,7 +5919,7 @@ function renderChatEditor(container, parallx, input) {
         regenBtn.title = 'Regenerate this message';
         regenBtn.addEventListener('click', async (event) => {
           event.stopPropagation();
-          if (isGenerating || !messageHistory[index]) return;
+          if (gen.isGenerating || !messageHistory[index]) return;
           const target = messageHistory[index];
           const messagesAfter = messageHistory.length - 1 - index;
           if (messagesAfter > 0) {
@@ -5905,7 +6069,7 @@ function renderChatEditor(container, parallx, input) {
 
     // Inline edit logic — shared by double-click and pencil button
     function startInlineEdit(bodyEl, msgIndex) {
-      if (isGenerating) return;
+      if (gen.isGenerating) return;
       if (!messageHistory[msgIndex]) return;
       if (bodyEl.classList.contains('tg-msg-body--editing')) return;
 
@@ -5929,7 +6093,7 @@ function renderChatEditor(container, parallx, input) {
         autoBtn.addEventListener('mousedown', (e) => e.preventDefault());
         autoBtn.addEventListener('click', async (e) => {
           e.stopPropagation();
-          if (isGenerating) return;
+          if (gen.isGenerating) return;
           // Save edits first
           const editedText = editArea.value;
           if (messageHistory[msgIndex]) {
@@ -5995,15 +6159,14 @@ function renderChatEditor(container, parallx, input) {
     // Autocomplete: save the message, then have AI continue from where it ends
     async function runAutocomplete(msgIndex) {
       const target = messageHistory[msgIndex];
-      if (!target || isGenerating) return;
+      if (!target || gen.isGenerating) return;
       const textSoFar = target.content;
       if (!textSoFar.trim()) return;
       const continueSpeaker = target.characterFile || await resolveReplySpeaker();
-      isGenerating = true;
-      stopRequested = false;
-      transientMessage = { ...target, content: textSoFar + '…' };
-      renderMessages();
-      updateChrome();
+      gen.isGenerating = true;
+      gen.stopRequested = false;
+      gen.transient = { ...target, content: textSoFar + '…' };
+      notifyGen(gen, 'state');
       try {
         const historyUpTo = messageHistory.slice(0, msgIndex);
         const { assembled, modelId } = await buildContextForGeneration({
@@ -6033,12 +6196,12 @@ function renderChatEditor(container, parallx, input) {
         let fullResponse = '';
         let isThinking = false;
         for await (const chunk of stream) {
-          if (stopRequested) break;
+          if (gen.stopRequested) break;
           if (chunk.thinking && !chunk.content) {
             if (!isThinking) {
               isThinking = true;
-              transientMessage.content = textSoFar + ' *Thinking…*';
-              queueRender();
+              gen.transient.content = textSoFar + ' *Thinking…*';
+              notifyGen(gen, 'chunk');
             }
             continue;
           }
@@ -6048,8 +6211,8 @@ function renderChatEditor(container, parallx, input) {
             const speakerName = target.name || '';
             const stripped = stripSpeakerLabel(fullResponse.trimStart(), speakerName, _otherNames);
             const spacer = textSoFar && !textSoFar.endsWith(' ') && stripped && !stripped.startsWith(' ') ? ' ' : '';
-            transientMessage.content = textSoFar + spacer + stripped;
-            queueRender();
+            gen.transient.content = textSoFar + spacer + stripped;
+            notifyGen(gen, 'chunk');
           }
         }
         if (fullResponse.trim()) {
@@ -6062,11 +6225,9 @@ function renderChatEditor(container, parallx, input) {
       } catch (err) {
         console.warn('[TextGenerator] Autocomplete failed:', err);
       } finally {
-        transientMessage = null;
-        isGenerating = false;
-        renderTurnControls();
-        renderMessages();
-        updateChrome();
+        gen.transient = null;
+        gen.isGenerating = false;
+        notifyGen(gen, 'state');
       }
     }
 
@@ -6115,8 +6276,8 @@ function renderChatEditor(container, parallx, input) {
       visibleCount += 1;
       renderMessageRow(msg, index, false);
     }
-    if (transientMessage) {
-      renderMessageRow(transientMessage, null, true);
+    if (gen.transient) {
+      renderMessageRow(gen.transient, null, true);
       visibleCount += 1;
     }
     if (visibleCount === 0) {
@@ -6241,13 +6402,13 @@ function renderChatEditor(container, parallx, input) {
             // call — the preview shows the cached summary or none.
             // Surface that we're spending an extra LLM call so the user knows
             // why the first token is slower than usual.
-            transientMessage = {
+            gen.transient = {
               author: 'system',
               role: 'system',
               content: `*Summarising ${dropped.length} earlier turn${dropped.length === 1 ? '' : 's'}…*`,
               hiddenFrom: null,
             };
-            queueRender();
+            notifyGen(gen, 'chunk');
             const summariserMessages = [
               {
                 role: 'system',
@@ -6273,7 +6434,7 @@ function renderChatEditor(container, parallx, input) {
               for await (const chunk of stream) {
                 if (chunk?.content) summaryText += chunk.content;
               }
-              historySummary = summaryText.trim();
+              historySummary = stripEmDashes(summaryText.trim());
               if (historySummary && thread) {
                 thread.cachedSummary = { key: droppedKey, droppedCount: dropped.length, text: historySummary };
                 await updateThreadMeta(fs, workspaceUri, thread.id, { cachedSummary: thread.cachedSummary });
@@ -6283,9 +6444,9 @@ function renderChatEditor(container, parallx, input) {
             } finally {
               // Clear the summarisation transient message so the actual
               // generation transient can take over without leaking.
-              if (transientMessage?.content?.startsWith('*Summarising')) {
-                transientMessage = null;
-                queueRender();
+              if (gen.transient?.content?.startsWith('*Summarising')) {
+                gen.transient = null;
+                notifyGen(gen, 'chunk');
               }
             }
           }
@@ -6616,11 +6777,16 @@ function renderChatEditor(container, parallx, input) {
       text = text.replace(new RegExp(`(^|\\n)\\s*<<${escaped}>>\\s*\\n?`, 'gi'), '$1');
     }
 
+    // Every model-output path (generate, continue, autocomplete; both
+    // streaming and final) flows through this function, so the
+    // no-em-dash guard rides here to cover all of them at once.
+    text = stripEmDashes(text);
+
     return text;
   }
 
   async function generateTurn({ speaker = null, instruction = null, asUser = false, userText = '' } = {}) {
-    if (isGenerating || characters.length === 0 || !parallx.lm) return;
+    if (gen.isGenerating || characters.length === 0 || !parallx.lm) return;
     const effectiveSpeaker = speaker || (asUser ? selectedComposeSpeaker : await resolveReplySpeaker());
     if (!effectiveSpeaker) return;
     // Director's note field feeds every generation path that doesn't
@@ -6628,11 +6794,10 @@ function renderChatEditor(container, parallx, input) {
     // shortcut buttons, regenerate). Explicit /ai instructions win.
     if (!instruction) instruction = consumeDirectorNote();
 
-    isGenerating = true;
-    stopRequested = false;
-    transientMessage = buildGeneratedTurnMessage('', effectiveSpeaker, instruction, asUser);
-    renderMessages();
-    updateChrome();
+    gen.isGenerating = true;
+    gen.stopRequested = false;
+    gen.transient = buildGeneratedTurnMessage('', effectiveSpeaker, instruction, asUser);
+    notifyGen(gen, 'state');
 
     try {
       const { assembled, modelId } = await buildContextForGeneration({
@@ -6654,7 +6819,7 @@ function renderChatEditor(container, parallx, input) {
       // current display name + the Narrator special speaker — these
       // are every label the model could legitimately emit but isn't
       // allowed to write a turn for right now.
-      const activeName = (transientMessage?.name || '').toLowerCase();
+      const activeName = (gen.transient?.name || '').toLowerCase();
       const _knownOtherNames = characters
         .map((c) => c.frontmatter?.name || c.fileName.replace(/\.(md|json)$/, ''))
         .filter((n) => n && n.toLowerCase() !== activeName);
@@ -6670,12 +6835,12 @@ function renderChatEditor(container, parallx, input) {
       let isThinking = false;
 
       for await (const chunk of stream) {
-        if (stopRequested) break;
+        if (gen.stopRequested) break;
         if (chunk.thinking && !chunk.content) {
           if (!isThinking) {
             isThinking = true;
-            transientMessage.content = '*Thinking…*';
-            queueRender();
+            gen.transient.content = '*Thinking…*';
+            notifyGen(gen, 'chunk');
           }
           continue;
         }
@@ -6685,21 +6850,21 @@ function renderChatEditor(container, parallx, input) {
           // Strip leading speaker label during streaming + hide any
           // partially-streamed <scene-update/> tag so the user never
           // sees the control signal flash in the message.
-          const speakerName = transientMessage?.name || '';
+          const speakerName = gen.transient?.name || '';
           const visible = stripSpeakerLabel(fullResponse.trimStart(), speakerName, _knownOtherNames)
             .replace(SCENE_TAG_REGEX, '')
             // Suppress an in-flight partial tag (model just started
             // emitting `<scene-` but hasn't closed the bracket yet).
             .replace(/<scene-update\b[^>]*$/i, '');
-          transientMessage.content = visible;
-          queueRender();
+          gen.transient.content = visible;
+          notifyGen(gen, 'chunk');
         }
       }
 
       if (fullResponse.trim()) {
         // Strip leading speaker label the model may echo (e.g. "Ada Lovelace: ...")
         // and truncate at any wrong-speaker label that snuck in.
-        const speakerName = transientMessage?.name || '';
+        const speakerName = gen.transient?.name || '';
         let cleaned = stripSpeakerLabel(fullResponse.trim(), speakerName, _knownOtherNames);
 
         // M79 Phase 3a — parse and strip any <scene-update/> tag the
@@ -6752,11 +6917,9 @@ function renderChatEditor(container, parallx, input) {
       messageHistory.push(errorMessage);
       await appendMessage(fs, workspaceUri, threadId, errorMessage);
     } finally {
-      transientMessage = null;
-      isGenerating = false;
-      renderTurnControls();
-      renderMessages();
-      updateChrome();
+      gen.transient = null;
+      gen.isGenerating = false;
+      notifyGen(gen, 'state');
     }
   }
 
@@ -6782,12 +6945,11 @@ function renderChatEditor(container, parallx, input) {
         const continueSpeaker = lastAiMsg.characterFile || await resolveReplySpeaker();
         // Generate continuation using history up to (but not including) the last AI message,
         // plus the existing content as a partial assistant response
-        if (isGenerating || characters.length === 0 || !parallx.lm) break;
-        isGenerating = true;
-        stopRequested = false;
-        transientMessage = { ...lastAiMsg, content: lastAiMsg.content + '…' };
-        renderMessages();
-        updateChrome();
+        if (gen.isGenerating || characters.length === 0 || !parallx.lm) break;
+        gen.isGenerating = true;
+        gen.stopRequested = false;
+        gen.transient = { ...lastAiMsg, content: lastAiMsg.content + '…' };
+        notifyGen(gen, 'state');
         try {
           const historyUpTo = messageHistory.slice(0, lastAiIndex);
           const { assembled, modelId } = await buildContextForGeneration({
@@ -6819,12 +6981,12 @@ function renderChatEditor(container, parallx, input) {
           let fullResponse = '';
           let isThinking = false;
           for await (const chunk of stream) {
-            if (stopRequested) break;
+            if (gen.stopRequested) break;
             if (chunk.thinking && !chunk.content) {
               if (!isThinking) {
                 isThinking = true;
-                transientMessage.content = lastAiMsg.content + ' *Thinking…*';
-                queueRender();
+                gen.transient.content = lastAiMsg.content + ' *Thinking…*';
+                notifyGen(gen, 'chunk');
               }
               continue;
             }
@@ -6834,8 +6996,8 @@ function renderChatEditor(container, parallx, input) {
               const speakerName = lastAiMsg.name || '';
               const stripped = stripSpeakerLabel(fullResponse.trimStart(), speakerName, _otherNames);
               const spacer = lastAiMsg.content && !lastAiMsg.content.endsWith(' ') && stripped && !stripped.startsWith(' ') ? ' ' : '';
-              transientMessage.content = lastAiMsg.content + spacer + stripped;
-              queueRender();
+              gen.transient.content = lastAiMsg.content + spacer + stripped;
+              notifyGen(gen, 'chunk');
             }
           }
           if (fullResponse.trim()) {
@@ -6850,11 +7012,9 @@ function renderChatEditor(container, parallx, input) {
           messageHistory.push(errorMessage);
           await appendMessage(fs, workspaceUri, threadId, errorMessage);
         } finally {
-          transientMessage = null;
-          isGenerating = false;
-          renderTurnControls();
-          renderMessages();
-          updateChrome();
+          gen.transient = null;
+          gen.isGenerating = false;
+          notifyGen(gen, 'state');
         }
         break;
       }
@@ -7061,11 +7221,8 @@ function renderChatEditor(container, parallx, input) {
   }
 
   async function loadModels() {
-    modelSelect.innerHTML = '';
     if (!parallx.lm) {
-      const option = el('option', null, { text: 'Ollama offline' });
-      option.value = '';
-      modelSelect.appendChild(option);
+      modelSelect.setItems([{ value: '', label: 'Ollama offline' }]);
       return;
     }
     try {
@@ -7074,16 +7231,10 @@ function renderChatEditor(container, parallx, input) {
       models = [];
     }
     if (models.length === 0) {
-      const option = el('option', null, { text: 'No models' });
-      option.value = '';
-      modelSelect.appendChild(option);
+      modelSelect.setItems([{ value: '', label: 'No models' }]);
       return;
     }
-    for (const model of models) {
-      const option = el('option', null, { text: model.displayName || model.id });
-      option.value = model.id;
-      modelSelect.appendChild(option);
-    }
+    modelSelect.setItems(models.map((model) => ({ value: model.id, label: model.displayName || model.id })));
     const threadModel = thread?.modelId && models.some(m => m.id === thread.modelId) ? thread.modelId : null;
     selectedModelId = threadModel || models[0]?.id || null;
     if (selectedModelId) modelSelect.value = selectedModelId;
@@ -7165,23 +7316,21 @@ function renderChatEditor(container, parallx, input) {
     bodyEl.appendChild(fieldWrap('Your name', yourNameInput, 'Used for {{user}} substitution and your message labels.'));
 
     // ── Type as ──
-    const typeAsSelect = el('select', 'tg-drawer-select');
-    const selfOpt = el('option', null, { text: `${getUserName()} (yourself)` });
-    selfOpt.value = SELF_SPEAKER;
-    typeAsSelect.appendChild(selfOpt);
-    for (const char of characters) {
-      const o = el('option', null, { text: getCharacterName(char) });
-      o.value = char.fileName;
-      typeAsSelect.appendChild(o);
-    }
-    typeAsSelect.value = (selectedComposeSpeaker && selectedComposeSpeaker !== SELF_SPEAKER) ? selectedComposeSpeaker : SELF_SPEAKER;
-    typeAsSelect.addEventListener('change', () => {
-      const v = typeAsSelect.value;
-      selectedComposeSpeaker = v || SELF_SPEAKER;
-      saveMeta({ userPlaysAs: v === SELF_SPEAKER ? null : v }, 'type-as setting');
-      renderTurnControls();
+    const typeAsSelect = tgSelect(parallx, {
+      className: 'tg-drawer-select',
+      layout: 'full',
+      items: [
+        { value: SELF_SPEAKER, label: `${getUserName()} (yourself)` },
+        ...characters.map((char) => ({ value: char.fileName, label: getCharacterName(char) })),
+      ],
+      value: (selectedComposeSpeaker && selectedComposeSpeaker !== SELF_SPEAKER) ? selectedComposeSpeaker : SELF_SPEAKER,
+      onChange: (v) => {
+        selectedComposeSpeaker = v || SELF_SPEAKER;
+        saveMeta({ userPlaysAs: v === SELF_SPEAKER ? null : v }, 'type-as setting');
+        renderTurnControls();
+      },
     });
-    bodyEl.appendChild(fieldWrap('Type as', typeAsSelect, 'Whether your typed messages are written as yourself or as a thread character.'));
+    bodyEl.appendChild(fieldWrap('Type as', typeAsSelect.element, 'Whether your typed messages are written as yourself or as a thread character.'));
 
     // ── Participants ──
     const chipList = el('div', 'tg-drawer-chips');
@@ -7250,39 +7399,33 @@ function renderChatEditor(container, parallx, input) {
     bodyEl.appendChild(el('hr', 'tg-drawer-sep'));
 
     // ── Writing preset override ──
-    const presetSel = el('select', 'tg-drawer-select');
-    const inheritOpt = el('option', null, { text: 'Inherit (character / global default)' });
-    inheritOpt.value = '';
-    presetSel.appendChild(inheritOpt);
-    for (const [key, p] of Object.entries(WRITING_PRESETS)) {
-      const o = el('option', null, { text: p.label });
-      o.value = key;
-      presetSel.appendChild(o);
-    }
-    presetSel.value = thread.writingPresetOverride || '';
-    presetSel.addEventListener('change', () => {
-      saveMeta({ writingPresetOverride: presetSel.value || '' }, 'writing style');
+    const presetSel = tgSelect(parallx, {
+      className: 'tg-drawer-select',
+      layout: 'full',
+      items: [
+        { value: '', label: 'Inherit (character / global default)' },
+        ...Object.entries(WRITING_PRESETS).map(([key, p]) => ({ value: key, label: p.label })),
+      ],
+      value: thread.writingPresetOverride || '',
+      onChange: (v) => { saveMeta({ writingPresetOverride: v || '' }, 'writing style'); },
     });
-    bodyEl.appendChild(fieldWrap('Writing style (this chat)', presetSel, 'Overrides the character and global writing style for this chat only.'));
+    bodyEl.appendChild(fieldWrap('Writing style (this chat)', presetSel.element, 'Overrides the character and global writing style for this chat only.'));
 
     // ── Response length override ──
-    const lenSel = el('select', 'tg-drawer-select');
-    for (const opt of [
-      { value: '', label: 'Inherit (character / global default)' },
-      { value: 'none', label: 'No limit' },
-      { value: 'short', label: 'Short (1 paragraph)' },
-      { value: 'medium', label: 'Medium (2-3 paragraphs)' },
-      { value: 'long', label: 'Long (4+ paragraphs)' },
-    ]) {
-      const o = el('option', null, { text: opt.label });
-      o.value = opt.value;
-      lenSel.appendChild(o);
-    }
-    lenSel.value = thread.responseLengthOverride || '';
-    lenSel.addEventListener('change', () => {
-      saveMeta({ responseLengthOverride: lenSel.value || '' }, 'response length');
+    const lenSel = tgSelect(parallx, {
+      className: 'tg-drawer-select',
+      layout: 'full',
+      items: [
+        { value: '', label: 'Inherit (character / global default)' },
+        { value: 'none', label: 'No limit' },
+        { value: 'short', label: 'Short (1 paragraph)' },
+        { value: 'medium', label: 'Medium (2-3 paragraphs)' },
+        { value: 'long', label: 'Long (4+ paragraphs)' },
+      ],
+      value: thread.responseLengthOverride || '',
+      onChange: (v) => { saveMeta({ responseLengthOverride: v || '' }, 'response length'); },
     });
-    bodyEl.appendChild(fieldWrap('Response length (this chat)', lenSel));
+    bodyEl.appendChild(fieldWrap('Response length (this chat)', lenSel.element));
 
     // ── Standing director's note ──
     const standingArea = el('textarea', 'tg-drawer-textarea');
@@ -7323,7 +7466,7 @@ function renderChatEditor(container, parallx, input) {
   });
 
   async function sendMessage() {
-    if (isGenerating || !parallx.lm || characters.length === 0) return;
+    if (gen.isGenerating || !parallx.lm || characters.length === 0) return;
     const text = textarea.value.trim();
     textarea.value = '';
     textarea.style.height = 'auto';
@@ -7336,8 +7479,8 @@ function renderChatEditor(container, parallx, input) {
   }
 
   sendBtn.addEventListener('click', () => {
-    if (isGenerating) {
-      stopRequested = true;
+    if (gen.isGenerating) {
+      gen.stopRequested = true;
     } else {
       sendMessage();
     }
@@ -7349,28 +7492,8 @@ function renderChatEditor(container, parallx, input) {
     }
   });
 
-  modelSelect.addEventListener('change', () => {
-    selectedModelId = modelSelect.value || null;
-    if (thread && selectedModelId) {
-      surfaceSaveError(updateThreadMeta(fs, workspaceUri, threadId, { modelId: selectedModelId }), parallx, 'model selection');
-    }
-  });
-
-  // Persist per-thread context-window override on user pick. 0 clears
-  // the override (null on disk) so the thread falls back to model /
-  // settings defaults. Any non-zero value is sent as num_ctx on every
-  // `sendChatRequest` from this thread (see getGenerationOptions).
-  ctxSelect.addEventListener('change', () => {
-    const v = Number(ctxSelect.value) || 0;
-    if (thread) {
-      thread.contextWindowOverride = v > 0 ? v : null;
-      surfaceSaveError(
-        updateThreadMeta(fs, workspaceUri, threadId, { contextWindowOverride: thread.contextWindowOverride }),
-        parallx,
-        'context window',
-      );
-    }
-  });
+  // (Model + ctx persistence lives in the tgSelect onChange handlers at
+  // the top of the toolbar setup.)
 
   let _focusDebounce = null;
   const focusHandler = (event) => {
@@ -7383,15 +7506,15 @@ function renderChatEditor(container, parallx, input) {
     _focusDebounce = setTimeout(() => {
       // Skip reload while a message is being edited inline — it would wipe the editor
       if (messagesEl.querySelector('.tg-msg-body--editing')) return;
-      if (!isGenerating) reloadThreadState().catch(() => {});
+      if (!gen.isGenerating) reloadThreadState().catch(() => {});
     }, 300);
   };
   fileWatcher = parallx.workspace.onDidFilesChange?.((events) => {
-    if (isGenerating) return;
+    if (gen.isGenerating) return;
     if (events.some((event) => event.uri.includes('/text-generator/'))) {
       clearTimeout(_focusDebounce);
       _focusDebounce = setTimeout(() => {
-        if (!isGenerating) reloadThreadState().catch(() => {});
+        if (!gen.isGenerating) reloadThreadState().catch(() => {});
       }, 300);
     }
   });
@@ -7402,6 +7525,26 @@ function renderChatEditor(container, parallx, input) {
   if (!fileWatcher) {
     container.addEventListener('focusin', focusHandler);
   }
+
+  // Re-attach to any generation in flight for this thread. The pane that
+  // started a generation may be disposed (tab switch) while its stream
+  // keeps running; every mounted pane listens on the shared gen state so
+  // streaming stays visible, Stop stays live, and completion re-renders
+  // from disk in whichever pane is showing the thread.
+  const onGenEvent = (kind) => {
+    if (kind === 'chunk') { queueRender(); return; }
+    if (gen.isGenerating) {
+      renderMessages();
+      updateChrome();
+    } else {
+      // Generation finished (the completing closure persisted the reply
+      // before flipping the flag) — re-read from disk so a pane that
+      // wasn't the originator shows the final message too.
+      renderTurnControls();
+      reloadThreadState().catch(() => {});
+    }
+  };
+  gen.listeners.add(onGenEvent);
 
   (async () => {
     try {
@@ -7418,6 +7561,12 @@ function renderChatEditor(container, parallx, input) {
     dispose() {
       container.removeEventListener('focusin', focusHandler);
       fileWatcher?.dispose?.();
+      gen.listeners.delete(onGenEvent);
+      // Keep the registry entry while a generation is running (another
+      // pane may re-attach); drop it once idle and unobserved.
+      if (!gen.isGenerating && gen.listeners.size === 0) {
+        _activeGenerations.delete(threadId);
+      }
       container.innerHTML = '';
     },
   };
@@ -7804,9 +7953,25 @@ const FORGE_AXES = [
   { key: 'verbosity', label: 'Verbosity', low: 'terse, few words', high: 'expansive, talkative' },
 ];
 const FORGE_RANDOM = '(random)';
-const FORGE_ARCHETYPES = ['Mentor', 'Rogue', 'Scholar', 'Guardian', 'Trickster', 'Healer', 'Outcast', 'Leader', 'Rebel', 'Innocent', 'Detective', 'Villain'];
-const FORGE_GENRES = ['Fantasy', 'Science fiction', 'Modern day', 'Historical', 'Noir mystery', 'Gothic horror', 'Slice of life', 'Post-apocalyptic'];
-const FORGE_FLAWS = ['pride', 'cowardice', 'jealousy', 'obsession', 'dishonesty', 'recklessness', 'self-doubt', 'holds grudges', 'vanity', 'cynicism', 'naivety', 'greed'];
+
+// Physical parameters (BG3-style creator): everything needed to describe
+// a character fully, all diceable and lockable. Height is displayed in
+// feet and inches; sizes are descriptive words the model can render for
+// any gender ("bust/chest").
+const FORGE_GENDERS = ['Female', 'Male', 'Nonbinary'];
+const FORGE_BUILDS = ['slender', 'lithe', 'athletic', 'toned', 'curvy', 'voluptuous', 'muscular', 'stocky', 'plump', 'average'];
+const FORGE_BUSTS = ['flat', 'small', 'modest', 'full', 'large', 'very large'];
+const FORGE_WAISTS = ['narrow', 'average', 'soft', 'thick'];
+const FORGE_HIPS = ['slim', 'average', 'wide', 'thick', 'heavy'];
+const FORGE_SKINS = ['porcelain', 'pale', 'fair', 'freckled', 'olive', 'tan', 'golden', 'brown', 'dark', 'ebony'];
+const FORGE_HAIR_COLORS = ['black', 'dark brown', 'chestnut', 'auburn', 'red', 'strawberry blonde', 'blonde', 'platinum', 'silver', 'white', 'gray', 'blue-dyed', 'pink-dyed'];
+const FORGE_HAIR_LENGTHS = ['shaved', 'cropped', 'short', 'chin-length', 'shoulder-length', 'long', 'waist-length'];
+const FORGE_EYE_COLORS = ['brown', 'hazel', 'green', 'blue', 'gray', 'amber', 'violet', 'black', 'heterochromatic'];
+const FORGE_CLOTHING = ['casual modern', 'elegant formal', 'business attire', 'gothic', 'punk', 'bohemian', 'athletic wear', 'military uniform', 'fantasy adventurer', 'noble finery', 'scholarly robes', 'street urchin rags', 'vintage 1920s'];
+
+function forgeFeetInches(totalInches) {
+  return `${Math.floor(totalInches / 12)}'${totalInches % 12}"`;
+}
 
 function forgeAxisDescriptor(axis, v) {
   if (v <= 15) return `extremely ${axis.low}`;
@@ -7819,43 +7984,61 @@ function forgeAxisDescriptor(axis, v) {
 function buildForgeSpec(state) {
   const pick = (v, list) => (v === FORGE_RANDOM ? list[Math.floor(Math.random() * list.length)] : v);
   const resolved = {
-    archetype: pick(state.archetype, FORGE_ARCHETYPES),
-    genre: pick(state.genre, FORGE_GENRES),
-    flaw: pick(state.flaw, FORGE_FLAWS),
+    gender: pick(state.gender, FORGE_GENDERS),
+    build: pick(state.build, FORGE_BUILDS),
+    bust: pick(state.bust, FORGE_BUSTS),
+    waist: pick(state.waist, FORGE_WAISTS),
+    hips: pick(state.hips, FORGE_HIPS),
+    skin: pick(state.skin, FORGE_SKINS),
+    hairColor: pick(state.hairColor, FORGE_HAIR_COLORS),
+    hairLength: pick(state.hairLength, FORGE_HAIR_LENGTHS),
+    eyeColor: pick(state.eyeColor, FORGE_EYE_COLORS),
+    clothing: pick(state.clothing, FORGE_CLOTHING),
   };
-  const lines = [
-    `- Archetype: ${resolved.archetype}`,
-    `- Setting / genre: ${resolved.genre}`,
-    `- Fatal flaw: ${resolved.flaw}`,
+  const lines = [];
+  // The user's own concept leads and is authoritative: every generated
+  // section is built AROUND it, and it wins over any conflicting dial.
+  if (state.concept.trim()) {
+    lines.push(`CHARACTER CONCEPT (the user's own words — authoritative; build everything around this, and when it conflicts with any attribute below, the concept wins):\n${state.concept.trim()}`);
+    lines.push('');
+  }
+  lines.push(
     `- Personality dials: ${FORGE_AXES.map((a) => `${a.label.toLowerCase()}: ${forgeAxisDescriptor(a, state.axes[a.key])}`).join('; ')}`,
-  ];
+    `- Gender: ${resolved.gender} | Age: ${state.age} | Height: ${forgeFeetInches(state.height)}`,
+    `- Build: ${resolved.build}; bust/chest: ${resolved.bust}; waist: ${resolved.waist}; hips/thighs: ${resolved.hips}; skin: ${resolved.skin}`,
+    `- Hair: ${resolved.hairColor}, ${resolved.hairLength}${state.hairStyle.trim() ? ', ' + state.hairStyle.trim() : ''} | Eyes: ${resolved.eyeColor}`,
+    `- Clothing style: ${resolved.clothing}${state.clothingNotes.trim() ? '; ' + state.clothingNotes.trim() : ''}`,
+  );
+  if (state.features.trim()) lines.push(`- Distinguishing features: ${state.features.trim()}`);
   if (state.name.trim()) lines.push(`- Name: ${state.name.trim()}`); else lines.push('- Name: invent a fitting one');
   if (state.want.trim()) lines.push(`- What they openly WANT: ${state.want.trim()}`);
   if (state.fear.trim()) lines.push(`- What they privately FEAR: ${state.fear.trim()}`);
   if (state.secret.trim()) lines.push(`- A SECRET they keep: ${state.secret.trim()}`);
-  if (state.concept.trim()) lines.push(`- Concept notes: ${state.concept.trim()}`);
   return { spec: lines.join('\n'), resolved };
 }
 
 function buildForgeMessages(state) {
   const { spec } = buildForgeSpec(state);
   const system = [
-    'You are a character designer for roleplay fiction. You create original, specific, believable characters — never generic ones.',
-    'Return ONLY a single JSON object with EXACTLY these string keys: "name", "description", "voiceAnchor", "exampleDialogue", "firstMessage", "reminder". No markdown, no commentary.',
+    'You are a character designer for roleplay fiction. You create original, specific, believable characters, never generic ones.',
+    'Every field is written in the THIRD PERSON, as a description of the character ("<Name> is...", "She speaks..."). Never address anyone as "you". Never write instructions. It should all read as one consistent character portrait.',
+    'Return ONLY a single JSON object with EXACTLY these string keys: "name", "description", "appearance", "personality", "voice", "exampleDialogue", "reminder". No markdown, no commentary.',
+    'Never use em dashes or en dashes anywhere in any field. Use commas, periods, or ellipses instead.',
   ].join('\n');
   const user = [
     'Create ONE character from this specification:',
     '',
     spec,
     '',
-    'Field requirements:',
-    '- "description": 2-3 paragraphs addressed to the AI as "You are <name>..." — who they are, how they behave, how the flaw shows. Concrete specifics over adjectives.',
-    '- "voiceAnchor": 3-5 short lines describing the VOICE itself: tone, two signature phrases they actually say, and two phrases they would NEVER say.',
-    '- "exampleDialogue": the MOST important field. Three exchanges in the exact format "[USER]: ...\\n[AI]: ..." where the personality dials and the flaw are AUDIBLE in how the character speaks — do not describe traits, perform them. Each reply in a distinct rhythm.',
-    '- "firstMessage": an opening message in their voice that sets a scene, shows (not tells) who they are, and ends mid-beat with something the other person can react to. Never summarize.',
-    '- "reminder": one sentence of the most important thing the AI must never forget when playing this character.',
+    'Field requirements (all third person):',
+    '- "description": 1-2 paragraphs: who they are, their background, occupation, and daily life, and how they behave. Concrete specifics over adjectives. If the concept mentions a place, job, or history, build on it faithfully.',
+    '- "appearance": one vivid paragraph describing their physical appearance and typical clothing. The attribute list gives exact values (gender, age, height, build, bust/chest, waist, hips/thighs, skin, hair, eyes, clothing style); use them faithfully. EXCEPTION: any physical trait the CHARACTER CONCEPT states or implies REPLACES the corresponding attribute entirely. Example: if the concept says "short", the listed height is void and the character is short. Never contradict the concept.',
+    '- "personality": one paragraph: their temperament exactly as the dials describe, how they treat people, what they openly want, and the hidden need that conflicts with it.',
+    '- "voice": 3-5 short lines describing how they speak: tone, rhythm, two signature phrases they actually say, and two phrases they would NEVER say.',
+    '- "exampleDialogue": the MOST important field. Three exchanges in the exact format "[USER]: ...\\n[AI]: ..." where the personality dials are AUDIBLE in how the character speaks. Do not describe traits, perform them. Each reply in a distinct rhythm.',
+    '- "reminder": one third-person sentence: the single most important fact to never forget about this character.',
     '',
-    'Craft rules: the flaw must be visible in at least one dialogue exchange. Give them a stated want and a hidden need that conflict. No stock phrases, no "eyes sparkling", no purple filler.',
+    'Craft rules: no stock phrases, no "eyes sparkling", no purple filler. No em dashes. Third person everywhere. The CHARACTER CONCEPT outranks every attribute: re-read it before writing each field and never contradict it.',
   ].join('\n');
   return [
     { role: 'system', content: system },
@@ -7866,7 +8049,7 @@ function buildForgeMessages(state) {
 function buildForgeFieldMessages(state, card, key) {
   const { spec } = buildForgeSpec(state);
   return [
-    { role: 'system', content: `You are a character designer. Return ONLY a JSON object with exactly one string key: "${key}". No commentary.` },
+    { role: 'system', content: `You are a character designer. Write in the THIRD PERSON as a description of the character; never address anyone as "you"; never write instructions. Return ONLY a JSON object with exactly one string key: "${key}". No commentary. Never use em dashes.` },
     {
       role: 'user',
       content: [
@@ -7876,6 +8059,18 @@ function buildForgeFieldMessages(state, card, key) {
       ].join('\n'),
     },
   ];
+}
+
+/**
+ * Models often tag dialogue with the character's own name
+ * ("[BARNABY]: ...") despite being asked for [AI]:. Meaning is
+ * identical, so normalize rather than reject: any line-leading bracket
+ * tag that isn't USER becomes [AI], and USER variants are canonicalized.
+ */
+function normalizeForgeDialogue(text) {
+  if (!text) return text;
+  return text.replace(/^\s*\[([^\]\n]+)\]\s*:/gm, (m, tag) =>
+    tag.trim().toUpperCase() === 'USER' ? '[USER]:' : '[AI]:');
 }
 
 function parseForgeJson(text) {
@@ -7888,12 +8083,27 @@ function parseForgeJson(text) {
 
 const FORGE_FIELDS = [
   { key: 'name', label: 'Name', rows: 1 },
-  { key: 'description', label: 'Description / role instruction', rows: 8 },
-  { key: 'voiceAnchor', label: 'Voice anchor', rows: 4 },
+  { key: 'description', label: 'Description', rows: 6 },
+  { key: 'appearance', label: 'Appearance', rows: 5 },
+  { key: 'personality', label: 'Personality', rows: 5 },
+  { key: 'voice', label: 'Voice', rows: 4 },
   { key: 'exampleDialogue', label: 'Example dialogue (the steering wheel)', rows: 8 },
-  { key: 'firstMessage', label: 'First message', rows: 4 },
   { key: 'reminder', label: 'Reminder', rows: 2 },
 ];
+
+/**
+ * The bottom "puts it all together" card: description + appearance +
+ * personality + voice composed into ONE third-person portrait. This is
+ * exactly what gets saved as the character's role instruction, so what
+ * you see in the final box is what the model will receive in chat.
+ */
+function composeForgeCard(fields) {
+  const parts = [(fields.description || '').trim()];
+  if ((fields.appearance || '').trim()) parts.push('## Appearance\n' + fields.appearance.trim());
+  if ((fields.personality || '').trim()) parts.push('## Personality\n' + fields.personality.trim());
+  if ((fields.voice || '').trim()) parts.push('## Voice\n' + fields.voice.trim());
+  return parts.filter(Boolean).join('\n\n');
+}
 
 function renderForgePane(container, parallx, ctx) {
   const { fs, workspaceUri, onSaved } = ctx;
@@ -7904,14 +8114,19 @@ function renderForgePane(container, parallx, ctx) {
   head.appendChild(el('div', null, { html: icon('sparkles', 22) }));
   const headInfo = el('div', null);
   headInfo.appendChild(el('div', 'tg-forge-title', { text: 'Character Forge' }));
-  headInfo.appendChild(el('div', 'tg-forge-subtitle', { text: 'Set the dials, roll the dice, generate. Lock anything you like, reroll the rest.' }));
+  headInfo.appendChild(el('div', 'tg-forge-subtitle', { text: 'Describe the character in your own words, tune the dials, generate. Your description always wins.' }));
   head.appendChild(headInfo);
   root.appendChild(head);
 
   const state = {
     axes: Object.fromEntries(FORGE_AXES.map((a) => [a.key, 50])),
-    archetype: FORGE_RANDOM, genre: FORGE_RANDOM, flaw: FORGE_RANDOM,
-    name: '', want: '', fear: '', secret: '', concept: '',
+    gender: FORGE_RANDOM, build: FORGE_RANDOM, bust: FORGE_RANDOM,
+    waist: FORGE_RANDOM, hips: FORGE_RANDOM, skin: FORGE_RANDOM,
+    hairColor: FORGE_RANDOM, hairLength: FORGE_RANDOM, eyeColor: FORGE_RANDOM,
+    clothing: FORGE_RANDOM,
+    age: 25, height: 67,
+    name: '', hairStyle: '', features: '', clothingNotes: '',
+    want: '', fear: '', secret: '', concept: '',
     locks: new Set(),
     lastCard: null,
   };
@@ -7930,7 +8145,67 @@ function renderForgePane(container, parallx, ctx) {
     return btn;
   };
 
+  const sectionTitle = (text) => {
+    controls.appendChild(el('div', 'tg-forge-section', { text }));
+  };
+
+  // Engine — certain models write characters better than others, so the
+  // forge gets its own model + context picks (persisted in settings,
+  // independent of any chat's choice).
+  sectionTitle('Model');
+  const engineRow = el('div', 'tg-forge-row');
+  engineRow.appendChild(el('span', 'tg-forge-row-label', { text: 'Model' }));
+  const persistEnginePick = async (updates) => {
+    try {
+      const current = await loadSettings(fs, workspaceUri);
+      await saveSettings(fs, workspaceUri, { ...current, ...updates });
+    } catch (err) { console.warn('[TextGenerator] Failed to persist forge engine pick:', err); }
+  };
+  const modelSelect = tgSelect(parallx, {
+    className: 'tg-ce-select',
+    layout: 'flex',
+    onChange: (v) => { void persistEnginePick({ forgeModelId: v || '' }); },
+  });
+  engineRow.appendChild(modelSelect.element);
+  engineRow.appendChild(el('span', 'tg-forge-row-label tg-forge-row-label--ctx', { text: 'Ctx' }));
+  const ctxSelect = tgSelect(parallx, {
+    className: 'tg-ce-select tg-forge-ctx',
+    layout: 'ctx',
+    title: 'Context window sent as num_ctx for forge generations (Auto = global default)',
+    items: CTX_WINDOW_PRESETS.map((p) => ({ value: String(p.value), label: p.label })),
+    onChange: (v) => { void persistEnginePick({ forgeContextWindow: Number(v) || 0 }); },
+  });
+  engineRow.appendChild(ctxSelect.element);
+  controls.appendChild(engineRow);
+
+  void (async () => {
+    try {
+      const settings = await loadSettings(fs, workspaceUri);
+      const models = await parallx.lm.getModels();
+      if (models.length === 0) {
+        modelSelect.setItems([{ value: '', label: 'No models (Ollama offline?)' }]);
+      } else {
+        modelSelect.setItems(models.map((m) => ({ value: m.id, label: m.displayName || m.id })));
+        const preferred = [settings.forgeModelId, settings.defaultModel].find((id) => id && models.some((m) => m.id === id));
+        modelSelect.value = preferred || models[0].id;
+      }
+      ctxSelect.value = String(settings.forgeContextWindow || 0);
+    } catch (err) {
+      console.warn('[TextGenerator] Forge model list failed:', err);
+    }
+  })();
+
+  // Concept — the user's own description leads; every generated section
+  // is tuned to align with it, and it wins over any conflicting dial.
+  sectionTitle('Concept');
+  const conceptArea = el('textarea', 'tg-ce-textarea tg-forge-concept');
+  conceptArea.rows = 3;
+  conceptArea.placeholder = 'Describe your character in your own words, e.g. "Sofia, short woman from Costa Rica, immigrated to Los Angeles, works as a maid." The dials below fill in whatever you leave open.';
+  conceptArea.addEventListener('input', () => { state.concept = conceptArea.value; });
+  controls.appendChild(conceptArea);
+
   // Personality dials
+  sectionTitle('Personality');
   const sliderInputs = {};
   for (const axis of FORGE_AXES) {
     const row = el('div', 'tg-forge-row');
@@ -7946,29 +8221,42 @@ function renderForgePane(container, parallx, ctx) {
     controls.appendChild(row);
   }
 
-  // Pickers
+  // Pickers — pickerLists doubles as the dice's menu of what to randomize.
   const selectInputs = {};
+  const pickerLists = {};
   const pickerRow = (label, key, options) => {
     const row = el('div', 'tg-forge-row');
     row.appendChild(el('span', 'tg-forge-row-label', { text: label }));
-    const sel = el('select', 'tg-ce-select');
-    for (const opt of [FORGE_RANDOM, ...options]) {
-      const o = el('option', null, { text: opt });
-      o.value = opt;
-      sel.appendChild(o);
-    }
-    sel.value = state[key];
-    sel.addEventListener('change', () => { state[key] = sel.value; });
+    const sel = tgSelect(parallx, {
+      className: 'tg-ce-select',
+      layout: 'flex',
+      items: [FORGE_RANDOM, ...options].map((opt) => ({ value: opt, label: opt })),
+      value: state[key],
+      onChange: (v) => { state[key] = v; },
+    });
     selectInputs[key] = sel;
-    row.appendChild(sel);
+    pickerLists[key] = options;
+    row.appendChild(sel.element);
     row.appendChild(lockBtnFor(key));
     controls.appendChild(row);
   };
-  pickerRow('Archetype', 'archetype', FORGE_ARCHETYPES);
-  pickerRow('Genre', 'genre', FORGE_GENRES);
-  pickerRow('Fatal flaw', 'flaw', FORGE_FLAWS);
+  // Numeric sliders with live value labels (age, height in feet).
+  const numericMeta = {};
+  const numericInputs = {};
+  const numericRow = (label, key, min, max, fmt) => {
+    const row = el('div', 'tg-forge-row');
+    row.appendChild(el('span', 'tg-forge-row-label', { text: label }));
+    const slider = el('input', 'tg-forge-slider');
+    slider.type = 'range'; slider.min = String(min); slider.max = String(max); slider.value = String(state[key]);
+    const val = el('span', 'tg-forge-row-value', { text: fmt(state[key]) });
+    slider.addEventListener('input', () => { state[key] = Number(slider.value); val.textContent = fmt(state[key]); });
+    numericMeta[key] = { min, max, fmt };
+    numericInputs[key] = { slider, val };
+    row.append(slider, val, lockBtnFor(key));
+    controls.appendChild(row);
+  };
 
-  // Free-text seeds (dice never touches these)
+  // Free-text rows (dice never touches these)
   const textRow = (label, key, placeholder) => {
     const row = el('div', 'tg-forge-row tg-forge-row--text');
     row.appendChild(el('span', 'tg-forge-row-label', { text: label }));
@@ -7978,11 +8266,37 @@ function renderForgePane(container, parallx, ctx) {
     row.appendChild(inp);
     controls.appendChild(row);
   };
+
+  // Body
+  sectionTitle('Body');
+  pickerRow('Gender', 'gender', FORGE_GENDERS);
+  numericRow('Age', 'age', 18, 80, (v) => String(v));
+  numericRow('Height', 'height', 56, 84, forgeFeetInches);
+  pickerRow('Build', 'build', FORGE_BUILDS);
+  pickerRow('Bust / chest', 'bust', FORGE_BUSTS);
+  pickerRow('Waist', 'waist', FORGE_WAISTS);
+  pickerRow('Hips / thighs', 'hips', FORGE_HIPS);
+  pickerRow('Skin tone', 'skin', FORGE_SKINS);
+
+  // Face & hair
+  sectionTitle('Face & hair');
+  pickerRow('Hair color', 'hairColor', FORGE_HAIR_COLORS);
+  pickerRow('Hair length', 'hairLength', FORGE_HAIR_LENGTHS);
+  textRow('Hair style', 'hairStyle', '(optional) e.g. "loose braid over one shoulder"');
+  pickerRow('Eye color', 'eyeColor', FORGE_EYE_COLORS);
+  textRow('Features', 'features', '(optional) scars, tattoos, freckles, glasses...');
+
+  // Clothing
+  sectionTitle('Clothing');
+  pickerRow('Style', 'clothing', FORGE_CLOTHING);
+  textRow('Notes', 'clothingNotes', '(optional) specific outfit preferences');
+
+  // Story seeds
+  sectionTitle('Story seeds');
   textRow('Name', 'name', '(blank = the AI invents one)');
   textRow('Want', 'want', '(optional) what they openly pursue');
   textRow('Fear', 'fear', '(optional) what they privately dread');
   textRow('Secret', 'secret', '(optional) what they hide');
-  textRow('Concept', 'concept', '(optional) e.g. "a lighthouse keeper who hates the sea"');
 
   // Action bar
   const actions = el('div', 'tg-forge-actions');
@@ -7994,10 +8308,16 @@ function renderForgePane(container, parallx, ctx) {
       state.axes[axis.key] = Math.floor(Math.random() * 101);
       sliderInputs[axis.key].value = String(state.axes[axis.key]);
     }
-    for (const [key, list] of [['archetype', FORGE_ARCHETYPES], ['genre', FORGE_GENRES], ['flaw', FORGE_FLAWS]]) {
+    for (const [key, list] of Object.entries(pickerLists)) {
       if (state.locks.has(key)) continue;
       state[key] = list[Math.floor(Math.random() * list.length)];
       selectInputs[key].value = state[key];
+    }
+    for (const [key, meta] of Object.entries(numericMeta)) {
+      if (state.locks.has(key)) continue;
+      state[key] = meta.min + Math.floor(Math.random() * (meta.max - meta.min + 1));
+      numericInputs[key].slider.value = String(state[key]);
+      numericInputs[key].val.textContent = meta.fmt(state[key]);
     }
   });
   const genBtn = el('button', 'tg-forge-generate', { html: `${icon('sparkles', 14)} Generate character` });
@@ -8010,17 +8330,25 @@ function renderForgePane(container, parallx, ctx) {
   async function resolveModel() {
     const settings = await loadSettings(fs, workspaceUri);
     const models = await parallx.lm.getModels();
-    const modelId = (settings.defaultModel && models.some((m) => m.id === settings.defaultModel)) ? settings.defaultModel : models[0]?.id;
+    // The forge's own pick wins; then the global default; then whatever
+    // is first. The select is validated against the live model list so
+    // a stale persisted id can't produce a dead request.
+    const picked = modelSelect.value || '';
+    const modelId = (picked && models.some((m) => m.id === picked)) ? picked
+      : (settings.defaultModel && models.some((m) => m.id === settings.defaultModel)) ? settings.defaultModel
+      : models[0]?.id;
     if (!modelId) throw new Error('No local model available (is Ollama running?)');
-    return { modelId, settings };
+    const ctxPick = Number(ctxSelect.value) || 0;
+    const numCtx = ctxPick > 0 ? ctxPick : (settings.defaultContextWindow || undefined);
+    return { modelId, settings, numCtx };
   }
 
-  async function collectJson(modelId, settings, messages) {
+  async function collectJson(modelId, numCtx, messages) {
     const stream = parallx.lm.sendChatRequest(modelId, messages, {
       temperature: 0.9,
       think: false,
       format: 'json',
-      numCtx: settings.defaultContextWindow || undefined,
+      numCtx,
     });
     let raw = '';
     for await (const chunk of stream) {
@@ -8056,11 +8384,14 @@ function renderForgePane(container, parallx, ctx) {
         busy = true; rerollBtn.disabled = true;
         try {
           const current = Object.fromEntries(FORGE_FIELDS.map((x) => [x.key, fieldEls[x.key].value]));
-          const { modelId, settings } = await resolveModel();
-          const { parsed } = await collectJson(modelId, settings, buildForgeFieldMessages(state, current, f.key));
+          const { modelId, numCtx } = await resolveModel();
+          const { parsed } = await collectJson(modelId, numCtx, buildForgeFieldMessages(state, current, f.key));
           if (parsed && typeof parsed[f.key] === 'string' && parsed[f.key].trim()) {
-            area.value = parsed[f.key];
-            state.lastCard[f.key] = parsed[f.key];
+            let next = stripEmDashes(parsed[f.key]);
+            if (f.key === 'exampleDialogue') next = normalizeForgeDialogue(next);
+            area.value = next;
+            state.lastCard[f.key] = area.value;
+            refreshFinal();
           } else {
             showToastLite(`Could not regenerate ${f.label.toLowerCase()} — kept the current text.`);
           }
@@ -8073,6 +8404,28 @@ function renderForgePane(container, parallx, ctx) {
       output.appendChild(wrap);
     }
 
+    // ── The final card: one third-person portrait, live-composed from
+    // description + appearance + personality + voice. What you read
+    // here is byte-for-byte what gets saved as the role instruction.
+    const finalWrap = el('div', 'tg-forge-field');
+    const finalHead = el('div', 'tg-forge-field-head');
+    finalHead.appendChild(el('span', 'tg-forge-field-label', { text: 'Full character (exactly what gets saved)' }));
+    finalWrap.appendChild(finalHead);
+    const finalBox = el('div', 'tg-forge-final');
+    finalWrap.appendChild(finalBox);
+    output.appendChild(finalWrap);
+    const composeFromFields = () => composeForgeCard({
+      description: fieldEls.description.value,
+      appearance: fieldEls.appearance.value,
+      personality: fieldEls.personality.value,
+      voice: fieldEls.voice.value,
+    });
+    const refreshFinal = () => { finalBox.textContent = composeFromFields(); };
+    for (const k of ['description', 'appearance', 'personality', 'voice']) {
+      fieldEls[k].addEventListener('input', refreshFinal);
+    }
+    refreshFinal();
+
     const saveRow = el('div', 'tg-forge-actions');
     const saveBtn = el('button', 'tg-forge-generate', { html: `${icon('user', 14)} Save to roster` });
     saveBtn.addEventListener('click', async () => {
@@ -8082,13 +8435,15 @@ function renderForgePane(container, parallx, ctx) {
         await ensureNestedDirs(fs, workspaceUri, ['.parallx', 'extensions', 'text-generator', 'characters']);
         const id = generateId().slice(0, 8);
         const fileName = `character-${id}.json`;
-        const first = (fieldEls.firstMessage.value || '').trim();
         const data = createCharacterJson({
           name: (fieldEls.name.value || 'Unnamed').trim(),
-          roleInstruction: fieldEls.description.value,
-          voiceAnchor: fieldEls.voiceAnchor.value,
+          roleInstruction: composeFromFields(),
+          voiceAnchor: fieldEls.voice.value,
           exampleDialogue: fieldEls.exampleDialogue.value,
-          initialMessages: first ? `[AI]: ${first}` : '',
+          // No first message on purpose: a first message dictates the
+          // story. The user seeds the opening scene themselves in chat
+          // (e.g. as Narrator).
+          initialMessages: '',
           reminder: fieldEls.reminder.value,
         });
         await saveCharacter(fs, workspaceUri, fileName, data);
@@ -8116,13 +8471,20 @@ function renderForgePane(container, parallx, ctx) {
     busy = true; genBtn.disabled = true;
     showStatus('Forging… the model is writing the character.');
     try {
-      const { modelId, settings } = await resolveModel();
-      const { raw, parsed } = await collectJson(modelId, settings, buildForgeMessages(state));
+      const { modelId, numCtx } = await resolveModel();
+      const { raw, parsed } = await collectJson(modelId, numCtx, buildForgeMessages(state));
       if (!parsed || typeof parsed.name !== 'string' || !parsed.name.trim()) {
         showStatus('The model did not return a valid character JSON. Raw output:', true);
         const pre = el('pre', 'tg-forge-raw', { text: raw.slice(0, 4000) });
         output.appendChild(pre);
         return;
+      }
+      // No-em-dash guard applies to forged prose too.
+      for (const k of Object.keys(parsed)) {
+        if (typeof parsed[k] === 'string') parsed[k] = stripEmDashes(parsed[k]);
+      }
+      if (typeof parsed.exampleDialogue === 'string') {
+        parsed.exampleDialogue = normalizeForgeDialogue(parsed.exampleDialogue);
       }
       state.lastCard = parsed;
       renderCard();
@@ -8155,6 +8517,9 @@ const DEFAULT_SETTINGS = {
   defaultModel: '',
   defaultFitMethod: 'dropOld',
   customWritingStyle: '',
+  // Forge-specific engine choice ('' / 0 = follow the global defaults).
+  forgeModelId: '',
+  forgeContextWindow: 0,
 };
 
 async function loadSettings(fs, workspaceUri) {
@@ -8207,21 +8572,21 @@ function renderSettingsPage(container, parallx) {
     group.appendChild(el('label', 'tg-form-label', { text: label }));
     if (hint) group.appendChild(el('div', 'tg-form-hint', { text: hint }));
 
-    let input;
     if (inputType === 'select' && opts.options) {
-      input = el('select', 'tg-form-select');
-      for (const opt of opts.options) {
-        const option = el('option', null, { text: opt.label || opt.value });
-        option.value = opt.value;
-        input.appendChild(option);
-      }
-    } else {
-      input = el('input', 'tg-form-input');
-      input.type = inputType;
-      if (opts.min !== undefined) input.min = opts.min;
-      if (opts.max !== undefined) input.max = opts.max;
-      if (opts.step !== undefined) input.step = opts.step;
+      const dd = tgSelect(parallx, {
+        className: 'tg-form-select',
+        layout: 'full',
+        items: opts.options.map((opt) => ({ value: opt.value, label: opt.label || opt.value })),
+      });
+      group.appendChild(dd.element);
+      form.appendChild(group);
+      return dd;
     }
+    const input = el('input', 'tg-form-input');
+    input.type = inputType;
+    if (opts.min !== undefined) input.min = opts.min;
+    if (opts.max !== undefined) input.max = opts.max;
+    if (opts.step !== undefined) input.step = opts.step;
     input.dataset.key = key;
     group.appendChild(input);
     form.appendChild(group);
@@ -8333,29 +8698,30 @@ function renderSettingsPage(container, parallx) {
     defaultPovSelect.value = s.defaultPov || '';
     fitMethodSelect.value = s.defaultFitMethod || 'dropOld';
     // Populate model dropdown from available LM models
+    let modelItems = [{ value: '', label: '(auto — first available)' }];
     if (parallx.lm) {
       try {
         const availableModels = await (parallx.lm.getModels?.() || parallx.lm.listModels?.() || Promise.resolve([]));
-        for (const m of availableModels) {
-          const opt = el('option', null, { text: m.displayName || m.name || m.id });
-          opt.value = m.id;
-          defaultModelSelect.appendChild(opt);
-        }
+        modelItems = modelItems.concat(availableModels.map((m) => ({ value: m.id, label: m.displayName || m.name || m.id })));
+        defaultModelSelect.setItems(modelItems);
         // If saved default is no longer available, surface a warning.
         if (s.defaultModel && !availableModels.some(m => m.id === s.defaultModel)) {
           const warn = el('div', 'tg-form-hint tg-form-hint--warn', {
             text: `⚠ Saved default model "${s.defaultModel}" is not currently available. Using auto-select.`,
           });
-          defaultModelSelect.parentElement?.appendChild(warn);
+          defaultModelSelect.element.parentElement?.appendChild(warn);
         }
       } catch { /* no models available */ }
     }
-    defaultModelSelect.value = (s.defaultModel && Array.from(defaultModelSelect.options).some(o => o.value === s.defaultModel)) ? s.defaultModel : '';
+    defaultModelSelect.value = (s.defaultModel && modelItems.some((i) => i.value === s.defaultModel)) ? s.defaultModel : '';
     recomputeBudgetTotal();
   }
 
   saveBtn.addEventListener('click', async () => {
+    // Spread the currently persisted settings first so keys this form
+    // doesn't own (e.g. the forge's model/ctx choice) survive a save.
     const settings = {
+      ...(await loadSettings(fs, workspaceUri)),
       tokenBudgetCharacter: Number.isFinite(Number(charBudget.value)) ? Number(charBudget.value) : DEFAULT_SETTINGS.tokenBudgetCharacter,
       tokenBudgetLore: Number.isFinite(Number(loreBudget.value)) ? Number(loreBudget.value) : DEFAULT_SETTINGS.tokenBudgetLore,
       tokenBudgetHistory: Number.isFinite(Number(histBudget.value)) ? Number(histBudget.value) : DEFAULT_SETTINGS.tokenBudgetHistory,
@@ -8431,18 +8797,17 @@ function renderCharacterEditor(container, parallx, input) {
     roleInput,
   ));
 
-  const lengthSelect = el('select', 'tg-ce-select');
-  for (const opt of [
-    { value: '', label: 'No reply length limit' },
-    { value: 'short', label: '1 paragraph' },
-    { value: 'medium', label: '2-3 paragraphs' },
-    { value: 'long', label: '4+ paragraphs' },
-  ]) {
-    const o = el('option', null, { text: opt.label });
-    o.value = opt.value;
-    lengthSelect.appendChild(o);
-  }
-  root.appendChild(field(`${icon('ruler', 14)} Strict message length limit`, 'Try setting this to one paragraph if the character keeps undesirably talking/acting on your behalf.', lengthSelect));
+  const lengthSelect = tgSelect(parallx, {
+    className: 'tg-ce-select',
+    layout: 'full',
+    items: [
+      { value: '', label: 'No reply length limit' },
+      { value: 'short', label: '1 paragraph' },
+      { value: 'medium', label: '2-3 paragraphs' },
+      { value: 'long', label: '4+ paragraphs' },
+    ],
+  });
+  root.appendChild(field(`${icon('ruler', 14)} Strict message length limit`, 'Try setting this to one paragraph if the character keeps undesirably talking/acting on your behalf.', lengthSelect.element));
 
   const userNameInput = el('input', 'tg-ce-input');
   userNameInput.placeholder = '(optional)';
@@ -8470,16 +8835,15 @@ function renderCharacterEditor(container, parallx, input) {
     voiceAnchorInput,
   ));
 
-  const presetSelect = el('select', 'tg-ce-select');
-  for (const [key, p] of Object.entries(WRITING_PRESETS)) {
-    const o = el('option', null, { text: p.label });
-    o.value = key;
-    presetSelect.appendChild(o);
-  }
+  const presetSelect = tgSelect(parallx, {
+    className: 'tg-ce-select',
+    layout: 'full',
+    items: Object.entries(WRITING_PRESETS).map(([key, p]) => ({ value: key, label: p.label })),
+  });
   const presetField = field(
     `${icon('pencil-line', 14)} General writing instructions`,
     'These instructions apply to the whole chat, regardless of which character is currently speaking. It\'s for defining general writing style and the "type of experience".',
-    presetSelect,
+    presetSelect.element,
   );
   // Inheritance chain (matches the actual prompt wiring): a per-chat
   // override set in the chat's settings drawer wins; otherwise this
@@ -8490,16 +8854,15 @@ function renderCharacterEditor(container, parallx, input) {
   root.appendChild(presetField);
 
   // Point of view override — stacks under the writing preset.
-  const povSelect = el('select', 'tg-ce-select');
-  for (const [key, p] of Object.entries(POV_OPTIONS)) {
-    const o = el('option', null, { text: p.label });
-    o.value = key;
-    povSelect.appendChild(o);
-  }
+  const povSelect = tgSelect(parallx, {
+    className: 'tg-ce-select',
+    layout: 'full',
+    items: Object.entries(POV_OPTIONS).map(([key, p]) => ({ value: key, label: p.label })),
+  });
   const povField = field(
     `${icon('eye', 14)} Point of view`,
     'Locks narration POV regardless of writing preset. "Inherit" lets the preset decide.',
-    povSelect,
+    povSelect.element,
   );
   povField.appendChild(el('div', 'tg-form-inherit', {
     text: 'If unset, the global default in Settings is used.',
@@ -8648,32 +9011,30 @@ function renderCharacterEditor(container, parallx, input) {
   // Lorebooks textarea removed — replaced by the checkbox list lifted to top.
 
   // Context method
-  const fitSelect = el('select', 'tg-ce-select');
-  for (const opt of [
-    { value: '', label: '(use global default)' },
-    { value: 'dropOld', label: 'Drop oldest messages (fast)' },
-    { value: 'summarizeOld', label: 'Summarize oldest messages (smarter, +1 LLM call/turn)' },
-  ]) {
-    const o = el('option', null, { text: opt.label });
-    o.value = opt.value;
-    fitSelect.appendChild(o);
-  }
-  moreSection.appendChild(field('Context-fit method', 'How to handle conversations longer than the context window. Overrides the global default.', fitSelect));
+  const fitSelect = tgSelect(parallx, {
+    className: 'tg-ce-select',
+    layout: 'full',
+    items: [
+      { value: '', label: '(use global default)' },
+      { value: 'dropOld', label: 'Drop oldest messages (fast)' },
+      { value: 'summarizeOld', label: 'Summarize oldest messages (smarter, +1 LLM call/turn)' },
+    ],
+  });
+  moreSection.appendChild(field('Context-fit method', 'How to handle conversations longer than the context window. Overrides the global default.', fitSelect.element));
 
   // Extended memory
-  const memorySelect = el('select', 'tg-ce-select');
-  for (const opt of [
-    { value: 'false', label: 'Off' },
-    { value: 'true', label: 'On — reserve ≥40% of lore lane for /mem entries' },
-  ]) {
-    const o = el('option', null, { text: opt.label });
-    o.value = opt.value;
-    memorySelect.appendChild(o);
-  }
+  const memorySelect = tgSelect(parallx, {
+    className: 'tg-ce-select',
+    layout: 'full',
+    items: [
+      { value: 'false', label: 'Off' },
+      { value: 'true', label: 'On — reserve ≥40% of lore lane for /mem entries' },
+    ],
+  });
   moreSection.appendChild(field(
     `${icon('brain', 14)} Extended character memory`,
     'When On, /mem entries are guaranteed at least 40% of the Lore lane (vs. proportional to size). Use it when long-term recall matters more than world-info detail.',
-    memorySelect,
+    memorySelect.element,
   ));
 
   moreSection.appendChild(el('hr', 'tg-ce-separator'));
@@ -8913,8 +9274,8 @@ function renderChatSettingsPage(container, parallx, input) {
   identitySection.appendChild(nameRow);
   const personaRow = el('div', 'tg-cs-row');
   personaRow.appendChild(el('div', 'tg-cs-label', { text: 'Type As' }));
-  const personaSelect = el('select', 'tg-cs-select');
-  personaRow.appendChild(personaSelect);
+  const personaSelect = tgSelect(parallx, { className: 'tg-cs-select', layout: 'full' });
+  personaRow.appendChild(personaSelect.element);
   identitySection.appendChild(personaRow);
   identitySection.appendChild(el('div', 'tg-cs-hint', {
     text: 'Choose whether your typed messages are written as yourself or as one of the thread characters.',
@@ -8933,8 +9294,8 @@ function renderChatSettingsPage(container, parallx, input) {
   generationSection.appendChild(el('div', 'tg-cs-section-title', { text: 'Model' }));
   const modelRow = el('div', 'tg-cs-row');
   modelRow.appendChild(el('div', 'tg-cs-label', { text: 'Model' }));
-  const modelSelect = el('select', 'tg-cs-select');
-  modelRow.appendChild(modelSelect);
+  const modelSelect = tgSelect(parallx, { className: 'tg-cs-select', layout: 'full' });
+  modelRow.appendChild(modelSelect.element);
   generationSection.appendChild(modelRow);
   generationSection.appendChild(el('div', 'tg-cs-hint', {
     text: 'Writing preset, POV, response length, temperature, max tokens, lorebooks, reminders — edit those on the character.',
@@ -8958,19 +9319,16 @@ function renderChatSettingsPage(container, parallx, input) {
   }
 
   function populatePersonaOptions() {
-    personaSelect.innerHTML = '';
-    const selfOption = el('option', null, { text: 'Myself' });
-    selfOption.value = SELF_SPEAKER;
-    personaSelect.appendChild(selfOption);
+    const items = [{ value: SELF_SPEAKER, label: 'Myself' }];
     for (const charRef of thread.characters) {
       const charBase = charRef.file.replace(/\.(md|json)$/, '');
       const character = allCharacters.find((item) => item.fileName.replace(/\.(md|json)$/, '') === charBase);
-      const option = el('option', null, {
-        text: character ? (character.frontmatter.name || character.fileName.replace(/\.(md|json)$/, '')) : charRef.file,
+      items.push({
+        value: charRef.file,
+        label: character ? (character.frontmatter.name || character.fileName.replace(/\.(md|json)$/, '')) : charRef.file,
       });
-      option.value = charRef.file;
-      personaSelect.appendChild(option);
     }
+    personaSelect.setItems(items);
     personaSelect.value = thread.userPlaysAs || SELF_SPEAKER;
   }
 
@@ -9073,19 +9431,12 @@ function renderChatSettingsPage(container, parallx, input) {
     titleInput.value = thread.title || 'New Chat';
     nameInput.value = thread.userName || 'Anon';
 
-    modelSelect.innerHTML = '';
     if (models.length > 0) {
-      for (const model of models) {
-        const option = el('option', null, { text: model.displayName || model.id });
-        option.value = model.id;
-        modelSelect.appendChild(option);
-      }
+      modelSelect.setItems(models.map((model) => ({ value: model.id, label: model.displayName || model.id })));
       const validThreadModel = thread.modelId && models.some(m => m.id === thread.modelId) ? thread.modelId : models[0].id;
       modelSelect.value = validThreadModel;
     } else {
-      const option = el('option', null, { text: 'Ollama offline' });
-      option.value = '';
-      modelSelect.appendChild(option);
+      modelSelect.setItems([{ value: '', label: 'Ollama offline' }]);
     }
 
     renderCharacterChips();
@@ -9160,9 +9511,10 @@ const WRITING_PRESETS = {
 - OPENINGS: Never begin two replies the same way. Do not begin with scenery, weather, or light. Begin with dialogue, a physical action, or a direct reaction to the last message.
 - Dialogue in "double quotes"; inner thoughts in *italics*; actions in plain prose.
 - Vary cadence hard: mix very short sentences with long flowing ones.
-- Concrete, specific detail only — no stock imagery (no dancing candlelight, no held breath, no shivers).
+- Concrete, specific detail only: no stock imagery (no dancing candlelight, no held breath, no shivers).
+- Never use em dashes or en dashes. Use commas, periods, or ellipses instead.
 - Default to 1-2 paragraphs. Leave room for the other person.
-- End mid-beat with a hook — a question, a gesture, an unfinished thought. Never summarize the scene.`,
+- End mid-beat with a hook: a question, a gesture, an unfinished thought. Never summarize the scene.`,
   },
   'screenplay': {
     label: 'Screenplay',
@@ -9210,7 +9562,7 @@ function getPresetContent(presetKey, customText = '') {
 const STYLE_HINTS = {
   'immersive-rp': 'Immersive prose: vivid sensory detail, dialogue in "double quotes", thoughts in *italics*, varied cadence. Show emotion through actions.',
   'casual-rp': 'Casual chat: short paragraphs, dialogue in "double quotes", action beats in *italics*, conversational tone.',
-  'natural-rp': 'Never open with scenery or light — open with dialogue, an action, or a reaction. Vary sentence length hard. 1-2 paragraphs, end mid-beat.',
+  'natural-rp': 'Never open with scenery or light; open with dialogue, an action, or a reaction. Vary sentence length hard. No em dashes. 1-2 paragraphs, end mid-beat.',
   'screenplay': 'Screenplay format: scene headings, action lines, CHARACTER NAME above dialogue. Minimal prose.',
   'none': '',
   'custom': '',

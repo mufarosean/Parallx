@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "parallx-community.text-generator",
   "name": "Text Generator",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "publisher": "parallx-community",
   "description": "Roleplay chat with local Ollama models — characters, lorebooks, scene memory, and a fully inspectable prompt pipeline.",
   "main": "main.js",
