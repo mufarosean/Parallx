@@ -466,6 +466,13 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
       }
       if (options.think && !this._noThinkModels.has(modelId)) {
         body['think'] = true;
+      } else if (options.think === false) {
+        // Explicit off must be SENT, not implied: thinking-capable models
+        // (qwen3.x, DeepSeek-R1) think by default when the key is absent,
+        // so callers that set think:false (summarisation, memory
+        // extraction, JSON-constrained generation) were silently paying
+        // the full thinking cost anyway.
+        body['think'] = false;
       }
     }
     if (Object.keys(ollamaOptions).length > 0) body['options'] = ollamaOptions;
@@ -497,8 +504,10 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
       signal: controller.signal,
     });
 
-    // If thinking is rejected, cache and retry without it
-    if (!response.ok && response.status === 400 && body['think']) {
+    // If the think key is rejected (models that predate the option),
+    // cache and retry without it. Checked with `in` because an explicit
+    // think:false is falsy but still present in the request body.
+    if (!response.ok && response.status === 400 && 'think' in body) {
       const errorText = await response.text();
       if (errorText.includes('does not support thinking')) {
         console.warn(`[OllamaProvider] ${modelId} does not support thinking — retrying without think:true`);
