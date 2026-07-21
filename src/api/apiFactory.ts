@@ -11,6 +11,7 @@
 import { IDisposable } from '../platform/lifecycle.js';
 import { Emitter } from '../platform/events.js';
 import { rafThrottle } from '../platform/rafThrottle.js';
+import { Dropdown, IDropdownItem } from '../ui/dropdown.js';
 import { URI } from '../platform/uri.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import {
@@ -115,6 +116,21 @@ export interface ParallxApiObject {
   /** Shared UI performance helpers (see parallx.d.ts `ui` namespace). */
   readonly ui: {
     rafThrottle<A extends unknown[]>(fn: (...args: A) => void): ((...args: A) => void) & { dispose(): void; flush(): void };
+    createDropdown(container: HTMLElement, options?: {
+      readonly items?: readonly { value: string; label: string }[];
+      readonly selected?: string;
+      readonly placeholder?: string;
+      readonly ariaLabel?: string;
+      readonly disabled?: boolean;
+    }): {
+      readonly element: HTMLElement;
+      value: string;
+      setItems(items: readonly { value: string; label: string }[]): void;
+      onDidChange(listener: (value: string) => void): IDisposable;
+      focus(): void;
+      setDisabled(disabled: boolean): void;
+      dispose(): void;
+    };
   };
   /** Register keybindings into the single workbench dispatcher (see `keybindings` namespace). */
   readonly keybindings: {
@@ -497,6 +513,39 @@ export function createToolApi(
     // layout work is coalesced to one run per frame everywhere.
     ui: Object.freeze({
       rafThrottle,
+      // The SAME .ui-dropdown component the built-in workbench uses —
+      // native <select> popups are Chromium-drawn and unthemeable, so
+      // extensions get the themed primitive instead of cloning it
+      // (media-organizer's hand-rolled mo-dropdown predates this).
+      createDropdown(container: HTMLElement, options?: {
+        readonly items?: readonly { value: string; label: string }[];
+        readonly selected?: string;
+        readonly placeholder?: string;
+        readonly ariaLabel?: string;
+        readonly disabled?: boolean;
+      }) {
+        const dropdown = new Dropdown(container, {
+          items: options?.items as readonly IDropdownItem[] | undefined,
+          selected: options?.selected,
+          placeholder: options?.placeholder,
+          ariaLabel: options?.ariaLabel,
+          disabled: options?.disabled,
+        });
+        return {
+          element: dropdown.element,
+          get value(): string { return dropdown.value ?? ''; },
+          set value(v: string) { dropdown.value = v; },
+          setItems(items: readonly { value: string; label: string }[]): void {
+            dropdown.items = items as readonly IDropdownItem[];
+          },
+          onDidChange(listener: (value: string) => void): IDisposable {
+            return dropdown.onDidChange(listener);
+          },
+          focus(): void { dropdown.focus(); },
+          setDisabled(disabled: boolean): void { dropdown.disabled = disabled; },
+          dispose(): void { dropdown.dispose(); },
+        };
+      },
     }),
 
     // Keybindings feed the SAME single dispatcher the built-in workbench uses.
