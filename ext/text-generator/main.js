@@ -744,36 +744,6 @@ function injectStyles() {
   border-color: var(--vscode-editorWarning-foreground, #cca700);
 }
 
-/* ═══ Options Menu ═══ */
-.tg-options-menu {
-  position: absolute;
-  bottom: 60px;
-  right: 16px;
-  min-width: 200px;
-  background: var(--vscode-editorWidget-background, var(--px-bg-elevated));
-  border: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
-  border-radius: var(--parallx-radius-md, 6px);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
-  z-index: 50;
-  padding: 4px 0;
-}
-.tg-options-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 6px 12px;
-  border: none;
-  background: transparent;
-  color: var(--vscode-foreground);
-  font-family: var(--parallx-fontFamily-ui);
-  font-size: var(--parallx-fontSize-base, 12px);
-  cursor: pointer;
-  text-align: left;
-  transition: background 80ms ease;
-}
-.tg-options-item:hover { background: var(--vscode-list-hoverBackground); }
-
 /* Welcome */
 .tg-welcome {
   display: flex;
@@ -1594,6 +1564,368 @@ function injectStyles() {
   align-items: flex-start;
 }
 .tg-ce-row > .tg-ce-field { flex: 1; }
+
+/* ═══ Director's note row (M92 overhaul) ═══ */
+.tg-director-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--vscode-widget-border, rgba(255,255,255,0.08));
+  background: color-mix(in srgb, var(--vscode-editorInfo-foreground, #3794ff) 6%, transparent);
+}
+.tg-director-icon { color: var(--vscode-editorInfo-foreground, #3794ff); display: inline-flex; }
+.tg-director-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--vscode-input-foreground, #ddd);
+  font-family: var(--parallx-fontFamily-ui);
+  font-size: var(--parallx-fontSize-base, 12px);
+}
+.tg-director-input::placeholder { color: var(--vscode-input-placeholderForeground, #6e6e6e); }
+
+/* ═══ Chat settings drawer (M92 overhaul) ═══ */
+.tg-chat { position: relative; }
+.tg-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 320px;
+  max-width: 85%;
+  display: flex;
+  flex-direction: column;
+  background: var(--vscode-editorWidget-background, var(--px-bg-elevated));
+  border-left: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
+  box-shadow: -4px 0 16px rgba(0,0,0,0.25);
+  z-index: 40;
+}
+.tg-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
+}
+.tg-drawer-title {
+  font-size: var(--parallx-fontSize-md, 13px);
+  font-weight: 600;
+  color: var(--vscode-foreground);
+}
+.tg-drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 14px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.tg-drawer-field { display: flex; flex-direction: column; gap: 4px; }
+.tg-drawer-label {
+  font-size: var(--parallx-fontSize-sm, 11px);
+  font-weight: 600;
+  color: var(--vscode-foreground);
+}
+.tg-drawer-hint {
+  font-size: var(--parallx-fontSize-sm, 11px);
+  color: var(--vscode-descriptionForeground, #888);
+  line-height: 1.4;
+}
+.tg-drawer-input, .tg-drawer-select, .tg-drawer-textarea {
+  background: var(--vscode-input-background, var(--px-bg));
+  color: var(--vscode-input-foreground, #ddd);
+  border: 1px solid var(--vscode-input-border, rgba(255,255,255,0.1));
+  border-radius: 3px;
+  padding: 5px 8px;
+  font-size: var(--parallx-fontSize-base, 12px);
+  font-family: var(--parallx-fontFamily-ui);
+  outline: none;
+  box-sizing: border-box;
+  width: 100%;
+}
+.tg-drawer-input:focus, .tg-drawer-select:focus, .tg-drawer-textarea:focus {
+  border-color: var(--vscode-focusBorder, #007fd4);
+}
+.tg-drawer-textarea { resize: vertical; min-height: 60px; }
+.tg-drawer-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.tg-drawer-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--vscode-widget-border, rgba(255,255,255,0.15));
+  background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.04));
+  font-size: var(--parallx-fontSize-sm, 11px);
+  color: var(--vscode-foreground);
+}
+.tg-drawer-chip-remove {
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  padding: 0;
+}
+.tg-drawer-chip-remove:hover { color: var(--vscode-errorForeground, #f48771); }
+.tg-drawer-add-btn, .tg-drawer-btn {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--vscode-widget-border, rgba(255,255,255,0.15));
+  border-radius: 3px;
+  background: transparent;
+  color: var(--vscode-foreground);
+  font-family: var(--parallx-fontFamily-ui);
+  font-size: var(--parallx-fontSize-sm, 11px);
+  cursor: pointer;
+}
+.tg-drawer-add-btn:hover, .tg-drawer-btn:hover { background: var(--vscode-list-hoverBackground); }
+.tg-drawer-sep {
+  border: none;
+  border-top: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
+  margin: 2px 0;
+}
+.tg-drawer-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--parallx-fontSize-base, 12px);
+  color: var(--vscode-foreground);
+  cursor: pointer;
+}
+
+/* ═══ Characters master-detail (M92 overhaul) ═══ */
+.tg-cc {
+  display: flex;
+  height: 100%;
+  background: var(--vscode-editor-background);
+  font-family: var(--parallx-fontFamily-ui);
+  overflow: hidden;
+}
+.tg-cc-rail {
+  width: 240px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
+  background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+  overflow-y: auto;
+}
+.tg-cc-rail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px 4px;
+}
+.tg-cc-rail-title {
+  font-size: var(--parallx-fontSize-sm, 11px);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--vscode-descriptionForeground);
+}
+.tg-cc-rail-add {
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 3px;
+}
+.tg-cc-rail-add:hover { background: var(--vscode-list-hoverBackground); color: var(--vscode-foreground); }
+.tg-cc-list { display: flex; flex-direction: column; padding-bottom: 8px; }
+.tg-cc-list-empty {
+  padding: 6px 12px;
+  font-size: var(--parallx-fontSize-sm, 11px);
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.8;
+}
+.tg-cc-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  cursor: pointer;
+  font-size: var(--parallx-fontSize-base, 12px);
+  color: var(--vscode-foreground);
+  min-height: 26px;
+}
+.tg-cc-row:hover { background: var(--vscode-list-hoverBackground); }
+.tg-cc-row--active {
+  background: var(--vscode-list-activeSelectionBackground, rgba(0,127,212,0.2));
+  color: var(--vscode-list-activeSelectionForeground, var(--vscode-foreground));
+}
+.tg-cc-row-icon { display: inline-flex; color: var(--vscode-descriptionForeground); flex-shrink: 0; }
+.tg-cc-row-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tg-cc-row-actions { display: none; align-items: center; gap: 2px; }
+.tg-cc-row:hover .tg-cc-row-actions { display: inline-flex; }
+.tg-cc-row-action {
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 3px;
+}
+.tg-cc-row-action:hover { background: var(--vscode-toolbar-hoverBackground, rgba(255,255,255,0.08)); color: var(--vscode-foreground); }
+.tg-cc-row-action--danger:hover { color: var(--vscode-errorForeground, #f48771); }
+.tg-cc-pane { flex: 1; overflow-y: auto; }
+.tg-cc-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 10px;
+  opacity: 0.5;
+  color: var(--vscode-descriptionForeground);
+  font-size: var(--parallx-fontSize-md, 13px);
+}
+
+/* ═══ Character Forge ═══ */
+.tg-forge {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 16px 20px 40px;
+  font-family: var(--parallx-fontFamily-ui);
+}
+.tg-forge-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.tg-forge-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+}
+.tg-forge-subtitle {
+  font-size: var(--parallx-fontSize-sm, 11px);
+  color: var(--vscode-descriptionForeground);
+}
+.tg-forge-controls { display: flex; flex-direction: column; gap: 8px; }
+.tg-forge-row { display: flex; align-items: center; gap: 8px; }
+.tg-forge-row-label {
+  width: 90px;
+  flex-shrink: 0;
+  font-size: var(--parallx-fontSize-sm, 11px);
+  font-weight: 600;
+  color: var(--vscode-foreground);
+}
+.tg-forge-row-end {
+  width: 110px;
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.8;
+}
+.tg-forge-row-end:last-of-type { text-align: right; }
+.tg-forge-slider { flex: 1; accent-color: var(--vscode-focusBorder, #007fd4); }
+.tg-forge-row--text .tg-ce-input { flex: 1; }
+.tg-forge-row .tg-ce-select { flex: 1; }
+.tg-forge-lock {
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.45;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 3px;
+}
+.tg-forge-lock:hover { opacity: 0.9; background: var(--vscode-list-hoverBackground); }
+.tg-forge-lock--on { opacity: 1; color: var(--vscode-editorWarning-foreground, #cca700); }
+.tg-forge-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 0;
+}
+.tg-forge-dice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 1px solid var(--vscode-widget-border, rgba(255,255,255,0.15));
+  border-radius: var(--parallx-radius-sm, 3px);
+  background: transparent;
+  color: var(--vscode-foreground);
+  font-family: var(--parallx-fontFamily-ui);
+  font-size: var(--parallx-fontSize-base, 12px);
+  cursor: pointer;
+}
+.tg-forge-dice:hover { background: var(--vscode-list-hoverBackground); }
+.tg-forge-generate {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding: 6px 20px;
+  border: 1px solid #388a34;
+  border-radius: var(--parallx-radius-sm, 3px);
+  background: #388a34;
+  color: #fff;
+  font-family: var(--parallx-fontFamily-ui);
+  font-size: var(--parallx-fontSize-base, 12px);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 80ms ease;
+}
+.tg-forge-generate:hover { background: #45a040; }
+.tg-forge-generate:disabled { opacity: 0.6; cursor: default; }
+.tg-forge-output { display: flex; flex-direction: column; gap: 12px; }
+.tg-forge-status {
+  padding: 10px 12px;
+  border-radius: var(--parallx-radius-sm, 3px);
+  background: var(--vscode-editorWidget-background, rgba(255,255,255,0.03));
+  color: var(--vscode-descriptionForeground);
+  font-size: var(--parallx-fontSize-base, 12px);
+}
+.tg-forge-status--error { color: var(--vscode-errorForeground, #f48771); }
+.tg-forge-field { display: flex; flex-direction: column; gap: 4px; }
+.tg-forge-field-head { display: flex; align-items: center; justify-content: space-between; }
+.tg-forge-field-label {
+  font-size: var(--parallx-fontSize-sm, 11px);
+  font-weight: 600;
+  color: var(--vscode-foreground);
+}
+.tg-forge-reroll {
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 3px;
+}
+.tg-forge-reroll:hover { background: var(--vscode-list-hoverBackground); color: var(--vscode-foreground); }
+.tg-forge-raw {
+  padding: 10px;
+  border-radius: var(--parallx-radius-sm, 3px);
+  background: var(--vscode-editorWidget-background, rgba(255,255,255,0.03));
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
   `;
   document.head.appendChild(style);
 }
@@ -2157,6 +2489,10 @@ function normalizeCharacterForRuntime(data, fileName) {
     sections: {
       roleInstruction: data.roleInstruction || '',
       reminder: data.reminder || '',
+      // M79 Phase 3b's late-stage voice anchor was read at generation
+      // time but never mapped from the JSON model — dead wiring for
+      // every .json character until now.
+      voiceAnchor: data.voiceAnchor || '',
       exampleDialogue: data.exampleDialogue || '',
       initialMessages: data.initialMessages || '',
     },
@@ -2706,6 +3042,13 @@ function assembleContext(params) {
     ephemeralInstruction = null,
     historySummary = '',
     sceneState = null, // M79 Phase 3a
+    // Overhaul (M92): explicit per-thread overrides + persistent note.
+    // Overrides sit ABOVE the per-character resolution — they are the
+    // user's explicit "in this chat, do X" choice, so they win over
+    // whatever the character card says. Empty string = no override.
+    writingPresetOverride = '',
+    responseLengthOverride = '',
+    standingNote = '',
   } = params;
 
   // Support both old (single character) and new (characters array) signatures
@@ -2739,7 +3082,7 @@ function assembleContext(params) {
   // (which already encodes thread / global defaults). Treating
   // these as four independent lookups instead of one merged blob
   // keeps the fallback chain visible at each callsite.
-  const effectiveWritingPreset = speakerChar?.frontmatter?.writingPreset || writingPreset;
+  const effectiveWritingPreset = writingPresetOverride || speakerChar?.frontmatter?.writingPreset || writingPreset;
   const effectivePov = speakerChar?.frontmatter?.pov || pov;
 
   // Split lore lane between lorebooks and thread memory proportional to content size.
@@ -2774,11 +3117,20 @@ function assembleContext(params) {
     .map(c => c?.userReminder || c?.sections?.userReminder || '')
     .filter(Boolean);
   const charUserReminder = userReminderParts.join('\n');
-  // Active speaker's own message-length cap wins. Falls back to the
-  // thread-level responseLength then global default. (Was previously
-  // primaryChar's cap regardless of who was speaking.)
+  // Length resolution: explicit per-thread override > active speaker's
+  // own cap > passed-in default (global settings). The override supports
+  // the 'none' sentinel — "in this chat, explicitly NO length limit" —
+  // which must short-circuit the fallbacks rather than falling through
+  // to them (an empty string would).
   const charMsgLenLimit = speakerChar?.frontmatter?.messageLengthLimit || '';
-  const effectiveResponseLength = charMsgLenLimit || responseLength;
+  let effectiveResponseLength;
+  if (responseLengthOverride === 'none') {
+    effectiveResponseLength = null;
+  } else if (responseLengthOverride) {
+    effectiveResponseLength = responseLengthOverride;
+  } else {
+    effectiveResponseLength = charMsgLenLimit || responseLength;
+  }
 
   const buildResult = buildSystemPrompt({
     characters: chars,
@@ -2989,13 +3341,28 @@ function assembleContext(params) {
     varyBlock = speakerAvoidRepeat.replace(/^\[/, '').replace(/\]$/, '');
   }
 
+  // 4b) Standing director's note — a persistent per-thread instruction
+  // that rides in the late-stage block on EVERY turn (unlike the
+  // ephemeral directive, which is one-shot). This is the user's
+  // always-on steering channel: "keep the pacing slow", "never speak
+  // for my character", etc.
+  let standingBlock = null;
+  if (standingNote && standingNote.trim()) {
+    standingBlock = 'Standing director\'s note (applies to every turn): ' + standingNote.trim();
+  }
+
   // 5) Style & length reminder — compact restatement of the writing
   // preset summary + response-length directive, placed near the
   // generation point so small models don't lose track of the format
   // by the time they reply. The FULL preset still lives at the top
   // of the system prompt for orientation; this is the late-recency
   // anchor that actually shapes the next token.
-  const styleHint = getStyleHint(writingPreset);
+  // Style hint must follow the same resolution as the full preset at the
+  // top of the system prompt — it previously used the raw `writingPreset`
+  // param, so a speaker character's own preset (or a thread override)
+  // shaped the top of the prompt but NOT the late-recency anchor that
+  // actually steers the next token.
+  const styleHint = getStyleHint(effectiveWritingPreset);
   const lengthHint = getLengthHint(effectiveResponseLength);
   let styleLengthBlock = null;
   if (styleHint || lengthHint) {
@@ -3017,7 +3384,7 @@ function assembleContext(params) {
       + ephemeralInstruction;
   }
 
-  const consolidatedSections = [activeTurnLine, personaLine, reminderBlock, styleLengthBlock, varyBlock, directiveBlock].filter(Boolean);
+  const consolidatedSections = [activeTurnLine, personaLine, reminderBlock, standingBlock, styleLengthBlock, varyBlock, directiveBlock].filter(Boolean);
   if (consolidatedSections.length > 0) {
     messages.push({
       role: 'system',
@@ -3161,6 +3528,10 @@ async function createThread(fs, workspaceUri, characterFile, modelId) {
     contextWindowOverride: null,
     modelId: modelId || settings.defaultModel || null,
     autoReply: true,
+    writingPresetOverride: '',
+    responseLengthOverride: '',
+    standingNote: '',
+    smartTurnOrder: false,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
@@ -3269,6 +3640,14 @@ async function loadThread(fs, workspaceUri, threadId) {
   if (thread.maxTokensOverride === undefined) thread.maxTokensOverride = null;
   if (thread.contextWindowOverride === undefined) thread.contextWindowOverride = null;
   if (thread.autoReply === undefined) thread.autoReply = true;
+  // Overhaul (M92) — explicit per-chat overrides + standing note. Distinct
+  // from the legacy seeded `writingPreset`/`responseLength` fields (which
+  // were snapshots taken at creation and are deliberately NOT honored):
+  // null/'' here means "inherit from character/global".
+  if (thread.writingPresetOverride === undefined) thread.writingPresetOverride = '';
+  if (thread.responseLengthOverride === undefined) thread.responseLengthOverride = '';
+  if (thread.standingNote === undefined) thread.standingNote = '';
+  if (thread.smartTurnOrder === undefined) thread.smartTurnOrder = false;
 
   return thread;
 }
@@ -4133,7 +4512,7 @@ function renderChatEditor(container, parallx, input) {
   // dropdown that's already in this toolbar.
   const ctxLabel = el('span', 'tg-chat-toolbar-label', { text: 'Ctx' });
   const ctxSelect = el('select', 'tg-chat-toolbar-select');
-  ctxSelect.title = 'Context window for this thread (lower = faster, less VRAM)';
+  ctxSelect.title = 'Context window for this thread — sets both the token budget and Ollama num_ctx (lower = faster, less VRAM)';
   const CTX_PRESETS = [
     { label: 'Auto',  value: 0 },
     { label: '4K',    value: 4_096 },
@@ -4154,7 +4533,7 @@ function renderChatEditor(container, parallx, input) {
   const summaryEl = el('span', 'tg-chat-toolbar-charname');
   const tokenCountEl = el('span', 'tg-token-count');
   const viewPromptBtn = el('button', 'tg-chat-toolbar-btn', { html: icon('eye', 16) });
-  viewPromptBtn.title = 'View system prompt';
+  viewPromptBtn.title = 'Inspect prompt — see exactly what the model receives';
   // M79 Phase 5 — Scene state edit panel toggle. The AI emits scene
   // updates via the `<scene-update/>` tag (M79 Phase 3a) and they're
   // auto-stored on `thread.sceneState`; this button lets the user view
@@ -4262,7 +4641,7 @@ function renderChatEditor(container, parallx, input) {
 
   const inputToolbar = el('div', 'tg-input-toolbar');
   const optionsBtn = el('button', 'tg-input-options-btn', { html: icon('sliders', 16) });
-  optionsBtn.title = 'Chat info';
+  optionsBtn.title = 'Chat settings';
 
   // M79 Phase 4a — OOC toggle. When active, the next message is logged
   // but the AI never sees it (hiddenFrom: 'ai', kind: 'ooc'). Visually
@@ -4281,13 +4660,47 @@ function renderChatEditor(container, parallx, input) {
   }
   oocBtn.addEventListener('click', () => setOocMode(!oocMode));
 
+  // Director's note — the always-visible steering channel. The /ai
+  // slash command has carried one-shot instructions since M79 and lands
+  // in the strongest attention position, but a slash command is
+  // invisible; this promotes it to a first-class affordance. The note
+  // applies to the NEXT generated turn only, then clears.
+  const directorBtn = el('button', 'tg-input-ooc-btn', { html: icon('megaphone', 16) });
+  directorBtn.title = 'Director\'s note (steer the next AI turn)';
+  const directorRow = el('div', 'tg-director-row');
+  directorRow.style.display = 'none';
+  const directorIcon = el('span', 'tg-director-icon', { html: icon('megaphone', 13) });
+  const directorInput = el('input', 'tg-director-input');
+  directorInput.type = 'text';
+  directorInput.placeholder = 'Director\'s note for the next turn — e.g. "she finally admits the truth, keep it under two paragraphs"';
+  directorRow.append(directorIcon, directorInput);
+  function setDirectorVisible(next) {
+    directorRow.style.display = next ? '' : 'none';
+    directorBtn.classList.toggle('tg-input-ooc-btn--active', next);
+    if (next) directorInput.focus();
+  }
+  directorBtn.addEventListener('click', () => setDirectorVisible(directorRow.style.display === 'none'));
+  directorInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') { setDirectorVisible(false); textarea.focus(); }
+    if (event.key === 'Enter') { event.preventDefault(); textarea.focus(); }
+  });
+  /** One-shot consume: generateTurn calls this when no explicit
+   *  instruction was provided. Reading clears the field so the note
+   *  can't silently apply twice. */
+  function consumeDirectorNote() {
+    const note = directorInput.value.trim();
+    if (!note) return null;
+    directorInput.value = '';
+    return note;
+  }
+
   const sendBtn = el('button', 'tg-input-send', { html: icon('send', 16) });
   sendBtn.title = 'Send (Enter)';
-  inputToolbar.append(optionsBtn, oocBtn, sendBtn);
+  inputToolbar.append(optionsBtn, oocBtn, directorBtn, sendBtn);
 
   const textareaWrap = el('div', 'tg-textarea-wrap');
   textareaWrap.append(textarea, inputToolbar);
-  inputCard.append(textareaWrap);
+  inputCard.append(directorRow, textareaWrap);
 
   // Click anywhere inside the input card — except on a real button — should
   // focus the textarea. Guards against rare cases where the textarea looks
@@ -4319,6 +4732,10 @@ function renderChatEditor(container, parallx, input) {
   let transientMessage = null;
   let renderQueued = false;
   let fileWatcher = null;
+  // Streaming fast-path target: the transient message's body node, so
+  // per-chunk updates patch one element instead of rebuilding the
+  // whole transcript (see queueRender).
+  let _transientBodyEl = null;
   // M79 Phase 1 — track how many AI replies have happened since the
   // last auto-extract. We only count completed AI turns so a chatty
   // session with hidden OOC notes doesn't fire premature extractions.
@@ -4459,6 +4876,17 @@ function renderChatEditor(container, parallx, input) {
     renderQueued = true;
     requestAnimationFrame(() => {
       renderQueued = false;
+      // Streaming fast-path: while a transient message is live in the
+      // DOM, patch its body in place. The previous full renderMessages()
+      // per frame rebuilt every message row (listeners included) and
+      // forced scrollTop to the bottom — long chats stuttered and the
+      // user couldn't scroll up to re-read while the AI was writing.
+      if (transientMessage && _transientBodyEl && _transientBodyEl.isConnected) {
+        _transientBodyEl.innerHTML = renderMessageMarkup(transientMessage.content || '');
+        const nearBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 120;
+        if (nearBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
+        return;
+      }
       renderMessages();
     });
   }
@@ -5062,12 +5490,27 @@ function renderChatEditor(container, parallx, input) {
     renderShortcutButtons();
   }
 
-  function showPromptModal() {
+  async function showPromptModal() {
+    // Dry-run assembly so the inspector works BEFORE the first
+    // generation — same pipeline, zero LLM spend (summarisation is
+    // skipped, smart turn order is bypassed via a deterministic
+    // speaker). "What will the model see?" should never require
+    // sending a message first.
+    if (!lastAssembledContext) {
+      const previewSpeaker = selectedReplySpeaker || characters[0]?.fileName || null;
+      if (!previewSpeaker) return;
+      try {
+        await buildContextForGeneration({ speaker: previewSpeaker, dryRun: true });
+      } catch (err) {
+        showToast('Cannot assemble prompt: ' + (err?.message || String(err)));
+        return;
+      }
+    }
     if (!lastAssembledContext) return;
     const overlay = el('div', 'tg-modal-overlay');
     const modal = el('div', 'tg-modal');
     const header = el('div', 'tg-modal-header');
-    header.appendChild(el('span', 'tg-modal-title', { text: 'Last System Prompt' }));
+    header.appendChild(el('span', 'tg-modal-title', { text: 'Prompt Inspector' }));
     const closeBtn = el('button', 'tg-modal-close', { html: icon('x', 16) });
     closeBtn.addEventListener('click', () => overlay.remove());
     header.appendChild(closeBtn);
@@ -5114,9 +5557,9 @@ function renderChatEditor(container, parallx, input) {
       body.appendChild(loreEl);
     }
 
-    body.appendChild(el('div', 'tg-prompt-role', { text: '— prompt sent to model —' }));
+    body.appendChild(el('div', 'tg-prompt-role', { text: '— messages sent to model —' }));
     for (const msg of lastAssembledContext.messages) {
-      body.appendChild(el('div', 'tg-prompt-role', { text: msg.role }));
+      body.appendChild(el('div', 'tg-prompt-role', { text: `${msg.role} · ~${estimateTokens(msg.content || '')}t` }));
       const contentEl = el('div', 'tg-prompt-content');
       contentEl.appendChild(el('pre', null, { text: msg.content }));
       body.appendChild(contentEl);
@@ -5134,7 +5577,11 @@ function renderChatEditor(container, parallx, input) {
     document.body.appendChild(overlay);
   }
 
-  viewPromptBtn.addEventListener('click', showPromptModal);
+  viewPromptBtn.addEventListener('click', () => { void showPromptModal(); });
+  // The token chip doubles as a bigger hit-target for the inspector —
+  // "why is this number what it is?" should be one click.
+  tokenCountEl.style.cursor = 'pointer';
+  tokenCountEl.addEventListener('click', () => { void showPromptModal(); });
 
   function renderMessageRow(msg, index = null, isTransient = false) {
     const hiddenClass = msg.hiddenFrom ? ` tg-msg--dim` : '';
@@ -5454,6 +5901,7 @@ function renderChatEditor(container, parallx, input) {
     const contentWrap = el('div', 'tg-msg-content-wrap');
     contentWrap.appendChild(nameRow);
     const body = el('div', 'tg-msg-body', { html: renderMessageMarkup(msg.content || '') });
+    if (isTransient) _transientBodyEl = body;
 
     // Inline edit logic — shared by double-click and pencil button
     function startInlineEdit(bodyEl, msgIndex) {
@@ -5640,6 +6088,13 @@ function renderChatEditor(container, parallx, input) {
   }
 
   function renderMessages() {
+    // Scroll preservation: only stick to the bottom if the user was
+    // already there (or close). Unconditional scrollTop=scrollHeight on
+    // every render meant any reload — file watcher, message action,
+    // generation — slammed the view to the bottom mid-read.
+    const nearBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 80;
+    const prevScrollTop = messagesEl.scrollTop;
+    _transientBodyEl = null;
     messagesEl.innerHTML = '';
     let visibleCount = 0;
     // M79 Phase 5 — `[Active turn: X]` system messages are prompt-builder
@@ -5679,15 +6134,29 @@ function renderChatEditor(container, parallx, input) {
       }));
       messagesEl.appendChild(welcome);
     }
-    messagesEl.scrollTop = messagesEl.scrollHeight;
+    if (nearBottom) {
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    } else {
+      messagesEl.scrollTop = prevScrollTop;
+    }
   }
 
-  async function buildContextForGeneration({ speaker, userText = '', instruction = null, historyOverride = null } = {}) {
+  async function buildContextForGeneration({ speaker, userText = '', instruction = null, historyOverride = null, dryRun = false } = {}) {
     const rawId = selectedModelId || thread?.modelId || null;
     const modelId = (rawId && models.some(m => m.id === rawId)) ? rawId : models[0]?.id;
     if (!modelId) throw new Error('No model selected');
     const modelInfo = models.find((item) => item.id === modelId);
-    const contextWindow = thread?.contextWindowOverride || modelInfo?.contextLength || currentSettings?.defaultContextWindow || 8192;
+    // CRITICAL: this window must equal the num_ctx that getGenerationOptions
+    // sends to Ollama (thread override > settings default). It previously
+    // preferred modelInfo.contextLength — so a 32K-capable model was
+    // BUDGETED at 32K while Ollama was clamped to the 8K settings default.
+    // Any assembled prompt over the real num_ctx got silently truncated
+    // from the TOP, deleting the system prompt (character, style, rules)
+    // while the UI claimed everything fit. That failure mode presents
+    // exactly as "the AI ignores my prompts". Budget and num_ctx now
+    // resolve from the same chain; model context length is only a
+    // fallback for the (currently impossible) case of no settings value.
+    const contextWindow = thread?.contextWindowOverride || currentSettings?.defaultContextWindow || modelInfo?.contextLength || 8192;
     // Lorebooks come from the primary (first) character only. If multi-character
     // chats are introduced, the original character’s lore wins. If the character
     // hasn't picked any books, NO lore is injected — empty selection means none.
@@ -5767,7 +6236,9 @@ function renderChatEditor(container, parallx, input) {
           const cached = thread?.cachedSummary;
           if (cached && cached.key === droppedKey) {
             historySummary = cached.text || '';
-          } else if (parallx?.lm?.sendChatRequest) {
+          } else if (parallx?.lm?.sendChatRequest && !dryRun) {
+            // dryRun (prompt-inspector preview) must never spend an LLM
+            // call — the preview shows the cached summary or none.
             // Surface that we're spending an extra LLM call so the user knows
             // why the first token is slower than usual.
             transientMessage = {
@@ -5854,11 +6325,17 @@ function renderChatEditor(container, parallx, input) {
       contextWindow,
       userName: getUserName(),
       respondAs: speaker,
-      responseLength: null,
+      // Global default response length now actually reaches assembly.
+      // It was hardcoded `null` here, so the Settings-page default was
+      // dead wiring while the diagnostics claimed it applied.
+      responseLength: currentSettings?.defaultResponseLength || null,
       settings: currentSettings,
       ephemeralInstruction: instruction,
       historySummary,
       sceneState: thread?.sceneState || null, // M79 Phase 3a
+      writingPresetOverride: thread?.writingPresetOverride || '',
+      responseLengthOverride: thread?.responseLengthOverride || '',
+      standingNote: thread?.standingNote || '',
     });
     // Annotate with diagnostic info the inspect modal + token chip surface.
     // All `*Source` labels reference the SPEAKER character (or
@@ -5867,7 +6344,12 @@ function renderChatEditor(container, parallx, input) {
     // was actually speaking, which obscured the bug.
     assembled.loreDebug = loreDebug;
     const charLenLimit = speakerCharLocal?.frontmatter?.messageLengthLimit;
-    if (charLenLimit) {
+    const threadLenOverride = thread?.responseLengthOverride || '';
+    if (threadLenOverride) {
+      assembled.responseLengthSource = threadLenOverride === 'none'
+        ? 'chat override (no limit)'
+        : `chat override (${threadLenOverride})`;
+    } else if (charLenLimit) {
       assembled.responseLengthSource = `character (${speakerCharLocal.frontmatter.name || 'character'}: ${charLenLimit})`;
     } else if (currentSettings?.defaultResponseLength) {
       assembled.responseLengthSource = `global default (${currentSettings.defaultResponseLength})`;
@@ -5888,11 +6370,13 @@ function renderChatEditor(container, parallx, input) {
     } else {
       assembled.povSource = 'inherit (preset decides)';
     }
-    assembled.writingPresetSource = speakerCharLocal?.frontmatter?.writingPreset
-      ? `character (${speakerCharLocal.frontmatter.name || 'character'}: ${speakerCharLocal.frontmatter.writingPreset})`
-      : (currentSettings?.defaultWritingPreset
-          ? `global default (${currentSettings.defaultWritingPreset})`
-          : 'fallback (immersive-rp)');
+    assembled.writingPresetSource = thread?.writingPresetOverride
+      ? `chat override (${thread.writingPresetOverride})`
+      : (speakerCharLocal?.frontmatter?.writingPreset
+          ? `character (${speakerCharLocal.frontmatter.name || 'character'}: ${speakerCharLocal.frontmatter.writingPreset})`
+          : (currentSettings?.defaultWritingPreset
+              ? `global default (${currentSettings.defaultWritingPreset})`
+              : 'fallback (immersive-rp)'));
     lastAssembledContext = assembled;
     selectedModelId = modelId;
     updateChrome();
@@ -6139,6 +6623,10 @@ function renderChatEditor(container, parallx, input) {
     if (isGenerating || characters.length === 0 || !parallx.lm) return;
     const effectiveSpeaker = speaker || (asUser ? selectedComposeSpeaker : await resolveReplySpeaker());
     if (!effectiveSpeaker) return;
+    // Director's note field feeds every generation path that doesn't
+    // carry an explicit instruction already (plain send, empty send,
+    // shortcut buttons, regenerate). Explicit /ai instructions win.
+    if (!instruction) instruction = consumeDirectorNote();
 
     isGenerating = true;
     stopRequested = false;
@@ -6607,119 +7095,147 @@ function renderChatEditor(container, parallx, input) {
   }
 
   /**
-   * Show the Perchance-style options menu above the input bar.
-   * Items: change user name, toggle autoreply,
-   * response length, add character, edit character, reply as..., options (full page).
+   * Chat settings drawer — replaces the old popover options menu AND the
+   * separate "Chat Info" editor tab. Everything a chat can configure
+   * lives here, saves on change (no Save button to forget), and sits
+   * inside the chat so tweaking a knob and testing the result is one
+   * motion. The per-chat writing-style / response-length overrides are
+   * new REAL wiring: they land in the prompt with top precedence and
+   * the inspector names them as the source.
    */
-  function showOptionsMenu() {
-    // Remove existing menu if open
-    const existing = root.querySelector('.tg-options-menu');
-    if (existing) { existing.remove(); return; }
+  let _drawerEl = null;
+  function closeChatDrawer() {
+    if (_drawerEl) { _drawerEl.remove(); _drawerEl = null; }
+    optionsBtn.classList.remove('tg-input-ooc-btn--active');
+  }
+  function showChatDrawer() {
+    if (_drawerEl) { closeChatDrawer(); return; }
+    if (!thread) return;
+    const drawer = el('div', 'tg-drawer');
+    _drawerEl = drawer;
+    optionsBtn.classList.add('tg-input-ooc-btn--active');
 
-    const menu = el('div', 'tg-options-menu');
-    const dismiss = () => { menu.remove(); document.removeEventListener('click', onOutside, true); };
-    const onOutside = (e) => { if (!menu.contains(e.target) && e.target !== optionsBtn) dismiss(); };
-    setTimeout(() => document.addEventListener('click', onOutside, true), 0);
+    const head = el('div', 'tg-drawer-head');
+    head.appendChild(el('span', 'tg-drawer-title', { text: 'Chat Settings' }));
+    const closeBtn = el('button', 'tg-modal-close', { html: icon('x', 16) });
+    closeBtn.addEventListener('click', closeChatDrawer);
+    head.appendChild(closeBtn);
+    drawer.appendChild(head);
 
-    const item = (iconName, label, handler) => {
-      const btn = el('button', 'tg-options-item');
-      btn.innerHTML = `<span style="width:20px;display:inline-flex;align-items:center;justify-content:center">${icon(iconName, 16)}</span> ${label}`;
-      btn.addEventListener('click', () => { dismiss(); handler(); });
-      menu.appendChild(btn);
+    const bodyEl = el('div', 'tg-drawer-body');
+    drawer.appendChild(bodyEl);
+
+    const fieldWrap = (labelText, inputEl, hintText) => {
+      const wrap = el('div', 'tg-drawer-field');
+      wrap.appendChild(el('label', 'tg-drawer-label', { text: labelText }));
+      wrap.appendChild(inputEl);
+      if (hintText) wrap.appendChild(el('div', 'tg-drawer-hint', { text: hintText }));
+      return wrap;
+    };
+    const saveMeta = (updates, label) => {
+      Object.assign(thread, updates);
+      return surfaceSaveError(updateThreadMeta(fs, workspaceUri, threadId, updates), parallx, label);
     };
 
-    // ── Change user name ──
-    item('pencil', 'Change User Name', async () => {
-      const currentName = getUserName();
-      const overlay = el('div', 'tg-modal-overlay');
-      const modal = el('div', 'tg-modal');
-      modal.style.maxWidth = '340px';
-      const header = el('div', 'tg-modal-header');
-      header.appendChild(el('span', 'tg-modal-title', { text: 'Change User Name' }));
-      const closeBtn = el('button', 'tg-modal-close', { html: icon('x', 16) });
-      closeBtn.addEventListener('click', () => overlay.remove());
-      header.appendChild(closeBtn);
-      modal.appendChild(header);
-      const body = el('div', 'tg-modal-body');
-      body.style.cssText = 'padding:16px; display:flex; flex-direction:column; gap:8px;';
-      const nameInput = el('input');
-      nameInput.type = 'text';
-      nameInput.value = currentName;
-      nameInput.style.cssText = 'padding:6px 10px; border:1px solid var(--vscode-input-border, var(--px-border)); border-radius:4px; background:var(--vscode-input-background); color:var(--vscode-input-foreground); font-size:12px; width:100%; box-sizing:border-box;';
-      body.appendChild(nameInput);
-      modal.appendChild(body);
-      const footer = el('div', 'tg-modal-footer');
-      footer.style.cssText = 'display:flex; justify-content:flex-end; gap:8px; padding:8px 16px;';
-      const cancelBtn2 = el('button', 'tg-shortcut-btn', { text: 'Cancel' });
-      cancelBtn2.addEventListener('click', () => overlay.remove());
-      const saveBtn = el('button', 'tg-shortcut-btn', { text: 'Save' });
-      saveBtn.style.cssText = 'background:var(--vscode-button-background); color:var(--vscode-button-foreground);';
-      const doSave = async () => {
-        const newName = nameInput.value.trim() || 'Anon';
-        thread.userName = newName;
-        await surfaceSaveError(updateThreadMeta(fs, workspaceUri, threadId, { userName: newName }), parallx, 'your name');
-        await propagateUserName(newName);
-        overlay.remove();
-        renderShortcutButtons();
-        renderMessages();
-      };
-      saveBtn.addEventListener('click', doSave);
-      nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSave(); });
-      footer.append(cancelBtn2, saveBtn);
-      modal.appendChild(footer);
-      overlay.appendChild(modal);
-      overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
-      document.body.appendChild(overlay);
-      nameInput.focus();
-      nameInput.select();
+    // ── Chat title ──
+    const titleInput = el('input', 'tg-drawer-input');
+    titleInput.type = 'text';
+    titleInput.value = thread.title || '';
+    titleInput.addEventListener('change', () => {
+      const t = titleInput.value.trim() || 'New Chat';
+      if (t === thread.title) return;
+      saveMeta({ title: t }, 'chat title');
+      updateChrome();
+      _refreshSidebar?.();
     });
+    bodyEl.appendChild(fieldWrap('Chat title', titleInput));
 
-    // ── Toggle autoreply ──
-    const autoReplyEnabled = thread?.autoReply !== false;
-    item('refresh-cw', autoReplyEnabled ? 'Disable Autoreply' : 'Enable Autoreply', async () => {
-      thread.autoReply = !autoReplyEnabled;
-      await surfaceSaveError(updateThreadMeta(fs, workspaceUri, threadId, { autoReply: thread.autoReply }), parallx, 'auto-reply setting');
+    // ── Your name ──
+    const yourNameInput = el('input', 'tg-drawer-input');
+    yourNameInput.type = 'text';
+    yourNameInput.value = getUserName();
+    yourNameInput.addEventListener('change', async () => {
+      const newName = yourNameInput.value.trim() || 'Anon';
+      if (newName === thread.userName) return;
+      await saveMeta({ userName: newName }, 'your name');
+      await propagateUserName(newName);
+      renderTurnControls();
+      renderMessages();
     });
+    bodyEl.appendChild(fieldWrap('Your name', yourNameInput, 'Used for {{user}} substitution and your message labels.'));
 
-    // ── Add character ──
-    item('plus', 'Add Character', async () => {
-      const allChars = await scanCharacters(fs, workspaceUri);
-      const available = allChars.filter(c => !thread.characters.find(tc => tc.file === c.fileName));
-      const overlay = el('div', 'tg-modal-overlay');
-      const modal = el('div', 'tg-modal');
-      modal.style.maxWidth = '340px';
-      const header = el('div', 'tg-modal-header');
-      header.appendChild(el('span', 'tg-modal-title', { text: 'Add Character' }));
-      const closeBtn = el('button', 'tg-modal-close', { html: icon('x', 16) });
-      closeBtn.addEventListener('click', () => overlay.remove());
-      header.appendChild(closeBtn);
-      modal.appendChild(header);
-      const body = el('div', 'tg-modal-body');
-      body.style.cssText = 'padding:16px; display:flex; flex-direction:column; gap:6px;';
-      if (available.length === 0) {
-        body.appendChild(el('div', 'tg-empty', { text: allChars.length === 0 ? 'No characters found. Create one first.' : 'All characters are already in this chat.' }));
-      } else {
-        for (const char of available) {
-          const cName = getCharacterName(char);
-          const btn = el('button', 'tg-shortcut-btn', { html: `${icon('message-circle', 14)} ${escapeHtml(cName)}` });
-          btn.style.cssText = 'width:100%; justify-content:center; padding:8px 16px; font-size:12px;';
-          btn.addEventListener('click', async () => {
-            thread.characters.push({ file: char.fileName, addedAt: Date.now() });
-            await surfaceSaveError(updateThreadMeta(fs, workspaceUri, threadId, { characters: thread.characters }), parallx, 'added participant');
-            overlay.remove();
+    // ── Type as ──
+    const typeAsSelect = el('select', 'tg-drawer-select');
+    const selfOpt = el('option', null, { text: `${getUserName()} (yourself)` });
+    selfOpt.value = SELF_SPEAKER;
+    typeAsSelect.appendChild(selfOpt);
+    for (const char of characters) {
+      const o = el('option', null, { text: getCharacterName(char) });
+      o.value = char.fileName;
+      typeAsSelect.appendChild(o);
+    }
+    typeAsSelect.value = (selectedComposeSpeaker && selectedComposeSpeaker !== SELF_SPEAKER) ? selectedComposeSpeaker : SELF_SPEAKER;
+    typeAsSelect.addEventListener('change', () => {
+      const v = typeAsSelect.value;
+      selectedComposeSpeaker = v || SELF_SPEAKER;
+      saveMeta({ userPlaysAs: v === SELF_SPEAKER ? null : v }, 'type-as setting');
+      renderTurnControls();
+    });
+    bodyEl.appendChild(fieldWrap('Type as', typeAsSelect, 'Whether your typed messages are written as yourself or as a thread character.'));
+
+    // ── Participants ──
+    const chipList = el('div', 'tg-drawer-chips');
+    const rebuildChips = () => {
+      chipList.innerHTML = '';
+      for (const charRef of thread.characters) {
+        const chip = el('span', 'tg-drawer-chip');
+        chip.appendChild(document.createTextNode(getCharacterName(charRef.file)));
+        if (thread.characters.length > 1) {
+          const rm = el('button', 'tg-drawer-chip-remove', { html: icon('x', 10) });
+          rm.title = 'Remove from chat';
+          rm.addEventListener('click', async () => {
+            thread.characters = thread.characters.filter((item) => item.file !== charRef.file);
+            const updates = { characters: thread.characters };
+            if (thread.userPlaysAs === charRef.file) {
+              thread.userPlaysAs = null;
+              updates.userPlaysAs = null;
+            }
+            await surfaceSaveError(updateThreadMeta(fs, workspaceUri, threadId, updates), parallx, 'participants');
+            closeChatDrawer();
             await reloadThreadState();
+            showChatDrawer();
           });
-          body.appendChild(btn);
+          chip.appendChild(rm);
         }
+        chipList.appendChild(chip);
       }
-      modal.appendChild(body);
-      overlay.appendChild(modal);
-      overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
-      document.body.appendChild(overlay);
-    });
+      const addBtn = el('button', 'tg-drawer-add-btn', { text: '+ Add' });
+      addBtn.addEventListener('click', async () => {
+        const allChars = await scanCharacters(fs, workspaceUri);
+        const available = allChars.filter((c) => !thread.characters.find((tc) => tc.file === c.fileName));
+        if (available.length === 0) {
+          showToast(allChars.length === 0 ? 'No characters found. Create one first.' : 'All characters are already in this chat.');
+          return;
+        }
+        const picked = await parallx.window?.showQuickPick(
+          available.map((c) => ({ label: c.frontmatter.name || c.fileName, description: c.fileName })),
+          { placeholder: 'Add a character to this chat' },
+        );
+        if (!picked) return;
+        thread.characters.push({ file: picked.description, addedAt: Date.now() });
+        await surfaceSaveError(updateThreadMeta(fs, workspaceUri, threadId, { characters: thread.characters }), parallx, 'participants');
+        closeChatDrawer();
+        await reloadThreadState();
+        showChatDrawer();
+      });
+      chipList.appendChild(addBtn);
+    };
+    rebuildChips();
+    bodyEl.appendChild(fieldWrap('Participants', chipList));
 
-    // ── Edit character (opens character editor for primary character) ──
-    item('pencil-line', 'Edit Character', () => {
+    // ── Edit character shortcut ──
+    const editCharBtn = el('button', 'tg-drawer-btn', { html: `${icon('pencil-line', 13)} Edit ${escapeHtml(getCharacterName(characters[0]) || 'character')}` });
+    editCharBtn.addEventListener('click', () => {
       const primaryChar = characters[0];
       if (!primaryChar) return;
       parallx.editors.openEditor({
@@ -6729,68 +7245,81 @@ function renderChatEditor(container, parallx, input) {
         instanceId: primaryChar.fileName,
       });
     });
+    bodyEl.appendChild(editCharBtn);
 
-    // ── Reply as... ──
-    item('message-circle', 'Reply As…', () => {
-      const overlay = el('div', 'tg-modal-overlay');
-      const modal = el('div', 'tg-modal');
-      modal.style.maxWidth = '340px';
-      const header = el('div', 'tg-modal-header');
-      header.appendChild(el('span', 'tg-modal-title', { text: 'Reply As...' }));
-      const closeBtn = el('button', 'tg-modal-close', { html: icon('x', 16) });
-      closeBtn.addEventListener('click', () => overlay.remove());
-      header.appendChild(closeBtn);
-      modal.appendChild(header);
-      const body = el('div', 'tg-modal-body');
-      body.style.cssText = 'padding:16px; display:flex; flex-direction:column; gap:6px;';
-      // Self option
-      const selfBtn = el('button', 'tg-shortcut-btn', { html: `${icon('user', 14)} ${escapeHtml(getUserName())} (yourself)` });
-      selfBtn.style.cssText = 'width:100%; justify-content:center; padding:8px 16px; font-size:12px;';
-      if (selectedComposeSpeaker === SELF_SPEAKER) selfBtn.style.borderColor = 'var(--vscode-focusBorder)';
-      selfBtn.addEventListener('click', async () => {
-        selectedComposeSpeaker = SELF_SPEAKER;
-        thread.userPlaysAs = null;
-        await surfaceSaveError(updateThreadMeta(fs, workspaceUri, threadId, { userPlaysAs: null }), parallx, 'type-as setting');
-        overlay.remove();
-        renderTurnControls();
-      });
-      body.appendChild(selfBtn);
-      // Character options
-      for (const char of characters) {
-        const cName = getCharacterName(char);
-        const btn = el('button', 'tg-shortcut-btn', { html: `${icon('message-circle', 14)} ${escapeHtml(cName)}` });
-        btn.style.cssText = 'width:100%; justify-content:center; padding:8px 16px; font-size:12px;';
-        if (selectedComposeSpeaker === char.fileName) btn.style.borderColor = 'var(--vscode-focusBorder)';
-        btn.addEventListener('click', async () => {
-          selectedComposeSpeaker = char.fileName;
-          thread.userPlaysAs = char.fileName;
-          await surfaceSaveError(updateThreadMeta(fs, workspaceUri, threadId, { userPlaysAs: char.fileName }), parallx, 'type-as setting');
-          overlay.remove();
-          renderTurnControls();
-        });
-        body.appendChild(btn);
-      }
-      modal.appendChild(body);
-      overlay.appendChild(modal);
-      overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
-      document.body.appendChild(overlay);
+    bodyEl.appendChild(el('hr', 'tg-drawer-sep'));
+
+    // ── Writing preset override ──
+    const presetSel = el('select', 'tg-drawer-select');
+    const inheritOpt = el('option', null, { text: 'Inherit (character / global default)' });
+    inheritOpt.value = '';
+    presetSel.appendChild(inheritOpt);
+    for (const [key, p] of Object.entries(WRITING_PRESETS)) {
+      const o = el('option', null, { text: p.label });
+      o.value = key;
+      presetSel.appendChild(o);
+    }
+    presetSel.value = thread.writingPresetOverride || '';
+    presetSel.addEventListener('change', () => {
+      saveMeta({ writingPresetOverride: presetSel.value || '' }, 'writing style');
     });
+    bodyEl.appendChild(fieldWrap('Writing style (this chat)', presetSel, 'Overrides the character and global writing style for this chat only.'));
 
-    // ── Options (chat info page) ──
-    item('settings', 'Chat Info', () => {
-      parallx.editors.openEditor({
-        typeId: 'text-generator-chat-settings',
-        title: 'Chat Info',
-        icon: 'sliders',
-        instanceId: `chat-settings:${threadId}`,
-      });
+    // ── Response length override ──
+    const lenSel = el('select', 'tg-drawer-select');
+    for (const opt of [
+      { value: '', label: 'Inherit (character / global default)' },
+      { value: 'none', label: 'No limit' },
+      { value: 'short', label: 'Short (1 paragraph)' },
+      { value: 'medium', label: 'Medium (2-3 paragraphs)' },
+      { value: 'long', label: 'Long (4+ paragraphs)' },
+    ]) {
+      const o = el('option', null, { text: opt.label });
+      o.value = opt.value;
+      lenSel.appendChild(o);
+    }
+    lenSel.value = thread.responseLengthOverride || '';
+    lenSel.addEventListener('change', () => {
+      saveMeta({ responseLengthOverride: lenSel.value || '' }, 'response length');
     });
+    bodyEl.appendChild(fieldWrap('Response length (this chat)', lenSel));
 
-    root.appendChild(menu);
+    // ── Standing director's note ──
+    const standingArea = el('textarea', 'tg-drawer-textarea');
+    standingArea.rows = 3;
+    standingArea.placeholder = 'e.g. "Keep the pacing slow. Never write my character\'s dialogue. End every reply mid-scene."';
+    standingArea.value = thread.standingNote || '';
+    standingArea.addEventListener('change', () => {
+      saveMeta({ standingNote: standingArea.value }, 'standing note');
+    });
+    bodyEl.appendChild(fieldWrap('Standing director\'s note', standingArea, 'Injected close to generation on EVERY turn. The megaphone next to the reply box is the one-shot version.'));
+
+    // ── Toggles ──
+    const toggleRow = (labelText, checked, onChange, hintText) => {
+      const wrap = el('div', 'tg-drawer-field');
+      const row = el('label', 'tg-drawer-toggle');
+      const cb = el('input');
+      cb.type = 'checkbox';
+      cb.checked = checked;
+      cb.addEventListener('change', () => onChange(cb.checked));
+      row.appendChild(cb);
+      row.appendChild(el('span', null, { text: labelText }));
+      wrap.appendChild(row);
+      if (hintText) wrap.appendChild(el('div', 'tg-drawer-hint', { text: hintText }));
+      return wrap;
+    };
+    bodyEl.appendChild(toggleRow('Auto-reply', thread.autoReply !== false, (v) => {
+      saveMeta({ autoReply: v }, 'auto-reply setting');
+    }, 'Generate an AI turn automatically after each of your messages.'));
+    bodyEl.appendChild(toggleRow('Smart turn order', thread.smartTurnOrder === true, (v) => {
+      saveMeta({ smartTurnOrder: v }, 'turn order setting');
+    }, 'In chats with 3+ characters, ask the model who should speak next instead of rotating.'));
+
+    root.appendChild(drawer);
   }
 
   optionsBtn.addEventListener('click', () => {
-    showOptionsMenu();
+    showChatDrawer();
   });
 
   async function sendMessage() {
@@ -6857,7 +7386,6 @@ function renderChatEditor(container, parallx, input) {
       if (!isGenerating) reloadThreadState().catch(() => {});
     }, 300);
   };
-  container.addEventListener('focusin', focusHandler);
   fileWatcher = parallx.workspace.onDidFilesChange?.((events) => {
     if (isGenerating) return;
     if (events.some((event) => event.uri.includes('/text-generator/'))) {
@@ -6867,6 +7395,13 @@ function renderChatEditor(container, parallx, input) {
       }, 300);
     }
   });
+  // Focus-driven full reload is a FALLBACK for hosts without a file
+  // watcher. When the watcher exists it already covers external edits;
+  // reloading the whole thread because the user clicked into the
+  // transcript wiped scroll position and swallowed in-flight UI state.
+  if (!fileWatcher) {
+    container.addEventListener('focusin', focusHandler);
+  }
 
   (async () => {
     try {
@@ -6983,7 +7518,10 @@ function renderHomePage(container, parallx) {
         row.innerHTML = icon('user', 14);
         row.appendChild(el('span', 'tg-recent-row-label', { text: name }));
         row.addEventListener('click', async () => {
-          let modelId = 'unknown';
+          // null lets createThread fall back to the settings default;
+          // the chat resolves the real model at load. The old 'unknown'
+          // string got persisted into thread.json as a bogus model id.
+          let modelId = null;
           if (parallx.lm) {
             try {
               const mdls = await parallx.lm.getModels();
@@ -7012,112 +7550,131 @@ function renderHomePage(container, parallx) {
 // SECTION 10C: CHARACTERS PAGE
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function renderCharactersPage(container, parallx) {
+function renderCharactersPage(container, parallx, input) {
   injectStyles();
 
   const fs = parallx.workspace?.fs;
   const workspaceUri = parallx.workspace?.workspaceFolders?.[0]?.uri;
+  // Master-detail consolidation: the roster and the character editor are
+  // ONE surface now. When opened via the legacy character-editor typeId,
+  // instanceId is a character fileName to preselect; the roster typeId
+  // passes a non-file instanceId ('characters') and starts unselected.
+  const rawInstance = input?.instanceId || input?.id || '';
+  const preselect = /\.(md|json)$/.test(rawInstance) ? rawInstance : null;
 
-  const root = el('div', 'tg-page');
+  const root = el('div', 'tg-cc');
   container.appendChild(root);
 
-  // Header
-  const header = el('div', 'tg-page-header');
-  header.innerHTML = icon('users', 28);
-  const info = el('div', 'tg-page-header-info');
-  info.appendChild(el('div', 'tg-page-header-title', { text: 'Characters' }));
-  info.appendChild(el('div', 'tg-page-header-subtitle', { text: 'Manage your character definitions' }));
-  header.appendChild(info);
-  root.appendChild(header);
-
-  const content = el('div', 'tg-page-content');
-  root.appendChild(content);
-
   if (!fs || !workspaceUri) {
-    content.appendChild(el('div', 'tg-empty', { text: 'Open a workspace to manage characters.' }));
+    root.appendChild(el('div', 'tg-empty', { text: 'Open a workspace to manage characters.' }));
     return { dispose() { container.innerHTML = ''; } };
   }
 
-  const grid = el('div', 'tg-card-grid');
-  content.appendChild(grid);
+  // ── Left rail: characters + lorebooks ──
+  const rail = el('div', 'tg-cc-rail');
+  const railHead = el('div', 'tg-cc-rail-head');
+  railHead.appendChild(el('span', 'tg-cc-rail-title', { text: 'Characters' }));
+  const forgeBtn = el('button', 'tg-cc-rail-add', { html: icon('sparkles', 14) });
+  forgeBtn.title = 'Forge a character (AI-generated from dials)';
+  forgeBtn.addEventListener('click', () => openForge());
+  railHead.appendChild(forgeBtn);
+  const newCharBtn = el('button', 'tg-cc-rail-add', { html: icon('plus', 14) });
+  newCharBtn.title = 'Create new character (blank)';
+  railHead.appendChild(newCharBtn);
+  rail.appendChild(railHead);
+  const charList = el('div', 'tg-cc-list');
+  rail.appendChild(charList);
 
-  // Lorebook section — created once, content refreshed
-  const loreSection = el('div', 'tg-page-section');
-  loreSection.style.marginTop = '32px';
-  loreSection.appendChild(el('div', 'tg-page-section-title', { text: 'Lorebooks' }));
-  const loreGrid = el('div', 'tg-card-grid');
-  loreSection.appendChild(loreGrid);
-  content.appendChild(loreSection);
+  const loreHead = el('div', 'tg-cc-rail-head');
+  loreHead.appendChild(el('span', 'tg-cc-rail-title', { text: 'Lorebooks' }));
+  const newLoreBtn = el('button', 'tg-cc-rail-add', { html: icon('plus', 14) });
+  newLoreBtn.title = 'Create new lorebook';
+  loreHead.appendChild(newLoreBtn);
+  rail.appendChild(loreHead);
+  const loreList = el('div', 'tg-cc-list tg-cc-list--lore');
+  rail.appendChild(loreList);
 
-  async function refresh() {
-    grid.innerHTML = '';
-    loreGrid.innerHTML = '';
+  // ── Right pane: the character editor, embedded ──
+  const pane = el('div', 'tg-cc-pane');
+  root.append(rail, pane);
 
-    // Create new card
-    const createCard = el('div', 'tg-card tg-card--create');
-    createCard.innerHTML = icon('plus', 24);
-    createCard.appendChild(el('span', 'tg-card--create-label', { text: 'Create New Character' }));
-    createCard.addEventListener('click', async () => {
-      const dir = resolveUri(workspaceUri, `${EXT_ROOT}/characters`);
-      await ensureNestedDirs(fs, workspaceUri, ['.parallx', 'extensions', 'text-generator', 'characters']);
-      const id = generateId().slice(0, 8);
-      const fileName = `character-${id}.json`;
-      const newChar = createCharacterJson();
-      await fs.writeFile(resolveUri(dir, fileName), JSON.stringify(newChar, null, 2));
-      await parallx.editors.openEditor({
-        typeId: 'text-generator-character-editor',
-        title: 'New Character',
-        icon: 'user',
-        instanceId: fileName,
-      });
-      setTimeout(refresh, 500);
+  let selectedFile; // undefined until the first selectCharacter call
+  let paneEditor = null;
+  const rowByFile = new Map();
+
+  function selectCharacter(fileName) {
+    if (selectedFile === fileName) return;
+    if (paneEditor) { try { paneEditor.dispose?.(); } catch { /* already disposed */ } paneEditor = null; }
+    pane.innerHTML = '';
+    selectedFile = fileName || null;
+    for (const [f, row] of rowByFile) row.classList.toggle('tg-cc-row--active', f === selectedFile);
+    if (!selectedFile) {
+      const empty = el('div', 'tg-cc-empty');
+      empty.appendChild(el('div', null, { html: icon('users', 32) }));
+      empty.appendChild(el('div', null, { text: 'Select a character to edit, or create a new one.' }));
+      pane.appendChild(empty);
+      return;
+    }
+    paneEditor = renderCharacterEditor(pane, parallx, { instanceId: selectedFile });
+  }
+
+  function openForge() {
+    if (paneEditor) { try { paneEditor.dispose?.(); } catch { /* already disposed */ } paneEditor = null; }
+    pane.innerHTML = '';
+    selectedFile = null;
+    for (const [, row] of rowByFile) row.classList.remove('tg-cc-row--active');
+    paneEditor = renderForgePane(pane, parallx, {
+      fs, workspaceUri,
+      onSaved: async (fileName) => {
+        await refreshRail();
+        selectCharacter(fileName);
+      },
     });
-    grid.appendChild(createCard);
+  }
 
-    // Character cards
-    const characters = await scanCharacters(fs, workspaceUri);
-    for (const ch of characters) {
+  async function startChatWithCharacter(fileName, name) {
+    const thread = await createThread(fs, workspaceUri, fileName, null);
+    _refreshSidebar?.();
+    await parallx.editors.openEditor({
+      typeId: 'text-generator-chat',
+      title: name,
+      icon: 'message-circle',
+      instanceId: thread.id,
+    });
+  }
+
+  function railAction(iconName, title, handler, danger = false) {
+    const btn = el('button', `tg-cc-row-action${danger ? ' tg-cc-row-action--danger' : ''}`, { html: icon(iconName, 12) });
+    btn.title = title;
+    btn.addEventListener('click', (e) => { e.stopPropagation(); handler(); });
+    return btn;
+  }
+
+  async function refreshRail() {
+    charList.innerHTML = '';
+    loreList.innerHTML = '';
+    rowByFile.clear();
+
+    const chars = await scanCharacters(fs, workspaceUri);
+    if (chars.length === 0) {
+      charList.appendChild(el('div', 'tg-cc-list-empty', { text: 'No characters yet.' }));
+    }
+    for (const ch of chars) {
       const name = ch.frontmatter.name || ch.fileName.replace(/\.(md|json)$/, '');
-      const desc = ch.sections.roleInstruction
-        ? ch.sections.roleInstruction.slice(0, 80) + (ch.sections.roleInstruction.length > 80 ? '\u2026' : '')
-        : 'No description';
+      const row = el('div', 'tg-cc-row');
+      rowByFile.set(ch.fileName, row);
+      if (ch.fileName === selectedFile) row.classList.add('tg-cc-row--active');
+      row.appendChild(el('span', 'tg-cc-row-icon', { html: icon('user', 14) }));
+      row.appendChild(el('span', 'tg-cc-row-name', { text: name }));
 
-      const card = el('div', 'tg-card');
-
-      // Top: avatar + name
-      const top = el('div', 'tg-card-top');
-      const avatar = el('div', 'tg-card-avatar');
-      avatar.innerHTML = icon('user', 18);
-      top.appendChild(avatar);
-      top.appendChild(el('div', 'tg-card-name', { text: name }));
-      card.appendChild(top);
-
-      // Description
-      card.appendChild(el('div', 'tg-card-desc', { text: desc }));
-
-      // Actions
-      const actionsRow = el('div', 'tg-card-actions');
-
-      const editBtn = el('button', 'tg-card-action');
-      editBtn.innerHTML = icon('edit', 12) + ' Edit';
-      editBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        parallx.editors.openEditor({
-          typeId: 'text-generator-character-editor',
-          title: name,
-          icon: 'user',
-          instanceId: ch.fileName,
-        });
-      });
-
-      const dupeBtn = el('button', 'tg-card-action');
-      dupeBtn.innerHTML = icon('copy', 12) + ' Duplicate';
-      dupeBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
+      const rowActions = el('span', 'tg-cc-row-actions');
+      rowActions.appendChild(railAction('message-circle', 'Start a chat', () => {
+        startChatWithCharacter(ch.fileName, name).catch((err) => console.warn('[TextGenerator] Start chat failed:', err));
+      }));
+      rowActions.appendChild(railAction('copy', 'Duplicate', async () => {
         const dir = resolveUri(workspaceUri, `${EXT_ROOT}/characters`);
-        const srcPath = resolveUri(dir, ch.fileName);
         try {
-          const { content: srcContent } = await fs.readFile(srcPath);
+          const { content: srcContent } = await fs.readFile(resolveUri(dir, ch.fileName));
           let dupeData;
           if (ch.fileName.endsWith('.json')) {
             dupeData = JSON.parse(srcContent);
@@ -7131,94 +7688,41 @@ function renderCharactersPage(container, parallx) {
           dupeData.updatedAt = Date.now();
           const dupeName = ch.fileName.replace(/\.(json|md)$/, '') + `-copy-${id}.json`;
           await fs.writeFile(resolveUri(dir, dupeName), JSON.stringify(dupeData, null, 2));
-          refresh();
+          await refreshRail();
+          selectCharacter(dupeName);
         } catch (err) { console.warn('[TextGenerator] Duplicate failed:', err); }
-      });
-
-      const delBtn = el('button', 'tg-card-action tg-card-action--danger');
-      delBtn.innerHTML = icon('trash', 12) + ' Delete';
-      delBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
+      }));
+      rowActions.appendChild(railAction('trash', 'Delete', async () => {
         if (!confirm(`Delete character "${name}"? This cannot be undone.`)) return;
-        const dir = resolveUri(workspaceUri, `${EXT_ROOT}/characters`);
         try {
-          await fs.delete(resolveUri(dir, ch.fileName));
-          refresh();
+          await fs.delete(resolveUri(workspaceUri, `${EXT_ROOT}/characters/${ch.fileName}`));
+          if (selectedFile === ch.fileName) selectCharacter(null);
+          await refreshRail();
           _refreshSidebar?.();
         } catch { /* ignore */ }
-      });
+      }, true));
+      row.appendChild(rowActions);
 
-      actionsRow.append(editBtn, dupeBtn, delBtn);
-      card.appendChild(actionsRow);
-
-      // Click card to launch a new chat with this character
-      card.addEventListener('click', async () => {
-        let modelId = 'unknown';
-        if (parallx.lm) {
-          try {
-            const mdls = await parallx.lm.getModels();
-            if (mdls.length) modelId = mdls[0].id;
-          } catch { /* fallback */ }
-        }
-        const thread = await createThread(fs, workspaceUri, ch.fileName, modelId);
-        _refreshSidebar?.();
-        await parallx.editors.openEditor({
-          typeId: 'text-generator-chat',
-          title: name,
-          icon: 'message-circle',
-          instanceId: thread.id,
-        });
-      });
-
-      grid.appendChild(card);
+      row.addEventListener('click', () => selectCharacter(ch.fileName));
+      charList.appendChild(row);
     }
 
-    // Create lorebook card
-    const createLore = el('div', 'tg-card tg-card--create');
-    createLore.innerHTML = icon('plus', 24);
-    createLore.appendChild(el('span', 'tg-card--create-label', { text: 'Create Lorebook' }));
-    createLore.addEventListener('click', async () => {
-      const dir = resolveUri(workspaceUri, `${EXT_ROOT}/lorebooks`);
-      await ensureNestedDirs(fs, workspaceUri, ['.parallx', 'extensions', 'text-generator', 'lorebooks']);
-      const id = generateId().slice(0, 8);
-      const fileName = `lorebook-${id}.md`;
-      await fs.writeFile(resolveUri(dir, fileName), LOREBOOK_TEMPLATE);
-      await parallx.editors.openFileEditor(resolveUri(dir, fileName));
-      setTimeout(refresh, 500);
-    });
-    loreGrid.appendChild(createLore);
-
     const lorebooks = await scanLorebooks(fs, workspaceUri);
+    if (lorebooks.length === 0) {
+      loreList.appendChild(el('div', 'tg-cc-list-empty', { text: 'No lorebooks yet.' }));
+    }
     for (const lb of lorebooks) {
       const loreParsed = parseFrontmatter(lb.content);
       const loreName = loreParsed.frontmatter.name || lb.fileName.replace('.md', '');
-      const loreBody = loreParsed.body.trim();
-      const loreCard = el('div', 'tg-card');
-      const loreTop = el('div', 'tg-card-top');
-      const loreAvatar = el('div', 'tg-card-avatar');
-      loreAvatar.innerHTML = icon('book-open', 18);
-      loreTop.appendChild(loreAvatar);
-      loreTop.appendChild(el('div', 'tg-card-name', { text: loreName }));
-      loreCard.appendChild(loreTop);
-      loreCard.appendChild(el('div', 'tg-card-desc', {
-        text: loreBody.slice(0, 80) + (loreBody.length > 80 ? '\u2026' : ''),
-      }));
+      const row = el('div', 'tg-cc-row');
+      row.appendChild(el('span', 'tg-cc-row-icon', { html: icon('book-open', 14) }));
+      row.appendChild(el('span', 'tg-cc-row-name', { text: loreName }));
 
-      const loreActions = el('div', 'tg-card-actions');
-      const loreEdit = el('button', 'tg-card-action');
-      loreEdit.innerHTML = icon('edit', 12) + ' Edit';
-      loreEdit.addEventListener('click', (e) => {
-        e.stopPropagation();
-        parallx.editors.openFileEditor(resolveUri(workspaceUri, `${EXT_ROOT}/lorebooks/${lb.fileName}`));
-      });
-      const loreDupe = el('button', 'tg-card-action');
-      loreDupe.innerHTML = icon('copy', 12) + ' Duplicate';
-      loreDupe.addEventListener('click', async (e) => {
-        e.stopPropagation();
+      const rowActions = el('span', 'tg-cc-row-actions');
+      rowActions.appendChild(railAction('copy', 'Duplicate', async () => {
         const dir = resolveUri(workspaceUri, `${EXT_ROOT}/lorebooks`);
-        const srcPath = resolveUri(dir, lb.fileName);
         try {
-          const { content: srcContent } = await fs.readFile(srcPath);
+          const { content: srcContent } = await fs.readFile(resolveUri(dir, lb.fileName));
           // Append (copy) to the frontmatter name if present
           let dupeContent = srcContent;
           const nameMatch = dupeContent.match(/^(---[\s\S]*?\nname:\s*)(.+)(\n[\s\S]*?---)/);
@@ -7228,32 +7732,407 @@ function renderCharactersPage(container, parallx) {
           const id = generateId().slice(0, 8);
           const dupeName = lb.fileName.replace('.md', '') + `-copy-${id}.md`;
           await fs.writeFile(resolveUri(dir, dupeName), dupeContent);
-          refresh();
+          await refreshRail();
         } catch (err) { console.warn('[TextGenerator] Lorebook duplicate failed:', err); }
-      });
-      const loreDel = el('button', 'tg-card-action tg-card-action--danger');
-      loreDel.innerHTML = icon('trash', 12) + ' Delete';
-      loreDel.addEventListener('click', async (e) => {
-        e.stopPropagation();
+      }));
+      rowActions.appendChild(railAction('trash', 'Delete', async () => {
         if (!confirm(`Delete lorebook "${loreName}"? This cannot be undone.`)) return;
         try {
           await fs.delete(resolveUri(workspaceUri, `${EXT_ROOT}/lorebooks/${lb.fileName}`));
-          refresh();
+          await refreshRail();
         } catch { /* ignore */ }
-      });
-      loreActions.append(loreEdit, loreDupe, loreDel);
-      loreCard.appendChild(loreActions);
+      }, true));
+      row.appendChild(rowActions);
 
-      loreCard.addEventListener('click', () => {
+      row.addEventListener('click', () => {
         parallx.editors.openFileEditor(resolveUri(workspaceUri, `${EXT_ROOT}/lorebooks/${lb.fileName}`));
       });
-
-      loreGrid.appendChild(loreCard);
+      loreList.appendChild(row);
     }
-
   }
 
-  refresh();
+  newCharBtn.addEventListener('click', async () => {
+    const dir = resolveUri(workspaceUri, `${EXT_ROOT}/characters`);
+    await ensureNestedDirs(fs, workspaceUri, ['.parallx', 'extensions', 'text-generator', 'characters']);
+    const id = generateId().slice(0, 8);
+    const fileName = `character-${id}.json`;
+    const newChar = createCharacterJson();
+    await fs.writeFile(resolveUri(dir, fileName), JSON.stringify(newChar, null, 2));
+    await refreshRail();
+    selectCharacter(fileName);
+  });
+
+  newLoreBtn.addEventListener('click', async () => {
+    const dir = resolveUri(workspaceUri, `${EXT_ROOT}/lorebooks`);
+    await ensureNestedDirs(fs, workspaceUri, ['.parallx', 'extensions', 'text-generator', 'lorebooks']);
+    const id = generateId().slice(0, 8);
+    const fileName = `lorebook-${id}.md`;
+    await fs.writeFile(resolveUri(dir, fileName), LOREBOOK_TEMPLATE);
+    await refreshRail();
+    await parallx.editors.openFileEditor(resolveUri(dir, fileName));
+  });
+
+  refreshRail().then(() => {
+    selectCharacter(preselect || null);
+  }).catch((err) => console.warn('[TextGenerator] Characters rail load failed:', err));
+
+  return {
+    dispose() {
+      if (paneEditor) { try { paneEditor.dispose?.(); } catch { /* already disposed */ } paneEditor = null; }
+      container.innerHTML = '';
+    },
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 10C2: CHARACTER FORGE
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Game-style character creation: personality dials + archetype/genre/flaw
+// pickers + dice with per-control locks. The model turns the settings into
+// a VOICE-FIRST card — example dialogue and voice anchor are the primary
+// outputs, because voice samples steer roleplay models far harder than
+// trait prose. Every generated field is editable and individually
+// regenerable before saving into the normal roster.
+
+const FORGE_AXES = [
+  { key: 'warmth', label: 'Warmth', low: 'cold, distant', high: 'warm, affectionate' },
+  { key: 'bluntness', label: 'Bluntness', low: 'evasive, indirect', high: 'brutally direct' },
+  { key: 'formality', label: 'Formality', low: 'casual, slangy', high: 'formal, precise' },
+  { key: 'humor', label: 'Humor', low: 'dead serious', high: 'playful, joking' },
+  { key: 'confidence', label: 'Confidence', low: 'anxious, self-doubting', high: 'unshakably confident' },
+  { key: 'verbosity', label: 'Verbosity', low: 'terse, few words', high: 'expansive, talkative' },
+];
+const FORGE_RANDOM = '(random)';
+const FORGE_ARCHETYPES = ['Mentor', 'Rogue', 'Scholar', 'Guardian', 'Trickster', 'Healer', 'Outcast', 'Leader', 'Rebel', 'Innocent', 'Detective', 'Villain'];
+const FORGE_GENRES = ['Fantasy', 'Science fiction', 'Modern day', 'Historical', 'Noir mystery', 'Gothic horror', 'Slice of life', 'Post-apocalyptic'];
+const FORGE_FLAWS = ['pride', 'cowardice', 'jealousy', 'obsession', 'dishonesty', 'recklessness', 'self-doubt', 'holds grudges', 'vanity', 'cynicism', 'naivety', 'greed'];
+
+function forgeAxisDescriptor(axis, v) {
+  if (v <= 15) return `extremely ${axis.low}`;
+  if (v <= 40) return axis.low;
+  if (v < 60) return `balanced between ${axis.low} and ${axis.high}`;
+  if (v < 85) return axis.high;
+  return `extremely ${axis.high}`;
+}
+
+function buildForgeSpec(state) {
+  const pick = (v, list) => (v === FORGE_RANDOM ? list[Math.floor(Math.random() * list.length)] : v);
+  const resolved = {
+    archetype: pick(state.archetype, FORGE_ARCHETYPES),
+    genre: pick(state.genre, FORGE_GENRES),
+    flaw: pick(state.flaw, FORGE_FLAWS),
+  };
+  const lines = [
+    `- Archetype: ${resolved.archetype}`,
+    `- Setting / genre: ${resolved.genre}`,
+    `- Fatal flaw: ${resolved.flaw}`,
+    `- Personality dials: ${FORGE_AXES.map((a) => `${a.label.toLowerCase()}: ${forgeAxisDescriptor(a, state.axes[a.key])}`).join('; ')}`,
+  ];
+  if (state.name.trim()) lines.push(`- Name: ${state.name.trim()}`); else lines.push('- Name: invent a fitting one');
+  if (state.want.trim()) lines.push(`- What they openly WANT: ${state.want.trim()}`);
+  if (state.fear.trim()) lines.push(`- What they privately FEAR: ${state.fear.trim()}`);
+  if (state.secret.trim()) lines.push(`- A SECRET they keep: ${state.secret.trim()}`);
+  if (state.concept.trim()) lines.push(`- Concept notes: ${state.concept.trim()}`);
+  return { spec: lines.join('\n'), resolved };
+}
+
+function buildForgeMessages(state) {
+  const { spec } = buildForgeSpec(state);
+  const system = [
+    'You are a character designer for roleplay fiction. You create original, specific, believable characters — never generic ones.',
+    'Return ONLY a single JSON object with EXACTLY these string keys: "name", "description", "voiceAnchor", "exampleDialogue", "firstMessage", "reminder". No markdown, no commentary.',
+  ].join('\n');
+  const user = [
+    'Create ONE character from this specification:',
+    '',
+    spec,
+    '',
+    'Field requirements:',
+    '- "description": 2-3 paragraphs addressed to the AI as "You are <name>..." — who they are, how they behave, how the flaw shows. Concrete specifics over adjectives.',
+    '- "voiceAnchor": 3-5 short lines describing the VOICE itself: tone, two signature phrases they actually say, and two phrases they would NEVER say.',
+    '- "exampleDialogue": the MOST important field. Three exchanges in the exact format "[USER]: ...\\n[AI]: ..." where the personality dials and the flaw are AUDIBLE in how the character speaks — do not describe traits, perform them. Each reply in a distinct rhythm.',
+    '- "firstMessage": an opening message in their voice that sets a scene, shows (not tells) who they are, and ends mid-beat with something the other person can react to. Never summarize.',
+    '- "reminder": one sentence of the most important thing the AI must never forget when playing this character.',
+    '',
+    'Craft rules: the flaw must be visible in at least one dialogue exchange. Give them a stated want and a hidden need that conflict. No stock phrases, no "eyes sparkling", no purple filler.',
+  ].join('\n');
+  return [
+    { role: 'system', content: system },
+    { role: 'user', content: user },
+  ];
+}
+
+function buildForgeFieldMessages(state, card, key) {
+  const { spec } = buildForgeSpec(state);
+  return [
+    { role: 'system', content: `You are a character designer. Return ONLY a JSON object with exactly one string key: "${key}". No commentary.` },
+    {
+      role: 'user',
+      content: [
+        'Character specification:', '', spec, '',
+        'Current character card JSON:', JSON.stringify(card, null, 2), '',
+        `Regenerate ONLY the "${key}" field — a fresh take, consistent with the rest of the card but written differently than before. Keep the same craft rules as the original field.`,
+      ].join('\n'),
+    },
+  ];
+}
+
+function parseForgeJson(text) {
+  const tryParse = (s) => { try { const v = JSON.parse(s); return (v && typeof v === 'object') ? v : null; } catch { return null; } };
+  const direct = tryParse(text);
+  if (direct) return direct;
+  const m = text.match(/\{[\s\S]*\}/);
+  return m ? tryParse(m[0]) : null;
+}
+
+const FORGE_FIELDS = [
+  { key: 'name', label: 'Name', rows: 1 },
+  { key: 'description', label: 'Description / role instruction', rows: 8 },
+  { key: 'voiceAnchor', label: 'Voice anchor', rows: 4 },
+  { key: 'exampleDialogue', label: 'Example dialogue (the steering wheel)', rows: 8 },
+  { key: 'firstMessage', label: 'First message', rows: 4 },
+  { key: 'reminder', label: 'Reminder', rows: 2 },
+];
+
+function renderForgePane(container, parallx, ctx) {
+  const { fs, workspaceUri, onSaved } = ctx;
+  const root = el('div', 'tg-forge');
+  container.appendChild(root);
+
+  const head = el('div', 'tg-forge-head');
+  head.appendChild(el('div', null, { html: icon('sparkles', 22) }));
+  const headInfo = el('div', null);
+  headInfo.appendChild(el('div', 'tg-forge-title', { text: 'Character Forge' }));
+  headInfo.appendChild(el('div', 'tg-forge-subtitle', { text: 'Set the dials, roll the dice, generate. Lock anything you like, reroll the rest.' }));
+  head.appendChild(headInfo);
+  root.appendChild(head);
+
+  const state = {
+    axes: Object.fromEntries(FORGE_AXES.map((a) => [a.key, 50])),
+    archetype: FORGE_RANDOM, genre: FORGE_RANDOM, flaw: FORGE_RANDOM,
+    name: '', want: '', fear: '', secret: '', concept: '',
+    locks: new Set(),
+    lastCard: null,
+  };
+  let busy = false;
+
+  const controls = el('div', 'tg-forge-controls');
+  root.appendChild(controls);
+
+  const lockBtnFor = (lockKey) => {
+    const btn = el('button', 'tg-forge-lock', { html: icon('lock', 12) });
+    btn.title = 'Lock this control (dice will not change it)';
+    btn.addEventListener('click', () => {
+      if (state.locks.has(lockKey)) state.locks.delete(lockKey); else state.locks.add(lockKey);
+      btn.classList.toggle('tg-forge-lock--on', state.locks.has(lockKey));
+    });
+    return btn;
+  };
+
+  // Personality dials
+  const sliderInputs = {};
+  for (const axis of FORGE_AXES) {
+    const row = el('div', 'tg-forge-row');
+    row.appendChild(el('span', 'tg-forge-row-label', { text: axis.label }));
+    row.appendChild(el('span', 'tg-forge-row-end', { text: axis.low }));
+    const slider = el('input', 'tg-forge-slider');
+    slider.type = 'range'; slider.min = '0'; slider.max = '100'; slider.value = String(state.axes[axis.key]);
+    slider.addEventListener('input', () => { state.axes[axis.key] = Number(slider.value); });
+    sliderInputs[axis.key] = slider;
+    row.appendChild(slider);
+    row.appendChild(el('span', 'tg-forge-row-end', { text: axis.high }));
+    row.appendChild(lockBtnFor(axis.key));
+    controls.appendChild(row);
+  }
+
+  // Pickers
+  const selectInputs = {};
+  const pickerRow = (label, key, options) => {
+    const row = el('div', 'tg-forge-row');
+    row.appendChild(el('span', 'tg-forge-row-label', { text: label }));
+    const sel = el('select', 'tg-ce-select');
+    for (const opt of [FORGE_RANDOM, ...options]) {
+      const o = el('option', null, { text: opt });
+      o.value = opt;
+      sel.appendChild(o);
+    }
+    sel.value = state[key];
+    sel.addEventListener('change', () => { state[key] = sel.value; });
+    selectInputs[key] = sel;
+    row.appendChild(sel);
+    row.appendChild(lockBtnFor(key));
+    controls.appendChild(row);
+  };
+  pickerRow('Archetype', 'archetype', FORGE_ARCHETYPES);
+  pickerRow('Genre', 'genre', FORGE_GENRES);
+  pickerRow('Fatal flaw', 'flaw', FORGE_FLAWS);
+
+  // Free-text seeds (dice never touches these)
+  const textRow = (label, key, placeholder) => {
+    const row = el('div', 'tg-forge-row tg-forge-row--text');
+    row.appendChild(el('span', 'tg-forge-row-label', { text: label }));
+    const inp = el('input', 'tg-ce-input');
+    inp.type = 'text'; inp.placeholder = placeholder;
+    inp.addEventListener('input', () => { state[key] = inp.value; });
+    row.appendChild(inp);
+    controls.appendChild(row);
+  };
+  textRow('Name', 'name', '(blank = the AI invents one)');
+  textRow('Want', 'want', '(optional) what they openly pursue');
+  textRow('Fear', 'fear', '(optional) what they privately dread');
+  textRow('Secret', 'secret', '(optional) what they hide');
+  textRow('Concept', 'concept', '(optional) e.g. "a lighthouse keeper who hates the sea"');
+
+  // Action bar
+  const actions = el('div', 'tg-forge-actions');
+  const diceBtn = el('button', 'tg-forge-dice', { html: `${icon('dices', 14)} Roll the dice` });
+  diceBtn.title = 'Randomize all unlocked dials and pickers';
+  diceBtn.addEventListener('click', () => {
+    for (const axis of FORGE_AXES) {
+      if (state.locks.has(axis.key)) continue;
+      state.axes[axis.key] = Math.floor(Math.random() * 101);
+      sliderInputs[axis.key].value = String(state.axes[axis.key]);
+    }
+    for (const [key, list] of [['archetype', FORGE_ARCHETYPES], ['genre', FORGE_GENRES], ['flaw', FORGE_FLAWS]]) {
+      if (state.locks.has(key)) continue;
+      state[key] = list[Math.floor(Math.random() * list.length)];
+      selectInputs[key].value = state[key];
+    }
+  });
+  const genBtn = el('button', 'tg-forge-generate', { html: `${icon('sparkles', 14)} Generate character` });
+  actions.append(diceBtn, genBtn);
+  root.appendChild(actions);
+
+  const output = el('div', 'tg-forge-output');
+  root.appendChild(output);
+
+  async function resolveModel() {
+    const settings = await loadSettings(fs, workspaceUri);
+    const models = await parallx.lm.getModels();
+    const modelId = (settings.defaultModel && models.some((m) => m.id === settings.defaultModel)) ? settings.defaultModel : models[0]?.id;
+    if (!modelId) throw new Error('No local model available (is Ollama running?)');
+    return { modelId, settings };
+  }
+
+  async function collectJson(modelId, settings, messages) {
+    const stream = parallx.lm.sendChatRequest(modelId, messages, {
+      temperature: 0.9,
+      think: false,
+      format: 'json',
+      numCtx: settings.defaultContextWindow || undefined,
+    });
+    let raw = '';
+    for await (const chunk of stream) {
+      if (chunk.content) raw += chunk.content;
+    }
+    return { raw, parsed: parseForgeJson(raw) };
+  }
+
+  function showStatus(text, isError = false) {
+    output.innerHTML = '';
+    output.appendChild(el('div', `tg-forge-status${isError ? ' tg-forge-status--error' : ''}`, { text }));
+  }
+
+  function renderCard() {
+    output.innerHTML = '';
+    const card = state.lastCard;
+    const fieldEls = {};
+    for (const f of FORGE_FIELDS) {
+      const wrap = el('div', 'tg-forge-field');
+      const labelRow = el('div', 'tg-forge-field-head');
+      labelRow.appendChild(el('span', 'tg-forge-field-label', { text: f.label }));
+      const rerollBtn = el('button', 'tg-forge-reroll', { html: icon('refresh-cw', 12) });
+      rerollBtn.title = `Regenerate only ${f.label.toLowerCase()}`;
+      labelRow.appendChild(rerollBtn);
+      wrap.appendChild(labelRow);
+      const area = el('textarea', 'tg-ce-textarea');
+      area.rows = f.rows;
+      area.value = typeof card[f.key] === 'string' ? card[f.key] : JSON.stringify(card[f.key] ?? '');
+      fieldEls[f.key] = area;
+      wrap.appendChild(area);
+      rerollBtn.addEventListener('click', async () => {
+        if (busy) return;
+        busy = true; rerollBtn.disabled = true;
+        try {
+          const current = Object.fromEntries(FORGE_FIELDS.map((x) => [x.key, fieldEls[x.key].value]));
+          const { modelId, settings } = await resolveModel();
+          const { parsed } = await collectJson(modelId, settings, buildForgeFieldMessages(state, current, f.key));
+          if (parsed && typeof parsed[f.key] === 'string' && parsed[f.key].trim()) {
+            area.value = parsed[f.key];
+            state.lastCard[f.key] = parsed[f.key];
+          } else {
+            showToastLite(`Could not regenerate ${f.label.toLowerCase()} — kept the current text.`);
+          }
+        } catch (err) {
+          showToastLite('Regenerate failed: ' + (err?.message || String(err)));
+        } finally {
+          busy = false; rerollBtn.disabled = false;
+        }
+      });
+      output.appendChild(wrap);
+    }
+
+    const saveRow = el('div', 'tg-forge-actions');
+    const saveBtn = el('button', 'tg-forge-generate', { html: `${icon('user', 14)} Save to roster` });
+    saveBtn.addEventListener('click', async () => {
+      if (busy) return;
+      busy = true; saveBtn.disabled = true;
+      try {
+        await ensureNestedDirs(fs, workspaceUri, ['.parallx', 'extensions', 'text-generator', 'characters']);
+        const id = generateId().slice(0, 8);
+        const fileName = `character-${id}.json`;
+        const first = (fieldEls.firstMessage.value || '').trim();
+        const data = createCharacterJson({
+          name: (fieldEls.name.value || 'Unnamed').trim(),
+          roleInstruction: fieldEls.description.value,
+          voiceAnchor: fieldEls.voiceAnchor.value,
+          exampleDialogue: fieldEls.exampleDialogue.value,
+          initialMessages: first ? `[AI]: ${first}` : '',
+          reminder: fieldEls.reminder.value,
+        });
+        await saveCharacter(fs, workspaceUri, fileName, data);
+        _refreshSidebar?.();
+        await onSaved?.(fileName);
+      } catch (err) {
+        showToastLite('Save failed: ' + (err?.message || String(err)));
+        busy = false; saveBtn.disabled = false;
+      }
+    });
+    saveRow.appendChild(saveBtn);
+    output.appendChild(saveRow);
+  }
+
+  // Forge lives outside the chat editor, so it carries its own tiny toast.
+  function showToastLite(message) {
+    const toast = el('div', 'tg-toast');
+    toast.appendChild(el('span', null, { text: message }));
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 5000);
+  }
+
+  genBtn.addEventListener('click', async () => {
+    if (busy) return;
+    busy = true; genBtn.disabled = true;
+    showStatus('Forging… the model is writing the character.');
+    try {
+      const { modelId, settings } = await resolveModel();
+      const { raw, parsed } = await collectJson(modelId, settings, buildForgeMessages(state));
+      if (!parsed || typeof parsed.name !== 'string' || !parsed.name.trim()) {
+        showStatus('The model did not return a valid character JSON. Raw output:', true);
+        const pre = el('pre', 'tg-forge-raw', { text: raw.slice(0, 4000) });
+        output.appendChild(pre);
+        return;
+      }
+      state.lastCard = parsed;
+      renderCard();
+    } catch (err) {
+      showStatus('Generation failed: ' + (err?.message || String(err)), true);
+    } finally {
+      busy = false; genBtn.disabled = false;
+    }
+  });
+
   return { dispose() { container.innerHTML = ''; } };
 }
 
@@ -7381,7 +8260,7 @@ function renderSettingsPage(container, parallx) {
   form.appendChild(sep);
   const tempInput = formGroup('Temperature', 'Controls randomness (0.0 = deterministic, 2.0 = very random)', 'number', 'defaultTemperature', { min: 0, max: 2, step: 0.1 });
   const maxTokInput = formGroup('Max tokens per response', '0 = unlimited (recommended for thinking models)', 'number', 'defaultMaxTokens', { min: 0, max: 16384 });
-  const ctxInput = formGroup('Default context window', 'Used when model info is unavailable', 'number', 'defaultContextWindow', { min: 2048, max: 131072 });
+  const ctxInput = formGroup('Default context window', 'Sent to Ollama as num_ctx AND used for token budgeting — the two are kept identical so prompts can never silently overflow. Per-chat "Ctx" picker overrides this.', 'number', 'defaultContextWindow', { min: 2048, max: 131072 });
   const userNameInput = formGroup('User display name', 'Used in {{user}} template substitution', 'text', 'userName');
   const presetSelect = formGroup('Default writing preset', 'Applied to newly created chats', 'select', 'defaultWritingPreset', {
     options: Object.entries(WRITING_PRESETS).map(([key, p]) => ({ label: p.label, value: key })),
@@ -7583,6 +8462,14 @@ function renderCharacterEditor(container, parallx, input) {
     reminderInput,
   ));
 
+  const voiceAnchorInput = el('textarea', 'tg-ce-textarea tg-ce-textarea--short');
+  voiceAnchorInput.placeholder = '(optional) 3-5 lines: tone, signature phrases, phrases to never use.';
+  root.appendChild(field(
+    `${icon('mic', 14)} Voice anchor`,
+    'Injected immediately before generation on every turn — the strongest position in the prompt. Describe the VOICE itself: tone, signature phrases, no-go phrases. If empty, the first lines of the description are used instead.',
+    voiceAnchorInput,
+  ));
+
   const presetSelect = el('select', 'tg-ce-select');
   for (const [key, p] of Object.entries(WRITING_PRESETS)) {
     const o = el('option', null, { text: p.label });
@@ -7594,9 +8481,11 @@ function renderCharacterEditor(container, parallx, input) {
     'These instructions apply to the whole chat, regardless of which character is currently speaking. It\'s for defining general writing style and the "type of experience".',
     presetSelect,
   );
-  // Inheritance hint: per-thread > per-character > global default.
+  // Inheritance chain (matches the actual prompt wiring): a per-chat
+  // override set in the chat's settings drawer wins; otherwise this
+  // character value; otherwise the global default.
   presetField.appendChild(el('div', 'tg-form-inherit', {
-    text: 'Per-thread setting overrides this. If unset, the global default in Settings is used.',
+    text: 'A per-chat override (Chat Settings drawer) wins over this. If both are unset, the global default in Settings is used.',
   }));
   root.appendChild(presetField);
 
@@ -7613,7 +8502,7 @@ function renderCharacterEditor(container, parallx, input) {
     povSelect,
   );
   povField.appendChild(el('div', 'tg-form-inherit', {
-    text: 'Per-thread setting overrides this. If unset, the global default in Settings is used.',
+    text: 'If unset, the global default in Settings is used.',
   }));
   root.appendChild(povField);
 
@@ -7858,6 +8747,7 @@ function renderCharacterEditor(container, parallx, input) {
     userNameInput.value = data.userName || '';
     userDescInput.value = data.userDescription || '';
     reminderInput.value = data.reminder || '';
+    voiceAnchorInput.value = data.voiceAnchor || '';
     presetSelect.value = data.writingPreset || 'immersive-rp';
     povSelect.value = data.pov || '';
     initialMsgInput.value = data.initialMessages || '';
@@ -7886,6 +8776,7 @@ function renderCharacterEditor(container, parallx, input) {
       userName: userNameInput.value.trim(),
       userDescription: userDescInput.value,
       reminder: reminderInput.value,
+      voiceAnchor: voiceAnchorInput.value,
       writingPreset: presetSelect.value || 'immersive-rp',
       initialMessages: initialMsgInput.value,
       userReminder: userReminderInput.value,
@@ -8260,6 +9151,19 @@ const WRITING_PRESETS = {
 - Don't over-describe emotions — show them through dialogue and small actions
 - It's okay to use contractions, fragments, and casual language`,
   },
+  'natural-rp': {
+    label: 'Natural RP (benchmark winner)',
+    // Winner of the 2026-07-20 story-quality benchmark (test/run-quality-suite.mjs):
+    // best cadence variance, zero cross-reply repeats, zero same-structure
+    // openings, conversational reply lengths without a length override.
+    content: `Vivid roleplay prose. Hard rules:
+- OPENINGS: Never begin two replies the same way. Do not begin with scenery, weather, or light. Begin with dialogue, a physical action, or a direct reaction to the last message.
+- Dialogue in "double quotes"; inner thoughts in *italics*; actions in plain prose.
+- Vary cadence hard: mix very short sentences with long flowing ones.
+- Concrete, specific detail only — no stock imagery (no dancing candlelight, no held breath, no shivers).
+- Default to 1-2 paragraphs. Leave room for the other person.
+- End mid-beat with a hook — a question, a gesture, an unfinished thought. Never summarize the scene.`,
+  },
   'screenplay': {
     label: 'Screenplay',
     content: `Write in screenplay format. Use scene headings, action lines, and dialogue blocks.
@@ -8306,6 +9210,7 @@ function getPresetContent(presetKey, customText = '') {
 const STYLE_HINTS = {
   'immersive-rp': 'Immersive prose: vivid sensory detail, dialogue in "double quotes", thoughts in *italics*, varied cadence. Show emotion through actions.',
   'casual-rp': 'Casual chat: short paragraphs, dialogue in "double quotes", action beats in *italics*, conversational tone.',
+  'natural-rp': 'Never open with scenery or light — open with dialogue, an action, or a reaction. Vary sentence length hard. 1-2 paragraphs, end mid-beat.',
   'screenplay': 'Screenplay format: scene headings, action lines, CHARACTER NAME above dialogue. Minimal prose.',
   'none': '',
   'custom': '',
@@ -8497,10 +9402,12 @@ export function activate(parallx, context) {
   });
   context.subscriptions.push(chatSettingsDisposable);
 
-  // Character editor
+  // Character editor — kept for layout/compat, but it now renders the
+  // combined Characters surface with the requested character
+  // preselected. The standalone form is the detail pane of that surface.
   const charEditorDisposable = parallx.editors.registerEditorProvider('text-generator-character-editor', {
     createEditorPane(container, input) {
-      return renderCharacterEditor(container, parallx, input);
+      return renderCharactersPage(container, parallx, input);
     },
   });
   context.subscriptions.push(charEditorDisposable);
@@ -8539,7 +9446,7 @@ export function activate(parallx, context) {
     });
     if (!picked) return;
 
-    let modelId = 'unknown';
+    let modelId = null;
     if (parallx.lm) {
       try {
         const models = await parallx.lm.getModels();
