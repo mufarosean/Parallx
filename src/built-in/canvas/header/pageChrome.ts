@@ -12,24 +12,12 @@ import { SaveStateKind } from '../canvasTypes.js';
 import type { OpenEditorFn } from '../canvasEditorProvider.js';
 import { $, layoutPopup, attachPopupDismiss } from '../../../ui/dom.js';
 import { tiptapJsonToMarkdown } from '../markdownExport.js';
-import { createIconElement, resolvePageIcon, svgIcon, renderPageIconHtml } from '../config/blockRegistry.js';
+import { createIconElement, resolvePageIcon, svgIcon, renderPageIconHtml, COVER_GALLERY } from '../config/blockRegistry.js';
 import { showVersionHistoryPanel } from '../canvasVersionHistoryPanel.js';
 
-// Default gradient presets for "Add cover" — same set as the cover picker gallery.
-const DEFAULT_COVER_GRADIENTS = [
-  'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-  'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-  'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
-  'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
-  'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
-  'linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)',
-  'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)',
-  'linear-gradient(135deg, #667eea 0%, #f093fb 100%)',
-  'linear-gradient(180deg, #2c3e50 0%, #3498db 100%)',
-  'linear-gradient(180deg, #141e30 0%, #243b55 100%)',
-  'linear-gradient(135deg, #0c0c0c 0%, #1a1a2e 100%)',
-  'linear-gradient(180deg, #232526 0%, #414345 100%)',
-];
+// Default gradient presets for "Add cover" — the identity-derived gallery
+// owned by the blockRegistry gate (same list the cover picker shows).
+const DEFAULT_COVER_GRADIENTS = COVER_GALLERY;
 
 // ── Host Interface ──────────────────────────────────────────────────────────
 

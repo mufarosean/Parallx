@@ -9,24 +9,14 @@
 
 import type { IDisposable } from '../../../platform/lifecycle.js';
 import { $, layoutPopup } from '../../../ui/dom.js';
+import { COVER_GALLERY } from './canvasMenuRegistry.js';
 import type { ICanvasMenu, CanvasMenuRegistry } from './canvasMenuRegistry.js';
 
 // ── Gradient gallery presets ────────────────────────────────────────────────
+// The identity-derived cover palette — one list, owned by the blockRegistry
+// gate, shared with pageChrome's "Add cover" default.
 
-const GRADIENTS = [
-  'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-  'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-  'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
-  'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
-  'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
-  'linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)',
-  'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)',
-  'linear-gradient(135deg, #667eea 0%, #f093fb 100%)',
-  'linear-gradient(180deg, #2c3e50 0%, #3498db 100%)',
-  'linear-gradient(180deg, #141e30 0%, #243b55 100%)',
-  'linear-gradient(135deg, #0c0c0c 0%, #1a1a2e 100%)',
-  'linear-gradient(180deg, #232526 0%, #414345 100%)',
-];
+const GRADIENTS = COVER_GALLERY;
 
 // ── Options ─────────────────────────────────────────────────────────────────
 

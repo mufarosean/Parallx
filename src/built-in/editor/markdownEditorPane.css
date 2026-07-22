@@ -203,38 +203,38 @@
 }
 
 .markdown-content .markdown-alert-note {
-  border-left-color: #539bf5;
+  border-left-color: var(--px-info);
 }
 .markdown-content .markdown-alert-note .markdown-alert-title {
-  color: #539bf5;
+  color: var(--px-info);
 }
 
 .markdown-content .markdown-alert-tip {
-  border-left-color: #57ab5a;
+  border-left-color: var(--px-success);
 }
 .markdown-content .markdown-alert-tip .markdown-alert-title {
-  color: #57ab5a;
+  color: var(--px-success);
 }
 
 .markdown-content .markdown-alert-important {
-  border-left-color: #986ee2;
+  border-left-color: var(--px-accent);
 }
 .markdown-content .markdown-alert-important .markdown-alert-title {
-  color: #986ee2;
+  color: var(--px-accent);
 }
 
 .markdown-content .markdown-alert-warning {
-  border-left-color: #c69026;
+  border-left-color: var(--px-warning);
 }
 .markdown-content .markdown-alert-warning .markdown-alert-title {
-  color: #c69026;
+  color: var(--px-warning);
 }
 
 .markdown-content .markdown-alert-caution {
-  border-left-color: #e5534b;
+  border-left-color: var(--px-danger);
 }
 .markdown-content .markdown-alert-caution .markdown-alert-title {
-  color: #e5534b;
+  color: var(--px-danger);
 }
 
 /* ── Task lists (GFM checkboxes) ── */

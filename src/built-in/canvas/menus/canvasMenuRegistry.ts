@@ -79,7 +79,7 @@ export const PAGE_SELECTABLE_ICONS: readonly string[] = _ir_PAGE_SELECTABLE_ICON
 export const ALL_PAGE_SELECTABLE_ICONS: readonly string[] = _ir_ALL_PAGE_SELECTABLE_ICONS;
 
 /** @see {@link import('../config/blockRegistry.js').PAGE_ICON_RECENT_STORAGE_KEY} — gated through the registry so menu children import it from here. */
-export { PAGE_ICON_RECENT_STORAGE_KEY } from '../config/blockRegistry.js';
+export { PAGE_ICON_RECENT_STORAGE_KEY, COVER_GALLERY } from '../config/blockRegistry.js';
 
 // ── Slash Menu Data (registry-to-child gate) ─────────────────────────────────
 // slashMenuItems.ts is a pure data file.  Re-export its types and builder so

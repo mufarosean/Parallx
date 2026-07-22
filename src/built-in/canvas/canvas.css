@@ -424,8 +424,8 @@
   text-transform: uppercase;
   letter-spacing: 0.05em;
   border-radius: 999px;
-  background: rgba(170, 110, 255, 0.18);
-  color: #c79dff;
+  background: var(--px-accent-soft);
+  color: var(--px-accent);
 }
 .canvas-template-picker-section-header {
   grid-column: 1 / -1;
@@ -1576,8 +1576,8 @@
 }
 
 .canvas-bubble-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
+  background: var(--px-surface-hover);
+  color: var(--px-text);
 }
 
 .canvas-bubble-btn--active {
@@ -2982,7 +2982,7 @@
 
 .canvas-page-menu-switch--on::after {
   transform: translateX(14px);
-  background: #fff;
+  background: var(--px-text-on-accent);
 }
 
 .canvas-page-menu-divider {
@@ -3121,7 +3121,7 @@
   padding: 8px 16px;
   background: var(--vscode-button-background);
   border: none;
-  color: #fff;
+  color: var(--px-text-on-accent);
   font-size: var(--parallx-fontSize-md);
   border-radius: var(--parallx-radius-md);
   cursor: pointer;
@@ -3240,7 +3240,7 @@
   padding: 8px 16px;
   background: var(--vscode-button-background);
   border: none;
-  color: #fff;
+  color: var(--px-text-on-accent);
   font-size: var(--parallx-fontSize-md);
   border-radius: var(--parallx-radius-md);
   cursor: pointer;
@@ -3306,7 +3306,7 @@
   padding: 8px 14px;
   background: var(--vscode-button-background);
   border: none;
-  color: #fff;
+  color: var(--px-text-on-accent);
   font-size: var(--parallx-fontSize-md);
   border-radius: var(--parallx-radius-md);
   cursor: pointer;
@@ -3483,7 +3483,7 @@
   padding: 8px 16px;
   background: var(--vscode-button-background);
   border: none;
-  color: #fff;
+  color: var(--px-text-on-accent);
   font-size: var(--parallx-fontSize-md);
   border-radius: var(--parallx-radius-md);
   cursor: pointer;
@@ -4097,7 +4097,7 @@
   margin-top: 1px;
   font-size: var(--parallx-fontSize-md);
   font-weight: 500;
-  color: #fff;
+  color: var(--px-text-on-accent);
   background: var(--vscode-button-background);
   border: none;
   border-radius: 5px;

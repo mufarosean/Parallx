@@ -4944,7 +4944,7 @@ const MO_CSS = `
    Deliberately NOT tokenized: #fff/#000 + black/white alpha (text-on-accent,
    scrims, hover veils — these must not flip with the theme). */
 :root {
-  --mo-accent: #9333ea;
+  --mo-accent: var(--px-accent, #9333ea);
   --mo-star: #f5c518;
 }
 
@@ -4970,7 +4970,7 @@ const MO_CSS = `
   display: none;
   position: absolute;
   border: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
-  background: rgba(147, 51, 234, 0.15);
+  background: var(--px-accent-soft, rgba(147, 51, 234, 0.15));
   pointer-events: none;
   z-index: 10;
 }

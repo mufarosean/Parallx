@@ -1373,3 +1373,29 @@ export {
   moveBlockToLinkedPage,
 } from './blockStateRegistry/blockStateRegistry.js';
 export type { CanvasDragSession, CrossPageMoveParams } from './blockStateRegistry/blockStateRegistry.js';
+
+// ── Cover gallery (M93 slop audit, finding 7) ────────────────────────────
+// The default page-cover art, derived from the three Parallx moods
+// (Slate / Warm / Ember): quiet, desaturated, confident. Covers appear in
+// every canvas screenshot, so even content art carries the identity — no
+// template-purple hero gradients. ONE list; pageChrome (Add cover) and the
+// cover picker gallery both import it from this gate.
+
+export const COVER_GALLERY: readonly string[] = [
+  // Slate — graphite + steel.
+  'linear-gradient(135deg, #22303c 0%, #56789c 100%)',
+  'linear-gradient(180deg, #16171a 0%, #2b3a4d 100%)',
+  'linear-gradient(135deg, #1f2125 0%, #41454d 100%)',
+  'linear-gradient(135deg, #aebac6 0%, #e6ebf0 100%)',
+  // Warm — charcoal, indigo, paper.
+  'linear-gradient(135deg, #201e1b 0%, #52527a 100%)',
+  'linear-gradient(180deg, #1d2030 0%, #3c4568 100%)',
+  'linear-gradient(135deg, #cfc4b0 0%, #ece7dc 100%)',
+  // Ember — warm graphite, amber, clay.
+  'linear-gradient(135deg, #26221d 0%, #a9763d 100%)',
+  'linear-gradient(135deg, #3a2e28 0%, #8a5a44 100%)',
+  // Quiet naturals.
+  'linear-gradient(135deg, #24312b 0%, #4f7a62 100%)',
+  'linear-gradient(180deg, #1c2420 0%, #2e4639 100%)',
+  'linear-gradient(135deg, #322a33 0%, #6e5462 100%)',
+];

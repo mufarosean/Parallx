@@ -1552,9 +1552,9 @@ function injectStyles() {
 .tg-ce-save-btn {
   margin-left: auto;
   padding: 6px 20px;
-  border: 1px solid #388a34;
+  border: 1px solid transparent;
   border-radius: var(--parallx-radius-sm, 3px);
-  background: #388a34;
+  background: var(--px-accent, #388a34);
   color: #fff;
   font-family: var(--parallx-fontFamily-ui);
   font-size: var(--parallx-fontSize-base, 12px);
@@ -1562,7 +1562,7 @@ function injectStyles() {
   cursor: pointer;
   transition: background 80ms ease;
 }
-.tg-ce-save-btn:hover { background: #45a040; }
+.tg-ce-save-btn:hover { background: var(--px-accent-hover, #45a040); }
 .tg-ce-saved {
   font-size: var(--parallx-fontSize-sm, 11px);
   color: #73c991;
@@ -1909,9 +1909,9 @@ function injectStyles() {
   gap: 6px;
   margin-left: auto;
   padding: 6px 20px;
-  border: 1px solid #388a34;
+  border: 1px solid transparent;
   border-radius: var(--parallx-radius-sm, 3px);
-  background: #388a34;
+  background: var(--px-accent, #388a34);
   color: #fff;
   font-family: var(--parallx-fontFamily-ui);
   font-size: var(--parallx-fontSize-base, 12px);
@@ -1919,7 +1919,7 @@ function injectStyles() {
   cursor: pointer;
   transition: background 80ms ease;
 }
-.tg-forge-generate:hover { background: #45a040; }
+.tg-forge-generate:hover { background: var(--px-accent-hover, #45a040); }
 .tg-forge-generate:disabled { opacity: 0.6; cursor: default; }
 .tg-forge-output { display: flex; flex-direction: column; gap: 12px; }
 .tg-forge-status {
