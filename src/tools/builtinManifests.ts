@@ -262,7 +262,7 @@ export const TOOL_GALLERY_MANIFEST: IToolManifest = {
     commands: [{ id: 'tools.showInstalled', title: 'Tools: Show Installed Tools',
       aiInvocable: true, aiDescription: 'Show the list of installed tools and extensions.' }],
     viewContainers: [
-      { id: 'tools-container', title: 'Tools', icon: 'puzzle', location: 'sidebar' as const },
+      { id: 'tools-container', title: 'Tools', icon: 'px-tools', location: 'sidebar' as const },
     ],
     views: [{ id: 'view.tools', name: 'Installed Tools', defaultContainerId: 'tools-container' }],
     editors: [{ typeId: 'tool-detail', displayName: 'Tool Details' }],
@@ -308,7 +308,7 @@ export const CHAT_MANIFEST: IToolManifest = {
       { command: 'chat.focus', key: 'Ctrl+L' },
     ],
     viewContainers: [
-      { id: 'chat-container', title: 'Chat', icon: 'message', location: 'auxiliaryBar' as const },
+      { id: 'chat-container', title: 'Chat', icon: 'px-chat', location: 'auxiliaryBar' as const },
     ],
     views: [
       { id: 'view.chat', name: 'Chat', defaultContainerId: 'chat-container' },
@@ -338,7 +338,7 @@ export const AI_SETTINGS_MANIFEST: IToolManifest = {
       { command: 'ai-settings.open', key: 'Ctrl+Shift+A' },
     ],
     viewContainers: [
-      { id: 'ai-settings-container', title: 'AI Settings', icon: 'gear', location: 'auxiliaryBar' as const, hidden: true },
+      { id: 'ai-settings-container', title: 'AI Settings', icon: 'px-ai', location: 'auxiliaryBar' as const, hidden: true },
     ],
     views: [
       { id: 'view.aiSettings', name: 'AI Settings', defaultContainerId: 'ai-settings-container' },
@@ -384,7 +384,7 @@ export const CANVAS_MANIFEST: IToolManifest = {
       { command: 'canvas.newPage', key: 'Ctrl+N', when: "focusedView == 'view.canvas'" },
     ],
     viewContainers: [
-      { id: 'canvas-container', title: 'Canvas', icon: 'notebook', location: 'sidebar' as const },
+      { id: 'canvas-container', title: 'Canvas', icon: 'px-canvas', location: 'sidebar' as const },
     ],
     views: [
       { id: 'view.canvas', name: 'Pages', defaultContainerId: 'canvas-container' },
@@ -444,7 +444,7 @@ export const PLANNER_MANIFEST: IToolManifest = {
       { command: 'planner.open', key: 'Ctrl+Shift+K' },
     ],
     viewContainers: [
-      { id: 'planner-container', title: 'Planner', icon: 'list-checks', location: 'sidebar' as const },
+      { id: 'planner-container', title: 'Planner', icon: 'px-planner', location: 'sidebar' as const },
     ],
     views: [
       { id: 'view.planner', name: 'Tasks', defaultContainerId: 'planner-container' },
@@ -480,7 +480,7 @@ export const DASHBOARD_MANIFEST: IToolManifest = {
       { command: 'dashboard.open', key: 'Ctrl+Shift+H' },
     ],
     viewContainers: [
-      { id: 'dashboard-container', title: 'Dashboard', icon: 'layout-dashboard', location: 'sidebar' as const },
+      { id: 'dashboard-container', title: 'Dashboard', icon: 'px-dashboard', location: 'sidebar' as const },
     ],
     views: [
       { id: 'view.dashboard', name: 'Dashboards', defaultContainerId: 'dashboard-container' },

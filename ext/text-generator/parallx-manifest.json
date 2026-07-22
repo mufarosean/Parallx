@@ -78,7 +78,7 @@
       {
         "id": "text-generator-container",
         "title": "Text Generator",
-        "icon": "book-open",
+        "icon": "px-writer",
         "location": "sidebar"
       }
     ],

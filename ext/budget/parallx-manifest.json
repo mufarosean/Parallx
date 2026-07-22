@@ -21,7 +21,7 @@
       {
         "id": "budget-container",
         "title": "Budget",
-        "icon": "wallet",
+        "icon": "px-budget",
         "location": "sidebar"
       }
     ],

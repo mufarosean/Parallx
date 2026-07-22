@@ -40,7 +40,7 @@
       {
         "id": "media-organizer-container",
         "title": "Media Organizer",
-        "icon": "image",
+        "icon": "px-media",
         "location": "sidebar"
       }
     ],

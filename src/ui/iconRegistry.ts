@@ -12,6 +12,7 @@
 // Dependency rules: src/ui/ depends only on src/platform/. No service imports.
 
 import { LUCIDE_ICONS } from './iconRegistry.generated.js';
+import { BRAND_ICONS } from './brandIcons.js';
 import { FILE_TYPE_ICONS, FILE_TYPE_MAP } from './fileTypeIcons.js';
 
 // ── Registry Map ──────────────────────────────────────────────────────────────
@@ -20,6 +21,12 @@ const _icons = new Map<string, string>();
 
 // Seed registry with every Lucide icon from the generated file
 for (const [id, svg] of Object.entries(LUCIDE_ICONS)) {
+  _icons.set(id, svg);
+}
+
+// Parallx-original brand icons (`px-*`) for the product's core nouns —
+// hand-drawn on the logo's parallelogram motif (see brandIcons.ts).
+for (const [id, svg] of Object.entries(BRAND_ICONS)) {
   _icons.set(id, svg);
 }
 

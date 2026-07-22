@@ -23,7 +23,7 @@
       {
         "id": "flashcards-container",
         "title": "Flashcards",
-        "icon": "layers",
+        "icon": "px-flashcards",
         "location": "sidebar"
       }
     ],
