@@ -445,6 +445,23 @@ async function fcListDecks() {
   }));
 }
 
+// Today's workload across ALL decks, split Anki-style into new / learning /
+// review (due). Used by the sidebar's Today section.
+async function fcTodayCounts() {
+  const now = Date.now();
+  const row = await db.get(`
+    SELECT
+      SUM(CASE WHEN suspended = 0 AND state = 'new' THEN 1 ELSE 0 END) AS new_count,
+      SUM(CASE WHEN suspended = 0 AND state IN ('learning','relearning') AND due_at <= ? THEN 1 ELSE 0 END) AS learn_count,
+      SUM(CASE WHEN suspended = 0 AND state = 'review' AND due_at <= ? THEN 1 ELSE 0 END) AS review_count
+    FROM fc_cards
+  `, [now, now]);
+  const newCount = row?.new_count || 0;
+  const learnCount = row?.learn_count || 0;
+  const reviewCount = row?.review_count || 0;
+  return { newCount, learnCount, reviewCount, dueTotal: learnCount + reviewCount + newCount };
+}
+
 async function fcCreateDeck(name, description = '') {
   const res = await db.run(
     'INSERT INTO fc_decks (name, description, created_at) VALUES (?, ?, ?)',
@@ -807,32 +824,113 @@ function injectStyles() {
    press physics on controls, and a physical study card: the one surface in
    the app that should genuinely feel like paper in hand. */
 
-/* ── Sidebar — workbench list idiom: 26px rows, quiet pills ── */
+/* ── Sidebar — a navigational surface: header, Today, sectioned deck list ── */
 .fc-sidebar { display: flex; flex-direction: column; height: 100%; font-size: var(--px-text-base); }
-.fc-sidebar__actions { display: flex; gap: var(--px-space-1); padding: var(--px-space-2) var(--px-sidebar-inset); flex-wrap: wrap; }
-.fc-sidebar__list { flex: 1; overflow-y: auto; padding: 0 var(--px-space-1) var(--px-space-2); }
+
+/* Header: title + quiet icon actions, matching the workbench sidebar idiom. */
+.fc-sb__header {
+  display: flex; align-items: center; height: 34px; flex: 0 0 auto;
+  padding: 0 var(--px-space-2) 0 var(--px-sidebar-inset);
+  gap: var(--px-space-1);
+}
+.fc-sb__title {
+  flex: 1; min-width: 0;
+  font-size: var(--px-text-2xs); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--px-text-faint);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.fc-sb__icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; flex: 0 0 auto;
+  border: 0; border-radius: var(--px-radius-sm); background: transparent;
+  color: var(--px-text-faint); cursor: pointer;
+  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
+}
+.fc-sb__icon-btn:hover { background: var(--px-surface-hover); color: var(--px-text); }
+.fc-sb__icon-btn:active { transform: var(--px-press); }
+
+.fc-sb__scroll { flex: 1; overflow-y: auto; padding-bottom: var(--px-space-3); }
+
+/* Sections with a quiet uppercase header, like the canvas / media sidebars. */
+.fc-sb__section { display: flex; flex-direction: column; }
+.fc-sb__section-head {
+  display: flex; align-items: center; gap: var(--px-space-1);
+  height: 22px; padding: 0 var(--px-space-2) 0 var(--px-sidebar-inset);
+  margin-top: var(--px-space-2);
+  font-size: var(--px-text-2xs); font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase;
+  color: var(--px-text-faint); user-select: none;
+}
+.fc-sb__section-title { flex: 1; min-width: 0; }
+.fc-sb__section-count { font-weight: 600; color: var(--px-text-faint); font-variant-numeric: tabular-nums; }
+.fc-sb__section-add {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border: 0; border-radius: var(--px-radius-sm);
+  background: transparent; color: var(--px-text-faint); cursor: pointer; opacity: 0;
+  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease), opacity var(--px-dur-fast) var(--px-ease);
+}
+.fc-sb__section:hover .fc-sb__section-add { opacity: 1; }
+.fc-sb__section-add:hover { background: var(--px-surface-hover); color: var(--px-text); }
+
+/* Today: a compact workload panel with a contextual study action. */
+.fc-today {
+  margin: var(--px-space-1) var(--px-space-2) 0;
+  border: 1px solid var(--px-border); border-radius: var(--px-radius-lg);
+  background: var(--px-bg-elevated); overflow: hidden;
+}
+.fc-today__stats { display: flex; align-items: stretch; }
+.fc-today__stat {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 1px;
+  padding: var(--px-space-3) var(--px-space-1);
+}
+.fc-today__stat + .fc-today__stat { border-left: 1px solid var(--px-divider); }
+.fc-today__num { font-size: var(--px-text-lg); font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1; }
+.fc-today__num--new { color: var(--px-info, #4c8dff); }
+.fc-today__num--learn { color: var(--px-warning, #e0a13a); }
+.fc-today__num--due { color: var(--px-success, #3fb950); }
+.fc-today__num--zero { color: var(--px-text-disabled); }
+.fc-today__lbl { font-size: var(--px-text-2xs); text-transform: uppercase; letter-spacing: 0.05em; color: var(--px-text-faint); }
+.fc-today__study {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  width: 100%; height: 32px; border: 0; border-top: 1px solid var(--px-divider);
+  background: var(--px-accent); color: var(--px-text-on-accent);
+  font: inherit; font-size: var(--px-text-sm); font-weight: 600; cursor: pointer;
+  transition: filter var(--px-dur-fast) var(--px-ease), transform var(--px-dur-instant) var(--px-ease);
+}
+.fc-today__study:hover { filter: brightness(1.08); }
+.fc-today__study:active { transform: var(--px-press); }
+.fc-today__study svg { width: 13px; height: 13px; }
+.fc-today__done {
+  padding: var(--px-space-3) var(--px-space-3);
+  font-size: var(--px-text-sm); line-height: var(--px-leading-base); color: var(--px-text-muted); text-align: center;
+}
+
+/* Deck rows: informative and navigational — glyph, name, Anki-style counts. */
+.fc-sb__decks { display: flex; flex-direction: column; padding: 0 var(--px-space-1); }
 .fc-deck-row {
   display: flex; align-items: center; gap: var(--px-space-2); width: 100%;
-  height: 26px; padding: 0 var(--px-space-2); border: 0; border-radius: var(--px-radius-sm);
+  height: 28px; padding: 0 var(--px-space-1) 0 var(--px-space-2); border: 0; border-radius: var(--px-radius-sm);
   background: transparent; color: var(--px-text-secondary);
   font: inherit; font-size: var(--px-text-base); cursor: pointer; text-align: left;
   transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 .fc-deck-row:hover { background: var(--px-surface-hover); color: var(--px-text); }
-.fc-deck-row:active { background: var(--px-surface-active); }
+.fc-deck-row--active { background: var(--px-surface-selected, var(--px-accent-soft)); color: var(--px-text); }
+.fc-deck-row__icon { flex: 0 0 auto; display: inline-flex; width: 14px; height: 14px; color: var(--px-text-faint); }
+.fc-deck-row__icon svg { width: 100%; height: 100%; }
 .fc-deck-row__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fc-deck-row__due {
-  flex: 0 0 auto; min-width: 18px; text-align: center;
-  font-size: var(--px-text-xs); font-weight: 600; font-variant-numeric: tabular-nums;
-  border-radius: var(--px-radius-full); padding: 1px 7px;
-  background: var(--px-accent-soft); color: var(--px-accent);
+.fc-deck-row__counts { flex: 0 0 auto; display: flex; align-items: center; gap: 7px; font-size: var(--px-text-xs); font-weight: 600; font-variant-numeric: tabular-nums; }
+.fc-deck-row__ct--new { color: var(--px-info, #4c8dff); }
+.fc-deck-row__ct--due { color: var(--px-success, #3fb950); }
+.fc-deck-row__more {
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; border: 0; border-radius: var(--px-radius-sm);
+  background: transparent; color: var(--px-text-faint); cursor: pointer; opacity: 0;
+  transition: background var(--px-dur-fast) var(--px-ease), opacity var(--px-dur-fast) var(--px-ease);
 }
-.fc-deck-row__new {
-  flex: 0 0 auto; font-size: var(--px-text-xs); font-weight: 600; font-variant-numeric: tabular-nums;
-  border-radius: var(--px-radius-full); padding: 1px 7px;
-  background: var(--px-bg-inset); color: var(--px-text-muted);
-}
-.fc-sidebar__empty { padding: var(--px-space-4) var(--px-sidebar-inset); font-size: var(--px-text-sm); line-height: var(--px-leading-base); color: var(--px-text-muted); }
+.fc-deck-row:hover .fc-deck-row__more { opacity: 1; }
+.fc-deck-row:hover .fc-deck-row__counts { display: none; }
+.fc-deck-row__more:hover { background: var(--px-surface-active); color: var(--px-text); }
+.fc-sb__empty { padding: var(--px-space-3) var(--px-sidebar-inset); font-size: var(--px-text-sm); line-height: var(--px-leading-base); color: var(--px-text-muted); }
 
 /* ── Buttons — ghost default, accent primary, press physics ── */
 .fc-btn {
@@ -853,21 +951,30 @@ function injectStyles() {
 
 /* ── Pane shell ── */
 .fc-pane { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+/* Clean underline tab strip — the active tab carries an accent indicator on
+   the header's baseline, not a filled chip. */
 .fc-pane__header {
-  display: flex; align-items: center; gap: var(--px-space-2);
-  height: 46px; padding: 0 var(--px-space-4); flex: 0 0 auto;
+  display: flex; align-items: stretch; gap: var(--px-space-2);
+  height: 42px; padding: 0 var(--px-space-3); flex: 0 0 auto;
   border-bottom: 1px solid var(--px-divider);
 }
-.fc-pane__tabs { display: flex; gap: 2px; }
+.fc-pane__tabs { display: flex; align-items: stretch; gap: 0; }
 .fc-pane__tab {
-  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 var(--px-space-3);
-  border: 0; border-radius: var(--px-radius-md); background: transparent;
-  color: var(--px-text-muted);
+  position: relative;
+  display: inline-flex; align-items: center; gap: 7px; height: 100%; padding: 0 var(--px-space-3);
+  border: 0; background: transparent; color: var(--px-text-muted);
   font: inherit; font-size: var(--px-text-base); font-weight: 500; cursor: pointer;
-  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
+  transition: color var(--px-dur-fast) var(--px-ease);
 }
-.fc-pane__tab:hover { color: var(--px-text); background: var(--px-surface-hover); }
-.fc-pane__tab--active { background: var(--px-surface-active); color: var(--px-text); }
+.fc-pane__tab::after {
+  content: ''; position: absolute; left: var(--px-space-3); right: var(--px-space-3); bottom: -1px;
+  height: 2px; border-radius: 2px 2px 0 0; background: transparent;
+  transition: background var(--px-dur-fast) var(--px-ease);
+}
+.fc-pane__tab svg { width: 14px; height: 14px; opacity: 0.85; }
+.fc-pane__tab:hover { color: var(--px-text); }
+.fc-pane__tab--active { color: var(--px-text); font-weight: 600; }
+.fc-pane__tab--active::after { background: var(--px-accent); }
 .fc-pane__spacer { flex: 1; }
 .fc-pane__body { flex: 1; overflow-y: auto; }
 
@@ -1082,50 +1189,146 @@ function createSidebarView(container) {
   injectStyles();
   const root = el('div', 'fc-sidebar');
 
-  const actions = el('div', 'fc-sidebar__actions');
-  const studyBtn = el('button', 'fc-btn fc-btn--primary');
-  studyBtn.innerHTML = `${icon('play', 12)}<span>Study</span>`;
-  studyBtn.addEventListener('click', () => void openFlashcards({ view: 'study' }));
-  actions.appendChild(studyBtn);
+  // ── Header: title + quiet icon actions (Generate, + deck) ──
+  const header = el('div', 'fc-sb__header');
+  header.appendChild(el('div', 'fc-sb__title', 'Flashcards'));
 
-  const newBtn = el('button', 'fc-btn');
-  newBtn.innerHTML = `${icon('plus', 12)}<span>Deck</span>`;
-  newBtn.addEventListener('click', () => void _cmdNewDeck());
-  actions.appendChild(newBtn);
-
-  const genBtn = _api.ui.createAiButton
-    ? _api.ui.createAiButton(actions, { label: 'Generate', compact: true })
-    : el('button', 'fc-btn');
-  if (!genBtn.parentElement) { genBtn.textContent = 'Generate'; actions.appendChild(genBtn); }
+  const genBtn = el('button', 'fc-sb__icon-btn');
+  genBtn.type = 'button';
+  genBtn.title = 'Generate cards with AI';
+  genBtn.setAttribute('aria-label', 'Generate cards with AI');
+  genBtn.innerHTML = icon('px-ai-mark', 15);
   genBtn.addEventListener('click', () => void openFlashcards({ view: 'create' }));
+  header.appendChild(genBtn);
 
-  root.appendChild(actions);
+  const addBtn = el('button', 'fc-sb__icon-btn');
+  addBtn.type = 'button';
+  addBtn.title = 'New deck';
+  addBtn.setAttribute('aria-label', 'New deck');
+  addBtn.innerHTML = icon('plus', 16);
+  addBtn.addEventListener('click', () => void _cmdNewDeck());
+  header.appendChild(addBtn);
+  root.appendChild(header);
 
-  const list = el('div', 'fc-sidebar__list');
-  root.appendChild(list);
+  const scroll = el('div', 'fc-sb__scroll');
+  root.appendChild(scroll);
+
+  // ── Today section ──
+  const todaySection = el('div', 'fc-sb__section');
+  const todayHead = el('div', 'fc-sb__section-head');
+  todayHead.appendChild(el('span', 'fc-sb__section-title', 'Today'));
+  todaySection.appendChild(todayHead);
+  const todayHost = el('div');
+  todaySection.appendChild(todayHost);
+  scroll.appendChild(todaySection);
+
+  // ── Decks section ──
+  const decksSection = el('div', 'fc-sb__section');
+  const decksHead = el('div', 'fc-sb__section-head');
+  decksHead.appendChild(el('span', 'fc-sb__section-title', 'Decks'));
+  const deckCount = el('span', 'fc-sb__section-count');
+  decksHead.appendChild(deckCount);
+  const sectionAdd = el('button', 'fc-sb__section-add');
+  sectionAdd.type = 'button';
+  sectionAdd.title = 'New deck';
+  sectionAdd.setAttribute('aria-label', 'New deck');
+  sectionAdd.innerHTML = icon('plus', 14);
+  sectionAdd.addEventListener('click', () => void _cmdNewDeck());
+  decksHead.appendChild(sectionAdd);
+  decksSection.appendChild(decksHead);
+  const deckList = el('div', 'fc-sb__decks');
+  decksSection.appendChild(deckList);
+  scroll.appendChild(decksSection);
+
+  const openDeckMenu = (deck, x, y) => {
+    if (!_api.ui.showContextMenu) { void openFlashcards({ view: 'browse', deckId: deck.id }); return; }
+    _api.ui.showContextMenu({ x, y }, [
+      { label: 'Study deck', icon: 'play', onSelect: () => void openFlashcards({ view: 'study', deckId: deck.id }) },
+      { label: 'Browse cards', icon: 'layers', onSelect: () => void openFlashcards({ view: 'browse', deckId: deck.id }) },
+      { label: 'Add cards with AI', icon: 'px-ai-mark', onSelect: () => void openFlashcards({ view: 'create', deckId: deck.id }) },
+      { separator: true },
+      { label: 'Rename', icon: 'pencil', onSelect: () => void _renameDeckFlow(deck) },
+      { label: 'Delete deck', icon: 'trash', danger: true, onSelect: () => void _deleteDeckFlow(deck) },
+    ]);
+  };
 
   let disposed = false;
   const refresh = async () => {
     if (disposed) return;
     let decks = [];
-    try { decks = await fcListDecks(); } catch { /* db not ready */ }
+    let today = { newCount: 0, learnCount: 0, reviewCount: 0, dueTotal: 0 };
+    try { [decks, today] = await Promise.all([fcListDecks(), fcTodayCounts()]); } catch { /* db not ready */ }
     if (disposed) return;
-    list.innerHTML = '';
-    if (decks.length === 0) {
-      const empty = el('div', 'fc-sidebar__empty');
-      empty.textContent = 'Your decks live here. Click Deck to create one, or Generate to turn a page or PDF into cards.';
-      list.appendChild(empty);
-      return;
+
+    // Today panel.
+    todayHost.innerHTML = '';
+    const panel = el('div', 'fc-today');
+    if (today.dueTotal > 0) {
+      const stats = el('div', 'fc-today__stats');
+      const stat = (num, cls, label) => {
+        const s = el('div', 'fc-today__stat');
+        s.appendChild(el('div', `fc-today__num fc-today__num--${num > 0 ? cls : 'zero'}`, String(num)));
+        s.appendChild(el('div', 'fc-today__lbl', label));
+        return s;
+      };
+      stats.appendChild(stat(today.newCount, 'new', 'New'));
+      stats.appendChild(stat(today.learnCount, 'learn', 'Learning'));
+      stats.appendChild(stat(today.reviewCount, 'due', 'Review'));
+      panel.appendChild(stats);
+      const studyBtn = el('button', 'fc-today__study');
+      studyBtn.type = 'button';
+      studyBtn.innerHTML = `${icon('play', 13)}<span>Study ${today.dueTotal} ${today.dueTotal === 1 ? 'card' : 'cards'}</span>`;
+      studyBtn.addEventListener('click', () => void openFlashcards({ view: 'study' }));
+      panel.appendChild(studyBtn);
+    } else {
+      panel.appendChild(el('div', 'fc-today__done',
+        decks.length === 0 ? 'No cards yet. Add a deck to begin.' : 'All caught up. Nothing due right now.'));
     }
-    for (const deck of decks) {
-      const row = el('button', 'fc-deck-row');
-      row.type = 'button';
-      const name = el('span', 'fc-deck-row__name', deck.name);
-      row.appendChild(name);
-      if (deck.newCount > 0) row.appendChild(el('span', 'fc-deck-row__new', String(deck.newCount)));
-      if (deck.dueCount > 0) row.appendChild(el('span', 'fc-deck-row__due', String(deck.dueCount)));
-      row.addEventListener('click', () => void openFlashcards({ view: 'browse', deckId: deck.id }));
-      list.appendChild(row);
+    todayHost.appendChild(panel);
+
+    // Decks list.
+    deckCount.textContent = decks.length ? String(decks.length) : '';
+    deckList.innerHTML = '';
+    if (decks.length === 0) {
+      deckList.appendChild(el('div', 'fc-sb__empty',
+        'Your decks live here. Use + to create one, or Generate to turn a page or PDF into cards.'));
+    } else {
+      for (const deck of decks) {
+        const row = el('div', 'fc-deck-row');
+        row.setAttribute('role', 'button');
+        row.tabIndex = 0;
+        const ic = el('span', 'fc-deck-row__icon');
+        ic.innerHTML = icon('px-flashcards', 14);
+        row.appendChild(ic);
+        row.appendChild(el('span', 'fc-deck-row__name', deck.name));
+
+        const counts = el('span', 'fc-deck-row__counts');
+        if (deck.newCount > 0) counts.appendChild(el('span', 'fc-deck-row__ct--new', String(deck.newCount)));
+        if (deck.dueCount > 0) counts.appendChild(el('span', 'fc-deck-row__ct--due', String(deck.dueCount)));
+        row.appendChild(counts);
+
+        const more = el('button', 'fc-deck-row__more');
+        more.type = 'button';
+        more.title = 'Deck actions';
+        more.setAttribute('aria-label', `Actions for ${deck.name}`);
+        more.innerHTML = icon('more-horizontal', 15);
+        more.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const r = more.getBoundingClientRect();
+          openDeckMenu(deck, r.left, r.bottom + 2);
+        });
+        row.appendChild(more);
+
+        row.addEventListener('click', () => void openFlashcards({ view: 'browse', deckId: deck.id }));
+        row.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); void openFlashcards({ view: 'browse', deckId: deck.id }); }
+        });
+        row.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          openDeckMenu(deck, e.clientX, e.clientY);
+        });
+        deckList.appendChild(row);
+      }
     }
   };
   void refresh();
@@ -1140,6 +1343,28 @@ function createSidebarView(container) {
       root.remove();
     },
   };
+}
+
+// ── Deck lifecycle flows (shared by sidebar + browse view) ──
+
+async function _renameDeckFlow(deck) {
+  const name = await _api.window.showInputBox({ prompt: 'Rename deck', value: deck.name });
+  if (name?.trim() && name.trim() !== deck.name) await fcRenameDeck(deck.id, name.trim());
+}
+
+async function _deleteDeckFlow(deck) {
+  const total = deck.total ?? 0;
+  const detail = total > 0
+    ? `This permanently deletes the deck and its ${total} ${total === 1 ? 'card' : 'cards'}, including review history. This cannot be undone.`
+    : 'This permanently deletes the deck. This cannot be undone.';
+  let ok = false;
+  if (_api.window.showConfirmModal) {
+    ok = await _api.window.showConfirmModal({ message: `Delete "${deck.name}"?`, detail, confirmLabel: 'Delete deck', danger: true });
+  } else {
+    const pick = await _api.window.showWarningMessage(`Delete "${deck.name}"? ${detail}`, { title: 'Delete deck' });
+    ok = pick?.title === 'Delete deck';
+  }
+  if (ok) await fcDeleteDeck(deck.id);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

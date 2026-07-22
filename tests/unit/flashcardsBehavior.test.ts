@@ -227,6 +227,40 @@ function makeFakeApi() {
         (wrapped as { dispose?: () => void }).dispose = () => { /* noop */ };
         return wrapped;
       },
+      createAiButton: (container: HTMLElement, options: { label: string }) => {
+        const btn = document.createElement('button');
+        btn.className = 'px-ai-btn';
+        const label = document.createElement('span');
+        label.className = 'px-ai-btn__label';
+        label.textContent = options.label;
+        btn.appendChild(label);
+        container.appendChild(btn);
+        return btn;
+      },
+      renderMarkdown: (markdown: string) => {
+        const d = document.createElement('div');
+        d.className = 'px-markdown';
+        d.textContent = markdown;
+        return d;
+      },
+      // Renders a real clickable menu so tests can drive items by label.
+      showContextMenu: (
+        _anchor: { x: number; y: number },
+        items: { label?: string; separator?: boolean; onSelect?: () => void }[],
+      ) => {
+        const menu = document.createElement('div');
+        menu.className = 'fake-context-menu';
+        for (const it of items) {
+          if (it.separator) continue;
+          const row = document.createElement('button');
+          row.className = 'fake-context-menu__item';
+          row.textContent = it.label ?? '';
+          if (it.onSelect) row.addEventListener('click', () => { menu.remove(); it.onSelect!(); });
+          menu.appendChild(row);
+        }
+        document.body.appendChild(menu);
+        return { dispose() { menu.remove(); } };
+      },
     },
     chat: {
       registerTool: (name: string, def: { handler: (args: Record<string, unknown>) => Promise<{ content: string; isError?: boolean }> }) => {
@@ -310,8 +344,10 @@ describe('chat tool: createCards', () => {
     await settle();
     const sidebar = document.querySelector('[data-role="sidebar-host"]')!;
     expect(sidebar.textContent).toContain('Reserving');
-    // Both cards are new → the new-count badge shows 2.
-    expect(sidebar.querySelector('.fc-deck-row__new')?.textContent).toBe('2');
+    // Both cards are new → the deck row's new-count shows 2.
+    expect(sidebar.querySelector('.fc-deck-row__ct--new')?.textContent).toBe('2');
+    // Today section reflects the new cards too.
+    expect(sidebar.querySelector('.fc-today__num--new')?.textContent).toBe('2');
   });
 });
 
@@ -489,5 +525,30 @@ describe('selection → flashcard', () => {
     await fake.api.commands.executeCommand('flashcards.captureSelection', 'too short', {});
     await settle();
     expect(fake.scripted.messages.slice(before).some((m) => /a little more text/i.test(m))).toBe(true);
+  });
+});
+
+// Runs LAST — deletes a deck.
+describe('deck deletion via sidebar context menu', () => {
+  it('right-click → Delete deck confirms and removes the deck and its cards', async () => {
+    const host = fake.paneHosts.get('sidebar-host') ?? document.querySelector('[data-role="sidebar-host"]')!;
+    const decksBefore = fake.sqlite.prepare('SELECT COUNT(*) AS n FROM fc_decks').get() as { n: number };
+    expect(decksBefore.n).toBeGreaterThan(0);
+
+    // Open the first deck's actions menu via the row's "more" button.
+    const moreBtn = host.querySelector('.fc-deck-row__more') as HTMLButtonElement;
+    expect(moreBtn).toBeTruthy();
+    moreBtn.click();
+
+    // Confirm modal is not exposed in the harness → falls back to the warning
+    // action, which the harness auto-confirms. Click "Delete deck".
+    const del = [...document.querySelectorAll('.fake-context-menu__item')]
+      .find((b) => b.textContent === 'Delete deck') as HTMLButtonElement;
+    expect(del).toBeTruthy();
+    del.click();
+    await settle();
+
+    const decksAfter = fake.sqlite.prepare('SELECT COUNT(*) AS n FROM fc_decks').get() as { n: number };
+    expect(decksAfter.n).toBe(decksBefore.n - 1);
   });
 });
