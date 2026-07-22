@@ -27,6 +27,8 @@ import { settingsPanelRegistry } from '../../services/settingsPanelRegistry.js';
 import { PlannerSyncOrchestrator } from './sync/plannerSyncOrchestrator.js';
 import { GoogleCalendarSyncProvider, GOOGLE_PROVIDER_ID } from './sync/googleCalendarSyncProvider.js';
 import { googleSync } from './sync/googleClient.js';
+import { ICronService, type CronService } from '../../openclaw/openclawCronService.js';
+import type { CronServiceLike } from './plannerAutomations.js';
 
 // ─── API surface ────────────────────────────────────────────────────────────
 
@@ -243,7 +245,20 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     }),
   );
 
-  // 4. Editor pane (Tasks + Calendar tabs).
+  // 4. Editor pane (Tasks + Calendar + Automations tabs).
+  //
+  // M93 — the Automations tab drives the workspace CronService. The chat
+  // built-in registers it in DI during ITS activation; built-ins activate in
+  // parallel, so resolve lazily on every access and return null until it
+  // exists (the tab renders a "still starting" state).
+  const getCronService = (): CronServiceLike | null => {
+    try {
+      if (!api.services.has(ICronService)) return null;
+      return api.services.get<CronService>(ICronService) as unknown as CronServiceLike;
+    } catch {
+      return null;
+    }
+  };
   const editorProvider = new PlannerEditorProvider(_data, {
     editors: api.editors,
     commands: api.commands,
@@ -254,6 +269,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       get: <T>(key: string, defaultValue: T): T => context.workspaceState.get<T>(key, defaultValue),
       set: (key: string, value: unknown): void => { void context.workspaceState.update(key, value); },
     },
+    cron: { get: getCronService },
   }, _orchestrator ?? undefined);
   context.subscriptions.push(
     api.editors.registerEditorProvider('planner', {

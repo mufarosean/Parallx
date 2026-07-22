@@ -12,6 +12,7 @@ import { googleSync } from './sync/googleClient.js';
 import { takePendingPlannerTab } from './plannerNavState.js';
 import { buildSimpleRRule, describeRRule, rruleToPreset } from './plannerRecurrence.js';
 import { packLanes } from './plannerLayout.js';
+import { PlannerAutomationsController, type CronServiceLike } from './plannerAutomations.js';
 
 interface PlannerEditorInput {
   readonly id: string;          // === instanceId; only one ('main') for M82
@@ -41,9 +42,14 @@ interface PlannerEditorApi {
     showWarningMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
     showErrorMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
   };
+  /** M93 — lazy handle to the workspace cron service for the Automations tab.
+   *  Null until the chat built-in has registered it (activation order). */
+  cron?: {
+    get(): CronServiceLike | null;
+  };
 }
 
-type Tab = 'tasks' | 'calendar';
+type Tab = 'tasks' | 'calendar' | 'automations';
 type CalendarView = 'month' | 'week' | 'day';
 
 const PLANNER_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="m9 16 2 2 4-4"/></svg>';
@@ -196,7 +202,7 @@ class PlannerEditorPane implements IDisposable {
     const vs = this._api.viewState;
     if (vs) {
       const savedTab = vs.get<string>('planner.activeTab', 'tasks');
-      if (savedTab === 'tasks' || savedTab === 'calendar') this._activeTab = savedTab;
+      if (savedTab === 'tasks' || savedTab === 'calendar' || savedTab === 'automations') this._activeTab = savedTab;
       const savedView = vs.get<string>('planner.calendarView', 'month');
       if (savedView === 'month' || savedView === 'week' || savedView === 'day') {
         this._calendarView = savedView;
@@ -228,7 +234,7 @@ class PlannerEditorPane implements IDisposable {
     const onFocusTab = (e: Event) => {
       if (!this._root?.isConnected) return;
       const tab = (e as CustomEvent<{ tab?: Tab }>).detail?.tab;
-      if (tab === 'tasks' || tab === 'calendar') this._setTab(tab);
+      if (tab === 'tasks' || tab === 'calendar' || tab === 'automations') this._setTab(tab);
     };
     document.addEventListener('parallx.planner.focusTab', onFocusTab);
 
@@ -358,6 +364,7 @@ class PlannerEditorPane implements IDisposable {
     const tabsConfig: { key: Tab; label: string; icon: string }[] = [
       { key: 'tasks',    label: 'Tasks',    icon: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></svg>' },
       { key: 'calendar', label: 'Calendar', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>' },
+      { key: 'automations', label: 'Automations', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>' },
     ];
     for (const t of tabsConfig) {
       const tab = el('button', 'planner-pane__tab');
@@ -448,9 +455,28 @@ class PlannerEditorPane implements IDisposable {
 
     if (this._activeTab === 'tasks') {
       await this._renderTasksTab(body, actions);
+    } else if (this._activeTab === 'automations') {
+      await this._renderAutomationsTab(body, actions);
     } else {
       await this._renderCalendarTab(body, actions);
     }
+  }
+
+  // ── Automations tab (M93) ────────────────────────────────────────────
+
+  private _automations: PlannerAutomationsController | null = null;
+
+  private async _renderAutomationsTab(body: HTMLElement, actions: HTMLElement): Promise<void> {
+    if (!this._automations) {
+      this._automations = new PlannerAutomationsController({
+        getCron: () => this._api.cron?.get() ?? null,
+        settings: this._data,
+        window: this._api.window,
+        isActive: () => !this._disposed && this._activeTab === 'automations',
+      });
+      this._disposables.push(this._automations);
+    }
+    await this._automations.render(body, actions);
   }
 
   // ── Tasks tab ────────────────────────────────────────────────────────

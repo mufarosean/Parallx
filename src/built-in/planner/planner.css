@@ -1777,3 +1777,240 @@
 .planner-scope-opt:hover {
   background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 18%, transparent);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Automations tab (M93) — app-run scheduled jobs the AI executes.
+   Cards + inline create/edit form; mirrors the popover input idioms above.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.planner-auto {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 20px 24px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.planner-auto__intro {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 62%, transparent);
+  padding-bottom: 4px;
+  border-bottom: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
+}
+
+.planner-auto__empty {
+  padding: 28px 16px;
+  text-align: center;
+  font-size: 13px;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.planner-auto__empty-hint {
+  font-size: 12px;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 42%, transparent);
+}
+
+/* ── Cards ── */
+
+.planner-auto__card {
+  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 12%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 94%, white);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: border-color var(--px-dur-fast) var(--px-ease), opacity var(--px-dur-base) var(--px-ease);
+}
+.planner-auto__card--paused { opacity: 0.62; }
+
+.planner-auto__card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.planner-auto__card-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--vscode-editor-foreground, #e8e8e8);
+}
+.planner-auto__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 65%, transparent);
+  cursor: pointer;
+  user-select: none;
+}
+.planner-auto__toggle input { accent-color: var(--vscode-button-background, #0e639c); cursor: pointer; }
+
+.planner-auto__card-prompt {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 78%, transparent);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.planner-auto__card-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px 14px;
+  padding-top: 2px;
+}
+.planner-auto__meta-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 42%, transparent);
+}
+.planner-auto__meta-value {
+  font-size: 12px;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 80%, transparent);
+}
+
+.planner-auto__card-error {
+  font-size: 12px;
+  color: var(--vscode-errorForeground, #f48771);
+  background: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 8%, transparent);
+  border-radius: 5px;
+  padding: 6px 9px;
+}
+
+.planner-auto__card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.planner-auto__btn {
+  height: 26px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 16%, transparent);
+  border-radius: 5px;
+  background: transparent;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 80%, transparent);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease);
+}
+.planner-auto__btn:hover {
+  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 10%, transparent);
+  color: var(--vscode-editor-foreground, #e8e8e8);
+}
+.planner-auto__btn:disabled { opacity: 0.5; cursor: default; }
+.planner-auto__btn--primary {
+  background: var(--vscode-button-background, #0e639c);
+  border-color: transparent;
+  color: var(--vscode-button-foreground, #fff);
+}
+.planner-auto__btn--primary:hover {
+  background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 88%, white);
+  color: var(--vscode-button-foreground, #fff);
+}
+.planner-auto__btn--danger:hover {
+  background: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 16%, transparent);
+  border-color: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 45%, transparent);
+  color: var(--vscode-errorForeground, #f48771);
+}
+
+/* ── Other scheduled jobs (AI / extension owned) ── */
+
+.planner-auto__others { margin-top: 8px; }
+.planner-auto__others-summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent);
+  padding: 6px 0;
+  user-select: none;
+}
+.planner-auto__others-summary:hover { color: var(--vscode-editor-foreground, #d4d4d4); }
+.planner-auto__others .planner-auto__card { margin-top: 8px; }
+
+/* ── Create / edit form ── */
+
+.planner-auto__form {
+  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 14%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 90%, white);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.planner-auto__form-title {
+  margin: 0 0 4px;
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.planner-auto__label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 48%, transparent);
+  margin-top: 8px;
+}
+.planner-auto__input,
+.planner-auto__textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 16%, transparent);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 82%, white);
+  color: var(--vscode-editor-foreground, #d4d4d4);
+  font: inherit;
+  font-size: 12.5px;
+  transition: border-color var(--px-dur-fast) var(--px-ease), background var(--px-dur-fast) var(--px-ease);
+}
+.planner-auto__textarea { resize: vertical; min-height: 72px; line-height: 1.5; }
+.planner-auto__input:focus,
+.planner-auto__textarea:focus {
+  outline: none;
+  border-color: var(--vscode-focusBorder, #5b9bd5);
+  background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 90%, white);
+}
+
+.planner-auto__sched {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.planner-auto__sched .planner-auto__input { width: auto; }
+.planner-auto__input--time { flex: 0 0 100px; }
+.planner-auto__input--interval { flex: 0 0 120px; }
+.planner-auto__input--once { flex: 0 0 200px; }
+.planner-auto__input--cron { flex: 1 1 160px; min-width: 120px; }
+.planner-auto__dropdown { min-width: 140px; }
+
+.planner-auto__error {
+  font-size: 12px;
+  color: var(--vscode-errorForeground, #f48771);
+  padding: 4px 0;
+}
+
+.planner-auto__form-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
