@@ -127,7 +127,10 @@
   --px-radius-xl: 14px;   /* large content cards (dashboard widgets) */
   --px-radius-full: 999px;
 
-  /* Type ladder — six steps, no more. */
+  /* Type ladder — six steps + one micro step, no more. The micro step
+     exists for DENSE chrome only (calendar cell meta, count badges,
+     mini-captions); body copy never drops below xs. */
+  --px-text-2xs:  10px;   /* dense chrome: cell meta, badges */
   --px-text-xs:   11px;   /* meta, counts, captions          */
   --px-text-sm:   12px;   /* secondary UI text               */
   --px-text-base: 13px;   /* default UI text, controls       */

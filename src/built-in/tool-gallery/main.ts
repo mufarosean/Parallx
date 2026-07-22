@@ -13,6 +13,7 @@ import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { $, clearNode } from '../../ui/dom.js';
 import { getIcon } from '../../ui/iconRegistry.js';
+import { renderEmptyState } from '../../ui/emptyStates.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -343,7 +344,8 @@ function renderToolSidebar(container: HTMLElement, api: ParallxApi): IDisposable
 
     const arrow = $('span');
     arrow.classList.add('tool-gallery-group-arrow');
-    arrow.textContent = collapsed ? '▶' : '▼';
+    // Registered Lucide glyphs, never text symbols.
+    arrow.innerHTML = getIcon(collapsed ? 'chevron-right' : 'chevron-down');
     header.appendChild(arrow);
 
     const text = $('span');
@@ -369,11 +371,10 @@ function renderToolSidebar(container: HTMLElement, api: ParallxApi): IDisposable
     clearNode(list);
 
     if (tools.length === 0) {
-      const empty = $('div');
+      const empty = renderEmptyState(
+        currentFilter === 'installed' && !searchText ? 'toolGallery.empty' : 'toolGallery.filter',
+      );
       empty.classList.add('tool-gallery-empty');
-      empty.textContent = currentFilter === 'installed' && !searchText
-        ? 'No tools registered'
-        : 'No matching tools';
       list.appendChild(empty);
       return;
     }

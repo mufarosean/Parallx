@@ -11,6 +11,7 @@ import { Disposable, toDisposable } from '../../../platform/lifecycle.js';
 import { Emitter } from '../../../platform/events.js';
 import type { Event } from '../../../platform/events.js';
 import { $, addDisposableListener } from '../../../ui/dom.js';
+import { EMPTY_STATES } from '../../../ui/emptyStates.js';
 import { chatIcons } from '../chatIcons.js';
 import type { IModelPickerServices } from '../chatTypes.js';
 
@@ -101,7 +102,10 @@ export class ChatModelPicker extends Disposable {
     dropdown.style.zIndex = '100';
 
     if (models.length === 0) {
-      const empty = $('div.parallx-chat-picker-item.parallx-chat-picker-item--empty', 'No models available');
+      const empty = $(
+        'div.parallx-chat-picker-item.parallx-chat-picker-item--empty',
+        `${EMPTY_STATES['chat.models'].headline} — ${EMPTY_STATES['chat.models'].hint}`,
+      );
       dropdown.appendChild(empty);
     } else {
       for (const model of models) {

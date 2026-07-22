@@ -101,7 +101,7 @@ export class EpubEditorPane extends EditorPane {
     this._contentEl = $('article.epub-reader-content');
     this._contentEl.addEventListener('click', (event) => this._handleContentClick(event));
 
-    this._loadingEl = $('div.epub-reader-message', 'Loading...');
+    this._loadingEl = $('div.epub-reader-message', 'Loading…');
 
     this._errorEl = $('div.epub-reader-message.epub-reader-error');
     hide(this._errorEl);
@@ -227,7 +227,7 @@ export class EpubEditorPane extends EditorPane {
   private _showLoading(): void {
     this._contentEl.textContent = '';
     this._navListEl.textContent = '';
-    this._statusEl.textContent = 'Loading...';
+    this._statusEl.textContent = 'Loading…';
     hide(this._errorEl);
     show(this._loadingEl);
   }

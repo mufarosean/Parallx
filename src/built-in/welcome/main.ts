@@ -10,6 +10,7 @@ import type { IStorage } from '../../platform/storage.js';
 import { IGlobalStorageService, IWorkspaceStorageService } from '../../services/serviceTypes.js';
 import { $ } from '../../ui/dom.js';
 import { getIcon, getFileTypeIcon } from '../../ui/iconRegistry.js';
+import { EMPTY_STATES } from '../../ui/emptyStates.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -167,10 +168,13 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi, recentWorksp
   startTitle.textContent = 'Start';
   leftCol.appendChild(startTitle);
 
+  // Start = the product's loops, not file operations. Files still open from
+  // the Explorer / quick open; the first screen sells what Parallx IS.
   const startItems = [
-    { icon: 'file-text', text: 'New File', command: 'workbench.action.files.newUntitledFile' },
-    { icon: 'folder-open', text: 'Open File…', command: 'workbench.action.files.openFile' },
-    { icon: 'folder', text: 'Open Folder…', command: 'workbench.action.files.openFolder' },
+    { icon: 'file-text', text: 'New canvas page', command: 'canvas.newPage' },
+    { icon: 'calendar', text: 'Open planner', command: 'planner.open' },
+    { icon: 'layout-dashboard', text: 'New dashboard', command: 'dashboard.newPage' },
+    { icon: 'folder', text: 'Open folder…', command: 'workbench.action.files.openFolder' },
   ];
 
   for (const item of startItems) {
@@ -281,7 +285,7 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi, recentWorksp
   if (recentWorkspaces.length === 0 && recentFiles.length === 0) {
     const emptyMsg = $('div');
     emptyMsg.classList.add('welcome-empty');
-    emptyMsg.textContent = 'No recent items yet.';
+    emptyMsg.textContent = EMPTY_STATES['welcome.recent'].hint;
     rightCol.appendChild(emptyMsg);
   }
 

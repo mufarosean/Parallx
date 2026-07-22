@@ -13,6 +13,7 @@ import { Disposable, toDisposable } from '../../../platform/lifecycle.js';
 import { Emitter } from '../../../platform/events.js';
 import type { Event } from '../../../platform/events.js';
 import { $, addDisposableListener } from '../../../ui/dom.js';
+import { EMPTY_STATES } from '../../../ui/emptyStates.js';
 import type { IChatSession } from '../../../services/chatTypes.js';
 import { chatIcons } from '../chatIcons.js';
 import type { ISessionSidebarServices } from '../chatTypes.js';
@@ -213,8 +214,8 @@ export class ChatSessionSidebar extends Disposable {
     this._sessionList = $('div.parallx-chat-session-sidebar-list');
     this._root.appendChild(this._sessionList);
 
-    // ── Empty state ──
-    this._emptyEl = $('div.parallx-chat-session-sidebar-empty', 'No sessions yet');
+    // ── Empty state (M89 voice registry) ──
+    this._emptyEl = $('div.parallx-chat-session-sidebar-empty', EMPTY_STATES['chat.sessions'].headline);
     this._emptyEl.style.display = 'none';
     this._root.appendChild(this._emptyEl);
 
@@ -360,8 +361,8 @@ export class ChatSessionSidebar extends Disposable {
 
     if (sessions.length === 0) {
       this._emptyEl.textContent = this._filterText
-        ? 'No matching sessions'
-        : 'No sessions yet';
+        ? 'No sessions match that'
+        : EMPTY_STATES['chat.sessions'].headline;
       this._emptyEl.style.display = '';
       return;
     }

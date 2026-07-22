@@ -239,7 +239,8 @@ describe('ChatSessionSidebar', () => {
     sidebar.show();
     const empty = container.querySelector('.parallx-chat-session-sidebar-empty');
     expect(empty).toBeTruthy();
-    expect(empty!.textContent).toContain('No sessions yet');
+    // M89 voice registry line, not flat anti-voice copy.
+    expect(empty!.textContent).toContain('Your chats live here');
 
     sidebar.dispose();
   });
@@ -334,7 +335,7 @@ describe('ChatSessionSidebar', () => {
     sidebar.dispose();
   });
 
-  it('shows "No matching sessions" when filter matches nothing', async () => {
+  it('shows the no-match line when filter matches nothing', async () => {
     const { ChatSessionSidebar } = await import('../../src/built-in/chat/widgets/chatSessionSidebar');
 
     const sidebar = new ChatSessionSidebar(container, {
@@ -353,7 +354,7 @@ describe('ChatSessionSidebar', () => {
 
     const empty = container.querySelector('.parallx-chat-session-sidebar-empty');
     expect(empty!.style.display).not.toBe('none');
-    expect(empty!.textContent).toBe('No matching sessions');
+    expect(empty!.textContent).toBe('No sessions match that');
 
     sidebar.dispose();
   });

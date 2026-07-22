@@ -70,6 +70,36 @@ export const EMPTY_STATES = {
     headline: 'No beliefs yet',
     hint: 'The agent forms them as it reviews your work — check back after a few sessions.',
   },
+  'chat.sessions': {
+    id: 'chat.sessions',
+    icon: 'message-circle',
+    headline: 'Your chats live here',
+    hint: 'Start a conversation below — saved sessions appear here.',
+  },
+  'chat.models': {
+    id: 'chat.models',
+    icon: 'cpu',
+    headline: 'Bring a model online',
+    hint: 'Try `ollama pull llama3.2` in a terminal, or enable a cloud provider in AI settings.',
+  },
+  'toolGallery.empty': {
+    id: 'toolGallery.empty',
+    icon: 'blocks',
+    headline: 'Extensions live here',
+    hint: 'Drop a tool folder into ext/ — new tools appear here automatically.',
+  },
+  'toolGallery.filter': {
+    id: 'toolGallery.filter',
+    icon: 'filter',
+    headline: 'No tools match that',
+    hint: 'Try fewer words, or switch the filter back to Installed.',
+  },
+  'welcome.recent': {
+    id: 'welcome.recent',
+    icon: 'history',
+    headline: 'A fresh start',
+    hint: 'Files and workspaces you open appear here.',
+  },
 } as const satisfies Record<string, EmptyStateEntry>;
 
 export type EmptyStateId = keyof typeof EMPTY_STATES;
