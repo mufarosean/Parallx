@@ -923,6 +923,31 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
     }),
   );
 
+  // canvas.getPageMarkdown (M93) — cross-extension read surface: return a
+  // page's content as markdown. Built for the flashcards extension (generate
+  // cards from a canvas page) but generic: anything that can execute commands
+  // can read a page without touching canvas internals.
+  context.subscriptions.push(
+    api.commands.registerCommand('canvas.getPageMarkdown', async (...args: unknown[]) => {
+      const pageId = typeof args[0] === 'string' ? args[0] : null;
+      if (!pageId || !_dataService) return null;
+      try {
+        const page = await _dataService.getPage(pageId);
+        if (!page) return null;
+        let doc: unknown;
+        try { doc = JSON.parse(page.content); } catch { return null; }
+        return {
+          id: page.id,
+          title: page.title,
+          markdown: tiptapJsonToMarkdown(doc, page.title),
+        };
+      } catch (err) {
+        console.warn('[Canvas] getPageMarkdown failed:', err);
+        return null;
+      }
+    }),
+  );
+
   // canvas.exportPdf (M93) — open the print-style PDF export dialog for the
   // ACTIVE canvas editor. Bound to Ctrl+P scoped by when-clause, so Quick
   // Open keeps Ctrl+P everywhere else.

@@ -103,7 +103,8 @@ const GATE_RULES: Record<string, string[]> = {
   'extensions/mediaNodes.ts':              ['config/blockRegistry'],
   'extensions/bookmarkNode.ts':            ['config/blockRegistry'],
   'extensions/pageBlockNode.ts':           ['config/blockRegistry'],
-  'header/pageChrome.ts':                  ['config/blockRegistry', 'canvasVersionHistoryPanel'],
+  // M93 — the ⋯ menu / Ctrl+P lazy-load the PDF export dialog.
+  'header/pageChrome.ts':                  ['config/blockRegistry', 'canvasVersionHistoryPanel', 'export/pdfExportDialog'],
   'canvasSidebar.ts':                      ['config/blockRegistry', 'database/databaseRegistry', 'canvasSidebarDragState'],
 
   // tiptapExtensions.ts — assembler role: imports from blockRegistry +
@@ -176,6 +177,10 @@ const GATE_RULES: Record<string, string[]> = {
 
   // ── Standalone utilities ────────────────────────────────────────────────
   'invariants/canvasStructuralInvariants.ts': [],  // zero relative imports
+
+  // ── PDF export (M93) ────────────────────────────────────────────────────
+  'export/printHtml.ts':                   [],                    // pure builders — zero canvas imports
+  'export/pdfExportDialog.ts':             ['export/printHtml'],  // dialog over the pure builders (ui/dropdown + pdfjs are external)
 
   // ── DatabaseRegistry children ────────────────────────────────────────────
   'database/databaseEditorProvider.ts':          ['database/databaseRegistry'],

@@ -1,0 +1,76 @@
+{
+  "manifestVersion": 1,
+  "id": "parallx-community.flashcards",
+  "name": "Flashcards",
+  "version": "0.1.0",
+  "publisher": "parallx-community",
+  "description": "Spaced-repetition flashcards: create from canvas pages, PDFs, and photos; study with SM-2 scheduling; discuss cards with the AI; track progress.",
+  "main": "main.js",
+  "activationEvents": ["*"],
+  "engines": {
+    "parallx": "^0.1.0"
+  },
+  "contributes": {
+    "commands": [
+      { "id": "flashcards.open", "title": "Open Flashcards", "category": "Flashcards" },
+      { "id": "flashcards.study", "title": "Study Due Cards", "category": "Flashcards" },
+      { "id": "flashcards.newDeck", "title": "New Deck", "category": "Flashcards" },
+      { "id": "flashcards.newCard", "title": "New Card", "category": "Flashcards" },
+      { "id": "flashcards.generate", "title": "Generate Cards from Source (AI)", "category": "Flashcards" },
+      { "id": "flashcards.stats", "title": "Show Progress & Stats", "category": "Flashcards" }
+    ],
+    "viewContainers": [
+      {
+        "id": "flashcards-container",
+        "title": "Flashcards",
+        "icon": "layers",
+        "location": "sidebar"
+      }
+    ],
+    "views": [
+      {
+        "id": "flashcards.decks",
+        "name": "Decks",
+        "defaultContainerId": "flashcards-container"
+      }
+    ],
+    "editors": [
+      {
+        "typeId": "flashcards",
+        "displayName": "Flashcards"
+      }
+    ],
+    "configuration": [
+      {
+        "title": "Flashcards",
+        "properties": {
+          "flashcards.dailyNewLimit": {
+            "type": "number",
+            "default": 20,
+            "description": "Maximum number of NEW cards introduced per study day."
+          },
+          "flashcards.dailyReviewLimit": {
+            "type": "number",
+            "default": 200,
+            "description": "Maximum number of due review cards per study day."
+          },
+          "flashcards.aiModel": {
+            "type": "string",
+            "default": "",
+            "description": "Model id used for card generation and card discussion. Leave empty to use the chat's active model."
+          },
+          "flashcards.dailyReminder": {
+            "type": "boolean",
+            "default": false,
+            "description": "Schedule a daily background AI check that nudges you (via chat) when cards are due. Runs through the cron scheduler and respects the autonomy dial."
+          },
+          "flashcards.reminderTime": {
+            "type": "string",
+            "default": "09:00",
+            "description": "Local wall-clock time (HH:MM) for the daily reminder check."
+          }
+        }
+      }
+    ]
+  }
+}
