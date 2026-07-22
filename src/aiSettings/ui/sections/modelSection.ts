@@ -15,6 +15,7 @@
 
 import { addDisposableListener } from '../../../ui/dom.js';
 import { InputBox } from '../../../ui/inputBox.js';
+import { Dropdown } from '../../../ui/dropdown.js';
 import type {
   IUnifiedAIConfigService,
   IUnifiedAIConfig,
@@ -76,7 +77,7 @@ export class ModelSection extends SettingsSection {
   private readonly _unifiedService: IUnifiedAIConfigService | undefined;
   private readonly _lms: ILanguageModelsService | undefined;
 
-  private _modelSelect!: HTMLSelectElement;
+  private _modelDropdown!: Dropdown;
   private _contextInput!: InputBox;
 
   constructor(
@@ -103,20 +104,18 @@ export class ModelSection extends SettingsSection {
       onReset: () => {
         void this._writeWorkspace({ model: { chatModel: defaults.chatModel } })
           .then(() => this._notifySaved('model.chatModel'));
-        this._modelSelect.value = '';
+        this._modelDropdown.value = '';
       },
       scopePath: 'model.chatModel',
       unifiedService: this._unifiedService,
     });
 
-    this._modelSelect = document.createElement('select');
-    this._modelSelect.className = 'ai-settings-select';
-    this._modelSelect.setAttribute('aria-label', 'Default model');
-    this._appendOption('', 'Auto — first available', true);
-    modelRow.controlSlot.appendChild(this._modelSelect);
-
-    this._register(addDisposableListener(this._modelSelect, 'change', () => {
-      const value = this._modelSelect.value;
+    this._modelDropdown = this._register(new Dropdown(modelRow.controlSlot, {
+      items: [{ value: '', label: 'Auto — first available' }],
+      selected: '',
+      ariaLabel: 'Default model',
+    }));
+    this._register(this._modelDropdown.onDidChange((value: string) => {
       void this._writeWorkspace({ model: { chatModel: value } })
         .then(() => this._notifySaved('model.chatModel'));
     }));
@@ -178,9 +177,8 @@ export class ModelSection extends SettingsSection {
 
   update(_profile: AISettingsProfile): void {
     const current = this._currentModelId();
-    if (this._modelSelect && this._modelSelect.value !== current) {
-      const has = Array.from(this._modelSelect.options).some(o => o.value === current);
-      if (has) this._modelSelect.value = current;
+    if (this._modelDropdown && this._modelDropdown.value !== current) {
+      this._modelDropdown.value = current;
     }
     if (this._contextInput) {
       const ctx = String(this._currentContextWindow());
@@ -347,7 +345,7 @@ export class ModelSection extends SettingsSection {
   }
 
   private async _refreshModels(): Promise<void> {
-    if (!this._lms || !this._modelSelect) return;
+    if (!this._lms || !this._modelDropdown) return;
     let models: readonly ILanguageModelInfo[] = [];
     try {
       models = await this._lms.getModels();
@@ -356,30 +354,22 @@ export class ModelSection extends SettingsSection {
     }
 
     const current = this._currentModelId();
-    this._modelSelect.replaceChildren();
-    this._appendOption('', 'Auto — first available', current === '');
-
     const sorted = [...models].sort((a, b) => {
       if (a.family !== b.family) return a.family.localeCompare(b.family);
       return a.displayName.localeCompare(b.displayName);
     });
-    for (const m of sorted) {
-      const label = m.parameterSize
-        ? `${m.displayName} · ${m.parameterSize}`
-        : m.displayName;
-      this._appendOption(m.id, label, m.id === current);
-    }
 
+    const items = [
+      { value: '', label: 'Auto — first available' },
+      ...sorted.map((m) => ({
+        value: m.id,
+        label: m.parameterSize ? `${m.displayName} · ${m.parameterSize}` : m.displayName,
+      })),
+    ];
     if (current && !sorted.some(m => m.id === current)) {
-      this._appendOption(current, `${current} (not installed)`, true);
+      items.push({ value: current, label: `${current} (not installed)` });
     }
-  }
-
-  private _appendOption(value: string, label: string, selected: boolean): void {
-    const opt = document.createElement('option');
-    opt.value = value;
-    opt.textContent = label;
-    if (selected) opt.selected = true;
-    this._modelSelect.appendChild(opt);
+    this._modelDropdown.items = items;
+    this._modelDropdown.value = current;
   }
 }

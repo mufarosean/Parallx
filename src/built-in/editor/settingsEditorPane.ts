@@ -15,6 +15,7 @@ import { IConfigurationService, ICommandService } from '../../services/serviceTy
 import type { ServiceCollection } from '../../services/serviceCollection.js';
 import type { ConfigurationService } from '../../configuration/configurationService.js';
 import { $,  hide, show } from '../../ui/dom.js';
+import { Dropdown } from '../../ui/dropdown.js';
 import type { ICommandService as ICommandServiceType } from '../../services/serviceTypes.js';
 
 // ─── Pane ────────────────────────────────────────────────────────────────────
@@ -332,18 +333,14 @@ export class SettingsEditorPane extends EditorPane {
       });
       container.appendChild(label);
     } else if (schema.enum && schema.enum.length > 0) {
-      const select = $('select');
-      for (const opt of schema.enum) {
-        const option = $('option');
-        option.value = String(opt);
-        option.textContent = String(opt);
-        if (String(currentValue) === String(opt)) option.selected = true;
-        select.appendChild(option);
-      }
-      select.addEventListener('change', () => {
-        this._configService?._updateValue(schema.key, select.value);
-      });
-      container.appendChild(select);
+      const dropdown = this._register(new Dropdown(container, {
+        items: schema.enum.map((opt) => ({ value: String(opt), label: String(opt) })),
+        selected: String(currentValue),
+        ariaLabel: schema.key,
+      }));
+      this._register(dropdown.onDidChange((value: string) => {
+        this._configService?._updateValue(schema.key, value);
+      }));
     } else if (schema.type === 'number') {
       const input = $('input');
       input.type = 'number';

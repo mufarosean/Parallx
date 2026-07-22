@@ -25,6 +25,7 @@ import { createPropertyEditor, createTypeIconElement } from '../properties/prope
 import type { IPropertyDefinition, PropertyType } from '../properties/propertyTypes.js';
 import { resolvePageIcon, svgIcon } from '../config/iconRegistry.js';
 import { showConfirmModal } from '../../../api/notificationService.js';
+import { Dropdown } from '../../../ui/dropdown.js';
 
 function renderPageIconHtml(icon: string | null | undefined): string {
   const id = resolvePageIcon(icon);
@@ -508,7 +509,13 @@ export class DatabaseEditorPane implements IDisposable {
 
   // ── Popovers & menus ───────────────────────────────────────────────────────
 
+  /** Controls (Dropdowns) owned by the CURRENT popover — they register
+   *  document-level listeners, so closing the popover must dispose them. */
+  private _popoverDisposables: IDisposable[] = [];
+
   private _closePopover(): void {
+    for (const d of this._popoverDisposables) { try { d.dispose(); } catch { /* noop */ } }
+    this._popoverDisposables = [];
     this._activePopover?.remove();
     this._activePopover = null;
   }
@@ -676,39 +683,45 @@ export class DatabaseEditorPane implements IDisposable {
     });
   }
 
+  /** Property items for filter/sort pickers: the pinned Name column + props. */
+  private _propItems(): { value: string; label: string }[] {
+    return [
+      { value: TITLE_KEY, label: 'Name' },
+      ...this._props.map((p) => ({ value: p.id, label: p.name })),
+    ];
+  }
+
   private _openFilterPopover(anchor: HTMLElement): void {
     const view = this.activeView;
     if (!view) return;
     this._openPopover(anchor, (pop) => {
       pop.appendChild(el('div', 'canvas-db-popover__label', 'Add filter'));
-      const propSel = el('select', 'canvas-db-popover__select') as HTMLSelectElement;
-      const titleOpt = el('option', '', 'Name') as HTMLOptionElement;
-      titleOpt.value = TITLE_KEY;
-      propSel.appendChild(titleOpt);
-      for (const p of this._props) {
-        const o = el('option', '', p.name) as HTMLOptionElement;
-        o.value = p.id;
-        propSel.appendChild(o);
-      }
-      const opSel = el('select', 'canvas-db-popover__select') as HTMLSelectElement;
-      for (const { op, label } of FILTER_OPS) {
-        const o = el('option', '', label) as HTMLOptionElement;
-        o.value = op;
-        opSel.appendChild(o);
-      }
+      const propHost = el('div', 'canvas-db-popover__select');
+      const propSel = new Dropdown(propHost, {
+        items: this._propItems(),
+        selected: TITLE_KEY,
+        ariaLabel: 'Filter property',
+      });
+      const opHost = el('div', 'canvas-db-popover__select');
+      const opSel = new Dropdown(opHost, {
+        items: FILTER_OPS.map(({ op, label }) => ({ value: op, label })),
+        selected: FILTER_OPS[0]?.op,
+        ariaLabel: 'Filter operator',
+      });
+      this._popoverDisposables.push(propSel, opSel);
       const valInput = el('input', 'canvas-db-popover__input') as HTMLInputElement;
       valInput.placeholder = 'Value';
       const apply = el('button', 'canvas-db-popover__primary', 'Add filter');
       apply.addEventListener('click', () => {
         const rule: IFilterRule = {
-          propertyId: propSel.value,
-          op: opSel.value as FilterOp,
+          propertyId: propSel.value ?? TITLE_KEY,
+          op: (opSel.value ?? FILTER_OPS[0]?.op) as FilterOp,
           value: valInput.value === '' ? undefined : valInput.value,
         };
         this._closePopover();
         void this._updateActiveView({ filter: { ...view.filter, rules: [...view.filter.rules, rule] } });
       });
-      pop.append(propSel, opSel, valInput, apply);
+      pop.append(propHost, opHost, valInput, apply);
     });
   }
 
@@ -717,26 +730,32 @@ export class DatabaseEditorPane implements IDisposable {
     if (!view) return;
     this._openPopover(anchor, (pop) => {
       pop.appendChild(el('div', 'canvas-db-popover__label', 'Add sort'));
-      const propSel = el('select', 'canvas-db-popover__select') as HTMLSelectElement;
-      const titleOpt = el('option', '', 'Name') as HTMLOptionElement;
-      titleOpt.value = TITLE_KEY;
-      propSel.appendChild(titleOpt);
-      for (const p of this._props) {
-        const o = el('option', '', p.name) as HTMLOptionElement;
-        o.value = p.id;
-        propSel.appendChild(o);
-      }
-      const dirSel = el('select', 'canvas-db-popover__select') as HTMLSelectElement;
-      const asc = el('option', '', 'Ascending') as HTMLOptionElement; asc.value = 'asc';
-      const desc = el('option', '', 'Descending') as HTMLOptionElement; desc.value = 'desc';
-      dirSel.append(asc, desc);
+      const propHost = el('div', 'canvas-db-popover__select');
+      const propSel = new Dropdown(propHost, {
+        items: this._propItems(),
+        selected: TITLE_KEY,
+        ariaLabel: 'Sort property',
+      });
+      const dirHost = el('div', 'canvas-db-popover__select');
+      const dirSel = new Dropdown(dirHost, {
+        items: [
+          { value: 'asc', label: 'Ascending' },
+          { value: 'desc', label: 'Descending' },
+        ],
+        selected: 'asc',
+        ariaLabel: 'Sort direction',
+      });
+      this._popoverDisposables.push(propSel, dirSel);
       const apply = el('button', 'canvas-db-popover__primary', 'Add sort');
       apply.addEventListener('click', () => {
-        const rule: ISortRule = { propertyId: propSel.value, dir: dirSel.value as 'asc' | 'desc' };
+        const rule: ISortRule = {
+          propertyId: propSel.value ?? TITLE_KEY,
+          dir: (dirSel.value ?? 'asc') as 'asc' | 'desc',
+        };
         this._closePopover();
         void this._updateActiveView({ sort: [...view.sort, rule] });
       });
-      pop.append(propSel, dirSel, apply);
+      pop.append(propHost, dirHost, apply);
     });
   }
 

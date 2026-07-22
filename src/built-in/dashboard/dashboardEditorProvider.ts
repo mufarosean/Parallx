@@ -15,6 +15,7 @@
 
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { Emitter } from '../../platform/events.js';
+import { Dropdown } from '../../ui/dropdown.js';
 import type { DashboardDataService } from './dashboardDataService.js';
 import type { DashboardWidgetRegistry } from './dashboardWidgetRegistry.js';
 import type { DashboardRefreshScheduler } from './dashboardRefreshScheduler.js';
@@ -442,23 +443,20 @@ class DashboardEditorPane implements IDisposable {
     title.textContent = 'Refresh this page automatically';
     pop.appendChild(title);
 
-    const select = document.createElement('select');
-    select.className = 'dashboard-schedule-pop__select';
-    const options: { value: string; label: string }[] = [
-      { value: 'off', label: 'Off' },
-      { value: 'hourly', label: 'Every hour' },
-      { value: 'every4h', label: 'Every 4 hours' },
-      { value: 'daily', label: 'Daily at…' },
-      { value: 'weekdays', label: 'Weekdays at…' },
-      { value: 'cron', label: 'Custom cron…' },
-    ];
-    for (const o of options) {
-      const opt = document.createElement('option');
-      opt.value = o.value;
-      opt.textContent = o.label;
-      select.appendChild(opt);
-    }
-    pop.appendChild(select);
+    const selectHost = el('div', 'dashboard-schedule-pop__select');
+    const select = new Dropdown(selectHost, {
+      items: [
+        { value: 'off', label: 'Off' },
+        { value: 'hourly', label: 'Every hour' },
+        { value: 'every4h', label: 'Every 4 hours' },
+        { value: 'daily', label: 'Daily at…' },
+        { value: 'weekdays', label: 'Weekdays at…' },
+        { value: 'cron', label: 'Custom cron…' },
+      ],
+      selected: 'off',
+      ariaLabel: 'Refresh schedule',
+    });
+    pop.appendChild(selectHost);
 
     const timeInput = document.createElement('input');
     timeInput.type = 'time';
@@ -505,7 +503,7 @@ class DashboardEditorPane implements IDisposable {
         : 'AI widgets run as background agents; the chat is never opened.';
     };
     syncVisibility();
-    select.addEventListener('change', syncVisibility);
+    select.onDidChange(syncVisibility);
 
     const row = el('div', 'dashboard-schedule-pop__actions');
     const save = el('button', 'dashboard-btn dashboard-btn--primary');
@@ -529,7 +527,7 @@ class DashboardEditorPane implements IDisposable {
       }
       try {
         await this._data.setPageRefreshPolicy(this._pageId, policy);
-        pop.remove();
+        teardown();
       } catch (err) {
         hint.textContent = err instanceof Error ? err.message : String(err);
       }
@@ -537,19 +535,24 @@ class DashboardEditorPane implements IDisposable {
     row.appendChild(save);
     const cancel = el('button', 'dashboard-btn dashboard-btn--ghost');
     cancel.textContent = 'Cancel';
-    cancel.addEventListener('click', () => pop.remove());
+    cancel.addEventListener('click', () => teardown());
     row.appendChild(cancel);
     pop.appendChild(row);
 
-    // Anchor under the button; dismiss on outside click.
+    // Anchor under the button; dismiss on outside click. The Dropdown owns a
+    // document-level listener, so the popover teardown must dispose it.
+    const teardown = (): void => {
+      select.dispose();
+      pop.remove();
+      document.removeEventListener('mousedown', dismiss, true);
+    };
     const rect = anchor.getBoundingClientRect();
     pop.style.top = `${rect.bottom + 6}px`;
     pop.style.right = `${Math.max(8, window.innerWidth - rect.right)}px`;
     document.body.appendChild(pop);
     const dismiss = (e: MouseEvent): void => {
       if (!pop.contains(e.target as Node) && e.target !== anchor) {
-        pop.remove();
-        document.removeEventListener('mousedown', dismiss, true);
+        teardown();
       }
     };
     document.addEventListener('mousedown', dismiss, true);

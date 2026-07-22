@@ -13,6 +13,7 @@ import { takePendingPlannerTab } from './plannerNavState.js';
 import { buildSimpleRRule, describeRRule, rruleToPreset } from './plannerRecurrence.js';
 import { packLanes } from './plannerLayout.js';
 import { PlannerAutomationsController, type CronServiceLike } from './plannerAutomations.js';
+import { Dropdown } from '../../ui/dropdown.js';
 
 interface PlannerEditorInput {
   readonly id: string;          // === instanceId; only one ('main') for M82
@@ -2060,7 +2061,11 @@ class PlannerEditorPane implements IDisposable {
         | { mode: 'edit'; task: PlannerTask },
     anchor: DOMRect,
   ): void {
+    // Dropdowns own document-level listeners — every close path disposes them.
+    const popupDisposables: IDisposable[] = [];
     const close = () => {
+      for (const d of popupDisposables) { try { d.dispose(); } catch { /* noop */ } }
+      popupDisposables.length = 0;
       try { overlay.remove(); } catch { /* noop */ }
       document.removeEventListener('keydown', onKey);
     };
@@ -2167,7 +2172,7 @@ class PlannerEditorPane implements IDisposable {
     const remindLabel = el('span', 'planner-popover__rowlabel');
     remindLabel.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span>Remind</span>';
     remindRow.appendChild(remindLabel);
-    const remindSelect = el('select', 'planner-popover__field planner-popover__field--select') as HTMLSelectElement;
+    const remindHost = el('div', 'planner-popover__field planner-popover__field--select');
     const REMINDER_PRESETS: { label: string; offsetMin: number | null }[] = [
       { label: 'No reminder',         offsetMin: null },
       { label: 'At time of due',      offsetMin: 0 },
@@ -2178,20 +2183,22 @@ class PlannerEditorPane implements IDisposable {
       { label: '1 day before',        offsetMin: 1440 },
       { label: '1 week before',       offsetMin: 10_080 },
     ];
-    for (const preset of REMINDER_PRESETS) {
-      const opt = document.createElement('option');
-      opt.value = preset.offsetMin === null ? 'none' : String(preset.offsetMin);
-      opt.textContent = preset.label;
-      remindSelect.appendChild(opt);
-    }
-    if (seed.hasReminder) {
-      // Match the closest preset; if none matches exactly, default to "1 hour before".
-      const matching = REMINDER_PRESETS.find(p => p.offsetMin === seed.reminderOffsetMin);
-      remindSelect.value = matching ? String(matching.offsetMin) : '60';
-    } else {
-      remindSelect.value = 'none';
-    }
-    remindRow.appendChild(remindSelect);
+    // Match the closest preset; if none matches exactly, default to "1 hour before".
+    const seedRemind = seed.hasReminder
+      ? (REMINDER_PRESETS.some(p => p.offsetMin === seed.reminderOffsetMin)
+          ? String(seed.reminderOffsetMin)
+          : '60')
+      : 'none';
+    const remindSelect = new Dropdown(remindHost, {
+      items: REMINDER_PRESETS.map((p) => ({
+        value: p.offsetMin === null ? 'none' : String(p.offsetMin),
+        label: p.label,
+      })),
+      selected: seedRemind,
+      ariaLabel: 'Reminder',
+    });
+    popupDisposables.push(remindSelect);
+    remindRow.appendChild(remindHost);
     body.appendChild(remindRow);
 
     // Calendar — groups + colour-codes the task on the calendar views.
@@ -2199,18 +2206,14 @@ class PlannerEditorPane implements IDisposable {
     const calLabel = el('span', 'planner-popover__rowlabel');
     calLabel.innerHTML = CALENDAR_LABEL_SVG;
     calRow.appendChild(calLabel);
-    const calSelect = el('select', 'planner-popover__field planner-popover__field--select') as HTMLSelectElement;
-    calRow.appendChild(calSelect);
+    const calHost = el('div', 'planner-popover__field planner-popover__field--select');
+    const calSelect = new Dropdown(calHost, { items: [], ariaLabel: 'Calendar' });
+    popupDisposables.push(calSelect);
+    calRow.appendChild(calHost);
     body.appendChild(calRow);
     const seedCalId = isEdit ? (init.task.calendarId ?? null) : null;
     void this._data.listCalendars().then((cals) => {
-      calSelect.innerHTML = '';
-      for (const c of cals) {
-        const opt = document.createElement('option');
-        opt.value = c.id;
-        opt.textContent = c.name;
-        calSelect.appendChild(opt);
-      }
+      calSelect.items = cals.map((c) => ({ value: c.id, label: c.name }));
       const want = seedCalId ?? cals.find(c => c.id === 'cal-tasks')?.id ?? cals.find(c => c.isDefault)?.id ?? (cals[0]?.id ?? '');
       if (want) calSelect.value = want;
     });
@@ -2300,7 +2303,7 @@ class PlannerEditorPane implements IDisposable {
         await this._api.window.showErrorMessage('Invalid due date or time.');
         return;
       }
-      const offsetStr = remindSelect.value;
+      const offsetStr = remindSelect.value ?? 'none';
       const reminderAt = offsetStr === 'none' ? null : dueMs - parseInt(offsetStr, 10) * 60_000;
       const tags = tagInput.value.split(',').map(s => s.trim()).filter(Boolean);
       const description = descInput.value.trim() || null;
@@ -2381,7 +2384,11 @@ class PlannerEditorPane implements IDisposable {
     // of it without flicker.
     const pendingGhost = init.mode === 'create' ? init.pendingGhost ?? null : null;
 
+    // Dropdowns own document-level listeners — every close path disposes them.
+    const popupDisposables: IDisposable[] = [];
     const close = () => {
+      for (const d of popupDisposables) { try { d.dispose(); } catch { /* noop */ } }
+      popupDisposables.length = 0;
       try { overlay.remove(); } catch { /* noop */ }
       if (pendingGhost && pendingGhost.parentElement) {
         try { pendingGhost.remove(); } catch { /* noop */ }
@@ -2486,18 +2493,14 @@ class PlannerEditorPane implements IDisposable {
     const calLabel = el('span', 'planner-popover__rowlabel');
     calLabel.innerHTML = CALENDAR_LABEL_SVG;
     calRow.appendChild(calLabel);
-    const calSelect = el('select', 'planner-popover__field planner-popover__field--select') as HTMLSelectElement;
-    calRow.appendChild(calSelect);
+    const calHost = el('div', 'planner-popover__field planner-popover__field--select');
+    const calSelect = new Dropdown(calHost, { items: [], ariaLabel: 'Calendar' });
+    popupDisposables.push(calSelect);
+    calRow.appendChild(calHost);
     body.appendChild(calRow);
     const seedCalId = isEdit ? (init.event.calendarId ?? null) : null;
     void this._data.listCalendars().then((cals) => {
-      calSelect.innerHTML = '';
-      for (const c of cals) {
-        const opt = document.createElement('option');
-        opt.value = c.id;
-        opt.textContent = c.name;
-        calSelect.appendChild(opt);
-      }
+      calSelect.items = cals.map((c) => ({ value: c.id, label: c.name }));
       const want = seedCalId ?? cals.find(c => c.id === 'cal-personal')?.id ?? cals.find(c => c.isDefault)?.id ?? (cals[0]?.id ?? '');
       if (want) calSelect.value = want;
     });
@@ -2517,9 +2520,11 @@ class PlannerEditorPane implements IDisposable {
     const repeatLabel = el('span', 'planner-popover__rowlabel');
     repeatLabel.innerHTML = REPEAT_LABEL_SVG;
     repeatRow.appendChild(repeatLabel);
-    const repeatSelect = el('select', 'planner-popover__field planner-popover__field--select') as HTMLSelectElement;
+    const repeatHost = el('div', 'planner-popover__field planner-popover__field--select');
     const seedRecurrence = isEdit ? (init.event.recurrence ?? null) : null;
     const seedPreset = rruleToPreset(seedRecurrence);
+    const repeatSelect = new Dropdown(repeatHost, { items: [], selected: seedPreset, ariaLabel: 'Repeats' });
+    popupDisposables.push(repeatSelect);
     const repeatDefs: { value: string; label: () => string }[] = [
       { value: 'none',    label: () => 'Does not repeat' },
       { value: 'daily',   label: () => 'Daily' },
@@ -2529,24 +2534,16 @@ class PlannerEditorPane implements IDisposable {
     ];
     const buildRepeatOptions = (): void => {
       const keep = repeatSelect.value || seedPreset;
-      repeatSelect.innerHTML = '';
-      for (const def of repeatDefs) {
-        const opt = document.createElement('option');
-        opt.value = def.value;
-        opt.textContent = def.label();
-        repeatSelect.appendChild(opt);
-      }
+      const items = repeatDefs.map((def) => ({ value: def.value, label: def.label() }));
       if (seedPreset === 'custom') {
-        const opt = document.createElement('option');
-        opt.value = 'custom';
-        opt.textContent = describeRRule(seedRecurrence);
-        repeatSelect.appendChild(opt);
+        items.push({ value: 'custom', label: describeRRule(seedRecurrence) });
       }
+      repeatSelect.items = items;
       repeatSelect.value = keep;
     };
     buildRepeatOptions();
     startDate.addEventListener('change', buildRepeatOptions);
-    repeatRow.appendChild(repeatSelect);
+    repeatRow.appendChild(repeatHost);
     body.appendChild(repeatRow);
 
     const locationInput = el('input', 'planner-popover__field planner-popover__field--full') as HTMLInputElement;
@@ -2607,7 +2604,7 @@ class PlannerEditorPane implements IDisposable {
         return;
       }
       const calendarId = calSelect.value || null;
-      const presetVal = repeatSelect.value;
+      const presetVal = repeatSelect.value ?? 'none';
       // 'custom' → leave the stored RRULE untouched; otherwise rebuild from the
       // preset against the current start weekday.
       const recurrence = presetVal === 'custom'

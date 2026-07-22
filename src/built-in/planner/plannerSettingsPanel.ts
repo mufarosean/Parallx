@@ -7,6 +7,7 @@
 // 'calendar-changed'.
 
 import { DisposableStore, type IDisposable } from '../../platform/lifecycle.js';
+import { Dropdown } from '../../ui/dropdown.js';
 import type { ISettingsPanel } from '../../services/settingsPanelRegistry.js';
 import { DEFAULT_EVENT_CALENDAR_KEY, type PlannerDataService } from './plannerDataService.js';
 import type { PlannerCalendar } from './plannerTypes.js';
@@ -90,16 +91,27 @@ export function createPlannerSettingsPanel(
       const durHelp = el('div', 'planner-settings__label-help');
       durHelp.textContent = 'How long a new calendar event runs when you don’t set an end time.';
       durLabel.append(durTitle, durHelp);
-      const durSelect = el('select', 'planner-settings__select');
-      for (const [mins, lbl] of [[15, '15 minutes'], [30, '30 minutes'], [45, '45 minutes'], [60, '1 hour'], [90, '1.5 hours'], [120, '2 hours']] as [number, string][]) {
-        const opt = el('option'); opt.value = String(mins); opt.textContent = lbl; durSelect.appendChild(opt);
-      }
-      durField.append(durLabel, durSelect);
+      const durHost = el('div', 'planner-settings__select');
+      const durDropdown = new Dropdown(durHost, {
+        items: [
+          { value: '15', label: '15 minutes' },
+          { value: '30', label: '30 minutes' },
+          { value: '45', label: '45 minutes' },
+          { value: '60', label: '1 hour' },
+          { value: '90', label: '1.5 hours' },
+          { value: '120', label: '2 hours' },
+        ],
+        selected: '60',
+        ariaLabel: 'Default event length',
+      });
+      store.add(durDropdown);
+      durField.append(durLabel, durHost);
       wrap.appendChild(durField);
-      void data.getDefaultEventMinutes().then((m) => { durSelect.value = String(m); });
-      const onDur = (): void => { const n = parseInt(durSelect.value, 10); if (Number.isFinite(n)) void data.setDefaultEventMinutes(n); };
-      durSelect.addEventListener('change', onDur);
-      store.add({ dispose: () => durSelect.removeEventListener('change', onDur) });
+      void data.getDefaultEventMinutes().then((m) => { durDropdown.value = String(m); });
+      store.add(durDropdown.onDidChange((value: string) => {
+        const n = parseInt(value, 10);
+        if (Number.isFinite(n)) void data.setDefaultEventMinutes(n);
+      }));
 
       // ── Google sync ──
       renderGoogleSyncSection(wrap, store, data, sync);
@@ -449,24 +461,23 @@ function renderGoogleSyncSection(
       defRow.style.marginTop = '10px';
       const defLabel = el('span');
       defLabel.textContent = 'New events go to';
-      const sel = document.createElement('select');
-      sel.className = 'planner-settings__select';
-
-      const auto = document.createElement('option');
-      auto.value = '';
-      auto.textContent = 'Auto — your synced Google calendar';
-      sel.appendChild(auto);
-      for (const c of cals) {
-        const o = document.createElement('option');
-        o.value = c.id;
-        o.textContent = c.name + (c.sourceProvider === GOOGLE_PROVIDER_ID ? ' (Google)' : '');
-        if (c.id === current) o.selected = true;
-        sel.appendChild(o);
-      }
-      sel.addEventListener('change', () => {
-        void data.setSetting(DEFAULT_EVENT_CALENDAR_KEY, sel.value);
+      const selHost = el('div', 'planner-settings__select');
+      const selDropdown = new Dropdown(selHost, {
+        items: [
+          { value: '', label: 'Auto — your synced Google calendar' },
+          ...cals.map((c) => ({
+            value: c.id,
+            label: c.name + (c.sourceProvider === GOOGLE_PROVIDER_ID ? ' (Google)' : ''),
+          })),
+        ],
+        selected: current,
+        ariaLabel: 'Default calendar for new events',
       });
-      defRow.append(defLabel, sel);
+      store.add(selDropdown);
+      store.add(selDropdown.onDidChange((value: string) => {
+        void data.setSetting(DEFAULT_EVENT_CALENDAR_KEY, value);
+      }));
+      defRow.append(defLabel, selHost);
       section.appendChild(defRow);
     } catch {
       // non-fatal — the picker is a convenience over the auto default.
