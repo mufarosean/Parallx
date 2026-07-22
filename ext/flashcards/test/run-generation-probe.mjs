@@ -238,7 +238,7 @@ function terms(text) {
 function judge(label, material, cards) {
   const materialTerms = terms(material);
   console.log(`\n════ ${label}: ${cards.length} cards ════`);
-  let grounded = 0, questiony = 0;
+  let grounded = 0, questiony = 0, withMath = 0, emDashHits = 0;
   const canaries = ['as an ai', 'i cannot', 'here are', 'flashcard'];
   let canaryHits = 0;
   cards.forEach((c, i) => {
@@ -247,14 +247,18 @@ function judge(label, material, cards) {
     const isGrounded = overlap >= 3;
     if (isGrounded) grounded++;
     if (/[?]$|^(what|why|how|when|which|under|state|give|name|compare|define|in the)/i.test(c.front.trim())) questiony++;
-    const lower = `${c.front} ${c.back}`.toLowerCase();
+    const body = `${c.front} ${c.back}`;
+    // Formatting the new prompt asks for: LaTeX ($…$) and no em dashes.
+    if (/\$[^$]+\$/.test(body)) withMath++;
+    if (body.includes('—')) emDashHits++;
+    const lower = body.toLowerCase();
     if (canaries.some((x) => lower.includes(x))) canaryHits++;
     console.log(`\n[${i + 1}] Q: ${c.front}`);
     console.log(`    A: ${c.back}`);
     console.log(`    grounded-terms: ${overlap}${isGrounded ? '' : '  ⚠ LOW GROUNDING'}`);
   });
-  console.log(`\n${label} summary: ${cards.length} cards · grounded ${grounded}/${cards.length} · question-shaped ${questiony}/${cards.length} · canary hits ${canaryHits}`);
-  return { grounded, total: cards.length, canaryHits };
+  console.log(`\n${label} summary: ${cards.length} cards · grounded ${grounded}/${cards.length} · question-shaped ${questiony}/${cards.length} · with-LaTeX ${withMath}/${cards.length} · em-dashes ${emDashHits} · canary hits ${canaryHits}`);
+  return { grounded, total: cards.length, canaryHits, emDashHits, withMath };
 }
 
 // ─── Run ────────────────────────────────────────────────────────────────────

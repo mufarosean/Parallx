@@ -255,7 +255,7 @@ function fcExtractCardsJson(text) {
     start = t.indexOf('[', start + 1);
   }
 
-  if (unterminated) return { cards: [], error: 'Unterminated JSON array — the response may have been cut off.' };
+  if (unterminated) return { cards: [], error: 'Unterminated JSON array. The response may have been cut off.' };
   if (sawArray) return { cards: [], error: 'No usable cards in response.' };
   return { cards: [], error: 'No JSON array in response.' };
 }
@@ -601,7 +601,10 @@ const FC_GENERATE_SYSTEM = [
   '- Front: a precise question. Back: the shortest complete answer.',
   '- Prefer "why/how/when/compare" questions over pure definitions where the material supports it.',
   '- Never invent facts that are not in the material.',
-  '- Formulas: keep LaTeX/notation exactly as written in the material.',
+  'Formatting (cards render Markdown + KaTeX):',
+  '- Write EVERY formula and symbol in LaTeX between $...$ (or $$...$$ for a display equation).',
+  '- Use **bold** for the key term, and bullet lists when the answer enumerates items.',
+  '- Never use em dashes.',
   'Output ONLY a JSON array, no prose, in this exact shape:',
   '[{"front": "...", "back": "...", "tags": ["topic"]}]',
 ].join('\n');
@@ -655,7 +658,7 @@ async function fcGenerateCards(sourceText, { count = 15, focus = '' } = {}) {
   const { cards, error } = fcExtractCardsJson(output);
   if (error && cards.length === 0) {
     console.warn('[Flashcards] generation failed. Raw model output head:', output.slice(0, 400));
-    throw new Error(`${error} (model: ${modelId} — raw output logged to console)`);
+    throw new Error(`${error} (model: ${modelId}; raw output logged to console)`);
   }
   return cards;
 }
@@ -667,7 +670,8 @@ async function fcDiscussStream(card, history, question) {
   const system = [
     'You are a study tutor discussing ONE flashcard with the learner.',
     'Be concise and concrete. Explain, give mnemonic hooks, test understanding.',
-    'Never just restate the back of the card — add insight.',
+    'Never just restate the back of the card; add insight.',
+    'Answers render Markdown + KaTeX: write formulas in LaTeX between $...$. Never use em dashes.',
     `CARD FRONT: ${card.front}`,
     `CARD BACK: ${card.back}`,
     card.sourceLabel ? `SOURCE: ${card.sourceLabel}` : '',
@@ -722,7 +726,7 @@ async function fcReadCanvasPage(pageId) {
   // and surfacing a cryptic parse error after generation.
   if (text.length < 120) {
     throw new Error(
-      `Only ${text.length} characters could be read from "${result.title || 'that page'}" — the page may be empty. Pick a page with written notes.`,
+      `Only ${text.length} characters could be read from "${result.title || 'that page'}". The page may be empty. Pick a page with written notes.`,
     );
   }
   return {
@@ -750,8 +754,8 @@ async function fcReadPdf() {
     // that produces invented cards. Route the user to OCR instead.
     throw new Error(
       text.length === 0
-        ? 'No text found in that document — if it is a scanned PDF, use the Photo (OCR) source instead.'
-        : `Only ${text.length} characters of text could be extracted — this looks like a scanned document. Use the Photo (OCR) source instead.`,
+        ? 'No text found in that document. If it is a scanned PDF, use the Photo (OCR) source instead.'
+        : `Only ${text.length} characters of text could be extracted. This looks like a scanned document. Use the Photo (OCR) source instead.`,
     );
   }
   const name = filePath.split(/[\\/]/).pop();
@@ -851,7 +855,7 @@ function injectStyles() {
 .fc-pane { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
 .fc-pane__header {
   display: flex; align-items: center; gap: var(--px-space-2);
-  padding: var(--px-space-2) var(--px-space-4); flex: 0 0 auto;
+  height: 46px; padding: 0 var(--px-space-4); flex: 0 0 auto;
   border-bottom: 1px solid var(--px-divider);
 }
 .fc-pane__tabs { display: flex; gap: 2px; }
@@ -927,33 +931,62 @@ function injectStyles() {
 .fc-state--learning, .fc-state--relearning { background: var(--px-warning-soft); color: var(--px-warning); }
 .fc-state--review { background: rgba(var(--px-green-rgb), 0.15); color: var(--px-success); }
 
-/* ── Study — a physical card ── */
+/* ── Study — physical cards on the desk ── */
 .fc-study { display: flex; height: 100%; }
-.fc-study__main { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; padding: var(--px-space-6) var(--px-space-8); overflow-y: auto; outline: none; }
-.fc-study__progress { width: 100%; max-width: 620px; height: 3px; border-radius: var(--px-radius-full); background: var(--px-bg-inset); margin-bottom: var(--px-space-6); overflow: hidden; }
+.fc-study__main { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; padding: var(--px-space-6) var(--px-space-8); overflow-y: auto; outline: none; background: var(--px-window); }
+.fc-study__toolbar { width: 100%; max-width: 620px; display: flex; align-items: center; gap: var(--px-space-3); margin-bottom: var(--px-space-5); }
+.fc-study__progress { flex: 1; height: 3px; border-radius: var(--px-radius-full); background: var(--px-bg-inset); overflow: hidden; }
 .fc-study__progress-fill { height: 100%; border-radius: var(--px-radius-full); background: var(--px-accent); transition: width var(--px-dur-base) var(--px-ease); }
-.fc-study__card {
+.fc-theme-toggle {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border: 0; border-radius: var(--px-radius-sm);
+  background: transparent; color: var(--px-text-faint); cursor: pointer;
+  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
+}
+.fc-theme-toggle:hover { background: var(--px-surface-hover); color: var(--px-text); }
+
+.fc-card {
   width: 100%; max-width: 620px;
   background: var(--px-bg-elevated);
   border: 1px solid var(--px-border);
   border-radius: var(--px-radius-xl);
   box-shadow: var(--px-shadow-md), var(--px-edge-light);
-  padding: var(--px-space-6) var(--px-space-8);
-  animation: fc-card-in var(--px-dur-base) var(--px-ease-out);
+  padding: var(--px-space-5) var(--px-space-6);
 }
+.fc-card--q { animation: fc-card-in var(--px-dur-base) var(--px-ease-out); }
+.fc-card--a { margin-top: var(--px-space-3); animation: fc-reveal-in var(--px-dur-base) var(--px-ease-spring); }
 @keyframes fc-card-in {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-.fc-study__deckline { display: flex; justify-content: space-between; align-items: center; font-size: var(--px-text-xs); color: var(--px-text-faint); font-variant-numeric: tabular-nums; margin-bottom: var(--px-space-3); }
-.fc-study__front { font-size: var(--px-text-lg); font-weight: 600; line-height: var(--px-leading-tight); letter-spacing: -0.01em; color: var(--px-text); white-space: pre-wrap; }
-.fc-study__divider { border: 0; border-top: 1px solid var(--px-divider); margin: var(--px-space-4) 0; }
-.fc-study__back { font-size: var(--px-text-md); line-height: var(--px-leading-base); color: var(--px-text-secondary); white-space: pre-wrap; animation: fc-reveal-in var(--px-dur-base) var(--px-ease-out); }
 @keyframes fc-reveal-in {
-  from { opacity: 0; transform: translateY(3px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(8px) scale(0.99); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
 }
-.fc-study__source { margin-top: var(--px-space-3); font-size: var(--px-text-xs); color: var(--px-text-faint); }
+.fc-card__head {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: var(--px-text-2xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--px-text-faint); font-variant-numeric: tabular-nums;
+  margin-bottom: var(--px-space-3);
+}
+.fc-card__body { font-size: var(--px-text-md); line-height: var(--px-leading-base); color: var(--px-text); }
+.fc-card--q .fc-card__body { font-size: var(--px-text-lg); font-weight: 600; letter-spacing: -0.01em; line-height: 1.4; }
+.fc-card__source { margin-top: var(--px-space-3); font-size: var(--px-text-2xs); color: var(--px-text-faint); }
+.fc-study__answer-host { width: 100%; max-width: 620px; }
+
+/* Paper cards: a light card face independent of the app theme, like the
+   PDF viewer's page. Content-surface hardcodes are deliberate here. */
+.fc-study--paper .fc-card {
+  background: #faf7f1;
+  border-color: #e2dccf;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.38);
+}
+.fc-study--paper .fc-card__body { color: #26221c; }
+.fc-study--paper .fc-card__head, .fc-study--paper .fc-card__source { color: #99917f; }
+.fc-study--paper .fc-card .px-markdown code { background: #efe9dd; }
+.fc-study--paper .fc-card .px-markdown pre { background: #f2ede3; border-color: #e2dccf; }
+.fc-study--paper .fc-card .px-markdown blockquote { border-left-color: #d5cdbc; color: #5b5442; }
+
 .fc-study__controls { display: flex; gap: var(--px-space-2); margin-top: var(--px-space-5); justify-content: center; width: 100%; max-width: 620px; }
 
 /* Grade buttons — quiet wells with a signal dot; the colour arrives on hover. */
@@ -1060,10 +1093,11 @@ function createSidebarView(container) {
   newBtn.addEventListener('click', () => void _cmdNewDeck());
   actions.appendChild(newBtn);
 
-  const genBtn = el('button', 'fc-btn');
-  genBtn.innerHTML = `${icon('px-ai-mark', 12)}<span>Generate</span>`;
+  const genBtn = _api.ui.createAiButton
+    ? _api.ui.createAiButton(actions, { label: 'Generate', compact: true })
+    : el('button', 'fc-btn');
+  if (!genBtn.parentElement) { genBtn.textContent = 'Generate'; actions.appendChild(genBtn); }
   genBtn.addEventListener('click', () => void openFlashcards({ view: 'create' }));
-  actions.appendChild(genBtn);
 
   root.appendChild(actions);
 
@@ -1079,7 +1113,7 @@ function createSidebarView(container) {
     list.innerHTML = '';
     if (decks.length === 0) {
       const empty = el('div', 'fc-sidebar__empty');
-      empty.textContent = 'Your decks live here — click Deck to create one, or Generate to turn a page or PDF into cards.';
+      empty.textContent = 'Your decks live here. Click Deck to create one, or Generate to turn a page or PDF into cards.';
       list.appendChild(empty);
       return;
     }
@@ -1227,10 +1261,11 @@ async function renderDecks(body, setRoute) {
   newDeckBtn.innerHTML = `${icon('plus', 12)}<span>New deck</span>`;
   newDeckBtn.addEventListener('click', () => void _cmdNewDeck());
   actions.appendChild(newDeckBtn);
-  const genBtn = el('button', 'fc-btn');
-  genBtn.innerHTML = `${icon('px-ai-mark', 12)}<span>Generate cards</span>`;
+  const genBtn = _api.ui.createAiButton
+    ? _api.ui.createAiButton(actions, { label: 'Generate cards' })
+    : el('button', 'fc-btn');
+  if (!genBtn.parentElement) { genBtn.textContent = 'Generate cards'; actions.appendChild(genBtn); }
   genBtn.addEventListener('click', () => setRoute({ view: 'create' }));
-  actions.appendChild(genBtn);
   view.appendChild(actions);
   view.appendChild(el('div', 'fc-label', 'Decks'));
 
@@ -1313,10 +1348,10 @@ async function renderBrowse(body, route, setRoute) {
   const addForm = el('div', 'fc-form');
   addForm.style.display = 'none';
   const frontIn = el('textarea', 'fc-textarea');
-  frontIn.placeholder = 'Front — the question';
+  frontIn.placeholder = 'Front: the question';
   frontIn.rows = 2;
   const backIn = el('textarea', 'fc-textarea');
-  backIn.placeholder = 'Back — the answer';
+  backIn.placeholder = 'Back: the answer';
   backIn.rows = 2;
   const tagsIn = el('input', 'fc-input');
   tagsIn.placeholder = 'Tags (comma separated, optional)';
@@ -1376,8 +1411,12 @@ async function renderBrowse(body, route, setRoute) {
   const buildCardRow = (card) => {
     const row = el('div', 'fc-cardrow');
     if (card.suspended) row.classList.add('fc-cardrow--suspended');
-    row.appendChild(el('div', 'fc-cardrow__front', card.front));
-    row.appendChild(el('div', 'fc-cardrow__back', card.back));
+    const front = el('div', 'fc-cardrow__front');
+    front.appendChild(_api.ui.renderMarkdown ? _api.ui.renderMarkdown(card.front) : document.createTextNode(card.front));
+    row.appendChild(front);
+    const back = el('div', 'fc-cardrow__back');
+    back.appendChild(_api.ui.renderMarkdown ? _api.ui.renderMarkdown(card.back) : document.createTextNode(card.back));
+    row.appendChild(back);
     const meta = el('div', 'fc-cardrow__meta');
     const stateChip = el('span', `fc-state fc-state--${card.state === 'relearning' ? 'learning' : card.state}`);
     stateChip.textContent = card.state;
@@ -1455,7 +1494,7 @@ async function renderStudy(body, route, paneState, setRoute) {
     done.appendChild(el('div', 'px-empty__hint',
       cards.length === 0
         ? 'Create cards in a deck, or click Create to generate them from a canvas page or PDF.'
-        : 'The scheduler will bring cards back right before you would forget them — check back later.'));
+        : 'The scheduler brings cards back right before you would forget them. Check back later.'));
     const back = el('button', 'fc-btn');
     back.textContent = 'Back to decks';
     back.addEventListener('click', () => setRoute({ view: 'decks' }));
@@ -1494,7 +1533,7 @@ async function renderStudy(body, route, paneState, setRoute) {
     const log = el('div', 'fc-discuss__log');
     panel.appendChild(log);
     panel.appendChild(el('div', 'fc-discuss__empty',
-      'Ask anything about this card — why the answer holds, edge cases, a mnemonic…'));
+      'Ask anything about this card: why the answer holds, edge cases, a mnemonic…'));
     const inputRow = el('div', 'fc-discuss__input-row');
     const input = el('input', 'fc-input fc-discuss__input');
     input.placeholder = 'Ask the AI…';
@@ -1521,6 +1560,12 @@ async function renderStudy(body, route, paneState, setRoute) {
               log.scrollTop = log.scrollHeight;
             }
           }
+          // Final render: markdown + LaTeX (streaming shows plain text).
+          if (_api.ui.renderMarkdown) {
+            aiMsg.textContent = '';
+            aiMsg.appendChild(_api.ui.renderMarkdown(text));
+            log.scrollTop = log.scrollHeight;
+          }
           session.discussHistory.push({ role: 'user', content: q });
           session.discussHistory.push({ role: 'assistant', content: text });
           // Keep the transcript bounded.
@@ -1543,6 +1588,24 @@ async function renderStudy(body, route, paneState, setRoute) {
     input.focus();
   };
 
+  // Render card text through the shared Markdown + KaTeX renderer; fall
+  // back to plain text if the host is too old to provide it.
+  const renderCardBody = (text) => {
+    try { return _api.ui.renderMarkdown(text); } catch {
+      const d = el('div');
+      d.textContent = text;
+      return d;
+    }
+  };
+
+  // Card theme: follow the app, or force a paper (light) card face like the
+  // PDF viewer's page toggle. Persisted per machine.
+  const CARD_THEME_KEY = 'flashcards.cardTheme';
+  const applyCardTheme = () => {
+    study.classList.toggle('fc-study--paper', localStorage.getItem(CARD_THEME_KEY) === 'paper');
+  };
+  applyCardTheme();
+
   const showCard = () => {
     closeDiscuss();
     main.innerHTML = '';
@@ -1553,7 +1616,7 @@ async function renderStudy(body, route, paneState, setRoute) {
       const done = el('div', 'fc-study__done px-empty');
       done.appendChild(el('div', 'px-empty__headline', 'Session complete'));
       done.appendChild(el('div', 'px-empty__hint',
-        `${session.doneCount} ${session.doneCount === 1 ? 'card' : 'cards'} reviewed — check Stats to watch retention climb.`));
+        `${session.doneCount} ${session.doneCount === 1 ? 'card' : 'cards'} reviewed. Check Stats to watch retention climb.`));
       const statsBtn = el('button', 'fc-btn');
       statsBtn.textContent = 'View stats';
       statsBtn.addEventListener('click', () => setRoute({ view: 'stats' }));
@@ -1564,23 +1627,43 @@ async function renderStudy(body, route, paneState, setRoute) {
 
     const card = session.queue[session.index];
 
+    // ── Toolbar: progress + card-theme toggle ──
+    const toolbar = el('div', 'fc-study__toolbar');
     const progress = el('div', 'fc-study__progress');
     const fill = el('div', 'fc-study__progress-fill');
     fill.style.width = `${Math.round((session.doneCount / session.total) * 100)}%`;
     progress.appendChild(fill);
-    main.appendChild(progress);
+    toolbar.appendChild(progress);
 
-    const cardEl = el('div', 'fc-study__card');
-    const deckLine = el('div', 'fc-study__deckline');
-    deckLine.appendChild(el('span', '', deckNames.get(card.deckId) || ''));
-    deckLine.appendChild(el('span', '', `${session.doneCount + 1} / ${session.total}`));
-    cardEl.appendChild(deckLine);
-    cardEl.appendChild(el('div', 'fc-study__front', card.front));
+    const themeBtn = el('button', 'fc-theme-toggle');
+    themeBtn.type = 'button';
+    themeBtn.title = 'Toggle paper cards';
+    const syncThemeIcon = () => {
+      themeBtn.innerHTML = icon(localStorage.getItem(CARD_THEME_KEY) === 'paper' ? 'moon' : 'sun', 14);
+    };
+    syncThemeIcon();
+    themeBtn.addEventListener('click', () => {
+      localStorage.setItem(CARD_THEME_KEY, localStorage.getItem(CARD_THEME_KEY) === 'paper' ? 'app' : 'paper');
+      applyCardTheme();
+      syncThemeIcon();
+      main.focus();
+    });
+    toolbar.appendChild(themeBtn);
+    main.appendChild(toolbar);
 
-    const backHost = el('div');
-    cardEl.appendChild(backHost);
-    if (card.sourceLabel) cardEl.appendChild(el('div', 'fc-study__source', card.sourceLabel));
-    main.appendChild(cardEl);
+    // ── The QUESTION card ──
+    const qCard = el('div', 'fc-card fc-card--q');
+    const qHead = el('div', 'fc-card__head');
+    qHead.appendChild(el('span', 'fc-card__tag', deckNames.get(card.deckId) || 'Question'));
+    qHead.appendChild(el('span', '', `${session.doneCount + 1} / ${session.total}`));
+    qCard.appendChild(qHead);
+    const qBody = el('div', 'fc-card__body fc-study__front');
+    qBody.appendChild(renderCardBody(card.front));
+    qCard.appendChild(qBody);
+    main.appendChild(qCard);
+
+    const answerHost = el('div', 'fc-study__answer-host');
+    main.appendChild(answerHost);
 
     const controls = el('div', 'fc-study__controls');
     main.appendChild(controls);
@@ -1588,8 +1671,18 @@ async function renderStudy(body, route, paneState, setRoute) {
     const reveal = () => {
       if (session.revealed) return;
       session.revealed = true;
-      backHost.appendChild(el('hr', 'fc-study__divider'));
-      backHost.appendChild(el('div', 'fc-study__back', card.back));
+
+      // ── The ANSWER card: its own physical card, sliding in below ──
+      const aCard = el('div', 'fc-card fc-card--a');
+      const aHead = el('div', 'fc-card__head');
+      aHead.appendChild(el('span', 'fc-card__tag', 'Answer'));
+      aCard.appendChild(aHead);
+      const aBody = el('div', 'fc-card__body fc-study__back');
+      aBody.appendChild(renderCardBody(card.back));
+      aCard.appendChild(aBody);
+      if (card.sourceLabel) aCard.appendChild(el('div', 'fc-card__source', card.sourceLabel));
+      answerHost.appendChild(aCard);
+
       controls.innerHTML = '';
       const now = Date.now();
       const grades = [
@@ -1606,11 +1699,17 @@ async function renderStudy(body, route, paneState, setRoute) {
         btn.addEventListener('click', () => grade(g.r));
         controls.appendChild(btn);
       }
-      const discussBtn = el('button', 'fc-btn fc-study__discuss');
-      discussBtn.innerHTML = `${icon('message-circle', 12)}<span>Discuss with AI</span>`;
+      const discussHost = el('div', 'fc-study__discuss');
+      const discussBtn = _api.ui.createAiButton
+        ? _api.ui.createAiButton(discussHost, { label: 'Discuss with AI' })
+        : el('button', 'fc-btn');
+      if (!discussBtn.parentElement) {
+        discussBtn.textContent = 'Discuss with AI';
+        discussHost.appendChild(discussBtn);
+      }
       discussBtn.addEventListener('click', () => openDiscuss(card));
-      main.appendChild(discussBtn);
-      main.appendChild(el('div', 'fc-study__keys', 'Space — reveal · 1 Again · 2 Hard · 3 Good · 4 Easy'));
+      main.appendChild(discussHost);
+      main.appendChild(el('div', 'fc-study__keys', 'Space reveal · 1 Again · 2 Hard · 3 Good · 4 Easy'));
     };
 
     const grade = (rating) => {
@@ -1635,7 +1734,7 @@ async function renderStudy(body, route, paneState, setRoute) {
     revealBtn.textContent = 'Show answer';
     revealBtn.addEventListener('click', reveal);
     controls.appendChild(revealBtn);
-    main.appendChild(el('div', 'fc-study__keys', 'Space — show answer'));
+    main.appendChild(el('div', 'fc-study__keys', 'Space shows the answer'));
 
     // Container-scoped keyboard: only fires while the study surface has focus.
     main.onkeydown = (e) => {
@@ -1686,7 +1785,7 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
   view.appendChild(el('div', 'fc-label', 'Source material'));
   const srcRow = el('div', 'fc-row');
   const sourceState = { text: '', label: '', uri: '' };
-  const srcStatus = el('div', 'fc-hint fc-src-status', 'No source loaded — pick one, or paste text below.');
+  const srcStatus = el('div', 'fc-hint fc-src-status', 'No source loaded. Pick one, or paste text below.');
 
   const srcBtn = (label, iconName, loader) => {
     const b = el('button', 'fc-btn');
@@ -1750,9 +1849,15 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
 
   const genRow = el('div', 'fc-row');
   genRow.style.marginTop = '10px';
-  const genBtn = el('button', 'fc-btn fc-btn--primary');
-  genBtn.innerHTML = `${icon('px-ai-mark', 12)}<span>Generate cards</span>`;
-  genRow.appendChild(genBtn);
+  const genBtn = _api.ui.createAiButton
+    ? _api.ui.createAiButton(genRow, { label: 'Generate cards' })
+    : el('button', 'fc-btn fc-btn--primary');
+  if (!genBtn.parentElement) { genBtn.textContent = 'Generate cards'; genRow.appendChild(genBtn); }
+  const genLabel = genBtn.querySelector('.px-ai-btn__label');
+  const setGenLabel = (text) => {
+    if (genLabel) genLabel.textContent = text;
+    else genBtn.textContent = text;
+  };
   const manualHint = el('span', 'fc-hint', 'Prefer manual entry? Open a deck and use "Add card".');
   genRow.appendChild(manualHint);
   view.appendChild(genRow);
@@ -1771,7 +1876,7 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
       }
       err.style.display = 'none';
       genBtn.disabled = true;
-      genBtn.innerHTML = `${icon('px-ai-mark', 12)}<span>Generating…</span>`;
+      setGenLabel('Generating…');
       try {
         const cards = await fcGenerateCards(text, {
           count: parseInt(countIn.value, 10) || 15,
@@ -1783,7 +1888,7 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
         err.style.display = '';
       } finally {
         genBtn.disabled = false;
-        genBtn.innerHTML = `${icon('px-ai-mark', 12)}<span>Generate cards</span>`;
+        setGenLabel('Generate cards');
       }
     })();
   });
@@ -1893,7 +1998,7 @@ async function renderStats(body) {
   stageGrid.appendChild(stat(String(stats.counts.suspended), 'Suspended'));
   view.appendChild(stageGrid);
 
-  view.appendChild(el('div', 'fc-label', 'Reviews — last 30 days'));
+  view.appendChild(el('div', 'fc-label', 'Reviews, last 30 days'));
   const chart = el('div', 'fc-chart');
   const max = Math.max(1, ...stats.last30.map((d) => d.count));
   stats.last30.forEach((day, i) => {
@@ -2046,7 +2151,7 @@ function registerChatTools(context) {
           content: [
             `Reviews today: ${s.today.reviews}${s.today.correctPct !== null ? ` (${s.today.correctPct}% correct)` : ''}`,
             `30-day retention: ${s.retention30 !== null ? `${s.retention30}%` : 'n/a'}`,
-            `Cards — new: ${s.counts.new}, learning: ${s.counts.learning + s.counts.relearning}, reviewing: ${s.counts.review}, suspended: ${s.counts.suspended}, total: ${s.counts.total}`,
+            `Cards: new: ${s.counts.new}, learning: ${s.counts.learning + s.counts.relearning}, reviewing: ${s.counts.review}, suspended: ${s.counts.suspended}, total: ${s.counts.total}`,
           ].join('\n'),
         };
       } catch (err) {
@@ -2135,10 +2240,85 @@ function syncReminderJob() {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 async function _cmdNewDeck() {
-  const name = await _api.window.showInputBox({ prompt: 'New deck name', placeholder: 'e.g. Exam 7 — Reserving' });
+  const name = await _api.window.showInputBox({ prompt: 'New deck name', placeholder: 'e.g. Exam 7 Reserving' });
   if (!name?.trim()) return;
   const deckId = await fcCreateDeck(name);
   await openFlashcards({ view: 'browse', deckId });
+}
+
+// ─── Selection → flashcard (M48 selection-action system) ────────────────────
+// Any surface that dispatches a 'create-flashcard' selection action (PDF
+// viewer, text/markdown editors) lands here: pick a deck, generate a few
+// cards from the selection, import, confirm with a toast.
+
+async function fcCaptureSelection(selectedText, source) {
+  const text = String(selectedText || '').trim();
+  if (text.length < 20) {
+    await _api.window.showInformationMessage('Select a little more text to make a flashcard from.');
+    return;
+  }
+
+  const decks = await fcListDecks();
+  const NEW_DECK = '+ New deck…';
+  const pick = await _api.window.showQuickPick(
+    [...decks.map((d) => ({ label: d.name, description: `${d.total} cards` })), { label: NEW_DECK }],
+    { placeholder: 'Add flashcards to which deck?' },
+  );
+  if (!pick) return;
+
+  let deckId;
+  if (pick.label === NEW_DECK) {
+    const name = await _api.window.showInputBox({ prompt: 'New deck name', value: source?.fileName || '' });
+    if (!name?.trim()) return;
+    deckId = await fcCreateDeck(name);
+  } else {
+    deckId = decks.find((d) => d.name === pick.label)?.id;
+  }
+  if (!deckId) return;
+
+  const sourceLabel = source?.fileName
+    ? `${source.fileName}${source.pageNumber ? ` p.${source.pageNumber}` : ''}`
+    : 'Selection';
+
+  try {
+    const cards = await fcGenerateCards(text, { count: 3 });
+    for (const c of cards) {
+      await fcCreateCard({
+        deckId,
+        front: c.front,
+        back: c.back,
+        tags: c.tags,
+        sourceUri: source?.filePath || '',
+        sourceLabel,
+      });
+    }
+    const deckName = pick.label === NEW_DECK ? 'the new deck' : pick.label;
+    const review = await _api.window.showInformationMessage(
+      `Added ${cards.length} ${cards.length === 1 ? 'card' : 'cards'} to ${deckName}.`,
+      { title: 'Review' },
+    );
+    if (review?.title === 'Review') await openFlashcards({ view: 'browse', deckId });
+  } catch (err) {
+    await _api.window.showErrorMessage(`Could not create flashcards: ${err.message}`);
+  }
+}
+
+/** Register into the unified selection-action dispatcher. Chat may activate
+ *  after this extension, so retry briefly until its command exists. */
+function registerSelectionAction(context, attempt = 0) {
+  _api.commands.executeCommand('chat.getSelectionActionDispatcher')
+    .then((dispatcher) => {
+      if (!dispatcher || typeof dispatcher.registerHandler !== 'function') throw new Error('no dispatcher');
+      context.subscriptions.push(dispatcher.registerHandler({
+        actionId: 'create-flashcard',
+        label: 'Create flashcard',
+        icon: 'px-flashcards',
+        execute: async (payload) => fcCaptureSelection(payload.selectedText, payload.source),
+      }));
+    })
+    .catch(() => {
+      if (attempt < 5) setTimeout(() => registerSelectionAction(context, attempt + 1), 2000);
+    });
 }
 
 function registerCommands(context) {
@@ -2149,6 +2329,9 @@ function registerCommands(context) {
     ['flashcards.newCard', () => openFlashcards({ view: 'decks' })],
     ['flashcards.generate', () => openFlashcards({ view: 'create' })],
     ['flashcards.stats', () => openFlashcards({ view: 'stats' })],
+    // Direct capture surface for other tools and the AI:
+    // flashcards.captureSelection(text, { fileName?, filePath?, pageNumber? })
+    ['flashcards.captureSelection', (...args) => fcCaptureSelection(args[0], args[1])],
   ];
   for (const [id, handler] of cmds) {
     context.subscriptions.push(_api.commands.registerCommand(id, handler));
@@ -2182,7 +2365,7 @@ export async function activate(api, context) {
   _api = api;
 
   if (!api.database) {
-    console.error('[Flashcards] api.database unavailable — cannot activate.');
+    console.error('[Flashcards] api.database unavailable; cannot activate.');
     return;
   }
   _dbBridge = api.database;
@@ -2207,6 +2390,7 @@ export async function activate(api, context) {
   registerChatTools(context);
   registerLinks(context);
   registerDashboardWidget(context);
+  registerSelectionAction(context);
   syncReminderJob();
 
   if (api.workspace?.onDidChangeConfiguration) {

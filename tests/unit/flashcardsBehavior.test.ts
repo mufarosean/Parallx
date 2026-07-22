@@ -462,3 +462,32 @@ describe('daily reminder', () => {
     expect(fake.cronJobs.has('flashcards.daily-reminder')).toBe(false);
   });
 });
+
+// Runs LAST — captureSelection inserts cards, which would perturb the
+// running totals the workload-surface counts assert.
+describe('selection → flashcard', () => {
+  it('captureSelection generates and files cards into the picked deck', async () => {
+    fake.scripted.quickPickIndex = 0; // first existing deck
+    const source = { fileName: 'Verrall.pdf', filePath: '/exam/Verrall.pdf', pageNumber: 12 };
+    await fake.api.commands.executeCommand(
+      'flashcards.captureSelection',
+      'The Verrall Bayesian model treats development factors as random variables with a prior distribution.',
+      source,
+    );
+    await settle();
+
+    const captured = fake.sqlite
+      .prepare("SELECT * FROM fc_cards WHERE source_label = 'Verrall.pdf p.12' ORDER BY id")
+      .all() as Record<string, unknown>[];
+    expect(captured.length).toBeGreaterThan(0);
+    expect(captured[0].source_uri).toBe('/exam/Verrall.pdf');
+    expect(fake.scripted.messages.some((m) => /Added \d+ card/.test(m))).toBe(true);
+  });
+
+  it('rejects a too-short selection', async () => {
+    const before = fake.scripted.messages.length;
+    await fake.api.commands.executeCommand('flashcards.captureSelection', 'too short', {});
+    await settle();
+    expect(fake.scripted.messages.slice(before).some((m) => /a little more text/i.test(m))).toBe(true);
+  });
+});
