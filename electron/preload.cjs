@@ -353,6 +353,15 @@ contextBridge.exposeInMainWorld('parallxElectron', {
     request: (opts) => ipcRenderer.invoke('webSearch:request', opts),
   },
 
+  // ── PDF export (M93 — canvas print-to-PDF) ──
+  pdfExport: {
+    /**
+     * Render standalone HTML to PDF in a hidden sandboxed window.
+     * Returns { ok, data?: base64, error? }; also writes `savePath` when given.
+     */
+    render: (payload) => ipcRenderer.invoke('pdfExport:render', payload),
+  },
+
   // ══════════════════════════════════════════════════════════════════════════
   // Document Extraction API
   // ══════════════════════════════════════════════════════════════════════════

@@ -78,6 +78,9 @@ interface ParallxApi {
     readonly openEditors: readonly { id: string; name: string; description: string; isDirty: boolean; isActive: boolean; groupId: string }[];
     onDidChangeOpenEditors(listener: () => void): IDisposable;
   };
+  keybindings?: {
+    register(key: string, commandId: string, when?: string): IDisposable;
+  };
   links: LinksApi;
   services: {
     get<T>(id: { readonly id: string }): T;
@@ -919,6 +922,23 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
       }
     }),
   );
+
+  // canvas.exportPdf (M93) — open the print-style PDF export dialog for the
+  // ACTIVE canvas editor. Bound to Ctrl+P scoped by when-clause, so Quick
+  // Open keeps Ctrl+P everywhere else.
+  context.subscriptions.push(
+    api.commands.registerCommand('canvas.exportPdf', () => {
+      const active = api.editors.openEditors.find((e) => e.isActive);
+      if (!active || !_editorProvider) return;
+      const handler = _editorProvider.getPdfExportHandler(active.id);
+      if (handler) handler();
+    }),
+  );
+  if (api.keybindings) {
+    context.subscriptions.push(
+      api.keybindings.register('Ctrl+P', 'canvas.exportPdf', "activeEditor == 'canvas'"),
+    );
+  }
 
   // canvas.showTemplatePicker — Open the template picker modal.
   // Creates a new root-level page seeded with the chosen template,

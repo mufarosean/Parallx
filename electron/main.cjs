@@ -1841,6 +1841,124 @@ ipcMain.handle('dialog:showMessageBox', async (_event, options) => {
 });
 
 // ════════════════════════════════════════════════════════════════════════════════
+// PDF Export IPC Handler (M93 — canvas "print to PDF")
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// Renders caller-provided standalone HTML in a hidden, fully sandboxed
+// BrowserWindow and prints it via webContents.printToPDF. The HTML comes from
+// our own renderer (a cloned canvas page), never from the network; the hidden
+// window still gets no Node, no preload, and denies navigation/window.open so
+// a malicious payload embedded in page content can't reach anything.
+//
+// Returns { ok: true, data: <base64> } — and additionally writes the file when
+// `savePath` is provided — or { ok: false, error }.
+
+const PDF_EXPORT_MAX_HTML = 32 * 1024 * 1024; // 32 MB of HTML is already absurd
+const PDF_EXPORT_PAGE_SIZES = new Set(['A3', 'A4', 'A5', 'Legal', 'Letter', 'Tabloid', 'Ledger']);
+
+function sanitizePdfOptions(raw) {
+  const o = raw && typeof raw === 'object' ? raw : {};
+  const clamp = (v, lo, hi, dflt) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : dflt;
+  };
+  const margins = o.margins && typeof o.margins === 'object' ? o.margins : {};
+  return {
+    pageSize: PDF_EXPORT_PAGE_SIZES.has(o.pageSize) ? o.pageSize : 'A4',
+    landscape: o.landscape === true,
+    printBackground: o.printBackground !== false,
+    scale: clamp(o.scale, 0.4, 2, 1),
+    margins: {
+      top: clamp(margins.top, 0, 4, 0.6),
+      bottom: clamp(margins.bottom, 0, 4, 0.6),
+      left: clamp(margins.left, 0, 4, 0.6),
+      right: clamp(margins.right, 0, 4, 0.6),
+    },
+    displayHeaderFooter: o.displayHeaderFooter === true,
+    headerTemplate: typeof o.headerTemplate === 'string' ? o.headerTemplate : '<span></span>',
+    footerTemplate: typeof o.footerTemplate === 'string' ? o.footerTemplate : '<span></span>',
+  };
+}
+
+ipcMain.handle('pdfExport:render', async (_event, payload) => {
+  const html = payload?.html;
+  if (typeof html !== 'string' || html.length === 0) {
+    return { ok: false, error: 'No content to export.' };
+  }
+  if (html.length > PDF_EXPORT_MAX_HTML) {
+    return { ok: false, error: 'Page is too large to export.' };
+  }
+  const savePath = typeof payload?.savePath === 'string' && payload.savePath.length > 0
+    ? payload.savePath
+    : null;
+  const options = sanitizePdfOptions(payload?.options);
+
+  const tmpDir = path.join(app.getPath('temp'), 'parallx-pdf-export');
+  const tmpFile = path.join(tmpDir, `export-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.html`);
+  let win = null;
+  try {
+    await fs.mkdir(tmpDir, { recursive: true });
+    await fs.writeFile(tmpFile, html, 'utf-8');
+
+    win = new BrowserWindow({
+      show: false,
+      width: 1000,
+      height: 1200,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+        webviewTag: false,
+        backgroundThrottling: false,
+      },
+    });
+    win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    win.webContents.on('will-navigate', (e) => e.preventDefault());
+
+    await win.loadFile(tmpFile);
+    // Let fonts load and images decode before printing — half-decoded images
+    // print as blank boxes. Best-effort with a hard cap so a broken resource
+    // can't hang the export.
+    await Promise.race([
+      win.webContents.executeJavaScript(
+        `(async () => {
+           try { await document.fonts.ready; } catch {}
+           try {
+             await Promise.all([...document.images].map((i) => i.decode().catch(() => {})));
+           } catch {}
+           return true;
+         })()`,
+        true,
+      ),
+      new Promise((resolve) => setTimeout(resolve, 8000)),
+    ]);
+
+    const data = await win.webContents.printToPDF({
+      pageSize: options.pageSize,
+      landscape: options.landscape,
+      printBackground: options.printBackground,
+      scale: options.scale,
+      margins: options.margins,
+      displayHeaderFooter: options.displayHeaderFooter,
+      headerTemplate: options.headerTemplate,
+      footerTemplate: options.footerTemplate,
+    });
+
+    if (savePath) {
+      await fs.writeFile(savePath, data);
+    }
+    return { ok: true, data: data.toString('base64') };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
+  } finally {
+    if (win && !win.isDestroyed()) {
+      try { win.destroy(); } catch { /* ignore */ }
+    }
+    fs.unlink(tmpFile).catch(() => {});
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════════
 // Document Extraction IPC Handlers
 // ════════════════════════════════════════════════════════════════════════════════
 //

@@ -232,6 +232,22 @@ export class PageChromeController {
     await electron.fs.writeFile(filePath, markdown, 'utf-8');
   }
 
+  /** Open the print-style PDF export dialog (M93). Lazy-loads the dialog +
+   *  pdf.js preview machinery so pages that never export pay nothing. */
+  async exportPdf(): Promise<void> {
+    if (!this._currentPage) return;
+    const page = this._currentPage;
+    const { openPdfExportDialog } = await import('../export/pdfExportDialog.js');
+    openPdfExportDialog({
+      title: page.title || 'Untitled',
+      iconHtml: page.icon ? renderPageIconHtml(page.icon) : undefined,
+      fontFamily: page.fontFamily || 'default',
+      getContentRoot: () =>
+        (this._host.editorContainer?.querySelector('.ProseMirror') as HTMLElement | null)
+        ?? (this._host.editor?.view.dom as HTMLElement | null),
+    });
+  }
+
   dismissPopups(): void {
     if (this._pageMenuDropdown) {
       this._pageMenuDropdown.remove();
@@ -1037,6 +1053,18 @@ export class PageChromeController {
             console.error('[Canvas] Export failed:', err);
           }
           this.dismissPopups();
+        },
+      },
+      {
+        label: 'Export PDF',
+        iconId: 'printer',
+        action: async () => {
+          this.dismissPopups();
+          try {
+            await this.exportPdf();
+          } catch (err) {
+            console.error('[Canvas] PDF export failed:', err);
+          }
         },
       },
       {

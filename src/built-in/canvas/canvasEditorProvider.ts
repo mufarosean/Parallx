@@ -209,6 +209,20 @@ export class CanvasEditorProvider {
     return { dispose: () => { this._pageMenuHandlers.delete(pageId); } };
   }
 
+  /** M93 — pageId → open the PDF-export dialog for that pane's live editor.
+   *  Registered by panes on init; invoked by the `canvas.exportPdf` command
+   *  (Ctrl+P) for whichever canvas editor is active. */
+  private readonly _pdfExportHandlers = new Map<string, () => void>();
+
+  registerPdfExportHandler(pageId: string, handler: () => void): IDisposable {
+    this._pdfExportHandlers.set(pageId, handler);
+    return { dispose: () => { this._pdfExportHandlers.delete(pageId); } };
+  }
+
+  getPdfExportHandler(pageId: string): (() => void) | undefined {
+    return this._pdfExportHandlers.get(pageId);
+  }
+
   /** Panes register a commit hook so a workspace switch or app close can save
    *  open pages — those paths reload the renderer WITHOUT disposing the panes,
    *  so their dispose→commitPageClose never fires. */
@@ -668,6 +682,12 @@ class CanvasEditorPane implements IDisposable {
     this._saveDisposables.add(
       this._provider.registerPageMenuHandler(this._pageId, () => {
         this._pageChrome.showPageMenu();
+      }),
+    );
+    // M93 — Ctrl+P / command-driven PDF export routes to the active pane.
+    this._saveDisposables.add(
+      this._provider.registerPdfExportHandler(this._pageId, () => {
+        void this._pageChrome.exportPdf();
       }),
     );
     // Commit-on-teardown: workspace switch / app close reloads the renderer
