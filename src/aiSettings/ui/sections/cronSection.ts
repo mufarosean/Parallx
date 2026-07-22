@@ -2,30 +2,38 @@
 //
 // Renders every cron job from `CronService`, regardless of origin: jobs
 // registered programmatically by extensions (e.g. budget.sync.scheduled),
-// jobs created by the AI via the `cron_add` tool, and jobs added by the
-// user directly. All three live in the same in-memory store and are
-// surfaced here equally.
+// jobs created by the AI via the `cron_add` tool, jobs the user created in
+// Planner → Automations, and jobs added here. All live in the same store
+// and are surfaced equally.
 //
 // Per job, the UI exposes:
 //   - Stable name + human description
 //   - Source label (Extension / AI / User) inferred from the name shape
-//   - Schedule (every / cron / at) in human-readable form
-//   - Enabled toggle
+//   - Schedule in human-readable form (shared cronScheduleSpec)
+//   - Enabled toggle (core Toggle component)
 //   - Last run / Next run timestamps
-//   - Actions: Run now, Edit schedule, Delete (with confirm)
+//   - Actions: Run now, Edit schedule (friendly builder), Delete
 //
-// Subscribes to `CronService.onDidChangeJobs` so additions, updates,
-// runs, and removals reflect in the panel without polling. Static fall-
-// back (no service) still renders the explanatory header so the section
-// is never empty.
+// Subscribes to `CronService.onDidChangeJobs` so additions, updates, runs,
+// and removals reflect in the panel without polling. Confirms and errors go
+// through the app's modal/notification system — never window.confirm/alert.
 
 import { $ } from '../../../ui/dom.js';
+import { Dropdown } from '../../../ui/dropdown.js';
+import { Toggle } from '../../../ui/toggle.js';
+import { showConfirmModal, type NotificationService } from '../../../api/notificationService.js';
 import { SettingsSection } from '../sectionBase.js';
 import type { AISettingsProfile, IAISettingsService } from '../../aiSettingsTypes.js';
+import {
+  buildCronSchedule,
+  describeSchedule,
+  specFromSchedule,
+  WEEKDAY_LABELS,
+  type AutomationScheduleSpec,
+} from '../../../openclaw/cronScheduleSpec.js';
 import type {
   CronService,
   ICronJob,
-  ICronSchedule,
 } from '../../../openclaw/openclawCronService.js';
 import type { IDisposable } from '../../../platform/lifecycle.js';
 
@@ -57,53 +65,6 @@ function _sourceLabel(source: CronSource): string {
   return source.kind === 'extension'
     ? `Extension · ${source.extensionId}`
     : 'AI';
-}
-
-// ─── Schedule formatting ─────────────────────────────────────────────────────
-
-function _formatSchedule(s: ICronSchedule): string {
-  if (s.every) return `Every ${s.every}`;
-  if (s.cron) return `Cron: ${s.cron}`;
-  if (s.at) {
-    const d = new Date(s.at);
-    return Number.isNaN(d.getTime()) ? `At ${s.at}` : `At ${d.toLocaleString()}`;
-  }
-  return '(no schedule)';
-}
-
-// ─── Schedule input ↔ object helpers ─────────────────────────────────────────
-
-function _scheduleToInput(s: ICronSchedule): string {
-  if (s.every) return s.every;
-  if (s.cron) return `cron:${s.cron}`;
-  if (s.at) return `at:${s.at}`;
-  return '';
-}
-
-/**
- * Parse the edit-form's text input back into an ICronSchedule.
- *  - "30m" / "1h" / "45s"       → { every: '30m' }
- *  - "cron:0 9 * * *"           → { cron: '0 9 * * *' }
- *  - "at:2026-05-21T09:00:00Z"  → { at: '2026-05-21T09:00:00Z' }
- *
- * Returns null on parse failure so the caller can surface an error.
- */
-function _inputToSchedule(raw: string): ICronSchedule | null {
-  const v = raw.trim();
-  if (!v) return null;
-  if (v.startsWith('cron:')) {
-    const expr = v.slice('cron:'.length).trim();
-    return expr.length > 0 ? { cron: expr } : null;
-  }
-  if (v.startsWith('at:')) {
-    const iso = v.slice('at:'.length).trim();
-    if (iso.length === 0) return null;
-    const d = new Date(iso);
-    return Number.isNaN(d.getTime()) ? null : { at: d.toISOString() };
-  }
-  // Plain duration string like "30m". CronService.validateSchedule will
-  // double-check syntax; we just confirm there's something there.
-  return /^\d+(?:\.\d+)?[smhd]$/i.test(v) ? { every: v } : null;
 }
 
 // ─── Timestamp formatting ────────────────────────────────────────────────────
@@ -138,10 +99,13 @@ export class CronSection extends SettingsSection {
   private _emptyEl: HTMLElement | null = null;
   private _editingJobId: string | null = null;
   private readonly _listenerDisposables: IDisposable[] = [];
+  /** Disposables owned by the CURRENT render pass (toggles, dropdowns). */
+  private readonly _renderDisposables: IDisposable[] = [];
 
   constructor(
     service: IAISettingsService,
     private readonly _cronService?: CronService,
+    private readonly _notifications?: NotificationService,
   ) {
     super(service, 'cron', 'Scheduled jobs');
   }
@@ -149,26 +113,18 @@ export class CronSection extends SettingsSection {
   build(): void {
     const intro = $('div.ai-settings-section__info');
     intro.textContent =
-      'Background jobs that the cron scheduler runs on a schedule. Includes ' +
-      'jobs registered by extensions (e.g. budget sync) and jobs the AI ' +
-      'schedules through approved cron_add tool calls. Everything is listed ' +
-      'here and can be enabled, edited, run on demand, or removed.';
+      'Background jobs the cron scheduler runs for this workspace — automations ' +
+      'you created in Planner → Automations, jobs registered by extensions, and ' +
+      'jobs the AI scheduled through approved cron_add calls. Everything can be ' +
+      'paused, edited, run on demand, or removed here.';
     this.contentElement.appendChild(intro);
-
-    const approval = $('div.ai-settings-section__info');
-    approval.textContent =
-      'Approval posture: cron_add / cron_update / cron_remove require your ' +
-      'confirmation when the AI invokes them. Direct edits made in this ' +
-      'panel are user-initiated and apply immediately.';
-    this.contentElement.appendChild(approval);
 
     this._listContainer = $('div.ai-settings-cron-list');
     this.contentElement.appendChild(this._listContainer);
 
     this._emptyEl = $('div.ai-settings-section__info');
     this._emptyEl.textContent =
-      'No scheduled jobs yet. Install an extension that registers one (e.g. ' +
-      'Budget) or ask the AI to create a reminder.';
+      'No scheduled jobs yet — create one in Planner → Automations, or ask the AI to set a reminder.';
     this.contentElement.appendChild(this._emptyEl);
 
     this._renderList();
@@ -188,15 +144,24 @@ export class CronSection extends SettingsSection {
   }
 
   override dispose(): void {
+    this._disposeRenderScope();
     for (const d of this._listenerDisposables) d.dispose();
     this._listenerDisposables.length = 0;
     super.dispose();
+  }
+
+  private _disposeRenderScope(): void {
+    for (const d of this._renderDisposables) {
+      try { d.dispose(); } catch { /* noop */ }
+    }
+    this._renderDisposables.length = 0;
   }
 
   // ── Rendering ─────────────────────────────────────────────────────────
 
   private _renderList(): void {
     if (!this._listContainer) return;
+    this._disposeRenderScope();
     this._listContainer.innerHTML = '';
 
     const jobs = this._cronService ? this._cronService.jobs : [];
@@ -252,28 +217,23 @@ export class CronSection extends SettingsSection {
     titleBlock.appendChild(sourcePill);
     header.appendChild(titleBlock);
 
-    // Enabled toggle
-    const toggleWrap = $('label.ai-settings-cron-job__toggle');
-    const toggle = document.createElement('input');
-    toggle.type = 'checkbox';
-    toggle.checked = job.enabled;
-    toggle.setAttribute('aria-label', `Enable ${job.name}`);
-    toggle.addEventListener('change', () => {
+    // Enabled — the core Toggle, not a bare checkbox.
+    const toggle = new Toggle(header, {
+      checked: job.enabled,
+      ariaLabel: `Enable ${job.name}`,
+    });
+    this._renderDisposables.push(toggle);
+    this._renderDisposables.push(toggle.onDidChange((checked: boolean) => {
       if (!this._cronService) return;
       try {
-        this._cronService.updateJob(job.id, { enabled: toggle.checked });
+        this._cronService.updateJob(job.id, { enabled: checked });
       } catch (err) {
-        console.warn(`[CronSection] failed to toggle "${job.name}":`, err);
         toggle.checked = job.enabled; // revert UI on failure
+        void this._notifications?.error(
+          `Could not update "${job.name}": ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
-    });
-    toggleWrap.appendChild(toggle);
-    const toggleLabel = $('span', toggle.checked ? 'Enabled' : 'Disabled');
-    toggleWrap.appendChild(toggleLabel);
-    toggle.addEventListener('change', () => {
-      toggleLabel.textContent = toggle.checked ? 'Enabled' : 'Disabled';
-    });
-    header.appendChild(toggleWrap);
+    }));
 
     card.appendChild(header);
 
@@ -286,7 +246,7 @@ export class CronSection extends SettingsSection {
 
     // ── Meta grid (schedule, last run, next run, run count) ──
     const meta = $('div.ai-settings-cron-job__meta');
-    meta.appendChild(this._metaCell('Schedule', _formatSchedule(job.schedule)));
+    meta.appendChild(this._metaCell('Schedule', describeSchedule(job.schedule)));
     meta.appendChild(this._metaCell(
       'Last run',
       job.lastRunAt
@@ -351,28 +311,104 @@ export class CronSection extends SettingsSection {
     return cell;
   }
 
+  /**
+   * Friendly schedule builder — the same daily / weekly / interval / once /
+   * cron model as Planner → Automations, driven by the shared
+   * cronScheduleSpec conversions. No raw `cron:` text syntax.
+   */
   private _renderEditForm(job: ICronJob): HTMLElement {
     const form = $('div.ai-settings-cron-job__edit');
 
-    const label = $('label.ai-settings-cron-job__edit-label', 'Schedule');
+    const label = $('label.ai-settings-cron-job__edit-label');
+    label.textContent = 'Schedule';
     form.appendChild(label);
 
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'ai-settings-cron-job__edit-input';
-    input.value = _scheduleToInput(job.schedule);
-    input.placeholder = 'e.g. 30m  ·  cron:0 9 * * *  ·  at:2026-05-21T09:00:00Z';
-    form.appendChild(input);
+    const seedSpec = specFromSchedule(job.schedule);
 
-    const help = $('div.ai-settings-cron-job__edit-help');
-    help.textContent =
-      'Accepted: a duration like "30m", "1h", "45s"; or "cron:<expr>" for a ' +
-      '5-field cron expression; or "at:<ISO datetime>" for a one-shot job.';
-    form.appendChild(help);
+    const row = $('div.ai-settings-cron-job__edit-row');
+    form.appendChild(row);
+
+    const kindHost = $('div.ai-settings-cron-job__edit-kind');
+    const kindDropdown = new Dropdown(kindHost, {
+      items: [
+        { value: 'daily', label: 'Every day' },
+        { value: 'weekly', label: 'Every week' },
+        { value: 'interval', label: 'On an interval' },
+        { value: 'once', label: 'Once' },
+        { value: 'cron', label: 'Custom (cron)' },
+      ],
+      selected: seedSpec.kind,
+      ariaLabel: 'Schedule type',
+    });
+    this._renderDisposables.push(kindDropdown);
+    row.appendChild(kindHost);
+
+    const timeInput = document.createElement('input');
+    timeInput.type = 'time';
+    timeInput.className = 'ai-settings-cron-job__edit-input ai-settings-cron-job__edit-input--time';
+    timeInput.value = (seedSpec.kind === 'daily' || seedSpec.kind === 'weekly') ? seedSpec.time : '08:00';
+    row.appendChild(timeInput);
+
+    const dayHost = $('div.ai-settings-cron-job__edit-kind');
+    const dayDropdown = new Dropdown(dayHost, {
+      items: WEEKDAY_LABELS.map((l2, i) => ({ value: String(i), label: l2 })),
+      selected: seedSpec.kind === 'weekly' ? String(seedSpec.day) : '1',
+      ariaLabel: 'Weekday',
+    });
+    this._renderDisposables.push(dayDropdown);
+    row.appendChild(dayHost);
+
+    const intervalInput = document.createElement('input');
+    intervalInput.type = 'text';
+    intervalInput.className = 'ai-settings-cron-job__edit-input';
+    intervalInput.placeholder = 'e.g. 30m, 2h, 1d';
+    intervalInput.value = seedSpec.kind === 'interval' ? seedSpec.every : '1h';
+    row.appendChild(intervalInput);
+
+    const onceInput = document.createElement('input');
+    onceInput.type = 'datetime-local';
+    onceInput.className = 'ai-settings-cron-job__edit-input';
+    if (seedSpec.kind === 'once') {
+      const d = new Date(seedSpec.at);
+      if (!Number.isNaN(d.getTime())) {
+        const pad = (n: number) => String(n).padStart(2, '0');
+        onceInput.value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      }
+    }
+    row.appendChild(onceInput);
+
+    const cronInput = document.createElement('input');
+    cronInput.type = 'text';
+    cronInput.className = 'ai-settings-cron-job__edit-input';
+    cronInput.placeholder = 'e.g. 0 9 * * 1-5';
+    cronInput.value = seedSpec.kind === 'cron' ? seedSpec.expr : '';
+    row.appendChild(cronInput);
+
+    const syncVisibility = () => {
+      const kind = kindDropdown.value ?? 'daily';
+      timeInput.style.display = (kind === 'daily' || kind === 'weekly') ? '' : 'none';
+      dayHost.style.display = kind === 'weekly' ? '' : 'none';
+      intervalInput.style.display = kind === 'interval' ? '' : 'none';
+      onceInput.style.display = kind === 'once' ? '' : 'none';
+      cronInput.style.display = kind === 'cron' ? '' : 'none';
+    };
+    this._renderDisposables.push(kindDropdown.onDidChange(() => syncVisibility()));
+    syncVisibility();
 
     const error = $('div.ai-settings-cron-job__edit-error');
     error.style.display = 'none';
     form.appendChild(error);
+
+    const readSpec = (): AutomationScheduleSpec => {
+      const kind = (kindDropdown.value ?? 'daily') as AutomationScheduleSpec['kind'];
+      switch (kind) {
+        case 'daily': return { kind, time: timeInput.value };
+        case 'weekly': return { kind, day: parseInt(dayDropdown.value ?? '1', 10), time: timeInput.value };
+        case 'interval': return { kind, every: intervalInput.value };
+        case 'once': return { kind, at: onceInput.value };
+        case 'cron': return { kind, expr: cronInput.value };
+      }
+    };
 
     const buttons = $('div.ai-settings-cron-job__edit-actions');
 
@@ -381,15 +417,10 @@ export class CronSection extends SettingsSection {
     save.className = 'ai-settings-cron-job__btn ai-settings-cron-job__btn--primary';
     save.textContent = 'Save';
     save.addEventListener('click', () => {
-      const parsed = _inputToSchedule(input.value);
-      if (!parsed) {
-        error.textContent = 'Could not parse that schedule. Check the format and try again.';
-        error.style.display = '';
-        return;
-      }
       if (!this._cronService) return;
       try {
-        this._cronService.updateJob(job.id, { schedule: parsed });
+        const schedule = buildCronSchedule(readSpec());
+        this._cronService.updateJob(job.id, { schedule });
         this._editingJobId = null;
         this._renderList(); // onDidChangeJobs will also fire, but this gives instant feedback
       } catch (err) {
@@ -417,26 +448,32 @@ export class CronSection extends SettingsSection {
     if (!this._cronService) return;
     this._cronService.runJob(job.id).catch((err) => {
       console.warn(`[CronSection] runJob("${job.name}") failed:`, err);
-      window.alert(
-        `Failed to run "${job.name}":\n\n${err instanceof Error ? err.message : String(err)}`,
-      );
+      const message = `"${job.name}" failed: ${err instanceof Error ? err.message : String(err)}`;
+      if (this._notifications) {
+        void this._notifications.error(message);
+      } else {
+        void showConfirmModal(document.body, { message, cancelLabel: null });
+      }
     });
   }
 
   private _confirmAndDelete(job: ICronJob): void {
     if (!this._cronService) return;
     const src = _inferSource(job.name);
-    const extraWarning = src.kind === 'extension'
-      ? `\n\nThis job was registered by the ${src.extensionId} extension. The extension may re-create it on next activation.`
-      : '';
-    const ok = window.confirm(
-      `Delete the scheduled job "${job.name}"?${extraWarning}\n\nThis cannot be undone.`,
-    );
-    if (!ok) return;
-    try {
-      this._cronService.removeJob(job.id);
-    } catch (err) {
-      console.warn(`[CronSection] removeJob("${job.name}") failed:`, err);
-    }
+    void showConfirmModal(document.body, {
+      message: `Delete the scheduled job "${job.name}"?`,
+      detail: src.kind === 'extension'
+        ? `Registered by the ${src.extensionId} extension — it may re-create the job on next activation.`
+        : 'This cannot be undone.',
+      confirmLabel: 'Delete',
+      danger: true,
+    }).then((ok) => {
+      if (!ok || !this._cronService) return;
+      try {
+        this._cronService.removeJob(job.id);
+      } catch (err) {
+        console.warn(`[CronSection] removeJob("${job.name}") failed:`, err);
+      }
+    });
   }
 }

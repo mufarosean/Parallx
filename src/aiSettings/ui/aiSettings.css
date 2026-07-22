@@ -526,7 +526,7 @@
 }
 
 .ai-settings-import-status--success {
-  color: var(--vscode-testing-iconPassed, #73c991);
+  color: var(--px-success);
 }
 
 /* ── Confirm Dialog ───────────────────────────────────────────────────── */
@@ -729,7 +729,7 @@
   display: inline-block;
   margin-left: 8px;
   font-size: var(--parallx-fontSize-sm);
-  color: var(--vscode-testing-iconPassed, #73c991);
+  color: var(--px-success);
   opacity: 0;
   transition: opacity var(--px-dur-base) var(--px-ease);
   pointer-events: none;
@@ -1015,7 +1015,7 @@
 .ai-settings-memory-mastery-fill {
   display: block;
   height: 100%;
-  background: var(--vscode-testing-iconPassed, #73c991);
+  background: var(--px-success);
   border-radius: var(--parallx-radius-sm);
   transition: width var(--px-dur-base) var(--px-ease);
 }
@@ -1202,12 +1202,12 @@
   text-align: center;
 }
 
-.ai-settings-mcp-dot[data-status="connected"]    { color: #73c991; }
-.ai-settings-mcp-dot[data-status="unhealthy"]     { color: #e5c07b; }
+.ai-settings-mcp-dot[data-status="connected"]    { color: var(--px-success); }
+.ai-settings-mcp-dot[data-status="unhealthy"]     { color: var(--px-warning); }
 .ai-settings-mcp-dot[data-status="connecting"],
-.ai-settings-mcp-dot[data-status="reconnecting"]  { color: #e5c07b; animation: mcp-pulse 1.2s ease-in-out infinite; }
-.ai-settings-mcp-dot[data-status="error"]          { color: #f14c4c; }
-.ai-settings-mcp-dot[data-status="disconnected"]   { color: var(--vscode-descriptionForeground, #888); }
+.ai-settings-mcp-dot[data-status="reconnecting"]  { color: var(--px-warning); animation: mcp-pulse 1.2s ease-in-out infinite; }
+.ai-settings-mcp-dot[data-status="error"]          { color: var(--px-danger); }
+.ai-settings-mcp-dot[data-status="disconnected"]   { color: var(--px-text-faint); }
 
 @keyframes mcp-pulse {
   0%, 100% { opacity: 1; }
@@ -1246,12 +1246,12 @@
   white-space: nowrap;
 }
 
-.ai-settings-mcp-badge[data-status="connected"]   { color: #73c991; background: rgba(115, 201, 145, 0.12); }
-.ai-settings-mcp-badge[data-status="unhealthy"]    { color: #e5c07b; background: rgba(229, 192, 123, 0.12); }
+.ai-settings-mcp-badge[data-status="connected"]   { color: var(--px-success); background: rgba(var(--px-green-rgb), 0.12); }
+.ai-settings-mcp-badge[data-status="unhealthy"]    { color: var(--px-warning); background: var(--px-warning-soft); }
 .ai-settings-mcp-badge[data-status="connecting"],
-.ai-settings-mcp-badge[data-status="reconnecting"] { color: #e5c07b; background: rgba(229, 192, 123, 0.12); }
-.ai-settings-mcp-badge[data-status="error"]         { color: #f14c4c; background: rgba(241, 76, 76, 0.12); }
-.ai-settings-mcp-badge[data-status="disconnected"]  { color: var(--vscode-descriptionForeground, #888); }
+.ai-settings-mcp-badge[data-status="reconnecting"] { color: var(--px-warning); background: var(--px-warning-soft); }
+.ai-settings-mcp-badge[data-status="error"]         { color: var(--px-danger); background: var(--px-danger-soft); }
+.ai-settings-mcp-badge[data-status="disconnected"]  { color: var(--px-text-faint); }
 
 .ai-settings-mcp-btn {
   background: none;
@@ -1269,12 +1269,12 @@
 }
 
 .ai-settings-mcp-btn--danger {
-  color: #f14c4c;
-  border-color: rgba(241, 76, 76, 0.3);
+  color: var(--px-danger);
+  border-color: color-mix(in srgb, var(--px-danger) 35%, transparent);
 }
 
 .ai-settings-mcp-btn--danger:hover {
-  background: rgba(241, 76, 76, 0.12);
+  background: var(--px-danger-soft);
 }
 
 .ai-settings-mcp-add-btn {
@@ -1736,13 +1736,13 @@ input[type="number"].ai-settings-agent-card__field-input {
 }
 
 .ai-settings-cron-job__source--extension {
-  background: rgba(85, 153, 255, 0.18);
-  color: var(--vscode-textLink-foreground, #5599ff);
+  background: rgba(var(--px-blue-rgb), 0.15);
+  color: var(--px-info);
 }
 
 .ai-settings-cron-job__source--ai {
-  background: rgba(170, 110, 255, 0.18);
-  color: #c79dff;
+  background: var(--px-accent-soft);
+  color: var(--px-accent);
 }
 
 .ai-settings-cron-job__toggle {
@@ -1846,19 +1846,31 @@ input[type="number"].ai-settings-agent-card__field-input {
 }
 
 .ai-settings-cron-job__edit-input {
-  background: var(--vscode-input-background, #1e1e1e);
-  color: var(--vscode-input-foreground, #ddd);
-  border: 1px solid var(--vscode-input-border, rgba(255, 255, 255, 0.15));
+  background: var(--px-bg-inset);
+  color: var(--px-text);
+  border: 1px solid var(--px-border);
   padding: 6px 10px;
-  border-radius: var(--parallx-radius-sm, 4px);
-  font-family: var(--vscode-editor-font-family, monospace);
-  font-size: var(--parallx-fontSize-sm);
+  border-radius: var(--px-radius-sm);
+  font-family: inherit;
+  font-size: var(--px-text-sm);
+  transition: border-color var(--px-dur-fast) var(--px-ease), box-shadow var(--px-dur-fast) var(--px-ease);
 }
 
 .ai-settings-cron-job__edit-input:focus {
   outline: none;
-  border-color: var(--vscode-focusBorder, #007fd4);
+  border-color: var(--px-accent);
+  box-shadow: 0 0 0 3px var(--px-accent-faint);
 }
+
+/* Friendly schedule builder (shared cronScheduleSpec model). */
+.ai-settings-cron-job__edit-row {
+  display: flex;
+  align-items: center;
+  gap: var(--px-space-2);
+  flex-wrap: wrap;
+}
+.ai-settings-cron-job__edit-kind { min-width: 148px; }
+.ai-settings-cron-job__edit-input--time { flex: 0 0 104px; }
 
 .ai-settings-cron-job__edit-help {
   font-size: var(--parallx-fontSize-xs, 11px);

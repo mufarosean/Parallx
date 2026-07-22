@@ -31,6 +31,7 @@ import type { IMcpClientService } from '../../services/serviceTypes.js';
 import type { IAutonomyFeatureFlagsService } from '../../services/autonomyFeatureFlags.js';
 import type { IStorage } from '../../platform/storage.js';
 import type { CronService } from '../../openclaw/openclawCronService.js';
+import type { NotificationService } from '../../api/notificationService.js';
 import './aiSettings.css';
 
 // ─── AISettingsPanel ─────────────────────────────────────────────────────────
@@ -53,6 +54,7 @@ export class AISettingsPanel extends Disposable {
     _autonomyFlagsService?: IAutonomyFeatureFlagsService,
     private readonly _globalStorage?: IStorage,
     private readonly _cronService?: CronService,
+    private readonly _notificationService?: NotificationService,
   ) {
     super();
     void _autonomyFlagsService;
@@ -90,7 +92,7 @@ export class AISettingsPanel extends Disposable {
     this._sections = [
       this._register(new ModelSection(this._service, this._unifiedConfigService, this._languageModelsService)),
       this._register(new AgentSection(this._service, this._unifiedConfigService)),
-      this._register(new CronSection(this._service, this._cronService)),
+      this._register(new CronSection(this._service, this._cronService, this._notificationService)),
       this._register(new ToolsSection(this._service, this._toolPickerServices, this._unifiedConfigService)),
       this._register(new McpSection(this._service, this._mcpClientService)),
       this._register(new WebResearchSection(this._service, this._globalStorage)),

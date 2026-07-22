@@ -177,9 +177,13 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       const registry = api.services.get<import('../../services/settingsRegistryService.js').ISettingsRegistryService>(
         ISettingsRegistryService,
       );
-      const ok = window.confirm(
-        'Reset every workspace setting to its default?\n\nThis cannot be undone.',
-      );
+      const { showConfirmModal } = await import('../../api/notificationService.js');
+      const ok = await showConfirmModal(document.body, {
+        message: 'Reset every workspace setting to its default?',
+        detail: 'This cannot be undone.',
+        confirmLabel: 'Reset all',
+        danger: true,
+      });
       if (!ok) return;
       const workspaceSchemas = registry
         .getAllSchemas()

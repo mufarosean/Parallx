@@ -356,6 +356,24 @@
   color: var(--px-text);
 }
 
+.parallx-modal-btn--danger {
+  background-color: var(--px-danger);
+  color: var(--px-text-on-accent);
+}
+
+.parallx-modal-btn--danger:hover {
+  background-color: color-mix(in srgb, var(--px-danger) 85%, white);
+}
+
+/* Secondary explanatory line under a confirm-modal message. */
+.parallx-modal-detail {
+  color: var(--px-text-muted);
+  font-size: var(--px-text-sm);
+  line-height: var(--px-leading-base);
+  margin: calc(-1 * var(--px-space-1)) 0 var(--px-space-2);
+  max-width: 420px;
+}
+
 /* ── Quick pick modal ─────────────────────────────────────────────────────── */
 
 .parallx-quickpick-box {

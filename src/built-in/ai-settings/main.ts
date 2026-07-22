@@ -130,7 +130,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         const cronService = api.services.has(ICronService)
           ? api.services.get<import('../../openclaw/openclawCronService.js').CronService>(ICronService)
           : undefined;
-        _panel = new AISettingsPanel(container, aiSettingsService, languageModelsService, unifiedConfigService, toolPickerServices, mcpClientService, autonomyFlagsService, globalStorage, cronService);
+        _panel = new AISettingsPanel(container, aiSettingsService, languageModelsService, unifiedConfigService, toolPickerServices, mcpClientService, autonomyFlagsService, globalStorage, cronService, notificationService);
         return _panel;
       },
     }),
@@ -162,6 +162,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         return new AISettingsPanel(
           container, aiSettingsService, languageModelsService, unifiedConfigService,
           toolPickerServices, mcpClientService, autonomyFlagsService, globalStorage, cronService,
+          notificationService,
         );
       },
     }),

@@ -106,9 +106,9 @@ describe('CronSection', () => {
   it('renders the empty state when CronService has no jobs', () => {
     const { section } = buildSection([]);
     const empty = section.element.querySelector('.ai-settings-section__info');
-    // Two info banners (intro, approval) + one empty-state banner — empty visible
+    // Intro banner + empty-state banner — empty visible
     const banners = section.element.querySelectorAll('.ai-settings-section__info');
-    expect(banners.length).toBeGreaterThanOrEqual(3);
+    expect(banners.length).toBeGreaterThanOrEqual(2);
     expect(empty).toBeTruthy();
     expect(section.element.querySelectorAll('.ai-settings-cron-job')).toHaveLength(0);
     section.dispose();
@@ -150,18 +150,19 @@ describe('CronSection', () => {
         .filter(Boolean),
     );
     expect(values[0]?.[0]).toContain('Every 30m');
-    expect(values[1]?.[0]).toContain('Cron: 0 9 * * *');
+    // Friendly cron expressions humanize instead of exposing raw syntax.
+    expect(values[1]?.[0]).toContain('Every day at 09:00');
     section.dispose();
   });
 
-  it('clicking the enabled toggle calls updateJob', () => {
+  it('clicking the enabled toggle (core Toggle component) calls updateJob', () => {
     const { section, cronService } = buildSection([
       makeJob({ id: 'cron-1', name: 'test', enabled: true }),
     ]);
-    const toggle = section.element.querySelector('input[type="checkbox"]') as HTMLInputElement;
-    expect(toggle.checked).toBe(true);
-    toggle.checked = false;
-    toggle.dispatchEvent(new Event('change'));
+    const toggle = section.element.querySelector('[role="switch"]') as HTMLElement;
+    expect(toggle).toBeTruthy();
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
+    toggle.click();
     expect(cronService.updateJob).toHaveBeenCalledWith('cron-1', { enabled: false });
     section.dispose();
   });
@@ -177,30 +178,38 @@ describe('CronSection', () => {
     section.dispose();
   });
 
-  it('clicking Delete (and confirming) calls removeJob', () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+  it('clicking Delete (and confirming in the themed modal) calls removeJob', async () => {
     const { section, cronService } = buildSection([
       makeJob({ id: 'cron-1', name: 'test' }),
     ]);
     const buttons = Array.from(section.element.querySelectorAll('button'));
     const delBtn = buttons.find(b => b.textContent === 'Delete') as HTMLButtonElement;
     delBtn.click();
-    expect(confirmSpy).toHaveBeenCalled();
+    await new Promise((r) => setTimeout(r, 0));
+
+    // The confirm is the app's modal — no window.confirm anywhere.
+    const confirmBtn = document.body.querySelector('.parallx-modal-btn--danger') as HTMLButtonElement;
+    expect(confirmBtn).toBeTruthy();
+    confirmBtn.click();
+    await new Promise((r) => setTimeout(r, 0));
     expect(cronService.removeJob).toHaveBeenCalledWith('cron-1');
-    confirmSpy.mockRestore();
     section.dispose();
   });
 
-  it('cancelled Delete does NOT call removeJob', () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  it('cancelled Delete does NOT call removeJob', async () => {
     const { section, cronService } = buildSection([
       makeJob({ id: 'cron-1', name: 'test' }),
     ]);
     const buttons = Array.from(section.element.querySelectorAll('button'));
     const delBtn = buttons.find(b => b.textContent === 'Delete') as HTMLButtonElement;
     delBtn.click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const cancelBtn = document.body.querySelector('.parallx-modal-btn--secondary') as HTMLButtonElement;
+    expect(cancelBtn).toBeTruthy();
+    cancelBtn.click();
+    await new Promise((r) => setTimeout(r, 0));
     expect(cronService.removeJob).not.toHaveBeenCalled();
-    confirmSpy.mockRestore();
     section.dispose();
   });
 
@@ -219,7 +228,17 @@ describe('CronSection', () => {
     section.dispose();
   });
 
-  it('Edit schedule reveals an input pre-filled with the current schedule', () => {
+  /** The visible detail input inside the schedule builder (kind-specific). */
+  function visibleEditInput(section: { element: HTMLElement }): HTMLInputElement {
+    const inputs = Array.from(
+      section.element.querySelectorAll('.ai-settings-cron-job__edit-input'),
+    ) as HTMLInputElement[];
+    const visible = inputs.find(i => i.style.display !== 'none');
+    expect(visible).toBeTruthy();
+    return visible!;
+  }
+
+  it('Edit schedule reveals the friendly builder pre-filled with the current schedule', () => {
     const { section } = buildSection([
       makeJob({ id: 'cron-1', name: 'test', schedule: { every: '45m' } }),
     ]);
@@ -227,11 +246,9 @@ describe('CronSection', () => {
     const editBtn = buttons.find(b => b.textContent === 'Edit schedule') as HTMLButtonElement;
     editBtn.click();
 
-    const input = section.element.querySelector(
-      '.ai-settings-cron-job__edit-input',
-    ) as HTMLInputElement;
-    expect(input).toBeTruthy();
-    expect(input.value).toBe('45m');
+    // An every-schedule seeds the "On an interval" kind with the duration.
+    expect(section.element.querySelector('.ui-dropdown')).toBeTruthy();
+    expect(visibleEditInput(section).value).toBe('45m');
     section.dispose();
   });
 
@@ -242,10 +259,7 @@ describe('CronSection', () => {
     let buttons = Array.from(section.element.querySelectorAll('button'));
     (buttons.find(b => b.textContent === 'Edit schedule') as HTMLButtonElement).click();
 
-    const input = section.element.querySelector(
-      '.ai-settings-cron-job__edit-input',
-    ) as HTMLInputElement;
-    input.value = '2h';
+    visibleEditInput(section).value = '2h';
     buttons = Array.from(section.element.querySelectorAll('button'));
     (buttons.find(b => b.textContent === 'Save') as HTMLButtonElement).click();
 
@@ -255,16 +269,13 @@ describe('CronSection', () => {
 
   it('Edit → Save with a malformed schedule surfaces an error and does NOT call updateJob', () => {
     const { section, cronService } = buildSection([
-      makeJob({ id: 'cron-1', name: 'test' }),
+      makeJob({ id: 'cron-1', name: 'test', schedule: { every: '30m' } }),
     ]);
     (Array.from(section.element.querySelectorAll('button')).find(
       b => b.textContent === 'Edit schedule',
     ) as HTMLButtonElement).click();
 
-    const input = section.element.querySelector(
-      '.ai-settings-cron-job__edit-input',
-    ) as HTMLInputElement;
-    input.value = 'not a real schedule';
+    visibleEditInput(section).value = 'not a real schedule';
     (Array.from(section.element.querySelectorAll('button')).find(
       b => b.textContent === 'Save',
     ) as HTMLButtonElement).click();
@@ -274,22 +285,22 @@ describe('CronSection', () => {
       '.ai-settings-cron-job__edit-error',
     ) as HTMLElement;
     expect(error.style.display).not.toBe('none');
-    expect(error.textContent).toContain('Could not parse');
+    expect(error.textContent).toContain('Invalid interval');
     section.dispose();
   });
 
-  it('cron:<expr> input is parsed as a cron schedule', () => {
+  it('non-friendly cron expressions edit through the raw cron kind', () => {
     const { section, cronService } = buildSection([
-      makeJob({ id: 'cron-1', name: 'test' }),
+      makeJob({ id: 'cron-1', name: 'test', schedule: { cron: '0 9 * * 1-5' } }),
     ]);
     (Array.from(section.element.querySelectorAll('button')).find(
       b => b.textContent === 'Edit schedule',
     ) as HTMLButtonElement).click();
 
-    const input = section.element.querySelector(
-      '.ai-settings-cron-job__edit-input',
-    ) as HTMLInputElement;
-    input.value = 'cron:0 9 * * *';
+    // A weekday-range cron can't round-trip to daily/weekly → raw cron kind.
+    const input = visibleEditInput(section);
+    expect(input.value).toBe('0 9 * * 1-5');
+    input.value = '0 9 * * *';
     (Array.from(section.element.querySelectorAll('button')).find(
       b => b.textContent === 'Save',
     ) as HTMLButtonElement).click();
@@ -298,12 +309,32 @@ describe('CronSection', () => {
     section.dispose();
   });
 
+  it('friendly cron schedules seed the daily kind with the wall-clock time', () => {
+    const { section, cronService } = buildSection([
+      makeJob({ id: 'cron-1', name: 'test', schedule: { cron: '30 8 * * *' } }),
+    ]);
+    (Array.from(section.element.querySelectorAll('button')).find(
+      b => b.textContent === 'Edit schedule',
+    ) as HTMLButtonElement).click();
+
+    const input = visibleEditInput(section);
+    expect(input.type).toBe('time');
+    expect(input.value).toBe('08:30');
+    input.value = '09:15';
+    (Array.from(section.element.querySelectorAll('button')).find(
+      b => b.textContent === 'Save',
+    ) as HTMLButtonElement).click();
+
+    expect(cronService.updateJob).toHaveBeenCalledWith('cron-1', { schedule: { cron: '15 9 * * *' } });
+    section.dispose();
+  });
+
   it('degrades gracefully without a CronService (headless tests, no panel)', () => {
     const service = createMockService();
     const section = new CronSection(service as any /* no cron service */);
     section.build();
-    // Should still render the explanatory banners — just no list, no empty hint
-    expect(section.element.querySelectorAll('.ai-settings-section__info').length).toBeGreaterThanOrEqual(2);
+    // Should still render the explanatory banner — just no list, no empty hint
+    expect(section.element.querySelectorAll('.ai-settings-section__info').length).toBeGreaterThanOrEqual(1);
     expect(section.element.querySelectorAll('.ai-settings-cron-job').length).toBe(0);
     section.dispose();
   });

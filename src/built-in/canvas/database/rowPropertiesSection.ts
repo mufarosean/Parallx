@@ -24,6 +24,7 @@ import { createPropertyEditor, createTypeIconElement } from '../properties/prope
 import { createIconElement } from '../../../ui/iconRegistry.js';
 import type { IPropertyDefinition, PropertyType } from '../properties/propertyTypes.js';
 import { showPropertyPicker } from '../properties/propertyPicker.js';
+import { showConfirmModal } from '../../../api/notificationService.js';
 
 const COLLAPSED_KEY = 'canvas.propertyBar.collapsed';
 const TAGS_DB_TITLE = 'Tags';
@@ -190,9 +191,14 @@ export async function mountRowPropertiesSection(
     deleteDefinitionBtn.appendChild(createIconElement('trash', 14));
     deleteDefinitionBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (window.confirm(`Delete property "${prop.name}" from the "${home.title}" database and all its pages?`)) {
-        void db.deleteProperty(home.databaseId, prop.id);
-      }
+      void showConfirmModal(document.body, {
+        message: `Delete the "${prop.name}" property?`,
+        detail: `It is removed from the "${home.title}" database and every page that uses it.`,
+        confirmLabel: 'Delete',
+        danger: true,
+      }).then((ok) => {
+        if (ok) void db.deleteProperty(home.databaseId, prop.id);
+      });
     });
     row.appendChild(deleteDefinitionBtn);
 

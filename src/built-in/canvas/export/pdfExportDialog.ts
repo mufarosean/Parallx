@@ -51,6 +51,19 @@ function getElectron(): PdfExportElectron | undefined {
   return (globalThis as unknown as { parallxElectron?: PdfExportElectron }).parallxElectron;
 }
 
+/**
+ * Translate transport-level failures into something a person can act on.
+ * The classic: the renderer hot-reloaded with this feature but the MAIN
+ * process predates it — `ipcMain.handle('pdfExport:render')` only registers
+ * at app startup, so the fix is a full quit + relaunch.
+ */
+function friendlyError(raw: string): string {
+  if (raw.includes('No handler registered')) {
+    return 'PDF export arrived in this update — quit and relaunch Parallx to finish enabling it.';
+  }
+  return raw;
+}
+
 export interface PdfExportSource {
   readonly title: string;
   readonly iconHtml?: string;
@@ -305,7 +318,7 @@ export function openPdfExportDialog(source: PdfExportSource): void {
       const result = await electron.pdfExport!.render({ html, options: buildPdfRenderOptions(settings) });
       if (gen !== generation) return;
       if (!result.ok || !result.data) {
-        previewStatus.textContent = `Preview failed: ${result.error ?? 'unknown error'}`;
+        previewStatus.textContent = `Preview failed: ${friendlyError(result.error ?? 'unknown error')}`;
         return;
       }
 
@@ -344,7 +357,7 @@ export function openPdfExportDialog(source: PdfExportSource): void {
         : `${pageCount} ${pageCount === 1 ? 'page' : 'pages'}`;
     } catch (err) {
       if (gen !== generation) return;
-      previewStatus.textContent = `Preview failed: ${err instanceof Error ? err.message : String(err)}`;
+      previewStatus.textContent = `Preview failed: ${friendlyError(err instanceof Error ? err.message : String(err))}`;
     }
   };
 
@@ -383,11 +396,11 @@ export function openPdfExportDialog(source: PdfExportSource): void {
           status.classList.remove('canvas-pdf-dialog__status--error');
           cancelBtn.textContent = 'Done';
         } else {
-          status.textContent = `Export failed: ${result.error ?? 'unknown error'}`;
+          status.textContent = `Export failed: ${friendlyError(result.error ?? 'unknown error')}`;
           status.classList.add('canvas-pdf-dialog__status--error');
         }
       } catch (err) {
-        status.textContent = `Export failed: ${err instanceof Error ? err.message : String(err)}`;
+        status.textContent = `Export failed: ${friendlyError(err instanceof Error ? err.message : String(err))}`;
         status.classList.add('canvas-pdf-dialog__status--error');
       } finally {
         exportBtn.disabled = false;

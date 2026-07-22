@@ -24,6 +24,7 @@ import { applyFilter, applySort, groupRows } from './databaseViewModel.js';
 import { createPropertyEditor, createTypeIconElement } from '../properties/propertyEditors.js';
 import type { IPropertyDefinition, PropertyType } from '../properties/propertyTypes.js';
 import { resolvePageIcon, svgIcon } from '../config/iconRegistry.js';
+import { showConfirmModal } from '../../../api/notificationService.js';
 
 function renderPageIconHtml(icon: string | null | undefined): string {
   const id = resolvePageIcon(icon);
@@ -558,9 +559,14 @@ export class DatabaseEditorPane implements IDisposable {
         pop.appendChild(this._menuItem('Edit options…', () => this._openOptionsEditor(th, prop)));
       }
       pop.appendChild(this._menuItem('Delete property', () => {
-        if (window.confirm(`Delete property "${prop.name}" and all its values?`)) {
-          void this._deps.db.deleteProperty(this._databaseId, prop.id);
-        }
+        void showConfirmModal(document.body, {
+          message: `Delete the "${prop.name}" property?`,
+          detail: 'Every value stored in this property is removed with it.',
+          confirmLabel: 'Delete',
+          danger: true,
+        }).then((ok) => {
+          if (ok) void this._deps.db.deleteProperty(this._databaseId, prop.id);
+        });
       }, true));
     });
   }

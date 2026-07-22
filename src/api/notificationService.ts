@@ -379,6 +379,104 @@ export class NotificationService extends Disposable {
 // ─── Input Box / Quick Pick Modals ───────────────────────────────────────────
 
 /**
+ * Show a modal confirm dialog — the app-wide replacement for
+ * `window.confirm()` / `window.alert()`. Same material as the other modals
+ * (overlay + `.parallx-modal-box`), Escape / backdrop-click cancels, Enter
+ * confirms. Pass `danger: true` for destructive confirms so the primary
+ * button carries the danger treatment.
+ *
+ * Alert-style usage: omit `cancelLabel` handling by giving only a confirm
+ * label — callers that just need acknowledgement can ignore the result.
+ */
+export interface ConfirmModalOptions {
+  readonly message: string;
+  /** Secondary explanatory line under the message. */
+  readonly detail?: string;
+  /** Default: 'OK'. */
+  readonly confirmLabel?: string;
+  /** Default: 'Cancel'. Pass null to render a single-button alert. */
+  readonly cancelLabel?: string | null;
+  /** Style the confirm button as destructive. */
+  readonly danger?: boolean;
+}
+
+export function showConfirmModal(
+  parent: HTMLElement,
+  options: ConfirmModalOptions,
+): Promise<boolean> {
+  return new Promise(resolve => {
+    let resolved = false;
+    const overlay = _createModalOverlay(parent);
+
+    const box = $('div');
+    box.className = 'parallx-modal-box';
+    box.setAttribute('role', 'alertdialog');
+    box.addEventListener('mousedown', (e) => e.stopPropagation());
+    box.addEventListener('click', (e) => e.stopPropagation());
+
+    const label = $('div');
+    label.textContent = options.message;
+    label.className = 'parallx-modal-label';
+    box.appendChild(label);
+
+    if (options.detail) {
+      const detail = $('div');
+      detail.textContent = options.detail;
+      detail.className = 'parallx-modal-detail';
+      box.appendChild(detail);
+    }
+
+    const btnRow = $('div');
+    btnRow.className = 'parallx-modal-buttons';
+
+    const finish = (result: boolean) => {
+      if (resolved) return;
+      resolved = true;
+      overlay.remove();
+      document.removeEventListener('keydown', onKey, true);
+      resolve(result);
+    };
+
+    let cancelBtn: HTMLButtonElement | null = null;
+    if (options.cancelLabel !== null) {
+      cancelBtn = $('button') as HTMLButtonElement;
+      cancelBtn.type = 'button';
+      cancelBtn.textContent = options.cancelLabel ?? 'Cancel';
+      cancelBtn.className = 'parallx-modal-btn parallx-modal-btn--secondary';
+      cancelBtn.addEventListener('click', () => finish(false));
+      btnRow.appendChild(cancelBtn);
+    }
+
+    const okBtn = $('button') as HTMLButtonElement;
+    okBtn.type = 'button';
+    okBtn.textContent = options.confirmLabel ?? 'OK';
+    okBtn.className = options.danger
+      ? 'parallx-modal-btn parallx-modal-btn--danger'
+      : 'parallx-modal-btn parallx-modal-btn--primary';
+    okBtn.addEventListener('click', () => finish(true));
+    btnRow.appendChild(okBtn);
+
+    box.appendChild(btnRow);
+    overlay.appendChild(box);
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); }
+      else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); finish(true); }
+    };
+    document.addEventListener('keydown', onKey, true);
+
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) finish(false);
+    });
+
+    // Focus the SAFE button by default on destructive confirms.
+    requestAnimationFrame(() => {
+      (options.danger && cancelBtn ? cancelBtn : okBtn).focus();
+    });
+  });
+}
+
+/**
  * Show a modal input box overlay with OK / Cancel buttons.
  *
  * The input text is pre-selected so the user can immediately type a
