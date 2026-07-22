@@ -14,6 +14,8 @@ import { rafThrottle } from '../platform/rafThrottle.js';
 import { Dropdown, IDropdownItem } from '../ui/dropdown.js';
 import { renderMarkdown } from '../ui/renderMarkdown.js';
 import { createAiButton } from '../ui/aiButton.js';
+import { ContextMenu, IContextMenuItem } from '../ui/contextMenu.js';
+import { createIconElement } from '../ui/iconRegistry.js';
 import { URI } from '../platform/uri.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import {
@@ -140,6 +142,17 @@ export interface ParallxApiObject {
       readonly ariaLabel?: string;
       readonly title?: string;
     }): HTMLButtonElement;
+    showContextMenu(
+      anchor: { readonly x: number; readonly y: number },
+      items: ReadonlyArray<{
+        readonly label?: string;
+        readonly icon?: string;
+        readonly danger?: boolean;
+        readonly disabled?: boolean;
+        readonly separator?: boolean;
+        readonly onSelect?: () => void;
+      }>,
+    ): { dispose(): void };
   };
   /** Register keybindings into the single workbench dispatcher (see `keybindings` namespace). */
   readonly keybindings: {
@@ -165,6 +178,7 @@ export interface ParallxApiObject {
     showErrorMessage(message: string, ...actions: { title: string; isCloseAffordance?: boolean }[]): Promise<{ title: string } | undefined>;
     showInputBox(options?: { prompt?: string; value?: string; placeholder?: string; password?: boolean }): Promise<string | undefined>;
     showQuickPick(items: readonly { label: string; description?: string }[], options?: { placeholder?: string; canPickMany?: boolean }): Promise<any>;
+    showConfirmModal(options: { message: string; detail?: string; confirmLabel?: string; cancelLabel?: string | null; danger?: boolean }): Promise<boolean>;
     createOutputChannel(name: string): IDisposable & { name: string; append(v: string): void; appendLine(v: string): void; clear(): void; show(): void; hide(): void };
     createStatusBarItem(alignment?: number, priority?: number): {
       alignment: number; priority: number;
@@ -570,6 +584,42 @@ export function createToolApi(
       }): HTMLButtonElement {
         return createAiButton(container, options);
       },
+      // The SAME `.context-menu` the workbench uses (keyboard nav, submenu,
+      // viewport clamp, click-outside dismiss). Extensions were rolling their
+      // own (media-organizer's mo-context-menu predates this).
+      showContextMenu(
+        anchor: { readonly x: number; readonly y: number },
+        items: ReadonlyArray<{
+          readonly label?: string;
+          readonly icon?: string;
+          readonly danger?: boolean;
+          readonly disabled?: boolean;
+          readonly separator?: boolean;
+          readonly onSelect?: () => void;
+        }>,
+      ): { dispose(): void } {
+        // Map the flat, separator-as-item shape onto the core model, which
+        // draws separators at group boundaries.
+        let group = 0;
+        const handlers = new Map<string, () => void>();
+        const coreItems: IContextMenuItem[] = [];
+        items.forEach((it, i) => {
+          if (it.separator) { group++; return; }
+          const id = `ext-ctx-${i}`;
+          if (it.onSelect) handlers.set(id, it.onSelect);
+          coreItems.push({
+            id,
+            label: it.label ?? '',
+            group: String(group),
+            disabled: it.disabled,
+            className: it.danger ? 'context-menu-item--danger' : undefined,
+            renderIcon: it.icon ? (c: HTMLElement) => c.appendChild(createIconElement(it.icon as string, 14)) : undefined,
+          });
+        });
+        const menu = ContextMenu.show({ items: coreItems, anchor });
+        menu.onDidSelect((e) => { handlers.get(e.item.id)?.(); });
+        return { dispose: () => menu.dismiss() };
+      },
     }),
 
     // Keybindings feed the SAME single dispatcher the built-in workbench uses.
@@ -618,6 +668,7 @@ export function createToolApi(
       showErrorMessage: (msg, ...actions) => windowBridge.showErrorMessage(msg, ...actions),
       showInputBox: (options) => windowBridge.showInputBox(options),
       showQuickPick: (items, options) => windowBridge.showQuickPick(items, options),
+      showConfirmModal: (options) => windowBridge.showConfirmModal(options),
       createOutputChannel: (name) => windowBridge.createOutputChannel(name),
       createStatusBarItem: (alignment?: number, priority?: number) => {
         const sbPart = deps.statusBarPart;

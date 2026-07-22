@@ -583,7 +583,28 @@
   cursor: pointer;
   white-space: nowrap;
   user-select: none;
-  gap: 24px;
+  gap: 10px;
+}
+
+/* Leading icon (optional) — sized to sit beside the label, not push it away. */
+.context-menu-item-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+.context-menu-item-icon svg { width: 100%; height: 100%; }
+
+/* Destructive rows (Delete). */
+.context-menu-item--danger { color: var(--px-danger, #e5484d); }
+.context-menu-item--danger .context-menu-item-icon { opacity: 1; }
+.context-menu-item--danger:hover,
+.context-menu-item--danger.context-menu-item--selected {
+  background: var(--px-danger, #e5484d);
+  color: #fff;
 }
 
 .context-menu-item:hover,

@@ -7,6 +7,7 @@ import {
   NotificationSeverity,
   showInputBoxModal,
   showQuickPickModal,
+  showConfirmModal,
   type NotificationAction,
 } from '../notificationService.js';
 import type { INotificationService } from '../../services/serviceTypes.js';
@@ -59,6 +60,18 @@ export class WindowBridge {
     this._throwIfDisposed();
     const parent = this._workbenchContainer ?? document.body;
     return showQuickPickModal(parent, items, options);
+  }
+
+  async showConfirmModal(options: {
+    message: string;
+    detail?: string;
+    confirmLabel?: string;
+    cancelLabel?: string | null;
+    danger?: boolean;
+  }): Promise<boolean> {
+    this._throwIfDisposed();
+    const parent = this._workbenchContainer ?? document.body;
+    return showConfirmModal(parent, options);
   }
 
   createOutputChannel(name: string): OutputChannelImpl {
