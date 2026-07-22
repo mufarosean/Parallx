@@ -28,7 +28,7 @@ const DEFAULT_CONFIG: WeatherConfig = {
   forecastDays: 3,
 };
 
-const ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19a4.5 4.5 0 1 0 0-9h-1.8A7 7 0 1 0 4 16.5"/><path d="M16 14v6"/><path d="M8 14v6"/><path d="M12 16v6"/></svg>';
+const ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19a4.5 4.5 0 1 0 0-9h-1.8A7 7 0 1 0 4 16.5"/><path d="M16 14v6"/><path d="M8 14v6"/><path d="M12 16v6"/></svg>';
 
 export const WEATHER_WIDGET: WidgetTypeRegistration<WeatherConfig> = {
   typeId: 'parallx.dashboard.weather',

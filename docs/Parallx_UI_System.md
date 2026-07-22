@@ -98,6 +98,21 @@ PDF", not "Export As PDF" mid-sentence).
   (left edge x = 7 − 3(y−4)/16), one strong inner mark, no fills.
 - `LinkMetadata.icon` is a registry icon id — renderers resolve it; emoji
   never crosses the contract.
+- **The lean is scarce.** The parallelogram skew lives ONLY in `px-mark`
+  (the logo). Noun icons stand upright — a rail of same-direction leaning
+  glyphs reads as misalignment, not a motif (learned 2026-07-22).
+- **Stroke weights are a three-tier system**, not a per-author choice
+  (normalized 2026-07-22 — 40 drifting icons were at 1.8/2.2/2.5/2.6):
+
+  | Tier | Size | Stroke |
+  | --- | --- | --- |
+  | Micro marks (task dots, tool-node check/x, tiny chevrons) | ≤ 12px | 2.4 (up to 3 for 2-point marks) |
+  | Standard icons — everything else | 13–24px | **2** (the registry weight) |
+  | Display / hero icons | ≥ 32px | 1.5 |
+
+  Deliberate chrome exceptions: titlebar window controls (1.4), status-bar
+  glyphs (1.2). Inline SVG is allowed only for micro-glyphs and one-off
+  compositions; anything a registry id covers uses `getIcon`.
 
 ## 7. Components — never rebuild these
 

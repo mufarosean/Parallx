@@ -486,7 +486,7 @@ class PlannerEditorPane implements IDisposable {
   private async _renderTasksTab(body: HTMLElement, actions: HTMLElement): Promise<void> {
     const addBtn = el('button', 'planner-cta');
     addBtn.type = 'button';
-    addBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Create</span>';
+    addBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Create</span>';
     addBtn.addEventListener('click', () => this._captureNewTask(addBtn.getBoundingClientRect()));
     actions.appendChild(addBtn);
 
@@ -879,7 +879,7 @@ class PlannerEditorPane implements IDisposable {
     const addEvt = el('button', 'planner-cta');
     addEvt.type = 'button';
     addEvt.title = 'Create event (C)';
-    addEvt.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Create</span>';
+    addEvt.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Create</span>';
     addEvt.addEventListener('click', () => {
       const start = new Date(this._cursorDate);
       start.setHours(9, 0, 0, 0);
@@ -907,7 +907,7 @@ class PlannerEditorPane implements IDisposable {
       const item = el('button', 'planner-menu__item');
       item.type = 'button';
       const labelText = v[0].toUpperCase() + v.slice(1);
-      const check = v === this._calendarView ? '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="20 6 9 17 4 12"/></svg>' : '<span style="display:inline-block;width:13px"></span>';
+      const check = v === this._calendarView ? '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>' : '<span style="display:inline-block;width:13px"></span>';
       item.innerHTML = `${check}<span>${labelText}</span>`;
       item.addEventListener('click', () => {
         overlay.remove();

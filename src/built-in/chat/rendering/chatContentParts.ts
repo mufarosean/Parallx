@@ -954,7 +954,7 @@ function _renderThinking(part: IChatThinkingContent): HTMLElement {
 
     // Chevron (Claude-style quiet disclosure — CSS rotates it when expanded)
     const arrowEl = $('span.parallx-chat-thinking-arrow');
-    arrowEl.innerHTML = '<svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4"/></svg>';
+    arrowEl.innerHTML = '<svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4"/></svg>';
     toggle.appendChild(arrowEl);
 
     if (!isDone) {

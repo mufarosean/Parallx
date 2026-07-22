@@ -27,7 +27,7 @@ const DEFAULT_CONFIG: TasksConfig = { hideCompleted: false };
 const MAX_ITEMS = 200;
 const MAX_TEXT_CHARS = 500;
 
-const ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>';
+const ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>';
 
 function normalizeConfig(raw: unknown): TasksConfig {
   const cfg = (raw ?? {}) as Partial<TasksConfig>;
@@ -137,7 +137,7 @@ export const TASKS_WIDGET: WidgetTypeRegistration<TasksConfig> = {
         check.setAttribute('aria-label', it.done ? 'Mark as not done' : 'Mark as done');
         check.setAttribute('aria-pressed', String(it.done));
         check.innerHTML = it.done
-          ? '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.5 3.5L13 4"/></svg>'
+          ? '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.5 3.5L13 4"/></svg>'
           : '';
         check.addEventListener('click', () => {
           items = items.map((x) => (x.id === it.id ? { ...x, done: !x.done } : x));
@@ -154,7 +154,7 @@ export const TASKS_WIDGET: WidgetTypeRegistration<TasksConfig> = {
         del.className = 'tkw__del';
         del.title = 'Delete task';
         del.setAttribute('aria-label', 'Delete task');
-        del.innerHTML = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 3l10 10M13 3L3 13"/></svg>';
+        del.innerHTML = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3l10 10M13 3L3 13"/></svg>';
         del.addEventListener('click', () => {
           items = items.filter((x) => x.id !== it.id);
           persist();

@@ -74,7 +74,7 @@ export class DashboardSidebar implements IDisposable {
     const newBtn = el('button', 'dashboard-sidebar__newbtn');
     newBtn.type = 'button';
     newBtn.title = 'New dashboard';
-    newBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>New dashboard</span>';
+    newBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>New dashboard</span>';
     newBtn.addEventListener('click', () => void this._createPage());
     toolbar.appendChild(newBtn);
     root.appendChild(toolbar);

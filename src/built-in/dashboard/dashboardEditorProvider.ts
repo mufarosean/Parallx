@@ -98,7 +98,7 @@ function createSelect(options: SelectOption[], initial: string, onChange: (value
   const labelSpan = el('span', 'dashboard-select__label');
   trigger.appendChild(labelSpan);
   const chevron = el('span', 'dashboard-select__chevron');
-  chevron.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+  chevron.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
   trigger.appendChild(chevron);
   wrap.appendChild(trigger);
 
@@ -307,7 +307,7 @@ class DashboardEditorPane implements IDisposable {
 
     const addBtn = el('button', 'dashboard-btn dashboard-btn--primary');
     addBtn.type = 'button';
-    addBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Add widget</span>';
+    addBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Add widget</span>';
     addBtn.addEventListener('click', () => void this._openWidgetPicker());
     actions.appendChild(addBtn);
 
@@ -318,7 +318,7 @@ class DashboardEditorPane implements IDisposable {
     const refreshAllBtn = el('button', 'dashboard-btn dashboard-btn--ghost');
     refreshAllBtn.type = 'button';
     refreshAllBtn.title = 'Refresh every widget on this page';
-    refreshAllBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg><span>Refresh all</span>';
+    refreshAllBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg><span>Refresh all</span>';
     refreshAllBtn.addEventListener('click', () => {
       for (const id of this._instances.keys()) void this._triggerManualRefresh(id);
     });
@@ -330,7 +330,7 @@ class DashboardEditorPane implements IDisposable {
     scheduleBtn.type = 'button';
     scheduleBtn.title = 'Schedule automatic refresh for this page';
     scheduleBtn.dataset.role = 'page-schedule';
-    scheduleBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+    scheduleBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
     scheduleBtn.addEventListener('click', () => void this._openScheduleEditor(scheduleBtn));
     actions.appendChild(scheduleBtn);
 
@@ -353,7 +353,7 @@ class DashboardEditorPane implements IDisposable {
 
     const revealAdd = el('button', 'dashboard-btn dashboard-btn--primary dashboard-btn--small');
     revealAdd.type = 'button';
-    revealAdd.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Add widget</span>';
+    revealAdd.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Add widget</span>';
     revealAdd.addEventListener('click', () => void this._openWidgetPicker());
     revealActions.appendChild(revealAdd);
 

@@ -34,7 +34,7 @@ const DEFAULT_CONFIG: CustomAiConfig = {
   skill: '',
 };
 
-const ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a3 3 0 0 0-3 3v.5A3 3 0 0 0 6 9v.5A3 3 0 0 0 4.5 12 3 3 0 0 0 6 14.5V15a3 3 0 0 0 3 3v.5a3 3 0 0 0 6 0V18a3 3 0 0 0 3-3v-.5A3 3 0 0 0 19.5 12 3 3 0 0 0 18 9.5V9a3 3 0 0 0-3-3v-.5A3 3 0 0 0 12 3z"/><path d="M12 3v18"/></svg>';
+const ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a3 3 0 0 0-3 3v.5A3 3 0 0 0 6 9v.5A3 3 0 0 0 4.5 12 3 3 0 0 0 6 14.5V15a3 3 0 0 0 3 3v.5a3 3 0 0 0 6 0V18a3 3 0 0 0 3-3v-.5A3 3 0 0 0 19.5 12 3 3 0 0 0 18 9.5V9a3 3 0 0 0-3-3v-.5A3 3 0 0 0 12 3z"/><path d="M12 3v18"/></svg>';
 
 export const CUSTOM_AI_WIDGET: WidgetTypeRegistration<CustomAiConfig> = {
   typeId: 'parallx.dashboard.ai-custom',
