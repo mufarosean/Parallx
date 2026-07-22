@@ -400,7 +400,11 @@ function escapeHtml(s: string): string {
 function toFileUrl(absPath: string): string {
   let p = absPath.replace(/\\/g, '/');
   if (!p.startsWith('/')) p = '/' + p;
-  return 'file://' + p.split('/').map((seg, i) => (i === 0 ? seg : encodeURIComponent(seg))).join('/');
+  // Encode each path segment EXCEPT a Windows drive designator ("D:") —
+  // encoding its colon yields file:///D%3A/… which some loaders reject.
+  return 'file://' + p.split('/').map((seg) =>
+    (/^[a-zA-Z]:$/.test(seg) ? seg : encodeURIComponent(seg)),
+  ).join('/');
 }
 
 export function buildPrintHtml(input: BuildPrintHtmlInput): string {

@@ -237,7 +237,8 @@ describe('buildPrintHtml', () => {
       appPath: 'D:\\AI\\Parallx',
     });
     expect(withPath).toContain('katex.min.css');
-    expect(withPath).toContain('file://');
+    expect(withPath).toContain('file:///D:/AI/Parallx/');
+    expect(withPath).not.toContain('D%3A');
     expect(withPath).toContain('github.css');
   });
 
