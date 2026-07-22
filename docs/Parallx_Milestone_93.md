@@ -129,8 +129,13 @@ pattern). Tests: `tests/unit/flashcards.test.ts` (32).
 
 - `tsc --noEmit` clean; `node scripts/build.mjs` clean (renderer bundles,
   CSS imports, dynamic imports all resolve).
-- 82 new unit tests across the three features; full suite run at end of
-  session.
+- 94 new unit tests across the three features; full suite green (4405).
+- `tests/unit/flashcardsBehavior.test.ts` — headless BEHAVIORAL suite in the
+  M92 harness spirit: drives the REAL ext/flashcards/main.js (activate →
+  sidebar → deck browse → add card → study/grade with SM-2 persistence →
+  canvas-source AI generation → editable review → import → chat tools →
+  reminder cron sync) against a faithful bridge fake whose database runs the
+  real migration SQL on in-memory node:sqlite.
 - **Not yet verified in-app** (no visible probes policy): planner tab
   rendering, actual PDF output fidelity, extension activation. First manual
   pass should check: (1) Automations tab lists/creates jobs and the AI Hub
