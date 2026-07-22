@@ -733,181 +733,245 @@ function injectStyles() {
   const style = document.createElement('style');
   style.id = 'flashcards-styles';
   style.textContent = `
-.fc-sidebar { display: flex; flex-direction: column; height: 100%; font-size: 13px; }
-.fc-sidebar__actions { display: flex; gap: 6px; padding: 8px; flex-wrap: wrap; }
-.fc-sidebar__list { flex: 1; overflow-y: auto; padding: 0 4px 8px; }
+/* Flashcards — native --px semantic tokens (M83). Slate surfaces in tiers,
+   signal hues for card stages (info=new, warning=learning, success=review),
+   press physics on controls, and a physical study card: the one surface in
+   the app that should genuinely feel like paper in hand. */
+
+/* ── Sidebar — workbench list idiom: 26px rows, quiet pills ── */
+.fc-sidebar { display: flex; flex-direction: column; height: 100%; font-size: var(--px-text-base); }
+.fc-sidebar__actions { display: flex; gap: var(--px-space-1); padding: var(--px-space-2) var(--px-sidebar-inset); flex-wrap: wrap; }
+.fc-sidebar__list { flex: 1; overflow-y: auto; padding: 0 var(--px-space-1) var(--px-space-2); }
 .fc-deck-row {
-  display: flex; align-items: center; gap: 8px; width: 100%;
-  height: 28px; padding: 0 8px; border: 0; border-radius: 4px;
-  background: transparent; color: var(--vscode-foreground, #ccc);
-  font: inherit; font-size: 12.5px; cursor: pointer; text-align: left;
-  transition: background var(--px-dur-fast) var(--px-ease);
+  display: flex; align-items: center; gap: var(--px-space-2); width: 100%;
+  height: 26px; padding: 0 var(--px-space-2); border: 0; border-radius: var(--px-radius-sm);
+  background: transparent; color: var(--px-text-secondary);
+  font: inherit; font-size: var(--px-text-base); cursor: pointer; text-align: left;
+  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
-.fc-deck-row:hover { background: color-mix(in srgb, var(--vscode-foreground, #ccc) 10%, transparent); }
+.fc-deck-row:hover { background: var(--px-surface-hover); color: var(--px-text); }
+.fc-deck-row:active { background: var(--px-surface-active); }
 .fc-deck-row__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fc-deck-row__due {
   flex: 0 0 auto; min-width: 18px; text-align: center;
-  font-size: 10.5px; font-weight: 600; border-radius: 8px; padding: 1px 6px;
-  background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 75%, transparent);
-  color: var(--vscode-button-foreground, #fff);
+  font-size: var(--px-text-xs); font-weight: 600; font-variant-numeric: tabular-nums;
+  border-radius: var(--px-radius-full); padding: 1px 7px;
+  background: var(--px-accent-soft); color: var(--px-accent);
 }
 .fc-deck-row__new {
-  flex: 0 0 auto; font-size: 10.5px; font-weight: 600; border-radius: 8px; padding: 1px 6px;
-  background: color-mix(in srgb, var(--vscode-foreground, #ccc) 16%, transparent);
-  color: color-mix(in srgb, var(--vscode-foreground, #ccc) 80%, transparent);
+  flex: 0 0 auto; font-size: var(--px-text-xs); font-weight: 600; font-variant-numeric: tabular-nums;
+  border-radius: var(--px-radius-full); padding: 1px 7px;
+  background: var(--px-bg-inset); color: var(--px-text-muted);
 }
-.fc-sidebar__empty { padding: 16px 12px; font-size: 12px; color: color-mix(in srgb, var(--vscode-foreground, #ccc) 55%, transparent); }
+.fc-sidebar__empty { padding: var(--px-space-4) var(--px-sidebar-inset); font-size: var(--px-text-sm); line-height: var(--px-leading-base); color: var(--px-text-muted); }
 
+/* ── Buttons — ghost default, accent primary, press physics ── */
 .fc-btn {
   display: inline-flex; align-items: center; gap: 6px;
-  height: 26px; padding: 0 11px;
-  border: 1px solid color-mix(in srgb, var(--vscode-foreground, #ccc) 18%, transparent);
-  border-radius: 5px; background: transparent;
-  color: color-mix(in srgb, var(--vscode-foreground, #ccc) 82%, transparent);
-  font: inherit; font-size: 12px; font-weight: 500; cursor: pointer;
-  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
+  height: 26px; padding: 0 var(--px-space-3);
+  border: 1px solid var(--px-border); border-radius: var(--px-radius-md);
+  background: transparent; color: var(--px-text-secondary);
+  font: inherit; font-size: var(--px-text-sm); font-weight: 500; cursor: pointer;
+  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease), transform var(--px-dur-instant) var(--px-ease);
 }
-.fc-btn:hover { background: color-mix(in srgb, var(--vscode-foreground, #ccc) 10%, transparent); color: var(--vscode-foreground, #eee); }
-.fc-btn:disabled { opacity: 0.5; cursor: default; }
-.fc-btn--primary { background: var(--vscode-button-background, #0e639c); border-color: transparent; color: var(--vscode-button-foreground, #fff); }
-.fc-btn--primary:hover { background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 88%, white); color: var(--vscode-button-foreground, #fff); }
-.fc-btn--danger:hover { background: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 16%, transparent); color: var(--vscode-errorForeground, #f48771); border-color: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 40%, transparent); }
+.fc-btn:hover { background: var(--px-surface-hover); color: var(--px-text); }
+.fc-btn:active { transform: var(--px-press); }
+.fc-btn:disabled { opacity: 0.5; cursor: default; transform: none; }
+.fc-btn:focus-visible { outline: none; box-shadow: var(--px-ring-accent); }
+.fc-btn--primary { background: var(--px-accent); border-color: transparent; color: var(--px-text-on-accent); font-weight: 600; }
+.fc-btn--primary:hover { background: var(--px-accent-hover); color: var(--px-text-on-accent); }
+.fc-btn--danger:hover { background: var(--px-danger-soft); color: var(--px-danger); border-color: transparent; }
 
+/* ── Pane shell ── */
 .fc-pane { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
 .fc-pane__header {
-  display: flex; align-items: center; gap: 10px;
-  padding: 10px 18px; flex: 0 0 auto;
-  border-bottom: 1px solid color-mix(in srgb, var(--vscode-foreground, #ccc) 10%, transparent);
+  display: flex; align-items: center; gap: var(--px-space-2);
+  padding: var(--px-space-2) var(--px-space-4); flex: 0 0 auto;
+  border-bottom: 1px solid var(--px-divider);
 }
 .fc-pane__tabs { display: flex; gap: 2px; }
 .fc-pane__tab {
-  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px;
-  border: 0; border-radius: 5px; background: transparent;
-  color: color-mix(in srgb, var(--vscode-foreground, #ccc) 60%, transparent);
-  font: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 var(--px-space-3);
+  border: 0; border-radius: var(--px-radius-md); background: transparent;
+  color: var(--px-text-muted);
+  font: inherit; font-size: var(--px-text-base); font-weight: 500; cursor: pointer;
   transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
-.fc-pane__tab:hover { color: var(--vscode-foreground, #eee); }
-.fc-pane__tab--active { background: color-mix(in srgb, var(--vscode-foreground, #ccc) 12%, transparent); color: var(--vscode-foreground, #eee); }
+.fc-pane__tab:hover { color: var(--px-text); background: var(--px-surface-hover); }
+.fc-pane__tab--active { background: var(--px-surface-active); color: var(--px-text); }
 .fc-pane__spacer { flex: 1; }
 .fc-pane__body { flex: 1; overflow-y: auto; }
 
-.fc-view { max-width: 860px; margin: 0 auto; padding: 20px 24px 48px; }
-.fc-view__intro { font-size: 12.5px; line-height: 1.55; color: color-mix(in srgb, var(--vscode-foreground, #ccc) 60%, transparent); margin-bottom: 14px; }
-.fc-empty { padding: 40px 16px; text-align: center; font-size: 13px; color: color-mix(in srgb, var(--vscode-foreground, #ccc) 55%, transparent); }
+.fc-view { max-width: 760px; margin: 0 auto; padding: var(--px-space-5) var(--px-space-6) var(--px-space-8); }
+.fc-empty { padding: var(--px-space-8) var(--px-space-4); text-align: center; font-size: var(--px-text-base); color: var(--px-text-muted); }
 
+/* ── Deck cards ── */
 .fc-deck-card {
-  display: flex; align-items: center; gap: 12px;
-  border: 1px solid color-mix(in srgb, var(--vscode-foreground, #ccc) 12%, transparent);
-  border-radius: 8px; padding: 12px 16px; margin-bottom: 10px;
+  display: flex; align-items: center; gap: var(--px-space-3);
+  background: var(--px-bg-elevated);
+  border: 1px solid var(--px-border); border-radius: var(--px-radius-lg);
+  box-shadow: var(--px-edge-light);
+  padding: var(--px-space-3) var(--px-space-4); margin-bottom: var(--px-space-2);
   transition: border-color var(--px-dur-fast) var(--px-ease);
 }
-.fc-deck-card:hover { border-color: color-mix(in srgb, var(--vscode-foreground, #ccc) 24%, transparent); }
+.fc-deck-card:hover { border-color: var(--px-border-strong); }
 .fc-deck-card__info { flex: 1; min-width: 0; cursor: pointer; }
-.fc-deck-card__name { font-size: 13.5px; font-weight: 600; color: var(--vscode-foreground, #eee); }
-.fc-deck-card__meta { font-size: 11.5px; color: color-mix(in srgb, var(--vscode-foreground, #ccc) 52%, transparent); margin-top: 2px; }
-.fc-deck-card__actions { display: flex; gap: 6px; flex: 0 0 auto; }
+.fc-deck-card__name { font-size: var(--px-text-base); font-weight: 600; letter-spacing: -0.01em; color: var(--px-text); }
+.fc-deck-card__meta { font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; margin-top: 2px; }
+.fc-deck-card__actions { display: flex; gap: var(--px-space-1); flex: 0 0 auto; }
+.fc-view__title { font-size: var(--px-text-md); font-weight: 600; letter-spacing: -0.01em; color: var(--px-text); }
 
-.fc-form { display: flex; flex-direction: column; gap: 6px; }
-.fc-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: color-mix(in srgb, var(--vscode-foreground, #ccc) 48%, transparent); margin-top: 10px; }
+/* ── Forms ── */
+.fc-form { display: flex; flex-direction: column; gap: var(--px-space-1); }
+.fc-label {
+  font-size: var(--px-text-xs); font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--px-text-faint); margin-top: var(--px-space-3);
+}
 .fc-input, .fc-textarea {
-  width: 100%; box-sizing: border-box; padding: 8px 10px;
-  border: 1px solid color-mix(in srgb, var(--vscode-foreground, #ccc) 16%, transparent);
-  border-radius: 5px;
-  background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 82%, white);
-  color: var(--vscode-foreground, #ddd); font: inherit; font-size: 12.5px;
+  width: 100%; box-sizing: border-box; padding: 6px 10px;
+  border: 1px solid var(--px-border); border-radius: var(--px-radius-md);
+  background: var(--px-bg-inset); color: var(--px-text);
+  font: inherit; font-size: var(--px-text-base);
+  transition: border-color var(--px-dur-fast) var(--px-ease), box-shadow var(--px-dur-fast) var(--px-ease);
 }
-.fc-textarea { resize: vertical; min-height: 64px; line-height: 1.5; }
-.fc-input:focus, .fc-textarea:focus { outline: none; border-color: var(--vscode-focusBorder, #5b9bd5); }
-.fc-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.fc-error { font-size: 12px; color: var(--vscode-errorForeground, #f48771); padding: 4px 0; }
-.fc-hint { font-size: 11.5px; color: color-mix(in srgb, var(--vscode-foreground, #ccc) 45%, transparent); }
+.fc-textarea { resize: vertical; min-height: 64px; line-height: var(--px-leading-base); }
+.fc-input:focus, .fc-textarea:focus { outline: none; border-color: var(--px-accent); box-shadow: 0 0 0 3px var(--px-accent-faint); }
+.fc-input::placeholder, .fc-textarea::placeholder { color: var(--px-text-faint); }
+.fc-row { display: flex; gap: var(--px-space-2); align-items: center; flex-wrap: wrap; }
+.fc-error { font-size: var(--px-text-sm); color: var(--px-danger); padding: var(--px-space-1) 0; }
+.fc-hint { font-size: var(--px-text-sm); color: var(--px-text-muted); }
 
+/* ── Browse rows + stage chips (signal hues) ── */
 .fc-cardrow {
-  border: 1px solid color-mix(in srgb, var(--vscode-foreground, #ccc) 10%, transparent);
-  border-radius: 6px; padding: 10px 12px; margin-bottom: 8px;
+  background: var(--px-bg-elevated);
+  border: 1px solid var(--px-border); border-radius: var(--px-radius-md);
+  padding: var(--px-space-2) var(--px-space-3); margin-bottom: var(--px-space-2);
+  transition: border-color var(--px-dur-fast) var(--px-ease);
 }
+.fc-cardrow:hover { border-color: var(--px-border-strong); }
 .fc-cardrow--suspended { opacity: 0.55; }
-.fc-cardrow__front { font-size: 13px; font-weight: 600; color: var(--vscode-foreground, #eee); }
-.fc-cardrow__back { font-size: 12.5px; margin-top: 4px; color: color-mix(in srgb, var(--vscode-foreground, #ccc) 78%, transparent); white-space: pre-wrap; }
-.fc-cardrow__meta { display: flex; gap: 12px; margin-top: 6px; font-size: 10.5px; color: color-mix(in srgb, var(--vscode-foreground, #ccc) 45%, transparent); }
-.fc-cardrow__actions { display: flex; gap: 6px; margin-top: 8px; }
+.fc-cardrow__front { font-size: var(--px-text-base); font-weight: 600; color: var(--px-text); }
+.fc-cardrow__back { font-size: var(--px-text-sm); margin-top: var(--px-space-1); color: var(--px-text-secondary); white-space: pre-wrap; line-height: var(--px-leading-base); }
+.fc-cardrow__meta { display: flex; flex-wrap: wrap; gap: var(--px-space-3); margin-top: var(--px-space-1); font-size: var(--px-text-xs); color: var(--px-text-faint); font-variant-numeric: tabular-nums; }
+.fc-cardrow__actions { display: flex; gap: var(--px-space-1); margin-top: var(--px-space-2); }
 .fc-state {
-  display: inline-block; font-size: 10px; font-weight: 600; text-transform: uppercase;
-  letter-spacing: 0.05em; border-radius: 3px; padding: 1px 6px;
+  display: inline-block; font-size: var(--px-text-xs); font-weight: 600;
+  border-radius: var(--px-radius-sm); padding: 0 6px;
 }
-.fc-state--new { background: color-mix(in srgb, #3f51b5 30%, transparent); color: #aab4f5; }
-.fc-state--learning, .fc-state--relearning { background: color-mix(in srgb, #f4511e 26%, transparent); color: #ffab91; }
-.fc-state--review { background: color-mix(in srgb, #0b8043 28%, transparent); color: #87d8a5; }
+.fc-state--new { background: rgba(var(--px-blue-rgb), 0.15); color: var(--px-info); }
+.fc-state--learning, .fc-state--relearning { background: var(--px-warning-soft); color: var(--px-warning); }
+.fc-state--review { background: rgba(var(--px-green-rgb), 0.15); color: var(--px-success); }
 
-/* Study */
+/* ── Study — a physical card ── */
 .fc-study { display: flex; height: 100%; }
-.fc-study__main { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; padding: 28px 32px; overflow-y: auto; }
-.fc-study__progress { width: 100%; max-width: 640px; height: 3px; border-radius: 2px; background: color-mix(in srgb, var(--vscode-foreground, #ccc) 12%, transparent); margin-bottom: 24px; overflow: hidden; }
-.fc-study__progress-fill { height: 100%; background: var(--vscode-button-background, #0e639c); transition: width var(--px-dur-base) var(--px-ease); }
+.fc-study__main { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; padding: var(--px-space-6) var(--px-space-8); overflow-y: auto; outline: none; }
+.fc-study__progress { width: 100%; max-width: 620px; height: 3px; border-radius: var(--px-radius-full); background: var(--px-bg-inset); margin-bottom: var(--px-space-6); overflow: hidden; }
+.fc-study__progress-fill { height: 100%; border-radius: var(--px-radius-full); background: var(--px-accent); transition: width var(--px-dur-base) var(--px-ease); }
 .fc-study__card {
-  width: 100%; max-width: 640px;
-  border: 1px solid color-mix(in srgb, var(--vscode-foreground, #ccc) 14%, transparent);
-  border-radius: 10px; padding: 30px 34px;
-  background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 93%, white);
+  width: 100%; max-width: 620px;
+  background: var(--px-bg-elevated);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-xl);
+  box-shadow: var(--px-shadow-md), var(--px-edge-light);
+  padding: var(--px-space-6) var(--px-space-8);
+  animation: fc-card-in var(--px-dur-base) var(--px-ease-out);
 }
-.fc-study__deckline { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: color-mix(in srgb, var(--vscode-foreground, #ccc) 45%, transparent); margin-bottom: 14px; }
-.fc-study__front { font-size: 17px; font-weight: 600; line-height: 1.5; color: var(--vscode-foreground, #eee); white-space: pre-wrap; }
-.fc-study__divider { border: 0; border-top: 1px solid color-mix(in srgb, var(--vscode-foreground, #ccc) 12%, transparent); margin: 18px 0; }
-.fc-study__back { font-size: 14.5px; line-height: 1.6; color: color-mix(in srgb, var(--vscode-foreground, #ccc) 88%, transparent); white-space: pre-wrap; }
-.fc-study__source { margin-top: 14px; font-size: 11px; color: color-mix(in srgb, var(--vscode-foreground, #ccc) 42%, transparent); }
-.fc-study__controls { display: flex; gap: 8px; margin-top: 22px; justify-content: center; width: 100%; max-width: 640px; }
+@keyframes fc-card-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fc-study__deckline { display: flex; justify-content: space-between; align-items: center; font-size: var(--px-text-xs); color: var(--px-text-faint); font-variant-numeric: tabular-nums; margin-bottom: var(--px-space-3); }
+.fc-study__front { font-size: var(--px-text-lg); font-weight: 600; line-height: var(--px-leading-tight); letter-spacing: -0.01em; color: var(--px-text); white-space: pre-wrap; }
+.fc-study__divider { border: 0; border-top: 1px solid var(--px-divider); margin: var(--px-space-4) 0; }
+.fc-study__back { font-size: var(--px-text-md); line-height: var(--px-leading-base); color: var(--px-text-secondary); white-space: pre-wrap; animation: fc-reveal-in var(--px-dur-base) var(--px-ease-out); }
+@keyframes fc-reveal-in {
+  from { opacity: 0; transform: translateY(3px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fc-study__source { margin-top: var(--px-space-3); font-size: var(--px-text-xs); color: var(--px-text-faint); }
+.fc-study__controls { display: flex; gap: var(--px-space-2); margin-top: var(--px-space-5); justify-content: center; width: 100%; max-width: 620px; }
+
+/* Grade buttons — quiet wells with a signal dot; the colour arrives on hover. */
 .fc-grade {
   flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px;
-  padding: 9px 0; border-radius: 6px; border: 1px solid transparent;
-  font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
-  transition: filter var(--px-dur-fast) var(--px-ease), background var(--px-dur-fast) var(--px-ease);
+  padding: var(--px-space-2) 0;
+  border: 1px solid var(--px-border); border-radius: var(--px-radius-md);
+  background: var(--px-bg-inset); color: var(--px-text-secondary);
+  font: inherit; font-size: var(--px-text-sm); font-weight: 600; cursor: pointer;
+  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease), transform var(--px-dur-instant) var(--px-ease);
 }
-.fc-grade span { font-size: 10px; font-weight: 500; opacity: 0.8; }
-.fc-grade:hover { filter: brightness(1.15); }
-.fc-grade--again { background: color-mix(in srgb, #d50000 24%, transparent); color: #ff8a80; }
-.fc-grade--hard  { background: color-mix(in srgb, #f4511e 22%, transparent); color: #ffab91; }
-.fc-grade--good  { background: color-mix(in srgb, #0b8043 24%, transparent); color: #87d8a5; }
-.fc-grade--easy  { background: color-mix(in srgb, #039be5 22%, transparent); color: #81d4fa; }
-.fc-study__reveal { margin-top: 22px; }
-.fc-study__keys { margin-top: 14px; font-size: 10.5px; color: color-mix(in srgb, var(--vscode-foreground, #ccc) 38%, transparent); }
-.fc-study__done { text-align: center; padding: 60px 20px; }
-.fc-study__done-title { font-size: 18px; font-weight: 650; color: var(--vscode-foreground, #eee); margin-bottom: 8px; }
-.fc-study__done-sub { font-size: 13px; color: color-mix(in srgb, var(--vscode-foreground, #ccc) 60%, transparent); }
+.fc-grade:active { transform: var(--px-press); }
+.fc-grade__dot { width: 5px; height: 5px; border-radius: var(--px-radius-full); margin-bottom: 2px; }
+.fc-grade__ivl { font-size: var(--px-text-xs); font-weight: 500; color: var(--px-text-faint); font-variant-numeric: tabular-nums; }
+.fc-grade--again .fc-grade__dot { background: var(--px-danger); }
+.fc-grade--hard  .fc-grade__dot { background: var(--px-warning); }
+.fc-grade--good  .fc-grade__dot { background: var(--px-success); }
+.fc-grade--easy  .fc-grade__dot { background: var(--px-info); }
+.fc-grade--again:hover { background: var(--px-danger-soft); color: var(--px-danger); border-color: transparent; }
+.fc-grade--hard:hover  { background: var(--px-warning-soft); color: var(--px-warning); border-color: transparent; }
+.fc-grade--good:hover  { background: rgba(var(--px-green-rgb), 0.15); color: var(--px-success); border-color: transparent; }
+.fc-grade--easy:hover  { background: rgba(var(--px-blue-rgb), 0.15); color: var(--px-info); border-color: transparent; }
+.fc-study__reveal { margin-top: var(--px-space-5); height: 30px; padding: 0 var(--px-space-5); }
+.fc-study__discuss { margin-top: var(--px-space-3); }
+.fc-study__keys { margin-top: var(--px-space-3); font-size: var(--px-text-xs); color: var(--px-text-faint); }
+.fc-study__done { text-align: center; padding: var(--px-space-8) var(--px-space-5); }
+.fc-study__done .fc-btn { margin-top: var(--px-space-4); }
 
-/* Discuss panel */
+/* ── Discuss panel ── */
 .fc-discuss {
   flex: 0 0 320px; display: flex; flex-direction: column;
-  border-left: 1px solid color-mix(in srgb, var(--vscode-foreground, #ccc) 10%, transparent);
+  border-left: 1px solid var(--px-divider);
+  animation: fc-discuss-in var(--px-dur-base) var(--px-ease-out);
 }
-.fc-discuss__head { padding: 10px 14px; font-size: 12px; font-weight: 600; color: color-mix(in srgb, var(--vscode-foreground, #ccc) 70%, transparent); border-bottom: 1px solid color-mix(in srgb, var(--vscode-foreground, #ccc) 8%, transparent); }
-.fc-discuss__log { flex: 1; overflow-y: auto; padding: 10px 14px; display: flex; flex-direction: column; gap: 10px; }
-.fc-discuss__msg { font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
-.fc-discuss__msg--user { color: var(--vscode-foreground, #eee); font-weight: 600; }
-.fc-discuss__msg--ai { color: color-mix(in srgb, var(--vscode-foreground, #ccc) 82%, transparent); }
-.fc-discuss__input-row { display: flex; gap: 6px; padding: 10px 14px; border-top: 1px solid color-mix(in srgb, var(--vscode-foreground, #ccc) 8%, transparent); }
+@keyframes fc-discuss-in {
+  from { opacity: 0; transform: translateX(8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.fc-discuss__head {
+  padding: var(--px-space-2) var(--px-space-3);
+  font-size: var(--px-text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--px-text-faint);
+  border-bottom: 1px solid var(--px-divider);
+}
+.fc-discuss__log { flex: 1; overflow-y: auto; padding: var(--px-space-2) var(--px-space-3); display: flex; flex-direction: column; gap: var(--px-space-2); }
+.fc-discuss__msg { font-size: var(--px-text-sm); line-height: var(--px-leading-base); white-space: pre-wrap; overflow-wrap: anywhere; }
+.fc-discuss__msg--user { color: var(--px-text); font-weight: 600; }
+.fc-discuss__msg--ai { color: var(--px-text-secondary); }
+.fc-discuss__input-row { display: flex; gap: var(--px-space-1); padding: var(--px-space-2) var(--px-space-3); border-top: 1px solid var(--px-divider); }
 .fc-discuss__input { flex: 1; }
-.fc-discuss__empty { font-size: 11.5px; color: color-mix(in srgb, var(--vscode-foreground, #ccc) 42%, transparent); padding: 12px 14px; }
+.fc-discuss__empty { font-size: var(--px-text-xs); color: var(--px-text-faint); padding: var(--px-space-2) var(--px-space-3); line-height: var(--px-leading-base); }
 
-/* Stats */
-.fc-stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 22px; }
+/* ── Stats — inset wells, big tabular numerals ── */
+.fc-stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--px-space-2); margin-bottom: var(--px-space-4); }
 .fc-stat {
-  border: 1px solid color-mix(in srgb, var(--vscode-foreground, #ccc) 12%, transparent);
-  border-radius: 8px; padding: 14px 16px;
+  background: var(--px-bg-inset);
+  border: 1px solid var(--px-divider); border-radius: var(--px-radius-md);
+  padding: var(--px-space-3) var(--px-space-4);
 }
-.fc-stat__value { font-size: 22px; font-weight: 700; color: var(--vscode-foreground, #eee); font-variant-numeric: tabular-nums; }
-.fc-stat__label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: color-mix(in srgb, var(--vscode-foreground, #ccc) 46%, transparent); margin-top: 2px; }
-.fc-chart { display: flex; align-items: flex-end; gap: 3px; height: 90px; margin: 8px 0 4px; }
-.fc-chart__bar { flex: 1; min-width: 3px; border-radius: 2px 2px 0 0; background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 78%, transparent); }
-.fc-chart__bar--empty { background: color-mix(in srgb, var(--vscode-foreground, #ccc) 8%, transparent); height: 3px !important; }
-.fc-chart-caption { font-size: 10.5px; color: color-mix(in srgb, var(--vscode-foreground, #ccc) 40%, transparent); }
+.fc-stat__value { font-size: var(--px-text-xl); font-weight: 700; letter-spacing: -0.02em; color: var(--px-text); font-variant-numeric: tabular-nums; }
+.fc-stat__label { font-size: var(--px-text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--px-text-faint); margin-top: 2px; }
+.fc-chart { display: flex; align-items: flex-end; gap: 3px; height: 90px; margin: var(--px-space-2) 0 var(--px-space-1); }
+.fc-chart__bar { flex: 1; min-width: 3px; border-radius: 2px 2px 0 0; background: var(--px-accent-soft); transition: background var(--px-dur-fast) var(--px-ease); }
+.fc-chart__bar:hover { background: var(--px-accent); }
+.fc-chart__bar--empty { background: var(--px-bg-inset); height: 3px !important; }
+.fc-chart__bar--today { background: var(--px-accent); }
+.fc-chart-caption { font-size: var(--px-text-xs); color: var(--px-text-faint); font-variant-numeric: tabular-nums; }
 
-/* Generate review list */
-.fc-genrow { display: flex; gap: 8px; align-items: flex-start; border: 1px solid color-mix(in srgb, var(--vscode-foreground, #ccc) 10%, transparent); border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; }
-.fc-genrow__fields { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+/* ── AI-generation review rows ── */
+.fc-genrow {
+  display: flex; gap: var(--px-space-2); align-items: flex-start;
+  background: var(--px-bg-inset);
+  border: 1px solid var(--px-divider); border-radius: var(--px-radius-md);
+  padding: var(--px-space-2) var(--px-space-3); margin-bottom: var(--px-space-2);
+  transition: opacity var(--px-dur-base) var(--px-ease);
+}
+.fc-genrow__fields { flex: 1; display: flex; flex-direction: column; gap: var(--px-space-1); }
 .fc-genrow--dropped { opacity: 0.4; }
-.fc-widget-due { font-size: 13px; line-height: 1.6; padding: 4px 2px; }
-.fc-widget-due__big { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* ── Dashboard widget ── */
+.fc-widget-due { font-size: var(--px-text-base); line-height: var(--px-leading-base); padding: var(--px-space-1) 2px; color: var(--px-text-secondary); }
+.fc-widget-due__big { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; color: var(--px-text); font-variant-numeric: tabular-nums; }
+.fc-widget-due .fc-btn { margin-top: var(--px-space-2); }
 `;
   document.head.appendChild(style);
 }
@@ -950,7 +1014,7 @@ function createSidebarView(container) {
     list.innerHTML = '';
     if (decks.length === 0) {
       const empty = el('div', 'fc-sidebar__empty');
-      empty.textContent = 'No decks yet. Create one, or generate cards from a canvas page or PDF.';
+      empty.textContent = 'Your decks live here — click Deck to create one, or Generate to turn a page or PDF into cards.';
       list.appendChild(empty);
       return;
     }
@@ -1092,12 +1156,6 @@ function createEditorPane(container, input) {
 
 async function renderDecks(body, setRoute) {
   const view = el('div', 'fc-view');
-  const intro = el('div', 'fc-view__intro');
-  intro.textContent =
-    'Spaced-repetition flashcards. Create cards by hand or generate them with AI '
-    + 'from canvas pages, PDFs, and photos — then study daily; the scheduler '
-    + 'resurfaces each card right before you would forget it.';
-  view.appendChild(intro);
 
   const actions = el('div', 'fc-row');
   const newDeckBtn = el('button', 'fc-btn fc-btn--primary');
@@ -1113,7 +1171,12 @@ async function renderDecks(body, setRoute) {
 
   const decks = await fcListDecks();
   if (decks.length === 0) {
-    view.appendChild(el('div', 'fc-empty', 'No decks yet — create one to get started.'));
+    // Same hero shape as the workbench voice registry (.px-empty is global).
+    const empty = el('div', 'px-empty');
+    empty.appendChild(el('div', 'px-empty__headline', 'Build your first deck'));
+    empty.appendChild(el('div', 'px-empty__hint',
+      'Click New deck, or Generate to turn a canvas page, PDF, or photo into cards.'));
+    view.appendChild(empty);
   }
   for (const deck of decks) {
     const card = el('div', 'fc-deck-card');
@@ -1169,8 +1232,7 @@ async function renderBrowse(body, route, setRoute) {
   backBtn.innerHTML = `${icon('arrow-left', 12)}<span>Decks</span>`;
   backBtn.addEventListener('click', () => setRoute({ view: 'decks' }));
   head.appendChild(backBtn);
-  const title = el('div', 'fc-deck-card__name', deckRow.name);
-  title.style.fontSize = '15px';
+  const title = el('div', 'fc-view__title', deckRow.name);
   head.appendChild(title);
   const spacer = el('div'); spacer.style.flex = '1';
   head.appendChild(spacer);
@@ -1323,14 +1385,13 @@ async function renderStudy(body, route, paneState, setRoute) {
   body.appendChild(study);
 
   if (queue.length === 0) {
-    const done = el('div', 'fc-study__done');
-    done.appendChild(el('div', 'fc-study__done-title', 'All caught up'));
-    done.appendChild(el('div', 'fc-study__done-sub',
+    const done = el('div', 'fc-study__done px-empty');
+    done.appendChild(el('div', 'px-empty__headline', cards.length === 0 ? 'Ready when you are' : 'All caught up'));
+    done.appendChild(el('div', 'px-empty__hint',
       cards.length === 0
-        ? 'No cards yet — generate some from a canvas page or PDF.'
-        : 'Nothing due right now. Come back later, or add new cards.'));
+        ? 'Create cards in a deck, or click Create to generate them from a canvas page or PDF.'
+        : 'The scheduler will bring cards back right before you would forget them — check back later.'));
     const back = el('button', 'fc-btn');
-    back.style.marginTop = '18px';
     back.textContent = 'Back to decks';
     back.addEventListener('click', () => setRoute({ view: 'decks' }));
     done.appendChild(back);
@@ -1424,11 +1485,11 @@ async function renderStudy(body, route, paneState, setRoute) {
     session.cardShownAt = Date.now();
 
     if (session.index >= session.queue.length) {
-      const done = el('div', 'fc-study__done');
-      done.appendChild(el('div', 'fc-study__done-title', 'Session complete'));
-      done.appendChild(el('div', 'fc-study__done-sub', `${session.doneCount} cards reviewed. Nice work.`));
+      const done = el('div', 'fc-study__done px-empty');
+      done.appendChild(el('div', 'px-empty__headline', 'Session complete'));
+      done.appendChild(el('div', 'px-empty__hint',
+        `${session.doneCount} ${session.doneCount === 1 ? 'card' : 'cards'} reviewed — check Stats to watch retention climb.`));
       const statsBtn = el('button', 'fc-btn');
-      statsBtn.style.marginTop = '18px';
       statsBtn.textContent = 'View stats';
       statsBtn.addEventListener('click', () => setRoute({ view: 'stats' }));
       done.appendChild(statsBtn);
@@ -1474,12 +1535,13 @@ async function renderStudy(body, route, paneState, setRoute) {
       ];
       for (const g of grades) {
         const btn = el('button', `fc-grade fc-grade--${g.cls}`);
-        btn.innerHTML = `${g.label}<span>${fcIntervalPreview(card, g.r, now)}</span>`;
+        btn.appendChild(el('span', 'fc-grade__dot'));
+        btn.appendChild(el('span', 'fc-grade__label', g.label));
+        btn.appendChild(el('span', 'fc-grade__ivl', fcIntervalPreview(card, g.r, now)));
         btn.addEventListener('click', () => grade(g.r));
         controls.appendChild(btn);
       }
-      const discussBtn = el('button', 'fc-btn');
-      discussBtn.style.marginTop = '14px';
+      const discussBtn = el('button', 'fc-btn fc-study__discuss');
       discussBtn.innerHTML = `${icon('message-circle', 12)}<span>Discuss with AI</span>`;
       discussBtn.addEventListener('click', () => openDiscuss(card));
       main.appendChild(discussBtn);
@@ -1533,9 +1595,8 @@ async function renderStudy(body, route, paneState, setRoute) {
 
 async function renderCreate(body, route, setRoute, viewDisposables = []) {
   const view = el('div', 'fc-view');
-  view.appendChild(el('div', 'fc-view__intro',
-    'Generate cards with AI from a canvas page, a PDF/document, a photo (OCR), '
-    + 'or pasted text — then review every card before anything is saved.'));
+  view.appendChild(el('div', 'fc-hint',
+    'Pick a source, let the AI draft the cards, then edit or drop each one before importing.'));
 
   const decks = await fcListDecks();
 
@@ -1560,7 +1621,7 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
   view.appendChild(el('div', 'fc-label', 'Source material'));
   const srcRow = el('div', 'fc-row');
   const sourceState = { text: '', label: '', uri: '' };
-  const srcStatus = el('div', 'fc-hint', 'No source loaded — pick one, or paste text below.');
+  const srcStatus = el('div', 'fc-hint fc-src-status', 'No source loaded — pick one, or paste text below.');
 
   const srcBtn = (label, iconName, loader) => {
     const b = el('button', 'fc-btn');
@@ -1770,13 +1831,16 @@ async function renderStats(body) {
   view.appendChild(el('div', 'fc-label', 'Reviews — last 30 days'));
   const chart = el('div', 'fc-chart');
   const max = Math.max(1, ...stats.last30.map((d) => d.count));
-  for (const day of stats.last30) {
+  stats.last30.forEach((day, i) => {
     const bar = el('div', 'fc-chart__bar');
     if (day.count === 0) bar.classList.add('fc-chart__bar--empty');
-    else bar.style.height = `${Math.max(6, Math.round((day.count / max) * 100))}%`;
+    else {
+      bar.style.height = `${Math.max(6, Math.round((day.count / max) * 100))}%`;
+      if (i === stats.last30.length - 1) bar.classList.add('fc-chart__bar--today');
+    }
     bar.title = `${new Date(day.day).toLocaleDateString()}: ${day.count} reviews`;
     chart.appendChild(bar);
-  }
+  });
   view.appendChild(chart);
   view.appendChild(el('div', 'fc-chart-caption', `Peak day: ${max} reviews`));
 
@@ -1815,7 +1879,6 @@ function registerDashboardWidget(context) {
           root.appendChild(big);
           root.appendChild(el('div', '', `cards due · ${s.fresh || 0} new waiting`));
           const btn = el('button', 'fc-btn fc-btn--primary');
-          btn.style.marginTop = '8px';
           btn.textContent = 'Study now';
           btn.addEventListener('click', () => void openFlashcards({ view: 'study' }));
           root.appendChild(btn);

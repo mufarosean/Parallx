@@ -385,7 +385,7 @@ describe('AI generation flow', () => {
     const canvasBtn = [...pane.querySelectorAll('button')].find((b) => b.textContent?.includes('Canvas page')) as HTMLButtonElement;
     canvasBtn.click();
     await settle();
-    expect(pane.querySelector('.fc-hint')!.textContent).toContain('Canvas: Exam 7 Notes');
+    expect(pane.querySelector('.fc-src-status')!.textContent).toContain('Canvas: Exam 7 Notes');
 
     // Generate — the lm fake returns two fenced JSON cards.
     const genBtn = [...pane.querySelectorAll('button')].find((b) => b.textContent?.includes('Generate cards')) as HTMLButtonElement;

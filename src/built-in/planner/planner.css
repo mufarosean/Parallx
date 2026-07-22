@@ -1780,81 +1780,87 @@
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Automations tab (M93) — app-run scheduled jobs the AI executes.
-   Cards + inline create/edit form; mirrors the popover input idioms above.
+   Native --px semantic tokens (M83): elevated cards with a presence dot,
+   the prompt set as a quotation, one tabular meta line, ghost actions with
+   press physics. No bridged --vscode-* here.
    ═══════════════════════════════════════════════════════════════════════════ */
 
 .planner-auto {
-  max-width: 720px;
+  max-width: 680px;
   margin: 0 auto;
-  padding: 20px 24px 48px;
+  padding: var(--px-space-5) var(--px-space-6) var(--px-space-8);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--px-space-3);
 }
 
-.planner-auto__intro {
-  font-size: 12.5px;
-  line-height: 1.55;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 62%, transparent);
-  padding-bottom: 4px;
-  border-bottom: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
-}
-
-.planner-auto__empty {
-  padding: 28px 16px;
+.planner-auto__pending {
+  padding: var(--px-space-8) var(--px-space-4);
   text-align: center;
-  font-size: 13px;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.planner-auto__empty-hint {
-  font-size: 12px;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 42%, transparent);
+  font-size: var(--px-text-base);
+  color: var(--px-text-muted);
 }
 
 /* ── Cards ── */
 
 .planner-auto__card {
-  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 12%, transparent);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 94%, white);
-  padding: 12px 14px;
+  background: var(--px-bg-elevated);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-lg);
+  box-shadow: var(--px-edge-light);
+  padding: var(--px-space-3) var(--px-space-4);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--px-space-2);
   transition: border-color var(--px-dur-fast) var(--px-ease), opacity var(--px-dur-base) var(--px-ease);
 }
-.planner-auto__card--paused { opacity: 0.62; }
+.planner-auto__card:hover { border-color: var(--px-border-strong); }
+.planner-auto__card--paused { opacity: 0.6; }
 
 .planner-auto__card-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  gap: var(--px-space-2);
 }
+
+/* Presence dot — scheduled (accent halo) / paused (faint) / failed (danger). */
+.planner-auto__dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--px-radius-full);
+}
+.planner-auto__dot--on {
+  background: var(--px-accent);
+  box-shadow: 0 0 0 3px var(--px-accent-faint);
+}
+.planner-auto__dot--paused { background: var(--px-text-faint); }
+.planner-auto__dot--failed {
+  background: var(--px-danger);
+  box-shadow: 0 0 0 3px var(--px-danger-soft);
+}
+
 .planner-auto__card-name {
-  font-size: 13.5px;
+  flex: 1;
+  min-width: 0;
+  font-size: var(--px-text-base);
   font-weight: 600;
   letter-spacing: -0.01em;
-  color: var(--vscode-editor-foreground, #e8e8e8);
+  color: var(--px-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.planner-auto__toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 65%, transparent);
-  cursor: pointer;
-  user-select: none;
-}
-.planner-auto__toggle input { accent-color: var(--vscode-button-background, #0e639c); cursor: pointer; }
 
+/* The prompt IS the automation — set it like a quotation. */
 .planner-auto__card-prompt {
-  font-size: 12.5px;
-  line-height: 1.5;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 78%, transparent);
+  font-size: var(--px-text-sm);
+  line-height: var(--px-leading-base);
+  color: var(--px-text-secondary);
+  background: var(--px-bg-inset);
+  border-left: 2px solid color-mix(in srgb, var(--px-accent) 45%, transparent);
+  border-radius: var(--px-radius-sm);
+  padding: var(--px-space-2) var(--px-space-3);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   display: -webkit-box;
@@ -1864,153 +1870,153 @@
 }
 
 .planner-auto__card-meta {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-  gap: 8px 14px;
-  padding-top: 2px;
-}
-.planner-auto__meta-label {
-  font-size: 10.5px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 42%, transparent);
-}
-.planner-auto__meta-value {
-  font-size: 12px;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 80%, transparent);
+  font-size: var(--px-text-xs);
+  color: var(--px-text-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .planner-auto__card-error {
-  font-size: 12px;
-  color: var(--vscode-errorForeground, #f48771);
-  background: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 8%, transparent);
-  border-radius: 5px;
-  padding: 6px 9px;
+  font-size: var(--px-text-xs);
+  color: var(--px-danger);
+  background: var(--px-danger-soft);
+  border-radius: var(--px-radius-sm);
+  padding: var(--px-space-1) var(--px-space-2);
 }
 
 .planner-auto__card-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding-top: 2px;
+  gap: var(--px-space-1);
 }
 
+/* ── Buttons — quiet ghosts; one accent primary; press physics ── */
+
 .planner-auto__btn {
-  height: 26px;
-  padding: 0 12px;
-  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 16%, transparent);
-  border-radius: 5px;
+  height: 24px;
+  padding: 0 var(--px-space-2);
+  border: 0;
+  border-radius: var(--px-radius-sm);
   background: transparent;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 80%, transparent);
+  color: var(--px-text-muted);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--px-text-sm);
   font-weight: 500;
   cursor: pointer;
-  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease);
+  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease), transform var(--px-dur-instant) var(--px-ease);
 }
-.planner-auto__btn:hover {
-  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 10%, transparent);
-  color: var(--vscode-editor-foreground, #e8e8e8);
-}
-.planner-auto__btn:disabled { opacity: 0.5; cursor: default; }
+.planner-auto__btn:hover { background: var(--px-surface-hover); color: var(--px-text); }
+.planner-auto__btn:active { transform: var(--px-press); }
+.planner-auto__btn:disabled { opacity: 0.5; cursor: default; transform: none; }
+.planner-auto__btn:focus-visible { outline: none; box-shadow: var(--px-ring-accent); }
 .planner-auto__btn--primary {
-  background: var(--vscode-button-background, #0e639c);
-  border-color: transparent;
-  color: var(--vscode-button-foreground, #fff);
+  height: 28px;
+  padding: 0 var(--px-space-4);
+  background: var(--px-accent);
+  color: var(--px-text-on-accent);
+  font-weight: 600;
 }
-.planner-auto__btn--primary:hover {
-  background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 88%, white);
-  color: var(--vscode-button-foreground, #fff);
-}
-.planner-auto__btn--danger:hover {
-  background: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 16%, transparent);
-  border-color: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 45%, transparent);
-  color: var(--vscode-errorForeground, #f48771);
-}
+.planner-auto__btn--primary:hover { background: var(--px-accent-hover); color: var(--px-text-on-accent); }
+.planner-auto__btn--danger:hover { background: var(--px-danger-soft); color: var(--px-danger); }
 
 /* ── Other scheduled jobs (AI / extension owned) ── */
 
-.planner-auto__others { margin-top: 8px; }
+.planner-auto__others { margin-top: var(--px-space-1); }
 .planner-auto__others-summary {
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--px-text-sm);
   font-weight: 500;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent);
-  padding: 6px 0;
+  color: var(--px-text-muted);
+  padding: var(--px-space-1) 0;
   user-select: none;
+  transition: color var(--px-dur-fast) var(--px-ease);
 }
-.planner-auto__others-summary:hover { color: var(--vscode-editor-foreground, #d4d4d4); }
-.planner-auto__others .planner-auto__card { margin-top: 8px; }
+.planner-auto__others-summary:hover { color: var(--px-text); }
+.planner-auto__others .planner-auto__card { margin-top: var(--px-space-2); }
+
+.planner-auto__footnote {
+  margin-top: var(--px-space-2);
+  text-align: center;
+  font-size: var(--px-text-xs);
+  color: var(--px-text-faint);
+}
 
 /* ── Create / edit form ── */
 
 .planner-auto__form {
-  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 14%, transparent);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 90%, white);
-  padding: 16px;
+  background: var(--px-bg-elevated);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-lg);
+  box-shadow: var(--px-edge-light);
+  padding: var(--px-space-4);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--px-space-1);
+  animation: planner-auto-form-in var(--px-dur-base) var(--px-ease-out);
+}
+@keyframes planner-auto-form-in {
+  from { transform: translateY(-4px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
 }
 .planner-auto__form-title {
-  margin: 0 0 4px;
-  font-size: 13.5px;
+  margin: 0 0 var(--px-space-1);
+  font-size: var(--px-text-md);
   font-weight: 600;
   letter-spacing: -0.01em;
+  color: var(--px-text);
 }
 .planner-auto__label {
-  font-size: 11px;
+  font-size: var(--px-text-xs);
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 48%, transparent);
-  margin-top: 8px;
+  letter-spacing: 0.06em;
+  color: var(--px-text-faint);
+  margin-top: var(--px-space-2);
 }
 .planner-auto__input,
 .planner-auto__textarea {
   width: 100%;
   box-sizing: border-box;
-  padding: 8px 10px;
-  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 16%, transparent);
-  border-radius: 5px;
-  background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 82%, white);
-  color: var(--vscode-editor-foreground, #d4d4d4);
+  padding: 6px 10px;
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-md);
+  background: var(--px-bg-inset);
+  color: var(--px-text);
   font: inherit;
-  font-size: 12.5px;
-  transition: border-color var(--px-dur-fast) var(--px-ease), background var(--px-dur-fast) var(--px-ease);
+  font-size: var(--px-text-base);
+  transition: border-color var(--px-dur-fast) var(--px-ease), box-shadow var(--px-dur-fast) var(--px-ease);
 }
-.planner-auto__textarea { resize: vertical; min-height: 72px; line-height: 1.5; }
+.planner-auto__textarea { resize: vertical; min-height: 72px; line-height: var(--px-leading-base); }
 .planner-auto__input:focus,
 .planner-auto__textarea:focus {
   outline: none;
-  border-color: var(--vscode-focusBorder, #5b9bd5);
-  background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 90%, white);
+  border-color: var(--px-accent);
+  box-shadow: 0 0 0 3px var(--px-accent-faint);
 }
+.planner-auto__input::placeholder,
+.planner-auto__textarea::placeholder { color: var(--px-text-faint); }
 
 .planner-auto__sched {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--px-space-2);
   flex-wrap: wrap;
 }
 .planner-auto__sched .planner-auto__input { width: auto; }
-.planner-auto__input--time { flex: 0 0 100px; }
+.planner-auto__input--time { flex: 0 0 104px; }
 .planner-auto__input--interval { flex: 0 0 120px; }
 .planner-auto__input--once { flex: 0 0 200px; }
 .planner-auto__input--cron { flex: 1 1 160px; min-width: 120px; }
-.planner-auto__dropdown { min-width: 140px; }
+.planner-auto__dropdown { min-width: 148px; }
 
 .planner-auto__error {
-  font-size: 12px;
-  color: var(--vscode-errorForeground, #f48771);
-  padding: 4px 0;
+  font-size: var(--px-text-sm);
+  color: var(--px-danger);
+  padding: var(--px-space-1) 0;
 }
 
 .planner-auto__form-foot {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-top: 12px;
+  gap: var(--px-space-2);
+  margin-top: var(--px-space-3);
 }

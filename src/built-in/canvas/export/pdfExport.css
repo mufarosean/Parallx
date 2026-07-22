@@ -1,14 +1,20 @@
-/* pdfExport.css — canvas "Export as PDF" dialog (M93). */
+/* pdfExport.css — canvas "Export as PDF" dialog (M93).
+ *
+ * Native --px semantic tokens (M83). The dialog is a true floating surface:
+ * elevated background, hairline border, --px-shadow-lg with the top sheen.
+ * The preview column sits on --px-window — the recessed tone the workbench
+ * uses behind floating panels — so the white pages read as paper on a desk.
+ */
 
 .canvas-pdf-overlay {
   position: fixed;
   inset: 0;
   z-index: 1200;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.55);
   display: flex;
   align-items: center;
   justify-content: center;
-  animation: canvas-pdf-fade-in var(--px-dur-base) var(--px-ease);
+  animation: canvas-pdf-fade-in var(--px-dur-base) var(--px-ease-out);
 }
 @keyframes canvas-pdf-fade-in {
   from { opacity: 0; }
@@ -20,13 +26,11 @@
   height: min(680px, calc(100vh - 64px));
   display: flex;
   overflow: hidden;
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 92%, white);
-  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 14%, transparent);
-  box-shadow:
-    0 1px 0 color-mix(in srgb, white 5%, transparent) inset,
-    0 28px 60px -12px rgba(0, 0, 0, 0.6);
-  animation: canvas-pdf-pop-in var(--px-dur-base) var(--px-ease);
+  background: var(--px-bg-elevated);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-lg);
+  box-shadow: var(--px-shadow-lg), var(--px-edge-light);
+  animation: canvas-pdf-pop-in var(--px-dur-base) var(--px-ease-out);
 }
 @keyframes canvas-pdf-pop-in {
   from { transform: translateY(8px) scale(0.98); opacity: 0; }
@@ -39,190 +43,174 @@
   flex: 0 0 280px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 18px 18px 14px;
+  gap: var(--px-space-1);
+  padding: var(--px-space-4) var(--px-space-4) var(--px-space-3);
   overflow-y: auto;
-  border-right: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 10%, transparent);
+  border-right: 1px solid var(--px-divider);
 }
 
 .canvas-pdf-dialog__title {
-  margin: 0 0 10px;
-  font-size: 14.5px;
-  font-weight: 650;
+  margin: 0 0 var(--px-space-2);
+  font-size: var(--px-text-md);
+  font-weight: 600;
   letter-spacing: -0.01em;
-  color: var(--vscode-editor-foreground, #e8e8e8);
+  color: var(--px-text);
 }
 
 .canvas-pdf-dialog__label {
-  margin-top: 10px;
-  font-size: 10.5px;
+  margin-top: var(--px-space-2);
+  font-size: var(--px-text-xs);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 48%, transparent);
+  color: var(--px-text-faint);
 }
 
-.canvas-pdf-dialog__field { margin-top: 4px; }
-
-.canvas-pdf-dialog__segmented {
-  display: inline-flex;
-  gap: 0;
-  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 16%, transparent);
-  border-radius: 5px;
-  overflow: hidden;
-  width: fit-content;
-}
-.canvas-pdf-dialog__seg {
-  height: 26px;
-  padding: 0 14px;
-  border: 0;
-  background: transparent;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 62%, transparent);
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
-}
-.canvas-pdf-dialog__seg--active {
-  background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 82%, transparent);
-  color: var(--vscode-button-foreground, #fff);
-}
+.canvas-pdf-dialog__field { margin-top: var(--px-space-1); }
 
 .canvas-pdf-dialog__margin-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 6px 10px;
-  margin-top: 6px;
+  gap: var(--px-space-1) var(--px-space-3);
+  margin-top: var(--px-space-1);
 }
 .canvas-pdf-dialog__margin-cell {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 11.5px;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 62%, transparent);
+  gap: var(--px-space-1);
+  font-size: var(--px-text-sm);
+  color: var(--px-text-muted);
 }
 .canvas-pdf-dialog__margin-cell span { flex: 0 0 44px; }
 .canvas-pdf-dialog__margin-cell input {
   width: 56px;
   padding: 4px 6px;
-  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 16%, transparent);
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 82%, white);
-  color: var(--vscode-editor-foreground, #d4d4d4);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-sm);
+  background: var(--px-bg-inset);
+  color: var(--px-text);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--px-text-sm);
+  font-variant-numeric: tabular-nums;
+  transition: border-color var(--px-dur-fast) var(--px-ease), box-shadow var(--px-dur-fast) var(--px-ease);
 }
 .canvas-pdf-dialog__margin-cell input:focus {
   outline: none;
-  border-color: var(--vscode-focusBorder, #5b9bd5);
+  border-color: var(--px-accent);
+  box-shadow: 0 0 0 3px var(--px-accent-faint);
 }
 .canvas-pdf-dialog__hint {
   grid-column: 1 / -1;
-  font-size: 10.5px;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 38%, transparent);
+  font-size: var(--px-text-xs);
+  color: var(--px-text-faint);
 }
 
 .canvas-pdf-dialog__scale {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--px-space-2);
 }
 .canvas-pdf-dialog__scale input[type="range"] {
   flex: 1;
-  accent-color: var(--vscode-button-background, #0e639c);
+  accent-color: var(--px-accent);
 }
 .canvas-pdf-dialog__scale-value {
   flex: 0 0 44px;
-  font-size: 12px;
+  font-size: var(--px-text-sm);
   text-align: right;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 75%, transparent);
+  color: var(--px-text-secondary);
   font-variant-numeric: tabular-nums;
 }
 
 .canvas-pdf-dialog__toggles {
   display: flex;
   flex-direction: column;
-  gap: 7px;
-  margin-top: 14px;
+  gap: var(--px-space-2);
+  margin-top: var(--px-space-3);
 }
 .canvas-pdf-dialog__toggle {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 12.5px;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 80%, transparent);
+  gap: var(--px-space-2);
+  font-size: var(--px-text-base);
+  color: var(--px-text-secondary);
   cursor: pointer;
   user-select: none;
+  transition: color var(--px-dur-fast) var(--px-ease);
 }
-.canvas-pdf-dialog__toggle input { accent-color: var(--vscode-button-background, #0e639c); cursor: pointer; }
+.canvas-pdf-dialog__toggle:hover { color: var(--px-text); }
+.canvas-pdf-dialog__toggle input { accent-color: var(--px-accent); cursor: pointer; }
 
 .canvas-pdf-dialog__status {
   margin-top: auto;
-  padding-top: 10px;
-  font-size: 11.5px;
-  line-height: 1.5;
+  padding-top: var(--px-space-2);
+  font-size: var(--px-text-xs);
+  line-height: var(--px-leading-base);
   overflow-wrap: anywhere;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent);
+  color: var(--px-text-muted);
 }
-.canvas-pdf-dialog__status--error { color: var(--vscode-errorForeground, #f48771); }
+.canvas-pdf-dialog__status--error { color: var(--px-danger); }
 
 .canvas-pdf-dialog__foot {
   display: flex;
-  gap: 8px;
-  padding-top: 10px;
+  gap: var(--px-space-2);
+  padding-top: var(--px-space-2);
 }
 
 .canvas-pdf-dialog__btn {
   height: 28px;
-  padding: 0 14px;
-  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 16%, transparent);
-  border-radius: 5px;
+  padding: 0 var(--px-space-3);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-md);
   background: transparent;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 80%, transparent);
+  color: var(--px-text-secondary);
   font: inherit;
-  font-size: 12.5px;
+  font-size: var(--px-text-base);
   font-weight: 500;
   cursor: pointer;
-  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
+  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease), transform var(--px-dur-instant) var(--px-ease);
 }
-.canvas-pdf-dialog__btn:hover {
-  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 10%, transparent);
-  color: var(--vscode-editor-foreground, #e8e8e8);
-}
-.canvas-pdf-dialog__btn:disabled { opacity: 0.5; cursor: default; }
+.canvas-pdf-dialog__btn:hover { background: var(--px-surface-hover); color: var(--px-text); }
+.canvas-pdf-dialog__btn:active { transform: var(--px-press); }
+.canvas-pdf-dialog__btn:disabled { opacity: 0.5; cursor: default; transform: none; }
+.canvas-pdf-dialog__btn:focus-visible { outline: none; box-shadow: var(--px-ring-accent); }
 .canvas-pdf-dialog__btn--primary {
-  background: var(--vscode-button-background, #0e639c);
+  background: var(--px-accent);
   border-color: transparent;
-  color: var(--vscode-button-foreground, #fff);
+  color: var(--px-text-on-accent);
+  font-weight: 600;
 }
-.canvas-pdf-dialog__btn--primary:hover {
-  background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 88%, white);
-  color: var(--vscode-button-foreground, #fff);
-}
+.canvas-pdf-dialog__btn--primary:hover { background: var(--px-accent-hover); color: var(--px-text-on-accent); }
 
-/* ── Preview column ── */
+/* ── Preview column — paper on the recessed window tone ── */
 
 .canvas-pdf-dialog__preview {
   flex: 1;
   min-width: 0;
   overflow-y: auto;
-  background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 70%, black);
-  padding: 18px 24px 28px;
+  background: var(--px-window);
+  padding: var(--px-space-4) var(--px-space-6) var(--px-space-6);
 }
 .canvas-pdf-dialog__preview-status {
-  font-size: 11.5px;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent);
-  padding-bottom: 10px;
+  font-size: var(--px-text-xs);
+  color: var(--px-text-faint);
+  font-variant-numeric: tabular-nums;
+  padding-bottom: var(--px-space-2);
   text-align: center;
 }
 .canvas-pdf-dialog__pages {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
+  gap: var(--px-space-4);
 }
 .canvas-pdf-dialog__page {
   background: #fff;
   border-radius: 2px;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--px-shadow-md);
+  animation: canvas-pdf-page-in var(--px-dur-base) var(--px-ease-out);
+}
+@keyframes canvas-pdf-page-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }

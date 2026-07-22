@@ -278,14 +278,16 @@ describe('PlannerAutomationsController', () => {
     ctrl.dispose();
   });
 
-  it('renders the empty state with a working New-automation button', async () => {
+  it('renders the voice-registry empty state with a working New-automation button', async () => {
     const ctrl = new PlannerAutomationsController({
       getCron: () => stubCron([]),
       settings: makeStore(),
       window: stubWindow(),
     });
     await ctrl.render(body, actions);
-    expect(body.textContent).toContain('No automations yet');
+    // M89 voice registry — the hero comes from EMPTY_STATES['planner.automations'].
+    expect(body.querySelector('.px-empty')).toBeTruthy();
+    expect(body.textContent).toContain('Put the app to work');
     const addBtn = actions.querySelector('button') as HTMLButtonElement;
     expect(addBtn.disabled).toBe(false);
     addBtn.click();

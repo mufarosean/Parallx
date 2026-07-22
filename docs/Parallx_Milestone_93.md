@@ -125,6 +125,36 @@ Settings via manifest configuration schema (daily limits, model override,
 reminder toggle + time). Pure logic exported via `__testables` (budget
 pattern). Tests: `tests/unit/flashcards.test.ts` (32).
 
+## Design pass (same session)
+
+A second pass replaced the first-draft styling — which leaned on bridged
+`--vscode-*` grays, off-ladder sizes, and hand-rolled controls — with the
+actual Parallx identity (M83 + M89):
+
+- **Tokens**: all three surfaces now consume `--px` semantic tokens only
+  (surface tiers, three line roles, type/radius/spacing ladders, signal
+  hues, press physics, `--px-edge-light` on raised surfaces). Light mode
+  works for free.
+- **Components**: core `Toggle` for automation enable/pause, core
+  `SegmentedControl` for PDF orientation, core `Dropdown` everywhere,
+  `renderEmptyState` + a new `planner.automations` voice-registry entry.
+- **Automations**: intro lecture removed; presence dot (accent halo =
+  scheduled, faint = paused, danger = failed); the prompt set as an
+  accent-edged quotation; one tabular meta line ("Every day at 08:00 ·
+  next in 3h · 12 runs") replacing the stat grid; a single faint footnote
+  carries the catch-up/Autonomy-Log facts.
+- **PDF dialog**: preview pages sit on `--px-window` (the recessed desk
+  tone) with `--px-shadow-md` paper; the dialog floats on `--px-shadow-lg`
+  + top sheen; staggered page fade-in.
+- **Flashcards**: workbench 26px list rows with accent-soft due pills;
+  stage chips on the signal hues (info=new, warning=learning,
+  success=review); the study card is the one deliberately physical surface
+  (radius-xl, shadow-md + edge-light, reveal animation); grade buttons are
+  quiet inset wells with a signal dot whose colour only arrives on hover —
+  not Anki colour slabs; stats are inset wells with 22px tabular numerals
+  and an accent-soft 30-day chart (today in full accent); `.px-empty`
+  heroes with voice-rule copy.
+
 ## Verification
 
 - `tsc --noEmit` clean; `node scripts/build.mjs` clean (renderer bundles,

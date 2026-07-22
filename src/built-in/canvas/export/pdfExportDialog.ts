@@ -11,6 +11,7 @@ import './pdfExport.css';
 
 import * as pdfjsLib from 'pdfjs-dist';
 import { Dropdown } from '../../../ui/dropdown.js';
+import { SegmentedControl } from '../../../ui/segmentedControl.js';
 import {
   DEFAULT_PDF_SETTINGS,
   MARGIN_PRESETS,
@@ -148,23 +149,21 @@ export function openPdfExportDialog(source: PdfExportSource): void {
     scheduleRender();
   }));
 
-  // Orientation.
+  // Orientation — the workbench's own segmented control.
   const orientHost = field('Orientation');
-  orientHost.classList.add('canvas-pdf-dialog__segmented');
-  const portraitBtn = el('button', 'canvas-pdf-dialog__seg');
-  portraitBtn.type = 'button';
-  portraitBtn.textContent = 'Portrait';
-  const landscapeBtn = el('button', 'canvas-pdf-dialog__seg');
-  landscapeBtn.type = 'button';
-  landscapeBtn.textContent = 'Landscape';
-  const syncOrient = (): void => {
-    portraitBtn.classList.toggle('canvas-pdf-dialog__seg--active', !settings.landscape);
-    landscapeBtn.classList.toggle('canvas-pdf-dialog__seg--active', settings.landscape);
-  };
-  portraitBtn.addEventListener('click', () => { settings = { ...settings, landscape: false }; syncOrient(); scheduleRender(); });
-  landscapeBtn.addEventListener('click', () => { settings = { ...settings, landscape: true }; syncOrient(); scheduleRender(); });
-  orientHost.append(portraitBtn, landscapeBtn);
-  syncOrient();
+  const orientControl = new SegmentedControl(orientHost, {
+    segments: [
+      { value: 'portrait', label: 'Portrait' },
+      { value: 'landscape', label: 'Landscape' },
+    ],
+    selected: settings.landscape ? 'landscape' : 'portrait',
+    ariaLabel: 'Orientation',
+  });
+  disposables.push(orientControl);
+  disposables.push(orientControl.onDidChange((value: string) => {
+    settings = { ...settings, landscape: value === 'landscape' };
+    scheduleRender();
+  }));
 
   // Margins.
   const marginHost = field('Margins');

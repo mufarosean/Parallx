@@ -20,6 +20,8 @@
 
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { Dropdown } from '../../ui/dropdown.js';
+import { Toggle } from '../../ui/toggle.js';
+import { renderEmptyState } from '../../ui/emptyStates.js';
 import type {
   ICronJob,
   ICronSchedule,
@@ -322,18 +324,9 @@ export class PlannerAutomationsController implements IDisposable {
     body.innerHTML = '';
     const wrap = el('div', 'planner-auto');
 
-    // Intro / trust line.
-    const intro = el('div', 'planner-auto__intro');
-    intro.textContent =
-      'Automations are jobs the app runs for you — the AI executes each prompt on ' +
-      'schedule, in the background. If the app is closed when a run is due, it ' +
-      'catches up once at the next launch. Runs respect the autonomy dial and are ' +
-      'recorded in the Autonomy Log.';
-    wrap.appendChild(intro);
-
     if (!cron) {
-      const off = el('div', 'planner-auto__empty');
-      off.textContent = 'The AI runtime is still starting — automations will appear here in a moment.';
+      const off = el('div', 'planner-auto__pending');
+      off.textContent = 'The AI runtime is still starting — automations appear the moment it is ready.';
       wrap.appendChild(off);
       body.appendChild(wrap);
       return;
@@ -367,14 +360,7 @@ export class PlannerAutomationsController implements IDisposable {
     const others = live.filter(j => !ownedIds.has(j.id));
 
     if (mine.length === 0) {
-      const empty = el('div', 'planner-auto__empty');
-      const line = el('div');
-      line.textContent = 'No automations yet.';
-      empty.appendChild(line);
-      const hint = el('div', 'planner-auto__empty-hint');
-      hint.textContent = 'Try one: refresh your dashboard every morning, or get a daily digest of your plan.';
-      empty.appendChild(hint);
-      wrap.appendChild(empty);
+      wrap.appendChild(renderEmptyState('planner.automations'));
     } else {
       for (const job of mine) wrap.appendChild(this._buildCard(cron, job, true));
     }
@@ -387,6 +373,12 @@ export class PlannerAutomationsController implements IDisposable {
       for (const job of others) details.appendChild(this._buildCard(cron, job, false));
       wrap.appendChild(details);
     }
+
+    // One quiet line of trust, not a lecture: the two facts worth knowing.
+    const footnote = el('div', 'planner-auto__footnote');
+    footnote.textContent =
+      'Missed runs catch up at the next launch · every run lands in the Autonomy Log';
+    wrap.appendChild(footnote);
 
     body.appendChild(wrap);
   }
@@ -404,22 +396,33 @@ export class PlannerAutomationsController implements IDisposable {
     const card = el('div', 'planner-auto__card');
     if (!job.enabled) card.classList.add('planner-auto__card--paused');
 
+    const runs = cron.getJobRuns(job.id);
+    const lastRun = runs.length > 0 ? runs[runs.length - 1] : null;
+    const failed = !!(lastRun && !lastRun.success && lastRun.error);
+
+    // ── Header: presence dot · name · toggle ──
     const head = el('div', 'planner-auto__card-head');
+
+    const dot = el('span', 'planner-auto__dot');
+    dot.classList.add(
+      failed ? 'planner-auto__dot--failed'
+        : job.enabled ? 'planner-auto__dot--on'
+        : 'planner-auto__dot--paused',
+    );
+    dot.title = failed ? 'Last run failed' : job.enabled ? 'Scheduled' : 'Paused';
+    head.appendChild(dot);
+
     const name = el('div', 'planner-auto__card-name');
     name.textContent = job.name;
     head.appendChild(name);
 
-    const toggleWrap = el('label', 'planner-auto__toggle');
-    const toggle = el('input') as HTMLInputElement;
-    toggle.type = 'checkbox';
-    toggle.checked = job.enabled;
-    toggle.setAttribute('aria-label', `Enable ${job.name}`);
-    const toggleText = el('span');
-    toggleText.textContent = job.enabled ? 'On' : 'Paused';
-    toggle.addEventListener('change', () => {
+    const toggle = new Toggle(head, {
+      checked: job.enabled,
+      ariaLabel: `Enable ${job.name}`,
+    });
+    toggle.onDidChange((checked: boolean) => {
       try {
-        cron.updateJob(job.id, { enabled: toggle.checked });
-        toggleText.textContent = toggle.checked ? 'On' : 'Paused';
+        cron.updateJob(job.id, { enabled: checked });
       } catch (err) {
         toggle.checked = job.enabled;
         void this._deps.window.showErrorMessage(
@@ -427,11 +430,9 @@ export class PlannerAutomationsController implements IDisposable {
         );
       }
     });
-    toggleWrap.appendChild(toggle);
-    toggleWrap.appendChild(toggleText);
-    head.appendChild(toggleWrap);
     card.appendChild(head);
 
+    // ── The prompt IS the automation — set it like a quotation ──
     const prompt = job.payload?.agentTurn ?? job.description ?? '';
     if (prompt) {
       const promptEl = el('div', 'planner-auto__card-prompt');
@@ -439,26 +440,26 @@ export class PlannerAutomationsController implements IDisposable {
       card.appendChild(promptEl);
     }
 
+    // ── One meta line: schedule · next · history ──
     const meta = el('div', 'planner-auto__card-meta');
-    const cell = (label: string, value: string): HTMLElement => {
-      const c = el('div', 'planner-auto__meta-cell');
-      const l = el('div', 'planner-auto__meta-label'); l.textContent = label;
-      const v = el('div', 'planner-auto__meta-value'); v.textContent = value;
-      c.appendChild(l); c.appendChild(v);
-      return c;
-    };
-    meta.appendChild(cell('Schedule', describeSchedule(job.schedule)));
-    meta.appendChild(cell('Last run', job.lastRunAt ? `${formatTimestamp(job.lastRunAt)} (${formatRelative(job.lastRunAt)})` : 'Never'));
-    meta.appendChild(cell('Next run', job.enabled && job.nextRunAt
-      ? `${formatTimestamp(job.nextRunAt)} (${formatRelative(job.nextRunAt)})`
-      : (job.enabled ? '—' : 'Paused')));
-    meta.appendChild(cell('Runs', String(job.runCount)));
+    const parts: string[] = [describeSchedule(job.schedule)];
+    if (!job.enabled) {
+      parts.push('paused');
+    } else if (job.nextRunAt) {
+      parts.push(`next ${formatRelative(job.nextRunAt)}`);
+    }
+    parts.push(job.runCount === 0
+      ? 'never run'
+      : `${job.runCount} ${job.runCount === 1 ? 'run' : 'runs'}, last ${formatRelative(job.lastRunAt)}`);
+    meta.textContent = parts.join('  ·  ');
+    meta.title = [
+      `Next: ${job.enabled ? formatTimestamp(job.nextRunAt) : 'paused'}`,
+      `Last: ${formatTimestamp(job.lastRunAt)}`,
+    ].join('\n');
     card.appendChild(meta);
 
-    // Last-run error surface — the one signal the user actually needs.
-    const runs = cron.getJobRuns(job.id);
-    const lastRun = runs.length > 0 ? runs[runs.length - 1] : null;
-    if (lastRun && !lastRun.success && lastRun.error) {
+    // Last-run error — the one signal that must not hide in a tooltip.
+    if (failed && lastRun?.error) {
       const err = el('div', 'planner-auto__card-error');
       err.textContent = `Last run failed: ${lastRun.error}`;
       card.appendChild(err);
