@@ -716,8 +716,17 @@ async function fcPickCanvasPage() {
 async function fcReadCanvasPage(pageId) {
   const result = await _api.commands.executeCommand('canvas.getPageMarkdown', pageId);
   if (!result || !result.markdown) throw new Error('Could not read that canvas page.');
+  const text = result.markdown.trim();
+  // A near-empty read means the page has no real text (or a read-path bug) —
+  // fail HERE with a clear message instead of sending nothing to the model
+  // and surfacing a cryptic parse error after generation.
+  if (text.length < 120) {
+    throw new Error(
+      `Only ${text.length} characters could be read from "${result.title || 'that page'}" — the page may be empty. Pick a page with written notes.`,
+    );
+  }
   return {
-    text: result.markdown,
+    text,
     label: `Canvas: ${result.title || 'Untitled'}`,
     uri: `parallx://canvas/page/${pageId}`,
   };

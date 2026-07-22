@@ -80,10 +80,18 @@ function makeFakeApi() {
 
   // ── command registry (with a fake canvas read surface) ──
   const commands = new Map<string, (...a: unknown[]) => unknown>();
+  // Long enough to clear the extension's low-content guard (< 120 chars of
+  // markdown = "page may be empty" error, by design).
   commands.set('canvas.getPageMarkdown', async (pageId: unknown) => ({
     id: pageId,
     title: 'Exam 7 Notes',
-    markdown: '# Exam 7 Notes\n\nThe Bornhuetter-Ferguson method blends expected losses with actual emergence.',
+    markdown: [
+      '# Exam 7 Notes',
+      '',
+      'The Bornhuetter-Ferguson method blends expected losses with actual emergence.',
+      'BF ultimate = actual reported + expected losses x (1 - 1/CDF), where the',
+      '(1 - 1/CDF) term is the expected unreported fraction of ultimate losses.',
+    ].join('\n'),
   }));
 
   // ── editors: create panes on demand, once per instanceId ──

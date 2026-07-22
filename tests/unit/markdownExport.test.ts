@@ -7,6 +7,40 @@
  */
 import { describe, it, expect } from 'vitest';
 import { tiptapJsonToMarkdown } from '../../src/built-in/canvas/markdownExport';
+import { decodeCanvasContent, encodeCanvasContentFromDoc } from '../../src/built-in/canvas/contentSchema';
+
+// ─── Stored-content → markdown (the M93 regression) ─────────────────────────
+// Page content is PERSISTED as the versioned envelope {schemaVersion, doc}.
+// Every consumer that converts STORED content must decode first — raw
+// JSON.parse hands the wrapper to the converter, whose doc-shape guard
+// silently degrades to title-only output ("# Brosius\n", 10 chars, no cards).
+
+describe('stored envelope → markdown', () => {
+  const storedV2 = encodeCanvasContentFromDoc({
+    type: 'doc',
+    content: [
+      { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'Least squares' }] },
+      { type: 'paragraph', content: [{ type: 'text', text: 'Brosius blends the link ratio and budgeted loss methods.' }] },
+    ],
+  }).storedContent;
+
+  it('decodeCanvasContent + converter recovers the full body', () => {
+    const md = tiptapJsonToMarkdown(decodeCanvasContent(storedV2).doc, 'Brosius');
+    expect(md).toContain('## Least squares');
+    expect(md).toContain('link ratio and budgeted loss');
+  });
+
+  it('raw JSON.parse of the envelope degrades to title-only — the bug this guards against', () => {
+    const md = tiptapJsonToMarkdown(JSON.parse(storedV2), 'Brosius');
+    expect(md).toBe('# Brosius\n');
+  });
+
+  it('legacy bare docs still decode', () => {
+    const legacy = JSON.stringify({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'old page' }] }] });
+    const md = tiptapJsonToMarkdown(decodeCanvasContent(legacy).doc, 'Old');
+    expect(md).toContain('old page');
+  });
+});
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

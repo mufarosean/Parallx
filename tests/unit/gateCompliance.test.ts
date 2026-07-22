@@ -105,7 +105,10 @@ const GATE_RULES: Record<string, string[]> = {
   'extensions/pageBlockNode.ts':           ['config/blockRegistry'],
   // M93 — the ⋯ menu / Ctrl+P lazy-load the PDF export dialog.
   'header/pageChrome.ts':                  ['config/blockRegistry', 'canvasVersionHistoryPanel', 'export/pdfExportDialog'],
-  'canvasSidebar.ts':                      ['config/blockRegistry', 'database/databaseRegistry', 'canvasSidebarDragState'],
+  // contentSchema: the versioned-envelope decoder for the md-export action
+  // (raw JSON.parse of page.content hands the wrapper to the converter and
+  // silently exports title-only markdown — the M93 flashcards bug).
+  'canvasSidebar.ts':                      ['config/blockRegistry', 'database/databaseRegistry', 'canvasSidebarDragState', 'contentSchema'],
 
   // tiptapExtensions.ts — assembler role: imports from blockRegistry +
   // infrastructure extensions that have zero canvas-internal imports.

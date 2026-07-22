@@ -957,8 +957,11 @@ export class CanvasSidebar {
           if (!fullPage) return;
 
           const { tiptapJsonToMarkdown } = await import('./markdownExport.js');
-          let doc: unknown = null;
-          try { doc = JSON.parse(fullPage.content); } catch { /* empty */ }
+          const { decodeCanvasContent } = await import('./contentSchema.js');
+          // Content is the versioned {schemaVersion, doc} envelope — raw
+          // JSON.parse hands the wrapper to the converter, which fails its
+          // doc-shape guard and exports title-only markdown.
+          const doc = decodeCanvasContent(fullPage.content).doc;
 
           const markdown = tiptapJsonToMarkdown(doc, fullPage.title);
           const safeName = fullPage.title.replace(/[<>:"/\\|?*]/g, '_').substring(0, 100).trim() || 'Untitled';

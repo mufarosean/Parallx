@@ -935,8 +935,11 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
       try {
         const page = await _dataService.getPage(pageId);
         if (!page) return null;
-        let doc: unknown;
-        try { doc = JSON.parse(page.content); } catch { return null; }
+        // Stored content is the versioned envelope {schemaVersion, doc} —
+        // decode through the canonical schema helper, never raw JSON.parse
+        // (the raw wrapper fails the converter's doc-shape guard and
+        // silently yields title-only markdown).
+        const { doc } = decodeCanvasContent(page.content);
         return {
           id: page.id,
           title: page.title,

@@ -14,6 +14,7 @@ import type {
 import type { CanvasDataService } from './canvasDataService.js';
 import type { IPageTreeNode } from './canvasTypes.js';
 import { tiptapJsonToMarkdown } from './markdownExport.js';
+import { decodeCanvasContent } from './contentSchema.js';
 
 interface PageEmbedConfig {
   readonly page: string;
@@ -78,7 +79,8 @@ export function buildPageEmbedWidget(
 
       let body = '';
       try {
-        body = tiptapJsonToMarkdown(JSON.parse(page.content || '{}'));
+        // Versioned envelope, not a bare doc — decode through the schema.
+        body = tiptapJsonToMarkdown(decodeCanvasContent(page.content || '{}').doc);
       } catch {
         body = '_This page could not be rendered._';
       }
