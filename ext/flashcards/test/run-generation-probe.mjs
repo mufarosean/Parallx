@@ -84,16 +84,21 @@ globalThis.requestAnimationFrame = dom.window.requestAnimationFrame.bind(dom.win
 // ─── Real-Ollama lm bridge ──────────────────────────────────────────────────
 
 async function* ollamaChat(modelId, messages, options) {
+  // Faithful to src/built-in/chat/providers/ollamaProvider.ts: think and
+  // numCtx come from the CALLER's options — the probe must not paper over
+  // missing options the way a hardcoded think/num_ctx once did (that hid
+  // the in-app "Ctx: auto → silent top-truncation" failure).
   const body = {
     model: modelId,
     messages,
     stream: false,
-    think: false,
     options: {
       ...(options?.temperature !== undefined ? { temperature: options.temperature } : {}),
-      num_ctx: 16384,
+      ...(options?.numCtx && options.numCtx > 0 ? { num_ctx: options.numCtx } : {}),
     },
   };
+  if (options?.think) body.think = true;
+  else if (options?.think === false) body.think = false;
   const res = await fetch(`${OLLAMA}/api/chat`, { method: 'POST', body: JSON.stringify(body) });
   if (!res.ok) throw new Error(`Ollama ${res.status}: ${await res.text()}`);
   const j = await res.json();

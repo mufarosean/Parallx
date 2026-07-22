@@ -199,45 +199,65 @@ function fcBuildQueue(cards, now, { newLimit = 20, reviewLimit = 200 } = {}) {
 function fcExtractCardsJson(text) {
   if (typeof text !== 'string' || !text.trim()) return { cards: [], error: 'Empty response.' };
   let t = text.trim();
+  // Thinking models can leak inline reasoning; brackets inside it would
+  // hijack the array scan. Drop complete blocks AND an unterminated head.
+  t = t.replace(/<think>[\s\S]*?<\/think>/gi, '');
+  t = t.replace(/^[\s\S]*?<\/think>/i, '');
   // Strip markdown fences.
   t = t.replace(/```(?:json)?/gi, '');
-  const start = t.indexOf('[');
-  if (start === -1) return { cards: [], error: 'No JSON array in response.' };
-  // Walk to the matching close bracket (string-aware).
-  let depth = 0, end = -1, inStr = false, escape = false;
-  for (let i = start; i < t.length; i++) {
-    const ch = t[i];
-    if (escape) { escape = false; continue; }
-    if (ch === '\\') { escape = true; continue; }
-    if (ch === '"') { inStr = !inStr; continue; }
-    if (inStr) continue;
-    if (ch === '[') depth++;
-    else if (ch === ']') {
-      depth--;
-      if (depth === 0) { end = i; break; }
+
+  /** Parse cards out of one candidate array slice. */
+  const parseSlice = (slice) => {
+    let parsed;
+    try { parsed = JSON.parse(slice); } catch { return null; }
+    if (!Array.isArray(parsed)) return null;
+    const cards = [];
+    for (const item of parsed.slice(0, 100)) {
+      if (!item || typeof item !== 'object') continue;
+      const front = String(item.front ?? item.question ?? item.q ?? '').trim();
+      const back = String(item.back ?? item.answer ?? item.a ?? '').trim();
+      if (!front || !back) continue;
+      const tags = Array.isArray(item.tags)
+        ? item.tags.map((x) => String(x).trim()).filter(Boolean).slice(0, 8).join(',')
+        : '';
+      cards.push({ front, back, tags });
     }
+    return cards;
+  };
+
+  // The first '[' can be a citation ("[1]") or stray bracket in prose —
+  // walk EVERY candidate array until one yields usable cards.
+  let sawArray = false, unterminated = false;
+  let start = t.indexOf('[');
+  let attempts = 0;
+  while (start !== -1 && attempts < 8) {
+    attempts++;
+    // Walk to the matching close bracket (string-aware).
+    let depth = 0, end = -1, inStr = false, escape = false;
+    for (let i = start; i < t.length; i++) {
+      const ch = t[i];
+      if (escape) { escape = false; continue; }
+      if (ch === '\\') { escape = true; continue; }
+      if (ch === '"') { inStr = !inStr; continue; }
+      if (inStr) continue;
+      if (ch === '[') depth++;
+      else if (ch === ']') {
+        depth--;
+        if (depth === 0) { end = i; break; }
+      }
+    }
+    if (end === -1) { unterminated = true; break; }
+    const cards = parseSlice(t.slice(start, end + 1));
+    if (cards !== null) {
+      sawArray = true;
+      if (cards.length > 0) return { cards, error: null };
+    }
+    start = t.indexOf('[', start + 1);
   }
-  if (end === -1) return { cards: [], error: 'Unterminated JSON array.' };
-  let parsed;
-  try {
-    parsed = JSON.parse(t.slice(start, end + 1));
-  } catch (err) {
-    return { cards: [], error: `JSON parse failed: ${err.message}` };
-  }
-  if (!Array.isArray(parsed)) return { cards: [], error: 'Response is not an array.' };
-  const cards = [];
-  for (const item of parsed.slice(0, 100)) {
-    if (!item || typeof item !== 'object') continue;
-    const front = String(item.front ?? item.question ?? item.q ?? '').trim();
-    const back = String(item.back ?? item.answer ?? item.a ?? '').trim();
-    if (!front || !back) continue;
-    const tags = Array.isArray(item.tags)
-      ? item.tags.map((x) => String(x).trim()).filter(Boolean).slice(0, 8).join(',')
-      : '';
-    cards.push({ front, back, tags });
-  }
-  if (cards.length === 0) return { cards: [], error: 'No usable cards in response.' };
-  return { cards, error: null };
+
+  if (unterminated) return { cards: [], error: 'Unterminated JSON array — the response may have been cut off.' };
+  if (sawArray) return { cards: [], error: 'No usable cards in response.' };
+  return { cards: [], error: 'No JSON array in response.' };
 }
 
 /** 'HH:MM' → 5-field cron for a daily firing, or null when malformed. */
@@ -606,12 +626,25 @@ async function fcGenerateCards(sourceText, { count = 15, focus = '' } = {}) {
   const stream = _api.lm.sendChatRequest(modelId, [
     { role: 'system', content: FC_GENERATE_SYSTEM },
     { role: 'user', content: user },
-  ], { temperature: 0.2 });
+  ], {
+    temperature: 0.2,
+    // Reasoning off: thinking models (qwen3.x) burn thousands of hidden
+    // tokens per call and JSON-constrained output doesn't benefit.
+    think: false,
+    // CRITICAL: without an explicit window Ollama falls back to ITS default
+    // (often 4096) and silently truncates the prompt FROM THE TOP — the
+    // system prompt with the JSON rules dies first and the model returns
+    // prose instead of cards. 16k fits FC_SOURCE_CHAR_LIMIT + rules + output.
+    numCtx: 16384,
+  });
   for await (const chunk of stream) {
     if (chunk.content) output += chunk.content;
   }
   const { cards, error } = fcExtractCardsJson(output);
-  if (error && cards.length === 0) throw new Error(error);
+  if (error && cards.length === 0) {
+    console.warn('[Flashcards] generation failed. Raw model output head:', output.slice(0, 400));
+    throw new Error(`${error} (model: ${modelId} — raw output logged to console)`);
+  }
   return cards;
 }
 
@@ -632,7 +665,9 @@ async function fcDiscussStream(card, history, question) {
     ...history,
     { role: 'user', content: question },
   ];
-  return _api.lm.sendChatRequest(modelId, messages, { temperature: 0.4 });
+  // think:false keeps mid-study answers snappy on reasoning models; the
+  // explicit window prevents silent top-truncation of the card context.
+  return _api.lm.sendChatRequest(modelId, messages, { temperature: 0.4, think: false, numCtx: 8192 });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -688,9 +723,18 @@ async function fcReadPdf() {
   const filePath = picked[0];
   const result = await electron.document.extractText(filePath);
   if (result?.error) throw new Error(result.error.message || 'Extraction failed.');
-  if (!result?.text?.trim()) throw new Error('No text found in that document.');
+  const text = (result?.text ?? '').trim();
+  if (text.length < 200) {
+    // Scanned/image-based PDFs extract to almost nothing — generating from
+    // that produces invented cards. Route the user to OCR instead.
+    throw new Error(
+      text.length === 0
+        ? 'No text found in that document — if it is a scanned PDF, use the Photo (OCR) source instead.'
+        : `Only ${text.length} characters of text could be extracted — this looks like a scanned document. Use the Photo (OCR) source instead.`,
+    );
+  }
   const name = filePath.split(/[\\/]/).pop();
-  return { text: result.text, label: `Document: ${name}`, uri: filePath };
+  return { text, label: `Document: ${name}`, uri: filePath };
 }
 
 async function fcReadPhoto() {

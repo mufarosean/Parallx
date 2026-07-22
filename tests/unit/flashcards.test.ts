@@ -223,6 +223,29 @@ describe('fcExtractCardsJson', () => {
     expect(fcExtractCardsJson('[[[').cards).toEqual([]);
     expect(fcExtractCardsJson('[]').cards).toEqual([]);
   });
+
+  it('ignores inline <think> reasoning blocks (thinking models)', () => {
+    const raw = '<think>Let me plan. The material cites [1] and [2]...</think>\n[{"front":"Q","back":"A"}]';
+    const { cards, error } = fcExtractCardsJson(raw);
+    expect(error).toBeNull();
+    expect(cards).toEqual([{ front: 'Q', back: 'A', tags: '' }]);
+    // Unterminated think head (streaming cut the open tag away).
+    const cut = 'reasoning about [3] here</think>[{"front":"Q2","back":"A2"}]';
+    expect(fcExtractCardsJson(cut).cards[0].front).toBe('Q2');
+  });
+
+  it('skips citation brackets in prose and finds the real array', () => {
+    const raw = 'As shown in [1], the method [2] applies.\n[{"front":"Q","back":"A"}]\nDone.';
+    const { cards, error } = fcExtractCardsJson(raw);
+    expect(error).toBeNull();
+    expect(cards).toHaveLength(1);
+    expect(cards[0].front).toBe('Q');
+  });
+
+  it('reports a truncation-shaped error for a cut-off array', () => {
+    const { error } = fcExtractCardsJson('[{"front":"Q","back":"A"},{"front":"Q2","ba');
+    expect(error).toContain('cut off');
+  });
 });
 
 // ─── Reminder cron ───────────────────────────────────────────────────────────
