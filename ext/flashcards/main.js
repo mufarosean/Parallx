@@ -2174,6 +2174,11 @@ export const __testables = {
   fcReminderCron,
   fcParseTags,
   fcAggregateStats,
+  // Live-probe access (ext/flashcards/test/run-generation-probe.mjs): the
+  // real generation pipeline against real Ollama. Requires activate() first
+  // so _api is bound.
+  fcGenerateCards,
+  FC_GENERATE_SYSTEM,
   FC_LEARNING_STEPS_MIN,
   FC_RELEARNING_STEPS_MIN,
   FC_MIN_EASE,
