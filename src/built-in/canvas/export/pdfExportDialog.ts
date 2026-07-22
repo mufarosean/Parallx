@@ -59,7 +59,7 @@ function getElectron(): PdfExportElectron | undefined {
  */
 function friendlyError(raw: string): string {
   if (raw.includes('No handler registered')) {
-    return 'PDF export arrived in this update — quit and relaunch Parallx to finish enabling it.';
+    return 'PDF export arrived in this update. Quit and relaunch Parallx to finish enabling it.';
   }
   return raw;
 }

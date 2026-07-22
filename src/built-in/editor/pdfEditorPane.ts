@@ -2620,6 +2620,14 @@ export class PdfEditorPane extends EditorPane {
           disabled: !hasSel,
           group: 'ai',
         },
+        // Routed through the selection-action dispatcher to the flashcards
+        // extension's 'create-flashcard' handler (deck pick + AI generation).
+        {
+          id: 'flashcards.capture',
+          label: 'Create Flashcard from Selection',
+          disabled: !hasSel,
+          group: 'ai',
+        },
       ],
       anchor: { x, y },
     });
@@ -2647,7 +2655,9 @@ export class PdfEditorPane extends EditorPane {
       } else if (e.item.id === 'ai.askInline') {
         this._askAIAboutSelection();
       } else if (e.item.id === 'ai.addToChat') {
-        this._dispatchSelectionAction(e.item.id);
+        this._dispatchSelectionAction('add-to-chat');
+      } else if (e.item.id === 'flashcards.capture') {
+        this._dispatchSelectionAction('create-flashcard');
       }
     });
 
@@ -2684,9 +2694,8 @@ export class PdfEditorPane extends EditorPane {
   }
 
   /** Dispatch a selection action to the unified dispatcher (M48 Phase 4). */
-  private _dispatchSelectionAction(_menuItemId: string): void {
+  private _dispatchSelectionAction(actionId: string): void {
     if (!this._capturedSelection || !this._currentInput) return;
-    const actionId = 'add-to-chat';
 
     const detail = {
       selectedText: this._capturedSelection,

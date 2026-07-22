@@ -38,12 +38,12 @@ export function buildCronSchedule(spec: AutomationScheduleSpec): ICronSchedule {
   switch (spec.kind) {
     case 'daily': {
       const t = parseTimeOfDay(spec.time);
-      if (!t) throw new Error(`Invalid time "${spec.time}" — expected HH:MM.`);
+      if (!t) throw new Error(`Invalid time "${spec.time}". Expected HH:MM.`);
       return { cron: `${t.minute} ${t.hour} * * *` };
     }
     case 'weekly': {
       const t = parseTimeOfDay(spec.time);
-      if (!t) throw new Error(`Invalid time "${spec.time}" — expected HH:MM.`);
+      if (!t) throw new Error(`Invalid time "${spec.time}". Expected HH:MM.`);
       if (!Number.isInteger(spec.day) || spec.day < 0 || spec.day > 6) {
         throw new Error('Invalid weekday.');
       }
@@ -52,7 +52,7 @@ export function buildCronSchedule(spec: AutomationScheduleSpec): ICronSchedule {
     case 'interval': {
       const v = spec.every.trim();
       if (!/^\d+(?:\.\d+)?[smhd]$/i.test(v)) {
-        throw new Error(`Invalid interval "${spec.every}" — use e.g. "30m", "2h", "1d".`);
+        throw new Error(`Invalid interval "${spec.every}". Use e.g. "30m", "2h", "1d".`);
       }
       return { every: v };
     }

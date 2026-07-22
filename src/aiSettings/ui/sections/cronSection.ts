@@ -113,7 +113,7 @@ export class CronSection extends SettingsSection {
   build(): void {
     const intro = $('div.ai-settings-section__info');
     intro.textContent =
-      'Background jobs the cron scheduler runs for this workspace — automations ' +
+      'Background jobs the cron scheduler runs for this workspace: automations ' +
       'you created in Planner → Automations, jobs registered by extensions, and ' +
       'jobs the AI scheduled through approved cron_add calls. Everything can be ' +
       'paused, edited, run on demand, or removed here.';
@@ -124,7 +124,7 @@ export class CronSection extends SettingsSection {
 
     this._emptyEl = $('div.ai-settings-section__info');
     this._emptyEl.textContent =
-      'No scheduled jobs yet — create one in Planner → Automations, or ask the AI to set a reminder.';
+      'No scheduled jobs yet. Create one in Planner → Automations, or ask the AI to set a reminder.';
     this.contentElement.appendChild(this._emptyEl);
 
     this._renderList();
@@ -463,7 +463,7 @@ export class CronSection extends SettingsSection {
     void showConfirmModal(document.body, {
       message: `Delete the scheduled job "${job.name}"?`,
       detail: src.kind === 'extension'
-        ? `Registered by the ${src.extensionId} extension — it may re-create the job on next activation.`
+        ? `Registered by the ${src.extensionId} extension, which may re-create it on next activation.`
         : 'This cannot be undone.',
       confirmLabel: 'Delete',
       danger: true,

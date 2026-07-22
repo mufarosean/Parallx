@@ -241,7 +241,7 @@ export class PlannerAutomationsController implements IDisposable {
 
     if (!cron) {
       const off = el('div', 'planner-auto__pending');
-      off.textContent = 'The AI runtime is still starting — automations appear the moment it is ready.';
+      off.textContent = 'The AI runtime is still starting. Automations appear the moment it is ready.';
       wrap.appendChild(off);
       body.appendChild(wrap);
       return;
@@ -283,7 +283,7 @@ export class PlannerAutomationsController implements IDisposable {
     if (others.length > 0) {
       const details = el('details', 'planner-auto__others');
       const summary = el('summary', 'planner-auto__others-summary');
-      summary.textContent = `Other scheduled jobs (${others.length}) — created by the AI or extensions`;
+      summary.textContent = `Other scheduled jobs (${others.length}), created by the AI or extensions`;
       details.appendChild(summary);
       for (const job of others) details.appendChild(this._buildCard(cron, job, false));
       wrap.appendChild(details);
@@ -502,7 +502,7 @@ export class PlannerAutomationsController implements IDisposable {
     const promptInput = el('textarea', 'planner-auto__textarea') as HTMLTextAreaElement;
     promptInput.rows = 4;
     promptInput.placeholder =
-      'Anything you could ask in chat — refresh widgets, summarize pages, review tasks…';
+      'Anything you could ask in chat: refresh widgets, summarize pages, review tasks…';
     promptInput.value = editing?.payload?.agentTurn ?? '';
     form.appendChild(promptInput);
 

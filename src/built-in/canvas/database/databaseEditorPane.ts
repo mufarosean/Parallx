@@ -603,7 +603,7 @@ export class DatabaseEditorPane implements IDisposable {
       renderList();
       pop.appendChild(list);
       const add = el('input', 'canvas-db-popover__input') as HTMLInputElement;
-      add.placeholder = 'New option — Enter to add';
+      add.placeholder = 'New option, Enter to add';
       add.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && add.value.trim()) {
           options.push({ value: add.value.trim(), color: PILL_COLORS[(options.length + 1) % PILL_COLORS.length] });
