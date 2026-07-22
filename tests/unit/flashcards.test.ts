@@ -262,6 +262,20 @@ describe('fcReminderCron', () => {
   });
 });
 
+describe('fcMaterialBudget', () => {
+  const { fcMaterialBudget } = __testables;
+  it('scales the source clip with the configured context window', () => {
+    expect(fcMaterialBudget(16384)).toBe(Math.round((16384 - 2500) * 3));
+    expect(fcMaterialBudget(8192)).toBe(Math.round((8192 - 2500) * 3));
+    // Small windows still leave a usable floor.
+    expect(fcMaterialBudget(2048)).toBe(4000);
+  });
+  it('falls back to the default window on garbage input', () => {
+    expect(fcMaterialBudget(0)).toBe(Math.round((16384 - 2500) * 3));
+    expect(fcMaterialBudget(NaN)).toBe(Math.round((16384 - 2500) * 3));
+  });
+});
+
 describe('fcParseTags', () => {
   it('splits and trims', () => {
     expect(fcParseTags(' a, b ,,c ')).toEqual(['a', 'b', 'c']);

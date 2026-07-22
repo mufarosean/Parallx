@@ -606,13 +606,35 @@ const FC_GENERATE_SYSTEM = [
   '[{"front": "...", "back": "...", "tags": ["topic"]}]',
 ].join('\n');
 
-const FC_SOURCE_CHAR_LIMIT = 24000;
+/**
+ * How much source material fits in a generation run, derived from the
+ * user's `flashcards.generationContext` setting: ~3 chars/token for prose,
+ * minus ~2.5k tokens reserved for the rules, scaffold, and JSON output.
+ * Pure — exported via __testables.
+ */
+function fcMaterialBudget(numCtx) {
+  const ctx = Number.isFinite(numCtx) && numCtx > 0 ? numCtx : 16384;
+  return Math.max(4000, Math.round((ctx - 2500) * 3));
+}
+
+/** The user's AI knobs (Settings → Flashcards). An explicit window matters:
+ *  without one Ollama falls back to ITS default (often 4096) and silently
+ *  truncates the prompt FROM THE TOP — the system prompt with the JSON
+ *  rules dies first and the model returns prose instead of cards. */
+function fcAiOptions() {
+  return {
+    numCtx: Number(cfg('generationContext', 16384)) || 16384,
+    think: !!cfg('aiThinking', false),
+  };
+}
 
 async function fcGenerateCards(sourceText, { count = 15, focus = '' } = {}) {
   const modelId = await fcPickModel();
   if (!modelId) throw new Error('No language model available. Configure a model in AI settings.');
-  const clipped = sourceText.length > FC_SOURCE_CHAR_LIMIT
-    ? sourceText.slice(0, FC_SOURCE_CHAR_LIMIT) + '\n\n[...material truncated...]'
+  const { numCtx, think } = fcAiOptions();
+  const limit = fcMaterialBudget(numCtx);
+  const clipped = sourceText.length > limit
+    ? sourceText.slice(0, limit) + '\n\n[...material truncated...]'
     : sourceText;
   const user = [
     `Create up to ${Math.min(50, Math.max(1, count))} flashcards from the material below.`,
@@ -626,17 +648,7 @@ async function fcGenerateCards(sourceText, { count = 15, focus = '' } = {}) {
   const stream = _api.lm.sendChatRequest(modelId, [
     { role: 'system', content: FC_GENERATE_SYSTEM },
     { role: 'user', content: user },
-  ], {
-    temperature: 0.2,
-    // Reasoning off: thinking models (qwen3.x) burn thousands of hidden
-    // tokens per call and JSON-constrained output doesn't benefit.
-    think: false,
-    // CRITICAL: without an explicit window Ollama falls back to ITS default
-    // (often 4096) and silently truncates the prompt FROM THE TOP — the
-    // system prompt with the JSON rules dies first and the model returns
-    // prose instead of cards. 16k fits FC_SOURCE_CHAR_LIMIT + rules + output.
-    numCtx: 16384,
-  });
+  ], { temperature: 0.2, think, numCtx });
   for await (const chunk of stream) {
     if (chunk.content) output += chunk.content;
   }
@@ -665,9 +677,9 @@ async function fcDiscussStream(card, history, question) {
     ...history,
     { role: 'user', content: question },
   ];
-  // think:false keeps mid-study answers snappy on reasoning models; the
-  // explicit window prevents silent top-truncation of the card context.
-  return _api.lm.sendChatRequest(modelId, messages, { temperature: 0.4, think: false, numCtx: 8192 });
+  // Same user-controlled AI knobs as generation (Settings → Flashcards).
+  const { numCtx, think } = fcAiOptions();
+  return _api.lm.sendChatRequest(modelId, messages, { temperature: 0.4, think, numCtx });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -2222,6 +2234,7 @@ export const __testables = {
   // real generation pipeline against real Ollama. Requires activate() first
   // so _api is bound.
   fcGenerateCards,
+  fcMaterialBudget,
   FC_GENERATE_SYSTEM,
   FC_LEARNING_STEPS_MIN,
   FC_RELEARNING_STEPS_MIN,

@@ -59,6 +59,16 @@
             "default": "",
             "description": "Model id used for card generation and card discussion. Leave empty to use the chat's active model."
           },
+          "flashcards.generationContext": {
+            "type": "number",
+            "default": 16384,
+            "description": "Context window (tokens) requested for card generation and discussion. Higher feeds more of a document per generation run (the source clip scales with this); lower saves VRAM on smaller machines. Must fit within what the model supports."
+          },
+          "flashcards.aiThinking": {
+            "type": "boolean",
+            "default": false,
+            "description": "Let reasoning models (qwen3.x, DeepSeek-R1) think before writing cards or answering discussion questions. Slower per run; sometimes better on tricky material."
+          },
           "flashcards.dailyReminder": {
             "type": "boolean",
             "default": false,
