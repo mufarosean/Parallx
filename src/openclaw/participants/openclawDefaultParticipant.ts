@@ -293,7 +293,7 @@ async function runOpenclawDefaultTurn(
   const verboseEnabled = services.getSessionFlag?.(VERBOSE_SESSION_FLAG) ?? false;
   if (verboseEnabled) {
     const debugLines = [
-      '<details><summary>🔍 Verbose Debug</summary>\n',
+      '<details><summary>Verbose debug</summary>\n',
       `- **Model:** ${turnContext.runtimeInfo.model}`,
       `- **Token Budget:** ${turnContext.tokenBudget}`,
       `- **Tools:** ${turnContext.toolState.availableCount} active`,

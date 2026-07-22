@@ -38,7 +38,7 @@ export async function tryHandleOpenclawToolsCommand(
     lines.push('|------|-------------|------------|');
     for (const t of toolDefs) {
       const perm: ToolPermissionLevel | 'default' = permissions[t.name] ?? 'default';
-      const permIcon = perm === 'always-allowed' ? '✅' : perm === 'never-allowed' ? '🚫' : '🔒';
+      const permIcon = perm === 'always-allowed' ? 'allowed' : perm === 'never-allowed' ? 'blocked' : 'asks';
       const desc = t.description?.slice(0, 60) ?? '—';
       lines.push(`| ${t.name} | ${desc} | ${permIcon} ${perm} |`);
     }

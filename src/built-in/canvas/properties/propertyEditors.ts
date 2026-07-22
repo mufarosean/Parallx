@@ -491,7 +491,7 @@ function _createUrlEditor(value: string | null, onChange: (v: unknown) => void):
 
   const link = document.createElement('a');
   link.className = 'canvas-prop-url-link';
-  link.textContent = '🔗';
+  link.appendChild(createIconElement('link', 13));
   link.title = 'Open link';
   link.target = '_blank';
   link.rel = 'noopener noreferrer';

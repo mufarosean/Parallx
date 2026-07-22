@@ -670,7 +670,8 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
             try {
               const page = await _dataService.getPage(pageId);
               if (!page) return null;
-              return { title: page.title || 'Untitled', icon: page.icon ?? '📄' };
+              // LinkMetadata.icon carries a registry icon id (never emoji).
+              return { title: page.title || 'Untitled', icon: page.icon ?? 'file-text' };
             } catch {
               return null;
             }

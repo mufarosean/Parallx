@@ -269,7 +269,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
             const fsPath = parsed.params['path'] ?? parsed.params['uri'];
             if (!fsPath) return null;
             const name = fsPath.split(/[\\/]/).pop() || fsPath;
-            return { title: name, icon: '📄' };
+            return { title: name, icon: 'file-text' };
           },
         },
       },

@@ -14,6 +14,7 @@ import { buildSimpleRRule, describeRRule, rruleToPreset } from './plannerRecurre
 import { packLanes } from './plannerLayout.js';
 import { PlannerAutomationsController, type CronServiceLike } from './plannerAutomations.js';
 import { Dropdown } from '../../ui/dropdown.js';
+import { getIcon } from '../../ui/iconRegistry.js';
 
 interface PlannerEditorInput {
   readonly id: string;          // === instanceId; only one ('main') for M82
@@ -1653,8 +1654,13 @@ class PlannerEditorPane implements IDisposable {
       labelSpan.textContent = meta.title;
       chip.title = meta.title;
       if (meta.icon) {
+        // LinkMetadata.icon is a registry icon id (system UI never uses
+        // emoji). Unknown ids fall back to rendering the raw string so
+        // legacy providers still show something.
         const iconSpan = el('span', 'planner-popover__linkchip-icon');
-        iconSpan.textContent = meta.icon;
+        const svg = getIcon(meta.icon);
+        if (svg) iconSpan.innerHTML = svg;
+        else iconSpan.textContent = meta.icon;
         chip.querySelector('svg')?.replaceWith(iconSpan);
       }
     } catch {

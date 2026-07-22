@@ -711,7 +711,7 @@ function _registerLinkContract(api) {
           if (!url) return null;
           try {
             const u = new URL(url);
-            return { title: u.hostname + u.pathname, icon: '🔗' };
+            return { title: u.hostname + u.pathname, icon: 'link' };
           } catch {
             return null;
           }

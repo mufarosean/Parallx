@@ -98,7 +98,7 @@ async function handleDescribe(
     return {};
   }
 
-  response.reference(`parallx://page/${pageId}`, `${structure.icon ?? '📄'} ${structure.title}`);
+  response.reference(`parallx://page/${pageId}`, structure.title);
   return runCanvasPromptTurn(services, request, context, response, token, {
     userText: `Describe the structure of ${structure.title}.`,
     promptContext: formatPageStructure(structure),
@@ -128,7 +128,7 @@ async function handleBlocks(
     return {};
   }
 
-  response.reference(`parallx://page/${pageId}`, `${structure.icon ?? '📄'} ${structure.title}`);
+  response.reference(`parallx://page/${pageId}`, structure.title);
   if (structure.blocks.length === 0) {
     response.markdown(`**${structure.title}** has no blocks yet.`);
     return {};
@@ -175,7 +175,7 @@ async function handleGeneral(
     response.markdown(`Could not read page structure for \`${pageId}\`.`);
     return {};
   }
-  response.reference(`parallx://page/${pageId}`, `${structure.icon ?? '📄'} ${structure.title}`);
+  response.reference(`parallx://page/${pageId}`, structure.title);
   return runCanvasPromptTurn(services, request, context, response, token, {
     userText: request.text,
     promptContext: formatPageStructure(structure),

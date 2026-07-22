@@ -168,7 +168,7 @@ function formatMindMapSection(diag: {
   readonly lastRefreshAt: string | null;
   readonly lastRefreshStatus: string | null;
 }): string {
-  const lines: string[] = ['', '🕸️ Mind map (M76)'];
+  const lines: string[] = ['', 'Mind map (M76)'];
   if (diag.totalEdges === 0 && diag.conceptCount === 0) {
     lines.push('No cached edges or concept nodes yet. Run a refresh from Workspace Graph → Graph Settings.');
     return lines.join('\n');
@@ -195,7 +195,7 @@ function formatContextReport(
   const skillNames = Array.from(new Set(report.skills.entries.map((entry) => entry.name)));
   const toolNames = report.tools.entries.map((entry) => entry.name);
   const lines: string[] = [
-    detailed ? '🧠 Context breakdown (detailed)' : '🧠 Context breakdown',
+    detailed ? 'Context breakdown (detailed)' : 'Context breakdown',
     `Workspace: ${report.workspaceName ?? '(unknown)'}`,
     `Bootstrap max/file: ${formatInt(report.bootstrapMaxChars)} chars`,
     `Bootstrap max/total: ${formatInt(report.bootstrapTotalMaxChars)} chars`,

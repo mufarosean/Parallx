@@ -94,7 +94,7 @@ async function handleList(
 
   const displayed = pages.slice(0, 50);
   for (const page of displayed) {
-    response.reference(`parallx://page/${page.id}`, `${page.icon ?? '📄'} ${page.title}`);
+    response.reference(`parallx://page/${page.id}`, page.title);
   }
 
   const lines: string[] = [
@@ -102,7 +102,7 @@ async function handleList(
     '',
   ];
   for (const page of displayed) {
-    lines.push(`- ${page.icon ?? '📄'} ${page.title}`);
+    lines.push(`- ${page.title}`);
   }
   if (pages.length > displayed.length) {
     lines.push(``, `... and ${pages.length - displayed.length} more.`);
@@ -137,13 +137,13 @@ async function handleSearch(
   }
 
   for (const page of results) {
-    response.reference(`parallx://page/${page.id}`, `${page.icon ?? '📄'} ${page.title}`);
+    response.reference(`parallx://page/${page.id}`, page.title);
   }
 
   const promptContext = [
     `Workspace search query: ${query}`,
     'Matching pages:',
-    ...results.map((page) => `- ${page.icon ?? '📄'} ${page.title} (id: ${page.id})`),
+    ...results.map((page) => `- ${page.title} (id: ${page.id})`),
   ].join('\n');
 
   return runWorkspacePromptTurn(services, request, context, response, token, {
@@ -179,7 +179,7 @@ async function handleSummarize(
   }
 
   const content = await services.getPageContent(pageId);
-  response.reference(`parallx://page/${pageId}`, `📄 ${title}`);
+  response.reference(`parallx://page/${pageId}`, title);
 
   const promptContext = [
     `Page title: ${title}`,
@@ -213,7 +213,7 @@ async function handleGeneral(
   const promptLines = [
     `Workspace page count: ${pages.length}`,
     'Top workspace pages:',
-    ...pages.slice(0, 20).map((page) => `- ${page.icon ?? '📄'} ${page.title} (id: ${page.id})`),
+    ...pages.slice(0, 20).map((page) => `- ${page.title} (id: ${page.id})`),
   ];
 
   if (services.listFiles) {

@@ -5979,7 +5979,7 @@ function renderChatEditor(container, parallx, input) {
       actions.appendChild(copyBtn);
 
       // hiddenFrom visibility toggle — cycles null → 'ai' → 'user' → null
-      const visLabel = msg.hiddenFrom === 'ai' ? '👁 Hidden from AI' : msg.hiddenFrom === 'user' ? '👁 Hidden from display' : '';
+      const visLabel = msg.hiddenFrom === 'ai' ? 'Hidden from AI' : msg.hiddenFrom === 'user' ? 'Hidden from display' : '';
       const visBtn = el('button', 'tg-msg-action-btn', { html: icon('eye', 13) });
       visBtn.title = msg.hiddenFrom ? `Visibility: hidden from ${msg.hiddenFrom} (click to cycle)` : 'Toggle visibility (click to hide from AI/display)';
       if (msg.hiddenFrom) visBtn.style.opacity = '0.5';
@@ -8597,9 +8597,9 @@ function renderSettingsPage(container, parallx) {
   form.appendChild(el('div', 'tg-page-section-title', { text: 'Token Budget (% of context window)' }));
   const budgetTotalEl = el('div', 'tg-form-budget-total');
   form.appendChild(budgetTotalEl);
-  const charBudget = formGroup('Character prompt 🧠', 'Higher = richer persona, but eats history. Default 15%.', 'number', 'tokenBudgetCharacter', { min: 0, max: 90 });
-  const loreBudget = formGroup('Lore / World info 📚', 'Lorebook + long-term memory share. Default 20%.', 'number', 'tokenBudgetLore', { min: 0, max: 90 });
-  const histBudget = formGroup('Chat history 💬', 'Older turns kept in context. Default 35%.', 'number', 'tokenBudgetHistory', { min: 0, max: 90 });
+  const charBudget = formGroup('Character prompt', 'Higher = richer persona, but eats history. Default 15%.', 'number', 'tokenBudgetCharacter', { min: 0, max: 90 });
+  const loreBudget = formGroup('Lore / World info', 'Lorebook + long-term memory share. Default 20%.', 'number', 'tokenBudgetLore', { min: 0, max: 90 });
+  const histBudget = formGroup('Chat history', 'Older turns kept in context. Default 35%.', 'number', 'tokenBudgetHistory', { min: 0, max: 90 });
   const userBudget = formGroup('User message ✍️', 'Headroom for your latest message. Default 30%.', 'number', 'tokenBudgetUser', { min: 0, max: 90 });
   function recomputeBudgetTotal() {
     const sum = [charBudget, loreBudget, histBudget, userBudget]
@@ -8967,7 +8967,7 @@ function renderCharacterEditor(container, parallx, input) {
   tempInput.min = '0';
   tempInput.max = '2';
   tempInput.step = '0.1';
-  genRow.appendChild(field('Temperature 🌡️', 'Creativity 0–2. Lower = consistent, higher = wild. Default 0.8.', tempInput));
+  genRow.appendChild(field('Temperature', 'Creativity 0–2. Lower = consistent, higher = wild. Default 0.8.', tempInput));
   const maxTokInput = el('input', 'tg-ce-input');
   maxTokInput.type = 'number';
   maxTokInput.min = '0';
@@ -9872,7 +9872,7 @@ export function activate(parallx, context) {
             id: rootId,
             label: 'Text Generator',
             domain: 'chat',
-            icon: '💬',
+            icon: 'message-circle',
             weight: 6,
             meta: { type: 'tg-root' },
           }];
@@ -9887,7 +9887,7 @@ export function activate(parallx, context) {
             nodes.push({
               id, label,
               domain: 'character',
-              icon: '🧑‍🎤',
+              icon: 'drama',
               weight: 4,
               meta: { type: 'tg-character', fileName: c.fileName },
             });

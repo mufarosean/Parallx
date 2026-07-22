@@ -24736,7 +24736,7 @@ export async function activate(api, context) {
           },
           async resolveMetadata(parsed) {
             const id = parsed.pathSegments[1];
-            return id ? { title: 'Photo #' + id, icon: '🖼️' } : null;
+            return id ? { title: 'Photo #' + id, icon: 'image' } : null;
           },
         },
         video: {
@@ -24755,7 +24755,7 @@ export async function activate(api, context) {
           },
           async resolveMetadata(parsed) {
             const id = parsed.pathSegments[1];
-            return id ? { title: 'Video #' + id, icon: '🎬' } : null;
+            return id ? { title: 'Video #' + id, icon: 'film' } : null;
           },
         },
       },
@@ -24780,7 +24780,7 @@ export async function activate(api, context) {
             id: rootId,
             label: 'Media',
             domain: 'media',
-            icon: '🖼️',
+            icon: 'image',
             weight: 6,
             meta: { type: 'media-root' },
           }];
@@ -24792,7 +24792,7 @@ export async function activate(api, context) {
             const id = 'media:album:' + a.id;
             nodes.push({
               id, label: a.title || 'Untitled album',
-              domain: 'media', icon: '📁', weight: 4,
+              domain: 'media', icon: 'folder', weight: 4,
               meta: { type: 'media-album', albumId: a.id },
             });
             edges.push({ source: rootId, target: id, kind: 'contains' });

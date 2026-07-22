@@ -44,7 +44,7 @@ export async function tryHandleOpenclawStatusCommand(
   // RAG & Indexing
   lines.push('\n### Retrieval');
   lines.push(`- **RAG:** ${ragAvailable ? '✅ Available' : '❌ Not available'}`);
-  lines.push(`- **Indexing:** ${indexing ? '🔄 In progress' : '✅ Idle'}`);
+  lines.push(`- **Indexing:** ${indexing ? 'In progress' : 'Idle'}`);
   const fileCount = await services.getFileCount?.().catch(() => 0) ?? 0;
   if (fileCount > 0) lines.push(`- **Indexed Files:** ${fileCount}`);
 

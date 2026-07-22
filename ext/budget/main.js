@@ -4925,7 +4925,7 @@ function buildGoalCard(g, monthlySurplus, api, refresh) {
   // the recent monthly surplus.
   let detail = '';
   if (remaining <= 0) {
-    detail = 'Complete 🎉';
+    detail = 'Complete';
   } else if (g.target_date) {
     const days = Math.ceil((new Date(g.target_date).getTime() - Date.now()) / 86400000);
     if (days < 0) detail = `Past target date · ${fmtMoney(remaining)} to go`;
@@ -9340,7 +9340,7 @@ function _registerBudgetLinkContract(api) {
         },
         async resolveMetadata(parsed) {
           const id = parsed.pathSegments[1];
-          return id ? { title: 'Account #' + id, icon: '💳' } : null;
+          return id ? { title: 'Account #' + id, icon: 'credit-card' } : null;
         },
       },
       transaction: {
@@ -9357,7 +9357,7 @@ function _registerBudgetLinkContract(api) {
         },
         async resolveMetadata(parsed) {
           const id = parsed.pathSegments[1];
-          return id ? { title: 'Transaction #' + id, icon: '💸' } : null;
+          return id ? { title: 'Transaction #' + id, icon: 'receipt' } : null;
         },
       },
     },
@@ -9378,7 +9378,7 @@ function _registerBudgetLinkContract(api) {
             id: rootId,
             label: 'Budget',
             domain: 'budget',
-            icon: '💰',
+            icon: 'wallet',
             weight: 6,
             meta: { type: 'budget-root' },
           }];
@@ -9392,7 +9392,7 @@ function _registerBudgetLinkContract(api) {
               id,
               label: a.display_name || (a.kind + ' ••' + (a.last_four || '----')),
               domain: 'budget',
-              icon: a.kind === 'credit_card' ? '💳' : '🏦',
+              icon: a.kind === 'credit_card' ? 'credit-card' : 'landmark',
               weight: 4,
               meta: { type: 'budget-account', accountId: a.id, kind: a.kind },
             });

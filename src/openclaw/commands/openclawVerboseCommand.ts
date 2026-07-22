@@ -20,12 +20,12 @@ export async function tryHandleOpenclawVerboseCommand(
     services.setSessionFlag(VERBOSE_SESSION_FLAG, next);
     response.markdown(
       next
-        ? '🔍 **Verbose mode enabled.** Debug information will be shown for subsequent turns:\n'
+        ? '**Verbose mode enabled.** Debug information will be shown for subsequent turns:\n'
           + '- Runtime trace (routing, context plan, retrieval)\n'
           + '- Token budget breakdown\n'
           + '- Tool invocation details\n'
           + '- Bootstrap file loading'
-        : '🔇 **Verbose mode disabled.** Returning to standard output.',
+        : '**Verbose mode disabled.** Returning to standard output.',
     );
   } else {
     response.markdown('⚠️ Session flag storage is not available. Verbose mode cannot be toggled.');

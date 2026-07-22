@@ -20,8 +20,8 @@ export async function tryHandleOpenclawThinkCommand(
     services.setSessionFlag(THINK_SESSION_FLAG, next);
     response.markdown(
       next
-        ? '🧠 **Thinking mode enabled.** The model will show its reasoning process for subsequent messages in this session.'
-        : '💬 **Thinking mode disabled.** Returning to standard response mode.',
+        ? '**Thinking mode enabled.** The model will show its reasoning process for subsequent messages in this session.'
+        : '**Thinking mode disabled.** Returning to standard response mode.',
     );
   } else {
     response.markdown('⚠️ Session flag storage is not available. Thinking mode cannot be toggled.');

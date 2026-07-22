@@ -163,7 +163,7 @@ export async function executeInitCommand(
         }
       }
       if (skillsWritten > 0) {
-        response.markdown(`\n🛠️ ${skillsWritten} default skill(s) installed to \`.parallx/skills/\`.`);
+        response.markdown(`\n${skillsWritten} default skill(s) installed to \`.parallx/skills/\`.`);
       }
 
       // Invalidate prompt file cache so AGENTS.md is picked up

@@ -2862,7 +2862,7 @@ export async function activate(api, context) {
           },
           async resolveMetadata(parsed) {
             const id = parsed.pathSegments[1];
-            return id ? { title: id, icon: '🕸️' } : null;
+            return id ? { title: id, icon: 'share-2' } : null;
           },
         },
       },
