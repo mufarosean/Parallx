@@ -100,7 +100,7 @@ const ICON = {
   moon:         getIcon('moon')!,
   sun:          getIcon('sun')!,
   chat:         getIcon('message-circle')!,
-  sparkles:     getIcon('sparkles')!,
+  sparkles:     getIcon('px-ai-mark')!,
   openExtSm:    getIcon('external-link')!,
 } as const;
 

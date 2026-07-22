@@ -54,7 +54,7 @@ export const EMPTY_STATES = {
   },
   'chat.newSession': {
     id: 'chat.newSession',
-    icon: 'sparkles',
+    icon: 'px-ai-mark',
     headline: 'How can I help you?',
     hint: 'Ask about your notes, plan your day, or say "watch this for me" to set a standing watch.',
   },

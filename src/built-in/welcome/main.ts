@@ -202,9 +202,9 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi, recentWorksp
   leftCol.appendChild(helpTitle);
 
   const helpItems = [
-    { icon: 'ui-keyboard', text: 'Command Palette', hint: 'Ctrl+Shift+P', command: 'workbench.action.showCommands' },
+    { icon: 'terminal', text: 'Command Palette', hint: 'Ctrl+Shift+P', command: 'workbench.action.showCommands' },
     { icon: 'gear', text: 'Settings', hint: 'Ctrl+Alt+S', command: 'settings.open' },
-    { icon: 'ui-keyboard', text: 'Keyboard Shortcuts', hint: 'Ctrl+K Ctrl+S', command: 'workbench.action.openKeybindings' },
+    { icon: 'keyboard', text: 'Keyboard Shortcuts', hint: 'Ctrl+K Ctrl+S', command: 'workbench.action.openKeybindings' },
   ];
 
   for (const item of helpItems) {
@@ -235,10 +235,13 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi, recentWorksp
   aiTitle.textContent = 'AI Quick Start';
   leftCol.appendChild(aiTitle);
 
+  // NOTE: these previously used 'ui-sparkle'/'ui-wand'/'ui-book-open' —
+  // ids that never existed in the registry, so the rows rendered blank
+  // icons. The AI rows wear the brand mark (never the sparkle cliché).
   const aiItems = [
-    { icon: 'ui-sparkle', text: 'Open AI Chat', hint: 'Ctrl+Shift+I', command: 'workbench.action.chat.open' },
-    { icon: 'ui-wand', text: 'Set Up Workspace AI', hint: '/init', command: 'parallx.chat.openWithInit' },
-    { icon: 'ui-book-open', text: 'AI User Guide', hint: '', command: 'parallx.openAIUserGuide' },
+    { icon: 'px-ai-mark', text: 'Open AI Chat', hint: 'Ctrl+Shift+I', command: 'workbench.action.chat.open' },
+    { icon: 'compass', text: 'Set Up Workspace AI', hint: '/init', command: 'parallx.chat.openWithInit' },
+    { icon: 'book-open', text: 'AI User Guide', hint: '', command: 'parallx.openAIUserGuide' },
     { icon: 'gear', text: 'Workspace AI Config', hint: '.parallx/', command: 'parallx.openWorkspaceAIConfig' },
   ];
 

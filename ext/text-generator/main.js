@@ -5358,7 +5358,7 @@ function renderChatEditor(container, parallx, input) {
     charBtn.style.cssText = 'width:100%; justify-content:center; padding:8px 16px; font-size:12px;';
     charBtn.addEventListener('click', () => { overlay.remove(); showAddCharacterShortcutDialog(); });
 
-    const customBtn = el('button', 'tg-shortcut-btn', { html: `${icon('sparkles', 14)} add a custom shortcut` });
+    const customBtn = el('button', 'tg-shortcut-btn', { html: `${icon('px-ai-mark', 14)} add a custom shortcut` });
     customBtn.style.cssText = 'width:100%; justify-content:center; padding:8px 16px; font-size:12px;';
     customBtn.addEventListener('click', () => { overlay.remove(); showAddCustomShortcutDialog(); });
 
@@ -6087,7 +6087,7 @@ function renderChatEditor(container, parallx, input) {
       const isAiMsg = messageHistory[msgIndex]?.author === 'ai';
       if (isAiMsg) {
         autoRow = el('div', 'tg-inline-auto-row');
-        const autoBtn = el('button', 'tg-inline-edit-btn tg-inline-edit-btn--auto', { html: `${icon('sparkles', 12)} Autocomplete` });
+        const autoBtn = el('button', 'tg-inline-edit-btn tg-inline-edit-btn--auto', { html: `${icon('px-ai-mark', 12)} Autocomplete` });
         autoBtn.title = 'Save edits and AI continues writing from where the text ends';
         // mousedown preventDefault keeps textarea focused so blur doesn't race
         autoBtn.addEventListener('mousedown', (e) => e.preventDefault());
@@ -7587,7 +7587,7 @@ function renderHomePage(container, parallx) {
 
   // Header
   const header = el('div', 'tg-page-header');
-  header.innerHTML = icon('sparkles', 28);
+  header.innerHTML = icon('px-ai-mark', 28);
   const info = el('div', 'tg-page-header-info');
   info.appendChild(el('div', 'tg-page-header-title', { text: 'Text Generator' }));
   info.appendChild(el('div', 'tg-page-header-subtitle', { text: 'Character chat powered by local Ollama models' }));
@@ -7723,7 +7723,7 @@ function renderCharactersPage(container, parallx, input) {
   const rail = el('div', 'tg-cc-rail');
   const railHead = el('div', 'tg-cc-rail-head');
   railHead.appendChild(el('span', 'tg-cc-rail-title', { text: 'Characters' }));
-  const forgeBtn = el('button', 'tg-cc-rail-add', { html: icon('sparkles', 14) });
+  const forgeBtn = el('button', 'tg-cc-rail-add', { html: icon('px-ai-mark', 14) });
   forgeBtn.title = 'Forge a character (AI-generated from dials)';
   forgeBtn.addEventListener('click', () => openForge());
   railHead.appendChild(forgeBtn);
@@ -8111,7 +8111,7 @@ function renderForgePane(container, parallx, ctx) {
   container.appendChild(root);
 
   const head = el('div', 'tg-forge-head');
-  head.appendChild(el('div', null, { html: icon('sparkles', 22) }));
+  head.appendChild(el('div', null, { html: icon('px-ai-mark', 22) }));
   const headInfo = el('div', null);
   headInfo.appendChild(el('div', 'tg-forge-title', { text: 'Character Forge' }));
   headInfo.appendChild(el('div', 'tg-forge-subtitle', { text: 'Describe the character in your own words, tune the dials, generate. Your description always wins.' }));
@@ -8320,7 +8320,7 @@ function renderForgePane(container, parallx, ctx) {
       numericInputs[key].val.textContent = meta.fmt(state[key]);
     }
   });
-  const genBtn = el('button', 'tg-forge-generate', { html: `${icon('sparkles', 14)} Generate character` });
+  const genBtn = el('button', 'tg-forge-generate', { html: `${icon('px-ai-mark', 14)} Generate character` });
   actions.append(diceBtn, genBtn);
   root.appendChild(actions);
 
@@ -9822,7 +9822,7 @@ export function activate(parallx, context) {
     parallx.editors.openEditor({
       typeId: 'text-generator-home',
       title: 'Text Generator',
-      icon: 'sparkles',
+      icon: 'px-ai-mark',
       instanceId: 'home',
     });
   });

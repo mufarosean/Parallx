@@ -996,7 +996,7 @@ function createSidebarView(container) {
   actions.appendChild(newBtn);
 
   const genBtn = el('button', 'fc-btn');
-  genBtn.innerHTML = `${icon('sparkles', 12)}<span>Generate</span>`;
+  genBtn.innerHTML = `${icon('px-ai-mark', 12)}<span>Generate</span>`;
   genBtn.addEventListener('click', () => void openFlashcards({ view: 'create' }));
   actions.appendChild(genBtn);
 
@@ -1050,7 +1050,7 @@ function createSidebarView(container) {
 const TAB_DEFS = [
   { view: 'decks', label: 'Decks', iconName: 'layers' },
   { view: 'study', label: 'Study', iconName: 'play' },
-  { view: 'create', label: 'Create', iconName: 'sparkles' },
+  { view: 'create', label: 'Create', iconName: 'px-ai-mark' },
   { view: 'stats', label: 'Stats', iconName: 'chart-column' },
 ];
 
@@ -1163,7 +1163,7 @@ async function renderDecks(body, setRoute) {
   newDeckBtn.addEventListener('click', () => void _cmdNewDeck());
   actions.appendChild(newDeckBtn);
   const genBtn = el('button', 'fc-btn');
-  genBtn.innerHTML = `${icon('sparkles', 12)}<span>Generate cards</span>`;
+  genBtn.innerHTML = `${icon('px-ai-mark', 12)}<span>Generate cards</span>`;
   genBtn.addEventListener('click', () => setRoute({ view: 'create' }));
   actions.appendChild(genBtn);
   view.appendChild(actions);
@@ -1686,7 +1686,7 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
   const genRow = el('div', 'fc-row');
   genRow.style.marginTop = '10px';
   const genBtn = el('button', 'fc-btn fc-btn--primary');
-  genBtn.innerHTML = `${icon('sparkles', 12)}<span>Generate cards</span>`;
+  genBtn.innerHTML = `${icon('px-ai-mark', 12)}<span>Generate cards</span>`;
   genRow.appendChild(genBtn);
   const manualHint = el('span', 'fc-hint', 'Prefer manual entry? Open a deck and use "Add card".');
   genRow.appendChild(manualHint);
@@ -1706,7 +1706,7 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
       }
       err.style.display = 'none';
       genBtn.disabled = true;
-      genBtn.innerHTML = `${icon('sparkles', 12)}<span>Generating…</span>`;
+      genBtn.innerHTML = `${icon('px-ai-mark', 12)}<span>Generating…</span>`;
       try {
         const cards = await fcGenerateCards(text, {
           count: parseInt(countIn.value, 10) || 15,
@@ -1718,7 +1718,7 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
         err.style.display = '';
       } finally {
         genBtn.disabled = false;
-        genBtn.innerHTML = `${icon('sparkles', 12)}<span>Generate cards</span>`;
+        genBtn.innerHTML = `${icon('px-ai-mark', 12)}<span>Generate cards</span>`;
       }
     })();
   });

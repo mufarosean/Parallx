@@ -603,7 +603,7 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
     emptyEl.classList.add('autonomy-log-empty--guide');
 
     const head = $('div.autonomy-guide__head');
-    head.appendChild(iconSpan('sparkles', 'autonomy-guide__head-ic'));
+    head.appendChild(iconSpan('px-ai-mark', 'autonomy-guide__head-ic'));
     const title = $('div.autonomy-guide__title');
     title.textContent = 'Nothing has run yet';
     head.appendChild(title);

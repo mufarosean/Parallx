@@ -34,10 +34,22 @@ function brand(inner: string): string {
 const PLATE = '<rect x="4.5" y="4" width="15" height="16" rx="1.5"/>';
 
 export const BRAND_ICONS: Record<string, string> = {
-  /** The logo mark — two overlapping leaning plates. The ONLY slanted icon. */
+  /** The logo mark — two overlapping leaning plates. */
   'px-mark': brand(
     '<path d="M9.5 4.3 L21 4.3 L18.9 15.5 L7.4 15.5 Z"/>'
     + '<path d="M5.1 8.5 L16.6 8.5 L14.5 19.7 L3 19.7 Z"/>',
+  ),
+
+  /**
+   * The AI mark — the logo, proportioned for 12–18px action buttons.
+   * Parallx does not wear the sparkle: the assistant IS the app, so "AI is
+   * acting here" is signalled by the brand mark itself (generate buttons,
+   * chat hero, AI section labels). The lean lives only in these two logo
+   * marks — every other icon stands upright.
+   */
+  'px-ai-mark': brand(
+    '<path d="M9.4 3.6 L21.5 3.6 L19.6 13.6 L7.5 13.6 Z"/>'
+    + '<path d="M4.6 10.4 L16.7 10.4 L14.8 20.4 L2.7 20.4 Z"/>',
   ),
 
   /** Canvas — the plate as a page; line rhythm, short last line. */

@@ -98,9 +98,17 @@ PDF", not "Export As PDF" mid-sentence).
   (left edge x = 7 − 3(y−4)/16), one strong inner mark, no fills.
 - `LinkMetadata.icon` is a registry icon id — renderers resolve it; emoji
   never crosses the contract.
-- **The lean is scarce.** The parallelogram skew lives ONLY in `px-mark`
-  (the logo). Noun icons stand upright — a rail of same-direction leaning
-  glyphs reads as misalignment, not a motif (learned 2026-07-22).
+- **The lean is scarce.** The parallelogram skew lives ONLY in the logo
+  marks (`px-mark`, `px-ai-mark`). Noun icons stand upright — a rail of
+  same-direction leaning glyphs reads as misalignment, not a motif
+  (learned 2026-07-22).
+- **The AI never wears the sparkle.** `sparkles`, `sparkle`, `wand`, and
+  `wand-sparkles` are BANNED for AI affordances — they are the most
+  recycled glyphs in every AI product shipped since 2023. Parallx's AI
+  mark is `px-ai-mark` (the logo, small-proportioned): the assistant IS
+  the app, so the brand mark appearing means "the assistant is acting" —
+  generate buttons, the chat hero, AI section labels, autonomy surfaces.
+  Send is `arrow-up`, not the paper plane.
 - **Stroke weights are a three-tier system**, not a per-author choice
   (normalized 2026-07-22 — 40 drifting icons were at 1.8/2.2/2.5/2.6):
 

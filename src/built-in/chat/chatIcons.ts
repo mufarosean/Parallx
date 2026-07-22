@@ -25,7 +25,8 @@ export const chatIcons = {
   scrollText:       g('scroll-text'),
 
   // ── Input actions ──
-  send:             g('send'),
+  // Send is arrow-up, not the paper plane — the modern assistant convention.
+  send:             g('arrow-up'),
   stop:             g('stop'),
   attach:           g('attach'),
 
@@ -33,14 +34,15 @@ export const chatIcons = {
   chevronDown:      g('chevron-down'),
 
   // ── Empty state / welcome ──
-  sparkle:          g('sparkle'),
+  // The AI wears the brand mark, never the sparkle (see brandIcons.ts).
+  sparkle:          g('px-ai-mark'),
   chatBubble:       g('chat-bubble'),
   pencil:           g('pencil'),
   agent:            g('agent'),
   atSign:           g('at-sign'),
   canvas:           g('page'),
   keyboard:         g('keyboard'),
-  wand:             g('wand'),
+  wand:             g('compass'),
   lightbulb:        g('lightbulb'),
 
   // ── Sidebar ──
@@ -54,7 +56,7 @@ export const chatIcons = {
   wrench:           g('wrench'),
   tools:            g('tools'),
   person:           g('person'),
-  sparkleSmall:     g('sparkles'),
+  sparkleSmall:     g('px-ai-mark'),
 
   // ── Context attachments ──
   file:             g('file'),
