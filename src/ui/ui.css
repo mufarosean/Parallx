@@ -821,3 +821,98 @@
   max-width: 420px;
   line-height: 1.5;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * px-markdown — the shared compact Markdown + KaTeX renderer (renderMarkdown.ts).
+ * Sized for embedding inside cards and panels, not for page-level documents.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.px-markdown { line-height: var(--px-leading-base); color: inherit; }
+.px-markdown > :first-child { margin-top: 0; }
+.px-markdown > :last-child { margin-bottom: 0; }
+.px-markdown p { margin: 0 0 0.5em; }
+.px-markdown ul, .px-markdown ol { margin: 0 0 0.5em; padding-left: 1.3em; }
+.px-markdown li { margin: 0.15em 0; }
+.px-markdown li > p { margin: 0; }
+.px-markdown h1, .px-markdown h2, .px-markdown h3 {
+  font-size: 1.05em;
+  font-weight: 650;
+  margin: 0.7em 0 0.3em;
+  line-height: var(--px-leading-tight);
+}
+.px-markdown strong { font-weight: 650; }
+.px-markdown code {
+  font-family: var(--parallx-fontFamily-mono, monospace);
+  font-size: 0.9em;
+  background: var(--px-bg-inset);
+  border-radius: var(--px-radius-sm);
+  padding: 0.1em 0.35em;
+}
+.px-markdown pre {
+  background: var(--px-bg-inset);
+  border: 1px solid var(--px-divider);
+  border-radius: var(--px-radius-md);
+  padding: var(--px-space-2) var(--px-space-3);
+  margin: 0.5em 0;
+  overflow-x: auto;
+}
+.px-markdown pre code { background: none; padding: 0; }
+.px-markdown blockquote {
+  margin: 0.5em 0;
+  padding: 0 0 0 var(--px-space-3);
+  border-left: 2px solid var(--px-border);
+  color: var(--px-text-secondary);
+}
+.px-markdown table { border-collapse: collapse; margin: 0.5em 0; }
+.px-markdown th, .px-markdown td {
+  border: 1px solid var(--px-divider);
+  padding: 0.25em 0.6em;
+  text-align: left;
+}
+.px-markdown a { color: var(--px-accent); text-decoration: none; }
+.px-markdown a:hover { text-decoration: underline; }
+.px-markdown__math--display {
+  display: block;
+  text-align: center;
+  margin: 0.6em 0;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * px-ai-btn — THE AI button (aiButton.ts). The brand mark in an accent pill;
+ * every "the assistant acts here" affordance uses this, nothing else.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.px-ai-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 var(--px-space-3);
+  border: 1px solid var(--px-accent-faint);
+  border-radius: var(--px-radius-full);
+  background: var(--px-accent-soft);
+  color: var(--px-accent);
+  font: inherit;
+  font-size: var(--px-text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease), transform var(--px-dur-instant) var(--px-ease);
+}
+.px-ai-btn:hover {
+  background: var(--px-accent);
+  border-color: transparent;
+  color: var(--px-text-on-accent);
+}
+.px-ai-btn:active { transform: var(--px-press); }
+.px-ai-btn:focus-visible { outline: none; box-shadow: var(--px-ring-accent); }
+.px-ai-btn:disabled { opacity: 0.5; cursor: default; transform: none; }
+.px-ai-btn__icon {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+.px-ai-btn__icon svg { width: 100%; height: 100%; }
+.px-ai-btn--compact { height: 24px; padding: 0 var(--px-space-2); font-size: var(--px-text-xs); }
+.px-ai-btn--compact .px-ai-btn__icon { width: 12px; height: 12px; }

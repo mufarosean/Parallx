@@ -12,6 +12,8 @@ import { IDisposable } from '../platform/lifecycle.js';
 import { Emitter } from '../platform/events.js';
 import { rafThrottle } from '../platform/rafThrottle.js';
 import { Dropdown, IDropdownItem } from '../ui/dropdown.js';
+import { renderMarkdown } from '../ui/renderMarkdown.js';
+import { createAiButton } from '../ui/aiButton.js';
 import { URI } from '../platform/uri.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import {
@@ -131,6 +133,13 @@ export interface ParallxApiObject {
       setDisabled(disabled: boolean): void;
       dispose(): void;
     };
+    renderMarkdown(markdown: string): HTMLElement;
+    createAiButton(container: HTMLElement, options: {
+      readonly label: string;
+      readonly compact?: boolean;
+      readonly ariaLabel?: string;
+      readonly title?: string;
+    }): HTMLButtonElement;
   };
   /** Register keybindings into the single workbench dispatcher (see `keybindings` namespace). */
   readonly keybindings: {
@@ -545,6 +554,21 @@ export function createToolApi(
           setDisabled(disabled: boolean): void { dropdown.disabled = disabled; },
           dispose(): void { dropdown.dispose(); },
         };
+      },
+      // The shared compact Markdown + KaTeX renderer (.px-markdown). Safe for
+      // model-generated content: raw HTML is never interpreted.
+      renderMarkdown(markdown: string): HTMLElement {
+        return renderMarkdown(markdown);
+      },
+      // THE AI button (.px-ai-btn): the brand mark in an accent pill. Every
+      // "the assistant acts here" affordance uses this, nothing else.
+      createAiButton(container: HTMLElement, options: {
+        readonly label: string;
+        readonly compact?: boolean;
+        readonly ariaLabel?: string;
+        readonly title?: string;
+      }): HTMLButtonElement {
+        return createAiButton(container, options);
       },
     }),
 

@@ -81,6 +81,11 @@ PDF", not "Export As PDF" mid-sentence).
 - Ellipsis is `…` (never `...`). No exclamation marks in chrome. **No emoji
   anywhere in system UI** — including chat slash-command output, link chips,
   form labels, and progress text.
+- **No em dashes (`—`) in user-facing copy.** They are an AI-writing tell.
+  Use a period for two clauses, a colon before a list, or parentheses for an
+  aside. (The `—` glyph as a bare empty-value placeholder — a cell with no
+  value — is fine; that is data, not prose.) The AI generation and discussion
+  prompts also instruct the model never to emit them.
 
 ## 6. Glyphs & icons
 
@@ -135,6 +140,13 @@ PDF", not "Export As PDF" mid-sentence).
 | Toasts/prompts | NotificationService | custom toast divs |
 | Shortcuts | KeybindingService + when-clauses | document keydown listeners |
 | Hot-path handlers | `rafThrottle` | raw mousemove/scroll handlers |
+| AI action button | `ui/aiButton.ts` (`api.ui.createAiButton`) | per-surface AI buttons/icons |
+| Rich text / math body | `ui/renderMarkdown.ts` (`api.ui.renderMarkdown`) | hand-rolled markdown, raw `innerHTML` |
+
+**One AI face.** Every "the assistant acts here" affordance is the same
+`px-ai-btn` — the brand mark in an accent pill. Surfaces do not invent their
+own AI buttons or pick their own AI icon; when the logo changes, all of them
+follow because the mark is one registry entry.
 
 Popover-scoped components (Dropdowns in popovers) register document-level
 listeners — every close path must dispose them.
