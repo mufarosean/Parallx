@@ -178,6 +178,14 @@ export interface IHeartbeatRealTurnDeps {
   /** The user's open planner tasks — the second surface the review should know. */
   readonly getWorkspaceTasks?: () => Promise<readonly IWorkspaceTaskInfo[]>;
   /**
+   * Recent user-activity narrative from the ActivityJournal — the timeline of
+   * what the user actually DID since the last review ("opened pdf 'x'",
+   * "edited page 'Y'", "asked the assistant about Z"). Empty string = omit.
+   * This is the sense that lets a review reason about behavior, not just
+   * file-change aftermath.
+   */
+  readonly getRecentActivity?: () => Promise<string>;
+  /**
    * M87 — the deterministic fact→trigger→delivery pass (no model, no chat
    * session). Invoked on every interval beat BEFORE the idle gate: the gate
    * exists to protect token spend, and this lane spends none.
@@ -498,12 +506,16 @@ export function createHeartbeatTurnExecutor(
     // the loop on a failure.
     let workspaceBlock = '';
     try {
-      const [pages, tasks, watches] = await Promise.all([
+      const [pages, tasks, watches, activity] = await Promise.all([
         realTurnDeps.getWorkspacePages?.() ?? Promise.resolve([]),
         realTurnDeps.getWorkspaceTasks?.() ?? Promise.resolve([]),
         realTurnDeps.getPurposeWatches?.() ?? Promise.resolve([]),
+        realTurnDeps.getRecentActivity?.() ?? Promise.resolve(''),
       ]);
       workspaceBlock = [
+        activity && activity.trim()
+          ? `What the user has been doing (activity timeline, oldest first — lines marked "assistant" are YOUR OWN recent actions, not the user's):\n${activity.trim()}`
+          : '',
         buildWorkspaceContext(pages),
         buildTasksContext(tasks),
         formatWatchesBlock(watches),

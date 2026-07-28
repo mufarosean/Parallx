@@ -916,6 +916,9 @@ class DashboardEditorPane implements IDisposable {
     const statusEl = card.querySelector('[data-role="status"]') as HTMLElement | null;
     if (statusEl) statusEl.dataset.value = 'running';
     card.classList.add('dashboard-widget--running');
+    // For the AI no-render check below: if the turn delivered anything via
+    // dashboard_render_widget, cachedAt will have moved past this snapshot.
+    const prevCachedAt = inst.row.cachedAt;
 
     try {
       const output = await inst.typeReg.refresh({
@@ -932,18 +935,42 @@ class DashboardEditorPane implements IDisposable {
       // dashboard_render_widget mid-run) — writing here would clobber it.
       if (typeof output === 'string') {
         await this._data.setWidgetCachedOutput(widgetId, output);
-      } else {
-        await this._data.clearWidgetError(widgetId);
       }
       // Re-read the row to pick up the new cachedAt / delivered content.
-      const fresh = await this._data.getWidget(widgetId);
+      let fresh = await this._data.getWidget(widgetId);
+
+      // Honesty check for AI background turns: "the turn succeeded" is not
+      // the same as "the widget got content". A turn that never called
+      // dashboard_render_widget used to clear errors and report ok over
+      // stale content — the exact "fails with no error" presentation.
+      const undelivered = output === null
+        && inst.typeReg.category === 'ai'
+        && (mode ?? 'background') === 'background'
+        && fresh != null
+        && fresh.cachedAt === prevCachedAt;
+      if (undelivered) {
+        throw new Error(
+          'The refresh turn completed but never delivered content to this widget '
+          + '(dashboard_render_widget was not called). Check the Autonomy Log for the full run.');
+      }
+      if (output === null) {
+        await this._data.clearWidgetError(widgetId);
+        fresh = await this._data.getWidget(widgetId);
+      }
       if (fresh) {
         inst.row = fresh;
         if (inst.handle?.renderError) inst.handle.renderError(null);
         if (inst.handle?.refreshFromCache) inst.handle.refreshFromCache(fresh.cachedOutput);
         this._updateFooter(inst);
       }
-      if (statusEl) statusEl.dataset.value = 'ok';
+      if (statusEl) {
+        statusEl.dataset.value = 'ok';
+        // Transparency: which model served this refresh, on hover.
+        if (inst.typeReg.category === 'ai') {
+          const model = this._activeModelId();
+          if (model) statusEl.title = `Refreshed via ${model}`;
+        }
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       await this._data.setWidgetError(widgetId, msg);
@@ -955,6 +982,21 @@ class DashboardEditorPane implements IDisposable {
     } finally {
       card.classList.remove('dashboard-widget--running');
     }
+  }
+
+  /** The global active model id — what an AI refresh turn will be served by. */
+  private _activeModelId(): string | undefined {
+    try {
+      const services = (this._api as unknown as {
+        services?: { has(id: { id: string }): boolean; get<T>(id: { id: string }): T };
+      }).services;
+      if (!services) return undefined;
+      // Resolved lazily by id to avoid a static dependency on chat types.
+      const lmId = { id: 'ILanguageModelsService' };
+      if (!services.has(lmId)) return undefined;
+      const lm = services.get<{ getActiveModel(): string | undefined }>(lmId);
+      return lm.getActiveModel() ?? undefined;
+    } catch { return undefined; }
   }
 
   private _updateFooter(inst: { cardEl: HTMLElement; row: DashboardWidgetRow }): void {

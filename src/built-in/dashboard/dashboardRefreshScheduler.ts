@@ -130,9 +130,13 @@ export class DashboardRefreshScheduler extends Disposable {
     if (policy.kind === 'interval') {
       const ms = Math.max(DASHBOARD_LIMITS.MIN_REFRESH_INTERVAL_MS, policy.ms);
       const tick = () => {
-        void this.runOnce(instanceId, invoke).catch((err) => {
-          console.warn(`[Dashboard] interval refresh failed for ${instanceId}:`, err);
-        });
+        if (this.isBackedOff(instanceId)) {
+          console.info(`[Dashboard] refresh for ${instanceId} skipped (failure backoff)`);
+        } else {
+          void this.runOnce(instanceId, invoke).catch((err) => {
+            console.warn(`[Dashboard] interval refresh failed for ${instanceId}:`, err);
+          });
+        }
         // Reschedule self — using setTimeout rather than setInterval so we never
         // overlap with our own previous tick if it takes longer than the interval.
         this._timers.set(instanceId, setTimeout(tick, ms));
@@ -147,9 +151,13 @@ export class DashboardRefreshScheduler extends Disposable {
         if (next === null) return; // unparseable / no future fire
         const delay = Math.max(DASHBOARD_LIMITS.MIN_REFRESH_INTERVAL_MS, next - Date.now());
         this._timers.set(instanceId, setTimeout(() => {
-          void this.runOnce(instanceId, invoke).catch((err) => {
-            console.warn(`[Dashboard] cron refresh failed for ${instanceId}:`, err);
-          });
+          if (this.isBackedOff(instanceId)) {
+            console.info(`[Dashboard] cron refresh for ${instanceId} skipped (failure backoff)`);
+          } else {
+            void this.runOnce(instanceId, invoke).catch((err) => {
+              console.warn(`[Dashboard] cron refresh failed for ${instanceId}:`, err);
+            });
+          }
           scheduleNext();
         }, delay));
       };
@@ -189,24 +197,51 @@ export class DashboardRefreshScheduler extends Disposable {
     const typeReg = this._instanceTypeMap.get(instanceId);
     const isAI = typeReg?.category === 'ai';
 
-    const start = async () => {
+    // Slot accounting is tied to the UNDERLYING work settling, not to the
+    // timeout race: releasing on timeout let interval policies stack fresh
+    // AI turns onto a provider still chewing the stalled one (amplification).
+    // A generous backstop still frees the slot if the work truly wedges.
+    let released = false;
+    const releaseOnce = (claimedAiSlot: boolean) => {
+      if (released) return;
+      released = true;
+      this._inFlight.delete(instanceId);
+      if (claimedAiSlot) {
+        this._aiInFlight--;
+        this._drainAIQueue();
+      }
+    };
+
+    const start = async (claimedAiSlot: boolean) => {
       const timeoutMs = isAI ? DASHBOARD_LIMITS.AI_REFRESH_TIMEOUT_MS : DASHBOARD_LIMITS.REFRESH_TIMEOUT_MS;
+      const inner = invoke();
+      const backstop = setTimeout(() => releaseOnce(claimedAiSlot), timeoutMs + 120_000);
+      void inner.catch(() => { /* observed below */ }).finally(() => {
+        clearTimeout(backstop);
+        releaseOnce(claimedAiSlot);
+      });
+      let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
       const timeoutPromise = new Promise<void>((_, reject) => {
-        setTimeout(() => reject(new Error(`Refresh timed out after ${timeoutMs}ms`)), timeoutMs);
+        timeoutTimer = setTimeout(() => reject(new Error(`Refresh timed out after ${timeoutMs}ms`)), timeoutMs);
       });
       try {
-        await Promise.race([invoke(), timeoutPromise]);
+        await Promise.race([inner, timeoutPromise]);
+        this._recordOutcome(instanceId, true);
+      } catch (err) {
+        this._recordOutcome(instanceId, false);
+        throw err;
       } finally {
-        this._inFlight.delete(instanceId);
+        if (timeoutTimer) clearTimeout(timeoutTimer);
       }
     };
 
     if (isAI && this._aiInFlight >= this._aiCap()) {
-      // Queue behind any in-flight AI refresh.
+      // Queue behind any in-flight AI refresh. The queued job claims its AI
+      // slot when the drain starts it (drain increments; releaseOnce pairs).
       const promise = new Promise<void>((resolve, reject) => {
         this._aiQueue.push({
           invoke: async () => {
-            try { await start(); resolve(); } catch (e) { reject(e); }
+            try { await start(true); resolve(); } catch (e) { reject(e); }
           },
           resolve,
           reject,
@@ -218,15 +253,12 @@ export class DashboardRefreshScheduler extends Disposable {
 
     if (isAI) {
       this._aiInFlight++;
-      const promise = start().finally(() => {
-        this._aiInFlight--;
-        this._drainAIQueue();
-      });
+      const promise = start(true);
       this._inFlight.set(instanceId, promise);
       return promise;
     }
 
-    const promise = start();
+    const promise = start(false);
     this._inFlight.set(instanceId, promise);
     return promise;
   }
@@ -237,12 +269,35 @@ export class DashboardRefreshScheduler extends Disposable {
       && this._aiInFlight < this._aiCap()
     ) {
       const job = this._aiQueue.shift()!;
+      // The slot is claimed here; the job's start(true) releases it when the
+      // underlying work settles.
       this._aiInFlight++;
-      void Promise.resolve().then(job.invoke).finally(() => {
-        this._aiInFlight--;
-        this._drainAIQueue();
-      });
+      void Promise.resolve().then(job.invoke).catch(() => { /* job rejects to its caller */ });
     }
+  }
+
+  // ── Failure backoff ────────────────────────────────────────────────────────
+  // Scheduled fires skip while a widget is in a failure streak: interval
+  // policies used to re-hit a broken provider every tick, forever. Manual
+  // Refresh clicks bypass the gate; any success resets the streak.
+
+  private readonly _failures = new Map<string, { count: number; nextAllowedAt: number }>();
+
+  private _recordOutcome(instanceId: string, ok: boolean): void {
+    if (ok) {
+      this._failures.delete(instanceId);
+      return;
+    }
+    const prev = this._failures.get(instanceId);
+    const count = (prev?.count ?? 0) + 1;
+    const delayMs = Math.min(60_000 * 2 ** (count - 1), 30 * 60_000);
+    this._failures.set(instanceId, { count, nextAllowedAt: Date.now() + delayMs });
+  }
+
+  /** True when scheduled fires should skip this instance (failure streak). */
+  isBackedOff(instanceId: string): boolean {
+    const f = this._failures.get(instanceId);
+    return !!f && Date.now() < f.nextAllowedAt;
   }
 }
 

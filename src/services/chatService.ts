@@ -703,6 +703,13 @@ export class ChatService extends Disposable implements IChatService {
   private readonly _onDidChangePendingRequests = this._register(new Emitter<string>());
   readonly onDidChangePendingRequests: Event<string> = this._onDidChangePendingRequests.event;
 
+  // Activity-journal seam: fires once per accepted sendRequest with the
+  // session's origin (undefined = interactive user turn; 'heartbeat'/'cron'/…
+  // = the assistant's own autonomous turns), so the journal can attribute
+  // actors correctly and never mistake the agent's activity for the user's.
+  private readonly _onDidSendUserRequest = this._register(new Emitter<{ sessionId: string; text: string; origin?: string }>());
+  readonly onDidSendUserRequest: Event<{ sessionId: string; text: string; origin?: string }> = this._onDidSendUserRequest.event;
+
   constructor(
     agentService: IChatAgentService,
     modeService: IChatModeService,
@@ -1105,6 +1112,10 @@ export class ChatService extends Disposable implements IChatService {
       title: 'Ephemeral (subagent)',
       mode: parent?.mode ?? this._modeService.getMode(),
       modelId: parent?.modelId ?? this._languageModelsService.getActiveModel() ?? '',
+      // Attribution: the archive origin doubles as the session's live origin
+      // so observers (activity journal, permission gates) can tell an
+      // autonomous turn from a user turn WHILE it runs, not just at archive.
+      origin: (typeof seed.archiveOrigin === 'string' && seed.archiveOrigin.trim()) || undefined,
       messages: [],
       requestInProgress: false,
       pendingRequests: [],
@@ -1215,6 +1226,13 @@ export class ChatService extends Disposable implements IChatService {
     if (session.requestInProgress) {
       throw new Error('A request is already in progress for this session.');
     }
+
+    // Narrate the turn for the activity journal (fire-and-forget observer).
+    this._onDidSendUserRequest.fire({
+      sessionId,
+      text: message,
+      origin: (session as { origin?: string }).origin ?? undefined,
+    });
 
     // 0a. Capture session guard for stale detection
     const guard: SessionGuard | undefined = this._sessionManager

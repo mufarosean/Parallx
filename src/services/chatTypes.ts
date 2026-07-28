@@ -206,6 +206,15 @@ export interface IChatSession {
   /** Active model ID for this session. */
   modelId: string;
   /**
+   * Autonomous-run origin ('heartbeat' | 'cron' | 'dashboard' | 'subagent' |
+   * …), set on ephemeral sessions at creation. Undefined = an interactive
+   * user session. Consumers: the activity journal's actor attribution (an
+   * origin-tagged turn is the ASSISTANT acting, not the user) and M91
+   * archive filtering. This field was read in several places but never SET
+   * anywhere before 2026-07-28 — every background turn misattributed.
+   */
+  origin?: string;
+  /**
    * Per-session context window override in tokens.
    *
    * When > 0, this value is sent to Ollama as `num_ctx` and used as the
@@ -1171,6 +1180,13 @@ export interface ILanguageModelsService extends IDisposable {
   getProviders(): readonly ILanguageModelProvider[];
   /** Get all available models across all providers. */
   getModels(): Promise<readonly ILanguageModelInfo[]>;
+  /**
+   * Get detailed info for one model (real context length, capabilities).
+   * Delegates to the owning provider, which probes and caches. Callers that
+   * size prompts to a model's window (extensions via `parallx.lm`) need this
+   * — the `getModels()` listing carries `contextLength: 0` until enriched.
+   */
+  getModelInfo(modelId: string): Promise<ILanguageModelInfo>;
   /** Get the user's currently selected model ID. */
   getActiveModel(): string | undefined;
   /** Set the user's active model. */

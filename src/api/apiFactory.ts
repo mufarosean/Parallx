@@ -34,6 +34,7 @@ import type { ToolRegistry, IToolEntry } from '../tools/toolRegistry.js';
 import type { StatusBarEntryAccessor } from '../services/serviceTypes.js';
 import { StatusBarAlignment } from '../services/serviceTypes.js';
 import { IAutonomySignalService } from '../services/autonomySignalService.js';
+import { IActivityJournalService } from '../services/activityJournalService.js';
 import { PARALLX_VERSION } from './apiVersionValidation.js';
 import type { INotificationService } from '../services/serviceTypes.js';
 import { CommandsBridge } from './bridges/commandsBridge.js';
@@ -172,6 +173,10 @@ export interface ParallxApiObject {
   readonly autonomy: {
     signal(signal: { source?: string; kind?: string; title: string; detail?: string; severity?: 'info' | 'warn' | 'urgent' }): boolean;
   };
+  /** The app's common activity language — narrate user actions in your UI. */
+  readonly activity: {
+    note(verb: string, object: string, detail?: string): boolean;
+  };
   readonly window: {
     showInformationMessage(message: string, ...actions: { title: string; isCloseAffordance?: boolean }[]): Promise<{ title: string } | undefined>;
     showWarningMessage(message: string, ...actions: { title: string; isCloseAffordance?: boolean }[]): Promise<{ title: string } | undefined>;
@@ -308,6 +313,7 @@ export interface ParallxApiObject {
   };
   readonly lm: {
     getModels(): Promise<readonly { id: string; displayName: string; family: string; parameterSize: string; quantization: string; contextLength: number; capabilities: readonly string[] }[]>;
+    getModelInfo(modelId: string): Promise<{ id: string; displayName: string; family: string; parameterSize: string; quantization: string; contextLength: number; capabilities: readonly string[] }>;
     getActiveModel(): string | undefined;
     sendChatRequest(modelId: string, messages: readonly { role: string; content: string }[], options?: Record<string, unknown>): AsyncIterable<{ content: string; done: boolean }>;
     registerProvider(provider: { id: string; displayName: string; getModels(): Promise<unknown[]>; checkStatus(): Promise<unknown>; sendChatRequest(...args: unknown[]): AsyncIterable<unknown>; getModelInfo(id: string): Promise<unknown> }): IDisposable;
@@ -429,6 +435,9 @@ export function createToolApi(
     ? deps.services.get(IWorkspaceBoundaryService)
     : undefined;
 
+  const activityJournal = deps.services.has(IActivityJournalService)
+    ? deps.services.get(IActivityJournalService)
+    : undefined;
   const autonomySignalService = deps.services.has(IAutonomySignalService)
     ? deps.services.get(IAutonomySignalService)
     : undefined;
@@ -660,6 +669,25 @@ export function createToolApi(
       // Drops cleanly (returns false) when the autonomy bus isn't present, so
       // extensions can call this unconditionally.
       signal: (signal) => autonomySignalService?.signal(signal) ?? false,
+    }),
+
+    activity: Object.freeze({
+      // The app's common activity language. Extensions narrate their own UI
+      // ("selected 12 photos", "started GIF export") here — the actor is
+      // STAMPED with this tool's id by the closure, never self-reported, so
+      // journal attribution can't be spoofed. No-op when the journal is absent.
+      note: (verb: string, object: string, detail?: string) => {
+        try {
+          activityJournal?.note({
+            actor: `ext:${toolId}`,
+            source: `ext:${toolId}`,
+            verb,
+            object,
+            detail,
+          });
+          return true;
+        } catch { return false; }
+      },
     }),
 
     window: Object.freeze({
@@ -1015,6 +1043,7 @@ export function createToolApi(
     lm: languageModelBridge
       ? Object.freeze({
           getModels: () => languageModelBridge.getModels(),
+          getModelInfo: (modelId: string) => languageModelBridge.getModelInfo(modelId),
           getActiveModel: () => languageModelBridge.getActiveModel(),
           sendChatRequest: (modelId: string, messages: readonly { role: string; content: string }[], options?: Record<string, unknown>) =>
             languageModelBridge.sendChatRequest(modelId, messages as any, options as any),

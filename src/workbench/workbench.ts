@@ -119,6 +119,8 @@ import { ILinkResolverService, LinkResolverService } from '../links/linkResolver
 // Database Service (M6 Capability 1)
 import { DatabaseService } from '../services/databaseService.js';
 import { IDatabaseService } from '../services/serviceTypes.js';
+import { IActivityJournalService } from '../services/activityJournalService.js';
+import { wireActivityTaps } from './activityTaps.js';
 
 // Contribution Processors (M2 Capability 5)
 import { registerContributionProcessors, registerViewContributionProcessor } from './workbenchServices.js';
@@ -142,6 +144,7 @@ import * as WelcomeTool from '../built-in/welcome/main.js';
 import * as TerminalTool from '../built-in/terminal/main.js';
 import * as OutputTool from '../built-in/output/main.js';
 import * as IndexingLogTool from '../built-in/indexing-log/main.js';
+import * as ActivityLogTool from '../built-in/activity-log/main.js';
 import * as ToolGalleryTool from '../built-in/tool-gallery/main.js';
 import * as FileEditorTool from '../built-in/editor/main.js';
 import * as CanvasTool from '../built-in/canvas/main.js';
@@ -162,6 +165,7 @@ import {
   TERMINAL_MANIFEST,
   OUTPUT_MANIFEST,
   INDEXING_LOG_MANIFEST,
+  ACTIVITY_LOG_MANIFEST,
   TOOL_GALLERY_MANIFEST,
   CANVAS_MANIFEST,
   CHAT_MANIFEST,
@@ -508,6 +512,7 @@ export class Workbench extends Layout {
       // 3. Tear down all workspace-scoped state in the main process:
       //    MCP servers, file watchers, terminals, terminal output buffer,
       //    shared database, and all extension databases.
+      await this._flushActivityJournal('switched to another workspace');
       await window.parallxElectron!.prepareWorkspaceSwitch?.().catch(() => {});
 
       // 4. Reload the renderer — fresh startup picks up the new workspace
@@ -572,6 +577,7 @@ export class Workbench extends Layout {
       }
 
       // 4. Close the database cleanly (best-effort).
+      await this._flushActivityJournal('opened another folder');
       if (this._databaseService?.isOpen) {
         await this._databaseService.close().catch(() => {});
       }
@@ -2004,15 +2010,73 @@ export class Workbench extends Layout {
    * Wire the Electron `lifecycle:beforeClose` IPC to check for dirty editors
    * and show a save dialog before allowing the window to close.
    */
+  /** Best-effort: append a session-end line and drain the journal to SQLite. */
+  private async _flushActivityJournal(reason: string): Promise<void> {
+    try {
+      if (!this._services.has(IActivityJournalService)) return;
+      const journal = this._services.get(IActivityJournalService);
+      journal.note({ actor: 'system', source: 'session', verb: 'ended', object: `session (${reason})` });
+      await journal.flush();
+    } catch { /* never block teardown */ }
+  }
+
   private _wireUnsavedChangesGuard(): void {
     const electron = (window as any).parallxElectron as {
       onBeforeClose?: (cb: () => void) => void;
       confirmClose?: () => void;
       hideWindow?: () => void;
+      notifyClosing?: () => void;
       dialog?: { showMessageBox: (opts: any) => Promise<{ response: number }> };
     } | undefined;
 
     if (!electron?.onBeforeClose || !electron?.confirmClose) return;
+
+    /**
+     * Committed-close teardown with a hard time budget.
+     *
+     * Once the user's decision to close is final, nothing here may hold the
+     * window hostage: in large workspaces (heavy extensions mid-scan, busy
+     * DB worker) an unbounded save/deactivate chain kept a hidden half-dead
+     * process alive for many seconds — and relaunching during that window
+     * hit the single-instance lock and silently failed.
+     *
+     * Order:
+     *  1. `parallx:will-close` DOM event — extensions quiesce background
+     *     producers (scans, watchers) NOW, so the event loop and DB worker
+     *     free up for the actual teardown.
+     *  2. Tell main close is committed (second-instance → auto-relaunch)
+     *     and hide the window — perceived close is instant.
+     *  3. Save workspace state, then deactivate tools, each under a timeout.
+     *     WorkspaceSaver also auto-saves on structural changes, so a timed-out
+     *     save loses at most the last few seconds of view-state.
+     */
+    const teardownAndClose = async (): Promise<void> => {
+      try { document.dispatchEvent(new CustomEvent('parallx:will-close')); } catch { /* ignore */ }
+      electron.notifyClosing?.();
+      electron.hideWindow?.();
+
+      const withBudget = async (label: string, ms: number, work: () => Promise<unknown>): Promise<void> => {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const timedOut = new Promise<'timeout'>((resolve) => { timer = setTimeout(() => resolve('timeout'), ms); });
+        try {
+          const result = await Promise.race([work().then(() => 'done' as const), timedOut]);
+          if (result === 'timeout') console.warn(`[Workbench] Close teardown: "${label}" exceeded ${ms}ms budget — closing anyway`);
+        } catch (err) {
+          console.warn(`[Workbench] Close teardown: "${label}" failed:`, err);
+        } finally {
+          if (timer !== undefined) clearTimeout(timer);
+        }
+      };
+
+      await withBudget('save workspace state', 5000, () => this._workspaceSaver.save());
+      // The session's last activity lines are exactly what diagnostics wants
+      // after a bad shutdown — flush them while the DB is still open.
+      await withBudget('flush activity journal', 1500, () => this._flushActivityJournal('closed the app'));
+      if (this._toolActivator) {
+        await withBudget('deactivate tools', 8000, () => this._toolActivator!.deactivateAll());
+      }
+      electron.confirmClose!();
+    };
 
     electron.onBeforeClose(async () => {
       // Collect dirty models
@@ -2029,15 +2093,10 @@ export class Workbench extends Layout {
       }
 
       if (dirtyModels.length === 0) {
-        // No unsaved changes — save fresh state (captures current editor view state), then close
-        await this._workspaceSaver.save();
-        // Hide window immediately so user doesn't see UI degrade during teardown
-        electron.hideWindow?.();
-        // Deactivate all tools so they can flush pending data (e.g. Canvas auto-save)
-        if (this._toolActivator) {
-          await this._toolActivator.deactivateAll();
-        }
-        electron.confirmClose!();
+        // No unsaved changes — close is committed. Quiesce, hide, save state,
+        // deactivate tools (so they flush pending data, e.g. Canvas auto-save),
+        // all under teardownAndClose's time budget.
+        await teardownAndClose();
         return;
       }
 
@@ -2070,16 +2129,9 @@ export class Workbench extends Layout {
         }
       }
 
-      // "Don't Save" (response === 1) or "Save All" succeeded
-      // Save fresh workspace state (captures current editor view state)
-      await this._workspaceSaver.save();
-      // Hide window immediately so user doesn't see UI degrade during teardown
-      electron.hideWindow?.();
-      // Deactivate all tools so they can flush pending data (e.g. Canvas auto-save)
-      if (this._toolActivator) {
-        await this._toolActivator.deactivateAll();
-      }
-      electron.confirmClose!();
+      // "Don't Save" (response === 1) or "Save All" succeeded — close is
+      // committed; run the same budgeted teardown as the clean path.
+      await teardownAndClose();
     });
   }
 
@@ -2520,6 +2572,21 @@ export class Workbench extends Layout {
     // Open database for current workspace if a folder is open
     await this._openDatabaseForWorkspace();
 
+    // ── Activity journal: persistence + taps (the app's common language) ──
+    // The journal itself was registered dep-free in registerWorkbenchServices;
+    // now that the DB, focus tracker, and theme service exist, mirror it to
+    // SQLite and subscribe it to every narratable seam.
+    if (this._services.has(IActivityJournalService)) {
+      const journal = this._services.get(IActivityJournalService);
+      journal.attachDatabase(this._databaseService);
+      this._register(wireActivityTaps({
+        services: this._services,
+        focusTracker: this._focusTracker,
+        themeService: this._services.has(IThemeService) ? this._services.get(IThemeService) : undefined,
+        workspaceName: this._workspace?.name,
+      }));
+    }
+
     // Late-bind the database into ChatService — it was created in Phase 1
     // before the DatabaseService existed. Now that the DB is open we can
     // hand it over and restore persisted sessions.
@@ -2958,6 +3025,7 @@ export class Workbench extends Layout {
       { manifest: TERMINAL_MANIFEST, module: TerminalTool },
       { manifest: OUTPUT_MANIFEST, module: OutputTool },
       { manifest: INDEXING_LOG_MANIFEST, module: IndexingLogTool },
+      { manifest: ACTIVITY_LOG_MANIFEST, module: ActivityLogTool },
       { manifest: DIAGNOSTICS_MANIFEST, module: DiagnosticsTool },
       { manifest: AUTONOMY_LOG_MANIFEST, module: AutonomyLogTool },
       { manifest: TOOL_GALLERY_MANIFEST, module: ToolGalleryTool },

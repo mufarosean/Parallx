@@ -440,6 +440,7 @@ async function _headlessWidgetRefresh(api: ParallxApi, widgetId: string): Promis
   if (!row) return;
   const typeReg = _registry.getWidgetType(row.widgetTypeId);
   if (!typeReg?.refresh) return;
+  const prevCachedAt = row.cachedAt;
   try {
     const output = await typeReg.refresh({
       instanceId: row.id,
@@ -448,12 +449,25 @@ async function _headlessWidgetRefresh(api: ParallxApi, widgetId: string): Promis
       api,
       cachedOutput: row.cachedOutput,
       mode: 'background',
+      // A page-schedule fire is automation, not a user gesture — say so
+      // explicitly instead of relying on downstream defaults (M90).
+      initiator: 'autonomous',
     });
     if (typeof output === 'string') {
       await _dataService.setWidgetCachedOutput(row.id, output);
-    } else {
-      await _dataService.clearWidgetError(row.id);
+      return;
     }
+    // Honesty check (mirrors the editor path): a "successful" AI turn that
+    // never called dashboard_render_widget delivered nothing — record a real
+    // error instead of clearing one over stale content.
+    const fresh = await _dataService.getWidget(row.id);
+    if (typeReg.category === 'ai' && fresh && fresh.cachedAt === prevCachedAt) {
+      await _dataService.setWidgetError(row.id,
+        'The refresh turn completed but never delivered content to this widget '
+        + '(dashboard_render_widget was not called). Check the Autonomy Log for the full run.');
+      return;
+    }
+    await _dataService.clearWidgetError(row.id);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     await _dataService.setWidgetError(row.id, msg);

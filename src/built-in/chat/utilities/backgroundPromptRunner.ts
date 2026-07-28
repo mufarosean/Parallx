@@ -34,6 +34,8 @@ export interface IBackgroundPromptChatService {
   purgeEphemeralSession(handle: IEphemeralSessionHandle): void;
   sendRequest(sessionId: string, message: string, options?: IChatSendRequestOptions): Promise<unknown>;
   getSession(sessionId: string): { messages: readonly { response: { parts: readonly IChatContentPart[] } }[] } | undefined;
+  /** Cancel an in-flight request (used by the runner's own timeout). */
+  cancelRequest?(sessionId: string): void;
 }
 
 export interface IBackgroundPromptAutonomyLog {
@@ -68,6 +70,16 @@ export interface IBackgroundPromptDeps {
   };
   /** Autonomy dial for autonomous-initiator sessions (heartbeat parity). */
   readonly getAutonomyLevel?: () => unknown;
+  /**
+   * The model that will serve this turn (the global active model — the turn
+   * engine resolves it at send time). Recorded on every log entry so "which
+   * model ran my refresh" is never a mystery again.
+   */
+  readonly getActiveModelId?: () => string | undefined;
+  /** Activity journal — background failures must be narratable. */
+  readonly activity?: {
+    note(n: { actor?: string; verb: string; object: string; detail?: string; source?: string }): void;
+  };
 }
 
 export interface IBackgroundPromptRequest {
@@ -87,11 +99,21 @@ export interface IBackgroundPromptRequest {
    * (safer: an unlabeled background run gets the stricter policy).
    */
   readonly initiator?: 'user' | 'autonomous';
+  /**
+   * Hard turn timeout (ms). The runner cancels the request and reports a
+   * real failure instead of leaving an orphaned turn running behind a
+   * scheduler race. Default 240s — under the dashboard scheduler's 300s
+   * backstop, so the runner always settles first and single-flight
+   * accounting stays truthful.
+   */
+  readonly timeoutMs?: number;
 }
 
 export type IBackgroundPromptResult =
-  | { readonly ok: true; readonly resultText: string }
-  | { readonly ok: false; readonly error: string };
+  | { readonly ok: true; readonly resultText: string; readonly model?: string }
+  | { readonly ok: false; readonly error: string; readonly model?: string };
+
+const DEFAULT_TIMEOUT_MS = 240_000;
 
 // ─── Runner ──────────────────────────────────────────────────────────────────
 
@@ -140,8 +162,60 @@ export function createBackgroundPromptRunner(
       else deps.permissionService?.markHeartbeatSession(handle.sessionId, deps.getAutonomyLevel?.());
     } catch { /* marking is best-effort */ }
 
+    // Recorded on every log entry: the model the turn engine will resolve at
+    // send time. "Which model ran my refresh" must never be a mystery.
+    const model = deps.getActiveModelId?.() || undefined;
+    const timeoutMs = typeof req.timeoutMs === 'number' && req.timeoutMs > 0
+      ? req.timeoutMs
+      : DEFAULT_TIMEOUT_MS;
+
+    const fail = (error: string): IBackgroundPromptResult => {
+      deps.autonomyLog?.append({
+        origin,
+        requestText: label,
+        content: `Background turn FAILED: ${error}`,
+        metadata: { background: true, error: true, sessionId: handle.sessionId, model },
+      });
+      deps.activity?.note({
+        actor: 'ai',
+        source: origin,
+        verb: 'background task failed',
+        object: label,
+        detail: model ? `${error} (model: ${model})` : error,
+      });
+      return { ok: false, error, model };
+    };
+
     try {
-      await deps.chatService.sendRequest(handle.sessionId, text);
+      // The runner owns its own timeout: cancel the turn and report a REAL
+      // failure rather than racing past an orphaned request (the old
+      // scheduler-side race left widgets spinning on turns nobody cancelled).
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timedOut = new Promise<'timeout'>((resolve) => {
+        timer = setTimeout(() => resolve('timeout'), timeoutMs);
+      });
+      const turn = deps.chatService.sendRequest(handle.sessionId, text)
+        .then((r) => ({ kind: 'done' as const, result: r }));
+      const outcome = await Promise.race([turn, timedOut]);
+      if (timer) clearTimeout(timer);
+
+      if (outcome === 'timeout') {
+        try { deps.chatService.cancelRequest?.(handle.sessionId); } catch { /* best-effort */ }
+        // Give the cancellation a moment to unwind so purge archives a
+        // coherent transcript; never wait on a truly wedged turn.
+        await Promise.race([turn.catch(() => undefined), new Promise((r) => setTimeout(r, 5_000))]);
+        return fail(`timed out after ${Math.round(timeoutMs / 1000)}s — the request was cancelled`);
+      }
+
+      // ChatService.sendRequest NEVER rejects on turn failure — provider
+      // down, model missing, agent crash all come back as
+      // result.errorDetails on a RESOLVED promise. Ignoring the result was
+      // the black hole that reported every broken refresh as ok:true.
+      const details = (outcome.result as { errorDetails?: { message?: string } } | undefined)?.errorDetails;
+      if (details) {
+        return fail(details.message || 'The turn failed with an unknown error.');
+      }
+
       const session = deps.chatService.getSession(handle.sessionId);
       let resultText = '';
       if (session && session.messages.length > 0) {
@@ -152,18 +226,11 @@ export function createBackgroundPromptRunner(
         origin,
         requestText: label,
         content: resultText || '(no final text — result delivered via tools)',
-        metadata: { background: true },
+        metadata: { background: true, sessionId: handle.sessionId, model },
       });
-      return { ok: true, resultText };
+      return { ok: true, resultText, model };
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      deps.autonomyLog?.append({
-        origin,
-        requestText: label,
-        content: `Background turn error: ${msg}`,
-        metadata: { background: true, error: true },
-      });
-      return { ok: false, error: msg };
+      return fail(err instanceof Error ? err.message : String(err));
     } finally {
       try {
         if (initiator === 'user') deps.permissionService?.unmarkUserTaskSession(handle.sessionId);

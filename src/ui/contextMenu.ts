@@ -88,6 +88,12 @@ export class ContextMenu extends Disposable {
   private readonly _onDidSelect = this._register(new Emitter<IContextMenuSelectEvent>());
   readonly onDidSelect: Event<IContextMenuSelectEvent> = this._onDidSelect.event;
 
+  // App-wide selection tap: ContextMenu is the ONE menu component, so a single
+  // static subscription observes every menu choice in the workbench and in
+  // extensions (activity journal). Fired alongside each instance's onDidSelect.
+  private static readonly _onDidSelectAny = new Emitter<IContextMenuSelectEvent>();
+  static readonly onDidSelectAny: Event<IContextMenuSelectEvent> = ContextMenu._onDidSelectAny.event;
+
   private readonly _onDidDismiss = this._register(new Emitter<void>());
   readonly onDidDismiss: Event<void> = this._onDidDismiss.event;
 
@@ -259,6 +265,9 @@ export class ContextMenu extends Disposable {
 
   private _select(item: IContextMenuItem): void {
     this._onDidSelect.fire({ item });
+    // Fired here (not in the submenu-forward path) so every selection —
+    // including submenu items — reaches the static tap exactly once.
+    ContextMenu._onDidSelectAny.fire({ item });
     this.dismiss();
   }
 

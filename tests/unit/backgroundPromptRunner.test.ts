@@ -135,3 +135,82 @@ describe('background session permission marking', () => {
     expect(res.ok).toBe(true);
   });
 });
+
+// ─── Truthfulness (2026-07-28 widget-refresh diagnosis fixes) ────────────────
+//
+// sendRequest NEVER rejects on turn failure — errors come back as
+// result.errorDetails on a resolved promise. Ignoring the result was the
+// black hole that reported every broken refresh as ok:true.
+
+describe('background turn truthfulness', () => {
+  function makeTruthDeps(overrides?: { sendRequest?: (...a: unknown[]) => Promise<unknown> }) {
+    const base = makeDeps();
+    const cancelled: string[] = [];
+    const notes: { actor?: string; verb: string; object: string; detail?: string }[] = [];
+    const deps = {
+      ...base.deps,
+      chatService: {
+        ...base.deps.chatService,
+        sendRequest: (overrides?.sendRequest ?? base.deps.chatService.sendRequest) as never,
+        cancelRequest: (sid: string) => { cancelled.push(sid); },
+      },
+      getActiveModelId: () => 'qwen3:30b',
+      activity: { note: (n: (typeof notes)[number]) => { notes.push(n); } },
+    };
+    return { ...base, deps, cancelled, notes };
+  }
+
+  it('errorDetails on a RESOLVED turn → ok:false with error-flagged, model+session-stamped log', async () => {
+    const { deps, logEntries, notes, purge } = makeTruthDeps({
+      sendRequest: async () => ({ errorDetails: { message: 'model "ghost:7b" not found (404)' } }),
+    });
+    const run = createBackgroundPromptRunner(deps);
+    const res = await run({ text: 'refresh the widget' });
+
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.error).toContain('not found');
+      expect(res.model).toBe('qwen3:30b');
+    }
+    expect(logEntries).toHaveLength(1);
+    expect(logEntries[0].metadata).toMatchObject({ error: true, sessionId: 'eph-1', model: 'qwen3:30b' });
+    // The failure narrated to the activity journal, attributed to the AI.
+    expect(notes).toHaveLength(1);
+    expect(notes[0].actor).toBe('ai');
+    expect(notes[0].verb).toContain('failed');
+    expect(purge).toHaveBeenCalledTimes(1);
+  });
+
+  it('success stamps sessionId + model on the log entry (no error flag)', async () => {
+    const { deps, logEntries, notes } = makeTruthDeps();
+    const run = createBackgroundPromptRunner(deps);
+    const res = await run({ text: 'refresh' });
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.model).toBe('qwen3:30b');
+    expect(logEntries[0].metadata).toMatchObject({ sessionId: 'eph-1', model: 'qwen3:30b' });
+    expect(logEntries[0].metadata?.error).toBeUndefined();
+    expect(notes).toHaveLength(0);
+  });
+
+  it('a hung turn times out, cancels the request, and reports a REAL failure', async () => {
+    vi.useFakeTimers();
+    try {
+      const { deps, cancelled, purge, logEntries } = makeTruthDeps({
+        sendRequest: () => new Promise(() => { /* hangs forever */ }),
+      });
+      const run = createBackgroundPromptRunner(deps);
+      const pending = run({ text: 'refresh', timeoutMs: 10_000 });
+      await vi.advanceTimersByTimeAsync(10_100); // trip the runner timeout
+      await vi.advanceTimersByTimeAsync(5_100);  // and the post-cancel grace
+      const res = await pending;
+
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error).toMatch(/timed out/);
+      expect(cancelled).toEqual(['eph-1']);
+      expect(purge).toHaveBeenCalledTimes(1);
+      expect(logEntries[0].metadata).toMatchObject({ error: true });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

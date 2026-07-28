@@ -46,6 +46,7 @@ import type {
   IChatResponseChunk,
 } from '../../services/chatTypes.js';
 import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService, IDiagnosticsService, IDocumentExtractionService, IObservabilityService, IRuntimeHookRegistry, ILayoutService, IEmbeddingService, IWorkspaceStorageService, IGlobalStorageService, ISurfaceRouterService, IAutonomyLogService, ISettingsRegistryService, IAutonomyTaskRailService, IAutonomyPatternMemoryService, IAutonomyFeatureFlagsService, ISemanticGraphService, IMindMapRefreshOrchestrator, ICanvasPageQueryService, IPlannerQueryService } from '../../services/serviceTypes.js';
+import { IActivityJournalService } from '../../services/activityJournalService.js';
 import { SettingsRegistryService, setGlobalSettingsRegistry, getGlobalSettingsRegistry } from '../../services/settingsRegistryService.js';
 import { createSecretStorageService } from '../../services/secretStorageService.js';
 import { PolicyDecisionPoint as _PolicyDecisionPoint } from '../../services/policyDecisionPoint.js';
@@ -347,6 +348,11 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     throw new Error('[chat] IAutonomyLogService not registered — workbench bootstrap order broken');
   }
   const autonomyLog = api.services.get<AutonomyLogService>(IAutonomyLogService);
+  // Activity journal — the app's common activity language. Feeds the
+  // heartbeat's wake context and the activity_log chat tool.
+  const _activityJournal = api.services.has(IActivityJournalService)
+    ? api.services.get<import('../../services/activityJournalService.js').IActivityJournalService>(IActivityJournalService)
+    : undefined;
 
   // ── M60 §3.8 + §3.10: Autonomy controls layer ──────────────────────────
   //
@@ -2005,7 +2011,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     // wiring no longer threads through here. This registers the workspace-level
     // tools (files, memory, transcripts, write, terminal, RAG, surface, cron,
     // subagent, autonomy).
-    const toolDisposables = registerBuiltInTools(languageModelToolsService, fsAccessor, retrievalAccessor, canonicalMemorySearchAccessor, transcriptSearchAccessor, writerAccessor, terminalAccessor, workspaceService?.folders?.[0]?.uri?.fsPath, surfaceRouter, cronService, subagentSpawner, autonomyLog, workspaceMemoryAccessor);
+    const toolDisposables = registerBuiltInTools(languageModelToolsService, fsAccessor, retrievalAccessor, canonicalMemorySearchAccessor, transcriptSearchAccessor, writerAccessor, terminalAccessor, workspaceService?.folders?.[0]?.uri?.fsPath, surfaceRouter, cronService, subagentSpawner, autonomyLog, workspaceMemoryAccessor, _activityJournal);
     for (const d of toolDisposables) {
       context.subscriptions.push(d);
     }
@@ -2306,6 +2312,13 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
           if (!planner) return [];
           try { return await planner.listOpenTasks(); }
           catch { return []; }
+        },
+        // The activity timeline — what the user actually DID since the last
+        // review, as human-readable lines. This is the sense that lets a
+        // review reason about behavior instead of file-change aftermath.
+        getRecentActivity: async () => {
+          try { return _activityJournal?.renderRecent({ maxLines: 40 }) ?? ''; }
+          catch { return ''; }
         },
         // Continuity + audit (Build-1d.3). The loop reads its prior beliefs into
         // the seed and ledgers every outcome. Best-effort: never breaks the tick.
@@ -3022,6 +3035,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         (chatService as unknown as import('../../services/chatService.js').ChatService).purgeEphemeralSession(handle),
       sendRequest: (sid, msg, opts) => chatService.sendRequest(sid, msg, opts),
       getSession: (sid) => chatService.getSession(sid),
+      cancelRequest: (sid) => chatService.cancelRequest(sid),
     },
     permissionService: _permissionService
       ? {
@@ -3032,14 +3046,25 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         }
       : undefined,
     getAutonomyLevel: () => unifiedConfigService?.getEffectiveConfig().heartbeat.autonomy,
-    // Ensure a parent session exists when the panel is mounted — without
-    // revealing it. A background run only fails when chat has never been
-    // opened at all in this window.
+    // A parent session must exist, but the chat VIEW must not be required:
+    // "open the chat panel once, then retry" made every background refresh
+    // in a fresh window fail consistently. Fallback chain: mounted widget's
+    // session → any existing session → mint a headless one.
     getParentSessionId: () => {
       try { _activeWidget?.ensureSession(); } catch { /* widget not ready */ }
-      return _activeWidget?.getSession()?.id;
+      const fromWidget = _activeWidget?.getSession()?.id;
+      if (fromWidget) return fromWidget;
+      const existing = chatService.getSessions();
+      if (existing.length > 0) return existing[0].id;
+      try { return chatService.createSession().id; } catch { return undefined; }
     },
     autonomyLog,
+    // Transparency: stamp the serving model on every run's log entries, and
+    // narrate failures into the activity timeline.
+    getActiveModelId: () => languageModelsService.getActiveModel() ?? undefined,
+    activity: _activityJournal
+      ? { note: (n) => _activityJournal.note(n) }
+      : undefined,
   });
   context.subscriptions.push(
     api.commands.registerCommand('chat.runBackgroundPrompt', async (...args: unknown[]) =>

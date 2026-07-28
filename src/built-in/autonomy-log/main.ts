@@ -87,6 +87,7 @@ const ORIGIN_BADGE: Record<string, { label: string; cls: string }> = {
   heartbeat:   { label: 'Heartbeat',   cls: 'heartbeat' },
   cron:        { label: 'Cron',        cls: 'cron' },
   subagent:    { label: 'Subagent',    cls: 'subagent' },
+  dashboard:   { label: 'Dashboard',   cls: 'cron' },
   agent:       { label: 'Agent',       cls: 'agent' },
   chat:        { label: 'Chat',        cls: 'agent' },
   followup:    { label: 'Followup',    cls: 'agent' },
@@ -634,7 +635,7 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
   }
 
   // ── Render helpers ──
-  const liveChipKeys: readonly LiveFilter[] = ['all', 'heartbeat', 'cron', 'subagent'];
+  const liveChipKeys: readonly LiveFilter[] = ['all', 'heartbeat', 'cron', 'subagent', 'dashboard'];
   const railChipKeys: readonly RailTriggerFilter[] = [
     'all', 'chat', 'heartbeat', 'cron', 'subagent', 'followup', 'file-change', 'replay',
   ];
@@ -772,6 +773,22 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
     const badge = $(`span.autonomy-log-badge.autonomy-log-badge--${badgeMeta.cls}`);
     badge.textContent = badgeMeta.label;
     head.appendChild(badge);
+
+    // Failed runs must not read like successes: metadata.error entries get a
+    // distinct treatment (transparency — a broken background refresh was
+    // previously indistinguishable from a good one in this list).
+    if ((entry.metadata as { error?: boolean } | undefined)?.error) {
+      row.classList.add('autonomy-log-entry--error');
+      const errBadge = $('span.autonomy-log-badge.autonomy-log-badge--error');
+      errBadge.textContent = 'Failed';
+      head.appendChild(errBadge);
+    }
+    if ((entry.metadata as { model?: string } | undefined)?.model) {
+      const modelTag = $('span.autonomy-log-entry__model');
+      modelTag.textContent = String((entry.metadata as { model?: string }).model);
+      modelTag.title = 'Model that served this run';
+      head.appendChild(modelTag);
+    }
 
     const label = $('span.autonomy-log-entry__label');
     label.textContent = entry.requestText;

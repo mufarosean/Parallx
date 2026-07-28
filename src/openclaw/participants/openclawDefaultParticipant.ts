@@ -498,8 +498,13 @@ async function buildOpenclawTurnContext(
   preprocessed?: { mentionContextBlocks?: readonly string[]; promptOverlay?: string; isSteeringTurn?: boolean },
   agentIdForResolve: string = 'default',
 ): Promise<IOpenclawTurnContext> {
-  // Token budget from model context length
-  const contextWindow = services.getModelContextLength?.() ?? 8192;
+  // Token budget from model context length. getModelContextLength returns 0
+  // (not undefined) on cold start or for non-Ollama models, so `?? 8192`
+  // never rescued it — a 0 context window meant no num_ctx was sent and
+  // Ollama's small default silently truncated long prompts (M92's num_ctx
+  // lesson, applied to this rail).
+  const rawContextWindow = services.getModelContextLength?.();
+  const contextWindow = typeof rawContextWindow === 'number' && rawContextWindow > 0 ? rawContextWindow : 8192;
   const budget = computeTokenBudget(contextWindow);
 
   // Bootstrap files (AGENTS.md, SOUL.md, TOOLS.md, etc.)

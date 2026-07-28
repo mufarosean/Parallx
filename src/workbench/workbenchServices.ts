@@ -46,6 +46,7 @@ import { DocumentExtractionService } from '../services/documentExtractionService
 import { UnifiedAIConfigService } from '../aiSettings/unifiedAIConfigService.js';
 import { DiagnosticsService } from '../services/diagnosticsService.js';
 import { AutonomySignalService, IAutonomySignalService } from '../services/autonomySignalService.js';
+import { ActivityJournalService, IActivityJournalService } from '../services/activityJournalService.js';
 import { ObservabilityService } from '../services/observabilityService.js';
 import { RuntimeHookRegistry } from '../services/runtimeHookRegistry.js';
 import { McpClientService } from '../openclaw/mcp/mcpClientService.js';
@@ -87,6 +88,13 @@ export function registerWorkbenchServices(services: ServiceCollection): void {
 
   // ── Tool Error Service (M2 Capability 3) ──
   services.registerInstance(IToolErrorService, new ToolErrorService());
+
+  // ── Activity journal (the app's common activity language) ──
+  // Dep-free, so it registers in the FIRST composition pass — the taps wiring
+  // and the Activity panel both resolve it later in boot, and registering it
+  // in a later pass (e.g. beside the autonomy bus in registerIndexingServices)
+  // silently no-ops the taps' has() check. Ordering verified by e2e 93.
+  services.registerInstance(IActivityJournalService, new ActivityJournalService());
 
   // ── File Service (M4 Capability 1) ──
   const fileService = new FileService();

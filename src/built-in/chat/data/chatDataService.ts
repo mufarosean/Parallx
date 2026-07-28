@@ -751,8 +751,15 @@ export class ChatDataService {
     options?: IChatRequestOptions,
     signal?: AbortSignal,
   ): AsyncIterable<IChatResponseChunk> {
-    const modelId = this._d.languageModelsService.getActiveModel() ?? '';
-    return this._d.ollamaProvider.sendChatRequest(modelId, messages, options, signal);
+    // Route through the language-models service's PROVIDER RESOLUTION, not
+    // the raw OllamaProvider. The old direct call posted whatever the active
+    // model id was — including claude-* ids after cloud opt-in, or removed
+    // Ollama models — straight to Ollama's /api/chat: a guaranteed 404 on
+    // every turn, surfaced (if at all) as an opaque provider error. The
+    // service resolves the owning provider and throws CLEAR errors ("no
+    // provider found for model X — it may no longer be available") that the
+    // turn engine can report.
+    return this._d.languageModelsService.sendChatRequest(messages, options, signal);
   }
 
   getActiveModel(): string | undefined {

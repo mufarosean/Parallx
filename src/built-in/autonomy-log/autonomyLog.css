@@ -410,6 +410,26 @@
 .autonomy-log-badge--cron      { background: #7ec8e3; }
 .autonomy-log-badge--subagent  { background: #c586c0; color: #fff; }
 .autonomy-log-badge--agent     { background: #888; color: #fff; }
+.autonomy-log-badge--error     { background: var(--px-danger, #e06c66); color: #fff; }
+
+/* Failed background runs must not read like successes. */
+.autonomy-log-entry--error {
+  border-left: 3px solid var(--px-danger, #e06c66);
+}
+.autonomy-log-entry--error .autonomy-log-entry__body {
+  color: var(--px-danger, #e06c66);
+}
+
+/* Which model served the run — the answer to "what refreshed my widget?" */
+.autonomy-log-entry__model {
+  font-size: 10px;
+  font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
+  color: var(--px-text-muted, #888);
+  border: 1px solid var(--px-border, rgba(127, 127, 127, 0.35));
+  border-radius: 3px;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
 
 /* M60 §8 Phase ζ — task rail polish: tabs, pause toggle, pattern list. */
 .autonomy-log-tabs {

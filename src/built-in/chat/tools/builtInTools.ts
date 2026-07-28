@@ -72,6 +72,8 @@ import type { ISurfaceRouterService } from '../../../services/surfaceRouterServi
 import type { IAutonomyLogReader } from '../../../services/autonomyLogService.js';
 import { createCronTools, type ICronToolHost } from './cronTools.js';
 import { createAutonomyLogTool } from './autonomyLogTool.js';
+import { createActivityLogTool } from './activityLogTool.js';
+import type { IActivityJournalService } from '../../../services/activityJournalService.js';
 import { createSessionsSpawnTool } from './subagentTools.js';
 import type { SubagentSpawner } from '../../../openclaw/openclawSubagentSpawn.js';
 
@@ -97,6 +99,7 @@ export function registerBuiltInTools(
   subagentSpawner?: SubagentSpawner,
   autonomyLog?: IAutonomyLogReader,
   workspaceMemory?: IBuiltInToolWorkspaceMemory,
+  activityJournal?: IActivityJournalService,
 ): IDisposable[] {
   const disposables: IDisposable[] = [];
 
@@ -133,6 +136,8 @@ export function registerBuiltInTools(
     createSessionsSpawnTool(subagentSpawner),
     // ── Autonomy log read tool (M58-real post-ship UX reshape) ──
     createAutonomyLogTool(autonomyLog),
+    // ── Activity journal read tool (the app's common activity language) ──
+    createActivityLogTool(activityJournal),
   ];
 
   for (const tool of tools) {

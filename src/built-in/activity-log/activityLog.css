@@ -1,0 +1,77 @@
+/* activityLog.css — Activity timeline panel
+ *
+ * Toolbar, scroll body, and empty state come from the shared bottom-panel
+ * surface (src/ui/panelSurface.css). This file adds the timeline rows and
+ * actor chips, on --px tokens throughout.
+ */
+
+.activity-log-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.activity-log-list {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+/* ── Rows ── */
+.activity-log-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--px-space-2);
+  padding: 2px var(--px-space-2);
+  font-size: var(--px-text-sm);
+  border-bottom: 1px solid var(--px-divider);
+  min-height: 22px;
+}
+.activity-log-row:hover { background: var(--px-surface-hover); }
+
+.activity-log-time {
+  font-family: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: var(--px-text-xs);
+  color: var(--px-text-faint, var(--px-text-muted));
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.activity-log-actor {
+  flex-shrink: 0;
+  font-size: 9.5px;
+  line-height: 15px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 0 5px;
+  border-radius: 2px;
+  border: 1px solid var(--px-border, rgba(127, 127, 127, 0.35));
+  color: var(--px-text-muted);
+  min-width: 52px;
+  text-align: center;
+}
+.activity-log-actor--user {
+  border-color: var(--px-success, #5da56e);
+  color: var(--px-success, #5da56e);
+}
+.activity-log-actor--ai {
+  border-color: var(--px-info, #5a8bca);
+  color: var(--px-info, #5a8bca);
+}
+/* 'other' (app + extensions) keeps the muted default. */
+
+.activity-log-text {
+  color: var(--px-text, inherit);
+  overflow-wrap: anywhere;
+}
+
+/* ── Toolbar filter buttons ── */
+.activity-log-filter {
+  font-size: var(--px-text-xs);
+  padding: 1px 8px;
+}
+.activity-log-filter.is-active {
+  background: var(--px-surface-active, var(--px-surface-hover));
+  color: var(--px-text, inherit);
+}
