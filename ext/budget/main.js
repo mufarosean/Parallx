@@ -341,18 +341,24 @@ function injectStyles() {
   const style = document.createElement('style');
   style.id = 'budget-extension-styles';
   style.textContent = `
-/* ═══ Chart palette ═══
+/* ═══ Chart palette — ledger inks ═══
    Charts read the theme's --vscode-charts-* variables. Override them for the
-   whole budget surface with a refined, harmonized palette (vivid but not
-   neon) so every chart, legend, and pill re-hues in one place. Category
-   swatches store their own matching hex in the DB. */
+   whole budget surface with classic ledger-ink colors: forest green, brick
+   red, steel blue, ochre, mustard, plum. This exact ordered set passes the
+   dataviz palette validator on BOTH light and dark surfaces (adjacent-pair
+   CVD ΔE ≥ 8 incl. the income/expense green↔red pair, normal-vision ΔE ≥ 15,
+   lightness band, chroma floor). The red/plum contrast WARN on dark is
+   relieved everywhere by written amounts: every mark ships with a numeric
+   label, tooltip, or table — accounting notation IS the secondary encoding. */
 .budget-editor, .budget-nav {
-  --vscode-charts-green:  #5cb87a;
-  --vscode-charts-red:    #e0625e;
-  --vscode-charts-blue:   #5b8fd6;
-  --vscode-charts-orange: #e8924a;
-  --vscode-charts-yellow: #e3c04e;
-  --vscode-charts-purple: #b07fb0;
+  --vscode-charts-green:  #5da56e;
+  --vscode-charts-red:    #a43b38;
+  --vscode-charts-blue:   #5a8bca;
+  --vscode-charts-orange: #965719;
+  --vscode-charts-yellow: #a9912b;
+  --vscode-charts-purple: #784d96;
+  /* Ledger typography: amounts render in the editor's mono face. */
+  --budget-mono: var(--vscode-editor-font-family, 'Consolas', 'SF Mono', monospace);
 }
 
 /* ═══ Sidebar nav ═══ */
@@ -454,20 +460,21 @@ function injectStyles() {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 16px 24px 12px 24px;
-  border-bottom: 1px solid var(--vscode-panel-border, #2a2a2a);
+  padding: 16px 24px 10px 24px;
+  border-bottom: 3px double var(--vscode-panel-border, #2a2a2a);
 }
 .budget-editor-header .budget-icon {
-  width: 20px;
-  height: 20px;
-  flex: 0 0 20px;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
   color: var(--vscode-icon-foreground, #cccccc);
 }
 .budget-editor-title {
   margin: 0;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
-  letter-spacing: 0.2px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 .budget-editor-body {
   flex: 1;
@@ -623,7 +630,9 @@ function injectStyles() {
   font-size: var(--px-text-xs, 11px);
 }
 
-/* Tables */
+/* Tables — the ledger register. Ruled hairlines, small-caps column heads
+   under a double rule (classic accounting), amounts right-aligned in the
+   mono face, faint alternating row tint like ruled ledger paper. */
 .budget-table {
   width: 100%;
   border-collapse: collapse;
@@ -631,22 +640,32 @@ function injectStyles() {
 }
 .budget-table th, .budget-table td {
   text-align: left;
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--vscode-panel-border, #2a2a2a);
+  padding: 5px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--vscode-panel-border, #2a2a2a) 55%, transparent);
   vertical-align: middle;
 }
 .budget-table thead th {
   position: sticky;
   top: 0;
   background: var(--vscode-editor-background);
-  font-weight: 500;
+  font-weight: 600;
   color: var(--vscode-descriptionForeground, #aaa);
-  font-size: 11px;
-  letter-spacing: 0;
-  text-transform: none;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-bottom: 3px double var(--vscode-panel-border, #2a2a2a);
+}
+.budget-table tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--vscode-foreground, #ddd) 2.5%, transparent);
 }
 .budget-table tbody tr:hover {
   background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.04));
+}
+/* Totals rows close the register with the classic double rule above. */
+.budget-table tr.budget-total-row td {
+  border-top: 3px double var(--vscode-panel-border, #2a2a2a);
+  border-bottom: none;
+  font-weight: 600;
 }
 .budget-row-actions {
   display: flex;
@@ -654,47 +673,69 @@ function injectStyles() {
   gap: 4px;
   min-width: 132px;
 }
-.budget-amount { font-variant-numeric: tabular-nums; text-align: right; }
-.budget-amount.negative { color: var(--vscode-charts-red, #f87171); }
-.budget-amount.positive { color: var(--vscode-charts-green, #4ade80); }
+.budget-amount {
+  font-family: var(--budget-mono);
+  font-variant-numeric: tabular-nums lining-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+.budget-amount.negative { color: var(--vscode-charts-red, #a43b38); }
+.budget-amount.positive { color: var(--vscode-charts-green, #5da56e); }
 
+/* Status tags — quiet outline chips, uppercase, square. No filled pills. */
 .budget-pill {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 1px 6px;
-  border-radius: 8px;
-  font-size: 10px;
-  background: var(--vscode-badge-background, #4d4d4d);
-  color: var(--vscode-badge-foreground, #fff);
+  padding: 0 5px;
+  border-radius: 2px;
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 15px;
+  background: transparent;
+  border: 1px solid var(--vscode-panel-border, #555);
+  color: var(--vscode-descriptionForeground, #aaa);
 }
-.budget-pill.review  { background: #b45309; color: #fff; }
-.budget-pill.confirmed { background: #166534; color: #fff; }
-.budget-pill.hidden  { background: #4b5563; color: #ddd; }
-.budget-pill.deleted { background: #7f1d1d; color: #fff; }
-.budget-pill.low    { background: #b45309; color: #fff; }
-.budget-pill.medium { background: #4d6b80; color: #fff; }
-.budget-pill.high   { background: #166534; color: #fff; }
+.budget-pill.review, .budget-pill.low {
+  border-color: var(--vscode-charts-orange, #965719);
+  color: var(--vscode-charts-orange, #965719);
+}
+.budget-pill.confirmed, .budget-pill.high {
+  border-color: var(--vscode-charts-green, #5da56e);
+  color: var(--vscode-charts-green, #5da56e);
+}
+.budget-pill.hidden  { opacity: 0.7; }
+.budget-pill.deleted {
+  border-color: var(--vscode-charts-red, #a43b38);
+  color: var(--vscode-charts-red, #a43b38);
+}
+.budget-pill.medium {
+  border-color: var(--vscode-charts-blue, #5a8bca);
+  color: var(--vscode-charts-blue, #5a8bca);
+}
 
 .budget-cat-swatch {
   display: inline-block;
-  width: 10px; height: 10px;
-  border-radius: 50%;
+  width: 9px; height: 9px;
+  border-radius: 2px;
   margin-right: 6px;
   vertical-align: middle;
 }
 
-/* Dashboard cards */
+/* Summary cards — ruled panels, not floating chips: square corners, a
+   heavier top rule, small-caps label, mono figure. */
 .budget-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;
 }
 .budget-card {
-  padding: 12px 14px;
+  padding: 10px 14px 12px;
   border: 1px solid var(--vscode-panel-border, #2a2a2a);
-  border-radius: var(--px-radius-md, 4px);
-  background: var(--vscode-input-background, rgba(255,255,255,0.02));
+  border-top: 2px solid color-mix(in srgb, var(--vscode-foreground, #ddd) 35%, var(--vscode-panel-border, #2a2a2a));
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--vscode-foreground, #ddd) 1.5%, var(--vscode-editor-background));
   transition: border-color 80ms ease, background 80ms ease, transform 80ms ease;
 }
 .budget-card-clickable:hover {
@@ -709,18 +750,18 @@ function injectStyles() {
   transform: translateY(1px);
 }
 .budget-card-label {
-  font-size: 12px;
-  font-weight: 400;
-  text-transform: none;
-  letter-spacing: 0;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
   color: var(--vscode-descriptionForeground, #888);
 }
 .budget-card-value {
-  font-size: 26px;
+  font-size: 24px;
   font-weight: 600;
   margin-top: 6px;
-  letter-spacing: -0.01em;
-  font-variant-numeric: tabular-nums;
+  font-family: var(--budget-mono);
+  font-variant-numeric: tabular-nums lining-nums;
   color: var(--vscode-foreground, #ddd);
 }
 .budget-card-sub {
@@ -763,19 +804,21 @@ function injectStyles() {
 .budget-section:last-of-type { margin-bottom: 16px; }
 .budget-section h3 {
   margin: 0 0 4px 0;
-  font-size: 14px;
-  font-weight: 500;
-  letter-spacing: 0;
-  text-transform: none;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
   color: var(--vscode-foreground, #ddd);
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--vscode-panel-border, #2a2a2a);
 }
 
 .budget-log-row {
-  font-family: var(--vscode-editor-font-family, ui-monospace, Consolas, monospace);
+  font-family: var(--budget-mono);
   font-size: 11px;
 }
-.budget-log-row.warn  td { color: #f59e0b; }
-.budget-log-row.error td { color: #f87171; }
+.budget-log-row.warn  td { color: var(--vscode-charts-yellow, #a9912b); }
+.budget-log-row.error td { color: var(--vscode-charts-red, #a43b38); }
 
 /* ═══ Month picker ═══ */
 .budget-month-picker {
@@ -1600,6 +1643,88 @@ function injectStyles() {
 .budget-catrow-trend.is-up { color: var(--px-danger, #e06c66); }
 .budget-catrow-trend.is-down { color: var(--px-success, #6cbf8f); }
 
+/* ═══ M93 ledger components ═══ */
+
+/* Category progress tracks — square ruled bars, not rounded pills. */
+.budget-catrow-track { border-radius: 1px; }
+.budget-catrow-fill  { border-radius: 1px; }
+.bar-track {
+  height: 6px;
+  background: color-mix(in srgb, var(--vscode-foreground, #ddd) 7%, transparent);
+  border-radius: 1px;
+  overflow: hidden;
+}
+.bar-fill { height: 100%; border-radius: 1px; }
+
+/* Insights register — ruled rows, typographic glyph column, mono amounts. */
+.budget-insights { display: flex; flex-direction: column; }
+.budget-insight-row {
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  align-items: baseline;
+  gap: 10px;
+  padding: 7px 4px;
+  border-bottom: 1px solid color-mix(in srgb, var(--vscode-panel-border, #2a2a2a) 55%, transparent);
+  cursor: pointer;
+  font-size: var(--px-text-xs, 11px);
+}
+.budget-insight-row:last-child { border-bottom: none; }
+.budget-insight-row:hover { background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.04)); }
+.budget-insight-glyph {
+  font-family: var(--budget-mono);
+  font-size: 11px;
+  text-align: center;
+  color: var(--vscode-descriptionForeground, #888);
+}
+.budget-insight-row.is-warn  .budget-insight-glyph { color: var(--vscode-charts-orange, #965719); }
+.budget-insight-row.is-alert .budget-insight-glyph { color: var(--vscode-charts-red, #a43b38); }
+.budget-insight-row.is-good  .budget-insight-glyph { color: var(--vscode-charts-green, #5da56e); }
+.budget-insight-title { color: var(--vscode-foreground, #ddd); }
+.budget-insight-title .sub { color: var(--vscode-descriptionForeground, #888); }
+.budget-insight-amt {
+  font-family: var(--budget-mono);
+  font-variant-numeric: tabular-nums lining-nums;
+  text-align: right;
+  color: var(--vscode-foreground, #ddd);
+  white-space: nowrap;
+}
+.budget-insight-amt.negative { color: var(--vscode-charts-red, #a43b38); }
+.budget-insight-amt.positive { color: var(--vscode-charts-green, #5da56e); }
+
+/* Bullet bar (budget vs actual): track = limit, fill = spent, tick = pace. */
+.budget-bullet { position: relative; height: 10px; min-width: 160px;
+  background: color-mix(in srgb, var(--vscode-foreground, #ddd) 7%, transparent);
+  border-radius: 1px; overflow: visible; }
+.budget-bullet-fill { position: absolute; left: 0; top: 2px; bottom: 2px;
+  background: color-mix(in srgb, var(--vscode-foreground, #ddd) 42%, transparent);
+  border-radius: 1px; }
+.budget-bullet-fill.is-near { background: var(--vscode-charts-yellow, #a9912b); }
+.budget-bullet-fill.is-over { background: var(--vscode-charts-red, #a43b38); }
+.budget-bullet-pace { position: absolute; top: -2px; bottom: -2px; width: 2px;
+  background: var(--vscode-foreground, #ddd); opacity: 0.75; }
+
+/* Next-month planning */
+.budget-plan-note {
+  font-size: var(--px-text-xs, 11px);
+  color: var(--vscode-descriptionForeground, #888);
+  padding: 6px 10px;
+  border: 1px solid var(--vscode-panel-border, #2a2a2a);
+  border-left: 3px solid var(--vscode-charts-blue, #5a8bca);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--vscode-foreground, #ddd) 1.5%, var(--vscode-editor-background));
+}
+.budget-plan-suggest {
+  font-family: var(--budget-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--vscode-charts-blue, #5a8bca);
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+}
+.budget-plan-suggest:hover { color: var(--vscode-foreground, #ddd); }
+.budget-plan-basis { font-size: 10px; color: var(--vscode-descriptionForeground, #888); white-space: nowrap; }
+
 `;
   document.head.appendChild(style);
 }
@@ -1757,6 +1882,18 @@ function fmtMoney(cents) {
   const dollars = Math.floor(abs / 100);
   const c = String(abs % 100).padStart(2, '0');
   return `${sign}$${dollars.toLocaleString('en-US')}.${c}`;
+}
+
+// Accounting notation: negatives wrap in parentheses — "(1,234.56)" — the
+// classic ledger convention. Doubles as a colorblind-safe secondary encoding
+// for every red negative in the register.
+function fmtLedger(cents) {
+  const n = Number(cents) || 0;
+  const abs = Math.abs(n);
+  const dollars = Math.floor(abs / 100);
+  const c = String(abs % 100).padStart(2, '0');
+  const body = `$${dollars.toLocaleString('en-US')}.${c}`;
+  return n < 0 ? `(${body})` : body;
 }
 
 function fmtDate(d) {
@@ -2486,7 +2623,8 @@ function renderTransactionsSection(body, api) {
 
       const tdAmt = document.createElement('td');
       tdAmt.className = 'budget-amount ' + amtCls;
-      tdAmt.textContent = fmtMoney(cents);
+      // Register convention: outflows plain, inflows marked "+" (green).
+      tdAmt.textContent = cents < 0 ? '+' + fmtMoney(-cents) : fmtMoney(cents);
       const tdStatus = document.createElement('td');
       tdStatus.innerHTML = `<span class="budget-pill ${escHtml(r.status)}">${escHtml(statusLabel(r.status))}</span>`;
       const tdConf = document.createElement('td');
@@ -2932,13 +3070,13 @@ function renderDashboardSection(body, api) {
     const colors = {
       info:    'var(--vscode-textBlockQuote-background, rgba(127,127,127,0.08))',
       running: 'var(--vscode-textBlockQuote-background, rgba(127,127,127,0.08))',
-      success: 'rgba(34,197,94,0.12)',
-      error:   'rgba(248,113,113,0.16)',
+      success: 'color-mix(in srgb, var(--vscode-charts-green, #5da56e) 12%, transparent)',
+      error:   'color-mix(in srgb, var(--vscode-charts-red, #a43b38) 16%, transparent)',
     };
     syncBanner.style.background = colors[state] || colors.info;
     syncBanner.style.borderLeft = state === 'error'
-      ? '3px solid var(--vscode-charts-red, #f87171)'
-      : (state === 'success' ? '3px solid var(--vscode-charts-green, #22c55e)' : '3px solid var(--vscode-focusBorder, #9333ea)');
+      ? '3px solid var(--vscode-charts-red, #a43b38)'
+      : (state === 'success' ? '3px solid var(--vscode-charts-green, #5da56e)' : '3px solid var(--vscode-focusBorder, #9333ea)');
     syncBanner.innerHTML = html;
     syncBanner.style.display = '';
   }
@@ -2956,7 +3094,7 @@ function renderDashboardSection(body, api) {
         ` (${confirmed} confirmed, ${review} for review` +
         (skipped ? `, ${skipped} already imported` : '') + ').';
     }
-    return '<b>Syncing Gmail…</b> The AI is fetching new transaction emails and categorizing them.';
+    return '<b>Syncing Gmail…</b> Fetching new transaction emails and categorizing them.';
   }
   if (_lastSyncEvent && (_lastSyncEvent.kind === 'start' || _lastSyncEvent.kind === 'progress')) {
     setBanner('running', _runningBanner(_lastSyncEvent.detail));
@@ -2971,8 +3109,8 @@ function renderDashboardSection(body, api) {
       setBanner('success',
         `<b>Sync complete</b> — ${c.confirmed||0} new transaction(s) confirmed and categorized, ${c.review||0} flagged for review, ${c.snapshot||0} balance snapshot(s) recorded` +
         ((c.skipped||0) ? `, ${c.skipped} skipped (already imported)` : '') +
-        ((c.errors||0) ? `, <span style="color:var(--vscode-charts-red,#f87171)">${c.errors} error(s)</span>` : '') +
-        '. The assistant is writing a summary in chat.');
+        ((c.errors||0) ? `, <span style="color:var(--vscode-charts-red,#a43b38)">${c.errors} error(s)</span>` : '') +
+        '.');
       void refresh();
     } else if (evt.kind === 'error') {
       setBanner('error',
@@ -2999,6 +3137,11 @@ function renderDashboardSection(body, api) {
   const cards = document.createElement('div');
   cards.className = 'budget-cards budget-hero-cards';
   body.appendChild(cards);
+
+  // Month in review — spending-pace chart + computed insights register.
+  const insightsSection = document.createElement('div');
+  insightsSection.className = 'budget-section';
+  body.appendChild(insightsSection);
 
   // Top categories — full-width, the answer to "where did the money go".
   const catSection = document.createElement('div');
@@ -3038,7 +3181,7 @@ function renderDashboardSection(body, api) {
     card.style.background = 'var(--vscode-textBlockQuote-background, rgba(127,127,127,0.08))';
     card.innerHTML = `
       <div class="budget-card-label" style="font-size:13px;text-transform:uppercase;letter-spacing:0.05em;">Welcome to Budget</div>
-      <div class="budget-card-value" style="font-size:18px;margin-top:4px;">Let's get you set up in 3 steps.</div>
+      <div class="budget-card-value" style="font-size:18px;margin-top:4px;">Set up in three steps.</div>
       <ol style="margin:12px 0 0 20px;padding:0;line-height:1.7;">
         <li><b>Connect Gmail</b> — make sure the <code>gmail-mcp-server</code> tool is enabled in Settings → MCP Servers.</li>
         <li><b>Run your first sync</b> — pull transaction emails and let the AI categorize them.</li>
@@ -3087,12 +3230,16 @@ function renderDashboardSection(body, api) {
     _state.monthKey = monthKey;
     filterRow.innerHTML = '';
     cards.innerHTML = '';
+    insightsSection.innerHTML = '';
     cashflowSection.innerHTML = '';
     catSection.innerHTML = '';
     accountsSection.innerHTML = '';
     attentionSection.innerHTML = '';
     lastSyncMeta.textContent = '';
     await renderOnboarding();
+    // Month in review — independent of the account filter by design: pace
+    // and insights read the whole ledger so the register always reconciles.
+    try { await renderMonthInsights(insightsSection, api, monthKey); } catch (e) { console.warn('[Budget] insights failed:', e); }
 
     const range = monthRange(monthKey);
     _state.range = range;
@@ -3656,6 +3803,521 @@ function formatTrendDateLabel(ymd, days) {
   // Show "May 15" for multi-month ranges.
   const monthShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(m) - 1] || m;
   return `${monthShort} ${Number(d)}`;
+}
+
+// ═══ M93: Month in review — pace chart + computed insights ═══════════════════
+//
+// Everything here is DETERMINISTIC arithmetic over the ledger — no model in
+// the loop. Insights are the kind a paper-era bookkeeper would pencil in the
+// margin: pace against budget, categories running hot, subscriptions that
+// crept, bills coming due, first-time merchants, the savings rate.
+
+// Monthly-ized cost of a recurring series, in cents.
+function recurringMonthlyCents(cadence, avgCents) {
+  const a = Math.max(0, Number(avgCents) || 0);
+  switch (cadence) {
+    case 'weekly':    return Math.round(a * 52 / 12);
+    case 'biweekly':  return Math.round(a * 26 / 12);
+    case 'quarterly': return Math.round(a / 3);
+    case 'yearly':    return Math.round(a / 12);
+    default:          return a; // monthly
+  }
+}
+
+// Suggested next-month limit for one category. Pure so it can be tested:
+// weighted recency average of the last three COMPLETED months (0.5/0.3/0.2,
+// most recent first), never below the category's recurring commitment,
+// rounded UP to the nearest $5. Zero history + zero recurring → 0 (no
+// suggestion). All values in cents.
+function suggestLimitCents(m1, m2, m3, recurringCents) {
+  const h1 = Math.max(0, Number(m1) || 0);
+  const h2 = Math.max(0, Number(m2) || 0);
+  const h3 = Math.max(0, Number(m3) || 0);
+  const rec = Math.max(0, Number(recurringCents) || 0);
+  const base = 0.5 * h1 + 0.3 * h2 + 0.2 * h3;
+  const raw = Math.max(base, rec);
+  if (raw <= 0) return 0;
+  return Math.ceil(raw / 500) * 500;
+}
+
+// Per-category history + recurring commitments + expected income for planning
+// a FUTURE month. History window = the last three completed months (the
+// current, still-running month would bias every average low).
+async function computePlanSuggestions() {
+  const curKey = monthRange().key;
+  const k1 = monthShift(curKey, -1), k2 = monthShift(curKey, -2), k3 = monthShift(curKey, -3);
+  const r1 = monthRange(k1), r3 = monthRange(k3);
+
+  let spendRows = [];
+  try {
+    spendRows = await db.all(
+      `SELECT category_id, strftime('%Y-%m', transaction_date) AS m,
+              COALESCE(SUM(amount_cents),0) AS net
+         FROM transactions
+        WHERE status='confirmed' AND tx_type IN ('purchase','fee')
+          AND transaction_date >= ? AND transaction_date <= ?
+        GROUP BY category_id, m`,
+      [r3.start, r1.end]);
+  } catch { spendRows = []; }
+  const hist = new Map(); // category_id → {m1,m2,m3}
+  for (const r of spendRows) {
+    const id = r.category_id || '';
+    if (!hist.has(id)) hist.set(id, { m1: 0, m2: 0, m3: 0 });
+    const h = hist.get(id);
+    if (r.m === k1) h.m1 = Math.max(0, Number(r.net) || 0);
+    else if (r.m === k2) h.m2 = Math.max(0, Number(r.net) || 0);
+    else if (r.m === k3) h.m3 = Math.max(0, Number(r.net) || 0);
+  }
+
+  let recRows = [];
+  try {
+    recRows = await db.all(
+      `SELECT category_id, cadence, avg_amount_cents
+         FROM recurring_series
+        WHERE cancelled=0 AND (user_confirmed=1 OR detection_confidence='high')`);
+  } catch { recRows = []; }
+  const recurring = new Map(); // category_id → monthly-ized cents
+  for (const r of recRows) {
+    const id = r.category_id || '';
+    recurring.set(id, (recurring.get(id) || 0) + recurringMonthlyCents(r.cadence, r.avg_amount_cents));
+  }
+
+  let expectedIncomeCents = 0;
+  try {
+    const inc = await db.get(
+      `SELECT COALESCE(SUM(ABS(amount_cents)),0) AS total
+         FROM transactions
+        WHERE status='confirmed' AND tx_type='deposit'
+          AND transaction_date >= ? AND transaction_date <= ?`,
+      [r3.start, r1.end]);
+    expectedIncomeCents = Math.round((Number(inc?.total) || 0) / 3);
+  } catch { /* keep 0 */ }
+
+  return { hist, recurring, expectedIncomeCents, windowKeys: [k1, k2, k3] };
+}
+
+// Bullet bar: track = the limit, fill = spent, tick = where an even-paced
+// month would be today. Status coloring mirrors evalBudgetStatus.
+function makeBulletBar(spentCents, limitCents, status, paceFrac) {
+  const wrap = document.createElement('div');
+  wrap.className = 'budget-bullet';
+  const limit = Math.max(0, Number(limitCents) || 0);
+  const spent = Math.max(0, Number(spentCents) || 0);
+  const fill = document.createElement('div');
+  fill.className = 'budget-bullet-fill'
+    + (status === 'over' ? ' is-over' : (status === 'near' ? ' is-near' : ''));
+  const pct = limit > 0 ? Math.min(1, spent / limit) : 0;
+  fill.style.width = (pct * 100).toFixed(1) + '%';
+  wrap.appendChild(fill);
+  if (limit > 0 && Number.isFinite(paceFrac) && paceFrac > 0 && paceFrac < 1) {
+    const tick = document.createElement('div');
+    tick.className = 'budget-bullet-pace';
+    tick.style.left = (Math.min(1, paceFrac) * 100).toFixed(1) + '%';
+    tick.title = 'Even-pace point for today';
+    wrap.appendChild(tick);
+  }
+  return wrap;
+}
+
+// The insights register: computed rows, each linking to the view that acts
+// on it. Returns [] quietly when the ledger is too thin to say anything.
+async function computeBudgetInsights(api, monthKey) {
+  const out = [];
+  const curKey = monthRange().key;
+  const isCurrent = monthKey === curKey;
+  const range = monthRange(monthKey);
+  const today = ctToday();
+  const daysInMonth = Number(range.end.slice(8, 10));
+  const dayOfMonth = isCurrent ? Math.min(daysInMonth, today.getDate()) : daysInMonth;
+  const elapsed = Math.max(0.02, dayOfMonth / daysInMonth);
+
+  const openTx = (filter) => {
+    _navState.txFilter = Object.assign({ monthKey }, filter || {});
+    api.commands.executeCommand('budget.openTransactions').catch(() => {});
+  };
+
+  // Ledger aggregates for the month.
+  let agg = { spend: 0, income: 0 };
+  try {
+    agg = await db.get(
+      `SELECT COALESCE(SUM(CASE WHEN tx_type IN ('purchase','fee') THEN amount_cents ELSE 0 END),0) AS spend,
+              COALESCE(SUM(CASE WHEN tx_type='deposit' THEN ABS(amount_cents) ELSE 0 END),0) AS income
+         FROM transactions
+        WHERE status='confirmed' AND transaction_date >= ? AND transaction_date <= ?`,
+      [range.start, range.end]) || agg;
+  } catch { /* empty ledger */ }
+  const spend = Number(agg.spend) || 0;
+  const income = Number(agg.income) || 0;
+  if (spend === 0 && income === 0) return out;
+
+  // 1. Pace against budget (current month only — otherwise it is history).
+  let budgetTotal = 0;
+  try {
+    const b = await db.get('SELECT COALESCE(SUM(limit_cents),0) AS t FROM budgets WHERE month_key=?', [monthKey]);
+    budgetTotal = Number(b?.t) || 0;
+  } catch { /* none */ }
+  if (isCurrent && budgetTotal > 0) {
+    const projected = Math.round(spend / elapsed);
+    const diff = projected - budgetTotal;
+    out.push({
+      sev: diff > 0 ? (diff > budgetTotal * 0.1 ? 'alert' : 'warn') : 'good',
+      glyph: diff > 0 ? '▲' : '▼',
+      text: diff > 0
+        ? `On pace to finish ${fmtMoney(Math.abs(diff))} over budget`
+        : `On pace to finish ${fmtMoney(Math.abs(diff))} under budget`,
+      sub: `${fmtMoney(spend)} spent by day ${dayOfMonth} of ${daysInMonth} · projected ${fmtMoney(projected)} of ${fmtMoney(budgetTotal)}`,
+      amountCents: diff > 0 ? -diff : Math.abs(diff),
+      onClick: () => api.commands.executeCommand('budget.openBudgets').catch(() => {}),
+    });
+  }
+
+  // 2. Category movers vs the 3-completed-month average (pace-adjusted for
+  //    the running month so mid-month numbers compare fairly).
+  try {
+    const k1 = monthShift(curKey, -1), k3 = monthShift(curKey, -3);
+    const rPrev1 = monthRange(k1), rPrev3 = monthRange(k3);
+    const histRows = await db.all(
+      `SELECT category_id, COALESCE(SUM(amount_cents),0)/3.0 AS avg_net
+         FROM transactions
+        WHERE status='confirmed' AND tx_type IN ('purchase','fee')
+          AND transaction_date >= ? AND transaction_date <= ?
+        GROUP BY category_id`,
+      [rPrev3.start, rPrev1.end]);
+    const avgBy = new Map(histRows.map(r => [r.category_id || '', Math.max(0, Number(r.avg_net) || 0)]));
+    const nowRows = await db.all(
+      `SELECT t.category_id, c.name, COALESCE(SUM(t.amount_cents),0) AS net
+         FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
+        WHERE t.status='confirmed' AND t.tx_type IN ('purchase','fee')
+          AND t.transaction_date >= ? AND t.transaction_date <= ?
+        GROUP BY t.category_id`,
+      [range.start, range.end]);
+    const movers = [];
+    for (const r of nowRows) {
+      const avg = avgBy.get(r.category_id || '') || 0;
+      if (avg < 2000) continue; // no meaningful baseline (< $20/mo)
+      const paceAdjusted = isCurrent ? (Number(r.net) || 0) / elapsed : (Number(r.net) || 0);
+      const delta = paceAdjusted - avg;
+      if (Math.abs(delta) < Math.max(2000, avg * 0.25)) continue;
+      movers.push({ name: r.name || 'Uncategorized', categoryId: r.category_id, delta, avg, paceAdjusted });
+    }
+    movers.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+    for (const mv of movers.slice(0, 3)) {
+      const up = mv.delta > 0;
+      const pct = Math.round(Math.abs(mv.delta) / mv.avg * 100);
+      out.push({
+        sev: up ? 'warn' : 'good',
+        glyph: up ? '▲' : '▼',
+        text: `${mv.name} running ${pct}% ${up ? 'above' : 'below'} its 3-month average`,
+        sub: `${isCurrent ? 'pace-adjusted ' : ''}${fmtMoney(Math.round(mv.paceAdjusted))} vs usual ${fmtMoney(Math.round(mv.avg))}`,
+        amountCents: up ? -Math.round(Math.abs(mv.delta)) : Math.round(Math.abs(mv.delta)),
+        onClick: () => openTx({ categoryId: mv.categoryId, type: 'spend' }),
+      });
+    }
+  } catch { /* thin history */ }
+
+  // 3. Recurring price creep — last charge ≥ 8% above the series average.
+  try {
+    const creep = await db.all(
+      `SELECT display_name, merchant_pattern, avg_amount_cents, last_amount_cents
+         FROM recurring_series
+        WHERE cancelled=0 AND occurrence_count >= 3
+          AND last_amount_cents IS NOT NULL AND avg_amount_cents > 0
+          AND last_amount_cents > avg_amount_cents * 1.08
+        ORDER BY (last_amount_cents - avg_amount_cents) DESC LIMIT 3`);
+    for (const r of creep) {
+      const name = r.display_name || r.merchant_pattern;
+      const d = (Number(r.last_amount_cents) || 0) - (Number(r.avg_amount_cents) || 0);
+      out.push({
+        sev: 'warn',
+        glyph: '▲',
+        text: `${name} charged ${fmtMoney(r.last_amount_cents)} — up from its usual ${fmtMoney(r.avg_amount_cents)}`,
+        sub: 'Recurring price increase',
+        amountCents: -d,
+        onClick: () => api.commands.executeCommand('budget.openRecurring').catch(() => {}),
+      });
+    }
+  } catch { /* no recurring table content */ }
+
+  // 4. Bills due in the next 14 days (current month only).
+  if (isCurrent) {
+    try {
+      const todayYmd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      const horizon = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 14);
+      const horizonYmd = `${horizon.getFullYear()}-${String(horizon.getMonth() + 1).padStart(2, '0')}-${String(horizon.getDate()).padStart(2, '0')}`;
+      const due = await db.get(
+        `SELECT COUNT(*) AS n, COALESCE(SUM(avg_amount_cents),0) AS total
+           FROM recurring_series
+          WHERE cancelled=0 AND next_due_date >= ? AND next_due_date <= ?`,
+        [todayYmd, horizonYmd]);
+      if (due && Number(due.n) > 0) {
+        out.push({
+          sev: 'info',
+          glyph: '◆',
+          text: `${due.n} recurring bill${Number(due.n) === 1 ? '' : 's'} due in the next 14 days`,
+          sub: 'Committed, not yet charged',
+          amountCents: -(Number(due.total) || 0),
+          onClick: () => api.commands.executeCommand('budget.openRecurring').catch(() => {}),
+        });
+      }
+    } catch { /* ignore */ }
+  }
+
+  // 5. First-time merchants with real money behind them.
+  try {
+    const firsts = await db.all(
+      `SELECT merchant, SUM(amount_cents) AS total
+         FROM transactions
+        WHERE status='confirmed' AND tx_type IN ('purchase','fee') AND merchant IS NOT NULL
+          AND transaction_date >= ? AND transaction_date <= ?
+          AND merchant NOT IN (
+            SELECT DISTINCT merchant FROM transactions
+             WHERE status='confirmed' AND merchant IS NOT NULL AND transaction_date < ?)
+        GROUP BY merchant HAVING total >= 2500
+        ORDER BY total DESC LIMIT 1`,
+      [range.start, range.end, range.start]);
+    if (firsts && firsts.length > 0) {
+      const f = firsts[0];
+      out.push({
+        sev: 'info',
+        glyph: '+',
+        text: `New merchant: ${f.merchant}`,
+        sub: 'First appearance in the ledger this month',
+        amountCents: -(Number(f.total) || 0),
+        onClick: () => openTx({ merchant: f.merchant }),
+      });
+    }
+  } catch { /* ignore */ }
+
+  // 6. Savings rate vs previous month.
+  if (income > 0) {
+    try {
+      const prevR = monthRange(monthShift(monthKey, -1));
+      const prev = await db.get(
+        `SELECT COALESCE(SUM(CASE WHEN tx_type IN ('purchase','fee') THEN amount_cents ELSE 0 END),0) AS spend,
+                COALESCE(SUM(CASE WHEN tx_type='deposit' THEN ABS(amount_cents) ELSE 0 END),0) AS income
+           FROM transactions
+          WHERE status='confirmed' AND transaction_date >= ? AND transaction_date <= ?`,
+        [prevR.start, prevR.end]);
+      const rate = (income - spend) / income;
+      const prevIncome2 = Number(prev?.income) || 0;
+      if (prevIncome2 > 0 && !isCurrent) {
+        const prevRate = (prevIncome2 - (Number(prev?.spend) || 0)) / prevIncome2;
+        const up = rate >= prevRate;
+        out.push({
+          sev: up ? 'good' : 'warn',
+          glyph: '%',
+          text: `Savings rate ${Math.round(rate * 100)}% (${up ? 'up from' : 'down from'} ${Math.round(prevRate * 100)}%)`,
+          sub: `Kept ${fmtMoney(income - spend)} of ${fmtMoney(income)} income`,
+          amountCents: null,
+          onClick: () => api.commands.executeCommand('budget.openCashFlow').catch(() => {}),
+        });
+      }
+    } catch { /* ignore */ }
+  }
+
+  return out;
+}
+
+// Renders the "Month in review" section: pace chart on top, insight register
+// below. Skips itself entirely when the ledger has nothing for the month.
+async function renderMonthInsights(section, api, monthKey) {
+  const curKey = monthRange().key;
+  const isCurrent = monthKey === curKey;
+  const range = monthRange(monthKey);
+  const daysInMonth = Number(range.end.slice(8, 10));
+  const today = ctToday();
+  const dayOfMonth = isCurrent ? Math.min(daysInMonth, today.getDate()) : daysInMonth;
+
+  // Daily cumulative spend.
+  let dayRows = [];
+  try {
+    dayRows = await db.all(
+      `SELECT transaction_date AS d, COALESCE(SUM(amount_cents),0) AS net
+         FROM transactions
+        WHERE status='confirmed' AND tx_type IN ('purchase','fee')
+          AND transaction_date >= ? AND transaction_date <= ?
+        GROUP BY transaction_date ORDER BY transaction_date ASC`,
+      [range.start, range.end]);
+  } catch { dayRows = []; }
+
+  const insights = await computeBudgetInsights(api, monthKey);
+  if (dayRows.length === 0 && insights.length === 0) return;
+
+  const h3 = document.createElement('h3');
+  h3.textContent = 'Month in Review';
+  section.appendChild(h3);
+
+  // ── Pace chart ──
+  let budgetTotal = 0;
+  try {
+    const b = await db.get('SELECT COALESCE(SUM(limit_cents),0) AS t FROM budgets WHERE month_key=?', [monthKey]);
+    budgetTotal = Number(b?.t) || 0;
+  } catch { /* none */ }
+  // Reference pace: the month's budget, else the 3-completed-month average.
+  let refTotal = budgetTotal;
+  let refLabel = 'Budget pace';
+  if (refTotal <= 0) {
+    try {
+      const k1 = monthShift(curKey, -1), k3 = monthShift(curKey, -3);
+      const avg = await db.get(
+        `SELECT COALESCE(SUM(amount_cents),0)/3.0 AS a
+           FROM transactions
+          WHERE status='confirmed' AND tx_type IN ('purchase','fee')
+            AND transaction_date >= ? AND transaction_date <= ?`,
+        [monthRange(k3).start, monthRange(k1).end]);
+      refTotal = Math.round(Number(avg?.a) || 0);
+      refLabel = '3-month average pace';
+    } catch { /* none */ }
+  }
+
+  if (dayRows.length > 0) {
+    const byDay = new Map(dayRows.map(r => [Number(r.d.slice(8, 10)), Number(r.net) || 0]));
+    const cum = [];
+    let running = 0;
+    for (let d = 1; d <= dayOfMonth; d++) {
+      running += Math.max(0, byDay.get(d) || 0);
+      cum.push(running);
+    }
+    const spentToDate = running;
+    const projected = isCurrent && dayOfMonth < daysInMonth
+      ? Math.round(spentToDate / Math.max(1, dayOfMonth) * daysInMonth)
+      : spentToDate;
+
+    const chartHost = document.createElement('div');
+    chartHost.className = 'budget-trend-chart-host';
+    chartHost.style.position = 'relative';
+    section.appendChild(chartHost);
+
+    const W = 760, H = 200;
+    const padL = 64, padR = 16, padT = 14, padB = 28;
+    const innerW = W - padL - padR, innerH = H - padT - padB;
+    const maxV = Math.max(spentToDate, projected, refTotal, 1) * 1.06;
+    const xFor = (day) => padL + ((day - 1) / Math.max(1, daysInMonth - 1)) * innerW;
+    const yFor = (v) => padT + innerH - (v / maxV) * innerH;
+
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    svg.classList.add('budget-trend-chart');
+    chartHost.appendChild(svg);
+
+    for (let i = 0; i <= 4; i++) {
+      const v = maxV * (1 - i / 4);
+      const y = yFor(v);
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', String(padL)); line.setAttribute('x2', String(W - padR));
+      line.setAttribute('y1', String(y)); line.setAttribute('y2', String(y));
+      line.classList.add('budget-chart-grid');
+      svg.appendChild(line);
+      const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      lbl.setAttribute('x', String(padL - 8)); lbl.setAttribute('y', String(y + 4));
+      lbl.setAttribute('text-anchor', 'end');
+      lbl.classList.add('budget-chart-axis');
+      lbl.textContent = fmtAxisMoney(v);
+      svg.appendChild(lbl);
+    }
+    for (const day of [1, Math.round(daysInMonth / 2), daysInMonth]) {
+      const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      lbl.setAttribute('x', String(xFor(day))); lbl.setAttribute('y', String(H - 10));
+      lbl.setAttribute('text-anchor', 'middle');
+      lbl.classList.add('budget-chart-axis');
+      lbl.textContent = String(day);
+      svg.appendChild(lbl);
+    }
+
+    const mkPath = (pts, cls, stroke, dash) => {
+      const p = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+      p.setAttribute('points', pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' '));
+      p.setAttribute('fill', 'none');
+      p.setAttribute('stroke', stroke);
+      p.setAttribute('stroke-width', '2');
+      p.setAttribute('stroke-linejoin', 'round');
+      if (dash) p.setAttribute('stroke-dasharray', dash);
+      svg.appendChild(p);
+      return p;
+    };
+
+    // Reference pace line (neutral, dashed): even spend across the month.
+    if (refTotal > 0) {
+      mkPath([[xFor(1), yFor(refTotal / daysInMonth)], [xFor(daysInMonth), yFor(refTotal)]],
+        '', 'var(--vscode-descriptionForeground, #888)', '5 4');
+    }
+    // Actual cumulative spend.
+    mkPath(cum.map((v, i) => [xFor(i + 1), yFor(v)]), '', 'var(--vscode-charts-blue, #5a8bca)');
+    // Projection (dotted continuation) for the running month.
+    if (isCurrent && dayOfMonth < daysInMonth) {
+      mkPath([[xFor(dayOfMonth), yFor(spentToDate)], [xFor(daysInMonth), yFor(projected)]],
+        '', 'var(--vscode-charts-blue, #5a8bca)', '2 4');
+    }
+
+    // Hover: nearest-day crosshair + tooltip.
+    const hover = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    hover.setAttribute('y1', String(padT)); hover.setAttribute('y2', String(padT + innerH));
+    hover.setAttribute('class', 'budget-chart-hover');
+    hover.style.display = 'none';
+    svg.appendChild(hover);
+    const tip = document.createElement('div');
+    tip.className = 'budget-trend-tip';
+    tip.style.display = 'none';
+    chartHost.appendChild(tip);
+    svg.addEventListener('mousemove', (e) => {
+      const rect = svg.getBoundingClientRect();
+      const px = (e.clientX - rect.left) / rect.width * W;
+      const day = Math.max(1, Math.min(dayOfMonth, Math.round((px - padL) / innerW * (daysInMonth - 1)) + 1));
+      const x = xFor(day);
+      hover.setAttribute('x1', String(x)); hover.setAttribute('x2', String(x));
+      hover.style.display = '';
+      const v = cum[day - 1] || 0;
+      const paceV = refTotal > 0 ? Math.round(refTotal * day / daysInMonth) : null;
+      tip.innerHTML = `<div class="d">${escHtml(range.start.slice(0, 8))}${String(day).padStart(2, '0')}</div>`
+        + `<div><span class="sw" style="background:var(--vscode-charts-blue,#5a8bca)"></span>Spent ${escHtml(fmtMoney(v))}</div>`
+        + (paceV != null ? `<div><span class="sw" style="background:var(--vscode-descriptionForeground,#888)"></span>${escHtml(refLabel)} ${escHtml(fmtMoney(paceV))}</div>` : '');
+      tip.style.display = '';
+      const tipPx = (x / W) * rect.width;
+      tip.style.left = Math.min(Math.max(tipPx + 12, 8), rect.width - 190) + 'px';
+      tip.style.top = '8px';
+    });
+    svg.addEventListener('mouseleave', () => { hover.style.display = 'none'; tip.style.display = 'none'; });
+
+    const legend = document.createElement('div');
+    legend.className = 'budget-chart-legend';
+    legend.appendChild(legendItem('Spent to date', 'var(--vscode-charts-blue, #5a8bca)'));
+    if (refTotal > 0) legend.appendChild(legendItem(refLabel, 'var(--vscode-descriptionForeground, #888)'));
+    if (isCurrent && dayOfMonth < daysInMonth) {
+      const proj = document.createElement('span');
+      proj.className = 'budget-legend-item';
+      proj.textContent = `Projected month-end: ${fmtMoney(projected)}`;
+      legend.appendChild(proj);
+    }
+    section.appendChild(legend);
+  }
+
+  // ── Insight register ──
+  if (insights.length > 0) {
+    const list = document.createElement('div');
+    list.className = 'budget-insights';
+    for (const ins of insights) {
+      const row = document.createElement('div');
+      row.className = 'budget-insight-row'
+        + (ins.sev === 'warn' ? ' is-warn' : ins.sev === 'alert' ? ' is-alert' : ins.sev === 'good' ? ' is-good' : '');
+      const glyph = document.createElement('span');
+      glyph.className = 'budget-insight-glyph';
+      glyph.textContent = ins.glyph || '·';
+      const text = document.createElement('span');
+      text.className = 'budget-insight-title';
+      text.innerHTML = escHtml(ins.text) + (ins.sub ? ` <span class="sub">— ${escHtml(ins.sub)}</span>` : '');
+      const amt = document.createElement('span');
+      amt.className = 'budget-insight-amt';
+      if (ins.amountCents != null) {
+        amt.textContent = fmtLedger(ins.amountCents);
+        if (ins.amountCents < 0) amt.classList.add('negative');
+        else if (ins.amountCents > 0) amt.classList.add('positive');
+      }
+      row.appendChild(glyph); row.appendChild(text); row.appendChild(amt);
+      if (typeof ins.onClick === 'function') row.addEventListener('click', ins.onClick);
+      list.appendChild(row);
+    }
+    section.appendChild(list);
+  }
 }
 
 function buildDailyHeatmap(opts) {
@@ -5171,8 +5833,8 @@ function renderCashFlowSection(body, api) {
       groups.push({
         label: m.label.split(' ')[0].slice(0, 3) + ' ' + String(m.year).slice(2),
         values: [
-          { name: 'Income', value: income / 100, color: '#22c55e' },
-          { name: 'Expenses',  value: spend / 100, color: '#ef4444' },
+          { name: 'Income', value: income / 100, color: 'var(--vscode-charts-green, #5da56e)' },
+          { name: 'Expenses',  value: spend / 100, color: 'var(--vscode-charts-red, #a43b38)' },
         ],
         meta: { monthKey: m.key, income, spend },
       });
@@ -5196,7 +5858,7 @@ function renderCashFlowSection(body, api) {
     });
     chartWrap.appendChild(chart);
     const legend = document.createElement('div'); legend.className = 'budget-chart-legend';
-    legend.innerHTML = `<span><span class="swatch" style="background:#22c55e"></span>Income</span><span><span class="swatch" style="background:#ef4444"></span>Expenses</span>`;
+    legend.innerHTML = `<span><span class="swatch" style="background:var(--vscode-charts-green,#5da56e)"></span>Income</span><span><span class="swatch" style="background:var(--vscode-charts-red,#a43b38)"></span>Expenses</span>`;
     chartWrap.appendChild(legend);
 
     const h2 = document.createElement('h3'); h2.textContent = 'Net Savings'; savingsWrap.appendChild(h2);
@@ -5277,7 +5939,7 @@ function renderReportsSection(body, api) {
         const pct = Math.round((Number(r.spend) / max) * 100);
         row.innerHTML = `
           <div>${escHtml(r.merchant)} <span style="color:var(--vscode-descriptionForeground,#888);font-size:10px">(${r.n})</span></div>
-          <div class="bar-track"><div class="bar-fill" style="width:${pct}%; background:#9333ea"></div></div>
+          <div class="bar-track"><div class="bar-fill" style="width:${pct}%; background:var(--vscode-charts-blue,#5a8bca)"></div></div>
           <div class="amt">${escHtml(fmtMoney(r.spend))}</div>`;
         merchSection.appendChild(row);
       }
@@ -5337,7 +5999,7 @@ function renderReportsSection(body, api) {
         [m.start, m.end]);
       points.push({ label: m.label.split(' ')[0].slice(0, 3), value: (Number(r?.spend) || 0) / 100 });
     }
-    trendSection.appendChild(buildLine(points, { width: 720, height: 160, color: '#ef4444' }));
+    trendSection.appendChild(buildLine(points, { width: 720, height: 160, color: 'var(--vscode-charts-red, #a43b38)' }));
   }
   void refresh();
   return () => { alive = false; };
@@ -5371,8 +6033,22 @@ function renderBudgetsSection(body, api) {
       await refresh();
     },
   }));
+  toolbar.appendChild(makeButton('Plan Next Month', {
+    primary: true,
+    onClick: () => {
+      monthKey = monthShift(monthRange().key, 1);
+      picker.setKey?.(monthKey);
+      void refresh();
+    },
+  }));
   toolbar.appendChild(makeButton('Refresh', { iconHtml: makeIcon(api, 'refresh-cw', 12), onClick: () => void refresh() }));
   body.appendChild(toolbar);
+
+  // Planning note — explains suggestions when a FUTURE month is selected.
+  const planNote = document.createElement('div');
+  planNote.className = 'budget-plan-note';
+  planNote.style.display = 'none';
+  body.appendChild(planNote);
 
   const summary = document.createElement('div'); summary.className = 'budget-cards'; body.appendChild(summary);
   const tableWrap = document.createElement('div'); body.appendChild(tableWrap);
@@ -5384,6 +6060,29 @@ function renderBudgetsSection(body, api) {
 
     const rows = await evalBudgetStatus(monthKey);
 
+    const todayKey = monthRange().key;
+    const isFuture = monthKey > todayKey;
+    const isCurrent = monthKey === todayKey;
+    const plan = isFuture ? await computePlanSuggestions() : null;
+
+    // Shared limit writer (used by the input and the suggestion links).
+    async function writeLimit(categoryId, cents) {
+      const now = new Date().toISOString();
+      if (cents > 0) {
+        const existing = await db.get('SELECT id FROM budgets WHERE category_id=? AND month_key=?', [categoryId, monthKey]);
+        if (existing) {
+          await db.run('UPDATE budgets SET limit_cents=?, updated_at=? WHERE id=?', [cents, now, existing.id]);
+        } else {
+          await db.run(
+            `INSERT INTO budgets (id, category_id, month_key, limit_cents, created_at, updated_at) VALUES (?,?,?,?,?,?)`,
+            [crypto.randomUUID(), categoryId, monthKey, cents, now, now],
+          );
+        }
+      } else {
+        await db.run('DELETE FROM budgets WHERE category_id=? AND month_key=?', [categoryId, monthKey]);
+      }
+    }
+
     let totalLimit = 0, totalSpent = 0, overCount = 0, nearCount = 0;
     for (const r of rows) {
       totalLimit += Number(r.effective_limit_cents) || 0;
@@ -5391,15 +6090,68 @@ function renderBudgetsSection(body, api) {
       if (r.status === 'over') overCount++;
       else if (r.status === 'near') nearCount++;
     }
-    const remaining = totalLimit - totalSpent;
-    summary.appendChild(makeCard('Budget Total', fmtMoney(totalLimit), `${rows.filter(r => r.effective_limit_cents > 0).length} Categories with a Limit`));
-    summary.appendChild(makeCard('Expenses So Far', fmtMoney(totalSpent), totalLimit > 0 ? Math.round((totalSpent / totalLimit) * 100) + '% of Budget' : ''));
-    summary.appendChild(makeCard('Remaining', fmtMoney(remaining), remaining < 0 ? 'Over Budget' : ''));
-    summary.appendChild(makeCard('Alerts', String(overCount + nearCount), `${overCount} Over, ${nearCount} Near`));
+
+    if (isFuture && plan) {
+      // ── Planning mode: history + commitments → suggested envelopes. ──
+      const [y, m] = monthKey.split('-').map(Number);
+      const monthName = new Date(y, m - 1, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' });
+      planNote.style.display = '';
+      planNote.innerHTML = '';
+      planNote.appendChild(document.createTextNode(
+        `Planning ${monthName} — suggestions blend your last three completed months ` +
+        `(weighted toward recent) with detected recurring commitments, rounded up to the nearest $5. ` +
+        `Click a suggestion to set it as the limit. `
+      ));
+      const applyAll = makeButton('Apply All Suggestions', {
+        onClick: async () => {
+          let applied = 0;
+          for (const r of rows) {
+            const h = plan.hist.get(r.id) || { m1: 0, m2: 0, m3: 0 };
+            const rec = plan.recurring.get(r.id) || 0;
+            const sug = suggestLimitCents(h.m1, h.m2, h.m3, rec);
+            const has = (Number(r.effective_limit_cents) || 0) > 0;
+            if (sug > 0 && !has) { await writeLimit(r.id, sug); applied++; }
+          }
+          await api.window?.showInformationMessage?.(
+            applied > 0 ? `Applied ${applied} suggested limit(s). Existing limits were left untouched.`
+                        : 'Nothing to apply — every category with history already has a limit.');
+          await refresh();
+        },
+      });
+      applyAll.style.marginLeft = '6px';
+      planNote.appendChild(applyAll);
+
+      let recurringTotal = 0;
+      for (const v of plan.recurring.values()) recurringTotal += v;
+      const leftover = plan.expectedIncomeCents - totalLimit;
+      summary.appendChild(makeCard('Expected Income', fmtMoney(plan.expectedIncomeCents), '3-month average of deposits'));
+      summary.appendChild(makeCard('Planned Budgets', fmtMoney(totalLimit), `${rows.filter(r => r.effective_limit_cents > 0).length} categories with a limit`));
+      summary.appendChild(makeCard('Recurring Committed', fmtMoney(recurringTotal), 'Detected subscriptions and bills'));
+      summary.appendChild(makeCard('Left to Allocate', fmtLedger(leftover), leftover < 0 ? 'Planned over expected income' : 'Unbudgeted income'));
+    } else {
+      planNote.style.display = 'none';
+      const remaining = totalLimit - totalSpent;
+      summary.appendChild(makeCard('Budget Total', fmtMoney(totalLimit), `${rows.filter(r => r.effective_limit_cents > 0).length} Categories with a Limit`));
+      summary.appendChild(makeCard('Expenses So Far', fmtMoney(totalSpent), totalLimit > 0 ? Math.round((totalSpent / totalLimit) * 100) + '% of Budget' : ''));
+      summary.appendChild(makeCard('Remaining', fmtLedger(remaining), remaining < 0 ? 'Over Budget' : ''));
+      summary.appendChild(makeCard('Alerts', String(overCount + nearCount), `${overCount} Over, ${nearCount} Near`));
+    }
+
+    // Even-pace tick position for the running month's bullet bars.
+    let paceFrac = null;
+    if (isCurrent) {
+      const range = monthRange(monthKey);
+      const daysInMonth = Number(range.end.slice(8, 10));
+      paceFrac = Math.min(1, ctToday().getDate() / daysInMonth);
+    }
 
     const table = document.createElement('table'); table.className = 'budget-table';
-    table.innerHTML = `<thead><tr><th>Category</th><th style="text-align:right">Limit</th><th style="text-align:right">Expenses</th><th>Progress</th><th style="text-align:right">Remaining</th><th>Status</th></tr></thead>`;
+    table.innerHTML = isFuture
+      ? `<thead><tr><th>Category</th><th style="text-align:right">3-Mo Avg</th><th style="text-align:right">Last Month</th><th style="text-align:right">Recurring</th><th style="text-align:right">Suggested</th><th style="text-align:right">Limit</th></tr></thead>`
+      : `<thead><tr><th>Category</th><th style="text-align:right">Limit</th><th style="text-align:right">Expenses</th><th>Progress</th><th style="text-align:right">Remaining</th><th>Status</th></tr></thead>`;
     const tb = document.createElement('tbody');
+
+    let sumSuggested = 0, sumRecurring = 0, sumAvg = 0, sumLast = 0;
 
     for (const r of rows) {
       const tr = document.createElement('tr');
@@ -5414,6 +6166,7 @@ function renderBudgetsSection(body, api) {
       });
       tr.appendChild(tdName);
 
+      // The editable limit cell is shared by both modes.
       const tdLimit = document.createElement('td'); tdLimit.style.textAlign = 'right';
       const limitInput = document.createElement('input');
       limitInput.type = 'number'; limitInput.step = '1'; limitInput.min = '0';
@@ -5422,56 +6175,100 @@ function renderBudgetsSection(body, api) {
       limitInput.placeholder = '—';
       limitInput.addEventListener('change', async () => {
         const cents = Math.round(parseFloat(limitInput.value || '0') * 100) || 0;
-        const now = new Date().toISOString();
         try {
-          if (cents > 0) {
-            const existing = await db.get('SELECT id FROM budgets WHERE category_id=? AND month_key=?', [r.id, monthKey]);
-            if (existing) {
-              await db.run('UPDATE budgets SET limit_cents=?, updated_at=? WHERE id=?', [cents, now, existing.id]);
-            } else {
-              await db.run(
-                `INSERT INTO budgets (id, category_id, month_key, limit_cents, created_at, updated_at) VALUES (?,?,?,?,?,?)`,
-                [crypto.randomUUID(), r.id, monthKey, cents, now, now],
-              );
-            }
-          } else {
-            await db.run('DELETE FROM budgets WHERE category_id=? AND month_key=?', [r.id, monthKey]);
-          }
+          await writeLimit(r.id, cents);
           await refresh();
         } catch (e) {
           await api.window?.showErrorMessage?.('Update failed: ' + (e instanceof Error ? e.message : String(e)));
         }
       });
       tdLimit.appendChild(limitInput);
-      tr.appendChild(tdLimit);
 
-      const tdSpent = document.createElement('td'); tdSpent.className = 'budget-amount'; tdSpent.style.textAlign = 'right';
-      tdSpent.textContent = fmtMoney(r.spent_cents); tr.appendChild(tdSpent);
+      if (isFuture && plan) {
+        const h = plan.hist.get(r.id) || { m1: 0, m2: 0, m3: 0 };
+        const rec = plan.recurring.get(r.id) || 0;
+        const avg3 = Math.round((h.m1 + h.m2 + h.m3) / 3);
+        const sug = suggestLimitCents(h.m1, h.m2, h.m3, rec);
+        sumSuggested += sug; sumRecurring += rec; sumAvg += avg3; sumLast += h.m1;
 
-      const tdProg = document.createElement('td');
-      const track = document.createElement('div'); track.className = 'bar-track'; track.style.minWidth = '160px';
-      const fill = document.createElement('div'); fill.className = 'bar-fill';
-      const eff = Number(r.effective_limit_cents) || 0;
-      const pct = eff > 0 ? Math.min(100, Math.round(r.pct * 100)) : 0;
-      fill.style.width = pct + '%';
-      fill.style.background = r.status === 'over' ? '#ef4444' : (r.status === 'near' ? '#f59e0b' : (r.color || '#22c55e'));
-      track.appendChild(fill); tdProg.appendChild(track);
-      tr.appendChild(tdProg);
+        const tdAvg = document.createElement('td'); tdAvg.className = 'budget-amount';
+        tdAvg.textContent = avg3 > 0 ? fmtMoney(avg3) : '—';
+        tr.appendChild(tdAvg);
 
-      const tdRem = document.createElement('td'); tdRem.style.textAlign = 'right';
-      tdRem.className = 'budget-amount';
-      const rem = (Number(r.effective_limit_cents) || 0) - (Number(r.spent_cents) || 0);
-      tdRem.textContent = eff > 0 ? fmtMoney(rem) : '—';
-      if (rem < 0) tdRem.classList.add('negative');
-      tr.appendChild(tdRem);
+        const tdLast = document.createElement('td'); tdLast.className = 'budget-amount';
+        tdLast.textContent = h.m1 > 0 ? fmtMoney(h.m1) : '—';
+        tr.appendChild(tdLast);
 
-      const tdStatus = document.createElement('td');
-      const cls = r.status === 'over' ? 'review' : (r.status === 'near' ? 'low' : 'confirmed');
-      tdStatus.innerHTML = eff > 0 ? `<span class="budget-pill ${cls}">${escHtml(titleCaseToken(r.status))}</span>` : '<span style="color:var(--vscode-descriptionForeground,#888)">No Limit</span>';
-      tr.appendChild(tdStatus);
+        const tdRec = document.createElement('td'); tdRec.className = 'budget-amount';
+        tdRec.textContent = rec > 0 ? fmtMoney(rec) : '—';
+        tr.appendChild(tdRec);
+
+        const tdSug = document.createElement('td'); tdSug.style.textAlign = 'right';
+        if (sug > 0) {
+          const link = document.createElement('span');
+          link.className = 'budget-plan-suggest';
+          link.textContent = fmtMoney(sug);
+          link.title = 'Set this as the limit';
+          link.addEventListener('click', async () => {
+            try { await writeLimit(r.id, sug); await refresh(); }
+            catch (e) { await api.window?.showErrorMessage?.('Update failed: ' + (e instanceof Error ? e.message : String(e))); }
+          });
+          tdSug.appendChild(link);
+        } else {
+          tdSug.innerHTML = '<span class="budget-plan-basis">no history</span>';
+        }
+        tr.appendChild(tdSug);
+        tr.appendChild(tdLimit);
+      } else {
+        tr.appendChild(tdLimit);
+
+        const tdSpent = document.createElement('td'); tdSpent.className = 'budget-amount';
+        tdSpent.textContent = fmtMoney(r.spent_cents); tr.appendChild(tdSpent);
+
+        const tdProg = document.createElement('td');
+        const eff = Number(r.effective_limit_cents) || 0;
+        if (eff > 0) {
+          tdProg.appendChild(makeBulletBar(r.spent_cents, eff, r.status, paceFrac));
+        }
+        tr.appendChild(tdProg);
+
+        const tdRem = document.createElement('td');
+        tdRem.className = 'budget-amount';
+        const rem = (Number(r.effective_limit_cents) || 0) - (Number(r.spent_cents) || 0);
+        tdRem.textContent = eff > 0 ? fmtLedger(rem) : '—';
+        if (rem < 0) tdRem.classList.add('negative');
+        tr.appendChild(tdRem);
+
+        const tdStatus = document.createElement('td');
+        const cls = r.status === 'over' ? 'review' : (r.status === 'near' ? 'low' : 'confirmed');
+        tdStatus.innerHTML = eff > 0 ? `<span class="budget-pill ${cls}">${escHtml(titleCaseToken(r.status))}</span>` : '<span style="color:var(--vscode-descriptionForeground,#888)">No Limit</span>';
+        tr.appendChild(tdStatus);
+      }
 
       tb.appendChild(tr);
     }
+
+    // Ledger totals row — the double rule closes the register.
+    const trTotal = document.createElement('tr');
+    trTotal.className = 'budget-total-row';
+    if (isFuture && plan) {
+      trTotal.innerHTML = `<td>Total</td>`
+        + `<td class="budget-amount">${escHtml(fmtMoney(sumAvg))}</td>`
+        + `<td class="budget-amount">${escHtml(fmtMoney(sumLast))}</td>`
+        + `<td class="budget-amount">${escHtml(fmtMoney(sumRecurring))}</td>`
+        + `<td class="budget-amount">${escHtml(fmtMoney(sumSuggested))}</td>`
+        + `<td class="budget-amount">${escHtml(fmtMoney(totalLimit))}</td>`;
+    } else {
+      const remaining = totalLimit - totalSpent;
+      trTotal.innerHTML = `<td>Total</td>`
+        + `<td class="budget-amount">${escHtml(fmtMoney(totalLimit))}</td>`
+        + `<td class="budget-amount">${escHtml(fmtMoney(totalSpent))}</td>`
+        + `<td></td>`
+        + `<td class="budget-amount${remaining < 0 ? ' negative' : ''}">${escHtml(fmtLedger(remaining))}</td>`
+        + `<td></td>`;
+    }
+    tb.appendChild(trTotal);
+
     table.appendChild(tb);
     tableWrap.appendChild(table);
   }
