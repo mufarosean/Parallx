@@ -820,7 +820,7 @@
   overflow-wrap: break-word;
   word-break: break-word;
   color: var(--vscode-editor-foreground);
-  font-family: var(--parallx-fontFamily-editor);
+  font-family: var(--canvas-page-font, var(--parallx-fontFamily-editor));
   font-size: var(--parallx-fontSize-xl);
   line-height: 1.625;
   outline: none;
@@ -2844,6 +2844,7 @@
 /* ── Title ── */
 
 .canvas-page-title {
+  font-family: var(--canvas-page-font, var(--parallx-fontFamily-editor));
   font-size: 34px;
   font-weight: 700;
   line-height: 1.2;
@@ -2893,43 +2894,135 @@
   letter-spacing: 0.05em;
 }
 
-.canvas-page-menu-font-group {
+/* ── Font picker (open-ended list, self-previewing) ── */
+.canvas-page-menu-font-list {
   display: flex;
-  gap: 4px;
-  padding: 4px 8px 8px;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 264px;
+  overflow-y: auto;
+  padding: 2px 6px 4px;
 }
 
-.canvas-page-menu-font-btn {
-  flex: 1;
-  padding: 6px 8px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+.canvas-page-menu-font-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
   border-radius: var(--parallx-radius-md);
-  color: rgba(255, 255, 255, 0.8);
-  font-size: var(--parallx-fontSize-md);
-  cursor: pointer;
-  text-align: center;
-  transition: background-color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease);
-  font-family: inherit;
+  transition: background-color var(--px-dur-fast) var(--px-ease);
 }
 
-.canvas-page-menu-font-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
+.canvas-page-menu-font-row:hover {
+  background: rgba(255, 255, 255, 0.06);
 }
 
-.canvas-page-menu-font-btn--active {
-  border-color: var(--vscode-focusBorder);
+.canvas-page-menu-font-row--active {
   background: rgba(35, 131, 226, 0.12);
+}
+
+.canvas-page-menu-font-pick {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 15px;
+}
+
+.canvas-page-menu-font-row--active .canvas-page-menu-font-pick {
   color: var(--vscode-textLink-foreground);
 }
 
-.canvas-font-preview-serif {
-  font-family: Georgia, 'Times New Roman', ui-serif, serif;
+.canvas-page-menu-font-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.canvas-font-preview-mono {
-  font-family: var(--parallx-fontFamily-mono);
-  font-size: var(--parallx-fontSize-base);
+.canvas-page-menu-font-default-badge {
+  display: none;
+  flex: 0 0 auto;
+  font-family: var(--parallx-fontFamily-ui);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.canvas-page-menu-font-row--default .canvas-page-menu-font-default-badge {
+  display: inline-block;
+}
+
+.canvas-page-menu-font-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: 6px;
+  opacity: 0;
+  transition: opacity var(--px-dur-fast) var(--px-ease);
+}
+
+.canvas-page-menu-font-row:hover .canvas-page-menu-font-actions,
+.canvas-page-menu-font-row--default .canvas-page-menu-font-actions {
+  opacity: 1;
+}
+
+.canvas-page-menu-font-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: none;
+  border-radius: var(--parallx-radius-sm);
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  transition: background-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
+}
+
+.canvas-page-menu-font-action:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.canvas-page-menu-font-row--default .canvas-page-menu-font-action--pin {
+  color: var(--vscode-textLink-foreground);
+}
+
+.canvas-page-menu-font-action--danger:hover {
+  color: var(--vscode-errorForeground, #f14c4c);
+}
+
+.canvas-page-menu-font-upload {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: calc(100% - 12px);
+  margin: 2px 6px 6px;
+  padding: 7px 8px;
+  background: none;
+  border: none;
+  border-radius: var(--parallx-radius-md);
+  color: rgba(255, 255, 255, 0.7);
+  font-size: var(--parallx-fontSize-md);
+  font-family: var(--parallx-fontFamily-ui);
+  cursor: pointer;
+  transition: background-color var(--px-dur-fast) var(--px-ease);
+}
+
+.canvas-page-menu-font-upload:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.95);
 }
 
 .canvas-page-menu-toggle {
@@ -3495,28 +3588,12 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
- * Font Family Variants (Cap 9 — Task 9.3)
+ * Page font family
  * ───────────────────────────────────────────────────────────────────────────── */
-
-/* Default font — already applied, no override needed */
-
-.canvas-font-serif .canvas-tiptap-editor {
-  font-family: Georgia, 'Times New Roman', ui-serif, serif;
-}
-
-.canvas-font-serif .canvas-page-title {
-  font-family: Georgia, 'Times New Roman', ui-serif, serif;
-}
-
-.canvas-font-mono .canvas-tiptap-editor {
-  font-family: var(--parallx-fontFamily-mono);
-  font-size: 15px;
-}
-
-.canvas-font-mono .canvas-page-title {
-  font-family: var(--parallx-fontFamily-mono);
-  font-size: 30px;
-}
+/* The page font is resolved from the registry to a concrete stack and applied
+ * via the `--canvas-page-font` variable on the editor container (see
+ * pageChrome.applyPageSettings). The editor + title read that variable with the
+ * theme editor font as fallback — no per-font class rules needed. */
 
 /* ── Full Width Mode ── */
 

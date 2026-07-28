@@ -24,6 +24,7 @@ import {
 import { filterToSubquery, type IPropertyFilter, type IPropertySort } from './blockApi.js';
 import type { CanvasTemplateApi } from '../canvasTemplates.js';
 import { getAllCanvasTemplates } from '../canvasTemplates.js';
+import { listFonts, getFont } from '../config/fontRegistry.js';
 
 // ── Tool helpers ──
 
@@ -1222,7 +1223,7 @@ export function createSetPageStyleTool(
               type: 'string',
               description: 'Cover: http(s):// URL, data: URL, workspace-relative path (e.g. "Skills/CoverImages/foo.png"), or empty string to clear.',
             },
-            fontFamily: { type: 'string', enum: ['default', 'serif', 'mono'], description: 'Body font family' },
+            fontFamily: { type: 'string', description: 'Body font id from the canvas font registry (built-ins: default, serif, mono, system, verdana, trebuchet, cambria, times, garamond, courier, casual; or a user-uploaded custom font id).' },
             fullWidth: { type: 'boolean', description: 'Use the full canvas width' },
             smallText: { type: 'boolean', description: 'Render the page in a smaller text size' },
           },
@@ -1273,8 +1274,12 @@ export function createSetPageStyleTool(
       }
       if ('fontFamily' in style) {
         const v = String(style['fontFamily']);
-        if (v !== 'default' && v !== 'serif' && v !== 'mono') {
-          return { content: `Invalid fontFamily: ${v}. Must be "default", "serif", or "mono".`, isError: true };
+        // Accept any registered font id (built-in or custom). getFont falls back
+        // to the default font for unknown ids, so an id that doesn't round-trip
+        // is unknown and rejected.
+        if (getFont(v).id !== v) {
+          const known = listFonts().map((f) => f.id).join(', ');
+          return { content: `Invalid fontFamily: ${v}. Known font ids: ${known}.`, isError: true };
         }
         sets.push('font_family = ?');
         params.push(v);

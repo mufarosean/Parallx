@@ -26,6 +26,7 @@ import {
   SaveStateKind,
 } from './canvasTypes.js';
 import { getGlobalSettingsRegistry } from '../../services/settingsRegistryService.js';
+import { getWorkspaceDefaultFontId } from './config/fontRegistry.js';
 import {
   CURRENT_CANVAS_CONTENT_SCHEMA_VERSION,
   decodeCanvasContent,
@@ -71,7 +72,7 @@ export function rowToPage(row: Record<string, unknown>): IPage {
     isArchived: !!(row.is_archived as number),
     coverUrl: (row.cover_url as string) ?? null,
     coverYOffset: (row.cover_y_offset as number) ?? 0.5,
-    fontFamily: (row.font_family as 'default' | 'serif' | 'mono') ?? 'default',
+    fontFamily: (row.font_family as string) ?? 'default',
     fullWidth: !!(row.full_width as number),
     smallText: !!(row.small_text as number),
     isLocked: !!(row.is_locked as number),
@@ -261,9 +262,10 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
 
     const initialContent = encodeCanvasContentFromDoc({ type: 'doc', content: [{ type: 'paragraph' }] });
 
+    const fontFamily = getWorkspaceDefaultFontId();
     const result = await this._db.run(
-      `INSERT INTO pages (id, parent_id, title, content, content_schema_version, sort_order) VALUES (?, ?, ?, ?, ?, ?)`,
-      [id, parent, pageTitle, initialContent.storedContent, initialContent.schemaVersion, sortOrder],
+      `INSERT INTO pages (id, parent_id, title, content, content_schema_version, sort_order, font_family) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [id, parent, pageTitle, initialContent.storedContent, initialContent.schemaVersion, sortOrder, fontFamily],
     );
     if (result.error) throw new Error(result.error.message);
 
@@ -1150,8 +1152,8 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     const ops: { type: 'run'; sql: string; params?: unknown[]; expectChanges?: boolean }[] = [
       {
         type: 'run',
-        sql: `INSERT INTO pages (id, parent_id, title, content, content_schema_version, sort_order) VALUES (?, ?, ?, ?, ?, ?)`,
-        params: [id, parentId, pageTitle, initialContent.storedContent, initialContent.schemaVersion, sortOrder],
+        sql: `INSERT INTO pages (id, parent_id, title, content, content_schema_version, sort_order, font_family) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        params: [id, parentId, pageTitle, initialContent.storedContent, initialContent.schemaVersion, sortOrder, getWorkspaceDefaultFontId()],
       },
     ];
     if (parentUpdate && parentId !== null) {

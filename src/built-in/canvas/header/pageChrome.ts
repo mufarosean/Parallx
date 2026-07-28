@@ -14,6 +14,10 @@ import { $, layoutPopup, attachPopupDismiss } from '../../../ui/dom.js';
 import { tiptapJsonToMarkdown } from '../markdownExport.js';
 import { createIconElement, resolvePageIcon, svgIcon, renderPageIconHtml, COVER_GALLERY } from '../config/blockRegistry.js';
 import { showVersionHistoryPanel } from '../canvasVersionHistoryPanel.js';
+import {
+  listFonts, resolveFontStack, getWorkspaceDefaultFontId, setWorkspaceDefaultFontId,
+  registerCustomFont, removeCustomFont, fontFormatFromExtension, type CanvasFont,
+} from '../config/fontRegistry.js';
 
 // Default gradient presets for "Add cover" — the identity-derived gallery
 // owned by the blockRegistry gate (same list the cover picker shows).
@@ -171,9 +175,10 @@ export class PageChromeController {
     if (!ec) return;
     const page = this._currentPage;
 
-    // Font family
-    ec.classList.remove('canvas-font-default', 'canvas-font-serif', 'canvas-font-mono');
-    ec.classList.add(`canvas-font-${page?.fontFamily || 'default'}`);
+    // Font family — resolve the page's font id to a concrete stack and expose
+    // it as a CSS variable the editor + title read. Open-ended: any registry
+    // id (built-in or custom) works without per-font CSS.
+    ec.style.setProperty('--canvas-page-font', resolveFontStack(page?.fontFamily));
 
     // Full width
     ec.classList.toggle('canvas-full-width', !!page?.fullWidth);
@@ -943,30 +948,7 @@ export class PageChromeController {
     if (!this._pageMenuDropdown) return;
 
     // ── Font selection ──
-    const fontLabel = $('div.canvas-page-menu-label');
-    fontLabel.textContent = 'Font';
-    this._pageMenuDropdown.appendChild(fontLabel);
-
-    const fonts: { id: 'default' | 'serif' | 'mono'; label: string }[] = [
-      { id: 'default', label: 'Default' },
-      { id: 'serif', label: 'Serif' },
-      { id: 'mono', label: 'Mono' },
-    ];
-
-    const fontGroup = $('div.canvas-page-menu-font-group');
-    for (const font of fonts) {
-      const btn = $('button.canvas-page-menu-font-btn');
-      btn.classList.add(`canvas-font-preview-${font.id}`);
-      btn.textContent = font.label;
-      if (page?.fontFamily === font.id) btn.classList.add('canvas-page-menu-font-btn--active');
-      btn.addEventListener('click', () => {
-        this._host.dataService.updatePage(this._host.pageId, { fontFamily: font.id });
-        fontGroup.querySelectorAll('.canvas-page-menu-font-btn').forEach(b => b.classList.remove('canvas-page-menu-font-btn--active'));
-        btn.classList.add('canvas-page-menu-font-btn--active');
-      });
-      fontGroup.appendChild(btn);
-    }
-    this._pageMenuDropdown.appendChild(fontGroup);
+    this._buildFontSection(page);
 
     // ── Toggles ──
     const toggles: { label: string; key: 'fullWidth' | 'smallText' | 'isLocked'; iconId: string }[] = [
@@ -1109,6 +1091,140 @@ export class PageChromeController {
       this._pageMenuDropdown.appendChild(btn);
     }
 
+  }
+
+  /**
+   * Build the open-ended font picker: a scrollable, self-previewing list of
+   * every registered font (built-in + custom), plus per-row "set as default
+   * for new pages" and custom-font delete, and an "Upload font…" action.
+   */
+  private _buildFontSection(page: IPage | null): void {
+    const dd = this._pageMenuDropdown;
+    if (!dd) return;
+
+    const fontLabel = $('div.canvas-page-menu-label');
+    fontLabel.textContent = 'Font';
+    dd.appendChild(fontLabel);
+
+    const currentId = page?.fontFamily || 'default';
+    const list = $('div.canvas-page-menu-font-list');
+
+    const refreshDefaultBadges = (): void => {
+      const defId = getWorkspaceDefaultFontId();
+      list.querySelectorAll<HTMLElement>('.canvas-page-menu-font-row').forEach((row) => {
+        const isDef = row.dataset.fontId === defId;
+        row.classList.toggle('canvas-page-menu-font-row--default', isDef);
+      });
+    };
+
+    const renderRow = (font: CanvasFont): void => {
+      const row = $('div.canvas-page-menu-font-row');
+      row.dataset.fontId = font.id;
+      if (font.id === currentId) row.classList.add('canvas-page-menu-font-row--active');
+
+      // The name previews itself in its own font.
+      const pick = $('button.canvas-page-menu-font-pick');
+      pick.style.fontFamily = font.stack;
+      const name = $('span.canvas-page-menu-font-name');
+      name.textContent = font.label;
+      pick.appendChild(name);
+      const defBadge = $('span.canvas-page-menu-font-default-badge');
+      defBadge.textContent = 'default';
+      pick.appendChild(defBadge);
+      pick.addEventListener('click', () => {
+        this._host.dataService.updatePage(this._host.pageId, { fontFamily: font.id });
+        list.querySelectorAll('.canvas-page-menu-font-row').forEach((r) => r.classList.remove('canvas-page-menu-font-row--active'));
+        row.classList.add('canvas-page-menu-font-row--active');
+      });
+      row.appendChild(pick);
+
+      const actions = $('span.canvas-page-menu-font-actions');
+      const setDefault = $('button.canvas-page-menu-font-action');
+      setDefault.classList.add('canvas-page-menu-font-action--pin');
+      setDefault.title = 'Set as default for new pages';
+      setDefault.appendChild(createIconElement('pin', 12));
+      setDefault.addEventListener('click', (e) => {
+        e.stopPropagation();
+        void setWorkspaceDefaultFontId(font.id).then(refreshDefaultBadges);
+      });
+      actions.appendChild(setDefault);
+
+      if (font.source === 'custom') {
+        const del = $('button.canvas-page-menu-font-action');
+        del.classList.add('canvas-page-menu-font-action--danger');
+        del.title = 'Remove custom font';
+        del.appendChild(createIconElement('trash', 12));
+        del.addEventListener('click', (e) => {
+          e.stopPropagation();
+          void removeCustomFont(font.id).then(() => {
+            if (this._currentPage?.fontFamily === font.id) {
+              this._host.dataService.updatePage(this._host.pageId, { fontFamily: 'default' });
+            }
+            row.remove();
+          });
+        });
+        actions.appendChild(del);
+      }
+      row.appendChild(actions);
+      list.appendChild(row);
+    };
+
+    for (const font of listFonts()) renderRow(font);
+    dd.appendChild(list);
+    refreshDefaultBadges();
+
+    const upload = $('button.canvas-page-menu-font-upload');
+    upload.appendChild(createIconElement('upload', 13));
+    const uploadLabel = $('span');
+    uploadLabel.textContent = ' Upload font…';
+    upload.appendChild(uploadLabel);
+    upload.addEventListener('click', (e) => {
+      e.stopPropagation();
+      void this._uploadCustomFont(list, renderRow);
+    });
+    dd.appendChild(upload);
+  }
+
+  /**
+   * Prompt for a font file, embed it as a data URL, register it, and apply it
+   * to the current page. Mirrors the cover-image upload flow.
+   */
+  private async _uploadCustomFont(
+    list: HTMLElement,
+    renderRow: (font: CanvasFont) => void,
+  ): Promise<void> {
+    const electron = (window as any).parallxElectron;
+    if (!electron?.dialog?.openFile || !electron?.fs?.readFile) return;
+
+    const filePaths = await electron.dialog.openFile({
+      title: 'Upload font',
+      filters: [{ name: 'Fonts', extensions: ['woff2', 'woff', 'ttf', 'otf'] }],
+      properties: ['openFile'],
+    });
+    const filePath = Array.isArray(filePaths) ? filePaths[0] : filePaths;
+    if (!filePath || typeof filePath !== 'string') return;
+
+    const ext = filePath.split('.').pop() ?? '';
+    const fmt = fontFormatFromExtension(ext);
+    if (!fmt) return;
+
+    const result = await electron.fs.readFile(filePath);
+    if (!result?.content || result.encoding !== 'base64') return;
+    // Guard against bloating the workspace settings file. ~3.2M base64 chars
+    // ≈ 2.4 MB of font bytes — plenty for a woff2/ttf face.
+    if (result.content.length > 3_200_000) {
+      console.warn('[canvas] custom font too large — pick a woff2 under ~2 MB');
+      return;
+    }
+
+    const dataUrl = `data:${fmt.mime};base64,${result.content}`;
+    const rawName = (filePath.split(/[\\/]/).pop() ?? 'Custom font').replace(/\.[^.]+$/, '');
+    const label = rawName.replace(/[_-]+/g, ' ').trim() || 'Custom font';
+
+    const font = await registerCustomFont(label, dataUrl, fmt.format);
+    // Show the new font in the open list and apply it to the current page.
+    if (!list.querySelector(`[data-font-id="${font.id}"]`)) renderRow(font);
+    this._host.dataService.updatePage(this._host.pageId, { fontFamily: font.id });
   }
 
   private _buildDatabaseMenu(page: IPage | null): void {

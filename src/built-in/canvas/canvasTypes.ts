@@ -41,8 +41,8 @@ export interface IPage {
   readonly coverUrl: string | null;
   /** Cover vertical crop offset (0.0 = top, 1.0 = bottom). */
   readonly coverYOffset: number;
-  /** Font family preference: 'default' | 'serif' | 'mono'. */
-  readonly fontFamily: 'default' | 'serif' | 'mono';
+  /** Font family id from the canvas font registry (built-in id or 'custom:<uuid>'). */
+  readonly fontFamily: string;
   /** Whether the page is displayed in full-width mode. */
   readonly fullWidth: boolean;
   /** Whether small text mode is enabled. */

@@ -381,8 +381,19 @@ export interface BuildPrintHtmlInput {
   readonly iconHtml?: string;
   /** Sanitized content HTML (from {@link sanitizeContentHtml}). */
   readonly contentHtml: string;
-  /** Canvas page font setting: 'default' | 'serif' | 'mono'. */
+  /** Canvas page font id (legacy fallback path — see {@link fontStack}). */
   readonly fontFamily?: string;
+  /**
+   * Resolved concrete CSS font-family stack for the page font. Preferred over
+   * {@link fontFamily}; when present it is used verbatim. Falls back to the
+   * built-in {@link FONT_STACKS} map keyed by {@link fontFamily}.
+   */
+  readonly fontStack?: string;
+  /**
+   * For a custom (uploaded) font: the `@font-face` rule embedding the font as
+   * a data URL, injected so the exported PDF renders it faithfully.
+   */
+  readonly fontFaceCss?: string;
   readonly includeTitle: boolean;
   /**
    * Absolute app root (parallxElectron.appPath). When present, katex + a
@@ -408,7 +419,10 @@ function toFileUrl(absPath: string): string {
 }
 
 export function buildPrintHtml(input: BuildPrintHtmlInput): string {
-  const fontStack = FONT_STACKS[input.fontFamily ?? 'default'] ?? FONT_STACKS.default;
+  const fontStack = input.fontStack
+    ?? FONT_STACKS[input.fontFamily ?? 'default']
+    ?? FONT_STACKS.default;
+  const fontFaceCss = input.fontFaceCss ?? '';
 
   const assetLinks: string[] = [];
   if (input.appPath) {
@@ -434,6 +448,7 @@ export function buildPrintHtml(input: BuildPrintHtmlInput): string {
 <title>${escapeHtml(input.title || 'Untitled')}</title>
 ${assetLinks.join('\n')}
 <style>
+${fontFaceCss}
 body { font-family: ${fontStack}; }
 ${PRINT_CSS}
 </style>

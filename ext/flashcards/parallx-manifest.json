@@ -61,8 +61,8 @@
           },
           "flashcards.generationContext": {
             "type": "number",
-            "default": 16384,
-            "description": "Context window (tokens) requested for card generation and discussion. Higher feeds more of a document per generation run (the source clip scales with this); lower saves VRAM on smaller machines. Must fit within what the model supports."
+            "default": 0,
+            "description": "Context window (tokens) requested for card generation and discussion. 0 = auto: sized per run from the document length, card count, and the model's real context limit. Set a fixed value only to cap VRAM on smaller machines; material is clipped to fit whatever window is used."
           },
           "flashcards.aiThinking": {
             "type": "boolean",

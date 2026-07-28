@@ -36,6 +36,16 @@ export class LanguageModelBridge {
   }
 
   /**
+   * Get detailed info for one model — most importantly its real context
+   * length, which `getModels()` reports as 0 until probed. Extensions that
+   * size prompts to the model's window (flashcards generation) need this.
+   */
+  async getModelInfo(modelId: string): Promise<ILanguageModelInfo> {
+    this._throwIfDisposed();
+    return this._service.getModelInfo(modelId);
+  }
+
+  /**
    * The workspace's currently-active chat model id, or undefined if none is
    * selected yet. Background extensions (budget sync, indexing) read this to
    * default to the same model the user is chatting with — instead of pinning

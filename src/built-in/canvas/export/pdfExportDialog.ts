@@ -23,6 +23,7 @@ import {
   type PdfExportSettings,
   type PdfMarginPresetId,
 } from './printHtml.js';
+import { resolveFontStack, getFontFaceCss } from '../config/fontRegistry.js';
 
 // The PDF editor pane sets this too; set defensively so export previews work
 // even when no PDF has ever been opened this session.
@@ -298,6 +299,8 @@ export function openPdfExportDialog(source: PdfExportSource): void {
       iconHtml: source.iconHtml,
       contentHtml: sanitizeContentHtml(root),
       fontFamily: source.fontFamily,
+      fontStack: resolveFontStack(source.fontFamily),
+      fontFaceCss: getFontFaceCss(source.fontFamily),
       includeTitle: settings.includeTitle,
       appPath: electron.appPath,
     });

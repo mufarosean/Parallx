@@ -104,7 +104,7 @@ const GATE_RULES: Record<string, string[]> = {
   'extensions/bookmarkNode.ts':            ['config/blockRegistry'],
   'extensions/pageBlockNode.ts':           ['config/blockRegistry'],
   // M93 — the ⋯ menu / Ctrl+P lazy-load the PDF export dialog.
-  'header/pageChrome.ts':                  ['config/blockRegistry', 'canvasVersionHistoryPanel', 'export/pdfExportDialog'],
+  'header/pageChrome.ts':                  ['config/blockRegistry', 'canvasVersionHistoryPanel', 'export/pdfExportDialog', 'config/fontRegistry'],
   // contentSchema: the versioned-envelope decoder for the md-export action
   // (raw JSON.parse of page.content hands the wrapper to the converter and
   // silently exports title-only markdown — the M93 flashcards bug).
@@ -183,7 +183,12 @@ const GATE_RULES: Record<string, string[]> = {
 
   // ── PDF export (M93) ────────────────────────────────────────────────────
   'export/printHtml.ts':                   [],                    // pure builders — zero canvas imports
-  'export/pdfExportDialog.ts':             ['export/printHtml'],  // dialog over the pure builders (ui/dropdown + pdfjs are external)
+  'export/pdfExportDialog.ts':             ['export/printHtml', 'config/fontRegistry'],  // dialog over the pure builders (ui/dropdown + pdfjs are external); resolves page fonts for embedding
+
+  // ── Fonts ───────────────────────────────────────────────────────────────
+  // Open-ended font registry — pure data/util, only imports the settings
+  // service (outside canvas). Consumed by chrome, export, AI tools, data layer.
+  'config/fontRegistry.ts':                [],
 
   // ── DatabaseRegistry children ────────────────────────────────────────────
   'database/databaseEditorProvider.ts':          ['database/databaseRegistry'],

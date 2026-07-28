@@ -626,36 +626,92 @@ const FC_GENERATE_SYSTEM = [
   '[{"front": "...", "back": "...", "tags": ["topic"]}]',
 ].join('\n');
 
+// Context planning constants. CHARS_PER_TOKEN is the safe planning ratio,
+// not the prose average (~3.5-4): formula-dense PDF extraction measured
+// 2.44 on a real actuarial paper (38,263 chars -> 15,709 tokens), and
+// under-estimating chars/token overflows the window, which hard-truncates
+// the model's output mid-JSON. Prose just gets extra headroom.
+const FC_CHARS_PER_TOKEN = 2.5;
+/** System prompt + user wrapper + chat template, in tokens. */
+const FC_SCAFFOLD_TOKENS = 600;
+/** When the model's context length is unknown (probe failed), assume this
+ *  ceiling rather than clipping against a guess. Ollama clamps num_ctx to
+ *  the model's real maximum server-side. */
+const FC_FALLBACK_MODEL_CTX = 131072;
+
 /**
- * How much source material fits in a generation run, derived from the
- * user's `flashcards.generationContext` setting: ~3 chars/token for prose,
- * minus ~2.5k tokens reserved for the rules, scaffold, and JSON output.
- * Pure — exported via __testables.
+ * Plan the context window for one generation run. Pure — exported via
+ * __testables.
+ *
+ * The window must hold prompt AND output: Ollama counts generated tokens
+ * against num_ctx and hard-stops mid-token when it fills (`truncated = 1`
+ * in the server log), which surfaces as cut-off JSON. So the plan is
+ * need-based: estimate prompt tokens, reserve output tokens scaled by the
+ * card count, request exactly that (rounded up), and clamp to the model's
+ * real context length. Requesting the model max instead would force Ollama
+ * to allocate a huge KV cache even for tiny notes.
+ *
+ * `setting` > 0 is the user's explicit `flashcards.generationContext`
+ * override (VRAM-starved machines); 0 = auto. `maxChars` is the material
+ * clip limit for the chosen window — in auto mode it only bites when even
+ * the model's maximum window can't hold document + output.
  */
-function fcMaterialBudget(numCtx) {
-  const ctx = Number.isFinite(numCtx) && numCtx > 0 ? numCtx : 16384;
-  return Math.max(4000, Math.round((ctx - 2500) * 3));
+function fcContextPlan({ chars, count = 15, modelCtx = 0, setting = 0 } = {}) {
+  const nCards = Math.min(50, Math.max(1, Number(count) || 15));
+  const outputTokens = 1500 + 220 * nCards;
+  const ceiling = modelCtx > 0 ? modelCtx : FC_FALLBACK_MODEL_CTX;
+  let numCtx;
+  if (Number.isFinite(setting) && setting > 0) {
+    numCtx = Math.min(setting, ceiling);
+  } else {
+    const neededTokens = Math.ceil((Number(chars) || 0) / FC_CHARS_PER_TOKEN)
+      + FC_SCAFFOLD_TOKENS + outputTokens;
+    numCtx = Math.min(ceiling, Math.max(8192, Math.ceil(neededTokens / 2048) * 2048));
+  }
+  const maxChars = Math.max(
+    4000,
+    Math.floor((numCtx - FC_SCAFFOLD_TOKENS - outputTokens) * FC_CHARS_PER_TOKEN),
+  );
+  return { numCtx, maxChars, outputTokens };
 }
 
-/** The user's AI knobs (Settings → Flashcards). An explicit window matters:
- *  without one Ollama falls back to ITS default (often 4096) and silently
- *  truncates the prompt FROM THE TOP — the system prompt with the JSON
- *  rules dies first and the model returns prose instead of cards. */
+/** The user's AI knobs (Settings → Flashcards). An explicit num_ctx is
+ *  always sent with the request: without one Ollama falls back to ITS
+ *  default (often 4096) and silently truncates the prompt FROM THE TOP —
+ *  the system prompt with the JSON rules dies first and the model returns
+ *  prose instead of cards. contextSetting 0 = auto-size per request. */
 function fcAiOptions() {
   return {
-    numCtx: Number(cfg('generationContext', 16384)) || 16384,
+    contextSetting: Number(cfg('generationContext', 0)) || 0,
     think: !!cfg('aiThinking', false),
   };
+}
+
+/** The model's real context length, or 0 when the probe fails. */
+async function fcModelContextLength(modelId) {
+  try {
+    if (_api.lm && typeof _api.lm.getModelInfo === 'function') {
+      const info = await _api.lm.getModelInfo(modelId);
+      return (info && info.contextLength) || 0;
+    }
+  } catch { /* fall through */ }
+  return 0;
 }
 
 async function fcGenerateCards(sourceText, { count = 15, focus = '' } = {}) {
   const modelId = await fcPickModel();
   if (!modelId) throw new Error('No language model available. Configure a model in AI settings.');
-  const { numCtx, think } = fcAiOptions();
-  const limit = fcMaterialBudget(numCtx);
-  const clipped = sourceText.length > limit
-    ? sourceText.slice(0, limit) + '\n\n[...material truncated...]'
+  const { contextSetting, think } = fcAiOptions();
+  const modelCtx = await fcModelContextLength(modelId);
+  const { numCtx, maxChars } = fcContextPlan({
+    chars: sourceText.length, count, modelCtx, setting: contextSetting,
+  });
+  const clipped = sourceText.length > maxChars
+    ? sourceText.slice(0, maxChars) + '\n\n[...material truncated...]'
     : sourceText;
+  if (sourceText.length > maxChars) {
+    console.warn(`[Flashcards] material clipped to ${maxChars} chars to fit a ${numCtx}-token window (model: ${modelId}${modelCtx ? `, max ${modelCtx}` : ', context length unknown'})`);
+  }
   const user = [
     `Create up to ${Math.min(50, Math.max(1, count))} flashcards from the material below.`,
     focus ? `Focus on: ${focus}` : '',
@@ -699,7 +755,10 @@ async function fcDiscussStream(card, history, question) {
     { role: 'user', content: question },
   ];
   // Same user-controlled AI knobs as generation (Settings → Flashcards).
-  const { numCtx, think } = fcAiOptions();
+  const { contextSetting, think } = fcAiOptions();
+  const modelCtx = await fcModelContextLength(modelId);
+  const chars = messages.reduce((n, m) => n + String(m.content || '').length, 0);
+  const { numCtx } = fcContextPlan({ chars, count: 1, modelCtx, setting: contextSetting });
   return _api.lm.sendChatRequest(modelId, messages, { temperature: 0.4, think, numCtx });
 }
 
@@ -753,16 +812,35 @@ async function fcReadCanvasPage(pageId) {
   };
 }
 
-async function fcReadPdf() {
-  const electron = electronBridge();
-  if (!electron?.dialog?.openFile || !electron?.document?.extractText) {
-    throw new Error('File access unavailable in this build.');
+// Supported source file types (shared by the picker, drop zone, and dialogs).
+const FC_DOC_EXTS = ['pdf', 'docx', 'epub', 'xlsx'];
+const FC_IMG_EXTS = ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'tiff'];
+
+function fcExtOf(nameOrPath) {
+  const m = /\.([a-z0-9]+)$/i.exec(nameOrPath || '');
+  return m ? m[1].toLowerCase() : '';
+}
+
+// Normalize a dropped Explorer value (a file:// URI or a raw path) to an fs path.
+function fcUriToFsPath(raw) {
+  if (!raw) return raw;
+  let p = raw;
+  if (/^file:\/\//i.test(p)) {
+    p = p.replace(/^file:\/\//i, '');
+    try { p = decodeURIComponent(p); } catch { /* leave encoded on malformed input */ }
+    if (/^\/[a-zA-Z]:/.test(p)) p = p.slice(1); // /D:/x → D:/x
   }
-  const picked = await electron.dialog.openFile({
-    filters: [{ name: 'Documents', extensions: ['pdf', 'docx', 'epub', 'xlsx'] }],
-  });
-  if (!picked || picked.length === 0) return null;
-  const filePath = picked[0];
+  return p;
+}
+
+function fcLooksLikePath(raw) {
+  return /^file:\/\//i.test(raw) || /^[a-zA-Z]:[\\/]/.test(raw) || raw.startsWith('/') || raw.startsWith('\\\\');
+}
+
+// Extract text from a known document path (pdf/docx/epub/xlsx).
+async function fcExtractDocument(filePath) {
+  const electron = electronBridge();
+  if (!electron?.document?.extractText) throw new Error('Document extraction is unavailable in this build.');
   const result = await electron.document.extractText(filePath);
   if (result?.error) throw new Error(result.error.message || 'Extraction failed.');
   const text = (result?.text ?? '').trim();
@@ -771,26 +849,18 @@ async function fcReadPdf() {
     // that produces invented cards. Route the user to OCR instead.
     throw new Error(
       text.length === 0
-        ? 'No text found in that document. If it is a scanned PDF, use the Photo (OCR) source instead.'
-        : `Only ${text.length} characters of text could be extracted. This looks like a scanned document. Use the Photo (OCR) source instead.`,
+        ? 'No text found in that document. If it is a scanned PDF, drop it as a photo (OCR) instead.'
+        : `Only ${text.length} characters of text could be extracted. This looks like a scanned document — use a photo (OCR) instead.`,
     );
   }
   const name = filePath.split(/[\\/]/).pop();
   return { text, label: `Document: ${name}`, uri: filePath };
 }
 
-async function fcReadPhoto() {
+// OCR a known image path via the Docling bridge.
+async function fcExtractPhoto(filePath) {
   const electron = electronBridge();
-  if (!electron?.dialog?.openFile) throw new Error('File access unavailable in this build.');
-  if (!electron?.docling) {
-    throw new Error('Photo OCR needs the Docling bridge, which is unavailable in this build.');
-  }
-  const picked = await electron.dialog.openFile({
-    filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'tiff'] }],
-  });
-  if (!picked || picked.length === 0) return null;
-  const filePath = picked[0];
-
+  if (!electron?.docling) throw new Error('Photo OCR needs the Docling bridge, which is unavailable in this build.');
   let status = await electron.docling.status();
   if (status?.status !== 'available') {
     if (!status?.doclingInstalled) {
@@ -807,6 +877,94 @@ async function fcReadPhoto() {
   return { text, label: `Photo: ${name}`, uri: filePath };
 }
 
+// Route a file path to the right extractor by extension.
+async function fcExtractPath(filePath) {
+  const ext = fcExtOf(filePath);
+  if (FC_IMG_EXTS.includes(ext)) return fcExtractPhoto(filePath);
+  if (FC_DOC_EXTS.includes(ext)) return fcExtractDocument(filePath);
+  throw new Error(`Unsupported file type${ext ? ` (.${ext})` : ''}. Use a PDF, Word, EPUB, Excel, or image file.`);
+}
+
+// Resolve a drop onto the Create tab. Explorer files and Canvas pages both
+// arrive as text/plain (a file URI vs. a bare page id); OS files arrive as
+// dataTransfer.files. Distinguish by shape.
+async function fcLoadFromDrop(dataTransfer) {
+  const osFile = dataTransfer?.files && dataTransfer.files[0];
+  if (osFile && osFile.path) return fcExtractPath(osFile.path);
+  const raw = (dataTransfer?.getData('text/plain') || '').trim();
+  if (!raw) throw new Error('Drag a file from the Explorer, or a page from the Canvas sidebar.');
+  if (fcLooksLikePath(raw)) return fcExtractPath(fcUriToFsPath(raw));
+  if (/^[0-9a-fA-F][0-9a-fA-F-]{7,}$/.test(raw)) return fcReadCanvasPage(raw); // canvas page id
+  throw new Error('Drop a file from the Explorer, or a page from the Canvas sidebar.');
+}
+
+// Pick a document/image from anywhere in the workspace — no OS dialog, so the
+// user stays in the workspace (the default way to add source material).
+async function fcPickWorkspaceFile() {
+  const root = _api.workspace?.workspaceFolders?.[0]?.uri;
+  if (!root) { await _api.window.showInformationMessage('No workspace folder is open.'); return null; }
+  const electron = electronBridge();
+  if (!electron?.fs?.readdir) throw new Error('Workspace file listing is unavailable in this build.');
+
+  const SKIP = new Set(['node_modules', '.git', '.parallx', '.obsidian', 'dist', 'build', 'out', '.cache']);
+  const MAX_FILES = 800;
+  const found = [];
+  const walk = async (dirPath, rel, depth) => {
+    if (depth > 6 || found.length >= MAX_FILES) return;
+    let res;
+    try { res = await electron.fs.readdir(dirPath); } catch { return; }
+    if (!res || res.error) return;
+    for (const ent of res.entries || []) {
+      if (found.length >= MAX_FILES) return;
+      const name = ent.name;
+      if (!name || name.startsWith('.')) continue;
+      const childPath = `${dirPath}/${name}`;
+      const childRel = rel ? `${rel}/${name}` : name;
+      if (ent.type === 'directory') {
+        if (!SKIP.has(name)) await walk(childPath, childRel, depth + 1);
+      } else if (FC_DOC_EXTS.includes(fcExtOf(name)) || FC_IMG_EXTS.includes(fcExtOf(name))) {
+        found.push({ name, rel: childRel, path: childPath });
+      }
+    }
+  };
+  await walk(fcUriToFsPath(root), '', 0);
+
+  if (found.length === 0) {
+    await _api.window.showInformationMessage('No PDFs, documents, or images found in this workspace.');
+    return null;
+  }
+  found.sort((a, b) => a.name.localeCompare(b.name));
+  const pick = await _api.window.showQuickPick(
+    found.map((f) => ({ label: f.name, description: f.rel })),
+    { placeholder: `Add which workspace file? (${found.length} found)`, matchOnDescription: true },
+  );
+  if (!pick) return null;
+  const chosen = found.find((f) => f.name === pick.label && f.rel === pick.description);
+  return chosen ? fcExtractPath(chosen.path) : null;
+}
+
+// Fallback: pick a document from the OS file dialog (material outside the workspace).
+async function fcReadPdf() {
+  const electron = electronBridge();
+  if (!electron?.dialog?.openFile) throw new Error('File access is unavailable in this build.');
+  const picked = await electron.dialog.openFile({
+    filters: [{ name: 'Documents', extensions: FC_DOC_EXTS }],
+  });
+  if (!picked || picked.length === 0) return null;
+  return fcExtractDocument(picked[0]);
+}
+
+// Fallback: pick an image from the OS file dialog and OCR it.
+async function fcReadPhoto() {
+  const electron = electronBridge();
+  if (!electron?.dialog?.openFile) throw new Error('File access is unavailable in this build.');
+  const picked = await electron.dialog.openFile({
+    filters: [{ name: 'Images', extensions: FC_IMG_EXTS }],
+  });
+  if (!picked || picked.length === 0) return null;
+  return fcExtractPhoto(picked[0]);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 7: CSS
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -819,23 +977,24 @@ function injectStyles() {
   const style = document.createElement('style');
   style.id = 'flashcards-styles';
   style.textContent = `
-/* Flashcards — native --px semantic tokens (M83). Slate surfaces in tiers,
-   signal hues for card stages (info=new, warning=learning, success=review),
-   press physics on controls, and a physical study card: the one surface in
-   the app that should genuinely feel like paper in hand. */
+/* Flashcards — "sharp editorial" identity on native --px tokens (M83).
+   Space and type weight carry hierarchy; borders and inset wells are pulled
+   back to hairline dividers. Signal hues (again/hard/good/easy + card stage)
+   are the ONLY color in the tool — everything else is high-contrast neutral.
+   Uppercase is a tracked 2xs eyebrow for structural labels only, never body. */
 
-/* ── Sidebar — a navigational surface: header, Today, sectioned deck list ── */
+/* ── Sidebar — a quiet navigator: header, Today, sectioned deck list.
+   Colour is absent here by design; weight and space do the work. ── */
 .fc-sidebar { display: flex; flex-direction: column; height: 100%; font-size: var(--px-text-base); }
 
-/* Header: title + quiet icon actions, matching the workbench sidebar idiom. */
 .fc-sb__header {
-  display: flex; align-items: center; height: 34px; flex: 0 0 auto;
+  display: flex; align-items: center; height: 38px; flex: 0 0 auto;
   padding: 0 var(--px-space-2) 0 var(--px-sidebar-inset);
   gap: var(--px-space-1);
 }
 .fc-sb__title {
   flex: 1; min-width: 0;
-  font-size: var(--px-text-2xs); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  font-size: var(--px-text-2xs); font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
   color: var(--px-text-faint);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
@@ -851,13 +1010,12 @@ function injectStyles() {
 
 .fc-sb__scroll { flex: 1; overflow-y: auto; padding-bottom: var(--px-space-3); }
 
-/* Sections with a quiet uppercase header, like the canvas / media sidebars. */
 .fc-sb__section { display: flex; flex-direction: column; }
 .fc-sb__section-head {
   display: flex; align-items: center; gap: var(--px-space-1);
-  height: 22px; padding: 0 var(--px-space-2) 0 var(--px-sidebar-inset);
-  margin-top: var(--px-space-2);
-  font-size: var(--px-text-2xs); font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase;
+  height: 24px; padding: 0 var(--px-space-2) 0 var(--px-sidebar-inset);
+  margin-top: var(--px-space-3);
+  font-size: var(--px-text-2xs); font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase;
   color: var(--px-text-faint); user-select: none;
 }
 .fc-sb__section-title { flex: 1; min-width: 0; }
@@ -871,56 +1029,50 @@ function injectStyles() {
 .fc-sb__section:hover .fc-sb__section-add { opacity: 1; }
 .fc-sb__section-add:hover { background: var(--px-surface-hover); color: var(--px-text); }
 
-/* Today: a compact workload panel with a contextual study action. */
+/* Today — no box. Three big neutral numerals over faint eyebrows, then the
+   one earned accent in the whole sidebar: the Study call to action. */
 .fc-today {
-  margin: var(--px-space-1) var(--px-space-2) 0;
-  border: 1px solid var(--px-border); border-radius: var(--px-radius-lg);
-  background: var(--px-bg-elevated); overflow: hidden;
+  margin: var(--px-space-2) var(--px-sidebar-inset) 0;
+  padding-bottom: var(--px-space-3);
+  border-bottom: 1px solid var(--px-divider);
 }
-.fc-today__stats { display: flex; align-items: stretch; }
-.fc-today__stat {
-  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 1px;
-  padding: var(--px-space-3) var(--px-space-1);
-}
-.fc-today__stat + .fc-today__stat { border-left: 1px solid var(--px-divider); }
-.fc-today__num { font-size: var(--px-text-lg); font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1; }
-.fc-today__num--new { color: var(--px-info, #4c8dff); }
-.fc-today__num--learn { color: var(--px-warning, #e0a13a); }
-.fc-today__num--due { color: var(--px-success, #3fb950); }
+.fc-today__stats { display: flex; align-items: stretch; gap: var(--px-space-3); margin-bottom: var(--px-space-3); }
+.fc-today__stat { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.fc-today__num { font-size: var(--px-text-xl); font-weight: 680; font-variant-numeric: tabular-nums; line-height: 1; letter-spacing: -0.02em; color: var(--px-text); }
 .fc-today__num--zero { color: var(--px-text-disabled); }
-.fc-today__lbl { font-size: var(--px-text-2xs); text-transform: uppercase; letter-spacing: 0.05em; color: var(--px-text-faint); }
+.fc-today__lbl { font-size: var(--px-text-2xs); text-transform: uppercase; letter-spacing: 0.07em; color: var(--px-text-faint); }
 .fc-today__study {
   display: flex; align-items: center; justify-content: center; gap: 6px;
-  width: 100%; height: 32px; border: 0; border-top: 1px solid var(--px-divider);
+  width: 100%; height: 34px; border: 0; border-radius: var(--px-radius-md);
   background: var(--px-accent); color: var(--px-text-on-accent);
   font: inherit; font-size: var(--px-text-sm); font-weight: 600; cursor: pointer;
-  transition: filter var(--px-dur-fast) var(--px-ease), transform var(--px-dur-instant) var(--px-ease);
+  transition: background var(--px-dur-fast) var(--px-ease), transform var(--px-dur-instant) var(--px-ease);
 }
-.fc-today__study:hover { filter: brightness(1.08); }
+.fc-today__study:hover { background: var(--px-accent-hover); }
 .fc-today__study:active { transform: var(--px-press); }
 .fc-today__study svg { width: 13px; height: 13px; }
 .fc-today__done {
-  padding: var(--px-space-3) var(--px-space-3);
-  font-size: var(--px-text-sm); line-height: var(--px-leading-base); color: var(--px-text-muted); text-align: center;
+  padding: 2px 0 var(--px-space-1);
+  font-size: var(--px-text-sm); line-height: var(--px-leading-base); color: var(--px-text-muted);
 }
 
-/* Deck rows: informative and navigational — glyph, name, Anki-style counts. */
-.fc-sb__decks { display: flex; flex-direction: column; padding: 0 var(--px-space-1); }
+/* Deck rows — glyph, name, neutral counts. The row is the object, no chrome. */
+.fc-sb__decks { display: flex; flex-direction: column; padding: var(--px-space-1) var(--px-space-1) 0; }
 .fc-deck-row {
   display: flex; align-items: center; gap: var(--px-space-2); width: 100%;
-  height: 28px; padding: 0 var(--px-space-1) 0 var(--px-space-2); border: 0; border-radius: var(--px-radius-sm);
+  height: 30px; padding: 0 var(--px-space-1) 0 var(--px-space-2); border: 0; border-radius: var(--px-radius-sm);
   background: transparent; color: var(--px-text-secondary);
   font: inherit; font-size: var(--px-text-base); cursor: pointer; text-align: left;
   transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 .fc-deck-row:hover { background: var(--px-surface-hover); color: var(--px-text); }
-.fc-deck-row--active { background: var(--px-surface-selected, var(--px-accent-soft)); color: var(--px-text); }
-.fc-deck-row__icon { flex: 0 0 auto; display: inline-flex; width: 14px; height: 14px; color: var(--px-text-faint); }
+.fc-deck-row--active { background: var(--px-surface-selected); color: var(--px-text); }
+.fc-deck-row__icon { flex: 0 0 auto; display: inline-flex; width: 13px; height: 13px; color: var(--px-text-faint); }
 .fc-deck-row__icon svg { width: 100%; height: 100%; }
 .fc-deck-row__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fc-deck-row__counts { flex: 0 0 auto; display: flex; align-items: center; gap: 7px; font-size: var(--px-text-xs); font-weight: 600; font-variant-numeric: tabular-nums; }
-.fc-deck-row__ct--new { color: var(--px-info, #4c8dff); }
-.fc-deck-row__ct--due { color: var(--px-success, #3fb950); }
+.fc-deck-row__counts { flex: 0 0 auto; display: flex; align-items: center; gap: var(--px-space-2); font-size: var(--px-text-xs); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--px-text-faint); }
+.fc-deck-row__ct--new { color: var(--px-text-muted); }
+.fc-deck-row__ct--due { color: var(--px-text-secondary); }
 .fc-deck-row__more {
   flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
   width: 20px; height: 20px; border: 0; border-radius: var(--px-radius-sm);
@@ -932,30 +1084,28 @@ function injectStyles() {
 .fc-deck-row__more:hover { background: var(--px-surface-active); color: var(--px-text); }
 .fc-sb__empty { padding: var(--px-space-3) var(--px-sidebar-inset); font-size: var(--px-text-sm); line-height: var(--px-leading-base); color: var(--px-text-muted); }
 
-/* ── Buttons — ghost default, accent primary, press physics ── */
+/* ── Buttons — text-forward; ghost default, one accent primary ── */
 .fc-btn {
   display: inline-flex; align-items: center; gap: 6px;
-  height: 26px; padding: 0 var(--px-space-3);
+  height: 28px; padding: 0 var(--px-space-3);
   border: 1px solid var(--px-border); border-radius: var(--px-radius-md);
   background: transparent; color: var(--px-text-secondary);
-  font: inherit; font-size: var(--px-text-sm); font-weight: 500; cursor: pointer;
-  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease), transform var(--px-dur-instant) var(--px-ease);
+  font: inherit; font-size: var(--px-text-sm); font-weight: 550; cursor: pointer;
+  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease), transform var(--px-dur-instant) var(--px-ease);
 }
-.fc-btn:hover { background: var(--px-surface-hover); color: var(--px-text); }
+.fc-btn:hover { background: var(--px-surface-hover); color: var(--px-text); border-color: var(--px-border-strong); }
 .fc-btn:active { transform: var(--px-press); }
-.fc-btn:disabled { opacity: 0.5; cursor: default; transform: none; }
+.fc-btn:disabled { opacity: 0.45; cursor: default; transform: none; }
 .fc-btn:focus-visible { outline: none; box-shadow: var(--px-ring-accent); }
 .fc-btn--primary { background: var(--px-accent); border-color: transparent; color: var(--px-text-on-accent); font-weight: 600; }
-.fc-btn--primary:hover { background: var(--px-accent-hover); color: var(--px-text-on-accent); }
+.fc-btn--primary:hover { background: var(--px-accent-hover); color: var(--px-text-on-accent); border-color: transparent; }
 .fc-btn--danger:hover { background: var(--px-danger-soft); color: var(--px-danger); border-color: transparent; }
 
-/* ── Pane shell ── */
+/* ── Pane shell — an editorial page: wide margins, an underline tab strip ── */
 .fc-pane { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
-/* Clean underline tab strip — the active tab carries an accent indicator on
-   the header's baseline, not a filled chip. */
 .fc-pane__header {
   display: flex; align-items: stretch; gap: var(--px-space-2);
-  height: 42px; padding: 0 var(--px-space-3); flex: 0 0 auto;
+  height: 46px; padding: 0 var(--px-space-4); flex: 0 0 auto;
   border-bottom: 1px solid var(--px-divider);
 }
 .fc-pane__tabs { display: flex; align-items: stretch; gap: 0; }
@@ -963,7 +1113,7 @@ function injectStyles() {
   position: relative;
   display: inline-flex; align-items: center; gap: 7px; height: 100%; padding: 0 var(--px-space-3);
   border: 0; background: transparent; color: var(--px-text-muted);
-  font: inherit; font-size: var(--px-text-base); font-weight: 500; cursor: pointer;
+  font: inherit; font-size: var(--px-text-base); font-weight: 550; cursor: pointer;
   transition: color var(--px-dur-fast) var(--px-ease);
 }
 .fc-pane__tab::after {
@@ -971,40 +1121,39 @@ function injectStyles() {
   height: 2px; border-radius: 2px 2px 0 0; background: transparent;
   transition: background var(--px-dur-fast) var(--px-ease);
 }
-.fc-pane__tab svg { width: 14px; height: 14px; opacity: 0.85; }
+.fc-pane__tab svg { width: 14px; height: 14px; opacity: 0.8; }
 .fc-pane__tab:hover { color: var(--px-text); }
-.fc-pane__tab--active { color: var(--px-text); font-weight: 600; }
+.fc-pane__tab--active { color: var(--px-text); font-weight: 650; }
 .fc-pane__tab--active::after { background: var(--px-accent); }
 .fc-pane__spacer { flex: 1; }
 .fc-pane__body { flex: 1; overflow-y: auto; }
 
-.fc-view { max-width: 760px; margin: 0 auto; padding: var(--px-space-5) var(--px-space-6) var(--px-space-8); }
+.fc-view { max-width: 720px; margin: 0 auto; padding: var(--px-space-6) var(--px-space-6) var(--px-space-8); }
 .fc-empty { padding: var(--px-space-8) var(--px-space-4); text-align: center; font-size: var(--px-text-base); color: var(--px-text-muted); }
 
-/* ── Deck cards ── */
+/* ── Deck list (Decks tab) — hairline-separated rows, not boxes; secondary
+   actions stay out of sight until the row is engaged ── */
 .fc-deck-card {
   display: flex; align-items: center; gap: var(--px-space-3);
-  background: var(--px-bg-elevated);
-  border: 1px solid var(--px-border); border-radius: var(--px-radius-lg);
-  box-shadow: var(--px-edge-light);
-  padding: var(--px-space-3) var(--px-space-4); margin-bottom: var(--px-space-2);
-  transition: border-color var(--px-dur-fast) var(--px-ease);
+  padding: var(--px-space-3) var(--px-space-1);
+  border-bottom: 1px solid var(--px-divider);
 }
-.fc-deck-card:hover { border-color: var(--px-border-strong); }
 .fc-deck-card__info { flex: 1; min-width: 0; cursor: pointer; }
-.fc-deck-card__name { font-size: var(--px-text-base); font-weight: 600; letter-spacing: -0.01em; color: var(--px-text); }
-.fc-deck-card__meta { font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; margin-top: 2px; }
-.fc-deck-card__actions { display: flex; gap: var(--px-space-1); flex: 0 0 auto; }
-.fc-view__title { font-size: var(--px-text-md); font-weight: 600; letter-spacing: -0.01em; color: var(--px-text); }
+.fc-deck-card__name { font-size: var(--px-text-md); font-weight: 600; letter-spacing: -0.01em; color: var(--px-text); }
+.fc-deck-card__meta { font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; margin-top: 3px; }
+.fc-deck-card__actions { display: flex; gap: var(--px-space-1); flex: 0 0 auto; opacity: 0; transition: opacity var(--px-dur-fast) var(--px-ease); }
+.fc-deck-card:hover .fc-deck-card__actions,
+.fc-deck-card:focus-within .fc-deck-card__actions { opacity: 1; }
+.fc-view__title { font-size: var(--px-text-lg); font-weight: 650; letter-spacing: -0.01em; color: var(--px-text); }
 
-/* ── Forms ── */
+/* ── Forms — sentence-case labels (no shouting), quiet inset inputs ── */
 .fc-form { display: flex; flex-direction: column; gap: var(--px-space-1); }
 .fc-label {
-  font-size: var(--px-text-xs); font-weight: 600; text-transform: uppercase;
-  letter-spacing: 0.06em; color: var(--px-text-faint); margin-top: var(--px-space-3);
+  font-size: var(--px-text-xs); font-weight: 600;
+  color: var(--px-text-muted); margin-top: var(--px-space-3);
 }
 .fc-input, .fc-textarea {
-  width: 100%; box-sizing: border-box; padding: 6px 10px;
+  width: 100%; box-sizing: border-box; padding: 7px 10px;
   border: 1px solid var(--px-border); border-radius: var(--px-radius-md);
   background: var(--px-bg-inset); color: var(--px-text);
   font: inherit; font-size: var(--px-text-base);
@@ -1017,32 +1166,49 @@ function injectStyles() {
 .fc-error { font-size: var(--px-text-sm); color: var(--px-danger); padding: var(--px-space-1) 0; }
 .fc-hint { font-size: var(--px-text-sm); color: var(--px-text-muted); }
 
-/* ── Browse rows + stage chips (signal hues) ── */
-.fc-cardrow {
-  background: var(--px-bg-elevated);
-  border: 1px solid var(--px-border); border-radius: var(--px-radius-md);
-  padding: var(--px-space-2) var(--px-space-3); margin-bottom: var(--px-space-2);
-  transition: border-color var(--px-dur-fast) var(--px-ease);
+/* ── Create-tab drop zone — the default, in-workspace way to add a source ── */
+.fc-dropzone {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  padding: var(--px-space-6) var(--px-space-4); margin-top: var(--px-space-1);
+  border: 1px dashed var(--px-border-strong); border-radius: var(--px-radius-lg);
+  background: var(--px-bg-inset); color: var(--px-text-muted); text-align: center;
+  transition: border-color var(--px-dur-fast) var(--px-ease), background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
-.fc-cardrow:hover { border-color: var(--px-border-strong); }
-.fc-cardrow--suspended { opacity: 0.55; }
+.fc-dropzone__icon { display: inline-flex; color: var(--px-text-faint); }
+.fc-dropzone__icon svg { width: 20px; height: 20px; }
+.fc-dropzone__title { font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text-secondary); }
+.fc-dropzone__hint { font-size: var(--px-text-xs); color: var(--px-text-faint); }
+.fc-dropzone--over { border-style: solid; border-color: var(--px-accent); background: var(--px-accent-faint); color: var(--px-text); }
+.fc-dropzone--over .fc-dropzone__icon, .fc-dropzone--over .fc-dropzone__title { color: var(--px-text); }
+.fc-dropzone--busy { opacity: 0.6; pointer-events: none; }
+
+/* ── Browse — hairline-separated card rows; the stage chip is the only colour;
+   row actions surface on hover ── */
+.fc-cardrow {
+  padding: var(--px-space-3) var(--px-space-1);
+  border-bottom: 1px solid var(--px-divider);
+}
+.fc-cardrow--suspended { opacity: 0.5; }
 .fc-cardrow__front { font-size: var(--px-text-base); font-weight: 600; color: var(--px-text); }
-.fc-cardrow__back { font-size: var(--px-text-sm); margin-top: var(--px-space-1); color: var(--px-text-secondary); white-space: pre-wrap; line-height: var(--px-leading-base); }
-.fc-cardrow__meta { display: flex; flex-wrap: wrap; gap: var(--px-space-3); margin-top: var(--px-space-1); font-size: var(--px-text-xs); color: var(--px-text-faint); font-variant-numeric: tabular-nums; }
-.fc-cardrow__actions { display: flex; gap: var(--px-space-1); margin-top: var(--px-space-2); }
+.fc-cardrow__back { font-size: var(--px-text-sm); margin-top: 3px; color: var(--px-text-muted); white-space: pre-wrap; line-height: var(--px-leading-base); }
+.fc-cardrow__meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--px-space-3); margin-top: var(--px-space-2); font-size: var(--px-text-xs); color: var(--px-text-faint); font-variant-numeric: tabular-nums; }
+.fc-cardrow__actions { display: flex; gap: var(--px-space-1); margin-top: var(--px-space-2); opacity: 0; transition: opacity var(--px-dur-fast) var(--px-ease); }
+.fc-cardrow:hover .fc-cardrow__actions,
+.fc-cardrow:focus-within .fc-cardrow__actions { opacity: 1; }
 .fc-state {
-  display: inline-block; font-size: var(--px-text-xs); font-weight: 600;
-  border-radius: var(--px-radius-sm); padding: 0 6px;
+  display: inline-block; font-size: var(--px-text-2xs); font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.04em;
+  border-radius: var(--px-radius-sm); padding: 1px 6px;
 }
 .fc-state--new { background: rgba(var(--px-blue-rgb), 0.15); color: var(--px-info); }
 .fc-state--learning, .fc-state--relearning { background: var(--px-warning-soft); color: var(--px-warning); }
 .fc-state--review { background: rgba(var(--px-green-rgb), 0.15); color: var(--px-success); }
 
-/* ── Study — physical cards on the desk ── */
+/* ── Study — the hero. A crisp card floating on the recessed desk. ── */
 .fc-study { display: flex; height: 100%; }
-.fc-study__main { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; padding: var(--px-space-6) var(--px-space-8); overflow-y: auto; outline: none; background: var(--px-window); }
-.fc-study__toolbar { width: 100%; max-width: 620px; display: flex; align-items: center; gap: var(--px-space-3); margin-bottom: var(--px-space-5); }
-.fc-study__progress { flex: 1; height: 3px; border-radius: var(--px-radius-full); background: var(--px-bg-inset); overflow: hidden; }
+.fc-study__main { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; padding: var(--px-space-8) var(--px-space-8); overflow-y: auto; outline: none; background: var(--px-window); }
+.fc-study__toolbar { width: 100%; max-width: 620px; display: flex; align-items: center; gap: var(--px-space-3); margin-bottom: var(--px-space-6); }
+.fc-study__progress { flex: 1; height: 2px; border-radius: var(--px-radius-full); background: var(--px-divider); overflow: hidden; }
 .fc-study__progress-fill { height: 100%; border-radius: var(--px-radius-full); background: var(--px-accent); transition: width var(--px-dur-base) var(--px-ease); }
 .fc-theme-toggle {
   display: inline-flex; align-items: center; justify-content: center;
@@ -1056,12 +1222,12 @@ function injectStyles() {
   width: 100%; max-width: 620px;
   background: var(--px-bg-elevated);
   border: 1px solid var(--px-border);
-  border-radius: var(--px-radius-xl);
+  border-radius: var(--px-radius-lg);
   box-shadow: var(--px-shadow-md), var(--px-edge-light);
-  padding: var(--px-space-5) var(--px-space-6);
+  padding: var(--px-space-6) var(--px-space-6);
 }
 .fc-card--q { animation: fc-card-in var(--px-dur-base) var(--px-ease-out); }
-.fc-card--a { margin-top: var(--px-space-3); animation: fc-reveal-in var(--px-dur-base) var(--px-ease-spring); }
+.fc-card--a { margin-top: var(--px-space-2); animation: fc-reveal-in var(--px-dur-base) var(--px-ease-spring); }
 @keyframes fc-card-in {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -1072,13 +1238,13 @@ function injectStyles() {
 }
 .fc-card__head {
   display: flex; justify-content: space-between; align-items: center;
-  font-size: var(--px-text-2xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em;
+  font-size: var(--px-text-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em;
   color: var(--px-text-faint); font-variant-numeric: tabular-nums;
-  margin-bottom: var(--px-space-3);
+  margin-bottom: var(--px-space-4);
 }
 .fc-card__body { font-size: var(--px-text-md); line-height: var(--px-leading-base); color: var(--px-text); }
-.fc-card--q .fc-card__body { font-size: var(--px-text-lg); font-weight: 600; letter-spacing: -0.01em; line-height: 1.4; }
-.fc-card__source { margin-top: var(--px-space-3); font-size: var(--px-text-2xs); color: var(--px-text-faint); }
+.fc-card--q .fc-card__body { font-size: var(--px-text-xl); font-weight: 650; letter-spacing: -0.02em; line-height: 1.3; }
+.fc-card__source { margin-top: var(--px-space-4); padding-top: var(--px-space-3); border-top: 1px solid var(--px-divider); font-size: var(--px-text-2xs); color: var(--px-text-faint); }
 .fc-study__answer-host { width: 100%; max-width: 620px; }
 
 /* Paper cards: a light card face independent of the app theme, like the
@@ -1094,31 +1260,32 @@ function injectStyles() {
 .fc-study--paper .fc-card .px-markdown pre { background: #f2ede3; border-color: #e2dccf; }
 .fc-study--paper .fc-card .px-markdown blockquote { border-left-color: #d5cdbc; color: #5b5442; }
 
-.fc-study__controls { display: flex; gap: var(--px-space-2); margin-top: var(--px-space-5); justify-content: center; width: 100%; max-width: 620px; }
+.fc-study__controls { display: flex; gap: var(--px-space-1); margin-top: var(--px-space-6); justify-content: center; width: 100%; max-width: 620px; }
 
-/* Grade buttons — quiet wells with a signal dot; the colour arrives on hover. */
+/* Grade buttons — borderless columns with a signal dot; the colour fills on hover. */
 .fc-grade {
-  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px;
-  padding: var(--px-space-2) 0;
-  border: 1px solid var(--px-border); border-radius: var(--px-radius-md);
-  background: var(--px-bg-inset); color: var(--px-text-secondary);
-  font: inherit; font-size: var(--px-text-sm); font-weight: 600; cursor: pointer;
-  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease), transform var(--px-dur-instant) var(--px-ease);
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: var(--px-space-3) 0 var(--px-space-2);
+  border: 0; border-radius: var(--px-radius-md);
+  background: transparent; color: var(--px-text-secondary);
+  font: inherit; font-size: var(--px-text-sm); font-weight: 650; cursor: pointer;
+  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease), transform var(--px-dur-instant) var(--px-ease);
 }
+.fc-grade:hover { background: var(--px-surface-hover); color: var(--px-text); }
 .fc-grade:active { transform: var(--px-press); }
-.fc-grade__dot { width: 5px; height: 5px; border-radius: var(--px-radius-full); margin-bottom: 2px; }
-.fc-grade__ivl { font-size: var(--px-text-xs); font-weight: 500; color: var(--px-text-faint); font-variant-numeric: tabular-nums; }
+.fc-grade__dot { width: 6px; height: 6px; border-radius: var(--px-radius-full); margin-bottom: 1px; }
+.fc-grade__ivl { font-size: var(--px-text-2xs); font-weight: 500; color: var(--px-text-faint); font-variant-numeric: tabular-nums; }
 .fc-grade--again .fc-grade__dot { background: var(--px-danger); }
 .fc-grade--hard  .fc-grade__dot { background: var(--px-warning); }
 .fc-grade--good  .fc-grade__dot { background: var(--px-success); }
 .fc-grade--easy  .fc-grade__dot { background: var(--px-info); }
-.fc-grade--again:hover { background: var(--px-danger-soft); color: var(--px-danger); border-color: transparent; }
-.fc-grade--hard:hover  { background: var(--px-warning-soft); color: var(--px-warning); border-color: transparent; }
-.fc-grade--good:hover  { background: rgba(var(--px-green-rgb), 0.15); color: var(--px-success); border-color: transparent; }
-.fc-grade--easy:hover  { background: rgba(var(--px-blue-rgb), 0.15); color: var(--px-info); border-color: transparent; }
-.fc-study__reveal { margin-top: var(--px-space-5); height: 30px; padding: 0 var(--px-space-5); }
+.fc-grade--again:hover { background: var(--px-danger-soft); color: var(--px-danger); }
+.fc-grade--hard:hover  { background: var(--px-warning-soft); color: var(--px-warning); }
+.fc-grade--good:hover  { background: rgba(var(--px-green-rgb), 0.15); color: var(--px-success); }
+.fc-grade--easy:hover  { background: rgba(var(--px-blue-rgb), 0.15); color: var(--px-info); }
+.fc-study__reveal { margin-top: var(--px-space-6); height: 32px; padding: 0 var(--px-space-6); }
 .fc-study__discuss { margin-top: var(--px-space-3); }
-.fc-study__keys { margin-top: var(--px-space-3); font-size: var(--px-text-xs); color: var(--px-text-faint); }
+.fc-study__keys { margin-top: var(--px-space-4); font-size: var(--px-text-xs); color: var(--px-text-faint); }
 .fc-study__done { text-align: center; padding: var(--px-space-8) var(--px-space-5); }
 .fc-study__done .fc-btn { margin-top: var(--px-space-4); }
 
@@ -1146,28 +1313,23 @@ function injectStyles() {
 .fc-discuss__input { flex: 1; }
 .fc-discuss__empty { font-size: var(--px-text-xs); color: var(--px-text-faint); padding: var(--px-space-2) var(--px-space-3); line-height: var(--px-leading-base); }
 
-/* ── Stats — inset wells, big tabular numerals ── */
-.fc-stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--px-space-2); margin-bottom: var(--px-space-4); }
-.fc-stat {
-  background: var(--px-bg-inset);
-  border: 1px solid var(--px-divider); border-radius: var(--px-radius-md);
-  padding: var(--px-space-3) var(--px-space-4);
-}
+/* ── Stats — typographic, not boxed. Big tabular numerals over faint eyebrows,
+   separated by whitespace; one restrained review histogram on a baseline. ── */
+.fc-stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: var(--px-space-5) var(--px-space-4); margin-bottom: var(--px-space-6); }
 .fc-stat__value { font-size: var(--px-text-xl); font-weight: 700; letter-spacing: -0.02em; color: var(--px-text); font-variant-numeric: tabular-nums; }
-.fc-stat__label { font-size: var(--px-text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--px-text-faint); margin-top: 2px; }
-.fc-chart { display: flex; align-items: flex-end; gap: 3px; height: 90px; margin: var(--px-space-2) 0 var(--px-space-1); }
-.fc-chart__bar { flex: 1; min-width: 3px; border-radius: 2px 2px 0 0; background: var(--px-accent-soft); transition: background var(--px-dur-fast) var(--px-ease); }
+.fc-stat__label { font-size: var(--px-text-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--px-text-faint); margin-top: 3px; }
+.fc-chart { display: flex; align-items: flex-end; gap: 3px; height: 96px; margin: var(--px-space-2) 0 var(--px-space-1); padding-bottom: var(--px-space-2); border-bottom: 1px solid var(--px-divider); }
+.fc-chart__bar { flex: 1; min-width: 3px; border-radius: 2px 2px 0 0; background: var(--px-surface-active); transition: background var(--px-dur-fast) var(--px-ease); }
 .fc-chart__bar:hover { background: var(--px-accent); }
-.fc-chart__bar--empty { background: var(--px-bg-inset); height: 3px !important; }
+.fc-chart__bar--empty { background: var(--px-divider); height: 2px !important; }
 .fc-chart__bar--today { background: var(--px-accent); }
-.fc-chart-caption { font-size: var(--px-text-xs); color: var(--px-text-faint); font-variant-numeric: tabular-nums; }
+.fc-chart-caption { font-size: var(--px-text-xs); color: var(--px-text-faint); font-variant-numeric: tabular-nums; margin-top: var(--px-space-1); }
 
-/* ── AI-generation review rows ── */
+/* ── AI-generation review rows — hairline separated, not wells ── */
 .fc-genrow {
   display: flex; gap: var(--px-space-2); align-items: flex-start;
-  background: var(--px-bg-inset);
-  border: 1px solid var(--px-divider); border-radius: var(--px-radius-md);
-  padding: var(--px-space-2) var(--px-space-3); margin-bottom: var(--px-space-2);
+  padding: var(--px-space-3) var(--px-space-1);
+  border-bottom: 1px solid var(--px-divider);
   transition: opacity var(--px-dur-base) var(--px-ease);
 }
 .fc-genrow__fields { flex: 1; display: flex; flex-direction: column; gap: var(--px-space-1); }
@@ -1175,7 +1337,7 @@ function injectStyles() {
 
 /* ── Dashboard widget ── */
 .fc-widget-due { font-size: var(--px-text-base); line-height: var(--px-leading-base); padding: var(--px-space-1) 2px; color: var(--px-text-secondary); }
-.fc-widget-due__big { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; color: var(--px-text); font-variant-numeric: tabular-nums; }
+.fc-widget-due__big { font-size: var(--px-text-xl); font-weight: 700; letter-spacing: -0.02em; color: var(--px-text); font-variant-numeric: tabular-nums; }
 .fc-widget-due .fc-btn { margin-top: var(--px-space-2); }
 `;
   document.head.appendChild(style);
@@ -2006,42 +2168,77 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
   deckRow.appendChild(deckHost);
   view.appendChild(deckRow);
 
-  // Source buttons.
+  // ── Source material — default to in-workspace: drag a file/page, or pick. ──
   view.appendChild(el('div', 'fc-label', 'Source material'));
-  const srcRow = el('div', 'fc-row');
   const sourceState = { text: '', label: '', uri: '' };
-  const srcStatus = el('div', 'fc-hint fc-src-status', 'No source loaded. Pick one, or paste text below.');
+  const srcStatus = el('div', 'fc-hint fc-src-status', 'Drag a file or canvas page here, pick one below, or paste text.');
 
+  const applyLoaded = (loaded) => {
+    if (!loaded) return;
+    sourceState.text = loaded.text;
+    sourceState.label = loaded.label;
+    sourceState.uri = loaded.uri;
+    pasteIn.value = '';
+    srcStatus.textContent = `Loaded ${loaded.label} (${loaded.text.length.toLocaleString()} chars).`;
+  };
+
+  // Drop zone — the primary path: drag straight from the Explorer or Canvas
+  // sidebar, so you never leave the workspace or open the OS file browser.
+  const drop = el('div', 'fc-dropzone');
+  const dzIcon = el('div', 'fc-dropzone__icon');
+  dzIcon.innerHTML = icon('inbox', 20);
+  drop.appendChild(dzIcon);
+  drop.appendChild(el('div', 'fc-dropzone__title', 'Drag a file or canvas page here'));
+  drop.appendChild(el('div', 'fc-dropzone__hint', 'From the Explorer or Canvas sidebar — or use the buttons below.'));
+  view.appendChild(drop);
+
+  const onDragOver = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    drop.classList.add('fc-dropzone--over');
+  };
+  drop.addEventListener('dragenter', onDragOver);
+  drop.addEventListener('dragover', onDragOver);
+  drop.addEventListener('dragleave', (e) => { if (e.target === drop) drop.classList.remove('fc-dropzone--over'); });
+  drop.addEventListener('drop', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    drop.classList.remove('fc-dropzone--over');
+    const dt = e.dataTransfer;
+    void (async () => {
+      try {
+        drop.classList.add('fc-dropzone--busy');
+        srcStatus.textContent = 'Loading dropped source…';
+        applyLoaded(await fcLoadFromDrop(dt));
+      } catch (err) {
+        srcStatus.textContent = `Failed: ${err.message}`;
+      } finally {
+        drop.classList.remove('fc-dropzone--busy');
+      }
+    })();
+  });
+
+  // Buttons — in-workspace first (Canvas page, Workspace file); the OS dialog
+  // and photo OCR are the fallback for material outside the workspace.
+  const srcRow = el('div', 'fc-row');
+  srcRow.style.marginTop = '8px';
   const srcBtn = (label, iconName, loader) => {
     const b = el('button', 'fc-btn');
     b.innerHTML = `${icon(iconName, 12)}<span>${label}</span>`;
     b.addEventListener('click', () => {
       void (async () => {
-        try {
-          b.disabled = true;
-          const loaded = await loader();
-          if (loaded) {
-            sourceState.text = loaded.text;
-            sourceState.label = loaded.label;
-            sourceState.uri = loaded.uri;
-            pasteIn.value = '';
-            srcStatus.textContent = `Loaded ${loaded.label} (${loaded.text.length.toLocaleString()} chars).`;
-          }
-        } catch (err) {
-          srcStatus.textContent = `Failed: ${err.message}`;
-        } finally {
-          b.disabled = false;
-        }
+        try { b.disabled = true; applyLoaded(await loader()); }
+        catch (err) { srcStatus.textContent = `Failed: ${err.message}`; }
+        finally { b.disabled = false; }
       })();
     });
     return b;
   };
-
   srcRow.appendChild(srcBtn('Canvas page', 'file-text', async () => {
     const pageId = await fcPickCanvasPage();
     return pageId ? fcReadCanvasPage(pageId) : null;
   }));
-  srcRow.appendChild(srcBtn('PDF / document', 'file', () => fcReadPdf()));
+  srcRow.appendChild(srcBtn('Workspace file', 'file', () => fcPickWorkspaceFile()));
+  srcRow.appendChild(srcBtn('Browse device…', 'hard-drive', () => fcReadPdf()));
   srcRow.appendChild(srcBtn('Photo (OCR)', 'image', () => fcReadPhoto()));
   view.appendChild(srcRow);
   view.appendChild(srcStatus);
@@ -2652,7 +2849,10 @@ export const __testables = {
   // real generation pipeline against real Ollama. Requires activate() first
   // so _api is bound.
   fcGenerateCards,
-  fcMaterialBudget,
+  fcContextPlan,
+  FC_CHARS_PER_TOKEN,
+  FC_SCAFFOLD_TOKENS,
+  FC_FALLBACK_MODEL_CTX,
   FC_GENERATE_SYSTEM,
   FC_LEARNING_STEPS_MIN,
   FC_RELEARNING_STEPS_MIN,

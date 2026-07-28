@@ -149,6 +149,33 @@ export class LanguageModelsService extends Disposable implements ILanguageModels
     return this._cachedModels;
   }
 
+  async getModelInfo(modelId: string): Promise<ILanguageModelInfo> {
+    if (this._cachedModels.length === 0) {
+      await this._refreshModels();
+    }
+    const providerId = this._modelToProvider.get(modelId);
+    if (!providerId) {
+      throw new Error(`No provider found for model '${modelId}'.`);
+    }
+    const provider = this._providers.get(providerId);
+    if (!provider) {
+      throw new Error(`Provider '${providerId}' is no longer registered.`);
+    }
+    const info = await provider.getModelInfo(modelId);
+    // Feed the same caches the active-model probe fills, so the token bar
+    // and capability checks benefit from any caller's lookup.
+    if (info.contextLength > 0) {
+      this._modelContextLengths.set(modelId, info.contextLength);
+    }
+    if (info.capabilities.length > 0) {
+      this._modelCapabilities.set(modelId, info.capabilities);
+    }
+    if (info.parameterSize) {
+      this._modelParameterSizes.set(modelId, info.parameterSize);
+    }
+    return info;
+  }
+
   // ── Active Model ──
 
   getActiveModel(): string | undefined {

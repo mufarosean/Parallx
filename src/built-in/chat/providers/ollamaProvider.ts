@@ -87,6 +87,8 @@ interface OllamaChatChunk {
   /** Number of tokens generated (present on final chunk). */
   eval_count?: number;
   eval_duration?: number;
+  /** Mid-stream failure (runner crash, OOM). Terminal — no more chunks follow. */
+  error?: string;
 }
 
 // IRetrievalPlan — re-exported for external consumers (now defined in chatTypes.ts)
@@ -560,6 +562,14 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
             continue;
           }
 
+          // Mid-stream error objects ({"error": "..."}) are how Ollama
+          // reports runner crashes and OOM during generation. Swallowing
+          // them (they have no `message` body) made every such failure
+          // look like a mysteriously cut-off response downstream.
+          if (chunk.error) {
+            throw new Error(`Ollama stream error: ${chunk.error}`);
+          }
+
           // Skip chunks with no message body (e.g. done:true completion markers)
           if (!chunk.message) {
             if (chunk.done) { receivedDone = true; }
@@ -583,15 +593,20 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
 
       // Process any remaining buffer content
       if (buffer.trim()) {
-        let chunk: OllamaChatChunk;
+        let chunk: OllamaChatChunk | undefined;
         try {
           chunk = JSON.parse(buffer.trim()) as OllamaChatChunk;
+        } catch {
+          console.warn('[OllamaProvider] Malformed trailing chunk:', buffer.trim());
+        }
+        if (chunk) {
+          if (chunk.error) {
+            throw new Error(`Ollama stream error: ${chunk.error}`);
+          }
           if (chunk.done) { receivedDone = true; }
           if (chunk.message) {
             yield this._parseChunk(chunk);
           }
-        } catch {
-          console.warn('[OllamaProvider] Malformed trailing chunk:', buffer.trim());
         }
       }
 

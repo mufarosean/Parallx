@@ -262,17 +262,53 @@ describe('fcReminderCron', () => {
   });
 });
 
-describe('fcMaterialBudget', () => {
-  const { fcMaterialBudget } = __testables;
-  it('scales the source clip with the configured context window', () => {
-    expect(fcMaterialBudget(16384)).toBe(Math.round((16384 - 2500) * 3));
-    expect(fcMaterialBudget(8192)).toBe(Math.round((8192 - 2500) * 3));
-    // Small windows still leave a usable floor.
-    expect(fcMaterialBudget(2048)).toBe(4000);
+describe('fcContextPlan', () => {
+  const { fcContextPlan, FC_CHARS_PER_TOKEN, FC_SCAFFOLD_TOKENS, FC_FALLBACK_MODEL_CTX } = __testables;
+
+  it('sizes the window to document + output, not a fixed constant', () => {
+    // The regression that motivated this: a 38,263-char PDF tokenized to
+    // 15,709 tokens (~2.44 chars/token), filling a fixed 16,384 window
+    // almost entirely — the model was hard-stopped 674 tokens into its
+    // JSON. The plan must leave the full output reserve on top.
+    const { numCtx, maxChars, outputTokens } = fcContextPlan({
+      chars: 38_263, count: 15, modelCtx: 262_144, setting: 0,
+    });
+    const promptEstimate = Math.ceil(38_263 / FC_CHARS_PER_TOKEN) + FC_SCAFFOLD_TOKENS;
+    expect(numCtx).toBeGreaterThanOrEqual(promptEstimate + outputTokens);
+    expect(numCtx % 2048).toBe(0);
+    expect(maxChars).toBeGreaterThanOrEqual(38_263); // whole doc fits, no clip
   });
-  it('falls back to the default window on garbage input', () => {
-    expect(fcMaterialBudget(0)).toBe(Math.round((16384 - 2500) * 3));
-    expect(fcMaterialBudget(NaN)).toBe(Math.round((16384 - 2500) * 3));
+
+  it('requests only what the job needs, never the model maximum', () => {
+    const { numCtx } = fcContextPlan({ chars: 2_000, count: 10, modelCtx: 262_144, setting: 0 });
+    expect(numCtx).toBe(8192); // floor — tiny note must not allocate a 262K KV cache
+  });
+
+  it('clamps to the model ceiling and clips material to fit', () => {
+    const { numCtx, maxChars } = fcContextPlan({
+      chars: 500_000, count: 15, modelCtx: 32_768, setting: 0,
+    });
+    expect(numCtx).toBe(32_768);
+    // Clip limit leaves the output reserve inside the ceiling.
+    expect(maxChars).toBeLessThan(500_000);
+    expect(maxChars).toBe(Math.floor((32_768 - FC_SCAFFOLD_TOKENS - (1500 + 220 * 15)) * FC_CHARS_PER_TOKEN));
+  });
+
+  it('honors an explicit user override, still capped by the model', () => {
+    expect(fcContextPlan({ chars: 1_000, count: 5, modelCtx: 262_144, setting: 16_384 }).numCtx).toBe(16_384);
+    expect(fcContextPlan({ chars: 1_000, count: 5, modelCtx: 8_192, setting: 128_000 }).numCtx).toBe(8_192);
+  });
+
+  it('assumes a large fallback ceiling when the model probe fails', () => {
+    const { numCtx } = fcContextPlan({ chars: 1_000_000, count: 15, modelCtx: 0, setting: 0 });
+    expect(numCtx).toBe(FC_FALLBACK_MODEL_CTX);
+  });
+
+  it('scales the output reserve with the requested card count', () => {
+    const few = fcContextPlan({ chars: 100_000, count: 5, modelCtx: 262_144, setting: 0 });
+    const many = fcContextPlan({ chars: 100_000, count: 50, modelCtx: 262_144, setting: 0 });
+    expect(many.outputTokens).toBeGreaterThan(few.outputTokens);
+    expect(many.maxChars).toBeLessThan(few.maxChars);
   });
 });
 

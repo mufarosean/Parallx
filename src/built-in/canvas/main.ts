@@ -21,6 +21,7 @@ import { ILanguageModelToolsService } from '../../services/chatTypes.js';
 import { registerCanvasAITools, canvasPageIdFromEditorId } from './ai/canvasAITools.js';
 import { CANVAS_AI_PAGE_FULL_WIDTH_KEY, CANVAS_AI_PAGE_SMALL_TEXT_KEY } from './ai/pageTools.js';
 import { getGlobalSettingsRegistry } from '../../services/settingsRegistryService.js';
+import { CANVAS_DEFAULT_FONT_KEY, CANVAS_CUSTOM_FONTS_KEY, FALLBACK_FONT_ID, loadCustomFonts } from './config/fontRegistry.js';
 import { markdownToTiptapJson } from './markdownImport.js';
 import { tiptapJsonToMarkdown } from './markdownExport.js';
 import { buildPageEmbedWidget } from './dashboardWidgets.js';
@@ -136,6 +137,37 @@ let _databaseService: DatabaseDataService | null = null;
 
 export async function activate(api: ParallxApi, context: ToolContext): Promise<void> {
   _api = api;
+
+  // ── Fonts ──────────────────────────────────────────────────────────────────
+  // Register the workspace-default and custom-font-library settings, then load
+  // the persisted custom fonts (injects their @font-face rules) so uploaded
+  // fonts are available for rendering and previews immediately on activation.
+  const settingsRegistry = getGlobalSettingsRegistry();
+  if (settingsRegistry) {
+    if (!settingsRegistry.getSchema(CANVAS_DEFAULT_FONT_KEY)) {
+      settingsRegistry.register({
+        key: CANVAS_DEFAULT_FONT_KEY,
+        type: 'string',
+        default: FALLBACK_FONT_ID,
+        scope: 'workspace',
+        label: 'Default Font',
+        description: 'Font a newly created canvas page starts with. Change per-page fonts and set this default from a page’s ••• menu → Font.',
+        category: 'Canvas',
+      });
+    }
+    if (!settingsRegistry.getSchema(CANVAS_CUSTOM_FONTS_KEY)) {
+      settingsRegistry.register({
+        key: CANVAS_CUSTOM_FONTS_KEY,
+        type: 'object',
+        default: { fonts: [] },
+        scope: 'workspace',
+        label: 'Custom Fonts',
+        description: 'Fonts uploaded for canvas pages (managed from a page’s Font menu).',
+        category: 'Canvas',
+      });
+    }
+  }
+  loadCustomFonts();
 
   const getIndexingPipeline = () => api.services.has(IIndexingPipelineService)
     ? api.services.get<import('../../services/serviceTypes.js').IIndexingPipelineService>(IIndexingPipelineService)
