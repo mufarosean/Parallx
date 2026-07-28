@@ -584,7 +584,13 @@ function stopServiceSync() {
   _process = null;
   try {
     if (process.platform === 'win32' && proc.pid) {
-      try { execSync(`taskkill /pid ${proc.pid} /T /F`, { windowsHide: true, timeout: 3000 }); } catch { /* best-effort */ }
+      // Fire-and-forget tree kill — taskkill outlives us and finishes the
+      // job; execSync here used to block quit teardown for up to 3s.
+      try {
+        require('child_process')
+          .spawn('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { windowsHide: true, detached: true, stdio: 'ignore' })
+          .unref();
+      } catch { /* best-effort */ }
     } else {
       try { proc.kill('SIGKILL'); } catch { /* already dead */ }
     }

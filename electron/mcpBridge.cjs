@@ -272,13 +272,14 @@ function killAllMcpProcesses() {
   for (const [serverId, child] of processes) {
     try {
       if (isWin && child.pid) {
-        // On Windows, SIGTERM doesn't reliably kill process trees.
-        // Use taskkill /T /F to kill the entire tree synchronously.
+        // On Windows, SIGTERM doesn't reliably kill process trees — use
+        // taskkill /T /F. Fire-and-forget: taskkill is its own process and
+        // finishes even after we exit; the old execSync serialized up to 3s
+        // per server inside quit teardown, visibly delaying app shutdown.
         try {
-          require('child_process').execSync(
-            `taskkill /pid ${child.pid} /T /F`,
-            { windowsHide: true, timeout: 3000 },
-          );
+          require('child_process')
+            .spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, detached: true, stdio: 'ignore' })
+            .unref();
         } catch { /* process may already be dead */ }
       } else {
         child.kill('SIGTERM');

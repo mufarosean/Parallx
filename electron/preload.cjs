@@ -32,6 +32,12 @@ contextBridge.exposeInMainWorld('parallxElectron', {
   },
   /** Confirm that close may proceed (called after save/discard decision). */
   confirmClose: () => ipcRenderer.send('lifecycle:confirmClose'),
+  /**
+   * Tell main the close is COMMITTED (teardown started). From this point a
+   * second-instance launch queues an automatic relaunch instead of poking the
+   * dying window.
+   */
+  notifyClosing: () => ipcRenderer.send('lifecycle:closing'),
   /** Hide window immediately (called before slow teardown to prevent UI flash). */
   hideWindow: () => ipcRenderer.send('lifecycle:hideWindow'),
 
@@ -78,6 +84,13 @@ contextBridge.exposeInMainWorld('parallxElectron', {
 
     /** Check if path exists. Returns boolean. */
     exists: (filePath) => ipcRenderer.invoke('fs:exists', filePath),
+
+    /**
+     * Streaming media fingerprint computed in a main-process worker pool:
+     * full-contents MD5 plus (with options.oshash) the 64KB head/tail oshash.
+     * Returns { md5, oshash, size } or { error }.
+     */
+    hashFile: (filePath, options) => ipcRenderer.invoke('fs:hashFile', filePath, options),
 
     /** Rename/move a file or directory. Returns { error: null } on success or { error }. */
     rename: (oldPath, newPath) => ipcRenderer.invoke('fs:rename', oldPath, newPath),

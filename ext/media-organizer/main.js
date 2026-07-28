@@ -2219,7 +2219,25 @@ async function detectHwEncoders() {
 
 const OSHASH_CHUNK = 65536;
 
+// Bridge-first hashing: fs.hashFile streams the file ONCE in a main-process
+// worker pool and returns the full-contents MD5 plus (optionally) the oshash.
+// That replaces one-child-process-per-hash (certutil / a node one-liner),
+// which dominated scan time and fought the disk during bulk imports. The
+// spawn-based paths below survive only as fallbacks for hosts without the
+// bridge. Returns { md5, oshash, size } or null (caller falls back).
+async function _hashViaBridge(filePath, wantOshash) {
+  const bridge = window.parallxElectron?.fs?.hashFile;
+  if (typeof bridge !== 'function') return null;
+  try {
+    const r = await bridge(filePath, { oshash: wantOshash });
+    if (r && !r.error && r.md5) return r;
+  } catch { /* fall through to the spawn fallback */ }
+  return null;
+}
+
 async function computeOshash(filePath) {
+  const bridged = await _hashViaBridge(filePath, true);
+  if (bridged?.oshash) return bridged.oshash;
   if (!_toolPaths.node) return null;
   // Inline Node.js script — reads 64KB head + 64KB tail, sums uint64LE + filesize
   // Security: filePath passed via process.argv, not embedded in script
@@ -2249,6 +2267,8 @@ async function computeOshash(filePath) {
 }
 
 async function computeMD5(filePath) {
+  const bridged = await _hashViaBridge(filePath, false);
+  if (bridged?.md5) return bridged.md5;
   try {
     let cmd;
     if (_isWindows) {
@@ -2269,6 +2289,14 @@ async function computeMD5(filePath) {
 }
 
 async function fingerprintFile(filePath, fileType) {
+  // Fast path: both fingerprints from ONE streaming read via the bridge.
+  const bridged = await _hashViaBridge(filePath, fileType === 'video');
+  if (bridged) {
+    const fps = [];
+    if (bridged.oshash) fps.push({ type: 'oshash', value: bridged.oshash });
+    fps.push({ type: 'md5', value: bridged.md5 });
+    return fps;
+  }
   const fps = [];
   if (fileType === 'video') {
     const oshash = await computeOshash(filePath);
@@ -2495,6 +2523,11 @@ let _scanCancelled = false;
 let _statusBarItem = null;
 
 async function processFile(entry) {
+  // 0. Files mid-secure-erase are off limits. Eraser's overwrite passes bump
+  // mtime, so scans would otherwise re-hash multi-GB garbage bytes (and fight
+  // Eraser for disk bandwidth) for a file that's about to vanish.
+  if (_isPathPendingErase(entry.path)) return { action: 'skipped', fileId: null };
+
   // 1. Check if file exists in DB
   const existing = await FileQueries.findByFolderAndName(entry.folderId, entry.name);
 
@@ -2843,6 +2876,11 @@ const _activeMediaWatchers = new Map();
 let _watcherProcessing = false;
 let _watcherQueue = [];
 let _watcherDebounceTimer = null;
+// Set by the parallx:will-close quiesce hook (see activate): halts watcher
+// drains and blocks new heavy per-file work once the window close is
+// committed, so teardown isn't stuck behind a multi-second hash/ffprobe.
+let _moClosing = false;
+let _moWillCloseListener = null;
 const WATCHER_BATCH_DELAY_MS = 500;
 
 // ── Scan root persistence ──
@@ -2936,43 +2974,58 @@ async function processIncrementalCreate(filePath) {
 }
 
 async function processIncrementalDelete(filePath) {
-  if (isInternalPath(filePath)) return null;
+  const res = await processIncrementalDeleteBatch([filePath]);
+  return res.files > 0 ? { action: 'deleted', fileId: null } : null;
+}
+
+/**
+ * Set-based deletion for a batch of vanished paths. Resolves path → mo_files
+ * row per directory, then hands off to _purgeFileRowsSetBased — one
+ * transaction instead of ~8 sequential IPC round-trips per file, plus the FTS
+ * and orphan-thumbnail cleanup the old per-path version never did.
+ * Returns { files, purgedPhotoIds, purgedVideoIds }.
+ */
+async function processIncrementalDeleteBatch(filePaths) {
+  const none = { files: 0, purgedPhotoIds: [], purgedVideoIds: [] };
   const sep = _isWindows ? '\\' : '/';
-  const lastSep = filePath.lastIndexOf(sep);
-  const dirPath = lastSep > 0 ? filePath.slice(0, lastSep) : filePath;
-  const fileName = lastSep > 0 ? filePath.slice(lastSep + 1) : filePath;
+  const byDir = new Map();
+  for (const filePath of filePaths || []) {
+    if (!filePath || isInternalPath(filePath)) continue;
+    // Mid-erase paths belong to the Eraser commit scheduler — it owns their
+    // DB cleanup and runs it only after re-verifying the disk.
+    if (_isPathPendingErase(filePath)) continue;
+    const lastSep = filePath.lastIndexOf(sep);
+    const dirPath = lastSep > 0 ? filePath.slice(0, lastSep) : filePath;
+    const fileName = lastSep > 0 ? filePath.slice(lastSep + 1) : filePath;
+    if (!classifyFile(fileName)) continue;
+    if (!byDir.has(dirPath)) byDir.set(dirPath, []);
+    byDir.get(dirPath).push(fileName);
+  }
+  if (byDir.size === 0) return none;
 
-  if (!classifyFile(fileName)) return null;
-
-  const folder = await FolderQueries.findByPath(dirPath);
-  if (!folder) return null;
-
-  const file = await FileQueries.findByFolderAndName(folder.id, fileName);
-  if (!file) return null;
-
-  // Remove domain entity links and the file record
-  const photoLink = await db.get('SELECT photo_id FROM mo_photos_files WHERE file_id = ?', [file.id]);
-  if (photoLink) {
-    await db.run('DELETE FROM mo_photos_files WHERE file_id = ?', [file.id]);
-    // If no other files linked to this photo, remove the photo too
-    const otherLinks = await db.get('SELECT COUNT(*) as cnt FROM mo_photos_files WHERE photo_id = ?', [photoLink.photo_id]);
-    if (!otherLinks || otherLinks.cnt === 0) {
-      await db.run('DELETE FROM mo_photos WHERE id = ?', [photoLink.photo_id]);
+  const fileEntries = []; // { id, checksum }
+  for (const [dirPath, names] of byDir) {
+    const folder = await FolderQueries.findByPath(dirPath);
+    if (!folder) continue;
+    for (const chunk of _sqlChunks(names)) {
+      const rows = await db.all(
+        `SELECT f.id AS id,
+                (SELECT value FROM mo_fingerprints WHERE file_id = f.id AND type = 'md5' LIMIT 1) AS checksum
+           FROM mo_files f
+          WHERE f.folder_id = ? AND f.basename IN (${_qMarks(chunk)})`,
+        [folder.id, ...chunk]
+      );
+      for (const r of rows) fileEntries.push({ id: r.id, checksum: r.checksum || null });
     }
   }
-  const videoLink = await db.get('SELECT video_id FROM mo_videos_files WHERE file_id = ?', [file.id]);
-  if (videoLink) {
-    await db.run('DELETE FROM mo_videos_files WHERE file_id = ?', [file.id]);
-    const otherLinks = await db.get('SELECT COUNT(*) as cnt FROM mo_videos_files WHERE video_id = ?', [videoLink.video_id]);
-    if (!otherLinks || otherLinks.cnt === 0) {
-      await db.run('DELETE FROM mo_videos WHERE id = ?', [videoLink.video_id]);
-    }
-  }
+  if (fileEntries.length === 0) return none;
 
-  await db.run('DELETE FROM mo_fingerprints WHERE file_id = ?', [file.id]);
-  await db.run('DELETE FROM mo_files WHERE id = ?', [file.id]);
-
-  return { action: 'deleted', fileId: file.id };
+  const res = await _purgeFileRowsSetBased(fileEntries);
+  await _refreshFtsForIds(res.purgedPhotoIds, res.purgedVideoIds);
+  if (_api) await _sweepOrphanThumbs(_api, fileEntries.map((e) => e.checksum));
+  for (const id of res.purgedPhotoIds) _moResolvedThumbs.delete(`photo:${id}`);
+  for (const id of res.purgedVideoIds) _moResolvedThumbs.delete(`video:${id}`);
+  return { files: fileEntries.length, purgedPhotoIds: res.purgedPhotoIds, purgedVideoIds: res.purgedVideoIds };
 }
 
 // ── Batched watcher event processor ──
@@ -3025,6 +3078,7 @@ async function _waitForFileToSettle(filePath, { intervalMs = 400, maxWaitMs = 80
 }
 
 async function drainWatcherQueue() {
+  if (_moClosing) { _watcherQueue = []; return; }
   if (_watcherProcessing || _watcherQueue.length === 0) return;
   _watcherProcessing = true;
 
@@ -3039,7 +3093,10 @@ async function drainWatcherQueue() {
     if (prior && prior.type === 'deleted' && evt.type !== 'deleted') continue;
     dedup.set(evt.path, evt);
   }
-  const batch = [...dedup.values()];
+  // Drop events for paths that went mid-erase AFTER the event was queued
+  // (enqueueWatcherEvent intercepts anything arriving later). The Eraser
+  // commit scheduler owns those paths' lifecycle end-to-end.
+  const batch = [...dedup.values()].filter((e) => !_isPathPendingErase(e.path));
   // Process deletes BEFORE creates. Deletes are ~milliseconds; creates
   // can be 10-30 seconds for large videos (md5 hash + ffprobe + cover
   // frame). If a batch contains both, we don't want the user's deletion
@@ -3059,13 +3116,13 @@ async function drainWatcherQueue() {
     // Ensure tools are detected for metadata extraction
     await detectAllTools();
 
-    // Phase 1: deletes (fast)
-    for (const evt of deletes) {
+    // Phase 1: deletes (fast) — one set-based batch, not a per-path loop.
+    if (deletes.length > 0) {
       try {
-        const result = await processIncrementalDelete(evt.path);
-        if (result) deleted++;
+        const result = await processIncrementalDeleteBatch(deletes.map((e) => e.path));
+        deleted = result.files;
       } catch (err) {
-        console.warn(`[MediaOrganizer] Watcher: error processing ${evt.path}:`, err);
+        console.warn('[MediaOrganizer] Watcher: error processing delete batch:', err);
         errors++;
       }
     }
@@ -3079,6 +3136,7 @@ async function drainWatcherQueue() {
     // results as they become available instead of waiting for the
     // whole batch).
     for (const evt of creates) {
+      if (_moClosing) break; // each create can cost seconds (hash + ffprobe)
       try {
         const settled = await _waitForFileToSettle(evt.path);
         if (!settled) {
@@ -3120,6 +3178,11 @@ async function drainWatcherQueue() {
 }
 
 function enqueueWatcherEvent(evt) {
+  // Files mid-secure-erase: swallow the changed-event torrents Eraser's
+  // overwrite passes generate (they'd otherwise settle-poll and even re-hash
+  // the dying file), and convert the final stat-verified unlink into the
+  // erase scheduler's completion signal instead of an incremental delete.
+  if (_eraserInterceptWatchEvent(evt)) return;
   _watcherQueue.push(evt);
   if (_watcherDebounceTimer) clearTimeout(_watcherDebounceTimer);
   _watcherDebounceTimer = setTimeout(() => {
@@ -7622,6 +7685,25 @@ select.mo-select-bound:disabled { opacity: 0.55; cursor: default; }
 .mo-crop-h-w  { top: 50%; left: -6px; transform: translateY(-50%); cursor: ew-resize; }
 .mo-crop-h-e  { top: 50%; right: -6px; transform: translateY(-50%); cursor: ew-resize; }
 
+/* Point-track: crosshair pick mode + the picked-subject marker */
+.mo-clip-stage.mo-pointpick, .mo-clip-stage.mo-pointpick * { cursor: crosshair !important; }
+.mo-track-point {
+  position: absolute; width: 14px; height: 14px;
+  margin: -7px 0 0 -7px;
+  border: 2px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))) 30%, transparent);
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.55);
+  pointer-events: auto;
+  z-index: 4;
+}
+.mo-track-point::after {
+  content: ''; position: absolute; left: 50%; top: 50%;
+  width: 4px; height: 4px; margin: -2px 0 0 -2px;
+  border-radius: 50%;
+  background: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
+}
+
 /* Scrubber timeline (full-duration in/out markers) */
 .mo-clip-scrubber {
   position: relative;
@@ -7685,6 +7767,11 @@ select.mo-select-bound:disabled { opacity: 0.55; cursor: default; }
 .mo-scrub-key:hover {
   transform: translate(-50%, -50%) rotate(45deg) scale(1.35);
   background: color-mix(in srgb, var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))) 100%, white 25%);
+}
+/* Keys that change the window SIZE (zoom) read differently at a glance */
+.mo-scrub-key-zoom {
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))) 60%, white 40%);
 }
 
 /* Keyframe controls row */
@@ -17648,6 +17735,9 @@ async function moSecureEraseRecording(api, filePath) {
 
 // Crash-safe cleanup on activate: securely erase any leftover temp recordings
 // from a session that crashed/quit mid-record. Mirrors moPurgeMissingFiles.
+// All leftovers go to Eraser in ONE addtask spawn — Eraser.exe is a .NET app
+// whose CLR startup costs seconds, so one-spawn-per-file made activation
+// crawl whenever a crashed session left several temp files behind.
 async function moPurgeOrphanRecordings(api) {
   try {
     const dir = await moGetRecordingsDir(api);
@@ -17655,11 +17745,19 @@ async function moPurgeOrphanRecordings(api) {
     const res = await window.parallxElectron.fs.readdir(dir);
     if (!res || res.error || !Array.isArray(res.entries)) return;
     const sep = _isWindows ? '\\' : '/';
+    const paths = [];
     for (const e of res.entries) {
       if (!e || e.type === 'directory' || !e.name) continue;
       if (!/^rec_.*\.(mp4|mkv|webm)$/i.test(e.name)) continue; // incl. .video.mp4 / .audio.webm temps
-      await moSecureEraseRecording(api, dir + sep + e.name);
+      paths.push(dir + sep + e.name);
     }
+    if (paths.length === 0) return;
+    try { _revokeCachedBlobUrlsFor(paths); } catch { /* ignore */ }
+    let queuedToEraser = false;
+    try { queuedToEraser = await _tryEraseWithEraser(api, paths); } catch { queuedToEraser = false; }
+    if (queuedToEraser) return; // Eraser owns the overwrite + removal
+    // Hard delete (never the recycle bin) when Eraser isn't available.
+    await _mapBounded(paths, 8, (p) => window.parallxElectron.fs.delete(p, { useTrash: false }).catch(() => {}));
   } catch { /* best effort */ }
 }
 
@@ -17744,11 +17842,17 @@ function moClipFilterVf(id) {
 // and (via moCropKeyExpr, which emits the same math) the ffmpeg export — the
 // three must agree or the preview lies.
 function moCropKeysAt(keys, t, wN, hN) {
-  let x = keys[keys.length - 1].x;
-  let y = keys[keys.length - 1].y;
+  // Zoom-aware interpolation: keys may carry a per-key window width `w`
+  // (normalized). Height follows from the locked aspect (hN/wN stays
+  // constant, which preserves the PIXEL aspect ratio for any source).
+  // Keys without `w` (legacy pan-only) behave as w = wN.
+  const ratio = hN / Math.max(1e-6, wN);
+  const kw = (k) => (Number.isFinite(k.w) ? k.w : wN);
+  const last = keys[keys.length - 1];
+  let x = last.x, y = last.y, w = kw(last);
   if (t <= keys[0].t) {
-    x = keys[0].x; y = keys[0].y;
-  } else if (t < keys[keys.length - 1].t) {
+    x = keys[0].x; y = keys[0].y; w = kw(keys[0]);
+  } else if (t < last.t) {
     for (let i = 1; i < keys.length; i++) {
       if (t <= keys[i].t) {
         const a = keys[i - 1], b = keys[i];
@@ -17756,11 +17860,14 @@ function moCropKeysAt(keys, t, wN, hN) {
         const s = f * f * (3 - 2 * f);
         x = a.x + (b.x - a.x) * s;
         y = a.y + (b.y - a.y) * s;
+        w = kw(a) + (kw(b) - kw(a)) * s;
         break;
       }
     }
   }
-  return { x: Math.max(0, Math.min(1 - wN, x)), y: Math.max(0, Math.min(1 - hN, y)) };
+  w = Math.max(0.02, Math.min(1, Math.min(w, 1 / Math.max(1e-6, ratio))));
+  const h = w * ratio;
+  return { x: Math.max(0, Math.min(1 - w, x)), y: Math.max(0, Math.min(1 - h, y)), w, h };
 }
 
 // ffmpeg expression for one animated coordinate ('x' or 'y'): piecewise
@@ -17785,20 +17892,141 @@ function moCropKeyExpr(keys, comp) {
   return `if(isnan(t),${keys[0][comp].toFixed(5)},${expr})`;
 }
 
-// Crop vf segment shared by every export path: static rect, or animated x/y
-// when ≥2 keyframes are present. Keys arrive in absolute source-video time
-// and are rebased against inPoint here.
-function moCropVfSegment(crop, cropKeys, inPoint) {
+// Piecewise-smoothstep expression over INPUT-FRAME TIME for zoompan. zoompan
+// exposes the input frame index `in`; the fps filter earlier in the chain
+// makes frames CFR, so in/FPS reproduces the same rebased clock the crop
+// expression path reads from `t`. `valueOf(key)` maps a key to the animated
+// value (zoom factor or pixel offset). No NaN guard needed — `in` starts at 0.
+function moZoomKeyExpr(keys, valueOf, fps) {
+  const T = `(in/${(+fps).toFixed(4)})`;
+  let expr = valueOf(keys[keys.length - 1]).toFixed(6);
+  for (let i = keys.length - 2; i >= 0; i--) {
+    const a = keys[i], b = keys[i + 1];
+    const va = valueOf(a).toFixed(6), vb = valueOf(b).toFixed(6);
+    const dt = Math.max(0.001, b.t - a.t).toFixed(4);
+    const f = `clip((${T}-${a.t.toFixed(4)})/${dt},0,1)`;
+    expr = `if(lt(${T},${b.t.toFixed(4)}),${va}+(${vb}-${va})*${f}*${f}*(3-2*${f}),${expr})`;
+  }
+  return expr;
+}
+
+// Crop vf segment shared by every export path: static rect, animated x/y when
+// ≥2 keyframes are present, or animated x/y/SIZE (zoom) when keys carry
+// differing widths. Keys arrive in absolute source-video time and are rebased
+// against inPoint here.
+//
+// The zoom path CANNOT ride the crop filter: crop evaluates out_w/out_h ONCE
+// at init, and mid-graph frame-size changes (sendcmd/crop w-h commands,
+// scale=eval=frame) hard-assert in the ffmpeg CLI's graph scheduler
+// ("Assertion best_input >= 0 failed", verified against the installed build).
+// Instead: pad the source up to the crop window's pixel aspect (anchored top-
+// left so window coords stay in source pixels), then zoompan — which animates
+// the region INSIDE one filter and always emits a constant output size (the
+// base window's pixel size). zoompan's region aspect always equals its input
+// aspect, which is exactly what the pad guarantees.
+//
+// zoomCtx = { fps, srcW, srcH }: the chain's CFR rate at this point (for the
+// in/FPS clock) and the source pixel dimensions (zoompan expressions need
+// absolute pixels; iw/ih inside zoompan are the PADDED dims). Without a valid
+// zoomCtx the zoom is ignored (pan-only fallback) — old queue snapshots have
+// no zoom keys, so this only affects hand-edited state.
+// Pad/zoompan geometry shared by the export segment AND the editor's zoom
+// floor — one source of truth, so the deepest zoom the UI lets you author is
+// exactly the deepest zoom the export can honor. zoompan hard-clamps its z
+// variable to [1,10]; z = padW/(w·srcW), so the honest window-width floor is
+// padW/(10·srcW) — and because pad inflates padW to the crop's aspect, that
+// floor arrives well before 10× when the base AR mismatches the source.
+function moZoomPadDims(srcW, srcH, cwN, chN) {
+  const outW = Math.max(2, Math.round((cwN * srcW) / 2) * 2);
+  const outH = Math.max(2, Math.round((chN * srcH) / 2) * 2);
+  const arPx = outW / outH;
+  // padH ≥ srcH and padW = padH·AR ≥ srcW by construction, so any window
+  // inside the source also fits inside the padded frame.
+  const padH = Math.max(srcH, Math.ceil(srcW / arPx));
+  const padW = Math.ceil(padH * arPx);
+  const minW = Math.min(1, padW / (10 * srcW));
+  return { outW, outH, arPx, padW, padH, minW };
+}
+
+function moCropVfSegment(crop, cropKeys, inPoint, zoomCtx) {
   const cx = Math.max(0, Math.min(1, crop.x)).toFixed(4);
   const cy = Math.max(0, Math.min(1, crop.y)).toFixed(4);
-  const cw = Math.max(0.01, Math.min(1, crop.w)).toFixed(4);
-  const ch = Math.max(0.01, Math.min(1, crop.h)).toFixed(4);
-  const keys = Array.isArray(cropKeys)
+  const cwN = Math.max(0.01, Math.min(1, crop.w));
+  const chN = Math.max(0.01, Math.min(1, crop.h));
+  const cw = cwN.toFixed(4);
+  const ch = chN.toFixed(4);
+  const ratio = chN / cwN; // normalized height per width (locked aspect)
+
+  // Normalize in ABSOLUTE time first — the in-point rebase below needs to
+  // interpolate across the original timeline.
+  const rawKeys = Array.isArray(cropKeys)
     ? cropKeys
         .filter((k) => Number.isFinite(k.t) && Number.isFinite(k.x) && Number.isFinite(k.y))
-        .map((k) => ({ t: Math.max(0, k.t - (inPoint || 0)), x: k.x, y: k.y }))
+        .map((k) => ({
+          t: k.t,
+          x: k.x,
+          y: k.y,
+          w: Number.isFinite(k.w) ? Math.max(0.02, Math.min(1, k.w)) : cwN,
+        }))
         .sort((p, q) => p.t - q.t)
     : null;
+
+  // Rebase to the encoded clip. Keys BEFORE the in-point must not pile up at
+  // t=0 — the export would replay a glide the preview shows as already
+  // finished. Bake the interpolated state AT the in-point into a synthetic
+  // first key and keep only the keys after it.
+  let keys = null;
+  if (rawKeys && rawKeys.length > 0) {
+    const ip = inPoint || 0;
+    if (rawKeys.length >= 2 && ip > rawKeys[0].t) {
+      const at = moCropKeysAt(rawKeys, ip, cwN, chN);
+      keys = [
+        { t: 0, x: at.x, y: at.y, w: at.w },
+        ...rawKeys.filter((k) => k.t > ip).map((k) => ({ t: k.t - ip, x: k.x, y: k.y, w: k.w })),
+      ];
+    } else {
+      keys = rawKeys.map((k) => ({ t: Math.max(0, k.t - ip), x: k.x, y: k.y, w: k.w }));
+    }
+  }
+
+  // A single key is a STATIC window at THE KEY's position and size — the
+  // preview interpolator returns that key everywhere, and the export must
+  // match it (the base-size fallback silently un-zoomed the file).
+  if (keys && keys.length === 1) {
+    const kw = Math.max(0.01, Math.min(1, keys[0].w));
+    const kh = Math.max(0.01, Math.min(1, kw * ratio));
+    const kx = Math.max(0, Math.min(1 - kw, keys[0].x)).toFixed(4);
+    const ky = Math.max(0, Math.min(1 - kh, keys[0].y)).toFixed(4);
+    return `crop=trunc(iw*${kw.toFixed(4)}/2)*2:trunc(ih*${kh.toFixed(4)}/2)*2:trunc(iw*${kx}):trunc(ih*${ky})`;
+  }
+
+  const zoomReady = zoomCtx && zoomCtx.srcW > 0 && zoomCtx.srcH > 0 && zoomCtx.fps > 0;
+  const hasZoom = !!(keys && keys.length >= 2 && zoomReady
+    && keys.some((k) => Math.abs(k.w - cwN) > 0.003));
+
+  if (hasZoom) {
+    const srcW = Math.round(zoomCtx.srcW), srcH = Math.round(zoomCtx.srcH);
+    const { outW, outH, arPx, padW, padH, minW } = moZoomPadDims(srcW, srcH, cwN, chN);
+    // Clamp to zoompan's honest floor — beyond it the filter silently caps.
+    for (const k of keys) k.w = Math.max(k.w, minW);
+    const fps = +zoomCtx.fps;
+    // Interpolate the WINDOW WIDTH — the exact curve the preview shows — and
+    // derive z from it. Interpolating z directly diverges mid-ramp because
+    // 1/lerp(1/w) ≠ lerp(w): the export led the preview by up to ~1.6×.
+    const wExpr = moZoomKeyExpr(keys, (k) => k.w, fps);
+    const z = `${padW}/((${wExpr})*${srcW})`;
+    // Clamp x/y to the SOURCE frame per-frame, mirroring moCropKeysAt.
+    // zoompan's own clamp is against the PADDED frame; on the padded axis
+    // that is looser than the source (the window could slide into the pad
+    // bars mid-ramp). Exactly one axis can be padded, so only that axis
+    // needs the explicit clip — keeps the expression length bounded.
+    const xpos = moZoomKeyExpr(keys, (k) => k.x * srcW, fps);
+    const ypos = moZoomKeyExpr(keys, (k) => k.y * srcH, fps);
+    const xe = padW > srcW ? `clip(${xpos},0,${srcW}-(${wExpr})*${srcW})` : xpos;
+    const ye = padH > srcH ? `clip(${ypos},0,${srcH}-(${wExpr})*${srcW}/${arPx.toFixed(6)})` : ypos;
+    return `pad=w=${padW}:h=${padH}:x=0:y=0,`
+      + `zoompan=z='${z}':x='${xe}':y='${ye}':d=1:fps=${(+fps.toFixed(4))}:s=${outW}x${outH}`;
+  }
   if (keys && keys.length >= 2) {
     const xe = moCropKeyExpr(keys, 'x');
     const ye = moCropKeyExpr(keys, 'y');
@@ -17821,13 +18049,20 @@ function moSimplifyTrackKeys(keys, tol, cap) {
       if (hi - lo < 2) continue;
       const a = keys[lo], b = keys[hi];
       const span = Math.max(1e-6, b.t - a.t);
+      // Window WIDTH is part of the curve: dropping a sample whose w departs
+      // from the endpoint lerp deletes the zoom profile (a position-pinned
+      // window would otherwise collapse a full zoom-and-return to 2 keys).
+      const hasW = Number.isFinite(a.w) && Number.isFinite(b.w);
       let worst = -1, worstErr = 0;
       for (let i = lo + 1; i < hi; i++) {
         const f = (keys[i].t - a.t) / span;
-        const err = Math.max(
+        let err = Math.max(
           Math.abs(keys[i].x - (a.x + (b.x - a.x) * f)),
           Math.abs(keys[i].y - (a.y + (b.y - a.y) * f)),
         );
+        if (hasW && Number.isFinite(keys[i].w)) {
+          err = Math.max(err, Math.abs(keys[i].w - (a.w + (b.w - a.w) * f)));
+        }
         if (err > worstErr) { worstErr = err; worst = i; }
       }
       if (worst >= 0 && worstErr > eps) {
@@ -18002,13 +18237,26 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   let revFrames = false;
   let outMode = 'out'; // 'out' | 'duration'
   let cropEnabled = false;
-  // Crop in normalized [0..1] coords relative to the actual video frame
+  // Crop in normalized [0..1] coords relative to the actual video frame.
+  // With keyframes present this is the LIVE window (position AND size follow
+  // the playhead interpolation); cropBase below stays authoritative.
   let cropNorm = { x: 0.1, y: 0.1, w: 0.8, h: 0.8 };
-  // Animated crop: keyframes {t, x, y} in source-video seconds, sorted by t.
-  // The window SIZE stays cropNorm.w/h (fixed per clip — see moCropVfSegment);
-  // keyframes move only the window. With <2 keys the crop is static.
-  /** @type {Array<{t:number, x:number, y:number}>} */
+  // The user-designed BASE window size: defines the locked aspect ratio for
+  // keyframed resizes and the export's output resolution. Updated only by
+  // deliberate size edits while NO keys exist (drag-resize, aspect buttons,
+  // reset) — never by playhead interpolation.
+  let cropBase = { w: 0.8, h: 0.8 };
+  // Animated crop: keyframes {t, x, y, w?} in source-video seconds, sorted by
+  // t. `w` (normalized width; height follows the base aspect) animates zoom —
+  // keys without it inherit cropBase.w. With <2 keys the crop is static.
+  /** @type {Array<{t:number, x:number, y:number, w?:number}>} */
   let cropKeys = [];
+  // Point-track state: the user-picked subject point {u, v} (normalized
+  // source coords) plus the playhead time when it was picked (the tracker
+  // anchors its template on that frame).
+  /** @type {{u:number, v:number, t:number}|null} */
+  let trackPoint = null;
+  let pointPickArmed = false;
   // Camera-in-camera output preview: when active the stage shows the cropped
   // view scaled to fill (what the export will actually look like).
   let camActive = false;
@@ -18062,6 +18310,17 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   }
   cropOverlay.appendChild(cropShade);
   cropOverlay.appendChild(cropRect);
+  // Point-track marker: the user-picked subject point. Right-click clears it.
+  const trackPointEl = moEl('div', 'mo-track-point', {
+    title: 'Tracking point — the tracker follows this. Right-click to clear.',
+  });
+  trackPointEl.style.display = 'none';
+  trackPointEl.addEventListener('contextmenu', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    trackPoint = null;
+    updateTrackPointUi();
+  });
+  cropOverlay.appendChild(trackPointEl);
   cropOverlay.style.display = 'none';
   stage.appendChild(cropOverlay);
 
@@ -18385,20 +18644,38 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     textContent: 'Auto-track',
     title: 'Follow the subject inside the crop window across the In→Out range and generate keyframes automatically. Position the window over the subject first; click again to cancel.',
   });
+  const pointBtn = moEl('button', 'mo-mark-btn', {
+    textContent: 'Point track',
+    title: 'Pick the exact thing to follow: click this, then click the subject on the video, size the crop window, and click again to run. Right-click the marker to clear the point.',
+  });
   const clearKeysBtn = moEl('button', 'mo-mark-btn', { textContent: 'Clear keys', title: 'Remove all crop keyframes (back to a static crop)' });
   const keyCount = moEl('span', 'mo-clip-keycount', { textContent: '' });
-  keyRow.append(addKeyBtn, trackBtn, clearKeysBtn, keyCount);
+  keyRow.append(addKeyBtn, trackBtn, pointBtn, clearKeysBtn, keyCount);
   secCrop.appendChild(keyRow);
   addKeyBtn.addEventListener('click', () => {
     if (!cropEnabled) return;
     upsertKeyAtPlayhead();
     status.textContent = `Crop keyframe set at ${moTimeStr(preview.currentTime)}.`;
   });
+  // Dropping to zero keys must snap the live rect back to the BASE size:
+  // syncCropToPlayhead no-ops without keys, so a playhead-interpolated zoom
+  // size would otherwise stay on screen while the export uses cropBase —
+  // the displayed window and the encoded window would disagree.
+  function resyncRectToBase() {
+    cropNorm = {
+      x: Math.max(0, Math.min(1 - cropBase.w, cropNorm.x)),
+      y: Math.max(0, Math.min(1 - cropBase.h, cropNorm.y)),
+      w: cropBase.w,
+      h: cropBase.h,
+    };
+    applyCropRect();
+  }
   clearKeysBtn.addEventListener('click', () => {
     if (cropKeys.length === 0) return;
     cropKeys = [];
+    resyncRectToBase();
     renderCropKeys();
-    status.textContent = 'Crop keyframes cleared — static crop.';
+    status.textContent = 'Crop keyframes cleared — static crop at the base window size.';
   });
   trackBtn.addEventListener('click', () => {
     runAutoTrack().catch((err) => {
@@ -18406,6 +18683,67 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       api.window.showErrorMessage('Auto-track failed: ' + (err && err.message || err));
     });
   });
+
+  // ── Point track: user picks the exact subject to follow ──
+  // Flow: arm → click the subject on the stage (marker appears) → size the
+  // crop window → click again ('Track point') to run. The picked point
+  // replaces the tracker's variance-guided template guess with ground truth.
+  function setPointPickArmed(on) {
+    pointPickArmed = on;
+    stage.classList.toggle('mo-pointpick', on);
+    pointBtn.classList.toggle('mo-active', on);
+    updateTrackPointUi();
+    if (on) status.textContent = 'Point track: click the subject on the video (Esc cancels).';
+    else if (!trackPoint) status.textContent = '';
+  }
+  function updateTrackPointUi() {
+    pointBtn.textContent = pointPickArmed ? 'Click subject…' : (trackPoint ? 'Track point' : 'Point track');
+    if (!trackPoint || !cropEnabled || camActive) { trackPointEl.style.display = 'none'; return; }
+    const r = getVideoDisplayRect();
+    trackPointEl.style.display = '';
+    trackPointEl.style.left = (r.dx + trackPoint.u * r.dw) + 'px';
+    trackPointEl.style.top = (r.dy + trackPoint.v * r.dh) + 'px';
+  }
+  pointBtn.addEventListener('click', () => {
+    if (tracking) { trackGen++; pointBtn.textContent = 'Cancelling…'; return; }
+    if (!cropEnabled) return;
+    if (pointPickArmed) { setPointPickArmed(false); return; }
+    if (camActive) {
+      api.window.showInformationMessage('Exit crop preview first — the tracking point is picked on the source view.');
+      return;
+    }
+    if (trackPoint) {
+      runAutoTrack({ point: trackPoint }).catch((err) => {
+        status.textContent = '';
+        api.window.showErrorMessage('Point track failed: ' + (err && err.message || err));
+      });
+      return;
+    }
+    setPointPickArmed(true);
+  });
+  // Capture-phase so the pick click never reaches the click-to-pause handler.
+  stage.addEventListener('click', (e) => {
+    if (!pointPickArmed) return;
+    // Stage-hosted controls (play/pause, crop preview) must keep working
+    // while armed — a click on a button is never the subject pick.
+    if (e.target && e.target.closest && e.target.closest('button')) return;
+    // A crop drag that ends over the stage synthesizes a click — never treat
+    // that as the pick.
+    if (Date.now() - lastCropDragEnd < 300) return;
+    e.preventDefault(); e.stopPropagation();
+    const r = getVideoDisplayRect();
+    const sr = stage.getBoundingClientRect();
+    const u = (e.clientX - sr.left - r.dx) / Math.max(1e-6, r.dw);
+    const v = (e.clientY - sr.top - r.dy) / Math.max(1e-6, r.dh);
+    if (u < 0 || u > 1 || v < 0 || v > 1) {
+      status.textContent = 'Point track: click inside the video image.';
+      return;
+    }
+    trackPoint = { u, v, t: Math.max(0, Math.min(duration, preview.currentTime)) };
+    setPointPickArmed(false);
+    updateTrackPointUi();
+    status.textContent = `Point set at ${moTimeStr(trackPoint.t)} — size the crop window, then click 'Track point' to run.`;
+  }, true);
 
   // Compute crop rect (in normalized [0..1] source coords) sized to a ratio,
   // centered on the current crop center, and clamped to the source frame.
@@ -18421,7 +18759,9 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     // Maximum width that fits ratio inside [0..1] source frame:
     // hN = wN * (vw/vh) / ratio  \u2192 we want wN<=1 and hN<=1
     const srcRatio = vw / vh;
-    let wN = Math.min(1, cropNorm.w);
+    // Start from the BASE width when keyframes exist — the live rect's size
+    // is playhead-interpolated under zoom keys and must not redefine the base.
+    let wN = Math.min(1, cropKeys.length ? cropBase.w : cropNorm.w);
     let hN = wN * srcRatio / ratio;
     if (hN > 1) {
       hN = 1;
@@ -18433,6 +18773,9 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     xN = Math.max(0, Math.min(1 - wN, xN));
     yN = Math.max(0, Math.min(1 - hN, yN));
     cropNorm = { x: xN, y: yN, w: wN, h: hN };
+    // Aspect buttons are a deliberate size edit: they re-define the BASE
+    // window (locked aspect + export output size), not just the live rect.
+    cropBase = { w: wN, h: hN };
     // The window size changed — keep every keyframe's window inside the frame
     // and record the recentered position at the playhead.
     if (cropKeys.length) { clampKeysToWindow(); upsertKeyAtPlayhead(); }
@@ -18774,7 +19117,8 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   // ── Hotkeys ──
   overlay.addEventListener('keydown', (e) => {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
-    if (e.key === 'i' || e.key === 'I') { e.preventDefault(); setInBtn.click(); }
+    if (e.key === 'Escape' && pointPickArmed) { e.preventDefault(); setPointPickArmed(false); }
+    else if (e.key === 'i' || e.key === 'I') { e.preventDefault(); setInBtn.click(); }
     else if (e.key === 'o' || e.key === 'O') { e.preventDefault(); setOutBtn.click(); }
     else if (e.key === 'k' || e.key === 'K') { e.preventDefault(); if (cropEnabled) addKeyBtn.click(); }
     else if (e.key === ',' || e.key === '.') {
@@ -18851,13 +19195,18 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   }
   function applyCropRect() {
     if (camActive) applyCameraView();
-    if (!cropEnabled || camActive) { cropOverlay.style.display = 'none'; return; }
+    if (!cropEnabled || camActive) {
+      cropOverlay.style.display = 'none';
+      try { updateTrackPointUi(); } catch { /* not built yet */ }
+      return;
+    }
     cropOverlay.style.display = '';
     const r = getVideoDisplayRect();
     cropRect.style.left = (r.dx + cropNorm.x * r.dw) + 'px';
     cropRect.style.top = (r.dy + cropNorm.y * r.dh) + 'px';
     cropRect.style.width = (cropNorm.w * r.dw) + 'px';
     cropRect.style.height = (cropNorm.h * r.dh) + 'px';
+    try { updateTrackPointUi(); } catch { /* not built yet */ }
   }
   cropChk.addEventListener('change', () => {
     cropEnabled = cropChk.checked;
@@ -18866,11 +19215,15 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     keyRow.style.display = cropEnabled ? '' : 'none';
     camBtn.style.display = cropEnabled ? '' : 'none';
     if (!cropEnabled && camActive) setCamActive(false);
+    // Disabling crop while pick mode is armed would strand a crosshair
+    // cursor with its disarm button hidden.
+    if (!cropEnabled && pointPickArmed) setPointPickArmed(false);
     renderCropKeys();
     applyCropRect();
   });
   cropResetBtn.addEventListener('click', () => {
     cropNorm = { x: 0.1, y: 0.1, w: 0.8, h: 0.8 };
+    cropBase = { w: 0.8, h: 0.8 };
     // Reset means "start the crop over" — stale keyframes would snap the
     // window right back on the next playhead sync, so they go too.
     cropKeys = [];
@@ -18883,12 +19236,19 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
 
   cropRect.addEventListener('mousedown', (e) => {
     if (e.target !== cropRect) return;
+    // Armed point pick takes priority: the subject usually sits INSIDE the
+    // crop window, and starting a drag here would stamp lastCropDragEnd and
+    // make the pick handler discard the very click the user was asked for.
+    if (pointPickArmed) return;
     e.preventDefault(); e.stopPropagation();
     cropDragging = true;
     const r0 = getVideoDisplayRect();
     const sx = e.clientX, sy = e.clientY;
     const start = { ...cropNorm };
+    let moved = false;
     const move = (ev) => {
+      if (!moved && Math.abs(ev.clientX - sx) < 3 && Math.abs(ev.clientY - sy) < 3) return;
+      moved = true;
       const dxN = (ev.clientX - sx) / r0.dw;
       const dyN = (ev.clientY - sy) / r0.dh;
       cropNorm.x = Math.max(0, Math.min(1 - start.w, start.x + dxN));
@@ -18899,6 +19259,10 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', up);
       cropDragging = false;
+      // A zero-move press is a CLICK, not an edit: no drag stamp (the
+      // click-to-pause handler may act on it) and, critically, no phantom
+      // keyframe written at the playhead.
+      if (!moved) return;
       lastCropDragEnd = Date.now();
       // With keyframes present, moving the window IS a keyframe edit at the
       // playhead (standard motion-editor behaviour).
@@ -18910,15 +19274,62 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   function bindCropHandle(dir) {
     const handleEl = cropHandles[dir];
     handleEl.addEventListener('mousedown', (e) => {
+      if (pointPickArmed) return; // armed pick owns the next click
       e.preventDefault(); e.stopPropagation();
       cropDragging = true;
       const r0 = getVideoDisplayRect();
       const sx = e.clientX, sy = e.clientY;
       const start = { ...cropNorm };
       const minN = 0.02;
+      // With keyframes present, resizing IS zooming: the drag is locked to
+      // the base aspect ratio (anchored at the opposite corner/edge) and the
+      // resulting width is captured into the keyframe at the playhead.
+      const zoomMode = cropKeys.length > 0;
+      const ratio = cropBase.h / Math.max(1e-6, cropBase.w); // normalized h per w
+      // Authorable zoom floor: zoompan clamps z at 10, so widths below
+      // padW/(10·srcW) cannot be honored on export — refuse to author them.
+      const zoomFloor = (zoomMode && preview.videoWidth > 0 && preview.videoHeight > 0)
+        ? Math.max(minN, moZoomPadDims(preview.videoWidth, preview.videoHeight, cropBase.w, cropBase.h).minW)
+        : minN;
+      let moved = false;
       const move = (ev) => {
+        if (!moved && Math.abs(ev.clientX - sx) < 3 && Math.abs(ev.clientY - sy) < 3) return;
+        moved = true;
         const dxN = (ev.clientX - sx) / r0.dw;
         const dyN = (ev.clientY - sy) / r0.dh;
+        if (zoomMode) {
+          // Primary axis: the handle's axis; corners take the larger pull.
+          const horiz = dir.includes('e') || dir.includes('w');
+          const vert = dir.includes('n') || dir.includes('s');
+          const sgnX = dir.includes('w') ? -1 : 1;
+          const sgnY = dir.includes('n') ? -1 : 1;
+          let dw;
+          if (horiz && vert) {
+            const dwFromX = sgnX * dxN;
+            const dwFromY = (sgnY * dyN) / Math.max(1e-6, ratio);
+            dw = Math.abs(dwFromX) >= Math.abs(dwFromY) ? dwFromX : dwFromY;
+          } else if (horiz) {
+            dw = sgnX * dxN;
+          } else {
+            dw = (sgnY * dyN) / Math.max(1e-6, ratio);
+          }
+          let w = Math.max(zoomFloor, Math.min(Math.min(1, 1 / Math.max(1e-6, ratio)), start.w + dw));
+          let hh = w * ratio;
+          // Anchor: opposite corner for corner handles; opposite edge with
+          // the cross-axis centered for edge handles.
+          let x = dir.includes('w') ? start.x + start.w - w
+            : dir.includes('e') ? start.x
+            : start.x + (start.w - w) / 2;
+          let y = dir.includes('n') ? start.y + start.h - hh
+            : dir.includes('s') ? start.y
+            : start.y + (start.h - hh) / 2;
+          // Clamp inside the frame, shrinking if the anchor pins us at an edge.
+          x = Math.max(0, Math.min(1 - w, x));
+          y = Math.max(0, Math.min(1 - hh, y));
+          cropNorm = { x, y, w, h: hh };
+          applyCropRect();
+          return;
+        }
         let { x, y, w, h: hh } = start;
         if (dir.includes('e')) w = Math.max(minN, Math.min(1 - x, start.w + dxN));
         if (dir.includes('s')) hh = Math.max(minN, Math.min(1 - y, start.h + dyN));
@@ -18939,10 +19350,17 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
         window.removeEventListener('mousemove', move);
         window.removeEventListener('mouseup', up);
         cropDragging = false;
+        if (!moved) return; // zero-move press: no stamp, no phantom key
         lastCropDragEnd = Date.now();
-        // Resizing changes the (per-clip) window size: re-clamp every
-        // keyframe against it and record the position at the playhead.
-        if (cropKeys.length) { clampKeysToWindow(); upsertKeyAtPlayhead(); }
+        if (zoomMode) {
+          // Zoom edit: keyframe the new size at the playhead. Base unchanged.
+          upsertKeyAtPlayhead();
+        } else {
+          // Static resize re-defines the base window (aspect + output size).
+          cropBase = { w: cropNorm.w, h: cropNorm.h };
+          if (cropKeys.length) { clampKeysToWindow(); upsertKeyAtPlayhead(); }
+          try { updateEstimate(); } catch { /* estimate host not ready */ }
+        }
       };
       window.addEventListener('mousemove', move);
       window.addEventListener('mouseup', up);
@@ -18952,16 +19370,26 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
 
   // ── Crop keyframes: playhead sync, markers, camera preview, auto-track ──
   function clampKeysToWindow() {
+    const ratio = cropBase.h / Math.max(1e-6, cropBase.w);
+    // Zoom floor: widths below padW/(10·srcW) cannot be honored on export
+    // (zoompan clamps z at 10) — clamp them here so preview never promises
+    // a zoom the file cannot deliver.
+    const floor = (preview.videoWidth > 0 && preview.videoHeight > 0)
+      ? Math.max(0.02, moZoomPadDims(preview.videoWidth, preview.videoHeight, cropBase.w, cropBase.h).minW)
+      : 0.02;
     for (const k of cropKeys) {
-      k.x = Math.max(0, Math.min(1 - cropNorm.w, k.x));
-      k.y = Math.max(0, Math.min(1 - cropNorm.h, k.y));
+      if (Number.isFinite(k.w)) k.w = Math.max(floor, Math.min(Math.min(1, 1 / Math.max(1e-6, ratio)), k.w));
+      const kw = Number.isFinite(k.w) ? k.w : cropBase.w;
+      const kh = kw * ratio;
+      k.x = Math.max(0, Math.min(1 - kw, k.x));
+      k.y = Math.max(0, Math.min(1 - kh, k.y));
     }
   }
 
   function syncCropToPlayhead() {
     if (!cropEnabled || cropDragging || cropKeys.length === 0) return;
-    const p = moCropKeysAt(cropKeys, preview.currentTime, cropNorm.w, cropNorm.h);
-    cropNorm.x = p.x; cropNorm.y = p.y;
+    const p = moCropKeysAt(cropKeys, preview.currentTime, cropBase.w, cropBase.h);
+    cropNorm = { x: p.x, y: p.y, w: p.w, h: p.h };
     applyCropRect();
   }
   preview.addEventListener('timeupdate', syncCropToPlayhead);
@@ -19008,6 +19436,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     camMask.style.height = mh + 'px';
   }
   function setCamActive(on) {
+    if (on && pointPickArmed) setPointPickArmed(false); // pick maps source coords only
     camActive = on;
     camBtn.classList.toggle('mo-active', on);
     camBtn.textContent = on ? 'Exit crop preview' : 'Preview crop';
@@ -19028,7 +19457,11 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     for (const k of cropKeys) {
       const m = moEl('div', 'mo-scrub-key');
       m.style.left = (duration > 0 ? (k.t / duration) * 100 : 0) + '%';
-      m.title = `Crop keyframe @ ${moTimeStr(k.t)} — click to seek · drag to retime · right-click to remove`;
+      const zoomed = Number.isFinite(k.w) && Math.abs(k.w - cropBase.w) > 0.003;
+      if (zoomed) m.classList.add('mo-scrub-key-zoom');
+      m.title = `Crop keyframe @ ${moTimeStr(k.t)}`
+        + (zoomed ? ` · zoom ${Math.round((cropBase.w / k.w) * 100)}%` : '')
+        + ' — click to seek · drag to retime · right-click to remove';
       m.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); beginKeyDrag(k, m, e); });
       m.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); removeKey(k); });
       keysLayer.appendChild(m);
@@ -19040,15 +19473,16 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   function upsertKeyAtPlayhead() {
     const t = Math.max(0, Math.min(duration, preview.currentTime));
     const near = cropKeys.find((k) => Math.abs(k.t - t) < 0.05);
-    if (near) { near.x = cropNorm.x; near.y = cropNorm.y; }
+    if (near) { near.x = cropNorm.x; near.y = cropNorm.y; near.w = cropNorm.w; }
     else {
-      cropKeys.push({ t, x: cropNorm.x, y: cropNorm.y });
+      cropKeys.push({ t, x: cropNorm.x, y: cropNorm.y, w: cropNorm.w });
       cropKeys.sort((a, b) => a.t - b.t);
     }
     renderCropKeys();
   }
   function removeKey(k) {
     cropKeys = cropKeys.filter((x) => x !== k);
+    if (cropKeys.length === 0) resyncRectToBase();
     renderCropKeys();
     syncCropToPlayhead();
   }
@@ -19094,20 +19528,31 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     await window.parallxElectron.fs.delete(d).catch(() => {});
   }
 
-  async function runAutoTrack() {
-    if (tracking) { trackGen++; trackBtn.textContent = 'Cancelling…'; return; }
+  async function runAutoTrack(runOpts = {}) {
+    const point = runOpts.point || null;
+    const btn = point ? pointBtn : trackBtn;
+    if (tracking) { trackGen++; btn.textContent = 'Cancelling…'; return; }
     if (!cropEnabled) return;
     if (!_toolPaths.ffmpeg) { api.window.showErrorMessage('ffmpeg not available — cannot auto-track.'); return; }
     const [a, b] = getInOut();
     if (b - a < 0.3) { api.window.showWarningMessage('Clip is too short to track — set In/Out first.'); return; }
+    // A point picked outside the In/Out range would silently anchor on a
+    // boundary frame where the subject may not be at the picked position.
+    if (point && (point.t < a - 0.05 || point.t > b + 0.05)) {
+      api.window.showWarningMessage(
+        `The tracking point was set at ${moTimeStr(point.t)}, outside the In/Out range — re-pick the point inside the clip, or widen In/Out.`);
+      return;
+    }
     const base = getThumbDir(api);
     if (!base) { api.window.showErrorMessage('Workspace unavailable — cannot extract tracking frames.'); return; }
 
     const myGen = ++trackGen;
     tracking = true;
-    trackBtn.classList.add('mo-active');
-    trackBtn.textContent = 'Extracting…';
-    status.textContent = 'Auto-track: position the crop window over the subject, then wait…';
+    btn.classList.add('mo-active');
+    btn.textContent = 'Extracting…';
+    status.textContent = point
+      ? 'Point track: following the picked subject…'
+      : 'Auto-track: position the crop window over the subject, then wait…';
     try {
       const len = Math.max(0.05, b - a);
       // Tracking cadence: fine enough to follow motion, cheap enough to stay
@@ -19170,34 +19615,65 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
         } catch { /* unreadable frame — the tracker coasts over it */ }
         grays.push(g);
         if ((i & 7) === 0) {
-          trackBtn.textContent = `Reading… ${Math.round((i / files.length) * 40)}%`;
+          btn.textContent = `Reading… ${Math.round((i / files.length) * 40)}%`;
           await new Promise((r) => setTimeout(r, 0));
         }
       }
       if (!fw || !fh) throw new Error('could not decode extracted frames');
 
-      // Anchor: the frame nearest the playhead — the user has framed the
-      // subject there.
+      // Anchor: the frame nearest the picked point's time (point mode — the
+      // subject is verifiably there) or the playhead (window mode — the user
+      // has framed the subject there).
       const frameT = (i) => a + i / fpsT;
-      let anchor = Math.round((Math.max(a, Math.min(b, preview.currentTime)) - a) * fpsT);
+      const anchorTime = point ? point.t : preview.currentTime;
+      let anchor = Math.round((Math.max(a, Math.min(b, anchorTime)) - a) * fpsT);
       anchor = Math.max(0, Math.min(files.length - 1, anchor));
       if (!grays[anchor]) {
         anchor = grays.findIndex((g) => !!g);
         if (anchor < 0) throw new Error('no decodable frames');
       }
-      const pos0 = cropKeys.length
-        ? moCropKeysAt(cropKeys, frameT(anchor), cropNorm.w, cropNorm.h)
-        : { x: cropNorm.x, y: cropNorm.y };
+      // Window state over time. Pre-existing keys (including zoom) define the
+      // window's size curve; the track rewrites positions but PRESERVES the
+      // zoom curve by re-sampling it per keyframe below.
+      const prevKeys = cropKeys.length ? cropKeys.slice() : null;
+      const zoomActive = !!(prevKeys && prevKeys.some((k) => Number.isFinite(k.w) && Math.abs(k.w - cropBase.w) > 0.003));
+      const winAt = (t) => prevKeys
+        ? moCropKeysAt(prevKeys, t, cropBase.w, cropBase.h)
+        : { x: cropNorm.x, y: cropNorm.y, w: cropBase.w, h: cropBase.h };
+      const pos0 = winAt(frameT(anchor));
       const clampI = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-      // Template: the most textured patch near the window's center (the
-      // subject), not a blind center-crop — the window is the OUTPUT frame
-      // and is often much larger than the subject, so the blind crop sampled
-      // flat background and tracked the wrong thing.
       const winX = pos0.x * fw, winY = pos0.y * fh;
-      const winW = Math.max(4, cropNorm.w * fw), winH = Math.max(4, cropNorm.h * fh);
-      const pick = moPickTemplateRect(grays[anchor], fw, fh, winX, winY, winW, winH);
-      if (!pick || pick.varr < 20) {
-        throw new Error('not enough detail inside the crop window to lock onto — tighten the window around the subject and re-run');
+      const winW = Math.max(4, pos0.w * fw), winH = Math.max(4, pos0.h * fh);
+      let pick;
+      if (point) {
+        // The user told us exactly what to follow: template centered on the
+        // picked point (clamped inside the frame), variance-checked so flat
+        // air still fails loudly instead of tracking noise.
+        const tSize = Math.max(16, Math.min(72, Math.round(Math.min(winW, winH) * 0.5)));
+        if (tSize > fw || tSize > fh) throw new Error('video too small to track');
+        const lx = clampI(Math.round(point.u * fw - tSize / 2), 0, fw - tSize);
+        const ly = clampI(Math.round(point.v * fh - tSize / 2), 0, fh - tSize);
+        let s = 0, ss = 0, n = 0;
+        for (let yy = 0; yy < tSize; yy += 2) {
+          for (let xx = 0; xx < tSize; xx += 2) {
+            const p = grays[anchor][(ly + yy) * fw + lx + xx];
+            s += p; ss += p * p; n++;
+          }
+        }
+        const varr = ss / n - (s / n) * (s / n);
+        if (varr < 20) {
+          throw new Error('not enough detail at the tracking point — pick a more textured spot on the subject and re-run');
+        }
+        pick = { lx, ly, t: tSize, varr };
+      } else {
+        // Template: the most textured patch near the window's center (the
+        // subject), not a blind center-crop — the window is the OUTPUT frame
+        // and is often much larger than the subject, so the blind crop sampled
+        // flat background and tracked the wrong thing.
+        pick = moPickTemplateRect(grays[anchor], fw, fh, winX, winY, winW, winH);
+        if (!pick || pick.varr < 20) {
+          throw new Error('not enough detail inside the crop window to lock onto — tighten the window around the subject and re-run');
+        }
       }
       const tpx = pick.t;
       const tpl = new Uint8ClampedArray(tpx * tpx);
@@ -19206,9 +19682,11 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       }
       const prep = moTrackPrepTemplate(tpl, tpx, tpx);
       // The template may sit off the window's exact center (it snapped to the
-      // subject's detail); keep that offset so the window doesn't jump.
-      const offX = (pick.lx + tpx / 2) - (winX + winW / 2);
-      const offY = (pick.ly + tpx / 2) - (winY + winH / 2);
+      // subject's detail / the user's point); keep that offset so the window
+      // doesn't jump. A picked point OUTSIDE the window centers instead.
+      let offX = (pick.lx + tpx / 2) - (winX + winW / 2);
+      let offY = (pick.ly + tpx / 2) - (winY + winH / 2);
+      if (point && (Math.abs(offX) > winW / 2 || Math.abs(offY) > winH / 2)) { offX = 0; offY = 0; }
 
       // Track outward from the anchor in both directions. The template stays
       // FIXED (anchor appearance) — no adaptive-template drift. The search
@@ -19232,7 +19710,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
         if (m.score < LOCK_MIN) { centers[i] = prev; }
         else { centers[i] = { x: m.cx, y: m.cy }; lockedCount++; }
         if (((done++) & 7) === 0) {
-          trackBtn.textContent = `Tracking… ${40 + Math.round((done / total) * 55)}%`;
+          btn.textContent = `Tracking… ${40 + Math.round((done / total) * 55)}%`;
           await new Promise((r) => setTimeout(r, 0));
         }
       };
@@ -19249,25 +19727,37 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
         }
         return { x: sx / n, y: sy / n };
       });
-      const dense = sm.map((c, i) => ({
-        t: frameT(i),
-        x: clampI((c.x - offX) / fw - cropNorm.w / 2, 0, 1 - cropNorm.w),
-        y: clampI((c.y - offY) / fh - cropNorm.h / 2, 0, 1 - cropNorm.h),
-      }));
+      const dense = sm.map((c, i) => {
+        // Window size per sample: preserve a pre-existing zoom curve; the
+        // track only rewrites positions.
+        const wi = zoomActive ? winAt(frameT(i)) : null;
+        const wN = wi ? wi.w : cropBase.w;
+        const hN = wi ? wi.h : cropBase.h;
+        const k = {
+          t: frameT(i),
+          x: clampI((c.x - offX) / fw - wN / 2, 0, 1 - wN),
+          y: clampI((c.y - offY) / fh - hN / 2, 0, 1 - hN),
+        };
+        if (zoomActive) k.w = wN;
+        return k;
+      });
       const keys = moSimplifyTrackKeys(dense, 0.005, 48);
       if (myGen !== trackGen) return;
       cropKeys = keys;
       renderCropKeys();
       syncCropToPlayhead();
       const lockedPct = Math.round((lockedCount / total) * 100);
-      status.textContent = `Auto-track done — ${keys.length} keyframes, locked ${lockedPct}% of frames.` +
+      status.textContent = `${point ? 'Point track' : 'Auto-track'} done — ${keys.length} keyframes, locked ${lockedPct}% of frames.` +
         (lockedPct < 60
-          ? ' Low lock rate — tighten the crop window around the subject and re-run.'
+          ? (point
+              ? ' Low lock rate — pick a more distinctive point (or a slower stretch) and re-run.'
+              : ' Low lock rate — tighten the crop window around the subject and re-run.')
           : ' Scrub to review; drag the window to correct.');
     } finally {
       tracking = false;
-      trackBtn.classList.remove('mo-active');
+      btn.classList.remove('mo-active');
       trackBtn.textContent = 'Auto-track';
+      updateTrackPointUi();
       cleanupTrackDir().catch(() => {});
     }
   }
@@ -19469,10 +19959,23 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       filter: filterSel.value,
       loops: parseInt(loopInput.value, 10) || 0,
       cropEnabled,
-      cropNorm: { ...cropNorm },
+      // Position from the live rect, size from the BASE window — the live
+      // rect's size is playhead-interpolated when zoom keys exist and must
+      // not leak into the persisted base.
+      cropNorm: { x: cropNorm.x, y: cropNorm.y, w: cropBase.w, h: cropBase.h },
+      cropBase: { ...cropBase },
       // Animated-crop keyframes (absolute source-video seconds). Empty array
-      // = static crop; snapshots predating this field restore to [].
-      cropKeys: cropKeys.map((k) => ({ t: k.t, x: k.x, y: k.y })),
+      // = static crop; snapshots predating this field restore to []. `w`
+      // (normalized width) animates zoom; height follows the base aspect.
+      cropKeys: cropKeys.map((k) => (Number.isFinite(k.w)
+        ? { t: k.t, x: k.x, y: k.y, w: k.w }
+        : { t: k.t, x: k.x, y: k.y })),
+      // Point-track subject (normalized source coords + pick time).
+      trackPoint: trackPoint ? { ...trackPoint } : null,
+      // Source pixel dimensions — the zoompan export path needs absolute
+      // pixels (see moCropVfSegment).
+      srcW: preview.videoWidth || 0,
+      srcH: preview.videoHeight || 0,
       name: '',
       thumb: null,
     };
@@ -19538,12 +20041,27 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     cropEnabled = !!c.cropEnabled;
     cropChk.checked = cropEnabled;
     cropNorm = { ...c.cropNorm };
+    cropBase = (c.cropBase && Number.isFinite(c.cropBase.w) && Number.isFinite(c.cropBase.h))
+      ? { ...c.cropBase }
+      : { w: cropNorm.w, h: cropNorm.h }; // pre-zoom snapshots: base = rect
+    trackPoint = (c.trackPoint && Number.isFinite(c.trackPoint.u) && Number.isFinite(c.trackPoint.v))
+      ? { u: c.trackPoint.u, v: c.trackPoint.v, t: Number.isFinite(c.trackPoint.t) ? c.trackPoint.t : 0 }
+      : null;
     cropKeys = Array.isArray(c.cropKeys)
       ? c.cropKeys
           .filter((k) => k && Number.isFinite(k.t) && Number.isFinite(k.x) && Number.isFinite(k.y))
-          .map((k) => ({ t: Math.max(0, Math.min(duration, k.t)), x: k.x, y: k.y }))
+          .map((k) => {
+            const key = { t: Math.max(0, Math.min(duration, k.t)), x: k.x, y: k.y };
+            if (Number.isFinite(k.w)) key.w = k.w;
+            return key;
+          })
           .sort((p, q) => p.t - q.t)
       : [];
+    // Re-clamp restored keys against this video's zoom floor and bounds
+    // (best-effort — dims may not be loaded yet; the floor re-applies on
+    // the next resize edit either way).
+    try { clampKeysToWindow(); } catch { /* ignore */ }
+    try { updateTrackPointUi(); } catch { /* overlay may not be ready */ }
     try { renderCropKeys(); } catch { /* markers layer may not be ready */ }
     try { applyCropRect(); } catch { /* ignore \u2014 overlay may not be ready */ }
     // Notify listeners
@@ -19971,7 +20489,9 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     const vw = preview.videoWidth || 1280;
     const vh = preview.videoHeight || 720;
     let w = vw, h = vh;
-    if (cropEnabled) { w *= cropNorm.w; h *= cropNorm.h; }
+    // Base window, not the live rect — with zoom keys the live size follows
+    // the playhead while the export always emits the base resolution.
+    if (cropEnabled) { w *= cropBase.w; h *= cropBase.h; }
     w = Math.max(2, w * scale);
     h = Math.max(2, h * scale);
     const pixels = w * h;
@@ -20056,7 +20576,11 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       (speedSel.value !== '1' ? ` · ${speedSel.value}×` : '');
     accSections.crop.sum.textContent = !cropEnabled
       ? 'Off'
-      : (cropKeys.length >= 2 ? `On · ${cropKeys.length} keys` : 'On · static');
+      : (cropKeys.length >= 2
+          ? `On · ${cropKeys.length} keys`
+            + (cropKeys.some((k) => Number.isFinite(k.w) && Math.abs(k.w - cropBase.w) > 0.003) ? ' · zoom' : '')
+            + (trackPoint ? ' · point' : '')
+          : 'On · static' + (trackPoint ? ' · point' : ''));
     const flt = MO_CLIP_FILTERS.find((x) => x.id === filterSel.value);
     const lookBits = [flt && flt.id !== 'none' ? flt.label : 'No filter'];
     if (muteChk.checked) lookBits.push('mute');
@@ -20153,7 +20677,14 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
               filter: c.filter || 'none',
               loops: c.loops,
               crop: c.cropEnabled ? { ...c.cropNorm } : null,
-              cropKeys: c.cropEnabled && Array.isArray(c.cropKeys) && c.cropKeys.length >= 2 ? c.cropKeys : null,
+              cropKeys: c.cropEnabled && Array.isArray(c.cropKeys) && c.cropKeys.length >= 1 ? c.cropKeys : null,
+              // ALWAYS the current video's dimensions. Snapshots (and presets
+              // cloned from them) persist the AUTHORING video's srcW/srcH;
+              // feeding those into the zoompan path on a different-resolution
+              // video either fails the filtergraph or misframes the window.
+              // Crop coords are normalized, so live dims are always correct.
+              srcW: preview.videoWidth || c.srcW || 0,
+              srcH: preview.videoHeight || c.srcH || 0,
               frameEdits: null,
               onProgress: ({ pct, etaMs }) => {
                 const pctStr = (pct * 100).toFixed(0).padStart(2, ' ');
@@ -20272,10 +20803,21 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
         dither: ditherSel.value,
         filter: filterSel.value,
         loops: parseInt(loopInput.value, 10) || 0,
-        // M59 P4: crop region (normalized [0..1] relative to source frame)
-        crop: cropEnabled ? { ...cropNorm } : null,
-        // Animated crop: ≥2 keyframes make the window glide (camera-in-camera)
-        cropKeys: cropEnabled && cropKeys.length >= 2 ? cropKeys.map((k) => ({ t: k.t, x: k.x, y: k.y })) : null,
+        // M59 P4: crop region (normalized [0..1] relative to source frame).
+        // Position from the live rect, size from the BASE window — with zoom
+        // keys the live rect's size is playhead-interpolated and must not
+        // define the export's output resolution.
+        crop: cropEnabled ? { x: cropNorm.x, y: cropNorm.y, w: cropBase.w, h: cropBase.h } : null,
+        // Keyframes: ≥2 animate the window (camera-in-camera); exactly 1 is a
+        // static window at THE KEY's position/size — it must reach the
+        // segment builder or a zoomed single key silently exports un-zoomed.
+        // Per-key `w` animates zoom (height follows the base aspect).
+        cropKeys: cropEnabled && cropKeys.length >= 1
+          ? cropKeys.map((k) => (Number.isFinite(k.w) ? { t: k.t, x: k.x, y: k.y, w: k.w } : { t: k.t, x: k.x, y: k.y }))
+          : null,
+        // Source dims — the zoompan export path needs absolute pixels.
+        srcW: preview.videoWidth || 0,
+        srcH: preview.videoHeight || 0,
         // M59 P2: per-frame edits (GIF only)
         frameEdits: useFrameEdits ? {
           frames: frames.map(f => ({ src: f.src, deleted: f.deleted, delayMs: f.delayMs })),
@@ -20312,7 +20854,9 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
         const vw = preview.videoWidth || 1280;
         const vh = preview.videoHeight || 720;
         let w = vw, h = vh;
-        if (cropEnabled) { w *= cropNorm.w; h *= cropNorm.h; }
+        // Base window = the export's actual output resolution; the live rect
+        // is playhead-interpolated under zoom keys and would poison the EMA.
+        if (cropEnabled) { w *= cropBase.w; h *= cropBase.h; }
         w = Math.max(2, w * scale);
         h = Math.max(2, h * scale);
         moRecordGifBppObservation({
@@ -20470,7 +21014,8 @@ async function moExportClip(api, opts) {
   // Crop also precedes setpts/reverse, so t here is source-clip time and
   // keyframes stay correct under speed changes and reversal.
   if (opts.crop && opts.crop.w > 0 && opts.crop.h > 0) {
-    filters.push(moCropVfSegment(opts.crop, opts.cropKeys, opts.inPoint));
+    filters.push(moCropVfSegment(opts.crop, opts.cropKeys, opts.inPoint,
+      { fps: opts.fps, srcW: opts.srcW || 0, srcH: opts.srcH || 0 }));
   }
   if (opts.scalePct !== 100) {
     const s = (opts.scalePct / 100).toFixed(3);
@@ -20754,7 +21299,10 @@ async function moExportGifWithFrameEdits(api, opts, outPath) {
     const scaleS = (opts.scalePct / 100).toFixed(3);
     const extractParts = [`fps=${stripFps.toFixed(4)}`];
     if (opts.crop && opts.crop.w > 0 && opts.crop.h > 0) {
-      extractParts.push(moCropVfSegment(opts.crop, opts.cropKeys, opts.inPoint));
+      // zoomCtx fps must be THIS chain's rate (the strip cadence), not the
+      // export fps — zoompan's in/FPS clock counts the frames it actually sees.
+      extractParts.push(moCropVfSegment(opts.crop, opts.cropKeys, opts.inPoint,
+        { fps: stripFps, srcW: opts.srcW || 0, srcH: opts.srcH || 0 }));
     }
     extractParts.push(`scale=trunc(iw*${scaleS}/2)*2:trunc(ih*${scaleS}/2)*2`);
     {
@@ -21452,13 +22000,11 @@ function moRebuildSearchIndex() {
 // flows that mutate a known subset (duplicate resolver, empty trash) and
 // don't want to pay for a full rebuild.
 async function _refreshFtsForIds(photoIds, videoIds) {
-  if ((photoIds?.length || 0) > 0) {
-    const ph = `(${photoIds.map(() => '?').join(',')})`;
-    try { await db.run(`DELETE FROM mo_photos_fts WHERE rowid IN ${ph}`, photoIds); } catch { /* fts may be absent */ }
+  for (const chunk of _sqlChunks(photoIds || [])) {
+    try { await db.run(`DELETE FROM mo_photos_fts WHERE rowid IN (${_qMarks(chunk)})`, chunk); } catch { /* fts may be absent */ }
   }
-  if ((videoIds?.length || 0) > 0) {
-    const vh = `(${videoIds.map(() => '?').join(',')})`;
-    try { await db.run(`DELETE FROM mo_videos_fts WHERE rowid IN ${vh}`, videoIds); } catch { /* fts may be absent */ }
+  for (const chunk of _sqlChunks(videoIds || [])) {
+    try { await db.run(`DELETE FROM mo_videos_fts WHERE rowid IN (${_qMarks(chunk)})`, chunk); } catch { /* fts may be absent */ }
   }
 }
 
@@ -22199,51 +22745,75 @@ async function _tryEraseWithEraser(api, filePaths) {
   // - /quiet is required when spawned headlessly (windowsHide:true) — without
   //   it Eraser tries to open a console window, fails, and exits with a CLR
   //   exception code (0xE0434352) even though the erase still succeeds.
-  const args = ['addtask', '/quiet', '/schedule=now', ...filePaths.map((p) => `file=${p}`)];
+  //
+  // Windows caps a process command line at 32,767 chars, so the file= args
+  // are packed into as many addtask invocations as needed — a few hundred
+  // long media paths used to blow the limit and fail the ENTIRE spawn.
+  const fixedLen = cfgPath.length + 'addtask /quiet /schedule=now'.length + 32;
+  const chunks = [];
+  let cur = [];
+  let curLen = fixedLen;
+  for (const p of filePaths) {
+    const argLen = p.length + 10; // 'file=' + quoting/separator slack
+    if (cur.length > 0 && curLen + argLen > ERASER_CMDLINE_BUDGET) {
+      chunks.push(cur);
+      cur = [];
+      curLen = fixedLen;
+    }
+    cur.push(p);
+    curLen += argLen;
+  }
+  if (cur.length > 0) chunks.push(cur);
 
   // Fire-and-forget remains (Eraser.exe's exit can take seconds-to-minutes
   // for the multi-pass overwrite, and we MUST NOT block the renderer that
-  // long — see c92440a). But we expose the spawn promise to the caller via
-  // _pendingEraserSpawn so it can detect a failed enqueue and unwind the
-  // pending-commit batch instead of leaving the source IDs locked in
+  // long — see c92440a). But we expose the combined spawn promise to the
+  // caller via _lastEraserSpawn so it can detect a failed enqueue and unwind
+  // the pending-commit batch instead of leaving the source IDs locked in
   // _pendingEraserCommits for the 1-hour deadline. Without this, an Eraser
   // CLI failure (wrong args, missing service, denied path, etc.) made every
   // subsequent Delete on the same files hit the _isAnyIdPendingErase
   // short-circuit and silently no-op.
-  const spawnPromise = window.parallxElectron.terminal.execStream(
-    { command: cfgPath, args, timeout: 0 },
-    {}
-  );
+  const chunkPromises = chunks.map((chunk) => {
+    const args = ['addtask', '/quiet', '/schedule=now', ...chunk.map((p) => `file=${p}`)];
+    return window.parallxElectron.terminal.execStream({ command: cfgPath, args, timeout: 0 }, {})
+      .then((result) => _handleEraserSpawnResult(api, cfgPath, result))
+      .catch((err) => {
+        api.window.showErrorMessage(`Eraser spawn failed: ${err?.message || err}.`);
+        return false;
+      });
+  });
   _lastEraserSpawn = {
     paths: filePaths.slice(),
-    promise: spawnPromise.then((result) => {
-      if (result.error || (typeof result.exitCode === 'number' && result.exitCode !== 0)) {
-        const reason = result.error?.message || `exit ${result.exitCode}`;
-        const isMissing = result.error?.code === 'ENOENT' || /ENOENT|not found|cannot find/i.test(reason);
-        if (isMissing) {
-          _eraserAvail.lastFailedPath = cfgPath;
-          if (!_eraserAvail.missingNotified) {
-            _eraserAvail.missingNotified = true;
-            api.window.showInformationMessage(
-              `Eraser not found at ${cfgPath} — falling back to recycle bin. Set mediaOrganizer.eraserPath in settings to point at your install.`
-            );
-          }
-        } else {
-          api.window.showErrorMessage(`Eraser failed to queue task: ${reason}. Falling back to recycle bin will need a manual retry.`);
-        }
-        return false;
-      }
-      // Successful queue resets dedupe gate so a future install/uninstall
-      // cycle starts fresh.
-      _eraserAvail.lastFailedPath = null;
-      _eraserAvail.missingNotified = false;
-      return true;
-    }).catch((err) => {
-      api.window.showErrorMessage(`Eraser spawn failed: ${err?.message || err}.`);
-      return false;
-    }),
+    promise: Promise.all(chunkPromises).then((oks) => oks.every(Boolean)),
   };
 
+  return true;
+}
+
+// Per-spawn result handling shared by every addtask chunk. Returns true when
+// the chunk queued successfully.
+function _handleEraserSpawnResult(api, cfgPath, result) {
+  if (result.error || (typeof result.exitCode === 'number' && result.exitCode !== 0)) {
+    const reason = result.error?.message || `exit ${result.exitCode}`;
+    const isMissing = result.error?.code === 'ENOENT' || /ENOENT|not found|cannot find/i.test(reason);
+    if (isMissing) {
+      _eraserAvail.lastFailedPath = cfgPath;
+      if (!_eraserAvail.missingNotified) {
+        _eraserAvail.missingNotified = true;
+        api.window.showInformationMessage(
+          `Eraser not found at ${cfgPath} — falling back to recycle bin. Set mediaOrganizer.eraserPath in settings to point at your install.`
+        );
+      }
+    } else {
+      api.window.showErrorMessage(`Eraser failed to queue task: ${reason}. Falling back to recycle bin will need a manual retry.`);
+    }
+    return false;
+  }
+  // Successful queue resets dedupe gate so a future install/uninstall
+  // cycle starts fresh.
+  _eraserAvail.lastFailedPath = null;
+  _eraserAvail.missingNotified = false;
   return true;
 }
 
@@ -22281,13 +22851,56 @@ let _lastEraserSpawn = null;
 // long-running secure-overwrite jobs (which can run for tens of minutes on
 // large files / multi-pass profiles).
 const MAX_PENDING_BATCHES = 32;
+const ERASER_CMDLINE_BUDGET = 30000; // headroom under the 32,767-char Windows limit
+const ERASE_EXISTS_CHUNK = 16;       // parallel fs.exists per polling burst
+
 const _pendingEraserCommits = {
+  api: null,  // captured at schedule time so the module-level tick can toast/commit
   timer: null,
-  batches: [], // { fileRows, photoIds, videoIds, deadlineMs }
+  batches: [], // { fileRows, photoIds, videoIds, deadlineMs, remaining: Set<sourcePath> }
   pendingPhotoIds: new Set(),
   pendingVideoIds: new Set(),
   tickCount: 0,
 };
+
+// norm(sourcePath) → { batch, original } for every path not yet confirmed
+// gone. Gives the watcher/scan pipelines an O(1) "is this file mid-erase?"
+// check, and lets a stat-verified 'deleted' watcher event resolve the exact
+// batch entry without polling.
+const _erasePathIndex = new Map();
+
+function _normErasePath(p) {
+  return _isWindows ? String(p).replace(/\//g, '\\').toLowerCase() : String(p);
+}
+
+/** True iff this absolute path is currently queued for secure erasure. */
+function _isPathPendingErase(p) {
+  return _erasePathIndex.size > 0 && _erasePathIndex.has(_normErasePath(p));
+}
+
+/**
+ * Watcher choke point. Returns true when the event belongs to a mid-erase
+ * path and must NOT enter the normal watcher pipeline:
+ *   - 'changed'/'created' → Eraser's overwrite passes; swallow (settle-polls
+ *     and re-hashing a dying multi-GB file were the single biggest source of
+ *     "app lags while Eraser runs").
+ *   - 'deleted' → the main process stat-verified the unlink; that IS the
+ *     "disk caught up" signal the poll loop was waiting for. Mark the path
+ *     done and, when its batch drains, kick an immediate verify+commit tick
+ *     instead of waiting up to 30s for the next poll.
+ */
+function _eraserInterceptWatchEvent(evt) {
+  if (_erasePathIndex.size === 0) return false;
+  const norm = _normErasePath(evt.path);
+  const entry = _erasePathIndex.get(norm);
+  if (!entry) return false;
+  if (evt.type === 'deleted') {
+    entry.batch.remaining.delete(entry.original);
+    _erasePathIndex.delete(norm);
+    if (entry.batch.remaining.size === 0) _kickEraserTick(250);
+  }
+  return true;
+}
 
 function _pendingErasePath(api) {
   const folders = api.workspace.workspaceFolders;
@@ -22368,11 +22981,10 @@ function _isAnyIdPendingErase(items) {
  * batch by fileRows identity (same array reference we passed in).
  */
 function _unwindPendingEraseBatch(api, photoIds, videoIds, fileRows) {
-  const before = _pendingEraserCommits.batches.length;
-  _pendingEraserCommits.batches = _pendingEraserCommits.batches.filter((b) => b.fileRows !== fileRows);
-  if (_pendingEraserCommits.batches.length === before) return; // already committed or expired
-  for (const id of photoIds) _pendingEraserCommits.pendingPhotoIds.delete(id);
-  for (const id of videoIds) _pendingEraserCommits.pendingVideoIds.delete(id);
+  const idx = _pendingEraserCommits.batches.findIndex((b) => b.fileRows === fileRows);
+  if (idx < 0) return; // already committed or expired
+  const [batch] = _pendingEraserCommits.batches.splice(idx, 1);
+  _releaseEraseBatch(batch);
   if (_pendingEraserCommits.batches.length === 0 && _pendingEraserCommits.timer) {
     clearTimeout(_pendingEraserCommits.timer);
     _pendingEraserCommits.timer = null;
@@ -22380,6 +22992,14 @@ function _unwindPendingEraseBatch(api, photoIds, videoIds, fileRows) {
   }
   _refreshErasingDecoration();
   _persistPendingQueue(api).catch(() => {});
+}
+
+/** Drop a batch's ids from the pending sets and its paths from the index. */
+function _releaseEraseBatch(batch) {
+  for (const id of batch.photoIds) _pendingEraserCommits.pendingPhotoIds.delete(id);
+  for (const id of batch.videoIds) _pendingEraserCommits.pendingVideoIds.delete(id);
+  for (const p of batch.remaining) _erasePathIndex.delete(_normErasePath(p));
+  batch.remaining.clear();
 }
 
 /** Walk the current grid DOM and toggle the .mo-card-erasing decoration. */
@@ -22420,128 +23040,309 @@ function _scheduleEraserCommit(api, batch) {
   }
   for (const id of batch.photoIds) _pendingEraserCommits.pendingPhotoIds.add(id);
   for (const id of batch.videoIds) _pendingEraserCommits.pendingVideoIds.add(id);
-  _pendingEraserCommits.batches.push({
+  const entry = {
     fileRows: batch.fileRows,
     photoIds: batch.photoIds,
     videoIds: batch.videoIds,
     deadlineMs: Number.isFinite(batch._resumedDeadlineMs)
       ? batch._resumedDeadlineMs
       : Date.now() + 60 * 60 * 1000, // 1 h safety; gives up after that
-  });
+    remaining: new Set(),
+  };
+  for (const fr of batch.fileRows) {
+    if (!fr.sourcePath) continue;
+    const norm = _normErasePath(fr.sourcePath);
+    if (_erasePathIndex.has(norm)) continue; // duplicate path within the batch
+    _erasePathIndex.set(norm, { batch: entry, original: fr.sourcePath });
+    entry.remaining.add(fr.sourcePath);
+  }
+  _pendingEraserCommits.api = api;
+  _pendingEraserCommits.batches.push(entry);
   _refreshErasingDecoration();
   _persistPendingQueue(api).catch(() => {});
 
-  if (_pendingEraserCommits.timer) return true;
-  _pendingEraserCommits.tickCount = 0;
+  if (!_pendingEraserCommits.timer) {
+    _pendingEraserCommits.tickCount = 0;
+    _kickEraserTick(_nextPollDelay(0));
+  }
+  return true;
+}
 
-  const tick = async () => {
-    _pendingEraserCommits.timer = null;
-    _pendingEraserCommits.tickCount++;
-    const stillPending = [];
-    let mutated = false;
-    for (const b of _pendingEraserCommits.batches) {
-      const ready = await _allPathsGone(b.fileRows.map((fr) => fr.sourcePath));
-      const expired = Date.now() > b.deadlineMs;
-      if (ready) {
+/** (Re)arm the poll timer. Watcher-driven completions pass a short delay. */
+function _kickEraserTick(delayMs) {
+  if (_pendingEraserCommits.timer) clearTimeout(_pendingEraserCommits.timer);
+  _pendingEraserCommits.timer = setTimeout(_eraserTick, delayMs);
+}
+
+async function _eraserTick() {
+  _pendingEraserCommits.timer = null;
+  _pendingEraserCommits.tickCount++;
+  try {
+    await _eraserTickBody();
+  } catch (err) {
+    // A failed tick must never kill the loop — batches would sit locked
+    // until the next Delete. Log, then fall through to re-arm below.
+    console.warn('[MediaOrganizer] Eraser commit tick failed:', err?.message || err);
+    if (_pendingEraserCommits.batches.length > 0) {
+      _kickEraserTick(_nextPollDelay(_pendingEraserCommits.tickCount));
+    }
+  }
+}
+
+async function _eraserTickBody() {
+  const api = _pendingEraserCommits.api;
+  const stillPending = [];
+  let mutated = false;
+  for (const b of _pendingEraserCommits.batches) {
+    if (b.remaining.size > 0) await _checkBatchRemaining(b);
+    if (b.remaining.size === 0) {
+      // Belt-and-braces: re-verify EVERY path before touching the DB. The
+      // remaining set drained via stat-verified watcher events and/or exists
+      // polls, but the commit invariant — disk and DB agree — is cheap to
+      // re-prove here because the files are genuinely gone (fast negative
+      // stats). Anything still alive goes back into the poll.
+      const alive = await _pathsStillAlive(b);
+      if (alive.length === 0) {
         try {
           await _commitMediaPurge(api, b.photoIds, b.videoIds, b.fileRows);
         } catch (err) {
           api.window.showWarningMessage(`Library cleanup after Eraser failed: ${err?.message || err}`);
         }
-        for (const id of b.photoIds) _pendingEraserCommits.pendingPhotoIds.delete(id);
-        for (const id of b.videoIds) _pendingEraserCommits.pendingVideoIds.delete(id);
+        _releaseEraseBatch(b);
         mutated = true;
-      } else if (expired) {
-        api.window.showWarningMessage(
-          `Eraser timeout: ${b.fileRows.length} file(s) didn't disappear within an hour. Library entries left intact; restart Parallx to reconcile if Eraser eventually finishes.`
-        );
-        for (const id of b.photoIds) _pendingEraserCommits.pendingPhotoIds.delete(id);
-        for (const id of b.videoIds) _pendingEraserCommits.pendingVideoIds.delete(id);
-        mutated = true;
-      } else {
-        stillPending.push(b);
+        continue;
+      }
+      for (const orig of alive) {
+        b.remaining.add(orig);
+        _erasePathIndex.set(_normErasePath(orig), { batch: b, original: orig });
       }
     }
-    _pendingEraserCommits.batches = stillPending;
-    if (mutated) {
-      _refreshErasingDecoration();
-      _persistPendingQueue(api).catch(() => {});
-    }
-    if (stillPending.length > 0) {
-      _pendingEraserCommits.timer = setTimeout(tick, _nextPollDelay(_pendingEraserCommits.tickCount));
+    if (Date.now() > b.deadlineMs) {
+      api.window.showWarningMessage(
+        `Eraser timeout: ${b.fileRows.length} file(s) didn't disappear within an hour. Library entries left intact; restart Parallx to reconcile if Eraser eventually finishes.`
+      );
+      _releaseEraseBatch(b);
+      mutated = true;
     } else {
-      _pendingEraserCommits.tickCount = 0;
+      stillPending.push(b);
     }
-  };
-  _pendingEraserCommits.timer = setTimeout(tick, _nextPollDelay(0));
-  return true;
+  }
+  _pendingEraserCommits.batches = stillPending;
+  if (mutated) {
+    _refreshErasingDecoration();
+    _persistPendingQueue(api).catch(() => {});
+  }
+  if (stillPending.length > 0) {
+    _kickEraserTick(_nextPollDelay(_pendingEraserCommits.tickCount));
+  } else {
+    _pendingEraserCommits.tickCount = 0;
+  }
 }
 
-async function _allPathsGone(paths) {
-  // Parallel exists checks — sequential round-trips are wasteful for batches
-  // with hundreds of files and stall the polling cadence.
-  const results = await Promise.all(
-    paths.map((p) => window.parallxElectron.fs.exists(p).catch(() => true))
+/**
+ * Poll only the paths not yet confirmed gone, in small parallel chunks, and
+ * STOP at the first chunk that still has a live file. During an active
+ * multi-pass overwrite most paths still exist, so the old
+ * check-every-path-every-tick approach fired hundreds of fs:exists IPC stats
+ * per tick against a disk Eraser was already saturating — this typically
+ * costs one chunk per tick instead. A path removed here (or by a watcher
+ * 'deleted' event) is never re-checked: gone files stay gone.
+ */
+async function _checkBatchRemaining(batch) {
+  const pending = [...batch.remaining];
+  for (let i = 0; i < pending.length; i += ERASE_EXISTS_CHUNK) {
+    const chunk = pending.slice(i, i + ERASE_EXISTS_CHUNK);
+    const alive = await Promise.all(
+      chunk.map((p) => window.parallxElectron.fs.exists(p).catch(() => true))
+    );
+    let anyAlive = false;
+    for (let j = 0; j < chunk.length; j++) {
+      if (alive[j]) { anyAlive = true; continue; }
+      batch.remaining.delete(chunk[j]);
+      _erasePathIndex.delete(_normErasePath(chunk[j]));
+    }
+    if (anyAlive) return; // Eraser works roughly in order — the rest is alive too
+  }
+}
+
+/** Full verification sweep over a batch's unique source paths. Returns the
+ *  paths that still exist on disk (empty array = safe to commit). */
+async function _pathsStillAlive(batch) {
+  const seen = new Set();
+  const paths = [];
+  for (const fr of batch.fileRows) {
+    if (fr.sourcePath && !seen.has(fr.sourcePath)) {
+      seen.add(fr.sourcePath);
+      paths.push(fr.sourcePath);
+    }
+  }
+  const alive = [];
+  for (let i = 0; i < paths.length; i += ERASE_EXISTS_CHUNK) {
+    const chunk = paths.slice(i, i + ERASE_EXISTS_CHUNK);
+    const results = await Promise.all(
+      chunk.map((p) => window.parallxElectron.fs.exists(p).catch(() => true))
+    );
+    for (let j = 0; j < chunk.length; j++) {
+      if (results[j]) alive.push(chunk[j]);
+    }
+  }
+  return alive;
+}
+
+// ── Set-based purge plumbing ────────────────────────────────────────────────
+// Every db.* call is a renderer→main→worker round-trip; the per-row loops the
+// purge paths used before cost thousands of sequential round-trips for a
+// large delete and visibly churned the renderer event loop. These helpers
+// collapse each cleanup into a handful of IN-list statements inside one
+// transaction. IN lists are chunked well under SQLite's parameter limit.
+
+const SQL_ID_CHUNK = 500;
+
+function _sqlChunks(arr, size = SQL_ID_CHUNK) {
+  const out = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+function _qMarks(arr) {
+  return arr.map(() => '?').join(',');
+}
+
+/** Run `fn(item, index)` over items with at most `limit` in flight. */
+async function _mapBounded(items, limit, fn) {
+  const results = new Array(items.length);
+  let next = 0;
+  const lanes = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i], i);
+    }
+  });
+  await Promise.all(lanes);
+  return results;
+}
+
+/**
+ * Delete thumbnail + cover-frame files for checksums that no surviving
+ * mo_fingerprints row references, then evict the renderer-side caches that
+ * could otherwise serve stale bytes back to a future card with the same
+ * path (`_blobUrlCache` keys by file path and would keep OLD content after
+ * a same-checksum regeneration). Call AFTER the owning rows are deleted so
+ * the still-referenced check sees only genuine survivors.
+ */
+async function _sweepOrphanThumbs(api, checksums) {
+  const list = [...new Set([...checksums].filter(Boolean))];
+  if (list.length === 0) return;
+  const thumbDir = getThumbDir(api);
+  if (!thumbDir) return;
+  const stillRef = new Set();
+  for (const chunk of _sqlChunks(list)) {
+    const rows = await db.all(
+      `SELECT DISTINCT value FROM mo_fingerprints WHERE type = 'md5' AND value IN (${_qMarks(chunk)})`,
+      chunk
+    );
+    for (const r of rows) stillRef.add(r.value);
+  }
+  const deadPaths = [];
+  for (const ck of list) {
+    if (stillRef.has(ck)) continue;
+    deadPaths.push(getThumbnailPath(thumbDir, ck, THUMB_MAX_SIZE), getCoverFramePath(thumbDir, ck));
+  }
+  if (deadPaths.length === 0) return;
+  await _mapBounded(deadPaths, 16, (p) =>
+    window.parallxElectron.fs.delete(p, { useTrash: false }).catch(() => { /* missing thumbs are fine */ })
   );
-  return results.every((e) => !e);
+  _revokeCachedBlobUrlsFor(deadPaths);
+}
+
+/**
+ * Purge mo_files rows by id, plus every photo/video that loses its LAST
+ * backing file — one transaction. FK cascades wipe the join tables and
+ * fingerprints. FTS/thumb/cache cleanup is the caller's job (they know api
+ * context and checksums). fileEntries: [{ id, checksum }].
+ */
+async function _purgeFileRowsSetBased(fileEntries) {
+  const fileIds = [...new Set(fileEntries.map((e) => e.id))];
+  if (fileIds.length === 0) return { purgedFiles: 0, purgedPhotoIds: [], purgedVideoIds: [] };
+  const gone = new Set(fileIds);
+
+  const candPhotoIds = new Set();
+  const candVideoIds = new Set();
+  for (const chunk of _sqlChunks(fileIds)) {
+    const ph = _qMarks(chunk);
+    for (const r of await db.all(`SELECT DISTINCT photo_id AS id FROM mo_photos_files WHERE file_id IN (${ph})`, chunk)) candPhotoIds.add(r.id);
+    for (const r of await db.all(`SELECT DISTINCT video_id AS id FROM mo_videos_files WHERE file_id IN (${ph})`, chunk)) candVideoIds.add(r.id);
+  }
+  const purgedPhotoIds = await _idsFullyBacked('mo_photos_files', 'photo_id', candPhotoIds, gone);
+  const purgedVideoIds = await _idsFullyBacked('mo_videos_files', 'video_id', candVideoIds, gone);
+
+  const ops = [];
+  for (const chunk of _sqlChunks(purgedPhotoIds)) ops.push({ type: 'run', sql: `DELETE FROM mo_photos WHERE id IN (${_qMarks(chunk)})`, params: chunk });
+  for (const chunk of _sqlChunks(purgedVideoIds)) ops.push({ type: 'run', sql: `DELETE FROM mo_videos WHERE id IN (${_qMarks(chunk)})`, params: chunk });
+  for (const chunk of _sqlChunks(fileIds)) ops.push({ type: 'run', sql: `DELETE FROM mo_files WHERE id IN (${_qMarks(chunk)})`, params: chunk });
+  await db.transaction(ops);
+
+  return { purgedFiles: fileIds.length, purgedPhotoIds, purgedVideoIds };
+}
+
+/** Of the candidate entity ids, return those whose backing files are ALL in
+ *  `goneFileIds` — i.e. the entities that die with this purge. */
+async function _idsFullyBacked(joinTable, entityCol, candidateIds, goneFileIds) {
+  const cand = [...candidateIds];
+  const out = [];
+  for (const chunk of _sqlChunks(cand)) {
+    const links = await db.all(
+      `SELECT ${entityCol} AS eid, file_id AS fid FROM ${joinTable} WHERE ${entityCol} IN (${_qMarks(chunk)})`,
+      chunk
+    );
+    const survives = new Set();
+    for (const l of links) {
+      if (!goneFileIds.has(l.fid)) survives.add(l.eid);
+    }
+    for (const id of chunk) {
+      if (!survives.has(id)) out.push(id);
+    }
+  }
+  return out;
 }
 
 // Run the original step 2-7 DB cleanup. Extracted so the deferred Eraser
 // path can call it after disk has caught up, and the synchronous (recycle
 // bin) path can call it immediately after the unlinks land.
 async function _commitMediaPurge(api, photoIds, videoIds, fileRows) {
-  // 2. Hard-delete the domain rows.
-  for (const id of photoIds) await db.run(`DELETE FROM mo_photos WHERE id = ?`, [id]);
-  for (const id of videoIds) await db.run(`DELETE FROM mo_videos WHERE id = ?`, [id]);
+  const candidateFileIds = [...new Set(fileRows.map((fr) => fr.fileId))];
 
-  // 3. Hard-delete now-orphan mo_files rows.
-  const orphanFileIds = new Set();
-  for (const fr of fileRows) {
-    const stillUsed = await db.get(
-      `SELECT 1 AS used FROM mo_photos_files WHERE file_id = ?
-        UNION ALL
-       SELECT 1 AS used FROM mo_videos_files WHERE file_id = ?
-        LIMIT 1`,
-      [fr.fileId, fr.fileId]
-    );
-    if (!stillUsed) {
-      await db.run(`DELETE FROM mo_files WHERE id = ?`, [fr.fileId]);
-      orphanFileIds.add(fr.fileId);
-    }
+  // 2 + 3. Hard-delete the domain rows, then any candidate file row nothing
+  // references anymore — ONE transaction. The domain deletes cascade the
+  // join rows first, so the NOT EXISTS guards evaluate against the
+  // post-delete state; deleting mo_files cascades its fingerprints.
+  const ops = [];
+  for (const chunk of _sqlChunks(photoIds)) ops.push({ type: 'run', sql: `DELETE FROM mo_photos WHERE id IN (${_qMarks(chunk)})`, params: chunk });
+  for (const chunk of _sqlChunks(videoIds)) ops.push({ type: 'run', sql: `DELETE FROM mo_videos WHERE id IN (${_qMarks(chunk)})`, params: chunk });
+  for (const chunk of _sqlChunks(candidateFileIds)) {
+    ops.push({
+      type: 'run',
+      sql: `DELETE FROM mo_files WHERE id IN (${_qMarks(chunk)})
+              AND NOT EXISTS (SELECT 1 FROM mo_photos_files pf WHERE pf.file_id = mo_files.id)
+              AND NOT EXISTS (SELECT 1 FROM mo_videos_files vf WHERE vf.file_id = mo_files.id)`,
+      params: chunk,
+    });
   }
+  if (ops.length > 0) await db.transaction(ops);
 
-  // 4. Thumbnail + cover-frame cleanup for orphaned checksums.
-  //
-  // Beyond the on-disk delete, we also evict the renderer-side caches that
-  // could otherwise serve stale bytes back to a future card with the same
-  // path. Two caches matter here:
-  //   - `_blobUrlCache` keys by file path; if a thumb is regenerated under
-  //     the same checksum (rare but possible after fingerprint upsert
-  //     races) the cached blob would still hold the OLD content.
-  //   - `_moResolvedThumbs` keys by `${type}:${id}` and survives across
-  //     loadPage() calls; deleted entities should not leave entries behind.
-  const thumbDir = getThumbDir(api);
+  // 4. Thumbnail + cover-frame cleanup for orphaned checksums. Which
+  // candidates actually died? The survivors are the files another photo /
+  // video still references.
+  const survivors = new Set();
+  for (const chunk of _sqlChunks(candidateFileIds)) {
+    const rows = await db.all(`SELECT id FROM mo_files WHERE id IN (${_qMarks(chunk)})`, chunk);
+    for (const r of rows) survivors.add(r.id);
+  }
   const orphanChecksums = new Set();
   for (const fr of fileRows) {
-    if (fr.checksum && orphanFileIds.has(fr.fileId)) orphanChecksums.add(fr.checksum);
+    if (fr.checksum && !survivors.has(fr.fileId)) orphanChecksums.add(fr.checksum);
   }
-  const deletedThumbPaths = [];
-  for (const ck of orphanChecksums) {
-    const stillRef = await db.get(`SELECT 1 FROM mo_fingerprints WHERE type = 'md5' AND value = ? LIMIT 1`, [ck]);
-    if (stillRef) continue;
-    const candidates = [
-      getThumbnailPath(thumbDir, ck, THUMB_MAX_SIZE),
-      getCoverFramePath(thumbDir, ck),
-    ];
-    for (const p of candidates) {
-      try { await window.parallxElectron.fs.delete(p, { useTrash: false }); } catch { /* missing thumbs are fine */ }
-      deletedThumbPaths.push(p);
-    }
-  }
-  // Revoke any blob URLs the renderer cached for the now-gone thumbnail
-  // files so a future request for the same path forces a fresh disk read
-  // (or a placeholder, if the file is genuinely gone).
-  _revokeCachedBlobUrlsFor(deletedThumbPaths);
+  await _sweepOrphanThumbs(api, orphanChecksums);
   // Drop resolved-thumb cache entries for the deleted entities to prevent
   // a stale `_moResolvedThumbs[type:id].thumbnailPath` surviving past the
   // delete. SQLite autoincrement ids are normally not reused, but the
@@ -22550,31 +23351,10 @@ async function _commitMediaPurge(api, photoIds, videoIds, fileRows) {
   for (const id of photoIds) _moResolvedThumbs.delete(`photo:${id}`);
   for (const id of videoIds) _moResolvedThumbs.delete(`video:${id}`);
 
-  // 6 + 7. Folder-album pruning, FTS incremental delete, sidebar refresh.
-  //
-  // CRITICAL — incremental FTS update, NOT full rebuild:
-  //   `moRebuildSearchIndex()` does `DELETE FROM mo_photos_fts` followed by
-  //   one INSERT per surviving photo and one per surviving video — every
-  //   statement is its own SQL IPC round-trip. On a library with thousands
-  //   of items this saturates the renderer's IPC channel for several
-  //   seconds, choking the event loop. While that loop is starved, the
-  //   Ollama provider's `/api/version` health check (10 s timeout) fires,
-  //   the chat panel flips to "Connecting to Ollama…", and the workbench
-  //   appears to freeze.
-  //
-  //   The FTS tables are keyed by `rowid` = photo/video id. Since we know
-  //   exactly which ids were removed, we delete just those FTS rows in a
-  //   single SQL statement per table — bounded, predictable, fast — instead
-  //   of rewriting the entire index from scratch.
+  // 6 + 7. Folder-album pruning, FTS incremental delete (NOT a rebuild — see
+  // _refreshFtsForIds), sidebar refresh.
   await moPruneOrphanFolderAlbums();
-  if (photoIds.length > 0) {
-    const ph = `(${photoIds.map(() => '?').join(',')})`;
-    try { await db.run(`DELETE FROM mo_photos_fts WHERE rowid IN ${ph}`, photoIds); } catch { /* FTS may be absent */ }
-  }
-  if (videoIds.length > 0) {
-    const vh = `(${videoIds.map(() => '?').join(',')})`;
-    try { await db.run(`DELETE FROM mo_videos_fts WHERE rowid IN ${vh}`, videoIds); } catch { /* FTS may be absent */ }
-  }
+  await _refreshFtsForIds(photoIds, videoIds);
   _notifySidebarRefresh();
 }
 
@@ -22681,9 +23461,12 @@ async function moPurgeMedia(api, items, opts = {}) {
     }
 
     // Recycle-bin fallback (Eraser unavailable or refused). The OS unlink
-    // happens synchronously, so DB cleanup right after is safe.
-    for (const p of uniquePaths) {
-      const r = await window.parallxElectron.fs.delete(p, { useTrash: 'auto' }).catch(() => ({ error: 'fail' }));
+    // happens synchronously, so DB cleanup right after is safe. Bounded
+    // parallelism — sequential round-trips made big deletes crawl.
+    const results = await _mapBounded(uniquePaths, 8, (p) =>
+      window.parallxElectron.fs.delete(p, { useTrash: 'auto' }).catch(() => ({ error: 'fail' }))
+    );
+    for (const r of results) {
       if (r && !r.error) {
         filesTrashed++;
         if (r.deletedPermanently) filesPermanent++;
@@ -22713,76 +23496,34 @@ async function moPurgeMissingFiles() {
          JOIN mo_folders fl ON fl.id = f.folder_id`
     );
     const sep = _isWindows ? '\\' : '/';
-    let purged = 0;
-    // Track checksums of purged files so we can sweep their orphan
-    // thumbnails after the DB rows are gone. Without this, a vanished
-    // file's `<checksum>_cover.jpg` lingers on disk forever — dead bytes
-    // today, but a leak vector if a future flow ever reuses that path.
-    const purgedChecksums = new Set();
-    const purgedPhotoIds = [];
-    const purgedVideoIds = [];
-    for (const f of files) {
-      const p = (f.folder_path || '') + sep + f.basename;
-      const exists = await window.parallxElectron.fs.exists(p).catch(() => false);
-      if (exists) continue;
-      // Find domain rows that depend solely on this missing file and remove them.
-      const photoLinks = await db.all(`SELECT photo_id FROM mo_photos_files WHERE file_id = ?`, [f.id]);
-      const videoLinks = await db.all(`SELECT video_id FROM mo_videos_files WHERE file_id = ?`, [f.id]);
-      for (const pl of photoLinks) {
-        const others = await db.get(
-          `SELECT COUNT(*) AS c FROM mo_photos_files WHERE photo_id = ? AND file_id <> ?`,
-          [pl.photo_id, f.id]
-        );
-        if (!others || others.c === 0) {
-          await db.run(`DELETE FROM mo_photos WHERE id = ?`, [pl.photo_id]);
-          purgedPhotoIds.push(pl.photo_id);
-        }
-      }
-      for (const vl of videoLinks) {
-        const others = await db.get(
-          `SELECT COUNT(*) AS c FROM mo_videos_files WHERE video_id = ? AND file_id <> ?`,
-          [vl.video_id, f.id]
-        );
-        if (!others || others.c === 0) {
-          await db.run(`DELETE FROM mo_videos WHERE id = ?`, [vl.video_id]);
-          purgedVideoIds.push(vl.video_id);
-        }
-      }
-      await db.run(`DELETE FROM mo_files WHERE id = ?`, [f.id]);
-      if (f.checksum) purgedChecksums.add(f.checksum);
-      purged++;
-    }
-    if (purged > 0) {
-      // Sweep orphan thumbnails for checksums that no surviving file row
-      // still references. Mirrors the cleanup in `_commitMediaPurge`.
-      const thumbDir = _api ? getThumbDir(_api) : null;
-      if (thumbDir) {
-        const deletedThumbPaths = [];
-        for (const ck of purgedChecksums) {
-          const stillRef = await db.get(`SELECT 1 FROM mo_fingerprints WHERE type = 'md5' AND value = ? LIMIT 1`, [ck]);
-          if (stillRef) continue;
-          const candidates = [
-            getThumbnailPath(thumbDir, ck, THUMB_MAX_SIZE),
-            getCoverFramePath(thumbDir, ck),
-          ];
-          for (const cp of candidates) {
-            try { await window.parallxElectron.fs.delete(cp, { useTrash: false }); } catch { /* missing thumbs are fine */ }
-            deletedThumbPaths.push(cp);
-          }
-        }
-        _revokeCachedBlobUrlsFor(deletedThumbPaths);
-      }
-      for (const id of purgedPhotoIds) _moResolvedThumbs.delete(`photo:${id}`);
-      for (const id of purgedVideoIds) _moResolvedThumbs.delete(`video:${id}`);
-      await moPruneOrphanFolderAlbums();
-      // Surgical FTS cleanup: drop only the rows for the photos/videos we
-      // just purged. Calling moRebuildSearchIndex() here would re-scan the
-      // entire library (O(N) IPC round-trips) every time a single missing
-      // file was detected — empirically the biggest contributor to the
-      // "save lag after delete" report. _refreshFtsForIds is two DELETEs.
-      await _refreshFtsForIds(purgedPhotoIds, purgedVideoIds);
-      _notifySidebarRefresh();
-    }
+    // Bounded-parallel existence sweep. The old one-awaited-IPC-per-file loop
+    // cost thousands of SEQUENTIAL round-trips at every activation on a big
+    // library, competing with the first grid load. Mid-erase paths are the
+    // commit scheduler's to reconcile — skip them.
+    const candidates = files.filter((f) => !_isPathPendingErase((f.folder_path || '') + sep + f.basename));
+    const present = await _mapBounded(candidates, 32, (f) =>
+      window.parallxElectron.fs.exists((f.folder_path || '') + sep + f.basename).catch(() => false)
+    );
+    const missing = candidates.filter((_, i) => !present[i]);
+    if (missing.length === 0) return;
+
+    const fileEntries = missing.map((f) => ({ id: f.id, checksum: f.checksum || null }));
+    const res = await _purgeFileRowsSetBased(fileEntries);
+    // Sweep orphan thumbnails for checksums that no surviving file row still
+    // references. Without this, a vanished file's `<checksum>_cover.jpg`
+    // lingers on disk forever — dead bytes today, but a leak vector if a
+    // future flow ever reuses that path.
+    if (_api) await _sweepOrphanThumbs(_api, fileEntries.map((e) => e.checksum));
+    for (const id of res.purgedPhotoIds) _moResolvedThumbs.delete(`photo:${id}`);
+    for (const id of res.purgedVideoIds) _moResolvedThumbs.delete(`video:${id}`);
+    await moPruneOrphanFolderAlbums();
+    // Surgical FTS cleanup: drop only the rows for the photos/videos we
+    // just purged. Calling moRebuildSearchIndex() here would re-scan the
+    // entire library (O(N) IPC round-trips) every time a single missing
+    // file was detected — empirically the biggest contributor to the
+    // "save lag after delete" report. _refreshFtsForIds is two DELETEs.
+    await _refreshFtsForIds(res.purgedPhotoIds, res.purgedVideoIds);
+    _notifySidebarRefresh();
   } catch (err) {
     console.warn('[media-organizer] moPurgeMissingFiles failed:', err && err.message);
   }
@@ -24230,6 +24971,26 @@ export async function activate(api, context) {
   _activated = true;
   _api = api;
   _toolPath = api.env.toolPath;
+  _moClosing = false;
+
+  // Quiesce on window close. The workbench dispatches `parallx:will-close`
+  // the moment a close is COMMITTED, before it saves state / deactivates
+  // tools. Killing our background producers (scan hash chains, watcher
+  // drains, erase polling) right away frees the event loop and the DB worker
+  // for the actual teardown — in large libraries these loops were what made
+  // the app take seconds to close.
+  _moWillCloseListener = () => {
+    _moClosing = true;
+    try { cancelScan(); } catch { /* ignore */ }
+    try { stopAllWatchers(); } catch { /* ignore */ }
+    if (_pendingEraserCommits.timer) {
+      clearTimeout(_pendingEraserCommits.timer);
+      _pendingEraserCommits.timer = null;
+      // Pending batches persist in pending-erase.json; the next session's
+      // _resumePendingErase picks them up.
+    }
+  };
+  document.addEventListener('parallx:will-close', _moWillCloseListener);
 
   try {
     console.log('[MediaOrganizer] after _activated, api:', !!api, 'context:', !!context);
@@ -24696,13 +25457,16 @@ export async function activate(api, context) {
 
   // M59 P5: auto-empty trash older than N days (default 30)
   moAutoEmptyTrashIfStale().catch(() => {});
-  // Sweep orphan DB rows whose backing file vanished — guards against historical
-  // bugs and folders that drifted out of scan roots.
-  moPurgeMissingFiles().catch(() => {});
-  // Resume any in-flight Eraser batches saved from a previous session. The
-  // tick loop will poll until disk catches up; if Eraser already finished
-  // while Parallx was closed, the very next tick commits the cleanup.
-  _resumePendingErase(api).catch(() => {});
+  // Resume any in-flight Eraser batches saved from a previous session FIRST —
+  // that repopulates the pending-erase path index — THEN sweep orphan DB rows
+  // whose backing file vanished. The other order let the sweep race resumed
+  // erase batches and purge rows the commit scheduler still owned. The tick
+  // loop polls until disk catches up; if Eraser already finished while
+  // Parallx was closed, the very next tick commits the cleanup.
+  _resumePendingErase(api)
+    .catch(() => {})
+    .then(() => moPurgeMissingFiles())
+    .catch(() => {});
   // One-shot sweep for phantom folder-backed albums left over from earlier sessions.
   moPruneOrphanFolderAlbums().catch(() => {});
   // M59 P8: register AI chat tools — INTENTIONALLY DISABLED (2026-06).
@@ -24824,6 +25588,10 @@ export async function activate(api, context) {
 }
 
 export function deactivate() {
+  if (_moWillCloseListener) {
+    document.removeEventListener('parallx:will-close', _moWillCloseListener);
+    _moWillCloseListener = null;
+  }
   cancelScan();
   stopAllWatchers();
   for (const d of _commandDisposables) {

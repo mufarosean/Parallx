@@ -1,6 +1,18 @@
 // electron/main.cjs — Electron main process
 // Uses CommonJS because Electron's main process doesn't support ESM by default.
 
+// Widen libuv's async-I/O worker pool BEFORE anything can use it — the pool is
+// sized once, on first use, from this env var (default: 4 threads). EVERY
+// async fs.* call in this process shares the pool: thumbnail reads, the media
+// organizer's exists/stat polling, document extraction. With only 4 slots, a
+// handful of slow stats against a saturated disk (e.g. while Eraser runs a
+// multi-pass secure overwrite) queues every other fs IPC behind them and the
+// whole app feels laggy. worker_threads and child processes spawned later
+// inherit the env var too.
+if (!process.env.UV_THREADPOOL_SIZE) {
+  process.env.UV_THREADPOOL_SIZE = String(Math.min(32, Math.max(8, require('os').cpus().length)));
+}
+
 const { app, BrowserWindow, ipcMain, dialog, shell, screen, safeStorage, nativeImage, session, desktopCapturer, protocol } = require('electron');
 const http = require('http');
 const path = require('path');
@@ -165,16 +177,38 @@ try { app.setPath('logs', path.join(APP_ROOT, 'data', 'logs')); } catch { /* ign
 const HAS_SINGLE_INSTANCE_LOCK = process.env.PARALLX_TEST_MODE === '1'
   ? true
   : app.requestSingleInstanceLock({ userData: USER_DATA_DIR });
+
+// True once the renderer commits a window close (lifecycle:closing) or the
+// app enters before-quit. While teardown runs, this process still holds the
+// single-instance lock, so a user relaunch would otherwise just die (and the
+// old handler would re-SHOW the hidden, half-torn-down window). Instead:
+// queue ONE app.relaunch() so a fresh instance starts the moment this
+// process finally exits.
+let _closingDown = false;
+let _relaunchQueued = false;
+
 if (!HAS_SINGLE_INSTANCE_LOCK) {
   app.quit();
 } else {
   app.on('second-instance', () => {
+    if (_closingDown || isAppQuitting) {
+      if (!_relaunchQueued) {
+        _relaunchQueued = true;
+        app.relaunch();
+        console.log('[Main] Relaunch queued — user reopened while the previous instance was shutting down');
+      }
+      return;
+    }
     if (!mainWindow || mainWindow.isDestroyed()) return;
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.show();
     mainWindow.focus();
   });
 }
+
+ipcMain.on('lifecycle:closing', () => {
+  _closingDown = true;
+});
 
 setupStorageHandlers(ipcMain, APP_ROOT);
 setupWebFetchBridge(ipcMain, APP_ROOT, _readSecretString);
@@ -1479,6 +1513,91 @@ ipcMain.handle('fs:exists', async (_event, filePath) => {
   }
 });
 
+// ── fs:hashFile ──
+// Streaming media fingerprints (full-contents MD5 + optional 64KB head/tail
+// oshash) computed in a small worker_thread pool (hashWorker.cjs). The media
+// organizer previously spawned certutil / a node one-liner per file — one
+// process launch per hash made bulk scans crawl, and hashing inline here
+// would chop the event loop that routes user input. Jobs beyond the pool
+// size queue FIFO, so callers can fire freely.
+const HASH_POOL_SIZE = Math.max(2, Math.min(8, Math.floor(require('os').cpus().length / 2)));
+const _hashPool = { workers: [], queue: [], nextId: 1, pending: new Map() };
+
+function _hashPoolWorkerDown(worker, err) {
+  const idx = _hashPool.workers.indexOf(worker);
+  if (idx >= 0) _hashPool.workers.splice(idx, 1);
+  if (worker._currentJobId != null) {
+    const job = _hashPool.pending.get(worker._currentJobId);
+    if (job) {
+      _hashPool.pending.delete(worker._currentJobId);
+      job.reject(err);
+    }
+    worker._currentJobId = null;
+  }
+  _hashPoolDispatch();
+}
+
+function _hashPoolSpawnWorker() {
+  const { Worker } = require('worker_threads');
+  const worker = new Worker(path.join(__dirname, 'hashWorker.cjs'));
+  worker._busy = false;
+  worker._currentJobId = null;
+  worker.on('message', (msg) => {
+    const job = _hashPool.pending.get(msg.id);
+    if (job) {
+      _hashPool.pending.delete(msg.id);
+      if (msg.ok) job.resolve(msg.result);
+      else job.reject(new Error(msg.error));
+    }
+    worker._busy = false;
+    worker._currentJobId = null;
+    _hashPoolDispatch();
+  });
+  worker.on('error', (err) => _hashPoolWorkerDown(worker, err));
+  worker.on('exit', (code) => {
+    if (code !== 0) _hashPoolWorkerDown(worker, new Error(`hash worker exited with code ${code}`));
+  });
+  // Unref so idle hash workers never keep the app alive at quit.
+  worker.unref();
+  _hashPool.workers.push(worker);
+  return worker;
+}
+
+function _hashPoolDispatch() {
+  while (_hashPool.queue.length > 0) {
+    let worker = _hashPool.workers.find((w) => !w._busy);
+    if (!worker) {
+      if (_hashPool.workers.length >= HASH_POOL_SIZE) return;
+      worker = _hashPoolSpawnWorker();
+    }
+    const job = _hashPool.queue.shift();
+    const id = _hashPool.nextId++;
+    _hashPool.pending.set(id, job);
+    worker._busy = true;
+    worker._currentJobId = id;
+    worker.postMessage({ id, filePath: job.filePath, oshash: job.wantOshash });
+  }
+}
+
+function _hashPoolRun(filePath, wantOshash) {
+  return new Promise((resolve, reject) => {
+    _hashPool.queue.push({ filePath, wantOshash, resolve, reject });
+    _hashPoolDispatch();
+  });
+}
+
+ipcMain.handle('fs:hashFile', async (_event, filePath, options) => {
+  if (!_isAllowedReadPath(filePath)) {
+    return { error: { code: 'EACCES', message: 'Path is outside the allowed read roots', path: filePath } };
+  }
+  try {
+    const result = await _hashPoolRun(filePath, !!(options && options.oshash));
+    return { ...result, error: null };
+  } catch (err) {
+    return { error: normalizeError(err, filePath) };
+  }
+});
+
 // ── fs:rename ──
 ipcMain.handle('fs:rename', async (_event, oldPath, newPath) => {
   if (!_isAllowedWritePath(oldPath) || !_isAllowedWritePath(newPath)) {
@@ -2558,7 +2677,15 @@ registerTeardown('terminals', 'workspace', () => {
   for (const [, entry] of _activeTerminals) {
     try {
       if (isWin && entry.proc.pid) {
-        try { require('child_process').execSync(`taskkill /pid ${entry.proc.pid} /T /F`, { windowsHide: true, timeout: 3000 }); } catch { /* best-effort */ }
+        // Fire-and-forget tree kill. taskkill is its own process and finishes
+        // the job even after we exit; the old execSync serialized up to 3s
+        // per stubborn shell INSIDE before-quit, keeping a windowless zombie
+        // process alive (and the single-instance lock held) for seconds.
+        try {
+          require('child_process')
+            .spawn('taskkill', ['/pid', String(entry.proc.pid), '/T', '/F'], { windowsHide: true, detached: true, stdio: 'ignore' })
+            .unref();
+        } catch { /* best-effort */ }
       } else {
         entry.proc.kill();
       }
