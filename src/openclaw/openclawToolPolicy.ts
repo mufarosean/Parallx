@@ -445,6 +445,13 @@ const BLUE_TOOLS: ReadonlySet<string> = new Set<string>([
   'fs_delete_file',
   // Shell execution — destructive, irreversible side effects
   'terminal_run_command',
+  // M94 — Python. Running a script is arbitrary code execution with the
+  // user's own permissions; installing a package fetches and executes
+  // third-party setup code. Both belong in the same class as the shell,
+  // and both must gate after a turn has ingested untrusted content.
+  // `python_list_packages` stays green — it only reads the environment.
+  'python_run_script',
+  'python_install_packages',
   // Canvas page writes (canvas_* prefix per Parallx tool-namespace convention)
   'canvas_create_page',
   'canvas_edit_page',

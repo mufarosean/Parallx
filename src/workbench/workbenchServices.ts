@@ -47,6 +47,8 @@ import { UnifiedAIConfigService } from '../aiSettings/unifiedAIConfigService.js'
 import { DiagnosticsService } from '../services/diagnosticsService.js';
 import { AutonomySignalService, IAutonomySignalService } from '../services/autonomySignalService.js';
 import { ActivityJournalService, IActivityJournalService } from '../services/activityJournalService.js';
+import { PythonEnvService, IPythonEnvService } from '../services/pythonEnvService.js';
+import { NotebookKernelService, INotebookKernelService } from '../services/notebookKernelService.js';
 import { ObservabilityService } from '../services/observabilityService.js';
 import { RuntimeHookRegistry } from '../services/runtimeHookRegistry.js';
 import { McpClientService } from '../openclaw/mcp/mcpClientService.js';
@@ -95,6 +97,17 @@ export function registerWorkbenchServices(services: ServiceCollection): void {
   // in a later pass (e.g. beside the autonomy bus in registerIndexingServices)
   // silently no-ops the taps' has() check. Ordering verified by e2e 93.
   services.registerInstance(IActivityJournalService, new ActivityJournalService());
+
+  // ── Per-workspace Python runtime (M94) ──
+  // Dep-free like the journal: it registers its settings schemas at
+  // construction (so Settings can render the Python category even before a
+  // workspace is open) and is pointed at the workspace + journal later in boot.
+  services.registerInstance(IPythonEnvService, new PythonEnvService());
+
+  // ── Notebook kernel (M96) ──
+  // Dep-free at construction like the Python service; the workspace root, the
+  // journal, and the Python consent gate are attached later in boot.
+  services.registerInstance(INotebookKernelService, new NotebookKernelService());
 
   // ── File Service (M4 Capability 1) ──
   const fileService = new FileService();

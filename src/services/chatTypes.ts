@@ -1073,7 +1073,8 @@ export type ToolCategory =
   | 'autonomy'       // autonomy log read
   | 'linking'        // link_create
   | 'app-control'    // workbench command execution
-  | 'terminal';      // shell execution (terminal_run_command)
+  | 'terminal'       // shell execution (terminal_run_command)
+  | 'python';        // workspace Python environment + scripts (python_*)
 
 /**
  * A registered chat tool — definition + handler.

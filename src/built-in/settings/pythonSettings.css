@@ -1,0 +1,348 @@
+/* pythonSettings.css — workspace Python runtime panel (M94).
+   Tokens only: no literal colours, per the --px design-token system. */
+
+.pysettings {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.pysettings__section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.pysettings__section:empty { display: none; }
+
+.pysettings__heading {
+  margin: 0;
+  font-size: var(--px-text-sm, 12px);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--px-text-muted);
+}
+
+/* ── Consent switch ── */
+
+.pysettings__toggle-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.pysettings__toggle-label { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+
+.pysettings__toggle-title {
+  font-size: var(--px-text-base, 13px);
+  font-weight: 600;
+  color: var(--px-text);
+}
+
+.pysettings__toggle-help {
+  font-size: var(--px-text-sm, 12px);
+  color: var(--px-text-muted);
+  line-height: 1.5;
+  max-width: 60ch;
+}
+
+.pysettings__switch {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--px-border);
+  border-radius: 999px;
+  background: var(--px-surface);
+  cursor: pointer;
+  position: relative;
+  transition: background var(--px-motion-fast, 120ms) var(--px-ease, ease),
+              border-color var(--px-motion-fast, 120ms) var(--px-ease, ease);
+}
+.pysettings__switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--px-text-muted);
+  transition: transform var(--px-motion-fast, 120ms) var(--px-ease, ease),
+              background var(--px-motion-fast, 120ms) var(--px-ease, ease);
+}
+.pysettings__switch--on {
+  background: var(--px-accent);
+  border-color: var(--px-accent);
+}
+.pysettings__switch--on::after {
+  transform: translateX(16px);
+  background: var(--px-accent-fg, var(--px-bg));
+}
+.pysettings__switch:focus-visible {
+  outline: 2px solid var(--px-focus-ring, var(--px-accent));
+  outline-offset: 2px;
+}
+
+/* ── The honest caveat block ── */
+
+.pysettings__caveat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--px-border);
+  border-left: 3px solid var(--px-warning, var(--px-border-strong));
+  border-radius: var(--px-radius-md, 6px);
+  background: var(--px-bg-elevated);
+}
+
+.pysettings__caveat-title {
+  font-size: var(--px-text-sm, 12px);
+  font-weight: 600;
+  color: var(--px-text);
+}
+
+.pysettings__caveat-body {
+  font-size: var(--px-text-sm, 12px);
+  color: var(--px-text-muted);
+  line-height: 1.55;
+  max-width: 72ch;
+}
+
+/* ── Facts grid ── */
+
+.pysettings__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px 20px;
+}
+
+.pysettings__fact { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+
+.pysettings__fact-label {
+  font-size: var(--px-text-xs, 11px);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--px-text-faint);
+}
+
+.pysettings__fact-value {
+  font-size: var(--px-text-base, 13px);
+  color: var(--px-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Actions ── */
+
+.pysettings__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.pysettings__btn {
+  padding: 5px 12px;
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-sm, 4px);
+  background: var(--px-surface);
+  color: var(--px-text);
+  font-size: var(--px-text-sm, 12px);
+  font-family: inherit;
+  cursor: pointer;
+  transition: background var(--px-motion-fast, 120ms) var(--px-ease, ease),
+              border-color var(--px-motion-fast, 120ms) var(--px-ease, ease);
+}
+.pysettings__btn:hover:not(:disabled) {
+  background: var(--px-surface-hover);
+  border-color: var(--px-border-strong);
+}
+.pysettings__btn:disabled { opacity: 0.5; cursor: default; }
+
+.pysettings__btn--primary {
+  background: var(--px-accent);
+  border-color: var(--px-accent);
+  color: var(--px-accent-fg, var(--px-bg));
+}
+.pysettings__btn--primary:hover:not(:disabled) {
+  background: var(--px-accent-hover, var(--px-accent));
+  border-color: var(--px-accent-hover, var(--px-accent));
+}
+
+.pysettings__btn--danger { color: var(--px-danger); }
+.pysettings__btn--danger:hover:not(:disabled) { border-color: var(--px-danger); }
+
+.pysettings__link-btn {
+  padding: 2px 6px;
+  border: none;
+  border-radius: var(--px-radius-sm, 4px);
+  background: transparent;
+  color: var(--px-text-muted);
+  font-size: var(--px-text-sm, 12px);
+  font-family: inherit;
+  cursor: pointer;
+}
+.pysettings__link-btn:hover { background: var(--px-surface-hover); color: var(--px-text); }
+
+.pysettings__hint {
+  font-size: var(--px-text-sm, 12px);
+  color: var(--px-text-faint);
+}
+
+/* ── Notices ── */
+
+.pysettings__notice {
+  padding: 8px 12px;
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-md, 6px);
+  background: var(--px-bg-elevated);
+  font-size: var(--px-text-sm, 12px);
+  color: var(--px-text-muted);
+  line-height: 1.5;
+}
+.pysettings__notice--warn { border-color: var(--px-warning, var(--px-border-strong)); }
+.pysettings__notice--error { border-color: var(--px-danger); color: var(--px-danger); }
+
+/* ── Packages ── */
+
+.pysettings__add-row { display: flex; gap: 8px; align-items: center; }
+.pysettings__add-input { flex: 1 1 auto; max-width: 320px; }
+.pysettings__add-input .ui-input-box { width: 100%; }
+
+.pysettings__list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-md, 6px);
+  overflow: hidden;
+}
+
+.pysettings__row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--px-divider);
+}
+.pysettings__row:last-child { border-bottom: none; }
+.pysettings__row:hover { background: var(--px-surface-hover); }
+
+.pysettings__pkg-name {
+  font-size: var(--px-text-base, 13px);
+  color: var(--px-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pysettings__pkg-version {
+  font-family: var(--px-font-mono, monospace);
+  font-size: var(--px-text-xs, 11px);
+  color: var(--px-text-faint);
+}
+
+.pysettings__empty {
+  padding: 10px 0;
+  font-size: var(--px-text-sm, 12px);
+  color: var(--px-text-faint);
+}
+
+/* ── Runs ── */
+
+.pysettings__run {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--px-divider);
+}
+.pysettings__run:last-child { border-bottom: none; }
+
+.pysettings__run-head { display: flex; align-items: center; gap: 8px; }
+
+.pysettings__dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--px-text-faint);
+}
+.pysettings__dot--ok { background: var(--px-success, var(--px-accent)); }
+.pysettings__dot--fail { background: var(--px-danger); }
+.pysettings__dot--running {
+  background: var(--px-accent);
+  animation: pysettings-pulse 1.4s var(--px-ease, ease) infinite;
+}
+
+@keyframes pysettings-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pysettings__dot--running { animation: none; }
+}
+
+.pysettings__run-path {
+  font-size: var(--px-text-base, 13px);
+  color: var(--px-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pysettings__run-meta {
+  margin-left: auto;
+  font-size: var(--px-text-xs, 11px);
+  color: var(--px-text-faint);
+  font-family: var(--px-font-mono, monospace);
+}
+
+.pysettings__run-output {
+  margin: 0;
+  padding: 8px 10px;
+  max-height: 180px;
+  overflow: auto;
+  border-radius: var(--px-radius-sm, 4px);
+  background: var(--px-bg);
+  border: 1px solid var(--px-divider);
+  font-family: var(--px-font-mono, monospace);
+  font-size: var(--px-text-xs, 11px);
+  line-height: 1.5;
+  color: var(--px-text-muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ── Live operation output (M97) ──────────────────────────────────────────
+   pip and venv stream here while they work. Beside the control that started
+   them, NOT in the Terminal panel — that is the user's own shell and this
+   output did not come from it. */
+
+.pysettings__log[hidden] { display: none; }
+
+.pysettings__log-title {
+  font-size: var(--px-text-xs, 11px);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--px-text-faint);
+}
+
+.pysettings__log-body {
+  margin: 0;
+  padding: 8px 10px;
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid var(--px-divider);
+  border-radius: var(--px-radius-sm, 4px);
+  background: var(--px-bg);
+  font-family: var(--px-font-mono, monospace);
+  font-size: var(--px-text-xs, 11px);
+  line-height: 1.5;
+  color: var(--px-text-muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+}

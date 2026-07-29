@@ -1233,8 +1233,18 @@ export interface IFileService extends IDisposable {
   /** Copy a file or directory. */
   copy(source: import('../platform/uri.js').URI, target: import('../platform/uri.js').URI): Promise<void>;
 
-  /** Start watching a path for changes. Returns a disposable that stops watching. */
-  watch(uri: import('../platform/uri.js').URI): Promise<IDisposable>;
+  /**
+   * Start watching a path for changes. Returns a disposable that stops watching.
+   *
+   * `ignoreSegments` drops events whose path contains any of the given
+   * segments before they cross IPC (see WATCH_IGNORE_SEGMENTS in
+   * parallxIgnore.ts). Coarse volume control, not policy — `.parallxignore`
+   * remains the real filter and is applied by consumers.
+   */
+  watch(
+    uri: import('../platform/uri.js').URI,
+    options?: { readonly ignoreSegments?: readonly string[] },
+  ): Promise<IDisposable>;
 
   /** Fires when files change (create, modify, delete). */
   readonly onDidFileChange: Event<import('../platform/fileTypes.js').FileChangeEvent[]>;

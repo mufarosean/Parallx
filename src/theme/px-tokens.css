@@ -104,6 +104,24 @@
   --px-warning-soft:  rgba(var(--px-yellow-rgb), 0.15);
   --px-info:          rgb(var(--px-blue-rgb));
 
+  /* Syntax — ONE palette for every place code is coloured (M95).
+     The code editor, and eventually canvas code blocks, both read these.
+     Before this existed the only syntax colours in the app were hardcoded
+     hexes behind `--vscode-*` fallbacks in canvas.css, which no theme could
+     reach. Roles, not languages: a highlighter maps its tags onto these. */
+  --px-syntax-comment:     var(--px-text-faint);
+  --px-syntax-keyword:     hsl(210 65% 68%);
+  --px-syntax-string:      hsl(20 60% 68%);
+  --px-syntax-number:      hsl(95 40% 66%);
+  --px-syntax-function:    hsl(50 55% 72%);
+  --px-syntax-type:        hsl(170 45% 62%);
+  --px-syntax-variable:    hsl(205 60% 80%);
+  --px-syntax-constant:    hsl(265 55% 76%);
+  --px-syntax-operator:    var(--px-text-secondary);
+  --px-syntax-punctuation: var(--px-text-muted);
+  --px-syntax-meta:        hsl(30 50% 66%);
+  --px-syntax-invalid:     var(--px-danger);
+
   /* ── Tier 2 · Scales ───────────────────────────────────────────────────── */
 
   /* The single standard horizontal inset for sidebar/aux chrome (headers, view
@@ -264,6 +282,17 @@
   --px-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.08);
   --px-shadow-md: 0 4px 14px -3px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08);
   --px-shadow-lg: 0 16px 36px -8px rgba(0, 0, 0, 0.18), 0 4px 10px -4px rgba(0, 0, 0, 0.12);
+
+  /* Syntax — darkened for contrast on paper. The dark-mode values are tuned
+     for a ~7% lightness background and wash out badly at ~96%. */
+  --px-syntax-keyword:  hsl(215 70% 45%);
+  --px-syntax-string:   hsl(10 60% 42%);
+  --px-syntax-number:   hsl(120 45% 32%);
+  --px-syntax-function: hsl(35 75% 38%);
+  --px-syntax-type:     hsl(175 60% 30%);
+  --px-syntax-variable: hsl(210 55% 38%);
+  --px-syntax-constant: hsl(270 50% 48%);
+  --px-syntax-meta:     hsl(25 60% 40%);
 }
 
 /* Light Warm — warm-tinted paper. */

@@ -42,7 +42,7 @@ interface ElectronFsBridge {
   delete(path: string, options?: { useTrash?: boolean; recursive?: boolean }): Promise<any>;
   mkdir(path: string): Promise<any>;
   copy(source: string, destination: string): Promise<any>;
-  watch(path: string, options?: { recursive?: boolean }): Promise<any>;
+  watch(path: string, options?: { recursive?: boolean; ignoreSegments?: readonly string[] }): Promise<any>;
   unwatch(watchId: string): Promise<any>;
   onDidChange(callback: (payload: any) => void): () => void;
 }
@@ -305,10 +305,16 @@ export class FileService extends Disposable implements IFileService {
 
   // ── Watchers ───────────────────────────────────────────────────────────
 
-  async watch(uri: URI): Promise<IDisposable> {
+  async watch(
+    uri: URI,
+    options?: { readonly ignoreSegments?: readonly string[] },
+  ): Promise<IDisposable> {
     this._assertBoundary(uri, 'watch');
     const fs = getElectronFs();
-    const result = await fs.watch(uri.fsPath, { recursive: true });
+    const result = await fs.watch(uri.fsPath, {
+      recursive: true,
+      ignoreSegments: options?.ignoreSegments,
+    });
     throwIfError(result, uri);
 
     const watchId = result.watchId as string;

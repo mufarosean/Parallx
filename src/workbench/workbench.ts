@@ -120,6 +120,9 @@ import { ILinkResolverService, LinkResolverService } from '../links/linkResolver
 import { DatabaseService } from '../services/databaseService.js';
 import { IDatabaseService } from '../services/serviceTypes.js';
 import { IActivityJournalService } from '../services/activityJournalService.js';
+import { WATCH_IGNORE_SEGMENTS } from '../services/parallxIgnore.js';
+import { IPythonEnvService, type PythonEnvService } from '../services/pythonEnvService.js';
+import { INotebookKernelService, type NotebookKernelService } from '../services/notebookKernelService.js';
 import { wireActivityTaps } from './activityTaps.js';
 
 // Contribution Processors (M2 Capability 5)
@@ -631,7 +634,11 @@ export class Workbench extends Layout {
       if (this._folderWatchers.has(folderUri)) return;
       try {
         const uri = URI.parse(folderUri);
-        const disposable = await fileService.watch(uri);
+        // Machinery subtrees (venv, node_modules, caches) are dropped in the
+        // main process so an install storm never reaches the renderer.
+        const disposable = await fileService.watch(uri, {
+          ignoreSegments: WATCH_IGNORE_SEGMENTS,
+        });
         this._folderWatchers.set(folderUri, disposable);
         console.log('[Workbench] Started file watcher for:', folderUri);
       } catch (err) {
@@ -2585,6 +2592,32 @@ export class Workbench extends Layout {
         themeService: this._services.has(IThemeService) ? this._services.get(IThemeService) : undefined,
         workspaceName: this._workspace?.name,
       }));
+
+      // Python runs are consequential enough that they belong in the same
+      // narrative as everything else the user and assistant did.
+      if (this._services.has(IPythonEnvService)) {
+        (this._services.get(IPythonEnvService) as PythonEnvService).attachJournal(journal);
+      }
+    }
+
+    // Point the Python service at this workspace. Every environment lives at
+    // <workspace>/.parallx/venv, so switching workspaces switches runtimes.
+    const workspaceFsPath = this._workspace?.folders?.[0]?.uri?.fsPath ?? null;
+    if (this._services.has(IPythonEnvService)) {
+      const pythonService = this._services.get(IPythonEnvService) as PythonEnvService;
+      pythonService.setWorkspaceRoot(workspaceFsPath);
+
+      // The notebook kernel runs in that same environment and sits behind the
+      // same consent gate, so it is wired from the Python service rather than
+      // carrying a second, weaker one of its own (M96).
+      if (this._services.has(INotebookKernelService)) {
+        const kernelService = this._services.get(INotebookKernelService) as NotebookKernelService;
+        kernelService.setWorkspaceRoot(workspaceFsPath);
+        kernelService.attachPython(pythonService);
+        if (this._services.has(IActivityJournalService)) {
+          kernelService.attachJournal(this._services.get(IActivityJournalService));
+        }
+      }
     }
 
     // Late-bind the database into ChatService — it was created in Phase 1

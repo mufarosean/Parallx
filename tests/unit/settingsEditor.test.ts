@@ -7,6 +7,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { SettingsEditor } from '../../src/built-in/settings/settingsEditor';
 import { SettingsRegistryService } from '../../src/services/settingsRegistryService';
+import { settingsPanelRegistry } from '../../src/services/settingsPanelRegistry';
 import type { IStorage } from '../../src/platform/storage';
 
 function createMockStorage(): IStorage {
@@ -203,5 +204,147 @@ describe('SettingsEditor — D2', () => {
     const row = document.querySelector<HTMLElement>('[data-key="autonomy.flag"]');
     expect(row).not.toBeNull();
     editor.dispose();
+  });
+});
+
+// ─── Panel + schema-category collision (M97) ─────────────────────────────────
+//
+// A feature that contributes BOTH a rich panel and flat `category:` settings
+// under the same name used to produce TWO identical nav rows — one from
+// `panel:<id>`, one from `schema:<category>` — with no way to tell them apart.
+// Reported from the running app as "why are there two Python settings tabs?".
+// Neither source is wrong; they are two halves of one page.
+
+describe('SettingsEditor — panel absorbs a same-named schema category', () => {
+  beforeEach(() => {
+    document.body.replaceChildren();
+    for (const panel of settingsPanelRegistry.getPanels()) {
+      // getPanels() has no removal API; re-registering the same id replaces it,
+      // and the disposables returned below clean up per test.
+      void panel;
+    }
+  });
+
+  function registerPanel(label: string, id: string, onRender?: (host: HTMLElement) => void) {
+    return settingsPanelRegistry.register({
+      id,
+      label,
+      order: 70,
+      description: `${label} panel`,
+      render(host: HTMLElement) {
+        const marker = document.createElement('div');
+        marker.className = 'test-panel-marker';
+        marker.textContent = `${label} panel body`;
+        host.appendChild(marker);
+        onRender?.(host);
+        return { dispose: () => marker.remove() };
+      },
+    });
+  }
+
+  it('shows ONE nav entry, not two, when a panel and category share a name', async () => {
+    const reg = registerPanel('Widgets', 'widgets');
+    try {
+      const { root } = await setup([{
+        key: 'gadgets.size',
+        type: 'number',
+        default: 1,
+        scope: 'user',
+        description: 'Gadget size',
+        category: 'Gadgets',
+      }, {
+        key: 'widgets.enabled',
+        type: 'boolean',
+        default: false,
+        scope: 'workspace',
+        description: 'Enable widgets',
+        category: 'Widgets',
+      }]);
+
+      const labels = Array.from(root.querySelectorAll('.settings-editor__nav-item'))
+        .map((n) => n.textContent?.trim());
+      const widgetEntries = labels.filter((l) => l === 'Widgets');
+      expect(widgetEntries, `nav was: ${labels.join(' | ')}`).toHaveLength(1);
+    } finally {
+      reg.dispose();
+    }
+  });
+
+  it('renders the panel body AND the absorbed rows on the same page', async () => {
+    const reg = registerPanel('Widgets', 'widgets');
+    try {
+      const { root } = await setup([{
+        key: 'gadgets.size',
+        type: 'number',
+        default: 1,
+        scope: 'user',
+        description: 'Gadget size',
+        category: 'Gadgets',
+      }, {
+        key: 'widgets.enabled',
+        type: 'boolean',
+        default: false,
+        scope: 'workspace',
+        description: 'Enable widgets',
+        category: 'Widgets',
+      }]);
+
+      const navItem = Array.from(root.querySelectorAll('.settings-editor__nav-item'))
+        .find((n) => n.textContent?.trim() === 'Widgets') as HTMLElement;
+      expect(navItem).toBeDefined();
+      navItem.click();
+
+      // The rich panel…
+      expect(root.querySelector('.test-panel-marker')).not.toBeNull();
+      // …and the raw setting it would otherwise have hidden.
+      expect(root.textContent).toContain('widgets.enabled');
+    } finally {
+      reg.dispose();
+    }
+  });
+
+  it('leaves categories with no matching panel exactly as they were', async () => {
+    const reg = registerPanel('Widgets', 'widgets');
+    try {
+      const { root } = await setup([{
+        key: 'gadgets.size',
+        type: 'number',
+        default: 1,
+        scope: 'user',
+        description: 'Gadget size',
+        category: 'Gadgets',
+      }]);
+      const labels = Array.from(root.querySelectorAll('.settings-editor__nav-item'))
+        .map((n) => n.textContent?.trim());
+      expect(labels).toContain('Gadgets');
+    } finally {
+      reg.dispose();
+    }
+  });
+
+  it('matches names case- and whitespace-insensitively', async () => {
+    const reg = registerPanel('widgets ', 'widgets');
+    try {
+      const { root } = await setup([{
+        key: 'gadgets.size',
+        type: 'number',
+        default: 1,
+        scope: 'user',
+        description: 'Gadget size',
+        category: 'Gadgets',
+      }, {
+        key: 'widgets.enabled',
+        type: 'boolean',
+        default: false,
+        scope: 'workspace',
+        description: 'Enable widgets',
+        category: 'Widgets',
+      }]);
+      const labels = Array.from(root.querySelectorAll('.settings-editor__nav-item'))
+        .map((n) => n.textContent?.trim().toLowerCase());
+      expect(labels.filter((l) => l === 'widgets')).toHaveLength(1);
+    } finally {
+      reg.dispose();
+    }
   });
 });

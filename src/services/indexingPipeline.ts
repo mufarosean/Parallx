@@ -1406,6 +1406,16 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
       // Use workspace-relative path for DB operations (matches stored sourceId)
       const relativePath = this._toRelativePath(filePath);
 
+      // Respect .parallxignore on the incremental path too. The full walk has
+      // always honoured it (_walkDirectory), but this handler filtered on
+      // extension alone — so anything a background process wrote into an
+      // ignored subtree got scheduled for embedding anyway. `.py`, `.json`,
+      // `.txt` and `.cfg` are all indexable, which makes a `pip install` into
+      // the workspace venv (or any `npm install`) a self-inflicted indexing
+      // storm. isPathIgnored, not isIgnored: directory-only patterns like
+      // `node_modules/` do not match the files underneath them.
+      if (this._ignore.isPathIgnored(relativePath, false)) { continue; }
+
       if (event.type === FileChangeType.Deleted) {
         // Remove from index
         this._vectorStore.deleteSource('file_chunk', relativePath).catch((err) => {

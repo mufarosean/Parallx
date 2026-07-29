@@ -47,6 +47,7 @@ import type {
 } from '../../services/chatTypes.js';
 import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService, IDiagnosticsService, IDocumentExtractionService, IObservabilityService, IRuntimeHookRegistry, ILayoutService, IEmbeddingService, IWorkspaceStorageService, IGlobalStorageService, ISurfaceRouterService, IAutonomyLogService, ISettingsRegistryService, IAutonomyTaskRailService, IAutonomyPatternMemoryService, IAutonomyFeatureFlagsService, ISemanticGraphService, IMindMapRefreshOrchestrator, ICanvasPageQueryService, IPlannerQueryService } from '../../services/serviceTypes.js';
 import { IActivityJournalService } from '../../services/activityJournalService.js';
+import { IPythonEnvService } from '../../services/pythonEnvService.js';
 import { SettingsRegistryService, setGlobalSettingsRegistry, getGlobalSettingsRegistry } from '../../services/settingsRegistryService.js';
 import { createSecretStorageService } from '../../services/secretStorageService.js';
 import { PolicyDecisionPoint as _PolicyDecisionPoint } from '../../services/policyDecisionPoint.js';
@@ -72,7 +73,7 @@ import { ActionLedger } from '../../openclaw/mind/actionLedger.js';
 import { PredictionLoop } from '../../openclaw/mind/predictionLoop.js';
 import { SequencePredictor } from '../../openclaw/mind/sequencePredictor.js';
 import { SurpriseAccumulator } from '../../openclaw/mind/surpriseAccumulator.js';
-import { cronForMinuteOfDay } from '../../openclaw/mind/habitDetector.js';
+import { cronForMinuteOfDay, habitActionForActivity } from '../../openclaw/mind/habitDetector.js';
 import { createMindRememberTool } from './tools/mindTools.js';
 import { signalToSystemEvent } from '../../openclaw/openclawAutonomySignal.js';
 import { IAutonomySignalService } from '../../services/autonomySignalService.js';
@@ -289,6 +290,9 @@ function buildTestPlanStepInput(
 // ── Module state ──
 
 let _ollamaProvider: OllamaProvider | undefined;
+/** The MIND, if workspace storage allowed one — read by the participant deps
+ *  (continuity injection) which build earlier in activate() than the MIND. */
+let _mindServiceRef: MindService | undefined;
 let _activeWidget: ChatWidget | undefined;
 let _chatIsStreamingKey: { set(value: boolean): void } | undefined;
 let _lastIndexStats: { pages: number; files: number } | undefined;
@@ -1287,6 +1291,18 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       }
       return text;
     },
+    // MIND continuity for interactive turns — beliefs the agent accumulated
+    // (heartbeat reviews, mind_remember calls) finally reach conversation.
+    // Origin-tagged (autonomous-rail) sessions return undefined: the heartbeat
+    // rail injects beliefs via its own seed (double-injecting there would echo),
+    // while cron/subagent/dashboard turns INTENTIONALLY run without continuity
+    // — they are scoped task runs, not the conversational agent.
+    getMindContinuity: (sid: string) => {
+      if (!_mindServiceRef) return undefined;
+      if (chatService.getSession(sid)?.origin) return undefined;
+      const block = _mindServiceRef.continuityBlock();
+      return block || undefined;
+    },
     // M66 — Snapshot every registered `parallx://` link contract for the
     // system prompt builder. Flattened to the descriptor shape that the
     // openclaw layer expects, so adding a new extension contract surfaces
@@ -2094,6 +2110,38 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     }).catch(() => { /* tool module load failed — chat continues without it */ });
   }
 
+  // ── M94 — Python tools. Gated on the workspace's `python.enabled` consent.
+  // Same attach/detach shape as App Command Control above: a workspace that
+  // has not opted in never sees these schemas, so the assistant cannot offer
+  // to run Python where the user has not allowed it. Flipping the switch in
+  // Settings attaches them live, without a chat reload.
+  if (api.services.has(IPythonEnvService) && languageModelToolsService) {
+    const _pythonSvc = api.services.get<IPythonEnvService>(IPythonEnvService);
+    const _lmTools = languageModelToolsService;
+    void import('./tools/pythonTools.js').then((toolMod) => {
+      let _pyRegs: IDisposable[] = [];
+      const _disposePyRegs = () => {
+        for (const d of _pyRegs) d.dispose();
+        _pyRegs = [];
+      };
+      const _syncPy = () => {
+        const want = _pythonSvc.isEnabled;
+        const have = _pyRegs.length > 0;
+        if (want === have) return;
+        if (want) {
+          for (const tool of toolMod.createPythonTools(_pythonSvc)) {
+            _pyRegs.push(_lmTools.registerTool(tool));
+          }
+        } else {
+          _disposePyRegs();
+        }
+      };
+      _syncPy();
+      const _statusSub = _pythonSvc.onDidChangeStatus(_syncPy);
+      context.subscriptions.push({ dispose: () => { _statusSub.dispose(); _disposePyRegs(); } });
+    }).catch(() => { /* tool module load failed — chat continues without it */ });
+  }
+
   // ── 3b. Register chat-owned surface plugins (M58 W6) ──
   // The surface router is created in the workbench Phase 5; the chat-owned
   // plugins (chat, filesystem, canvas) can only be built here because their
@@ -2198,6 +2246,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         mindService = new MindService(new MindStore(_mindStorage), new ActionLedger(_mindStorage), { capabilityStorage: _mindStorage });
         mindService.init().catch(() => { /* first-tick seed is simply empty */ });
       }
+      _mindServiceRef = mindService;
     }
 
     // Build-5: give the model a tool to deliberately curate its own MIND during
@@ -2550,22 +2599,35 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
           // sync completing) stay perception-only — they feed habits but never
           // spin up the model. This is what lets the agent see + respond to the
           // surfaces you actually touch, instead of only its own diagnostics.
-          const isUserAction = sig.source === 'canvas' || sig.source === 'planner';
+          // actor stamp (canvas marks agent-mutated pages): a page the AGENT
+          // created must never count as the user's behavior — not in the
+          // conscience meter, not in habit detection. Unstamped signals from
+          // canvas/planner default to user (they are user-gesture surfaces).
+          const isUserAction = (sig.source === 'canvas' || sig.source === 'planner') && sig.actor !== 'agent';
           const salient = sig.severity === 'warn' || sig.severity === 'urgent' || isUserAction;
           if (salient && unifiedConfigService.getEffectiveConfig().heartbeat.senseExtensionSignals) {
             heartbeatRunner.pushEvent(signalToSystemEvent(sig));
           }
-          // EVERY signal feeds habit detection. When a habit newly CONFIRMS, we
-          // deterministically hand the agent a FOCUSED decision (guaranteed — not a
-          // hint buried in a general review) and trust its JUDGMENT on whether and
-          // how to offer automation. Code guarantees the shot + the rails (cron);
-          // the model decides. Deduped to once per habit so it never nags.
-          const action = [sig.source, sig.title].filter(Boolean).join(':');
+          // Canvas/planner USER signals are the user DOING work — count them in
+          // the conscience denominator. Canvas pages live in SQLite, so the
+          // file-edit recordHuman above never sees this work; without this line
+          // the meter reads canvas-heavy days as "the human did nothing".
+          // (planner emits no signals yet — the clause is forward wiring, and
+          // planner work is still invisible to the meter until it does.)
+          if (isUserAction) void mindService?.recordHuman(Date.now());
+          // USER signals feed habit detection (agent-caused ones would train
+          // fake "user habits" at machine-scheduled times). When a habit newly
+          // CONFIRMS, we deterministically hand the agent a FOCUSED decision
+          // (guaranteed — not a hint buried in a general review) and trust its
+          // JUDGMENT on whether and how to offer automation. Code guarantees
+          // the shot + the rails (cron); the model decides. Deduped to once per
+          // habit so it never nags.
+          const action = sig.actor === 'agent' ? '' : [sig.source, sig.title].filter(Boolean).join(':');
           if (action && mindService) {
             const mind = mindService;
             void (async () => {
               await mind.observeAction(action, Date.now());
-              for (const h of await mind.takePendingHabitProposals(Date.now())) {
+              for (const h of await drainHabitProposalsIfViable(mind)) {
                 heartbeatRunner.pushEvent({
                   type: 'habit-confirmed',
                   payload: { action: h.action, typicalTime: h.typicalTime, cron: cronForMinuteOfDay(h.typicalMinuteOfDay ?? 0) },
@@ -2582,6 +2644,57 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         _autonomySignals?.signal(raw) ?? false,
       ),
     );
+
+    // Habit proposals are propose-ONCE (the marker persists), so consuming one
+    // while the heartbeat can't deliver it — disabled (the shipped default) or
+    // globally paused — would silently burn the user's one "Automate it?"
+    // decision: the in-memory event queue dies with the session, the marker
+    // doesn't. Drain only when a heartbeat tick can actually surface it;
+    // otherwise the habit stays un-proposed and the next gesture after the
+    // user enables heartbeat drains it naturally.
+    const drainHabitProposalsIfViable = async (mind: MindService) => {
+      const viable = unifiedConfigService.getEffectiveConfig().heartbeat.enabled
+        && !autonomyFlags.isEnabled(FLAG_PAUSED_GLOBAL);
+      return viable ? mind.takePendingHabitProposals(Date.now()) : [];
+    };
+
+    // The activity journal is the MIND's richest sense: deliberate user
+    // gestures the signal bus never carries become MIND observations —
+    // (1) habits: opening a pdf / focusing the planner, so "you open the
+    //     planner every morning at 8" is learnable from ordinary app use.
+    //     habitActionForActivity gates to first-fire, user-actor gesture verbs
+    //     and EXCLUDES signal:* sources (they feed observeAction via the lane
+    //     above — double-observing fakes tight clustering) and command runs
+    //     (the command tap can't yet tell the user from plumbing/the AI).
+    // (2) the conscience denominator: canvas TYPING bouts (journal 'edited'
+    //     lines come only from the editor's save pipeline, so they're the
+    //     user's own keystrokes) count as human work — once per coalesced
+    //     bout, not per save.
+    if (_activityJournal && mindService) {
+      const mind = mindService;
+      context.subscriptions.push(
+        _activityJournal.onDidAppend((ev) => {
+          if (ev.actor === 'user' && ev.source === 'canvas' && ev.verb === 'edited' && ev.count === 1) {
+            void mind.recordHuman(ev.ts, ev.object);
+          }
+          const action = habitActionForActivity(ev);
+          if (!action) return;
+          void (async () => {
+            await mind.observeAction(action, ev.ts);
+            // Same guaranteed-proposal drain as the signal lane: a habit that
+            // confirms from journal observations must not wait for an
+            // unrelated bus signal to surface its "Automate it?" decision.
+            for (const h of await drainHabitProposalsIfViable(mind)) {
+              heartbeatRunner.pushEvent({
+                type: 'habit-confirmed',
+                payload: { action: h.action, typicalTime: h.typicalTime, cron: cronForMinuteOfDay(h.typicalMinuteOfDay ?? 0) },
+                timestamp: Date.now(),
+              });
+            }
+          })();
+        }),
+      );
+    }
 
     // Heartbeat state snapshot for UI (autonomy-log "last reviewed / next in").
     context.subscriptions.push(
@@ -3515,6 +3628,7 @@ export function setChatIsStreaming(streaming: boolean): void {
 
 export function deactivate(): void {
   _ollamaProvider = undefined;
+  _mindServiceRef = undefined;
   _activeWidget = undefined;
   _chatIsStreamingKey = undefined;
   _promptFileService = undefined;

@@ -10,6 +10,8 @@ import { ISettingsRegistryService, IKeybindingService, ICommandService } from '.
 import { settingsPanelRegistry } from '../../services/settingsPanelRegistry.js';
 import { SettingsEditor } from './settingsEditor.js';
 import { KeyboardShortcutsPanel } from './keyboardShortcutsPanel.js';
+import { IPythonEnvService } from '../../services/pythonEnvService.js';
+import { createPythonSettingsPanel } from './pythonSettingsPanel.js';
 // ─── Local API type ──────────────────────────────────────────────────────────
 
 interface ParallxApi {
@@ -214,6 +216,17 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         description: 'View and rebind the keyboard shortcut for any command.',
         render: (container) => new KeyboardShortcutsPanel(container, keybindings, commands),
       }),
+    );
+  }
+
+  // ── Python panel inside the Settings hub (M94) ───────────────────────
+  // The flat `python.*` schema rows cover configuration; this panel covers
+  // the parts that only exist on disk — whether an environment is there,
+  // what it weighs, what is installed, and what recently ran.
+  if (api.services.has(IPythonEnvService)) {
+    const pythonService = api.services.get<IPythonEnvService>(IPythonEnvService);
+    context.subscriptions.push(
+      settingsPanelRegistry.register(createPythonSettingsPanel(pythonService)),
     );
   }
 }

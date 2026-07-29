@@ -1,0 +1,292 @@
+/* notebook.css — the notebook surface (M96). Tokens only, no literal colours.
+   No ::-webkit-scrollbar rules and no scrollbar-width anywhere: .nb-cells and
+   the CodeMirror scrollers are picked up by the app-wide scrollbar-reveal
+   delegation, and setting either here would break it. */
+
+.nb-pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--px-bg);
+}
+
+/* ── Toolbar ── */
+
+.nb-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  padding: 5px var(--px-space-3, 12px);
+  border-bottom: 1px solid var(--px-divider);
+}
+
+.nb-btn {
+  padding: 3px 10px;
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-sm, 4px);
+  background: var(--px-surface);
+  color: var(--px-text);
+  font-family: inherit;
+  font-size: var(--px-text-sm, 12px);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--px-dur-fast, 120ms) var(--px-ease, ease),
+              border-color var(--px-dur-fast, 120ms) var(--px-ease, ease);
+}
+.nb-btn:hover:not(:disabled) { background: var(--px-surface-hover); border-color: var(--px-border-strong); }
+.nb-btn:disabled { opacity: 0.45; cursor: default; }
+
+.nb-btn--primary {
+  background: var(--px-accent);
+  border-color: var(--px-accent);
+  color: var(--px-text-on-accent);
+}
+.nb-btn--primary:hover:not(:disabled) {
+  background: var(--px-accent-hover, var(--px-accent));
+  border-color: var(--px-accent-hover, var(--px-accent));
+}
+
+/* ── Kernel status ── */
+
+.nb-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: var(--px-text-xs, 11px);
+  color: var(--px-text-muted);
+  white-space: nowrap;
+}
+
+.nb-status__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--px-text-faint);
+  flex: 0 0 auto;
+}
+.nb-status__dot--idle { background: var(--px-success); }
+.nb-status__dot--busy { background: var(--px-accent); animation: nb-pulse 1.3s var(--px-ease, ease) infinite; }
+.nb-status__dot--starting { background: var(--px-warning); animation: nb-pulse 1.3s var(--px-ease, ease) infinite; }
+.nb-status__dot--dead { background: var(--px-danger); }
+
+@keyframes nb-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+@media (prefers-reduced-motion: reduce) {
+  .nb-status__dot--busy, .nb-status__dot--starting { animation: none; }
+}
+
+/* ── Banner ── */
+
+.nb-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 0 0 auto;
+  padding: 8px var(--px-space-3, 12px);
+  border-bottom: 1px solid var(--px-divider);
+  background: var(--px-bg-elevated);
+  font-size: var(--px-text-sm, 12px);
+  color: var(--px-text-muted);
+  line-height: 1.5;
+}
+.nb-banner[hidden] { display: none; }
+.nb-banner--error { color: var(--px-danger); border-bottom-color: var(--px-danger); }
+
+/* ── Cell list ── */
+
+.nb-cells {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px 0 40vh;   /* tail room so the last cell can sit mid-screen */
+}
+
+.nb-cell {
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  align-items: start;
+  gap: 0 8px;
+  padding: 2px 12px;
+  border-left: 2px solid transparent;
+}
+.nb-cell--selected { border-left-color: var(--px-accent); background: var(--px-surface-hover); }
+.nb-cell--running { border-left-color: var(--px-warning); }
+
+/* ── Gutter ── */
+
+.nb-cell__gutter {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding-top: 6px;
+}
+
+.nb-cell__run {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: var(--px-radius-sm, 4px);
+  background: transparent;
+  color: var(--px-text-faint);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--px-dur-fast, 120ms) var(--px-ease, ease),
+              background var(--px-dur-fast, 120ms) var(--px-ease, ease);
+}
+.nb-cell:hover .nb-cell__run,
+.nb-cell--selected .nb-cell__run,
+.nb-cell__run:focus-visible { opacity: 1; }
+.nb-cell__run:hover { background: var(--px-surface-active); color: var(--px-text); }
+
+.nb-cell__prompt {
+  font-family: var(--px-font-mono, monospace);
+  font-size: var(--px-text-2xs, 10px);
+  color: var(--px-text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Cell body ── */
+
+.nb-cell__body { min-width: 0; display: flex; flex-direction: column; }
+
+.nb-cell__editor {
+  display: flex;
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: var(--px-radius-md, 6px);
+  background: var(--px-bg-inset);
+  transition: border-color var(--px-dur-fast, 120ms) var(--px-ease, ease);
+}
+.nb-cell--selected .nb-cell__editor { border-color: var(--px-border); }
+.nb-cell--markdown .nb-cell__editor { background: transparent; }
+.nb-cell__editor[hidden] { display: none; }
+
+.nb-cell__markdown { padding: 4px 10px; min-width: 0; }
+.nb-cell__markdown[hidden] { display: none; }
+
+.nb-cell__placeholder {
+  font-size: var(--px-text-sm, 12px);
+  color: var(--px-text-faint);
+  font-style: italic;
+}
+
+/* ── Per-cell actions ── */
+
+.nb-cell__actions {
+  display: flex;
+  gap: 2px;
+  padding-top: 6px;
+  opacity: 0;
+  transition: opacity var(--px-dur-fast, 120ms) var(--px-ease, ease);
+}
+.nb-cell:hover .nb-cell__actions,
+.nb-cell--selected .nb-cell__actions,
+.nb-cell__actions:focus-within { opacity: 1; }
+
+.nb-cell__action {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  border: none;
+  border-radius: var(--px-radius-sm, 4px);
+  background: transparent;
+  color: var(--px-text-faint);
+  font-family: inherit;
+  font-size: var(--px-text-xs, 11px);
+  cursor: pointer;
+}
+.nb-cell__action:hover { background: var(--px-surface-active); color: var(--px-text); }
+
+/* ── Outputs ── */
+
+.nb-cell__outputs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 10px 10px;
+  min-width: 0;
+}
+.nb-cell__outputs[hidden] { display: none; }
+
+.nb-output__text {
+  margin: 0;
+  font-family: var(--px-font-mono, monospace);
+  font-size: var(--px-text-xs, 11px);
+  line-height: 1.55;
+  color: var(--px-text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 420px;
+  overflow: auto;
+}
+.nb-output__text--stderr { color: var(--px-danger); }
+
+.nb-output__error {
+  border-left: 2px solid var(--px-danger);
+  padding-left: 8px;
+}
+
+.nb-output__image img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--px-radius-sm, 4px);
+}
+
+.nb-output__empty,
+.nb-output__truncated {
+  font-size: var(--px-text-xs, 11px);
+  color: var(--px-text-faint);
+  font-style: italic;
+}
+
+/* ── Sanitised HTML output (pandas tables and friends) ── */
+
+.nb-output__html {
+  font-size: var(--px-text-sm, 12px);
+  color: var(--px-text-secondary);
+  overflow-x: auto;
+  max-height: 480px;
+}
+.nb-output__html table {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.nb-output__html th,
+.nb-output__html td {
+  padding: 3px 10px;
+  border: 1px solid var(--px-divider);
+  text-align: right;
+}
+.nb-output__html th {
+  background: var(--px-bg-elevated);
+  color: var(--px-text);
+  font-weight: 600;
+}
+.nb-output__html tr:hover td { background: var(--px-surface-hover); }
+.nb-output__html a { color: var(--px-accent); }
+.nb-output__html pre { margin: 0; font-family: var(--px-font-mono, monospace); }
+
+/* ── Per-cell execution timing ────────────────────────────────────────────
+   Live counter while the cell runs, final duration after. Sits between the
+   editor and the outputs so it reads as a property of the run. */
+
+.nb-cell__timing {
+  padding: 3px 10px 0;
+  font-family: var(--px-font-mono, monospace);
+  font-size: var(--px-text-2xs, 10px);
+  font-variant-numeric: tabular-nums;
+  color: var(--px-text-faint);
+  user-select: none;
+}
+.nb-cell__timing[hidden] { display: none; }
+
+/* While running: accented, so a long-running cell is obvious at a glance. */
+.nb-cell__timing--live { color: var(--px-accent); }

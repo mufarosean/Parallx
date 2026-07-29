@@ -18,3 +18,13 @@ test-output.json
 test-output.txt
 playwright-report/
 screenshots/.git-commit-msg.txt
+
+# Python (M94–M97). The per-workspace venv lives at <workspace>/.parallx/venv
+# and never belongs to the repo, but these cover the tooling side: bytecode
+# from tools/jupyter-bridge, and any venv someone creates while developing.
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/

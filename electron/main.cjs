@@ -31,6 +31,10 @@ const { setupMcpBridge, killAllMcpProcesses } = require('./mcpBridge.cjs');
 const { setupStorageHandlers } = require('./storageHandlers.cjs');
 const { setupWebFetchBridge } = require('./webFetchBridge.cjs');
 const { setupGoogleSyncBridge } = require('./googleSyncBridge.cjs');
+const pythonBridge = require('./pythonBridge.cjs');
+const { setupPythonBridge } = pythonBridge;
+const notebookKernelBridge = require('./notebookKernelBridge.cjs');
+const { setupNotebookKernelBridge } = notebookKernelBridge;
 const { registerDashboardAssetScheme, setupDashboardAssetBridge } = require('./dashboardAssetBridge.cjs');
 
 // The parallx-asset:// scheme (dashboard image/GIF assets) must be registered
@@ -108,6 +112,20 @@ registerTeardown('extension-databases', 'workspace', () => {
 // since it's a stateless document conversion service.
 registerTeardown('docling', 'appQuit', () => {
   try { doclingBridge.stopServiceSync(); } catch { /* best-effort */ }
+});
+
+// Python runs are workspace-scoped by construction (M94): a script started
+// against one workspace must not outlive a switch to another, or it keeps
+// writing into a workspace the user has closed.
+registerTeardown('python-runs', 'workspace', () => {
+  try { pythonBridge.shutdown(); } catch { /* best-effort */ }
+});
+
+// A kernel holds the user's entire session state in memory and is bound to one
+// workspace's venv. Leaving it alive across a switch would keep an interpreter
+// (and whatever it loaded) resident for a workspace that is no longer open.
+registerTeardown('notebook-kernels', 'workspace', () => {
+  try { notebookKernelBridge.shutdownAll(); } catch { /* best-effort */ }
 });
 
 /** @type {BrowserWindow | null} */
@@ -618,6 +636,12 @@ async function createWindow() {
 
   // ── D1: MCP Bridge ──
   setupMcpBridge(ipcMain, () => mainWindow, APP_ROOT);
+
+  // ── M94: per-workspace Python runtime ──
+  setupPythonBridge(ipcMain, () => mainWindow);
+
+  // ── M96: notebook kernel (depends on the Python runtime above) ──
+  setupNotebookKernelBridge(ipcMain, () => mainWindow);
 
   // Track normal (non-maximized) bounds so we can save them even when
   // the window is maximized at quit time.
@@ -2562,13 +2586,42 @@ const WATCHER_IGNORE = new Set(['.git', 'node_modules', '.DS_Store', 'Thumbs.db'
 const WATCHER_IGNORE_FILES = new Set(['workspace-state.json', 'global-storage.json']);
 const WATCHER_DEBOUNCE_MS = 100;
 
+/**
+ * Persuade child processes to emit ANSI colour even though they are on a pipe.
+ *
+ * Well-behaved CLI tools call `isatty()` and suppress colour when the answer is
+ * no — correct, because raw escape codes in a redirected log are garbage. The
+ * terminal panel is a pipe (there is no PTY; see the M97 notes), so everything
+ * arrived monochrome: `pip`'s errors, `pytest`'s failures, and `ruff`'s
+ * diagnostics all looked exactly like the surrounding noise.
+ *
+ * These are the opt-in overrides those same tools document for precisely this
+ * case — a consumer that pipes output but *does* render colour. The renderer
+ * turns the escapes into themed spans (ui/ansiToHtml.ts).
+ */
+const COLOUR_ENV = {
+  TERM: 'xterm-256color',
+  FORCE_COLOR: '1',        // node, npm, jest, chalk-based tools
+  CLICOLOR_FORCE: '1',     // BSD/GNU convention, ripgrep, fd, bat
+  PY_COLORS: '1',          // pytest, pip, and most of the Python ecosystem
+};
+
 // ── fs:watch ──
-ipcMain.handle('fs:watch', async (_event, watchPath, _options) => {
+// `options.ignoreSegments` — extra path segments to drop, supplied by the
+// renderer (src/services/parallxIgnore.ts WATCH_IGNORE_SEGMENTS is the single
+// source; this file deliberately does not re-declare the list). WATCHER_IGNORE
+// above stays as a floor for callers that pass nothing. Filtering here rather
+// than renderer-side is what keeps a `pip install` into the workspace venv —
+// tens of thousands of files — from crossing IPC at all.
+ipcMain.handle('fs:watch', async (_event, watchPath, options) => {
   if (_activeWatchers.size >= MAX_WATCHERS) {
     return { error: { code: 'ELIMIT', message: `Maximum ${MAX_WATCHERS} watchers reached`, path: watchPath } };
   }
 
   const watchId = `watch-${_nextWatchId++}`;
+  const extraIgnore = Array.isArray(options?.ignoreSegments)
+    ? new Set(options.ignoreSegments.filter((s) => typeof s === 'string' && s.length > 0))
+    : null;
 
   try {
     const watcher = fsSync.watch(watchPath, { recursive: true }, (eventType, filename) => {
@@ -2577,6 +2630,7 @@ ipcMain.handle('fs:watch', async (_event, watchPath, _options) => {
       // Ignore noise
       const parts = filename.split(path.sep);
       if (parts.some(p => WATCHER_IGNORE.has(p))) return;
+      if (extraIgnore && parts.some(p => extraIgnore.has(p))) return;
       // Ignore internal state files (and their .tmp atomic-write intermediates)
       const basename = parts[parts.length - 1];
       if (WATCHER_IGNORE_FILES.has(basename)) return;
@@ -2713,11 +2767,21 @@ function _appendToTerminalBuffer(text) {
 ipcMain.handle('terminal:exec', async (_event, command, options) => {
   try {
     const timeout = options?.timeout ?? 30000;
-    const cwd = options?.cwd || (mainWindow ? app.getPath('home') : undefined);
+    const cwd = options?.cwd || options?.workspaceRoot || (mainWindow ? app.getPath('home') : undefined);
     const shellOption = process.platform === 'win32' ? { shell: 'powershell.exe' } : { shell: true };
+
+    // Same activation as an interactive shell (M97), so `python`, `pip` and
+    // console scripts mean the same thing whether the user types them or the
+    // agent runs them through terminal_run_command. Two different answers to
+    // `pip list` depending on who asked would be its own kind of bug.
+    const env = pythonBridge.buildTerminalEnv(options?.workspaceRoot || cwd, {
+      ...process.env,
+      ...COLOUR_ENV,
+    });
 
     const result = await execAsync(command, {
       cwd,
+      env,
       timeout,
       maxBuffer: 1024 * 1024, // 1 MB
       ...shellOption,
@@ -2828,15 +2892,26 @@ ipcMain.handle('terminal:spawn', async (_event, options) => {
   try {
     const id = `term-${++_terminalIdCounter}`;
     const shellCmd = options?.shell || (process.platform === 'win32' ? 'powershell.exe' : process.env.SHELL || '/bin/bash');
-    const cwd = options?.cwd || app.getPath('home');
+    // Prefer the workspace over the user's home: a terminal that opens
+    // somewhere other than the project you have open is a papercut every
+    // single time.
+    const cwd = options?.cwd || options?.workspaceRoot || app.getPath('home');
+
+    // M97 — activate the workspace venv if there is one. An overlay on the
+    // inherited environment, never a rebuild: this is the user's own shell and
+    // it must keep git, node, ssh and their prompt. No-ops without a venv.
+    const env = pythonBridge.buildTerminalEnv(options?.workspaceRoot, {
+      ...process.env,
+      ...COLOUR_ENV,
+    });
 
     const proc = spawn(shellCmd, [], {
       cwd,
-      env: { ...process.env, TERM: 'xterm-256color' },
+      env,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
-    _activeTerminals.set(id, { proc, cwd });
+    _activeTerminals.set(id, { proc, cwd, venv: env.VIRTUAL_ENV ?? null });
 
     proc.stdout.on('data', (data) => {
       const text = data.toString();
@@ -2883,6 +2958,28 @@ ipcMain.handle('terminal:kill', async (_event, id) => {
     _activeTerminals.delete(id);
   }
   return { error: null };
+});
+
+// ── terminal:envInfo — Which venv a NEW terminal would activate ──
+// Lets the panel show the active environment, and detect when a running shell
+// has gone stale (see below).
+ipcMain.handle('terminal:envInfo', async (_event, workspaceRoot) => {
+  try {
+    return { ok: true, ...pythonBridge.terminalEnvInfo(workspaceRoot) };
+  } catch (err) {
+    return { ok: false, active: false, error: String(err && err.message) };
+  }
+});
+
+// ── terminal:sessionEnv — Which venv a RUNNING shell was started with ──
+// A live process's environment cannot be changed from outside, so creating an
+// environment mid-session cannot retroactively activate an open shell. The
+// panel compares this against terminal:envInfo and offers a restart when they
+// disagree, rather than leaving the user to wonder why `python` is still the
+// system one.
+ipcMain.handle('terminal:sessionEnv', async (_event, id) => {
+  const entry = _activeTerminals.get(id);
+  return { ok: !!entry, venv: entry ? entry.venv : null };
 });
 
 // ── terminal:getOutput — Get recent terminal output buffer ──

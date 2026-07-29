@@ -51,6 +51,21 @@ const DEFAULT_PATTERNS = [
   '# Coverage',
   'coverage/',
   '',
+  '# Python runtime machinery (M94 — workspace-local venv).',
+  '# The venv and its temp dir are app machinery, not user content: never',
+  '# indexed, never watched, never visible to the AI file tools. Scripts and',
+  '# their outputs live OUTSIDE this tree and stay fully visible.',
+  '.parallx/venv/',
+  '.parallx/tmp/',
+  '.pytest_cache/',
+  '.mypy_cache/',
+  '.ruff_cache/',
+  '.ipynb_checkpoints/',
+  '*.egg-info/',
+  '*.pyc',
+  '*.pyo',
+  '*.pyd',
+  '',
   '# Secrets',
   '.env',
   '.env.*',
@@ -256,6 +271,37 @@ export class ParallxIgnore {
   }
 
   /**
+   * Ancestor-aware ignore check.
+   *
+   * `isIgnored` answers "does this exact path match a pattern", which is the
+   * right question for a tree WALK — the walk never descends into an ignored
+   * directory, so it never asks about the files underneath. Event-driven
+   * callers get no such luxury: the watcher hands them
+   * `node_modules/foo/bar.js` with no memory of having skipped
+   * `node_modules/`, and a directory-only pattern (`node_modules/`) is
+   * skipped outright for files. So the exact-match check returns false and
+   * the file sails through.
+   *
+   * This walks every ancestor segment as a directory, then tests the path
+   * itself. Use it anywhere paths arrive out of the blue rather than from a
+   * top-down traversal.
+   */
+  isPathIgnored(relativePath: string, isDirectory: boolean): boolean {
+    const normPath = relativePath.replace(/\\/g, '/').replace(/^\/+/, '');
+    if (!normPath) return false;
+
+    const segments = normPath.split('/').filter(Boolean);
+    // Every ancestor directory, shallowest first. An ignored ancestor ignores
+    // everything beneath it.
+    for (let i = 1; i < segments.length; i++) {
+      if (this.isIgnored(segments.slice(0, i).join('/'), true)) {
+        return true;
+      }
+    }
+    return this.isIgnored(normPath, isDirectory);
+  }
+
+  /**
    * Check if a directory name should be skipped during tree walking.
    * This is a fast-path for the common case of checking just a directory name
    * (e.g., "node_modules") without needing the full relative path.
@@ -271,6 +317,36 @@ export class ParallxIgnore {
     return this._patterns.map((p) => p.raw);
   }
 }
+
+/**
+ * Path segments whose subtrees must never produce a file-watch event.
+ *
+ * This is a COARSE pre-filter applied in the main process, before events
+ * cross IPC — not a replacement for `.parallxignore`, which stays the real
+ * policy and is evaluated in the renderer. Its whole job is volume: a
+ * `pip install` into the workspace venv, or an `npm install`, writes tens of
+ * thousands of files, and the recursive `fs.watch` in the main process has
+ * no filter at all today — every one of those becomes a debounced IPC message
+ * and an indexer wake-up.
+ *
+ * Kept deliberately tiny and name-based (not pattern-based) so the main
+ * process needs no glob engine. THE single source: passed down through
+ * `IFileService.watch(uri, { ignoreSegments })`, never re-declared in
+ * main.cjs.
+ */
+export const WATCH_IGNORE_SEGMENTS: readonly string[] = [
+  'node_modules',
+  '.git',
+  'venv',
+  '.venv',
+  '__pycache__',
+  'site-packages',
+  'dist',
+  'build',
+  '.pytest_cache',
+  '.mypy_cache',
+  '.ruff_cache',
+];
 
 /**
  * Create a ParallxIgnore instance loaded with defaults.

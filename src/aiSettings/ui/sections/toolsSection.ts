@@ -48,6 +48,7 @@ const CATEGORY_DISPLAY: Record<ToolCategoryKind, { label: string; order: number 
   'cron':        { label: 'Scheduling',   order: 90 },
   'app-control': { label: 'App Control',  order: 100 },
   'terminal':    { label: 'Terminal',     order: 110 },
+  'python':      { label: 'Python',       order: 120 },
 };
 
 // ─── ToolsSection ────────────────────────────────────────────────────────────

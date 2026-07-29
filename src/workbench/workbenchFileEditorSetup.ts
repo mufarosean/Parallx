@@ -43,6 +43,12 @@ import { SettingsEditorInput } from '../built-in/editor/settingsEditorInput.js';
 
 // Editor panes
 import { TextEditorPane } from '../built-in/editor/textEditorPane.js';
+import { CodeEditorPane } from '../built-in/editor/codeEditorPane.js';
+import { hasCodeLanguage } from '../ui/codeEditor.js';
+import { IPythonEnvService } from '../services/pythonEnvService.js';
+import { INotebookKernelService } from '../services/notebookKernelService.js';
+import { NotebookEditorInput } from '../built-in/editor/notebook/notebookEditorInput.js';
+import { NotebookEditorPane } from '../built-in/editor/notebook/notebookEditorPane.js';
 import { MarkdownEditorPane } from '../built-in/editor/markdownEditorPane.js';
 import { ImageEditorPane } from '../built-in/editor/imageEditorPane.js';
 import { PdfEditorPane } from '../built-in/editor/pdfEditorPane.js';
@@ -112,6 +118,15 @@ function _initFileEditorResolver(
     return undefined;
   };
 
+  // CodeEditorPane needs the Python service for its Run/Format actions,
+  // resolved per construction rather than captured once because a workspace
+  // can be swapped underneath the factory (M95).
+  const getPythonService = (): IPythonEnvService | undefined =>
+    services.has(IPythonEnvService) ? services.get(IPythonEnvService) : undefined;
+
+  const getKernelService = (): INotebookKernelService | undefined =>
+    services.has(INotebookKernelService) ? services.get(INotebookKernelService) : undefined;
+
   // ── Register built-in format readers (priority-sorted) ──
 
   // M53 D3.4: Helper to create PDF panes with global storage wired
@@ -177,6 +192,17 @@ function _initFileEditorResolver(
     createPane: () => new ExcelEditorPane(),
   }));
 
+  // Notebooks (M96). Registered above the text fallback so `.ipynb` opens as a
+  // notebook rather than as the raw JSON it happens to be stored as.
+  disposables.add(resolver.registerEditor({
+    id: NotebookEditorInput.TYPE_ID,
+    name: 'Notebook',
+    extensions: ['.ipynb'],
+    priority: EditorResolverPriority.Default,
+    createInput: (uri) => NotebookEditorInput.create(uri, fileService, getRelativePath(uri)),
+    createPane: () => new NotebookEditorPane(getKernelService()),
+  }));
+
   // Text editor (fallback — matches everything)
   disposables.add(resolver.registerEditor({
     id: FileEditorInput.TYPE_ID,
@@ -196,6 +222,7 @@ function _initFileEditorResolver(
     if (input instanceof EpubEditorInput) return new EpubEditorPane();
     if (input instanceof WordEditorInput) return new WordEditorPane();
     if (input instanceof ExcelEditorInput) return new ExcelEditorPane();
+    if (input instanceof NotebookEditorInput) return new NotebookEditorPane(getKernelService());
 
     if (input instanceof KeybindingsEditorInput) {
       const kbService = services.has(IKeybindingService)
@@ -206,6 +233,17 @@ function _initFileEditorResolver(
 
     if (input instanceof SettingsEditorInput) {
       return new SettingsEditorPane(services);
+    }
+
+    // Code files get the real editing surface; everything else keeps the
+    // textarea pane. Routing on language support rather than a second
+    // extension list keeps CodeEditor's LANGUAGE_LOADERS the single source of
+    // "what counts as code" (M95).
+    if (input instanceof FileEditorInput && hasCodeLanguage(input.name)) {
+      return new CodeEditorPane(getPythonService());
+    }
+    if (input instanceof UntitledEditorInput && hasCodeLanguage(input.name)) {
+      return new CodeEditorPane(getPythonService());
     }
 
     if (input instanceof FileEditorInput) return new TextEditorPane();

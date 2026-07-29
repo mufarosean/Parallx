@@ -62,3 +62,65 @@
 .ansi-magenta { color: #c586c0; }
 .ansi-cyan { color: #4ec9b0; }
 .ansi-white { color: var(--px-text); }
+
+/* ── Environment strip (M97) ──────────────────────────────────────────────
+   Shows which Python environment the shell is using, and — the case that
+   matters — says so when a running shell has gone stale, because a live
+   process's environment cannot be changed from outside. Tokens only. */
+
+.parallx-terminal-env {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+  padding: 3px var(--px-space-3, 12px);
+  border-bottom: 1px solid var(--px-divider);
+  font-size: var(--px-text-xs, 11px);
+  color: var(--px-text-faint);
+}
+.parallx-terminal-env[hidden] { display: none; }
+
+.parallx-terminal-env__label {
+  font-family: var(--px-font-mono, monospace);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.parallx-terminal-env--stale {
+  color: var(--px-warning);
+  border-bottom-color: var(--px-warning);
+}
+.parallx-terminal-env--stale .parallx-terminal-env__label {
+  font-family: inherit;
+}
+
+.parallx-terminal-env__action {
+  margin-left: auto;
+  padding: 1px 8px;
+  border: 1px solid currentColor;
+  border-radius: var(--px-radius-sm, 4px);
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.parallx-terminal-env__action:hover { background: var(--px-surface-hover); }
+
+/* The prompt carries the active Python environment, the way a shell prompt
+   would if this panel were a real terminal emulator. See paintPrompt(). */
+.parallx-terminal-prompt__env {
+  color: var(--px-success);
+  margin-right: 6px;
+  font-family: var(--px-font-mono, monospace);
+}
+.parallx-terminal-prompt__glyph { color: inherit; }
+
+/* Each write from the shell becomes one span so the output buffer can be
+   trimmed by removing whole chunks — reassigning textContent (the old trim)
+   would flatten every ANSI colour span in the scrollback. */
+.parallx-terminal-chunk {
+  display: contents;
+}

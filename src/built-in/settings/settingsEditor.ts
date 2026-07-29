@@ -41,7 +41,19 @@ import './settings.css';
  *  custom-rendered panel contributed via settingsPanelRegistry. */
 type NavEntry =
   | { kind: 'schema'; id: string; label: string; order: number; category: string }
-  | { kind: 'panel'; id: string; label: string; order: number; panel: ISettingsPanel };
+  | {
+      kind: 'panel';
+      id: string;
+      label: string;
+      order: number;
+      panel: ISettingsPanel;
+      /**
+       * Schema category ABSORBED by this panel, when a feature contributes
+       * both a rich panel and flat `category:` settings under the same name.
+       * The panel renders first and its rows follow, on one page.
+       */
+      absorbedCategory?: string;
+    };
 
 /** A rendered nav group: a header label plus its member entries. */
 interface INavGroup {
@@ -270,12 +282,35 @@ export class SettingsEditor extends Disposable {
   /** Collect every available nav entry (panels + schema categories), keyed by id. */
   private _collectEntries(): Map<string, NavEntry> {
     const byId = new Map<string, NavEntry>();
+
+    // Panels first, indexed by normalised label so a schema category with the
+    // same name can be folded into them below.
+    const panelByLabel = new Map<string, NavEntry & { kind: 'panel' }>();
     for (const panel of settingsPanelRegistry.getPanels()) {
-      byId.set(`panel:${panel.id}`, { kind: 'panel', id: `panel:${panel.id}`, label: panel.label, order: panel.order ?? 50, panel });
+      const entry = {
+        kind: 'panel' as const,
+        id: `panel:${panel.id}`,
+        label: panel.label,
+        order: panel.order ?? 50,
+        panel,
+      };
+      byId.set(entry.id, entry);
+      panelByLabel.set(panel.label.trim().toLowerCase(), entry);
     }
+
     const cats = new Set<string>();
     for (const s of this._registry.getAllSchemas()) cats.add(s.category ?? 'General');
     for (const cat of cats) {
+      // A feature that contributes BOTH a rich panel and flat settings under
+      // the same name previously produced two identical nav rows — one from
+      // `panel:<id>`, one from `schema:<category>` — with no way for the user
+      // to tell which was which. Neither source is wrong; they are two halves
+      // of one page. Fold the category into the panel and render both.
+      const owner = panelByLabel.get(cat.trim().toLowerCase());
+      if (owner) {
+        owner.absorbedCategory = cat;
+        continue;
+      }
       byId.set(`schema:${cat}`, { kind: 'schema', id: `schema:${cat}`, label: cat, order: 50, category: cat });
     }
     return byId;
@@ -395,6 +430,21 @@ export class SettingsEditor extends Disposable {
       this._contentEl.appendChild(host);
       const disp = entry.panel.render(host);
       this._activePanelDisposable = disp ?? null;
+
+      // Rows for a schema category this panel absorbed (see _collectEntries).
+      // A `fill` panel owns its own scroll and would clip anything appended
+      // after it, so those keep the panel alone and stay reachable by search.
+      if (entry.absorbedCategory && !entry.panel.fill) {
+        const rows = this._registry
+          .getAllSchemas()
+          .filter((s) => (s.category ?? 'General') === entry.absorbedCategory && this._matches(s));
+        if (rows.length) {
+          const sub = $('h4.settings-editor__category-title');
+          sub.textContent = 'All settings';
+          this._contentEl.appendChild(sub);
+          for (const schema of rows) this._contentEl.appendChild(this._renderRow(schema));
+        }
+      }
       return;
     }
 

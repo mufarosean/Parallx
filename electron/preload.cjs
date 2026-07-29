@@ -433,6 +433,12 @@ contextBridge.exposeInMainWorld('parallxElectron', {
     /** Get recent terminal output buffer. */
     getOutput: (lineCount) => ipcRenderer.invoke('terminal:getOutput', lineCount),
 
+    /** Which venv a NEW shell would activate. Returns { active, venvPath, binDir }. */
+    envInfo: (workspaceRoot) => ipcRenderer.invoke('terminal:envInfo', workspaceRoot),
+
+    /** Which venv a RUNNING shell was started with. Returns { ok, venv }. */
+    sessionEnv: (id) => ipcRenderer.invoke('terminal:sessionEnv', id),
+
     /** Subscribe to terminal output data. Returns unsubscribe function. */
     onData: (callback) => {
       const handler = (_event, payload) => callback(payload);
@@ -622,5 +628,116 @@ contextBridge.exposeInMainWorld('parallxElectron', {
 
     /** Install Docling via pip. Returns { ok, pythonPath, output, alreadyInstalled }. */
     install: () => ipcRenderer.invoke('docling:install'),
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Per-workspace Python runtime (M94)
+  //
+  // Every call takes an explicit workspaceRoot — the main process never
+  // assumes which workspace is current. The consent gate (`python.enabled`)
+  // lives in the renderer service, not here.
+  // ══════════════════════════════════════════════════════════════════════════
+
+  python: {
+    /** Environment status for a workspace. Never creates anything. */
+    status: (workspaceRoot) => ipcRenderer.invoke('python:status', workspaceRoot),
+
+    /** Recursive size of the environment. Returns { ok, sizeBytes, fileCount }. */
+    envSize: (workspaceRoot) => ipcRenderer.invoke('python:envSize', workspaceRoot),
+
+    /** Create <workspace>/.parallx/venv. Idempotent. */
+    createEnv: (workspaceRoot) => ipcRenderer.invoke('python:createEnv', workspaceRoot),
+
+    /** Delete the environment. Scripts and outputs are untouched. */
+    removeEnv: (workspaceRoot) => ipcRenderer.invoke('python:removeEnv', workspaceRoot),
+
+    /** pip install. Specifiers are validated in the main process. */
+    install: (workspaceRoot, packages) => ipcRenderer.invoke('python:install', workspaceRoot, packages),
+
+    /** pip uninstall. */
+    uninstall: (workspaceRoot, packages) => ipcRenderer.invoke('python:uninstall', workspaceRoot, packages),
+
+    /** Installed packages: { ok, packages: [{ name, version }] }. */
+    listPackages: (workspaceRoot) => ipcRenderer.invoke('python:listPackages', workspaceRoot),
+
+    /** Start a script. Returns { ok, runId, outDir } — output arrives on the subscriptions below. */
+    runScript: (payload) => ipcRenderer.invoke('python:runScript', payload),
+
+    /** Stop a run. */
+    cancelRun: (runId) => ipcRenderer.invoke('python:cancelRun', runId),
+
+    /**
+     * Subscribe to live output from long environment operations (create,
+     * install, uninstall). Returns an unsubscribe function.
+     */
+    onProgress: (callback) => {
+      const handler = (_e, payload) => callback(payload);
+      ipcRenderer.on('python:progress', handler);
+      return () => ipcRenderer.removeListener('python:progress', handler);
+    },
+
+    /** Which formatters (black / ruff) are importable here. */
+    detectFormatters: (workspaceRoot) => ipcRenderer.invoke('python:detectFormatters', workspaceRoot),
+
+    /** Format source over stdin. Returns { ok, formatted } or { ok: false, error }. */
+    format: (workspaceRoot, source, tool) => ipcRenderer.invoke('python:format', workspaceRoot, source, tool),
+
+    /** Subscribe to streamed run output. Returns an unsubscribe function. */
+    onRunData: (callback) => {
+      const handler = (_e, payload) => callback(payload);
+      ipcRenderer.on('python:run:data', handler);
+      return () => ipcRenderer.removeListener('python:run:data', handler);
+    },
+
+    /** Subscribe to run completion. Returns an unsubscribe function. */
+    onRunExit: (callback) => {
+      const handler = (_e, payload) => callback(payload);
+      ipcRenderer.on('python:run:exit', handler);
+      return () => ipcRenderer.removeListener('python:run:exit', handler);
+    },
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Notebook kernel (M96)
+  //
+  // One Jupyter kernel per workspace, hosted by tools/jupyter-bridge/
+  // parallx_kernel_host.py. Every call names its workspace explicitly.
+  // ══════════════════════════════════════════════════════════════════════════
+
+  notebookKernel: {
+    /** Kernel status without starting one. */
+    status: (workspaceRoot) => ipcRenderer.invoke('notebook:kernel:status', workspaceRoot),
+
+    /** Whether ipykernel is importable in the workspace environment. */
+    checkDeps: (workspaceRoot) => ipcRenderer.invoke('notebook:kernel:checkDeps', workspaceRoot),
+
+    /** Start the kernel. Idempotent. */
+    start: (workspaceRoot) => ipcRenderer.invoke('notebook:kernel:start', workspaceRoot),
+
+    /** Stop it, gracefully then forcibly. */
+    stop: (workspaceRoot) => ipcRenderer.invoke('notebook:kernel:stop', workspaceRoot),
+
+    /** Queue code. Output arrives on the event subscription below. */
+    execute: (workspaceRoot, requestId, code) =>
+      ipcRenderer.invoke('notebook:kernel:execute', workspaceRoot, requestId, code),
+
+    /** Completion candidates at a cursor position. */
+    complete: (workspaceRoot, requestId, code, cursorPos) =>
+      ipcRenderer.invoke('notebook:kernel:complete', workspaceRoot, requestId, code, cursorPos),
+
+    /** SIGINT the running cell. */
+    interrupt: (workspaceRoot, requestId) =>
+      ipcRenderer.invoke('notebook:kernel:interrupt', workspaceRoot, requestId),
+
+    /** Restart — every variable is lost. */
+    restart: (workspaceRoot, requestId) =>
+      ipcRenderer.invoke('notebook:kernel:restart', workspaceRoot, requestId),
+
+    /** Subscribe to kernel events. Returns an unsubscribe function. */
+    onEvent: (callback) => {
+      const handler = (_e, payload) => callback(payload);
+      ipcRenderer.on('notebook:kernel:event', handler);
+      return () => ipcRenderer.removeListener('notebook:kernel:event', handler);
+    },
   },
 });

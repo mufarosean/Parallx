@@ -1,0 +1,37 @@
+/* codeEditor.css — layout shell for the shared CodeMirror surface (M95).
+ *
+ * Colours live in the EditorView.theme() inside codeEditor.ts, driven by
+ * --px-syntax-* tokens. This file only does box geometry, which CodeMirror
+ * cannot express through its theme API.
+ *
+ * Deliberately absent: any ::-webkit-scrollbar rule and any `scrollbar-width`.
+ * `.cm-scroller` is picked up by the app-wide scrollbar-reveal delegation, and
+ * setting either here would break that (scrollbar-width flips Chromium to CSS
+ * Scrollbars mode and disables ::-webkit-scrollbar styling app-wide on this
+ * surface). See src/ui/scrollbarReveal.ts.
+ */
+
+.px-code-editor {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.px-code-editor .cm-editor {
+  height: 100%;
+  min-height: 0;
+}
+
+/* Auto-height mode — the notebook-cell shape: grow with content, never
+   scroll internally, let the surrounding document own the scroll. */
+.px-code-editor--auto,
+.px-code-editor--auto .cm-editor {
+  height: auto;
+  flex: 0 0 auto;
+}
+.px-code-editor--auto .cm-scroller {
+  overflow: visible;
+}
