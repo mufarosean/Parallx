@@ -237,6 +237,41 @@ describe('OpenclawContextEngine', () => {
       expect(result.messages.some((m) => m.content.includes('## Active Plan'))).toBe(false);
     });
 
+    it('M93 — injects MIND continuity as a guaranteed section beside the plan', async () => {
+      await engine.bootstrap({ sessionId: 's1', tokenBudget: 8192 });
+      const result = await engine.assemble({
+        sessionId: 's1',
+        history: [],
+        tokenBudget: 8192,
+        prompt: 'continue',
+        planText: 'Goal: ship it',
+        mindText: '- [belief · 84%] User studies Exam 7 in the mornings',
+      });
+
+      const contextMsg = result.messages.find((m) => m.content.includes('## Continuity'));
+      expect(contextMsg).toBeDefined();
+      expect(contextMsg!.role).toBe('user');
+      expect(contextMsg!.content).toContain('User studies Exam 7 in the mornings');
+      expect(contextMsg!.content).toContain('mind_remember');
+      // Plan first, then continuity, then retrieval.
+      expect(contextMsg!.content.indexOf('## Active Plan'))
+        .toBeLessThan(contextMsg!.content.indexOf('## Continuity'));
+      expect(contextMsg!.content.indexOf('## Continuity'))
+        .toBeLessThan(contextMsg!.content.indexOf('## Retrieved Context'));
+    });
+
+    it('M93 — no continuity section when mindText is absent or empty', async () => {
+      await engine.bootstrap({ sessionId: 's1', tokenBudget: 8192 });
+      const withEmpty = await engine.assemble({
+        sessionId: 's1',
+        history: [],
+        tokenBudget: 8192,
+        prompt: 'continue',
+        mindText: '',
+      });
+      expect(withEmpty.messages.some((m) => m.content.includes('## Continuity'))).toBe(false);
+    });
+
     // ── M85 Slice B: summarize-then-fit at the trim boundary ──
 
     // History big enough to overflow the history lane of a 2048-token budget

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { HabitDetector, cronForMinuteOfDay } from '../../src/openclaw/mind/habitDetector';
+import { HabitDetector, cronForMinuteOfDay, habitActionForActivity } from '../../src/openclaw/mind/habitDetector';
 
 const DAY = 24 * 60 * 60 * 1000;
 const HM = (day: number, hour: number, min = 0) => day * DAY + (hour * 60 + min) * 60000;
@@ -85,5 +85,87 @@ describe('HabitDetector — "you do this every morning"', () => {
     const h2 = new HabitDetector();
     h2.restore(JSON.parse(JSON.stringify(h.toState())));
     expect(h2.wasProposed('x')).toBe(true);
+  });
+
+  it('caps distinct actions by evicting the least recently seen key', () => {
+    const h = new HabitDetector({ maxActions: 8 });
+    // 8 keys, oldest first; 'a0' was last seen earliest.
+    for (let i = 0; i < 8; i++) h.observe(`a${i}`, HM(0, 8, i));
+    h.observe('a-new', HM(0, 9)); // 9th key → 'a0' evicted
+    const state = h.toState();
+    const keys = state.events.map(e => e[0]);
+    expect(keys).toHaveLength(8);
+    expect(keys).not.toContain('a0');
+    expect(keys).toContain('a-new');
+    expect(keys).toContain('a7');
+  });
+
+  it('the propose-once marker SURVIVES eviction (a dismissed routine must not re-nag if it re-forms)', () => {
+    const h = new HabitDetector({ maxActions: 8 });
+    for (let i = 0; i < 8; i++) h.observe(`a${i}`, HM(0, 8, i));
+    h.markProposed('a0');
+    h.observe('a-new', HM(0, 9)); // evicts a0's events...
+    expect(h.toState().events.map(e => e[0])).not.toContain('a0');
+    expect(h.wasProposed('a0')).toBe(true); // ...but never the marker
+  });
+
+  it('restore() enforces the cap immediately on an oversized legacy blob (newest keys kept)', () => {
+    const big = new HabitDetector({ maxActions: 1000 });
+    for (let i = 0; i < 20; i++) big.observe(`k${i}`, HM(0, 8, i)); // k19 newest
+    const small = new HabitDetector({ maxActions: 8 });
+    small.restore(JSON.parse(JSON.stringify(big.toState())));
+    const keys = small.toState().events.map(e => e[0]);
+    expect(keys).toHaveLength(8);
+    expect(keys).toContain('k19');
+    expect(keys).not.toContain('k0');
+  });
+});
+
+// ── The activity-journal lane (M93: MIND ← journal) ──────────────────────────
+//
+// habitActionForActivity decides which journal events count as habit
+// observations. Deliberate gestures only; the signal:* sources are excluded
+// because they already feed observeAction through their own lane.
+
+describe('habitActionForActivity — journal events as habit observations', () => {
+  const ev = (over: Partial<{ actor: string; source: string; verb: string; object: string; count: number }>) => ({
+    actor: 'user', source: 'editor', verb: 'opened', object: 'pdf "exam7.pdf"', count: 1, ...over,
+  });
+
+  it('maps editor opens and view focus to readable keys', () => {
+    expect(habitActionForActivity(ev({}))).toBe('opened pdf "exam7.pdf"');
+    expect(habitActionForActivity(ev({ source: 'focus', verb: 'focused', object: 'planner view' })))
+      .toBe('focused planner view');
+  });
+
+  it('ignores command runs — the command tap cannot tell the user from plumbing or the AI', () => {
+    // A scheduled dispatch journaled as `user ran "..."` would train a
+    // perfectly time-clustered fake habit (the self-echo loop).
+    expect(habitActionForActivity(ev({ source: 'command', verb: 'ran', object: '"View: Toggle Zen Mode"' })))
+      .toBeUndefined();
+    expect(habitActionForActivity(ev({ source: 'command', verb: 'ran', object: '"parallx.autonomy.signal"' })))
+      .toBeUndefined();
+  });
+
+  it('ignores non-user actors (assistant/system work is not a user habit)', () => {
+    expect(habitActionForActivity(ev({ actor: 'ai' }))).toBeUndefined();
+    expect(habitActionForActivity(ev({ actor: 'system' }))).toBeUndefined();
+    expect(habitActionForActivity(ev({ actor: 'ext:budget' }))).toBeUndefined();
+  });
+
+  it('ignores coalesced re-fires — one burst is one occurrence', () => {
+    expect(habitActionForActivity(ev({ count: 2 }))).toBeUndefined();
+  });
+
+  it('ignores signal:* sources (they feed observeAction via their own lane)', () => {
+    expect(habitActionForActivity(ev({ source: 'signal:canvas', verb: 'signal', object: 'Created page' })))
+      .toBeUndefined();
+  });
+
+  it('ignores non-gesture verbs (viewing/closed switches are navigation noise)', () => {
+    expect(habitActionForActivity(ev({ verb: 'viewing' }))).toBeUndefined();
+    expect(habitActionForActivity(ev({ verb: 'closed' }))).toBeUndefined();
+    expect(habitActionForActivity(ev({ source: 'window', verb: 'left', object: 'the app window' })))
+      .toBeUndefined();
   });
 });

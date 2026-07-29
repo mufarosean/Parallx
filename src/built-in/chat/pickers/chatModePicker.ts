@@ -29,8 +29,13 @@ const AUTONOMY_LEVELS: { value: AgentAutonomyLevel; label: string; description: 
   { value: 'custom', label: 'Custom', description: 'You set the rules in Settings → Agent' },
 ];
 
-/** Mode display metadata. */
-const MODE_META: Record<ChatMode, { label: string; title: string; description: string; icon: string }> = {
+/**
+ * Mode display metadata. EXPORTED so other surfaces (the chat empty state)
+ * describe a mode in the picker's own words instead of keeping a second copy
+ * that silently drifts — the old empty state claimed "/agent " switched modes,
+ * which was never true.
+ */
+export const MODE_META: Record<ChatMode, { label: string; title: string; description: string; icon: string }> = {
   [ChatMode.Edit]: {
     label: 'Edit',
     title: 'Edit mode — structured canvas changes',
@@ -114,6 +119,15 @@ export class ChatModePicker extends Disposable {
 
     this._button.title = `${meta.label} mode — ${meta.title}`;
     this._button.setAttribute('aria-label', `Chat mode: ${meta.label}`);
+  }
+
+  /**
+   * Open the real dropdown from elsewhere in the UI (the chat empty state's
+   * mode cell). Teaching the control the user will keep using beats rendering
+   * a lookalike that only exists on the empty state.
+   */
+  openDropdown(): void {
+    if (!this._dropdown) { this._openDropdown(); }
   }
 
   private _openDropdown(): void {

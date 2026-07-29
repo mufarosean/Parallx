@@ -717,18 +717,18 @@
   box-sizing: border-box;
 }
 
+/* The mark, not a badge. The tinted accent tile read as generic AI-product
+   chrome; at rest the panel should be typography first. */
 .parallx-chat-empty-state-icon {
-  margin-bottom: var(--px-space-4);
-  width: 44px;
-  height: 44px;
+  margin-bottom: var(--px-space-3);
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--px-radius-lg);
-  background: var(--px-accent-soft);
-  color: var(--px-accent);
-  box-shadow: var(--px-edge-light);
+  color: var(--px-text-faint);
 }
+.parallx-chat-empty-state-icon svg { width: 22px; height: 22px; display: block; }
 
 .parallx-chat-empty-state-title {
   font-size: var(--px-text-lg);
@@ -745,13 +745,8 @@
   color: var(--px-text-muted);
 }
 
-.parallx-chat-empty-state-note {
-  margin-top: 10px;
-  max-width: 360px;
-  font-size: var(--px-text-sm);
-  line-height: 1.5;
-  color: var(--vscode-descriptionForeground, #8b8b8b);
-}
+/* (.parallx-chat-empty-state-note removed with the posture line — "Agent
+   unlocks action tools" duplicated the mode picker's own description.) */
 
 /* ── Offline State ── */
 
@@ -2451,92 +2446,71 @@
  * Enhanced Empty State with Feature Hints
  * ═══════════════════════════════════════════════════════════════════════════════ */
 
-.parallx-chat-empty-state-hints {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--px-space-2);
-  margin-top: var(--px-space-6);
-  max-width: 380px;
+/* ── Empty-state key strip ──────────────────────────────────────────────
+   Replaces the old 8-card suggestion grid. That grid truncated every second
+   description mid-word (nowrap + ellipsis inside a 380px two-column layout)
+   and advertised commands that did not exist. This is one hairline row
+   naming the three real ways in; "/" and "@" open the app's own live menus,
+   the mode cell opens the real picker. Short labels — nothing can clip. */
+.parallx-chat-empty-keys {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: var(--px-space-1) var(--px-space-3);
+  margin-top: var(--px-space-5);
+  padding-top: var(--px-space-3);
+  border-top: 1px solid var(--px-border);
+  max-width: 300px;
   width: 100%;
 }
 
-/* Tactile suggestion cards: left accent icon tile, clean surface, a real
-   lift on hover (translate + shadow + accent edge) so they feel pressable
-   rather than like flat menu rows. */
-.parallx-chat-hint-item {
-  display: flex;
+.parallx-chat-empty-key {
+  display: inline-flex;
   align-items: center;
-  gap: var(--px-space-2);
-  min-width: 0;
-  padding: var(--px-space-2) var(--px-space-3);
-  border-radius: var(--px-radius-md);
-  border: 1px solid var(--px-border);
-  background: var(--px-bg-elevated);
-  text-align: left;
+  gap: 6px;
+  padding: 3px 6px;
+  border: none;
+  background: none;
+  border-radius: var(--px-radius-sm);
+  color: var(--px-text-muted);
   cursor: pointer;
+  font-size: var(--px-text-xs);
+  line-height: 1.4;
   transition:
-    background var(--px-dur-fast) var(--px-ease),
-    border-color var(--px-dur-fast) var(--px-ease),
-    transform var(--px-dur-fast) var(--px-ease-spring),
-    box-shadow var(--px-dur-fast) var(--px-ease);
+    color var(--px-dur-fast) var(--px-ease),
+    background var(--px-dur-fast) var(--px-ease);
 }
 
-.parallx-chat-hint-item:hover {
+.parallx-chat-empty-key:hover,
+.parallx-chat-empty-key:focus-visible {
   background: var(--px-surface-hover);
-  border-color: var(--px-border-strong);
-  transform: translateY(-1px);
-  box-shadow: var(--px-shadow-sm);
+  color: var(--px-text);
 }
-.parallx-chat-hint-item:active { transform: translateY(0); }
 
-.parallx-chat-hint-icon {
-  flex-shrink: 0;
-  width: 26px;
-  height: 26px;
-  display: flex;
+.parallx-chat-empty-key__glyph {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--px-radius-sm);
-  background: var(--px-accent-soft);
+  color: var(--px-text-faint);
+  transition: color var(--px-dur-fast) var(--px-ease);
+}
+.parallx-chat-empty-key__glyph svg { width: 13px; height: 13px; display: block; }
+/* "/" and "@" are literally what you press — set them in the mono face. */
+.parallx-chat-empty-key__glyph.is-text {
+  font-family: var(--parallx-fontFamily-mono);
+  font-size: var(--px-text-sm);
+  width: 13px;
+}
+.parallx-chat-empty-key:hover .parallx-chat-empty-key__glyph,
+.parallx-chat-empty-key:focus-visible .parallx-chat-empty-key__glyph {
   color: var(--px-accent);
 }
 
-.parallx-chat-hint-icon svg {
-  width: 14px;
-  height: 14px;
-}
-
-.parallx-chat-hint-text {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-}
-
-.parallx-chat-hint-label {
-  font-size: var(--px-text-sm);
-  font-weight: 600;
-  color: var(--px-text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.parallx-chat-hint-desc {
-  font-size: var(--px-text-xs);
-  color: var(--px-text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+.parallx-chat-empty-key__label { white-space: nowrap; }
 
 .parallx-chat-widget--compact .parallx-chat-empty-state {
   padding: 24px 16px;
-}
-
-.parallx-chat-widget--compact .parallx-chat-empty-state-hints {
-  grid-template-columns: 1fr;
-  max-width: 280px;
 }
 
 .parallx-chat-widget--compact .parallx-chat-empty-state-subtitle {
@@ -2556,22 +2530,11 @@
   font-size: var(--px-text-sm);
 }
 
-.parallx-chat-widget--narrow .parallx-chat-empty-state-hints {
-  gap: 4px;
+/* Narrow: the three keys stack rather than clip — labels stay whole. */
+.parallx-chat-widget--narrow .parallx-chat-empty-keys {
   margin-top: 14px;
-  max-width: 100%;
-}
-
-.parallx-chat-widget--narrow .parallx-chat-hint-item {
-  padding: 6px 8px;
-}
-
-.parallx-chat-widget--narrow .parallx-chat-hint-icon {
-  width: 16px;
-}
-
-.parallx-chat-widget--narrow .parallx-chat-hint-desc {
-  display: none;
+  padding-top: 10px;
+  gap: 2px var(--px-space-2);
 }
 
 /* ── System Prompt Viewer Modal (Task 4.10) ── */

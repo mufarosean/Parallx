@@ -143,7 +143,7 @@ export function createOpenclawDefaultParticipant(
 
 async function runOpenclawDefaultTurn(
   services: IDefaultParticipantServices,
-  _commandRegistry: IOpenclawCommandRegistryFacade,
+  commandRegistry: IOpenclawCommandRegistryFacade,
   request: IChatParticipantRequest,
   context: IChatParticipantContext,
   response: IChatResponseStream,
@@ -180,8 +180,31 @@ async function runOpenclawDefaultTurn(
   if (await tryHandleOpenclawToolsCommand(services, request.command, response, request.mode)) return {};
   if (await tryHandleOpenclawVerboseCommand(services, request.command, response)) return {};
 
+  // No handler above claimed this /command. Two cases, and the old code got
+  // both wrong by always dropping the token (parseChatRequest strips ANY
+  // leading /word into `command` — it has no registry to check against):
+  //   • REGISTERED, template-only (e.g. /research) — apply its promptTemplate,
+  //     which is how those commands were always meant to work but never did:
+  //     applyCommandTemplate had no production caller.
+  //   • UNREGISTERED (e.g. /explain) — hand the word back. Otherwise "/explain
+  //     how X works" reaches the model as "how X works" and the user is never
+  //     told a word was eaten. Silent data loss is worse than an odd prompt.
+  let effectiveText = request.text;
+  if (request.command) {
+    const known = commandRegistry.parseSlashCommand(`/${request.command}`).command;
+    effectiveText = known
+      ? (commandRegistry.applyCommandTemplate(known, request.text, '') ?? request.text)
+      : `/${request.command}${request.text ? ` ${request.text}` : ''}`;
+  }
+  // The turn (and therefore the outgoing user message) is built from the
+  // request, so the corrected text has to ride ON it — resolving mentions
+  // against effectiveText alone would leave the model reading the old text.
+  const effectiveRequest: IChatParticipantRequest = effectiveText === request.text
+    ? request
+    : { ...request, text: effectiveText };
+
   // M2: Resolve @file/@folder/@workspace/@terminal mentions
-  const mentionResult = await resolveMentions(request.text, services);
+  const mentionResult = await resolveMentions(effectiveText, services);
   if (mentionResult.pills.length > 0) {
     services.reportContextPills?.(mentionResult.pills as any[]);
   }
@@ -283,7 +306,7 @@ async function runOpenclawDefaultTurn(
   }
 
   // Build turn context for the new OpenClaw execution pipeline
-  const turnContext = await buildOpenclawTurnContext(services, request, context, {
+  const turnContext = await buildOpenclawTurnContext(services, effectiveRequest, context, {
     mentionContextBlocks: allContextBlocks.length > 0 ? allContextBlocks : undefined,
     promptOverlay: effectiveOverlay,
     isSteeringTurn: request.isSteeringTurn,
@@ -311,7 +334,7 @@ async function runOpenclawDefaultTurn(
   const lifecycle = createOpenclawRuntimeLifecycle({});
 
   try {
-    const result = await runOpenclawTurn(request, turnContext, response, token);
+    const result = await runOpenclawTurn(effectiveRequest, turnContext, response, token);
 
     // D7: Record turn metrics in observability service
     if (services.observabilityService && !token.isCancellationRequested) {
@@ -595,6 +618,10 @@ async function buildOpenclawTurnContext(
     // compaction reads the LATEST plan, including plan_update calls made
     // earlier in the same tool loop.
     getPlanText: () => services.getSessionPlanText?.(context.sessionId),
+    // MIND continuity — the agent's durable beliefs finally reach interactive
+    // turns (previously a heartbeat-only sense). Same getter-not-snapshot
+    // rationale as the plan: mid-turn mind_remember calls surface on re-assembly.
+    getMindText: () => services.getMindContinuity?.(context.sessionId),
     linkContracts: services.getLinkContractDescriptors?.(),
     temperature: resolvedAgentConfig?.temperature ?? effectiveConfig?.model?.temperature,
     maxTokens: resolvedAgentConfig?.maxTokens ?? effectiveConfig?.model?.maxTokens,

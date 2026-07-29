@@ -142,11 +142,13 @@ describe('registerBuiltInTools', () => {
     // M81 Phase 2: memory_write = 38.
     // M81 Phase 9: canvas_get_page folded into canvas_read_page; canvas_compose_page renamed to canvas_edit_page. Net -1 = 37.
     // M83: canvas_list_templates (Save-as-template surface) brings the total to 38.
-    expect(toolsService.registeredTools).toHaveLength(38);
-    expect(disposables).toHaveLength(38);
+    // Activity journal: the read-only activity_log tool brings the total to 39.
+    expect(toolsService.registeredTools).toHaveLength(39);
+    expect(disposables).toHaveLength(39);
 
     const names = toolsService.registeredTools.map(t => t.name).sort();
     expect(names).toEqual([
+      'activity_log',
       'autonomy_log',
       'canvas_create_page',
       'canvas_edit_block',

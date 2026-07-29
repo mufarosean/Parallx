@@ -24,6 +24,38 @@ export interface IHabitDetectorOptions {
   readonly toleranceMin?: number;
   /** Cap of timestamps kept per action. Default 60. */
   readonly maxPerAction?: number;
+  /** Cap of distinct actions tracked (evicts least-recently-seen). Default 300. */
+  readonly maxActions?: number;
+}
+
+/**
+ * Map an activity-journal event to a habit-detector action key, or undefined
+ * when the event isn't habit material. Only deliberate, recurrence-worthy user
+ * gestures qualify: opening an editor, focusing a view. EXCLUDED on purpose:
+ * - `signal:*` sources — they already feed observeAction through their own
+ *   lane (chat/main.ts); double-observing fakes tighter daily clustering.
+ * - `command` source — the command tap labels EVERY executeCommand fire as
+ *   the user, including programmatic plumbing and the AI's app__run_command,
+ *   so a scheduled dispatch would train a perfectly-clustered fake "user
+ *   habit" (the self-echo loop). Off the table until command execution
+ *   carries an initiator.
+ */
+export function habitActionForActivity(ev: {
+  readonly actor: string;
+  readonly source: string;
+  readonly verb: string;
+  readonly object: string;
+  readonly count: number;
+}): string | undefined {
+  if (ev.actor !== 'user') return undefined;
+  // Coalesced re-fires mutate the same line (count grows); only the first
+  // fire of a burst is one occurrence of the gesture.
+  if (ev.count > 1) return undefined;
+  const ok =
+    (ev.source === 'editor' && ev.verb === 'opened')
+    || (ev.source === 'focus' && ev.verb === 'focused');
+  if (!ok) return undefined;
+  return `${ev.verb} ${ev.object}`;
 }
 
 export interface IHabitReading {
@@ -56,12 +88,14 @@ export class HabitDetector {
   private readonly _minDays: number;
   private readonly _toleranceMin: number;
   private readonly _maxPerAction: number;
+  private readonly _maxActions: number;
 
   constructor(opts: IHabitDetectorOptions = {}) {
     this._windowDays = Math.max(2, opts.windowDays ?? 14);
     this._minDays = Math.max(2, opts.minDays ?? 3);
     this._toleranceMin = Math.max(1, opts.toleranceMin ?? 75);
     this._maxPerAction = Math.max(4, opts.maxPerAction ?? 60);
+    this._maxActions = Math.max(8, opts.maxActions ?? 300);
   }
 
   /** Record an occurrence of `action` at `nowMs`. */
@@ -71,6 +105,29 @@ export class HabitDetector {
     arr.push(nowMs);
     if (arr.length > this._maxPerAction) arr.splice(0, arr.length - this._maxPerAction);
     this._events.set(action, arr);
+    // Key cap: the activity-journal lane feeds far more distinct actions than
+    // the signal lane ever did (every pdf name, every view). Evict the action
+    // least recently SEEN so one-off gestures age out and the state blob in
+    // workspace storage stays bounded. The _proposed marker deliberately
+    // SURVIVES eviction: it only ever holds confirmed-habit keys (tiny), and
+    // erasing it would re-arm the "Automate it?" nag if a dismissed routine
+    // ever re-forms after its events aged out.
+    this._evictToCap(action);
+  }
+
+  /** Evict least-recently-seen keys until the map fits the cap (never the just-observed key). */
+  private _evictToCap(keep?: string): void {
+    while (this._events.size > this._maxActions) {
+      let coldest: string | undefined;
+      let coldestTs = Infinity;
+      for (const [key, ts] of this._events) {
+        if (key === keep) continue;
+        const last = ts.length > 0 ? ts[ts.length - 1] : 0;
+        if (last < coldestTs) { coldestTs = last; coldest = key; }
+      }
+      if (coldest === undefined) return; // only the protected key remains
+      this._events.delete(coldest);
+    }
   }
 
   /** Habit reading for one action. Pure given current state. */
@@ -120,6 +177,10 @@ export class HabitDetector {
   restore(state: IHabitState | undefined): void {
     if (state && Array.isArray(state.events)) {
       this._events = new Map(state.events.filter(e => Array.isArray(e) && typeof e[0] === 'string' && Array.isArray(e[1])));
+      // Enforce the cap on restore too — a legacy blob persisted before the
+      // cap existed (or from a larger-cap version) must converge immediately,
+      // not one key per fresh observation.
+      this._evictToCap();
     }
     if (state && Array.isArray(state.proposed)) this._proposed = new Set(state.proposed.filter(x => typeof x === 'string'));
   }

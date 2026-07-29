@@ -41,6 +41,13 @@ describe('renderActivityLine', () => {
     expect(line).toContain('×4');
     expect(line).toContain('— ~240 chars');
   });
+
+  it('carries the exact-identity ref for the model reader — two "Notes" pages stay distinguishable', () => {
+    const line = renderActivityLine(ev({ verb: 'edited', object: 'page "Notes"', ref: 'page:abc123' }));
+    expect(line).toContain('page "Notes" [page:abc123]');
+    // No ref → no bracket noise.
+    expect(renderActivityLine(ev({}))).not.toContain('[');
+  });
 });
 
 describe('redactActivityText', () => {
@@ -98,6 +105,28 @@ describe('ActivityJournalService', () => {
     journal.note({ verb: 'focused', object: 'chat view' });
     journal.note({ verb: 'focused', object: 'explorer view' });
     expect(journal.tail(10)).toHaveLength(3);
+  });
+
+  it('does NOT coalesce same-titled objects with different refs (two pages named "Notes")', () => {
+    journal.note({ verb: 'edited', object: 'page "Notes"', ref: 'page:aaa' });
+    now += 5_000;
+    journal.note({ verb: 'edited', object: 'page "Notes"', ref: 'page:bbb' });
+    now += 5_000;
+    journal.note({ verb: 'edited', object: 'page "Notes"', ref: 'page:aaa' }); // adjacent-only coalescing: new line
+    const tail = journal.tail(10);
+    expect(tail).toHaveLength(3);
+    expect(tail.map((e) => e.ref)).toEqual(['page:aaa', 'page:bbb', 'page:aaa']);
+  });
+
+  it('DOES coalesce a typing bout on one page (same ref) into one ×N line', () => {
+    for (let i = 0; i < 4; i++) {
+      journal.note({ verb: 'edited', object: 'page "Exam 7"', ref: 'page:abc', detail: `~${100 + i} chars` });
+      now += 5_000;
+    }
+    const tail = journal.tail(10);
+    expect(tail).toHaveLength(1);
+    expect(tail[0].count).toBe(4);
+    expect(tail[0].detail).toBe('~103 chars'); // latest detail wins
   });
 
   it('drops malformed notes and never throws', () => {
@@ -159,13 +188,19 @@ describe('ActivityJournalService', () => {
 
     journal.note({ verb: 'opened', object: 'a' });
     now += 100_000;
-    journal.note({ verb: 'opened', object: 'b' });
+    journal.note({ verb: 'opened', object: 'b', ref: 'editor:file-b' });
     await journal.flush();
 
     expect(txBatches).toHaveLength(1);
     expect(txBatches[0]).toHaveLength(2);
-    // Retention prune ran during table init.
+    // ref rides the insert (null when absent, value when present).
+    const params = (txBatches[0] as { params: unknown[] }[]).map((op) => op.params);
+    expect(params[0]).toContain(null);
+    expect(params[1]).toContain('editor:file-b');
+    // Retention prune ran during table init, and the pre-ref-table migration
+    // was attempted (duplicate-column errors are swallowed on modern tables).
     expect(runs.some((s) => s.includes('DELETE FROM activity_log'))).toBe(true);
+    expect(runs.some((s) => s.includes('ADD COLUMN ref'))).toBe(true);
   });
 
   it('keeps the ring alive when the DB is closed (persistence is best-effort)', async () => {

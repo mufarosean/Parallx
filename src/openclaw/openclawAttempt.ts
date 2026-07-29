@@ -177,6 +177,10 @@ export interface IOpenclawTurnContext {
    */
   readonly getPlanText?: () => string | undefined;
 
+  /** MIND continuity (beliefs/threads) for interactive turns — a getter for
+   *  the same mid-turn-freshness reason as getPlanText. */
+  readonly getMindText?: () => string | undefined;
+
   // Model parameters from config
   readonly temperature?: number;
   readonly maxTokens?: number;
@@ -597,6 +601,7 @@ export async function executeOpenclawAttempt(
           tokenBudget: context.tokenBudget,
           prompt: request.text,
           planText: context.getPlanText?.(),
+          mindText: context.getMindText?.(),
         });
         // Rebuild messages: system prompt stays, use re-assembled history,
         // keep recent tool exchange, add user message (with context prepended)

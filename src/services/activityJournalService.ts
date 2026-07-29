@@ -40,6 +40,14 @@ export interface IActivityEvent {
   readonly detail?: string;
   /** Which tap produced it ('command', 'editor', 'chat', 'ext:<id>', ...). */
   readonly source: string;
+  /**
+   * Stable identity of the object, when the tap knows one ('page:<id>',
+   * 'editor:<resource>'). Display names collide — two pages named "Notes" —
+   * and the AI reader may need to act on the EXACT object; the ref is what
+   * makes a line actionable instead of merely descriptive. Rendered compactly
+   * for model prompts; the human panel keeps it out of the line (tooltip).
+   */
+  readonly ref?: string;
   /** Coalesced repeat count (≥ 1). */
   count: number;
 }
@@ -50,6 +58,7 @@ export interface IActivityNote {
   readonly object: string;
   readonly detail?: string;
   readonly source?: string;
+  readonly ref?: string;
 }
 
 export interface IActivityJournalService {
@@ -91,12 +100,16 @@ function actorLabel(actor: ActivityActor): string {
   return actor;
 }
 
-/** One event → one narrative line: `19:42 user opened pdf "x.pdf" ×3 — detail`. */
+/** One event → one narrative line: `19:42 user edited page "x" [page:abc] ×3 — detail`.
+ *  The [ref] rides the model-facing render so same-named objects stay
+ *  distinguishable and actionable (canvas_read_page the exact id, not a
+ *  title search that may hit the wrong twin). */
 export function renderActivityLine(ev: IActivityEvent): string {
   const d = new Date(ev.ts);
   const hh = String(d.getHours()).padStart(2, '0');
   const mm = String(d.getMinutes()).padStart(2, '0');
   let line = `${hh}:${mm} ${actorLabel(ev.actor)} ${ev.verb} ${ev.object}`;
+  if (ev.ref) line += ` [${ev.ref}]`;
   if (ev.count > 1) line += ` ×${ev.count}`;
   if (ev.detail) line += ` — ${ev.detail}`;
   return line;
@@ -119,9 +132,14 @@ CREATE TABLE IF NOT EXISTS activity_log (
   object TEXT    NOT NULL,
   detail TEXT,
   source TEXT    NOT NULL DEFAULT '',
+  ref    TEXT,
   count  INTEGER NOT NULL DEFAULT 1
 )`;
 const CREATE_INDEX = `CREATE INDEX IF NOT EXISTS activity_log_ts_idx ON activity_log(ts)`;
+// Pre-ref tables exist in the wild (the column shipped later) — SQLite has no
+// ADD COLUMN IF NOT EXISTS, so the migration is attempted and the duplicate-
+// column error swallowed.
+const MIGRATE_REF = `ALTER TABLE activity_log ADD COLUMN ref TEXT`;
 
 export class ActivityJournalService extends Disposable implements IActivityJournalService {
   private readonly _onDidAppend = this._register(new Emitter<IActivityEvent>());
@@ -149,15 +167,20 @@ export class ActivityJournalService extends Disposable implements IActivityJourn
       if (!verb || !object) return;
       const actor: ActivityActor = typeof n.actor === 'string' && n.actor ? n.actor : 'user';
       const detailRaw = typeof n.detail === 'string' ? n.detail.trim() : '';
+      const ref = typeof n.ref === 'string' && n.ref.trim()
+        ? redactActivityText(n.ref.trim()).slice(0, 120)
+        : undefined;
       const ts = this._now();
 
-      // Coalesce: same actor+verb+object within the window folds into the
-      // previous line. The ring entry mutates in place (count/ts/detail); the
-      // persisted row for it, if not yet flushed, mutates with it — and if it
-      // WAS already flushed, we accept a slightly-low stored count over an
+      // Coalesce: same actor+verb+object+ref within the window folds into the
+      // previous line (same-titled but distinct objects — differing refs —
+      // stay separate lines). The ring entry mutates in place (count/ts/detail);
+      // the persisted row for it, if not yet flushed, mutates with it — and if
+      // it WAS already flushed, we accept a slightly-low stored count over an
       // UPDATE round-trip per keystroke burst.
       const last = this._ring[this._ring.length - 1];
       if (last && last.actor === actor && last.verb === verb && last.object === object
+          && last.ref === ref
           && ts - last.ts < COALESCE_WINDOW_MS) {
         (last as { ts: number }).ts = ts;
         last.count += 1;
@@ -174,6 +197,7 @@ export class ActivityJournalService extends Disposable implements IActivityJourn
         object: redactActivityText(object).slice(0, 160),
         detail: detailRaw ? redactActivityText(detailRaw).slice(0, 300) : undefined,
         source: typeof n.source === 'string' && n.source ? n.source.slice(0, 40) : 'app',
+        ref,
         count: 1,
       };
       this._ring.push(ev);
@@ -206,8 +230,8 @@ export class ActivityJournalService extends Disposable implements IActivityJourn
     if (this._db?.isOpen && this._tableReady) {
       try {
         await this.flush();
-        const rows = await this._db.all<{ ts: number; actor: string; verb: string; object: string; detail: string | null; source: string; count: number }>(
-          `SELECT ts, actor, verb, object, detail, source, count
+        const rows = await this._db.all<{ ts: number; actor: string; verb: string; object: string; detail: string | null; source: string; ref: string | null; count: number }>(
+          `SELECT ts, actor, verb, object, detail, source, ref, count
              FROM activity_log WHERE ts >= ? ORDER BY ts DESC LIMIT ?`,
           [since, limit],
         );
@@ -218,6 +242,7 @@ export class ActivityJournalService extends Disposable implements IActivityJourn
           object: r.object,
           detail: r.detail ?? undefined,
           source: r.source,
+          ref: r.ref ?? undefined,
           count: Number(r.count) || 1,
         }));
       } catch { /* fall through to ring */ }
@@ -244,8 +269,8 @@ export class ActivityJournalService extends Disposable implements IActivityJourn
     try {
       await this._db.runTransaction(batch.map((e) => ({
         type: 'run' as const,
-        sql: `INSERT INTO activity_log (ts, actor, verb, object, detail, source, count) VALUES (?,?,?,?,?,?,?)`,
-        params: [e.ts, e.actor, e.verb, e.object, e.detail ?? null, e.source, e.count],
+        sql: `INSERT INTO activity_log (ts, actor, verb, object, detail, source, ref, count) VALUES (?,?,?,?,?,?,?,?)`,
+        params: [e.ts, e.actor, e.verb, e.object, e.detail ?? null, e.source, e.ref ?? null, e.count],
       })));
     } catch (err) {
       // Best-effort mirror: drop the batch rather than grow without bound.
@@ -264,6 +289,7 @@ export class ActivityJournalService extends Disposable implements IActivityJourn
     try {
       await this._db.run(CREATE_TABLE);
       await this._db.run(CREATE_INDEX);
+      try { await this._db.run(MIGRATE_REF); } catch { /* column already exists */ }
       this._tableReady = true;
       // Count-capped retention (M91 precedent): keep the newest N rows.
       await this._db.run(

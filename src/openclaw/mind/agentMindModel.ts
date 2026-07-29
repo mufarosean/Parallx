@@ -153,6 +153,10 @@ export function applyUpdate(
 
 // ─── Forgetting / compaction ─────────────────────────────────────────────────
 
+/** How long past its resolve-by horizon an unresolved prediction stays alive
+ *  before compaction treats it as an unresolvable orphan and drops it. */
+export const PREDICTION_EXPIRY_GRACE_MS = 24 * 60 * 60 * 1000;
+
 export interface ICompactOptions {
   /** Drop entries whose DECAYED confidence is below this. Default 0.05. */
   readonly minConfidence?: number;
@@ -179,9 +183,15 @@ export function compact(
   const dropped: IMindEntry[] = [];
   let kept = entries.filter(e => {
     if (e.kind === 'prediction') {
-      // An UNRESOLVED prediction owes an external outcome — never drop it for low
-      // confidence; it is exactly the falsifiable commitment we score on.
-      if (!e.resolved) return true;
+      if (!e.resolved) {
+        // An UNRESOLVED prediction owes an external outcome — never drop it for
+        // low confidence; it is exactly the falsifiable commitment we score on.
+        // BUT one whose resolve-by horizon is long past can never be graded
+        // (its resolver died with the session that made it) — keeping it would
+        // let orphans accumulate and crowd the continuity seed forever.
+        if (nowMs > e.horizonMs + PREDICTION_EXPIRY_GRACE_MS) { dropped.push(e); return false; }
+        return true;
+      }
       // Resolved predictions are the score record; keep until they age out.
       if (nowMs - e.resolved.resolvedMs > keepResolvedMs) { dropped.push(e); return false; }
       return true;
@@ -240,7 +250,12 @@ export function meanBrier(entries: readonly IMindEntry[]): number {
  * salient (decayed-confidence-weighted) first, predictions awaiting resolution
  * flagged. Beliefs the model can no longer justify (decayed) simply don't appear.
  */
-export function summarizeMind(entries: readonly IMindEntry[], nowMs: number, maxItems = 12): string {
+export function summarizeMind(
+  entries: readonly IMindEntry[],
+  nowMs: number,
+  maxItems = 12,
+  emptyText = 'MIND: (empty — no durable beliefs yet)',
+): string {
   // Seed floor (0.35) is much higher than the compact/prune floor (0.05): a
   // belief is KEPT in the store as it decays, but only surfaces in the review
   // seed while the agent is still genuinely confident in it. This stops weakly-
@@ -248,11 +263,20 @@ export function summarizeMind(entries: readonly IMindEntry[], nowMs: number, max
   const SEED_MIN_CONFIDENCE = 0.35;
   const live = entries
     .map(e => ({ e, c: decayedConfidence(e, nowMs) }))
-    .filter(x => x.c >= SEED_MIN_CONFIDENCE || (x.e.kind === 'prediction' && !x.e.resolved))
+    .filter(x => {
+      // Open predictions: in-horizon ones ALWAYS surface (they bypass the
+      // floor — the agent owes an outcome), expired ones NEVER do (an
+      // ungradeable orphan is noise, not continuity — regardless of how
+      // confident it still looks).
+      if (x.e.kind === 'prediction' && !x.e.resolved) {
+        return nowMs <= x.e.horizonMs + PREDICTION_EXPIRY_GRACE_MS;
+      }
+      return x.c >= SEED_MIN_CONFIDENCE;
+    })
     .sort((a, b) => b.c - a.c)
     .slice(0, maxItems);
 
-  if (live.length === 0) return 'MIND: (empty — no durable beliefs yet)';
+  if (live.length === 0) return emptyText;
 
   const lines = ['What I currently believe (confidence shown; fades if not reaffirmed):'];
   for (const { e, c } of live) {

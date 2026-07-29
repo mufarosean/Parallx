@@ -31,13 +31,23 @@ model can query history on demand, and diagnostics has a ready-made
 | `object` | what it acted on, with names quoted (`pdf "x.pdf"`) |
 | `detail` | optional extra (truncated 300) |
 | `source` | which tap produced it |
+| `ref` | optional **stable identity** of the object (`page:<id>`, editor resource id) |
 | `count` | coalesced repeat count |
 
 Rules baked into `note()`: **semantic events only, never raw input** (typing
 comes from debounced save commits, not keystrokes); **redact before store**
 (credential-shaped fragments and long hex are stripped — the stream is destined
 for model prompts, and cloud providers are opt-in-enabled); **coalesce bursts**
-(same actor+verb+object within 90s folds into one `×N` line).
+(same actor+verb+object+ref within 90s folds into one `×N` line).
+
+**Refs — clear to the human, exact for the model.** Display names collide (two
+pages named "Notes"); a reader that needs to ACT on a line needs the object's
+identity, not its title. The model-facing render (`renderActivityLine`, used by
+the heartbeat seed and the `activity_log` tool) appends a compact `[page:abc]`
+suffix so the agent can `canvas_read_page` the exact page instead of
+title-searching into the wrong twin; the human panel keeps the line clean and
+reveals the ref on hover. Producers that know identity supply it: canvas saves
+(`page:<id>`), editor open/close/viewing (editor resource id).
 
 ## Storage
 
@@ -60,6 +70,16 @@ open-folder) with a `session ended` line. A closed DB never blocks `note()`.
 | `ChatService.onDidSendUserRequest` (new emitter) | user queries vs. autonomous turns, split by session origin |
 | `RuntimeHookRegistry` tool observer (previously dormant) | every AI tool execution and failure |
 | window blur/focus | left/returned to the app |
+| `CanvasDataService.onDidSavePage` (wired in canvas/main.ts) | **typing in canvas pages** — `user edited page "X" [page:id] ×N — ~chars`; fires only from the editor save pipeline, so it is the user's own keystrokes (AI tools mutate via a different path) |
+
+Attribution caveats, learned the hard way: the command tap cannot yet tell a
+user gesture from programmatic plumbing or the AI's `app__run_command` (all
+fire the same emitter), so dispatch-plumbing ids (`parallx.autonomy.signal`,
+`chat.runBackgroundPrompt`, `chat.submitPrompt`) are COMMAND_NOISE — their
+events are narrated by their own taps — and command events are excluded from
+habit learning entirely. Canvas signals carry an `actor` stamp (`user` |
+`agent`) so the MIND's human-behavior senses (habits, capability meter) never
+learn from the agent's own page mutations.
 
 Extensions narrate their hand-wired UI through **`api.activity.note(verb,
 object, detail?)`** — the actor is stamped with the calling tool's id by the

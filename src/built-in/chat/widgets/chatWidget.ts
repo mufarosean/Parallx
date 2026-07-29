@@ -22,7 +22,7 @@ import { ChatListRenderer } from '../rendering/chatListRenderer.js';
 import { renderAgentTaskRail } from '../rendering/chatTaskCards.js';
 import { ChatTokenStatusBar } from './chatTokenStatusBar.js';
 import { ChatModelPicker } from '../pickers/chatModelPicker.js';
-import { ChatModePicker } from '../pickers/chatModePicker.js';
+import { ChatModePicker, MODE_META } from '../pickers/chatModePicker.js';
 import { ChatContextWindowPicker } from '../pickers/chatContextWindowPicker.js';
 import { ChatSessionSidebar } from './chatSessionSidebar.js';
 import type {
@@ -108,6 +108,8 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
   /** The history toggle in the title actions — referenced so click-away
    *  dismissal of the history popout doesn't fight the toggle itself. */
   private _historyBtn: HTMLElement | undefined;
+  /** The live mode picker — the empty state's mode cell opens this one. */
+  private _modePicker: ChatModePicker | undefined;
 
   // ── Services ──
 
@@ -310,7 +312,8 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     const pickerSlot = this._inputPart.getPickerSlot();
 
     if (services.modePicker) {
-      this._register(new ChatModePicker(pickerSlot, services.modePicker));
+      // Held so the empty state's mode cell can open the REAL picker.
+      this._modePicker = this._register(new ChatModePicker(pickerSlot, services.modePicker));
     }
 
     if (services.modelPicker) {
@@ -1281,7 +1284,9 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       return btn;
     };
 
-    const newBtn = createBtn(chatIcons.newChat, 'New Chat (Ctrl+L)', 'parallx-chat-title-action--new');
+    // No keybinding claim here: Ctrl+L is chat.focus (reveal + focus the input),
+    // NOT new-session — chat.newSession has no binding at all.
+    const newBtn = createBtn(chatIcons.newChat, 'New Chat', 'parallx-chat-title-action--new');
     newBtn.addEventListener('click', (e) => { e.stopPropagation(); this._handleNewChat(); });
     container.appendChild(newBtn);
 
@@ -1379,6 +1384,21 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
 
   // ── Empty / Offline State Builders ──
 
+  /**
+   * The empty state is a legend for the input box below it, not a product tour.
+   *
+   * It used to be an 8-card grid whose descriptions truncated mid-word and
+   * whose contents were mostly fiction: "/edit", "/agent" and "/explain" are
+   * not registered commands (the parser stripped the word and the model never
+   * saw it), "Ctrl+L" is Focus Input rather than New Session, "@canvas" cannot
+   * edit a page, and two cards did the same thing. It also duplicated the mode
+   * picker that is permanently visible two inches below.
+   *
+   * What replaces it: the hero, then one hairline strip naming the only three
+   * real ways in. "/" and "@" open the app's LIVE, registry-fed menus — always
+   * current, always complete, impossible to lie — and the mode cell opens the
+   * actual picker, wearing that picker's own words.
+   */
   private _buildEmptyState(): HTMLElement {
     const root = $('div.parallx-chat-empty-state');
 
@@ -1388,48 +1408,76 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     const title = $('div.parallx-chat-empty-state-title', EMPTY_STATES['chat.newSession'].headline);
     const subtitle = $('div.parallx-chat-empty-state-subtitle',
       EMPTY_STATES['chat.newSession'].hint);
-    const posture = $('div.parallx-chat-empty-state-note',
-      'AI is always awake. Agent unlocks action tools and approval-gated changes.');
 
-    append(root, icon, title, subtitle, posture);
+    append(root, icon, title, subtitle);
+    root.appendChild(this._buildEmptyStateKeys());
+    return root;
+  }
 
-    // Feature hints — each inserts its label into the input on click
-    const hints = $('div.parallx-chat-empty-state-hints');
+  /** The hairline strip: `/ commands` · `@ context` · `<mode>`. */
+  private _buildEmptyStateKeys(): HTMLElement {
+    const strip = $('div.parallx-chat-empty-keys');
 
-    const hintItems: { svg: string; label: string; description: string; insert: string }[] = [
-      { svg: chatIcons.pencil, label: 'Edit mode', description: 'AI proposes edits for you to review', insert: '/edit ' },
-      { svg: chatIcons.agent, label: 'Agent mode', description: 'AI takes multi-step actions with your OK', insert: '/agent ' },
-      { svg: chatIcons.atSign, label: '@workspace', description: 'Search across all your files and pages', insert: '@workspace ' },
-      { svg: chatIcons.canvas, label: '@canvas', description: 'Edit the current page with AI', insert: '@canvas ' },
-      { svg: chatIcons.keyboard, label: 'Ctrl+L', description: 'Start a new chat session', insert: '' },
-      { svg: chatIcons.wand, label: '/init', description: 'Generate project context for better answers', insert: '/init ' },
-      { svg: chatIcons.lightbulb, label: '/explain', description: 'Get a clear explanation of any concept', insert: '/explain ' },
-      { svg: chatIcons.search, label: 'Search workspace', description: 'Find information across all your files', insert: '@workspace ' },
-    ];
+    const cell = (
+      glyphHtml: string,
+      glyphIsText: boolean,
+      label: string,
+      title: string,
+      onClick: () => void,
+    ): HTMLElement => {
+      const btn = $('button.parallx-chat-empty-key') as HTMLButtonElement;
+      btn.type = 'button';
+      btn.title = title;
+      btn.setAttribute('aria-label', title);
+      const g = $(`span.parallx-chat-empty-key__glyph${glyphIsText ? '.is-text' : ''}`);
+      if (glyphIsText) { g.textContent = glyphHtml; } else { g.innerHTML = glyphHtml; }
+      const l = $('span.parallx-chat-empty-key__label', label);
+      append(btn, g, l);
+      // LOAD-BEARING: the textarea is focused whenever the empty state is up
+      // (_inputPart.focus() on session bind). Letting this button take focus
+      // would blur it, and the autocomplete's blur handler schedules an
+      // unconditional close 150ms later — which would snuff out the menu this
+      // very click just opened. Keep focus in the textarea.
+      btn.addEventListener('mousedown', (e) => e.preventDefault());
+      btn.addEventListener('click', onClick);
+      return btn;
+    };
 
-    for (const hint of hintItems) {
-      const item = $('div.parallx-chat-hint-item');
-      const hintIcon = $('span.parallx-chat-hint-icon');
-      hintIcon.innerHTML = hint.svg;
-      const hintText = $('span.parallx-chat-hint-text');
-      const hintLabel = $('span.parallx-chat-hint-label', hint.label);
-      const hintDesc = $('span.parallx-chat-hint-desc', hint.description);
-      append(hintText, hintLabel, hintDesc);
-      append(item, hintIcon, hintText);
+    // Typing the trigger opens the real menu — nothing is hard-coded here, so
+    // this can never advertise a command that does not exist.
+    strip.appendChild(cell('/', true, 'commands',
+      'Type / for the command list — /init, /context, /compact and more',
+      () => this._inputPart.insertTrigger('/')));
 
-      // Clicking a hint inserts its text into the input and focuses
-      item.addEventListener('click', () => {
-        if (hint.insert) {
-          this._inputPart.setValue(hint.insert);
-        }
-        this._inputPart.focus();
-      });
+    strip.appendChild(cell('@', true, 'context',
+      'Type @ to pull in a file, folder, or terminal output',
+      () => this._inputPart.insertTrigger('@')));
 
-      hints.appendChild(item);
+    // The mode cell reads from the picker's own metadata and opens the picker
+    // itself, so the two can never disagree about what a mode does.
+    if (this._services.modePicker) {
+      const modeCell = $('button.parallx-chat-empty-key.parallx-chat-empty-key--mode') as HTMLButtonElement;
+      modeCell.type = 'button';
+      const paintMode = () => {
+        const mode = this._services.modePicker!.getMode();
+        const meta = MODE_META[mode];
+        modeCell.innerHTML = '';
+        const g = $('span.parallx-chat-empty-key__glyph');
+        g.innerHTML = meta.icon;
+        const l = $('span.parallx-chat-empty-key__label', `${meta.label} mode`);
+        append(modeCell, g, l);
+        const title = `${meta.label} mode — ${meta.description}. Click to change.`;
+        modeCell.title = title;
+        modeCell.setAttribute('aria-label', title);
+      };
+      paintMode();
+      this._register(this._services.modePicker.onDidChangeMode(() => paintMode()));
+      modeCell.addEventListener('mousedown', (e) => e.preventDefault());
+      modeCell.addEventListener('click', () => this._modePicker?.openDropdown());
+      strip.appendChild(modeCell);
     }
 
-    root.appendChild(hints);
-    return root;
+    return strip;
   }
 
   private _buildOfflineState(): HTMLElement {

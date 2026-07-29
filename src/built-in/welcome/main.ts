@@ -77,10 +77,21 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   });
   context.subscriptions.push(commandDisposable);
 
-  // Register "open chat with /init" command
+  // Register "open chat with /init" command.
+  // NOTE: this used to call 'workbench.action.chat.open' +
+  // 'workbench.action.chat.insertText' — VS Code ids that Parallx never
+  // registers, so the button silently did nothing. The real ids are
+  // chat.show / chat.submitPrompt (/init needs no further input, so
+  // submitting it outright is the whole gesture).
   const initCmdDisposable = api.commands.registerCommand('parallx.chat.openWithInit', async () => {
-    await api.commands.executeCommand('workbench.action.chat.open');
-    await api.commands.executeCommand('workbench.action.chat.insertText', '/init ');
+    await api.commands.executeCommand('chat.show').catch(() => { /* may already be visible */ });
+    try {
+      await api.commands.executeCommand('chat.submitPrompt', { text: '/init' });
+    } catch {
+      // Panel not mounted yet — leave it open and focused so the gesture
+      // still lands the user somewhere useful instead of failing silently.
+      await api.commands.executeCommand('chat.focus').catch(() => {});
+    }
   });
   context.subscriptions.push(initCmdDisposable);
 
@@ -239,7 +250,7 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi, recentWorksp
   // ids that never existed in the registry, so the rows rendered blank
   // icons. The AI rows wear the brand mark (never the sparkle cliché).
   const aiItems = [
-    { icon: 'px-ai-mark', text: 'Open AI Chat', hint: 'Ctrl+Shift+I', command: 'workbench.action.chat.open' },
+    { icon: 'px-ai-mark', text: 'Open AI Chat', hint: 'Ctrl+Shift+I', command: 'chat.show' },
     { icon: 'compass', text: 'Set Up Workspace AI', hint: '/init', command: 'parallx.chat.openWithInit' },
     { icon: 'book-open', text: 'AI User Guide', hint: '', command: 'parallx.openAIUserGuide' },
     { icon: 'gear', text: 'Workspace AI Config', hint: '.parallx/', command: 'parallx.openWorkspaceAIConfig' },

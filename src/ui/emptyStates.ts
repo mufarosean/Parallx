@@ -55,8 +55,13 @@ export const EMPTY_STATES = {
   'chat.newSession': {
     id: 'chat.newSession',
     icon: 'px-ai-mark',
-    headline: 'How can I help you?',
-    hint: 'Ask about your notes, plan your day, or say "watch this for me" to set a standing watch.',
+    // Says something only this app can say. "How can I help you?" / "What are
+    // we working on?" are what every other assistant opens with.
+    headline: 'What’s open is in reach',
+    // Every claim here is true: the open editor's selection and the current
+    // canvas block are auto-attached to a turn, and pages/files are reachable
+    // through retrieval and @mentions.
+    hint: 'Ask about your files, pages, or whatever you have selected — the selection comes along automatically.',
   },
   'autonomyLog.empty': {
     id: 'autonomyLog.empty',

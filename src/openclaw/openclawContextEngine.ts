@@ -78,6 +78,13 @@ export interface IOpenclawAssembleParams {
    * survives compaction and history trimming by construction.
    */
   readonly planText?: string;
+  /**
+   * MIND continuity (durable beliefs/threads) for interactive turns —
+   * injected as a guaranteed section beside the plan. Autonomous sessions
+   * pass nothing here: the heartbeat rail carries beliefs in its seed;
+   * cron/subagent/dashboard rails intentionally run without continuity.
+   */
+  readonly mindText?: string;
 }
 
 /**
@@ -358,6 +365,19 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
         '## Active Plan\n'
         + 'This is YOUR durable working plan for this session (maintain it with plan_update; it survives context compaction).\n\n'
         + params.planText,
+      );
+    }
+
+    // ── MIND continuity — guaranteed like the plan, for the same reason ──
+    // The agent's durable beliefs about the user and their work. Tiny by
+    // construction (summarizeMind caps at 12 lines behind a confidence floor),
+    // so it is not budget-competed: continuity that only shows up when the
+    // context is roomy isn't continuity.
+    if (params.mindText) {
+      contextSections.push(
+        '## Continuity\n'
+        + 'What you (the assistant) durably believe from earlier sessions and reviews — reaffirm with mind_remember when confirmed, and treat as beliefs, not facts.\n\n'
+        + params.mindText,
       );
     }
 

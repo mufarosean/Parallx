@@ -341,52 +341,137 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
   // across repaints so the panel doesn't collapse when the board refreshes).
   let mindExpanded = false;
 
-  /** The editable Mind panel: the agent's beliefs, each with a "forget" (✕). */
+  /** Plain-language verdict on prediction accuracy (never a raw Brier dump). */
+  function accuracyWords(fidelity: number | null | undefined, graded: number): string | undefined {
+    if (!graded || typeof fidelity !== 'number') return undefined;
+    const grade = fidelity <= 0.1 ? 'sharp' : fidelity <= 0.25 ? 'fair' : 'rough';
+    return `predictions so far: ${grade} (${graded} graded)`;
+  }
+
+  /** Plain-language read of the work balance (the conscience meter). */
+  function balanceWords(cap: { assistanceShare: number | null; deskillingRisk: boolean } | undefined): string | undefined {
+    if (!cap || typeof cap.assistanceShare !== 'number') return undefined;
+    const share = cap.assistanceShare;
+    const base = share <= 0.05 ? 'recent work: all yours'
+      : share < 0.35 ? 'recent work: mostly yours'
+      : share < 0.65 ? 'recent work: split with the agent'
+      : 'recent work: mostly the agent';
+    return cap.deskillingRisk ? `${base} — and growing; worth noticing` : base;
+  }
+
+  /**
+   * The expanded Mind surface: beliefs with confidence bars (each forgettable),
+   * noticed routines from the habit detector, and the meters in words. The mind
+   * is the agent's, but every piece of it is visible and correctable here.
+   */
   function buildMindPanel(): HTMLElement {
     const panel = $('div.autonomy-mind-panel');
-    panel.textContent = 'Loading the agent’s beliefs…';
-    void runCommand?.<{ available?: boolean; beliefs?: { id: string; content: string; confidence: number }[] }>('parallx.mind.status').then((s) => {
+    panel.textContent = 'Reading the agent’s inner model…';
+    void runCommand?.<{
+      available?: boolean;
+      fidelity?: number | null;
+      beliefs?: { id: string; content: string; confidence: number }[];
+      predictions?: { resolved?: unknown }[];
+      audit?: { ok: boolean };
+      capability?: { assistanceShare: number | null; deskillingRisk: boolean };
+      habits?: { action: string; typicalTime: string | null; daysObserved: number }[];
+    }>('parallx.mind.status').then((s) => {
       panel.innerHTML = '';
-      const beliefs = s && s.available !== false ? (s.beliefs ?? []) : [];
+      if (!s || s.available === false) {
+        const empty = $('div.autonomy-mind-panel__empty');
+        empty.textContent = 'The inner model needs workspace storage — not available here.';
+        panel.appendChild(empty);
+        return;
+      }
+      const beliefs = s.beliefs ?? [];
+      const habits = s.habits ?? [];
+      const graded = (s.predictions ?? []).filter(p => p.resolved).length;
+
+      // Meters, in words — the numbers behind them stay in the tooltip.
+      const meta = $('div.autonomy-mind-panel__meta');
+      const metaParts = [accuracyWords(s.fidelity, graded), balanceWords(s.capability)]
+        .filter((p): p is string => !!p);
+      if (s.audit && !s.audit.ok) metaParts.unshift('records damaged — the action ledger failed verification');
+      if (metaParts.length > 0) {
+        meta.textContent = metaParts.join(' · ');
+        if (typeof s.fidelity === 'number') meta.title = `Mean Brier score ${s.fidelity.toFixed(2)} over ${graded} resolved prediction${graded === 1 ? '' : 's'} (0 is perfect)`;
+        panel.appendChild(meta);
+      }
+
+      // Beliefs — the correctable heart of the panel.
+      const beliefHead = $('div.autonomy-mind-panel__section');
+      beliefHead.textContent = 'What it believes';
+      panel.appendChild(beliefHead);
       if (beliefs.length === 0) {
         const empty = $('div.autonomy-mind-panel__empty');
         empty.textContent = `${EMPTY_STATES['mind.noBeliefs'].headline} — ${EMPTY_STATES['mind.noBeliefs'].hint}`;
         panel.appendChild(empty);
-        return;
       }
-      const hint = $('div.autonomy-mind-panel__hint');
-      hint.textContent = 'What the agent believes about you & your work. Forget (✕) anything wrong — you steer the mind.';
-      panel.appendChild(hint);
-
-      // Clean slate: wipe every belief at once (for when the accumulated set is
-      // noise the user no longer trusts — quicker than forgetting one by one).
-      const clearAll = $('button.autonomy-mind-panel__clear') as HTMLButtonElement;
-      clearAll.textContent = `Clear all ${beliefs.length} beliefs`;
-      clearAll.title = 'Wipe the agent’s entire belief set and start fresh';
-      clearAll.addEventListener('click', () => {
-        if (!confirm(`Clear all ${beliefs.length} of the agent’s beliefs? This can’t be undone.`)) return;
-        void runCommand?.('parallx.mind.clearAll').then(() => { panel.innerHTML = '';
-          const empty = $('div.autonomy-mind-panel__empty');
-          empty.textContent = 'Beliefs cleared — the agent will form fresh ones as it reviews your work.';
-          panel.appendChild(empty);
-        }).catch(() => {});
-      });
-      panel.appendChild(clearAll);
-
       for (const b of beliefs) {
         const row = $('div.autonomy-mind-belief');
+        const pct = Math.round((b.confidence ?? 0) * 100);
+        const bar = $('span.autonomy-mind-belief__bar');
+        bar.title = `${pct}% confident — fades unless reaffirmed`;
+        const fill = $('span.autonomy-mind-belief__fill');
+        fill.style.width = `${Math.max(4, Math.min(100, pct))}%`;
+        bar.appendChild(fill);
         const text = $('span.autonomy-mind-belief__text');
-        text.textContent = `${Math.round((b.confidence ?? 0) * 100)}% · ${b.content}`;
+        text.textContent = b.content;
         const forget = $('button.autonomy-mind-belief__forget') as HTMLButtonElement;
-        forget.textContent = '✕';
+        forget.innerHTML = getIcon('x');
         forget.title = 'Forget this — tell the agent it’s wrong';
         forget.addEventListener('click', (e) => {
           e.stopPropagation();
           void runCommand?.('parallx.mind.forget', { id: b.id }).then(() => { row.remove(); }).catch(() => {});
         });
+        row.appendChild(bar);
         row.appendChild(text);
         row.appendChild(forget);
         panel.appendChild(row);
+      }
+
+      // Routines — what the habit detector has noticed (fed by the activity
+      // journal + extension signals). Shown so "it knows my mornings" is
+      // never a surprise.
+      if (habits.length > 0) {
+        const habitHead = $('div.autonomy-mind-panel__section');
+        habitHead.textContent = 'Routines it has noticed';
+        panel.appendChild(habitHead);
+        for (const h of habits.slice(0, 6)) {
+          const row = $('div.autonomy-mind-habit');
+          row.textContent = h.typicalTime
+            ? `${h.action} — most days around ${h.typicalTime} (seen on ${h.daysObserved} days)`
+            : `${h.action} — ${h.daysObserved} days`;
+          panel.appendChild(row);
+        }
+        // The collapsed cell reports the full count — never let the expanded
+        // view silently show less than it claims.
+        if (habits.length > 6) {
+          const more = $('div.autonomy-mind-habit.autonomy-mind-habit--more');
+          more.textContent = `and ${habits.length - 6} more, strongest shown first`;
+          panel.appendChild(more);
+        }
+      }
+
+      if (beliefs.length > 0) {
+        const foot = $('div.autonomy-mind-panel__foot');
+        const hint = $('span.autonomy-mind-panel__hint');
+        hint.textContent = 'You steer the mind — forget anything wrong.';
+        foot.appendChild(hint);
+        const clearAll = $('button.autonomy-mind-panel__clear') as HTMLButtonElement;
+        clearAll.textContent = `Clear all ${beliefs.length}`;
+        clearAll.title = 'Wipe the agent’s entire belief set and start fresh';
+        clearAll.addEventListener('click', () => {
+          if (!confirm(`Clear all ${beliefs.length} of the agent’s beliefs? This can’t be undone.`)) return;
+          void runCommand?.('parallx.mind.clearAll').then(() => {
+            panel.innerHTML = '';
+            const empty = $('div.autonomy-mind-panel__empty');
+            empty.textContent = 'Beliefs cleared — fresh ones will form as it reviews your work.';
+            panel.appendChild(empty);
+          }).catch(() => {});
+        });
+        foot.appendChild(clearAll);
+        panel.appendChild(foot);
       }
     }).catch(() => { panel.textContent = 'Mind unavailable.'; });
     return panel;
@@ -408,47 +493,38 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
     return span;
   }
 
-  type StateKind = 'on' | 'off' | 'paused';
+  type StateKind = 'on' | 'off' | 'paused' | 'alert';
 
-  // One engine row: icon tile · name + state badge over a detail line · action.
-  function statusRow(
-    iconName: string,
-    badge: { label: string; kind: StateKind },
+  // One instrument cell: state dot · name · action link over a detail line.
+  // The strip reads like a control panel — typography and hairlines carry the
+  // identity; state lives in the dot, exceptions in words, numbers in tabular
+  // figures. No icon tiles, no badge pills for the expected states.
+  function statusCell(
+    kind: StateKind,
     title: string,
     detail: string,
-    action?: { label: string; icon?: string; run: () => void; primary?: boolean },
+    action?: { label: string; run: () => void; primary?: boolean },
   ): HTMLElement {
-    const row = $('div.autonomy-status__row');
+    const cell = $('div.as-cell');
 
-    const tile = $(`div.autonomy-status__icon.is-${badge.kind}`);
-    tile.innerHTML = getIcon(iconName);
-    row.appendChild(tile);
-
-    const main = $('div.autonomy-status__main');
-    const top = $('div.autonomy-status__top');
-    const name = $('span.autonomy-status__name');
+    const head = $('div.as-cell__head');
+    head.appendChild($(`span.as-cell__dot.is-${kind}`));
+    const name = $('span.as-cell__name');
     name.textContent = title;
-    top.appendChild(name);
-    const b = $(`span.autonomy-status__badge.is-${badge.kind}`);
-    b.textContent = badge.label;
-    top.appendChild(b);
-    main.appendChild(top);
-    const det = $('div.autonomy-status__detail');
-    det.textContent = detail;
-    main.appendChild(det);
-    row.appendChild(main);
-
+    head.appendChild(name);
     if (action) {
-      const btn = $('button.autonomy-status__btn') as HTMLButtonElement;
+      const btn = $('button.as-cell__action') as HTMLButtonElement;
       if (action.primary) btn.classList.add('is-primary');
-      if (action.icon) btn.appendChild(iconSpan(action.icon, 'autonomy-status__btn-ic'));
-      const t = document.createElement('span');
-      t.textContent = action.label;
-      btn.appendChild(t);
-      btn.addEventListener('click', action.run);
-      row.appendChild(btn);
+      btn.textContent = action.label;
+      btn.addEventListener('click', (e) => { e.stopPropagation(); action.run(); });
+      head.appendChild(btn);
     }
-    return row;
+    cell.appendChild(head);
+
+    const det = $('div.as-cell__detail');
+    det.textContent = detail;
+    cell.appendChild(det);
+    return cell;
   }
 
   function paintStatus(): void {
@@ -457,6 +533,8 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
     statusBoard.style.display = '';
 
     const paused = flagsService?.isEnabled(FLAG_PAUSED_GLOBAL) ?? false;
+    const strip = $('div.autonomy-strip');
+    statusBoard.appendChild(strip);
 
     // Heartbeat — gated by ONE user control (`heartbeat.enabled`) plus the
     // global kill switch. (The old `autonomy.heartbeat.enabled` flag no longer
@@ -464,138 +542,119 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
     const hbCfg = configService?.getEffectiveConfig().heartbeat;
     const hbOn = hbCfg?.enabled ?? false;
     if (paused) {
-      statusBoard.appendChild(statusRow('heart-pulse', { label: 'Paused', kind: 'paused' },
-        'Heartbeat', 'Globally paused — nothing fires.'));
+      strip.appendChild(statusCell('paused', 'Heartbeat', 'paused globally'));
     } else if (hbOn) {
       const iv = hbCfg ? formatInterval(hbCfg.intervalMs) : '30m';
-      const baseDetail = `Reviews the app every ${iv} · reacts to changes, diagnostics & signals`;
-      const hbRow = statusRow('heart-pulse', { label: 'Armed', kind: 'on' },
-        'Heartbeat', baseDetail,
-        { label: 'Wake now', icon: 'zap', primary: true, run: () => { void runCommand?.('parallx.wakeAgent'); } });
-      statusBoard.appendChild(hbRow);
-      // One-shot enrichment: show when it last reviewed / when the next is due,
-      // pulled from the live runner state. Updates on the next board repaint.
+      const hbCell = statusCell('on', 'Heartbeat', `reviews every ${iv}`,
+        { label: 'Wake now', primary: true, run: () => { void runCommand?.('parallx.wakeAgent'); } });
+      strip.appendChild(hbCell);
+      // One-shot enrichment: last review / next due / watcher outcome, from
+      // the live runner state. Updates on the next board repaint.
       void runCommand?.<{
         lastRunMs?: number;
         nextDueMs?: number;
         triggerLane?: { at: number; delivered: number; suppressed: number; failed: number } | null;
       }>('parallx.heartbeat.status').then((s) => {
         if (!s) return;
-        const det = hbRow.querySelector('.autonomy-status__detail');
+        const det = hbCell.querySelector('.as-cell__detail');
         if (!det) return;
-        const parts = [`Reviews every ${iv}`];
+        const parts = [`every ${iv}`];
         if (typeof s.lastRunMs === 'number' && s.lastRunMs > 0) parts.push(`last ${formatAgo(s.lastRunMs)}`);
         if (typeof s.nextDueMs === 'number' && s.nextDueMs > Date.now()) parts.push(`next ${formatUntil(s.nextDueMs)}`);
-        // M87 S4 — make the quiet lane legible: silence now reads as
-        // "checked, nothing needed" instead of "did nothing".
+        // M87 S4 — make the quiet lane legible: silence reads as "checked,
+        // nothing needed" instead of "did nothing".
         if (s.triggerLane) {
           const t = s.triggerLane;
           parts.push(t.delivered > 0
-            ? `watchers: ${t.delivered} filed${t.suppressed > 0 ? `, ${t.suppressed} on cooldown` : ''}`
-            : t.suppressed > 0
-              ? `watchers: all quiet (${t.suppressed} on cooldown)`
-              : 'watchers: all quiet');
+            ? `${t.delivered} watcher${t.delivered === 1 ? '' : 's'} filed`
+            : 'watchers quiet');
         }
-        det.textContent = `${parts.join(' · ')} · reacts to changes, diagnostics & signals`;
+        det.textContent = parts.join(' · ');
       }).catch(() => { /* status unavailable — keep base detail */ });
     } else {
-      statusBoard.appendChild(statusRow('heart-pulse', { label: 'Off', kind: 'off' },
-        'Heartbeat', 'Proactive check-ins are disabled.',
-        { label: 'Enable', icon: 'power', run: () => {
-            void configService?.updateActivePreset({ heartbeat: { enabled: true } });
-          } }));
+      strip.appendChild(statusCell('off', 'Heartbeat', 'check-ins off',
+        { label: 'Enable', run: () => { void configService?.updateActivePreset({ heartbeat: { enabled: true } }); } }));
     }
 
     // Cron — gated by the cron flag; the scheduler timer runs regardless.
     const cronFlag = flagsService?.isEnabled(FLAG_CRON_ENABLED) ?? false;
     if (paused) {
-      statusBoard.appendChild(statusRow('calendar-clock', { label: 'Paused', kind: 'paused' },
-        'Cron', 'Globally paused — no jobs fire.'));
+      strip.appendChild(statusCell('paused', 'Cron', 'paused globally'));
     } else if (!cronFlag) {
-      statusBoard.appendChild(statusRow('calendar-clock', { label: 'Off', kind: 'off' },
-        'Cron', 'Scheduled jobs won’t fire.',
-        { label: 'Enable', icon: 'power', run: () => { void flagsService?.setEnabled(FLAG_CRON_ENABLED, true); } }));
+      strip.appendChild(statusCell('off', 'Cron', 'schedules off',
+        { label: 'Enable', run: () => { void flagsService?.setEnabled(FLAG_CRON_ENABLED, true); } }));
     } else {
       const jobs = cronService?.jobs ?? [];
       const next = nextCronJob(jobs);
       const detail = jobs.length === 0
-        ? 'On · no jobs scheduled yet.'
+        ? 'no jobs yet'
         : next
-          ? `${jobs.length} job${jobs.length === 1 ? '' : 's'} · next: ${next.name} ${formatUntil(next.nextRunAt!)}`
-          : `${jobs.length} job${jobs.length === 1 ? '' : 's'} scheduled.`;
-      statusBoard.appendChild(statusRow('calendar-clock', { label: 'On', kind: 'on' },
-        'Cron', detail,
-        { label: jobs.length === 0 ? 'Schedule' : 'Manage', icon: 'alarm-clock', run: () => { void runCommand?.('aiSettings.manageCron'); } }));
+          ? `${jobs.length} job${jobs.length === 1 ? '' : 's'} · next ${formatUntil(next.nextRunAt!)}`
+          : `${jobs.length} job${jobs.length === 1 ? '' : 's'}`;
+      strip.appendChild(statusCell('on', 'Cron', detail,
+        { label: jobs.length === 0 ? 'Schedule' : 'Manage', run: () => { void runCommand?.('aiSettings.manageCron'); } }));
     }
 
-    // Mind — the agent's persistent inner model (the continuity keystone). Shown
-    // so the human can SEE what it believes, how accurate its predictions have
-    // been, and that the tamper-evident audit ledger is intact. Transparency =
-    // trust; the mind is the agent's, but none of it is hidden.
-    const mindRow = statusRow('brain', { label: '…', kind: 'on' }, 'Mind',
-      'Loading the agent’s inner model…');
-    mindRow.classList.add('autonomy-status__row--clickable');
-    mindRow.title = 'Show what the agent believes — and forget anything wrong';
-    mindRow.addEventListener('click', () => { mindExpanded = !mindExpanded; paintStatus(); });
-    statusBoard.appendChild(mindRow);
-    if (mindExpanded) statusBoard.appendChild(buildMindPanel());
+    // Mind — the agent's persistent inner model. The cell speaks plainly
+    // (beliefs, routines); the meters live in the expanded panel, in words.
+    // Only the exceptional state (a damaged ledger) changes its color.
+    const mindCell = statusCell('off', 'Mind', 'reading…',
+      { label: mindExpanded ? 'Hide' : 'Show', run: () => { mindExpanded = !mindExpanded; paintStatus(); } });
+    mindCell.classList.add('as-cell--clickable');
+    mindCell.title = 'What the agent believes about you and your work — open it, correct it';
+    mindCell.addEventListener('click', () => { mindExpanded = !mindExpanded; paintStatus(); });
+    strip.appendChild(mindCell);
     void runCommand?.<{
       available?: boolean;
-      fidelity?: number | null;
       beliefs?: { content: string; confidence: number }[];
       predictions?: { resolved?: unknown }[];
       audit?: { ok: boolean };
-      capability?: { assistanceShare: number | null; deskillingRisk: boolean };
-      fluency?: { trend: string; completed: number };
-      nag?: { dismissRatio: number | null; throttled: boolean };
+      habits?: { action: string }[];
     }>('parallx.mind.status').then((s) => {
-      const badge = mindRow.querySelector('.autonomy-status__badge');
-      const det = mindRow.querySelector('.autonomy-status__detail');
+      const dot = mindCell.querySelector('.as-cell__dot');
+      const det = mindCell.querySelector('.as-cell__detail');
+      if (!det || !dot) return;
       if (!s || s.available === false) {
-        if (badge) badge.textContent = 'Empty';
-        if (det) det.textContent = 'No inner model yet — runs once the heartbeat reviews a workspace.';
+        det.textContent = 'not available here';
+        return;
+      }
+      if (s.audit && !s.audit.ok) {
+        dot.className = 'as-cell__dot is-alert';
+        det.textContent = 'records damaged — open for details';
         return;
       }
       const beliefs = s.beliefs?.length ?? 0;
-      const preds = s.predictions ?? [];
-      const pending = preds.filter(p => !p.resolved).length;
-      const resolved = preds.filter(p => p.resolved).length;
-      if (badge) badge.textContent = s.audit?.ok ? 'Intact' : 'Tampered';
-      if (det) {
-        const parts = [`${beliefs} belief${beliefs === 1 ? '' : 's'}`];
-        if (pending) parts.push(`${pending} prediction${pending === 1 ? '' : 's'} pending`);
-        if (resolved && typeof s.fidelity === 'number') parts.push(`fidelity ${s.fidelity.toFixed(2)} (brier · lower better)`);
-        const cap = s.capability;
-        if (cap && typeof cap.assistanceShare === 'number') {
-          parts.push(`you ${Math.round((1 - cap.assistanceShare) * 100)}% · agent ${Math.round(cap.assistanceShare * 100)}%`);
-          if (cap.deskillingRisk) parts.push('⚠ deskilling — you’re offloading more over time');
-        }
-        if (s.fluency && s.fluency.completed > 0 && s.fluency.trend !== 'insufficient') {
-          parts.push(`your fluency ${s.fluency.trend}`);
-        }
-        if (s.nag && s.nag.throttled) {
-          parts.push('quieting down — you’ve been dismissing');
-        }
-        parts.push(s.audit?.ok ? 'audit ✓' : 'audit ✗ TAMPERED');
-        det.textContent = parts.join(' · ');
+      const open = (s.predictions ?? []).filter(p => !p.resolved).length;
+      const habits = s.habits?.length ?? 0;
+      if (beliefs === 0 && open === 0 && habits === 0) {
+        det.textContent = 'nothing learned yet';
+        return;
       }
-    }).catch(() => { /* mind unavailable — leave the loading line */ });
+      dot.className = 'as-cell__dot is-on';
+      const parts: string[] = [];
+      if (beliefs > 0) parts.push(`${beliefs} belief${beliefs === 1 ? '' : 's'}`);
+      if (habits > 0) parts.push(`${habits} routine${habits === 1 ? '' : 's'} noticed`);
+      if (open > 0) parts.push(`${open} open prediction${open === 1 ? '' : 's'}`);
+      det.textContent = parts.join(' · ');
+    }).catch(() => { /* mind unavailable — leave the reading line */ });
 
-    // Footer: autonomy level + a deep-link into the unified config.
+    // Strip tail: autonomy level + the deep-link into full settings.
+    const tail = $('div.autonomy-strip__tail');
     const level = configService?.getEffectiveConfig().heartbeat.autonomy ?? 'allow-safe-actions';
-    const foot = $('div.autonomy-status__foot');
-    foot.appendChild(iconSpan('sliders-horizontal', 'autonomy-status__foot-ic'));
-    const lvl = $('span.autonomy-status__level');
-    lvl.textContent = `Autonomy level · ${level}`;
-    foot.appendChild(lvl);
-    const link = $('button.autonomy-status__link') as HTMLButtonElement;
+    const lvl = $('span.autonomy-strip__level');
+    lvl.textContent = level.replace(/-/g, ' ');
+    lvl.title = `Autonomy level: ${level}`;
+    tail.appendChild(lvl);
+    const link = $('button.autonomy-strip__link') as HTMLButtonElement;
     const linkText = document.createElement('span');
-    linkText.textContent = 'Full settings';
+    linkText.textContent = 'Settings';
     link.appendChild(linkText);
-    link.appendChild(iconSpan('arrow-up-right', 'autonomy-status__link-ic'));
+    link.appendChild(iconSpan('arrow-up-right', 'autonomy-strip__link-ic'));
     link.addEventListener('click', () => { void runCommand?.('aiSettings.manageAgents'); });
-    foot.appendChild(link);
-    statusBoard.appendChild(foot);
+    tail.appendChild(link);
+    strip.appendChild(tail);
+
+    if (mindExpanded) statusBoard.appendChild(buildMindPanel());
   }
 
   // Rich guide shown in the live list when there's no activity yet.
@@ -612,8 +671,8 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
 
     const body = $('div.autonomy-guide__body');
     body.textContent =
-      'Heartbeat reacts to your workspace — a file you save, indexing finishing. Cron runs on a schedule you set. ' +
-      'Both work quietly in the background and log their turns right here. Try one:';
+      'Background runs land here — what triggered them, which model served them, and what came of it. ' +
+      'The heartbeat reviews your workspace as you work; cron fires on schedules you set. Try one:';
     emptyEl.appendChild(body);
 
     const chips = $('div.autonomy-guide__chips');
@@ -991,7 +1050,15 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
   let subConfig = configService?.onDidChangeConfig(schedule);
   // Relative "next: in 2h" timers drift between events — refresh the board
   // on a slow tick so the countdown stays honest without a firehose of repaints.
-  const refreshTimer = setInterval(() => { if (currentMode === 'live') paintStatus(); }, 30_000);
+  // Skip the tick while focus is inside the board: paintStatus rebuilds the
+  // strip wholesale, which would silently drop a keyboard user's focus to
+  // <body> mid-Tab (the tick only refreshes relative-time text; it can wait).
+  const refreshTimer = setInterval(() => {
+    if (currentMode !== 'live') return;
+    const focused = document.activeElement;
+    if (focused instanceof HTMLElement && statusBoard.contains(focused)) return;
+    paintStatus();
+  }, 30_000);
 
   // Self-heal: if the view mounted before the chat extension registered the
   // flags / cron services, re-resolve shortly after, wire up the now-available

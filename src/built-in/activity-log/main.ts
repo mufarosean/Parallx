@@ -87,6 +87,9 @@ function fillRow(row: HTMLElement, ev: IActivityEvent): void {
   chip.textContent = actorChipLabel(ev.actor);
   const text = $('span.activity-log-text');
   text.textContent = eventText(ev);
+  // The exact-identity ref stays out of the human line (names read better) —
+  // hover reveals it when two same-named objects need telling apart.
+  if (ev.ref) text.title = ev.ref;
   row.append(time, chip, text);
 }
 

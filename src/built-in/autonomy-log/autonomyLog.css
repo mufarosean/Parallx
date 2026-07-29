@@ -121,143 +121,114 @@
   text-align: center;
 }
 
-/* ── Status board (live mode) — the autonomy "mission control" ── */
+/* ── Status strip (live mode) — an instrument cluster, not a card stack.
+   Identity: hairlines + typography; state in a dot; numbers in tabular
+   figures; badges reserved for the exceptional. ── */
 .autonomy-status {
   flex-shrink: 0;
-  padding: 10px 12px;
   border-bottom: 1px solid var(--px-border, #33363d);
-  background: linear-gradient(
-    var(--px-bg-elevated, #1f2125),
-    color-mix(in srgb, var(--px-bg-elevated, #1f2125) 66%, transparent)
-  );
+  background: var(--px-bg-elevated, #1f2125);
 }
 
-.autonomy-status__row {
+.autonomy-strip {
+  display: flex;
+  align-items: stretch;
+  flex-wrap: wrap;
+  padding: 0 4px;
+}
+
+.as-cell {
+  flex: 1 1 150px;
+  min-width: 0;
+  padding: 8px 12px 7px;
+}
+/* Hairlines only BETWEEN cells (sibling rule) — never against the tail, and
+   no dangling border at a wrapped row's edge. */
+.as-cell + .as-cell {
+  border-left: 1px solid color-mix(in srgb, var(--px-border, #33363d) 60%, transparent);
+}
+.as-cell--clickable { cursor: pointer; }
+.as-cell--clickable:hover { background: color-mix(in srgb, var(--px-accent, #569cd6) 5%, transparent); }
+
+.as-cell__head {
   display: flex;
   align-items: center;
-  gap: 11px;
-  padding: 7px 0;
+  gap: 7px;
+  min-width: 0;
 }
-.autonomy-status__row + .autonomy-status__row {
-  border-top: 1px solid color-mix(in srgb, var(--px-border, #33363d) 50%, transparent);
-}
-
-/* Icon tile — the visual anchor for each engine. */
-.autonomy-status__icon {
+.as-cell__dot {
   flex-shrink: 0;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--px-radius-md, 6px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--px-bg-inset, #24262b);
-  color: var(--px-text-muted, #9ea3ad);
-  border: 1px solid var(--px-border, #33363d);
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--px-text-faint, #686d77);
 }
-.autonomy-status__icon svg { width: 17px; height: 17px; display: block; }
-.autonomy-status__icon.is-on {
-  background: color-mix(in srgb, var(--px-success, #6cbf8f) 16%, var(--px-bg-inset, #24262b));
-  color: var(--px-success, #6cbf8f);
-  border-color: color-mix(in srgb, var(--px-success, #6cbf8f) 40%, transparent);
-  animation: autonomy-pulse 2.6s ease-in-out infinite;
+.as-cell__dot.is-on {
+  background: var(--px-success, #6cbf8f);
+  animation: as-dot-pulse 2.6s ease-in-out infinite;
 }
-.autonomy-status__icon.is-paused {
-  background: color-mix(in srgb, var(--px-warning, #dcaa5a) 14%, var(--px-bg-inset, #24262b));
-  color: var(--px-warning, #dcaa5a);
-  border-color: color-mix(in srgb, var(--px-warning, #dcaa5a) 38%, transparent);
-}
-@keyframes autonomy-pulse {
-  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--px-success, #6cbf8f) 26%, transparent); }
-  70%, 100% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--px-success, #6cbf8f) 0%, transparent); }
+.as-cell__dot.is-paused { background: var(--px-warning, #dcaa5a); }
+.as-cell__dot.is-alert { background: var(--px-danger, #e06c66); }
+@keyframes as-dot-pulse {
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--px-success, #6cbf8f) 32%, transparent); }
+  70%, 100% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--px-success, #6cbf8f) 0%, transparent); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .autonomy-status__icon.is-on { animation: none; }
+  .as-cell__dot.is-on { animation: none; }
 }
 
-.autonomy-status__main { flex: 1; min-width: 0; }
-.autonomy-status__top { display: flex; align-items: center; gap: 8px; }
-.autonomy-status__name {
+.as-cell__name {
   color: var(--px-text, #e8eaee);
   font-weight: 600;
-  font-size: var(--parallx-fontSize-base, 13px);
-}
-.autonomy-status__badge {
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  padding: 1px 6px;
-  border-radius: var(--px-radius-full, 999px);
-  background: var(--px-surface-hover, #2b2e34);
-  color: var(--px-text-muted, #9ea3ad);
-}
-.autonomy-status__badge.is-on {
-  background: color-mix(in srgb, var(--px-success, #6cbf8f) 18%, transparent);
-  color: var(--px-success, #6cbf8f);
-}
-.autonomy-status__badge.is-paused {
-  background: color-mix(in srgb, var(--px-warning, #dcaa5a) 18%, transparent);
-  color: var(--px-warning, #dcaa5a);
-}
-.autonomy-status__detail {
-  margin-top: 2px;
-  color: var(--px-text-muted, #9ea3ad);
   font-size: var(--parallx-fontSize-sm, 12px);
+  letter-spacing: 0.01em;
+}
+.as-cell__action {
+  margin-left: auto;
+  flex-shrink: 0;
+  border: none;
+  background: none;
+  padding: 1px 4px;
+  border-radius: var(--parallx-radius-sm, 3px);
+  color: var(--px-text-muted, #9ea3ad);
+  cursor: pointer;
+  font-size: var(--parallx-fontSize-xs, 11px);
+  font-weight: 550;
+}
+.as-cell__action:hover {
+  color: var(--px-text, #e8eaee);
+  background: var(--px-surface-hover, #2b2e34);
+}
+.as-cell__action.is-primary { color: var(--px-accent, #569cd6); }
+.as-cell__action.is-primary:hover {
+  color: var(--px-accent-hover, #6cabe0);
+  background: color-mix(in srgb, var(--px-accent, #569cd6) 12%, transparent);
+}
+
+.as-cell__detail {
+  margin: 3px 0 0 14px;
+  color: var(--px-text-muted, #9ea3ad);
+  font-size: var(--parallx-fontSize-xs, 11px);
+  font-variant-numeric: tabular-nums;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.autonomy-status__btn {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 11px;
-  border-radius: var(--px-radius-md, 6px);
-  border: 1px solid var(--px-border, #33363d);
-  background: var(--px-bg-elevated, #1f2125);
-  color: var(--px-text-secondary, #c0c4cc);
-  cursor: pointer;
-  font-size: var(--parallx-fontSize-sm, 12px);
-  font-weight: 550;
-  transition: background var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
-}
-.autonomy-status__btn:hover {
-  background: var(--px-surface-hover, #2b2e34);
-  border-color: var(--px-border-strong, #41454d);
-  color: var(--px-text, #e8eaee);
-}
-.autonomy-status__btn-ic { display: inline-flex; }
-.autonomy-status__btn-ic svg { width: 13px; height: 13px; display: block; }
-.autonomy-status__btn.is-primary {
-  border-color: color-mix(in srgb, var(--px-accent, #569cd6) 55%, transparent);
-  color: var(--px-accent, #569cd6);
-  background: color-mix(in srgb, var(--px-accent, #569cd6) 10%, var(--px-bg-elevated, #1f2125));
-}
-.autonomy-status__btn.is-primary:hover {
-  background: color-mix(in srgb, var(--px-accent, #569cd6) 18%, var(--px-bg-elevated, #1f2125));
-  border-color: var(--px-accent, #569cd6);
-  color: var(--px-accent-hover, #6cabe0);
-}
-
-.autonomy-status__foot {
+/* Tail: autonomy level + settings link, right-aligned in the same band. */
+.autonomy-strip__tail {
   display: flex;
   align-items: center;
-  gap: 7px;
-  margin-top: 8px;
-  padding-top: 9px;
-  border-top: 1px solid var(--px-border, #33363d);
+  gap: 10px;
+  margin-left: auto;
+  padding: 8px 12px;
 }
-.autonomy-status__foot-ic { display: inline-flex; color: var(--px-text-faint, #686d77); }
-.autonomy-status__foot-ic svg { width: 13px; height: 13px; display: block; }
-.autonomy-status__level {
-  flex: 1;
-  color: var(--px-text-muted, #9ea3ad);
+.autonomy-strip__level {
+  color: var(--px-text-faint, #686d77);
   font-size: var(--parallx-fontSize-xs, 11px);
+  white-space: nowrap;
 }
-.autonomy-status__link {
+.autonomy-strip__link {
   display: inline-flex;
   align-items: center;
   gap: 3px;
@@ -269,8 +240,8 @@
   font-weight: 550;
   padding: 0;
 }
-.autonomy-status__link:hover { color: var(--px-accent-hover, #6cabe0); }
-.autonomy-status__link-ic svg { width: 12px; height: 12px; display: block; }
+.autonomy-strip__link:hover { color: var(--px-accent-hover, #6cabe0); }
+.autonomy-strip__link-ic svg { width: 12px; height: 12px; display: block; }
 
 /* ── Onboarding guide (live, no activity) ── */
 .autonomy-log-empty--guide {
@@ -481,59 +452,111 @@
 }
 
 /* ── Mind panel (the editable inner model) ───────────────────────────── */
-.autonomy-status__row--clickable {
-  cursor: pointer;
-}
-.autonomy-status__row--clickable:hover {
-  background: color-mix(in srgb, var(--px-accent, #569cd6) 6%, transparent);
-}
-
 .autonomy-mind-panel {
-  padding: 6px 12px 10px 12px;
-  border-bottom: 1px solid color-mix(in srgb, var(--px-border, #33363d) 50%, transparent);
+  padding: 8px 14px 10px;
+  border-top: 1px solid color-mix(in srgb, var(--px-border, #33363d) 60%, transparent);
   background: var(--px-bg-inset, #24262b);
+  /* The board is pinned (flex-shrink:0) inside an overflow:hidden container —
+     without a bounded scroll here a long belief list would swallow the log
+     body and clip its own Clear-all foot out of reach. Mirrors the
+     entry-body pattern (max-height + overflow-y) used below. */
+  max-height: min(45vh, 320px);
+  overflow-y: auto;
 }
-.autonomy-mind-panel__hint,
+.autonomy-mind-habit--more {
+  color: var(--px-text-faint, #686d77);
+  font-style: italic;
+}
 .autonomy-mind-panel__empty {
   color: var(--px-text-muted, #9ea3ad);
   font-size: var(--parallx-fontSize-xs);
-  margin-bottom: 6px;
+  padding: 2px 0 4px;
+}
+.autonomy-mind-panel__meta {
+  color: var(--px-text-secondary, #c0c4cc);
+  font-size: var(--parallx-fontSize-xs);
+  padding-bottom: 6px;
+  border-bottom: 1px solid color-mix(in srgb, var(--px-border, #33363d) 45%, transparent);
+  margin-bottom: 4px;
+}
+.autonomy-mind-panel__section {
+  color: var(--px-text-faint, #686d77);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  margin: 8px 0 3px;
 }
 .autonomy-mind-belief {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 9px;
   padding: 4px 0;
 }
 .autonomy-mind-belief + .autonomy-mind-belief {
-  border-top: 1px solid color-mix(in srgb, var(--px-border, #33363d) 35%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--px-border, #33363d) 30%, transparent);
+}
+/* Confidence as a quiet bar, not a leading percentage. */
+.autonomy-mind-belief__bar {
+  flex: 0 0 44px;
+  height: 4px;
+  border-radius: var(--px-radius-full, 999px);
+  background: color-mix(in srgb, var(--px-border, #33363d) 70%, transparent);
+  overflow: hidden;
+}
+.autonomy-mind-belief__fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--px-accent, #569cd6);
 }
 .autonomy-mind-belief__text {
+  flex: 1;
+  min-width: 0;
   color: var(--px-text, #d4d4d4);
   font-size: var(--parallx-fontSize-xs);
-  line-height: 1.4;
+  line-height: 1.45;
 }
 .autonomy-mind-belief__forget {
   flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 20px;
   height: 20px;
   border-radius: var(--px-radius-md, 6px);
-  border: 1px solid var(--px-border, #33363d);
+  border: none;
   background: transparent;
-  color: var(--px-text-muted, #9ea3ad);
+  color: var(--px-text-faint, #686d77);
   cursor: pointer;
-  line-height: 1;
 }
+.autonomy-mind-belief__forget svg { width: 12px; height: 12px; display: block; }
 .autonomy-mind-belief__forget:hover {
   background: color-mix(in srgb, var(--px-danger, #d36b6b) 16%, transparent);
   color: var(--px-danger, #d36b6b);
-  border-color: color-mix(in srgb, var(--px-danger, #d36b6b) 40%, transparent);
+}
+.autonomy-mind-habit {
+  color: var(--px-text-secondary, #c0c4cc);
+  font-size: var(--parallx-fontSize-xs);
+  line-height: 1.5;
+  padding: 1px 0;
+  font-variant-numeric: tabular-nums;
+}
+.autonomy-mind-panel__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid color-mix(in srgb, var(--px-border, #33363d) 45%, transparent);
+}
+.autonomy-mind-panel__hint {
+  color: var(--px-text-faint, #686d77);
+  font-size: var(--parallx-fontSize-xs);
 }
 .autonomy-mind-panel__clear {
-  display: block;
-  margin: 0 0 8px auto;
-  padding: 3px 10px;
+  padding: 2px 9px;
   border-radius: var(--px-radius-md, 6px);
   border: 1px solid color-mix(in srgb, var(--px-danger, #d36b6b) 40%, transparent);
   background: transparent;

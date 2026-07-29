@@ -354,7 +354,11 @@
    corners still resize the top. */
 .dashboard-widget__move {
   position: absolute;
-  top: -3px;
+  /* Straddle the edge EVENLY (half the thickness outside, half inside).
+     A flat -3px offset regardless of thickness left this 12px strip sitting
+     3px outside its edge and 9px inside, so the hover bar read as sitting
+     below the border instead of on it. */
+  top: -6px;
   left: 8px;
   right: 8px;
   height: 12px;
@@ -601,16 +605,18 @@
   transition: opacity var(--px-dur-base) var(--px-ease);
   z-index: 3;
 }
-/* Edges */
-.dashboard-widget__resize--n { top: -3px; left: 8px; right: 8px; height: 8px; cursor: ns-resize; }
-.dashboard-widget__resize--s { bottom: -3px; left: 8px; right: 8px; height: 8px; cursor: ns-resize; }
-.dashboard-widget__resize--e { right: -3px; top: 8px; bottom: 8px; width: 8px; cursor: ew-resize; }
-.dashboard-widget__resize--w { left: -3px; top: 8px; bottom: 8px; width: 8px; cursor: ew-resize; }
-/* Corners (sit above the edge strips) */
-.dashboard-widget__resize--ne { top: -3px; right: -3px; width: 14px; height: 14px; cursor: nesw-resize; z-index: 4; }
-.dashboard-widget__resize--nw { top: -3px; left: -3px; width: 14px; height: 14px; cursor: nwse-resize; z-index: 4; }
-.dashboard-widget__resize--se { bottom: -3px; right: -3px; width: 14px; height: 14px; cursor: nwse-resize; z-index: 4; }
-.dashboard-widget__resize--sw { bottom: -3px; left: -3px; width: 14px; height: 14px; cursor: nesw-resize; z-index: 4; }
+/* Edges — each handle is CENTRED on the edge it resizes: the outward offset
+   is half the handle's thickness, so the grab zone (and its hover highlight)
+   straddles the border evenly instead of sitting mostly inside the card. */
+.dashboard-widget__resize--n { top: -4px; left: 8px; right: 8px; height: 8px; cursor: ns-resize; }
+.dashboard-widget__resize--s { bottom: -4px; left: 8px; right: 8px; height: 8px; cursor: ns-resize; }
+.dashboard-widget__resize--e { right: -4px; top: 8px; bottom: 8px; width: 8px; cursor: ew-resize; }
+.dashboard-widget__resize--w { left: -4px; top: 8px; bottom: 8px; width: 8px; cursor: ew-resize; }
+/* Corners (sit above the edge strips) — same rule, centred on the corner. */
+.dashboard-widget__resize--ne { top: -7px; right: -7px; width: 14px; height: 14px; cursor: nesw-resize; z-index: 4; }
+.dashboard-widget__resize--nw { top: -7px; left: -7px; width: 14px; height: 14px; cursor: nwse-resize; z-index: 4; }
+.dashboard-widget__resize--se { bottom: -7px; right: -7px; width: 14px; height: 14px; cursor: nwse-resize; z-index: 4; }
+.dashboard-widget__resize--sw { bottom: -7px; left: -7px; width: 14px; height: 14px; cursor: nesw-resize; z-index: 4; }
 /* SE corner shows the classic diagonal grip so the affordance is discoverable. */
 .dashboard-widget__resize--se {
   background:

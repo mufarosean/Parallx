@@ -530,3 +530,72 @@ describe('openclaw default participant', () => {
     );
   });
 });
+
+// ─── Unhandled slash commands (2026-07-28) ───────────────────────────────────
+//
+// parseChatRequest strips ANY leading /token into request.command — it has no
+// registry to check against. Everything that reaches the dispatch tail is
+// therefore either a template-only command (apply the template) or not a
+// command at all (give the user their word back). Dropping it silently, as the
+// old code did, meant "/explain how X works" reached the model as "how X works".
+
+describe('openclaw default participant — unhandled slash commands', () => {
+  function baseServices(sendChatRequest: ReturnType<typeof vi.fn>): IDefaultParticipantServices {
+    return {
+      sendChatRequest,
+      getActiveModel: () => 'test-model',
+      getWorkspaceName: () => 'Demo Workspace',
+      getPageCount: vi.fn(async () => 0),
+      getCurrentPageTitle: () => undefined,
+      getToolDefinitions: () => [],
+      getReadOnlyToolDefinitions: () => [],
+      readFileRelative: vi.fn(async () => null),
+      unifiedConfigService: {
+        getEffectiveConfig: () => ({ chat: {}, model: { temperature: 0.2, maxTokens: 512 } } as any),
+      } as any,
+    } as IDefaultParticipantServices;
+  }
+
+  async function sendWithCommand(command: string, text: string) {
+    const sendChatRequest = vi.fn(() => streamChunks([{ content: 'ok', done: true }]));
+    const participant = createOpenclawDefaultParticipant(baseServices(sendChatRequest));
+    await participant.handler({
+      text,
+      command,
+      requestId: 'req-cmd',
+      mode: ChatMode.Agent,
+      modelId: 'test-model',
+      attempt: 0,
+    } as IChatParticipantRequest, {
+      sessionId: 'session-cmd',
+      history: [],
+    } as IChatParticipantContext, createResponse(), createToken());
+    const sent = sendChatRequest.mock.calls[0][0];
+    return String(sent.at(-1)?.content ?? '');
+  }
+
+  it('hands back an UNREGISTERED command instead of eating the word', async () => {
+    const content = await sendWithCommand('explain', 'how does reserving work');
+    expect(content).toBe('/explain how does reserving work');
+  });
+
+  it('applies the promptTemplate of a registered template-only command (/research)', async () => {
+    const content = await sendWithCommand('research', 'loss development factors');
+    // The template directs the agent at the research-topic skill — the whole
+    // point of /research, which never fired before (applyCommandTemplate had
+    // no production caller).
+    expect(content).toContain('research-topic skill');
+    expect(content).toContain('loss development factors');
+    expect(content.startsWith('/research')).toBe(false);
+  });
+
+  it('leaves a passthrough command\'s text untouched (/skill forwards verbatim)', async () => {
+    const content = await sendWithCommand('skill', 'summarize this folder');
+    expect(content).toBe('summarize this folder');
+  });
+
+  it('does not disturb ordinary messages with no command', async () => {
+    const content = await sendWithCommand(undefined as unknown as string, 'plain question');
+    expect(content).toBe('plain question');
+  });
+});

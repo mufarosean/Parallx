@@ -45,6 +45,24 @@ describe('MindService — the loop seam', () => {
     expect(svc.current()).toHaveLength(0);
   });
 
+  it('continuityBlock renders beliefs for interactive turns, without the heartbeat habit/cron text', async () => {
+    const { svc } = build();
+    await svc.init();
+    await svc.remember('belief', 'User studies Exam 7 in the mornings', 0.9, ['review-1']);
+    await svc.observeAction('opened planner', clock);
+    const block = svc.continuityBlock();
+    expect(block).toContain('User studies Exam 7 in the mornings');
+    expect(block).not.toContain('cron_create'); // heartbeat-lane offer text stays out of chat
+  });
+
+  it('continuityBlock is EMPTY (not a placeholder) when nothing survives the seed floor', async () => {
+    const { svc } = build();
+    await svc.init();
+    expect(svc.continuityBlock()).toBe('');
+    // seedBlock keeps its placeholder for the heartbeat lane.
+    expect(svc.seedBlock()).toContain('empty');
+  });
+
   it('continuity: a fresh service loads the MIND a prior one persisted', async () => {
     const storage = new FakeStorage();
     const first = build(storage);

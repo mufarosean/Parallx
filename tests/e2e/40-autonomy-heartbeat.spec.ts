@@ -44,15 +44,17 @@ async function openAutonomyLog(page: Page): Promise<boolean> {
   return page.locator('.autonomy-log-container').isVisible().catch(() => false);
 }
 
-/** The status-board row whose name matches `label` (e.g. "Heartbeat"). */
+/** The status-strip cell whose name matches `label` (e.g. "Heartbeat"). */
 function statusRow(page: Page, label: string) {
-  return page.locator('.autonomy-status__row').filter({ hasText: label }).first();
+  return page.locator('.as-cell').filter({ hasText: label }).first();
 }
-async function rowBadge(page: Page, label: string): Promise<string> {
-  return (await statusRow(page, label).locator('.autonomy-status__badge').first().textContent().catch(() => '')) ?? '';
+/** The cell's state, read from its dot class: 'on' | 'off' | 'paused' | 'alert' | ''. */
+async function rowState(page: Page, label: string): Promise<string> {
+  const cls = (await statusRow(page, label).locator('.as-cell__dot').first().getAttribute('class').catch(() => '')) ?? '';
+  return /is-(on|off|paused|alert)/.exec(cls)?.[1] ?? '';
 }
 async function rowDetail(page: Page, label: string): Promise<string> {
-  return (await statusRow(page, label).locator('.autonomy-status__detail').first().textContent().catch(() => '')) ?? '';
+  return (await statusRow(page, label).locator('.as-cell__detail').first().textContent().catch(() => '')) ?? '';
 }
 
 test.describe('Autonomy / Heartbeat (live)', () => {
@@ -93,17 +95,17 @@ test.describe('Autonomy / Heartbeat (live)', () => {
 
       // ── Enable the heartbeat if it's off ──
       await statusRow(window, 'Heartbeat').waitFor({ state: 'visible', timeout: 10_000 });
-      const badgeBefore = await rowBadge(window, 'Heartbeat');
-      if (/off/i.test(badgeBefore)) {
-        await statusRow(window, 'Heartbeat').locator('.autonomy-status__btn', { hasText: 'Enable' }).first().click();
+      const badgeBefore = await rowState(window, 'Heartbeat');
+      if (badgeBefore === 'off') {
+        await statusRow(window, 'Heartbeat').locator('.as-cell__action', { hasText: 'Enable' }).first().click();
         await window.waitForTimeout(1500);
       }
-      const badgeAfter = await rowBadge(window, 'Heartbeat');
+      const badgeAfter = await rowState(window, 'Heartbeat');
       const detailAfter = await rowDetail(window, 'Heartbeat');
 
       // ── Fire a real review (Wake now) and watch ──
       const logCountBefore = await window.locator('.autonomy-log-entry').count().catch(() => 0);
-      const wakeBtn = statusRow(window, 'Heartbeat').locator('.autonomy-status__btn', { hasText: 'Wake' }).first();
+      const wakeBtn = statusRow(window, 'Heartbeat').locator('.as-cell__action', { hasText: 'Wake' }).first();
       let woke = false;
       if (await wakeBtn.isVisible().catch(() => false)) {
         await wakeBtn.click();
@@ -116,10 +118,11 @@ test.describe('Autonomy / Heartbeat (live)', () => {
       const logCountAfter = await window.locator('.autonomy-log-entry').count().catch(() => 0);
       const newEntries = await window.locator('.autonomy-log-entry').allTextContents().catch(() => []);
 
-      // The Mind row — the visible inner model (Build-3): beliefs / predictions /
-      // fidelity / audit, pulled from parallx.mind.status.
-      const mindBadge = (await statusRow(window, 'Mind').locator('.autonomy-status__badge').first().textContent().catch(() => '')) ?? '';
-      const mindDetail = (await statusRow(window, 'Mind').locator('.autonomy-status__detail').first().textContent().catch(() => '')) ?? '';
+      // The Mind cell — the visible inner model (Build-3): plain-language
+      // beliefs/routines summary pulled from parallx.mind.status; state dot
+      // goes is-alert only when the ledger fails verification.
+      const mindBadge = await rowState(window, 'Mind');
+      const mindDetail = await rowDetail(window, 'Mind');
 
       // Build-9: the EDITABLE mind — click the Mind row to open the beliefs panel,
       // then forget a belief and confirm it's gone.
@@ -153,7 +156,7 @@ test.describe('Autonomy / Heartbeat (live)', () => {
       await testInfo.attach('observation', { path: jsonPath, contentType: 'application/json' });
 
       // Soft signal: we engaged the system. The artifact is the real deliverable.
-      expect(badgeAfter.length, 'heartbeat status badge should be present').toBeGreaterThan(0);
+      expect(badgeAfter.length, 'heartbeat cell should expose a state (dot class)').toBeGreaterThan(0);
     } finally {
       await cleanupTestWorkspace(ws);
     }

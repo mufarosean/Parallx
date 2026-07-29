@@ -49,6 +49,8 @@ export class ChatInputPart extends Disposable {
   // ── Command pill state ──
   private readonly _commandPill: HTMLElement;
   private _activeCommand: string | undefined;
+  /** Registry of dispatchable /commands — the truth test for pill promotion. */
+  private _slashCommandProvider: ISlashCommandProvider | undefined;
 
   // ── State ──
 
@@ -285,6 +287,35 @@ export class ChatInputPart extends Disposable {
     this._contextPills.clearExclusions();
   }
 
+  /**
+   * Type a trigger character as if the user had, so the LIVE registry-fed
+   * menu opens ("/" → commands, "@" → files/folders/terminal). The empty
+   * state uses this instead of pasting literal command text: the menu is
+   * always current, and nothing can be advertised that does not exist.
+   */
+  insertTrigger(char: '/' | '@'): void {
+    const existing = this._textarea.value;
+    let caret: number;
+    if (char === '/') {
+      // The command menu only opens at index 0 (cursor === 1 && value[0] ===
+      // '/'), so PREPEND rather than overwrite — a half-typed question must
+      // survive a click on "commands".
+      this._textarea.value = `/${existing}`;
+      caret = 1;
+    } else {
+      // "@" needs to start a word, so add a space when the draft doesn't end in one.
+      const prefix = existing && !/\s$/.test(existing) ? ' ' : '';
+      this._textarea.value = existing + prefix + char;
+      caret = this._textarea.value.length;
+    }
+    this._textarea.focus();
+    // Caret BEFORE dispatch: the autocomplete reads selectionStart to decide
+    // whether the trigger fired.
+    this._textarea.setSelectionRange(caret, caret);
+    this._textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    this._autoResize();
+  }
+
   /** Focus the textarea. */
   focus(): void {
     this._textarea.focus();
@@ -328,7 +359,21 @@ export class ChatInputPart extends Disposable {
 
   /** Bind slash command provider for /command autocomplete. */
   setSlashCommandProvider(provider: ISlashCommandProvider): void {
+    this._slashCommandProvider = provider;
     this._mentionAutocomplete.setCommandProvider(provider);
+  }
+
+  /**
+   * Is `/name` a command the runtime will actually dispatch? Typing-detection
+   * consults this before promoting text to a command pill: a pill is a strong
+   * claim ("this is a real command"), and an unregistered word would be
+   * stripped from the message downstream, so the user would silently lose it.
+   * Unknown provider (not yet wired) ⇒ no promotion; plain text always sends.
+   */
+  private _isRegisteredCommand(name: string): boolean {
+    const bare = name.startsWith('/') ? name.slice(1) : name;
+    const commands = this._slashCommandProvider?.getCommands() ?? [];
+    return commands.some((c) => (c.name.startsWith('/') ? c.name.slice(1) : c.name) === bare);
   }
 
   /** Invalidate cached workspace files (call on workspace changes). */
@@ -438,18 +483,22 @@ export class ChatInputPart extends Disposable {
     this._textarea.placeholder = 'Ask a question\u2026';
   }
 
-  /** Detect `/command ` typed manually and convert to pill. */
+  /** Detect a REGISTERED `/command ` typed manually and convert it to a pill. */
   private _detectCommandFromTyping(): void {
     if (this._activeCommand) { return; }
     const val = this._textarea.value;
     const match = val.match(/^(\/[a-zA-Z_]\w*)\s/);
-    if (match) {
-      const cmd = match[1];
-      const rest = val.substring(match[0].length);
-      this._textarea.value = rest;
-      this._textarea.setSelectionRange(0, 0);
-      this._setCommandPill(cmd);
-    }
+    if (!match) { return; }
+    const cmd = match[1];
+    // Only real commands become pills. Promoting an unregistered word would
+    // dress it up as something the runtime handles when nothing does.
+    if (!this._isRegisteredCommand(cmd)) { return; }
+    const rest = val.substring(match[0].length);
+    this._textarea.value = rest;
+    // Caret goes AFTER the carried-over text, not to 0 — otherwise the first
+    // character typed after the command lands behind everything that follows.
+    this._textarea.setSelectionRange(rest.length, rest.length);
+    this._setCommandPill(cmd);
   }
 
   /** Keep the add-context control icon-only. */

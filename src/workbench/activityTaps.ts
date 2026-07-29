@@ -50,10 +50,15 @@ function editorObject(typeId: string | undefined, name: string | undefined): str
 
 // Commands too chatty or too internal to narrate: getter-style commands other
 // code executes programmatically (observed at boot in e2e 93), focus plumbing,
-// and status polls. The journal narrates intent, not implementation traffic.
+// status polls, and dispatch plumbing (signal emission, background-prompt
+// routing) that subsystems fire on the user's behalf — those events are
+// narrated by their OWN taps (signal bus, chat emitter); a second line here
+// would mislabel machine traffic as a user gesture. The journal narrates
+// intent, not implementation traffic.
 const COMMAND_NOISE = [
   /^_/, /\.internal\./, /^workbench\.action\.focus/, /^parallx\.heartbeat\.status$/,
   /^chat\.get[A-Z]/, /^parallx\.mind\.status$/, /\.get[A-Z][a-zA-Z]*Provider$/,
+  /^parallx\.autonomy\.signal$/, /^chat\.runBackgroundPrompt$/, /^chat\.submitPrompt$/,
 ];
 
 export interface IActivityTapDeps {
@@ -106,7 +111,9 @@ export function wireActivityTaps(deps: IActivityTapDeps): IDisposable {
     }
   }
 
-  // ── Editors: opened / closed via open-set diff, switches via active-change. ──
+  // ── Editors: opened / closed via open-set diff, switches via active-change.
+  //    ref = the editor id (resource identity) so two files named the same
+  //    thing stay distinguishable to a reader acting on the line. ──
   if (services.has(IEditorService)) {
     const editorService = services.get(IEditorService);
     let known = new Map<string, string>(); // id → rendered object
@@ -122,15 +129,17 @@ export function wireActivityTaps(deps: IActivityTapDeps): IDisposable {
     known = snapshot();
     store.add(editorService.onDidChangeOpenEditors(() => {
       const next = snapshot();
-      for (const [id, obj] of next) if (!known.has(id)) journal.note({ actor: 'user', source: 'editor', verb: 'opened', object: obj });
-      for (const [id, obj] of known) if (!next.has(id)) journal.note({ actor: 'user', source: 'editor', verb: 'closed', object: obj });
+      for (const [id, obj] of next) if (!known.has(id)) journal.note({ actor: 'user', source: 'editor', verb: 'opened', object: obj, ref: id });
+      for (const [id, obj] of known) if (!next.has(id)) journal.note({ actor: 'user', source: 'editor', verb: 'closed', object: obj, ref: id });
       known = next;
     }));
     store.add(editorService.onDidActiveEditorChange((input) => {
       if (!input) return;
+      const id = (input as { id?: string }).id;
       journal.note({
         actor: 'user', source: 'editor', verb: 'viewing',
         object: editorObject((input as { typeId?: string }).typeId, (input as { name?: string }).name),
+        ref: typeof id === 'string' && id ? id : undefined,
       });
     }));
   }
@@ -170,8 +179,14 @@ export function wireActivityTaps(deps: IActivityTapDeps): IDisposable {
   if (services.has(IAutonomySignalService)) {
     const bus = services.get(IAutonomySignalService);
     store.add(bus.onDidSignal((sig) => {
+      // The publisher's actor stamp wins (a canvas page the AI created is the
+      // assistant's action, not the user's); the source heuristic is only the
+      // fallback for actor-blind publishers.
+      const actor = sig.actor === 'agent' ? 'ai'
+        : sig.actor === 'user' ? 'user'
+        : (sig.source === 'canvas' || sig.source === 'planner' ? 'user' : `ext:${sig.source}`);
       journal.note({
-        actor: sig.source === 'canvas' || sig.source === 'planner' ? 'user' : `ext:${sig.source}`,
+        actor,
         source: `signal:${sig.source}`,
         verb: 'signal',
         object: sig.title,

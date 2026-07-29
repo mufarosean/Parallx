@@ -30,6 +30,16 @@ export interface IAutonomySignal {
   readonly detail?: string;
   /** Importance. Defaults to "info". */
   readonly severity: AutonomySignalSeverity;
+  /**
+   * Who caused the underlying event, when the publisher can tell. The signal
+   * bus is otherwise actor-blind, and consumers that measure HUMAN behavior
+   * (habit detection, the capability meter's human denominator, journal
+   * attribution) must not count agent-caused events as the user's. Absent
+   * means unknown — consumers should treat unknown per their own bias
+   * (perception: include; human-metrics: include only for sources that are
+   * user-gesture surfaces).
+   */
+  readonly actor?: 'user' | 'agent';
 }
 
 function coerceString(v: unknown, fallback = ''): string {
@@ -48,12 +58,14 @@ export function normalizeAutonomySignal(raw: unknown): IAutonomySignal | null {
   if (!title) return null;
   const severity = r.severity === 'urgent' || r.severity === 'warn' ? r.severity : 'info';
   const detail = coerceString(r.detail).trim();
+  const actor = r.actor === 'user' || r.actor === 'agent' ? r.actor : undefined;
   return {
     source: coerceString(r.source, 'extension').trim() || 'extension',
     kind: coerceString(r.kind, 'signal').trim() || 'signal',
     title: title.slice(0, 200),
     detail: detail ? detail.slice(0, 1000) : undefined,
     severity,
+    actor,
   };
 }
 

@@ -9,6 +9,7 @@ import {
   meanBrier,
   summarizeMind,
   MIND_DEFAULT_HALF_LIFE_MS,
+  PREDICTION_EXPIRY_GRACE_MS,
   type IMindEntry,
   type IMindPrediction,
   type IMindUpdate,
@@ -65,9 +66,20 @@ describe('governance #3 — forgetting / compaction', () => {
     expect(kept).toHaveLength(0);
     expect(dropped).toHaveLength(1);
   });
-  it('keeps an unresolved prediction even at low confidence (it owes an outcome)', () => {
-    const e = applyUpdate([], { kind: 'prediction', content: 'p', confidence: 0.01, provenance: ['r'], subject: 'next file', options: [{ label: 'a.ts', prob: 0.6 }], horizonMs: 1 }, 0, genId);
+  it('keeps an unresolved prediction even at low confidence while its horizon is open (it owes an outcome)', () => {
+    const e = applyUpdate([], { kind: 'prediction', content: 'p', confidence: 0.01, provenance: ['r'], subject: 'next file', options: [{ label: 'a.ts', prob: 0.6 }], horizonMs: 200 * MIND_DEFAULT_HALF_LIFE_MS }, 0, genId);
     const { kept } = compact(e, 100 * MIND_DEFAULT_HALF_LIFE_MS);
+    expect(kept).toHaveLength(1);
+  });
+  it('drops an unresolved prediction whose resolve-by horizon is long past (unresolvable orphan)', () => {
+    const e = applyUpdate([], { kind: 'prediction', content: 'p', confidence: 0.9, provenance: ['r'], subject: 'next file', options: [{ label: 'a.ts', prob: 0.9 }], horizonMs: 1_000 }, 0, genId);
+    const { kept, dropped } = compact(e, 1_000 + PREDICTION_EXPIRY_GRACE_MS + 1);
+    expect(kept).toHaveLength(0);
+    expect(dropped).toHaveLength(1);
+  });
+  it('grants the grace window: a just-past-horizon prediction survives compaction', () => {
+    const e = applyUpdate([], { kind: 'prediction', content: 'p', confidence: 0.9, provenance: ['r'], subject: 'next file', options: [{ label: 'a.ts', prob: 0.9 }], horizonMs: 1_000 }, 0, genId);
+    const { kept } = compact(e, 1_000 + PREDICTION_EXPIRY_GRACE_MS - 1);
     expect(kept).toHaveLength(1);
   });
   it('caps to maxEntries, keeping the most salient', () => {
@@ -107,6 +119,9 @@ describe('summarizeMind', () => {
     const out = summarizeMind(store, 0);
     expect(out).toContain('Ships on Fridays');
     expect(out).toContain('awaiting outcome');
+    // Past horizon + grace, the same open prediction is noise, not continuity.
+    const later = summarizeMind(store, 1 + PREDICTION_EXPIRY_GRACE_MS + 1);
+    expect(later).not.toContain('awaiting outcome');
     expect(out).toContain('main.ts');
   });
   it('reports empty when nothing durable survives', () => {

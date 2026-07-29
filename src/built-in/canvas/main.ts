@@ -18,6 +18,7 @@ import type { IDisposable } from '../../platform/lifecycle.js';
 import type { LinksApi } from '../../links/linksApi.js';
 import { ICanvasPageQueryService, IIndexingPipelineService, IVectorStoreService, IDatabaseService, IEditorService } from '../../services/serviceTypes.js';
 import { ILanguageModelToolsService } from '../../services/chatTypes.js';
+import { IActivityJournalService } from '../../services/activityJournalService.js';
 import { registerCanvasAITools, canvasPageIdFromEditorId } from './ai/canvasAITools.js';
 import { CANVAS_AI_PAGE_FULL_WIDTH_KEY, CANVAS_AI_PAGE_SMALL_TEXT_KEY } from './ai/pageTools.js';
 import { getGlobalSettingsRegistry } from '../../services/settingsRegistryService.js';
@@ -132,6 +133,9 @@ let _dataService: CanvasDataService | null = null;
 let _sidebar: CanvasSidebar | null = null;
 let _editorProvider: CanvasEditorProvider | null = null;
 let _databaseService: DatabaseDataService | null = null;
+/** Pages the AI just mutated via the page tools (pageMutationNotifier) — the
+ *  signal actor stamp reads this so agent work never counts as the user's. */
+const _aiMutatedPageIds = new Set<string>();
 
 // â”€â”€â”€ Activation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -352,6 +356,12 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       workspaceRoot: api.workspace.workspaceFolders?.[0]?.uri,
       templateApi: api,
       pageMutationNotifier: async (pageId, kind) => {
+        // This notifier is the SOLE path by which AI page tools announce their
+        // mutations — mark the page so downstream signal consumers (habit
+        // detection, the capability meter's HUMAN denominator) don't count the
+        // agent's own work as the user's. Timed removal covers deferred events.
+        _aiMutatedPageIds.add(pageId);
+        setTimeout(() => _aiMutatedPageIds.delete(pageId), 5_000);
         // Cancel any pending auto-save before the reload fires. The debounced
         // save holds pre-AI content; if it fires after notifyExternalPageMutation
         // updates _knownRevisions to the AI's new revision it silently succeeds
@@ -474,12 +484,39 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       // Feed canvas activity into the agent's perception, so autonomy can actually
       // SEE you create pages (the core surface) instead of being blind to it.
       // Routed via the autonomy-signal command (the API the news widget uses too).
+      // actor distinguishes the user's creations from the AI's own (pageTools →
+      // pageMutationNotifier marks the id) — consumers that measure the HUMAN
+      // (habits, capability meter) must not learn from agent-created pages.
       const pageTitle = event.page?.title?.trim() || 'Untitled';
       void api.commands?.executeCommand?.('parallx.autonomy.signal', {
         source: 'canvas', title: `created page "${pageTitle}"`, severity: 'info',
+        actor: _aiMutatedPageIds.has(event.pageId) ? 'agent' : 'user',
       }).catch(() => { /* perception is best-effort; never block page creation */ });
     }),
   );
+
+  // Canvas typing → the activity journal. onDidSavePage fires ONLY from the
+  // editor's save pipeline (debounce/flush/retry) — AI page tools go through
+  // updatePage/notifyExternalPageMutation and never reach it — so these are
+  // the user's own keystrokes, already debounced into save-sized bites. The
+  // journal's 90s coalescing folds a typing session into one "×N" line. ref
+  // carries the page id so a reader (human or model) can tell two same-titled
+  // pages apart and act on the exact one.
+  if (api.services.has(IActivityJournalService)) {
+    const journal = api.services.get<import('../../services/activityJournalService.js').IActivityJournalService>(IActivityJournalService);
+    context.subscriptions.push(
+      dataServiceRef.onDidSavePage(({ pageId, page }) => {
+        const title = page?.title?.trim() || 'Untitled';
+        const chars = typeof page?.content === 'string' ? page.content.length : 0;
+        journal.note({
+          actor: 'user', source: 'canvas', verb: 'edited',
+          object: `page "${title}"`,
+          detail: chars > 0 ? `~${chars} chars` : undefined,
+          ref: `page:${pageId}`,
+        });
+      }),
+    );
+  }
 
   // 2a. parentId is the source of truth for hierarchy — no content reconciliation needed.
 

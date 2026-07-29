@@ -82,6 +82,8 @@ export class MindService {
   private readonly _reflection = new ReflectionScheduler();
   private readonly _habits = new HabitDetector();
   private readonly _capStorage?: IStorage;
+  private _habitsSaveTimer: ReturnType<typeof setTimeout> | undefined;
+  private static readonly HABITS_SAVE_DELAY_MS = 3_000;
 
   constructor(
     private readonly _store: IMindStore,
@@ -115,8 +117,22 @@ export class MindService {
 
   private async _saveHabits(): Promise<void> {
     if (!this._capStorage) return;
+    if (this._habitsSaveTimer) { clearTimeout(this._habitsSaveTimer); this._habitsSaveTimer = undefined; }
     try { await this._capStorage.set(HABIT_KEY, JSON.stringify(this._habits.toState())); }
     catch { /* best-effort */ }
+  }
+
+  /** Trailing-edge debounce for habit persistence. observeAction is now on the
+   *  journal's busiest lane (every editor open / view focus), and each direct
+   *  save serialized the full habit blob AND rewrote all of workspace-state.json
+   *  — per gesture. Habit detection needs days of signal, so losing a few
+   *  seconds of observations on a crash costs nothing. */
+  private _scheduleHabitsSave(): void {
+    if (!this._capStorage || this._habitsSaveTimer) return;
+    this._habitsSaveTimer = setTimeout(() => {
+      this._habitsSaveTimer = undefined;
+      void this._saveHabits();
+    }, MindService.HABITS_SAVE_DELAY_MS);
   }
 
   /**
@@ -127,7 +143,7 @@ export class MindService {
   async observeAction(action: string, nowMs = this._now()): Promise<void> {
     if (!action) return;
     this._habits.observe(action, nowMs);
-    await this._saveHabits();
+    this._scheduleHabitsSave();
   }
 
   /** Confirmed daily habits — recurring actions the agent could offer to automate. */
@@ -287,6 +303,16 @@ export class MindService {
     if (habits.length === 0) return base;
     const lines = habits.slice(0, 5).map(h => `- "${h.action}" — most days around ${h.typicalTime} (${h.daysObserved} days seen)`);
     return `${base}\n\nDaily habits I've noticed — you may OFFER to automate one with cron_create (propose via NOTE/ACT; never schedule without the user's yes):\n${lines.join('\n')}`;
+  }
+
+  /**
+   * The continuity block for INTERACTIVE turns — beliefs and open threads only,
+   * none of the heartbeat-lane extras (habit/cron offers belong to reviews, not
+   * conversation). Empty string when nothing survives the seed floor, so quiet
+   * minds inject nothing rather than a "(empty)" placeholder every turn.
+   */
+  continuityBlock(): string {
+    return summarizeMind(this._entries, this._now(), 12, '');
   }
 
   /** Fidelity meter: mean Brier over resolved predictions (NaN if none). */
