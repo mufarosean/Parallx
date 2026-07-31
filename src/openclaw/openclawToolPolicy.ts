@@ -452,6 +452,12 @@ const BLUE_TOOLS: ReadonlySet<string> = new Set<string>([
   // `python_list_packages` stays green — it only reads the environment.
   'python_run_script',
   'python_install_packages',
+  // Notebooks are the same execution surface as a script — notebook_run feeds
+  // arbitrary code to the workspace kernel — and create/edit write files that a
+  // later notebook_run executes. `notebook_read` stays green: it only reads.
+  'notebook_run',
+  'notebook_create',
+  'notebook_edit_cell',
   // Canvas page writes (canvas_* prefix per Parallx tool-namespace convention)
   'canvas_create_page',
   'canvas_edit_page',

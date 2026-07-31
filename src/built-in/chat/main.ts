@@ -48,6 +48,7 @@ import type {
 import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService, IDiagnosticsService, IDocumentExtractionService, IObservabilityService, IRuntimeHookRegistry, ILayoutService, IEmbeddingService, IWorkspaceStorageService, IGlobalStorageService, ISurfaceRouterService, IAutonomyLogService, ISettingsRegistryService, IAutonomyTaskRailService, IAutonomyPatternMemoryService, IAutonomyFeatureFlagsService, ISemanticGraphService, IMindMapRefreshOrchestrator, ICanvasPageQueryService, IPlannerQueryService } from '../../services/serviceTypes.js';
 import { IActivityJournalService } from '../../services/activityJournalService.js';
 import { IPythonEnvService } from '../../services/pythonEnvService.js';
+import { INotebookKernelService } from '../../services/notebookKernelService.js';
 import { SettingsRegistryService, setGlobalSettingsRegistry, getGlobalSettingsRegistry } from '../../services/settingsRegistryService.js';
 import { createSecretStorageService } from '../../services/secretStorageService.js';
 import { PolicyDecisionPoint as _PolicyDecisionPoint } from '../../services/policyDecisionPoint.js';
@@ -2032,6 +2033,47 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       context.subscriptions.push(d);
     }
 
+    // ── Notebook tools. Same `python.enabled` gate as the python_* tools: a
+    // notebook is Python execution wearing a different hat, running against the
+    // same workspace environment, so one consent decision covers both.
+    //
+    // These drive the SAME INotebookKernelService the notebook editor drives —
+    // one kernel per workspace — so a cell the assistant runs shares variables
+    // and imports with a cell the user runs. Shelling out to
+    // `jupyter nbconvert --execute` would start a second, unrelated kernel and
+    // leave the open notebook's state untouched, which is why a generic
+    // terminal command is not a substitute for this.
+    //
+    // Registered here rather than beside the python_* block because that block
+    // sits outside the scope holding `writerAccessor`.
+    if (api.services.has(IPythonEnvService) && api.services.has(INotebookKernelService)) {
+      const _pySvcForNb = api.services.get<IPythonEnvService>(IPythonEnvService);
+      const _kernelSvc = api.services.get<INotebookKernelService>(INotebookKernelService);
+      const _lmToolsNb = languageModelToolsService;
+      void import('./tools/notebookTools.js').then((toolMod) => {
+        let _nbRegs: IDisposable[] = [];
+        const _disposeNbRegs = () => {
+          for (const d of _nbRegs) d.dispose();
+          _nbRegs = [];
+        };
+        const _syncNb = () => {
+          const want = _pySvcForNb.isEnabled;
+          const have = _nbRegs.length > 0;
+          if (want === have) return;
+          if (want) {
+            for (const tool of toolMod.createNotebookTools(_kernelSvc, fsAccessor, writerAccessor, editorService)) {
+              _nbRegs.push(_lmToolsNb.registerTool(tool));
+            }
+          } else {
+            _disposeNbRegs();
+          }
+        };
+        _syncNb();
+        const _nbStatusSub = _pySvcForNb.onDidChangeStatus(_syncNb);
+        context.subscriptions.push({ dispose: () => { _nbStatusSub.dispose(); _disposeNbRegs(); } });
+      }).catch(() => { /* tool module load failed — chat continues without it */ });
+    }
+
     // M85 — `plan_update`: the agent's durable working plan (the planning
     // organ). Registered separately so it closes over the ChatService's
     // session-plan accessors without threading them through the big
@@ -2141,6 +2183,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       context.subscriptions.push({ dispose: () => { _statusSub.dispose(); _disposePyRegs(); } });
     }).catch(() => { /* tool module load failed — chat continues without it */ });
   }
+
 
   // ── 3b. Register chat-owned surface plugins (M58 W6) ──
   // The surface router is created in the workbench Phase 5; the chat-owned

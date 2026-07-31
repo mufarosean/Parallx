@@ -1074,7 +1074,8 @@ export type ToolCategory =
   | 'linking'        // link_create
   | 'app-control'    // workbench command execution
   | 'terminal'       // shell execution (terminal_run_command)
-  | 'python';        // workspace Python environment + scripts (python_*)
+  | 'python'         // workspace Python environment + scripts (python_*)
+  | 'notebook';      // .ipynb documents + the workspace kernel (notebook_*)
 
 /**
  * A registered chat tool — definition + handler.
