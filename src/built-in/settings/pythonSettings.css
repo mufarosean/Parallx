@@ -54,11 +54,13 @@
   padding: 0;
   border: 1px solid var(--px-border);
   border-radius: 999px;
-  background: var(--px-surface);
+  /* Inset, not `--px-surface`: that token does not exist, and with no fallback
+     the off-state track was rendering with no background at all. */
+  background: var(--px-bg-inset);
   cursor: pointer;
   position: relative;
-  transition: background var(--px-motion-fast, 120ms) var(--px-ease, ease),
-              border-color var(--px-motion-fast, 120ms) var(--px-ease, ease);
+  transition: background var(--px-dur-fast, 120ms) var(--px-ease, ease),
+              border-color var(--px-dur-fast, 120ms) var(--px-ease, ease);
 }
 .pysettings__switch::after {
   content: '';
@@ -69,8 +71,8 @@
   height: 16px;
   border-radius: 50%;
   background: var(--px-text-muted);
-  transition: transform var(--px-motion-fast, 120ms) var(--px-ease, ease),
-              background var(--px-motion-fast, 120ms) var(--px-ease, ease);
+  transition: transform var(--px-dur-fast, 120ms) var(--px-ease, ease),
+              background var(--px-dur-fast, 120ms) var(--px-ease, ease);
 }
 .pysettings__switch--on {
   background: var(--px-accent);
@@ -78,10 +80,10 @@
 }
 .pysettings__switch--on::after {
   transform: translateX(16px);
-  background: var(--px-accent-fg, var(--px-bg));
+  background: var(--px-text-on-accent);
 }
 .pysettings__switch:focus-visible {
-  outline: 2px solid var(--px-focus-ring, var(--px-accent));
+  outline: 2px solid var(--px-accent);
   outline-offset: 2px;
 }
 
@@ -149,13 +151,13 @@
   padding: 5px 12px;
   border: 1px solid var(--px-border);
   border-radius: var(--px-radius-sm, 4px);
-  background: var(--px-surface);
+  background: var(--px-bg-elevated);
   color: var(--px-text);
   font-size: var(--px-text-sm, 12px);
   font-family: inherit;
   cursor: pointer;
-  transition: background var(--px-motion-fast, 120ms) var(--px-ease, ease),
-              border-color var(--px-motion-fast, 120ms) var(--px-ease, ease);
+  transition: background var(--px-dur-fast, 120ms) var(--px-ease, ease),
+              border-color var(--px-dur-fast, 120ms) var(--px-ease, ease);
 }
 .pysettings__btn:hover:not(:disabled) {
   background: var(--px-surface-hover);
@@ -166,7 +168,7 @@
 .pysettings__btn--primary {
   background: var(--px-accent);
   border-color: var(--px-accent);
-  color: var(--px-accent-fg, var(--px-bg));
+  color: var(--px-text-on-accent);
 }
 .pysettings__btn--primary:hover:not(:disabled) {
   background: var(--px-accent-hover, var(--px-accent));

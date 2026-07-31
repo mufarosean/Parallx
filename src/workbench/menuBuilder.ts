@@ -250,13 +250,30 @@ export class MenuBuilder extends Disposable {
       },
     ];
 
-    // Anchor above the gear icon (VS Code pattern: menu opens upward)
-    const estimatedMenuHeight = items.length * 28 + 24;
-    const y = Math.max(8, rect.top - estimatedMenuHeight);
+    // Anchor above the gear icon (VS Code pattern: menu opens upward).
+    //
+    // This used to compute the position from a GUESSED height
+    // (`items.length * 28 + 24`) and pass a fixed point. The guess counted
+    // rows only — not the separators between the four groups, nor the menu's
+    // own padding — so it was always wrong, and the error showed up on screen
+    // as a gap between the gear and the bottom of the menu. Any change to row
+    // height, font size, or group count would silently move it again.
+    //
+    // `layoutPopup` (via ContextMenu's DOMRect anchor) measures the real
+    // element after render, places it flush above with a small gap, flips
+    // below when there is no room, clamps to the viewport, and caps the
+    // height if it would overflow. All of that already existed.
+    //
+    // The rect is synthesised rather than passed through: `'above'` aligns to
+    // the anchor's LEFT edge, but this menu belongs beside the activity bar,
+    // not on top of it. A zero-width rect at the gear's right edge keeps the
+    // vertical behaviour and moves the horizontal origin to where we want it.
+    const anchorRect = new DOMRect(rect.right + 4, rect.top, 0, rect.height);
 
     const ctxMenu = ContextMenu.show({
       items,
-      anchor: { x: rect.right + 4, y },
+      anchor: anchorRect,
+      anchorPosition: 'above',
     });
 
     // Track the menu for toggle behavior
