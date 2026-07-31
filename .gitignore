@@ -11,6 +11,11 @@ data/
 *.d.ts.map
 !ext/**/*.js
 !tools/samples/**/*.js
+# Hand-authored typings, not tsc output. parallx.d.ts is the public extension API
+# contract (this project's vscode.d.ts) and has to be version-controlled — the
+# `*.d.ts` rule above is for `declaration: true` build output.
+!src/api/parallx.d.ts
+!src/typings/*.d.ts
 
 # Test artifacts
 test-results/
