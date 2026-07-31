@@ -2051,6 +2051,15 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       const _kernelSvc = api.services.get<INotebookKernelService>(INotebookKernelService);
       const _lmToolsNb = languageModelToolsService;
       void import('./tools/notebookTools.js').then((toolMod) => {
+        // Reading and editing a .ipynb is a FILE operation — always available,
+        // like fs_read_file on the same path. Only execution is gated, because
+        // `python.enabled` is consent to run Python, not consent to open a JSON
+        // document. Gating the file tools too removed capability the assistant
+        // already had through fs_* and bought nothing.
+        for (const tool of toolMod.createNotebookFileTools(fsAccessor, writerAccessor, editorService)) {
+          context.subscriptions.push(_lmToolsNb.registerTool(tool));
+        }
+
         let _nbRegs: IDisposable[] = [];
         const _disposeNbRegs = () => {
           for (const d of _nbRegs) d.dispose();
@@ -2061,7 +2070,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
           const have = _nbRegs.length > 0;
           if (want === have) return;
           if (want) {
-            for (const tool of toolMod.createNotebookTools(_kernelSvc, fsAccessor, writerAccessor, editorService)) {
+            for (const tool of toolMod.createNotebookRunTools(_kernelSvc, fsAccessor, writerAccessor, editorService)) {
               _nbRegs.push(_lmToolsNb.registerTool(tool));
             }
           } else {

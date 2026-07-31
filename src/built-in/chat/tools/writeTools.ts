@@ -31,7 +31,7 @@ function requireWriter(writer: IBuiltInToolFileWriter | undefined): asserts writ
  * Sanitize a relative path: normalize separators, reject path traversal,
  * and validate against .parallxignore.
  */
-function sanitizeRelativePath(relPath: string, writer: IBuiltInToolFileWriter): string {
+export function sanitizeRelativePath(relPath: string, writer: IBuiltInToolFileWriter): string {
   // Normalize
   let clean = relPath.replace(/\\/g, '/');
   if (clean === '.' || clean === './' || clean === '') {

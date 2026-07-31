@@ -16,6 +16,7 @@ import {
 } from '../../src/built-in/chat/tools/notebookTools.js';
 import { parseNotebook, serialiseNotebook, createEmptyNotebook, createEmptyCell } from '../../src/built-in/editor/notebook/notebookModel.js';
 import type { NotebookOutput } from '../../src/built-in/editor/notebook/notebookModel.js';
+import { _resetResourceRegistryForTest } from '../../src/services/toolResourceRegistry.js';
 
 // ── Fakes ────────────────────────────────────────────────────────────────────
 
@@ -153,7 +154,13 @@ function nb(cells: Array<[string, string]>): string {
   return serialiseNotebook(doc);
 }
 
-beforeEach(() => vi.restoreAllMocks());
+beforeEach(() => {
+  vi.restoreAllMocks();
+  // The read-before-edit registry is module-global and keyed by session id, so
+  // without this a notebook marked seen by one test stays seen for every later
+  // one — and a test asserting "refuses without a prior read" passes vacuously.
+  _resetResourceRegistryForTest();
+});
 
 // ── The tools exist and are shaped right ─────────────────────────────────────
 
@@ -612,5 +619,247 @@ describe('open-editor guard matches paths, not basenames', () => {
     });
     const r = await call(t.run, { path: './analysis/a.ipynb' });
     expect(r.isError).toBe(true);
+  });
+});
+
+// ── Cancellation ─────────────────────────────────────────────────────────────
+//
+// The severe one. `execution.completed` settles only on a kernel reply, an abort
+// or dispose(). A non-terminating cell produces none, and nothing upstream
+// applies a timeout — the tool service and the turn loop both bare-await the
+// handler. So an unsubscribed handler parks forever, the turn never completes,
+// and every later message the user sends is queued behind a request that will
+// never finish. Polling the token between cells does not help: the poll is never
+// reached.
+
+describe('cancellation of a non-terminating cell', () => {
+  /** A kernel whose cell never replies — `while True: pass`. */
+  function hangingKernel() {
+    let settle: ((r: unknown) => void) | undefined;
+    const state = { interrupted: 0, disposed: 0 };
+    const kernel = {
+      isAvailable: true,
+      checkReadiness: async () => ({ ready: true }),
+      interrupt: async () => { state.interrupted++; },
+      execute: async () => {
+        const sub = () => ({ dispose: () => {} });
+        const completed = new Promise((r) => { settle = r; });
+        return {
+          requestId: 'r1',
+          elapsedMs: () => 1,
+          onDidStart: sub, onDidOutput: sub, onDidSetExecutionCount: sub, onDidClear: sub,
+          completed,
+          dispose: () => {
+            state.disposed++;
+            // The real service settles `completed` as 'abort' on dispose.
+            settle?.({ status: 'abort', durationMs: null, startedAtIso: null, endedAtIso: null });
+          },
+        };
+      },
+    };
+    return { kernel: kernel as never, state };
+  }
+
+  function cancellableToken() {
+    const listeners: Array<() => void> = [];
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: (fn: () => void) => { listeners.push(fn); return { dispose: () => {} }; },
+    };
+    return {
+      token: token as never,
+      cancel() { token.isCancellationRequested = true; for (const fn of [...listeners]) fn(); },
+    };
+  }
+
+  it('returns instead of hanging forever when the turn is cancelled', async () => {
+    const { kernel, state } = hangingKernel();
+    const files = { 'a.ipynb': nb([['code', 'while True: pass']]) };
+    const [, , , run] = createNotebookTools(kernel, makeFs(files), makeWriter(files), makeEditors([]));
+    const { token, cancel } = cancellableToken();
+
+    const pending = (run as { handler: (a: unknown, t: unknown) => Promise<{ content: string }> })
+      .handler({ path: 'a.ipynb' }, token);
+
+    // Let the run reach `await execution.completed`, then cancel.
+    await new Promise((r) => setTimeout(r, 5));
+    cancel();
+
+    // Without the subscription this never settles and the test times out.
+    const result = await Promise.race([
+      pending,
+      new Promise((_r, rej) => setTimeout(() => rej(new Error('notebook_run hung after cancellation')), 1000)),
+    ]) as { content: string };
+
+    expect(result.content).toBeTruthy();
+    expect(state.interrupted, 'should ask the kernel to interrupt').toBeGreaterThan(0);
+    expect(state.disposed, 'should dispose the execution so `completed` settles').toBeGreaterThan(0);
+  });
+
+  it('does not start further cells after cancellation', async () => {
+    const { kernel } = hangingKernel();
+    const files = { 'a.ipynb': nb([['code', 'one'], ['code', 'two'], ['code', 'three']]) };
+    const [, , , run] = createNotebookTools(kernel, makeFs(files), makeWriter(files), makeEditors([]));
+    const { token, cancel } = cancellableToken();
+
+    const pending = (run as { handler: (a: unknown, t: unknown) => Promise<{ content: string }> })
+      .handler({ path: 'a.ipynb' }, token);
+    await new Promise((r) => setTimeout(r, 5));
+    cancel();
+
+    const result = await Promise.race([
+      pending,
+      new Promise((_r, rej) => setTimeout(() => rej(new Error('hung')), 1000)),
+    ]) as { content: string };
+    // Only the first cell was ever entered.
+    expect(result.content).toContain('Ran 1 cell');
+  });
+});
+
+// ── The guard has to hold for the whole run, not just the start ─────────────
+
+describe('a notebook opened mid-run is not clobbered', () => {
+  it('refuses to save when the notebook was opened while it ran', async () => {
+    // A run lasts as long as the code does. The check before execution says
+    // nothing about the state at save time, and saving into a tab opened
+    // meanwhile is the exact overwrite the guard exists to prevent.
+    const openList: string[] = [];
+    const files = { 'a.ipynb': nb([['code', 'x = 1']]) };
+    const editors = {
+      getOpenEditors: () => openList.map((d, i) => ({
+        id: `e${i}`, name: d.split('/').pop() ?? d, description: d,
+        isDirty: false, isActive: true, groupId: 'g1',
+      })),
+    } as never;
+
+    const kernel = {
+      isAvailable: true,
+      checkReadiness: async () => ({ ready: true }),
+      interrupt: async () => {},
+      execute: async () => {
+        const sub = () => ({ dispose: () => {} });
+        return {
+          requestId: 'r1', elapsedMs: () => 1,
+          onDidStart: sub, onDidOutput: sub, onDidSetExecutionCount: sub, onDidClear: sub,
+          // The user opens the notebook while this cell is running.
+          completed: (async () => {
+            openList.push('a.ipynb');
+            return { status: 'ok', durationMs: 5, startedAtIso: null, endedAtIso: null };
+          })(),
+          dispose: () => {},
+        };
+      },
+    } as never;
+
+    const before = files['a.ipynb'];
+    const [, , , run] = createNotebookTools(kernel, makeFs(files), makeWriter(files), editors);
+    const r = await call(run as never, { path: 'a.ipynb' });
+
+    expect(r.isError).toBe(true);
+    expect(r.content).toContain('opened in an editor while it ran');
+    expect(files['a.ipynb'], 'the file must be left untouched').toBe(before);
+  });
+});
+
+// ── Path safety ──────────────────────────────────────────────────────────────
+
+describe('path sanitisation', () => {
+  it('rejects traversal rather than reporting it as "already exists"', async () => {
+    const r = await call(tools().create, { path: '../../outside/evil.ipynb' });
+    expect(r.isError).toBe(true);
+    expect(r.content).toContain('traversal');
+  });
+
+  it('rejects an absolute path', async () => {
+    const r = await call(tools().create, { path: 'C:/Windows/evil.ipynb' });
+    expect(r.isError).toBe(true);
+    expect(r.content.toLowerCase()).toContain('absolute');
+  });
+
+  it('rejects traversal on edit and run too, not only create', async () => {
+    const t = tools({ files: { 'a.ipynb': nb([['code', 'x']]) } });
+    const e = await call(t.edit, { path: '../a.ipynb', operation: 'delete', index: 0 });
+    const r = await call(t.run, { path: '../a.ipynb' });
+    expect(e.isError).toBe(true);
+    expect(r.isError).toBe(true);
+  });
+
+  it('honours .parallxignore via the shared sanitiser', async () => {
+    const t = tools({ files: {}, allowWrite: false });
+    const r = await call(t.create, { path: 'blocked.ipynb' });
+    expect(r.isError).toBe(true);
+    expect(r.content).toContain('.parallxignore');
+  });
+});
+
+// ── Read-before-edit ─────────────────────────────────────────────────────────
+
+describe('read-before-edit', () => {
+  // The system prompt states this guarantee without qualification. A notebook
+  // tool that skipped it made the prompt wrong: the assistant could rewrite a
+  // cell from a remembered state and discard the user's changes since.
+  const SESSION = { sessionId: 's1' } as never;
+  const withSession = (
+    t: { handler: (a: Record<string, unknown>, tk: never, inv: never) => Promise<{ content: string; isError?: boolean }> },
+    args: Record<string, unknown>,
+  ) => t.handler(args, NOOP_TOKEN, SESSION);
+
+  it('refuses an edit with no prior read in this session', async () => {
+    const t = tools({ files: { 'a.ipynb': nb([['code', 'x = 1']]) } });
+    const r = await withSession(t.edit, { path: 'a.ipynb', operation: 'replace', index: 0, source: 'y = 2' });
+    expect(r.isError).toBe(true);
+    expect(r.content).toContain('notebook_read');
+  });
+
+  it('allows the edit once the notebook has been read', async () => {
+    const t = tools({ files: { 'a.ipynb': nb([['code', 'x = 1']]) } });
+    await withSession(t.read, { path: 'a.ipynb' });
+    const r = await withSession(t.edit, { path: 'a.ipynb', operation: 'replace', index: 0, source: 'y = 2' });
+    expect(r.isError).toBeFalsy();
+    expect(parseNotebook(t.files['a.ipynb']).cells[0].source).toBe('y = 2');
+  });
+
+  it('refuses overwrite of an existing notebook with no prior read', async () => {
+    const t = tools({ files: { 'a.ipynb': nb([['code', 'precious']]) } });
+    const r = await withSession(t.create, { path: 'a.ipynb', cells: [{ source: 'new' }], overwrite: true });
+    expect(r.isError).toBe(true);
+    expect(t.files['a.ipynb']).toContain('precious');
+  });
+
+  it('does not require a read to create a NEW notebook', async () => {
+    const t = tools();
+    const r = await withSession(t.create, { path: 'fresh.ipynb', cells: [{ source: 'x' }] });
+    expect(r.isError).toBeFalsy();
+  });
+
+  it('a run counts as having read it — it reports every cell back', async () => {
+    const t = tools({ files: { 'a.ipynb': nb([['code', 'x = 1']]) } });
+    await withSession(t.run, { path: 'a.ipynb' });
+    const r = await withSession(t.edit, { path: 'a.ipynb', operation: 'replace', index: 0, source: 'y = 2' });
+    expect(r.isError).toBeFalsy();
+  });
+});
+
+// ── Registration shape ───────────────────────────────────────────────────────
+
+describe('permission levels and the consent split', () => {
+  it('notebook_read is always-allowed, a real member of ToolPermissionLevel', async () => {
+    // It was 'safe', which is not in the union and only compiled because of the
+    // `as` cast. A tool carrying a value outside the union drops out of Ask mode
+    // and read-only autonomy — exactly where a read tool should still work.
+    expect(tools().read.permissionLevel).toBe('always-allowed');
+    for (const w of [tools().create, tools().edit, tools().run]) {
+      expect(w.permissionLevel).toBe('requires-approval');
+    }
+  });
+
+  it('splits file tools from the executing tool', async () => {
+    // python.enabled is consent to RUN Python. Reading or editing a .ipynb is a
+    // file operation that fs_* can already do, so gating it bought nothing.
+    const mod = await import('../../src/built-in/chat/tools/notebookTools.js');
+    const files = mod.createNotebookFileTools(makeFs({}), makeWriter({}), makeEditors([]));
+    const runners = mod.createNotebookRunTools(makeKernel(), makeFs({}), makeWriter({}), makeEditors([]));
+    expect(files.map(t => t.name).sort()).toEqual(['notebook_create', 'notebook_edit_cell', 'notebook_read']);
+    expect(runners.map(t => t.name)).toEqual(['notebook_run']);
   });
 });

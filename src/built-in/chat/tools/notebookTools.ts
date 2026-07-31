@@ -21,8 +21,11 @@ import type {
   ICancellationToken,
   ToolPermissionLevel,
 } from '../../../services/chatTypes.js';
+import type { IChatToolInvocationCallContext } from '../../../services/chatTypes.js';
 import type { IBuiltInToolFileSystem, IBuiltInToolFileWriter } from '../chatTypes.js';
 import type { IEditorService } from '../../../services/serviceTypes.js';
+import { markResourceSeen, wasResourceSeen, fileResourceKey } from '../../../services/toolResourceRegistry.js';
+import { sanitizeRelativePath } from './writeTools.js';
 import type { INotebookKernelService } from '../../../services/notebookKernelService.js';
 import {
   parseNotebook,
@@ -85,6 +88,48 @@ function openEditorConflict(
   if (!hit) return null;
   return `"${relativePath}" is open in an editor, so writing to it from here would be `
     + `overwritten the next time that tab saves. Ask the user to close the tab, then retry.`;
+}
+
+/**
+ * Normalise and validate a write target.
+ *
+ * Reuses writeTools' sanitiser rather than growing a second one: it rejects
+ * absolute paths, rejects `..` traversal, and applies `.parallxignore`. Without
+ * it, `../../etc/notes.ipynb` fell through to an `exists` check and came back as
+ * a confusing "already exists" or a write attempt outside the workspace.
+ */
+function cleanWritePath(
+  relativePath: string,
+  writer: IBuiltInToolFileWriter,
+): { path: string } | { error: string } {
+  try {
+    return { path: sanitizeRelativePath(relativePath, writer) };
+  } catch (err) {
+    return { error: (err as Error).message };
+  }
+}
+
+/**
+ * The read-before-edit contract, the same one fs_edit_file enforces.
+ *
+ * The system prompt states this guarantee without qualification, so a notebook
+ * tool that skipped it made the prompt wrong: the assistant could rewrite a cell
+ * from a remembered earlier state and silently discard whatever the user had
+ * changed since.
+ */
+function requireSeen(
+  invocation: IChatToolInvocationCallContext | undefined,
+  path: string,
+  action: string,
+): string | null {
+  if (!invocation?.sessionId) return null;   // no session context — nothing to check against
+  if (wasResourceSeen(invocation.sessionId, fileResourceKey(path))) return null;
+  return `Read "${path}" with notebook_read before ${action} — edit against its current `
+    + `contents, not a remembered earlier state.`;
+}
+
+function markSeen(invocation: IChatToolInvocationCallContext | undefined, path: string): void {
+  if (invocation?.sessionId) markResourceSeen(invocation.sessionId, fileResourceKey(path));
 }
 
 interface Loaded { doc: NotebookDocument; }
@@ -208,22 +253,36 @@ export function createNotebookCreateTool(
     requiresConfirmation: true,
     permissionLevel: 'requires-approval' as ToolPermissionLevel,
     category: 'notebook',
-    async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
+    async handler(
+      args: Record<string, unknown>,
+      _token: ICancellationToken,
+      invocation?: IChatToolInvocationCallContext,
+    ): Promise<IToolResult> {
       if (!fs || !writer) return { content: 'The workspace filesystem is not available.', isError: true };
-      const path = String(args['path'] || '').trim();
-      if (!path) return { content: 'path is required', isError: true };
-      if (!isNotebookPath(path)) {
-        return { content: `Notebook paths must end in .ipynb — got "${path}".`, isError: true };
+      const raw = String(args['path'] || '').trim();
+      if (!raw) return { content: 'path is required', isError: true };
+      if (!isNotebookPath(raw)) {
+        return { content: `Notebook paths must end in .ipynb — got "${raw}".`, isError: true };
       }
+      const cleaned = cleanWritePath(raw, writer);
+      if ('error' in cleaned) return { content: cleaned.error, isError: true };
+      const path = cleaned.path;
 
       const conflict = openEditorConflict(editors, path);
       if (conflict) return { content: conflict, isError: true };
 
-      if (args['overwrite'] !== true && await fs.exists(path)) {
+      const exists = await fs.exists(path);
+      if (args['overwrite'] !== true && exists) {
         return {
           content: `"${path}" already exists. Pass overwrite:true to replace it, or edit it with notebook_edit_cell.`,
           isError: true,
         };
+      }
+      if (exists) {
+        // Overwriting is destroying content, so the same read-before-edit rule
+        // fs_write_file applies to an existing file applies here.
+        const unseen = requireSeen(invocation, path, 'overwriting it');
+        if (unseen) return { content: unseen, isError: true };
       }
 
       const doc = createEmptyNotebook();
@@ -240,6 +299,8 @@ export function createNotebookCreateTool(
       const failure = await saveNotebook(writer, path, doc);
       if (failure) return { content: failure, isError: true };
 
+      // The assistant now knows exactly what is in it — it just wrote it.
+      markSeen(invocation, path);
       return { content: `Created "${path}" with ${doc.cells.length} cell(s). Run it with notebook_run.` };
     },
   };
@@ -264,15 +325,26 @@ export function createNotebookReadTool(fs: IBuiltInToolFileSystem | undefined): 
       },
     },
     requiresConfirmation: false,
-    permissionLevel: 'safe' as ToolPermissionLevel,
+    // 'always-allowed', not 'safe' — the latter is not a member of
+    // ToolPermissionLevel and was only accepted because of the `as` cast. A tool
+    // carrying a value outside the union falls out of Ask mode and read-only
+    // autonomy, which is exactly where a read tool should still be available.
+    permissionLevel: 'always-allowed' as ToolPermissionLevel,
     category: 'notebook',
-    async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
+    async handler(
+      args: Record<string, unknown>,
+      _token: ICancellationToken,
+      invocation?: IChatToolInvocationCallContext,
+    ): Promise<IToolResult> {
       if (!fs) return { content: 'The workspace filesystem is not available.', isError: true };
       const path = String(args['path'] || '').trim();
       if (!path) return { content: 'path is required', isError: true };
 
       const loaded = await loadNotebook(fs, path);
       if ('error' in loaded) return { content: loaded.error, isError: true };
+
+      // Satisfies the read-before-edit contract for a later notebook_edit_cell.
+      markSeen(invocation, path);
 
       const includeOutputs = args['includeOutputs'] !== false;
       const body = describeNotebook(loaded.doc, includeOutputs);
@@ -309,18 +381,28 @@ export function createNotebookEditCellTool(
     requiresConfirmation: true,
     permissionLevel: 'requires-approval' as ToolPermissionLevel,
     category: 'notebook',
-    async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
+    async handler(
+      args: Record<string, unknown>,
+      _token: ICancellationToken,
+      invocation?: IChatToolInvocationCallContext,
+    ): Promise<IToolResult> {
       if (!fs || !writer) return { content: 'The workspace filesystem is not available.', isError: true };
-      const path = String(args['path'] || '').trim();
+      const raw = String(args['path'] || '').trim();
       const operation = String(args['operation'] || '').trim();
       const index = Number(args['index']);
-      if (!path) return { content: 'path is required', isError: true };
+      if (!raw) return { content: 'path is required', isError: true };
       if (!Number.isInteger(index) || index < 0) {
         return { content: 'index must be a non-negative integer.', isError: true };
       }
+      const cleaned = cleanWritePath(raw, writer);
+      if ('error' in cleaned) return { content: cleaned.error, isError: true };
+      const path = cleaned.path;
 
       const conflict = openEditorConflict(editors, path);
       if (conflict) return { content: conflict, isError: true };
+
+      const unseen = requireSeen(invocation, path, 'editing a cell');
+      if (unseen) return { content: unseen, isError: true };
 
       const loaded = await loadNotebook(fs, path);
       if ('error' in loaded) return { content: loaded.error, isError: true };
@@ -400,13 +482,20 @@ export function createNotebookRunTool(
     requiresConfirmation: true,
     permissionLevel: 'requires-approval' as ToolPermissionLevel,
     category: 'notebook',
-    async handler(args: Record<string, unknown>, token: ICancellationToken): Promise<IToolResult> {
+    async handler(
+      args: Record<string, unknown>,
+      token: ICancellationToken,
+      invocation?: IChatToolInvocationCallContext,
+    ): Promise<IToolResult> {
       const missing = requireAll(kernel, fs);
       if (missing) return { content: missing, isError: true };
       if (!writer) return { content: 'The workspace filesystem is not available.', isError: true };
 
-      const path = String(args['path'] || '').trim();
-      if (!path) return { content: 'path is required', isError: true };
+      const raw = String(args['path'] || '').trim();
+      if (!raw) return { content: 'path is required', isError: true };
+      const cleaned = cleanWritePath(raw, writer);
+      if ('error' in cleaned) return { content: cleaned.error, isError: true };
+      const path = cleaned.path;
 
       const conflict = openEditorConflict(editors, path);
       if (conflict) return { content: conflict, isError: true };
@@ -414,6 +503,11 @@ export function createNotebookRunTool(
       const loaded = await loadNotebook(fs!, path);
       if ('error' in loaded) return { content: loaded.error, isError: true };
       const doc = loaded.doc;
+
+      // Running reads the whole notebook and reports every cell's output back,
+      // so the assistant has seen its current contents — enough to satisfy
+      // read-before-edit for a follow-up notebook_edit_cell.
+      markSeen(invocation, path);
 
       // A missing kernel is the common first-run state and has a specific fix,
       // so say which one it is rather than "could not start".
@@ -453,14 +547,37 @@ export function createNotebookRunTool(
       let ran = 0;
       let failedAt: number | null = null;
 
+      let cancelled = false;
+
       for (const i of targets) {
-        if (token?.isCancellationRequested) break;
+        if (token?.isCancellationRequested || cancelled) break;
         const cell = doc.cells[i];
 
         const execution = await kernel!.execute(cell.source);
         if (!execution) {
           return { content: 'Could not start the kernel for this workspace.', isError: true };
         }
+
+        // Polling the token between cells is not cancellation.
+        //
+        // `execution.completed` settles only on a kernel reply, an abort, or
+        // dispose(). A cell that does not terminate — `while True:`, a blocked
+        // socket read — produces none of those, so an unsubscribed handler parks
+        // on that await forever. Nothing upstream rescues it: the tool service
+        // and the turn loop both `await` the handler with no timeout, so the
+        // turn never completes, the spinner never stops, and every later message
+        // the user types is queued behind a request that will never finish. The
+        // session is dead until restart.
+        //
+        // So: ask the kernel to interrupt, and dispose the execution, which
+        // settles `completed` as 'abort' and releases this frame either way.
+        // pythonTools does the same for its sibling tool; the pane has Interrupt
+        // and _abandonExecutions for the same reason.
+        const cancelSub = token?.onCancellationRequested?.(() => {
+          cancelled = true;
+          void kernel!.interrupt();
+          execution.dispose();
+        });
 
         // Outputs accumulate through the SAME sink the notebook editor uses:
         // stream chunks merge, clear_output(wait) defers, and the bytes are
@@ -478,6 +595,7 @@ export function createNotebookRunTool(
         try {
           result = await execution.completed;
         } finally {
+          cancelSub?.dispose();
           for (const s of subs) s.dispose();
           execution.dispose();
         }
@@ -491,6 +609,20 @@ export function createNotebookRunTool(
 
         if (result?.status === 'error') { failedAt = i; break; }
         if (result?.status === 'abort') { failedAt = i; break; }
+      }
+
+      // Re-check the guard before writing. A run takes as long as the code does,
+      // and the user can open the notebook at any point during it — the check
+      // before execution says nothing about the state now. Writing into a tab
+      // opened mid-run is the exact clobber the guard exists to prevent.
+      const lateConflict = openEditorConflict(editors, path);
+      if (lateConflict) {
+        return {
+          content: `Ran ${ran} cell(s), but the notebook was opened in an editor while it ran, `
+            + `so the outputs were NOT saved — writing now would be overwritten by that tab.\n\n`
+            + `${report.join('\n')}`,
+          isError: true,
+        };
       }
 
       // Persist whatever ran, even on failure — the outputs of the cells that
@@ -508,8 +640,17 @@ export function createNotebookRunTool(
 
 // ─── Factory ─────────────────────────────────────────────────────────────────
 
-export function createNotebookTools(
-  kernel: INotebookKernelService | undefined,
+/**
+ * The tools that only touch the FILE — no kernel, no execution.
+ *
+ * Registered unconditionally, because `python.enabled` is consent to RUN Python,
+ * and reading or editing a `.ipynb` is neither. Gating these too meant the
+ * assistant lost the ability to read a notebook that the editor pane opens and
+ * edits happily in the same workspace — while `fs_read_file` and
+ * `fs_write_file` could still reach the very same file, just clumsily, as raw
+ * nbformat JSON. The gate was buying nothing and costing capability.
+ */
+export function createNotebookFileTools(
   fs: IBuiltInToolFileSystem | undefined,
   writer: IBuiltInToolFileWriter | undefined,
   editors: IEditorService | undefined,
@@ -518,6 +659,28 @@ export function createNotebookTools(
     createNotebookCreateTool(fs, writer, editors),
     createNotebookReadTool(fs),
     createNotebookEditCellTool(fs, writer, editors),
-    createNotebookRunTool(kernel, fs, writer, editors),
+  ];
+}
+
+/** The tool that executes code. This is what `python.enabled` gates. */
+export function createNotebookRunTools(
+  kernel: INotebookKernelService | undefined,
+  fs: IBuiltInToolFileSystem | undefined,
+  writer: IBuiltInToolFileWriter | undefined,
+  editors: IEditorService | undefined,
+): IChatTool[] {
+  return [createNotebookRunTool(kernel, fs, writer, editors)];
+}
+
+/** Everything, for callers that do not need the split (and for tests). */
+export function createNotebookTools(
+  kernel: INotebookKernelService | undefined,
+  fs: IBuiltInToolFileSystem | undefined,
+  writer: IBuiltInToolFileWriter | undefined,
+  editors: IEditorService | undefined,
+): IChatTool[] {
+  return [
+    ...createNotebookFileTools(fs, writer, editors),
+    ...createNotebookRunTools(kernel, fs, writer, editors),
   ];
 }
