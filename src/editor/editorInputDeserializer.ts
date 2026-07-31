@@ -14,6 +14,7 @@ import { ImageEditorInput } from '../built-in/editor/imageEditorInput.js';
 import { MarkdownPreviewInput } from '../built-in/editor/markdownPreviewInput.js';
 import { SettingsEditorInput } from '../built-in/editor/settingsEditorInput.js';
 import { KeybindingsEditorInput } from '../built-in/editor/keybindingsEditorInput.js';
+import { NotebookEditorInput } from '../built-in/editor/notebook/notebookEditorInput.js';
 import type { ITextFileModelManager, IFileService } from '../services/serviceTypes.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -118,6 +119,22 @@ export function registerBuiltinEditorDeserializers(ctx: EditorDeserializerContex
     if (typeof uri !== 'string') return null;
     const sourceInput = FileEditorInput.create(URI.parse(uri), ctx.textFileModelManager, ctx.fileService);
     return MarkdownPreviewInput.create(sourceInput);
+  });
+
+  // Notebook editor — needs URI; the document itself is re-read from disk by
+  // `resolve()` on render, so nothing but the path has to survive.
+  //
+  // This was missing, which is why a notebook open at quit did not come back:
+  // NotebookEditorInput.serialize() wrote its entry into the restored state
+  // perfectly well, but with no deserializer registered for its TYPE_ID the
+  // entry could not be turned back into an input and the tab was silently
+  // dropped. Every other editor type is restored here; the notebook simply was
+  // never added to the list.
+  registerEditorInputDeserializer(NotebookEditorInput.TYPE_ID, (data) => {
+    const uri = data?.uri;
+    if (typeof uri !== 'string') return null;
+    const relativePath = typeof data?.relativePath === 'string' ? (data.relativePath as string) : undefined;
+    return NotebookEditorInput.create(URI.parse(uri), ctx.fileService, relativePath);
   });
 
   // Settings editor — singleton, no data needed
