@@ -239,8 +239,10 @@ describe('Dropdown', () => {
     const btn = parent.querySelector('.ui-dropdown__button') as HTMLElement;
     btn.click();
 
-    // Click second item
-    const itemElements = parent.querySelectorAll('.ui-dropdown__item');
+    // Click second item. Queried from `document`, not `parent`: the open list is
+    // mounted in a body-level fixed layer so it is not clipped by scrolling
+    // ancestors — see the class comment in dropdown.ts.
+    const itemElements = document.querySelectorAll('.ui-dropdown__item');
     (itemElements[1] as HTMLElement).click();
 
     expect(values).toEqual(['b']);
@@ -273,9 +275,194 @@ describe('Dropdown', () => {
     const btn = parent.querySelector('.ui-dropdown__button') as HTMLElement;
     btn.click();
 
-    const itemElements = parent.querySelectorAll('.ui-dropdown__item');
+    const itemElements = document.querySelectorAll('.ui-dropdown__item');
     expect(itemElements.length).toBe(1);
     expect(itemElements[0].textContent).toBe('X-ray');
+    dd.dispose();
+  });
+
+  // ── The list lives in a body-level layer ──
+  //
+  // Not a style preference. An absolutely-positioned list inside the wrapper is
+  // clipped by any ancestor with `overflow` other than `visible`, so a dropdown
+  // in a scrolling table had its options cut off. That limitation is why
+  // hand-rolled clones of this component existed; these tests keep it closed.
+
+  it('mounts the open list on document.body, not inside the wrapper', () => {
+    const dd = new Dropdown(parent, { items });
+    (parent.querySelector('.ui-dropdown__button') as HTMLElement).click();
+    const list = document.querySelector('.ui-dropdown__list')!;
+    expect(list.parentElement).toBe(document.body);
+    expect(parent.querySelector('.ui-dropdown__list')).toBeNull();
+    dd.dispose();
+  });
+
+  it('removes the list from the DOM when closed', () => {
+    const dd = new Dropdown(parent, { items });
+    const btn = parent.querySelector('.ui-dropdown__button') as HTMLElement;
+    btn.click();
+    expect(document.querySelector('.ui-dropdown__list')).not.toBeNull();
+    btn.click();
+    expect(document.querySelector('.ui-dropdown__list')).toBeNull();
+    dd.dispose();
+  });
+
+  it('does not leave an orphaned list on body after dispose', () => {
+    const dd = new Dropdown(parent, { items });
+    (parent.querySelector('.ui-dropdown__button') as HTMLElement).click();
+    dd.dispose();
+    expect(document.querySelector('.ui-dropdown__list')).toBeNull();
+  });
+
+  it('treats a click on an option as inside, not as an outside dismissal', () => {
+    // The list is no longer a descendant of the wrapper, so an outside-click
+    // check written only against `element` would close the list on mousedown and
+    // the option's own click handler would never run.
+    const dd = new Dropdown(parent, { items });
+    const values: string[] = [];
+    dd.onDidChange(v => values.push(v));
+    (parent.querySelector('.ui-dropdown__button') as HTMLElement).click();
+
+    const item = document.querySelectorAll('.ui-dropdown__item')[2] as HTMLElement;
+    item.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    expect(document.querySelector('.ui-dropdown__list'), 'closed before the click landed').not.toBeNull();
+    item.click();
+    expect(values).toEqual(['c']);
+    dd.dispose();
+  });
+
+  // ── Scrolling the list must not dismiss it ──
+
+  it('stays open when the scroll event comes from inside the list', () => {
+    // THE bug this component's hand-rolled clone shipped with: a capture-phase
+    // window scroll listener fires for events targeting descendants, so an
+    // unguarded close() made a scrollable list impossible to scroll.
+    const dd = new Dropdown(parent, { items });
+    (parent.querySelector('.ui-dropdown__button') as HTMLElement).click();
+    const list = document.querySelector('.ui-dropdown__list')!;
+
+    list.dispatchEvent(new Event('scroll', { bubbles: false }));
+    expect(document.querySelector('.ui-dropdown__list'), 'scrolling the list dismissed it').not.toBeNull();
+    dd.dispose();
+  });
+
+  it('stays open when the scroll targets an option inside the list', () => {
+    const dd = new Dropdown(parent, { items });
+    (parent.querySelector('.ui-dropdown__button') as HTMLElement).click();
+    document.querySelector('.ui-dropdown__item')!.dispatchEvent(new Event('scroll', { bubbles: false }));
+    expect(document.querySelector('.ui-dropdown__list')).not.toBeNull();
+    dd.dispose();
+  });
+
+  it('closes when something outside the list scrolls', () => {
+    // The other half: the list is position:fixed against the trigger's viewport
+    // rect, so a real page scroll has to dismiss it or it floats away from its
+    // trigger.
+    const dd = new Dropdown(parent, { items });
+    (parent.querySelector('.ui-dropdown__button') as HTMLElement).click();
+    parent.dispatchEvent(new Event('scroll', { bubbles: false }));
+    expect(document.querySelector('.ui-dropdown__list')).toBeNull();
+    dd.dispose();
+  });
+
+  it('closes on window resize', () => {
+    const dd = new Dropdown(parent, { items });
+    (parent.querySelector('.ui-dropdown__button') as HTMLElement).click();
+    window.dispatchEvent(new Event('resize'));
+    expect(document.querySelector('.ui-dropdown__list')).toBeNull();
+    dd.dispose();
+  });
+
+  it('unhooks its window listeners on dispose', () => {
+    const dd = new Dropdown(parent, { items });
+    dd.dispose();
+    // A leaked capture listener would keep reacting to every scroll in the app.
+    expect(() => document.dispatchEvent(new Event('scroll'))).not.toThrow();
+  });
+
+  // ── Placeholder ──
+
+  it('keeps the placeholder after the value is cleared', () => {
+    // Regression: the placeholder used to be a parameter supplied only by the
+    // constructor, so the first `value =` assignment blanked the trigger.
+    const dd = new Dropdown(parent, { items, selected: 'b', placeholder: 'Pick one' });
+    const btn = parent.querySelector('.ui-dropdown__button') as HTMLElement;
+    expect(btn.textContent).toContain('Beta');
+    dd.value = undefined;
+    expect(btn.textContent).toContain('Pick one');
+    dd.dispose();
+  });
+
+  it('keeps the placeholder after the items are replaced', () => {
+    const dd = new Dropdown(parent, { items, selected: 'b', placeholder: 'Pick one' });
+    const btn = parent.querySelector('.ui-dropdown__button') as HTMLElement;
+    dd.items = [{ value: 'z', label: 'Zulu' }];   // 'b' no longer exists
+    expect(btn.textContent).toContain('Pick one');
+    dd.dispose();
+  });
+
+  it('marks the trigger label as a placeholder so it can be styled muted', () => {
+    const dd = new Dropdown(parent, { items, placeholder: 'Pick one' });
+    const label = parent.querySelector('.ui-dropdown__label')!;
+    expect(label.classList.contains('ui-dropdown__label--placeholder')).toBe(true);
+    dd.value = 'a';
+    expect(label.classList.contains('ui-dropdown__label--placeholder')).toBe(false);
+    dd.dispose();
+  });
+
+  // ── Colour swatches ──
+
+  it('renders a swatch per coloured option and on the trigger', () => {
+    // Budget categories are identified by colour; without this the extension had
+    // to keep its own dropdown.
+    const dd = new Dropdown(parent, {
+      items: [
+        { value: 'g', label: 'Groceries', color: '#5cb87a' },
+        { value: 'd', label: 'Dining', color: '#e8924a' },
+      ],
+      selected: 'g',
+    });
+    expect(parent.querySelector('.ui-dropdown__swatch')).not.toBeNull();
+    (parent.querySelector('.ui-dropdown__button') as HTMLElement).click();
+    expect(document.querySelectorAll('.ui-dropdown__list .ui-dropdown__swatch')).toHaveLength(2);
+    dd.dispose();
+  });
+
+  it('drops the trigger swatch when moving to a colourless option', () => {
+    const dd = new Dropdown(parent, {
+      items: [
+        { value: '', label: '— Uncategorized —' },
+        { value: 'g', label: 'Groceries', color: '#5cb87a' },
+      ],
+      selected: 'g',
+    });
+    expect(parent.querySelector('.ui-dropdown__swatch')).not.toBeNull();
+    dd.value = '';
+    expect(parent.querySelector('.ui-dropdown__swatch')).toBeNull();
+    dd.dispose();
+  });
+
+  it('does not accumulate swatches across repeated value changes', () => {
+    const dd = new Dropdown(parent, {
+      items: [
+        { value: 'g', label: 'Groceries', color: '#5cb87a' },
+        { value: 'd', label: 'Dining', color: '#e8924a' },
+      ],
+      selected: 'g',
+    });
+    dd.value = 'd';
+    dd.value = 'g';
+    dd.value = 'd';
+    expect(parent.querySelectorAll('.ui-dropdown__button .ui-dropdown__swatch')).toHaveLength(1);
+    dd.dispose();
+  });
+
+  it('keeps labels readable when an option has no colour', () => {
+    const dd = new Dropdown(parent, { items });
+    (parent.querySelector('.ui-dropdown__button') as HTMLElement).click();
+    const first = document.querySelector('.ui-dropdown__item')!;
+    expect(first.querySelector('.ui-dropdown__swatch')).toBeNull();
+    expect(first.textContent).toBe('Alpha');
     dd.dispose();
   });
 });

@@ -82,81 +82,37 @@ interface CustomSelect {
   el: HTMLElement;
   getValue(): string;
   setValue(value: string): void;
+  dispose(): void;
 }
 
 /**
- * A fully self-styled dropdown. Native <select> popups render with OS chrome
- * that CSS cannot reach, so we build a trigger button plus a fixed-positioned
- * popup list that matches the Parallx surface.
+ * A dropdown, backed by the shared `.ui-dropdown` component.
+ *
+ * This was a ~70-line self-styled dropdown — a second implementation of the one
+ * the workbench already ships, and it carried the bugs that come with that. Its
+ * `window.addEventListener('scroll', close, true)` had no containment guard, and
+ * capture propagation runs window -> document -> ... -> target, so the listener
+ * fired for scroll events targeting the popup's OWN scroller: any option list
+ * past `max-height: 240px` dismissed itself on the first wheel tick. Widget
+ * config `enum` fields come from a contributed schema and are unbounded, so that
+ * was reachable. It also left its popup on `document.body` when a drawer closed
+ * while open, since only `close()` removed it.
+ *
+ * Kept as a shim rather than deleted outright because the call sites want
+ * `getValue`/`setValue` rather than an event, and the shape is load-bearing at
+ * three of them.
  */
-function createSelect(options: SelectOption[], initial: string, onChange: (value: string) => void): CustomSelect {
-  let value = initial;
-
+export function createSelect(options: SelectOption[], initial: string, onChange: (value: string) => void): CustomSelect {
   const wrap = el('div', 'dashboard-select');
-  const trigger = el('button', 'dashboard-select__trigger');
-  trigger.type = 'button';
-  const labelSpan = el('span', 'dashboard-select__label');
-  trigger.appendChild(labelSpan);
-  const chevron = el('span', 'dashboard-select__chevron');
-  chevron.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
-  trigger.appendChild(chevron);
-  wrap.appendChild(trigger);
-
-  const labelFor = (v: string) => options.find(o => o.value === v)?.label ?? '';
-  const syncLabel = () => { labelSpan.textContent = labelFor(value); };
-  syncLabel();
-
-  let popup: HTMLElement | null = null;
-
-  const close = () => {
-    if (!popup) return;
-    popup.remove();
-    popup = null;
-    wrap.classList.remove('dashboard-select--open');
-    document.removeEventListener('pointerdown', onOutside, true);
-    window.removeEventListener('resize', close);
-    window.removeEventListener('scroll', close, true);
-  };
-
-  const onOutside = (e: PointerEvent) => {
-    const t = e.target as Node;
-    if (!popup?.contains(t) && !wrap.contains(t)) close();
-  };
-
-  const open = () => {
-    if (popup) { close(); return; }
-    popup = el('div', 'dashboard-select__popup');
-    for (const opt of options) {
-      const item = el('button', 'dashboard-select__option');
-      item.type = 'button';
-      item.textContent = opt.label;
-      if (opt.value === value) item.classList.add('dashboard-select__option--active');
-      item.addEventListener('click', () => {
-        value = opt.value;
-        syncLabel();
-        close();
-        onChange(value);
-      });
-      popup.appendChild(item);
-    }
-    const rect = trigger.getBoundingClientRect();
-    popup.style.position = 'fixed';
-    popup.style.left = `${rect.left}px`;
-    popup.style.top = `${rect.bottom + 4}px`;
-    popup.style.width = `${rect.width}px`;
-    document.body.appendChild(popup);
-    wrap.classList.add('dashboard-select--open');
-    document.addEventListener('pointerdown', onOutside, true);
-    window.addEventListener('resize', close);
-    window.addEventListener('scroll', close, true);
-  };
-
-  trigger.addEventListener('click', open);
-
+  const dropdown = new Dropdown(wrap, { items: options, selected: initial });
+  dropdown.onDidChange(v => onChange(v));
   return {
     el: wrap,
-    getValue: () => value,
-    setValue: (v: string) => { value = v; syncLabel(); },
+    getValue: () => dropdown.value ?? '',
+    // Deliberately does not fire onChange — matches the previous behaviour, and
+    // the call sites use it to sync UI from a draft they already own.
+    setValue: (v: string) => { dropdown.value = v; },
+    dispose: () => dropdown.dispose(),
   };
 }
 
@@ -1520,8 +1476,17 @@ class DashboardEditorPane implements IDisposable {
     const original = inst.row.appearance;
 
     const overlay = el('div', 'dashboard-settings-overlay');
+    // Every exit routes through here. The dropdowns in this drawer hold
+    // document/window listeners and, while open, a list mounted on document.body
+    // — so removing the overlay alone would accumulate listeners across opens and
+    // could strand a floating option list over the dashboard.
+    const selects: CustomSelect[] = [];
+    const closeDrawer = (): void => {
+      for (const s of selects) s.dispose();
+      overlay.remove();
+    };
     overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) { this._applyAppearance(inst.cardEl, original); overlay.remove(); }
+      if (e.target === overlay) { this._applyAppearance(inst.cardEl, original); closeDrawer(); }
     });
 
     const sheet = el('aside', 'dashboard-settings');
@@ -1562,6 +1527,7 @@ class DashboardEditorPane implements IDisposable {
         preview();
       },
     );
+    selects.push(bgSelect);
     bgBlock.appendChild(bgSelect.el);
     bgBlock.appendChild(bgColor);
     bgColor.addEventListener('input', () => { draft.backgroundColor = bgColor.value; preview(); });
@@ -1587,6 +1553,7 @@ class DashboardEditorPane implements IDisposable {
         preview();
       },
     );
+    selects.push(bdSelect);
     bdBlock.appendChild(bdSelect.el);
     bdBlock.appendChild(bdColor);
     bdColor.addEventListener('input', () => { draft.borderColor = bdColor.value; preview(); });
@@ -1629,7 +1596,7 @@ class DashboardEditorPane implements IDisposable {
     const cancel = el('button', 'dashboard-btn dashboard-btn--ghost');
     cancel.type = 'button';
     cancel.textContent = 'Cancel';
-    cancel.addEventListener('click', () => { this._applyAppearance(inst.cardEl, original); overlay.remove(); });
+    cancel.addEventListener('click', () => { this._applyAppearance(inst.cardEl, original); closeDrawer(); });
     foot.appendChild(cancel);
     const save = el('button', 'dashboard-btn dashboard-btn--primary');
     save.type = 'button';
@@ -1653,7 +1620,7 @@ class DashboardEditorPane implements IDisposable {
         await this._api.window.showErrorMessage(`Could not save appearance: ${msg}`);
         return;
       }
-      overlay.remove();
+      closeDrawer();
     });
     foot.appendChild(save);
     sheet.appendChild(foot);
@@ -1672,8 +1639,15 @@ class DashboardEditorPane implements IDisposable {
     const schema = typeReg.configSchema;
 
     const overlay = el('div', 'dashboard-settings-overlay');
+    // See _openAppearanceDrawer: the dropdowns own global listeners and a
+    // body-level list, so every exit has to dispose them.
+    const selects: CustomSelect[] = [];
+    const closeDrawer = (): void => {
+      for (const s of selects) s.dispose();
+      overlay.remove();
+    };
     overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) overlay.remove();
+      if (e.target === overlay) closeDrawer();
     });
 
     const sheet = el('aside', 'dashboard-settings');
@@ -1729,6 +1703,7 @@ class DashboardEditorPane implements IDisposable {
         const opts = (field.options ?? []).map(o => ({ value: o.value, label: o.label }));
         const cur = String(current[name] ?? field.default ?? opts[0]?.value ?? '');
         const sel = createSelect(opts, cur, () => {});
+        selects.push(sel);
         block.appendChild(sel.el);
         inputs.set(name, () => sel.getValue());
       } else if (field.type === 'textarea') {
@@ -1819,13 +1794,14 @@ class DashboardEditorPane implements IDisposable {
     const cancel = el('button', 'dashboard-btn dashboard-btn--ghost');
     cancel.type = 'button';
     cancel.textContent = 'Cancel';
-    cancel.addEventListener('click', () => overlay.remove());
+    cancel.addEventListener('click', () => closeDrawer());
     foot.appendChild(cancel);
     const save = el('button', 'dashboard-btn dashboard-btn--primary');
     save.type = 'button';
     save.textContent = 'Save';
     save.addEventListener('click', async () => {
       const next: Record<string, unknown> = {};
+      // Read every value BEFORE disposing anything.
       for (const [k, getter] of inputs) next[k] = getter();
       try {
         await this._data.updateWidgetConfig(widgetId, next);
@@ -1837,7 +1813,7 @@ class DashboardEditorPane implements IDisposable {
         await this._api.window.showErrorMessage(`Could not save configuration: ${msg}`);
         return;
       }
-      overlay.remove();
+      closeDrawer();
     });
     foot.appendChild(save);
     sheet.appendChild(foot);

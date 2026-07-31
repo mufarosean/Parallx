@@ -1335,75 +1335,16 @@ video.vw__fill { object-fit: contain; background: #000; }
   background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 90%, white);
 }
 
-/* Custom-styled dropdown (createSelect) — native <select> popups render with
-   OS chrome that CSS cannot reach, so the list is a self-built popup. */
-.dashboard-select { position: relative; width: 100%; }
-.dashboard-select__trigger {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  width: 100%;
-  box-sizing: border-box;
-  padding: 8px 10px;
-  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 16%, transparent);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 80%, white);
-  color: var(--vscode-editor-foreground, #d4d4d4);
-  font: inherit;
-  font-size: var(--px-text-base);
-  text-align: left;
-  cursor: pointer;
-  transition: border-color var(--px-dur-fast) var(--px-ease), background var(--px-dur-fast) var(--px-ease);
-}
-.dashboard-select__trigger:hover {
-  border-color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 30%, transparent);
-}
-.dashboard-select--open .dashboard-select__trigger {
-  border-color: var(--vscode-focusBorder, #5b9bd5);
-  background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 90%, white);
-}
-.dashboard-select__label { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dashboard-select__chevron {
-  display: inline-flex;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent);
-  transition: transform var(--px-dur-base) var(--px-ease);
-}
-.dashboard-select--open .dashboard-select__chevron { transform: rotate(180deg); }
+/* ═══ Dropdown host ═══
+   The dropdown is the core .ui-dropdown component, mounted inside this wrapper by
+   createSelect(). ~65 lines of trigger/chevron/popup/option styling used to live
+   here for a second implementation of it; all of it is dropdown.css now.
 
-.dashboard-select__popup {
-  z-index: 1200;
-  display: flex;
-  flex-direction: column;
-  padding: 4px;
-  max-height: 240px;
-  overflow-y: auto;
-  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 16%, transparent);
-  border-radius: 8px;
-  background: var(--vscode-editor-background, #252526);
-  box-shadow: 0 12px 32px rgba(0,0,0,0.45);
-  animation: dashboard-overlay-in 120ms ease;
-}
-.dashboard-select__option {
-  display: flex;
-  align-items: center;
-  padding: 7px 10px;
-  border: none;
-  border-radius: 5px;
-  background: transparent;
-  color: var(--vscode-editor-foreground, #d4d4d4);
-  font: inherit;
-  font-size: var(--px-text-base);
-  text-align: left;
-  cursor: pointer;
-}
-.dashboard-select__option:hover {
-  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 12%, transparent);
-}
-.dashboard-select__option--active {
-  background: color-mix(in srgb, var(--vscode-focusBorder, #5b9bd5) 24%, transparent);
-  font-weight: 600;
-}
+   Only the sizing bridge remains: .ui-dropdown is inline-block with its own
+   min-width, so it has to be told to fill a settings field. */
+.dashboard-select { position: relative; width: 100%; }
+.dashboard-select .ui-dropdown { width: 100%; min-width: 0; }
+.dashboard-select .ui-dropdown__button { padding: 8px 10px; border-radius: 6px; }
 
 .dashboard-field__checkbox-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
 .dashboard-field__checkbox-row input { width: 16px; height: 16px; accent-color: var(--vscode-button-background, #0e639c); }

@@ -11,7 +11,7 @@
 import { IDisposable } from '../platform/lifecycle.js';
 import { Emitter } from '../platform/events.js';
 import { rafThrottle } from '../platform/rafThrottle.js';
-import { Dropdown, IDropdownItem } from '../ui/dropdown.js';
+import { createDropdownHandle, IDropdownItem } from '../ui/dropdown.js';
 import { renderMarkdown } from '../ui/renderMarkdown.js';
 import { createAiButton } from '../ui/aiButton.js';
 import { ContextMenu, IContextMenuItem } from '../ui/contextMenu.js';
@@ -549,34 +549,24 @@ export function createToolApi(
       // native <select> popups are Chromium-drawn and unthemeable, so
       // extensions get the themed primitive instead of cloning it
       // (media-organizer's hand-rolled mo-dropdown predates this).
+      // Delegates to createDropdownHandle so the extension-facing surface has ONE
+      // definition, co-located with the component. Inlining it here meant a test
+      // could only exercise a stand-in, which is how an extension ends up quietly
+      // depending on behaviour the real handle does not have.
       createDropdown(container: HTMLElement, options?: {
-        readonly items?: readonly { value: string; label: string }[];
+        readonly items?: readonly { value: string; label: string; color?: string }[];
         readonly selected?: string;
         readonly placeholder?: string;
         readonly ariaLabel?: string;
         readonly disabled?: boolean;
       }) {
-        const dropdown = new Dropdown(container, {
+        return createDropdownHandle(container, {
           items: options?.items as readonly IDropdownItem[] | undefined,
           selected: options?.selected,
           placeholder: options?.placeholder,
           ariaLabel: options?.ariaLabel,
           disabled: options?.disabled,
         });
-        return {
-          element: dropdown.element,
-          get value(): string { return dropdown.value ?? ''; },
-          set value(v: string) { dropdown.value = v; },
-          setItems(items: readonly { value: string; label: string }[]): void {
-            dropdown.items = items as readonly IDropdownItem[];
-          },
-          onDidChange(listener: (value: string) => void): IDisposable {
-            return dropdown.onDidChange(listener);
-          },
-          focus(): void { dropdown.focus(); },
-          setDisabled(disabled: boolean): void { dropdown.disabled = disabled; },
-          dispose(): void { dropdown.dispose(); },
-        };
       },
       // The shared compact Markdown + KaTeX renderer (.px-markdown). Safe for
       // model-generated content: raw HTML is never interpreted.

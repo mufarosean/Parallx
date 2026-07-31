@@ -242,23 +242,6 @@ function categoryKindForTxType(txType) {
   return t ? t.kind : 'expense';
 }
 
-function appendCategoryOptions(select, categories, selectedId, txType = null) {
-  const targetKind = txType ? categoryKindForTxType(txType) : null;
-  let options = Array.isArray(categories) ? categories : [];
-  if (targetKind) {
-    const scoped = options.filter(c => c.kind === targetKind || c.id === selectedId);
-    if (scoped.length > 0) options = scoped;
-  }
-  for (const c of options) {
-    const o = document.createElement('option');
-    o.value = c.id;
-    o.textContent = c.name;
-    if (c.kind) o.dataset.kind = c.kind;
-    if (selectedId === c.id) o.selected = true;
-    select.appendChild(o);
-  }
-}
-
 async function learnExpenseRuleFromOverride(merchant, categoryId) {
   if (categoryId && merchant) {
     try {
@@ -542,7 +525,7 @@ function injectStyles() {
 .budget-btn-primary:hover { background: var(--vscode-button-hoverBackground, #1177bb); }
 .budget-btn .budget-icon { width: 12px; height: 12px; flex: 0 0 12px; }
 
-.budget-input, .budget-select {
+.budget-input {
   background: var(--vscode-input-background, rgba(255,255,255,0.04));
   color: var(--vscode-input-foreground, #ccc);
   border: 1px solid var(--vscode-input-border, var(--vscode-panel-border, #555));
@@ -551,74 +534,26 @@ function injectStyles() {
   font: inherit;
   font-size: var(--px-text-xs, 11px);
 }
-.budget-select {
-  appearance: none;
-  color-scheme: dark;
-  min-height: 26px;
-  padding-right: 28px;
-  cursor: pointer;
-  background-color: var(--vscode-dropdown-background, var(--vscode-input-background, rgba(255,255,255,0.04)));
-  background-image:
-    linear-gradient(45deg, transparent 50%, currentColor 50%),
-    linear-gradient(135deg, currentColor 50%, transparent 50%);
-  background-position:
-    calc(100% - 12px) 50%,
-    calc(100% - 8px) 50%;
-  background-size: 4px 4px, 4px 4px;
-  background-repeat: no-repeat;
-}
-.budget-select:hover {
-  border-color: var(--vscode-focusBorder, #9333ea);
-  background-color: var(--vscode-list-hoverBackground, rgba(255,255,255,0.06));
-}
-.budget-select option,
-.budget-select optgroup {
-  background: var(--vscode-dropdown-background, var(--vscode-editor-background, #1e1e1e));
-  color: var(--vscode-dropdown-foreground, var(--vscode-foreground, #ddd));
-  font: inherit;
-}
 
-/* ═══ Custom dropdown (Parallx-native <select> replacement) ═══ */
+/* The ~40 lines of .budget-select styling that used to sit here are gone with the
+   last native <select> in this extension — including the appearance:none +
+   gradient-arrow trick and the option/optgroup colours, which only ever existed
+   because a Chromium-drawn <select> popup cannot be themed. That is the reason
+   for the rule; there is nothing left here to theme around. */
+
+/* ═══ Dropdown host ═══
+   The dropdown itself is the core .ui-dropdown component, mounted inside this
+   wrapper by makeDropdown(). ~45 lines of trigger/menu/option styling used to
+   live here for a hand-rolled clone; all of it is now dropdown.css, so the whole
+   app's dropdowns look and behave the same and get fixed together.
+
+   What remains is the sizing bridge only: .ui-dropdown is inline-block with its
+   own min-width, so it has to be told to fill a table cell or a form field.
+   Same shape as text-generator's .tg-dd. */
 .budget-dd { position: relative; display: inline-block; }
-.budget-dd-btn {
-  display: inline-flex; align-items: center; gap: 6px; width: 100%; box-sizing: border-box;
-  min-height: 26px; padding: 4px 8px; cursor: pointer; text-align: left;
-  background: var(--px-bg-inset, var(--vscode-input-background, rgba(255, 255, 255, 0.04)));
-  color: var(--px-text, var(--vscode-input-foreground, #ddd));
-  border: 1px solid var(--px-border, var(--vscode-input-border, var(--vscode-panel-border, #555)));
-  border-radius: var(--px-radius-sm, 4px); font: inherit; font-size: var(--px-text-sm, 12px);
-  transition: border-color 120ms ease;
-}
-.budget-dd-btn:hover { border-color: var(--px-border-strong, var(--vscode-focusBorder, #5b9bd5)); }
-.budget-dd-btn[aria-expanded="true"] { border-color: var(--px-accent, var(--vscode-focusBorder, #5b9bd5)); }
-.budget-dd-btn:focus-visible { outline: none; border-color: var(--px-accent, #5b9bd5); box-shadow: 0 0 0 2px var(--px-accent-faint, rgba(91, 143, 214, 0.25)); }
-.budget-dd-label { display: inline-flex; align-items: center; gap: 6px; flex: 1; min-width: 0; overflow: hidden; }
-.budget-dd-txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.budget-dd-txt.is-placeholder { color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); }
-.budget-dd-caret { display: inline-flex; flex: 0 0 auto; color: var(--px-text-muted, var(--vscode-descriptionForeground, #999)); }
-.budget-dd-sw { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; display: inline-block; }
-.budget-dd-menu {
-  z-index: 1100; min-width: 160px; max-height: 320px; overflow-y: auto; padding: 4px;
-  background: var(--px-bg-elevated, var(--vscode-menu-background, #1f2125));
-  border: 1px solid var(--px-border, var(--vscode-menu-border, #333));
-  border-radius: var(--px-radius-md, 6px);
-  box-shadow: var(--px-shadow-lg, 0 14px 34px -8px rgba(0, 0, 0, 0.55), 0 4px 10px -4px rgba(0, 0, 0, 0.4));
-}
-.budget-dd-opt {
-  display: flex; align-items: center; gap: 8px; width: 100%; box-sizing: border-box; text-align: left;
-  padding: 6px 8px; border: none; background: transparent; color: var(--px-text, var(--vscode-foreground, #ddd));
-  font: inherit; font-size: var(--px-text-sm, 12px); border-radius: var(--px-radius-sm, 4px); cursor: pointer;
-}
-.budget-dd-opt:hover { background: var(--px-surface-hover, var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06))); }
-.budget-dd-opt.is-active { background: var(--px-surface-selected, rgba(91, 143, 214, 0.14)); }
-.budget-dd-opt-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.budget-dd-check { display: inline-flex; flex: 0 0 auto; width: 13px; color: var(--px-accent, #5b9bd5); }
+.budget-dd .ui-dropdown { width: 100%; min-width: 0; }
 .budget-table .budget-dd { min-width: 150px; }
-.budget-select option:checked {
-  background: var(--vscode-list-activeSelectionBackground, rgba(147,51,234,0.35));
-  color: var(--vscode-list-activeSelectionForeground, #fff);
-}
-.budget-input:focus, .budget-select:focus {
+.budget-input:focus {
   outline: 1px solid var(--vscode-focusBorder, #9333ea);
   outline-offset: -1px;
 }
@@ -1494,7 +1429,7 @@ function injectStyles() {
 .budget-field { display: flex; flex-direction: column; gap: 5px; }
 .budget-field-label { font-size: var(--px-text-xs, 11px); font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); }
 .budget-field-hint { font-size: var(--px-text-xs, 11px); color: var(--px-text-faint, var(--vscode-descriptionForeground, #777)); }
-.budget-field .budget-input, .budget-field .budget-select, .budget-field .budget-drawer-textarea, .budget-field .budget-dd { width: 100%; box-sizing: border-box; }
+.budget-field .budget-input, .budget-field .budget-drawer-textarea, .budget-field .budget-dd { width: 100%; box-sizing: border-box; }
 .budget-field-row { display: flex; gap: 10px; }
 .budget-field-row > .budget-field { flex: 1; min-width: 0; }
 .budget-drawer-textarea {
@@ -1931,90 +1866,61 @@ function emptyState(msg) {
   return div;
 }
 
-// ─── Custom dropdown (Parallx-native replacement for <select>) ──────────────
+// ─── Dropdown: adapter over api.ui.createDropdown ───────────────────────────
 //
-// Native <select> popups are rendered by the OS and can't be themed — they
-// ignore the --px design language. This is a fully styled dropdown: a trigger
-// button + a positioned popover with optional colour swatches, a checkmark on
-// the current value, hover states, click-outside + Escape to close, and
-// viewport-aware placement. Exposes a `.value` get/set so call sites read it
-// just like a <select>.
-const DD_CARET = '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
-const DD_CHECK = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
-
+// This used to be a 200-line hand-rolled dropdown. It is now a thin shim over
+// `api.ui.createDropdown` — the ONE `.ui-dropdown` component the whole app uses.
+//
+// The clone existed because the core component could not survive being inside a
+// scrolling table: its option list was `position: absolute` inside the wrapper,
+// so `.budget-editor { overflow: auto }` clipped it. Rather than keep a second
+// dropdown alive to work around that, the core one now mounts its list in a
+// body-level fixed layer, flips above the trigger when space is tight, scrolls
+// long option sets without dismissing itself, and takes an optional `color` per
+// item — the swatch this extension needs for categories. So there is nothing left
+// for a local copy to do.
+//
+// What the clone cost, for the record: a capture-phase `window` scroll listener
+// that closed the menu unconditionally, which meant the category list on a
+// transaction row could not be scrolled at all — it dismissed itself on the first
+// wheel tick. Every fix here is a fix everywhere now.
+//
+// The signature and the `.value` / `.setOptions` surface are unchanged, so the
+// call sites did not move.
 function makeDropdown(options, value, onChange, opts = {}) {
-  // options: [{ value, label, color? }]
   const root = document.createElement('div');
   root.className = 'budget-dd' + (opts.className ? ' ' + opts.className : '');
-  let current = value == null ? '' : value;
 
-  const btn = document.createElement('button');
-  btn.type = 'button'; btn.className = 'budget-dd-btn'; btn.setAttribute('aria-haspopup', 'listbox'); btn.setAttribute('aria-expanded', 'false');
-  const labelEl = document.createElement('span'); labelEl.className = 'budget-dd-label';
-  const caret = document.createElement('span'); caret.className = 'budget-dd-caret'; caret.innerHTML = DD_CARET;
-  btn.appendChild(labelEl); btn.appendChild(caret);
-  root.appendChild(btn);
+  const items = (Array.isArray(options) ? options : []).map(o => ({
+    value: String(o.value ?? ''), label: String(o.label ?? ''), color: o.color,
+  }));
 
-  const optOf = (v) => options.find(o => o.value === v);
-  function syncLabel() {
-    const o = optOf(current);
-    labelEl.innerHTML = '';
-    if (o && o.color) { const sw = document.createElement('span'); sw.className = 'budget-dd-sw'; sw.style.background = o.color; labelEl.appendChild(sw); }
-    const t = document.createElement('span'); t.className = 'budget-dd-txt';
-    t.textContent = o ? o.label : (opts.placeholder || 'Select…');
-    if (!o) t.classList.add('is-placeholder');
-    labelEl.appendChild(t);
-  }
-  syncLabel();
+  const dd = _api.ui.createDropdown(root, {
+    items,
+    selected: value == null ? '' : String(value),
+    placeholder: opts.placeholder || 'Select…',
+    ariaLabel: opts.ariaLabel,
+  });
 
-  let menu = null;
-  function onDoc(e) { if (menu && !menu.contains(e.target) && !root.contains(e.target)) close(); }
-  function onKey(e) { if (e.key === 'Escape') { close(); btn.focus(); } }
-  function close() {
-    if (!menu) return;
-    menu.remove(); menu = null;
-    document.removeEventListener('mousedown', onDoc, true);
-    document.removeEventListener('keydown', onKey, true);
-    window.removeEventListener('resize', close); window.removeEventListener('scroll', close, true);
-    btn.setAttribute('aria-expanded', 'false');
-  }
-  function open() {
-    if (menu) { close(); return; }
-    menu = document.createElement('div'); menu.className = 'budget-dd-menu'; menu.setAttribute('role', 'listbox');
-    for (const o of options) {
-      const item = document.createElement('button');
-      item.type = 'button'; item.className = 'budget-dd-opt' + (o.value === current ? ' is-active' : '');
-      item.setAttribute('role', 'option');
-      if (o.color) { const sw = document.createElement('span'); sw.className = 'budget-dd-sw'; sw.style.background = o.color; item.appendChild(sw); }
-      const t = document.createElement('span'); t.className = 'budget-dd-opt-label'; t.textContent = o.label; item.appendChild(t);
-      const ck = document.createElement('span'); ck.className = 'budget-dd-check'; if (o.value === current) ck.innerHTML = DD_CHECK; item.appendChild(ck);
-      item.addEventListener('click', () => { const changed = o.value !== current; current = o.value; syncLabel(); close(); btn.focus(); if (changed && onChange) onChange(current); });
-      menu.appendChild(item);
-    }
-    document.body.appendChild(menu);
-    const r = btn.getBoundingClientRect();
-    menu.style.position = 'fixed';
-    menu.style.minWidth = r.width + 'px';
-    menu.style.left = Math.min(r.left, window.innerWidth - menu.offsetWidth - 8) + 'px';
-    const mh = menu.offsetHeight;
-    menu.style.top = (r.bottom + 4 + mh > window.innerHeight - 8 ? Math.max(8, r.top - 4 - mh) : r.bottom + 4) + 'px';
-    btn.setAttribute('aria-expanded', 'true');
-    document.addEventListener('mousedown', onDoc, true);
-    document.addEventListener('keydown', onKey, true);
-    window.addEventListener('resize', close); window.addEventListener('scroll', close, true);
-  }
-  btn.addEventListener('click', (e) => { e.stopPropagation(); open(); });
+  if (typeof onChange === 'function') dd.onDidChange(v => onChange(v));
 
   Object.defineProperty(root, 'value', {
-    get() { return current; },
-    set(v) { current = v == null ? '' : v; syncLabel(); },
+    get() { return dd.value; },
+    set(v) { dd.value = v == null ? '' : String(v); },
   });
+
   // Swap the option set (and optionally the value) — for dependent dropdowns.
+  // Both in one call so the trigger never flashes the placeholder in between.
   root.setOptions = (newOptions, newValue) => {
-    options = Array.isArray(newOptions) ? newOptions : [];
-    if (newValue !== undefined) current = newValue == null ? '' : newValue;
-    syncLabel();
+    dd.setItems(
+      (Array.isArray(newOptions) ? newOptions : []).map(o => ({
+        value: String(o.value ?? ''), label: String(o.label ?? ''), color: o.color,
+      })),
+      newValue === undefined ? undefined : (newValue == null ? '' : String(newValue)),
+    );
   };
+  root.focus = () => dd.focus();
+  root.dispose = () => dd.dispose();
   return root;
 }
 
@@ -2023,6 +1929,32 @@ function categoryOptions(categories, placeholder) {
   return [{ value: '', label: placeholder || '— Uncategorized —' }].concat(
     (categories || []).map(c => ({ value: c.id, label: c.name, color: c.color })),
   );
+}
+
+/**
+ * Category options narrowed to the kind that matches a transaction type, so an
+ * expense does not offer "Income" and a transfer does not offer "Groceries".
+ *
+ * Restores what appendCategoryOptions() did for the old native <select>; the
+ * behaviour was dropped when the editor moved to makeDropdown and nothing carried
+ * the scoping across. Two guards from the original are kept because both matter:
+ *
+ *  - The currently-selected category survives even when its kind does not match.
+ *    Rows categorised across kinds exist (the AI pipeline can produce them), and
+ *    an editor that silently drops the category on open would save that loss the
+ *    moment the user touched anything else.
+ *  - If scoping would empty the list — a workspace whose categories are all one
+ *    kind — the unscoped list is used. An empty picker is worse than a loose one.
+ */
+function scopedCategoryOptions(categories, txType, selectedId, placeholder) {
+  const all = Array.isArray(categories) ? categories : [];
+  const targetKind = txType ? categoryKindForTxType(txType) : null;
+  let scoped = all;
+  if (targetKind) {
+    const match = all.filter(c => c.kind === targetKind || c.id === selectedId);
+    if (match.length > 0) scoped = match;
+  }
+  return categoryOptions(scoped, placeholder);
 }
 
 // ─── Month / date math ─────────────────────────────────────────────────────
@@ -2282,13 +2214,25 @@ async function openTxEditor(api, opts = {}) {
   if (row?.tx_type && !TX_TYPE_VALUES.includes(row.tx_type)) {
     typeOpts.push({ value: row.tx_type, label: txTypeLabel(row.tx_type) });
   }
-  const typeSel = makeDropdown(typeOpts, row?.tx_type || 'purchase');
-
   const acctSel = makeDropdown(
     [{ value: '', label: '— No account —' }].concat(accounts.map(a => ({ value: a.id, label: a.display_name || defaultAccountName(a.kind, a.last_four) }))),
     row?.account_id || '');
 
-  const catSel = makeDropdown(categoryOptions(categories), row?.category_id || '');
+  // Declared before typeSel so the type handler can re-scope it without a forward
+  // reference.
+  const initialType = row?.tx_type || 'purchase';
+  const catSel = makeDropdown(
+    scopedCategoryOptions(categories, initialType, row?.category_id || ''),
+    row?.category_id || '');
+
+  const typeSel = makeDropdown(typeOpts, initialType, (txType) => {
+    // Changing the type re-scopes the categories. Keep the current pick when it
+    // is still offered; clear it when it is not, rather than leaving an income
+    // category selected on an expense and saving that.
+    const keep = catSel.value;
+    const opts = scopedCategoryOptions(categories, txType, keep);
+    catSel.setOptions(opts, opts.some(o => o.value === keep) ? keep : '');
+  });
 
   const statusSel = makeDropdown(
     [['confirmed', 'Confirmed'], ['review', 'Needs review'], ['hidden', 'Hidden']].map(([value, label]) => ({ value, label })),
@@ -10250,4 +10194,13 @@ export const __testables = {
   fetchBudgetGmailMessages,
   parseCsvLine: _parseCsvLine,
   ruleMatchesMerchant,
+  makeDropdown,
+  categoryOptions,
+  scopedCategoryOptions,
+  /**
+   * Test seam: inject the host api. activate() sets `_api` in real use, and
+   * running the whole activation (database, Gmail, sync) just to exercise a
+   * dropdown is not a trade worth making.
+   */
+  __setApi: (api) => { _api = api; },
 };
