@@ -2784,6 +2784,17 @@ ipcMain.handle('terminal:exec', async (_event, command, options) => {
       env,
       timeout,
       maxBuffer: 1024 * 1024, // 1 MB
+      // Electron is a GUI process with no console of its own, so Windows
+      // ALLOCATES A VISIBLE CONSOLE WINDOW for any console child unless this is
+      // set. That window opens on top, takes focus, and stays for as long as the
+      // command runs — so a two-minute command makes the whole app look frozen
+      // for two minutes, while in fact nothing is blocked and every click is
+      // simply going to the console.
+      //
+      // Every other child launch in this process already sets it (ffmpeg,
+      // ffprobe, taskkill, and all four in pythonBridge). These two terminal
+      // handlers were the only ones that did not.
+      windowsHide: true,
       ...shellOption,
     });
 
@@ -2909,6 +2920,9 @@ ipcMain.handle('terminal:spawn', async (_event, options) => {
       cwd,
       env,
       stdio: ['pipe', 'pipe', 'pipe'],
+      // See terminal:exec — without this, the panel's backing shell opens a real
+      // console window on Windows that lives as long as the session does.
+      windowsHide: true,
     });
 
     _activeTerminals.set(id, { proc, cwd, venv: env.VIRTUAL_ENV ?? null });
