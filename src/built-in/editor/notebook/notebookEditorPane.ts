@@ -36,6 +36,7 @@ import {
   cellDurationMs,
   setCellExecutionTiming,
   formatDuration,
+  CellOutputSink,
   type CellType,
   type NotebookCell,
   type NotebookDocument,
@@ -71,13 +72,6 @@ export type NotebookGenerateProviderResolver = () => Promise<INotebookGeneratePr
 /** Beyond this many outputs on one cell, older ones are folded away. */
 const MAX_RENDERED_OUTPUTS = 50;
 
-/**
- * Cap on the merged stdout/stderr text held for one cell — roughly 2 MB.
- * Bounds both the repaint cost and what gets written into the `.ipynb`; a
- * runaway loop should not produce a 200 MB notebook file.
- */
-const MAX_STREAM_CHARS = 2_000_000;
-
 interface CellView {
   readonly cell: NotebookCell;
   readonly root: HTMLElement;
@@ -103,8 +97,12 @@ interface CellView {
   /** Markdown cells render preview unless being edited. */
   editing: boolean;
   running: boolean;
-  /** Set by clear_output(wait=True): drop existing outputs at the next write. */
-  pendingClear: boolean;
+  /**
+   * Accumulates this cell's outputs — stream merging, deferred clear, byte cap.
+   * Shared with the assistant's `notebook_run` tool so both writers produce the
+   * same file for the same code.
+   */
+  readonly sink: CellOutputSink;
 }
 
 export class NotebookEditorPane extends EditorPane {
@@ -474,7 +472,7 @@ export class NotebookEditorPane extends EditorPane {
       cell, root, editor, outputHost, promptEl, markdownHost, timingEl, editorHost, box,
       editing: cell.cellType !== 'markdown' || cell.source.trim() === '',
       running: false,
-      pendingClear: false,
+      sink: new CellOutputSink(cell),
     };
 
     editor.onDidChange((value) => {
@@ -590,34 +588,16 @@ export class NotebookEditorPane extends EditorPane {
   }
 
   /**
-   * Append one output, merging consecutive stream chunks.
+   * Append one output through the cell's shared sink.
    *
-   * The kernel emits a `stream` message per flush, which for a loop printing a
-   * line at a time is one message per line. Storing each as its own output
-   * would bloat the saved `.ipynb` enormously and render as hundreds of
-   * separate blocks; Jupyter merges them, and a file written here has to look
-   * like a file written there.
+   * The merging, deferred-clear and byte-capping rules moved to
+   * `CellOutputSink` in notebookModel.ts once a second caller appeared (the
+   * assistant's `notebook_run` tool). They are the rules that make a file
+   * written here look like a file written by Jupyter, so both writers have to
+   * follow them — and one copy is the only way that stays true.
    */
   private _appendOutput(view: CellView, output: NotebookOutput): void {
-    if (view.pendingClear) {
-      view.cell.outputs = [];
-      view.pendingClear = false;
-    }
-    const last = view.cell.outputs[view.cell.outputs.length - 1];
-    if (output.outputType === 'stream' && last?.outputType === 'stream' && last.name === output.name) {
-      last.text += output.text;
-      // Merging is what keeps the saved .ipynb sane, but it also means
-      // MAX_RENDERED_OUTPUTS — a cap on output COUNT — pins at 1 and stops
-      // protecting anything. Bound the bytes too, keeping the tail: when a
-      // loop has printed a million lines, the end is the part you need.
-      if (last.text.length > MAX_STREAM_CHARS) {
-        const dropped = last.text.length - MAX_STREAM_CHARS;
-        last.text = `[… ${dropped.toLocaleString()} earlier characters dropped …]\n`
-          + last.text.slice(-MAX_STREAM_CHARS);
-      }
-    } else {
-      view.cell.outputs.push(output);
-    }
+    view.sink.append(output);
     this._scheduleRender(view);
     this._doc?.markDirty(false);
   }
@@ -751,9 +731,11 @@ export class NotebookEditorPane extends EditorPane {
     store.add(execution.onDidClear(({ wait }) => {
       const target = live();
       if (!target) return;
-      if (wait) { target.pendingClear = true; return; }
-      target.cell.outputs = [];
-      this._renderOutputs(target);
+      target.sink.clear(wait);
+      // A deferred clear changes nothing on screen yet — the outputs stay until
+      // the next one arrives, which is what stops a progress bar flickering to
+      // empty between frames.
+      if (!wait) this._renderOutputs(target);
     }));
 
     const stopTicker = this._startTimingTicker(view, execution);

@@ -459,3 +459,77 @@ export function clearAllOutputs(doc: NotebookDocument): void {
     cell.executionCount = null;
   }
 }
+
+// ─── Output accumulation ─────────────────────────────────────────────────────
+
+/**
+ * Cap on the merged stream text held for one cell — roughly 2 MB.
+ *
+ * Bounds both the repaint cost and what gets written into the `.ipynb`; a
+ * runaway loop should not be able to produce a 200 MB notebook file.
+ */
+export const MAX_STREAM_CHARS = 2_000_000;
+
+/**
+ * Accumulates one cell's outputs the way Jupyter does.
+ *
+ * Lives here, next to the model, because there is more than one thing driving a
+ * kernel: the notebook editor pane, and the assistant's `notebook_run` tool. The
+ * first version of that tool re-implemented this — it pushed every message
+ * straight onto `cell.outputs` — and got three things wrong that are invisible
+ * until you look at the saved file:
+ *
+ *   - `clear_output(wait=True)` was ignored, so a cell using tqdm or a
+ *     matplotlib animation wrote every redraw frame into the notebook instead of
+ *     replacing the previous one.
+ *   - Consecutive stream chunks were not merged. The kernel emits one `stream`
+ *     message per flush, which for a loop printing a line at a time is one per
+ *     line; Jupyter stores those as a single output. Without merging, the same
+ *     code produced a different file depending on who ran it.
+ *   - Nothing bounded the bytes, so a runaway loop had no ceiling at all.
+ *
+ * One implementation, so a fix reaches every caller.
+ */
+export class CellOutputSink {
+  /** Set by clear_output(wait=true): drop existing outputs at the NEXT write. */
+  private _pendingClear = false;
+
+  constructor(
+    private readonly _cell: NotebookCell,
+    private readonly _maxStreamChars: number = MAX_STREAM_CHARS,
+  ) {}
+
+  /** Append one kernel output, merging consecutive same-stream chunks. */
+  append(output: NotebookOutput): void {
+    if (this._pendingClear) {
+      this._cell.outputs = [];
+      this._pendingClear = false;
+    }
+    const last = this._cell.outputs[this._cell.outputs.length - 1];
+    if (output.outputType === 'stream' && last?.outputType === 'stream' && last.name === output.name) {
+      last.text += output.text;
+      // Merging keeps the saved .ipynb sane, but it also means a cap on output
+      // COUNT pins at 1 and stops protecting anything. Bound the bytes too,
+      // keeping the tail: when a loop has printed a million lines, the end is
+      // the part you need.
+      if (last.text.length > this._maxStreamChars) {
+        const dropped = last.text.length - this._maxStreamChars;
+        last.text = `[… ${dropped.toLocaleString()} earlier characters dropped …]\n`
+          + last.text.slice(-this._maxStreamChars);
+      }
+    } else {
+      this._cell.outputs.push(output);
+    }
+  }
+
+  /**
+   * Handle `clear_output`. `wait` defers the clear until the next output
+   * arrives, which is what stops a progress bar flickering to empty between
+   * frames — and what stops every frame being kept.
+   */
+  clear(wait: boolean): void {
+    if (wait) { this._pendingClear = true; return; }
+    this._cell.outputs = [];
+    this._pendingClear = false;
+  }
+}
