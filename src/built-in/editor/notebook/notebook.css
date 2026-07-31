@@ -13,39 +13,64 @@
 
 /* ── Toolbar ── */
 
+/* A command ribbon, not a row of pills. Each item is a borderless icon+label
+   that only shows a surface on hover, with hairline separators grouping related
+   commands — the shape every editor toolbar uses, and the shape the previous
+   version got wrong by bordering everything and tinting one item accent. */
 .nb-toolbar {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 2px;
   flex: 0 0 auto;
-  padding: 5px var(--px-space-3, 12px);
+  padding: 3px var(--px-space-3, 12px);
   border-bottom: 1px solid var(--px-divider);
 }
 
 .nb-btn {
-  padding: 3px 10px;
-  border: 1px solid var(--px-border);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 7px;
+  border: none;
   border-radius: var(--px-radius-sm, 4px);
-  background: var(--px-surface);
-  color: var(--px-text);
+  background: transparent;
+  color: var(--px-text-secondary);
   font-family: inherit;
   font-size: var(--px-text-sm, 12px);
   cursor: pointer;
   white-space: nowrap;
   transition: background var(--px-dur-fast, 120ms) var(--px-ease, ease),
-              border-color var(--px-dur-fast, 120ms) var(--px-ease, ease);
+              color var(--px-dur-fast, 120ms) var(--px-ease, ease);
 }
-.nb-btn:hover:not(:disabled) { background: var(--px-surface-hover); border-color: var(--px-border-strong); }
-.nb-btn:disabled { opacity: 0.45; cursor: default; }
+.nb-btn:hover:not(:disabled) { background: var(--px-surface-hover); color: var(--px-text); }
+.nb-btn:disabled { opacity: 0.4; cursor: default; }
+.nb-btn:focus-visible { outline: 1px solid var(--px-accent); outline-offset: -1px; }
 
+/* The one place accent fill is right: the single call to action in a banner that
+   is blocking the notebook from running at all ("Install ipykernel"). It was
+   being applied with no rule behind it, so that button rendered as a ghost. */
 .nb-btn--primary {
+  padding: 3px 10px;
   background: var(--px-accent);
-  border-color: var(--px-accent);
   color: var(--px-text-on-accent);
+  font-weight: 500;
 }
 .nb-btn--primary:hover:not(:disabled) {
-  background: var(--px-accent-hover, var(--px-accent));
-  border-color: var(--px-accent-hover, var(--px-accent));
+  background: var(--px-accent-hover);
+  color: var(--px-text-on-accent);
+}
+
+/* Icons inherit colour so a single rule themes them. */
+.nb-btn svg { flex: 0 0 auto; }
+.nb-btn__icon { display: inline-flex; width: 14px; height: 14px; }
+
+/* Hairline group separator. */
+.nb-toolbar__sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 5px;
+  background: var(--px-divider);
+  flex: 0 0 auto;
 }
 
 /* ── Kernel status ── */
@@ -101,7 +126,7 @@
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 12px 0 40vh;   /* tail room so the last cell can sit mid-screen */
+  padding: 4px 0 40vh;    /* tail room so the last cell can sit mid-screen */
 }
 
 .nb-cell {
@@ -115,29 +140,185 @@
 .nb-cell--selected { border-left-color: var(--px-accent); background: var(--px-surface-hover); }
 .nb-cell--running { border-left-color: var(--px-warning); }
 
+/* ── Between-cell insert zone ──────────────────────────────────────────────
+   The strip you hover to add a cell exactly where you are looking, instead of
+   adding at the end and moving it up. Spans the cell grid so it sits under the
+   cell it belongs to; the hairline is aligned to the body column so the buttons
+   read as "between these two cells" rather than floating in the margin.
+
+   Deliberately `visibility: hidden` and not `opacity: 0`: hidden buttons that
+   are still hit-testable and still in the tab order would put three invisible
+   stops between every pair of cells, making Tab useless in a long notebook. The
+   same three commands are keyboard-reachable from the toolbar and the hovered
+   cell's action bar. */
+.nb-gap {
+  position: relative;
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+}
+
+/* The head gap is a child of the LIST, not of a cell, so it does not get the
+   cell's 12px side padding. Margin (not padding) shifts the box an absolutely
+   positioned ::before is measured against, so the hairline lines up with the
+   in-cell gaps below it. */
+.nb-gap--head { margin: 0 12px; }
+
+.nb-gap::before {
+  content: '';
+  position: absolute;
+  left: 52px;                 /* aligns to the body column: 44px gutter + 8px grid gap */
+  right: 12px;
+  top: 50%;
+  height: 1px;
+  background: var(--px-divider);
+  opacity: 0;
+  transition: opacity var(--px-dur-fast, 120ms) var(--px-ease, ease);
+}
+.nb-gap:hover::before { opacity: 1; }
+
+.nb-gap__actions {
+  position: relative;         /* above the hairline */
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 4px;
+  background: var(--px-bg);   /* masks the hairline behind the buttons */
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity var(--px-dur-fast, 120ms) var(--px-ease, ease),
+              visibility var(--px-dur-fast, 120ms) var(--px-ease, ease);
+}
+.nb-gap:hover .nb-gap__actions { visibility: visible; opacity: 1; }
+
+.nb-gap__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border: none;
+  border-radius: var(--px-radius-sm, 4px);
+  background: transparent;
+  color: var(--px-text-muted);
+  font-family: inherit;
+  font-size: var(--px-text-xs, 11px);
+  line-height: 1.4;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--px-dur-fast, 120ms) var(--px-ease, ease),
+              color var(--px-dur-fast, 120ms) var(--px-ease, ease);
+}
+.nb-gap__btn:hover { background: var(--px-surface-hover); color: var(--px-text); }
+.nb-gap__btn:focus-visible { outline: 1px solid var(--px-accent); outline-offset: -1px; }
+.nb-gap__icon { flex: 0 0 auto; }
+
+/* A selected cell tints its own row; the insert strip below it is not part of
+   that cell's content, so it keeps the page background and its button surface
+   keeps masking the hairline. */
+.nb-cell--selected .nb-gap { background: var(--px-bg); }
+
+/* ── Generate prompt bar ───────────────────────────────────────────────────
+   Mounted at the top of a cell's box (Ctrl+I, the ✦ cell action, or Generate in
+   a gap), so the request sits where the code will land. */
+.nb-generate {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 8px;
+  border-bottom: 1px solid var(--px-divider);
+  background: var(--px-bg-elevated);
+}
+
+.nb-generate__spark {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--px-accent);
+}
+
+.nb-generate__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--px-text);
+  font-family: inherit;
+  font-size: var(--px-text-sm, 12px);
+  outline: none;
+}
+.nb-generate__input::placeholder { color: var(--px-text-faint); }
+.nb-generate__input:disabled { color: var(--px-text-muted); }
+
+.nb-generate__status {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: var(--px-text-xs, 11px);
+  color: var(--px-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nb-generate__status--live { color: var(--px-accent); }
+.nb-generate__status--error { color: var(--px-danger); }
+
+.nb-generate__go {
+  flex: 0 0 auto;
+  padding: 2px 9px;
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-sm, 4px);
+  background: var(--px-surface-hover);
+  color: var(--px-text);
+  font-family: inherit;
+  font-size: var(--px-text-xs, 11px);
+  cursor: pointer;
+}
+.nb-generate__go:hover { background: var(--px-surface-active); }
+
+.nb-generate__close {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: var(--px-radius-sm, 4px);
+  background: transparent;
+  color: var(--px-text-faint);
+  font-family: inherit;
+  font-size: var(--px-text-xs, 11px);
+  cursor: pointer;
+}
+.nb-generate__close:hover { background: var(--px-surface-active); color: var(--px-text); }
+
 /* ── Gutter ── */
 
+/* Gutter: run button at the TOP, execution count BELOW it, never overlapping —
+   the layout VS Code uses. An earlier attempt overlaid the two so the count
+   would sit on the first code line; that was wrong on both counts, since it
+   hid the count on hover and is not what the reference does. */
 .nb-cell__gutter {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
-  padding-top: 6px;
+  gap: 4px;
+  padding-top: 4px;
 }
 
 .nb-cell__run {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   padding: 0;
   border: none;
   border-radius: var(--px-radius-sm, 4px);
   background: transparent;
-  color: var(--px-text-faint);
+  color: var(--px-text-muted);
   cursor: pointer;
-  opacity: 0;
+  /* Dimmed rather than invisible: a cell you cannot see how to run is worse
+     than a slightly busier gutter. Full strength on hover/selection. */
+  opacity: 0.45;
   transition: opacity var(--px-dur-fast, 120ms) var(--px-ease, ease),
               background var(--px-dur-fast, 120ms) var(--px-ease, ease);
 }
@@ -149,28 +330,61 @@
 .nb-cell__prompt {
   font-family: var(--px-font-mono, monospace);
   font-size: var(--px-text-2xs, 10px);
+  line-height: 1.2;
   color: var(--px-text-faint);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 /* ── Cell body ── */
 
 .nb-cell__body { min-width: 0; display: flex; flex-direction: column; }
 
+/* The cell's input box — editor plus status strip — with outputs OUTSIDE it.
+   This border is what makes the status line unambiguously belong to this cell
+   rather than floating between two. */
+.nb-cell__box {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--px-divider);
+  border-radius: var(--px-radius-md, 6px);
+  background: var(--px-bg-inset);
+  overflow: hidden;
+  transition: border-color var(--px-dur-fast, 120ms) var(--px-ease, ease);
+}
+.nb-cell--selected .nb-cell__box { border-color: var(--px-border-strong); }
+.nb-cell--running .nb-cell__box { border-color: var(--px-warning); }
+.nb-cell--markdown .nb-cell__box { background: transparent; }
+
 .nb-cell__editor {
   display: flex;
   min-width: 0;
-  border: 1px solid transparent;
-  border-radius: var(--px-radius-md, 6px);
-  background: var(--px-bg-inset);
-  transition: border-color var(--px-dur-fast, 120ms) var(--px-ease, ease);
 }
-.nb-cell--selected .nb-cell__editor { border-color: var(--px-border); }
-.nb-cell--markdown .nb-cell__editor { background: transparent; }
 .nb-cell__editor[hidden] { display: none; }
 
-.nb-cell__markdown { padding: 4px 10px; min-width: 0; }
+.nb-cell__markdown { padding: 6px 10px; min-width: 0; }
 .nb-cell__markdown[hidden] { display: none; }
+
+/* Status strip: timing left, language right. Only drawn when it has something
+   to say, so an untouched notebook is not covered in chrome. */
+.nb-cell__status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 10px 3px;
+  min-height: 15px;
+}
+
+.nb-cell__lang {
+  margin-left: auto;
+  font-size: var(--px-text-2xs, 10px);
+  color: var(--px-text-faint);
+  opacity: 0;
+  transition: opacity var(--px-dur-fast, 120ms) var(--px-ease, ease);
+}
+.nb-cell:hover .nb-cell__lang,
+.nb-cell--selected .nb-cell__lang { opacity: 1; }
 
 .nb-cell__placeholder {
   font-size: var(--px-text-sm, 12px);
@@ -279,7 +493,6 @@
    editor and the outputs so it reads as a property of the run. */
 
 .nb-cell__timing {
-  padding: 3px 10px 0;
   font-family: var(--px-font-mono, monospace);
   font-size: var(--px-text-2xs, 10px);
   font-variant-numeric: tabular-nums;

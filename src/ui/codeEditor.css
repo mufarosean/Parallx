@@ -20,6 +20,13 @@
   overflow: hidden;
 }
 
+/* `display: flex` above beats the browser's `[hidden] { display: none }` on
+   specificity, so setting `.hidden = true` on one of these silently did
+   nothing. That produced a real bug: a rendered markdown cell showed its
+   source AND its preview at the same time. Restore the expected behaviour for
+   every consumer, not just the notebook. */
+.px-code-editor[hidden] { display: none; }
+
 .px-code-editor .cm-editor {
   height: 100%;
   min-height: 0;

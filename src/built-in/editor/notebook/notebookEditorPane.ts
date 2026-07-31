@@ -45,6 +45,28 @@ import type {
   INotebookKernelService,
   IKernelStatus,
 } from '../../../services/notebookKernelService.js';
+import type { IChatMessage, IChatResponseChunk } from '../../../services/chatTypes.js';
+import { stripCodeFences } from './codeFences.js';
+import { buildGenerateMessages } from './generatePrompt.js';
+
+/**
+ * The slice of the chat tool's inline-AI provider that Generate needs.
+ *
+ * Obtained through the `chat.getInlineAIProvider` command rather than by
+ * importing the chat tool, because the chat tool owns model selection and may
+ * not have activated yet — the same indirection the canvas editor uses for its
+ * inline AI. Resolved per invocation, so switching the active model in the chat
+ * panel takes effect on the very next Generate.
+ */
+export interface INotebookGenerateProvider {
+  sendChatRequest(
+    messages: readonly IChatMessage[],
+    options?: { temperature?: number; maxTokens?: number },
+    signal?: AbortSignal,
+  ): AsyncIterable<IChatResponseChunk>;
+}
+
+export type NotebookGenerateProviderResolver = () => Promise<INotebookGenerateProvider | undefined>;
 
 /** Beyond this many outputs on one cell, older ones are folded away. */
 const MAX_RENDERED_OUTPUTS = 50;
@@ -63,6 +85,19 @@ interface CellView {
   readonly outputHost: HTMLElement;
   readonly promptEl: HTMLElement;
   readonly markdownHost: HTMLElement;
+  /**
+   * The `.nb-cell__editor` WRAPPER, not the CodeEditor's own element.
+   *
+   * Hiding matters here and the distinction was a real bug: `.px-code-editor`
+   * sets `display: flex`, which beats the browser's `[hidden] { display: none }`
+   * on specificity — so setting `hidden` on the inner element did nothing and a
+   * rendered markdown cell showed its source AND its preview at once. The
+   * wrapper has an explicit `[hidden]` rule in notebook.css, so hiding that
+   * works.
+   */
+  readonly editorHost: HTMLElement;
+  /** The bordered input box — the Generate prompt bar mounts inside it. */
+  readonly box: HTMLElement;
   /** Per-cell timing line: live while running, final duration after. */
   readonly timingEl: HTMLElement;
   /** Markdown cells render preview unless being edited. */
@@ -115,7 +150,23 @@ export class NotebookEditorPane extends EditorPane {
   /** Pending "interrupt didn't take" check; cancelled on teardown. */
   private _interruptTimer: number | undefined;
 
-  constructor(private readonly _kernel?: INotebookKernelService) {
+  /** In-flight generation, so a second Generate cancels the first. */
+  private _generation: { abort: AbortController; flush: { dispose(): void } } | undefined;
+
+  /**
+   * The one open Generate prompt bar.
+   *
+   * Singular on purpose, and it has to be: `_generation` is a single slot, so
+   * starting a second generation aborts the first. With two bars on screen that
+   * left the first one stuck on "Writing…" beside a half-written cell, with no
+   * indication it had been abandoned. One bar at a time is the honest shape.
+   */
+  private _activePrompt: { readonly cellId: string; dismiss(): void } | undefined;
+
+  constructor(
+    private readonly _kernel?: INotebookKernelService,
+    private readonly _resolveGenerateProvider?: NotebookGenerateProviderResolver,
+  ) {
     super(NotebookEditorPane.PANE_ID);
   }
 
@@ -127,24 +178,56 @@ export class NotebookEditorPane extends EditorPane {
     this._toolbar = $('div');
     this._toolbar.className = 'nb-toolbar';
 
-    const button = (label: string, title: string, onClick: () => void, variant?: string): HTMLButtonElement => {
+    // Inline 14px glyphs rather than an icon-font dependency, so the ribbon
+    // themes with `currentColor` and needs no asset pipeline.
+    const ICON = {
+      plus: 'M8 3v10M3 8h10',
+      play: 'M5 3.2v9.6c0 .4.4.6.7.4l7.3-4.8a.5.5 0 0 0 0-.8L5.7 2.8a.5.5 0 0 0-.7.4z',
+      stop: 'M4.5 4.5h7v7h-7z',
+      restart: 'M13 8a5 5 0 1 1-1.5-3.5M13 2v3h-3',
+      clear: 'M3 4h10M6 4V3h4v1M5 4l.6 8.4A1 1 0 0 0 6.6 13h2.8a1 1 0 0 0 1-.6L11 4',
+      spark: 'M8 2.5 9.3 6l3.5 1.3L9.3 8.6 8 12.1 6.7 8.6 3.2 7.3 6.7 6z',
+    } as const;
+
+    const icon = (path: string, filled = false): string =>
+      `<svg class="nb-btn__icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">`
+      + `<path d="${path}" ${filled ? 'fill="currentColor"' : 'fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"'}/></svg>`;
+
+    const button = (
+      label: string, title: string, onClick: () => void,
+      glyph?: string, filled = false,
+    ): HTMLButtonElement => {
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = `nb-btn${variant ? ' nb-btn--' + variant : ''}`;
-      btn.textContent = label;
+      btn.className = 'nb-btn';
+      if (glyph) btn.innerHTML = icon(glyph, filled);
+      btn.appendChild(document.createTextNode(label));
       btn.title = title;
       btn.addEventListener('click', onClick);
       this._toolbar.appendChild(btn);
       return btn;
     };
 
-    button('Run all', 'Run every cell in order', () => void this._runAll(), 'primary');
-    this._interruptBtn = button('Interrupt', 'Stop the running cell', () => void this._interrupt());
+    const separator = (): void => {
+      const sep = $('div');
+      sep.className = 'nb-toolbar__sep';
+      this._toolbar.appendChild(sep);
+    };
+
+    // Grouped the way the commands actually relate: authoring, then execution,
+    // then destructive.
+    button('Code', 'Add a code cell at the end', () => this._appendCell('code'), ICON.plus);
+    button('Markdown', 'Add a markdown cell at the end', () => this._appendCell('markdown'), ICON.plus);
+    // Acts on the selected cell (Ctrl+I does the same from inside one), falling
+    // back to a new cell at the end when nothing is selected.
+    button('Generate', 'Write a cell with AI (Ctrl+I)', () => this._generateForSelection(), ICON.spark, true);
+    separator();
+    button('Run All', 'Run every cell in order', () => void this._runAll(), ICON.play, true);
+    this._interruptBtn = button('Interrupt', 'Stop the running cell', () => void this._interrupt(), ICON.stop, true);
     this._interruptBtn.disabled = true;
-    button('Restart', 'Restart the kernel — all variables are lost', () => void this._restart());
-    button('Clear outputs', 'Remove every output in this notebook', () => this._clearOutputs());
-    button('+ Code', 'Add a code cell at the end', () => this._appendCell('code'));
-    button('+ Markdown', 'Add a markdown cell at the end', () => this._appendCell('markdown'));
+    button('Restart', 'Restart the kernel — all variables are lost', () => void this._restart(), ICON.restart);
+    separator();
+    button('Clear All Outputs', 'Remove every output in this notebook', () => this._clearOutputs(), ICON.clear);
 
     const status = $('div');
     status.className = 'nb-status';
@@ -165,7 +248,69 @@ export class NotebookEditorPane extends EditorPane {
 
     this._cellList = $('div');
     this._cellList.className = 'nb-cells';
+    // The insert-at-top zone. Every other gap belongs to the cell above it (see
+    // _createGap), but the space before the first cell has no such owner, so it
+    // is a permanent child of the list.
+    this._cellList.appendChild(this._createGap(null));
     container.appendChild(this._cellList);
+  }
+
+  /**
+   * The hover strip between two cells: `+ Code`, `+ Markdown`, `Generate`.
+   *
+   * This is the affordance that stops the toolbar from being the only way to add
+   * a cell. Without it, inserting a cell in the middle of a notebook means
+   * either finding the small `+` in the hovered cell's action bar or adding at
+   * the end and moving it up — and both are worse than clicking the place you
+   * want the cell to be.
+   *
+   * `afterCellId === null` means the zone above the first cell.
+   *
+   * Ownership note: a gap is a CHILD of the cell it sits below, not a sibling
+   * interleaved into the list. That keeps every existing structural operation
+   * (insertBefore against a cell root, `root.remove()`, move up/down) correct
+   * with no changes — the gap travels with its cell automatically. Interleaving
+   * would have made each of those a two-node dance and the first missed case a
+   * stray strip floating in the notebook.
+   */
+  private _createGap(afterCellId: string | null): HTMLElement {
+    const gap = $('div');
+    gap.className = afterCellId === null ? 'nb-gap nb-gap--head' : 'nb-gap';
+
+    const actions = $('div');
+    actions.className = 'nb-gap__actions';
+
+    const at = (): number => {
+      if (afterCellId === null) return 0;
+      const index = this._document?.cells.findIndex((c) => c.id === afterCellId) ?? -1;
+      // A missing cell means the gap outlived its owner; appending beats throwing.
+      return index < 0 ? (this._document?.cells.length ?? 0) : index + 1;
+    };
+
+    const add = (label: string, title: string, glyph: string, run: () => void): void => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'nb-gap__btn';
+      btn.innerHTML = `<svg class="nb-gap__icon" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">`
+        + `<path d="${glyph}" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+      btn.appendChild(document.createTextNode(label));
+      btn.title = title;
+      btn.addEventListener('click', (e) => { e.stopPropagation(); run(); });
+      actions.appendChild(btn);
+    };
+
+    add('Code', 'Insert a code cell here', 'M8 3v10M3 8h10', () => {
+      this._insertCellAt(at(), 'code')?.editor.focus();
+    });
+    add('Markdown', 'Insert a markdown cell here', 'M8 3v10M3 8h10', () => {
+      this._insertCellAt(at(), 'markdown')?.editor.focus();
+    });
+    add('Generate', 'Write a cell with AI', 'M8 2.5 9.3 6l3.5 1.3L9.3 8.6 8 12.1 6.7 8.6 3.2 7.3 6.7 6z', () => {
+      this._startGenerate(at());
+    });
+
+    gap.appendChild(actions);
+    return gap;
   }
 
   // ── Input ──
@@ -260,19 +405,42 @@ export class NotebookEditorPane extends EditorPane {
     const body = $('div');
     body.className = 'nb-cell__body';
 
+    // The cell's own bordered box: editor (or markdown preview) plus the status
+    // strip. Outputs sit OUTSIDE it, as in VS Code, so the box delimits "the
+    // input" and the status line unambiguously belongs to it.
+    const box = $('div');
+    box.className = 'nb-cell__box';
+
     const editorHost = $('div');
     editorHost.className = 'nb-cell__editor';
-    body.appendChild(editorHost);
+    box.appendChild(editorHost);
 
     const markdownHost = $('div');
     markdownHost.className = 'nb-cell__markdown';
     markdownHost.hidden = true;
-    body.appendChild(markdownHost);
+    box.appendChild(markdownHost);
+
+    // Status strip INSIDE the cell's box: timing on the left, language on the
+    // right — the same place VS Code puts them. Keeping it inside the box is
+    // what makes the execution count and duration read as belonging to this
+    // cell; floating them between two cells (the previous layout) left it
+    // genuinely ambiguous which cell they described.
+    const statusEl = $('div');
+    statusEl.className = 'nb-cell__status';
 
     const timingEl = $('div');
     timingEl.className = 'nb-cell__timing';
     timingEl.hidden = true;
-    body.appendChild(timingEl);
+
+    const langEl = $('div');
+    langEl.className = 'nb-cell__lang';
+    langEl.textContent = cell.cellType === 'code'
+      ? this._language.charAt(0).toUpperCase() + this._language.slice(1)
+      : cell.cellType === 'markdown' ? 'Markdown' : 'Raw';
+
+    statusEl.append(timingEl, langEl);
+    box.appendChild(statusEl);
+    body.appendChild(box);
 
     const outputHost = $('div');
     outputHost.className = 'nb-cell__outputs';
@@ -291,11 +459,19 @@ export class NotebookEditorPane extends EditorPane {
         { key: 'Shift-Enter', run: () => { void this._runCellThenAdvance(cell.id); return true; } },
         { key: 'Mod-Enter', run: () => { void this._runCell(cell.id); return true; } },
         { key: 'Alt-Enter', run: () => { void this._runCellThenInsert(cell.id); return true; } },
+        // Ctrl+I on a cell asks the model to write or rewrite THIS cell — the
+        // same binding VS Code uses, and the reason the prompt bar lives in the
+        // cell box rather than in a floating dialog.
+        { key: 'Mod-i', run: () => {
+          const target = this._views.get(cell.id);
+          if (target) this._openGeneratePrompt(target);
+          return true;
+        } },
       ],
     });
 
     const view: CellView = {
-      cell, root, editor, outputHost, promptEl, markdownHost, timingEl,
+      cell, root, editor, outputHost, promptEl, markdownHost, timingEl, editorHost, box,
       editing: cell.cellType !== 'markdown' || cell.source.trim() === '',
       running: false,
       pendingClear: false,
@@ -314,7 +490,9 @@ export class NotebookEditorPane extends EditorPane {
     markdownHost.addEventListener('dblclick', () => this._setMarkdownEditing(view, true));
 
     const actions = this._createCellActions(cell);
-    root.append(gutter, body, actions);
+    // The insert zone for the space below this cell, carried inside it so it
+    // moves, hides and dies with the cell.
+    root.append(gutter, body, actions, this._createGap(cell.id));
 
     this._views.set(cell.id, view);
     this._renderOutputs(view);
@@ -339,6 +517,12 @@ export class NotebookEditorPane extends EditorPane {
       bar.appendChild(btn);
     };
 
+    if (cell.cellType === 'code') {
+      action('✦', 'Rewrite this cell with AI (Ctrl+I)', () => {
+        const view = this._views.get(cell.id);
+        if (view) this._openGeneratePrompt(view);
+      });
+    }
     action('↑', 'Move cell up', () => this._moveCell(cell.id, -1));
     action('↓', 'Move cell down', () => this._moveCell(cell.id, 1));
     action(cell.cellType === 'code' ? 'M' : 'C',
@@ -364,7 +548,7 @@ export class NotebookEditorPane extends EditorPane {
     if (view.cell.cellType !== 'markdown') return;
     view.editing = editing;
     view.root.classList.toggle('nb-cell--previewing', !editing);
-    (view.editor.element as HTMLElement).hidden = !editing;
+    view.editorHost.hidden = !editing;
     view.markdownHost.hidden = editing;
     if (!editing) {
       view.markdownHost.replaceChildren(
@@ -698,29 +882,43 @@ export class NotebookEditorPane extends EditorPane {
 
   // ── Structure ──
 
-  private _appendCell(cellType: CellType): void {
-    if (!this._document) return;
-    const cell = createEmptyCell(cellType);
-    this._document.cells.push(cell);
-    this._cellList.appendChild(this._createCellView(cell).root);
-    this._doc?.markDirty(true);
-    this._views.get(cell.id)?.editor.focus();
-  }
+  /**
+   * THE insert primitive — everything that adds a cell goes through here.
+   *
+   * Index-based rather than anchored to a neighbouring cell, because the gap
+   * strips need to insert at position 0, which "below cell X" cannot express.
+   * The DOM position is derived from the cell that ENDS UP after the new one, so
+   * this is correct for the head, the tail and the middle without three cases.
+   */
+  private _insertCellAt(index: number, cellType: CellType): CellView | undefined {
+    if (!this._document) return undefined;
+    const cells = this._document.cells;
+    const at = Math.max(0, Math.min(index, cells.length));
 
-  private _insertCellBelow(cellId: string, cellType: CellType): void {
-    if (!this._document) return;
-    const index = this._document.cells.findIndex((c) => c.id === cellId);
-    if (index < 0) return;
     const cell = createEmptyCell(cellType);
-    this._document.cells.splice(index + 1, 0, cell);
+    cells.splice(at, 0, cell);
     const view = this._createCellView(cell);
-    const anchor = this._views.get(cellId)?.root;
-    if (anchor?.nextSibling) this._cellList.insertBefore(view.root, anchor.nextSibling);
+
+    const followingId = cells[at + 1]?.id;
+    const followingRoot = followingId ? this._views.get(followingId)?.root : undefined;
+    if (followingRoot) this._cellList.insertBefore(view.root, followingRoot);
     else this._cellList.appendChild(view.root);
+
     this._doc?.markDirty(true);
     this._selectedCellId = cell.id;
     this._paintSelection();
-    view.editor.focus();
+    return view;
+  }
+
+  private _appendCell(cellType: CellType): void {
+    const count = this._document?.cells.length ?? 0;
+    this._insertCellAt(count, cellType)?.editor.focus();
+  }
+
+  private _insertCellBelow(cellId: string, cellType: CellType): void {
+    const index = this._document?.cells.findIndex((c) => c.id === cellId) ?? -1;
+    if (index < 0) return;
+    this._insertCellAt(index + 1, cellType)?.editor.focus();
   }
 
   private _deleteCell(cellId: string): void {
@@ -795,6 +993,235 @@ export class NotebookEditorPane extends EditorPane {
     this._doc?.markDirty(true);
   }
 
+  // ── Generate ──
+
+  /**
+   * Insert a code cell at `index` and ask what to put in it.
+   *
+   * The cell is created FIRST, before the model is even consulted, so the prompt
+   * bar appears in the place the generated code will land. Asking in a floating
+   * dialog and inserting afterwards would mean the user cannot see which two
+   * cells they are writing between, which is the whole reason they clicked that
+   * particular gap.
+   */
+  private _startGenerate(index: number): void {
+    const view = this._insertCellAt(index, 'code');
+    if (view) this._openGeneratePrompt(view);
+  }
+
+  /** Toolbar Generate: act on the selected cell, or add one if there is none. */
+  private _generateForSelection(): void {
+    const selected = this._selectedCellId ? this._views.get(this._selectedCellId) : undefined;
+    if (selected && selected.cell.cellType === 'code') {
+      this._openGeneratePrompt(selected);
+      return;
+    }
+    this._startGenerate(this._document?.cells.length ?? 0);
+  }
+
+  /**
+   * Mount the prompt bar in a cell's box.
+   *
+   * Also reachable on an existing cell, where the cell's current source is sent
+   * as something to rewrite rather than a blank slate — so this doubles as
+   * "change this cell" without a second UI.
+   */
+  private _openGeneratePrompt(view: CellView): void {
+    if (view.box.querySelector('.nb-generate')) {
+      view.box.querySelector<HTMLInputElement>('.nb-generate__input')?.focus();
+      return;
+    }
+    // Opening a prompt anywhere else retires the previous one — see _activePrompt.
+    if (this._activePrompt && this._activePrompt.cellId !== view.cell.id) {
+      this._activePrompt.dismiss();
+    }
+
+    const bar = $('div');
+    bar.className = 'nb-generate';
+
+    const spark = $('span');
+    spark.className = 'nb-generate__spark';
+    spark.innerHTML = '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">'
+      + '<path d="M8 2.5 9.3 6l3.5 1.3L9.3 8.6 8 12.1 6.7 8.6 3.2 7.3 6.7 6z" fill="currentColor"/></svg>';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'nb-generate__input';
+    input.placeholder = view.cell.source.trim()
+      ? 'How should this cell change?'
+      : `Describe the ${this._language} you want…`;
+
+    const status = $('span');
+    status.className = 'nb-generate__status';
+
+    const submit = document.createElement('button');
+    submit.type = 'button';
+    submit.className = 'nb-generate__go';
+    submit.textContent = 'Generate';
+
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'nb-generate__close';
+    close.title = 'Cancel (Esc)';
+    close.textContent = '✕';
+
+    bar.append(spark, input, status, submit, close);
+    view.box.insertBefore(bar, view.box.firstChild);
+
+    let streaming = false;
+
+    /** Take the bar down, and the cell too if generating was the only reason it existed. */
+    const dismiss = (): void => {
+      this._cancelGeneration();
+      this._forgetPrompt(view.cell.id);
+      bar.remove();
+      if (!view.cell.source.trim() && (this._document?.cells.length ?? 0) > 1) {
+        this._deleteCell(view.cell.id);
+      } else if (!this._torndown) {
+        view.editor.focus();
+      }
+    };
+
+    const go = async (): Promise<void> => {
+      if (streaming) { this._cancelGeneration(); return; }
+      const instruction = input.value.trim();
+      if (!instruction) { input.focus(); return; }
+
+      streaming = true;
+      input.disabled = true;
+      submit.textContent = 'Stop';
+      status.textContent = 'Thinking…';
+      status.classList.add('nb-generate__status--live');
+
+      const outcome = await this._generateInto(view, instruction, (note) => {
+        status.textContent = note;
+      });
+
+      streaming = false;
+      status.classList.remove('nb-generate__status--live');
+      if (outcome.ok) {
+        this._forgetPrompt(view.cell.id);
+        bar.remove();
+        if (!this._torndown) view.editor.focus();
+      } else {
+        // Leave the bar up with the reason in it: the prompt is still there to
+        // retry, and a failure that vanishes teaches the user nothing.
+        input.disabled = false;
+        submit.textContent = 'Generate';
+        status.textContent = outcome.error;
+        status.classList.add('nb-generate__status--error');
+      }
+    };
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); void go(); }
+      else if (e.key === 'Escape') { e.preventDefault(); dismiss(); }
+      status.classList.remove('nb-generate__status--error');
+    });
+    submit.addEventListener('click', () => void go());
+    close.addEventListener('click', dismiss);
+
+    this._activePrompt = { cellId: view.cell.id, dismiss };
+    input.focus();
+  }
+
+  private _forgetPrompt(cellId: string): void {
+    if (this._activePrompt?.cellId === cellId) this._activePrompt = undefined;
+  }
+
+  /**
+   * Stream a model reply into a cell's editor.
+   *
+   * Written through `setValueAsEdit` rather than `setValue` so the normal
+   * change path runs: the cell's `source` tracks what is on screen and the tab
+   * goes dirty. That also means an interrupted generation leaves behind exactly
+   * the partial code the user watched arrive — it is theirs to keep or clear,
+   * not something that silently rolls back.
+   */
+  private async _generateInto(
+    view: CellView,
+    instruction: string,
+    onStatus: (note: string) => void,
+  ): Promise<{ ok: true } | { ok: false; error: string }> {
+    if (!this._resolveGenerateProvider) {
+      return { ok: false, error: 'Generate needs the desktop app.' };
+    }
+
+    let provider: INotebookGenerateProvider | undefined;
+    try {
+      provider = await this._resolveGenerateProvider();
+    } catch {
+      provider = undefined;
+    }
+    if (!provider) {
+      return { ok: false, error: 'No language model is available — open the Chat panel and select one.' };
+    }
+    if (this._torndown) return { ok: false, error: 'Notebook closed.' };
+
+    // Everything above this cell has already run in the kernel; that is the
+    // context the model needs. See generatePrompt.ts.
+    const cells = this._document?.cells ?? [];
+    const index = cells.findIndex((c) => c.id === view.cell.id);
+    const messages = buildGenerateMessages({
+      instruction,
+      preceding: index <= 0 ? [] : cells.slice(0, index),
+      language: this._language,
+      existing: view.cell.source,
+    });
+
+    this._cancelGeneration();
+    const abort = new AbortController();
+    let raw = '';
+    const flush = rafThrottle(() => {
+      if (this._torndown || abort.signal.aborted) return;
+      // Re-derive from the whole buffer each frame: a chunk boundary can fall
+      // inside a ``` marker, so only the full text is unambiguous.
+      view.editor.setValueAsEdit(stripCodeFences(raw));
+    });
+    this._generation = { abort, flush };
+
+    try {
+      let sawText = false;
+      for await (const chunk of provider.sendChatRequest(messages, { temperature: 0.2 }, abort.signal)) {
+        if (abort.signal.aborted || this._torndown) break;
+        if (!chunk.content) continue;
+        raw += chunk.content;
+        if (!sawText) { sawText = true; onStatus('Writing…'); }
+        flush();
+      }
+      flush.flush();
+
+      if (abort.signal.aborted) {
+        return raw.trim()
+          ? { ok: true }                                     // partial code kept
+          : { ok: false, error: 'Cancelled.' };
+      }
+      if (!stripCodeFences(raw).trim()) {
+        return { ok: false, error: 'The model returned nothing. Try rephrasing.' };
+      }
+      return { ok: true };
+    } catch (err) {
+      if (abort.signal.aborted) return { ok: false, error: 'Cancelled.' };
+      const message = err instanceof Error ? err.message : 'Request failed.';
+      return { ok: false, error: message };
+    } finally {
+      flush.dispose();
+      if (this._generation?.abort === abort) this._generation = undefined;
+    }
+  }
+
+  /**
+   * Abort the in-flight stream. Deliberately does NOT retire the prompt bar:
+   * `_generateInto` calls this before every run to clear the previous stream,
+   * and a failed run has to leave its bar up with the reason in it.
+   */
+  private _cancelGeneration(): void {
+    if (!this._generation) return;
+    this._generation.abort.abort();
+    this._generation.flush.dispose();
+    this._generation = undefined;
+  }
+
   private _clearOutputs(): void {
     if (!this._document) return;
     clearAllOutputs(this._document);
@@ -865,7 +1292,9 @@ export class NotebookEditorPane extends EditorPane {
       view.root.remove();
     }
     this._views.clear();
-    this._cellList?.replaceChildren();
+    // Rebuild the insert-at-top zone: it is a child of the list, so clearing
+    // the list takes it with the cells.
+    if (this._cellList) this._cellList.replaceChildren(this._createGap(null));
   }
 
   /**
@@ -884,6 +1313,8 @@ export class NotebookEditorPane extends EditorPane {
 
   protected override clearPaneContent(): void {
     this._torndown = true;
+    this._cancelGeneration();
+    this._activePrompt = undefined;
     this._abandonExecutions();
     this._inputListeners.clear();
     this._disposeViews();
@@ -915,7 +1346,10 @@ export class NotebookEditorPane extends EditorPane {
 
   override dispose(): void {
     this._torndown = true;
+    this._cancelGeneration();
+    this._activePrompt = undefined;
     this._abandonExecutions();
+    this._flushRenders.dispose();
     if (this._interruptTimer !== undefined) window.clearTimeout(this._interruptTimer);
     this._inputListeners.dispose();
     this._disposeViews();

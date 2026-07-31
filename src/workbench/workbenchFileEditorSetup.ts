@@ -48,7 +48,10 @@ import { hasCodeLanguage } from '../ui/codeEditor.js';
 import { IPythonEnvService } from '../services/pythonEnvService.js';
 import { INotebookKernelService } from '../services/notebookKernelService.js';
 import { NotebookEditorInput } from '../built-in/editor/notebook/notebookEditorInput.js';
-import { NotebookEditorPane } from '../built-in/editor/notebook/notebookEditorPane.js';
+import {
+  NotebookEditorPane,
+  type INotebookGenerateProvider as NotebookGenerateProvider,
+} from '../built-in/editor/notebook/notebookEditorPane.js';
 import { MarkdownEditorPane } from '../built-in/editor/markdownEditorPane.js';
 import { ImageEditorPane } from '../built-in/editor/imageEditorPane.js';
 import { PdfEditorPane } from '../built-in/editor/pdfEditorPane.js';
@@ -127,6 +130,23 @@ function _initFileEditorResolver(
   const getKernelService = (): INotebookKernelService | undefined =>
     services.has(INotebookKernelService) ? services.get(INotebookKernelService) : undefined;
 
+  // Notebook "Generate" borrows the chat tool's inline-AI provider through a
+  // command, the same indirection the canvas editor uses. Resolved per call, not
+  // captured: the chat tool may not have activated when the notebook opens, and
+  // the user can change the active model at any time — a captured provider would
+  // pin whichever model happened to be selected first.
+  const getNotebookGenerateProvider = async (): Promise<NotebookGenerateProvider | undefined> => {
+    if (!services.has(ICommandService)) return undefined;
+    try {
+      const provider = await services.get(ICommandService)
+        .executeCommand<NotebookGenerateProvider>('chat.getInlineAIProvider');
+      return typeof provider?.sendChatRequest === 'function' ? provider : undefined;
+    } catch {
+      // Chat tool not activated, or no model configured. The pane says so.
+      return undefined;
+    }
+  };
+
   // ── Register built-in format readers (priority-sorted) ──
 
   // M53 D3.4: Helper to create PDF panes with global storage wired
@@ -200,7 +220,7 @@ function _initFileEditorResolver(
     extensions: ['.ipynb'],
     priority: EditorResolverPriority.Default,
     createInput: (uri) => NotebookEditorInput.create(uri, fileService, getRelativePath(uri)),
-    createPane: () => new NotebookEditorPane(getKernelService()),
+    createPane: () => new NotebookEditorPane(getKernelService(), getNotebookGenerateProvider),
   }));
 
   // Text editor (fallback — matches everything)
@@ -222,7 +242,9 @@ function _initFileEditorResolver(
     if (input instanceof EpubEditorInput) return new EpubEditorPane();
     if (input instanceof WordEditorInput) return new WordEditorPane();
     if (input instanceof ExcelEditorInput) return new ExcelEditorPane();
-    if (input instanceof NotebookEditorInput) return new NotebookEditorPane(getKernelService());
+    if (input instanceof NotebookEditorInput) {
+      return new NotebookEditorPane(getKernelService(), getNotebookGenerateProvider);
+    }
 
     if (input instanceof KeybindingsEditorInput) {
       const kbService = services.has(IKeybindingService)
