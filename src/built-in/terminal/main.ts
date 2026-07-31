@@ -75,6 +75,11 @@ let _promptEl: HTMLElement | null = null;
 /** Maximum lines in the output element before trimming. */
 const MAX_OUTPUT_LINES = 2000;
 
+/** Output that arrived before the panel view was built; flushed on mount. */
+const _pendingOutput: string[] = [];
+/** Bound so a long install with the panel closed cannot grow without limit. */
+const MAX_PENDING_CHUNKS = 500;
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function getTerminalBridge(): ElectronTerminalBridge | undefined {
@@ -105,7 +110,16 @@ function clearTerminalOutput(): void {
  * not itself emit, so shell output can never become markup.
  */
 function appendOutput(text: string): void {
-  if (!_outputEl) { return; }
+  if (!_outputEl) {
+    // The panel view is built lazily, so output can arrive before it exists —
+    // an install started from Settings while the terminal was never opened.
+    // Dropping it here is how "the terminal is empty" survives being fixed:
+    // the stream would be wired correctly and there would still be nothing to
+    // see. Hold it instead and flush when the view mounts.
+    _pendingOutput.push(text);
+    if (_pendingOutput.length > MAX_PENDING_CHUNKS) _pendingOutput.shift();
+    return;
+  }
 
   const chunk = document.createElement('span');
   chunk.className = 'parallx-terminal-chunk';
@@ -297,6 +311,30 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     // A running one cannot follow, so the strip surfaces the difference rather
     // than silently diverging.
     context.subscriptions.push(python.onDidChangeStatus(() => { void refreshEnvBar(); }));
+
+    // Environment creation and pip installs stream here.
+    //
+    // This is where a user looks when they run something, and it was empty:
+    // the bridge has always emitted the command line (`$ pip install pandas`)
+    // and piped pip's live output, but the only subscriber was the Settings
+    // panel. Making someone open Settings › Python to watch a package install
+    // is not a terminal — it is a log viewer that happens to be somewhere else.
+    context.subscriptions.push(python.onDidProgress((p) => {
+      appendOutput(p.chunk);
+    }));
+
+    // Script runs (the editor's Run action, and the AI's python tool) stream
+    // here too, for the same reason.
+    context.subscriptions.push(python.onDidRunData((p) => {
+      appendOutput(p.chunk);
+    }));
+
+    context.subscriptions.push(python.onDidRunExit((p) => {
+      // A bare prompt after output leaves you guessing whether it worked.
+      if (p.error) appendOutput(`\n\u001b[31m✗ ${p.error.message}\u001b[0m\n`);
+      else if (p.exitCode === 0) appendOutput(`\u001b[32m✓ finished in ${p.durationMs} ms\u001b[0m\n`);
+      else appendOutput(`\u001b[31m✗ exited ${p.exitCode} after ${p.durationMs} ms\u001b[0m\n`);
+    }));
   }
 
   // Register the panel view provider
@@ -356,6 +394,14 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       _outputEl = outputArea;
       _scrollEl = body;
       _emptyEl = empty;
+
+      // Replay anything that streamed in before this view existed — the install
+      // you started from Settings and only then came looking for.
+      if (_pendingOutput.length > 0) {
+        const held = _pendingOutput.splice(0, _pendingOutput.length);
+        for (const text of held) appendOutput(text);
+      }
+
       syncTerminalEmpty();
 
       // ── Input line ──
@@ -457,4 +503,7 @@ export function deactivate(): void {
   }
   _terminalId = null;
   _commandHistory = [];
+  // Held output belongs to the session being torn down; replaying it into a
+  // later one would show a stale install above an unrelated prompt.
+  _pendingOutput.length = 0;
 }

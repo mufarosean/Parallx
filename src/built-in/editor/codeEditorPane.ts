@@ -258,9 +258,14 @@ export class CodeEditorPane extends EditorPane {
     const sub = this._python.onDidRunExit((p) => {
       if (p.runId !== runId) return;
       sub.dispose();
+      // The status bar reports the verdict; the OUTPUT goes to the terminal
+      // panel, which is where anyone running a script is already looking. This
+      // used to say "see Settings › Python for output", which made a settings
+      // page the console — the wrong surface, and a strange thing to have to be
+      // told.
       if (p.error) this._flash(p.error.message, true);
-      else if (p.exitCode === 0) this._flash(`Finished in ${p.durationMs} ms — see Settings › Python for output`);
-      else this._flash(`Exited ${p.exitCode} — see Settings › Python for output`, true);
+      else if (p.exitCode === 0) this._flash(`Finished in ${p.durationMs} ms`);
+      else this._flash(`Exited ${p.exitCode} — see the Terminal panel`, true);
     });
     this._inputListeners.add(sub);
   }
