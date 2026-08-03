@@ -2057,7 +2057,7 @@ export class ChatDataService {
       updateSessionContextWindow: (id: string, contextWindow: number | undefined) => this._d.chatService.updateSessionContextWindow(id, contextWindow),
       getSystemPrompt: async () => {
         const report = this.getLastSystemPromptReport();
-        return report?.promptText ?? '(No system prompt generated yet — send a message first)';
+        return report?.promptText ?? '(No system prompt generated yet. Send a message first.)';
       },
       readFileRelative: this._d.fsAccessor
         ? (relativePath: string) => this.readFileRelative(relativePath)

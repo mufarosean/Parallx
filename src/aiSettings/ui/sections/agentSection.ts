@@ -35,7 +35,7 @@ export class AgentSection extends SettingsSection {
 
     // ── Max Iterations ──
     const iterRow = createSettingRow({
-      label: 'Max Iterations',
+      label: 'Max iterations',
       description: 'How many steps the agent can take before pausing. Higher = more autonomous work.',
       key: 'agent.maxIterations',
       onReset: () => this._updateAgent({ maxIterations: defaults.maxIterations }),

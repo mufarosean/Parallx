@@ -140,7 +140,7 @@ export function createBackgroundPromptRunner(
     if (!parentId) {
       return {
         ok: false,
-        error: 'No chat session to run against yet — open the chat panel once, then retry.',
+        error: 'No chat session to run against yet. Open the chat panel once, then retry.',
       };
     }
 
@@ -204,7 +204,7 @@ export function createBackgroundPromptRunner(
         // Give the cancellation a moment to unwind so purge archives a
         // coherent transcript; never wait on a truly wedged turn.
         await Promise.race([turn.catch(() => undefined), new Promise((r) => setTimeout(r, 5_000))]);
-        return fail(`timed out after ${Math.round(timeoutMs / 1000)}s — the request was cancelled`);
+        return fail(`timed out after ${Math.round(timeoutMs / 1000)}s, the request was cancelled`);
       }
 
       // ChatService.sendRequest NEVER rejects on turn failure — provider
@@ -225,7 +225,7 @@ export function createBackgroundPromptRunner(
       deps.autonomyLog?.append({
         origin,
         requestText: label,
-        content: resultText || '(no final text — result delivered via tools)',
+        content: resultText || '(no final text, the result was delivered via tools)',
         metadata: { background: true, sessionId: handle.sessionId, model },
       });
       return { ok: true, resultText, model };

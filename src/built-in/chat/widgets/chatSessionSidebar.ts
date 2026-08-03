@@ -451,8 +451,8 @@ export class ChatSessionSidebar extends Disposable {
     const deleteBtn = document.createElement('button');
     deleteBtn.className = 'parallx-chat-session-sidebar-item-delete';
     deleteBtn.type = 'button';
-    deleteBtn.title = 'Delete Session';
-    deleteBtn.setAttribute('aria-label', 'Delete Session');
+    deleteBtn.title = 'Delete session';
+    deleteBtn.setAttribute('aria-label', 'Delete session');
     deleteBtn.innerHTML = chatIcons.trash;
     deleteBtn.addEventListener('click', (e) => {
       e.stopPropagation();

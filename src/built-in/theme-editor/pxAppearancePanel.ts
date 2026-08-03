@@ -112,7 +112,7 @@ export class PxAppearancePanel implements IDisposable {
   private _renderModeSection(): HTMLElement {
     const section = document.createElement('section');
     section.className = 'px-appearance-section';
-    section.appendChild(this._sectionHeading('Mode', 'Light or dark — applies to the whole app, including the code editor.'));
+    section.appendChild(this._sectionHeading('Mode', 'Light or dark. Applies to the whole app, including the code editor.'));
 
     const toggle = document.createElement('div');
     toggle.className = 'px-mode-toggle';
@@ -220,7 +220,7 @@ export class PxAppearancePanel implements IDisposable {
     const section = document.createElement('section');
     section.className = 'px-appearance-section';
 
-    section.appendChild(this._sectionHeading('Accent', 'The single highlight color — selection, focus, primary actions.'));
+    section.appendChild(this._sectionHeading('Accent', 'The single highlight color: selection, focus, primary actions.'));
 
     const row = document.createElement('div');
     row.className = 'px-appearance-accent-row';

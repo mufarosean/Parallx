@@ -187,7 +187,7 @@ export function showMediaInsertPopup(
         insertFromUploadedFile(filePath, result.content);
       } catch (err) {
         console.error('[mediaInsertPopup] Upload failed:', err);
-        renderError('Upload failed — see console.');
+        renderError('Upload failed. See the console.');
       }
     });
     content.appendChild(uploadBtn);

@@ -4,7 +4,7 @@
   "name": "Welcome",
   "version": "1.0.0",
   "publisher": "parallx",
-  "description": "Welcome page for Parallx — shows getting-started content and recent workspaces.",
+  "description": "Welcome page for Parallx. Shows getting-started content and recent workspaces.",
   "main": "./main.js",
   "engines": { "parallx": "^0.1.0" },
   "activationEvents": ["onStartupFinished"],

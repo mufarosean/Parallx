@@ -123,7 +123,7 @@ function makeBuiltInPresets(): IUnifiedPreset[] {
       ...DEFAULT_UNIFIED_CONFIG,
       persona: {
         name: 'Creative Partner',
-        description: 'Playful and exploratory — great for writing and brainstorming',
+        description: 'Playful and exploratory, great for writing and brainstorming',
         avatarEmoji: 'avatar-pen',
       },
       model: {

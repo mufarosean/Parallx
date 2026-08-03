@@ -784,7 +784,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     // Steer = interrupt + redirect the agent now (labelled accent pill).
     const steerBtn = $('button.parallx-chat-pending-action-steer');
     steerBtn.innerHTML = `${chatIcons.send}<span>Steer</span>`;
-    steerBtn.title = 'Steer now — interrupt and redirect the agent with this message';
+    steerBtn.title = 'Steer now: interrupt and redirect the agent with this message';
     steerBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       if (this._session && this._services.removePendingRequest && this._services.queueRequest) {
@@ -1286,18 +1286,18 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
 
     // No keybinding claim here: Ctrl+L is chat.focus (reveal + focus the input),
     // NOT new-session — chat.newSession has no binding at all.
-    const newBtn = createBtn(chatIcons.newChat, 'New Chat', 'parallx-chat-title-action--new');
+    const newBtn = createBtn(chatIcons.newChat, 'New chat', 'parallx-chat-title-action--new');
     newBtn.addEventListener('click', (e) => { e.stopPropagation(); this._handleNewChat(); });
     container.appendChild(newBtn);
 
-    const historyBtn = createBtn(chatIcons.history, 'Chat History', 'parallx-chat-title-action--history');
+    const historyBtn = createBtn(chatIcons.history, 'Chat history', 'parallx-chat-title-action--history');
     historyBtn.addEventListener('click', (e) => { e.stopPropagation(); this._sessionSidebar.toggle(); });
     container.appendChild(historyBtn);
     this._historyBtn = historyBtn;
 
     // System prompt viewer button (Task 4.10)
     if (this._services.getSystemPrompt) {
-      const promptBtn = createBtn(chatIcons.scrollText, 'View System Prompt', 'parallx-chat-title-action--prompt');
+      const promptBtn = createBtn(chatIcons.scrollText, 'View system prompt', 'parallx-chat-title-action--prompt');
       promptBtn.addEventListener('click', (e) => { e.stopPropagation(); this._showSystemPromptViewer(); });
       container.appendChild(promptBtn);
     }
@@ -1328,7 +1328,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
 
     // Header
     const header = $('div.parallx-system-prompt-header');
-    const title = $('span.parallx-system-prompt-title', 'System Prompt');
+    const title = $('span.parallx-system-prompt-title', 'System prompt');
     header.appendChild(title);
 
     const tokenEst = $('span.parallx-system-prompt-tokens',
@@ -1445,11 +1445,11 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
 
     // Typing the trigger opens the real menu — nothing is hard-coded here, so
     // this can never advertise a command that does not exist.
-    strip.appendChild(cell('/', true, 'commands',
-      'Type / for the command list — /init, /context, /compact and more',
+    strip.appendChild(cell('/', true, 'Commands',
+      'Type / for the command list: /init, /context, /compact and more',
       () => this._inputPart.insertTrigger('/')));
 
-    strip.appendChild(cell('@', true, 'context',
+    strip.appendChild(cell('@', true, 'Context',
       'Type @ to pull in a file, folder, or terminal output',
       () => this._inputPart.insertTrigger('@')));
 
@@ -1466,7 +1466,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
         g.innerHTML = meta.icon;
         const l = $('span.parallx-chat-empty-key__label', `${meta.label} mode`);
         append(modeCell, g, l);
-        const title = `${meta.label} mode — ${meta.description}. Click to change.`;
+        const title = `${meta.label} mode: ${meta.description}. Click to change.`;
         modeCell.title = title;
         modeCell.setAttribute('aria-label', title);
       };

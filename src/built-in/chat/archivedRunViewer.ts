@@ -33,7 +33,7 @@ export function renderArchivedRun(
   if (!run) {
     const empty = document.createElement('div');
     empty.className = 'archived-run-view__empty';
-    empty.textContent = 'This run is no longer available — it may have been pruned by the retention limit.';
+    empty.textContent = 'This run is no longer available. It may have been pruned by the retention limit.';
     container.appendChild(empty);
     return { dispose() { container.innerHTML = ''; } };
   }

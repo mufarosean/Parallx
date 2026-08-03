@@ -1580,7 +1580,7 @@ function _renderEditBatch(part: IChatEditBatchContent): HTMLElement {
 
   const acceptAllBtn = document.createElement('button');
   acceptAllBtn.className = 'parallx-chat-edit-btn parallx-chat-edit-btn--accept-all';
-  acceptAllBtn.textContent = '\u2713 Accept All';
+  acceptAllBtn.textContent = '\u2713 Accept all';
   acceptAllBtn.type = 'button';
   acceptAllBtn.addEventListener('click', () => {
     for (const proposal of part.proposals) {
@@ -1602,7 +1602,7 @@ function _renderEditBatch(part: IChatEditBatchContent): HTMLElement {
 
   const rejectAllBtn = document.createElement('button');
   rejectAllBtn.className = 'parallx-chat-edit-btn parallx-chat-edit-btn--reject-all';
-  rejectAllBtn.textContent = '\u2717 Reject All';
+  rejectAllBtn.textContent = '\u2717 Reject all';
   rejectAllBtn.type = 'button';
   rejectAllBtn.addEventListener('click', () => {
     for (const proposal of part.proposals) {

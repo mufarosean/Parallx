@@ -340,7 +340,7 @@ export class ChatContextAttachments extends Disposable {
     if (isCanvasBlock) {
       const blk = attachment as IChatCanvasBlockAttachment;
       chip.classList.add('parallx-chat-context-chip--canvas-block');
-      chip.title = `Live reference to a ${blk.blockType ?? 'block'} on "${blk.pageTitle ?? 'a canvas page'}" — the AI reads its current content and can edit it in place.`;
+      chip.title = `Live reference to a ${blk.blockType ?? 'block'} on "${blk.pageTitle ?? 'a canvas page'}". The AI reads its current content and can edit it in place.`;
     }
 
     // File icon
@@ -372,10 +372,10 @@ export class ChatContextAttachments extends Disposable {
       const preview = sel.selectedText.length > 40
         ? sel.selectedText.slice(0, 37) + '…'
         : sel.selectedText;
-      name.textContent = `"${preview}" — ${sel.name}`;
+      name.textContent = `"${preview}" · ${sel.name}`;
     } else if (isCanvasBlock) {
       const blk = attachment as IChatCanvasBlockAttachment;
-      name.textContent = blk.pageTitle ? `${blk.name} — ${blk.pageTitle}` : blk.name;
+      name.textContent = blk.pageTitle ? `${blk.name} · ${blk.pageTitle}` : blk.name;
     } else {
       name.textContent = attachment.name;
     }

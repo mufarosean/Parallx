@@ -69,7 +69,7 @@ function actorChipLabel(actor: string): string {
 function eventText(ev: IActivityEvent): string {
   let text = `${ev.verb} ${ev.object}`;
   if (ev.count > 1) text += ` ×${ev.count}`;
-  if (ev.detail) text += ` — ${ev.detail}`;
+  if (ev.detail) text += ` · ${ev.detail}`;
   return text;
 }
 
@@ -196,7 +196,7 @@ function renderActivityView(container: HTMLElement): IDisposable {
   _emptyEl = createPanelEmptyState({
     icon: 'clock',
     title: 'No activity yet',
-    hint: 'The timeline fills in as you work — editors, commands, pages, and assistant turns all narrate here.',
+    hint: 'The timeline fills in as you work: editors, commands, pages, and assistant turns all narrate here.',
   });
   container.appendChild(_emptyEl);
 

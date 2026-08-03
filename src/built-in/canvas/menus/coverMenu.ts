@@ -179,7 +179,7 @@ export class CoverMenuController implements ICanvasMenu {
           dismiss();
         } catch (err) {
           console.error('[CoverMenu] Cover upload failed:', err);
-          showError('Upload failed — see console.');
+          showError('Upload failed. See the console.');
         }
       });
       content.appendChild(uploadBtn);

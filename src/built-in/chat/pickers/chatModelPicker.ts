@@ -104,7 +104,7 @@ export class ChatModelPicker extends Disposable {
     if (models.length === 0) {
       const empty = $(
         'div.parallx-chat-picker-item.parallx-chat-picker-item--empty',
-        `${EMPTY_STATES['chat.models'].headline} — ${EMPTY_STATES['chat.models'].hint}`,
+        `${EMPTY_STATES['chat.models'].headline}. ${EMPTY_STATES['chat.models'].hint}`,
       );
       dropdown.appendChild(empty);
     } else {

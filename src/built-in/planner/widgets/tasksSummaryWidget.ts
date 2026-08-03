@@ -51,7 +51,7 @@ async function buildSnapshot(data: PlannerDataService, max: number): Promise<Sna
 }
 
 function formatDue(ts: number | null): string {
-  if (!ts) return '—';
+  if (!ts) return 'No date';
   const d = new Date(ts);
   const now = new Date();
   const sameDate = d.toDateString() === now.toDateString();
@@ -142,7 +142,7 @@ export function buildTasksSummaryWidget(data: PlannerDataService): WidgetTypeReg
         if (snap.next.length === 0) {
           const empty = document.createElement('span');
           empty.className = 'pl-ts__empty';
-          empty.textContent = 'No tasks yet — capture one in the Planner or via chat.';
+          empty.textContent = 'No tasks yet. Capture one in the Planner or via chat.';
           list.appendChild(empty);
         } else {
           for (const task of snap.next) {

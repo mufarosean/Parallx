@@ -537,7 +537,7 @@ class PlannerEditorPane implements IDisposable {
         const upcoming  = matching.filter(t => t.status === 'planned' && t.dueAt != null && t.dueAt > endOfDay(new Date()).getTime());
         const noDate    = matching.filter(t => t.status === 'planned' && !t.dueAt);
         const completed = matching.filter(t => t.status === 'done').slice(0, 12);
-        if (reviewing.length > 0) content.appendChild(this._renderTaskSection('Review queue', reviewing, { accent: 'review', hint: 'Captured fast — pick a real due date or mark cancelled.' }));
+        if (reviewing.length > 0) content.appendChild(this._renderTaskSection('Review queue', reviewing, { accent: 'review', hint: 'Captured fast. Pick a real due date or mark cancelled.' }));
         if (overdue.length > 0)   content.appendChild(this._renderTaskSection('Overdue', overdue, { accent: 'overdue' }));
         if (today.length > 0)     content.appendChild(this._renderTaskSection('Today', today, { accent: 'today' }));
         if (upcoming.length > 0)  content.appendChild(this._renderTaskSection('Upcoming', upcoming));
@@ -694,7 +694,7 @@ class PlannerEditorPane implements IDisposable {
     if (task.status === 'reviewing') {
       const planBtn = el('button', 'planner-task__plan');
       planBtn.type = 'button';
-      planBtn.title = 'Confirm date — promote to planned';
+      planBtn.title = 'Confirm date and promote to planned';
       planBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12l5 5L20 7"/></svg>';
       planBtn.addEventListener('click', () => void this._data.updateTask(task.id, { status: 'planned' }));
       right.appendChild(planBtn);
@@ -721,7 +721,7 @@ class PlannerEditorPane implements IDisposable {
 
     const items: { label: string; action: () => void; danger?: boolean }[] = [
       { label: 'Edit task',      action: () => this._openTaskPopover({ mode: 'edit', task }, anchor) },
-      { label: task.status === 'reviewing' ? 'Confirm — planned' : 'Move to review', action: () => void this._data.updateTask(task.id, { status: task.status === 'reviewing' ? 'planned' : 'reviewing' }) },
+      { label: task.status === 'reviewing' ? 'Move to planned' : 'Move to review', action: () => void this._data.updateTask(task.id, { status: task.status === 'reviewing' ? 'planned' : 'reviewing' }) },
       { label: 'Cancel task',    action: () => void this._data.updateTask(task.id, { status: 'cancelled' }), danger: true },
       { label: 'Delete forever', action: () => void this._data.removeTask(task.id), danger: true },
     ];
@@ -830,14 +830,14 @@ class PlannerEditorPane implements IDisposable {
             return;
           }
           const choice = await this._api.window.showErrorMessage(
-            'Google sync stopped — your connection expired or was revoked. Reconnect to resume syncing.',
+            'Google sync stopped. Your connection expired or was revoked. Reconnect to resume syncing.',
             { title: 'Reconnect' },
           );
           if (choice?.title !== 'Reconnect') return;
           const res = await googleSync.authorize();
           if (res.ok) {
             await sync.refreshProviders();
-            await this._api.window.showInformationMessage('Reconnected to Google — syncing will resume.');
+            await this._api.window.showInformationMessage('Reconnected to Google. Syncing will resume.');
           } else {
             await this._api.window.showErrorMessage(`Couldn’t reconnect: ${res.error ?? 'unknown error'}`);
           }
@@ -853,7 +853,7 @@ class PlannerEditorPane implements IDisposable {
               await presentFailure(failed.error ?? 'unknown error');
             } else {
               const changes = results.reduce((n, r) => n + r.pulledUpserts + r.pulledDeletes + r.pushed + r.pushedDeletes, 0);
-              await this._api.window.showInformationMessage(changes > 0 ? `Synced — ${changes} change${changes === 1 ? '' : 's'}.` : 'Synced — already up to date.');
+              await this._api.window.showInformationMessage(changes > 0 ? `Synced ${changes} change${changes === 1 ? '' : 's'}.` : 'Synced. Already up to date.');
             }
           }
         } catch (err) {
@@ -2462,7 +2462,7 @@ class PlannerEditorPane implements IDisposable {
     startTime.type = 'time';
     startTime.value = toTimeInputValue(seed.startAt);
     const sep = el('span', 'planner-popover__sep');
-    sep.textContent = '—';
+    sep.textContent = '–';
     const endTime = el('input', 'planner-popover__field planner-popover__field--time') as HTMLInputElement;
     endTime.type = 'time';
     endTime.value = toTimeInputValue(seed.endAt);

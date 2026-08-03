@@ -218,7 +218,7 @@ describe('Observability diagnostic check', () => {
     });
     expect(result.name).toBe('Observability');
     expect(result.status).toBe('pass');
-    expect(result.detail).toContain('no turns');
+    expect(result.detail).toContain('No turns');
   });
 
   it('reports pass when avg duration is healthy', async () => {

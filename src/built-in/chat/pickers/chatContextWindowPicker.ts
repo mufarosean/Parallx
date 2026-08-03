@@ -15,7 +15,7 @@ import { chatIcons } from '../chatIcons.js';
 /** Preset values offered in the dropdown. 0 = "Model default" (clear override). */
 const CONTEXT_WINDOW_PRESETS: readonly { label: string; description: string; value: number }[] = [
   { label: 'Model default', description: 'Model\u2019s reported context',        value: 0 },
-  { label: '4K',   description: 'Tiny \u2014 lowest VRAM',                       value: 4_096 },
+  { label: '4K',   description: 'Tiny, lowest VRAM',                             value: 4_096 },
   { label: '8K',   description: 'Light chat',                                    value: 8_192 },
   { label: '16K',  description: 'Medium context',                                value: 16_384 },
   { label: '32K',  description: 'Long chat',                                     value: 32_768 },

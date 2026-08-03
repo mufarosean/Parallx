@@ -4,7 +4,7 @@
   "name": "Text Generator",
   "version": "0.7.0",
   "publisher": "parallx-community",
-  "description": "Roleplay chat with local Ollama models — characters, lorebooks, scene memory, and a fully inspectable prompt pipeline.",
+  "description": "Roleplay chat with local Ollama models: characters, lorebooks, scene memory, and a fully inspectable prompt pipeline.",
   "main": "main.js",
   "activationEvents": [
     "onStartupFinished",

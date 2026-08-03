@@ -161,7 +161,7 @@ function renderDiagnosticsView(container: HTMLElement): IDisposable {
     // Status line
     const lastTime = results.length > 0
       ? new Date(Math.max(...results.map(r => r.timestamp))).toLocaleTimeString()
-      : '—';
+      : 'never';
     statusLine.textContent = `Last checked: ${lastTime}`;
 
     // List
@@ -170,7 +170,7 @@ function renderDiagnosticsView(container: HTMLElement): IDisposable {
       listContainer.appendChild(createPanelEmptyState({
         icon: 'activity',
         title: 'No diagnostics yet',
-        hint: 'Checks run automatically — or hit refresh to run them now.',
+        hint: 'Checks run automatically, or hit refresh to run them now.',
       }));
       return;
     }

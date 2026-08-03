@@ -70,9 +70,9 @@ function _sourceLabel(source: CronSource): string {
 // ─── Timestamp formatting ────────────────────────────────────────────────────
 
 function _formatTimestamp(ts: number | null): string {
-  if (ts === null) return '—';
+  if (ts === null) return 'Unknown';
   const d = new Date(ts);
-  if (Number.isNaN(d.getTime())) return '—';
+  if (Number.isNaN(d.getTime())) return 'Unknown';
   return d.toLocaleString();
 }
 
@@ -257,7 +257,7 @@ export class CronSection extends SettingsSection {
       'Next run',
       job.enabled && job.nextRunAt
         ? `${_formatTimestamp(job.nextRunAt)} (${_formatRelative(job.nextRunAt)})`
-        : (job.enabled ? '—' : 'Paused'),
+        : (job.enabled ? 'Not scheduled' : 'Paused'),
     ));
     meta.appendChild(this._metaCell('Runs', String(job.runCount)));
     card.appendChild(meta);

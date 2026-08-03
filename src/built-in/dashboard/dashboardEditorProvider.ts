@@ -342,7 +342,7 @@ class DashboardEditorPane implements IDisposable {
         </svg>
       </div>
       <h2 class="dashboard-empty__title">Make this yours</h2>
-      <p class="dashboard-empty__body">Add widgets to see your workspace at a glance — recent files, news briefs, the time, anything tools contribute.</p>
+      <p class="dashboard-empty__body">Add widgets to see your workspace at a glance: recent files, news briefs, the time, anything tools contribute.</p>
     `;
     const emptyAddBtn = el('button', 'dashboard-btn dashboard-btn--primary dashboard-empty__cta');
     emptyAddBtn.type = 'button';
@@ -611,7 +611,7 @@ class DashboardEditorPane implements IDisposable {
       if (typeReg.category === 'ai') {
         const chatBtn = el('button', 'dashboard-widget__btn');
         chatBtn.type = 'button';
-        chatBtn.title = 'Run in chat (visible — for debugging the prompt)';
+        chatBtn.title = 'Run in chat (visible, for debugging the prompt)';
         chatBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
         chatBtn.addEventListener('click', () => void this._triggerManualRefresh(row.id, 'chat'));
         actions.appendChild(chatBtn);

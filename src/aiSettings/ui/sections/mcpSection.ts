@@ -55,7 +55,7 @@ export class McpSection extends SettingsSection {
 
     // ── Add Server button ──
     const addBtn = $('button.ai-settings-mcp-add-btn');
-    addBtn.textContent = '+ Add Server';
+    addBtn.textContent = '+ Add server';
     addBtn.addEventListener('click', () => this._showAddForm());
     this.contentElement.appendChild(addBtn);
 
@@ -113,7 +113,7 @@ export class McpSection extends SettingsSection {
     const servers = this._getServers();
     if (servers.length === 0) {
       const empty = $('div.ai-settings-mcp-empty');
-      empty.textContent = 'No MCP servers configured. Click "+ Add Server" below to get started.';
+      empty.textContent = 'No MCP servers configured. Click "+ Add server" below to get started.';
       this._listContainer.appendChild(empty);
       return;
     }
@@ -204,13 +204,13 @@ export class McpSection extends SettingsSection {
     if (status === 'unhealthy') {
       const health = this._mcpClient?.getHealthInfo(serverId);
       return health
-        ? `Unhealthy — ${health.consecutiveFailures} consecutive ping failures`
+        ? `Unhealthy: ${health.consecutiveFailures} consecutive ping failures`
         : 'Unhealthy';
     }
     if (status === 'connected') {
       const health = this._mcpClient?.getHealthInfo(serverId);
       return health?.lastPingLatencyMs != null
-        ? `Connected — ping ${health.lastPingLatencyMs}ms`
+        ? `Connected: ping ${health.lastPingLatencyMs}ms`
         : 'Connected';
     }
     return STATUS_META[status].label;
@@ -421,7 +421,7 @@ export class McpSection extends SettingsSection {
 
     const nameInput = document.createElement('input');
     nameInput.className = 'ai-settings-mcp-input';
-    nameInput.placeholder = 'Display Name (optional)';
+    nameInput.placeholder = 'Display name (optional)';
     host.appendChild(nameInput);
 
     const cmdInput = document.createElement('input');
@@ -430,7 +430,7 @@ export class McpSection extends SettingsSection {
     host.appendChild(cmdInput);
 
     const envHelp = $('div.ai-settings-mcp-install-help');
-    envHelp.textContent = 'Environment variables — one KEY=VALUE per line (optional).';
+    envHelp.textContent = 'Environment variables: one KEY=VALUE per line (optional).';
     host.appendChild(envHelp);
 
     const envArea = document.createElement('textarea');
@@ -555,7 +555,7 @@ export class McpSection extends SettingsSection {
     );
     const badge = row?.querySelector('.ai-settings-mcp-badge') as HTMLElement | null;
     if (badge) {
-      badge.textContent = 'Authorizing — check your browser…';
+      badge.textContent = 'Authorizing. Check your browser…';
       badge.dataset.status = 'connecting';
     }
 

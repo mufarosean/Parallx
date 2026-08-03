@@ -62,7 +62,7 @@ function normalizeConfig(raw: unknown): TrackerConfig {
 export const TRACKER_BOARD_WIDGET: WidgetTypeRegistration<TrackerConfig> = {
   typeId: 'parallx.dashboard.tracker',
   displayName: 'Tracker board',
-  description: 'Your items, your stages — click an item to advance it. Syllabus topics for one person, insurance renewals or job applications for another.',
+  description: 'Your items, your stages. Click an item to advance it. Syllabus topics for one person, insurance renewals or job applications for another.',
   icon: ICON_SVG,
   category: 'static',
   defaultSize: { colSpan: 4, rowSpan: 4 },
@@ -139,7 +139,7 @@ export const TRACKER_BOARD_WIDGET: WidgetTypeRegistration<TrackerConfig> = {
         row.type = 'button';
         row.className = 'dtracker__row';
         const si = stageOf(item);
-        row.title = `${cfg.stages[si]} — click to advance`;
+        row.title = `${cfg.stages[si]}. Click to advance.`;
 
         const name = document.createElement('span');
         name.className = 'dtracker__name';

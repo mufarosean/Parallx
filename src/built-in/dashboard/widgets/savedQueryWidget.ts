@@ -127,7 +127,7 @@ export const SAVED_QUERY_WIDGET: WidgetTypeRegistration<SavedQueryConfig> = {
       const source = (c.contextPrefix || c.sourceId || 'unknown source').trim();
       const text = c.text.trim().replace(/\s+/g, ' ');
       const excerpt = text.length > 320 ? `${text.slice(0, 320)}…` : text;
-      lines.push(`- ${excerpt}\n  — _${source}_`);
+      lines.push(`- ${excerpt}\n  · _${source}_`);
     }
     return lines.join('\n');
   },

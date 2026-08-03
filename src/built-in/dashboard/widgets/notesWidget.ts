@@ -36,7 +36,7 @@ function normalizeConfig(raw: unknown): NotesConfig {
 export const NOTES_WIDGET: WidgetTypeRegistration<NotesConfig> = {
   typeId: 'parallx.dashboard.notes',
   displayName: 'Notes',
-  description: 'A real canvas page, embedded. Type "/" for any block — it also shows in the canvas sidebar and the workspace graph.',
+  description: 'A real canvas page, embedded. Type "/" for any block. It also shows in the canvas sidebar and the workspace graph.',
   icon: ICON_SVG,
   category: 'static',
   defaultSize: { colSpan: 4, rowSpan: 4 },

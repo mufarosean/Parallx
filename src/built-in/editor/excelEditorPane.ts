@@ -225,7 +225,7 @@ export class ExcelEditorPane extends EditorPane {
 
     if (rowCount > shownRows || sheet.truncated) {
       const note = $('div.excel-truncation-note');
-      note.textContent = `Showing the first ${shownRows.toLocaleString()} rows${sheet.truncated ? ' (workbook is larger than the viewer cap)' : ` of ${rowCount.toLocaleString()}`} — open in a spreadsheet app for everything.`;
+      note.textContent = `Showing the first ${shownRows.toLocaleString()} rows${sheet.truncated ? ' (workbook is larger than the viewer cap)' : ` of ${rowCount.toLocaleString()}`}. Open in a spreadsheet app for everything.`;
       this._gridScroll.appendChild(note);
     }
 

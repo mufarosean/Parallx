@@ -356,7 +356,7 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
       : share < 0.35 ? 'recent work: mostly yours'
       : share < 0.65 ? 'recent work: split with the agent'
       : 'recent work: mostly the agent';
-    return cap.deskillingRisk ? `${base} — and growing; worth noticing` : base;
+    return cap.deskillingRisk ? `${base}, and growing; worth noticing` : base;
   }
 
   /**
@@ -379,7 +379,7 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
       panel.innerHTML = '';
       if (!s || s.available === false) {
         const empty = $('div.autonomy-mind-panel__empty');
-        empty.textContent = 'The inner model needs workspace storage — not available here.';
+        empty.textContent = 'The inner model needs workspace storage, which is not available here.';
         panel.appendChild(empty);
         return;
       }
@@ -391,7 +391,7 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
       const meta = $('div.autonomy-mind-panel__meta');
       const metaParts = [accuracyWords(s.fidelity, graded), balanceWords(s.capability)]
         .filter((p): p is string => !!p);
-      if (s.audit && !s.audit.ok) metaParts.unshift('records damaged — the action ledger failed verification');
+      if (s.audit && !s.audit.ok) metaParts.unshift('records damaged: the action ledger failed verification');
       if (metaParts.length > 0) {
         meta.textContent = metaParts.join(' · ');
         if (typeof s.fidelity === 'number') meta.title = `Mean Brier score ${s.fidelity.toFixed(2)} over ${graded} resolved prediction${graded === 1 ? '' : 's'} (0 is perfect)`;
@@ -404,14 +404,14 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
       panel.appendChild(beliefHead);
       if (beliefs.length === 0) {
         const empty = $('div.autonomy-mind-panel__empty');
-        empty.textContent = `${EMPTY_STATES['mind.noBeliefs'].headline} — ${EMPTY_STATES['mind.noBeliefs'].hint}`;
+        empty.textContent = `${EMPTY_STATES['mind.noBeliefs'].headline}. ${EMPTY_STATES['mind.noBeliefs'].hint}`;
         panel.appendChild(empty);
       }
       for (const b of beliefs) {
         const row = $('div.autonomy-mind-belief');
         const pct = Math.round((b.confidence ?? 0) * 100);
         const bar = $('span.autonomy-mind-belief__bar');
-        bar.title = `${pct}% confident — fades unless reaffirmed`;
+        bar.title = `${pct}% confident. Fades unless reaffirmed.`;
         const fill = $('span.autonomy-mind-belief__fill');
         fill.style.width = `${Math.max(4, Math.min(100, pct))}%`;
         bar.appendChild(fill);
@@ -419,7 +419,7 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
         text.textContent = b.content;
         const forget = $('button.autonomy-mind-belief__forget') as HTMLButtonElement;
         forget.innerHTML = getIcon('x');
-        forget.title = 'Forget this — tell the agent it’s wrong';
+        forget.title = 'Forget this. Tell the agent it’s wrong.';
         forget.addEventListener('click', (e) => {
           e.stopPropagation();
           void runCommand?.('parallx.mind.forget', { id: b.id }).then(() => { row.remove(); }).catch(() => {});
@@ -440,8 +440,8 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
         for (const h of habits.slice(0, 6)) {
           const row = $('div.autonomy-mind-habit');
           row.textContent = h.typicalTime
-            ? `${h.action} — most days around ${h.typicalTime} (seen on ${h.daysObserved} days)`
-            : `${h.action} — ${h.daysObserved} days`;
+            ? `${h.action} · most days around ${h.typicalTime} (seen on ${h.daysObserved} days)`
+            : `${h.action} · ${h.daysObserved} days`;
           panel.appendChild(row);
         }
         // The collapsed cell reports the full count — never let the expanded
@@ -456,7 +456,7 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
       if (beliefs.length > 0) {
         const foot = $('div.autonomy-mind-panel__foot');
         const hint = $('span.autonomy-mind-panel__hint');
-        hint.textContent = 'You steer the mind — forget anything wrong.';
+        hint.textContent = 'You steer the mind. Forget anything wrong.';
         foot.appendChild(hint);
         const clearAll = $('button.autonomy-mind-panel__clear') as HTMLButtonElement;
         clearAll.textContent = `Clear all ${beliefs.length}`;
@@ -466,7 +466,7 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
           void runCommand?.('parallx.mind.clearAll').then(() => {
             panel.innerHTML = '';
             const empty = $('div.autonomy-mind-panel__empty');
-            empty.textContent = 'Beliefs cleared — fresh ones will form as it reviews your work.';
+            empty.textContent = 'Beliefs cleared. Fresh ones will form as it reviews your work.';
             panel.appendChild(empty);
           }).catch(() => {});
         });
@@ -601,7 +601,7 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
     const mindCell = statusCell('off', 'Mind', 'reading…',
       { label: mindExpanded ? 'Hide' : 'Show', run: () => { mindExpanded = !mindExpanded; paintStatus(); } });
     mindCell.classList.add('as-cell--clickable');
-    mindCell.title = 'What the agent believes about you and your work — open it, correct it';
+    mindCell.title = 'What the agent believes about you and your work. Open it, correct it.';
     mindCell.addEventListener('click', () => { mindExpanded = !mindExpanded; paintStatus(); });
     strip.appendChild(mindCell);
     void runCommand?.<{
@@ -620,7 +620,7 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
       }
       if (s.audit && !s.audit.ok) {
         dot.className = 'as-cell__dot is-alert';
-        det.textContent = 'records damaged — open for details';
+        det.textContent = 'records damaged: open for details';
         return;
       }
       const beliefs = s.beliefs?.length ?? 0;
@@ -671,7 +671,7 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
 
     const body = $('div.autonomy-guide__body');
     body.textContent =
-      'Background runs land here — what triggered them, which model served them, and what came of it. ' +
+      'Background runs land here: what triggered them, which model served them, and what came of it. ' +
       'The heartbeat reviews your workspace as you work; cron fires on schedules you set. Try one:';
     emptyEl.appendChild(body);
 

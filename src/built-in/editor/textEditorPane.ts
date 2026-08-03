@@ -160,7 +160,7 @@ export class TextEditorPane extends EditorPane {
     // Binary file overlay (hidden by default)
     this._binaryOverlay = $('div');
     this._binaryOverlay.classList.add('text-editor-binary');
-    this._binaryOverlay.textContent = 'Binary file — cannot display';
+    this._binaryOverlay.textContent = 'This file is binary and can’t be displayed';
     hide(this._binaryOverlay);
     container.appendChild(this._binaryOverlay);
 
@@ -768,7 +768,7 @@ export class TextEditorPane extends EditorPane {
         // M48 Phase 4: Single AI action
         {
           id: 'ai.addToChat',
-          label: 'Add Selection to Chat',
+          label: 'Add selection to Chat',
           group: 'ai',
         },
       ],

@@ -61,7 +61,7 @@ export const EMPTY_STATES = {
     // Every claim here is true: the open editor's selection and the current
     // canvas block are auto-attached to a turn, and pages/files are reachable
     // through retrieval and @mentions.
-    hint: 'Ask about your files, pages, or whatever you have selected — the selection comes along automatically.',
+    hint: 'Ask about your files, pages, or whatever you have selected. The selection comes along automatically.',
   },
   'autonomyLog.empty': {
     id: 'autonomyLog.empty',

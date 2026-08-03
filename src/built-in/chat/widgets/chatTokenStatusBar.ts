@@ -126,8 +126,8 @@ export class ChatTokenStatusBar extends Disposable {
     const approx = breakdown.isReal ? '' : '~';
     const source = breakdown.isReal ? 'Ollama-reported' : 'Estimated';
     this._root.title = breakdown.contextLength > 0
-      ? `${source} token usage: ${approx}${this._formatTokens(breakdown.total)} / ${this._formatTokens(breakdown.contextLength)} (${breakdown.percentage.toFixed(1)}%) — click for details`
-      : `${source} tokens: ${approx}${this._formatTokens(breakdown.total)} — click for details`;
+      ? `${source} token usage: ${approx}${this._formatTokens(breakdown.total)} / ${this._formatTokens(breakdown.contextLength)} (${breakdown.percentage.toFixed(1)}%). Click for details.`
+      : `${source} tokens: ${approx}${this._formatTokens(breakdown.total)}. Click for details.`;
 
     // If popup is open, refresh it
     if (this._popupElement) {
@@ -425,7 +425,7 @@ export class ChatTokenStatusBar extends Disposable {
 
     // ── Header: "Context Window" ──
     const header = $('div.parallx-token-popup-header');
-    header.textContent = 'Context Window';
+    header.textContent = 'Context window';
     popup.appendChild(header);
 
     // ── Summary line ──
@@ -457,13 +457,13 @@ export class ChatTokenStatusBar extends Disposable {
     const subs = breakdown.subBreakdowns;
 
     this._renderSection(popup, 'System', [
-      { label: 'System Instructions', tokens: cats.systemInstructions, total, subItems: subs?.systemInstructions },
-      { label: 'Tool Definitions', tokens: cats.toolDefinitions, total, subItems: subs?.toolDefinitions },
+      { label: 'System instructions', tokens: cats.systemInstructions, total, subItems: subs?.systemInstructions },
+      { label: 'Tool definitions', tokens: cats.toolDefinitions, total, subItems: subs?.toolDefinitions },
     ]);
 
-    this._renderSection(popup, 'User Context', [
+    this._renderSection(popup, 'User context', [
       { label: 'Messages', tokens: cats.messages, total },
-      { label: 'Tool Results', tokens: cats.toolResults, total },
+      { label: 'Tool results', tokens: cats.toolResults, total },
       { label: 'Files', tokens: cats.files, total, subItems: subs?.files },
     ]);
 

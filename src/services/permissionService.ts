@@ -554,7 +554,7 @@ export class PermissionService extends Disposable {
           this._autonomyLogAppender?.append({
             origin: 'user-task',
             requestText: `[user-task] tool ${toolName} deferred`,
-            content: `A user-triggered background run requested **${toolName}**, which always needs an explicit prompt. Headless runs cannot prompt — re-run from chat to authorize.`,
+            content: `A user-triggered background run requested **${toolName}**, which always needs an explicit prompt. Headless runs cannot prompt. Re-run from chat to authorize.`,
             metadata: { kind: 'queued-approval', tool: toolName, args },
             sessionId,
           });

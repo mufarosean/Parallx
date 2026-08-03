@@ -85,7 +85,7 @@ export function buildPageEmbedWidget(
         body = '_This page could not be rendered._';
       }
       if (body.length > MAX_EMBED_CHARS) {
-        body = `${body.slice(0, MAX_EMBED_CHARS)}\n\n_…truncated — open the page for the rest._`;
+        body = `${body.slice(0, MAX_EMBED_CHARS)}\n\n_…truncated. Open the page for the rest._`;
       }
       const icon = page.icon ? `${page.icon} ` : '';
       // The heading link is the door: parallx://canvas/page/<id> opens the

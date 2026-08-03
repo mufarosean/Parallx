@@ -4,7 +4,7 @@
   "name": "Explorer",
   "version": "1.0.0",
   "publisher": "parallx",
-  "description": "File Explorer — browse, create, rename, and delete files and folders.",
+  "description": "File Explorer: browse, create, rename, and delete files and folders.",
   "main": "./main.js",
   "engines": { "parallx": "^0.1.0" },
   "activationEvents": ["onStartupFinished"],

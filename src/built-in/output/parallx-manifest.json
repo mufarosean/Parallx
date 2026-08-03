@@ -4,7 +4,7 @@
   "name": "Output",
   "version": "1.0.0",
   "publisher": "parallx",
-  "description": "Output panel — shows log messages from tools and the shell.",
+  "description": "Output panel. Shows log messages from tools and the shell.",
   "main": "./main.js",
   "engines": { "parallx": "^0.1.0" },
   "activationEvents": ["onStartupFinished"],

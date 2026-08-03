@@ -32,7 +32,7 @@ export const WIDGET_TEMPLATES: readonly WidgetTemplate[] = [
   },
   {
     name: 'Renewals tracker',
-    description: 'Insurance, warranties, subscriptions — what needs attention?',
+    description: 'Insurance, warranties, subscriptions: what needs attention?',
     typeId: 'parallx.dashboard.tracker',
     config: { items: [], stages: ['Active', 'Renewal due', 'Renewed'] },
   },

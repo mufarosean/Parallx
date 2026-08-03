@@ -55,7 +55,7 @@ export const CUSTOM_AI_WIDGET: WidgetTypeRegistration<CustomAiConfig> = {
       skill: {
         type: 'string',
         label: 'Skill (optional)',
-        description: 'Name of a skill you authored under .parallx/skills/. The AI applies it when filling this widget — write the skill once, reuse its full instructions here.',
+        description: 'Name of a skill you authored under .parallx/skills/. The AI applies it when filling this widget. Write the skill once, reuse its full instructions here.',
         placeholder: 'e.g. morning-news',
       },
     },

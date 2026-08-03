@@ -151,9 +151,9 @@ export class TitlebarPart extends Part {
   /** Update `document.title` to `{workspaceName} — Parallx` format. */
   private _updateDocumentTitle(editorTitle?: string): void {
     if (editorTitle) {
-      document.title = `${editorTitle} — ${this._workspaceName} — Parallx`;
+      document.title = `${editorTitle} · ${this._workspaceName} · Parallx`;
     } else {
-      document.title = `${this._workspaceName} — Parallx`;
+      document.title = `${this._workspaceName} · Parallx`;
     }
   }
 

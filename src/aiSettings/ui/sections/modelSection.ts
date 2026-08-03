@@ -66,7 +66,7 @@ const PROVIDERS: readonly IProviderDescriptor[] = [
     id: 'anthropic', name: 'Claude (Anthropic)', kind: 'Cloud',
     enabledKey: 'ai.providers.anthropic.enabled', enabledDefault: false, hasApiKey: true,
     keyPlaceholder: 'sk-ant-…',
-    keyHelp: 'Anthropic API key. Stored encrypted on this machine — never in settings files or the renderer. Get one at console.anthropic.com.',
+    keyHelp: 'Anthropic API key. Stored encrypted on this machine, never in settings files or the renderer. Get one at console.anthropic.com.',
   },
 ];
 
@@ -98,7 +98,7 @@ export class ModelSection extends SettingsSection {
 
     // ── Default Model (dropdown) ─────────────────────────────────────────
     const modelRow = createSettingRow({
-      label: 'Default Model',
+      label: 'Default model',
       description: 'The model used by new chat sessions. Leave on “Auto” to pick the first available model. Only enabled providers appear here.',
       key: 'model.chatModel',
       onReset: () => {
@@ -111,7 +111,7 @@ export class ModelSection extends SettingsSection {
     });
 
     this._modelDropdown = this._register(new Dropdown(modelRow.controlSlot, {
-      items: [{ value: '', label: 'Auto — first available' }],
+      items: [{ value: '', label: 'Auto (first available)' }],
       selected: '',
       ariaLabel: 'Default model',
     }));
@@ -131,7 +131,7 @@ export class ModelSection extends SettingsSection {
 
     // ── Default Context Length ───────────────────────────────────────────
     const ctxRow = createSettingRow({
-      label: 'Default Context Length',
+      label: 'Default context length',
       description: 'Max context window (in tokens) used by new chats. 0 = use the model’s reported maximum. Increase only if the model actually supports it.',
       key: 'model.contextWindow',
       onReset: () => {
@@ -198,7 +198,7 @@ export class ModelSection extends SettingsSection {
 
     const help = document.createElement('div');
     help.className = 'ai-settings-provider__grouphelp';
-    help.textContent = 'Choose which model providers are available in this workspace. Local Ollama runs on your machine; Claude sends data to Anthropic’s cloud — enable it only for workspaces without sensitive material.';
+    help.textContent = 'Choose which model providers are available in this workspace. Local Ollama runs on your machine; Claude sends data to Anthropic’s cloud, so enable it only for workspaces without sensitive material.';
     this.contentElement.appendChild(help);
 
     const isOn = (d: IProviderDescriptor): boolean => {
@@ -360,7 +360,7 @@ export class ModelSection extends SettingsSection {
     });
 
     const items = [
-      { value: '', label: 'Auto — first available' },
+      { value: '', label: 'Auto (first available)' },
       ...sorted.map((m) => ({
         value: m.id,
         label: m.parameterSize ? `${m.displayName} · ${m.parameterSize}` : m.displayName,

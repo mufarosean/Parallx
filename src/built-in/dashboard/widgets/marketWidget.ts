@@ -39,7 +39,7 @@ export const MARKET_WIDGET: WidgetTypeRegistration<MarketConfig> = {
       symbols: {
         type: 'string-list',
         label: 'Symbols',
-        description: 'One ticker per line — e.g. AAPL, MSFT, BTC-USD, ^GSPC.',
+        description: 'One ticker per line, e.g. AAPL, MSFT, BTC-USD, ^GSPC.',
       },
       extraInstructions: {
         type: 'textarea',

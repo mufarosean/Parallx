@@ -397,7 +397,7 @@ export class DatabaseDataService extends Disposable {
     if (home && home !== databaseId) {
       const info = await this.getDatabase(home);
       throw new Error(
-        `Page ${pageId} already belongs to the database "${info?.title ?? home}" — a page has exactly one home database.`,
+        `Page ${pageId} already belongs to the database "${info?.title ?? home}". A page has exactly one home database.`,
       );
     }
     const orderRes = await this._db.get(

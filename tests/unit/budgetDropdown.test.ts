@@ -161,7 +161,7 @@ describe('adapter surface used by the ~10 call sites', () => {
     // Dependent dropdowns (tx type -> category kind) rely on this. Done as two
     // statements the trigger shows the placeholder in between, because the old
     // value is absent from the new list.
-    const d = mount('cat-0', undefined, { placeholder: '— Pick category —' });
+    const d = mount('cat-0', undefined, { placeholder: 'Choose a category…' });
     d.dd.setOptions([{ value: 'n1', label: 'New One' }], 'n1');
     expect(d.dd.value).toBe('n1');
     expect(d.btn.textContent).toContain('New One');
@@ -204,7 +204,7 @@ describe('category colour swatches', () => {
   it('shows a swatch for every category in the list', () => {
     const d = mount();
     d.open();
-    // Every row except the '— Uncategorized —' placeholder, which has no colour.
+    // Every row except the 'No category' placeholder, which has no colour.
     expect(document.querySelectorAll('.ui-dropdown__list .ui-dropdown__swatch')).toHaveLength(SEEDED.length);
   });
 
@@ -223,12 +223,12 @@ describe('category colour swatches', () => {
 
   it('carries the category colour through categoryOptions', () => {
     const opts = categoryOptions(SEEDED);
-    expect(opts[0]).toEqual({ value: '', label: '— Uncategorized —' });
+    expect(opts[0]).toEqual({ value: '', label: 'No category' });
     expect(opts[1]).toEqual({ value: 'cat-0', label: 'Groceries', color: '#5cb87a' });
   });
 
   it('honours a custom placeholder label', () => {
-    expect(categoryOptions(SEEDED, '— Pick category —')[0].label).toBe('— Pick category —');
+    expect(categoryOptions(SEEDED, 'Choose a category…')[0].label).toBe('Choose a category…');
   });
 });
 
@@ -292,23 +292,23 @@ describe('scopedCategoryOptions', () => {
 
   it('offers only expense categories for a purchase', () => {
     expect(labels(scopedCategoryOptions(KINDED, 'purchase')))
-      .toEqual(['— Uncategorized —', 'Groceries', 'Dining']);
+      .toEqual(['No category', 'Groceries', 'Dining']);
   });
 
   it('offers only income categories for a deposit', () => {
     expect(labels(scopedCategoryOptions(KINDED, 'deposit')))
-      .toEqual(['— Uncategorized —', 'Income']);
+      .toEqual(['No category', 'Income']);
   });
 
   it('offers only transfer categories for a transfer', () => {
     expect(labels(scopedCategoryOptions(KINDED, 'transfer')))
-      .toEqual(['— Uncategorized —', 'Transfer']);
+      .toEqual(['No category', 'Transfer']);
   });
 
   it('scopes a fee as an expense', () => {
     // 'fee' maps to kind 'expense' in TX_TYPES; this pins that mapping.
     expect(labels(scopedCategoryOptions(KINDED, 'fee')))
-      .toEqual(['— Uncategorized —', 'Groceries', 'Dining']);
+      .toEqual(['No category', 'Groceries', 'Dining']);
   });
 
   it('keeps the selected category even when its kind does not match', () => {
@@ -322,7 +322,7 @@ describe('scopedCategoryOptions', () => {
   it('falls back to the unscoped list rather than showing an empty picker', () => {
     const expensesOnly = [{ id: 'e1', name: 'Groceries', kind: 'expense' }];
     expect(labels(scopedCategoryOptions(expensesOnly, 'deposit')))
-      .toEqual(['— Uncategorized —', 'Groceries']);
+      .toEqual(['No category', 'Groceries']);
   });
 
   it('does not scope when the type is unknown', () => {
@@ -333,16 +333,16 @@ describe('scopedCategoryOptions', () => {
     // The AI can emit 'other'; TX_TYPES has no entry, and the helper defaults to
     // expense rather than returning nothing.
     expect(labels(scopedCategoryOptions(KINDED, 'other')))
-      .toEqual(['— Uncategorized —', 'Groceries', 'Dining']);
+      .toEqual(['No category', 'Groceries', 'Dining']);
   });
 
   it('honours a custom placeholder', () => {
-    expect(scopedCategoryOptions(KINDED, 'purchase', '', '— Pick category —')[0].label)
-      .toBe('— Pick category —');
+    expect(scopedCategoryOptions(KINDED, 'purchase', '', 'Choose a category…')[0].label)
+      .toBe('Choose a category…');
   });
 
   it('tolerates a missing category list', () => {
-    expect(labels(scopedCategoryOptions(undefined as never, 'purchase'))).toEqual(['— Uncategorized —']);
+    expect(labels(scopedCategoryOptions(undefined as never, 'purchase'))).toEqual(['No category']);
   });
 
   it('keeps colours through scoping', () => {

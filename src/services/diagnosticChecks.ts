@@ -34,7 +34,7 @@ const checkActiveModel: IDiagnosticCheckProducer = async (deps) => {
 const checkModelAvailable: IDiagnosticCheckProducer = async (deps) => {
   const model = deps.getActiveModel?.();
   if (!model || !deps.listModels) {
-    return { name: 'Model Available', status: 'warn', detail: 'Cannot verify — no model or listModels unavailable', timestamp: Date.now(), category: 'model' };
+    return { name: 'Model Available', status: 'warn', detail: 'Cannot verify: no model selected, or the model list is unavailable', timestamp: Date.now(), category: 'model' };
   }
   const models = await deps.listModels().catch(() => []);
   const found = models.some(m => m.id === model || m.name === model);
@@ -55,7 +55,7 @@ const checkRAGEngine: IDiagnosticCheckProducer = async (deps) => {
     status: available ? 'pass' : 'warn',
     detail: available
       ? indexing ? 'Available (indexing in progress)' : 'Available and idle'
-      : 'Not available — workspace retrieval will be limited',
+      : 'Not available. Workspace retrieval will be limited',
     timestamp: Date.now(),
     category: 'rag',
   };
@@ -85,13 +85,13 @@ const checkWorkspace: IDiagnosticCheckProducer = async (deps) => {
 
 const checkBootstrap: IDiagnosticCheckProducer = async (deps) => {
   if (!deps.existsRelative) {
-    return { name: 'Bootstrap (AGENTS.md)', status: 'warn', detail: 'Cannot check — existsRelative unavailable', timestamp: Date.now(), category: 'workspace' };
+    return { name: 'Bootstrap (AGENTS.md)', status: 'warn', detail: 'Cannot check: workspace file access is unavailable', timestamp: Date.now(), category: 'workspace' };
   }
   const found = await deps.existsRelative('.parallx/AGENTS.md').catch(() => false);
   return {
     name: 'Bootstrap (AGENTS.md)',
     status: found ? 'pass' : 'warn',
-    detail: found ? 'Found' : 'Missing — run /init to generate',
+    detail: found ? 'Found' : 'Missing. Run /init to generate',
     timestamp: Date.now(),
     category: 'workspace',
   };
@@ -177,7 +177,7 @@ const checkDocumentExtraction: IDiagnosticCheckProducer = async (deps) => {
   return {
     name: 'Document Extraction (Docling)',
     status: ok ? 'pass' : 'warn',
-    detail: ok ? 'Docling bridge available' : 'Docling not available — PDF extraction limited',
+    detail: ok ? 'Docling bridge available' : 'Docling not available. PDF extraction will be limited',
     timestamp: Date.now(),
     category: 'rag',
   };
@@ -204,7 +204,7 @@ const checkObservability: IDiagnosticCheckProducer = async (deps) => {
   }
   const metrics = deps.getObservabilityMetrics();
   if (metrics.turnCount === 0) {
-    return { name: 'Observability', status: 'pass', detail: 'Active — no turns recorded yet', timestamp: Date.now(), category: 'config' };
+    return { name: 'Observability', status: 'pass', detail: 'Active. No turns recorded yet', timestamp: Date.now(), category: 'config' };
   }
   const avgMs = Math.round(metrics.avgDurationMs);
   const warn = avgMs > 30000; // warn if average turn > 30s

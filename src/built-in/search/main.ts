@@ -205,7 +205,7 @@ function createSearchView(container: HTMLElement): IDisposable {
   // Toggle replace button
   _toggleReplaceBtn = $('button');
   _toggleReplaceBtn.className = 'search-toggle-replace';
-  _toggleReplaceBtn.title = 'Toggle Replace';
+  _toggleReplaceBtn.title = 'Toggle replace';
   _toggleReplaceBtn.innerHTML = getIcon('toggle-replace')!;
   _toggleReplaceBtn.addEventListener('click', () => {
     _showReplace = !_showReplace;
@@ -283,8 +283,8 @@ function createSearchView(container: HTMLElement): IDisposable {
 
   const filtersToggle = $('button');
   filtersToggle.className = 'search-filters-toggle';
-  filtersToggle.textContent = '⋯ files to include/exclude';
-  filtersToggle.title = 'Toggle Search Details';
+  filtersToggle.textContent = '⋯ Files to include/exclude';
+  filtersToggle.title = 'Toggle search details';
 
   const filtersBody = $('div');
   filtersBody.className = 'search-filters-body';
@@ -293,7 +293,7 @@ function createSearchView(container: HTMLElement): IDisposable {
   const includeInput = $('input');
   includeInput.type = 'text';
   includeInput.className = 'search-input search-filter-input';
-  includeInput.placeholder = 'files to include (e.g. *.ts, src/**)';
+  includeInput.placeholder = 'Files to include (e.g. *.ts, src/**)';
   includeInput.value = _options.includePattern;
   includeInput.addEventListener('input', () => {
     _options.includePattern = includeInput.value;
@@ -304,7 +304,7 @@ function createSearchView(container: HTMLElement): IDisposable {
   const excludeInput = $('input');
   excludeInput.type = 'text';
   excludeInput.className = 'search-input search-filter-input';
-  excludeInput.placeholder = 'files to exclude (e.g. *.min.js)';
+  excludeInput.placeholder = 'Files to exclude (e.g. *.min.js)';
   excludeInput.value = _options.excludePattern;
   excludeInput.addEventListener('input', () => {
     _options.excludePattern = excludeInput.value;
@@ -454,7 +454,7 @@ async function executeSearch(): Promise<void> {
 
     if (_results.length === 0) {
       // M89 S2 — registry voice: warm line + a concrete next step.
-      updateMessage(`No matches for "${query}" — ${EMPTY_STATES['search.noResults'].hint}`);
+      updateMessage(`No matches for "${query}". ${EMPTY_STATES['search.noResults'].hint}`);
     } else {
       updateMessage(
         `${_totalMatches} result${_totalMatches !== 1 ? 's' : ''} in ${_results.length} file${_results.length !== 1 ? 's' : ''}`,
@@ -465,7 +465,7 @@ async function executeSearch(): Promise<void> {
   } catch (err) {
     if (_searchVersion !== version) return;
     console.error('[Search] Error:', err);
-    updateMessage('Search failed — see console');
+    updateMessage('Search failed. See the console.');
   }
 }
 

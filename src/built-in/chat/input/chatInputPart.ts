@@ -89,8 +89,8 @@ export class ChatInputPart extends Disposable {
     this._attachBtn = document.createElement('button');
     this._attachBtn.className = 'parallx-chat-input-attach';
     this._attachBtn.type = 'button';
-    this._attachBtn.title = 'Add Context...';
-    this._attachBtn.setAttribute('aria-label', 'Add Context');
+    this._attachBtn.title = 'Add context…';
+    this._attachBtn.setAttribute('aria-label', 'Add context');
     this._attachBtn.innerHTML = chatIcons.newChat;
     this._attachLabel = document.createElement('span');
     this._attachLabel.className = 'parallx-chat-input-attach-label';
@@ -144,7 +144,7 @@ export class ChatInputPart extends Disposable {
     this._toolsBtn.className = 'parallx-chat-input-tools';
     this._toolsBtn.type = 'button';
     this._toolsBtn.title = '\u2699 Configure AI\u2026';
-    this._toolsBtn.setAttribute('aria-label', 'Configure AI Tools');
+    this._toolsBtn.setAttribute('aria-label', 'Configure AI tools');
     this._toolsBtn.innerHTML = chatIcons.tools;
     this._toolsBtn.style.display = 'none'; // hidden until services wired
     this._pickerSlot.appendChild(this._toolsBtn);

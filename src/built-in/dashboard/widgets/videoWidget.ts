@@ -93,7 +93,7 @@ function normalizeConfig(raw: unknown): VideoConfig {
 export const VIDEO_WIDGET: WidgetTypeRegistration<VideoConfig> = {
   typeId: 'parallx.dashboard.video',
   displayName: 'Video',
-  description: 'Play a video from a link — YouTube, Vimeo, a direct .mp4, or any video page. Paste the URL in settings.',
+  description: 'Play a video from a link: YouTube, Vimeo, a direct .mp4, or any video page. Paste the URL in settings.',
   icon: ICON_SVG,
   category: 'static',
   defaultSize: { colSpan: 6, rowSpan: 4 },
@@ -129,7 +129,7 @@ export const VIDEO_WIDGET: WidgetTypeRegistration<VideoConfig> = {
       if (source.kind === 'none') {
         const empty = document.createElement('div');
         empty.className = 'vw__empty';
-        empty.innerHTML = `${ICON_SVG}<div class="vw__empty-text"><strong>No video yet</strong><span>Open settings and paste a video URL — YouTube, Vimeo, an .mp4 link, or any video page.</span></div>`;
+        empty.innerHTML = `${ICON_SVG}<div class="vw__empty-text"><strong>No video yet</strong><span>Open settings and paste a video URL: YouTube, Vimeo, an .mp4 link, or any video page.</span></div>`;
         surface.appendChild(empty);
         return;
       }

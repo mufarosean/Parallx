@@ -50,7 +50,7 @@ function breakdown(ms: number): Remaining {
 export const COUNTDOWN_WIDGET: WidgetTypeRegistration<CountdownConfig> = {
   typeId: 'parallx.dashboard.countdown',
   displayName: 'Countdown',
-  description: 'Counts down to a date you set — a launch, a trip, a deadline. Ticks live.',
+  description: 'Counts down to a date you set: a launch, a trip, a deadline. Ticks live.',
   icon: ICON_SVG,
   category: 'static',
   defaultSize: { colSpan: 4, rowSpan: 2 },

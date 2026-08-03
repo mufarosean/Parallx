@@ -116,7 +116,7 @@ const BUILTIN_CANVAS_TEMPLATES: CanvasPageTemplate[] = [
     snapshot: 'Sections: Focus today | Notes | Reflection',
     icon: 'calendar-days',
     source: 'builtin',
-    defaultTitle: `${todayLabel()} — Daily note`,
+    defaultTitle: `${todayLabel()} · Daily note`,
     buildDoc(): unknown {
       return {
         type: 'doc',
@@ -140,7 +140,7 @@ const BUILTIN_CANVAS_TEMPLATES: CanvasPageTemplate[] = [
     snapshot: 'Sections: Agenda | Decisions | Action items (checklist)',
     icon: 'users',
     source: 'builtin',
-    defaultTitle: 'Meeting — ',
+    defaultTitle: 'Meeting: ',
     buildDoc(): unknown {
       return {
         type: 'doc',

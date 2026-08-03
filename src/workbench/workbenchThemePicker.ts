@@ -67,7 +67,7 @@ export function showColorThemePicker(
 
   const input = $('input');
   input.type = 'text';
-  input.placeholder = 'Select Color Theme (Up/Down Keys to Preview)';
+  input.placeholder = 'Select a color theme (up/down arrows to preview)';
   input.classList.add('theme-picker-input');
   box.appendChild(input);
 

@@ -441,7 +441,7 @@ export class EditableContextMenu extends Disposable {
     if (menuState.misspelledWord) {
       spellcheckItems.push({
         id: 'add-to-dictionary',
-        label: 'Add to Dictionary',
+        label: 'Add to dictionary',
         group: '0_spellcheck',
       });
     }

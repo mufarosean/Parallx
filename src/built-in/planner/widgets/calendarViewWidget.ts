@@ -45,7 +45,7 @@ export function buildCalendarViewWidget(data: PlannerDataService): WidgetTypeReg
   return {
     typeId: 'parallx.planner.calendar-view',
     displayName: 'Calendar',
-    description: 'Month / week / day calendar view. Configure per instance — month is glanceable; day shows detail.',
+    description: 'Month / week / day calendar view. Configure per instance. Month is glanceable; day shows detail.',
     icon: ICON_SVG,
     category: 'query',
     defaultSize: { colSpan: 8, rowSpan: 4 },

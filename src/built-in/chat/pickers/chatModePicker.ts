@@ -24,8 +24,8 @@ export type AgentAutonomyLevel = 'manual' | 'allow-reads' | 'allow-safe' | 'cust
 
 const AUTONOMY_LEVELS: { value: AgentAutonomyLevel; label: string; description: string }[] = [
   { value: 'manual', label: 'Manual', description: 'Every action requires your OK' },
-  { value: 'allow-reads', label: 'Allow Reads', description: 'Auto-search, ask for changes' },
-  { value: 'allow-safe', label: 'Allow Safe', description: 'Reads + safe edits run automatically' },
+  { value: 'allow-reads', label: 'Allow reads', description: 'Auto-search, ask for changes' },
+  { value: 'allow-safe', label: 'Allow safe', description: 'Reads + safe edits run automatically' },
   { value: 'custom', label: 'Custom', description: 'You set the rules in Settings → Agent' },
 ];
 
@@ -38,13 +38,13 @@ const AUTONOMY_LEVELS: { value: AgentAutonomyLevel; label: string; description: 
 export const MODE_META: Record<ChatMode, { label: string; title: string; description: string; icon: string }> = {
   [ChatMode.Edit]: {
     label: 'Edit',
-    title: 'Edit mode — structured canvas changes',
+    title: 'Edit mode: structured canvas changes',
     description: 'AI proposes file changes for you to review',
     icon: chatIcons.pencil,
   },
   [ChatMode.Agent]: {
     label: 'Agent',
-    title: 'Agent mode — awake, action-capable, approval-aware',
+    title: 'Agent mode: awake, action-capable, approval-aware',
     description: 'AI takes multi-step actions with your approval',
     icon: chatIcons.agent,
   },
@@ -117,7 +117,7 @@ export class ChatModePicker extends Disposable {
     chevron.innerHTML = chatIcons.chevronDown;
     this._button.appendChild(chevron);
 
-    this._button.title = `${meta.label} mode — ${meta.title}`;
+    this._button.title = meta.title;
     this._button.setAttribute('aria-label', `Chat mode: ${meta.label}`);
   }
 

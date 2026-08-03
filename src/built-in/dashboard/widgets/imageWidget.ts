@@ -137,7 +137,7 @@ export const IMAGE_WIDGET: WidgetTypeRegistration<ImageWidgetConfig> = {
       url: {
         type: 'string',
         label: 'Image URL (optional)',
-        description: 'Point at a remote image or GIF — animated GIFs play at full size, no upload needed. Leave blank to use an uploaded image.',
+        description: 'Point at a remote image or GIF. Animated GIFs play at full size, no upload needed. Leave blank to use an uploaded image.',
         placeholder: 'https://…/animation.gif',
       },
     },

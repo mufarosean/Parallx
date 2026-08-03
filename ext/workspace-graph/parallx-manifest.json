@@ -4,7 +4,7 @@
   "name": "Workspace Graph",
   "version": "0.1.0",
   "publisher": "parallx",
-  "description": "Interactive force-directed graph visualization of workspace data — files, canvas pages, and AI sessions.",
+  "description": "Interactive force-directed graph visualization of workspace data: files, canvas pages, and AI sessions.",
   "main": "main.js",
   "activationEvents": ["onStartupFinished"],
   "engines": {

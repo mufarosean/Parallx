@@ -4,7 +4,7 @@
   "name": "Terminal",
   "version": "1.0.0",
   "publisher": "parallx",
-  "description": "Integrated terminal panel — runs shell commands in the workspace.",
+  "description": "Integrated terminal panel. Runs shell commands in the workspace.",
   "main": "./main.js",
   "engines": { "parallx": "^0.1.0" },
   "activationEvents": ["onStartupFinished"],

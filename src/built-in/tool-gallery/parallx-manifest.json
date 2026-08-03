@@ -4,7 +4,7 @@
   "name": "Tools",
   "version": "1.0.0",
   "publisher": "parallx",
-  "description": "Tool Gallery — shows all registered tools, their status, and contribution summary.",
+  "description": "Tool Gallery. Shows all registered tools, their status, and contribution summary.",
   "main": "./main.js",
   "engines": { "parallx": "^0.1.0" },
   "activationEvents": ["onStartupFinished"],

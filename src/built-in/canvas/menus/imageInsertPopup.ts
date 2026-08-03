@@ -123,7 +123,7 @@ export function showImageInsertPopup(
         insertImage(`data:${mime};base64,${result.content}`);
       } catch (err) {
         console.error('[imageInsertPopup] Upload failed:', err);
-        renderError('Upload failed — see console.');
+        renderError('Upload failed. See the console.');
       }
     });
     content.appendChild(uploadBtn);

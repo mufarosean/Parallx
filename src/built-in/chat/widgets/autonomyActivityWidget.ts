@@ -113,7 +113,7 @@ function triggerLabel(trigger: string): string {
 export const AUTONOMY_ACTIVITY_WIDGET: WidgetTypeRegistration<AutonomyActivityConfig> = {
   typeId: 'parallx.dashboard.autonomy-activity',
   displayName: 'Autonomy activity',
-  description: 'Recent background agent and automation runs — what triggered them and how they ended.',
+  description: 'Recent background agent and automation runs: what triggered them and how they ended.',
   icon: ICON_SVG,
   category: 'query',
   defaultSize: { colSpan: 5, rowSpan: 4 },
@@ -162,7 +162,7 @@ export const AUTONOMY_ACTIVITY_WIDGET: WidgetTypeRegistration<AutonomyActivityCo
         empty.className = 'aaw__empty';
         empty.innerHTML = `
           <strong>No background activity</strong>
-          <p>When an agent runs on its own — a follow-up, a scheduled task, or a sub-agent — it shows up here.</p>
+          <p>Follow-ups, scheduled tasks, and sub-agent runs show up here when an agent works on its own.</p>
         `;
         list.appendChild(empty);
         return;

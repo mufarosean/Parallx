@@ -628,7 +628,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       console.error(`[Canvas] Failed to archive child page ${pageId} after block deletion:`, err);
       const msg = err instanceof Error ? err.message : String(err);
       void api.window.showErrorMessage(
-        `Failed to archive removed subpage (${msg}). The subpage may now be visible in the sidebar without a parent reference — please refresh or restore manually.`,
+        `Failed to archive removed subpage (${msg}). The subpage may now be visible in the sidebar without a parent reference. Please refresh or restore manually.`,
       );
     });
   });

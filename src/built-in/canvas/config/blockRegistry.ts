@@ -846,7 +846,7 @@ const definitions: BlockDefinition[] = [
     source: 'custom',
     kind: 'atom',
     capabilities: CUSTOM_DRAG,
-    slashMenu: { description: 'New database — table & board views', order: 1, category: 'basic' },
+    slashMenu: { description: 'New database with table & board views', order: 1, category: 'basic' },
     turnInto: undefined,
     defaultContent: undefined,
     insertAction: async (editor, range, context) => {

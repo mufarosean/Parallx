@@ -1744,7 +1744,7 @@ function createGraphEditor(container, api) {
           rebuildBtn.textContent = 'Wiping cluster state…';
           try {
             await svc.forceFullReCluster();
-            rebuildBtn.textContent = 'Done — click Refresh mind map';
+            rebuildBtn.textContent = 'Done. Click Refresh mind map';
             setTimeout(() => {
               if (rebuildBtn) {
                 rebuildBtn.disabled = false;
@@ -1815,7 +1815,7 @@ function createGraphEditor(container, api) {
             <div style="display:flex;gap:4px;align-items:center;margin-bottom:4px;">
               <span style="color:var(--vscode-descriptionForeground,#888);font-size:10px;">Merge into:</span>
               <select data-role="merge-target" style="flex:1;padding:3px;background:var(--vscode-input-background,#252525);color:var(--vscode-input-foreground,#ccc);border:1px solid var(--vscode-input-border,#444);border-radius:2px;font-size:11px;">
-                <option value="">— pick concept —</option>
+                <option value="">Pick a concept</option>
                 ${otherOptions}
               </select>
               <button data-role="merge-go" style="padding:3px 8px;background:var(--vscode-button-secondaryBackground,#3a3a3a);color:var(--vscode-button-secondaryForeground,#ccc);border:none;border-radius:2px;cursor:pointer;font-size:11px;">Merge</button>
@@ -1876,7 +1876,7 @@ function createGraphEditor(container, api) {
       const deleteBtn = row.querySelector('[data-role="delete"]');
       deleteBtn.addEventListener('click', async () => {
         if (!window.confirm(
-          'Delete this concept? The deletion is sticky — re-clustering will not re-form this group. ' +
+          'Delete this concept? The deletion is sticky, so re-clustering will not re-form this group. ' +
           'Use Force full re-cluster to undo.',
         )) return;
         try {
@@ -2290,7 +2290,7 @@ function createGraphEditor(container, api) {
         selectedText: text,
         surface: 'workspace-graph',
         source: {
-          fileName: `Workspace Graph — ${node.label}`,
+          fileName: `Workspace Graph · ${node.label}`,
           filePath: node.meta.uri || node.id,
         },
       },

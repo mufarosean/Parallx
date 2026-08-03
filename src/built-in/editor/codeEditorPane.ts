@@ -265,7 +265,7 @@ export class CodeEditorPane extends EditorPane {
       // told.
       if (p.error) this._flash(p.error.message, true);
       else if (p.exitCode === 0) this._flash(`Finished in ${p.durationMs} ms`);
-      else this._flash(`Exited ${p.exitCode} — see the Terminal panel`, true);
+      else this._flash(`Exited ${p.exitCode}. See the Terminal panel.`, true);
     });
     this._inputListeners.add(sub);
   }

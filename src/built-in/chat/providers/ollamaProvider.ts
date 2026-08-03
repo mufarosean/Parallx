@@ -531,7 +531,7 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
     }
 
     if (!response.body) {
-      throw new Error('Response body is null — streaming not supported.');
+      throw new Error('Response body is null. Streaming is not supported.');
     }
 
     const reader = response.body.getReader();
@@ -558,7 +558,7 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
             chunk = JSON.parse(trimmed) as OllamaChatChunk;
           } catch {
             console.warn('[OllamaProvider] Malformed streaming chunk:', trimmed);
-            yield { content: '\n\n**Warning:** *[Malformed response chunk — partial data may be missing]*', done: false } as IChatResponseChunk;
+            yield { content: '\n\n**Warning:** *[Malformed response chunk, partial data may be missing]*', done: false } as IChatResponseChunk;
             continue;
           }
 
@@ -613,7 +613,7 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
       // Stream ended without a done:true final chunk — connection dropped
       if (!receivedDone) {
         console.warn('[OllamaProvider] Stream ended without done:true — connection may have dropped');
-        yield { content: '\n\n**Warning:** *[Response interrupted — connection lost. Try sending your message again.]*', done: true } as IChatResponseChunk;
+        yield { content: '\n\n**Warning:** *[Response interrupted, the connection was lost. Try sending your message again.]*', done: true } as IChatResponseChunk;
       }
     } finally {
       reader.releaseLock();

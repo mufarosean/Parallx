@@ -33,9 +33,9 @@ export interface PxAppearanceState {
 }
 
 export const PX_BASE_THEMES: { id: PxBaseTheme; label: string; desc: string; swatch: string }[] = [
-  { id: 'slate', label: 'Slate', desc: 'Cool graphite — calm and neutral', swatch: '#16171a' },
-  { id: 'warm',  label: 'Warm',  desc: 'Warm charcoal — soft and inviting', swatch: '#1b1a17' },
-  { id: 'ember', label: 'Ember', desc: 'Warm graphite — the most distinctive', swatch: '#1a1815' },
+  { id: 'slate', label: 'Slate', desc: 'Cool graphite, calm and neutral', swatch: '#16171a' },
+  { id: 'warm',  label: 'Warm',  desc: 'Warm charcoal, soft and inviting', swatch: '#1b1a17' },
+  { id: 'ember', label: 'Ember', desc: 'Warm graphite, the most distinctive', swatch: '#1a1815' },
 ];
 
 // Curated accents — tasteful, restrained, none of them the slop purple.

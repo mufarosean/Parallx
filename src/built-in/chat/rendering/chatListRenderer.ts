@@ -670,7 +670,7 @@ export class ChatListRenderer extends Disposable {
           const loc = attachment.startLine && attachment.endLine
             ? ` L${attachment.startLine}\u2013${attachment.endLine}`
             : attachment.pageNumber ? ` p${attachment.pageNumber}` : '';
-          source.textContent = `\u2014 ${attachment.name}${loc}`;
+          source.textContent = `\u00b7 ${attachment.name}${loc}`;
           chip.appendChild(source);
 
           // Full text in tooltip
@@ -695,10 +695,10 @@ export class ChatListRenderer extends Disposable {
 
           const source = document.createElement('span');
           source.className = 'parallx-chat-message-attachment-source';
-          source.textContent = attachment.pageTitle ? `— ${attachment.pageTitle}` : '— canvas block';
+          source.textContent = attachment.pageTitle ? `· ${attachment.pageTitle}` : '· canvas block';
           chip.appendChild(source);
 
-          chip.title = `Live reference to a ${attachment.blockType ?? 'block'}${attachment.pageTitle ? ` on "${attachment.pageTitle}"` : ''} — the AI reads its current content and can edit it.`;
+          chip.title = `Live reference to a ${attachment.blockType ?? 'block'}${attachment.pageTitle ? ` on "${attachment.pageTitle}"` : ''}. The AI reads its current content and can edit it.`;
         } else if (isChatImageAttachment(attachment)) {
           chip.classList.add('parallx-chat-message-attachment-chip--image');
 

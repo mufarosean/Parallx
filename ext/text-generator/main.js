@@ -3242,13 +3242,13 @@ function assembleContext(params) {
   }
   if (rawLoreTokens > loreBudget && rawLoreTokens > 0) {
     warnings.push(
-      `Lore content is ${rawLoreTokens}t but lore lane is ${loreBudget}t — ${rawLoreTokens - loreBudget}t was truncated. ` +
+      `Lore content is ${rawLoreTokens}t but lore lane is ${loreBudget}t, so ${rawLoreTokens - loreBudget}t was truncated. ` +
       `Reduce lorebooks or increase Lore %.`,
     );
   }
   if (rawMemTokens > memoryBudget && memoryBudget > 0 && rawMemTokens > 0) {
     warnings.push(
-      `Long-term memory is ${rawMemTokens}t but memory share is ${memoryBudget}t — older entries will be cut. ` +
+      `Long-term memory is ${rawMemTokens}t but memory share is ${memoryBudget}t, so older entries will be cut. ` +
       `Enable Extended Memory or trim /mem.`,
     );
   }
@@ -4673,7 +4673,7 @@ function renderChatEditor(container, parallx, input) {
   const ctxSelect = tgSelect(parallx, {
     className: 'tg-chat-toolbar-select',
     layout: 'inline',
-    title: 'Context window for this thread — sets both the token budget and Ollama num_ctx (lower = faster, less VRAM)',
+    title: 'Context window for this thread: sets both the token budget and Ollama num_ctx (lower = faster, less VRAM)',
     items: CTX_WINDOW_PRESETS.map((p) => ({ value: String(p.value), label: p.label })),
     onChange: (raw) => {
       const v = Number(raw) || 0;
@@ -4692,7 +4692,7 @@ function renderChatEditor(container, parallx, input) {
   const summaryEl = el('span', 'tg-chat-toolbar-charname');
   const tokenCountEl = el('span', 'tg-token-count');
   const viewPromptBtn = el('button', 'tg-chat-toolbar-btn', { html: icon('eye', 16) });
-  viewPromptBtn.title = 'Inspect prompt — see exactly what the model receives';
+  viewPromptBtn.title = 'Inspect prompt: see exactly what the model receives';
   // M79 Phase 5 — Scene state edit panel toggle. The AI emits scene
   // updates via the `<scene-update/>` tag (M79 Phase 3a) and they're
   // auto-stored on `thread.sceneState`; this button lets the user view
@@ -4814,7 +4814,7 @@ function renderChatEditor(container, parallx, input) {
     oocBtn.classList.toggle('tg-input-ooc-btn--active', oocMode);
     inputCard.classList.toggle('tg-input-card--ooc', oocMode);
     textarea.placeholder = oocMode
-      ? 'Backstage note — the AI will not see this…'
+      ? 'Backstage note, the AI will not see this…'
       : 'Type your message… (use /ai, /nar, /sys for commands)';
   }
   oocBtn.addEventListener('click', () => setOocMode(!oocMode));
@@ -4831,7 +4831,7 @@ function renderChatEditor(container, parallx, input) {
   const directorIcon = el('span', 'tg-director-icon', { html: icon('megaphone', 13) });
   const directorInput = el('input', 'tg-director-input');
   directorInput.type = 'text';
-  directorInput.placeholder = 'Director\'s note for the next turn — e.g. "she finally admits the truth, keep it under two paragraphs"';
+  directorInput.placeholder = 'Director\'s note for the next turn, e.g. "she finally admits the truth, keep it under two paragraphs"';
   directorRow.append(directorIcon, directorInput);
   function setDirectorVisible(next) {
     directorRow.style.display = next ? '' : 'none';
@@ -5721,7 +5721,7 @@ function renderChatEditor(container, parallx, input) {
       body.appendChild(loreEl);
     }
 
-    body.appendChild(el('div', 'tg-prompt-role', { text: '— messages sent to model —' }));
+    body.appendChild(el('div', 'tg-prompt-role', { text: 'messages sent to model' }));
     for (const msg of lastAssembledContext.messages) {
       body.appendChild(el('div', 'tg-prompt-role', { text: `${msg.role} · ~${estimateTokens(msg.content || '')}t` }));
       const contentEl = el('div', 'tg-prompt-content');
@@ -8393,7 +8393,7 @@ function renderForgePane(container, parallx, ctx) {
             state.lastCard[f.key] = area.value;
             refreshFinal();
           } else {
-            showToastLite(`Could not regenerate ${f.label.toLowerCase()} — kept the current text.`);
+            showToastLite(`Could not regenerate ${f.label.toLowerCase()}. Kept the current text.`);
           }
         } catch (err) {
           showToastLite('Regenerate failed: ' + (err?.message || String(err)));
@@ -8608,10 +8608,10 @@ function renderSettingsPage(container, parallx) {
       budgetTotalEl.textContent = `Total: ${sum}% ✓`;
       budgetTotalEl.className = 'tg-form-budget-total tg-form-budget-total--ok';
     } else if (sum === 0) {
-      budgetTotalEl.textContent = 'Total: 0% — falls back to defaults';
+      budgetTotalEl.textContent = 'Total: 0% (falls back to defaults)';
       budgetTotalEl.className = 'tg-form-budget-total tg-form-budget-total--warn';
     } else {
-      budgetTotalEl.textContent = `Total: ${sum}% — values will be scaled to 100%`;
+      budgetTotalEl.textContent = `Total: ${sum}% (values will be scaled to 100%)`;
       budgetTotalEl.className = 'tg-form-budget-total tg-form-budget-total--warn';
     }
   }
@@ -8625,7 +8625,7 @@ function renderSettingsPage(container, parallx) {
   form.appendChild(sep);
   const tempInput = formGroup('Temperature', 'Controls randomness (0.0 = deterministic, 2.0 = very random)', 'number', 'defaultTemperature', { min: 0, max: 2, step: 0.1 });
   const maxTokInput = formGroup('Max tokens per response', '0 = unlimited (recommended for thinking models)', 'number', 'defaultMaxTokens', { min: 0, max: 16384 });
-  const ctxInput = formGroup('Default context window', 'Sent to Ollama as num_ctx AND used for token budgeting — the two are kept identical so prompts can never silently overflow. Per-chat "Ctx" picker overrides this.', 'number', 'defaultContextWindow', { min: 2048, max: 131072 });
+  const ctxInput = formGroup('Default context window', 'Sent to Ollama as num_ctx AND used for token budgeting. The two are kept identical so prompts can never silently overflow. Per-chat "Ctx" picker overrides this.', 'number', 'defaultContextWindow', { min: 2048, max: 131072 });
   const userNameInput = formGroup('User display name', 'Used in {{user}} template substitution', 'text', 'userName');
   const presetSelect = formGroup('Default writing preset', 'Applied to newly created chats', 'select', 'defaultWritingPreset', {
     options: Object.entries(WRITING_PRESETS).map(([key, p]) => ({ label: p.label, value: key })),
@@ -8637,7 +8637,7 @@ function renderSettingsPage(container, parallx) {
   const customStyleGroup = el('div', 'tg-form-group');
   customStyleGroup.appendChild(el('label', 'tg-form-label', { text: 'Custom writing style' }));
   customStyleGroup.appendChild(el('div', 'tg-form-hint', {
-    text: 'Used when a chat or character selects the "Custom" preset. Markdown is fine — this text is injected verbatim under "## Writing Style".',
+    text: 'Used when a chat or character selects the "Custom" preset. Markdown is fine. This text is injected verbatim under "## Writing Style".',
   }));
   const customStyleInput = el('textarea', 'tg-form-input');
   customStyleInput.rows = 10;
@@ -8658,7 +8658,7 @@ function renderSettingsPage(container, parallx) {
     options: Object.entries(POV_OPTIONS).map(([key, p]) => ({ label: p.label, value: key })),
   });
   const defaultModelSelect = formGroup('Default model', 'Used for newly created chats. Leave empty to auto-select first available model.', 'select', 'defaultModel', {
-    options: [{ value: '', label: '(auto — first available)' }],
+    options: [{ value: '', label: '(auto, first available)' }],
   });
   const fitMethodSelect = formGroup('Default context-fit method', 'How to handle conversations longer than the context window.', 'select', 'defaultFitMethod', {
     options: [
@@ -8672,7 +8672,7 @@ function renderSettingsPage(container, parallx) {
   saveRow.style.display = 'flex';
   saveRow.style.alignItems = 'center';
   saveRow.style.marginTop = '8px';
-  const saveBtn = el('button', 'tg-form-save', { text: 'Save Settings' });
+  const saveBtn = el('button', 'tg-form-save', { text: 'Save settings' });
   const savedLabel = el('span', 'tg-form-saved', { text: 'Saved!' });
   saveRow.append(saveBtn, savedLabel);
   form.appendChild(saveRow);
@@ -8698,7 +8698,7 @@ function renderSettingsPage(container, parallx) {
     defaultPovSelect.value = s.defaultPov || '';
     fitMethodSelect.value = s.defaultFitMethod || 'dropOld';
     // Populate model dropdown from available LM models
-    let modelItems = [{ value: '', label: '(auto — first available)' }];
+    let modelItems = [{ value: '', label: '(auto, first available)' }];
     if (parallx.lm) {
       try {
         const availableModels = await (parallx.lm.getModels?.() || parallx.lm.listModels?.() || Promise.resolve([]));
@@ -8790,7 +8790,7 @@ function renderCharacterEditor(container, parallx, input) {
   root.appendChild(field(`${icon('user', 14)} Character name`, null, nameInput));
 
   const roleInput = el('textarea', 'tg-ce-textarea tg-ce-textarea--tall');
-  roleInput.placeholder = 'Include the most important details first. Also, it\'s a good idea to include example dialogue if you can — show the AI how you want the character to speak.';
+  roleInput.placeholder = 'Include the most important details first. Also, it\'s a good idea to include example dialogue if you can. Show the AI how you want the character to speak.';
   root.appendChild(field(
     `${icon('file-text', 14)} Character description/personality/instruction/role`,
     'This should ideally be less than 1000 words. You can write {{user}} to refer to the user\'s name.',
@@ -8823,7 +8823,7 @@ function renderCharacterEditor(container, parallx, input) {
   reminderInput.placeholder = '(optional) e.g. "Responses should be short and creative. Always stay in character."';
   root.appendChild(field(
     `${icon('bell', 14)} Character reminder note`,
-    'Remind the AI of important things, writing tips, and so on. Use this for important stuff that the AI often forgets. Try to keep this under 100 words — i.e. about a paragraph at most.',
+    'Remind the AI of important things, writing tips, and so on. Use this for important stuff that the AI often forgets. Try to keep this under 100 words, about a paragraph at most.',
     reminderInput,
   ));
 
@@ -8831,7 +8831,7 @@ function renderCharacterEditor(container, parallx, input) {
   voiceAnchorInput.placeholder = '(optional) 3-5 lines: tone, signature phrases, phrases to never use.';
   root.appendChild(field(
     `${icon('mic', 14)} Voice anchor`,
-    'Injected immediately before generation on every turn — the strongest position in the prompt. Describe the VOICE itself: tone, signature phrases, no-go phrases. If empty, the first lines of the description are used instead.',
+    'Injected immediately before generation on every turn, the strongest position in the prompt. Describe the VOICE itself: tone, signature phrases, no-go phrases. If empty, the first lines of the description are used instead.',
     voiceAnchorInput,
   ));
 
@@ -8971,18 +8971,18 @@ function renderCharacterEditor(container, parallx, input) {
   const maxTokInput = el('input', 'tg-ce-input');
   maxTokInput.type = 'number';
   maxTokInput.min = '0';
-  genRow.appendChild(field('Max tokens ⚡', '0 = unlimited (best for thinking models). Caps reply length — lower = faster.', maxTokInput));
+  genRow.appendChild(field('Max tokens ⚡', '0 = unlimited (best for thinking models). Caps reply length, lower = faster.', maxTokInput));
   root.appendChild(genRow);
 
   // ── "show more settings" / collapsed section ──
-  const moreBtn = el('button', 'tg-ce-more-btn', { text: 'Show More Settings' });
+  const moreBtn = el('button', 'tg-ce-more-btn', { text: 'Show more settings' });
   root.appendChild(moreBtn);
   const moreSection = el('div', 'tg-ce-more-section');
   root.appendChild(moreSection);
 
   moreBtn.addEventListener('click', () => {
     const visible = moreSection.classList.toggle('tg-ce-more-section--visible');
-    moreBtn.textContent = visible ? 'Hide More Settings' : 'Show More Settings';
+    moreBtn.textContent = visible ? 'Hide more settings' : 'Show more settings';
   });
 
   // ── More Settings fields ──
@@ -9028,7 +9028,7 @@ function renderCharacterEditor(container, parallx, input) {
     layout: 'full',
     items: [
       { value: 'false', label: 'Off' },
-      { value: 'true', label: 'On — reserve ≥40% of lore lane for /mem entries' },
+      { value: 'true', label: 'On' },
     ],
   });
   moreSection.appendChild(field(
@@ -9070,7 +9070,7 @@ function renderCharacterEditor(container, parallx, input) {
   const sandboxBtn = el('button', 'tg-ce-cancel-btn', { html: `${icon('play', 13)} Test in chat` });
   sandboxBtn.title = 'Save then open a fresh chat with this character';
   const savedLabel = el('span', 'tg-ce-saved', { text: 'Saved!' });
-  const saveBtn = el('button', 'tg-ce-save-btn', { text: 'Save Character' });
+  const saveBtn = el('button', 'tg-ce-save-btn', { text: 'Save character' });
   footer.append(cancelBtn, sandboxBtn, savedLabel, saveBtn);
   root.appendChild(footer);
 
@@ -9298,12 +9298,12 @@ function renderChatSettingsPage(container, parallx, input) {
   modelRow.appendChild(modelSelect.element);
   generationSection.appendChild(modelRow);
   generationSection.appendChild(el('div', 'tg-cs-hint', {
-    text: 'Writing preset, POV, response length, temperature, max tokens, lorebooks, reminders — edit those on the character.',
+    text: 'Writing preset, POV, response length, temperature, max tokens, lorebooks, reminders. Edit those on the character.',
   }));
   root.appendChild(generationSection);
 
   const saveRow = el('div', 'tg-cs-save-row');
-  const saveBtn = el('button', 'tg-cs-save-btn', { text: 'Save Chat Info' });
+  const saveBtn = el('button', 'tg-cs-save-btn', { text: 'Save chat info' });
   const savedLabel = el('span', 'tg-cs-saved', { text: 'Saved!' });
   saveRow.append(saveBtn, savedLabel);
   root.appendChild(saveRow);
@@ -9360,7 +9360,7 @@ function renderChatSettingsPage(container, parallx, input) {
       charChipList.appendChild(chip);
     }
 
-    const addBtn = el('button', 'tg-cs-add-btn', { text: '+ Add Character' });
+    const addBtn = el('button', 'tg-cs-add-btn', { text: '+ Add character' });
     addBtn.addEventListener('click', async () => {
       const available = allCharacters.filter((char) => !thread.characters.find((item) => item.file === char.fileName));
       if (available.length === 0) return;
@@ -9492,7 +9492,7 @@ const WRITING_PRESETS = {
 - **Logical Consistency**: Maintain awareness of surroundings and the evolving narrative. Let actions align with the world — boots sinking into mud after a storm, breath fogging in a cold cavern. Keep reactions grounded in environment.`,
   },
   'immersive-rp-unfiltered': {
-    label: 'Immersive RP (Unfiltered)',
+    label: 'Immersive RP (unfiltered)',
     // Expanded, uncensored sibling of immersive-rp: keeps the full sensory /
     // cadence framework and adds a raw-themes clause (mature content, no forced
     // redemption). The source prompt's "speaking mirror" example was abstracted

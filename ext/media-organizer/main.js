@@ -4052,7 +4052,7 @@ async function generateImageThumbnail(checksum, filePath, width, height, api, ov
 async function generateAllThumbnails(api, overwrite = false) {
   const thumbDir = getThumbDir(api);
   if (!thumbDir) {
-    api.window.showWarningMessage('No workspace folder found — cannot generate thumbnails.');
+    api.window.showWarningMessage('No workspace folder found. Cannot generate thumbnails.');
     return;
   }
 
@@ -4166,7 +4166,7 @@ async function generateAllThumbnails(api, overwrite = false) {
   }
 
   if (_statusBarItem) {
-    _statusBarItem.text = `$(check) Thumbnails done — ${generated} new, ${skipped} skipped, ${failed} failed`;
+    _statusBarItem.text = `$(check) Thumbnails done: ${generated} new, ${skipped} skipped, ${failed} failed`;
     setTimeout(() => { if (_statusBarItem) _statusBarItem.hide(); }, 5000);
   }
 
@@ -4185,13 +4185,13 @@ async function cleanOrphanThumbnails(api, options = {}) {
   const { photoThumbnails = true, videoCoverFrames = true, dryRun = false } = options;
   const thumbDir = getThumbDir(api);
   if (!thumbDir) {
-    api.window.showWarningMessage('No workspace folder found — cannot clean thumbnails.');
+    api.window.showWarningMessage('No workspace folder found. Cannot clean thumbnails.');
     return;
   }
 
   const dirExists = await window.parallxElectron.fs.exists(thumbDir);
   if (!dirExists) {
-    api.window.showInformationMessage('No thumbnail directory found — nothing to clean.');
+    api.window.showInformationMessage('No thumbnail directory found. Nothing to clean.');
     return;
   }
 
@@ -4275,7 +4275,7 @@ async function cleanOrphanThumbnails(api, options = {}) {
 
   const filterNote = skippedByFilter > 0 ? `, ${skippedByFilter} skipped by filter` : '';
   if (_statusBarItem) {
-    _statusBarItem.text = `$(check) Cleanup done${dryLabel} — ${deleted} orphans ${dryRun ? 'found' : 'removed'}, ${kept} kept`;
+    _statusBarItem.text = `$(check) Cleanup done${dryLabel}: ${deleted} orphans ${dryRun ? 'found' : 'removed'}, ${kept} kept`;
     setTimeout(() => { if (_statusBarItem) _statusBarItem.hide(); }, 5000);
   }
 
@@ -4589,13 +4589,13 @@ async function validateCachedThumbnail(thumbPath) {
 async function getCacheStats(api) {
   const thumbDir = getThumbDir(api);
   if (!thumbDir) {
-    api.window.showWarningMessage('No workspace folder found — cannot get cache stats.');
+    api.window.showWarningMessage('No workspace folder found. Cannot get cache stats.');
     return null;
   }
 
   const dirExists = await window.parallxElectron.fs.exists(thumbDir);
   if (!dirExists) {
-    api.window.showInformationMessage('No thumbnail directory found — cache is empty.');
+    api.window.showInformationMessage('No thumbnail directory found. The cache is empty.');
     return { totalFiles: 0, totalSizeBytes: 0, photoThumbnails: 0, videoCoverFrames: 0, unknownFiles: 0 };
   }
 
@@ -4646,14 +4646,14 @@ async function getCacheStats(api) {
   }
 
   const sizeMB = (totalSizeBytes / (1024 * 1024)).toFixed(1);
-  const partial = walkError ? ' (partial — errors occurred)' : '';
+  const partial = walkError ? ' (partial, errors occurred)' : '';
   if (walkError) {
     api.window.showWarningMessage(
-      `Thumbnail cache${partial}: ${totalFiles} files (${sizeMB} MB) — ${photoThumbnails} photo, ${videoCoverFrames} video, ${unknownFiles} unknown.`
+      `Thumbnail cache${partial}: ${totalFiles} files (${sizeMB} MB) · ${photoThumbnails} photo, ${videoCoverFrames} video, ${unknownFiles} unknown.`
     );
   } else {
     api.window.showInformationMessage(
-      `Thumbnail cache: ${totalFiles} files (${sizeMB} MB) — ${photoThumbnails} photo, ${videoCoverFrames} video, ${unknownFiles} unknown.`
+      `Thumbnail cache: ${totalFiles} files (${sizeMB} MB) · ${photoThumbnails} photo, ${videoCoverFrames} video, ${unknownFiles} unknown.`
     );
   }
 
@@ -9258,7 +9258,7 @@ function moShowShortcutsCheatSheet() {
       [[mod, 'A'], 'Select all on this page'],
       [[mod, 'I'], 'Invert selection'],
       [['Shift', '↑↓←→'], 'Extend selection'],
-      [['Drag'], 'Box-select (hold ' + mod + ' to add) — auto-scrolls at edges'],
+      [['Drag'], 'Box-select (hold ' + mod + ' to add), auto-scrolls at edges'],
     ]},
     { title: 'Rate & label', items: [
       [['0', '–', '5'], 'Set star rating (0 clears)'],
@@ -10817,7 +10817,7 @@ function renderGridBrowser(container, api, input) {
     ];
     const pop = moEl('div', 'mo-search-help-popover');
     pop.appendChild(moEl('div', 'mo-search-help-title', { textContent: 'Search operators' }));
-    pop.appendChild(moEl('div', 'mo-search-help-note', { textContent: 'Plain text searches titles, tags, folders & filenames. Combine operators freely — click one to insert it.' }));
+    pop.appendChild(moEl('div', 'mo-search-help-note', { textContent: 'Plain text searches titles, tags, folders & filenames. Combine operators freely. Click one to insert it.' }));
     const list = moEl('div', 'mo-search-help-list');
     for (const r of rows) {
       const row = moEl('div', 'mo-search-help-row');
@@ -13823,7 +13823,7 @@ function buildVideoPlayer(container, fullPath, ctx) {
     e.stopPropagation();
     const fileId = ctx && ctx.primaryFile && ctx.primaryFile.id;
     if (!fileId) {
-      _api && _api.window.showWarningMessage('Cannot set cover — video file not yet indexed.');
+      _api && _api.window.showWarningMessage('Cannot set cover. The video file is not indexed yet.');
       return;
     }
     coverBtn.disabled = true;
@@ -13846,7 +13846,7 @@ function buildVideoPlayer(container, fullPath, ctx) {
         } catch { /* fall through to error message below */ }
       }
       if (!checksum) {
-        _api && _api.window.showWarningMessage('Cannot set cover — could not compute video fingerprint.');
+        _api && _api.window.showWarningMessage('Cannot set cover. The video fingerprint could not be computed.');
         return;
       }
       const r = await generateVideoCoverFrame(
@@ -15902,7 +15902,7 @@ async function exportSelectedItems(state, api) {
   if (!pe || !pe.dialog || !pe.fs) return;
 
   // Pick destination folder
-  const destFolder = await pe.dialog.openFolder({ title: 'Export — Choose Destination Folder' });
+  const destFolder = await pe.dialog.openFolder({ title: 'Choose Export Destination Folder' });
   if (!destFolder) return;
 
   const { photos, videos } = parseSelectedIds(state.selectedIds);
@@ -16211,7 +16211,7 @@ function showBulkTagDialog(state, api, onComplete) {
   const chipsLabel = moEl('label', null, { textContent: 'Picked tags (0)' });
   chipsSection.appendChild(chipsLabel);
   const chipsWrap = moEl('div', 'mo-bulk-tag-chips');
-  const chipsEmpty = moEl('span', 'mo-bulk-tag-chips-empty', { textContent: 'No tags picked — choose from below or type to search/create.' });
+  const chipsEmpty = moEl('span', 'mo-bulk-tag-chips-empty', { textContent: 'No tags picked. Choose from below, or type to search or create.' });
   chipsWrap.appendChild(chipsEmpty);
   chipsSection.appendChild(chipsWrap);
   dialog.appendChild(chipsSection);
@@ -16348,7 +16348,7 @@ function showBulkTagDialog(state, api, onComplete) {
     if (tags.length === 0 && (!q || exact)) {
       const msg = mode === 'REMOVE'
         ? 'No tags on the current selection to remove.'
-        : (q ? 'No matching tags.' : 'No tags exist yet — type a name above to create one.');
+        : (q ? 'No matching tags.' : 'No tags exist yet. Type a name above to create one.');
       const empty = moEl('div', 'mo-bulk-tag-empty', { textContent: msg });
       browseList.appendChild(empty);
       return;
@@ -16806,7 +16806,7 @@ function showBulkDeleteDialog(state, api, onComplete) {
       }
       let fileMsg = '';
       if (fileCheckbox.checked) {
-        fileMsg = ` — recycle-bin fallback: ${result.filesTrashed} file${result.filesTrashed === 1 ? '' : 's'} removed${result.filesPermanent ? `, ${result.filesPermanent} on external drive permanently deleted` : ''}${result.filesFailed ? `, ${result.filesFailed} failed` : ''}`;
+        fileMsg = `. Recycle-bin fallback: ${result.filesTrashed} file${result.filesTrashed === 1 ? '' : 's'} removed${result.filesPermanent ? `, ${result.filesPermanent} on external drive permanently deleted` : ''}${result.filesFailed ? `, ${result.filesFailed} failed` : ''}`;
       }
       api.window.showInformationMessage(`${result.purged} item${result.purged === 1 ? '' : 's'} deleted${fileMsg}.`);
       overlay.remove();
@@ -17092,7 +17092,7 @@ function showOptimizeGifDialog(gifFiles, api, onComplete) {
       const avgF = Math.round(fpsSum / willOptimize);
       lines.push(`Re-encoding ${willOptimize} of ${probes.length} · average target: ${avgW}px @ ${avgF}fps`);
     } else {
-      lines.push('All files already at or below target — nothing to do.');
+      lines.push('All files already at or below target. Nothing to do.');
     }
     if (cantHit > 0) {
       lines.push(`${cantHit} file${cantHit === 1 ? '' : 's'} cannot reach ${targetMB} MB at minimum settings${allowTrim ? '' : ' (enable trimming to try harder)'}.`);
@@ -17210,7 +17210,7 @@ async function moCaptureFrame(api, videoPath, timestampSec, ctx) {
     try { await detectAllTools(); } catch { /* ignore */ }
   }
   if (!_toolPaths.ffmpeg) {
-    api.window.showErrorMessage('ffmpeg not available — cannot capture frames.');
+    api.window.showErrorMessage('ffmpeg not available. Cannot capture frames.');
     return;
   }
   moOpenFrameDialog(api, videoPath, timestampSec, ctx);
@@ -17624,12 +17624,12 @@ async function moStartScreenRecording(api) {
   }
   await detectAllTools();
   if (!_toolPaths.ffmpeg) {
-    api.window.showErrorMessage('ffmpeg not found on PATH — required for screen recording.');
+    api.window.showErrorMessage('ffmpeg not found on PATH. It is required for screen recording.');
     return;
   }
   const dir = await moGetRecordingsDir(api);
   if (!dir) {
-    api.window.showWarningMessage('Open a workspace folder first — recordings must be stored inside it.');
+    api.window.showWarningMessage('Open a workspace folder first. Recordings must be stored inside it.');
     return;
   }
   try { await window.parallxElectron.fs.mkdir(dir); } catch { /* openFrame re-validates */ }
@@ -17637,7 +17637,7 @@ async function moStartScreenRecording(api) {
   const outputPath = dir + sep + MO_REC_PREFIX + Date.now() + '.mp4';
   // Final containment gate before handing the path to a spawned process.
   if (!(await moPathInWorkspace(outputPath))) {
-    api.window.showErrorMessage('Recording path is outside the workspace — aborted to prevent data leakage.');
+    api.window.showErrorMessage('Recording path is outside the workspace. Aborted to prevent data leakage.');
     return;
   }
   _moRecordingInFlight = true;
@@ -17773,12 +17773,12 @@ async function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut,
     try { await detectAllTools(); } catch { /* ignore — fall through to error */ }
   }
   if (!_toolPaths.ffmpeg) {
-    api.window.showErrorMessage('ffmpeg not available — cannot export clips.');
+    api.window.showErrorMessage('ffmpeg not available. Cannot export clips.');
     if (typeof opts?.onClose === 'function') { try { opts.onClose(); } catch { /* ignore */ } }
     return;
   }
   if (!duration || duration <= 0) {
-    api.window.showErrorMessage('Video duration unknown — cannot export.');
+    api.window.showErrorMessage('Video duration unknown. Cannot export.');
     if (typeof opts?.onClose === 'function') { try { opts.onClose(); } catch { /* ignore */ } }
     return;
   }
@@ -18312,7 +18312,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   cropOverlay.appendChild(cropRect);
   // Point-track marker: the user-picked subject point. Right-click clears it.
   const trackPointEl = moEl('div', 'mo-track-point', {
-    title: 'Tracking point — the tracker follows this. Right-click to clear.',
+    title: 'Tracking point: the tracker follows this. Right-click to clear.',
   });
   trackPointEl.style.display = 'none';
   trackPointEl.addEventListener('contextmenu', (e) => {
@@ -18336,7 +18336,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   stage.appendChild(camMask);
   const camBtn = moEl('button', 'mo-clip-cam-toggle', {
     textContent: 'Preview crop',
-    title: 'Toggle output preview — the cropped view fills the stage and follows crop keyframes during playback',
+    title: 'Toggle output preview: the cropped view fills the stage and follows crop keyframes during playback',
   });
   camBtn.style.display = 'none';
   stage.appendChild(camBtn);
@@ -18675,7 +18675,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     cropKeys = [];
     resyncRectToBase();
     renderCropKeys();
-    status.textContent = 'Crop keyframes cleared — static crop at the base window size.';
+    status.textContent = 'Crop keyframes cleared. Static crop at the base window size.';
   });
   trackBtn.addEventListener('click', () => {
     runAutoTrack().catch((err) => {
@@ -18709,7 +18709,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     if (!cropEnabled) return;
     if (pointPickArmed) { setPointPickArmed(false); return; }
     if (camActive) {
-      api.window.showInformationMessage('Exit crop preview first — the tracking point is picked on the source view.');
+      api.window.showInformationMessage('Exit crop preview first. The tracking point is picked on the source view.');
       return;
     }
     if (trackPoint) {
@@ -18742,7 +18742,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     trackPoint = { u, v, t: Math.max(0, Math.min(duration, preview.currentTime)) };
     setPointPickArmed(false);
     updateTrackPointUi();
-    status.textContent = `Point set at ${moTimeStr(trackPoint.t)} — size the crop window, then click 'Track point' to run.`;
+    status.textContent = `Point set at ${moTimeStr(trackPoint.t)}. Size the crop window, then click 'Track point' to run.`;
   }, true);
 
   // Compute crop rect (in normalized [0..1] source coords) sized to a ratio,
@@ -19448,8 +19448,8 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
 
   function updateKeyCount() {
     keyCount.textContent = cropKeys.length
-      ? (cropKeys.length === 1 ? '1 key — static until a 2nd is added' : `${cropKeys.length} keys`)
-      : 'No keys — static crop';
+      ? (cropKeys.length === 1 ? '1 key · static until a 2nd is added' : `${cropKeys.length} keys`)
+      : 'No keys · static crop';
   }
   function renderCropKeys() {
     keysLayer.innerHTML = '';
@@ -19461,7 +19461,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       if (zoomed) m.classList.add('mo-scrub-key-zoom');
       m.title = `Crop keyframe @ ${moTimeStr(k.t)}`
         + (zoomed ? ` · zoom ${Math.round((cropBase.w / k.w) * 100)}%` : '')
-        + ' — click to seek · drag to retime · right-click to remove';
+        + ' · click to seek · drag to retime · right-click to remove';
       m.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); beginKeyDrag(k, m, e); });
       m.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); removeKey(k); });
       keysLayer.appendChild(m);
@@ -19533,18 +19533,18 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     const btn = point ? pointBtn : trackBtn;
     if (tracking) { trackGen++; btn.textContent = 'Cancelling…'; return; }
     if (!cropEnabled) return;
-    if (!_toolPaths.ffmpeg) { api.window.showErrorMessage('ffmpeg not available — cannot auto-track.'); return; }
+    if (!_toolPaths.ffmpeg) { api.window.showErrorMessage('ffmpeg not available. Cannot auto-track.'); return; }
     const [a, b] = getInOut();
-    if (b - a < 0.3) { api.window.showWarningMessage('Clip is too short to track — set In/Out first.'); return; }
+    if (b - a < 0.3) { api.window.showWarningMessage('Clip is too short to track. Set In/Out first.'); return; }
     // A point picked outside the In/Out range would silently anchor on a
     // boundary frame where the subject may not be at the picked position.
     if (point && (point.t < a - 0.05 || point.t > b + 0.05)) {
       api.window.showWarningMessage(
-        `The tracking point was set at ${moTimeStr(point.t)}, outside the In/Out range — re-pick the point inside the clip, or widen In/Out.`);
+        `The tracking point was set at ${moTimeStr(point.t)}, outside the In/Out range. Re-pick the point inside the clip, or widen In/Out.`);
       return;
     }
     const base = getThumbDir(api);
-    if (!base) { api.window.showErrorMessage('Workspace unavailable — cannot extract tracking frames.'); return; }
+    if (!base) { api.window.showErrorMessage('Workspace unavailable. Cannot extract tracking frames.'); return; }
 
     const myGen = ++trackGen;
     tracking = true;
@@ -19662,7 +19662,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
         }
         const varr = ss / n - (s / n) * (s / n);
         if (varr < 20) {
-          throw new Error('not enough detail at the tracking point — pick a more textured spot on the subject and re-run');
+          throw new Error('not enough detail at the tracking point. Pick a more textured spot on the subject and re-run');
         }
         pick = { lx, ly, t: tSize, varr };
       } else {
@@ -19672,7 +19672,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
         // flat background and tracked the wrong thing.
         pick = moPickTemplateRect(grays[anchor], fw, fh, winX, winY, winW, winH);
         if (!pick || pick.varr < 20) {
-          throw new Error('not enough detail inside the crop window to lock onto — tighten the window around the subject and re-run');
+          throw new Error('not enough detail inside the crop window to lock onto. Tighten the window around the subject and re-run');
         }
       }
       const tpx = pick.t;
@@ -19747,11 +19747,11 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       renderCropKeys();
       syncCropToPlayhead();
       const lockedPct = Math.round((lockedCount / total) * 100);
-      status.textContent = `${point ? 'Point track' : 'Auto-track'} done — ${keys.length} keyframes, locked ${lockedPct}% of frames.` +
+      status.textContent = `${point ? 'Point track' : 'Auto-track'} done: ${keys.length} keyframes, locked ${lockedPct}% of frames.` +
         (lockedPct < 60
           ? (point
-              ? ' Low lock rate — pick a more distinctive point (or a slower stretch) and re-run.'
-              : ' Low lock rate — tighten the crop window around the subject and re-run.')
+              ? ' Low lock rate. Pick a more distinctive point (or a slower stretch) and re-run.'
+              : ' Low lock rate. Tighten the crop window around the subject and re-run.')
           : ' Scrub to review; drag the window to correct.');
     } finally {
       tracking = false;
@@ -19878,7 +19878,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       stripEl.appendChild(cell);
       frames.push({ index: i, src: fpath, deleted: false, delayMs: null });
     }
-    stripStatus.textContent = jpgs.length === 0 ? 'No frames extracted' : `${jpgs.length} frames — click to set delay, right-click to delete (GIF only)`;
+    stripStatus.textContent = jpgs.length === 0 ? 'No frames extracted' : `${jpgs.length} frames · click to set delay, right-click to delete (GIF only)`;
 
     // Waveform (best-effort; ignore failure)
     try {
@@ -20086,7 +20086,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   queueHeadActions.style.gap = '6px';
   queueHeadActions.style.alignItems = 'center';
   queueHeadActions.style.marginLeft = 'auto';
-  const stopEditBtn = moEl('button', 'mo-clip-queue-del', { textContent: '\u2715 stop editing', title: 'Cancel editing this clip (settings stay as-is)' });
+  const stopEditBtn = moEl('button', 'mo-clip-queue-del', { textContent: '\u2715 Stop editing', title: 'Cancel editing this clip (settings stay as-is)' });
   stopEditBtn.style.fontSize = '10px';
   stopEditBtn.style.opacity = '0.75';
   stopEditBtn.style.display = 'none';
@@ -22151,12 +22151,12 @@ async function moSaveSmartAlbum(api, queryStr, currentFilters) {
     (!currentFilters.excludeTagIds || currentFilters.excludeTagIds.length === 0) &&
     currentFilters.ratingMin == null && !currentFilters.dateFrom && !currentFilters.dateTo
   ))) {
-    api.window.showWarningMessage('Nothing to save — type a search query or apply filters first.');
+    api.window.showWarningMessage('Nothing to save. Type a search query or apply filters first.');
     return;
   }
   const name = await api.window.showInputBox({
     prompt: 'Smart album name',
-    placeholder: 'e.g. Beach 2024 — top picks',
+    placeholder: 'e.g. Beach 2024 top picks',
   });
   if (!name) return;
   const payload = JSON.stringify({ query: queryStr || '', filters: currentFilters || {} });
@@ -22330,7 +22330,7 @@ async function moRunPHashIndexer(api) {
   }
 
   if (_statusBarItem) {
-    _statusBarItem.text = `$(check) pHash done — ${done - fail}/${rows.length} indexed`;
+    _statusBarItem.text = `$(check) pHash done: ${done - fail}/${rows.length} indexed`;
     setTimeout(() => { if (_statusBarItem) _statusBarItem.hide(); }, 5000);
   }
   _phashRunning = false;
@@ -22802,7 +22802,7 @@ function _handleEraserSpawnResult(api, cfgPath, result) {
       if (!_eraserAvail.missingNotified) {
         _eraserAvail.missingNotified = true;
         api.window.showInformationMessage(
-          `Eraser not found at ${cfgPath} — falling back to recycle bin. Set mediaOrganizer.eraserPath in settings to point at your install.`
+          `Eraser not found at ${cfgPath}. Falling back to the recycle bin. Set mediaOrganizer.eraserPath in settings to point at your install.`
         );
       }
     } else {

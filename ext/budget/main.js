@@ -67,7 +67,7 @@ async function triggerSyncFromUI(api, _opts = {}) {
   }
   _syncInFlight = true;
   try {
-    await api.window?.showInformationMessage?.('Budget sync started — pulling and categorizing transaction emails…');
+    await api.window?.showInformationMessage?.('Budget sync started. Pulling and categorizing transaction emails…');
     const counts = await budgetSync(api);
     const summary =
       `Budget sync complete: ${counts.confirmed} recorded, ` +
@@ -285,11 +285,11 @@ const SECTIONS = [
   // rendered inside the Plan / Settings wrappers as tabs.
   { id: 'budgets',      title: 'Budgets',      icon: 'target',           commandId: 'budget.openBudgets',      blurb: 'Per-category monthly limits with alerts and rollover.', nav: false },
   { id: 'recurring',    title: 'Recurring',    icon: 'repeat',           commandId: 'budget.openRecurring',    blurb: 'Detected subscriptions and recurring bills with upcoming-due dates.', nav: false },
-  { id: 'cashflow',     title: 'Cash Flow',    icon: 'trending-up',      commandId: 'budget.openCashFlow',     blurb: 'Monthly Income vs Expenses with Savings Rate Over Time.', nav: false },
+  { id: 'cashflow',     title: 'Cash Flow',    icon: 'trending-up',      commandId: 'budget.openCashFlow',     blurb: 'Monthly income vs expenses with savings rate over time.', nav: false },
   { id: 'reports',      title: 'Reports',      icon: 'pie-chart',        commandId: 'budget.openReports',      blurb: 'Top merchants, category breakdown, and trends over a selected window.', nav: false },
   { id: 'rules',        title: 'Rules',        icon: 'filter',           commandId: 'budget.openRules',        blurb: 'Merchant→category rules. Auto-learned from your overrides; manually editable.', nav: false },
   { id: 'reconcile',    title: 'Reconcile',    icon: 'check-circle',     commandId: 'budget.openReconcile',    blurb: 'Compare your real statement balance against derived activity.', nav: false },
-  { id: 'categories',   title: 'Categories',   icon: 'tag',              commandId: 'budget.openCategories',   blurb: 'Manage your category list — colour, kind, and monthly limits.', nav: false },
+  { id: 'categories',   title: 'Categories',   icon: 'tag',              commandId: 'budget.openCategories',   blurb: 'Manage your category list: colour, kind, and monthly limits.', nav: false },
   { id: 'reviewQueue',  title: 'Review Queue', icon: 'inbox',            commandId: 'budget.openReviewQueue',  blurb: 'AI-flagged low-confidence imports awaiting your confirmation.', nav: false },
   { id: 'syncLog',      title: 'Sync Log',     icon: 'scroll-text',      commandId: 'budget.openSyncLog',      blurb: 'Per-message trace of the last few sync runs.', nav: false },
   { id: 'importExport', title: 'Import / Export', icon: 'arrow-up-down',  commandId: 'budget.openImportExport', blurb: 'Paste a CSV to import, or export your full ledger as CSV.', nav: false },
@@ -1723,7 +1723,7 @@ function renderSidebarNav(container, api) {
     syncBtn.appendChild(ic);
   }
   const syncLabel = document.createElement('span');
-  syncLabel.textContent = 'Sync Now';
+  syncLabel.textContent = 'Sync now';
   syncBtn.appendChild(syncLabel);
   syncBtn.addEventListener('click', () => {
     api.commands.executeCommand('budget.sync').catch(err => {
@@ -1926,7 +1926,7 @@ function makeDropdown(options, value, onChange, opts = {}) {
 
 // Category options for makeDropdown, with the category colour as a swatch.
 function categoryOptions(categories, placeholder) {
-  return [{ value: '', label: placeholder || '— Uncategorized —' }].concat(
+  return [{ value: '', label: placeholder || 'No category' }].concat(
     (categories || []).map(c => ({ value: c.id, label: c.name, color: c.color })),
   );
 }
@@ -2215,7 +2215,7 @@ async function openTxEditor(api, opts = {}) {
     typeOpts.push({ value: row.tx_type, label: txTypeLabel(row.tx_type) });
   }
   const acctSel = makeDropdown(
-    [{ value: '', label: '— No account —' }].concat(accounts.map(a => ({ value: a.id, label: a.display_name || defaultAccountName(a.kind, a.last_four) }))),
+    [{ value: '', label: 'No account' }].concat(accounts.map(a => ({ value: a.id, label: a.display_name || defaultAccountName(a.kind, a.last_four) }))),
     row?.account_id || '');
 
   // Declared before typeSel so the type handler can re-scope it without a forward
@@ -2403,7 +2403,7 @@ function renderTransactionsSection(body, api) {
     iconHtml: makeIcon(api, 'refresh-cw', 12),
     onClick: () => void refresh(),
   }));
-  toolbar.appendChild(makeButton('Sync Now', {
+  toolbar.appendChild(makeButton('Sync now', {
     primary: true,
     iconHtml: makeIcon(api, 'refresh-cw', 12),
     onClick: () => api.commands.executeCommand('budget.sync').finally(() => refresh()),
@@ -2667,7 +2667,7 @@ function renderReviewQueueSection(body, api) {
       return;
     }
     if (!rows || rows.length === 0) {
-      tableWrap.appendChild(emptyState('Nothing to review — review-queue is empty.'));
+      tableWrap.appendChild(emptyState('Nothing to review. The review queue is empty.'));
       return;
     }
 
@@ -2686,7 +2686,7 @@ function renderReviewQueueSection(body, api) {
       tr.addEventListener('click', () => void openTxEditor(api, { id: r.id, onSaved: refresh }));
       const tdDate = document.createElement('td'); tdDate.textContent = fmtDate(r.transaction_date); tr.appendChild(tdDate);
       const tdMerch = document.createElement('td');
-      const mTitle = document.createElement('div'); mTitle.textContent = r.merchant || '— (parse failed)'; tdMerch.appendChild(mTitle);
+      const mTitle = document.createElement('div'); mTitle.textContent = r.merchant || '(parse failed)'; tdMerch.appendChild(mTitle);
       if (r.raw_subject) {
         const sub = document.createElement('div');
         sub.style.fontSize = '10px';
@@ -2704,7 +2704,7 @@ function renderReviewQueueSection(body, api) {
 
       const tdCat = document.createElement('td');
       tdCat.addEventListener('click', (e) => e.stopPropagation());
-      const sel = makeDropdown(categoryOptions(categories, '— Pick category —'), r.category_id || '');
+      const sel = makeDropdown(categoryOptions(categories, 'Choose a category…'), r.category_id || '');
       tdCat.appendChild(sel);
       tr.appendChild(tdCat);
 
@@ -2754,12 +2754,12 @@ function renderSyncLogSection(body, api) {
     iconHtml: makeIcon(api, 'refresh-cw', 12),
     onClick: () => void refresh(),
   }));
-  toolbar.appendChild(makeButton('Sync Now', {
+  toolbar.appendChild(makeButton('Sync now', {
     primary: true,
     iconHtml: makeIcon(api, 'refresh-cw', 12),
     onClick: () => api.commands.executeCommand('budget.sync').finally(() => refresh()),
   }));
-  toolbar.appendChild(makeButton('Reprocess History', {
+  toolbar.appendChild(makeButton('Reprocess history', {
     onClick: () => api.commands.executeCommand('budget.reprocessHistory').finally(() => refresh()),
   }));
   toolbar.appendChild(makeButton('Export CSV', {
@@ -2790,16 +2790,16 @@ function renderSyncLogSection(body, api) {
     val.style.fontSize = '13px';
     if (last && typeof last === 'object') {
       if (last.ok) {
-        val.textContent = `OK — confirmed ${last.confirmed||0}, review ${last.review||0}, snapshots ${last.snapshot||0}`;
+        val.textContent = `OK: confirmed ${last.confirmed||0}, review ${last.review||0}, snapshots ${last.snapshot||0}`;
       } else {
         val.textContent = 'Failed: ' + (last.error || 'unknown');
         val.style.color = 'var(--vscode-charts-red, #f87171)';
       }
     } else {
-      val.textContent = 'No Sync Recorded Yet';
+      val.textContent = 'No sync recorded yet';
     }
     const sub = document.createElement('div'); sub.className = 'budget-card-sub';
-    sub.textContent = lastSyncedAt ? `Cursor: ${lastSyncedAt}` : 'No cursor — first sync will fetch the configured window.';
+    sub.textContent = lastSyncedAt ? `Cursor: ${lastSyncedAt}` : 'No cursor. The first sync will fetch the configured window.';
     statusEl.appendChild(lab); statusEl.appendChild(val); statusEl.appendChild(sub);
 
     tableWrap.innerHTML = '';
@@ -2844,7 +2844,7 @@ function renderCategoriesSection(body, api) {
     iconHtml: makeIcon(api, 'refresh-cw', 12),
     onClick: () => void refresh(),
   }));
-  toolbar.appendChild(makeButton('Add Category', {
+  toolbar.appendChild(makeButton('Add category', {
     primary: true,
     iconHtml: makeIcon(api, 'plus', 12),
     onClick: async () => {
@@ -2992,7 +2992,7 @@ function renderDashboardSection(body, api) {
   const lastSyncMeta = document.createElement('span');
   lastSyncMeta.className = 'budget-toolbar-meta';
   toolbar.appendChild(lastSyncMeta);
-  toolbar.appendChild(makeButton('Sync Now', {
+  toolbar.appendChild(makeButton('Sync now', {
     primary: true,
     iconHtml: makeIcon(api, 'refresh-cw', 12),
     onClick: () => api.commands.executeCommand('budget.sync').finally(() => refresh()),
@@ -3051,14 +3051,14 @@ function renderDashboardSection(body, api) {
     } else if (evt.kind === 'complete') {
       const c = evt.counts || {};
       setBanner('success',
-        `<b>Sync complete</b> — ${c.confirmed||0} new transaction(s) confirmed and categorized, ${c.review||0} flagged for review, ${c.snapshot||0} balance snapshot(s) recorded` +
+        `<b>Sync complete:</b> ${c.confirmed||0} new transaction(s) confirmed and categorized, ${c.review||0} flagged for review, ${c.snapshot||0} balance snapshot(s) recorded` +
         ((c.skipped||0) ? `, ${c.skipped} skipped (already imported)` : '') +
         ((c.errors||0) ? `, <span style="color:var(--vscode-charts-red,#a43b38)">${c.errors} error(s)</span>` : '') +
         '.');
       void refresh();
     } else if (evt.kind === 'error') {
       setBanner('error',
-        `<b>Sync failed</b> — ${escHtml(evt.message || 'unknown error')}. Check Settings → MCP Servers to confirm Gmail is connected, then try again.`);
+        `<b>Sync failed:</b> ${escHtml(evt.message || 'unknown error')}. Check Settings → MCP Servers to confirm Gmail is connected, then try again.`);
     }
   });
   // ── Dashboard layout (M64 P3 redesign) ──────────────────────────────
@@ -3127,13 +3127,13 @@ function renderDashboardSection(body, api) {
       <div class="budget-card-label" style="font-size:13px;text-transform:uppercase;letter-spacing:0.05em;">Welcome to Budget</div>
       <div class="budget-card-value" style="font-size:18px;margin-top:4px;">Set up in three steps.</div>
       <ol style="margin:12px 0 0 20px;padding:0;line-height:1.7;">
-        <li><b>Connect Gmail</b> — make sure the <code>gmail-mcp-server</code> tool is enabled in Settings → MCP Servers.</li>
-        <li><b>Run your first sync</b> — pull transaction emails and let the AI categorize them.</li>
-        <li><b>Set budgets</b> — give yourself monthly limits per category in the Budgets tab.</li>
+        <li><b>Connect Gmail:</b> make sure the <code>gmail-mcp-server</code> tool is enabled in Settings → MCP Servers.</li>
+        <li><b>Run your first sync:</b> pull transaction emails and let the AI categorize them.</li>
+        <li><b>Set budgets:</b> give yourself monthly limits per category in the Budgets tab.</li>
       </ol>
       <div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;"></div>`;
     const actions = card.lastElementChild;
-    const syncBtn = makeButton('Run First Sync', {
+    const syncBtn = makeButton('Run first sync', {
       primary: true,
       onClick: async () => {
         syncBtn.setAttribute('disabled', 'true');
@@ -3974,7 +3974,7 @@ async function computeBudgetInsights(api, monthKey) {
       out.push({
         sev: 'warn',
         glyph: '▲',
-        text: `${name} charged ${fmtMoney(r.last_amount_cents)} — up from its usual ${fmtMoney(r.avg_amount_cents)}`,
+        text: `${name} charged ${fmtMoney(r.last_amount_cents)}, up from its usual ${fmtMoney(r.avg_amount_cents)}`,
         sub: 'Recurring price increase',
         amountCents: -d,
         onClick: () => api.commands.executeCommand('budget.openRecurring').catch(() => {}),
@@ -4248,7 +4248,7 @@ async function renderMonthInsights(section, api, monthKey) {
       glyph.textContent = ins.glyph || '·';
       const text = document.createElement('span');
       text.className = 'budget-insight-title';
-      text.innerHTML = escHtml(ins.text) + (ins.sub ? ` <span class="sub">— ${escHtml(ins.sub)}</span>` : '');
+      text.innerHTML = escHtml(ins.text) + (ins.sub ? ` <span class="sub">· ${escHtml(ins.sub)}</span>` : '');
       const amt = document.createElement('span');
       amt.className = 'budget-insight-amt';
       if (ins.amountCents != null) {
@@ -4412,8 +4412,8 @@ function buildDailyHeatmap(opts) {
       cell.className = `budget-heatmap-cell mode-${mode} bucket-${bucket(v)}`;
       if (ymd === today) cell.classList.add('is-today');
       cell.title = v > 0
-        ? `${ymd} — ${fmtMoney(v)}` + (otherV > 0 ? ` (${otherModeLabel} ${fmtMoney(otherV)})` : '')
-        : `${ymd} — no activity`;
+        ? `${ymd} · ${fmtMoney(v)}` + (otherV > 0 ? ` (${otherModeLabel} ${fmtMoney(otherV)})` : '')
+        : `${ymd} · no activity`;
       cell.innerHTML = `<span class="day">${d}</span>`;
       cell.addEventListener('click', () => {
         if (typeof opts.onDayClick === 'function') opts.onDayClick(ymd);
@@ -4859,8 +4859,8 @@ async function buildNeedsAttention(api, scope) {
     if (r && Number(r.n) > 0) {
       items.push({
         kind: 'warn',
-        title: `${r.n} Untyped Transactions`,
-        sub: `${fmtMoney(r.sum_cents)} Pending Classification`,
+        title: `${r.n} untyped transactions`,
+        sub: `${fmtMoney(r.sum_cents)} pending classification`,
         action: 'Reclassify',
         onClick: () => api.commands.executeCommand('budget.reclassifyUntyped').catch(() => {}),
       });
@@ -4873,9 +4873,9 @@ async function buildNeedsAttention(api, scope) {
     if (r && Number(r.n) > 0) {
       items.push({
         kind: 'warn',
-        title: `${r.n} For Review`,
+        title: `${r.n} for review`,
         sub: 'AI flagged these for confirmation',
-        action: 'Open Review',
+        action: 'Open review',
         onClick: () => {
           _navState.txFilter = { monthKey: scope.monthKey, type: 'all', status: 'review' };
           api.commands.executeCommand('budget.openTransactions').catch(() => {});
@@ -4918,7 +4918,7 @@ async function buildNeedsAttention(api, scope) {
       } else if (pct >= 0.8) {
         items.push({
           kind: 'warn',
-          title: `${r.name} Near Budget`,
+          title: `${r.name} near budget`,
           sub: `${fmtMoney(spend)} of ${fmtMoney(limit)} (${Math.round(pct * 100)}%)`,
           color: r.color,
           action: 'View',
@@ -5029,7 +5029,7 @@ async function buildNeedsAttention(api, scope) {
   }
 
   renderGroup('Needs attention', 'Action recommended', alerts);
-  renderGroup('Insights', 'Awareness only — nothing to do', insights);
+  renderGroup('Insights', 'Awareness only, nothing to do', insights);
   return wrap;
 }
 
@@ -5333,7 +5333,7 @@ function renderAccountsSection(body, api) {
   }));
   const spacer = document.createElement('div'); spacer.className = 'spacer'; toolbar.appendChild(spacer);
   toolbar.appendChild(makeButton('Refresh', { iconHtml: makeIcon(api, 'refresh-cw', 12), onClick: () => void refresh() }));
-  toolbar.appendChild(makeButton('Sync Now', {
+  toolbar.appendChild(makeButton('Sync now', {
     primary: true,
     iconHtml: makeIcon(api, 'refresh-cw', 12),
     onClick: () => api.commands.executeCommand('budget.sync').finally(() => refresh()),
@@ -5606,7 +5606,7 @@ async function openGoalEditor(api, opts = {}) {
   r1.appendChild(field('Target', targetInput, 'Amount to reach'));
   r1.appendChild(field('Saved so far', currentInput, 'Or paid off'));
   form.appendChild(r1);
-  form.appendChild(field('Target date', dateInput, 'Optional — drives the on-pace check'));
+  form.appendChild(field('Target date', dateInput, 'Optional: drives the on-pace check'));
   form.appendChild(field('Notes', notesInput));
   drawer.appendChild(form);
 
@@ -5863,7 +5863,7 @@ function renderReportsSection(body, api) {
     let merchants = [];
     try {
       merchants = await db.all(`
-        SELECT COALESCE(merchant, '— unknown —') AS merchant,
+        SELECT COALESCE(merchant, 'Unknown') AS merchant,
                SUM(amount_cents) AS spend,
                COUNT(*) AS n
           FROM transactions
@@ -5894,7 +5894,7 @@ function renderReportsSection(body, api) {
     let cats = [];
     try {
       cats = await db.all(`
-        SELECT COALESCE(c.name, '— uncategorized —') AS name,
+        SELECT COALESCE(c.name, 'Uncategorized') AS name,
                COALESCE(c.color, '#94a3b8') AS color,
                COALESCE(c.id, '') AS id,
                SUM(t.amount_cents) AS spend
@@ -5958,7 +5958,7 @@ function renderBudgetsSection(body, api) {
   const picker = makeMonthPicker(monthKey, (k) => { monthKey = k; void refresh(); });
   toolbar.appendChild(picker.el);
   const spacer = document.createElement('div'); spacer.className = 'spacer'; toolbar.appendChild(spacer);
-  toolbar.appendChild(makeButton('Copy from Previous Month', {
+  toolbar.appendChild(makeButton('Copy from previous month', {
     onClick: async () => {
       const prev = monthShift(monthKey, -1);
       const prevRows = await db.all('SELECT category_id, limit_cents FROM budgets WHERE month_key=?', [prev]);
@@ -5977,7 +5977,7 @@ function renderBudgetsSection(body, api) {
       await refresh();
     },
   }));
-  toolbar.appendChild(makeButton('Plan Next Month', {
+  toolbar.appendChild(makeButton('Plan next month', {
     primary: true,
     onClick: () => {
       monthKey = monthShift(monthRange().key, 1);
@@ -6042,11 +6042,11 @@ function renderBudgetsSection(body, api) {
       planNote.style.display = '';
       planNote.innerHTML = '';
       planNote.appendChild(document.createTextNode(
-        `Planning ${monthName} — suggestions blend your last three completed months ` +
+        `Planning ${monthName}. Suggestions blend your last three completed months ` +
         `(weighted toward recent) with detected recurring commitments, rounded up to the nearest $5. ` +
         `Click a suggestion to set it as the limit. `
       ));
-      const applyAll = makeButton('Apply All Suggestions', {
+      const applyAll = makeButton('Apply all suggestions', {
         onClick: async () => {
           let applied = 0;
           for (const r of rows) {
@@ -6058,7 +6058,7 @@ function renderBudgetsSection(body, api) {
           }
           await api.window?.showInformationMessage?.(
             applied > 0 ? `Applied ${applied} suggested limit(s). Existing limits were left untouched.`
-                        : 'Nothing to apply — every category with history already has a limit.');
+                        : 'Nothing to apply. Every category with history already has a limit.');
           await refresh();
         },
       });
@@ -6075,10 +6075,10 @@ function renderBudgetsSection(body, api) {
     } else {
       planNote.style.display = 'none';
       const remaining = totalLimit - totalSpent;
-      summary.appendChild(makeCard('Budget Total', fmtMoney(totalLimit), `${rows.filter(r => r.effective_limit_cents > 0).length} Categories with a Limit`));
-      summary.appendChild(makeCard('Expenses So Far', fmtMoney(totalSpent), totalLimit > 0 ? Math.round((totalSpent / totalLimit) * 100) + '% of Budget' : ''));
-      summary.appendChild(makeCard('Remaining', fmtLedger(remaining), remaining < 0 ? 'Over Budget' : ''));
-      summary.appendChild(makeCard('Alerts', String(overCount + nearCount), `${overCount} Over, ${nearCount} Near`));
+      summary.appendChild(makeCard('Budget Total', fmtMoney(totalLimit), `${rows.filter(r => r.effective_limit_cents > 0).length} categories with a limit`));
+      summary.appendChild(makeCard('Expenses So Far', fmtMoney(totalSpent), totalLimit > 0 ? Math.round((totalSpent / totalLimit) * 100) + '% of budget' : ''));
+      summary.appendChild(makeCard('Remaining', fmtLedger(remaining), remaining < 0 ? 'Over budget' : ''));
+      summary.appendChild(makeCard('Alerts', String(overCount + nearCount), `${overCount} over, ${nearCount} near`));
     }
 
     // Even-pace tick position for the running month's bullet bars.
@@ -6226,7 +6226,7 @@ function renderRecurringSection(body, api) {
   let showCancelled = false;
 
   const toolbar = document.createElement('div'); toolbar.className = 'budget-toolbar';
-  toolbar.appendChild(makeButton('Detect Now', {
+  toolbar.appendChild(makeButton('Detect now', {
     primary: true,
     onClick: async () => {
       try {
@@ -6238,7 +6238,7 @@ function renderRecurringSection(body, api) {
       }
     },
   }));
-  const cancelToggle = makeButton('Show Cancelled', { onClick: () => { showCancelled = !showCancelled; cancelToggle.setAttribute('aria-pressed', String(showCancelled)); void refresh(); } });
+  const cancelToggle = makeButton('Show cancelled', { onClick: () => { showCancelled = !showCancelled; cancelToggle.setAttribute('aria-pressed', String(showCancelled)); void refresh(); } });
   cancelToggle.setAttribute('aria-pressed', 'false');
   toolbar.appendChild(cancelToggle);
   const spacer = document.createElement('div'); spacer.className = 'spacer'; toolbar.appendChild(spacer);
@@ -6293,7 +6293,7 @@ function renderRecurringSection(body, api) {
     summary.appendChild(makeCard('Due in 30 days', String(next30.length), next30.length ? `~${fmtMoney(Math.round(next30Total))} upcoming` : 'Nothing due soon'));
 
     if (all.length === 0) {
-      listWrap.appendChild(emptyState('No recurring series detected yet — sync more transactions, then click Detect Now.'));
+      listWrap.appendChild(emptyState('No recurring series detected yet. Sync more transactions, then click Detect now.'));
       return;
     }
 
@@ -6343,7 +6343,7 @@ function renderRecurringSection(body, api) {
 
 function renderRulesSection(body, api) {
   const toolbar = document.createElement('div'); toolbar.className = 'budget-toolbar';
-  toolbar.appendChild(makeButton('+ New Rule', {
+  toolbar.appendChild(makeButton('+ New rule', {
     primary: true,
     onClick: () => { showEditor(null); },
   }));
@@ -6375,7 +6375,7 @@ function renderRulesSection(body, api) {
       ['contains', 'exact', 'regex'].map(v => ({ value: v, label: v })),
       rule ? rule.match_type : 'contains');
 
-    const catSel = makeDropdown(categoryOptions(categoriesList, '— Pick category —'), rule ? (rule.category_id || '') : '');
+    const catSel = makeDropdown(categoryOptions(categoriesList, 'Choose a category…'), rule ? (rule.category_id || '') : '');
 
     const prioInp = document.createElement('input'); prioInp.type = 'number'; prioInp.className = 'budget-input';
     prioInp.value = rule ? String(rule.priority) : '100';
@@ -6434,7 +6434,7 @@ function renderRulesSection(body, api) {
        ORDER BY r.active DESC, r.priority DESC, r.hits DESC`);
 
     if (rules.length === 0) {
-      tableWrap.appendChild(emptyState('No rules yet. Click "+ New Rule" or override a transaction\'s category to learn one automatically.'));
+      tableWrap.appendChild(emptyState('No rules yet. Click "+ New rule" or override a transaction\'s category to learn one automatically.'));
       return;
     }
 
@@ -6503,7 +6503,7 @@ function renderReconcileSection(body, api) {
     const accounts = await db.all('SELECT id, last_four, kind, display_name FROM accounts WHERE archived=0 ORDER BY kind, last_four');
     acctSlot.innerHTML = '';
     if (accounts.length === 0) {
-      acctSlot.appendChild(makeDropdown([{ value: '', label: '— No accounts —' }], ''));
+      acctSlot.appendChild(makeDropdown([{ value: '', label: 'No accounts' }], ''));
       return [];
     }
     selectedAccountId = selectedAccountId && accounts.find(a => a.id === selectedAccountId) ? selectedAccountId : accounts[0].id;
@@ -6550,8 +6550,8 @@ function renderReconcileSection(body, api) {
     ) || { net_out: 0 };
     const derived = baseBalance - (Number(flow.net_out) || 0);
 
-    summary.appendChild(makeCard('Latest Snapshot', latestSnap ? fmtMoney(latestSnap.balance_cents) : '—', latestSnap ? `As of ${latestSnap.snapshot_date}` : 'No Snapshots'));
-    summary.appendChild(makeCard('Derived Balance', fmtMoney(derived), lastRecon ? `Since ${lastRecon.reconciled_at}` : 'All Time'));
+    summary.appendChild(makeCard('Latest Snapshot', latestSnap ? fmtMoney(latestSnap.balance_cents) : '—', latestSnap ? `As of ${latestSnap.snapshot_date}` : 'No snapshots'));
+    summary.appendChild(makeCard('Derived Balance', fmtMoney(derived), lastRecon ? `Since ${lastRecon.reconciled_at}` : 'All time'));
     if (latestSnap) {
       const off = Number(latestSnap.balance_cents) - derived;
       summary.appendChild(makeCard('Snapshot vs Derived', fmtMoney(off), Math.abs(off) < 100 ? 'Within $1' : 'Investigate'));
@@ -6643,7 +6643,7 @@ function renderImportExportSection(body, api) {
   importHelp.style.color = 'var(--vscode-descriptionForeground, #888)';
   importHelp.style.lineHeight = '1.5';
   importHelp.innerHTML =
-    'Header row required: <code>date,merchant,amount</code> (and optional <code>type, category, account, last_four, notes</code>). Amounts are positive for expenses, negative for refund / deposit. Duplicates within prior CSV imports — same date, merchant, and amount — are skipped automatically.';
+    'Header row required: <code>date,merchant,amount</code> (and optional <code>type, category, account, last_four, notes</code>). Amounts are positive for expenses, negative for refund / deposit. Duplicates within prior CSV imports (same date, merchant, and amount) are skipped automatically.';
   importWrap.appendChild(importHelp);
 
   const ta = document.createElement('textarea');
@@ -8095,7 +8095,7 @@ async function pickModelId(api) {
   if (active) return active;
   const models = await api.lm.getModels();
   if (!models || models.length === 0) {
-    throw new Error('No language models available — install/start Ollama first.');
+    throw new Error('No language models available. Install or start Ollama first.');
   }
   return models[0].id;
 }
@@ -9161,7 +9161,7 @@ async function budgetToolSummary(args) {
   ) || { net_cents: 0, spend_cents: 0, refund_cents: 0, count: 0 };
 
   const breakdown = await db.all(
-    `SELECT COALESCE(c.name, '— uncategorized —') AS category,
+    `SELECT COALESCE(c.name, 'Uncategorized') AS category,
             COALESCE(SUM(t.amount_cents), 0) AS net_cents,
             COUNT(*) AS count
        FROM transactions t
@@ -9240,7 +9240,7 @@ function buildMtdSpendWidget(api) {
     defaultRefreshPolicy: { kind: 'interval', ms: 30 * 60_000 },
 
     async refresh() {
-      if (!db) throw new Error('Budget database not ready — open the Budget tool once, then refresh.');
+      if (!db) throw new Error('Budget database not ready. Open the Budget tool once, then refresh.');
       const summary = await budgetToolSummary({});
       if (!summary.ok) throw new Error(summary.error || 'Budget summary failed.');
       return JSON.stringify(summary);
@@ -9690,7 +9690,7 @@ export async function activate(api, context) {
   _disposables.push(api.commands.registerCommand('budget.reprocessHistory', async () => {
     try {
       const r = await reprocessHistory(api);
-      const ambig = r.ambiguous ? ` ${r.ambiguous} row(s) remain untyped — use Reclassify untyped to ask the AI.` : '';
+      const ambig = r.ambiguous ? ` ${r.ambiguous} row(s) remain untyped. Use Reclassify untyped to ask the AI.` : '';
       await api.window?.showInformationMessage?.(
         `Reprocessed ${r.updated} legacy row(s); rules categorized ${r.categorized} previously-uncategorized row(s). Errors: ${r.errors}.${ambig}`,
       );
@@ -9707,7 +9707,7 @@ export async function activate(api, context) {
   // the main sync flow.
   _disposables.push(api.commands.registerCommand('budget.reclassifyUntyped', async () => {
     if (!api.cron || typeof api.cron.upsertJob !== 'function') {
-      await api.window?.showWarningMessage?.('Scheduler capability not available — cannot dispatch agent turn.');
+      await api.window?.showWarningMessage?.('Scheduler capability not available. Cannot dispatch an agent turn.');
       return;
     }
     try {

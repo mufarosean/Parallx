@@ -1155,10 +1155,10 @@ export class CanvasSidebar {
       emptyBtn.addEventListener('click', async () => {
         const result = await this._api.window.showWarningMessage(
           `Permanently delete ${this._archivedPages.length} page(s) from trash? This cannot be undone.`,
-          { title: 'Delete All' },
+          { title: 'Delete all' },
           { title: 'Cancel' },
         );
-        if (result?.title === 'Delete All') {
+        if (result?.title === 'Delete all') {
           for (const p of this._archivedPages) {
             await this._dataService.permanentlyDeletePage(p.id);
           }
@@ -1438,10 +1438,10 @@ export class CanvasSidebar {
 
     const result = await this._api.window.showWarningMessage(
       `Move "${page.title}" to trash?`,
-      { title: 'Move to Trash' },
+      { title: 'Move to trash' },
       { title: 'Cancel' },
     );
-    if (result?.title !== 'Move to Trash') return;
+    if (result?.title !== 'Move to trash') return;
 
     try {
       await this._dataService.archivePage(pageId);
@@ -1472,7 +1472,7 @@ export class CanvasSidebar {
 
     const result = await this._api.window.showWarningMessage(
       `Move ${ids.length} pages to trash?`,
-      { title: `Move ${ids.length} to Trash` },
+      { title: `Move ${ids.length} to trash` },
       { title: 'Cancel' },
     );
     if (!result?.title?.startsWith('Move')) return;
@@ -1491,7 +1491,7 @@ export class CanvasSidebar {
     }
     this._clearMultiSelection();
     if (failed > 0) {
-      this._surfaceError('Bulk delete', new Error(`${failed} of ${ids.length} pages failed to archive — see console.`));
+      this._surfaceError('Bulk delete', new Error(`${failed} of ${ids.length} pages failed to archive. See the console.`));
     }
   }
 

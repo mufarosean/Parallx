@@ -342,7 +342,7 @@ const SCHEMAS: readonly IBoundSchema[] = ([
       type: 'boolean',
       default: false,
       scope: 'workspace',
-      description: 'Let the AI run Parallx app commands — switching themes, toggling views, opening panels, etc. When off, the underlying tools aren’t injected into the chat context at all.',
+      description: 'Let the AI run Parallx app commands: switching themes, toggling views, opening panels, etc. When off, the underlying tools aren’t injected into the chat context at all.',
       category: 'Tools',
     },
     read: (c) => c.tools.workbenchControlEnabled,

@@ -313,7 +313,7 @@ function renderGoogleSyncSection(
     // refresh token; no need to disconnect first).
     if (status.needsReauth) {
       const warn = el('div', 'planner-settings__google-status is-error');
-      warn.textContent = 'Your Google connection expired or was revoked — reconnect to resume syncing.';
+      warn.textContent = 'Your Google connection expired or was revoked. Reconnect to resume syncing.';
       section.appendChild(warn);
       const reconnect = el('button', 'planner-settings__btn planner-settings__btn--primary');
       reconnect.type = 'button';
@@ -464,7 +464,7 @@ function renderGoogleSyncSection(
       const selHost = el('div', 'planner-settings__select');
       const selDropdown = new Dropdown(selHost, {
         items: [
-          { value: '', label: 'Auto — your synced Google calendar' },
+          { value: '', label: 'Auto (your synced Google calendar)' },
           ...cals.map((c) => ({
             value: c.id,
             label: c.name + (c.sourceProvider === GOOGLE_PROVIDER_ID ? ' (Google)' : ''),
@@ -504,7 +504,7 @@ function friendlyAuthError(code?: string): string {
     case 'no-oauth-client': return 'no OAuth client is configured.';
     case 'no-refresh-token': return 'Google didn’t return a refresh token. Revoke Parallx under your Google account’s third-party access, then try again.';
     case 'no-access-token': return 'Google didn’t return an access token.';
-    case 'state-mismatch': return 'the security check failed — please retry.';
+    case 'state-mismatch': return 'the security check failed. Please retry.';
     case 'access_denied': return 'access was denied in the browser.';
     case 'bridge-unavailable': return 'the sync bridge is unavailable.';
     default: return code || 'unknown error.';

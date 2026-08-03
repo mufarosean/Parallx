@@ -104,7 +104,7 @@ export const ANTHROPIC_MODELS: readonly IAnthropicModelMeta[] = [
   },
 ];
 
-const NO_KEY_TIP = 'No Anthropic API key set — add it in AI Settings → Model.';
+const NO_KEY_TIP = 'No Anthropic API key set. Add it in AI Settings → Model.';
 
 // ── Content-block shapes (exported for tests) ─────────────────────────────────
 

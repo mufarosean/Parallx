@@ -243,7 +243,7 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi, recentWorksp
   // AI Quick Start sub-section
   const aiTitle = $('h2');
   aiTitle.classList.add('welcome-section-title', 'welcome-section-title--ai');
-  aiTitle.textContent = 'AI Quick Start';
+  aiTitle.textContent = 'AI quick start';
   leftCol.appendChild(aiTitle);
 
   // NOTE: these previously used 'ui-sparkle'/'ui-wand'/'ui-book-open' —
@@ -251,9 +251,9 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi, recentWorksp
   // icons. The AI rows wear the brand mark (never the sparkle cliché).
   const aiItems = [
     { icon: 'px-ai-mark', text: 'Open AI Chat', hint: 'Ctrl+Shift+I', command: 'chat.show' },
-    { icon: 'compass', text: 'Set Up Workspace AI', hint: '/init', command: 'parallx.chat.openWithInit' },
+    { icon: 'compass', text: 'Set up workspace AI', hint: '/init', command: 'parallx.chat.openWithInit' },
     { icon: 'book-open', text: 'AI User Guide', hint: '', command: 'parallx.openAIUserGuide' },
-    { icon: 'gear', text: 'Workspace AI Config', hint: '.parallx/', command: 'parallx.openWorkspaceAIConfig' },
+    { icon: 'gear', text: 'Workspace AI config', hint: '.parallx/', command: 'parallx.openWorkspaceAIConfig' },
   ];
 
   for (const item of aiItems) {

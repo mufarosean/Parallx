@@ -43,7 +43,7 @@ const ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22"
 export const LIVE_WIDGET: WidgetTypeRegistration<LiveWidgetConfig> = {
   typeId: 'parallx.dashboard.ai-live',
   displayName: 'Live widget',
-  description: 'Describe what you want and the AI builds it as a live HTML panel — charts, gauges, diagrams, animations. Runs sandboxed. Add a refresh schedule to keep it current.',
+  description: 'Describe what you want and the AI builds it as a live HTML panel: charts, gauges, diagrams, animations. Runs sandboxed. Add a refresh schedule to keep it current.',
   icon: ICON_SVG,
   category: 'ai',
   defaultSize: { colSpan: 6, rowSpan: 5 },
@@ -59,7 +59,7 @@ export const LIVE_WIDGET: WidgetTypeRegistration<LiveWidgetConfig> = {
       skill: {
         type: 'string',
         label: 'Skill (optional)',
-        description: 'Name of a skill you authored under .parallx/skills/. The AI applies it when building this widget — pin the look once, reuse it on every refresh.',
+        description: 'Name of a skill you authored under .parallx/skills/. The AI applies it when building this widget. Pin the look once, reuse it on every refresh.',
         placeholder: 'e.g. dashboard-charts',
       },
     },

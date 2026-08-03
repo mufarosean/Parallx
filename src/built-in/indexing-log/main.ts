@@ -145,7 +145,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
 
     activePipelineSubscriptions.push(
       pipeline.onDidCompleteInitialIndex((stats) => {
-        currentPhaseLabel = `Complete — ${stats.pages} pages, ${stats.files} files in ${(stats.durationMs / 1000).toFixed(1)}s`;
+        currentPhaseLabel = `Complete · ${stats.pages} pages, ${stats.files} files in ${(stats.durationMs / 1000).toFixed(1)}s`;
 
         const dbTotal = stats.pages + stats.files;
         if (dbTotal > 0 && totalCount === 0) {
@@ -472,7 +472,7 @@ function createEntryRow(entry: IndexingLogEntry): HTMLElement {
     badge.classList.add(`indexing-log-pipeline--${result.pipeline}`);
     if (result.fallback) {
       badge.classList.add('indexing-log-pipeline--fallback');
-      badge.title = 'Docling failed — fell back to legacy extractor';
+      badge.title = 'Docling failed, fell back to the legacy extractor';
     }
     row.appendChild(badge);
   }
