@@ -65,7 +65,7 @@ describe('Python settings panel', () => {
     service = booted.service;
     createPythonSettingsPanel(service).render(container);
 
-    const toggle = container.querySelector('.pysettings__switch');
+    const toggle = container.querySelector('.ui-toggle');
     expect(toggle, 'the enable toggle must exist — this is the control the docs point at').not.toBeNull();
     expect(toggle!.getAttribute('role')).toBe('switch');
     expect(toggle!.getAttribute('aria-checked')).toBe('false');
@@ -97,7 +97,7 @@ describe('Python settings panel', () => {
     service = booted.service;
     createPythonSettingsPanel(service).render(container);
 
-    const toggle = container.querySelector('.pysettings__switch') as HTMLButtonElement;
+    const toggle = container.querySelector('.ui-toggle') as HTMLButtonElement;
     expect(service.isEnabled).toBe(false);
 
     toggle.click();
@@ -115,7 +115,7 @@ describe('Python settings panel', () => {
     const disposable = createPythonSettingsPanel(service).render(container);
 
     expect(container.querySelector('.pysettings')).not.toBeNull();
-    expect(container.querySelector('.pysettings__switch')).not.toBeNull();
+    expect(container.querySelector('.ui-toggle')).not.toBeNull();
 
     (disposable as { dispose(): void })?.dispose?.();
   });

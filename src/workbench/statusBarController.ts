@@ -11,6 +11,7 @@ import { Disposable } from '../platform/lifecycle.js';
 import { URI } from '../platform/uri.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { ICommandService, INotificationService } from '../services/serviceTypes.js';
+import { IPythonEnvService } from '../services/pythonEnvService.js';
 import { StatusBarPart, StatusBarAlignment } from '../parts/statusBarPart.js';
 import type { StatusBarEntryAccessor } from '../services/serviceTypes.js';
 import { EditorPart } from '../parts/editorPart.js';
@@ -105,13 +106,90 @@ export class StatusBarController extends Disposable {
       iconSvg: folderSvg,
       alignment: StatusBarAlignment.Left,
       priority: 1100,
-      tooltip: 'Current workspace — click to search files',
+      tooltip: 'Current workspace. Click to search files.',
       command: 'workbench.action.quickOpen',
       name: 'Workspace',
     });
 
     // Notification Center Badge
     this._setupNotificationBadge(sb);
+
+    // Python environment presence
+    this._setupPythonEntry(sb);
+  }
+
+  // ── Python environment entry ───────────────────────────────────────────
+
+  /**
+   * Ambient presence for the workspace Python environment.
+   *
+   * Before this, Python existed nowhere outside Settings and the terminal
+   * prompt — you could not tell whether a workspace had an environment, or that
+   * an install was running, without going looking. The entry shows the steady
+   * state ("Python 3.12 · .venv"), switches to the active phase while the
+   * bridge streams ("Python · installing…"), and clicks through to Settings.
+   *
+   * Hidden entirely when Python is off for the workspace: a status bar item
+   * for a feature the user declined would be an advertisement, not a status.
+   */
+  private _setupPythonEntry(sb: StatusBarPart): void {
+    if (!this._services.has(IPythonEnvService)) return;
+    const python = this._services.get(IPythonEnvService) as IPythonEnvService;
+    if (!python.isAvailable) return;
+
+    let accessor: StatusBarEntryAccessor | undefined;
+
+    const show = (text: string, tooltip: string) => {
+      if (!accessor) {
+        accessor = sb.addEntry({
+          id: 'status.python',
+          text,
+          alignment: StatusBarAlignment.Right,
+          priority: 90,
+          tooltip,
+          command: 'workbench.action.openSettings',
+          name: 'Python',
+        });
+      } else {
+        accessor.update({ text, tooltip });
+      }
+    };
+    const hide = () => { accessor?.dispose(); accessor = undefined; };
+
+    const paintSteady = async () => {
+      try {
+        if (!python.isEnabled) { hide(); return; }
+        const status = await python.getStatus();
+        if (status.envExists) {
+          const version = status.createdWith ?? status.interpreterVersion;
+          show(
+            version ? `Python ${version} · .venv` : 'Python · .venv',
+            'Workspace Python environment. Click to open Settings.',
+          );
+        } else {
+          show('Python · no environment', 'Python is on, but no environment exists yet. Click to set one up in Settings.');
+        }
+      } catch { hide(); }
+    };
+
+    // Phase text while the bridge works, steady text when it settles. Progress
+    // chunks arrive far faster than a status repaint is worth, so only the
+    // PHASE transition repaints — not every pip line.
+    let lastPhase: string | null = null;
+    this._register(python.onDidProgress((p) => {
+      if (p.phase === lastPhase) return;
+      lastPhase = p.phase;
+      const verb = p.phase === 'create' ? 'creating environment…'
+        : p.phase === 'uninstall' ? 'removing packages…'
+          : 'installing…';
+      show(`Python · ${verb}`, 'Working. Live output is in the Terminal panel.');
+    }));
+    this._register(python.onDidChangeStatus(() => {
+      lastPhase = null;
+      void paintSteady();
+    }));
+
+    void paintSteady();
   }
 
   // ── Notification badge + center ────────────────────────────────────────
@@ -304,7 +382,7 @@ export class StatusBarController extends Disposable {
     }
 
     parts.push('Parallx');
-    document.title = parts.join(' — ');
+    document.title = parts.join(' · ');
 
     // Update resource context keys from active editor
     const wbCtx = this._getWorkbenchContext();

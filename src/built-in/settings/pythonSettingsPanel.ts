@@ -19,6 +19,7 @@ import type {
   IPythonPackage,
 } from '../../services/pythonEnvService.js';
 import { InputBox } from '../../ui/inputBox.js';
+import { Toggle } from '../../ui/toggle.js';
 import { rafThrottle } from '../../platform/rafThrottle.js';
 import './pythonSettings.css';
 
@@ -56,11 +57,9 @@ class PythonSettingsPanel implements IDisposable {
   /**
    * Live output from pip / venv, shown where the button was pressed.
    *
-   * Deliberately NOT routed to the Terminal panel, which is the user's own
-   * interactive shell — splicing an unrelated background process's output into
-   * a session they are typing in would interleave with their commands and
-   * imply the command ran there, which it did not. This output belongs beside
-   * the control that started it.
+   * The Terminal panel mirrors the same stream (it subscribes to onDidProgress
+   * too), but this copy stays: the user who clicked Install here should not
+   * have to switch panels to see whether it worked.
    */
   private readonly _logHost: HTMLElement;
   private readonly _logPre: HTMLElement;
@@ -93,9 +92,12 @@ class PythonSettingsPanel implements IDisposable {
       void this._refreshPackages();
       this._refreshRuns();
     }));
-    // Live output while a script is running — otherwise the log looks frozen
-    // until exit, which reads as a hang.
-    this._store.add(this._service.onDidRunData(() => this._refreshRuns()));
+    // Live output while a script runs. Only the affected run's output node is
+    // touched: the old version rebuilt the entire run list on EVERY stdout
+    // chunk, which flickered, destroyed scroll position mid-read, and cost a
+    // full DOM teardown per print statement.
+    this._store.add(this._service.onDidRunData((p) => this._updateRunOutput(p.runId)));
+    this._store.add(this._service.onDidRunExit(() => this._refreshRuns()));
 
     void this._refreshStatus();
     void this._refreshPackages();
@@ -117,27 +119,25 @@ class PythonSettingsPanel implements IDisposable {
       'files stay inside this workspace and are invisible to your other workspaces.',
     ));
 
-    const toggle = el('button', 'pysettings__switch');
-    toggle.type = 'button';
-    toggle.setAttribute('role', 'switch');
-
-    const paint = () => {
-      const on = this._service.isEnabled;
-      toggle.setAttribute('aria-checked', String(on));
-      toggle.classList.toggle('pysettings__switch--on', on);
-      toggle.setAttribute('aria-label', on ? 'Disable Python for this workspace' : 'Enable Python for this workspace');
-    };
-    paint();
-
-    toggle.addEventListener('click', () => {
-      void (async () => {
-        await this._service.setEnabled(!this._service.isEnabled);
-        paint();
-      })();
+    // The app's ONE toggle (src/ui/toggle.ts), not a local look-alike. The
+    // first version hand-rolled a switch here, which is the same mistake as
+    // budget's hand-rolled dropdown: a private copy that drifts from the house
+    // look and never receives fixes.
+    const toggleHost = el('div');
+    const toggle = new Toggle(toggleHost, {
+      checked: this._service.isEnabled,
+      ariaLabel: 'Enable Python for this workspace',
     });
-    this._store.add(this._service.onDidChangeStatus(paint));
+    this._store.add(toggle);
+    this._store.add(toggle.onDidChange((on) => {
+      void this._service.setEnabled(on);
+    }));
+    // Reflect changes made elsewhere (another panel instance, a settings edit).
+    this._store.add(this._service.onDidChangeStatus(() => {
+      toggle.checked = this._service.isEnabled;
+    }));
 
-    row.append(labelWrap, toggle);
+    row.append(labelWrap, toggleHost);
     section.appendChild(row);
 
     // The honest caveat. Stated once, next to the decision it qualifies.
@@ -149,7 +149,7 @@ class PythonSettingsPanel implements IDisposable {
       'A running script is a normal program on your computer: it can read and write ' +
       'files outside this workspace and reach the network, exactly like anything else ' +
       'you launch. Parallx keeps the environment local and records every install and ' +
-      'run in the activity journal — it does not sandbox the script. Only enable this ' +
+      'run in the activity journal. It does not sandbox the script. Only enable this ' +
       'for workspaces whose scripts you would run yourself.',
     ));
     section.appendChild(caveat);
@@ -227,7 +227,7 @@ class PythonSettingsPanel implements IDisposable {
         if (!res.ok) this._showError(this._statusHost, res.error);
       }));
       actions.appendChild(remove);
-      actions.appendChild(el('span', 'pysettings__hint', 'Deleting removes packages only — scripts and outputs stay.'));
+      actions.appendChild(el('span', 'pysettings__hint', 'Deleting removes packages only. Scripts and outputs stay.'));
     }
     this._statusHost.appendChild(actions);
   }
@@ -306,9 +306,36 @@ class PythonSettingsPanel implements IDisposable {
 
   // ── Runs ──
 
+  /** Live rows by runId, so streamed output updates in place. */
+  private readonly _runRows = new Map<string, { row: HTMLElement; pre: HTMLElement | null }>();
+
+  /**
+   * Update one running row's output tail without touching the rest of the list.
+   * A run this panel has not seen yet (started after the last rebuild) falls
+   * back to a full refresh.
+   */
+  private _updateRunOutput(runId: string): void {
+    const entry = this._runRows.get(runId);
+    if (!entry) { this._refreshRuns(); return; }
+
+    const run = this._service.recentRuns().find((r) => r.runId === runId);
+    if (!run || !run.output.trim()) return;
+
+    // Tail, not head — matches _refreshRuns. Setting textContent on a bounded
+    // 4 KB node is cheap; the expensive thing was rebuilding every row.
+    const tail = run.output.length > 4000 ? '…' + run.output.slice(-4000) : run.output;
+    if (!entry.pre) {
+      entry.pre = el('pre', 'pysettings__run-output');
+      entry.row.appendChild(entry.pre);
+    }
+    entry.pre.textContent = tail;
+    entry.pre.scrollTop = entry.pre.scrollHeight;
+  }
+
   private _refreshRuns(): void {
     const runs = this._service.recentRuns();
     this._runsHost.replaceChildren();
+    this._runRows.clear();
     if (!runs.length) return;
 
     this._runsHost.appendChild(el('h3', 'pysettings__heading', 'Recent runs'));
@@ -341,11 +368,14 @@ class PythonSettingsPanel implements IDisposable {
       }
       row.appendChild(head);
 
+      let pre: HTMLElement | null = null;
       if (run.output.trim()) {
         // Tail, not head: when a script fails the interesting part is the end.
         const tail = run.output.length > 4000 ? '…' + run.output.slice(-4000) : run.output;
-        row.appendChild(el('pre', 'pysettings__run-output', tail));
+        pre = el('pre', 'pysettings__run-output', tail);
+        row.appendChild(pre);
       }
+      this._runRows.set(run.runId, { row, pre });
       list.appendChild(row);
     }
     this._runsHost.appendChild(list);

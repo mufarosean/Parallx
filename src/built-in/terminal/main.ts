@@ -10,6 +10,7 @@ import type { IDisposable } from '../../platform/lifecycle.js';
 import { $ } from '../../ui/dom.js';
 import { createPanelToolbarButton, createPanelEmptyState } from '../../ui/panelSurface.js';
 import { ansiToHtml } from '../../ui/ansiToHtml.js';
+import { rafThrottle } from '../../platform/rafThrottle.js';
 import { IWorkspaceService } from '../../services/serviceTypes.js';
 import { IPythonEnvService } from '../../services/pythonEnvService.js';
 
@@ -75,6 +76,16 @@ let _promptEl: HTMLElement | null = null;
 /** Maximum lines in the output element before trimming. */
 const MAX_OUTPUT_LINES = 2000;
 
+/**
+ * Line count tracked incrementally, NOT read back from the DOM.
+ *
+ * The previous trim loop did `textContent.split('\n')` on every append — an
+ * O(buffer) read per chunk, so a command streaming a large output made
+ * appending O(n²) on the renderer thread. Each chunk records its own newline
+ * count in a dataset attribute so trimming can subtract exactly what it drops.
+ */
+let _lineCount = 1;
+
 /** Output that arrived before the panel view was built; flushed on mount. */
 const _pendingOutput: string[] = [];
 /** Bound so a long install with the panel closed cannot grow without limit. */
@@ -90,14 +101,27 @@ function getTerminalBridge(): ElectronTerminalBridge | undefined {
 
 /** Toggle the empty-state overlay based on whether any output exists. */
 function syncTerminalEmpty(): void {
-  if (_emptyEl) { _emptyEl.hidden = (_outputEl?.textContent?.length ?? 0) > 0; }
+  // childNodes, not textContent — reading textContent serialises the whole
+  // buffer, and this runs on every appended chunk.
+  if (_emptyEl) { _emptyEl.hidden = (_outputEl?.childNodes.length ?? 0) > 0; }
 }
 
 /** Clear the visible output and restore the empty state. */
 function clearTerminalOutput(): void {
   if (_outputEl) { _outputEl.textContent = ''; }
+  _lineCount = 1;
   syncTerminalEmpty();
 }
+
+/**
+ * One scroll per painted frame. `scrollTop = scrollHeight` forces a synchronous
+ * layout, and a fast command emits many chunks per frame; per-chunk scrolling
+ * was most of the append cost that remained after the O(n²) fix.
+ */
+const _pinScroll = rafThrottle(() => {
+  const scroller = _scrollEl ?? _outputEl;
+  if (scroller) scroller.scrollTop = scroller.scrollHeight;
+});
 
 /**
  * Append text to the output element, auto-scroll, and trim excess lines.
@@ -124,23 +148,23 @@ function appendOutput(text: string): void {
   const chunk = document.createElement('span');
   chunk.className = 'parallx-terminal-chunk';
   chunk.innerHTML = ansiToHtml(text);
+  // Each chunk carries its own newline count so the trim loop can subtract
+  // exactly what it removes without re-reading the buffer.
+  const newlines = (text.match(/\n/g) ?? []).length;
+  chunk.dataset['lines'] = String(newlines);
   _outputEl.appendChild(chunk);
+  _lineCount += newlines;
 
-  // Trim by removing whole chunks from the front. The previous implementation
-  // reassigned textContent, which would now destroy every colour span in the
-  // buffer — and did destroy the DOM structure generally.
-  let lineCount = (_outputEl.textContent ?? '').split('\n').length;
-  while (lineCount > MAX_OUTPUT_LINES && _outputEl.firstChild && _outputEl.childNodes.length > 1) {
-    const dropped = (_outputEl.firstChild.textContent ?? '').split('\n').length - 1;
-    _outputEl.removeChild(_outputEl.firstChild);
-    lineCount -= Math.max(dropped, 1);
+  // Trim whole chunks from the front. Removing a node is O(1); the old
+  // implementation re-counted the entire buffer's lines first.
+  while (_lineCount > MAX_OUTPUT_LINES && _outputEl.childNodes.length > 1) {
+    const first = _outputEl.firstChild as HTMLElement;
+    _lineCount -= Number(first.dataset?.['lines'] ?? 0);
+    _outputEl.removeChild(first);
   }
 
   syncTerminalEmpty();
-
-  // Auto-scroll to bottom (the panel body is the scroll container).
-  const scroller = _scrollEl ?? _outputEl;
-  scroller.scrollTop = scroller.scrollHeight;
+  _pinScroll();
 }
 
 /**
@@ -212,7 +236,7 @@ async function refreshEnvBar(): Promise<void> {
   const label = $('span');
   label.className = 'parallx-terminal-env__label';
   label.textContent = wanted
-    ? 'A Python environment was created for this workspace — restart the shell to use it.'
+    ? 'A Python environment was created for this workspace. Restart the shell to use it.'
     : 'This shell is using an environment that no longer exists.';
   _envBar.appendChild(label);
 
@@ -236,7 +260,7 @@ async function ensureShell(): Promise<void> {
 async function spawnShell(): Promise<void> {
   const bridge = getTerminalBridge();
   if (!bridge) {
-    appendOutput('[Terminal] No terminal bridge available — running outside Electron.\n');
+    appendOutput('[Terminal] No terminal bridge available. Running outside Electron.\n');
     return;
   }
 
@@ -394,6 +418,9 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       _outputEl = outputArea;
       _scrollEl = body;
       _emptyEl = empty;
+      // Fresh element, fresh count — a stale count from a previous mount would
+      // make the trim loop start evicting chunks long before 2000 real lines.
+      _lineCount = 1;
 
       // Replay anything that streamed in before this view existed — the install
       // you started from Settings and only then came looking for.
