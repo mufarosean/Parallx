@@ -46,6 +46,7 @@ import type {
   INotebookKernelService,
   IKernelStatus,
 } from '../../../services/notebookKernelService.js';
+import type { IPythonEnvService } from '../../../services/pythonEnvService.js';
 import type { IChatMessage, IChatResponseChunk } from '../../../services/chatTypes.js';
 import { stripCodeFences } from './codeFences.js';
 import { buildGenerateMessages } from './generatePrompt.js';
@@ -161,9 +162,49 @@ export class NotebookEditorPane extends EditorPane {
    */
   private _activePrompt: { readonly cellId: string; dismiss(): void } | undefined;
 
+  /**
+   * Set while THIS pane is making a structural edit.
+   *
+   * The pane and the assistant now mutate the same document, and the pane
+   * repaints when that document changes structurally. Without this flag it would
+   * also repaint on its own edits — rebuilding every cell view out from under
+   * the caret the moment you inserted a cell.
+   */
+  private _selfEdit = false;
+
+  /** Mark dirty for an edit this pane made, without triggering its own rebuild. */
+  private _markDirtySelf(structural = true): void {
+    this._selfEdit = true;
+    try { this._doc?.markDirty(structural); } finally { this._selfEdit = false; }
+  }
+
+  /**
+   * Rebuild the cell list from the document.
+   *
+   * Called when a DIFFERENT writer changed the notebook — the assistant running
+   * cells or editing one through `notebook_*`. Both now mutate this pane's own
+   * document (one writer per notebook), so the data is already correct here; the
+   * view is what has to catch up.
+   */
+  private _rebuildFromDocument(): void {
+    if (this._torndown || !this._document) return;
+    const selected = this._selectedCellId;
+    this._disposeViews();
+    for (const cell of this._document.cells) {
+      this._cellList.appendChild(this._createCellView(cell).root);
+    }
+    // Keep the selection if that cell still exists, so an external edit does not
+    // move the user somewhere else in their own notebook.
+    this._selectedCellId = this._document.cells.some((c) => c.id === selected)
+      ? selected
+      : (this._document.cells[0]?.id ?? null);
+    this._paintSelection();
+  }
+
   constructor(
     private readonly _kernel?: INotebookKernelService,
     private readonly _resolveGenerateProvider?: NotebookGenerateProviderResolver,
+    private readonly _python?: IPythonEnvService,
   ) {
     super(NotebookEditorPane.PANE_ID);
   }
@@ -220,12 +261,12 @@ export class NotebookEditorPane extends EditorPane {
     // back to a new cell at the end when nothing is selected.
     button('Generate', 'Write a cell with AI (Ctrl+I)', () => this._generateForSelection(), ICON.spark, true);
     separator();
-    button('Run All', 'Run every cell in order', () => void this._runAll(), ICON.play, true);
+    button('Run all', 'Run every cell in order', () => void this._runAll(), ICON.play, true);
     this._interruptBtn = button('Interrupt', 'Stop the running cell', () => void this._interrupt(), ICON.stop, true);
     this._interruptBtn.disabled = true;
-    button('Restart', 'Restart the kernel — all variables are lost', () => void this._restart(), ICON.restart);
+    button('Restart', 'Restart the kernel. All variables are lost.', () => void this._restart(), ICON.restart);
     separator();
-    button('Clear All Outputs', 'Remove every output in this notebook', () => this._clearOutputs(), ICON.clear);
+    button('Clear all outputs', 'Remove every output in this notebook', () => this._clearOutputs(), ICON.clear);
 
     const status = $('div');
     status.className = 'nb-status';
@@ -336,8 +377,19 @@ export class NotebookEditorPane extends EditorPane {
     for (const cell of doc.cells) this._cellList.appendChild(this._createCellView(cell).root);
     this._selectedCellId = doc.cells[0]?.id ?? null;
 
+    // Repaint when a DIFFERENT writer changes this notebook — the assistant
+    // running cells or editing one through the notebook_* tools. Those mutate
+    // this pane's own document (one writer per notebook), so without this the
+    // data was already right here and the view simply never caught up: you would
+    // see nothing until you switched tabs and back.
+    this._inputListeners.add(input.onDidChangeDocument(() => {
+      if (this._selfEdit) return;   // our own edit; the views are already correct
+      this._rebuildFromDocument();
+    }));
+
     if (this._kernel) {
       this._inputListeners.add(this._kernel.onDidChangeStatus((s) => this._paintStatus(s)));
+
       this._inputListeners.add(this._kernel.onDidFail(({ message }) => {
         this._showBanner(message, 'error');
         for (const view of this._views.values()) this._setRunning(view, false);
@@ -350,22 +402,75 @@ export class NotebookEditorPane extends EditorPane {
     }
   }
 
+  /**
+   * The whole first run, from one button: consent → create the venv → install
+   * ipykernel → ready. Each phase names itself in the banner; the live pip and
+   * venv output streams to the Terminal panel as it always does.
+   *
+   * Consent is still consent — this flips `python.enabled` exactly as the
+   * Settings toggle does, from an explicit click on a button that says what it
+   * sets up. What it removes is the walk: Settings, toggle, Create, back here,
+   * second banner, ipykernel.
+   */
+  private async _setUpPython(): Promise<void> {
+    if (!this._python || !this._kernel) return;
+    try {
+      if (!this._python.isEnabled) {
+        await this._python.setEnabled(true);
+      }
+
+      this._showBanner('Creating the workspace environment… Live output is in the Terminal panel.', 'info');
+      const created = await this._python.createEnv();
+      if (this._torndown) return;
+      if (!created.ok) {
+        this._showBanner(created.error ?? 'Could not create the environment.', 'error');
+        return;
+      }
+
+      this._showBanner('Installing the notebook kernel (ipykernel)…', 'info');
+      const deps = await this._kernel.installKernelDependencies();
+      if (this._torndown) return;
+      if (!deps.ok) {
+        this._showBanner(deps.error ?? 'Could not install ipykernel.', 'error');
+        return;
+      }
+
+      this._hideBanner();
+      void this._checkReadiness();
+    } catch (err) {
+      if (!this._torndown) this._showBanner((err as Error).message, 'error');
+    }
+  }
+
   private async _checkReadiness(): Promise<void> {
     if (!this._kernel) return;
     const readiness = await this._kernel.checkReadiness();
     if (readiness.ready) { this._hideBanner(); return; }
 
     if (readiness.reason === 'NO_ENV') {
-      this._showBanner(
-        'This workspace has no Python environment yet. Create one in Settings › Python to run cells.',
-        'info',
-      );
+      // One button, not a scavenger hunt. The old banner sent the user to
+      // Settings, where they had to flip consent, click Create, come back, and
+      // meet a SECOND banner asking for ipykernel — five surfaces for one
+      // intent. Everything the trip collects is a service call, so do the whole
+      // sequence here, where the intent was expressed.
+      if (this._python?.isAvailable) {
+        this._showBanner(
+          'This workspace has no Python environment yet.',
+          'info',
+          { label: 'Set up Python', run: () => void this._setUpPython() },
+        );
+      } else {
+        this._showBanner(
+          'This workspace has no Python environment yet. Create one in Settings › Python to run cells.',
+          'info',
+        );
+      }
     } else if (readiness.reason === 'MISSING_IPYKERNEL') {
       // Offer the fix inline rather than sending the user to go find it.
       this._showBanner('Running notebooks needs the ipykernel package in this workspace.', 'info', {
         label: 'Install ipykernel',
         run: async () => {
-          this._showBanner('Installing ipykernel — this takes a minute…', 'info');
+          this._showBanner('Installing ipykernel. This takes a minute…', 'info');
           const res = await this._kernel!.installKernelDependencies();
           if (res.ok) { this._hideBanner(); void this._checkReadiness(); }
           else this._showBanner(res.error ?? 'Install failed.', 'error');
@@ -552,7 +657,7 @@ export class NotebookEditorPane extends EditorPane {
       view.markdownHost.replaceChildren(
         view.cell.source.trim()
           ? renderMarkdown(view.cell.source)
-          : this._placeholder('Empty markdown cell — double-click to edit'),
+          : this._placeholder('Empty markdown cell. Double-click to edit.'),
       );
     } else {
       view.editor.focus();
@@ -834,7 +939,7 @@ export class NotebookEditorPane extends EditorPane {
       const stillRunning = [...this._views.values()].some((v) => v.running);
       if (!stillRunning) return;
       this._showBanner(
-        'That cell is blocked in a call that cannot be interrupted (a sleep, or waiting on the network). Restarting is the only way out — every variable is lost.',
+        'That cell is blocked in a call that cannot be interrupted (a sleep, or waiting on the network). Restarting is the only way out, and every variable is lost.',
         'info',
         { label: 'Restart kernel', run: () => void this._restart() },
       );
@@ -859,7 +964,7 @@ export class NotebookEditorPane extends EditorPane {
       return;
     }
     for (const view of this._views.values()) this._setRunning(view, false);
-    this._showBanner('Kernel restarted — every variable is gone.', 'info');
+    this._showBanner('Kernel restarted. Every variable is gone.', 'info');
   }
 
   // ── Structure ──
@@ -886,7 +991,7 @@ export class NotebookEditorPane extends EditorPane {
     if (followingRoot) this._cellList.insertBefore(view.root, followingRoot);
     else this._cellList.appendChild(view.root);
 
-    this._doc?.markDirty(true);
+    this._markDirtySelf();
     this._selectedCellId = cell.id;
     this._paintSelection();
     return view;
@@ -928,7 +1033,7 @@ export class NotebookEditorPane extends EditorPane {
     view?.editor.dispose();
     view?.root.remove();
     this._views.delete(cellId);
-    this._doc?.markDirty(true);
+    this._markDirtySelf();
   }
 
   private _moveCell(cellId: string, delta: number): void {
@@ -947,7 +1052,7 @@ export class NotebookEditorPane extends EditorPane {
     if (delta > 0 && anchor?.nextSibling) this._cellList.insertBefore(view.root, anchor.nextSibling);
     else if (delta > 0) this._cellList.appendChild(view.root);
     else if (anchor) this._cellList.insertBefore(view.root, anchor);
-    this._doc?.markDirty(true);
+    this._markDirtySelf();
   }
 
   private _convertCell(cellId: string): void {
@@ -972,7 +1077,7 @@ export class NotebookEditorPane extends EditorPane {
     this._cellList.insertBefore(fresh.root, view.root);
     view.editor.dispose();
     view.root.remove();
-    this._doc?.markDirty(true);
+    this._markDirtySelf();
   }
 
   // ── Generate ──
@@ -1136,7 +1241,7 @@ export class NotebookEditorPane extends EditorPane {
       provider = undefined;
     }
     if (!provider) {
-      return { ok: false, error: 'No language model is available — open the Chat panel and select one.' };
+      return { ok: false, error: 'No language model is available. Open the Chat panel and select one.' };
     }
     if (this._torndown) return { ok: false, error: 'Notebook closed.' };
 

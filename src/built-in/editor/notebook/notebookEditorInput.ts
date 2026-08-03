@@ -21,6 +21,32 @@ import {
   type NotebookDocument,
 } from './notebookModel.js';
 
+/**
+ * URI → the input currently holding that notebook's live document.
+ *
+ * The text-file side has had this for free since forever: `ITextFileModelManager`
+ * is a workbench-level URI→model registry, so anything wanting to write an open
+ * file can go through the open document instead of around it. Notebooks had no
+ * equivalent — the document lived inside whichever `NotebookEditorInput` a tab
+ * happened to create — so the assistant's only options were to write to disk
+ * behind the pane (which the pane's memoised document would then overwrite on its
+ * next save) or to refuse.
+ *
+ * This is the smallest thing that removes the second writer: the input already
+ * owns the document, so it just has to be findable.
+ */
+const _openNotebooks = new Map<string, NotebookEditorInput>();
+
+/**
+ * The input holding `uri`'s live document, if that notebook is open.
+ *
+ * Callers must mutate the returned document and then `markDirty()` + `save()`
+ * rather than writing the file, so the pane and the writer stay one writer.
+ */
+export function findOpenNotebook(uri: URI): NotebookEditorInput | undefined {
+  return _openNotebooks.get(uri.toKey());
+}
+
 export class NotebookEditorInput extends EditorInput {
   static readonly TYPE_ID = 'parallx.editor.notebook';
 
@@ -43,6 +69,19 @@ export class NotebookEditorInput extends EditorInput {
   ) {
     super(_uri.toKey());
     this._relativePath = relativePath;
+    // Findable from the moment it exists, so a writer never has to guess whether
+    // a tab is about to appear for this path.
+    _openNotebooks.set(_uri.toKey(), this);
+  }
+
+  override dispose(): void {
+    // Only clear the slot if it still points at THIS input. Reopening a notebook
+    // creates the new input before the old one is disposed, and an unconditional
+    // delete would drop the live registration on the floor.
+    if (_openNotebooks.get(this._uri.toKey()) === this) {
+      _openNotebooks.delete(this._uri.toKey());
+    }
+    super.dispose();
   }
 
   get typeId(): string { return NotebookEditorInput.TYPE_ID; }

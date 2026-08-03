@@ -49,6 +49,8 @@ import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManage
 import { IActivityJournalService } from '../../services/activityJournalService.js';
 import { IPythonEnvService } from '../../services/pythonEnvService.js';
 import { INotebookKernelService } from '../../services/notebookKernelService.js';
+import { findOpenNotebook } from '../editor/notebook/notebookEditorInput.js';
+import { writeThroughOpenDocument } from '../../services/openDocumentWriter.js';
 import { SettingsRegistryService, setGlobalSettingsRegistry, getGlobalSettingsRegistry } from '../../services/settingsRegistryService.js';
 import { createSecretStorageService } from '../../services/secretStorageService.js';
 import { PolicyDecisionPoint as _PolicyDecisionPoint } from '../../services/policyDecisionPoint.js';
@@ -464,7 +466,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       type: 'boolean',
       default: false,
       scope: 'workspace',
-      description: 'Enable Claude (Anthropic) cloud models in this workspace. Off by default — turn on only for workspaces without sensitive data. Set the API key in AI Settings → Model → Providers.',
+      description: 'Enable Claude (Anthropic) cloud models in this workspace. Off by default: turn on only for workspaces without sensitive data. Set the API key in AI Settings → Model → Providers.',
       category: 'AI',
     });
 
@@ -1728,6 +1730,12 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       return _writerIgnoreInstance;
     };
 
+    // The open-document registry, so a write can go through an open editor
+    // rather than around it. See the note in writeFile below.
+    const _textModels = api.services.has(ITextFileModelManager)
+      ? api.services.get<import('../../services/serviceTypes.js').ITextFileModelManager>(ITextFileModelManager)
+      : undefined;
+
     const writerAccessor: IBuiltInToolFileWriter | undefined = fileService && workspaceService
       ? (() => {
         // Eagerly attempt to load .parallxignore (best-effort)
@@ -1743,13 +1751,15 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
             const clean = normalizeWorkspaceRelativePath(relativePath);
             const targetUri = rootUri.joinPath(clean);
 
-            // Ensure parent directory exists
-            const parentPath = clean.includes('/') ? clean.slice(0, clean.lastIndexOf('/')) : '';
-            if (parentPath) {
-              const parentUri = rootUri.joinPath(parentPath);
-              try { await fileService!.mkdir(parentUri); } catch { /* may already exist */ }
-            }
-            await fileService!.writeFile(targetUri, content);
+            // One writer per file: through the open document when there is one,
+            // to disk otherwise. See openDocumentWriter.ts for why.
+            await writeThroughOpenDocument(_textModels, fileService!, targetUri, content, async () => {
+              const parentPath = clean.includes('/') ? clean.slice(0, clean.lastIndexOf('/')) : '';
+              if (parentPath) {
+                const parentUri = rootUri.joinPath(parentPath);
+                try { await fileService!.mkdir(parentUri); } catch { /* may already exist */ }
+              }
+            });
           },
           isPathAllowed(relativePath: string): boolean {
             // Synchronous check with eagerly loaded ignore instance
@@ -2050,13 +2060,24 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       const _pySvcForNb = api.services.get<IPythonEnvService>(IPythonEnvService);
       const _kernelSvc = api.services.get<INotebookKernelService>(INotebookKernelService);
       const _lmToolsNb = languageModelToolsService;
+
+      // Turn a workspace-relative path into the OPEN notebook holding that
+      // document, so the tools write through the pane instead of around it —
+      // the same single-writer rule the text path uses via ITextFileModelManager.
+      const _resolveOpenNotebook = (relativePath: string) => {
+        const folders = workspaceService?.folders;
+        if (!folders || folders.length === 0) return undefined;
+        const uri = folders[0].uri.joinPath(normalizeWorkspaceRelativePath(relativePath));
+        return findOpenNotebook(uri);
+      };
+
       void import('./tools/notebookTools.js').then((toolMod) => {
         // Reading and editing a .ipynb is a FILE operation — always available,
         // like fs_read_file on the same path. Only execution is gated, because
         // `python.enabled` is consent to run Python, not consent to open a JSON
         // document. Gating the file tools too removed capability the assistant
         // already had through fs_* and bought nothing.
-        for (const tool of toolMod.createNotebookFileTools(fsAccessor, writerAccessor, editorService)) {
+        for (const tool of toolMod.createNotebookFileTools(fsAccessor, writerAccessor, _resolveOpenNotebook)) {
           context.subscriptions.push(_lmToolsNb.registerTool(tool));
         }
 
@@ -2070,7 +2091,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
           const have = _nbRegs.length > 0;
           if (want === have) return;
           if (want) {
-            for (const tool of toolMod.createNotebookRunTools(_kernelSvc, fsAccessor, writerAccessor, editorService)) {
+            for (const tool of toolMod.createNotebookRunTools(_kernelSvc, fsAccessor, writerAccessor, _resolveOpenNotebook)) {
               _nbRegs.push(_lmToolsNb.registerTool(tool));
             }
           } else {
@@ -2493,14 +2514,14 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
               ? api.services.get<import('../../services/serviceTypes.js').INotificationService>(INotificationService)
               : undefined;
             if (!notifications) return false;
-            void notifications.info(`${finding.title} — ${finding.detail}`);
+            void notifications.info(`${finding.title}: ${finding.detail}`);
             return true;
           },
           log: (finding) => {
             autonomyLog.append({
               origin: 'heartbeat',
               requestText: `[trigger] ${finding.kind}`,
-              content: `${finding.title} — ${finding.detail}`,
+              content: `${finding.title}: ${finding.detail}`,
               metadata: { findingKey: finding.key, delivery: finding.delivery },
             });
           },
@@ -2521,7 +2542,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
               surfaceId: 'status',
               contentType: 'text',
               content: `watchers: ${n} filed`,
-              metadata: { pulse: true, tooltip: 'Heartbeat filed follow-ups — see the planner review queue' },
+              metadata: { pulse: true, tooltip: 'Heartbeat filed follow-ups. See the planner review queue.' },
             }, 'heartbeat').catch(() => {});
           }
           return result;

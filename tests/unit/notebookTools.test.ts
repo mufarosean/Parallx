@@ -40,13 +40,27 @@ function makeWriter(files: Record<string, string>, allowed = true) {
   } as never;
 }
 
-function makeEditors(openDescriptions: string[]) {
-  return {
-    getOpenEditors: () => openDescriptions.map((d, i) => ({
-      id: `e${i}`, name: d.split('/').pop() ?? d, description: d,
-      isDirty: false, isActive: i === 0, groupId: 'g1',
-    })),
-  } as never;
+/**
+ * A stand-in for an open NotebookEditorInput holding a live document.
+ *
+ * The whole point of the single-writer rule is that a tool mutates THIS document
+ * — the one the pane renders — rather than parsing a second copy off disk. So
+ * the fake records whether it was mutated, marked dirty and saved.
+ */
+function makeLive(json: string) {
+  const doc = parseNotebook(json);
+  const state = { dirtied: 0, saved: 0, doc };
+  const live = {
+    resolve: async () => doc,
+    markDirty: () => { state.dirtied++; },
+    save: async () => { state.saved++; },
+  };
+  return { live, state };
+}
+
+/** path -> open document. Anything absent is "not open" and goes to disk. */
+function makeResolver(open: Record<string, { resolve: () => Promise<unknown> }>) {
+  return ((p: string) => open[p]) as never;
 }
 
 /** A kernel whose every cell produces `outputs` and finishes with `status`. */
@@ -125,7 +139,7 @@ const errorOut = (): NotebookOutput =>
 
 function tools(opts: {
   files?: Record<string, string>;
-  open?: string[];
+  open?: Record<string, { resolve: () => Promise<unknown> }>;
   kernel?: ReturnType<typeof makeKernel>;
   allowWrite?: boolean;
 } = {}) {
@@ -134,13 +148,18 @@ function tools(opts: {
     (opts.kernel ?? makeKernel()) as never,
     makeFs(files),
     makeWriter(files, opts.allowWrite !== false),
-    makeEditors(opts.open ?? []),
+    makeResolver(opts.open ?? {}),
   );
   const by = (n: string) => list.find(t => t.name === n)!;
   return { files, list, create: by('notebook_create'), read: by('notebook_read'), edit: by('notebook_edit_cell'), run: by('notebook_run') };
 }
 
 const NOOP_TOKEN = { isCancellationRequested: false } as never;
+
+/** Satisfy read-before-edit by reading the notebook in this session first. */
+async function withSeen(t: { read: { handler: (a: Record<string, unknown>, tk: never, inv: never) => Promise<unknown> } }, path: string) {
+  await t.read.handler({ path }, NOOP_TOKEN, { sessionId: 's1' } as never);
+}
 const call = (t: { handler: (a: Record<string, unknown>, tk: never) => Promise<{ content: string; isError?: boolean }> }, args: Record<string, unknown>) =>
   t.handler(args, NOOP_TOKEN);
 
@@ -442,46 +461,6 @@ describe('notebook_run', () => {
   });
 });
 
-// ── The stale-write guard ────────────────────────────────────────────────────
-
-describe('refuses to write a notebook that is open in an editor', () => {
-  // NotebookEditorInput memoises its document, so a write behind an open pane is
-  // invisible to that pane and the pane's next save overwrites it. Both failure
-  // directions are silent, which is why this refuses rather than racing.
-  const open = ['analysis/a.ipynb'];
-
-  it('blocks notebook_run', async () => {
-    const t = tools({ files: { 'analysis/a.ipynb': nb([['code', 'x = 1']]) }, open });
-    const r = await call(t.run, { path: 'analysis/a.ipynb' });
-    expect(r.isError).toBe(true);
-    expect(r.content).toContain('open in an editor');
-  });
-
-  it('blocks notebook_edit_cell', async () => {
-    const t = tools({ files: { 'analysis/a.ipynb': nb([['code', 'x = 1']]) }, open });
-    const r = await call(t.edit, { path: 'analysis/a.ipynb', operation: 'delete', index: 0 });
-    expect(r.isError).toBe(true);
-  });
-
-  it('blocks notebook_create', async () => {
-    const t = tools({ open });
-    const r = await call(t.create, { path: 'analysis/a.ipynb' });
-    expect(r.isError).toBe(true);
-  });
-
-  it('does NOT block notebook_read — reading an open notebook is harmless', async () => {
-    const t = tools({ files: { 'analysis/a.ipynb': nb([['code', 'x = 1']]) }, open });
-    const r = await call(t.read, { path: 'analysis/a.ipynb' });
-    expect(r.isError).toBeFalsy();
-  });
-
-  it('does not confuse a different notebook for the open one', async () => {
-    const t = tools({ files: { 'other.ipynb': nb([['code', 'x = 1']]) }, open });
-    const r = await call(t.run, { path: 'other.ipynb' });
-    expect(r.content).not.toContain('open in an editor');
-  });
-});
-
 // ── Output fidelity: the tool must produce the same file the editor would ────
 //
 // The first version of notebook_run collected outputs by hand — it pushed every
@@ -557,71 +536,6 @@ describe('output fidelity vs the notebook editor', () => {
   });
 });
 
-// ── The open-editor guard must match on path, not on tab name ───────────────
-
-describe('open-editor guard matches paths, not basenames', () => {
-  it('does not refuse a same-named notebook in a different folder', async () => {
-    // OpenEditorDescriptor.name is the basename, so matching it refused writes
-    // to any notebook sharing a filename with an open one. Dated and per-project
-    // folders make that the normal case.
-    const t = tools({
-      files: { 'archive/analysis.ipynb': nb([['code', 'x = 1']]) },
-      open: ['2026-01/analysis.ipynb'],
-    });
-    const r = await call(t.run, { path: 'archive/analysis.ipynb' });
-    expect(r.content).not.toContain('open in an editor');
-  });
-
-  it('still refuses the notebook that really is open', async () => {
-    const t = tools({
-      files: { '2026-01/analysis.ipynb': nb([['code', 'x = 1']]) },
-      open: ['2026-01/analysis.ipynb'],
-    });
-    const r = await call(t.run, { path: '2026-01/analysis.ipynb' });
-    expect(r.isError).toBe(true);
-    expect(r.content).toContain('open in an editor');
-  });
-
-  it('matches on a path boundary, not a bare suffix', async () => {
-    // `notes/archive.ipynb` must not match a target of `archive.ipynb`.
-    const t = tools({
-      files: { 'archive.ipynb': nb([['code', 'x = 1']]) },
-      open: ['notes/my-archive.ipynb'],
-    });
-    const r = await call(t.run, { path: 'archive.ipynb' });
-    expect(r.content).not.toContain('open in an editor');
-  });
-
-  it('matches when the editor reports an absolute path and the tool a relative one', async () => {
-    const t = tools({
-      files: { 'analysis/a.ipynb': nb([['code', 'x = 1']]) },
-      open: ['D:/AI/ws/analysis/a.ipynb'],
-    });
-    const r = await call(t.run, { path: 'analysis/a.ipynb' });
-    expect(r.isError).toBe(true);
-  });
-
-  it('tolerates Windows backslashes on either side', async () => {
-    const t = tools({
-      files: { 'analysis/a.ipynb': nb([['code', 'x = 1']]) },
-      // String.raw so the backslash survives — '\a' is not an escape sequence,
-      // so a single backslash here would silently mean "analysisa.ipynb".
-      open: [String.raw`analysis\a.ipynb`],
-    });
-    const r = await call(t.run, { path: 'analysis/a.ipynb' });
-    expect(r.isError).toBe(true);
-  });
-
-  it('ignores a leading ./ on the target', async () => {
-    const t = tools({
-      files: { './analysis/a.ipynb': nb([['code', 'x = 1']]) },
-      open: ['analysis/a.ipynb'],
-    });
-    const r = await call(t.run, { path: './analysis/a.ipynb' });
-    expect(r.isError).toBe(true);
-  });
-});
-
 // ── Cancellation ─────────────────────────────────────────────────────────────
 //
 // The severe one. `execution.completed` settles only on a kernel reply, an abort
@@ -675,7 +589,7 @@ describe('cancellation of a non-terminating cell', () => {
   it('returns instead of hanging forever when the turn is cancelled', async () => {
     const { kernel, state } = hangingKernel();
     const files = { 'a.ipynb': nb([['code', 'while True: pass']]) };
-    const [, , , run] = createNotebookTools(kernel, makeFs(files), makeWriter(files), makeEditors([]));
+    const [, , , run] = createNotebookTools(kernel, makeFs(files), makeWriter(files), makeResolver({}));
     const { token, cancel } = cancellableToken();
 
     const pending = (run as { handler: (a: unknown, t: unknown) => Promise<{ content: string }> })
@@ -699,7 +613,7 @@ describe('cancellation of a non-terminating cell', () => {
   it('does not start further cells after cancellation', async () => {
     const { kernel } = hangingKernel();
     const files = { 'a.ipynb': nb([['code', 'one'], ['code', 'two'], ['code', 'three']]) };
-    const [, , , run] = createNotebookTools(kernel, makeFs(files), makeWriter(files), makeEditors([]));
+    const [, , , run] = createNotebookTools(kernel, makeFs(files), makeWriter(files), makeResolver({}));
     const { token, cancel } = cancellableToken();
 
     const pending = (run as { handler: (a: unknown, t: unknown) => Promise<{ content: string }> })
@@ -713,51 +627,6 @@ describe('cancellation of a non-terminating cell', () => {
     ]) as { content: string };
     // Only the first cell was ever entered.
     expect(result.content).toContain('Ran 1 cell');
-  });
-});
-
-// ── The guard has to hold for the whole run, not just the start ─────────────
-
-describe('a notebook opened mid-run is not clobbered', () => {
-  it('refuses to save when the notebook was opened while it ran', async () => {
-    // A run lasts as long as the code does. The check before execution says
-    // nothing about the state at save time, and saving into a tab opened
-    // meanwhile is the exact overwrite the guard exists to prevent.
-    const openList: string[] = [];
-    const files = { 'a.ipynb': nb([['code', 'x = 1']]) };
-    const editors = {
-      getOpenEditors: () => openList.map((d, i) => ({
-        id: `e${i}`, name: d.split('/').pop() ?? d, description: d,
-        isDirty: false, isActive: true, groupId: 'g1',
-      })),
-    } as never;
-
-    const kernel = {
-      isAvailable: true,
-      checkReadiness: async () => ({ ready: true }),
-      interrupt: async () => {},
-      execute: async () => {
-        const sub = () => ({ dispose: () => {} });
-        return {
-          requestId: 'r1', elapsedMs: () => 1,
-          onDidStart: sub, onDidOutput: sub, onDidSetExecutionCount: sub, onDidClear: sub,
-          // The user opens the notebook while this cell is running.
-          completed: (async () => {
-            openList.push('a.ipynb');
-            return { status: 'ok', durationMs: 5, startedAtIso: null, endedAtIso: null };
-          })(),
-          dispose: () => {},
-        };
-      },
-    } as never;
-
-    const before = files['a.ipynb'];
-    const [, , , run] = createNotebookTools(kernel, makeFs(files), makeWriter(files), editors);
-    const r = await call(run as never, { path: 'a.ipynb' });
-
-    expect(r.isError).toBe(true);
-    expect(r.content).toContain('opened in an editor while it ran');
-    expect(files['a.ipynb'], 'the file must be left untouched').toBe(before);
   });
 });
 
@@ -857,9 +726,102 @@ describe('permission levels and the consent split', () => {
     // python.enabled is consent to RUN Python. Reading or editing a .ipynb is a
     // file operation that fs_* can already do, so gating it bought nothing.
     const mod = await import('../../src/built-in/chat/tools/notebookTools.js');
-    const files = mod.createNotebookFileTools(makeFs({}), makeWriter({}), makeEditors([]));
-    const runners = mod.createNotebookRunTools(makeKernel(), makeFs({}), makeWriter({}), makeEditors([]));
+    const files = mod.createNotebookFileTools(makeFs({}), makeWriter({}), makeResolver({}));
+    const runners = mod.createNotebookRunTools(makeKernel(), makeFs({}), makeWriter({}), makeResolver({}));
     expect(files.map(t => t.name).sort()).toEqual(['notebook_create', 'notebook_edit_cell', 'notebook_read']);
     expect(runners.map(t => t.name)).toEqual(['notebook_run']);
+  });
+});
+
+// ── One writer per notebook ──────────────────────────────────────────────────
+//
+// The rule: if the notebook is open, the tool mutates the pane's OWN document
+// and saves through it. If it is not, the tool writes the file.
+//
+// This replaces an earlier design that refused to touch an open notebook. The
+// refusal prevented the data loss but made the assistant useless on the notebook
+// you were actually looking at — and the loss it prevented only existed because
+// there were two writers. Removing the second writer removes the problem instead
+// of managing it.
+
+describe('single writer: an open notebook is edited through its live document', () => {
+  it('notebook_edit_cell mutates the open document, not the file', async () => {
+    const onDisk = nb([['code', 'original']]);
+    const { live, state } = makeLive(onDisk);
+    const t = tools({ files: { 'a.ipynb': onDisk }, open: { 'a.ipynb': live } });
+
+    await call(t.edit, { path: 'a.ipynb', operation: 'replace', index: 0, source: 'edited' });
+
+    expect(state.doc.cells[0].source, 'the pane\'s document should hold the edit').toBe('edited');
+    expect(state.dirtied, 'the input must be marked dirty').toBeGreaterThan(0);
+    expect(state.saved, 'and saved through its own path').toBeGreaterThan(0);
+    // The file was NOT written behind the pane — that is the second writer.
+    expect(t.files['a.ipynb'], 'the file must not be written directly').toBe(onDisk);
+  });
+
+  it('notebook_run puts outputs into the open document', async () => {
+    // The case that matters most: you are watching the notebook, the assistant
+    // runs it, and the outputs appear in front of you.
+    const onDisk = nb([['code', 'print("hi")']]);
+    const { live, state } = makeLive(onDisk);
+    const t = tools({
+      files: { 'a.ipynb': onDisk },
+      open: { 'a.ipynb': live },
+      kernel: makeKernel({ outputs: [stream('hi\n')] }),
+    });
+
+    await call(t.run, { path: 'a.ipynb' });
+
+    expect(JSON.stringify(state.doc.cells[0].outputs)).toContain('hi');
+    expect(state.saved).toBeGreaterThan(0);
+    expect(t.files['a.ipynb']).toBe(onDisk);
+  });
+
+  it('notebook_create with overwrite replaces the open document in place', async () => {
+    const onDisk = nb([['code', 'old']]);
+    const { live, state } = makeLive(onDisk);
+    const t = tools({ files: { 'a.ipynb': onDisk }, open: { 'a.ipynb': live } });
+
+    await withSeen(t, 'a.ipynb');
+    const r = await call(t.create, { path: 'a.ipynb', cells: [{ source: 'brand new' }], overwrite: true });
+
+    expect(r.isError).toBeFalsy();
+    expect(state.doc.cells.map(c => c.source)).toEqual(['brand new']);
+    expect(state.saved).toBeGreaterThan(0);
+  });
+
+  it('treats an open notebook as existing, so create still needs overwrite', async () => {
+    const { live } = makeLive(nb([['code', 'x']]));
+    // Not on disk yet — only open, unsaved. Creating over it must still refuse.
+    const t = tools({ files: {}, open: { 'a.ipynb': live } });
+    const r = await call(t.create, { path: 'a.ipynb', cells: [{ source: 'y' }] });
+    expect(r.isError).toBe(true);
+    expect(r.content).toContain('already exists');
+  });
+
+  it('writes the file normally when the notebook is NOT open', async () => {
+    const t = tools({ files: { 'a.ipynb': nb([['code', 'original']]) } });
+    await call(t.edit, { path: 'a.ipynb', operation: 'replace', index: 0, source: 'edited' });
+    expect(parseNotebook(t.files['a.ipynb']).cells[0].source).toBe('edited');
+  });
+
+  it('reads the open document, not the stale file', async () => {
+    // The pane has unsaved edits; reading must show those, not what is on disk.
+    const { live, state } = makeLive(nb([['code', 'on disk']]));
+    state.doc.cells[0].source = 'unsaved in the pane';
+    const t = tools({ files: { 'a.ipynb': nb([['code', 'on disk']]) }, open: { 'a.ipynb': live } });
+
+    const r = await call(t.run, { path: 'a.ipynb' });
+    expect(r.content).toBeTruthy();
+    // The run executed the pane's version.
+    expect(state.doc.cells[0].source).toBe('unsaved in the pane');
+  });
+
+  it('does not report an open notebook as an obstacle any more', async () => {
+    const { live } = makeLive(nb([['code', 'x = 1']]));
+    const t = tools({ files: { 'a.ipynb': nb([['code', 'x = 1']]) }, open: { 'a.ipynb': live } });
+    const r = await call(t.run, { path: 'a.ipynb' });
+    expect(r.content).not.toContain('open in an editor');
+    expect(r.content).not.toContain('close the tab');
   });
 });

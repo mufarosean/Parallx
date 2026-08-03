@@ -17,6 +17,7 @@ import { NotebookEditorInput } from '../../src/built-in/editor/notebook/notebook
 import { URI } from '../../src/platform/uri.js';
 import type { IFileService } from '../../src/services/serviceTypes.js';
 import type { IChatResponseChunk } from '../../src/services/chatTypes.js';
+import { createEmptyCell, type NotebookCell } from '../../src/built-in/editor/notebook/notebookModel.js';
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -89,8 +90,12 @@ async function mount(
   return {
     pane,
     root,
+    input,
     gaps: () => [...root.querySelectorAll<HTMLElement>('.nb-gap')],
     cellSources: () => input.document!.cells.map((c) => c.source),
+    /** What the DOM actually shows, as opposed to what the document holds. */
+    renderedSources: () => [...root.querySelectorAll<HTMLElement>('.nb-cell')]
+      .map((el) => el.querySelector('.cm-content')?.textContent ?? ''),
     gapButton: (gapIndex, label) => {
       const gap = [...root.querySelectorAll<HTMLElement>('.nb-gap')][gapIndex];
       const btn = [...gap.querySelectorAll<HTMLButtonElement>('.nb-gap__btn')]
@@ -434,5 +439,82 @@ describe('Generate', () => {
     await new Promise((r) => setTimeout(r, 30));
     // Nothing arrived after dispose, and nothing threw.
     expect(h.cellSources()[1]).toBe('x = ');
+  });
+});
+
+// ── Repainting on someone else's edit ────────────────────────────────────────
+//
+// The pane and the assistant's notebook_* tools now mutate the SAME document —
+// one writer per notebook. That makes the data correct here for free, and makes
+// the VIEW the thing that has to catch up. It did not: the input fired
+// onDidChangeDocument and the pane had no subscriber, so an assistant edit was
+// invisible until you switched tabs and back.
+
+describe('external document changes repaint the pane', () => {
+  /** What the assistant's tools do: mutate the live doc, then mark it dirty. */
+  const externallyEdit = (h: { input: NotebookEditorInput }, mutate: (cells: NotebookCell[]) => void) => {
+    mutate(h.input.document!.cells);
+    h.input.markDirty(true);
+  };
+
+  it('shows a cell the assistant appended', async () => {
+    const h = await mount(['a = 1']);
+    expect(h.renderedSources()).toHaveLength(1);
+
+    externallyEdit(h, (cells) => {
+      const c = createEmptyCell('code');
+      c.source = 'b = 2';
+      cells.push(c);
+    });
+
+    expect(h.renderedSources()).toHaveLength(2);
+    expect(h.renderedSources()[1]).toContain('b = 2');
+  });
+
+  it('shows a source change the assistant made', async () => {
+    const h = await mount(['original']);
+    externallyEdit(h, (cells) => { cells[0].source = 'rewritten by the assistant'; });
+    expect(h.renderedSources()[0]).toContain('rewritten by the assistant');
+  });
+
+  it('shows outputs the assistant produced by running a cell', async () => {
+    const h = await mount(['print("hi")']);
+    externallyEdit(h, (cells) => {
+      cells[0].outputs = [{ outputType: 'stream', name: 'stdout', text: 'hi\n' } as never];
+      cells[0].executionCount = 1;
+    });
+    expect(h.root.textContent).toContain('hi');
+  });
+
+  it('drops a cell the assistant deleted', async () => {
+    const h = await mount(['a = 1', 'b = 2']);
+    externallyEdit(h, (cells) => { cells.splice(0, 1); });
+    expect(h.renderedSources()).toHaveLength(1);
+    expect(h.renderedSources()[0]).toContain('b = 2');
+  });
+
+  it('keeps the selection when that cell survives', async () => {
+    // An edit elsewhere in the notebook must not move the user.
+    const h = await mount(['a = 1', 'b = 2', 'c = 3']);
+    const second = [...h.root.querySelectorAll<HTMLElement>('.nb-cell')][1];
+    second.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    externallyEdit(h, (cells) => { cells[0].source = 'changed'; });
+
+    const selected = h.root.querySelector('.nb-cell--selected');
+    expect(selected?.textContent).toContain('b = 2');
+  });
+
+  it('does NOT rebuild on the pane\'s own edits', async () => {
+    // The pane marks its own structural edits dirty too. Rebuilding on those
+    // would tear down every cell view out from under the caret the moment you
+    // inserted a cell — so the pane guards against its own signal.
+    const h = await mount(['a = 1']);
+    const before = h.root.querySelector('.nb-cell');
+    h.gapButton(1, 'Code').click();
+
+    // The original cell's DOM node survived — it was not rebuilt from scratch.
+    expect(h.root.querySelector('.nb-cell')).toBe(before);
+    expect(h.cellSources()).toEqual(['a = 1', '']);
   });
 });

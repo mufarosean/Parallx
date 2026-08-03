@@ -220,7 +220,7 @@ function _initFileEditorResolver(
     extensions: ['.ipynb'],
     priority: EditorResolverPriority.Default,
     createInput: (uri) => NotebookEditorInput.create(uri, fileService, getRelativePath(uri)),
-    createPane: () => new NotebookEditorPane(getKernelService(), getNotebookGenerateProvider),
+    createPane: () => new NotebookEditorPane(getKernelService(), getNotebookGenerateProvider, getPythonService()),
   }));
 
   // Text editor (fallback — matches everything)
@@ -243,7 +243,7 @@ function _initFileEditorResolver(
     if (input instanceof WordEditorInput) return new WordEditorPane();
     if (input instanceof ExcelEditorInput) return new ExcelEditorPane();
     if (input instanceof NotebookEditorInput) {
-      return new NotebookEditorPane(getKernelService(), getNotebookGenerateProvider);
+      return new NotebookEditorPane(getKernelService(), getNotebookGenerateProvider, getPythonService());
     }
 
     if (input instanceof KeybindingsEditorInput) {

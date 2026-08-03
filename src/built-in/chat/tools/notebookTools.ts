@@ -23,7 +23,6 @@ import type {
 } from '../../../services/chatTypes.js';
 import type { IChatToolInvocationCallContext } from '../../../services/chatTypes.js';
 import type { IBuiltInToolFileSystem, IBuiltInToolFileWriter } from '../chatTypes.js';
-import type { IEditorService } from '../../../services/serviceTypes.js';
 import { markResourceSeen, wasResourceSeen, fileResourceKey } from '../../../services/toolResourceRegistry.js';
 import { sanitizeRelativePath } from './writeTools.js';
 import type { INotebookKernelService } from '../../../services/notebookKernelService.js';
@@ -41,6 +40,21 @@ import {
 } from '../../editor/notebook/notebookModel.js';
 import { outputToText } from '../../editor/notebook/outputRenderer.js';
 
+/**
+ * The slice of an open `NotebookEditorInput` a writer needs.
+ *
+ * Structural rather than the class itself, so this module does not depend on the
+ * editor layer and the tests can stand one up without a workbench.
+ */
+export interface LiveNotebook {
+  resolve(): Promise<NotebookDocument | undefined>;
+  markDirty(structural?: boolean): void;
+  save(): Promise<void>;
+}
+
+/** Finds the open input for a workspace-relative notebook path, if any. */
+export type OpenNotebookResolver = (relativePath: string) => LiveNotebook | undefined;
+
 /** Beyond this, a cell's output is elided before going into the model's context. */
 const MAX_OUTPUT_CHARS = 4000;
 /** Guard against a notebook whose outputs would swamp a reply. */
@@ -50,44 +64,6 @@ const MAX_TOTAL_OUTPUT_CHARS = 20_000;
 
 function isNotebookPath(p: string): boolean {
   return p.trim().toLowerCase().endsWith('.ipynb');
-}
-
-/**
- * Refuse to touch a notebook that is open in an editor.
- *
- * `NotebookEditorInput.resolve()` memoises its document, so a write to disk
- * behind an open pane is invisible to that pane — and the pane's next save
- * silently overwrites whatever was written. Reporting that plainly is better
- * than the two ways it fails otherwise: the assistant's work vanishing, or the
- * user's edits vanishing, both with no error anywhere.
- */
-function openEditorConflict(
-  editors: IEditorService | undefined,
-  relativePath: string,
-): string | null {
-  if (!editors) return null;
-
-  // Compare on PATH only, never on the tab's display name.
-  //
-  // `OpenEditorDescriptor.name` is the basename, so matching it refused a write
-  // to `archive/analysis.ipynb` whenever an unrelated `2026-01/analysis.ipynb`
-  // happened to be open — a wrong refusal with a confidently wrong explanation.
-  // Same-named notebooks in dated or per-project folders are the normal case,
-  // not an edge one.
-  //
-  // `description` is the workspace-relative path when the input has one and the
-  // absolute fsPath otherwise, so a suffix match on a path BOUNDARY covers both
-  // without matching `notes/archive.ipynb` against `archive.ipynb`.
-  const norm = (p: string) => p.replace(/\\/g, '/').replace(/^\.\//, '').toLowerCase();
-  const target = norm(relativePath);
-  const hit = editors.getOpenEditors().find((e) => {
-    const desc = norm(e.description || '');
-    if (!desc) return false;
-    return desc === target || desc.endsWith('/' + target) || target.endsWith('/' + desc);
-  });
-  if (!hit) return null;
-  return `"${relativePath}" is open in an editor, so writing to it from here would be `
-    + `overwritten the next time that tab saves. Ask the user to close the tab, then retry.`;
 }
 
 /**
@@ -177,6 +153,57 @@ async function saveNotebook(
   }
 }
 
+/**
+ * Load the notebook the way a writer should: through the OPEN document when
+ * there is one.
+ *
+ * This is what makes the assistant and the editor one writer instead of two.
+ * Parsing the file from disk while a pane holds its own memoised copy produces
+ * two documents for one notebook, and the pane's next save overwrites whatever
+ * was written — silently, with no error anywhere. Mutating the pane's own
+ * document instead means the change is on screen the moment it happens and the
+ * existing save path persists it.
+ *
+ * Returns the live document plus the input to mark dirty, or falls through to
+ * the on-disk copy when the notebook is not open.
+ */
+async function openNotebookFor(
+  fs: IBuiltInToolFileSystem,
+  relativePath: string,
+  resolveOpen: OpenNotebookResolver | undefined,
+): Promise<{ doc: NotebookDocument; live?: LiveNotebook } | { error: string }> {
+  const live = resolveOpen?.(relativePath);
+  if (live) {
+    const doc = await live.resolve();
+    if (doc) return { doc, live };
+    // An open input that cannot resolve is broken; fall through and report
+    // whatever the on-disk read says, which will be the more useful message.
+  }
+  return loadNotebook(fs, relativePath);
+}
+
+/** Persist through the open document when there is one, else write the file. */
+async function persistNotebook(
+  writer: IBuiltInToolFileWriter,
+  relativePath: string,
+  doc: NotebookDocument,
+  live: LiveNotebook | undefined,
+): Promise<string | null> {
+  if (live) {
+    // The pane is already rendering this document — it mutated in place. Mark it
+    // dirty (structural, so the pane rebuilds its cell views) and save through
+    // the same path a manual save uses.
+    try {
+      live.markDirty(true);
+      await live.save();
+      return null;
+    } catch (err) {
+      return `Could not save "${relativePath}": ${(err as Error).message}`;
+    }
+  }
+  return saveNotebook(writer, relativePath, doc);
+}
+
 function cellSource(cell: NotebookCell): string {
   return cell.source;
 }
@@ -221,7 +248,7 @@ function requireAll(
 export function createNotebookCreateTool(
   fs: IBuiltInToolFileSystem | undefined,
   writer: IBuiltInToolFileWriter | undefined,
-  editors: IEditorService | undefined,
+  resolveOpen: OpenNotebookResolver | undefined,
 ): IChatTool {
   return {
     name: 'notebook_create',
@@ -268,10 +295,11 @@ export function createNotebookCreateTool(
       if ('error' in cleaned) return { content: cleaned.error, isError: true };
       const path = cleaned.path;
 
-      const conflict = openEditorConflict(editors, path);
-      if (conflict) return { content: conflict, isError: true };
+      // If the notebook is open, its live document is the one that matters —
+      // writing the file behind it would be overwritten by the pane's next save.
+      const live = resolveOpen?.(path);
 
-      const exists = await fs.exists(path);
+      const exists = (live !== undefined) || await fs.exists(path);
       if (args['overwrite'] !== true && exists) {
         return {
           content: `"${path}" already exists. Pass overwrite:true to replace it, or edit it with notebook_edit_cell.`,
@@ -296,12 +324,23 @@ export function createNotebookCreateTool(
       }
       if (doc.cells.length === 0) doc.cells.push(createEmptyCell('code'));
 
-      const failure = await saveNotebook(writer, path, doc);
+      let failure: string | null;
+      if (live) {
+        // Replace the OPEN document's cells in place rather than the file, so the
+        // pane shows the new notebook immediately instead of holding a stale one.
+        const target = await live.resolve();
+        if (!target) return { content: `Could not open "${path}".`, isError: true };
+        target.cells = doc.cells;
+        failure = await persistNotebook(writer, path, target, live);
+      } else {
+        failure = await saveNotebook(writer, path, doc);
+      }
       if (failure) return { content: failure, isError: true };
 
       // The assistant now knows exactly what is in it — it just wrote it.
       markSeen(invocation, path);
-      return { content: `Created "${path}" with ${doc.cells.length} cell(s). Run it with notebook_run.` };
+      const where = live ? ' (updated the open tab)' : '';
+      return { content: `Created "${path}" with ${doc.cells.length} cell(s)${where}. Run it with notebook_run.` };
     },
   };
 }
@@ -358,7 +397,7 @@ export function createNotebookReadTool(fs: IBuiltInToolFileSystem | undefined): 
 export function createNotebookEditCellTool(
   fs: IBuiltInToolFileSystem | undefined,
   writer: IBuiltInToolFileWriter | undefined,
-  editors: IEditorService | undefined,
+  resolveOpen: OpenNotebookResolver | undefined,
 ): IChatTool {
   return {
     name: 'notebook_edit_cell',
@@ -398,13 +437,12 @@ export function createNotebookEditCellTool(
       if ('error' in cleaned) return { content: cleaned.error, isError: true };
       const path = cleaned.path;
 
-      const conflict = openEditorConflict(editors, path);
-      if (conflict) return { content: conflict, isError: true };
-
       const unseen = requireSeen(invocation, path, 'editing a cell');
       if (unseen) return { content: unseen, isError: true };
 
-      const loaded = await loadNotebook(fs, path);
+      // Through the open document when there is one, so the edit lands in the
+      // pane the user is looking at rather than in a file it will overwrite.
+      const loaded = await openNotebookFor(fs, path, resolveOpen);
       if ('error' in loaded) return { content: loaded.error, isError: true };
       const cells = loaded.doc.cells;
 
@@ -448,9 +486,10 @@ export function createNotebookEditCellTool(
         return { content: `Unknown operation "${operation}". Use insert, replace or delete.`, isError: true };
       }
 
-      const failure = await saveNotebook(writer, path, loaded.doc);
+      const failure = await persistNotebook(writer, path, loaded.doc, loaded.live);
       if (failure) return { content: failure, isError: true };
-      return { content: `${operation} at cell ${index} — "${path}" now has ${cells.length} cell(s).` };
+      const where = loaded.live ? ' (in the open tab)' : '';
+      return { content: `${operation} at cell ${index} — "${path}" now has ${cells.length} cell(s)${where}.` };
     },
   };
 }
@@ -461,7 +500,7 @@ export function createNotebookRunTool(
   kernel: INotebookKernelService | undefined,
   fs: IBuiltInToolFileSystem | undefined,
   writer: IBuiltInToolFileWriter | undefined,
-  editors: IEditorService | undefined,
+  resolveOpen: OpenNotebookResolver | undefined,
 ): IChatTool {
   return {
     name: 'notebook_run',
@@ -497,10 +536,11 @@ export function createNotebookRunTool(
       if ('error' in cleaned) return { content: cleaned.error, isError: true };
       const path = cleaned.path;
 
-      const conflict = openEditorConflict(editors, path);
-      if (conflict) return { content: conflict, isError: true };
-
-      const loaded = await loadNotebook(fs!, path);
+      // Run the OPEN document when there is one. This is the case that matters
+      // most for notebooks: executing the pane's own cells means the outputs
+      // appear in the notebook the user is watching, rather than in a file that
+      // pane will overwrite the moment it saves.
+      const loaded = await openNotebookFor(fs!, path, resolveOpen);
       if ('error' in loaded) return { content: loaded.error, isError: true };
       const doc = loaded.doc;
 
@@ -603,6 +643,13 @@ export function createNotebookRunTool(
         setCellExecutionTiming(cell, result?.startedAtIso ?? null, result?.endedAtIso ?? null);
         ran++;
 
+        // Repaint after EACH cell when the notebook is open, so a Run All is
+        // watchable the way it is when the user presses Run All themselves —
+        // cells completing one at a time rather than the whole notebook
+        // appearing at the end. Costs one rebuild per cell, against a cell that
+        // just took at least a kernel round-trip.
+        loaded.live?.markDirty(true);
+
         const rendered = renderOutputs(cell, MAX_OUTPUT_CHARS);
         report.push(`--- cell ${i} → ${result?.status ?? 'unknown'}${result?.durationMs != null ? ` (${result.durationMs} ms)` : ''} ---`);
         report.push(rendered || '(no output)');
@@ -611,23 +658,25 @@ export function createNotebookRunTool(
         if (result?.status === 'abort') { failedAt = i; break; }
       }
 
-      // Re-check the guard before writing. A run takes as long as the code does,
-      // and the user can open the notebook at any point during it — the check
-      // before execution says nothing about the state now. Writing into a tab
-      // opened mid-run is the exact clobber the guard exists to prevent.
-      const lateConflict = openEditorConflict(editors, path);
-      if (lateConflict) {
-        return {
-          content: `Ran ${ran} cell(s), but the notebook was opened in an editor while it ran, `
-            + `so the outputs were NOT saved — writing now would be overwritten by that tab.\n\n`
-            + `${report.join('\n')}`,
-          isError: true,
-        };
+      // Re-resolve before writing. A run lasts as long as the code does, and the
+      // user can open the notebook at any point during it — so a run that began
+      // against the file may need to finish against a live document. Writing the
+      // file in that case would be overwritten by the new tab's first save.
+      //
+      // The cells being mutated are the same objects either way when the pane
+      // was already open; this only matters for a pane that appeared mid-run.
+      const liveNow = loaded.live ?? resolveOpen?.(path);
+      if (liveNow && !loaded.live) {
+        // A tab opened mid-run. Its document was parsed from the file as it was
+        // BEFORE this run, so copy the executed cells across rather than saving
+        // a document the pane is not rendering.
+        const target = await liveNow.resolve();
+        if (target) target.cells = doc.cells;
       }
 
       // Persist whatever ran, even on failure — the outputs of the cells that
       // did succeed are the context for fixing the one that did not.
-      const failure = await saveNotebook(writer, path, doc);
+      const failure = await persistNotebook(writer, path, doc, liveNow);
       if (failure) return { content: `Ran ${ran} cell(s) but could not save: ${failure}\n\n${report.join('\n')}`, isError: true };
 
       const head = failedAt === null
@@ -653,12 +702,12 @@ export function createNotebookRunTool(
 export function createNotebookFileTools(
   fs: IBuiltInToolFileSystem | undefined,
   writer: IBuiltInToolFileWriter | undefined,
-  editors: IEditorService | undefined,
+  resolveOpen: OpenNotebookResolver | undefined,
 ): IChatTool[] {
   return [
-    createNotebookCreateTool(fs, writer, editors),
+    createNotebookCreateTool(fs, writer, resolveOpen),
     createNotebookReadTool(fs),
-    createNotebookEditCellTool(fs, writer, editors),
+    createNotebookEditCellTool(fs, writer, resolveOpen),
   ];
 }
 
@@ -667,9 +716,9 @@ export function createNotebookRunTools(
   kernel: INotebookKernelService | undefined,
   fs: IBuiltInToolFileSystem | undefined,
   writer: IBuiltInToolFileWriter | undefined,
-  editors: IEditorService | undefined,
+  resolveOpen: OpenNotebookResolver | undefined,
 ): IChatTool[] {
-  return [createNotebookRunTool(kernel, fs, writer, editors)];
+  return [createNotebookRunTool(kernel, fs, writer, resolveOpen)];
 }
 
 /** Everything, for callers that do not need the split (and for tests). */
@@ -677,10 +726,10 @@ export function createNotebookTools(
   kernel: INotebookKernelService | undefined,
   fs: IBuiltInToolFileSystem | undefined,
   writer: IBuiltInToolFileWriter | undefined,
-  editors: IEditorService | undefined,
+  resolveOpen: OpenNotebookResolver | undefined,
 ): IChatTool[] {
   return [
-    ...createNotebookFileTools(fs, writer, editors),
-    ...createNotebookRunTools(kernel, fs, writer, editors),
+    ...createNotebookFileTools(fs, writer, resolveOpen),
+    ...createNotebookRunTools(kernel, fs, writer, resolveOpen),
   ];
 }
