@@ -42,7 +42,14 @@ const MIN_PYTHON = { major: 3, minor: 10 };
 const VENV_REL = path.join('.parallx', 'venv');
 const TMP_REL = path.join('.parallx', 'tmp');
 
-/** Default wall-clock ceiling for a single script run. */
+/**
+ * Default STALL ceiling for a single script run: a run is stopped after this
+ * long without producing output — not after this much total runtime. The
+ * guard exists for hung scripts (autonomous runs especially — nobody is
+ * watching a terminal), and "still printing" is precisely what distinguishes
+ * a 30-minute download that reports each file from a wedged process. The
+ * workspace setting `python.runTimeoutMs` adjusts the window.
+ */
 const DEFAULT_RUN_TIMEOUT_MS = 120_000;
 
 /** Hard ceiling on captured output per stream, so a runaway loop cannot pin memory. */
@@ -941,12 +948,22 @@ async function runScript(workspaceRoot, scriptPath, args, options = {}) {
     if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
   };
 
-  entry.timer = setTimeout(() => {
-    const live = _runs.get(runId);
-    if (!live) return;
-    live.timedOut = true;
-    killTree(live.proc);
-  }, timeout);
+  // Stall watchdog, re-armed by every forwarded output chunk: only SILENCE
+  // for `timeout` ms kills the run, so a long download printing a line per
+  // file runs to completion while a hung script still dies. Output past
+  // MAX_STREAM_BYTES does not re-arm — once nothing more is being shown, an
+  // endless print loop is indistinguishable from a hang and must not be able
+  // to keep itself alive.
+  const armStallTimer = () => {
+    if (entry.timer) clearTimeout(entry.timer);
+    entry.timer = setTimeout(() => {
+      const live = _runs.get(runId);
+      if (!live) return;
+      live.timedOut = true;
+      killTree(live.proc);
+    }, timeout);
+  };
+  armStallTimer();
 
   const forward = (channel) => (data) => {
     const live = _runs.get(runId);
@@ -954,6 +971,7 @@ async function runScript(workspaceRoot, scriptPath, args, options = {}) {
     // Cap total forwarded output. A runaway print loop should not be able to
     // flood the renderer or the run log.
     if (live.bytesOut >= MAX_STREAM_BYTES) return;
+    armStallTimer();
     const chunk = data.toString();
     live.bytesOut += chunk.length;
     send('python:run:data', { runId, channel, chunk });
@@ -981,7 +999,14 @@ async function runScript(workspaceRoot, scriptPath, args, options = {}) {
       runId,
       exitCode: timedOut ? -1 : (code ?? (signal ? -1 : 0)),
       error: timedOut
-        ? { code: 'TIMEOUT', message: `Script exceeded ${timeout}ms and was stopped.` }
+        // Name the setting: a script killed with a bare "exited" reads as a
+        // crash, and nothing tells the user the limit is theirs to raise.
+        ? {
+          code: 'TIMEOUT',
+          message: (live && live.bytesOut >= MAX_STREAM_BYTES)
+            ? `Script was stopped: it exceeded the output limit, after which no further activity is visible. ${Math.round(timeout / 1000)}s of that and a run is treated as hung.`
+            : `Script went ${Math.round(timeout / 1000)}s without producing output and was stopped. A script that prints progress as it works can run as long as it needs; raise "Stall timeout" in Settings › Python if yours has long silent stretches.`,
+        }
         : (live && live.cancelled ? { code: 'CANCELLED', message: 'Script was cancelled.' } : null),
       durationMs: Date.now() - entry.startedAt,
       outDir,
@@ -1118,6 +1143,13 @@ module.exports = {
   buildTerminalEnv,
   terminalEnvInfo,
   // Exported for tests.
+  //
+  // runScript/cancelRun power the stall-timeout probe
+  // (tests/probes/run-python-stall-probe.mjs), which drives real child
+  // processes through the real watchdog — vitest fake timers cannot exercise
+  // a taskkill'd process tree.
+  runScript,
+  cancelRun,
   envPaths,
   buildChildEnv,
   validateScriptPath,

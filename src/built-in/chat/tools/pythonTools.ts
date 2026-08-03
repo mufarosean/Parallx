@@ -41,7 +41,10 @@ export function createPythonRunScriptTool(service: IPythonEnvService): IChatTool
       'own Python environment. Write the script with fs_write_file first. The script ' +
       'runs with the workspace root as its working directory, so relative paths resolve ' +
       'against workspace content, and PARALLX_OUT names a folder for any files it produces. ' +
-      'Returns the script\'s combined output.',
+      'Returns the script\'s combined output. Long-running scripts must print progress ' +
+      'as they work: a run is stopped only after a stretch of NO output (workspace ' +
+      '"Stall timeout" setting, default 120s). Total runtime is unlimited while it ' +
+      'keeps reporting.',
     parameters: {
       type: 'object',
       required: ['scriptPath'],

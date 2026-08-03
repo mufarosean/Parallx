@@ -282,7 +282,7 @@ export class PythonEnvService extends Disposable implements IPythonEnvService {
         label: 'Enable Python for this workspace',
         description:
           'Lets this workspace create a private Python environment and run scripts. ' +
-          'Packages, caches, and temp files stay inside the workspace — but a running ' +
+          'Packages, caches, and temp files stay inside the workspace, but a running ' +
           'script has the same access to your computer as any other program you launch. ' +
           'Off by default, and set per workspace.',
         category: 'Python',
@@ -322,8 +322,11 @@ export class PythonEnvService extends Disposable implements IPythonEnvService {
         min: 1_000,
         max: 900_000,
         scope: 'workspace',
-        label: 'Script timeout (ms)',
-        description: 'A run exceeding this is stopped, along with any child processes it started.',
+        label: 'Stall timeout (ms)',
+        description:
+          'A run producing NO output for this long is stopped, along with any child ' +
+          'processes it started. A script that prints progress as it works can run ' +
+          'as long as it needs; raise this only for long silent computations.',
         category: 'Python',
       });
     }
