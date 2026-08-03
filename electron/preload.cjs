@@ -1,7 +1,7 @@
 // electron/preload.cjs — Electron preload script
 // Exposes a minimal API to the renderer via contextBridge.
 
-const { contextBridge, ipcRenderer, clipboard } = require('electron');
+const { contextBridge, ipcRenderer, clipboard, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('parallxElectron', {
   platform: process.platform,
@@ -378,6 +378,25 @@ contextBridge.exposeInMainWorld('parallxElectron', {
   // ══════════════════════════════════════════════════════════════════════════
   // Document Extraction API
   // ══════════════════════════════════════════════════════════════════════════
+
+  anki: {
+    /**
+     * Parse an Anki export (.apkg or "Notes in Plain Text" .txt) into decks of
+     * plain-text cards. Returns { ok, decks:[{name, cards:[{front,back,tags}]}],
+     * cardCount, mediaSkipped } or { ok:false, error }.
+     */
+    read: (filePath) => ipcRenderer.invoke('anki:read', filePath),
+  },
+
+  /**
+   * Filesystem path of an OS-dragged File object. Electron removed the
+   * nonstandard File.path in v32; this is the sanctioned replacement and the
+   * only way a renderer drop zone can resolve a real path. Returns '' when
+   * the File has no backing path (e.g. a browser-synthesized file).
+   */
+  getPathForFile: (file) => {
+    try { return webUtils.getPathForFile(file) || ''; } catch { return ''; }
+  },
 
   document: {
     /** Extract plain text from a rich document (PDF, Excel, Word, EPUB). Returns { text, format, metadata } or { error }. */

@@ -108,6 +108,10 @@ async function extractPdf(buffer, filePath) {
     return {
       text: result.text || '',
       pageCount: result.total || 0,
+      // Per-page text, in page order. The flashcard importer pairs pages
+      // (odd = front, even = back) for printed front/back decks; joining and
+      // re-splitting the concatenated text can never recover page boundaries.
+      pageTexts: Array.isArray(result.pages) ? result.pages.map((p) => p.text || '') : [],
     };
   } finally {
     try { await parser.destroy(); } catch { /* best-effort cleanup */ }
@@ -647,7 +651,7 @@ async function extractText(filePath) {
   switch (ext) {
     case '.pdf': {
       const result = await extractPdf(buffer, filePath);
-      return { text: result.text, format: 'pdf', metadata: { pageCount: result.pageCount } };
+      return { text: result.text, format: 'pdf', metadata: { pageCount: result.pageCount }, pageTexts: result.pageTexts };
     }
 
     case '.xlsx':

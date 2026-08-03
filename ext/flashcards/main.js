@@ -506,6 +506,68 @@ async function fcCreateCard(input) {
   return res.lastInsertRowid ?? res.lastID ?? null;
 }
 
+/**
+ * Insert many cards in one go, chunked into multi-row INSERTs.
+ *
+ * A Rising Fellow deck is ~1,000 cards; one fcCreateCard per card is one IPC
+ * round-trip to the database worker each, which turns an import into seconds
+ * of sequential waiting. Fifty rows per statement keeps each statement well
+ * under SQLite's default 999-parameter limit (8 params × 50 = 400) and cuts
+ * the trips by that factor. One _emitDataChanged at the end, not per chunk —
+ * every listener repaint between chunks would be wasted work.
+ */
+// The compensating DELETE below keys on created_at, so two bulk calls landing
+// in the same millisecond (small groups resolve fast) must never share a
+// stamp — a failure in the second would erase the first's committed rows.
+let _lastBulkStamp = 0;
+
+async function fcCreateCardsBulk(deckId, cards, { sourceUri = '', sourceLabel = '' } = {}) {
+  const now = Math.max(Date.now(), _lastBulkStamp + 1);
+  _lastBulkStamp = now;
+  const CHUNK = 50;
+  let inserted = 0;
+  try {
+    for (let i = 0; i < cards.length; i += CHUNK) {
+      const chunk = cards.slice(i, i + CHUNK);
+      const placeholders = chunk.map(() => '(?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
+      const params = [];
+      for (const c of chunk) {
+        params.push(
+          deckId,
+          String(c.front ?? '').trim(),
+          String(c.back ?? '').trim(),
+          c.notes || '',
+          Array.isArray(c.tags) ? c.tags.join(' ') : (c.tags || ''),
+          sourceUri,
+          sourceLabel,
+          now,
+        );
+      }
+      await db.run(
+        `INSERT INTO fc_cards (deck_id, front, back, notes, tags, source_uri, source_label, created_at)
+         VALUES ${placeholders}`,
+        params,
+      );
+      inserted += chunk.length;
+    }
+  } catch (e) {
+    // All-or-nothing: a chunk failure mid-call would otherwise leave a partial
+    // group that a retry re-inserts in full. Every row of this call shares the
+    // same created_at + source stamp, which no other write path produces, so
+    // the compensating delete removes exactly this call's rows.
+    try {
+      await db.run(
+        'DELETE FROM fc_cards WHERE deck_id = ? AND created_at = ? AND source_uri = ? AND source_label = ?',
+        [deckId, now, sourceUri, sourceLabel],
+      );
+    } catch { /* compensation is best-effort; the error below still surfaces */ }
+    _emitDataChanged();
+    throw e;
+  }
+  _emitDataChanged();
+  return inserted;
+}
+
 async function fcUpdateCard(id, patch) {
   const sets = [];
   const params = [];
@@ -837,6 +899,29 @@ function fcLooksLikePath(raw) {
   return /^file:\/\//i.test(raw) || /^[a-zA-Z]:[\\/]/.test(raw) || raw.startsWith('/') || raw.startsWith('\\\\');
 }
 
+// Which importer handles a dropped/picked file, by dot-less fcExtOf extension.
+// Anki's .colpkg (whole-collection export) shares the .apkg container format.
+function fcImportKindOf(ext) {
+  if (['apkg', 'colpkg', 'txt', 'tsv', 'csv'].includes(ext)) return 'anki';
+  if (ext === 'pdf') return 'pdf';
+  return null;
+}
+
+/**
+ * Resolve an OS-dragged File to a filesystem path. Electron removed the
+ * nonstandard File.path in v32; webUtils.getPathForFile (exposed through the
+ * preload bridge) is the only way to get one now. The legacy property is kept
+ * as a fallback for older shells and jsdom test harnesses that set it.
+ */
+function fcFileDropPath(file) {
+  if (!file) return '';
+  try {
+    const viaBridge = electronBridge()?.getPathForFile?.(file);
+    if (viaBridge) return viaBridge;
+  } catch { /* fall through to the legacy property */ }
+  return file.path || '';
+}
+
 // Extract text from a known document path (pdf/docx/epub/xlsx).
 async function fcExtractDocument(filePath) {
   const electron = electronBridge();
@@ -850,7 +935,7 @@ async function fcExtractDocument(filePath) {
     throw new Error(
       text.length === 0
         ? 'No text found in that document. If it is a scanned PDF, drop it as a photo (OCR) instead.'
-        : `Only ${text.length} characters of text could be extracted. This looks like a scanned document — use a photo (OCR) instead.`,
+        : `Only ${text.length} characters of text could be extracted. This looks like a scanned document. Use a photo (OCR) instead.`,
     );
   }
   const name = filePath.split(/[\\/]/).pop();
@@ -890,7 +975,8 @@ async function fcExtractPath(filePath) {
 // dataTransfer.files. Distinguish by shape.
 async function fcLoadFromDrop(dataTransfer) {
   const osFile = dataTransfer?.files && dataTransfer.files[0];
-  if (osFile && osFile.path) return fcExtractPath(osFile.path);
+  const osPath = fcFileDropPath(osFile);
+  if (osPath) return fcExtractPath(osPath);
   const raw = (dataTransfer?.getData('text/plain') || '').trim();
   if (!raw) throw new Error('Drag a file from the Explorer, or a page from the Canvas sidebar.');
   if (fcLooksLikePath(raw)) return fcExtractPath(fcUriToFsPath(raw));
@@ -1181,6 +1267,15 @@ function injectStyles() {
 .fc-dropzone--over { border-style: solid; border-color: var(--px-accent); background: var(--px-accent-faint); color: var(--px-text); }
 .fc-dropzone--over .fc-dropzone__icon, .fc-dropzone--over .fc-dropzone__title { color: var(--px-text); }
 .fc-dropzone--busy { opacity: 0.6; pointer-events: none; }
+
+/* ── Import — preview groups mirror the Browse rows: hairline dividers,
+   weight for fronts, muted backs. Deselected groups recede, not vanish. ── */
+.fc-import-group { margin-top: var(--px-space-4); padding-top: var(--px-space-3); border-top: 1px solid var(--px-divider); }
+.fc-import-group--off { opacity: 0.45; }
+.fc-import-group--done { opacity: 0.55; }
+.fc-import-sample { padding: var(--px-space-2) var(--px-space-1); border-bottom: 1px solid var(--px-divider); }
+.fc-import-sample__front { font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text); white-space: pre-wrap; }
+.fc-import-sample__back { font-size: var(--px-text-sm); margin-top: 2px; color: var(--px-text-muted); white-space: pre-wrap; line-height: var(--px-leading-base); }
 
 /* ── Browse — hairline-separated card rows; the stage chip is the only colour;
    row actions surface on hover ── */
@@ -1537,6 +1632,7 @@ const TAB_DEFS = [
   { view: 'decks', label: 'Decks', iconName: 'layers' },
   { view: 'study', label: 'Study', iconName: 'play' },
   { view: 'create', label: 'Create', iconName: 'px-ai-mark' },
+  { view: 'import', label: 'Import', iconName: 'inbox' },
   { view: 'stats', label: 'Stats', iconName: 'chart-column' },
 ];
 
@@ -1597,6 +1693,7 @@ function createEditorPane(container, input) {
         if (route.view === 'browse') await renderBrowse(body, route, setRoute);
         else if (route.view === 'study') await renderStudy(body, route, state, setRoute);
         else if (route.view === 'create') await renderCreate(body, route, setRoute, viewDisposables);
+        else if (route.view === 'import') await renderImport(body, route, setRoute, viewDisposables);
         else if (route.view === 'stats') await renderStats(body);
         else await renderDecks(body, setRoute);
       } while (renderQueued && !state.disposed);
@@ -1619,8 +1716,10 @@ function createEditorPane(container, input) {
 
   const onData = () => {
     // Live-refresh passive views. The study session manages its own state —
-    // re-rendering mid-review would eat the current card.
-    if (state.disposed || state.route.view === 'study' || state.route.view === 'create') return;
+    // re-rendering mid-review would eat the current card. The import view is
+    // excluded too: its own commit loop emits data changes, and a re-render
+    // mid-commit would blank the preview and progress it is reporting.
+    if (state.disposed || state.route.view === 'study' || state.route.view === 'create' || state.route.view === 'import') return;
     void render();
   };
   _dataListeners.add(onData);
@@ -2189,7 +2288,7 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
   dzIcon.innerHTML = icon('inbox', 20);
   drop.appendChild(dzIcon);
   drop.appendChild(el('div', 'fc-dropzone__title', 'Drag a file or canvas page here'));
-  drop.appendChild(el('div', 'fc-dropzone__hint', 'From the Explorer or Canvas sidebar — or use the buttons below.'));
+  drop.appendChild(el('div', 'fc-dropzone__hint', 'From the Explorer or Canvas sidebar, or use the buttons below.'));
   view.appendChild(drop);
 
   const onDragOver = (e) => {
@@ -2388,6 +2487,319 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
     importRow.appendChild(importBtn);
     reviewHost.appendChild(importRow);
     importRow.scrollIntoView({ block: 'nearest' });
+  };
+
+  body.appendChild(view);
+}
+
+// ── Import view — mechanical, not AI ─────────────────────────────────────────
+//
+// The Create view asks a model to draft cards from prose. This view is the
+// opposite contract: the cards ALREADY EXIST — an Anki deck from a provider, a
+// printed front/back PDF, a spreadsheet — and the import must reproduce them
+// exactly. Provider decks (Rising Fellow et al.) are the reason this is a
+// first-class surface and not a paste box.
+
+async function renderImport(body, route, setRoute, viewDisposables = []) {
+  const view = el('div', 'fc-view');
+  view.appendChild(el('div', 'fc-hint',
+    'Bring in cards that already exist. Nothing here goes through the AI; what the file says is what you get.'));
+
+  const err = el('div', 'fc-error');
+  err.style.display = 'none';
+  const showErr = (msg) => { err.textContent = msg; err.style.display = msg ? '' : 'none'; };
+
+  // ── Source ──
+  view.appendChild(el('div', 'fc-label', 'Deck file'));
+  view.appendChild(el('div', 'fc-hint',
+    'Anki exports (.apkg, or "Notes in Plain Text" .txt) and front/back PDFs where odd pages are fronts and even pages are backs.'));
+
+  const drop = el('div', 'fc-dropzone');
+  const dzIcon = el('div', 'fc-dropzone__icon');
+  dzIcon.innerHTML = icon('inbox', 20);
+  drop.appendChild(dzIcon);
+  drop.appendChild(el('div', 'fc-dropzone__title', 'Drop a .apkg, .txt, or .pdf here'));
+  drop.appendChild(el('div', 'fc-dropzone__hint', 'Or pick a file below. Pasting rows works too.'));
+  view.appendChild(drop);
+
+  const srcRow = el('div', 'fc-row');
+  srcRow.style.marginTop = '8px';
+  const pickBtn = el('button', 'fc-btn');
+  pickBtn.innerHTML = `${icon('hard-drive', 12)}<span>Browse device…</span>`;
+  srcRow.appendChild(pickBtn);
+  const srcStatus = el('span', 'fc-hint');
+  srcRow.appendChild(srcStatus);
+  view.appendChild(srcRow);
+
+  const pasteIn = el('textarea', 'fc-textarea');
+  pasteIn.placeholder = 'Or paste rows: front and back separated by a tab, " | ", or " :: ", one card per line.';
+  pasteIn.rows = 4;
+  pasteIn.style.marginTop = '8px';
+  view.appendChild(pasteIn);
+  const pasteBtn = el('button', 'fc-btn');
+  pasteBtn.textContent = 'Preview pasted rows';
+  pasteBtn.style.marginTop = '6px';
+  view.appendChild(pasteBtn);
+
+  view.appendChild(err);
+
+  const previewHost = el('div');
+  previewHost.style.marginTop = '16px';
+  view.appendChild(previewHost);
+
+  // ── Loading ──
+
+  /** { kind:'anki', decks:[{name,cards}] } | { kind:'pdf', pageTexts } | { kind:'rows', cards } */
+  let loaded = null;
+
+  const loadPath = async (fsPath, label) => {
+    showErr('');
+    const kind = fcImportKindOf(fcExtOf(fsPath));
+    srcStatus.textContent = `Reading ${label}…`;
+    try {
+      if (kind === 'anki') {
+        const bridge = electronBridge();
+        if (!bridge?.anki?.read) throw new Error('Anki import needs the desktop app.');
+        const res = await bridge.anki.read(fsPath);
+        if (!res.ok) throw new Error(res.error || 'Could not read the deck.');
+        loaded = { kind: 'anki', decks: res.decks, mediaSkipped: res.mediaSkipped, label, uri: fsPath };
+        srcStatus.textContent = `${label}: ${res.cardCount.toLocaleString()} cards in ${res.decks.length} deck${res.decks.length === 1 ? '' : 's'}.`;
+      } else if (kind === 'pdf') {
+        const bridge = electronBridge();
+        const res = await bridge?.document?.extractText?.(fsPath);
+        if (!res || res.error) throw new Error(res?.error?.message || 'Could not read the PDF.');
+        if (!Array.isArray(res.pageTexts) || res.pageTexts.length === 0) {
+          throw new Error('This PDF has no extractable text. If it is a scan, it needs OCR first.');
+        }
+        loaded = { kind: 'pdf', pageTexts: res.pageTexts, label, uri: fsPath };
+        srcStatus.textContent = `${label}: ${res.pageTexts.length} pages.`;
+      } else {
+        throw new Error(`Not an importable deck: "${label}". Expected .apkg, .txt, or .pdf.`);
+      }
+      renderPreview();
+    } catch (e) {
+      loaded = null;
+      previewHost.innerHTML = '';
+      srcStatus.textContent = '';
+      showErr(e.message);
+    }
+  };
+
+  const onDragOver = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    drop.classList.add('fc-dropzone--over');
+  };
+  drop.addEventListener('dragenter', onDragOver);
+  drop.addEventListener('dragover', onDragOver);
+  drop.addEventListener('dragleave', (e) => { if (e.target === drop) drop.classList.remove('fc-dropzone--over'); });
+  drop.addEventListener('drop', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    drop.classList.remove('fc-dropzone--over');
+    const dt = e.dataTransfer;
+    const file = dt?.files?.[0];
+    const raw = dt?.getData('text/uri-list') || dt?.getData('text/plain') || '';
+    const fsPath = fcFileDropPath(file) || (fcLooksLikePath(raw) ? fcUriToFsPath(raw) : '');
+    if (!fsPath) { showErr('Could not read a file path from that drop.'); return; }
+    void loadPath(fsPath, file?.name || fsPath.split(/[\\/]/).pop());
+  });
+
+  pickBtn.addEventListener('click', () => {
+    void (async () => {
+      const bridge = electronBridge();
+      const res = await bridge?.dialog?.openFile?.({
+        title: 'Import a deck',
+        filters: [
+          { name: 'Decks', extensions: ['apkg', 'colpkg', 'txt', 'tsv', 'csv', 'pdf'] },
+        ],
+      });
+      // dialog:openFile resolves to a bare string[] (or null on cancel).
+      const fsPath = Array.isArray(res) ? res[0] : undefined;
+      if (fsPath) void loadPath(fsPath, fsPath.split(/[\\/]/).pop());
+    })();
+  });
+
+  pasteBtn.addEventListener('click', () => {
+    showErr('');
+    const { cards, skipped } = fcParsePastedRows(pasteIn.value);
+    if (cards.length === 0) {
+      showErr(skipped > 0
+        ? `None of the ${skipped} lines had a separator. Split front and back with a tab, " | ", or " :: ".`
+        : 'Paste some rows first.');
+      return;
+    }
+    loaded = { kind: 'rows', cards, skipped, label: 'Pasted rows', uri: '' };
+    srcStatus.textContent = `Pasted rows: ${cards.length} cards${skipped ? ` (${skipped} lines skipped)` : ''}.`;
+    renderPreview();
+  });
+
+  // ── Preview + commit ──
+
+  const renderPreview = () => {
+    previewHost.innerHTML = '';
+    if (!loaded) return;
+
+    // PDF pairing controls live in the preview, so changing the offset
+    // re-pairs live and the result is visible before anything is saved.
+    let pdfState = { offset: 0 };
+
+    const build = async () => {
+      previewHost.innerHTML = '';
+
+      if (loaded.kind === 'pdf') {
+        const bar = el('div', 'fc-row');
+        bar.appendChild(el('span', 'fc-hint', 'Odd pages are fronts, even pages are backs. Skip'));
+        const offIn = el('input', 'fc-input');
+        offIn.type = 'number'; offIn.min = '0'; offIn.max = String(Math.max(0, loaded.pageTexts.length - 1));
+        offIn.value = String(pdfState.offset);
+        offIn.style.width = '60px';
+        offIn.addEventListener('change', () => {
+          pdfState.offset = Math.max(0, parseInt(offIn.value, 10) || 0);
+          void build();
+        });
+        bar.appendChild(offIn);
+        bar.appendChild(el('span', 'fc-hint', 'leading page(s): covers and instructions.'));
+        previewHost.appendChild(bar);
+      }
+
+      const groups = loaded.kind === 'anki'
+        ? loaded.decks.map((d) => ({ name: d.name, cards: d.cards, include: true }))
+        : [{ name: loaded.label, cards: loaded.kind === 'pdf' ? fcPairPages(loaded.pageTexts, pdfState) : loaded.cards, include: true }];
+
+      const total = groups.reduce((n, g) => n + g.cards.length, 0);
+      previewHost.appendChild(el('div', 'fc-label', `Preview — ${total.toLocaleString()} cards`));
+      if (loaded.kind === 'anki' && loaded.mediaSkipped > 0) {
+        previewHost.appendChild(el('div', 'fc-hint',
+          `${loaded.mediaSkipped} image/audio reference${loaded.mediaSkipped === 1 ? '' : 's'} in the deck were skipped — cards import as text.`));
+      }
+
+      // Destination: keep the file's deck names, or pour everything into one.
+      const destRow = el('div', 'fc-row');
+      destRow.style.margin = '8px 0';
+      const decks = await fcListDecks();
+      const destHost = el('div');
+      destHost.style.minWidth = '260px';
+      const items = [];
+      if (loaded.kind === 'anki' && groups.length > 1) {
+        items.push({ value: '__keep__', label: `Keep the file's decks (${groups.length})` });
+      }
+      items.push({ value: '__new__', label: '+ New deck…' });
+      for (const d of decks) items.push({ value: String(d.id), label: `Into: ${d.name}` });
+      const destDropdown = _api.ui.createDropdown(destHost, {
+        items,
+        selected: route.deckId ? String(route.deckId) : items[0].value,
+        ariaLabel: 'Import destination',
+      });
+      viewDisposables.push(destDropdown);
+      destRow.appendChild(el('span', 'fc-hint', 'Destination:'));
+      destRow.appendChild(destHost);
+      previewHost.appendChild(destRow);
+
+      // Per-deck sections with a sample, so what lands is what was shown.
+      for (const group of groups) {
+        const section = el('div', 'fc-import-group');
+        const head = el('div', 'fc-row');
+        if (groups.length > 1) {
+          const cb = el('input');
+          cb.type = 'checkbox'; cb.checked = true;
+          cb.addEventListener('change', () => {
+            group.include = cb.checked;
+            section.classList.toggle('fc-import-group--off', !cb.checked);
+          });
+          head.appendChild(cb);
+        }
+        head.appendChild(el('strong', '', group.name));
+        head.appendChild(el('span', 'fc-hint', `${group.cards.length.toLocaleString()} cards`));
+        section.appendChild(head);
+        // The commit loop marks groups done in place after a mid-import
+        // failure — the preview must not present landed groups as pending.
+        group._ui = { section, head, cb: head.querySelector('input') };
+
+        for (const c of group.cards.slice(0, 3)) {
+          const sample = el('div', 'fc-import-sample');
+          sample.appendChild(el('div', 'fc-import-sample__front', c.front.length > 160 ? c.front.slice(0, 160) + '…' : c.front));
+          sample.appendChild(el('div', 'fc-import-sample__back', c.back.length > 160 ? c.back.slice(0, 160) + '…' : (c.back || '(empty back)')));
+          section.appendChild(sample);
+        }
+        if (group.cards.length > 3) {
+          section.appendChild(el('div', 'fc-hint', `…and ${(group.cards.length - 3).toLocaleString()} more.`));
+        }
+        previewHost.appendChild(section);
+      }
+
+      const goRow = el('div', 'fc-row');
+      goRow.style.marginTop = '10px';
+      const goBtn = el('button', 'fc-btn fc-btn--primary');
+      goBtn.textContent = `Import ${total.toLocaleString()} cards`;
+      goRow.appendChild(goBtn);
+      const progress = el('span', 'fc-hint');
+      goRow.appendChild(progress);
+      previewHost.appendChild(goRow);
+
+      goBtn.addEventListener('click', () => {
+        void (async () => {
+          // `committed` survives a mid-import failure: a retry click must only
+          // replay the groups that did NOT land, or every retry doubles them.
+          const chosen = groups.filter((g) => g.include && !g.committed && g.cards.length > 0);
+          if (chosen.length === 0) { showErr('Nothing selected to import.'); return; }
+          showErr('');
+          goBtn.disabled = true;
+          try {
+            let dest = destDropdown.value;
+            let firstDeckId = null;
+            let done = 0;
+            const grand = chosen.reduce((n, g) => n + g.cards.length, 0);
+
+            for (const group of chosen) {
+              let deckId;
+              if (dest === '__keep__') {
+                deckId = await fcGetOrCreateDeckByName(group.name);
+              } else if (dest === '__new__') {
+                const name = await _api.window.showInputBox({
+                  prompt: 'New deck name',
+                  value: chosen.length === 1 ? group.name : loaded.label,
+                });
+                if (!name?.trim()) { goBtn.disabled = false; return; }
+                deckId = await fcGetOrCreateDeckByName(name.trim());
+                // One prompt for the whole import, not one per group: later
+                // groups must see the resolved id, not '__new__' again.
+                dest = String(deckId);
+                destDropdown.setItems([{ value: String(deckId), label: `Into: ${name.trim()}` }], String(deckId));
+              } else {
+                deckId = parseInt(dest, 10);
+              }
+              if (firstDeckId === null) firstDeckId = deckId;
+
+              done += await fcCreateCardsBulk(deckId, group.cards, {
+                sourceUri: loaded.uri,
+                sourceLabel: loaded.label,
+              });
+              group.committed = true;
+              if (group._ui) {
+                group._ui.section.classList.add('fc-import-group--done');
+                if (group._ui.cb) group._ui.cb.disabled = true;
+                group._ui.head.appendChild(el('span', 'fc-hint', '✓ imported'));
+              }
+              progress.textContent = `${done.toLocaleString()} / ${grand.toLocaleString()}…`;
+            }
+
+            await _api.window.showInformationMessage(`Imported ${done.toLocaleString()} cards.`);
+            setRoute({ view: 'browse', deckId: firstDeckId });
+          } catch (e) {
+            showErr(e.message);
+            // Re-arm the button for the REMAINING cards only — the landed
+            // groups are marked above and excluded from the retry filter.
+            const remaining = groups
+              .filter((g) => g.include && !g.committed)
+              .reduce((n, g) => n + g.cards.length, 0);
+            goBtn.textContent = remaining > 0 ? `Import ${remaining.toLocaleString()} cards` : 'Import';
+            goBtn.disabled = false;
+          }
+        })();
+      });
+    };
+
+    void build();
   };
 
   body.appendChild(view);
@@ -2834,6 +3246,68 @@ export async function deactivate() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 15b: MECHANICAL IMPORT PARSERS
+//
+// Deterministic, not AI. These exist because "upload the PDF and tell the
+// model odd pages are fronts" does not reliably produce the right cards — a
+// language model paraphrases, merges and drops. A printed front/back deck has
+// an exact structure; reading it should be exact.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Pair a PDF's pages into cards: page 1 front / page 2 back, and so on.
+ *
+ * `offset` skips leading cover/instruction pages so the pairing starts on the
+ * first real card face. An odd remainder page becomes a card with an empty
+ * back rather than being silently dropped — visible in the preview, where the
+ * user can drop it deliberately.
+ */
+function fcPairPages(pageTexts, { offset = 0 } = {}) {
+  const pages = (pageTexts || []).slice(offset).map((t) => String(t ?? '').trim());
+  const cards = [];
+  for (let i = 0; i < pages.length; i += 2) {
+    const front = pages[i];
+    const back = pages[i + 1] ?? '';
+    if (!front && !back) continue;   // blank sheet in the middle of the PDF
+    cards.push({ front, back, tags: [] });
+  }
+  return cards;
+}
+
+/**
+ * Parse pasted rows into cards: one card per line, front and back split on a
+ * tab (a spreadsheet paste) or on " | " / " :: " for hand-typed lines. Lines
+ * with no separator are skipped and counted, so a wrong guess about the format
+ * is reported instead of producing half-empty cards.
+ */
+function fcParsePastedRows(text) {
+  const cards = [];
+  let skipped = 0;
+  for (const rawLine of String(text || '').split('\n')) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    let front, back;
+    if (line.includes('\t')) {
+      const parts = line.split('\t');
+      front = parts[0]; back = parts.slice(1).filter((p) => p.trim()).join('\n\n');
+    } else if (line.includes(' | ')) {
+      const at = line.indexOf(' | ');
+      front = line.slice(0, at); back = line.slice(at + 3);
+    } else if (line.includes(' :: ')) {
+      const at = line.indexOf(' :: ');
+      front = line.slice(0, at); back = line.slice(at + 4);
+    } else {
+      skipped++;
+      continue;
+    }
+    front = front.trim(); back = back.trim();
+    if (!front || !back) { skipped++; continue; }
+    cards.push({ front, back, tags: [] });
+  }
+  return { cards, skipped };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 16: TESTABLES
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -2859,4 +3333,9 @@ export const __testables = {
   FC_MIN_EASE,
   AGAIN, HARD, GOOD, EASY,
   MIN, DAY,
+  // Mechanical import
+  fcPairPages,
+  fcParsePastedRows,
+  fcImportKindOf,
+  fcExtOf,
 };

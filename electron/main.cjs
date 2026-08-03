@@ -32,6 +32,7 @@ const { setupStorageHandlers } = require('./storageHandlers.cjs');
 const { setupWebFetchBridge } = require('./webFetchBridge.cjs');
 const { setupGoogleSyncBridge } = require('./googleSyncBridge.cjs');
 const pythonBridge = require('./pythonBridge.cjs');
+const ankiBridge = require('./ankiBridge.cjs');
 const { setupPythonBridge } = pythonBridge;
 const notebookKernelBridge = require('./notebookKernelBridge.cjs');
 const { setupNotebookKernelBridge } = notebookKernelBridge;
@@ -2113,9 +2114,23 @@ ipcMain.handle('pdfExport:render', async (_event, payload) => {
 ipcMain.handle('document:extractText', async (_event, filePath) => {
   try {
     const result = await extractText(filePath);
-    return { text: result.text, format: result.format, metadata: result.metadata };
+    // pageTexts rides along for PDFs so callers can pair pages (the flashcard
+    // importer's odd-front / even-back decks). Absent for other formats.
+    return { text: result.text, format: result.format, metadata: result.metadata, pageTexts: result.pageTexts };
   } catch (err) {
     return { error: { code: 'EXTRACTION_FAILED', message: err.message || String(err), path: filePath } };
+  }
+});
+
+// ── anki:read — parse an Anki export (.apkg / .txt) for the flashcards tool ──
+// Parsing happens in a worker_thread (ankiWorker.cjs): the .apkg path opens a
+// SQLite database with better-sqlite3, which is synchronous and must never run
+// on this process.
+ipcMain.handle('anki:read', async (_event, filePath) => {
+  try {
+    return await ankiBridge.readAnkiExport(filePath);
+  } catch (err) {
+    return { ok: false, error: err.message || String(err) };
   }
 });
 
