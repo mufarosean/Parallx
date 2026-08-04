@@ -16,6 +16,7 @@ const {
   fcBuildQueue,
   fcExtractCardsJson,
   fcRepairLatexEscapes,
+  fcNormalizeCardText,
   fcReminderCron,
   fcParseTags,
   fcAggregateStats,
@@ -417,6 +418,22 @@ describe('fcRepairLatexEscapes', () => {
     const raw = String.raw`[{"front":"$$\sum_{i=1}^{n} \beta_i$$","back":"x"}]`;
     const parsed = JSON.parse(fcRepairLatexEscapes(raw));
     expect(parsed[0].front).toBe(String.raw`$$\sum_{i=1}^{n} \beta_i$$`);
+  });
+});
+
+describe('fcNormalizeCardText', () => {
+  it('converts <br> variants to newlines (raw HTML is escaped by the renderer)', () => {
+    expect(fcNormalizeCardText('1. smaller MSE<br>2. better approximation<br/>3. superior<br />done'))
+      .toBe('1. smaller MSE\n2. better approximation\n3. superior\ndone');
+  });
+
+  it('collapses runaway breaks and trims', () => {
+    expect(fcNormalizeCardText('  a<br><br><br>b  ')).toBe('a\n\nb');
+  });
+
+  it('leaves LaTeX and Markdown untouched', () => {
+    const s = String.raw`$\frac{a}{b}$ and **bold** stay`;
+    expect(fcNormalizeCardText(s)).toBe(s);
   });
 });
 

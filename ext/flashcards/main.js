@@ -552,14 +552,27 @@ async function fcDeleteDeck(id) {
   _emitDataChanged();
 }
 
+/**
+ * Normalize card text at the door. Models writing cards emit HTML line
+ * breaks (`<br>`) out of habit; the shared renderer correctly ESCAPES raw
+ * HTML, so a literal "<br>" would sit visible on the card face. Cards speak
+ * Markdown: newlines are the line breaks.
+ */
+function fcNormalizeCardText(text) {
+  return String(text ?? '')
+    .replace(/<br\s*\/?\s*>/gi, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 async function fcCreateCard(input) {
   const res = await db.run(`
     INSERT INTO fc_cards (deck_id, front, back, notes, tags, source_uri, source_label, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `, [
     input.deckId,
-    String(input.front).trim(),
-    String(input.back).trim(),
+    fcNormalizeCardText(input.front),
+    fcNormalizeCardText(input.back),
     input.notes || '',
     input.tags || '',
     input.sourceUri || '',
@@ -598,8 +611,8 @@ async function fcCreateCardsBulk(deckId, cards, { sourceUri = '', sourceLabel = 
       for (const c of chunk) {
         params.push(
           deckId,
-          String(c.front ?? '').trim(),
-          String(c.back ?? '').trim(),
+          fcNormalizeCardText(c.front),
+          fcNormalizeCardText(c.back),
           c.notes || '',
           Array.isArray(c.tags) ? c.tags.join(' ') : (c.tags || ''),
           sourceUri,
@@ -1389,24 +1402,24 @@ function injectStyles() {
 .fc-study__toolbar { width: 100%; max-width: 620px; display: flex; align-items: center; gap: var(--px-space-3); margin-bottom: var(--px-space-6); }
 .fc-study__progress { flex: 1; height: 2px; border-radius: var(--px-radius-full); background: var(--px-divider); overflow: hidden; }
 .fc-study__progress-fill { height: 100%; border-radius: var(--px-radius-full); background: var(--px-accent); transition: width var(--px-dur-base) var(--px-ease); }
-.fc-theme-toggle {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 26px; height: 26px; border: 0; border-radius: var(--px-radius-sm);
-  background: transparent; color: var(--px-text-faint); cursor: pointer;
-  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
-}
-.fc-theme-toggle:hover { background: var(--px-surface-hover); color: var(--px-text); }
 
+/* The card is a REAL flashcard: white stock, black ink, square corners,
+   index-card proportions — deliberately independent of the app theme, the
+   way a physical card sits on any desk. Content-surface hardcodes are the
+   point here, not a token violation. */
 .fc-card {
   width: 100%; max-width: 620px;
-  background: var(--px-bg-elevated);
-  border: 1px solid var(--px-border);
-  border-radius: var(--px-radius-lg);
-  box-shadow: var(--px-shadow-md), var(--px-edge-light);
+  background: #ffffff;
+  border: 1px solid #e2e2e2;
+  border-radius: 0;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
   padding: var(--px-space-6) var(--px-space-6);
+  display: flex; flex-direction: column;
 }
-.fc-card--q { animation: fc-card-in var(--px-dur-base) var(--px-ease-out); }
-.fc-card--a { margin-top: var(--px-space-2); animation: fc-reveal-in var(--px-dur-base) var(--px-ease-spring); }
+.fc-card--q { min-height: 340px; animation: fc-card-in var(--px-dur-base) var(--px-ease-out); }
+.fc-card--a { min-height: 240px; margin-top: var(--px-space-3); animation: fc-reveal-in var(--px-dur-base) var(--px-ease-spring); }
+/* The face centers vertically like writing on an index card. */
+.fc-card__body { flex: 1; display: flex; flex-direction: column; justify-content: center; }
 @keyframes fc-card-in {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -1418,26 +1431,18 @@ function injectStyles() {
 .fc-card__head {
   display: flex; justify-content: space-between; align-items: center;
   font-size: var(--px-text-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em;
-  color: var(--px-text-faint); font-variant-numeric: tabular-nums;
+  color: #9a9a9a; font-variant-numeric: tabular-nums;
   margin-bottom: var(--px-space-4);
 }
-.fc-card__body { font-size: var(--px-text-md); line-height: var(--px-leading-base); color: var(--px-text); }
+.fc-card__body { font-size: var(--px-text-md); line-height: var(--px-leading-base); color: #111111; }
 .fc-card--q .fc-card__body { font-size: var(--px-text-xl); font-weight: 650; letter-spacing: -0.02em; line-height: 1.3; }
-.fc-card__source { margin-top: var(--px-space-4); padding-top: var(--px-space-3); border-top: 1px solid var(--px-divider); font-size: var(--px-text-2xs); color: var(--px-text-faint); }
+.fc-card__source { margin-top: var(--px-space-4); padding-top: var(--px-space-3); border-top: 1px solid #ececec; font-size: var(--px-text-2xs); color: #9a9a9a; }
+/* Light-surface treatments for markdown furniture on the white card. */
+.fc-card .px-markdown code { background: #f2f2f2; color: #111111; }
+.fc-card .px-markdown pre { background: #f6f6f6; border-color: #e2e2e2; color: #111111; }
+.fc-card .px-markdown blockquote { border-left-color: #d9d9d9; color: #4a4a4a; }
+.fc-card .px-markdown a { color: #1d4ed8; }
 .fc-study__answer-host { width: 100%; max-width: 620px; }
-
-/* Paper cards: a light card face independent of the app theme, like the
-   PDF viewer's page. Content-surface hardcodes are deliberate here. */
-.fc-study--paper .fc-card {
-  background: #faf7f1;
-  border-color: #e2dccf;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.38);
-}
-.fc-study--paper .fc-card__body { color: #26221c; }
-.fc-study--paper .fc-card__head, .fc-study--paper .fc-card__source { color: #99917f; }
-.fc-study--paper .fc-card .px-markdown code { background: #efe9dd; }
-.fc-study--paper .fc-card .px-markdown pre { background: #f2ede3; border-color: #e2dccf; }
-.fc-study--paper .fc-card .px-markdown blockquote { border-left-color: #d5cdbc; color: #5b5442; }
 
 .fc-study__controls { display: flex; gap: var(--px-space-1); margin-top: var(--px-space-6); justify-content: center; width: 100%; max-width: 620px; }
 
@@ -2252,14 +2257,6 @@ async function renderStudy(body, route, paneState, setRoute) {
     }
   };
 
-  // Card theme: follow the app, or force a paper (light) card face like the
-  // PDF viewer's page toggle. Persisted per machine.
-  const CARD_THEME_KEY = 'flashcards.cardTheme';
-  const applyCardTheme = () => {
-    study.classList.toggle('fc-study--paper', localStorage.getItem(CARD_THEME_KEY) === 'paper');
-  };
-  applyCardTheme();
-
   const showCard = () => {
     closeDiscuss();
     main.innerHTML = '';
@@ -2289,20 +2286,6 @@ async function renderStudy(body, route, paneState, setRoute) {
     progress.appendChild(fill);
     toolbar.appendChild(progress);
 
-    const themeBtn = el('button', 'fc-theme-toggle');
-    themeBtn.type = 'button';
-    themeBtn.title = 'Toggle paper cards';
-    const syncThemeIcon = () => {
-      themeBtn.innerHTML = icon(localStorage.getItem(CARD_THEME_KEY) === 'paper' ? 'moon' : 'sun', 14);
-    };
-    syncThemeIcon();
-    themeBtn.addEventListener('click', () => {
-      localStorage.setItem(CARD_THEME_KEY, localStorage.getItem(CARD_THEME_KEY) === 'paper' ? 'app' : 'paper');
-      applyCardTheme();
-      syncThemeIcon();
-      main.focus();
-    });
-    toolbar.appendChild(themeBtn);
     main.appendChild(toolbar);
 
     // ── The QUESTION card ──
@@ -3103,7 +3086,9 @@ function registerChatTools(context) {
     description:
       'Create spaced-repetition flashcards in the user\'s Flashcards extension. '
       + 'Provide a deck name (created if missing) and an array of cards, each with '
-      + '"front" (question) and "back" (answer). Use for "make flashcards from this" requests.',
+      + '"front" (question) and "back" (answer). Use for "make flashcards from this" requests. '
+      + 'Card text is Markdown plus $LaTeX$ for math. Use real newlines for line '
+      + 'breaks, NEVER HTML tags like <br> (raw HTML is escaped, not rendered).',
     parameters: {
       type: 'object',
       properties: {
@@ -3533,4 +3518,5 @@ export const __testables = {
   fcExtOf,
   // LaTeX survival through the JSON layer
   fcRepairLatexEscapes,
+  fcNormalizeCardText,
 };
