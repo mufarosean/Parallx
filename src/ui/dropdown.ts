@@ -185,6 +185,18 @@ export class Dropdown extends Disposable {
       window.removeEventListener('resize', onResize);
     }));
 
+    // Close when keyboard focus leaves the component. The outside-close above
+    // is mousedown-only, so Tabbing to the NEXT dropdown and opening it with
+    // Enter would leave two body-level lists open at once, painting over each
+    // other. relatedTarget guard: focus moving INTO our own list (or staying
+    // on the trigger) must not dismiss.
+    this._register(addDisposableListener(this.element, 'focusout', (e) => {
+      if (!this._isOpen) return;
+      const next = (e as FocusEvent).relatedTarget as Node | null;
+      if (next && (this.element.contains(next) || this._list.contains(next))) return;
+      this._close();
+    }));
+
     // A list left mounted on body after its owner is disposed is a leaked
     // overlay floating over unrelated UI.
     this._register(toDisposable(() => this._list.remove()));
