@@ -10,6 +10,7 @@
  */
 
 .px-panel {
+  position: relative; /* anchors .px-panel-actions */
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -18,6 +19,28 @@
   background: var(--px-bg);
   color: var(--px-text);
   font-size: var(--px-text-base);
+}
+
+/* ── Floating action cluster ─────────────────────────────────────────────── */
+/* For panels whose toolbar would only repeat the tab's name: no header row at
+   all — the actions float in the top-right corner over the content, quiet
+   until hovered. The tab strip above already names the panel. */
+.px-panel-actions {
+  position: absolute;
+  top: var(--px-space-1);
+  right: var(--px-space-2);
+  z-index: 5;
+  display: flex;
+  gap: var(--px-space-1);
+  padding: 2px;
+  border-radius: var(--px-radius-sm);
+  background: color-mix(in srgb, var(--px-bg) 82%, transparent);
+  opacity: 0.65;
+  transition: opacity var(--px-dur-fast) var(--px-ease);
+}
+.px-panel:hover .px-panel-actions,
+.px-panel-actions:focus-within {
+  opacity: 1;
 }
 
 /* ── Toolbar ─────────────────────────────────────────────────────────────── */

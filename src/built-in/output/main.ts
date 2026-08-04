@@ -155,18 +155,10 @@ function refreshList(): void {
 function renderOutputView(container: HTMLElement): IDisposable {
   container.classList.add('px-panel');
 
-  // ── Toolbar ──
+  // ── Actions — floating, no header row. The tab strip above already says
+  // "Output"; a toolbar here just repeated it and cost a row. ──
   const toolbar = $('div');
-  toolbar.className = 'px-panel-toolbar';
-
-  const title = $('span');
-  title.className = 'px-panel-toolbar-title';
-  title.textContent = 'Output';
-  toolbar.appendChild(title);
-
-  const spacer = $('div');
-  spacer.className = 'px-panel-toolbar-spacer';
-  toolbar.appendChild(spacer);
+  toolbar.className = 'px-panel-actions';
 
   const tsBtn = createPanelToolbarButton({
     icon: 'clock',

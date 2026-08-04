@@ -367,31 +367,21 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       const root = $('div.parallx-terminal');
       root.classList.add('px-panel');
 
-      // ── Toolbar ──
-      const toolbar = $('div');
-      toolbar.className = 'px-panel-toolbar';
-
-      const title = $('span');
-      title.className = 'px-panel-toolbar-title';
-      title.textContent = 'Terminal';
-      toolbar.appendChild(title);
-
-      const spacer = $('div');
-      spacer.className = 'px-panel-toolbar-spacer';
-      toolbar.appendChild(spacer);
-
-      toolbar.appendChild(createPanelToolbarButton({
+      // ── Actions — floating, no header row. The tab strip above already
+      // says "Terminal"; a toolbar here just repeated it and cost a row. ──
+      const actions = $('div');
+      actions.className = 'px-panel-actions';
+      actions.appendChild(createPanelToolbarButton({
         icon: 'eraser',
         title: 'Clear',
         onClick: () => clearTerminalOutput(),
       }));
-      toolbar.appendChild(createPanelToolbarButton({
+      actions.appendChild(createPanelToolbarButton({
         icon: 'rotate-cw',
         title: 'Restart shell',
         onClick: () => { clearTerminalOutput(); void spawnShell(); },
       }));
-
-      root.appendChild(toolbar);
+      root.appendChild(actions);
 
       // ── Environment strip (M97) — hidden unless there is something to say ──
       _envBar = $('div');
