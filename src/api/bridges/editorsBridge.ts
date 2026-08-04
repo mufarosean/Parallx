@@ -145,8 +145,13 @@ export class EditorsBridge {
       registerEditorInputDeserializer(typeId, (data) => {
         const entry = _toolEditorProviders.get(typeId);
         if (!entry) return null;
-        const inputId = typeof data?.inputId === 'string'
-          ? (data.inputId as string)
+        // Migrate layouts persisted before instanceIds were namespaced: a
+        // bare id like 'main' gets the same prefix openEditor now applies,
+        // so a restored tab and a fresh open dedupe to ONE editor instead of
+        // colliding across tools (or duplicating within one).
+        const rawId = typeof data?.inputId === 'string' ? (data.inputId as string) : '';
+        const inputId = rawId
+          ? (rawId.includes(':') ? rawId : `${entry.toolId}:${typeId}:${rawId}`)
           : `${entry.toolId}:${typeId}:${Date.now()}`;
         const name = typeof data?.name === 'string' ? (data.name as string) : typeId;
         const icon = typeof data?.icon === 'string' ? (data.icon as string) : undefined;
@@ -186,8 +191,18 @@ export class EditorsBridge {
       );
     }
 
-    // Create a ToolEditorInput backed by the tool's provider
-    const inputId = options.instanceId ?? `${this._toolId}:${options.typeId}:${Date.now()}`;
+    // Create a ToolEditorInput backed by the tool's provider.
+    //
+    // instanceId is NAMESPACED, never used verbatim: EditorInput.matches()
+    // compares by id alone, so two tools both passing 'main' (the pattern the
+    // authoring doc long suggested) would collide — the group treats the
+    // second tool's editor as "already open" and silently re-activates the
+    // first tool's tab instead of opening anything. Namespacing keeps the
+    // id deterministic per (tool, type, instance), so single-instance
+    // dedupe still works within each tool.
+    const inputId = options.instanceId
+      ? `${this._toolId}:${options.typeId}:${options.instanceId}`
+      : `${this._toolId}:${options.typeId}:${Date.now()}`;
     const input = new ToolEditorInput(
       options.typeId,
       options.title,

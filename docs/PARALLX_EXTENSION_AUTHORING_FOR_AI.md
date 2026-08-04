@@ -299,7 +299,7 @@ api.editors.openEditors                                          // readonly arr
 api.editors.onDidChangeOpenEditors(listener)                     // → IDisposable
 ```
 
-`instanceId` lets you open multiple panes of the same `typeId`. Same `typeId+instanceId` means the existing tab is focused, not duplicated.
+`instanceId` lets you open multiple panes of the same `typeId`. Same `typeId+instanceId` means the existing tab is focused, not duplicated. The id is namespaced per tool and type under the hood, so `'main'` is safe even though every other extension also uses `'main'` — you can never collide with (or be blocked by) another tool's tabs.
 
 ### 4.4 `api.window`
 
