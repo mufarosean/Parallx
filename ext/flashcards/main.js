@@ -1297,7 +1297,17 @@ function injectStyles() {
 .fc-pane__spacer { flex: 1; }
 .fc-pane__body { flex: 1; overflow-y: auto; }
 
-.fc-view { max-width: 720px; margin: 0 auto; padding: var(--px-space-6) var(--px-space-6) var(--px-space-8); }
+/* Canvas-margin model (mirrors .canvas-full-width): the GUTTERS are the
+   constant and the measure is fluid — content stretches to fill the space
+   between defined margins instead of squeezing into a fixed column. Wide
+   panes grow the gutters, like canvas, so lines stay readable. */
+.fc-view, .fc-study {
+  --fc-gutter: clamp(28px, 4vw, 72px);
+}
+.fc-view { max-width: none; margin: 0; padding: var(--px-space-6) var(--fc-gutter) var(--px-space-8); }
+@media (min-width: 1441px) {
+  .fc-view, .fc-study { --fc-gutter: clamp(72px, 8vw, 160px); }
+}
 .fc-empty { padding: var(--px-space-8) var(--px-space-4); text-align: center; font-size: var(--px-text-base); color: var(--px-text-muted); }
 
 /* ── Deck list (Decks tab) — hairline-separated rows, not boxes; secondary
@@ -1398,8 +1408,8 @@ function injectStyles() {
 
 /* ── Study — the hero. A crisp card floating on the recessed desk. ── */
 .fc-study { display: flex; height: 100%; }
-.fc-study__main { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; padding: var(--px-space-8) var(--px-space-8); overflow-y: auto; outline: none; background: var(--px-window); }
-.fc-study__toolbar { width: 100%; max-width: 620px; display: flex; align-items: center; gap: var(--px-space-3); margin-bottom: var(--px-space-6); }
+.fc-study__main { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; padding: var(--px-space-8) var(--fc-gutter); overflow-y: auto; outline: none; background: var(--px-window); }
+.fc-study__toolbar { width: 100%; max-width: min(100%, 920px); display: flex; align-items: center; gap: var(--px-space-3); margin-bottom: var(--px-space-6); }
 .fc-study__progress { flex: 1; height: 2px; border-radius: var(--px-radius-full); background: var(--px-divider); overflow: hidden; }
 .fc-study__progress-fill { height: 100%; border-radius: var(--px-radius-full); background: var(--px-accent); transition: width var(--px-dur-base) var(--px-ease); }
 
@@ -1408,7 +1418,7 @@ function injectStyles() {
    way a physical card sits on any desk. Content-surface hardcodes are the
    point here, not a token violation. */
 .fc-card {
-  width: 100%; max-width: 620px;
+  width: 100%; max-width: min(100%, 920px);
   background: #ffffff;
   border: 1px solid #e2e2e2;
   border-radius: 0;
@@ -1442,9 +1452,9 @@ function injectStyles() {
 .fc-card .px-markdown pre { background: #f6f6f6; border-color: #e2e2e2; color: #111111; }
 .fc-card .px-markdown blockquote { border-left-color: #d9d9d9; color: #4a4a4a; }
 .fc-card .px-markdown a { color: #1d4ed8; }
-.fc-study__answer-host { width: 100%; max-width: 620px; }
+.fc-study__answer-host { width: 100%; max-width: min(100%, 920px); }
 
-.fc-study__controls { display: flex; gap: var(--px-space-1); margin-top: var(--px-space-6); justify-content: center; width: 100%; max-width: 620px; }
+.fc-study__controls { display: flex; gap: var(--px-space-1); margin-top: var(--px-space-6); justify-content: center; width: 100%; max-width: min(100%, 920px); }
 
 /* Grade buttons — borderless columns with a signal dot; the colour fills on hover. */
 .fc-grade {
