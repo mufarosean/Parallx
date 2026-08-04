@@ -17,6 +17,7 @@ const {
   fcExtractCardsJson,
   fcRepairLatexEscapes,
   fcNormalizeCardText,
+  fcAutoCardEstimate,
   fcReminderCron,
   fcParseTags,
   fcAggregateStats,
@@ -434,6 +435,19 @@ describe('fcNormalizeCardText', () => {
   it('leaves LaTeX and Markdown untouched', () => {
     const s = String.raw`$\frac{a}{b}$ and **bold** stay`;
     expect(fcNormalizeCardText(s)).toBe(s);
+  });
+});
+
+describe('fcAutoCardEstimate', () => {
+  it('scales with material length, one fact per ~500 chars', () => {
+    expect(fcAutoCardEstimate(10_000)).toBe(20);
+    expect(fcAutoCardEstimate(15_000)).toBe(30);
+  });
+
+  it('clamps to a sane band: thin material still budgets 10, rich caps at 50', () => {
+    expect(fcAutoCardEstimate(500)).toBe(10);
+    expect(fcAutoCardEstimate(0)).toBe(10);
+    expect(fcAutoCardEstimate(200_000)).toBe(50);
   });
 });
 

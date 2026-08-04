@@ -843,13 +843,25 @@ async function fcModelContextLength(modelId) {
   return 0;
 }
 
-async function fcGenerateCards(sourceText, { count = 15, focus = '' } = {}) {
+/**
+ * Planning estimate for "Auto" card count: the right number of cards is a
+ * property of the material, so size the OUTPUT RESERVE from its length and
+ * let the model land wherever the facts are. Roughly one atomic fact per
+ * 500 characters of study prose, clamped to a sane band. This number never
+ * reaches the prompt — it only budgets tokens.
+ */
+function fcAutoCardEstimate(chars) {
+  return Math.max(10, Math.min(50, Math.round(chars / 500)));
+}
+
+async function fcGenerateCards(sourceText, { count = null, focus = '' } = {}) {
   const modelId = await fcPickModel();
   if (!modelId) throw new Error('No language model available. Configure a model in AI settings.');
   const { contextSetting, think } = fcAiOptions();
   const modelCtx = await fcModelContextLength(modelId);
+  const planCount = count ?? fcAutoCardEstimate(sourceText.length);
   const { numCtx, maxChars } = fcContextPlan({
-    chars: sourceText.length, count, modelCtx, setting: contextSetting,
+    chars: sourceText.length, count: planCount, modelCtx, setting: contextSetting,
   });
   const clipped = sourceText.length > maxChars
     ? sourceText.slice(0, maxChars) + '\n\n[...material truncated...]'
@@ -858,7 +870,13 @@ async function fcGenerateCards(sourceText, { count = 15, focus = '' } = {}) {
     console.warn(`[Flashcards] material clipped to ${maxChars} chars to fit a ${numCtx}-token window (model: ${modelId}${modelCtx ? `, max ${modelCtx}` : ', context length unknown'})`);
   }
   const user = [
-    `Create up to ${Math.min(50, Math.max(1, count))} flashcards from the material below.`,
+    // Explicit count = a ceiling the user chose. Auto = the material decides:
+    // a number here would only anchor the model into padding thin material
+    // or truncating rich material at an arbitrary line.
+    count
+      ? `Create up to ${Math.min(50, Math.max(1, count))} flashcards from the material below.`
+      : 'Create one flashcard per atomic fact the material supports: as many as it warrants, up to 50. '
+        + 'Do not pad thin material with near-duplicate cards, and do not stop early on rich material.',
     focus ? `Guidance from the learner (follow it): ${focus}` : '',
     '',
     '--- MATERIAL ---',
@@ -1444,8 +1462,16 @@ function injectStyles() {
   color: #9a9a9a; font-variant-numeric: tabular-nums;
   margin-bottom: var(--px-space-4);
 }
-.fc-card__body { font-size: var(--px-text-md); line-height: var(--px-leading-base); color: #111111; }
-.fc-card--q .fc-card__body { font-size: var(--px-text-xl); font-weight: 650; letter-spacing: -0.02em; line-height: 1.3; }
+/* Card ink is a book serif: printed-card text, not UI chrome. It matches
+   KaTeX's serif math, so "the estimate $L(x)$" reads as ONE sentence instead
+   of sans colliding with serif math. The question keeps its bold, but bold
+   SERIF carries stroke contrast — emphasis without the slab-blocky mass the
+   old 650-weight sans had. */
+.fc-card__body {
+  font-family: Charter, 'Bitstream Charter', 'Sitka Text', Cambria, Georgia, 'Times New Roman', serif;
+  font-size: var(--px-text-md); line-height: var(--px-leading-base); color: #111111;
+}
+.fc-card--q .fc-card__body { font-size: var(--px-text-xl); font-weight: 700; line-height: 1.35; }
 .fc-card__source { margin-top: var(--px-space-4); padding-top: var(--px-space-3); border-top: 1px solid #ececec; font-size: var(--px-text-2xs); color: #9a9a9a; }
 /* Light-surface treatments for markdown furniture on the white card. */
 .fc-card .px-markdown code { background: #f2f2f2; color: #111111; }
@@ -2514,11 +2540,12 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
   const optRow = el('div', 'fc-row');
   const countIn = el('input', 'fc-input');
   countIn.type = 'number';
-  countIn.min = '1'; countIn.max = '50'; countIn.value = '15';
+  countIn.min = '1'; countIn.max = '50';
+  countIn.placeholder = 'Auto';
   countIn.style.width = '70px';
-  optRow.appendChild(el('span', 'fc-hint', 'Up to'));
+  optRow.appendChild(el('span', 'fc-hint', 'Cards:'));
   optRow.appendChild(countIn);
-  optRow.appendChild(el('span', 'fc-hint', 'cards.'));
+  optRow.appendChild(el('span', 'fc-hint', 'Blank = the material decides how many it warrants (50 max). A number sets a ceiling.'));
   view.appendChild(optRow);
 
   // Steering. Free text straight into the prompt, persisted because a study
@@ -2585,8 +2612,9 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
       genBtn.disabled = true;
       setGenLabel('Generating…');
       try {
+        const n = parseInt(countIn.value, 10);
         const cards = await fcGenerateCards(text, {
-          count: parseInt(countIn.value, 10) || 15,
+          count: Number.isFinite(n) && n > 0 ? Math.min(50, n) : null,
           focus: guideIn.value.trim(),
         });
         renderReview(cards);
@@ -3529,4 +3557,5 @@ export const __testables = {
   // LaTeX survival through the JSON layer
   fcRepairLatexEscapes,
   fcNormalizeCardText,
+  fcAutoCardEstimate,
 };
