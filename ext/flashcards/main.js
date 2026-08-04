@@ -744,6 +744,12 @@ const FC_GENERATE_SYSTEM = [
   '- Front: a precise question. Back: the shortest complete answer.',
   '- Prefer "why/how/when/compare" questions over pure definitions where the material supports it.',
   '- Never invent facts that are not in the material.',
+  '- EXCEPTION for garbled math: PDF text extraction mangles formulas (lost',
+  '  superscripts and subscripts, broken Greek letters, flattened fractions).',
+  '  When the material clearly names or describes a formula but its extracted',
+  '  text is corrupted, reconstruct the formula in its standard form in clean',
+  '  LaTeX instead of copying the garble or skipping it. Repairing a known',
+  '  formula\'s transcription is not inventing a fact.',
   'Formatting (cards render Markdown + KaTeX):',
   '- Write EVERY formula and symbol in LaTeX between $...$ (or $$...$$ for a display equation).',
   '- Use **bold** for the key term, and bullet lists when the answer enumerates items.',
@@ -840,7 +846,7 @@ async function fcGenerateCards(sourceText, { count = 15, focus = '' } = {}) {
   }
   const user = [
     `Create up to ${Math.min(50, Math.max(1, count))} flashcards from the material below.`,
-    focus ? `Focus on: ${focus}` : '',
+    focus ? `Guidance from the learner (follow it): ${focus}` : '',
     '',
     '--- MATERIAL ---',
     clipped,
@@ -2519,12 +2525,37 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
   countIn.style.width = '70px';
   optRow.appendChild(el('span', 'fc-hint', 'Up to'));
   optRow.appendChild(countIn);
-  optRow.appendChild(el('span', 'fc-hint', 'cards. Focus (optional):'));
-  const focusIn = el('input', 'fc-input');
-  focusIn.placeholder = 'e.g. formulas only';
-  focusIn.style.flex = '1';
-  optRow.appendChild(focusIn);
+  optRow.appendChild(el('span', 'fc-hint', 'cards.'));
   view.appendChild(optRow);
+
+  // Steering. Free text straight into the prompt, persisted because a study
+  // phase tends to want the same steer for weeks. Chips FILL the box rather
+  // than acting invisibly, so what the model is told stays inspectable.
+  view.appendChild(el('div', 'fc-label', 'Steer the cards (optional)'));
+  const guideIn = el('textarea', 'fc-textarea');
+  guideIn.rows = 2;
+  guideIn.placeholder = 'Tell the model what you want, e.g. "every formula as its own card" or "test when each method applies, not definitions".';
+  const GUIDE_KEY = 'flashcards.generateGuidance';
+  guideIn.value = localStorage.getItem(GUIDE_KEY) || '';
+  guideIn.addEventListener('input', () => localStorage.setItem(GUIDE_KEY, guideIn.value));
+  view.appendChild(guideIn);
+  const chipRow = el('div', 'fc-row');
+  chipRow.style.marginTop = '6px';
+  for (const [label, text] of [
+    ['Formulas first', 'Make every formula its own card, in LaTeX. Add one card per symbol or parameter explaining what it measures. Reconstruct any formula the PDF extraction garbled.'],
+    ['Definitions', 'Focus on precise definitions of terms and their exact scope.'],
+    ['Compare methods', 'Focus on assumptions, when each method applies, and how the methods differ. Skip pure definitions.'],
+    ['Worked numbers', 'Prefer cards that each walk one small numeric example end to end.'],
+  ]) {
+    const chip = el('button', 'fc-btn');
+    chip.textContent = label;
+    chip.addEventListener('click', () => {
+      guideIn.value = text;
+      localStorage.setItem(GUIDE_KEY, guideIn.value);
+    });
+    chipRow.appendChild(chip);
+  }
+  view.appendChild(chipRow);
 
   const err = el('div', 'fc-error');
   err.style.display = 'none';
@@ -2563,7 +2594,7 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
       try {
         const cards = await fcGenerateCards(text, {
           count: parseInt(countIn.value, 10) || 15,
-          focus: focusIn.value.trim(),
+          focus: guideIn.value.trim(),
         });
         renderReview(cards);
       } catch (e2) {
