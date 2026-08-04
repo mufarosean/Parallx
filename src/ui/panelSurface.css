@@ -127,6 +127,10 @@
 
 /* ── Empty state ─────────────────────────────────────────────────────────── */
 
+/* The explicit display beats the UA's `[hidden] { display: none }`, so the
+   attribute the panels toggle would otherwise do nothing — restate it. */
+.px-panel-empty[hidden] { display: none; }
+
 .px-panel-empty {
   position: absolute;
   inset: 0;

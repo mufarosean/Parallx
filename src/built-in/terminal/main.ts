@@ -471,8 +471,12 @@ export function activate(api: ParallxApi, context: ToolContext): void {
 
       container.appendChild(root);
 
-      // Spawn the shell LAZILY on first interaction — the tab merely existing
-      // must not cost a shell process at every app start.
+      // Spawn as soon as the view is actually on screen. Views mount lazily
+      // (the tab merely EXISTING costs nothing at app start), but once the
+      // user is looking at the terminal, a shell they still have to click
+      // for reads as broken: an empty pane with a prompt and no banner. The
+      // focus hook stays as a fallback for exotic mount paths.
+      void ensureShell();
       input.addEventListener('focus', () => { void ensureShell(); });
 
       return {
