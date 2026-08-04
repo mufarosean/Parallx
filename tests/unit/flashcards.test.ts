@@ -1,4 +1,4 @@
-// M93 — Flashcards extension: pure-logic tests via the __testables export
+﻿// M93 â€” Flashcards extension: pure-logic tests via the __testables export
 // (same pattern as budget-helpers.test.ts).
 //
 // Covers the SM-2 scheduler's full state machine (learning steps, graduation,
@@ -7,7 +7,7 @@
 // and the stats aggregation.
 
 import { describe, it, expect } from 'vitest';
-// @ts-expect-error — JS module with no types
+// @ts-expect-error â€” JS module with no types
 import { __testables } from '../../ext/flashcards/main.js';
 
 const {
@@ -15,6 +15,7 @@ const {
   fcIntervalPreview,
   fcBuildQueue,
   fcExtractCardsJson,
+  fcRepairLatexEscapes,
   fcReminderCron,
   fcParseTags,
   fcAggregateStats,
@@ -34,9 +35,9 @@ function newCard(overrides: Record<string, unknown> = {}) {
   };
 }
 
-// ─── SM-2 scheduler ──────────────────────────────────────────────────────────
+// â”€â”€â”€ SM-2 scheduler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-describe('fcSchedule — learning', () => {
+describe('fcSchedule â€” learning', () => {
   it('new + Good enters learning at step 1 (second step)', () => {
     const s = fcSchedule(newCard(), GOOD, NOW);
     expect(s.state).toBe('learning');
@@ -74,7 +75,7 @@ describe('fcSchedule — learning', () => {
   });
 });
 
-describe('fcSchedule — review', () => {
+describe('fcSchedule â€” review', () => {
   const reviewCard = () => newCard({ state: 'review', intervalDays: 10, ease: 2.5, reps: 5 });
 
   it('Good multiplies the interval by ease', () => {
@@ -120,7 +121,7 @@ describe('fcSchedule — review', () => {
   });
 });
 
-describe('fcSchedule — relearning', () => {
+describe('fcSchedule â€” relearning', () => {
   const relearn = () => newCard({ state: 'relearning', intervalDays: 5, ease: 2.3, lapses: 1 });
 
   it('Good exits relearning with the stored interval', () => {
@@ -152,7 +153,7 @@ describe('fcIntervalPreview', () => {
   });
 });
 
-// ─── Queue builder ───────────────────────────────────────────────────────────
+// â”€â”€â”€ Queue builder â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 describe('fcBuildQueue', () => {
   const cards = [
@@ -166,7 +167,7 @@ describe('fcBuildQueue', () => {
     { id: 8, state: 'review', dueAt: NOW - DAY, suspended: true },    // suspended
   ];
 
-  it('orders learning → review (most overdue first) → new (oldest first)', () => {
+  it('orders learning â†’ review (most overdue first) â†’ new (oldest first)', () => {
     const q = fcBuildQueue(cards, NOW);
     expect(q.map((c: { id: number }) => c.id)).toEqual([7, 6, 3, 4, 2, 1]);
   });
@@ -183,7 +184,7 @@ describe('fcBuildQueue', () => {
   });
 });
 
-// ─── AI output extraction ────────────────────────────────────────────────────
+// â”€â”€â”€ AI output extraction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 describe('fcExtractCardsJson', () => {
   it('parses a clean array', () => {
@@ -248,7 +249,7 @@ describe('fcExtractCardsJson', () => {
   });
 });
 
-// ─── Reminder cron ───────────────────────────────────────────────────────────
+// â”€â”€â”€ Reminder cron â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 describe('fcReminderCron', () => {
   it('builds a daily cron from HH:MM', () => {
@@ -268,7 +269,7 @@ describe('fcContextPlan', () => {
   it('sizes the window to document + output, not a fixed constant', () => {
     // The regression that motivated this: a 38,263-char PDF tokenized to
     // 15,709 tokens (~2.44 chars/token), filling a fixed 16,384 window
-    // almost entirely — the model was hard-stopped 674 tokens into its
+    // almost entirely â€” the model was hard-stopped 674 tokens into its
     // JSON. The plan must leave the full output reserve on top.
     const { numCtx, maxChars, outputTokens } = fcContextPlan({
       chars: 38_263, count: 15, modelCtx: 262_144, setting: 0,
@@ -281,7 +282,7 @@ describe('fcContextPlan', () => {
 
   it('requests only what the job needs, never the model maximum', () => {
     const { numCtx } = fcContextPlan({ chars: 2_000, count: 10, modelCtx: 262_144, setting: 0 });
-    expect(numCtx).toBe(8192); // floor — tiny note must not allocate a 262K KV cache
+    expect(numCtx).toBe(8192); // floor â€” tiny note must not allocate a 262K KV cache
   });
 
   it('clamps to the model ceiling and clips material to fit', () => {
@@ -319,7 +320,7 @@ describe('fcParseTags', () => {
   });
 });
 
-// ─── Stats aggregation ───────────────────────────────────────────────────────
+// â”€â”€â”€ Stats aggregation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 describe('fcAggregateStats', () => {
   const startOfToday = (() => {
@@ -374,5 +375,60 @@ describe('fcAggregateStats', () => {
     const s = fcAggregateStats([], [], NOW);
     expect(s.today.correctPct).toBeNull();
     expect(s.retention30).toBeNull();
+  });
+});
+
+// ─── LaTeX survival through the JSON layer ───────────────────────────────────
+//
+// The generation prompt demands LaTeX, the renderer speaks LaTeX, and strict
+// JSON.parse sat between them destroying it: a single-backslash \sigma is an
+// invalid escape (throws — whole batch lost) while \frac / \theta / \beta are
+// VALID escapes (formfeed/tab/backspace) that silently parse into
+// control-character garbage.
+
+describe('fcRepairLatexEscapes', () => {
+  it('repairs invalid escapes that would make JSON.parse throw', () => {
+    const raw = String.raw`[{"front":"$\sigma^2$","back":"$\lambda$"}]`;
+    expect(() => JSON.parse(raw)).toThrow();
+    const parsed = JSON.parse(fcRepairLatexEscapes(raw));
+    expect(parsed[0].front).toBe(String.raw`$\sigma^2$`);
+    expect(parsed[0].back).toBe(String.raw`$\lambda$`);
+  });
+
+  it('rescues valid-but-wrong escapes inside math (\\frac is a command, not formfeed)', () => {
+    const raw = String.raw`[{"front":"$\frac{a}{b} \neq \theta$","back":"x"}]`;
+    const parsed = JSON.parse(fcRepairLatexEscapes(raw));
+    expect(parsed[0].front).toBe(String.raw`$\frac{a}{b} \neq \theta$`);
+  });
+
+  it('keeps an intended newline OUTSIDE math as a newline', () => {
+    const raw = String.raw`[{"front":"line one\nline two","back":"x"}]`;
+    const parsed = JSON.parse(fcRepairLatexEscapes(raw));
+    expect(parsed[0].front).toBe('line one\nline two');
+  });
+
+  it('passes correctly double-escaped output through untouched', () => {
+    const raw = String.raw`[{"front":"$\\frac{a}{b}$","back":"café"}]`;
+    expect(fcRepairLatexEscapes(raw)).toBe(raw);
+    expect(JSON.parse(fcRepairLatexEscapes(raw))[0].back).toBe('café');
+  });
+
+  it('treats $$ display math as one delimiter, repairing commands inside', () => {
+    const raw = String.raw`[{"front":"$$\sum_{i=1}^{n} \beta_i$$","back":"x"}]`;
+    const parsed = JSON.parse(fcRepairLatexEscapes(raw));
+    expect(parsed[0].front).toBe(String.raw`$$\sum_{i=1}^{n} \beta_i$$`);
+  });
+});
+
+describe('fcExtractCardsJson + LaTeX', () => {
+  it('extracts cards whose formulas the model wrote with single backslashes', () => {
+    const output = 'Here are the cards:\n'
+      + String.raw`[{"front":"What is the Mack variance estimator?","back":"$\hat{\sigma}^2 = \frac{1}{n-1}\sum (f_i - \bar{f})^2$","tags":["mack"]}]`;
+    const { cards, error } = fcExtractCardsJson(output);
+    expect(error).toBeNull();
+    expect(cards).toHaveLength(1);
+    expect(cards[0].back).toContain(String.raw`\hat{\sigma}^2`);
+    expect(cards[0].back).toContain(String.raw`\frac{1}{n-1}`);
+    expect(cards[0].back).not.toMatch(/[\f\b\t]/);
   });
 });

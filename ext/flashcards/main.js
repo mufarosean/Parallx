@@ -196,6 +196,65 @@ function fcBuildQueue(cards, now, { newLimit = 20, reviewLimit = 200 } = {}) {
  * fences, prose around the array, and singly-nested objects. Returns
  * { cards, error } — cards is [] on failure, never null.
  */
+/**
+ * Repair LaTeX backslashes inside a JSON string the model wrote.
+ *
+ * Strict JSON destroys single-backslash LaTeX both ways: `\sigma` is an
+ * INVALID escape (JSON.parse throws, the whole batch is lost) while `\frac`,
+ * `\theta`, `\beta` are VALID escapes (formfeed, tab, backspace) that parse
+ * "successfully" into control-character garbage. So the exact instruction the
+ * generation prompt gives ("write every formula in LaTeX") is what breaks the
+ * parse. This walks string literals and doubles the backslashes JSON would
+ * eat:
+ *
+ *   - any invalid escape (`\s`, `\l`, `\D`, `\u` without 4 hex digits) —
+ *     strictly a repair, the parse would have thrown;
+ *   - a valid-but-suspicious escape (`\b\f\n\r\t` followed by a letter)
+ *     INSIDE `$…$` math, where `\neq` is a command and never "newline+eq".
+ *     Outside math these are left alone: `\n` between sentences is a real
+ *     newline the model meant.
+ *
+ * Correctly double-escaped output (`\\frac`) passes through untouched.
+ */
+function fcRepairLatexEscapes(slice) {
+  let out = '';
+  let inStr = false;
+  let inMath = false;
+  for (let i = 0; i < slice.length; i++) {
+    const ch = slice[i];
+    if (!inStr) {
+      if (ch === '"') { inStr = true; inMath = false; }
+      out += ch;
+      continue;
+    }
+    if (ch === '"') { inStr = false; out += ch; continue; }
+    if (ch === '$') {
+      // `$$` (display math) is one delimiter, not two inline toggles.
+      if (slice[i + 1] === '$') { out += '$$'; i++; } else { out += ch; }
+      inMath = !inMath;
+      continue;
+    }
+    if (ch !== '\\') { out += ch; continue; }
+
+    const next = slice[i + 1] ?? '';
+    if (next === '\\' || next === '"' || next === '/') {
+      out += ch + next; i++;                       // already-correct escape
+    } else if (next === 'u' && /^[0-9a-fA-F]{4}$/.test(slice.slice(i + 2, i + 6))) {
+      out += ch + next; i++;                       // real unicode escape
+    } else if ('bfnrt'.includes(next)) {
+      const after = slice[i + 2] ?? '';
+      if (inMath && /[a-zA-Z]/.test(after)) {
+        out += '\\\\' + next; i++;                 // \frac, \neq, \tau, … in math
+      } else {
+        out += ch + next; i++;                     // an intended \n, \t, …
+      }
+    } else {
+      out += '\\\\';                               // invalid escape: \sigma, \left, …
+    }
+  }
+  return out;
+}
+
 function fcExtractCardsJson(text) {
   if (typeof text !== 'string' || !text.trim()) return { cards: [], error: 'Empty response.' };
   let t = text.trim();
@@ -209,7 +268,12 @@ function fcExtractCardsJson(text) {
   /** Parse cards out of one candidate array slice. */
   const parseSlice = (slice) => {
     let parsed;
-    try { parsed = JSON.parse(slice); } catch { return null; }
+    // Repair BEFORE the strict parse: parse-first would silently accept
+    // `\frac` as formfeed+"rac" and the corruption would land in the deck.
+    try { parsed = JSON.parse(fcRepairLatexEscapes(slice)); }
+    catch {
+      try { parsed = JSON.parse(slice); } catch { return null; }
+    }
     if (!Array.isArray(parsed)) return null;
     const cards = [];
     for (const item of parsed.slice(0, 100)) {
@@ -1270,6 +1334,20 @@ function injectStyles() {
 
 /* ── Import — preview groups mirror the Browse rows: hairline dividers,
    weight for fronts, muted backs. Deselected groups recede, not vanish. ── */
+/* ── Card editor — textarea beside its live-rendered preview; the preview
+   carries a hairline divider, not a box, per the editorial identity. ── */
+.fc-edit { display: flex; flex-direction: column; gap: var(--px-space-2); padding: var(--px-space-2) 0; }
+.fc-edit__row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--px-space-3); align-items: stretch; }
+.fc-edit__preview {
+  border-left: 1px solid var(--px-divider);
+  padding: var(--px-space-1) var(--px-space-3);
+  font-size: var(--px-text-sm); line-height: var(--px-leading-base);
+  color: var(--px-text); overflow-x: auto; min-height: 40px;
+}
+.fc-edit__preview--empty { color: var(--px-text-faint); }
+.fc-edit__actions { display: flex; align-items: center; gap: var(--px-space-2); margin-top: var(--px-space-1); }
+.fc-cardrow--editing:hover .fc-cardrow__actions { opacity: 1; }
+
 .fc-import-group { margin-top: var(--px-space-4); padding-top: var(--px-space-3); border-top: 1px solid var(--px-divider); }
 .fc-import-group--off { opacity: 0.45; }
 .fc-import-group--done { opacity: 0.55; }
@@ -1808,6 +1886,90 @@ async function renderDecks(body, setRoute) {
 
 // ── Browse view ──────────────────────────────────────────────────────────────
 
+/**
+ * Inline card editor: textareas with a LIVE rendered preview beside each.
+ *
+ * The predecessor was two sequential single-line input boxes — no multi-line
+ * editing, no sight of the other side while writing, no tags, and no way to
+ * see whether a formula's LaTeX actually renders. For formula-dense material
+ * the preview IS the point: `$\frac{a}{b}$` and a typo'd `$\fac{a}{b}$` look
+ * identical as source text.
+ */
+function fcCardEditorEl(card, { onSave, onCancel }) {
+  const form = el('div', 'fc-edit');
+
+  const err = el('div', 'fc-error');
+  err.style.display = 'none';
+
+  const preview = (host, text) => {
+    host.innerHTML = '';
+    const t = String(text || '').trim();
+    host.classList.toggle('fc-edit__preview--empty', !t);
+    if (!t) { host.textContent = 'nothing yet'; return; }
+    try { host.appendChild(_api.ui.renderMarkdown(t)); }
+    catch { host.textContent = t; }
+  };
+
+  const side = (label, value) => {
+    form.appendChild(el('div', 'fc-label', label));
+    const grid = el('div', 'fc-edit__row');
+    const ta = el('textarea', 'fc-textarea');
+    ta.value = value;
+    ta.rows = 4;
+    const pv = el('div', 'fc-edit__preview');
+    preview(pv, value);
+    let timer = null;
+    ta.addEventListener('input', () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => preview(pv, ta.value), 150);
+    });
+    grid.append(ta, pv);
+    form.appendChild(grid);
+    return ta;
+  };
+
+  const frontIn = side('Front', card.front);
+  const backIn = side('Back', card.back);
+
+  form.appendChild(el('div', 'fc-label', 'Tags'));
+  const tagsIn = el('input', 'fc-input');
+  tagsIn.value = fcParseTags(card.tags).join(' ');
+  tagsIn.placeholder = 'space-separated';
+  form.appendChild(tagsIn);
+
+  form.appendChild(err);
+
+  const actions = el('div', 'fc-edit__actions');
+  const saveBtn = el('button', 'fc-btn fc-btn--primary');
+  saveBtn.textContent = 'Save';
+  const cancelBtn = el('button', 'fc-btn');
+  cancelBtn.textContent = 'Cancel';
+  actions.append(saveBtn, cancelBtn);
+  actions.appendChild(el('span', 'fc-hint', 'Ctrl+Enter saves · Esc cancels · $…$ renders math'));
+  form.appendChild(actions);
+
+  const save = () => {
+    const front = frontIn.value.trim();
+    const back = backIn.value.trim();
+    if (!front || !back) {
+      err.textContent = 'Front and back both need content.';
+      err.style.display = '';
+      return;
+    }
+    const tags = tagsIn.value.split(/[\s,]+/).map((t) => t.trim()).filter(Boolean).join(',');
+    void onSave({ front, back, tags });
+  };
+  saveBtn.addEventListener('click', save);
+  cancelBtn.addEventListener('click', () => onCancel());
+  form.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); save(); }
+    else if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
+  });
+
+  queueMicrotask(() => frontIn.focus());
+  return form;
+}
+
 async function renderBrowse(body, route, setRoute) {
   const deckRow = await db.get('SELECT * FROM fc_decks WHERE id = ?', [route.deckId]);
   if (!deckRow) { setRoute({ view: 'decks' }); return; }
@@ -1923,14 +2085,14 @@ async function renderBrowse(body, route, setRoute) {
     const editBtn = el('button', 'fc-btn');
     editBtn.textContent = 'Edit';
     editBtn.addEventListener('click', () => {
-      void (async () => {
-        const front = await _api.window.showInputBox({ prompt: 'Front', value: card.front });
-        if (front === undefined) return;
-        const back = await _api.window.showInputBox({ prompt: 'Back', value: card.back });
-        if (back === undefined) return;
-        await fcUpdateCard(card.id, { front: front.trim() || card.front, back: back.trim() || card.back });
-        void renderList();
-      })();
+      row.classList.add('fc-cardrow--editing');
+      row.replaceChildren(fcCardEditorEl(card, {
+        onSave: async (patch) => {
+          await fcUpdateCard(card.id, patch);
+          void renderList();
+        },
+        onCancel: () => void renderList(),
+      }));
     });
     btns.appendChild(editBtn);
     const suspendBtn = el('button', 'fc-btn');
@@ -3338,4 +3500,6 @@ export const __testables = {
   fcParsePastedRows,
   fcImportKindOf,
   fcExtOf,
+  // LaTeX survival through the JSON layer
+  fcRepairLatexEscapes,
 };

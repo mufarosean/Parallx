@@ -79,6 +79,15 @@ function htmlToText(html) {
   s = s.replace(/\[sound:[^\]]*\]/gi, () => { media++; return ''; });
   s = s.replace(/<img\b[^>]*>/gi, () => { media++; return ''; });
 
+  // Math BEFORE the generic tag strip, or the delimiters are lost and bare
+  // LaTeX leaks into the card as prose. Anki writes MathJax two ways: legacy
+  // \( \) / \[ \] delimiters in the field text, and <anki-mathjax> elements
+  // since 2.1.50. Both become the $-delimiters this app's renderer speaks.
+  s = s.replace(/<anki-mathjax\b[^>]*\bblock\s*=\s*"?true"?[^>]*>([\s\S]*?)<\/anki-mathjax>/gi, (_m, tex) => `$$${tex}$$`);
+  s = s.replace(/<anki-mathjax\b[^>]*>([\s\S]*?)<\/anki-mathjax>/gi, (_m, tex) => `$${tex}$`);
+  s = s.replace(/\\\[/g, '$$$$').replace(/\\\]/g, '$$$$');
+  s = s.replace(/\\\(/g, '$').replace(/\\\)/g, '$');
+
   // Block-level boundaries become newlines BEFORE tags are stripped, so
   // "<div>a</div><div>b</div>" reads as two lines rather than "ab".
   s = s.replace(/<br\s*\/?>/gi, '\n');

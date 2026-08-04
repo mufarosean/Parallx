@@ -168,6 +168,20 @@ describe('ankiWorker htmlToText', () => {
     expect(htmlToText('&#1114112; overflows').text).toBe('&#1114112; overflows');
     expect(htmlToText('&#x110000; overflows').text).toBe('&#x110000; overflows');
   });
+
+  it('converts Anki MathJax delimiters to the $ delimiters the app renders', () => {
+    expect(htmlToText(String.raw`the ratio \(\frac{P}{Q}\) matters`).text)
+      .toBe(String.raw`the ratio $\frac{P}{Q}$ matters`);
+    expect(htmlToText(String.raw`\[\sum_{i=1}^n x_i\]`).text)
+      .toBe(String.raw`$$\sum_{i=1}^n x_i$$`);
+  });
+
+  it('converts <anki-mathjax> elements instead of stripping their delimiters', () => {
+    expect(htmlToText(String.raw`<anki-mathjax>\hat{f}</anki-mathjax> is the estimator`).text)
+      .toBe(String.raw`$\hat{f}$ is the estimator`);
+    expect(htmlToText(String.raw`<anki-mathjax block="true">E = mc^2</anki-mathjax>`).text)
+      .toBe('$$E = mc^2$$');
+  });
 });
 
 // ─── ankiWorker: renderTemplate — mechanical qfmt/afmt rendering ─────────────
