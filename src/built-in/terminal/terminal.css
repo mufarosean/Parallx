@@ -35,8 +35,11 @@
   background: var(--px-bg);
 }
 
+/* Monochrome by request: the prompt is ambient chrome, not a signal. The
+   env name sits muted, the glyph faint, and focus brightens the glyph to
+   plain text color — no hue anywhere on the line. */
 .parallx-terminal-prompt {
-  color: var(--px-success);
+  color: var(--px-text-muted);
   font-family: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: var(--px-text-sm);
   font-weight: 700;
@@ -48,7 +51,7 @@
   transition: color var(--px-dur-fast) var(--px-ease);
 }
 .parallx-terminal-input-line:focus-within .parallx-terminal-prompt__glyph {
-  color: var(--px-accent);
+  color: var(--px-text);
 }
 
 /* input[type="text"] prefix: the global form-control skin (px-controls.css)
@@ -68,7 +71,7 @@ input[type="text"].parallx-terminal-input {
   font-family: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: var(--px-text-sm);
   line-height: 1.5;
-  caret-color: var(--px-accent);
+  caret-color: var(--px-text);
 }
 input[type="text"].parallx-terminal-input:focus,
 input[type="text"].parallx-terminal-input:focus-visible {
@@ -137,9 +140,9 @@ input[type="text"].parallx-terminal-input:focus-visible {
 /* The prompt carries the active Python environment, the way a shell prompt
    would if this panel were a real terminal emulator. See paintPrompt().
    (The glyph's colors live with the input-line rules near the top — it is
-   faint at rest and lights accent on focus.) */
+   faint at rest and brightens to plain ink on focus.) */
 .parallx-terminal-prompt__env {
-  color: var(--px-success);
+  color: inherit;
   margin-right: 6px;
   font-family: var(--px-font-mono, monospace);
 }
