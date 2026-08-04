@@ -21,12 +21,16 @@
 }
 
 /* ── Input line ── */
+/* The input line reads as the terminal's own prompt line, not a form field
+   bolted underneath one: same monospace, same size and left edge as the
+   output stream, separated by a hairline. Focus is carried by the glyph
+   lighting up and the caret — a shell has no focus ring. */
 .parallx-terminal-input-line {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: var(--px-space-2);
   flex-shrink: 0;
-  padding: var(--px-space-1) var(--px-space-3) var(--px-space-2);
+  padding: var(--px-space-2) var(--px-space-3);
   border-top: 1px solid var(--px-divider);
   background: var(--px-bg);
 }
@@ -34,22 +38,43 @@
 .parallx-terminal-prompt {
   color: var(--px-success);
   font-family: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: var(--px-text-sm);
   font-weight: 700;
   white-space: nowrap;
   flex-shrink: 0;
 }
+.parallx-terminal-prompt__glyph {
+  color: var(--px-text-faint);
+  transition: color var(--px-dur-fast) var(--px-ease);
+}
+.parallx-terminal-input-line:focus-within .parallx-terminal-prompt__glyph {
+  color: var(--px-accent);
+}
 
-.parallx-terminal-input {
+/* input[type="text"] prefix: the global form-control skin (px-controls.css)
+   targets that attribute selector and would otherwise out-rank a bare class,
+   wrapping the shell line in a settings-style inset box — the exact look
+   this rule exists to prevent. */
+input[type="text"].parallx-terminal-input {
   flex: 1;
   min-width: 0;
   background: transparent;
   border: none;
+  border-radius: 0;
   outline: none;
+  box-shadow: none;
+  padding: 0;
   color: var(--px-text);
   font-family: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: var(--px-text-sm);
   line-height: 1.5;
   caret-color: var(--px-accent);
+}
+input[type="text"].parallx-terminal-input:focus,
+input[type="text"].parallx-terminal-input:focus-visible {
+  border: none;
+  box-shadow: none;
+  outline: none;
 }
 .parallx-terminal-input::placeholder { color: var(--px-text-faint); }
 
@@ -110,13 +135,14 @@
 .parallx-terminal-env__action:hover { background: var(--px-surface-hover); }
 
 /* The prompt carries the active Python environment, the way a shell prompt
-   would if this panel were a real terminal emulator. See paintPrompt(). */
+   would if this panel were a real terminal emulator. See paintPrompt().
+   (The glyph's colors live with the input-line rules near the top — it is
+   faint at rest and lights accent on focus.) */
 .parallx-terminal-prompt__env {
   color: var(--px-success);
   margin-right: 6px;
   font-family: var(--px-font-mono, monospace);
 }
-.parallx-terminal-prompt__glyph { color: inherit; }
 
 /* Each write from the shell becomes one span so the output buffer can be
    trimmed by removing whole chunks — reassigning textContent (the old trim)

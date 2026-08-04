@@ -442,7 +442,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       const input = document.createElement('input');
       input.type = 'text';
       input.className = 'parallx-terminal-input';
-      input.placeholder = 'Enter command...';
+      input.placeholder = 'Enter command…';
       input.spellcheck = false;
       input.autocomplete = 'off';
       inputLine.appendChild(input);
