@@ -64,6 +64,20 @@ export class MarkdownEditorPane extends EditorPane {
     this._scrollContainer.addEventListener('contextmenu', this._onContextMenu);
   }
 
+  // ── View state ─────────────────────────────────────────────────────────
+  // The workbench rebuilds panes on every tab switch; these hooks are the
+  // only thing standing between the reader and losing their place.
+
+  protected override savePaneViewState(): Record<string, unknown> {
+    return { scrollTop: this._scrollContainer?.scrollTop ?? 0 };
+  }
+
+  protected override restorePaneViewState(state: Record<string, unknown>): void {
+    if (typeof state.scrollTop === 'number' && this._scrollContainer) {
+      this._scrollContainer.scrollTop = state.scrollTop;
+    }
+  }
+
   protected override async renderInput(
     input: IEditorInput,
     _previous: IEditorInput | undefined,

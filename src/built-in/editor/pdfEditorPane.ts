@@ -286,7 +286,56 @@ export class PdfEditorPane extends EditorPane {
     const page = this._pdfViewer?.currentPageNumber ?? 1;
     const scaleValue = this._pdfViewer?.currentScaleValue ?? this._scaleValue;
     const scrollLeft = this._viewerContainer?.scrollLeft ?? 0;
-    return { page, scaleValue, scrollLeft };
+    // scrollTop is the EXACT reading position; page alone lands the user at
+    // the top of the page they were halfway down.
+    const scrollTop = this._viewerContainer?.scrollTop ?? 0;
+    return { page, scaleValue, scrollLeft, scrollTop };
+  }
+
+  /**
+   * Saved state arrives while pdf.js may still be parsing the document, so
+   * it is stashed and applied on 'pagesinit' (or immediately when the pages
+   * are already up — the workbench restores after setInput resolves, which
+   * can land either side of pagesinit).
+   */
+  private _pendingViewState: {
+    page?: number; scaleValue?: string; scrollLeft?: number; scrollTop?: number;
+  } | null = null;
+  private _pagesInited = false;
+
+  protected override restorePaneViewState(state: Record<string, unknown>): void {
+    this._pendingViewState = {
+      page: typeof state.page === 'number' ? state.page : undefined,
+      scaleValue: typeof state.scaleValue === 'string' ? state.scaleValue : undefined,
+      scrollLeft: typeof state.scrollLeft === 'number' ? state.scrollLeft : undefined,
+      scrollTop: typeof state.scrollTop === 'number' ? state.scrollTop : undefined,
+    };
+    if (this._pagesInited) this._applyPendingViewState();
+  }
+
+  private _applyPendingViewState(): void {
+    const pending = this._pendingViewState;
+    if (!pending || !this._pdfViewer) return;
+    this._pendingViewState = null;
+    if (pending.scaleValue) {
+      this._scaleValue = pending.scaleValue;
+      this._pdfViewer.currentScaleValue = pending.scaleValue;
+    }
+    if (pending.page && pending.page >= 1 && pending.page <= (this._pdfDoc?.numPages ?? 1)) {
+      this._pdfViewer.currentPageNumber = pending.page;
+    }
+    // Absolute offsets AFTER the page jump: pdf.js scrolls to the page top
+    // synchronously, then the exact reading position wins.
+    if (this._viewerContainer) {
+      if (typeof pending.scrollTop === 'number' && pending.scrollTop > 0) {
+        this._viewerContainer.scrollTop = pending.scrollTop;
+      }
+      if (typeof pending.scrollLeft === 'number' && pending.scrollLeft > 0) {
+        this._viewerContainer.scrollLeft = pending.scrollLeft;
+      }
+    }
+    this._zoomInput.value = `${Math.round(this._pdfViewer.currentScale * 100)}%`;
+    this._updateFitButton();
   }
 
   private _installTestDebugHook(): void {
@@ -2200,16 +2249,11 @@ export class PdfEditorPane extends EditorPane {
         enableHWA: true,
       }).promise;
 
-      this._pdfViewer.setDocument(this._pdfDoc);
-      this._linkService.setDocument(this._pdfDoc, null);
-      this._findController.setDocument(this._pdfDoc);
-      this._installTestDebugHook();
-
-      // Update toolbar page count
-      this._pageTotalEl.textContent = String(this._pdfDoc.numPages);
-      this._pageInput.value = '1';
-
-      // Set initial scale after pages are initialized
+      // Storage reads and the pagesinit listener BOTH come before
+      // setDocument(): pdf.js dispatches 'pagesinit' on a synchronous
+      // EventBus with no replay, so a listener registered after setDocument
+      // raced the first page's parse — when parsing won, the restore never
+      // ran and the pane silently reset to page 1 at default scale.
       // B5.2: Restore user's persisted scale preference (fallback to 'page-fit')
       const storedScale = await this._globalStorage?.get('parallx.pdfScaleValue');
       if (storedScale) {
@@ -2219,17 +2263,21 @@ export class PdfEditorPane extends EditorPane {
       this._readingDark = (await this._globalStorage?.get('parallx.pdfReadingDark')) === '1';
       this._applyReadingDark();
       this._eventBus.on('pagesinit', () => {
+        this._pagesInited = true;
 
-        // Restore page/scale from the input (set during deserialization).
+        // Workbench view state (tab switched away and back) beats the
+        // input's page/scale (set during deserialization) — it is newer.
+        const pending = this._pendingViewState;
         const input = this._currentInput;
-        const restoredScale = input?.scaleValue ?? this._scaleValue;
-        const restoredPage = input?.page ?? 1;
+        const restoredScale = pending?.scaleValue ?? input?.scaleValue ?? this._scaleValue;
+        const restoredPage = pending?.page ?? input?.page ?? 1;
 
         this._scaleValue = restoredScale;
         this._pdfViewer!.currentScaleValue = restoredScale;
         if (restoredPage > 1 && restoredPage <= (this._pdfDoc?.numPages ?? 1)) {
           this._pdfViewer!.currentPageNumber = restoredPage;
         }
+        if (pending) this._applyPendingViewState();
 
         this._zoomInput.value = `${Math.round(this._pdfViewer!.currentScale * 100)}%`;
         this._updateFitButton();
@@ -2237,6 +2285,15 @@ export class PdfEditorPane extends EditorPane {
         this._scheduleSelectionOverlayUpdate();
         this._renderAllHighlights();
       });
+
+      this._pdfViewer.setDocument(this._pdfDoc);
+      this._linkService.setDocument(this._pdfDoc, null);
+      this._findController.setDocument(this._pdfDoc);
+      this._installTestDebugHook();
+
+      // Update toolbar page count
+      this._pageTotalEl.textContent = String(this._pdfDoc.numPages);
+      this._pageInput.value = '1';
 
       // ── Load page labels ───────────────────────────────────────────
 
@@ -2814,6 +2871,10 @@ export class PdfEditorPane extends EditorPane {
   }
 
   private _cleanup(): void {
+    // A new document gets a fresh pagesinit cycle; stale pending state from
+    // the previous document must not apply to it.
+    this._pagesInited = false;
+    this._pendingViewState = null;
     if (this._resizeTimer) { clearTimeout(this._resizeTimer); this._resizeTimer = null; }
 
     // Flush + tear down highlight state

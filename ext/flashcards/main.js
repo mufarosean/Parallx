@@ -1859,6 +1859,22 @@ function createEditorPane(container, input) {
       _dataListeners.delete(onData);
       root.remove();
     },
+    // The workbench rebuilds this pane on every tab switch (media-organizer
+    // pattern): without these hooks, clicking away and back always reset the
+    // tool to the Decks view. Study sessions are deliberately NOT resumed —
+    // a half-graded card should not reappear mid-question after an hour away.
+    saveViewState() {
+      const route = state.route.view === 'study' ? { view: 'decks' } : state.route;
+      return { route, scrollTop: body.scrollTop || 0 };
+    },
+    restoreViewState(saved) {
+      if (state.disposed || !saved || !saved.route || !saved.route.view) return;
+      setRoute(saved.route);
+      if (typeof saved.scrollTop === 'number' && saved.scrollTop > 0) {
+        // After the async view render settles; best-effort by design.
+        setTimeout(() => { if (!state.disposed) body.scrollTop = saved.scrollTop; }, 120);
+      }
+    },
   };
 }
 
