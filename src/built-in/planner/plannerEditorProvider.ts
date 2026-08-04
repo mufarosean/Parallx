@@ -211,8 +211,16 @@ class PlannerEditorPane implements IDisposable {
       }
       const savedFilter = vs.get<string>('planner.tasksFilter', 'all');
       if (savedFilter) this._tasksFilter = savedFilter;
+      // Same-day guard: the persisted cursor exists so an intra-day tab
+      // switch comes back to the week you were looking at — NOT so that
+      // opening the planner on Thursday lands you on the Tuesday you last
+      // had it open. A cursor saved on any earlier day is stale; fresh
+      // opens always anchor on today.
       const savedCursor = vs.get<string>('planner.cursorDate', '');
-      if (savedCursor) {
+      const savedAt = Number(vs.get<number>('planner.cursorSavedAt', 0)) || 0;
+      const savedToday = savedAt > 0
+        && startOfDay(new Date(savedAt)).getTime() === startOfDay(new Date()).getTime();
+      if (savedCursor && savedToday) {
         const d = new Date(savedCursor);
         if (!Number.isNaN(d.getTime())) this._cursorDate = startOfDay(d);
       }
@@ -412,8 +420,11 @@ class PlannerEditorPane implements IDisposable {
     if (sig === this._lastViewStateSig) return;
     this._lastViewStateSig = sig;
     vs.set('planner.activeTab', this._activeTab);
+    vs.set('planner.calendarView', this._calendarView);
     vs.set('planner.tasksFilter', this._tasksFilter);
     vs.set('planner.cursorDate', this._cursorDate.toISOString());
+    // Freshness stamp for the same-day restore guard in init().
+    vs.set('planner.cursorSavedAt', Date.now());
   }
 
   private _syncTabClass(): void {
@@ -452,16 +463,26 @@ class PlannerEditorPane implements IDisposable {
     const body = this._bodyEl;
     const actions = this._root?.querySelector('[data-role="tab-actions"]') as HTMLElement | null;
     if (!body || !actions) return;
-    body.innerHTML = '';
-    actions.innerHTML = '';
+
+    // Render into DETACHED containers and swap only when the content is
+    // ready. The old clear-first approach left the pane an empty (black)
+    // host for the full duration of the tab renderer's SQLite round-trips —
+    // every background refresh (the 5-minute sync tick especially) read as
+    // "the whole tab just reloaded".
+    const nextBody = document.createElement('div');
+    const nextActions = document.createElement('div');
 
     if (this._activeTab === 'tasks') {
-      await this._renderTasksTab(body, actions);
+      await this._renderTasksTab(nextBody, nextActions);
     } else if (this._activeTab === 'automations') {
-      await this._renderAutomationsTab(body, actions);
+      await this._renderAutomationsTab(nextBody, nextActions);
     } else {
-      await this._renderCalendarTab(body, actions);
+      await this._renderCalendarTab(nextBody, nextActions);
     }
+    if (this._disposed) return;
+
+    body.replaceChildren(...Array.from(nextBody.childNodes));
+    actions.replaceChildren(...Array.from(nextActions.childNodes));
   }
 
   // ── Automations tab (M93) ────────────────────────────────────────────

@@ -982,6 +982,30 @@ export class PlannerDataService extends Disposable {
       synced.recurrence ?? null,
     ];
     if (existing) {
+      // No-op pulls fire no events. Incremental pulls routinely return items
+      // whose content is identical to the local row (our own pushed edits
+      // echo back on the next 5-minute tick, and the tasks watermark
+      // deliberately overlaps 60s) — an unconditional fire here made every
+      // sync tick re-render the whole planner pane for nothing. Content
+      // unchanged → stamp the reconcile times only, and stay silent.
+      const unchanged =
+        existing.title === synced.title
+        && (existing.description ?? null) === (synced.description ?? null)
+        && existing.startAt === synced.startAt
+        && existing.endAt === synced.endAt
+        && !!existing.allDay === !!synced.allDay
+        && (existing.location ?? null) === (synced.location ?? null)
+        && (existing.calendarId ?? null) === (synced.calendarId ?? null)
+        && (existing.color ?? null) === (synced.color ?? null)
+        && (existing.recurrence ?? null) === (synced.recurrence ?? null);
+      if (unchanged) {
+        const res = await this._db.run(
+          'UPDATE planner_events SET updated_at=?, synced_at=? WHERE id=?',
+          [now, now, existing.id],
+        );
+        if (res.error) throw new Error(`upsertEventFromSync(stamp) failed: ${res.error.message}`);
+        return;
+      }
       const res = await this._db.run(
         `UPDATE planner_events
             SET title=?, description=?, start_at=?, end_at=?, all_day=?, location=?,
@@ -1051,6 +1075,26 @@ export class PlannerDataService extends Disposable {
       synced.calendarId ?? 'cal-tasks',
     ];
     if (existing) {
+      // Same no-op guard as upsertEventFromSync: identical content → stamp
+      // reconcile times only, no content write, no change event. Note the
+      // completedAt comparison treats "remote has no stamp but status still
+      // done" as unchanged — the local stamp is the truth Google discarded.
+      const unchanged =
+        existing.title === synced.title
+        && (existing.description ?? null) === (synced.description ?? null)
+        && existing.status === status
+        && (existing.dueAt ?? null) === (dueAt ?? null)
+        && ((synced.completedAt ?? existing.completedAt ?? null) === (existing.completedAt ?? null))
+        && JSON.stringify(existing.tags ?? []) === JSON.stringify(synced.tags ?? [])
+        && (existing.calendarId ?? 'cal-tasks') === (synced.calendarId ?? 'cal-tasks');
+      if (unchanged) {
+        const res = await this._db.run(
+          'UPDATE planner_tasks SET updated_at=?, synced_at=? WHERE id=?',
+          [now, now, existing.id],
+        );
+        if (res.error) throw new Error(`upsertTaskFromSync(stamp) failed: ${res.error.message}`);
+        return;
+      }
       const res = await this._db.run(
         `UPDATE planner_tasks
             SET title=?, description=?, status=?, due_at=?, completed_at=?, tags_json=?,
