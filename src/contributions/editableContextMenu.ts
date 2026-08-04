@@ -402,13 +402,28 @@ export class EditableContextMenu extends Disposable {
         return;
       }
 
-      const before = val.substring(0, bestIdx);
-      const after = val.substring(bestIdx + misspelled.length);
-      target.value = before + replacement + after;
-      const newCursor = bestIdx + replacement.length;
-      target.setSelectionRange(newCursor, newCursor);
-      // Fire input event so frameworks/auto-resize hooks pick up the change
-      target.dispatchEvent(new Event('input', { bubbles: true }));
+      // Replace through the EDITING PIPELINE, not by assigning .value: a value
+      // assignment rewrites the whole field, which makes Chromium drop its
+      // spellcheck annotations on every OTHER misspelled word (they only come
+      // back as each word is re-edited) and destroys the undo stack. Selecting
+      // the word and inserting text behaves exactly like typing: remaining
+      // squiggles survive, the correction is one Ctrl+Z step, and the input
+      // event fires natively.
+      target.focus();
+      target.setSelectionRange(bestIdx, bestIdx + misspelled.length);
+      const inserted = document.execCommand('insertText', false, replacement);
+      if (!inserted) {
+        // execCommand refused (readonly/detached edge, or a non-Chromium test
+        // DOM) — the old whole-value path still corrects the word, at the
+        // known cost of the other squiggles.
+        const before = val.substring(0, bestIdx);
+        const after = val.substring(bestIdx + misspelled.length);
+        target.value = before + replacement + after;
+        const newCursor = bestIdx + replacement.length;
+        target.setSelectionRange(newCursor, newCursor);
+        // Fire input event so frameworks/auto-resize hooks pick up the change
+        target.dispatchEvent(new Event('input', { bubbles: true }));
+      }
     } else {
       // contenteditable — fall back to Electron's native replacement
       void replaceMisspelling(replacement);
