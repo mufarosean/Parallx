@@ -98,7 +98,7 @@ export class ModelSection extends SettingsSection {
 
     // ── Default Model (dropdown) ─────────────────────────────────────────
     const modelRow = createSettingRow({
-      label: 'Default model',
+      label: 'Default Model',
       description: 'The model used by new chat sessions. Leave on “Auto” to pick the first available model. Only enabled providers appear here.',
       key: 'model.chatModel',
       onReset: () => {
@@ -131,7 +131,7 @@ export class ModelSection extends SettingsSection {
 
     // ── Default Context Length ───────────────────────────────────────────
     const ctxRow = createSettingRow({
-      label: 'Default context length',
+      label: 'Default Context Length',
       description: 'Max context window (in tokens) used by new chats. 0 = use the model’s reported maximum. Increase only if the model actually supports it.',
       key: 'model.contextWindow',
       onReset: () => {

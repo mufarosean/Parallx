@@ -1625,12 +1625,12 @@ function createSidebarView(container) {
   const openDeckMenu = (deck, x, y) => {
     if (!_api.ui.showContextMenu) { void openFlashcards({ view: 'browse', deckId: deck.id }); return; }
     _api.ui.showContextMenu({ x, y }, [
-      { label: 'Study deck', icon: 'play', onSelect: () => void openFlashcards({ view: 'study', deckId: deck.id }) },
-      { label: 'Browse cards', icon: 'layers', onSelect: () => void openFlashcards({ view: 'browse', deckId: deck.id }) },
-      { label: 'Add cards with AI', icon: 'px-ai-mark', onSelect: () => void openFlashcards({ view: 'create', deckId: deck.id }) },
+      { label: 'Study Deck', icon: 'play', onSelect: () => void openFlashcards({ view: 'study', deckId: deck.id }) },
+      { label: 'Browse Cards', icon: 'layers', onSelect: () => void openFlashcards({ view: 'browse', deckId: deck.id }) },
+      { label: 'Add Cards with AI', icon: 'px-ai-mark', onSelect: () => void openFlashcards({ view: 'create', deckId: deck.id }) },
       { separator: true },
       { label: 'Rename', icon: 'pencil', onSelect: () => void _renameDeckFlow(deck) },
-      { label: 'Delete deck', icon: 'trash', danger: true, onSelect: () => void _deleteDeckFlow(deck) },
+      { label: 'Delete Deck', icon: 'trash', danger: true, onSelect: () => void _deleteDeckFlow(deck) },
     ]);
   };
 
@@ -1741,10 +1741,10 @@ async function _deleteDeckFlow(deck) {
     : 'This permanently deletes the deck. This cannot be undone.';
   let ok = false;
   if (_api.window.showConfirmModal) {
-    ok = await _api.window.showConfirmModal({ message: `Delete "${deck.name}"?`, detail, confirmLabel: 'Delete deck', danger: true });
+    ok = await _api.window.showConfirmModal({ message: `Delete "${deck.name}"?`, detail, confirmLabel: 'Delete Deck', danger: true });
   } else {
-    const pick = await _api.window.showWarningMessage(`Delete "${deck.name}"? ${detail}`, { title: 'Delete deck' });
-    ok = pick?.title === 'Delete deck';
+    const pick = await _api.window.showWarningMessage(`Delete "${deck.name}"? ${detail}`, { title: 'Delete Deck' });
+    ok = pick?.title === 'Delete Deck';
   }
   if (ok) await fcDeleteDeck(deck.id);
 }
@@ -1873,9 +1873,9 @@ async function renderDecks(body, setRoute) {
   newDeckBtn.addEventListener('click', () => void _cmdNewDeck());
   actions.appendChild(newDeckBtn);
   const genBtn = _api.ui.createAiButton
-    ? _api.ui.createAiButton(actions, { label: 'Generate cards' })
+    ? _api.ui.createAiButton(actions, { label: 'Generate Cards' })
     : el('button', 'fc-btn');
-  if (!genBtn.parentElement) { genBtn.textContent = 'Generate cards'; actions.appendChild(genBtn); }
+  if (!genBtn.parentElement) { genBtn.textContent = 'Generate Cards'; actions.appendChild(genBtn); }
   genBtn.addEventListener('click', () => setRoute({ view: 'create' }));
   view.appendChild(actions);
   view.appendChild(el('div', 'fc-label', 'Decks'));
@@ -2032,7 +2032,7 @@ async function renderBrowse(body, route, setRoute) {
   const spacer = el('div'); spacer.style.flex = '1';
   head.appendChild(spacer);
   const studyBtn = el('button', 'fc-btn fc-btn--primary');
-  studyBtn.innerHTML = `${icon('play', 12)}<span>Study this deck</span>`;
+  studyBtn.innerHTML = `${icon('play', 12)}<span>Study This Deck</span>`;
   studyBtn.addEventListener('click', () => setRoute({ view: 'study', deckId: deckRow.id }));
   head.appendChild(studyBtn);
   const addBtn = el('button', 'fc-btn');
@@ -2054,7 +2054,7 @@ async function renderBrowse(body, route, setRoute) {
   addErr.style.display = 'none';
   const addRow = el('div', 'fc-row');
   const saveCard = el('button', 'fc-btn fc-btn--primary');
-  saveCard.textContent = 'Add card';
+  saveCard.textContent = 'Add Card';
   saveCard.addEventListener('click', () => {
     void (async () => {
       if (!frontIn.value.trim() || !backIn.value.trim()) {
@@ -2191,7 +2191,7 @@ async function renderStudy(body, route, paneState, setRoute) {
         ? 'Create cards in a deck, or click Create to generate them from a canvas page or PDF.'
         : 'The scheduler brings cards back right before you would forget them. Check back later.'));
     const back = el('button', 'fc-btn');
-    back.textContent = 'Back to decks';
+    back.textContent = 'Back to Decks';
     back.addEventListener('click', () => setRoute({ view: 'decks' }));
     done.appendChild(back);
     main.appendChild(done);
@@ -2305,7 +2305,7 @@ async function renderStudy(body, route, paneState, setRoute) {
       done.appendChild(el('div', 'px-empty__hint',
         `${session.doneCount} ${session.doneCount === 1 ? 'card' : 'cards'} reviewed. Check Stats to watch retention climb.`));
       const statsBtn = el('button', 'fc-btn');
-      statsBtn.textContent = 'View stats';
+      statsBtn.textContent = 'View Stats';
       statsBtn.addEventListener('click', () => setRoute({ view: 'stats' }));
       done.appendChild(statsBtn);
       main.appendChild(done);
@@ -2404,7 +2404,7 @@ async function renderStudy(body, route, paneState, setRoute) {
 
     controls.innerHTML = '';
     const revealBtn = el('button', 'fc-btn fc-btn--primary fc-study__reveal');
-    revealBtn.textContent = 'Show answer';
+    revealBtn.textContent = 'Show Answer';
     revealBtn.addEventListener('click', reveal);
     controls.appendChild(revealBtn);
     main.appendChild(el('div', 'fc-study__keys', 'Space shows the answer'));
@@ -2445,7 +2445,7 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
   const deckDropdown = _api.ui.createDropdown(deckHost, {
     items: [
       ...decks.map((d) => ({ value: String(d.id), label: d.name })),
-      { value: '__new__', label: '+ New deck…' },
+      { value: '__new__', label: '+ New Deck…' },
     ],
     selected: route.deckId ? String(route.deckId) : (decks[0] ? String(decks[0].id) : '__new__'),
     ariaLabel: 'Target deck',
@@ -2455,7 +2455,7 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
   view.appendChild(deckRow);
 
   // ── Source material — default to in-workspace: drag a file/page, or pick. ──
-  view.appendChild(el('div', 'fc-label', 'Source material'));
+  view.appendChild(el('div', 'fc-label', 'Source Material'));
   const sourceState = { text: '', label: '', uri: '' };
   const srcStatus = el('div', 'fc-hint fc-src-status', 'Drag a file or canvas page here, pick one below, or paste text.');
 
@@ -2519,12 +2519,12 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
     });
     return b;
   };
-  srcRow.appendChild(srcBtn('Canvas page', 'file-text', async () => {
+  srcRow.appendChild(srcBtn('Canvas Page', 'file-text', async () => {
     const pageId = await fcPickCanvasPage();
     return pageId ? fcReadCanvasPage(pageId) : null;
   }));
-  srcRow.appendChild(srcBtn('Workspace file', 'file', () => fcPickWorkspaceFile()));
-  srcRow.appendChild(srcBtn('Browse device…', 'hard-drive', () => fcReadPdf()));
+  srcRow.appendChild(srcBtn('Workspace File', 'file', () => fcPickWorkspaceFile()));
+  srcRow.appendChild(srcBtn('Browse Device…', 'hard-drive', () => fcReadPdf()));
   srcRow.appendChild(srcBtn('Photo (OCR)', 'image', () => fcReadPhoto()));
   view.appendChild(srcRow);
   view.appendChild(srcStatus);
@@ -2551,7 +2551,7 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
   // Steering. Free text straight into the prompt, persisted because a study
   // phase tends to want the same steer for weeks. Chips FILL the box rather
   // than acting invisibly, so what the model is told stays inspectable.
-  view.appendChild(el('div', 'fc-label', 'Steer the cards (optional)'));
+  view.appendChild(el('div', 'fc-label', 'Steer the Cards (Optional)'));
   const guideIn = el('textarea', 'fc-textarea');
   guideIn.rows = 2;
   guideIn.placeholder = 'Tell the model what you want, e.g. "every formula as its own card" or "test when each method applies, not definitions".';
@@ -2562,10 +2562,10 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
   const chipRow = el('div', 'fc-row');
   chipRow.style.marginTop = '6px';
   for (const [label, text] of [
-    ['Formulas first', 'Make every formula its own card, in LaTeX. Add one card per symbol or parameter explaining what it measures. Reconstruct any formula the PDF extraction garbled.'],
+    ['Formulas First', 'Make every formula its own card, in LaTeX. Add one card per symbol or parameter explaining what it measures. Reconstruct any formula the PDF extraction garbled.'],
     ['Definitions', 'Focus on precise definitions of terms and their exact scope.'],
-    ['Compare methods', 'Focus on assumptions, when each method applies, and how the methods differ. Skip pure definitions.'],
-    ['Worked numbers', 'Prefer cards that each walk one small numeric example end to end.'],
+    ['Compare Methods', 'Focus on assumptions, when each method applies, and how the methods differ. Skip pure definitions.'],
+    ['Worked Numbers', 'Prefer cards that each walk one small numeric example end to end.'],
   ]) {
     const chip = el('button', 'fc-btn');
     chip.textContent = label;
@@ -2584,9 +2584,9 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
   const genRow = el('div', 'fc-row');
   genRow.style.marginTop = '10px';
   const genBtn = _api.ui.createAiButton
-    ? _api.ui.createAiButton(genRow, { label: 'Generate cards' })
+    ? _api.ui.createAiButton(genRow, { label: 'Generate Cards' })
     : el('button', 'fc-btn fc-btn--primary');
-  if (!genBtn.parentElement) { genBtn.textContent = 'Generate cards'; genRow.appendChild(genBtn); }
+  if (!genBtn.parentElement) { genBtn.textContent = 'Generate Cards'; genRow.appendChild(genBtn); }
   const genLabel = genBtn.querySelector('.px-ai-btn__label');
   const setGenLabel = (text) => {
     if (genLabel) genLabel.textContent = text;
@@ -2623,7 +2623,7 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
         err.style.display = '';
       } finally {
         genBtn.disabled = false;
-        setGenLabel('Generate cards');
+        setGenLabel('Generate Cards');
       }
     })();
   });
@@ -2660,7 +2660,7 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
     const importRow = el('div', 'fc-row');
     importRow.style.marginTop = '10px';
     const importBtn = el('button', 'fc-btn fc-btn--primary');
-    importBtn.textContent = 'Import cards';
+    importBtn.textContent = 'Import Cards';
     importBtn.addEventListener('click', () => {
       void (async () => {
         const keep = rows.filter((r) => !r.dropped && r.front.value.trim() && r.back.value.trim());
@@ -2724,7 +2724,7 @@ async function renderImport(body, route, setRoute, viewDisposables = []) {
   const showErr = (msg) => { err.textContent = msg; err.style.display = msg ? '' : 'none'; };
 
   // ── Source ──
-  view.appendChild(el('div', 'fc-label', 'Deck file'));
+  view.appendChild(el('div', 'fc-label', 'Deck File'));
   view.appendChild(el('div', 'fc-hint',
     'Anki exports (.apkg, or "Notes in Plain Text" .txt) and front/back PDFs where odd pages are fronts and even pages are backs.'));
 
@@ -2739,7 +2739,7 @@ async function renderImport(body, route, setRoute, viewDisposables = []) {
   const srcRow = el('div', 'fc-row');
   srcRow.style.marginTop = '8px';
   const pickBtn = el('button', 'fc-btn');
-  pickBtn.innerHTML = `${icon('hard-drive', 12)}<span>Browse device…</span>`;
+  pickBtn.innerHTML = `${icon('hard-drive', 12)}<span>Browse Device…</span>`;
   srcRow.appendChild(pickBtn);
   const srcStatus = el('span', 'fc-hint');
   srcRow.appendChild(srcStatus);
@@ -2751,7 +2751,7 @@ async function renderImport(body, route, setRoute, viewDisposables = []) {
   pasteIn.style.marginTop = '8px';
   view.appendChild(pasteIn);
   const pasteBtn = el('button', 'fc-btn');
-  pasteBtn.textContent = 'Preview pasted rows';
+  pasteBtn.textContent = 'Preview Pasted Rows';
   pasteBtn.style.marginTop = '6px';
   view.appendChild(pasteBtn);
 
@@ -2895,9 +2895,9 @@ async function renderImport(body, route, setRoute, viewDisposables = []) {
       destHost.style.minWidth = '260px';
       const items = [];
       if (loaded.kind === 'anki' && groups.length > 1) {
-        items.push({ value: '__keep__', label: `Keep the file's decks (${groups.length})` });
+        items.push({ value: '__keep__', label: `Keep the File's Decks (${groups.length})` });
       }
-      items.push({ value: '__new__', label: '+ New deck…' });
+      items.push({ value: '__new__', label: '+ New Deck…' });
       for (const d of decks) items.push({ value: String(d.id), label: `Into: ${d.name}` });
       const destDropdown = _api.ui.createDropdown(destHost, {
         items,
@@ -2944,7 +2944,7 @@ async function renderImport(body, route, setRoute, viewDisposables = []) {
       const goRow = el('div', 'fc-row');
       goRow.style.marginTop = '10px';
       const goBtn = el('button', 'fc-btn fc-btn--primary');
-      goBtn.textContent = `Import ${total.toLocaleString()} cards`;
+      goBtn.textContent = `Import ${total.toLocaleString()} Cards`;
       goRow.appendChild(goBtn);
       const progress = el('span', 'fc-hint');
       goRow.appendChild(progress);
@@ -3006,7 +3006,7 @@ async function renderImport(body, route, setRoute, viewDisposables = []) {
             const remaining = groups
               .filter((g) => g.include && !g.committed)
               .reduce((n, g) => n + g.cards.length, 0);
-            goBtn.textContent = remaining > 0 ? `Import ${remaining.toLocaleString()} cards` : 'Import';
+            goBtn.textContent = remaining > 0 ? `Import ${remaining.toLocaleString()} Cards` : 'Import';
             goBtn.disabled = false;
           }
         })();
@@ -3097,7 +3097,7 @@ function registerDashboardWidget(context) {
           root.appendChild(big);
           root.appendChild(el('div', '', `cards due · ${s.fresh || 0} new waiting`));
           const btn = el('button', 'fc-btn fc-btn--primary');
-          btn.textContent = 'Study now';
+          btn.textContent = 'Study Now';
           btn.addEventListener('click', () => void openFlashcards({ view: 'study' }));
           root.appendChild(btn);
         };
@@ -3309,7 +3309,7 @@ async function fcCaptureSelection(selectedText, source) {
   }
 
   const decks = await fcListDecks();
-  const NEW_DECK = '+ New deck…';
+  const NEW_DECK = '+ New Deck…';
   const pick = await _api.window.showQuickPick(
     [...decks.map((d) => ({ label: d.name, description: `${d.total} cards` })), { label: NEW_DECK }],
     { placeholder: 'Add flashcards to which deck?' },
@@ -3361,7 +3361,7 @@ function registerSelectionAction(context, attempt = 0) {
       if (!dispatcher || typeof dispatcher.registerHandler !== 'function') throw new Error('no dispatcher');
       context.subscriptions.push(dispatcher.registerHandler({
         actionId: 'create-flashcard',
-        label: 'Create flashcard',
+        label: 'Create Flashcard',
         icon: 'px-flashcards',
         execute: async (payload) => fcCaptureSelection(payload.selectedText, payload.source),
       }));

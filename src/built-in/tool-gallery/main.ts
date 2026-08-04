@@ -526,8 +526,8 @@ function renderToolEditor(container: HTMLElement, api: ParallxApi, toolId: strin
     uninstallBtn.title = `Uninstall ${tool.name}`;
     uninstallBtn.addEventListener('click', async () => {
       // Ask the user whether to keep or delete associated data
-      const keepData = { title: 'Keep data' };
-      const deleteData = { title: 'Delete data' };
+      const keepData = { title: 'Keep Data' };
+      const deleteData = { title: 'Delete Data' };
       const cancel = { title: 'Cancel', isCloseAffordance: true };
       const choice = await api.window.showWarningMessage(
         `Uninstall "${tool.name}"? You can keep its data for later or delete it permanently.`,
@@ -541,7 +541,7 @@ function renderToolEditor(container: HTMLElement, api: ParallxApi, toolId: strin
         // If user chose to delete data, close the extension's isolated database
         // and remove the entire extension data directory (.parallx/extensions/<name>/).
         // Since extensions now own their own database, deleting the folder removes everything.
-        if (choice.title === 'Delete data') {
+        if (choice.title === 'Delete Data') {
           const bridge = (globalThis as any).parallxElectron;
           // Derive extension name from tool ID: "publisher.tool-name" → "tool-name"
           const extName = tool.id.includes('.') ? tool.id.split('.').slice(1).join('.') : tool.id;
@@ -571,7 +571,7 @@ function renderToolEditor(container: HTMLElement, api: ParallxApi, toolId: strin
         }
         await api.tools.uninstall(tool.id);
         await api.window.showInformationMessage(
-          `"${tool.name}" has been uninstalled.${choice.title === 'Delete data' ? ' Associated data was deleted.' : ' Data was preserved.'}`,
+          `"${tool.name}" has been uninstalled.${choice.title === 'Delete Data' ? ' Associated data was deleted.' : ' Data was preserved.'}`,
         );
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);

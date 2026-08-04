@@ -24,8 +24,8 @@ export type AgentAutonomyLevel = 'manual' | 'allow-reads' | 'allow-safe' | 'cust
 
 const AUTONOMY_LEVELS: { value: AgentAutonomyLevel; label: string; description: string }[] = [
   { value: 'manual', label: 'Manual', description: 'Every action requires your OK' },
-  { value: 'allow-reads', label: 'Allow reads', description: 'Auto-search, ask for changes' },
-  { value: 'allow-safe', label: 'Allow safe', description: 'Reads + safe edits run automatically' },
+  { value: 'allow-reads', label: 'Allow Reads', description: 'Auto-search, ask for changes' },
+  { value: 'allow-safe', label: 'Allow Safe', description: 'Reads + safe edits run automatically' },
   { value: 'custom', label: 'Custom', description: 'You set the rules in Settings → Agent' },
 ];
 

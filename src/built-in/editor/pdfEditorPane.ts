@@ -2596,13 +2596,13 @@ export class PdfEditorPane extends EditorPane {
         },
         {
           id: 'canvas.captureNote',
-          label: 'Add to Canvas note',
+          label: 'Add to Canvas Note',
           disabled: !hasSel,
           group: 'canvas',
         },
         {
           id: 'canvas.captureImage',
-          label: 'Capture region to Canvas',
+          label: 'Capture Region to Canvas',
           disabled: !hasSel,
           group: 'canvas',
         },
@@ -2610,13 +2610,13 @@ export class PdfEditorPane extends EditorPane {
         // and opens its review panel focused on the AI input).
         {
           id: 'ai.askInline',
-          label: 'Ask AI about selection',
+          label: 'Ask AI about Selection',
           disabled: !hasSel,
           group: 'ai',
         },
         {
           id: 'ai.addToChat',
-          label: 'Send selection to Chat',
+          label: 'Send Selection to Chat',
           disabled: !hasSel,
           group: 'ai',
         },
@@ -2624,7 +2624,7 @@ export class PdfEditorPane extends EditorPane {
         // extension's 'create-flashcard' handler (deck pick + AI generation).
         {
           id: 'flashcards.capture',
-          label: 'Create flashcard from selection',
+          label: 'Create Flashcard from Selection',
           disabled: !hasSel,
           group: 'ai',
         },

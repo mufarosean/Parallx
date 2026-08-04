@@ -83,7 +83,7 @@ export function renderCodeActionButtons(
   // "Apply to File" button — triggers diff flow
   const applyBtn = document.createElement('button');
   applyBtn.className = 'parallx-chat-code-action-btn parallx-chat-code-action-btn--apply';
-  applyBtn.textContent = 'Apply to file';
+  applyBtn.textContent = 'Apply to File';
   applyBtn.type = 'button';
   applyBtn.title = `Compare and apply changes to ${filePath}`;
   applyBtn.addEventListener('click', () => {
@@ -96,7 +96,7 @@ export function renderCodeActionButtons(
   // "Create File" button — writes directly
   const createBtn = document.createElement('button');
   createBtn.className = 'parallx-chat-code-action-btn parallx-chat-code-action-btn--create';
-  createBtn.textContent = 'Create file';
+  createBtn.textContent = 'Create File';
   createBtn.type = 'button';
   createBtn.title = `Create or overwrite ${filePath}`;
   createBtn.addEventListener('click', () => {

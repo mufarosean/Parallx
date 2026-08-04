@@ -1155,10 +1155,10 @@ export class CanvasSidebar {
       emptyBtn.addEventListener('click', async () => {
         const result = await this._api.window.showWarningMessage(
           `Permanently delete ${this._archivedPages.length} page(s) from trash? This cannot be undone.`,
-          { title: 'Delete all' },
+          { title: 'Delete All' },
           { title: 'Cancel' },
         );
-        if (result?.title === 'Delete all') {
+        if (result?.title === 'Delete All') {
           for (const p of this._archivedPages) {
             await this._dataService.permanentlyDeletePage(p.id);
           }
@@ -1438,10 +1438,10 @@ export class CanvasSidebar {
 
     const result = await this._api.window.showWarningMessage(
       `Move "${page.title}" to trash?`,
-      { title: 'Move to trash' },
+      { title: 'Move to Trash' },
       { title: 'Cancel' },
     );
-    if (result?.title !== 'Move to trash') return;
+    if (result?.title !== 'Move to Trash') return;
 
     try {
       await this._dataService.archivePage(pageId);
@@ -1472,7 +1472,7 @@ export class CanvasSidebar {
 
     const result = await this._api.window.showWarningMessage(
       `Move ${ids.length} pages to trash?`,
-      { title: `Move ${ids.length} to trash` },
+      { title: `Move ${ids.length} to Trash` },
       { title: 'Cancel' },
     );
     if (!result?.title?.startsWith('Move')) return;

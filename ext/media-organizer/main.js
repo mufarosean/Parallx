@@ -20086,7 +20086,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   queueHeadActions.style.gap = '6px';
   queueHeadActions.style.alignItems = 'center';
   queueHeadActions.style.marginLeft = 'auto';
-  const stopEditBtn = moEl('button', 'mo-clip-queue-del', { textContent: '\u2715 Stop editing', title: 'Cancel editing this clip (settings stay as-is)' });
+  const stopEditBtn = moEl('button', 'mo-clip-queue-del', { textContent: '\u2715 stop editing', title: 'Cancel editing this clip (settings stay as-is)' });
   stopEditBtn.style.fontSize = '10px';
   stopEditBtn.style.opacity = '0.75';
   stopEditBtn.style.display = 'none';

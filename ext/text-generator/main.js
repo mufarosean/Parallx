@@ -8672,7 +8672,7 @@ function renderSettingsPage(container, parallx) {
   saveRow.style.display = 'flex';
   saveRow.style.alignItems = 'center';
   saveRow.style.marginTop = '8px';
-  const saveBtn = el('button', 'tg-form-save', { text: 'Save settings' });
+  const saveBtn = el('button', 'tg-form-save', { text: 'Save Settings' });
   const savedLabel = el('span', 'tg-form-saved', { text: 'Saved!' });
   saveRow.append(saveBtn, savedLabel);
   form.appendChild(saveRow);
@@ -8975,14 +8975,14 @@ function renderCharacterEditor(container, parallx, input) {
   root.appendChild(genRow);
 
   // ── "show more settings" / collapsed section ──
-  const moreBtn = el('button', 'tg-ce-more-btn', { text: 'Show more settings' });
+  const moreBtn = el('button', 'tg-ce-more-btn', { text: 'Show More Settings' });
   root.appendChild(moreBtn);
   const moreSection = el('div', 'tg-ce-more-section');
   root.appendChild(moreSection);
 
   moreBtn.addEventListener('click', () => {
     const visible = moreSection.classList.toggle('tg-ce-more-section--visible');
-    moreBtn.textContent = visible ? 'Hide more settings' : 'Show more settings';
+    moreBtn.textContent = visible ? 'Hide More Settings' : 'Show More Settings';
   });
 
   // ── More Settings fields ──
@@ -9070,7 +9070,7 @@ function renderCharacterEditor(container, parallx, input) {
   const sandboxBtn = el('button', 'tg-ce-cancel-btn', { html: `${icon('play', 13)} Test in chat` });
   sandboxBtn.title = 'Save then open a fresh chat with this character';
   const savedLabel = el('span', 'tg-ce-saved', { text: 'Saved!' });
-  const saveBtn = el('button', 'tg-ce-save-btn', { text: 'Save character' });
+  const saveBtn = el('button', 'tg-ce-save-btn', { text: 'Save Character' });
   footer.append(cancelBtn, sandboxBtn, savedLabel, saveBtn);
   root.appendChild(footer);
 
@@ -9303,7 +9303,7 @@ function renderChatSettingsPage(container, parallx, input) {
   root.appendChild(generationSection);
 
   const saveRow = el('div', 'tg-cs-save-row');
-  const saveBtn = el('button', 'tg-cs-save-btn', { text: 'Save chat info' });
+  const saveBtn = el('button', 'tg-cs-save-btn', { text: 'Save Chat Info' });
   const savedLabel = el('span', 'tg-cs-saved', { text: 'Saved!' });
   saveRow.append(saveBtn, savedLabel);
   root.appendChild(saveRow);
@@ -9360,7 +9360,7 @@ function renderChatSettingsPage(container, parallx, input) {
       charChipList.appendChild(chip);
     }
 
-    const addBtn = el('button', 'tg-cs-add-btn', { text: '+ Add character' });
+    const addBtn = el('button', 'tg-cs-add-btn', { text: '+ Add Character' });
     addBtn.addEventListener('click', async () => {
       const available = allCharacters.filter((char) => !thread.characters.find((item) => item.file === char.fileName));
       if (available.length === 0) return;
@@ -9492,7 +9492,7 @@ const WRITING_PRESETS = {
 - **Logical Consistency**: Maintain awareness of surroundings and the evolving narrative. Let actions align with the world — boots sinking into mud after a storm, breath fogging in a cold cavern. Keep reactions grounded in environment.`,
   },
   'immersive-rp-unfiltered': {
-    label: 'Immersive RP (unfiltered)',
+    label: 'Immersive RP (Unfiltered)',
     // Expanded, uncensored sibling of immersive-rp: keeps the full sensory /
     // cadence framework and adds a raw-themes clause (mature content, no forced
     // redemption). The source prompt's "speaking mirror" example was abstracted

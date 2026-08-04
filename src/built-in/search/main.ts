@@ -205,7 +205,7 @@ function createSearchView(container: HTMLElement): IDisposable {
   // Toggle replace button
   _toggleReplaceBtn = $('button');
   _toggleReplaceBtn.className = 'search-toggle-replace';
-  _toggleReplaceBtn.title = 'Toggle replace';
+  _toggleReplaceBtn.title = 'Toggle Replace';
   _toggleReplaceBtn.innerHTML = getIcon('toggle-replace')!;
   _toggleReplaceBtn.addEventListener('click', () => {
     _showReplace = !_showReplace;
@@ -283,8 +283,8 @@ function createSearchView(container: HTMLElement): IDisposable {
 
   const filtersToggle = $('button');
   filtersToggle.className = 'search-filters-toggle';
-  filtersToggle.textContent = '⋯ Files to include/exclude';
-  filtersToggle.title = 'Toggle search details';
+  filtersToggle.textContent = '⋯ files to include/exclude';
+  filtersToggle.title = 'Toggle Search Details';
 
   const filtersBody = $('div');
   filtersBody.className = 'search-filters-body';
@@ -293,7 +293,7 @@ function createSearchView(container: HTMLElement): IDisposable {
   const includeInput = $('input');
   includeInput.type = 'text';
   includeInput.className = 'search-input search-filter-input';
-  includeInput.placeholder = 'Files to include (e.g. *.ts, src/**)';
+  includeInput.placeholder = 'files to include (e.g. *.ts, src/**)';
   includeInput.value = _options.includePattern;
   includeInput.addEventListener('input', () => {
     _options.includePattern = includeInput.value;
@@ -304,7 +304,7 @@ function createSearchView(container: HTMLElement): IDisposable {
   const excludeInput = $('input');
   excludeInput.type = 'text';
   excludeInput.className = 'search-input search-filter-input';
-  excludeInput.placeholder = 'Files to exclude (e.g. *.min.js)';
+  excludeInput.placeholder = 'files to exclude (e.g. *.min.js)';
   excludeInput.value = _options.excludePattern;
   excludeInput.addEventListener('input', () => {
     _options.excludePattern = excludeInput.value;

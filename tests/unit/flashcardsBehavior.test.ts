@@ -367,13 +367,13 @@ describe('editor pane', () => {
     await settle();
 
     // Open the add form, fill it, save.
-    const addToggle = [...pane.querySelectorAll('button')].find((b) => b.textContent?.includes('Add card'))!;
+    const addToggle = [...pane.querySelectorAll('button')].find((b) => b.textContent?.includes('Add Card'))!;
     addToggle.click();
     const front = pane.querySelector('.fc-form textarea') as HTMLTextAreaElement;
     const backTa = pane.querySelectorAll('.fc-form textarea')[1] as HTMLTextAreaElement;
     front.value = 'Mack model estimates what?';
     backTa.value = 'The standard error of chain-ladder reserves.';
-    const save = [...pane.querySelectorAll('.fc-form button')].find((b) => b.textContent === 'Add card') as HTMLButtonElement;
+    const save = [...pane.querySelectorAll('.fc-form button')].find((b) => b.textContent === 'Add Card') as HTMLButtonElement;
     save.click();
     await settle();
 
@@ -395,7 +395,7 @@ describe('study flow', () => {
     expect(pane.querySelector('.fc-study__front')).toBeTruthy();
     expect(pane.querySelector('.fc-study__back')).toBeNull();
 
-    (([...pane.querySelectorAll('button')].find((b) => b.textContent === 'Show answer')) as HTMLButtonElement).click();
+    (([...pane.querySelectorAll('button')].find((b) => b.textContent === 'Show Answer')) as HTMLButtonElement).click();
     await settle(2);
     expect(pane.querySelector('.fc-study__back')).toBeTruthy();
     // Grade buttons carry interval previews.
@@ -426,13 +426,13 @@ describe('AI generation flow', () => {
     await settle();
 
     // Load the canvas source (quick pick auto-selects the only page).
-    const canvasBtn = [...pane.querySelectorAll('button')].find((b) => b.textContent?.includes('Canvas page')) as HTMLButtonElement;
+    const canvasBtn = [...pane.querySelectorAll('button')].find((b) => b.textContent?.includes('Canvas Page')) as HTMLButtonElement;
     canvasBtn.click();
     await settle();
     expect(pane.querySelector('.fc-src-status')!.textContent).toContain('Canvas: Exam 7 Notes');
 
     // Generate — the lm fake returns two fenced JSON cards.
-    const genBtn = [...pane.querySelectorAll('button')].find((b) => b.textContent?.includes('Generate cards')) as HTMLButtonElement;
+    const genBtn = [...pane.querySelectorAll('button')].find((b) => b.textContent?.includes('Generate Cards')) as HTMLButtonElement;
     genBtn.click();
     await settle();
 
@@ -445,7 +445,7 @@ describe('AI generation flow', () => {
     // Edit one card, drop nothing, import into the existing deck.
     const firstFront = rows[0].querySelector('textarea') as HTMLTextAreaElement;
     firstFront.value = 'EDITED: What does the BF method blend?';
-    const importBtn = [...pane.querySelectorAll('button')].find((b) => b.textContent === 'Import cards') as HTMLButtonElement;
+    const importBtn = [...pane.querySelectorAll('button')].find((b) => b.textContent === 'Import Cards') as HTMLButtonElement;
     importBtn.click();
     await settle();
 
@@ -543,7 +543,7 @@ describe('deck deletion via sidebar context menu', () => {
     // Confirm modal is not exposed in the harness → falls back to the warning
     // action, which the harness auto-confirms. Click "Delete deck".
     const del = [...document.querySelectorAll('.fake-context-menu__item')]
-      .find((b) => b.textContent === 'Delete deck') as HTMLButtonElement;
+      .find((b) => b.textContent === 'Delete Deck') as HTMLButtonElement;
     expect(del).toBeTruthy();
     del.click();
     await settle();

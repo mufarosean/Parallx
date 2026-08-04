@@ -425,7 +425,7 @@ export class ChatTokenStatusBar extends Disposable {
 
     // ── Header: "Context Window" ──
     const header = $('div.parallx-token-popup-header');
-    header.textContent = 'Context window';
+    header.textContent = 'Context Window';
     popup.appendChild(header);
 
     // ── Summary line ──
@@ -457,13 +457,13 @@ export class ChatTokenStatusBar extends Disposable {
     const subs = breakdown.subBreakdowns;
 
     this._renderSection(popup, 'System', [
-      { label: 'System instructions', tokens: cats.systemInstructions, total, subItems: subs?.systemInstructions },
-      { label: 'Tool definitions', tokens: cats.toolDefinitions, total, subItems: subs?.toolDefinitions },
+      { label: 'System Instructions', tokens: cats.systemInstructions, total, subItems: subs?.systemInstructions },
+      { label: 'Tool Definitions', tokens: cats.toolDefinitions, total, subItems: subs?.toolDefinitions },
     ]);
 
-    this._renderSection(popup, 'User context', [
+    this._renderSection(popup, 'User Context', [
       { label: 'Messages', tokens: cats.messages, total },
-      { label: 'Tool results', tokens: cats.toolResults, total },
+      { label: 'Tool Results', tokens: cats.toolResults, total },
       { label: 'Files', tokens: cats.files, total, subItems: subs?.files },
     ]);
 

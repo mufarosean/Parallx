@@ -285,7 +285,7 @@ const SECTIONS = [
   // rendered inside the Plan / Settings wrappers as tabs.
   { id: 'budgets',      title: 'Budgets',      icon: 'target',           commandId: 'budget.openBudgets',      blurb: 'Per-category monthly limits with alerts and rollover.', nav: false },
   { id: 'recurring',    title: 'Recurring',    icon: 'repeat',           commandId: 'budget.openRecurring',    blurb: 'Detected subscriptions and recurring bills with upcoming-due dates.', nav: false },
-  { id: 'cashflow',     title: 'Cash Flow',    icon: 'trending-up',      commandId: 'budget.openCashFlow',     blurb: 'Monthly income vs expenses with savings rate over time.', nav: false },
+  { id: 'cashflow',     title: 'Cash Flow',    icon: 'trending-up',      commandId: 'budget.openCashFlow',     blurb: 'Monthly Income vs Expenses with Savings Rate Over Time.', nav: false },
   { id: 'reports',      title: 'Reports',      icon: 'pie-chart',        commandId: 'budget.openReports',      blurb: 'Top merchants, category breakdown, and trends over a selected window.', nav: false },
   { id: 'rules',        title: 'Rules',        icon: 'filter',           commandId: 'budget.openRules',        blurb: 'Merchant→category rules. Auto-learned from your overrides; manually editable.', nav: false },
   { id: 'reconcile',    title: 'Reconcile',    icon: 'check-circle',     commandId: 'budget.openReconcile',    blurb: 'Compare your real statement balance against derived activity.', nav: false },
@@ -1723,7 +1723,7 @@ function renderSidebarNav(container, api) {
     syncBtn.appendChild(ic);
   }
   const syncLabel = document.createElement('span');
-  syncLabel.textContent = 'Sync now';
+  syncLabel.textContent = 'Sync Now';
   syncBtn.appendChild(syncLabel);
   syncBtn.addEventListener('click', () => {
     api.commands.executeCommand('budget.sync').catch(err => {
@@ -2403,7 +2403,7 @@ function renderTransactionsSection(body, api) {
     iconHtml: makeIcon(api, 'refresh-cw', 12),
     onClick: () => void refresh(),
   }));
-  toolbar.appendChild(makeButton('Sync now', {
+  toolbar.appendChild(makeButton('Sync Now', {
     primary: true,
     iconHtml: makeIcon(api, 'refresh-cw', 12),
     onClick: () => api.commands.executeCommand('budget.sync').finally(() => refresh()),
@@ -2754,12 +2754,12 @@ function renderSyncLogSection(body, api) {
     iconHtml: makeIcon(api, 'refresh-cw', 12),
     onClick: () => void refresh(),
   }));
-  toolbar.appendChild(makeButton('Sync now', {
+  toolbar.appendChild(makeButton('Sync Now', {
     primary: true,
     iconHtml: makeIcon(api, 'refresh-cw', 12),
     onClick: () => api.commands.executeCommand('budget.sync').finally(() => refresh()),
   }));
-  toolbar.appendChild(makeButton('Reprocess history', {
+  toolbar.appendChild(makeButton('Reprocess History', {
     onClick: () => api.commands.executeCommand('budget.reprocessHistory').finally(() => refresh()),
   }));
   toolbar.appendChild(makeButton('Export CSV', {
@@ -2796,7 +2796,7 @@ function renderSyncLogSection(body, api) {
         val.style.color = 'var(--vscode-charts-red, #f87171)';
       }
     } else {
-      val.textContent = 'No sync recorded yet';
+      val.textContent = 'No Sync Recorded Yet';
     }
     const sub = document.createElement('div'); sub.className = 'budget-card-sub';
     sub.textContent = lastSyncedAt ? `Cursor: ${lastSyncedAt}` : 'No cursor. The first sync will fetch the configured window.';
@@ -2844,7 +2844,7 @@ function renderCategoriesSection(body, api) {
     iconHtml: makeIcon(api, 'refresh-cw', 12),
     onClick: () => void refresh(),
   }));
-  toolbar.appendChild(makeButton('Add category', {
+  toolbar.appendChild(makeButton('Add Category', {
     primary: true,
     iconHtml: makeIcon(api, 'plus', 12),
     onClick: async () => {
@@ -2992,7 +2992,7 @@ function renderDashboardSection(body, api) {
   const lastSyncMeta = document.createElement('span');
   lastSyncMeta.className = 'budget-toolbar-meta';
   toolbar.appendChild(lastSyncMeta);
-  toolbar.appendChild(makeButton('Sync now', {
+  toolbar.appendChild(makeButton('Sync Now', {
     primary: true,
     iconHtml: makeIcon(api, 'refresh-cw', 12),
     onClick: () => api.commands.executeCommand('budget.sync').finally(() => refresh()),
@@ -3133,7 +3133,7 @@ function renderDashboardSection(body, api) {
       </ol>
       <div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;"></div>`;
     const actions = card.lastElementChild;
-    const syncBtn = makeButton('Run first sync', {
+    const syncBtn = makeButton('Run First Sync', {
       primary: true,
       onClick: async () => {
         syncBtn.setAttribute('disabled', 'true');
@@ -4859,8 +4859,8 @@ async function buildNeedsAttention(api, scope) {
     if (r && Number(r.n) > 0) {
       items.push({
         kind: 'warn',
-        title: `${r.n} untyped transactions`,
-        sub: `${fmtMoney(r.sum_cents)} pending classification`,
+        title: `${r.n} Untyped Transactions`,
+        sub: `${fmtMoney(r.sum_cents)} Pending Classification`,
         action: 'Reclassify',
         onClick: () => api.commands.executeCommand('budget.reclassifyUntyped').catch(() => {}),
       });
@@ -4873,9 +4873,9 @@ async function buildNeedsAttention(api, scope) {
     if (r && Number(r.n) > 0) {
       items.push({
         kind: 'warn',
-        title: `${r.n} for review`,
+        title: `${r.n} For Review`,
         sub: 'AI flagged these for confirmation',
-        action: 'Open review',
+        action: 'Open Review',
         onClick: () => {
           _navState.txFilter = { monthKey: scope.monthKey, type: 'all', status: 'review' };
           api.commands.executeCommand('budget.openTransactions').catch(() => {});
@@ -4918,7 +4918,7 @@ async function buildNeedsAttention(api, scope) {
       } else if (pct >= 0.8) {
         items.push({
           kind: 'warn',
-          title: `${r.name} near budget`,
+          title: `${r.name} Near Budget`,
           sub: `${fmtMoney(spend)} of ${fmtMoney(limit)} (${Math.round(pct * 100)}%)`,
           color: r.color,
           action: 'View',
@@ -5333,7 +5333,7 @@ function renderAccountsSection(body, api) {
   }));
   const spacer = document.createElement('div'); spacer.className = 'spacer'; toolbar.appendChild(spacer);
   toolbar.appendChild(makeButton('Refresh', { iconHtml: makeIcon(api, 'refresh-cw', 12), onClick: () => void refresh() }));
-  toolbar.appendChild(makeButton('Sync now', {
+  toolbar.appendChild(makeButton('Sync Now', {
     primary: true,
     iconHtml: makeIcon(api, 'refresh-cw', 12),
     onClick: () => api.commands.executeCommand('budget.sync').finally(() => refresh()),
@@ -5958,7 +5958,7 @@ function renderBudgetsSection(body, api) {
   const picker = makeMonthPicker(monthKey, (k) => { monthKey = k; void refresh(); });
   toolbar.appendChild(picker.el);
   const spacer = document.createElement('div'); spacer.className = 'spacer'; toolbar.appendChild(spacer);
-  toolbar.appendChild(makeButton('Copy from previous month', {
+  toolbar.appendChild(makeButton('Copy from Previous Month', {
     onClick: async () => {
       const prev = monthShift(monthKey, -1);
       const prevRows = await db.all('SELECT category_id, limit_cents FROM budgets WHERE month_key=?', [prev]);
@@ -5977,7 +5977,7 @@ function renderBudgetsSection(body, api) {
       await refresh();
     },
   }));
-  toolbar.appendChild(makeButton('Plan next month', {
+  toolbar.appendChild(makeButton('Plan Next Month', {
     primary: true,
     onClick: () => {
       monthKey = monthShift(monthRange().key, 1);
@@ -6046,7 +6046,7 @@ function renderBudgetsSection(body, api) {
         `(weighted toward recent) with detected recurring commitments, rounded up to the nearest $5. ` +
         `Click a suggestion to set it as the limit. `
       ));
-      const applyAll = makeButton('Apply all suggestions', {
+      const applyAll = makeButton('Apply All Suggestions', {
         onClick: async () => {
           let applied = 0;
           for (const r of rows) {
@@ -6075,10 +6075,10 @@ function renderBudgetsSection(body, api) {
     } else {
       planNote.style.display = 'none';
       const remaining = totalLimit - totalSpent;
-      summary.appendChild(makeCard('Budget Total', fmtMoney(totalLimit), `${rows.filter(r => r.effective_limit_cents > 0).length} categories with a limit`));
-      summary.appendChild(makeCard('Expenses So Far', fmtMoney(totalSpent), totalLimit > 0 ? Math.round((totalSpent / totalLimit) * 100) + '% of budget' : ''));
-      summary.appendChild(makeCard('Remaining', fmtLedger(remaining), remaining < 0 ? 'Over budget' : ''));
-      summary.appendChild(makeCard('Alerts', String(overCount + nearCount), `${overCount} over, ${nearCount} near`));
+      summary.appendChild(makeCard('Budget Total', fmtMoney(totalLimit), `${rows.filter(r => r.effective_limit_cents > 0).length} Categories with a Limit`));
+      summary.appendChild(makeCard('Expenses So Far', fmtMoney(totalSpent), totalLimit > 0 ? Math.round((totalSpent / totalLimit) * 100) + '% of Budget' : ''));
+      summary.appendChild(makeCard('Remaining', fmtLedger(remaining), remaining < 0 ? 'Over Budget' : ''));
+      summary.appendChild(makeCard('Alerts', String(overCount + nearCount), `${overCount} Over, ${nearCount} Near`));
     }
 
     // Even-pace tick position for the running month's bullet bars.
@@ -6226,7 +6226,7 @@ function renderRecurringSection(body, api) {
   let showCancelled = false;
 
   const toolbar = document.createElement('div'); toolbar.className = 'budget-toolbar';
-  toolbar.appendChild(makeButton('Detect now', {
+  toolbar.appendChild(makeButton('Detect Now', {
     primary: true,
     onClick: async () => {
       try {
@@ -6238,7 +6238,7 @@ function renderRecurringSection(body, api) {
       }
     },
   }));
-  const cancelToggle = makeButton('Show cancelled', { onClick: () => { showCancelled = !showCancelled; cancelToggle.setAttribute('aria-pressed', String(showCancelled)); void refresh(); } });
+  const cancelToggle = makeButton('Show Cancelled', { onClick: () => { showCancelled = !showCancelled; cancelToggle.setAttribute('aria-pressed', String(showCancelled)); void refresh(); } });
   cancelToggle.setAttribute('aria-pressed', 'false');
   toolbar.appendChild(cancelToggle);
   const spacer = document.createElement('div'); spacer.className = 'spacer'; toolbar.appendChild(spacer);
@@ -6343,7 +6343,7 @@ function renderRecurringSection(body, api) {
 
 function renderRulesSection(body, api) {
   const toolbar = document.createElement('div'); toolbar.className = 'budget-toolbar';
-  toolbar.appendChild(makeButton('+ New rule', {
+  toolbar.appendChild(makeButton('+ New Rule', {
     primary: true,
     onClick: () => { showEditor(null); },
   }));
@@ -6434,7 +6434,7 @@ function renderRulesSection(body, api) {
        ORDER BY r.active DESC, r.priority DESC, r.hits DESC`);
 
     if (rules.length === 0) {
-      tableWrap.appendChild(emptyState('No rules yet. Click "+ New rule" or override a transaction\'s category to learn one automatically.'));
+      tableWrap.appendChild(emptyState('No rules yet. Click "+ New Rule" or override a transaction\'s category to learn one automatically.'));
       return;
     }
 
@@ -6550,8 +6550,8 @@ function renderReconcileSection(body, api) {
     ) || { net_out: 0 };
     const derived = baseBalance - (Number(flow.net_out) || 0);
 
-    summary.appendChild(makeCard('Latest Snapshot', latestSnap ? fmtMoney(latestSnap.balance_cents) : '—', latestSnap ? `As of ${latestSnap.snapshot_date}` : 'No snapshots'));
-    summary.appendChild(makeCard('Derived Balance', fmtMoney(derived), lastRecon ? `Since ${lastRecon.reconciled_at}` : 'All time'));
+    summary.appendChild(makeCard('Latest Snapshot', latestSnap ? fmtMoney(latestSnap.balance_cents) : '—', latestSnap ? `As of ${latestSnap.snapshot_date}` : 'No Snapshots'));
+    summary.appendChild(makeCard('Derived Balance', fmtMoney(derived), lastRecon ? `Since ${lastRecon.reconciled_at}` : 'All Time'));
     if (latestSnap) {
       const off = Number(latestSnap.balance_cents) - derived;
       summary.appendChild(makeCard('Snapshot vs Derived', fmtMoney(off), Math.abs(off) < 100 ? 'Within $1' : 'Investigate'));

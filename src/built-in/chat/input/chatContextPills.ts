@@ -269,7 +269,7 @@ export class ChatContextPills extends Disposable {
 
     const headerTop = $('div.parallx-chat-context-menu-header-top');
     const titleWrap = $('div.parallx-chat-context-menu-header-copy');
-    const title = $('div.parallx-chat-context-menu-title', 'Sources for next turn');
+    const title = $('div.parallx-chat-context-menu-title', 'Sources For Next Turn');
     const summary = $('div.parallx-chat-context-menu-summary', `${sourceLabel}${excludeLabel}`);
     titleWrap.appendChild(title);
     titleWrap.appendChild(summary);
