@@ -1265,12 +1265,19 @@ html, body {
   transition-delay: 0s;
 }
 
+/* Sash centering: the visual 5px seam is entirely the TRAILING card's
+   left margin (or the LEADING card's bottom margin) — see the seam
+   arithmetic note. The grid boundary the sash straddles therefore sits at
+   the EDGE of the gap, not its middle: symmetric ±2px margins parked the
+   grab bar flush against one card. The asymmetric margins below (net −4,
+   same zero layout footprint) slide the 4px bar half a seam over so it
+   rides the middle of the gap. */
 .grid-sash-vertical {
   width: 4px;
   min-width: 4px;
   cursor: col-resize;
-  margin-left: -2px;
-  margin-right: -2px;
+  margin-left: 0.5px;
+  margin-right: -4.5px;
   /* Floating-panel layout owns the seam between parts (the window gap + each
      card's own border). The sash stays invisible at rest — no resting line —
      and only lights up on hover/drag. */
@@ -1281,8 +1288,8 @@ html, body {
   height: 4px;
   min-height: 4px;
   cursor: row-resize;
-  margin-top: -2px;
-  margin-bottom: -2px;
+  margin-top: -4.5px;
+  margin-bottom: 0.5px;
   background: transparent;
 }
 
