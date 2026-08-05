@@ -1245,63 +1245,65 @@ html, body {
   margin-right: 6px;
 }
 
-/* ── Grid sash (resize handles) ── */
+/* ── Grid sash (resize handles) ──
+   Geometry: the visual 5px seam is entirely the TRAILING card's left margin
+   (or the LEADING card's bottom margin) — see the seam arithmetic note — so
+   the grid boundary sits at the EDGE of the gap. The one-sided negative
+   margins slide the 5px-wide sash to cover the seam exactly (net −5 keeps a
+   zero layout footprint; the grid model's math never sees it).
+   Visual: the highlight is a thin ::after LINE centered in the seam, not a
+   slab. A near-gap-width slab can never READ as centered — it fills the gap
+   and subpixel rounding decides which card it touches; a line with visible
+   symmetric space on both sides is what the eye accepts as centered. */
 .grid-sash {
+  position: relative;
   background: transparent;
   flex-shrink: 0;
   z-index: 10;
+}
+.grid-sash::after {
+  content: '';
+  position: absolute;
+  background: transparent;
   transition: background-color var(--px-dur-base) var(--px-ease);
 }
 
-.grid-sash:hover {
-  background: var(--px-border-strong);
-  transition-delay: 0.15s;
-}
-
-/* Only while actively dragging does the handle glow accent — clear feedback
-   that you're resizing, gone the instant you release. */
-.grid-sash.active {
-  background: var(--px-accent);
-  transition-delay: 0s;
-}
-
-/* Sash centering: the visual 5px seam is entirely the TRAILING card's
-   left margin (or the LEADING card's bottom margin) — see the seam
-   arithmetic note. The grid boundary the sash straddles therefore sits at
-   the EDGE of the gap, not its middle: symmetric ±2px margins parked the
-   grab bar flush against one card. The asymmetric margins below (net −4,
-   same zero layout footprint) slide the 4px bar half a seam over so it
-   rides the middle of the gap. */
 .grid-sash-vertical {
-  width: 4px;
-  min-width: 4px;
+  width: 5px;
+  min-width: 5px;
   cursor: col-resize;
-  margin-left: 0.5px;
-  margin-right: -4.5px;
-  /* Floating-panel layout owns the seam between parts (the window gap + each
-     card's own border). The sash stays invisible at rest — no resting line —
-     and only lights up on hover/drag. */
-  background: transparent;
+  margin-left: 0;
+  margin-right: -5px;
+}
+.grid-sash-vertical::after {
+  top: 0; bottom: 0;
+  left: 50%; width: 2px;
+  transform: translateX(-50%);
 }
 
 .grid-sash-horizontal {
-  height: 4px;
-  min-height: 4px;
+  height: 5px;
+  min-height: 5px;
   cursor: row-resize;
-  margin-top: -4.5px;
-  margin-bottom: 0.5px;
-  background: transparent;
+  margin-top: -5px;
+  margin-bottom: 0;
+}
+.grid-sash-horizontal::after {
+  left: 0; right: 0;
+  top: 50%; height: 2px;
+  transform: translateY(-50%);
 }
 
-/* Hover / active overrides the resting 1px line with the full-width highlight */
-.grid-sash-vertical:hover,
-.grid-sash-vertical.active {
-  background: var(--vscode-sash-hoverBorder);
+/* Invisible at rest — no resting line; the seam itself is the affordance. */
+.grid-sash:hover::after {
+  background: var(--px-border-strong);
+  transition-delay: 0.15s;
 }
-
-.grid-sash-horizontal:hover,
-.grid-sash-horizontal.active {
-  background: var(--vscode-sash-hoverBorder);
+/* Only while actively dragging does the line glow accent — clear feedback
+   that you're resizing, gone the instant you release. */
+.grid-sash.active::after {
+  background: var(--px-accent);
+  transition-delay: 0s;
 }
 
 /* ── Sash directional cursors (VS Code parity: SashState) ── */

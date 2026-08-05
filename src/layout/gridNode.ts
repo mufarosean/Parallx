@@ -166,13 +166,15 @@ export class GridBranchNode extends Disposable {
     if (this.orientation === Orientation.Horizontal) {
       sash.classList.add('grid-sash-vertical');
       sash.style.cursor = 'col-resize';
-      sash.style.width = '4px';
-      sash.style.minWidth = '4px';
+      // Matches the 5px card seam exactly — the CSS margins slide it over the
+      // gap, and the hover line paints centered inside it (workbench.css).
+      sash.style.width = '5px';
+      sash.style.minWidth = '5px';
     } else {
       sash.classList.add('grid-sash-horizontal');
       sash.style.cursor = 'row-resize';
-      sash.style.height = '4px';
-      sash.style.minHeight = '4px';
+      sash.style.height = '5px';
+      sash.style.minHeight = '5px';
     }
 
     sash.style.flexShrink = '0';
