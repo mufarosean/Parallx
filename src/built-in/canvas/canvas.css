@@ -4742,3 +4742,34 @@
   background-size: 200% 100%;
   animation: canvas-ai-shimmer-sweep var(--px-dur-slow) var(--px-ease-out) 2;
 }
+
+/* ── Missing-page state ──────────────────────────────────────────────────────
+   A page id the canvas cannot resolve renders THIS, never a blank editable
+   page — an empty editor bound to a phantom id reads as data loss and
+   accepts writes nothing will ever read. */
+.canvas-page-missing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--px-space-2);
+  height: 100%;
+  padding: var(--px-space-8);
+  text-align: center;
+}
+.canvas-page-missing__title {
+  font-size: var(--px-text-lg);
+  font-weight: 600;
+  color: var(--px-text);
+}
+.canvas-page-missing__hint {
+  max-width: 460px;
+  font-size: var(--px-text-sm);
+  color: var(--px-text-muted);
+  line-height: var(--px-leading-base);
+}
+.canvas-page-missing__id {
+  font-family: var(--px-font-mono, monospace);
+  font-size: var(--px-text-xs);
+  color: var(--px-text-faint);
+}

@@ -51,24 +51,92 @@ export const PX_ACCENTS: PxAccent[] = [
 
 const DEFAULT_STATE: PxAppearanceState = { mode: 'dark', base: 'slate', accent: 'steel' };
 
+function normalizeAppearance(parsed: Partial<PxAppearanceState> | null | undefined): PxAppearanceState {
+  if (!parsed || typeof parsed !== 'object') return { ...DEFAULT_STATE };
+  return {
+    mode: parsed.mode === 'light' ? 'light' : 'dark',
+    base: (parsed.base === 'warm' || parsed.base === 'ember') ? parsed.base : 'slate',
+    accent: typeof parsed.accent === 'string' ? parsed.accent : 'steel',
+    customHue: typeof parsed.customHue === 'number' ? parsed.customHue : undefined,
+  };
+}
+
 export function readAppearance(): PxAppearanceState {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<PxAppearanceState>;
-      return {
-        mode: parsed.mode === 'light' ? 'light' : 'dark',
-        base: (parsed.base === 'warm' || parsed.base === 'ember') ? parsed.base : 'slate',
-        accent: typeof parsed.accent === 'string' ? parsed.accent : 'steel',
-        customHue: typeof parsed.customHue === 'number' ? parsed.customHue : undefined,
-      };
-    }
+    if (raw) return normalizeAppearance(JSON.parse(raw) as Partial<PxAppearanceState>);
   } catch { /* ignore */ }
   return { ...DEFAULT_STATE };
 }
 
+// ── Durable persistence ─────────────────────────────────────────────────────
+// localStorage is the FAST layer: synchronous, applied before first paint so
+// launch never flashes the default accent. But Chromium flushes localStorage
+// to disk LAZILY — quit or kill the app shortly after picking an accent and
+// the write is silently lost, which is the "sometimes my accent doesn't
+// stick" bug. The appearance file under data/ is the DURABLE layer (a
+// main-process fs write that completes in milliseconds). Every write goes to
+// both, stamped; boot applies the fast layer instantly, then heals whichever
+// layer is older once the durable read returns.
+
+type StorageBridgeShape = {
+  readJson(p: string): Promise<{ data?: unknown }>;
+  writeJson(p: string, d: unknown): Promise<unknown>;
+};
+
+function durableTarget(): { bridge: StorageBridgeShape; file: string } | null {
+  const w = window as unknown as {
+    parallxElectron?: { storage?: StorageBridgeShape; appPath?: string };
+  };
+  const bridge = w.parallxElectron?.storage;
+  const appPath = w.parallxElectron?.appPath;
+  if (!bridge || !appPath) return null;
+  return { bridge, file: `${appPath}/data/appearance.json` };
+}
+
 export function writeAppearance(state: PxAppearanceState): void {
-  try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch { /* ignore */ }
+  const stamped = { ...state, savedAt: Date.now() };
+  try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(stamped)); } catch { /* ignore */ }
+  const t = durableTarget();
+  if (t) { void t.bridge.writeJson(t.file, stamped).catch(() => { /* fast layer still holds */ }); }
+}
+
+/**
+ * Reconcile the two persistence layers after boot: newer `savedAt` wins,
+ * the loser is overwritten, and the applied appearance is corrected when
+ * the fast layer turned out to be stale. Call once, after
+ * `applySavedAppearance()` — it is async and repaints at most once.
+ */
+export async function healAppearanceFromDurable(): Promise<void> {
+  const t = durableTarget();
+  if (!t) return;
+  try {
+    let localStamp = 0;
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) as { savedAt?: number } : null;
+      localStamp = typeof parsed?.savedAt === 'number' ? parsed.savedAt : 0;
+    } catch { /* treat as unstamped */ }
+
+    const res = await t.bridge.readJson(t.file);
+    const durableRaw = (res?.data ?? null) as (Partial<PxAppearanceState> & { savedAt?: number }) | null;
+    if (!durableRaw) {
+      // First run with the durable layer: seed it from the current state.
+      void t.bridge.writeJson(t.file, { ...readAppearance(), savedAt: localStamp || Date.now() }).catch(() => {});
+      return;
+    }
+    const durableStamp = typeof durableRaw.savedAt === 'number' ? durableRaw.savedAt : 0;
+
+    if (durableStamp > localStamp) {
+      // The fs write survived a kill the localStorage flush didn't.
+      const durable = normalizeAppearance(durableRaw);
+      try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...durable, savedAt: durableStamp })); } catch { /* ignore */ }
+      applyAppearance(durable);
+    } else if (localStamp > durableStamp) {
+      // Rarer inverse (kill mid-IPC): re-seed the file from the fast layer.
+      void t.bridge.writeJson(t.file, { ...readAppearance(), savedAt: localStamp }).catch(() => {});
+    }
+  } catch { /* stay on the fast-layer value */ }
 }
 
 // ── Saved looks (user-created themes) ───────────────────────────────────────

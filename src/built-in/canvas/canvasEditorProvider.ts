@@ -448,6 +448,29 @@ class CanvasEditorPane implements IDisposable {
       this._pageChrome.currentPage = null;
     }
 
+    // A page that cannot be resolved must FAIL LOUDLY, never render as an
+    // innocent empty editor. The 2026-08-06 id-namespacing bug taught the
+    // lesson: a blank editable page bound to a phantom id is
+    // indistinguishable from data loss (the user's real row was intact the
+    // whole time) and invites typing into a key nothing will ever read.
+    // No editor is created here, so nothing can write.
+    if (!this._pageChrome.currentPage) {
+      const missing = $('div.canvas-page-missing');
+      const title = $('div.canvas-page-missing__title');
+      title.textContent = 'This page could not be found';
+      missing.appendChild(title);
+      const hint = $('div.canvas-page-missing__hint');
+      hint.textContent =
+        'The page may have been deleted, or this tab references an id the canvas cannot resolve. '
+        + 'Nothing has been changed: if the page exists, opening it from the sidebar will show it intact.';
+      missing.appendChild(hint);
+      const idLine = $('div.canvas-page-missing__id');
+      idLine.textContent = `page id: ${this._pageId || '(empty)'}`;
+      missing.appendChild(idLine);
+      this._editorContainer.appendChild(missing);
+      return;
+    }
+
     // ── Restore tab label + icon on the input ──
     // On workspace restore the deserializer intentionally omits iconHtml
     // (it's a view artefact, not persisted). Re-seed it now from the loaded

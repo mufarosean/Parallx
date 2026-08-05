@@ -5,9 +5,23 @@ import {
   applyAppearance,
   readAppearance,
   writeAppearance,
+  healAppearanceFromDurable,
   savePreset,
   type PxAppearanceState,
 } from '../../src/theme/pxAppearance';
+
+type BridgeCall = { file: string; data: Record<string, unknown> };
+function installStorageBridge(durable: Record<string, unknown> | null): { writes: BridgeCall[] } {
+  const writes: BridgeCall[] = [];
+  (window as any).parallxElectron = {
+    appPath: '/app',
+    storage: {
+      readJson: async () => ({ data: durable }),
+      writeJson: async (file: string, data: Record<string, unknown>) => { writes.push({ file, data }); return {}; },
+    },
+  };
+  return { writes };
+}
 
 beforeEach(() => {
   window.localStorage.clear();
@@ -68,5 +82,61 @@ describe('savePreset — carries mode', () => {
   it('persists the mode into the saved look', () => {
     const preset = savePreset('Paper', { mode: 'light', base: 'warm', accent: 'sage' });
     expect(preset.mode).toBe('light');
+  });
+});
+
+// ─── Durable persistence (2026-08-06) ───────────────────────────────────────
+//
+// Regression pin for "my accent sometimes doesn't stick": Chromium flushes
+// localStorage lazily, so a quit shortly after picking an accent lost the
+// write. Every write now lands in BOTH layers with a savedAt stamp, and boot
+// heals whichever layer is older.
+
+describe('appearance durable layer', () => {
+  afterEach(() => { delete (window as any).parallxElectron; });
+
+  it('writeAppearance stamps savedAt and mirrors to the durable file', () => {
+    const { writes } = installStorageBridge(null);
+    writeAppearance({ mode: 'dark', base: 'slate', accent: 'amber' });
+    expect(writes).toHaveLength(1);
+    expect(writes[0].file).toBe('/app/data/appearance.json');
+    expect(writes[0].data.accent).toBe('amber');
+    expect(typeof writes[0].data.savedAt).toBe('number');
+    const raw = JSON.parse(window.localStorage.getItem('px-appearance') ?? '{}');
+    expect(typeof raw.savedAt).toBe('number');
+  });
+
+  it('heal applies the durable state when it is newer (the lost-flush case)', async () => {
+    window.localStorage.setItem('px-appearance',
+      JSON.stringify({ mode: 'dark', base: 'slate', accent: 'steel', savedAt: 100 }));
+    installStorageBridge({ mode: 'dark', base: 'slate', accent: 'amber', savedAt: 200 });
+    await healAppearanceFromDurable();
+    expect(readAppearance().accent).toBe('amber');
+  });
+
+  it('heal re-seeds the file when the fast layer is newer (kill mid-IPC)', async () => {
+    window.localStorage.setItem('px-appearance',
+      JSON.stringify({ mode: 'dark', base: 'slate', accent: 'coral', savedAt: 300 }));
+    const { writes } = installStorageBridge({ mode: 'dark', base: 'slate', accent: 'steel', savedAt: 100 });
+    await healAppearanceFromDurable();
+    expect(readAppearance().accent).toBe('coral');
+    expect(writes).toHaveLength(1);
+    expect(writes[0].data.accent).toBe('coral');
+  });
+
+  it('heal seeds the durable file on first run and leaves the applied state alone', async () => {
+    window.localStorage.setItem('px-appearance',
+      JSON.stringify({ mode: 'light', base: 'warm', accent: 'moss', savedAt: 400 }));
+    const { writes } = installStorageBridge(null);
+    await healAppearanceFromDurable();
+    expect(readAppearance().accent).toBe('moss');
+    expect(writes).toHaveLength(1);
+    expect(writes[0].data.accent).toBe('moss');
+  });
+
+  it('no bridge (browser/test context): write and heal are safe no-ops beyond localStorage', async () => {
+    writeAppearance({ mode: 'dark', base: 'slate', accent: 'iris' });
+    await healAppearanceFromDurable();
+    expect(readAppearance().accent).toBe('iris');
   });
 });
