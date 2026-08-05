@@ -841,9 +841,10 @@ html, body {
    darker "window" frame, so the app reads as crafted panels instead of flush
    VS Code tiles. Only `.part-content` (inside each part) insets, so the part
    containers — and the JS-positioned resize sashes that track them — are
-   untouched. Tunable: the 5px margin (gap) and the radius.
+   untouched. Tunable: --px-seam (the gap, declared just below; the editor's
+   TAB_STRIP_TOP_GAP constant must match it) and the radius.
    ════════════════════════════════════════════════════════════════════════ */
-.workbench-middle { background: var(--px-window); }
+.workbench-middle { background: var(--px-window); --px-seam: 8px; }
 
 /* The chrome rails/bars become the window tone; content floats on them. */
 .part-workbench-parts-titlebar,
@@ -877,7 +878,7 @@ html, body {
    seam arithmetic note below). Right margin 0 matches the editor pieces;
    the :last-child variant restores it when the aux bar is hidden. */
 .part-workbench-parts-panel .part-content {
-  margin: 0 0 5px 5px;
+  margin: 0 0 var(--px-seam) var(--px-seam);
   border: 1px solid var(--px-border);
   border-radius: var(--px-radius-sm);
   background: var(--px-bg);
@@ -885,7 +886,7 @@ html, body {
   box-sizing: border-box;
 }
 .workbench-hgrid > .editor-column:last-child .part-workbench-parts-panel .part-content {
-  margin-right: 5px;
+  margin-right: var(--px-seam);
 }
 
 /* Editor: the part fills its slot with NO outer margin — the editor grid is
@@ -908,7 +909,7 @@ html, body {
      Right margin is 0 per the seam arithmetic above: the neighbour to the
      right (aux bar card, or the next editor group in a split) brings the
      5px. The :last-child variants below restore the outer right edge. */
-  margin: 5px 0 0 5px;
+  margin: var(--px-seam) 0 0 var(--px-seam);
   background: var(--px-window);
 }
 /* The inner TabBar paints tabsBackground over the strip — make it transparent
@@ -917,14 +918,14 @@ html, body {
   background-color: transparent;
 }
 .part-workbench-parts-editor .editor-ribbon:not(.hidden) {
-  margin: 0 0 0 5px;
+  margin: 0 0 0 var(--px-seam);
   border-left: 1px solid var(--px-border);
   border-right: 1px solid var(--px-border);
   background: var(--px-bg);
   box-sizing: border-box;
 }
 .part-workbench-parts-editor .editor-pane-container {
-  margin: 0 0 5px 5px;
+  margin: 0 0 var(--px-seam) var(--px-seam);
   border-left: 1px solid var(--px-border);
   border-right: 1px solid var(--px-border);
   border-bottom: 1px solid var(--px-border);
@@ -938,11 +939,11 @@ html, body {
    (Known cosmetic edge: nested orthogonal splits at the right edge — only
    the branch's last group matches :last-child.) */
 .workbench-hgrid > .editor-column:last-child .editor-group:last-child .editor-tab-bar {
-  margin-right: 5px;
+  margin-right: var(--px-seam);
 }
 .workbench-hgrid > .editor-column:last-child .editor-group:last-child .editor-ribbon:not(.hidden),
 .workbench-hgrid > .editor-column:last-child .editor-group:last-child .editor-pane-container {
-  margin-right: 5px;
+  margin-right: var(--px-seam);
 }
 
 /* Sidebar + aux have a SEPARATE title area above .part-content. The card must
@@ -957,7 +958,7 @@ html, body {
    and drops it on edges that FACE another card — the neighbour's margin is
    the whole seam. Doubling up (5+5=10) is the bug this layout avoids. */
 .sidebar-header {
-  margin: 5px 0 0 5px;
+  margin: var(--px-seam) 0 0 var(--px-seam);
   border: 1px solid var(--px-border);
   border-bottom: 0;
   border-radius: var(--px-radius-sm) var(--px-radius-sm) 0 0;
@@ -965,7 +966,7 @@ html, body {
   box-sizing: border-box;
 }
 .auxiliary-bar-header {
-  margin: 5px 5px 0 5px;
+  margin: var(--px-seam) var(--px-seam) 0 var(--px-seam);
   border: 1px solid var(--px-border);
   border-bottom: 0;
   border-radius: var(--px-radius-sm) var(--px-radius-sm) 0 0;
@@ -973,7 +974,7 @@ html, body {
   box-sizing: border-box;
 }
 .part-workbench-parts-sidebar .part-content {
-  margin: 0 0 5px 5px;
+  margin: 0 0 var(--px-seam) var(--px-seam);
   border: 1px solid var(--px-border);
   border-top: 0;
   border-radius: 0 0 var(--px-radius-sm) var(--px-radius-sm);
@@ -982,7 +983,7 @@ html, body {
   box-sizing: border-box;
 }
 .part-workbench-parts-auxiliarybar .part-content {
-  margin: 0 5px 5px 5px;
+  margin: 0 var(--px-seam) var(--px-seam) var(--px-seam);
   border: 1px solid var(--px-border);
   border-top: 0;
   border-radius: 0 0 var(--px-radius-sm) var(--px-radius-sm);
@@ -1269,11 +1270,11 @@ html, body {
 }
 
 .grid-sash-vertical {
-  width: 5px;
-  min-width: 5px;
+  width: var(--px-seam);
+  min-width: var(--px-seam);
   cursor: col-resize;
   margin-left: 0;
-  margin-right: -5px;
+  margin-right: calc(-1 * var(--px-seam));
 }
 .grid-sash-vertical::after {
   top: 0; bottom: 0;
@@ -1282,10 +1283,10 @@ html, body {
 }
 
 .grid-sash-horizontal {
-  height: 5px;
-  min-height: 5px;
+  height: var(--px-seam);
+  min-height: var(--px-seam);
   cursor: row-resize;
-  margin-top: -5px;
+  margin-top: calc(-1 * var(--px-seam));
   margin-bottom: 0;
 }
 .grid-sash-horizontal::after {

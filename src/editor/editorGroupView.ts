@@ -34,17 +34,18 @@ import { setupTooltip } from '../ui/tooltip.js';
 
 const TAB_HEIGHT = 35;
 /** Gap above the tab strip so the editor floats the same distance below the
- *  title bar as the sidebar / aux cards. MUST match the editor `.editor-tab-bar`
- *  margin-top in workbench.css — the pane-height calc subtracts it so the JS
- *  layout stays in step with that CSS margin (no bottom clip). */
-const TAB_STRIP_TOP_GAP = 5;
-/** Horizontal chrome of the `.editor-pane-container` floating card: 5px margin
- *  + 1px border on each side. MUST match workbench.css
+ *  title bar as the sidebar / aux cards. MUST match --px-seam (the editor
+ *  `.editor-tab-bar` margin-top) in workbench.css — the pane-height calc
+ *  subtracts it so the JS layout stays in step with that CSS margin (no
+ *  bottom clip). */
+const TAB_STRIP_TOP_GAP = 8;
+/** Horizontal chrome of the `.editor-pane-container` floating card: --px-seam
+ *  margin + 1px border on each side. MUST match workbench.css
  *  (`.part-workbench-parts-editor .editor-pane-container`). The pane inside is
  *  sized with explicit pixels, so JS must subtract this — otherwise every pane
  *  is 12px wider than the card and its right edge is clipped (flush-right
  *  toolbar buttons touch/vanish at the pane border). */
-const PANE_CONTAINER_CHROME_X = 12;
+const PANE_CONTAINER_CHROME_X = 18;
 const MIN_GROUP_WIDTH = 200;
 const MIN_GROUP_HEIGHT = 120;
 
