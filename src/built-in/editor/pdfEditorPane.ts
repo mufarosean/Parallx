@@ -2847,6 +2847,18 @@ export class PdfEditorPane extends EditorPane {
     if (this._pdfViewer && this._pdfDoc) {
       if (this._resizeTimer) clearTimeout(this._resizeTimer);
       this._resizeTimer = setTimeout(() => {
+        // NEVER refit while a sash drag is still in progress. Layout calls
+        // stream in per mousemove, so any micro-pause longer than the
+        // debounce used to fire a full 'page-fit' recalculation mid-drag —
+        // a page re-raster plus geometry shift plus a page-restore scroll,
+        // under the user's hand. Adjacent panes became "impossible to
+        // resize": every hesitation snapped the layout. The grid marks the
+        // dragged sash with `.active` for exactly this kind of consumer;
+        // while it is present, re-arm and wait for the drag to end.
+        if (document.querySelector('.grid-sash.active')) {
+          this._resizeTimer = setTimeout(() => this.layoutPaneContent(_width, _height), 150);
+          return;
+        }
         if (this._pdfViewer) {
           // Capture current page before re-applying scale — the scale
           // recalculation changes page geometry which can shift the scroll
