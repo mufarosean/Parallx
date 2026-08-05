@@ -2494,3 +2494,41 @@ html, body {
   border-radius: var(--parallx-radius-sm, 3px);
   animation: px-status-pulse var(--px-dur-slow) var(--px-ease-out) 2;
 }
+
+/* ── Workspace transition veil ───────────────────────────────────────────────
+   Shown the instant a workspace switch/open begins and replaced by the
+   reload. Everything the teardown does (tool flushes, DB close, main-process
+   teardown) happens BEHIND this — without it the user watched the old
+   workspace's surfaces die piecemeal for a second, which read as the app
+   falling apart rather than transitioning. */
+.workbench-transition-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--px-space-3);
+  background: var(--px-window);
+  animation: workbench-veil-in var(--px-dur-fast) var(--px-ease);
+}
+@keyframes workbench-veil-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.workbench-transition-veil__spinner {
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--px-divider);
+  border-top-color: var(--px-accent);
+  border-radius: 50%;
+  animation: workbench-veil-spin 0.8s linear infinite;
+}
+@keyframes workbench-veil-spin {
+  to { transform: rotate(360deg); }
+}
+.workbench-transition-veil__label {
+  font-size: var(--px-text-sm);
+  color: var(--px-text-muted);
+}

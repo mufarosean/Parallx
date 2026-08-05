@@ -475,6 +475,90 @@ export class Workbench extends Layout {
    * the previous in-process switch (manual teardown/rebuild, service
    * re-fetching, event ordering races, session leaks, etc.).
    */
+  /**
+   * The ONE ordered teardown both workspace-transition paths run.
+   *
+   * switchWorkspace and openFolder previously each hand-rolled this and
+   * drifted: the switch path never deactivated tools (canvas open-page
+   * commits were skipped — the exact flush openFolder's comment said "a
+   * workspace switch must too") and closed nothing, while the user watched
+   * the old workspace's surfaces die piecemeal for a second before the
+   * reload. Every step is time-budgeted like the app-close path: a
+   * transition may lose a stray timed-out save, but it may never hang the
+   * window.
+   *
+   * The veil goes up FIRST: everything after happens behind an intentional
+   * "Switching workspace…" scrim instead of in front of the user.
+   */
+  private async _workspaceTransition(targetPath: string, reason: string, label: string): Promise<void> {
+    this._showTransitionVeil(label);
+
+    // Same quiesce signal the app-close path sends: extensions stop
+    // background producers (scans, watchers) now, so deactivation below
+    // is fast instead of fighting a busy DB worker.
+    try { document.dispatchEvent(new CustomEvent('parallx:will-close')); } catch { /* ignore */ }
+
+    const withBudget = async (step: string, ms: number, work: () => Promise<unknown>): Promise<void> => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timedOut = new Promise<'timeout'>((resolve) => { timer = setTimeout(() => resolve('timeout'), ms); });
+      try {
+        const result = await Promise.race([work().then(() => 'done' as const), timedOut]);
+        if (result === 'timeout') console.warn(`[Workbench] Workspace transition: "${step}" exceeded ${ms}ms budget — continuing`);
+      } catch (err) {
+        console.warn(`[Workbench] Workspace transition: "${step}" failed:`, err);
+      } finally {
+        if (timer !== undefined) clearTimeout(timer);
+      }
+    };
+
+    // 1. End the session — aborts in-flight async work before anything saves.
+    const sessionMgr = this._services.get(ISessionManager);
+    if (sessionMgr) sessionMgr.endSession();
+
+    // 2. Persist layout/view state of the workspace being left.
+    await withBudget('save workspace state', 5000, () => this._workspaceSaver.save());
+
+    // 3. Point the reload at the target.
+    const bridge = window.parallxElectron!.storage;
+    const appPath = window.parallxElectron!.appPath;
+    await bridge.writeJson(`${appPath}/data/last-workspace.json`, { path: targetPath });
+
+    // 4. Deactivate tools so they flush pending data (canvas open-page
+    //    commit + auto-save) while the DB is still open.
+    if (this._toolActivator) {
+      await withBudget('deactivate tools', 8000, () => this._toolActivator!.deactivateAll());
+    }
+
+    // 5. Journal the transition, then close the DB cleanly.
+    await withBudget('flush activity journal', 1500, () => this._flushActivityJournal(reason));
+    if (this._databaseService?.isOpen) {
+      await withBudget('close database', 3000, () => this._databaseService!.close());
+    }
+
+    // 6. Tear down workspace-scoped main-process state: MCP servers, file
+    //    watchers, terminals, shared + extension databases.
+    await withBudget('main-process teardown', 5000, async () => {
+      await window.parallxElectron!.prepareWorkspaceSwitch?.();
+    });
+
+    // 7. Fresh start — the normal boot path restores the target workspace.
+    window.location.reload();
+  }
+
+  /** Full-window scrim shown for the whole transition; the reload replaces it. */
+  private _showTransitionVeil(label: string): void {
+    const veil = document.createElement('div');
+    veil.className = 'workbench-transition-veil';
+    const spinner = document.createElement('div');
+    spinner.className = 'workbench-transition-veil__spinner';
+    veil.appendChild(spinner);
+    const text = document.createElement('div');
+    text.className = 'workbench-transition-veil__label';
+    text.textContent = label;
+    veil.appendChild(text);
+    document.body.appendChild(veil);
+  }
+
   async switchWorkspace(targetPath: string): Promise<void> {
     if (this._state !== WorkbenchState.Ready) {
       console.warn('[Workbench] Cannot switch workspace while in state:', this._state);
@@ -496,31 +580,8 @@ export class Workbench extends Layout {
     console.log('[Workbench] Switching workspace → %s (via reload)', targetPath);
 
     try {
-      // 0. End the current workspace session (M14).
-      //    Signals abort on the session AbortController so in-flight
-      //    async work can bail out. Must happen before save/reload.
-      const sessionMgr = this._services.get(ISessionManager);
-      if (sessionMgr) {
-        sessionMgr.endSession();
-      }
-
-      // 1. Save current workspace state
-      await this._workspaceSaver.save();
-
-      // 2. Write the target workspace path to last-workspace.json so the reload picks it up
-      const bridge = window.parallxElectron!.storage;
-      const appPath = window.parallxElectron!.appPath;
-      await bridge.writeJson(`${appPath}/data/last-workspace.json`, { path: targetPath });
-
-      // 3. Tear down all workspace-scoped state in the main process:
-      //    MCP servers, file watchers, terminals, terminal output buffer,
-      //    shared database, and all extension databases.
-      await this._flushActivityJournal('switched to another workspace');
-      await window.parallxElectron!.prepareWorkspaceSwitch?.().catch(() => {});
-
-      // 4. Reload the renderer — fresh startup picks up the new workspace
-      window.location.reload();
-
+      const name = targetPath.split(/[\\/]/).filter(Boolean).pop() ?? 'workspace';
+      await this._workspaceTransition(targetPath, 'switched to another workspace', `Switching to ${name}…`);
       // Note: code below this line never runs — the page is unloading.
     } catch (err) {
       console.error('[Workbench] Workspace switch failed:', err);
@@ -555,40 +616,9 @@ export class Workbench extends Layout {
     console.log('[Workbench] Opening folder "%s" (via reload)', folderPath);
 
     try {
-      // 1. End the current workspace session (M14).
-      const sessionMgr = this._services.get(ISessionManager);
-      if (sessionMgr) {
-        sessionMgr.endSession();
-      }
-
-      // 2. Save current workspace state.
-      await this._workspaceSaver.save();
-
-      // 3. Write the folder path to last-workspace.json so the reload opens it.
-      const bridge = window.parallxElectron!.storage;
-      const appPath = window.parallxElectron!.appPath;
-      await bridge.writeJson(`${appPath}/data/last-workspace.json`, { path: folderPath });
-
-      // 3b. Deactivate all tools so they flush pending data (Canvas open-page
-      //     commit + auto-save) BEFORE the DB closes and we reload. The app-close
-      //     path already does this; a workspace switch must too, or open canvas
-      //     pages lose unsaved edits / a just-restored version on switch.
-      if (this._toolActivator) {
-        await this._toolActivator.deactivateAll().catch((err) => {
-          console.warn('[Workbench] deactivateAll before workspace switch failed:', err);
-        });
-      }
-
-      // 4. Close the database cleanly (best-effort).
-      await this._flushActivityJournal('opened another folder');
-      if (this._databaseService?.isOpen) {
-        await this._databaseService.close().catch(() => {});
-      }
-
-      // 5. Reload — the normal startup path handles everything:
-      //    existing .parallx/ → restore that workspace's state
-      //    no .parallx/       → initialize a fresh workspace
-      window.location.reload();
+      const name = folderPath.split(/[\\/]/).filter(Boolean).pop() ?? 'folder';
+      await this._workspaceTransition(folderPath, 'opened another folder', `Opening ${name}…`);
+      // Note: code below this line never runs — the page is unloading.
     } catch (err) {
       console.error('[Workbench] Open folder failed:', err);
       this._switching = false;
