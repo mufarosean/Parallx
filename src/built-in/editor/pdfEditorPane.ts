@@ -1588,7 +1588,7 @@ export class PdfEditorPane extends EditorPane {
 
     this._pageInput = document.createElement('input');
     this._pageInput.type = 'text';
-    this._pageInput.classList.add('pdf-toolbar-page-input');
+    this._pageInput.classList.add('pdf-toolbar-page-input', 'px-input-bare');
     this._pageInput.value = '1';
     this._pageInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
@@ -1637,6 +1637,7 @@ export class PdfEditorPane extends EditorPane {
 
     this._zoomInput = document.createElement('input');
     this._zoomInput.type = 'text';
+    this._zoomInput.classList.add('px-input-bare');
     this._zoomInput.classList.add('pdf-toolbar-zoom-input');
     this._zoomInput.value = '100%';
     setupTooltip(this._zoomInput, 'Zoom level (type a % and press Enter)');

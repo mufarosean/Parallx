@@ -62,6 +62,30 @@ select:focus-visible {
   border-color: var(--px-accent);
 }
 
+/* ── Opt-out: inline/toolbar inputs ──────────────────────────────────────── */
+/* The form skin below targets `input[type=...]` (specificity 0-1-1), which
+   BEATS a component's single class — the terminal prompt and the PDF
+   toolbar's page/zoom fields both shipped as chunky settings-style wells
+   because of it. Any input that lives inline in a toolbar/prompt line adds
+   `px-input-bare` and gets a transparent, chromeless field whose selector
+   out-ranks the skin; the component then styles freely with one class. */
+input.px-input-bare[type],
+input.px-input-bare[type]:focus,
+input.px-input-bare[type]:focus-visible {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
+  outline: none;
+  /* Inherit type and ink from the surrounding toolbar/prompt line — the
+     component sets those on the CONTAINER. (A component class alone cannot
+     win these back from the skin's attribute selector, which is the whole
+     reason this utility exists.) */
+  font: inherit;
+  color: inherit;
+}
+
 /* ── Native form controls — crafted, consistent skin ─────────────────────── */
 /* Bare native inputs/selects/textareas pick up the token system: inset well
    background, hairline border, the type ladder, a calm focus. Components with

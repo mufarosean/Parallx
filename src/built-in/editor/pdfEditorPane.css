@@ -25,6 +25,9 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  /* The bare inputs (page, zoom) inherit their type from here — see
+     px-input-bare in px-controls.css. */
+  font-size: var(--px-text-sm);
   height: 36px;
   min-height: 36px;
   padding: 0 10px;
