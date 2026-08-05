@@ -104,8 +104,8 @@ let _sidebarRefresh: (() => void) | null = null;
 export function activate(api: ParallxApi, context: ToolContext): void {
   // Register the editor provider for tool detail pages
   const editorDisposable = api.editors.registerEditorProvider('tool-detail', {
-    createEditorPane(container: HTMLElement, input?: { id: string; name: string }): IDisposable {
-      const toolId = input?.id;
+    createEditorPane(container: HTMLElement, input?: { id: string; name: string; instanceId?: string }): IDisposable {
+      const toolId = input?.instanceId ?? input?.id;
       if (!toolId) {
         container.textContent = 'No tool selected';
         return { dispose() {} };

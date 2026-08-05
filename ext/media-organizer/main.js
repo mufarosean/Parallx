@@ -10693,7 +10693,7 @@ function renderGridBrowser(container, api, input) {
   container.appendChild(root);
 
   // Parse filter context from input.id
-  const instanceId = (input && input.id) || 'grid:all';
+  const instanceId = (input && (input.instanceId || input.id)) || 'grid:all';
   const parts = instanceId.replace(/^grid:/, '').split(':');
   const filterType = parts[0] || 'all';
   // For tags, parts[1] may be a dash-joined branch path (e.g. "5-12" = Face ›
@@ -13393,7 +13393,7 @@ function renderDetailEditor(container, api, input) {
   const root = moEl('div', 'mo-detail-editor');
   container.appendChild(root);
 
-  const { type, id } = parseDetailInput(input && input.id);
+  const { type, id } = parseDetailInput(input && (input.instanceId || input.id));
   if (!id) {
     root.textContent = 'Invalid detail input.';
     return { dispose() { container.innerHTML = ''; } };
@@ -14799,7 +14799,7 @@ function renderAlbumEditor(container, api, input) {
   container.appendChild(root);
 
   // Parse album:<id> or album:new
-  const instanceId = (input && input.id) || '';
+  const instanceId = (input && (input.instanceId || input.id)) || '';
   const albumIdStr = instanceId.replace(/^album:/, '');
   const isNew = albumIdStr === 'new';
   const albumId = isNew ? null : parseInt(albumIdStr, 10);
@@ -25246,7 +25246,7 @@ export async function activate(api, context) {
   _commandDisposables.push(
     api.editors.registerEditorProvider('media-organizer-grid', {
       createEditorPane(container, input) {
-        const inputId = (input && input.id) || '';
+        const inputId = (input && (input.instanceId || input.id)) || '';
         if (inputId.startsWith('detail:')) {
           return renderDetailEditor(container, api, input);
         }
@@ -25264,7 +25264,7 @@ export async function activate(api, context) {
   _commandDisposables.push(
     api.editors.registerEditorProvider('media-organizer-clip', {
       createEditorPane(container, input) {
-        const instanceId = (input && input.id) || '';
+        const instanceId = (input && (input.instanceId || input.id)) || '';
         const params = _moClipEditors.get(instanceId);
         if (!params) {
           const msg = moEl('div', 'mo-clip-unavailable', {

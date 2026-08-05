@@ -153,10 +153,21 @@ export class EditorsBridge {
         const inputId = rawId
           ? (rawId.includes(':') ? rawId : `${entry.toolId}:${typeId}:${rawId}`)
           : `${entry.toolId}:${typeId}:${Date.now()}`;
+        // Domain id: prefer the persisted field; older layouts derive it.
+        // A bare pre-namespacing id IS the instanceId, and a namespaced one
+        // strips this tool's prefix when it matches.
+        const prefix = `${entry.toolId}:${typeId}:`;
+        const instanceId = typeof data?.instanceId === 'string'
+          ? (data.instanceId as string)
+          : (rawId
+            ? (rawId.startsWith(prefix)
+              ? rawId.slice(prefix.length)
+              : (rawId.includes(':') ? undefined : rawId))
+            : undefined);
         const name = typeof data?.name === 'string' ? (data.name as string) : typeId;
         const icon = typeof data?.icon === 'string' ? (data.icon as string) : undefined;
         const iconHtml = typeof data?.iconHtml === 'string' ? (data.iconHtml as string) : undefined;
-        return new ToolEditorInput(typeId, name, icon, iconHtml, entry.provider, inputId, entry.toolId);
+        return new ToolEditorInput(typeId, name, icon, iconHtml, entry.provider, inputId, entry.toolId, instanceId);
       });
     }
 
@@ -211,6 +222,7 @@ export class EditorsBridge {
       provider,
       inputId,
       this._toolId,
+      options.instanceId,
     );
 
     if (this._editorService) {
@@ -343,6 +355,14 @@ export class ToolEditorInput extends EditorInput {
   readonly provider: ToolEditorProvider;
   /** The tool ID that created this editor input (for cleanup on deactivation). */
   readonly ownerToolId: string;
+  /**
+   * The DOMAIN id the tool passed as `instanceId` (e.g. a canvas pageId).
+   * `id` is this value namespaced `tool:type:instance` for global tab
+   * uniqueness — a tool that keys its own data on what it gave openEditor
+   * must read THIS and never parse `id` (canvas resolving pages by input.id
+   * is exactly the bug that rule exists to prevent).
+   */
+  readonly instanceId: string | undefined;
 
   constructor(
     typeId: string,
@@ -352,6 +372,7 @@ export class ToolEditorInput extends EditorInput {
     provider: ToolEditorProvider,
     id: string,
     ownerToolId: string,
+    instanceId?: string,
   ) {
     super(id);
     this.typeId = typeId;
@@ -360,6 +381,7 @@ export class ToolEditorInput extends EditorInput {
     this._iconHtml = iconHtml;
     this.provider = provider;
     this.ownerToolId = ownerToolId;
+    this.instanceId = instanceId;
   }
 
   get name(): string { return this._name; }
@@ -406,6 +428,7 @@ export class ToolEditorInput extends EditorInput {
       // only receives `data`) can fully reconstruct the input on restore.
       data: {
         inputId: this.id,
+        instanceId: this.instanceId,
         name: this._name,
         icon: this._icon,
         // Persisted since the Open Editors icon fix (2026-07-20): the old

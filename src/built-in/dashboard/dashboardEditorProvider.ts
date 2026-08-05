@@ -174,7 +174,7 @@ class DashboardEditorPane implements IDisposable {
     private readonly _api: DashboardApiSurface,
   ) {
     this._container = container;
-    this._pageId = _input?.id ?? '';
+    this._pageId = (_input as { instanceId?: string } | undefined)?.instanceId ?? _input?.id ?? '';
   }
 
   async init(): Promise<void> {

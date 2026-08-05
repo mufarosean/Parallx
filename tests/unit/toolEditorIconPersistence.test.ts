@@ -37,3 +37,41 @@ describe('ToolEditorInput icon persistence', () => {
     expect(fired).toBe(1);
   });
 });
+
+// ─── instanceId contract (2026-08-06) ────────────────────────────────────────
+//
+// Regression pin for the canvas blank-page data-scare: input ids are
+// namespaced tool:type:instance for tab uniqueness, and the DOMAIN id the
+// tool passed to openEditor rides separately as `instanceId`. Canvas resolved
+// pages by parsing input.id; when namespacing landed, every restored page
+// opened empty (the row was safe — the pane just looked up the wrong key).
+
+describe('ToolEditorInput instanceId contract', () => {
+  it('carries the domain id separately from the namespaced input id', () => {
+    const input = new ToolEditorInput('canvas', 'Page', undefined, undefined, provider,
+      'parallx.canvas:canvas:page-uuid-1', 'parallx.canvas', 'page-uuid-1');
+    expect(input.id).toBe('parallx.canvas:canvas:page-uuid-1');
+    expect(input.instanceId).toBe('page-uuid-1');
+  });
+
+  it('serialize() persists instanceId so restore does not have to parse ids', () => {
+    const input = new ToolEditorInput('media-organizer-grid', 'Grid', undefined, undefined, provider,
+      'parallx.mo:media-organizer-grid:grid:all', 'parallx.mo', 'grid:all');
+    const data = input.serialize().data as { instanceId?: string };
+    // 'grid:all' contains a colon — parsing it back out of the namespaced id
+    // is exactly the ambiguity the persisted field exists to avoid.
+    expect(data.instanceId).toBe('grid:all');
+  });
+
+  it('round-trips through the deserializer reconstruction shape', () => {
+    const original = new ToolEditorInput('canvas', 'Page', undefined, undefined, provider,
+      'parallx.canvas:canvas:page-uuid-2', 'parallx.canvas', 'page-uuid-2');
+    const data = original.serialize().data as {
+      inputId: string; instanceId?: string; name: string; icon?: string; iconHtml?: string;
+    };
+    const restored = new ToolEditorInput('canvas', data.name, data.icon, data.iconHtml, provider,
+      data.inputId, 'parallx.canvas', data.instanceId);
+    expect(restored.instanceId).toBe('page-uuid-2');
+    expect(restored.id).toBe(original.id);
+  });
+});

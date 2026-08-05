@@ -163,10 +163,14 @@ export class CanvasEditorProvider {
    * Create an editor pane for a Canvas page.
    *
    * @param container — DOM element to render into
-   * @param input — the ToolEditorInput (input.id === pageId)
+   * @param input — the ToolEditorInput. The pageId is the DOMAIN id the
+   * canvas passed as `instanceId`; `input.id` is that value namespaced by
+   * the editors bridge (tool:type:pageId) and must never be parsed. The
+   * `?? input.id` fallback only serves inputs from before instanceId was
+   * carried separately.
    */
   createEditorPane(container: HTMLElement, input?: IEditorInput): IDisposable {
-    const pageId = input?.id ?? '';
+    const pageId = (input as { instanceId?: string } | undefined)?.instanceId ?? input?.id ?? '';
     const pane = new CanvasEditorPane(container, pageId, this._dataService, input, this._openEditor, this);
     pane.init().catch(err => {
       console.error('[CanvasEditorProvider] Editor pane initialization failed:', err);
@@ -182,7 +186,7 @@ export class CanvasEditorProvider {
    * render into it once async init completes.
    */
   createRibbon(container: HTMLElement, input?: IEditorInput): IDisposable {
-    const pageId = input?.id ?? '';
+    const pageId = (input as { instanceId?: string } | undefined)?.instanceId ?? input?.id ?? '';
     this._ribbonContainers.set(pageId, container);
 
     // Set min-height so layout calculates correctly before pane fills it

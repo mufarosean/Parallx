@@ -560,7 +560,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   context.subscriptions.push(
     api.editors.registerEditorProvider('database', {
       createEditorPane(container: HTMLElement, input?: any): IDisposable {
-        const pageId = (input?.id as string) ?? '';
+        const pageId = (input?.instanceId as string) ?? (input?.id as string) ?? '';
         return new DatabaseEditorPane(container, pageId, {
           db: _databaseService!,
           openPage: (id) => void openPageInEditor(id),
@@ -677,17 +677,16 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
 
   // 5c. Auto-close editor tabs when their page is deleted or archived.
   // Canvas opens page editors with `instanceId: pageId`, and EditorsBridge
-  // uses the supplied instanceId verbatim as the editor input id — so the
-  // descriptor id is the pageId itself (NOT "parallx.canvas:canvas:<pageId>"
-  // as an older comment claimed). Match descriptor.id directly against the
-  // deleted pageId, scoped to tool editors of typeId "canvas" or "database"
-  // so unrelated tools that happen to use the same id are not affected.
+  // NAMESPACES that into the descriptor id ("<toolId>:canvas:<pageId>") so
+  // ids can never collide across tools. Match by exact suffix (":<pageId>"),
+  // with the bare-id equality kept for tabs restored from pre-namespacing
+  // layouts, scoped to canvas/database tool editors either way.
   context.subscriptions.push(
     _dataService.onDidChangePage(async (e) => {
       if (e.kind !== PageChangeKind.Deleted) return;
       const editors = api.editors.openEditors;
       for (const ed of editors) {
-        if (ed.id !== e.pageId) continue;
+        if (ed.id !== e.pageId && !ed.id.endsWith(`:${e.pageId}`)) continue;
         if (ed.description === 'Tool editor: canvas' || ed.description === 'Tool editor: database') {
           await api.editors.closeEditor(ed.id);
         }

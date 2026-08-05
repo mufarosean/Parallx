@@ -332,13 +332,20 @@ export interface EditorProvider {
   /**
    * Called when an editor pane should render its content.
    * @param container The DOM element to render into.
+   * @param input The editor input. `input.instanceId` is the exact value the
+   *   opener passed to `openEditor` (your domain id — a page id, a section
+   *   name); `input.id` is that value namespaced `tool:type:instance` for
+   *   global tab uniqueness. Key your data on `instanceId`; never parse `id`.
    * @returns Either a plain disposable, or an extended handle that also
    *   implements `saveViewState`/`restoreViewState` to preserve scroll,
    *   selection, focus, and other transient UI state across tab switches.
    *   The workbench keeps the returned view state in memory for as long as
    *   the editor input is open (across switches) and evicts it on close.
    */
-  createEditorPane(container: HTMLElement): IDisposable | EditorPaneHandle;
+  createEditorPane(
+    container: HTMLElement,
+    input?: { readonly id: string; readonly instanceId?: string; readonly name?: string },
+  ): IDisposable | EditorPaneHandle;
 }
 
 /**

@@ -1745,7 +1745,7 @@ function renderSidebarNav(container, api) {
 // Each section will be replaced by a real renderer in P2+.
 function renderEditorPane(container, api, input) {
   injectStyles();
-  const section = sectionByEditorInstanceId(input && input.id);
+  const section = sectionByEditorInstanceId(input && (input.instanceId || input.id));
 
   const el = document.createElement('div');
   el.className = 'budget-editor';
