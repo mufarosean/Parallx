@@ -158,9 +158,223 @@ function fcSchedule(card, rating, now) {
   return next;
 }
 
+// ── FSRS-6 (M98) ────────────────────────────────────────────────────────────
+// Hand-implemented from the py-fsrs reference (no npm dep — see M98 doc).
+// State per card: stability S (days until recall probability drops to 90%)
+// and difficulty D ∈ [1,10], persisted in fc_cards.stability / .difficulty
+// alongside the retained SM-2 columns. fcSchedule (SM-2, above) is retired:
+// tests pin it as the historical reference, but it must not gain new callers
+// — all scheduling goes through fcScheduleFsrs.
+
+/** FSRS-6 default parameters (py-fsrs DEFAULT_PARAMETERS). */
+const FSRS_W = [
+  0.212, 1.2931, 2.3065, 8.2956, 6.4133, 0.8334, 3.0194, 0.001,
+  1.8722, 0.1666, 0.796, 1.4835, 0.0614, 0.2629, 1.6483, 0.6014,
+  1.8729, 0.5425, 0.0912, 0.0658, 0.1542,
+];
+const FSRS_DECAY = -FSRS_W[20];
+const FSRS_FACTOR = Math.pow(0.9, 1 / FSRS_DECAY) - 1;
+const FSRS_S_MIN = 0.001;
+const FSRS_INIT_S_MAX = 100.0;
+const FC_DEFAULT_RETENTION = 0.9;
+
+/** Probability of recall after `elapsedDays` at stability S. R(S, S) = 0.9. */
+function fcRetrievability(elapsedDays, stability) {
+  const s = Math.max(FSRS_S_MIN, stability);
+  const t = Math.max(0, elapsedDays);
+  return Math.pow(1 + FSRS_FACTOR * (t / s), FSRS_DECAY);
+}
+
+/** Interval (days, ≥1) at which recall probability decays to `retention`. */
+function fcFsrsInterval(retention, stability) {
+  const r = Math.min(0.995, Math.max(0.7, retention || FC_DEFAULT_RETENTION));
+  const raw = (stability / FSRS_FACTOR) * (Math.pow(r, 1 / FSRS_DECAY) - 1);
+  return Math.min(FC_MAX_INTERVAL_DAYS, Math.max(1, Math.round(raw)));
+}
+
+/** Initial difficulty from the first grade. D0(1) = w4. Clamped [1, 10]. */
+function fcFsrsInitDifficulty(grade) {
+  const d = FSRS_W[4] - Math.exp(FSRS_W[5] * (grade - 1)) + 1;
+  return Math.min(10, Math.max(1, d));
+}
+
+/** Difficulty update with linear damping + mean reversion toward D0(Easy). */
+function fcFsrsNextDifficulty(d, grade) {
+  const deltaD = -FSRS_W[6] * (grade - 3);
+  const damped = d + (deltaD * (10 - d)) / 9;
+  const reverted = FSRS_W[7] * fcFsrsInitDifficulty(EASY) + (1 - FSRS_W[7]) * damped;
+  return Math.min(10, Math.max(1, reverted));
+}
+
+/** Stability growth on a successful review (grade ≥ 2, elapsed ≥ 1 day). */
+function fcFsrsStabilityOnSuccess(s, d, retrievability, grade) {
+  const hardPenalty = grade === HARD ? FSRS_W[15] : 1;
+  const easyBonus = grade === EASY ? FSRS_W[16] : 1;
+  const growth =
+    Math.exp(FSRS_W[8]) *
+    (11 - d) *
+    Math.pow(s, -FSRS_W[9]) *
+    (Math.exp(FSRS_W[10] * (1 - retrievability)) - 1) *
+    hardPenalty *
+    easyBonus;
+  return Math.max(FSRS_S_MIN, s * (1 + growth));
+}
+
+/** Post-lapse stability (grade = 1). Never exceeds the pre-lapse stability. */
+function fcFsrsStabilityOnLapse(s, d, retrievability) {
+  const sf =
+    FSRS_W[11] *
+    Math.pow(d, -FSRS_W[12]) *
+    (Math.pow(s + 1, FSRS_W[13]) - 1) *
+    Math.exp(FSRS_W[14] * (1 - retrievability));
+  const shortTermFloor = s / Math.exp(FSRS_W[17] * FSRS_W[18]);
+  return Math.max(FSRS_S_MIN, Math.min(sf, shortTermFloor, s));
+}
+
+/** Same-day (elapsed < 1 day) stability update. Good/Easy never shrink S. */
+function fcFsrsStabilityShortTerm(s, grade) {
+  let mult = Math.exp(FSRS_W[17] * (grade - 3 + FSRS_W[18])) * Math.pow(s, -FSRS_W[19]);
+  if (grade >= GOOD) mult = Math.max(1, mult);
+  return Math.max(FSRS_S_MIN, s * mult);
+}
+
+/**
+ * Deadline cap (M98): with a deck exam date, never schedule past the point
+ * where at least one more review still fits before the exam. Generic — any
+ * deadline works. No cap once the date has passed.
+ */
+function fcDeadlineCapDays(examDate, now) {
+  if (!examDate || examDate <= now) return Infinity;
+  const daysLeft = (examDate - now) / DAY;
+  return Math.max(1, Math.ceil(daysLeft / 2));
+}
+
+/**
+ * FSRS-6 transition. Pure: (card, rating, now, opts) → next scheduling state.
+ * Keeps the SM-2 state machine (new/learning/review/relearning + intra-day
+ * steps) for UX continuity; S/D and all day-scale intervals come from FSRS.
+ * opts: { desiredRetention?: number, examDate?: number (ms epoch) }.
+ */
+function fcScheduleFsrs(card, rating, now, opts = {}) {
+  const c = {
+    state: card.state || 'new',
+    stability: typeof card.stability === 'number' ? card.stability : 0,
+    difficulty: typeof card.difficulty === 'number' ? card.difficulty : 0,
+    lastReviewedAt: card.lastReviewedAt || 0,
+    intervalDays: typeof card.intervalDays === 'number' ? card.intervalDays : 0,
+    dueAt: card.dueAt || 0,
+    reps: card.reps || 0,
+    lapses: card.lapses || 0,
+    learningStep: card.learningStep || 0,
+    ease: typeof card.ease === 'number' ? card.ease : 2.5, // legacy, carried not used
+  };
+  const g = Math.min(EASY, Math.max(AGAIN, Math.round(rating)));
+  const retention = opts.desiredRetention || FC_DEFAULT_RETENTION;
+  const next = { ...c, reps: c.reps + 1, lastReviewedAt: now };
+
+  // ── S/D update ──
+  const isFirstEver = c.stability <= 0;
+  if (isFirstEver) {
+    next.stability = Math.min(FSRS_INIT_S_MAX, Math.max(FSRS_S_MIN, FSRS_W[g - 1]));
+    next.difficulty = fcFsrsInitDifficulty(g);
+  } else {
+    const elapsedDays = c.lastReviewedAt > 0 ? (now - c.lastReviewedAt) / DAY : c.intervalDays;
+    next.difficulty = fcFsrsNextDifficulty(c.difficulty, g);
+    if (elapsedDays < 1) {
+      next.stability = fcFsrsStabilityShortTerm(c.stability, g);
+    } else {
+      const r = fcRetrievability(elapsedDays, c.stability);
+      next.stability = g === AGAIN
+        ? fcFsrsStabilityOnLapse(c.stability, c.difficulty, r)
+        : fcFsrsStabilityOnSuccess(c.stability, c.difficulty, r, g);
+    }
+  }
+
+  const capDays = fcDeadlineCapDays(opts.examDate, now);
+  const ivlFor = () => Math.min(fcFsrsInterval(retention, next.stability), capDays === Infinity ? FC_MAX_INTERVAL_DAYS : capDays);
+
+  // ── State machine (intra-day steps unchanged from SM-2 UX) ──
+  const inLearning = c.state === 'new' || c.state === 'learning';
+  if (inLearning) {
+    const steps = FC_LEARNING_STEPS_MIN;
+    if (g === AGAIN) {
+      next.state = 'learning';
+      next.learningStep = 0;
+      next.dueAt = now + steps[0] * MIN;
+    } else if (g === HARD) {
+      next.state = 'learning';
+      next.learningStep = Math.min(c.learningStep, steps.length - 1);
+      next.dueAt = now + steps[next.learningStep] * 1.5 * MIN;
+    } else if (g === GOOD) {
+      const step = (c.state === 'new' ? 0 : c.learningStep) + 1;
+      if (step >= steps.length) {
+        next.state = 'review';
+        next.learningStep = 0;
+        next.intervalDays = ivlFor();
+        next.dueAt = now + next.intervalDays * DAY;
+      } else {
+        next.state = 'learning';
+        next.learningStep = step;
+        next.dueAt = now + steps[step] * MIN;
+      }
+    } else { // EASY — graduate immediately
+      next.state = 'review';
+      next.learningStep = 0;
+      next.intervalDays = ivlFor();
+      next.dueAt = now + next.intervalDays * DAY;
+    }
+    return next;
+  }
+
+  if (c.state === 'relearning') {
+    const steps = FC_RELEARNING_STEPS_MIN;
+    if (g === AGAIN) {
+      next.learningStep = 0;
+      next.dueAt = now + steps[0] * MIN;
+    } else if (g === HARD) {
+      next.learningStep = Math.min(c.learningStep, steps.length - 1);
+      next.dueAt = now + steps[next.learningStep] * 1.5 * MIN;
+    } else {
+      next.state = 'review';
+      next.learningStep = 0;
+      next.intervalDays = ivlFor();
+      next.dueAt = now + next.intervalDays * DAY;
+    }
+    return next;
+  }
+
+  // state === 'review'
+  if (g === AGAIN) {
+    next.state = 'relearning';
+    next.learningStep = 0;
+    next.lapses = c.lapses + 1;
+    next.intervalDays = Math.max(1, Math.round(fcFsrsInterval(retention, next.stability)));
+    next.dueAt = now + FC_RELEARNING_STEPS_MIN[0] * MIN;
+  } else {
+    next.intervalDays = ivlFor();
+    next.dueAt = now + next.intervalDays * DAY;
+  }
+  return next;
+}
+
+/**
+ * Replay a card's full review history through FSRS-6 to derive S/D for cards
+ * scheduled under SM-2 (one-shot migration; see fcHealFsrsState). Pure.
+ * Returns { stability, difficulty, lastReviewedAt } — the card's visible
+ * schedule (state/interval/due) is deliberately left untouched so migration
+ * never reshuffles what the user sees; FSRS takes over from the next review.
+ */
+function fcReplayFsrs(reviews) {
+  let card = { state: 'new', stability: 0, difficulty: 0, lastReviewedAt: 0, intervalDays: 0, dueAt: 0, reps: 0, lapses: 0, learningStep: 0 };
+  for (const rev of reviews) {
+    card = fcScheduleFsrs(card, rev.rating, rev.reviewedAt);
+  }
+  return { stability: card.stability, difficulty: card.difficulty, lastReviewedAt: card.lastReviewedAt };
+}
+
 /** Human preview of what a rating would do ("<10m", "1d", "12d"). */
-function fcIntervalPreview(card, rating, now) {
-  const s = fcSchedule(card, rating, now);
+function fcIntervalPreview(card, rating, now, opts = {}) {
+  const s = fcScheduleFsrs(card, rating, now, opts);
   const deltaMs = s.dueAt - now;
   if (deltaMs < 60 * MIN) return `${Math.max(1, Math.round(deltaMs / MIN))}m`;
   if (deltaMs < DAY) return `${Math.round(deltaMs / (60 * MIN))}h`;
@@ -485,6 +699,13 @@ function rowToCard(row) {
     reps: row.reps,
     lapses: row.lapses,
     learningStep: row.learning_step,
+    stability: row.stability ?? 0,
+    difficulty: row.difficulty ?? 0,
+    lastReviewedAt: row.last_reviewed_at ?? 0,
+    sourcePage: row.source_page ?? 0,
+    cardType: row.card_type || 'basic',
+    noteGroup: row.note_group || '',
+    clozeIndex: row.cloze_index ?? 0,
   };
 }
 
@@ -503,6 +724,8 @@ async function fcListDecks() {
     name: r.name,
     description: r.description,
     createdAt: r.created_at,
+    examDate: r.exam_date || 0,
+    desiredRetention: r.desired_retention || 0.9,
     newCount: byDeck.get(r.id)?.new_count || 0,
     dueCount: byDeck.get(r.id)?.due_count || 0,
     total: byDeck.get(r.id)?.total || 0,
@@ -543,6 +766,11 @@ async function fcGetOrCreateDeckByName(name) {
 
 async function fcRenameDeck(id, name) {
   await db.run('UPDATE fc_decks SET name = ? WHERE id = ?', [name.trim(), id]);
+  _emitDataChanged();
+}
+
+async function fcSetDeckExamDate(id, examDate) {
+  await db.run('UPDATE fc_decks SET exam_date = ? WHERE id = ?', [examDate || 0, id]);
   _emitDataChanged();
 }
 
@@ -691,14 +919,16 @@ async function fcListAllCards(deckId = null) {
 }
 
 /** Apply a grading: schedule + persist + log. Returns the updated card. */
-async function fcGradeCard(card, rating, msTaken = 0) {
+async function fcGradeCard(card, rating, msTaken = 0, deckOpts = {}) {
   const now = Date.now();
-  const next = fcSchedule(card, rating, now);
+  const next = fcScheduleFsrs(card, rating, now, deckOpts);
   await db.run(`
     UPDATE fc_cards SET state = ?, ease = ?, interval_days = ?, due_at = ?,
-      reps = ?, lapses = ?, learning_step = ?
+      reps = ?, lapses = ?, learning_step = ?,
+      stability = ?, difficulty = ?, last_reviewed_at = ?
     WHERE id = ?
-  `, [next.state, next.ease, next.intervalDays, next.dueAt, next.reps, next.lapses, next.learningStep, card.id]);
+  `, [next.state, next.ease, next.intervalDays, next.dueAt, next.reps, next.lapses, next.learningStep,
+    next.stability, next.difficulty, next.lastReviewedAt, card.id]);
   await db.run(`
     INSERT INTO fc_reviews (card_id, reviewed_at, rating, interval_before, interval_after,
       ease_before, ease_after, state_before, state_after, ms_taken)
@@ -706,6 +936,42 @@ async function fcGradeCard(card, rating, msTaken = 0) {
   `, [card.id, now, rating, card.intervalDays, next.intervalDays, card.ease, next.ease, card.state, next.state, msTaken]);
   _emitDataChanged();
   return { ...card, ...next };
+}
+
+/**
+ * One-shot SM-2 → FSRS state derivation (M98). Cards scheduled before the
+ * FSRS migration have reps but no stability; replay each one's append-only
+ * fc_reviews history through FSRS-6 to derive honest S/D. The visible
+ * schedule (state/interval/due) is left untouched — FSRS takes over from
+ * the next grade. Cards with reps but no review rows (pre-history data)
+ * get a conservative estimate: S ≈ current interval (true at retention 0.9),
+ * D from ease linearly. Idempotent: the WHERE clause empties after one run.
+ */
+async function fcHealFsrsState() {
+  const rows = await db.all('SELECT id FROM fc_cards WHERE reps > 0 AND stability = 0');
+  if (!rows.length) return 0;
+  for (const { id } of rows) {
+    const reviews = await db.all(
+      'SELECT reviewed_at AS reviewedAt, rating FROM fc_reviews WHERE card_id = ? ORDER BY reviewed_at ASC',
+      [id],
+    );
+    let derived;
+    if (reviews.length) {
+      derived = fcReplayFsrs(reviews);
+    } else {
+      const card = rowToCard(await db.get('SELECT * FROM fc_cards WHERE id = ?', [id]));
+      derived = {
+        stability: Math.max(FSRS_S_MIN, card.intervalDays || FSRS_W[GOOD - 1]),
+        difficulty: Math.min(10, Math.max(1, 11 - 2 * (card.ease || 2.5))),
+        lastReviewedAt: Math.max(0, (card.dueAt || 0) - (card.intervalDays || 0) * DAY),
+      };
+    }
+    await db.run(
+      'UPDATE fc_cards SET stability = ?, difficulty = ?, last_reviewed_at = ? WHERE id = ?',
+      [derived.stability, derived.difficulty, derived.lastReviewedAt, id],
+    );
+  }
+  return rows.length;
 }
 
 async function fcDueSummary() {
@@ -1338,6 +1604,13 @@ function injectStyles() {
 .fc-deck-card__info { flex: 1; min-width: 0; cursor: pointer; }
 .fc-deck-card__name { font-size: var(--px-text-md); font-weight: 600; letter-spacing: -0.01em; color: var(--px-text); }
 .fc-deck-card__meta { font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; margin-top: 3px; }
+.fc-exam-chip {
+  display: inline-block; margin-left: var(--px-space-2); padding: 1px 7px;
+  font-size: var(--px-text-xs); font-weight: 600; letter-spacing: 0.01em;
+  color: var(--px-accent); background: var(--px-accent-soft);
+  border-radius: var(--px-radius-full, 999px); vertical-align: 2px;
+  font-variant-numeric: tabular-nums;
+}
 .fc-deck-card__actions { display: flex; gap: var(--px-space-1); flex: 0 0 auto; opacity: 0; transition: opacity var(--px-dur-fast) var(--px-ease); }
 .fc-deck-card:hover .fc-deck-card__actions,
 .fc-deck-card:focus-within .fc-deck-card__actions { opacity: 1; }
@@ -1630,6 +1903,7 @@ function createSidebarView(container) {
       { label: 'Add Cards with AI', icon: 'px-ai-mark', onSelect: () => void openFlashcards({ view: 'create', deckId: deck.id }) },
       { separator: true },
       { label: 'Rename', icon: 'pencil', onSelect: () => void _renameDeckFlow(deck) },
+      { label: deck.examDate ? 'Change Exam Date' : 'Set Exam Date', icon: 'calendar', onSelect: () => void _setExamDateFlow(deck) },
       { label: 'Delete Deck', icon: 'trash', danger: true, onSelect: () => void _deleteDeckFlow(deck) },
     ]);
   };
@@ -1732,6 +2006,37 @@ function createSidebarView(container) {
 async function _renameDeckFlow(deck) {
   const name = await _api.window.showInputBox({ prompt: 'Rename deck', value: deck.name });
   if (name?.trim() && name.trim() !== deck.name) await fcRenameDeck(deck.id, name.trim());
+}
+
+/**
+ * Set or clear a deck's exam date (M98 deadline-aware scheduling). Plain
+ * YYYY-MM-DD input; blank clears. The scheduler caps intervals so at least
+ * one more review fits before the date (fcDeadlineCapDays).
+ */
+async function _setExamDateFlow(deck) {
+  const current = deck.examDate ? new Date(deck.examDate).toISOString().slice(0, 10) : '';
+  const raw = await _api.window.showInputBox({
+    prompt: 'Exam date (YYYY-MM-DD). Leave blank to clear.',
+    value: current,
+    placeHolder: '2026-10-27',
+  });
+  if (raw === undefined) return; // cancelled
+  const trimmed = String(raw).trim();
+  if (trimmed === '') {
+    await fcSetDeckExamDate(deck.id, 0);
+    return;
+  }
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+  const ts = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 23, 59).getTime() : NaN;
+  if (!m || Number.isNaN(ts)) {
+    _api.window.showErrorMessage?.(`"${trimmed}" is not a valid date. Use YYYY-MM-DD.`);
+    return;
+  }
+  if (ts <= Date.now()) {
+    _api.window.showErrorMessage?.('The exam date must be in the future.');
+    return;
+  }
+  await fcSetDeckExamDate(deck.id, ts);
 }
 
 async function _deleteDeckFlow(deck) {
@@ -1908,7 +2213,14 @@ async function renderDecks(body, setRoute) {
   for (const deck of decks) {
     const card = el('div', 'fc-deck-card');
     const info = el('div', 'fc-deck-card__info');
-    info.appendChild(el('div', 'fc-deck-card__name', deck.name));
+    const nameRow = el('div', 'fc-deck-card__name', deck.name);
+    if (deck.examDate && deck.examDate > Date.now()) {
+      const daysLeft = Math.max(1, Math.ceil((deck.examDate - Date.now()) / DAY));
+      const chip = el('span', 'fc-exam-chip', `${daysLeft}d to exam`);
+      chip.title = `Exam ${new Date(deck.examDate).toLocaleDateString()} — intervals capped so every card gets a final review in time`;
+      nameRow.appendChild(chip);
+    }
+    info.appendChild(nameRow);
     info.appendChild(el('div', 'fc-deck-card__meta',
       `${deck.total} cards · ${deck.dueCount} due · ${deck.newCount} new`));
     info.addEventListener('click', () => setRoute({ view: 'browse', deckId: deck.id }));
@@ -2214,9 +2526,14 @@ async function renderStudy(body, route, paneState, setRoute) {
     return;
   }
 
-  const deckNames = new Map(
-    (await db.all('SELECT id, name FROM fc_decks')).map((d) => [d.id, d.name]),
-  );
+  const deckRows = await db.all('SELECT id, name, exam_date, desired_retention FROM fc_decks');
+  const deckNames = new Map(deckRows.map((d) => [d.id, d.name]));
+  // Per-deck scheduling options (M98): desired retention + deadline cap.
+  const deckSchedOpts = new Map(deckRows.map((d) => [d.id, {
+    desiredRetention: d.desired_retention || 0.9,
+    examDate: d.exam_date || 0,
+  }]));
+  const optsFor = (card) => deckSchedOpts.get(card.deckId) || {};
 
   const session = {
     queue: [...queue],
@@ -2384,7 +2701,7 @@ async function renderStudy(body, route, paneState, setRoute) {
         const btn = el('button', `fc-grade fc-grade--${g.cls}`);
         btn.appendChild(el('span', 'fc-grade__dot'));
         btn.appendChild(el('span', 'fc-grade__label', g.label));
-        btn.appendChild(el('span', 'fc-grade__ivl', fcIntervalPreview(card, g.r, now)));
+        btn.appendChild(el('span', 'fc-grade__ivl', fcIntervalPreview(card, g.r, now, optsFor(card))));
         btn.addEventListener('click', () => grade(g.r));
         controls.appendChild(btn);
       }
@@ -2404,7 +2721,7 @@ async function renderStudy(body, route, paneState, setRoute) {
     const grade = (rating) => {
       const msTaken = Date.now() - session.cardShownAt;
       void (async () => {
-        const updated = await fcGradeCard(card, rating, msTaken);
+        const updated = await fcGradeCard(card, rating, msTaken, optsFor(card));
         // Cards still in learning re-enter the back of the queue when they
         // come due within this session's horizon (10 min).
         if ((updated.state === 'learning' || updated.state === 'relearning')
@@ -3422,6 +3739,14 @@ async function ensureDatabase(api) {
     console.error('[Flashcards] Migration failed:', res.error.message);
     return false;
   }
+  // M98: derive FSRS state for cards scheduled under SM-2. Idempotent; runs
+  // once per pre-existing card population, then the guard query is empty.
+  try {
+    const healed = await fcHealFsrsState();
+    if (healed > 0) console.log(`[Flashcards] FSRS state derived for ${healed} card(s) via review replay`);
+  } catch (err) {
+    console.error('[Flashcards] FSRS heal failed (cards stay on estimated state until next activate):', err);
+  }
   return true;
 }
 
@@ -3545,6 +3870,14 @@ function fcParsePastedRows(text) {
 
 export const __testables = {
   fcSchedule,
+  fcScheduleFsrs,
+  fcReplayFsrs,
+  fcRetrievability,
+  fcFsrsInterval,
+  fcFsrsInitDifficulty,
+  fcFsrsNextDifficulty,
+  fcDeadlineCapDays,
+  FSRS_W,
   fcIntervalPreview,
   fcBuildQueue,
   fcExtractCardsJson,

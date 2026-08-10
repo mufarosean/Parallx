@@ -12,6 +12,14 @@ import { __testables } from '../../ext/flashcards/main.js';
 
 const {
   fcSchedule,
+  fcScheduleFsrs,
+  fcReplayFsrs,
+  fcRetrievability,
+  fcFsrsInterval,
+  fcFsrsInitDifficulty,
+  fcFsrsNextDifficulty,
+  fcDeadlineCapDays,
+  FSRS_W,
   fcIntervalPreview,
   fcBuildQueue,
   fcExtractCardsJson,
@@ -146,12 +154,201 @@ describe('fcSchedule â€” relearning', () => {
   });
 });
 
-describe('fcIntervalPreview', () => {
+describe('fcIntervalPreview (FSRS-backed since M98)', () => {
   it('formats minutes, days and months', () => {
+    // New + Again → first learning step (1 minute), unchanged by FSRS.
     expect(fcIntervalPreview(newCard(), AGAIN, NOW)).toBe('1m');
-    expect(fcIntervalPreview(newCard(), EASY, NOW)).toBe('4d');
-    const big = newCard({ state: 'review', intervalDays: 100, ease: 2.5 });
+    // New + Easy graduates at I(0.9, S0(Easy) = w[3] ≈ 8.30) = 8 days.
+    expect(fcIntervalPreview(newCard(), EASY, NOW)).toBe('8d');
+    // Mature card: high stability grows further → months.
+    const big = newCard({ state: 'review', intervalDays: 100, stability: 100, difficulty: 4, reps: 5 });
     expect(fcIntervalPreview(big, GOOD, NOW)).toMatch(/mo$/);
+  });
+});
+
+// ─── FSRS-6 (M98) ────────────────────────────────────────────────────────────
+// Vectors hand-derived from the py-fsrs formulas with the default 21 weights;
+// there is no library oracle in-repo, so exact-value pins use the formulas
+// re-computed independently, and the rest are property pins.
+
+describe('FSRS-6 primitives', () => {
+  it('R(S, S) = 0.9 exactly — the defining calibration', () => {
+    for (const s of [0.5, 1, 2.3065, 10, 100, 3650]) {
+      expect(fcRetrievability(s, s)).toBeCloseTo(0.9, 9);
+    }
+  });
+
+  it('R(0, S) = 1 and R decreases with elapsed time', () => {
+    expect(fcRetrievability(0, 10)).toBeCloseTo(1, 9);
+    const r1 = fcRetrievability(1, 10);
+    const r10 = fcRetrievability(10, 10);
+    const r100 = fcRetrievability(100, 10);
+    expect(r1).toBeGreaterThan(r10);
+    expect(r10).toBeGreaterThan(r100);
+  });
+
+  it('interval at desired retention 0.9 equals stability (rounded)', () => {
+    expect(fcFsrsInterval(0.9, 10)).toBe(10);
+    expect(fcFsrsInterval(0.9, 2.3065)).toBe(2);
+    expect(fcFsrsInterval(0.9, 0.4)).toBe(1); // floor at 1 day
+  });
+
+  it('higher desired retention shortens the interval', () => {
+    expect(fcFsrsInterval(0.95, 10)).toBeLessThan(fcFsrsInterval(0.9, 10));
+    expect(fcFsrsInterval(0.9, 10)).toBeLessThan(fcFsrsInterval(0.8, 10));
+  });
+
+  it('initial stability comes from w[0..3] and initial difficulty from w[4]', () => {
+    const first = (g: number) => fcScheduleFsrs(newCard(), g, NOW);
+    expect(first(AGAIN).stability).toBeCloseTo(FSRS_W[0], 6);
+    expect(first(HARD).stability).toBeCloseTo(FSRS_W[1], 6);
+    expect(first(GOOD).stability).toBeCloseTo(FSRS_W[2], 6);
+    expect(first(EASY).stability).toBeCloseTo(FSRS_W[3], 6);
+    expect(fcFsrsInitDifficulty(AGAIN)).toBeCloseTo(FSRS_W[4], 6);
+  });
+
+  it('difficulty: Again raises, Easy lowers, always clamped to [1, 10]', () => {
+    const d = 5;
+    expect(fcFsrsNextDifficulty(d, AGAIN)).toBeGreaterThan(d);
+    expect(fcFsrsNextDifficulty(d, EASY)).toBeLessThan(d);
+    expect(fcFsrsNextDifficulty(10, AGAIN)).toBeLessThanOrEqual(10);
+    expect(fcFsrsNextDifficulty(1, EASY)).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('fcScheduleFsrs — state machine + stability evolution', () => {
+  it('learning steps still run intra-day: new + Good → step 1 at 10 minutes', () => {
+    const s = fcScheduleFsrs(newCard(), GOOD, NOW);
+    expect(s.state).toBe('learning');
+    expect(s.learningStep).toBe(1);
+    expect(s.dueAt).toBe(NOW + FC_LEARNING_STEPS_MIN[1] * MIN);
+    expect(s.stability).toBeCloseTo(FSRS_W[2], 6);
+  });
+
+  it('graduating Good-then-Good lands a ~2 day first interval (S0(Good) ≈ 2.31)', () => {
+    const step1 = fcScheduleFsrs(newCard(), GOOD, NOW);
+    const grad = fcScheduleFsrs(step1, GOOD, NOW + 10 * MIN);
+    expect(grad.state).toBe('review');
+    expect(grad.intervalDays).toBe(2);
+    // Same-day Good never shrinks stability (short-term multiplier floored at 1).
+    expect(grad.stability).toBeGreaterThanOrEqual(step1.stability);
+  });
+
+  it('on-time Good review grows stability (spacing effect vector)', () => {
+    // Card at S = 2.3065, D = D0(Good), reviewed exactly at S days (R = 0.9):
+    // growth = e^w8 · (11−D) · S^−w9 · (e^(w10·0.1) − 1) ⇒ S' ≈ 11.9 (hand-derived).
+    const d0Good = fcFsrsInitDifficulty(GOOD);
+    const card = newCard({
+      state: 'review', stability: 2.3065, difficulty: d0Good,
+      intervalDays: 2, lastReviewedAt: NOW - 2.3065 * DAY, reps: 2,
+    });
+    const s = fcScheduleFsrs(card, GOOD, NOW);
+    expect(s.stability).toBeGreaterThan(10);
+    expect(s.stability).toBeLessThan(14);
+    expect(s.intervalDays).toBe(fcFsrsInterval(0.9, s.stability));
+  });
+
+  it('interval ordering: Easy ≥ Good ≥ Hard for the same review', () => {
+    const card = newCard({
+      state: 'review', stability: 10, difficulty: 5,
+      intervalDays: 10, lastReviewedAt: NOW - 10 * DAY, reps: 3,
+    });
+    const hard = fcScheduleFsrs(card, HARD, NOW);
+    const good = fcScheduleFsrs(card, GOOD, NOW);
+    const easy = fcScheduleFsrs(card, EASY, NOW);
+    expect(easy.intervalDays).toBeGreaterThanOrEqual(good.intervalDays);
+    expect(good.intervalDays).toBeGreaterThanOrEqual(hard.intervalDays);
+  });
+
+  it('a lapse shrinks stability, never grows it, and enters relearning at 10m', () => {
+    const card = newCard({
+      state: 'review', stability: 20, difficulty: 5,
+      intervalDays: 20, lastReviewedAt: NOW - 20 * DAY, reps: 4, lapses: 0,
+    });
+    const s = fcScheduleFsrs(card, AGAIN, NOW);
+    expect(s.state).toBe('relearning');
+    expect(s.lapses).toBe(1);
+    expect(s.stability).toBeLessThan(20);
+    expect(s.dueAt).toBe(NOW + 10 * MIN);
+  });
+
+  it('legacy card without stability is treated as a first FSRS review', () => {
+    const legacy = newCard({ state: 'review', intervalDays: 30, ease: 2.7, reps: 9 });
+    const s = fcScheduleFsrs(legacy, GOOD, NOW);
+    expect(s.stability).toBeCloseTo(FSRS_W[2], 6);
+    expect(s.difficulty).toBeGreaterThan(0);
+  });
+});
+
+describe('fcScheduleFsrs — deadline cap (exam date)', () => {
+  it('caps the interval to half the remaining runway', () => {
+    expect(fcDeadlineCapDays(NOW + 20 * DAY, NOW)).toBe(10);
+    expect(fcDeadlineCapDays(NOW + 1 * DAY, NOW)).toBe(1);
+    expect(fcDeadlineCapDays(0, NOW)).toBe(Infinity);
+    expect(fcDeadlineCapDays(NOW - DAY, NOW)).toBe(Infinity); // exam passed
+  });
+
+  it('a mature card cannot be scheduled past the cap', () => {
+    const card = newCard({
+      state: 'review', stability: 200, difficulty: 3,
+      intervalDays: 180, lastReviewedAt: NOW - 180 * DAY, reps: 10,
+    });
+    const uncapped = fcScheduleFsrs(card, EASY, NOW);
+    const capped = fcScheduleFsrs(card, EASY, NOW, { examDate: NOW + 20 * DAY });
+    expect(uncapped.intervalDays).toBeGreaterThan(10);
+    expect(capped.intervalDays).toBeLessThanOrEqual(10);
+    // Stability itself is NOT capped — only the visible interval.
+    expect(capped.stability).toBeCloseTo(uncapped.stability, 6);
+  });
+
+  it('per-deck desired retention tightens intervals', () => {
+    const card = newCard({
+      state: 'review', stability: 30, difficulty: 5,
+      intervalDays: 30, lastReviewedAt: NOW - 30 * DAY, reps: 6,
+    });
+    const normal = fcScheduleFsrs(card, GOOD, NOW, { desiredRetention: 0.9 });
+    const strict = fcScheduleFsrs(card, GOOD, NOW, { desiredRetention: 0.95 });
+    expect(strict.intervalDays).toBeLessThan(normal.intervalDays);
+  });
+});
+
+describe('fcReplayFsrs — SM-2 history migration', () => {
+  it('replays a review history into finite S/D and stamps lastReviewedAt', () => {
+    const t0 = NOW - 30 * DAY;
+    const reviews = [
+      { reviewedAt: t0, rating: GOOD },
+      { reviewedAt: t0 + 10 * MIN, rating: GOOD },
+      { reviewedAt: t0 + 2 * DAY, rating: GOOD },
+      { reviewedAt: t0 + 9 * DAY, rating: AGAIN },
+      { reviewedAt: t0 + 9 * DAY + 10 * MIN, rating: GOOD },
+      { reviewedAt: t0 + 14 * DAY, rating: EASY },
+    ];
+    const out = fcReplayFsrs(reviews);
+    expect(out.stability).toBeGreaterThan(0);
+    expect(Number.isFinite(out.stability)).toBe(true);
+    expect(out.difficulty).toBeGreaterThanOrEqual(1);
+    expect(out.difficulty).toBeLessThanOrEqual(10);
+    expect(out.lastReviewedAt).toBe(t0 + 14 * DAY);
+  });
+
+  it('an all-Again history yields lower stability than an all-Good one', () => {
+    const t0 = NOW - 20 * DAY;
+    const mk = (rating: number) => [
+      { reviewedAt: t0, rating },
+      { reviewedAt: t0 + 1 * DAY, rating },
+      { reviewedAt: t0 + 3 * DAY, rating },
+      { reviewedAt: t0 + 7 * DAY, rating },
+    ];
+    const struggling = fcReplayFsrs(mk(AGAIN));
+    const solid = fcReplayFsrs(mk(GOOD));
+    expect(struggling.stability).toBeLessThan(solid.stability);
+    expect(struggling.difficulty).toBeGreaterThan(solid.difficulty);
+  });
+
+  it('empty history leaves the card new', () => {
+    const out = fcReplayFsrs([]);
+    expect(out.stability).toBe(0);
+    expect(out.lastReviewedAt).toBe(0);
   });
 });
 
