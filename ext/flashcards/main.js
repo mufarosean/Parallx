@@ -498,7 +498,12 @@ function fcExtractCardsJson(text) {
       const tags = Array.isArray(item.tags)
         ? item.tags.map((x) => String(x).trim()).filter(Boolean).slice(0, 8).join(',')
         : '';
-      cards.push({ front, back, tags });
+      const card = { front, back, tags };
+      // M98 grounding: per-card page attribution when the prompt was paged.
+      // fcGenerateCards validates the number against the real page range.
+      const page = Number(item.page ?? item.source_page ?? NaN);
+      if (Number.isInteger(page) && page > 0) card.page = page;
+      cards.push(card);
     }
     return cards;
   };
@@ -662,6 +667,36 @@ function el(tag, className, text) {
 
 const FC_ICON_HTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>';
 
+/**
+ * Open a card's source material (M98 grounding). Canvas pages route through
+ * canvas.openPage; files open in their editor, and PDFs additionally jump to
+ * the cited page via the parallx.pdf.goToPage event (the pane listens; the
+ * delay lets a freshly-opened pane finish mounting first).
+ */
+async function fcOpenSource(card) {
+  try {
+    const uri = String(card.sourceUri || '');
+    if (!uri) return;
+    const canvasMatch = /^parallx:\/\/canvas\/page\/(.+)$/.exec(uri);
+    if (canvasMatch) {
+      await _api.commands.executeCommand('canvas.openPage', canvasMatch[1]);
+      return;
+    }
+    await _api.editors.openFileEditor(uri, { pinned: false });
+    if (card.sourcePage > 0 && /\.pdf$/i.test(uri)) {
+      // The PDF pane's M66 link contract: parallx:pdf-reveal navigates any
+      // open pane showing this file. The delay lets a fresh pane mount.
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('parallx:pdf-reveal', {
+          detail: { filePath: uri, page: card.sourcePage },
+        }));
+      }, 500);
+    }
+  } catch (e) {
+    _api.window.showErrorMessage?.(`Could not open the source: ${e.message}`);
+  }
+}
+
 async function openFlashcards(route) {
   if (route) _setRoute(route);
   await _api.editors.openEditor({
@@ -775,6 +810,12 @@ async function fcSetDeckExamDate(id, examDate) {
 }
 
 async function fcDeleteDeck(id) {
+  try {
+    await db.run(
+      'DELETE FROM fc_card_embeddings WHERE card_id IN (SELECT CAST(id AS TEXT) FROM fc_cards WHERE deck_id = ?)',
+      [id],
+    );
+  } catch { /* vec table absent or subquery unsupported — orphans are harmless (JOIN filters them) */ }
   await db.run('DELETE FROM fc_cards WHERE deck_id = ?', [id]);
   await db.run('DELETE FROM fc_decks WHERE id = ?', [id]);
   _emitDataChanged();
@@ -795,8 +836,8 @@ function fcNormalizeCardText(text) {
 
 async function fcCreateCard(input) {
   const res = await db.run(`
-    INSERT INTO fc_cards (deck_id, front, back, notes, tags, source_uri, source_label, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO fc_cards (deck_id, front, back, notes, tags, source_uri, source_label, source_page, card_type, note_group, cloze_index, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `, [
     input.deckId,
     fcNormalizeCardText(input.front),
@@ -805,10 +846,16 @@ async function fcCreateCard(input) {
     input.tags || '',
     input.sourceUri || '',
     input.sourceLabel || '',
+    Number.isInteger(input.sourcePage) && input.sourcePage > 0 ? input.sourcePage : 0,
+    input.cardType || 'basic',
+    input.noteGroup || '',
+    Number.isInteger(input.clozeIndex) && input.clozeIndex > 0 ? input.clozeIndex : 0,
     Date.now(),
   ]);
   _emitDataChanged();
-  return res.lastInsertRowid ?? res.lastID ?? null;
+  const id = res.lastInsertRowid ?? res.lastID ?? null;
+  if (id != null) void fcEmbedCards([{ id, front: input.front, back: input.back }]);
+  return id;
 }
 
 /**
@@ -830,47 +877,261 @@ async function fcCreateCardsBulk(deckId, cards, { sourceUri = '', sourceLabel = 
   const now = Math.max(Date.now(), _lastBulkStamp + 1);
   _lastBulkStamp = now;
   const CHUNK = 50;
+  // M98: per-card provenance/type overrides (c.sourceUri, c.sourcePage,
+  // c.cardType, c.noteGroup, …) win over the call-level defaults. Tags are
+  // normalized to comma-joined — the bulk path used spaces while every other
+  // path used commas, which any tag filtering would have tripped over.
+  const rowParams = (c) => [
+    deckId,
+    fcNormalizeCardText(c.front),
+    fcNormalizeCardText(c.back),
+    c.notes || '',
+    Array.isArray(c.tags) ? c.tags.join(',') : (c.tags || ''),
+    c.sourceUri !== undefined ? c.sourceUri : sourceUri,
+    c.sourceLabel !== undefined ? c.sourceLabel : sourceLabel,
+    Number.isInteger(c.sourcePage) && c.sourcePage > 0 ? c.sourcePage : 0,
+    c.cardType || 'basic',
+    c.noteGroup || '',
+    Number.isInteger(c.clozeIndex) && c.clozeIndex > 0 ? c.clozeIndex : 0,
+    now,
+  ];
+  const COLS = '(deck_id, front, back, notes, tags, source_uri, source_label, source_page, card_type, note_group, cloze_index, created_at)';
+  const ROW_PH = '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+
+  const statements = [];
+  for (let i = 0; i < cards.length; i += CHUNK) {
+    const chunk = cards.slice(i, i + CHUNK);
+    statements.push({
+      sql: `INSERT INTO fc_cards ${COLS} VALUES ${chunk.map(() => ROW_PH).join(', ')}`,
+      params: chunk.flatMap(rowParams),
+    });
+  }
+
+  // Preferred path: one real transaction — all-or-nothing at the SQL layer.
+  if (_dbBridge && typeof _dbBridge.runTransaction === 'function') {
+    const res = await _dbBridge.runTransaction(statements.map((s) => ({ sql: s.sql, params: s.params })));
+    if (res?.error) throw new Error(`[FC-DB] ${res.error.message}`);
+    _emitDataChanged();
+    void fcEmbedNewBulk(deckId, now);
+    return cards.length;
+  }
+
+  // Fallback for hosts without the transaction bridge: sequential chunks with
+  // a compensating delete. The uniquified created_at stamp alone identifies
+  // exactly this call's rows (per-card source values made the old
+  // source_uri/source_label key unusable).
   let inserted = 0;
   try {
-    for (let i = 0; i < cards.length; i += CHUNK) {
-      const chunk = cards.slice(i, i + CHUNK);
-      const placeholders = chunk.map(() => '(?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
-      const params = [];
-      for (const c of chunk) {
-        params.push(
-          deckId,
-          fcNormalizeCardText(c.front),
-          fcNormalizeCardText(c.back),
-          c.notes || '',
-          Array.isArray(c.tags) ? c.tags.join(' ') : (c.tags || ''),
-          sourceUri,
-          sourceLabel,
-          now,
-        );
-      }
-      await db.run(
-        `INSERT INTO fc_cards (deck_id, front, back, notes, tags, source_uri, source_label, created_at)
-         VALUES ${placeholders}`,
-        params,
-      );
-      inserted += chunk.length;
+    for (const s of statements) {
+      await db.run(s.sql, s.params);
+      inserted += s.params.length / 12;
     }
   } catch (e) {
-    // All-or-nothing: a chunk failure mid-call would otherwise leave a partial
-    // group that a retry re-inserts in full. Every row of this call shares the
-    // same created_at + source stamp, which no other write path produces, so
-    // the compensating delete removes exactly this call's rows.
     try {
-      await db.run(
-        'DELETE FROM fc_cards WHERE deck_id = ? AND created_at = ? AND source_uri = ? AND source_label = ?',
-        [deckId, now, sourceUri, sourceLabel],
-      );
+      await db.run('DELETE FROM fc_cards WHERE deck_id = ? AND created_at = ?', [deckId, now]);
     } catch { /* compensation is best-effort; the error below still surfaces */ }
     _emitDataChanged();
     throw e;
   }
   _emitDataChanged();
+  void fcEmbedNewBulk(deckId, now);
   return inserted;
+}
+
+// ── Card embeddings + duplicate detection (M98) ─────────────────────────────
+// Vectors live in a sqlite-vec vec0 virtual table INSIDE the extension DB
+// (the ext bridge loads sqlite-vec for every extension database). The table
+// is created lazily in code — NOT in a migration — so a host without vec
+// support degrades to the trigram fallback instead of failing activation.
+// Everything here is best-effort: no embedding path ever blocks or throws
+// into a caller.
+
+const FC_EMB_DIMS = 768; // nomic-embed-text v1.5; EmbeddingService hard-validates
+const FC_DUP_SIM_EMBEDDING = 0.88; // cosine similarity flag threshold
+const FC_DUP_SIM_TRIGRAM = 0.5;    // Jaccard 3-gram fallback threshold
+
+let _embSvcCache; // undefined = unprobed; null = unavailable
+function fcEmbeddingService() {
+  if (_embSvcCache !== undefined) return _embSvcCache;
+  try {
+    const ID = { id: 'IEmbeddingService' };
+    _embSvcCache = (_api?.services?.has?.(ID) && _api.services.get(ID)) || null;
+  } catch { _embSvcCache = null; }
+  return _embSvcCache;
+}
+
+let _vecReady; // Promise<boolean>, memoized
+function fcEnsureVecTable() {
+  if (_vecReady) return _vecReady;
+  _vecReady = (async () => {
+    try {
+      await db.run(
+        `CREATE VIRTUAL TABLE IF NOT EXISTS fc_card_embeddings USING vec0(
+          embedding float[${FC_EMB_DIMS}] distance_metric=cosine,
+          +card_id TEXT NOT NULL
+        )`,
+      );
+      return true;
+    } catch (e) {
+      console.warn('[Flashcards] vec table unavailable — dedup falls back to trigram:', e?.message);
+      return false;
+    }
+  })();
+  return _vecReady;
+}
+
+/**
+ * Liveness probe: Ollama reachable AND the embedding service resolvable AND
+ * the vec table creatable. A plain /api/version ping avoids ensureModel's
+ * auto-pull side effect (a first-ever embed can otherwise block on a
+ * multi-minute model download).
+ */
+async function fcEmbeddingsAvailable() {
+  const svc = fcEmbeddingService();
+  if (!svc) return false;
+  if (!(await fcEnsureVecTable())) return false;
+  try {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 2000);
+    const res = await fetch('http://localhost:11434/api/version', { signal: ctl.signal });
+    clearTimeout(t);
+    return res.ok;
+  } catch { return false; }
+}
+
+function fcCardEmbedText(front, back) {
+  return `${String(front || '').trim()}\n${String(back || '').trim()}`.slice(0, 4000);
+}
+
+/** Standalone byte copy — IPC structured clone can misalign shared buffers. */
+function fcVecBlob(vec) {
+  return new Uint8Array(new Float32Array(vec).buffer.slice(0));
+}
+
+/** Embed and store vectors for cards [{id, front, back}]. Never throws. */
+async function fcEmbedCards(cards) {
+  try {
+    if (!cards.length || !(await fcEmbeddingsAvailable())) return;
+    const svc = fcEmbeddingService();
+    const texts = cards.map((c) => fcCardEmbedText(c.front, c.back));
+    const vectors = await svc.embedDocumentBatch(texts);
+    for (let i = 0; i < cards.length; i++) {
+      const vec = vectors[i];
+      if (!Array.isArray(vec) || vec.length !== FC_EMB_DIMS) continue;
+      await db.run('DELETE FROM fc_card_embeddings WHERE card_id = ?', [String(cards[i].id)]);
+      await db.run(
+        'INSERT INTO fc_card_embeddings (embedding, card_id) VALUES (?, ?)',
+        [fcVecBlob(vec), String(cards[i].id)],
+      );
+    }
+  } catch (e) {
+    console.warn('[Flashcards] card embedding skipped:', e?.message);
+  }
+}
+
+/** Embed the rows a bulk insert just created (fire-and-forget). */
+async function fcEmbedNewBulk(deckId, createdAt) {
+  try {
+    const rows = await db.all(
+      'SELECT id, front, back FROM fc_cards WHERE deck_id = ? AND created_at = ?',
+      [deckId, createdAt],
+    );
+    await fcEmbedCards(rows);
+  } catch { /* best-effort */ }
+}
+
+/** 3-gram Jaccard similarity — the no-Ollama fallback. */
+function fcTrigramSimilarity(a, b) {
+  const grams = (s) => {
+    const norm = String(s || '').toLowerCase().replace(/[^a-z0-9$\\]+/g, ' ').replace(/\s+/g, ' ').trim();
+    const set = new Set();
+    for (let i = 0; i <= norm.length - 3; i++) set.add(norm.slice(i, i + 3));
+    return set;
+  };
+  const ga = grams(a), gb = grams(b);
+  if (ga.size === 0 || gb.size === 0) return 0;
+  let inter = 0;
+  for (const g of ga) if (gb.has(g)) inter++;
+  return inter / (ga.size + gb.size - inter);
+}
+
+/**
+ * Duplicate scan: for each candidate {front, back} return null or
+ * { similarity, matchId, matchFront } vs the deck's existing cards.
+ * Embedding KNN when available, trigram otherwise. Cards sharing a
+ * note_group with the candidate are exempt (cloze/reverse siblings are
+ * near-identical by design). Never throws.
+ */
+async function fcFindDuplicates(deckId, candidates, { noteGroup = '' } = {}) {
+  const out = candidates.map(() => null);
+  try {
+    if (await fcEmbeddingsAvailable()) {
+      const svc = fcEmbeddingService();
+      const texts = candidates.map((c) => fcCardEmbedText(c.front, c.back));
+      const vectors = await svc.embedDocumentBatch(texts);
+      for (let i = 0; i < candidates.length; i++) {
+        const vec = vectors[i];
+        if (!Array.isArray(vec) || vec.length !== FC_EMB_DIMS) continue;
+        // KNN in a subquery: vec0 requires the MATCH + k constraint to stand
+        // alone; deck filtering happens on the joined outer query.
+        const hits = await db.all(
+          `SELECT v.card_id, v.distance, c.front, c.note_group
+           FROM (SELECT card_id, distance FROM fc_card_embeddings
+                 WHERE embedding MATCH ? AND k = 8 ORDER BY distance) v
+           JOIN fc_cards c ON c.id = CAST(v.card_id AS INTEGER)
+           WHERE c.deck_id = ?
+           ORDER BY v.distance`,
+          [fcVecBlob(vec), deckId],
+        );
+        for (const h of hits) {
+          if (noteGroup && h.note_group === noteGroup) continue;
+          const similarity = 1 - h.distance / 2;
+          if (similarity >= FC_DUP_SIM_EMBEDDING) {
+            out[i] = { similarity, matchId: Number(h.card_id), matchFront: h.front };
+          }
+          break; // nearest non-sibling decides
+        }
+      }
+      return out;
+    }
+    // Trigram fallback — O(deck × candidates), fine at deck scale.
+    const existing = await db.all(
+      'SELECT id, front, back, note_group FROM fc_cards WHERE deck_id = ?', [deckId],
+    );
+    for (let i = 0; i < candidates.length; i++) {
+      const text = fcCardEmbedText(candidates[i].front, candidates[i].back);
+      let best = null;
+      for (const ex of existing) {
+        if (noteGroup && ex.note_group === noteGroup) continue;
+        const sim = fcTrigramSimilarity(text, fcCardEmbedText(ex.front, ex.back));
+        if (sim >= FC_DUP_SIM_TRIGRAM && (!best || sim > best.similarity)) {
+          best = { similarity: sim, matchId: ex.id, matchFront: ex.front };
+        }
+      }
+      out[i] = best;
+    }
+  } catch (e) {
+    console.warn('[Flashcards] duplicate scan skipped:', e?.message);
+  }
+  return out;
+}
+
+/**
+ * Lazy backfill: embed cards that have no vector yet. Runs off the
+ * activation path (delayed), capped per run so a huge legacy deck spreads
+ * across sessions instead of pinning the embed endpoint for minutes.
+ */
+async function fcBackfillEmbeddings(cap = 512) {
+  try {
+    if (!(await fcEmbeddingsAvailable())) return;
+    const rows = await db.all(
+      `SELECT c.id, c.front, c.back FROM fc_cards c
+       LEFT JOIN fc_card_embeddings e ON e.card_id = CAST(c.id AS TEXT)
+       WHERE e.card_id IS NULL LIMIT ?`,
+      [cap],
+    );
+    if (rows.length) await fcEmbedCards(rows);
+  } catch { /* best-effort */ }
 }
 
 async function fcUpdateCard(id, patch) {
@@ -885,10 +1146,20 @@ async function fcUpdateCard(id, patch) {
   params.push(id);
   await db.run(`UPDATE fc_cards SET ${sets.join(', ')} WHERE id = ?`, params);
   _emitDataChanged();
+  // Text changed → the stored vector is stale; re-embed best-effort.
+  if (patch.front !== undefined || patch.back !== undefined) {
+    void (async () => {
+      try {
+        const row = await db.get('SELECT id, front, back FROM fc_cards WHERE id = ?', [id]);
+        if (row) await fcEmbedCards([row]);
+      } catch { /* best-effort */ }
+    })();
+  }
 }
 
 async function fcDeleteCard(id) {
   await db.run('DELETE FROM fc_cards WHERE id = ?', [id]);
+  try { await db.run('DELETE FROM fc_card_embeddings WHERE card_id = ?', [String(id)]); } catch { /* vec absent */ }
   _emitDataChanged();
 }
 
@@ -1035,6 +1306,7 @@ const FC_GENERATE_SYSTEM = [
   '- Never use em dashes.',
   'Output ONLY a JSON array, no prose, in this exact shape:',
   '[{"front": "...", "back": "...", "tags": ["topic"]}]',
+  'When the material carries [Page N] markers, add "page": N to each card.',
 ].join('\n');
 
 // Context planning constants. CHARS_PER_TOKEN is the safe planning ratio,
@@ -1120,19 +1392,84 @@ function fcAutoCardEstimate(chars) {
   return Math.max(10, Math.min(50, Math.round(chars / 500)));
 }
 
-async function fcGenerateCards(sourceText, { count = null, focus = '' } = {}) {
+/**
+ * Consume an LM stream with a stall watchdog (M98). The extension-facing LM
+ * API has no AbortSignal and no timeout, so a hung Ollama socket previously
+ * left every "Generating…" spinner alive forever. This wrapper re-arms a
+ * timer per chunk and throws once no chunk arrives for `stallMs`. It cannot
+ * abort the underlying request (no signal to abort with) — it abandons the
+ * iterator, which is enough to unwedge the UI.
+ */
+async function fcStreamWithStall(stream, onChunk, stallMs = 90_000) {
+  const it = stream[Symbol.asyncIterator]();
+  for (;;) {
+    let timer;
+    const stall = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(
+        `The model stopped responding (no output for ${Math.round(stallMs / 1000)}s). ` +
+        'Check that the model backend is running.',
+      )), stallMs);
+    });
+    let step;
+    try {
+      step = await Promise.race([it.next(), stall]);
+    } finally {
+      clearTimeout(timer);
+    }
+    if (step.done) return;
+    onChunk(step.value);
+  }
+}
+
+/**
+ * Build the prompt material block (M98 grounding). With per-page text
+ * available (PDF extraction), pages are individually tagged so the model can
+ * attribute each card to the page its fact came from — flattening the pages
+ * first (the pre-M98 behavior) makes any page attribution a hallucination.
+ * Clipping keeps whole pages where possible so a marker never lies.
+ */
+function fcBuildMaterial(sourceText, pageTexts, maxChars, pageOffset = 0) {
+  if (!Array.isArray(pageTexts) || pageTexts.length === 0) {
+    const clipped = sourceText.length > maxChars
+      ? sourceText.slice(0, maxChars) + '\n\n[...material truncated...]'
+      : sourceText;
+    return { material: clipped, paged: false, clipped: sourceText.length > maxChars };
+  }
+  const parts = [];
+  let used = 0;
+  let clipped = false;
+  for (let i = 0; i < pageTexts.length; i++) {
+    const text = String(pageTexts[i] || '').trim();
+    if (!text) continue;
+    const block = `[Page ${pageOffset + i + 1}]\n${text}`;
+    if (used + block.length > maxChars) {
+      const room = maxChars - used;
+      // Keep a partial page only when meaningful; a marker with no body lies.
+      if (room > 200) parts.push(block.slice(0, room) + '\n[...page truncated...]');
+      clipped = true;
+      break;
+    }
+    parts.push(block);
+    used += block.length + 2;
+  }
+  if (clipped) parts.push('[...material truncated...]');
+  return { material: parts.join('\n\n'), paged: true, clipped };
+}
+
+async function fcGenerateCards(sourceText, { count = null, focus = '', pageTexts = null, pageOffset = 0 } = {}) {
   const modelId = await fcPickModel();
   if (!modelId) throw new Error('No language model available. Configure a model in AI settings.');
   const { contextSetting, think } = fcAiOptions();
   const modelCtx = await fcModelContextLength(modelId);
-  const planCount = count ?? fcAutoCardEstimate(sourceText.length);
+  const totalChars = Array.isArray(pageTexts) && pageTexts.length
+    ? pageTexts.reduce((n, p) => n + String(p || '').length, 0)
+    : sourceText.length;
+  const planCount = count ?? fcAutoCardEstimate(totalChars);
   const { numCtx, maxChars } = fcContextPlan({
-    chars: sourceText.length, count: planCount, modelCtx, setting: contextSetting,
+    chars: totalChars, count: planCount, modelCtx, setting: contextSetting,
   });
-  const clipped = sourceText.length > maxChars
-    ? sourceText.slice(0, maxChars) + '\n\n[...material truncated...]'
-    : sourceText;
-  if (sourceText.length > maxChars) {
+  const { material, paged, clipped } = fcBuildMaterial(sourceText, pageTexts, maxChars, pageOffset);
+  if (clipped) {
     console.warn(`[Flashcards] material clipped to ${maxChars} chars to fit a ${numCtx}-token window (model: ${modelId}${modelCtx ? `, max ${modelCtx}` : ', context length unknown'})`);
   }
   const user = [
@@ -1143,10 +1480,13 @@ async function fcGenerateCards(sourceText, { count = null, focus = '' } = {}) {
       ? `Create up to ${Math.min(50, Math.max(1, count))} flashcards from the material below.`
       : 'Create one flashcard per atomic fact the material supports: as many as it warrants, up to 50. '
         + 'Do not pad thin material with near-duplicate cards, and do not stop early on rich material.',
+    paged
+      ? 'The material is tagged with [Page N] markers. Add "page": N to each card, naming the page its fact comes from. Never invent a page number that has no marker.'
+      : '',
     focus ? `Guidance from the learner (follow it): ${focus}` : '',
     '',
     '--- MATERIAL ---',
-    clipped,
+    material,
   ].filter(Boolean).join('\n');
 
   let output = '';
@@ -1154,13 +1494,22 @@ async function fcGenerateCards(sourceText, { count = null, focus = '' } = {}) {
     { role: 'system', content: FC_GENERATE_SYSTEM },
     { role: 'user', content: user },
   ], { temperature: 0.2, think, numCtx });
-  for await (const chunk of stream) {
+  await fcStreamWithStall(stream, (chunk) => {
     if (chunk.content) output += chunk.content;
-  }
+  });
   const { cards, error } = fcExtractCardsJson(output);
   if (error && cards.length === 0) {
     console.warn('[Flashcards] generation failed. Raw model output head:', output.slice(0, 400));
     throw new Error(`${error} (model: ${modelId}; raw output logged to console)`);
+  }
+  if (paged) {
+    // Attribution hygiene: only pages that actually exist in the material.
+    const maxPage = pageOffset + pageTexts.length;
+    for (const c of cards) {
+      if (!(Number.isInteger(c.page) && c.page >= pageOffset + 1 && c.page <= maxPage)) delete c.page;
+    }
+  } else {
+    for (const c of cards) delete c.page;
   }
   return cards;
 }
@@ -1306,7 +1655,11 @@ async function fcExtractDocument(filePath) {
     );
   }
   const name = filePath.split(/[\\/]/).pop();
-  return { text, label: `Document: ${name}`, uri: filePath };
+  // M98 grounding: keep the extractor's per-page text (PDFs) so generation
+  // can tag pages and attribute each card — joined text can never recover
+  // page boundaries.
+  const pageTexts = Array.isArray(result?.pageTexts) && result.pageTexts.length > 1 ? result.pageTexts : null;
+  return { text, label: `Document: ${name}`, uri: filePath, pageTexts };
 }
 
 // OCR a known image path via the Docling bridge.
@@ -1746,6 +2099,8 @@ function injectStyles() {
 }
 .fc-card--q .fc-card__body { font-size: var(--px-text-xl); font-weight: 700; line-height: 1.35; }
 .fc-card__source { margin-top: var(--px-space-4); padding-top: var(--px-space-3); border-top: 1px solid #ececec; font-size: var(--px-text-2xs); color: #9a9a9a; }
+.fc-card__source--link { cursor: pointer; text-decoration: underline; text-decoration-color: #d5d5d5; text-underline-offset: 2px; }
+.fc-card__source--link:hover { color: #555555; text-decoration-color: #9a9a9a; }
 /* Light-surface treatments for markdown furniture on the white card. */
 .fc-card .px-markdown code { background: #f2f2f2; color: #111111; }
 .fc-card .px-markdown pre { background: #f6f6f6; border-color: #e2e2e2; color: #111111; }
@@ -1827,6 +2182,17 @@ function injectStyles() {
 }
 .fc-genrow__fields { flex: 1; display: flex; flex-direction: column; gap: var(--px-space-1); }
 .fc-genrow--dropped { opacity: 0.4; }
+.fc-genrow__chips { display: flex; gap: var(--px-space-1); flex-wrap: wrap; }
+.fc-chip {
+  display: inline-block; padding: 1px 7px; font-size: var(--px-text-xs);
+  color: var(--px-text-muted); background: var(--px-bg-inset);
+  border: 1px solid var(--px-border); border-radius: var(--px-radius-full, 999px);
+  font-variant-numeric: tabular-nums; max-width: 100%; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.fc-chip--warn { color: var(--px-warning, var(--px-text)); border-color: var(--px-warning, var(--px-border-strong)); }
+.fc-chip--link { cursor: pointer; }
+.fc-chip--link:hover { color: var(--px-accent); border-color: var(--px-accent); }
 
 /* ── Dashboard widget ── */
 .fc-widget-due { font-size: var(--px-text-base); line-height: var(--px-leading-base); padding: var(--px-space-1) 2px; color: var(--px-text-secondary); }
@@ -2581,13 +2947,13 @@ async function renderStudy(body, route, paneState, setRoute) {
         try {
           const stream = await fcDiscussStream(card, session.discussHistory, q);
           let text = '';
-          for await (const chunk of stream) {
+          await fcStreamWithStall(stream, (chunk) => {
             if (chunk.content) {
               text += chunk.content;
               aiMsg.textContent = text;
               log.scrollTop = log.scrollHeight;
             }
-          }
+          });
           // Final render: markdown + LaTeX (streaming shows plain text).
           if (_api.ui.renderMarkdown) {
             aiMsg.textContent = '';
@@ -2686,7 +3052,18 @@ async function renderStudy(body, route, paneState, setRoute) {
       const aBody = el('div', 'fc-card__body fc-study__back');
       aBody.appendChild(renderCardBody(card.back));
       aCard.appendChild(aBody);
-      if (card.sourceLabel) aCard.appendChild(el('div', 'fc-card__source', card.sourceLabel));
+      // M98 grounding: the source line is a LINK back to the material —
+      // canvas pages open in place, PDFs open and jump to the cited page.
+      if (card.sourceLabel) {
+        const srcText = card.sourcePage > 0 ? `${card.sourceLabel} · p.${card.sourcePage}` : card.sourceLabel;
+        const src = el('div', 'fc-card__source', srcText);
+        if (card.sourceUri) {
+          src.classList.add('fc-card__source--link');
+          src.title = 'Open the source';
+          src.addEventListener('click', () => void fcOpenSource(card));
+        }
+        aCard.appendChild(src);
+      }
       answerHost.appendChild(aCard);
 
       controls.innerHTML = '';
@@ -2789,7 +3166,7 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
 
   // ── Source material — default to in-workspace: drag a file/page, or pick. ──
   view.appendChild(el('div', 'fc-label', 'Source Material'));
-  const sourceState = { text: '', label: '', uri: '' };
+  const sourceState = { text: '', label: '', uri: '', pageTexts: null };
   const srcStatus = el('div', 'fc-hint fc-src-status', 'Drag a file or canvas page here, pick one below, or paste text.');
 
   const applyLoaded = (loaded) => {
@@ -2797,8 +3174,10 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
     sourceState.text = loaded.text;
     sourceState.label = loaded.label;
     sourceState.uri = loaded.uri;
+    sourceState.pageTexts = loaded.pageTexts || null;
     pasteIn.value = '';
-    srcStatus.textContent = `Loaded ${loaded.label} (${loaded.text.length.toLocaleString()} chars).`;
+    const pages = sourceState.pageTexts ? ` · ${sourceState.pageTexts.length} pages` : '';
+    srcStatus.textContent = `Loaded ${loaded.label} (${loaded.text.length.toLocaleString()} chars${pages}).`;
   };
 
   // Drop zone — the primary path: drag straight from the Explorer or Canvas
@@ -2946,11 +3325,22 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
       setGenLabel('Generating…');
       try {
         const n = parseInt(countIn.value, 10);
+        // Pasted text overrides the loaded source — page tagging only applies
+        // when generating from the loaded (paged) document itself.
+        const usingLoadedSource = !pasteIn.value.trim() && !!sourceState.text;
         const cards = await fcGenerateCards(text, {
           count: Number.isFinite(n) && n > 0 ? Math.min(50, n) : null,
           focus: guideIn.value.trim(),
+          pageTexts: usingLoadedSource ? sourceState.pageTexts : null,
         });
-        renderReview(cards);
+        // Duplicate scan against the target deck (existing decks only).
+        let dups = cards.map(() => null);
+        const deckSel = parseInt(deckDropdown.value, 10);
+        if (Number.isFinite(deckSel)) {
+          setGenLabel('Checking for duplicates…');
+          dups = await fcFindDuplicates(deckSel, cards);
+        }
+        renderReview(cards, dups);
       } catch (e2) {
         err.textContent = e2.message;
         err.style.display = '';
@@ -2961,16 +3351,31 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
     })();
   });
 
-  const renderReview = (cards) => {
+  const renderReview = (cards, dups = []) => {
     reviewHost.innerHTML = '';
     reviewHost.appendChild(el('div', 'fc-label', `Review ${cards.length} generated cards`));
+    const dupCount = dups.filter(Boolean).length;
     reviewHost.appendChild(el('div', 'fc-hint',
-      'Edit anything inline; drop cards you do not want. Nothing is saved until you import.'));
+      'Edit anything inline; drop cards you do not want. Nothing is saved until you import.'
+      + (dupCount ? ` ${dupCount} ${dupCount === 1 ? 'card looks' : 'cards look'} similar to cards already in the deck.` : '')));
 
     const rows = [];
-    for (const c of cards) {
+    for (let ci = 0; ci < cards.length; ci++) {
+      const c = cards[ci];
       const row = el('div', 'fc-genrow');
       const fields = el('div', 'fc-genrow__fields');
+      // Provenance + duplicate chips above the editors.
+      const dup = dups[ci];
+      if (c.page || dup) {
+        const chips = el('div', 'fc-genrow__chips');
+        if (c.page) chips.appendChild(el('span', 'fc-chip', `p.${c.page}`));
+        if (dup) {
+          const dupChip = el('span', 'fc-chip fc-chip--warn', `Similar to: ${String(dup.matchFront).slice(0, 60)}`);
+          dupChip.title = `${Math.round(dup.similarity * 100)}% similar to an existing card in this deck`;
+          chips.appendChild(dupChip);
+        }
+        fields.appendChild(chips);
+      }
       const front = el('textarea', 'fc-textarea');
       front.rows = 2; front.value = c.front;
       const back = el('textarea', 'fc-textarea');
@@ -2979,7 +3384,7 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
       row.appendChild(fields);
       const dropBtn = el('button', 'fc-btn fc-btn--danger');
       dropBtn.textContent = 'Drop';
-      const entry = { row, front, back, tags: c.tags || '', dropped: false };
+      const entry = { row, front, back, tags: c.tags || '', page: c.page || 0, dropped: false };
       dropBtn.addEventListener('click', () => {
         entry.dropped = !entry.dropped;
         row.classList.toggle('fc-genrow--dropped', entry.dropped);
@@ -3020,6 +3425,7 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
               tags: r.tags,
               sourceUri: sourceState.uri,
               sourceLabel: sourceState.label || 'Pasted text',
+              sourcePage: r.page || 0,
             });
           }
           await _api.window.showInformationMessage(`Imported ${keep.length} cards.`);
@@ -3765,6 +4171,11 @@ export async function activate(api, context) {
 
   injectStyles();
 
+  // M98: lazy embedding backfill for dedup — well off the activation path,
+  // capped per run, and a silent no-op when Ollama is absent.
+  const backfillTimer = setTimeout(() => { void fcBackfillEmbeddings(); }, 8000);
+  context.subscriptions.push({ dispose: () => clearTimeout(backfillTimer) });
+
   context.subscriptions.push(
     api.views.registerViewProvider('flashcards.decks', {
       createView: (container) => createSidebarView(container),
@@ -3826,7 +4237,8 @@ function fcPairPages(pageTexts, { offset = 0 } = {}) {
     const front = pages[i];
     const back = pages[i + 1] ?? '';
     if (!front && !back) continue;   // blank sheet in the middle of the PDF
-    cards.push({ front, back, tags: [] });
+    // M98 grounding: the 1-based PDF page the FRONT face came from.
+    cards.push({ front, back, tags: [], sourcePage: offset + i + 1 });
   }
   return cards;
 }
@@ -3880,6 +4292,9 @@ export const __testables = {
   FSRS_W,
   fcIntervalPreview,
   fcBuildQueue,
+  fcBuildMaterial,
+  fcTrigramSimilarity,
+  fcStreamWithStall,
   fcExtractCardsJson,
   fcReminderCron,
   fcParseTags,

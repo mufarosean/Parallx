@@ -22,6 +22,9 @@ const {
   FSRS_W,
   fcIntervalPreview,
   fcBuildQueue,
+  fcBuildMaterial,
+  fcTrigramSimilarity,
+  fcStreamWithStall,
   fcExtractCardsJson,
   fcRepairLatexEscapes,
   fcNormalizeCardText,
@@ -309,6 +312,98 @@ describe('fcScheduleFsrs — deadline cap (exam date)', () => {
     const normal = fcScheduleFsrs(card, GOOD, NOW, { desiredRetention: 0.9 });
     const strict = fcScheduleFsrs(card, GOOD, NOW, { desiredRetention: 0.95 });
     expect(strict.intervalDays).toBeLessThan(normal.intervalDays);
+  });
+});
+
+// ─── M98 grounding + dedup primitives ────────────────────────────────────────
+
+describe('fcBuildMaterial', () => {
+  it('without pages: plain clip with a truncation marker', () => {
+    const { material, paged, clipped } = fcBuildMaterial('abcdef', null, 4);
+    expect(paged).toBe(false);
+    expect(clipped).toBe(true);
+    expect(material.startsWith('abcd')).toBe(true);
+    expect(material).toContain('[...material truncated...]');
+  });
+
+  it('tags each page with its 1-based number', () => {
+    const { material, paged } = fcBuildMaterial('', ['first page', 'second page'], 10_000);
+    expect(paged).toBe(true);
+    expect(material).toContain('[Page 1]\nfirst page');
+    expect(material).toContain('[Page 2]\nsecond page');
+  });
+
+  it('honors a page offset so markers match the real PDF pages', () => {
+    const { material } = fcBuildMaterial('', ['x', 'y'], 10_000, 10);
+    expect(material).toContain('[Page 11]');
+    expect(material).toContain('[Page 12]');
+  });
+
+  it('skips empty pages without renumbering the rest', () => {
+    const { material } = fcBuildMaterial('', ['a', '   ', 'c'], 10_000);
+    expect(material).not.toContain('[Page 2]');
+    expect(material).toContain('[Page 3]\nc');
+  });
+
+  it('clips on a page boundary rather than mid-marker', () => {
+    const page = 'z'.repeat(300);
+    const { material, clipped } = fcBuildMaterial('', [page, page, page], 700);
+    expect(clipped).toBe(true);
+    expect(material).toContain('[Page 1]');
+    expect(material).toContain('[...material truncated...]');
+  });
+});
+
+describe('fcExtractCardsJson — page attribution', () => {
+  it('reads a per-card page number', () => {
+    const { cards } = fcExtractCardsJson('[{"front":"Q","back":"A","page":12}]');
+    expect(cards[0].page).toBe(12);
+  });
+
+  it('ignores non-integer or non-positive pages', () => {
+    const { cards } = fcExtractCardsJson('[{"front":"Q","back":"A","page":-3},{"front":"Q2","back":"A2","page":"x"}]');
+    expect(cards[0].page).toBeUndefined();
+    expect(cards[1].page).toBeUndefined();
+  });
+});
+
+describe('fcTrigramSimilarity', () => {
+  it('identical text scores 1, unrelated text scores near 0', () => {
+    const a = 'What is the Bornhuetter-Ferguson expected loss ratio?';
+    expect(fcTrigramSimilarity(a, a)).toBe(1);
+    expect(fcTrigramSimilarity(a, 'Photosynthesis converts light to sugar')).toBeLessThan(0.1);
+  });
+
+  it('near-duplicates with small wording changes score high', () => {
+    const a = 'Define the Bornhuetter-Ferguson method reserve estimate';
+    const b = 'Define the Bornhuetter-Ferguson method reserve estimate.';
+    expect(fcTrigramSimilarity(a, b)).toBeGreaterThan(0.85);
+  });
+
+  it('empty input scores 0', () => {
+    expect(fcTrigramSimilarity('', 'anything')).toBe(0);
+  });
+});
+
+describe('fcStreamWithStall', () => {
+  it('consumes a healthy stream to completion', async () => {
+    async function* stream() { yield { content: 'a' }; yield { content: 'b' }; }
+    let out = '';
+    await fcStreamWithStall(stream(), (c: { content: string }) => { out += c.content; }, 1000);
+    expect(out).toBe('ab');
+  });
+
+  it('throws when the stream stalls past the watchdog', async () => {
+    async function* stalled() {
+      yield { content: 'x' };
+      await new Promise((r) => setTimeout(r, 300));
+      yield { content: 'never-delivered' };
+    }
+    let out = '';
+    await expect(
+      fcStreamWithStall(stalled(), (c: { content: string }) => { out += c.content; }, 50),
+    ).rejects.toThrow(/stopped responding/);
+    expect(out).toBe('x');
   });
 });
 

@@ -22,11 +22,11 @@ const { fcPairPages, fcParsePastedRows, fcImportKindOf, fcExtOf } = __testables;
 // ─── fcPairPages — odd pages front, even pages back ──────────────────────────
 
 describe('fcPairPages', () => {
-  it('pairs consecutive pages into front/back cards', () => {
+  it('pairs consecutive pages into front/back cards with the front page as provenance', () => {
     const cards = fcPairPages(['Q1', 'A1', 'Q2', 'A2']);
     expect(cards).toEqual([
-      { front: 'Q1', back: 'A1', tags: [] },
-      { front: 'Q2', back: 'A2', tags: [] },
+      { front: 'Q1', back: 'A1', tags: [], sourcePage: 1 },
+      { front: 'Q2', back: 'A2', tags: [], sourcePage: 3 },
     ]);
   });
 
@@ -34,24 +34,26 @@ describe('fcPairPages', () => {
     const cards = fcPairPages(['COVER', 'Q1', 'A1', 'Q2', 'A2'], { offset: 1 });
     expect(cards.map((c: { front: string }) => c.front)).toEqual(['Q1', 'Q2']);
     expect(cards[0].back).toBe('A1');
+    // sourcePage is the real 1-based PDF page, offset included.
+    expect(cards.map((c: { sourcePage: number }) => c.sourcePage)).toEqual([2, 4]);
   });
 
   it('a fully blank pair mid-deck is dropped without shifting later pairs', () => {
     const cards = fcPairPages(['Q1', 'A1', '  ', '', 'Q3', 'A3']);
     expect(cards).toHaveLength(2);
-    expect(cards[1]).toEqual({ front: 'Q3', back: 'A3', tags: [] });
+    expect(cards[1]).toEqual({ front: 'Q3', back: 'A3', tags: [], sourcePage: 5 });
   });
 
   it('an odd trailing page becomes a card with an empty back, not a silent drop', () => {
     const cards = fcPairPages(['Q1', 'A1', 'Q2']);
     expect(cards).toHaveLength(2);
-    expect(cards[1]).toEqual({ front: 'Q2', back: '', tags: [] });
+    expect(cards[1]).toEqual({ front: 'Q2', back: '', tags: [], sourcePage: 3 });
   });
 
   it('trims page text and tolerates null/undefined page entries', () => {
     const cards = fcPairPages(['  Q1  ', null, undefined, 'A2']);
-    expect(cards[0]).toEqual({ front: 'Q1', back: '', tags: [] });
-    expect(cards[1]).toEqual({ front: '', back: 'A2', tags: [] });
+    expect(cards[0]).toEqual({ front: 'Q1', back: '', tags: [], sourcePage: 1 });
+    expect(cards[1]).toEqual({ front: '', back: 'A2', tags: [], sourcePage: 3 });
   });
 
   it('empty input produces no cards', () => {
