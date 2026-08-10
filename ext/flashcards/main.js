@@ -1540,6 +1540,108 @@ async function fcDiscussStream(card, history, question) {
   return _api.lm.sendChatRequest(modelId, messages, { temperature: 0.4, think, numCtx });
 }
 
+// ── Leech loop (M98) ─────────────────────────────────────────────────────────
+// A card failed `flashcards.leechThreshold`+ times is a leech: the formulation
+// is not sticking. The study view flags it and offers an AI reformulation;
+// scheduling state is deliberately preserved (the FACT is unchanged — only
+// its wording moves).
+
+function fcLeechThreshold() {
+  const n = Number(cfg('leechThreshold', 5));
+  return Number.isFinite(n) && n > 0 ? n : 5;
+}
+
+function fcIsLeech(card) {
+  return (card.lapses || 0) >= fcLeechThreshold();
+}
+
+const FC_REWRITE_SYSTEM = [
+  'You rewrite ONE failing spaced-repetition flashcard.',
+  'The learner keeps failing it. Reformulate so it sticks: a sharper cue on the',
+  'front, simpler phrasing, or a different angle on the SAME fact. Never change',
+  'what is being tested, and never invent new facts.',
+  'Formatting (cards render Markdown + KaTeX):',
+  '- Write EVERY formula and symbol in LaTeX between $...$.',
+  '- Never use em dashes.',
+  'Output ONLY a JSON array of exactly 3 alternatives, no prose:',
+  '[{"front": "...", "back": "..."}]',
+].join('\n');
+
+async function fcGenerateRewrites(card) {
+  const modelId = await fcPickModel();
+  if (!modelId) throw new Error('No language model available. Configure a model in AI settings.');
+  const { contextSetting, think } = fcAiOptions();
+  const modelCtx = await fcModelContextLength(modelId);
+  const user = [
+    `The learner has failed this card ${card.lapses} times.`,
+    `FRONT: ${card.front}`,
+    `BACK: ${card.back}`,
+    card.notes ? `NOTES: ${card.notes}` : '',
+    card.sourceLabel ? `SOURCE: ${card.sourceLabel}` : '',
+  ].filter(Boolean).join('\n');
+  const { numCtx } = fcContextPlan({ chars: user.length, count: 3, modelCtx, setting: contextSetting });
+  let output = '';
+  const stream = _api.lm.sendChatRequest(modelId, [
+    { role: 'system', content: FC_REWRITE_SYSTEM },
+    { role: 'user', content: user },
+  ], { temperature: 0.6, think, numCtx });
+  await fcStreamWithStall(stream, (chunk) => { if (chunk.content) output += chunk.content; });
+  const { cards, error } = fcExtractCardsJson(output);
+  if (error && cards.length === 0) throw new Error(`${error} (model: ${modelId})`);
+  return cards.slice(0, 3);
+}
+
+/** Quick-pick one of three AI reformulations; scheduling state survives. */
+async function fcLeechRewriteFlow(card) {
+  let alts;
+  try {
+    alts = await fcGenerateRewrites(card);
+  } catch (e) {
+    await _api.window.showErrorMessage(`Could not generate rewrites: ${e.message}`);
+    return false;
+  }
+  if (!alts.length) {
+    await _api.window.showInformationMessage('The model produced no usable alternatives.');
+    return false;
+  }
+  const items = alts.map((a, i) => ({ label: a.front.slice(0, 90), description: a.back.slice(0, 70), index: i }));
+  const pick = await _api.window.showQuickPick(items, {
+    placeholder: 'Pick a reformulation. Review history and scheduling are preserved.',
+  });
+  if (!pick) return false;
+  const alt = alts[items.find((it) => it.label === pick.label)?.index ?? 0];
+  await fcUpdateCard(card.id, { front: fcNormalizeCardText(alt.front), back: fcNormalizeCardText(alt.back) });
+  return true;
+}
+
+/**
+ * "Explain This" (M98): open the main chat with the card staged as a context
+ * attachment, then submit a focused prompt. chat.show (idempotent reveal),
+ * NEVER chat.focus — that one is a blind toggle that can hide the panel.
+ */
+async function fcExplainInChat(card, deckName) {
+  await _api.commands.executeCommand('chat.show');
+  const attachment = {
+    kind: 'selection',
+    id: `flashcard-${card.id}-${Date.now()}`,
+    name: deckName || 'Flashcard',
+    fullPath: card.sourceUri || `flashcard://${card.id}`,
+    isImplicit: false,
+    surface: 'flashcards',
+    selectedText: [
+      'FLASHCARD',
+      `Front: ${card.front}`,
+      `Back: ${card.back}`,
+      card.sourceLabel ? `Source: ${card.sourceLabel}${card.sourcePage ? ` p.${card.sourcePage}` : ''}` : '',
+    ].filter(Boolean).join('\n'),
+  };
+  if (card.sourcePage > 0) attachment.pageNumber = card.sourcePage;
+  await _api.commands.executeCommand('chat.addSelectionContext', attachment);
+  await _api.commands.executeCommand('chat.submitPrompt', {
+    text: 'Explain this flashcard: why the answer holds, the intuition behind it, and one concrete example. Keep it tight.',
+  });
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 6: SOURCES — canvas pages, PDFs, photos, pasted text
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -2088,6 +2190,15 @@ function injectStyles() {
   color: #9a9a9a; font-variant-numeric: tabular-nums;
   margin-bottom: var(--px-space-4);
 }
+/* M98 leech loop — chip + action live in the answer card's head row. */
+.fc-card__leech {
+  margin-left: auto; margin-right: var(--px-space-2); padding: 1px 7px;
+  font-size: var(--px-text-2xs); font-weight: 700; letter-spacing: 0.05em;
+  color: #a05a00; background: #fff3e0; border: 1px solid #f0ddc0;
+  border-radius: var(--px-radius-full, 999px); text-transform: none;
+}
+.fc-btn--small { padding: 2px 9px; font-size: var(--px-text-xs); text-transform: none; letter-spacing: normal; font-weight: 500; }
+.fc-meta-leech { color: #a05a00; font-weight: 600; }
 /* Card ink is a book serif: printed-card text, not UI chrome. It matches
    KaTeX's serif math, so "the estimate $L(x)$" reads as ONE sentence instead
    of sans colliding with serif math. The question keeps its bold, but bold
@@ -2814,9 +2925,17 @@ async function renderBrowse(body, route, setRoute) {
       meta.appendChild(el('span', '', card.dueAt <= Date.now()
         ? 'due now'
         : `due ${new Date(card.dueAt).toLocaleDateString()}`));
-      meta.appendChild(el('span', '', `ease ${card.ease.toFixed(2)}`));
+      // FSRS state (M98); legacy ease only for cards not yet migrated.
+      if (card.stability > 0) {
+        const s = el('span', '', `stability ${card.stability < 100 ? card.stability.toFixed(1) : Math.round(card.stability)}d`);
+        s.title = `Difficulty ${card.difficulty.toFixed(1)} / 10`;
+        meta.appendChild(s);
+      } else {
+        meta.appendChild(el('span', '', `ease ${card.ease.toFixed(2)}`));
+      }
       meta.appendChild(el('span', '', `${card.reps} reps`));
       if (card.lapses > 0) meta.appendChild(el('span', '', `${card.lapses} lapses`));
+      if (fcIsLeech(card)) meta.appendChild(el('span', 'fc-meta-leech', 'leech'));
     }
     if (card.tags) meta.appendChild(el('span', '', `#${fcParseTags(card.tags).join(' #')}`));
     if (card.sourceLabel) meta.appendChild(el('span', '', card.sourceLabel));
@@ -3048,6 +3167,32 @@ async function renderStudy(body, route, paneState, setRoute) {
       const aCard = el('div', 'fc-card fc-card--a');
       const aHead = el('div', 'fc-card__head');
       aHead.appendChild(el('span', 'fc-card__tag', 'Answer'));
+      // M98 leech loop: a repeatedly-failed card announces itself and offers
+      // an AI reformulation (fact unchanged, scheduling preserved).
+      if (fcIsLeech(card)) {
+        const leech = el('span', 'fc-card__leech', `Leech · ${card.lapses} lapses`);
+        leech.title = 'This card keeps failing. The wording may be the problem.';
+        aHead.appendChild(leech);
+        const rewriteBtn = el('button', 'fc-btn fc-btn--small');
+        rewriteBtn.textContent = 'Rewrite with AI';
+        rewriteBtn.addEventListener('click', () => {
+          rewriteBtn.disabled = true;
+          rewriteBtn.textContent = 'Rewriting…';
+          void (async () => {
+            const done = await fcLeechRewriteFlow(card);
+            rewriteBtn.disabled = false;
+            rewriteBtn.textContent = 'Rewrite with AI';
+            if (done) {
+              const fresh = await fcGetCard(card.id);
+              if (fresh && session.queue[session.index]?.id === card.id) {
+                session.queue[session.index] = fresh;
+                showCard();
+              }
+            }
+          })();
+        });
+        aHead.appendChild(rewriteBtn);
+      }
       aCard.appendChild(aHead);
       const aBody = el('div', 'fc-card__body fc-study__back');
       aBody.appendChild(renderCardBody(card.back));
@@ -3091,6 +3236,13 @@ async function renderStudy(body, route, paneState, setRoute) {
         discussHost.appendChild(discussBtn);
       }
       discussBtn.addEventListener('click', () => openDiscuss(card));
+      // M98: hand the card to the main chat with full context staged.
+      const explainBtn = el('button', 'fc-btn');
+      explainBtn.textContent = 'Explain in Chat';
+      explainBtn.addEventListener('click', () => {
+        void fcExplainInChat(card, deckNames.get(card.deckId));
+      });
+      discussHost.appendChild(explainBtn);
       main.appendChild(discussHost);
       main.appendChild(el('div', 'fc-study__keys', 'Space reveal · 1 Again · 2 Hard · 3 Good · 4 Easy'));
     };

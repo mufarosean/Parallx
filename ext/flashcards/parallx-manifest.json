@@ -54,6 +54,11 @@
             "default": 200,
             "description": "Maximum number of due review cards per study day."
           },
+          "flashcards.leechThreshold": {
+            "type": "number",
+            "default": 5,
+            "description": "Lapses before a card is flagged as a leech (repeatedly failed; likely needs rewording)."
+          },
           "flashcards.aiModel": {
             "type": "string",
             "default": "",
