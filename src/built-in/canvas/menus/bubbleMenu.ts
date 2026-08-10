@@ -22,6 +22,14 @@ export interface BubbleMenuHost {
   readonly editorContainer: HTMLElement | null;
   copyLinkToClipboard(href: string): Promise<void>;
   openLinkInExternalBrowser(href: string): Promise<void>;
+  /**
+   * Identity of the page hosting the selection (M98). Selection actions
+   * dispatched from the bubble menu carry this as their source so consumers
+   * (chat attachments, flashcard capture) get NAVIGABLE provenance — the
+   * hardcoded `filePath: 'canvas'` they used to receive led nowhere.
+   * `pageTitle` may be '' when the host cannot resolve it synchronously.
+   */
+  getPageContext(): { pageId: string; pageTitle: string };
 }
 
 // ── Controller ──────────────────────────────────────────────────────────────
@@ -116,21 +124,15 @@ export class BubbleMenuController implements ICanvasMenu {
         // already expose. Routes through the unified M48 selection-action
         // dispatcher (the same CustomEvent the inline AI's "Send to Chat" uses).
         label: svgIcon('comment'), title: 'Add to Chat',
-        command: (e) => {
-          const { from, to } = e.state.selection;
-          const selectedText = e.state.doc.textBetween(from, to, '\n');
-          if (!selectedText.trim()) return;
-          document.dispatchEvent(new CustomEvent('parallx-selection-action', {
-            bubbles: true,
-            detail: {
-              actionId: 'add-to-chat',
-              selectedText,
-              surface: 'canvas',
-              source: { fileName: 'Canvas Page', filePath: 'canvas' },
-            },
-          }));
-          this.hide();
-        },
+        command: (e) => this._dispatchSelectionAction(e, 'add-to-chat'),
+        active: () => false,
+      },
+      {
+        // M98: capture the selection as a flashcard. Same dispatcher; the
+        // flashcards extension registers the 'create-flashcard' handler
+        // (the PDF viewer already exposes this action).
+        label: svgIcon('layers'), title: 'Make Flashcard',
+        command: (e) => this._dispatchSelectionAction(e, 'create-flashcard'),
         active: () => false,
       },
       {
@@ -274,6 +276,31 @@ export class BubbleMenuController implements ICanvasMenu {
 
     document.body.appendChild(this._menu);
     this._registration = this._registry.register(this);
+  }
+
+  /**
+   * Dispatch the current selection through the M48 selection-action pipeline
+   * with real page provenance: the parallx://canvas/page/<id> URI is what
+   * lets a downstream consumer (chat, flashcards) navigate back here.
+   */
+  private _dispatchSelectionAction(e: Editor, actionId: string): void {
+    const { from, to } = e.state.selection;
+    const selectedText = e.state.doc.textBetween(from, to, '\n');
+    if (!selectedText.trim()) return;
+    const page = this._host.getPageContext();
+    document.dispatchEvent(new CustomEvent('parallx-selection-action', {
+      bubbles: true,
+      detail: {
+        actionId,
+        selectedText,
+        surface: 'canvas',
+        source: {
+          fileName: page.pageTitle || 'Canvas Page',
+          filePath: page.pageId ? `parallx://canvas/page/${page.pageId}` : 'canvas',
+        },
+      },
+    }));
+    this.hide();
   }
 
   private _toggleLinkInput(): void {

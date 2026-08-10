@@ -771,6 +771,12 @@ export class TextEditorPane extends EditorPane {
           label: 'Add Selection to Chat',
           group: 'ai',
         },
+        // M98: flashcard capture — same dispatcher, handled by ext/flashcards.
+        {
+          id: 'ai.createFlashcard',
+          label: 'Create Flashcard from Selection',
+          group: 'ai',
+        },
       ],
       anchor: { x: e.clientX, y: e.clientY },
     });
@@ -779,7 +785,9 @@ export class TextEditorPane extends EditorPane {
       if (ev.item.id === 'text.copy') {
         void navigator.clipboard.writeText(selected);
       } else if (ev.item.id === 'ai.addToChat') {
-        this._dispatchSelectionAction(ev.item.id);
+        this._dispatchSelectionAction('add-to-chat');
+      } else if (ev.item.id === 'ai.createFlashcard') {
+        this._dispatchSelectionAction('create-flashcard');
       }
     });
 
@@ -787,11 +795,10 @@ export class TextEditorPane extends EditorPane {
   };
 
   /** Dispatch a selection action to the unified dispatcher (M48 Phase 4). */
-  private _dispatchSelectionAction(_menuItemId: string): void {
+  private _dispatchSelectionAction(actionId: string): void {
     const selected = this.getSelectedText();
     const source = this.getSelectionSource();
     if (!selected || !source) return;
-    const actionId = 'add-to-chat';
 
     this._textarea.dispatchEvent(
       new CustomEvent('parallx-selection-action', {

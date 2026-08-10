@@ -87,6 +87,13 @@ export class CanvasEditorView implements CanvasMenuHost {
   get openEditor(): OpenEditorFn | undefined { return this._deps.openEditor; }
   get suppressUpdate(): boolean { return this._suppressUpdate; }
   set suppressUpdate(v: boolean) { this._suppressUpdate = v; }
+
+  /** BubbleMenuHost (M98): page identity for selection-action provenance.
+   * No synchronous title source here — consumers fall back to a generic label. */
+  getPageContext(): { pageId: string; pageTitle: string } {
+    return { pageId: this._pageId, pageTitle: '' };
+  }
+
   get showIconPicker(): (opts: {
     anchor: HTMLElement; showSearch?: boolean; showRemove?: boolean; iconSize?: number;
     onSelect: (iconId: string) => void; onRemove?: () => void;

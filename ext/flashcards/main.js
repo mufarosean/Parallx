@@ -4065,12 +4065,16 @@ async function fcCaptureSelection(selectedText, source) {
   }
   if (!deckId) return;
 
-  const sourceLabel = source?.fileName
-    ? `${source.fileName}${source.pageNumber ? ` p.${source.pageNumber}` : ''}`
-    : 'Selection';
+  // M98: page number lives in the structured source_page column (clickable
+  // source line in study; PDF reveal), not baked into the display label.
+  const sourceLabel = source?.fileName || 'Selection';
+  const sourcePage = Number.isInteger(source?.pageNumber) && source.pageNumber > 0 ? source.pageNumber : 0;
 
   try {
     const cards = await fcGenerateCards(text, { count: 3 });
+    // Same duplicate scan as the Create view — captures flag, never drop.
+    const dups = await fcFindDuplicates(deckId, cards);
+    const dupCount = dups.filter(Boolean).length;
     for (const c of cards) {
       await fcCreateCard({
         deckId,
@@ -4079,11 +4083,13 @@ async function fcCaptureSelection(selectedText, source) {
         tags: c.tags,
         sourceUri: source?.filePath || '',
         sourceLabel,
+        sourcePage,
       });
     }
     const deckName = pick.label === NEW_DECK ? 'the new deck' : pick.label;
+    const dupNote = dupCount ? ` ${dupCount} may duplicate existing cards.` : '';
     const review = await _api.window.showInformationMessage(
-      `Added ${cards.length} ${cards.length === 1 ? 'card' : 'cards'} to ${deckName}.`,
+      `Added ${cards.length} ${cards.length === 1 ? 'card' : 'cards'} to ${deckName}.${dupNote}`,
       { title: 'Review' },
     );
     if (review?.title === 'Review') await openFlashcards({ view: 'browse', deckId });

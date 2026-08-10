@@ -364,6 +364,11 @@ class CanvasEditorPane implements IDisposable {
   get openEditor(): OpenEditorFn | undefined { return this._openEditor; }
   get blockSelection(): BlockSelectionController { return this._blockSelection; }
 
+  /** BubbleMenuHost (M98): page identity for selection-action provenance. */
+  getPageContext(): { pageId: string; pageTitle: string } {
+    return { pageId: this._pageId, pageTitle: this._input?.name || '' };
+  }
+
   async copyLinkToClipboard(href: string): Promise<void> {
     const text = href.trim();
     if (!text) return;
