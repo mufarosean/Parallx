@@ -49,6 +49,19 @@ interface PlannerEditorApi {
   cron?: {
     get(): CronServiceLike | null;
   };
+  /** M98 — lazy snapshot of registered day-load providers (generic seam:
+   *  extensions decorate calendar days with per-day workload badges).
+   *  Resolved per access because providers register at their own pace. */
+  dayLoads?: {
+    get(): readonly IDayLoadProviderLike[];
+  };
+}
+
+/** Structural mirror of planner main's IDayLoadProvider (M98). */
+export interface IDayLoadProviderLike {
+  readonly id: string;
+  getDayLoads(fromMs: number, toMs: number): Promise<readonly { dayStartMs: number; count: number; label: string }[]>;
+  onDidChange?(listener: () => void): { dispose(): void };
 }
 
 type Tab = 'tasks' | 'calendar' | 'automations';
@@ -237,6 +250,20 @@ class PlannerEditorPane implements IDisposable {
       if (this._disposed) return;
       void this._renderTab();
     }));
+
+    // M98 — day-load providers repaint the calendar when their data moves
+    // (e.g. flashcards reviewed → tomorrow's badge shrinks). Providers that
+    // register after this pane exists are still picked up per render; the
+    // subscription is only for LIVE updates while the calendar is visible.
+    for (const provider of this._api.dayLoads?.get() ?? []) {
+      try {
+        const sub = provider.onDidChange?.(() => {
+          if (this._disposed) return;
+          if (this._activeTab === 'calendar') void this._renderTab();
+        });
+        if (sub) this._disposables.push(sub);
+      } catch { /* provider misbehaving must not break the pane */ }
+    }
 
     // The sidebar dispatches a "focus tab" event when the user clicks
     // Calendar / Tasks. The active pane responds by switching to that
@@ -1746,12 +1773,36 @@ class PlannerEditorPane implements IDisposable {
     descInput.focus();
   }
 
+  /**
+   * M98 — gather per-day loads from every registered provider for the given
+   * window, keyed by LOCAL day start. Provider failures are isolated: a
+   * throwing provider contributes nothing and cannot break the calendar.
+   */
+  private async _collectDayLoads(fromMs: number, toMs: number): Promise<Map<number, { count: number; label: string }[]>> {
+    const byDay = new Map<number, { count: number; label: string }[]>();
+    const providers = this._api.dayLoads?.get() ?? [];
+    if (providers.length === 0) return byDay;
+    const results = await Promise.allSettled(providers.map(p => p.getDayLoads(fromMs, toMs)));
+    for (const r of results) {
+      if (r.status !== 'fulfilled') continue;
+      for (const load of r.value) {
+        if (!Number.isFinite(load.dayStartMs) || !(load.count > 0)) continue;
+        const key = startOfDay(new Date(load.dayStartMs)).getTime();
+        const list = byDay.get(key) ?? [];
+        list.push({ count: load.count, label: load.label });
+        byDay.set(key, list);
+      }
+    }
+    return byDay;
+  }
+
   private async _renderMonthView(body: HTMLElement): Promise<void> {
     const from = startOfMonth(this._cursorDate).getTime();
     const to = endOfMonth(this._cursorDate).getTime();
     const { isVisible, colorOf } = await this._loadCalCtx();
     const events = (await this._data.listEvents({ from, to, limit: 500 })).filter(ev => isVisible(ev.calendarId));
     const tasks = await this._tasksInWindow(from, to, isVisible);
+    const dayLoads = await this._collectDayLoads(from, to);
 
     const grid = el('div', 'planner-month');
     // Weekday header
@@ -1786,6 +1837,15 @@ class PlannerEditorPane implements IDisposable {
       const number = el('span', 'planner-month__cellnum');
       number.textContent = String(day.getDate());
       cell.appendChild(number);
+
+      // M98 — provider day-load badge ("38 cards"), a decoration, not a row.
+      const loads = dayLoads.get(dayStart);
+      if (loads?.length) {
+        const badge = el('span', 'planner-month__load');
+        badge.textContent = loads.map(l => `${l.count} ${l.label}`).join(' · ');
+        badge.title = loads.map(l => `${l.count} ${l.label}`).join('\n');
+        cell.appendChild(badge);
+      }
 
       const evWrap = el('div', 'planner-month__cellevents');
       const MAX_SHOWN = 3;
@@ -1841,6 +1901,7 @@ class PlannerEditorPane implements IDisposable {
     const allDayEvents = allEvents.filter(ev => this._isAllDayLike(ev));
     const events = allEvents.filter(ev => !this._isAllDayLike(ev));
     const tasks = await this._tasksInWindow(start.getTime(), end.getTime(), isVisible);
+    const dayLoads = await this._collectDayLoads(start.getTime(), end.getTime());
 
     const grid = el('div', 'planner-week');
     const headerRow = el('div', 'planner-week__header');
@@ -1855,6 +1916,13 @@ class PlannerEditorPane implements IDisposable {
       if (sameDay(day, new Date())) wd.classList.add('planner-week__weekday--today');
       wd.appendChild(wdLabel);
       wd.appendChild(wdNum);
+      // M98 — provider day-load chip under the weekday header.
+      const loads = dayLoads.get(startOfDay(day).getTime());
+      if (loads?.length) {
+        const chip = el('span', 'planner-week__load');
+        chip.textContent = loads.map(l => `${l.count} ${l.label}`).join(' · ');
+        wd.appendChild(chip);
+      }
       headerRow.appendChild(wd);
     }
     grid.appendChild(headerRow);

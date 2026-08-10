@@ -1267,6 +1267,55 @@ async function fcLoadStats() {
   return fcAggregateStats(reviews, cards, Date.now());
 }
 
+/**
+ * Per-day SCHEDULED review counts for [fromMs, toMs) — the planner badge +
+ * widget forecast (M98). Honest minimum, not a promise: FSRS reshuffles the
+ * future after every review, and unscheduled new cards aren't included.
+ * Overdue cards roll into today (that is when they will actually be seen).
+ */
+async function fcDayLoadForecast(fromMs, toMs) {
+  const rows = await db.all(
+    "SELECT due_at FROM fc_cards WHERE suspended = 0 AND state != 'new' AND due_at > 0 AND due_at < ?",
+    [toMs],
+  );
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+  const todayMs = todayStart.getTime();
+  const byDay = new Map();
+  for (const { due_at } of rows) {
+    const d = new Date(Math.max(due_at, todayMs));
+    d.setHours(0, 0, 0, 0);
+    const key = d.getTime();
+    if (key < fromMs - DAY || key >= toMs) continue;
+    byDay.set(key, (byDay.get(key) || 0) + 1);
+  }
+  return [...byDay.entries()]
+    .map(([dayStartMs, count]) => ({ dayStartMs, count, label: 'flashcards' }))
+    .sort((a, b) => a.dayStartMs - b.dayStartMs);
+}
+
+/**
+ * Study streak: consecutive local days with at least one review, counting
+ * back from today (a still-unreviewed today doesn't break it — yesterday
+ * anchors the chain until midnight).
+ */
+async function fcStudyStreak() {
+  const rows = await db.all(
+    'SELECT DISTINCT reviewed_at FROM fc_reviews WHERE reviewed_at >= ? ORDER BY reviewed_at DESC',
+    [Date.now() - 400 * DAY],
+  );
+  const days = new Set();
+  for (const { reviewed_at } of rows) {
+    const d = new Date(reviewed_at); d.setHours(0, 0, 0, 0);
+    days.add(d.getTime());
+  }
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  let cursor = today.getTime();
+  if (!days.has(cursor)) cursor -= DAY; // today not studied yet — start at yesterday
+  let streak = 0;
+  while (days.has(cursor)) { streak++; cursor -= DAY; }
+  return streak;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 5: AI LAYER
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -2309,6 +2358,9 @@ function injectStyles() {
 .fc-widget-due { font-size: var(--px-text-base); line-height: var(--px-leading-base); padding: var(--px-space-1) 2px; color: var(--px-text-secondary); }
 .fc-widget-due__big { font-size: var(--px-text-xl); font-weight: 700; letter-spacing: -0.02em; color: var(--px-text); font-variant-numeric: tabular-nums; }
 .fc-widget-due .fc-btn { margin-top: var(--px-space-2); }
+.fc-widget-due__spark { display: flex; align-items: flex-end; gap: 3px; height: 28px; margin-top: var(--px-space-2); }
+.fc-widget-due__bar { width: 10px; border-radius: 2px 2px 0 0; background: var(--px-accent-soft); }
+.fc-widget-due__bar--zero { background: var(--px-bg-inset); }
 `;
   document.head.appendChild(style);
 }
@@ -3974,19 +4026,46 @@ function registerDashboardWidget(context) {
       defaultRefreshPolicy: { kind: 'interval', ms: 15 * 60 * 1000 },
       refresh: async () => {
         const s = await fcDueSummary();
-        return JSON.stringify(s);
+        // M98: streak + 7-day scheduled forecast ride along.
+        const start = new Date(); start.setHours(0, 0, 0, 0);
+        const [streak, loads] = await Promise.all([
+          fcStudyStreak(),
+          fcDayLoadForecast(start.getTime(), start.getTime() + 7 * DAY),
+        ]);
+        const forecast = [];
+        for (let i = 0; i < 7; i++) {
+          const dayMs = start.getTime() + i * DAY;
+          forecast.push(loads.find((l) => l.dayStartMs === dayMs)?.count || 0);
+        }
+        return JSON.stringify({ ...s, streak, forecast });
       },
       createWidget: (container, ctx) => {
         injectStyles();
         const root = el('div', 'fc-widget-due');
         container.appendChild(root);
         const paint = (raw) => {
-          let s = { due: 0, fresh: 0, total: 0 };
-          try { s = JSON.parse(raw || '{}'); } catch { /* keep zeros */ }
+          let s = { due: 0, fresh: 0, total: 0, streak: 0, forecast: [] };
+          try { s = { ...s, ...JSON.parse(raw || '{}') }; } catch { /* keep zeros */ }
           root.innerHTML = '';
           const big = el('div', 'fc-widget-due__big', String(s.due || 0));
           root.appendChild(big);
-          root.appendChild(el('div', '', `cards due · ${s.fresh || 0} new waiting`));
+          const streakNote = s.streak > 0 ? ` · ${s.streak} day streak` : '';
+          root.appendChild(el('div', '', `cards due · ${s.fresh || 0} new waiting${streakNote}`));
+          // 7-day scheduled-review sparkline (bars scale to the week's max).
+          if (Array.isArray(s.forecast) && s.forecast.some((n) => n > 0)) {
+            const spark = el('div', 'fc-widget-due__spark');
+            const max = Math.max(...s.forecast, 1);
+            const dayName = (i) => new Date(Date.now() + i * DAY).toLocaleDateString(undefined, { weekday: 'short' });
+            s.forecast.forEach((n, i) => {
+              const bar = el('div', 'fc-widget-due__bar');
+              bar.style.height = `${Math.max(2, Math.round((n / max) * 26))}px`;
+              bar.title = `${dayName(i)}: ${n} scheduled`;
+              if (n === 0) bar.classList.add('fc-widget-due__bar--zero');
+              spark.appendChild(bar);
+            });
+            spark.title = 'Scheduled reviews, next 7 days';
+            root.appendChild(spark);
+          }
           const btn = el('button', 'fc-btn fc-btn--primary');
           btn.textContent = 'Study Now';
           btn.addEventListener('click', () => void openFlashcards({ view: 'study' }));
@@ -4268,6 +4347,29 @@ function registerSelectionAction(context, attempt = 0) {
     });
 }
 
+/**
+ * M98 — contribute the per-day review forecast to the planner calendar via
+ * its generic day-load seam. Same retry shape as the dispatcher above: the
+ * planner is a built-in that may activate after this extension.
+ */
+function registerPlannerDayLoads(context, attempt = 0) {
+  _api.commands.executeCommand('planner.getRegistry')
+    .then((registry) => {
+      if (!registry || typeof registry.registerDayLoadProvider !== 'function') throw new Error('no registry');
+      context.subscriptions.push(registry.registerDayLoadProvider({
+        id: 'flashcards',
+        getDayLoads: (fromMs, toMs) => fcDayLoadForecast(fromMs, toMs),
+        onDidChange: (listener) => {
+          _dataListeners.add(listener);
+          return { dispose: () => { _dataListeners.delete(listener); } };
+        },
+      }));
+    })
+    .catch(() => {
+      if (attempt < 5) setTimeout(() => registerPlannerDayLoads(context, attempt + 1), 2000);
+    });
+}
+
 function registerCommands(context) {
   const cmds = [
     ['flashcards.open', () => openFlashcards({ view: 'decks' })],
@@ -4351,6 +4453,7 @@ export async function activate(api, context) {
   registerLinks(context);
   registerDashboardWidget(context);
   registerSelectionAction(context);
+  registerPlannerDayLoads(context);
   syncReminderJob();
 
   if (api.workspace?.onDidChangeConfiguration) {

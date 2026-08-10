@@ -85,14 +85,44 @@ let _scheduler: PlannerReminderScheduler | null = null;
 let _orchestrator: PlannerSyncOrchestrator | null = null;
 let _googleProviderReg: IDisposable | null = null;
 const _syncProviders = new Map<string, ICalendarSyncProvider>();
+const _dayLoadProviders = new Map<string, IDayLoadProvider>();
 
 // ─── Public registry surface (planner.getRegistry command) ──────────────────
+
+/**
+ * One per-day load entry a provider reports for the calendar (M98).
+ * `dayStartMs` is the LOCAL midnight of the day the load belongs to.
+ */
+export interface IDayLoad {
+  readonly dayStartMs: number;
+  readonly count: number;
+  /** Short human label for the badge tooltip, e.g. "flashcards due". */
+  readonly label: string;
+}
+
+/**
+ * A read-only per-day workload contributor (M98). GENERIC seam: any
+ * extension may register one via the live `planner.getRegistry` object —
+ * flashcards reports scheduled reviews, but nothing here is flashcards-
+ * specific. Providers contribute DECORATIONS (day badges), never rows.
+ */
+export interface IDayLoadProvider {
+  readonly id: string;
+  /** Loads for [fromMs, toMs) — return only days with count > 0. */
+  getDayLoads(fromMs: number, toMs: number): Promise<readonly IDayLoad[]>;
+  /** Optional change signal; the calendar re-renders on fire. */
+  onDidChange?(listener: () => void): IDisposable;
+}
 
 export interface PlannerRegistry {
   /** Register a sync provider. Returns disposable. */
   registerSyncProvider(provider: ICalendarSyncProvider): IDisposable;
   /** Snapshot of currently registered providers. */
   listSyncProviders(): readonly ICalendarSyncProvider[];
+  /** Register a per-day load decorator for the calendar views (M98). */
+  registerDayLoadProvider(provider: IDayLoadProvider): IDisposable;
+  /** Snapshot of currently registered day-load providers. */
+  listDayLoadProviders(): readonly IDayLoadProvider[];
   /** Direct access to the data service for in-process consumers. */
   readonly data: PlannerDataService;
 }
@@ -186,6 +216,11 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       return toDisposable(() => { _syncProviders.delete(provider.id); });
     },
     listSyncProviders: () => [..._syncProviders.values()],
+    registerDayLoadProvider: (provider: IDayLoadProvider) => {
+      _dayLoadProviders.set(provider.id, provider);
+      return toDisposable(() => { _dayLoadProviders.delete(provider.id); });
+    },
+    listDayLoadProviders: () => [..._dayLoadProviders.values()],
     get data() { return _data!; },
   };
 
@@ -270,6 +305,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       set: (key: string, value: unknown): void => { void context.workspaceState.update(key, value); },
     },
     cron: { get: getCronService },
+    dayLoads: { get: () => [..._dayLoadProviders.values()] },
   }, _orchestrator ?? undefined);
   context.subscriptions.push(
     api.editors.registerEditorProvider('planner', {
