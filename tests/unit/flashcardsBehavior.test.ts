@@ -13,7 +13,7 @@
 // tools. (Vitest runs `it` blocks in order within a file.)
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import { readFileSync } from 'fs';
+import { readFileSync, readdirSync } from 'fs';
 import { resolve } from 'path';
 import { createRequire } from 'module';
 // @ts-expect-error — JS module with no types
@@ -43,9 +43,14 @@ function makeFakeApi() {
   const database = {
     open: async () => ({ error: null }),
     migrate: async (dir: string) => {
+      // Mirror the real host (electron/database.cjs): EVERY *.sql applied in
+      // lexicographic order. Hardcoding one file silently skips later
+      // migrations and fails the suite with missing-column errors (M98).
       try {
-        const sql = readFileSync(resolve(dir, 'flashcards_001_initial.sql'), 'utf8');
-        sqlite.exec(sql);
+        const files = readdirSync(dir).filter((f) => f.endsWith('.sql')).sort();
+        for (const f of files) {
+          sqlite.exec(readFileSync(resolve(dir, f), 'utf8'));
+        }
         return { error: null };
       } catch (err) {
         return { error: { code: 'MIGRATE', message: (err as Error).message } };
@@ -512,11 +517,15 @@ describe('selection → flashcard', () => {
     );
     await settle();
 
+    // M98: the page number is STRUCTURED provenance (source_page), no longer
+    // baked into the display label — that is what makes the source line
+    // clickable and the PDF reveal possible.
     const captured = fake.sqlite
-      .prepare("SELECT * FROM fc_cards WHERE source_label = 'Verrall.pdf p.12' ORDER BY id")
+      .prepare("SELECT * FROM fc_cards WHERE source_label = 'Verrall.pdf' ORDER BY id")
       .all() as Record<string, unknown>[];
     expect(captured.length).toBeGreaterThan(0);
     expect(captured[0].source_uri).toBe('/exam/Verrall.pdf');
+    expect(captured[0].source_page).toBe(12);
     expect(fake.scripted.messages.some((m) => /Added \d+ card/.test(m))).toBe(true);
   });
 
