@@ -834,6 +834,41 @@ function fcNormalizeCardText(text) {
     .trim();
 }
 
+// ── Cloze + reverse notes (M98) ─────────────────────────────────────────────
+// Anki-compatible cloze syntax: {{c1::answer}} or {{c1::answer::hint}}.
+// One NOTE (the raw text) yields one scheduled CARD per distinct ordinal;
+// siblings share a note_group so edits propagate and dedup exempts them.
+// Same non-greedy matching limitation as Anki: an answer containing a
+// literal `}}` (rare, deep LaTeX nesting) needs a space between the braces.
+
+const FC_CLOZE_RE = /\{\{c(\d+)::([\s\S]*?)(?:::([\s\S]*?))?\}\}/g;
+
+/** Distinct cloze ordinals in a note's text, ascending. */
+function fcParseClozeIndices(text) {
+  const found = new Set();
+  for (const m of String(text || '').matchAll(FC_CLOZE_RE)) {
+    const ord = Number(m[1]);
+    if (Number.isInteger(ord) && ord > 0) found.add(ord);
+  }
+  return [...found].sort((a, b) => a - b);
+}
+
+/**
+ * Render a cloze note for one sibling. mode 'front': the target ordinal is
+ * blanked to **[...]** (or its hint); every other ordinal shows its answer.
+ * mode 'back': everything revealed, the target bolded. Output is Markdown —
+ * this runs BEFORE the shared Markdown+KaTeX renderer.
+ */
+function fcRenderCloze(text, targetIndex, mode) {
+  return String(text || '').replace(FC_CLOZE_RE, (_all, ordStr, answer, hint) => {
+    const ord = Number(ordStr);
+    if (mode === 'front') {
+      return ord === targetIndex ? `**[${(hint || '...').trim()}]**` : answer;
+    }
+    return ord === targetIndex ? `**${answer}**` : answer;
+  });
+}
+
 async function fcCreateCard(input) {
   const res = await db.run(`
     INSERT INTO fc_cards (deck_id, front, back, notes, tags, source_uri, source_label, source_page, card_type, note_group, cloze_index, created_at)
@@ -936,6 +971,76 @@ async function fcCreateCardsBulk(deckId, cards, { sourceUri = '', sourceLabel = 
   _emitDataChanged();
   void fcEmbedNewBulk(deckId, now);
   return inserted;
+}
+
+// ── Note creation: basic / cloze / reverse (M98) ────────────────────────────
+
+/**
+ * Create the card row(s) for one authored note. Cloze text ({{cN::…}} in the
+ * front) yields one sibling per ordinal; `reverse: true` yields the pair;
+ * otherwise a single basic card. Returns the number of cards created.
+ * Sibling groups deliberately skip duplicate scanning — they are near-
+ * duplicates by construction (and fcFindDuplicates exempts note_group).
+ */
+async function fcCreateNote(deckId, input) {
+  const front = String(input.front || '');
+  const clozeIndices = fcParseClozeIndices(front);
+  if (clozeIndices.length > 0) {
+    const noteGroup = crypto.randomUUID();
+    const cards = clozeIndices.map((ord) => ({
+      front,
+      back: input.back || '',
+      tags: input.tags || '',
+      notes: input.notes || '',
+      sourceUri: input.sourceUri, sourceLabel: input.sourceLabel, sourcePage: input.sourcePage,
+      cardType: 'cloze', noteGroup, clozeIndex: ord,
+    }));
+    return fcCreateCardsBulk(deckId, cards);
+  }
+  if (input.reverse) {
+    const noteGroup = crypto.randomUUID();
+    const shared = {
+      tags: input.tags || '', notes: input.notes || '',
+      sourceUri: input.sourceUri, sourceLabel: input.sourceLabel, sourcePage: input.sourcePage,
+      cardType: 'reverse', noteGroup,
+    };
+    return fcCreateCardsBulk(deckId, [
+      { ...shared, front, back: input.back || '' },
+      { ...shared, front: input.back || '', back: front },
+    ]);
+  }
+  await fcCreateCard({ deckId, ...input });
+  return 1;
+}
+
+/**
+ * After a cloze sibling's text is edited, bring the whole group back in sync:
+ * every sibling carries the new text, ordinals added in the edit gain fresh
+ * (new-state) siblings, and ordinals that vanished lose theirs — review
+ * history of surviving ordinals is untouched.
+ */
+async function fcReconcileClozeGroup(noteGroup, deckId, newFront, newBack) {
+  const siblings = await db.all(
+    "SELECT id, cloze_index FROM fc_cards WHERE note_group = ? AND card_type = 'cloze'", [noteGroup],
+  );
+  if (!siblings.length) return;
+  const wanted = new Set(fcParseClozeIndices(newFront));
+  const have = new Map(siblings.map((s) => [s.cloze_index, s.id]));
+  await db.run(
+    "UPDATE fc_cards SET front = ?, back = ? WHERE note_group = ? AND card_type = 'cloze'",
+    [fcNormalizeCardText(newFront), fcNormalizeCardText(newBack ?? ''), noteGroup],
+  );
+  for (const [ord, id] of have) {
+    if (!wanted.has(ord)) await fcDeleteCard(id);
+  }
+  const missing = [...wanted].filter((ord) => !have.has(ord));
+  if (missing.length) {
+    await fcCreateCardsBulk(deckId, missing.map((ord) => ({
+      front: newFront, back: newBack ?? '',
+      cardType: 'cloze', noteGroup, clozeIndex: ord,
+    })));
+  }
+  _emitDataChanged();
 }
 
 // ── Card embeddings + duplicate detection (M98) ─────────────────────────────
@@ -1143,8 +1248,20 @@ async function fcUpdateCard(id, patch) {
   }
   if (patch.suspended !== undefined) { sets.push('suspended = ?'); params.push(patch.suspended ? 1 : 0); }
   if (sets.length === 0) return;
+  // M98: text edits on a cloze sibling rewrite the whole group (the text IS
+  // the note) — grab identity before the UPDATE.
+  const before = (patch.front !== undefined || patch.back !== undefined)
+    ? await db.get('SELECT deck_id, card_type, note_group, front, back FROM fc_cards WHERE id = ?', [id])
+    : null;
   params.push(id);
   await db.run(`UPDATE fc_cards SET ${sets.join(', ')} WHERE id = ?`, params);
+  if (before && before.card_type === 'cloze' && before.note_group) {
+    await fcReconcileClozeGroup(
+      before.note_group, before.deck_id,
+      patch.front !== undefined ? patch.front : before.front,
+      patch.back !== undefined ? patch.back : before.back,
+    );
+  }
   _emitDataChanged();
   // Text changed → the stored vector is stale; re-embed best-effort.
   if (patch.front !== undefined || patch.back !== undefined) {
@@ -2139,6 +2256,7 @@ function injectStyles() {
 .fc-row { display: flex; gap: var(--px-space-2); align-items: center; flex-wrap: wrap; }
 .fc-error { font-size: var(--px-text-sm); color: var(--px-danger); padding: var(--px-space-1) 0; }
 .fc-hint { font-size: var(--px-text-sm); color: var(--px-text-muted); }
+.fc-check { display: flex; align-items: center; gap: var(--px-space-2); font-size: var(--px-text-sm); color: var(--px-text-secondary); cursor: pointer; user-select: none; }
 
 /* ── Create-tab drop zone — the default, in-workspace way to add a source ── */
 .fc-dropzone {
@@ -2912,26 +3030,39 @@ async function renderBrowse(body, route, setRoute) {
   const addRow = el('div', 'fc-row');
   const saveCard = el('button', 'fc-btn fc-btn--primary');
   saveCard.textContent = 'Add Card';
+  // M98 — reverse pair option + cloze affordance. Cloze wins over reverse
+  // when markers are present (a cloze note is already multi-card).
+  const reverseWrap = el('label', 'fc-check');
+  const reverseIn = el('input');
+  reverseIn.type = 'checkbox';
+  reverseWrap.append(reverseIn, document.createTextNode(' Also create the reversed card (back asks for front)'));
+  const clozeHint = el('div', 'fc-hint',
+    'Cloze: wrap answers as {{c1::answer}} or {{c1::answer::hint}} in the front. Each numbered blank becomes its own card; the back is optional extra context.');
   saveCard.addEventListener('click', () => {
     void (async () => {
-      if (!frontIn.value.trim() || !backIn.value.trim()) {
-        addErr.textContent = 'Both front and back are required.';
+      const isCloze = fcParseClozeIndices(frontIn.value).length > 0;
+      if (!frontIn.value.trim() || (!backIn.value.trim() && !isCloze)) {
+        addErr.textContent = isCloze ? 'The front is required.' : 'Both front and back are required.';
         addErr.style.display = '';
         return;
       }
       addErr.style.display = 'none';
-      await fcCreateCard({
-        deckId: deckRow.id,
+      const n = await fcCreateNote(deckRow.id, {
         front: frontIn.value,
         back: backIn.value,
         tags: fcParseTags(tagsIn.value).join(','),
+        reverse: reverseIn.checked,
       });
+      if (n > 1) {
+        addErr.textContent = '';
+        void _api.window.showInformationMessage(`Created ${n} cards from that note.`);
+      }
       frontIn.value = ''; backIn.value = ''; tagsIn.value = '';
       frontIn.focus();
     })();
   });
   addRow.appendChild(saveCard);
-  addForm.append(el('div', 'fc-label', 'New card'), frontIn, backIn, tagsIn, addErr, addRow);
+  addForm.append(el('div', 'fc-label', 'New card'), frontIn, backIn, tagsIn, reverseWrap, clozeHint, addErr, addRow);
   head.appendChild(addBtn);
   addBtn.addEventListener('click', () => {
     addForm.style.display = addForm.style.display === 'none' ? '' : 'none';
@@ -2973,6 +3104,9 @@ async function renderBrowse(body, route, setRoute) {
     const stateChip = el('span', `fc-state fc-state--${card.state === 'relearning' ? 'learning' : card.state}`);
     stateChip.textContent = card.state;
     meta.appendChild(stateChip);
+    // M98 card types: siblings announce themselves (edits propagate group-wide).
+    if (card.cardType === 'cloze') meta.appendChild(el('span', '', `cloze c${card.clozeIndex}`));
+    else if (card.cardType === 'reverse') meta.appendChild(el('span', '', 'reverse pair'));
     if (card.state !== 'new') {
       meta.appendChild(el('span', '', card.dueAt <= Date.now()
         ? 'due now'
@@ -3201,7 +3335,10 @@ async function renderStudy(body, route, paneState, setRoute) {
     qHead.appendChild(el('span', '', `${session.doneCount + 1} / ${session.total}`));
     qCard.appendChild(qHead);
     const qBody = el('div', 'fc-card__body fc-study__front');
-    qBody.appendChild(renderCardBody(card.front));
+    // M98 cloze: the front blanks THIS sibling's ordinal, reveals the rest.
+    qBody.appendChild(renderCardBody(card.cardType === 'cloze'
+      ? fcRenderCloze(card.front, card.clozeIndex, 'front')
+      : card.front));
     qCard.appendChild(qBody);
     main.appendChild(qCard);
 
@@ -3247,7 +3384,11 @@ async function renderStudy(body, route, paneState, setRoute) {
       }
       aCard.appendChild(aHead);
       const aBody = el('div', 'fc-card__body fc-study__back');
-      aBody.appendChild(renderCardBody(card.back));
+      // M98 cloze: the answer reveals everything with this ordinal bolded;
+      // the note's back rides along as extra context when present.
+      aBody.appendChild(renderCardBody(card.cardType === 'cloze'
+        ? fcRenderCloze(card.front, card.clozeIndex, 'back') + (card.back ? `\n\n${card.back}` : '')
+        : card.back));
       aCard.appendChild(aBody);
       // M98 grounding: the source line is a LINK back to the material —
       // canvas pages open in place, PDFs open and jump to the cited page.
@@ -4556,6 +4697,8 @@ export const __testables = {
   fcBuildMaterial,
   fcTrigramSimilarity,
   fcStreamWithStall,
+  fcParseClozeIndices,
+  fcRenderCloze,
   fcExtractCardsJson,
   fcReminderCron,
   fcParseTags,

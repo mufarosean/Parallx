@@ -25,6 +25,8 @@ const {
   fcBuildMaterial,
   fcTrigramSimilarity,
   fcStreamWithStall,
+  fcParseClozeIndices,
+  fcRenderCloze,
   fcExtractCardsJson,
   fcRepairLatexEscapes,
   fcNormalizeCardText,
@@ -404,6 +406,53 @@ describe('fcStreamWithStall', () => {
       fcStreamWithStall(stalled(), (c: { content: string }) => { out += c.content; }, 50),
     ).rejects.toThrow(/stopped responding/);
     expect(out).toBe('x');
+  });
+});
+
+// ─── M98 cloze notes ─────────────────────────────────────────────────────────
+
+describe('fcParseClozeIndices', () => {
+  it('finds distinct ordinals, sorted, deduped', () => {
+    expect(fcParseClozeIndices('The {{c2::BF}} method uses {{c1::a priori}} and {{c1::development}}.'))
+      .toEqual([1, 2]);
+  });
+
+  it('returns empty for plain text and malformed markers', () => {
+    expect(fcParseClozeIndices('No cloze here')).toEqual([]);
+    expect(fcParseClozeIndices('{{c::missing number}} {{d1::wrong letter}}')).toEqual([]);
+  });
+
+  it('tolerates LaTeX inside the answer', () => {
+    expect(fcParseClozeIndices('ELR is {{c1::$\\frac{L}{P}$}}')).toEqual([1]);
+  });
+});
+
+describe('fcRenderCloze', () => {
+  const note = 'The {{c1::Bornhuetter-Ferguson}} method blends {{c2::expected losses::what kind?}} with actuals.';
+
+  it('front blanks only the target ordinal', () => {
+    const front = fcRenderCloze(note, 1, 'front');
+    expect(front).toContain('**[...]**');
+    expect(front).not.toContain('Bornhuetter-Ferguson');
+    expect(front).toContain('expected losses'); // other ordinal revealed
+  });
+
+  it('front shows the hint when one exists', () => {
+    const front = fcRenderCloze(note, 2, 'front');
+    expect(front).toContain('**[what kind?]**');
+    expect(front).toContain('Bornhuetter-Ferguson');
+  });
+
+  it('back reveals everything and bolds the target', () => {
+    const back = fcRenderCloze(note, 1, 'back');
+    expect(back).toContain('**Bornhuetter-Ferguson**');
+    expect(back).toContain('expected losses');
+    expect(back).not.toContain('{{');
+  });
+
+  it('keeps LaTeX answers intact', () => {
+    const out = fcRenderCloze('ELR is {{c1::$\\frac{L}{P}$}}', 1, 'back');
+    expect(out).toContain('**$\\frac{L}{P}$**');
   });
 });
 
