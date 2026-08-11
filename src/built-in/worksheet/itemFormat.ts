@@ -23,16 +23,36 @@ export interface ItemCell {
   readonly bold?: boolean;
 }
 
-export interface GeneratedItem {
-  readonly title: string;
+/**
+ * One part of an item — one sheet TAB in the built workbook (Mufaro's
+ * workbook model: "every part of a question on a page"). The part's question
+ * text is written ONTO the sheet (merged block at the top), not into pane
+ * chrome — working the item reads like the exam page itself.
+ */
+export interface ItemPart {
+  /** Tab label, e.g. "a" → tab "(a)". Single unnamed part → "Item". */
+  readonly name: string;
+  /** Plain exam wording, rendered on-sheet (no markdown — it's cell text). */
   readonly question: string;
-  readonly tags: string[];
   readonly givens: ItemCell[];
   readonly solution: ItemCell[];
+}
+
+export interface GeneratedItem {
+  readonly title: string;
+  readonly tags: string[];
+  readonly parts: ItemPart[];
   readonly solutionNotes: string;
   /** Page attribution when the material was page-tagged (M98 pattern). */
   readonly page?: number;
 }
+
+/** Rows 1-4 (indices 0-3) hold the merged on-sheet question block; row 5 is
+ *  a gutter. Generated cells live at row 6+ — refs below this are dropped. */
+export const QUESTION_BLOCK_ROWS = 4;
+export const FIRST_CONTENT_ROW = 5; // zero-based: A1-row 6
+/** Question block merges A..J — wide enough to wrap exam wording legibly. */
+const QUESTION_BLOCK_COLS = 10;
 
 // ── A1 reference parsing ────────────────────────────────────────────────────
 
@@ -59,7 +79,7 @@ const GIVENS_BG = 'rgb(244,241,232)';
 interface CellData {
   v?: string | number;
   f?: string;
-  s?: { bl?: number; bg?: { rgb: string } };
+  s?: { bl?: number; bg?: { rgb: string }; tb?: number; vt?: number };
 }
 
 function buildCellMatrix(cells: readonly ItemCell[], tintGivens: boolean): Record<number, Record<number, CellData>> {
@@ -82,47 +102,104 @@ function buildCellMatrix(cells: readonly ItemCell[], tintGivens: boolean): Recor
 
 let _wbCounter = 0;
 
-function toWorkbook(name: string, matrix: Record<number, Record<number, CellData>>): IWorkbookData {
+/** Tab label: "a" → "(a)"; blank name (single-part items) → "Item". */
+function partSheetName(part: ItemPart, index: number, total: number): string {
+  const raw = part.name.trim().replace(/^[(\[]|[)\]]$/g, '');
+  if (!raw) return total === 1 ? 'Item' : `Part ${index + 1}`;
+  return raw.length <= 3 ? `(${raw})` : raw;
+}
+
+/** Estimate the merged question block's total height from its text. The
+ *  block spans ~10 default-width columns (~730px, ~90 chars/line at 11pt). */
+function questionBlockHeights(question: string): Record<number, { h: number }> {
+  let lines = 0;
+  for (const para of question.split('\n')) lines += Math.max(1, Math.ceil(para.length / 90));
+  const total = Math.min(400, Math.max(76, lines * 20 + 16));
+  const per = Math.ceil(total / QUESTION_BLOCK_ROWS);
+  const heights: Record<number, { h: number }> = {};
+  for (let r = 0; r < QUESTION_BLOCK_ROWS; r++) heights[r] = { h: per };
+  return heights;
+}
+
+interface SheetSpec {
+  readonly name: string;
+  readonly question: string;
+  readonly matrix: Record<number, Record<number, CellData>>;
+}
+
+function toWorkbook(name: string, sheetSpecs: readonly SheetSpec[]): IWorkbookData {
+  const sheetOrder: string[] = [];
+  const sheets: Record<string, unknown> = {};
+  sheetSpecs.forEach((spec, i) => {
+    const id = `p${i}`;
+    sheetOrder.push(id);
+    const matrix = spec.matrix;
+    // The question lives ON the sheet: merged wrap block at the top.
+    if (spec.question) {
+      (matrix[0] ??= {})[0] = { v: spec.question, s: { tb: 3, vt: 1 } };
+    }
+    sheets[id] = {
+      id,
+      name: spec.name,
+      rowCount: ATHENA_ROWS,
+      columnCount: ATHENA_COLUMNS,
+      cellData: matrix,
+      ...(spec.question ? {
+        mergeData: [{ startRow: 0, startColumn: 0, endRow: QUESTION_BLOCK_ROWS - 1, endColumn: QUESTION_BLOCK_COLS - 1 }],
+        rowData: questionBlockHeights(spec.question),
+      } : {}),
+    };
+  });
   return {
     id: `ws-item-${Date.now()}-${_wbCounter++}`,
     name,
-    sheetOrder: ['sheet1'],
-    sheets: {
-      sheet1: {
-        id: 'sheet1',
-        name: 'Sheet1',
-        rowCount: ATHENA_ROWS,
-        columnCount: ATHENA_COLUMNS,
-        cellData: matrix,
-      },
-    },
+    sheetOrder,
+    sheets,
   } as unknown as IWorkbookData;
 }
 
 /**
- * Build the two stored snapshots from a generated item:
- * - givens: the item as presented (given cells tinted; values only — a
- *   given carrying a formula would leak solution method).
+ * Build the two stored snapshots from a generated item. One sheet TAB per
+ * part, the part's question written onto the sheet:
+ * - givens: parts as presented (given cells tinted; values only — a given
+ *   carrying a formula would leak solution method).
  * - solution: givens + solution cells layered on top (formulas intact).
  */
 export function itemToWorkbooks(item: GeneratedItem): { givensJson: string; solutionJson: string } {
-  const givensOnly = item.givens.map((c) => ({ ...c, formula: undefined }));
-  const givensMatrix = buildCellMatrix(givensOnly, true);
+  const givensSheets: SheetSpec[] = [];
+  const solutionSheets: SheetSpec[] = [];
+  item.parts.forEach((part, i) => {
+    const name = partSheetName(part, i, item.parts.length);
+    const givensOnly = part.givens.map((c) => ({ ...c, formula: undefined }));
+    givensSheets.push({ name, question: part.question, matrix: buildCellMatrix(givensOnly, true) });
 
-  // Solution = tinted givens with the work layered over (untinted).
-  const solutionMatrix = buildCellMatrix(givensOnly, true);
-  const workMatrix = buildCellMatrix(item.solution, false);
-  for (const [rowStr, cols] of Object.entries(workMatrix)) {
-    const row = Number(rowStr);
-    for (const [colStr, data] of Object.entries(cols)) {
-      (solutionMatrix[row] ??= {})[Number(colStr)] = data;
+    // Solution = tinted givens with the work layered over (untinted).
+    const solutionMatrix = buildCellMatrix(givensOnly, true);
+    const workMatrix = buildCellMatrix(part.solution, false);
+    for (const [rowStr, cols] of Object.entries(workMatrix)) {
+      const row = Number(rowStr);
+      for (const [colStr, data] of Object.entries(cols)) {
+        (solutionMatrix[row] ??= {})[Number(colStr)] = data;
+      }
     }
-  }
+    solutionSheets.push({ name, question: part.question, matrix: solutionMatrix });
+  });
 
   return {
-    givensJson: JSON.stringify(toWorkbook('Item', givensMatrix)),
-    solutionJson: JSON.stringify(toWorkbook('Solution', solutionMatrix)),
+    givensJson: JSON.stringify(toWorkbook('Item', givensSheets)),
+    solutionJson: JSON.stringify(toWorkbook('Solution', solutionSheets)),
   };
+}
+
+/** True when the stored workbook carries its question on-sheet (merged block)
+ *  — legacy single-sheet items don't, and keep the pane-chrome question. */
+export function workbookHasOnSheetQuestion(json: string): boolean {
+  try {
+    const wb = JSON.parse(json) as { sheets?: Record<string, { mergeData?: unknown[] }> };
+    return Object.values(wb.sheets ?? {}).some((s) => Array.isArray(s.mergeData) && s.mergeData.length > 0);
+  } catch {
+    return false;
+  }
 }
 
 // ── Model output extraction ─────────────────────────────────────────────────
@@ -154,18 +231,35 @@ export function extractItemsJson(raw: string): { items: GeneratedItem[]; error: 
     if (!entry || typeof entry !== 'object') continue;
     const e = entry as Record<string, unknown>;
     const title = String(e.title ?? '').trim();
-    const question = String(e.question ?? '').trim();
-    const givens = normalizeCells(e.givens);
-    const solution = normalizeCells(e.solution);
-    // An item without a title, question, or any solution work is unusable.
-    if (!title || !question || solution.length === 0) continue;
+    if (!title) continue;
+
+    // Parts shape (workbook model). Legacy flat shape (question/givens/
+    // solution at the item root) folds into a single unnamed part.
+    const rawParts = Array.isArray(e.parts) && e.parts.length > 0
+      ? e.parts
+      : [{ name: '', question: e.question, givens: e.givens, solution: e.solution }];
+    const parts: ItemPart[] = [];
+    for (const rawPart of rawParts.slice(0, 8)) {
+      if (!rawPart || typeof rawPart !== 'object') continue;
+      const p = rawPart as Record<string, unknown>;
+      const question = String(p.question ?? '').trim();
+      const solution = normalizeCells(p.solution, FIRST_CONTENT_ROW);
+      // A part without a question or any solution work is unusable.
+      if (!question || solution.length === 0) continue;
+      parts.push({
+        name: String(p.name ?? '').trim().slice(0, 24),
+        question,
+        givens: normalizeCells(p.givens, FIRST_CONTENT_ROW),
+        solution,
+      });
+    }
+    if (parts.length === 0) continue;
+
     const page = Number(e.page ?? NaN);
     items.push({
       title,
-      question,
       tags: Array.isArray(e.tags) ? e.tags.map((t) => String(t).trim()).filter(Boolean).slice(0, 8) : [],
-      givens,
-      solution,
+      parts,
       solutionNotes: String(e.solution_notes ?? e.solutionNotes ?? '').trim(),
       ...(Number.isInteger(page) && page > 0 ? { page } : {}),
     });
@@ -174,14 +268,17 @@ export function extractItemsJson(raw: string): { items: GeneratedItem[]; error: 
   return { items, error: null };
 }
 
-function normalizeCells(value: unknown): ItemCell[] {
+/** minRow: cells above it are dropped — the on-sheet question block owns
+ *  those rows, and shifting refs would break the emitted formulas. */
+function normalizeCells(value: unknown, minRow = 0): ItemCell[] {
   if (!Array.isArray(value)) return [];
   const out: ItemCell[] = [];
   for (const entry of value.slice(0, 400)) {
     if (!entry || typeof entry !== 'object') continue;
     const e = entry as Record<string, unknown>;
     const cell = String(e.cell ?? '').trim().toUpperCase();
-    if (!parseA1(cell)) continue;
+    const pos = parseA1(cell);
+    if (!pos || pos.row < minRow) continue;
     const rawValue = e.value;
     const formula = typeof e.formula === 'string' && e.formula.trim().startsWith('=') ? e.formula.trim() : undefined;
     const valueOk = typeof rawValue === 'number' || (typeof rawValue === 'string' && rawValue.trim() !== '');
@@ -200,27 +297,40 @@ function normalizeCells(value: unknown): ItemCell[] {
 
 /**
  * Flatten a workbook snapshot into compact "B4: 123 (=C2*D2)" lines the model
- * can read. Empty cells are skipped; order is row-major for scanability.
+ * can read. Multi-sheet workbooks (one tab per part) get a "[Tab: name]"
+ * header per sheet, in tab order. Empty cells are skipped; row-major.
  */
 export function serializeWorkbookCells(json: string, maxCells = 500): string {
   let wb: IWorkbookData | null = null;
   try { wb = JSON.parse(json) as IWorkbookData; } catch { return ''; }
-  const sheets = (wb as unknown as { sheets?: Record<string, { cellData?: Record<string, Record<string, CellData>> }> })?.sheets;
+  const cast = wb as unknown as {
+    sheetOrder?: string[];
+    sheets?: Record<string, { name?: string; cellData?: Record<string, Record<string, CellData>> }>;
+  };
+  const sheets = cast?.sheets;
   if (!sheets) return '';
+  const order = Array.isArray(cast.sheetOrder) && cast.sheetOrder.length > 0
+    ? cast.sheetOrder.filter((id) => sheets[id])
+    : Object.keys(sheets);
+  const multi = order.length > 1;
   const lines: string[] = [];
-  for (const sheet of Object.values(sheets)) {
+  let cells = 0;
+  for (const sheetId of order) {
+    const sheet = sheets[sheetId];
+    if (multi) lines.push(`[Tab: ${sheet.name || sheetId}]`);
     const cellData = sheet.cellData ?? {};
     const rows = Object.keys(cellData).map(Number).sort((a, b) => a - b);
     for (const row of rows) {
       const cols = Object.keys(cellData[row] ?? {}).map(Number).sort((a, b) => a - b);
       for (const col of cols) {
-        if (lines.length >= maxCells) return lines.join('\n');
+        if (cells >= maxCells) return lines.join('\n');
         const data = cellData[row][col];
         if (data?.v === undefined && data?.f === undefined) continue;
         const ref = `${colToLetters(col)}${row + 1}`;
         const value = data.v !== undefined ? String(data.v) : '';
         const formula = data.f ? ` (${data.f})` : '';
         lines.push(`${ref}: ${value}${formula}`.trim());
+        cells++;
       }
     }
   }

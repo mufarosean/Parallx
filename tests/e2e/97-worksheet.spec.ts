@@ -88,11 +88,10 @@ test.describe('Worksheets — surface and engine', () => {
   });
 
   test('a sheet menu opens and is visible (the clipped-popups bug class)', async ({ window }) => {
-    // KNOWN ISSUE (M99): the grid right-click menu does not open — trusted
-    // right-clicks and native-style contextmenu dispatch both produce
-    // nothing, with or without the popup portal. Toolbar dropdowns work
-    // (screenshot-verified). This marker flips the suite loud when fixed.
-    test.fail();
+    // Was a pinned KNOWN ISSUE (grid right-click menu never opened) — fixed
+    // as a side effect of the 2026-08-11 fixes (the :where() form-control
+    // downgrade / footer enable); the test.fail() marker flipped the suite
+    // loud, so it now asserts the menu OPENS.
     // The font-family trigger collapses into toolbar overflow at narrow
     // widths, so it's a fragile anchor. The grid CONTEXT MENU is always
     // available and exercises the same popup path that used to clip.
@@ -230,6 +229,107 @@ test.describe('Worksheets — surface and engine', () => {
 });
 
 test.describe('Worksheets — item practice loop (workspace DB)', () => {
+  test('explorer file drag reaches the generate drop zone', async ({ window, electronApp, workspacePath }) => {
+    await openFolderViaMenu(electronApp, window, workspacePath);
+
+    // Open the generate pane.
+    const sidebar = window.locator('.ws-sidebar');
+    if (!(await sidebar.isVisible().catch(() => false))) {
+      await window.locator('button.activity-bar-item[data-icon-id="worksheet-container"]').click();
+      await sidebar.waitFor({ state: 'visible', timeout: 5_000 });
+    }
+    await sidebar.locator('button', { hasText: 'Generate Items' }).click();
+    await expect(window.locator('.ws-dropzone')).toBeVisible({ timeout: 5_000 });
+
+    // Show the Explorer. The worksheet sidebar is active right now, so this
+    // SWITCHES (clicking the active view's icon would toggle the sidebar
+    // closed instead — probe-verified trap). The app may be in any restored
+    // workspace, so pick ANY visible file node rather than a fixture path;
+    // files have no expand chevron.
+    await window.locator('button.activity-bar-item[data-icon-id="view.explorer"]').click();
+    await expect(window.locator('.tree-node').first()).toBeVisible({ timeout: 5_000 });
+    const fileNode = window.locator('.tree-node:not(:has(.tree-node-chevron))').first();
+    for (let i = 0; i < 3 && !(await fileNode.isVisible().catch(() => false)); i++) {
+      await window.locator('.tree-node:has(.tree-node-chevron)').nth(i).click();
+      await window.waitForTimeout(500);
+    }
+    await expect(fileNode).toBeVisible({ timeout: 5_000 });
+
+    // The real drag: Explorer sets effectAllowed='move'; the drop zone must
+    // answer with a compatible dropEffect or Chromium never fires drop (the
+    // exact "dragging from the workspace does nothing" bug).
+    const status = window.locator('.ws-create__status');
+    await expect(status).toHaveText('No source loaded yet.');
+    await fileNode.dragTo(window.locator('.ws-dropzone'));
+
+    // Any status movement proves drop fired and the path flowed through
+    // (extraction may legitimately fail on a tiny/binary file — the BUG was
+    // that drop never fired at all and the status never moved).
+    await expect(status, 'drop never fired — status untouched').not.toHaveText('No source loaded yet.', { timeout: 15_000 });
+  });
+
+  test('multi-part item: question on the sheet, parts on tabs, no header question', async ({ window, electronApp, workspacePath }) => {
+    await openFolderViaMenu(electronApp, window, workspacePath);
+
+    const seeded = await window.evaluate(async () => {
+      const db = (window as any).parallxElectron?.database;
+      if (!db) return 'no-db-bridge';
+      const open = await db.isOpen();
+      if (!open?.isOpen) return 'db-not-open';
+      const wb = (withSolution: boolean) => JSON.stringify({
+        id: `e2e-mp-${Math.random().toString(36).slice(2)}`,
+        name: 'Item',
+        sheetOrder: ['p0', 'p1'],
+        sheets: {
+          p0: {
+            id: 'p0', name: '(a)', rowCount: 150, columnCount: 40,
+            cellData: {
+              0: { 0: { v: 'Part a: compute the loss ratio.', s: { tb: 3, vt: 1 } } },
+              5: { 1: { v: 'Premium', s: { bl: 1 } }, 2: { v: 1000 } },
+              ...(withSolution ? { 7: { 2: { f: '=C6*0.65' } } } : {}),
+            },
+            mergeData: [{ startRow: 0, startColumn: 0, endRow: 3, endColumn: 9 }],
+            rowData: { 0: { h: 20 }, 1: { h: 20 }, 2: { h: 20 }, 3: { h: 20 } },
+          },
+          p1: {
+            id: 'p1', name: '(b)', rowCount: 150, columnCount: 40,
+            cellData: { 0: { 0: { v: 'Part b: double it.', s: { tb: 3, vt: 1 } } } },
+            mergeData: [{ startRow: 0, startColumn: 0, endRow: 3, endColumn: 9 }],
+            rowData: { 0: { h: 20 }, 1: { h: 20 }, 2: { h: 20 }, 3: { h: 20 } },
+          },
+        },
+      });
+      await db.run("DELETE FROM ws_attempts WHERE item_id IN (SELECT id FROM ws_items WHERE title = 'E2E Multipart Item')");
+      await db.run("DELETE FROM ws_items WHERE title = 'E2E Multipart Item'");
+      const res = await db.run(
+        `INSERT INTO ws_items (title, question_md, givens_json, solution_json, solution_notes_md, tags, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        ['E2E Multipart Item', '(a) compute the loss ratio.\n\n(b) double it.', wb(false), wb(true), '', 'e2e', Date.now()],
+      );
+      return res?.error ? `insert-error: ${res.error.message}` : 'ok';
+    });
+    expect(seeded).toBe('ok');
+
+    await window.locator('[data-part-id="workbench.parts.statusbar"]').click();
+    await window.keyboard.press('Control+Shift+P');
+    await expect(window.locator('.command-palette-overlay')).toBeVisible({ timeout: 3_000 });
+    await window.locator('.command-palette-input').fill('>Worksheets: Open Practice Items');
+    await window.locator('.command-palette-item', { hasText: 'Worksheets: Open Practice Items' }).first().click();
+    await expect(window.locator('.ws-home')).toBeVisible({ timeout: 5_000 });
+    await window.locator('.ws-itemrow', { hasText: 'E2E Multipart Item' }).first()
+      .locator('button', { hasText: 'Practice' }).click();
+
+    await expect(window.locator('.ws-item__title', { hasText: 'E2E Multipart Item' })).toBeVisible({ timeout: 10_000 });
+    await waitForEngine(window);
+
+    // On-sheet question model: NO header question block for new-style items.
+    await expect(window.locator('.ws-item__question')).toHaveCount(0);
+    // The workbook footer shows both part tabs.
+    await expect(window.locator('.ws-pane__sheet', { hasText: '(a)' })).toBeVisible();
+    await expect(window.locator('.ws-pane__sheet', { hasText: '(b)' })).toBeVisible();
+    await window.screenshot({ path: path.join(SHOT_DIR, 'item-multipart-tabs.png') });
+  });
+
   test('seeded item: practice → reveal → grade → state chip', async ({ window, electronApp, workspacePath }) => {
     await openFolderViaMenu(electronApp, window, workspacePath);
 

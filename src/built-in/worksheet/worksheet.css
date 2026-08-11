@@ -197,6 +197,10 @@ body > [data-radix-popper-content-wrapper] :where(input, textarea, select) {
   border-radius: var(--px-radius-md);
 }
 .ws-genitem--dropped { opacity: 0.4; }
+.ws-genitem__partlabel {
+  font-size: var(--px-text-2xs); font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--px-text-muted);
+}
 .ws-genitem .ws-btn--danger { align-self: flex-start; }
 
 /* ── Sidebar view ── */

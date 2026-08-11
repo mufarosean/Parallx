@@ -25,7 +25,7 @@ import {
   discardOpenAttempt, completeAttempt, saveAttemptReview, onWorksheetDataChanged,
   type WorksheetItem,
 } from './worksheetData.js';
-import { itemToWorkbooks, type GeneratedItem } from './itemFormat.js';
+import { itemToWorkbooks, workbookHasOnSheetQuestion, type GeneratedItem } from './itemFormat.js';
 import { generateItems, reviewAttempt, type LmApiLike } from './worksheetAi.js';
 import { registerWorksheetChatTools } from './worksheetChat.js';
 import './worksheet.css';
@@ -358,7 +358,13 @@ function createGeneratePane(container: HTMLElement) {
   drop.appendChild(el('div', 'ws-dropzone__title', 'Drag a PDF or document here'));
   const onDragOver = (e: DragEvent) => {
     e.preventDefault(); e.stopPropagation();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    if (e.dataTransfer) {
+      // The Explorer's dragstart sets effectAllowed='move'; answering with
+      // dropEffect 'copy' makes Chromium refuse the drop outright (the drop
+      // event never fires — the "dragging from the workspace does nothing"
+      // bug). Answer with a compatible effect instead.
+      e.dataTransfer.dropEffect = e.dataTransfer.effectAllowed === 'move' ? 'move' : 'copy';
+    }
     drop.classList.add('ws-dropzone--over');
   };
   drop.addEventListener('dragenter', onDragOver);
@@ -520,24 +526,33 @@ function createGeneratePane(container: HTMLElement) {
     reviewHost.appendChild(el('div', 'ws-home__title', `Review ${items.length} generated ${items.length === 1 ? 'item' : 'items'}`));
     reviewHost.appendChild(el('div', 'ws-hint', 'Edit titles and questions inline; drop anything weak. Nothing is saved until you click Save.'));
 
-    const rows: { item: GeneratedItem; titleIn: HTMLInputElement; questionIn: HTMLTextAreaElement; dropped: boolean; row: HTMLElement }[] = [];
+    const rows: { item: GeneratedItem; titleIn: HTMLInputElement; partIns: HTMLTextAreaElement[]; dropped: boolean; row: HTMLElement }[] = [];
     for (const item of items) {
       const row = el('div', 'ws-genitem');
       const titleIn = el('input', 'ws-input') as HTMLInputElement;
       titleIn.value = item.title;
       row.appendChild(titleIn);
-      const questionIn = el('textarea', 'ws-textarea') as HTMLTextAreaElement;
-      questionIn.rows = 3;
-      questionIn.value = item.question;
-      row.appendChild(questionIn);
+      // One editable question per part — each part becomes a sheet tab.
+      const partIns: HTMLTextAreaElement[] = [];
+      for (const part of item.parts) {
+        if (part.name) row.appendChild(el('div', 'ws-genitem__partlabel', `Part (${part.name})`));
+        const questionIn = el('textarea', 'ws-textarea') as HTMLTextAreaElement;
+        questionIn.rows = 2;
+        questionIn.value = part.question;
+        row.appendChild(questionIn);
+        partIns.push(questionIn);
+      }
+      const givens = item.parts.reduce((n, p) => n + p.givens.length, 0);
+      const solution = item.parts.reduce((n, p) => n + p.solution.length, 0);
       const meta: string[] = [
-        `${item.givens.length} given ${item.givens.length === 1 ? 'cell' : 'cells'}`,
-        `${item.solution.length} solution ${item.solution.length === 1 ? 'cell' : 'cells'}`,
+        `${item.parts.length} ${item.parts.length === 1 ? 'part' : 'parts'}`,
+        `${givens} given ${givens === 1 ? 'cell' : 'cells'}`,
+        `${solution} solution ${solution === 1 ? 'cell' : 'cells'}`,
       ];
       if (item.page) meta.push(`p.${item.page}`);
       if (item.tags.length) meta.push(item.tags.map((t) => `#${t}`).join(' '));
       row.appendChild(el('div', 'ws-itemrow__meta', meta.join(' · ')));
-      const entry = { item, titleIn, questionIn, dropped: false, row };
+      const entry = { item, titleIn, partIns, dropped: false, row };
       const dropBtn = el('button', 'ws-btn ws-btn--danger') as HTMLButtonElement;
       dropBtn.textContent = 'Drop';
       dropBtn.addEventListener('click', () => {
@@ -563,10 +578,14 @@ function createGeneratePane(container: HTMLElement) {
         saveBtn.disabled = true;
         try {
           for (const r of keep) {
-            const { givensJson, solutionJson } = itemToWorkbooks(r.item);
+            // Edited part questions flow into the workbook build (on-sheet
+            // text) AND the item-level question_md (browse/chat context).
+            const parts = r.item.parts.map((p, i) => ({ ...p, question: r.partIns[i]?.value.trim() || p.question }));
+            const edited = { ...r.item, parts };
+            const { givensJson, solutionJson } = itemToWorkbooks(edited);
             await createItem({
               title: r.titleIn.value.trim(),
-              questionMd: r.questionIn.value.trim(),
+              questionMd: parts.map((p) => (p.name ? `(${p.name}) ${p.question}` : p.question)).join('\n\n'),
               givensJson,
               solutionJson,
               solutionNotesMd: r.item.solutionNotes,
@@ -720,7 +739,10 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
     }
     header.appendChild(titleRow);
 
-    if (item.questionMd) {
+    // New-style items carry the question ON the sheet (merged block per
+    // part tab — Mufaro: "better to have them directly on the page");
+    // legacy items still need it here or it would vanish.
+    if (item.questionMd && !workbookHasOnSheetQuestion(item.givensJson)) {
       const q = el('div', 'ws-item__question');
       q.appendChild(renderMarkdown(item.questionMd));
       header.appendChild(q);

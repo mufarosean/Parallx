@@ -3600,7 +3600,11 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
 
   const onDragOver = (e) => {
     e.preventDefault(); e.stopPropagation();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    if (e.dataTransfer) {
+      // Explorer dragstart sets effectAllowed='move'; forcing 'copy' makes
+      // Chromium refuse the drop (the drop event never fires).
+      e.dataTransfer.dropEffect = e.dataTransfer.effectAllowed === 'move' ? 'move' : 'copy';
+    }
     drop.classList.add('fc-dropzone--over');
   };
   drop.addEventListener('dragenter', onDragOver);
@@ -3948,7 +3952,11 @@ async function renderImport(body, route, setRoute, viewDisposables = []) {
 
   const onDragOver = (e) => {
     e.preventDefault(); e.stopPropagation();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    if (e.dataTransfer) {
+      // Explorer dragstart sets effectAllowed='move'; forcing 'copy' makes
+      // Chromium refuse the drop (the drop event never fires).
+      e.dataTransfer.dropEffect = e.dataTransfer.effectAllowed === 'move' ? 'move' : 'copy';
+    }
     drop.classList.add('fc-dropzone--over');
   };
   drop.addEventListener('dragenter', onDragOver);
