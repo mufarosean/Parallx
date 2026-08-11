@@ -2399,7 +2399,9 @@ function injectStyles() {
   color: #9a9a9a; font-variant-numeric: tabular-nums;
   margin-bottom: var(--px-space-4);
 }
-/* M98 leech loop — chip + action live in the answer card's head row. */
+/* M98 leech loop — chip + action live in the answer card's head row.
+   Hex is CORRECT here: the card face is a fixed WHITE physical card in both
+   app modes (deliberate design), so its inks never follow the theme. */
 .fc-card__leech {
   margin-left: auto; margin-right: var(--px-space-2); padding: 1px 7px;
   font-size: var(--px-text-2xs); font-weight: 700; letter-spacing: 0.05em;
@@ -2407,7 +2409,7 @@ function injectStyles() {
   border-radius: var(--px-radius-full, 999px); text-transform: none;
 }
 .fc-btn--small { padding: 2px 9px; font-size: var(--px-text-xs); text-transform: none; letter-spacing: normal; font-weight: 500; }
-.fc-meta-leech { color: #a05a00; font-weight: 600; }
+.fc-meta-leech { color: var(--px-warning); font-weight: 600; }
 /* Card ink is a book serif: printed-card text, not UI chrome. It matches
    KaTeX's serif math, so "the estimate $L(x)$" reads as ONE sentence instead
    of sans colliding with serif math. The question keeps its bold, but bold
@@ -3161,8 +3163,8 @@ async function renderBrowse(body, route, setRoute) {
     stateChip.textContent = card.state;
     meta.appendChild(stateChip);
     // M98 card types: siblings announce themselves (edits propagate group-wide).
-    if (card.cardType === 'cloze') meta.appendChild(el('span', '', `cloze c${card.clozeIndex}`));
-    else if (card.cardType === 'reverse') meta.appendChild(el('span', '', 'reverse pair'));
+    if (card.cardType === 'cloze') meta.appendChild(el('span', '', `Cloze c${card.clozeIndex}`));
+    else if (card.cardType === 'reverse') meta.appendChild(el('span', '', 'Reverse Pair'));
     if (card.state !== 'new') {
       meta.appendChild(el('span', '', card.dueAt <= Date.now()
         ? 'due now'
@@ -3177,7 +3179,7 @@ async function renderBrowse(body, route, setRoute) {
       }
       meta.appendChild(el('span', '', `${card.reps} reps`));
       if (card.lapses > 0) meta.appendChild(el('span', '', `${card.lapses} lapses`));
-      if (fcIsLeech(card)) meta.appendChild(el('span', 'fc-meta-leech', 'leech'));
+      if (fcIsLeech(card)) meta.appendChild(el('span', 'fc-meta-leech', 'Leech'));
     }
     if (card.tags) meta.appendChild(el('span', '', `#${fcParseTags(card.tags).join(' #')}`));
     if (card.sourceLabel) meta.appendChild(el('span', '', card.sourceLabel));

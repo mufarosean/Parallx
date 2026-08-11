@@ -33,11 +33,13 @@
 }
 .ws-btn:hover { border-color: var(--px-base-35); }
 .ws-btn--primary {
-  color: var(--px-accent-contrast, #fff);
+  color: var(--px-text-on-accent);
   background: var(--px-accent);
-  border-color: var(--px-accent);
+  border-color: transparent;
+  font-weight: 600;
 }
-.ws-btn--danger:hover { color: var(--px-danger, #d9534f); border-color: var(--px-danger, #d9534f); }
+.ws-btn--primary:hover { background: var(--px-accent-hover); border-color: transparent; }
+.ws-btn--danger:hover { color: var(--px-danger); border-color: var(--px-danger); }
 
 /* ── Item browser ── */
 
@@ -68,9 +70,10 @@
   vertical-align: 1px;
 }
 .ws-chip--open { color: var(--px-accent); background: var(--px-accent-soft); }
-.ws-chip--nailed { color: #2e7d32; background: #e8f5e9; }
-.ws-chip--partial { color: #a05a00; background: #fff3e0; }
-.ws-chip--missed { color: #b3261e; background: #fdecea; }
+/* Semantic tokens only (M83 rule) — hardcoded pastels broke dark mode. */
+.ws-chip--nailed { color: var(--px-success); background: color-mix(in srgb, var(--px-success) 14%, transparent); }
+.ws-chip--partial { color: var(--px-warning); background: color-mix(in srgb, var(--px-warning) 14%, transparent); }
+.ws-chip--missed { color: var(--px-danger); background: color-mix(in srgb, var(--px-danger) 12%, transparent); }
 
 .ws-empty { padding: var(--px-space-8) var(--px-space-6); text-align: center; }
 .ws-empty__headline { font-size: var(--px-text-md); font-weight: 600; color: var(--px-text); }
@@ -102,9 +105,9 @@
 }
 .ws-item__grades { display: flex; align-items: center; gap: var(--px-space-1); margin-left: auto; }
 .ws-item__gradeprompt { font-size: var(--px-text-sm); color: var(--px-text-muted); margin-right: var(--px-space-1); }
-.ws-btn--grade-nailed:hover { color: #2e7d32; border-color: #2e7d32; }
-.ws-btn--grade-partial:hover { color: #a05a00; border-color: #a05a00; }
-.ws-btn--grade-missed:hover { color: #b3261e; border-color: #b3261e; }
+.ws-btn--grade-nailed:hover { color: var(--px-success); border-color: var(--px-success); }
+.ws-btn--grade-partial:hover { color: var(--px-warning); border-color: var(--px-warning); }
+.ws-btn--grade-missed:hover { color: var(--px-danger); border-color: var(--px-danger); }
 
 .ws-item__solutionnotes {
   margin-top: var(--px-space-3);
@@ -143,7 +146,7 @@
   background: var(--px-bg-inset); border: 1px solid var(--px-border-strong);
   border-radius: var(--px-radius-sm); resize: vertical; font-family: inherit;
 }
-.ws-error { font-size: var(--px-text-sm); color: var(--px-danger, #d9534f); }
+.ws-error { font-size: var(--px-text-sm); color: var(--px-danger); }
 
 .ws-dropzone {
   padding: var(--px-space-5);

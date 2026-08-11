@@ -129,29 +129,64 @@ function applyAthenaFunctionSet(univer: Univer): void {
   }
 }
 
+/** Body-level portal for Univer's popups/dropdowns. Editor panes clip
+ *  overflow, so ribbon menus rendered inside the pane never show — the
+ *  portal escapes that, and its z-index clears the app's overlay layers
+ *  (dropdown lists sit at 10005 app-wide). */
+const POPUP_ROOT_ID = 'ws-univer-popup-root';
+
+function ensurePopupRoot(): void {
+  if (document.getElementById(POPUP_ROOT_ID)) return;
+  const root = document.createElement('div');
+  root.id = POPUP_ROOT_ID;
+  root.style.position = 'relative';
+  root.style.zIndex = '10005';
+  document.body.appendChild(root);
+}
+
+/** The app signals light mode via :root[data-px-mode="light"]; dark is the
+ *  default (no attribute). */
+function appIsDark(): boolean {
+  return document.documentElement.getAttribute('data-px-mode') !== 'light';
+}
+
 export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost {
+  ensurePopupRoot();
+  const sheetsPresetConfig = {
+    container: opts.container,
+    // Athena has no workbook: hide the sheet-tab footer entirely.
+    footer: false,
+    // No selection-statistics strip (not part of the exam surface).
+    statusBarStatistic: false,
+    // Real formula bar + ribbon ARE part of the exam surface.
+    formulaBar: true,
+    header: true,
+    toolbar: true,
+    contextMenu: true,
+    // Reaches the UI plugin (IUniverUIConfig.popupRootId) even though the
+    // preset's Pick<> doesn't re-export it — hence the cast.
+    popupRootId: POPUP_ROOT_ID,
+  };
   const created: { univer: Univer; univerAPI: FUniver } = createUniver({
     locale: LocaleType.EN_US,
     locales: {
       [LocaleType.EN_US]: mergeLocales(UniverPresetSheetsCoreEnUS as Record<string, unknown>),
     },
+    // Follow the APP's mode — the engine's own default is always-light,
+    // which glared inside a dark workbench (M99 UI pass).
+    darkMode: appIsDark(),
     presets: [
-      UniverSheetsCorePreset({
-        container: opts.container,
-        // Athena has no workbook: hide the sheet-tab footer entirely.
-        footer: false,
-        // No selection-statistics strip (not part of the exam surface).
-        statusBarStatistic: false,
-        // Real formula bar + ribbon ARE part of the exam surface.
-        formulaBar: true,
-        header: true,
-        toolbar: true,
-        contextMenu: true,
-      }),
+      UniverSheetsCorePreset(sheetsPresetConfig as unknown as Parameters<typeof UniverSheetsCorePreset>[0]),
     ],
   });
 
   const { univer, univerAPI } = created;
+
+  // Live-follow app light/dark flips for the lifetime of this host.
+  const modeObserver = new MutationObserver(() => {
+    try { univerAPI.toggleDarkMode(appIsDark()); } catch { /* engine disposed */ }
+  });
+  modeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-px-mode'] });
   applyAthenaFunctionSet(univer);
   univerAPI.createWorkbook(opts.snapshot ?? blankWorkbookData());
 
@@ -179,6 +214,7 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
     dispose: () => {
       if (disposed) return;
       disposed = true;
+      modeObserver.disconnect();
       try { univer.dispose(); } catch { /* engine already gone */ }
     },
   };
