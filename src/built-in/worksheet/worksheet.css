@@ -1,0 +1,21 @@
+/* Worksheets (M99) — pane chrome around the Univer engine. */
+
+.ws-pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--px-bg);
+}
+
+.ws-pane__sheet {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.ws-pane__loading {
+  padding: var(--px-space-6);
+  font-size: var(--px-text-sm);
+  color: var(--px-text-muted);
+}

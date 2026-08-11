@@ -38,6 +38,33 @@ await build({
   assetNames: 'fonts/[name]',
 });
 
+// ── Worksheet engine bundle (M99) ──────────────────────────────────────────
+// The Univer spreadsheet engine is several MB and used only by the Worksheets
+// surface, so it builds as its OWN esm bundle that the pane dynamic-imports on
+// first open. Statically importing src/built-in/worksheet/univerHost.ts from
+// the main tree would inline all of it into main.js — never do that.
+await build({
+  entryPoints: ['src/built-in/worksheet/univerHost.ts'],
+  bundle: true,
+  outfile: 'dist/renderer/worksheet-univer.js',
+  format: 'esm',
+  platform: 'browser',
+  target: 'es2022',
+  sourcemap: isProduction ? 'external' : true,
+  minify: isProduction,
+  logLevel: 'info',
+  loader: {
+    '.woff2': 'file',
+    '.woff': 'file',
+    '.ttf': 'file',
+    '.svg': 'dataurl',
+    '.gif': 'dataurl',
+    '.cur': 'dataurl',
+    '.png': 'dataurl',
+  },
+  assetNames: 'fonts/[name]',
+});
+
 // ── Copy PDF.js runtime assets to dist ─────────────────────────────────────
 const workerSrc = 'node_modules/pdfjs-dist/build/pdf.worker.min.mjs';
 const workerDst = 'dist/renderer/pdf.worker.min.mjs';

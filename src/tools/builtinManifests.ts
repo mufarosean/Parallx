@@ -474,6 +474,27 @@ export const PLANNER_MANIFEST: IToolManifest = {
   },
 };
 
+// ── Worksheets (M99) ─────────────────────────────────────────────────────
+
+export const WORKSHEET_MANIFEST: IToolManifest = {
+  manifestVersion: 1,
+  id: 'parallx.worksheet',
+  name: 'Worksheets',
+  version: '0.1.0',
+  publisher: 'parallx',
+  description: 'Practice sheets — bounded spreadsheet items with givens and solutions, faithful to a target exam tool\'s constraints.',
+  main: './main.js',
+  engines: { parallx: '^0.1.0' },
+  activationEvents: ['onStartupFinished'],
+  contributes: {
+    commands: [
+      { id: 'worksheet.open', title: 'Worksheets: Open Practice Sheet',
+        aiInvocable: true, aiDescription: 'Open a bounded spreadsheet practice sheet.' },
+    ],
+    editors: [{ typeId: 'worksheet', displayName: 'Practice Sheet' }],
+  },
+};
+
 // ── Dashboard (M71) ──────────────────────────────────────────────────────
 
 export const DASHBOARD_MANIFEST: IToolManifest = {

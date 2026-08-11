@@ -159,6 +159,7 @@ import * as ThemeEditorTool from '../built-in/theme-editor/main.js';
 import * as SettingsTool from '../built-in/settings/main.js';
 import * as DashboardTool from '../built-in/dashboard/main.js';
 import * as PlannerTool from '../built-in/planner/main.js';
+import * as WorksheetTool from '../built-in/worksheet/main.js';
 import type { IToolManifest, IToolDescription } from '../tools/toolManifest.js';
 import {
   EXPLORER_MANIFEST,
@@ -179,6 +180,7 @@ import {
   SETTINGS_MANIFEST,
   DASHBOARD_MANIFEST,
   PLANNER_MANIFEST,
+  WORKSHEET_MANIFEST,
 } from '../tools/builtinManifests.js';
 
 // File Editor Resolver (M4 Capability 4)
@@ -3105,6 +3107,9 @@ export class Workbench extends Layout {
       // Planner (M82) — after ChatTool so it can register its chat tools,
       // after DashboardTool so it can register dashboard widgets.
       { manifest: PLANNER_MANIFEST, module: PlannerTool },
+      // Worksheets (M99) — exam-faithful practice sheets; the Univer engine
+      // loads lazily from its own bundle when a sheet first opens.
+      { manifest: WORKSHEET_MANIFEST, module: WorksheetTool },
     ];
 
     const activationPromises: Promise<void>[] = [];
