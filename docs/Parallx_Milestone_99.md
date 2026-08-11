@@ -149,8 +149,16 @@ Compared the live item player against the real Athena item capture:
    with a Sheet Theme toggle on every sheet — see slice 7.
 4. Ribbon label "Start" vs Athena "HOME"; tab set differs (no Insert/View).
    Univer menu config could rename/extend later; low priority.
+   ALIGNMENT fixed 2026-08-11 (user report): Univer's classic ribbon centers
+   the tab + icon rows; scoped worksheet.css overrides left-align both.
 5. Grid right-click menu does not open (REAL bug, pinned by test.fail() in
    the e2e suite; portal ruled out as cause).
+6. FIXED 2026-08-11 (user screenshot: phantom dark mini-toolbar over the
+   sheet): Univer tooltips are body-portaled, dismiss ONLY via the trigger's
+   mouseleave, and strand with pointer-events:auto when ribbon relayout
+   unmounts the trigger. univerHost now tracks the pointer and hides any
+   tooltip >64px from it on a 700ms interval, plus hides leaked body portals
+   when univer.dispose() throws during pane teardown.
 
 ## Next feature: practice sessions (ADAPT-style)
 
