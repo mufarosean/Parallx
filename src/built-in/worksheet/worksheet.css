@@ -22,6 +22,24 @@
 .ws-pane [data-u-comp="ribbon-header-menu"] [role="tablist"] { justify-content: flex-start; }
 .ws-pane [data-u-comp="ribbon-toolbar"] { justify-content: flex-start; }
 
+/* Neutral form-control baseline inside the engine. The app's bare-element
+   input skin (px-controls, now :where-scoped) still applies wherever Univer
+   declares nothing — its name box relies on transparent-over-white, which
+   our dark inset token turned into the "dark pill" (user report). :where
+   keeps this at (0,1,0): it beats the app skin but loses ties to Univer's
+   own utility classes (engine CSS loads after main.css). Same treatment for
+   Univer's body-portaled popups (radix wrappers — Parallx itself never uses
+   radix, so the attribute selector only matches engine popups). */
+.ws-pane__sheet :where(input, textarea, select),
+body > [data-radix-popper-content-wrapper] :where(input, textarea, select) {
+  background: transparent;
+  color: inherit;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  font-size: inherit;
+}
+
 .ws-pane__loading {
   padding: var(--px-space-6);
   font-size: var(--px-text-sm);

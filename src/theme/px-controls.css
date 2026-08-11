@@ -88,9 +88,12 @@ input.px-input-bare[type]:focus-visible {
 
 /* ── Native form controls — crafted, consistent skin ─────────────────────── */
 /* Bare native inputs/selects/textareas pick up the token system: inset well
-   background, hairline border, the type ladder, a calm focus. Components with
-   their own input styling override this (higher specificity). */
-input[type="text"],
+   background, hairline border, the type ladder, a calm focus. :where() keeps
+   this at ZERO specificity so ANY explicit styling wins — component classes
+   and embedded engines (Univer painted its light-theme name box with our
+   dark inset token before this; a bare-element rule must never out-rank a
+   component's own skin). */
+:where(input[type="text"],
 input[type="search"],
 input[type="email"],
 input[type="url"],
@@ -100,7 +103,7 @@ input[type="date"],
 input[type="time"],
 input[type="datetime-local"],
 textarea,
-select {
+select) {
   font: inherit;
   font-size: var(--px-text-base);
   color: var(--px-text);
@@ -113,13 +116,13 @@ select {
     background-color var(--px-dur-fast) var(--px-ease),
     box-shadow var(--px-dur-fast) var(--px-ease);
 }
-input::placeholder,
-textarea::placeholder {
+:where(input)::placeholder,
+:where(textarea)::placeholder {
   color: var(--px-text-faint);
 }
-input:hover:not(:focus),
+:where(input:hover:not(:focus),
 textarea:hover:not(:focus),
-select:hover:not(:focus) {
+select:hover:not(:focus)) {
   border-color: var(--px-base-35);
 }
 
