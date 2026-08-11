@@ -19,3 +19,95 @@
   font-size: var(--px-text-sm);
   color: var(--px-text-muted);
 }
+
+/* ── Shared buttons ── */
+
+.ws-btn {
+  padding: 4px 12px;
+  font-size: var(--px-text-sm);
+  color: var(--px-text);
+  background: var(--px-bg-raised);
+  border: 1px solid var(--px-border-strong);
+  border-radius: var(--px-radius-sm);
+  cursor: pointer;
+}
+.ws-btn:hover { border-color: var(--px-base-35); }
+.ws-btn--primary {
+  color: var(--px-accent-contrast, #fff);
+  background: var(--px-accent);
+  border-color: var(--px-accent);
+}
+.ws-btn--danger:hover { color: var(--px-danger, #d9534f); border-color: var(--px-danger, #d9534f); }
+
+/* ── Item browser ── */
+
+.ws-home { padding: var(--px-space-6); overflow-y: auto; }
+.ws-home__head { display: flex; align-items: center; gap: var(--px-space-2); margin-bottom: var(--px-space-4); }
+.ws-home__title { font-size: var(--px-text-lg); font-weight: 600; letter-spacing: -0.01em; }
+.ws-home__list { display: flex; flex-direction: column; gap: var(--px-space-2); }
+
+.ws-itemrow {
+  display: flex; align-items: center; gap: var(--px-space-3);
+  padding: var(--px-space-3) var(--px-space-4);
+  background: var(--px-bg-raised);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-md);
+}
+.ws-itemrow__info { flex: 1; min-width: 0; cursor: pointer; }
+.ws-itemrow__title { font-size: var(--px-text-md); font-weight: 600; color: var(--px-text); }
+.ws-itemrow__meta { font-size: var(--px-text-xs); color: var(--px-text-muted); margin-top: 3px; font-variant-numeric: tabular-nums; }
+.ws-itemrow__actions { display: flex; gap: var(--px-space-1); flex: 0 0 auto; opacity: 0; transition: opacity var(--px-dur-fast) var(--px-ease); }
+.ws-itemrow:hover .ws-itemrow__actions,
+.ws-itemrow:focus-within .ws-itemrow__actions { opacity: 1; }
+
+.ws-chip {
+  display: inline-block; margin-left: var(--px-space-2); padding: 1px 7px;
+  font-size: var(--px-text-xs); font-weight: 600;
+  border-radius: var(--px-radius-full, 999px);
+  color: var(--px-text-muted); background: var(--px-bg-inset);
+  vertical-align: 1px;
+}
+.ws-chip--open { color: var(--px-accent); background: var(--px-accent-soft); }
+.ws-chip--nailed { color: #2e7d32; background: #e8f5e9; }
+.ws-chip--partial { color: #a05a00; background: #fff3e0; }
+.ws-chip--missed { color: #b3261e; background: #fdecea; }
+
+.ws-empty { padding: var(--px-space-8) var(--px-space-6); text-align: center; }
+.ws-empty__headline { font-size: var(--px-text-md); font-weight: 600; color: var(--px-text); }
+.ws-empty__hint { font-size: var(--px-text-sm); color: var(--px-text-muted); margin-top: var(--px-space-2); max-width: 480px; margin-left: auto; margin-right: auto; }
+
+/* ── Item player ── */
+
+.ws-item__header {
+  padding: var(--px-space-4) var(--px-space-5) var(--px-space-3);
+  border-bottom: 1px solid var(--px-border);
+  flex: 0 0 auto;
+  max-height: 40%;
+  overflow-y: auto;
+}
+.ws-item__titlerow { display: flex; align-items: center; gap: var(--px-space-2); }
+.ws-item__title { font-size: var(--px-text-md); font-weight: 600; letter-spacing: -0.01em; }
+.ws-item__question { margin-top: var(--px-space-2); font-size: var(--px-text-sm); color: var(--px-text-secondary); }
+
+.ws-item__solutionbar {
+  display: flex; align-items: center; gap: var(--px-space-3);
+  margin-top: var(--px-space-3);
+  padding: var(--px-space-2) var(--px-space-3);
+  background: var(--px-bg-inset);
+  border-radius: var(--px-radius-sm);
+}
+.ws-item__solutiontag {
+  font-size: var(--px-text-xs); font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--px-accent);
+}
+.ws-item__grades { display: flex; align-items: center; gap: var(--px-space-1); margin-left: auto; }
+.ws-item__gradeprompt { font-size: var(--px-text-sm); color: var(--px-text-muted); margin-right: var(--px-space-1); }
+.ws-btn--grade-nailed:hover { color: #2e7d32; border-color: #2e7d32; }
+.ws-btn--grade-partial:hover { color: #a05a00; border-color: #a05a00; }
+.ws-btn--grade-missed:hover { color: #b3261e; border-color: #b3261e; }
+
+.ws-item__solutionnotes {
+  margin-top: var(--px-space-3);
+  font-size: var(--px-text-sm);
+  color: var(--px-text-secondary);
+}

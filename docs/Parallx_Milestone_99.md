@@ -51,14 +51,21 @@ Exam 7 is the first user via AI generation from the user's own materials.
 
 ## Slices
 
-1. **Engine embed:** install @univerjs/presets; worksheet editor pane hosting a
-   constrained Univer sheet (size cap, single sheet, chrome hidden); prove
-   load/dispose across tab switches (view-state contract per editor-pane
-   lifecycle memory).
-2. **Item store + player:** schema, item browser view, open item → givens
-   populated + fenced, work area editable, Reset Sheet, attempt persistence.
-3. **Solution flow:** reveal solution (side-by-side or swap), self-grade
-   buttons, attempt history.
+1. **Engine embed — BUILT.** @univerjs/presets 0.25.1; the engine builds as
+   its own lazily-imported esm bundle (dist/renderer/worksheet-univer.js,
+   16.8mb dev — verified ZERO Univer bytes in main.js). Constrained preset:
+   single sheet, no tab footer, no statistics strip, ribbon + formula bar on.
+   150×40 blank sheets. Scratch snapshots survive pane rebuilds via cache.
+2. **Item store + player — BUILT.** ws_items/ws_attempts in the workspace
+   SQLite (migrations/worksheet_001_initial.sql, planner pattern); home
+   browser (instanceId 'home') with state chips; player (instanceId
+   `item:<id>`): question above the grid, open-attempt restore, 5s autosave +
+   capture on dispose, confirmed Reset Sheet. Fidelity note: Athena does NOT
+   lock given cells — neither do we; borders fence, Reset recovers.
+3. **Solution flow — BUILT.** Reveal Solution swaps the sheet to the model
+   solution (work persisted first), Show My Work swaps back; first reveal
+   asks Nailed It / Partially / Missed It and closes the attempt; Try Again
+   starts a fresh attempt from the givens. Attempt history accrues.
 4. **Function allowlist:** parse Pearson XLSX (checked into docs/research/
    assets), disable/flag non-Athena functions.
 5. **AI generation:** create-from-source tab (PDF/canvas/paste), structured
