@@ -1,6 +1,12 @@
 # Parallx Milestone 98 — Flashcards Intelligence
 
-> **Status: IN PROGRESS** (started 2026-08-10, branch `m98-flashcards-intelligence`)
+> **Status: BUILT** (2026-08-10, branch `m98-flashcards-intelligence`,
+> commits 857307ba..287b759e). `tsc --noEmit` clean, production build clean,
+> full unit suite green (4,935 tests; the behavioral harness needed its
+> migrate shim fixed to apply ALL *.sql files — it had hardcoded 001).
+> OPEN: the adversarial review workflow hit the session usage limit before
+> any finder ran — re-run it (resume wf_d8f11e0a-335 or fresh) before
+> calling this milestone verified. In-app feel-check by Mufaro also pending.
 > Concurrency note: a separate session may work on ext/media-organizer. This milestone
 > touches NOTHING under ext/media-organizer; commits stage explicit paths only.
 
