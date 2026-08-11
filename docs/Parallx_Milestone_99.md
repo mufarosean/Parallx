@@ -113,7 +113,23 @@ never the product.
 6. **AI Review My Work — BUILT.** Attempt + solution serialize to A1 lines;
    method-level critique streamed into the solution view and saved on the
    attempt. Feedback, never a score.
-7. **Sheet theme + AI visibility + journal — BUILT (2026-08-11).**
+7. **Workbook model — BUILT (2026-08-11, Mufaro's redesign).** Items are
+   WORKBOOKS: `GeneratedItem.parts[]`, one sheet TAB per part ((a), (b)...),
+   footer tab bar ON (deliberate deviation from tabless Athena — his call:
+   "treat more as workbooks with questions on different tabs"). Part
+   questions are written ONTO the sheet (merged wrap block rows 1-4, plain
+   text, height estimated from length; cells reserved to row 6+, violators
+   dropped) — "better to have them directly on the page". The pane header
+   question renders only for legacy items (workbookHasOnSheetQuestion).
+   Generation prompt emits the parts shape; extraction folds the legacy
+   flat shape into one part. serializeWorkbookCells labels tabs; Export to
+   Excel writes every tab with merges. Explorer drag FIXED: the tree sets
+   effectAllowed='move' and the drop zones answered 'copy' — Chromium
+   refuses that pairing and never fires drop (also fixed in flashcards'
+   two drop zones). e2e: real tree-node drag + multipart-tabs test; the
+   grid right-click bug stopped reproducing (test.fail() pin flipped loud,
+   now asserts the menu opens).
+8. **Sheet theme + AI visibility + journal — BUILT (2026-08-11).**
    - `worksheet.sheetAppearance` setting ('light'|'dark'|'app', default
      LIGHT — Athena is always white; Mufaro: "user may want dark mode for
      UI, but worksheet as light mode"). The PANE owns theme now: univerHost
@@ -151,8 +167,9 @@ Compared the live item player against the real Athena item capture:
    Univer menu config could rename/extend later; low priority.
    ALIGNMENT fixed 2026-08-11 (user report): Univer's classic ribbon centers
    the tab + icon rows; scoped worksheet.css overrides left-align both.
-5. Grid right-click menu does not open (REAL bug, pinned by test.fail() in
-   the e2e suite; portal ruled out as cause).
+5. ~~Grid right-click menu does not open~~ FIXED 2026-08-11 as a side
+   effect of the CSS/config fixes (exact trigger not isolated; the pinned
+   test.fail() flipped loud and now asserts the menu opens).
 6. FIXED 2026-08-11 (user screenshot: phantom dark mini-toolbar over the
    sheet): Univer tooltips are body-portaled, dismiss ONLY via the trigger's
    mouseleave, and strand with pointer-events:auto when ribbon relayout
