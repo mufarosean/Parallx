@@ -2,11 +2,12 @@
  * E2E tests: Worksheets (M99) — the exam-faithful practice-sheet surface.
  *
  * Drives the REAL app: activity-bar entry, sidebar, the lazily-loaded Univer
- * engine, theme-following, ribbon popups (the clipped-dropdowns bug class),
- * the generate pane, and a seeded item's practice → reveal → grade loop.
+ * engine, the per-surface sheet theme (pinned light default + Sheet Theme
+ * toggle), ribbon popups (the clipped-dropdowns bug class), the generate
+ * pane, and a seeded item's practice → reveal → grade loop.
  *
  * Screenshots land in test-results/worksheet/ (gitignored) for visual review
- * in both modes — the check tsc and unit tests cannot do.
+ * — the check tsc and unit tests cannot do.
  */
 import { sharedTest as test, expect, openFolderViaMenu } from './fixtures';
 import path from 'path';
@@ -69,7 +70,7 @@ test.describe('Worksheets — surface and engine', () => {
     // Scratch bar with Export to Excel is present.
     await expect(window.locator('.ws-scratchbar button', { hasText: 'Export to Excel' })).toBeVisible();
 
-    await window.screenshot({ path: path.join(SHOT_DIR, 'scratch-dark.png') });
+    await window.screenshot({ path: path.join(SHOT_DIR, 'scratch-default.png') });
   });
 
   test('popup portal exists at body level with overlay-clearing z-index', async ({ window }) => {
@@ -131,28 +132,57 @@ test.describe('Worksheets — surface and engine', () => {
     await window.keyboard.press('Escape');
   });
 
-  test('engine follows the app light/dark mode live', async ({ window }) => {
+  test('sheet theme is independent of the app theme, toggled by Sheet Theme', async ({ window }) => {
+    // Contract (Mufaro): "user may want dark mode for UI, but worksheet as
+    // light mode". Default sheetAppearance is pinned LIGHT (Athena is always
+    // white); the Sheet Theme button flips light↔dark without touching the
+    // app mode. ('app' follow-mode is Settings-only — not driven here.)
     await ensureScratchOpen(window);
+    const themeBtn = window.locator('.ws-scratchbar button', { hasText: 'Sheet Theme:' });
+    await expect(themeBtn).toBeVisible();
+
+    // Normalize to Light — the setting persists in the user's real workspace
+    // config, so a prior run (or the user) may have left it dark/app.
+    for (let i = 0; i < 2; i++) {
+      const label = (await themeBtn.textContent()) ?? '';
+      if (label.includes('Light')) break;
+      await themeBtn.click();
+      await window.waitForTimeout(600);
+    }
+    await expect(themeBtn).toHaveText('Sheet Theme: Light');
+
     const sheetBg = () => window.evaluate(() => {
       const host = document.querySelector('.ws-pane__sheet') as HTMLElement | null;
       const engineRoot = host?.querySelector('div') as HTMLElement | null;
       const el = engineRoot ?? host;
       return el ? getComputedStyle(el).backgroundColor : '';
     });
-
-    const darkBg = await sheetBg();
-
-    await window.evaluate(() => document.documentElement.setAttribute('data-px-mode', 'light'));
-    await window.waitForTimeout(800); // MutationObserver → toggleDarkMode → repaint
-    await window.screenshot({ path: path.join(SHOT_DIR, 'scratch-light.png') });
     const lightBg = await sheetBg();
 
+    // 1. Pinned light: the sheet must NOT react to an app-mode flip.
+    await window.evaluate(() => document.documentElement.setAttribute('data-px-mode', 'light'));
+    await window.waitForTimeout(600);
     await window.evaluate(() => document.documentElement.removeAttribute('data-px-mode'));
-    await window.waitForTimeout(500);
+    await window.waitForTimeout(600);
+    expect(await sheetBg(), 'pinned-light sheet changed with the app theme').toBe(lightBg);
+    await window.screenshot({ path: path.join(SHOT_DIR, 'sheet-light-app-dark.png') });
 
-    // The engine chrome must CHANGE with the app mode. Identical backgrounds
-    // mean the always-light-spreadsheet bug is back.
-    expect(lightBg, 'engine background did not react to the app mode flip').not.toBe(darkBg);
+    // 2. The toggle flips the sheet dark while the app stays untouched.
+    await themeBtn.click();
+    await window.waitForTimeout(800); // engine re-skin + repaint
+    await expect(themeBtn).toHaveText('Sheet Theme: Dark');
+    const darkBg = await sheetBg();
+    expect(darkBg, 'Sheet Theme toggle did not re-skin the engine').not.toBe(lightBg);
+    const appMode = await window.evaluate(() => document.documentElement.getAttribute('data-px-mode'));
+    expect(appMode, 'sheet toggle leaked into the app theme').toBeNull();
+    await window.screenshot({ path: path.join(SHOT_DIR, 'sheet-dark-app-dark.png') });
+
+    // 3. Toggle back — leave the surface (and the persisted setting) at the
+    //    light default so reruns and the user's real workspace stay clean.
+    await themeBtn.click();
+    await window.waitForTimeout(800);
+    await expect(themeBtn).toHaveText('Sheet Theme: Light');
+    expect(await sheetBg()).toBe(lightBg);
   });
 
   test('command palette lists the Worksheets commands and opens the browser', async ({ window }) => {

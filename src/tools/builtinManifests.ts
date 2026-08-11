@@ -502,6 +502,19 @@ export const WORKSHEET_MANIFEST: IToolManifest = {
       { id: 'view.worksheet', name: 'Practice Items', defaultContainerId: 'worksheet-container' },
     ],
     editors: [{ typeId: 'worksheet', displayName: 'Practice Sheet' }],
+    configuration: [
+      {
+        title: 'Worksheets',
+        properties: {
+          'worksheet.sheetAppearance': {
+            type: 'string',
+            enum: ['light', 'dark', 'app'],
+            default: 'light',
+            description: 'Theme for the practice-sheet surface, independent of the app theme. "light" matches the real exam tool (always-white sheet), "dark" pins the sheet dark, "app" follows the workbench light/dark mode. The Sheet Theme button on any open sheet flips between light and dark.',
+          },
+        },
+      },
+    ],
   },
 };
 

@@ -34,11 +34,20 @@ export interface IWorksheetHostOptions {
    * absent, a blank single-sheet Athena-bounded workbook is created.
    */
   readonly snapshot?: IWorkbookData | null;
+  /**
+   * Sheet chrome mode. The PANE decides this (worksheet.sheetAppearance
+   * setting: pinned light for exam fidelity, pinned dark, or app-following)
+   * and drives live changes through setDarkMode — the engine host itself
+   * never watches the app theme.
+   */
+  readonly darkMode?: boolean;
 }
 
 export interface IWorksheetHost {
   /** Serializable full-workbook state (cells, formats, formulas). */
   getSnapshot(): IWorkbookData | null;
+  /** Flip the engine chrome between light and dark at runtime. */
+  setDarkMode(dark: boolean): void;
   /**
    * Export the current sheet to a real .xlsx (values + formulas; styling is
    * not carried — SheetJS community edition). Downloads via the browser
@@ -144,12 +153,6 @@ function ensurePopupRoot(): void {
   document.body.appendChild(root);
 }
 
-/** The app signals light mode via :root[data-px-mode="light"]; dark is the
- *  default (no attribute). */
-function appIsDark(): boolean {
-  return document.documentElement.getAttribute('data-px-mode') !== 'light';
-}
-
 export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost {
   ensurePopupRoot();
   const sheetsPresetConfig = {
@@ -174,9 +177,9 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
     locales: {
       [LocaleType.EN_US]: mergeLocales(UniverPresetSheetsCoreEnUS as Record<string, unknown>),
     },
-    // Follow the APP's mode — the engine's own default is always-light,
-    // which glared inside a dark workbench (M99 UI pass).
-    darkMode: appIsDark(),
+    // Default LIGHT: the real Athena sheet is always white, so exam fidelity
+    // wins unless the pane's sheet-appearance setting says otherwise.
+    darkMode: opts.darkMode ?? false,
     presets: [
       UniverSheetsCorePreset(sheetsPresetConfig as unknown as Parameters<typeof UniverSheetsCorePreset>[0]),
     ],
@@ -184,11 +187,6 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
 
   const { univer, univerAPI } = created;
 
-  // Live-follow app light/dark flips for the lifetime of this host.
-  const modeObserver = new MutationObserver(() => {
-    try { univerAPI.toggleDarkMode(appIsDark()); } catch { /* engine disposed */ }
-  });
-  modeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-px-mode'] });
   applyAthenaFunctionSet(univer);
   univerAPI.createWorkbook(opts.snapshot ?? blankWorkbookData());
 
@@ -203,6 +201,10 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
   };
   return {
     getSnapshot,
+    setDarkMode: (dark: boolean) => {
+      if (disposed) return;
+      try { univerAPI.toggleDarkMode(dark); } catch { /* engine disposed */ }
+    },
     exportToXlsx: (filename: string) => {
       const snapshot = getSnapshot();
       if (!snapshot) return false;
@@ -216,7 +218,6 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
     dispose: () => {
       if (disposed) return;
       disposed = true;
-      modeObserver.disconnect();
       try { univer.dispose(); } catch { /* engine already gone */ }
     },
   };

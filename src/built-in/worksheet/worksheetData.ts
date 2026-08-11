@@ -118,6 +118,17 @@ export async function getItem(id: number): Promise<WorksheetItem | null> {
   return row ? rowToItem(row) : null;
 }
 
+/** Loose title lookup for the chat tools ("the Brosius item"). Most recent wins. */
+export async function findItemByTitle(query: string): Promise<WorksheetItem | null> {
+  const q = query.trim();
+  if (!q) return null;
+  const row = await getRow(
+    'SELECT * FROM ws_items WHERE title LIKE ? ORDER BY created_at DESC LIMIT 1',
+    [`%${q.replace(/[%_]/g, '')}%`],
+  );
+  return row ? rowToItem(row) : null;
+}
+
 export interface CreateItemInput {
   title: string;
   questionMd?: string;
@@ -187,6 +198,15 @@ function rowToAttempt(row: Record<string, unknown>): WorksheetAttempt {
 export async function getOpenAttempt(itemId: number): Promise<WorksheetAttempt | null> {
   const row = await getRow(
     'SELECT * FROM ws_attempts WHERE item_id = ? AND completed = 0 ORDER BY started_at DESC LIMIT 1',
+    [itemId],
+  );
+  return row ? rowToAttempt(row) : null;
+}
+
+/** The newest attempt for an item, open OR completed (chat-tool reads). */
+export async function getLatestAttempt(itemId: number): Promise<WorksheetAttempt | null> {
+  const row = await getRow(
+    'SELECT * FROM ws_attempts WHERE item_id = ? ORDER BY updated_at DESC LIMIT 1',
     [itemId],
   );
   return row ? rowToAttempt(row) : null;

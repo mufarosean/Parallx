@@ -27,6 +27,7 @@ import {
 } from './worksheetData.js';
 import { itemToWorkbooks, type GeneratedItem } from './itemFormat.js';
 import { generateItems, reviewAttempt, type LmApiLike } from './worksheetAi.js';
+import { registerWorksheetChatTools } from './worksheetChat.js';
 import './worksheet.css';
 
 // ── API typings (structural — the tool API surface) ─────────────────────────
@@ -50,6 +51,22 @@ interface ParallxApiLike {
     showInformationMessage?(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
     showErrorMessage?(message: string): Promise<unknown>;
   };
+  workspace?: {
+    getConfiguration(section?: string): {
+      get<T>(key: string, defaultValue?: T): T | undefined;
+      update(key: string, value: unknown): Promise<void>;
+    };
+  };
+  chat?: {
+    registerTool(name: string, tool: {
+      description: string;
+      parameters: Record<string, unknown>;
+      handler: (args: Record<string, unknown>, token: unknown) => Promise<{ content: string; isError?: boolean }>;
+      requiresConfirmation: boolean;
+    }): { dispose(): void };
+  };
+  /** Activity journal: note(verb, object, detail) — the app's common activity language. */
+  activity?: { note(verb: string, object: string, detail?: string): boolean };
   lm?: LmApiLike;
 }
 
@@ -62,6 +79,63 @@ let _api: ParallxApiLike | null = null;
 /** Scratch-sheet snapshots cached across pane rebuilds (in-memory only). */
 const _scratchCache = new Map<string, IWorkbookData>();
 
+// ── Sheet appearance (worksheet.sheetAppearance) ────────────────────────────
+//
+// The SHEET theme is independent of the app theme (Mufaro: "user may want
+// dark mode for UI, but worksheet as light mode"). 'light' is the default —
+// the real Athena sheet is always white. 'app' follows the workbench mode
+// live; the Sheet Theme button on any sheet flips light↔dark and persists.
+
+type SheetAppearance = 'light' | 'dark' | 'app';
+
+/** Open sheet panes listening for appearance changes (toggle on one pane
+ *  updates every pane — no config-change event exists for tools). */
+const _appearanceListeners = new Set<(appearance: SheetAppearance) => void>();
+
+function appIsDark(): boolean {
+  return document.documentElement.getAttribute('data-px-mode') !== 'light';
+}
+
+function getSheetAppearance(): SheetAppearance {
+  try {
+    const v = _api?.workspace?.getConfiguration('worksheet').get<string>('sheetAppearance', 'light');
+    return v === 'dark' || v === 'app' ? v : 'light';
+  } catch {
+    return 'light';
+  }
+}
+
+function resolveSheetDark(appearance: SheetAppearance = getSheetAppearance()): boolean {
+  return appearance === 'dark' || (appearance === 'app' && appIsDark());
+}
+
+async function setSheetAppearance(value: SheetAppearance): Promise<void> {
+  try {
+    await _api?.workspace?.getConfiguration('worksheet').update('sheetAppearance', value);
+  } catch (err) {
+    console.warn('[Worksheet] sheetAppearance persist failed (applied for this session):', err);
+  }
+  for (const fn of _appearanceListeners) { try { fn(value); } catch { /* pane torn down */ } }
+}
+
+function sheetThemeLabel(): string {
+  const appearance = getSheetAppearance();
+  if (appearance === 'app') return 'Sheet Theme: App';
+  return resolveSheetDark(appearance) ? 'Sheet Theme: Dark' : 'Sheet Theme: Light';
+}
+
+/** The scratch-bar / item-header toggle: flips the sheet light↔dark (a
+ *  pinned choice — 'app' is reachable in Settings). */
+function makeSheetThemeButton(): HTMLButtonElement {
+  const btn = el('button', 'ws-btn') as HTMLButtonElement;
+  btn.textContent = sheetThemeLabel();
+  btn.title = 'Flip this practice sheet between light and dark. The app theme is unaffected; light matches the real exam surface. Settings has a follow-the-app option.';
+  btn.addEventListener('click', () => {
+    void setSheetAppearance(resolveSheetDark() ? 'light' : 'dark');
+  });
+  return btn;
+}
+
 const WS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg>';
 
 const AUTOSAVE_MS = 5000;
@@ -69,7 +143,7 @@ const AUTOSAVE_MS = 5000;
 // ── Univer bundle loader ────────────────────────────────────────────────────
 
 type UniverHostModule = {
-  createWorksheetHost(opts: { container: HTMLElement; snapshot?: IWorkbookData | null }): IWorksheetHost;
+  createWorksheetHost(opts: { container: HTMLElement; snapshot?: IWorkbookData | null; darkMode?: boolean }): IWorksheetHost;
 };
 
 let _univerModule: Promise<UniverHostModule> | null = null;
@@ -502,6 +576,7 @@ function createGeneratePane(container: HTMLElement) {
               tags: r.item.tags.join(','),
             });
           }
+          _api?.activity?.note('generated', `${keep.length} worksheet practice ${keep.length === 1 ? 'item' : 'items'}`, source.label || 'pasted material');
           await _api?.window?.showInformationMessage?.(`Saved ${keep.length} ${keep.length === 1 ? 'item' : 'items'}.`);
           await openWorksheet('home', 'Worksheets');
         } catch (e3) {
@@ -574,8 +649,22 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
     loading.remove();
     host?.dispose();
     sheetHost.replaceChildren();
-    host = mod.createWorksheetHost({ container: sheetHost, snapshot });
+    host = mod.createWorksheetHost({ container: sheetHost, snapshot, darkMode: resolveSheetDark() });
   };
+
+  // Sheet appearance: re-skin the live engine when the setting changes
+  // (toggle on any pane) or, in 'app' mode, when the workbench theme flips.
+  let scratchThemeBtn: HTMLButtonElement | null = null;
+  const applyAppearance = (appearance: SheetAppearance) => {
+    host?.setDarkMode(resolveSheetDark(appearance));
+    if (item) renderItemHeader();
+    else if (scratchThemeBtn) scratchThemeBtn.textContent = sheetThemeLabel();
+  };
+  _appearanceListeners.add(applyAppearance);
+  const modeObserver = new MutationObserver(() => {
+    if (getSheetAppearance() === 'app') host?.setDarkMode(appIsDark());
+  });
+  modeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-px-mode'] });
 
   const renderItemHeader = () => {
     if (!item) return;
@@ -585,6 +674,8 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
     titleRow.appendChild(el('div', 'ws-item__title', item.title));
     const spacer = el('div'); spacer.style.flex = '1';
     titleRow.appendChild(spacer);
+
+    titleRow.appendChild(makeSheetThemeButton());
 
     if (mode === 'working') {
       const exportBtn = el('button', 'ws-btn') as HTMLButtonElement;
@@ -650,6 +741,7 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
               if (!item) return;
               revealed = true;
               await completeAttempt(item.id, grade, lastSavedCells);
+              _api?.activity?.note('practiced', `worksheet item "${item.title}"`, `self-graded ${label.toLowerCase()}`);
               renderItemHeader();
             })();
           });
@@ -707,6 +799,7 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
             });
             reviewOut.replaceChildren(renderMarkdown(review));
             await saveAttemptReview(item.id, review);
+            _api?.activity?.note('reviewed', `worksheet attempt on "${item.title}"`, 'AI method feedback saved');
           } catch (err) {
             reviewOut.textContent = `Review failed: ${(err as Error).message}`;
           } finally {
@@ -766,6 +859,8 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
         bar.appendChild(el('span', 'ws-scratchbar__label', 'Scratch Sheet'));
         const spacer = el('div'); spacer.style.flex = '1';
         bar.appendChild(spacer);
+        scratchThemeBtn = makeSheetThemeButton();
+        bar.appendChild(scratchThemeBtn);
         const exportBtn = el('button', 'ws-btn') as HTMLButtonElement;
         exportBtn.textContent = 'Export to Excel';
         exportBtn.title = 'Save this sheet as a real .xlsx (values and formulas) in your Downloads folder.';
@@ -799,6 +894,8 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
       // Capture-before-teardown so close-without-save cannot drop work.
       void persistWorking();
       disposed = true;
+      _appearanceListeners.delete(applyAppearance);
+      modeObserver.disconnect();
       host?.dispose();
       host = null;
       root.remove();
@@ -873,6 +970,9 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
   context.subscriptions.push(
     api.commands.registerCommand('worksheet.generate', () => openWorksheet('create', 'Generate Items')),
   );
+
+  // The AI's read surface: bank/progress + the user's actual sheet work.
+  registerWorksheetChatTools(api, context.subscriptions);
 }
 
 export function deactivate(): void {

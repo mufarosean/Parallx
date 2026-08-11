@@ -33,6 +33,16 @@ constraints instead of desktop-Excel muscle memory. Generic substrate surface
 ("Worksheets": bounded sheet items with givens + solutions, any drill domain);
 Exam 7 is the first user via AI generation from the user's own materials.
 
+**Product framing (Mufaro, 2026-08-11):** "We are building a unique app here.
+The base of which is the CAS thing, but the final product will be very
+Parallx. A tool to generate, create, practice material, practice it, track it
+cleanly, with the full backing of AI." Worksheets is that loop end to end:
+generate (AI from your materials) → create (review-and-edit before save) →
+practice (exam-faithful surface) → track (attempts, grades, per-tag progress)
+→ AI backing (generation, review-my-work, chat tools that SEE the bank and
+the user's actual cells). Keep every layer generic — CAS is the first tenant,
+never the product.
+
 ## Decisions (settled with Mufaro 2026-08-11)
 
 - **Formula engine: Univer (`@univerjs/presets`, Apache-2.0).** Never hand-roll
@@ -103,6 +113,25 @@ Exam 7 is the first user via AI generation from the user's own materials.
 6. **AI Review My Work — BUILT.** Attempt + solution serialize to A1 lines;
    method-level critique streamed into the solution view and saved on the
    attempt. Feedback, never a score.
+7. **Sheet theme + AI visibility + journal — BUILT (2026-08-11).**
+   - `worksheet.sheetAppearance` setting ('light'|'dark'|'app', default
+     LIGHT — Athena is always white; Mufaro: "user may want dark mode for
+     UI, but worksheet as light mode"). The PANE owns theme now: univerHost
+     takes explicit `darkMode` + exposes `setDarkMode`, its app-observer
+     moved pane-side (fires only in 'app' mode). A Sheet Theme button on the
+     scratch bar and item header flips light↔dark live across every open
+     pane (module-level listener set) and persists via the config registry.
+   - Chat tools (worksheetChat.ts, registered via api.chat.registerTool,
+     flashcards pattern): `worksheet.getProgress` (bank listing + per-tag
+     rollups of attempted counts and latest grades) and
+     `worksheet.getUserWork` (question + the user's ACTUAL cells via
+     serializeWorkbookCells + model solution + prior AI review; lookup by id
+     or fuzzy title). Both read-only, no confirmation. 5 pure-logic tests
+     on the report builders.
+   - Activity journal: api.activity.note on the three meaningful events —
+     'generated' N items (source label), 'practiced' item (self-grade),
+     'reviewed' attempt (AI feedback saved). Heartbeat/wake context now sees
+     practice activity like any other organ.
 
 ## Fidelity backlog (screenshot comparison vs pearson_sheet_item5.png, 2026-08-12)
 
@@ -115,10 +144,9 @@ Compared the live item player against the real Athena item capture:
    heavy vertical rule fencing the work area. itemFormat needs: block border
    styles around contiguous given regions, number-format hints per cell
    (percent/comma/date), column-width hints. Currently: tint + bold only.
-3. Athena's sheet is ALWAYS WHITE (Aptos Narrow 11). Decision pending with
-   Mufaro: exam-faithful fixed-light sheet (flashcard white-card precedent)
-   vs app-theme-following (current behavior, which he asked for when the
-   chrome mismatched). Univer dark mode is all-or-nothing.
+3. ~~Athena's sheet is ALWAYS WHITE~~ RESOLVED 2026-08-11: per-surface
+   `worksheet.sheetAppearance` setting (default light for exam fidelity)
+   with a Sheet Theme toggle on every sheet — see slice 7.
 4. Ribbon label "Start" vs Athena "HOME"; tab set differs (no Insert/View).
    Univer menu config could rename/extend later; low priority.
 5. Grid right-click menu does not open (REAL bug, pinned by test.fail() in
