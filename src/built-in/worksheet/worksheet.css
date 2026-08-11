@@ -16,6 +16,12 @@
   position: relative;
 }
 
+/* Athena/Excel left-align the ribbon; Univer's classic ribbon centers both
+   the tab row and the icon row (univer-justify-center utilities). Scoped
+   overrides win on specificity. (User report: "why is everything centered?") */
+.ws-pane [data-u-comp="ribbon-header-menu"] [role="tablist"] { justify-content: flex-start; }
+.ws-pane [data-u-comp="ribbon-toolbar"] { justify-content: flex-start; }
+
 .ws-pane__loading {
   padding: var(--px-space-6);
   font-size: var(--px-text-sm);

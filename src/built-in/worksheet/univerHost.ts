@@ -187,6 +187,45 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
 
   const { univer, univerAPI } = created;
 
+  // Stranded-tooltip sweep. Ribbon relayout (resize overflow, More-overlay
+  // close) can unmount a hovered toolbar item mid-tooltip; Univer's Tooltip
+  // hides ONLY via the trigger's mouseleave/blur, so the body-portaled
+  // bubble (pointer-events:auto, gray-700) floats over the sheet forever —
+  // the user-reported phantom. No event, real or synthetic, reaches it, and
+  // one-shot sweeps lose the race against Univer's deferred relayout commits
+  // (probe-verified). So: a legit tooltip only ever lives 8px from its
+  // HOVERED trigger — any tooltip far from the pointer is stranded. Track
+  // the pointer (bare coordinate store, no layout work — rafThrottle not
+  // needed) and periodically hide far-away tooltips. display:none is safe
+  // under React portals (later unmount still works); a fresh hover mounts a
+  // new portal, so live tooltips are unaffected.
+  const pointer = { x: -1e6, y: -1e6 };
+  const trackPointer = (e: PointerEvent) => { pointer.x = e.clientX; pointer.y = e.clientY; };
+  document.addEventListener('pointermove', trackPointer, { passive: true });
+  const NEAR_PX = 64;
+  const sweepInterval = setInterval(() => {
+    const tips = document.body.querySelectorAll(':scope > [role="tooltip"]');
+    for (const tip of tips) {
+      const el = tip as HTMLElement;
+      if (!el.className.includes('univer-') || el.style.display === 'none') continue;
+      const r = el.getBoundingClientRect();
+      const dx = Math.max(r.left - pointer.x, pointer.x - r.right, 0);
+      const dy = Math.max(r.top - pointer.y, pointer.y - r.bottom, 0);
+      if (Math.hypot(dx, dy) > NEAR_PX) el.style.display = 'none';
+    }
+  }, 700);
+
+  /** Teardown leak guard: if univer.dispose() throws mid-unmount, React's
+   *  BODY-level portals (radix popper wrappers — the More overlay — and
+   *  tooltips) survive the pane teardown and float over the app forever.
+   *  Hiding (never removing — removal breaks a live React commit) is safe
+   *  in every case; an open dropdown of ANOTHER live pane just closes. */
+  const hideBodyPortals = () => {
+    for (const el of document.body.querySelectorAll(':scope > [data-radix-popper-content-wrapper], :scope > [role="tooltip"]')) {
+      (el as HTMLElement).style.display = 'none';
+    }
+  };
+
   applyAthenaFunctionSet(univer);
   univerAPI.createWorkbook(opts.snapshot ?? blankWorkbookData());
 
@@ -218,7 +257,14 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
     dispose: () => {
       if (disposed) return;
       disposed = true;
-      try { univer.dispose(); } catch { /* engine already gone */ }
+      clearInterval(sweepInterval);
+      document.removeEventListener('pointermove', trackPointer);
+      try {
+        univer.dispose();
+      } catch {
+        // Engine teardown failed — its body-level portals may have leaked.
+        hideBodyPortals();
+      }
     },
   };
 }
