@@ -166,3 +166,35 @@
 }
 .ws-genitem--dropped { opacity: 0.4; }
 .ws-genitem .ws-btn--danger { align-self: flex-start; }
+
+/* ── Sidebar view ── */
+
+.ws-sidebar { display: flex; flex-direction: column; gap: var(--px-space-2); padding: var(--px-space-3); overflow-y: auto; height: 100%; }
+.ws-sidebar__actions { display: flex; flex-direction: column; gap: var(--px-space-1); }
+.ws-btn--block { width: 100%; text-align: center; }
+.ws-sidebar__label {
+  margin-top: var(--px-space-2);
+  font-size: var(--px-text-2xs); font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--px-text-muted);
+}
+.ws-sidebar__list { display: flex; flex-direction: column; gap: 2px; }
+.ws-sidebar__item {
+  display: flex; align-items: center; gap: var(--px-space-1);
+  padding: 4px 8px; border-radius: var(--px-radius-sm);
+  font-size: var(--px-text-sm); color: var(--px-text);
+  cursor: pointer;
+}
+.ws-sidebar__item:hover { background: var(--px-bg-raised); }
+.ws-sidebar__itemtitle { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-sidebar__item .ws-chip { margin-left: 0; flex: 0 0 auto; }
+.ws-sidebar__empty { font-size: var(--px-text-sm); color: var(--px-text-muted); padding: var(--px-space-2) var(--px-space-1); }
+
+/* ── Scratch bar ── */
+
+.ws-scratchbar {
+  display: flex; align-items: center; gap: var(--px-space-2);
+  padding: var(--px-space-2) var(--px-space-4);
+  border-bottom: 1px solid var(--px-border);
+  flex: 0 0 auto;
+}
+.ws-scratchbar__label { font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text); }

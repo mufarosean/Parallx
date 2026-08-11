@@ -1782,7 +1782,14 @@ class PlannerEditorPane implements IDisposable {
     const byDay = new Map<number, { count: number; label: string }[]>();
     const providers = this._api.dayLoads?.get() ?? [];
     if (providers.length === 0) return byDay;
-    const results = await Promise.allSettled(providers.map(p => p.getDayLoads(fromMs, toMs)));
+    // Per-provider timeout (M99 review): this await sits inside the
+    // serialized render loop — a hung provider without a deadline would
+    // freeze every future planner render, not just this one.
+    const withTimeout = <T,>(p: Promise<T>): Promise<T> => Promise.race([
+      p,
+      new Promise<T>((_, reject) => setTimeout(() => reject(new Error('day-load provider timeout')), 3000)),
+    ]);
+    const results = await Promise.allSettled(providers.map(p => withTimeout(Promise.resolve(p.getDayLoads(fromMs, toMs)))));
     for (const r of results) {
       if (r.status !== 'fulfilled') continue;
       for (const load of r.value) {

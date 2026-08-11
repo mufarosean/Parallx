@@ -488,8 +488,18 @@ export const WORKSHEET_MANIFEST: IToolManifest = {
   activationEvents: ['onStartupFinished'],
   contributes: {
     commands: [
-      { id: 'worksheet.open', title: 'Worksheets: Open Practice Sheet',
-        aiInvocable: true, aiDescription: 'Open a bounded spreadsheet practice sheet.' },
+      { id: 'worksheet.open', title: 'Worksheets: Open Practice Items',
+        aiInvocable: true, aiDescription: 'Open the practice items browser.' },
+      { id: 'worksheet.openScratch', title: 'Worksheets: Open Scratch Sheet',
+        aiInvocable: true, aiDescription: 'Open a blank exam-faithful practice sheet.' },
+      { id: 'worksheet.generate', title: 'Worksheets: Generate Items',
+        aiInvocable: true, aiDescription: 'Generate practice items from study material.' },
+    ],
+    viewContainers: [
+      { id: 'worksheet-container', title: 'Worksheets', icon: 'file-spreadsheet', location: 'sidebar' as const },
+    ],
+    views: [
+      { id: 'view.worksheet', name: 'Practice Items', defaultContainerId: 'worksheet-container' },
     ],
     editors: [{ typeId: 'worksheet', displayName: 'Practice Sheet' }],
   },

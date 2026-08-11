@@ -16,6 +16,7 @@ import { createUniver, LocaleType, mergeLocales } from '@univerjs/presets';
 import { UniverSheetsCorePreset } from '@univerjs/presets/preset-sheets-core';
 import UniverPresetSheetsCoreEnUS from '@univerjs/presets/preset-sheets-core/locales/en-US';
 import { IFunctionService } from '@univerjs/engine-formula';
+import * as XLSX from 'xlsx';
 import type { IWorkbookData, Univer } from '@univerjs/core';
 import type { FUniver } from '@univerjs/core/lib/facade';
 import { ATHENA_FUNCTIONS } from './athenaFunctions.js';
@@ -38,8 +39,47 @@ export interface IWorksheetHostOptions {
 export interface IWorksheetHost {
   /** Serializable full-workbook state (cells, formats, formulas). */
   getSnapshot(): IWorkbookData | null;
+  /**
+   * Export the current sheet to a real .xlsx (values + formulas; styling is
+   * not carried — SheetJS community edition). Downloads via the browser
+   * path, landing in the OS Downloads folder. Returns false when there is
+   * nothing to export.
+   */
+  exportToXlsx(filename: string): boolean;
   /** Tear down the engine and all DOM it created. */
   dispose(): void;
+}
+
+/** Convert a workbook snapshot's cells into a SheetJS worksheet. */
+function snapshotToSheetJs(snapshot: IWorkbookData): XLSX.WorkSheet | null {
+  const sheets = (snapshot as unknown as {
+    sheets?: Record<string, { cellData?: Record<string, Record<string, { v?: unknown; f?: string }>> }>;
+  }).sheets;
+  if (!sheets) return null;
+  const ws: XLSX.WorkSheet = {};
+  let maxRow = 0;
+  let maxCol = 0;
+  let any = false;
+  for (const sheet of Object.values(sheets)) {
+    for (const [rowStr, cols] of Object.entries(sheet.cellData ?? {})) {
+      const r = Number(rowStr);
+      for (const [colStr, data] of Object.entries(cols ?? {})) {
+        const c = Number(colStr);
+        if (data?.v === undefined && !data?.f) continue;
+        const cell: XLSX.CellObject = { t: typeof data.v === 'number' ? 'n' : 's', v: data.v as string | number };
+        if (data.f) cell.f = String(data.f).replace(/^=/, '');
+        if (data.v === undefined) { cell.t = 'n'; delete cell.v; }
+        ws[XLSX.utils.encode_cell({ r, c })] = cell;
+        maxRow = Math.max(maxRow, r);
+        maxCol = Math.max(maxCol, c);
+        any = true;
+      }
+    }
+    break; // single-sheet surface
+  }
+  if (!any) return null;
+  ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: maxRow, c: maxCol } });
+  return ws;
 }
 
 let _hostCounter = 0;
@@ -116,14 +156,25 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
   univerAPI.createWorkbook(opts.snapshot ?? blankWorkbookData());
 
   let disposed = false;
+  const getSnapshot = (): IWorkbookData | null => {
+    if (disposed) return null;
+    try {
+      return univerAPI.getActiveWorkbook()?.save() ?? null;
+    } catch {
+      return null;
+    }
+  };
   return {
-    getSnapshot: () => {
-      if (disposed) return null;
-      try {
-        return univerAPI.getActiveWorkbook()?.save() ?? null;
-      } catch {
-        return null;
-      }
+    getSnapshot,
+    exportToXlsx: (filename: string) => {
+      const snapshot = getSnapshot();
+      if (!snapshot) return false;
+      const ws = snapshotToSheetJs(snapshot);
+      if (!ws) return false;
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+      XLSX.writeFile(wb, filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`);
+      return true;
     },
     dispose: () => {
       if (disposed) return;

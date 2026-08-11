@@ -32,6 +32,9 @@ import './worksheet.css';
 // ── API typings (structural — the tool API surface) ─────────────────────────
 
 interface ParallxApiLike {
+  views: {
+    registerViewProvider(viewId: string, provider: { createView(container: HTMLElement): { dispose(): void } }): { dispose(): void };
+  };
   editors: {
     registerEditorProvider(typeId: string, provider: unknown): { dispose(): void };
     openEditor(options: {
@@ -200,6 +203,67 @@ function gradeLabel(grade: string): string {
     case 'missed': return 'Missed';
     default: return grade;
   }
+}
+
+// ── Sidebar view (activity bar → Worksheets) ────────────────────────────────
+
+function createSidebarView(container: HTMLElement) {
+  const root = el('div', 'ws-sidebar');
+  container.appendChild(root);
+  let disposed = false;
+
+  const render = async () => {
+    if (disposed) return;
+    const items = await listItems().catch(() => []);
+    if (disposed) return;
+    root.replaceChildren();
+
+    const actions = el('div', 'ws-sidebar__actions');
+    const mk = (label: string, primary: boolean, onClick: () => void) => {
+      const b = el('button', primary ? 'ws-btn ws-btn--primary ws-btn--block' : 'ws-btn ws-btn--block') as HTMLButtonElement;
+      b.textContent = label;
+      b.addEventListener('click', onClick);
+      actions.appendChild(b);
+    };
+    mk('Generate Items', true, () => void openWorksheet('create', 'Generate Items'));
+    mk('Scratch Sheet', false, () => void openWorksheet('scratch', 'Practice Sheet'));
+    root.appendChild(actions);
+
+    if (items.length === 0) {
+      root.appendChild(el('div', 'ws-sidebar__empty', 'No practice items yet. Generate some from a PDF or pasted material.'));
+      return;
+    }
+
+    root.appendChild(el('div', 'ws-sidebar__label', `Items · ${items.length}`));
+    const list = el('div', 'ws-sidebar__list');
+    for (const item of items) {
+      const row = el('div', 'ws-sidebar__item');
+      row.appendChild(el('span', 'ws-sidebar__itemtitle', item.title));
+      if (item.attemptState === 'open') row.appendChild(el('span', 'ws-chip ws-chip--open', 'Open'));
+      else if (item.attemptState) row.appendChild(el('span', `ws-chip ws-chip--${item.attemptState}`, gradeLabel(item.attemptState)));
+      row.title = item.title;
+      row.addEventListener('click', () => void openWorksheet(`item:${item.id}`, item.title));
+      list.appendChild(row);
+    }
+    root.appendChild(list);
+
+    const all = el('button', 'ws-btn ws-btn--block') as HTMLButtonElement;
+    all.textContent = 'Browse All Items';
+    all.style.marginTop = 'var(--px-space-2)';
+    all.addEventListener('click', () => void openWorksheet('home', 'Worksheets'));
+    root.appendChild(all);
+  };
+
+  void render();
+  const sub = onWorksheetDataChanged(() => void render());
+
+  return {
+    dispose: () => {
+      disposed = true;
+      sub.dispose();
+      root.remove();
+    },
+  };
 }
 
 // ── Generate pane (instanceId 'create') ─────────────────────────────────────
@@ -466,6 +530,17 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
     titleRow.appendChild(spacer);
 
     if (mode === 'working') {
+      const exportBtn = el('button', 'ws-btn') as HTMLButtonElement;
+      exportBtn.textContent = 'Export to Excel';
+      exportBtn.title = 'Save this sheet as a real .xlsx (values and formulas) in your Downloads folder.';
+      exportBtn.addEventListener('click', () => {
+        const name = (item?.title || 'practice-sheet').replace(/[^\w\- ]+/g, '').trim() || 'practice-sheet';
+        if (!host?.exportToXlsx(name)) {
+          void _api?.window?.showInformationMessage?.('Nothing on the sheet to export yet.');
+        }
+      });
+      titleRow.appendChild(exportBtn);
+
       const resetBtn = el('button', 'ws-btn') as HTMLButtonElement;
       resetBtn.textContent = 'Reset Sheet';
       resetBtn.title = 'Restore the item to its original state. Cannot be undone.';
@@ -617,11 +692,33 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
         }
         renderItemHeader();
         const open = await getOpenAttempt(itemId);
-        lastSavedCells = open?.cellsJson ?? '';
         const snap = open ? parseWorkbook(open.cellsJson) : null;
         await mountSheet(snap ?? parseWorkbook(item.givensJson));
+        // Baseline = what the sheet holds RIGHT AFTER mount. Autosave only
+        // writes when the snapshot moves off this baseline — without it,
+        // merely opening an item wrote the givens as an "attempt" and
+        // flagged it In Progress forever (M99 review).
+        // TS narrows `host` to null here (it is assigned inside mountSheet,
+        // which control-flow analysis does not see through) — cast resets it.
+        const mounted = host as IWorksheetHost | null;
+        lastSavedCells = open?.cellsJson ?? JSON.stringify(mounted?.getSnapshot() ?? null);
         autosaveTimer = setInterval(() => { void persistWorking(); }, AUTOSAVE_MS);
       } else {
+        // Scratch sheet: a slim bar so export is reachable without an item.
+        const bar = el('div', 'ws-scratchbar');
+        bar.appendChild(el('span', 'ws-scratchbar__label', 'Scratch Sheet'));
+        const spacer = el('div'); spacer.style.flex = '1';
+        bar.appendChild(spacer);
+        const exportBtn = el('button', 'ws-btn') as HTMLButtonElement;
+        exportBtn.textContent = 'Export to Excel';
+        exportBtn.title = 'Save this sheet as a real .xlsx (values and formulas) in your Downloads folder.';
+        exportBtn.addEventListener('click', () => {
+          if (!host?.exportToXlsx('scratch-sheet')) {
+            void _api?.window?.showInformationMessage?.('Nothing on the sheet to export yet.');
+          }
+        });
+        bar.appendChild(exportBtn);
+        headerHost.appendChild(bar);
         await mountSheet(_scratchCache.get(instanceId) ?? null);
       }
     } catch (err) {
@@ -705,10 +802,19 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
   );
 
   context.subscriptions.push(
+    api.views.registerViewProvider('view.worksheet', {
+      createView: (container: HTMLElement) => createSidebarView(container),
+    }),
+  );
+
+  context.subscriptions.push(
     api.commands.registerCommand('worksheet.open', () => openWorksheet('home', 'Worksheets')),
   );
   context.subscriptions.push(
     api.commands.registerCommand('worksheet.openScratch', () => openWorksheet('scratch', 'Practice Sheet')),
+  );
+  context.subscriptions.push(
+    api.commands.registerCommand('worksheet.generate', () => openWorksheet('create', 'Generate Items')),
   );
 }
 

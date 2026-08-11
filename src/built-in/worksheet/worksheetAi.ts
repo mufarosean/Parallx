@@ -99,6 +99,11 @@ export function buildItemMaterial(sourceText: string, pageTexts: string[] | null
     parts.push(block);
     used += block.length + 2;
   }
+  // A single page larger than the budget would otherwise yield EMPTY
+  // material (M99 review) — degrade to untagged clipped text instead.
+  if (parts.length === 0) {
+    return { material: sourceText.slice(0, maxChars), paged: false };
+  }
   return { material: parts.join('\n\n'), paged: true };
 }
 
@@ -132,7 +137,9 @@ export async function generateItems(
     throw new Error(`${error} (model: ${modelId}; raw output logged to console)`);
   }
   if (!paged) return items.map((i) => ({ ...i, page: undefined }));
-  return items;
+  // Attribution hygiene: only pages that exist in the material (M99 review).
+  const maxPage = pageTexts?.length ?? 0;
+  return items.map((i) => (i.page && i.page <= maxPage ? i : { ...i, page: undefined }));
 }
 
 // ── Attempt review ──────────────────────────────────────────────────────────

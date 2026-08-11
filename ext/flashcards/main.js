@@ -860,12 +860,19 @@ function fcParseClozeIndices(text) {
  * this runs BEFORE the shared Markdown+KaTeX renderer.
  */
 function fcRenderCloze(text, targetIndex, mode) {
-  return String(text || '').replace(FC_CLOZE_RE, (_all, ordStr, answer, hint) => {
+  const source = String(text || '');
+  return source.replace(FC_CLOZE_RE, (_all, ordStr, answer, hint, offset) => {
     const ord = Number(ordStr);
+    // Markdown ** inside $...$ math renders as literal asterisks (KaTeX owns
+    // that span) — emphasize only outside math (M99 review). Inside-math
+    // detection: an odd count of unescaped $ before the match.
+    const dollars = (source.slice(0, offset).match(/(?<!\\)\$/g) || []).length;
+    const inMath = dollars % 2 === 1;
     if (mode === 'front') {
-      return ord === targetIndex ? `**[${(hint || '...').trim()}]**` : answer;
+      const blank = `[${(hint || '...').trim()}]`;
+      return ord === targetIndex ? (inMath ? blank : `**${blank}**`) : answer;
     }
-    return ord === targetIndex ? `**${answer}**` : answer;
+    return ord === targetIndex ? (inMath ? answer : `**${answer}**`) : answer;
   });
 }
 
@@ -943,8 +950,9 @@ async function fcCreateCardsBulk(deckId, cards, { sourceUri = '', sourceLabel = 
   }
 
   // Preferred path: one real transaction — all-or-nothing at the SQL layer.
+  // The runner dispatches on op.type; omitting it fails every op (M99 review).
   if (_dbBridge && typeof _dbBridge.runTransaction === 'function') {
-    const res = await _dbBridge.runTransaction(statements.map((s) => ({ sql: s.sql, params: s.params })));
+    const res = await _dbBridge.runTransaction(statements.map((s) => ({ type: 'run', sql: s.sql, params: s.params })));
     if (res?.error) throw new Error(`[FC-DB] ${res.error.message}`);
     _emitDataChanged();
     void fcEmbedNewBulk(deckId, now);
@@ -1019,12 +1027,28 @@ async function fcCreateNote(deckId, input) {
  * (new-state) siblings, and ordinals that vanished lose theirs — review
  * history of surviving ordinals is untouched.
  */
-async function fcReconcileClozeGroup(noteGroup, deckId, newFront, newBack) {
+async function fcReconcileClozeGroup(noteGroup, deckId, newFront, newBack, editedId = null) {
   const siblings = await db.all(
     "SELECT id, cloze_index FROM fc_cards WHERE note_group = ? AND card_type = 'cloze'", [noteGroup],
   );
   if (!siblings.length) return;
   const wanted = new Set(fcParseClozeIndices(newFront));
+  // Un-clozing (all markers removed) means "make this a plain card" — the
+  // edited row survives as basic and only the OTHER siblings go. Deleting
+  // the whole group, edited card included, was the M99 review's finding.
+  if (wanted.size === 0) {
+    for (const s of siblings) {
+      if (editedId != null && s.id === editedId) continue;
+      await fcDeleteCard(s.id);
+    }
+    const keepId = editedId ?? siblings[0].id;
+    await db.run(
+      "UPDATE fc_cards SET card_type = 'basic', note_group = '', cloze_index = 0, front = ?, back = ? WHERE id = ?",
+      [fcNormalizeCardText(newFront), fcNormalizeCardText(newBack ?? ''), keepId],
+    );
+    _emitDataChanged();
+    return;
+  }
   const have = new Map(siblings.map((s) => [s.cloze_index, s.id]));
   await db.run(
     "UPDATE fc_cards SET front = ?, back = ? WHERE note_group = ? AND card_type = 'cloze'",
@@ -1182,7 +1206,7 @@ async function fcFindDuplicates(deckId, candidates, { noteGroup = '' } = {}) {
         const hits = await db.all(
           `SELECT v.card_id, v.distance, c.front, c.note_group
            FROM (SELECT card_id, distance FROM fc_card_embeddings
-                 WHERE embedding MATCH ? AND k = 8 ORDER BY distance) v
+                 WHERE embedding MATCH ? AND k = 32 ORDER BY distance) v
            JOIN fc_cards c ON c.id = CAST(v.card_id AS INTEGER)
            WHERE c.deck_id = ?
            ORDER BY v.distance`,
@@ -1190,7 +1214,8 @@ async function fcFindDuplicates(deckId, candidates, { noteGroup = '' } = {}) {
         );
         for (const h of hits) {
           if (noteGroup && h.note_group === noteGroup) continue;
-          const similarity = 1 - h.distance / 2;
+          // sqlite-vec cosine distance = 1 − cosine similarity (range 0..2).
+          const similarity = 1 - h.distance;
           if (similarity >= FC_DUP_SIM_EMBEDDING) {
             out[i] = { similarity, matchId: Number(h.card_id), matchFront: h.front };
           }
@@ -1260,6 +1285,7 @@ async function fcUpdateCard(id, patch) {
       before.note_group, before.deck_id,
       patch.front !== undefined ? patch.front : before.front,
       patch.back !== undefined ? patch.back : before.back,
+      id,
     );
   }
   _emitDataChanged();
@@ -1576,9 +1602,16 @@ async function fcStreamWithStall(stream, onChunk, stallMs = 90_000) {
         'Check that the model backend is running.',
       )), stallMs);
     });
+    // Keep a handle on the pending next() so a stall doesn't orphan it into
+    // an unhandled rejection, and close the generator so its cleanup runs.
+    const next = it.next();
+    next.catch(() => { /* orphaned after a stall; already surfaced */ });
     let step;
     try {
-      step = await Promise.race([it.next(), stall]);
+      step = await Promise.race([next, stall]);
+    } catch (err) {
+      try { void it.return?.(); } catch { /* generator already closed */ }
+      throw err;
     } finally {
       clearTimeout(timer);
     }
@@ -1759,6 +1792,15 @@ async function fcGenerateRewrites(card) {
 
 /** Quick-pick one of three AI reformulations; scheduling state survives. */
 async function fcLeechRewriteFlow(card) {
+  // Cloze siblings share their text group-wide, and a model rewrite would
+  // drop the {{cN::…}} markers — reconciliation would then tear the group
+  // apart (M99 review). Honest scope cut: point at the editor instead.
+  if (card.cardType === 'cloze') {
+    await _api.window.showInformationMessage(
+      'Cloze cards cannot be auto-rewritten. Edit the note text in Browse instead; changes apply to all of its sibling cards.',
+    );
+    return false;
+  }
   let alts;
   try {
     alts = await fcGenerateRewrites(card);
@@ -2661,7 +2703,14 @@ async function _renameDeckFlow(deck) {
  * one more review fits before the date (fcDeadlineCapDays).
  */
 async function _setExamDateFlow(deck) {
-  const current = deck.examDate ? new Date(deck.examDate).toISOString().slice(0, 10) : '';
+  // Local-date formatting, NOT toISOString: the stored stamp is local 23:59,
+  // which is the NEXT day in UTC west of Greenwich — a toISOString prefill
+  // would silently advance the exam a day on every re-confirm (M99 review).
+  const fmtLocal = (ms) => {
+    const d = new Date(ms);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const current = deck.examDate ? fmtLocal(deck.examDate) : '';
   const raw = await _api.window.showInputBox({
     prompt: 'Exam date (YYYY-MM-DD). Leave blank to clear.',
     value: current,
@@ -2796,7 +2845,11 @@ function createEditorPane(container, input) {
     // re-rendering mid-review would eat the current card. The import view is
     // excluded too: its own commit loop emits data changes, and a re-render
     // mid-commit would blank the preview and progress it is reporting.
-    if (state.disposed || state.route.view === 'study' || state.route.view === 'create' || state.route.view === 'import') return;
+    // Browse joined the exclusions (M99 review): its writes all re-render
+    // locally via renderList, and a global re-render mid-inline-edit
+    // destroyed unsaved editor text and collapsed the add-card form.
+    if (state.disposed || state.route.view === 'study' || state.route.view === 'create'
+      || state.route.view === 'import' || state.route.view === 'browse') return;
     void render();
   };
   _dataListeners.add(onData);
@@ -3059,6 +3112,9 @@ async function renderBrowse(body, route, setRoute) {
       }
       frontIn.value = ''; backIn.value = ''; tagsIn.value = '';
       frontIn.focus();
+      // Browse no longer auto-refreshes on data changes (inline-edit
+      // protection) — the form refreshes its own list.
+      void renderList();
     })();
   });
   addRow.appendChild(saveCard);
@@ -3441,6 +3497,10 @@ async function renderStudy(body, route, paneState, setRoute) {
     };
 
     const grade = (rating) => {
+      // Re-entrancy guard (M99 review): a double-click or key repeat before
+      // the async grade lands would grade the same card twice and skip one.
+      if (session.grading) return;
+      session.grading = true;
       const msTaken = Date.now() - session.cardShownAt;
       void (async () => {
         const updated = await fcGradeCard(card, rating, msTaken, optsFor(card));
@@ -3453,6 +3513,7 @@ async function renderStudy(body, route, paneState, setRoute) {
         }
         session.doneCount++;
         session.index++;
+        session.grading = false;
         showCard();
       })();
     };
@@ -4484,7 +4545,7 @@ function registerSelectionAction(context, attempt = 0) {
       }));
     })
     .catch(() => {
-      if (attempt < 5) setTimeout(() => registerSelectionAction(context, attempt + 1), 2000);
+      if (attempt < 5 && _dbBridge) setTimeout(() => registerSelectionAction(context, attempt + 1), 2000);
     });
 }
 
@@ -4496,6 +4557,9 @@ function registerSelectionAction(context, attempt = 0) {
 function registerPlannerDayLoads(context, attempt = 0) {
   _api.commands.executeCommand('planner.getRegistry')
     .then((registry) => {
+      // A retry can land after deactivate; a provider over a nulled bridge
+      // would throw on every calendar render (M99 review).
+      if (!_dbBridge) return;
       if (!registry || typeof registry.registerDayLoadProvider !== 'function') throw new Error('no registry');
       context.subscriptions.push(registry.registerDayLoadProvider({
         id: 'flashcards',
@@ -4507,7 +4571,7 @@ function registerPlannerDayLoads(context, attempt = 0) {
       }));
     })
     .catch(() => {
-      if (attempt < 5) setTimeout(() => registerPlannerDayLoads(context, attempt + 1), 2000);
+      if (attempt < 5 && _dbBridge) setTimeout(() => registerPlannerDayLoads(context, attempt + 1), 2000);
     });
 }
 
