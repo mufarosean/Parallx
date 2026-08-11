@@ -290,38 +290,92 @@ function createGeneratePane(container: HTMLElement) {
   drop.addEventListener('dragenter', onDragOver);
   drop.addEventListener('dragover', onDragOver);
   drop.addEventListener('dragleave', (e) => { if (e.target === drop) drop.classList.remove('ws-dropzone--over'); });
+  const extractFromPath = async (path: string, label: string): Promise<void> => {
+    const electron = (window as {
+      parallxElectron?: {
+        document?: { extractText(p: string): Promise<{ error?: { message: string } | null; text?: string; pageTexts?: string[] }> };
+      };
+    }).parallxElectron;
+    if (!electron?.document?.extractText) {
+      status.textContent = 'Document extraction is unavailable in this build.';
+      return;
+    }
+    status.textContent = `Extracting ${label}…`;
+    try {
+      const res = await electron.document.extractText(path);
+      if (res?.error) throw new Error(res.error.message);
+      const text = (res?.text ?? '').trim();
+      if (text.length < 200) throw new Error('Almost no text extracted. Scanned PDFs need OCR.');
+      source.text = text;
+      source.label = label;
+      source.uri = path;
+      source.pageTexts = Array.isArray(res?.pageTexts) && res.pageTexts.length > 1 ? res.pageTexts : null;
+      const pages = source.pageTexts ? ` · ${source.pageTexts.length} pages` : '';
+      status.textContent = `Loaded ${label} (${text.length.toLocaleString()} chars${pages}).`;
+    } catch (err) {
+      status.textContent = `Extraction failed: ${(err as Error).message}`;
+    }
+  };
+
+  // file:// URI or bare path → fs path (mirrors the flashcards drop logic).
+  const uriToFsPath = (raw: string): string => {
+    let p = raw;
+    if (/^file:\/\//i.test(p)) {
+      p = p.replace(/^file:\/\//i, '');
+      try { p = decodeURIComponent(p); } catch { /* leave encoded */ }
+      if (/^\/[a-zA-Z]:/.test(p)) p = p.slice(1);
+    }
+    return p;
+  };
+  const looksLikePath = (raw: string): boolean =>
+    /^file:\/\//i.test(raw) || /^[a-zA-Z]:[\\/]/.test(raw) || raw.startsWith('/') || raw.startsWith('\\\\');
+
   drop.addEventListener('drop', (e) => {
     e.preventDefault(); e.stopPropagation();
     drop.classList.remove('ws-dropzone--over');
-    const file = e.dataTransfer?.files?.[0];
-    if (!file) return;
+    const dt = e.dataTransfer;
     void (async () => {
-      const electron = (window as {
-        parallxElectron?: {
-          getPathForFile?(f: File): string;
-          document?: { extractText(p: string): Promise<{ error?: { message: string } | null; text?: string; pageTexts?: string[] }> };
-        };
-      }).parallxElectron;
-      const path = electron?.getPathForFile?.(file) ?? '';
-      if (!path || !electron?.document?.extractText) {
-        status.textContent = 'Could not read that file in this build.';
+      // 1. An OS file drop carries File objects.
+      const file = dt?.files?.[0];
+      if (file) {
+        const electron = (window as { parallxElectron?: { getPathForFile?(f: File): string } }).parallxElectron;
+        const path = electron?.getPathForFile?.(file) ?? '';
+        if (!path) { status.textContent = 'Could not resolve that file to a path in this build.'; return; }
+        await extractFromPath(path, file.name);
         return;
       }
-      status.textContent = `Extracting ${file.name}…`;
-      try {
-        const res = await electron.document.extractText(path);
-        if (res?.error) throw new Error(res.error.message);
-        const text = (res?.text ?? '').trim();
-        if (text.length < 200) throw new Error('Almost no text extracted. Scanned PDFs need OCR.');
-        source.text = text;
-        source.label = file.name;
-        source.uri = path;
-        source.pageTexts = Array.isArray(res?.pageTexts) && res.pageTexts.length > 1 ? res.pageTexts : null;
-        const pages = source.pageTexts ? ` · ${source.pageTexts.length} pages` : '';
-        status.textContent = `Loaded ${file.name} (${text.length.toLocaleString()} chars${pages}).`;
-      } catch (err) {
-        status.textContent = `Extraction failed: ${(err as Error).message}`;
+      // 2. Explorer/internal drags carry text/plain: a path, file:// URI, or
+      //    a canvas page id — NOT File objects (the original silent gap).
+      const raw = (dt?.getData('text/plain') || '').trim();
+      if (!raw) {
+        status.textContent = 'That drag carried no file. Drag from the Explorer or drop an OS file.';
+        return;
       }
+      if (looksLikePath(raw)) {
+        const path = uriToFsPath(raw);
+        await extractFromPath(path, path.split(/[\\/]/).pop() || 'document');
+        return;
+      }
+      if (/^[0-9a-fA-F][0-9a-fA-F-]{7,}$/.test(raw)) {
+        // Canvas page drag: fetch its markdown through the canvas command.
+        try {
+          status.textContent = 'Reading canvas page…';
+          const result = await (_api as unknown as {
+            commands: { executeCommand<T>(id: string, ...args: unknown[]): Promise<T> };
+          }).commands.executeCommand<{ markdown?: string; title?: string }>('canvas.getPageMarkdown', raw);
+          const text = (result?.markdown ?? '').trim();
+          if (text.length < 100) throw new Error('That canvas page has almost no text.');
+          source.text = text;
+          source.label = result?.title || 'Canvas page';
+          source.uri = `parallx://canvas/page/${raw}`;
+          source.pageTexts = null;
+          status.textContent = `Loaded ${source.label} (${text.length.toLocaleString()} chars).`;
+        } catch (err) {
+          status.textContent = `Could not read that canvas page: ${(err as Error).message}`;
+        }
+        return;
+      }
+      status.textContent = 'Drop a document file from the Explorer, or a page from the Canvas sidebar.';
     })();
   });
   root.appendChild(drop);
