@@ -55,6 +55,9 @@ const DAY = 24 * 60 * 60 * 1000;
 /** Learning steps (minutes) for new cards; relearning steps after a lapse. */
 const FC_LEARNING_STEPS_MIN = [1, 10];
 const FC_RELEARNING_STEPS_MIN = [10];
+/** Learning cards due within this window stay in the live session (served
+ *  when due, with a countdown wait screen) instead of silently ending it. */
+const FC_LEARN_AHEAD_MS = 10 * MIN;
 const FC_GRADUATE_DAYS = 1;
 const FC_EASY_GRADUATE_DAYS = 4;
 const FC_MIN_EASE = 1.3;
@@ -2367,6 +2370,10 @@ function injectStyles() {
 .fc-study__toolbar { width: 100%; max-width: min(100%, 920px); display: flex; align-items: center; gap: var(--px-space-3); margin-bottom: var(--px-space-6); }
 .fc-study__progress { flex: 1; height: 2px; border-radius: var(--px-radius-full); background: var(--px-divider); overflow: hidden; }
 .fc-study__progress-fill { height: 100%; border-radius: var(--px-radius-full); background: var(--px-accent); transition: width var(--px-dur-base) var(--px-ease); }
+.fc-study__cardactions { display: flex; gap: var(--px-space-1); flex: 0 0 auto; }
+.fc-btn--ghost { background: transparent; border-color: transparent; color: var(--px-text-muted); }
+.fc-btn--ghost:hover { color: var(--px-text); border-color: var(--px-border-strong); background: transparent; }
+.fc-study__edit { width: 100%; max-width: min(100%, 920px); }
 
 /* The card is a REAL flashcard: white stock, black ink, square corners,
    index-card proportions — deliberately independent of the app theme, the
@@ -3227,9 +3234,11 @@ async function renderBrowse(body, route, setRoute) {
 
 // ── Study view ───────────────────────────────────────────────────────────────
 
-async function renderStudy(body, route, paneState, setRoute) {
+async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
   const cards = await fcListAllCards(route.deckId ?? null);
-  const queue = fcBuildQueue(cards, Date.now(), {
+  // aheadMs: learn-ahead (Study Now on the countdown screen) — build the
+  // queue as of a moment slightly past the next learning card's dueAt.
+  const queue = fcBuildQueue(cards, Date.now() + aheadMs, {
     newLimit: Number(cfg('dailyNewLimit', 20)) || 20,
     reviewLimit: Number(cfg('dailyReviewLimit', 200)) || 200,
   });
@@ -3241,12 +3250,52 @@ async function renderStudy(body, route, paneState, setRoute) {
   body.appendChild(study);
 
   if (queue.length === 0) {
+    // A learning card due in the next few minutes means "caught up" is a
+    // lie about to expire — count down and reopen the session at dueAt
+    // (this screen used to freeze forever; graded-Again cards never came
+    // back without manually leaving and re-entering).
+    const soon = cards
+      .filter((c) => !c.suspended && (c.state === 'learning' || c.state === 'relearning') && c.dueAt > Date.now())
+      .sort((a, b) => a.dueAt - b.dueAt)[0];
+    const withinAhead = soon && soon.dueAt - Date.now() <= FC_LEARN_AHEAD_MS;
+
     const done = el('div', 'fc-study__done px-empty');
-    done.appendChild(el('div', 'px-empty__headline', cards.length === 0 ? 'Ready when you are' : 'All caught up'));
-    done.appendChild(el('div', 'px-empty__hint',
-      cards.length === 0
-        ? 'Create cards in a deck, or click Create to generate them from a canvas page or PDF.'
-        : 'The scheduler brings cards back right before you would forget them. Check back later.'));
+    done.appendChild(el('div', 'px-empty__headline',
+      cards.length === 0 ? 'Ready when you are' : withinAhead ? 'Almost caught up' : 'All caught up'));
+    const hint = el('div', 'px-empty__hint');
+    const fmt = (ms) => {
+      const s = Math.max(0, Math.ceil(ms / 1000));
+      return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    };
+    hint.textContent = cards.length === 0
+      ? 'Create cards in a deck, or click Create to generate them from a canvas page or PDF.'
+      : withinAhead
+        ? `A learning card comes due in ${fmt(soon.dueAt - Date.now())}.`
+        : 'The scheduler brings cards back right before you would forget them. Check back later.';
+    done.appendChild(hint);
+    const restart = () => {
+      if (!body.isConnected) return;
+      body.innerHTML = '';
+      void renderStudy(body, route, paneState, setRoute);
+    };
+    if (withinAhead) {
+      const aheadBtn = el('button', 'fc-btn fc-btn--primary');
+      aheadBtn.textContent = 'Study Now';
+      aheadBtn.title = 'Serve the learning card early instead of waiting.';
+      // Learn-ahead: build the queue as of the card's due time.
+      aheadBtn.addEventListener('click', () => {
+        if (!body.isConnected) return;
+        body.innerHTML = '';
+        void renderStudy(body, route, paneState, setRoute, soon.dueAt - Date.now() + 1000);
+      });
+      done.appendChild(aheadBtn);
+      const timer = setInterval(() => {
+        if (!body.isConnected) { clearInterval(timer); return; }
+        const ms = soon.dueAt - Date.now();
+        if (ms <= 0) { clearInterval(timer); restart(); return; }
+        hint.textContent = `A learning card comes due in ${fmt(ms)}.`;
+      }, 250);
+    }
     const back = el('button', 'fc-btn');
     back.textContent = 'Back to Decks';
     back.addEventListener('click', () => setRoute({ view: 'decks' }));
@@ -3272,6 +3321,10 @@ async function renderStudy(body, route, paneState, setRoute) {
     total: queue.length,
     cardShownAt: Date.now(),
     discussHistory: [],
+    /** Learning cards graded this session, waiting on a FUTURE dueAt.
+     *  Served the moment they come due — the "Again 1m" contract. */
+    pending: [],
+    waitTimer: null,
   };
   paneState.session = session;
 
@@ -3355,13 +3408,65 @@ async function renderStudy(body, route, paneState, setRoute) {
     }
   };
 
+  const fmtWait = (ms) => {
+    const s = Math.max(0, Math.ceil(ms / 1000));
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  };
+
+  /** Wait screen: only future-due learning cards remain. Count down to the
+   *  soonest and auto-serve it at dueAt — the "Again 1m" promise, kept. */
+  const renderWait = () => {
+    const next = session.pending[0];
+    const wait = el('div', 'fc-study__done px-empty');
+    wait.appendChild(el('div', 'px-empty__headline', 'Almost done'));
+    const hint = el('div', 'px-empty__hint');
+    const label = () => {
+      const n = session.pending.length;
+      return `${n} ${n === 1 ? 'card is' : 'cards are'} still in learning. Next card in ${fmtWait(next.dueAt - Date.now())}.`;
+    };
+    hint.textContent = label();
+    wait.appendChild(hint);
+    const nowBtn = el('button', 'fc-btn fc-btn--primary');
+    nowBtn.textContent = 'Show Now';
+    nowBtn.title = 'Serve the next learning card early instead of waiting.';
+    nowBtn.addEventListener('click', () => {
+      session.queue.splice(session.index, 0, session.pending.shift());
+      session.total++;
+      showCard();
+    });
+    wait.appendChild(nowBtn);
+    const back = el('button', 'fc-btn');
+    back.textContent = 'Back to Decks';
+    back.addEventListener('click', () => setRoute({ view: 'decks' }));
+    wait.appendChild(back);
+    main.appendChild(wait);
+    session.waitTimer = setInterval(() => {
+      // The pane rebuilds on tab switches — a disconnected host means this
+      // timer outlived its session.
+      if (!main.isConnected) { clearInterval(session.waitTimer); session.waitTimer = null; return; }
+      if (next.dueAt - Date.now() <= 0) { showCard(); return; }
+      hint.textContent = label();
+    }, 250);
+  };
+
   const showCard = () => {
     closeDiscuss();
+    if (session.waitTimer) { clearInterval(session.waitTimer); session.waitTimer = null; }
     main.innerHTML = '';
     session.revealed = false;
+    session.editing = false;
     session.cardShownAt = Date.now();
 
+    // A learning card that has come DUE cuts in ahead of the rest — this is
+    // what makes "Again 1m" mean one minute instead of "end of queue".
+    session.pending.sort((a, b) => a.dueAt - b.dueAt);
+    if (session.pending.length > 0 && session.pending[0].dueAt <= Date.now()) {
+      session.queue.splice(session.index, 0, session.pending.shift());
+      session.total++;
+    }
+
     if (session.index >= session.queue.length) {
+      if (session.pending.length > 0) { renderWait(); return; }
       const done = el('div', 'fc-study__done px-empty');
       done.appendChild(el('div', 'px-empty__headline', 'Session complete'));
       done.appendChild(el('div', 'px-empty__hint',
@@ -3376,13 +3481,70 @@ async function renderStudy(body, route, paneState, setRoute) {
 
     const card = session.queue[session.index];
 
-    // ── Toolbar: progress + card-theme toggle ──
+    // ── In-study Edit / Delete (Mufaro: "If I see a flashcard is incorrect,
+    // I have to edit it right there and then") ──
+    const openEdit = () => {
+      closeDiscuss();
+      session.editing = true;
+      main.innerHTML = '';
+      const wrap = el('div', 'fc-study__edit');
+      wrap.appendChild(el('div', 'fc-label', 'Edit This Card'));
+      wrap.appendChild(fcCardEditorEl(card, {
+        onSave: async (patch) => {
+          await fcUpdateCard(card.id, patch);
+          // Cloze reconcile may have rewritten or even retyped the card —
+          // refetch; if the edit dissolved this sibling, skip past it.
+          const fresh = await fcGetCard(card.id);
+          if (fresh) session.queue[session.index] = fresh;
+          else session.queue.splice(session.index, 1);
+          showCard();
+        },
+        onCancel: () => showCard(),
+      }));
+      main.appendChild(wrap);
+    };
+
+    const deleteCurrent = () => {
+      void (async () => {
+        const ok = await _api.window.showConfirmModal?.({
+          message: 'Delete this card?',
+          detail: 'The card and its review history are permanently removed. This cannot be undone.',
+          confirmLabel: 'Delete Card',
+          danger: true,
+        }) ?? false;
+        if (!ok) return;
+        await fcDeleteCard(card.id);
+        // Purge every queued/pending appearance (a re-queued learning copy
+        // of the same card may sit later in the session).
+        session.queue.splice(session.index, 1);
+        for (let i = session.queue.length - 1; i >= session.index; i--) {
+          if (session.queue[i].id === card.id) { session.queue.splice(i, 1); session.total = Math.max(1, session.total - 1); }
+        }
+        session.pending = session.pending.filter((c) => c.id !== card.id);
+        session.total = Math.max(1, session.total - 1);
+        showCard();
+      })();
+    };
+
+    // ── Toolbar: progress + card actions ──
     const toolbar = el('div', 'fc-study__toolbar');
     const progress = el('div', 'fc-study__progress');
     const fill = el('div', 'fc-study__progress-fill');
-    fill.style.width = `${Math.round((session.doneCount / session.total) * 100)}%`;
+    fill.style.width = `${Math.round((session.doneCount / Math.max(1, session.total)) * 100)}%`;
     progress.appendChild(fill);
     toolbar.appendChild(progress);
+    const cardActions = el('div', 'fc-study__cardactions');
+    const editBtn = el('button', 'fc-btn fc-btn--ghost');
+    editBtn.textContent = 'Edit';
+    editBtn.title = 'Fix this card without leaving the session (E)';
+    editBtn.addEventListener('click', openEdit);
+    cardActions.appendChild(editBtn);
+    const delBtn = el('button', 'fc-btn fc-btn--ghost fc-btn--danger');
+    delBtn.textContent = 'Delete';
+    delBtn.title = 'Permanently delete this card';
+    delBtn.addEventListener('click', deleteCurrent);
+    cardActions.appendChild(delBtn);
+    toolbar.appendChild(cardActions);
 
     main.appendChild(toolbar);
 
@@ -3495,7 +3657,7 @@ async function renderStudy(body, route, paneState, setRoute) {
       });
       discussHost.appendChild(explainBtn);
       main.appendChild(discussHost);
-      main.appendChild(el('div', 'fc-study__keys', 'Space reveal · 1 Again · 2 Hard · 3 Good · 4 Easy'));
+      main.appendChild(el('div', 'fc-study__keys', 'Space reveal · 1 Again · 2 Hard · 3 Good · 4 Easy · E edit'));
     };
 
     const grade = (rating) => {
@@ -3506,12 +3668,14 @@ async function renderStudy(body, route, paneState, setRoute) {
       const msTaken = Date.now() - session.cardShownAt;
       void (async () => {
         const updated = await fcGradeCard(card, rating, msTaken, optsFor(card));
-        // Cards still in learning re-enter the back of the queue when they
-        // come due within this session's horizon (10 min).
+        // Cards still in learning stay in the session when due within the
+        // horizon — held in `pending` and served WHEN DUE (they used to be
+        // pushed to the queue tail, which served them at whatever moment the
+        // index arrived: instantly for the last card, ages later mid-deck —
+        // the "Again 1m never means 1 minute" bug).
         if ((updated.state === 'learning' || updated.state === 'relearning')
-            && updated.dueAt <= Date.now() + 10 * MIN) {
-          session.queue.push(updated);
-          session.total++;
+            && updated.dueAt <= Date.now() + FC_LEARN_AHEAD_MS) {
+          session.pending.push(updated);
         }
         session.doneCount++;
         session.index++;
@@ -3525,14 +3689,22 @@ async function renderStudy(body, route, paneState, setRoute) {
     revealBtn.textContent = 'Show Answer';
     revealBtn.addEventListener('click', reveal);
     controls.appendChild(revealBtn);
-    main.appendChild(el('div', 'fc-study__keys', 'Space shows the answer'));
+    main.appendChild(el('div', 'fc-study__keys', 'Space shows the answer · E edits the card'));
 
     // Container-scoped keyboard: only fires while the study surface has focus.
     main.onkeydown = (e) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      // The inline editor owns the keyboard while open (its own Ctrl+Enter /
+      // Escape handling) — study shortcuts must not fire underneath it.
+      if (session.editing) return;
       if (e.key === ' ' || e.key === 'Enter') {
         e.preventDefault();
         if (!session.revealed) reveal();
+        return;
+      }
+      if (e.key === 'e' || e.key === 'E') {
+        e.preventDefault();
+        openEdit();
         return;
       }
       if (session.revealed && ['1', '2', '3', '4'].includes(e.key)) {
