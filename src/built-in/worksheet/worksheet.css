@@ -111,3 +111,58 @@
   font-size: var(--px-text-sm);
   color: var(--px-text-secondary);
 }
+
+.ws-item__review { margin-top: var(--px-space-3); }
+.ws-item__reviewout {
+  margin-top: var(--px-space-2);
+  padding: var(--px-space-3);
+  font-size: var(--px-text-sm);
+  color: var(--px-text-secondary);
+  background: var(--px-bg-inset);
+  border-radius: var(--px-radius-sm);
+  white-space: pre-wrap;
+}
+.ws-item__reviewout .px-markdown { white-space: normal; }
+
+/* ── Generate pane ── */
+
+.ws-create { padding: var(--px-space-6); overflow-y: auto; gap: var(--px-space-3); }
+.ws-create > * { flex: 0 0 auto; }
+.ws-hint { font-size: var(--px-text-sm); color: var(--px-text-muted); }
+.ws-create__status { font-variant-numeric: tabular-nums; }
+.ws-create__controls { display: flex; gap: var(--px-space-2); align-items: center; }
+.ws-create__controls .ws-input { flex: 1; }
+.ws-input {
+  padding: 6px 9px; font-size: var(--px-text-sm); color: var(--px-text);
+  background: var(--px-bg-inset); border: 1px solid var(--px-border-strong);
+  border-radius: var(--px-radius-sm);
+}
+.ws-input--count { flex: 0 0 64px; }
+.ws-textarea {
+  width: 100%; padding: 6px 9px; font-size: var(--px-text-sm); color: var(--px-text);
+  background: var(--px-bg-inset); border: 1px solid var(--px-border-strong);
+  border-radius: var(--px-radius-sm); resize: vertical; font-family: inherit;
+}
+.ws-error { font-size: var(--px-text-sm); color: var(--px-danger, #d9534f); }
+
+.ws-dropzone {
+  padding: var(--px-space-5);
+  border: 1px dashed var(--px-border-strong);
+  border-radius: var(--px-radius-md);
+  text-align: center;
+  color: var(--px-text-muted);
+  transition: border-color var(--px-dur-fast) var(--px-ease), background-color var(--px-dur-fast) var(--px-ease);
+}
+.ws-dropzone--over { border-color: var(--px-accent); background: var(--px-accent-soft); }
+.ws-dropzone__title { font-size: var(--px-text-sm); font-weight: 600; }
+
+.ws-create__review { display: flex; flex-direction: column; gap: var(--px-space-2); margin-top: var(--px-space-2); }
+.ws-genitem {
+  display: flex; flex-direction: column; gap: var(--px-space-2);
+  padding: var(--px-space-3);
+  background: var(--px-bg-raised);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-md);
+}
+.ws-genitem--dropped { opacity: 0.4; }
+.ws-genitem .ws-btn--danger { align-self: flex-start; }

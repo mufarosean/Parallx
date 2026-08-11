@@ -21,9 +21,9 @@ import type { FUniver } from '@univerjs/core/lib/facade';
 import { ATHENA_FUNCTIONS } from './athenaFunctions.js';
 import '@univerjs/presets/lib/styles/preset-sheets-core.css';
 
-/** The Pearson Athena per-item grid bounds (research doc: ~150 × 40). */
-export const ATHENA_ROWS = 150;
-export const ATHENA_COLUMNS = 40;
+import { ATHENA_ROWS, ATHENA_COLUMNS } from './worksheetConstants.js';
+
+export { ATHENA_ROWS, ATHENA_COLUMNS };
 
 export interface IWorksheetHostOptions {
   /** Element the sheet mounts into. Must be attached and sized. */

@@ -21,10 +21,12 @@ import type { IWorkbookData } from '@univerjs/core';
 import type { IWorksheetHost } from './univerHost.js';
 import { renderMarkdown } from '../../ui/renderMarkdown.js';
 import {
-  listItems, getItem, deleteItem, getOpenAttempt, saveAttemptCells,
-  discardOpenAttempt, completeAttempt, onWorksheetDataChanged,
+  listItems, getItem, createItem, deleteItem, getOpenAttempt, saveAttemptCells,
+  discardOpenAttempt, completeAttempt, saveAttemptReview, onWorksheetDataChanged,
   type WorksheetItem,
 } from './worksheetData.js';
+import { itemToWorkbooks, type GeneratedItem } from './itemFormat.js';
+import { generateItems, reviewAttempt, type LmApiLike } from './worksheetAi.js';
 import './worksheet.css';
 
 // ── API typings (structural — the tool API surface) ─────────────────────────
@@ -45,6 +47,7 @@ interface ParallxApiLike {
     showInformationMessage?(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
     showErrorMessage?(message: string): Promise<unknown>;
   };
+  lm?: LmApiLike;
 }
 
 interface ToolContextLike {
@@ -121,13 +124,17 @@ function createHomePane(container: HTMLElement) {
     scratchBtn.textContent = 'Open Scratch Sheet';
     scratchBtn.addEventListener('click', () => void openWorksheet('scratch', 'Practice Sheet'));
     head.appendChild(scratchBtn);
+    const genBtn = el('button', 'ws-btn ws-btn--primary') as HTMLButtonElement;
+    genBtn.textContent = 'Generate Items';
+    genBtn.addEventListener('click', () => void openWorksheet('create', 'Generate Items'));
+    head.appendChild(genBtn);
     root.appendChild(head);
 
     if (items.length === 0) {
       const empty = el('div', 'ws-empty');
       empty.appendChild(el('div', 'ws-empty__headline', 'No practice items yet'));
       empty.appendChild(el('div', 'ws-empty__hint',
-        'Items are generated from your study materials and arrive with their model solutions. Until then, the scratch sheet gives you the exam-faithful grid.'));
+        'Click Generate Items to turn a PDF or pasted material into worked practice items with model solutions. The scratch sheet gives you the exam-faithful grid any time.'));
       root.appendChild(empty);
       return;
     }
@@ -193,6 +200,209 @@ function gradeLabel(grade: string): string {
     case 'missed': return 'Missed';
     default: return grade;
   }
+}
+
+// ── Generate pane (instanceId 'create') ─────────────────────────────────────
+
+function createGeneratePane(container: HTMLElement) {
+  const root = el('div', 'ws-pane ws-create');
+  container.appendChild(root);
+  let disposed = false;
+
+  root.appendChild(el('div', 'ws-home__title', 'Generate Practice Items'));
+  root.appendChild(el('div', 'ws-hint',
+    'Drop a PDF (past exams, study cookbooks) or paste material. Items are generated with givens and a worked model solution, then reviewed by you before anything is saved.'));
+
+  const source = { text: '', label: '', uri: '', pageTexts: null as string[] | null };
+  const status = el('div', 'ws-hint ws-create__status', 'No source loaded yet.');
+
+  const drop = el('div', 'ws-dropzone');
+  drop.appendChild(el('div', 'ws-dropzone__title', 'Drag a PDF or document here'));
+  const onDragOver = (e: DragEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    drop.classList.add('ws-dropzone--over');
+  };
+  drop.addEventListener('dragenter', onDragOver);
+  drop.addEventListener('dragover', onDragOver);
+  drop.addEventListener('dragleave', (e) => { if (e.target === drop) drop.classList.remove('ws-dropzone--over'); });
+  drop.addEventListener('drop', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    drop.classList.remove('ws-dropzone--over');
+    const file = e.dataTransfer?.files?.[0];
+    if (!file) return;
+    void (async () => {
+      const electron = (window as {
+        parallxElectron?: {
+          getPathForFile?(f: File): string;
+          document?: { extractText(p: string): Promise<{ error?: { message: string } | null; text?: string; pageTexts?: string[] }> };
+        };
+      }).parallxElectron;
+      const path = electron?.getPathForFile?.(file) ?? '';
+      if (!path || !electron?.document?.extractText) {
+        status.textContent = 'Could not read that file in this build.';
+        return;
+      }
+      status.textContent = `Extracting ${file.name}…`;
+      try {
+        const res = await electron.document.extractText(path);
+        if (res?.error) throw new Error(res.error.message);
+        const text = (res?.text ?? '').trim();
+        if (text.length < 200) throw new Error('Almost no text extracted. Scanned PDFs need OCR.');
+        source.text = text;
+        source.label = file.name;
+        source.uri = path;
+        source.pageTexts = Array.isArray(res?.pageTexts) && res.pageTexts.length > 1 ? res.pageTexts : null;
+        const pages = source.pageTexts ? ` · ${source.pageTexts.length} pages` : '';
+        status.textContent = `Loaded ${file.name} (${text.length.toLocaleString()} chars${pages}).`;
+      } catch (err) {
+        status.textContent = `Extraction failed: ${(err as Error).message}`;
+      }
+    })();
+  });
+  root.appendChild(drop);
+  root.appendChild(status);
+
+  const pasteIn = el('textarea', 'ws-textarea') as HTMLTextAreaElement;
+  pasteIn.placeholder = 'Or paste study material here (overrides the loaded file).';
+  pasteIn.rows = 5;
+  root.appendChild(pasteIn);
+
+  const controls = el('div', 'ws-create__controls');
+  const guideIn = el('input', 'ws-input') as HTMLInputElement;
+  guideIn.placeholder = 'Guidance, e.g. focus on Brosius least squares';
+  controls.appendChild(guideIn);
+  const countIn = el('input', 'ws-input ws-input--count') as HTMLInputElement;
+  countIn.type = 'number';
+  countIn.min = '1'; countIn.max = '6'; countIn.value = '3';
+  countIn.title = 'How many items to generate';
+  controls.appendChild(countIn);
+  const genBtn = el('button', 'ws-btn ws-btn--primary') as HTMLButtonElement;
+  genBtn.textContent = 'Generate Items';
+  controls.appendChild(genBtn);
+  root.appendChild(controls);
+
+  const err = el('div', 'ws-error');
+  err.style.display = 'none';
+  root.appendChild(err);
+  const reviewHost = el('div', 'ws-create__review');
+  root.appendChild(reviewHost);
+
+  genBtn.addEventListener('click', () => {
+    void (async () => {
+      const text = (pasteIn.value.trim() || source.text).trim();
+      if (!text) {
+        err.textContent = 'Load a source or paste some material first.';
+        err.style.display = '';
+        return;
+      }
+      if (!_api?.lm) {
+        err.textContent = 'No language model API available in this build.';
+        err.style.display = '';
+        return;
+      }
+      err.style.display = 'none';
+      genBtn.disabled = true;
+      genBtn.textContent = 'Generating…';
+      try {
+        const usingLoaded = !pasteIn.value.trim() && !!source.text;
+        const items = await generateItems(_api.lm, text, {
+          count: Math.min(6, Math.max(1, parseInt(countIn.value, 10) || 3)),
+          focus: guideIn.value.trim(),
+          pageTexts: usingLoaded ? source.pageTexts : null,
+        });
+        if (disposed) return;
+        renderReview(items);
+      } catch (e2) {
+        err.textContent = (e2 as Error).message;
+        err.style.display = '';
+      } finally {
+        genBtn.disabled = false;
+        genBtn.textContent = 'Generate Items';
+      }
+    })();
+  });
+
+  const renderReview = (items: GeneratedItem[]) => {
+    reviewHost.replaceChildren();
+    reviewHost.appendChild(el('div', 'ws-home__title', `Review ${items.length} generated ${items.length === 1 ? 'item' : 'items'}`));
+    reviewHost.appendChild(el('div', 'ws-hint', 'Edit titles and questions inline; drop anything weak. Nothing is saved until you click Save.'));
+
+    const rows: { item: GeneratedItem; titleIn: HTMLInputElement; questionIn: HTMLTextAreaElement; dropped: boolean; row: HTMLElement }[] = [];
+    for (const item of items) {
+      const row = el('div', 'ws-genitem');
+      const titleIn = el('input', 'ws-input') as HTMLInputElement;
+      titleIn.value = item.title;
+      row.appendChild(titleIn);
+      const questionIn = el('textarea', 'ws-textarea') as HTMLTextAreaElement;
+      questionIn.rows = 3;
+      questionIn.value = item.question;
+      row.appendChild(questionIn);
+      const meta: string[] = [
+        `${item.givens.length} given ${item.givens.length === 1 ? 'cell' : 'cells'}`,
+        `${item.solution.length} solution ${item.solution.length === 1 ? 'cell' : 'cells'}`,
+      ];
+      if (item.page) meta.push(`p.${item.page}`);
+      if (item.tags.length) meta.push(item.tags.map((t) => `#${t}`).join(' '));
+      row.appendChild(el('div', 'ws-itemrow__meta', meta.join(' · ')));
+      const entry = { item, titleIn, questionIn, dropped: false, row };
+      const dropBtn = el('button', 'ws-btn ws-btn--danger') as HTMLButtonElement;
+      dropBtn.textContent = 'Drop';
+      dropBtn.addEventListener('click', () => {
+        entry.dropped = !entry.dropped;
+        row.classList.toggle('ws-genitem--dropped', entry.dropped);
+        dropBtn.textContent = entry.dropped ? 'Keep' : 'Drop';
+      });
+      row.appendChild(dropBtn);
+      rows.push(entry);
+      reviewHost.appendChild(row);
+    }
+
+    const saveBtn = el('button', 'ws-btn ws-btn--primary') as HTMLButtonElement;
+    saveBtn.textContent = 'Save Items';
+    saveBtn.addEventListener('click', () => {
+      void (async () => {
+        const keep = rows.filter((r) => !r.dropped && r.titleIn.value.trim());
+        if (keep.length === 0) {
+          err.textContent = 'No items left to save.';
+          err.style.display = '';
+          return;
+        }
+        saveBtn.disabled = true;
+        try {
+          for (const r of keep) {
+            const { givensJson, solutionJson } = itemToWorkbooks(r.item);
+            await createItem({
+              title: r.titleIn.value.trim(),
+              questionMd: r.questionIn.value.trim(),
+              givensJson,
+              solutionJson,
+              solutionNotesMd: r.item.solutionNotes,
+              sourceUri: source.uri,
+              sourceLabel: source.label || 'Pasted material',
+              sourcePage: r.item.page ?? 0,
+              tags: r.item.tags.join(','),
+            });
+          }
+          await _api?.window?.showInformationMessage?.(`Saved ${keep.length} ${keep.length === 1 ? 'item' : 'items'}.`);
+          await openWorksheet('home', 'Worksheets');
+        } catch (e3) {
+          err.textContent = (e3 as Error).message;
+          err.style.display = '';
+          saveBtn.disabled = false;
+        }
+      })();
+    });
+    reviewHost.appendChild(saveBtn);
+    saveBtn.scrollIntoView({ block: 'nearest' });
+  };
+
+  return {
+    dispose: () => {
+      disposed = true;
+      root.remove();
+    },
+  };
 }
 
 // ── Sheet panes (scratch + item player) ─────────────────────────────────────
@@ -338,6 +548,43 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
         notes.appendChild(renderMarkdown(item.solutionNotesMd));
         header.appendChild(notes);
       }
+
+      // M99 S6 — AI critique of the work vs the model solution. Feedback,
+      // never a score: CAS grades method, and false precision misleads.
+      const reviewWrap = el('div', 'ws-item__review');
+      const reviewBtn = el('button', 'ws-btn') as HTMLButtonElement;
+      reviewBtn.textContent = 'AI Review My Work';
+      reviewBtn.title = 'Compare your cells against the model solution and get method-level feedback.';
+      const reviewOut = el('div', 'ws-item__reviewout');
+      reviewOut.style.display = 'none';
+      reviewBtn.addEventListener('click', () => {
+        void (async () => {
+          if (!item || !_api?.lm) return;
+          if (!lastSavedCells.trim()) {
+            reviewOut.style.display = '';
+            reviewOut.textContent = 'There is no work on the sheet to review yet.';
+            return;
+          }
+          reviewBtn.disabled = true;
+          reviewBtn.textContent = 'Reviewing…';
+          reviewOut.style.display = '';
+          reviewOut.textContent = 'Reading your work…';
+          try {
+            const review = await reviewAttempt(_api.lm, item, lastSavedCells, (partial) => {
+              reviewOut.textContent = partial;
+            });
+            reviewOut.replaceChildren(renderMarkdown(review));
+            await saveAttemptReview(item.id, review);
+          } catch (err) {
+            reviewOut.textContent = `Review failed: ${(err as Error).message}`;
+          } finally {
+            reviewBtn.disabled = false;
+            reviewBtn.textContent = 'AI Review My Work';
+          }
+        })();
+      });
+      reviewWrap.append(reviewBtn, reviewOut);
+      header.appendChild(reviewWrap);
     }
 
     headerHost.appendChild(header);
@@ -450,9 +697,9 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
         // Provenance contract (M98 lesson): key on instanceId, never parse
         // the namespaced input.id.
         const instanceId = input?.instanceId ?? input?.id ?? 'home';
-        return instanceId === 'home'
-          ? createHomePane(container)
-          : createSheetPane(container, instanceId);
+        if (instanceId === 'home') return createHomePane(container);
+        if (instanceId === 'create') return createGeneratePane(container);
+        return createSheetPane(container, instanceId);
       },
     }),
   );
