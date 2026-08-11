@@ -60,6 +60,7 @@
     "@tiptap/starter-kit": "^3.19.0",
     "@tiptap/suggestion": "^3.19.0",
     "@types/markdown-it": "^14.1.2",
+    "@univerjs/presets": "^0.25.1",
     "adm-zip": "^0.5.16",
     "better-sqlite3": "^12.6.2",
     "codemirror": "^6.0.2",
