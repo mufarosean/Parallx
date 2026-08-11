@@ -104,6 +104,34 @@ Exam 7 is the first user via AI generation from the user's own materials.
    method-level critique streamed into the solution view and saved on the
    attempt. Feedback, never a score.
 
+## Fidelity backlog (screenshot comparison vs pearson_sheet_item5.png, 2026-08-12)
+
+Compared the live item player against the real Athena item capture:
+1. Question block: Athena carries a POINT VALUE ("2.25 total points") and
+   structured given-prose above the task. Add `points` to ws_items +
+   generation prompt; render under the title.
+2. Givens INSIDE the sheet are bordered TABLE BLOCKS (header row, label/value
+   pairs, right-aligned FORMATTED values: 10.0%, 40,000, July 1 2023) with a
+   heavy vertical rule fencing the work area. itemFormat needs: block border
+   styles around contiguous given regions, number-format hints per cell
+   (percent/comma/date), column-width hints. Currently: tint + bold only.
+3. Athena's sheet is ALWAYS WHITE (Aptos Narrow 11). Decision pending with
+   Mufaro: exam-faithful fixed-light sheet (flashcard white-card precedent)
+   vs app-theme-following (current behavior, which he asked for when the
+   chrome mismatched). Univer dark mode is all-or-nothing.
+4. Ribbon label "Start" vs Athena "HOME"; tab set differs (no Insert/View).
+   Univer menu config could rename/extend later; low priority.
+5. Grid right-click menu does not open (REAL bug, pinned by test.fail() in
+   the e2e suite; portal ruled out as cause).
+
+## Next feature: practice sessions (ADAPT-style)
+
+Settled direction: Start Practice Session → filters (tags, source, state,
+difficulty) + count + shuffle → serve items sequentially → session summary
+with per-tag breakdown. Difficulty: AI-estimated at generation + earned from
+attempt outcomes. Chat tools (worksheet.listItems/getProgress) expose the
+bank to the AI the way flashcards.getDue does.
+
 ## Landmines (from memory)
 
 - npm on this machine: `NODE_OPTIONS=--use-system-ca npm install --ignore-scripts`
