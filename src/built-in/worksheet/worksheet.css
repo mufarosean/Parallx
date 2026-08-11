@@ -8,6 +8,8 @@
   background: var(--px-bg);
 }
 
+.ws-pane__headerhost { flex: 0 0 auto; }
+
 .ws-pane__sheet {
   flex: 1;
   min-height: 0;
@@ -85,7 +87,10 @@
   padding: var(--px-space-4) var(--px-space-5) var(--px-space-3);
   border-bottom: 1px solid var(--px-border);
   flex: 0 0 auto;
-  max-height: 40%;
+  /* vh, NOT % — a percentage against the auto-height host resolved to ~32px
+     and clipped the title row and hid the QUESTION entirely (probe-measured).
+     Long questions scroll inside this clamp, Athena-style. */
+  max-height: 38vh;
   overflow-y: auto;
 }
 .ws-item__titlerow { display: flex; align-items: center; gap: var(--px-space-2); }

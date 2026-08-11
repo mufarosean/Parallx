@@ -529,7 +529,10 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
   const itemId = instanceId.startsWith('item:') ? Number(instanceId.slice(5)) : null;
 
   const root = el('div', 'ws-pane');
-  const headerHost = el('div');
+  // flex: 0 0 auto or the sheet (flex:1) CRUSHES the header — the question
+  // text vanished entirely in the e2e screenshot (resize-thrash lesson:
+  // pin non-growing flex children).
+  const headerHost = el('div', 'ws-pane__headerhost');
   const sheetHost = el('div', 'ws-pane__sheet');
   const loading = el('div', 'ws-pane__loading', 'Loading the practice sheet engine…');
   root.append(headerHost, loading, sheetHost);
