@@ -1,8 +1,31 @@
 # Parallx Milestone 99 — Worksheets (Exam-Faithful Practice Sheets)
 
-> **Status: IN PROGRESS** (started 2026-08-11, branch `m99-exam-sheet`)
+> **Status: BUILT** (2026-08-11, branch `m99-exam-sheet`, through 02d3a321).
+> tsc clean, build clean, engine-isolation verified (0 Univer bytes in
+> main.js), full suite green, 13 item-format tests + review-fix pass done.
+> PENDING: in-app verification by Mufaro (never rendered on screen), and the
+> review items below.
 > Research base: docs/research/CAS_Pearson_Spreadsheet_Environment.md
 > (captured 2026-07-27 — Athena anatomy, constraints, screenshots, function list).
+
+## Review triage (2026-08-11)
+
+Adversarial review: 5 of 7 finders ran (worksheet-engine + integration
+finders AND all verifiers died on session usage limits — findings were
+triaged inline instead). 59 findings: the critical (runTransaction ops
+missing type:'run') and ~12 majors are FIXED (commit 02d3a321). Deferred,
+recorded honestly:
+- saveAttemptCells is get-then-write, not atomic (single-pane usage makes
+  collisions unlikely; two split panes on one item could interleave).
+- deleteItem does not close open panes on that item; a late autosave can
+  recreate an attempt row for a deleted item (FK cascade removes on next
+  delete; cosmetic).
+- Migrations path joins appPath + src/built-in/... — breaks under a packaged
+  asar build. SAME pattern as planner; belongs to the packaging milestone.
+- deckSchedOpts snapshot taken at study-session start (exam date edited
+  mid-session applies next session).
+- ~40 minor findings (naming, comments, cosmetic edge cases) unaddressed;
+  full list in the session scratchpad (m98m99-findings.json).
 
 A practice surface that mimics the Pearson VUE Athena spreadsheet used on CAS
 upper-level exams: work constructed-response items under the REAL tool's
@@ -66,12 +89,20 @@ Exam 7 is the first user via AI generation from the user's own materials.
    solution (work persisted first), Show My Work swaps back; first reveal
    asks Nailed It / Partially / Missed It and closes the attempt; Try Again
    starts a fresh attempt from the givens. Attempt history accrues.
-4. **Function allowlist:** parse Pearson XLSX (checked into docs/research/
-   assets), disable/flag non-Athena functions.
-5. **AI generation:** create-from-source tab (PDF/canvas/paste), structured
-   item JSON, review-before-save.
-6. **AI Review My Work:** serialize attempt cells + solution → LM critique
-   (stall-guarded, M98 pattern).
+4. **Function allowlist — BUILT.** Pearson workbook downloaded + checked in;
+   scripts/generate-athena-allowlist.mjs emits athenaFunctions.ts (523
+   functions; refuses <200 if the layout shifts). Host unregisters non-Athena
+   executors AND descriptions → real #NAME? + no autocomplete temptation.
+   Degrades to extra-functions-available, never a broken sheet.
+5. **AI generation — BUILT.** Models emit a flat cell format (A1 refs,
+   values/formulas, bold flags) — never raw IWorkbookData; itemFormat.ts
+   validates refs against the grid, strips formulas from givens, tints the
+   given region, layers the solution. Generate pane: PDF drop (page-tagged →
+   per-item page attribution) or paste, guidance + count, review-and-edit
+   before save. 13 pure-logic tests.
+6. **AI Review My Work — BUILT.** Attempt + solution serialize to A1 lines;
+   method-level critique streamed into the solution view and saved on the
+   attempt. Feedback, never a score.
 
 ## Landmines (from memory)
 
