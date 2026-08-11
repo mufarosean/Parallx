@@ -25,6 +25,22 @@ const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 const ELECTRON_CLOSE_TIMEOUT = 10_000;
 
+/**
+ * Environment for launching the app. ELECTRON_RUN_AS_NODE is set globally on
+ * this machine (SQLite worker probes need it); with it present, Electron
+ * starts as plain Node and Playwright reports "Process failed to launch!".
+ * Strip it HERE so no test run depends on remembering a shell prefix.
+ */
+function launchEnv(): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const [k, v] of Object.entries(process.env)) {
+    if (v !== undefined && k !== 'ELECTRON_RUN_AS_NODE') env[k] = v;
+  }
+  env.PARALLX_TEST_MODE = '1';
+  env.PARALLX_RENDERER_PORT = '0';
+  return env;
+}
+
 // ── Temp workspace helpers ──────────────────────────────────────────────────
 
 /** Create a temporary workspace folder with sample files for testing. */
@@ -87,12 +103,7 @@ export const test = base.extend<TestFixtures>({
     const app = await electron.launch({
       args: ['.'],
       cwd: PROJECT_ROOT,
-      env: {
-        ...process.env,
-        // Prevent persisted state from interfering with tests
-        PARALLX_TEST_MODE: '1',
-        PARALLX_RENDERER_PORT: '0',
-      },
+      env: launchEnv(),
     });
     await use(app);
     await closeElectronApp(app);
@@ -127,11 +138,7 @@ export const sharedTest = base.extend<{}, SharedWorkerFixtures>({
     const app = await electron.launch({
       args: ['.'],
       cwd: PROJECT_ROOT,
-      env: {
-        ...process.env,
-        PARALLX_TEST_MODE: '1',
-        PARALLX_RENDERER_PORT: '0',
-      },
+      env: launchEnv(),
     });
     await use(app);
     await closeElectronApp(app);

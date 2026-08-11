@@ -164,7 +164,9 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
     toolbar: true,
     contextMenu: true,
     // Reaches the UI plugin (IUniverUIConfig.popupRootId) even though the
-    // preset's Pick<> doesn't re-export it — hence the cast.
+    // preset's Pick<> doesn't re-export it — hence the cast. Toolbar menus
+    // are screenshot-verified working with this portal; removing it does NOT
+    // fix the grid right-click menu (tested), so that bug lies elsewhere.
     popupRootId: POPUP_ROOT_ID,
   };
   const created: { univer: Univer; univerAPI: FUniver } = createUniver({
