@@ -15,8 +15,10 @@
 import { createUniver, LocaleType, mergeLocales } from '@univerjs/presets';
 import { UniverSheetsCorePreset } from '@univerjs/presets/preset-sheets-core';
 import UniverPresetSheetsCoreEnUS from '@univerjs/presets/preset-sheets-core/locales/en-US';
+import { IFunctionService } from '@univerjs/engine-formula';
 import type { IWorkbookData, Univer } from '@univerjs/core';
 import type { FUniver } from '@univerjs/core/lib/facade';
+import { ATHENA_FUNCTIONS } from './athenaFunctions.js';
 import '@univerjs/presets/lib/styles/preset-sheets-core.css';
 
 /** The Pearson Athena per-item grid bounds (research doc: ~150 × 40). */
@@ -60,6 +62,33 @@ export function blankWorkbookData(): Partial<IWorkbookData> {
   };
 }
 
+/**
+ * Athena fidelity (M99 S4): unregister every function the Pearson exam
+ * driver does not support, so using one yields the same #NAME? the real
+ * exam would — and it disappears from the fx catalog and autocomplete.
+ * The allowlist is generated from Pearson's own comparison workbook.
+ */
+function applyAthenaFunctionSet(univer: Univer): void {
+  try {
+    const injector = univer.__getInjector();
+    const fnService = injector.get(IFunctionService);
+    const allowed = new Set(ATHENA_FUNCTIONS);
+    const toRemove: string[] = [];
+    for (const name of fnService.getDescriptions().keys()) {
+      if (!allowed.has(String(name).toUpperCase())) toRemove.push(String(name));
+    }
+    if (toRemove.length) {
+      fnService.unregisterExecutors(...toRemove);
+      fnService.unregisterDescriptions(...toRemove);
+      console.log(`[WorksheetHost] Athena function set applied — ${toRemove.length} non-exam functions removed, ${allowed.size} allowed`);
+    }
+  } catch (err) {
+    // Filtering is fidelity, not safety — a Univer internals change must
+    // degrade to "extra functions available", never to a broken sheet.
+    console.warn('[WorksheetHost] Athena function filtering skipped:', err);
+  }
+}
+
 export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost {
   const created: { univer: Univer; univerAPI: FUniver } = createUniver({
     locale: LocaleType.EN_US,
@@ -83,6 +112,7 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
   });
 
   const { univer, univerAPI } = created;
+  applyAthenaFunctionSet(univer);
   univerAPI.createWorkbook(opts.snapshot ?? blankWorkbookData());
 
   let disposed = false;
