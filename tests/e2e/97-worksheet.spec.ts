@@ -330,6 +330,54 @@ test.describe('Worksheets — item practice loop (workspace DB)', () => {
     await window.screenshot({ path: path.join(SHOT_DIR, 'item-multipart-tabs.png') });
   });
 
+  test('Excel import: real SP26 file → 3 detected items → import → practice surface', async ({ window, electronApp, workspacePath }) => {
+    await openFolderViaMenu(electronApp, window, workspacePath);
+
+    // Idempotence: scrub items from prior runs.
+    await window.evaluate(async () => {
+      const db = (window as any).parallxElectron?.database;
+      await db?.run("DELETE FROM ws_attempts WHERE item_id IN (SELECT id FROM ws_items WHERE source_label = 'Exam7_PracticeItems_SP26.xlsx')");
+      await db?.run("DELETE FROM ws_items WHERE source_label = 'Exam7_PracticeItems_SP26.xlsx'");
+    });
+
+    // Stub the file dialog with the REAL practice-items workbook.
+    await electronApp.evaluate(({ ipcMain }, p) => {
+      ipcMain.removeHandler('dialog:openFile');
+      ipcMain.handle('dialog:openFile', () => [p]);
+    }, String.raw`C:\Users\mchit\OneDrive\Documents\Actuarial Science\Exams\Exam 7 - October 2026\Practice Problems and Exams\Exam7_PracticeItems_SP26.xlsx`);
+
+    // Sidebar → Import from Excel → pick → detect → import.
+    const sidebar = window.locator('.ws-sidebar');
+    if (!(await sidebar.isVisible().catch(() => false))) {
+      await window.locator('button.activity-bar-item[data-icon-id="worksheet-container"]').click();
+      await sidebar.waitFor({ state: 'visible', timeout: 5_000 });
+    }
+    await sidebar.locator('button', { hasText: 'Import from Excel' }).click();
+    await expect(window.locator('.ws-pane button', { hasText: 'Choose Excel File' })).toBeVisible({ timeout: 5_000 });
+    await window.locator('.ws-pane button', { hasText: 'Choose Excel File' }).click();
+
+    await expect(window.getByText('3 practice items detected')).toBeVisible({ timeout: 30_000 });
+    await expect(window.locator('.ws-xlrow', { hasText: 'SP26 - Item 1' })).toBeVisible();
+    await window.locator('button', { hasText: 'Import Selected Items' }).click();
+
+    // Lands in Home with the three imported items.
+    await expect(window.locator('.ws-itemrow', { hasText: 'SP26 - Item 1' })).toBeVisible({ timeout: 10_000 });
+    await expect(window.locator('.ws-itemrow', { hasText: 'SP26 - Item 3' })).toBeVisible();
+
+    // Practice one: the engine renders the imported question sheet.
+    await window.locator('.ws-itemrow', { hasText: 'SP26 - Item 2' }).first()
+      .locator('button', { hasText: 'Practice' }).click();
+    await waitForEngine(window);
+    await window.screenshot({ path: path.join(SHOT_DIR, 'excel-import-item.png') });
+
+    // Cleanup.
+    await window.evaluate(async () => {
+      const db = (window as any).parallxElectron?.database;
+      await db?.run("DELETE FROM ws_attempts WHERE item_id IN (SELECT id FROM ws_items WHERE source_label = 'Exam7_PracticeItems_SP26.xlsx')");
+      await db?.run("DELETE FROM ws_items WHERE source_label = 'Exam7_PracticeItems_SP26.xlsx'");
+    });
+  });
+
   test('seeded item: practice → reveal → grade → state chip', async ({ window, electronApp, workspacePath }) => {
     await openFolderViaMenu(electronApp, window, workspacePath);
 

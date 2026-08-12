@@ -28,6 +28,7 @@ import {
 import { itemToWorkbooks, workbookHasOnSheetQuestion, type GeneratedItem } from './itemFormat.js';
 import { generateItems, reviewAttempt, type LmApiLike } from './worksheetAi.js';
 import { registerWorksheetChatTools } from './worksheetChat.js';
+import { detectExcelItems, wholeSheetItem, type GridSheet, type ExcelItem } from './excelImport.js';
 import './worksheet.css';
 
 // ── API typings (structural — the tool API surface) ─────────────────────────
@@ -201,6 +202,10 @@ function createHomePane(container: HTMLElement) {
     scratchBtn.textContent = 'Open Scratch Sheet';
     scratchBtn.addEventListener('click', () => void openWorksheet('scratch', 'Practice Sheet'));
     head.appendChild(scratchBtn);
+    const importBtn = el('button', 'ws-btn') as HTMLButtonElement;
+    importBtn.textContent = 'Import from Excel';
+    importBtn.addEventListener('click', () => void openWorksheet('excel-import', 'Import from Excel'));
+    head.appendChild(importBtn);
     const genBtn = el('button', 'ws-btn ws-btn--primary') as HTMLButtonElement;
     genBtn.textContent = 'Generate Items';
     genBtn.addEventListener('click', () => void openWorksheet('create', 'Generate Items'));
@@ -300,6 +305,7 @@ function createSidebarView(container: HTMLElement) {
       actions.appendChild(b);
     };
     mk('Generate Items', true, () => void openWorksheet('create', 'Generate Items'));
+    mk('Import from Excel', false, () => void openWorksheet('excel-import', 'Import from Excel'));
     mk('Scratch Sheet', false, () => void openWorksheet('scratch', 'Practice Sheet'));
     root.appendChild(actions);
 
@@ -608,6 +614,172 @@ function createGeneratePane(container: HTMLElement) {
     reviewHost.appendChild(saveBtn);
     saveBtn.scrollIntoView({ block: 'nearest' });
   };
+
+  return {
+    dispose: () => {
+      disposed = true;
+      root.remove();
+    },
+  };
+}
+
+// ── Excel import pane (instanceId 'excel-import') ───────────────────────────
+//
+// Real practice workbooks (Rising Fellow problem sets, CAS item files) come
+// in as native worksheet items: the question sheet becomes the practice
+// surface, the answer region/sheet becomes the revealed solution — formulas,
+// merges and layout intact. Detection is mechanical (no AI): "Item N /
+// Answer N" pairs, and question-left / "Solution ->"-right sheets.
+
+function createExcelImportPane(container: HTMLElement) {
+  const root = el('div', 'ws-pane ws-create');
+  container.appendChild(root);
+  let disposed = false;
+
+  root.appendChild(el('div', 'ws-home__title', 'Import Practice Items from Excel'));
+  root.appendChild(el('div', 'ws-hint',
+    'Bring existing spreadsheet practice problems in as native items. Item/Answer sheet pairs and question-left, solution-right sheets are detected automatically; anything else can be imported whole. Values, formulas and layout carry over.'));
+
+  const pickRow = el('div', 'ws-create__controls');
+  const pickBtn = el('button', 'ws-btn ws-btn--primary') as HTMLButtonElement;
+  pickBtn.textContent = 'Choose Excel File…';
+  pickRow.appendChild(pickBtn);
+  const status = el('span', 'ws-hint');
+  pickRow.appendChild(status);
+  root.appendChild(pickRow);
+
+  const err = el('div', 'ws-error');
+  err.style.display = 'none';
+  root.appendChild(err);
+  const listHost = el('div', 'ws-create__review');
+  root.appendChild(listHost);
+
+  const renderSelection = (items: ExcelItem[], leftovers: GridSheet[], filePath: string, fileLabel: string) => {
+    listHost.replaceChildren();
+    err.style.display = 'none';
+
+    interface Row { item: ExcelItem; include: boolean; box: HTMLInputElement }
+    const rows: Row[] = [];
+    const addRow = (item: ExcelItem, include: boolean, host: HTMLElement) => {
+      const row = el('div', 'ws-genitem ws-xlrow');
+      const line = el('label', 'ws-xlrow__line');
+      const box = el('input') as HTMLInputElement;
+      box.type = 'checkbox';
+      box.checked = include;
+      line.appendChild(box);
+      line.appendChild(el('span', 'ws-xlrow__title', item.title));
+      const meta: string[] = [];
+      if (item.points > 0) meta.push(`${item.points} pts`);
+      meta.push(item.kind === 'pair' ? 'Item + Answer sheets' : item.kind === 'split' ? 'solution alongside' : 'whole sheet');
+      line.appendChild(el('span', 'ws-itemrow__meta', meta.join(' · ')));
+      row.appendChild(line);
+      host.appendChild(row);
+      rows.push({ item, include, box });
+    };
+
+    if (items.length > 0) {
+      const head = el('div', 'ws-home__title', `${items.length} practice ${items.length === 1 ? 'item' : 'items'} detected`);
+      listHost.appendChild(head);
+      const toggles = el('div', 'ws-create__controls');
+      const allBtn = el('button', 'ws-btn') as HTMLButtonElement;
+      allBtn.textContent = 'Select All';
+      allBtn.addEventListener('click', () => { for (const r of rows) if (r.item.kind !== 'whole') r.box.checked = true; });
+      const noneBtn = el('button', 'ws-btn') as HTMLButtonElement;
+      noneBtn.textContent = 'Select None';
+      noneBtn.addEventListener('click', () => { for (const r of rows) r.box.checked = false; });
+      toggles.append(allBtn, noneBtn);
+      listHost.appendChild(toggles);
+      for (const item of items) addRow(item, true, listHost);
+    }
+    if (leftovers.length > 0) {
+      listHost.appendChild(el('div', 'ws-home__title', `Other sheets (${leftovers.length})`));
+      listHost.appendChild(el('div', 'ws-hint', 'No question/solution structure detected - tick any to import the whole sheet as a practice surface.'));
+      for (const sheet of leftovers) addRow(wholeSheetItem(sheet, fileLabel), false, listHost);
+    }
+    if (items.length === 0 && leftovers.length === 0) {
+      listHost.appendChild(el('div', 'ws-hint', 'That workbook has no importable sheets.'));
+      return;
+    }
+
+    const importBtn = el('button', 'ws-btn ws-btn--primary') as HTMLButtonElement;
+    importBtn.textContent = 'Import Selected Items';
+    importBtn.addEventListener('click', () => {
+      void (async () => {
+        const keep = rows.filter((r) => r.box.checked);
+        if (keep.length === 0) {
+          err.textContent = 'Nothing selected to import.';
+          err.style.display = '';
+          return;
+        }
+        importBtn.disabled = true;
+        try {
+          let done = 0;
+          for (const r of keep) {
+            await createItem({
+              title: r.item.title,
+              questionMd: r.item.questionMd,
+              givensJson: r.item.givensJson,
+              solutionJson: r.item.solutionJson,
+              solutionNotesMd: '',
+              sourceUri: filePath,
+              sourceLabel: fileLabel,
+              sourcePage: 0,
+              tags: r.item.tags,
+            });
+            done++;
+            if (done % 10 === 0) status.textContent = `Importing - ${done} / ${keep.length}…`;
+          }
+          _api?.activity?.note('imported', `${keep.length} worksheet practice ${keep.length === 1 ? 'item' : 'items'}`, fileLabel);
+          await _api?.window?.showInformationMessage?.(`Imported ${keep.length} ${keep.length === 1 ? 'item' : 'items'}.`);
+          await openWorksheet('home', 'Worksheets');
+        } catch (e) {
+          err.textContent = (e as Error).message;
+          err.style.display = '';
+          importBtn.disabled = false;
+        }
+      })();
+    });
+    listHost.appendChild(importBtn);
+  };
+
+  pickBtn.addEventListener('click', () => {
+    void (async () => {
+      const electron = (window as {
+        parallxElectron?: {
+          dialog?: { openFile?(opts: unknown): Promise<string[] | null> };
+          document?: { extractWorkbookGrid?(p: string): Promise<{ error?: { message: string }; sheets?: GridSheet[] }> };
+        };
+      }).parallxElectron;
+      if (!electron?.dialog?.openFile || !electron?.document?.extractWorkbookGrid) {
+        err.textContent = 'Excel import needs the desktop app.';
+        err.style.display = '';
+        return;
+      }
+      const res = await electron.dialog.openFile({
+        title: 'Import practice problems',
+        filters: [{ name: 'Excel Workbooks', extensions: ['xlsx', 'xlsm', 'xls'] }],
+      });
+      const filePath = Array.isArray(res) ? res[0] : undefined;
+      if (!filePath || disposed) return;
+      const fileLabel = filePath.split(/[\\/]/).pop() || 'Workbook';
+      status.textContent = `Reading ${fileLabel}…`;
+      err.style.display = 'none';
+      try {
+        const grid = await electron.document.extractWorkbookGrid(filePath);
+        if (grid?.error) throw new Error(grid.error.message);
+        const sheets = grid?.sheets ?? [];
+        if (disposed) return;
+        const { items, leftovers } = detectExcelItems(sheets, fileLabel.replace(/\.(xlsx|xlsm|xls)$/i, ''));
+        const leftoverSheets = sheets.filter((s) => leftovers.includes(s.name));
+        status.textContent = `${fileLabel}: ${sheets.length} sheets, ${items.length} items detected.`;
+        renderSelection(items, leftoverSheets, filePath, fileLabel);
+      } catch (e) {
+        status.textContent = '';
+        err.textContent = `Could not read the workbook: ${(e as Error).message}`;
+        err.style.display = '';
+      }
+    })();
+  });
 
   return {
     dispose: () => {
@@ -972,6 +1144,7 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
         const instanceId = input?.instanceId ?? input?.id ?? 'home';
         if (instanceId === 'home') return createHomePane(container);
         if (instanceId === 'create') return createGeneratePane(container);
+        if (instanceId === 'excel-import') return createExcelImportPane(container);
         return createSheetPane(container, instanceId);
       },
     }),
@@ -991,6 +1164,9 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
   );
   context.subscriptions.push(
     api.commands.registerCommand('worksheet.generate', () => openWorksheet('create', 'Generate Items')),
+  );
+  context.subscriptions.push(
+    api.commands.registerCommand('worksheet.importExcel', () => openWorksheet('excel-import', 'Import from Excel')),
   );
 
   // The AI's read surface: bank/progress + the user's actual sheet work.

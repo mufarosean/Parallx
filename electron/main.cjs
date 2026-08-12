@@ -25,7 +25,7 @@ const AdmZip = require('adm-zip');
 // execution never blocks the main process, which routes user input.  These
 // are async proxies with the same API (see databaseClient.cjs).
 const { databaseManager, extensionDatabaseManager } = require('./databaseClient.cjs');
-const { extractText, extractEpubReadingData, extractDocxReadingData, extractSpreadsheetReadingData, isRichDocument, RICH_DOCUMENT_EXTENSIONS } = require('./documentExtractor.cjs');
+const { extractText, extractEpubReadingData, extractDocxReadingData, extractSpreadsheetReadingData, extractWorkbookGrid, isRichDocument, RICH_DOCUMENT_EXTENSIONS } = require('./documentExtractor.cjs');
 const doclingBridge = require('./doclingBridge.cjs');
 const { setupMcpBridge, killAllMcpProcesses } = require('./mcpBridge.cjs');
 const { setupStorageHandlers } = require('./storageHandlers.cjs');
@@ -2117,6 +2117,16 @@ ipcMain.handle('document:extractText', async (_event, filePath) => {
     // pageTexts rides along for PDFs so callers can pair pages (the flashcard
     // importer's odd-front / even-back decks). Absent for other formats.
     return { text: result.text, format: result.format, metadata: result.metadata, pageTexts: result.pageTexts };
+  } catch (err) {
+    return { error: { code: 'EXTRACTION_FAILED', message: err.message || String(err), path: filePath } };
+  }
+});
+
+// ── document:extractWorkbookGrid — full cell grid for the Worksheets
+//    practice-item importer (values + formulas + merges + widths) ──
+ipcMain.handle('document:extractWorkbookGrid', async (_event, filePath) => {
+  try {
+    return await extractWorkbookGrid(filePath);
   } catch (err) {
     return { error: { code: 'EXTRACTION_FAILED', message: err.message || String(err), path: filePath } };
   }

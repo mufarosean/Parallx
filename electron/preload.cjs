@@ -402,6 +402,10 @@ contextBridge.exposeInMainWorld('parallxElectron', {
     /** Extract plain text from a rich document (PDF, Excel, Word, EPUB). Returns { text, format, metadata } or { error }. */
     extractText: (filePath) => ipcRenderer.invoke('document:extractText', filePath),
 
+    /** Full workbook cell grid (values + formulas + merges + widths) for the
+     *  Worksheets practice-item importer. Returns { sheets } or { error }. */
+    extractWorkbookGrid: (filePath) => ipcRenderer.invoke('document:extractWorkbookGrid', filePath),
+
     /** Extract sanitized EPUB reader chapters. Returns { title, chapters, metadata } or { error }. */
     readEpub: (filePath) => ipcRenderer.invoke('document:readEpub', filePath),
 

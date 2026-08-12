@@ -494,6 +494,8 @@ export const WORKSHEET_MANIFEST: IToolManifest = {
         aiInvocable: true, aiDescription: 'Open a blank exam-faithful practice sheet.' },
       { id: 'worksheet.generate', title: 'Worksheets: Generate Items',
         aiInvocable: true, aiDescription: 'Generate practice items from study material.' },
+      { id: 'worksheet.importExcel', title: 'Worksheets: Import from Excel',
+        aiInvocable: true, aiDescription: 'Import existing Excel practice workbooks (Item/Answer pairs or question-and-solution sheets) as practice items.' },
     ],
     viewContainers: [
       { id: 'worksheet-container', title: 'Worksheets', icon: 'file-spreadsheet', location: 'sidebar' as const },

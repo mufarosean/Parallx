@@ -753,11 +753,64 @@ async function extractSpreadsheetReadingData(filePath) {
   return { format: 'spreadsheet', title: path.basename(filePath, ext), sheets };
 }
 
+/**
+ * Read a workbook as a full CELL GRID (values + formulas + merges + column
+ * widths) for the Worksheets practice-item importer. Unlike the reading-view
+ * extractor above (formatted strings for a table), this preserves the
+ * machine shape a spreadsheet engine can rebuild: numbers stay numbers,
+ * formulas ride along, merges keep layout.
+ * @param {string} filePath
+ * @returns {Promise<{ sheets: Array<{ name: string; cells: Array<[number, number, string|number, string|null]>; merges: Array<[number, number, number, number]>; colWidths: Array<[number, number]> }> }>}
+ */
+async function extractWorkbookGrid(filePath) {
+  const stat = await fs.stat(filePath);
+  if (stat.size > MAX_RICH_DOC_SIZE) {
+    throw new Error(`File exceeds ${MAX_RICH_DOC_SIZE} byte limit (${stat.size} bytes)`);
+  }
+  const buffer = await fs.readFile(filePath);
+  const XLSX = getXlsx();
+  const workbook = XLSX.read(buffer, { type: 'buffer', cellFormula: true });
+  const MAX_CELLS_PER_SHEET = 20000;
+  const sheets = [];
+  for (const name of workbook.SheetNames) {
+    const ws = workbook.Sheets[name];
+    if (!ws) continue;
+    /** [row, col, value, formulaOrNull] — compact tuples keep the IPC payload
+     *  sane for 300+-sheet workbooks. */
+    const cells = [];
+    for (const addr of Object.keys(ws)) {
+      if (addr.startsWith('!')) continue;
+      if (cells.length >= MAX_CELLS_PER_SHEET) break;
+      const c = ws[addr];
+      if (c == null) continue;
+      const hasValue = c.v !== undefined && c.v !== null && c.v !== '';
+      const formula = typeof c.f === 'string' && c.f.trim() ? c.f : null;
+      if (!hasValue && !formula) continue;
+      const pos = XLSX.utils.decode_cell(addr);
+      // Dates arrive as Date objects with cellDates, or serials without —
+      // read without cellDates and pass the formatted text for date cells so
+      // the practice sheet shows "7/1/2023", not 45108.
+      let value = c.v;
+      if (value instanceof Date) value = c.w || value.toISOString().slice(0, 10);
+      else if (typeof value !== 'number' && typeof value !== 'string' && typeof value !== 'boolean') value = String(value ?? '');
+      if (typeof value === 'boolean') value = value ? 'TRUE' : 'FALSE';
+      cells.push([pos.r, pos.c, value, formula]);
+    }
+    const merges = (ws['!merges'] || []).map((m) => [m.s.r, m.s.c, m.e.r, m.e.c]);
+    const colWidths = (ws['!cols'] || [])
+      .map((c, i) => (c && typeof c.wpx === 'number' ? [i, Math.round(c.wpx)] : (c && typeof c.wch === 'number' ? [i, Math.round(c.wch * 7.5)] : null)))
+      .filter(Boolean);
+    sheets.push({ name: String(name), cells, merges, colWidths });
+  }
+  return { sheets };
+}
+
 module.exports = {
   extractText,
   extractEpubReadingData,
   extractDocxReadingData,
   extractSpreadsheetReadingData,
+  extractWorkbookGrid,
   isRichDocument,
   RICH_DOCUMENT_EXTENSIONS,
   MAX_RICH_DOC_SIZE,
