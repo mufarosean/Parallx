@@ -1736,31 +1736,6 @@ async function fcGenerateCards(sourceText, { count = null, focus = '', pageTexts
   return cards;
 }
 
-/** Stream a discussion turn about a card. Returns the async iterable. */
-async function fcDiscussStream(card, history, question) {
-  const modelId = await fcPickModel();
-  if (!modelId) throw new Error('No language model available.');
-  const system = [
-    'You are a study tutor discussing ONE flashcard with the learner.',
-    'Be concise and concrete. Explain, give mnemonic hooks, test understanding.',
-    'Never just restate the back of the card; add insight.',
-    'Answers render Markdown + KaTeX: write formulas in LaTeX between $...$. Never use em dashes.',
-    `CARD FRONT: ${card.front}`,
-    `CARD BACK: ${card.back}`,
-    card.sourceLabel ? `SOURCE: ${card.sourceLabel}` : '',
-  ].filter(Boolean).join('\n');
-  const messages = [
-    { role: 'system', content: system },
-    ...history,
-    { role: 'user', content: question },
-  ];
-  // Same user-controlled AI knobs as generation (Settings → Flashcards).
-  const { contextSetting, think } = fcAiOptions();
-  const modelCtx = await fcModelContextLength(modelId);
-  const chars = messages.reduce((n, m) => n + String(m.content || '').length, 0);
-  const { numCtx } = fcContextPlan({ chars, count: 1, modelCtx, setting: contextSetting });
-  return _api.lm.sendChatRequest(modelId, messages, { temperature: 0.4, think, numCtx });
-}
 
 // ── Leech loop (M98) ─────────────────────────────────────────────────────────
 // A card failed `flashcards.leechThreshold`+ times is a leech: the formulation
@@ -2485,30 +2460,6 @@ function injectStyles() {
 .fc-study__keys { margin-top: var(--px-space-4); font-size: var(--px-text-xs); color: var(--px-text-faint); }
 .fc-study__done { text-align: center; padding: var(--px-space-8) var(--px-space-5); }
 .fc-study__done .fc-btn { margin-top: var(--px-space-4); }
-
-/* ── Discuss panel ── */
-.fc-discuss {
-  flex: 0 0 320px; display: flex; flex-direction: column;
-  border-left: 1px solid var(--px-divider);
-  animation: fc-discuss-in var(--px-dur-base) var(--px-ease-out);
-}
-@keyframes fc-discuss-in {
-  from { opacity: 0; transform: translateX(8px); }
-  to   { opacity: 1; transform: translateX(0); }
-}
-.fc-discuss__head {
-  padding: var(--px-space-2) var(--px-space-3);
-  font-size: var(--px-text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
-  color: var(--px-text-faint);
-  border-bottom: 1px solid var(--px-divider);
-}
-.fc-discuss__log { flex: 1; overflow-y: auto; padding: var(--px-space-2) var(--px-space-3); display: flex; flex-direction: column; gap: var(--px-space-2); }
-.fc-discuss__msg { font-size: var(--px-text-sm); line-height: var(--px-leading-base); white-space: pre-wrap; overflow-wrap: anywhere; }
-.fc-discuss__msg--user { color: var(--px-text); font-weight: 600; }
-.fc-discuss__msg--ai { color: var(--px-text-secondary); }
-.fc-discuss__input-row { display: flex; gap: var(--px-space-1); padding: var(--px-space-2) var(--px-space-3); border-top: 1px solid var(--px-divider); }
-.fc-discuss__input { flex: 1; }
-.fc-discuss__empty { font-size: var(--px-text-xs); color: var(--px-text-faint); padding: var(--px-space-2) var(--px-space-3); line-height: var(--px-leading-base); }
 
 /* ── Stats — typographic, not boxed. Big tabular numerals over faint eyebrows,
    separated by whitespace; one restrained review histogram on a baseline. ── */
@@ -3354,7 +3305,6 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
     doneCount: 0,
     total: queue.length,
     cardShownAt: Date.now(),
-    discussHistory: [],
     /** Learning cards graded this session, waiting on a FUTURE dueAt.
      *  Served the moment they come due — the "Again 1m" contract. */
     pending: [],
@@ -3368,81 +3318,10 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
     session.grading = false;
     session.editing = false;
     session.waitTimer = null;
-    session.discussHistory = [];
     session.history = session.history || [];
   }
   _fcStudySessions.set(sessionKey, session);
   paneState.session = session;
-
-  // Discuss panel (collapsed by default; toggled per card).
-  let discussPanel = null;
-  const closeDiscuss = () => {
-    if (discussPanel) { discussPanel.remove(); discussPanel = null; }
-  };
-
-  const openDiscuss = (card) => {
-    closeDiscuss();
-    session.discussHistory = [];
-    const panel = el('div', 'fc-discuss');
-    discussPanel = panel;
-    panel.appendChild(el('div', 'fc-discuss__head', 'Discuss this card'));
-    const log = el('div', 'fc-discuss__log');
-    panel.appendChild(log);
-    panel.appendChild(el('div', 'fc-discuss__empty',
-      'Ask anything about this card: why the answer holds, edge cases, a mnemonic…'));
-    const inputRow = el('div', 'fc-discuss__input-row');
-    const input = el('input', 'fc-input fc-discuss__input');
-    input.placeholder = 'Ask the AI…';
-    const send = el('button', 'fc-btn fc-btn--primary');
-    send.textContent = 'Send';
-    const submit = () => {
-      const q = input.value.trim();
-      if (!q || send.disabled) return;
-      input.value = '';
-      void (async () => {
-        send.disabled = true;
-        const userMsg = el('div', 'fc-discuss__msg fc-discuss__msg--user', q);
-        log.appendChild(userMsg);
-        const aiMsg = el('div', 'fc-discuss__msg fc-discuss__msg--ai', '…');
-        log.appendChild(aiMsg);
-        log.scrollTop = log.scrollHeight;
-        try {
-          const stream = await fcDiscussStream(card, session.discussHistory, q);
-          let text = '';
-          await fcStreamWithStall(stream, (chunk) => {
-            if (chunk.content) {
-              text += chunk.content;
-              aiMsg.textContent = text;
-              log.scrollTop = log.scrollHeight;
-            }
-          });
-          // Final render: markdown + LaTeX (streaming shows plain text).
-          if (_api.ui.renderMarkdown) {
-            aiMsg.textContent = '';
-            aiMsg.appendChild(_api.ui.renderMarkdown(text));
-            log.scrollTop = log.scrollHeight;
-          }
-          session.discussHistory.push({ role: 'user', content: q });
-          session.discussHistory.push({ role: 'assistant', content: text });
-          // Keep the transcript bounded.
-          if (session.discussHistory.length > 12) {
-            session.discussHistory = session.discussHistory.slice(-12);
-          }
-        } catch (err) {
-          aiMsg.textContent = `(${err.message})`;
-        } finally {
-          send.disabled = false;
-          input.focus();
-        }
-      })();
-    };
-    send.addEventListener('click', submit);
-    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
-    inputRow.append(input, send);
-    panel.appendChild(inputRow);
-    study.appendChild(panel);
-    input.focus();
-  };
 
   // Render card text through the shared Markdown + KaTeX renderer; fall
   // back to plain text if the host is too old to provide it.
@@ -3527,7 +3406,6 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
   };
 
   const showCard = () => {
-    closeDiscuss();
     if (session.waitTimer) { clearInterval(session.waitTimer); session.waitTimer = null; }
     main.innerHTML = '';
     session.revealed = false;
@@ -3562,7 +3440,6 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
     // ── In-study Edit / Delete (Mufaro: "If I see a flashcard is incorrect,
     // I have to edit it right there and then") ──
     const openEdit = () => {
-      closeDiscuss();
       session.editing = true;
       main.innerHTML = '';
       const wrap = el('div', 'fc-study__edit');
@@ -3724,6 +3601,9 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
         btn.addEventListener('click', () => grade(g.r));
         controls.appendChild(btn);
       }
+      // ONE AI action (user report: two redundant buttons looked bad). The
+      // main chat is the app's single AI surface — the old inline mini-chat
+      // duplicated it wholesale and is gone.
       const discussHost = el('div', 'fc-study__discuss');
       const discussBtn = _api.ui.createAiButton
         ? _api.ui.createAiButton(discussHost, { label: 'Discuss with AI' })
@@ -3732,16 +3612,15 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
         discussBtn.textContent = 'Discuss with AI';
         discussHost.appendChild(discussBtn);
       }
-      discussBtn.addEventListener('click', () => openDiscuss(card));
-      // M98: hand the card to the main chat with full context staged.
-      const explainBtn = el('button', 'fc-btn');
-      explainBtn.textContent = 'Explain in Chat';
-      explainBtn.addEventListener('click', () => {
+      discussBtn.title = 'Open the chat with this card and its source staged.';
+      discussBtn.addEventListener('click', () => {
         void fcExplainInChat(card, deckNames.get(card.deckId));
       });
-      discussHost.appendChild(explainBtn);
       main.appendChild(discussHost);
-      main.appendChild(el('div', 'fc-study__keys', 'Space reveal · 1 Again · 2 Hard · 3 Good · 4 Easy · E edit · Z undo'));
+      // The single hint line moves to the end and switches to grading keys —
+      // appending a second line stacked two hints on screen (user report).
+      keys.textContent = '1 Again · 2 Hard · 3 Good · 4 Easy · E edit · Z undo';
+      main.appendChild(keys);
     };
 
     const grade = (rating) => {
@@ -3775,7 +3654,8 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
     revealBtn.textContent = 'Show Answer';
     revealBtn.addEventListener('click', reveal);
     controls.appendChild(revealBtn);
-    main.appendChild(el('div', 'fc-study__keys', 'Space shows the answer · E edits the card'));
+    const keys = el('div', 'fc-study__keys', 'Space reveals the answer · E edit · Z undo');
+    main.appendChild(keys);
 
     // Container-scoped keyboard: only fires while the study surface has focus.
     main.onkeydown = (e) => {
