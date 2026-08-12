@@ -3724,6 +3724,32 @@ async function renderDecks(body, setRoute) {
  * the preview IS the point: `$\frac{a}{b}$` and a typo'd `$\fac{a}{b}$` look
  * identical as source text.
  */
+/** Textarea + live markdown/KaTeX preview pair — the review surfaces use
+ *  it so a card is judged by what it will RENDER, not raw $LaTeX$ source
+ *  (user report: content review was lacking). */
+function fcPreviewTextarea(value, rows = 2) {
+  const grid = el('div', 'fc-edit__row');
+  const ta = el('textarea', 'fc-textarea');
+  ta.rows = rows;
+  ta.value = value;
+  const pv = el('div', 'fc-edit__preview');
+  const paint = (text) => {
+    pv.innerHTML = '';
+    const t = String(text || '').trim();
+    pv.classList.toggle('fc-edit__preview--empty', !t);
+    if (!t) { pv.textContent = 'nothing yet'; return; }
+    try { pv.appendChild(_api.ui.renderMarkdown(t)); } catch { pv.textContent = t; }
+  };
+  paint(value);
+  let timer = null;
+  ta.addEventListener('input', () => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => paint(ta.value), 150);
+  });
+  grid.append(ta, pv);
+  return { grid, ta };
+}
+
 function fcCardEditorEl(card, { onSave, onCancel }) {
   const form = el('div', 'fc-edit');
 
@@ -4550,11 +4576,9 @@ async function renderCoverage(body, route, setRoute) {
               }
               fields.appendChild(chips);
             }
-            const front = el('textarea', 'fc-textarea');
-            front.rows = 2; front.value = c.front;
-            const back = el('textarea', 'fc-textarea');
-            back.rows = 2; back.value = c.back;
-            fields.append(front, back);
+            const { grid: frontGrid, ta: front } = fcPreviewTextarea(c.front);
+            const { grid: backGrid, ta: back } = fcPreviewTextarea(c.back);
+            fields.append(frontGrid, backGrid);
             row.appendChild(fields);
             const dropBtn = el('button', 'fc-btn fc-btn--danger');
             dropBtn.textContent = 'Drop';
@@ -5417,11 +5441,9 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
         }
         fields.appendChild(chips);
       }
-      const front = el('textarea', 'fc-textarea');
-      front.rows = 2; front.value = c.front;
-      const back = el('textarea', 'fc-textarea');
-      back.rows = 2; back.value = c.back;
-      fields.append(front, back);
+      const { grid: frontGrid, ta: front } = fcPreviewTextarea(c.front);
+      const { grid: backGrid, ta: back } = fcPreviewTextarea(c.back);
+      fields.append(frontGrid, backGrid);
       row.appendChild(fields);
       const dropBtn = el('button', 'fc-btn fc-btn--danger');
       dropBtn.textContent = 'Drop';
