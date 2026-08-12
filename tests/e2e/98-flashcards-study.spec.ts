@@ -32,6 +32,9 @@ test('grade Again → countdown wait → Show Now re-serves; in-study Edit/Delet
   await window.locator('.command-palette-input').fill('>Open Flashcards');
   await window.locator('.command-palette-item', { hasText: 'Open Flashcards' }).first().click();
   await expect(window.locator('.fc-pane')).toBeVisible({ timeout: 10_000 });
+  // Open Flashcards no longer forces a route (no-reset fix) — the pane may
+  // surface wherever it was left. Navigate to Decks explicitly.
+  await window.locator('.fc-pane__tabs', { hasText: 'Decks' }).getByText('Decks', { exact: true }).click();
 
   // Idempotence: a leftover deck from a prior run is deleted via its row.
   const confirmButton = (label: string) =>

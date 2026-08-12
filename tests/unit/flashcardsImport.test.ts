@@ -17,7 +17,76 @@ import { __testables } from '../../ext/flashcards/main.js';
 const require_ = createRequire(import.meta.url);
 const { htmlToText, renderCloze, renderTemplate, buildFieldMap, parseAnkiTxt } = require_('../../electron/ankiWorker.cjs');
 
-const { fcPairPages, fcParsePastedRows, fcImportKindOf, fcExtOf } = __testables;
+const { fcPairPages, fcStripPageFurniture, fcParsePastedRows, fcImportKindOf, fcExtOf } = __testables;
+
+// ─── fcStripPageFurniture — headers/footers off the cards ────────────────────
+// Fixtures model the four REAL provider decks scouted 2026-08-12 (Brosius,
+// Mack CL, Marshall, Meyers): letter-spaced headers with literal tabs and
+// per-card digits, FRONT/BACK · CARD N footers, back-page titles fused with
+// a "Recipe N of M" tag via tab, and math orphans near the footer.
+
+describe('fcStripPageFurniture', () => {
+  const front = (n: number, body: string) => [
+    'B R O S I U S · E X A M \t7',
+    `R E C I P E ${n} O F 3`,
+    body,
+    `FRONT · CARD ${n}`,
+  ].join('\n');
+  const back = (n: number, title: string, body: string) => [
+    `${title} \tRecipe ${n} of 3`,
+    body,
+    `BACK · CARD ${n}`,
+  ].join('\n');
+
+  const deck = [
+    front(1, 'List the steps of Least Squares.'),
+    back(1, 'Least Squares Method', 'EXAM TIPS\nWatch the credibility weight.'),
+    front(2, 'State Development Formula 2.'),
+    back(2, 'Bayesian Credibility', 'EXAM TIPS\nVHM and EVPV.'),
+    front(3, 'Explain the caseload effect.'),
+    back(3, 'Caseload Effect', 'EXAM TIPS\nFixed reporting amount.'),
+  ];
+
+  it('strips letter-spaced digit-varying headers and FRONT/BACK footers', () => {
+    const stripped = fcStripPageFurniture(deck);
+    expect(stripped[0]).toBe('List the steps of Least Squares.');
+    expect(stripped[2]).toBe('State Development Formula 2.');
+    for (const page of stripped) {
+      expect(page).not.toMatch(/CARD \d/);
+      expect(page).not.toMatch(/R E C I P E/);
+    }
+  });
+
+  it('keeps back-page titles, dropping only the fused Recipe tag', () => {
+    const stripped = fcStripPageFurniture(deck);
+    expect(stripped[1]).toContain('Least Squares Method');
+    expect(stripped[1]).not.toContain('Recipe 1 of 3');
+    expect(stripped[3]).toContain('Bayesian Credibility');
+  });
+
+  it('keeps mid-page repeated section headings (content, not furniture)', () => {
+    const stripped = fcStripPageFurniture(deck);
+    for (const page of [stripped[1], stripped[3], stripped[5]]) {
+      expect(page).toContain('EXAM TIPS');
+    }
+  });
+
+  it('never strips short math orphans near the footer', () => {
+    const withOrphan = deck.map((p, i) => (i === 4 ? p.replace('\nFRONT · CARD 3', '\nZ\nFRONT · CARD 3') : p));
+    const stripped = fcStripPageFurniture(withOrphan);
+    expect(stripped[4]).toContain('Z');
+    expect(stripped[4]).not.toContain('FRONT · CARD 3');
+  });
+
+  it('unique lines at furniture positions survive (no repeats, no strip)', () => {
+    const pages = ['Alpha question\nabout topic A\nAlpha answer line', 'Beta question\nabout topic B\nBeta answer line'];
+    expect(fcStripPageFurniture(pages)).toEqual(pages);
+  });
+
+  it('pages too short to carry furniture pass through untouched', () => {
+    expect(fcStripPageFurniture(['One line', 'Two\nlines'])).toEqual(['One line', 'Two\nlines']);
+  });
+});
 
 // ─── fcPairPages — odd pages front, even pages back ──────────────────────────
 

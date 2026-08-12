@@ -1816,6 +1816,94 @@ function fcIsLeech(card) {
   return (card.lapses || 0) >= fcLeechThreshold();
 }
 
+// ── Faithful transcription (import "Rebuild with AI") ────────────────────────
+//
+// NOT generation: the mechanical import's exactness promise stands — same
+// cards, same wording — but PDF extraction shreds rendered math into
+// out-of-order fragments (fraction denominators before numerators, detached
+// sub/superscripts, vanished radicals — verified on four real provider
+// decks). Only a model can put a known formula back together; this pass does
+// that and drops leftover page furniture, and nothing else.
+
+const FC_TRANSCRIBE_SYSTEM = [
+  'You transcribe flashcards that were extracted from a PDF with a mangled text layer.',
+  'For each numbered card, reproduce the SAME front and back:',
+  '- Keep the wording VERBATIM. Never paraphrase, summarize, reorder sections, add facts, or drop content.',
+  '- Never merge, split, add, or drop cards. Output EXACTLY one object per input card, in input order.',
+  '- Rebuild every mangled formula in clean LaTeX between $...$ (inline math on ONE line; $$...$$ for display equations). Extraction scrambles fractions, subscripts, superscripts and radicals: reconstruct the standard form the text clearly intends instead of copying the garble.',
+  '- Fix words broken by extraction (stray tabs, split letters) and re-attach math to the sentence that references it.',
+  '- DROP page furniture only: running headers, footers, page numbers, card counters ("FRONT · CARD 2", "Recipe 1 of 5"), watermarks.',
+  '- Keep section headings that carry content (e.g. "EXAM TIPS", "PAST EXAM PRACTICE") and source citations.',
+  '- Never use em dashes.',
+  'Output ONLY a JSON array, no prose, one object per card in input order:',
+  '[{"front": "...", "back": "...", "page": N}] where N echoes the CARD number you were given.',
+].join('\n');
+
+/**
+ * Rebuild paired PDF cards through the model, faithfully. Returns an array
+ * of the SAME length: each element is the rebuilt card (front/back replaced;
+ * sourcePage/tags preserved) or the untouched original when anything about
+ * its batch fails — a parse error, a stall, a count mismatch. Never throws;
+ * with no model available it returns the input unchanged.
+ */
+async function fcAiTranscribePairs(cards, { onProgress } = {}) {
+  const modelId = await fcPickModel();
+  if (!modelId || !_api?.lm?.sendChatRequest) return cards;
+  const { contextSetting, think } = fcAiOptions();
+  const modelCtx = await fcModelContextLength(modelId);
+
+  // Small batches bound the blast radius of one bad parse and keep the
+  // output reserve honest: a transcription's output is roughly the SIZE OF
+  // ITS INPUT, unlike generation's condensed 220-token cards.
+  const batches = [];
+  let batch = [];
+  let batchChars = 0;
+  for (const card of cards) {
+    const size = card.front.length + card.back.length;
+    if (batch.length > 0 && (batch.length >= 8 || batchChars + size > 6000)) {
+      batches.push(batch);
+      batch = [];
+      batchChars = 0;
+    }
+    batch.push(card);
+    batchChars += size;
+  }
+  if (batch.length > 0) batches.push(batch);
+
+  const out = [];
+  let done = 0;
+  for (const group of batches) {
+    let rebuilt = null;
+    try {
+      const chars = group.reduce((n, c) => n + c.front.length + c.back.length, 0);
+      // chars * 2: the prompt holds the raw text AND the output reserve must
+      // hold its cleaned twin.
+      const { numCtx } = fcContextPlan({ chars: chars * 2, count: group.length, modelCtx, setting: contextSetting });
+      const user = group.map((c, i) =>
+        `CARD ${i + 1}\nFRONT:\n${c.front}\nBACK:\n${c.back}`).join('\n\n---\n\n');
+      let output = '';
+      const stream = _api.lm.sendChatRequest(modelId, [
+        { role: 'system', content: FC_TRANSCRIBE_SYSTEM },
+        { role: 'user', content: user },
+      ], { temperature: 0.2, think, numCtx });
+      await fcStreamWithStall(stream, (chunk) => { if (chunk.content) output += chunk.content; });
+      const { cards: parsed } = fcExtractCardsJson(output);
+      // Structural acceptance, never trust: one output per input, all faces
+      // non-empty. Map by echoed card number when every one is valid.
+      if (parsed.length === group.length && parsed.every((c) => c.front && c.back)) {
+        const byIndex = parsed.every((c, i) => Number.isInteger(c.page) && c.page >= 1 && c.page <= group.length)
+          ? group.map((_, i) => parsed.find((c) => c.page === i + 1) || parsed[i])
+          : parsed;
+        rebuilt = group.map((orig, i) => ({ ...orig, front: byIndex[i].front, back: byIndex[i].back }));
+      }
+    } catch { /* stall, request failure — this batch keeps its raw text */ }
+    out.push(...(rebuilt || group));
+    done += group.length;
+    try { onProgress?.(done, cards.length, !!rebuilt); } catch { /* UI gone */ }
+  }
+  return out;
+}
+
 const FC_REWRITE_SYSTEM = [
   'You rewrite ONE failing spaced-repetition flashcard.',
   'The learner keeps failing it. Reformulate so it sticks: a sharper cue on the',
@@ -4177,7 +4265,7 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
 async function renderImport(body, route, setRoute, viewDisposables = []) {
   const view = el('div', 'fc-view');
   view.appendChild(el('div', 'fc-hint',
-    'Bring in cards that already exist. Nothing here goes through the AI; what the file says is what you get.'));
+    'Bring in cards that already exist: what the file says is what you get. Page headers and footers are stripped; for PDFs the optional Rebuild with AI pass restores mangled formulas as real math without touching the wording.'));
 
   const err = el('div', 'fc-error');
   err.style.display = 'none';
@@ -4319,11 +4407,16 @@ async function renderImport(body, route, setRoute, viewDisposables = []) {
 
     // PDF pairing controls live in the preview, so changing the offset
     // re-pairs live and the result is visible before anything is saved.
-    let pdfState = { offset: 0 };
+    // `ai` = the optional Rebuild with AI pass; `gen` guards overlapping
+    // builds (build() is fired fire-and-forget); `aiCache` avoids re-running
+    // the model on unrelated rebuilds.
+    let pdfState = { offset: 0, ai: false, gen: 0, aiCache: null };
 
     const build = async () => {
       previewHost.innerHTML = '';
+      const gen = ++pdfState.gen;
 
+      let aiStatus = null;
       if (loaded.kind === 'pdf') {
         const bar = el('div', 'fc-row');
         bar.appendChild(el('span', 'fc-hint', 'Odd pages are fronts, even pages are backs. Skip'));
@@ -4338,11 +4431,55 @@ async function renderImport(body, route, setRoute, viewDisposables = []) {
         bar.appendChild(offIn);
         bar.appendChild(el('span', 'fc-hint', 'leading page(s): covers and instructions.'));
         previewHost.appendChild(bar);
+
+        // Optional faithful AI rebuild: extraction shreds rendered math
+        // beyond mechanical repair (fractions flatten, sub/superscripts
+        // detach) — only a model can put formulas back into $LaTeX$.
+        const aiRow = el('div', 'fc-row');
+        const aiToggle = el('label', 'fc-check');
+        const aiIn = el('input');
+        aiIn.type = 'checkbox';
+        aiIn.checked = pdfState.ai;
+        aiToggle.append(aiIn, document.createTextNode(' Rebuild with AI: same cards and wording, formulas restored as math, page clutter dropped'));
+        aiIn.addEventListener('change', () => {
+          pdfState.ai = aiIn.checked;
+          void build();
+        });
+        aiRow.appendChild(aiToggle);
+        aiStatus = el('span', 'fc-hint');
+        aiRow.appendChild(aiStatus);
+        previewHost.appendChild(aiRow);
+      }
+
+      // Headers/footers/card counters are stripped mechanically and always —
+      // they are page furniture, not card content (user report).
+      let pdfCards = null;
+      if (loaded.kind === 'pdf') {
+        pdfCards = fcPairPages(fcStripPageFurniture(loaded.pageTexts), pdfState);
+        if (pdfState.ai) {
+          const cacheKey = pdfState.offset;
+          if (pdfState.aiCache?.key !== cacheKey) {
+            if (aiStatus) aiStatus.textContent = 'Rebuilding cards with AI…';
+            const rebuilt = await fcAiTranscribePairs(pdfCards, {
+              onProgress: (done, totalCards) => {
+                if (aiStatus && gen === pdfState.gen) {
+                  aiStatus.textContent = `Rebuilding cards with AI — ${done} / ${totalCards}…`;
+                }
+              },
+            });
+            if (gen !== pdfState.gen) return; // a newer build owns the host
+            pdfState.aiCache = { key: cacheKey, cards: rebuilt };
+          }
+          pdfCards = pdfState.aiCache.cards;
+          if (aiStatus) {
+            aiStatus.textContent = 'Rebuilt. Review below - wording is kept, only math and layout are repaired.';
+          }
+        }
       }
 
       const groups = loaded.kind === 'anki'
         ? loaded.decks.map((d) => ({ name: d.name, cards: d.cards, include: true }))
-        : [{ name: loaded.label, cards: loaded.kind === 'pdf' ? fcPairPages(loaded.pageTexts, pdfState) : loaded.cards, include: true }];
+        : [{ name: loaded.label, cards: loaded.kind === 'pdf' ? pdfCards : loaded.cards, include: true }];
 
       const total = groups.reduce((n, g) => n + g.cards.length, 0);
       previewHost.appendChild(el('div', 'fc-label', `Preview — ${total.toLocaleString()} cards`));
@@ -5078,6 +5215,80 @@ export async function deactivate() {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
+ * Strip page FURNITURE (running headers, footers, card counters) from a
+ * PDF's page texts before pairing — user report: "it includes info like
+ * document header and footer; those should not be on the flashcards."
+ *
+ * Grounded in the extraction of four real provider decks (Brosius, Mack CL,
+ * Marshall, Meyers — 2026-08-12 scout pass):
+ * - Headers are LETTER-SPACED with stray TABs ("B R O S I U S · E X A M \t7",
+ *   "R E C I P E 1 O F 3") and their digits vary per card, so exact repeat
+ *   matching finds nothing. Normalize by stripping ALL whitespace, folding
+ *   digit runs to '#', casefolding.
+ * - Furniture lives at FIXED POSITIONS: the first two lines and the last
+ *   line of a page. Mid-page repeats ("EXAM TIPS", "PAST EXAM PRACTICE")
+ *   are content section headings and must survive; so must one-character
+ *   math orphans near the footer (a stray "Z" is card content).
+ * - Back-page titles arrive FUSED with a furniture tag via tab
+ *   ("p-p Plot & Histogram \tRecipe 1 of 5") — strip the tag suffix only,
+ *   never the title.
+ * A normalized form qualifies as furniture when it recurs on >= 2 pages at
+ * furniture positions and is long enough (>= 6 chars normalized) to never
+ * match bare formula fragments.
+ */
+function fcStripPageFurniture(pageTexts) {
+  const pages = (pageTexts || []).map((t) => String(t ?? '').split('\n'));
+  const norm = (line) => String(line).replace(/\s+/g, '').replace(/\d+/g, '#').toLowerCase();
+
+  // Pool the normalized forms seen at furniture positions across all pages.
+  const pool = new Map();
+  const addCandidate = (line) => {
+    const n = norm(line);
+    if (n.length < 6) return; // short fragments ("Z", "2", "s.e.") are math
+    pool.set(n, (pool.get(n) || 0) + 1);
+  };
+  for (const lines of pages) {
+    if (lines.length < 3) continue; // a page this short is all content
+    addCandidate(lines[0]);
+    addCandidate(lines[1]);
+    addCandidate(lines[lines.length - 1]);
+    // Fused tag suffix on the first line ("<Title> \tRecipe 1 of 5").
+    const tab = lines[0].lastIndexOf('\t');
+    if (tab > 0) addCandidate(lines[0].slice(tab + 1));
+  }
+
+  // Furniture must carry a folded digit ('#'): every real header/footer/
+  // counter in the scouted decks varies a number per card ("RECIPE 1 OF 3",
+  // "CARD 2", "…EXAM 7"). Repeated DIGITLESS lines at these positions are
+  // content section headings ("EXAM TIPS") and must survive.
+  const isFurniture = (line) => {
+    const n = norm(line);
+    return n.length >= 6 && n.includes('#') && (pool.get(n) || 0) >= 2;
+  };
+  // Bare page numbers ("12", "Page 3", "3 of 10") as the last line are
+  // furniture even without repetition-pool support.
+  const isPageNumberFooter = (line) => /^(page)?#(of#)?$/.test(norm(line));
+
+  return pages.map((lines) => {
+    if (lines.length < 3) return lines.join('\n');
+    const out = [...lines];
+    // Last line first (indices stay valid), then the top two.
+    const last = out[out.length - 1];
+    if (isFurniture(last) || isPageNumberFooter(last)) out.pop();
+    if (out.length > 1 && isFurniture(out[1])) out.splice(1, 1);
+    if (isFurniture(out[0])) out.splice(0, 1);
+    else {
+      // Keep a content title, drop its fused furniture tag.
+      const tab = out[0].lastIndexOf('\t');
+      if (tab > 0 && isFurniture(out[0].slice(tab + 1))) {
+        out[0] = out[0].slice(0, tab).replace(/\s+$/, '');
+      }
+    }
+    return out.join('\n');
+  });
+}
+
+/**
  * Pair a PDF's pages into cards: page 1 front / page 2 back, and so on.
  *
  * `offset` skips leading cover/instruction pages so the pairing starts on the
@@ -5172,6 +5383,9 @@ export const __testables = {
   MIN, DAY,
   // Mechanical import
   fcPairPages,
+  fcStripPageFurniture,
+  fcAiTranscribePairs,
+  FC_TRANSCRIBE_SYSTEM,
   fcParsePastedRows,
   fcImportKindOf,
   fcExtOf,
