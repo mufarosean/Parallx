@@ -23,8 +23,9 @@ import { renderMarkdown } from '../../ui/renderMarkdown.js';
 import {
   listItems, getItem, createItem, deleteItem, getOpenAttempt, saveAttemptCells,
   discardOpenAttempt, completeAttempt, saveAttemptReview, onWorksheetDataChanged,
-  type WorksheetItem,
+  getSessionGrades, type WorksheetItem, type WorksheetItemSummary,
 } from './worksheetData.js';
+import { buildPracticeSet, tagCounts, itemTags } from './practiceSession.js';
 import { itemToWorkbooks, workbookHasOnSheetQuestion, type GeneratedItem } from './itemFormat.js';
 import { generateItems, reviewAttempt, type LmApiLike } from './worksheetAi.js';
 import { registerWorksheetChatTools } from './worksheetChat.js';
@@ -206,10 +207,15 @@ function createHomePane(container: HTMLElement) {
     importBtn.textContent = 'Import from Excel';
     importBtn.addEventListener('click', () => void openWorksheet('excel-import', 'Import from Excel'));
     head.appendChild(importBtn);
-    const genBtn = el('button', 'ws-btn ws-btn--primary') as HTMLButtonElement;
+    const genBtn = el('button', 'ws-btn') as HTMLButtonElement;
     genBtn.textContent = 'Generate Items';
     genBtn.addEventListener('click', () => void openWorksheet('create', 'Generate Items'));
     head.appendChild(genBtn);
+    // Practicing is the daily act — it takes the primary slot.
+    const practiceBtn = el('button', 'ws-btn ws-btn--primary') as HTMLButtonElement;
+    practiceBtn.textContent = 'Start Practice Session';
+    practiceBtn.addEventListener('click', () => void openWorksheet('practice', 'Practice Session'));
+    head.appendChild(practiceBtn);
     root.appendChild(head);
 
     if (items.length === 0) {
@@ -304,7 +310,8 @@ function createSidebarView(container: HTMLElement) {
       b.addEventListener('click', onClick);
       actions.appendChild(b);
     };
-    mk('Generate Items', true, () => void openWorksheet('create', 'Generate Items'));
+    mk('Start Practice Session', true, () => void openWorksheet('practice', 'Practice Session'));
+    mk('Generate Items', false, () => void openWorksheet('create', 'Generate Items'));
     mk('Import from Excel', false, () => void openWorksheet('excel-import', 'Import from Excel'));
     mk('Scratch Sheet', false, () => void openWorksheet('scratch', 'Practice Sheet'));
     root.appendChild(actions);
@@ -618,6 +625,275 @@ function createGeneratePane(container: HTMLElement) {
   return {
     dispose: () => {
       disposed = true;
+      root.remove();
+    },
+  };
+}
+
+// ── Practice sessions (instanceIds 'practice' + 'practice-run') ─────────────
+//
+// The daily driver: filter the bank (tags ANY-match, attempt-state focus),
+// pick a count, shuffle, then work the items one after another with the
+// full item player (attempts, reveal, self-grade, AI review — all reused).
+// The running session lives module-level so pane rebuilds cannot eat it.
+
+interface RunningPractice {
+  ids: number[];
+  index: number;
+  startedAt: number;
+  skipped: Set<number>;
+}
+let _practice: RunningPractice | null = null;
+
+function createPracticeConfigPane(container: HTMLElement) {
+  const root = el('div', 'ws-pane ws-create');
+  container.appendChild(root);
+  let disposed = false;
+
+  root.appendChild(el('div', 'ws-home__title', 'Start a Practice Session'));
+  root.appendChild(el('div', 'ws-hint',
+    'Build a quiz from the item bank: narrow by topic and history, set a length, shuffle. Grades you earn land on the items and roll into the summary.'));
+
+  const filters = { tags: new Set<string>(), state: 'all', count: 10, shuffle: true };
+  let bank: WorksheetItemSummary[] = [];
+
+  const tagHost = el('div', 'ws-create__controls ws-practice__chips');
+  const stateHost = el('div', 'ws-create__controls');
+  const optRow = el('div', 'ws-create__controls');
+  const matchLine = el('div', 'ws-hint');
+  const err = el('div', 'ws-error');
+  err.style.display = 'none';
+
+  root.appendChild(el('div', 'ws-sidebar__label', 'Topics'));
+  root.appendChild(tagHost);
+  root.appendChild(el('div', 'ws-sidebar__label', 'Focus'));
+  root.appendChild(stateHost);
+  root.appendChild(el('div', 'ws-sidebar__label', 'Length'));
+  root.appendChild(optRow);
+  root.appendChild(matchLine);
+  root.appendChild(err);
+
+  const countIn = el('input', 'ws-input ws-input--count') as HTMLInputElement;
+  countIn.type = 'number'; countIn.min = '1'; countIn.max = '100'; countIn.value = '10';
+  optRow.appendChild(countIn);
+  optRow.appendChild(el('span', 'ws-hint', 'items'));
+  const shuffleWrap = el('label', 'ws-hint') as HTMLLabelElement;
+  const shuffleIn = el('input') as HTMLInputElement;
+  shuffleIn.type = 'checkbox'; shuffleIn.checked = true;
+  shuffleWrap.append(shuffleIn, document.createTextNode(' Shuffle'));
+  optRow.appendChild(shuffleWrap);
+
+  const startBtn = el('button', 'ws-btn ws-btn--primary') as HTMLButtonElement;
+  startBtn.textContent = 'Start Session';
+  root.appendChild(startBtn);
+
+  const currentFilters = () => ({
+    tags: [...filters.tags],
+    state: filters.state,
+    count: Math.max(1, parseInt(countIn.value, 10) || 10),
+    shuffle: shuffleIn.checked,
+  });
+
+  const syncMatchLine = () => {
+    const matching = buildPracticeSet(bank, { ...currentFilters(), count: 10_000, shuffle: false });
+    matchLine.textContent = `${matching.length} ${matching.length === 1 ? 'item matches' : 'items match'} the filters.`;
+  };
+
+  const chip = (label: string, active: boolean, onClick: () => void) => {
+    const b = el('button', 'ws-chip ws-practicechip') as HTMLButtonElement;
+    b.type = 'button';
+    b.textContent = label;
+    b.classList.toggle('ws-practicechip--active', active);
+    b.addEventListener('click', onClick);
+    return b;
+  };
+
+  const renderFilters = () => {
+    tagHost.replaceChildren();
+    const counts = tagCounts(bank);
+    if (counts.size === 0) {
+      tagHost.appendChild(el('span', 'ws-hint', 'No tags in the bank yet - every item is included.'));
+    }
+    for (const [tag, n] of [...counts.entries()].sort((a, b) => b[1] - a[1])) {
+      tagHost.appendChild(chip(`#${tag} ${n}`, filters.tags.has(tag), () => {
+        if (filters.tags.has(tag)) filters.tags.delete(tag); else filters.tags.add(tag);
+        renderFilters();
+      }));
+    }
+    stateHost.replaceChildren();
+    for (const [value, label] of [['all', 'All Items'], ['unseen', 'Never Tried'], ['struggling', 'Missed or Partial']] as const) {
+      stateHost.appendChild(chip(label, filters.state === value, () => {
+        filters.state = value;
+        renderFilters();
+      }));
+    }
+    syncMatchLine();
+  };
+
+  countIn.addEventListener('input', syncMatchLine);
+  shuffleIn.addEventListener('change', syncMatchLine);
+
+  startBtn.addEventListener('click', () => {
+    const ids = buildPracticeSet(bank, currentFilters());
+    if (ids.length === 0) {
+      err.textContent = 'No items match those filters.';
+      err.style.display = '';
+      return;
+    }
+    _practice = { ids, index: 0, startedAt: Date.now(), skipped: new Set() };
+    _api?.activity?.note('started', `a practice session of ${ids.length} worksheet ${ids.length === 1 ? 'item' : 'items'}`);
+    void openWorksheet('practice-run', 'Practice Run');
+  });
+
+  void (async () => {
+    bank = await listItems().catch(() => []);
+    if (disposed) return;
+    if (bank.length === 0) {
+      root.replaceChildren(el('div', 'ws-hint',
+        'The item bank is empty. Generate items from study material or import an Excel workbook first.'));
+      return;
+    }
+    renderFilters();
+  })();
+
+  return { dispose: () => { disposed = true; root.remove(); } };
+}
+
+function createPracticeRunPane(container: HTMLElement) {
+  const root = el('div', 'ws-pane');
+  container.appendChild(root);
+  let disposed = false;
+  let player: { dispose(): void } | null = null;
+  const bar = el('div', 'ws-sessionbar');
+  const playerHost = el('div', 'ws-session__player');
+  root.append(bar, playerHost);
+
+  if (!_practice) {
+    bar.remove();
+    playerHost.appendChild(el('div', 'ws-hint',
+      'No practice session is running.'));
+    const cfg = el('button', 'ws-btn ws-btn--primary') as HTMLButtonElement;
+    cfg.textContent = 'Configure a Session';
+    cfg.addEventListener('click', () => void openWorksheet('practice', 'Practice Session'));
+    playerHost.appendChild(cfg);
+    return { dispose: () => { disposed = true; root.remove(); } };
+  }
+
+  const session = _practice;
+  const gradeLabelFor = (g: string | undefined) =>
+    g === 'nailed' ? 'Nailed It' : g === 'partial' ? 'Partially' : g === 'missed' ? 'Missed It' : '';
+
+  const renderSummary = async () => {
+    player?.dispose();
+    player = null;
+    bar.remove();
+    playerHost.replaceChildren();
+    const wrap = el('div', 'ws-home');
+    wrap.appendChild(el('div', 'ws-home__title', 'Session Summary'));
+    const grades = await getSessionGrades(session.ids, session.startedAt);
+    const bank = await listItems().catch(() => []);
+    const byId = new Map(bank.map((i) => [i.id, i]));
+    const counts = { nailed: 0, partial: 0, missed: 0, ungraded: 0 };
+    const list = el('div', 'ws-home__list');
+    session.ids.forEach((id, i) => {
+      const item = byId.get(id);
+      const grade = grades.get(id);
+      if (grade === 'nailed') counts.nailed++;
+      else if (grade === 'partial') counts.partial++;
+      else if (grade === 'missed') counts.missed++;
+      else counts.ungraded++;
+      const row = el('div', 'ws-itemrow');
+      const info = el('div', 'ws-itemrow__info');
+      const title = el('div', 'ws-itemrow__title', `${i + 1}. ${item?.title ?? `Item ${id}`}`);
+      if (grade) title.appendChild(el('span', `ws-chip ws-chip--${grade}`, gradeLabelFor(grade)));
+      else title.appendChild(el('span', 'ws-chip', session.skipped.has(id) ? 'Skipped' : 'Not Graded'));
+      info.appendChild(title);
+      info.addEventListener('click', () => void openWorksheet(`item:${id}`, item?.title ?? 'Practice Item'));
+      row.appendChild(info);
+      list.appendChild(row);
+    });
+    const tagRoll = new Map<string, { n: number; nailed: number }>();
+    for (const id of session.ids) {
+      const item = byId.get(id);
+      if (!item) continue;
+      for (const t of itemTags(item.tags)) {
+        const entry = tagRoll.get(t) ?? { n: 0, nailed: 0 };
+        entry.n++;
+        if (grades.get(id) === 'nailed') entry.nailed++;
+        tagRoll.set(t, entry);
+      }
+    }
+    const line = [
+      `${counts.nailed} Nailed`, `${counts.partial} Partial`, `${counts.missed} Missed`,
+      counts.ungraded ? `${counts.ungraded} Not Graded` : '',
+    ].filter(Boolean).join(' · ');
+    wrap.appendChild(el('div', 'ws-hint', line));
+    if (tagRoll.size > 0) {
+      const tags = [...tagRoll.entries()]
+        .map(([t, e]) => `#${t} ${e.nailed}/${e.n}`)
+        .join(' · ');
+      wrap.appendChild(el('div', 'ws-hint', `By topic (nailed / seen): ${tags}`));
+    }
+    wrap.appendChild(list);
+    const actions = el('div', 'ws-create__controls');
+    const again = el('button', 'ws-btn ws-btn--primary') as HTMLButtonElement;
+    again.textContent = 'New Session';
+    again.addEventListener('click', () => { _practice = null; void openWorksheet('practice', 'Practice Session'); });
+    const home = el('button', 'ws-btn') as HTMLButtonElement;
+    home.textContent = 'Back to Items';
+    home.addEventListener('click', () => { _practice = null; void openWorksheet('home', 'Worksheets'); });
+    actions.append(again, home);
+    wrap.appendChild(actions);
+    playerHost.appendChild(wrap);
+    _api?.activity?.note('finished', `a practice session (${line})`);
+  };
+
+  const gradeNote = el('span', 'ws-sessionbar__grade');
+  const refreshGradeNote = async () => {
+    if (disposed || session.index >= session.ids.length) return;
+    const grades = await getSessionGrades([session.ids[session.index]], session.startedAt);
+    if (disposed) return;
+    const g = grades.get(session.ids[session.index]);
+    gradeNote.textContent = g ? `Graded: ${gradeLabelFor(g)}` : '';
+  };
+  const changeSub = onWorksheetDataChanged(() => void refreshGradeNote());
+
+  const serve = () => {
+    if (disposed) return;
+    if (session.index >= session.ids.length) { void renderSummary(); return; }
+    player?.dispose();
+    playerHost.replaceChildren();
+    bar.replaceChildren();
+    bar.appendChild(el('span', 'ws-sessionbar__pos', `Item ${session.index + 1} of ${session.ids.length}`));
+    gradeNote.textContent = '';
+    bar.appendChild(gradeNote);
+    const spacer = el('div'); spacer.style.flex = '1';
+    bar.appendChild(spacer);
+    const skip = el('button', 'ws-btn') as HTMLButtonElement;
+    skip.textContent = 'Skip Item';
+    skip.addEventListener('click', () => {
+      session.skipped.add(session.ids[session.index]);
+      session.index++;
+      serve();
+    });
+    bar.appendChild(skip);
+    const next = el('button', 'ws-btn ws-btn--primary') as HTMLButtonElement;
+    next.textContent = session.index === session.ids.length - 1 ? 'Finish Session' : 'Next Item';
+    next.addEventListener('click', () => {
+      session.index++;
+      serve();
+    });
+    bar.appendChild(next);
+    player = createSheetPane(playerHost, `item:${session.ids[session.index]}`);
+    void refreshGradeNote();
+  };
+  serve();
+
+  return {
+    dispose: () => {
+      disposed = true;
+      changeSub.dispose();
+      player?.dispose();
       root.remove();
     },
   };
@@ -1145,6 +1421,8 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
         if (instanceId === 'home') return createHomePane(container);
         if (instanceId === 'create') return createGeneratePane(container);
         if (instanceId === 'excel-import') return createExcelImportPane(container);
+        if (instanceId === 'practice') return createPracticeConfigPane(container);
+        if (instanceId === 'practice-run') return createPracticeRunPane(container);
         return createSheetPane(container, instanceId);
       },
     }),
@@ -1167,6 +1445,9 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
   );
   context.subscriptions.push(
     api.commands.registerCommand('worksheet.importExcel', () => openWorksheet('excel-import', 'Import from Excel')),
+  );
+  context.subscriptions.push(
+    api.commands.registerCommand('worksheet.practice', () => openWorksheet('practice', 'Practice Session')),
   );
 
   // The AI's read surface: bank/progress + the user's actual sheet work.

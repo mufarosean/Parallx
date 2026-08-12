@@ -378,6 +378,80 @@ test.describe('Worksheets — item practice loop (workspace DB)', () => {
     });
   });
 
+  test('practice session: filter → serve items → grade → summary', async ({ window, electronApp, workspacePath }) => {
+    await openFolderViaMenu(electronApp, window, workspacePath);
+
+    // Seed three items (delete-before-seed idempotence).
+    const seeded = await window.evaluate(async () => {
+      const db = (window as any).parallxElectron?.database;
+      if (!db) return 'no-db-bridge';
+      const open = await db.isOpen();
+      if (!open?.isOpen) return 'db-not-open';
+      const sheet = (v: string) => JSON.stringify({
+        id: `e2e-ps-${Math.random().toString(36).slice(2)}`,
+        name: 'Item', sheetOrder: ['s1'],
+        sheets: { s1: { id: 's1', name: 'Item', rowCount: 150, columnCount: 40, cellData: { 5: { 1: { v } } } } },
+      });
+      await db.run("DELETE FROM ws_attempts WHERE item_id IN (SELECT id FROM ws_items WHERE title LIKE 'E2E PS Item%')");
+      await db.run("DELETE FROM ws_items WHERE title LIKE 'E2E PS Item%'");
+      for (let i = 1; i <= 3; i++) {
+        await db.run(
+          `INSERT INTO ws_items (title, question_md, givens_json, solution_json, solution_notes_md, tags, created_at)
+           VALUES (?, ?, ?, ?, '', 'e2e-practice', ?)`,
+          [`E2E PS Item ${i}`, `Question ${i}`, sheet(`Given ${i}`), sheet(`Solved ${i}`), Date.now() + i],
+        );
+      }
+      return 'ok';
+    });
+    expect(seeded).toBe('ok');
+
+    // Sidebar → Start Practice Session (primary).
+    const sidebar = window.locator('.ws-sidebar');
+    if (!(await sidebar.isVisible().catch(() => false))) {
+      await window.locator('button.activity-bar-item[data-icon-id="worksheet-container"]').click();
+      await sidebar.waitFor({ state: 'visible', timeout: 5_000 });
+    }
+    await sidebar.locator('button', { hasText: 'Start Practice Session' }).click();
+    await expect(window.locator('.ws-pane', { hasText: 'Start a Practice Session' })).toBeVisible({ timeout: 5_000 });
+
+    // Filter to the seeded tag, length 2, no shuffle (deterministic order).
+    await window.locator('.ws-practicechip', { hasText: '#e2e-practice' }).click();
+    await expect(window.getByText('3 items match')).toBeVisible({ timeout: 3_000 });
+    await window.locator('.ws-input--count').fill('2');
+    await window.locator('.ws-pane input[type="checkbox"]').uncheck(); // shuffle off
+    await window.locator('button', { hasText: 'Start Session' }).click();
+
+    // Item 1 of 2 serves the full player. Bank order is newest-first, so
+    // the unshuffled session starts with the LAST-seeded item (3).
+    await expect(window.locator('.ws-sessionbar__pos', { hasText: 'Item 1 of 2' })).toBeVisible({ timeout: 10_000 });
+    await expect(window.locator('.ws-item__title', { hasText: 'E2E PS Item 3' })).toBeVisible({ timeout: 10_000 });
+    await waitForEngine(window);
+
+    // Grade it through the normal reveal flow; the session bar notices.
+    await window.locator('.ws-item__titlerow button', { hasText: 'Reveal Solution' }).click();
+    await window.locator('.ws-item__grades button', { hasText: 'Nailed It' }).click();
+    await expect(window.locator('.ws-sessionbar__grade', { hasText: 'Nailed It' })).toBeVisible({ timeout: 5_000 });
+
+    await window.locator('.ws-sessionbar button', { hasText: 'Next Item' }).click();
+    await expect(window.locator('.ws-sessionbar__pos', { hasText: 'Item 2 of 2' })).toBeVisible({ timeout: 10_000 });
+    await waitForEngine(window);
+    await window.locator('.ws-sessionbar button', { hasText: 'Finish Session' }).click();
+
+    // Summary: the graded item shows its grade, the other Not Graded.
+    await expect(window.locator('.ws-home__title', { hasText: 'Session Summary' })).toBeVisible({ timeout: 10_000 });
+    await expect(window.getByText('1 Nailed')).toBeVisible();
+    await expect(window.locator('.ws-itemrow', { hasText: 'E2E PS Item 3' }).locator('.ws-chip--nailed')).toBeVisible();
+    await window.screenshot({ path: path.join(SHOT_DIR, 'practice-summary.png') });
+
+    // Cleanup.
+    await window.locator('button', { hasText: 'Back to Items' }).click();
+    await window.evaluate(async () => {
+      const db = (window as any).parallxElectron?.database;
+      await db?.run("DELETE FROM ws_attempts WHERE item_id IN (SELECT id FROM ws_items WHERE title LIKE 'E2E PS Item%')");
+      await db?.run("DELETE FROM ws_items WHERE title LIKE 'E2E PS Item%'");
+    });
+  });
+
   test('seeded item: practice → reveal → grade → state chip', async ({ window, electronApp, workspacePath }) => {
     await openFolderViaMenu(electronApp, window, workspacePath);
 

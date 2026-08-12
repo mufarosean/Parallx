@@ -496,6 +496,8 @@ export const WORKSHEET_MANIFEST: IToolManifest = {
         aiInvocable: true, aiDescription: 'Generate practice items from study material.' },
       { id: 'worksheet.importExcel', title: 'Worksheets: Import from Excel',
         aiInvocable: true, aiDescription: 'Import existing Excel practice workbooks (Item/Answer pairs or question-and-solution sheets) as practice items.' },
+      { id: 'worksheet.practice', title: 'Worksheets: Start Practice Session',
+        aiInvocable: true, aiDescription: 'Open the practice-session builder: filter the item bank by topic and history, pick a length, shuffle, and work the items as a quiz.' },
     ],
     viewContainers: [
       { id: 'worksheet-container', title: 'Worksheets', icon: 'file-spreadsheet', location: 'sidebar' as const },

@@ -228,6 +228,23 @@ body > [data-radix-popper-content-wrapper] :where(input, textarea, select) {
 .ws-sidebar__item .ws-chip { margin-left: 0; flex: 0 0 auto; }
 .ws-sidebar__empty { font-size: var(--px-text-sm); color: var(--px-text-muted); padding: var(--px-space-2) var(--px-space-1); }
 
+/* ── Practice sessions ── */
+
+.ws-practice__chips { flex-wrap: wrap; }
+.ws-practicechip { cursor: pointer; border: 1px solid transparent; margin-left: 0; }
+.ws-practicechip:hover { border-color: var(--px-border-strong); }
+.ws-practicechip--active { color: var(--px-accent); background: var(--px-accent-soft); border-color: var(--px-accent); }
+.ws-sessionbar {
+  display: flex; align-items: center; gap: var(--px-space-2);
+  padding: var(--px-space-2) var(--px-space-4);
+  border-bottom: 1px solid var(--px-border);
+  flex: 0 0 auto;
+}
+.ws-sessionbar__pos { font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text); font-variant-numeric: tabular-nums; }
+.ws-sessionbar__grade { font-size: var(--px-text-xs); color: var(--px-success); font-weight: 600; }
+.ws-session__player { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.ws-session__player > .ws-pane { flex: 1; min-height: 0; }
+
 /* ── Scratch bar ── */
 
 .ws-scratchbar {

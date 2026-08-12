@@ -250,6 +250,22 @@ export async function completeAttempt(itemId: number, selfGrade: string, cellsJs
   emitChange();
 }
 
+/** Grades earned on the given items since a timestamp (practice-session
+ *  summaries). Later grades on the same item win. */
+export async function getSessionGrades(itemIds: number[], sinceMs: number): Promise<Map<number, string>> {
+  if (itemIds.length === 0) return new Map();
+  const ph = itemIds.map(() => '?').join(',');
+  const rows = await allRows(
+    `SELECT item_id, self_grade FROM ws_attempts
+     WHERE completed = 1 AND self_grade != '' AND updated_at >= ? AND item_id IN (${ph})
+     ORDER BY updated_at ASC`,
+    [sinceMs, ...itemIds],
+  );
+  const map = new Map<number, string>();
+  for (const r of rows) map.set(Number(r.item_id), String(r.self_grade));
+  return map;
+}
+
 /** Attach an AI critique to the most recent attempt (open or closed). */
 export async function saveAttemptReview(itemId: number, aiReviewMd: string): Promise<void> {
   const row = await getRow(
