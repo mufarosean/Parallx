@@ -90,9 +90,30 @@ test('grade Again → countdown wait → Show Now re-serves; in-study Edit/Delet
   await expect(wait).toContainText(/Next card in 0:\d\d/);
   await window.screenshot({ path: path.join(SHOT_DIR, 'study-wait-countdown.png') });
 
-  // Show Now = learn-ahead: the card serves immediately.
+  // UNDO from the wait screen: the grade reverts and the card comes back.
+  await wait.locator('button', { hasText: 'Undo Last Grade' }).click();
+  await expect(window.locator('.fc-study__front', { hasText: 'E2E-STUDY-FRONT' })).toBeVisible({ timeout: 5_000 });
+  await expect(window.locator('.fc-study__cardactions button', { hasText: 'Undo' })).toBeDisabled();
+
+  // Grade Again once more → wait screen → Show Now serves it early.
+  await window.locator('button', { hasText: 'Show Answer' }).click();
+  await window.locator('.fc-grade--again').click();
+  await expect(wait).toBeVisible({ timeout: 5_000 });
   await wait.locator('button', { hasText: 'Show Now' }).click();
   await expect(window.locator('.fc-study__front', { hasText: 'E2E-STUDY-FRONT' })).toBeVisible({ timeout: 5_000 });
+
+  // PANE-REBUILD SURVIVAL: switching editor tabs destroys the pane (the
+  // source-link round trip). Coming back must RESUME the session mid-card,
+  // not reset to a fresh queue ("loses place" report).
+  await window.keyboard.press('Control+Shift+P');
+  await expect(window.locator('.command-palette-overlay')).toBeVisible({ timeout: 3_000 });
+  await window.locator('.command-palette-input').fill('>Worksheets: Open Scratch Sheet');
+  await window.locator('.command-palette-item', { hasText: 'Open Scratch Sheet' }).first().click();
+  await window.waitForFunction(() =>
+    !!document.querySelector('.ws-pane__sheet canvas'), { timeout: 30_000 });
+  await window.locator('.ui-tab', { hasText: 'Flashcards' }).first().click();
+  await expect(window.locator('.fc-study__front', { hasText: 'E2E-STUDY-FRONT' }),
+    'session did not survive the pane rebuild').toBeVisible({ timeout: 10_000 });
 
   // In-study DELETE finishes the loop (confirm modal → session complete).
   await window.locator('.fc-study__cardactions button', { hasText: 'Delete' }).click();

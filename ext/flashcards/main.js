@@ -1336,6 +1336,26 @@ async function fcListAllCards(deckId = null) {
 }
 
 /** Apply a grading: schedule + persist + log. Returns the updated card. */
+/**
+ * Revert one grade: restore the card's pre-grade scheduling columns and
+ * delete the review row it wrote. The review LOG must stay truthful — FSRS
+ * healing replays it, so an undone grade cannot leave a phantom row.
+ */
+async function fcUndoGrade(cardBefore, reviewedAt) {
+  await db.run(`
+    UPDATE fc_cards SET state = ?, ease = ?, interval_days = ?, due_at = ?,
+      reps = ?, lapses = ?, learning_step = ?,
+      stability = ?, difficulty = ?, last_reviewed_at = ?
+    WHERE id = ?
+  `, [cardBefore.state, cardBefore.ease, cardBefore.intervalDays, cardBefore.dueAt,
+    cardBefore.reps, cardBefore.lapses, cardBefore.learningStep,
+    cardBefore.stability, cardBefore.difficulty, cardBefore.lastReviewedAt || 0, cardBefore.id]);
+  if (reviewedAt) {
+    await db.run('DELETE FROM fc_reviews WHERE card_id = ? AND reviewed_at = ?', [cardBefore.id, reviewedAt]);
+  }
+  _emitDataChanged();
+}
+
 async function fcGradeCard(card, rating, msTaken = 0, deckOpts = {}) {
   const now = Date.now();
   const next = fcScheduleFsrs(card, rating, now, deckOpts);
@@ -2875,11 +2895,12 @@ function createEditorPane(container, input) {
     },
     // The workbench rebuilds this pane on every tab switch (media-organizer
     // pattern): without these hooks, clicking away and back always reset the
-    // tool to the Decks view. Study sessions are deliberately NOT resumed —
-    // a half-graded card should not reappear mid-question after an hour away.
+    // tool to the Decks view. Study routes ARE preserved (Mufaro overruled
+    // the old study→decks redirect: following a card's source link must not
+    // lose your place) — renderStudy resumes the live session from
+    // _fcStudySessions, or builds fresh when none is mid-flight.
     saveViewState() {
-      const route = state.route.view === 'study' ? { view: 'decks' } : state.route;
-      return { route, scrollTop: body.scrollTop || 0 };
+      return { route: state.route, scrollTop: body.scrollTop || 0 };
     },
     restoreViewState(saved) {
       if (state.disposed || !saved || !saved.route || !saved.route.view) return;
@@ -2938,7 +2959,9 @@ async function renderDecks(body, setRoute) {
     const btns = el('div', 'fc-deck-card__actions');
     const studyBtn = el('button', 'fc-btn');
     studyBtn.textContent = 'Study';
-    studyBtn.disabled = deck.dueCount === 0 && deck.newCount === 0;
+    // A live session (learning card pending its 1m step) must stay
+    // reachable even when the due badges read zero.
+    studyBtn.disabled = deck.dueCount === 0 && deck.newCount === 0 && !_fcStudySessions.has(deck.id);
     studyBtn.addEventListener('click', () => setRoute({ view: 'study', deckId: deck.id }));
     btns.appendChild(studyBtn);
     const renameBtn = el('button', 'fc-btn');
@@ -3234,11 +3257,22 @@ async function renderBrowse(body, route, setRoute) {
 
 // ── Study view ───────────────────────────────────────────────────────────────
 
+/** Live study sessions, keyed by deck scope. Editor panes are DESTROYED on
+ *  every tab switch (pane-lifecycle contract) — following a card's source
+ *  link and coming back must resume the session, not reset it (user report:
+ *  "loses place", and the in-memory pending pool held the Again-1m card). */
+const _fcStudySessions = new Map();
+
 async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
+  const sessionKey = route.deckId ?? '__all__';
+  const cachedSession = _fcStudySessions.get(sessionKey);
+  const resuming = !aheadMs && !!cachedSession
+    && (cachedSession.index < cachedSession.queue.length || cachedSession.pending.length > 0);
+
   const cards = await fcListAllCards(route.deckId ?? null);
   // aheadMs: learn-ahead (Study Now on the countdown screen) — build the
   // queue as of a moment slightly past the next learning card's dueAt.
-  const queue = fcBuildQueue(cards, Date.now() + aheadMs, {
+  const queue = resuming ? [] : fcBuildQueue(cards, Date.now() + aheadMs, {
     newLimit: Number(cfg('dailyNewLimit', 20)) || 20,
     reviewLimit: Number(cfg('dailyReviewLimit', 200)) || 200,
   });
@@ -3249,7 +3283,7 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
   study.appendChild(main);
   body.appendChild(study);
 
-  if (queue.length === 0) {
+  if (queue.length === 0 && !resuming) {
     // A learning card due in the next few minutes means "caught up" is a
     // lie about to expire — count down and reopen the session at dueAt
     // (this screen used to freeze forever; graded-Again cards never came
@@ -3313,7 +3347,7 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
   }]));
   const optsFor = (card) => deckSchedOpts.get(card.deckId) || {};
 
-  const session = {
+  const session = resuming ? cachedSession : {
     queue: [...queue],
     index: 0,
     revealed: false,
@@ -3325,7 +3359,19 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
      *  Served the moment they come due — the "Again 1m" contract. */
     pending: [],
     waitTimer: null,
+    /** Grade history for Undo: { before: pre-grade card, reviewedAt }. */
+    history: [],
   };
+  if (resuming) {
+    // The old pane died mid-flight: clear transient flags; its wait timer
+    // self-cleared on the disconnected DOM.
+    session.grading = false;
+    session.editing = false;
+    session.waitTimer = null;
+    session.discussHistory = [];
+    session.history = session.history || [];
+  }
+  _fcStudySessions.set(sessionKey, session);
   paneState.session = session;
 
   // Discuss panel (collapsed by default; toggled per card).
@@ -3413,6 +3459,31 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   };
 
+  /** Undo the last grade (user ask: navigate back across seen cards).
+   *  Reverts the DB (scheduling + review row) and steps the session back. */
+  const undoLast = () => {
+    if (session.grading || session.history.length === 0) return;
+    session.grading = true;
+    void (async () => {
+      const h = session.history.pop();
+      await fcUndoGrade(h.before, h.reviewedAt);
+      // Remove the post-grade copy wherever it went: the pending pool, or a
+      // promoted-but-unserved queue slot ahead of the cursor.
+      session.pending = session.pending.filter((c) => c.id !== h.before.id);
+      for (let i = session.queue.length - 1; i >= session.index; i--) {
+        if (session.queue[i].id === h.before.id) {
+          session.queue.splice(i, 1);
+          session.total = Math.max(1, session.total - 1);
+        }
+      }
+      session.doneCount = Math.max(0, session.doneCount - 1);
+      session.index = Math.max(0, session.index - 1);
+      session.queue[session.index] = h.before;
+      session.grading = false;
+      showCard();
+    })();
+  };
+
   /** Wait screen: only future-due learning cards remain. Count down to the
    *  soonest and auto-serve it at dueAt — the "Again 1m" promise, kept. */
   const renderWait = () => {
@@ -3435,6 +3506,12 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
       showCard();
     });
     wait.appendChild(nowBtn);
+    if (session.history.length > 0) {
+      const undoBtn = el('button', 'fc-btn');
+      undoBtn.textContent = 'Undo Last Grade';
+      undoBtn.addEventListener('click', undoLast);
+      wait.appendChild(undoBtn);
+    }
     const back = el('button', 'fc-btn');
     back.textContent = 'Back to Decks';
     back.addEventListener('click', () => setRoute({ view: 'decks' }));
@@ -3467,6 +3544,7 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
 
     if (session.index >= session.queue.length) {
       if (session.pending.length > 0) { renderWait(); return; }
+      _fcStudySessions.delete(sessionKey);
       const done = el('div', 'fc-study__done px-empty');
       done.appendChild(el('div', 'px-empty__headline', 'Session complete'));
       done.appendChild(el('div', 'px-empty__hint',
@@ -3534,6 +3612,12 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
     progress.appendChild(fill);
     toolbar.appendChild(progress);
     const cardActions = el('div', 'fc-study__cardactions');
+    const undoBtn = el('button', 'fc-btn fc-btn--ghost');
+    undoBtn.textContent = 'Undo';
+    undoBtn.title = 'Take back the last grade and return to that card (Z)';
+    undoBtn.disabled = session.history.length === 0;
+    undoBtn.addEventListener('click', undoLast);
+    cardActions.appendChild(undoBtn);
     const editBtn = el('button', 'fc-btn fc-btn--ghost');
     editBtn.textContent = 'Edit';
     editBtn.title = 'Fix this card without leaving the session (E)';
@@ -3657,7 +3741,7 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
       });
       discussHost.appendChild(explainBtn);
       main.appendChild(discussHost);
-      main.appendChild(el('div', 'fc-study__keys', 'Space reveal · 1 Again · 2 Hard · 3 Good · 4 Easy · E edit'));
+      main.appendChild(el('div', 'fc-study__keys', 'Space reveal · 1 Again · 2 Hard · 3 Good · 4 Easy · E edit · Z undo'));
     };
 
     const grade = (rating) => {
@@ -3668,6 +3752,8 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
       const msTaken = Date.now() - session.cardShownAt;
       void (async () => {
         const updated = await fcGradeCard(card, rating, msTaken, optsFor(card));
+        // Undo material: the pre-grade card + the review row's timestamp.
+        session.history.push({ before: card, reviewedAt: updated.lastReviewedAt });
         // Cards still in learning stay in the session when due within the
         // horizon — held in `pending` and served WHEN DUE (they used to be
         // pushed to the queue tail, which served them at whatever moment the
@@ -3705,6 +3791,11 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
       if (e.key === 'e' || e.key === 'E') {
         e.preventDefault();
         openEdit();
+        return;
+      }
+      if (e.key === 'z' || e.key === 'Z') {
+        e.preventDefault();
+        undoLast();
         return;
       }
       if (session.revealed && ['1', '2', '3', '4'].includes(e.key)) {
