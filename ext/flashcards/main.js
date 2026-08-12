@@ -757,6 +757,7 @@ function fcDeckMenuItems(deck) {
     { label: 'Add Cards with AI', icon: 'px-ai-mark', onSelect: () => void openFlashcards({ view: 'create', deckId: deck.id }) },
     { label: 'Find Duplicates', icon: 'px-ai-mark', onSelect: () => void openFlashcards({ view: 'dedup', deckId: deck.id }) },
     { label: 'Coverage Review', icon: 'px-ai-mark', onSelect: () => void openFlashcards({ view: 'coverage', deckId: deck.id }) },
+    { label: 'Merge Into Another Deck…', icon: 'layers', onSelect: () => void _mergeDeckFlow(deck) },
     { separator: true },
     { label: 'Rename', icon: 'pencil', onSelect: () => void _renameDeckFlow(deck) },
     { label: deck.examDate ? 'Change Exam Date' : 'Set Exam Date', icon: 'calendar', onSelect: () => void _setExamDateFlow(deck) },
@@ -1686,6 +1687,97 @@ async function fcDeleteCard(id) {
   await db.run('DELETE FROM fc_cards WHERE id = ?', [id]);
   try { await db.run('DELETE FROM fc_card_embeddings WHERE card_id = ?', [String(id)]); } catch { /* vec absent */ }
   _emitDataChanged();
+}
+
+// ── Move / copy across decks (user ask: bulk card moves + deck grouping) ────
+
+/** Expand a card-id set so cloze/reverse NOTE GROUPS always travel whole —
+ *  moving one sibling without the rest would orphan the group's edit
+ *  reconciliation and study exemptions. */
+async function fcExpandNoteGroups(ids) {
+  if (ids.length === 0) return [];
+  const ph = ids.map(() => '?').join(',');
+  const rows = await db.all(
+    `SELECT DISTINCT id FROM fc_cards WHERE id IN (${ph})
+       OR (note_group != '' AND note_group IN (
+         SELECT note_group FROM fc_cards WHERE id IN (${ph}) AND note_group != ''))`,
+    [...ids, ...ids],
+  );
+  return rows.map((r) => Number(r.id));
+}
+
+/** MOVE cards into another deck. Scheduling state and review history ride
+ *  along untouched (only deck_id changes; embeddings key on card_id). */
+async function fcMoveCards(ids, targetDeckId) {
+  const all = await fcExpandNoteGroups(ids);
+  if (all.length === 0) return 0;
+  const ph = all.map(() => '?').join(',');
+  await db.run(`UPDATE fc_cards SET deck_id = ? WHERE id IN (${ph})`, [targetDeckId, ...all]);
+  _emitDataChanged();
+  return all.length;
+}
+
+/** COPY cards as fresh content-only clones: state new, no history, cloze
+ *  groups cloned whole under a fresh group id. */
+async function fcCopyCards(ids, targetDeckId) {
+  const all = await fcExpandNoteGroups(ids);
+  if (all.length === 0) return 0;
+  const ph = all.map(() => '?').join(',');
+  const rows = (await db.all(`SELECT * FROM fc_cards WHERE id IN (${ph})`, all)).map(rowToCard);
+  const groupMap = new Map();
+  const clones = rows.map((c) => {
+    let noteGroup = '';
+    if (c.noteGroup) {
+      if (!groupMap.has(c.noteGroup)) {
+        groupMap.set(c.noteGroup, `grp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+      }
+      noteGroup = groupMap.get(c.noteGroup);
+    }
+    return {
+      front: c.front, back: c.back, notes: c.notes, tags: c.tags,
+      sourceUri: c.sourceUri, sourceLabel: c.sourceLabel, sourcePage: c.sourcePage,
+      cardType: c.cardType, noteGroup, clozeIndex: c.clozeIndex,
+    };
+  });
+  await fcCreateCardsBulk(targetDeckId, clones, {});
+  return clones.length;
+}
+
+/** Quick-pick a destination deck (or create one). Returns a deck id or null. */
+async function fcPickDeckTarget(excludeDeckId, placeholder) {
+  const decks = (await fcListDecks()).filter((d) => d.id !== excludeDeckId);
+  const NEW_DECK = '+ New Deck…';
+  const pick = await _api.window.showQuickPick(
+    [...decks.map((d) => ({ label: d.name, description: `${d.total} cards` })), { label: NEW_DECK }],
+    { placeholder },
+  );
+  if (!pick) return null;
+  if (pick.label === NEW_DECK) {
+    const name = await _api.window.showInputBox({ prompt: 'New deck name' });
+    if (!name?.trim()) return null;
+    return fcCreateDeck(name);
+  }
+  const match = decks.find((d) => d.name === pick.label);
+  return match ? match.id : null;
+}
+
+/** Deck grouping: move EVERY card of one deck into another (or a new one).
+ *  Repeatable across decks to combine several into a single deck. */
+async function _mergeDeckFlow(deck) {
+  const rows = await db.all('SELECT id FROM fc_cards WHERE deck_id = ?', [deck.id]);
+  if (rows.length === 0) {
+    void _api.window.showInformationMessage(`"${deck.name}" has no cards to move.`);
+    return;
+  }
+  const targetId = await fcPickDeckTarget(deck.id, `Move all ${rows.length} cards from "${deck.name}" into…`);
+  if (targetId == null) return;
+  const pick = await _api.window.showWarningMessage(
+    `Move all ${rows.length} cards from "${deck.name}" into the selected deck? Scheduling history is kept; "${deck.name}" stays behind empty.`,
+    { title: 'Move Cards' }, { title: 'Cancel' },
+  );
+  if (pick?.title !== 'Move Cards') return;
+  const moved = await fcMoveCards(rows.map((r) => Number(r.id)), targetId);
+  void _api.window.showInformationMessage(`Moved ${moved} cards.`);
 }
 
 async function fcGetCard(id) {
@@ -2885,10 +2977,34 @@ function injectStyles() {
 /* ── Browse — hairline-separated card rows; the stage chip is the only colour;
    row actions surface on hover ── */
 .fc-cardrow {
-  padding: var(--px-space-3) var(--px-space-1);
+  position: relative;
+  padding: var(--px-space-3) var(--px-space-1) var(--px-space-3) 26px;
   border-bottom: 1px solid var(--px-divider);
 }
 .fc-cardrow--suspended { opacity: 0.5; }
+.fc-cardrow--selected { background: var(--px-accent-soft); }
+.fc-cardrow__select {
+  position: absolute; left: 4px; top: var(--px-space-3);
+  opacity: 0; transition: opacity var(--px-dur-fast) var(--px-ease);
+}
+.fc-cardrow:hover .fc-cardrow__select,
+.fc-cardrow__select:checked,
+.fc-cardrow--selected .fc-cardrow__select { opacity: 1; }
+
+/* ── Tag bar + bulk bar (Browse) ── */
+.fc-tagbar { display: flex; flex-wrap: wrap; gap: var(--px-space-1); margin-bottom: 8px; }
+.fc-tagbar:empty { display: none; }
+.fc-tagchip { cursor: pointer; border: 1px solid transparent; }
+.fc-tagchip:hover { border-color: var(--px-border-strong); }
+.fc-tagchip--active { color: var(--px-accent); background: var(--px-accent-soft); border-color: var(--px-accent); }
+.fc-bulkbar {
+  display: flex; align-items: center; gap: var(--px-space-2);
+  padding: var(--px-space-2) var(--px-space-3); margin-bottom: 8px;
+  background: var(--px-bg-raised); border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-md);
+  position: sticky; top: 0; z-index: 5;
+}
+.fc-bulkbar__count { font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text); }
 .fc-cardrow__front { font-size: var(--px-text-base); font-weight: 600; color: var(--px-text); }
 .fc-cardrow__back { font-size: var(--px-text-sm); margin-top: 3px; color: var(--px-text-muted); white-space: pre-wrap; line-height: var(--px-leading-base); }
 .fc-cardrow__meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--px-space-3); margin-top: var(--px-space-2); font-size: var(--px-text-xs); color: var(--px-text-faint); font-variant-numeric: tabular-nums; }
@@ -3743,29 +3859,134 @@ async function renderBrowse(body, route, setRoute) {
   });
   view.appendChild(addForm);
 
-  // Search.
+  // Search. '#tag' searches tags only; anything else searches everything.
   const searchIn = el('input', 'fc-input');
-  searchIn.placeholder = 'Search cards…';
-  searchIn.style.margin = '12px 0';
+  searchIn.placeholder = 'Search cards… (#tag searches tags)';
+  searchIn.style.margin = '12px 0 4px';
   view.appendChild(searchIn);
+
+  // Tag bar: every tag in the deck as a filter chip (click to narrow;
+  // multiple active tags = ALL must match) + a Group by Tag toggle.
+  const tagBar = el('div', 'fc-tagbar');
+  view.appendChild(tagBar);
+
+  // Bulk bar: appears while cards are selected (user ask: move/copy cards
+  // between decks, in bulk).
+  const bulkBar = el('div', 'fc-bulkbar');
+  bulkBar.style.display = 'none';
+  view.appendChild(bulkBar);
 
   const listHost = el('div');
   view.appendChild(listHost);
 
+  const selectedIds = new Set();
+  const activeTags = new Set();
+  let groupByTag = false;
+
+  const syncBulkBar = () => {
+    bulkBar.replaceChildren();
+    if (selectedIds.size === 0) { bulkBar.style.display = 'none'; return; }
+    bulkBar.style.display = '';
+    bulkBar.appendChild(el('span', 'fc-bulkbar__count', `${selectedIds.size} Selected`));
+    const mk = (label, handler) => {
+      const b = el('button', 'fc-btn fc-btn--small');
+      b.textContent = label;
+      b.addEventListener('click', () => void handler());
+      bulkBar.appendChild(b);
+    };
+    mk('Move to Deck…', async () => {
+      const targetId = await fcPickDeckTarget(deckRow.id, `Move ${selectedIds.size} cards into…`);
+      if (targetId == null) return;
+      const moved = await fcMoveCards([...selectedIds], targetId);
+      selectedIds.clear();
+      void _api.window.showInformationMessage(
+        `Moved ${moved} ${moved === 1 ? 'card' : 'cards'}.${moved > 0 ? ' Cloze and reverse siblings travel together.' : ''}`);
+      void renderList();
+    });
+    mk('Copy to Deck…', async () => {
+      const targetId = await fcPickDeckTarget(null, `Copy ${selectedIds.size} cards into…`);
+      if (targetId == null) return;
+      const copied = await fcCopyCards([...selectedIds], targetId);
+      selectedIds.clear();
+      void _api.window.showInformationMessage(`Copied ${copied} ${copied === 1 ? 'card' : 'cards'} as fresh cards.`);
+      void renderList();
+    });
+    mk('Clear Selection', () => {
+      selectedIds.clear();
+      void renderList();
+    });
+  };
+
+  const renderTagBar = (cards) => {
+    tagBar.replaceChildren();
+    const counts = new Map();
+    for (const c of cards) {
+      for (const t of fcParseTags(c.tags)) counts.set(t, (counts.get(t) || 0) + 1);
+    }
+    if (counts.size === 0 && !groupByTag) return;
+    for (const [tag, n] of [...counts.entries()].sort((a, b) => b[1] - a[1])) {
+      const chip = el('button', 'fc-chip fc-tagchip');
+      chip.type = 'button';
+      chip.textContent = `#${tag} ${n}`;
+      chip.classList.toggle('fc-tagchip--active', activeTags.has(tag));
+      chip.addEventListener('click', () => {
+        if (activeTags.has(tag)) activeTags.delete(tag); else activeTags.add(tag);
+        void renderList();
+      });
+      tagBar.appendChild(chip);
+    }
+    const groupBtn = el('button', 'fc-chip fc-tagchip');
+    groupBtn.type = 'button';
+    groupBtn.textContent = 'Group by Tag';
+    groupBtn.classList.toggle('fc-tagchip--active', groupByTag);
+    groupBtn.addEventListener('click', () => { groupByTag = !groupByTag; void renderList(); });
+    tagBar.appendChild(groupBtn);
+  };
+
   const renderList = async (keepCardId = null) => {
-    const cards = await fcListCards(deckRow.id, searchIn.value);
+    const rawSearch = searchIn.value.trim();
+    const tagSearch = rawSearch.startsWith('#') ? rawSearch.slice(1).toLowerCase() : null;
+    let cards = await fcListCards(deckRow.id, tagSearch !== null ? '' : searchIn.value);
+    renderTagBar(cards);
+    if (tagSearch) {
+      cards = cards.filter((c) => fcParseTags(c.tags).some((t) => t.toLowerCase().includes(tagSearch)));
+    }
+    if (activeTags.size > 0) {
+      cards = cards.filter((c) => {
+        const tags = new Set(fcParseTags(c.tags));
+        return [...activeTags].every((t) => tags.has(t));
+      });
+    }
     // Rebuilding collapses the pane's scroll height, which clamps scrollTop
     // to ~0 — saving an edit deep in a long deck dumped the user at the top
     // ("does not keep me at that card"). Capture, rebuild, restore; rows
     // append synchronously so the height is back before the restore.
     const scrollTop = body.scrollTop;
     listHost.innerHTML = '';
+    syncBulkBar();
     if (cards.length === 0) {
-      listHost.appendChild(el('div', 'fc-empty', searchIn.value ? 'No matches.' : 'No cards in this deck yet.'));
+      listHost.appendChild(el('div', 'fc-empty',
+        rawSearch || activeTags.size ? 'No matches.' : 'No cards in this deck yet.'));
       return;
     }
-    for (const card of cards) {
-      listHost.appendChild(buildCardRow(card));
+    if (groupByTag) {
+      // A multi-tagged card appears under EACH of its tags (true grouping).
+      const groups = new Map();
+      for (const card of cards) {
+        const tags = fcParseTags(card.tags);
+        for (const t of tags.length ? tags : ['(untagged)']) {
+          if (!groups.has(t)) groups.set(t, []);
+          groups.get(t).push(card);
+        }
+      }
+      for (const [tag, group] of [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+        listHost.appendChild(el('div', 'fc-label', `${tag === '(untagged)' ? tag : `#${tag}`} · ${group.length}`));
+        for (const card of group) listHost.appendChild(buildCardRow(card));
+      }
+    } else {
+      for (const card of cards) {
+        listHost.appendChild(buildCardRow(card));
+      }
     }
     body.scrollTop = scrollTop;
     if (keepCardId != null) {
@@ -3778,6 +3999,18 @@ async function renderBrowse(body, route, setRoute) {
     const row = el('div', 'fc-cardrow');
     row.dataset.cardId = String(card.id);
     if (card.suspended) row.classList.add('fc-cardrow--suspended');
+    // Bulk selection checkbox (top-left of the row).
+    const select = el('input', 'fc-cardrow__select');
+    select.type = 'checkbox';
+    select.title = 'Select for bulk move/copy';
+    select.checked = selectedIds.has(card.id);
+    select.addEventListener('change', () => {
+      if (select.checked) selectedIds.add(card.id); else selectedIds.delete(card.id);
+      row.classList.toggle('fc-cardrow--selected', select.checked);
+      syncBulkBar();
+    });
+    if (select.checked) row.classList.add('fc-cardrow--selected');
+    row.appendChild(select);
     const front = el('div', 'fc-cardrow__front');
     front.appendChild(_api.ui.renderMarkdown ? _api.ui.renderMarkdown(card.front) : document.createTextNode(card.front));
     row.appendChild(front);

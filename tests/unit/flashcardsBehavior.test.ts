@@ -378,7 +378,7 @@ describe('editor pane', () => {
     const backTa = pane.querySelectorAll('.fc-form textarea')[1] as HTMLTextAreaElement;
     front.value = 'Mack model estimates what?';
     backTa.value = 'The standard error of chain-ladder reserves.';
-    const save = [...pane.querySelectorAll('.fc-form button')].find((b) => b.textContent === 'Add Card') as HTMLButtonElement;
+    const save = [...pane.querySelectorAll('.fc-form button')].find((b) => b.textContent === 'Save Card') as HTMLButtonElement;
     save.click();
     await settle();
 

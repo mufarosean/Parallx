@@ -232,6 +232,82 @@ test('deck-wide Find Duplicates: scan → group → staged delete → apply', as
   await expect(deck).not.toBeVisible({ timeout: 5_000 });
 });
 
+test('bulk move + tag filter: select cards → Move to Deck → tags narrow the list', async ({ window }) => {
+  await expect(window.locator('.fc-pane')).toBeVisible({ timeout: 10_000 });
+  const confirmButton = (label: string) =>
+    window.locator('.parallx-modal-box button, .parallx-notification button', { hasText: label }).first();
+
+  // Clean slate for both decks.
+  await window.locator('.fc-pane .fc-tab, .fc-pane button', { hasText: 'Decks' }).first().click();
+  for (const name of ['E2E Bulk A', 'E2E Bulk B']) {
+    const leftover = window.locator('.fc-deck-card', { hasText: name }).first();
+    if (await leftover.isVisible().catch(() => false)) {
+      await leftover.locator('button', { hasText: 'Delete' }).click();
+      await confirmButton('Delete').click();
+      await expect(leftover).not.toBeVisible({ timeout: 5_000 });
+    }
+  }
+
+  // Target deck B first, then source deck A with two tagged cards.
+  const newDeck = async (name: string) => {
+    await window.locator('.fc-pane .fc-tab, .fc-pane button', { hasText: 'Decks' }).first().click();
+    await window.locator('.fc-pane button', { hasText: 'New deck' }).click();
+    const nameIn = window.locator('.parallx-modal-box input');
+    await nameIn.fill(name);
+    await nameIn.press('Enter');
+    await expect(window.locator('.fc-view__title', { hasText: name })).toBeVisible({ timeout: 5_000 });
+  };
+  await newDeck('E2E Bulk B');
+  await newDeck('E2E Bulk A');
+
+  const addCard = async (front: string, back: string, tags: string) => {
+    const form = window.locator('.fc-form');
+    if (!(await form.isVisible().catch(() => false))) {
+      await window.getByRole('button', { name: 'Add Card', exact: true }).first().click();
+    }
+    const tas = window.locator('.fc-form .fc-textarea');
+    await tas.nth(0).fill(front);
+    await tas.nth(1).fill(back);
+    await window.locator('.fc-form .fc-input').fill(tags);
+    await window.locator('.fc-form button', { hasText: 'Save Card' }).click();
+    await expect(window.locator('.fc-cardrow', { hasText: front.slice(0, 25) }).first()).toBeVisible({ timeout: 5_000 });
+  };
+  await addCard('BULK-ONE What is the Mack SE?', 'Standard error of reserves.', 'mack');
+  await addCard('BULK-TWO What is Brosius Z?', 'Credibility weight.', 'brosius');
+
+  // TAG FILTER: the chips narrow the list; clicking again clears.
+  await window.locator('.fc-tagchip', { hasText: '#mack' }).click();
+  await expect(window.locator('.fc-cardrow')).toHaveCount(1, { timeout: 5_000 });
+  await expect(window.locator('.fc-cardrow', { hasText: 'BULK-ONE' })).toBeVisible();
+  await window.locator('.fc-tagchip', { hasText: '#mack' }).click();
+  await expect(window.locator('.fc-cardrow')).toHaveCount(2, { timeout: 5_000 });
+
+  // BULK MOVE: select both, Move to Deck → pick B in the quick pick.
+  const checks = window.locator('.fc-cardrow__select');
+  await checks.nth(0).check();
+  await checks.nth(1).check();
+  await expect(window.locator('.fc-bulkbar__count', { hasText: '2 Selected' })).toBeVisible();
+  await window.locator('.fc-bulkbar button', { hasText: 'Move to Deck' }).click();
+  await window.locator('.parallx-quickpick-row', { hasText: 'E2E Bulk B' }).click();
+  await expect(window.locator('.fc-cardrow')).toHaveCount(0, { timeout: 10_000 });
+
+  // Both cards live in B now, scheduling intact (state chip still new).
+  await window.locator('.fc-pane .fc-tab, .fc-pane button', { hasText: 'Decks' }).first().click();
+  await window.locator('.fc-deck-card', { hasText: 'E2E Bulk B' }).first()
+    .locator('.fc-deck-card__info').click();
+  await expect(window.locator('.fc-cardrow')).toHaveCount(2, { timeout: 5_000 });
+  await expect(window.locator('.fc-cardrow', { hasText: 'BULK-TWO' })).toBeVisible();
+
+  // Cleanup both decks.
+  await window.locator('.fc-pane .fc-tab, .fc-pane button', { hasText: 'Decks' }).first().click();
+  for (const name of ['E2E Bulk A', 'E2E Bulk B']) {
+    const deck = window.locator('.fc-deck-card', { hasText: name }).first();
+    await deck.locator('button', { hasText: 'Delete' }).click();
+    await confirmButton('Delete').click();
+    await expect(deck).not.toBeVisible({ timeout: 5_000 });
+  }
+});
+
 test('dropdown selects by mouse (core ui regression: focusout killed item clicks)', async ({ window }) => {
   // The Create view's "Into deck" dropdown: with at least one deck, the
   // default selection is a deck, and picking "+ New Deck…" by MOUSE must
