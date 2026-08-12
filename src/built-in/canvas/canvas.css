@@ -2477,7 +2477,18 @@
   top: 0;
   z-index: 10;
   background: var(--vscode-editor-background);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  /* Paint-only hairline (NOT border-bottom): a border eats 1px of layout and
+     leaves a 31px content box, so align-items:center puts every even-height
+     child on a half pixel. Chromium paint-snaps each sibling independently,
+     and the snap direction flips when the window moves to a monitor with a
+     different devicePixelRatio — the "breadcrumbs not centered on my other
+     screen" bug. Even box + integer offsets = DPI-stable centering. */
+  box-shadow: inset 0 -1px 0 0 rgba(255, 255, 255, 0.06);
+  /* One uniform line box for ALL ribbon text (labels, › separators, the
+     "Edited … ago" stamp): 12px type in a 16px box centers at exactly 8px
+     and never depends on line-height:normal, whose ascent/descent rounding
+     varies per DPR. */
+  line-height: 16px;
   overflow: hidden;
 }
 
@@ -2487,7 +2498,8 @@
   min-width: 0;
   flex: 1;
   overflow: hidden;
-  height: 100%;
+  /* No height:100% — each nested centering stage adds its own rounding;
+     let the ribbon's align-items:center place this box directly. */
 }
 
 .canvas-top-ribbon-right {
@@ -2774,9 +2786,11 @@
 }
 
 .canvas-breadcrumb-label {
-  /* Was line-height:1, which clipped descenders (g, p, y) against the ribbon's
-     overflow:hidden. Give the glyph box room to breathe. */
-  line-height: 1.5;
+  /* The ribbon owns the line box now (16px on .canvas-top-ribbon) — a
+     per-element line-height here put the label in a DIFFERENT glyph box
+     than its › separators and the "Edited" stamp, so they centered
+     differently per monitor DPR. Descenders still fit: 12px type / 16px. */
+  line-height: inherit;
 }
 
 /* ── Page Icon ── */

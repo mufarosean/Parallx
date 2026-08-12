@@ -283,6 +283,15 @@ export class Dropdown extends Disposable {
         el.classList.add('ui-dropdown__item--selected');
         el.setAttribute('aria-selected', 'true');
       }
+      // Keep focus on the trigger while the option is pressed. Items are
+      // non-focusable divs, so a bare mousedown moves focus to <body>; the
+      // focusout close below then removes the list BEFORE mouseup, and the
+      // click never fires — every mouse selection silently no-oped and the
+      // trigger stayed on its previous value (user report: "my click on the
+      // deck I want is not being registered").
+      this._register(addDisposableListener(el, 'mousedown', (e) => {
+        e.preventDefault();
+      }));
       this._register(addDisposableListener(el, 'click', (e) => {
         e.stopPropagation();
         this._select(item.value);

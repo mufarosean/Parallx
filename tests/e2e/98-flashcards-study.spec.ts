@@ -115,6 +115,31 @@ test('grade Again → countdown wait → Show Now re-serves; in-study Edit/Delet
   await expect(window.locator('.fc-study__front', { hasText: 'E2E-STUDY-FRONT' }),
     'session did not survive the pane rebuild').toBeVisible({ timeout: 10_000 });
 
+  // NO-RESET: running the generic open command while studying must surface
+  // the pane untouched, not reroute it to Decks (focus-not-reopen fix).
+  await window.keyboard.press('Control+Shift+P');
+  await expect(window.locator('.command-palette-overlay')).toBeVisible({ timeout: 3_000 });
+  await window.locator('.command-palette-input').fill('>Open Flashcards');
+  await window.locator('.command-palette-item', { hasText: 'Open Flashcards' }).first().click();
+  await expect(window.locator('.fc-study__front', { hasText: 'E2E-STUDY-FRONT' }),
+    'Open Flashcards reset the study view').toBeVisible({ timeout: 5_000 });
+
+  // PER-CARD NOTES: reveal → type a note → blur saves it. It must survive a
+  // full pane rebuild (tab away and back) — the persistence the user asked
+  // for ("take persisting notes on different cards").
+  await window.locator('button', { hasText: 'Show Answer' }).click();
+  const notesIn = window.locator('.fc-study__notes-input');
+  await expect(notesIn).toBeVisible({ timeout: 5_000 });
+  await notesIn.fill('E2E note: watch the tail factor.');
+  await notesIn.blur();
+  await window.waitForTimeout(400); // debounce + write
+  await window.locator('.ui-tab', { hasText: 'Practice Sheet' }).first().click();
+  await window.waitForTimeout(400);
+  await window.locator('.ui-tab', { hasText: 'Flashcards' }).first().click();
+  await expect(window.locator('.fc-study__front', { hasText: 'E2E-STUDY-FRONT' })).toBeVisible({ timeout: 10_000 });
+  await window.locator('button', { hasText: 'Show Answer' }).click();
+  await expect(window.locator('.fc-study__notes-input')).toHaveValue('E2E note: watch the tail factor.', { timeout: 5_000 });
+
   // In-study DELETE finishes the loop (confirm modal → session complete).
   await window.locator('.fc-study__cardactions button', { hasText: 'Delete' }).click();
   const confirmDel = confirmButton('Delete Card');
@@ -130,4 +155,44 @@ test('grade Again → countdown wait → Show Now re-serves; in-study Edit/Delet
   await doneDeck.locator('button', { hasText: 'Delete' }).click();
   await confirmButton('Delete').click();
   await expect(doneDeck).not.toBeVisible({ timeout: 5_000 });
+});
+
+test('dropdown selects by mouse (core ui regression: focusout killed item clicks)', async ({ window }) => {
+  // The Create view's "Into deck" dropdown: with at least one deck, the
+  // default selection is a deck, and picking "+ New Deck…" by MOUSE must
+  // register (the focusout handler used to close the list on mousedown,
+  // before the item's click could fire — every dropdown in the app).
+  await expect(window.locator('.fc-pane')).toBeVisible({ timeout: 10_000 });
+
+  const confirmButton = (label: string) =>
+    window.locator('.parallx-modal-box button, .parallx-notification button', { hasText: label }).first();
+
+  // Ensure at least one deck exists so the default selection is NOT "+ New Deck…".
+  await window.locator('.fc-pane .fc-tab, .fc-pane button', { hasText: 'Decks' }).first().click();
+  await window.locator('.fc-pane button', { hasText: 'New deck' }).click();
+  const nameIn = window.locator('.parallx-modal-box input');
+  await expect(nameIn).toBeVisible({ timeout: 3_000 });
+  await nameIn.fill('E2E Dropdown Deck');
+  await nameIn.press('Enter');
+  await expect(window.locator('.fc-view__title', { hasText: 'E2E Dropdown Deck' })).toBeVisible({ timeout: 5_000 });
+
+  await window.locator('.fc-pane__tabs', { hasText: 'Create' }).getByText('Create', { exact: true }).click();
+  const trigger = window.locator('.fc-pane .ui-dropdown__button').first();
+  await expect(trigger).toBeVisible({ timeout: 5_000 });
+  const before = (await trigger.textContent()) ?? '';
+  expect(before).not.toContain('New Deck');
+
+  await trigger.click();
+  const option = window.locator('.ui-dropdown__list .ui-dropdown__item', { hasText: '+ New Deck…' }).first();
+  await expect(option).toBeVisible({ timeout: 3_000 });
+  await option.click();
+  await expect(trigger, 'mouse selection did not register on the dropdown').toContainText('New Deck', { timeout: 3_000 });
+
+  // Cleanup the deck.
+  await window.locator('.fc-pane .fc-tab, .fc-pane button', { hasText: 'Decks' }).first().click();
+  const deck = window.locator('.fc-deck-card', { hasText: 'E2E Dropdown Deck' }).first();
+  await expect(deck).toBeVisible({ timeout: 5_000 });
+  await deck.locator('button', { hasText: 'Delete' }).click();
+  await confirmButton('Delete').click();
+  await expect(deck).not.toBeVisible({ timeout: 5_000 });
 });

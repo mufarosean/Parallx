@@ -584,17 +584,25 @@ function fcAggregateStats(reviews, cards, now) {
     if (counts[c.state] !== undefined) counts[c.state]++;
   }
 
-  let todayCount = 0, todayCorrect = 0;
+  let todayCount = 0, todayCorrect = 0, todayMs = 0;
   let retNum = 0, retDen = 0;
+  const answers = { again: 0, hard: 0, good: 0, easy: 0 };
   const byDay = new Map();
   for (const r of reviews) {
     if (r.reviewedAt >= todayStart) {
       todayCount++;
       if (r.rating > AGAIN) todayCorrect++;
+      // Cap one answer at 60s: a walked-away card must not report an hour
+      // of "studying" (Anki caps the same way).
+      todayMs += Math.min(r.msTaken || 0, 60_000);
     }
     if (r.reviewedAt >= days30Start) {
       const day = startOfDay(r.reviewedAt);
       byDay.set(day, (byDay.get(day) || 0) + 1);
+      if (r.rating === AGAIN) answers.again++;
+      else if (r.rating === HARD) answers.hard++;
+      else if (r.rating === GOOD) answers.good++;
+      else if (r.rating === EASY) answers.easy++;
       // Retention: of REVIEW-state cards seen, how many were recalled
       // (rating > Again)? Learning steps are excluded — failing a card you
       // learned 60 seconds ago is not a retention event.
@@ -610,14 +618,35 @@ function fcAggregateStats(reviews, cards, now) {
     last30.push({ day, count: byDay.get(day) || 0 });
   }
 
+  // Scheduled load, next 14 days: overdue rolls into today (that is when it
+  // will actually be seen). Same honesty rule as the planner forecast: FSRS
+  // reshuffles after every review and NEW cards are not scheduled, so this
+  // is a floor, never a promise.
+  const forecast14 = [];
+  {
+    const byDue = new Map();
+    for (const c of cards) {
+      if (c.suspended || c.state === 'new' || !(c.dueAt > 0)) continue;
+      const day = Math.max(startOfDay(c.dueAt), todayStart);
+      if (day >= todayStart + 14 * DAY) continue;
+      byDue.set(day, (byDue.get(day) || 0) + 1);
+    }
+    for (let day = todayStart; day < todayStart + 14 * DAY; day += DAY) {
+      forecast14.push({ day, count: byDue.get(day) || 0 });
+    }
+  }
+
   return {
     counts,
     today: {
       reviews: todayCount,
       correctPct: todayCount > 0 ? Math.round((todayCorrect / todayCount) * 100) : null,
+      minutes: Math.round(todayMs / 60_000),
     },
     last30,
     retention30: retDen > 0 ? Math.round((retNum / retDen) * 100) : null,
+    answers30: answers,
+    forecast14,
   };
 }
 
@@ -701,6 +730,23 @@ async function fcOpenSource(card) {
 }
 
 async function openFlashcards(route) {
+  // Focus, don't reopen. openEditor on an already-active tab does a FULL
+  // pane teardown/rebuild in the workbench (editorGroupView seq quirk) —
+  // every "open flashcards" from a command/link/toast was destroying the
+  // live pane and any place the user held in it. focusEditor surfaces the
+  // existing tab across ALL groups without touching the pane; the route
+  // event (when one was requested) navigates it in place.
+  try {
+    const existing = (_api.editors.openEditors ?? []).find((e) =>
+      typeof e?.id === 'string' && e.id.endsWith(':flashcards:main'));
+    if (existing) {
+      await _api.editors.focusEditor(existing.id);
+      if (route) {
+        document.dispatchEvent(new CustomEvent('parallx.flashcards.route', { detail: route }));
+      }
+      return;
+    }
+  } catch { /* fall through to a fresh open */ }
   if (route) _setRoute(route);
   await _api.editors.openEditor({
     typeId: 'flashcards',
@@ -708,10 +754,6 @@ async function openFlashcards(route) {
     iconHtml: FC_ICON_HTML,
     instanceId: 'main',
   });
-  // Re-dispatch for an already-open pane (first-open consumed _pendingRoute).
-  if (route) {
-    document.dispatchEvent(new CustomEvent('parallx.flashcards.route', { detail: route }));
-  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1424,13 +1466,35 @@ async function fcDueSummary() {
 }
 
 async function fcLoadStats() {
+  const now = Date.now();
   const reviews = (await db.all(
-    'SELECT reviewed_at, rating, state_before FROM fc_reviews WHERE reviewed_at >= ?',
-    [Date.now() - 31 * DAY],
-  )).map((r) => ({ reviewedAt: r.reviewed_at, rating: r.rating, stateBefore: r.state_before }));
-  const cards = (await db.all('SELECT state, suspended FROM fc_cards'))
-    .map((r) => ({ state: r.state, suspended: !!r.suspended }));
-  return fcAggregateStats(reviews, cards, Date.now());
+    'SELECT reviewed_at, rating, state_before, ms_taken FROM fc_reviews WHERE reviewed_at >= ?',
+    [now - 31 * DAY],
+  )).map((r) => ({ reviewedAt: r.reviewed_at, rating: r.rating, stateBefore: r.state_before, msTaken: r.ms_taken || 0 }));
+  const cards = (await db.all('SELECT state, suspended, due_at, deck_id, stability FROM fc_cards'))
+    .map((r) => ({ state: r.state, suspended: !!r.suspended, dueAt: r.due_at || 0, deckId: r.deck_id, stability: r.stability || 0 }));
+  const stats = fcAggregateStats(reviews, cards, now);
+
+  // Per-deck rollup: where the cards live, what is waiting, how settled the
+  // memory is (mean FSRS stability of the cards that have one).
+  const deckRows = await db.all('SELECT id, name FROM fc_decks WHERE archived = 0 ORDER BY name');
+  stats.perDeck = deckRows.map((d) => {
+    const dc = cards.filter((c) => c.deckId === d.id);
+    const active = dc.filter((c) => !c.suspended);
+    const withStability = active.filter((c) => c.stability > 0);
+    return {
+      name: d.name,
+      total: dc.length,
+      due: active.filter((c) => c.state !== 'new' && c.dueAt > 0 && c.dueAt <= now).length,
+      fresh: active.filter((c) => c.state === 'new').length,
+      avgStability: withStability.length
+        ? withStability.reduce((n, c) => n + c.stability, 0) / withStability.length
+        : 0,
+    };
+  }).filter((d) => d.total > 0);
+
+  stats.streak = await fcStudyStreak();
+  return stats;
 }
 
 /**
@@ -2458,6 +2522,10 @@ function injectStyles() {
 .fc-study__reveal { margin-top: var(--px-space-6); height: 32px; padding: 0 var(--px-space-6); }
 .fc-study__discuss { margin-top: var(--px-space-3); }
 .fc-study__keys { margin-top: var(--px-space-4); font-size: var(--px-text-xs); color: var(--px-text-faint); }
+.fc-study__notes { width: 100%; max-width: min(100%, 920px); margin-top: var(--px-space-3); text-align: left; }
+.fc-study__notes-label { font-size: var(--px-text-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--px-text-faint); margin-bottom: 4px; }
+.fc-study__notes-input { width: 100%; box-sizing: border-box; min-height: 40px; resize: vertical; }
+.fc-cardrow__notes { font-size: var(--px-text-xs); color: var(--px-text-muted); font-style: italic; margin-top: 2px; }
 .fc-study__done { text-align: center; padding: var(--px-space-8) var(--px-space-5); }
 .fc-study__done .fc-btn { margin-top: var(--px-space-4); }
 
@@ -2472,6 +2540,20 @@ function injectStyles() {
 .fc-chart__bar--empty { background: var(--px-divider); height: 2px !important; }
 .fc-chart__bar--today { background: var(--px-accent); }
 .fc-chart-caption { font-size: var(--px-text-xs); color: var(--px-text-faint); font-variant-numeric: tabular-nums; margin-top: var(--px-space-1); }
+.fc-chart__bar--forecast { background: var(--px-accent-soft); }
+.fc-answermix { display: flex; height: 10px; border-radius: var(--px-radius-full); overflow: hidden; gap: 1px; }
+.fc-answermix__seg--again { background: var(--px-danger); }
+.fc-answermix__seg--hard { background: var(--px-warning); }
+.fc-answermix__seg--good { background: var(--px-success); }
+.fc-answermix__seg--easy { background: var(--px-info, var(--px-accent)); }
+.fc-answermix__legend { display: flex; gap: var(--px-space-4); margin-top: var(--px-space-2); font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
+.fc-answermix__key { display: inline-flex; align-items: center; gap: 5px; }
+.fc-answermix__dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.fc-decktable { display: flex; flex-direction: column; }
+.fc-decktable__row { display: grid; grid-template-columns: 1fr 70px 70px 70px 100px; gap: var(--px-space-2); padding: 6px 0; border-bottom: 1px solid var(--px-divider); font-size: var(--px-text-sm); color: var(--px-text-secondary); font-variant-numeric: tabular-nums; }
+.fc-decktable__row--head { font-size: var(--px-text-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--px-text-faint); }
+.fc-decktable__name { color: var(--px-text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fc-decktable__due { color: var(--px-accent); font-weight: 600; }
 
 /* ── AI-generation review rows — hairline separated, not wells ── */
 .fc-genrow {
@@ -2746,10 +2828,15 @@ function createEditorPane(container, input) {
   injectStyles();
   try { input?.setName?.('Flashcards'); } catch { /* noop */ }
 
+  const pendingRoute = _takePendingRoute();
   const state = {
-    route: _takePendingRoute() || { view: 'decks' },
+    route: pendingRoute || { view: 'decks' },
     disposed: false,
     session: null, // live study session (owned by renderStudy)
+    /** True once a route arrived by explicit navigation (command, link,
+     *  tab click, or a pending route consumed at construction) — a later
+     *  restoreViewState must not clobber it. */
+    explicitRoute: !!pendingRoute,
   };
 
   const root = el('div', 'fc-pane');
@@ -2809,7 +2896,13 @@ function createEditorPane(container, input) {
   };
 
   function setRoute(route) {
+    // Same-route no-op: re-clicking "Study Now" mid-study or re-opening the
+    // current deck must not wipe the view (render() rebuilds the body and
+    // resets the card face / scroll — the "certain things reset the pane"
+    // report).
+    if (JSON.stringify(route) === JSON.stringify(state.route)) return;
     state.route = route;
+    state.explicitRoute = true;
     void render();
   }
 
@@ -2830,7 +2923,12 @@ function createEditorPane(container, input) {
     // destroyed unsaved editor text and collapsed the add-card form.
     if (state.disposed || state.route.view === 'study' || state.route.view === 'create'
       || state.route.view === 'import' || state.route.view === 'browse') return;
-    void render();
+    // A background write (chat tool, capture toast) refreshing Decks/Stats
+    // must not scroll the user back to the top.
+    const scrollTop = body.scrollTop;
+    void render().then(() => {
+      if (!state.disposed && scrollTop > 0) body.scrollTop = scrollTop;
+    });
   };
   _dataListeners.add(onData);
 
@@ -2855,7 +2953,13 @@ function createEditorPane(container, input) {
     },
     restoreViewState(saved) {
       if (state.disposed || !saved || !saved.route || !saved.route.view) return;
+      // A route that arrived by explicit navigation (command/link/tab click)
+      // during this pane's construction outranks the restored snapshot —
+      // the workbench does not order the two deterministically, and the
+      // stale 120ms scroll timer would jump the NEW view.
+      if (state.explicitRoute) return;
       setRoute(saved.route);
+      state.explicitRoute = false; // restoring is not user navigation
       if (typeof saved.scrollTop === 'number' && saved.scrollTop > 0) {
         // After the async view render settles; best-effort by design.
         setTimeout(() => { if (!state.disposed) body.scrollTop = saved.scrollTop; }, 120);
@@ -2989,6 +3093,13 @@ function fcCardEditorEl(card, { onSave, onCancel }) {
   const frontIn = side('Front', card.front);
   const backIn = side('Back', card.back);
 
+  form.appendChild(el('div', 'fc-label', 'Notes'));
+  const notesIn = el('textarea', 'fc-textarea');
+  notesIn.value = card.notes || '';
+  notesIn.rows = 2;
+  notesIn.placeholder = 'Optional. Shown with the answer during study; the AI rewrite prompt reads them too.';
+  form.appendChild(notesIn);
+
   form.appendChild(el('div', 'fc-label', 'Tags'));
   const tagsIn = el('input', 'fc-input');
   tagsIn.value = fcParseTags(card.tags).join(' ');
@@ -3015,7 +3126,7 @@ function fcCardEditorEl(card, { onSave, onCancel }) {
       return;
     }
     const tags = tagsIn.value.split(/[\s,]+/).map((t) => t.trim()).filter(Boolean).join(',');
-    void onSave({ front, back, tags });
+    void onSave({ front, back, tags, notes: notesIn.value });
   };
   saveBtn.addEventListener('click', save);
   cancelBtn.addEventListener('click', () => onCancel());
@@ -3118,8 +3229,13 @@ async function renderBrowse(body, route, setRoute) {
   const listHost = el('div');
   view.appendChild(listHost);
 
-  const renderList = async () => {
+  const renderList = async (keepCardId = null) => {
     const cards = await fcListCards(deckRow.id, searchIn.value);
+    // Rebuilding collapses the pane's scroll height, which clamps scrollTop
+    // to ~0 — saving an edit deep in a long deck dumped the user at the top
+    // ("does not keep me at that card"). Capture, rebuild, restore; rows
+    // append synchronously so the height is back before the restore.
+    const scrollTop = body.scrollTop;
     listHost.innerHTML = '';
     if (cards.length === 0) {
       listHost.appendChild(el('div', 'fc-empty', searchIn.value ? 'No matches.' : 'No cards in this deck yet.'));
@@ -3128,10 +3244,16 @@ async function renderBrowse(body, route, setRoute) {
     for (const card of cards) {
       listHost.appendChild(buildCardRow(card));
     }
+    body.scrollTop = scrollTop;
+    if (keepCardId != null) {
+      const row = listHost.querySelector(`[data-card-id="${keepCardId}"]`);
+      if (row) row.scrollIntoView({ block: 'nearest' }); // no-op when already visible
+    }
   };
 
   const buildCardRow = (card) => {
     const row = el('div', 'fc-cardrow');
+    row.dataset.cardId = String(card.id);
     if (card.suspended) row.classList.add('fc-cardrow--suspended');
     const front = el('div', 'fc-cardrow__front');
     front.appendChild(_api.ui.renderMarkdown ? _api.ui.renderMarkdown(card.front) : document.createTextNode(card.front));
@@ -3139,6 +3261,9 @@ async function renderBrowse(body, route, setRoute) {
     const back = el('div', 'fc-cardrow__back');
     back.appendChild(_api.ui.renderMarkdown ? _api.ui.renderMarkdown(card.back) : document.createTextNode(card.back));
     row.appendChild(back);
+    if (card.notes) {
+      row.appendChild(el('div', 'fc-cardrow__notes', card.notes));
+    }
     const meta = el('div', 'fc-cardrow__meta');
     const stateChip = el('span', `fc-state fc-state--${card.state === 'relearning' ? 'learning' : card.state}`);
     stateChip.textContent = card.state;
@@ -3174,22 +3299,24 @@ async function renderBrowse(body, route, setRoute) {
       row.replaceChildren(fcCardEditorEl(card, {
         onSave: async (patch) => {
           await fcUpdateCard(card.id, patch);
-          void renderList();
+          void renderList(card.id);
         },
-        onCancel: () => void renderList(),
+        onCancel: () => void renderList(card.id),
       }));
     });
     btns.appendChild(editBtn);
     const suspendBtn = el('button', 'fc-btn');
     suspendBtn.textContent = card.suspended ? 'Unsuspend' : 'Suspend';
     suspendBtn.addEventListener('click', () => {
-      void fcUpdateCard(card.id, { suspended: !card.suspended }).then(renderList);
+      // Explicit arrows: fcUpdateCard resolves undefined, and a bare
+      // .then(renderList) would pass it as keepCardId's stand-in.
+      void fcUpdateCard(card.id, { suspended: !card.suspended }).then(() => renderList(card.id));
     });
     btns.appendChild(suspendBtn);
     const delBtn = el('button', 'fc-btn fc-btn--danger');
     delBtn.textContent = 'Delete';
     delBtn.addEventListener('click', () => {
-      void fcDeleteCard(card.id).then(renderList);
+      void fcDeleteCard(card.id).then(() => renderList());
     });
     btns.appendChild(delBtn);
     row.appendChild(btns);
@@ -3405,7 +3532,7 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
     }, 250);
   };
 
-  const showCard = () => {
+  const showCard = (opts = {}) => {
     if (session.waitTimer) { clearInterval(session.waitTimer); session.waitTimer = null; }
     main.innerHTML = '';
     session.revealed = false;
@@ -3440,6 +3567,12 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
     // ── In-study Edit / Delete (Mufaro: "If I see a flashcard is incorrect,
     // I have to edit it right there and then") ──
     const openEdit = () => {
+      // Editing from the ANSWER face must return to the answer face — the
+      // typical flow is reveal → spot the error → fix it, and being dumped
+      // back on the question ("does not keep me at that card") forced a
+      // pointless re-reveal.
+      const wasRevealed = session.revealed;
+      const faceOpts = () => (wasRevealed ? { revealCardId: card.id } : {});
       session.editing = true;
       main.innerHTML = '';
       const wrap = el('div', 'fc-study__edit');
@@ -3452,9 +3585,9 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
           const fresh = await fcGetCard(card.id);
           if (fresh) session.queue[session.index] = fresh;
           else session.queue.splice(session.index, 1);
-          showCard();
+          showCard(faceOpts());
         },
-        onCancel: () => showCard(),
+        onCancel: () => showCard(faceOpts()),
       }));
       main.appendChild(wrap);
     };
@@ -3585,6 +3718,34 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
       }
       answerHost.appendChild(aCard);
 
+      // Per-card persistent notes (user ask: "take persisting notes on
+      // different cards"). The column has existed since v1 — this is its
+      // first writer. Autosaves debounced + on blur; the in-session card
+      // object is kept fresh so re-serves and edits see the latest text.
+      const notesWrap = el('div', 'fc-study__notes');
+      notesWrap.appendChild(el('div', 'fc-study__notes-label', 'My Notes'));
+      const notesIn = el('textarea', 'fc-textarea fc-study__notes-input');
+      notesIn.placeholder = 'Your notes for this card - mnemonics, pitfalls, exam traps. They stay with the card.';
+      notesIn.value = card.notes || '';
+      notesIn.rows = 2;
+      let notesTimer = null;
+      const saveNotes = () => {
+        const v = notesIn.value;
+        if (v === (card.notes || '')) return;
+        card.notes = v;
+        void fcUpdateCard(card.id, { notes: v });
+      };
+      notesIn.addEventListener('input', () => {
+        if (notesTimer) clearTimeout(notesTimer);
+        notesTimer = setTimeout(saveNotes, 600);
+      });
+      notesIn.addEventListener('blur', () => {
+        if (notesTimer) clearTimeout(notesTimer);
+        saveNotes();
+      });
+      notesWrap.appendChild(notesIn);
+      answerHost.appendChild(notesWrap);
+
       controls.innerHTML = '';
       const now = Date.now();
       const grades = [
@@ -3684,6 +3845,11 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
       }
     };
     main.focus();
+    // Return to the answer face after an edit made from it — but ONLY for
+    // the same card: a newly-due learning card promoted ahead (or a cloze
+    // edit dissolving the sibling) must start on its question, never with
+    // its answer pre-exposed.
+    if (opts.revealCardId != null && card.id === opts.revealCardId) reveal();
   };
 
   showCard();
@@ -4331,6 +4497,8 @@ async function renderStats(body) {
     return box;
   };
   grid.appendChild(stat(String(stats.today.reviews), 'Reviews today'));
+  grid.appendChild(stat(stats.today.reviews > 0 ? `${stats.today.minutes}m` : '—', 'Time today'));
+  grid.appendChild(stat(stats.streak > 0 ? `${stats.streak}d` : '—', 'Streak'));
   grid.appendChild(stat(stats.today.correctPct === null ? '—' : `${stats.today.correctPct}%`, 'Correct today'));
   grid.appendChild(stat(stats.retention30 === null ? '—' : `${stats.retention30}%`, 'Retention (30d)'));
   grid.appendChild(stat(String(stats.counts.total), 'Total cards'));
@@ -4359,6 +4527,72 @@ async function renderStats(body) {
   });
   view.appendChild(chart);
   view.appendChild(el('div', 'fc-chart-caption', `Peak day: ${max} reviews`));
+
+  // ── Scheduled load, next 14 days ──
+  view.appendChild(el('div', 'fc-label', 'Scheduled, next 14 days'));
+  const fchart = el('div', 'fc-chart');
+  const fmax = Math.max(1, ...stats.forecast14.map((d) => d.count));
+  stats.forecast14.forEach((day, i) => {
+    const bar = el('div', 'fc-chart__bar fc-chart__bar--forecast');
+    if (day.count === 0) bar.classList.add('fc-chart__bar--empty');
+    else {
+      bar.style.height = `${Math.max(6, Math.round((day.count / fmax) * 100))}%`;
+      if (i === 0) bar.classList.add('fc-chart__bar--today');
+    }
+    bar.title = `${new Date(day.day).toLocaleDateString()}: ${day.count} scheduled`;
+    fchart.appendChild(bar);
+  });
+  view.appendChild(fchart);
+  const dueTotal14 = stats.forecast14.reduce((n, d) => n + d.count, 0);
+  view.appendChild(el('div', 'fc-chart-caption',
+    `${stats.forecast14[0]?.count ?? 0} due today · ${dueTotal14} scheduled over 14 days (new cards not included)`));
+
+  // ── Answer mix, last 30 days ──
+  const a = stats.answers30;
+  const answerTotal = a.again + a.hard + a.good + a.easy;
+  if (answerTotal > 0) {
+    view.appendChild(el('div', 'fc-label', 'Answers, last 30 days'));
+    const mix = el('div', 'fc-answermix');
+    const legend = el('div', 'fc-answermix__legend');
+    for (const [key, label] of [['again', 'Again'], ['hard', 'Hard'], ['good', 'Good'], ['easy', 'Easy']]) {
+      const count = a[key];
+      if (count > 0) {
+        const seg = el('div', `fc-answermix__seg fc-answermix__seg--${key}`);
+        seg.style.flexGrow = String(count);
+        seg.title = `${label}: ${count} (${Math.round((count / answerTotal) * 100)}%)`;
+        mix.appendChild(seg);
+      }
+      const item = el('span', 'fc-answermix__key');
+      item.appendChild(el('span', `fc-answermix__dot fc-answermix__seg--${key}`));
+      item.appendChild(document.createTextNode(` ${label} ${answerTotal ? Math.round((count / answerTotal) * 100) : 0}%`));
+      legend.appendChild(item);
+    }
+    view.appendChild(mix);
+    view.appendChild(legend);
+  }
+
+  // ── Per-deck breakdown ──
+  if (stats.perDeck.length > 0) {
+    view.appendChild(el('div', 'fc-label', 'By deck'));
+    const table = el('div', 'fc-decktable');
+    const headRow = el('div', 'fc-decktable__row fc-decktable__row--head');
+    for (const h of ['Deck', 'Cards', 'Due Now', 'New', 'Avg Stability']) {
+      headRow.appendChild(el('span', '', h));
+    }
+    table.appendChild(headRow);
+    for (const d of stats.perDeck) {
+      const row = el('div', 'fc-decktable__row');
+      row.appendChild(el('span', 'fc-decktable__name', d.name));
+      row.appendChild(el('span', '', String(d.total)));
+      row.appendChild(el('span', d.due > 0 ? 'fc-decktable__due' : '', String(d.due)));
+      row.appendChild(el('span', '', String(d.fresh)));
+      row.appendChild(el('span', '', d.avgStability > 0
+        ? `${d.avgStability < 100 ? d.avgStability.toFixed(1) : Math.round(d.avgStability)}d`
+        : '—'));
+      table.appendChild(row);
+    }
+    view.appendChild(table);
+  }
 
   body.appendChild(view);
 }
@@ -4730,10 +4964,12 @@ function registerPlannerDayLoads(context, attempt = 0) {
 
 function registerCommands(context) {
   const cmds = [
-    ['flashcards.open', () => openFlashcards({ view: 'decks' })],
+    // No forced route on the generic opens: an already-open pane surfaces
+    // exactly as the user left it (fresh opens still default to Decks).
+    ['flashcards.open', () => openFlashcards()],
     ['flashcards.study', () => openFlashcards({ view: 'study' })],
     ['flashcards.newDeck', () => _cmdNewDeck()],
-    ['flashcards.newCard', () => openFlashcards({ view: 'decks' })],
+    ['flashcards.newCard', () => openFlashcards()],
     ['flashcards.generate', () => openFlashcards({ view: 'create' })],
     ['flashcards.stats', () => openFlashcards({ view: 'stats' })],
     // Direct capture surface for other tools and the AI:
