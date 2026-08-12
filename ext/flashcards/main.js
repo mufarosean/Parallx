@@ -472,8 +472,18 @@ function fcRepairLatexEscapes(slice) {
   return out;
 }
 
-function fcExtractCardsJson(text) {
-  if (typeof text !== 'string' || !text.trim()) return { cards: [], error: 'Empty response.' };
+/**
+ * Find and parse a JSON array in raw model output. Shared by the card
+ * extractor, the duplicate judge, and the coverage parser: think-block and
+ * fence stripping, a string-aware bracket walk over EVERY candidate array
+ * (the first '[' is often a citation), and the LaTeX escape repair applied
+ * BEFORE the strict parse. `mapSlice(parsedArray)` turns one candidate into
+ * domain objects — return null to reject the candidate, [] to accept an
+ * empty result, or the mapped items.
+ * Returns { items, error } — items is [] on failure, never null.
+ */
+function fcExtractJsonArray(text, mapSlice) {
+  if (typeof text !== 'string' || !text.trim()) return { items: [], error: 'Empty response.' };
   let t = text.trim();
   // Thinking models can leak inline reasoning; brackets inside it would
   // hijack the array scan. Drop complete blocks AND an unterminated head.
@@ -482,7 +492,6 @@ function fcExtractCardsJson(text) {
   // Strip markdown fences.
   t = t.replace(/```(?:json)?/gi, '');
 
-  /** Parse cards out of one candidate array slice. */
   const parseSlice = (slice) => {
     let parsed;
     // Repair BEFORE the strict parse: parse-first would silently accept
@@ -492,27 +501,9 @@ function fcExtractCardsJson(text) {
       try { parsed = JSON.parse(slice); } catch { return null; }
     }
     if (!Array.isArray(parsed)) return null;
-    const cards = [];
-    for (const item of parsed.slice(0, 100)) {
-      if (!item || typeof item !== 'object') continue;
-      const front = String(item.front ?? item.question ?? item.q ?? '').trim();
-      const back = String(item.back ?? item.answer ?? item.a ?? '').trim();
-      if (!front || !back) continue;
-      const tags = Array.isArray(item.tags)
-        ? item.tags.map((x) => String(x).trim()).filter(Boolean).slice(0, 8).join(',')
-        : '';
-      const card = { front, back, tags };
-      // M98 grounding: per-card page attribution when the prompt was paged.
-      // fcGenerateCards validates the number against the real page range.
-      const page = Number(item.page ?? item.source_page ?? NaN);
-      if (Number.isInteger(page) && page > 0) card.page = page;
-      cards.push(card);
-    }
-    return cards;
+    return mapSlice(parsed);
   };
 
-  // The first '[' can be a citation ("[1]") or stray bracket in prose —
-  // walk EVERY candidate array until one yields usable cards.
   let sawArray = false, unterminated = false;
   let start = t.indexOf('[');
   let attempts = 0;
@@ -533,17 +524,45 @@ function fcExtractCardsJson(text) {
       }
     }
     if (end === -1) { unterminated = true; break; }
-    const cards = parseSlice(t.slice(start, end + 1));
-    if (cards !== null) {
+    const items = parseSlice(t.slice(start, end + 1));
+    if (items !== null) {
       sawArray = true;
-      if (cards.length > 0) return { cards, error: null };
+      if (items.length > 0) return { items, error: null };
     }
     start = t.indexOf('[', start + 1);
   }
 
-  if (unterminated) return { cards: [], error: 'Unterminated JSON array. The response may have been cut off.' };
-  if (sawArray) return { cards: [], error: 'No usable cards in response.' };
-  return { cards: [], error: 'No JSON array in response.' };
+  if (unterminated) return { items: [], error: 'Unterminated JSON array. The response may have been cut off.' };
+  if (sawArray) return { items: [], error: 'No usable items in response.' };
+  return { items: [], error: 'No JSON array in response.' };
+}
+
+function fcExtractCardsJson(text) {
+  const { items, error } = fcExtractJsonArray(text, (parsed) => {
+    const cards = [];
+    for (const item of parsed.slice(0, 100)) {
+      if (!item || typeof item !== 'object') continue;
+      const front = String(item.front ?? item.question ?? item.q ?? '').trim();
+      const back = String(item.back ?? item.answer ?? item.a ?? '').trim();
+      if (!front || !back) continue;
+      const tags = Array.isArray(item.tags)
+        ? item.tags.map((x) => String(x).trim()).filter(Boolean).slice(0, 8).join(',')
+        : '';
+      const card = { front, back, tags };
+      // M98 grounding: per-card page attribution when the prompt was paged.
+      // fcGenerateCards validates the number against the real page range.
+      const page = Number(item.page ?? item.source_page ?? NaN);
+      if (Number.isInteger(page) && page > 0) card.page = page;
+      // Multi-source generation: which [Doc k] the fact came from.
+      // fcGenerateCards validates the index against the real doc list.
+      const doc = Number(item.doc ?? item.source_doc ?? NaN);
+      if (Number.isInteger(doc) && doc > 0) card.doc = doc;
+      cards.push(card);
+    }
+    return cards;
+  });
+  const error2 = error === 'No usable items in response.' ? 'No usable cards in response.' : error;
+  return { cards: items, error: error2 };
 }
 
 /** 'HH:MM' → 5-field cron for a daily firing, or null when malformed. */
@@ -727,6 +746,22 @@ async function fcOpenSource(card) {
   } catch (e) {
     _api.window.showErrorMessage?.(`Could not open the source: ${e.message}`);
   }
+}
+
+/** The one deck action menu — shared by the sidebar deck rows and the
+ *  Browse header overflow so both surfaces stay in sync. */
+function fcDeckMenuItems(deck) {
+  return [
+    { label: 'Study Deck', icon: 'play', onSelect: () => void openFlashcards({ view: 'study', deckId: deck.id }) },
+    { label: 'Browse Cards', icon: 'layers', onSelect: () => void openFlashcards({ view: 'browse', deckId: deck.id }) },
+    { label: 'Add Cards with AI', icon: 'px-ai-mark', onSelect: () => void openFlashcards({ view: 'create', deckId: deck.id }) },
+    { label: 'Find Duplicates', icon: 'px-ai-mark', onSelect: () => void openFlashcards({ view: 'dedup', deckId: deck.id }) },
+    { label: 'Coverage Review', icon: 'px-ai-mark', onSelect: () => void openFlashcards({ view: 'coverage', deckId: deck.id }) },
+    { separator: true },
+    { label: 'Rename', icon: 'pencil', onSelect: () => void _renameDeckFlow(deck) },
+    { label: deck.examDate ? 'Change Exam Date' : 'Set Exam Date', icon: 'calendar', onSelect: () => void _setExamDateFlow(deck) },
+    { label: 'Delete Deck', icon: 'trash', danger: true, onSelect: () => void _deleteDeckFlow(deck) },
+  ];
 }
 
 async function openFlashcards(route) {
@@ -1123,6 +1158,9 @@ async function fcReconcileClozeGroup(noteGroup, deckId, newFront, newBack, edite
 const FC_EMB_DIMS = 768; // nomic-embed-text v1.5; EmbeddingService hard-validates
 const FC_DUP_SIM_EMBEDDING = 0.88; // cosine similarity flag threshold
 const FC_DUP_SIM_TRIGRAM = 0.5;    // Jaccard 3-gram fallback threshold
+// Deck-wide sweep shortlist threshold: recall-biased (lower than the flag
+// threshold) because the AI judge arbitrates every candidate cluster.
+const FC_SWEEP_SIM_EMBEDDING = 0.83;
 
 let _embSvcCache; // undefined = unprobed; null = unavailable
 function fcEmbeddingService() {
@@ -1307,6 +1345,305 @@ async function fcBackfillEmbeddings(cap = 512) {
     );
     if (rows.length) await fcEmbedCards(rows);
   } catch { /* best-effort */ }
+}
+
+// ── Deck-wide duplicate sweep (user ask: find cards asking essentially the
+//    same thing across a WHOLE deck, not one by one) ────────────────────────
+
+/**
+ * Union-find clustering of candidate pairs. Pure. Input: `{a, b, similarity}`
+ * pairs (canonical a < b). Output: clusters of 2+ card ids, each with its
+ * pairs, sorted by strongest similarity first.
+ */
+function fcClusterPairs(pairs) {
+  const parent = new Map();
+  const find = (x) => {
+    let r = x;
+    while (parent.get(r) !== r) r = parent.get(r);
+    let c = x;
+    while (parent.get(c) !== c) { const n = parent.get(c); parent.set(c, r); c = n; }
+    return r;
+  };
+  const union = (a, b) => {
+    if (!parent.has(a)) parent.set(a, a);
+    if (!parent.has(b)) parent.set(b, b);
+    const ra = find(a), rb = find(b);
+    if (ra !== rb) parent.set(ra, rb);
+  };
+  for (const p of pairs) union(p.a, p.b);
+  const groups = new Map();
+  for (const id of parent.keys()) {
+    const root = find(id);
+    if (!groups.has(root)) groups.set(root, { cardIds: [], pairs: [] });
+    groups.get(root).cardIds.push(id);
+  }
+  for (const p of pairs) groups.get(find(p.a)).pairs.push(p);
+  return [...groups.values()]
+    .filter((g) => g.cardIds.length >= 2)
+    .map((g) => ({
+      cardIds: g.cardIds.sort((a, b) => a - b),
+      pairs: g.pairs,
+      similarity: Math.max(...g.pairs.map((p) => p.similarity)),
+    }))
+    .sort((a, b) => b.similarity - a.similarity);
+}
+
+/**
+ * Trigram pairwise sweep. Pure. Precomputes gram sets once per card (the
+ * pairwise loop would otherwise rebuild them O(n²) times). Skips shared
+ * note_group pairs (cloze/reverse siblings are near-duplicates by
+ * construction). Returns canonical `{a, b, similarity}` pairs >= threshold.
+ */
+function fcTrigramPairs(cards, threshold = FC_DUP_SIM_TRIGRAM) {
+  const grams = (s) => {
+    const norm = String(s || '').toLowerCase().replace(/[^a-z0-9$\\]+/g, ' ').replace(/\s+/g, ' ').trim();
+    const set = new Set();
+    for (let i = 0; i <= norm.length - 3; i++) set.add(norm.slice(i, i + 3));
+    return set;
+  };
+  const sets = cards.map((c) => grams(`${c.front}\n${c.back}`));
+  const pairs = [];
+  for (let i = 0; i < cards.length; i++) {
+    for (let j = i + 1; j < cards.length; j++) {
+      if (cards[i].noteGroup && cards[i].noteGroup === cards[j].noteGroup) continue;
+      const ga = sets[i], gb = sets[j];
+      if (ga.size === 0 || gb.size === 0) continue;
+      let inter = 0;
+      for (const g of ga) if (gb.has(g)) inter++;
+      const sim = inter / (ga.size + gb.size - inter);
+      if (sim >= threshold) {
+        const a = Math.min(cards[i].id, cards[j].id);
+        const b = Math.max(cards[i].id, cards[j].id);
+        pairs.push({ a, b, similarity: sim });
+      }
+    }
+  }
+  return pairs;
+}
+
+/**
+ * Collect candidate duplicate pairs across a whole deck. Embedding KNN over
+ * STORED vectors when available (deck-scoped backfill first; zero Ollama
+ * round-trips for embedded cards), trigram fallback otherwise. Never throws.
+ * Returns { pairs, method }.
+ */
+async function fcSweepDeckPairs(deckId, { onProgress } = {}) {
+  const cards = await fcListAllCards(deckId);
+  if (cards.length < 2) return { pairs: [], method: 'none' };
+  try {
+    if (await fcEmbeddingsAvailable()) {
+      // Deck-scoped backfill so a partially-embedded deck sweeps fully.
+      const missing = await db.all(
+        `SELECT c.id, c.front, c.back FROM fc_cards c
+         LEFT JOIN fc_card_embeddings e ON e.card_id = CAST(c.id AS TEXT)
+         WHERE e.card_id IS NULL AND c.deck_id = ? LIMIT 512`,
+        [deckId],
+      );
+      if (missing.length) await fcEmbedCards(missing);
+
+      const pairMap = new Map();
+      let done = 0;
+      for (const card of cards) {
+        const vecRow = await db.get(
+          'SELECT embedding FROM fc_card_embeddings WHERE card_id = ?', [String(card.id)],
+        );
+        done++;
+        try { onProgress?.(done, cards.length); } catch { /* UI gone */ }
+        if (!vecRow?.embedding) continue;
+        // vec0 rule: MATCH ? AND k must stand ALONE in the subquery; the
+        // deck filter joins on the outside.
+        const hits = await db.all(
+          `SELECT v.card_id, v.distance, c.note_group
+           FROM (SELECT card_id, distance FROM fc_card_embeddings
+                 WHERE embedding MATCH ? AND k = 32 ORDER BY distance) v
+           JOIN fc_cards c ON c.id = CAST(v.card_id AS INTEGER)
+           WHERE c.deck_id = ? ORDER BY v.distance`,
+          [vecRow.embedding, deckId],
+        );
+        for (const h of hits) {
+          const otherId = Number(h.card_id);
+          if (otherId === card.id) continue; // self-match at similarity 1.0
+          if (card.noteGroup && h.note_group === card.noteGroup) continue;
+          const similarity = 1 - h.distance;
+          if (similarity < FC_SWEEP_SIM_EMBEDDING) break; // sorted by distance
+          const a = Math.min(card.id, otherId);
+          const b = Math.max(card.id, otherId);
+          const key = `${a}:${b}`;
+          const prev = pairMap.get(key);
+          if (!prev || similarity > prev.similarity) pairMap.set(key, { a, b, similarity });
+        }
+      }
+      return { pairs: [...pairMap.values()], method: 'embedding' };
+    }
+  } catch (err) {
+    console.warn('[Flashcards] embedding sweep failed; falling back to trigram:', err);
+  }
+  return { pairs: fcTrigramPairs(cards), method: 'trigram' };
+}
+
+const FC_JUDGE_SYSTEM = [
+  'You judge whether flashcards in a cluster are DUPLICATES: cards asking essentially the same thing, even with different wording.',
+  'For each numbered cluster, decide:',
+  '- "duplicate": the cards test the same fact or recall. Pick the single best card to keep (clearest wording, most complete answer) as keepId.',
+  '- "overlap": the cards share substance but each adds something. Propose ONE merged card (front + back) that covers both without padding; keepId is the card whose scheduling history should survive.',
+  '- "distinct": the cards only look similar; both should stay.',
+  'Judge by what the card TESTS, not surface wording. A definition card and an application card about the same concept are distinct.',
+  'Never use em dashes. Formulas stay in $LaTeX$.',
+  'Output ONLY a JSON array, one object per cluster, echoing the cluster number:',
+  '[{"cluster": 1, "verdict": "duplicate", "keepId": 123, "mergedCard": null, "reason": "..."},',
+  ' {"cluster": 2, "verdict": "overlap", "keepId": 456, "mergedCard": {"front": "...", "back": "..."}, "reason": "..."}]',
+].join('\n');
+
+/**
+ * AI arbitration over candidate clusters. Returns the clusters with
+ * `verdict/keepId/mergedCard/reason` attached; a cluster whose batch fails
+ * (no model, parse error, bad ids) keeps `verdict: null` — the UI still
+ * shows it by similarity alone. Never throws.
+ */
+async function fcJudgeDuplicateClusters(clusters, cardById, { onProgress } = {}) {
+  const modelId = await fcPickModel();
+  if (!modelId || !_api?.lm?.sendChatRequest) {
+    return clusters.map((c) => ({ ...c, verdict: null }));
+  }
+  const { contextSetting, think } = fcAiOptions();
+  const modelCtx = await fcModelContextLength(modelId);
+
+  const clusterText = (cluster) => cluster.cardIds.map((id) => {
+    const card = cardById.get(id);
+    return `CARD ${id}:\nFRONT: ${card?.front ?? ''}\nBACK: ${card?.back ?? ''}`;
+  }).join('\n');
+
+  const batches = [];
+  let batch = [];
+  let batchChars = 0;
+  for (const cluster of clusters) {
+    const size = clusterText(cluster).length;
+    if (batch.length > 0 && (batch.length >= 8 || batchChars + size > 6000)) {
+      batches.push(batch); batch = []; batchChars = 0;
+    }
+    batch.push(cluster);
+    batchChars += size;
+  }
+  if (batch.length > 0) batches.push(batch);
+
+  const out = [];
+  let done = 0;
+  for (const group of batches) {
+    let judged = null;
+    try {
+      const chars = group.reduce((n, c) => n + clusterText(c).length, 0);
+      const { numCtx } = fcContextPlan({ chars, count: group.length, modelCtx, setting: contextSetting });
+      const user = group.map((c, i) => `CLUSTER ${i + 1}\n${clusterText(c)}`).join('\n\n---\n\n');
+      let output = '';
+      const stream = _api.lm.sendChatRequest(modelId, [
+        { role: 'system', content: FC_JUDGE_SYSTEM },
+        { role: 'user', content: user },
+      ], { temperature: 0.2, think, numCtx });
+      await fcStreamWithStall(stream, (chunk) => { if (chunk.content) output += chunk.content; });
+      const { items } = fcExtractJsonArray(output, (parsed) => parsed
+        .filter((v) => v && typeof v === 'object')
+        .map((v) => ({
+          cluster: Number(v.cluster),
+          verdict: ['duplicate', 'overlap', 'distinct'].includes(v.verdict) ? v.verdict : null,
+          keepId: Number.isInteger(v.keepId) ? v.keepId : Number(v.keepId) || null,
+          mergedCard: v.mergedCard && typeof v.mergedCard === 'object'
+            && String(v.mergedCard.front || '').trim() && String(v.mergedCard.back || '').trim()
+            ? { front: String(v.mergedCard.front).trim(), back: String(v.mergedCard.back).trim() }
+            : null,
+          reason: String(v.reason || '').slice(0, 300),
+        })));
+      // Structural acceptance: one valid verdict per cluster, keepId real.
+      if (items.length === group.length) {
+        judged = group.map((cluster, i) => {
+          const v = items.find((x) => x.cluster === i + 1) || items[i];
+          const keepOk = v.keepId != null && cluster.cardIds.includes(v.keepId);
+          const valid = v.verdict === 'distinct'
+            || (v.verdict === 'duplicate' && keepOk)
+            || (v.verdict === 'overlap' && keepOk && v.mergedCard);
+          return valid
+            ? { ...cluster, verdict: v.verdict, keepId: v.keepId, mergedCard: v.mergedCard, reason: v.reason }
+            : { ...cluster, verdict: null };
+        });
+      }
+    } catch { /* stall or request failure — clusters stay unjudged */ }
+    out.push(...(judged || group.map((c) => ({ ...c, verdict: null }))));
+    done += group.length;
+    try { onProgress?.(done, clusters.length); } catch { /* UI gone */ }
+  }
+  return out;
+}
+
+const FC_COVERAGE_SYSTEM = [
+  'You audit how well a flashcard deck covers its source material (user goal: confidence the deck offers a COMPREHENSIVE review, missing nothing).',
+  'You receive the material and the deck\'s existing cards. Produce:',
+  '1. "report": concise Markdown. Sections: **Covered Well** (topic bullets), **Thin Coverage** (topics with too few or too shallow cards, and why), **Not Covered** (facts, formulas, distinctions in the material with NO card). Ground every claim in the material; never invent topics the material does not contain. Formulas in $LaTeX$. Never use em dashes.',
+  '2. "missing": a JSON array of NEW flashcards filling the gaps you found, same card rules as generation: one atomic fact each, front asks, back answers, tags, and "page": N / "doc": k when the material carries those markers. Empty array when nothing is missing.',
+  'Output ONLY one JSON object: {"report": "...", "missing": [{"front": "...", "back": "...", "tags": ["topic"]}]}',
+].join('\n');
+
+/**
+ * Coverage audit: material + existing cards → { report, missing }. Throws
+ * on model absence or unusable output (the view surfaces the message).
+ */
+async function fcCoverageReview(docs, deckCards, { onChunk } = {}) {
+  const modelId = await fcPickModel();
+  if (!modelId) throw new Error('No language model available. Configure a model in AI settings.');
+  const { contextSetting, think } = fcAiOptions();
+  const modelCtx = await fcModelContextLength(modelId);
+  const totalChars = docs.reduce((n, d) => n + (Array.isArray(d.pageTexts) && d.pageTexts.length
+    ? d.pageTexts.reduce((m, p) => m + String(p || '').length, 0)
+    : String(d.text || '').length), 0);
+  // Existing cards ride in the prompt too — budget for both.
+  const cardsBlock = deckCards.map((c, i) => `${i + 1}. ${c.front} => ${c.back.slice(0, 200)}`).join('\n');
+  const { numCtx, maxChars } = fcContextPlan({
+    chars: totalChars + cardsBlock.length, count: 20, modelCtx, setting: contextSetting,
+  });
+  const built = docs.length > 1
+    ? fcBuildMaterialDocs(docs, Math.max(4000, maxChars - cardsBlock.length))
+    : fcBuildMaterial(docs[0]?.text || '', docs[0]?.pageTexts || null, Math.max(4000, maxChars - cardsBlock.length), 0);
+  const user = [
+    `THE DECK'S EXISTING CARDS (${deckCards.length}):`,
+    cardsBlock || '(the deck is empty)',
+    '',
+    '--- SOURCE MATERIAL ---',
+    built.material,
+  ].join('\n');
+
+  let output = '';
+  const stream = _api.lm.sendChatRequest(modelId, [
+    { role: 'system', content: FC_COVERAGE_SYSTEM },
+    { role: 'user', content: user },
+  ], { temperature: 0.2, think, numCtx });
+  await fcStreamWithStall(stream, (chunk) => {
+    if (chunk.content) { output += chunk.content; try { onChunk?.(output); } catch { /* UI gone */ } }
+  });
+
+  // The output is ONE object, not an array — locate its braces string-aware.
+  let t = output.trim()
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/^[\s\S]*?<\/think>/i, '')
+    .replace(/```(?:json)?/gi, '');
+  const start = t.indexOf('{');
+  if (start === -1) throw new Error('No JSON object in the coverage response.');
+  let depth = 0, end = -1, inStr = false, escape = false;
+  for (let i = start; i < t.length; i++) {
+    const ch = t[i];
+    if (escape) { escape = false; continue; }
+    if (ch === '\\') { escape = true; continue; }
+    if (ch === '"') { inStr = !inStr; continue; }
+    if (inStr) continue;
+    if (ch === '{') depth++;
+    else if (ch === '}') { depth--; if (depth === 0) { end = i; break; } }
+  }
+  if (end === -1) throw new Error('The coverage response was cut off.');
+  let parsed;
+  const slice = t.slice(start, end + 1);
+  try { parsed = JSON.parse(fcRepairLatexEscapes(slice)); }
+  catch { parsed = JSON.parse(slice); }
+  const report = String(parsed.report || '').trim();
+  if (!report) throw new Error('The coverage response had no report.');
+  const { cards: missing } = fcExtractCardsJson(JSON.stringify(parsed.missing || []));
+  return { report, missing };
 }
 
 async function fcUpdateCard(id, patch) {
@@ -1585,7 +1922,7 @@ const FC_GENERATE_SYSTEM = [
   '- Never use em dashes.',
   'Output ONLY a JSON array, no prose, in this exact shape:',
   '[{"front": "...", "back": "...", "tags": ["topic"]}]',
-  'When the material carries [Page N] markers, add "page": N to each card.',
+  'When the material carries [Page N] markers, add "page": N to each card; when it carries [Doc k] markers, also add "doc": k.',
 ].join('\n');
 
 // Context planning constants. CHARS_PER_TOKEN is the safe planning ratio,
@@ -1742,19 +2079,62 @@ function fcBuildMaterial(sourceText, pageTexts, maxChars, pageOffset = 0) {
   return { material: parts.join('\n\n'), paged: true, clipped };
 }
 
-async function fcGenerateCards(sourceText, { count = null, focus = '', pageTexts = null, pageOffset = 0 } = {}) {
+/**
+ * Multi-document material (user ask: "add several documents so the AI can
+ * get a comprehensive view of all the available content"). Each doc gets a
+ * [Doc k: label] header; page markers restart PER DOC (they map straight to
+ * source_page for that doc's PDF reveal). Whole-doc/whole-page clipping with
+ * the same truncation markers as fcBuildMaterial.
+ */
+function fcBuildMaterialDocs(docs, maxChars) {
+  const parts = [];
+  let used = 0;
+  let clipped = false;
+  let anyPaged = false;
+  for (let k = 0; k < docs.length; k++) {
+    const doc = docs[k];
+    const header = `[Doc ${k + 1}: ${String(doc.label || `Document ${k + 1}`).slice(0, 80)}]`;
+    const room = maxChars - used - header.length - 2;
+    // A doc squeezed below a meaningful body would keep a marker the model
+    // could attribute cards to while seeing almost none of it — the same
+    // "a marker with no body lies" rule as page clipping. Drop it whole.
+    if (room < 200) { clipped = true; break; }
+    const paged = Array.isArray(doc.pageTexts) && doc.pageTexts.length > 0;
+    const inner = paged
+      ? fcBuildMaterial('', doc.pageTexts, room, 0)
+      : fcBuildMaterial(String(doc.text || ''), null, room, 0);
+    if (paged) anyPaged = true;
+    if (inner.clipped) clipped = true;
+    if (!inner.material.trim()) { clipped = true; break; }
+    parts.push(`${header}\n${inner.material}`);
+    used += header.length + inner.material.length + 4;
+  }
+  if (clipped && parts.length < docs.length) parts.push('[...material truncated...]');
+  return { material: parts.join('\n\n'), anyPaged, clipped, docCount: docs.length };
+}
+
+async function fcGenerateCards(sourceText, { count = null, focus = '', pageTexts = null, pageOffset = 0, docs = null } = {}) {
   const modelId = await fcPickModel();
   if (!modelId) throw new Error('No language model available. Configure a model in AI settings.');
   const { contextSetting, think } = fcAiOptions();
   const modelCtx = await fcModelContextLength(modelId);
-  const totalChars = Array.isArray(pageTexts) && pageTexts.length
-    ? pageTexts.reduce((n, p) => n + String(p || '').length, 0)
-    : sourceText.length;
+  const multiDoc = Array.isArray(docs) && docs.length > 1;
+  const totalChars = multiDoc
+    ? docs.reduce((n, d) => n + (Array.isArray(d.pageTexts) && d.pageTexts.length
+        ? d.pageTexts.reduce((m, p) => m + String(p || '').length, 0)
+        : String(d.text || '').length), 0)
+    : (Array.isArray(pageTexts) && pageTexts.length
+      ? pageTexts.reduce((n, p) => n + String(p || '').length, 0)
+      : sourceText.length);
   const planCount = count ?? fcAutoCardEstimate(totalChars);
   const { numCtx, maxChars } = fcContextPlan({
     chars: totalChars, count: planCount, modelCtx, setting: contextSetting,
   });
-  const { material, paged, clipped } = fcBuildMaterial(sourceText, pageTexts, maxChars, pageOffset);
+  const built = multiDoc
+    ? fcBuildMaterialDocs(docs, maxChars)
+    : fcBuildMaterial(sourceText, pageTexts, maxChars, pageOffset);
+  const { material, clipped } = built;
+  const paged = multiDoc ? built.anyPaged : built.paged;
   if (clipped) {
     console.warn(`[Flashcards] material clipped to ${maxChars} chars to fit a ${numCtx}-token window (model: ${modelId}${modelCtx ? `, max ${modelCtx}` : ', context length unknown'})`);
   }
@@ -1766,9 +2146,13 @@ async function fcGenerateCards(sourceText, { count = null, focus = '', pageTexts
       ? `Create up to ${Math.min(50, Math.max(1, count))} flashcards from the material below.`
       : 'Create one flashcard per atomic fact the material supports: as many as it warrants, up to 50. '
         + 'Do not pad thin material with near-duplicate cards, and do not stop early on rich material.',
-    paged
-      ? 'The material is tagged with [Page N] markers. Add "page": N to each card, naming the page its fact comes from. Never invent a page number that has no marker.'
-      : '',
+    multiDoc
+      ? 'The material contains MULTIPLE source documents tagged [Doc k: name]. The documents overlap: treat them as one body of content and create ONE card per fact, never one per document. Add "doc": k to every card naming the document its fact comes from.'
+        + (paged ? ' Page markers [Page N] restart inside each document; when the fact\'s document is paged, also add "page": N (the page within that document).' : '')
+        + ' Never invent a doc or page number that has no marker.'
+      : paged
+        ? 'The material is tagged with [Page N] markers. Add "page": N to each card, naming the page its fact comes from. Never invent a page number that has no marker.'
+        : '',
     focus ? `Guidance from the learner (follow it): ${focus}` : '',
     '',
     '--- MATERIAL ---',
@@ -1788,14 +2172,23 @@ async function fcGenerateCards(sourceText, { count = null, focus = '', pageTexts
     console.warn('[Flashcards] generation failed. Raw model output head:', output.slice(0, 400));
     throw new Error(`${error} (model: ${modelId}; raw output logged to console)`);
   }
-  if (paged) {
+  if (multiDoc) {
+    // Attribution hygiene, per doc: a doc index must exist; a page must
+    // exist within ITS doc's page range.
+    for (const c of cards) {
+      if (!(Number.isInteger(c.doc) && c.doc >= 1 && c.doc <= docs.length)) { delete c.doc; delete c.page; continue; }
+      const dp = docs[c.doc - 1].pageTexts;
+      if (!(Array.isArray(dp) && Number.isInteger(c.page) && c.page >= 1 && c.page <= dp.length)) delete c.page;
+    }
+  } else if (paged) {
     // Attribution hygiene: only pages that actually exist in the material.
     const maxPage = pageOffset + pageTexts.length;
     for (const c of cards) {
+      delete c.doc;
       if (!(Number.isInteger(c.page) && c.page >= pageOffset + 1 && c.page <= maxPage)) delete c.page;
     }
   } else {
-    for (const c of cards) delete c.page;
+    for (const c of cards) { delete c.page; delete c.doc; }
   }
   return cards;
 }
@@ -2653,6 +3046,39 @@ function injectStyles() {
 .fc-genrow__fields { flex: 1; display: flex; flex-direction: column; gap: var(--px-space-1); }
 .fc-genrow--dropped { opacity: 0.4; }
 .fc-genrow__chips { display: flex; gap: var(--px-space-1); flex-wrap: wrap; }
+
+/* ── Multi-source chips (Create + Coverage) ── */
+.fc-srcchips { flex-wrap: wrap; gap: var(--px-space-1); }
+.fc-srcchips:empty { display: none; }
+.fc-srcchip { display: inline-flex; align-items: center; gap: 4px; }
+.fc-srcchip__remove {
+  border: none; background: transparent; color: var(--px-text-muted);
+  cursor: pointer; font-size: var(--px-text-sm); padding: 0 2px; line-height: 1;
+}
+.fc-srcchip__remove:hover { color: var(--px-danger); }
+
+/* ── Find Duplicates groups ── */
+.fc-dupgroup {
+  border: 1px solid var(--px-border); border-radius: var(--px-radius-md);
+  padding: var(--px-space-3); margin-bottom: var(--px-space-3);
+  display: flex; flex-direction: column; gap: var(--px-space-2);
+}
+.fc-dupgroup--resolved { opacity: 0.5; }
+.fc-duprow { display: flex; gap: var(--px-space-3); align-items: flex-start; padding: var(--px-space-2) 0; border-top: 1px solid var(--px-divider); }
+.fc-duprow--staged { opacity: 0.45; }
+.fc-duprow__check { flex: 0 0 auto; font-size: var(--px-text-xs); color: var(--px-text-muted); display: inline-flex; align-items: center; gap: 4px; padding-top: 2px; cursor: pointer; }
+.fc-duprow__body { flex: 1; min-width: 0; }
+.fc-duprow__front { font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text); }
+.fc-duprow__back { font-size: var(--px-text-sm); color: var(--px-text-secondary); margin-top: 2px; }
+.fc-duprow__meta { font-size: var(--px-text-xs); color: var(--px-text-faint); margin-top: 3px; }
+
+/* ── Coverage report ── */
+.fc-coverage-report {
+  font-size: var(--px-text-sm); color: var(--px-text-secondary);
+  line-height: var(--px-leading-base);
+  border: 1px solid var(--px-border); border-radius: var(--px-radius-md);
+  padding: var(--px-space-3) var(--px-space-4); margin-bottom: var(--px-space-3);
+}
 .fc-chip {
   display: inline-block; padding: 1px 7px; font-size: var(--px-text-xs);
   color: var(--px-text-muted); background: var(--px-bg-inset);
@@ -2736,15 +3162,7 @@ function createSidebarView(container) {
 
   const openDeckMenu = (deck, x, y) => {
     if (!_api.ui.showContextMenu) { void openFlashcards({ view: 'browse', deckId: deck.id }); return; }
-    _api.ui.showContextMenu({ x, y }, [
-      { label: 'Study Deck', icon: 'play', onSelect: () => void openFlashcards({ view: 'study', deckId: deck.id }) },
-      { label: 'Browse Cards', icon: 'layers', onSelect: () => void openFlashcards({ view: 'browse', deckId: deck.id }) },
-      { label: 'Add Cards with AI', icon: 'px-ai-mark', onSelect: () => void openFlashcards({ view: 'create', deckId: deck.id }) },
-      { separator: true },
-      { label: 'Rename', icon: 'pencil', onSelect: () => void _renameDeckFlow(deck) },
-      { label: deck.examDate ? 'Change Exam Date' : 'Set Exam Date', icon: 'calendar', onSelect: () => void _setExamDateFlow(deck) },
-      { label: 'Delete Deck', icon: 'trash', danger: true, onSelect: () => void _deleteDeckFlow(deck) },
-    ]);
+    _api.ui.showContextMenu({ x, y }, fcDeckMenuItems(deck));
   };
 
   let disposed = false;
@@ -2947,7 +3365,8 @@ function createEditorPane(container, input) {
   }
 
   const syncTabs = () => {
-    const activeView = state.route.view === 'browse' ? 'decks' : state.route.view;
+    const deckScoped = ['browse', 'dedup', 'coverage'].includes(state.route.view);
+    const activeView = deckScoped ? 'decks' : state.route.view;
     for (const t of tabs.children) {
       t.classList.toggle('fc-pane__tab--active', t.dataset.view === activeView);
     }
@@ -2976,6 +3395,8 @@ function createEditorPane(container, input) {
         else if (route.view === 'create') await renderCreate(body, route, setRoute, viewDisposables);
         else if (route.view === 'import') await renderImport(body, route, setRoute, viewDisposables);
         else if (route.view === 'stats') await renderStats(body);
+        else if (route.view === 'dedup') await renderDedup(body, route, setRoute);
+        else if (route.view === 'coverage') await renderCoverage(body, route, setRoute);
         else await renderDecks(body, setRoute);
       } while (renderQueued && !state.disposed);
     } finally {
@@ -3010,7 +3431,8 @@ function createEditorPane(container, input) {
     // locally via renderList, and a global re-render mid-inline-edit
     // destroyed unsaved editor text and collapsed the add-card form.
     if (state.disposed || state.route.view === 'study' || state.route.view === 'create'
-      || state.route.view === 'import' || state.route.view === 'browse') return;
+      || state.route.view === 'import' || state.route.view === 'browse'
+      || state.route.view === 'dedup' || state.route.view === 'coverage') return;
     // A background write (chat tool, capture toast) refreshing Decks/Stats
     // must not scroll the user back to the top.
     const scrollTop = body.scrollTop;
@@ -3246,7 +3668,19 @@ async function renderBrowse(body, route, setRoute) {
   studyBtn.addEventListener('click', () => setRoute({ view: 'study', deckId: deckRow.id }));
   head.appendChild(studyBtn);
   const addBtn = el('button', 'fc-btn');
-  addBtn.innerHTML = `${icon('plus', 12)}<span>Add card</span>`;
+  addBtn.innerHTML = `${icon('plus', 12)}<span>Add Card</span>`;
+  // The full deck menu (incl. Find Duplicates / Coverage Review) from
+  // Browse too — same items as the sidebar rows, one source of truth.
+  const moreBtn = el('button', 'fc-btn');
+  moreBtn.innerHTML = icon('more-horizontal', 12);
+  moreBtn.setAttribute('aria-label', 'Deck actions');
+  moreBtn.addEventListener('click', () => {
+    if (!_api.ui.showContextMenu) return;
+    const r = moreBtn.getBoundingClientRect();
+    _api.ui.showContextMenu({ x: r.left, y: r.bottom + 4 }, fcDeckMenuItems({
+      id: deckRow.id, name: deckRow.name, examDate: deckRow.exam_date || 0, total: 0,
+    }));
+  });
   view.appendChild(head);
 
   // Inline add-card form (collapsed until clicked).
@@ -3264,7 +3698,7 @@ async function renderBrowse(body, route, setRoute) {
   addErr.style.display = 'none';
   const addRow = el('div', 'fc-row');
   const saveCard = el('button', 'fc-btn fc-btn--primary');
-  saveCard.textContent = 'Add Card';
+  saveCard.textContent = 'Save Card';
   // M98 — reverse pair option + cloze affordance. Cloze wins over reverse
   // when markers are present (a cloze note is already multi-card).
   const reverseWrap = el('label', 'fc-check');
@@ -3302,6 +3736,7 @@ async function renderBrowse(body, route, setRoute) {
   addRow.appendChild(saveCard);
   addForm.append(el('div', 'fc-label', 'New card'), frontIn, backIn, tagsIn, reverseWrap, clozeHint, addErr, addRow);
   head.appendChild(addBtn);
+  head.appendChild(moreBtn);
   addBtn.addEventListener('click', () => {
     addForm.style.display = addForm.style.display === 'none' ? '' : 'none';
     if (addForm.style.display === '') frontIn.focus();
@@ -3419,6 +3854,433 @@ async function renderBrowse(body, route, setRoute) {
 
   await renderList();
   body.appendChild(view);
+}
+
+// ── Find Duplicates view (deck-wide AI dedup) ────────────────────────────────
+
+async function renderDedup(body, route, setRoute) {
+  const deckRow = await db.get('SELECT * FROM fc_decks WHERE id = ?', [route.deckId]);
+  if (!deckRow) { setRoute({ view: 'decks' }); return; }
+  const view = el('div', 'fc-view');
+
+  const head = el('div', 'fc-row');
+  const backBtn = el('button', 'fc-btn');
+  backBtn.innerHTML = `${icon('arrow-left', 12)}<span>Back</span>`;
+  backBtn.addEventListener('click', () => setRoute({ view: 'browse', deckId: deckRow.id }));
+  head.appendChild(backBtn);
+  head.appendChild(el('div', 'fc-view__title', `Find Duplicates - ${deckRow.name}`));
+  view.appendChild(head);
+  view.appendChild(el('div', 'fc-hint',
+    'Cards asking essentially the same thing, even with different wording. Nothing is deleted until you apply your choices.'));
+
+  const errEl = el('div', 'fc-error');
+  errEl.style.display = 'none';
+  const status = el('div', 'fc-hint fc-src-status');
+  const resultsHost = el('div');
+  const footer = el('div', 'fc-row');
+  footer.style.marginTop = '10px';
+  view.appendChild(status);
+  view.appendChild(errEl);
+  view.appendChild(resultsHost);
+  view.appendChild(footer);
+  body.appendChild(view);
+
+  /** Card ids staged for deletion (checkboxes; applied on the footer click). */
+  const staged = new Set();
+
+  const renderClusters = (clusters, cardById) => {
+    resultsHost.replaceChildren();
+    footer.replaceChildren();
+    staged.clear();
+
+    for (const cluster of clusters) {
+      const group = el('div', 'fc-dupgroup');
+      const groupHead = el('div', 'fc-row');
+      const simChip = el('span', 'fc-chip fc-chip--warn', `${Math.round(cluster.similarity * 100)}% Similar`);
+      groupHead.appendChild(simChip);
+      if (cluster.verdict === 'duplicate') groupHead.appendChild(el('span', 'fc-chip fc-chip--warn', 'AI: Duplicate'));
+      else if (cluster.verdict === 'overlap') groupHead.appendChild(el('span', 'fc-chip', 'AI: Overlapping'));
+      else if (cluster.verdict === 'distinct') groupHead.appendChild(el('span', 'fc-chip', 'AI: Distinct'));
+      if (cluster.reason) groupHead.appendChild(el('span', 'fc-hint', cluster.reason));
+      group.appendChild(groupHead);
+
+      const checks = new Map();
+      for (const id of cluster.cardIds) {
+        const card = cardById.get(id);
+        if (!card) continue;
+        const row = el('div', 'fc-duprow');
+        const check = el('input');
+        check.type = 'checkbox';
+        check.title = 'Delete this card when changes are applied';
+        // AI suggestion pre-stages the losers of a clear duplicate; the
+        // user always confirms via Apply.
+        check.checked = cluster.verdict === 'duplicate' && cluster.keepId != null && id !== cluster.keepId;
+        if (check.checked) staged.add(id);
+        check.addEventListener('change', () => {
+          if (check.checked) staged.add(id); else staged.delete(id);
+          row.classList.toggle('fc-duprow--staged', check.checked);
+          syncFooter();
+        });
+        checks.set(id, check);
+        row.classList.toggle('fc-duprow--staged', check.checked);
+        const checkWrap = el('label', 'fc-duprow__check');
+        checkWrap.append(check, document.createTextNode(' Delete'));
+        const bodyEl = el('div', 'fc-duprow__body');
+        const frontEl = el('div', 'fc-duprow__front');
+        try { frontEl.appendChild(_api.ui.renderMarkdown(card.front)); } catch { frontEl.textContent = card.front; }
+        const backEl = el('div', 'fc-duprow__back');
+        try { backEl.appendChild(_api.ui.renderMarkdown(card.back)); } catch { backEl.textContent = card.back; }
+        const meta = el('div', 'fc-duprow__meta');
+        const bits = [card.state, `${card.reps || 0} reps`];
+        if (card.sourceLabel) bits.push(card.sourceLabel);
+        if (cluster.keepId === id && cluster.verdict) bits.push('AI keeps this one');
+        meta.textContent = bits.join(' · ');
+        bodyEl.append(frontEl, backEl, meta);
+        row.append(checkWrap, bodyEl);
+        group.appendChild(row);
+      }
+
+      const actions = el('div', 'fc-row');
+      const keepAll = el('button', 'fc-btn');
+      keepAll.textContent = 'Keep All';
+      keepAll.addEventListener('click', () => {
+        for (const [id, check] of checks) {
+          if (check.checked) { check.checked = false; staged.delete(id); }
+          check.closest('.fc-duprow')?.classList.remove('fc-duprow--staged');
+        }
+        group.classList.add('fc-dupgroup--resolved');
+        syncFooter();
+      });
+      actions.appendChild(keepAll);
+      if (cluster.verdict === 'overlap' && cluster.mergedCard && cluster.keepId != null) {
+        const mergeBtn = el('button', 'fc-btn');
+        mergeBtn.textContent = 'Merge Into One';
+        mergeBtn.title = 'Edit the AI-merged card; saving replaces this group with it.';
+        mergeBtn.addEventListener('click', () => {
+          const survivor = cardById.get(cluster.keepId);
+          const editHost = el('div');
+          group.appendChild(editHost);
+          mergeBtn.disabled = true;
+          editHost.appendChild(fcCardEditorEl({ ...survivor, front: cluster.mergedCard.front, back: cluster.mergedCard.back }, {
+            onSave: async (patch) => {
+              try {
+                await fcUpdateCard(cluster.keepId, patch);
+                for (const id of cluster.cardIds) {
+                  if (id !== cluster.keepId) { await fcDeleteCard(id); staged.delete(id); }
+                }
+                group.classList.add('fc-dupgroup--resolved');
+                group.replaceChildren(el('div', 'fc-hint', 'Merged. The survivor keeps its scheduling history.'));
+                syncFooter();
+              } catch (e) { errEl.textContent = e.message; errEl.style.display = ''; }
+            },
+            onCancel: () => { editHost.remove(); mergeBtn.disabled = false; },
+          }));
+        });
+        actions.appendChild(mergeBtn);
+      }
+      group.appendChild(actions);
+      resultsHost.appendChild(group);
+    }
+
+    const applyBtn = el('button', 'fc-btn fc-btn--primary');
+    const syncFooter = () => {
+      applyBtn.textContent = staged.size > 0 ? `Apply Changes - Delete ${staged.size}` : 'Apply Changes';
+      applyBtn.disabled = staged.size === 0;
+    };
+    applyBtn.addEventListener('click', () => {
+      void (async () => {
+        const ok = await _api.window.showConfirmModal?.({
+          message: `Delete ${staged.size} ${staged.size === 1 ? 'card' : 'cards'}?`,
+          detail: 'The cards and their review history are permanently removed. This cannot be undone.',
+          confirmLabel: 'Delete Cards',
+          danger: true,
+        }) ?? false;
+        if (!ok) return;
+        applyBtn.disabled = true;
+        try {
+          for (const id of staged) await fcDeleteCard(id);
+          // Toast fire-and-forget: awaiting it holds the route switch until
+          // the notification dismisses.
+          void _api.window.showInformationMessage(`Deleted ${staged.size} duplicate ${staged.size === 1 ? 'card' : 'cards'}.`);
+          setRoute({ view: 'browse', deckId: deckRow.id });
+        } catch (e) {
+          errEl.textContent = e.message;
+          errEl.style.display = '';
+          applyBtn.disabled = false;
+        }
+      })();
+    });
+    footer.appendChild(applyBtn);
+    syncFooter();
+  };
+
+  const run = async () => {
+    resultsHost.replaceChildren();
+    footer.replaceChildren();
+    errEl.style.display = 'none';
+    status.textContent = 'Scanning the deck for similar cards…';
+    try {
+      const { pairs, method } = await fcSweepDeckPairs(deckRow.id, {
+        onProgress: (done, total) => { status.textContent = `Scanning the deck - ${done} / ${total} cards…`; },
+      });
+      if (!body.isConnected) return;
+      let clusters = fcClusterPairs(pairs);
+      if (clusters.length === 0) {
+        status.textContent = 'No likely duplicates found. The deck looks clean.';
+        return;
+      }
+      const cards = await fcListAllCards(deckRow.id);
+      const cardById = new Map(cards.map((c) => [c.id, c]));
+      status.textContent = `Reviewing ${clusters.length} candidate ${clusters.length === 1 ? 'group' : 'groups'} with AI…`;
+      clusters = await fcJudgeDuplicateClusters(clusters, cardById, {
+        onProgress: (done, total) => { status.textContent = `Reviewing with AI - ${done} / ${total} groups…`; },
+      });
+      if (!body.isConnected) return;
+      const judged = clusters.some((c) => c.verdict !== null);
+      status.textContent = `${clusters.length} candidate ${clusters.length === 1 ? 'group' : 'groups'}`
+        + ` (${method === 'embedding' ? 'semantic match' : 'text match'})`
+        + (judged ? '.' : '. AI judge unavailable - showing similarity only.');
+      renderClusters(clusters, cardById);
+    } catch (e) {
+      status.textContent = '';
+      errEl.textContent = e.message;
+      errEl.style.display = '';
+    }
+  };
+  void run();
+}
+
+// ── Coverage Review view (does the deck cover the material?) ─────────────────
+
+async function renderCoverage(body, route, setRoute) {
+  const deckRow = await db.get('SELECT * FROM fc_decks WHERE id = ?', [route.deckId]);
+  if (!deckRow) { setRoute({ view: 'decks' }); return; }
+  const view = el('div', 'fc-view');
+
+  const head = el('div', 'fc-row');
+  const backBtn = el('button', 'fc-btn');
+  backBtn.innerHTML = `${icon('arrow-left', 12)}<span>Back</span>`;
+  backBtn.addEventListener('click', () => setRoute({ view: 'browse', deckId: deckRow.id }));
+  head.appendChild(backBtn);
+  head.appendChild(el('div', 'fc-view__title', `Coverage Review - ${deckRow.name}`));
+  view.appendChild(head);
+  view.appendChild(el('div', 'fc-hint',
+    'Load the material this deck should cover. The AI reports what is covered well, what is thin, and what is missing - and drafts the missing cards for review.'));
+
+  const errEl = el('div', 'fc-error');
+  errEl.style.display = 'none';
+
+  // Source list — same multi-source model as Create.
+  view.appendChild(el('div', 'fc-label', 'Source Material'));
+  const sources = [];
+  const chipsHost = el('div', 'fc-row fc-srcchips');
+  const srcStatus = el('div', 'fc-hint fc-src-status', 'Add every document the deck is meant to cover.');
+  const renderChips = () => {
+    chipsHost.replaceChildren();
+    sources.forEach((s, i) => {
+      const chip = el('span', 'fc-chip fc-srcchip');
+      const pages = Array.isArray(s.pageTexts) && s.pageTexts.length ? ` · ${s.pageTexts.length}p` : '';
+      chip.appendChild(document.createTextNode(`${s.label}${pages} `));
+      const x = el('button', 'fc-srcchip__remove');
+      x.type = 'button'; x.textContent = '×'; x.title = `Remove ${s.label}`;
+      x.addEventListener('click', () => { sources.splice(i, 1); renderChips(); });
+      chip.appendChild(x);
+      chipsHost.appendChild(chip);
+    });
+    if (sources.length > 0) {
+      srcStatus.textContent = `${sources.length} ${sources.length === 1 ? 'source' : 'sources'} loaded.`;
+    }
+  };
+  const addSource = (loaded) => {
+    if (!loaded) return;
+    const idx = loaded.uri ? sources.findIndex((s) => s.uri === loaded.uri) : -1;
+    if (idx >= 0) sources[idx] = loaded; else sources.push(loaded);
+    renderChips();
+  };
+
+  // Pre-fill offers: the sources this deck's cards already cite.
+  const cited = await db.all(
+    `SELECT source_uri AS uri, source_label AS label, COUNT(*) AS n
+     FROM fc_cards WHERE deck_id = ? AND source_uri != ''
+     GROUP BY source_uri ORDER BY n DESC LIMIT 8`,
+    [deckRow.id],
+  );
+  if (cited.length > 0) {
+    const citedRow = el('div', 'fc-row');
+    citedRow.appendChild(el('span', 'fc-hint', 'This deck cites:'));
+    for (const c of cited) {
+      const chip = el('button', 'fc-chip fc-chip--link');
+      chip.type = 'button';
+      chip.textContent = `Load ${c.label} (${c.n} cards)`;
+      chip.addEventListener('click', () => {
+        void (async () => {
+          try {
+            chip.disabled = true;
+            srcStatus.textContent = `Loading ${c.label}…`;
+            const canvasMatch = /^parallx:\/\/canvas\/page\/(.+)$/.exec(c.uri);
+            addSource(canvasMatch ? await fcReadCanvasPage(canvasMatch[1]) : await fcExtractPath(c.uri));
+          } catch (e) {
+            srcStatus.textContent = `Could not load ${c.label}: ${e.message}`;
+            chip.disabled = false;
+          }
+        })();
+      });
+      citedRow.appendChild(chip);
+    }
+    view.appendChild(citedRow);
+  }
+
+  const srcRow = el('div', 'fc-row');
+  const srcBtn = (label, iconName, loader) => {
+    const b = el('button', 'fc-btn');
+    b.innerHTML = `${icon(iconName, 12)}<span>${label}</span>`;
+    b.addEventListener('click', () => {
+      void (async () => {
+        try { b.disabled = true; addSource(await loader()); }
+        catch (e) { srcStatus.textContent = `Failed: ${e.message}`; }
+        finally { b.disabled = false; }
+      })();
+    });
+    return b;
+  };
+  srcRow.appendChild(srcBtn('Canvas Page', 'file-text', async () => {
+    const pageId = await fcPickCanvasPage();
+    return pageId ? fcReadCanvasPage(pageId) : null;
+  }));
+  srcRow.appendChild(srcBtn('Workspace File', 'file', () => fcPickWorkspaceFile()));
+  srcRow.appendChild(srcBtn('Browse Device…', 'hard-drive', () => fcReadPdf()));
+  view.appendChild(srcRow);
+  view.appendChild(chipsHost);
+  view.appendChild(srcStatus);
+  view.appendChild(errEl);
+
+  // ONE AI action on this surface.
+  const genRow = el('div', 'fc-row');
+  genRow.style.marginTop = '10px';
+  const genBtn = _api.ui.createAiButton
+    ? _api.ui.createAiButton(genRow, { label: 'Generate Report' })
+    : el('button', 'fc-btn fc-btn--primary');
+  if (!genBtn.parentElement) { genBtn.textContent = 'Generate Report'; genRow.appendChild(genBtn); }
+  const genLabel = genBtn.querySelector('.px-ai-btn__label');
+  const setLabel = (t) => { if (genLabel) genLabel.textContent = t; else genBtn.textContent = t; };
+  view.appendChild(genRow);
+
+  const reportHost = el('div');
+  reportHost.style.marginTop = '12px';
+  const missingHost = el('div');
+  view.appendChild(reportHost);
+  view.appendChild(missingHost);
+  body.appendChild(view);
+
+  genBtn.addEventListener('click', () => {
+    void (async () => {
+      if (sources.length === 0) {
+        errEl.textContent = 'Load at least one source document first.';
+        errEl.style.display = '';
+        return;
+      }
+      errEl.style.display = 'none';
+      reportHost.replaceChildren();
+      missingHost.replaceChildren();
+      genBtn.disabled = true;
+      setLabel('Auditing coverage…');
+      try {
+        const deckCards = await fcListAllCards(deckRow.id);
+        const streamOut = el('div', 'fc-hint');
+        reportHost.appendChild(streamOut);
+        const { report, missing } = await fcCoverageReview(sources, deckCards, {
+          onChunk: (partial) => { streamOut.textContent = `${partial.length.toLocaleString()} chars received…`; },
+        });
+        if (!body.isConnected) return;
+        reportHost.replaceChildren();
+        reportHost.appendChild(el('div', 'fc-label', 'Coverage Report'));
+        const reportEl = el('div', 'fc-coverage-report');
+        try { reportEl.appendChild(_api.ui.renderMarkdown(report)); } catch { reportEl.textContent = report; }
+        reportHost.appendChild(reportEl);
+
+        if (missing.length > 0) {
+          missingHost.appendChild(el('div', 'fc-label', `${missing.length} Suggested Missing ${missing.length === 1 ? 'Card' : 'Cards'}`));
+          missingHost.appendChild(el('div', 'fc-hint', 'Edit or drop suggestions; nothing is saved until you import.'));
+          const dups = await fcFindDuplicates(deckRow.id, missing);
+          const rows = [];
+          missing.forEach((c, ci) => {
+            const row = el('div', 'fc-genrow');
+            const fields = el('div', 'fc-genrow__fields');
+            const dup = dups[ci];
+            if (c.page || c.doc || dup) {
+              const chips = el('div', 'fc-genrow__chips');
+              if (c.doc && sources[c.doc - 1]) chips.appendChild(el('span', 'fc-chip', String(sources[c.doc - 1].label).slice(0, 32)));
+              if (c.page) chips.appendChild(el('span', 'fc-chip', `p.${c.page}`));
+              if (dup) {
+                const dupChip = el('span', 'fc-chip fc-chip--warn', `Similar to: ${String(dup.matchFront).slice(0, 60)}`);
+                dupChip.title = `${Math.round(dup.similarity * 100)}% similar to an existing card`;
+                chips.appendChild(dupChip);
+              }
+              fields.appendChild(chips);
+            }
+            const front = el('textarea', 'fc-textarea');
+            front.rows = 2; front.value = c.front;
+            const back = el('textarea', 'fc-textarea');
+            back.rows = 2; back.value = c.back;
+            fields.append(front, back);
+            row.appendChild(fields);
+            const dropBtn = el('button', 'fc-btn fc-btn--danger');
+            dropBtn.textContent = 'Drop';
+            const entry = { front, back, tags: c.tags || '', page: c.page || 0, doc: c.doc || 0, dropped: false };
+            dropBtn.addEventListener('click', () => {
+              entry.dropped = !entry.dropped;
+              row.classList.toggle('fc-genrow--dropped', entry.dropped);
+              dropBtn.textContent = entry.dropped ? 'Keep' : 'Drop';
+            });
+            row.appendChild(dropBtn);
+            rows.push(entry);
+            missingHost.appendChild(row);
+          });
+          const importRow = el('div', 'fc-row');
+          importRow.style.marginTop = '10px';
+          const importBtn = el('button', 'fc-btn fc-btn--primary');
+          importBtn.textContent = 'Import Missing Cards';
+          importBtn.addEventListener('click', () => {
+            void (async () => {
+              const keep = rows.filter((r) => !r.dropped && r.front.value.trim() && r.back.value.trim());
+              if (keep.length === 0) { errEl.textContent = 'No cards left to import.'; errEl.style.display = ''; return; }
+              importBtn.disabled = true;
+              try {
+                for (const r of keep) {
+                  const src = sources[r.doc - 1] || (sources.length === 1 ? sources[0] : null);
+                  await fcCreateCard({
+                    deckId: deckRow.id,
+                    front: r.front.value,
+                    back: r.back.value,
+                    tags: r.tags,
+                    sourceUri: src?.uri ?? '',
+                    sourceLabel: src?.label ?? 'Coverage review',
+                    sourcePage: src ? (r.page || 0) : 0,
+                  });
+                }
+                void _api.window.showInformationMessage(`Imported ${keep.length} ${keep.length === 1 ? 'card' : 'cards'}.`);
+                setRoute({ view: 'browse', deckId: deckRow.id });
+              } catch (e) {
+                errEl.textContent = e.message;
+                errEl.style.display = '';
+                importBtn.disabled = false;
+              }
+            })();
+          });
+          importRow.appendChild(importBtn);
+          missingHost.appendChild(importRow);
+        } else {
+          missingHost.appendChild(el('div', 'fc-hint', 'No missing cards suggested - the deck covers the loaded material.'));
+        }
+      } catch (e) {
+        errEl.textContent = e.message;
+        errEl.style.display = '';
+      } finally {
+        genBtn.disabled = false;
+        setLabel('Generate Report');
+      }
+    })();
+  });
 }
 
 // ── Study view ───────────────────────────────────────────────────────────────
@@ -3969,20 +4831,44 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
   deckRow.appendChild(deckHost);
   view.appendChild(deckRow);
 
-  // ── Source material — default to in-workspace: drag a file/page, or pick. ──
+  // ── Source material — default to in-workspace: drag a file/page, or pick.
+  // MULTIPLE sources are first-class (user ask: "add several documents so
+  // the AI can get a comprehensive view of all the available content" —
+  // feeding docs one at a time across sessions is what bred duplicates). ──
   view.appendChild(el('div', 'fc-label', 'Source Material'));
-  const sourceState = { text: '', label: '', uri: '', pageTexts: null };
-  const srcStatus = el('div', 'fc-hint fc-src-status', 'Drag a file or canvas page here, pick one below, or paste text.');
+  const sources = [];
+  const srcStatus = el('div', 'fc-hint fc-src-status', 'Drag files or canvas pages here, pick below, or paste text. Add as many sources as the topic needs.');
+  const chipsHost = el('div', 'fc-row fc-srcchips');
+
+  const renderSourceChips = () => {
+    chipsHost.replaceChildren();
+    for (let i = 0; i < sources.length; i++) {
+      const s = sources[i];
+      const chip = el('span', 'fc-chip fc-srcchip');
+      const pages = Array.isArray(s.pageTexts) && s.pageTexts.length ? ` · ${s.pageTexts.length}p` : '';
+      chip.appendChild(document.createTextNode(`${s.label}${pages} `));
+      const x = el('button', 'fc-srcchip__remove');
+      x.type = 'button';
+      x.textContent = '×';
+      x.title = `Remove ${s.label}`;
+      x.addEventListener('click', () => { sources.splice(i, 1); renderSourceChips(); });
+      chip.appendChild(x);
+      chipsHost.appendChild(chip);
+    }
+    const totalChars = sources.reduce((n, s) => n + s.text.length, 0);
+    srcStatus.textContent = sources.length === 0
+      ? 'Drag files or canvas pages here, pick below, or paste text. Add as many sources as the topic needs.'
+      : `${sources.length} ${sources.length === 1 ? 'source' : 'sources'} · ${totalChars.toLocaleString()} chars. Pasted text (below) is included as one more source.`;
+  };
 
   const applyLoaded = (loaded) => {
     if (!loaded) return;
-    sourceState.text = loaded.text;
-    sourceState.label = loaded.label;
-    sourceState.uri = loaded.uri;
-    sourceState.pageTexts = loaded.pageTexts || null;
-    pasteIn.value = '';
-    const pages = sourceState.pageTexts ? ` · ${sourceState.pageTexts.length} pages` : '';
-    srcStatus.textContent = `Loaded ${loaded.label} (${loaded.text.length.toLocaleString()} chars${pages}).`;
+    const entry = { text: loaded.text, label: loaded.label, uri: loaded.uri, pageTexts: loaded.pageTexts || null };
+    // Re-adding the same document replaces it instead of doubling it.
+    const existing = entry.uri ? sources.findIndex((s) => s.uri === entry.uri) : -1;
+    if (existing >= 0) sources[existing] = entry;
+    else sources.push(entry);
+    renderSourceChips();
   };
 
   // Drop zone — the primary path: drag straight from the Explorer or Canvas
@@ -4048,6 +4934,7 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
   srcRow.appendChild(srcBtn('Browse Device…', 'hard-drive', () => fcReadPdf()));
   srcRow.appendChild(srcBtn('Photo (OCR)', 'image', () => fcReadPhoto()));
   view.appendChild(srcRow);
+  view.appendChild(chipsHost);
   view.appendChild(srcStatus);
 
   const pasteIn = el('textarea', 'fc-textarea');
@@ -4113,18 +5000,26 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
     if (genLabel) genLabel.textContent = text;
     else genBtn.textContent = text;
   };
-  const manualHint = el('span', 'fc-hint', 'Prefer manual entry? Open a deck and use "Add card".');
+  const manualHint = el('span', 'fc-hint', 'Prefer manual entry? Open a deck and use "Add Card".');
   genRow.appendChild(manualHint);
   view.appendChild(genRow);
 
   const reviewHost = el('div');
   reviewHost.style.marginTop = '16px';
   view.appendChild(reviewHost);
+  /** The doc list the last generation ran with — resolves per-card "doc"
+   *  indexes to real provenance at import time. */
+  let lastDocs = [];
 
   genBtn.addEventListener('click', () => {
     void (async () => {
-      const text = (pasteIn.value.trim() || sourceState.text).trim();
-      if (!text) {
+      // Every loaded source AND the paste box combine into one material set —
+      // pasted text no longer overrides loaded documents.
+      const docs = [...sources];
+      if (pasteIn.value.trim()) {
+        docs.push({ text: pasteIn.value.trim(), label: 'Pasted text', uri: '', pageTexts: null });
+      }
+      if (docs.length === 0) {
         err.textContent = 'Load a source or paste some material first.';
         err.style.display = '';
         return;
@@ -4134,14 +5029,13 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
       setGenLabel('Generating…');
       try {
         const n = parseInt(countIn.value, 10);
-        // Pasted text overrides the loaded source — page tagging only applies
-        // when generating from the loaded (paged) document itself.
-        const usingLoadedSource = !pasteIn.value.trim() && !!sourceState.text;
-        const cards = await fcGenerateCards(text, {
+        const cards = await fcGenerateCards(docs.length === 1 ? docs[0].text : '', {
           count: Number.isFinite(n) && n > 0 ? Math.min(50, n) : null,
           focus: guideIn.value.trim(),
-          pageTexts: usingLoadedSource ? sourceState.pageTexts : null,
+          pageTexts: docs.length === 1 ? docs[0].pageTexts : null,
+          docs: docs.length > 1 ? docs : null,
         });
+        lastDocs = docs;
         // Duplicate scan against the target deck (existing decks only).
         let dups = cards.map(() => null);
         const deckSel = parseInt(deckDropdown.value, 10);
@@ -4175,8 +5069,11 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
       const fields = el('div', 'fc-genrow__fields');
       // Provenance + duplicate chips above the editors.
       const dup = dups[ci];
-      if (c.page || dup) {
+      if (c.page || c.doc || dup) {
         const chips = el('div', 'fc-genrow__chips');
+        if (c.doc && lastDocs[c.doc - 1]) {
+          chips.appendChild(el('span', 'fc-chip', String(lastDocs[c.doc - 1].label).slice(0, 32)));
+        }
         if (c.page) chips.appendChild(el('span', 'fc-chip', `p.${c.page}`));
         if (dup) {
           const dupChip = el('span', 'fc-chip fc-chip--warn', `Similar to: ${String(dup.matchFront).slice(0, 60)}`);
@@ -4193,7 +5090,7 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
       row.appendChild(fields);
       const dropBtn = el('button', 'fc-btn fc-btn--danger');
       dropBtn.textContent = 'Drop';
-      const entry = { row, front, back, tags: c.tags || '', page: c.page || 0, dropped: false };
+      const entry = { row, front, back, tags: c.tags || '', page: c.page || 0, doc: c.doc || 0, dropped: false };
       dropBtn.addEventListener('click', () => {
         entry.dropped = !entry.dropped;
         row.classList.toggle('fc-genrow--dropped', entry.dropped);
@@ -4220,21 +5117,24 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
         try {
           let deckId = deckDropdown.value;
           if (!deckId || deckId === '__new__') {
-            const name = await _api.window.showInputBox({ prompt: 'New deck name', value: sourceState.label || 'New deck' });
+            const name = await _api.window.showInputBox({ prompt: 'New deck name', value: lastDocs[0]?.label || 'New deck' });
             if (!name?.trim()) { importBtn.disabled = false; return; }
             deckId = await fcCreateDeck(name);
           } else {
             deckId = parseInt(deckId, 10);
           }
           for (const r of keep) {
+            // Per-card provenance: the doc the model attributed the fact to;
+            // single-source runs resolve to that one document.
+            const src = lastDocs[r.doc - 1] || (lastDocs.length === 1 ? lastDocs[0] : null);
             await fcCreateCard({
               deckId,
               front: r.front.value,
               back: r.back.value,
               tags: r.tags,
-              sourceUri: sourceState.uri,
-              sourceLabel: sourceState.label || 'Pasted text',
-              sourcePage: r.page || 0,
+              sourceUri: src?.uri ?? '',
+              sourceLabel: src?.label ?? (lastDocs.length > 1 ? 'Multiple sources' : 'Pasted text'),
+              sourcePage: src ? (r.page || 0) : 0,
             });
           }
           await _api.window.showInformationMessage(`Imported ${keep.length} cards.`);
@@ -5387,6 +6287,13 @@ export const __testables = {
   fcAiTranscribePairs,
   FC_TRANSCRIBE_SYSTEM,
   fcParsePastedRows,
+  // Deck intelligence (multi-doc generation + dedup sweep + coverage)
+  fcExtractJsonArray,
+  fcBuildMaterialDocs,
+  fcClusterPairs,
+  fcTrigramPairs,
+  FC_JUDGE_SYSTEM,
+  FC_COVERAGE_SYSTEM,
   fcImportKindOf,
   fcExtOf,
   // LaTeX survival through the JSON layer

@@ -23,6 +23,10 @@ const {
   fcIntervalPreview,
   fcBuildQueue,
   fcBuildMaterial,
+  fcBuildMaterialDocs,
+  fcClusterPairs,
+  fcTrigramPairs,
+  fcExtractJsonArray,
   fcTrigramSimilarity,
   fcStreamWithStall,
   fcParseClozeIndices,
@@ -366,6 +370,99 @@ describe('fcExtractCardsJson — page attribution', () => {
     const { cards } = fcExtractCardsJson('[{"front":"Q","back":"A","page":-3},{"front":"Q2","back":"A2","page":"x"}]');
     expect(cards[0].page).toBeUndefined();
     expect(cards[1].page).toBeUndefined();
+  });
+
+  it('reads a per-card doc index (multi-source generation)', () => {
+    const { cards } = fcExtractCardsJson('[{"front":"Q","back":"A","doc":2,"page":3},{"front":"Q2","back":"A2","doc":"x"}]');
+    expect(cards[0].doc).toBe(2);
+    expect(cards[0].page).toBe(3);
+    expect(cards[1].doc).toBeUndefined();
+  });
+});
+
+describe('fcBuildMaterialDocs — multi-document material', () => {
+  it('tags each doc with a header and restarts page numbers per doc', () => {
+    const { material, anyPaged, docCount } = fcBuildMaterialDocs([
+      { label: 'Mack Paper', text: '', pageTexts: ['mack page one', 'mack page two'] },
+      { label: 'RF Cookbook', text: 'flat cookbook text', pageTexts: null },
+    ], 100_000);
+    expect(docCount).toBe(2);
+    expect(anyPaged).toBe(true);
+    expect(material).toContain('[Doc 1: Mack Paper]');
+    expect(material).toContain('[Doc 2: RF Cookbook]');
+    // Pages restart inside each doc — doc 2 is unpaged, doc 1 owns [Page 1].
+    expect(material.indexOf('[Page 1]\nmack page one')).toBeGreaterThan(material.indexOf('[Doc 1:'));
+    expect(material).toContain('flat cookbook text');
+  });
+
+  it('clips whole docs against the budget with the truncation marker', () => {
+    const big = 'x'.repeat(500);
+    const { material, clipped } = fcBuildMaterialDocs([
+      { label: 'A', text: big, pageTexts: null },
+      { label: 'B', text: big, pageTexts: null },
+    ], 550);
+    expect(clipped).toBe(true);
+    expect(material).toContain('[Doc 1: A]');
+    expect(material).not.toContain('[Doc 2: B]');
+    expect(material).toContain('[...material truncated...]');
+  });
+});
+
+describe('fcClusterPairs — union-find duplicate clustering', () => {
+  it('merges transitive chains into one cluster sorted by similarity', () => {
+    const clusters = fcClusterPairs([
+      { a: 1, b: 2, similarity: 0.9 },
+      { a: 2, b: 3, similarity: 0.85 },
+      { a: 10, b: 11, similarity: 0.95 },
+    ]);
+    expect(clusters).toHaveLength(2);
+    expect(clusters[0].cardIds).toEqual([10, 11]); // strongest first
+    expect(clusters[0].similarity).toBe(0.95);
+    expect(clusters[1].cardIds).toEqual([1, 2, 3]);
+  });
+
+  it('returns nothing for no pairs', () => {
+    expect(fcClusterPairs([])).toEqual([]);
+  });
+});
+
+describe('fcTrigramPairs — deck-wide pairwise sweep', () => {
+  const card = (id: number, front: string, noteGroup = '') => ({ id, front, back: 'same back text for overlap', noteGroup });
+
+  it('finds canonical pairs above the threshold', () => {
+    const pairs = fcTrigramPairs([
+      card(5, 'What is the Mack chain ladder assumption about development factors?'),
+      card(2, 'What is the Mack chain ladder assumption about development factors, exactly?'),
+      card(9, 'Completely unrelated question about Bayesian priors and hierarchies'),
+    ], 0.5);
+    expect(pairs).toHaveLength(1);
+    expect(pairs[0].a).toBe(2); // canonical a < b
+    expect(pairs[0].b).toBe(5);
+    expect(pairs[0].similarity).toBeGreaterThan(0.5);
+  });
+
+  it('never pairs cloze/reverse siblings (shared note group)', () => {
+    const pairs = fcTrigramPairs([
+      card(1, 'The {{c1::Mack}} method assumes independent accident years', 'grp-1'),
+      card(2, 'The {{c2::Mack}} method assumes independent accident years', 'grp-1'),
+    ], 0.3);
+    expect(pairs).toEqual([]);
+  });
+});
+
+describe('fcExtractJsonArray — shared array scanner', () => {
+  it('maps arbitrary object shapes via mapSlice (judge verdicts)', () => {
+    const raw = 'Sure!\n```json\n[{"cluster":1,"verdict":"duplicate","keepId":7}]\n```';
+    const { items, error } = fcExtractJsonArray(raw, (parsed: unknown[]) =>
+      parsed.map((v) => ({ cluster: (v as { cluster: number }).cluster, verdict: (v as { verdict: string }).verdict })));
+    expect(error).toBeNull();
+    expect(items).toEqual([{ cluster: 1, verdict: 'duplicate' }]);
+  });
+
+  it('repairs LaTeX escapes before parsing, like the card path', () => {
+    const raw = '[{"cluster":1,"reason":"both test $\\sigma^2$"}]';
+    const { items } = fcExtractJsonArray(raw, (parsed: unknown[]) => parsed);
+    expect((items[0] as { reason: string }).reason).toContain('\\sigma');
   });
 });
 

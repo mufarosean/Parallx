@@ -56,13 +56,13 @@ test('grade Again → countdown wait → Show Now re-serves; in-study Edit/Delet
   await nameIn.press('Enter');
   await expect(window.locator('.fc-view__title', { hasText: DECK })).toBeVisible({ timeout: 5_000 });
 
-  // Add one card via Browse's inline form ("Add card" toggles the form
-  // open; "Add Card" submits it — exact-match the toggle).
-  await window.getByRole('button', { name: 'Add card', exact: true }).click();
+  // Add one card via Browse's inline form ("Add Card" toggles the form
+  // open; "Save Card" submits it).
+  await window.getByRole('button', { name: 'Add Card', exact: true }).click();
   const fronts = window.locator('.fc-form .fc-textarea');
   await fronts.nth(0).fill('E2E-STUDY-FRONT what is 2+2?');
   await fronts.nth(1).fill('E2E-STUDY-BACK 4');
-  await window.locator('.fc-form button', { hasText: 'Add Card' }).click();
+  await window.locator('.fc-form button', { hasText: 'Save Card' }).click();
   await expect(window.locator('.fc-cardrow', { hasText: 'E2E-STUDY-FRONT' })).toBeVisible({ timeout: 5_000 });
 
   // Study this deck.
@@ -160,6 +160,78 @@ test('grade Again → countdown wait → Show Now re-serves; in-study Edit/Delet
   await expect(doneDeck).not.toBeVisible({ timeout: 5_000 });
 });
 
+test('deck-wide Find Duplicates: scan → group → staged delete → apply', async ({ window }) => {
+  // Two near-identical cards + one distinct; the sweep must group the twins
+  // (trigram path needs no model; an unreachable AI judge degrades to
+  // similarity-only groups) and the staged delete must apply.
+  await expect(window.locator('.fc-pane')).toBeVisible({ timeout: 10_000 });
+  const confirmButton = (label: string) =>
+    window.locator('.parallx-modal-box button, .parallx-notification button', { hasText: label }).first();
+
+  await window.locator('.fc-pane .fc-tab, .fc-pane button', { hasText: 'Decks' }).first().click();
+  const leftover = window.locator('.fc-deck-card', { hasText: 'E2E Dedup Deck' }).first();
+  if (await leftover.isVisible().catch(() => false)) {
+    await leftover.locator('button', { hasText: 'Delete' }).click();
+    await confirmButton('Delete').click();
+    await expect(leftover).not.toBeVisible({ timeout: 5_000 });
+  }
+  await window.locator('.fc-pane button', { hasText: 'New deck' }).click();
+  const nameIn = window.locator('.parallx-modal-box input');
+  await nameIn.fill('E2E Dedup Deck');
+  await nameIn.press('Enter');
+  await expect(window.locator('.fc-view__title', { hasText: 'E2E Dedup Deck' })).toBeVisible({ timeout: 5_000 });
+
+  const addCard = async (front: string, back: string) => {
+    const form = window.locator('.fc-form');
+    if (!(await form.isVisible().catch(() => false))) {
+      await window.getByRole('button', { name: 'Add Card', exact: true }).first().click();
+    }
+    const tas = window.locator('.fc-form .fc-textarea');
+    await tas.nth(0).fill(front);
+    await tas.nth(1).fill(back);
+    await window.locator('.fc-form button', { hasText: 'Save Card' }).click();
+    // .first(): the twin cards share a 30-char prefix by design.
+    await expect(window.locator('.fc-cardrow', { hasText: front.slice(0, 30) }).first()).toBeVisible({ timeout: 5_000 });
+  };
+  await addCard('What does the Mack chain ladder assume about accident years?', 'They are independent of one another.');
+  await addCard('What does the Mack chain ladder method assume about the accident years?', 'That they are independent of one another.');
+  await addCard('E2E-DISTINCT What is IBNR?', 'Incurred but not reported claims.');
+
+  // Browse header ⋯ menu → Find Duplicates.
+  await window.locator('.fc-pane button[aria-label="Deck actions"]').click();
+  await window.getByText('Find Duplicates', { exact: true }).click();
+  await expect(window.locator('.fc-view__title', { hasText: 'Find Duplicates' })).toBeVisible({ timeout: 5_000 });
+
+  // The twins group appears (AI judge optional; generous timeout in case a
+  // local model answers slowly).
+  const group = window.locator('.fc-dupgroup').first();
+  await expect(group).toBeVisible({ timeout: 120_000 });
+  await expect(group).toContainText('Mack chain ladder');
+  await expect(group).not.toContainText('E2E-DISTINCT');
+
+  // Stage one deletion (check it if the AI did not pre-stage), then apply.
+  const firstCheck = group.locator('.fc-duprow input[type="checkbox"]').first();
+  const anyChecked = await group.locator('.fc-duprow input[type="checkbox"]:checked').count();
+  if (anyChecked === 0) await firstCheck.check();
+  const applyBtn = window.locator('button', { hasText: 'Apply Changes' });
+  await expect(applyBtn).toBeEnabled();
+  await applyBtn.click();
+  await confirmButton('Delete Cards').click();
+
+  // Lands back in BROWSE (Study This Deck is browse-only — the dedup view's
+  // title also contains the deck name, so the title alone can't distinguish)
+  // with one twin gone.
+  await expect(window.locator('.fc-pane button', { hasText: 'Study This Deck' })).toBeVisible({ timeout: 10_000 });
+  await expect(window.locator('.fc-cardrow')).toHaveCount(2, { timeout: 5_000 });
+
+  // Cleanup.
+  await window.locator('.fc-pane .fc-tab, .fc-pane button', { hasText: 'Decks' }).first().click();
+  const deck = window.locator('.fc-deck-card', { hasText: 'E2E Dedup Deck' }).first();
+  await deck.locator('button', { hasText: 'Delete' }).click();
+  await confirmButton('Delete').click();
+  await expect(deck).not.toBeVisible({ timeout: 5_000 });
+});
+
 test('dropdown selects by mouse (core ui regression: focusout killed item clicks)', async ({ window }) => {
   // The Create view's "Into deck" dropdown: with at least one deck, the
   // default selection is a deck, and picking "+ New Deck…" by MOUSE must
@@ -199,3 +271,4 @@ test('dropdown selects by mouse (core ui regression: focusout killed item clicks
   await confirmButton('Delete').click();
   await expect(deck).not.toBeVisible({ timeout: 5_000 });
 });
+

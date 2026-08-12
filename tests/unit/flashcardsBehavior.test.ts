@@ -431,10 +431,13 @@ describe('AI generation flow', () => {
     await settle();
 
     // Load the canvas source (quick pick auto-selects the only page).
+    // Multi-source model: the loaded document appears as a removable CHIP;
+    // the status line summarizes the source count.
     const canvasBtn = [...pane.querySelectorAll('button')].find((b) => b.textContent?.includes('Canvas Page')) as HTMLButtonElement;
     canvasBtn.click();
     await settle();
-    expect(pane.querySelector('.fc-src-status')!.textContent).toContain('Canvas: Exam 7 Notes');
+    expect(pane.querySelector('.fc-srcchip')!.textContent).toContain('Canvas: Exam 7 Notes');
+    expect(pane.querySelector('.fc-src-status')!.textContent).toContain('1 source');
 
     // Generate — the lm fake returns two fenced JSON cards.
     const genBtn = [...pane.querySelectorAll('button')].find((b) => b.textContent?.includes('Generate Cards')) as HTMLButtonElement;
