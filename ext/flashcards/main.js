@@ -1743,6 +1743,26 @@ async function fcCopyCards(ids, targetDeckId) {
   return clones.length;
 }
 
+/** Bulk tag edit: add or remove one tag across many cards (user ask:
+ *  editing existing tags without opening each card). */
+async function fcBulkTag(ids, tag, remove = false) {
+  const clean = String(tag || '').trim().replace(/^#/, '');
+  if (!clean || ids.length === 0) return 0;
+  const ph = ids.map(() => '?').join(',');
+  const rows = await db.all(`SELECT id, tags FROM fc_cards WHERE id IN (${ph})`, ids);
+  let changed = 0;
+  for (const row of rows) {
+    const tags = new Set(fcParseTags(row.tags));
+    const had = tags.has(clean);
+    if (remove) tags.delete(clean); else tags.add(clean);
+    if (had === tags.has(clean)) continue;
+    await db.run('UPDATE fc_cards SET tags = ? WHERE id = ?', [[...tags].join(','), row.id]);
+    changed++;
+  }
+  if (changed > 0) _emitDataChanged();
+  return changed;
+}
+
 /** Quick-pick a destination deck (or create one). Returns a deck id or null. */
 async function fcPickDeckTarget(excludeDeckId, placeholder) {
   const decks = (await fcListDecks()).filter((d) => d.id !== excludeDeckId);
@@ -2791,7 +2811,10 @@ function injectStyles() {
 .fc-today__stat { flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .fc-today__num { font-size: var(--px-text-xl); font-weight: 680; font-variant-numeric: tabular-nums; line-height: 1; letter-spacing: -0.02em; color: var(--px-text); }
 .fc-today__num--zero { color: var(--px-text-disabled); }
-.fc-today__lbl { font-size: var(--px-text-2xs); text-transform: uppercase; letter-spacing: 0.07em; color: var(--px-text-faint); }
+.fc-today__num--new { color: var(--px-accent); }
+.fc-today__num--learn { color: var(--px-warning); }
+.fc-today__num--due { color: var(--px-success); }
+.fc-today__lbl { font-size: var(--px-text-2xs); text-transform: uppercase; letter-spacing: 0.07em; color: var(--px-text-muted); }
 .fc-today__study {
   display: flex; align-items: center; justify-content: center; gap: 6px;
   width: 100%; height: 34px; border: 0; border-radius: var(--px-radius-md);
@@ -2821,9 +2844,11 @@ function injectStyles() {
 .fc-deck-row__icon { flex: 0 0 auto; display: inline-flex; width: 13px; height: 13px; color: var(--px-text-faint); }
 .fc-deck-row__icon svg { width: 100%; height: 100%; }
 .fc-deck-row__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fc-deck-row__counts { flex: 0 0 auto; display: flex; align-items: center; gap: var(--px-space-2); font-size: var(--px-text-xs); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--px-text-faint); }
-.fc-deck-row__ct--new { color: var(--px-text-muted); }
-.fc-deck-row__ct--due { color: var(--px-text-secondary); }
+.fc-deck-row__counts { flex: 0 0 auto; display: flex; align-items: center; gap: var(--px-space-2); font-size: var(--px-text-xs); font-weight: 600; font-variant-numeric: tabular-nums; }
+/* Anki color language: new = accent, due = success — readable at a glance
+   instead of two indistinguishable grey numbers (user report). */
+.fc-deck-row__ct--new { color: var(--px-accent); }
+.fc-deck-row__ct--due { color: var(--px-success); }
 .fc-deck-row__more {
   flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
   width: 20px; height: 20px; border: 0; border-radius: var(--px-radius-sm);
@@ -2977,19 +3002,45 @@ function injectStyles() {
 /* ── Browse — hairline-separated card rows; the stage chip is the only colour;
    row actions surface on hover ── */
 .fc-cardrow {
-  position: relative;
-  padding: var(--px-space-3) var(--px-space-1) var(--px-space-3) 26px;
+  display: flex;
+  gap: var(--px-space-2);
+  padding: var(--px-space-3) var(--px-space-1);
   border-bottom: 1px solid var(--px-divider);
 }
 .fc-cardrow--suspended { opacity: 0.5; }
 .fc-cardrow--selected { background: var(--px-accent-soft); }
+/* Fixed-width left rail: number over checkbox, both centered — nothing
+   floats or misaligns against the content column. */
+.fc-cardrow__rail {
+  flex: 0 0 26px;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding-top: 2px;
+}
+.fc-cardrow__num {
+  font-size: var(--px-text-xs); font-weight: 600; color: var(--px-text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.fc-cardrow__content { flex: 1; min-width: 0; }
 .fc-cardrow__select {
-  position: absolute; left: 4px; top: var(--px-space-3);
+  margin: 0; accent-color: var(--px-accent);
   opacity: 0; transition: opacity var(--px-dur-fast) var(--px-ease);
 }
 .fc-cardrow:hover .fc-cardrow__select,
 .fc-cardrow__select:checked,
 .fc-cardrow--selected .fc-cardrow__select { opacity: 1; }
+
+/* Compact view: questions only, one line each; click a question to expand
+   that card in place. */
+.fc-cardlist--compact .fc-cardrow { padding: 6px var(--px-space-1); }
+.fc-cardlist--compact .fc-cardrow:not(.fc-cardrow--expanded) .fc-cardrow__back,
+.fc-cardlist--compact .fc-cardrow:not(.fc-cardrow--expanded) .fc-cardrow__notes,
+.fc-cardlist--compact .fc-cardrow:not(.fc-cardrow--expanded) .fc-cardrow__meta,
+.fc-cardlist--compact .fc-cardrow:not(.fc-cardrow--expanded) .fc-cardrow__actions { display: none; }
+.fc-cardlist--compact .fc-cardrow:not(.fc-cardrow--expanded) .fc-cardrow__front {
+  display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical;
+  overflow: hidden; font-size: var(--px-text-sm);
+}
+.fc-cardlist--compact .fc-cardrow__front { cursor: pointer; }
 
 /* ── Tag bar + bulk bar (Browse) ── */
 .fc-tagbar { display: flex; flex-wrap: wrap; gap: var(--px-space-1); margin-bottom: 8px; }
@@ -3007,7 +3058,7 @@ function injectStyles() {
 .fc-bulkbar__count { font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text); }
 .fc-cardrow__front { font-size: var(--px-text-base); font-weight: 600; color: var(--px-text); }
 .fc-cardrow__back { font-size: var(--px-text-sm); margin-top: 3px; color: var(--px-text-muted); white-space: pre-wrap; line-height: var(--px-leading-base); }
-.fc-cardrow__meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--px-space-3); margin-top: var(--px-space-2); font-size: var(--px-text-xs); color: var(--px-text-faint); font-variant-numeric: tabular-nums; }
+.fc-cardrow__meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--px-space-3); margin-top: var(--px-space-2); font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
 .fc-cardrow__actions { display: flex; gap: var(--px-space-1); margin-top: var(--px-space-2); opacity: 0; transition: opacity var(--px-dur-fast) var(--px-ease); }
 .fc-cardrow:hover .fc-cardrow__actions,
 .fc-cardrow:focus-within .fc-cardrow__actions { opacity: 1; }
@@ -3225,27 +3276,9 @@ function createSidebarView(container) {
   injectStyles();
   const root = el('div', 'fc-sidebar');
 
-  // ── Header: title + quiet icon actions (Generate, + deck) ──
-  const header = el('div', 'fc-sb__header');
-  header.appendChild(el('div', 'fc-sb__title', 'Flashcards'));
-
-  const genBtn = el('button', 'fc-sb__icon-btn');
-  genBtn.type = 'button';
-  genBtn.title = 'Generate cards with AI';
-  genBtn.setAttribute('aria-label', 'Generate cards with AI');
-  genBtn.innerHTML = icon('px-ai-mark', 15);
-  genBtn.addEventListener('click', () => void openFlashcards({ view: 'create' }));
-  header.appendChild(genBtn);
-
-  const addBtn = el('button', 'fc-sb__icon-btn');
-  addBtn.type = 'button';
-  addBtn.title = 'New deck';
-  addBtn.setAttribute('aria-label', 'New deck');
-  addBtn.innerHTML = icon('plus', 16);
-  addBtn.addEventListener('click', () => void _cmdNewDeck());
-  header.appendChild(addBtn);
-  root.appendChild(header);
-
+  // No header title here: the sidebar part chrome already says FLASHCARDS —
+  // repeating it read as sloppy duplication (user report). Actions live on
+  // the section heads instead.
   const scroll = el('div', 'fc-sb__scroll');
   root.appendChild(scroll);
 
@@ -3264,6 +3297,13 @@ function createSidebarView(container) {
   decksHead.appendChild(el('span', 'fc-sb__section-title', 'Decks'));
   const deckCount = el('span', 'fc-sb__section-count');
   decksHead.appendChild(deckCount);
+  const sectionGen = el('button', 'fc-sb__section-add');
+  sectionGen.type = 'button';
+  sectionGen.title = 'Generate cards with AI';
+  sectionGen.setAttribute('aria-label', 'Generate cards with AI');
+  sectionGen.innerHTML = icon('px-ai-mark', 14);
+  sectionGen.addEventListener('click', () => void openFlashcards({ view: 'create' }));
+  decksHead.appendChild(sectionGen);
   const sectionAdd = el('button', 'fc-sb__section-add');
   sectionAdd.type = 'button';
   sectionAdd.title = 'New deck';
@@ -3332,6 +3372,7 @@ function createSidebarView(container) {
         row.appendChild(el('span', 'fc-deck-row__name', deck.name));
 
         const counts = el('span', 'fc-deck-row__counts');
+        counts.title = `${deck.newCount} new · ${deck.dueCount} due · ${deck.total} total`;
         if (deck.newCount > 0) counts.appendChild(el('span', 'fc-deck-row__ct--new', String(deck.newCount)));
         if (deck.dueCount > 0) counts.appendChild(el('span', 'fc-deck-row__ct--due', String(deck.dueCount)));
         row.appendChild(counts);
@@ -3882,6 +3923,7 @@ async function renderBrowse(body, route, setRoute) {
   const selectedIds = new Set();
   const activeTags = new Set();
   let groupByTag = false;
+  let compactView = _fcBrowseCompact;
 
   const syncBulkBar = () => {
     bulkBar.replaceChildren();
@@ -3911,6 +3953,29 @@ async function renderBrowse(body, route, setRoute) {
       void _api.window.showInformationMessage(`Copied ${copied} ${copied === 1 ? 'card' : 'cards'} as fresh cards.`);
       void renderList();
     });
+    mk('Add Tag…', async () => {
+      const tag = await _api.window.showInputBox({ prompt: `Add a tag to ${selectedIds.size} cards`, placeholder: 'e.g. mack' });
+      if (!tag?.trim()) return;
+      const n = await fcBulkTag([...selectedIds], tag);
+      void _api.window.showInformationMessage(`Tagged ${n} ${n === 1 ? 'card' : 'cards'} with #${tag.trim().replace(/^#/, '')}.`);
+      void renderList();
+    });
+    mk('Remove Tag…', async () => {
+      // Offer only tags that actually exist on the selection.
+      const rows = await db.all(
+        `SELECT tags FROM fc_cards WHERE id IN (${[...selectedIds].map(() => '?').join(',')})`, [...selectedIds]);
+      const present = [...new Set(rows.flatMap((r) => fcParseTags(r.tags)))].sort();
+      if (present.length === 0) {
+        void _api.window.showInformationMessage('The selected cards have no tags.');
+        return;
+      }
+      const pick = await _api.window.showQuickPick(
+        present.map((t) => ({ label: `#${t}` })), { placeholder: 'Remove which tag from the selection?' });
+      if (!pick) return;
+      const n = await fcBulkTag([...selectedIds], pick.label, true);
+      void _api.window.showInformationMessage(`Removed ${pick.label} from ${n} ${n === 1 ? 'card' : 'cards'}.`);
+      void renderList();
+    });
     mk('Clear Selection', () => {
       selectedIds.clear();
       void renderList();
@@ -3923,7 +3988,8 @@ async function renderBrowse(body, route, setRoute) {
     for (const c of cards) {
       for (const t of fcParseTags(c.tags)) counts.set(t, (counts.get(t) || 0) + 1);
     }
-    if (counts.size === 0 && !groupByTag) return;
+    // The view toggles render regardless — an untagged deck still needs
+    // Compact View (probe-caught: the early return hid them entirely).
     for (const [tag, n] of [...counts.entries()].sort((a, b) => b[1] - a[1])) {
       const chip = el('button', 'fc-chip fc-tagchip');
       chip.type = 'button';
@@ -3941,6 +4007,18 @@ async function renderBrowse(body, route, setRoute) {
     groupBtn.classList.toggle('fc-tagchip--active', groupByTag);
     groupBtn.addEventListener('click', () => { groupByTag = !groupByTag; void renderList(); });
     tagBar.appendChild(groupBtn);
+    // Collapsed question-only view (user ask); persists across pane rebuilds.
+    const compactBtn = el('button', 'fc-chip fc-tagchip');
+    compactBtn.type = 'button';
+    compactBtn.textContent = 'Compact View';
+    compactBtn.title = 'Show only the questions; click a question to expand it.';
+    compactBtn.classList.toggle('fc-tagchip--active', compactView);
+    compactBtn.addEventListener('click', () => {
+      compactView = !compactView;
+      _fcBrowseCompact = compactView;
+      void renderList();
+    });
+    tagBar.appendChild(compactBtn);
   };
 
   const renderList = async (keepCardId = null) => {
@@ -3969,6 +4047,8 @@ async function renderBrowse(body, route, setRoute) {
         rawSearch || activeTags.size ? 'No matches.' : 'No cards in this deck yet.'));
       return;
     }
+    listHost.classList.toggle('fc-cardlist--compact', compactView);
+    let rowNumber = 0;
     if (groupByTag) {
       // A multi-tagged card appears under EACH of its tags (true grouping).
       const groups = new Map();
@@ -3981,11 +4061,12 @@ async function renderBrowse(body, route, setRoute) {
       }
       for (const [tag, group] of [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
         listHost.appendChild(el('div', 'fc-label', `${tag === '(untagged)' ? tag : `#${tag}`} · ${group.length}`));
-        for (const card of group) listHost.appendChild(buildCardRow(card));
+        let n = 0;
+        for (const card of group) listHost.appendChild(buildCardRow(card, ++n));
       }
     } else {
       for (const card of cards) {
-        listHost.appendChild(buildCardRow(card));
+        listHost.appendChild(buildCardRow(card, ++rowNumber));
       }
     }
     body.scrollTop = scrollTop;
@@ -3995,14 +4076,19 @@ async function renderBrowse(body, route, setRoute) {
     }
   };
 
-  const buildCardRow = (card) => {
+  const buildCardRow = (card, number) => {
     const row = el('div', 'fc-cardrow');
     row.dataset.cardId = String(card.id);
     if (card.suspended) row.classList.add('fc-cardrow--suspended');
-    // Bulk selection checkbox (top-left of the row).
+
+    // Left rail: the card number (user ask) with the selection checkbox
+    // aligned directly under it — both live in one fixed-width column so
+    // nothing floats or misaligns against the content.
+    const rail = el('div', 'fc-cardrow__rail');
+    rail.appendChild(el('span', 'fc-cardrow__num', String(number)));
     const select = el('input', 'fc-cardrow__select');
     select.type = 'checkbox';
-    select.title = 'Select for bulk move/copy';
+    select.title = 'Select for bulk actions';
     select.checked = selectedIds.has(card.id);
     select.addEventListener('change', () => {
       if (select.checked) selectedIds.add(card.id); else selectedIds.delete(card.id);
@@ -4010,15 +4096,25 @@ async function renderBrowse(body, route, setRoute) {
       syncBulkBar();
     });
     if (select.checked) row.classList.add('fc-cardrow--selected');
-    row.appendChild(select);
+    rail.appendChild(select);
+    row.appendChild(rail);
+
+    const content = el('div', 'fc-cardrow__content');
     const front = el('div', 'fc-cardrow__front');
     front.appendChild(_api.ui.renderMarkdown ? _api.ui.renderMarkdown(card.front) : document.createTextNode(card.front));
-    row.appendChild(front);
+    content.appendChild(front);
+    // Compact mode (user ask: a collapsed view with just the questions):
+    // clicking the question expands that one card in place.
+    front.addEventListener('click', () => {
+      if (listHost.classList.contains('fc-cardlist--compact')) {
+        row.classList.toggle('fc-cardrow--expanded');
+      }
+    });
     const back = el('div', 'fc-cardrow__back');
     back.appendChild(_api.ui.renderMarkdown ? _api.ui.renderMarkdown(card.back) : document.createTextNode(card.back));
-    row.appendChild(back);
+    content.appendChild(back);
     if (card.notes) {
-      row.appendChild(el('div', 'fc-cardrow__notes', card.notes));
+      content.appendChild(el('div', 'fc-cardrow__notes', card.notes));
     }
     const meta = el('div', 'fc-cardrow__meta');
     const stateChip = el('span', `fc-state fc-state--${card.state === 'relearning' ? 'learning' : card.state}`);
@@ -4029,23 +4125,25 @@ async function renderBrowse(body, route, setRoute) {
     else if (card.cardType === 'reverse') meta.appendChild(el('span', '', 'Reverse Pair'));
     if (card.state !== 'new') {
       meta.appendChild(el('span', '', card.dueAt <= Date.now()
-        ? 'due now'
-        : `due ${new Date(card.dueAt).toLocaleDateString()}`));
+        ? 'Due Now'
+        : `Due ${new Date(card.dueAt).toLocaleDateString()}`));
       // FSRS state (M98); legacy ease only for cards not yet migrated.
       if (card.stability > 0) {
-        const s = el('span', '', `stability ${card.stability < 100 ? card.stability.toFixed(1) : Math.round(card.stability)}d`);
+        const s = el('span', '', `Stability ${card.stability < 100 ? card.stability.toFixed(1) : Math.round(card.stability)}d`);
         s.title = `Difficulty ${card.difficulty.toFixed(1)} / 10`;
         meta.appendChild(s);
       } else {
-        meta.appendChild(el('span', '', `ease ${card.ease.toFixed(2)}`));
+        meta.appendChild(el('span', '', `Ease ${card.ease.toFixed(2)}`));
       }
-      meta.appendChild(el('span', '', `${card.reps} reps`));
-      if (card.lapses > 0) meta.appendChild(el('span', '', `${card.lapses} lapses`));
+      meta.appendChild(el('span', '', `${card.reps} ${card.reps === 1 ? 'Rep' : 'Reps'}`));
+      if (card.lapses > 0) meta.appendChild(el('span', '', `${card.lapses} ${card.lapses === 1 ? 'Lapse' : 'Lapses'}`));
       if (fcIsLeech(card)) meta.appendChild(el('span', 'fc-meta-leech', 'Leech'));
     }
-    if (card.tags) meta.appendChild(el('span', '', `#${fcParseTags(card.tags).join(' #')}`));
+    for (const t of fcParseTags(card.tags)) {
+      meta.appendChild(el('span', 'fc-chip', `#${t}`));
+    }
     if (card.sourceLabel) meta.appendChild(el('span', '', card.sourceLabel));
-    row.appendChild(meta);
+    content.appendChild(meta);
 
     const btns = el('div', 'fc-cardrow__actions');
     const editBtn = el('button', 'fc-btn');
@@ -4075,7 +4173,8 @@ async function renderBrowse(body, route, setRoute) {
       void fcDeleteCard(card.id).then(() => renderList());
     });
     btns.appendChild(delBtn);
-    row.appendChild(btns);
+    content.appendChild(btns);
+    row.appendChild(content);
     return row;
   };
 
@@ -4517,6 +4616,9 @@ async function renderCoverage(body, route, setRoute) {
 }
 
 // ── Study view ───────────────────────────────────────────────────────────────
+
+/** Browse density preference — survives pane rebuilds like the sessions. */
+let _fcBrowseCompact = false;
 
 /** Live study sessions, keyed by deck scope. Editor panes are DESTROYED on
  *  every tab switch (pane-lifecycle contract) — following a card's source
