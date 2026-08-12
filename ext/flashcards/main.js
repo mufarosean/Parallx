@@ -3008,12 +3008,15 @@ function injectStyles() {
   border-bottom: 1px solid var(--px-divider);
 }
 .fc-cardrow--suspended { opacity: 0.5; }
-.fc-cardrow--selected { background: var(--px-accent-soft); }
-/* Fixed-width left rail: number over checkbox, both centered — nothing
-   floats or misaligns against the content column. */
+.fc-cardrow:hover { background: var(--px-surface-hover); }
+/* Selection = wash + left accent rail, the app's selected-row language
+   (explorer tree, canvas sidebar). */
+.fc-cardrow--selected,
+.fc-cardrow--selected:hover { background: var(--px-accent-soft); box-shadow: inset 2px 0 0 var(--px-accent); }
+/* Fixed-width left rail holding the card number. */
 .fc-cardrow__rail {
   flex: 0 0 26px;
-  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  display: flex; flex-direction: column; align-items: center;
   padding-top: 2px;
 }
 .fc-cardrow__num {
@@ -3021,13 +3024,6 @@ function injectStyles() {
   font-variant-numeric: tabular-nums;
 }
 .fc-cardrow__content { flex: 1; min-width: 0; }
-.fc-cardrow__select {
-  margin: 0; accent-color: var(--px-accent);
-  opacity: 0; transition: opacity var(--px-dur-fast) var(--px-ease);
-}
-.fc-cardrow:hover .fc-cardrow__select,
-.fc-cardrow__select:checked,
-.fc-cardrow--selected .fc-cardrow__select { opacity: 1; }
 
 /* Compact view: questions only, one line each; click a question to expand
    that card in place. */
@@ -3041,6 +3037,11 @@ function injectStyles() {
   overflow: hidden; font-size: var(--px-text-sm);
 }
 .fc-cardlist--compact .fc-cardrow__front { cursor: pointer; }
+
+/* ── Browse toolbar: search + view-control dropdowns on one row ── */
+.fc-browse-toolbar { display: flex; align-items: center; gap: var(--px-space-2); margin: 12px 0 4px; }
+.fc-browse-toolbar .fc-input { flex: 1; min-width: 0; }
+.fc-browse-toolbar .ui-dropdown { flex: 0 0 auto; }
 
 /* ── Tag bar + bulk bar (Browse) ── */
 .fc-tagbar { display: flex; flex-wrap: wrap; gap: var(--px-space-1); margin-bottom: 8px; }
@@ -3926,14 +3927,43 @@ async function renderBrowse(body, route, setRoute) {
   });
   view.appendChild(addForm);
 
-  // Search. '#tag' searches tags only; anything else searches everything.
+  // Toolbar: search + the view controls. Grouping and density are REAL
+  // controls (core dropdowns), not chips — chips are content filters, and
+  // dressing controls as chips made them read as slop.
+  const toolbar = el('div', 'fc-browse-toolbar');
   const searchIn = el('input', 'fc-input');
   searchIn.placeholder = 'Search cards… (#tag searches tags)';
-  searchIn.style.margin = '12px 0 4px';
-  view.appendChild(searchIn);
+  toolbar.appendChild(searchIn);
+  const groupDd = _api.ui.createDropdown(toolbar, {
+    items: [
+      { value: 'none', label: 'No Grouping' },
+      { value: 'tag', label: 'Group by Tag' },
+    ],
+    selected: _fcBrowseGroupTag ? 'tag' : 'none',
+    ariaLabel: 'Group cards',
+  });
+  groupDd.onDidChange((v) => {
+    groupByTag = v === 'tag';
+    _fcBrowseGroupTag = groupByTag;
+    void renderList();
+  });
+  const viewDd = _api.ui.createDropdown(toolbar, {
+    items: [
+      { value: 'full', label: 'Full View' },
+      { value: 'compact', label: 'Compact View' },
+    ],
+    selected: _fcBrowseCompact ? 'compact' : 'full',
+    ariaLabel: 'Card density',
+  });
+  viewDd.onDidChange((v) => {
+    compactView = v === 'compact';
+    _fcBrowseCompact = compactView;
+    void renderList();
+  });
+  view.appendChild(toolbar);
 
   // Tag bar: every tag in the deck as a filter chip (click to narrow;
-  // multiple active tags = ALL must match) + a Group by Tag toggle.
+  // multiple active tags = ALL must match).
   const tagBar = el('div', 'fc-tagbar');
   view.appendChild(tagBar);
 
@@ -3948,8 +3978,12 @@ async function renderBrowse(body, route, setRoute) {
 
   const selectedIds = new Set();
   const activeTags = new Set();
-  let groupByTag = false;
+  let groupByTag = _fcBrowseGroupTag;
   let compactView = _fcBrowseCompact;
+  // List-selection state: rows in rendered order (Shift ranges walk it) and
+  // the anchor index the last plain/Ctrl click planted.
+  const renderedRows = [];
+  let anchorIndex = null;
 
   const syncBulkBar = () => {
     bulkBar.replaceChildren();
@@ -4014,8 +4048,6 @@ async function renderBrowse(body, route, setRoute) {
     for (const c of cards) {
       for (const t of fcParseTags(c.tags)) counts.set(t, (counts.get(t) || 0) + 1);
     }
-    // The view toggles render regardless — an untagged deck still needs
-    // Compact View (probe-caught: the early return hid them entirely).
     for (const [tag, n] of [...counts.entries()].sort((a, b) => b[1] - a[1])) {
       const chip = el('button', 'fc-chip fc-tagchip');
       chip.type = 'button';
@@ -4027,24 +4059,6 @@ async function renderBrowse(body, route, setRoute) {
       });
       tagBar.appendChild(chip);
     }
-    const groupBtn = el('button', 'fc-chip fc-tagchip');
-    groupBtn.type = 'button';
-    groupBtn.textContent = 'Group by Tag';
-    groupBtn.classList.toggle('fc-tagchip--active', groupByTag);
-    groupBtn.addEventListener('click', () => { groupByTag = !groupByTag; void renderList(); });
-    tagBar.appendChild(groupBtn);
-    // Collapsed question-only view (user ask); persists across pane rebuilds.
-    const compactBtn = el('button', 'fc-chip fc-tagchip');
-    compactBtn.type = 'button';
-    compactBtn.textContent = 'Compact View';
-    compactBtn.title = 'Show only the questions; click a question to expand it.';
-    compactBtn.classList.toggle('fc-tagchip--active', compactView);
-    compactBtn.addEventListener('click', () => {
-      compactView = !compactView;
-      _fcBrowseCompact = compactView;
-      void renderList();
-    });
-    tagBar.appendChild(compactBtn);
   };
 
   const renderList = async (keepCardId = null) => {
@@ -4067,6 +4081,8 @@ async function renderBrowse(body, route, setRoute) {
     // append synchronously so the height is back before the restore.
     const scrollTop = body.scrollTop;
     listHost.innerHTML = '';
+    renderedRows.length = 0;
+    anchorIndex = null;
     syncBulkBar();
     if (cards.length === 0) {
       listHost.appendChild(el('div', 'fc-empty',
@@ -4098,7 +4114,7 @@ async function renderBrowse(body, route, setRoute) {
     body.scrollTop = scrollTop;
     if (keepCardId != null) {
       const row = listHost.querySelector(`[data-card-id="${keepCardId}"]`);
-      if (row) row.scrollIntoView({ block: 'nearest' }); // no-op when already visible
+      row?.scrollIntoView?.({ block: 'nearest' }); // no-op when already visible
     }
   };
 
@@ -4107,35 +4123,50 @@ async function renderBrowse(body, route, setRoute) {
     row.dataset.cardId = String(card.id);
     if (card.suspended) row.classList.add('fc-cardrow--suspended');
 
-    // Left rail: the card number (user ask) with the selection checkbox
-    // aligned directly under it — both live in one fixed-width column so
-    // nothing floats or misaligns against the content.
+    // Left rail: the card number in a fixed-width column.
     const rail = el('div', 'fc-cardrow__rail');
     rail.appendChild(el('span', 'fc-cardrow__num', String(number)));
-    const select = el('input', 'fc-cardrow__select');
-    select.type = 'checkbox';
-    select.title = 'Select for bulk actions';
-    select.checked = selectedIds.has(card.id);
-    select.addEventListener('change', () => {
-      if (select.checked) selectedIds.add(card.id); else selectedIds.delete(card.id);
-      row.classList.toggle('fc-cardrow--selected', select.checked);
+    row.appendChild(rail);
+
+    // List selection, no checkboxes: click selects (click again deselects),
+    // Ctrl/Cmd+click toggles, Shift+click extends from the anchor —
+    // the same contract as the canvas sidebar and media organizer.
+    // Under Group by Tag a card can render under several tags; selection is
+    // by id, so every occurrence lights up together.
+    const rowIndex = renderedRows.length;
+    renderedRows.push({ row, id: card.id });
+    if (selectedIds.has(card.id)) row.classList.add('fc-cardrow--selected');
+    row.addEventListener('mousedown', (e) => {
+      if (e.shiftKey) e.preventDefault(); // range-select, not text-select
+    });
+    row.addEventListener('click', (e) => {
+      if (e.target.closest('button, a, input, textarea, .fc-chip')) return;
+      if (e.shiftKey && anchorIndex !== null) {
+        if (!(e.ctrlKey || e.metaKey)) selectedIds.clear();
+        const lo = Math.min(anchorIndex, rowIndex);
+        const hi = Math.max(anchorIndex, rowIndex);
+        for (let i = lo; i <= hi; i++) selectedIds.add(renderedRows[i].id);
+      } else if (e.ctrlKey || e.metaKey) {
+        if (selectedIds.has(card.id)) selectedIds.delete(card.id); else selectedIds.add(card.id);
+        anchorIndex = rowIndex;
+      } else {
+        const wasOnly = selectedIds.size === 1 && selectedIds.has(card.id);
+        selectedIds.clear();
+        if (!wasOnly) selectedIds.add(card.id);
+        anchorIndex = wasOnly ? null : rowIndex;
+        // Compact mode: the click that selects a question also expands it.
+        if (listHost.classList.contains('fc-cardlist--compact')) {
+          row.classList.toggle('fc-cardrow--expanded');
+        }
+      }
+      for (const r of renderedRows) r.row.classList.toggle('fc-cardrow--selected', selectedIds.has(r.id));
       syncBulkBar();
     });
-    if (select.checked) row.classList.add('fc-cardrow--selected');
-    rail.appendChild(select);
-    row.appendChild(rail);
 
     const content = el('div', 'fc-cardrow__content');
     const front = el('div', 'fc-cardrow__front');
     front.appendChild(_api.ui.renderMarkdown ? _api.ui.renderMarkdown(card.front) : document.createTextNode(card.front));
     content.appendChild(front);
-    // Compact mode (user ask: a collapsed view with just the questions):
-    // clicking the question expands that one card in place.
-    front.addEventListener('click', () => {
-      if (listHost.classList.contains('fc-cardlist--compact')) {
-        row.classList.toggle('fc-cardrow--expanded');
-      }
-    });
     const back = el('div', 'fc-cardrow__back');
     back.appendChild(_api.ui.renderMarkdown ? _api.ui.renderMarkdown(card.back) : document.createTextNode(card.back));
     content.appendChild(back);
@@ -4641,8 +4672,9 @@ async function renderCoverage(body, route, setRoute) {
 
 // ── Study view ───────────────────────────────────────────────────────────────
 
-/** Browse density preference — survives pane rebuilds like the sessions. */
+/** Browse view preferences — survive pane rebuilds like the sessions. */
 let _fcBrowseCompact = false;
+let _fcBrowseGroupTag = false;
 
 /** Live study sessions, keyed by deck scope. Editor panes are DESTROYED on
  *  every tab switch (pane-lifecycle contract) — following a card's source

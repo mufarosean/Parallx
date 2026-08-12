@@ -386,6 +386,44 @@ describe('editor pane', () => {
     expect(count.n).toBe(3);
     expect(pane.querySelectorAll('.fc-cardrow').length).toBe(3);
   });
+
+  it('selects rows by click, Shift+click range, Ctrl+click toggle', async () => {
+    const pane = document.querySelector('.fc-pane')!;
+    const rows = [...pane.querySelectorAll('.fc-cardrow')] as HTMLElement[];
+    expect(rows.length).toBe(3);
+    const click = (target: HTMLElement, init: MouseEventInit = {}) =>
+      target.dispatchEvent(new MouseEvent('click', { bubbles: true, ...init }));
+
+    // Plain click selects just that row and shows the bulk bar.
+    click(rows[0].querySelector('.fc-cardrow__front') as HTMLElement);
+    expect(rows[0].classList.contains('fc-cardrow--selected')).toBe(true);
+    expect(pane.querySelector('.fc-bulkbar__count')?.textContent).toBe('1 Selected');
+
+    // Shift+click extends the range from the anchor.
+    click(rows[2].querySelector('.fc-cardrow__front') as HTMLElement, { shiftKey: true });
+    expect(pane.querySelector('.fc-bulkbar__count')?.textContent).toBe('3 Selected');
+
+    // Ctrl+click toggles a row back out.
+    click(rows[1].querySelector('.fc-cardrow__front') as HTMLElement, { ctrlKey: true });
+    expect(pane.querySelector('.fc-bulkbar__count')?.textContent).toBe('2 Selected');
+    expect(rows[1].classList.contains('fc-cardrow--selected')).toBe(false);
+
+    // Clicks on row buttons never touch the selection.
+    const edit = [...rows[0].querySelectorAll('button')].find((b) => b.textContent === 'Edit') as HTMLElement;
+    click(edit, {});
+    await settle();
+    expect(pane.querySelector('.fc-bulkbar__count')?.textContent).toBe('2 Selected');
+    const cancel = [...pane.querySelectorAll('button')].find((b) => b.textContent === 'Cancel') as HTMLButtonElement;
+    cancel?.click();
+    await settle();
+
+    // Clear Selection empties the set and hides the bar.
+    const clear = [...pane.querySelectorAll('.fc-bulkbar button')]
+      .find((b) => b.textContent === 'Clear Selection') as HTMLButtonElement;
+    clear.click();
+    await settle();
+    expect(pane.querySelector('.fc-bulkbar')?.textContent ?? '').toBe('');
+  });
 });
 
 describe('study flow', () => {

@@ -282,10 +282,20 @@ test('bulk move + tag filter: select cards → Move to Deck → tags narrow the 
   await window.locator('.fc-tagchip', { hasText: '#mack' }).click();
   await expect(window.locator('.fc-cardrow')).toHaveCount(2, { timeout: 5_000 });
 
-  // BULK MOVE: select both, Move to Deck → pick B in the quick pick.
-  const checks = window.locator('.fc-cardrow__select');
-  await checks.nth(0).check();
-  await checks.nth(1).check();
+  // VIEW CONTROL: the density dropdown flips Compact View (core dropdown,
+  // list portals to body).
+  await window.locator('.fc-browse-toolbar .ui-dropdown__button', { hasText: 'Full View' }).click();
+  await window.locator('.ui-dropdown__item', { hasText: 'Compact View' }).click();
+  await expect(window.locator('.fc-cardlist--compact')).toBeVisible({ timeout: 5_000 });
+  await window.locator('.fc-browse-toolbar .ui-dropdown__button', { hasText: 'Compact View' }).click();
+  await window.locator('.ui-dropdown__item', { hasText: 'Full View' }).click();
+  await expect(window.locator('.fc-cardlist--compact')).toHaveCount(0, { timeout: 5_000 });
+
+  // BULK MOVE: click selects, Ctrl+click extends; Move to Deck → pick B.
+  const rows = window.locator('.fc-cardrow');
+  await rows.nth(0).click();
+  await expect(rows.nth(0)).toHaveClass(/fc-cardrow--selected/);
+  await rows.nth(1).click({ modifiers: ['Control'] });
   await expect(window.locator('.fc-bulkbar__count', { hasText: '2 Selected' })).toBeVisible();
   await window.locator('.fc-bulkbar button', { hasText: 'Move to Deck' }).click();
   await window.locator('.parallx-quickpick-row', { hasText: 'E2E Bulk B' }).click();
