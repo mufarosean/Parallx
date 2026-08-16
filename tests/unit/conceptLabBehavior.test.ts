@@ -207,6 +207,55 @@ describe('concept lab pane', () => {
     expect(atBF).not.toBe(atCL);
   });
 
+  it('Prior To Posterior renders three densities and the credibility rail', async () => {
+    (paneHost!.querySelector('.cl-back') as HTMLElement).click();
+    await settle();
+    const card = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
+      c.textContent?.includes('Prior To Posterior'))! as HTMLElement;
+    card.click();
+    await settle();
+    // Story step 1 applies the normal-conjugate preset: z = 0.791.
+    const curves = paneHost!.querySelectorAll('path.cl-curve');
+    expect(curves.length).toBe(3);
+    for (const c of curves) expect((c.getAttribute('d') || '').startsWith('M')).toBe(true);
+    const values = [...paneHost!.querySelectorAll('.cl-readout-value')].map((e) => e.textContent);
+    expect(values.some((v) => v === '0.791')).toBe(true);
+    // The corrected-Gogol preset lands on the Correction Note figures.
+    const gogol = [...paneHost!.querySelectorAll('.cl-preset-chip')].find((c) =>
+      c.textContent?.includes('Gogol'))! as HTMLElement;
+    gogol.click();
+    await wait(650);
+    await settle();
+    const after = [...paneHost!.querySelectorAll('.cl-readout-value')].map((e) => e.textContent);
+    expect(after.some((v) => v === '0.782')).toBe(true);
+    expect(after.some((v) => v === '51.9%')).toBe(true);
+  });
+
+  it('the Distribution Zoo switches families: curves for ranges, lattice bars for ODP', async () => {
+    (paneHost!.querySelector('.cl-back') as HTMLElement).click();
+    await settle();
+    const card = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
+      c.textContent?.includes('Distribution Zoo'))! as HTMLElement;
+    card.click();
+    await settle();
+    // Ranges mode: two curves, no bars, the 95th-percentile markers labeled.
+    expect(paneHost!.querySelectorAll('rect.cl-bar').length).toBe(0);
+    const tags = [...paneHost!.querySelectorAll('.cl-svg-tag')].map((e) => e.textContent);
+    expect(tags.some((t) => t?.includes('LN 95th'))).toBe(true);
+    const odp = [...paneHost!.querySelectorAll('.cl-preset-chip')].find((c) =>
+      c.textContent?.includes('Over-Dispersed'))! as HTMLElement;
+    odp.click();
+    await wait(650);
+    await settle();
+    // ODP mode: the phi lattice + Poisson comparison bars; sd slider hides.
+    expect(paneHost!.querySelectorAll('rect.cl-bar').length).toBeGreaterThan(20);
+    const rows = [...paneHost!.querySelectorAll('.cl-slider-row')] as HTMLElement[];
+    const sdRow = rows.find((r) => r.textContent?.includes('Sd'))!;
+    const phiRow = rows.find((r) => r.textContent?.includes('Dispersion'))!;
+    expect(sdRow.style.display).toBe('none');
+    expect(phiRow.style.display).toBe('');
+  });
+
   it('returning to the first module preserves the user’s explored state', async () => {
     (paneHost!.querySelector('.cl-back') as HTMLElement).click();
     await settle();

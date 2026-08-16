@@ -269,6 +269,23 @@ function clGogolPosterior({ EU, sdU, beta2, p, Ck }) {
   return { z, mu, sigma2, tau2, sigma12, mu1, EUC, ERC: EUC - Ck, sdRC: Math.sqrt(varUC) };
 }
 
+/**
+ * Normal analog of the Gogol structure, exactly conjugate: U ~ N(EU, sdU^2),
+ * C_k|U ~ N(pU, s^2) with s^2 = p*q*beta^2*EU^2 (the lognormal model's
+ * conditional variance, frozen at the prior mean so the algebra stays
+ * closed-form). Posterior mean = z*(C_k/p) + (1-z)*EU with
+ * z = p^2 sdU^2 / (p^2 sdU^2 + s^2).
+ */
+function clNormalConjugate({ EU, sdU, beta, p, Ck }) {
+  const q = 1 - p;
+  const s2 = p * q * beta * beta * EU * EU;
+  const pv = p * p * sdU * sdU;
+  const z = pv / (pv + s2);
+  const postMean = z * (Ck / p) + (1 - z) * EU;
+  const postVar = (sdU * sdU * s2) / (pv + s2);
+  return { z, EUC: postMean, ERC: postMean - Ck, sdRC: Math.sqrt(postVar), s: Math.sqrt(s2) };
+}
+
 // --- Meyers validation machinery (Monograph 8 sections 3-4) ----------------
 
 /**
@@ -630,6 +647,343 @@ defineModule({
     { name: 'Gogol corrected: z = 0.782', expect: 0.782, tol: 5e-4, got: () => clGogolPosterior({ EU: 0.9, sdU: 0.35, beta2: 0.04, p: 0.5, Ck: 0.55 }).z },
     { name: 'Gogol corrected: E(R|C_k) = 51.9%', expect: 0.519, tol: 5e-4, got: () => clGogolPosterior({ EU: 0.9, sdU: 0.35, beta2: 0.04, p: 0.5, Ck: 0.55 }).ERC },
     { name: 'Gogol corrected: sd(R|C_k) = 18.9%', expect: 0.189, tol: 5e-4, got: () => clGogolPosterior({ EU: 0.9, sdU: 0.35, beta2: 0.04, p: 0.5, Ck: 0.55 }).sdRC },
+  ],
+});
+
+// --- Module: Prior to Posterior (Gogol / Brosius Bayesian) -----------------
+
+defineModule({
+  id: 'prior-posterior',
+  title: 'Prior To Posterior',
+  subtitle: 'How data moves belief: the exact Bayesian models behind credibility',
+  icon: 'scale',
+  paper: {
+    label: 'Mack (2000) §5, Gogol (1993) model',
+    section: 'Exact Bayesian reserves with the Correction Note figures; pp. 341-344',
+    task: 'Explain how prior variance and process noise set the credibility weight',
+  },
+  intro:
+    'Every credibility formula is a compressed Bayesian update. Here is the ' +
+    'uncompressed version: a prior over the true ultimate, a likelihood from ' +
+    'what has been paid, and the posterior compromise between them. The ' +
+    'credibility weight z is not a choice. It falls out of two variances.',
+  params: [
+    { key: 'EU', tex: 'E[U]', label: 'Prior Mean Ultimate', min: 0.4, max: 1.6, step: 0.01, init: 0.90, fmt: 'pct', link: 'prior' },
+    { key: 'sdU', tex: '\\sqrt{Var(U)}', label: 'Prior Uncertainty', min: 0.05, max: 0.6, step: 0.005, init: 0.35, fmt: 'pct', link: 'prior' },
+    { key: 'beta', tex: '\\beta', label: 'Payout Noise', min: 0.02, max: 0.5, step: 0.005, init: 0.20, fmt: 'pct', link: 'lik' },
+    { key: 'p', tex: 'p_k', label: 'Expected % Paid', min: 0.05, max: 0.95, step: 0.01, init: 0.5, fmt: 'pct', link: 'lik' },
+    { key: 'Ck', tex: 'C_k', label: 'Paid To Date (% Of Premium)', min: 0.05, max: 1.2, step: 0.01, init: 0.55, fmt: 'pct', link: 'lik' },
+  ],
+  derived(par, st) {
+    const dist = st?.mode === 'normal' ? 'normal' : 'lognormal';
+    const kit = dist === 'normal'
+      ? clNormalConjugate(par)
+      : clGogolPosterior({ EU: par.EU, sdU: par.sdU, beta2: par.beta * par.beta, p: par.p, Ck: par.Ck });
+    return {
+      dist,
+      z: kit.z,
+      EUC: kit.EUC,
+      ERC: kit.ERC,
+      sdRC: kit.sdRC,
+      Ucl: par.Ck / par.p,
+      mu1: kit.mu1,
+      sigma12: kit.sigma12,
+    };
+  },
+  readouts: [
+    { sym: 'z', id: 'z', fmt: 'num3', label: 'Credibility Of The Data', link: 'post' },
+    { sym: 'E[U|C_k]', id: 'EUC', fmt: 'pct', label: 'Posterior Ultimate', accent: true, link: 'post' },
+    { sym: 'E[R|C_k]', id: 'ERC', fmt: 'pct', label: 'Posterior Reserve', accent: true, link: 'post' },
+    { sym: 'sd(R|C_k)', id: 'sdRC', fmt: 'pct', label: 'Posterior Sd', link: 'post' },
+    { sym: 'C_k/p_k', id: 'Ucl', fmt: 'pct', label: 'What The Data Says', link: 'lik' },
+    { sym: 'E[U]', id: 'EU', fmt: 'pct', label: 'What The Prior Says', link: 'prior' },
+  ],
+  formula(state) {
+    if (state.mode === 'normal') {
+      return {
+        sym: 'E[U|C_k] = z\\,\\tfrac{C_k}{p_k} + (1{-}z)\\,E[U]',
+        terms: [
+          { sym: 'E[U|C_k]', fmt: 'pct', get: (d) => d.EUC, primary: true, link: 'post' },
+          { op: '=' },
+          { sym: 'z', fmt: 'num3', get: (d) => d.z, link: 'post' },
+          { op: '·' },
+          { sym: 'C_k/p_k', fmt: 'pct', get: (d) => d.Ucl, link: 'lik' },
+          { op: '+' },
+          { sym: '(1{-}z)', fmt: 'num3', get: (d) => 1 - d.z, link: 'prior' },
+          { op: '·' },
+          { sym: 'E[U]', fmt: 'pct', get: (d) => d.EU, link: 'prior' },
+        ],
+      };
+    }
+    return {
+      sym: '\\mu_1 = z\\left(\\tfrac{\\tau^2}{2} + \\ln\\tfrac{C_k}{p_k}\\right) + (1{-}z)\\mu,\\quad E[U|C_k] = e^{\\mu_1 + \\sigma_1^2/2}',
+      terms: [
+        { sym: 'E[R|C_k]', fmt: 'pct', get: (d) => d.ERC, primary: true, link: 'post' },
+        { op: '=' },
+        { sym: 'E[U|C_k]', fmt: 'pct', get: (d) => d.EUC, link: 'post' },
+        { op: '−' },
+        { sym: 'C_k', fmt: 'pct', get: (d) => d.Ck, link: 'lik' },
+        { op: '|' },
+        { sym: 'z', fmt: 'num3', get: (d) => d.z, link: 'post' },
+        { op: '|' },
+        { sym: 'sd(R|C_k)', fmt: 'pct', get: (d) => d.sdRC, link: 'post' },
+      ],
+    };
+  },
+  presets: [
+    {
+      id: 'gogol',
+      label: 'Gogol, Corrected',
+      note: 'The exact lognormal Bayesian model on Example 1, with the Correction Note applied: mu_1 uses tau^2/2, giving E[R|C_k] = 51.9% and sd 18.9%. The published tau^2 version is the trap.',
+      mode: 'lognormal',
+      params: { EU: { value: 0.90 }, sdU: { value: 0.35 }, beta: { value: 0.20 }, p: { value: 0.5 }, Ck: { value: 0.55 } },
+    },
+    {
+      id: 'normal',
+      label: 'Normal Conjugate',
+      note: 'Same variances, normal world: the posterior is symmetric and lands at 50.8% instead of 51.9%. The lognormal skew is worth a full point of reserve.',
+      mode: 'normal',
+      params: { EU: { value: 0.90 }, sdU: { value: 0.35 }, beta: { value: 0.20 }, p: { value: 0.5 }, Ck: { value: 0.55 } },
+    },
+    {
+      id: 'tight-prior',
+      label: 'Confident Prior',
+      note: 'Shrink prior uncertainty to 10% and z collapses toward zero: the posterior barely moves off the prior no matter what the triangle says.',
+      mode: 'lognormal',
+      params: { EU: { value: 0.90 }, sdU: { value: 0.10 }, beta: { value: 0.20 }, p: { value: 0.5 }, Ck: { value: 0.55 } },
+    },
+    {
+      id: 'noisy-data',
+      label: 'Noisy Data',
+      note: 'Double the payout noise instead and the likelihood flattens: the data loses its vote and z falls the same way.',
+      mode: 'lognormal',
+      params: { EU: { value: 0.90 }, sdU: { value: 0.35 }, beta: { value: 0.40 }, p: { value: 0.5 }, Ck: { value: 0.55 } },
+    },
+  ],
+  story: [
+    {
+      title: 'Belief before data',
+      text: 'The prior is a full distribution over the true ultimate $U$, not a number. Its spread $\\sqrt{Var(U)}$ is a statement of how little the premium calculation really knows.',
+      preset: 'normal',
+    },
+    {
+      title: 'The data votes',
+      text: 'Paid-to-date $C_k$ points at $C_k/p_k$ (chain ladder), but with noise $\\beta$. The likelihood curve is how loudly the data votes. Watch it sharpen as $\\beta$ falls.',
+      preset: 'noisy-data',
+    },
+    {
+      title: 'The compromise, exactly',
+      text: 'Gogol\'s lognormal model gives the exact posterior. With the Correction Note applied, $E[R|C_k] = 51.9\\%$, sd $18.9\\%$, and $z = 0.782$. Nearly identical to Benktander\'s free answer.',
+      preset: 'gogol',
+    },
+    {
+      title: 'Who wins, and why',
+      text: '$z$ is a ratio of variances: prior spread against data noise. Confident prior or noisy data, either one pulls the posterior home. There is no judgment call left once the variances are set.',
+      preset: 'tight-prior',
+    },
+  ],
+  checks: [
+    { name: 'Gogol path: z = 0.782', expect: 0.782, tol: 5e-4, got: () => clGogolPosterior({ EU: 0.9, sdU: 0.35, beta2: 0.04, p: 0.5, Ck: 0.55 }).z },
+    { name: 'Gogol path: E(U|C_k) = 106.9%', expect: 1.069, tol: 1e-3, got: () => clGogolPosterior({ EU: 0.9, sdU: 0.35, beta2: 0.04, p: 0.5, Ck: 0.55 }).EUC },
+    { name: 'Normal conjugate: z = 0.791', expect: 0.7908, tol: 1e-3, got: () => clNormalConjugate({ EU: 0.9, sdU: 0.35, beta: 0.2, p: 0.5, Ck: 0.55 }).z },
+    { name: 'Normal conjugate: E(R|C_k) = 50.8%', expect: 0.5082, tol: 1e-3, got: () => clNormalConjugate({ EU: 0.9, sdU: 0.35, beta: 0.2, p: 0.5, Ck: 0.55 }).ERC },
+    { name: 'Normal conjugate: sd(U|C_k) = 16.0%', expect: 0.1601, tol: 1e-3, got: () => clNormalConjugate({ EU: 0.9, sdU: 0.35, beta: 0.2, p: 0.5, Ck: 0.55 }).sdRC },
+    {
+      name: 'Posterior sits between prior and CL, both families', expect: 1, tol: 0,
+      got: () => {
+        const n = clNormalConjugate({ EU: 0.9, sdU: 0.35, beta: 0.2, p: 0.5, Ck: 0.55 });
+        const g = clGogolPosterior({ EU: 0.9, sdU: 0.35, beta2: 0.04, p: 0.5, Ck: 0.55 });
+        const between = (v) => v > 0.9 && v < 1.1;
+        return between(n.EUC) && between(g.EUC) ? 1 : 0;
+      },
+    },
+    {
+      name: 'Tight prior pulls z down', expect: 1, tol: 0,
+      got: () => {
+        const wide = clGogolPosterior({ EU: 0.9, sdU: 0.35, beta2: 0.04, p: 0.5, Ck: 0.55 }).z;
+        const tight = clGogolPosterior({ EU: 0.9, sdU: 0.10, beta2: 0.04, p: 0.5, Ck: 0.55 }).z;
+        return tight < 0.35 && wide > 0.7 ? 1 : 0;
+      },
+    },
+  ],
+});
+
+// --- Module: The Distribution Zoo (exam edition) ---------------------------
+
+defineModule({
+  id: 'dist-zoo',
+  title: 'The Distribution Zoo',
+  subtitle: 'Exam edition: the shapes the papers assume but never draw',
+  icon: 'spline',
+  paper: {
+    label: 'Mack (1994) ranges · Shapland ODP · Verrall NB',
+    section: 'Lognormal CI moment matching; ODP Var = phi*mu; NB chain ladder',
+    task: 'Choose and defend distributional assumptions for reserve ranges',
+  },
+  intro:
+    'The syllabus keeps asserting distributions it never shows you. What does ' +
+    'an over-dispersed Poisson even look like? Why does a lognormal range have ' +
+    'a fatter upper tail than a normal one with the same mean and variance? ' +
+    'Look at them.',
+  params: [
+    { key: 'mean', tex: '\\mu', label: 'Mean', min: 20, max: 200, step: 1, init: 100, fmt: 'num', link: 'primary' },
+    { key: 'sd', tex: '\\sigma', label: 'Sd', min: 5, max: 80, step: 1, init: 35, fmt: 'num', link: 'primary', modes: ['normal-logn'] },
+    { key: 'phi', tex: '\\phi', label: 'Dispersion', min: 1, max: 20, step: 0.5, init: 8, fmt: 'num2', modes: ['odp'], link: 'primary' },
+    { key: 'shape', tex: 'k', label: 'Shape', min: 0.6, max: 16, step: 0.1, init: 4, fmt: 'num2', modes: ['gamma'], link: 'primary' },
+    { key: 'r', tex: 'r', label: 'NB Size r', min: 1, max: 40, step: 1, init: 5, fmt: 'num', modes: ['negbin'], link: 'primary' },
+  ],
+  derived(par, st) {
+    const mode = st?.mode || 'normal-logn';
+    const out = { mode, mean: par.mean };
+    if (mode === 'normal-logn') {
+      const { mu, sigma } = clMatchLognormal(par.mean, par.sd);
+      out.sd = par.sd;
+      out.n95 = par.mean + 1.6448536 * par.sd;
+      out.ln95 = clLognInv(0.95, mu, sigma);
+      out.lnMu = mu; out.lnSigma = sigma;
+      out.varRatio = 1;
+    } else if (mode === 'odp') {
+      out.sd = Math.sqrt(par.phi * par.mean);
+      out.varRatio = par.phi;
+    } else if (mode === 'gamma') {
+      const scale = par.mean / par.shape;
+      out.sd = Math.sqrt(par.shape) * scale;
+      out.scale = scale;
+      out.varRatio = out.sd * out.sd / par.mean;
+    } else if (mode === 'negbin') {
+      out.sd = Math.sqrt(par.mean * (1 + par.mean / par.r));
+      out.varRatio = 1 + par.mean / par.r;
+      out.nbP = par.r / (par.r + par.mean);
+    }
+    return out;
+  },
+  readouts: [
+    { sym: '\\mu', id: 'mean', fmt: 'num', label: 'Mean', link: 'primary' },
+    { sym: '\\sigma', id: 'sd', fmt: 'num', label: 'Sd', accent: true, link: 'primary' },
+    { sym: '', id: 'varRatio', fmt: 'num2', label: 'Variance-To-Mean', link: 'primary' },
+  ],
+  formula(state) {
+    switch (state.mode) {
+      case 'odp':
+        return {
+          sym: 'X = \\phi N,\\; N \\sim Pois(\\mu/\\phi):\\quad E[X]=\\mu,\\; Var(X)=\\phi\\mu',
+          terms: [
+            { sym: 'Var(X)', fmt: 'num', get: (d) => d.varRatio * d.mean, primary: true, link: 'primary' },
+            { op: '=' },
+            { sym: '\\phi', fmt: 'num2', get: (d) => d.varRatio, link: 'primary' },
+            { op: '·' },
+            { sym: '\\mu', fmt: 'num', get: (d) => d.mean, link: 'primary' },
+          ],
+        };
+      case 'gamma':
+        return {
+          sym: 'X \\sim Gamma(k, \\theta):\\quad E[X] = k\\theta,\\; Var(X) = k\\theta^2',
+          terms: [
+            { sym: 'k', fmt: 'num2', get: (d) => d.shape, link: 'primary' },
+            { op: '·' },
+            { sym: '\\theta', fmt: 'num', get: (d) => d.scale, link: 'primary' },
+            { op: '=' },
+            { sym: 'E[X]', fmt: 'num', get: (d) => d.mean, primary: true, link: 'primary' },
+          ],
+        };
+      case 'negbin':
+        return {
+          sym: 'X \\sim NB(r, p):\\quad Var(X) = \\mu\\left(1 + \\tfrac{\\mu}{r}\\right)',
+          terms: [
+            { sym: 'Var(X)', fmt: 'num', get: (d) => d.varRatio * d.mean, primary: true, link: 'primary' },
+            { op: '=' },
+            { sym: '\\mu', fmt: 'num', get: (d) => d.mean, link: 'primary' },
+            { op: '·' },
+            { sym: '1 + \\mu/r', fmt: 'num2', get: (d) => d.varRatio, link: 'primary' },
+          ],
+        };
+      default:
+        return {
+          sym: '\\sigma_{LN}^2 = \\ln(1 + CV^2),\\quad \\mu_{LN} = \\ln(mean) - \\sigma_{LN}^2/2',
+          terms: [
+            { sym: 'Normal\\;95th', fmt: 'num', get: (d) => d.n95, link: 'secondary' },
+            { op: 'vs' },
+            { sym: 'Lognormal\\;95th', fmt: 'num', get: (d) => d.ln95, primary: true, link: 'primary' },
+          ],
+        };
+    }
+  },
+  presets: [
+    {
+      id: 'ranges',
+      label: 'Normal Vs Lognormal',
+      note: 'Same mean, same sd. The lognormal shifts mass right of the peak into a longer upper tail: its 95th percentile sits meaningfully above the normal one. This is why Mack ranges use it.',
+      mode: 'normal-logn',
+      params: { mean: { value: 100 }, sd: { value: 35 } },
+    },
+    {
+      id: 'odp',
+      label: 'Over-Dispersed Poisson',
+      note: 'Shapland\'s workhorse: a Poisson stretched onto the phi-lattice. Mean stays put; variance scales by phi. Drag phi to 1 and it collapses to plain Poisson.',
+      mode: 'odp',
+      params: { mean: { value: 100 }, phi: { value: 8 } },
+    },
+    {
+      id: 'gamma',
+      label: 'Gamma',
+      note: 'The GLM severity option: right-skewed at low shape, nearly normal at high shape. Variance grows with the square of the mean at fixed shape.',
+      mode: 'gamma',
+      params: { mean: { value: 100 }, shape: { value: 4 } },
+    },
+    {
+      id: 'negbin',
+      label: 'Negative Binomial',
+      note: 'Verrall\'s route to the chain ladder: a Poisson whose rate is itself gamma-uncertain. Small r means violent over-dispersion; r to infinity recovers Poisson.',
+      mode: 'negbin',
+      params: { mean: { value: 100 }, r: { value: 5 } },
+    },
+  ],
+  story: [
+    {
+      title: 'Two ranges, one pair of moments',
+      text: 'Mack computes a mean and a standard error, then needs a DISTRIBUTION to quote percentiles. Normal and lognormal agree on both moments and still disagree about the tail you care about.',
+      preset: 'ranges',
+    },
+    {
+      title: 'The quasi-distribution',
+      text: 'ODP is not in any textbook table because it is a variance ASSUMPTION, $Var = \\phi\\mu$, wearing a Poisson costume. The lattice spacing IS $\\phi$. Now you have seen it.',
+      preset: 'odp',
+    },
+    {
+      title: 'Skew you can dial',
+      text: 'Gamma at shape $k=1$ is exponential; by $k=16$ it is almost symmetric. GLM error families are a choice of how variance scales with the mean.',
+      preset: 'gamma',
+    },
+    {
+      title: 'Poisson with doubt',
+      text: 'Give the Poisson rate a gamma prior and the mixture is negative binomial. Verrall builds the whole chain ladder out of this object.',
+      preset: 'negbin',
+    },
+  ],
+  checks: [
+    { name: 'Normal 95th at (100, 35)', expect: 157.57, tol: 0.05, got: () => 100 + 1.6448536 * 35 },
+    {
+      name: 'Lognormal 95th at (100, 35) shows the skew', expect: 165.2, tol: 0.5,
+      got: () => { const { mu, sigma } = clMatchLognormal(100, 35); return clLognInv(0.95, mu, sigma); },
+    },
+    {
+      name: 'Lognormal median < mean (mass shifted left of the tail)', expect: 1, tol: 0,
+      got: () => { const { mu, sigma } = clMatchLognormal(100, 35); return clLognInv(0.5, mu, sigma) < 100 ? 1 : 0; },
+    },
+    { name: 'ODP sd at (100, 8)', expect: Math.sqrt(800), tol: 1e-9, got: () => Math.sqrt(8 * 100) },
+    {
+      name: 'NB variance = mu(1+mu/r) via pmf', expect: 2100, tol: 2,
+      got: () => {
+        const r = 5, mean = 100, p = r / (r + mean);
+        let m = 0, m2 = 0;
+        for (let k = 0; k < 3000; k++) { const w = clNbPmf(k, r, p); m += k * w; m2 += k * k * w; }
+        return m2 - m * m;
+      },
+    },
+    {
+      name: 'Gamma sd from shape/scale', expect: 50, tol: 1e-9,
+      got: () => { const shape = 4, scale = 100 / 4; return Math.sqrt(shape) * scale; },
+    },
   ],
 });
 
@@ -1003,6 +1357,14 @@ const CL_CSS = `
 .cl-dim .cl-dot:not(.cl-hot) { opacity: 0.18; }
 .cl-curve.cl-hot { stroke-width: 3; opacity: 1; }
 .cl-ghost-curve { fill: none; stroke: var(--px-text-faint); stroke-width: 1.5; opacity: 0.5; stroke-dasharray: 2 3; }
+.cl-band { opacity: 0.16; }
+.cl-bar { opacity: 0.85; }
+.cl-bar--cmp { opacity: 0.4; }
+.cl-dim .cl-bar { opacity: 0.15; }
+.cl-dim .cl-hot .cl-bar { opacity: 0.85; }
+.cl-dim .cl-hot .cl-bar--cmp { opacity: 0.4; }
+.cl-dim .cl-band { opacity: 0.05; }
+.cl-dim .cl-band.cl-hot { opacity: 0.16; }
 .cl-dot { transition: opacity var(--px-dur-fast) var(--px-ease); }
 .cl-marker-line { stroke: var(--px-text-muted); stroke-width: 1; stroke-dasharray: 3 3; opacity: 0.7; }
 .cl-svg-value {
@@ -1673,6 +2035,8 @@ function getLabState(mod) {
 const SCENE_BUILDERS = {
   'brosius-line': buildBrosiusScenes,
   'mse-valley': buildValleyScenes,
+  'prior-posterior': buildPosteriorScenes,
+  'dist-zoo': buildZooScenes,
 };
 
 /** First-mount draw-in: the primary curve sweeps in along its own length. */
@@ -2050,6 +2414,298 @@ function buildValleyScenes(stageRow, ctx) {
   };
 }
 
+// --- Prior to Posterior: three densities and the credibility rail ----------
+
+function buildPosteriorScenes(stageRow, ctx) {
+  const { linkRoot, animator } = ctx;
+  const { scene, wrap, svg } = buildScene(stageRow, 'Belief Over The True Ultimate U', [
+    { label: 'Prior', color: 'var(--cl-ink-4)', dashed: true, link: 'prior' },
+    { label: 'Likelihood', color: 'var(--cl-ink-1)', dashed: true, link: 'lik' },
+    { label: 'Posterior', color: 'var(--px-accent)', link: 'post' },
+  ], linkRoot);
+
+  const axes = createAxes(svg, {
+    xFmt: (v) => clFmt(v, 'pct'),
+    yFmt: () => '',
+    yTicks: 0,
+  });
+  const band = svgEl('path', { fill: 'var(--px-accent)' }, 'cl-band');
+  band.dataset.clLink = 'post';
+  const pPrior = svgEl('path', { stroke: 'var(--cl-ink-4)' }, 'cl-curve cl-ref');
+  pPrior.dataset.clLink = 'prior';
+  const pLik = svgEl('path', { stroke: 'var(--cl-ink-1)' }, 'cl-curve cl-ref');
+  pLik.dataset.clLink = 'lik';
+  const pPost = svgEl('path', { stroke: 'var(--px-accent)' }, 'cl-curve');
+  pPost.dataset.clLink = 'post';
+  svg.appendChild(band);
+  svg.appendChild(pPrior); svg.appendChild(pLik); svg.appendChild(pPost);
+
+  const tickPrior = svgEl('line', {}, 'cl-marker-line'); tickPrior.dataset.clLink = 'prior';
+  const tickCL = svgEl('line', {}, 'cl-marker-line'); tickCL.dataset.clLink = 'lik';
+  const tagPrior = svgEl('text', { 'text-anchor': 'middle', fill: 'var(--cl-ink-4)' }, 'cl-svg-tag');
+  tagPrior.dataset.clLink = 'prior';
+  const tagCL = svgEl('text', { 'text-anchor': 'middle', fill: 'var(--cl-ink-1)' }, 'cl-svg-tag');
+  tagCL.dataset.clLink = 'lik';
+  const postDot = svgEl('circle', { r: 5, fill: 'var(--px-accent)', stroke: 'var(--px-bg)', 'stroke-width': 1.5 }, 'cl-dot');
+  postDot.dataset.clLink = 'post';
+  const postLabel = svgEl('text', { 'text-anchor': 'middle' }, 'cl-svg-value');
+  svg.appendChild(tickPrior); svg.appendChild(tickCL);
+  svg.appendChild(tagPrior); svg.appendChild(tagCL);
+  svg.appendChild(postDot); svg.appendChild(postLabel);
+
+  const rail = buildMeter(scene, 'Prior', 'Chain Ladder', 'post', linkRoot);
+
+  const domLo = animator.smooth(0.2, 110);
+  const domHi = animator.smooth(1.8, 110);
+  const domYmax = animator.smooth(3, 110);
+  let drewIn = false;
+
+  return {
+    update(st, d) {
+      const w = wrap.clientWidth || 640, h = wrap.clientHeight || 300;
+      svg.setAttribute('width', w); svg.setAttribute('height', h);
+      const frame = { left: 20, top: 14, right: w - 16, bottom: h - 26 };
+      const v = st.values;
+      const q = 1 - v.p;
+      const logn = d.dist !== 'normal';
+      const prior = logn ? clMatchLognormal(v.EU, v.sdU) : null;
+      const tau2 = Math.log(1 + (v.beta * v.beta * q) / v.p);
+      const tau = Math.sqrt(tau2);
+      const sNorm = Math.sqrt(v.p * q * v.beta * v.beta * v.EU * v.EU);
+      const sigma1 = logn ? Math.sqrt(d.sigma12) : d.sdRC;
+
+      const priorPdf = (u) => logn ? clLognPdf(u, prior.mu, prior.sigma) : clNormPdf(u, v.EU, v.sdU);
+      const likPdf = (u) => {
+        if (u <= 0) return 0;
+        return logn
+          ? clLognPdf(v.Ck, Math.log(v.p * u) - tau2 / 2, tau)
+          : clNormPdf(v.Ck, v.p * u, sNorm);
+      };
+      const postPdf = (u) => logn ? clLognPdf(u, d.mu1, sigma1) : clNormPdf(u, d.EUC, d.sdRC);
+      const postInv = (pr) => logn ? clLognInv(pr, d.mu1, sigma1) : clNormInv(pr, d.EUC, d.sdRC);
+      const priorInv = (pr) => logn ? clLognInv(pr, prior.mu, prior.sigma) : clNormInv(pr, v.EU, v.sdU);
+
+      const loT = Math.max(0.001, Math.min(priorInv(0.002), postInv(0.002)));
+      const hiT = Math.max(priorInv(0.998), postInv(0.998), d.Ucl * 1.15);
+      if (st.fresh) { domLo.snap(loT); domHi.snap(hiT); } else { domLo.target = loT; domHi.target = hiT; }
+      const lo = domLo.current, hi = domHi.current;
+
+      const N = 140;
+      const us = [], fPrior = [], fLik = [], fPost = [];
+      let likMax = 0, denMax = 0;
+      for (let i = 0; i <= N; i++) {
+        const u = lo + ((hi - lo) * i) / N;
+        us.push(u);
+        const a = priorPdf(u), b = likPdf(u), c = postPdf(u);
+        fPrior.push(a); fLik.push(b); fPost.push(c);
+        likMax = Math.max(likMax, b);
+        denMax = Math.max(denMax, a, c);
+      }
+      if (st.fresh) domYmax.snap(denMax * 1.1); else domYmax.target = denMax * 1.1;
+      const ymax = domYmax.current;
+      // The likelihood is not a density in U — scale it for display only.
+      const likScale = likMax > 0 ? (0.82 * denMax) / likMax : 1;
+
+      const sx = clScale(lo, hi, frame.left, frame.right);
+      const sy = clScale(0, ymax, frame.bottom, frame.top);
+      axes.update(sx, sy, frame);
+
+      const path = (fs, scale = 1) => clPathFrom(us.map((u, i) => [sx(u), sy(Math.min(ymax, fs[i] * scale))]));
+      pPrior.setAttribute('d', path(fPrior));
+      pLik.setAttribute('d', path(fLik, likScale));
+      pPost.setAttribute('d', path(fPost));
+      if (!drewIn) { drewIn = true; clDrawIn(pPost); }
+
+      // 90% posterior band as a filled slab under the curve.
+      const b05 = Math.max(lo, postInv(0.05)), b95 = Math.min(hi, postInv(0.95));
+      const bandPts = [];
+      for (let i = 0; i <= 60; i++) {
+        const u = b05 + ((b95 - b05) * i) / 60;
+        bandPts.push([sx(u), sy(Math.min(ymax, postPdf(u)))]);
+      }
+      band.setAttribute('d', clPathFrom(bandPts) + `L${sx(b95)},${sy(0)}L${sx(b05)},${sy(0)}Z`);
+
+      const put = (tick, tag, u, label) => {
+        const x = sx(u);
+        tick.setAttribute('x1', x); tick.setAttribute('x2', x);
+        tick.setAttribute('y1', frame.bottom); tick.setAttribute('y2', frame.top + 10);
+        tag.setAttribute('x', x); tag.setAttribute('y', frame.top + 8);
+        tag.textContent = label;
+      };
+      put(tickPrior, tagPrior, v.EU, 'E[U] ' + clFmt(v.EU, 'pct'));
+      put(tickCL, tagCL, d.Ucl, 'Cₖ/p ' + clFmt(d.Ucl, 'pct'));
+      const px = sx(d.EUC);
+      postDot.setAttribute('cx', px); postDot.setAttribute('cy', sy(0));
+      postLabel.setAttribute('x', px); postLabel.setAttribute('y', sy(0) - 12);
+      postLabel.textContent = clFmt(d.EUC, 'pct');
+
+      rail.set(d.z, 'z = ' + d.z.toFixed(3));
+    },
+    snapshot(st, d) {
+      return { label: st.presetId || 'pin', mode: d.dist, EUC: d.EUC, z: d.z };
+    },
+  };
+}
+
+// --- Distribution Zoo: curves and lattices ---------------------------------
+
+function makeBarPool(svg, cls) {
+  const g = svgEl('g');
+  svg.appendChild(g);
+  return {
+    g,
+    set(bars, fill) {
+      while (g.children.length < bars.length) g.appendChild(svgEl('rect', { rx: 1 }, cls));
+      while (g.children.length > bars.length) g.lastChild.remove();
+      for (let i = 0; i < bars.length; i++) {
+        const r = g.children[i];
+        const b = bars[i];
+        r.setAttribute('x', b.x); r.setAttribute('y', b.y);
+        r.setAttribute('width', b.w); r.setAttribute('height', b.h);
+        r.setAttribute('fill', fill);
+      }
+    },
+  };
+}
+
+function buildZooScenes(stageRow, ctx) {
+  const { linkRoot, animator } = ctx;
+  const { wrap, svg } = buildScene(stageRow, 'Density And Mass, To The Same Scale', [
+    { label: 'This Distribution', color: 'var(--px-accent)', link: 'primary' },
+    { label: 'Comparison', color: 'var(--cl-ink-1)', dashed: true, link: 'secondary' },
+  ], linkRoot);
+
+  const axes = createAxes(svg, {
+    xFmt: (v) => clFmt(v, 'num'),
+    yFmt: () => '',
+    yTicks: 0,
+  });
+  const barsCmp = makeBarPool(svg, 'cl-bar cl-bar--cmp');
+  barsCmp.g.dataset.clLink = 'secondary';
+  const barsMain = makeBarPool(svg, 'cl-bar');
+  barsMain.g.dataset.clLink = 'primary';
+  const pSecondary = svgEl('path', { stroke: 'var(--cl-ink-1)' }, 'cl-curve cl-ref');
+  pSecondary.dataset.clLink = 'secondary';
+  const pPrimary = svgEl('path', { stroke: 'var(--px-accent)' }, 'cl-curve');
+  pPrimary.dataset.clLink = 'primary';
+  svg.appendChild(pSecondary); svg.appendChild(pPrimary);
+  const mark1 = svgEl('line', {}, 'cl-marker-line');
+  const mark2 = svgEl('line', {}, 'cl-marker-line');
+  const tag1 = svgEl('text', { 'text-anchor': 'middle', fill: 'var(--px-accent)' }, 'cl-svg-tag');
+  const tag2 = svgEl('text', { 'text-anchor': 'middle', fill: 'var(--cl-ink-1)' }, 'cl-svg-tag');
+  mark1.dataset.clLink = 'primary'; tag1.dataset.clLink = 'primary';
+  mark2.dataset.clLink = 'secondary'; tag2.dataset.clLink = 'secondary';
+  svg.appendChild(mark1); svg.appendChild(mark2);
+  svg.appendChild(tag1); svg.appendChild(tag2);
+
+  const domHi = animator.smooth(260, 110);
+  const domYmax = animator.smooth(0.05, 110);
+  let drewIn = false;
+
+  return {
+    update(st, d) {
+      const w = wrap.clientWidth || 640, h = wrap.clientHeight || 300;
+      svg.setAttribute('width', w); svg.setAttribute('height', h);
+      const frame = { left: 20, top: 14, right: w - 16, bottom: h - 26 };
+      const v = st.values;
+      const mode = d.mode;
+
+      const hiT = Math.max(40, d.mean + 4.2 * d.sd);
+      if (st.fresh) domHi.snap(hiT); else domHi.target = hiT;
+      const hi = domHi.current;
+      const sx = clScale(0, hi, frame.left, frame.right);
+
+      // Everything plots as mass-per-unit-x so lattices and densities share
+      // one vertical scale — the whole point of the ODP picture.
+      let mainBars = null, cmpBars = null, mainCurve = null, cmpCurve = null;
+      let m1 = null, m2 = null;
+      if (mode === 'odp') {
+        mainBars = clOdpSupport(d.mean, v.phi, 1e-7)
+          .filter((pt) => pt.x <= hi)
+          .map((pt) => ({ u: pt.x, den: pt.p / v.phi, w: v.phi * 0.62 }));
+        cmpBars = [];
+        for (let k = Math.max(0, Math.floor(d.mean - 4.5 * Math.sqrt(d.mean))); k <= d.mean + 4.5 * Math.sqrt(d.mean); k++) {
+          const p = clPoissonPmf(k, d.mean);
+          if (p > 1e-7 && k <= hi) cmpBars.push({ u: k, den: p, w: 0.9 });
+        }
+      } else if (mode === 'negbin') {
+        const pNb = d.nbP;
+        mainBars = [];
+        const step = Math.max(1, Math.round(hi / 220));
+        for (let k = 0; k <= hi; k += step) {
+          let mass = 0;
+          for (let j = k; j < k + step; j++) mass += clNbPmf(j, v.r, pNb);
+          if (mass > 1e-7) mainBars.push({ u: k + (step - 1) / 2, den: mass / step, w: step * 0.7 });
+        }
+        cmpBars = [];
+        for (let k = Math.max(0, Math.floor(d.mean - 4.5 * Math.sqrt(d.mean))); k <= d.mean + 4.5 * Math.sqrt(d.mean); k++) {
+          const p = clPoissonPmf(k, d.mean);
+          if (p > 1e-7 && k <= hi) cmpBars.push({ u: k, den: p, w: 0.9 });
+        }
+      } else if (mode === 'gamma') {
+        mainCurve = (u) => clGammaPdf(u, v.shape, d.scale);
+        cmpCurve = (u) => clNormPdf(u, d.mean, d.sd);
+      } else {
+        const { lnMu, lnSigma } = d;
+        mainCurve = (u) => clLognPdf(u, lnMu, lnSigma);
+        cmpCurve = (u) => clNormPdf(u, d.mean, d.sd);
+        m1 = { u: d.ln95, label: 'LN 95th ' + clFmt(d.ln95, 'num') };
+        m2 = { u: d.n95, label: 'N 95th ' + clFmt(d.n95, 'num') };
+      }
+
+      let ymaxT = 0;
+      const N = 150;
+      const curvePath = (f) => {
+        const pts = [];
+        for (let i = 0; i <= N; i++) {
+          const u = (hi * i) / N;
+          const y = f(u);
+          ymaxT = Math.max(ymaxT, y);
+          pts.push([u, y]);
+        }
+        return pts;
+      };
+      const mainPts = mainCurve ? curvePath(mainCurve) : null;
+      const cmpPts = cmpCurve ? curvePath(cmpCurve) : null;
+      if (mainBars) for (const b of mainBars) ymaxT = Math.max(ymaxT, b.den);
+      if (cmpBars) for (const b of cmpBars) ymaxT = Math.max(ymaxT, b.den);
+      if (st.fresh) domYmax.snap(ymaxT * 1.12); else domYmax.target = ymaxT * 1.12;
+      const ymax = domYmax.current;
+      const sy = clScale(0, ymax, frame.bottom, frame.top);
+      axes.update(sx, sy, frame);
+
+      pPrimary.style.display = mainCurve ? '' : 'none';
+      pSecondary.style.display = cmpCurve ? '' : 'none';
+      if (mainPts) pPrimary.setAttribute('d', clPathFrom(mainPts.map(([u, y]) => [sx(u), sy(Math.min(ymax, y))])));
+      if (cmpPts) pSecondary.setAttribute('d', clPathFrom(cmpPts.map(([u, y]) => [sx(u), sy(Math.min(ymax, y))])));
+      if (!drewIn && mainCurve) { drewIn = true; clDrawIn(pPrimary); }
+
+      const toRects = (bars) => bars.map((b) => {
+        const x0 = sx(b.u - b.w / 2), x1 = sx(b.u + b.w / 2);
+        const y = sy(Math.min(ymax, b.den));
+        return { x: x0, y, w: Math.max(1, x1 - x0), h: Math.max(0, frame.bottom - y) };
+      });
+      barsMain.set(mainBars ? toRects(mainBars) : [], 'var(--px-accent)');
+      barsCmp.set(cmpBars ? toRects(cmpBars) : [], 'var(--cl-ink-1)');
+
+      const putMark = (mark, tag, m, yFrac) => {
+        if (!m) { mark.style.display = 'none'; tag.style.display = 'none'; return; }
+        mark.style.display = ''; tag.style.display = '';
+        const x = sx(m.u);
+        mark.setAttribute('x1', x); mark.setAttribute('x2', x);
+        mark.setAttribute('y1', frame.bottom); mark.setAttribute('y2', frame.top + 10);
+        tag.setAttribute('x', x); tag.setAttribute('y', frame.top + 8 + yFrac);
+        tag.textContent = m.label;
+      };
+      putMark(mark1, tag1, m1, 0);
+      putMark(mark2, tag2, m2, 12);
+    },
+    snapshot(st, d) {
+      return { label: st.presetId || 'pin', mode: d.mode, mean: d.mean, sd: d.sd };
+    },
+  };
+}
+
 // --- Pane shell ------------------------------------------------------------
 
 function renderPane(container) {
@@ -2363,7 +3019,7 @@ function renderModuleView(root, mod) {
   }
 
   function updateAll() {
-    const d = { ...st.values, ...mod.derived(st.values) };
+    const d = { ...st.values, ...mod.derived(st.values, st) };
     if (st.mode === 'fit' && st.data) {
       const f = clFitLeastSquares(st.data);
       d.fitA = f.a; d.fitB = f.b; d.fitL = f.a + f.b * st.values.x;
@@ -2573,6 +3229,7 @@ export const __testables = {
   clMackReserves,
   clMackRegime,
   clGogolPosterior,
+  clNormalConjugate,
   clKsD,
   clKsBand,
   clPpPoints,

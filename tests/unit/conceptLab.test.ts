@@ -85,7 +85,7 @@ describe('module definitions', () => {
     for (const mod of MODULES) {
       const p: Record<string, number> = {};
       for (const par of mod.params) p[par.key] = par.init;
-      const d = mod.derived(p);
+      const d = mod.derived(p, { mode: null });
       for (const [k, v] of Object.entries(d)) {
         if (typeof v === 'number') {
           expect(Number.isFinite(v), `${mod.id}.${k}`).toBe(true);
@@ -118,7 +118,7 @@ describe('module definitions', () => {
         for (const [key, patch] of Object.entries(preset.params ?? {}) as [string, any][]) {
           p[key] = patch.value;
         }
-        const d = mod.derived(p);
+        const d = mod.derived(p, { mode: preset.mode ?? null });
         for (const [k, v] of Object.entries(d)) {
           if (typeof v === 'number') {
             expect(Number.isFinite(v), `${mod.id}/${preset.id}/${k}`).toBe(true);
