@@ -427,6 +427,21 @@ describe('concept lab pane', () => {
     expect(values().some((v) => v === '6.33%')).toBe(true);  // printed sensitivity 6.3%
   });
 
+  it('The Same Answer Twice reconciles the paper\'s cell both ways', async () => {
+    (paneHost!.querySelector('.cl-back') as HTMLElement).click();
+    await settle();
+    const card = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
+      c.textContent?.includes('Same Answer'))! as HTMLElement;
+    card.click();
+    await settle();
+    const values = () => [...paneHost!.querySelectorAll('.cl-readout-value')].map((e) => e.textContent);
+    // The paper's own reconciliation: 1996 dev 3 gives 24,070 on BOTH routes.
+    const cellVals = values().filter((v) => v === '24,070');
+    expect(cellVals.length).toBeGreaterThanOrEqual(2);
+    expect(values().some((v) => v === '173,225')).toBe(true); // alpha_1996
+    expect(values().some((v) => v === '373,346')).toBe(true); // Table 3-2 total
+  });
+
   it('the conceptLab_open chat tool routes the pane and applies the preset', async () => {
     const tool = chatTools.get('conceptLab_open');
     expect(tool).toBeTruthy();

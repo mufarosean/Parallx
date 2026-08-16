@@ -596,6 +596,44 @@ function clOdpBootstrapOnce(fit, rng, withProcess) {
   return reserve;
 }
 
+// --- Taylor & McGuire marginal-sum (ODP cross-classified) estimation -------
+
+/**
+ * Marginal-sum estimation of the ODP cross-classified model (Taylor eqs
+ * (3-1)/(3-2)): alternate row balances alpha_k = rowSum/sum(observed beta)
+ * and column balances beta_j = colSum/sum(observed alpha), normalized to
+ * sum(beta) = 1. These are the ODP MLEs, and Taylor's Theorem says their
+ * forecasts coincide cell-by-cell with the chain ladder's.
+ */
+function clMarginalSum(inc, iters = 200) {
+  const I = inc.length;
+  const alpha = inc.map((row) => row.reduce((a, b) => a + b, 0));
+  let beta = new Array(I).fill(1 / I);
+  for (let it = 0; it < iters; it++) {
+    for (let k = 0; k < I; k++) {
+      let bSum = 0;
+      for (let j = 0; j < inc[k].length; j++) bSum += beta[j];
+      alpha[k] = inc[k].reduce((a, b) => a + b, 0) / bSum;
+    }
+    const next = [];
+    for (let j = 0; j < I; j++) {
+      let cSum = 0, aSum = 0;
+      for (let k = 0; k < I; k++) {
+        if (inc[k].length > j) { cSum += inc[k][j]; aSum += alpha[k]; }
+      }
+      next.push(cSum / aSum);
+    }
+    const norm = next.reduce((a, b) => a + b, 0);
+    beta = next.map((b) => b / norm);
+    for (let k = 0; k < I; k++) {
+      let bSum = 0;
+      for (let j = 0; j < inc[k].length; j++) bSum += beta[j];
+      alpha[k] = inc[k].reduce((a, b) => a + b, 0) / bSum;
+    }
+  }
+  return { alpha, beta };
+}
+
 // --- Marshall risk-margin consolidation ------------------------------------
 
 /** Weighted correlation aggregation: sqrt(sum w_i w_j rho_ij c_i c_j) / W. */
@@ -2278,6 +2316,169 @@ function clMarshallConsolidate({ sIndep = 1, sInternal = 1, sExternal = 1, flex 
   };
 }
 
+// --- Module: The Same Answer Twice (Taylor & McGuire) ----------------------
+
+// Table 1-1: incremental paid, New Jersey Manufacturers workers comp
+// (Meyers-Shi database), AYs 1988-1997 — extracted from the source PDF.
+const TAYLOR_WC = [
+  [41821, 34729, 20147, 15965, 11285, 5924, 4775, 3742, 3435, 2958],
+  [48167, 39495, 24444, 18178, 10840, 7379, 5683, 4758, 3959],
+  [52058, 47459, 27359, 17916, 11448, 8846, 5869, 5391],
+  [57251, 49510, 27036, 20871, 14304, 10552, 7742],
+  [59213, 54129, 29566, 22484, 14114, 10000],
+  [59475, 52076, 26836, 22332, 14756],
+  [65607, 44648, 27062, 22655],
+  [56748, 39315, 26748],
+  [52212, 40030],
+  [43962],
+];
+const TWC_CUM = TAYLOR_WC.map((row) => {
+  const out = []; let s = 0;
+  for (const q of row) { s += q; out.push(s); }
+  return out;
+});
+const TWC_MS = clMarginalSum(TAYLOR_WC);
+const TWC_F = clMackFactorSet(TWC_CUM, 'vw');
+const TWC_PROJ = clMackProject(TWC_CUM, TWC_F);
+
+/** CL forecast of the incremental cell (k, j), both 0-based, j future. */
+function clTwcClForecast(k, j) {
+  return TWC_PROJ[k][j] - TWC_PROJ[k][j - 1];
+}
+
+defineModule({
+  id: 'glm-equals-cl',
+  title: 'The Same Answer Twice',
+  subtitle: 'The chain ladder is a GLM: marginal sums, cross-classified, cell for cell',
+  icon: 'equal',
+  paper: {
+    label: 'Taylor & McGuire, "Stochastic Loss Reserving Using GLMs"',
+    section: 'Tables 1-1, 3-1 to 3-5; the marginal-sum theorem and its reconciliation; Chs. 1-3',
+    task: 'Explain why the ODP cross-classified GLM reproduces the chain ladder exactly',
+  },
+  intro:
+    'The chain ladder looks like arithmetic folklore. Taylor\'s theorem says ' +
+    'it is secretly maximum likelihood for an ODP cross-classified GLM: solve ' +
+    'the row and column balances and every forecast lands on the chain ' +
+    'ladder\'s, cell for cell. That equivalence is the doorway to standard ' +
+    'errors, diagnostics, and every model in the rest of the book.',
+  params: [
+    { key: 'focusAY', tex: 'k', label: 'Accident Year In Focus', min: 2, max: 10, step: 1, init: 9, fmt: 'num', link: 'fit' },
+    { key: 'focusDev', tex: 'j', label: 'Forecast Cell Development', min: 2, max: 10, step: 1, init: 3, fmt: 'num', link: 'cell' },
+  ],
+  derived(par) {
+    const k = Math.round(par.focusAY) - 1;
+    const obs = TAYLOR_WC[k].length;
+    const j = Math.max(obs, Math.min(9, Math.round(par.focusDev) - 1));
+    const clCell = clTwcClForecast(k, j);
+    const msCell = TWC_MS.alpha[k] * TWC_MS.beta[j];
+    let maxRel = 0;
+    for (let kk = 1; kk < 10; kk++) {
+      for (let jj = TAYLOR_WC[kk].length; jj < 10; jj++) {
+        const a = clTwcClForecast(kk, jj);
+        const b = TWC_MS.alpha[kk] * TWC_MS.beta[jj];
+        maxRel = Math.max(maxRel, Math.abs(a - b) / a);
+      }
+    }
+    let totalReserve = 0;
+    for (let kk = 0; kk < 10; kk++) totalReserve += TWC_PROJ[kk][9] - TWC_CUM[kk][TWC_CUM[kk].length - 1];
+    return {
+      kIdx: k, jIdx: j,
+      f1: TWC_F[0],
+      alphaK: TWC_MS.alpha[k],
+      betaJ: TWC_MS.beta[j],
+      latestX: TWC_CUM[k][obs - 1],
+      clCell, msCell,
+      maxRel,
+      totalReserve,
+    };
+  },
+  readouts: [
+    { sym: '\\hat{f}_1', id: 'f1', fmt: 'num3', label: 'First Chain-Ladder Factor', link: 'fit' },
+    { sym: '\\hat{\\alpha}_k', id: 'alphaK', fmt: 'num', label: 'Row Parameter (= CL Ultimate)', accent: true, link: 'fit' },
+    { sym: '\\hat{\\beta}_j', id: 'betaJ', fmt: 'num3', label: 'Column Parameter (= Incremental Share)', link: 'cell' },
+    { sym: '', id: 'clCell', fmt: 'num', label: 'Cell Forecast, Chain Ladder', accent: true, link: 'cell' },
+    { sym: '', id: 'msCell', fmt: 'num', label: 'Cell Forecast, GLM', accent: true, link: 'cell' },
+    { sym: '', id: 'totalReserve', fmt: 'num', label: 'Total Reserve (Table 3-2)', link: 'fit' },
+  ],
+  formula() {
+    return {
+      sym: '\\hat{Y}_{kj} = \\hat{X}_{k,j-1}(\\hat{f}_{j-1} - 1) = \\hat{\\alpha}_k\\,\\hat{\\beta}_j',
+      terms: [
+        { sym: 'CL', fmt: 'num', get: (d) => d.clCell, primary: true, link: 'cell' },
+        { op: '=' },
+        { sym: '\\hat{\\alpha}_k\\hat{\\beta}_j', fmt: 'num', get: (d) => d.msCell, primary: true, link: 'cell' },
+        { op: '|' },
+        { sym: 'max\\;gap', fmt: 'pct2', get: (d) => d.maxRel, link: 'fit' },
+      ],
+    };
+  },
+  presets: [
+    {
+      id: 'reconcile',
+      label: 'The Paper\'s Cell',
+      note: 'Taylor\'s own reconciliation: accident year 1996 has 92,242 paid through development 2; the chain ladder forecasts 24,070 into cell 3, and alpha_1996 x beta_3 = 173,225 x 0.139 = the same 24,070.',
+      params: { focusAY: { value: 9 }, focusDev: { value: 3 } },
+    },
+    {
+      id: 'tail-cell',
+      label: 'A Deep Tail Cell',
+      note: 'Pick the newest year at development 10: two utterly different-looking computations, one number. The theorem holds across the entire future triangle; the max gap readout is the proof run live.',
+      params: { focusAY: { value: 10 }, focusDev: { value: 10 } },
+    },
+  ],
+  story: [
+    {
+      title: 'The folklore algorithm',
+      text: 'Volume-weighted factors on the workers comp triangle: $\\hat{f}_1 = 1.815$ down to $\\hat{f}_9 = 1.021$, projecting a total reserve of 373,346. Nothing here looks like a statistical model. Yet.',
+      preset: 'reconcile',
+    },
+    {
+      title: 'Row and column balances',
+      text: 'Model each cell as ODP with mean $\\alpha_k\\beta_j$. Maximum likelihood reduces to marginal sums: each row parameter balances its row, each column parameter its column. Solved, $\\hat{\\alpha}_k$ IS the chain-ladder ultimate and $\\hat{\\beta}_j$ the incremental payout share.',
+      preset: 'reconcile',
+    },
+    {
+      title: 'Cell for cell',
+      text: 'Taylor checks 1996 development 3: $92{,}242 \\times 1.261$ gives $\\hat{Y} = 24{,}070$, and $173{,}225 \\times 0.139 = 24{,}070$. Move the sliders anywhere in the future triangle; the max-gap readout stays at zero.',
+      preset: 'reconcile',
+    },
+    {
+      title: 'Why you should care',
+      text: 'Once the chain ladder is a GLM, it stops being folklore: Table 5-1 hands you standard errors (U-shaped in accident year, exploding in the tail), residual diagnostics catch broken assumptions, and Chapters 4-6 extend the model instead of the ritual.',
+      preset: 'tail-cell',
+    },
+  ],
+  checks: [
+    { name: 'f_1 = 1.815 (Table 3-1)', expect: 1.8149, tol: 5e-4, got: () => TWC_F[0] },
+    { name: 'f_9 = 1.021 (Table 3-1)', expect: 1.0209, tol: 5e-4, got: () => TWC_F[8] },
+    { name: 'Total reserve = 373,346 (Table 3-2)', expect: 373346, tol: 3, got: () => TWC_PROJ.reduce((s, row, i) => s + row[9] - TWC_CUM[i][TWC_CUM[i].length - 1], 0) },
+    { name: 'R_1989 = 3,398 (Table 3-2)', expect: 3398, tol: 2, got: () => TWC_PROJ[1][9] - TWC_CUM[1][8] },
+    { name: 'X_1996,2 = 92,242', expect: 92242, tol: 0, got: () => TWC_CUM[8][1] },
+    { name: 'alpha_1996 = 173,225 (Table 3-3)', expect: 173225, tol: 2, got: () => TWC_MS.alpha[8] },
+    { name: 'beta_3 = 0.139 (Table 3-3)', expect: 0.139, tol: 5e-4, got: () => TWC_MS.beta[2] },
+    { name: 'The paper\'s cell: CL forecast = 24,070', expect: 24070, tol: 2, got: () => clTwcClForecast(8, 2) },
+    { name: 'The paper\'s cell: alpha x beta = 24,070', expect: 24070, tol: 2, got: () => TWC_MS.alpha[8] * TWC_MS.beta[2] },
+    {
+      name: 'Theorem: CL and marginal-sum forecasts coincide everywhere', expect: 1, tol: 0,
+      got: () => {
+        for (let k = 1; k < 10; k++) {
+          for (let j = TAYLOR_WC[k].length; j < 10; j++) {
+            const a = clTwcClForecast(k, j);
+            const b = TWC_MS.alpha[k] * TWC_MS.beta[j];
+            if (Math.abs(a - b) / a > 1e-9) return 0;
+          }
+        }
+        return 1;
+      },
+    },
+    {
+      name: 'Reconciliation (3-3): f_1 from betas = 1.815', expect: 1.8149, tol: 5e-4,
+      got: () => (TWC_MS.beta[0] + TWC_MS.beta[1]) / TWC_MS.beta[0],
+    },
+  ],
+});
+
 defineModule({
   id: 'marshall-ladder',
   title: 'The Risk Margin Ladder',
@@ -3483,6 +3684,7 @@ const SCENE_BUILDERS = {
   'clark-curves': buildClarkScenes,
   'odp-bootstrap': buildBootstrapScenes,
   'marshall-ladder': buildMarshallScenes,
+  'glm-equals-cl': buildGlmClScenes,
 };
 
 /** First-mount draw-in: the primary curve sweeps in along its own length. */
@@ -5083,6 +5285,127 @@ function buildBootstrapScenes(stageRow, ctx) {
   };
 }
 
+// --- Taylor: the cross-classified fit and the two-route reconciliation -----
+
+function buildGlmClScenes(stageRow, ctx) {
+  const { linkRoot, animator } = ctx;
+
+  const s1 = buildScene(stageRow, 'The Fit, Year By Year', [
+    { label: 'Actual Incrementals', color: 'var(--cl-ink-1)', link: 'fit' },
+    { label: 'Fitted α̂ₖ · β̂ⱼ', color: 'var(--px-accent)', link: 'fit' },
+  ], linkRoot);
+  const axes1 = createAxes(s1.svg, { xFmt: (v) => String(v), yFmt: (v) => clFmt(v / 1000, 'num') + 'K', xTicks: 9, yTicks: 4 });
+  const pFit = svgEl('path', { stroke: 'var(--px-accent)' }, 'cl-curve');
+  pFit.dataset.clLink = 'fit';
+  s1.svg.appendChild(pFit);
+  const gActual = svgEl('g'); gActual.dataset.clLink = 'fit';
+  for (let j = 0; j < 10; j++) {
+    gActual.appendChild(svgEl('circle', { r: 3.5, fill: 'var(--cl-ink-1)' }, 'cl-dot'));
+  }
+  s1.svg.appendChild(gActual);
+  const cellDot = svgEl('circle', { r: 5.5, fill: 'var(--px-accent)', stroke: 'var(--px-bg)', 'stroke-width': 1.5 }, 'cl-dot');
+  cellDot.dataset.clLink = 'cell';
+  const cellTag = svgEl('text', { 'text-anchor': 'middle' }, 'cl-svg-value');
+  const yearTag = svgEl('text', { 'text-anchor': 'end' }, 'cl-svg-tag');
+  s1.svg.appendChild(cellDot); s1.svg.appendChild(cellTag); s1.svg.appendChild(yearTag);
+
+  const s2 = buildScene(stageRow, 'The Reconciliation, Live', [], linkRoot);
+  const mkText = (anchor, cls, fill) => {
+    const t = svgEl('text', { 'text-anchor': anchor }, cls);
+    if (fill) t.setAttribute('fill', fill);
+    s2.svg.appendChild(t);
+    return t;
+  };
+  const routeALabel = mkText('start', 'cl-svg-tag');
+  const routeA = mkText('start', 'cl-svg-value');
+  const routeBLabel = mkText('start', 'cl-svg-tag');
+  const routeB = mkText('start', 'cl-svg-value');
+  const equals = mkText('middle', '', 'var(--px-accent)');
+  equals.setAttribute('font-size', 30);
+  equals.setAttribute('font-weight', 700);
+  equals.dataset.clLink = 'cell';
+  const gapText = mkText('middle', 'cl-svg-tag');
+  const numA = mkText('middle', '', 'var(--px-accent)');
+  numA.setAttribute('font-size', 19);
+  numA.setAttribute('font-weight', 650);
+  const numB = mkText('middle', '', 'var(--px-accent)');
+  numB.setAttribute('font-size', 19);
+  numB.setAttribute('font-weight', 650);
+
+  const domY1 = animator.smooth(70000, 110);
+
+  return {
+    update(st, d) {
+      const k = d.kIdx, j = d.jIdx;
+
+      // ── Scene 1 ──
+      const w1 = s1.wrap.clientWidth || 420, h1 = s1.wrap.clientHeight || 280;
+      s1.svg.setAttribute('width', w1); s1.svg.setAttribute('height', h1);
+      const f1 = { left: 48, top: 16, right: w1 - 16, bottom: h1 - 26 };
+      const fitted = [];
+      let yMax = 1;
+      for (let jj = 0; jj < 10; jj++) {
+        const v = TWC_MS.alpha[k] * TWC_MS.beta[jj];
+        fitted.push(v);
+        yMax = Math.max(yMax, v);
+      }
+      for (const q of TAYLOR_WC[k]) yMax = Math.max(yMax, q);
+      if (st.fresh) domY1.snap(yMax * 1.15); else domY1.target = yMax * 1.15;
+      const sx1 = clScale(1, 10, f1.left, f1.right);
+      const sy1 = clScale(0, domY1.current, f1.bottom, f1.top);
+      axes1.update(sx1, sy1, f1);
+      pFit.setAttribute('d', clPathFrom(fitted.map((v, jj) => [sx1(jj + 1), sy1(v)])));
+      for (let jj = 0; jj < 10; jj++) {
+        const c = gActual.children[jj];
+        if (jj < TAYLOR_WC[k].length) {
+          c.style.display = '';
+          c.setAttribute('cx', sx1(jj + 1));
+          c.setAttribute('cy', sy1(TAYLOR_WC[k][jj]));
+        } else {
+          c.style.display = 'none';
+        }
+      }
+      cellDot.setAttribute('cx', sx1(j + 1));
+      cellDot.setAttribute('cy', sy1(fitted[j]));
+      cellTag.setAttribute('x', sx1(j + 1));
+      cellTag.setAttribute('y', sy1(fitted[j]) - 12);
+      cellTag.textContent = clFmt(d.msCell, 'num');
+      yearTag.setAttribute('x', f1.right - 4);
+      yearTag.setAttribute('y', f1.top + 12);
+      yearTag.textContent = 'Accident Year ' + (1988 + k) + ' · Forecast Cell j = ' + (j + 1);
+
+      // ── Scene 2 ──
+      const w2 = s2.wrap.clientWidth || 420, h2 = s2.wrap.clientHeight || 280;
+      s2.svg.setAttribute('width', w2); s2.svg.setAttribute('height', h2);
+      const left = 26;
+      const fPrev = TWC_F[j - 1];
+      const xPrev = TWC_PROJ[k][j - 1];
+      routeALabel.setAttribute('x', left); routeALabel.setAttribute('y', h2 * 0.18);
+      routeALabel.textContent = 'The Chain Ladder Route';
+      routeA.setAttribute('x', left); routeA.setAttribute('y', h2 * 0.18 + 18);
+      routeA.textContent = `${clFmt(xPrev, 'num')} × (${fPrev.toFixed(3)} − 1)`;
+      numA.setAttribute('x', w2 / 2); numA.setAttribute('y', h2 * 0.18 + 44);
+      numA.textContent = clFmt(d.clCell, 'num');
+
+      equals.setAttribute('x', w2 / 2); equals.setAttribute('y', h2 * 0.56);
+      equals.textContent = '=';
+
+      routeBLabel.setAttribute('x', left); routeBLabel.setAttribute('y', h2 * 0.70);
+      routeBLabel.textContent = 'The GLM Route';
+      routeB.setAttribute('x', left); routeB.setAttribute('y', h2 * 0.70 + 18);
+      routeB.textContent = `α̂ = ${clFmt(d.alphaK, 'num')}  ×  β̂ = ${d.betaJ.toFixed(4)}`;
+      numB.setAttribute('x', w2 / 2); numB.setAttribute('y', h2 * 0.70 + 44);
+      numB.textContent = clFmt(d.msCell, 'num');
+
+      gapText.setAttribute('x', w2 / 2); gapText.setAttribute('y', h2 - 10);
+      gapText.textContent = 'Largest Gap Across Every Future Cell: ' + (d.maxRel * 100).toExponential(1) + '%';
+    },
+    snapshot(st, d) {
+      return { label: st.presetId || 'pin', cell: d.msCell };
+    },
+  };
+}
+
 // --- Marshall: sources by class, and the variance ladder -------------------
 
 function buildMarshallScenes(stageRow, ctx) {
@@ -5815,6 +6138,7 @@ export const __testables = {
   clCsrShare,
   clCovAggregate,
   clMarshallConsolidate,
+  clMarginalSum,
   MODULES,
   clGetModule,
 };
