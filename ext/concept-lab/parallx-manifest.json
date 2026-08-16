@@ -1,0 +1,28 @@
+{
+  "manifestVersion": 1,
+  "id": "parallx.concept-lab",
+  "name": "Concept Lab",
+  "version": "0.1.0",
+  "publisher": "parallx",
+  "description": "Interactive explorables that make exam statistics visible: sliders, live charts, and the papers' own worked examples.",
+  "main": "main.js",
+  "activationEvents": ["onStartupFinished"],
+  "engines": { "parallx": "^0.1.0" },
+  "contributes": {
+    "commands": [
+      { "id": "conceptLab.open", "title": "Open Concept Lab", "category": "Concept Lab", "icon": "line-chart" }
+    ],
+    "viewContainers": [
+      { "id": "conceptLab-container", "title": "Concept Lab", "icon": "line-chart", "location": "sidebar" }
+    ],
+    "views": [
+      { "id": "conceptLab.modules", "name": "Modules", "defaultContainerId": "conceptLab-container" }
+    ],
+    "editors": [
+      { "typeId": "conceptLab", "displayName": "Concept Lab" }
+    ],
+    "menus": {
+      "commandPalette": [{ "command": "conceptLab.open" }]
+    }
+  }
+}
