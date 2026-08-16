@@ -315,6 +315,34 @@ function clPpPoints(percentiles) {
   return sorted.map((v, i) => ({ expected: ((i + 1) / (n + 1)) * 100, observed: v }));
 }
 
+/**
+ * One seeded validation experiment (Meyers §3 mechanics): truth draws
+ * outcomes from N(0,1); the model claims N(bias, tail). Each outcome's
+ * percentile UNDER THE MODEL is Phi((x - bias)/tail); a correct model makes
+ * those uniform. Draws depend only on (n, seed), so bias/tail sliders reprice
+ * the same outcomes — the honest way to show a defect, and cheap enough to
+ * recompute on every drag.
+ */
+const _valDrawCache = new Map();
+function clValidationDraws(n, seed) {
+  const key = seed + ':' + n;
+  let draws = _valDrawCache.get(key);
+  if (!draws) {
+    const rng = clMulberry32(seed);
+    draws = [];
+    for (let i = 0; i < n; i++) draws.push(clRandNormal(rng));
+    _valDrawCache.set(key, draws);
+    if (_valDrawCache.size > 40) _valDrawCache.delete(_valDrawCache.keys().next().value);
+  }
+  return draws;
+}
+
+function clValidationRun({ n, bias, tail, seed }) {
+  const draws = clValidationDraws(n, seed);
+  const percentiles = draws.map((x) => 100 * clNormCdf((x - bias) / tail));
+  return { percentiles, D: clKsD(percentiles) };
+}
+
 // ============================================================================
 // SECTION 2: MODULE FRAMEWORK + DEFINITIONS
 // Modules are declarative content over the kernel: params in the paper's
@@ -987,6 +1015,148 @@ defineModule({
   ],
 });
 
+// --- Module: The Validation Machine (Meyers Monograph 8, §3) ---------------
+
+// Fixed teaching seed, chosen so the default sample behaves like Meyers'
+// printed Figure 3.1 catalogue: the correct model comfortably validates
+// (D = 9.0 vs band 13.6) and the three defects fail in the paper's order
+// (biased 28.6 > light 16.9 > heavy 16.5). A correct model DOES fail the
+// 95% band one time in twenty — the story text owns that honestly.
+const VAL_SEED = 42;
+
+defineModule({
+  id: 'validation-machine',
+  title: 'The Validation Machine',
+  subtitle: 'p-p plots, the KS band, and how Meyers retires bad models',
+  icon: 'badge-check',
+  paper: {
+    label: 'Meyers, Monograph 8 (2nd ed.), §3',
+    section: 'Uniformity of percentiles, Figure 3.1 shape catalogue, KS band 136/√n; pp. 6-11',
+    task: 'Test a stochastic reserve model retrospectively and read the failure shape',
+  },
+  intro:
+    'A stochastic model does not just predict a number, it predicts a whole ' +
+    'distribution. So test it like one: record the percentile of each actual ' +
+    'outcome within its predicted distribution. If the model is right, those ' +
+    'percentiles are uniform. Every bow away from the diagonal is a specific ' +
+    'diagnosis.',
+  params: [
+    { key: 'n', tex: 'n', label: 'Outcomes Tested', min: 25, max: 400, step: 25, init: 100, fmt: 'num', link: 'band' },
+    { key: 'bias', tex: '\\Delta\\mu', label: 'Model Bias (Sd Units)', min: -0.6, max: 0.6, step: 0.01, init: 0, fmt: 'num2', link: 'model' },
+    { key: 'tail', tex: '\\sigma_{model}/\\sigma_{true}', label: 'Model Sd Vs Truth', min: 0.4, max: 2.2, step: 0.01, init: 1, fmt: 'num2', link: 'model' },
+  ],
+  derived(par) {
+    const run = clValidationRun({ n: par.n, bias: par.bias, tail: par.tail, seed: VAL_SEED });
+    const band = clKsBand(par.n);
+    return {
+      D: run.D,
+      band,
+      passes: run.D <= band,
+      percentiles: run.percentiles,
+    };
+  },
+  readouts: [
+    { sym: 'D', id: 'D', fmt: 'num2', label: 'KS Statistic', accent: true, link: 'pp' },
+    { sym: '', id: 'band', fmt: 'num2', label: 'Critical Value 136/√n', link: 'band' },
+    {
+      sym: '', id: 'passes', fmt: 'str', label: 'Verdict', link: 'pp',
+      get: (d) => (d.passes ? 'Validates' : 'Rejected'),
+    },
+  ],
+  formula() {
+    return {
+      sym: 'P_i = F_{model}(x_i)\\cdot 100,\\quad D = \\max|F_{emp} - F_{unif}|,\\quad crit = 136/\\sqrt{n}',
+      terms: [
+        { sym: 'D', fmt: 'num2', get: (d) => d.D, primary: true, link: 'pp' },
+        { op: 'vs' },
+        { sym: '136/\\sqrt{n}', fmt: 'num2', get: (d) => d.band, link: 'band' },
+        { op: '|' },
+        { sym: 'n', fmt: 'num', get: (d) => d.n, link: 'band' },
+      ],
+    };
+  },
+  presets: [
+    {
+      id: 'uniform',
+      label: 'Correct Model',
+      note: 'The model matches the world: percentiles scatter uniformly, the p-p points hug the diagonal, and D sits far inside the band. Meyers\' simulated version printed D = 5.2.',
+      params: { n: { value: 100 }, bias: { value: 0 }, tail: { value: 1 } },
+    },
+    {
+      id: 'light',
+      label: 'Light-Tailed Model',
+      note: 'The model\'s distribution is too narrow: reality keeps landing in its extreme percentiles, the histogram piles up at both ends, and the p-p plot cuts a slanted S. Meyers printed D = 22.3, a failure. This is what killed the Mack and ODP models.',
+      params: { n: { value: 100 }, bias: { value: 0 }, tail: { value: 0.6 } },
+    },
+    {
+      id: 'heavy',
+      label: 'Heavy-Tailed Model',
+      note: 'Too wide instead: outcomes crowd the middle percentiles and the p-p plot bends the other way. Meyers printed D = 17.2, also a failure.',
+      params: { n: { value: 100 }, bias: { value: 0 }, tail: { value: 1.8 } },
+    },
+    {
+      id: 'biased',
+      label: 'Biased-High Model',
+      note: 'The model systematically over-predicts, so actual outcomes keep landing in its LOW percentiles: the whole histogram slides left and the p-p plot bows hard off the diagonal. Meyers printed D = 39.2, the worst failure in the catalogue.',
+      params: { n: { value: 100 }, bias: { value: 0.55 }, tail: { value: 1 } },
+    },
+  ],
+  story: [
+    {
+      title: 'Score the whole distribution',
+      text: 'For each of $n$ insurers, ask: at what percentile of the model\'s predictive distribution did the ACTUAL outcome land? A correct model has no opinion about where: the percentiles must come out uniform.',
+      preset: 'uniform',
+    },
+    {
+      title: 'The shapes of being wrong',
+      text: 'Each defect has a signature. Too light-tailed piles percentiles at 0 and 100; too heavy-tailed crowds the middle; bias slides everything to one side. Figure 3.1 is a field guide. Walk the presets.',
+      preset: 'light',
+    },
+    {
+      title: 'The bar every model must clear',
+      text: 'The Kolmogorov-Smirnov band is $136/\\sqrt{n}$: 19.2 at $n{=}50$, 9.6 at $n{=}200$. Meyers held Mack and bootstrap ODP to it across 200 triangles; Mack-on-incurred came in at $D = 15.4$ combined and was rejected.',
+      preset: 'biased',
+    },
+    {
+      title: 'Why n matters',
+      text: 'Push $n$ up and the band tightens while the picture sharpens: a defect invisible at $n{=}50$ is unmistakable at $n{=}400$. Validation is a sample-size game, which is why the CAS database of 200 triangles exists at all.',
+      preset: 'heavy',
+    },
+  ],
+  checks: [
+    { name: 'KS band at n=50 is 19.2', expect: 19.2, tol: 0.05, got: () => clKsBand(50) },
+    { name: 'KS band at n=200 is 9.6', expect: 9.6, tol: 0.05, got: () => clKsBand(200) },
+    {
+      name: 'Correct model validates (seeded)', expect: 1, tol: 0,
+      got: () => (clValidationRun({ n: 100, bias: 0, tail: 1, seed: VAL_SEED }).D <= clKsBand(100) ? 1 : 0),
+    },
+    {
+      name: 'Light-tailed model is rejected (seeded)', expect: 1, tol: 0,
+      got: () => (clValidationRun({ n: 100, bias: 0, tail: 0.6, seed: VAL_SEED }).D > clKsBand(100) ? 1 : 0),
+    },
+    {
+      name: 'Heavy-tailed model is rejected (seeded)', expect: 1, tol: 0,
+      got: () => (clValidationRun({ n: 100, bias: 0, tail: 1.8, seed: VAL_SEED }).D > clKsBand(100) ? 1 : 0),
+    },
+    {
+      name: 'Biased-high model is rejected hardest (seeded)', expect: 1, tol: 0,
+      got: () => {
+        const dBias = clValidationRun({ n: 100, bias: 0.55, tail: 1, seed: VAL_SEED }).D;
+        const dOk = clValidationRun({ n: 100, bias: 0, tail: 1, seed: VAL_SEED }).D;
+        return dBias > clKsBand(100) && dBias > 2 * dOk ? 1 : 0;
+      },
+    },
+    {
+      name: 'Same outcomes repriced: draws independent of the model claim', expect: 1, tol: 0,
+      got: () => {
+        const a = clValidationDraws(100, VAL_SEED);
+        const b = clValidationDraws(100, VAL_SEED);
+        return a === b ? 1 : 0;
+      },
+    },
+  ],
+});
+
 // ============================================================================
 // SECTION 3: STYLES — single injected <style>, guarded (flashcards pattern)
 // ============================================================================
@@ -1131,6 +1301,22 @@ const CL_CSS = `
 }
 .cl-story-btn:hover { background: var(--px-surface-hover); color: var(--px-text); }
 .cl-story-btn:disabled { opacity: 0.35; cursor: default; }
+.cl-scene-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--px-space-1);
+  border: 1px solid var(--px-divider);
+  background: transparent;
+  color: var(--px-text-secondary);
+  font-size: var(--px-text-2xs);
+  font-weight: 500;
+  padding: 2px var(--px-space-2);
+  border-radius: var(--px-radius-full);
+  cursor: pointer;
+  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
+}
+.cl-scene-btn:hover { background: var(--px-surface-hover); color: var(--px-text); }
+.cl-scene-btn:active { transform: var(--px-press); }
 
 /* ── Body: rail + stage ─────────────────────────────────────────────── */
 .cl-body {
@@ -2037,6 +2223,7 @@ const SCENE_BUILDERS = {
   'mse-valley': buildValleyScenes,
   'prior-posterior': buildPosteriorScenes,
   'dist-zoo': buildZooScenes,
+  'validation-machine': buildValidationScenes,
 };
 
 /** First-mount draw-in: the primary curve sweeps in along its own length. */
@@ -2706,6 +2893,156 @@ function buildZooScenes(stageRow, ctx) {
   };
 }
 
+// --- Validation Machine: densities + percentile histogram + p-p plot -------
+
+function buildValidationScenes(stageRow, ctx) {
+  const { linkRoot, animator } = ctx;
+
+  // Scene 1: the world vs the model's claim, and where percentiles pile up.
+  const s1 = buildScene(stageRow, 'The World Vs The Model', [
+    { label: 'Truth', color: 'var(--cl-ink-3)', link: 'truth' },
+    { label: 'Model Claim', color: 'var(--cl-ink-1)', dashed: true, link: 'model' },
+    { label: 'Outcome Percentiles', color: 'var(--px-accent)', link: 'pp' },
+  ], linkRoot);
+  const axesTop = createAxes(s1.svg, { xFmt: (v) => String(v), yFmt: () => '', yTicks: 0, xTicks: 4 });
+  const axesHist = createAxes(s1.svg, { xFmt: (v) => String(v), yFmt: () => '', yTicks: 0, xTicks: 5 });
+  const pTruth = svgEl('path', { stroke: 'var(--cl-ink-3)' }, 'cl-curve cl-ref');
+  pTruth.style.strokeDasharray = 'none';
+  pTruth.dataset.clLink = 'truth';
+  const pModel = svgEl('path', { stroke: 'var(--cl-ink-1)' }, 'cl-curve cl-ref');
+  pModel.dataset.clLink = 'model';
+  s1.svg.appendChild(pTruth); s1.svg.appendChild(pModel);
+  const histBars = makeBarPool(s1.svg, 'cl-bar');
+  histBars.g.dataset.clLink = 'pp';
+  const expLine = svgEl('line', {}, 'cl-marker-line');
+  const histTag = svgEl('text', { 'text-anchor': 'start' }, 'cl-svg-tag');
+  s1.svg.appendChild(expLine); s1.svg.appendChild(histTag);
+
+  // Scene 2: the p-p plot with the KS band and a live verdict.
+  const s2 = buildScene(stageRow, 'The p-p Plot', [], linkRoot);
+  const head2 = s2.scene.querySelector('.cl-scene-head');
+  const replay = document.createElement('button');
+  replay.className = 'cl-scene-btn';
+  replay.innerHTML = clIcon('play', 12) + '<span>Replay Sampling</span>';
+  head2.appendChild(replay);
+  const axesPp = createAxes(s2.svg, { xFmt: (v) => String(v), yFmt: (v) => String(v), xTicks: 4, yTicks: 4 });
+  const diag = svgEl('line', {}, 'cl-marker-line');
+  const bandLo = svgEl('line', { stroke: 'var(--cl-ink-2)' }, 'cl-curve cl-ref');
+  const bandHi = svgEl('line', { stroke: 'var(--cl-ink-2)' }, 'cl-curve cl-ref');
+  bandLo.dataset.clLink = 'band'; bandHi.dataset.clLink = 'band';
+  const gPoints = svgEl('g'); gPoints.dataset.clLink = 'pp';
+  const verdict = svgEl('text', { 'text-anchor': 'end' }, 'cl-svg-value');
+  s2.svg.appendChild(diag); s2.svg.appendChild(bandLo); s2.svg.appendChild(bandHi);
+  s2.svg.appendChild(gPoints); s2.svg.appendChild(verdict);
+
+  const reveal = { value: 0, active: false };
+  let lastPresetKey = null;
+
+  function startReveal(n) {
+    reveal.active = true;
+    animator.tween('val-reveal', 0, n, 2000, (val) => {
+      reveal.value = val;
+      if (val >= n) reveal.active = false;
+    });
+  }
+  replay.addEventListener('click', () => startReveal(ctx.getState().values.n));
+
+  return {
+    update(st, d) {
+      const v = st.values;
+
+      // A fresh preset (or first mount) replays the sampling animation;
+      // slider drags keep everything revealed for direct manipulation.
+      if (st.presetId !== lastPresetKey) {
+        const first = lastPresetKey === null;
+        lastPresetKey = st.presetId ?? 'none';
+        if (first || st.presetId) startReveal(v.n);
+      }
+      if (!reveal.active) reveal.value = v.n;
+      const k = Math.max(1, Math.min(v.n, Math.round(reveal.value) || v.n));
+      const shown = d.percentiles.slice(0, k);
+
+      // ── Scene 1 ──
+      const w1 = s1.wrap.clientWidth || 420, h1 = s1.wrap.clientHeight || 280;
+      s1.svg.setAttribute('width', w1); s1.svg.setAttribute('height', h1);
+      const fTop = { left: 20, top: 12, right: w1 - 14, bottom: Math.floor(h1 * 0.48) - 6 };
+      const fHist = { left: 20, top: Math.floor(h1 * 0.48) + 22, right: w1 - 14, bottom: h1 - 24 };
+
+      const sxT = clScale(-4, 4, fTop.left, fTop.right);
+      const yMaxT = Math.max(clNormPdf(0, 0, 1), clNormPdf(v.bias, v.bias, v.tail)) * 1.1;
+      const syT = clScale(0, yMaxT, fTop.bottom, fTop.top);
+      axesTop.update(sxT, syT, fTop);
+      const NPTS = 120;
+      const curve = (mu, sd) => {
+        const pts = [];
+        for (let i = 0; i <= NPTS; i++) {
+          const x = -4 + (8 * i) / NPTS;
+          pts.push([sxT(x), syT(Math.min(yMaxT, clNormPdf(x, mu, sd)))]);
+        }
+        return clPathFrom(pts);
+      };
+      pTruth.setAttribute('d', curve(0, 1));
+      pModel.setAttribute('d', curve(v.bias, v.tail));
+
+      const bins = new Array(10).fill(0);
+      for (const p of shown) bins[Math.max(0, Math.min(9, Math.floor(p / 10)))]++;
+      const sxH = clScale(0, 100, fHist.left, fHist.right);
+      const yMaxH = Math.max(k / 10, ...bins) * 1.15;
+      const syH = clScale(0, yMaxH, fHist.bottom, fHist.top);
+      axesHist.update(sxH, syH, fHist);
+      histBars.set(bins.map((count, i) => {
+        const x0 = sxH(i * 10 + 0.8), x1 = sxH(i * 10 + 9.2);
+        const y = syH(count);
+        return { x: x0, y, w: x1 - x0, h: Math.max(0, fHist.bottom - y) };
+      }), 'var(--px-accent)');
+      const expY = syH(k / 10);
+      expLine.setAttribute('x1', fHist.left); expLine.setAttribute('x2', fHist.right);
+      expLine.setAttribute('y1', expY); expLine.setAttribute('y2', expY);
+      histTag.setAttribute('x', fHist.left + 4);
+      histTag.setAttribute('y', expY - 4);
+      histTag.textContent = 'Uniform Expects ' + Math.round(k / 10);
+
+      // ── Scene 2 ──
+      const w2 = s2.wrap.clientWidth || 420, h2 = s2.wrap.clientHeight || 280;
+      s2.svg.setAttribute('width', w2); s2.svg.setAttribute('height', h2);
+      const f2 = { left: 34, top: 14, right: w2 - 14, bottom: h2 - 26 };
+      const sx2 = clScale(0, 100, f2.left, f2.right);
+      const sy2 = clScale(0, 100, f2.bottom, f2.top);
+      axesPp.update(sx2, sy2, f2);
+      diag.setAttribute('x1', sx2(0)); diag.setAttribute('y1', sy2(0));
+      diag.setAttribute('x2', sx2(100)); diag.setAttribute('y2', sy2(100));
+      const putBand = (line, off) => {
+        const c0 = Math.max(0, -off), c1 = Math.min(100, 100 - off);
+        line.setAttribute('x1', sx2(c0)); line.setAttribute('y1', sy2(c0 + off));
+        line.setAttribute('x2', sx2(c1)); line.setAttribute('y2', sy2(c1 + off));
+      };
+      putBand(bandLo, -d.band);
+      putBand(bandHi, d.band);
+
+      const sortedShown = [...shown].sort((a, b) => a - b);
+      while (gPoints.children.length < sortedShown.length) {
+        gPoints.appendChild(svgEl('circle', { r: 2.4, fill: 'var(--px-accent)' }, 'cl-dot'));
+      }
+      while (gPoints.children.length > sortedShown.length) gPoints.lastChild.remove();
+      for (let i = 0; i < sortedShown.length; i++) {
+        const c = gPoints.children[i];
+        c.setAttribute('cx', sx2(((i + 1) / (sortedShown.length + 1)) * 100));
+        c.setAttribute('cy', sy2(sortedShown[i]));
+      }
+
+      const liveD = clKsD(sortedShown);
+      const pass = liveD <= d.band;
+      verdict.setAttribute('x', f2.right - 6);
+      verdict.setAttribute('y', f2.top + 14);
+      verdict.setAttribute('fill', pass ? 'var(--px-success)' : 'var(--px-danger)');
+      verdict.textContent = `D = ${liveD.toFixed(1)} ${pass ? '≤' : '>'} ${d.band.toFixed(1)} · ${pass ? 'Validates' : 'Rejected'}`;
+    },
+    snapshot(st, d) {
+      return { label: st.presetId || 'pin', D: d.D, band: d.band };
+    },
+  };
+}
+
 // --- Pane shell ------------------------------------------------------------
 
 function renderPane(container) {
@@ -3233,6 +3570,8 @@ export const __testables = {
   clKsD,
   clKsBand,
   clPpPoints,
+  clValidationDraws,
+  clValidationRun,
   MODULES,
   clGetModule,
 };

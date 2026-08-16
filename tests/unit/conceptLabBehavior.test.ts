@@ -256,6 +256,35 @@ describe('concept lab pane', () => {
     expect(phiRow.style.display).toBe('');
   });
 
+  // Real-time reveal animations put this test over the 5s default.
+  it('the Validation Machine reveals samples and flips the verdict with the model defect', { timeout: 15000 }, async () => {
+    (paneHost!.querySelector('.cl-back') as HTMLElement).click();
+    await settle();
+    const card = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
+      c.textContent?.includes('Validation Machine'))! as HTMLElement;
+    card.click();
+    await settle();
+    // The sampling reveal is animating: not all 100 points are on the p-p
+    // plot yet, and the replay control exists.
+    expect(paneHost!.querySelector('.cl-scene-btn')).toBeTruthy();
+    await wait(2400); // let the reveal finish
+    await settle();
+    const readVerdict = () => {
+      const cells = [...paneHost!.querySelectorAll('.cl-readouts > div')];
+      const cell = cells.find((c) => c.textContent?.includes('Verdict'))!;
+      return cell.querySelector('.cl-readout-value')!.textContent;
+    };
+    // Story step 1 is the correct model: it validates, with 100 p-p points.
+    expect(readVerdict()).toBe('Validates');
+    // Light-tailed preset gets rejected.
+    const light = [...paneHost!.querySelectorAll('.cl-preset-chip')].find((c) =>
+      c.textContent?.includes('Light-Tailed'))! as HTMLElement;
+    light.click();
+    await wait(650 + 2400);
+    await settle();
+    expect(readVerdict()).toBe('Rejected');
+  });
+
   it('returning to the first module preserves the user’s explored state', async () => {
     (paneHost!.querySelector('.cl-back') as HTMLElement).click();
     await settle();
