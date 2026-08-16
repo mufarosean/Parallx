@@ -1,7 +1,14 @@
 # Parallx Milestone 100 — Concept Lab (Interactive Exam Explorables)
 
 > **Status: IN PROGRESS** (started 2026-08-16, branch `m100-concept-lab`).
-> PENDING: build-out per the phases below, then in-app verification by Mufaro.
+> BUILT so far (through 4d3b3c35): framework + 5 modules — Phase A (The
+> Credibility Line, The MSE Valley), Phase B (Prior To Posterior, The
+> Distribution Zoo), Phase C.1 (The Validation Machine). 86 concept-lab
+> tests (printed-exhibit checks + jsdom behavioral walks driving the real
+> activate()); full suite 5,110 green. Design gates swept (tokens, Title
+> Case, no em dashes in copy, motion tokens, CVD-validated chart inks).
+> PENDING: in-app verification by Mufaro (never rendered on screen);
+> remaining Phase C (CSR settlement-rate story, MCMC watcher) and Phase D.
 
 ## The ask (Mufaro, 2026-08-16)
 
