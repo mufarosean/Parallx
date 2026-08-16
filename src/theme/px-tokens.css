@@ -142,7 +142,7 @@
      xs is for workbench chrome cards (sidebar/aux) that should read crisp
      and architectural rather than soft — over-rounding chrome is how an
      app starts looking generic. */
-  --px-radius-xs: 2px;
+  --px-radius-xs: 1px;
   --px-radius-sm: 4px;
   --px-radius-md: 6px;
   --px-radius-lg: 10px;
