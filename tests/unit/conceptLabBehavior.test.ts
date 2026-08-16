@@ -343,6 +343,27 @@ describe('concept lab pane', () => {
     expect(paneHost!.querySelectorAll('path.cl-curve').length).toBeGreaterThan(4);
   });
 
+  it('Mack\'s Machinery reproduces the RAA numbers and stands the ribbon down off-vw', async () => {
+    (paneHost!.querySelector('.cl-back') as HTMLElement).click();
+    await settle();
+    const card = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
+      c.textContent?.includes('Machinery'))! as HTMLElement;
+    card.click();
+    await settle();
+    const values = () => [...paneHost!.querySelectorAll('.cl-readout-value')].map((e) => e.textContent);
+    expect(values().some((v) => v === '2.999')).toBe(true);   // volume-weighted f_1
+    expect(values().some((v) => v === '52,135')).toBe(true);  // total reserve
+    const ribbon = paneHost!.querySelector('.cl-band') as SVGElement;
+    expect(ribbon.style.display).not.toBe('none');
+    const avg = [...paneHost!.querySelectorAll('.cl-preset-chip')].find((c) =>
+      c.textContent?.includes('Simple Average'))! as HTMLElement;
+    avg.click();
+    await wait(650);
+    await settle();
+    expect(values().some((v) => v === '8.206')).toBe(true);
+    expect(ribbon.style.display).toBe('none'); // se machinery is vw-only
+  });
+
   it('the conceptLab_open chat tool routes the pane and applies the preset', async () => {
     const tool = chatTools.get('conceptLab_open');
     expect(tool).toBeTruthy();

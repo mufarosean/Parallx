@@ -343,6 +343,126 @@ function clValidationRun({ n, bias, tail, seed }) {
   return { percentiles, D: clKsD(percentiles) };
 }
 
+// --- Mack (1994) chain-ladder machinery ------------------------------------
+
+/**
+ * Age-to-age factors under Mack's three weightings (his (12), (2), (13)):
+ * 'ols' regresses C_{k+1} on C_k through the origin, 'vw' is the volume
+ * weighted chain-ladder estimator, 'avg' is the plain mean of individual
+ * factors. Triangle rows are cumulative, row i observed to length I - i.
+ */
+function clMackFactorSet(tri, method) {
+  const I = tri.length;
+  const f = [];
+  for (let k = 0; k < I - 1; k++) {
+    let num = 0, den = 0, sum = 0, cnt = 0;
+    for (let i = 0; i < I; i++) {
+      const row = tri[i];
+      if (row.length < k + 2) continue;
+      const a = row[k], b = row[k + 1];
+      if (method === 'ols') { num += a * b; den += a * a; }
+      else if (method === 'avg') { sum += b / a; cnt++; }
+      else { num += b; den += a; }
+    }
+    f.push(method === 'avg' ? sum / cnt : num / den);
+  }
+  return f;
+}
+
+/**
+ * Mack's variance constants alpha_k^2 (formula (8)) with his rule (9) for
+ * the final, non-estimable one: min(a_{K-1}^4/a_{K-2}^2, min(a_{K-2}^2,
+ * a_{K-1}^2)) — 'a bit more on the safe side' than the loglinear plot.
+ */
+function clMackAlpha2(tri) {
+  const I = tri.length;
+  const f = clMackFactorSet(tri, 'vw');
+  const a2 = [];
+  for (let k = 0; k < I - 2; k++) {
+    let sum = 0, n = 0;
+    for (let i = 0; i < I; i++) {
+      const row = tri[i];
+      if (row.length < k + 2) continue;
+      const dev = row[k + 1] / row[k] - f[k];
+      sum += row[k] * dev * dev;
+      n++;
+    }
+    a2.push(sum / (n - 1));
+  }
+  const m = a2.length;
+  a2.push(Math.min((a2[m - 1] * a2[m - 1]) / a2[m - 2], Math.min(a2[m - 2], a2[m - 1])));
+  return a2;
+}
+
+/** Project the full square from the observed triangle and a factor set. */
+function clMackProject(tri, f) {
+  const I = tri.length;
+  return tri.map((row) => {
+    const full = [...row];
+    for (let k = row.length - 1; k < I - 1; k++) full.push(full[k] * f[k]);
+    return full;
+  });
+}
+
+/**
+ * Standard errors of the chain-ladder reserves: per-year formula (7), total
+ * formula (11), both on the volume-weighted factors. Also carries the
+ * per-step cumulative variance so a projection ribbon can widen age by age.
+ */
+function clMackSe(tri) {
+  const I = tri.length;
+  const f = clMackFactorSet(tri, 'vw');
+  const a2 = clMackAlpha2(tri);
+  const proj = clMackProject(tri, f);
+  // S_k in formulas (7)/(11) sums ONLY the years that estimated f_k — rows
+  // with both C_k and C_{k+1} observed. Including the newest diagonal's C_k
+  // (observed but factorless) understates every standard error ~12%.
+  const colSum = [];
+  for (let k = 0; k < I; k++) {
+    let s = 0;
+    for (let i = 0; i < I; i++) if (tri[i].length >= k + 2) s += tri[i][k];
+    colSum.push(s);
+  }
+  const perYear = [];
+  for (let i = 0; i < I; i++) {
+    const obs = tri[i].length;
+    let acc = 0;
+    // steps[j] = variance accumulator through projected column c (0-based),
+    // so se of the intermediate projection is proj[i][c] * sqrt(acc).
+    const steps = [];
+    for (let k = obs - 1; k < I - 1; k++) {
+      acc += (a2[k] / (f[k] * f[k])) * (1 / proj[i][k] + 1 / colSum[k]);
+      steps.push({ c: k + 1, acc });
+    }
+    const ult = proj[i][I - 1];
+    perYear.push({
+      ult,
+      reserve: ult - tri[i][obs - 1],
+      se: ult * Math.sqrt(acc),
+      steps,
+    });
+  }
+  let totalMse = 0;
+  for (let i = 0; i < I; i++) {
+    totalMse += perYear[i].se * perYear[i].se;
+    let later = 0;
+    for (let j = i + 1; j < I; j++) later += perYear[j].ult;
+    let cross = 0;
+    for (let k = tri[i].length - 1; k < I - 1; k++) {
+      cross += (2 * a2[k]) / (f[k] * f[k]) / colSum[k];
+    }
+    totalMse += perYear[i].ult * later * cross;
+  }
+  const totalReserve = perYear.reduce((s, y) => s + y.reserve, 0);
+  return { f, a2, proj, perYear, totalReserve, totalSe: Math.sqrt(totalMse) };
+}
+
+/** Mack's lognormal range: sigma^2 = ln(1 + cv^2), percentile via z. */
+function clMackLognRange(R, cv, z) {
+  const s2 = Math.log(1 + cv * cv);
+  return R * Math.exp(z * Math.sqrt(s2) - s2 / 2);
+}
+
 // --- Random-walk Metropolis on a 2D gaussian target ------------------------
 
 /** Bivariate normal log-density up to a constant (all Metropolis needs). */
@@ -1492,6 +1612,158 @@ defineModule({
   ],
 });
 
+// --- Module: Mack's Machinery (Mack 1994, the RAA triangle) ----------------
+
+// RAA Historical Loss Development Study 1991, p.96 — the triangle every
+// distribution-free chain-ladder result in the paper is computed on.
+const RAA = [
+  [5012, 8269, 10907, 11805, 13539, 16181, 18009, 18608, 18662, 18834],
+  [106, 4285, 5396, 10666, 13782, 15599, 15496, 16169, 16704],
+  [3410, 8992, 13873, 16141, 18735, 22214, 22863, 23466],
+  [5655, 11555, 15766, 21266, 23425, 26083, 27067],
+  [1092, 9565, 15836, 22169, 25955, 26180],
+  [1513, 6445, 11702, 12935, 15852],
+  [557, 4020, 10946, 12314],
+  [1351, 6947, 13112],
+  [3133, 5395],
+  [2063],
+];
+
+defineModule({
+  id: 'mack-machinery',
+  title: 'Mack\'s Machinery',
+  subtitle: 'The RAA triangle, three estimators, and where the standard errors come from',
+  icon: 'layers',
+  paper: {
+    label: 'Mack, "Measuring The Variability Of Chain Ladder Reserve Estimates" (1994)',
+    section: 'Formulas (2), (7)-(13) on the RAA triangle; Tables 1-2, Chapter 4 ranges',
+    task: 'Compute and interpret chain-ladder reserve variability',
+  },
+  intro:
+    'The chain ladder everyone runs is one of THREE least-squares estimators, ' +
+    'and its famous standard-error formula is just variance bookkeeping along ' +
+    'the projection. Here is the paper\'s own RAA triangle: watch the fan of ' +
+    'projections, the ribbons widening with age, and the range that ' +
+    'ultimately gets quoted.',
+  params: [
+    { key: 'focusAY', tex: 'i', label: 'Accident Year In Focus', min: 2, max: 10, step: 1, init: 9, fmt: 'num', link: 'focus' },
+    { key: 'pct', tex: '\\%', label: 'Quoted Percentile', min: 55, max: 99, step: 1, init: 90, fmt: 'num', link: 'range' },
+  ],
+  derived(par, st) {
+    const method = st?.mode || 'vw';
+    const f = clMackFactorSet(RAA, method);
+    const proj = clMackProject(RAA, f);
+    const mack = clMackSe(RAA);
+    const i = Math.round(par.focusAY) - 1;
+    const y = mack.perYear[i];
+    const cv = mack.totalSe / mack.totalReserve;
+    const z = clNormInv(par.pct / 100);
+    return {
+      method,
+      seAvailable: method === 'vw',
+      f1: f[0],
+      focusIdx: i,
+      focusUlt: proj[i][RAA.length - 1],
+      focusReserve: method === 'vw' ? y.reserve : proj[i][RAA.length - 1] - RAA[i][RAA[i].length - 1],
+      focusSe: method === 'vw' ? y.se : null,
+      focusCv: method === 'vw' && y.reserve > 0 ? y.se / y.reserve : null,
+      totalR: mack.totalReserve,
+      totalSe: mack.totalSe,
+      totalCv: cv,
+      z,
+      lnPct: clMackLognRange(mack.totalReserve, cv, z),
+      normPct: mack.totalReserve * (1 + z * cv),
+      projF: f,
+      projSquare: proj,
+      mack,
+    };
+  },
+  readouts: [
+    { sym: '\\hat{f}_1', id: 'f1', fmt: 'num3', label: 'First Factor, This Estimator', link: 'fans' },
+    { sym: '\\hat{R}_i', id: 'focusReserve', fmt: 'num', label: 'Focus-Year Reserve', link: 'focus' },
+    { sym: 'se(\\hat{R}_i)', id: 'focusSe', fmt: 'num', label: 'Its Standard Error', link: 'focus' },
+    { sym: '', id: 'focusCv', fmt: 'pct', label: 'Focus-Year Cv', accent: true, link: 'focus' },
+    { sym: '\\hat{R}', id: 'totalR', fmt: 'num', label: 'Total Reserve', link: 'range' },
+    { sym: '', id: 'lnPct', fmt: 'num', label: 'Lognormal Quoted Value', accent: true, link: 'range' },
+  ],
+  formula() {
+    return {
+      sym: 'mse(\\hat{C}_{iI}) = \\hat{C}_{iI}^2 \\sum_{k}\\tfrac{\\hat{\\alpha}_k^2}{\\hat{f}_k^2}\\left(\\tfrac{1}{\\hat{C}_{ik}} + \\tfrac{1}{\\sum_j C_{jk}}\\right)',
+      terms: [
+        { sym: 'se(\\hat{R})', fmt: 'num', get: (d) => d.totalSe, primary: true, link: 'range' },
+        { op: '/' },
+        { sym: '\\hat{R}', fmt: 'num', get: (d) => d.totalR, link: 'range' },
+        { op: '=' },
+        { sym: 'cv', fmt: 'pct', get: (d) => d.totalCv, link: 'range' },
+        { op: '|' },
+        { sym: 'LN_{pct}', fmt: 'num', get: (d) => d.lnPct, link: 'range' },
+        { op: 'vs' },
+        { sym: 'N_{pct}', fmt: 'num', get: (d) => d.normPct, link: 'range' },
+      ],
+    };
+  },
+  presets: [
+    {
+      id: 'chain-ladder',
+      label: 'Volume Weighted',
+      note: 'The chain ladder: f_1 = 2.999. This weighting is least-squares optimal when Var(C_{k+1}|C_k) is proportional to C_k, and it is the assumption the whole standard-error machinery is built on.',
+      mode: 'vw',
+      params: { focusAY: { value: 9 }, pct: { value: 90 } },
+    },
+    {
+      id: 'regression',
+      label: 'Regression Through Origin',
+      note: 'Weight by C_k squared and f_1 falls to 2.217. Same triangle, materially different ultimates. Standard errors here would need a different variance law, so the ribbons stand down.',
+      mode: 'ols',
+      params: { focusAY: { value: 9 }, pct: { value: 90 } },
+    },
+    {
+      id: 'average',
+      label: 'Simple Average',
+      note: 'Average the raw factors and f_1 explodes to 8.206, because accident year 1982 developed 106 into 4,285: a 40.4x factor with almost no volume behind it. Weighting is not a technicality.',
+      mode: 'avg',
+      params: { focusAY: { value: 10 }, pct: { value: 90 } },
+    },
+  ],
+  story: [
+    {
+      title: 'Three chain ladders',
+      text: 'All three factor sets are least-squares answers under different variance laws: weight by $C_k^2$, by $C_k$, or not at all. At $k=1$ they answer 2.217, 2.999, and 8.206. By $k \\geq 6$ they agree. Maturity is what settles arguments.',
+      preset: 'chain-ladder',
+    },
+    {
+      title: 'Variance bookkeeping',
+      text: 'Each projection step contributes $\\tfrac{\\hat{\\alpha}_k^2}{\\hat{f}_k^2}(\\tfrac{1}{\\hat{C}_{ik}} + \\tfrac{1}{\\sum C_{jk}})$: process noise plus estimation error. The ribbon around the focus year is that sum accumulating, age by age.',
+      preset: 'chain-ladder',
+    },
+    {
+      title: 'The number that matters',
+      text: 'Accident year 9 carries a reserve of 10,650 with standard error 6,333: a 59% coefficient of variation. Every year in this triangle is at or above 41%. A point estimate without that number is not an answer.',
+      preset: 'chain-ladder',
+    },
+    {
+      title: 'Quoting a range',
+      text: 'Mack matches a lognormal to $(\\hat{R}, se)$: the 90th percentile is 86,298 while the normal would say almost the same. The 10th percentiles disagree badly (24,871 vs 17,672). His verdict: there is no general rule; check both.',
+      preset: 'chain-ladder',
+    },
+  ],
+  checks: [
+    { name: 'Volume-weighted f_1 = 2.999', expect: 2.999, tol: 1e-3, got: () => clMackFactorSet(RAA, 'vw')[0] },
+    { name: 'Regression f_1 = 2.217', expect: 2.217, tol: 1e-3, got: () => clMackFactorSet(RAA, 'ols')[0] },
+    { name: 'Simple-average f_1 = 8.206', expect: 8.206, tol: 1e-3, got: () => clMackFactorSet(RAA, 'avg')[0] },
+    { name: 'alpha_1^2 = 27883', expect: 27883, tol: 5, got: () => clMackAlpha2(RAA)[0] },
+    { name: 'alpha_9^2 by rule (9) = 1.34', expect: 1.343, tol: 5e-3, got: () => clMackAlpha2(RAA)[8] },
+    { name: 'Ultimate AY 2 = 16,858', expect: 16858, tol: 1.5, got: () => clMackSe(RAA).perYear[1].ult },
+    { name: 'Reserve AY 9 = 10,650', expect: 10650, tol: 1.5, got: () => clMackSe(RAA).perYear[8].reserve },
+    { name: 'se AY 2 = 206', expect: 206, tol: 1, got: () => clMackSe(RAA).perYear[1].se },
+    { name: 'se AY 9 = 6,333', expect: 6333, tol: 2, got: () => clMackSe(RAA).perYear[8].se },
+    { name: 'Total reserve = 52,135', expect: 52135, tol: 2, got: () => clMackSe(RAA).totalReserve },
+    { name: 'Total cv = 51.6%', expect: 0.5162, tol: 5e-4, got: () => { const m = clMackSe(RAA); return m.totalSe / m.totalReserve; } },
+    { name: 'Lognormal 90th = 86,298', expect: 86298, tol: 40, got: () => { const m = clMackSe(RAA); return clMackLognRange(m.totalReserve, m.totalSe / m.totalReserve, 1.28); } },
+    { name: 'Lognormal 10th = 24,871', expect: 24871, tol: 40, got: () => { const m = clMackSe(RAA); return clMackLognRange(m.totalReserve, m.totalSe / m.totalReserve, -1.28); } },
+  ],
+});
+
 // ============================================================================
 // SECTION 3: STYLES — single injected <style>, guarded (flashcards pattern)
 // ============================================================================
@@ -2570,6 +2842,7 @@ const SCENE_BUILDERS = {
   'validation-machine': buildValidationScenes,
   'csr-story': buildCsrScenes,
   'mcmc-watch': buildMcmcScenes,
+  'mack-machinery': buildMackScenes,
 };
 
 /** First-mount draw-in: the primary curve sweeps in along its own length. */
@@ -3736,6 +4009,163 @@ function buildMcmcScenes(stageRow, ctx) {
   };
 }
 
+// --- Mack: the projection fan and the quoted range -------------------------
+
+function buildMackScenes(stageRow, ctx) {
+  const { linkRoot, animator } = ctx;
+  const I = RAA.length;
+
+  const s1 = buildScene(stageRow, 'The Fan Of Projections (RAA Triangle)', [
+    { label: 'Observed', color: 'var(--cl-ink-1)', link: 'fans' },
+    { label: 'Projected', color: 'var(--cl-ink-1)', dashed: true, link: 'fans' },
+    { label: 'Focus Year ±1se', color: 'var(--px-accent)', link: 'focus' },
+  ], linkRoot);
+  const axes1 = createAxes(s1.svg, { xFmt: (v) => String(v), yFmt: (v) => clFmt(v, 'num'), xTicks: 9, yTicks: 4 });
+  const ribbon = svgEl('path', { fill: 'var(--px-accent)' }, 'cl-band');
+  ribbon.dataset.clLink = 'focus';
+  s1.svg.appendChild(ribbon);
+  const obsPaths = [], projPaths = [];
+  for (let i = 0; i < I; i++) {
+    const o = svgEl('path', { stroke: 'var(--px-text-faint)' }, 'cl-curve cl-ref');
+    o.style.strokeDasharray = 'none';
+    o.dataset.clLink = 'fans';
+    const p = svgEl('path', { stroke: 'var(--px-text-faint)' }, 'cl-curve cl-ref');
+    p.dataset.clLink = 'fans';
+    s1.svg.appendChild(o); s1.svg.appendChild(p);
+    obsPaths.push(o); projPaths.push(p);
+  }
+  const focusTag = svgEl('text', { 'text-anchor': 'start', fill: 'var(--px-accent)' }, 'cl-svg-value');
+  s1.svg.appendChild(focusTag);
+
+  const s2 = buildScene(stageRow, 'The Range That Gets Quoted (Total Reserve)', [
+    { label: 'Lognormal', color: 'var(--px-accent)', link: 'range' },
+    { label: 'Normal', color: 'var(--cl-ink-1)', dashed: true, link: 'range' },
+  ], linkRoot);
+  const axes2 = createAxes(s2.svg, { xFmt: (v) => clFmt(v, 'num'), yFmt: () => '', yTicks: 0, xTicks: 4 });
+  const pLn = svgEl('path', { stroke: 'var(--px-accent)' }, 'cl-curve');
+  pLn.dataset.clLink = 'range';
+  const pNorm = svgEl('path', { stroke: 'var(--cl-ink-1)' }, 'cl-curve cl-ref');
+  pNorm.dataset.clLink = 'range';
+  const markLn = svgEl('line', { stroke: 'var(--px-accent)', 'stroke-width': 2 }, '');
+  const markNorm = svgEl('line', {}, 'cl-marker-line');
+  const tagLn = svgEl('text', { 'text-anchor': 'middle', fill: 'var(--px-accent)' }, 'cl-svg-value');
+  const tagNorm = svgEl('text', { 'text-anchor': 'middle', fill: 'var(--cl-ink-1)' }, 'cl-svg-tag');
+  const meanTick = svgEl('line', {}, 'cl-marker-line');
+  s2.svg.appendChild(pLn); s2.svg.appendChild(pNorm);
+  s2.svg.appendChild(meanTick); s2.svg.appendChild(markLn); s2.svg.appendChild(markNorm);
+  s2.svg.appendChild(tagLn); s2.svg.appendChild(tagNorm);
+
+  const domY1 = animator.smooth(40000, 110);
+  let frame2 = null;
+  let lnShape = null;
+  let drewIn = false;
+
+  clDragOnSvg(s2.svg, (e) => {
+    if (!frame2 || !lnShape) return;
+    const x = frame2.sx.invert(clSvgPoint(s2.svg, e).x);
+    const p = clLognCdf(x, lnShape.mu, lnShape.sigma) * 100;
+    const st = ctx.getState();
+    const r = st.ranges.pct;
+    ctx.setParam('pct', Math.max(r.min, Math.min(r.max, Math.round(p))));
+  });
+
+  return {
+    update(st, d) {
+      // ── Scene 1 ──
+      const w1 = s1.wrap.clientWidth || 420, h1 = s1.wrap.clientHeight || 280;
+      s1.svg.setAttribute('width', w1); s1.svg.setAttribute('height', h1);
+      const f1 = { left: 56, top: 14, right: w1 - 40, bottom: h1 - 26 };
+      const proj = d.projSquare;
+      let yMax = 0;
+      for (const row of proj) yMax = Math.max(yMax, row[I - 1]);
+      if (st.fresh) domY1.snap(yMax * 1.12); else domY1.target = yMax * 1.12;
+      const sx1 = clScale(1, I, f1.left, f1.right);
+      const sy1 = clScale(0, domY1.current, f1.bottom, f1.top);
+      axes1.update(sx1, sy1, f1);
+
+      for (let i = 0; i < I; i++) {
+        const obs = RAA[i].length;
+        const isFocus = i === d.focusIdx;
+        const color = isFocus ? 'var(--px-accent)' : 'var(--px-text-faint)';
+        obsPaths[i].setAttribute('stroke', color);
+        projPaths[i].setAttribute('stroke', color);
+        obsPaths[i].classList.toggle('cl-ref', !isFocus);
+        projPaths[i].classList.toggle('cl-ref', !isFocus);
+        obsPaths[i].style.strokeDasharray = 'none';
+        if (isFocus) projPaths[i].style.strokeDasharray = '5 4';
+        else projPaths[i].style.strokeDasharray = '';
+        const oPts = [];
+        for (let k = 0; k < obs; k++) oPts.push([sx1(k + 1), sy1(RAA[i][k])]);
+        obsPaths[i].setAttribute('d', clPathFrom(oPts));
+        const pPts = [];
+        for (let k = obs - 1; k < I; k++) pPts.push([sx1(k + 1), sy1(proj[i][k])]);
+        projPaths[i].setAttribute('d', obs < I ? clPathFrom(pPts) : '');
+      }
+
+      // ±1se ribbon along the focus year, vw machinery only.
+      const y = d.mack.perYear[d.focusIdx];
+      if (d.seAvailable && y.steps.length) {
+        const up = [], dn = [];
+        const startObs = RAA[d.focusIdx].length;
+        up.push([sx1(startObs), sy1(RAA[d.focusIdx][startObs - 1])]);
+        for (const stp of y.steps) {
+          const se = d.mack.proj[d.focusIdx][stp.c] * Math.sqrt(stp.acc);
+          up.push([sx1(stp.c + 1), sy1(d.mack.proj[d.focusIdx][stp.c] + se)]);
+          dn.push([sx1(stp.c + 1), sy1(Math.max(0, d.mack.proj[d.focusIdx][stp.c] - se))]);
+        }
+        ribbon.style.display = '';
+        ribbon.setAttribute('d', clPathFrom(up) + clPathFrom(dn.reverse()).replace(/^M/, 'L') + 'Z');
+      } else {
+        ribbon.style.display = 'none';
+      }
+      focusTag.setAttribute('x', sx1(I) - 2);
+      focusTag.setAttribute('y', sy1(proj[d.focusIdx][I - 1]) - 8);
+      focusTag.setAttribute('text-anchor', 'end');
+      focusTag.textContent = `AY ${d.focusIdx + 1}: ${clFmt(proj[d.focusIdx][I - 1], 'num')}`;
+      if (!drewIn) { drewIn = true; if (projPaths[d.focusIdx]) clDrawIn(projPaths[d.focusIdx]); }
+
+      // ── Scene 2 ──
+      const w2 = s2.wrap.clientWidth || 420, h2 = s2.wrap.clientHeight || 280;
+      s2.svg.setAttribute('width', w2); s2.svg.setAttribute('height', h2);
+      const f2 = { left: 20, top: 14, right: w2 - 16, bottom: h2 - 26 };
+      const hi = d.totalR * 2.6;
+      const sx2 = clScale(0, hi, f2.left, f2.right);
+      lnShape = clMatchLognormal(d.totalR, d.totalSe);
+      const lnPdf = (x) => clLognPdf(x, lnShape.mu, lnShape.sigma);
+      const nPdf = (x) => clNormPdf(x, d.totalR, d.totalSe);
+      let yMax2 = 0;
+      const N = 150;
+      const lnPts = [], nPts = [];
+      for (let i = 0; i <= N; i++) {
+        const x = (hi * i) / N;
+        const a = lnPdf(x), b = nPdf(x);
+        yMax2 = Math.max(yMax2, a, b);
+        lnPts.push([x, a]); nPts.push([x, b]);
+      }
+      const sy2 = clScale(0, yMax2 * 1.12, f2.bottom, f2.top);
+      frame2 = { sx: sx2 };
+      axes2.update(sx2, sy2, f2);
+      pLn.setAttribute('d', clPathFrom(lnPts.map(([x, v]) => [sx2(x), sy2(v)])));
+      pNorm.setAttribute('d', clPathFrom(nPts.map(([x, v]) => [sx2(x), sy2(v)])));
+
+      const putMark = (line, tag, x, label, yOff) => {
+        const px = sx2(Math.min(hi, Math.max(0, x)));
+        line.setAttribute('x1', px); line.setAttribute('x2', px);
+        line.setAttribute('y1', f2.bottom); line.setAttribute('y2', f2.top + 12);
+        tag.setAttribute('x', px); tag.setAttribute('y', f2.top + 10 + yOff);
+        tag.textContent = label;
+      };
+      putMark(markLn, tagLn, d.lnPct, `LN ${Math.round(d.pct)}th ${clFmt(d.lnPct, 'num')}`, 0);
+      putMark(markNorm, tagNorm, d.normPct, `N ${clFmt(d.normPct, 'num')}`, 13);
+      meanTick.setAttribute('x1', sx2(d.totalR)); meanTick.setAttribute('x2', sx2(d.totalR));
+      meanTick.setAttribute('y1', f2.bottom); meanTick.setAttribute('y2', f2.bottom - 16);
+    },
+    snapshot(st, d) {
+      return { label: st.presetId || 'pin', f1: d.f1, totalR: d.totalR };
+    },
+  };
+}
+
 // --- Pane shell ------------------------------------------------------------
 
 function renderPane(container) {
@@ -4326,6 +4756,11 @@ export const __testables = {
   clPpPoints,
   clValidationDraws,
   clValidationRun,
+  clMackFactorSet,
+  clMackAlpha2,
+  clMackProject,
+  clMackSe,
+  clMackLognRange,
   MODULES,
   clGetModule,
 };
