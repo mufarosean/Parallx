@@ -957,11 +957,14 @@ html, body {
    card keeps its 5px margin on OUTER edges (window edge / activity strip)
    and drops it on edges that FACE another card — the neighbour's margin is
    the whole seam. Doubling up (5+5=10) is the bug this layout avoids. */
+/* Sidebar/aux cards round at --px-radius-xs, NOT -sm: chrome should read
+   crisp and architectural. The editor + panel keep -sm — content cards can
+   afford the softness; the rails framing them cannot. */
 .sidebar-header {
   margin: var(--px-seam) 0 0 var(--px-seam);
   border: 1px solid var(--px-border);
   border-bottom: 0;
-  border-radius: var(--px-radius-sm) var(--px-radius-sm) 0 0;
+  border-radius: var(--px-radius-xs) var(--px-radius-xs) 0 0;
   background: var(--px-bg);
   box-sizing: border-box;
 }
@@ -969,7 +972,7 @@ html, body {
   margin: var(--px-seam) var(--px-seam) 0 var(--px-seam);
   border: 1px solid var(--px-border);
   border-bottom: 0;
-  border-radius: var(--px-radius-sm) var(--px-radius-sm) 0 0;
+  border-radius: var(--px-radius-xs) var(--px-radius-xs) 0 0;
   background: var(--px-bg);
   box-sizing: border-box;
 }
@@ -977,7 +980,7 @@ html, body {
   margin: 0 0 var(--px-seam) var(--px-seam);
   border: 1px solid var(--px-border);
   border-top: 0;
-  border-radius: 0 0 var(--px-radius-sm) var(--px-radius-sm);
+  border-radius: 0 0 var(--px-radius-xs) var(--px-radius-xs);
   background: var(--px-bg);
   overflow: hidden;
   box-sizing: border-box;
@@ -986,7 +989,7 @@ html, body {
   margin: 0 var(--px-seam) var(--px-seam) var(--px-seam);
   border: 1px solid var(--px-border);
   border-top: 0;
-  border-radius: 0 0 var(--px-radius-sm) var(--px-radius-sm);
+  border-radius: 0 0 var(--px-radius-xs) var(--px-radius-xs);
   background: var(--px-bg);
   overflow: hidden;
   box-sizing: border-box;
