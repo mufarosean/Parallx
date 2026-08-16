@@ -596,6 +596,23 @@ function clOdpBootstrapOnce(fit, rng, withProcess) {
   return reserve;
 }
 
+// --- Marshall risk-margin consolidation ------------------------------------
+
+/** Weighted correlation aggregation: sqrt(sum w_i w_j rho_ij c_i c_j) / W. */
+function clCovAggregate(w, c, rho, indices) {
+  const idx = indices || w.map((_, i) => i);
+  let W = 0;
+  for (const i of idx) W += w[i];
+  let v = 0;
+  for (const i of idx) {
+    for (const j of idx) {
+      const r = i === j ? 1 : rho(i, j);
+      v += w[i] * w[j] * r * c[i] * c[j];
+    }
+  }
+  return Math.sqrt(v) / W;
+}
+
 // --- Random-walk Metropolis on a 2D gaussian target ------------------------
 
 /** Bivariate normal log-density up to a constant (all Metropolis needs). */
@@ -2200,6 +2217,190 @@ defineModule({
   ],
 });
 
+// --- Module: The Risk Margin Ladder (Marshall) -----------------------------
+
+// Insurer ABC, Figure 3. Cell order: Motor OSC, Motor PL, Home OSC, Home PL,
+// CTP OSC, CTP PL. External CoVs are the verified root-sum-of-squares of the
+// seven risk categories in Part D.
+const MRSH = {
+  labels: ['Motor OSC', 'Motor PL', 'Home OSC', 'Home PL', 'CTP OSC', 'CTP PL'],
+  classes: [['Motor', 0, 1], ['Home', 2, 3], ['CTP', 4, 5]],
+  w: [0.05, 0.25, 0.05, 0.25, 0.30, 0.10],
+  indep: [0.070, 0.050, 0.060, 0.050, 0.060, 0.150],
+  internal: [0.055, 0.050, 0.055, 0.050, 0.095, 0.080],
+  external: [0.0403, 0.0680, 0.0339, 0.1547, 0.1141, 0.1379],
+};
+
+/** Internal systemic correlations: 75% OSC-PL within class, 50% Motor-Home, 25% CTP-anything. */
+function clMarshallRhoInternal(i, j, flex) {
+  const cls = (k) => (k < 2 ? 0 : k < 4 ? 1 : 2);
+  let rho;
+  if (cls(i) === cls(j)) rho = 0.75;
+  else if (cls(i) !== 2 && cls(j) !== 2) rho = 0.50;
+  else rho = 0.25;
+  return rho + (1 - rho) * (flex || 0);
+}
+
+/** External systemic: fully correlated within a class, independent across. */
+function clMarshallRhoExternal(i, j) {
+  const cls = (k) => (k < 2 ? 0 : k < 4 ? 1 : 2);
+  return cls(i) === cls(j) ? 1 : 0;
+}
+
+/**
+ * The full Figure 3 consolidation: three independent sources of uncertainty,
+ * each aggregated across the six cells with its own correlation structure,
+ * then combined by root-sum-of-squares and converted to a margin.
+ */
+function clMarshallConsolidate({ sIndep = 1, sInternal = 1, sExternal = 1, flex = 0, z = 0.6745 } = {}) {
+  const { w, indep, internal, external } = MRSH;
+  const ci = indep.map((c) => c * sIndep);
+  const cn = internal.map((c) => c * sInternal);
+  const ce = external.map((c) => c * sExternal);
+  const agg = (c, rho, idx) => clCovAggregate(w, c, rho, idx);
+  const none = () => 0;
+  const totIndep = agg(ci, none);
+  const totInternal = agg(cn, (i, j) => clMarshallRhoInternal(i, j, flex));
+  const totExternal = agg(ce, clMarshallRhoExternal);
+  const total = Math.sqrt(totIndep ** 2 + totInternal ** 2 + totExternal ** 2);
+  const byClass = MRSH.classes.map(([label, a, b]) => {
+    const idx = [a, b];
+    const iC = agg(ci, none, idx);
+    const nC = agg(cn, (i, j) => clMarshallRhoInternal(i, j, flex), idx);
+    const eC = agg(ce, clMarshallRhoExternal, idx);
+    return { label, indep: iC, internal: nC, external: eC, total: Math.sqrt(iC * iC + nC * nC + eC * eC) };
+  });
+  const s2 = Math.log(1 + total * total);
+  return {
+    totIndep, totInternal, totExternal, total, byClass,
+    rmNormal: z * total,
+    rmLogn: Math.exp(z * Math.sqrt(s2) - s2 / 2) - 1,
+  };
+}
+
+defineModule({
+  id: 'marshall-ladder',
+  title: 'The Risk Margin Ladder',
+  subtitle: 'Three sources of uncertainty, one consolidated CoV, one defensible margin',
+  icon: 'gauge',
+  paper: {
+    label: 'Marshall et al., "A Framework For Assessing Risk Margins"',
+    section: 'Figure 3 Parts A-F, the Insurer ABC worked example and its sensitivity tests',
+    task: 'Assess, correlate, and consolidate sources of uncertainty into a risk margin',
+  },
+  intro:
+    'A risk margin is not a haircut, it is an argument: independent risk that ' +
+    'diversifies away, internal systemic risk your own model carries, and ' +
+    'external systemic risk the world imposes. Variances add. CoVs do not. ' +
+    'The whole framework is that one sentence, applied carefully.',
+  params: [
+    { key: 'adequacy', tex: '', label: 'Probability Of Adequacy', min: 60, max: 95, step: 1, init: 75, fmt: 'num', link: 'margin' },
+    { key: 'sIndep', tex: '', label: 'Independent Risk Scale', min: 0.25, max: 3, step: 0.05, init: 1, fmt: 'num2', link: 'src-ind' },
+    { key: 'sInternal', tex: '', label: 'Internal Systemic Scale', min: 0.25, max: 3, step: 0.05, init: 1, fmt: 'num2', link: 'src-int' },
+    { key: 'sExternal', tex: '', label: 'External Systemic Scale', min: 0.25, max: 3, step: 0.05, init: 1, fmt: 'num2', link: 'src-ext' },
+    { key: 'flex', tex: '', label: 'Push Correlations To Full', min: 0, max: 1, step: 0.01, init: 0, fmt: 'num2', link: 'src-int' },
+  ],
+  derived(par) {
+    const z = clNormInv(par.adequacy / 100);
+    const m = clMarshallConsolidate({
+      sIndep: par.sIndep, sInternal: par.sInternal, sExternal: par.sExternal,
+      flex: par.flex, z,
+    });
+    return {
+      z,
+      totIndep: m.totIndep,
+      totInternal: m.totInternal,
+      totExternal: m.totExternal,
+      total: m.total,
+      naiveSum: m.totIndep + m.totInternal + m.totExternal,
+      rmNormal: m.rmNormal,
+      rmLogn: m.rmLogn,
+      byClass: m.byClass,
+    };
+  },
+  readouts: [
+    { sym: '', id: 'totIndep', fmt: 'pct', label: 'Independent CoV', link: 'src-ind' },
+    { sym: '', id: 'totInternal', fmt: 'pct', label: 'Internal Systemic CoV', link: 'src-int' },
+    { sym: '', id: 'totExternal', fmt: 'pct', label: 'External Systemic CoV', link: 'src-ext' },
+    { sym: '', id: 'total', fmt: 'pct', label: 'Consolidated CoV', accent: true, link: 'margin' },
+    { sym: '', id: 'rmLogn', fmt: 'pct2', label: 'Risk Margin (Lognormal)', accent: true, link: 'margin' },
+    { sym: '', id: 'rmNormal', fmt: 'pct2', label: 'Risk Margin (Normal)', link: 'margin' },
+  ],
+  formula() {
+    return {
+      sym: 'CoV = \\sqrt{ind^2 + int^2 + ext^2},\\quad RM_{LN} = e^{z\\sigma - \\sigma^2/2} - 1,\\;\\sigma^2 = \\ln(1{+}CoV^2)',
+      terms: [
+        { sym: 'CoV', fmt: 'pct', get: (d) => d.total, link: 'margin' },
+        { op: '|' },
+        { sym: 'z', fmt: 'num3', get: (d) => d.z, link: 'margin' },
+        { op: '|' },
+        { sym: 'RM', fmt: 'pct', get: (d) => d.rmLogn, primary: true, link: 'margin' },
+      ],
+    };
+  },
+  presets: [
+    {
+      id: 'base',
+      label: 'Insurer ABC Base',
+      note: 'The paper\'s worked example end to end: 3.0% independent, 4.9% internal, 6.6% external consolidate to 8.7%, and at 75% adequacy the lognormal margin is 5.6%.',
+      params: { adequacy: { value: 75 }, sIndep: { value: 1 }, sInternal: { value: 1 }, sExternal: { value: 1 }, flex: { value: 0 } },
+    },
+    {
+      id: 'double-indep',
+      label: 'Double Independent Risk',
+      note: 'Doubling the diversifiable risk moves the margin only 5.6% to 6.5% (the paper\'s printed flex). Small squared terms stay small: this is why systemic risk is the assessment that matters.',
+      params: { sIndep: { value: 2 }, sInternal: { value: 1 }, sExternal: { value: 1 }, flex: { value: 0 }, adequacy: { value: 75 } },
+    },
+    {
+      id: 'internal-up',
+      label: 'Internal Systemic +50%',
+      note: 'A worse model score is expensive: 5.6% becomes 6.6%, the largest single flex in the paper\'s sensitivity table. The balanced scorecard earns its keep here.',
+      params: { sInternal: { value: 1.5 }, sIndep: { value: 1 }, sExternal: { value: 1 }, flex: { value: 0 }, adequacy: { value: 75 } },
+    },
+    {
+      id: 'full-corr',
+      label: 'Full Internal Correlation',
+      note: 'Slide every internal correlation to 100% and the margin goes to 6.3% (printed). Correlation assumptions ARE margin assumptions; the framework forces you to write them down.',
+      params: { flex: { value: 1 }, sIndep: { value: 1 }, sInternal: { value: 1 }, sExternal: { value: 1 }, adequacy: { value: 75 } },
+    },
+  ],
+  story: [
+    {
+      title: 'Three kinds of not knowing',
+      text: 'Independent risk averages out across classes. Internal systemic risk (your model\'s own specification, parameters, data) does not. External systemic risk (inflation, courts, events, latency) does not either. The framework refuses to blend them.',
+      preset: 'base',
+    },
+    {
+      title: 'Variances add, CoVs do not',
+      text: '3.0, 4.9, and 6.6 consolidate to 8.7, not 14.5. Squaring before adding is the entire mathematics of diversification, and the bars show what it forgives.',
+      preset: 'base',
+    },
+    {
+      title: 'Correlation is the price',
+      text: 'Push the internal correlations to full and the internal CoV climbs from 4.9% toward 6.7%, dragging the margin to 6.3%. There is no diversification credit without a defended correlation assumption.',
+      preset: 'full-corr',
+    },
+    {
+      title: 'The margin is a percentile',
+      text: 'At 75% probability of adequacy, $z = 0.6745$ of a lognormal around the central estimate: 5.6%. Slide the adequacy up and watch prudence get expensive nonlinearly.',
+      preset: 'base',
+    },
+  ],
+  checks: [
+    { name: 'Part B independent total = 3.0%', expect: 0.0297, tol: 5e-4, got: () => clMarshallConsolidate().totIndep },
+    { name: 'Part B Home class independent = 4.29% (verified formula)', expect: 0.0429, tol: 2e-4, got: () => clCovAggregate(MRSH.w, MRSH.indep, () => 0, [2, 3]) },
+    { name: 'Part B CTP class independent = 5.86% (verified formula)', expect: 0.0586, tol: 2e-4, got: () => clCovAggregate(MRSH.w, MRSH.indep, () => 0, [4, 5]) },
+    { name: 'Part C internal total = 4.9%', expect: 0.049, tol: 8e-4, got: () => clMarshallConsolidate().totInternal },
+    { name: 'Part E consolidated total = 8.7%', expect: 0.087, tol: 1e-3, got: () => clMarshallConsolidate().total },
+    { name: 'Part F margin, lognormal = 5.6%', expect: 0.056, tol: 1.5e-3, got: () => clMarshallConsolidate().rmLogn },
+    { name: 'Part F margin, normal = 5.8%', expect: 0.058, tol: 1.5e-3, got: () => clMarshallConsolidate().rmNormal },
+    { name: 'Printed flex: double independent = 6.5%', expect: 0.065, tol: 1.5e-3, got: () => clMarshallConsolidate({ sIndep: 2 }).rmLogn },
+    { name: 'Printed flex: halve independent = 5.4%', expect: 0.054, tol: 1.5e-3, got: () => clMarshallConsolidate({ sIndep: 0.5 }).rmLogn },
+    { name: 'Printed flex: internal +50% = 6.6%', expect: 0.066, tol: 1.5e-3, got: () => clMarshallConsolidate({ sInternal: 1.5 }).rmLogn },
+    { name: 'Printed flex: full internal correlation = 6.3%', expect: 0.063, tol: 1.5e-3, got: () => clMarshallConsolidate({ flex: 1 }).rmLogn },
+  ],
+});
+
 // ============================================================================
 // SECTION 3: STYLES — single injected <style>, guarded (flashcards pattern)
 // ============================================================================
@@ -3281,6 +3482,7 @@ const SCENE_BUILDERS = {
   'mack-machinery': buildMackScenes,
   'clark-curves': buildClarkScenes,
   'odp-bootstrap': buildBootstrapScenes,
+  'marshall-ladder': buildMarshallScenes,
 };
 
 /** First-mount draw-in: the primary curve sweeps in along its own length. */
@@ -4881,6 +5083,131 @@ function buildBootstrapScenes(stageRow, ctx) {
   };
 }
 
+// --- Marshall: sources by class, and the variance ladder -------------------
+
+function buildMarshallScenes(stageRow, ctx) {
+  const { linkRoot } = ctx;
+
+  const s1 = buildScene(stageRow, 'The Sources, By Class', [
+    { label: 'Independent', color: 'var(--cl-ink-1)', link: 'src-ind' },
+    { label: 'Internal', color: 'var(--cl-ink-4)', link: 'src-int' },
+    { label: 'External', color: 'var(--cl-ink-5)', link: 'src-ext' },
+    { label: 'Consolidated', color: 'var(--px-accent)', link: 'margin' },
+  ], linkRoot);
+  const axes1 = createAxes(s1.svg, { xFmt: () => '', yFmt: (v) => (v * 100).toFixed(0) + '%', xTicks: 0, yTicks: 4 });
+  const bars1 = makeBarPool(s1.svg, 'cl-bar');
+  const groupTags = [];
+  for (let g = 0; g < 4; g++) {
+    const t = svgEl('text', { 'text-anchor': 'middle' }, 'cl-svg-tag');
+    s1.svg.appendChild(t);
+    groupTags.push(t);
+  }
+
+  const s2 = buildScene(stageRow, 'Variances Add, CoVs Do Not', [], linkRoot);
+  const stripSegs = [
+    svgEl('rect', { fill: 'var(--cl-ink-1)' }, 'cl-bar'),
+    svgEl('rect', { fill: 'var(--cl-ink-4)' }, 'cl-bar'),
+    svgEl('rect', { fill: 'var(--cl-ink-5)' }, 'cl-bar'),
+  ];
+  stripSegs[0].dataset.clLink = 'src-ind';
+  stripSegs[1].dataset.clLink = 'src-int';
+  stripSegs[2].dataset.clLink = 'src-ext';
+  const stripLabel = svgEl('text', { 'text-anchor': 'start' }, 'cl-svg-tag');
+  const naiveBar = svgEl('rect', { fill: 'var(--px-text-faint)' }, 'cl-bar cl-bar--cmp');
+  const consBar = svgEl('rect', { fill: 'var(--px-accent)' }, 'cl-bar');
+  consBar.dataset.clLink = 'margin';
+  const naiveTag = svgEl('text', { 'text-anchor': 'start' }, 'cl-svg-tag');
+  const consTag = svgEl('text', { 'text-anchor': 'start' }, 'cl-svg-tag');
+  const marginText = svgEl('text', { 'text-anchor': 'middle', fill: 'var(--px-accent)', 'font-size': 22, 'font-weight': 650 }, '');
+  marginText.dataset.clLink = 'margin';
+  const marginSub = svgEl('text', { 'text-anchor': 'middle' }, 'cl-svg-tag');
+  for (const el of [...stripSegs, stripLabel, naiveBar, consBar, naiveTag, consTag, marginText, marginSub]) {
+    s2.svg.appendChild(el);
+  }
+
+  return {
+    update(st, d) {
+      // ── Scene 1 ──
+      const w1 = s1.wrap.clientWidth || 420, h1 = s1.wrap.clientHeight || 280;
+      s1.svg.setAttribute('width', w1); s1.svg.setAttribute('height', h1);
+      const f1 = { left: 40, top: 16, right: w1 - 14, bottom: h1 - 30 };
+      const groups = [...d.byClass, { label: 'Whole Portfolio', indep: d.totIndep, internal: d.totInternal, external: d.totExternal, total: d.total }];
+      let yMax = 0.02;
+      for (const g of groups) yMax = Math.max(yMax, g.total, g.external, g.internal, g.indep);
+      const sy1 = clScale(0, yMax * 1.18, f1.bottom, f1.top);
+      const sx1 = clScale(0, groups.length * 5 - 1, f1.left, f1.right);
+      axes1.update(sx1, sy1, f1);
+      const rects = [];
+      const colors = [];
+      groups.forEach((g, gi) => {
+        const vals = [g.indep, g.internal, g.external, g.total];
+        const inks = ['var(--cl-ink-1)', 'var(--cl-ink-4)', 'var(--cl-ink-5)', 'var(--px-accent)'];
+        vals.forEach((v, bi) => {
+          const x0 = sx1(gi * 5 + bi), x1 = sx1(gi * 5 + bi + 0.8);
+          const y = sy1(v);
+          rects.push({ x: x0, y, w: x1 - x0, h: Math.max(0, f1.bottom - y) });
+          colors.push(inks[bi]);
+        });
+        groupTags[gi].setAttribute('x', sx1(gi * 5 + 1.9));
+        groupTags[gi].setAttribute('y', f1.bottom + 14);
+        groupTags[gi].textContent = g.label;
+      });
+      bars1.set(rects, 'var(--px-accent)');
+      for (let i = 0; i < bars1.g.children.length; i++) {
+        bars1.g.children[i].setAttribute('fill', colors[i]);
+      }
+
+      // ── Scene 2 ──
+      const w2 = s2.wrap.clientWidth || 420, h2 = s2.wrap.clientHeight || 280;
+      s2.svg.setAttribute('width', w2); s2.svg.setAttribute('height', h2);
+      const left = 24, right = w2 - 24;
+      const usable = right - left;
+
+      // Variance strip: segment widths proportional to squared CoVs.
+      const v2 = [d.totIndep ** 2, d.totInternal ** 2, d.totExternal ** 2];
+      const vSum = v2[0] + v2[1] + v2[2];
+      let xCur = left;
+      const stripY = Math.round(h2 * 0.16), stripH = 22;
+      v2.forEach((v, i) => {
+        const wSeg = (v / vSum) * usable;
+        stripSegs[i].setAttribute('x', xCur);
+        stripSegs[i].setAttribute('y', stripY);
+        stripSegs[i].setAttribute('width', Math.max(1, wSeg - 1));
+        stripSegs[i].setAttribute('height', stripH);
+        xCur += wSeg;
+      });
+      stripLabel.setAttribute('x', left);
+      stripLabel.setAttribute('y', stripY - 6);
+      stripLabel.textContent = 'Total Variance, Split ind² / int² / ext²';
+
+      // CoV comparison: the naive sum against the consolidated value.
+      const barY = Math.round(h2 * 0.45), barH = 14;
+      const covScale = usable / Math.max(0.001, d.naiveSum * 1.05);
+      naiveBar.setAttribute('x', left); naiveBar.setAttribute('y', barY);
+      naiveBar.setAttribute('width', Math.max(1, d.naiveSum * covScale));
+      naiveBar.setAttribute('height', barH);
+      naiveTag.setAttribute('x', left); naiveTag.setAttribute('y', barY - 5);
+      naiveTag.textContent = 'If CoVs Added: ' + clFmt(d.naiveSum, 'pct');
+      consBar.setAttribute('x', left); consBar.setAttribute('y', barY + barH + 22);
+      consBar.setAttribute('width', Math.max(1, d.total * covScale));
+      consBar.setAttribute('height', barH);
+      consTag.setAttribute('x', left); consTag.setAttribute('y', barY + barH + 17);
+      consTag.textContent = 'Consolidated: ' + clFmt(d.total, 'pct');
+
+      // The deliverable.
+      marginText.setAttribute('x', w2 / 2);
+      marginText.setAttribute('y', Math.round(h2 * 0.84));
+      marginText.textContent = 'Risk Margin ' + clFmt(d.rmLogn, 'pct');
+      marginSub.setAttribute('x', w2 / 2);
+      marginSub.setAttribute('y', Math.round(h2 * 0.84) + 16);
+      marginSub.textContent = `Lognormal at ${Math.round(st.values.adequacy)}% adequacy (normal: ${clFmt(d.rmNormal, 'pct')})`;
+    },
+    snapshot(st, d) {
+      return { label: st.presetId || 'pin', total: d.total, rm: d.rmLogn };
+    },
+  };
+}
+
 // --- Pane shell ------------------------------------------------------------
 
 function renderPane(container) {
@@ -5486,6 +5813,8 @@ export const __testables = {
   clMetropolisStep,
   clMetropolisRun,
   clCsrShare,
+  clCovAggregate,
+  clMarshallConsolidate,
   MODULES,
   clGetModule,
 };

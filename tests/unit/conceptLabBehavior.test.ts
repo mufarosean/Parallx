@@ -409,6 +409,24 @@ describe('concept lab pane', () => {
     void readouts;
   });
 
+  it('the Risk Margin Ladder consolidates to 8.7% and prices the printed flexes', async () => {
+    (paneHost!.querySelector('.cl-back') as HTMLElement).click();
+    await settle();
+    const card = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
+      c.textContent?.includes('Risk Margin'))! as HTMLElement;
+    card.click();
+    await settle();
+    const values = () => [...paneHost!.querySelectorAll('.cl-readout-value')].map((e) => e.textContent);
+    expect(values().some((v) => v === '8.7%')).toBe(true);   // consolidated CoV
+    expect(values().some((v) => v === '5.65%')).toBe(true);  // lognormal margin, unrounded chain
+    const flex = [...paneHost!.querySelectorAll('.cl-preset-chip')].find((c) =>
+      c.textContent?.includes('Full Internal'))! as HTMLElement;
+    flex.click();
+    await wait(650);
+    await settle();
+    expect(values().some((v) => v === '6.33%')).toBe(true);  // printed sensitivity 6.3%
+  });
+
   it('the conceptLab_open chat tool routes the pane and applies the preset', async () => {
     const tool = chatTools.get('conceptLab_open');
     expect(tool).toBeTruthy();
