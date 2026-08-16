@@ -250,7 +250,52 @@ through into them. Open one with `Ctrl+Shift+H` or **Dashboard: Open**.
 
 ---
 
-## 6. Troubleshooting
+## 6. Concept Lab (interactive explorables)
+
+Concept Lab turns statistical concepts into **live, draggable pictures** —
+each module is grounded in a source paper's own worked example, so the
+default numbers on screen are the paper's printed exhibits. Open it from
+the command palette (**Open Concept Lab**), the activity-bar icon, or by
+asking the chat AI to show you a concept.
+
+The surface, top to bottom:
+
+- **Story strip** (top): every module opens on step 1 of a short guided
+  walk. Click the dots or the arrows — each step animates the parameters
+  to a configuration and explains what you're looking at. This is the
+  intended way IN to a module.
+- **Worked Examples** (left rail): preset chips that jump to the paper's
+  printed cases. The note under the chips tells you what the case shows.
+- **Parameters**: sliders in the paper's own notation. The value readout
+  and every chart update live as you drag.
+- **Charts are draggable.** Most scenes accept direct manipulation:
+  drag the query marker on a scatter, the weight dot along a curve, the
+  position on a regime map, a truncation line, a posterior marker. If a
+  dot looks grabbable, it is.
+- **Hover to trace.** Hover any formula term in the bottom bar, any
+  readout in the rail, or any legend entry — the exact element it drives
+  lights up and everything else dims. This is how the formulas and the
+  pictures are welded together.
+- **Pin Ghost** freezes the current curve as a faint dashed copy so you
+  can change parameters and compare against where you were (up to three).
+- **Simulation modules** (the bootstrap, the MCMC sampler, the validation
+  machine) carry their own transport in the scene header: play/pause,
+  step, replay.
+- **Source chip** (top right): the paper, section, and pages every number
+  on screen comes from.
+
+**Let the AI drive.** In chat, ask things like *"show me the MSE valley
+at Mack's Example 1"* or *"open the bootstrap"* — the agent has a
+`conceptLab_open` tool that opens the right module with a preset or
+specific parameter values already applied. This works mid-explanation,
+so the instructor can put the picture on screen while it talks.
+
+Your state survives: leaving a module and coming back restores your
+slider positions, active preset, and pinned ghosts.
+
+---
+
+## 7. Troubleshooting
 
 ### Autonomy isn't firing
 
@@ -286,7 +331,7 @@ app but isn't in the overlay, that's a bug — file it against the
 
 ---
 
-## 7. Reference: keyboard shortcuts
+## 8. Reference: keyboard shortcuts
 
 | Action | Shortcut |
 |--------|----------|
@@ -296,7 +341,7 @@ app but isn't in the overlay, that's a bug — file it against the
 
 ---
 
-## 8. Where to next
+## 9. Where to next
 
 - `docs/PARALLX_WORKSPACE_SCHEMA.md` — full schema of the workspace
   state file.

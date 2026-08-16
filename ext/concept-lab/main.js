@@ -3076,6 +3076,50 @@ const CL_CSS = `
   padding-bottom: 2px;
 }
 
+/* ── Home guide ─────────────────────────────────────────────────────── */
+.cl-guide {
+  border: 1px solid var(--px-divider);
+  border-radius: var(--px-radius-lg);
+  background: var(--px-bg-inset);
+  padding: var(--px-space-4);
+  margin-bottom: var(--px-space-6);
+}
+.cl-guide-title {
+  font-size: var(--px-text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--px-text-faint);
+  margin-bottom: var(--px-space-3);
+}
+.cl-guide-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--px-space-3) var(--px-space-4);
+}
+.cl-guide-item {
+  display: flex;
+  gap: var(--px-space-2);
+  align-items: flex-start;
+}
+.cl-guide-icon {
+  display: inline-flex;
+  color: var(--px-accent);
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+.cl-guide-head {
+  font-size: var(--px-text-sm);
+  font-weight: 600;
+  color: var(--px-text);
+}
+.cl-guide-text {
+  font-size: var(--px-text-xs);
+  color: var(--px-text-muted);
+  line-height: var(--px-leading-base);
+  margin-top: 1px;
+}
+
 /* ── Home (module cards) ────────────────────────────────────────────── */
 .cl-home {
   flex: 1 1 auto;
@@ -5582,6 +5626,45 @@ function renderHomeView(root) {
   sub.textContent = 'The syllabus, made visible. Every module is grounded in its paper’s own worked example. Drag the parameters and watch the mechanics move.';
   home.appendChild(title);
   home.appendChild(sub);
+
+  const guide = document.createElement('div');
+  guide.className = 'cl-guide';
+  const guideTitle = document.createElement('div');
+  guideTitle.className = 'cl-guide-title';
+  guideTitle.textContent = 'How To Use The Lab';
+  guide.appendChild(guideTitle);
+  const grid = document.createElement('div');
+  grid.className = 'cl-guide-grid';
+  const tips = [
+    { icon: 'circle-dot', head: 'Follow The Story', text: 'Every module opens on a guided walk. Step through the dots at the top; each step moves the parameters for you and says why.' },
+    { icon: 'book-open', head: 'Trust The Presets', text: 'The Worked Examples chips are the papers\' own printed numbers, not toy values. Start from one, then take the wheel.' },
+    { icon: 'move-horizontal', head: 'Drag Anywhere', text: 'Sliders work, but so do the charts: drag the query marker, the c dot on the parabola, the regime-map position, the truncation line.' },
+    { icon: 'mouse-pointer-2', head: 'Hover To Trace', text: 'Hover any formula term, readout, or legend entry and the exact curve it drives lights up while everything else dims.' },
+    { icon: 'copy', head: 'Pin A Ghost', text: 'Pin Ghost freezes the current curve in place. Change anything and compare against where you were.' },
+    { icon: 'message-square', head: 'Ask The Instructor', text: 'In chat, ask to be SHOWN a concept ("open the MSE valley at Example 1"). The AI opens the right module with the values set.' },
+  ];
+  for (const tip of tips) {
+    const item = document.createElement('div');
+    item.className = 'cl-guide-item';
+    const icon = document.createElement('span');
+    icon.className = 'cl-guide-icon';
+    icon.innerHTML = clIcon(tip.icon, 15);
+    const body = document.createElement('div');
+    const head = document.createElement('div');
+    head.className = 'cl-guide-head';
+    head.textContent = tip.head;
+    const text = document.createElement('div');
+    text.className = 'cl-guide-text';
+    text.textContent = tip.text;
+    body.appendChild(head);
+    body.appendChild(text);
+    item.appendChild(icon);
+    item.appendChild(body);
+    grid.appendChild(item);
+  }
+  guide.appendChild(grid);
+  home.appendChild(guide);
+
   const cards = document.createElement('div');
   cards.className = 'cl-cards';
   let i = 0;

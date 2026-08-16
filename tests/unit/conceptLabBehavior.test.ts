@@ -113,11 +113,17 @@ describe('concept lab pane', () => {
     expect(viewProviders.has('conceptLab.modules')).toBe(true);
   });
 
-  it('opening the lab shows a card per module', async () => {
+  it('opening the lab shows the how-to guide and a card per module', async () => {
     await api.commands.executeCommand('conceptLab.open');
     await settle();
     const cards = paneHost!.querySelectorAll('.cl-card');
     expect(cards.length).toBe(MODULES.length);
+    // The instructional: six interaction verbs above the module cards.
+    const guide = paneHost!.querySelector('.cl-guide')!;
+    expect(guide.textContent).toContain('How To Use The Lab');
+    expect(guide.querySelectorAll('.cl-guide-item').length).toBe(6);
+    expect(guide.textContent).toContain('Drag Anywhere');
+    expect(guide.textContent).toContain('Hover To Trace');
   });
 
   it('clicking a card enters the module with sliders, scenes, and formula', async () => {
