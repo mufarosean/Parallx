@@ -22,6 +22,12 @@ const {
   FSRS_W,
   fcIntervalPreview,
   fcBuildQueue,
+  fcBuildCustomQueue,
+  fcCustomIsPreview,
+  fcCountServedToday,
+  FC_FLAGS,
+  fcNormalizeFlag,
+  fcFlagDef,
   fcBuildMaterial,
   fcBuildMaterialDocs,
   fcClusterPairs,
@@ -621,6 +627,214 @@ describe('fcBuildQueue', () => {
     const ids = fcBuildQueue(cards, NOW).map((c: { id: number }) => c.id);
     expect(ids).not.toContain(5);
     expect(ids).not.toContain(8);
+  });
+});
+
+// ─── Card flags ──────────────────────────────────────────────────────────────
+
+describe('fcNormalizeFlag', () => {
+  it('accepts the four real flag values', () => {
+    for (const f of FC_FLAGS) expect(fcNormalizeFlag(f.value)).toBe(f.value);
+  });
+
+  it('treats anything else as unflagged rather than corrupting the column', () => {
+    for (const bad of [0, 5, -1, 99, null, undefined, '', 'red', NaN, 1.5]) {
+      expect(fcNormalizeFlag(bad)).toBe(0);
+    }
+  });
+
+  it('accepts a numeric string, since SQLite and dataset attrs hand back strings', () => {
+    expect(fcNormalizeFlag('3')).toBe(3);
+  });
+});
+
+describe('fcFlagDef', () => {
+  it('names each flag', () => {
+    expect(fcFlagDef(1).name).toBe('Red');
+    expect(fcFlagDef(4).name).toBe('Blue');
+  });
+
+  it('returns undefined for unflagged', () => {
+    expect(fcFlagDef(0)).toBeUndefined();
+    expect(fcFlagDef(9)).toBeUndefined();
+  });
+});
+
+describe('fcBuildQueue — flag bias', () => {
+  it('sorts flagged reviews ahead of more-overdue unflagged ones', () => {
+    const cards = [
+      { id: 1, state: 'review', dueAt: NOW - 9 * DAY, suspended: false, flag: 0 },
+      { id: 2, state: 'review', dueAt: NOW - DAY, suspended: false, flag: 2 },
+      { id: 3, state: 'review', dueAt: NOW - 5 * DAY, suspended: false, flag: 0 },
+    ];
+    expect(fcBuildQueue(cards, NOW).map((c: { id: number }) => c.id)).toEqual([2, 1, 3]);
+  });
+
+  it('introduces flagged new cards first, whatever their age', () => {
+    const cards = [
+      { id: 1, state: 'new', dueAt: 0, createdAt: 10, suspended: false, flag: 0 },
+      { id: 2, state: 'new', dueAt: 0, createdAt: 900, suspended: false, flag: 1 },
+      { id: 3, state: 'new', dueAt: 0, createdAt: 20, suspended: false, flag: 0 },
+    ];
+    expect(fcBuildQueue(cards, NOW).map((c: { id: number }) => c.id)).toEqual([2, 1, 3]);
+  });
+
+  it('lets flagged cards survive the cap — the point of flagging them', () => {
+    const cards = [
+      { id: 1, state: 'review', dueAt: NOW - 9 * DAY, suspended: false, flag: 0 },
+      { id: 2, state: 'review', dueAt: NOW - 8 * DAY, suspended: false, flag: 0 },
+      { id: 3, state: 'review', dueAt: NOW - MIN, suspended: false, flag: 3 },
+    ];
+    expect(fcBuildQueue(cards, NOW, { reviewLimit: 1 }).map((c: { id: number }) => c.id)).toEqual([3]);
+  });
+
+  it('leaves the learning band strictly time-ordered', () => {
+    // Learning steps are minute-scale; reordering them would break the
+    // "Again 1m means one minute" contract.
+    const cards = [
+      { id: 1, state: 'learning', dueAt: NOW - 5 * MIN, suspended: false, flag: 0 },
+      { id: 2, state: 'learning', dueAt: NOW - MIN, suspended: false, flag: 1 },
+    ];
+    expect(fcBuildQueue(cards, NOW).map((c: { id: number }) => c.id)).toEqual([1, 2]);
+  });
+
+  it('is a no-op when nothing is flagged', () => {
+    const cards = [
+      { id: 1, state: 'review', dueAt: NOW - 2 * DAY, suspended: false },
+      { id: 2, state: 'review', dueAt: NOW - DAY, suspended: false },
+    ];
+    expect(fcBuildQueue(cards, NOW).map((c: { id: number }) => c.id)).toEqual([1, 2]);
+  });
+});
+
+// ─── Custom study (work ahead) ───────────────────────────────────────────────
+
+describe('fcBuildCustomQueue', () => {
+  // 5 new cards, so the 20-card daily batch is not the whole story.
+  const cards = [
+    { id: 1, state: 'new', dueAt: 0, createdAt: 300, suspended: false, tags: 'mack' },
+    { id: 2, state: 'new', dueAt: 0, createdAt: 100, suspended: false, tags: 'mack,reserving' },
+    { id: 3, state: 'new', dueAt: 0, createdAt: 200, suspended: false, tags: '' },
+    { id: 4, state: 'review', dueAt: NOW - DAY, suspended: false, lapses: 3, difficulty: 7, tags: 'mack' },
+    { id: 5, state: 'review', dueAt: NOW + 2 * DAY, suspended: false, lapses: 0, tags: 'reserving' },
+    { id: 6, state: 'review', dueAt: NOW + 9 * DAY, suspended: false, lapses: 9, difficulty: 9, tags: '' },
+    { id: 7, state: 'learning', dueAt: NOW + 5 * MIN, suspended: false, lapses: 1, difficulty: 4, tags: 'mack' },
+    { id: 8, state: 'review', dueAt: NOW - DAY, suspended: true, lapses: 20, tags: 'mack' },
+  ];
+  const ids = (q: { id: number }[]) => q.map((c) => c.id);
+
+  it('extra: hands out NEW cards, oldest first — the batch you were denied', () => {
+    expect(ids(fcBuildCustomQueue(cards, NOW, { mode: 'extra', count: 2 }))).toEqual([2, 3]);
+  });
+
+  it('ahead: pulls forward reviews inside the horizon, soonest first', () => {
+    // 3 days ahead reaches the overdue 4, the learning 7, and 5 (+2d) — not 6 (+9d).
+    expect(ids(fcBuildCustomQueue(cards, NOW, { mode: 'ahead', aheadDays: 3 }))).toEqual([4, 7, 5]);
+  });
+
+  it('ahead: a wider horizon reaches further, and never picks up new cards', () => {
+    const q = ids(fcBuildCustomQueue(cards, NOW, { mode: 'ahead', aheadDays: 30 }));
+    expect(q).toEqual([4, 7, 5, 6]);
+    expect(q).not.toContain(1);
+  });
+
+  it('hard: ranks by lapses, ignoring the schedule', () => {
+    expect(ids(fcBuildCustomQueue(cards, NOW, { mode: 'hard' }))).toEqual([6, 4, 7]);
+  });
+
+  it('cram: takes anything in scope, most overdue first', () => {
+    expect(ids(fcBuildCustomQueue(cards, NOW, { mode: 'cram', count: 3 }))).toEqual([1, 2, 3]);
+  });
+
+  it('tags scope every mode, and ALL listed tags must match', () => {
+    expect(ids(fcBuildCustomQueue(cards, NOW, { mode: 'extra', tags: ['mack'] }))).toEqual([2, 1]);
+    expect(ids(fcBuildCustomQueue(cards, NOW, { mode: 'extra', tags: ['mack', 'reserving'] }))).toEqual([2]);
+    expect(fcBuildCustomQueue(cards, NOW, { mode: 'extra', tags: ['nope'] })).toEqual([]);
+  });
+
+  it('matches tags case-insensitively', () => {
+    expect(ids(fcBuildCustomQueue(cards, NOW, { mode: 'extra', tags: ['MACK'] }))).toEqual([2, 1]);
+  });
+
+  it('omitting count means unlimited — this is how the dialog counts availability', () => {
+    expect(fcBuildCustomQueue(cards, NOW, { mode: 'cram' })).toHaveLength(7); // all but the suspended
+  });
+
+  it('never surfaces suspended cards, in any mode', () => {
+    for (const mode of ['extra', 'ahead', 'hard', 'cram']) {
+      const q = ids(fcBuildCustomQueue(cards, NOW, { mode, aheadDays: 365 }));
+      expect(q).not.toContain(8);
+    }
+  });
+
+  it('falls back to extra on an unknown mode rather than serving nothing', () => {
+    expect(ids(fcBuildCustomQueue(cards, NOW, { mode: 'bogus', count: 1 }))).toEqual([2]);
+  });
+
+  it('scopes by flag as ANY-of, since flags are alternatives not attributes', () => {
+    const flagged = [
+      { id: 1, state: 'new', dueAt: 0, createdAt: 10, suspended: false, flag: 1 },
+      { id: 2, state: 'new', dueAt: 0, createdAt: 20, suspended: false, flag: 3 },
+      { id: 3, state: 'new', dueAt: 0, createdAt: 30, suspended: false, flag: 0 },
+    ];
+    expect(ids(fcBuildCustomQueue(flagged, NOW, { mode: 'extra', flags: [1] }))).toEqual([1]);
+    expect(ids(fcBuildCustomQueue(flagged, NOW, { mode: 'extra', flags: [1, 3] }))).toEqual([1, 2]);
+  });
+
+  it('ignores an empty or bogus flag scope instead of matching nothing', () => {
+    const flagged = [{ id: 1, state: 'new', dueAt: 0, createdAt: 10, suspended: false, flag: 1 }];
+    expect(ids(fcBuildCustomQueue(flagged, NOW, { mode: 'extra', flags: [] }))).toEqual([1]);
+    expect(ids(fcBuildCustomQueue(flagged, NOW, { mode: 'extra', flags: [0, 99] }))).toEqual([1]);
+  });
+
+  it('combines a flag scope with a tag scope', () => {
+    const both = [
+      { id: 1, state: 'new', dueAt: 0, createdAt: 10, suspended: false, flag: 1, tags: 'mack' },
+      { id: 2, state: 'new', dueAt: 0, createdAt: 20, suspended: false, flag: 1, tags: 'bf' },
+      { id: 3, state: 'new', dueAt: 0, createdAt: 30, suspended: false, flag: 2, tags: 'mack' },
+    ];
+    expect(ids(fcBuildCustomQueue(both, NOW, { mode: 'extra', flags: [1], tags: ['mack'] }))).toEqual([1]);
+  });
+
+  it('does NOT flag-bias custom queues — the scope is explicit here', () => {
+    const mixed = [
+      { id: 1, state: 'new', dueAt: 0, createdAt: 10, suspended: false, flag: 0 },
+      { id: 2, state: 'new', dueAt: 0, createdAt: 20, suspended: false, flag: 1 },
+    ];
+    expect(ids(fcBuildCustomQueue(mixed, NOW, { mode: 'extra' }))).toEqual([1, 2]);
+  });
+});
+
+describe('fcCustomIsPreview', () => {
+  it('marks cram and difficult-card passes as non-scheduling', () => {
+    expect(fcCustomIsPreview('cram')).toBe(true);
+    expect(fcCustomIsPreview('hard')).toBe(true);
+  });
+
+  it('lets extra-new and review-ahead reschedule normally', () => {
+    expect(fcCustomIsPreview('extra')).toBe(false);
+    expect(fcCustomIsPreview('ahead')).toBe(false);
+  });
+});
+
+describe('fcCountServedToday', () => {
+  const limits = { newLimit: 20, reviewLimit: 200 };
+
+  it('reports what the session will serve, not the uncapped total', () => {
+    // The bug: 100 new cards advertised "Study 103 cards" and served 23.
+    expect(fcCountServedToday({ newCount: 100, learnCount: 3, reviewCount: 0 }, limits)).toBe(23);
+  });
+
+  it('leaves learning cards uncapped — they are already mid-flight', () => {
+    expect(fcCountServedToday({ newCount: 0, learnCount: 40, reviewCount: 0 }, limits)).toBe(40);
+  });
+
+  it('caps reviews independently of new cards', () => {
+    expect(fcCountServedToday({ newCount: 5, learnCount: 0, reviewCount: 900 }, limits)).toBe(205);
+  });
+
+  it('is the plain total when nothing exceeds a limit', () => {
+    expect(fcCountServedToday({ newCount: 4, learnCount: 2, reviewCount: 6 }, limits)).toBe(12);
   });
 });
 

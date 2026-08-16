@@ -387,10 +387,55 @@ function fcIntervalPreview(card, rating, now, opts = {}) {
 }
 
 /**
+ * User-set card flags. 0 = unflagged; 1..4 map to the four hue tokens the
+ * theme already ships, so flags follow the app theme in light and dark and
+ * add no palette of their own. Meanings are the user's to assign — the tool
+ * deliberately ships none.
+ *
+ * Named "flag", never "rating": fc_reviews.rating is the 1-4 grade pressed
+ * on every card, and one word for both would make this code ambiguous.
+ */
+const FC_FLAGS = [
+  { value: 1, name: 'Red', cls: 'red' },
+  { value: 2, name: 'Amber', cls: 'amber' },
+  { value: 3, name: 'Green', cls: 'green' },
+  { value: 4, name: 'Blue', cls: 'blue' },
+];
+
+/** Normalize anything into a valid flag value (0 when it is not one).
+ *  Rejects rather than floors: a fractional flag means something upstream is
+ *  wrong, and silently reading 1.5 as Red would hide it. Numeric strings do
+ *  pass — SQLite and dataset attributes hand those back routinely. */
+function fcNormalizeFlag(value) {
+  const n = Number(value);
+  return Number.isInteger(n) && FC_FLAGS.some((f) => f.value === n) ? n : 0;
+}
+
+/** Flag definition for a value, or undefined when unflagged/unknown. */
+function fcFlagDef(value) {
+  return FC_FLAGS.find((f) => f.value === fcNormalizeFlag(value));
+}
+
+/** Flagged cards sort ahead of unflagged ones; ties fall through to `then`.
+ *  Ordering ONLY — flags never touch FSRS intervals or the deadline cap. */
+function fcFlagFirst(then) {
+  return (a, b) => {
+    const fa = a.flag ? 0 : 1;
+    const fb = b.flag ? 0 : 1;
+    return fa !== fb ? fa - fb : then(a, b);
+  };
+}
+
+/**
  * Build a study queue. Pure: cards in, ordered queue out.
  * Order: due learning/relearning (soonest first) → due reviews (most overdue
  * first, capped by reviewLimit) → new cards (oldest first, capped by
  * newLimit). Suspended cards never appear.
+ *
+ * Flagged cards sort to the FRONT of the review and new bands, so they also
+ * survive the caps — that is the point of flagging something. The learning
+ * band is left strictly time-ordered: its steps are minute-scale, and
+ * reordering them would break the "Again 1m means one minute" contract.
  */
 function fcBuildQueue(cards, now, { newLimit = 20, reviewLimit = 200 } = {}) {
   const active = cards.filter((c) => !c.suspended);
@@ -399,13 +444,105 @@ function fcBuildQueue(cards, now, { newLimit = 20, reviewLimit = 200 } = {}) {
     .sort((a, b) => a.dueAt - b.dueAt);
   const review = active
     .filter((c) => c.state === 'review' && c.dueAt <= now)
-    .sort((a, b) => a.dueAt - b.dueAt)
+    .sort(fcFlagFirst((a, b) => a.dueAt - b.dueAt))
     .slice(0, Math.max(0, reviewLimit));
   const fresh = active
     .filter((c) => c.state === 'new')
-    .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
+    .sort(fcFlagFirst((a, b) => (a.createdAt || 0) - (b.createdAt || 0)))
     .slice(0, Math.max(0, newLimit));
   return [...learning, ...review, ...fresh];
+}
+
+/**
+ * How many cards the NEXT daily session will actually serve. The raw counts
+ * are uncapped totals, so a 100-card import made the sidebar promise "Study
+ * 103 cards" and then hand over 23 — the caps live in fcBuildQueue, and
+ * nothing reconciled the two. Custom Study is how you reach the rest.
+ */
+function fcCountServedToday(counts, limits = {}) {
+  const newLimit = Math.max(0, Number(limits.newLimit) || 0);
+  const reviewLimit = Math.max(0, Number(limits.reviewLimit) || 0);
+  return Math.min(counts.newCount || 0, newLimit)
+    + (counts.learnCount || 0)
+    + Math.min(counts.reviewCount || 0, reviewLimit);
+}
+
+/** Custom-study modes, in the order the dialog lists them. */
+const FC_CUSTOM_MODES = ['extra', 'ahead', 'hard', 'cram'];
+
+/**
+ * True for modes that must NOT write scheduling. Re-reading a card during a
+ * cram pass is not evidence you would have recalled it days from now, so
+ * letting those grades reach FSRS would corrupt its picture of your memory
+ * (and, via the deadline cap, your whole exam plan). Preview sessions grade
+ * for flow only — Again requeues inside the session and nothing persists.
+ */
+function fcCustomIsPreview(mode) {
+  return mode === 'hard' || mode === 'cram';
+}
+
+/**
+ * Build a custom-study queue — the deliberate "work ahead" path, kept
+ * separate from fcBuildQueue so neither can distort the other.
+ *
+ *   extra — introduce N more NEW cards now. The daily queue's newLimit is a
+ *           per-SESSION batch size, so a 100-card import needs an explicit
+ *           way to burn down the rest instead of looking untouched.
+ *   ahead — pull forward reviews falling due within `aheadDays` (includes
+ *           what is already due, so this works as a standalone entry point).
+ *   hard  — the cards you lapse most, regardless of schedule.
+ *   cram  — any N cards in scope, most-overdue first, regardless of schedule.
+ *
+ * `tags` scopes every mode: ALL listed tags must be present, matching the
+ * browse tag bar so one mental model covers both. `flags` also scopes every
+ * mode, but as ANY-of — flags are alternatives you pick between, not
+ * attributes that stack. Omitting `count` means unlimited, which is how the
+ * dialog counts what is available.
+ *
+ * Unlike the daily queue, custom queues are NOT flag-biased: here you can
+ * scope to flags outright, so an implicit reordering on top would only make
+ * "Difficult Cards" lie about being ranked by lapses.
+ *
+ * Pure: cards in, ordered queue out. Suspended cards never appear.
+ */
+function fcBuildCustomQueue(cards, now, opts = {}) {
+  const mode = FC_CUSTOM_MODES.includes(opts.mode) ? opts.mode : 'extra';
+  const rawCount = Number(opts.count);
+  const limit = Number.isFinite(rawCount) && rawCount >= 0 ? Math.floor(rawCount) : Number.MAX_SAFE_INTEGER;
+  const aheadDays = Math.max(0, Math.floor(Number(opts.aheadDays) || 0));
+  const wanted = (Array.isArray(opts.tags) ? opts.tags : [])
+    .map((t) => String(t).trim().toLowerCase()).filter(Boolean);
+  const wantedFlags = new Set((Array.isArray(opts.flags) ? opts.flags : [])
+    .map(fcNormalizeFlag).filter(Boolean));
+
+  const inScope = cards.filter((c) => {
+    if (c.suspended) return false;
+    if (wantedFlags.size > 0 && !wantedFlags.has(fcNormalizeFlag(c.flag))) return false;
+    if (wanted.length === 0) return true;
+    const have = new Set(fcParseTags(c.tags).map((t) => t.toLowerCase()));
+    return wanted.every((t) => have.has(t));
+  });
+
+  let picked;
+  if (mode === 'extra') {
+    picked = inScope
+      .filter((c) => c.state === 'new')
+      .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  } else if (mode === 'ahead') {
+    const horizon = now + aheadDays * DAY;
+    picked = inScope
+      .filter((c) => c.state !== 'new' && c.dueAt <= horizon)
+      .sort((a, b) => a.dueAt - b.dueAt);
+  } else if (mode === 'hard') {
+    picked = inScope
+      .filter((c) => (c.lapses || 0) > 0)
+      .sort((a, b) => (b.lapses || 0) - (a.lapses || 0)
+        || (b.difficulty || 0) - (a.difficulty || 0)
+        || a.dueAt - b.dueAt);
+  } else {
+    picked = inScope.slice().sort((a, b) => a.dueAt - b.dueAt);
+  }
+  return picked.slice(0, limit);
 }
 
 /**
@@ -753,6 +890,7 @@ async function fcOpenSource(card) {
 function fcDeckMenuItems(deck) {
   return [
     { label: 'Study Deck', icon: 'play', onSelect: () => void openFlashcards({ view: 'study', deckId: deck.id }) },
+    { label: 'Custom Study…', icon: 'play', onSelect: () => void openFlashcards({ view: 'custom', deckId: deck.id }) },
     { label: 'Browse Cards', icon: 'layers', onSelect: () => void openFlashcards({ view: 'browse', deckId: deck.id }) },
     { label: 'Add Cards with AI', icon: 'px-ai-mark', onSelect: () => void openFlashcards({ view: 'create', deckId: deck.id }) },
     { label: 'Find Duplicates', icon: 'px-ai-mark', onSelect: () => void openFlashcards({ view: 'dedup', deckId: deck.id }) },
@@ -808,6 +946,7 @@ function rowToCard(row) {
     sourceLabel: row.source_label,
     createdAt: row.created_at,
     suspended: !!row.suspended,
+    flag: row.flag || 0,
     state: row.state,
     ease: row.ease,
     intervalDays: row.interval_days,
@@ -1017,9 +1156,13 @@ async function fcCreateCardsBulk(deckId, cards, { sourceUri = '', sourceLabel = 
     c.noteGroup || '',
     Number.isInteger(c.clozeIndex) && c.clozeIndex > 0 ? c.clozeIndex : 0,
     now,
+    // Generation and import leave this undefined → 0. Copies pass it through:
+    // a flag is user-set organisation like tags, not scheduling state, so
+    // dropping it while keeping the tags would be arbitrary.
+    fcNormalizeFlag(c.flag),
   ];
-  const COLS = '(deck_id, front, back, notes, tags, source_uri, source_label, source_page, card_type, note_group, cloze_index, created_at)';
-  const ROW_PH = '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+  const COLS = '(deck_id, front, back, notes, tags, source_uri, source_label, source_page, card_type, note_group, cloze_index, created_at, flag)';
+  const ROW_PH = '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
 
   const statements = [];
   for (let i = 0; i < cards.length; i += CHUNK) {
@@ -1655,6 +1798,7 @@ async function fcUpdateCard(id, patch) {
     if (patch[k] !== undefined) { sets.push(`${col} = ?`); params.push(patch[k]); }
   }
   if (patch.suspended !== undefined) { sets.push('suspended = ?'); params.push(patch.suspended ? 1 : 0); }
+  if (patch.flag !== undefined) { sets.push('flag = ?'); params.push(fcNormalizeFlag(patch.flag)); }
   if (sets.length === 0) return;
   // M98: text edits on a cloze sibling rewrite the whole group (the text IS
   // the note) — grab identity before the UPDATE.
@@ -1734,7 +1878,7 @@ async function fcCopyCards(ids, targetDeckId) {
       noteGroup = groupMap.get(c.noteGroup);
     }
     return {
-      front: c.front, back: c.back, notes: c.notes, tags: c.tags,
+      front: c.front, back: c.back, notes: c.notes, tags: c.tags, flag: c.flag,
       sourceUri: c.sourceUri, sourceLabel: c.sourceLabel, sourcePage: c.sourcePage,
       cardType: c.cardType, noteGroup, clozeIndex: c.clozeIndex,
     };
@@ -1761,6 +1905,17 @@ async function fcBulkTag(ids, tag, remove = false) {
   }
   if (changed > 0) _emitDataChanged();
   return changed;
+}
+
+/** Set (or clear, with flag 0) the flag on many cards at once. One statement:
+ *  unlike tags there is nothing per-row to merge. Returns rows written. */
+async function fcBulkFlag(ids, flag) {
+  if (ids.length === 0) return 0;
+  const value = fcNormalizeFlag(flag);
+  const ph = ids.map(() => '?').join(',');
+  await db.run(`UPDATE fc_cards SET flag = ? WHERE id IN (${ph})`, [value, ...ids]);
+  _emitDataChanged();
+  return ids.length;
 }
 
 /** Quick-pick a destination deck (or create one). Returns a deck id or null. */
@@ -2482,8 +2637,30 @@ async function fcLeechRewriteFlow(card) {
  * attachment, then submit a focused prompt. chat.show (idempotent reveal),
  * NEVER chat.focus — that one is a blind toggle that can hide the panel.
  */
+/**
+ * Stage a grounded question about a card in the chat input — attachments
+ * ready, prompt written, NOT sent.
+ *
+ * Two problems with the old behaviour, both reported:
+ *
+ *   1. It fired immediately, so the only question you could ever ask was the
+ *      one hardcoded here. The card is the user's; the question should be too.
+ *   2. "Explain this flashcard" invited the model to paraphrase the card back,
+ *      because the card was the only material in front of it. Answers were
+ *      confidently derived from a two-line card rather than from the material
+ *      the card was made from.
+ *
+ * So: attach the real source when the card cites one, and write the prompt as
+ * an instruction to go find and cite the material — with an explicit licence
+ * to say "not found" instead of filling the gap from the card.
+ */
 async function fcExplainInChat(card, deckName) {
   await _api.commands.executeCommand('chat.show');
+
+  const sourceRef = card.sourceLabel
+    ? `${card.sourceLabel}${card.sourcePage ? ` p.${card.sourcePage}` : ''}`
+    : '';
+
   const attachment = {
     kind: 'selection',
     id: `flashcard-${card.id}-${Date.now()}`,
@@ -2495,14 +2672,48 @@ async function fcExplainInChat(card, deckName) {
       'FLASHCARD',
       `Front: ${card.front}`,
       `Back: ${card.back}`,
-      card.sourceLabel ? `Source: ${card.sourceLabel}${card.sourcePage ? ` p.${card.sourcePage}` : ''}` : '',
+      sourceRef ? `Source: ${sourceRef}` : '',
     ].filter(Boolean).join('\n'),
   };
   if (card.sourcePage > 0) attachment.pageNumber = card.sourcePage;
   await _api.commands.executeCommand('chat.addSelectionContext', attachment);
-  await _api.commands.executeCommand('chat.submitPrompt', {
-    text: 'Explain this flashcard: why the answer holds, the intuition behind it, and one concrete example. Keep it tight.',
+
+  // A cited FILE goes in as a real attachment so the model reads the document
+  // instead of the card's summary of it. Canvas pages carry a parallx:// URI
+  // that the file-attachment path cannot resolve — the prompt names those and
+  // lets the model open them with its own tools.
+  const uri = String(card.sourceUri || '');
+  const isFile = uri && !uri.startsWith('parallx://') && !uri.startsWith('flashcard://');
+  if (isFile) {
+    try {
+      await _api.commands.executeCommand('chat.addFileAttachment', {
+        name: card.sourceLabel || uri.split(/[\\/]/).pop() || 'Source',
+        fullPath: uri,
+      });
+    } catch { /* best effort — the prompt still names the source */ }
+  }
+
+  const where = sourceRef
+    ? `It came from ${sourceRef}${isFile ? ' (attached)' : ''} — start there.`
+    : 'The card records no source, so search the workspace for the material it came from.';
+
+  await _api.commands.executeCommand('chat.stagePrompt', {
+    text: [
+      `Ground this card in my own material before answering it: "${fcTruncate(card.front, 160)}"`,
+      '',
+      where,
+      'Read what the material actually says, then explain why the answer holds and where it comes from.',
+      'Cite the file and page behind each claim, and link back to the source so I can open it.',
+      'If you cannot find material that supports it, say so plainly instead of answering from the card alone.',
+      '',
+    ].join('\n'),
   });
+}
+
+/** Single-line, length-capped text for prompts and labels. */
+function fcTruncate(text, max) {
+  const flat = String(text || '').replace(/\s+/g, ' ').trim();
+  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -2824,7 +3035,18 @@ function injectStyles() {
 }
 .fc-today__study:hover { background: var(--px-accent-hover); }
 .fc-today__study:active { transform: var(--px-press); }
+.fc-today__study:disabled { opacity: 0.45; cursor: default; transform: none; }
 .fc-today__study svg { width: 13px; height: 13px; }
+/* The overflow line: what the daily batch is holding back, one click from
+   Custom Study. A quiet link, never a second primary button. */
+.fc-today__more {
+  display: block; width: 100%; margin-top: var(--px-space-2); padding: 0;
+  border: 0; background: transparent; color: var(--px-text-muted);
+  font: inherit; font-size: var(--px-text-xs); text-align: center; cursor: pointer;
+  transition: color var(--px-dur-fast) var(--px-ease);
+}
+.fc-today__more:hover { color: var(--px-accent); text-decoration: underline; }
+.fc-today__more:focus-visible { outline: none; box-shadow: var(--px-ring-accent); border-radius: var(--px-radius-sm); }
 .fc-today__done {
   padding: 2px 0 var(--px-space-1);
   font-size: var(--px-text-sm); line-height: var(--px-leading-base); color: var(--px-text-muted);
@@ -2910,6 +3132,10 @@ function injectStyles() {
    panes grow the gutters, like canvas, so lines stay readable. */
 .fc-view, .fc-study {
   --fc-gutter: clamp(28px, 4vw, 72px);
+  /* The study stage is wider than a lone card was (920px) because it now
+     carries a rail beside it; the card itself keeps its own max-width. */
+  --fc-stage-w: 1240px;
+  --fc-rail-w: 268px;
 }
 .fc-view { max-width: none; margin: 0; padding: var(--px-space-6) var(--fc-gutter) var(--px-space-8); }
 @media (min-width: 1441px) {
@@ -3023,6 +3249,18 @@ function injectStyles() {
   font-size: var(--px-text-xs); font-weight: 600; color: var(--px-text-faint);
   font-variant-numeric: tabular-nums;
 }
+/* The flag reads as a dot under the number, inside the fixed-width rail, so
+   it forms a scannable column down a long list. It lives HERE rather than as
+   a left edge stripe because selection already owns the row's inset
+   box-shadow, and the two would overwrite each other. */
+.fc-cardrow__rail::after {
+  content: ''; width: 7px; height: 7px; margin-top: 5px; border-radius: 50%;
+  background: transparent;
+}
+.fc-cardrow--flag-red    .fc-cardrow__rail::after { background: rgb(var(--px-red-rgb)); }
+.fc-cardrow--flag-amber  .fc-cardrow__rail::after { background: rgb(var(--px-yellow-rgb)); }
+.fc-cardrow--flag-green  .fc-cardrow__rail::after { background: rgb(var(--px-green-rgb)); }
+.fc-cardrow--flag-blue   .fc-cardrow__rail::after { background: rgb(var(--px-blue-rgb)); }
 .fc-cardrow__content { flex: 1; min-width: 0; }
 
 /* Compact view: questions only, one line each; click a question to expand
@@ -3073,14 +3311,37 @@ function injectStyles() {
 .fc-state--review { background: rgba(var(--px-green-rgb), 0.15); color: var(--px-success); }
 
 /* ── Study — the hero. A crisp card floating on the recessed desk. ── */
-.fc-study { display: flex; height: 100%; }
+/* Sized against the PANE, not the viewport — this surface can be a narrow
+   split, where a viewport media query would report the wrong width. */
+.fc-study { display: flex; height: 100%; container-type: inline-size; }
 .fc-study__main { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; padding: var(--px-space-8) var(--fc-gutter); overflow-y: auto; outline: none; background: var(--px-window); }
-.fc-study__toolbar { width: 100%; max-width: min(100%, 920px); display: flex; align-items: center; gap: var(--px-space-3); margin-bottom: var(--px-space-6); }
+.fc-study__toolbar { width: 100%; max-width: min(100%, var(--fc-stage-w)); display: flex; align-items: center; gap: var(--px-space-3); margin-bottom: var(--px-space-6); }
+
+/* ── Stage: the cards column + the reference rail ──
+   The rail carries what you REFER to (notes, key legend); the column carries
+   what you ACT on (cards, grades). Stacking all of it made the eye walk the
+   whole page and pushed the grade buttons under the fold on short panes. */
+.fc-study__stage {
+  width: 100%; max-width: min(100%, var(--fc-stage-w));
+  display: flex; flex-wrap: wrap; align-items: flex-start;
+  gap: var(--px-space-5);
+}
+.fc-study__col { flex: 1 1 420px; min-width: 0; display: flex; flex-direction: column; align-items: center; }
+.fc-study__rail { flex: 0 1 var(--fc-rail-w); min-width: 0; display: flex; flex-direction: column; gap: var(--px-space-5); }
+/* Narrow pane: the rail drops below the cards at full width rather than
+   squeezing the card into a column too thin to read. */
+@container (max-width: 860px) {
+  .fc-study__rail { flex-basis: 100%; }
+}
 .fc-study__progress { flex: 1; height: 2px; border-radius: var(--px-radius-full); background: var(--px-divider); overflow: hidden; }
 .fc-study__progress-fill { height: 100%; border-radius: var(--px-radius-full); background: var(--px-accent); transition: width var(--px-dur-base) var(--px-ease); }
 .fc-study__cardactions { display: flex; gap: var(--px-space-1); flex: 0 0 auto; }
 .fc-btn--ghost { background: transparent; border-color: transparent; color: var(--px-text-muted); }
 .fc-btn--ghost:hover { color: var(--px-text); border-color: var(--px-border-strong); background: transparent; }
+/* Square icon button — the toolbar actions are glyphs, so the label lives in
+   aria-label/title rather than on screen. */
+.fc-btn--icon { width: 28px; padding: 0; justify-content: center; gap: 0; }
+.fc-btn--icon svg { width: 15px; height: 15px; }
 .fc-study__edit { width: 100%; max-width: min(100%, 920px); }
 
 /* The card is a REAL flashcard: white stock, black ink, square corners,
@@ -3098,6 +3359,21 @@ function injectStyles() {
 }
 .fc-card--q { min-height: 340px; animation: fc-card-in var(--px-dur-base) var(--px-ease-out); }
 .fc-card--a { min-height: 240px; margin-top: var(--px-space-3); animation: fc-reveal-in var(--px-dur-base) var(--px-ease-spring); }
+/* The AI mark sits in the answer card's head row, surfacing on hover — and on
+   focus-within, because a hover-only control does not exist for the keyboard.
+   Hidden with opacity rather than display so it holds its space and revealing
+   it never reflows the head. It rides the card's fixed WHITE stock, so it has
+   to read against white in both themes; px-ai-btn is alpha-over-surface
+   accent, which does. */
+.fc-card__ai {
+  display: inline-flex; flex: 0 0 auto;
+  opacity: 0; transition: opacity var(--px-dur-fast) var(--px-ease);
+}
+/* focus-within covers the keyboard: tabbing to the button lights the card,
+   which reveals the wrapper. A rule on the button itself could not work —
+   opacity on the parent cannot be undone by a child. */
+.fc-card--a:hover .fc-card__ai,
+.fc-card--a:focus-within .fc-card__ai { opacity: 1; }
 /* The face centers vertically like writing on an index card. */
 .fc-card__body { flex: 1; display: flex; flex-direction: column; justify-content: center; }
 @keyframes fc-card-in {
@@ -3169,14 +3445,97 @@ function injectStyles() {
 .fc-grade--good:hover  { background: rgba(var(--px-green-rgb), 0.15); color: var(--px-success); }
 .fc-grade--easy:hover  { background: rgba(var(--px-blue-rgb), 0.15); color: var(--px-info); }
 .fc-study__reveal { margin-top: var(--px-space-6); height: 32px; padding: 0 var(--px-space-6); }
-.fc-study__discuss { margin-top: var(--px-space-3); }
-.fc-study__keys { margin-top: var(--px-space-4); font-size: var(--px-text-xs); color: var(--px-text-faint); }
-.fc-study__notes { width: 100%; max-width: min(100%, 920px); margin-top: var(--px-space-3); text-align: left; }
+/* Rail contents — quiet, left-aligned, full-width within the rail. */
+.fc-study__keys {
+  font-size: var(--px-text-xs); color: var(--px-text-faint);
+  line-height: var(--px-leading-base); text-align: left;
+}
+.fc-study__notes { width: 100%; text-align: left; }
 .fc-study__notes-label { font-size: var(--px-text-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--px-text-faint); margin-bottom: 4px; }
-.fc-study__notes-input { width: 100%; box-sizing: border-box; min-height: 40px; resize: vertical; }
+.fc-study__notes-input { width: 100%; box-sizing: border-box; min-height: 132px; resize: vertical; }
 .fc-cardrow__notes { font-size: var(--px-text-xs); color: var(--px-text-muted); font-style: italic; margin-top: 2px; }
 .fc-study__done { text-align: center; padding: var(--px-space-8) var(--px-space-5); }
 .fc-study__done .fc-btn { margin-top: var(--px-space-4); }
+/* Adjacent inline-flex buttons carry no whitespace node between them. */
+.fc-study__done .fc-btn + .fc-btn { margin-left: var(--px-space-2); }
+.fc-study__more { margin-top: var(--px-space-2); }
+
+/* ── Card flags — four swatches, one control, everywhere they appear.
+   The hues are the theme's four existing signal tokens, so flags inherit
+   light/dark automatically and introduce no palette of their own. ── */
+.fc-flags { display: inline-flex; align-items: center; gap: 5px; }
+.fc-flag {
+  flex: 0 0 auto; width: 15px; height: 15px; padding: 0;
+  border: 1.5px solid var(--px-border-strong); border-radius: 50%;
+  background: transparent; cursor: pointer; opacity: 0.5;
+  transition: opacity var(--px-dur-fast) var(--px-ease), background var(--px-dur-fast) var(--px-ease), transform var(--px-dur-instant) var(--px-ease);
+}
+.fc-flags--compact { gap: 4px; }
+.fc-flags--compact .fc-flag { width: 12px; height: 12px; }
+.fc-flag:hover { opacity: 1; }
+.fc-flag:active { transform: var(--px-press); }
+.fc-flag:focus-visible { outline: none; box-shadow: var(--px-ring-accent); }
+.fc-flag--on { opacity: 1; }
+.fc-flag--red   { border-color: rgb(var(--px-red-rgb)); }
+.fc-flag--amber { border-color: rgb(var(--px-yellow-rgb)); }
+.fc-flag--green { border-color: rgb(var(--px-green-rgb)); }
+.fc-flag--blue  { border-color: rgb(var(--px-blue-rgb)); }
+.fc-flag--red.fc-flag--on   { background: rgb(var(--px-red-rgb)); }
+.fc-flag--amber.fc-flag--on { background: rgb(var(--px-yellow-rgb)); }
+.fc-flag--green.fc-flag--on { background: rgb(var(--px-green-rgb)); }
+.fc-flag--blue.fc-flag--on  { background: rgb(var(--px-blue-rgb)); }
+
+/* Flag filter chips (browse + custom study) reuse the tag-chip mechanics;
+   only the leading dot carries the hue, so an active chip still reads with
+   the accent wash every other filter uses. */
+.fc-flagbar { margin-bottom: var(--px-space-1); }
+.fc-flagchip { display: inline-flex; align-items: center; }
+.fc-flag-dot { width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; flex: 0 0 auto; }
+.fc-flag-dot--red   { background: rgb(var(--px-red-rgb)); }
+.fc-flag-dot--amber { background: rgb(var(--px-yellow-rgb)); }
+.fc-flag-dot--green { background: rgb(var(--px-green-rgb)); }
+.fc-flag-dot--blue  { background: rgb(var(--px-blue-rgb)); }
+.fc-bulkbar__sep { width: 1px; height: 18px; background: var(--px-divider); margin: 0 var(--px-space-1); }
+/* The study toolbar's flag control sits with Undo/Edit/Delete. */
+.fc-study__cardactions .fc-flags { margin-right: var(--px-space-2); }
+
+/* ── Custom Study — the work-ahead path. The mode list is the page's one
+   piece of structure; everything else is the same quiet form as Create. ── */
+.fc-study__mode {
+  display: flex; align-items: baseline; gap: var(--px-space-2);
+  width: 100%; max-width: min(100%, 920px); margin: 0 auto var(--px-space-2);
+  padding-bottom: var(--px-space-2); border-bottom: 1px solid var(--px-divider);
+  text-align: left;
+}
+.fc-study__mode-name { font-size: var(--px-text-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--px-accent); }
+.fc-study__mode-meta { font-size: var(--px-text-xs); color: var(--px-text-faint); }
+.fc-cs { max-width: 640px; }
+.fc-cs__modes { display: flex; flex-direction: column; gap: var(--px-space-1); }
+.fc-cs__mode {
+  display: flex; align-items: flex-start; gap: var(--px-space-3);
+  padding: var(--px-space-3); text-align: left;
+  border: 1px solid var(--px-border); border-radius: var(--px-radius-md);
+  background: transparent; color: inherit; font: inherit; cursor: pointer;
+  transition: background var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease);
+}
+.fc-cs__mode:hover { background: var(--px-surface-hover); border-color: var(--px-border-strong); }
+.fc-cs__mode:focus-visible { outline: none; box-shadow: var(--px-ring-accent); }
+.fc-cs__mode--active { border-color: var(--px-accent); background: var(--px-accent-soft); }
+.fc-cs__mode-dot {
+  flex: 0 0 auto; width: 12px; height: 12px; margin-top: 3px;
+  border: 1px solid var(--px-border-strong); border-radius: 50%;
+  transition: border-color var(--px-dur-fast) var(--px-ease), box-shadow var(--px-dur-fast) var(--px-ease);
+}
+.fc-cs__mode--active .fc-cs__mode-dot { border-color: var(--px-accent); box-shadow: inset 0 0 0 3px var(--px-accent); }
+.fc-cs__mode-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.fc-cs__mode-name { font-size: var(--px-text-base); font-weight: 600; color: var(--px-text); }
+.fc-cs__mode-blurb { font-size: var(--px-text-sm); color: var(--px-text-muted); line-height: var(--px-leading-base); }
+.fc-cs__fields { display: flex; gap: var(--px-space-4); align-items: flex-end; }
+.fc-cs__field { flex: 0 1 180px; }
+.fc-cs__field .fc-label { margin-top: var(--px-space-3); }
+.fc-cs__avail { margin-top: var(--px-space-4); font-size: var(--px-text-sm); color: var(--px-text-secondary); font-variant-numeric: tabular-nums; }
+.fc-cs__avail--empty { color: var(--px-text-faint); }
+.fc-cs__actions { margin-top: var(--px-space-3); }
 
 /* ── Stats — typographic, not boxed. Big tabular numerals over faint eyebrows,
    separated by whitespace; one restrained review histogram on a baseline. ── */
@@ -3345,14 +3704,38 @@ function createSidebarView(container) {
       stats.appendChild(stat(today.learnCount, 'learn', 'Learning'));
       stats.appendChild(stat(today.reviewCount, 'due', 'Review'));
       panel.appendChild(stats);
+      // Promise what the session will actually hand over. The counts above
+      // are uncapped totals; fcBuildQueue's per-session caps are not, so a
+      // 100-card import used to advertise "Study 103 cards" and serve 23.
+      const served = fcCountServedToday(today, {
+        newLimit: Number(cfg('dailyNewLimit', 20)) || 20,
+        reviewLimit: Number(cfg('dailyReviewLimit', 200)) || 200,
+      });
       const studyBtn = el('button', 'fc-today__study');
       studyBtn.type = 'button';
-      studyBtn.innerHTML = `${icon('play', 13)}<span>Study ${today.dueTotal} ${today.dueTotal === 1 ? 'card' : 'cards'}</span>`;
+      studyBtn.innerHTML = `${icon('play', 13)}<span>Study ${served} ${served === 1 ? 'card' : 'cards'}</span>`;
+      studyBtn.disabled = served === 0; // a zeroed daily limit — Custom Study is the way through
       studyBtn.addEventListener('click', () => void openFlashcards({ view: 'study' }));
       panel.appendChild(studyBtn);
+      if (served < today.dueTotal) {
+        const overflow = el('button', 'fc-today__more');
+        overflow.type = 'button';
+        overflow.textContent = `${today.dueTotal - served} more behind the batch`;
+        overflow.title = 'Open Custom Study to work ahead of the daily batch.';
+        overflow.addEventListener('click', () => void openFlashcards({ view: 'custom' }));
+        panel.appendChild(overflow);
+      }
     } else {
       panel.appendChild(el('div', 'fc-today__done',
         decks.length === 0 ? 'No cards yet. Add a deck to begin.' : 'All caught up. Nothing due right now.'));
+      if (decks.length > 0) {
+        const aheadBtn = el('button', 'fc-today__more');
+        aheadBtn.type = 'button';
+        aheadBtn.textContent = 'Custom Study';
+        aheadBtn.title = 'Review ahead, add new cards, or cram.';
+        aheadBtn.addEventListener('click', () => void openFlashcards({ view: 'custom' }));
+        panel.appendChild(aheadBtn);
+      }
     }
     todayHost.appendChild(panel);
 
@@ -3523,8 +3906,11 @@ function createEditorPane(container, input) {
   }
 
   const syncTabs = () => {
+    // Custom Study is a launcher for Study, so it lights the Study tab.
     const deckScoped = ['browse', 'dedup', 'coverage'].includes(state.route.view);
-    const activeView = deckScoped ? 'decks' : state.route.view;
+    const activeView = deckScoped ? 'decks'
+      : state.route.view === 'custom' ? 'study'
+        : state.route.view;
     for (const t of tabs.children) {
       t.classList.toggle('fc-pane__tab--active', t.dataset.view === activeView);
     }
@@ -3550,6 +3936,7 @@ function createEditorPane(container, input) {
         const route = state.route;
         if (route.view === 'browse') await renderBrowse(body, route, setRoute);
         else if (route.view === 'study') await renderStudy(body, route, state, setRoute);
+        else if (route.view === 'custom') await renderCustomStudy(body, route, setRoute);
         else if (route.view === 'create') await renderCreate(body, route, setRoute, viewDisposables);
         else if (route.view === 'import') await renderImport(body, route, setRoute, viewDisposables);
         else if (route.view === 'stats') await renderStats(body);
@@ -3588,8 +3975,11 @@ function createEditorPane(container, input) {
     // Browse joined the exclusions (M99 review): its writes all re-render
     // locally via renderList, and a global re-render mid-inline-edit
     // destroyed unsaved editor text and collapsed the add-card form.
+    // Custom Study joins the exclusions: it is a form, and a background write
+    // re-rendering it would reset the mode, count, and tag selection mid-edit.
     if (state.disposed || state.route.view === 'study' || state.route.view === 'create'
       || state.route.view === 'import' || state.route.view === 'browse'
+      || state.route.view === 'custom'
       || state.route.view === 'dedup' || state.route.view === 'coverage') return;
     // A background write (chat tool, capture toast) refreshing Decks/Stats
     // must not scroll the user back to the top.
@@ -3651,6 +4041,11 @@ async function renderDecks(body, setRoute) {
     : el('button', 'fc-btn');
   if (!genBtn.parentElement) { genBtn.textContent = 'Generate Cards'; actions.appendChild(genBtn); }
   genBtn.addEventListener('click', () => setRoute({ view: 'create' }));
+  const customBtn = el('button', 'fc-btn');
+  customBtn.textContent = 'Custom Study';
+  customBtn.title = 'Work ahead: extra new cards, review ahead, difficult cards, or cram.';
+  customBtn.addEventListener('click', () => setRoute({ view: 'custom' }));
+  actions.appendChild(customBtn);
   view.appendChild(actions);
   view.appendChild(el('div', 'fc-label', 'Decks'));
 
@@ -3687,6 +4082,12 @@ async function renderDecks(body, setRoute) {
     studyBtn.disabled = deck.dueCount === 0 && deck.newCount === 0 && !_fcStudySessions.has(deck.id);
     studyBtn.addEventListener('click', () => setRoute({ view: 'study', deckId: deck.id }));
     btns.appendChild(studyBtn);
+    const deckCustomBtn = el('button', 'fc-btn');
+    deckCustomBtn.textContent = 'Custom';
+    deckCustomBtn.title = `Custom Study scoped to ${deck.name}`;
+    deckCustomBtn.disabled = deck.total === 0;
+    deckCustomBtn.addEventListener('click', () => setRoute({ view: 'custom', deckId: deck.id }));
+    btns.appendChild(deckCustomBtn);
     const renameBtn = el('button', 'fc-btn');
     renameBtn.textContent = 'Rename';
     renameBtn.addEventListener('click', () => {
@@ -3962,6 +4363,11 @@ async function renderBrowse(body, route, setRoute) {
   });
   view.appendChild(toolbar);
 
+  // Flag bar: sits above the tags because a flag is the coarser cut. ANY-of,
+  // unlike tags — flags are alternatives, not stacking attributes.
+  const flagBar = el('div', 'fc-tagbar fc-flagbar');
+  view.appendChild(flagBar);
+
   // Tag bar: every tag in the deck as a filter chip (click to narrow;
   // multiple active tags = ALL must match).
   const tagBar = el('div', 'fc-tagbar');
@@ -3978,6 +4384,7 @@ async function renderBrowse(body, route, setRoute) {
 
   const selectedIds = new Set();
   const activeTags = new Set();
+  const activeFlags = new Set();
   let groupByTag = _fcBrowseGroupTag;
   let compactView = _fcBrowseCompact;
   // List-selection state: rows in rendered order (Shift ranges walk it) and
@@ -4013,6 +4420,32 @@ async function renderBrowse(body, route, setRoute) {
       void _api.window.showInformationMessage(`Copied ${copied} ${copied === 1 ? 'card' : 'cards'} as fresh cards.`);
       void renderList();
     });
+    // Inline swatches, not a "Set Flag…" quick-pick: flagging a selection is
+    // a one-click action and a modal for four options would be theatre.
+    bulkBar.appendChild(el('span', 'fc-bulkbar__sep'));
+    const bulkFlags = fcCreateFlagPicker(bulkBar, {
+      compact: true,
+      onPick: (next) => {
+        if (!next) { bulkFlags.set(0); return; }
+        void (async () => {
+          const ids = [...selectedIds];
+          const n = await fcBulkFlag(ids, next);
+          void _api.window.showInformationMessage(
+            `Flagged ${n} ${n === 1 ? 'card' : 'cards'} ${fcFlagDef(next).name}.`);
+          // Here the swatches are an action palette, not a state readout —
+          // the selection can hold four different flags at once.
+          bulkFlags.set(0);
+          void renderList();
+        })();
+      },
+    });
+    bulkFlags.root.title = 'Flag every selected card';
+    mk('Clear Flag', async () => {
+      const n = await fcBulkFlag([...selectedIds], 0);
+      void _api.window.showInformationMessage(`Cleared the flag on ${n} ${n === 1 ? 'card' : 'cards'}.`);
+      void renderList();
+    });
+
     mk('Add Tag…', async () => {
       const tag = await _api.window.showInputBox({ prompt: `Add a tag to ${selectedIds.size} cards`, placeholder: 'e.g. mack' });
       if (!tag?.trim()) return;
@@ -4042,6 +4475,32 @@ async function renderBrowse(body, route, setRoute) {
     });
   };
 
+  const renderFlagBar = (cards) => {
+    flagBar.replaceChildren();
+    const counts = new Map();
+    for (const c of cards) {
+      const f = fcNormalizeFlag(c.flag);
+      if (f) counts.set(f, (counts.get(f) || 0) + 1);
+    }
+    // Drop filters for flags that no longer exist here, or the list goes
+    // blank with no visible cause.
+    for (const f of [...activeFlags]) if (!counts.has(f)) activeFlags.delete(f);
+    for (const f of FC_FLAGS) {
+      if (!counts.has(f.value)) continue;
+      const chip = el('button', `fc-chip fc-tagchip fc-flagchip fc-flagchip--${f.cls}`);
+      chip.type = 'button';
+      chip.appendChild(el('span', `fc-flag-dot fc-flag-dot--${f.cls}`));
+      chip.appendChild(el('span', '', `${f.name} ${counts.get(f.value)}`));
+      chip.classList.toggle('fc-tagchip--active', activeFlags.has(f.value));
+      chip.setAttribute('aria-pressed', activeFlags.has(f.value) ? 'true' : 'false');
+      chip.addEventListener('click', () => {
+        if (activeFlags.has(f.value)) activeFlags.delete(f.value); else activeFlags.add(f.value);
+        void renderList();
+      });
+      flagBar.appendChild(chip);
+    }
+  };
+
   const renderTagBar = (cards) => {
     tagBar.replaceChildren();
     const counts = new Map();
@@ -4065,9 +4524,13 @@ async function renderBrowse(body, route, setRoute) {
     const rawSearch = searchIn.value.trim();
     const tagSearch = rawSearch.startsWith('#') ? rawSearch.slice(1).toLowerCase() : null;
     let cards = await fcListCards(deckRow.id, tagSearch !== null ? '' : searchIn.value);
+    renderFlagBar(cards);
     renderTagBar(cards);
     if (tagSearch) {
       cards = cards.filter((c) => fcParseTags(c.tags).some((t) => t.toLowerCase().includes(tagSearch)));
+    }
+    if (activeFlags.size > 0) {
+      cards = cards.filter((c) => activeFlags.has(fcNormalizeFlag(c.flag)));
     }
     if (activeTags.size > 0) {
       cards = cards.filter((c) => {
@@ -4086,7 +4549,7 @@ async function renderBrowse(body, route, setRoute) {
     syncBulkBar();
     if (cards.length === 0) {
       listHost.appendChild(el('div', 'fc-empty',
-        rawSearch || activeTags.size ? 'No matches.' : 'No cards in this deck yet.'));
+        rawSearch || activeTags.size || activeFlags.size ? 'No matches.' : 'No cards in this deck yet.'));
       return;
     }
     listHost.classList.toggle('fc-cardlist--compact', compactView);
@@ -4122,6 +4585,15 @@ async function renderBrowse(body, route, setRoute) {
     const row = el('div', 'fc-cardrow');
     row.dataset.cardId = String(card.id);
     if (card.suspended) row.classList.add('fc-cardrow--suspended');
+
+    // The flag reads as a stripe down the rail, not another meta chip: it has
+    // to be scannable down a list of a hundred rows.
+    const applyFlagClass = (value) => {
+      for (const f of FC_FLAGS) row.classList.remove(`fc-cardrow--flag-${f.cls}`);
+      const def = fcFlagDef(value);
+      if (def) row.classList.add(`fc-cardrow--flag-${def.cls}`);
+    };
+    applyFlagClass(card.flag);
 
     // Left rail: the card number in a fixed-width column.
     const rail = el('div', 'fc-cardrow__rail');
@@ -4203,6 +4675,16 @@ async function renderBrowse(body, route, setRoute) {
     content.appendChild(meta);
 
     const btns = el('div', 'fc-cardrow__actions');
+    fcCreateFlagPicker(btns, {
+      value: card.flag,
+      compact: true,
+      onPick: (next) => {
+        card.flag = next;
+        applyFlagClass(next);
+        // No re-render: it would collapse the row and lose the selection.
+        void fcUpdateCard(card.id, { flag: next });
+      },
+    });
     const editBtn = el('button', 'fc-btn');
     editBtn.textContent = 'Edit';
     editBtn.addEventListener('click', () => {
@@ -4670,6 +5152,393 @@ async function renderCoverage(body, route, setRoute) {
   });
 }
 
+/**
+ * A ghost ICON button. With no text node the accessible name has to come from
+ * aria-label, and if the host's icon registry is unavailable `icon()` returns
+ * an empty string — which would render an invisible, unclickable control. Both
+ * are handled here so no call site has to remember them.
+ */
+function fcIconBtn(host, { iconName, label, title, danger, onClick }) {
+  const btn = el('button', `fc-btn fc-btn--ghost fc-btn--icon${danger ? ' fc-btn--danger' : ''}`);
+  btn.type = 'button';
+  const svg = icon(iconName, 15);
+  if (svg) btn.innerHTML = svg;
+  else btn.textContent = label; // registry missing — degrade to the word
+  btn.title = title || label;
+  btn.setAttribute('aria-label', label);
+  btn.addEventListener('click', onClick);
+  host.appendChild(btn);
+  return btn;
+}
+
+// ── Card flags ───────────────────────────────────────────────────────────────
+
+/**
+ * The one flag control: four swatches, click the active one to clear.
+ * Shared by the study toolbar and the browse rows so setting a flag looks and
+ * behaves the same wherever you do it.
+ *
+ * Returns { root, set, value } — `set` moves the control WITHOUT firing
+ * onPick, for callers that need to reflect an external change.
+ */
+function fcCreateFlagPicker(host, opts = {}) {
+  const root = el('div', 'fc-flags');
+  if (opts.compact) root.classList.add('fc-flags--compact');
+  root.setAttribute('role', 'radiogroup');
+  root.setAttribute('aria-label', 'Card flag');
+
+  let value = fcNormalizeFlag(opts.value);
+  const buttons = [];
+
+  const sync = () => {
+    for (const [f, btn] of buttons) {
+      const on = f.value === value;
+      btn.classList.toggle('fc-flag--on', on);
+      btn.setAttribute('aria-checked', on ? 'true' : 'false');
+    }
+  };
+
+  for (const f of FC_FLAGS) {
+    const btn = el('button', `fc-flag fc-flag--${f.cls}`);
+    btn.type = 'button';
+    btn.setAttribute('role', 'radio');
+    btn.setAttribute('aria-label', `${f.name} flag`);
+    btn.title = opts.shortcutHint
+      ? `${f.name} flag · Alt+${f.value} · click again to clear`
+      : `${f.name} flag · click again to clear`;
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation(); // browse rows are themselves clickable
+      // Clicking the active swatch clears — a flag you can set but not
+      // unset is a trap, and there is no room for a separate clear button.
+      const next = value === f.value ? 0 : f.value;
+      value = next;
+      sync();
+      opts.onPick?.(next);
+    });
+    root.appendChild(btn);
+    buttons.push([f, btn]);
+  }
+
+  sync();
+  host.appendChild(root);
+  return {
+    root,
+    set(next) { value = fcNormalizeFlag(next); sync(); },
+    get value() { return value; },
+  };
+}
+
+// ── Custom Study view ────────────────────────────────────────────────────────
+
+/** Copy for each mode. `unit` labels the count field; `noun` names what the
+ *  availability line is counting. */
+const FC_CUSTOM_MODE_DEFS = [
+  {
+    mode: 'extra',
+    label: 'Extra New Cards',
+    blurb: 'Introduce more new cards now, past the batch the daily session hands you.',
+    unit: 'Cards To Introduce',
+    noun: 'new cards',
+  },
+  {
+    mode: 'ahead',
+    label: 'Review Ahead',
+    blurb: 'Pull forward reviews that fall due soon — spend a free day now instead of losing it.',
+    unit: 'Cards At Most',
+    noun: 'reviews in range',
+  },
+  {
+    mode: 'hard',
+    label: 'Difficult Cards',
+    blurb: 'The cards you lapse most, regardless of schedule. Grading will not change your schedule.',
+    unit: 'Cards At Most',
+    noun: 'lapsed cards',
+  },
+  {
+    mode: 'cram',
+    label: 'Cram',
+    blurb: 'Any cards in scope, most-overdue first. Grading will not change your schedule.',
+    unit: 'Cards At Most',
+    noun: 'cards in scope',
+  },
+];
+
+/** Custom Study choices survive pane rebuilds — the workbench destroys this
+ *  pane on every tab switch, and retyping the form each time would make the
+ *  feature not worth reaching for. */
+let _fcCustomPrefs = { mode: 'extra', count: 20, aheadDays: 3, tags: [], flags: [] };
+
+/**
+ * The Custom Study launcher: pick a mode, a size, and a tag scope, then hand
+ * a built queue to the study session. A route (not a modal) because panes are
+ * REBUILT on every tab switch — a route survives that via saveViewState, an
+ * overlay would silently vanish.
+ */
+async function renderCustomStudy(body, route, setRoute) {
+  const view = el('div', 'fc-view fc-cs');
+
+  view.appendChild(el('div', 'fc-view__title', 'Custom Study'));
+  view.appendChild(el('div', 'fc-hint',
+    'Work ahead of the daily queue. The normal session hands you a fixed batch; this is how you reach everything behind it.'));
+
+  const decks = await fcListDecks();
+  let deckId = route.deckId ?? null;
+  if (deckId != null && !decks.some((d) => d.id === deckId)) deckId = null;
+
+  const state = {
+    mode: FC_CUSTOM_MODES.includes(_fcCustomPrefs.mode) ? _fcCustomPrefs.mode : 'extra',
+    count: _fcCustomPrefs.count,
+    aheadDays: _fcCustomPrefs.aheadDays,
+    tags: new Set(_fcCustomPrefs.tags || []),
+    flags: new Set((_fcCustomPrefs.flags || []).map(fcNormalizeFlag).filter(Boolean)),
+  };
+
+  // ── Scope: deck + tags ──
+  view.appendChild(el('div', 'fc-label', 'Deck'));
+  const deckDd = _api.ui.createDropdown(view, {
+    items: [
+      { value: '__all__', label: 'All Decks' },
+      ...decks.map((d) => ({ value: String(d.id), label: d.name })),
+    ],
+    selected: deckId == null ? '__all__' : String(deckId),
+    ariaLabel: 'Deck to study',
+  });
+
+  const flagLabel = el('div', 'fc-label', 'Flags');
+  view.appendChild(flagLabel);
+  const flagBar = el('div', 'fc-tagbar fc-cs__flagbar');
+  view.appendChild(flagBar);
+  const flagHint = el('div', 'fc-hint', 'No flagged cards in this scope yet.');
+  view.appendChild(flagHint);
+
+  const tagLabel = el('div', 'fc-label', 'Tags');
+  view.appendChild(tagLabel);
+  const tagBar = el('div', 'fc-tagbar');
+  view.appendChild(tagBar);
+  const tagHint = el('div', 'fc-hint', 'No tags on these cards yet.');
+  view.appendChild(tagHint);
+
+  // ── Mode ──
+  view.appendChild(el('div', 'fc-label', 'Mode'));
+  const modeList = el('div', 'fc-cs__modes');
+  modeList.setAttribute('role', 'radiogroup');
+  modeList.setAttribute('aria-label', 'Custom study mode');
+  view.appendChild(modeList);
+
+  // ── Size ──
+  const sizeRow = el('div', 'fc-cs__fields');
+  view.appendChild(sizeRow);
+
+  const countField = el('div', 'fc-cs__field');
+  const countLabel = el('div', 'fc-label', 'Cards');
+  countField.appendChild(countLabel);
+  const countIn = el('input', 'fc-input');
+  countIn.type = 'number';
+  countIn.min = '1';
+  countIn.max = '9999';
+  countIn.value = String(state.count);
+  countField.appendChild(countIn);
+  sizeRow.appendChild(countField);
+
+  const aheadField = el('div', 'fc-cs__field');
+  aheadField.appendChild(el('div', 'fc-label', 'Days Ahead'));
+  const aheadIn = el('input', 'fc-input');
+  aheadIn.type = 'number';
+  aheadIn.min = '1';
+  aheadIn.max = '365';
+  aheadIn.value = String(state.aheadDays);
+  aheadField.appendChild(aheadIn);
+  sizeRow.appendChild(aheadField);
+
+  // ── Availability + actions ──
+  const avail = el('div', 'fc-cs__avail');
+  view.appendChild(avail);
+
+  const actions = el('div', 'fc-row fc-cs__actions');
+  const startBtn = el('button', 'fc-btn fc-btn--primary');
+  startBtn.textContent = 'Start Studying';
+  actions.appendChild(startBtn);
+  const cancelBtn = el('button', 'fc-btn');
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.addEventListener('click', () => setRoute({ view: 'decks' }));
+  actions.appendChild(cancelBtn);
+  view.appendChild(actions);
+
+  body.appendChild(view);
+
+  // ── Live state ──
+  /** Cards in the current deck scope, refetched when the deck changes. */
+  let scopeCards = [];
+  let matched = 0;
+
+  const readInputs = () => {
+    const c = Math.floor(Number(countIn.value));
+    state.count = Number.isFinite(c) && c > 0 ? Math.min(9999, c) : 1;
+    const a = Math.floor(Number(aheadIn.value));
+    state.aheadDays = Number.isFinite(a) && a > 0 ? Math.min(365, a) : 1;
+  };
+
+  const def = () => FC_CUSTOM_MODE_DEFS.find((d) => d.mode === state.mode) || FC_CUSTOM_MODE_DEFS[0];
+
+  const renderModes = () => {
+    modeList.innerHTML = '';
+    for (const d of FC_CUSTOM_MODE_DEFS) {
+      const opt = el('button', 'fc-cs__mode');
+      opt.type = 'button';
+      opt.setAttribute('role', 'radio');
+      const active = d.mode === state.mode;
+      opt.setAttribute('aria-checked', active ? 'true' : 'false');
+      opt.classList.toggle('fc-cs__mode--active', active);
+      opt.appendChild(el('span', 'fc-cs__mode-dot'));
+      const text = el('span', 'fc-cs__mode-text');
+      text.appendChild(el('span', 'fc-cs__mode-name', d.label));
+      text.appendChild(el('span', 'fc-cs__mode-blurb', d.blurb));
+      opt.appendChild(text);
+      opt.addEventListener('click', () => {
+        state.mode = d.mode;
+        renderModes();
+        syncFields();
+        updateAvail();
+      });
+      modeList.appendChild(opt);
+    }
+  };
+
+  const syncFields = () => {
+    countLabel.textContent = def().unit;
+    aheadField.style.display = state.mode === 'ahead' ? '' : 'none';
+  };
+
+  // Flags are ANY-of: they are alternatives you choose between, not
+  // attributes that stack the way tags do.
+  const renderFlags = () => {
+    flagBar.innerHTML = '';
+    const counts = new Map();
+    for (const c of scopeCards) {
+      if (c.suspended) continue;
+      const f = fcNormalizeFlag(c.flag);
+      if (f) counts.set(f, (counts.get(f) || 0) + 1);
+    }
+    for (const f of [...state.flags]) if (!counts.has(f)) state.flags.delete(f);
+    const present = FC_FLAGS.filter((f) => counts.has(f.value));
+    flagHint.style.display = present.length ? 'none' : '';
+    flagLabel.style.display = present.length ? '' : 'none';
+    for (const f of present) {
+      const chip = el('button', `fc-chip fc-tagchip fc-flagchip fc-flagchip--${f.cls}`);
+      chip.type = 'button';
+      const dot = el('span', `fc-flag-dot fc-flag-dot--${f.cls}`);
+      chip.appendChild(dot);
+      chip.appendChild(el('span', '', `${f.name} (${counts.get(f.value)})`));
+      chip.classList.toggle('fc-tagchip--active', state.flags.has(f.value));
+      chip.setAttribute('aria-pressed', state.flags.has(f.value) ? 'true' : 'false');
+      chip.addEventListener('click', () => {
+        if (state.flags.has(f.value)) state.flags.delete(f.value); else state.flags.add(f.value);
+        renderFlags();
+        updateAvail();
+      });
+      flagBar.appendChild(chip);
+    }
+  };
+
+  const renderTags = () => {
+    tagBar.innerHTML = '';
+    const counts = new Map();
+    for (const c of scopeCards) {
+      if (c.suspended) continue;
+      for (const t of fcParseTags(c.tags)) counts.set(t, (counts.get(t) || 0) + 1);
+    }
+    // Drop selections that no longer exist in this deck scope, or the queue
+    // silently matches nothing and the empty result looks like a bug.
+    for (const t of [...state.tags]) if (!counts.has(t)) state.tags.delete(t);
+    const tags = [...counts.keys()].sort((a, b) => a.localeCompare(b));
+    tagHint.style.display = tags.length ? 'none' : '';
+    tagLabel.style.display = tags.length ? '' : 'none';
+    for (const tag of tags) {
+      const chip = el('button', 'fc-chip fc-tagchip');
+      chip.type = 'button';
+      chip.textContent = `${tag} (${counts.get(tag)})`;
+      chip.classList.toggle('fc-tagchip--active', state.tags.has(tag));
+      chip.setAttribute('aria-pressed', state.tags.has(tag) ? 'true' : 'false');
+      chip.addEventListener('click', () => {
+        if (state.tags.has(tag)) state.tags.delete(tag); else state.tags.add(tag);
+        renderTags();
+        updateAvail();
+      });
+      tagBar.appendChild(chip);
+    }
+  };
+
+  const updateAvail = () => {
+    readInputs();
+    const all = fcBuildCustomQueue(scopeCards, Date.now(), {
+      mode: state.mode, aheadDays: state.aheadDays,
+      tags: [...state.tags], flags: [...state.flags],
+    });
+    matched = all.length;
+    const serving = Math.min(matched, state.count);
+    const d = def();
+    if (matched === 0) {
+      const narrowed = [];
+      if (state.flags.size > 0) narrowed.push(state.flags.size === 1 ? 'that flag' : 'those flags');
+      if (state.tags.size > 0) narrowed.push(state.tags.size === 1 ? 'that tag' : 'all those tags');
+      avail.textContent = narrowed.length > 0
+        ? `No ${d.noun} match ${narrowed.join(' and ')}.`
+        : `No ${d.noun} available.`;
+    } else {
+      avail.textContent = `${matched} ${d.noun} available — this session will serve ${serving}.`;
+    }
+    avail.classList.toggle('fc-cs__avail--empty', matched === 0);
+    startBtn.disabled = matched === 0;
+    startBtn.textContent = matched === 0 ? 'Start Studying' : `Study ${serving} ${serving === 1 ? 'Card' : 'Cards'}`;
+  };
+
+  const reloadScope = async () => {
+    scopeCards = await fcListAllCards(deckId);
+    renderFlags();
+    renderTags();
+    updateAvail();
+  };
+
+  deckDd.onDidChange((v) => {
+    deckId = v === '__all__' ? null : Number(v);
+    void reloadScope();
+  });
+  countIn.addEventListener('input', updateAvail);
+  aheadIn.addEventListener('input', updateAvail);
+
+  startBtn.addEventListener('click', () => {
+    readInputs();
+    _fcCustomPrefs = {
+      mode: state.mode, count: state.count, aheadDays: state.aheadDays,
+      tags: [...state.tags], flags: [...state.flags],
+    };
+    setRoute({
+      view: 'study',
+      ...(deckId != null ? { deckId } : {}),
+      custom: {
+        mode: state.mode,
+        count: state.count,
+        aheadDays: state.aheadDays,
+        tags: [...state.tags],
+        flags: [...state.flags],
+        // Stamps this launch so a tab switch RESUMES the same session (same
+        // route → same key) while a fresh launch starts a new one.
+        startedAt: Date.now(),
+      },
+    });
+  });
+
+  renderModes();
+  syncFields();
+  await reloadScope();
+}
+
+/** Names of the flags in a custom descriptor, for the study banner. */
+function fcFlagNames(flags) {
+  return (Array.isArray(flags) ? flags : [])
+    .map((f) => fcFlagDef(f)?.name).filter(Boolean);
+}
+
 // ── Study view ───────────────────────────────────────────────────────────────
 
 /** Browse view preferences — survive pane rebuilds like the sessions. */
@@ -4682,8 +5551,34 @@ let _fcBrowseGroupTag = false;
  *  "loses place", and the in-memory pending pool held the Again-1m card). */
 const _fcStudySessions = new Map();
 
+/**
+ * Daily sessions are keyed by deck, so they self-limit. Custom ones are keyed
+ * per LAUNCH (see renderStudy) — without this, opening Custom Study twenty
+ * times would leave twenty card arrays pinned in memory forever. Drop the
+ * finished ones, then cap the abandoned-but-unfinished remainder.
+ */
+function fcPruneCustomSessions(keepKey) {
+  const live = [];
+  for (const [key, s] of _fcStudySessions) {
+    if (key === keepKey || !key.startsWith('custom:')) continue;
+    if (s.index >= s.queue.length && s.pending.length === 0) {
+      _fcStudySessions.delete(key);
+      continue;
+    }
+    live.push(key);
+  }
+  // Oldest first, by the launch stamp the key carries.
+  live.sort((a, b) => Number(a.split(':')[1]) - Number(b.split(':')[1]));
+  while (live.length > 3) _fcStudySessions.delete(live.shift());
+}
+
 async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
-  const sessionKey = route.deckId ?? '__all__';
+  // A custom session gets its own key (stamped at launch) so it neither
+  // resumes into nor is resumed by the deck's daily session — but a tab
+  // switch, which restores the same route, still lands back on the same key.
+  const custom = route.custom || null;
+  const deckKey = route.deckId ?? '__all__';
+  const sessionKey = custom ? `custom:${custom.startedAt}:${deckKey}` : deckKey;
   const cachedSession = _fcStudySessions.get(sessionKey);
   const resuming = !aheadMs && !!cachedSession
     && (cachedSession.index < cachedSession.queue.length || cachedSession.pending.length > 0);
@@ -4691,16 +5586,43 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
   const cards = await fcListAllCards(route.deckId ?? null);
   // aheadMs: learn-ahead (Study Now on the countdown screen) — build the
   // queue as of a moment slightly past the next learning card's dueAt.
-  const queue = resuming ? [] : fcBuildQueue(cards, Date.now() + aheadMs, {
-    newLimit: Number(cfg('dailyNewLimit', 20)) || 20,
-    reviewLimit: Number(cfg('dailyReviewLimit', 200)) || 200,
-  });
+  const queue = resuming ? []
+    : custom ? fcBuildCustomQueue(cards, Date.now(), custom)
+      : fcBuildQueue(cards, Date.now() + aheadMs, {
+        newLimit: Number(cfg('dailyNewLimit', 20)) || 20,
+        reviewLimit: Number(cfg('dailyReviewLimit', 200)) || 200,
+      });
+  // Preview modes grade for flow only — see fcCustomIsPreview.
+  const previewOnly = !!custom && fcCustomIsPreview(custom.mode);
+  const customDef = custom
+    ? FC_CUSTOM_MODE_DEFS.find((d) => d.mode === custom.mode) || FC_CUSTOM_MODE_DEFS[0]
+    : null;
 
   const study = el('div', 'fc-study');
   const main = el('div', 'fc-study__main');
   main.tabIndex = 0; // container-scoped keyboard grading
   study.appendChild(main);
   body.appendChild(study);
+
+  if (queue.length === 0 && !resuming && custom) {
+    // A custom queue that matched nothing must say so. Falling through to
+    // "All caught up" would credit the daily schedule for an empty result
+    // the user's own filters produced.
+    const none = el('div', 'fc-study__done px-empty');
+    none.appendChild(el('div', 'px-empty__headline', 'Nothing to study'));
+    none.appendChild(el('div', 'px-empty__hint',
+      `No ${customDef.noun} match this scope. Widen the tags, raise the range, or pick another mode.`));
+    const again = el('button', 'fc-btn fc-btn--primary');
+    again.textContent = 'Change Filters';
+    again.addEventListener('click', () => setRoute({ view: 'custom', ...(route.deckId != null ? { deckId: route.deckId } : {}) }));
+    none.appendChild(again);
+    const backDecks = el('button', 'fc-btn');
+    backDecks.textContent = 'Back to Decks';
+    backDecks.addEventListener('click', () => setRoute({ view: 'decks' }));
+    none.appendChild(backDecks);
+    main.appendChild(none);
+    return;
+  }
 
   if (queue.length === 0 && !resuming) {
     // A learning card due in the next few minutes means "caught up" is a
@@ -4749,6 +5671,15 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
         hint.textContent = `A learning card comes due in ${fmt(ms)}.`;
       }, 250);
     }
+    // Caught up is exactly when working ahead is worth offering — otherwise
+    // a free study day has nowhere to go.
+    if (cards.length > 0) {
+      const customBtn = el('button', 'fc-btn');
+      customBtn.textContent = 'Custom Study';
+      customBtn.title = 'Review ahead, add new cards, or cram — without waiting for the schedule.';
+      customBtn.addEventListener('click', () => setRoute({ view: 'custom', ...(route.deckId != null ? { deckId: route.deckId } : {}) }));
+      done.appendChild(customBtn);
+    }
     const back = el('button', 'fc-btn');
     back.textContent = 'Back to Decks';
     back.addEventListener('click', () => setRoute({ view: 'decks' }));
@@ -4779,6 +5710,11 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
     waitTimer: null,
     /** Grade history for Undo: { before: pre-grade card, reviewedAt }. */
     history: [],
+    /** Custom-study descriptor (null for the daily queue) + whether its mode
+     *  is preview-only. Carried ON the session so a resumed one keeps its
+     *  no-scheduling contract even if the route were rebuilt. */
+    custom,
+    previewOnly,
   };
   if (resuming) {
     // The old pane died mid-flight: clear transient flags; its wait timer
@@ -4789,6 +5725,7 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
     session.history = session.history || [];
   }
   _fcStudySessions.set(sessionKey, session);
+  if (custom) fcPruneCustomSessions(sessionKey);
   paneState.session = session;
 
   // Render card text through the shared Markdown + KaTeX renderer; fall
@@ -4891,15 +5828,67 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
     if (session.index >= session.queue.length) {
       if (session.pending.length > 0) { renderWait(); return; }
       _fcStudySessions.delete(sessionKey);
+      const n = session.doneCount;
       const done = el('div', 'fc-study__done px-empty');
-      done.appendChild(el('div', 'px-empty__headline', 'Session complete'));
-      done.appendChild(el('div', 'px-empty__hint',
-        `${session.doneCount} ${session.doneCount === 1 ? 'card' : 'cards'} reviewed. Check Stats to watch retention climb.`));
+      done.appendChild(el('div', 'px-empty__headline',
+        session.previewOnly ? 'Pass complete' : 'Session complete'));
+      done.appendChild(el('div', 'px-empty__hint', session.previewOnly
+        ? `${n} ${n === 1 ? 'card' : 'cards'} seen. Your schedule is unchanged — preview passes never reschedule.`
+        : `${n} ${n === 1 ? 'card' : 'cards'} reviewed. Check Stats to watch retention climb.`));
+
+      // What is STILL waiting. dailyNewLimit is a per-SESSION batch, so this
+      // screen used to be a dead end while a hundred freshly-made cards sat
+      // untouched and nothing on screen admitted it.
+      const more = el('div', 'px-empty__hint fc-study__more');
+      more.style.display = 'none';
+      done.appendChild(more);
+
       const statsBtn = el('button', 'fc-btn');
       statsBtn.textContent = 'View Stats';
       statsBtn.addEventListener('click', () => setRoute({ view: 'stats' }));
       done.appendChild(statsBtn);
+      const customBtn = el('button', 'fc-btn');
+      customBtn.textContent = 'Custom Study';
+      customBtn.title = 'Review ahead, add new cards, or cram — without waiting for the schedule.';
+      customBtn.addEventListener('click', () => setRoute({ view: 'custom', ...(route.deckId != null ? { deckId: route.deckId } : {}) }));
+      done.appendChild(customBtn);
       main.appendChild(done);
+
+      void (async () => {
+        let fresh;
+        try { fresh = await fcListAllCards(route.deckId ?? null); } catch { return; }
+        if (!main.isConnected) return;
+        const t = Date.now();
+        const newLeft = fresh.filter((c) => !c.suspended && c.state === 'new').length;
+        const dueLeft = fresh.filter((c) => !c.suspended && c.state !== 'new' && c.dueAt <= t).length;
+        const parts = [];
+        if (newLeft) parts.push(`${newLeft} new ${newLeft === 1 ? 'card' : 'cards'}`);
+        if (dueLeft) parts.push(`${dueLeft} ${dueLeft === 1 ? 'review' : 'reviews'}`);
+        if (parts.length === 0) return;
+        const batch = Number(cfg('dailyNewLimit', 20)) || 20;
+        more.textContent = newLeft
+          ? `${parts.join(' and ')} still waiting — new cards come out ${batch} to a session.`
+          : `${parts.join(' and ')} still waiting.`;
+        more.style.display = '';
+        const go = el('button', 'fc-btn fc-btn--primary');
+        go.textContent = 'Keep Going';
+        go.title = 'Start another session on what is left.';
+        go.addEventListener('click', () => {
+          if (session.custom) {
+            // Dropping the custom descriptor is a REAL route change, so it
+            // goes through setRoute — otherwise a later tab switch restores
+            // the finished custom session instead of the daily queue.
+            setRoute({ view: 'study', ...(route.deckId != null ? { deckId: route.deckId } : {}) });
+            return;
+          }
+          // Same route: setRoute would no-op on its identical-route guard, so
+          // re-render in place.
+          if (!body.isConnected) return;
+          body.innerHTML = '';
+          void renderStudy(body, route, paneState, setRoute);
+        });
+        done.insertBefore(go, statsBtn);
+      })();
       return;
     }
 
@@ -4955,6 +5944,25 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
       })();
     };
 
+    // A custom session must announce itself — otherwise a cram pass is
+    // indistinguishable from the real queue, and "why didn't my reviews
+    // move?" becomes a bug report.
+    if (session.custom && customDef) {
+      const banner = el('div', 'fc-study__mode');
+      banner.appendChild(el('span', 'fc-study__mode-name', customDef.label));
+      const bits = [];
+      if (session.custom.mode === 'ahead') {
+        const d = Math.max(1, Math.floor(Number(session.custom.aheadDays) || 1));
+        bits.push(`next ${d} ${d === 1 ? 'day' : 'days'}`);
+      }
+      const flagNames = fcFlagNames(session.custom.flags);
+      if (flagNames.length) bits.push(flagNames.join(' / '));
+      if (session.custom.tags?.length) bits.push(session.custom.tags.join(' + '));
+      if (session.previewOnly) bits.push('schedule unchanged');
+      if (bits.length) banner.appendChild(el('span', 'fc-study__mode-meta', bits.join(' · ')));
+      main.appendChild(banner);
+    }
+
     // ── Toolbar: progress + card actions ──
     const toolbar = el('div', 'fc-study__toolbar');
     const progress = el('div', 'fc-study__progress');
@@ -4963,25 +5971,51 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
     progress.appendChild(fill);
     toolbar.appendChild(progress);
     const cardActions = el('div', 'fc-study__cardactions');
-    const undoBtn = el('button', 'fc-btn fc-btn--ghost');
-    undoBtn.textContent = 'Undo';
-    undoBtn.title = 'Take back the last grade and return to that card (Z)';
+    // Flag the card you are looking at, without leaving the session. Writes
+    // straight through so it survives however the session ends.
+    const flagPicker = fcCreateFlagPicker(cardActions, {
+      value: card.flag,
+      shortcutHint: true,
+      onPick: (next) => {
+        card.flag = next;
+        void fcUpdateCard(card.id, { flag: next });
+      },
+    });
+    const undoBtn = fcIconBtn(cardActions, {
+      iconName: 'undo-2',
+      label: 'Undo',
+      title: 'Take back the last grade and return to that card (Z)',
+      onClick: undoLast,
+    });
     undoBtn.disabled = session.history.length === 0;
-    undoBtn.addEventListener('click', undoLast);
-    cardActions.appendChild(undoBtn);
-    const editBtn = el('button', 'fc-btn fc-btn--ghost');
-    editBtn.textContent = 'Edit';
-    editBtn.title = 'Fix this card without leaving the session (E)';
-    editBtn.addEventListener('click', openEdit);
-    cardActions.appendChild(editBtn);
-    const delBtn = el('button', 'fc-btn fc-btn--ghost fc-btn--danger');
-    delBtn.textContent = 'Delete';
-    delBtn.title = 'Permanently delete this card';
-    delBtn.addEventListener('click', deleteCurrent);
-    cardActions.appendChild(delBtn);
+    fcIconBtn(cardActions, {
+      iconName: 'pencil',
+      label: 'Edit',
+      title: 'Fix this card without leaving the session (E)',
+      onClick: openEdit,
+    });
+    fcIconBtn(cardActions, {
+      iconName: 'trash-2',
+      label: 'Delete',
+      title: 'Permanently delete this card',
+      danger: true,
+      onClick: deleteCurrent,
+    });
     toolbar.appendChild(cardActions);
 
     main.appendChild(toolbar);
+
+    // ── Stage: cards on the left, a quiet rail on the right ──
+    // Everything used to stack in one column, so notes and the shortcut key
+    // pushed the grade buttons off-screen on short panes and the eye had to
+    // travel the whole page. The rail holds what you REFER to; the column
+    // holds what you ACT on.
+    const stage = el('div', 'fc-study__stage');
+    const col = el('div', 'fc-study__col');
+    const rail = el('div', 'fc-study__rail');
+    stage.appendChild(col);
+    stage.appendChild(rail);
+    main.appendChild(stage);
 
     // ── The QUESTION card ──
     const qCard = el('div', 'fc-card fc-card--q');
@@ -4995,13 +6029,43 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
       ? fcRenderCloze(card.front, card.clozeIndex, 'front')
       : card.front));
     qCard.appendChild(qBody);
-    main.appendChild(qCard);
+    col.appendChild(qCard);
 
     const answerHost = el('div', 'fc-study__answer-host');
-    main.appendChild(answerHost);
+    col.appendChild(answerHost);
 
     const controls = el('div', 'fc-study__controls');
-    main.appendChild(controls);
+    col.appendChild(controls);
+
+    // ── Rail: notes, then the key legend ──
+    // Built here so the autosave wiring lives in one place, but HIDDEN until
+    // the answer is revealed: notes hold mnemonics and traps, so showing them
+    // against the question would hand over the answer before you have tried
+    // to recall it. reveal() unhides.
+    const notesWrap = el('div', 'fc-study__notes');
+    notesWrap.style.display = 'none';
+    notesWrap.appendChild(el('div', 'fc-study__notes-label', 'My Notes'));
+    const notesIn = el('textarea', 'fc-textarea fc-study__notes-input');
+    notesIn.placeholder = 'Mnemonics, pitfalls, exam traps. They stay with the card.';
+    notesIn.value = card.notes || '';
+    notesIn.rows = 6;
+    let notesTimer = null;
+    const saveNotes = () => {
+      const v = notesIn.value;
+      if (v === (card.notes || '')) return;
+      card.notes = v;
+      void fcUpdateCard(card.id, { notes: v });
+    };
+    notesIn.addEventListener('input', () => {
+      if (notesTimer) clearTimeout(notesTimer);
+      notesTimer = setTimeout(saveNotes, 600);
+    });
+    notesIn.addEventListener('blur', () => {
+      if (notesTimer) clearTimeout(notesTimer);
+      saveNotes();
+    });
+    notesWrap.appendChild(notesIn);
+    rail.appendChild(notesWrap);
 
     const reveal = () => {
       if (session.revealed) return;
@@ -5057,35 +6121,36 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
         }
         aCard.appendChild(src);
       }
+      // ONE AI action, now a mark in the answer card's corner instead of a
+      // labelled button under it. Revealed on hover OR focus-within — a
+      // hover-only control is invisible to the keyboard, which is the trap
+      // this pattern usually falls into.
+      const aiHost = el('div', 'fc-card__ai');
+      const discussBtn = _api.ui.createAiButton
+        ? _api.ui.createAiButton(aiHost, {
+          label: 'Discuss with AI',
+          iconOnly: true,
+          compact: true,
+          title: 'Stage a grounded question in the chat — card and source attached. Edit it, then send.',
+        })
+        : el('button', 'fc-btn fc-btn--small');
+      if (!discussBtn.parentElement) {
+        discussBtn.textContent = 'Discuss with AI';
+        aiHost.appendChild(discussBtn);
+      }
+      discussBtn.addEventListener('click', () => {
+        void fcExplainInChat(card, deckNames.get(card.deckId));
+      });
+      // In the head ROW, not absolutely positioned over it: a leech card
+      // already puts its chip and Rewrite button at the top right, and an
+      // overlay would land on top of them. As a flex child it also reserves
+      // its space while hidden, so revealing it shifts nothing.
+      aHead.appendChild(aiHost);
+
       answerHost.appendChild(aCard);
 
-      // Per-card persistent notes (user ask: "take persisting notes on
-      // different cards"). The column has existed since v1 — this is its
-      // first writer. Autosaves debounced + on blur; the in-session card
-      // object is kept fresh so re-serves and edits see the latest text.
-      const notesWrap = el('div', 'fc-study__notes');
-      notesWrap.appendChild(el('div', 'fc-study__notes-label', 'My Notes'));
-      const notesIn = el('textarea', 'fc-textarea fc-study__notes-input');
-      notesIn.placeholder = 'Your notes for this card - mnemonics, pitfalls, exam traps. They stay with the card.';
-      notesIn.value = card.notes || '';
-      notesIn.rows = 2;
-      let notesTimer = null;
-      const saveNotes = () => {
-        const v = notesIn.value;
-        if (v === (card.notes || '')) return;
-        card.notes = v;
-        void fcUpdateCard(card.id, { notes: v });
-      };
-      notesIn.addEventListener('input', () => {
-        if (notesTimer) clearTimeout(notesTimer);
-        notesTimer = setTimeout(saveNotes, 600);
-      });
-      notesIn.addEventListener('blur', () => {
-        if (notesTimer) clearTimeout(notesTimer);
-        saveNotes();
-      });
-      notesWrap.appendChild(notesIn);
-      answerHost.appendChild(notesWrap);
+      // The answer is out — notes can come up without spoiling anything.
+      notesWrap.style.display = '';
 
       controls.innerHTML = '';
       const now = Date.now();
@@ -5099,30 +6164,20 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
         const btn = el('button', `fc-grade fc-grade--${g.cls}`);
         btn.appendChild(el('span', 'fc-grade__dot'));
         btn.appendChild(el('span', 'fc-grade__label', g.label));
-        btn.appendChild(el('span', 'fc-grade__ivl', fcIntervalPreview(card, g.r, now, optsFor(card))));
+        // Preview passes do not reschedule, so printing an interval here
+        // would promise something the grade will not do. Again still means
+        // something — the card comes back inside this pass.
+        btn.appendChild(el('span', 'fc-grade__ivl', session.previewOnly
+          ? (g.r === AGAIN ? 'again' : '—')
+          : fcIntervalPreview(card, g.r, now, optsFor(card))));
         btn.addEventListener('click', () => grade(g.r));
         controls.appendChild(btn);
       }
-      // ONE AI action (user report: two redundant buttons looked bad). The
-      // main chat is the app's single AI surface — the old inline mini-chat
-      // duplicated it wholesale and is gone.
-      const discussHost = el('div', 'fc-study__discuss');
-      const discussBtn = _api.ui.createAiButton
-        ? _api.ui.createAiButton(discussHost, { label: 'Discuss with AI' })
-        : el('button', 'fc-btn');
-      if (!discussBtn.parentElement) {
-        discussBtn.textContent = 'Discuss with AI';
-        discussHost.appendChild(discussBtn);
-      }
-      discussBtn.title = 'Open the chat with this card and its source staged.';
-      discussBtn.addEventListener('click', () => {
-        void fcExplainInChat(card, deckNames.get(card.deckId));
-      });
-      main.appendChild(discussHost);
-      // The single hint line moves to the end and switches to grading keys —
-      // appending a second line stacked two hints on screen (user report).
-      keys.textContent = '1 Again · 2 Hard · 3 Good · 4 Easy · E edit · Z undo';
-      main.appendChild(keys);
+      // The legend switches to grading keys in place — it lives in the rail
+      // now, so there is nothing to re-append.
+      keys.textContent = session.previewOnly
+        ? '1 Again · 2 Hard · 3 Good · 4 Easy · E edit · Alt+1-4 flag'
+        : '1 Again · 2 Hard · 3 Good · 4 Easy · E edit · Z undo · Alt+1-4 flag';
     };
 
     const grade = (rating) => {
@@ -5131,6 +6186,24 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
       if (session.grading) return;
       session.grading = true;
       const msTaken = Date.now() - session.cardShownAt;
+
+      // Preview pass (Difficult Cards / Cram): nothing is written. Re-reading
+      // a card here is not evidence you would have recalled it days out, and
+      // feeding that to FSRS would inflate stability across the whole deck —
+      // and, through the exam-date cap, the plan built on it. Again requeues
+      // the card inside this pass; the other grades just move on.
+      if (session.previewOnly) {
+        if (rating === AGAIN) {
+          session.queue.push(card);
+          session.total++;
+        }
+        session.doneCount++;
+        session.index++;
+        session.grading = false;
+        showCard();
+        return;
+      }
+
       void (async () => {
         const updated = await fcGradeCard(card, rating, msTaken, optsFor(card));
         // Undo material: the pre-grade card + the review row's timestamp.
@@ -5156,8 +6229,10 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
     revealBtn.textContent = 'Show Answer';
     revealBtn.addEventListener('click', reveal);
     controls.appendChild(revealBtn);
-    const keys = el('div', 'fc-study__keys', 'Space reveals the answer · E edit · Z undo');
-    main.appendChild(keys);
+    const keys = el('div', 'fc-study__keys', session.previewOnly
+      ? 'Space reveals the answer · E edit · Alt+1-4 flag'
+      : 'Space reveals the answer · E edit · Z undo · Alt+1-4 flag');
+    rail.appendChild(keys);
 
     // Container-scoped keyboard: only fires while the study surface has focus.
     main.onkeydown = (e) => {
@@ -5165,6 +6240,21 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
       // The inline editor owns the keyboard while open (its own Ctrl+Enter /
       // Escape handling) — study shortcuts must not fire underneath it.
       if (session.editing) return;
+      // Alt+1..4 flags the card. NOT Anki's Ctrl+1..4: KeybindingService owns
+      // a document-level CAPTURE listener and stopPropagation()s its matches,
+      // and Ctrl+1..3 are already the focus-editor-group commands — so those
+      // three would never arrive here while Ctrl+4 would, which is worse than
+      // no shortcut. Matched on e.code so the digit row works on any layout.
+      if (e.altKey && !e.ctrlKey && !e.metaKey
+          && ['Digit1', 'Digit2', 'Digit3', 'Digit4'].includes(e.code)) {
+        e.preventDefault();
+        const picked = Number(e.code.slice(-1));
+        const next = card.flag === picked ? 0 : picked;
+        card.flag = next;
+        flagPicker.set(next);
+        void fcUpdateCard(card.id, { flag: next });
+        return;
+      }
       if (e.key === ' ' || e.key === 'Enter') {
         e.preventDefault();
         if (!session.revealed) reveal();
@@ -6394,6 +7484,7 @@ function registerCommands(context) {
     // exactly as the user left it (fresh opens still default to Decks).
     ['flashcards.open', () => openFlashcards()],
     ['flashcards.study', () => openFlashcards({ view: 'study' })],
+    ['flashcards.customStudy', () => openFlashcards({ view: 'custom' })],
     ['flashcards.newDeck', () => _cmdNewDeck()],
     ['flashcards.newCard', () => openFlashcards()],
     ['flashcards.generate', () => openFlashcards({ view: 'create' })],
@@ -6647,6 +7738,12 @@ export const __testables = {
   FSRS_W,
   fcIntervalPreview,
   fcBuildQueue,
+  fcBuildCustomQueue,
+  fcCustomIsPreview,
+  fcCountServedToday,
+  FC_FLAGS,
+  fcNormalizeFlag,
+  fcFlagDef,
   fcBuildMaterial,
   fcTrigramSimilarity,
   fcStreamWithStall,

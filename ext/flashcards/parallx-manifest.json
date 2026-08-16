@@ -14,6 +14,7 @@
     "commands": [
       { "id": "flashcards.open", "title": "Open Flashcards", "category": "Flashcards" },
       { "id": "flashcards.study", "title": "Study Due Cards", "category": "Flashcards" },
+      { "id": "flashcards.customStudy", "title": "Custom Study (Work Ahead)", "category": "Flashcards" },
       { "id": "flashcards.newDeck", "title": "New Deck", "category": "Flashcards" },
       { "id": "flashcards.newCard", "title": "New Card", "category": "Flashcards" },
       { "id": "flashcards.generate", "title": "Generate Cards from Source (AI)", "category": "Flashcards" },
@@ -47,12 +48,12 @@
           "flashcards.dailyNewLimit": {
             "type": "number",
             "default": 20,
-            "description": "Maximum number of NEW cards introduced per study day."
+            "description": "How many NEW cards one study session introduces. This is a batch size, not a daily ceiling: finishing a session and starting another hands you the next batch, and Custom Study reaches the rest directly."
           },
           "flashcards.dailyReviewLimit": {
             "type": "number",
             "default": 200,
-            "description": "Maximum number of due review cards per study day."
+            "description": "How many due review cards one study session serves. A batch size, not a daily ceiling."
           },
           "flashcards.leechThreshold": {
             "type": "number",
