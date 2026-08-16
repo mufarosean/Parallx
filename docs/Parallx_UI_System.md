@@ -52,9 +52,10 @@ and accent follow the app.
 
 - Spacing on the 4px grid via `--px-space-*`. Radius from the five steps
   (`xs` 1 / `sm` 4 / `md` 6 / `lg` 10 / `xl` 14) + `full` for real pills.
-  `xs` is reserved for workbench chrome cards (sidebar/aux rails) that
-  should read crisp and architectural; content cards (editor, panel,
-  widgets) use `sm` and up. Over-rounding chrome reads as generic.
+  `xs` is reserved for workbench chrome cards (sidebar/aux rails, and the
+  editor card's bottom corners) that should read crisp and architectural;
+  content cards (panel, widgets) and the tab strip use `sm` and up.
+  Over-rounding chrome reads as generic.
 - Borders carry structure; **shadows only for true float** (menus, dialogs,
   drag ghosts) and always paired with `--px-edge-light`.
 - Motion only via `--px-dur-*` + `--px-ease*` (enforced by

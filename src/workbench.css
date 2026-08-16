@@ -929,8 +929,10 @@ html, body {
   border-left: 1px solid var(--px-border);
   border-right: 1px solid var(--px-border);
   border-bottom: 1px solid var(--px-border);
-  border-bottom-left-radius: var(--px-radius-sm);
-  border-bottom-right-radius: var(--px-radius-sm);
+  /* Bottom corners crisp like the sidebar chrome; the tab strip above keeps
+     its own rounding (the tabs ARE the editor card's top edge). */
+  border-bottom-left-radius: var(--px-radius-xs);
+  border-bottom-right-radius: var(--px-radius-xs);
   background: var(--px-bg);
   box-sizing: border-box;
 }
