@@ -364,6 +364,24 @@ describe('concept lab pane', () => {
     expect(ribbon.style.display).toBe('none'); // se machinery is vw-only
   });
 
+  it('Clark\'s curves swap families and reprice the tail', async () => {
+    (paneHost!.querySelector('.cl-back') as HTMLElement).click();
+    await settle();
+    const card = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
+      c.textContent?.includes('Growth Curves'))! as HTMLElement;
+    card.click();
+    await settle();
+    const values = () => [...paneHost!.querySelectorAll('.cl-readout-value')].map((e) => e.textContent);
+    // Loglogistic fit: LDF 1.295, ELR 59.8% (Cape Cod readout tracks the curve).
+    expect(values().some((v) => v === '1.295')).toBe(true);
+    const weibull = [...paneHost!.querySelectorAll('.cl-preset-chip')].find((c) =>
+      c.textContent?.includes('Weibull'))! as HTMLElement;
+    weibull.click();
+    await wait(650);
+    await settle();
+    expect(values().some((v) => v === '1.052')).toBe(true); // the tail contrast
+  });
+
   it('the conceptLab_open chat tool routes the pane and applies the preset', async () => {
     const tool = chatTools.get('conceptLab_open');
     expect(tool).toBeTruthy();

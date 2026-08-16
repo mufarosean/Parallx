@@ -463,6 +463,36 @@ function clMackLognRange(R, cv, z) {
   return R * Math.exp(z * Math.sqrt(s2) - s2 / 2);
 }
 
+// --- Clark (2003) growth curves --------------------------------------------
+
+/** Clark's growth function: expected % of ultimate emerged by age x months. */
+function clClarkG(x, { family, omega, theta }) {
+  if (x <= 0) return 0;
+  if (family === 'weibull') return 1 - Math.exp(-Math.pow(x / theta, omega));
+  const xw = Math.pow(x, omega);
+  return xw / (xw + Math.pow(theta, omega));
+}
+
+/**
+ * LDF-method reserves off the latest diagonal: development to the truncation
+ * age (G(truncAvg)/G(age) - 1), or to ultimate when truncAvg is null.
+ */
+function clClarkReserves(diag, ages, shape, truncAvg) {
+  const gCap = truncAvg == null ? 1 : clClarkG(truncAvg, shape);
+  const perAY = diag.map((c, i) => c * (gCap / clClarkG(ages[i], shape) - 1));
+  return { perAY, total: perAY.reduce((a, b) => a + b, 0) };
+}
+
+/** Cape Cod ELR: total reported over used-up premium (Premium x G(age)). */
+function clClarkElr(diag, ages, premium, shape) {
+  let rep = 0, used = 0;
+  for (let i = 0; i < diag.length; i++) {
+    rep += diag[i];
+    used += premium[i] * clClarkG(ages[i], shape);
+  }
+  return { elr: rep / used, usedUp: used };
+}
+
 // --- Random-walk Metropolis on a 2D gaussian target ------------------------
 
 /** Bivariate normal log-density up to a constant (all Metropolis needs). */
@@ -1764,6 +1794,154 @@ defineModule({
   ],
 });
 
+// --- Module: Clark's Growth Curves (Clark 2003) ----------------------------
+
+// The Mack (1993) reported triangle's latest diagonal at 12/31/2000, AYs
+// 1991-2000 (reconstructed from Clark's printed ultimates minus reserves;
+// sums to his printed 34,358,090), with average ages x - 6.
+const CLARK_DIAG = [3901463, 5339085, 4909315, 4588268, 3873311, 3691712, 3483130, 2864498, 1363294, 344014];
+const CLARK_AGES = [114, 102, 90, 78, 66, 54, 42, 30, 18, 6];
+const CLARK_PREM = [10000000, 10400000, 10800000, 11200000, 11600000, 12000000, 12400000, 12800000, 13200000, 13600000];
+const CLARK_LL = { family: 'loglogistic', omega: 1.434294, theta: 48.6249 };
+const CLARK_WB = { family: 'weibull', omega: 1.296906, theta: 48.88453 };
+const CLARK_CC = { family: 'loglogistic', omega: 1.447634, theta: 48.0205 };
+
+defineModule({
+  id: 'clark-curves',
+  title: 'Clark\'s Growth Curves',
+  subtitle: 'Two parameters replace a factor table, and the tail becomes a choice you can see',
+  icon: 'chart-spline',
+  paper: {
+    label: 'Clark, "LDF Curve-Fitting And Stochastic Reserving" (2003)',
+    section: 'Loglogistic/Weibull G(x), LDF and Cape Cod methods, 240-month truncation; Tables 1-5',
+    task: 'Fit parametric emergence curves and defend the tail and truncation choices',
+  },
+  intro:
+    'A factor table is a curve you refuse to name. Clark names it: two ' +
+    'parameters, maximum likelihood over every increment, and suddenly the ' +
+    'tail is not a mystery appendix but a visible stretch of curve you chose. ' +
+    'The loglogistic and Weibull agree about the data and disagree about ' +
+    'everything after it.',
+  params: [
+    { key: 'omega', tex: '\\omega', label: 'Shape', min: 0.8, max: 2.5, step: 0.005, init: 1.434294, fmt: 'num3', link: 'curve' },
+    { key: 'theta', tex: '\\theta', label: 'Scale (Months To Half-ish)', min: 20, max: 90, step: 0.25, init: 48.6249, fmt: 'num', link: 'curve' },
+    { key: 'truncAge', tex: '', label: 'Truncation Age (Months)', min: 120, max: 480, step: 12, init: 240, fmt: 'num', link: 'trunc' },
+  ],
+  derived(par, st) {
+    const family = st?.mode === 'weibull' ? 'weibull' : 'loglogistic';
+    const shape = { family, omega: par.omega, theta: par.theta };
+    const truncAvg = par.truncAge - 6;
+    const trunc = clClarkReserves(CLARK_DIAG, CLARK_AGES, shape, truncAvg);
+    const full = clClarkReserves(CLARK_DIAG, CLARK_AGES, shape, null);
+    const cc = clClarkElr(CLARK_DIAG, CLARK_AGES, CLARK_PREM, shape);
+    return {
+      family,
+      gOldest: clClarkG(CLARK_AGES[0], shape),
+      tailLdf: 1 / clClarkG(CLARK_AGES[0], shape),
+      gTrunc: clClarkG(truncAvg, shape),
+      truncAvg,
+      reservesTrunc: trunc.perAY,
+      totalTrunc: trunc.total,
+      reservesFull: full.perAY,
+      totalFull: full.total,
+      tailBeyond: full.total - trunc.total,
+      elr: cc.elr,
+    };
+  },
+  readouts: [
+    { sym: 'G(x_{1991})', id: 'gOldest', fmt: 'pct', label: 'Oldest Year Emerged', link: 'curve' },
+    { sym: 'LDF_{1991}', id: 'tailLdf', fmt: 'num3', label: 'Its Ultimate Development', accent: true, link: 'curve' },
+    { sym: '', id: 'totalTrunc', fmt: 'num', label: 'Reserve To Truncation', accent: true, link: 'bars' },
+    { sym: '', id: 'tailBeyond', fmt: 'num', label: 'Left In The Tail', link: 'trunc' },
+    { sym: 'ELR', id: 'elr', fmt: 'pct', label: 'Cape Cod ELR At This Curve', link: 'curve' },
+  ],
+  formula(state) {
+    if (state.mode === 'weibull') {
+      return {
+        sym: 'G(x) = 1 - e^{-(x/\\theta)^{\\omega}}',
+        terms: [
+          { sym: 'G(114)', fmt: 'pct', get: (d) => d.gOldest, primary: true, link: 'curve' },
+          { op: '|' },
+          { sym: '\\omega', fmt: 'num3', get: (d) => d.omega, link: 'curve' },
+          { op: '|' },
+          { sym: '\\theta', fmt: 'num', get: (d) => d.theta, link: 'curve' },
+          { op: '|' },
+          { sym: 'G(x_{trunc})', fmt: 'pct', get: (d) => d.gTrunc, link: 'trunc' },
+        ],
+      };
+    }
+    return {
+      sym: 'G(x) = \\tfrac{x^{\\omega}}{x^{\\omega} + \\theta^{\\omega}}',
+      terms: [
+        { sym: 'G(114)', fmt: 'pct', get: (d) => d.gOldest, primary: true, link: 'curve' },
+        { op: '|' },
+        { sym: '\\omega', fmt: 'num3', get: (d) => d.omega, link: 'curve' },
+        { op: '|' },
+        { sym: '\\theta', fmt: 'num', get: (d) => d.theta, link: 'curve' },
+        { op: '|' },
+        { sym: 'G(x_{trunc})', fmt: 'pct', get: (d) => d.gTrunc, link: 'trunc' },
+      ],
+    };
+  },
+  presets: [
+    {
+      id: 'loglogistic',
+      label: 'Loglogistic Fit',
+      note: 'Clark\'s MLE on all 55 increments: omega = 1.434, theta = 48.6. The oldest year is only 77.2% emerged after ten years, so its LDF is still 1.295. Heavy tail, honest about it.',
+      mode: 'loglogistic',
+      params: { omega: { value: 1.434294 }, theta: { value: 48.6249 }, truncAge: { value: 240 } },
+    },
+    {
+      id: 'weibull',
+      label: 'Weibull Fit',
+      note: 'Same 55 increments, different family: the Weibull says the oldest year is 95.0% done and its LDF is 1.052. The data cannot referee the tail; the family choice is the reserve choice.',
+      mode: 'weibull',
+      params: { omega: { value: 1.296906 }, theta: { value: 48.88453 }, truncAge: { value: 240 } },
+    },
+    {
+      id: 'capecod',
+      label: 'Cape Cod Curve',
+      note: 'Refit alongside an ELR against on-level premium and the curve barely moves (omega = 1.448, theta = 48.0) while the ELR lands at 59.8%. Clark prefers Cape Cod: the extra information stiffens the immature years.',
+      mode: 'loglogistic',
+      params: { omega: { value: 1.447634 }, theta: { value: 48.0205 }, truncAge: { value: 240 } },
+    },
+  ],
+  story: [
+    {
+      title: 'Name the curve',
+      text: 'Fifty-five increments, two parameters, one likelihood. $G(x)$ IS the payout pattern, defined at every age at once, so odd evaluation dates and partial years stop being special cases.',
+      preset: 'loglogistic',
+    },
+    {
+      title: 'The tail is a family argument',
+      text: 'Loglogistic and Weibull both fit the observed increments well. Then the loglogistic pays 1.295 on the oldest year while the Weibull pays 1.052. Nothing in the triangle settles this. That is the point.',
+      preset: 'weibull',
+    },
+    {
+      title: 'Truncation as discipline',
+      text: 'Clark caps development at 240 months: reserve to the cap, and the shaded tail beyond it (6.65M here) becomes an explicit, separately-argued item instead of an extrapolation nobody reviewed.',
+      preset: 'loglogistic',
+    },
+    {
+      title: 'Same curve, sturdier method',
+      text: 'The Cape Cod variant divides reported losses by used-up premium: ELR = 59.78%. Immature years lean on the premium instead of their own thin diagonal, which is why Clark recommends it for the actual reserve.',
+      preset: 'capecod',
+    },
+  ],
+  checks: [
+    { name: 'Loglogistic G(114) = 77.24%', expect: 0.7724, tol: 2e-4, got: () => clClarkG(114, CLARK_LL) },
+    { name: 'Loglogistic LDF 1991 = 1.2946', expect: 1.2946, tol: 3e-4, got: () => 1 / clClarkG(114, CLARK_LL) },
+    { name: 'Loglogistic G(234) = 90.50%', expect: 0.9050, tol: 2e-4, got: () => clClarkG(234, CLARK_LL) },
+    { name: 'Truncated LDF 1991 = 1.1716', expect: 1.1716, tol: 3e-4, got: () => clClarkG(234, CLARK_LL) / clClarkG(114, CLARK_LL) },
+    { name: 'Untruncated total reserve = 35,640,618', expect: 35640618, tol: 4000, got: () => clClarkReserves(CLARK_DIAG, CLARK_AGES, CLARK_LL, null).total },
+    { name: 'Truncated total reserve = 28,987,633', expect: 28987633, tol: 4000, got: () => clClarkReserves(CLARK_DIAG, CLARK_AGES, CLARK_LL, 234).total },
+    { name: 'Weibull G(114) = 95.01%', expect: 0.9501, tol: 2e-4, got: () => clClarkG(114, CLARK_WB) },
+    { name: 'Weibull LDF 1991 = 1.0525', expect: 1.0525, tol: 3e-4, got: () => 1 / clClarkG(114, CLARK_WB) },
+    { name: 'Cape Cod used-up premium = 57,477,500', expect: 57477500, tol: 6000, got: () => clClarkElr(CLARK_DIAG, CLARK_AGES, CLARK_PREM, CLARK_CC).usedUp },
+    { name: 'Cape Cod ELR = 59.78%', expect: 0.5978, tol: 5e-4, got: () => clClarkElr(CLARK_DIAG, CLARK_AGES, CLARK_PREM, CLARK_CC).elr },
+  ],
+});
+
 // ============================================================================
 // SECTION 3: STYLES — single injected <style>, guarded (flashcards pattern)
 // ============================================================================
@@ -2843,6 +3021,7 @@ const SCENE_BUILDERS = {
   'csr-story': buildCsrScenes,
   'mcmc-watch': buildMcmcScenes,
   'mack-machinery': buildMackScenes,
+  'clark-curves': buildClarkScenes,
 };
 
 /** First-mount draw-in: the primary curve sweeps in along its own length. */
@@ -4162,6 +4341,133 @@ function buildMackScenes(stageRow, ctx) {
     },
     snapshot(st, d) {
       return { label: st.presetId || 'pin', f1: d.f1, totalR: d.totalR };
+    },
+  };
+}
+
+// --- Clark: the growth curve and the reserve consequence -------------------
+
+function buildClarkScenes(stageRow, ctx) {
+  const { linkRoot, animator } = ctx;
+
+  const s1 = buildScene(stageRow, 'The Growth Curve G(x)', [
+    { label: 'This Fit', color: 'var(--px-accent)', link: 'curve' },
+    { label: 'Other Family', color: 'var(--cl-ink-1)', dashed: true, link: 'curve' },
+    { label: 'Beyond Truncation', color: 'var(--cl-ink-4)', link: 'trunc' },
+  ], linkRoot);
+  const axes1 = createAxes(s1.svg, { xFmt: (v) => String(v), yFmt: (v) => Math.round(v * 100) + '%', xTicks: 6, yTicks: 4 });
+  const tailShade = svgEl('rect', { fill: 'var(--cl-ink-4)' }, 'cl-band');
+  tailShade.dataset.clLink = 'trunc';
+  s1.svg.appendChild(tailShade);
+  const pOther = svgEl('path', { stroke: 'var(--cl-ink-1)' }, 'cl-curve cl-ref');
+  pOther.dataset.clLink = 'curve';
+  const pMain = svgEl('path', { stroke: 'var(--px-accent)' }, 'cl-curve');
+  pMain.dataset.clLink = 'curve';
+  s1.svg.appendChild(pOther); s1.svg.appendChild(pMain);
+  const gDots = svgEl('g'); gDots.dataset.clLink = 'curve';
+  for (let i = 0; i < CLARK_AGES.length; i++) {
+    gDots.appendChild(svgEl('circle', { r: 3, fill: 'var(--px-accent)', stroke: 'var(--px-bg)', 'stroke-width': 1 }, 'cl-dot'));
+  }
+  s1.svg.appendChild(gDots);
+  const truncLine = svgEl('line', { stroke: 'var(--cl-ink-4)', 'stroke-width': 2 }, '');
+  truncLine.dataset.clLink = 'trunc';
+  const truncTag = svgEl('text', { 'text-anchor': 'middle', fill: 'var(--cl-ink-4)' }, 'cl-svg-tag');
+  const tailTag = svgEl('text', { 'text-anchor': 'middle' }, 'cl-svg-value');
+  s1.svg.appendChild(truncLine); s1.svg.appendChild(truncTag); s1.svg.appendChild(tailTag);
+
+  const s2 = buildScene(stageRow, 'Reserves By Accident Year', [
+    { label: 'To Truncation', color: 'var(--px-accent)', link: 'bars' },
+    { label: 'To Ultimate', color: 'var(--cl-ink-1)', link: 'bars' },
+  ], linkRoot);
+  const axes2 = createAxes(s2.svg, { xFmt: (v) => "'" + String(91 + Math.round(v) - 1).slice(-2), yFmt: (v) => clFmt(v / 1e6, 'num2') + 'M', xTicks: 9, yTicks: 4 });
+  const fullBars = makeBarPool(s2.svg, 'cl-bar cl-bar--cmp');
+  fullBars.g.dataset.clLink = 'bars';
+  const truncBars = makeBarPool(s2.svg, 'cl-bar');
+  truncBars.g.dataset.clLink = 'bars';
+  const totTag = svgEl('text', { 'text-anchor': 'end' }, 'cl-svg-value');
+  s2.svg.appendChild(totTag);
+
+  let frame1 = null;
+  let drewIn = false;
+
+  clDragOnSvg(s1.svg, (e) => {
+    if (!frame1) return;
+    const age = frame1.sx.invert(clSvgPoint(s1.svg, e).x) + 6;
+    const st = ctx.getState();
+    const r = st.ranges.truncAge;
+    ctx.setParam('truncAge', Math.max(r.min, Math.min(r.max, Math.round(age / 12) * 12)));
+  });
+
+  return {
+    update(st, d) {
+      const v = st.values;
+      const shape = { family: d.family, omega: v.omega, theta: v.theta };
+      const other = d.family === 'weibull' ? CLARK_LL : CLARK_WB;
+
+      // ── Scene 1 ──
+      const w1 = s1.wrap.clientWidth || 420, h1 = s1.wrap.clientHeight || 280;
+      s1.svg.setAttribute('width', w1); s1.svg.setAttribute('height', h1);
+      const f1 = { left: 40, top: 14, right: w1 - 16, bottom: h1 - 26 };
+      const xMax = Math.max(320, v.truncAge + 48);
+      const sx1 = clScale(0, xMax, f1.left, f1.right);
+      const sy1 = clScale(0, 1.02, f1.bottom, f1.top);
+      frame1 = { sx: sx1 };
+      axes1.update(sx1, sy1, f1);
+      const N = 140;
+      const curve = (sh) => {
+        const pts = [];
+        for (let i = 0; i <= N; i++) {
+          const x = (xMax * i) / N;
+          pts.push([sx1(x), sy1(clClarkG(x, sh))]);
+        }
+        return clPathFrom(pts);
+      };
+      pMain.setAttribute('d', curve(shape));
+      pOther.setAttribute('d', curve(other));
+      if (!drewIn) { drewIn = true; clDrawIn(pMain); }
+      for (let i = 0; i < CLARK_AGES.length; i++) {
+        const c = gDots.children[i];
+        c.setAttribute('cx', sx1(CLARK_AGES[i]));
+        c.setAttribute('cy', sy1(clClarkG(CLARK_AGES[i], shape)));
+      }
+      const tx = sx1(d.truncAvg);
+      truncLine.setAttribute('x1', tx); truncLine.setAttribute('x2', tx);
+      truncLine.setAttribute('y1', f1.bottom); truncLine.setAttribute('y2', f1.top);
+      truncTag.setAttribute('x', tx);
+      truncTag.setAttribute('y', f1.bottom + 22);
+      truncTag.textContent = 'Truncate At ' + v.truncAge + ' Months';
+      tailShade.setAttribute('x', tx);
+      tailShade.setAttribute('y', f1.top);
+      tailShade.setAttribute('width', Math.max(0, f1.right - tx));
+      tailShade.setAttribute('height', f1.bottom - f1.top);
+      tailTag.setAttribute('x', Math.min(f1.right - 8, tx + (f1.right - tx) / 2));
+      tailTag.setAttribute('y', f1.top + 16);
+      tailTag.textContent = 'Tail: ' + clFmt(d.tailBeyond / 1e6, 'num2') + 'M';
+
+      // ── Scene 2 ──
+      const w2 = s2.wrap.clientWidth || 420, h2 = s2.wrap.clientHeight || 280;
+      s2.svg.setAttribute('width', w2); s2.svg.setAttribute('height', h2);
+      const f2 = { left: 48, top: 16, right: w2 - 14, bottom: h2 - 26 };
+      const sx2 = clScale(0.5, 10.5, f2.left, f2.right);
+      const yMax = Math.max(...d.reservesFull, 1) * 1.15;
+      const sy2 = clScale(0, yMax, f2.bottom, f2.top);
+      axes2.update(sx2, sy2, f2);
+      fullBars.set(d.reservesFull.map((r, i) => {
+        const x0 = sx2(i + 1 - 0.38), x1 = sx2(i + 1 + 0.38);
+        const y = sy2(r);
+        return { x: x0, y, w: x1 - x0, h: Math.max(0, f2.bottom - y) };
+      }), 'var(--cl-ink-1)');
+      truncBars.set(d.reservesTrunc.map((r, i) => {
+        const x0 = sx2(i + 1 - 0.26), x1 = sx2(i + 1 + 0.26);
+        const y = sy2(Math.max(0, r));
+        return { x: x0, y, w: x1 - x0, h: Math.max(0, f2.bottom - y) };
+      }), 'var(--px-accent)');
+      totTag.setAttribute('x', f2.right - 6);
+      totTag.setAttribute('y', f2.top + 14);
+      totTag.textContent = clFmt(d.totalTrunc / 1e6, 'num2') + 'M of ' + clFmt(d.totalFull / 1e6, 'num2') + 'M';
+    },
+    snapshot(st, d) {
+      return { label: st.presetId || 'pin', family: d.family, totalTrunc: d.totalTrunc };
     },
   };
 }
