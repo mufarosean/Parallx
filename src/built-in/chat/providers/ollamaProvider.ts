@@ -433,6 +433,13 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
     options?: IChatRequestOptions,
     signal?: AbortSignal,
   ): AsyncIterable<IChatResponseChunk> {
+    // Per-request parser reset: a stream aborted mid-<think> (user cancel,
+    // stall timeout, regenerate) never reaches the done-chunk reset below,
+    // leaving _inThinkTag latched — the NEXT response would then be silently
+    // reclassified as thinking in its entirety and render as an empty reply.
+    // Tag tracking is per-stream state, so it must not survive across requests.
+    this._inThinkTag = false;
+
     // Build request body
     const body: Record<string, unknown> = {
       model: modelId,

@@ -408,4 +408,131 @@ describe('executeOpenclawAttempt', () => {
       }),
     );
   });
+
+  // -------------------------------------------------------------------------
+  // Empty-response salvage — thinking models that answer only inside their
+  // reasoning and emit no visible content (qwen3.x / DeepSeek-R1 failure mode)
+  // -------------------------------------------------------------------------
+
+  describe('empty-response salvage', () => {
+    it('reasoning-only response — continuation nudge recovers the final answer', async () => {
+      let callCount = 0;
+      const sendChatRequest = vi.fn(() => {
+        callCount++;
+        if (callCount === 1) {
+          // All output landed in thinking; visible content is empty.
+          return streamChunks([textChunk('', { thinking: 'The Mack SE is 26,909 because...' })]);
+        }
+        return streamChunks([textChunk('The Mack standard error is 26,909.')]);
+      });
+
+      const context = createContext({ sendChatRequest });
+      const response = createResponse();
+
+      const result = await executeOpenclawAttempt(
+        createRequest(),
+        context,
+        createAssembled(),
+        response,
+        createToken(),
+      );
+
+      expect(sendChatRequest).toHaveBeenCalledTimes(2);
+      expect(result.markdown).toBe('The Mack standard error is 26,909.');
+      expect(result.emptyResponseContinuations).toBe(1);
+      // Original reasoning survives into the result even though the
+      // continuation round had no thinking of its own.
+      expect(result.thinking).toContain('The Mack SE is 26,909 because...');
+      // The user was told why an extra round happened.
+      expect(response.progress).toHaveBeenCalledWith(
+        expect.stringContaining('requesting the final answer'),
+      );
+      // No failure warning on the success path.
+      expect(response.warning).not.toHaveBeenCalled();
+
+      // The continuation request carries the reasoning as plain assistant
+      // text plus a user nudge to answer.
+      const secondCallMessages = (sendChatRequest.mock.calls as any[][])[1][0] as IChatMessage[];
+      const carryMsg = secondCallMessages.find(
+        (m) => m.role === 'assistant' && m.content.includes('The Mack SE is 26,909 because...'),
+      );
+      expect(carryMsg).toBeDefined();
+      expect(secondCallMessages[secondCallMessages.length - 1]).toEqual(
+        expect.objectContaining({
+          role: 'user',
+          content: expect.stringContaining('write your final answer now'),
+        }),
+      );
+    });
+
+    it('reasoning-only persists — gives up after the cap and surfaces a diagnosis', async () => {
+      const sendChatRequest = vi.fn(() =>
+        streamChunks([textChunk('', { thinking: 'still only reasoning...' })]),
+      );
+
+      const context = createContext({ sendChatRequest });
+      const response = createResponse();
+
+      const result = await executeOpenclawAttempt(
+        createRequest(),
+        context,
+        createAssembled(),
+        response,
+        createToken(),
+      );
+
+      // 1 original + 2 continuations, then stop — no runaway loop.
+      expect(sendChatRequest).toHaveBeenCalledTimes(3);
+      expect(result.markdown).toBe('');
+      expect(result.emptyResponseContinuations).toBe(2);
+      expect(response.warning).toHaveBeenCalledWith(
+        expect.stringContaining('never produced a final response'),
+      );
+      // Every round's reasoning is preserved for the transcript.
+      expect(result.thinking).toContain('still only reasoning...');
+    });
+
+    it('visible content present — no continuation even when thinking is non-empty', async () => {
+      const sendChatRequest = vi.fn(() =>
+        streamChunks([textChunk('Here is the answer.', { thinking: 'worked it out...' })]),
+      );
+
+      const context = createContext({ sendChatRequest });
+      const response = createResponse();
+
+      const result = await executeOpenclawAttempt(
+        createRequest(),
+        context,
+        createAssembled(),
+        response,
+        createToken(),
+      );
+
+      expect(sendChatRequest).toHaveBeenCalledTimes(1);
+      expect(result.markdown).toBe('Here is the answer.');
+      expect(result.emptyResponseContinuations).toBeUndefined();
+      expect(result.thinking).toBe('worked it out...');
+    });
+
+    it('fully empty response (no thinking either) — no salvage, returns empty once', async () => {
+      const sendChatRequest = vi.fn(() => streamChunks([textChunk('')]));
+
+      const context = createContext({ sendChatRequest });
+      const response = createResponse();
+
+      const result = await executeOpenclawAttempt(
+        createRequest(),
+        context,
+        createAssembled(),
+        response,
+        createToken(),
+      );
+
+      // A truly empty generation is a different failure — the salvage nudge
+      // ("your reply contained reasoning") would be a lie, so it must not fire.
+      expect(sendChatRequest).toHaveBeenCalledTimes(1);
+      expect(result.markdown).toBe('');
+      expect(result.emptyResponseContinuations).toBeUndefined();
+    });
+  });
 });

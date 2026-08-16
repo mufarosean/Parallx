@@ -236,12 +236,38 @@ export interface IOpenclawTurnContext {
 /**
  * Result from a single attempt execution.
  */
+// ---------------------------------------------------------------------------
+// Empty-response salvage (reasoning-only outputs)
+// ---------------------------------------------------------------------------
+//
+// Thinking models (qwen3.x, DeepSeek-R1 class) sometimes answer the question
+// INSIDE their reasoning and then stop without emitting any visible content:
+// EOS straight after </think>, or the stream ends inside an unclosed think
+// tag so the provider routes everything to `thinking`. The user sees an empty
+// bubble and has to regenerate. The recovery is a harness concern, not a
+// model-settings concern — whatever the upstream cause, the fix is the same:
+// carry the reasoning forward as plain assistant text and ask for the final
+// answer. Model-agnostic by design; touches no sampling knobs.
+
+/** Max continuation nudges per attempt when the model answers only inside its reasoning. */
+const MAX_EMPTY_RESPONSE_CONTINUATIONS = 2;
+
+/** Tail of the reasoning carried into the continuation request (chars). */
+const EMPTY_RESPONSE_THINKING_CARRY_CHARS = 6_000;
+
+const EMPTY_RESPONSE_NUDGE =
+  'Your previous reply contained only internal reasoning — the user saw no answer. '
+  + 'Based on that reasoning, write your final answer now. State the answer directly; '
+  + 'do not repeat the reasoning and do not call tools.';
+
 export interface IOpenclawAttemptResult {
   readonly markdown: string;
   readonly thinking: string;
   readonly toolCallCount: number;
   /** True when the tool loop hit the iteration cap while the model still wanted to call tools. */
   readonly continuationRequested: boolean;
+  /** Continuation nudges issued because the model answered only inside its reasoning (absent when none). */
+  readonly emptyResponseContinuations?: number;
   readonly promptTokens?: number;
   readonly completionTokens?: number;
   readonly ragSources: readonly { uri: string; label: string; index: number }[];
@@ -370,6 +396,8 @@ export async function executeOpenclawAttempt(
   let iterations = 0;
   let lastHadToolCalls = false;
   let loopBlocked = false;
+  let emptyResponseContinuations = 0;
+  let salvagedThinking = '';
 
   // Budget-aware per-tool-result cap. A single tool result must never be
   // allowed to exceed a fraction of the model's context window. The mid-loop
@@ -411,6 +439,43 @@ export async function executeOpenclawAttempt(
 
     // No tool calls → done
     if (turnResult.toolCalls.length === 0) {
+      // ── Empty-response salvage — see the constants block up top ──
+      //
+      // The model produced reasoning but no visible answer and requested no
+      // tools. Instead of surfacing an empty bubble, append the reasoning as
+      // a plain assistant message plus a nudge to answer, and give it another
+      // model call. Bounded by MAX_EMPTY_RESPONSE_CONTINUATIONS (this path
+      // does not consume tool iterations); the exchange stays in
+      // currentMessages so afterTurn records an honest transcript of how the
+      // final answer was obtained.
+      if (
+        markdown.trim().length === 0 &&
+        thinking.trim().length > 0 &&
+        emptyResponseContinuations < MAX_EMPTY_RESPONSE_CONTINUATIONS &&
+        !token.isCancellationRequested
+      ) {
+        emptyResponseContinuations++;
+        salvagedThinking = salvagedThinking ? `${salvagedThinking}\n\n${thinking}` : thinking;
+        try {
+          response.progress(
+            `Model answered only inside its reasoning — requesting the final answer (${emptyResponseContinuations}/${MAX_EMPTY_RESPONSE_CONTINUATIONS})...`,
+          );
+        } catch { /* progress emission shouldn't break the loop */ }
+        console.warn(
+          `[openclawAttempt] Reasoning-only response: ${thinking.length} thinking chars, zero content, zero tool calls. `
+          + `Model: ${context.runtimeInfo.model}. Continuation ${emptyResponseContinuations}/${MAX_EMPTY_RESPONSE_CONTINUATIONS}.`,
+        );
+        const carry = thinking.length > EMPTY_RESPONSE_THINKING_CARRY_CHARS
+          ? `[reasoning truncated]\n${thinking.slice(-EMPTY_RESPONSE_THINKING_CARRY_CHARS)}`
+          : thinking;
+        currentMessages = [
+          ...currentMessages,
+          { role: 'assistant', content: `(internal reasoning — no answer was given)\n${carry}` },
+          { role: 'user', content: EMPTY_RESPONSE_NUDGE },
+        ];
+        continue;
+      }
+
       // ── Hallucinated-tool-call guard (M67 follow-up — tool-error reliability) ──
       //
       // Local models with weak tool-use training sometimes narrate a tool
@@ -624,6 +689,19 @@ export async function executeOpenclawAttempt(
     markdownFlushedThisRound = false;
   }
 
+  // Salvage exhausted: the model answered inside its reasoning on every
+  // attempt. Say so instead of rendering a silent empty bubble — the
+  // reasoning already streamed, so point the user at it.
+  if (emptyResponseContinuations > 0 && markdown.trim().length === 0 && !token.isCancellationRequested) {
+    try {
+      response.warning(
+        `The model put its answer inside its reasoning and never produced a final response, `
+        + `even after ${emptyResponseContinuations} follow-up request(s). `
+        + `Its reasoning is shown above — the answer is likely in there.`,
+      );
+    } catch { /* diagnostics must not break the return path */ }
+  }
+
   // 6. Validate citations before streaming — remap mismatched indices
   //    so the displayed markdown matches the citation metadata.
   const validated = validateCitations(markdown, [...assembled.ragSources]);
@@ -642,11 +720,19 @@ export async function executeOpenclawAttempt(
     response.reportTokenUsage(promptTokens, completionTokens);
   }
 
+  // A salvage round overwrote `thinking` with the continuation round's
+  // (possibly empty) reasoning — recombine so the archived transcript keeps
+  // the original burst that actually contains the model's work.
+  const combinedThinking = salvagedThinking
+    ? [salvagedThinking, thinking].filter((s) => s.trim().length > 0).join('\n\n')
+    : thinking;
+
   return {
     markdown: displayMarkdown,
-    thinking,
+    thinking: combinedThinking,
     toolCallCount,
     continuationRequested: lastHadToolCalls && !loopBlocked,
+    emptyResponseContinuations: emptyResponseContinuations > 0 ? emptyResponseContinuations : undefined,
     promptTokens,
     completionTokens,
     ragSources: assembled.ragSources,
