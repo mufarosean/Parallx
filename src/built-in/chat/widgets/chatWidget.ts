@@ -558,6 +558,11 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     this._inputPart.setValue(text);
   }
 
+  /** Fill the input without sending, ready for the user to edit and submit. */
+  stageInput(text: string): void {
+    this._inputPart.stageValue(text);
+  }
+
   /**
    * Update the widget dimensions. Called by the host view on resize.
    */

@@ -278,6 +278,20 @@ export class ChatInputPart extends Disposable {
     this._autoResize();
   }
 
+  /**
+   * Fill the input WITHOUT sending, focused with the caret at the end so the
+   * user can keep typing. Distinct from setValue(), which programmatic
+   * submitters use as a staging area immediately before acceptInput() clears
+   * it — there the caret never matters, here it is the whole point.
+   */
+  stageValue(text: string): void {
+    this._textarea.value = text;
+    this._autoResize();
+    this._textarea.focus();
+    const end = this._textarea.value.length;
+    this._textarea.setSelectionRange(end, end);
+  }
+
   /** Clear the input, reset height, and clear attachments. */
   clear(): void {
     this._textarea.value = '';

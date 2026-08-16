@@ -3203,6 +3203,37 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     }),
   );
 
+  // chat.stagePrompt — submitPrompt's other half: fill the input and STOP.
+  //
+  // A one-shot prompt fired straight at the model answers whatever the caller
+  // guessed the user wanted to ask. Staging hands the turn back: the prompt
+  // and its attachments are ready, and the user edits or extends it before
+  // sending. Callers that want the old fire-and-forget keep using
+  // submitPrompt; this is for surfaces where the question is really the
+  // user's, not the caller's.
+  //
+  // Contract: { text, reveal? } — reveal:false skips showing the panel.
+  context.subscriptions.push(
+    api.commands.registerCommand('chat.stagePrompt', async (...args: unknown[]) => {
+      const opts = (args[0] ?? {}) as { text?: string; reveal?: boolean };
+      const text = typeof opts.text === 'string' ? opts.text : '';
+      if (!text.trim()) {
+        throw new Error('stagePrompt: a non-empty "text" prompt is required.');
+      }
+      if (opts.reveal !== false) {
+        try { await api.commands.executeCommand('chat.show'); } catch { /* panel may already be visible */ }
+      }
+      if (!_activeWidget) {
+        throw new Error('stagePrompt: the chat panel is not mounted.');
+      }
+      // Bind a session for the same reason submitPrompt does: without one the
+      // eventual acceptInput() silently no-ops, and the user would press
+      // Enter on a staged prompt and watch nothing happen.
+      _activeWidget.ensureSession();
+      _activeWidget.stageInput(text);
+    }),
+  );
+
   // chat.runBackgroundPrompt — the HEADLESS sibling of submitPrompt (M86 C4).
   //
   // Runs the prompt as one isolated agent turn on the ephemeral-session rail

@@ -21,6 +21,10 @@ const CONTEXT_WINDOW_PRESETS: readonly { label: string; description: string; val
   { label: '32K',  description: 'Long chat',                                     value: 32_768 },
   { label: '64K',  description: 'Stays in VRAM on most GPUs',                    value: 65_536 },
   { label: '128K', description: 'May spill to CPU',                              value: 131_072 },
+  { label: '160K', description: 'Large, needs GPU headroom',                     value: 163_840 },
+  { label: '192K', description: 'Very large, likely spills',                     value: 196_608 },
+  { label: '224K', description: 'Near-max on 256K models',                       value: 229_376 },
+  { label: '256K', description: 'Full window on 262K models',                    value: 262_144 },
 ];
 
 export interface IContextWindowPickerCallbacks {
@@ -101,11 +105,14 @@ export class ChatContextWindowPicker extends Disposable {
     dropdown.style.position = 'absolute';
     dropdown.style.zIndex = '100';
 
+    let activeItem: HTMLElement | undefined;
+
     for (const preset of CONTEXT_WINDOW_PRESETS) {
       const item = $('div.parallx-chat-picker-item');
       const isActive = preset.value === this._activeValue;
       if (isActive) {
         item.classList.add('parallx-chat-picker-item--active');
+        activeItem = item;
       }
 
       // Leading check icon slot — shown for the active preset, kept as an
@@ -137,6 +144,10 @@ export class ChatContextWindowPicker extends Disposable {
 
     document.body.appendChild(dropdown);
     this._dropdown = dropdown;
+
+    // The preset list is taller than the dropdown's max-height, so the
+    // active row can sit below the fold. Bring it into view on open.
+    activeItem?.scrollIntoView({ block: 'nearest' });
 
     const closeHandler = (e: MouseEvent) => {
       if (!dropdown.contains(e.target as Node) && !this._button.contains(e.target as Node)) {
