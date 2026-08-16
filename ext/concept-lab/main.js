@@ -343,6 +343,44 @@ function clValidationRun({ n, bias, tail, seed }) {
   return { percentiles, D: clKsD(percentiles) };
 }
 
+// --- Random-walk Metropolis on a 2D gaussian target ------------------------
+
+/** Bivariate normal log-density up to a constant (all Metropolis needs). */
+function clMvn2LogPdf(x, y, t) {
+  const zx = (x - t.mx) / t.sx;
+  const zy = (y - t.my) / t.sy;
+  const r = t.rho || 0;
+  return -(zx * zx - 2 * r * zx * zy + zy * zy) / (2 * (1 - r * r));
+}
+
+/**
+ * One random-walk Metropolis proposal, scaled per-axis by the target sds so
+ * `step` is in sd units. Mutates `state` on acceptance; returns the proposal
+ * either way so the UI can flash rejections.
+ */
+function clMetropolisStep(state, target, step, rng) {
+  const px = state.x + clRandNormal(rng) * step * target.sx;
+  const py = state.y + clRandNormal(rng) * step * target.sy;
+  const logA = clMvn2LogPdf(px, py, target) - clMvn2LogPdf(state.x, state.y, target);
+  const u = rng();
+  const accept = u > 0 && Math.log(u) < logA;
+  if (accept) { state.x = px; state.y = py; }
+  return { px, py, accept };
+}
+
+function clMetropolisRun({ n, step, seed, target, start }) {
+  const rng = clMulberry32(seed);
+  const state = { x: start?.x ?? target.mx, y: start?.y ?? target.my };
+  const xs = [], ys = [];
+  let accepted = 0;
+  for (let i = 0; i < n; i++) {
+    if (clMetropolisStep(state, target, step, rng).accept) accepted++;
+    xs.push(state.x);
+    ys.push(state.y);
+  }
+  return { xs, ys, acceptRate: accepted / n };
+}
+
 // ============================================================================
 // SECTION 2: MODULE FRAMEWORK + DEFINITIONS
 // Modules are declarative content over the kernel: params in the paper's
@@ -1157,6 +1195,303 @@ defineModule({
   ],
 });
 
+// --- Module: The Settlement-Rate Story (Meyers §7, CSR) --------------------
+
+// Posterior means from Table 7.1, Group 353 paid data. beta_10 = 0 by
+// construction — which is exactly why the CSR ultimate is formally CRC.
+const CSR_BETA = [-1.3794, -0.6479, -0.3032, -0.0928, -0.0608, -0.0151, -0.0057, -0.0041, -0.0062, 0.0000];
+const CSR_GAMMA = { mean: 0.0446, sd: 0.0282 };
+const CSR_LOGELR = { mean: -0.3956, sd: 0.0246 };
+
+/**
+ * Expected share of ultimate paid by lag d for accident year w under CSR
+ * posterior-mean parameters: exp(beta_d * (1-gamma)^(w-1)), lognormal noise
+ * set aside. gamma > 0 shrinks the (negative) early betas for later years,
+ * i.e. faster settlement.
+ */
+function clCsrShare(w, d, gamma) {
+  return Math.exp(CSR_BETA[d - 1] * Math.pow(1 - gamma, w - 1));
+}
+
+defineModule({
+  id: 'csr-story',
+  title: 'The Settlement-Rate Story',
+  subtitle: 'Why paid-data models failed validation, and how CSR names the culprit',
+  icon: 'fast-forward',
+  paper: {
+    label: 'Meyers, Monograph 8 (2nd ed.), §7',
+    section: 'CSR specification, Table 7.1 posterior (gamma = 0.0446 ± 0.0282); pp. 31-36',
+    task: 'Explain how a drifting settlement rate biases fixed-pattern methods',
+  },
+  intro:
+    'Chain ladder assumes every accident year pays out on the same curve. ' +
+    'The CSR model lets the curve drift: one parameter, gamma, speeds up ' +
+    '(or slows down) each successive year\'s settlement. Fit to real data it ' +
+    'came back positive, and that single fact explains why Mack and ' +
+    'bootstrap ODP kept failing validation on paid losses.',
+  params: [
+    { key: 'gamma', tex: '\\gamma', label: 'Settlement-Rate Drift', min: -0.10, max: 0.20, step: 0.002, init: 0.0446, fmt: 'num3', link: 'fan' },
+    { key: 'dLag', tex: 'd', label: 'Development Lag In Focus', min: 1, max: 9, step: 1, init: 1, fmt: 'num', link: 'bars' },
+  ],
+  derived(par) {
+    const d = Math.round(par.dLag);
+    const shares = [];
+    for (let w = 1; w <= 10; w++) shares.push(clCsrShare(w, d, par.gamma));
+    const sAvg = shares.reduce((a, b) => a + b, 0) / shares.length;
+    const s10 = shares[9];
+    return {
+      dLagInt: d,
+      sharesAtLag: shares,
+      s10,
+      sAvg,
+      biasRatio: s10 / sAvg,
+      s10Lag1: clCsrShare(10, 1, par.gamma),
+      s1Lag1: clCsrShare(1, 1, par.gamma),
+      shrink: Math.pow(1 - par.gamma, 9),
+    };
+  },
+  readouts: [
+    { sym: '\\gamma', id: 'gamma', fmt: 'num3', label: 'Drift', link: 'fan' },
+    { sym: '(1{-}\\gamma)^9', id: 'shrink', fmt: 'num3', label: 'AY-10 Beta Shrink', link: 'fan' },
+    { sym: '', id: 's10', fmt: 'pct', label: 'AY-10 Share At Focus Lag', accent: true, link: 'bars' },
+    { sym: '', id: 'sAvg', fmt: 'pct', label: 'All-Year Average Share', link: 'bars' },
+    {
+      sym: '', id: 'biasRatio', fmt: 'str', label: 'Naive Average Pattern Misprices AY-10 By', accent: true, link: 'bars',
+      get: (d) => ((d.biasRatio - 1) * 100).toFixed(1) + '%',
+    },
+  ],
+  formula() {
+    return {
+      sym: '\\mu_{w,d} = \\log(Prem_w) + logelr + \\alpha_w + \\beta_d\\,(1{-}\\gamma)^{w-1}',
+      terms: [
+        { sym: 'share_{10,d}', fmt: 'pct', get: (d) => d.s10, primary: true, link: 'bars' },
+        { op: '=' },
+        { sym: 'e^{\\beta_d(1-\\gamma)^9}', fmt: 'pct', get: (d) => d.s10, link: 'fan' },
+        { op: '|' },
+        { sym: '\\beta_d', fmt: 'num3', get: (d) => CSR_BETA[d.dLagInt - 1], link: 'bars' },
+        { op: '|' },
+        { sym: '\\gamma', fmt: 'num3', get: (d) => d.gamma, primary: false, link: 'fan' },
+      ],
+    };
+  },
+  presets: [
+    {
+      id: 'crc',
+      label: 'Gamma Zero: CRC',
+      note: 'At gamma = 0 the fan collapses to a single payment pattern: CSR nests CRC exactly. This is the world chain ladder assumes.',
+      params: { gamma: { value: 0 }, dLag: { value: 1 } },
+    },
+    {
+      id: 'posterior',
+      label: 'Table 7.1 Posterior Mean',
+      note: 'Fit to the Group 353 paid triangle, gamma = 0.0446: the newest year pays 40% in year one where the oldest paid 25%. The betas are the actual posterior means.',
+      params: { gamma: { value: 0.0446 }, dLag: { value: 1 } },
+    },
+    {
+      id: 'strong',
+      label: 'Strong Speedup',
+      note: 'Push gamma to 0.12 and the fan splays: any method that averages one pattern across all years is now pricing the newest year with ancient history.',
+      params: { gamma: { value: 0.12 }, dLag: { value: 1 } },
+    },
+    {
+      id: 'slowdown',
+      label: 'Slowdown',
+      note: 'Gamma below zero runs the story in reverse: settlement decelerating, naive patterns UNDERSTATING the newest year. Same mechanism, opposite sign.',
+      params: { gamma: { value: -0.06 }, dLag: { value: 1 } },
+    },
+  ],
+  story: [
+    {
+      title: 'One curve or a family',
+      text: 'Every fixed-pattern method assumes the payout curve is shared across accident years. CSR adds one parameter: $\\beta_d$ is scaled by $(1-\\gamma)^{w-1}$, so each successive year walks its own curve.',
+      preset: 'crc',
+    },
+    {
+      title: 'What the data said',
+      text: 'On the illustrative insurer, the posterior put $\\gamma$ at $0.0446 \\pm 0.0282$: a real speedup. Drag $\\gamma$ through the posterior strip and watch the fan open.',
+      preset: 'posterior',
+    },
+    {
+      title: 'The bias mechanism',
+      text: 'Average one pattern across all years and apply it to the newest: when settlement sped up, the newest year\'s early payments are a BIGGER share of its ultimate than the average admits, so the naive projection overstates it. The bars show the gap lag by lag.',
+      preset: 'strong',
+    },
+    {
+      title: 'Why beta_10 = 0 matters',
+      text: 'With $\\beta_{10} = 0$, every year\'s share reaches 100% at lag 10 whatever $\\gamma$ is, so the CSR ultimate calculation is formally identical to CRC. Gamma changes the JOURNEY, not the destination. That is precisely why it repairs paid-data validation without touching the ultimate\'s definition.',
+      preset: 'posterior',
+    },
+  ],
+  checks: [
+    { name: 'AY-1 lag-1 share = exp(beta_1) = 25.2%', expect: 0.25175, tol: 2e-4, got: () => clCsrShare(1, 1, 0.0446) },
+    { name: 'AY-10 lag-1 share at posterior mean = 40.1%', expect: 0.40056, tol: 2e-4, got: () => clCsrShare(10, 1, 0.0446) },
+    {
+      name: 'Gamma zero collapses the fan (CSR nests CRC)', expect: 0, tol: 1e-12,
+      got: () => Math.abs(clCsrShare(1, 1, 0) - clCsrShare(10, 1, 0)),
+    },
+    {
+      name: 'beta_10 = 0: share hits 100% at lag 10 for every year and any gamma', expect: 1, tol: 1e-12,
+      got: () => clCsrShare(10, 10, 0.12) * clCsrShare(1, 10, -0.06),
+    },
+    {
+      name: 'Speedup overstates, slowdown understates, zero is exact', expect: 1, tol: 0,
+      got: () => {
+        const ratio = (g) => {
+          let sum = 0;
+          for (let w = 1; w <= 10; w++) sum += clCsrShare(w, 1, g);
+          return clCsrShare(10, 1, g) / (sum / 10);
+        };
+        return ratio(0.0446) > 1 && Math.abs(ratio(0) - 1) < 1e-12 && ratio(-0.06) < 1 ? 1 : 0;
+      },
+    },
+    {
+      name: 'Shares grow with development for every year', expect: 1, tol: 0,
+      got: () => {
+        for (let w = 1; w <= 10; w++) {
+          if (!(clCsrShare(w, 1, 0.0446) < clCsrShare(w, 5, 0.0446) && clCsrShare(w, 5, 0.0446) < clCsrShare(w, 10, 0.0446))) return 0;
+        }
+        return 1;
+      },
+    },
+  ],
+});
+
+// --- Module: Watching The Posterior Form (MCMC) ----------------------------
+
+// Stylized 2D posterior matched to Table 7.1's printed marginals for
+// (logelr, gamma). The real CSR posterior has ~24 dimensions; two are enough
+// to watch the machinery work, and honesty demands saying so in the copy.
+const MCMC_TARGET = {
+  mx: CSR_LOGELR.mean, sx: CSR_LOGELR.sd,
+  my: CSR_GAMMA.mean, sy: CSR_GAMMA.sd,
+  rho: -0.25,
+};
+const MCMC_SEED = 42;
+
+defineModule({
+  id: 'mcmc-watch',
+  title: 'Watching The Posterior Form',
+  subtitle: 'What Stan actually does with those 10,000 draws',
+  icon: 'route',
+  paper: {
+    label: 'Meyers, Monograph 8 (2nd ed.), §§1, 5-7',
+    section: 'Bayesian MCMC estimation; posterior summaries like Table 7.1; pp. 1-3, 16-36',
+    task: 'Explain what a posterior mean (sd) table row means and how sampling produces it',
+  },
+  intro:
+    'Every Meyers table row like "logelr −0.3956 (0.0246)" is a histogram of ' +
+    'draws from a distribution nobody can write down. This is the machine ' +
+    'that draws them: propose a step, compare posterior densities, accept or ' +
+    'reject. Watch a two-parameter version (matched to Table 7.1\'s printed ' +
+    'marginals) converge in front of you.',
+  params: [
+    { key: 'step', tex: 's', label: 'Proposal Step (Sd Units)', min: 0.05, max: 8, step: 0.05, init: 1, fmt: 'num2', link: 'chain' },
+  ],
+  derived() {
+    return {
+      targetMean: MCMC_TARGET.mx,
+      targetSd: MCMC_TARGET.sx,
+    };
+  },
+  readouts: [
+    { sym: '', id: 'draws', fmt: 'num', label: 'Draws', link: 'chain' },
+    { sym: '', id: 'acceptRate', fmt: 'pct', label: 'Acceptance Rate', link: 'chain' },
+    { sym: '', id: 'meanLogelr', fmt: 'num3', label: 'Running Mean logelr', accent: true, link: 'hist' },
+    { sym: '', id: 'sdLogelr', fmt: 'num3', label: 'Running Sd', accent: true, link: 'hist' },
+    { sym: '', id: 'targetMean', fmt: 'num3', label: 'Table 7.1 Mean', link: 'hist' },
+    { sym: '', id: 'targetSd', fmt: 'num3', label: 'Table 7.1 Sd', link: 'hist' },
+  ],
+  formula() {
+    return {
+      sym: '\\theta\' = \\theta + s\\,\\varepsilon,\\quad P(accept) = \\min\\!\\left(1, \\tfrac{\\pi(\\theta\')}{\\pi(\\theta)}\\right)',
+      terms: [
+        { sym: 's', fmt: 'num2', get: (d) => d.step, link: 'chain' },
+        { op: '|' },
+        { sym: 'accept\\;\\%', fmt: 'pct', get: (d) => d.acceptRate ?? 0, primary: true, link: 'chain' },
+        { op: '|' },
+        { sym: '\\bar{\\theta}_{logelr}', fmt: 'num3', get: (d) => d.meanLogelr ?? 0, link: 'hist' },
+      ],
+    };
+  },
+  presets: [
+    {
+      id: 'tuned',
+      label: 'Well Tuned',
+      note: 'Step near one sd: the chain strides across the posterior, accepting roughly a third of proposals. This is the regime samplers aim for.',
+      params: { step: { value: 1 } },
+    },
+    {
+      id: 'timid',
+      label: 'Timid Steps',
+      note: 'Tiny steps get accepted almost every time and go almost nowhere: the chain crawls, and the histogram takes forever to fill out. High acceptance is not success.',
+      params: { step: { value: 0.15 } },
+    },
+    {
+      id: 'reckless',
+      label: 'Reckless Steps',
+      note: 'Huge steps keep proposing wilderness and get rejected: the chain freezes in place for long stretches. Watch the rejected proposals spray.',
+      params: { step: { value: 6 } },
+    },
+  ],
+  story: [
+    {
+      title: 'Why sample at all',
+      text: 'The CSR posterior lives in ~24 dimensions with no closed form. MCMC never needs one: it only ever COMPARES the posterior density at two points, and that ratio is computable. Stan does this; JAGS did before it.',
+      preset: 'tuned',
+    },
+    {
+      title: 'The walk itself',
+      text: 'From the current $\\theta$, propose $\\theta\' = \\theta + s\\varepsilon$. If the posterior is higher there, go; if lower, go with probability $\\pi(\\theta\')/\\pi(\\theta)$. The chain starts far out in the tail. Watch it find the ridge, then stay.',
+      preset: 'tuned',
+    },
+    {
+      title: 'A table row is a histogram',
+      text: 'Table 7.1 prints logelr $-0.3956\\;(0.0246)$. That row IS the histogram forming on the right, summarized. Every estimate, SE, and percentile in the monograph is a statistic of draws like these.',
+      preset: 'tuned',
+    },
+    {
+      title: 'Tuning is a real problem',
+      text: 'Timid steps accept everything and learn nothing; reckless steps reject everything and learn nothing. Efficiency peaks in between, which is why Stan tunes itself during warmup, and why "burn-in" draws get discarded.',
+      preset: 'timid',
+    },
+  ],
+  checks: [
+    {
+      name: 'Chain converges to the Table 7.1 mean (seeded, post burn-in)', expect: CSR_LOGELR.mean, tol: 0.004,
+      got: () => {
+        const run = clMetropolisRun({ n: 6000, step: 1, seed: MCMC_SEED, target: MCMC_TARGET, start: { x: MCMC_TARGET.mx + 3.5 * MCMC_TARGET.sx, y: MCMC_TARGET.my + 3.5 * MCMC_TARGET.sy } });
+        const tail = run.xs.slice(1000);
+        return tail.reduce((a, b) => a + b, 0) / tail.length;
+      },
+    },
+    {
+      name: 'Chain recovers the Table 7.1 sd (seeded, post burn-in)', expect: CSR_LOGELR.sd, tol: 0.005,
+      got: () => {
+        const run = clMetropolisRun({ n: 6000, step: 1, seed: MCMC_SEED, target: MCMC_TARGET });
+        const tail = run.xs.slice(1000);
+        const m = tail.reduce((a, b) => a + b, 0) / tail.length;
+        return Math.sqrt(tail.reduce((a, b) => a + (b - m) * (b - m), 0) / tail.length);
+      },
+    },
+    {
+      name: 'Tuned acceptance sits in the healthy band', expect: 1, tol: 0,
+      got: () => {
+        const a = clMetropolisRun({ n: 4000, step: 1, seed: MCMC_SEED, target: MCMC_TARGET }).acceptRate;
+        return a > 0.2 && a < 0.6 ? 1 : 0;
+      },
+    },
+    {
+      name: 'Bigger steps reject more', expect: 1, tol: 0,
+      got: () => {
+        const timid = clMetropolisRun({ n: 4000, step: 0.15, seed: MCMC_SEED, target: MCMC_TARGET }).acceptRate;
+        const tuned = clMetropolisRun({ n: 4000, step: 1, seed: MCMC_SEED, target: MCMC_TARGET }).acceptRate;
+        const wild = clMetropolisRun({ n: 4000, step: 6, seed: MCMC_SEED, target: MCMC_TARGET }).acceptRate;
+        return timid > tuned && tuned > wild && timid > 0.85 && wild < 0.12 ? 1 : 0;
+      },
+    },
+  ],
+});
+
 // ============================================================================
 // SECTION 3: STYLES — single injected <style>, guarded (flashcards pattern)
 // ============================================================================
@@ -1827,6 +2162,7 @@ const CL_EASE_SETTLE = clCubicBezier(0.22, 1, 0.36, 1);
 function createAnimator(onFrame) {
   const tweens = new Map();
   const smooths = new Set();
+  const loops = new Map();
   let rafId = 0;
   let last = 0;
   let disposed = false;
@@ -1852,6 +2188,8 @@ function createAnimator(onFrame) {
         active = true;
       }
     }
+    for (const fn of loops.values()) fn(dt);
+    if (loops.size > 0) active = true;
     onFrame();
     if (active) schedule(); else last = 0;
   }
@@ -1881,10 +2219,14 @@ function createAnimator(onFrame) {
         snap(v) { sm.current = v; sm.target = v; smooths.delete(sm); },
       };
     },
+    /** Run fn(dt) every frame until stopped — keeps the loop alive. */
+    loop(key, fn) { loops.set(key, fn); schedule(); },
+    stopLoop(key) { loops.delete(key); },
+    hasLoop(key) { return loops.has(key); },
     /** Request a plain redraw frame outside any tween. */
     invalidate() { schedule(); },
     cancel(key) { tweens.delete(key); },
-    dispose() { disposed = true; if (rafId) cancelAnimationFrame(rafId); tweens.clear(); smooths.clear(); },
+    dispose() { disposed = true; if (rafId) cancelAnimationFrame(rafId); tweens.clear(); smooths.clear(); loops.clear(); },
   };
 }
 
@@ -2193,6 +2535,8 @@ function buildMeter(parent, leftLabel, rightLabel, linkName, linkRoot) {
 let _api = null;
 const _disposables = [];
 let _paneRerender = null;
+// One-shot module configuration from the chat tool, consumed on next mount.
+let _pendingConfig = null;
 
 // Pane state survives tab-switch rebuilds via module scope + view-state hooks.
 const _paneState = { route: { view: 'home', moduleId: null }, params: {} };
@@ -2224,6 +2568,8 @@ const SCENE_BUILDERS = {
   'prior-posterior': buildPosteriorScenes,
   'dist-zoo': buildZooScenes,
   'validation-machine': buildValidationScenes,
+  'csr-story': buildCsrScenes,
+  'mcmc-watch': buildMcmcScenes,
 };
 
 /** First-mount draw-in: the primary curve sweeps in along its own length. */
@@ -3043,6 +3389,353 @@ function buildValidationScenes(stageRow, ctx) {
   };
 }
 
+// --- CSR: the payment-pattern fan + the naive-average bias bars ------------
+
+function buildCsrScenes(stageRow, ctx) {
+  const { linkRoot, animator } = ctx;
+
+  const s1 = buildScene(stageRow, 'The Payment Pattern Family', [
+    { label: 'AY 1', color: 'var(--cl-ink-1)', link: 'fan' },
+    { label: 'AY 10', color: 'var(--px-accent)', link: 'fan' },
+    { label: 'γ Posterior (Table 7.1)', color: 'var(--cl-ink-3)', dashed: true, link: 'gamma-strip' },
+  ], linkRoot);
+  const axesFan = createAxes(s1.svg, { xFmt: (v) => String(v), yFmt: (v) => Math.round(v * 100) + '%', xTicks: 9, yTicks: 4 });
+  const fanPaths = [];
+  for (let w = 1; w <= 10; w++) {
+    const isEdge = w === 1 || w === 10;
+    const p = svgEl('path', {
+      stroke: w === 10 ? 'var(--px-accent)' : (w === 1 ? 'var(--cl-ink-1)' : 'var(--px-text-faint)'),
+    }, isEdge ? 'cl-curve' : 'cl-curve cl-ref');
+    if (!isEdge) p.style.strokeDasharray = 'none';
+    p.dataset.clLink = 'fan';
+    s1.svg.appendChild(p);
+    fanPaths.push(p);
+  }
+  const tagAy1 = svgEl('text', { 'text-anchor': 'start', fill: 'var(--cl-ink-1)' }, 'cl-svg-tag');
+  const tagAy10 = svgEl('text', { 'text-anchor': 'start', fill: 'var(--px-accent)' }, 'cl-svg-tag');
+  s1.svg.appendChild(tagAy1); s1.svg.appendChild(tagAy10);
+
+  // Gamma posterior strip: drag on the posterior itself to set gamma.
+  const stripBand = svgEl('path', { fill: 'var(--cl-ink-3)' }, 'cl-band');
+  stripBand.dataset.clLink = 'gamma-strip';
+  const stripCurve = svgEl('path', { stroke: 'var(--cl-ink-3)' }, 'cl-curve cl-ref');
+  stripCurve.dataset.clLink = 'gamma-strip';
+  const stripMarker = svgEl('line', { stroke: 'var(--px-accent)', 'stroke-width': 2 }, '');
+  const stripTag = svgEl('text', { 'text-anchor': 'middle' }, 'cl-svg-value');
+  const stripZero = svgEl('line', {}, 'cl-marker-line');
+  const axesStrip = createAxes(s1.svg, { xFmt: (v) => v.toFixed(2), yFmt: () => '', yTicks: 0, xTicks: 5 });
+  s1.svg.appendChild(stripBand); s1.svg.appendChild(stripCurve);
+  s1.svg.appendChild(stripZero); s1.svg.appendChild(stripMarker); s1.svg.appendChild(stripTag);
+
+  let stripFrame = null;
+  clDragOnSvg(s1.svg, (e) => {
+    if (!stripFrame) return;
+    const pt = clSvgPoint(s1.svg, e);
+    if (pt.y < stripFrame.yTop - 8) return; // only the strip is draggable
+    const st = ctx.getState();
+    const r = st.ranges.gamma;
+    ctx.setParam('gamma', Math.max(r.min, Math.min(r.max, stripFrame.sx.invert(pt.x))));
+  });
+
+  const s2 = buildScene(stageRow, 'Share Paid By The Focus Lag, By Accident Year', [
+    { label: 'AY 10', color: 'var(--px-accent)', link: 'bars' },
+    { label: 'Naive Average', color: 'var(--cl-ink-2)', dashed: true, link: 'bars' },
+  ], linkRoot);
+  const axesBars = createAxes(s2.svg, { xFmt: (v) => String(v), yFmt: (v) => Math.round(v * 100) + '%', xTicks: 9, yTicks: 4 });
+  const barPool = makeBarPool(s2.svg, 'cl-bar');
+  barPool.g.dataset.clLink = 'bars';
+  const avgLine = svgEl('line', { stroke: 'var(--cl-ink-2)' }, 'cl-curve cl-ref');
+  avgLine.dataset.clLink = 'bars';
+  const avgTag = svgEl('text', { 'text-anchor': 'end', fill: 'var(--cl-ink-2)' }, 'cl-svg-tag');
+  const lagTag = svgEl('text', { 'text-anchor': 'middle' }, 'cl-svg-tag');
+  s2.svg.appendChild(avgLine); s2.svg.appendChild(avgTag); s2.svg.appendChild(lagTag);
+
+  const domStripY = animator.smooth(16, 110);
+  let drewIn = false;
+
+  return {
+    update(st, d) {
+      const v = st.values;
+
+      // ── Scene 1: the fan + the posterior strip ──
+      const w1 = s1.wrap.clientWidth || 420, h1 = s1.wrap.clientHeight || 280;
+      s1.svg.setAttribute('width', w1); s1.svg.setAttribute('height', h1);
+      const fFan = { left: 40, top: 12, right: w1 - 44, bottom: Math.floor(h1 * 0.58) };
+      const fStrip = { left: 40, top: Math.floor(h1 * 0.58) + 30, right: w1 - 44, bottom: h1 - 22 };
+
+      const sxF = clScale(1, 10, fFan.left, fFan.right);
+      const syF = clScale(0, 1, fFan.bottom, fFan.top);
+      axesFan.update(sxF, syF, fFan);
+      for (let w = 1; w <= 10; w++) {
+        const pts = [];
+        for (let lag = 1; lag <= 10; lag++) pts.push([sxF(lag), syF(clCsrShare(w, lag, v.gamma))]);
+        fanPaths[w - 1].setAttribute('d', clPathFrom(pts));
+      }
+      if (!drewIn) { drewIn = true; clDrawIn(fanPaths[9]); }
+      tagAy1.setAttribute('x', sxF(1) + 4);
+      tagAy1.setAttribute('y', syF(clCsrShare(1, 1, v.gamma)) - 6);
+      tagAy1.textContent = 'AY 1';
+      tagAy10.setAttribute('x', sxF(1) + 4);
+      tagAy10.setAttribute('y', syF(clCsrShare(10, 1, v.gamma)) + 12);
+      tagAy10.textContent = 'AY 10';
+
+      const gLo = st.ranges.gamma.min, gHi = st.ranges.gamma.max;
+      const sxS = clScale(gLo, gHi, fStrip.left, fStrip.right);
+      const peak = clNormPdf(CSR_GAMMA.mean, CSR_GAMMA.mean, CSR_GAMMA.sd);
+      domStripY.target = peak * 1.15;
+      const syS = clScale(0, domStripY.current, fStrip.bottom, fStrip.top);
+      stripFrame = { sx: sxS, yTop: fStrip.top };
+      axesStrip.update(sxS, syS, fStrip);
+      const stripPts = [];
+      for (let i = 0; i <= 90; i++) {
+        const g = gLo + ((gHi - gLo) * i) / 90;
+        stripPts.push([sxS(g), syS(clNormPdf(g, CSR_GAMMA.mean, CSR_GAMMA.sd))]);
+      }
+      stripCurve.setAttribute('d', clPathFrom(stripPts));
+      const b0 = CSR_GAMMA.mean - CSR_GAMMA.sd, b1 = CSR_GAMMA.mean + CSR_GAMMA.sd;
+      const bandPts = [];
+      for (let i = 0; i <= 30; i++) {
+        const g = b0 + ((b1 - b0) * i) / 30;
+        bandPts.push([sxS(g), syS(clNormPdf(g, CSR_GAMMA.mean, CSR_GAMMA.sd))]);
+      }
+      stripBand.setAttribute('d', clPathFrom(bandPts) + `L${sxS(b1)},${syS(0)}L${sxS(b0)},${syS(0)}Z`);
+      stripZero.setAttribute('x1', sxS(0)); stripZero.setAttribute('x2', sxS(0));
+      stripZero.setAttribute('y1', fStrip.bottom); stripZero.setAttribute('y2', fStrip.top);
+      const gx = sxS(v.gamma);
+      stripMarker.setAttribute('x1', gx); stripMarker.setAttribute('x2', gx);
+      stripMarker.setAttribute('y1', fStrip.bottom); stripMarker.setAttribute('y2', fStrip.top - 2);
+      stripTag.setAttribute('x', gx);
+      stripTag.setAttribute('y', fStrip.top - 8);
+      stripTag.textContent = 'γ = ' + v.gamma.toFixed(3);
+
+      // ── Scene 2: bars at the focus lag ──
+      const w2 = s2.wrap.clientWidth || 420, h2 = s2.wrap.clientHeight || 280;
+      s2.svg.setAttribute('width', w2); s2.svg.setAttribute('height', h2);
+      const f2 = { left: 40, top: 16, right: w2 - 14, bottom: h2 - 26 };
+      const sx2 = clScale(0.5, 10.5, f2.left, f2.right);
+      const yMax = Math.max(...d.sharesAtLag, 0.01) * 1.18;
+      const sy2 = clScale(0, yMax, f2.bottom, f2.top);
+      axesBars.update(sx2, sy2, f2);
+      barPool.set(d.sharesAtLag.map((s, i) => {
+        const x0 = sx2(i + 1 - 0.34), x1 = sx2(i + 1 + 0.34);
+        const y = sy2(s);
+        return { x: x0, y, w: x1 - x0, h: Math.max(0, f2.bottom - y) };
+      }), 'var(--cl-ink-1)');
+      // AY 10 carries the accent — it is the year the naive average misprices.
+      if (barPool.g.children[9]) barPool.g.children[9].setAttribute('fill', 'var(--px-accent)');
+      const ay = sy2(d.sAvg);
+      avgLine.setAttribute('x1', f2.left); avgLine.setAttribute('x2', f2.right);
+      avgLine.setAttribute('y1', ay); avgLine.setAttribute('y2', ay);
+      avgTag.setAttribute('x', f2.right - 4);
+      avgTag.setAttribute('y', ay - 5);
+      avgTag.textContent = 'Naive Average ' + clFmt(d.sAvg, 'pct');
+      lagTag.setAttribute('x', (f2.left + f2.right) / 2);
+      lagTag.setAttribute('y', f2.bottom + 22);
+      lagTag.textContent = 'Accident Year (Focus Lag d = ' + d.dLagInt + ')';
+    },
+    snapshot(st, d) {
+      return { label: st.presetId || 'pin', gamma: st.values.gamma, biasRatio: d.biasRatio };
+    },
+  };
+}
+
+// --- MCMC: the random walk and the accumulating histogram ------------------
+
+function buildMcmcScenes(stageRow, ctx) {
+  const { linkRoot, animator } = ctx;
+  const T = MCMC_TARGET;
+  const MAX_DRAWS = 6000;
+  const BURN_IN = 100;
+
+  const s1 = buildScene(stageRow, 'The Random Walk', [
+    { label: 'Posterior Contours', color: 'var(--cl-ink-1)', dashed: true, link: 'chain' },
+    { label: 'Chain', color: 'var(--px-accent)', link: 'chain' },
+    { label: 'Rejected', color: 'var(--cl-ink-2)', link: 'chain' },
+  ], linkRoot);
+  const head1 = s1.scene.querySelector('.cl-scene-head');
+  const btnPlay = document.createElement('button');
+  btnPlay.className = 'cl-scene-btn';
+  const btnStep = document.createElement('button');
+  btnStep.className = 'cl-scene-btn';
+  btnStep.innerHTML = clIcon('redo', 12) + '<span>Step</span>';
+  const btnReset = document.createElement('button');
+  btnReset.className = 'cl-scene-btn';
+  btnReset.innerHTML = clIcon('rotate-ccw', 12) + '<span>Reset</span>';
+  head1.appendChild(btnPlay); head1.appendChild(btnStep); head1.appendChild(btnReset);
+
+  const axes1 = createAxes(s1.svg, { xFmt: (v) => v.toFixed(2), yFmt: (v) => v.toFixed(2), xTicks: 4, yTicks: 4 });
+  const contours = [1, 2, 3].map((lvl) => {
+    const p = svgEl('path', { stroke: 'var(--cl-ink-1)', opacity: String(0.9 - lvl * 0.22) }, 'cl-curve cl-ref');
+    p.dataset.clLink = 'chain';
+    s1.svg.appendChild(p);
+    return p;
+  });
+  const trail = svgEl('path', { stroke: 'var(--px-accent)', opacity: 0.75, 'stroke-width': 1.4 }, 'cl-curve');
+  trail.dataset.clLink = 'chain';
+  s1.svg.appendChild(trail);
+  const rejectPool = [];
+  for (let i = 0; i < 8; i++) {
+    const c = svgEl('circle', { r: 2.6, fill: 'var(--cl-ink-2)', opacity: 0 }, 'cl-dot');
+    s1.svg.appendChild(c);
+    rejectPool.push(c);
+  }
+  const stateDot = svgEl('circle', { r: 5.5, fill: 'var(--px-accent)', stroke: 'var(--px-bg)', 'stroke-width': 1.5 }, 'cl-dot');
+  stateDot.dataset.clLink = 'chain';
+  s1.svg.appendChild(stateDot);
+
+  const s2 = buildScene(stageRow, 'What Accumulates', [
+    { label: 'Trace', color: 'var(--px-accent)', link: 'hist' },
+    { label: 'Table 7.1 Target', color: 'var(--cl-ink-1)', dashed: true, link: 'hist' },
+  ], linkRoot);
+  const axesTrace = createAxes(s2.svg, { xFmt: () => '', yFmt: (v) => v.toFixed(2), xTicks: 0, yTicks: 3 });
+  const axesHist = createAxes(s2.svg, { xFmt: (v) => v.toFixed(2), yFmt: () => '', yTicks: 0, xTicks: 4 });
+  const tracePath = svgEl('path', { stroke: 'var(--px-accent)', 'stroke-width': 1.2 }, 'cl-curve');
+  tracePath.dataset.clLink = 'hist';
+  const traceMean = svgEl('line', { stroke: 'var(--cl-ink-1)' }, 'cl-curve cl-ref');
+  const histPool = makeBarPool(s2.svg, 'cl-bar');
+  histPool.g.dataset.clLink = 'hist';
+  const histTarget = svgEl('path', { stroke: 'var(--cl-ink-1)' }, 'cl-curve cl-ref');
+  histTarget.dataset.clLink = 'hist';
+  s2.svg.appendChild(tracePath); s2.svg.appendChild(traceMean); s2.svg.appendChild(histTarget);
+
+  // Chain state — deliberately NOT in view-state: a fresh, watchable
+  // convergence each time the module mounts is the lesson.
+  let rng, walker, xs, ys, accepts, rejects, playing;
+  function reset() {
+    rng = clMulberry32(MCMC_SEED);
+    // Overdispersed start so burn-in is something you can SEE.
+    walker = { x: T.mx + 3.5 * T.sx, y: T.my + 3.5 * T.sy };
+    xs = []; ys = [];
+    accepts = [];
+    rejects = [];
+    setPlaying(true);
+    publish(ctx.getState());
+  }
+  function setPlaying(on) {
+    playing = on;
+    btnPlay.innerHTML = clIcon(on ? 'pause' : 'play', 12) + `<span>${on ? 'Pause' : 'Play'}</span>`;
+    if (on) {
+      animator.loop('mcmc', () => stepChain(3));
+    } else {
+      animator.stopLoop('mcmc');
+      animator.invalidate();
+    }
+  }
+  function stepChain(count) {
+    const st = ctx.getState();
+    for (let i = 0; i < count; i++) {
+      if (xs.length >= MAX_DRAWS) { setPlaying(false); break; }
+      const r = clMetropolisStep(walker, T, st.values.step, rng);
+      if (!r.accept) {
+        rejects.push({ x: r.px, y: r.py });
+        if (rejects.length > rejectPool.length) rejects.shift();
+      }
+      accepts.push(r.accept ? 1 : 0);
+      if (accepts.length > 200) accepts.shift();
+      xs.push(walker.x); ys.push(walker.y);
+    }
+    publish(st);
+  }
+  function publish(st) {
+    const tail = xs.slice(BURN_IN);
+    let mean = NaN, sd = NaN;
+    if (tail.length > 1) {
+      mean = tail.reduce((a, b) => a + b, 0) / tail.length;
+      sd = Math.sqrt(tail.reduce((a, b) => a + (b - mean) * (b - mean), 0) / tail.length);
+    }
+    st.sceneStats = {
+      draws: xs.length,
+      acceptRate: accepts.length ? accepts.reduce((a, b) => a + b, 0) / accepts.length : NaN,
+      meanLogelr: mean,
+      sdLogelr: sd,
+    };
+  }
+  btnPlay.addEventListener('click', () => setPlaying(!playing));
+  btnStep.addEventListener('click', () => { if (!playing) stepChain(1); });
+  btnReset.addEventListener('click', reset);
+  reset();
+
+  return {
+    update(st) {
+      // ── Scene 1 ──
+      const w1 = s1.wrap.clientWidth || 420, h1 = s1.wrap.clientHeight || 280;
+      s1.svg.setAttribute('width', w1); s1.svg.setAttribute('height', h1);
+      const f1 = { left: 46, top: 12, right: w1 - 14, bottom: h1 - 26 };
+      const sx1 = clScale(T.mx - 4.2 * T.sx, T.mx + 4.2 * T.sx, f1.left, f1.right);
+      const sy1 = clScale(T.my - 4.2 * T.sy, T.my + 4.2 * T.sy, f1.bottom, f1.top);
+      axes1.update(sx1, sy1, f1);
+      const rr = Math.sqrt(1 - T.rho * T.rho);
+      contours.forEach((p, i) => {
+        const lvl = i + 1;
+        const pts = [];
+        for (let a = 0; a <= 48; a++) {
+          const th = (2 * Math.PI * a) / 48;
+          const u = lvl * Math.cos(th), vv = lvl * Math.sin(th);
+          pts.push([sx1(T.mx + T.sx * u), sy1(T.my + T.sy * (T.rho * u + rr * vv))]);
+        }
+        p.setAttribute('d', clPathFrom(pts) + 'Z');
+      });
+      const tr = [];
+      for (let i = Math.max(0, xs.length - 80); i < xs.length; i++) tr.push([sx1(xs[i]), sy1(ys[i])]);
+      trail.setAttribute('d', tr.length > 1 ? clPathFrom(tr) : '');
+      rejectPool.forEach((c, i) => {
+        const rj = rejects[rejects.length - 1 - i];
+        if (!rj) { c.setAttribute('opacity', 0); return; }
+        c.setAttribute('cx', sx1(rj.x)); c.setAttribute('cy', sy1(rj.y));
+        c.setAttribute('opacity', String(0.55 * (1 - i / rejectPool.length)));
+      });
+      stateDot.setAttribute('cx', sx1(walker.x)); stateDot.setAttribute('cy', sy1(walker.y));
+
+      // ── Scene 2 ──
+      const w2 = s2.wrap.clientWidth || 420, h2 = s2.wrap.clientHeight || 280;
+      s2.svg.setAttribute('width', w2); s2.svg.setAttribute('height', h2);
+      const fT = { left: 46, top: 12, right: w2 - 14, bottom: Math.floor(h2 * 0.42) };
+      const fH = { left: 46, top: Math.floor(h2 * 0.42) + 26, right: w2 - 14, bottom: h2 - 24 };
+
+      const lo = T.mx - 4 * T.sx, hi = T.mx + 4 * T.sx;
+      const trace = xs.slice(-300);
+      const sxT = clScale(0, Math.max(60, trace.length - 1), fT.left, fT.right);
+      const syT = clScale(lo, hi, fT.bottom, fT.top);
+      axesTrace.update(sxT, syT, fT);
+      tracePath.setAttribute('d', trace.length > 1
+        ? clPathFrom(trace.map((x, i) => [sxT(i), syT(Math.max(lo, Math.min(hi, x)))]))
+        : '');
+      traceMean.setAttribute('x1', fT.left); traceMean.setAttribute('x2', fT.right);
+      traceMean.setAttribute('y1', syT(T.mx)); traceMean.setAttribute('y2', syT(T.mx));
+
+      const NB = 26;
+      const bins = new Array(NB).fill(0);
+      const tail = xs.slice(BURN_IN);
+      for (const x of tail) {
+        const b = Math.floor(((x - lo) / (hi - lo)) * NB);
+        if (b >= 0 && b < NB) bins[b]++;
+      }
+      const binW = (hi - lo) / NB;
+      const density = tail.length ? bins.map((c) => c / (tail.length * binW)) : bins;
+      const peak = clNormPdf(T.mx, T.mx, T.sx);
+      const yMaxH = Math.max(peak, ...density) * 1.15;
+      const sxH = clScale(lo, hi, fH.left, fH.right);
+      const syH = clScale(0, yMaxH, fH.bottom, fH.top);
+      axesHist.update(sxH, syH, fH);
+      histPool.set(density.map((den, i) => {
+        const x0 = sxH(lo + i * binW) + 0.5, x1 = sxH(lo + (i + 1) * binW) - 0.5;
+        const y = syH(den);
+        return { x: x0, y, w: Math.max(1, x1 - x0), h: Math.max(0, fH.bottom - y) };
+      }), 'var(--px-accent)');
+      const tgt = [];
+      for (let i = 0; i <= 90; i++) {
+        const x = lo + ((hi - lo) * i) / 90;
+        tgt.push([sxH(x), syH(Math.min(yMaxH, clNormPdf(x, T.mx, T.sx)))]);
+      }
+      histTarget.setAttribute('d', clPathFrom(tgt));
+      void st;
+    },
+    snapshot() {
+      return { label: 'chain', draws: xs.length };
+    },
+  };
+}
+
 // --- Pane shell ------------------------------------------------------------
 
 function renderPane(container) {
@@ -3356,7 +4049,7 @@ function renderModuleView(root, mod) {
   }
 
   function updateAll() {
-    const d = { ...st.values, ...mod.derived(st.values, st) };
+    const d = { ...st.values, ...mod.derived(st.values, st), ...(st.sceneStats || {}) };
     if (st.mode === 'fit' && st.data) {
       const f = clFitLeastSquares(st.data);
       d.fitA = f.a; d.fitB = f.b; d.fitL = f.a + f.b * st.values.x;
@@ -3454,6 +4147,26 @@ function renderModuleView(root, mod) {
     if (!mod.story.length) applyPreset(mod.presets[0], false);
   }
 
+  // AI-requested configuration outranks whatever state the mount restored:
+  // the instructor said "look at THIS", so that is what renders.
+  if (_pendingConfig && _pendingConfig.moduleId === mod.id) {
+    const cfg = _pendingConfig;
+    _pendingConfig = null;
+    const preset = cfg.preset ? mod.presets.find((p) => p.id === cfg.preset) : null;
+    if (preset) applyPreset(preset, false);
+    if (cfg.params) {
+      for (const [key, raw] of Object.entries(cfg.params)) {
+        const r = st.ranges[key];
+        const s = sliders.get(key);
+        if (!r || !s || typeof raw !== 'number' || !Number.isFinite(raw)) continue;
+        const val = Math.max(r.min, Math.min(r.max, raw));
+        st.values[key] = val;
+        s.set(val);
+      }
+      updateAll();
+    }
+  }
+
   return () => {
     animator.dispose();
     for (const o of observers) o.disconnect();
@@ -3529,6 +4242,47 @@ export async function activate(api, context) {
       },
     }),
   );
+
+  // conceptLab_open — the instructor SHOWS instead of tells: the AI opens a
+  // module with a worked example or specific parameter values on screen.
+  if (api.chat?.registerTool) {
+    const moduleList = MODULES.map((m) =>
+      `${m.id} ("${m.title}", ${m.paper.label}; presets: ${m.presets.map((p) => p.id).join('/')}; params: ${m.params.map((p) => p.key).join('/')})`,
+    ).join('; ');
+    context.subscriptions.push(api.chat.registerTool('conceptLab_open', {
+      description:
+        'Open a Concept Lab interactive explorable so the user can SEE a statistical concept move instead of reading about it. '
+        + 'Optionally apply a preset (a paper\'s worked example) and/or set numeric parameter values; the sliders move to them. '
+        + 'Modules: ' + moduleList,
+      parameters: {
+        type: 'object',
+        properties: {
+          moduleId: { type: 'string', description: 'One of the module ids from the tool description.' },
+          preset: { type: 'string', description: 'Optional preset id within that module.' },
+          params: { type: 'object', description: 'Optional map of parameter key to numeric value, applied after the preset.' },
+        },
+        required: ['moduleId'],
+      },
+      requiresConfirmation: false,
+      handler: async (args) => {
+        const mod = clGetModule(String(args?.moduleId || ''));
+        if (!mod) {
+          return { content: 'Unknown module id. Available: ' + MODULES.map((m) => m.id).join(', '), isError: true };
+        }
+        const preset = args.preset ? mod.presets.find((p) => p.id === args.preset) : null;
+        if (args.preset && !preset) {
+          return { content: `Unknown preset "${args.preset}" for ${mod.id}. Available: ` + mod.presets.map((p) => p.id).join(', '), isError: true };
+        }
+        _pendingConfig = {
+          moduleId: mod.id,
+          preset: preset ? preset.id : null,
+          params: args.params && typeof args.params === 'object' ? args.params : null,
+        };
+        await openLab(mod.id);
+        return { content: `Opened "${mod.title}"${preset ? ` at the "${preset.label}" example` : ''}. The user is looking at it now.` };
+      },
+    }));
+  }
 }
 
 export async function deactivate() {

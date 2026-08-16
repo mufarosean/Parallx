@@ -32,6 +32,7 @@ function wait(ms: number): Promise<void> {
 // --- Fake api ---------------------------------------------------------------
 
 const commands = new Map<string, (...args: unknown[]) => unknown>();
+const chatTools = new Map<string, any>();
 const editorProviders = new Map<string, any>();
 const viewProviders = new Map<string, any>();
 let paneHost: HTMLElement | null = null;
@@ -66,6 +67,12 @@ const api = {
     registerViewProvider(viewId: string, provider: any) {
       viewProviders.set(viewId, provider);
       return { dispose() { viewProviders.delete(viewId); } };
+    },
+  },
+  chat: {
+    registerTool(name: string, def: any) {
+      chatTools.set(name, def);
+      return { dispose() { chatTools.delete(name); } };
     },
   },
   ui: {
@@ -283,6 +290,69 @@ describe('concept lab pane', () => {
     await wait(650 + 2400);
     await settle();
     expect(readVerdict()).toBe('Rejected');
+  });
+
+  it('the CSR fan collapses at gamma zero and opens at the Table 7.1 posterior', async () => {
+    (paneHost!.querySelector('.cl-back') as HTMLElement).click();
+    await settle();
+    const card = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
+      c.textContent?.includes('Settlement-Rate'))! as HTMLElement;
+    card.click();
+    await settle();
+    const readMisprice = () => {
+      const cells = [...paneHost!.querySelectorAll('.cl-readouts > div')];
+      const cell = cells.find((c) => c.textContent?.includes('Misprices'))!;
+      return cell.querySelector('.cl-readout-value')!.textContent;
+    };
+    // Story step 1 is gamma = 0: CSR nests CRC, the naive average is exact.
+    expect(readMisprice()).toBe('0.0%');
+    const posterior = [...paneHost!.querySelectorAll('.cl-preset-chip')].find((c) =>
+      c.textContent?.includes('Table 7.1'))! as HTMLElement;
+    posterior.click();
+    await wait(650);
+    await settle();
+    expect(readMisprice()).not.toBe('0.0%');
+    const values = [...paneHost!.querySelectorAll('.cl-readout-value')].map((e) => e.textContent);
+    expect(values.some((v) => v === '40.1%')).toBe(true); // AY-10 lag-1 share
+  });
+
+  it('the MCMC watcher runs, accumulates draws, and pauses', async () => {
+    (paneHost!.querySelector('.cl-back') as HTMLElement).click();
+    await settle();
+    const card = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
+      c.textContent?.includes('Posterior Form'))! as HTMLElement;
+    card.click();
+    await wait(400); // the chain auto-plays on mount
+    await settle();
+    const readDraws = () => {
+      const cells = [...paneHost!.querySelectorAll('.cl-readouts > div')];
+      const cell = cells.find((c) => c.textContent?.includes('Draws'))!;
+      return cell.querySelector('.cl-readout-value')!.textContent;
+    };
+    const running = parseInt((readDraws() || '0').replace(/,/g, ''), 10);
+    expect(running).toBeGreaterThan(0);
+    const pause = [...paneHost!.querySelectorAll('.cl-scene-btn')].find((b) =>
+      b.textContent?.includes('Pause'))! as HTMLElement;
+    pause.click();
+    await settle();
+    const paused = readDraws();
+    await wait(250);
+    await settle();
+    expect(readDraws()).toBe(paused);
+    // The chain trail and contours rendered real geometry.
+    expect(paneHost!.querySelectorAll('path.cl-curve').length).toBeGreaterThan(4);
+  });
+
+  it('the conceptLab_open chat tool routes the pane and applies the preset', async () => {
+    const tool = chatTools.get('conceptLab_open');
+    expect(tool).toBeTruthy();
+    const bad = await tool.handler({ moduleId: 'nope' });
+    expect(bad.isError).toBe(true);
+    const res = await tool.handler({ moduleId: 'mse-valley', preset: 'example1' });
+    expect(res.isError).toBeFalsy();
+    await settle();
+    expect(paneHost!.querySelector('.cl-title')?.textContent).toBe('The MSE Valley');
+    expect(paneHost!.querySelector('.cl-preset-chip.cl-active')?.textContent).toContain('Example 1');
   });
 
   it('returning to the first module preserves the user’s explored state', async () => {
