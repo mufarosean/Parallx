@@ -382,6 +382,33 @@ describe('concept lab pane', () => {
     expect(values().some((v) => v === '1.052')).toBe(true); // the tail contrast
   });
 
+  // The process-vs-parameter width comparison is a seeded module check;
+  // here we verify the live surface: point estimate, iterations, histogram.
+  it('the bootstrap surface runs and builds the histogram', async () => {
+    (paneHost!.querySelector('.cl-back') as HTMLElement).click();
+    await settle();
+    const card = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
+      c.textContent?.includes('Bootstrap'))! as HTMLElement;
+    card.click();
+    await wait(500); // simulation chunks run on the loop
+    await settle();
+    const readouts = () => {
+      const out: Record<string, string> = {};
+      for (const cell of paneHost!.querySelectorAll('.cl-readouts > div')) {
+        out[cell.textContent || ''] = cell.querySelector('.cl-readout-value')!.textContent || '';
+      }
+      return out;
+    };
+    const values = () => [...paneHost!.querySelectorAll('.cl-readout-value')].map((e) => e.textContent);
+    expect(values().some((v) => v === '18,680,856')).toBe(true); // the famous point estimate
+    const doneCell = [...paneHost!.querySelectorAll('.cl-readouts > div')].find((c) =>
+      c.textContent?.includes('Iterations Run'))!;
+    const done = parseInt((doneCell.querySelector('.cl-readout-value')!.textContent || '0').replace(/,/g, ''), 10);
+    expect(done).toBeGreaterThan(50);
+    expect(paneHost!.querySelectorAll('rect.cl-bar').length).toBeGreaterThan(20);
+    void readouts;
+  });
+
   it('the conceptLab_open chat tool routes the pane and applies the preset', async () => {
     const tool = chatTools.get('conceptLab_open');
     expect(tool).toBeTruthy();

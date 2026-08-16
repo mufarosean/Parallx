@@ -493,6 +493,109 @@ function clClarkElr(diag, ages, premium, shape) {
   return { elr: rep / used, usedUp: used };
 }
 
+// --- Shapland ODP bootstrap ------------------------------------------------
+
+/** Marsaglia-Tsang gamma draw (scale 1); Johnk boost for shape < 1. */
+function clRandGamma(shape, rng) {
+  if (shape <= 0) return 0;
+  if (shape < 1) {
+    let u = 0;
+    while (u === 0) u = rng();
+    return clRandGamma(shape + 1, rng) * Math.pow(u, 1 / shape);
+  }
+  const d = shape - 1 / 3;
+  const c = 1 / Math.sqrt(9 * d);
+  for (;;) {
+    let x, v;
+    do { x = clRandNormal(rng); v = 1 + c * x; } while (v <= 0);
+    v = v * v * v;
+    const u = rng();
+    if (u < 1 - 0.0331 * x * x * x * x) return d * v;
+    if (u > 0 && Math.log(u) < 0.5 * x * x + d * (1 - v + Math.log(v))) return d * v;
+  }
+}
+
+/**
+ * Fit the ODP/chain-ladder structure to an incremental triangle: volume
+ * weighted factors, backward-fitted incremental means (England-Verrall),
+ * unscaled Pearson residuals, and the scale parameter phi = sum(r^2)/(n-p).
+ */
+function clOdpFit(inc) {
+  const I = inc.length;
+  const cum = inc.map((row) => {
+    const out = [];
+    let s = 0;
+    for (const q of row) { s += q; out.push(s); }
+    return out;
+  });
+  const f = clMackFactorSet(cum, 'vw');
+  // Backward fit: anchor each year at its diagonal, divide down the factors.
+  const fitCum = cum.map((row) => {
+    const out = new Array(row.length);
+    out[row.length - 1] = row[row.length - 1];
+    for (let k = row.length - 1; k > 0; k--) out[k - 1] = out[k] / f[k - 1];
+    return out;
+  });
+  const fitInc = fitCum.map((row) => row.map((c, k) => (k === 0 ? c : c - row[k - 1])));
+  const resid = [];
+  let ss = 0, n = 0;
+  for (let i = 0; i < I; i++) {
+    for (let k = 0; k < inc[i].length; k++) {
+      const m = fitInc[i][k];
+      if (m > 0) {
+        const r = (inc[i][k] - m) / Math.sqrt(m);
+        resid.push({ i, k, r });
+        ss += r * r;
+        n++;
+      }
+    }
+  }
+  const p = 2 * I - 1;
+  const phi = ss / (n - p);
+  // Degrees-of-freedom correction on the resampling pool (Shapland §3):
+  // raw Pearson residuals understate the noise the model consumed fitting
+  // its 2I-1 parameters; without it the bootstrap cv runs ~3 points light.
+  const dfCorr = Math.sqrt(n / (n - p));
+  const proj = clMackProject(cum, f);
+  let clReserve = 0;
+  for (let i = 0; i < I; i++) clReserve += proj[i][I - 1] - cum[i][cum[i].length - 1];
+  return { I, cum, f, fitInc, resid, phi, dfCorr, clReserve };
+}
+
+/**
+ * One ODP bootstrap pseudo-world: resample residuals onto the fitted means,
+ * refit the chain ladder, project, and (optionally) add ODP process noise
+ * via gamma draws with mean m and variance phi*m.
+ */
+function clOdpBootstrapOnce(fit, rng, withProcess) {
+  const { I, fitInc, resid, phi, dfCorr } = fit;
+  const pseudoCum = [];
+  for (let i = 0; i < I; i++) {
+    const row = [];
+    let s = 0;
+    for (let k = 0; k < fitInc[i].length; k++) {
+      const m = fitInc[i][k];
+      const draw = resid[Math.floor(rng() * resid.length)].r * dfCorr;
+      s += m + draw * Math.sqrt(Math.max(0, m));
+      row.push(s);
+    }
+    pseudoCum.push(row);
+  }
+  const fStar = clMackFactorSet(pseudoCum, 'vw');
+  let reserve = 0;
+  for (let i = 0; i < I; i++) {
+    let c = pseudoCum[i][pseudoCum[i].length - 1];
+    for (let k = pseudoCum[i].length - 1; k < I - 1; k++) {
+      const next = c * fStar[k];
+      let q = next - c;
+      if (withProcess && q > 0) q = clRandGamma(q / phi, rng) * phi;
+      reserve += q;
+      c = next;
+    }
+  }
+  return reserve;
+}
+
 // --- Random-walk Metropolis on a 2D gaussian target ------------------------
 
 /** Bivariate normal log-density up to a constant (all Metropolis needs). */
@@ -1942,6 +2045,161 @@ defineModule({
   ],
 });
 
+// --- Module: The Bootstrap, Live (Shapland) --------------------------------
+
+// Taylor & Ashe (1983) incremental paid — the monograph's example triangle
+// (and the same data behind Clark's diagonal: its cumulative diagonal equals
+// CLARK_DIAG, an independent cross-check inside this file). Chain-ladder
+// reserve 18,680,856; Pearson scale 52,601.
+const TAYLOR_ASHE = [
+  [357848, 766940, 610542, 482940, 527326, 574398, 146342, 139950, 227229, 67948],
+  [352118, 884021, 933894, 1183289, 445745, 320996, 527804, 266172, 425046],
+  [290507, 1001799, 926219, 1016654, 750816, 146923, 495992, 280405],
+  [310608, 1108250, 776189, 1562400, 272482, 352053, 206286],
+  [443160, 693190, 991983, 769488, 504851, 470639],
+  [396132, 937085, 847498, 805037, 705960],
+  [440832, 847631, 1131398, 1063269],
+  [359480, 1061648, 1443370],
+  [376686, 986608],
+  [344014],
+];
+const TA_FIT = clOdpFit(TAYLOR_ASHE);
+
+defineModule({
+  id: 'odp-bootstrap',
+  title: 'The Bootstrap, Live',
+  subtitle: 'Resample the residuals, refit the ladder, watch a reserve distribution exist',
+  icon: 'dices',
+  paper: {
+    label: 'Shapland, "Using The ODP Bootstrap Model" (CAS Monograph 4)',
+    section: 'ODP bootstrap of the paid chain ladder on Taylor & Ashe; §§2-3, Figures 5.14-5.16',
+    task: 'Produce and defend a full distribution of unpaid claims, not a point estimate',
+  },
+  intro:
+    'The chain ladder gives one number. The bootstrap asks: in how many other ' +
+    'worlds consistent with these residuals would it have given a different ' +
+    'one? Resample, refit, project, repeat. The histogram that piles up IS ' +
+    'the reserve distribution every percentile and TVaR in Shapland comes ' +
+    'from.',
+  params: [
+    { key: 'nSims', tex: 'B', label: 'Bootstrap Iterations', min: 200, max: 4000, step: 100, init: 1500, fmt: 'num', link: 'hist' },
+  ],
+  derived(par, st) {
+    return {
+      withProcess: st?.mode !== 'param',
+      clReserve: TA_FIT.clReserve,
+      phi: TA_FIT.phi,
+      dfCorr: TA_FIT.dfCorr,
+      nResid: TA_FIT.resid.length,
+    };
+  },
+  readouts: [
+    { sym: '', id: 'clReserve', fmt: 'num', label: 'Chain Ladder Point Estimate', link: 'hist' },
+    { sym: '', id: 'done', fmt: 'num', label: 'Iterations Run', link: 'hist' },
+    { sym: '', id: 'bootMean', fmt: 'num', label: 'Bootstrap Mean', link: 'hist' },
+    { sym: '', id: 'bootCv', fmt: 'pct', label: 'Coefficient Of Variation', accent: true, link: 'hist' },
+    { sym: '', id: 'p95', fmt: 'num', label: '95th Percentile', accent: true, link: 'hist' },
+    { sym: '\\phi', id: 'phi', fmt: 'num', label: 'Pearson Scale', link: 'resid' },
+  ],
+  formula(state) {
+    return {
+      sym: state.mode === 'param'
+        ? 'q^* = m + r^*\\sqrt{m}\\;\\;(estimation\\;error\\;only)'
+        : 'q^* = m + r^*\\sqrt{m},\\qquad q_{future} \\sim \\phi\\,Gamma(m^*/\\phi)',
+      terms: [
+        { sym: '\\phi', fmt: 'num', get: (d) => d.phi, link: 'resid' },
+        { op: '|' },
+        { sym: '\\sqrt{n/(n{-}p)}', fmt: 'num3', get: (d) => d.dfCorr, link: 'resid' },
+        { op: '|' },
+        { sym: 'cv', fmt: 'pct', get: (d) => d.bootCv ?? null, primary: true, link: 'hist' },
+      ],
+    };
+  },
+  presets: [
+    {
+      id: 'full',
+      label: 'Parameter Plus Process',
+      note: 'The real thing: resampled residuals carry estimation error into every refit, then each future cell adds ODP process noise (variance phi times the mean). Total cv lands near 16%, the published neighborhood for this triangle.',
+      mode: 'full',
+      params: { nSims: { value: 1500 } },
+    },
+    {
+      id: 'param',
+      label: 'Estimation Error Only',
+      note: 'Switch the process draws off and the histogram tightens: what remains is uncertainty about the FACTORS alone. The gap between the two widths is exactly the process variance Shapland decomposes.',
+      mode: 'param',
+      params: { nSims: { value: 1500 } },
+    },
+  ],
+  story: [
+    {
+      title: 'What a residual pool is',
+      text: 'Fit the ODP chain ladder and every observed increment leaves a standardized residual $r = (q-m)/\\sqrt{m}$. Fifty-five of them, assumed exchangeable. That exchangeability IS the bootstrap\'s assumption, which is why Shapland spends a whole chapter diagnosing it.',
+      preset: 'full',
+    },
+    {
+      title: 'Manufacture a world, price it',
+      text: 'Draw 55 residuals with replacement, rebuild a pseudo-triangle around the fitted means, refit the ladder, project, and add gamma process noise cell by cell. One iteration, one plausible total. Watch them pile up.',
+      preset: 'full',
+    },
+    {
+      title: 'Where the width comes from',
+      text: 'Kill the process draws and the distribution narrows: parameter error alone. The correction $\\sqrt{n/(n-p)}$ matters too; without it the pool understates the noise the model consumed fitting 19 parameters.',
+      preset: 'param',
+    },
+    {
+      title: 'The deliverable',
+      text: 'Mean, cv, 95th, 99th, TVaR: every number in Shapland\'s exhibits is a statistic of this histogram. The point estimate you started with is just one line through it.',
+      preset: 'full',
+    },
+  ],
+  checks: [
+    { name: 'Chain-ladder reserve = 18,680,856 (England-Verrall)', expect: 18680856, tol: 1, got: () => TA_FIT.clReserve },
+    { name: 'Pearson scale phi = 52,601', expect: 52601, tol: 2, got: () => TA_FIT.phi },
+    { name: '55 residual cells', expect: 55, tol: 0, got: () => TA_FIT.resid.length },
+    { name: 'df correction = sqrt(55/36)', expect: Math.sqrt(55 / 36), tol: 1e-12, got: () => TA_FIT.dfCorr },
+    {
+      name: 'Cumulative diagonal equals Clark\'s reconstruction (same data)', expect: 34358090, tol: 0,
+      got: () => TA_FIT.cum.reduce((s, row) => s + row[row.length - 1], 0),
+    },
+    {
+      name: 'Seeded bootstrap mean within 3% of the chain ladder', expect: 1, tol: 0,
+      got: () => {
+        const rng = clMulberry32(42);
+        let sum = 0;
+        const n = 400;
+        for (let s = 0; s < n; s++) sum += clOdpBootstrapOnce(TA_FIT, rng, true);
+        return Math.abs(sum / n - TA_FIT.clReserve) / TA_FIT.clReserve < 0.03 ? 1 : 0;
+      },
+    },
+    {
+      name: 'Seeded full cv in the published neighborhood (14-19%)', expect: 1, tol: 0,
+      got: () => {
+        const rng = clMulberry32(42);
+        const a = [];
+        for (let s = 0; s < 600; s++) a.push(clOdpBootstrapOnce(TA_FIT, rng, true));
+        const m = a.reduce((x, y) => x + y, 0) / a.length;
+        const sd = Math.sqrt(a.reduce((x, y) => x + (y - m) * (y - m), 0) / a.length);
+        const cv = sd / m;
+        return cv > 0.14 && cv < 0.19 ? 1 : 0;
+      },
+    },
+    {
+      name: 'Process noise widens the distribution (seeded)', expect: 1, tol: 0,
+      got: () => {
+        const sdOf = (proc) => {
+          const rng = clMulberry32(42);
+          const a = [];
+          for (let s = 0; s < 600; s++) a.push(clOdpBootstrapOnce(TA_FIT, rng, proc));
+          const m = a.reduce((x, y) => x + y, 0) / a.length;
+          return Math.sqrt(a.reduce((x, y) => x + (y - m) * (y - m), 0) / a.length);
+        };
+        return sdOf(true) > sdOf(false) ? 1 : 0;
+      },
+    },
+  ],
+});
+
 // ============================================================================
 // SECTION 3: STYLES — single injected <style>, guarded (flashcards pattern)
 // ============================================================================
@@ -3022,6 +3280,7 @@ const SCENE_BUILDERS = {
   'mcmc-watch': buildMcmcScenes,
   'mack-machinery': buildMackScenes,
   'clark-curves': buildClarkScenes,
+  'odp-bootstrap': buildBootstrapScenes,
 };
 
 /** First-mount draw-in: the primary curve sweeps in along its own length. */
@@ -4472,6 +4731,156 @@ function buildClarkScenes(stageRow, ctx) {
   };
 }
 
+// --- Bootstrap: the residual pool and the accumulating reserve histogram ---
+
+function buildBootstrapScenes(stageRow, ctx) {
+  const { linkRoot, animator } = ctx;
+
+  const s1 = buildScene(stageRow, 'The Residual Pool (55 Cells)', [
+    { label: 'Standardized Residual', color: 'var(--px-accent)', link: 'resid' },
+  ], linkRoot);
+  const axes1 = createAxes(s1.svg, { xFmt: (v) => String(v), yFmt: (v) => String(v), xTicks: 9, yTicks: 4 });
+  const zeroLine = svgEl('line', {}, 'cl-marker-line');
+  s1.svg.appendChild(zeroLine);
+  const gResid = svgEl('g'); gResid.dataset.clLink = 'resid';
+  for (let i = 0; i < TA_FIT.resid.length; i++) {
+    gResid.appendChild(svgEl('circle', { r: 3, fill: 'var(--px-accent)', opacity: 0.8 }, 'cl-dot'));
+  }
+  s1.svg.appendChild(gResid);
+
+  const s2 = buildScene(stageRow, 'The Reserve Distribution', [
+    { label: 'Bootstrap Totals', color: 'var(--px-accent)', link: 'hist' },
+    { label: 'Chain Ladder', color: 'var(--cl-ink-1)', dashed: true, link: 'hist' },
+  ], linkRoot);
+  const head2 = s2.scene.querySelector('.cl-scene-head');
+  const replay = document.createElement('button');
+  replay.className = 'cl-scene-btn';
+  replay.innerHTML = clIcon('play', 12) + '<span>Replay</span>';
+  head2.appendChild(replay);
+  const axes2 = createAxes(s2.svg, { xFmt: (v) => clFmt(v / 1e6, 'num') + 'M', yFmt: () => '', yTicks: 0, xTicks: 5 });
+  const histPool = makeBarPool(s2.svg, 'cl-bar');
+  histPool.g.dataset.clLink = 'hist';
+  const clLine = svgEl('line', { stroke: 'var(--cl-ink-1)' }, 'cl-curve cl-ref');
+  const clTag = svgEl('text', { 'text-anchor': 'middle', fill: 'var(--cl-ink-1)' }, 'cl-svg-tag');
+  const meanLine = svgEl('line', { stroke: 'var(--px-accent)', 'stroke-width': 2 }, '');
+  const p95Line = svgEl('line', {}, 'cl-marker-line');
+  const p95Tag = svgEl('text', { 'text-anchor': 'middle' }, 'cl-svg-tag');
+  s2.svg.appendChild(clLine); s2.svg.appendChild(clTag);
+  s2.svg.appendChild(meanLine); s2.svg.appendChild(p95Line); s2.svg.appendChild(p95Tag);
+
+  const domLo = animator.smooth(9e6, 130);
+  const domHi = animator.smooth(32e6, 130);
+
+  let draws = [];
+  let rng = null;
+  let withProcess = true;
+  let lastMode = null;
+
+  function publish(st) {
+    const n = draws.length;
+    let mean = null, cv = null, p95 = null;
+    if (n > 10) {
+      const m = draws.reduce((a, b) => a + b, 0) / n;
+      const sd = Math.sqrt(draws.reduce((a, b) => a + (b - m) * (b - m), 0) / n);
+      const sorted = [...draws].sort((a, b) => a - b);
+      mean = m;
+      cv = sd / m;
+      p95 = sorted[Math.floor(0.95 * (n - 1))];
+    }
+    st.sceneStats = { done: n, bootMean: mean, bootCv: cv, p95 };
+  }
+  function reset() {
+    draws = [];
+    rng = clMulberry32(42);
+    publish(ctx.getState());
+    animator.loop('boot', runChunk);
+  }
+  function runChunk() {
+    const st = ctx.getState();
+    const target = Math.round(st.values.nSims);
+    if (draws.length >= target) { animator.stopLoop('boot'); return; }
+    const burst = Math.min(30, target - draws.length);
+    for (let s = 0; s < burst; s++) draws.push(clOdpBootstrapOnce(TA_FIT, rng, withProcess));
+    publish(st);
+  }
+  replay.addEventListener('click', reset);
+
+  return {
+    update(st, d) {
+      if (st.mode !== lastMode) {
+        lastMode = st.mode;
+        withProcess = d.withProcess;
+        reset();
+      } else if (draws.length < Math.round(st.values.nSims) && !animator.hasLoop('boot')) {
+        animator.loop('boot', runChunk);
+      }
+
+      // ── Scene 1 (static geometry, cheap to repaint) ──
+      const w1 = s1.wrap.clientWidth || 420, h1 = s1.wrap.clientHeight || 280;
+      s1.svg.setAttribute('width', w1); s1.svg.setAttribute('height', h1);
+      const f1 = { left: 40, top: 14, right: w1 - 14, bottom: h1 - 26 };
+      let rMax = 0;
+      for (const { r } of TA_FIT.resid) rMax = Math.max(rMax, Math.abs(r));
+      const sx1 = clScale(0.5, 10.5, f1.left, f1.right);
+      const sy1 = clScale(-rMax * 1.15, rMax * 1.15, f1.bottom, f1.top);
+      axes1.update(sx1, sy1, f1);
+      zeroLine.setAttribute('x1', f1.left); zeroLine.setAttribute('x2', f1.right);
+      zeroLine.setAttribute('y1', sy1(0)); zeroLine.setAttribute('y2', sy1(0));
+      TA_FIT.resid.forEach((cell, idx) => {
+        const c = gResid.children[idx];
+        c.setAttribute('cx', sx1(cell.k + 1 + (cell.i - 4.5) / 16));
+        c.setAttribute('cy', sy1(cell.r));
+      });
+
+      // ── Scene 2 ──
+      const w2 = s2.wrap.clientWidth || 420, h2 = s2.wrap.clientHeight || 280;
+      s2.svg.setAttribute('width', w2); s2.svg.setAttribute('height', h2);
+      const f2 = { left: 20, top: 16, right: w2 - 14, bottom: h2 - 26 };
+      if (draws.length > 30) {
+        const sorted = [...draws].sort((a, b) => a - b);
+        domLo.target = Math.min(sorted[Math.floor(0.003 * sorted.length)], d.clReserve * 0.75);
+        domHi.target = Math.max(sorted[Math.ceil(0.997 * (sorted.length - 1))], d.clReserve * 1.3);
+      }
+      const lo = domLo.current, hi = domHi.current;
+      const sx2 = clScale(lo, hi, f2.left, f2.right);
+      const NB = 34;
+      const bins = new Array(NB).fill(0);
+      for (const r of draws) {
+        const b = Math.floor(((r - lo) / (hi - lo)) * NB);
+        if (b >= 0 && b < NB) bins[b]++;
+      }
+      const yMax = Math.max(6, ...bins) * 1.12;
+      const sy2 = clScale(0, yMax, f2.bottom, f2.top);
+      axes2.update(sx2, sy2, f2);
+      histPool.set(bins.map((count, i) => {
+        const x0 = sx2(lo + (i * (hi - lo)) / NB) + 0.5;
+        const x1 = sx2(lo + ((i + 1) * (hi - lo)) / NB) - 0.5;
+        const y = sy2(count);
+        return { x: x0, y, w: Math.max(1, x1 - x0), h: Math.max(0, f2.bottom - y) };
+      }), 'var(--px-accent)');
+      const putV = (line, x, y1) => {
+        const px = sx2(Math.max(lo, Math.min(hi, x)));
+        line.setAttribute('x1', px); line.setAttribute('x2', px);
+        line.setAttribute('y1', f2.bottom); line.setAttribute('y2', y1);
+        return px;
+      };
+      const clX = putV(clLine, d.clReserve, f2.top + 10);
+      clTag.setAttribute('x', clX); clTag.setAttribute('y', f2.top + 8);
+      clTag.textContent = 'CL ' + clFmt(d.clReserve / 1e6, 'num2') + 'M';
+      const stats = st.sceneStats || {};
+      if (stats.bootMean) putV(meanLine, stats.bootMean, f2.top + 24);
+      if (stats.p95) {
+        const px = putV(p95Line, stats.p95, f2.top + 24);
+        p95Tag.setAttribute('x', px); p95Tag.setAttribute('y', f2.top + 22);
+        p95Tag.textContent = '95th ' + clFmt(stats.p95 / 1e6, 'num2') + 'M';
+      }
+    },
+    snapshot(st) {
+      return { label: st.presetId || 'pin', done: draws.length };
+    },
+  };
+}
+
 // --- Pane shell ------------------------------------------------------------
 
 function renderPane(container) {
@@ -5067,6 +5476,16 @@ export const __testables = {
   clMackProject,
   clMackSe,
   clMackLognRange,
+  clClarkG,
+  clClarkReserves,
+  clClarkElr,
+  clRandGamma,
+  clOdpFit,
+  clOdpBootstrapOnce,
+  clMvn2LogPdf,
+  clMetropolisStep,
+  clMetropolisRun,
+  clCsrShare,
   MODULES,
   clGetModule,
 };
