@@ -2,12 +2,18 @@
 
 > **Status: CURRICULUM BUILT** (2026-08-16, branch `m100-concept-lab`).
 > Phase 2 shipped the full ladder: 25 modules across 7 levels — 13 new
-> concept modules (Claim Counter, Balance Point, Distribution Anatomy,
-> Sums/CLT, Conditional Expectation, Correlation, Process Fan, Likelihood
-> Surface, Sampling Error, Shrinkage, GLM Anatomy, Residual Lens) plus
-> Meyers' Model Ladder (the validate-diagnose-fix arc with CCL width and
-> CSR bias made quantitative), with the 12 phase-1 exhibit modules
-> re-leveled as the top rung. Framework additions: LEVELS + home ladder,
+> concept modules (Random Variables; Mean, Variance & Skewness; PDF, CDF
+> & Quantiles; Aggregate Losses & The CLT; Conditional Expectation;
+> Correlation & Diversification; Loss Development As A Process; Maximum
+> Likelihood Estimation; Process vs Parameter Risk; Credibility &
+> Shrinkage; Generalized Linear Models; Pearson Residuals) plus Meyers:
+> CCL & CSR (the validate-diagnose-fix arc with CCL width and CSR bias
+> made quantitative), with the 12 phase-1 exhibit modules re-leveled and
+> renamed to explicit exam names (Brosius/Mack/Meyers/Clark/Shapland/
+> Marshall/Taylor prefixes) as the top rung. Feel-check round 1: titles
+> use standard stats or exam vocabulary (evocative names rejected); the
+> story moved from a top strip to a LEFT COLUMN with the controls rail
+> on the right (read the step, look at the stage, reach for the dials). Framework additions: LEVELS + home ladder,
 > Builds On / Where The Exam Uses This link rails (every link
 > test-verified to resolve; concept modules without bridges fail
 > hygiene), predict-then-reveal story steps, level-grouped sidebar,

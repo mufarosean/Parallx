@@ -267,18 +267,21 @@ stranded:
 - **Where The Exam Uses This** — the exam modules that need it, one click
   up. Concept cards on the home view also name what they feed.
 
-The surface, top to bottom:
+The surface, left to right — read the step, look at the picture, reach
+for the dials:
 
-- **Story strip** (top): every module opens on step 1 of a short guided
-  walk. Click the dots or the arrows — each step animates the parameters
-  to a configuration and explains what you're looking at. This is the
-  intended way IN to a module.
+- **Story column** (left): every module opens on step 1 of a short
+  guided walk. Click the dots or the arrows — each step animates the
+  parameters to a configuration and explains what you're looking at.
+  This is the intended way IN to a module.
 - **Predict-then-reveal**: some story steps ask you to commit to an
   answer BEFORE the parameters move. Pick one; the step marks it, shows
   the right answer, explains, and then plays the reveal. Answers stick
   per module, so revisits don't re-ask.
-- **Worked Examples** (left rail): preset chips that jump to the paper's
+- **Worked Examples** (right rail): preset chips that jump to the paper's
   printed cases. The note under the chips tells you what the case shows.
+  The Builds On and Where The Exam Uses This links live at the bottom of
+  the same rail.
 - **Parameters**: sliders in the paper's own notation. The value readout
   and every chart update live as you drag.
 - **Charts are draggable.** Most scenes accept direct manipulation:

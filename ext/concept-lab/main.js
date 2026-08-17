@@ -846,7 +846,7 @@ const BROSIUS_TABLE2 = [
 
 defineModule({
   id: 'brosius-line',
-  title: 'The Credibility Line',
+  title: 'Brosius: Least-Squares Development',
   subtitle: 'Least-squares loss development: one line, three famous methods inside it',
   icon: 'trending-up',
   level: 'reserving',
@@ -1013,7 +1013,7 @@ const MACK_EXAMPLE2 = { p: 0.5, EU: 0.90, sdU: 0.10, sdU0: 0.05, sdCkU: 0.03, U0
 
 defineModule({
   id: 'mse-valley',
-  title: 'The MSE Valley',
+  title: 'Mack 2000: Benktander Credibility',
   subtitle: 'Benktander and the optimal credibility factor, from Mack (2000)',
   icon: 'git-merge',
   level: 'reserving',
@@ -1348,7 +1348,7 @@ defineModule({
 
 defineModule({
   id: 'dist-zoo',
-  title: 'The Distribution Zoo',
+  title: 'Loss Distributions',
   subtitle: 'Exam edition: the shapes the papers assume but never draw',
   icon: 'spline',
   level: 'probability',
@@ -1545,7 +1545,7 @@ const VAL_SEED = 42;
 
 defineModule({
   id: 'validation-machine',
-  title: 'The Validation Machine',
+  title: 'Meyers: Model Validation',
   subtitle: 'p-p plots, the KS band, and how Meyers retires bad models',
   icon: 'badge-check',
   level: 'reserving',
@@ -1703,7 +1703,7 @@ function clCsrShare(w, d, gamma) {
 
 defineModule({
   id: 'csr-story',
-  title: 'The Settlement-Rate Story',
+  title: 'Meyers: The CSR Model',
   subtitle: 'Why paid-data models failed validation, and how CSR names the culprit',
   icon: 'fast-forward',
   level: 'reserving',
@@ -1865,7 +1865,7 @@ const MCMC_SEED = 42;
 
 defineModule({
   id: 'mcmc-watch',
-  title: 'Watching The Posterior Form',
+  title: 'MCMC Sampling',
   subtitle: 'What Stan actually does with those 10,000 draws',
   icon: 'route',
   level: 'bayes',
@@ -2015,7 +2015,7 @@ const RAA = [
 
 defineModule({
   id: 'mack-machinery',
-  title: 'Mack\'s Machinery',
+  title: 'Mack 1994: Standard Errors',
   subtitle: 'The RAA triangle, three estimators, and where the standard errors come from',
   icon: 'layers',
   level: 'reserving',
@@ -2169,7 +2169,7 @@ const CLARK_CC = { family: 'loglogistic', omega: 1.447634, theta: 48.0205 };
 
 defineModule({
   id: 'clark-curves',
-  title: 'Clark\'s Growth Curves',
+  title: 'Clark: Growth Curves & MLE',
   subtitle: 'Two parameters replace a factor table, and the tail becomes a choice you can see',
   icon: 'chart-spline',
   level: 'reserving',
@@ -2332,7 +2332,7 @@ const TA_FIT = clOdpFit(TAYLOR_ASHE);
 
 defineModule({
   id: 'odp-bootstrap',
-  title: 'The Bootstrap, Live',
+  title: 'Shapland: The ODP Bootstrap',
   subtitle: 'Resample the residuals, refit the ladder, watch a reserve distribution exist',
   icon: 'dices',
   level: 'reserving',
@@ -2565,7 +2565,7 @@ function clTwcClForecast(k, j) {
 
 defineModule({
   id: 'glm-equals-cl',
-  title: 'The Same Answer Twice',
+  title: 'Taylor: GLM Equals Chain Ladder',
   subtitle: 'The chain ladder is a GLM: marginal sums, cross-classified, cell for cell',
   icon: 'equal',
   level: 'reserving',
@@ -2704,7 +2704,7 @@ defineModule({
 
 defineModule({
   id: 'marshall-ladder',
-  title: 'The Risk Margin Ladder',
+  title: 'Marshall: Risk Margins',
   subtitle: 'Three sources of uncertainty, one consolidated CoV, one defensible margin',
   icon: 'gauge',
   level: 'reserving',
@@ -2835,7 +2835,7 @@ defineModule({
 
 defineModule({
   id: 'random-variable',
-  title: 'The Claim Counter',
+  title: 'Random Variables',
   subtitle: 'A random variable is a number attached to chance, and frequency finds probability',
   icon: 'dice-5',
   level: 'probability',
@@ -2969,7 +2969,7 @@ function clMeanMachineMoments(masses, a, b) {
 
 defineModule({
   id: 'mean-machine',
-  title: 'The Balance Point',
+  title: 'Mean, Variance & Skewness',
   subtitle: 'Mean, variance, and skewness, held in your hands: drag the probability and feel the moments move',
   icon: 'anchor',
   level: 'probability',
@@ -3099,7 +3099,7 @@ defineModule({
 
 defineModule({
   id: 'distribution-anatomy',
-  title: 'One Distribution, Three Views',
+  title: 'PDF, CDF & Quantiles',
   subtitle: 'Density, cumulative probability, and quantile are the same object read three ways',
   icon: 'area-chart',
   level: 'probability',
@@ -3234,7 +3234,7 @@ const SUMS_SEV_MEAN = 10;
 
 defineModule({
   id: 'sums-clt',
-  title: 'Adding Up Claims',
+  title: 'Aggregate Losses & The CLT',
   subtitle: 'A year of losses is a sum of random pieces: when the bell shape arrives, and when it lies',
   icon: 'sigma',
   level: 'behavior',
@@ -3242,7 +3242,7 @@ defineModule({
   ord: 1,
   paper: null,
   foundations: [
-    { module: 'random-variable', text: 'The claim count driving the sum is the Poisson machine from the Claim Counter.' },
+    { module: 'random-variable', text: 'The claim count driving the sum is the Poisson machine from the Random Variables module.' },
     { module: 'mean-machine', text: 'Severity’s second moment, not its mean, is what drives the total’s variance.' },
   ],
   bridges: [
@@ -3362,7 +3362,7 @@ const CE_PAR = { muX: 10, muY: 20, sdX: 2, sdY: 5 };
 
 defineModule({
   id: 'conditional-expectation',
-  title: 'The Best Guess',
+  title: 'Conditional Expectation',
   subtitle: 'E[Y|X]: what knowing something buys you, drawn as a slice through the cloud',
   icon: 'scatter-chart',
   level: 'behavior',
@@ -3493,7 +3493,7 @@ defineModule({
 
 defineModule({
   id: 'correlation',
-  title: 'When Risks Move Together',
+  title: 'Correlation & Diversification',
   subtitle: 'ρ and the total: why diversification is real, and why systemic risk eats it',
   icon: 'link-2',
   level: 'behavior',
@@ -3699,7 +3699,7 @@ function clDevPaths({ sigma, kObs, nVis, nSim, seed }) {
 
 defineModule({
   id: 'process-fan',
-  title: 'The Fan Of Futures',
+  title: 'Loss Development As A Process',
   subtitle: 'A loss process is a path; reserving is describing the fan of paths still possible',
   icon: 'waves',
   level: 'processes',
@@ -3854,7 +3854,7 @@ const LS_MLE = clLognMle(LS_DATA);
 
 defineModule({
   id: 'likelihood-surface',
-  title: 'Let The Data Vote',
+  title: 'Maximum Likelihood Estimation',
   subtitle: 'Likelihood scores every candidate distribution by how loudly the data votes for it',
   icon: 'target',
   level: 'estimation',
@@ -4125,7 +4125,7 @@ function clShrinkClasses(m, seed) {
 
 defineModule({
   id: 'shrinkage',
-  title: 'Credibility Is Shrinkage',
+  title: 'Credibility & Shrinkage',
   subtitle: 'Pull noisy estimates toward the crowd and you beat them all: the valley has a bottom, and it is Bühlmann’s Z',
   icon: 'magnet',
   level: 'bayes',
@@ -4293,7 +4293,7 @@ function clRandTweedie(mu, phi, p, rng) {
 
 defineModule({
   id: 'glm-anatomy',
-  title: 'The GLM, Piece By Piece',
+  title: 'Generalized Linear Models',
   subtitle: 'A straight line under the hood, a link that bends it, and a variance that follows the mean',
   icon: 'function-square',
   level: 'glm',
@@ -4506,7 +4506,7 @@ function clResidualStudy({ pAssumed, phi, seed, n = 240 }) {
 
 defineModule({
   id: 'residual-lens',
-  title: 'Reading Residuals',
+  title: 'Pearson Residuals',
   subtitle: 'Standardize by the right variance and the funnel flattens: Pearson residuals are the flattening',
   icon: 'activity',
   level: 'glm',
@@ -4632,7 +4632,7 @@ function clCclWidth(sds, rho) {
 
 defineModule({
   id: 'meyers-arc',
-  title: 'Meyers’ Model Ladder',
+  title: 'Meyers: CCL & CSR',
   subtitle: 'Validate, diagnose, fix, re-validate: why LCL, CCL, and CSR exist at all',
   icon: 'milestone',
   level: 'reserving',
@@ -4762,7 +4762,7 @@ defineModule({
     },
     {
       title: 'CSR: model the speedup',
-      text: 'The diagnosis: claims have been settling FASTER across the data period, and development methods read faster payment as more ultimate loss. The CSR model gives settlement rate its own parameter with its own prior. Dial $s$ to the truth and the bias dies. The Settlement-Rate Story module walks this model’s interior.',
+      text: 'The diagnosis: claims have been settling FASTER across the data period, and development methods read faster payment as more ultimate loss. The CSR model gives settlement rate its own parameter with its own prior. Dial $s$ to the truth and the bias dies. The dedicated CSR module walks this model’s interior.',
       preset: 'csr',
     },
     {
@@ -4868,20 +4868,22 @@ const CL_CSS = `
 .cl-source-chip .cl-chip-icon { display: inline-flex; opacity: 0.7; }
 
 /* ── Story strip ────────────────────────────────────────────────────── */
+/* The story reads as a column beside the stage, not a one-line banner:
+   guidance wraps like prose and the charts keep their full height. */
 .cl-story {
+  flex: 0 0 252px;
   display: flex;
-  align-items: flex-start;
-  gap: var(--px-space-3);
-  padding: var(--px-space-2) var(--px-space-4);
-  border-bottom: 1px solid var(--px-divider);
+  flex-direction: column;
+  gap: var(--px-space-2);
+  padding: var(--px-space-3) var(--px-space-4);
+  border-right: 1px solid var(--px-divider);
   background: var(--px-bg-inset);
-  flex: 0 0 auto;
+  overflow-y: auto;
 }
 .cl-story-nav {
   display: flex;
   align-items: center;
   gap: var(--px-space-1);
-  padding-top: 3px;
   flex: 0 0 auto;
 }
 .cl-story-dot {
@@ -4905,12 +4907,13 @@ const CL_CSS = `
   animation: cl-fade-rise var(--px-dur-base) var(--px-ease-out);
 }
 .cl-story-text .cl-story-step-title {
+  display: block;
   font-weight: 600;
   color: var(--px-text);
-  margin-right: var(--px-space-2);
+  margin-bottom: var(--px-space-1);
 }
-.cl-story-text .px-markdown { display: inline; }
-.cl-story-text .px-markdown p { display: inline; margin: 0; }
+.cl-story-text .px-markdown p { margin: 0 0 var(--px-space-2); }
+.cl-story-text .px-markdown p:last-child { margin-bottom: 0; }
 .cl-story-btn {
   border: none;
   background: transparent;
@@ -4955,7 +4958,7 @@ const CL_CSS = `
   flex-direction: column;
   gap: var(--px-space-4);
   padding: var(--px-space-4);
-  border-right: 1px solid var(--px-divider);
+  border-left: 1px solid var(--px-divider);
   overflow-y: auto;
 }
 .cl-rail-label {
@@ -5415,7 +5418,7 @@ const CL_CSS = `
   font-weight: 600;
 }
 .cl-predict-icon { display: inline-flex; color: var(--px-accent); }
-.cl-predict-opts { display: flex; flex-wrap: wrap; gap: var(--px-space-2); margin-top: var(--px-space-2); }
+.cl-predict-opts { display: flex; flex-direction: column; align-items: stretch; gap: var(--px-space-2); margin-top: var(--px-space-2); }
 .cl-predict-opt {
   font: inherit;
   font-size: var(--px-text-sm);
@@ -5424,6 +5427,7 @@ const CL_CSS = `
   border: 1px solid var(--px-border);
   border-radius: var(--px-radius-md);
   padding: var(--px-space-1) var(--px-space-3);
+  text-align: left;
   cursor: pointer;
   transition: border-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
@@ -9764,7 +9768,7 @@ function renderHomeView(root) {
   grid.className = 'cl-guide-grid';
   const tips = [
     { icon: 'layers', head: 'Climb The Ladder', text: 'Levels 1 to 6 teach the statistics; level 7 is the exam papers on their own printed numbers. Jump in anywhere: Builds On and Where The Exam Uses This link every module down to its foundations and up to its payoff.' },
-    { icon: 'circle-dot', head: 'Follow The Story', text: 'Every module opens on a guided walk. Step through the dots at the top; some steps ask you to COMMIT to a prediction before the reveal, because a guess you owned teaches more than a fact you read.' },
+    { icon: 'circle-dot', head: 'Follow The Story', text: 'Every module opens on a guided walk in the left column. Step through the dots; some steps ask you to COMMIT to a prediction before the reveal, because a guess you owned teaches more than a fact you read.' },
     { icon: 'move-horizontal', head: 'Drag Anywhere', text: 'Sliders work, but so do the charts: drag the query marker, the today line on the fan, the candidate across the likelihood surface, the probability masses on the beam.' },
     { icon: 'mouse-pointer-2', head: 'Hover To Trace', text: 'Hover any formula term, readout, or legend entry and the exact curve it drives lights up while everything else dims.' },
     { icon: 'copy', head: 'Pin A Ghost', text: 'Pin Ghost freezes the current curve in place. Change anything and compare against where you were.' },
@@ -9931,7 +9935,6 @@ function renderModuleView(root, mod) {
   nav.appendChild(nextBtn);
   story.appendChild(nav);
   story.appendChild(storyText);
-  root.appendChild(story);
   prevBtn.addEventListener('click', () => applyStory(st.storyIndex - 1));
   nextBtn.addEventListener('click', () => applyStory(st.storyIndex + 1));
 
@@ -9948,8 +9951,11 @@ function renderModuleView(root, mod) {
   formulaBar.className = 'cl-formula-bar';
   stageCol.appendChild(stageRow);
   stageCol.appendChild(formulaBar);
-  body.appendChild(rail);
+  // Story guides on the left, stage in the middle, controls on the right:
+  // read the step, look at the picture, then reach for the dials.
+  body.appendChild(story);
   body.appendChild(stageCol);
+  body.appendChild(rail);
   root.appendChild(body);
 
 

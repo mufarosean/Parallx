@@ -128,10 +128,10 @@ describe('concept lab pane', () => {
 
   it('clicking a card enters the module with sliders, scenes, and formula', async () => {
     const brosius = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
-      c.querySelector('.cl-card-title')?.textContent?.includes('Credibility Line'))! as HTMLElement;
+      c.querySelector('.cl-card-title')?.textContent?.includes('Brosius'))! as HTMLElement;
     brosius.click();
     await settle();
-    expect(paneHost!.querySelector('.cl-title')?.textContent).toBe('The Credibility Line');
+    expect(paneHost!.querySelector('.cl-title')?.textContent).toBe('Brosius: Least-Squares Development');
     expect(paneHost!.querySelectorAll('.cl-slider-row').length).toBeGreaterThan(3);
     expect(paneHost!.querySelectorAll('.cl-preset-chip').length).toBe(5);
     // The stage rendered real geometry.
@@ -190,7 +190,7 @@ describe('concept lab pane', () => {
     await settle();
     expect(paneHost!.querySelectorAll('.cl-card').length).toBe(MODULES.length);
     const valley = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
-      c.querySelector('.cl-card-title')?.textContent?.includes('MSE Valley'))! as HTMLElement;
+      c.querySelector('.cl-card-title')?.textContent?.includes('Benktander'))! as HTMLElement;
     valley.click();
     await settle();
     expect(paneHost!.querySelectorAll('.cl-scene').length).toBe(2);
@@ -250,7 +250,7 @@ describe('concept lab pane', () => {
     (paneHost!.querySelector('.cl-back') as HTMLElement).click();
     await settle();
     const card = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
-      c.querySelector('.cl-card-title')?.textContent?.includes('Distribution Zoo'))! as HTMLElement;
+      c.querySelector('.cl-card-title')?.textContent?.includes('Loss Distributions'))! as HTMLElement;
     card.click();
     await settle();
     // Ranges mode: two curves, no bars, the 95th-percentile markers labeled.
@@ -276,7 +276,7 @@ describe('concept lab pane', () => {
     (paneHost!.querySelector('.cl-back') as HTMLElement).click();
     await settle();
     const card = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
-      c.querySelector('.cl-card-title')?.textContent?.includes('Validation Machine'))! as HTMLElement;
+      c.querySelector('.cl-card-title')?.textContent?.includes('Model Validation'))! as HTMLElement;
     card.click();
     await settle();
     // The sampling reveal is animating: not all 100 points are on the p-p
@@ -304,7 +304,7 @@ describe('concept lab pane', () => {
     (paneHost!.querySelector('.cl-back') as HTMLElement).click();
     await settle();
     const card = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
-      c.querySelector('.cl-card-title')?.textContent?.includes('Settlement-Rate'))! as HTMLElement;
+      c.querySelector('.cl-card-title')?.textContent?.includes('CSR Model'))! as HTMLElement;
     card.click();
     await settle();
     const readMisprice = () => {
@@ -328,7 +328,7 @@ describe('concept lab pane', () => {
     (paneHost!.querySelector('.cl-back') as HTMLElement).click();
     await settle();
     const card = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
-      c.querySelector('.cl-card-title')?.textContent?.includes('Posterior Form'))! as HTMLElement;
+      c.querySelector('.cl-card-title')?.textContent?.includes('MCMC Sampling'))! as HTMLElement;
     card.click();
     await wait(400); // the chain auto-plays on mount
     await settle();
@@ -355,7 +355,7 @@ describe('concept lab pane', () => {
     (paneHost!.querySelector('.cl-back') as HTMLElement).click();
     await settle();
     const card = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
-      c.querySelector('.cl-card-title')?.textContent?.includes('Machinery'))! as HTMLElement;
+      c.querySelector('.cl-card-title')?.textContent?.includes('Mack 1994'))! as HTMLElement;
     card.click();
     await settle();
     const values = () => [...paneHost!.querySelectorAll('.cl-readout-value')].map((e) => e.textContent);
@@ -439,7 +439,7 @@ describe('concept lab pane', () => {
     (paneHost!.querySelector('.cl-back') as HTMLElement).click();
     await settle();
     const card = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
-      c.querySelector('.cl-card-title')?.textContent?.includes('Same Answer'))! as HTMLElement;
+      c.querySelector('.cl-card-title')?.textContent?.includes('Taylor'))! as HTMLElement;
     card.click();
     await settle();
     const values = () => [...paneHost!.querySelectorAll('.cl-readout-value')].map((e) => e.textContent);
@@ -458,7 +458,7 @@ describe('concept lab pane', () => {
     const res = await tool.handler({ moduleId: 'mse-valley', preset: 'example1' });
     expect(res.isError).toBeFalsy();
     await settle();
-    expect(paneHost!.querySelector('.cl-title')?.textContent).toBe('The MSE Valley');
+    expect(paneHost!.querySelector('.cl-title')?.textContent).toBe('Mack 2000: Benktander Credibility');
     expect(paneHost!.querySelector('.cl-preset-chip.cl-active')?.textContent).toContain('Example 1');
   });
 
@@ -466,7 +466,7 @@ describe('concept lab pane', () => {
     (paneHost!.querySelector('.cl-back') as HTMLElement).click();
     await settle();
     const brosius = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
-      c.querySelector('.cl-card-title')?.textContent?.includes('Credibility Line'))! as HTMLElement;
+      c.querySelector('.cl-card-title')?.textContent?.includes('Brosius'))! as HTMLElement;
     brosius.click();
     await settle();
     // Still on Table 1 (fit mode) with the pinned ghost — not reset to story 1.
@@ -486,13 +486,13 @@ describe('curriculum layer', () => {
     expect(levels[6].querySelector('.cl-level-title')?.textContent).toBe('The Reserving Problem');
     // A concept card's footer points forward instead of citing a paper.
     const claimCounter = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
-      c.querySelector('.cl-card-title')?.textContent?.includes('Claim Counter'))!;
+      c.querySelector('.cl-card-title')?.textContent?.includes('Random Variables'))!;
     expect(claimCounter.querySelector('.cl-card-paper')?.textContent).toContain('Feeds');
   });
 
   it('the Claim Counter draws years and the empirical readouts move', async () => {
     const card = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
-      c.querySelector('.cl-card-title')?.textContent?.includes('Claim Counter'))! as HTMLElement;
+      c.querySelector('.cl-card-title')?.textContent?.includes('Random Variables'))! as HTMLElement;
     card.click();
     await settle();
     // Concept module: the header chip shows its level, not a paper.
@@ -530,10 +530,10 @@ describe('curriculum layer', () => {
   it('the connections rail walks the ladder: a bridge click opens the target module', async () => {
     const rows = [...paneHost!.querySelectorAll('.cl-conn-row')] as HTMLElement[];
     expect(rows.length).toBeGreaterThan(0);
-    const fan = rows.find((r) => r.textContent?.includes('Fan Of Futures'))!;
+    const fan = rows.find((r) => r.textContent?.includes('Loss Development As A Process'))!;
     fan.click();
     await settle();
-    expect(paneHost!.querySelector('.cl-title')?.textContent).toBe('The Fan Of Futures');
+    expect(paneHost!.querySelector('.cl-title')?.textContent).toBe('Loss Development As A Process');
     // The hero fan rendered: unconditional lives plus the conditional brush.
     expect(paneHost!.querySelectorAll('path').length).toBeGreaterThan(30);
   });
@@ -542,7 +542,7 @@ describe('curriculum layer', () => {
     (paneHost!.querySelector('.cl-back') as HTMLElement).click();
     await settle();
     const card = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
-      c.querySelector('.cl-card-title')?.textContent?.includes('Model Ladder'))! as HTMLElement;
+      c.querySelector('.cl-card-title')?.textContent?.includes('CCL & CSR'))! as HTMLElement;
     card.click();
     await settle();
     const verdictText = () =>
@@ -560,7 +560,7 @@ describe('curriculum layer', () => {
     (paneHost!.querySelector('.cl-back') as HTMLElement).click();
     await settle();
     const card = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
-      c.querySelector('.cl-card-title')?.textContent?.includes('GLM, Piece By Piece'))! as HTMLElement;
+      c.querySelector('.cl-card-title')?.textContent?.includes('Generalized Linear Models'))! as HTMLElement;
     card.click();
     await settle();
     const pRow = () => ([...paneHost!.querySelectorAll('.cl-slider-row')] as HTMLElement[])
