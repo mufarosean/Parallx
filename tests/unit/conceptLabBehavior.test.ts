@@ -127,7 +127,9 @@ describe('concept lab pane', () => {
   });
 
   it('clicking a card enters the module with sliders, scenes, and formula', async () => {
-    (paneHost!.querySelector('.cl-card') as HTMLElement).click();
+    const brosius = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
+      c.querySelector('.cl-card-title')?.textContent?.includes('Credibility Line'))! as HTMLElement;
+    brosius.click();
     await settle();
     expect(paneHost!.querySelector('.cl-title')?.textContent).toBe('The Credibility Line');
     expect(paneHost!.querySelectorAll('.cl-slider-row').length).toBeGreaterThan(3);
@@ -188,7 +190,7 @@ describe('concept lab pane', () => {
     await settle();
     expect(paneHost!.querySelectorAll('.cl-card').length).toBe(MODULES.length);
     const valley = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
-      c.textContent?.includes('MSE Valley'))! as HTMLElement;
+      c.querySelector('.cl-card-title')?.textContent?.includes('MSE Valley'))! as HTMLElement;
     valley.click();
     await settle();
     expect(paneHost!.querySelectorAll('.cl-scene').length).toBe(2);
@@ -224,7 +226,7 @@ describe('concept lab pane', () => {
     (paneHost!.querySelector('.cl-back') as HTMLElement).click();
     await settle();
     const card = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
-      c.textContent?.includes('Prior To Posterior'))! as HTMLElement;
+      c.querySelector('.cl-card-title')?.textContent?.includes('Prior To Posterior'))! as HTMLElement;
     card.click();
     await settle();
     // Story step 1 applies the normal-conjugate preset: z = 0.791.
@@ -248,7 +250,7 @@ describe('concept lab pane', () => {
     (paneHost!.querySelector('.cl-back') as HTMLElement).click();
     await settle();
     const card = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
-      c.textContent?.includes('Distribution Zoo'))! as HTMLElement;
+      c.querySelector('.cl-card-title')?.textContent?.includes('Distribution Zoo'))! as HTMLElement;
     card.click();
     await settle();
     // Ranges mode: two curves, no bars, the 95th-percentile markers labeled.
@@ -274,7 +276,7 @@ describe('concept lab pane', () => {
     (paneHost!.querySelector('.cl-back') as HTMLElement).click();
     await settle();
     const card = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
-      c.textContent?.includes('Validation Machine'))! as HTMLElement;
+      c.querySelector('.cl-card-title')?.textContent?.includes('Validation Machine'))! as HTMLElement;
     card.click();
     await settle();
     // The sampling reveal is animating: not all 100 points are on the p-p
@@ -302,7 +304,7 @@ describe('concept lab pane', () => {
     (paneHost!.querySelector('.cl-back') as HTMLElement).click();
     await settle();
     const card = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
-      c.textContent?.includes('Settlement-Rate'))! as HTMLElement;
+      c.querySelector('.cl-card-title')?.textContent?.includes('Settlement-Rate'))! as HTMLElement;
     card.click();
     await settle();
     const readMisprice = () => {
@@ -326,7 +328,7 @@ describe('concept lab pane', () => {
     (paneHost!.querySelector('.cl-back') as HTMLElement).click();
     await settle();
     const card = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
-      c.textContent?.includes('Posterior Form'))! as HTMLElement;
+      c.querySelector('.cl-card-title')?.textContent?.includes('Posterior Form'))! as HTMLElement;
     card.click();
     await wait(400); // the chain auto-plays on mount
     await settle();
@@ -353,7 +355,7 @@ describe('concept lab pane', () => {
     (paneHost!.querySelector('.cl-back') as HTMLElement).click();
     await settle();
     const card = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
-      c.textContent?.includes('Machinery'))! as HTMLElement;
+      c.querySelector('.cl-card-title')?.textContent?.includes('Machinery'))! as HTMLElement;
     card.click();
     await settle();
     const values = () => [...paneHost!.querySelectorAll('.cl-readout-value')].map((e) => e.textContent);
@@ -374,7 +376,7 @@ describe('concept lab pane', () => {
     (paneHost!.querySelector('.cl-back') as HTMLElement).click();
     await settle();
     const card = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
-      c.textContent?.includes('Growth Curves'))! as HTMLElement;
+      c.querySelector('.cl-card-title')?.textContent?.includes('Growth Curves'))! as HTMLElement;
     card.click();
     await settle();
     const values = () => [...paneHost!.querySelectorAll('.cl-readout-value')].map((e) => e.textContent);
@@ -394,7 +396,7 @@ describe('concept lab pane', () => {
     (paneHost!.querySelector('.cl-back') as HTMLElement).click();
     await settle();
     const card = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
-      c.textContent?.includes('Bootstrap'))! as HTMLElement;
+      c.querySelector('.cl-card-title')?.textContent?.includes('Bootstrap'))! as HTMLElement;
     card.click();
     await wait(500); // simulation chunks run on the loop
     await settle();
@@ -419,7 +421,7 @@ describe('concept lab pane', () => {
     (paneHost!.querySelector('.cl-back') as HTMLElement).click();
     await settle();
     const card = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
-      c.textContent?.includes('Risk Margin'))! as HTMLElement;
+      c.querySelector('.cl-card-title')?.textContent?.includes('Risk Margin'))! as HTMLElement;
     card.click();
     await settle();
     const values = () => [...paneHost!.querySelectorAll('.cl-readout-value')].map((e) => e.textContent);
@@ -437,7 +439,7 @@ describe('concept lab pane', () => {
     (paneHost!.querySelector('.cl-back') as HTMLElement).click();
     await settle();
     const card = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
-      c.textContent?.includes('Same Answer'))! as HTMLElement;
+      c.querySelector('.cl-card-title')?.textContent?.includes('Same Answer'))! as HTMLElement;
     card.click();
     await settle();
     const values = () => [...paneHost!.querySelectorAll('.cl-readout-value')].map((e) => e.textContent);
@@ -460,15 +462,117 @@ describe('concept lab pane', () => {
     expect(paneHost!.querySelector('.cl-preset-chip.cl-active')?.textContent).toContain('Example 1');
   });
 
-  it('returning to the first module preserves the user’s explored state', async () => {
+  it('returning to an explored module preserves the user’s state', async () => {
     (paneHost!.querySelector('.cl-back') as HTMLElement).click();
     await settle();
-    ([...paneHost!.querySelectorAll('.cl-card')][0] as HTMLElement).click();
+    const brosius = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
+      c.querySelector('.cl-card-title')?.textContent?.includes('Credibility Line'))! as HTMLElement;
+    brosius.click();
     await settle();
     // Still on Table 1 (fit mode) with the pinned ghost — not reset to story 1.
     const active = paneHost!.querySelector('.cl-preset-chip.cl-active');
     expect(active?.textContent).toContain('Table 1');
     expect(paneHost!.querySelectorAll('.cl-ghost-chip').length).toBe(1);
+  });
+});
+
+describe('curriculum layer', () => {
+  it('home is the ladder: seven ordered levels, concept cards say what they feed', async () => {
+    (paneHost!.querySelector('.cl-back') as HTMLElement).click();
+    await settle();
+    const levels = paneHost!.querySelectorAll('.cl-level');
+    expect(levels.length).toBe(7);
+    expect(levels[0].querySelector('.cl-level-title')?.textContent).toBe('Probability & Random Variables');
+    expect(levels[6].querySelector('.cl-level-title')?.textContent).toBe('The Reserving Problem');
+    // A concept card's footer points forward instead of citing a paper.
+    const claimCounter = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
+      c.querySelector('.cl-card-title')?.textContent?.includes('Claim Counter'))!;
+    expect(claimCounter.querySelector('.cl-card-paper')?.textContent).toContain('Feeds');
+  });
+
+  it('the Claim Counter draws years and the empirical readouts move', async () => {
+    const card = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
+      c.querySelector('.cl-card-title')?.textContent?.includes('Claim Counter'))! as HTMLElement;
+    card.click();
+    await settle();
+    // Concept module: the header chip shows its level, not a paper.
+    expect(paneHost!.querySelector('.cl-source-chip')?.textContent).toContain('Foundations');
+    const readCell = (label: string) => {
+      const cell = [...paneHost!.querySelectorAll('.cl-readouts > div')].find((c) =>
+        c.textContent?.includes(label))!;
+      return cell.querySelector('.cl-readout-value')!.textContent;
+    };
+    expect(readCell('Years Drawn')).toBe('0');
+    const draw100 = [...paneHost!.querySelectorAll('.cl-scene-btn')].find((b) =>
+      b.textContent?.includes('Draw 100'))! as HTMLElement;
+    draw100.click();
+    await settle();
+    expect(readCell('Years Drawn')).toBe('100');
+    expect(readCell('Empirical Mean')).not.toBe('—');
+  });
+
+  it('predict-then-reveal: the step asks first, marks the answer, then explains', async () => {
+    // Step 2 of the Claim Counter is a predict step.
+    const next = [...paneHost!.querySelectorAll('.cl-story-btn')].pop()! as HTMLElement;
+    next.click();
+    await settle();
+    const opts = [...paneHost!.querySelectorAll('.cl-predict-opt')] as HTMLElement[];
+    expect(opts.length).toBe(2);
+    expect(paneHost!.querySelector('.cl-predict-explain')).toBeNull();
+    opts[0].click(); // the wrong answer (ten draws are NOT plenty)
+    await settle();
+    const after = [...paneHost!.querySelectorAll('.cl-predict-opt')] as HTMLElement[];
+    expect(after[0].classList.contains('cl-wrong')).toBe(true);
+    expect(after[1].classList.contains('cl-right')).toBe(true);
+    expect(paneHost!.querySelector('.cl-predict-explain')).toBeTruthy();
+  });
+
+  it('the connections rail walks the ladder: a bridge click opens the target module', async () => {
+    const rows = [...paneHost!.querySelectorAll('.cl-conn-row')] as HTMLElement[];
+    expect(rows.length).toBeGreaterThan(0);
+    const fan = rows.find((r) => r.textContent?.includes('Fan Of Futures'))!;
+    fan.click();
+    await settle();
+    expect(paneHost!.querySelector('.cl-title')?.textContent).toBe('The Fan Of Futures');
+    // The hero fan rendered: unconditional lives plus the conditional brush.
+    expect(paneHost!.querySelectorAll('path').length).toBeGreaterThan(30);
+  });
+
+  it('Meyers’ ladder: Mack-incurred is rejected, CCL validates', async () => {
+    (paneHost!.querySelector('.cl-back') as HTMLElement).click();
+    await settle();
+    const card = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
+      c.querySelector('.cl-card-title')?.textContent?.includes('Model Ladder'))! as HTMLElement;
+    card.click();
+    await settle();
+    const verdictText = () =>
+      [...paneHost!.querySelectorAll('text')].map((t) => t.textContent || '').join(' ');
+    expect(verdictText()).toContain('Rejected');
+    const ccl = [...paneHost!.querySelectorAll('.cl-preset-chip')].find((c) =>
+      c.textContent?.includes('CCL'))! as HTMLElement;
+    ccl.click();
+    await wait(650);
+    await settle();
+    expect(verdictText()).toContain('Validates');
+  });
+
+  it('GLM anatomy: the p dial belongs to the Tweedie world only', async () => {
+    (paneHost!.querySelector('.cl-back') as HTMLElement).click();
+    await settle();
+    const card = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
+      c.querySelector('.cl-card-title')?.textContent?.includes('GLM, Piece By Piece'))! as HTMLElement;
+    card.click();
+    await settle();
+    const pRow = () => ([...paneHost!.querySelectorAll('.cl-slider-row')] as HTMLElement[])
+      .find((r) => r.textContent?.includes('Variance Power'))!;
+    // Story opens in the classical corner: identity link, no p dial.
+    expect(pRow().style.display).toBe('none');
+    const odp = [...paneHost!.querySelectorAll('.cl-preset-chip')].find((c) =>
+      c.textContent?.includes('ODP World'))! as HTMLElement;
+    odp.click();
+    await wait(650);
+    await settle();
+    expect(pRow().style.display).toBe('');
   });
 });
 
@@ -478,6 +582,7 @@ describe('sidebar', () => {
     const handle = viewProviders.get('conceptLab.modules').createView(host);
     const rows = host.querySelectorAll('.cl-side-row');
     expect(rows.length).toBe(MODULES.length + 1);
+    expect(host.querySelectorAll('.cl-side-level').length).toBe(7);
     handle.dispose();
   });
 });

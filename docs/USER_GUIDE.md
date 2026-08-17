@@ -250,13 +250,22 @@ through into them. Open one with `Ctrl+Shift+H` or **Dashboard: Open**.
 
 ---
 
-## 6. Concept Lab (interactive explorables)
+## 6. Concept Lab (the stats-to-reserving ladder)
 
-Concept Lab turns statistical concepts into **live, draggable pictures** —
-each module is grounded in a source paper's own worked example, so the
-default numbers on screen are the paper's printed exhibits. Open it from
-the command palette (**Open Concept Lab**), the activity-bar icon, or by
-asking the chat AI to show you a concept.
+Concept Lab is a **bottom-up statistics curriculum that ends at the Exam 7
+papers**, taught entirely through live, draggable pictures. Levels 1–6 are
+concept modules — probability, random variables, processes, estimation,
+Bayesian theory, GLMs — and level 7 applies it all on the papers' own
+printed exhibits. Open it from the command palette (**Open Concept Lab**),
+the activity-bar icon, or by asking the chat AI to show you a concept.
+
+**The ladder** (the home view): seven numbered levels, climbable in order
+or entered anywhere. Every module carries two link rails so you are never
+stranded:
+
+- **Builds On** — the concepts this module stands on, one click down.
+- **Where The Exam Uses This** — the exam modules that need it, one click
+  up. Concept cards on the home view also name what they feed.
 
 The surface, top to bottom:
 
@@ -264,6 +273,10 @@ The surface, top to bottom:
   walk. Click the dots or the arrows — each step animates the parameters
   to a configuration and explains what you're looking at. This is the
   intended way IN to a module.
+- **Predict-then-reveal**: some story steps ask you to commit to an
+  answer BEFORE the parameters move. Pick one; the step marks it, shows
+  the right answer, explains, and then plays the reveal. Answers stick
+  per module, so revisits don't re-ask.
 - **Worked Examples** (left rail): preset chips that jump to the paper's
   printed cases. The note under the chips tells you what the case shows.
 - **Parameters**: sliders in the paper's own notation. The value readout
@@ -281,8 +294,11 @@ The surface, top to bottom:
 - **Simulation modules** (the bootstrap, the MCMC sampler, the validation
   machine) carry their own transport in the scene header: play/pause,
   step, replay.
-- **Source chip** (top right): the paper, section, and pages every number
-  on screen comes from.
+- **Source chip** (top right): on exam modules, the paper, section, and
+  pages every number on screen comes from; on concept modules, the level
+  of the ladder you are standing on. Concept modules are still
+  machine-checked — their tests pin mathematical identities and seeded
+  simulations instead of printed exhibits.
 
 **Let the AI drive.** In chat, ask things like *"show me the MSE valley
 at Mack's Example 1"* or *"open the bootstrap"* — the agent has a

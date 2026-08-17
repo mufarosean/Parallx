@@ -689,12 +689,138 @@ function clMetropolisRun({ n, step, seed, target, start }) {
   return { xs, ys, acceptRate: accepted / n };
 }
 
+// --- Foundations kernel: samplers, moments, conditioning, likelihood -------
+// Pure machinery for the concept levels (probability → estimation). Concept
+// modules pin their checks on these identities the same way exam modules pin
+// theirs on printed exhibits.
+
+/** Poisson sampler: Knuth product method; normal rounding above λ = 30
+    (teaching simulations, where the approximation error is invisible). */
+function clRandPoisson(lambda, rng) {
+  if (!(lambda > 0)) return 0;
+  if (lambda > 30) {
+    return Math.max(0, Math.round(lambda + Math.sqrt(lambda) * clRandNormal(rng)));
+  }
+  const L = Math.exp(-lambda);
+  let k = 0, p = 1;
+  do { k++; p *= rng(); } while (p > L);
+  return k - 1;
+}
+
+/** Mean / variance / sd / skewness of a discrete distribution [{x, p}].
+    Renormalizes p so dragged bar heights need not sum to one. */
+function clDiscreteMoments(masses) {
+  let tot = 0;
+  for (const m of masses) tot += m.p;
+  if (!(tot > 0)) return { mean: NaN, varc: NaN, sd: NaN, skew: NaN };
+  let mean = 0;
+  for (const m of masses) mean += (m.p / tot) * m.x;
+  let m2 = 0, m3 = 0;
+  for (const m of masses) {
+    const dev = m.x - mean;
+    m2 += (m.p / tot) * dev * dev;
+    m3 += (m.p / tot) * dev * dev * dev;
+  }
+  const sd = Math.sqrt(m2);
+  return { mean, varc: m2, sd, skew: sd > 0 ? m3 / (sd * sd * sd) : 0 };
+}
+
+/** Compound Poisson moments: S = X₁+…+X_N, N ~ Poisson(λ).
+    E[S] = λ·E[X]; Var(S) = λ·E[X²] — variance rides on the SECOND moment,
+    which is why severity volatility hurts more than frequency volatility. */
+function clCompoundMoments(lambda, sevMean, sevCv) {
+  const m2 = sevMean * sevMean * (1 + sevCv * sevCv);
+  return { mean: lambda * sevMean, varc: lambda * m2, sd: Math.sqrt(lambda * m2) };
+}
+
+/** Seeded compound Poisson-lognormal aggregate draws. */
+function clCompoundSim({ lambda, sevMean, sevCv, n, seed }) {
+  const rng = clMulberry32(seed);
+  const { mu, sigma } = clMatchLognormal(sevMean, sevMean * sevCv);
+  const draws = new Array(n);
+  for (let i = 0; i < n; i++) {
+    const count = clRandPoisson(lambda, rng);
+    let s = 0;
+    for (let c = 0; c < count; c++) s += Math.exp(mu + sigma * clRandNormal(rng));
+    draws[i] = s;
+  }
+  return draws;
+}
+
+/** Bivariate normal conditioning: the whole point of regression.
+    E[Y|X=x] = μy + ρ(σy/σx)(x−μx);  SD[Y|X=x] = σy√(1−ρ²). */
+function clBivarCond({ muX, muY, sdX, sdY, rho }, x) {
+  return {
+    mean: muY + rho * (sdY / sdX) * (x - muX),
+    sd: sdY * Math.sqrt(Math.max(0, 1 - rho * rho)),
+  };
+}
+
+/** Seeded correlated-normal cloud [{x, y}] via the Cholesky construction. */
+function clBivarCloud({ muX, muY, sdX, sdY, rho }, n, seed) {
+  const rng = clMulberry32(seed);
+  const pts = new Array(n);
+  const c = Math.sqrt(Math.max(0, 1 - rho * rho));
+  for (let i = 0; i < n; i++) {
+    const z1 = clRandNormal(rng);
+    const z2 = clRandNormal(rng);
+    pts[i] = { x: muX + sdX * z1, y: muY + sdY * (rho * z1 + c * z2) };
+  }
+  return pts;
+}
+
+/** SD of a sum of two correlated risks: √(σ₁² + σ₂² + 2ρσ₁σ₂). */
+function clSumSd(s1, s2, rho) {
+  return Math.sqrt(Math.max(0, s1 * s1 + s2 * s2 + 2 * rho * s1 * s2));
+}
+
+/** Lognormal log-likelihood of strictly positive data. */
+function clLognLoglik(data, mu, sigma) {
+  if (!(sigma > 0)) return -Infinity;
+  let ll = 0;
+  for (const x of data) {
+    if (!(x > 0)) return -Infinity;
+    const z = (Math.log(x) - mu) / sigma;
+    ll += -Math.log(x) - Math.log(sigma) - 0.5 * Math.log(2 * Math.PI) - 0.5 * z * z;
+  }
+  return ll;
+}
+
+/** Lognormal MLE in closed form: mean and RMS spread of the logs. */
+function clLognMle(data) {
+  const logs = data.filter((x) => x > 0).map((x) => Math.log(x));
+  const n = logs.length;
+  if (!n) return { mu: NaN, sigma: NaN };
+  const mu = logs.reduce((a, b) => a + b, 0) / n;
+  const sigma = Math.sqrt(logs.reduce((a, b) => a + (b - mu) * (b - mu), 0) / n);
+  return { mu, sigma };
+}
+
 // ============================================================================
 // SECTION 2: MODULE FRAMEWORK + DEFINITIONS
 // Modules are declarative content over the kernel: params in the paper's
 // own notation, derived values, presets that ARE printed exhibits, a guided
 // story, and checks against the printed numbers.
 // ============================================================================
+
+// The curriculum ladder. Every module belongs to one level; concept modules
+// teach the statistics, exam modules apply it on the papers' own numbers.
+// `foundations` links UP the ladder (what a module stands on), `bridges`
+// links DOWN (where Exam 7 uses the concept) — the anti-stranding contract:
+// a concept module without bridges is an orphan and fails the hygiene test.
+const LEVELS = [
+  { id: 'probability', title: 'Probability & Random Variables', tagline: 'What randomness is, and the objects that describe it.' },
+  { id: 'behavior', title: 'How Randomness Behaves', tagline: 'Sums, conditioning, and risks that move together.' },
+  { id: 'processes', title: 'Random Processes', tagline: 'Paths through time, and predicting the rest of one.' },
+  { id: 'estimation', title: 'Estimation & Likelihood', tagline: 'Letting data pick parameters, and what that costs.' },
+  { id: 'bayes', title: 'Bayesian Theory & Credibility', tagline: 'Beliefs as distributions, updated by evidence.' },
+  { id: 'glm', title: 'Regression & GLMs', tagline: 'The model family behind modern reserving.' },
+  { id: 'reserving', title: 'The Reserving Problem', tagline: 'Exam 7: the papers, on their own printed numbers.' },
+];
+
+function clGetLevel(id) {
+  return LEVELS.find((l) => l.id === id);
+}
 
 const MODULES = [];
 
@@ -723,6 +849,13 @@ defineModule({
   title: 'The Credibility Line',
   subtitle: 'Least-squares loss development: one line, three famous methods inside it',
   icon: 'trending-up',
+  level: 'reserving',
+  kind: 'exam',
+  ord: 1,
+  foundations: [
+    { module: 'conditional-expectation', text: 'The credibility line is the best guess E[Y|X], approximated by a straight line.' },
+    { module: 'shrinkage', text: 'The Z weighting is shrinkage: trust the data in proportion to how much it varies between risks.' },
+  ],
   paper: {
     label: 'Brosius, "Loss Development Using Credibility"',
     section: 'Tables 1-5 and the credibility form, pp. 3-14',
@@ -883,6 +1016,13 @@ defineModule({
   title: 'The MSE Valley',
   subtitle: 'Benktander and the optimal credibility factor, from Mack (2000)',
   icon: 'git-merge',
+  level: 'reserving',
+  kind: 'exam',
+  ord: 2,
+  foundations: [
+    { module: 'shrinkage', text: 'The credibility weight c is a shrinkage dial, and the valley shows the price of setting it wrong.' },
+    { module: 'sampling-error', text: 'The valley exists because estimates carry error; a perfect estimator would have no trade-off.' },
+  ],
   paper: {
     label: 'Mack, "Credible Claims Reserves: The Benktander Method" (2000)',
     section: 'Theorems 3-4, Examples 1-2, Figure 1; pp. 337-341',
@@ -1031,6 +1171,17 @@ defineModule({
   title: 'Prior To Posterior',
   subtitle: 'How data moves belief: the exact Bayesian models behind credibility',
   icon: 'scale',
+  level: 'bayes',
+  kind: 'concept',
+  ord: 1,
+  foundations: [
+    { module: 'distribution-anatomy', text: 'Priors and posteriors are ordinary distributions; reading their densities and quantiles starts here.' },
+    { module: 'likelihood-surface', text: 'The curve that multiplies the prior is the likelihood, the same object MLE maximizes.' },
+  ],
+  bridges: [
+    { module: 'brosius-line', text: 'Brosius’ credibility formula is a posterior mean in disguise.' },
+    { module: 'meyers-arc', text: 'Every Meyers reserve distribution is a posterior; his models differ in what the prior lets move.' },
+  ],
   paper: {
     label: 'Mack (2000) §5, Gogol (1993) model',
     section: 'Exact Bayesian reserves with the Correction Note figures; pp. 341-344',
@@ -1146,6 +1297,17 @@ defineModule({
       preset: 'noisy-data',
     },
     {
+      title: 'Commit to a guess',
+      text: 'Bayes decides who wins by comparing variances.',
+      predict: {
+        prompt: 'Halve the payout noise β. What happens to the credibility z?',
+        options: ['Rises: cleaner data earns more weight', 'Falls: the prior digs in', 'Unchanged: z is fixed by the prior alone'],
+        answer: 0,
+        explain: 'z is a ratio of variances: prior spread against data noise. Shrink the noise and the likelihood sharpens, so the posterior slides toward what the triangle says. No judgment call is involved once the variances are set.',
+      },
+      preset: 'gogol',
+    },
+    {
       title: 'The compromise, exactly',
       text: 'Gogol\'s lognormal model gives the exact posterior. With the Correction Note applied, $E[R|C_k] = 51.9\\%$, sd $18.9\\%$, and $z = 0.782$. Nearly identical to Benktander\'s free answer.',
       preset: 'gogol',
@@ -1189,6 +1351,17 @@ defineModule({
   title: 'The Distribution Zoo',
   subtitle: 'Exam edition: the shapes the papers assume but never draw',
   icon: 'spline',
+  level: 'probability',
+  kind: 'concept',
+  ord: 4,
+  foundations: [
+    { module: 'distribution-anatomy', text: 'Each animal in the zoo is one distribution; the three-view anatomy applies to all of them.' },
+    { module: 'mean-machine', text: 'Mean, variance, and skew are the axes the zoo is organized along.' },
+  ],
+  bridges: [
+    { module: 'odp-bootstrap', text: 'The over-dispersed Poisson here is the exact error family Shapland’s bootstrap resamples.' },
+    { module: 'validation-machine', text: 'Meyers scores outcomes against lognormal predictive distributions like these.' },
+  ],
   paper: {
     label: 'Mack (1994) ranges · Shapland ODP · Verrall NB',
     section: 'Lognormal CI moment matching; ODP Var = phi*mu; NB chain ladder',
@@ -1375,6 +1548,13 @@ defineModule({
   title: 'The Validation Machine',
   subtitle: 'p-p plots, the KS band, and how Meyers retires bad models',
   icon: 'badge-check',
+  level: 'reserving',
+  kind: 'exam',
+  ord: 3,
+  foundations: [
+    { module: 'distribution-anatomy', text: 'A percentile is the CDF read at the outcome; uniform percentiles are what honesty looks like.' },
+    { module: 'sampling-error', text: 'A model can be biased, too narrow, or too wide; this machine diagnoses which.' },
+  ],
   paper: {
     label: 'Meyers, Monograph 8 (2nd ed.), §3',
     section: 'Uniformity of percentiles, Figure 3.1 shape catalogue, KS band 136/√n; pp. 6-11',
@@ -1526,6 +1706,13 @@ defineModule({
   title: 'The Settlement-Rate Story',
   subtitle: 'Why paid-data models failed validation, and how CSR names the culprit',
   icon: 'fast-forward',
+  level: 'reserving',
+  kind: 'exam',
+  ord: 5,
+  foundations: [
+    { module: 'process-fan', text: 'A payment pattern is a path through time; CSR says the path’s speed itself changed.' },
+    { module: 'prior-posterior', text: 'The settlement-rate parameter gets a prior and the data updates it.' },
+  ],
   paper: {
     label: 'Meyers, Monograph 8 (2nd ed.), §7',
     section: 'CSR specification, Table 7.1 posterior (gamma = 0.0446 ± 0.0282); pp. 31-36',
@@ -1681,6 +1868,15 @@ defineModule({
   title: 'Watching The Posterior Form',
   subtitle: 'What Stan actually does with those 10,000 draws',
   icon: 'route',
+  level: 'bayes',
+  kind: 'concept',
+  ord: 3,
+  foundations: [
+    { module: 'prior-posterior', text: 'The surface being explored is a posterior; this module is for when no formula exists for it.' },
+  ],
+  bridges: [
+    { module: 'meyers-arc', text: 'Every model on Meyers’ ladder is fit exactly this way: the histogram of the walk IS the answer.' },
+  ],
   paper: {
     label: 'Meyers, Monograph 8 (2nd ed.), §§1, 5-7',
     section: 'Bayesian MCMC estimation; posterior summaries like Table 7.1; pp. 1-3, 16-36',
@@ -1822,6 +2018,13 @@ defineModule({
   title: 'Mack\'s Machinery',
   subtitle: 'The RAA triangle, three estimators, and where the standard errors come from',
   icon: 'layers',
+  level: 'reserving',
+  kind: 'exam',
+  ord: 6,
+  foundations: [
+    { module: 'process-fan', text: 'Mack’s three assumptions are statements about the development path; the fan is what they buy.' },
+    { module: 'sampling-error', text: 'The two terms inside Mack’s mse are process variance and estimation error, met here first.' },
+  ],
   paper: {
     label: 'Mack, "Measuring The Variability Of Chain Ladder Reserve Estimates" (1994)',
     section: 'Formulas (2), (7)-(13) on the RAA triangle; Tables 1-2, Chapter 4 ranges',
@@ -1969,6 +2172,13 @@ defineModule({
   title: 'Clark\'s Growth Curves',
   subtitle: 'Two parameters replace a factor table, and the tail becomes a choice you can see',
   icon: 'chart-spline',
+  level: 'reserving',
+  kind: 'exam',
+  ord: 7,
+  foundations: [
+    { module: 'likelihood-surface', text: 'Clark picks ω and θ by maximizing exactly the likelihood machine built here.' },
+    { module: 'sampling-error', text: 'Clark’s process versus parameter split is the two-band decomposition from this module.' },
+  ],
   paper: {
     label: 'Clark, "LDF Curve-Fitting And Stochastic Reserving" (2003)',
     section: 'Loglogistic/Weibull G(x), LDF and Cape Cod methods, 240-month truncation; Tables 1-5',
@@ -2125,6 +2335,13 @@ defineModule({
   title: 'The Bootstrap, Live',
   subtitle: 'Resample the residuals, refit the ladder, watch a reserve distribution exist',
   icon: 'dices',
+  level: 'reserving',
+  kind: 'exam',
+  ord: 8,
+  foundations: [
+    { module: 'residual-lens', text: 'The pool being resampled is Pearson residuals; why they are exchangeable is this concept.' },
+    { module: 'sampling-error', text: 'The √(n/(n−p)) correction exists because residuals understate the true noise.' },
+  ],
   paper: {
     label: 'Shapland, "Using The ODP Bootstrap Model" (CAS Monograph 4)',
     section: 'ODP bootstrap of the paid chain ladder on Taylor & Ashe; §§2-3, Figures 5.14-5.16',
@@ -2351,6 +2568,12 @@ defineModule({
   title: 'The Same Answer Twice',
   subtitle: 'The chain ladder is a GLM: marginal sums, cross-classified, cell for cell',
   icon: 'equal',
+  level: 'reserving',
+  kind: 'exam',
+  ord: 10,
+  foundations: [
+    { module: 'glm-anatomy', text: 'The cross-classified model is a GLM: log link, ODP errors, one parameter per row and column.' },
+  ],
   paper: {
     label: 'Taylor & McGuire, "Stochastic Loss Reserving Using GLMs"',
     section: 'Tables 1-1, 3-1 to 3-5; the marginal-sum theorem and its reconciliation; Chs. 1-3',
@@ -2484,6 +2707,12 @@ defineModule({
   title: 'The Risk Margin Ladder',
   subtitle: 'Three sources of uncertainty, one consolidated CoV, one defensible margin',
   icon: 'gauge',
+  level: 'reserving',
+  kind: 'exam',
+  ord: 9,
+  foundations: [
+    { module: 'correlation', text: 'Consolidation is the sum of correlated risks; what ρ does to a total’s spread starts here.' },
+  ],
   paper: {
     label: 'Marshall et al., "A Framework For Assessing Risk Margins"',
     section: 'Figure 3 Parts A-F, the Insurer ABC worked example and its sensitivity tests',
@@ -2599,6 +2828,1957 @@ defineModule({
     { name: 'Printed flex: halve independent = 5.4%', expect: 0.054, tol: 1.5e-3, got: () => clMarshallConsolidate({ sIndep: 0.5 }).rmLogn },
     { name: 'Printed flex: internal +50% = 6.6%', expect: 0.066, tol: 1.5e-3, got: () => clMarshallConsolidate({ sInternal: 1.5 }).rmLogn },
     { name: 'Printed flex: full internal correlation = 6.3%', expect: 0.063, tol: 1.5e-3, got: () => clMarshallConsolidate({ flex: 1 }).rmLogn },
+  ],
+});
+
+// --- Module: The Claim Counter (random variables, LLN) ---------------------
+
+defineModule({
+  id: 'random-variable',
+  title: 'The Claim Counter',
+  subtitle: 'A random variable is a number attached to chance, and frequency finds probability',
+  icon: 'dice-5',
+  level: 'probability',
+  kind: 'concept',
+  ord: 1,
+  paper: null,
+  bridges: [
+    { module: 'process-fan', text: 'Next year’s unpaid losses are a random variable too; reserving is describing its distribution.' },
+    { module: 'odp-bootstrap', text: 'The bootstrap answers a reserve question by literally drawing the random variable thousands of times.' },
+  ],
+  intro:
+    'Before a year happens, the number of claims it will bring is not a number. ' +
+    'It is a random variable: a machine that turns chance into a number. Draw ' +
+    'years one at a time and watch the histogram of what HAPPENED climb onto ' +
+    'the curve of what was PROBABLE. That convergence is the law of large ' +
+    'numbers, and it is the license for everything else in this lab.',
+  params: [
+    { key: 'lam', tex: '\\lambda', label: 'Expected Claims Per Year', min: 0.5, max: 12, step: 0.1, init: 4, fmt: 'num', link: 'true' },
+  ],
+  derived(p) {
+    return { trueMean: p.lam, trueSd: Math.sqrt(p.lam) };
+  },
+  readouts: [
+    { sym: 'E[X]', id: 'trueMean', fmt: 'num', label: 'True Mean', link: 'true' },
+    { sym: '\\sigma', id: 'trueSd', fmt: 'num2', label: 'True SD', link: 'true' },
+    { sym: 'n', id: 'drawCount', fmt: 'str', label: 'Years Drawn', link: 'emp' },
+    { sym: '\\bar{X}_n', id: 'empMean', fmt: 'num2', label: 'Empirical Mean', accent: true, link: 'emp' },
+  ],
+  formula() {
+    return {
+      sym: '\\bar{X}_n \\xrightarrow{\\;n\\to\\infty\\;} E[X]',
+      terms: [
+        { sym: '\\bar{X}_n', fmt: 'num2', get: (d) => d.empMean, primary: true, link: 'emp' },
+        { op: '→' },
+        { sym: 'E[X]=\\lambda', fmt: 'num', get: (d) => d.trueMean, link: 'true' },
+      ],
+    };
+  },
+  presets: [
+    {
+      id: 'book',
+      label: 'A Working Book',
+      note: 'A small book producing about four claims a year. Draw years and watch what happened climb onto what was probable.',
+      params: { lam: { value: 4 } },
+    },
+    {
+      id: 'rare',
+      label: 'Rare Events',
+      note: 'λ = 0.8: most years are quiet and a few are bad. Skew is the default in insurance, not the exception.',
+      params: { lam: { value: 0.8 } },
+    },
+    {
+      id: 'busy',
+      label: 'A Busy Book',
+      note: 'λ = 9: pile up enough independent events and a bell shape starts assembling itself. That is the central limit theorem clearing its throat.',
+      params: { lam: { value: 9 } },
+    },
+  ],
+  story: [
+    {
+      title: 'A number attached to chance',
+      text: 'Next year has not happened, so "next year’s claim count" is not a number: it is a **random variable** $X$. The curve shows every value it could take and how probable each one is. Press **Draw A Year** and make one year real.',
+      preset: 'book',
+    },
+    {
+      title: 'Commit to a guess',
+      text: 'You have drawn a handful of years at most.',
+      predict: {
+        prompt: 'Draw ten years. Will the empirical bars sit close to the true curve?',
+        options: ['Yes, ten is plenty', 'No, ten years will look ragged'],
+        answer: 1,
+        explain: 'Ten draws of a random variable are noise with a hint of shape. Probability only speaks clearly in the long run, which is exactly why one bad year proves nothing about a book.',
+      },
+      preset: 'book',
+    },
+    {
+      title: 'The law of large numbers',
+      text: 'Now press **Run** and let hundreds of years pour in. The bars settle onto the curve and $\\bar{X}_n$ walks into $E[X]$. Nothing forces any single year to behave; the AVERAGE is what converges.',
+      preset: 'book',
+    },
+    {
+      title: 'Rare events lean right',
+      text: 'Drop $\\lambda$ to 0.8. Most years are zero, some are one, and a thin tail of years go bad. The mean no longer sits on the most likely value. Loss distributions lean right almost everywhere in this exam.',
+      preset: 'rare',
+    },
+  ],
+  checks: [
+    { name: 'Poisson mass sums to one at λ=4', expect: 1, tol: 1e-8, got: () => { let s = 0; for (let k = 0; k <= 60; k++) s += clPoissonPmf(k, 4); return s; } },
+    { name: 'Poisson mean identity at λ=4', expect: 4, tol: 1e-6, got: () => { let s = 0; for (let k = 0; k <= 60; k++) s += k * clPoissonPmf(k, 4); return s; } },
+    { name: 'Poisson variance identity at λ=4', expect: 4, tol: 1e-5, got: () => { let s = 0; for (let k = 0; k <= 60; k++) s += (k - 4) * (k - 4) * clPoissonPmf(k, 4); return s; } },
+    {
+      name: 'Seeded LLN: 4,000 draws at λ=4 land within 3σ/√n of the mean',
+      expect: 4, tol: 3 * 2 / Math.sqrt(4000),
+      got: () => {
+        const rng = clMulberry32(20260816);
+        let s = 0;
+        for (let i = 0; i < 4000; i++) s += clRandPoisson(4, rng);
+        return s / 4000;
+      },
+    },
+  ],
+});
+
+// --- Module: The Balance Point (moments of a distribution) -----------------
+
+const MM_SEVERITY = [
+  { x: 0, p: 0.06 }, { x: 1, p: 0.16 }, { x: 2, p: 0.22 }, { x: 3, p: 0.19 },
+  { x: 4, p: 0.13 }, { x: 5, p: 0.09 }, { x: 6, p: 0.06 }, { x: 7, p: 0.04 },
+  { x: 8, p: 0.025 }, { x: 9, p: 0.015 }, { x: 10, p: 0.01 },
+];
+const MM_SYMMETRIC = [
+  { x: 0, p: 0.02 }, { x: 1, p: 0.07 }, { x: 2, p: 0.16 }, { x: 3, p: 0.25 },
+  { x: 4, p: 0.16 }, { x: 5, p: 0.07 }, { x: 6, p: 0.02 }, { x: 7, p: 0 },
+  { x: 8, p: 0 }, { x: 9, p: 0 }, { x: 10, p: 0 },
+];
+const MM_TWO_BOOKS = [
+  { x: 0, p: 0.05 }, { x: 1, p: 0.28 }, { x: 2, p: 0.22 }, { x: 3, p: 0.08 },
+  { x: 4, p: 0.03 }, { x: 5, p: 0.02 }, { x: 6, p: 0.04 }, { x: 7, p: 0.1 },
+  { x: 8, p: 0.11 }, { x: 9, p: 0.05 }, { x: 10, p: 0.02 },
+];
+
+function clMeanMachineMoments(masses, a, b) {
+  const base = clDiscreteMoments(masses);
+  return {
+    mean: base.mean, varc: base.varc, sd: base.sd, skew: base.skew,
+    tMean: a * base.mean + b,
+    tVar: a * a * base.varc,
+    tSd: Math.abs(a) * base.sd,
+  };
+}
+
+defineModule({
+  id: 'mean-machine',
+  title: 'The Balance Point',
+  subtitle: 'Mean, variance, and skewness, held in your hands: drag the probability and feel the moments move',
+  icon: 'anchor',
+  level: 'probability',
+  kind: 'concept',
+  ord: 2,
+  paper: null,
+  bridges: [
+    { module: 'mse-valley', text: 'Mean squared error is a variance plus a squared bias; this module is where both words get their meaning.' },
+    { module: 'marshall-ladder', text: 'Marshall’s whole ladder is variances adding; a variance is what the bracket above the beam measures.' },
+  ],
+  intro:
+    'A distribution is mass sitting on a beam. The mean is where a fulcrum ' +
+    'balances it, the variance is how far the mass spreads from that point, ' +
+    'and skewness is which way it leans. Drag the bars and feel the moments ' +
+    'respond, then trend every loss and watch the transformation rules fire.',
+  params: [
+    { key: 'a', tex: 'a', label: 'Trend Factor (Scale)', min: 0.4, max: 2.5, step: 0.05, init: 1, fmt: 'num2', link: 'trans' },
+    { key: 'b', tex: 'b', label: 'Fixed Load (Shift)', min: -2, max: 4, step: 0.1, init: 0, fmt: 'num2', link: 'trans' },
+  ],
+  derived(p, st) {
+    const masses = Array.isArray(st?.data) && st.data.length ? st.data : MM_SEVERITY;
+    return clMeanMachineMoments(masses, p.a, p.b);
+  },
+  readouts: [
+    { sym: 'E[X]', id: 'mean', fmt: 'num2', label: 'Mean (Balance Point)', link: 'mean' },
+    { sym: '\\sigma', id: 'sd', fmt: 'num2', label: 'Standard Deviation', link: 'sd' },
+    { sym: '\\gamma_1', id: 'skew', fmt: 'num2', label: 'Skewness', link: 'skew' },
+    { sym: 'E[aX{+}b]', id: 'tMean', fmt: 'num2', label: 'Transformed Mean', accent: true, link: 'trans' },
+  ],
+  formula() {
+    return {
+      sym: 'E[aX{+}b] = a\\,E[X] + b, \\qquad \\mathrm{SD}[aX{+}b] = |a|\\,\\sigma',
+      terms: [
+        { sym: 'E[aX{+}b]', fmt: 'num2', get: (d) => d.tMean, primary: true, link: 'trans' },
+        { op: '=' },
+        { sym: 'a', fmt: 'num2', get: (d) => d.a, link: 'trans' },
+        { op: '·' },
+        { sym: 'E[X]', fmt: 'num2', get: (d) => d.mean, link: 'mean' },
+        { op: '+' },
+        { sym: 'b', fmt: 'num2', get: (d) => d.b, link: 'trans' },
+        { op: ',' },
+        { sym: '\\mathrm{SD}', fmt: 'num2', get: (d) => d.tSd, link: 'sd' },
+      ],
+    };
+  },
+  presets: [
+    {
+      id: 'severity',
+      label: 'A Severity Curve',
+      note: 'A right-leaning severity shape: lots of small claims, a persistent tail of large ones. Drag any bar to reshape it.',
+      data: MM_SEVERITY,
+      params: { a: { value: 1 }, b: { value: 0 } },
+    },
+    {
+      id: 'symmetric',
+      label: 'A Symmetric Book',
+      note: 'Mass piled evenly around the middle: mean, median, and mode agree, and the skewness reads zero.',
+      data: MM_SYMMETRIC,
+      params: { a: { value: 1 }, b: { value: 0 } },
+    },
+    {
+      id: 'two-books',
+      label: 'Two Books In One',
+      note: 'Attritional claims on the left, a second hill of large losses on the right. The mean balances in the valley where almost nothing actually happens.',
+      data: MM_TWO_BOOKS,
+      params: { a: { value: 1 }, b: { value: 0 } },
+    },
+    {
+      id: 'inflation',
+      label: 'Trend It 50%',
+      note: 'a = 1.5: every loss grows by half. The mean grows by half, the SD grows by half, the variance grows by 2.25.',
+      data: MM_SEVERITY,
+      params: { a: { value: 1.5 }, b: { value: 0 } },
+    },
+  ],
+  story: [
+    {
+      title: 'Mass on a beam',
+      text: 'Each bar is probability sitting at a loss size. The fulcrum sits where the beam balances: that point IS $E[X]$. Drag a bar taller and watch the fulcrum slide toward it.',
+      preset: 'severity',
+    },
+    {
+      title: 'Commit to a guess',
+      text: 'The balance point is a lever law, not a bar count.',
+      predict: {
+        prompt: 'Pile more mass far to the right without touching the left. The mean moves…',
+        options: ['A lot: distance multiplies mass', 'A little: it is only one bar', 'Not at all'],
+        answer: 0,
+        explain: 'The mean weights each outcome by its distance. Mass far from the fulcrum has leverage, which is exactly why a thin large-loss tail dominates an average.',
+      },
+      preset: 'two-books',
+    },
+    {
+      title: 'Spread is variance',
+      text: 'The bracket above the beam spans $E[X]\\pm\\sigma$. Squeeze the mass together and it tightens; smear the mass out and it widens. Variance is the average SQUARED distance from balance, so far-out mass counts double-extra.',
+      preset: 'symmetric',
+    },
+    {
+      title: 'Losses lean right',
+      text: 'Rebuild the severity shape. The tail pulls the mean to the right of the mode, and the skewness reads positive. Nearly every distribution on this exam leans this way.',
+      preset: 'severity',
+    },
+    {
+      title: 'Trend the whole book',
+      text: 'Now transform every loss: $Y = aX + b$.',
+      predict: {
+        prompt: 'Trend every loss up 50% (a = 1.5). What happens to the standard deviation?',
+        options: ['Rises 50%', 'Rises 125%', 'Unchanged: trend shifts, it does not spread'],
+        answer: 0,
+        explain: 'SD carries the units of the loss, so it scales by a. VARIANCE is squared and scales by a² = 2.25. The fixed load b moves the mean and touches neither.',
+      },
+      preset: 'inflation',
+    },
+  ],
+  checks: [
+    { name: 'Symmetric masses: mean = 2 for p ∝ [1,2,3,2,1] on 0..4', expect: 2, tol: 1e-12, got: () => clDiscreteMoments([{ x: 0, p: 1 }, { x: 1, p: 2 }, { x: 2, p: 3 }, { x: 3, p: 2 }, { x: 4, p: 1 }]).mean },
+    { name: 'Symmetric masses: variance = 4/3', expect: 4 / 3, tol: 1e-12, got: () => clDiscreteMoments([{ x: 0, p: 1 }, { x: 1, p: 2 }, { x: 2, p: 3 }, { x: 3, p: 2 }, { x: 4, p: 1 }]).varc },
+    { name: 'Symmetric masses: skewness = 0', expect: 0, tol: 1e-12, got: () => clDiscreteMoments([{ x: 0, p: 1 }, { x: 1, p: 2 }, { x: 2, p: 3 }, { x: 3, p: 2 }, { x: 4, p: 1 }]).skew },
+    { name: 'Renormalization: doubling every p leaves the mean alone', expect: 0, tol: 1e-12, got: () => clDiscreteMoments(MM_SEVERITY.map((m) => ({ x: m.x, p: 2 * m.p }))).mean - clDiscreteMoments(MM_SEVERITY).mean },
+    { name: 'Transform: E[1.5X+2] = 1.5·E[X]+2', expect: 0, tol: 1e-12, got: () => { const m = clMeanMachineMoments(MM_SEVERITY, 1.5, 2); return m.tMean - (1.5 * m.mean + 2); } },
+    { name: 'Transform: Var(1.5X+2) = 2.25·Var(X)', expect: 0, tol: 1e-12, got: () => { const m = clMeanMachineMoments(MM_SEVERITY, 1.5, 2); return m.tVar - 2.25 * m.varc; } },
+    { name: 'The severity shape leans right (skew > 0)', expect: 1, tol: 0, got: () => (clDiscreteMoments(MM_SEVERITY).skew > 0 ? 1 : 0) },
+  ],
+});
+
+// --- Module: One Distribution, Three Views (PDF / CDF / quantile) ----------
+
+defineModule({
+  id: 'distribution-anatomy',
+  title: 'One Distribution, Three Views',
+  subtitle: 'Density, cumulative probability, and quantile are the same object read three ways',
+  icon: 'area-chart',
+  level: 'probability',
+  kind: 'concept',
+  ord: 3,
+  paper: null,
+  bridges: [
+    { module: 'validation-machine', text: 'Meyers scores a model by evaluating F at the actual outcome; a percentile is this module’s read, run in reverse.' },
+    { module: 'mack-machinery', text: 'Mack’s quoted reserve range is a lognormal quantile read exactly like the one you drag here.' },
+  ],
+  intro:
+    'The density says where probability is dense. The CDF says how much lies ' +
+    'below each point. The quantile function reads the CDF backward: hand it ' +
+    'a probability, get back a loss. One object, three views, and every ' +
+    '"75th percentile reserve" you will ever quote is the third view.',
+  params: [
+    { key: 'M', tex: 'E[X]', label: 'Mean Loss', min: 2, max: 40, step: 0.5, init: 10, fmt: 'num', link: 'skew' },
+    { key: 'cv', tex: 'cv', label: 'Coefficient Of Variation', min: 0.15, max: 1.5, step: 0.01, init: 0.5, fmt: 'num2', link: 'skew' },
+    { key: 'q', tex: 'q', label: 'Probability Level', min: 0.01, max: 0.99, step: 0.01, init: 0.75, fmt: 'pct', link: 'q' },
+  ],
+  derived(p) {
+    const { mu, sigma } = clMatchLognormal(p.M, p.M * p.cv);
+    const xq = clLognInv(p.q, mu, sigma);
+    return {
+      mu, sigma, xq,
+      median: Math.exp(mu),
+      meanOverMedian: Math.exp(sigma * sigma / 2),
+      tail: 1 - p.q,
+    };
+  },
+  readouts: [
+    { sym: 'x_q', id: 'xq', fmt: 'num', label: 'Quantile (Loss At q)', accent: true, link: 'xq' },
+    { sym: '\\tilde{x}', id: 'median', fmt: 'num', label: 'Median', link: 'median' },
+    { sym: 'E[X]/\\tilde{x}', id: 'meanOverMedian', fmt: 'num2', label: 'Mean Over Median', link: 'skew' },
+    { sym: 'P(X{>}x_q)', id: 'tail', fmt: 'pct', label: 'Tail Beyond x_q', link: 'q' },
+  ],
+  formula() {
+    return {
+      sym: 'F(x_q) = q \\;\\Longleftrightarrow\\; x_q = F^{-1}(q)',
+      terms: [
+        { sym: 'x_q', fmt: 'num', get: (d) => d.xq, primary: true, link: 'xq' },
+        { op: '=' },
+        { sym: 'F^{-1}(q)', fmt: 'pct', get: (d) => d.q, link: 'q' },
+        { op: ',' },
+        { sym: '\\tilde{x}', fmt: 'num', get: (d) => d.median, link: 'median' },
+        { op: ',' },
+        { sym: 'E[X]/\\tilde{x}', fmt: 'num2', get: (d) => d.meanOverMedian, link: 'skew' },
+      ],
+    };
+  },
+  presets: [
+    {
+      id: 'range',
+      label: 'The 75th Percentile Reserve',
+      note: 'A book with mean 10 and cv 0.5, read at q = 75%. The loss that 75% of outcomes stay under: this is what a quoted reserve range IS.',
+      params: { M: { value: 10 }, cv: { value: 0.5 }, q: { value: 0.75 } },
+    },
+    {
+      id: 'heavy',
+      label: 'A Heavy Tail',
+      note: 'cv = 1.2: the mean climbs to 1.6 times the median because the long right tail drags the average. Read q = 95% and feel how far out it lives.',
+      params: { M: { value: 10 }, cv: { value: 1.2 }, q: { value: 0.95 } },
+    },
+    {
+      id: 'tight',
+      label: 'A Predictable Book',
+      note: 'cv = 0.2: density, CDF, and quantile all agree that nothing interesting happens far from the mean. Skew nearly vanishes.',
+      params: { M: { value: 10 }, cv: { value: 0.2 }, q: { value: 0.5 } },
+    },
+  ],
+  story: [
+    {
+      title: 'Three questions, one object',
+      text: 'The left panel answers "where is probability DENSE?" The right panel answers "how much lies BELOW $x$?" And reading the right panel backward answers "which loss holds $q$ of the probability under it?" Drag on either panel; both answer at once.',
+      preset: 'range',
+    },
+    {
+      title: 'Commit to a guess',
+      text: 'This book leans right, like nearly everything in insurance.',
+      predict: {
+        prompt: 'For a right-skewed loss distribution, where does the mean sit relative to the median?',
+        options: ['Above the median', 'Below the median', 'They coincide'],
+        answer: 0,
+        explain: 'The long right tail drags the average up while the median stays put at the halfway point. For a lognormal the gap is exact: mean over median equals exp(σ²/2).',
+      },
+      preset: 'heavy',
+    },
+    {
+      title: 'Reading a percentile',
+      text: 'Slide $q$ and watch the same read happen twice: the shaded area under the density grows to $q$, and the CDF staircase walks up to height $q$ and drops at $x_q$. A reserve "at the 75th percentile" is exactly this read.',
+      preset: 'range',
+    },
+    {
+      title: 'Why the exam cares',
+      text: 'Run the read in reverse on a REAL outcome: evaluate $F$ at what actually happened and you get its percentile. Meyers validates whole reserving models by asking whether those percentiles land uniform. That machine starts on this panel.',
+      preset: 'heavy',
+    },
+  ],
+  checks: [
+    { name: 'Round trip: F(F⁻¹(0.75)) = 0.75 at mean 10, cv 0.5', expect: 0.75, tol: 1e-6, got: () => { const { mu, sigma } = clMatchLognormal(10, 5); return clLognCdf(clLognInv(0.75, mu, sigma), mu, sigma); } },
+    { name: 'Median is the 50% quantile: F⁻¹(0.5) = exp(μ)', expect: 0, tol: 1e-9, got: () => { const { mu, sigma } = clMatchLognormal(10, 5); return clLognInv(0.5, mu, sigma) - Math.exp(mu); } },
+    { name: 'Skew identity: mean/median = exp(σ²/2)', expect: 0, tol: 1e-9, got: () => { const { mu, sigma } = clMatchLognormal(10, 5); return 10 / Math.exp(mu) - Math.exp(sigma * sigma / 2); } },
+    {
+      name: 'The shaded area integrates to q (trapezoid check at q = 0.75)',
+      expect: 0.75, tol: 2e-3,
+      got: () => {
+        const { mu, sigma } = clMatchLognormal(10, 5);
+        const xq = clLognInv(0.75, mu, sigma);
+        let area = 0;
+        const nSteps = 2000, dx = xq / nSteps;
+        for (let i = 0; i < nSteps; i++) {
+          area += 0.5 * (clLognPdf(i * dx, mu, sigma) + clLognPdf((i + 1) * dx, mu, sigma)) * dx;
+        }
+        return area;
+      },
+    },
+    { name: 'A heavier cv pushes the 95th percentile out', expect: 1, tol: 0, got: () => { const a = clMatchLognormal(10, 5), b = clMatchLognormal(10, 12); return clLognInv(0.95, b.mu, b.sigma) > clLognInv(0.95, a.mu, a.sigma) ? 1 : 0; } },
+  ],
+});
+
+// --- Module: Adding Up Claims (compound sums, CLT and its limits) ----------
+
+/** Compound Poisson-lognormal skewness: λE[X³] / (λE[X²])^{3/2}. */
+function clCompoundSkew(lambda, sevMean, sevCv) {
+  const g = 1 + sevCv * sevCv;
+  const m2 = sevMean * sevMean * g;
+  const m3 = sevMean * sevMean * sevMean * g * g * g;
+  return (lambda * m3) / Math.pow(lambda * m2, 1.5);
+}
+
+const SUMS_SEV_MEAN = 10;
+
+defineModule({
+  id: 'sums-clt',
+  title: 'Adding Up Claims',
+  subtitle: 'A year of losses is a sum of random pieces: when the bell shape arrives, and when it lies',
+  icon: 'sigma',
+  level: 'behavior',
+  kind: 'concept',
+  ord: 1,
+  paper: null,
+  foundations: [
+    { module: 'random-variable', text: 'The claim count driving the sum is the Poisson machine from the Claim Counter.' },
+    { module: 'mean-machine', text: 'Severity’s second moment, not its mean, is what drives the total’s variance.' },
+  ],
+  bridges: [
+    { module: 'glm-anatomy', text: 'A compound Poisson sum with gamma pieces IS the Tweedie family: the guts of the ODP variance function.' },
+    { module: 'mack-machinery', text: 'Mack’s quoted range assumes the reserve is lognormal-ish; this module shows when sums earn a shape like that.' },
+  ],
+  intro:
+    'An accident year’s total is S = X₁ + … + X_N: a random NUMBER of random ' +
+    'PIECES. Its mean is boring (λ times average severity). Its variance is ' +
+    'not: it rides on the second moment, so severity volatility hurts more ' +
+    'than frequency volatility. And the bell curve everyone assumes shows up ' +
+    'only when the pieces are many and tame.',
+  params: [
+    { key: 'lam', tex: '\\lambda', label: 'Claims Per Year', min: 1, max: 40, step: 0.5, init: 8, fmt: 'num', link: 'freq' },
+    { key: 'cv', tex: 'cv_X', label: 'Severity Volatility (cv)', min: 0.1, max: 2, step: 0.05, init: 0.5, fmt: 'num2', link: 'sev' },
+  ],
+  derived(p) {
+    const m = clCompoundMoments(p.lam, SUMS_SEV_MEAN, p.cv);
+    return {
+      aggMean: m.mean,
+      aggSd: m.sd,
+      aggSkew: clCompoundSkew(p.lam, SUMS_SEV_MEAN, p.cv),
+      normP95: m.mean + 1.6449 * m.sd,
+    };
+  },
+  readouts: [
+    { sym: 'E[S]', id: 'aggMean', fmt: 'num', label: 'Expected Total', link: 'freq' },
+    { sym: '\\sigma_S', id: 'aggSd', fmt: 'num', label: 'SD Of The Total', link: 'sev' },
+    { sym: '\\gamma_1', id: 'aggSkew', fmt: 'num2', label: 'Skewness Of The Total', link: 'agg' },
+    { sym: 'P(S{>}q_{95}^{N})', id: 'tailExceed', fmt: 'pct', label: 'Beyond The Normal 95th', accent: true, link: 'tail' },
+  ],
+  formula() {
+    return {
+      sym: 'E[S] = \\lambda\\,E[X], \\qquad \\mathrm{Var}(S) = \\lambda\\,E[X^2]',
+      terms: [
+        { sym: 'E[S]', fmt: 'num', get: (d) => d.aggMean, primary: true, link: 'freq' },
+        { op: '=' },
+        { sym: '\\lambda', fmt: 'num', get: (d) => d.lam, link: 'freq' },
+        { op: '·' },
+        { sym: 'E[X]', fmt: 'num', get: () => SUMS_SEV_MEAN, link: 'sev' },
+        { op: ',' },
+        { sym: '\\sigma_S', fmt: 'num', get: (d) => d.aggSd, link: 'sev' },
+      ],
+    };
+  },
+  presets: [
+    {
+      id: 'calm',
+      label: 'Many Tame Claims',
+      note: 'λ = 20 with mild severity: the central limit theorem earns its keep and the normal overlay hugs the histogram. About 5% of years land beyond the normal 95th.',
+      params: { lam: { value: 20 }, cv: { value: 0.3 } },
+    },
+    {
+      id: 'stormy',
+      label: 'Few Violent Claims',
+      note: 'λ = 4 with cv = 1.5: one large claim IS the year. The histogram leans hard right and the normal overlay quietly understates the tail you actually live in.',
+      params: { lam: { value: 4 }, cv: { value: 1.5 } },
+    },
+    {
+      id: 'huge',
+      label: 'A Large Portfolio',
+      note: 'λ = 40: even with meaningful severity spread, aggregation grinds the skew down like 1/√λ. Size is a real diversifier.',
+      params: { lam: { value: 40 }, cv: { value: 0.5 } },
+    },
+  ],
+  story: [
+    {
+      title: 'A random number of random pieces',
+      text: 'Each simulated year draws a Poisson claim count, then a lognormal size for every claim, and adds. The histogram of totals builds live. $E[S] = \\lambda E[X]$ is the easy part.',
+      preset: 'calm',
+    },
+    {
+      title: 'Variance rides the SECOND moment',
+      text: 'Push severity cv up and watch $\\sigma_S$ jump: $\\mathrm{Var}(S) = \\lambda E[X^2]$, and $E[X^2]$ grows with the SQUARE of severity spread. A book’s risk lives in its large-claim tail, not its claim count.',
+      preset: 'stormy',
+    },
+    {
+      title: 'Commit to a guess',
+      text: 'The dashed marker is the normal approximation’s 95th percentile.',
+      predict: {
+        prompt: 'With few, violent claims (λ = 4, cv = 1.5), how many years actually land beyond the normal 95th percentile marker?',
+        options: ['More than 5%: the true tail is fatter', 'Exactly 5%: that is what a percentile means', 'Less than 5%'],
+        answer: 0,
+        explain: 'The percentile is only honest if the shape is right. A skewed total puts more mass beyond the normal marker than the normal admits, which is precisely why reserve ranges built on normal approximations run thin.',
+      },
+      preset: 'stormy',
+    },
+    {
+      title: 'The bell earns its keep slowly',
+      text: 'Now grow the portfolio. Skewness of the total decays like $1/\\sqrt{\\lambda}$: aggregation genuinely tames the shape, which is why large books can lean on the CLT and small books cannot.',
+      preset: 'huge',
+    },
+  ],
+  checks: [
+    { name: 'E[S] = λ·E[X] at λ=8, mean 10', expect: 80, tol: 1e-9, got: () => clCompoundMoments(8, 10, 0.5).mean },
+    { name: 'Var(S) = λ·E[X²]: 8·100·1.25 = 1000', expect: 1000, tol: 1e-9, got: () => clCompoundMoments(8, 10, 0.5).varc },
+    { name: 'Seeded sim mean lands within 2% of theory (λ=8, cv=0.5)', expect: 1, tol: 0, got: () => { const dr = clCompoundSim({ lambda: 8, sevMean: 10, sevCv: 0.5, n: 8000, seed: 12 }); const m = dr.reduce((a, b) => a + b, 0) / dr.length; return Math.abs(m - 80) / 80 < 0.02 ? 1 : 0; } },
+    { name: 'Skewness decays with portfolio size: γ(40) < γ(4)', expect: 1, tol: 0, got: () => (clCompoundSkew(40, 10, 0.5) < clCompoundSkew(4, 10, 0.5) ? 1 : 0) },
+    {
+      name: 'Heavy severity beats the normal 95th more than 5% of the time (seeded)',
+      expect: 1, tol: 0,
+      got: () => {
+        const dr = clCompoundSim({ lambda: 4, sevMean: 10, sevCv: 1.5, n: 8000, seed: 12 });
+        const m = clCompoundMoments(4, 10, 1.5);
+        const q = m.mean + 1.6449 * m.sd;
+        const frac = dr.filter((x) => x > q).length / dr.length;
+        return frac > 0.05 ? 1 : 0;
+      },
+    },
+  ],
+});
+
+// --- Module: The Best Guess (conditional expectation) ----------------------
+
+// A stable teaching world: reported at 12 months vs ultimate, in $M.
+const CE_PAR = { muX: 10, muY: 20, sdX: 2, sdY: 5 };
+
+defineModule({
+  id: 'conditional-expectation',
+  title: 'The Best Guess',
+  subtitle: 'E[Y|X]: what knowing something buys you, drawn as a slice through the cloud',
+  icon: 'scatter-chart',
+  level: 'behavior',
+  kind: 'concept',
+  ord: 2,
+  paper: null,
+  foundations: [
+    { module: 'mean-machine', text: 'A conditional mean is still a balance point, computed on the slice you are standing in.' },
+    { module: 'distribution-anatomy', text: 'The slice itself is an ordinary distribution with its own density and quantiles.' },
+  ],
+  bridges: [
+    { module: 'brosius-line', text: 'Brosius’ development formula IS this line: E[ultimate | reported], approximated by least squares.' },
+    { module: 'mse-valley', text: 'The best-guess property (conditional mean minimizes squared error) is why the valley bottoms where it does.' },
+  ],
+  intro:
+    'You know this year reported x. What is your best guess for its ' +
+    'ultimate? Slice the cloud at x, look at what is left, and take ITS ' +
+    'mean. Trace that answer across every x and you have drawn E[Y|X]: the ' +
+    'regression line, the engine under every development method.',
+  params: [
+    { key: 'rho', tex: '\\rho', label: 'Correlation (Reported, Ultimate)', min: 0, max: 0.95, step: 0.01, init: 0.7, fmt: 'num2', link: 'line' },
+    { key: 'x', tex: 'x', label: 'Reported Losses (The Slice)', min: 4, max: 16, step: 0.1, init: 12, fmt: 'num', link: 'slice' },
+  ],
+  derived(p) {
+    const cond = clBivarCond({ ...CE_PAR, rho: p.rho }, p.x);
+    return {
+      condMean: cond.mean,
+      condSd: cond.sd,
+      slope: p.rho * (CE_PAR.sdY / CE_PAR.sdX),
+      r2: p.rho * p.rho,
+    };
+  },
+  readouts: [
+    { sym: 'E[Y|X{=}x]', id: 'condMean', fmt: 'num', label: 'Best Guess At The Slice', accent: true, link: 'slice' },
+    { sym: '\\mathrm{SD}[Y|X{=}x]', id: 'condSd', fmt: 'num2', label: 'What Remains Unknown', link: 'band' },
+    { sym: 'b', id: 'slope', fmt: 'num2', label: 'Regression Slope', link: 'line' },
+    { sym: 'R^2', id: 'r2', fmt: 'pct', label: 'Variance Explained', link: 'line' },
+  ],
+  formula() {
+    return {
+      sym: 'E[Y|X{=}x] = \\mu_Y + \\rho\\,\\tfrac{\\sigma_Y}{\\sigma_X}(x - \\mu_X)',
+      terms: [
+        { sym: 'E[Y|X{=}x]', fmt: 'num', get: (d) => d.condMean, primary: true, link: 'slice' },
+        { op: '=' },
+        { sym: '\\mu_Y', fmt: 'num', get: () => CE_PAR.muY, link: 'flat' },
+        { op: '+' },
+        { sym: '\\rho\\,\\sigma_Y/\\sigma_X', fmt: 'num2', get: (d) => d.slope, link: 'line' },
+        { op: '·' },
+        { sym: '(x-\\mu_X)', fmt: 'num2', get: (d) => d.x - CE_PAR.muX, link: 'slice' },
+      ],
+    };
+  },
+  presets: [
+    {
+      id: 'strong',
+      label: 'A Telling Report',
+      note: 'ρ = 0.9: the slice is tight and the report carries real news. The best-guess line leans steeply and little stays unknown.',
+      params: { rho: { value: 0.9 }, x: { value: 12 } },
+    },
+    {
+      id: 'moderate',
+      label: 'A Noisy Report',
+      note: 'ρ = 0.6: the report helps but the slice stays wide. The line splits the difference between the data and the overall mean.',
+      params: { rho: { value: 0.6 }, x: { value: 12 } },
+    },
+    {
+      id: 'useless',
+      label: 'An Uninformative Report',
+      note: 'ρ = 0: slice anywhere you like, what remains is the SAME distribution. Best guess: μ_Y, flat. That is budgeted loss, derived rather than assumed.',
+      params: { rho: { value: 0 }, x: { value: 12 } },
+    },
+  ],
+  story: [
+    {
+      title: 'Slice the cloud',
+      text: 'Each dot is a year: reported at 12 months across, ultimate up. Drag the slice to any $x$: the violin shape is the distribution of ultimates among years that reported $x$, and its midpoint is your best guess.',
+      preset: 'moderate',
+    },
+    {
+      title: 'Commit to a guess',
+      text: 'Correlation is the dial on how much the report is worth.',
+      predict: {
+        prompt: 'Set ρ = 0. What does the best-guess line do?',
+        options: ['Goes flat at μ_Y: the report buys nothing', 'Still slopes: reported losses always matter', 'Becomes vertical'],
+        answer: 0,
+        explain: 'With ρ = 0 the slice looks identical at every x, so conditioning changes nothing: E[Y|X=x] = μ_Y everywhere. The budgeted-loss method is exactly this line, used on purpose when history is uninformative.',
+      },
+      preset: 'useless',
+    },
+    {
+      title: 'What conditioning cannot remove',
+      text: 'The violin never collapses to a point: $\\mathrm{SD}[Y|X{=}x] = \\sigma_Y\\sqrt{1-\\rho^2}$. Even a perfect report leaves process risk on the table unless $\\rho = 1$. Watch the band shrink as you push $\\rho$ up.',
+      preset: 'strong',
+    },
+    {
+      title: 'The line under every method',
+      text: 'Trace the slice means across every $x$: a straight line with slope $\\rho\\,\\sigma_Y/\\sigma_X$. Brosius’ least-squares development estimates exactly this line from data, and chain ladder and BF are special cases of where it is allowed to point.',
+      preset: 'moderate',
+    },
+  ],
+  checks: [
+    { name: 'ρ = 0 makes the best guess flat at μ_Y', expect: CE_PAR.muY, tol: 1e-12, got: () => clBivarCond({ ...CE_PAR, rho: 0 }, 15).mean },
+    { name: 'Slope identity: ρσ_Y/σ_X at ρ = 0.7', expect: 0.7 * (CE_PAR.sdY / CE_PAR.sdX), tol: 1e-12, got: () => (clBivarCond({ ...CE_PAR, rho: 0.7 }, CE_PAR.muX + 1).mean - CE_PAR.muY) },
+    { name: 'Conditional SD: σ_Y√(1−ρ²) at ρ = 0.8', expect: CE_PAR.sdY * 0.6, tol: 1e-12, got: () => clBivarCond({ ...CE_PAR, rho: 0.8 }, 12).sd },
+    {
+      name: 'Seeded cloud: empirical regression slope matches ρσ_Y/σ_X within 5%',
+      expect: 1, tol: 0,
+      got: () => {
+        const pts = clBivarCloud({ ...CE_PAR, rho: 0.7 }, 20000, 9);
+        const fit = clFitLeastSquares(pts.map((p) => [p.x, p.y]));
+        const target = 0.7 * (CE_PAR.sdY / CE_PAR.sdX);
+        return Math.abs(fit.b - target) / target < 0.05 ? 1 : 0;
+      },
+    },
+    {
+      name: 'Law of total expectation: E[E[Y|X]] = μ_Y on the seeded cloud',
+      expect: 1, tol: 0,
+      got: () => {
+        const pts = clBivarCloud({ ...CE_PAR, rho: 0.7 }, 20000, 9);
+        const m = pts.reduce((a, p) => a + p.y, 0) / pts.length;
+        return Math.abs(m - CE_PAR.muY) < 0.15 ? 1 : 0;
+      },
+    },
+  ],
+});
+
+// --- Module: When Risks Move Together (correlation and totals) -------------
+
+defineModule({
+  id: 'correlation',
+  title: 'When Risks Move Together',
+  subtitle: 'ρ and the total: why diversification is real, and why systemic risk eats it',
+  icon: 'link-2',
+  level: 'behavior',
+  kind: 'concept',
+  ord: 3,
+  paper: null,
+  foundations: [
+    { module: 'mean-machine', text: 'Variance is the object doing the adding here; the beam is where it got its meaning.' },
+    { module: 'conditional-expectation', text: 'ρ is the same dial that set the best-guess slope, now pointed at two lines of business.' },
+  ],
+  bridges: [
+    { module: 'marshall-ladder', text: 'Marshall’s consolidation is this module run at portfolio scale: independent sources diversify, internal systemic sources refuse to.' },
+    { module: 'meyers-arc', text: 'Meyers’ CCL model exists because accident years move together; ρ is what fattens the reserve distribution’s tails.' },
+  ],
+  intro:
+    'Two lines of business each wobble. Does the TOTAL wobble like their sum ' +
+    'or less? The answer is one formula with ρ inside it: independence buys ' +
+    'a Pythagorean discount, perfect correlation refuses to give one, and ' +
+    'everything an aggregator cares about lives between those poles.',
+  params: [
+    { key: 'rho', tex: '\\rho', label: 'Correlation Between Lines', min: -0.5, max: 1, step: 0.01, init: 0.3, fmt: 'num2', link: 'sum' },
+    { key: 's1', tex: '\\sigma_A', label: 'SD Of Line A', min: 1, max: 10, step: 0.1, init: 4, fmt: 'num', link: 'a' },
+    { key: 's2', tex: '\\sigma_B', label: 'SD Of Line B', min: 1, max: 10, step: 0.1, init: 3, fmt: 'num', link: 'b' },
+  ],
+  derived(p) {
+    const sdSum = clSumSd(p.s1, p.s2, p.rho);
+    const indep = clSumSd(p.s1, p.s2, 0);
+    return {
+      sdSum,
+      sdIndep: indep,
+      sdPerfect: p.s1 + p.s2,
+      benefit: 1 - sdSum / (p.s1 + p.s2),
+    };
+  },
+  readouts: [
+    { sym: '\\sigma_{A+B}', id: 'sdSum', fmt: 'num2', label: 'SD Of The Total', accent: true, link: 'sum' },
+    { sym: '\\sigma_{\\perp}', id: 'sdIndep', fmt: 'num2', label: 'If Independent', link: 'indep' },
+    { sym: '\\sigma_A{+}\\sigma_B', id: 'sdPerfect', fmt: 'num2', label: 'If In Lockstep', link: 'lockstep' },
+    { sym: '1{-}\\tfrac{\\sigma_{A+B}}{\\sigma_A+\\sigma_B}', id: 'benefit', fmt: 'pct', label: 'Diversification Benefit', link: 'sum' },
+  ],
+  formula() {
+    return {
+      sym: '\\sigma_{A+B}^2 = \\sigma_A^2 + \\sigma_B^2 + 2\\rho\\,\\sigma_A\\sigma_B',
+      terms: [
+        { sym: '\\sigma_{A+B}', fmt: 'num2', get: (d) => d.sdSum, primary: true, link: 'sum' },
+        { op: '←' },
+        { sym: '\\sigma_A', fmt: 'num', get: (d) => d.s1, link: 'a' },
+        { op: ',' },
+        { sym: '\\sigma_B', fmt: 'num', get: (d) => d.s2, link: 'b' },
+        { op: ',' },
+        { sym: '\\rho', fmt: 'num2', get: (d) => d.rho, link: 'sum' },
+      ],
+    };
+  },
+  presets: [
+    {
+      id: 'independent',
+      label: 'Independent Lines',
+      note: 'ρ = 0: variances add, SDs do not. σ of 4 and 3 make 5, not 7. That missing 2 is the entire economic case for writing more than one line.',
+      params: { rho: { value: 0 }, s1: { value: 4 }, s2: { value: 3 } },
+    },
+    {
+      id: 'systemic',
+      label: 'A Systemic Driver',
+      note: 'ρ = 0.8: inflation, a court decision, a catastrophe: one cause moves both lines, the cloud stretches onto a line, and the diversification benefit quietly evaporates.',
+      params: { rho: { value: 0.8 }, s1: { value: 4 }, s2: { value: 3 } },
+    },
+    {
+      id: 'hedge',
+      label: 'A Natural Hedge',
+      note: 'ρ = −0.4: when one line runs bad the other tends to run good, and the total is steadier than either alone. Rare in insurance, precious when found.',
+      params: { rho: { value: -0.4 }, s1: { value: 4 }, s2: { value: 3 } },
+    },
+  ],
+  story: [
+    {
+      title: 'Two lines, one total',
+      text: 'Each dot is a year: line A’s result across, line B’s up. Drag $\\rho$ and watch the cloud stretch onto a line. The bars on the right track what the TOTAL’s spread does about it.',
+      preset: 'independent',
+    },
+    {
+      title: 'Commit to a guess',
+      text: 'σ_A = 4 and σ_B = 3.',
+      predict: {
+        prompt: 'If the two lines move in perfect lockstep (ρ = 1), the SD of the total is…',
+        options: ['7: SDs simply add', '5: variances add like Pythagoras', 'Somewhere below 5'],
+        answer: 0,
+        explain: 'At ρ = 1 there is no offsetting wobble at all, so σ adds linearly: 4 + 3 = 7. Independence is what buys the Pythagorean 5 = √(16 + 9). Diversification IS that gap.',
+      },
+      preset: 'systemic',
+    },
+    {
+      title: 'The benefit and its thief',
+      text: 'The benefit readout is the fraction of lockstep risk that aggregation forgives. It is largest near independence and dies as $\\rho \\to 1$. Systemic drivers (inflation, mass torts) are the thief: they correlate everything at once.',
+      preset: 'systemic',
+    },
+    {
+      title: 'Where the exam runs this',
+      text: 'Marshall consolidates classes by adding independent sources in quadrature while internal systemic sources add linearly: this picture, at portfolio scale. And Meyers widens reserve distributions by correlating accident years, because ρ is also what fattens tails.',
+      preset: 'independent',
+    },
+  ],
+  checks: [
+    { name: 'Independence is Pythagoras: σ(4,3,ρ=0) = 5', expect: 5, tol: 1e-12, got: () => clSumSd(4, 3, 0) },
+    { name: 'Lockstep adds SDs: σ(4,3,ρ=1) = 7', expect: 7, tol: 1e-12, got: () => clSumSd(4, 3, 1) },
+    { name: 'Perfect hedge cancels: σ(4,3,ρ=−1) = 1', expect: 1, tol: 1e-12, got: () => clSumSd(4, 3, -1) },
+    { name: 'Diversification benefit vanishes at ρ = 1', expect: 0, tol: 1e-12, got: () => 1 - clSumSd(4, 3, 1) / 7 },
+    { name: 'σ of the total rises monotonically in ρ', expect: 1, tol: 0, got: () => { let prev = -1, ok = 1; for (let r = -0.5; r <= 1.001; r += 0.1) { const s = clSumSd(4, 3, r); if (s <= prev) ok = 0; prev = s; } return ok; } },
+    {
+      name: 'Seeded cloud correlation tracks the ρ dial within 0.03',
+      expect: 1, tol: 0,
+      got: () => {
+        const pts = clBivarCloud({ muX: 0, muY: 0, sdX: 4, sdY: 3, rho: 0.6 }, 20000, 21);
+        let sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
+        for (const p of pts) { sx += p.x; sy += p.y; sxx += p.x * p.x; syy += p.y * p.y; sxy += p.x * p.y; }
+        const n = pts.length;
+        const r = (sxy / n - (sx / n) * (sy / n)) / Math.sqrt((sxx / n - (sx / n) ** 2) * (syy / n - (sy / n) ** 2));
+        return Math.abs(r - 0.6) < 0.03 ? 1 : 0;
+      },
+    },
+  ],
+});
+
+// --- Module: The Fan Of Futures (development as a stochastic process) ------
+
+// A stable teaching world: a loglogistic payment pattern over ten ages,
+// normalized so the expected age-10 cumulative is exactly the ultimate.
+const PF = { omega: 1.4, theta: 3.4, ages: 10, ult: 100 };
+
+function clDevG(age) {
+  if (age <= 0) return 0;
+  return clClarkG(age, { family: 'loglogistic', omega: PF.omega, theta: PF.theta });
+}
+
+function clDevExpected(k) {
+  return (PF.ult * clDevG(k)) / clDevG(PF.ages);
+}
+
+/** Age-to-age factors and their product from age k to the horizon. */
+function clDevProdF(k) {
+  return clDevG(PF.ages) / clDevG(k);
+}
+
+/**
+ * Simulate the fan: multiplicative development with mean-one lognormal
+ * noise at every step, so E[C_{k+1} | C_k] = f_k · C_k holds EXACTLY —
+ * Mack's first assumption is built into the world, then observed.
+ * Conditional paths are simulated at cObs = 1 and scaled at render time
+ * (the model is multiplicative, so scaling is exact, and dragging the
+ * observed point costs nothing).
+ */
+function clDevPaths({ sigma, kObs, nVis, nSim, seed }) {
+  const rng = clMulberry32(seed);
+  const adj = -sigma * sigma / 2;
+  const stepNoise = () => Math.exp(adj + sigma * clRandNormal(rng));
+  const expected = [];
+  for (let a = 0; a <= PF.ages; a++) expected.push(clDevExpected(a));
+
+  const visUncond = [];
+  for (let i = 0; i < nVis; i++) {
+    const path = [0];
+    let level = expected[1] * stepNoise();
+    path.push(level);
+    for (let a = 1; a < PF.ages; a++) {
+      level *= (expected[a + 1] / expected[a]) * stepNoise();
+      path.push(level);
+    }
+    visUncond.push(path);
+  }
+
+  // Conditional paths at cObs = 1: start from expected[kObs] exactly.
+  const visCond = [];
+  for (let i = 0; i < nVis; i++) {
+    const path = [expected[kObs]];
+    let level = expected[kObs];
+    for (let a = kObs; a < PF.ages; a++) {
+      level *= (expected[a + 1] / expected[a]) * stepNoise();
+      path.push(level);
+    }
+    visCond.push(path);
+  }
+
+  const endpoints = [];
+  for (let i = 0; i < nSim; i++) {
+    let level = expected[kObs];
+    for (let a = kObs; a < PF.ages; a++) {
+      level *= (expected[a + 1] / expected[a]) * stepNoise();
+    }
+    endpoints.push(level);
+  }
+
+  // A deterministic observed history: one simulated path rescaled to pass
+  // through expected[kObs] at kObs, so cObs multiplies it cleanly.
+  let hist = [];
+  if (visUncond.length) {
+    hist = visUncond[0].slice(0, kObs + 1);
+    const scale = expected[kObs] / hist[kObs];
+    for (let i = 0; i < hist.length; i++) hist[i] *= scale;
+  }
+
+  return { expected, visUncond, visCond, endpoints, hist };
+}
+
+defineModule({
+  id: 'process-fan',
+  title: 'The Fan Of Futures',
+  subtitle: 'A loss process is a path; reserving is describing the fan of paths still possible',
+  icon: 'waves',
+  level: 'processes',
+  kind: 'concept',
+  ord: 1,
+  paper: null,
+  foundations: [
+    { module: 'random-variable', text: 'Each age’s cumulative is a random variable; a process is those variables holding hands through time.' },
+    { module: 'conditional-expectation', text: 'Conditioning on the observed past is the best-guess machine, applied to a whole path at once.' },
+  ],
+  bridges: [
+    { module: 'mack-machinery', text: 'Mack computes this fan’s width in closed form; his three assumptions are statements about this picture.' },
+    { module: 'clark-curves', text: 'The fan’s spine is Clark’s growth curve G(x), fit to real triangles by maximum likelihood.' },
+    { module: 'odp-bootstrap', text: 'Shapland redraws this fan from resampled residuals instead of assumed noise.' },
+  ],
+  intro:
+    'One accident year, growing toward its ultimate. Before it starts, every ' +
+    'gray path is a possible life for it. Then you OBSERVE it up to today, ' +
+    'and the fan collapses to the futures consistent with what you saw. The ' +
+    'distribution of where those paths land is the reserve. This picture is ' +
+    'the entire reserving problem; the exam papers are ways of drawing it.',
+  params: [
+    { key: 'sigma', tex: '\\sigma', label: 'Process Noise Per Step', min: 0.03, max: 0.3, step: 0.005, init: 0.12, fmt: 'num2', link: 'fan' },
+    { key: 'k', tex: 'k', label: 'Today (Age Observed To)', min: 1, max: 9, step: 1, init: 4, fmt: 'num', link: 'today' },
+    { key: 'cObs', tex: 'C_k/E[C_k]', label: 'How The Year Is Running', min: 0.6, max: 1.5, step: 0.01, init: 1, fmt: 'num2', link: 'today' },
+  ],
+  derived(p) {
+    const Ek = clDevExpected(p.k);
+    const obsC = p.cObs * Ek;
+    const prodF = clDevProdF(p.k);
+    const ultCl = obsC * prodF;
+    return {
+      obsC,
+      prodF,
+      ultCl,
+      reserve: ultCl - obsC,
+      cvEnd: Math.sqrt(Math.exp((PF.ages - p.k) * p.sigma * p.sigma) - 1),
+    };
+  },
+  readouts: [
+    { sym: 'C_k', id: 'obsC', fmt: 'num', label: 'Observed To Date', link: 'today' },
+    { sym: '\\hat{U}', id: 'ultCl', fmt: 'num', label: 'Ultimate (Chain Ladder)', accent: true, link: 'ult' },
+    { sym: 'R', id: 'reserve', fmt: 'num', label: 'Reserve (The Unwritten Part)', link: 'ult' },
+    { sym: 'cv', id: 'cvEnd', fmt: 'pct', label: 'Fan Width At The End', link: 'fan' },
+  ],
+  formula() {
+    return {
+      sym: 'E[C_{10}\\,|\\,C_k] = C_k \\cdot \\textstyle\\prod_{j\\ge k} f_j',
+      terms: [
+        { sym: '\\hat{U}', fmt: 'num', get: (d) => d.ultCl, primary: true, link: 'ult' },
+        { op: '=' },
+        { sym: 'C_k', fmt: 'num', get: (d) => d.obsC, link: 'today' },
+        { op: '·' },
+        { sym: '\\prod f_j', fmt: 'num2', get: (d) => d.prodF, link: 'fan' },
+      ],
+    };
+  },
+  presets: [
+    {
+      id: 'young',
+      label: 'A Young Year',
+      note: 'Observed to age 2: most of the year’s story is unwritten and the conditional fan is nearly as wide as the unconditional one. Immature years are where reserving is hard.',
+      params: { sigma: { value: 0.12 }, k: { value: 2 }, cObs: { value: 1 } },
+    },
+    {
+      id: 'mature',
+      label: 'A Mature Year',
+      note: 'Observed to age 7: the fan has collapsed to a narrow brush. Maturity, not cleverness, is what shrinks reserve risk.',
+      params: { sigma: { value: 0.12 }, k: { value: 7 }, cObs: { value: 1 } },
+    },
+    {
+      id: 'running-hot',
+      label: 'Running 30% Hot',
+      note: 'The observed point sits 30% above expected, and the WHOLE conditional fan scales up with it. That proportionality is Mack’s first assumption, which is chain ladder.',
+      params: { sigma: { value: 0.12 }, k: { value: 4 }, cObs: { value: 1.3 } },
+    },
+    {
+      id: 'volatile',
+      label: 'A Volatile Line',
+      note: 'σ = 0.25: same pattern, same maturity, far wider fan. Two books can share a best estimate and disagree enormously about the distribution around it.',
+      params: { sigma: { value: 0.25 }, k: { value: 4 }, cObs: { value: 1 } },
+    },
+  ],
+  story: [
+    {
+      title: 'A path through time',
+      text: 'Every gray path is a possible life of this accident year, drawn from the same pattern and the same noise. The dashed spine is the expected pattern $E[C_a]$. Nothing has been observed yet; everything is still possible.',
+      preset: 'young',
+    },
+    {
+      title: 'Commit to a guess',
+      text: 'Now we let time pass.',
+      predict: {
+        prompt: 'Move today from age 2 to age 7. What happens to the fan of remaining futures?',
+        options: ['It narrows: less of the story is left to happen', 'Unchanged: the future is always the future', 'It widens: more history means more ways to differ'],
+        answer: 0,
+        explain: 'Each remaining step contributes its own noise, so fewer remaining steps means less accumulated spread: cv² = exp((10−k)σ²) − 1 falls as k rises. Maturity is the strongest reserve-risk reducer there is.',
+      },
+      preset: 'mature',
+    },
+    {
+      title: 'Conditioning is the whole game',
+      text: 'The accent fan is not "the future": it is the futures CONSISTENT with the path you observed. Reserving means describing THIS fan: its center is the best estimate, its spread is the risk, its quantiles are the range. Drag today’s line and watch the collapse happen.',
+      preset: 'young',
+    },
+    {
+      title: 'Mack’s first assumption, watched',
+      text: 'Drag the observed point 30% above expected. The entire conditional fan scales up in proportion: $E[C_{k+1}|C_k] = f_k C_k$. No opinion, no judgment: proportionality IS the chain ladder, and this world satisfies it exactly.',
+      preset: 'running-hot',
+    },
+    {
+      title: 'Four ways to draw one fan',
+      text: 'The rest of the syllabus is methods for this picture. Mack writes the fan’s width in closed form. Clark fits its spine by maximum likelihood. Shapland rebuilds it from resampled residuals. Meyers samples it from a posterior, then audits whether anyone’s fan was honest.',
+      preset: 'volatile',
+    },
+  ],
+  checks: [
+    { name: 'The pattern is increasing and lands at the ultimate', expect: 100, tol: 1e-9, got: () => clDevExpected(PF.ages) },
+    { name: 'Factors multiply telescopically: ∏f from k = G(10)/G(k)', expect: 0, tol: 1e-12, got: () => { let prod = 1; for (let a = 4; a < PF.ages; a++) prod *= clDevG(a + 1) / clDevG(a); return prod - clDevProdF(4); } },
+    {
+      name: 'Conditioning IS chain ladder: seeded endpoint mean within 1.5% of C_k·∏f',
+      expect: 1, tol: 0,
+      got: () => {
+        const sim = clDevPaths({ sigma: 0.12, kObs: 4, nVis: 0, nSim: 6000, seed: 33 });
+        const mean = sim.endpoints.reduce((a, b) => a + b, 0) / sim.endpoints.length;
+        const target = clDevExpected(4) * clDevProdF(4);
+        return Math.abs(mean - target) / target < 0.015 ? 1 : 0;
+      },
+    },
+    {
+      name: 'Endpoint cv matches √(exp((10−k)σ²)−1) within 10% relative (seeded)',
+      expect: 1, tol: 0,
+      got: () => {
+        const sim = clDevPaths({ sigma: 0.12, kObs: 4, nVis: 0, nSim: 6000, seed: 33 });
+        const n = sim.endpoints.length;
+        const mean = sim.endpoints.reduce((a, b) => a + b, 0) / n;
+        const varc = sim.endpoints.reduce((a, b) => a + (b - mean) * (b - mean), 0) / n;
+        const cv = Math.sqrt(varc) / mean;
+        const target = Math.sqrt(Math.exp(6 * 0.12 * 0.12) - 1);
+        return Math.abs(cv - target) / target < 0.1 ? 1 : 0;
+      },
+    },
+    { name: 'The fan narrows with age: cv(k=7) < cv(k=2)', expect: 1, tol: 0, got: () => (Math.sqrt(Math.exp(3 * 0.0144) - 1) < Math.sqrt(Math.exp(8 * 0.0144) - 1) ? 1 : 0) },
+  ],
+});
+
+// --- Module: Let The Data Vote (likelihood and MLE) ------------------------
+
+// Twelve observed losses ($k), right-skewed the way losses actually are.
+const LS_DATA = [3.1, 4.6, 5.2, 6.0, 7.4, 8.1, 9.5, 11.2, 13.0, 16.4, 21.7, 34.5];
+const LS_MLE = clLognMle(LS_DATA);
+
+defineModule({
+  id: 'likelihood-surface',
+  title: 'Let The Data Vote',
+  subtitle: 'Likelihood scores every candidate distribution by how loudly the data votes for it',
+  icon: 'target',
+  level: 'estimation',
+  kind: 'concept',
+  ord: 1,
+  paper: null,
+  foundations: [
+    { module: 'distribution-anatomy', text: 'A vote is a density height; reading densities starts there.' },
+    { module: 'random-variable', text: 'The data being scored is a batch of draws from the machine built there.' },
+  ],
+  bridges: [
+    { module: 'clark-curves', text: 'Clark picks ω and θ by running exactly this machine over every cell of a triangle.' },
+    { module: 'prior-posterior', text: 'Multiply this likelihood by a prior and normalize: that is the whole of Bayes.' },
+  ],
+  intro:
+    'Twelve losses are on the table. Every candidate (μ, σ) proposes a ' +
+    'density, and each observed loss votes: the height of the density at ' +
+    'that loss. The log-likelihood adds the log-votes. Slide the candidate ' +
+    'around, watch the votes trade off, then climb the surface to the ' +
+    'parameters the data actually elects.',
+  params: [
+    { key: 'mu', tex: '\\mu', label: 'Candidate Log-Mean', min: 1.5, max: 3, step: 0.005, init: 2.65, fmt: 'num2', link: 'cand' },
+    { key: 'sigma', tex: '\\sigma', label: 'Candidate Log-SD', min: 0.2, max: 1.4, step: 0.005, init: 1.05, fmt: 'num2', link: 'cand' },
+  ],
+  derived(p) {
+    const ll = clLognLoglik(LS_DATA, p.mu, p.sigma);
+    const llMax = clLognLoglik(LS_DATA, LS_MLE.mu, LS_MLE.sigma);
+    return {
+      ll,
+      llMax,
+      gap: llMax - ll,
+      mleMu: LS_MLE.mu,
+      mleSigma: LS_MLE.sigma,
+    };
+  },
+  readouts: [
+    { sym: '\\ell(\\mu,\\sigma)', id: 'll', fmt: 'num2', label: 'Log-Likelihood', accent: true, link: 'cand' },
+    { sym: '\\ell_{max}', id: 'llMax', fmt: 'num2', label: 'At The MLE', link: 'mle' },
+    { sym: '\\hat{\\mu}', id: 'mleMu', fmt: 'num2', label: 'MLE Log-Mean', link: 'mle' },
+    { sym: '\\hat{\\sigma}', id: 'mleSigma', fmt: 'num2', label: 'MLE Log-SD', link: 'mle' },
+  ],
+  formula() {
+    return {
+      sym: '\\ell(\\mu,\\sigma) = \\textstyle\\sum_i \\log f(x_i;\\,\\mu,\\sigma)',
+      terms: [
+        { sym: '\\ell', fmt: 'num2', get: (d) => d.ll, primary: true, link: 'cand' },
+        { op: '≤' },
+        { sym: '\\ell_{max}', fmt: 'num2', get: (d) => d.llMax, link: 'mle' },
+        { op: ',' },
+        { sym: '\\Delta', fmt: 'num2', get: (d) => d.gap, link: 'cand' },
+      ],
+    };
+  },
+  presets: [
+    {
+      id: 'guess',
+      label: 'Someone’s First Guess',
+      note: 'A candidate that is too high and too wide. The small losses vote loudly against it; the surface says how loudly.',
+      params: { mu: { value: 2.65 }, sigma: { value: 1.05 } },
+    },
+    {
+      id: 'mle',
+      label: 'The Data’s Choice',
+      note: 'The maximum likelihood estimate. For a lognormal the peak has a closed form: μ̂ is the mean of the logs, σ̂ their RMS spread. No search required, but the surface shows why searching would have found it.',
+      params: { mu: { value: Math.round(LS_MLE.mu * 200) / 200 }, sigma: { value: Math.round(LS_MLE.sigma * 200) / 200 } },
+    },
+    {
+      id: 'thin',
+      label: 'Too Sure Of Itself',
+      note: 'σ far below the data’s spread: the central losses vote hard for it and the tails veto it. One 34.5 outvotes nine well-fit points; that is what a product of votes does.',
+      params: { mu: { value: 2.24 }, sigma: { value: 0.3 } },
+    },
+  ],
+  story: [
+    {
+      title: 'Each point votes',
+      text: 'The bars under the losses are their votes: the candidate density evaluated AT each observed loss. $\\ell$ adds the logs of the votes, so a near-zero vote anywhere is a veto. Slide $\\mu$ and watch votes trade off.',
+      preset: 'guess',
+    },
+    {
+      title: 'Commit to a guess',
+      text: 'Width feels safe. Is it?',
+      predict: {
+        prompt: 'Push σ very wide so the density covers every loss. The log-likelihood…',
+        options: ['Falls: covering everything thinly loses to concentrating where data is', 'Rises: a wide net catches every vote', 'Stays flat once every point is covered'],
+        answer: 0,
+        explain: 'Density integrates to one: width anywhere is height taken from everywhere. Likelihood pays for CONCENTRATION where the data actually sits, which is why it can choose a σ at all.',
+      },
+      preset: 'thin',
+    },
+    {
+      title: 'Climb the surface',
+      text: 'The map is $\\ell$ over every candidate $(\\mu, \\sigma)$. Drag yourself around it, then press **Find MLE** and ride to the peak. For the lognormal the peak is exactly the mean and RMS spread of the logs.',
+      preset: 'guess',
+    },
+    {
+      title: 'Clark runs this exact machine',
+      text: 'Swap the lognormal for an over-dispersed Poisson on triangle increments and the candidate for $(\\omega, \\theta)$ of a growth curve: that is Clark 2003, verbatim. The likelihood machine does not care what it is fitting; that is its power.',
+      preset: 'mle',
+    },
+  ],
+  checks: [
+    { name: 'MLE μ̂ is the mean of the logs', expect: 0, tol: 1e-12, got: () => LS_MLE.mu - LS_DATA.map((x) => Math.log(x)).reduce((a, b) => a + b, 0) / LS_DATA.length },
+    { name: 'MLE σ̂ is the RMS spread of the logs', expect: 0, tol: 1e-12, got: () => { const logs = LS_DATA.map((x) => Math.log(x)); const m = logs.reduce((a, b) => a + b, 0) / logs.length; return LS_MLE.sigma - Math.sqrt(logs.reduce((a, b) => a + (b - m) * (b - m), 0) / logs.length); } },
+    { name: 'The MLE beats every perturbed neighbor', expect: 1, tol: 0, got: () => { const best = clLognLoglik(LS_DATA, LS_MLE.mu, LS_MLE.sigma); for (const [dm, ds] of [[0.03, 0], [-0.03, 0], [0, 0.03], [0, -0.03], [0.03, 0.03], [-0.03, -0.03]]) { if (clLognLoglik(LS_DATA, LS_MLE.mu + dm, LS_MLE.sigma + ds) >= best) return 0; } return 1; } },
+    { name: 'Likelihood falls monotonically as μ walks away', expect: 1, tol: 0, got: () => { const s = LS_MLE.sigma; const a = clLognLoglik(LS_DATA, LS_MLE.mu + 0.2, s); const b = clLognLoglik(LS_DATA, LS_MLE.mu + 0.4, s); return b < a ? 1 : 0; } },
+  ],
+});
+
+// --- Module: Process vs Parameter Risk (sampling error) --------------------
+
+/** Repeat the whole experiment: estimate from n draws, then predict one more. */
+function clSamplingRun({ n, sigma, reps, seed, mu = 100 }) {
+  const rng = clMulberry32(seed);
+  const estimates = [], predErrors = [];
+  for (let r = 0; r < reps; r++) {
+    let s = 0;
+    for (let i = 0; i < n; i++) s += mu + sigma * clRandNormal(rng);
+    const xbar = s / n;
+    estimates.push(xbar);
+    predErrors.push(mu + sigma * clRandNormal(rng) - xbar);
+  }
+  return { estimates, predErrors };
+}
+
+defineModule({
+  id: 'sampling-error',
+  title: 'Process vs Parameter Risk',
+  subtitle: 'One truth, many datasets: the estimate itself wobbles, and predictions pay for both wobbles',
+  icon: 'shuffle',
+  level: 'estimation',
+  kind: 'concept',
+  ord: 2,
+  paper: null,
+  foundations: [
+    { module: 'random-variable', text: 'An estimator is a random variable: rerun the world and it lands somewhere else.' },
+    { module: 'sums-clt', text: 'x̄ is a scaled sum, which is why its spread obeys the √n law.' },
+  ],
+  bridges: [
+    { module: 'mack-machinery', text: 'Mack’s mse is exactly this decomposition: a process term plus an estimation term, per accident year.' },
+    { module: 'odp-bootstrap', text: 'Shapland’s √(n/(n−p)) correction exists because residuals understate σ: an estimation-error fact from this module.' },
+  ],
+  intro:
+    'Nature fixes a truth you never see. You get n observations, estimate, ' +
+    'and predict the next outcome. Rerun that whole world thousands of ' +
+    'times: the estimates scatter (parameter risk) and outcomes scatter ' +
+    'around any estimate (process risk). Predictions pay for both, added ' +
+    'in quadrature, and every mse formula on the exam is this sentence.',
+  params: [
+    { key: 'n', tex: 'n', label: 'Observations Per Dataset', min: 2, max: 60, step: 1, init: 5, fmt: 'num', link: 'param' },
+    { key: 'sigma', tex: '\\sigma', label: 'Process Noise', min: 5, max: 40, step: 0.5, init: 20, fmt: 'num', link: 'process' },
+  ],
+  derived(p) {
+    const seParam = p.sigma / Math.sqrt(p.n);
+    return {
+      seParam,
+      sdTotal: p.sigma * Math.sqrt(1 + 1 / p.n),
+      shareParam: 1 / (p.n + 1),
+    };
+  },
+  readouts: [
+    { sym: '\\sigma', id: 'sigma', fmt: 'num', label: 'Process Risk (Irreducible)', link: 'process' },
+    { sym: '\\sigma/\\sqrt{n}', id: 'seParam', fmt: 'num2', label: 'Parameter Risk (Estimation)', link: 'param' },
+    { sym: '\\sqrt{\\sigma^2+\\sigma^2/n}', id: 'sdTotal', fmt: 'num2', label: 'Total Prediction Risk', accent: true, link: 'total' },
+    { sym: '\\tfrac{1}{n+1}', id: 'shareParam', fmt: 'pct', label: 'Share From Estimation', link: 'param' },
+  ],
+  formula() {
+    return {
+      sym: '\\mathrm{Var}(\\text{next} - \\bar{x}) = \\sigma^2 + \\tfrac{\\sigma^2}{n}',
+      terms: [
+        { sym: '\\text{total}', fmt: 'num2', get: (d) => d.sdTotal, primary: true, link: 'total' },
+        { op: '←' },
+        { sym: '\\sigma', fmt: 'num', get: (d) => d.sigma, link: 'process' },
+        { op: '⊕' },
+        { sym: '\\sigma/\\sqrt{n}', fmt: 'num2', get: (d) => d.seParam, link: 'param' },
+      ],
+    };
+  },
+  presets: [
+    {
+      id: 'thin-data',
+      label: 'Five Observations',
+      note: 'n = 5: the estimates scatter almost as widely as the process itself, and a sixth of total prediction variance is your own estimation error. Young accident years live here.',
+      params: { n: { value: 5 }, sigma: { value: 20 } },
+    },
+    {
+      id: 'rich-data',
+      label: 'Fifty Observations',
+      note: 'n = 50: the estimator histogram narrows like 1/√n and prediction risk approaches the process floor σ. Data buys certainty about the MEAN, never about the next draw.',
+      params: { n: { value: 50 }, sigma: { value: 20 } },
+    },
+    {
+      id: 'noisy-line',
+      label: 'A Noisier Line',
+      note: 'Double σ and BOTH bands double: process risk directly, parameter risk because every dataset you learn from is noisier too.',
+      params: { n: { value: 5 }, sigma: { value: 40 } },
+    },
+  ],
+  story: [
+    {
+      title: 'Rerun the world',
+      text: 'Every tick simulates a fresh dataset of $n$ losses from the same fixed truth and marks its estimate $\\bar{x}$. The histogram is the SAMPLING DISTRIBUTION of the estimator: the thing classical statistics is actually about.',
+      preset: 'thin-data',
+    },
+    {
+      title: 'Commit to a guess',
+      text: 'The √n law is worth predicting before you watch it.',
+      predict: {
+        prompt: 'Quadruple the sample size from 5 toward 20. The spread of the ESTIMATES…',
+        options: ['Halves: parameter risk shrinks like 1/√n', 'Quarters: like 1/n', 'Does not move: σ is σ'],
+        answer: 0,
+        explain: 'Var(x̄) = σ²/n, so quadrupling n quarters the variance but only halves the SD. The square root is why data gets expensive: each halving of parameter risk costs four times the observations.',
+      },
+      preset: 'rich-data',
+    },
+    {
+      title: 'Two risks, one prediction',
+      text: 'Predicting the NEXT outcome pays twice: the outcome wobbles around the truth ($\\sigma$) and your estimate wobbles around the truth ($\\sigma/\\sqrt{n}$). Independent wobbles add in quadrature, exactly like the correlation module said they would.',
+      preset: 'thin-data',
+    },
+    {
+      title: 'Where the exam splits it',
+      text: 'Mack’s mse has these two terms side by side for every accident year. Clark reports the split explicitly and finds parameter risk DOMINANT on real triangles. Shapland inflates resampled residuals by $\\sqrt{n/(n-p)}$ precisely because fitted residuals understate $\\sigma$. One decomposition, three papers.',
+      preset: 'thin-data',
+    },
+  ],
+  checks: [
+    { name: 'Estimation share identity: 1/(n+1) at n=5', expect: 1 / 6, tol: 1e-12, got: () => 1 / (5 + 1) },
+    {
+      name: 'Seeded sim: Var(x̄) lands within 8% of σ²/n',
+      expect: 1, tol: 0,
+      got: () => {
+        const { estimates } = clSamplingRun({ n: 5, sigma: 20, reps: 6000, seed: 17 });
+        const m = estimates.reduce((a, b) => a + b, 0) / estimates.length;
+        const v = estimates.reduce((a, b) => a + (b - m) * (b - m), 0) / estimates.length;
+        return Math.abs(v - 80) / 80 < 0.08 ? 1 : 0;
+      },
+    },
+    {
+      name: 'Seeded sim: prediction error variance lands within 8% of σ²(1+1/n)',
+      expect: 1, tol: 0,
+      got: () => {
+        const { predErrors } = clSamplingRun({ n: 5, sigma: 20, reps: 6000, seed: 17 });
+        const m = predErrors.reduce((a, b) => a + b, 0) / predErrors.length;
+        const v = predErrors.reduce((a, b) => a + (b - m) * (b - m), 0) / predErrors.length;
+        return Math.abs(v - 480) / 480 < 0.08 ? 1 : 0;
+      },
+    },
+    { name: 'Parameter risk falls monotonically with n', expect: 1, tol: 0, got: () => (20 / Math.sqrt(50) < 20 / Math.sqrt(5) ? 1 : 0) },
+  ],
+});
+
+// --- Module: Credibility Is Shrinkage --------------------------------------
+
+/** RMSE of the shrunk estimator Z·x̄ + (1−Z)·M against the true class mean:
+    err²(Z) = Z²s² + (1−Z)²τ². Minimized at Z* = τ²/(τ²+s²) — Bühlmann. */
+function clShrinkErr(Z, tau, s) {
+  return Math.sqrt(Z * Z * s * s + (1 - Z) * (1 - Z) * tau * tau);
+}
+
+/** Fixed standard-normal pairs so dragging τ or s MORPHS the same classes. */
+function clShrinkClasses(m, seed) {
+  const rng = clMulberry32(seed);
+  const pairs = [];
+  for (let i = 0; i < m; i++) pairs.push([clRandNormal(rng), clRandNormal(rng)]);
+  return pairs;
+}
+
+defineModule({
+  id: 'shrinkage',
+  title: 'Credibility Is Shrinkage',
+  subtitle: 'Pull noisy estimates toward the crowd and you beat them all: the valley has a bottom, and it is Bühlmann’s Z',
+  icon: 'magnet',
+  level: 'bayes',
+  kind: 'concept',
+  ord: 2,
+  paper: null,
+  foundations: [
+    { module: 'sampling-error', text: 'The raw estimates scatter because estimators wobble; that wobble is the s in the trade-off.' },
+    { module: 'prior-posterior', text: 'Shrinking toward the grand mean is a Bayesian update with the crowd as the prior.' },
+  ],
+  bridges: [
+    { module: 'brosius-line', text: 'Brosius’ Z = VHM/(VHM+EPV) is this module’s Z* with the exam’s names on the variances.' },
+    { module: 'mse-valley', text: 'Mack 2000’s optimal c* = p/(p+t) is the same valley, walked with GLM-free algebra.' },
+  ],
+  intro:
+    'Twelve classes, each estimated from thin data. The raw estimates ' +
+    'scatter MORE than the true class means, because estimation noise piles ' +
+    'on top of real differences. Slide Z and shrink every estimate toward ' +
+    'the grand mean: too little trusts noise, too much erases real ' +
+    'differences, and the error valley bottoms at a ratio of variances.',
+  params: [
+    { key: 'Z', tex: 'Z', label: 'Credibility (Weight On The Class)', min: 0, max: 1, step: 0.01, init: 0.5, fmt: 'num2', link: 'z' },
+    { key: 'tau', tex: '\\tau', label: 'Real Spread Between Classes', min: 2, max: 30, step: 0.5, init: 15, fmt: 'num', link: 'spread' },
+    { key: 's', tex: 's', label: 'Estimation Noise Per Class', min: 2, max: 30, step: 0.5, init: 10, fmt: 'num', link: 'noise' },
+  ],
+  derived(p) {
+    const zStar = (p.tau * p.tau) / (p.tau * p.tau + p.s * p.s);
+    return {
+      zStar,
+      errZ: clShrinkErr(p.Z, p.tau, p.s),
+      errStar: clShrinkErr(zStar, p.tau, p.s),
+      errRaw: p.s,
+    };
+  },
+  readouts: [
+    { sym: 'Z^*', id: 'zStar', fmt: 'num2', label: 'The Valley Bottom', accent: true, link: 'zstar' },
+    { sym: '\\mathrm{rmse}(Z)', id: 'errZ', fmt: 'num2', label: 'Error At Your Z', link: 'z' },
+    { sym: '\\mathrm{rmse}(Z^*)', id: 'errStar', fmt: 'num2', label: 'Error At The Bottom', link: 'zstar' },
+    { sym: '\\mathrm{rmse}(1)', id: 'errRaw', fmt: 'num2', label: 'Error Trusting Raw Data', link: 'noise' },
+  ],
+  formula() {
+    return {
+      sym: 'Z^* = \\tfrac{\\tau^2}{\\tau^2 + s^2}, \\qquad \\mathrm{err}^2(Z) = Z^2 s^2 + (1{-}Z)^2\\tau^2',
+      terms: [
+        { sym: 'Z^*', fmt: 'num2', get: (d) => d.zStar, primary: true, link: 'zstar' },
+        { op: '←' },
+        { sym: '\\tau', fmt: 'num', get: (d) => d.tau, link: 'spread' },
+        { op: ',' },
+        { sym: 's', fmt: 'num', get: (d) => d.s, link: 'noise' },
+      ],
+    };
+  },
+  presets: [
+    {
+      id: 'balanced',
+      label: 'A Fair Fight',
+      note: 'Real differences (τ = 15) against estimation noise (s = 10): Z* lands at 0.69. Most of a raw estimate is worth keeping; a third of it is noise you should hand back to the crowd.',
+      params: { Z: { value: 0.69 }, tau: { value: 15 }, s: { value: 10 } },
+    },
+    {
+      id: 'noisy',
+      label: 'Drowning In Noise',
+      note: 's = 25 against τ = 10: most of what you see per class is estimation error, Z* falls to 0.14, and the honest answer is nearly the grand mean for everyone.',
+      params: { Z: { value: 0.14 }, tau: { value: 10 }, s: { value: 25 } },
+    },
+    {
+      id: 'distinct',
+      label: 'Genuinely Different Classes',
+      note: 'τ = 28 against s = 6: the classes really are different and the data is clean. Z* = 0.96: shrinkage politely steps aside.',
+      params: { Z: { value: 0.96 }, tau: { value: 28 }, s: { value: 6 } },
+    },
+  ],
+  story: [
+    {
+      title: 'The scatter lies',
+      text: 'Gray dots are TRUE class means; accent dots are their raw estimates. The estimates spread wider than the truth, always: estimation noise piles on top of real differences. Acting on raw estimates means acting on that extra spread.',
+      preset: 'balanced',
+    },
+    {
+      title: 'Commit to a guess',
+      text: 'Shrinkage sounds like giving up information.',
+      predict: {
+        prompt: 'Slide Z from 1 toward Z*. The average error against the TRUE class means…',
+        options: ['Falls: trading noise for a small bias wins', 'Rises: raw data is unbiased and unbiased is best', 'Flat: it is a wash'],
+        answer: 0,
+        explain: 'The raw estimate is unbiased but noisy; the grand mean is biased but steady. Blending trades a little bias for a lot of variance, and the trade is favorable all the way down to Z* = τ²/(τ²+s²). This is the same argument that James and Stein made famous.',
+      },
+      preset: 'balanced',
+    },
+    {
+      title: 'Walk the valley',
+      text: 'The curve is exact: $\\mathrm{err}^2(Z) = Z^2 s^2 + (1{-}Z)^2\\tau^2$. Drag your $Z$ along it. The bottom never sits at 0 or 1 unless one of the variances dies; certainty in either direction is the only way to escape compromise.',
+      preset: 'noisy',
+    },
+    {
+      title: 'Three exam names for one dial',
+      text: 'Brosius writes the bottom as $VHM/(VHM+EPV)$. Mack 2000 writes it as $c^* = p/(p+t)$ and Benktander lands near it by iterating. Different papers, same valley: whenever the exam says credibility, look for the two variances.',
+      preset: 'distinct',
+    },
+  ],
+  checks: [
+    { name: 'Error identity at Z = 0.5, τ = 15, s = 10', expect: Math.sqrt(0.25 * 100 + 0.25 * 225), tol: 1e-12, got: () => clShrinkErr(0.5, 15, 10) },
+    { name: 'Z* = τ²/(τ²+s²) at the Fair Fight preset', expect: 225 / 325, tol: 1e-12, got: () => (15 * 15) / (15 * 15 + 10 * 10) },
+    { name: 'The bottom beats both ends', expect: 1, tol: 0, got: () => { const zs = 225 / 325; const b = clShrinkErr(zs, 15, 10); return b < clShrinkErr(0, 15, 10) && b < clShrinkErr(1, 15, 10) ? 1 : 0; } },
+    { name: 'Grid search agrees with the closed form within one step', expect: 1, tol: 0, got: () => { let best = 0, bv = Infinity; for (let z = 0; z <= 1.0001; z += 0.001) { const e = clShrinkErr(z, 15, 10); if (e < bv) { bv = e; best = z; } } return Math.abs(best - 225 / 325) < 0.002 ? 1 : 0; } },
+    { name: 'Cross-check: Brosius Z with VHM = τ², EPV = s² matches Z*', expect: 0, tol: 1e-12, got: () => clBrosiusCred({ EY: 1, d: 0.5, vhm: 225, epv: 100 }).Z - 225 / 325 },
+    {
+      name: 'Seeded 400-class world: shrinking to Z* beats trusting raw data',
+      expect: 1, tol: 0,
+      got: () => {
+        const pairs = clShrinkClasses(400, 29);
+        const tau = 15, s = 10, M = 100;
+        const zs = 225 / 325;
+        let e1 = 0, eStar = 0;
+        for (const [z1, z2] of pairs) {
+          const truth = M + tau * z1;
+          const raw = truth + s * z2;
+          const shrunk = zs * raw + (1 - zs) * M;
+          e1 += (raw - truth) ** 2;
+          eStar += (shrunk - truth) ** 2;
+        }
+        return eStar < e1 ? 1 : 0;
+      },
+    },
+  ],
+});
+
+// --- Module: The GLM, Piece By Piece ---------------------------------------
+
+/** The mean through the link: identity for the classical world, log for the
+    multiplicative world reserving lives in. */
+function clGlmMu(link, b0, b1, x) {
+  const eta = b0 + b1 * x;
+  return link === 'log' ? Math.exp(eta) : eta;
+}
+
+/** The variance function V(μ) = φμ^p (p = 0 constant, 1 ODP, 2 gamma). */
+function clVarPower(mu, phi, p) {
+  return phi * Math.pow(Math.max(1e-12, mu), p);
+}
+
+/**
+ * Tweedie-family sampler with mean μ and variance φμ^p:
+ *   p ≈ 0   normal;   p ≈ 1   over-dispersed Poisson (φ·Pois(μ/φ));
+ *   1<p<2   compound Poisson-gamma (the actual Tweedie construction);
+ *   p ≈ 2   gamma.
+ * The compound parameters are the standard ones: λ = μ^{2−p}/(φ(2−p)),
+ * shape α = (2−p)/(p−1), scale γ = φ(p−1)μ^{p−1}.
+ */
+function clRandTweedie(mu, phi, p, rng) {
+  if (p < 0.5) return mu + Math.sqrt(phi) * clRandNormal(rng);
+  if (p < 1.05) return phi * clRandPoisson(mu / phi, rng);
+  if (p >= 1.95) {
+    const shape = 1 / phi;
+    return clRandGamma(shape, rng) * (mu / shape);
+  }
+  const lambda = Math.pow(mu, 2 - p) / (phi * (2 - p));
+  const alpha = (2 - p) / (p - 1);
+  const scale = phi * (p - 1) * Math.pow(mu, p - 1);
+  const count = clRandPoisson(lambda, rng);
+  let s = 0;
+  for (let i = 0; i < count; i++) s += clRandGamma(alpha, rng) * scale;
+  return s;
+}
+
+defineModule({
+  id: 'glm-anatomy',
+  title: 'The GLM, Piece By Piece',
+  subtitle: 'A straight line under the hood, a link that bends it, and a variance that follows the mean',
+  icon: 'function-square',
+  level: 'glm',
+  kind: 'concept',
+  ord: 1,
+  paper: null,
+  foundations: [
+    { module: 'conditional-expectation', text: 'A GLM is a shape imposed on E[Y|X]; the best-guess line is the identity-link special case.' },
+    { module: 'sums-clt', text: 'The Tweedie errors between ODP and gamma ARE compound Poisson sums; you have already met their guts.' },
+  ],
+  bridges: [
+    { module: 'glm-equals-cl', text: 'Taylor’s theorem: THIS model with one parameter per row and column reproduces chain ladder exactly.' },
+    { module: 'odp-bootstrap', text: 'Shapland’s bootstrap world is this model at p = 1: log link, variance φμ, on triangle increments.' },
+  ],
+  intro:
+    'Every GLM is three decisions. A linear predictor η = β₀ + β₁x that ' +
+    'stays straight forever. A link that bends η into the mean, so ' +
+    'multiplicative worlds get log links. And an error family, chosen by ' +
+    'how variance follows the mean: V(μ) = φμ^p. Classical regression is ' +
+    'just the corner case where the link is identity and p = 0.',
+  params: [
+    { key: 'b0', tex: '\\beta_0', label: 'Intercept Of η', min: -1, max: 3, step: 0.01, init: 0.5, fmt: 'num2', link: 'eta' },
+    { key: 'b1', tex: '\\beta_1', label: 'Slope Of η', min: 0, max: 0.35, step: 0.005, init: 0.18, fmt: 'num2', link: 'eta' },
+    { key: 'phi', tex: '\\varphi', label: 'Dispersion', min: 0.2, max: 3, step: 0.05, init: 1, fmt: 'num2', link: 'var' },
+    { key: 'p', tex: 'p', label: 'Variance Power V(μ) = φμ^p', min: 1, max: 2, step: 0.01, init: 1, fmt: 'num2', link: 'var', modes: ['tweedie'] },
+    { key: 'x', tex: 'x', label: 'Probe (Where To Look)', min: 0, max: 10, step: 0.1, init: 6, fmt: 'num', link: 'probe' },
+  ],
+  derived(par, st) {
+    const link = st?.mode === 'normal' ? 'identity' : 'log';
+    const p = st?.mode === 'normal' ? 0 : par.p;
+    const mu = clGlmMu(link, par.b0, par.b1, par.x);
+    const V = clVarPower(mu, par.phi, p);
+    return {
+      eta: par.b0 + par.b1 * par.x,
+      muProbe: mu,
+      vProbe: V,
+      sdProbe: Math.sqrt(Math.max(0, V)),
+      ratioStep: st?.mode === 'normal' ? null : Math.exp(par.b1),
+    };
+  },
+  readouts: [
+    { sym: '\\eta(x)', id: 'eta', fmt: 'num2', label: 'Linear Predictor', link: 'eta' },
+    { sym: '\\mu(x)', id: 'muProbe', fmt: 'num2', label: 'Mean At The Probe', accent: true, link: 'mean' },
+    { sym: 'V(\\mu)', id: 'vProbe', fmt: 'num2', label: 'Variance At The Probe', link: 'var' },
+    { sym: 'e^{\\beta_1}', id: 'ratioStep', fmt: 'num3', label: 'Multiplier Per Step Of x', link: 'eta' },
+  ],
+  formula(state) {
+    if (state.mode === 'normal') {
+      return {
+        sym: '\\mu = \\beta_0 + \\beta_1 x, \\qquad V(\\mu) = \\varphi',
+        terms: [
+          { sym: '\\mu(x)', fmt: 'num2', get: (d) => d.muProbe, primary: true, link: 'mean' },
+          { op: '=' },
+          { sym: '\\beta_0', fmt: 'num2', get: (d) => d.b0, link: 'eta' },
+          { op: '+' },
+          { sym: '\\beta_1 x', fmt: 'num2', get: (d) => d.b1 * d.x, link: 'eta' },
+          { op: ',' },
+          { sym: 'V', fmt: 'num2', get: (d) => d.vProbe, link: 'var' },
+        ],
+      };
+    }
+    return {
+      sym: '\\log \\mu = \\beta_0 + \\beta_1 x, \\qquad V(\\mu) = \\varphi\\,\\mu^{p}',
+      terms: [
+        { sym: '\\mu(x)', fmt: 'num2', get: (d) => d.muProbe, primary: true, link: 'mean' },
+        { op: '=' },
+        { sym: 'e^{\\eta}', fmt: 'num2', get: (d) => d.eta, link: 'eta' },
+        { op: ',' },
+        { sym: 'p', fmt: 'num2', get: (d) => d.p, link: 'var' },
+        { op: ',' },
+        { sym: 'V(\\mu)', fmt: 'num2', get: (d) => d.vProbe, link: 'var' },
+      ],
+    };
+  },
+  presets: [
+    {
+      id: 'ols',
+      label: 'Classical Regression',
+      note: 'Identity link, constant variance: the straight line with a uniform noise band that every statistics course starts from. One corner of the GLM family, not the family.',
+      mode: 'normal',
+      params: { b0: { value: 2, min: 0, max: 8, step: 0.05 }, b1: { value: 0.6, min: 0, max: 1, step: 0.01 }, phi: { value: 1 }, x: { value: 6 } },
+    },
+    {
+      id: 'odp',
+      label: 'The ODP World',
+      note: 'Log link, p = 1: variance rides the mean, so big cells are noisy in dollars but steady in percent. This is Shapland’s model for triangle increments, verbatim.',
+      mode: 'tweedie',
+      params: { b0: { value: 0.5, min: -1, max: 3, step: 0.01 }, b1: { value: 0.18 }, phi: { value: 1 }, p: { value: 1 }, x: { value: 6 } },
+    },
+    {
+      id: 'tweedie',
+      label: 'Tweedie Between',
+      note: 'p = 1.5: a compound Poisson-gamma world with real point mass at zero and a heavy right lean. Aggregate losses with frequency AND severity noise live here.',
+      mode: 'tweedie',
+      params: { b0: { value: 0.5 }, b1: { value: 0.18 }, phi: { value: 1 }, p: { value: 1.5 }, x: { value: 6 } },
+    },
+    {
+      id: 'gamma',
+      label: 'The Gamma World',
+      note: 'p = 2: constant coefficient of variation, so every cell is equally uncertain in PERCENT terms. Severity modeling’s home ground.',
+      mode: 'tweedie',
+      params: { b0: { value: 0.5 }, b1: { value: 0.18 }, phi: { value: 0.4, max: 1.5 }, p: { value: 2 }, x: { value: 6 } },
+    },
+  ],
+  story: [
+    {
+      title: 'The straight line under the hood',
+      text: 'The inset strip shows $\\eta = \\beta_0 + \\beta_1 x$: it NEVER bends. Everything a GLM fits, it fits on that straight line’s scale. Start in the classical corner: identity link, constant noise.',
+      preset: 'ols',
+    },
+    {
+      title: 'The link bends the world',
+      text: 'Switch to a log link. The same straight $\\eta$ now means a multiplicative world: each step of $x$ MULTIPLIES the mean by $e^{\\beta_1}$. Loss development is multiplicative, which is why reserving GLMs almost always carry a log link.',
+      preset: 'odp',
+    },
+    {
+      title: 'Commit to a guess',
+      text: 'Now the error family. In the ODP world, variance is $\\varphi\\mu$.',
+      predict: {
+        prompt: 'With V(μ) = φμ, which cells sit farther from the mean curve IN DOLLARS?',
+        options: ['The big ones: SD grows like √μ', 'The small ones: little means wobble more', 'All the same: that is what dispersion means'],
+        answer: 0,
+        explain: 'SD = √(φμ) rises with the mean, so late, large cells miss by more dollars even though they miss by fewer percent. Weighting big cells properly is most of why GLM fitting beats least squares on triangles.',
+      },
+      preset: 'odp',
+    },
+    {
+      title: 'The p dial',
+      text: 'Slide $p$ from 1 to 2 and watch the cloud change species: ODP’s even dollar-growth, Tweedie’s zero-mass with a heavy lean, gamma’s constant percent spread. One dial, the whole error family the exam draws from.',
+      preset: 'tweedie',
+    },
+    {
+      title: 'Why the exam cares',
+      text: 'Put one parameter per accident year and one per development age into $\\eta$, keep the log link and $p = 1$: the fitted values ARE chain ladder (Taylor), and resampling this model’s residuals IS the bootstrap (Shapland). The GLM is not adjacent to the syllabus; it is under it.',
+      preset: 'odp',
+    },
+  ],
+  checks: [
+    { name: 'Log link means multiplicative: μ(x+1)/μ(x) = e^{β₁}', expect: 0, tol: 1e-12, got: () => clGlmMu('log', 0.5, 0.18, 7) / clGlmMu('log', 0.5, 0.18, 6) - Math.exp(0.18) },
+    { name: 'Identity link stays additive: μ(x+1) − μ(x) = β₁', expect: 0.6, tol: 1e-12, got: () => clGlmMu('identity', 2, 0.6, 7) - clGlmMu('identity', 2, 0.6, 6) },
+    { name: 'Variance function: V = φμ at p = 1', expect: 8, tol: 1e-12, got: () => clVarPower(8, 1, 1) },
+    { name: 'Variance function: V = φμ² at p = 2', expect: 25.6, tol: 1e-9, got: () => clVarPower(8, 0.4, 2) },
+    {
+      name: 'ODP sampler honesty: seeded mean ≈ μ, variance ≈ φμ (5% / 12%)',
+      expect: 1, tol: 0,
+      got: () => {
+        const rng = clMulberry32(41);
+        const n = 8000, mu = 8, phi = 1.3;
+        let s = 0, s2 = 0;
+        for (let i = 0; i < n; i++) { const y = clRandTweedie(mu, phi, 1, rng); s += y; s2 += y * y; }
+        const m = s / n, v = s2 / n - m * m;
+        return Math.abs(m - mu) / mu < 0.05 && Math.abs(v - phi * mu) / (phi * mu) < 0.12 ? 1 : 0;
+      },
+    },
+    {
+      name: 'Tweedie compound construction honesty at p = 1.5 (5% / 12%)',
+      expect: 1, tol: 0,
+      got: () => {
+        const rng = clMulberry32(41);
+        const n = 8000, mu = 8, phi = 1, p = 1.5;
+        let s = 0, s2 = 0;
+        for (let i = 0; i < n; i++) { const y = clRandTweedie(mu, phi, p, rng); s += y; s2 += y * y; }
+        const m = s / n, v = s2 / n - m * m;
+        const target = clVarPower(mu, phi, p);
+        return Math.abs(m - mu) / mu < 0.05 && Math.abs(v - target) / target < 0.12 ? 1 : 0;
+      },
+    },
+    {
+      name: 'Gamma sampler honesty at p = 2 (5% / 12%)',
+      expect: 1, tol: 0,
+      got: () => {
+        const rng = clMulberry32(41);
+        const n = 8000, mu = 8, phi = 0.4;
+        let s = 0, s2 = 0;
+        for (let i = 0; i < n; i++) { const y = clRandTweedie(mu, phi, 2, rng); s += y; s2 += y * y; }
+        const m = s / n, v = s2 / n - m * m;
+        const target = phi * mu * mu;
+        return Math.abs(m - mu) / mu < 0.05 && Math.abs(v - target) / target < 0.12 ? 1 : 0;
+      },
+    },
+  ],
+});
+
+// --- Module: Reading Residuals ---------------------------------------------
+
+/**
+ * A fixed ODP world (true variance φμ) standardized by an ASSUMED variance
+ * power: r = (y − μ)/√(φμ^{p_a}). Right assumption → flat band; too-low
+ * p_a → funnel; too-high → inverted funnel. binRatio compares residual
+ * spread in the top vs bottom third of fitted values.
+ */
+function clResidualStudy({ pAssumed, phi, seed, n = 240 }) {
+  const rng = clMulberry32(seed);
+  const points = [];
+  for (let i = 0; i < n; i++) {
+    const mu = 2 + (i / (n - 1)) * 38;
+    const y = clRandTweedie(mu, phi, 1, rng);
+    const r = (y - mu) / Math.sqrt(clVarPower(mu, phi, pAssumed));
+    points.push({ mu, y, r });
+  }
+  const third = Math.floor(n / 3);
+  const sdOf = (arr) => {
+    const m = arr.reduce((a, b) => a + b, 0) / arr.length;
+    return Math.sqrt(arr.reduce((a, b) => a + (b - m) * (b - m), 0) / arr.length);
+  };
+  const low = sdOf(points.slice(0, third).map((p) => p.r));
+  const high = sdOf(points.slice(n - third).map((p) => p.r));
+  return { points, binRatio: high / Math.max(1e-9, low) };
+}
+
+defineModule({
+  id: 'residual-lens',
+  title: 'Reading Residuals',
+  subtitle: 'Standardize by the right variance and the funnel flattens: Pearson residuals are the flattening',
+  icon: 'activity',
+  level: 'glm',
+  kind: 'concept',
+  ord: 2,
+  paper: null,
+  foundations: [
+    { module: 'glm-anatomy', text: 'V(μ) = φμ^p is the dial being assumed here; it got its meaning one module down.' },
+    { module: 'sampling-error', text: 'Residual spread understates true noise because the fit already ate some of it; the df correction lives there.' },
+  ],
+  bridges: [
+    { module: 'odp-bootstrap', text: 'Shapland resamples EXACTLY these Pearson residuals; the flat band is what makes them exchangeable.' },
+    { module: 'mack-machinery', text: 'Mack’s weighted factor estimates come from the same variance-weighting logic, applied to link ratios.' },
+  ],
+  intro:
+    'Residuals are what the model could not explain. Standardize them by ' +
+    'the WRONG variance and they funnel: big cells look wilder than small ' +
+    'ones. Standardize by the right V(μ) and the funnel flattens into an ' +
+    'exchangeable pool. That flat pool is what the bootstrap draws from, ' +
+    'and every funnel you fail to notice is a lie your simulation will tell.',
+  params: [
+    { key: 'pa', tex: 'p_a', label: 'Assumed Variance Power', min: 0, max: 2, step: 0.05, init: 0, fmt: 'num2', link: 'std' },
+    { key: 'phi', tex: '\\varphi', label: 'Dispersion Of The World', min: 0.4, max: 3, step: 0.05, init: 1.2, fmt: 'num2', link: 'world' },
+  ],
+  derived(p) {
+    const study = clResidualStudy({ pAssumed: p.pa, phi: p.phi, seed: 47 });
+    return {
+      binRatio: study.binRatio,
+      gapFromOdp: p.pa - 1,
+    };
+  },
+  readouts: [
+    { sym: 'p_a', id: 'pa', fmt: 'num2', label: 'Assumed Power', link: 'std' },
+    { sym: '\\tfrac{sd_{high}}{sd_{low}}', id: 'binRatio', fmt: 'num2', label: 'Funnel Ratio (1 = Flat)', accent: true, link: 'funnel' },
+    { sym: 'p_a - 1', id: 'gapFromOdp', fmt: 'num2', label: 'Distance From The Truth', link: 'std' },
+  ],
+  formula() {
+    return {
+      sym: 'r_i = \\dfrac{y_i - \\mu_i}{\\sqrt{\\varphi\\,\\mu_i^{\\,p_a}}}',
+      terms: [
+        { sym: 'p_a', fmt: 'num2', get: (d) => d.pa, primary: true, link: 'std' },
+        { op: '→' },
+        { sym: 'sd_{high}/sd_{low}', fmt: 'num2', get: (d) => d.binRatio, link: 'funnel' },
+      ],
+    };
+  },
+  presets: [
+    {
+      id: 'wrong',
+      label: 'The Naive Lens',
+      note: 'Constant-variance standardization (p_a = 0) on a world whose variance actually rides the mean. The funnel opens: large fitted values look wilder than they are.',
+      params: { pa: { value: 0 }, phi: { value: 1.2 } },
+    },
+    {
+      id: 'pearson',
+      label: 'The Pearson Lens',
+      note: 'p_a = 1 matches the world: divide each residual by √(φμ) and the band flattens to ratio ≈ 1. These flat residuals are the exchangeable pool the bootstrap needs.',
+      params: { pa: { value: 1 }, phi: { value: 1.2 } },
+    },
+    {
+      id: 'overshoot',
+      label: 'Overcorrected',
+      note: 'p_a = 2 divides by too much μ: now SMALL cells look wild instead. A funnel in either direction is the same message: your variance assumption disagrees with the data.',
+      params: { pa: { value: 2 }, phi: { value: 1.2 } },
+    },
+  ],
+  story: [
+    {
+      title: 'The funnel',
+      text: 'The world is ODP: variance $\\varphi\\mu$, honestly. But you standardized by a CONSTANT variance, so residuals at large fitted values tower over the small ones. Structure in a residual plot is the model confessing.',
+      preset: 'wrong',
+    },
+    {
+      title: 'Commit to a guess',
+      text: 'One dial fixes it.',
+      predict: {
+        prompt: 'Slide the assumed power p_a from 0 up to 1. The funnel…',
+        options: ['Flattens into an even band', 'Rotates: small cells start funneling instead', 'Nothing changes: residuals are residuals'],
+        answer: 0,
+        explain: 'Dividing each residual by √(φμ^{p_a}) with the TRUE p removes exactly the spread the mean was adding. That is all a Pearson residual is: the raw residual, measured in units of its own standard deviation.',
+      },
+      preset: 'pearson',
+    },
+    {
+      title: 'Exchangeable at last',
+      text: 'Flat means the residuals are now on one common scale: any of them could have happened at any cell. THAT property, exchangeability, is what lets Shapland shuffle them across the whole triangle and rebuild plausible histories.',
+      preset: 'pearson',
+    },
+    {
+      title: 'Overshooting is also a confession',
+      text: 'Push $p_a$ to 2 and the funnel inverts: small cells look wild. Venter’s diagnostics on real triangles are this module played in reverse: look at the residual plot, and read off which variance assumption the data actually wants.',
+      preset: 'overshoot',
+    },
+  ],
+  checks: [
+    { name: 'Pearson formula at a sample point: (12−8)/√(1.2·8)', expect: 4 / Math.sqrt(9.6), tol: 1e-12, got: () => (12 - 8) / Math.sqrt(clVarPower(8, 1.2, 1)) },
+    { name: 'Right lens: funnel ratio within [0.8, 1.25] at p_a = 1 (seeded)', expect: 1, tol: 0, got: () => { const r = clResidualStudy({ pAssumed: 1, phi: 1.2, seed: 47 }).binRatio; return r > 0.8 && r < 1.25 ? 1 : 0; } },
+    { name: 'Naive lens funnels: ratio > 1.5 at p_a = 0 (seeded)', expect: 1, tol: 0, got: () => (clResidualStudy({ pAssumed: 0, phi: 1.2, seed: 47 }).binRatio > 1.5 ? 1 : 0) },
+    { name: 'Overcorrected lens inverts: ratio < 0.75 at p_a = 2 (seeded)', expect: 1, tol: 0, got: () => (clResidualStudy({ pAssumed: 2, phi: 1.2, seed: 47 }).binRatio < 0.75 ? 1 : 0) },
+    { name: 'Residual pool is centered near zero under the Pearson lens', expect: 1, tol: 0, got: () => { const pts = clResidualStudy({ pAssumed: 1, phi: 1.2, seed: 47 }).points; const m = pts.reduce((a, p) => a + p.r, 0) / pts.length; return Math.abs(m) < 0.12 ? 1 : 0; } },
+  ],
+});
+
+// --- Module: Meyers' Model Ladder (the validate-diagnose-fix arc) ----------
+
+// Stylized per-accident-year reserve SDs: recent years carry the risk.
+const ARC_SDS = [0.4, 0.5, 0.65, 0.8, 1.0, 1.25, 1.5, 1.8, 2.2, 2.6];
+const ARC_TRUE_RHO = 0.45;
+const ARC_TRUE_BIAS = 0.35;
+const ARC_N = 100;
+const ARC_SEED = 42;
+
+/** SD of a total of AYs with corr(i,j) = ρ^{|i−j|}: what CCL adds to Mack. */
+function clCclWidth(sds, rho) {
+  let v = 0;
+  for (let i = 0; i < sds.length; i++) {
+    for (let j = 0; j < sds.length; j++) {
+      v += Math.pow(rho, Math.abs(i - j)) * sds[i] * sds[j];
+    }
+  }
+  return Math.sqrt(v);
+}
+
+defineModule({
+  id: 'meyers-arc',
+  title: 'Meyers’ Model Ladder',
+  subtitle: 'Validate, diagnose, fix, re-validate: why LCL, CCL, and CSR exist at all',
+  icon: 'milestone',
+  level: 'reserving',
+  kind: 'exam',
+  ord: 4,
+  foundations: [
+    { module: 'correlation', text: 'The incurred fix is pure correlation: ρ between accident years is what widens the total.' },
+    { module: 'validation-machine', text: 'The scoring machine (percentiles, p-p plots, the KS band) is built and drilled there.' },
+    { module: 'mcmc-watch', text: 'Every model on this ladder is fit by the random walk watched there.' },
+  ],
+  paper: {
+    label: 'Meyers, Monograph 8 (2015)',
+    section: 'The arc across §3-7: validate Mack and ODP, then build LCL/CCL and CSR',
+    task: 'Show WHY each model exists: what failure it was built to fix',
+  },
+  intro:
+    'Meyers took 200 real triangles and asked every standard model one ' +
+    'question: were the outcomes uniform on your predicted percentiles? ' +
+    'Mack on incurred failed thin. Paid models failed high. Each Bayesian ' +
+    'model he then built exists to fix one diagnosed failure: CCL adds the ' +
+    'correlation Mack ignores; CSR models the settlement speedup that paid ' +
+    'models mistake for growth. This module is that arc, with the dials.',
+  params: [
+    { key: 'rho', tex: '\\rho', label: 'Model’s Accident-Year Correlation', min: 0, max: 0.7, step: 0.01, init: 0, fmt: 'num2', link: 'width', modes: ['incurred'] },
+    { key: 'speed', tex: 's', label: 'Modeled Settlement Speedup', min: 0, max: 0.5, step: 0.01, init: 0, fmt: 'num2', link: 'bias', modes: ['paid'] },
+  ],
+  derived(p, st) {
+    const mode = st?.mode === 'paid' ? 'paid' : 'incurred';
+    const wTrue = clCclWidth(ARC_SDS, ARC_TRUE_RHO);
+    const tail = mode === 'incurred' ? clCclWidth(ARC_SDS, p.rho) / wTrue : 1;
+    const bias = mode === 'paid' ? ARC_TRUE_BIAS - p.speed : 0;
+    const run = clValidationRun({ n: ARC_N, bias, tail, seed: ARC_SEED });
+    return {
+      tail,
+      bias,
+      D: run.D,
+      band: clKsBand(ARC_N),
+      passes: run.D < clKsBand(ARC_N) ? 1 : 0,
+    };
+  },
+  readouts: [
+    { sym: 'D', id: 'D', fmt: 'num2', label: 'KS Distance', accent: true, link: 'pp' },
+    { sym: '\\tfrac{136}{\\sqrt{n}}', id: 'band', fmt: 'num2', label: 'The Band (n = 100)', link: 'pp' },
+    { sym: 'w/w_{true}', id: 'tail', fmt: 'pct', label: 'Claimed Width vs Truth', link: 'width' },
+    { sym: '\\Delta', id: 'bias', fmt: 'num2', label: 'Residual Bias (SD Units)', link: 'bias' },
+  ],
+  formula(state) {
+    if (state.mode === 'paid') {
+      return {
+        sym: '\\text{residual bias} = \\Delta_{true} - s',
+        terms: [
+          { sym: 'D', fmt: 'num2', get: (d) => d.D, primary: true, link: 'pp' },
+          { op: '←' },
+          { sym: '\\Delta', fmt: 'num2', get: (d) => d.bias, link: 'bias' },
+          { op: ',' },
+          { sym: 's', fmt: 'num2', get: (d) => d.speed, link: 'bias' },
+        ],
+      };
+    }
+    return {
+      sym: 'w(\\rho) = \\sqrt{\\textstyle\\sum_{i,j}\\rho^{|i-j|}\\sigma_i\\sigma_j}',
+      terms: [
+        { sym: 'D', fmt: 'num2', get: (d) => d.D, primary: true, link: 'pp' },
+        { op: '←' },
+        { sym: 'w/w_{true}', fmt: 'pct', get: (d) => d.tail, link: 'width' },
+        { op: ',' },
+        { sym: '\\rho', fmt: 'num2', get: (d) => d.rho, link: 'width' },
+      ],
+    };
+  },
+  presets: [
+    {
+      id: 'mack-incurred',
+      label: 'Mack On Incurred',
+      note: 'The incumbent, tested. Accident years actually move together (ρ = 0.45 here); Mack assumes they do not, so his fan is too thin and outcomes pile up in his extreme percentiles. D blows through the band.',
+      mode: 'incurred',
+      params: { rho: { value: 0 } },
+    },
+    {
+      id: 'ccl',
+      label: 'CCL: Add The Correlation',
+      note: 'Same structure, one new parameter: correlation between consecutive accident years. The claimed width climbs to the truth, the p-p plot straightens onto the diagonal, and the KS test goes quiet.',
+      mode: 'incurred',
+      params: { rho: { value: 0.45 } },
+    },
+    {
+      id: 'mack-paid',
+      label: 'Mack And ODP On Paid',
+      note: 'Paid models fail DIFFERENTLY: claims have been settling faster, the naive model reads that as growth, and reserves come in high. Outcomes land in the LOW percentiles: a location problem no width fix can cure.',
+      mode: 'paid',
+      params: { speed: { value: 0 } },
+    },
+    {
+      id: 'csr',
+      label: 'CSR: Model The Speedup',
+      note: 'The Changing Settlement Rate model gives the speedup its own parameter. Dial s up to the true speedup and the bias dies; the percentiles go uniform. The paid data was never broken: the model was.',
+      mode: 'paid',
+      params: { speed: { value: 0.35 } },
+    },
+  ],
+  story: [
+    {
+      title: 'Test the incumbents first',
+      text: 'Meyers scored Mack on 200 real incurred triangles: evaluate each model’s CDF at what actually happened, collect the percentiles, and demand uniformity. The p-p plot on the right is that demand drawn as a picture; the band is how much wiggle 100 outcomes are allowed.',
+      preset: 'mack-incurred',
+    },
+    {
+      title: 'Commit to a diagnosis',
+      text: 'Look at where the outcomes land under Mack-incurred.',
+      predict: {
+        prompt: 'Outcomes cluster in the EXTREME percentiles (near 0 and 100). The predictive distribution is…',
+        options: ['Too narrow: real life keeps escaping its tails', 'Too wide: everything looks middling', 'Biased high: outcomes land low'],
+        answer: 0,
+        explain: 'An outcome in the 1st or 99th percentile is an outcome the model called nearly impossible. Seeing too many of them means the model’s tails are too thin: it is underestimating variability, exactly Meyers’ finding for Mack on incurred data.',
+      },
+      preset: 'mack-incurred',
+    },
+    {
+      title: 'Diagnose, then build: CCL',
+      text: 'WHY is Mack too thin? He treats accident years as independent, but they share calendar-year weather: inflation, courts, case-reserving philosophy. Drag $\\rho$ toward the truth and watch the claimed width $w(\\rho)$ climb and the p-p plot straighten. That single added parameter IS the Correlated Chain Ladder.',
+      preset: 'ccl',
+    },
+    {
+      title: 'The paid side fails differently',
+      text: 'Run the same audit on paid data and the failure changes species: outcomes pile into the LOW percentiles. The models are biased HIGH, not thin. A width fix cannot cure a location problem; this failure needs its own diagnosis.',
+      preset: 'mack-paid',
+    },
+    {
+      title: 'CSR: model the speedup',
+      text: 'The diagnosis: claims have been settling FASTER across the data period, and development methods read faster payment as more ultimate loss. The CSR model gives settlement rate its own parameter with its own prior. Dial $s$ to the truth and the bias dies. The Settlement-Rate Story module walks this model’s interior.',
+      preset: 'csr',
+    },
+    {
+      title: 'The discipline is the content',
+      text: 'Validate. Diagnose the failure’s SHAPE (thin tails vs bias). Build the smallest model that addresses that shape. Re-validate. The monograph’s lasting lesson is this loop, not any one model on the ladder; it is how every model on this exam should be read.',
+      preset: 'ccl',
+    },
+  ],
+  checks: [
+    { name: 'Width is monotone in ρ', expect: 1, tol: 0, got: () => { let prev = 0, ok = 1; for (let r = 0; r <= 0.71; r += 0.05) { const w = clCclWidth(ARC_SDS, r); if (w <= prev) ok = 0; prev = w; } return ok; } },
+    { name: 'ρ = 0 is quadrature: matches √(Σσ²)', expect: 0, tol: 1e-9, got: () => clCclWidth(ARC_SDS, 0) - Math.sqrt(ARC_SDS.reduce((a, s) => a + s * s, 0)) },
+    { name: 'Two-year cross-check against the correlation module’s identity', expect: 0, tol: 1e-9, got: () => clCclWidth([3, 4], 0.5) - clSumSd(3, 4, 0.5) },
+    { name: 'Mack-incurred (ρ = 0) fails the KS band', expect: 1, tol: 0, got: () => { const tail = clCclWidth(ARC_SDS, 0) / clCclWidth(ARC_SDS, ARC_TRUE_RHO); return clValidationRun({ n: ARC_N, bias: 0, tail, seed: ARC_SEED }).D > clKsBand(ARC_N) ? 1 : 0; } },
+    { name: 'CCL at the true ρ passes the band', expect: 1, tol: 0, got: () => (clValidationRun({ n: ARC_N, bias: 0, tail: 1, seed: ARC_SEED }).D < clKsBand(ARC_N) ? 1 : 0) },
+    { name: 'Naive paid (bias 0.35) fails the band', expect: 1, tol: 0, got: () => (clValidationRun({ n: ARC_N, bias: ARC_TRUE_BIAS, tail: 1, seed: ARC_SEED }).D > clKsBand(ARC_N) ? 1 : 0) },
+    { name: 'The independence claim understates width by a third or more', expect: 1, tol: 0, got: () => (clCclWidth(ARC_SDS, 0) / clCclWidth(ARC_SDS, ARC_TRUE_RHO) < 0.87 ? 1 : 0) },
   ],
 });
 
@@ -3169,8 +5349,107 @@ const CL_CSS = `
   padding-top: var(--px-space-2);
 }
 
+/* ── Home ladder ────────────────────────────────────────────────────── */
+.cl-level { margin-bottom: var(--px-space-8); }
+.cl-level-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--px-space-3);
+  margin-bottom: var(--px-space-3);
+  padding-bottom: var(--px-space-2);
+  border-bottom: 1px solid var(--px-divider);
+}
+.cl-level-num {
+  font-size: var(--px-text-xl);
+  font-weight: 700;
+  color: var(--px-text-faint);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+.cl-level-title { font-size: var(--px-text-md); font-weight: 650; }
+.cl-level-tag { font-size: var(--px-text-xs); color: var(--px-text-muted); }
+
+/* ── Connections: Builds On / Where The Exam Uses This ──────────────── */
+.cl-conn-label { display: flex; align-items: center; gap: var(--px-space-1); }
+.cl-conn-label-icon { display: inline-flex; opacity: 0.8; }
+.cl-conn-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--px-divider);
+  border-radius: var(--px-radius-md);
+  background: none;
+  padding: var(--px-space-2);
+  margin-top: var(--px-space-2);
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  transition: border-color var(--px-dur-fast) var(--px-ease), background var(--px-dur-fast) var(--px-ease);
+}
+.cl-conn-row:hover { border-color: var(--px-accent); background: var(--px-surface-hover); }
+.cl-conn-row:active { transform: var(--px-press); }
+.cl-conn-title {
+  display: flex;
+  align-items: center;
+  gap: var(--px-space-2);
+  font-size: var(--px-text-sm);
+  font-weight: 600;
+  color: var(--px-text);
+}
+.cl-conn-title svg { color: var(--px-text-secondary); flex: 0 0 auto; }
+.cl-conn-text {
+  display: block;
+  font-size: var(--px-text-xs);
+  color: var(--px-text-muted);
+  margin-top: 2px;
+  line-height: var(--px-leading-base);
+}
+
+/* ── Predict-then-reveal ────────────────────────────────────────────── */
+.cl-predict { margin-top: var(--px-space-2); }
+.cl-predict-prompt {
+  display: flex;
+  align-items: center;
+  gap: var(--px-space-2);
+  font-size: var(--px-text-sm);
+  font-weight: 600;
+}
+.cl-predict-icon { display: inline-flex; color: var(--px-accent); }
+.cl-predict-opts { display: flex; flex-wrap: wrap; gap: var(--px-space-2); margin-top: var(--px-space-2); }
+.cl-predict-opt {
+  font: inherit;
+  font-size: var(--px-text-sm);
+  color: var(--px-text-secondary);
+  background: var(--px-bg-elevated);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-md);
+  padding: var(--px-space-1) var(--px-space-3);
+  cursor: pointer;
+  transition: border-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
+}
+.cl-predict-opt:hover:not(:disabled) { border-color: var(--px-accent); color: var(--px-text); }
+.cl-predict-opt:active:not(:disabled) { transform: var(--px-press); }
+.cl-predict-opt:disabled { cursor: default; opacity: 0.7; }
+.cl-predict-opt.cl-right { border-color: var(--px-success); color: var(--px-success); opacity: 1; }
+.cl-predict-opt.cl-wrong { border-color: var(--px-danger); color: var(--px-danger); opacity: 1; }
+.cl-predict-explain {
+  font-size: var(--px-text-xs);
+  color: var(--px-text-muted);
+  margin-top: var(--px-space-2);
+  line-height: var(--px-leading-base);
+}
+.cl-conn-row:focus-visible, .cl-predict-opt:focus-visible { outline: none; box-shadow: var(--px-ring-accent); }
+
 /* ── Sidebar ────────────────────────────────────────────────────────── */
 .cl-side { display: flex; flex-direction: column; gap: 2px; padding: var(--px-space-2); }
+.cl-side-level {
+  font-size: var(--px-text-2xs);
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--px-text-faint);
+  padding: var(--px-space-3) var(--px-space-2) var(--px-space-1);
+}
 .cl-side-row {
   display: flex;
   align-items: center;
@@ -3707,6 +5986,7 @@ function getLabState(mod) {
       values, ranges,
       mode: null, data: null, query: null,
       presetId: null, storyIndex: 0, ghosts: [],
+      predictAnswers: {},
       fresh: true,
     };
     _paneState.params[mod.id] = st;
@@ -3717,6 +5997,19 @@ function getLabState(mod) {
 // --- Scene renderers (registered by module id; defs stay declarative) ------
 
 const SCENE_BUILDERS = {
+  'random-variable': buildRandomVariableScenes,
+  'mean-machine': buildMeanMachineScenes,
+  'distribution-anatomy': buildAnatomyScenes,
+  'sums-clt': buildSumsScenes,
+  'conditional-expectation': buildCondExpScenes,
+  'correlation': buildCorrScenes,
+  'process-fan': buildProcessFanScenes,
+  'likelihood-surface': buildLikelihoodScenes,
+  'sampling-error': buildSamplingScenes,
+  'shrinkage': buildShrinkScenes,
+  'glm-anatomy': buildGlmScenes,
+  'residual-lens': buildResidualScenes,
+  'meyers-arc': buildMeyersArcScenes,
   'brosius-line': buildBrosiusScenes,
   'mse-valley': buildValleyScenes,
   'prior-posterior': buildPosteriorScenes,
@@ -5575,6 +7868,1840 @@ function buildMarshallScenes(stageRow, ctx) {
   };
 }
 
+// --- Claim Counter: draws pour onto the true PMF ---------------------------
+
+function buildRandomVariableScenes(stageRow, ctx) {
+  const { linkRoot, animator } = ctx;
+  const { scene, wrap, svg } = buildScene(stageRow, 'What Happened vs What Was Probable', [
+    { label: 'Empirical Frequency', color: 'var(--px-accent)', link: 'emp' },
+    { label: 'True PMF', color: 'var(--cl-ink-1)', dashed: true, link: 'true' },
+  ], linkRoot);
+
+  const head = scene.querySelector('.cl-scene-head');
+  const mkBtn = (label, icon) => {
+    const b = document.createElement('button');
+    b.className = 'cl-scene-btn';
+    b.innerHTML = clIcon(icon, 12) + `<span>${label}</span>`;
+    head.appendChild(b);
+    return b;
+  };
+  const btnOne = mkBtn('Draw A Year', 'dice-5');
+  const btnMany = mkBtn('Draw 100', 'dices');
+  const btnRun = mkBtn('Run', 'play');
+  const btnReset = mkBtn('Reset', 'rotate-ccw');
+
+  const axes = createAxes(svg, {
+    xFmt: (v) => (Number.isInteger(v) && v >= 0 ? String(v) : ''),
+    yFmt: (v) => Math.round(v * 100) + '%',
+  });
+  const gGhosts = svgEl('g'); svg.appendChild(gGhosts);
+  const bars = makeBarPool(svg, 'cl-bar');
+  bars.g.dataset.clLink = 'emp';
+  const pTrue = svgEl('path', { stroke: 'var(--cl-ink-1)' }, 'cl-curve cl-ref');
+  pTrue.dataset.clLink = 'true';
+  svg.appendChild(pTrue);
+  const gTrueDots = svgEl('g'); gTrueDots.dataset.clLink = 'true'; svg.appendChild(gTrueDots);
+  const empLine = svgEl('line', { stroke: 'var(--px-accent)' }, 'cl-curve');
+  empLine.dataset.clLink = 'emp';
+  const trueLine = svgEl('line', { stroke: 'var(--cl-ink-1)' }, 'cl-curve cl-ref');
+  trueLine.dataset.clLink = 'true';
+  const nTag = svgEl('text', { 'text-anchor': 'end' }, 'cl-svg-value');
+  const dropDot = svgEl('circle', { r: 4.5, fill: 'var(--px-accent)' }, 'cl-dot');
+  dropDot.style.display = 'none';
+  svg.appendChild(empLine); svg.appendChild(trueLine); svg.appendChild(nTag); svg.appendChild(dropDot);
+
+  // Draw state is deliberately NOT in view-state: a fresh, watchable
+  // convergence beats a stale one (the MCMC scene set this precedent).
+  let counts = [];
+  let total = 0, sum = 0;
+  let rng = clMulberry32(20260816);
+  let simLam = null;
+  let lastFrame = null;
+
+  function publish() {
+    ctx.getState().sceneStats = { drawCount: total, empMean: total ? sum / total : NaN };
+  }
+  function record(k) {
+    counts[k] = (counts[k] || 0) + 1;
+    total++; sum += k;
+  }
+  function stopRun() {
+    animator.stopLoop('rv');
+    btnRun.innerHTML = clIcon('play', 12) + '<span>Run</span>';
+  }
+  function reset() {
+    counts = []; total = 0; sum = 0;
+    rng = clMulberry32(20260816);
+    simLam = ctx.getState().values.lam;
+    stopRun();
+    publish();
+    animator.invalidate();
+  }
+  btnOne.addEventListener('click', () => {
+    const k = clRandPoisson(ctx.getState().values.lam, rng);
+    record(k); publish();
+    if (lastFrame) {
+      const { sx, frame } = lastFrame;
+      dropDot.style.display = '';
+      dropDot.setAttribute('cx', sx(k));
+      const yEnd = frame.bottom - 6;
+      animator.tween('rv-drop', frame.top + 10, yEnd, clMotion().base, (v) => {
+        dropDot.setAttribute('cy', v);
+        if (v >= yEnd - 0.5) dropDot.style.display = 'none';
+      });
+    }
+    animator.invalidate();
+  });
+  btnMany.addEventListener('click', () => {
+    const lam = ctx.getState().values.lam;
+    for (let i = 0; i < 100; i++) record(clRandPoisson(lam, rng));
+    publish();
+    animator.invalidate();
+  });
+  btnRun.addEventListener('click', () => {
+    if (animator.hasLoop('rv')) { stopRun(); return; }
+    btnRun.innerHTML = clIcon('pause', 12) + '<span>Pause</span>';
+    animator.loop('rv', () => {
+      const lam = ctx.getState().values.lam;
+      for (let i = 0; i < 4; i++) record(clRandPoisson(lam, rng));
+      publish();
+      if (total >= 100000) stopRun();
+    });
+  });
+  btnReset.addEventListener('click', reset);
+  reset();
+
+  const domY = animator.smooth(0.25, 110);
+
+  return {
+    update(st) {
+      if (simLam !== null && st.values.lam !== simLam) reset();
+      const lam = st.values.lam;
+      const w = wrap.clientWidth || 640, h = wrap.clientHeight || 300;
+      svg.setAttribute('width', w); svg.setAttribute('height', h);
+      const frame = { left: 44, top: 16, right: w - 16, bottom: h - 26 };
+      const kmax = Math.max(12, Math.ceil(lam + 4.5 * Math.sqrt(lam)));
+
+      let yMax = 0.02;
+      const pmf = [];
+      for (let k = 0; k <= kmax; k++) {
+        pmf.push(clPoissonPmf(k, lam));
+        yMax = Math.max(yMax, pmf[k]);
+        if (total) yMax = Math.max(yMax, (counts[k] || 0) / total);
+      }
+      if (st.fresh) domY.snap(yMax * 1.2); else domY.target = yMax * 1.2;
+      const sx = clScale(-0.5, kmax + 0.5, frame.left, frame.right);
+      const sy = clScale(0, domY.current, frame.bottom, frame.top);
+      lastFrame = { sx, sy, frame };
+      axes.update(sx, sy, frame);
+
+      const bw = Math.min(20, Math.max(3, (sx(1) - sx(0)) * 0.62));
+      const rects = [];
+      for (let k = 0; k <= kmax; k++) {
+        const f = total ? (counts[k] || 0) / total : 0;
+        rects.push({ x: sx(k) - bw / 2, y: sy(f), w: bw, h: Math.max(0, frame.bottom - sy(f)) });
+      }
+      bars.set(rects, 'var(--px-accent)');
+
+      pTrue.setAttribute('d', clPathFrom(pmf.map((p, k) => [sx(k), sy(p)])));
+      while (gTrueDots.children.length < pmf.length) gTrueDots.appendChild(svgEl('circle', { r: 2.5, fill: 'var(--cl-ink-1)' }, 'cl-dot'));
+      while (gTrueDots.children.length > pmf.length) gTrueDots.lastChild.remove();
+      for (let k = 0; k <= kmax; k++) {
+        gTrueDots.children[k].setAttribute('cx', sx(k));
+        gTrueDots.children[k].setAttribute('cy', sy(pmf[k]));
+      }
+
+      trueLine.setAttribute('x1', sx(lam)); trueLine.setAttribute('x2', sx(lam));
+      trueLine.setAttribute('y1', frame.bottom); trueLine.setAttribute('y2', frame.top + 8);
+      if (total) {
+        empLine.style.display = '';
+        const em = sum / total;
+        empLine.setAttribute('x1', sx(em)); empLine.setAttribute('x2', sx(em));
+        empLine.setAttribute('y1', frame.bottom); empLine.setAttribute('y2', frame.top + 8);
+      } else {
+        empLine.style.display = 'none';
+      }
+      nTag.setAttribute('x', frame.right - 4); nTag.setAttribute('y', frame.top + 12);
+      nTag.textContent = total === 1 ? 'n = 1 year' : 'n = ' + total.toLocaleString('en-US') + ' years';
+
+      gGhosts.innerHTML = '';
+      for (const g of st.ghosts) {
+        if (!g.freqs) continue;
+        const pts = [];
+        for (let k = 0; k <= Math.min(kmax, g.kmax ?? kmax); k++) {
+          pts.push([sx(k), sy((g.freqs[k] || 0) / Math.max(1, g.total))]);
+        }
+        const gp = svgEl('path', {}, 'cl-ghost-curve');
+        gp.setAttribute('d', clPathFrom(pts));
+        gGhosts.appendChild(gp);
+      }
+    },
+    snapshot(st) {
+      if (!total) return null;
+      return { label: 'n=' + total.toLocaleString('en-US'), freqs: counts.slice(), total, kmax: counts.length - 1 };
+    },
+  };
+}
+
+// --- Balance Point: draggable mass on a beam -------------------------------
+
+function buildMeanMachineScenes(stageRow, ctx) {
+  const { linkRoot, animator } = ctx;
+  const { wrap, svg } = buildScene(stageRow, 'Drag The Probability Mass', [
+    { label: 'Mass', color: 'var(--px-accent)', link: 'bars' },
+    { label: 'Transformed aX+b', color: 'var(--cl-ink-1)', link: 'trans' },
+    { label: 'Balance Point', color: 'var(--cl-ink-4)', link: 'mean' },
+    { label: 'E[X] ± σ', color: 'var(--cl-ink-5)', link: 'sd' },
+  ], linkRoot);
+  const axes = createAxes(svg, {
+    xFmt: (v) => clFmt(v, 'num'),
+    yFmt: (v) => Math.round(v * 100) + '%',
+    yTicks: 4,
+  });
+  const gGhosts = svgEl('g'); svg.appendChild(gGhosts);
+  const bars = makeBarPool(svg, 'cl-bar');
+  bars.g.dataset.clLink = 'bars';
+  const gTrans = svgEl('g'); gTrans.dataset.clLink = 'trans'; svg.appendChild(gTrans);
+  const beam = svgEl('line', { stroke: 'var(--px-text-muted)', 'stroke-width': 2, 'stroke-linecap': 'round' });
+  const fulcrum = svgEl('path', { fill: 'var(--cl-ink-4)' });
+  fulcrum.dataset.clLink = 'mean';
+  const tFulcrum = svgEl('path', { fill: 'none', stroke: 'var(--cl-ink-1)', 'stroke-width': 1.5 });
+  tFulcrum.dataset.clLink = 'trans';
+  const sdBracket = svgEl('path', { stroke: 'var(--cl-ink-5)', 'stroke-width': 1.5, fill: 'none' });
+  sdBracket.dataset.clLink = 'sd';
+  const meanTag = svgEl('text', { 'text-anchor': 'middle', fill: 'var(--cl-ink-4)' }, 'cl-svg-value');
+  meanTag.dataset.clLink = 'mean';
+  const sdTag = svgEl('text', { 'text-anchor': 'middle', fill: 'var(--cl-ink-5)' }, 'cl-svg-tag');
+  sdTag.dataset.clLink = 'sd';
+  const skewTag = svgEl('text', { 'text-anchor': 'start' }, 'cl-svg-tag');
+  skewTag.dataset.clLink = 'skew';
+  svg.appendChild(beam); svg.appendChild(fulcrum); svg.appendChild(tFulcrum);
+  svg.appendChild(sdBracket); svg.appendChild(meanTag); svg.appendChild(sdTag); svg.appendChild(skewTag);
+
+  const fulcrumPos = animator.smooth(2.31, 90);
+  let lastFrame = null;
+
+  clDragOnSvg(svg, (e) => {
+    if (!lastFrame) return;
+    const st = ctx.getState();
+    let masses = Array.isArray(st.data) && st.data.length ? st.data : MM_SEVERITY;
+    // Clone before the first mutation so preset constants stay pristine;
+    // applyPreset swaps in the shared array again, which drops the flag.
+    if (!masses._owned) {
+      masses = masses.map((m) => ({ ...m }));
+      masses._owned = true;
+      st.data = masses;
+    }
+    const { sx, sy } = lastFrame;
+    const pt = clSvgPoint(svg, e);
+    let best = 0, bd = Infinity;
+    masses.forEach((m, i) => {
+      const dx = Math.abs(sx(m.x) - pt.x);
+      if (dx < bd) { bd = dx; best = i; }
+    });
+    masses[best].p = Math.max(0, Math.min(0.6, sy.invert(pt.y)));
+    animator.invalidate();
+  });
+
+  return {
+    update(st, d) {
+      const masses = Array.isArray(st.data) && st.data.length ? st.data : MM_SEVERITY;
+      const a = st.values.a, b = st.values.b;
+      const w = wrap.clientWidth || 640, h = wrap.clientHeight || 300;
+      svg.setAttribute('width', w); svg.setAttribute('height', h);
+      const frame = { left: 44, top: 16, right: w - 16, bottom: h - 40 };
+
+      const transformed = a !== 1 || b !== 0;
+      let xLo = 0, xHi = 10, pMax = 0.3;
+      for (const m of masses) {
+        pMax = Math.max(pMax, m.p * 1.2);
+        if (transformed) {
+          xLo = Math.min(xLo, a * m.x + b);
+          xHi = Math.max(xHi, a * m.x + b);
+        }
+      }
+      const sx = clScale(xLo - 0.6, xHi + 0.6, frame.left, frame.right);
+      const sy = clScale(0, pMax, frame.bottom, frame.top);
+      lastFrame = { sx, sy, frame };
+      axes.update(sx, sy, frame);
+
+      const bw = Math.min(22, Math.max(6, (sx(1) - sx(0)) * 0.55));
+      bars.set(masses.map((m) => ({
+        x: sx(m.x) - bw / 2, y: sy(m.p), w: bw, h: Math.max(0, frame.bottom - sy(m.p)),
+      })), 'var(--px-accent)');
+
+      gTrans.style.display = transformed ? '' : 'none';
+      if (transformed) {
+        const need = masses.length * 2;
+        while (gTrans.children.length < need) {
+          gTrans.appendChild(svgEl('line', { stroke: 'var(--cl-ink-1)', 'stroke-width': 1.5, opacity: 0.8 }));
+          gTrans.appendChild(svgEl('circle', { r: 3, fill: 'var(--cl-ink-1)', opacity: 0.85 }, 'cl-dot'));
+        }
+        while (gTrans.children.length > need) gTrans.lastChild.remove();
+        masses.forEach((m, i) => {
+          const tx = sx(a * m.x + b), ty = sy(m.p);
+          const line = gTrans.children[i * 2], dot = gTrans.children[i * 2 + 1];
+          const on = m.p > 0.0005 ? '' : 'none';
+          line.style.display = on; dot.style.display = on;
+          line.setAttribute('x1', tx); line.setAttribute('x2', tx);
+          line.setAttribute('y1', frame.bottom); line.setAttribute('y2', ty);
+          dot.setAttribute('cx', tx); dot.setAttribute('cy', ty);
+        });
+      }
+
+      const beamY = frame.bottom + 8;
+      beam.setAttribute('x1', frame.left); beam.setAttribute('x2', frame.right);
+      beam.setAttribute('y1', beamY); beam.setAttribute('y2', beamY);
+
+      if (st.fresh) fulcrumPos.snap(d.mean); else fulcrumPos.target = d.mean;
+      const fx = sx(fulcrumPos.current);
+      fulcrum.setAttribute('d', `M${fx},${beamY + 2} L${fx - 7},${beamY + 14} L${fx + 7},${beamY + 14} Z`);
+      meanTag.setAttribute('x', fx); meanTag.setAttribute('y', beamY + 26);
+      meanTag.textContent = 'E[X] = ' + clFmt(d.mean, 'num2');
+
+      if (transformed && Number.isFinite(d.tMean)) {
+        tFulcrum.style.display = '';
+        const tx = sx(d.tMean);
+        tFulcrum.setAttribute('d', `M${tx},${beamY + 2} L${tx - 6},${beamY + 12} L${tx + 6},${beamY + 12} Z`);
+      } else {
+        tFulcrum.style.display = 'none';
+      }
+
+      const bx1 = sx(d.mean - d.sd), bx2 = sx(d.mean + d.sd);
+      const by = frame.top + 14;
+      sdBracket.setAttribute('d', `M${bx1},${by - 4} L${bx1},${by + 4} M${bx1},${by} L${bx2},${by} M${bx2},${by - 4} L${bx2},${by + 4}`);
+      sdTag.setAttribute('x', (bx1 + bx2) / 2); sdTag.setAttribute('y', by - 8);
+      sdTag.textContent = 'σ = ' + clFmt(d.sd, 'num2');
+
+      skewTag.setAttribute('x', frame.left + 4); skewTag.setAttribute('y', frame.top + 12);
+      skewTag.textContent = 'Skew γ₁ = ' + clFmt(d.skew, 'num2') + (d.skew > 0.05 ? ' (leans right)' : d.skew < -0.05 ? ' (leans left)' : ' (balanced)');
+
+      gGhosts.innerHTML = '';
+      for (const g of st.ghosts) {
+        if (!g.masses) continue;
+        for (const m of g.masses) {
+          if (m.p <= 0.0005) continue;
+          const line = svgEl('line', {}, 'cl-ghost-curve');
+          line.setAttribute('x1', sx(m.x)); line.setAttribute('x2', sx(m.x));
+          line.setAttribute('y1', frame.bottom); line.setAttribute('y2', sy(m.p));
+          gGhosts.appendChild(line);
+        }
+      }
+    },
+    snapshot(st) {
+      const masses = Array.isArray(st.data) && st.data.length ? st.data : MM_SEVERITY;
+      return { label: st.presetId || 'pin', masses: masses.map((m) => ({ ...m })) };
+    },
+  };
+}
+
+// --- Distribution Anatomy: density and CDF, one read -----------------------
+
+function buildAnatomyScenes(stageRow, ctx) {
+  const { linkRoot, animator } = ctx;
+  const s1 = buildScene(stageRow, 'The Density: Where Probability Is Dense', [
+    { label: 'Density', color: 'var(--px-accent)', link: 'pdf' },
+    { label: 'Area = q', color: 'var(--px-accent)', link: 'q' },
+    { label: 'Median', color: 'var(--cl-ink-1)', dashed: true, link: 'median' },
+    { label: 'Mean', color: 'var(--cl-ink-4)', dashed: true, link: 'skew' },
+  ], linkRoot);
+  const s2 = buildScene(stageRow, 'The CDF: How Much Lies Below', [
+    { label: 'F(x)', color: 'var(--px-accent)', link: 'cdf' },
+    { label: 'The Read', color: 'var(--cl-ink-5)', link: 'q' },
+  ], linkRoot);
+
+  const axes1 = createAxes(s1.svg, { xFmt: (v) => clFmt(v, 'num'), yTicks: 0, yFmt: () => '' });
+  const axes2 = createAxes(s2.svg, { xFmt: (v) => clFmt(v, 'num'), yFmt: (v) => Math.round(v * 100) + '%', yTicks: 4 });
+
+  const gGhosts = svgEl('g'); s1.svg.appendChild(gGhosts);
+  const areaPath = svgEl('path', { fill: 'var(--px-accent)' }, 'cl-band');
+  areaPath.dataset.clLink = 'q';
+  const pdfPath = svgEl('path', { stroke: 'var(--px-accent)' }, 'cl-curve');
+  pdfPath.dataset.clLink = 'pdf';
+  const medianLine = svgEl('line', { stroke: 'var(--cl-ink-1)' }, 'cl-curve cl-ref');
+  medianLine.dataset.clLink = 'median';
+  const meanLine = svgEl('line', { stroke: 'var(--cl-ink-4)' }, 'cl-curve cl-ref');
+  meanLine.dataset.clLink = 'skew';
+  const xqLine1 = svgEl('line', {}, 'cl-marker-line');
+  xqLine1.dataset.clLink = 'xq';
+  const xqDot1 = svgEl('circle', { r: 4.5, fill: 'var(--px-accent)', stroke: 'var(--px-bg)', 'stroke-width': 1.5 }, 'cl-dot');
+  xqDot1.dataset.clLink = 'xq';
+  const xqTag1 = svgEl('text', { 'text-anchor': 'middle' }, 'cl-svg-value');
+  s1.svg.appendChild(areaPath); s1.svg.appendChild(pdfPath);
+  s1.svg.appendChild(medianLine); s1.svg.appendChild(meanLine);
+  s1.svg.appendChild(xqLine1); s1.svg.appendChild(xqDot1); s1.svg.appendChild(xqTag1);
+
+  const cdfPath = svgEl('path', { stroke: 'var(--px-accent)' }, 'cl-curve');
+  cdfPath.dataset.clLink = 'cdf';
+  const readPath = svgEl('path', { stroke: 'var(--cl-ink-5)', 'stroke-width': 1.75 }, 'cl-curve');
+  readPath.dataset.clLink = 'q';
+  const qDot = svgEl('circle', { r: 4.5, fill: 'var(--cl-ink-5)', stroke: 'var(--px-bg)', 'stroke-width': 1.5 }, 'cl-dot');
+  qDot.dataset.clLink = 'q';
+  const qTag = svgEl('text', { 'text-anchor': 'start', fill: 'var(--cl-ink-5)' }, 'cl-svg-value');
+  const xqTag2 = svgEl('text', { 'text-anchor': 'middle' }, 'cl-svg-tag');
+  s2.svg.appendChild(cdfPath); s2.svg.appendChild(readPath);
+  s2.svg.appendChild(qDot); s2.svg.appendChild(qTag); s2.svg.appendChild(xqTag2);
+
+  const domX = animator.smooth(30, 110);
+  let lastD = null;
+
+  const dragToQ = (svgNode, getScale) => {
+    clDragOnSvg(svgNode, (e) => {
+      const sc = getScale();
+      if (!sc || !lastD) return;
+      const x = sc.invert(clSvgPoint(svgNode, e).x);
+      const q = clLognCdf(Math.max(1e-6, x), lastD.mu, lastD.sigma);
+      ctx.setParam('q', Math.max(0.01, Math.min(0.99, Math.round(q * 100) / 100)));
+    });
+  };
+  let sx1Ref = null, sx2Ref = null;
+  dragToQ(s1.svg, () => sx1Ref);
+  dragToQ(s2.svg, () => sx2Ref);
+
+  return {
+    update(st, d) {
+      lastD = d;
+      const xEnd = clLognInv(0.995, d.mu, d.sigma);
+      if (st.fresh) domX.snap(xEnd); else domX.target = xEnd;
+      const xMax = domX.current;
+
+      // ── Density panel ──
+      const w1 = s1.wrap.clientWidth || 420, h1 = s1.wrap.clientHeight || 280;
+      s1.svg.setAttribute('width', w1); s1.svg.setAttribute('height', h1);
+      const f1 = { left: 40, top: 16, right: w1 - 14, bottom: h1 - 26 };
+      const sx1 = clScale(0, xMax, f1.left, f1.right);
+      sx1Ref = sx1;
+      const N = 160;
+      let pdfMax = 0;
+      const pdfPts = [];
+      for (let i = 0; i <= N; i++) {
+        const x = (i / N) * xMax;
+        const y = clLognPdf(x, d.mu, d.sigma);
+        pdfPts.push([x, y]);
+        pdfMax = Math.max(pdfMax, y);
+      }
+      const sy1 = clScale(0, pdfMax * 1.12, f1.bottom, f1.top);
+      axes1.update(sx1, sy1, f1);
+      pdfPath.setAttribute('d', clPathFrom(pdfPts.map(([x, y]) => [sx1(x), sy1(y)])));
+
+      const areaPts = pdfPts.filter(([x]) => x <= d.xq);
+      if (areaPts.length) {
+        let ap = 'M' + sx1(0).toFixed(1) + ',' + f1.bottom.toFixed(1);
+        for (const [x, y] of areaPts) ap += 'L' + sx1(x).toFixed(1) + ',' + sy1(y).toFixed(1);
+        ap += 'L' + sx1(Math.min(d.xq, xMax)).toFixed(1) + ',' + sy1(clLognPdf(Math.min(d.xq, xMax), d.mu, d.sigma)).toFixed(1);
+        ap += 'L' + sx1(Math.min(d.xq, xMax)).toFixed(1) + ',' + f1.bottom.toFixed(1) + 'Z';
+        areaPath.setAttribute('d', ap);
+      } else {
+        areaPath.setAttribute('d', '');
+      }
+
+      const putV = (line, x, yTop) => {
+        const px = sx1(Math.min(x, xMax));
+        line.setAttribute('x1', px); line.setAttribute('x2', px);
+        line.setAttribute('y1', f1.bottom); line.setAttribute('y2', yTop);
+        return px;
+      };
+      putV(medianLine, d.median, f1.top + 22);
+      putV(meanLine, st.values.M, f1.top + 10);
+      const qx1 = sx1(Math.min(d.xq, xMax));
+      xqLine1.setAttribute('x1', qx1); xqLine1.setAttribute('x2', qx1);
+      xqLine1.setAttribute('y1', f1.bottom); xqLine1.setAttribute('y2', f1.top + 30);
+      xqDot1.setAttribute('cx', qx1);
+      xqDot1.setAttribute('cy', sy1(clLognPdf(Math.min(d.xq, xMax), d.mu, d.sigma)));
+      xqTag1.setAttribute('x', qx1); xqTag1.setAttribute('y', f1.top + 24);
+      xqTag1.textContent = 'x_q = ' + clFmt(d.xq, 'num');
+
+      gGhosts.innerHTML = '';
+      for (const g of st.ghosts) {
+        if (g.mu === undefined) continue;
+        const pts = [];
+        for (let i = 0; i <= N; i++) {
+          const x = (i / N) * xMax;
+          pts.push([sx1(x), sy1(clLognPdf(x, g.mu, g.sigma))]);
+        }
+        const gp = svgEl('path', {}, 'cl-ghost-curve');
+        gp.setAttribute('d', clPathFrom(pts));
+        gGhosts.appendChild(gp);
+      }
+
+      // ── CDF panel ──
+      const w2 = s2.wrap.clientWidth || 420, h2 = s2.wrap.clientHeight || 280;
+      s2.svg.setAttribute('width', w2); s2.svg.setAttribute('height', h2);
+      const f2 = { left: 44, top: 16, right: w2 - 14, bottom: h2 - 26 };
+      const sx2 = clScale(0, xMax, f2.left, f2.right);
+      sx2Ref = sx2;
+      const sy2 = clScale(0, 1.04, f2.bottom, f2.top);
+      axes2.update(sx2, sy2, f2);
+      const cdfPts = [];
+      for (let i = 0; i <= N; i++) {
+        const x = (i / N) * xMax;
+        cdfPts.push([sx2(x), sy2(clLognCdf(x, d.mu, d.sigma))]);
+      }
+      cdfPath.setAttribute('d', clPathFrom(cdfPts));
+
+      const qx2 = sx2(Math.min(d.xq, xMax));
+      const qy2 = sy2(st.values.q);
+      readPath.setAttribute('d', `M${qx2},${f2.bottom} L${qx2},${qy2} L${f2.left},${qy2}`);
+      qDot.setAttribute('cx', qx2); qDot.setAttribute('cy', qy2);
+      qTag.setAttribute('x', f2.left + 6); qTag.setAttribute('y', qy2 - 6);
+      qTag.textContent = 'q = ' + clFmt(st.values.q, 'pct');
+      xqTag2.setAttribute('x', qx2); xqTag2.setAttribute('y', f2.bottom + 24);
+      xqTag2.textContent = clFmt(d.xq, 'num');
+    },
+    snapshot(st, d) {
+      return { label: st.presetId || 'pin', mu: d.mu, sigma: d.sigma };
+    },
+  };
+}
+
+// --- Sums: severity panel + accumulating aggregate histogram ---------------
+
+function buildSumsScenes(stageRow, ctx) {
+  const { linkRoot, animator } = ctx;
+  const s1 = buildScene(stageRow, 'One Claim: The Severity', [
+    { label: 'Severity Density', color: 'var(--cl-ink-5)', link: 'sev' },
+  ], linkRoot);
+  const s2 = buildScene(stageRow, 'A Year Of Claims, Summed', [
+    { label: 'Simulated Years', color: 'var(--px-accent)', link: 'agg' },
+    { label: 'Normal With Same Mean, SD', color: 'var(--cl-ink-1)', dashed: true, link: 'tail' },
+  ], linkRoot);
+
+  const axes1 = createAxes(s1.svg, { xFmt: (v) => clFmt(v, 'num'), yTicks: 0, yFmt: () => '' });
+  const axes2 = createAxes(s2.svg, { xFmt: (v) => clFmt(v, 'num'), yTicks: 0, yFmt: () => '' });
+  const sevPath = svgEl('path', { stroke: 'var(--cl-ink-5)' }, 'cl-curve');
+  sevPath.dataset.clLink = 'sev';
+  s1.svg.appendChild(sevPath);
+  const bars = makeBarPool(s2.svg, 'cl-bar');
+  bars.g.dataset.clLink = 'agg';
+  const normPath = svgEl('path', { stroke: 'var(--cl-ink-1)' }, 'cl-curve cl-ref');
+  normPath.dataset.clLink = 'tail';
+  const p95Line = svgEl('line', {}, 'cl-marker-line');
+  p95Line.dataset.clLink = 'tail';
+  const p95Tag = svgEl('text', { 'text-anchor': 'middle' }, 'cl-svg-tag');
+  p95Tag.dataset.clLink = 'tail';
+  const nTag = svgEl('text', { 'text-anchor': 'end' }, 'cl-svg-value');
+  s2.svg.appendChild(normPath); s2.svg.appendChild(p95Line);
+  s2.svg.appendChild(p95Tag); s2.svg.appendChild(nTag);
+
+  const TARGET = 3000;
+  let draws = [];
+  let rng = clMulberry32(12);
+  let sev = null;
+  let simKey = '';
+
+  function publish() {
+    const st = ctx.getState();
+    const d = st.values;
+    const m = clCompoundMoments(d.lam, SUMS_SEV_MEAN, d.cv);
+    const q = m.mean + 1.6449 * m.sd;
+    const exceed = draws.length ? draws.filter((x) => x > q).length / draws.length : NaN;
+    st.sceneStats = { simYears: draws.length, tailExceed: exceed };
+  }
+  function reset() {
+    const v = ctx.getState().values;
+    draws = [];
+    rng = clMulberry32(12);
+    sev = clMatchLognormal(SUMS_SEV_MEAN, SUMS_SEV_MEAN * v.cv);
+    simKey = v.lam + '|' + v.cv;
+    publish();
+    animator.loop('sums', runChunk);
+  }
+  function runChunk() {
+    const v = ctx.getState().values;
+    if (draws.length >= TARGET) { animator.stopLoop('sums'); return; }
+    const batch = Math.min(40, TARGET - draws.length);
+    for (let i = 0; i < batch; i++) {
+      const count = clRandPoisson(v.lam, rng);
+      let s = 0;
+      for (let c = 0; c < count; c++) s += Math.exp(sev.mu + sev.sigma * clRandNormal(rng));
+      draws.push(s);
+    }
+    publish();
+  }
+  reset();
+
+  return {
+    update(st, d) {
+      const v = st.values;
+      if (v.lam + '|' + v.cv !== simKey) reset();
+
+      // ── Severity panel ──
+      const w1 = s1.wrap.clientWidth || 420, h1 = s1.wrap.clientHeight || 280;
+      s1.svg.setAttribute('width', w1); s1.svg.setAttribute('height', h1);
+      const f1 = { left: 36, top: 16, right: w1 - 14, bottom: h1 - 26 };
+      const sevSigma = sev ? sev.sigma : 0.5;
+      const sevMu = sev ? sev.mu : Math.log(10);
+      const xEnd1 = Math.exp(sevMu + 2.8 * sevSigma);
+      const sx1 = clScale(0, xEnd1, f1.left, f1.right);
+      const N = 120;
+      let pMax = 0;
+      const pts1 = [];
+      for (let i = 0; i <= N; i++) {
+        const x = (i / N) * xEnd1;
+        const y = clLognPdf(x, sevMu, sevSigma);
+        pts1.push([x, y]);
+        pMax = Math.max(pMax, y);
+      }
+      const sy1 = clScale(0, pMax * 1.12, f1.bottom, f1.top);
+      axes1.update(sx1, sy1, f1);
+      sevPath.setAttribute('d', clPathFrom(pts1.map(([x, y]) => [sx1(x), sy1(y)])));
+
+      // ── Aggregate panel ──
+      const w2 = s2.wrap.clientWidth || 420, h2 = s2.wrap.clientHeight || 280;
+      s2.svg.setAttribute('width', w2); s2.svg.setAttribute('height', h2);
+      const f2 = { left: 36, top: 16, right: w2 - 14, bottom: h2 - 26 };
+      const xEnd2 = Math.max(d.aggMean + 4 * d.aggSd, d.normP95 * 1.15, 1);
+      const sx2 = clScale(0, xEnd2, f2.left, f2.right);
+
+      const BINS = 44;
+      const binW = xEnd2 / BINS;
+      const counts = new Array(BINS).fill(0);
+      for (const x of draws) {
+        const b = Math.min(BINS - 1, Math.floor(x / binW));
+        counts[b]++;
+      }
+      const total = Math.max(1, draws.length);
+      let hMax = 0.001;
+      for (const c of counts) hMax = Math.max(hMax, c / total);
+      // Normal overlay in the same per-bin units so shapes are comparable.
+      const overlay = [];
+      let oMax = 0;
+      for (let i = 0; i <= N; i++) {
+        const x = (i / N) * xEnd2;
+        const y = clNormPdf(x, d.aggMean, d.aggSd) * binW;
+        overlay.push([x, y]);
+        oMax = Math.max(oMax, y);
+      }
+      const sy2 = clScale(0, Math.max(hMax, oMax) * 1.15, f2.bottom, f2.top);
+      axes2.update(sx2, sy2, f2);
+      const bw2 = Math.max(2, (f2.right - f2.left) / BINS - 1.5);
+      bars.set(counts.map((c, i) => ({
+        x: sx2(i * binW) + 0.75, y: sy2(c / total), w: bw2, h: Math.max(0, f2.bottom - sy2(c / total)),
+      })), 'var(--px-accent)');
+      normPath.setAttribute('d', clPathFrom(overlay.map(([x, y]) => [sx2(x), sy2(y)])));
+
+      const qx = sx2(Math.min(d.normP95, xEnd2));
+      p95Line.setAttribute('x1', qx); p95Line.setAttribute('x2', qx);
+      p95Line.setAttribute('y1', f2.bottom); p95Line.setAttribute('y2', f2.top + 18);
+      p95Tag.setAttribute('x', qx); p95Tag.setAttribute('y', f2.top + 12);
+      p95Tag.textContent = 'Normal 95th';
+      nTag.setAttribute('x', f2.right - 4); nTag.setAttribute('y', f2.top + 12);
+      nTag.textContent = draws.length.toLocaleString('en-US') + ' years';
+    },
+    snapshot(st) {
+      return { label: st.presetId || 'pin', years: draws.length };
+    },
+  };
+}
+
+// --- Conditional expectation: the cloud, the slice, the violin -------------
+
+function buildCondExpScenes(stageRow, ctx) {
+  const { linkRoot, animator } = ctx;
+  const { wrap, svg } = buildScene(stageRow, 'Reported x  vs  Ultimate y', [
+    { label: 'Best-Guess Line E[Y|X]', color: 'var(--px-accent)', link: 'line' },
+    { label: 'The Slice At x', color: 'var(--cl-ink-5)', link: 'slice' },
+    { label: 'What Remains', color: 'var(--cl-ink-5)', link: 'band' },
+    { label: 'μ_Y (Ignore The Report)', color: 'var(--cl-ink-4)', dashed: true, link: 'flat' },
+  ], linkRoot);
+  const axes = createAxes(svg, { xFmt: (v) => clFmt(v, 'num'), yFmt: (v) => clFmt(v, 'num') });
+
+  const gGhosts = svgEl('g'); svg.appendChild(gGhosts);
+  const gDots = svgEl('g'); svg.appendChild(gDots);
+  const violin = svgEl('path', { fill: 'var(--cl-ink-5)' }, 'cl-band');
+  violin.dataset.clLink = 'band';
+  const flatLine = svgEl('line', { stroke: 'var(--cl-ink-4)' }, 'cl-curve cl-ref');
+  flatLine.dataset.clLink = 'flat';
+  const regLine = svgEl('path', { stroke: 'var(--px-accent)' }, 'cl-curve');
+  regLine.dataset.clLink = 'line';
+  const sliceLine = svgEl('line', {}, 'cl-marker-line');
+  sliceLine.dataset.clLink = 'slice';
+  const guessDot = svgEl('circle', { r: 5, fill: 'var(--px-accent)', stroke: 'var(--px-bg)', 'stroke-width': 1.5 }, 'cl-dot');
+  guessDot.dataset.clLink = 'slice';
+  const guessTag = svgEl('text', { 'text-anchor': 'start' }, 'cl-svg-value');
+  svg.appendChild(violin); svg.appendChild(flatLine); svg.appendChild(regLine);
+  svg.appendChild(sliceLine); svg.appendChild(guessDot); svg.appendChild(guessTag);
+
+  // One fixed set of standard-normal pairs: dragging ρ MORPHS the same
+  // years instead of teleporting to a fresh cloud.
+  const baseZ = [];
+  {
+    const rng = clMulberry32(9);
+    for (let i = 0; i < 240; i++) baseZ.push([clRandNormal(rng), clRandNormal(rng)]);
+  }
+  for (let i = 0; i < baseZ.length; i++) {
+    gDots.appendChild(svgEl('circle', { r: 2.5, fill: 'var(--px-text-secondary)', opacity: 0.55 }, 'cl-dot'));
+  }
+
+  let lastFrame = null;
+  clDragOnSvg(svg, (e) => {
+    if (!lastFrame) return;
+    const st = ctx.getState();
+    const r = st.ranges.x;
+    const v = Math.max(r.min, Math.min(r.max, lastFrame.sx.invert(clSvgPoint(svg, e).x)));
+    ctx.setParam('x', v);
+  });
+
+  return {
+    update(st, d) {
+      const w = wrap.clientWidth || 640, h = wrap.clientHeight || 300;
+      svg.setAttribute('width', w); svg.setAttribute('height', h);
+      const frame = { left: 44, top: 14, right: w - 16, bottom: h - 26 };
+      const rho = st.values.rho, x = st.values.x;
+      const sx = clScale(CE_PAR.muX - 3.2 * CE_PAR.sdX, CE_PAR.muX + 3.2 * CE_PAR.sdX, frame.left, frame.right);
+      const sy = clScale(CE_PAR.muY - 3.6 * CE_PAR.sdY, CE_PAR.muY + 3.6 * CE_PAR.sdY, frame.bottom, frame.top);
+      lastFrame = { sx, sy, frame };
+      axes.update(sx, sy, frame);
+
+      const c = Math.sqrt(Math.max(0, 1 - rho * rho));
+      for (let i = 0; i < baseZ.length; i++) {
+        const [z1, z2] = baseZ[i];
+        const dot = gDots.children[i];
+        dot.setAttribute('cx', sx(CE_PAR.muX + CE_PAR.sdX * z1));
+        dot.setAttribute('cy', sy(CE_PAR.muY + CE_PAR.sdY * (rho * z1 + c * z2)));
+      }
+
+      const xLo = CE_PAR.muX - 3.2 * CE_PAR.sdX, xHi = CE_PAR.muX + 3.2 * CE_PAR.sdX;
+      const line = (xx) => CE_PAR.muY + d.slope * (xx - CE_PAR.muX);
+      regLine.setAttribute('d', clPathFrom([[sx(xLo), sy(line(xLo))], [sx(xHi), sy(line(xHi))]]));
+      flatLine.setAttribute('x1', sx(xLo)); flatLine.setAttribute('x2', sx(xHi));
+      flatLine.setAttribute('y1', sy(CE_PAR.muY)); flatLine.setAttribute('y2', sy(CE_PAR.muY));
+
+      // The violin: the conditional density of Y at the slice, drawn sideways.
+      const px = sx(x);
+      if (d.condSd > 0.01) {
+        const scale = (sx(1) - sx(0)) * 1.1; // px per unit density, tuned to read
+        const pts = [];
+        for (let i = 0; i <= 60; i++) {
+          const y = d.condMean - 3.2 * d.condSd + (i / 60) * 6.4 * d.condSd;
+          const dens = clNormPdf(y, d.condMean, d.condSd);
+          pts.push([px + dens * scale * CE_PAR.sdY, sy(y)]);
+        }
+        let path = 'M' + px.toFixed(1) + ',' + sy(d.condMean - 3.2 * d.condSd).toFixed(1);
+        for (const [xx, yy] of pts) path += 'L' + xx.toFixed(1) + ',' + yy.toFixed(1);
+        path += 'L' + px.toFixed(1) + ',' + sy(d.condMean + 3.2 * d.condSd).toFixed(1) + 'Z';
+        violin.setAttribute('d', path);
+        violin.style.display = '';
+      } else {
+        violin.style.display = 'none';
+      }
+
+      sliceLine.setAttribute('x1', px); sliceLine.setAttribute('x2', px);
+      sliceLine.setAttribute('y1', frame.bottom); sliceLine.setAttribute('y2', frame.top);
+      guessDot.setAttribute('cx', px); guessDot.setAttribute('cy', sy(d.condMean));
+      const left = px > (frame.left + frame.right) * 0.62;
+      guessTag.setAttribute('text-anchor', left ? 'end' : 'start');
+      guessTag.setAttribute('x', px + (left ? -9 : 9));
+      guessTag.setAttribute('y', sy(d.condMean) - 9);
+      guessTag.textContent = 'E[Y|x] = ' + clFmt(d.condMean, 'num');
+
+      gGhosts.innerHTML = '';
+      for (const g of st.ghosts) {
+        if (g.slope === undefined) continue;
+        const gl = (xx) => CE_PAR.muY + g.slope * (xx - CE_PAR.muX);
+        const gp = svgEl('path', {}, 'cl-ghost-curve');
+        gp.setAttribute('d', clPathFrom([[sx(xLo), sy(gl(xLo))], [sx(xHi), sy(gl(xHi))]]));
+        gGhosts.appendChild(gp);
+      }
+    },
+    snapshot(st, d) {
+      return { label: 'ρ=' + clFmt(st.values.rho, 'num2'), slope: d.slope };
+    },
+  };
+}
+
+// --- Correlation: the morphing cloud and the total's spread ----------------
+
+function buildCorrScenes(stageRow, ctx) {
+  const { linkRoot } = ctx;
+  const s1 = buildScene(stageRow, 'Years Of Two Lines', [
+    { label: 'Line A vs Line B', color: 'var(--px-text-secondary)', link: 'cloud' },
+  ], linkRoot);
+  const s2 = buildScene(stageRow, 'What The Total Does', [
+    { label: 'In Lockstep', color: 'var(--px-text-faint)', link: 'lockstep' },
+    { label: 'If Independent', color: 'var(--cl-ink-1)', link: 'indep' },
+    { label: 'Actual σ(A+B)', color: 'var(--px-accent)', link: 'sum' },
+  ], linkRoot);
+
+  const axes1 = createAxes(s1.svg, { xFmt: (v) => clFmt(v, 'num'), yFmt: (v) => clFmt(v, 'num') });
+  const gDots = svgEl('g'); gDots.dataset.clLink = 'cloud'; s1.svg.appendChild(gDots);
+
+  const baseZ = [];
+  {
+    const rng = clMulberry32(21);
+    for (let i = 0; i < 220; i++) baseZ.push([clRandNormal(rng), clRandNormal(rng)]);
+  }
+  for (let i = 0; i < baseZ.length; i++) {
+    gDots.appendChild(svgEl('circle', { r: 2.5, fill: 'var(--px-text-secondary)', opacity: 0.55 }, 'cl-dot'));
+  }
+
+  const rows = [
+    { key: 'lockstep', fill: 'var(--px-text-faint)', label: 'In Lockstep (ρ = 1)', cls: 'cl-bar cl-bar--cmp' },
+    { key: 'indep', fill: 'var(--cl-ink-1)', label: 'If Independent (ρ = 0)', cls: 'cl-bar' },
+    { key: 'sum', fill: 'var(--px-accent)', label: 'Actual', cls: 'cl-bar' },
+  ].map((r) => {
+    const bar = svgEl('rect', { rx: 2, fill: r.fill }, r.cls);
+    bar.dataset.clLink = r.key;
+    const name = svgEl('text', { 'text-anchor': 'start' }, 'cl-svg-tag');
+    const val = svgEl('text', { 'text-anchor': 'start' }, 'cl-svg-value');
+    s2.svg.appendChild(bar); s2.svg.appendChild(name); s2.svg.appendChild(val);
+    return { ...r, bar, name, val };
+  });
+  const benefitTag = svgEl('text', { 'text-anchor': 'middle', fill: 'var(--px-accent)' }, 'cl-svg-value');
+  benefitTag.dataset.clLink = 'sum';
+  const benefitSub = svgEl('text', { 'text-anchor': 'middle' }, 'cl-svg-tag');
+  s2.svg.appendChild(benefitTag); s2.svg.appendChild(benefitSub);
+
+  return {
+    update(st, d) {
+      const v = st.values;
+
+      // ── Cloud ──
+      const w1 = s1.wrap.clientWidth || 420, h1 = s1.wrap.clientHeight || 280;
+      s1.svg.setAttribute('width', w1); s1.svg.setAttribute('height', h1);
+      const f1 = { left: 40, top: 14, right: w1 - 14, bottom: h1 - 26 };
+      const span = Math.max(v.s1, v.s2) * 3.2;
+      const sx1 = clScale(-span, span, f1.left, f1.right);
+      const sy1 = clScale(-span, span, f1.bottom, f1.top);
+      axes1.update(sx1, sy1, f1);
+      const c = Math.sqrt(Math.max(0, 1 - v.rho * v.rho));
+      for (let i = 0; i < baseZ.length; i++) {
+        const [z1, z2] = baseZ[i];
+        const dot = gDots.children[i];
+        dot.setAttribute('cx', sx1(v.s1 * z1));
+        dot.setAttribute('cy', sy1(v.s2 * (v.rho * z1 + c * z2)));
+      }
+
+      // ── Spread ladder ──
+      const w2 = s2.wrap.clientWidth || 420, h2 = s2.wrap.clientHeight || 280;
+      s2.svg.setAttribute('width', w2); s2.svg.setAttribute('height', h2);
+      const left = 20, right = w2 - 24;
+      const sw = clScale(0, Math.max(d.sdPerfect * 1.08, 1e-9), 0, right - left);
+      const vals = { lockstep: d.sdPerfect, indep: d.sdIndep, sum: d.sdSum };
+      rows.forEach((r, i) => {
+        const y = 34 + i * 52;
+        r.name.setAttribute('x', left); r.name.setAttribute('y', y - 6);
+        r.name.textContent = r.label;
+        r.bar.setAttribute('x', left); r.bar.setAttribute('y', y);
+        r.bar.setAttribute('height', 16);
+        r.bar.setAttribute('width', Math.max(1, sw(vals[r.key])));
+        r.val.setAttribute('x', left + Math.max(1, sw(vals[r.key])) + 8);
+        r.val.setAttribute('y', y + 12.5);
+        r.val.textContent = clFmt(vals[r.key], 'num2');
+      });
+      benefitTag.setAttribute('x', w2 / 2); benefitTag.setAttribute('y', 34 + 3 * 52 + 6);
+      benefitTag.textContent = 'Diversification Benefit ' + clFmt(d.benefit, 'pct');
+      benefitSub.setAttribute('x', w2 / 2); benefitSub.setAttribute('y', 34 + 3 * 52 + 22);
+      benefitSub.textContent = 'The share of lockstep risk that aggregation forgives';
+    },
+    snapshot(st, d) {
+      return { label: 'ρ=' + clFmt(st.values.rho, 'num2'), sdSum: d.sdSum };
+    },
+  };
+}
+
+// --- Process fan: paths, the collapse at today, and the endpoint fan -------
+
+function buildProcessFanScenes(stageRow, ctx) {
+  const { linkRoot, animator } = ctx;
+  const { wrap, svg } = buildScene(stageRow, 'One Accident Year, Growing Toward Its Ultimate', [
+    { label: 'Possible Lives', color: 'var(--px-text-faint)', link: 'lives' },
+    { label: 'Consistent With Today', color: 'var(--px-accent)', link: 'fan' },
+    { label: 'Observed', color: 'var(--px-accent)', link: 'today' },
+    { label: 'Expected Pattern', color: 'var(--cl-ink-1)', dashed: true, link: 'spine' },
+  ], linkRoot);
+  const axes = createAxes(svg, {
+    xFmt: (v) => (Number.isInteger(v) && v >= 0 && v <= 10 ? 'age ' + v : ''),
+    yFmt: (v) => clFmt(v, 'num'),
+    xTicks: 10,
+  });
+
+  const gUncond = svgEl('g'); gUncond.dataset.clLink = 'lives'; svg.appendChild(gUncond);
+  const gCond = svgEl('g'); gCond.dataset.clLink = 'fan'; svg.appendChild(gCond);
+  const gGhosts = svgEl('g'); svg.appendChild(gGhosts);
+  const spinePath = svgEl('path', { stroke: 'var(--cl-ink-1)' }, 'cl-curve cl-ref');
+  spinePath.dataset.clLink = 'spine';
+  const gHist = svgEl('g'); gHist.dataset.clLink = 'fan'; svg.appendChild(gHist);
+  const obsPath = svgEl('path', { stroke: 'var(--px-accent)', 'stroke-width': 2.5 }, 'cl-curve');
+  obsPath.dataset.clLink = 'today';
+  const todayLine = svgEl('line', {}, 'cl-marker-line');
+  todayLine.dataset.clLink = 'today';
+  const obsDot = svgEl('circle', { r: 5.5, fill: 'var(--px-accent)', stroke: 'var(--px-bg)', 'stroke-width': 1.5 }, 'cl-dot');
+  obsDot.dataset.clLink = 'today';
+  const clMark = svgEl('line', { stroke: 'var(--px-accent)', 'stroke-width': 2 });
+  clMark.dataset.clLink = 'ult';
+  const clTag = svgEl('text', { 'text-anchor': 'end', fill: 'var(--px-accent)' }, 'cl-svg-value');
+  clTag.dataset.clLink = 'ult';
+  const todayTag = svgEl('text', { 'text-anchor': 'middle' }, 'cl-svg-tag');
+  svg.appendChild(spinePath); svg.appendChild(obsPath); svg.appendChild(todayLine);
+  svg.appendChild(obsDot); svg.appendChild(clMark); svg.appendChild(clTag); svg.appendChild(todayTag);
+
+  const makeFanPaths = (g, n, stroke, opacity, width) => {
+    while (g.children.length < n) g.appendChild(svgEl('path', { stroke, opacity, 'stroke-width': width, fill: 'none', 'stroke-linecap': 'round' }));
+    while (g.children.length > n) g.lastChild.remove();
+  };
+
+  let sim = null;
+  let simKey = '';
+  const domY = animator.smooth(160, 120);
+  let lastFrame = null;
+  let dragMode = null;
+
+  clDragOnSvg(svg, (e) => {
+    if (!lastFrame) return;
+    const { sx, sy } = lastFrame;
+    const pt = clSvgPoint(svg, e);
+    const st = ctx.getState();
+    if (e.type === 'pointerdown') {
+      dragMode = Math.abs(pt.x - sx(st.values.k)) < 26 ? 'cObs' : 'k';
+    }
+    if (dragMode === 'cObs') {
+      const Ek = clDevExpected(st.values.k);
+      const r = st.ranges.cObs;
+      ctx.setParam('cObs', Math.max(r.min, Math.min(r.max, sy.invert(pt.y) / Ek)));
+    } else {
+      const r = st.ranges.k;
+      const v = Math.max(r.min, Math.min(r.max, Math.round(sx.invert(pt.x))));
+      if (v !== st.values.k) ctx.setParam('k', v);
+    }
+  });
+
+  return {
+    update(st, d) {
+      const v = st.values;
+      const key = v.sigma + '|' + v.k;
+      if (key !== simKey) {
+        simKey = key;
+        sim = clDevPaths({ sigma: v.sigma, kObs: v.k, nVis: 34, nSim: 700, seed: 33 });
+      }
+
+      const w = wrap.clientWidth || 640, h = wrap.clientHeight || 300;
+      svg.setAttribute('width', w); svg.setAttribute('height', h);
+      const frame = { left: 48, top: 14, right: w - 16, bottom: h - 26 };
+
+      let endMax = 0;
+      for (const x of sim.endpoints) endMax = Math.max(endMax, x);
+      const yTarget = Math.max(PF.ult * 1.25, endMax * v.cObs * 1.05, d.ultCl * 1.15);
+      if (st.fresh) domY.snap(yTarget); else domY.target = yTarget;
+      const histW = Math.min(70, (frame.right - frame.left) * 0.12);
+      const sx = clScale(0, PF.ages, frame.left, frame.right - histW - 8);
+      const sy = clScale(0, domY.current, frame.bottom, frame.top);
+      lastFrame = { sx, sy, frame };
+      axes.update(sx, sy, frame);
+
+      spinePath.setAttribute('d', clPathFrom(sim.expected.map((e, a) => [sx(a), sy(e)])));
+
+      makeFanPaths(gUncond, sim.visUncond.length, 'var(--px-text-faint)', 0.3, 1);
+      sim.visUncond.forEach((path, i) => {
+        gUncond.children[i].setAttribute('d', clPathFrom(path.map((val, a) => [sx(a), sy(Math.min(val, domY.current * 1.05))])));
+      });
+
+      makeFanPaths(gCond, sim.visCond.length, 'var(--px-accent)', 0.2, 1.2);
+      sim.visCond.forEach((path, i) => {
+        gCond.children[i].setAttribute('d', clPathFrom(path.map((val, a) => [sx(v.k + a), sy(Math.min(val * v.cObs, domY.current * 1.05))])));
+      });
+
+      const histPts = sim.hist.map((val, a) => [sx(a), sy(val * v.cObs)]);
+      obsPath.setAttribute('d', clPathFrom(histPts));
+      todayLine.setAttribute('x1', sx(v.k)); todayLine.setAttribute('x2', sx(v.k));
+      todayLine.setAttribute('y1', frame.bottom); todayLine.setAttribute('y2', frame.top);
+      obsDot.setAttribute('cx', sx(v.k)); obsDot.setAttribute('cy', sy(d.obsC));
+      todayTag.setAttribute('x', sx(v.k)); todayTag.setAttribute('y', frame.top + 10);
+      todayTag.textContent = 'today';
+
+      // Endpoint histogram on the right margin: the reserve distribution.
+      const bins = 26;
+      const counts = new Array(bins).fill(0);
+      const yMaxDom = domY.current;
+      for (const x of sim.endpoints) {
+        const val = x * v.cObs;
+        if (val >= yMaxDom) continue;
+        counts[Math.floor((val / yMaxDom) * bins)]++;
+      }
+      let cMax = 1;
+      for (const c of counts) cMax = Math.max(cMax, c);
+      const x0 = frame.right - histW;
+      while (gHist.children.length < bins) gHist.appendChild(svgEl('rect', { rx: 1, fill: 'var(--px-accent)' }, 'cl-bar'));
+      while (gHist.children.length > bins) gHist.lastChild.remove();
+      const binH = (frame.bottom - frame.top) / bins;
+      for (let b = 0; b < bins; b++) {
+        const r = gHist.children[b];
+        const bw = (counts[b] / cMax) * histW;
+        r.setAttribute('x', x0);
+        r.setAttribute('y', sy((b + 1) * (yMaxDom / bins)));
+        r.setAttribute('width', Math.max(0, bw));
+        r.setAttribute('height', Math.max(0.5, binH - 1));
+      }
+      clMark.setAttribute('x1', x0); clMark.setAttribute('x2', frame.right);
+      clMark.setAttribute('y1', sy(d.ultCl)); clMark.setAttribute('y2', sy(d.ultCl));
+      clTag.setAttribute('x', frame.right); clTag.setAttribute('y', sy(d.ultCl) - 6);
+      clTag.textContent = 'Û = ' + clFmt(d.ultCl, 'num');
+
+      gGhosts.innerHTML = '';
+      for (const g of st.ghosts) {
+        if (!g.meanPath) continue;
+        const gp = svgEl('path', {}, 'cl-ghost-curve');
+        gp.setAttribute('d', clPathFrom(g.meanPath.map(([a, val]) => [sx(a), sy(val)])));
+        gGhosts.appendChild(gp);
+      }
+    },
+    snapshot(st, d) {
+      const v = st.values;
+      const meanPath = [];
+      for (let a = v.k; a <= PF.ages; a++) {
+        meanPath.push([a, d.obsC * (clDevExpected(a) / clDevExpected(v.k))]);
+      }
+      return { label: 'k=' + v.k + ' σ=' + clFmt(v.sigma, 'num2'), meanPath };
+    },
+  };
+}
+
+// --- Likelihood: the votes and the surface ---------------------------------
+
+function buildLikelihoodScenes(stageRow, ctx) {
+  const { linkRoot, animator } = ctx;
+  const s1 = buildScene(stageRow, 'The Votes: Density At Each Observed Loss', [
+    { label: 'Candidate Density', color: 'var(--px-accent)', link: 'cand' },
+    { label: 'Votes', color: 'var(--cl-ink-5)', link: 'votes' },
+    { label: 'The MLE Density', color: 'var(--cl-ink-1)', dashed: true, link: 'mle' },
+  ], linkRoot);
+  const s2 = buildScene(stageRow, 'The Surface: ℓ Over Every Candidate', [
+    { label: 'Higher ℓ', color: 'var(--px-accent)', link: 'cand' },
+    { label: 'The Peak', color: 'var(--cl-ink-1)', link: 'mle' },
+  ], linkRoot);
+
+  const head2 = s2.scene.querySelector('.cl-scene-head');
+  const btnMle = document.createElement('button');
+  btnMle.className = 'cl-scene-btn';
+  btnMle.innerHTML = clIcon('target', 12) + '<span>Find MLE</span>';
+  head2.appendChild(btnMle);
+
+  const axes1 = createAxes(s1.svg, { xFmt: (v) => clFmt(v, 'num'), yTicks: 0, yFmt: () => '' });
+  const gGhosts = svgEl('g'); s1.svg.appendChild(gGhosts);
+  const gVotes = svgEl('g'); gVotes.dataset.clLink = 'votes'; s1.svg.appendChild(gVotes);
+  const mlePath = svgEl('path', { stroke: 'var(--cl-ink-1)' }, 'cl-curve cl-ref');
+  mlePath.dataset.clLink = 'mle';
+  const candPath = svgEl('path', { stroke: 'var(--px-accent)' }, 'cl-curve');
+  candPath.dataset.clLink = 'cand';
+  const gData = svgEl('g'); s1.svg.appendChild(mlePath); s1.svg.appendChild(candPath); s1.svg.appendChild(gData);
+  for (const x of LS_DATA) {
+    const dot = svgEl('circle', { r: 3, fill: 'var(--px-text-secondary)' }, 'cl-dot');
+    gData.appendChild(dot);
+  }
+  for (let i = 0; i < LS_DATA.length; i++) {
+    gVotes.appendChild(svgEl('line', { stroke: 'var(--cl-ink-5)', 'stroke-width': 2, opacity: 0.8 }));
+  }
+
+  // The surface is static (the data never changes) — paint the heatmap once.
+  const GRID_W = 40, GRID_H = 30;
+  const MU_LO = 1.5, MU_HI = 3, SG_LO = 0.2, SG_HI = 1.4;
+  const llMax = clLognLoglik(LS_DATA, LS_MLE.mu, LS_MLE.sigma);
+  const gHeat = svgEl('g'); s2.svg.appendChild(gHeat);
+  const heatCells = [];
+  for (let iy = 0; iy < GRID_H; iy++) {
+    for (let ix = 0; ix < GRID_W; ix++) {
+      const mu = MU_LO + ((ix + 0.5) / GRID_W) * (MU_HI - MU_LO);
+      const sg = SG_LO + ((iy + 0.5) / GRID_H) * (SG_HI - SG_LO);
+      const gap = llMax - clLognLoglik(LS_DATA, mu, sg);
+      const cell = svgEl('rect', { fill: 'var(--px-accent)', opacity: (0.88 * Math.exp(-gap / 6)).toFixed(3) });
+      gHeat.appendChild(cell);
+      heatCells.push(cell);
+    }
+  }
+  const mleStar = svgEl('circle', { r: 4, fill: 'var(--cl-ink-1)', stroke: 'var(--px-bg)', 'stroke-width': 1.5 }, 'cl-dot');
+  mleStar.dataset.clLink = 'mle';
+  const candDot = svgEl('circle', { r: 5.5, fill: 'var(--px-accent)', stroke: 'var(--px-bg)', 'stroke-width': 1.5 }, 'cl-dot');
+  candDot.dataset.clLink = 'cand';
+  const gGhostDots = svgEl('g'); s2.svg.appendChild(gGhostDots);
+  const muTag = svgEl('text', { 'text-anchor': 'middle' }, 'cl-svg-tag');
+  const sgTag = svgEl('text', { 'text-anchor': 'middle', transform: '' }, 'cl-svg-tag');
+  s2.svg.appendChild(mleStar); s2.svg.appendChild(candDot);
+  s2.svg.appendChild(muTag); s2.svg.appendChild(sgTag);
+
+  let frame2 = null;
+  clDragOnSvg(s2.svg, (e) => {
+    if (!frame2) return;
+    const pt = clSvgPoint(s2.svg, e);
+    const st = ctx.getState();
+    const mu = frame2.sMu.invert(pt.x);
+    const sg = frame2.sSg.invert(pt.y);
+    animator.cancel('mle-ride');
+    ctx.setParam('mu', Math.max(MU_LO, Math.min(MU_HI, mu)));
+    ctx.setParam('sigma', Math.max(SG_LO, Math.min(SG_HI, sg)));
+  });
+  btnMle.addEventListener('click', () => {
+    const st = ctx.getState();
+    const mu0 = st.values.mu, sg0 = st.values.sigma;
+    animator.tween('mle-ride', 0, 1, clMotion().slow + 200, (t) => {
+      ctx.setParam('mu', mu0 + (LS_MLE.mu - mu0) * t);
+      ctx.setParam('sigma', sg0 + (LS_MLE.sigma - sg0) * t);
+    });
+  });
+
+  return {
+    update(st, d) {
+      const v = st.values;
+
+      // ── Votes panel ──
+      const w1 = s1.wrap.clientWidth || 420, h1 = s1.wrap.clientHeight || 280;
+      s1.svg.setAttribute('width', w1); s1.svg.setAttribute('height', h1);
+      const f1 = { left: 34, top: 16, right: w1 - 14, bottom: h1 - 26 };
+      const xEnd = 42;
+      const sx1 = clScale(0, xEnd, f1.left, f1.right);
+      const N = 150;
+      let pMax = 0;
+      const cand = [], mle = [];
+      for (let i = 0; i <= N; i++) {
+        const x = (i / N) * xEnd;
+        const yc = clLognPdf(x, v.mu, v.sigma);
+        const ym = clLognPdf(x, LS_MLE.mu, LS_MLE.sigma);
+        cand.push([x, yc]); mle.push([x, ym]);
+        pMax = Math.max(pMax, yc, ym);
+      }
+      const sy1 = clScale(0, pMax * 1.12, f1.bottom, f1.top);
+      axes1.update(sx1, sy1, f1);
+      candPath.setAttribute('d', clPathFrom(cand.map(([x, y]) => [sx1(x), sy1(y)])));
+      mlePath.setAttribute('d', clPathFrom(mle.map(([x, y]) => [sx1(x), sy1(y)])));
+      LS_DATA.forEach((x, i) => {
+        gData.children[i].setAttribute('cx', sx1(x));
+        gData.children[i].setAttribute('cy', f1.bottom);
+        const vote = gVotes.children[i];
+        vote.setAttribute('x1', sx1(x)); vote.setAttribute('x2', sx1(x));
+        vote.setAttribute('y1', f1.bottom);
+        vote.setAttribute('y2', sy1(clLognPdf(x, v.mu, v.sigma)));
+      });
+      gGhosts.innerHTML = '';
+      for (const g of st.ghosts) {
+        if (g.mu === undefined) continue;
+        const pts = [];
+        for (let i = 0; i <= N; i++) {
+          const x = (i / N) * xEnd;
+          pts.push([sx1(x), sy1(clLognPdf(x, g.mu, g.sigma))]);
+        }
+        const gp = svgEl('path', {}, 'cl-ghost-curve');
+        gp.setAttribute('d', clPathFrom(pts));
+        gGhosts.appendChild(gp);
+      }
+
+      // ── Surface panel ──
+      const w2 = s2.wrap.clientWidth || 420, h2 = s2.wrap.clientHeight || 280;
+      s2.svg.setAttribute('width', w2); s2.svg.setAttribute('height', h2);
+      const f2 = { left: 34, top: 16, right: w2 - 14, bottom: h2 - 30 };
+      const sMu = clScale(MU_LO, MU_HI, f2.left, f2.right);
+      const sSg = clScale(SG_LO, SG_HI, f2.bottom, f2.top);
+      frame2 = { sMu, sSg };
+      const cw = (f2.right - f2.left) / GRID_W;
+      const ch = (f2.bottom - f2.top) / GRID_H;
+      for (let iy = 0; iy < GRID_H; iy++) {
+        for (let ix = 0; ix < GRID_W; ix++) {
+          const cell = heatCells[iy * GRID_W + ix];
+          cell.setAttribute('x', f2.left + ix * cw);
+          cell.setAttribute('y', f2.bottom - (iy + 1) * ch);
+          cell.setAttribute('width', cw + 0.5);
+          cell.setAttribute('height', ch + 0.5);
+        }
+      }
+      mleStar.setAttribute('cx', sMu(LS_MLE.mu)); mleStar.setAttribute('cy', sSg(LS_MLE.sigma));
+      candDot.setAttribute('cx', sMu(v.mu)); candDot.setAttribute('cy', sSg(v.sigma));
+      muTag.setAttribute('x', (f2.left + f2.right) / 2); muTag.setAttribute('y', h2 - 8);
+      muTag.textContent = 'μ →';
+      sgTag.setAttribute('x', f2.left - 18); sgTag.setAttribute('y', (f2.top + f2.bottom) / 2);
+      sgTag.setAttribute('transform', `rotate(-90 ${f2.left - 18} ${(f2.top + f2.bottom) / 2})`);
+      sgTag.textContent = 'σ →';
+      gGhostDots.innerHTML = '';
+      for (const g of st.ghosts) {
+        if (g.mu === undefined) continue;
+        const dot = svgEl('circle', { r: 3, fill: 'none', stroke: 'var(--px-text-faint)', 'stroke-width': 1.5 });
+        dot.setAttribute('cx', sMu(g.mu)); dot.setAttribute('cy', sSg(g.sigma));
+        gGhostDots.appendChild(dot);
+      }
+    },
+    snapshot(st) {
+      return { label: 'μ=' + clFmt(st.values.mu, 'num2') + ' σ=' + clFmt(st.values.sigma, 'num2'), mu: st.values.mu, sigma: st.values.sigma };
+    },
+  };
+}
+
+// --- Sampling error: the estimator histogram and the two bands -------------
+
+function buildSamplingScenes(stageRow, ctx) {
+  const { linkRoot, animator } = ctx;
+  const s1 = buildScene(stageRow, 'The Estimates Scatter', [
+    { label: 'Estimates x̄', color: 'var(--px-accent)', link: 'param' },
+    { label: 'Theory: Normal(μ, σ/√n)', color: 'var(--cl-ink-1)', dashed: true, link: 'param' },
+    { label: 'The Truth', color: 'var(--cl-ink-4)', dashed: true, link: 'truth' },
+  ], linkRoot);
+  const s2 = buildScene(stageRow, 'Two Risks, Added In Quadrature', [
+    { label: 'Process σ', color: 'var(--cl-ink-1)', link: 'process' },
+    { label: 'Parameter σ/√n', color: 'var(--cl-ink-5)', link: 'param' },
+    { label: 'Total', color: 'var(--px-accent)', link: 'total' },
+  ], linkRoot);
+
+  const TRUTH = 100;
+  const axes1 = createAxes(s1.svg, { xFmt: (v) => clFmt(v, 'num'), yTicks: 0, yFmt: () => '' });
+  const bars = makeBarPool(s1.svg, 'cl-bar');
+  bars.g.dataset.clLink = 'param';
+  const theoryPath = svgEl('path', { stroke: 'var(--cl-ink-1)' }, 'cl-curve cl-ref');
+  theoryPath.dataset.clLink = 'param';
+  const truthLine = svgEl('line', { stroke: 'var(--cl-ink-4)' }, 'cl-curve cl-ref');
+  truthLine.dataset.clLink = 'truth';
+  const nTag = svgEl('text', { 'text-anchor': 'end' }, 'cl-svg-value');
+  const lastRow = svgEl('g');
+  s1.svg.appendChild(theoryPath); s1.svg.appendChild(truthLine); s1.svg.appendChild(nTag); s1.svg.appendChild(lastRow);
+
+  const rows = [
+    { key: 'process', fill: 'var(--cl-ink-1)', label: 'Process σ (Irreducible)' },
+    { key: 'param', fill: 'var(--cl-ink-5)', label: 'Parameter σ/√n (Estimation)' },
+    { key: 'total', fill: 'var(--px-accent)', label: 'Total Prediction Risk' },
+  ].map((r) => {
+    const bar = svgEl('rect', { rx: 2, fill: r.fill }, 'cl-bar');
+    bar.dataset.clLink = r.key;
+    const name = svgEl('text', { 'text-anchor': 'start' }, 'cl-svg-tag');
+    const val = svgEl('text', { 'text-anchor': 'start' }, 'cl-svg-value');
+    s2.svg.appendChild(bar); s2.svg.appendChild(name); s2.svg.appendChild(val);
+    return { ...r, bar, name, val };
+  });
+  const shareTag = svgEl('text', { 'text-anchor': 'middle', fill: 'var(--px-accent)' }, 'cl-svg-value');
+  const shareSub = svgEl('text', { 'text-anchor': 'middle' }, 'cl-svg-tag');
+  s2.svg.appendChild(shareTag); s2.svg.appendChild(shareSub);
+
+  const TARGET = 2500;
+  let estimates = [];
+  let lastData = [];
+  let rng = clMulberry32(17);
+  let simKey = '';
+
+  function reset() {
+    const v = ctx.getState().values;
+    estimates = [];
+    lastData = [];
+    rng = clMulberry32(17);
+    simKey = v.n + '|' + v.sigma;
+    animator.loop('samp', runChunk);
+  }
+  function runChunk() {
+    const v = ctx.getState().values;
+    if (estimates.length >= TARGET) { animator.stopLoop('samp'); return; }
+    const batch = Math.min(30, TARGET - estimates.length);
+    for (let b = 0; b < batch; b++) {
+      let s = 0;
+      const pts = [];
+      for (let i = 0; i < v.n; i++) {
+        const x = TRUTH + v.sigma * clRandNormal(rng);
+        s += x;
+        if (b === batch - 1) pts.push(x);
+      }
+      estimates.push(s / v.n);
+      if (b === batch - 1) lastData = pts;
+    }
+  }
+  reset();
+
+  return {
+    update(st, d) {
+      const v = st.values;
+      if (v.n + '|' + v.sigma !== simKey) reset();
+
+      // ── Histogram of estimates ──
+      const w1 = s1.wrap.clientWidth || 420, h1 = s1.wrap.clientHeight || 280;
+      s1.svg.setAttribute('width', w1); s1.svg.setAttribute('height', h1);
+      const f1 = { left: 34, top: 16, right: w1 - 14, bottom: h1 - 26 };
+      const span = Math.max(3.8 * d.seParam, v.sigma * 1.1);
+      const sx1 = clScale(TRUTH - span, TRUTH + span, f1.left, f1.right);
+      const BINS = 40;
+      const lo = TRUTH - span, binW = (2 * span) / BINS;
+      const counts = new Array(BINS).fill(0);
+      for (const e of estimates) {
+        const b = Math.floor((e - lo) / binW);
+        if (b >= 0 && b < BINS) counts[b]++;
+      }
+      const total = Math.max(1, estimates.length);
+      let hMax = 0.001, oMax = 0;
+      for (const c of counts) hMax = Math.max(hMax, c / total);
+      const overlay = [];
+      for (let i = 0; i <= 140; i++) {
+        const x = lo + (i / 140) * 2 * span;
+        const y = clNormPdf(x, TRUTH, d.seParam) * binW;
+        overlay.push([x, y]);
+        oMax = Math.max(oMax, y);
+      }
+      const sy1 = clScale(0, Math.max(hMax, oMax) * 1.15, f1.bottom, f1.top);
+      axes1.update(sx1, sy1, f1);
+      const bw1 = Math.max(2, (f1.right - f1.left) / BINS - 1.5);
+      bars.set(counts.map((c, i) => ({
+        x: sx1(lo + i * binW) + 0.75, y: sy1(c / total), w: bw1, h: Math.max(0, f1.bottom - sy1(c / total)),
+      })), 'var(--px-accent)');
+      theoryPath.setAttribute('d', clPathFrom(overlay.map(([x, y]) => [sx1(x), sy1(y)])));
+      truthLine.setAttribute('x1', sx1(TRUTH)); truthLine.setAttribute('x2', sx1(TRUTH));
+      truthLine.setAttribute('y1', f1.bottom); truthLine.setAttribute('y2', f1.top + 8);
+      nTag.setAttribute('x', f1.right - 4); nTag.setAttribute('y', f1.top + 12);
+      nTag.textContent = estimates.length.toLocaleString('en-US') + ' worlds';
+
+      // The latest dataset, so "one world" stays concrete.
+      const need = lastData.length;
+      while (lastRow.children.length < need) lastRow.appendChild(svgEl('circle', { r: 2, fill: 'var(--px-text-muted)', opacity: 0.8 }, 'cl-dot'));
+      while (lastRow.children.length > need) lastRow.lastChild.remove();
+      lastData.forEach((x, i) => {
+        const dot = lastRow.children[i];
+        dot.setAttribute('cx', Math.max(f1.left, Math.min(f1.right, sx1(x))));
+        dot.setAttribute('cy', f1.top + 6);
+      });
+
+      // ── Bands ──
+      const w2 = s2.wrap.clientWidth || 420, h2 = s2.wrap.clientHeight || 280;
+      s2.svg.setAttribute('width', w2); s2.svg.setAttribute('height', h2);
+      const left = 20, right = w2 - 24;
+      const sw = clScale(0, Math.max(d.sdTotal * 1.1, 1e-9), 0, right - left);
+      const vals = { process: v.sigma, param: d.seParam, total: d.sdTotal };
+      rows.forEach((r, i) => {
+        const y = 34 + i * 52;
+        r.name.setAttribute('x', left); r.name.setAttribute('y', y - 6);
+        r.name.textContent = r.label;
+        r.bar.setAttribute('x', left); r.bar.setAttribute('y', y);
+        r.bar.setAttribute('height', 16);
+        r.bar.setAttribute('width', Math.max(1, sw(vals[r.key])));
+        r.val.setAttribute('x', left + Math.max(1, sw(vals[r.key])) + 8);
+        r.val.setAttribute('y', y + 12.5);
+        r.val.textContent = clFmt(vals[r.key], 'num2');
+      });
+      shareTag.setAttribute('x', w2 / 2); shareTag.setAttribute('y', 34 + 3 * 52 + 6);
+      shareTag.textContent = 'Estimation Owns ' + clFmt(d.shareParam, 'pct') + ' Of Total Variance';
+      shareSub.setAttribute('x', w2 / 2); shareSub.setAttribute('y', 34 + 3 * 52 + 22);
+      shareSub.textContent = 'Mack calls these the process and estimation terms of the mse';
+    },
+    snapshot(st, d) {
+      return { label: 'n=' + st.values.n, seParam: d.seParam };
+    },
+  };
+}
+
+// --- Shrinkage: the twelve classes and the error valley --------------------
+
+function buildShrinkScenes(stageRow, ctx) {
+  const { linkRoot, animator } = ctx;
+  const s1 = buildScene(stageRow, 'Twelve Classes, Shrunk Toward The Crowd', [
+    { label: 'True Class Mean', color: 'var(--cl-ink-1)', link: 'spread' },
+    { label: 'Raw Estimate', color: 'var(--px-text-faint)', link: 'noise' },
+    { label: 'Shrunk By Z', color: 'var(--px-accent)', link: 'z' },
+  ], linkRoot);
+  const s2 = buildScene(stageRow, 'The Error Valley', [
+    { label: 'rmse(Z)', color: 'var(--px-accent)', link: 'z' },
+    { label: 'Z*', color: 'var(--cl-ink-1)', dashed: true, link: 'zstar' },
+  ], linkRoot);
+
+  const M = 100;
+  const pairs = clShrinkClasses(12, 29);
+  const axes1 = createAxes(s1.svg, { xFmt: (v) => clFmt(v, 'num'), yTicks: 0, yFmt: () => '' });
+  const grandLine = svgEl('line', { stroke: 'var(--px-text-muted)' }, 'cl-curve cl-ref');
+  s1.svg.appendChild(grandLine);
+  const rows = pairs.map(() => {
+    const link = svgEl('line', { stroke: 'var(--px-text-faint)', 'stroke-width': 1, opacity: 0.7 });
+    const truth = svgEl('circle', { r: 3, fill: 'var(--cl-ink-1)' }, 'cl-dot');
+    truth.dataset.clLink = 'spread';
+    const raw = svgEl('circle', { r: 3.5, fill: 'none', stroke: 'var(--px-text-faint)', 'stroke-width': 1.5 }, 'cl-dot');
+    raw.dataset.clLink = 'noise';
+    const shrunk = svgEl('circle', { r: 4, fill: 'var(--px-accent)' }, 'cl-dot');
+    shrunk.dataset.clLink = 'z';
+    s1.svg.appendChild(link); s1.svg.appendChild(truth); s1.svg.appendChild(raw); s1.svg.appendChild(shrunk);
+    return { link, truth, raw, shrunk };
+  });
+  const grandTag = svgEl('text', { 'text-anchor': 'middle' }, 'cl-svg-tag');
+  s1.svg.appendChild(grandTag);
+
+  const axes2 = createAxes(s2.svg, { xFmt: (v) => clFmt(v, 'num2'), yFmt: (v) => clFmt(v, 'num') });
+  const gGhosts = svgEl('g'); s2.svg.appendChild(gGhosts);
+  const errPath = svgEl('path', { stroke: 'var(--px-accent)' }, 'cl-curve');
+  errPath.dataset.clLink = 'z';
+  const zStarLine = svgEl('line', { stroke: 'var(--cl-ink-1)' }, 'cl-curve cl-ref');
+  zStarLine.dataset.clLink = 'zstar';
+  const zDot = svgEl('circle', { r: 5.5, fill: 'var(--px-accent)', stroke: 'var(--px-bg)', 'stroke-width': 1.5 }, 'cl-dot');
+  zDot.dataset.clLink = 'z';
+  const zStarTag = svgEl('text', { 'text-anchor': 'middle', fill: 'var(--cl-ink-1)' }, 'cl-svg-tag');
+  zStarTag.dataset.clLink = 'zstar';
+  s2.svg.appendChild(errPath); s2.svg.appendChild(zStarLine); s2.svg.appendChild(zDot); s2.svg.appendChild(zStarTag);
+
+  let frame2 = null;
+  clDragOnSvg(s2.svg, (e) => {
+    if (!frame2) return;
+    const z = frame2.sx.invert(clSvgPoint(s2.svg, e).x);
+    ctx.setParam('Z', Math.max(0, Math.min(1, z)));
+  });
+
+  return {
+    update(st, d) {
+      const v = st.values;
+
+      // ── Classes panel ──
+      const w1 = s1.wrap.clientWidth || 420, h1 = s1.wrap.clientHeight || 280;
+      s1.svg.setAttribute('width', w1); s1.svg.setAttribute('height', h1);
+      const f1 = { left: 30, top: 20, right: w1 - 14, bottom: h1 - 26 };
+      const span = 3 * Math.sqrt(v.tau * v.tau + v.s * v.s);
+      const sx1 = clScale(M - span, M + span, f1.left, f1.right);
+      const sy1 = clScale(0, 1, f1.bottom, f1.top);
+      axes1.update(sx1, sy1, f1);
+      grandLine.setAttribute('x1', sx1(M)); grandLine.setAttribute('x2', sx1(M));
+      grandLine.setAttribute('y1', f1.bottom); grandLine.setAttribute('y2', f1.top + 12);
+      grandTag.setAttribute('x', sx1(M)); grandTag.setAttribute('y', f1.top + 8);
+      grandTag.textContent = 'grand mean';
+      const rowGap = (f1.bottom - f1.top - 16) / (pairs.length - 1);
+      pairs.forEach(([z1, z2], i) => {
+        const y = f1.top + 14 + i * rowGap;
+        const truth = M + v.tau * z1;
+        const raw = truth + v.s * z2;
+        const shrunk = v.Z * raw + (1 - v.Z) * M;
+        const r = rows[i];
+        r.truth.setAttribute('cx', sx1(truth)); r.truth.setAttribute('cy', y);
+        r.raw.setAttribute('cx', sx1(raw)); r.raw.setAttribute('cy', y);
+        r.shrunk.setAttribute('cx', sx1(shrunk)); r.shrunk.setAttribute('cy', y);
+        r.link.setAttribute('x1', sx1(raw)); r.link.setAttribute('y1', y);
+        r.link.setAttribute('x2', sx1(shrunk)); r.link.setAttribute('y2', y);
+      });
+
+      // ── Valley panel ──
+      const w2 = s2.wrap.clientWidth || 420, h2 = s2.wrap.clientHeight || 280;
+      s2.svg.setAttribute('width', w2); s2.svg.setAttribute('height', h2);
+      const f2 = { left: 40, top: 16, right: w2 - 14, bottom: h2 - 26 };
+      const sx2 = clScale(0, 1, f2.left, f2.right);
+      const yMax = Math.max(v.tau, v.s) * 1.12;
+      const sy2 = clScale(0, yMax, f2.bottom, f2.top);
+      frame2 = { sx: sx2 };
+      axes2.update(sx2, sy2, f2);
+      const pts = [];
+      for (let i = 0; i <= 100; i++) {
+        const z = i / 100;
+        pts.push([sx2(z), sy2(clShrinkErr(z, v.tau, v.s))]);
+      }
+      errPath.setAttribute('d', clPathFrom(pts));
+      zStarLine.setAttribute('x1', sx2(d.zStar)); zStarLine.setAttribute('x2', sx2(d.zStar));
+      zStarLine.setAttribute('y1', f2.bottom); zStarLine.setAttribute('y2', sy2(d.errStar));
+      zStarTag.setAttribute('x', sx2(d.zStar)); zStarTag.setAttribute('y', sy2(d.errStar) - 8);
+      zStarTag.textContent = 'Z* = ' + clFmt(d.zStar, 'num2');
+      zDot.setAttribute('cx', sx2(v.Z)); zDot.setAttribute('cy', sy2(d.errZ));
+
+      gGhosts.innerHTML = '';
+      for (const g of st.ghosts) {
+        if (g.tau === undefined) continue;
+        const gp = svgEl('path', {}, 'cl-ghost-curve');
+        gp.setAttribute('d', clPathFrom(Array.from({ length: 101 }, (_, i) => {
+          const z = i / 100;
+          return [sx2(z), sy2(Math.min(yMax, clShrinkErr(z, g.tau, g.s)))];
+        })));
+        gGhosts.appendChild(gp);
+      }
+    },
+    snapshot(st) {
+      return { label: 'τ=' + st.values.tau + ' s=' + st.values.s, tau: st.values.tau, s: st.values.s };
+    },
+  };
+}
+
+// --- GLM anatomy: the bent mean, the straight eta, the error cloud ---------
+
+function buildGlmScenes(stageRow, ctx) {
+  const { linkRoot, animator } = ctx;
+  const s1 = buildScene(stageRow, 'The Mean, Bent By The Link', [
+    { label: 'μ(x)', color: 'var(--px-accent)', link: 'mean' },
+    { label: 'η (Always Straight)', color: 'var(--cl-ink-1)', link: 'eta' },
+    { label: 'Probe', color: 'var(--cl-ink-5)', link: 'probe' },
+  ], linkRoot);
+  const s2 = buildScene(stageRow, 'The Errors Around The Mean', [
+    { label: 'Simulated Cells', color: 'var(--px-text-secondary)', link: 'cloud' },
+    { label: 'μ ± 2√V(μ)', color: 'var(--px-accent)', link: 'var' },
+  ], linkRoot);
+
+  const axes1 = createAxes(s1.svg, { xFmt: (v) => clFmt(v, 'num'), yFmt: (v) => clFmt(v, 'num'), yTicks: 4 });
+  const gGhosts = svgEl('g'); s1.svg.appendChild(gGhosts);
+  const meanPath = svgEl('path', { stroke: 'var(--px-accent)' }, 'cl-curve');
+  meanPath.dataset.clLink = 'mean';
+  const probeLine1 = svgEl('line', {}, 'cl-marker-line');
+  probeLine1.dataset.clLink = 'probe';
+  const probeDot1 = svgEl('circle', { r: 5, fill: 'var(--px-accent)', stroke: 'var(--px-bg)', 'stroke-width': 1.5 }, 'cl-dot');
+  probeDot1.dataset.clLink = 'probe';
+  const insetSep = svgEl('line', { stroke: 'var(--px-text-faint)', 'stroke-width': 1, opacity: 0.5 });
+  const etaPath = svgEl('path', { stroke: 'var(--cl-ink-1)' }, 'cl-curve');
+  etaPath.dataset.clLink = 'eta';
+  const etaDot = svgEl('circle', { r: 3.5, fill: 'var(--cl-ink-1)' }, 'cl-dot');
+  etaDot.dataset.clLink = 'eta';
+  const etaTag = svgEl('text', { 'text-anchor': 'start' }, 'cl-svg-tag');
+  s1.svg.appendChild(meanPath); s1.svg.appendChild(probeLine1); s1.svg.appendChild(probeDot1);
+  s1.svg.appendChild(insetSep); s1.svg.appendChild(etaPath); s1.svg.appendChild(etaDot); s1.svg.appendChild(etaTag);
+
+  const axes2 = createAxes(s2.svg, { xFmt: (v) => clFmt(v, 'num'), yFmt: (v) => clFmt(v, 'num'), yTicks: 4 });
+  const bandPath = svgEl('path', { fill: 'var(--px-accent)' }, 'cl-band');
+  bandPath.dataset.clLink = 'var';
+  const meanPath2 = svgEl('path', { stroke: 'var(--px-accent)' }, 'cl-curve cl-ref');
+  meanPath2.dataset.clLink = 'var';
+  const gCloud = svgEl('g'); gCloud.dataset.clLink = 'cloud';
+  s2.svg.appendChild(bandPath); s2.svg.appendChild(meanPath2); s2.svg.appendChild(gCloud);
+  const CLOUD_N = 64;
+  for (let i = 0; i < CLOUD_N; i++) {
+    gCloud.appendChild(svgEl('circle', { r: 2.5, fill: 'var(--px-text-secondary)', opacity: 0.6 }, 'cl-dot'));
+  }
+  const probeLine2 = svgEl('line', {}, 'cl-marker-line');
+  probeLine2.dataset.clLink = 'probe';
+  s2.svg.appendChild(probeLine2);
+
+  // The cloud keeps its standardized residuals across β drags (smooth), and
+  // re-rolls only when the error family itself changes.
+  let cloudR = [];
+  let cloudKey = '';
+  function rollCloud(mode, phi, p, b0, b1) {
+    const rng = clMulberry32(53);
+    cloudR = [];
+    const link = mode === 'normal' ? 'identity' : 'log';
+    const power = mode === 'normal' ? 0 : p;
+    for (let i = 0; i < CLOUD_N; i++) {
+      const x = (i / (CLOUD_N - 1)) * 10;
+      const mu = clGlmMu(link, b0, b1, x);
+      const y = clRandTweedie(mu, phi, power, rng);
+      cloudR.push((y - mu) / Math.sqrt(clVarPower(mu, phi, power)));
+    }
+  }
+
+  const dragProbe = (svgNode, getSx) => {
+    clDragOnSvg(svgNode, (e) => {
+      const sx = getSx();
+      if (!sx) return;
+      const st = ctx.getState();
+      const r = st.ranges.x;
+      ctx.setParam('x', Math.max(r.min, Math.min(r.max, sx.invert(clSvgPoint(svgNode, e).x))));
+    });
+  };
+  let sx1Ref = null, sx2Ref = null;
+  dragProbe(s1.svg, () => sx1Ref);
+  dragProbe(s2.svg, () => sx2Ref);
+
+  return {
+    update(st, d) {
+      const v = st.values;
+      const mode = st.mode === 'normal' ? 'normal' : 'tweedie';
+      const link = mode === 'normal' ? 'identity' : 'log';
+      const power = mode === 'normal' ? 0 : v.p;
+      const key = mode + '|' + v.phi + '|' + (mode === 'normal' ? 0 : v.p);
+      if (key !== cloudKey) {
+        cloudKey = key;
+        rollCloud(mode, v.phi, v.p, v.b0, v.b1);
+      }
+
+      const N = 90;
+      const muAt = (x) => clGlmMu(link, v.b0, v.b1, x);
+      let muMax = 0;
+      for (let i = 0; i <= N; i++) muMax = Math.max(muMax, muAt((i / N) * 10));
+      const vMax = clVarPower(muMax, v.phi, power);
+      const yTop = muMax + 2.4 * Math.sqrt(vMax);
+
+      // ── Mean panel with the η inset ──
+      const w1 = s1.wrap.clientWidth || 420, h1 = s1.wrap.clientHeight || 280;
+      s1.svg.setAttribute('width', w1); s1.svg.setAttribute('height', h1);
+      const insetH = Math.max(44, h1 * 0.2);
+      const f1 = { left: 40, top: 14, right: w1 - 14, bottom: h1 - 26 - insetH - 10 };
+      const sx1 = clScale(0, 10, f1.left, f1.right);
+      sx1Ref = sx1;
+      const sy1 = clScale(0, yTop * 1.05, f1.bottom, f1.top);
+      axes1.update(sx1, sy1, f1);
+      meanPath.setAttribute('d', clPathFrom(Array.from({ length: N + 1 }, (_, i) => {
+        const x = (i / N) * 10;
+        return [sx1(x), sy1(muAt(x))];
+      })));
+      probeLine1.setAttribute('x1', sx1(v.x)); probeLine1.setAttribute('x2', sx1(v.x));
+      probeLine1.setAttribute('y1', f1.bottom); probeLine1.setAttribute('y2', f1.top);
+      probeDot1.setAttribute('cx', sx1(v.x)); probeDot1.setAttribute('cy', sy1(d.muProbe));
+
+      const iTop = h1 - 26 - insetH, iBottom = h1 - 26;
+      insetSep.setAttribute('x1', f1.left); insetSep.setAttribute('x2', f1.right);
+      insetSep.setAttribute('y1', iTop - 5); insetSep.setAttribute('y2', iTop - 5);
+      const etaLo = v.b0, etaHi = v.b0 + v.b1 * 10;
+      const pad = Math.max(0.4, Math.abs(etaHi - etaLo) * 0.2);
+      const syEta = clScale(Math.min(etaLo, etaHi) - pad, Math.max(etaLo, etaHi) + pad, iBottom, iTop);
+      etaPath.setAttribute('d', clPathFrom([[sx1(0), syEta(etaLo)], [sx1(10), syEta(etaHi)]]));
+      etaDot.setAttribute('cx', sx1(v.x)); etaDot.setAttribute('cy', syEta(d.eta));
+      etaTag.setAttribute('x', f1.left + 2); etaTag.setAttribute('y', iTop + 10);
+      etaTag.textContent = 'η = β₀ + β₁x (the straight line underneath)';
+
+      gGhosts.innerHTML = '';
+      for (const g of st.ghosts) {
+        if (g.b0 === undefined) continue;
+        const gp = svgEl('path', {}, 'cl-ghost-curve');
+        gp.setAttribute('d', clPathFrom(Array.from({ length: N + 1 }, (_, i) => {
+          const x = (i / N) * 10;
+          return [sx1(x), sy1(Math.min(yTop * 1.05, clGlmMu(g.link, g.b0, g.b1, x)))];
+        })));
+        gGhosts.appendChild(gp);
+      }
+
+      // ── Error panel ──
+      const w2 = s2.wrap.clientWidth || 420, h2 = s2.wrap.clientHeight || 280;
+      s2.svg.setAttribute('width', w2); s2.svg.setAttribute('height', h2);
+      const f2 = { left: 40, top: 14, right: w2 - 14, bottom: h2 - 26 };
+      const sx2 = clScale(0, 10, f2.left, f2.right);
+      sx2Ref = sx2;
+      const sy2 = clScale(0, yTop * 1.05, f2.bottom, f2.top);
+      axes2.update(sx2, sy2, f2);
+
+      let up = '', down = '';
+      for (let i = 0; i <= N; i++) {
+        const x = (i / N) * 10;
+        const mu = muAt(x);
+        const s = 2 * Math.sqrt(clVarPower(mu, v.phi, power));
+        const cmd = i === 0 ? 'M' : 'L';
+        up += cmd + sx2(x).toFixed(1) + ',' + sy2(mu + s).toFixed(1);
+        down = 'L' + sx2(x).toFixed(1) + ',' + sy2(Math.max(0, mu - s)).toFixed(1) + down;
+      }
+      bandPath.setAttribute('d', up + down + 'Z');
+      meanPath2.setAttribute('d', clPathFrom(Array.from({ length: N + 1 }, (_, i) => {
+        const x = (i / N) * 10;
+        return [sx2(x), sy2(muAt(x))];
+      })));
+      for (let i = 0; i < CLOUD_N; i++) {
+        const x = (i / (CLOUD_N - 1)) * 10;
+        const mu = muAt(x);
+        const y = mu + cloudR[i] * Math.sqrt(clVarPower(mu, v.phi, power));
+        const dot = gCloud.children[i];
+        dot.setAttribute('cx', sx2(x));
+        dot.setAttribute('cy', sy2(Math.max(0, Math.min(yTop * 1.05, y))));
+      }
+      probeLine2.setAttribute('x1', sx2(v.x)); probeLine2.setAttribute('x2', sx2(v.x));
+      probeLine2.setAttribute('y1', f2.bottom); probeLine2.setAttribute('y2', f2.top);
+    },
+    snapshot(st) {
+      const mode = st.mode === 'normal' ? 'identity' : 'log';
+      return { label: st.presetId || 'pin', link: mode, b0: st.values.b0, b1: st.values.b1 };
+    },
+  };
+}
+
+// --- Residual lens: the funnel and the pool --------------------------------
+
+function buildResidualScenes(stageRow, ctx) {
+  const { linkRoot } = ctx;
+  const s1 = buildScene(stageRow, 'Residuals vs Fitted', [
+    { label: 'Standardized Residuals', color: 'var(--px-text-secondary)', link: 'funnel' },
+    { label: 'Spread By Bin', color: 'var(--px-accent)', link: 'funnel' },
+  ], linkRoot);
+  const s2 = buildScene(stageRow, 'The Pool They Make', [
+    { label: 'Residual Pool', color: 'var(--px-accent)', link: 'std' },
+    { label: 'Standard Normal', color: 'var(--cl-ink-1)', dashed: true, link: 'std' },
+  ], linkRoot);
+
+  const axes1 = createAxes(s1.svg, { xFmt: (v) => clFmt(v, 'num'), yFmt: (v) => clFmt(v, 'num'), yTicks: 4 });
+  const zeroLine = svgEl('line', { stroke: 'var(--px-text-muted)' }, 'cl-curve cl-ref');
+  const gPts = svgEl('g'); gPts.dataset.clLink = 'funnel';
+  const sdPathUp = svgEl('path', { stroke: 'var(--px-accent)' }, 'cl-curve');
+  sdPathUp.dataset.clLink = 'funnel';
+  const sdPathDn = svgEl('path', { stroke: 'var(--px-accent)' }, 'cl-curve');
+  sdPathDn.dataset.clLink = 'funnel';
+  s1.svg.appendChild(zeroLine); s1.svg.appendChild(gPts); s1.svg.appendChild(sdPathUp); s1.svg.appendChild(sdPathDn);
+
+  const axes2 = createAxes(s2.svg, { xFmt: (v) => clFmt(v, 'num'), yTicks: 0, yFmt: () => '' });
+  const bars = makeBarPool(s2.svg, 'cl-bar');
+  bars.g.dataset.clLink = 'std';
+  const normPath = svgEl('path', { stroke: 'var(--cl-ink-1)' }, 'cl-curve cl-ref');
+  normPath.dataset.clLink = 'std';
+  s2.svg.appendChild(normPath);
+
+  let study = null;
+  let studyKey = '';
+
+  return {
+    update(st, d) {
+      const v = st.values;
+      const key = v.pa + '|' + v.phi;
+      if (key !== studyKey) {
+        studyKey = key;
+        study = clResidualStudy({ pAssumed: v.pa, phi: v.phi, seed: 47 });
+      }
+
+      // ── Funnel panel ──
+      const w1 = s1.wrap.clientWidth || 420, h1 = s1.wrap.clientHeight || 280;
+      s1.svg.setAttribute('width', w1); s1.svg.setAttribute('height', h1);
+      const f1 = { left: 40, top: 14, right: w1 - 14, bottom: h1 - 26 };
+      const sx1 = clScale(0, 42, f1.left, f1.right);
+      let rMax = 1;
+      for (const p of study.points) rMax = Math.max(rMax, Math.abs(p.r));
+      const sy1 = clScale(-rMax * 1.12, rMax * 1.12, f1.bottom, f1.top);
+      axes1.update(sx1, sy1, f1);
+      zeroLine.setAttribute('x1', f1.left); zeroLine.setAttribute('x2', f1.right);
+      zeroLine.setAttribute('y1', sy1(0)); zeroLine.setAttribute('y2', sy1(0));
+      const need = study.points.length;
+      while (gPts.children.length < need) gPts.appendChild(svgEl('circle', { r: 2.2, fill: 'var(--px-text-secondary)', opacity: 0.55 }, 'cl-dot'));
+      while (gPts.children.length > need) gPts.lastChild.remove();
+      study.points.forEach((p, i) => {
+        const dot = gPts.children[i];
+        dot.setAttribute('cx', sx1(p.mu));
+        dot.setAttribute('cy', sy1(Math.max(-rMax * 1.12, Math.min(rMax * 1.12, p.r))));
+      });
+      // Rolling sd envelope by bins of fitted value.
+      const BINS = 8;
+      const binSd = [];
+      for (let b = 0; b < BINS; b++) {
+        const inBin = study.points.filter((p) => p.mu >= 2 + b * (38 / BINS) && p.mu < 2 + (b + 1) * (38 / BINS));
+        if (!inBin.length) { binSd.push(null); continue; }
+        const m = inBin.reduce((a, p) => a + p.r, 0) / inBin.length;
+        binSd.push(Math.sqrt(inBin.reduce((a, p) => a + (p.r - m) * (p.r - m), 0) / inBin.length));
+      }
+      const mid = (b) => 2 + (b + 0.5) * (38 / BINS);
+      const upPts = [], dnPts = [];
+      binSd.forEach((s, b) => {
+        if (s == null) return;
+        upPts.push([sx1(mid(b)), sy1(Math.min(rMax * 1.12, 2 * s))]);
+        dnPts.push([sx1(mid(b)), sy1(Math.max(-rMax * 1.12, -2 * s))]);
+      });
+      sdPathUp.setAttribute('d', clPathFrom(upPts));
+      sdPathDn.setAttribute('d', clPathFrom(dnPts));
+
+      // ── Pool panel ──
+      const w2 = s2.wrap.clientWidth || 420, h2 = s2.wrap.clientHeight || 280;
+      s2.svg.setAttribute('width', w2); s2.svg.setAttribute('height', h2);
+      const f2 = { left: 34, top: 16, right: w2 - 14, bottom: h2 - 26 };
+      const lim = Math.max(3.4, rMax * 1.05);
+      const sx2 = clScale(-lim, lim, f2.left, f2.right);
+      const BINS2 = 34;
+      const binW = (2 * lim) / BINS2;
+      const counts = new Array(BINS2).fill(0);
+      for (const p of study.points) {
+        const b = Math.floor((p.r + lim) / binW);
+        if (b >= 0 && b < BINS2) counts[b]++;
+      }
+      const total = study.points.length;
+      let hMax = 0.001, oMax = 0;
+      const overlay = [];
+      for (let i = 0; i <= 120; i++) {
+        const x = -lim + (i / 120) * 2 * lim;
+        const y = clNormPdf(x, 0, 1) * binW;
+        overlay.push([x, y]);
+        oMax = Math.max(oMax, y);
+      }
+      for (const c of counts) hMax = Math.max(hMax, c / total);
+      const sy2 = clScale(0, Math.max(hMax, oMax) * 1.15, f2.bottom, f2.top);
+      axes2.update(sx2, sy2, f2);
+      const bw2 = Math.max(2, (f2.right - f2.left) / BINS2 - 1.5);
+      bars.set(counts.map((c, i) => ({
+        x: sx2(-lim + i * binW) + 0.75, y: sy2(c / total), w: bw2, h: Math.max(0, f2.bottom - sy2(c / total)),
+      })), 'var(--px-accent)');
+      normPath.setAttribute('d', clPathFrom(overlay.map(([x, y]) => [sx2(x), sy2(y)])));
+    },
+    snapshot(st, d) {
+      return { label: 'p_a=' + clFmt(st.values.pa, 'num2'), ratio: d.binRatio };
+    },
+  };
+}
+
+// --- Meyers arc: the claim vs reality, and the p-p verdict -----------------
+
+function buildMeyersArcScenes(stageRow, ctx) {
+  const { linkRoot, animator } = ctx;
+  const s1 = buildScene(stageRow, 'What The Model Claims vs What Happened', [
+    { label: 'The Truth', color: 'var(--cl-ink-1)', dashed: true, link: 'truth' },
+    { label: 'The Model’s Claim', color: 'var(--px-accent)', link: 'width' },
+    { label: 'Outcomes', color: 'var(--px-text-secondary)', link: 'pp' },
+  ], linkRoot);
+  const s2 = buildScene(stageRow, 'The P-P Plot And The Verdict', [
+    { label: 'Outcome Percentiles', color: 'var(--px-accent)', link: 'pp' },
+    { label: 'The KS Band', color: 'var(--cl-ink-4)', dashed: true, link: 'pp' },
+  ], linkRoot);
+
+  const axes1 = createAxes(s1.svg, { xFmt: (v) => clFmt(v, 'num'), yTicks: 0, yFmt: () => '' });
+  const truthPath = svgEl('path', { stroke: 'var(--cl-ink-1)' }, 'cl-curve cl-ref');
+  truthPath.dataset.clLink = 'truth';
+  const claimPath = svgEl('path', { stroke: 'var(--px-accent)' }, 'cl-curve');
+  claimPath.dataset.clLink = 'width';
+  const gOut = svgEl('g'); gOut.dataset.clLink = 'pp';
+  s1.svg.appendChild(truthPath); s1.svg.appendChild(claimPath); s1.svg.appendChild(gOut);
+  const draws = clValidationDraws(ARC_N, ARC_SEED);
+  for (let i = 0; i < draws.length; i++) {
+    gOut.appendChild(svgEl('circle', { r: 2.4 }, 'cl-dot'));
+  }
+  const escTag = svgEl('text', { 'text-anchor': 'end' }, 'cl-svg-tag');
+  s1.svg.appendChild(escTag);
+
+  const axes2 = createAxes(s2.svg, {
+    xFmt: (v) => Math.round(v) + '%',
+    yFmt: (v) => Math.round(v) + '%',
+    xTicks: 4, yTicks: 4,
+  });
+  const diag = svgEl('line', { stroke: 'var(--px-text-muted)' }, 'cl-curve cl-ref');
+  const bandLo = svgEl('line', { stroke: 'var(--cl-ink-4)' }, 'cl-curve cl-ref');
+  const bandHi = svgEl('line', { stroke: 'var(--cl-ink-4)' }, 'cl-curve cl-ref');
+  bandLo.dataset.clLink = 'pp'; bandHi.dataset.clLink = 'pp';
+  const gPp = svgEl('g'); gPp.dataset.clLink = 'pp';
+  const verdict = svgEl('text', { 'text-anchor': 'middle', 'font-size': 15, 'font-weight': 650 });
+  const verdictSub = svgEl('text', { 'text-anchor': 'middle' }, 'cl-svg-tag');
+  s2.svg.appendChild(diag); s2.svg.appendChild(bandLo); s2.svg.appendChild(bandHi);
+  s2.svg.appendChild(gPp); s2.svg.appendChild(verdict); s2.svg.appendChild(verdictSub);
+  for (let i = 0; i < draws.length; i++) {
+    gPp.appendChild(svgEl('circle', { r: 2.2, fill: 'var(--px-accent)', opacity: 0.75 }, 'cl-dot'));
+  }
+
+  return {
+    update(st, d) {
+      // ── Claim vs truth ──
+      const w1 = s1.wrap.clientWidth || 420, h1 = s1.wrap.clientHeight || 280;
+      s1.svg.setAttribute('width', w1); s1.svg.setAttribute('height', h1);
+      const f1 = { left: 30, top: 16, right: w1 - 14, bottom: h1 - 26 };
+      const sx1 = clScale(-3.6, 3.6, f1.left, f1.right);
+      const N = 130;
+      let pMax = 0;
+      const truth = [], claim = [];
+      for (let i = 0; i <= N; i++) {
+        const x = -3.6 + (i / N) * 7.2;
+        const yt = clNormPdf(x, 0, 1);
+        const yc = clNormPdf(x, d.bias, Math.max(0.05, d.tail));
+        truth.push([x, yt]); claim.push([x, yc]);
+        pMax = Math.max(pMax, yt, yc);
+      }
+      const sy1 = clScale(0, pMax * 1.15, f1.bottom, f1.top);
+      axes1.update(sx1, sy1, f1);
+      truthPath.setAttribute('d', clPathFrom(truth.map(([x, y]) => [sx1(x), sy1(y)])));
+      claimPath.setAttribute('d', clPathFrom(claim.map(([x, y]) => [sx1(x), sy1(y)])));
+      let escapees = 0;
+      draws.forEach((x, i) => {
+        const pct = 100 * clNormCdf((x - d.bias) / Math.max(0.05, d.tail));
+        const escaped = pct < 5 || pct > 95;
+        if (escaped) escapees++;
+        const dot = gOut.children[i];
+        dot.setAttribute('cx', sx1(Math.max(-3.6, Math.min(3.6, x))));
+        dot.setAttribute('cy', f1.bottom - 4 - (i % 5) * 3.5);
+        dot.setAttribute('fill', escaped ? 'var(--px-danger)' : 'var(--px-text-secondary)');
+        dot.setAttribute('opacity', escaped ? 0.95 : 0.45);
+      });
+      escTag.setAttribute('x', f1.right - 4); escTag.setAttribute('y', f1.top + 12);
+      escTag.textContent = escapees + ' of ' + draws.length + ' outcomes beyond the claimed 5th-95th (5 expected)';
+
+      // ── P-P plot ──
+      const w2 = s2.wrap.clientWidth || 420, h2 = s2.wrap.clientHeight || 280;
+      s2.svg.setAttribute('width', w2); s2.svg.setAttribute('height', h2);
+      const f2 = { left: 40, top: 16, right: w2 - 14, bottom: h2 - 44 };
+      const sx2 = clScale(0, 100, f2.left, f2.right);
+      const sy2 = clScale(0, 100, f2.bottom, f2.top);
+      axes2.update(sx2, sy2, f2);
+      diag.setAttribute('x1', sx2(0)); diag.setAttribute('y1', sy2(0));
+      diag.setAttribute('x2', sx2(100)); diag.setAttribute('y2', sy2(100));
+      const band = d.band;
+      bandLo.setAttribute('x1', sx2(Math.min(100, band))); bandLo.setAttribute('y1', sy2(0));
+      bandLo.setAttribute('x2', sx2(100)); bandLo.setAttribute('y2', sy2(Math.max(0, 100 - band)));
+      bandHi.setAttribute('x1', sx2(0)); bandHi.setAttribute('y1', sy2(Math.min(100, band)));
+      bandHi.setAttribute('x2', sx2(Math.max(0, 100 - band))); bandHi.setAttribute('y2', sy2(100));
+      const pts = clPpPoints(draws.map((x) => 100 * clNormCdf((x - d.bias) / Math.max(0.05, d.tail))));
+      pts.forEach((p, i) => {
+        const dot = gPp.children[i];
+        dot.setAttribute('cx', sx2(p.expected));
+        dot.setAttribute('cy', sy2(p.observed));
+      });
+      const pass = d.D < d.band;
+      verdict.setAttribute('x', (f2.left + f2.right) / 2);
+      verdict.setAttribute('y', h2 - 22);
+      verdict.setAttribute('fill', pass ? 'var(--px-success)' : 'var(--px-danger)');
+      verdict.textContent = pass ? 'Validates: D = ' + clFmt(d.D, 'num2') + ' inside the band' : 'Rejected: D = ' + clFmt(d.D, 'num2') + ' outside ' + clFmt(d.band, 'num2');
+      verdictSub.setAttribute('x', (f2.left + f2.right) / 2);
+      verdictSub.setAttribute('y', h2 - 8);
+      verdictSub.textContent = pass ? 'Uniform percentiles: the model earned its distribution' : 'The outcomes refuse the model’s percentiles';
+    },
+    snapshot(st, d) {
+      return { label: st.presetId || 'pin', D: d.D };
+    },
+  };
+}
+
 // --- Pane shell ------------------------------------------------------------
 
 function renderPane(container) {
@@ -5623,7 +9750,7 @@ function renderHomeView(root) {
   title.textContent = 'Concept Lab';
   const sub = document.createElement('div');
   sub.className = 'cl-home-sub';
-  sub.textContent = 'The syllabus, made visible. Every module is grounded in its paper’s own worked example. Drag the parameters and watch the mechanics move.';
+  sub.textContent = 'One ladder from coin-flip probability to Mack, Meyers, and the bootstrap. Concept modules teach the statistics; exam modules apply it on the papers’ own printed numbers. Climb in order, or jump in anywhere: every module links down to its foundations and up to where the exam uses it.';
   home.appendChild(title);
   home.appendChild(sub);
 
@@ -5636,9 +9763,9 @@ function renderHomeView(root) {
   const grid = document.createElement('div');
   grid.className = 'cl-guide-grid';
   const tips = [
-    { icon: 'circle-dot', head: 'Follow The Story', text: 'Every module opens on a guided walk. Step through the dots at the top; each step moves the parameters for you and says why.' },
-    { icon: 'book-open', head: 'Trust The Presets', text: 'The Worked Examples chips are the papers\' own printed numbers, not toy values. Start from one, then take the wheel.' },
-    { icon: 'move-horizontal', head: 'Drag Anywhere', text: 'Sliders work, but so do the charts: drag the query marker, the c dot on the parabola, the regime-map position, the truncation line.' },
+    { icon: 'layers', head: 'Climb The Ladder', text: 'Levels 1 to 6 teach the statistics; level 7 is the exam papers on their own printed numbers. Jump in anywhere: Builds On and Where The Exam Uses This link every module down to its foundations and up to its payoff.' },
+    { icon: 'circle-dot', head: 'Follow The Story', text: 'Every module opens on a guided walk. Step through the dots at the top; some steps ask you to COMMIT to a prediction before the reveal, because a guess you owned teaches more than a fact you read.' },
+    { icon: 'move-horizontal', head: 'Drag Anywhere', text: 'Sliders work, but so do the charts: drag the query marker, the today line on the fan, the candidate across the likelihood surface, the probability masses on the beam.' },
     { icon: 'mouse-pointer-2', head: 'Hover To Trace', text: 'Hover any formula term, readout, or legend entry and the exact curve it drives lights up while everything else dims.' },
     { icon: 'copy', head: 'Pin A Ghost', text: 'Pin Ghost freezes the current curve in place. Change anything and compare against where you were.' },
     { icon: 'message-square', head: 'Ask The Instructor', text: 'In chat, ask to be SHOWN a concept ("open the MSE valley at Example 1"). The AI opens the right module with the values set.' },
@@ -5665,37 +9792,70 @@ function renderHomeView(root) {
   guide.appendChild(grid);
   home.appendChild(guide);
 
-  const cards = document.createElement('div');
-  cards.className = 'cl-cards';
   let i = 0;
-  for (const mod of MODULES) {
-    const card = document.createElement('div');
-    card.className = 'cl-card';
-    card.style.animationDelay = (i * 50) + 'ms';
+  LEVELS.forEach((lvl, li) => {
+    const mods = MODULES.filter((m) => m.level === lvl.id)
+      .sort((a, b) => (a.ord ?? 99) - (b.ord ?? 99));
+    if (!mods.length) return;
+    const section = document.createElement('div');
+    section.className = 'cl-level';
     const head = document.createElement('div');
-    head.className = 'cl-card-head';
-    const icon = document.createElement('span');
-    icon.className = 'cl-card-icon';
-    icon.innerHTML = clIcon(mod.icon || 'line-chart', 18);
-    const t = document.createElement('span');
-    t.className = 'cl-card-title';
-    t.textContent = mod.title;
-    head.appendChild(icon); head.appendChild(t);
-    const s = document.createElement('div');
-    s.className = 'cl-card-sub';
-    s.textContent = mod.subtitle;
-    const paper = document.createElement('div');
-    paper.className = 'cl-card-paper';
-    paper.textContent = mod.paper.label;
-    card.appendChild(head); card.appendChild(s); card.appendChild(paper);
-    card.addEventListener('click', () => {
-      _paneState.route = { view: 'module', moduleId: mod.id };
-      _paneRerender?.();
-    });
-    cards.appendChild(card);
-    i++;
-  }
-  home.appendChild(cards);
+    head.className = 'cl-level-head';
+    const num = document.createElement('span');
+    num.className = 'cl-level-num';
+    num.textContent = String(li + 1).padStart(2, '0');
+    const titles = document.createElement('div');
+    const lt = document.createElement('div');
+    lt.className = 'cl-level-title';
+    lt.textContent = lvl.title;
+    const tag = document.createElement('div');
+    tag.className = 'cl-level-tag';
+    tag.textContent = lvl.tagline;
+    titles.appendChild(lt); titles.appendChild(tag);
+    head.appendChild(num); head.appendChild(titles);
+    section.appendChild(head);
+
+    const cards = document.createElement('div');
+    cards.className = 'cl-cards';
+    for (const mod of mods) {
+      const card = document.createElement('div');
+      card.className = 'cl-card' + (mod.kind === 'concept' ? ' cl-card-concept' : '');
+      card.style.animationDelay = Math.min(i * 40, 480) + 'ms';
+      const chead = document.createElement('div');
+      chead.className = 'cl-card-head';
+      const icon = document.createElement('span');
+      icon.className = 'cl-card-icon';
+      icon.innerHTML = clIcon(mod.icon || 'line-chart', 18);
+      const t = document.createElement('span');
+      t.className = 'cl-card-title';
+      t.textContent = mod.title;
+      chead.appendChild(icon); chead.appendChild(t);
+      const s = document.createElement('div');
+      s.className = 'cl-card-sub';
+      s.textContent = mod.subtitle;
+      const foot = document.createElement('div');
+      foot.className = 'cl-card-paper';
+      if (mod.paper) {
+        foot.textContent = mod.paper.label;
+      } else {
+        // A concept card points forward: name the exam modules it feeds.
+        const feeds = (mod.bridges || [])
+          .map((b) => clGetModule(b.module)?.title)
+          .filter(Boolean)
+          .slice(0, 2);
+        foot.textContent = feeds.length ? 'Feeds ' + feeds.join(' · ') : lvl.tagline;
+      }
+      card.appendChild(chead); card.appendChild(s); card.appendChild(foot);
+      card.addEventListener('click', () => {
+        _paneState.route = { view: 'module', moduleId: mod.id };
+        _paneRerender?.();
+      });
+      cards.appendChild(card);
+      i++;
+    }
+    section.appendChild(cards);
+    home.appendChild(section);
+  });
   root.appendChild(home);
   return () => {};
 }
@@ -5727,11 +9887,19 @@ function renderModuleView(root, mod) {
   titles.appendChild(t); titles.appendChild(s);
   const chip = document.createElement('span');
   chip.className = 'cl-source-chip';
-  chip.innerHTML = `<span class="cl-chip-icon">${clIcon('book-open', 12)}</span>`;
   const chipText = document.createElement('span');
-  chipText.textContent = `${mod.paper.label} · ${mod.paper.section}`;
+  if (mod.paper) {
+    chip.innerHTML = `<span class="cl-chip-icon">${clIcon('book-open', 12)}</span>`;
+    chipText.textContent = `${mod.paper.label} · ${mod.paper.section}`;
+    chip.title = mod.paper.task;
+  } else {
+    const lvl = clGetLevel(mod.level);
+    const n = LEVELS.indexOf(lvl) + 1;
+    chip.innerHTML = `<span class="cl-chip-icon">${clIcon('layers', 12)}</span>`;
+    chipText.textContent = `Foundations · Level ${n} · ${lvl ? lvl.title : ''}`;
+    chip.title = lvl ? lvl.tagline : '';
+  }
   chip.appendChild(chipText);
-  chip.title = mod.paper.task;
   header.appendChild(back); header.appendChild(titles); header.appendChild(chip);
   root.appendChild(header);
 
@@ -5783,6 +9951,7 @@ function renderModuleView(root, mod) {
   body.appendChild(rail);
   body.appendChild(stageCol);
   root.appendChild(body);
+
 
   // ── Rail: presets ──
   const presetSection = document.createElement('div');
@@ -5897,6 +10066,41 @@ function renderModuleView(root, mod) {
   }
   paintGhosts();
 
+  // ── Rail: connections (the anti-stranding sections) ──
+  // "Builds On" walks down to the concepts this module stands on;
+  // "Where The Exam Uses This" walks up to the papers that need it.
+  const connGroups = [
+    { label: 'Builds On', icon: 'layers', items: mod.foundations || [] },
+    { label: 'Where The Exam Uses This', icon: 'graduation-cap', items: mod.bridges || [] },
+  ].filter((g) => g.items.length);
+  for (const group of connGroups) {
+    const section = document.createElement('div');
+    const label = document.createElement('div');
+    label.className = 'cl-rail-label cl-conn-label';
+    label.innerHTML = `<span class="cl-conn-label-icon">${clIcon(group.icon, 12)}</span><span>${group.label}</span>`;
+    section.appendChild(label);
+    for (const item of group.items) {
+      const target = clGetModule(item.module);
+      if (!target) continue;
+      const row = document.createElement('button');
+      row.className = 'cl-conn-row';
+      const head = document.createElement('span');
+      head.className = 'cl-conn-title';
+      head.innerHTML = `${clIcon(target.icon || 'line-chart', 13)}<span>${target.title}</span>`;
+      const text = document.createElement('span');
+      text.className = 'cl-conn-text';
+      text.textContent = item.text;
+      row.appendChild(head);
+      row.appendChild(text);
+      row.addEventListener('click', () => {
+        _paneState.route = { view: 'module', moduleId: target.id };
+        _paneRerender?.();
+      });
+      section.appendChild(row);
+    }
+    rail.appendChild(section);
+  }
+
   // ── Stage + formula ──
   const sceneCtx = {
     linkRoot: root,
@@ -5976,6 +10180,57 @@ function renderModuleView(root, mod) {
     updateAll();
   }
 
+  // Predict-then-reveal: a story step with `predict` asks BEFORE it moves the
+  // parameters. The learner commits to an option; only then does the preset
+  // apply (the reveal). Answers persist per module so revisits don't re-ask.
+  function renderPredict(container, step, i, onAnswer) {
+    const box = document.createElement('div');
+    box.className = 'cl-predict';
+    const prompt = document.createElement('div');
+    prompt.className = 'cl-predict-prompt';
+    prompt.innerHTML = `<span class="cl-predict-icon">${clIcon('circle-help', 13)}</span>`;
+    prompt.appendChild(clMd(step.predict.prompt));
+    box.appendChild(prompt);
+    const opts = document.createElement('div');
+    opts.className = 'cl-predict-opts';
+    const answered = st.predictAnswers[i];
+    step.predict.options.forEach((optText, j) => {
+      const b = document.createElement('button');
+      b.className = 'cl-predict-opt';
+      b.appendChild(clMd(optText));
+      if (answered !== undefined) {
+        b.disabled = true;
+        if (j === step.predict.answer) b.classList.add('cl-right');
+        else if (j === answered) b.classList.add('cl-wrong');
+      } else {
+        b.addEventListener('click', () => {
+          st.predictAnswers[i] = j;
+          onAnswer();
+        });
+      }
+      opts.appendChild(b);
+    });
+    box.appendChild(opts);
+    if (answered !== undefined && step.predict.explain) {
+      const ex = document.createElement('div');
+      ex.className = 'cl-predict-explain';
+      ex.appendChild(clMd(step.predict.explain));
+      box.appendChild(ex);
+    }
+    container.appendChild(box);
+  }
+
+  function renderStoryText(i) {
+    const step = mod.story[i];
+    storyText.innerHTML = '';
+    const title = document.createElement('span');
+    title.className = 'cl-story-step-title';
+    title.textContent = (i + 1) + '. ' + step.title;
+    storyText.appendChild(title);
+    storyText.appendChild(clMd(step.text));
+    if (step.predict) renderPredict(storyText, step, i, () => applyStory(i));
+  }
+
   function applyStory(i) {
     if (i < 0 || i >= mod.story.length) return;
     st.storyIndex = i;
@@ -5983,12 +10238,14 @@ function renderModuleView(root, mod) {
     dots.forEach((d, j) => d.classList.toggle('cl-active', j === i));
     prevBtn.disabled = i === 0;
     nextBtn.disabled = i === mod.story.length - 1;
-    storyText.innerHTML = '';
-    const title = document.createElement('span');
-    title.className = 'cl-story-step-title';
-    title.textContent = (i + 1) + '. ' + step.title;
-    storyText.appendChild(title);
-    storyText.appendChild(clMd(step.text));
+    renderStoryText(i);
+    if (step.predict && st.predictAnswers[i] === undefined) {
+      // Commit before the reveal: the preset waits for an answer, but the
+      // stage still needs to render whatever state the learner is in now.
+      syncModeUi();
+      updateAll();
+      return;
+    }
     const preset = mod.presets.find((p) => p.id === step.preset);
     if (preset) applyPreset(preset, true);
   }
@@ -6009,15 +10266,7 @@ function renderModuleView(root, mod) {
     syncModeUi();
     updateAll();
     dots.forEach((d, j) => d.classList.toggle('cl-active', j === st.storyIndex));
-    const step = mod.story[st.storyIndex];
-    if (step) {
-      storyText.innerHTML = '';
-      const title = document.createElement('span');
-      title.className = 'cl-story-step-title';
-      title.textContent = (st.storyIndex + 1) + '. ' + step.title;
-      storyText.appendChild(title);
-      storyText.appendChild(clMd(step.text));
-    }
+    if (mod.story[st.storyIndex]) renderStoryText(st.storyIndex);
     prevBtn.disabled = st.storyIndex === 0;
     nextBtn.disabled = st.storyIndex === mod.story.length - 1;
   } else {
@@ -6065,17 +10314,27 @@ function renderSidebar(container) {
   home.innerHTML = `<span class="cl-side-icon">${clIcon('layout-grid', 15)}</span><span>All Modules</span>`;
   home.addEventListener('click', () => openLab(null, true));
   root.appendChild(home);
-  for (const mod of MODULES) {
-    const row = document.createElement('div');
-    row.className = 'cl-side-row';
-    row.innerHTML = `<span class="cl-side-icon">${clIcon(mod.icon || 'line-chart', 15)}</span>`;
-    const label = document.createElement('span');
-    label.textContent = mod.title;
-    row.appendChild(label);
-    row.title = mod.subtitle;
-    row.addEventListener('click', () => openLab(mod.id));
-    root.appendChild(row);
-  }
+  LEVELS.forEach((lvl, li) => {
+    const mods = MODULES.filter((m) => m.level === lvl.id)
+      .sort((a, b) => (a.ord ?? 99) - (b.ord ?? 99));
+    if (!mods.length) return;
+    const heading = document.createElement('div');
+    heading.className = 'cl-side-level';
+    heading.textContent = (li + 1) + ' · ' + lvl.title;
+    heading.title = lvl.tagline;
+    root.appendChild(heading);
+    for (const mod of mods) {
+      const row = document.createElement('div');
+      row.className = 'cl-side-row';
+      row.innerHTML = `<span class="cl-side-icon">${clIcon(mod.icon || 'line-chart', 15)}</span>`;
+      const label = document.createElement('span');
+      label.textContent = mod.title;
+      row.appendChild(label);
+      row.title = mod.subtitle;
+      row.addEventListener('click', () => openLab(mod.id));
+      root.appendChild(row);
+    }
+  });
   container.appendChild(root);
   return { dispose() { container.innerHTML = ''; } };
 }
@@ -6124,9 +10383,10 @@ export async function activate(api, context) {
   // conceptLab_open — the instructor SHOWS instead of tells: the AI opens a
   // module with a worked example or specific parameter values on screen.
   if (api.chat?.registerTool) {
-    const moduleList = MODULES.map((m) =>
-      `${m.id} ("${m.title}", ${m.paper.label}; presets: ${m.presets.map((p) => p.id).join('/')}; params: ${m.params.map((p) => p.key).join('/')})`,
-    ).join('; ');
+    const moduleList = MODULES.map((m) => {
+      const ground = m.paper ? m.paper.label : `foundations: ${clGetLevel(m.level)?.title ?? m.level}`;
+      return `${m.id} ("${m.title}", ${ground}; presets: ${m.presets.map((p) => p.id).join('/')}; params: ${m.params.map((p) => p.key).join('/')})`;
+    }).join('; ');
     context.subscriptions.push(api.chat.registerTool('conceptLab_open', {
       description:
         'Open a Concept Lab interactive explorable so the user can SEE a statistical concept move instead of reading about it. '
@@ -6222,6 +10482,33 @@ export const __testables = {
   clCovAggregate,
   clMarshallConsolidate,
   clMarginalSum,
+  clRandPoisson,
+  clDiscreteMoments,
+  clMeanMachineMoments,
+  clCompoundMoments,
+  clCompoundSim,
+  clCompoundSkew,
+  clBivarCond,
+  clBivarCloud,
+  clSumSd,
+  clLognLoglik,
+  clLognMle,
+  clDevG,
+  clDevExpected,
+  clDevProdF,
+  clDevPaths,
+  clSamplingRun,
+  LS_DATA,
+  LS_MLE,
+  clShrinkErr,
+  clShrinkClasses,
+  clGlmMu,
+  clVarPower,
+  clRandTweedie,
+  clResidualStudy,
+  clCclWidth,
   MODULES,
   clGetModule,
+  LEVELS,
+  clGetLevel,
 };

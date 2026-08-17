@@ -26,7 +26,18 @@ const {
   clKsD,
   clKsBand,
   clPpPoints,
+  clRandPoisson,
+  clDiscreteMoments,
+  clCompoundMoments,
+  clCompoundSim,
+  clBivarCond,
+  clBivarCloud,
+  clSumSd,
+  clLognLoglik,
+  clLognMle,
   MODULES,
+  LEVELS,
+  clGetModule,
 } = __testables;
 
 // ---------------------------------------------------------------------------
@@ -69,15 +80,54 @@ declare module 'vitest' {
 // ---------------------------------------------------------------------------
 
 describe('module definitions', () => {
-  it('every module carries paper grounding and at least one check', () => {
+  it('every module is grounded: exam modules in a paper, concept modules in bridges', () => {
+    const levelIds = new Set(LEVELS.map((l: any) => l.id));
     for (const mod of MODULES) {
       expect(mod.id).toBeTruthy();
-      expect(mod.paper?.label).toBeTruthy();
-      expect(mod.paper?.section).toBeTruthy();
+      expect(levelIds.has(mod.level), `${mod.id}.level = ${mod.level}`).toBe(true);
+      expect(['concept', 'exam'], `${mod.id}.kind`).toContain(mod.kind);
+      if (mod.kind === 'exam') {
+        expect(mod.paper?.label).toBeTruthy();
+        expect(mod.paper?.section).toBeTruthy();
+      } else {
+        // The anti-stranding contract: a concept module must say where the
+        // exam uses it, or it is an orphan.
+        expect((mod.bridges ?? []).length, `${mod.id} has no bridges`).toBeGreaterThan(0);
+      }
       expect(mod.checks.length).toBeGreaterThan(0);
       expect(mod.params.length).toBeGreaterThan(0);
       expect(mod.presets.length).toBeGreaterThan(0);
       expect(mod.story.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('every foundations/bridges link resolves to a real module, no self-links', () => {
+    for (const mod of MODULES) {
+      for (const item of [...(mod.foundations ?? []), ...(mod.bridges ?? [])]) {
+        expect(clGetModule(item.module), `${mod.id} -> ${item.module}`).toBeTruthy();
+        expect(item.module, `${mod.id} links to itself`).not.toBe(mod.id);
+        expect(item.text, `${mod.id} -> ${item.module} text`).toBeTruthy();
+      }
+    }
+  });
+
+  it('story steps reference real presets and carry well-formed predicts', () => {
+    for (const mod of MODULES) {
+      for (const step of mod.story) {
+        if (step.preset) {
+          expect(
+            mod.presets.some((p: any) => p.id === step.preset),
+            `${mod.id} story preset ${step.preset}`,
+          ).toBe(true);
+        }
+        if (step.predict) {
+          expect(step.predict.prompt).toBeTruthy();
+          expect(step.predict.explain).toBeTruthy();
+          expect(step.predict.options.length).toBeGreaterThanOrEqual(2);
+          expect(step.predict.answer).toBeGreaterThanOrEqual(0);
+          expect(step.predict.answer).toBeLessThan(step.predict.options.length);
+        }
+      }
     }
   });
 
@@ -210,6 +260,84 @@ describe('math kernel', () => {
     for (let i = 0; i < n; i++) { const z = clRandNormal(rng); sum += z; sum2 += z * z; }
     expect(sum / n).toBeCloseTo(0, 1);
     expect(sum2 / n).toBeCloseTo(1, 1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Foundations kernel — the concept-level machinery (Levels 1-4)
+// ---------------------------------------------------------------------------
+
+describe('foundations kernel', () => {
+  it('Poisson sampler hits its mean and variance over seeded draws', () => {
+    const rng = clMulberry32(11);
+    let s = 0, s2 = 0;
+    const n = 20000;
+    for (let i = 0; i < n; i++) { const k = clRandPoisson(4, rng); s += k; s2 += k * k; }
+    const mean = s / n;
+    expect(mean).toBeCloseTo(4, 1);
+    expect(s2 / n - mean * mean).toBeCloseTo(4, 0);
+  });
+
+  it('discrete moments and renormalization', () => {
+    const m = clDiscreteMoments([
+      { x: 0, p: 1 }, { x: 1, p: 2 }, { x: 2, p: 3 }, { x: 3, p: 2 }, { x: 4, p: 1 },
+    ]);
+    expect(m.mean).toBeCloseTo(2, 12);
+    expect(m.varc).toBeCloseTo(4 / 3, 12);
+    expect(m.skew).toBeCloseTo(0, 12);
+    const scaled = clDiscreteMoments([
+      { x: 0, p: 10 }, { x: 1, p: 20 }, { x: 2, p: 30 }, { x: 3, p: 20 }, { x: 4, p: 10 },
+    ]);
+    expect(scaled.mean).toBeCloseTo(m.mean, 12);
+    expect(scaled.varc).toBeCloseTo(m.varc, 12);
+  });
+
+  it('compound Poisson: E[S] = λE[X], Var(S) = λE[X²], and the sim agrees', () => {
+    const m = clCompoundMoments(4, 10, 0.5);
+    expect(m.mean).toBeCloseTo(40, 12);
+    expect(m.varc).toBeCloseTo(4 * 100 * 1.25, 10); // λ·m²(1+cv²) = 500
+    const draws = clCompoundSim({ lambda: 4, sevMean: 10, sevCv: 0.5, n: 20000, seed: 3 });
+    const mean = draws.reduce((a: number, b: number) => a + b, 0) / draws.length;
+    const varc = draws.reduce((a: number, b: number) => a + (b - mean) * (b - mean), 0) / draws.length;
+    expect(Math.abs(mean - m.mean) / m.mean).toBeLessThan(0.02);
+    expect(Math.abs(varc - m.varc) / m.varc).toBeLessThan(0.08);
+  });
+
+  it('bivariate conditioning matches the closed form', () => {
+    const par = { muX: 10, muY: 20, sdX: 2, sdY: 5, rho: 0.6 };
+    const c = clBivarCond(par, 12);
+    expect(c.mean).toBeCloseTo(20 + 0.6 * (5 / 2) * 2, 12); // 23
+    expect(c.sd).toBeCloseTo(5 * Math.sqrt(1 - 0.36), 12);  // 4
+    // ρ = 0: knowing X tells you nothing.
+    expect(clBivarCond({ ...par, rho: 0 }, 12).mean).toBeCloseTo(20, 12);
+  });
+
+  it('bivariate cloud reproduces its correlation over seeded draws', () => {
+    const pts = clBivarCloud({ muX: 0, muY: 0, sdX: 1, sdY: 1, rho: 0.7 }, 20000, 5);
+    let sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
+    for (const p of pts) { sx += p.x; sy += p.y; sxx += p.x * p.x; syy += p.y * p.y; sxy += p.x * p.y; }
+    const n = pts.length;
+    const covar = sxy / n - (sx / n) * (sy / n);
+    const r = covar / Math.sqrt((sxx / n - (sx / n) ** 2) * (syy / n - (sy / n) ** 2));
+    expect(r).toBeCloseTo(0.7, 1);
+  });
+
+  it('sum SD identity: independence adds variances, ρ = 1 adds SDs', () => {
+    expect(clSumSd(3, 4, 0)).toBeCloseTo(5, 12);
+    expect(clSumSd(3, 4, 1)).toBeCloseTo(7, 12);
+    expect(clSumSd(3, 4, -1)).toBeCloseTo(1, 12);
+  });
+
+  it('lognormal MLE is the mean and RMS spread of the logs, and maximizes ℓ', () => {
+    const data = [1, 2, 4, 8, 16].map((x) => x * 3);
+    const { mu, sigma } = clLognMle(data);
+    const logs = data.map((x) => Math.log(x));
+    const mHat = logs.reduce((a, b) => a + b, 0) / logs.length;
+    expect(mu).toBeCloseTo(mHat, 12);
+    const best = clLognLoglik(data, mu, sigma);
+    for (const [dm, ds] of [[0.05, 0], [-0.05, 0], [0, 0.05], [0, -0.05]]) {
+      expect(clLognLoglik(data, mu + dm, sigma + ds)).toBeLessThan(best);
+    }
   });
 });
 

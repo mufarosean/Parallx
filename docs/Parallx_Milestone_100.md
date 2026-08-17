@@ -1,217 +1,180 @@
-# Parallx Milestone 100 — Concept Lab (Interactive Exam Explorables)
+# Parallx Milestone 100 — Concept Lab: The Stats-To-Reserving Ladder
 
-> **Status: BUILT** (2026-08-16, branch `m100-concept-lab`). Framework + 12
-> modules: The Credibility Line (Brosius), The MSE Valley (Mack 2000),
-> Prior To Posterior (Gogol corrected), The Distribution Zoo, The
-> Validation Machine (Meyers §3), The Settlement-Rate Story (CSR §7),
-> Watching The Posterior Form (MCMC), Mack's Machinery (RAA, digit-exact
-> SEs), Clark's Growth Curves, The Bootstrap Live (Shapland/Taylor-Ashe,
-> CL 18,680,856 exact), The Risk Margin Ladder (Marshall, all four printed
-> flexes reproduce), The Same Answer Twice (Taylor GLM=CL theorem verified
-> to 1e-9). Plus the conceptLab_open chat tool (the instructor SHOWS).
-> 157 concept-lab tests (printed-exhibit checks + jsdom behavioral walks
-> driving the real activate()); full suite 5,181 green. Design gates swept.
+> **Status: CURRICULUM BUILT** (2026-08-16, branch `m100-concept-lab`).
+> Phase 2 shipped the full ladder: 25 modules across 7 levels — 13 new
+> concept modules (Claim Counter, Balance Point, Distribution Anatomy,
+> Sums/CLT, Conditional Expectation, Correlation, Process Fan, Likelihood
+> Surface, Sampling Error, Shrinkage, GLM Anatomy, Residual Lens) plus
+> Meyers' Model Ladder (the validate-diagnose-fix arc with CCL width and
+> CSR bias made quantitative), with the 12 phase-1 exhibit modules
+> re-leveled as the top rung. Framework additions: LEVELS + home ladder,
+> Builds On / Where The Exam Uses This link rails (every link
+> test-verified to resolve; concept modules without bridges fail
+> hygiene), predict-then-reveal story steps, level-grouped sidebar,
+> concept-module level chips. 242 concept-lab tests green (184 module
+> checks: printed exhibits for exam modules, identities + seeded
+> simulation invariants for concept modules; jsdom behavioral walks cover
+> the ladder, predicts, connections, Meyers arc, GLM modes).
 > PENDING: in-app verification by Mufaro (never rendered on screen).
-> Backlog: CAY correlation module (Meyers §8); Venter residual tests;
-> module deep-links from canvas/flashcards.
 
-## The ask (Mufaro, 2026-08-16)
+## The ask (Mufaro, 2026-08-16, second pass)
 
-The Exam 7 syllabus is drowning in theory nobody can picture: GLM forms,
-prior/posterior mechanics, credibility mixtures, what an over-dispersed
-Poisson even looks like. Study guides and source papers offer zero visual,
-zero interactive reference, so the formulas never stick. Build an interactive
-surface that maps the exam's statistical machinery to live graphs — sliders,
-charts that shift in real time, the mechanics of the formulas made visible.
+First pass produced interactive exhibit reproductions. His correction,
+verbatim intent:
 
-Hard requirements, in his words:
-- "It needs to feel premium and not like AI slop. It needs to feel powerful,
-  and to clearly show these relationships."
-- Real examples — grounded in the papers, "the Meyers paper could benefit a
-  whole lot from this."
-- "The more flexible we make the framework, the more we can allow the user
-  to interact with the concepts… build a more intuitive understanding
-  instead of just memorizing formulas."
-- Generic substrate discipline still applies: the framework is a generic
-  explorable engine; Exam 7 modules are its first tenant content.
+- "I was expecting something that functions more like a teaching visual.
+  These all seem like exhibits more than anything."
+- "I see nothing on GLMs in here. Or the Meyers models that he compares."
+- "Can we teach all of stats theory using this thing? Let's not half-ass
+  it. We focus on what's required to know as prerequisites for the exam,
+  but we build from the bottom: probability, random variables, random
+  processes, MLE, distributions, Bayesian theory, GLMs. When we get to
+  points where the exam material is building from these stats concepts, we
+  call it out, we make the connection, so it does not feel like a user is
+  stranded."
+- "My intention was to allow a visual connection from basic stats to the
+  advanced reserving concepts in Exam 7."
 
-## Design principles (research-backed)
+The judgment rule he expected: go **general-statistics** when the papers
+*assume* background (what a GLM is, likelihood, what a posterior means,
+why residuals, why correlation fattens tails); go **exam-direct** when the
+syllabus item *is* the technique (Mack's SE formulas, Clark's curves, the
+bootstrap procedure). Exhibits are the payoff at the END of a concept's
+arc, never the whole module.
 
-From the explorable-explanations literature (Bret Victor's reactive
-documents; Seeing Theory; chi-feng's MCMC gallery):
+## The curriculum (seven levels)
 
-1. **Guide attention.** An explorable is not a widget dump — each module is
-   a short guided story that introduces small parts first, then lets them
-   play together. Every module opens on a curated "moment," not a wall of
-   sliders at defaults.
-2. **Direct manipulation, instant feedback.** Drag a parameter, the picture
-   answers within the same frame. Give the user control of time where time
-   exists (play/pause/step/speed on simulations).
-3. **The paper's numbers or nothing.** Module defaults ARE the paper's own
-   worked example, and every module ships machine-checkable `checks` that
-   reproduce the printed exhibit values. A module that cannot recompute its
-   paper's printed numbers does not ship. This is the exam-tie-in gate.
-4. **Formula ↔ picture linkage.** Each module renders its governing equation
-   with the CURRENT numeric values live beneath the symbols; hovering a term
-   highlights the chart element it drives, and vice versa. This is the
-   mechanism that "clearly shows the relationships" — not decoration.
-5. **Premium motion, zero chartjunk.** Parameter changes tween through model
-   space (the curve morphs, never snaps); slider drags are direct (rAF, no
-   tween lag); presets animate. Subtle grid, token typography, categorical
-   colors from theme chart tokens only. No 3D, no decorative gradients.
+Every module belongs to a level. Concept modules teach; exam modules apply.
+Both use the same engine (params / derived / readouts / formula / presets /
+story / checks). Concept modules' checks verify mathematical identities and
+seeded-simulation invariants instead of printed exhibits — same gate, same
+rigor.
 
-## What "premium" means concretely (the visual contract)
+**The connective tissue** (the anti-stranding mechanism):
+- `foundations`: links UP the ladder — "this module stands on these
+  concepts". Rendered as "Builds On" chips; one click opens the concept.
+- `bridges`: links DOWN the ladder — "here is exactly where Exam 7 uses
+  this". Rendered as "Where The Exam Uses This" chips.
+- The recurring visual motif is **the fan**: a partially observed loss
+  process and the distribution of its futures. Level 3 introduces it;
+  Mack quantifies it analytically, Shapland simulates it, Meyers audits
+  it. Same picture, four computations.
 
-- **Stage layout per module:** control rail (left) with notation-labeled
-  sliders + live values + preset "moment" chips; SVG stage (center) with one
-  primary visualization; live formula panel (below the stage); story strip
-  (top) with 3–5 guided steps; source line (paper, section, page, syllabus
-  task chip) always visible.
-- **Motion:** module-open choreography (axes fade in, curves draw in via
-  stroke-dash, staggered ~40ms); param tweens ~240ms ease-out through
-  PARAMETER space (recompute per frame from closed forms — geometry morphs
-  correctly, no path cross-fade artifacts); app motion tokens for all
-  durations/easings.
-- **Ghost pins:** freeze the current curve as a muted labeled ghost, then
-  keep exploring — visual A/B against any earlier configuration.
-- **Crosshair readouts** with snap-to-notable-points (c*, Z, intersections,
-  optima). Derived values tick (animated count) when they change.
-- **Simulations** (MCMC, bootstrap, p-p sampling) run on a play/pause/step
-  transport with speed control and a seeded RNG (mulberry32) so runs are
-  reproducible and testable.
-- Design-system gates (memory: these got violated in M98/M99 — run BEFORE
-  commit): zero hex colors (chart colors from `--vscode-charts-*`), tokens
-  for all spacing/type/radius, Title Case labels, ONE dropdown primitive,
-  Lucide icons only, no emojis, dark/light/hc safe.
+### Level 1 — Probability & Random Variables
 
-## Architecture
+| Module | Teaches | Scene | Exam bridges |
+| --- | --- | --- | --- |
+| `random-variable` (NEW) "The Claim Counter" | Random variable as a mapping; LLN: empirical frequency → probability | Draw claims one at a time or in bursts; histogram converges onto the true PMF; running mean walks to E[X] | Every reserve is a statement about a random variable's distribution |
+| `mean-machine` (NEW) "The Balance Point" | E[X] as center of mass, variance as spread, skewness; why loss distributions lean right | Draggable probability masses on a beam; the beam tips and balances live; identity E[X²]−E[X]² shown | Best estimate = mean; ranges exist because variance does |
+| `distribution-anatomy` (NEW) "One Distribution, Three Views" | PDF ↔ CDF ↔ quantile are the same object; percentiles; tail probability | Three linked panels of one lognormal; drag the probability level on the CDF and the quantile slides; shaded tails | Reserve ranges are quantiles; Meyers' validation asks whether outcomes' percentiles are uniform |
+| `dist-zoo` (existing, re-leveled) | The working distributions: Normal, Lognormal, Poisson, ODP, Gamma, NegBin; variance-to-mean | (shipped) | ODP is Shapland's error family; NegBin is Poisson with a Gamma prior (Bayesian bridge) |
 
-- **External extension `ext/concept-lab/`** (`parallx.concept-lab`), single
-  `main.js` ESM — the flashcards pattern. Verified constraint (M99 + scout
-  2026-08-16): external tools load as single-file blob-URL modules
-  (toolModuleLoader.ts:196-210); no npm deps, everything hand-rolled inline.
-  Concept Lab needs no deps: charts are hand-built SVG, math is closed-form
-  + small simulations.
+### Level 2 — How Randomness Behaves
 
-### Integration facts (scouted 2026-08-16)
+| Module | Teaches | Scene | Exam bridges |
+| --- | --- | --- | --- |
+| `sums-clt` (NEW) "Adding Up Claims" | Compound sums S = X₁+…+X_N; CLT and where heavy tails break it; compound Poisson mean/variance | Severity curve → animated draws stack into the aggregate histogram; Normal overlay; tail-gap readout | Aggregate reserves; compound Poisson-Gamma IS Tweedie, the guts of the ODP variance story |
+| `conditional-expectation` (NEW) "The Best Guess" | E[Y\|X] as a function; regression as sliced means | Bivariate cloud of (reported, ultimate); draggable vertical slice shows the conditional density and its mean; the traced curve IS the regression line | Brosius' development formula is E[Y\|X] approximated by a line |
+| `correlation` (NEW) "When Risks Move Together" | Covariance, ρ, and what correlation does to the SD of a total; diversification | Two lines of business; ρ slider reshapes the cloud and widens the total's distribution; √(σ₁²+σ₂²+2ρσ₁σ₂) live | Marshall's aggregation of systemic risks; Meyers CCL thickens tails with exactly this |
 
-- LaTeX: `api.ui.renderMarkdown` is the shared Markdown+KaTeX renderer
-  (KaTeX CSS ships app-wide). Use it for story prose; the LIVE formula
-  panel is hand-built token spans (KaTeX output is opaque to hover-linking).
-- `api.ui` surface: rafThrottle, createDropdown, renderMarkdown,
-  createAiButton, showContextMenu. NO slider — hand-roll
-  `<input type="range">`; `.ui-slider` CSS classes ship globally.
-- Colors: new code uses `--px-*` semantic tokens, never `--vscode-*`.
-  `--vscode-charts-*` are UNDEFINED at runtime. Chart palette: scoped
-  `--cl-*` vars reusing budget's CVD-validated ledger-ink set (sanctioned
-  extension domain-data colors, Parallx_UI_System.md:28-33).
-- Motion: `--px-dur-instant/fast/base/slow` (70/120/180/260ms),
-  `--px-ease` (settle), `--px-ease-out` (enter), `--px-ease-spring` (pop).
-  JS tweens read the tokens with numeric fallbacks.
-- Ext editor panes DO support `saveViewState`/`restoreViewState`
-  (EditorPaneHandle, parallx.d.ts:361-380) — flashcards main.js:4009 is the
-  reference. Key data on `input.instanceId`, never parse `input.id`.
-- Styles: ONE injected `<style>` guarded by a module flag (flashcards
-  pattern). SVG `<text>` needs explicit font-family or Windows falls back
-  to serif (budget main.js:3597).
-- Tests: `export const __testables = {...}` from main.js; vitest imports the
-  plain ESM file directly (flashcards.test.ts pattern); jsdom behavioral
-  tier possible later (flashcardsBehavior.test.ts pattern).
-- **One editor pane** (`conceptLab.editor`, instanceId `main`) with internal
-  module navigation; a sidebar/launcher lists modules. Panes rebuild on tab
-  switch — current module + param state live in module-level vars so a
-  rebuild restores exactly (worksheet `_practice` pattern).
-- **Framework core** (the flexibility ask — modules are declarative content):
-  - `defineModule({ id, title, paper: {label, section, pages, task}, params,
-    derived, scenes, story, presets, checks })`
-  - params: `{ key, tex, label, min, max, step, init, fmt }` in the paper's
-    own notation
-  - render primitives: scales/axes, path builders (line/area/bars/points/
-    ribbon), annotation layer (markers, arrows, region fills, boundary
-    labels), formula renderer (token spans bound to params/derived, hover
-    link ids), tween engine (one shared rAF loop), sim transport, ghost
-    store.
-  - `checks`: `[ { name, expect, got: (p) => number, tol } ]` — vitest
-    imports `main.js` directly (flashcards test pattern) and runs every
-    module's checks against the paper's printed values.
-- **Math in plain JS, seeded and deterministic.** Normal/lognormal/Poisson/
-  gamma/NB densities, quantiles where needed, least squares, credibility
-  algebra, Metropolis sampler — all inline, all unit-tested.
-- **No database** in v1 (nothing persists but view state). Chat tool
-  (`conceptLab.open` — AI opens a module with specific parameter values) is
-  a fast follow after the surface exists; it is the feature no study guide
-  can match: the instructor SHOWS instead of tells.
+### Level 3 — Random Processes
 
-## Module roadmap (each grounded in printed exhibit numbers already verified
-## during the M-bank work; inventories in the session scratchpad)
+| Module | Teaches | Scene | Exam bridges |
+| --- | --- | --- | --- |
+| `process-fan` (NEW) "The Fan Of Futures" — the hero | A process is a path; conditioning on the observed past; the reserving problem stated visually; Mack's assumption E[C_{k+1}\|past]=f·C_k | Simulated development paths pour across the stage; drag the "today" line and the fan re-conditions; endpoint histogram = the reserve distribution | This IS reserving. Mack computes the fan's width analytically; Shapland bootstraps it; Meyers audits whether it was honest |
 
-**Phase A — framework + two flagship closed-form modules (prove the bar):**
-1. **The Credibility Line** (Brosius). Scatter + least-squares line
-   L(x) = a + bx morphing between budgeted loss (b=0), BF (parallel
-   offset), and chain ladder (a=0) as Z moves; Z meter = VHM/(VHM+EPV).
-   Presets: Table 1 State AA (b=0.968, a=6,023, L(40,490)=45,217);
-   Poisson-Binomial world (Q(x)=x+2, Z=d); uniform-prior world (Z=1/3,
-   L(x)=(2/3)x+8/3); the tort-reform story (Z=0.628 → $9.5M vs $8M link
-   ratio / $12M budgeted / $9M BF).
-2. **The MSE Valley** (Mack 2000 / Hürlimann / Benktander). Left: the
-   mixing bar R_c = c·R_CL + (1−c)·R_BF with CL/BF/GB/c* stations. Right:
-   mse(R_c) = E(α²)·q²·(c²/p + 1/q + (1−c)²/t) parabola with the marker at
-   c* = p/(p+t). Second scene: Figure 1 regime map in (p_k, t) space with
-   boundaries t = 2−p_k (BF above) and t = p_k·q_k/(1+p_k) (CL below) — drag
-   your portfolio through the regions. Checks: Example 1 (t=0.346, c*=0.591,
-   SEs 21.3/19.3/17.3/17.2) and Example 2, plus the regime thresholds.
+### Level 4 — Estimation & Likelihood
 
-**Phase B — the Bayesian core:**
-3. **Prior → Posterior** (Brosius Bayesian sections; Mack 2000 §5 Gogol).
-   Prior, likelihood, posterior densities; posterior mean sliding along
-   [prior ↔ CL estimate] with the Z meter; normal-normal exact and the
-   lognormal Gogol case. Checks: corrected Gogol numbers (z=0.782,
-   E(R|C_k)=51.9%, sd 18.9% — the Correction Note values).
-4. **Distribution Zoo, Exam Edition.** Normal vs lognormal on the same
-   mean/SD (watch the 90% interval skew — Meyers' moment matching:
-   σ² = ln(1+CV²), μ = ln(mean)−σ²/2); ODP as Poisson bars on the φ-lattice
-   (same mean, Var = φμ — drag φ, overlay plain Poisson); gamma; negative
-   binomial (Verrall's ODP twin).
+| Module | Teaches | Scene | Exam bridges |
+| --- | --- | --- | --- |
+| `likelihood-surface` (NEW) "Let The Data Vote" | Likelihood as the data scoring parameters; MLE; log-likelihood | Observed losses on an axis; candidate density overlaid; each point's density-height bar is its vote; ℓ(μ,σ) contour with a draggable candidate and a Find MLE ascent | Clark fits G(x; ω, θ) by exactly this machine over the triangle |
+| `sampling-error` (NEW) "Process vs Parameter Risk" | One truth, many datasets: estimates scatter (parameter risk); outcomes scatter around estimates (process risk); the two add | Repeat-the-experiment animation; two spread bands accumulate; Var(x̄)=σ²/n live | Mack's mse = process + estimation error, term by term; Clark's split; Shapland's √(n/(n−p)) exists because residuals understate σ |
 
-**Phase C — the Meyers suite (his flagged priority):**
-5. **The Validation Machine** (Monograph 8 §3). Choose truth, choose a model
-   with defect sliders (bias, tail weight); outcomes sample in animated;
-   percentiles accumulate into the histogram and p-p plot; KS band
-   ±136/√n and D live. Presets reproduce the Figure 3.1 catalogue (Uniform
-   D=5.2, Light-Tailed 22.3*, Heavy-Tailed 17.2*, Biased High 39.2*) and the
-   real results (Mack incurred combined 15.4*, ODP paid 24.1*).
-6. **The Settlement-Rate Story** (§7 CSR). Payment-pattern family
-   β_d·(1−γ)^(w−1) bending as γ moves; the chain-ladder-vs-truth bias arrow;
-   γ=0 collapses CSR→CRC; posterior strip from Table 7.1 (γ = 0.0446 ±
-   0.0282) to drag through. Grounded in the Group 353 paid triangle.
-7. **Watching the Posterior Form** (MCMC). chi-feng-style random-walk
-   Metropolis on a 2D mini-posterior (logelr × σ): proposals accept/reject
-   live, trace plot, marginals accumulating toward Table 5.1's
-   logelr −0.3965 (0.0233); step-size slider with live acceptance rate;
-   burn-in visual. Explains what "10,000 draws in Stan" actually does.
+### Level 5 — Bayesian Theory & Credibility
 
-**Phase D — the rest of the syllabus's hard visuals:** Mack SE ribbons +
-α² estimator toggles (Mack 1994, his triangle), Clark growth curves
-(ω/θ, truncation, LDF vs Cape Cod), Shapland bootstrap (residual options →
-reserve histogram), GLM=chain-ladder (Taylor — ODP+log link reproduces CL,
-then break it), CAY correlation ρ widening the predictive, Marshall risk
-aggregation (CoV sliders, diversification credit), Meyers risk margin
-(cost-of-capital runoff).
+| Module | Teaches | Scene | Exam bridges |
+| --- | --- | --- | --- |
+| `prior-posterior` (existing, restructured) | Belief as a distribution; posterior ∝ prior × likelihood; data volume sharpens | (shipped; story gains a teach-first arc, Gogol stays as payoff presets) | Gogol's method IS this with lognormals |
+| `shrinkage` (NEW) "Credibility Is Shrinkage" | Pooling: raw per-class estimates scatter; shrinking toward the grand mean beats raw at optimal Z=n/(n+k) | Many classes, few observations each; Z slider slides estimates toward the grand mean; out-of-sample error valley bottoms at Bühlmann Z | Brosius Z=VHM/(VHM+EPV); Mack 2000 c*=p/(p+t); Benktander = iterated credibility (mse-valley) |
+| `mcmc-watch` (existing, restructured) | Why sampling: no formula for this posterior; the histogram IS the answer | (shipped; motivation front added) | Meyers' models are fit by exactly this |
 
-## Verification
+### Level 6 — Regression & GLMs
 
-- `tests/unit/conceptLab.test.ts` imports `ext/concept-lab/main.js` and runs
-  every module's `checks` (paper-exhibit reproduction) + math-kernel tests
-  (densities vs known values, seeded sampler determinism, least squares,
-  credibility algebra).
-- Design-gate checklist pass before every commit (see above).
-- Never launch the app visibly (dev machine = study machine): static
-  analysis + vitest only; in-app verdict is Mufaro's.
+| Module | Teaches | Scene | Exam bridges |
+| --- | --- | --- | --- |
+| `glm-anatomy` (NEW) "The GLM, Piece By Piece" | Linear predictor η=Xβ; link g(μ)=η; error family; variance function V(μ)=φμ^p; overdispersion φ | Three linked panels: η line → link curve bends it into the mean curve → family cloud at a draggable probe with variance envelope; p dial morphs Normal(0)→ODP(1)→Tweedie(1.5)→Gamma(2) | Shapland's ODP model is THIS: log link, V(μ)=φμ on incremental losses; Taylor: that GLM's MLE = chain ladder exactly |
+| `residual-lens` (NEW) "Reading Residuals" | Raw residuals funnel when V(μ) is wrong; Pearson r=(y−μ)/√V(μ) standardizes; residuals carry the model's leftover truth | Fitted-vs-residual panel; family toggle makes the funnel appear/vanish; standardization animates | Shapland resamples EXACTLY these Pearson residuals; Venter reads these plots on triangles |
 
-## Landmines
+### Level 7 — The Reserving Problem (Exam 7)
 
-- Extensions: single-file ESM, no `require`, no src/ imports, api may lack
-  optional namespaces — guard. Portal/popup rules per design gates.
-- Panes rebuild on tab switch — module-level state is the survival contract.
-- npm not needed for this milestone (no deps). If it ever is:
-  `NODE_OPTIONS=--use-system-ca npm install --ignore-scripts`.
+Existing exhibit modules, re-leveled with `foundations` links and stories
+tightened to open from the concept, not the table: `brosius-line`,
+`mse-valley`, `validation-machine`, `csr-story`, `mack-machinery`,
+`clark-curves`, `odp-bootstrap`, `marshall-ladder`, `glm-equals-cl`.
+
+| Module | Foundations |
+| --- | --- |
+| `brosius-line` | conditional-expectation, shrinkage |
+| `mse-valley` | shrinkage, sampling-error |
+| `meyers-arc` (NEW) "Meyers' Model Ladder" | validation-machine, correlation, process-fan |
+| `validation-machine` | distribution-anatomy (percentiles) |
+| `csr-story` | process-fan |
+| `mack-machinery` | process-fan, sampling-error |
+| `clark-curves` | likelihood-surface |
+| `odp-bootstrap` | residual-lens, sampling-error |
+| `marshall-ladder` | correlation |
+| `glm-equals-cl` | glm-anatomy |
+
+**`meyers-arc` (NEW)** is the missing model-comparison narrative: validate
+Mack on incurred → tails too thin → LCL → CCL (ρ widens the predictive
+distribution, the p-p plot straightens) → paid side biased high → CSR.
+Scene: model ladder selector; predictive density with outcome markers on
+the left, live p-p plot on the right. Reuses the validation kernel; adds a
+correlated-lognormal CCL simulator with the sum-SD identity checked.
+
+## Framework additions
+
+1. **LEVELS** array + `level`, `kind` (`concept`/`exam`), `foundations`,
+   `bridges` on module defs. Hygiene tests: every module has a valid
+   level; every link resolves to a real module id.
+2. **Connections strip** in the module view: "Builds On" and "Where The
+   Exam Uses This" chip rows; chips carry one-line explanations and open
+   the target module in the pane (route swap, no new editor).
+3. **Home = the ladder.** Level sections in order, each with number,
+   title, tagline, and its module cards; concept cards show their level,
+   exam cards keep the paper line. Sidebar groups by level.
+4. **Predict-then-reveal.** Story steps may carry
+   `predict: {prompt, options, answer, explain}`: the step asks BEFORE it
+   moves the parameters; the learner commits to an option; the reveal
+   applies the preset and explains. Answered state persists per module.
+5. Header chip: exam modules keep the paper chip; concept modules show
+   their level chip.
+6. `conceptLab_open` tool description already enumerates modules
+   dynamically; it inherits all of this for free.
+
+## Design principles (unchanged from phase 1, plus one)
+
+1. Guide attention: every module opens on a curated moment.
+2. Direct manipulation, instant feedback; control of time where time exists.
+3. **Checks or nothing**: exam modules reproduce printed exhibits; concept
+   modules verify identities and seeded-simulation invariants.
+4. Formula ↔ picture hover linkage everywhere.
+5. Premium motion, zero chartjunk, tokens only.
+6. **NEW — teach, then formalize**: motivate → predict → play → formalize
+   → exam payoff. The formula arrives after the intuition, and the exam
+   connection is explicit at the end of every concept.
+
+## Verification gate
+
+- All existing 157 checks stay green; every new module ships checks.
+- Behavioral walk (jsdom, real `activate()`) extended to every new module
+  and the predict widget.
+- Full suite green; design-gate sweep (no hex, no em dashes in UI copy,
+  Title Case labels, registry icons only).
+- PENDING: in-app verification by Mufaro (never rendered on screen here).
+
+## Backlog (explicitly deferred)
+
+CAY correlation module (Meyers §8); Venter residual tests as their own
+module; module deep-links from canvas/flashcards; progress marks on the
+ladder.
