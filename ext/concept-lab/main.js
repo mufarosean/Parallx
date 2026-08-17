@@ -971,27 +971,27 @@ defineModule({
   story: [
     {
       title: 'The question first',
-      text: 'A year has reported $x$ so far. What is the fairest guess for where it ends up? Level 2 taught the answer’s shape: the best guess given what you know, $E[Y|X{=}x]$, drawn as a line through the cloud. Every classical reserving method is just an OPINION about that line; this paper lets the data draw it instead.',
+      text: 'A year has reported $x$ so far. What is the fairest guess for where it ends up? Level 2 taught the answer’s shape: the best guess given what you know, $E[Y|X{=}x]$, drawn as a line through the cloud. Every classical reserving method is just an OPINION about that line; this paper lets the data draw it instead. By the end you will see chain ladder, budgeted loss, and Bornhuetter-Ferguson as three special cases of one fitted line, and credibility as the dial that chooses between them: which is a much smaller thing to memorize than three separate methods.',
       preset: 'poisson',
     },
     {
       title: 'Three methods, one picture',
-      text: 'Chain ladder says $L(x) = x/d$, a ray from the origin. Budgeted loss says $L(x) = E[Y]$, a flat line that ignores $x$ entirely. BF splits the difference with slope one. Watch all three live as reference lines.',
+      text: 'Every classical development method is a line through this picture, and seeing them AS lines is the paper’s first gift. Chain ladder answers $L(x) = x/d$: divide reported by the expected reported fraction: which is a ray from the origin: report twice as much, expect twice the ultimate, no exceptions. Budgeted loss answers $L(x) = E[Y]$: a flat line that ignores your report entirely and repeats the prior. Bornhuetter-Ferguson splits the difference: start from the prior’s unreported piece and add the report dollar for dollar: a line with slope exactly one. All three are live on the stage as reference lines; drag the query marker $x$ along them and read each method’s answer at your reported amount. Now notice what should bother you: three defensible methods, three different answers from the same fact, and nothing in the picture yet says which line is RIGHT. That question is exactly what the data gets to answer next.',
       preset: 'poisson',
     },
     {
       title: 'Let the data pick',
-      text: 'Brosius\' answer: fit $L(x) = a + bx$ by least squares. In Table 1\'s real data the fit lands at $b = 0.968$, $a = 6{,}023$: none of the three classical lines, and better than all of them.',
+      text: 'Brosius’ move is disarmingly simple: stop ASSUMING the line and FIT it. This preset loads Table 1 from the paper: six real accident years, each a dot at (reported at 15 months, ultimate at 27). Fit $L(x) = a + bx$ by least squares: the straight-line version of the best-guess line $E[Y|X]$ you built in Conditional Expectation: and the data answers $b = 0.968$, $a = 6{,}023$. Study where that line sits relative to the three reference lines: it is NONE of them. Not through the origin (so pure chain ladder is rejected by this data), not flat, not slope-one. The intercept says even a year reporting zero should be booked at about 6,000: some losses simply have not surfaced yet. And at the paper’s own query, $x = 40{,}490$, the fitted line answers 45,211: the number printed in Brosius’ exhibit, reproduced under your cursor. Six dots were enough to out-argue three traditions.',
       preset: 'table1',
     },
     {
       title: 'The credibility anatomy',
-      text: 'The same line rewritten: $L(x) = Z\\frac{x}{d} + (1-Z)E[Y]$ with $Z = \\frac{VHM}{VHM + EPV}$. Drag VHM up and the line swings toward chain ladder; drag EPV up and it flattens toward the prior.',
+      text: 'Here is the paper’s deepest section, and you already own its parts. Rewrite the fitted line algebraically and it becomes $L(x) = Z\\,\\tfrac{x}{d} + (1{-}Z)\\,E[Y]$: a weighted average of chain ladder’s answer and budgeted loss’s answer: with the weight $Z = \\tfrac{VHM}{VHM+EPV}$. Those cryptic initials are the shrinkage valley from Credibility & Shrinkage wearing exam clothes: VHM (variance of hypothetical means) is τ², how much true results genuinely differ across years; EPV (expected process variance) is s², how noisy reporting is within a year. Drag VHM up and watch the line swing toward the chain-ladder ray: real differences earn trust in the data. Drag EPV up and it flattens toward the prior: noise earns shrinkage. The best development line is not chosen from a menu of methods; it is DIALED, by a ratio of two variances you can reason about.',
       preset: 'uniform',
     },
     {
       title: 'When history is useless',
-      text: 'Tort reform: past data cannot set the line, but judgment can set $VHM$ and $EPV$. $Z = 0.628$ answers $9.5M. No classical method gets there.',
+      text: 'Now the situation that makes this machinery earn its living. A tort reform has just rewritten the rules: past years developed under different law, so fitting a line to history would be fitting to a world that no longer exists. Does the credibility view collapse? No: and this is the paper’s famous example. You cannot FIT the variances anymore, but you can still ASSESS them by judgment: industry studies say expect about 12M with such-and-such spread between possible outcomes (that is VHM), and reporting noise of so much (EPV). The dial then does its arithmetic: $Z = 0.628$, and with 6M reported against 9M expected at this maturity, the answer lands near 9.5M: below the prior’s 12M, well above chain ladder’s naive read. No classical method can even ASK for that number, because each has its slope pinned by dogma. Credibility’s slope is pinned by two variances you can defend in front of a regulator: which is the whole point.',
       preset: 'tort',
     },
   ],
@@ -1127,27 +1127,27 @@ defineModule({
   story: [
     {
       title: 'The question first',
-      text: 'You hold two answers for the same reserve: one that ignores this year’s losses entirely (BF) and one that trusts nothing else (chain ladder). Blending them is the shrinkage dial from Level 5, and "how much of each" has a RIGHT answer: the bottom of an error valley. This paper finds that bottom with pencil and paper.',
+      text: 'You hold two answers for the same reserve: one that ignores this year’s losses entirely (BF) and one that trusts nothing else (chain ladder). Blending them is the shrinkage dial from Level 5, and "how much of each" has a RIGHT answer: the bottom of an error valley. This paper finds that bottom with pencil and paper: no simulation, no software: and then draws a map showing exactly when each classical method wins. Walk this module and the phrase "Benktander is nearly optimal" stops being a memorized verdict and becomes something you watched happen.',
       preset: 'base',
     },
     {
       title: 'One knob between two extremes',
-      text: 'BF ignores your losses ($c = 0$); chain ladder trusts nothing else ($c = 1$). Benktander proposed $c = p_k$: trust the data exactly as fast as it pays in.',
+      text: 'Put the two rival answers on a single dial. At $c = 0$ sits Bornhuetter-Ferguson: reserve the prior’s unreported share, and let this year’s actual losses have no say at all. At $c = 1$ sits chain ladder: gross up this year’s actuals and let the prior have no say. Every value between is a blend: $R_c = c \\cdot R_{CL} + (1{-}c) \\cdot R_{BF}$: and the parabola on stage prices every choice. Benktander’s proposal, decades before anyone proved anything about it, was elegantly physical: set $c = p_k$, the fraction of losses already paid. Trust the data exactly as fast as it arrives: a green year earns little credibility, a mature year earns most. Drag $c$ along the curve and watch the reserve readout swing between the two classical answers. The question this module answers: is Benktander’s instinct just tidy: or is it close to OPTIMAL? That requires knowing what the valley’s bottom means.',
       preset: 'base',
     },
     {
       title: 'The valley',
-      text: 'mse$(R_c) = E[\\alpha^2]q_k^2\\left(\\frac{c^2}{p_k} + \\frac{1}{q_k} + \\frac{(1-c)^2}{t}\\right)$ is a parabola. Its bottom sits at $c^* = \\frac{p_k}{p_k + t}$, and Benktander’s $c = p_k$ is nearly always close.',
+      text: 'To find the best blend you need a definition of "best", and Mack uses the one you built in Process vs Parameter Risk: mean squared error against the true reserve. His formula, mse$(R_c) = E[\\alpha^2]q_k^2\\left(\\tfrac{c^2}{p_k} + \\tfrac{1}{q_k} + \\tfrac{(1-c)^2}{t}\\right)$, looks dense until you read it as three payments: the $c^2$ term is the price of trusting noisy data (it grows as you lean on actuals), the $(1-c)^2$ term is the price of trusting an imperfect prior, and the middle term is process risk: the part no choice of $c$ can touch, the floor of the valley. Two prices pulling opposite directions make a parabola, exactly like the shrinkage valley one level down, and calculus hands over the bottom: $c^* = \\tfrac{p_k}{p_k + t}$. Now check Benktander against it on this preset: $c = p_k$ sits remarkably near $c^*$ across realistic values. The old instinct was a near-theorem. Drag the dot and watch how FLAT the valley is near its bottom: being roughly right here is cheap, being dogmatic at either end is not.',
       preset: 'example1',
     },
     {
       title: 'What t actually is',
-      text: 'Assess three variances an actuary can defend (the true ultimate, the prior, the payout noise) and $t$ falls out. High noise pushes $t$ up (trust the prior); low noise pulls it down (trust the ladder).',
+      text: 'The optimal $c^*$ depends on one unfamiliar quantity, $t$, and Mack’s second gift is showing it is built from three variances an actuary can actually defend in a meeting: how much true ultimates vary across years (is this a stable line or a lottery?), how good the prior estimate is (how was 90% of premium derived?), and how noisy the payout process is (do losses arrive on schedule or in lumps?). Assess those three: judgment, benchmarks, or data: and $t$ falls out of a formula; no curve-fitting required. Then play with this preset and watch the logic breathe: crank the payout noise and $t$ rises, dragging $c^*$ down: noisy actuals deserve less trust, lean on the prior. Improve the prior and the same happens for the opposite reason. Sharpen the payout process and $t$ falls, $c^*$ climbs, and the ladder earns its keep. The dial is not set by taste. It is set by which of your information sources deserves the trust: measured.',
       preset: 'example2',
     },
     {
       title: 'The regime map',
-      text: 'Figure 1: above $t = 2 - p_k$ plain BF wins; below $t = \\frac{p_k q_k}{1+p_k}$ (never more than 1/6) chain ladder wins. The whole middle belongs to Benktander. Find your portfolio on the map.',
+      text: 'Mack closes with a picture worth more than the algebra: the regime map on the right, straight from his Figure 1. Its axes are the two things you now understand: maturity $p_k$ across, the trust parameter $t$ up: and it is carved into three territories by two curves. Above $t = 2 - p_k$: noisy data or a young year: even plain BF beats chain ladder outright. Below $t = \\tfrac{p_k q_k}{1+p_k}$ (a sliver that never rises above one-sixth): chain ladder wins. And the entire broad middle belongs to Benktander’s blend. Drag your position around the map and watch the verdict chip update; drag the $t$ slider and feel yourself cross borders. Two lessons to carry out the door: the chain-ladder-wins region is startlingly small for how universally the method is used: and the borders are exact, so "which method should I use?" has stopped being a matter of taste and become a location on a map you can point to.',
       preset: 'example1',
     },
   ],
@@ -1303,33 +1303,33 @@ defineModule({
     },
     {
       title: 'Belief before data',
-      text: 'The prior is a full distribution over the true ultimate $U$, not a number. Its spread $\\sqrt{Var(U)}$ is a statement of how little the premium calculation really knows.',
+      text: 'Now do the pizza move with an accident year. Before any losses arrive, you already believe something about the year’s ultimate $U$: the pricing work said it should cost about 90% of premium. But notice how the belief is drawn on stage: not as a number, as a whole CURVE: the **prior** distribution. Its center is your best prior guess $E[U]$, and its spread $\\sqrt{Var(U)}$ is an honest confession of how little the premium calculation really knows: drag the Prior Uncertainty slider and watch the confession widen. This is the move that makes Bayes different from everything in Level 4: there, unknown quantities were fixed truths to be estimated; here, YOUR OWN UNCERTAINTY about the truth gets a distribution of its own. Once belief is a curve, evidence can reshape it: which is the next step.',
       preset: 'normal',
     },
     {
       title: 'The data votes',
-      text: 'Paid-to-date $C_k$ points at $C_k/p_k$ (chain ladder), but with noise $\\beta$. The likelihood curve is how loudly the data votes. Watch it sharpen as $\\beta$ falls.',
+      text: 'Enter the evidence: the year has paid $C_k$ so far, at a stage where about $p_k$ of losses are typically paid. The naive read is chain ladder: if half should be paid and 55% of premium is already out the door, the data "points at" an ultimate of $C_k/p_k = 110\\%$. But payment timing is noisy ($\\beta$ is that noise), so the data does not point: it VOTES, with a whole curve of its own: the **likelihood**, the same object you built in Maximum Likelihood Estimation, drawn here as the second density. Its center is what the data suggests; its width is how loudly. Drag $\\beta$ down and watch the likelihood sharpen into a confident spike; drag it up and watch the data mumble. Keep one distinction straight and Bayes stays easy forever: the prior is what you believed BEFORE, the likelihood is what the evidence says NOW, and neither one alone is the answer.',
       preset: 'noisy-data',
     },
     {
       title: 'Commit to a guess',
-      text: 'Bayes decides who wins by comparing variances.',
+      text: 'Two curves now claim the truth: the vague prior and the noisy likelihood. Bayes must decide how far to move from one toward the other, and it decides by comparing their spreads. Commit to the direction first.',
       predict: {
         prompt: 'Halve the payout noise β. What happens to the credibility z?',
         options: ['Rises: cleaner data earns more weight', 'Falls: the prior digs in', 'Unchanged: z is fixed by the prior alone'],
         answer: 0,
-        explain: 'z is a ratio of variances: prior spread against data noise. Shrink the noise and the likelihood sharpens, so the posterior slides toward what the triangle says. No judgment call is involved once the variances are set.',
+        explain: 'z is a RATIO of uncertainties: roughly, prior variance over prior-plus-data variance: the same shape as every credibility formula you will ever meet. Halve β and the likelihood sharpens, so the evidence out-argues the belief and z rises: watch the posterior slide toward what the triangle says as you drag. Then run the mirror experiment: tighten the PRIOR instead (drop its uncertainty to 10%) and z collapses, because a confident belief takes more evidence to move. The satisfying part: once the two spreads are honestly assessed, there is no judgment call left. The weighting is arithmetic, not diplomacy.',
       },
       preset: 'gogol',
     },
     {
       title: 'The compromise, exactly',
-      text: 'Gogol\'s lognormal model gives the exact posterior. With the Correction Note applied, $E[R|C_k] = 51.9\\%$, sd $18.9\\%$, and $z = 0.782$. Nearly identical to Benktander\'s free answer.',
+      text: 'Multiply the two curves point by point: where BOTH the prior and the likelihood assign decent probability: and rescale so the area is one. The result is the third density on stage: the **posterior**, your updated belief. This preset is the exam’s worked case, Gogol’s lognormal model, and the numbers on screen are the paper’s own (with its Correction Note applied: the published version contains a famous error the exam loves): posterior reserve $E[R|C_k] = 51.9\\%$ of premium, spread 18.9%, credibility $z = 0.782$. Read the picture before the numbers: the posterior sits between prior and likelihood, closer to the data because the data spoke more sharply, and NARROWER than either: two imperfect sources of information genuinely know more together. One more thing worth savoring: Benktander’s simple pencil-and-paper blend, from a paper written decades earlier, lands within a whisker of this exact Bayesian answer. Good heuristics are usually theorems in disguise.',
       preset: 'gogol',
     },
     {
       title: 'Who wins, and why',
-      text: '$z$ is a ratio of variances: prior spread against data noise. Confident prior or noisy data, either one pulls the posterior home. There is no judgment call left once the variances are set.',
+      text: 'Finish with the two limiting worlds, because they are both real jobs. Apply this preset: a CONFIDENT prior (uncertainty squeezed to 10%). The posterior barely moves off the prior no matter what the triangle says: $z$ collapses toward zero, and the data is politely ignored. That is not a malfunction: for a stable, well-priced line, it is correct behavior. Now flip to the noisy-data preset and watch the opposite: vague evidence, same story in mirror image. Between the two extremes lies every credibility method on this exam, and you can now name the machinery under all of them: Brosius’ Z, Benktander’s blend, Bühlmann’s $n/(n+k)$: each is a posterior mean wearing work clothes, each is a ratio of variances deciding who gets believed. When a paper says "credibility weighted", hear "Bayesian compromise, with the variances assessed instead of modeled". That translation is worth points, and better, it is true.',
       preset: 'tight-prior',
     },
   ],
@@ -1503,27 +1503,27 @@ defineModule({
   story: [
     {
       title: 'Shapes of randomness',
-      text: 'Randomness comes in shapes. Heights cluster symmetrically (normal). Losses pile up small with a long expensive tail (lognormal). Counts come in whole numbers (Poisson). Same mean, different shape, wildly different tail: and in insurance the tail is where the money is. This zoo holds the six shapes the exam lives on; meet them before you need them.',
+      text: 'Different kinds of randomness have different characteristic shapes, and choosing the wrong shape is one of the quietest ways to be wrong in this profession. Human heights cluster symmetrically around a middle: that is the **normal**. Losses pile up small with a long expensive tail: that is the **lognormal** territory you built in the last module. Claim counts arrive in whole numbers: that is the **Poisson** from the Claim Counter. Here is the trap this module exists to spring: two distributions can share the SAME mean and the SAME standard deviation and still disagree wildly about the tail, and in insurance the tail is where the money is. The two curves on stage right now are exactly such a pair. This zoo holds the six shapes the exam actually uses; the goal is that when a paper later says "assume lognormal" or "ODP errors", you see a picture, not a password.',
       preset: 'ranges',
     },
     {
       title: 'Two ranges, one pair of moments',
-      text: 'Mack computes a mean and a standard error, then needs a DISTRIBUTION to quote percentiles. Normal and lognormal agree on both moments and still disagree about the tail you care about.',
+      text: 'Here is where that trap bites a real method. Mack’s paper (top of the ladder) produces exactly two numbers for a reserve: a mean and a standard error. To quote "the 90th percentile reserve" you must then CHOOSE a shape to wrap around those two numbers, and the data does not choose it for you. Both curves on stage are legitimate choices: same mean, same SD. Watch the two 95th-percentile markers: the lognormal’s sits meaningfully further right, because its long tail spends its probability differently. Neither is "the right answer": Mack’s own advice is to check both and understand why they differ. Drag the sd slider up and watch the disagreement between the markers GROW: the noisier the estimate, the more the shape choice matters, and the more a range quoted without naming its shape is an incomplete sentence.',
       preset: 'ranges',
     },
     {
       title: 'The quasi-distribution',
-      text: 'ODP is not in any textbook table because it is a variance ASSUMPTION, $Var = \\phi\\mu$, wearing a Poisson costume. The lattice spacing IS $\\phi$. Now you have seen it.',
+      text: 'Now meet the exam’s strangest animal: the **over-dispersed Poisson**. A plain Poisson has a rigid rule: its variance always EQUALS its mean, which real claim data almost never obeys. The ODP keeps the Poisson’s whole-number skeleton but scales it: outcomes live on a lattice spaced $\\phi$ apart, so the variance becomes $\\phi\\mu$: mean times a dispersion dial you control. Drag $\\phi$ and watch the lattice spread apart while the shape stays Poisson-like. Be clear about what this object is: not a distribution you will find in a textbook table, but a variance ASSUMPTION (variance proportional to mean) wearing a Poisson costume: which is exactly why the papers call it "quasi-likelihood". Shapland’s bootstrap builds its entire world out of this animal, and having SEEN the lattice, the phrase "ODP with φ = 52,601" stops being a mystery.',
       preset: 'odp',
     },
     {
       title: 'Skew you can dial',
-      text: 'Gamma at shape $k=1$ is exponential; by $k=16$ it is almost symmetric. GLM error families are a choice of how variance scales with the mean.',
+      text: 'The **gamma** family is a lesson in how flexible one shape can be. Slide its shape parameter $k$ and watch the personality change: at $k = 1$ it is the exponential, all crowded against zero with a long slide right; by $k = 16$ it has gathered itself into a nearly symmetric hill. One family, a whole spectrum of skew. Why does the exam care? Because the gamma’s deeper signature is not its outline but its variance habit: a gamma’s spread grows with the SQUARE of its mean, meaning its uncertainty is constant in PERCENT terms: big cells and small cells equally uncertain relative to their size. When you reach Generalized Linear Models one level up, choosing an "error family" will turn out to mean exactly this: choosing how variance scales with the mean. The zoo is where each choice’s face becomes familiar.',
       preset: 'gamma',
     },
     {
       title: 'Poisson with doubt',
-      text: 'Give the Poisson rate a gamma prior and the mixture is negative binomial. Verrall builds the whole chain ladder out of this object.',
+      text: 'One last animal, built by combining two others: a preview of Bayesian thinking three levels early. A Poisson counter assumes you KNOW the rate λ. But suppose you are honestly unsure of the rate itself: your book might be a λ = 3 book or a λ = 5 book. Let the rate be random too (give it a gamma shape) and ask what the claim counts look like from outside, averaging over your doubt. The answer is the **negative binomial**: Poisson-like, but wider, because it carries two uncertainties at once: the year’s luck AND your ignorance of the rate. Compare it against the plain Poisson on stage: same mean, visibly fatter shoulders. This move (put a distribution on a parameter, then average it out) is the entire mechanism of Prior To Posterior, met here in its simplest costume.',
       preset: 'negbin',
     },
   ],
@@ -1650,27 +1650,27 @@ defineModule({
   story: [
     {
       title: 'The question first',
-      text: 'A model hands you a whole distribution, not a number. How do you check a DISTRIBUTION against reality? With Level 1’s percentile read, run backward: score where each real outcome lands on the model’s own CDF. If the model is honest, those landing spots spread out evenly, like raindrops on a sidewalk. Any pattern in them is a confession.',
+      text: 'A model hands you a whole distribution, not a number. How do you check a DISTRIBUTION against reality? With Level 1’s percentile read, run backward: score where each real outcome lands on the model’s own CDF. If the model is honest, those landing spots spread out evenly, like raindrops on a sidewalk. Any pattern in them is a confession: and each KIND of pattern confesses a different crime. This module builds the courtroom: the p-p plot, the KS band, and the field guide of failure shapes: that Meyers then uses, one module over, to put the industry’s standard methods on trial.',
       preset: 'uniform',
     },
     {
       title: 'Score the whole distribution',
-      text: 'For each of $n$ insurers, ask: at what percentile of the model\'s predictive distribution did the ACTUAL outcome land? A correct model has no opinion about where: the percentiles must come out uniform.',
+      text: 'Watch the machine run on an honest model first, so you know what innocence looks like. For each of $n$ insurers, the model published a predictive distribution before the outcome arrived; when reality landed, we evaluate the model’s own CDF at the actual outcome and record its percentile: the backward read from PDF, CDF & Quantiles. The samples reveal one by one on the left; each becomes a dot on the right. Think about why uniformity is the signature of truth: a correct model’s 30th percentile is, BY ITS OWN DEFINITION, the level reality undercuts 30% of the time: so outcomes must land below it 30% of the time, and in general spread evenly across all percentiles. The model is graded on its own promises. A correct model has no OPINION about where outcomes land in its distribution: that is what having the right distribution means. Any opinion the dots express: any clustering, any lean: is evidence against the model that issued them.',
       preset: 'uniform',
     },
     {
       title: 'The shapes of being wrong',
-      text: 'Each defect has a signature. Too light-tailed piles percentiles at 0 and 100; too heavy-tailed crowds the middle; bias slides everything to one side. Figure 3.1 is a field guide. Walk the presets.',
+      text: 'Now break the model on purpose, one defect at a time, and learn each defect’s fingerprint: this is Meyers’ Figure 3.1 turned into a field guide you can operate. This preset makes the model LIGHT-TAILED: its claimed distribution is too narrow for reality. Watch where the percentiles land: piled at 0 and 100, because outcomes keep escaping tails the model swore were nearly impossible; on the p-p plot the dots trace an S through the diagonal. Now try the heavy preset: too WIDE a claim crowds outcomes into the middle percentiles (nothing ever reaches the tails the model wastes probability on), and the S bends the other way. Then the biased preset: everything slides to one side, a shape no width adjustment can produce. Three defects, three unmistakable signatures. Drill them here until reading a p-p plot feels like reading a face: Meyers’ entire monograph, and one whole module upstairs, consists of applying exactly this diagnostic vocabulary to the industry’s standard models.',
       preset: 'light',
     },
     {
       title: 'The bar every model must clear',
-      text: 'The Kolmogorov-Smirnov band is $136/\\sqrt{n}$: 19.2 at $n{=}50$, 9.6 at $n{=}200$. Meyers held Mack and bootstrap ODP to it across 200 triangles; Mack-on-incurred came in at $D = 15.4$ combined and was rejected.',
+      text: 'Even a perfectly honest model produces lumpy percentiles from a finite sample: raindrops do not fall in a perfect grid: so a verdict needs a tolerance, or every model would fail on noise. The Kolmogorov-Smirnov test supplies it: measure $D$, the worst gap between the dots’ running distribution and the perfect diagonal, and compare it to the band $136/\\sqrt{n}$: the wiggle room an honest model deserves at this sample size, wide (19.2) at $n = 50$, tight (9.6) at $n = 200$. Inside the band: the lumps are consistent with luck. Outside: the model’s own percentiles testify against it at the 95% level. Watch the verdict chip as the reveal completes, then note the number that made this famous: across the CAS database, Mack on incurred data scored $D = 15.4$ combined: outside its band: and one of the industry’s default methods stood formally rejected by 200 triangles’ worth of its own predictions.',
       preset: 'biased',
     },
     {
       title: 'Why n matters',
-      text: 'Push $n$ up and the band tightens while the picture sharpens: a defect invisible at $n{=}50$ is unmistakable at $n{=}400$. Validation is a sample-size game, which is why the CAS database of 200 triangles exists at all.',
+      text: 'One slider is doing quiet philosophical work here: $n$. Set a mild defect with this preset, then walk $n$ upward and watch two things converge on the truth from opposite sides: the picture sharpens (the dots’ pattern stops looking like luck and starts looking like structure) while the band tightens like $1/\\sqrt{n}$ (the tolerance an honest model deserves shrinks). A defect invisible at $n = 50$ is flagrant at $n = 400$. Read the institutional meaning: validation is a SAMPLE SIZE game. One insurer’s handful of triangles can never convict or acquit a method: the lumps of luck are bigger than the defects being hunted: which is exactly why Meyers needed the CAS database of 200 triangles with settled outcomes, and why his verdicts carried weight no single company’s back-test ever could. When someone shows you a validation on eight data points, you now know precisely how much it proves.',
       preset: 'heavy',
     },
   ],
@@ -1823,27 +1823,27 @@ defineModule({
   story: [
     {
       title: 'The question first',
-      text: 'Claims have been settling FASTER, year after year. A method that assumes one fixed payout pattern reads that speed as growth and over-reserves. The fix is one honest parameter: let the pattern itself drift. This module walks the machinery of that parameter; the CCL & CSR module shows the validation failure that demanded it.',
+      text: 'Claims have been settling FASTER, year after year. A method that assumes one fixed payout pattern reads that speed as growth and over-reserves. The fix is one honest parameter: let the pattern itself drift. This module walks the machinery of that parameter: how a single dial turns one payout curve into a family of them, what the data said its value was, and the design detail that lets it repair timing without touching the ultimate. The CCL & CSR module shows the validation failure that demanded all this; here you get to hold the repair in your hands.',
       preset: 'crc',
     },
     {
       title: 'One curve or a family',
-      text: 'Every fixed-pattern method assumes the payout curve is shared across accident years. CSR adds one parameter: $\\beta_d$ is scaled by $(1-\\gamma)^{w-1}$, so each successive year walks its own curve.',
+      text: 'Start from what every fixed-pattern method silently assumes: all accident years share ONE payout curve: the fan on stage collapsed to a single path, which is what this preset shows ($\\gamma = 0$). CSR’s entire innovation is one parameter that relaxes it. The payout shares $\\beta_d$ get scaled by $(1-\\gamma)^{w-1}$, where $w$ counts accident years: so year 1 walks the base curve, year 2 walks it slightly compressed, year 3 more so, each successive year settling a little faster than the one before. Drag $\\gamma$ up from zero and watch one curve become a FAMILY of curves, fanning apart year by year. Read the exponent carefully: the speedup compounds across years but is the same phenomenon throughout: one dial, not ten. That parsimony is deliberate Bayesian craftsmanship: give the data exactly one honest way to express "claims are settling faster", and let the posterior say how much.',
       preset: 'crc',
     },
     {
       title: 'What the data said',
-      text: 'On the illustrative insurer, the posterior put $\\gamma$ at $0.0446 \\pm 0.0282$: a real speedup. Drag $\\gamma$ through the posterior strip and watch the fan open.',
+      text: 'A dial is only interesting if the data actually turns it, so here is the verdict from Meyers’ illustrative insurer. The posterior: the updated belief about $\\gamma$ after seeing the triangle, in the Prior To Posterior sense: came out at $0.0446 \\pm 0.0282$. Read that like an actuary: the center says settlement genuinely sped up by about 4.5% per accident year, and the spread says the evidence, while real, is not overwhelming (zero sits about 1.6 standard deviations below the center). The strip under the chart draws this posterior; drag $\\gamma$ across it and watch the payout fan open and close through the band of plausible speeds. This is the Bayesian habit worth internalizing from the whole monograph: the model does not announce "there IS a speedup": it reports how strongly the data pulled the belief away from zero, and carries the remaining doubt forward into the reserve distribution instead of rounding it away.',
       preset: 'posterior',
     },
     {
       title: 'The bias mechanism',
-      text: 'Average one pattern across all years and apply it to the newest: when settlement sped up, the newest year\'s early payments are a BIGGER share of its ultimate than the average admits, so the naive projection overstates it. The bars show the gap lag by lag.',
+      text: 'Now watch the crime happen: this is the mechanism behind the paid-side bias in the CCL & CSR module, in slow motion. A naive method averages ONE payout pattern across all the years in the triangle and applies it to the newest year. But if settlement has been speeding up, the newest year pays a BIGGER share of its ultimate early than that stale average admits. So when the naive method grosses up the newest year’s early payments: dividing by a share that is too small: it projects an ultimate that is too big. Systematically, every time, in the same direction. The bars on stage show the gap lag by lag: the newest year’s true share (accent) versus the all-years average (gray), with the widest gaps exactly where reserving leans hardest: the early lags of the youngest years. Crank $\\gamma$ with the strong preset and watch the bias grow with the speedup. Faster claims handling: an operational IMPROVEMENT: quietly inflates naive reserves. That irony is the whole reason this model exists.',
       preset: 'strong',
     },
     {
       title: 'Why beta_10 = 0 matters',
-      text: 'With $\\beta_{10} = 0$, every year\'s share reaches 100% at lag 10 whatever $\\gamma$ is, so the CSR ultimate calculation is formally identical to CRC. Gamma changes the JOURNEY, not the destination. That is precisely why it repairs paid-data validation without touching the ultimate\'s definition.',
+      text: 'Finish on the design detail an exam question loves, because it looks technical and is actually elegant. Meyers pins $\\beta_{10} = 0$, and since the shares are scaled as $(1-\\gamma)^{w-1}\\beta_d$, scaling zero gives zero: EVERY year’s cumulative share reaches exactly 100% at lag 10, whatever $\\gamma$ says. Watch the fan on stage confirm it: the curves separate in the middle and reconverge at the right edge, always. The consequence: $\\gamma$ changes the JOURNEY (how fast money goes out) while leaving the DESTINATION (the ultimate’s definition) untouched, which makes the CSR ultimate formally identical to its no-speedup sibling CRC. That is surgical: the model repairs exactly the thing paid-data validation flagged: the timing pattern that biased projections: without redefining what is being reserved for. When you build or grade a model, this is the standard to hold it to: fix the diagnosed failure, and prove you changed nothing else.',
       preset: 'posterior',
     },
   ],
@@ -1975,17 +1975,17 @@ defineModule({
     },
     {
       title: 'The walk itself',
-      text: 'From the current $\\theta$, propose $\\theta\' = \\theta + s\\varepsilon$. If the posterior is higher there, go; if lower, go with probability $\\pi(\\theta\')/\\pi(\\theta)$. The chain starts far out in the tail. Watch it find the ridge, then stay.',
+      text: 'Watch one rule generate everything on the left panel. From wherever the walker stands, it proposes a random step of typical size $s$. If the posterior is HIGHER at the proposed spot: always go. If lower: go anyway sometimes, with probability equal to the ratio of the two heights (a spot half as probable is accepted half the time). That is the entire Metropolis algorithm, four lines of code, and the reason it works is the reason it is beautiful: always-uphill would climb to the peak and freeze there (that is MLE’s move); the occasional downhill step forces the walker to EXPLORE in proportion to probability, so it spends twice the time wherever the posterior is twice as high. The chain on stage deliberately starts far out in the tail: watch it wander in, find the ridge, and then patrol it. That patrol, boring as it looks, is the whole product.',
       preset: 'tuned',
     },
     {
       title: 'A table row is a histogram',
-      text: 'Table 7.1 prints logelr $-0.3956\\;(0.0246)$. That row IS the histogram forming on the right, summarized. Every estimate, SE, and percentile in the monograph is a statistic of draws like these.',
+      text: 'Now connect the walk to what you will actually read in the paper. As the walker patrols, the right panel files every visited position into a histogram: and because time-spent equals probability, that histogram IS the posterior, drawn by footsteps. Meyers’ Table 7.1 prints a row like "logelr: −0.3956 (0.0246)". Look at the readouts as the chain runs: that printed row is nothing but THIS histogram summarized: its mean and its standard deviation: after enough draws. The same is true of every estimate, standard error, and percentile in the entire monograph: each is a statistic of a pile of walker positions exactly like the one accumulating in front of you. This is the demystification worth keeping: a Bayesian "answer" in modern practice is not a formula evaluated: it is a well-mixed sample, counted. When a paper says "the posterior mean was X", picture footsteps.',
       preset: 'tuned',
     },
     {
       title: 'Tuning is a real problem',
-      text: 'Timid steps accept everything and learn nothing; reckless steps reject everything and learn nothing. Efficiency peaks in between, which is why Stan tunes itself during warmup, and why "burn-in" draws get discarded.',
+      text: 'The step size $s$ looks like a detail and is actually the difference between an answer and an artifact. Apply this preset: TIMID steps. Nearly every proposal is accepted (the acceptance readout goes to the high nineties): but the walker inches along, and after thousands of draws it has explored one corner of the posterior: the histogram is confidently, smoothly wrong. Now try the reckless preset: giant steps get rejected almost every time, the walker stands still, same failure from the other side. Efficiency lives in the unglamorous middle (folk wisdom says accept roughly a quarter to half). Two practical rituals follow directly and now make sense: modern samplers like Stan spend a warmup phase tuning $s$ automatically, and everyone discards the early "burn-in" draws: the walk’s journey IN from its arbitrary starting point, which records where the walker came from, not what the posterior looks like.',
       preset: 'timid',
     },
   ],
@@ -2149,27 +2149,27 @@ defineModule({
   story: [
     {
       title: 'The question first',
-      text: 'The chain ladder gives one number, and one number is not an answer until you know how wrong it could be. Level 4 split every prediction error into process risk plus estimation risk; Mack writes BOTH terms for the chain ladder in closed form. This module reproduces his printed example to the digit.',
+      text: 'The chain ladder gives one number, and one number is not an answer until you know how wrong it could be. Level 4 split every prediction error into process risk plus estimation risk; Mack writes BOTH terms for the chain ladder in closed form: pencil-and-paper formulas for a method everyone thought was beyond statistics. This module reproduces his printed example to the digit, and on the way shows something unsettling: "the" chain ladder is actually three different methods, disagreeing by a factor of four exactly where the reserve is largest.',
       preset: 'chain-ladder',
     },
     {
       title: 'Three chain ladders',
-      text: 'All three factor sets are least-squares answers under different variance laws: weight by $C_k^2$, by $C_k$, or not at all. At $k=1$ they answer 2.217, 2.999, and 8.206. By $k \\geq 6$ they agree. Maturity is what settles arguments.',
+      text: 'Mack’s first revelation is that "the" chain ladder is actually three methods wearing one name. A development factor is fitted from the ratios $C_{k+1}/C_k$ across years: but fitted HOW? Weight each year’s ratio by $C_k^2$ and you get one answer; weight by $C_k$ (the volume-weighted standard) and you get another; weight equally and a third. These are three least-squares fits under three different assumptions about the NOISE: the variance-law lesson from the GLM level, surfacing a decade early. On this famous triangle (the RAA data every stochastic reserving paper reuses) the three answers at $k = 1$ are 2.217, 2.999, and 8.206: not a rounding disagreement, a factor of four, driven by one wild early ratio that each weighting trusts differently. Click through the factor presets and watch the projections swing. By $k \\geq 6$ the three agree: mature data settles arguments: but the young factors, where the money is, depend on a noise assumption most practitioners never knew they were making.',
       preset: 'chain-ladder',
     },
     {
       title: 'Variance bookkeeping',
-      text: 'Each projection step contributes $\\tfrac{\\hat{\\alpha}_k^2}{\\hat{f}_k^2}(\\tfrac{1}{\\hat{C}_{ik}} + \\tfrac{1}{\\sum C_{jk}})$: process noise plus estimation error. The ribbon around the focus year is that sum accumulating, age by age.',
+      text: 'Now the famous part: putting error bars on a method that never had any. Look at the formula’s repeating unit: each projection step adds $\\tfrac{\\hat{\\alpha}_k^2}{\\hat{f}_k^2}\\left(\\tfrac{1}{\\hat{C}_{ik}} + \\tfrac{1}{\\sum_j C_{jk}}\\right)$ to the relative error: and translate its two fractions with what you learned in Process vs Parameter Risk. The $1/\\hat{C}_{ik}$ piece is PROCESS risk: this year’s own future randomness at this step: and it divides by this year’s size, because bigger books are steadier in percent. The $1/\\sum_j C_{jk}$ piece is ESTIMATION risk: the factor $\\hat{f}_k$ was fitted from finitely many years: and it divides by ALL the data that went into the fit. Same two-term split, per step, accumulated along the projection. The ribbon around the focus year is that accumulation drawn live: watch it inflate step by step as the projection walks right, each age adding its own contribution of doubt. Nothing mystical: just careful bookkeeping of the two ways each step can be wrong.',
       preset: 'chain-ladder',
     },
     {
       title: 'The number that matters',
-      text: 'Accident year 9 carries a reserve of 10,650 with standard error 6,333: a 59% coefficient of variation. Every year in this triangle is at or above 41%. A point estimate without that number is not an answer.',
+      text: 'Read the readouts the way a reserving actuary would have in 1994, seeing them for the first time. Accident year 9’s reserve is 10,650: and its standard error is 6,333, a 59% coefficient of variation. Sit with that: the error bar is more than half the estimate. Scan the whole triangle and it does not improve much: every year’s cv is at or above 41%. Nothing was done wrong here: this is the RAA data, a real book, projected by the standard method, and Mack’s formulas (reproduced digit-exact in this module’s checks) are simply the first honest measurement of an uncertainty that had always existed. The profession had been booking numbers like 10,650 for decades without knowing the second number. Once you have seen a 59% cv attached to a booked reserve, "the reserve is 10,650" stops sounding like an answer and starts sounding like the first half of a sentence: which is precisely the cultural shift this paper caused.',
       preset: 'chain-ladder',
     },
     {
       title: 'Quoting a range',
-      text: 'Mack matches a lognormal to $(\\hat{R}, se)$: the 90th percentile is 86,298 while the normal would say almost the same. The 10th percentiles disagree badly (24,871 vs 17,672). His verdict: there is no general rule; check both.',
+      text: 'Two numbers are still not a range: to quote "the 90th percentile reserve" you must wrap a SHAPE around the mean and standard error, and this is the Loss Distributions lesson arriving with money attached. Mack matches both candidates to the same $(\\hat{R}, se)$ pair. At the top of the range the two nearly agree: the lognormal’s 90th percentile is 86,298 and the normal’s is barely different: comforting, and misleading if you stopped there. At the BOTTOM they disagree badly: 24,871 (lognormal) versus 17,672 (normal), a 40% gap in the low estimate, because the lognormal’s floor-and-right-lean pushes its low percentiles up while the symmetric normal dives. Drag the sd slider and watch the disagreement grow with the noise. Mack’s printed verdict is the honest one: there is no general rule; check both and understand why they differ. A range quoted without naming its shape is, quietly, a choice someone made without telling you.',
       preset: 'chain-ladder',
     },
   ],
@@ -2312,27 +2312,27 @@ defineModule({
   story: [
     {
       title: 'The question first',
-      text: 'Instead of nine separate development factors, suppose the payout follows ONE smooth curve with two dials. Which dial settings fit best? That is Level 4’s likelihood machine, verbatim: let every triangle cell vote. Two parameters replace nine, and odd evaluation dates, partial years, and tails stop being special cases.',
+      text: 'Instead of nine separate development factors, suppose the payout follows ONE smooth curve with two dials. Which dial settings fit best? That is Level 4’s likelihood machine, verbatim: let every triangle cell vote. Two parameters replace nine, and odd evaluation dates, partial years, and tails stop being special cases. The module also shows you the method’s honest limit: two curve families that fit the data equally well and disagree fivefold about the tail: and Clark’s disciplined answer to living with that.',
       preset: 'loglogistic',
     },
     {
       title: 'Name the curve',
-      text: 'Fifty-five increments, two parameters, one likelihood. $G(x)$ IS the payout pattern, defined at every age at once, so odd evaluation dates and partial years stop being special cases.',
+      text: 'Look at what the two dials actually control. $G(x)$ is the fraction of ultimate loss paid by age $x$: the payout pattern as one continuous curve: with $\\theta$ setting WHERE the action happens (the age by which half the money is out) and $\\omega$ setting how SHARPLY the curve turns. Drag both and feel the whole pattern respond as a single object. Now count what you are estimating: two parameters, fitted by letting all fifty-five triangle increments vote through one likelihood: instead of nine separate development factors each fitted from its own thin column of ratios. That trade: fewer parameters, every data point informing every parameter: is the parameter-risk lesson from Level 4, acted on. And because $G(x)$ is defined at EVERY age, not just year-ends, the perennial nuisances of practice: a June evaluation date, a year on the books for seven months: stop being special cases requiring interpolation folklore and become ordinary function evaluations.',
       preset: 'loglogistic',
     },
     {
       title: 'The tail is a family argument',
-      text: 'Loglogistic and Weibull both fit the observed increments well. Then the loglogistic pays 1.295 on the oldest year while the Weibull pays 1.052. Nothing in the triangle settles this. That is the point.',
+      text: 'Here is the uncomfortable experiment. Fit the loglogistic family: good fit. Now apply this preset and fit the Weibull family instead: also a good fit, by any statistic you compute on the observed increments. The two curves run nearly on top of each other everywhere the triangle has data. Then look right of the data, where the reserve actually lives: the loglogistic implies the oldest year still grows by a factor 1.295, the Weibull says 1.052: a fivefold disagreement in remaining development, between two models the data cannot tell apart. Nothing in the triangle settles this, and that is the point worth carrying out: the likelihood machine chooses the best member WITHIN a family, but the FAMILY: how fast the tail is allowed to decay: walks in as an assumption, priced invisibly into the reserve. The honest response is not to pick the flattering one; it is to show both, name the choice, and argue it from outside knowledge: which is exactly what Clark does next with truncation.',
       preset: 'weibull',
     },
     {
       title: 'Truncation as discipline',
-      text: 'Clark caps development at 240 months: reserve to the cap, and the shaded tail beyond it (6.65M here) becomes an explicit, separately-argued item instead of an extrapolation nobody reviewed.',
+      text: 'Clark’s answer to the tail problem is administrative rather than mathematical, and better for it. Cap development at a truncation age: 240 months here: and split the projection in two: reserve TO the cap using the fitted curve (solid), and let everything beyond the cap: the shaded region, 6.65M on this data: stand as its own explicitly-labeled item. Drag the truncation line left and right and watch dollars migrate between the fitted reserve and the shaded tail. What has this bought? The part of the answer the data genuinely supports is now separated from the part that is pure curve-family extrapolation: and the second part has become a NUMBER a reviewer can see, question, and replace with judgment or benchmarks, instead of an assumption dissolved invisibly into the total. The mathematics did not improve; the honesty did. A surprising amount of good actuarial practice is exactly this move: converting hidden assumptions into visible line items.',
       preset: 'loglogistic',
     },
     {
       title: 'Same curve, sturdier method',
-      text: 'The Cape Cod variant divides reported losses by used-up premium: ELR = 59.78%. Immature years lean on the premium instead of their own thin diagonal, which is why Clark recommends it for the actual reserve.',
+      text: 'One curve, two ways to use it: and the difference is a credibility argument you already know. The LDF version develops each year’s own reported losses to ultimate: pure chain-ladder logic, so a young year’s ultimate leans entirely on its own thin diagonal cell. The Cape Cod version instead pools everything into one expected loss ratio: divide TOTAL reported losses by TOTAL used-up premium (premium × the fitted $G$, the share of each year’s exposure that has had time to report): giving ELR = 59.78% on this data: and reserves each year as that shared ratio times its unreported premium share. Recognize the move: the immature years, whose own data is mostly noise, get shrunk toward the book-wide rate: Credibility & Shrinkage at $Z \\approx 0$ for the green years, applied through a premium base. Clark recommends Cape Cod for the actual reserve for exactly the reason the valley taught: where data is thin, borrowed strength beats own-data bravado.',
       preset: 'capecod',
     },
   ],
@@ -2446,27 +2446,27 @@ defineModule({
   story: [
     {
       title: 'The question first',
-      text: 'History only happened once, so how do you know how different it COULD have been? Manufacture thousands of alternate histories by reshuffling the model’s own leftovers: the flat, exchangeable Pearson residuals from Level 6. Price every fake history, and the pile of answers IS the reserve distribution.',
+      text: 'History only happened once, so how do you know how different it COULD have been? Manufacture thousands of alternate histories by reshuffling the model’s own leftovers: the flat, exchangeable Pearson residuals from Level 6. Price every fake history, and the pile of answers IS the reserve distribution. This module runs that factory live on the famous Taylor-Ashe triangle: you will watch pseudo-histories get built and priced by the thousand, see which of the two Level-4 risks carries the width, and find the one square root whose omission quietly understates everyone’s risk.',
       preset: 'full',
     },
     {
       title: 'What a residual pool is',
-      text: 'Fit the ODP chain ladder and every observed increment leaves a standardized residual $r = (q-m)/\\sqrt{m}$. Fifty-five of them, assumed exchangeable. That exchangeability IS the bootstrap\'s assumption, which is why Shapland spends a whole chapter diagnosing it.',
+      text: 'Begin with the raw material. Fit the ODP chain ladder (the GLM whose fitted values ARE the chain ladder: Taylor’s theorem, one module over) to the real Taylor-Ashe triangle, and every observed increment leaves a leftover: a Pearson residual $r = (q - m)/\\sqrt{m}$, its miss measured in units of its own cell’s expected wobble: exactly the standardization you learned in Pearson Residuals. Fifty-five cells, fifty-five leftovers, drawn on stage as the pool. Everything that follows rests on one claim about this pool: that it is EXCHANGEABLE: any leftover could plausibly have occurred at any cell, because standardization removed each cell’s scale. If that claim holds, the pool is a bottled sample of the triangle’s pure noise, detached from position and ready to be re-poured anywhere. If it fails: a funnel, a diagonal pattern: every simulated history downstream inherits the flaw. This is why Shapland’s paper spends an entire chapter on residual diagnostics BEFORE simulating anything, and why this ladder made you flatten a funnel yourself before letting you in here.',
       preset: 'full',
     },
     {
       title: 'Manufacture a world, price it',
-      text: 'Draw 55 residuals with replacement, rebuild a pseudo-triangle around the fitted means, refit the ladder, project, and add gamma process noise cell by cell. One iteration, one plausible total. Watch them pile up.',
+      text: 'Now watch one alternate history get manufactured, because the loop is the paper. Draw fifty-five residuals from the pool at random, WITH replacement (some leftovers reused, some skipped: that resampling is the "bootstrap"). Re-scale each to its destination cell and lay it around the fitted means: a pseudo-triangle, a history that plausibly could have happened but did not. Now treat the fake as if it were real: refit the chain ladder to it: crucially, the refitted factors DIFFER from the original, which is estimation risk being simulated: project the fake to ultimate, and add fresh process noise (gamma draws) cell by cell for the future’s own randomness. One trip through the loop yields one plausible total reserve; the histogram on stage is thousands of trips piling up, live. Notice the two Level-4 risks entering at two distinct doors: refitting simulates parameter risk, the gamma draws simulate process risk. The machine is not clever mathematics: it is honest, industrialized rerunning of the world.',
       preset: 'full',
     },
     {
       title: 'Where the width comes from',
-      text: 'Kill the process draws and the distribution narrows: parameter error alone. The correction $\\sqrt{n/(n-p)}$ matters too; without it the pool understates the noise the model consumed fitting 19 parameters.',
+      text: 'Take the machine apart to see which risk carries the width. Apply this preset: it switches OFF the process-noise draws, so each iteration still resamples and refits (parameter risk lives) but projects without fresh future randomness. The histogram narrows: what remains is estimation error alone, and you can read its share of the total directly off the two widths. Then there is a quieter adjustment doing real work: every resampled residual is multiplied by $\\sqrt{n/(n-p)} = \\sqrt{55/36}$ first. Why: the model fitted 19 parameters, and fitting ABSORBS noise: the residuals left over understate the true σ, exactly the degrees-of-freedom lesson from Process vs Parameter Risk. Without the correction the manufactured histories would all be a touch too calm, and the reserve distribution’s cv comes out near 13% instead of the honest 16%. A three-point understatement of risk, caused by skipping one square root: the kind of silent error that survives review precisely because every individual iteration still looks reasonable.',
       preset: 'param',
     },
     {
       title: 'The deliverable',
-      text: 'Mean, cv, 95th, 99th, TVaR: every number in Shapland\'s exhibits is a statistic of this histogram. The point estimate you started with is just one line through it.',
+      text: 'Step back and look at what the machine actually shipped. The deterministic chain ladder produced one number: 18,680,856: reproduced exactly by this module, and marked as a line on the histogram. The bootstrap wrapped a whole DISTRIBUTION around it, and now every risk question answers itself by reading the pile: the mean is the best estimate, the cv (about 16%) is the relative risk, the 95th and 99th percentiles are capital-style thresholds, and tail averages beyond them price the catastrophic remainder. Every figure in Shapland’s exhibits is a statistic of this histogram: nothing more exotic. Notice also where the point estimate SITS: not at the center but slightly below the mean, because the reserve distribution leans right like everything else in this ladder. That is the quiet final lesson: the number the industry books is one line through a distribution it historically never drew: and once the distribution exists, refusing to look at it is a choice.',
       preset: 'full',
     },
   ],
@@ -2698,27 +2698,27 @@ defineModule({
   story: [
     {
       title: 'The question first',
-      text: 'The chain ladder looks like folklore: averages of ratios, no model anywhere in sight. Taylor’s theorem says otherwise. Take Level 6’s GLM (log link, ODP errors), give it one dial per accident year and one per development age, and its best fit lands on EXACTLY the chain ladder’s numbers. The folklore was a maximum likelihood estimate all along.',
+      text: 'The chain ladder looks like folklore: averages of ratios, no model anywhere in sight. Taylor’s theorem says otherwise. Take Level 6’s GLM (log link, ODP errors), give it one dial per accident year and one per development age, and its best fit lands on EXACTLY the chain ladder’s numbers. The folklore was a maximum likelihood estimate all along: nobody had noticed for most of a century. This module lets you verify the identity cell by cell on Taylor’s own triangle, and then shows what the discovery buys: standard errors, diagnostics, and principled extensions for a ritual that never had any.',
       preset: 'reconcile',
     },
     {
       title: 'The folklore algorithm',
-      text: 'Volume-weighted factors on the workers comp triangle: $\\hat{f}_1 = 1.815$ down to $\\hat{f}_9 = 1.021$, projecting a total reserve of 373,346. Nothing here looks like a statistical model. Yet.',
+      text: 'First, the folklore, run honestly. On Taylor’s workers compensation triangle, compute the volume-weighted development factors exactly as every reserving department does: $\\hat{f}_1 = 1.815$ tapering down to $\\hat{f}_9 = 1.021$: and walk each accident year’s latest diagonal out to ultimate. Total reserve: 373,346. Now audit what you just did with Level 4 eyes: where was the model? No error distribution was named, no likelihood was maximized, no assumption was written down that anyone could test. Just averages of ratios: an algorithm, not a model: which is why the classical chain ladder can produce a NUMBER but cannot, by itself, produce a standard error, a diagnostic, or a defense. It works, demonstrably, on a century of triangles. The question this module answers is WHY it works: and the answer, hiding in plain sight for decades, turns out to dignify the folklore rather than replace it.',
       preset: 'reconcile',
     },
     {
       title: 'Row and column balances',
-      text: 'Model each cell as ODP with mean $\\alpha_k\\beta_j$. Maximum likelihood reduces to marginal sums: each row parameter balances its row, each column parameter its column. Solved, $\\hat{\\alpha}_k$ IS the chain-ladder ultimate and $\\hat{\\beta}_j$ the incremental payout share.',
+      text: 'Now build the model the folklore never wrote down. Say each incremental cell is ODP-distributed with mean $\\alpha_k \\beta_j$: a size parameter per accident year times a timing parameter per development age: which is the GLM from Generalized Linear Models with a log link and the crudest possible structure: one dial per row, one per column. Run the MLE machine from Level 4 on it, and something lovely happens: for this model, "maximize the likelihood" collapses to two bookkeeping conditions called marginal sums: each row’s fitted values must add up to that row’s actual total, and each column’s to its column total. Solve those (the module iterates them live) and READ the solution: $\\hat{\\alpha}_k$ comes out equal to the chain-ladder ultimate for year $k$, and $\\hat{\\beta}_j$ equal to the incremental share the factors imply. The averages-of-ratios ritual was, all along, solving a maximum likelihood problem: nobody had said so out loud.',
       preset: 'reconcile',
     },
     {
       title: 'Cell for cell',
-      text: 'Taylor checks 1996 development 3: $92{,}242 \\times 1.261$ gives $\\hat{Y} = 24{,}070$, and $173{,}225 \\times 0.139 = 24{,}070$. Move the sliders anywhere in the future triangle; the max-gap readout stays at zero.',
+      text: 'A theorem this consequential deserves verification you can touch, so the stage runs Taylor’s own spot-check and then lets you run every other one. His printed example is accident year 1996 at development 3. The chain-ladder route: take the year’s cumulative, multiply by the factor, difference out the increment: 24,070. The GLM route: multiply the fitted parameters, $\\hat{\\alpha}_{1996} = 173{,}225$ times $\\hat{\\beta}_3 = 0.139$: also 24,070. Not approximately: identically, and Taylor proves it holds for EVERY future cell, not just this one. Use the two sliders to steer the probe anywhere in the future triangle and watch both routes light up with the same number; the max-gap readout across all cells sits at zero (this module’s checks hold it below a billionth). Two computations that share no steps: one ratios and averages, one likelihood and link functions: forced to agree everywhere by the structure of the model. That agreement is the theorem, and now you have walked on it.',
       preset: 'reconcile',
     },
     {
       title: 'Why you should care',
-      text: 'Once the chain ladder is a GLM, it stops being folklore: Table 5-1 hands you standard errors (U-shaped in accident year, exploding in the tail), residual diagnostics catch broken assumptions, and Chapters 4-6 extend the model instead of the ritual.',
+      text: 'The theorem sounds like trivia: two roads, same number: until you notice what the second road carries. An algorithm produces a number and stops. A MODEL produces a number plus everything models come with: and the chain ladder is now a model. Standard errors: Taylor’s Table 5-1 prints them per accident year, and their shape is worth reading (U-shaped: mature years have little left to be wrong about, young years borrow strength from columns, the middle is exposed: with the tail cells exploding, as this preset shows). Diagnostics: the Pearson-residual machinery from your Level 6 now applies verbatim, so broken assumptions: a calendar-year trend, a changed mix: show up in plots instead of in next year’s surprise. And extensions: Taylor’s later chapters swap distributions, add trends, and generalize structure by editing the MODEL, not by inventing new rituals. Folklore can only be followed or abandoned. Models can be criticized, defended, and improved: which is the entire cultural argument of stochastic reserving, compressed into one equals sign.',
       preset: 'tail-cell',
     },
   ],
@@ -2847,27 +2847,27 @@ defineModule({
   story: [
     {
       title: 'The question first',
-      text: 'A whole company’s reserve risk is not one class’s risk times ten: Level 2 showed independent wobbles partially cancel while shared ones refuse to. Marshall industrializes that lesson: sort every source of uncertainty by whether diversification can touch it, and only then add.',
+      text: 'A whole company’s reserve risk is not one class’s risk times ten: Level 2 showed independent wobbles partially cancel while shared ones refuse to. Marshall industrializes that lesson: sort every source of uncertainty by whether diversification can touch it, and only then add. This module walks the whole assembly line: three kinds of not-knowing, the quadrature step that turns 14.5% of naive risk into 8.7% of measured risk, the correlation assumption that entire discount hangs on, and the final conversion of uncertainty into a statutory margin. It is the ladder’s one module about running a COMPANY rather than a triangle.',
       preset: 'base',
     },
     {
       title: 'Three kinds of not knowing',
-      text: 'Independent risk averages out across classes. Internal systemic risk (your model\'s own specification, parameters, data) does not. External systemic risk (inflation, courts, events, latency) does not either. The framework refuses to blend them.',
+      text: 'Marshall’s framework begins with a sorting exercise, and the sorting IS the insight. Take every reason a reserve could be wrong and ask the Correlation & Diversification question: does pooling across classes tame it? INDEPENDENT risk: the random scatter of individual claims: absolutely: it averages away like the ρ = 0 cloud. INTERNAL SYSTEMIC risk does not: if your model’s specification is off, its parameters mis-fitted, its data flawed, then it is wrong the same way for EVERY class it touches: pooling ten classes pools ten copies of the same mistake. EXTERNAL SYSTEMIC risk: inflation, court doctrines, catastrophic events, latent claims: also refuses: one cause moves everything at once. Look at the bars by class on stage: three sources per class, and the framework keeps them in separate columns on principle, because a number formed by blending tamable and untamable risk has already destroyed the information the consolidation step needs. Sort first, add second: never the reverse.',
       preset: 'base',
     },
     {
       title: 'Variances add, CoVs do not',
-      text: '3.0, 4.9, and 6.6 consolidate to 8.7, not 14.5. Squaring before adding is the entire mathematics of diversification, and the bars show what it forgives.',
+      text: 'Now the consolidation itself, and the one arithmetic habit that separates it from naive addition. The three sources measure 3.0%, 4.9%, and 6.6% of the reserve. Add them like grocery prices and you would book 14.5%. Marshall consolidates to 8.7%: and the missing six points are not an error, they are diversification, collected. The rule you learned two levels down does all the work: independent-ish uncertainties add in QUADRATURE: square each, sum the squares, take the root ($\\sqrt{3.0^2 + 4.9^2 + 6.6^2} \\approx 8.7$): because their bad days do not coordinate. Watch the strip on stage: the segments stack in variance space, and the consolidated bar comes out visibly shorter than the segments laid end to end. CoVs never add: variances do. It looks like a technicality and is actually the entire financial value of writing a diversified book, computed: hold capital for 8.7, not 14.5, and be exactly as safe.',
       preset: 'base',
     },
     {
       title: 'Correlation is the price',
-      text: 'Push the internal correlations to full and the internal CoV climbs from 4.9% toward 6.7%, dragging the margin to 6.3%. There is no diversification credit without a defended correlation assumption.',
+      text: 'The quadrature discount rests on an assumption someone must defend: that the sources really do act independently ACROSS CLASSES. This preset stress-tests it: push the internal-systemic correlations between classes to full: assume that when your reserving model misleads you on motor, it misleads you the same way on liability, on property, on everything: and watch the internal CoV climb from 4.9% toward 6.7%, dragging the consolidated margin from 5.65% to 6.33%: both figures straight from Marshall’s printed sensitivity table, reproduced live. That seven-tenths of a point is real capital, and it hangs entirely on a correlation matrix that no triangle can estimate for you: model errors do not announce how correlated they are. Hence the framework’s governance lesson, which outlasts its arithmetic: every diversification credit in the consolidation is an ASSUMPTION with money attached, and the assumption, not the quadrature, is what a reviewer should interrogate.',
       preset: 'full-corr',
     },
     {
       title: 'The margin is a percentile',
-      text: 'At 75% probability of adequacy, $z = 0.6745$ of a lognormal around the central estimate: 5.6%. Slide the adequacy up and watch prudence get expensive nonlinearly.',
+      text: 'The last step converts the consolidated uncertainty into money, and it is the percentile read from PDF, CDF & Quantiles doing regulatory work. The requirement (Australian practice, where this framework is standard) is a reserve with 75% probability of adequacy: a 75th percentile, by its plain definition. Wrap a lognormal with the consolidated 8.7% CoV around the central estimate: the shape choice you saw Mack agonize over, made statutory here: and read off the margin above the central estimate: 5.65%, matching Marshall’s printed 5.6%. Now slide the adequacy requirement upward and watch prudence get expensive NONLINEARLY: each further point of comfort costs more than the last, because you are climbing into the right tail where the lognormal thins slowly. That convexity is the same percentile-race you felt in Level 1, now with a balance sheet attached: the difference between 75% and 90% adequacy is not fifteen points of margin: it is a different company.',
       preset: 'base',
     },
   ],
@@ -2953,28 +2953,28 @@ defineModule({
   story: [
     {
       title: 'What probability even means',
-      text: 'Roll a die over and over: the share of sixes wobbles, then settles near 1 in 6. **Probability is that settling number**: the fraction of times something happens if you could repeat the world forever. A **random variable** is a number chance has not picked yet. Here it is $X$, next year’s claim count: unknowable today, but with steady long-run habits. The dotted curve IS those habits: the taller a value, the more often the long run visits it. Press **Draw A Year** and make one year real.',
+      text: 'Start with something you can hold: a die. Roll it once and you learn almost nothing. Roll it ten times and the share of sixes is ragged: maybe none, maybe three. But roll it ten thousand times and the share settles, stubbornly, near 1 in 6. **Probability is that settling number.** It is not a promise about any single roll; it is a fact about the long run. Now swap the die for an insurance book. Next year’s claim count $X$ is a **random variable**: a number chance has not picked yet. We cannot know it, but it has long-run habits just like the die, and the dotted curve on the stage is a portrait of those habits: the taller the curve over a value, the more often the long run visits it. Press **Draw A Year** in the chart header and watch one year stop being a possibility and become a fact.',
       preset: 'book',
     },
     {
       title: 'Commit to a guess',
-      text: 'You have drawn a handful of years at most.',
+      text: 'You have made a year or two real. Here is the question almost everyone answers wrong the first time, so answer it before the machine does.',
       predict: {
         prompt: 'Draw ten years. Will the empirical bars sit close to the true curve?',
         options: ['Yes, ten is plenty', 'No, ten years will look ragged'],
         answer: 1,
-        explain: 'Ten draws of a random variable are noise with a hint of shape. Probability only speaks clearly in the long run, which is exactly why one bad year proves nothing about a book.',
+        explain: 'Ten draws are noise with only a hint of shape: with so few years, one unlucky draw shifts a whole bar by ten percentage points. Probability makes promises about the LONG run and stays silent about short ones. Try it yourself: press Draw A Year ten times and compare the bars against the dotted curve. This is why one bad year proves nothing about a book, and why small datasets are dangerous evidence. That lesson returns with real teeth in Process vs Parameter Risk.',
       },
       preset: 'book',
     },
     {
       title: 'The law of large numbers',
-      text: 'Now press **Run** and let hundreds of years pour in. The bars settle onto the curve, and the running average $\\bar{X}_n$ walks into the long-run average $E[X]$ (the "expected value": what the average WOULD be after forever). Nothing forces any single year to behave; the AVERAGE is what converges.',
+      text: 'Now press **Run** and let hundreds of years pour in, watching two things at once. First the bars: ragged at fifty years, recognizably curve-shaped by five hundred, nearly identical to the dotted curve after a few thousand. Second, the two vertical lines: the solid one is $\\bar{X}_n$, the plain average of every year drawn so far, and the dashed one is $E[X]$, the **expected value**: the number that running average is heading toward, the average after forever. The solid line wanders early, then locks on. This is the **law of large numbers**, and notice how little it actually promises: no single year is ever forced to behave, and bad streaks still happen. Only the AVERAGE is tamed. Insurance is the business of being the long run on purpose: write enough independent risks and your average becomes predictable even though every individual claim stays wild.',
       preset: 'book',
     },
     {
       title: 'Rare events lean right',
-      text: 'Drop $\\lambda$ to 0.8. Most years are zero, some are one, and a thin tail of years go bad. The mean no longer sits on the most likely value. Loss distributions lean right almost everywhere in this exam.',
+      text: 'Drag $\\lambda$ (Expected Claims Per Year) down to 0.8 and press **Run** again. The shape changes character. The tallest bar now sits at zero: the single most likely year is a quiet one. Yet the readout says the mean is 0.8. How can the average sit above the most common outcome? Look at the two sides of that tallest bar. To its left there is nothing, because a year cannot have fewer than zero claims. To its right the values run on: two, three, four, occasionally worse. A floor blocks one side while a tail stretches the other, so the rare bad years drag the average up, to the right of the typical year. That shape has a name, **right-skewed**, and it is the resting state of insurance: losses have a floor at zero and no ceiling, so most years are fine and the average is set by the few that are not.',
       preset: 'rare',
     },
   ],
@@ -3104,38 +3104,38 @@ defineModule({
   story: [
     {
       title: 'Mass on a beam',
-      text: 'Each bar is probability sitting at a loss size. The fulcrum sits where the beam balances: that point IS $E[X]$. Drag a bar taller and watch the fulcrum slide toward it.',
+      text: 'This is the last module’s idea with YOU in control of the chances. Each bar is probability sitting at a loss size: the bar over 2 is the chance a claim costs about 2, and together the bars hold 100% of the chance. Think of them as sandbags on a beam. The **mean** $E[X]$ is where a fulcrum would balance that beam: each bag pulls with its weight times its distance. Try it physically: drag the tall bar near 2 even taller and watch the fulcrum slide toward it; then drag up a small bar far to the right and watch the fulcrum chase it. Notice what the mean is NOT: not the middle of the picture, not the most common value. It is the balance point of chance, and it can sit at a value where almost no individual outcome ever lands.',
       preset: 'severity',
     },
     {
       title: 'Commit to a guess',
-      text: 'The balance point is a lever law, not a bar count.',
+      text: 'The balance point obeys a lever law, and levers care about distance. Before you drag anything, commit to a prediction.',
       predict: {
         prompt: 'Pile more mass far to the right without touching the left. The mean moves…',
         options: ['A lot: distance multiplies mass', 'A little: it is only one bar', 'Not at all'],
         answer: 0,
-        explain: 'The mean weights each outcome by its distance. Mass far from the fulcrum has leverage, which is exactly why a thin large-loss tail dominates an average.',
+        explain: 'The mean weights every outcome by its distance from the balance point, exactly the way a child sitting far out on a seesaw outweighs one near the middle. A small probability far to the right has leverage out of proportion to its size. Test it: raise the bar at 10 by a sliver and watch the fulcrum jump. This is why a thin tail of large losses can dominate a book’s average even when 95% of claims are small, and why "the typical claim" and "the average claim" are different numbers that answer different questions.',
       },
       preset: 'two-books',
     },
     {
       title: 'Spread is variance',
-      text: 'The bracket above the beam spans $E[X]\\pm\\sigma$. Squeeze the mass together and it tightens; smear the mass out and it widens. Variance is the average SQUARED distance from balance: squaring makes far-away mass count extra, so twice as far counts four times as much. One bar far out widens $\\sigma$ more than several near the middle.',
+      text: 'Balance is only half a distribution’s story: two books can balance at the same point and still be entirely different animals. Apply this preset and look at the bracket above the beam: it spans $E[X] \\pm \\sigma$, one **standard deviation** either side of the mean. Now grab the outer bars and drag them taller. The fulcrum barely moves, because the shape stays balanced, but the bracket widens: you are feeding **variance**, the average SQUARED distance of the mass from the balance point. The squaring is a deliberate design choice with a consequence you can feel: twice as far counts four times as much, so one bar far out widens $\\sigma$ more than several bars near the middle. Read $\\sigma$ as the answer to "how wrong is a typical outcome?", in the same units as the losses themselves. Reserve ranges exist because this number is not zero.',
       preset: 'symmetric',
     },
     {
       title: 'Losses lean right',
-      text: 'Rebuild the severity shape. The tail pulls the mean to the right of the mode, and the skewness reads positive. Nearly every distribution on this exam leans this way.',
+      text: 'Bring back the severity shape and read three readouts together: the mean, the SD, and the **skewness** $\\gamma_1$. Skewness asks a simple question: is the mass arranged symmetrically around the balance point, or does one side stretch farther than the other? A positive value means a long RIGHT tail: lots of small claims and a few painful ones. Look at where the fulcrum sits: to the right of the tallest bar, dragged there by the tail, exactly like the quiet-book average in the previous module. Now try to build a LEFT-leaning book by piling mass far left: you can do it here, but the insurance world almost never does it to you, because losses stop at zero on one side and have no ceiling on the other. That single asymmetry, floor but no ceiling, is why nearly every distribution on this exam leans right, and why the mean so often sits above the typical outcome.',
       preset: 'severity',
     },
     {
       title: 'Trend the whole book',
-      text: 'Now transform every loss: $Y = aX + b$.',
+      text: 'One last tool, used silently inside half the exam’s formulas: transforming every loss at once. The sliders $a$ and $b$ turn each loss $X$ into $Y = aX + b$: read $a$ as a trend factor (inflation multiplies every claim) and $b$ as a fixed load added on top. The outlined shape is the transformed book.',
       predict: {
         prompt: 'Trend every loss up 50% (a = 1.5). What happens to the standard deviation?',
         options: ['Rises 50%', 'Rises 125%', 'Unchanged: trend shifts, it does not spread'],
         answer: 0,
-        explain: 'SD carries the units of the loss, so it scales by a. VARIANCE is squared and scales by a² = 2.25. The fixed load b moves the mean and touches neither.',
+        explain: 'The SD is measured in the same units as the losses, so trending every loss by 1.5 scales σ by exactly 1.5. VARIANCE is squared distance, so it scales by 1.5² = 2.25: half again the trend, squared. And the fixed load b slides the whole beam sideways: it moves the mean, and adds no spread at all, so σ ignores it completely. Watch the outlined distribution confirm all three at once as you drag. These small rules, E[aX+b] = aE[X] + b and SD[aX+b] = |a|σ, are the reason trending and on-leveling in reserve work move means and spreads differently.',
       },
       preset: 'inflation',
     },
@@ -3257,33 +3257,33 @@ defineModule({
   story: [
     {
       title: 'From buckets to a curve',
-      text: 'The claim counts you drew before were whole numbers, so each one could own a bar. A LOSS can land anywhere, so start by chopping the possibilities into buckets. Each bar’s AREA is the chance of landing in that bucket; all the areas together make 100%. Now slide **Number Of Buckets** up. The staircase melts into a smooth curve, the chance of any single bucket ($P_{max}$ below) shrinks toward zero, and only one idea survives the melting: **area under the curve = probability**. Height alone stops meaning anything.',
+      text: 'The claim counts you drew earlier were whole numbers, so every value could own its own bar. A LOSS is different: it can land at 3.7, or 3.71, or 3.70588. No exact value can own a bar, because the chance of hitting any EXACT value is zero. So we do the honest thing instead: chop the possibilities into buckets. On the left panel, each bar is one bucket, and the bar’s AREA (width times height) is the chance of landing inside it; the areas together make 100%. Now slide **Number Of Buckets** slowly from 4 up to 80 and watch two things at once: the $P_{max}$ readout (the fullest bucket’s chance) sliding toward zero, and the staircase melting into a smooth curve. That limiting curve is the **probability density function**. Its height alone means nothing on its own. AREA under it is the only thing that ever means probability. Hold onto that: it is the most misread idea in all of statistics.',
       preset: 'buckets',
     },
     {
       title: 'Three questions, one object',
-      text: 'The left panel answers "where is probability DENSE?" The right panel answers "how much lies BELOW $x$?" And reading the right panel backward answers "which loss holds $q$ of the probability under it?" Drag on either panel; both answer at once.',
+      text: 'The smooth curve you just built can only speak through areas, and there are three ways to ask it a question. The left panel, the **density**, answers "where is the chance concentrated?": the shaded region from zero to the marker holds exactly $q$ of the probability. The right panel is the same information added up as you sweep left to right: the **CDF** $F(x)$ climbs from 0% to 100%, and its height at any $x$ says how much chance lies at or below $x$. And reading the right panel BACKWARD (pick a height $q$ on the axis, walk right until you hit the curve, drop straight down) answers the third question: which loss $x_q$ has exactly $q$ of the chance below it? Drag on either panel and watch all three answers move in lockstep: one object, three views. A surprising number of exam questions are secretly just asking which of the three views you are standing in.',
       preset: 'range',
     },
     {
       title: 'Commit to a guess',
-      text: 'This book leans right, like nearly everything in insurance.',
+      text: 'This book leans right, like nearly everything in insurance. Two "centers" are marked on the density: the dashed **median** (half the outcomes below it, half above) and the dashed **mean** (the balance point from the beam module). Before looking closely, commit.',
       predict: {
         prompt: 'For a right-skewed loss distribution, where does the mean sit relative to the median?',
         options: ['Above the median', 'Below the median', 'They coincide'],
         answer: 0,
-        explain: 'The long right tail drags the average up while the median stays put at the halfway point. For a lognormal the gap is exact: mean over median equals exp(σ²/2).',
+        explain: 'The median only counts HOW MANY outcomes sit on each side of it, so the long tail cannot move it: a huge loss and a merely large loss both count as "one outcome above". The mean weights by DISTANCE, so the tail drags it up. For a lognormal the gap is exact and the readout tracks it live: mean over median = exp(σ²/2), which reaches 1.6 at cv = 1.2. Practical habit to build now: whenever a skewed quantity is reported as one number, ask which center it is. "Average income" and "median income" tell different stories for exactly this reason, and so do reserve estimates.',
       },
       preset: 'heavy',
     },
     {
       title: 'Reading a percentile',
-      text: 'Slide $q$ and watch the same read happen twice: the shaded area under the density grows to $q$, and the CDF staircase walks up to height $q$ and drops at $x_q$. A reserve "at the 75th percentile" is exactly this read.',
+      text: 'Now make the backward read do real work. Set $q$ to 75% and read $x_q$ in the readouts: that loss level is the **75th percentile**, the number that outcomes stay under three times out of four. Watch both panels agree as you drag $q$: the shaded area under the density grows to 75% of the total, while on the CDF the read-line walks up to height 75% and drops at the same $x_q$. This is literally what "a reserve at the 75th percentile" means in practice: a number chosen so that, IF the model is right, there is only a one-in-four chance the true cost ends up beyond it. Now slide $q$ from 75% up to 95% and watch how far $x_q$ has to travel: on a skewed curve the last twenty points of safety are far more expensive than the first seventy-five. Prudence has a price curve, and it is convex.',
       preset: 'range',
     },
     {
       title: 'Why the exam cares',
-      text: 'Run the read in reverse on a REAL outcome: evaluate $F$ at what actually happened and you get its percentile. Meyers validates whole reserving models by asking whether those percentiles land uniform. That machine starts on this panel.',
+      text: 'One more read, and it is the one an entire exam paper is built on. So far you handed the machine a probability $q$ and received a loss $x_q$. Run it the other way: take a loss that ACTUALLY happened, evaluate $F$ at it, and out comes the outcome’s percentile under the model. Here is the quietly powerful fact: if the model is telling the truth about the world, those percentiles carry no pattern at all. Real outcomes should land at the 12th, the 67th, the 3rd, the 88th: evenly spread, like raindrops on pavement. If they instead pile up near 0 and 100, the model’s tails were too thin. If they crowd the middle, too fat. If they slide to one side, the model was biased. You will meet this exact machine again in Meyers: Model Validation, where it sits in judgment over the industry’s standard reserving models: and now you know where its gears came from.',
       preset: 'heavy',
     },
   ],
@@ -3435,28 +3435,28 @@ defineModule({
   story: [
     {
       title: 'A random number of random pieces',
-      text: 'Each simulated year draws a Poisson claim count, then a lognormal size for every claim, and adds. The histogram of totals builds live. $E[S] = \\lambda E[X]$ is the easy part.',
+      text: 'A year’s total loss stacks two layers of chance you have already met separately. HOW MANY claims arrive is the Poisson counter from Random Variables. HOW BIG each one is comes from a lognormal severity: the curve in the left panel. Written down: $S = X_1 + X_2 + \\dots + X_N$, where even the NUMBER of terms is random. The right panel runs the experiment live: each simulated year draws a count, draws that many sizes, adds them up, and files the total into the histogram. Watch a few hundred years accumulate. The center of the pile is the easy part, and it is exactly what intuition says: $E[S] = \\lambda \\times E[X]$: expected count times expected size, eight claims averaging ten gives eighty. The SHAPE of the pile is the interesting part: how wide, and how lopsided. The next steps take those one at a time.',
       preset: 'calm',
     },
     {
       title: 'Variance rides the SECOND moment',
-      text: 'Push severity cv up and watch $\\sigma_S$ jump. The formula is $\\mathrm{Var}(S) = \\lambda\\,E[X^2]$, and $E[X^2]$ is the average of the SQUARED claim sizes: squaring is the beam module’s lesson again, so one rare giant claim moves the total’s spread more than dozens of ordinary ones. A book’s risk lives in its large-claim tail, not its claim count.',
+      text: 'Apply this preset: the expected total barely changes, but the claims themselves are now violent (severity cv of 1.5 means a single claim’s own spread is one and a half times its mean). Watch the histogram flatten and stretch rightward. The formula names the culprit precisely: $\\mathrm{Var}(S) = \\lambda\\,E[X^2]$, where $E[X^2]$ is the average of the SQUARED claim sizes. Squaring is the beam module’s lever again: a claim ten times the average size contributes a HUNDRED times its share to the variance. Now compare two ways of doubling risk: doubling the claim COUNT doubles the variance, but doubling severity’s spread multiplies $E[X^2]$ far faster. Severity volatility hurts more than frequency volatility, always. This is why a book’s risk lives in its large-claim tail rather than its claim count, and why excess layers and reinsurance are priced off the top of the severity curve, not the middle.',
       preset: 'stormy',
     },
     {
       title: 'Commit to a guess',
-      text: 'The dashed marker is the normal approximation’s 95th percentile.',
+      text: 'The dashed overlay is a normal curve given the SAME mean and SAME standard deviation as the true total, and the dashed vertical marker is ITS 95th percentile: where the normal says only one year in twenty should land beyond. Commit before counting.',
       predict: {
         prompt: 'With few, violent claims (λ = 4, cv = 1.5), how many years actually land beyond the normal 95th percentile marker?',
         options: ['More than 5%: the true tail is fatter', 'Exactly 5%: that is what a percentile means', 'Less than 5%'],
         answer: 0,
-        explain: 'The percentile is only honest if the shape is right. A skewed total puts more mass beyond the normal marker than the normal admits, which is precisely why reserve ranges built on normal approximations run thin.',
+        explain: 'A percentile is only as honest as the SHAPE it was computed from. The normal is symmetric, so its 95th percentile silently assumes the bad side mirrors the good side. This total leans hard right instead, so more probability lives beyond the marker than the normal admits: the accent readout keeps the true count, and it runs well above 5%. Matching mean and SD is not enough; the moments agree and the tail still lies. Every reserve range built by wrapping a normal around a skewed total runs thin in exactly this way, which is why the exam papers go to such lengths to get whole DISTRIBUTIONS, not just two moments.',
       },
       preset: 'stormy',
     },
     {
       title: 'The bell earns its keep slowly',
-      text: 'Now grow the portfolio. Skewness of the total decays like $1/\\sqrt{\\lambda}$: aggregation genuinely tames the shape, which is why large books can lean on the CLT and small books cannot.',
+      text: 'Now the good news, with its price tag attached. Push $\\lambda$ up to 40 and let the years pour in: the histogram gathers itself together, the lean softens, and the normal overlay starts fitting like it belongs. This is the **central limit theorem**: add enough independent pieces, none of them dominant, and the total’s shape drifts toward the bell REGARDLESS of the pieces’ own shape. But watch the skewness readout while you slide $\\lambda$: it decays like $1/\\sqrt{\\lambda}$. Four times the claims buys only HALF the lean: the square root is the fine print. So the CLT is real but slow, and the professional skill is knowing which side of it you stand on: a large personal-lines book can lean on the bell; a small book, a reinsurance layer, or any total that one claim can dominate, cannot. When in doubt, this module is the test bench: set your book’s numbers and look.',
       preset: 'huge',
     },
   ],
@@ -3562,28 +3562,28 @@ defineModule({
   story: [
     {
       title: 'Slice the cloud',
-      text: 'Each dot is a year: reported at 12 months across, ultimate up. Drag the slice to any $x$: the violin shape is the distribution of ultimates among years that reported $x$, and its midpoint is your best guess.',
+      text: 'Every dot in this cloud is one accident year from history, plotted by two numbers: how much it had reported at twelve months (across) and where its ultimate finally landed (up). Now put yourself in the middle of a live year. You know one thing: it has reported $x$. What is your best guess for its ultimate? Drag the vertical slice to your $x$ and look at what it cuts out of the cloud: only the years that reported roughly what yours has. Their ultimates still vary (that is the violin shape drawn along the slice) but they vary around a center, and that center is the honest answer. Statisticians write it $E[Y|X{=}x]$, read "the expected ultimate GIVEN reported $x$", and it is nothing more exotic than the beam module’s balance point, computed only over the slice you are standing in. Conditioning = throwing away the part of history that no longer matches what you know.',
       preset: 'moderate',
     },
     {
       title: 'Commit to a guess',
-      text: 'Correlation is the dial on how much the report is worth.',
+      text: 'The ρ slider controls how strongly reported and ultimate move together across years: at high ρ, years that report big finish big. Before touching it, commit to what the extreme means.',
       predict: {
         prompt: 'Set ρ = 0. What does the best-guess line do?',
         options: ['Goes flat at μ_Y: the report buys nothing', 'Still slopes: reported losses always matter', 'Becomes vertical'],
         answer: 0,
-        explain: 'With ρ = 0 the slice looks identical at every x, so conditioning changes nothing: E[Y|X=x] = μ_Y everywhere. The budgeted-loss method is exactly this line, used on purpose when history is uninformative.',
+        explain: 'Drag ρ to zero and watch: the cloud rounds into a blob, and the slice cuts out the SAME violin wherever you stand. Knowing x now changes nothing about Y, so the best guess is the overall mean μ_Y at every x: the line goes flat. And notice what you just discovered about an exam method: "budgeted loss", which ignores reported losses entirely, is not lazy: it is the CORRECT best guess in a world where the report is uninformative (a brand-new line, a law change that severed history). Methods are beliefs about worlds. The skill the exam actually tests is matching the method to the world you are in.',
       },
       preset: 'useless',
     },
     {
       title: 'What conditioning cannot remove',
-      text: 'The violin never collapses to a point: $\\mathrm{SD}[Y|X{=}x] = \\sigma_Y\\sqrt{1-\\rho^2}$. Even a perfect report leaves process risk on the table unless $\\rho = 1$. Watch the band shrink as you push $\\rho$ up.',
+      text: 'Push ρ up to 0.9 and watch two different things happen. The line steepens: the report now carries real news, so your guess should move a lot per unit of surprise. And the violin narrows: less is left unexplained once you know $x$. But look closely: it never closes. The leftover spread is $\\mathrm{SD}[Y|X{=}x] = \\sigma_Y\\sqrt{1-\\rho^2}$, and the square root is crueler than intuition expects: even at ρ = 0.9, the residual spread is $\\sqrt{1 - 0.81}$, still 44% of the original. Information reduces uncertainty; it does not abolish it. The part no amount of knowing-x can remove is the same irreducible process risk you will meet formally in Process vs Parameter Risk, and it sets the floor under every reserve range: a perfect model of a random world is still facing a random world.',
       preset: 'strong',
     },
     {
       title: 'The line under every method',
-      text: 'Trace the slice means across every $x$: a straight line with slope $\\rho\\,\\sigma_Y/\\sigma_X$. Brosius’ least-squares development estimates exactly this line from data, and chain ladder and BF are special cases of where it is allowed to point.',
+      text: 'Slide the slice across the whole cloud and imagine marking every violin’s center: the marks fall on a straight line with slope $\\rho\\,\\sigma_Y/\\sigma_X$: the **regression line**. Read the slope as a recipe: for each unit your report surprises you, move the ultimate guess by this many units. Now the exam payoff, and it is a big one. Brosius’ least-squares development (top rung of this ladder) is literally this line, estimated from a company’s own history. And the classical methods turn out to be this same line with parts pinned by ASSUMPTION instead of data: chain ladder forces it through the origin, budgeted loss forces it flat, Bornhuetter-Ferguson fixes the slope at one. When an exam question asks "which method is appropriate?", it is really asking "what do you believe about this line?": and now you can picture the answer instead of reciting it.',
       preset: 'moderate',
     },
   ],
@@ -3695,28 +3695,28 @@ defineModule({
   story: [
     {
       title: 'Two lines, one total',
-      text: 'Each dot is a year: line A’s result across, line B’s up. Drag $\\rho$ and watch the cloud stretch onto a line. The bars on the right track what the TOTAL’s spread does about it.',
+      text: 'You run two lines of business. Each dot is one year of history: line A’s result across, line B’s up. The question that matters to whoever owns BOTH: how much does the total bounce around? Start at ρ = 0, meaning the lines are **independent**: knowing A had a bad year tells you nothing about B. The cloud is a round blob, and look at the bars on the right: the total’s spread reads 5 when the pieces are 4 and 3. Less than 4 + 3: because in many years, one line’s bad luck lands on the other’s good luck and partially cancels. Now drag ρ upward and narrate what you see: the blob stretches onto a diagonal line (the years stop disagreeing), the cancellation dries up, and the total’s bar grows toward 7. That gap between 5 and 7, and who gets to keep it, is the entire subject of this module.',
       preset: 'independent',
     },
     {
       title: 'Commit to a guess',
-      text: 'σ_A = 4 and σ_B = 3.',
+      text: 'Line A wobbles with σ = 4, line B with σ = 3. Before the machine answers, commit to the arithmetic of the extreme case.',
       predict: {
         prompt: 'If the two lines move in perfect lockstep (ρ = 1), the SD of the total is…',
         options: ['7: SDs simply add', '5: variances add like Pythagoras', 'Somewhere below 5'],
         answer: 0,
-        explain: 'At ρ = 1 there is no offsetting wobble at all, so σ adds linearly: 4 + 3 = 7. Independence is what buys the Pythagorean 5 = √(16 + 9). Diversification IS that gap.',
+        explain: 'At ρ = 1 the two lines are one risk wearing two names: every bad year for A is a bad year for B, no offsetting ever happens, and spreads simply add: 4 + 3 = 7. Independence is what buys the discount: there, VARIANCES add (16 + 9 = 25) and the SD is the square root, 5. Yes, that is the Pythagorean theorem, running an insurance company: independent risks meet at right angles. And the 2-unit gap between 7 and 5 is not a metaphor: it is capital you did not have to hold, the entire economic argument for writing more than one line of business.',
       },
       preset: 'systemic',
     },
     {
       title: 'The benefit and its thief',
-      text: 'The benefit readout is the fraction of lockstep risk that aggregation forgives. It is largest near independence and dies as $\\rho \\to 1$. Systemic drivers (inflation, mass torts) are the thief: they correlate everything at once.',
+      text: 'The Diversification Benefit readout measures the share of lockstep risk that pooling forgives: $1 - \\sigma_{A+B}/(\\sigma_A{+}\\sigma_B)$. Play with all three sliders and learn its habits. It is largest when the lines are independent AND similar in size; it shrinks when one line dwarfs the other (a giant has nothing meaningful to cancel against); and it dies entirely as ρ climbs to 1. Then ask the practical question: what would make ρ rise in real life? The answers are uncomfortable: inflation, a court doctrine, a catastrophe season, one shared reinsurer failing: causes that hit EVERY line at once. Those are exactly the risks pooling cannot touch. Independent bad luck is cheap to carry in bulk; shared bad luck costs full price no matter how many lines you write. Reading a risk means asking which kind it is before asking how big it is.',
       preset: 'systemic',
     },
     {
       title: 'Where the exam runs this',
-      text: 'Marshall consolidates classes by adding independent sources in quadrature while internal systemic sources add linearly: this picture, at portfolio scale. And Meyers widens reserve distributions by correlating accident years, because ρ is also what fattens tails.',
+      text: 'Two exam papers are this module at industrial scale, and you can now read both on sight. Marshall’s risk-margin framework asks of every source of uncertainty exactly the question you just learned: can pooling touch it? Independent sources get added the Pythagorean way (squares first, the ρ = 0 discount); systemic sources are added nearly straight, full price. His whole consolidation ladder is bookkeeping for that one distinction. Meyers made the same discovery INSIDE a single triangle: accident years share calendar-year weather, so they are correlated with each other: and a model that assumes they are independent (Mack’s does) understates the total reserve’s spread just like the ρ = 0 bar understates the ρ = 0.45 truth. His CCL model exists to add that missing ρ. One formula: $\\sigma^2 = \\sigma_1^2 + \\sigma_2^2 + 2\\rho\\sigma_1\\sigma_2$: priced at company scale, twice.',
       preset: 'independent',
     },
   ],
@@ -3915,28 +3915,28 @@ defineModule({
     },
     {
       title: 'Commit to a guess',
-      text: 'Now we let time pass.',
+      text: 'The vertical line marked "today" is how much of this year’s story has been written; everything right of it is still chance. Before you drag it, commit.',
       predict: {
         prompt: 'Move today from age 2 to age 7. What happens to the fan of remaining futures?',
         options: ['It narrows: less of the story is left to happen', 'Unchanged: the future is always the future', 'It widens: more history means more ways to differ'],
         answer: 0,
-        explain: 'Each remaining step contributes its own noise, so fewer remaining steps means less accumulated spread: cv² = exp((10−k)σ²) − 1 falls as k rises. Maturity is the strongest reserve-risk reducer there is.',
+        explain: 'Every remaining development step contributes its own fresh noise, so the fan’s width is built entirely from the steps still AHEAD of today: the formula in the readouts, cv² = exp((10−k)σ²) − 1, falls as k rises. Drag today rightward and watch chance resolve into fact, step by step. At age 2 nearly everything is unwritten and the conditional fan is almost as wide as the gray one; by age 7 it is a narrow brush. This is why young accident years dominate reserve risk, why long-tailed lines (where reaching maturity takes decades) are the hard ones, and why maturity beats cleverness as a risk reducer, every time.',
       },
       preset: 'mature',
     },
     {
       title: 'Conditioning is the whole game',
-      text: 'The accent fan is not "the future": it is the futures CONSISTENT with the path you observed. Reserving means describing THIS fan: its center is the best estimate, its spread is the risk, its quantiles are the range. Drag today’s line and watch the collapse happen.',
+      text: 'Be precise about what the accent fan IS, because the whole subject lives in this distinction. It is not "the future" in general: it is the futures CONSISTENT with the path you have already watched: the gray lives that passed through today’s observed point, continued forward. Evidence has ruled everything else out. That is the slice-the-cloud move from Conditional Expectation, applied to an entire path at once, and it is the exact definition of the reserving problem: GIVEN the observed past, describe the distribution of the unpaid remainder. The histogram forming on the right margin is that distribution made visible: its center is the best estimate, its spread is the risk, its percentiles are the range you would quote. Every reserving method in existence is an algorithm for drawing this one histogram. Drag today’s line back and forth and watch evidence eat the fan; that eating is what an actuary’s year of new data actually does.',
       preset: 'young',
     },
     {
       title: 'Mack’s first assumption, watched',
-      text: 'Drag the observed point 30% above expected. The entire conditional fan scales up in proportion: $E[C_{k+1}|C_k] = f_k C_k$. No opinion, no judgment: proportionality IS the chain ladder, and this world satisfies it exactly.',
+      text: 'Now drag the observed dot itself: pull it 30% above the dashed spine, as if this year had been running hot from the start. Watch what the ENTIRE conditional fan does: it scales up by 30%. Every path, proportionally. Nothing bends back toward average, nothing accelerates: the future simply carries today’s level forward by the same growth factors. That proportionality is a statement about how the world works, written $E[C_{k+1}|C_k] = f_k\\,C_k$: "however high you are today, expect to GROW by the usual factor": and it is Mack’s first assumption, which is to say it IS the chain ladder. This simulated world obeys it by construction. A real triangle only CLAIMS it, and the claim can fail: hot years might instead revert toward normal (then Bornhuetter-Ferguson beats chain ladder) or keep deteriorating (then neither is enough). An enormous amount of methodology rides on which way this one drag behaves in your data.',
       preset: 'running-hot',
     },
     {
       title: 'Four ways to draw one fan',
-      text: 'The rest of the syllabus is methods for this picture. Mack writes the fan’s width in closed form. Clark fits its spine by maximum likelihood. Shapland rebuilds it from resampled residuals. Meyers samples it from a posterior, then audits whether anyone’s fan was honest.',
+      text: 'Apply the volatile preset and study what changed: same spine, same best estimate, twice the fan. Two books can agree on the NUMBER and disagree completely about the risk around it: which is why "the reserve is 80" is not a full answer, and why the rest of this ladder exists. Here is your map of the exam’s top level, and it is one sentence per paper: everyone is drawing THIS fan, by different means. Mack writes its width in a closed formula: two terms, process and estimation, the split you met one level up. Clark fits the fan’s SPINE (the payout curve) by maximum likelihood. Shapland rebuilds the whole fan empirically, by resampling the model’s own residuals into thousands of alternate histories. And Meyers samples it from a Bayesian posterior: then, in his best contribution, audits everyone’s fans against 200 real outcomes to see whose were honest. Keep this picture. Every module upstairs is a caption to it.',
       preset: 'volatile',
     },
   ],
@@ -4055,28 +4055,28 @@ defineModule({
   story: [
     {
       title: 'Each point votes',
-      text: 'The bars under the losses are their votes: the candidate density evaluated AT each observed loss. $\\ell$ adds the logs of the votes, so a near-zero vote anywhere is a veto. Slide $\\mu$ and watch votes trade off.',
+      text: 'Twelve real losses sit on the axis, from 3.1 up to a nasty 34.5. Your job: find the lognormal curve that best describes the machine that produced them. The two sliders are your hands on the candidate: $\\mu$ slides it, $\\sigma$ widens it. But what does "best" MEAN? Here is the likelihood answer. Let every observed loss vote on your candidate: its vote is the height of the candidate’s density AT that loss (the thin bars). A tall bar says "a curve like this produces losses like me all the time"; a bar near zero says "under this curve I basically never happen". The total score multiplies the votes together: equivalently, adds their logarithms: that is $\\ell$ in the readouts: so a single near-zero vote can veto an otherwise popular candidate. Now slide $\\mu$ back and forth and watch the votes trade: helping the tail claims hurts the middle ones. Fitting a distribution is a negotiation among your data points, and $\\ell$ is the negotiator’s scorecard.',
       preset: 'guess',
     },
     {
       title: 'Commit to a guess',
-      text: 'Width feels safe. Is it?',
+      text: 'A tempting instinct: when unsure, be vague: stretch σ wide so the curve "covers" every loss and no point can veto you. Commit to what the scorecard will say.',
       predict: {
         prompt: 'Push σ very wide so the density covers every loss. The log-likelihood…',
         options: ['Falls: covering everything thinly loses to concentrating where data is', 'Rises: a wide net catches every vote', 'Stays flat once every point is covered'],
         answer: 0,
-        explain: 'Density integrates to one: width anywhere is height taken from everywhere. Likelihood pays for CONCENTRATION where the data actually sits, which is why it can choose a σ at all.',
+        explain: 'A density has a fixed budget: its total area must be one, so width ANYWHERE is height taken from EVERYWHERE. Stretch σ and every single vote shrinks: you covered all the points and impressed none of them. Now try the opposite sin with the preset: σ far too small makes the middle points vote loudly while the 34.5 casts a devastating near-zero veto. The peak lives between the two failures, and that is the deep reason likelihood can CHOOSE a spread at all: it punishes both overconfidence and vagueness, automatically. "Play it safe by being vague" is not safe here: it is just a different way to be wrong.',
       },
       preset: 'thin',
     },
     {
       title: 'Climb the surface',
-      text: 'The map is $\\ell$ over every candidate $(\\mu, \\sigma)$. Drag yourself around it, then press **Find MLE** and ride to the peak. For the lognormal the peak is exactly the mean and RMS spread of the logs.',
+      text: 'One candidate at a time is slow. The right panel scores ALL of them at once: every pixel is a $(\\mu, \\sigma)$ pair, and brighter means higher $\\ell$. Your current candidate is the dot: drag it around the map and feel the terrain: one bright ridge, no decoys, falling away in every direction. The best possible candidate sits at the peak; it has a name, the **maximum likelihood estimate**, and a button: press **Find MLE** and ride up. For the lognormal the peak happens to have a closed form (μ̂ is the average of the logs, σ̂ their spread: the readouts confirm it), but do not let the shortcut shrink the idea. The MACHINE is: define the score, then climb. When the model is complicated and no formula exists, statisticians climb numerically: and when even climbing fails because the surface lives in twenty dimensions, they send in a random walker instead. You will meet that walker in MCMC Sampling, one level up.',
       preset: 'guess',
     },
     {
       title: 'Clark runs this exact machine',
-      text: 'Swap the lognormal for an over-dispersed Poisson on triangle increments and the candidate for $(\\omega, \\theta)$ of a growth curve: that is Clark 2003, verbatim. The likelihood machine does not care what it is fitting; that is its power.',
+      text: 'Now the payoff, and it is worth saying slowly. Take this machine and change only its inputs: swap the twelve losses for the fifty-five cells of a loss triangle; swap the lognormal for a smooth payout curve $G(x)$ with two dials $(\\omega, \\theta)$, wrapped in ODP noise. Change NOTHING about the logic: each cell votes on the candidate curve, the log-votes add, the fitted answer is the peak of the surface. What you now have is Clark 2003: an entire exam paper: reduced to an application of a machine you already understand. This is the real reason MLE lives below the exam level in this ladder: it is not a formula to memorize per paper, but ONE machine, indifferent to what it fits. Learn it once here, where you can drag the candidate with your hand, and Clark’s "maximize the loglikelihood over ω and θ" stops being an incantation.',
       preset: 'mle',
     },
   ],
@@ -4180,28 +4180,28 @@ defineModule({
   story: [
     {
       title: 'Rerun the world',
-      text: 'Every tick simulates a fresh dataset of $n$ losses from the same fixed truth and marks its estimate $\\bar{x}$. The histogram is the SAMPLING DISTRIBUTION of the estimator: the thing classical statistics is actually about.',
+      text: 'Here is the thought experiment classical statistics is secretly built on. Nature fixes a truth: these losses average 100 with noise σ: and never shows it to you. You get $n$ observations, average them, and call the result your estimate $\\bar{x}$. Reasonable. But now RERUN the world: same truth, fresh luck, a new batch of $n$, a new estimate. Then again, thousands of times: which is exactly what the left panel is doing (the small dots across the top are the latest batch). Watch the histogram of estimates pile up. It has a definite shape and a definite spread, and here is the reframe that unlocks the whole level: the estimate YOU actually computed, from the one history you actually got, is a single draw from THIS histogram. The moment you see your own number as one draw among the possible ones, "how good is my estimate?" stops being philosophy and becomes a measurable thing: the width of this pile.',
       preset: 'thin-data',
     },
     {
       title: 'Commit to a guess',
-      text: 'The √n law is worth predicting before you watch it.',
+      text: 'More data obviously helps. The question worth committing to is HOW FAST it helps, because careers of budget decisions hang on the answer.',
       predict: {
         prompt: 'Quadruple the sample size from 5 toward 20. The spread of the ESTIMATES…',
         options: ['Halves: parameter risk shrinks like 1/√n', 'Quarters: like 1/n', 'Does not move: σ is σ'],
         answer: 0,
-        explain: 'Var(x̄) = σ²/n, so quadrupling n quarters the variance but only halves the SD. The square root is why data gets expensive: each halving of parameter risk costs four times the observations.',
+        explain: 'Averaging n independent draws divides the VARIANCE by n: Var(x̄) = σ²/n: but the width you actually see is the standard deviation, its square root, so it shrinks only like 1/√n. Quadruple the data, halve the scatter; watch the histogram confirm it as you slide n. That square root is the tax on certainty: each further halving of estimation error costs FOUR times the observations, which is why the last bit of confidence is always the expensive bit, and why thin data (young accident years, new lines, rare perils) can never be argued into precision. It can only be shrunk toward something: which is what Credibility & Shrinkage, the next level, is for.',
       },
       preset: 'rich-data',
     },
     {
       title: 'Two risks, one prediction',
-      text: 'Predicting the NEXT outcome pays twice: the outcome wobbles around the truth ($\\sigma$) and your estimate wobbles around the truth ($\\sigma/\\sqrt{n}$). Independent wobbles add in quadrature, exactly like the correlation module said they would.',
+      text: 'Estimating the truth is only half the job: reserving must predict the NEXT outcome, and that prediction misses for two stacked reasons. First, the next outcome wobbles around the truth by $\\sigma$: **process risk**, the world’s own randomness, untouchable by any amount of data. Second, your estimate of the truth was itself off, by about $\\sigma/\\sqrt{n}$: **estimation risk** (the papers also say parameter risk), the part data CAN shrink. The two misses are independent, so they combine the Pythagorean way you learned in Correlation & Diversification: total² = σ² + σ²/n, which is the bar ladder on the right, live. Study the bars and notice the floor: drag n as high as it goes and the total never falls below σ. A model can be EXACTLY right and the world still surprises you. Mixing up those two kinds of missing: blaming the model for process risk, or trusting thin data as if estimation risk were zero: is the classic reserving mistake, in both directions.',
       preset: 'thin-data',
     },
     {
       title: 'Where the exam splits it',
-      text: 'Mack’s mse has these two terms side by side for every accident year. Clark reports the split explicitly and finds parameter risk DOMINANT on real triangles. Shapland inflates resampled residuals by $\\sqrt{n/(n-p)}$ precisely because fitted residuals understate $\\sigma$. One decomposition, three papers.',
+      text: 'You now hold the exam’s single most reused idea, so collect the payoffs. Mack’s celebrated mean-squared-error formula IS this decomposition written out for the chain ladder: inside his expression sit a process term and an estimation term, per accident year: nothing in it will be new to you except the bookkeeping. Clark reports the same split for his curve fits, and his empirical finding deserves a pause: on real triangles, PARAMETER risk dominates. A triangle looks like a lot of data and is actually 55 numbers; the data is thinner than it feels, exactly the thin-data regime you just explored. And Shapland multiplies his resampled residuals by $\\sqrt{n/(n-p)}$ for a reason you can now state precisely: a model that fitted p parameters has already absorbed some of the noise into them, so its leftover residuals understate the true σ. Three papers, one decomposition. On any exam question about uncertainty, the first productive move is: which term is this?',
       preset: 'thin-data',
     },
   ],
@@ -4325,28 +4325,28 @@ defineModule({
   story: [
     {
       title: 'The scatter lies',
-      text: 'Gray dots are TRUE class means; accent dots are their raw estimates. The estimates spread wider than the truth, always: estimation noise piles on top of real differences. Acting on raw estimates means acting on that extra spread.',
+      text: 'Twelve classes of business. Each has a true average loss level (the gray dots): which nobody can see: and an estimate computed from its own thin data (the accent dots). Compare the two scatters carefully: the estimates spread WIDER than the truths. Always. The reason is mechanical and worth saying aloud: an estimate is truth plus estimation noise, and stacking two spreads widens the result (the quadrature rule, again). Now feel the trap this sets. The class with the highest ESTIMATE is probably not your worst class: more likely it is a middling class that drew bad luck in a small sample. Price it up, or panic about it, and you are chasing noise: and next year, when its luck normalizes, you will congratulate yourself for a fix that did nothing. The remedy looks like heresy: drag Z below 1 and deliberately pull every estimate partway toward the crowd’s average. The next step is about why the heresy wins.',
       preset: 'balanced',
     },
     {
       title: 'Commit to a guess',
-      text: 'Shrinkage sounds like giving up information.',
+      text: 'Shrinkage sounds like giving up information: you measured each class, and now you are smudging the measurements together. Commit to what happens to the ERROR.',
       predict: {
         prompt: 'Slide Z from 1 toward Z*. The average error against the TRUE class means…',
         options: ['Falls: trading noise for a small bias wins', 'Rises: raw data is unbiased and unbiased is best', 'Flat: it is a wash'],
         answer: 0,
-        explain: 'The raw estimate is unbiased but noisy; the grand mean is biased but steady. Blending trades a little bias for a lot of variance, and the trade is favorable all the way down to Z* = τ²/(τ²+s²). This is the same argument that James and Stein made famous.',
+        explain: 'Each raw estimate is unbiased but noisy; the grand mean is biased for any particular class but rock steady. Blending trades a LITTLE bias for a LOT of variance, and the trade keeps paying all the way down to Z* = τ²/(τ²+s²): watch the error readout fall as you drag. Study what Z* is built from, because it is the module’s whole lesson: τ² measures how DIFFERENT the classes truly are, s² how NOISY each estimate is. Real differences earn trust; noise earns shrinkage. Stein scandalized statistics in 1956 by proving a version of this always wins in aggregate: even for unrelated quantities. The crowd is information, not contamination.',
       },
       preset: 'balanced',
     },
     {
       title: 'Walk the valley',
-      text: 'The curve is exact: $\\mathrm{err}^2(Z) = Z^2 s^2 + (1{-}Z)^2\\tau^2$. Drag your $Z$ along it. The bottom never sits at 0 or 1 unless one of the variances dies; certainty in either direction is the only way to escape compromise.',
+      text: 'The right panel prices every possible choice of Z at once: $\\mathrm{err}^2(Z) = Z^2 s^2 + (1{-}Z)^2\\tau^2$. Read it as two costs fighting: trust the data too much (Z near 1) and you eat estimation noise $s$; trust the crowd too much (Z near 0) and you erase real class differences $\\tau$. Their sum is a valley with one bottom. Drag your Z along the curve and feel the trade. Then, more instructive, move the WORLD instead of the dial: crank the noise $s$ up and watch the whole valley tilt, its bottom sliding toward 0 (when estimates are garbage, lean on the crowd); crank $\\tau$ up and the bottom slides toward 1 (when classes genuinely differ, respect the differences). The bottom only reaches 0 or 1 when one variance dies completely. Everything in between is compromise: and notice that the compromise is COMPUTED from two measurable quantities, not negotiated in a meeting.',
       preset: 'noisy',
     },
     {
       title: 'Three exam names for one dial',
-      text: 'Brosius writes the bottom as $VHM/(VHM+EPV)$. Mack 2000 writes it as $c^* = p/(p+t)$ and Benktander lands near it by iterating. Different papers, same valley: whenever the exam says credibility, look for the two variances.',
+      text: 'You will meet this dial three times on the exam wearing three different costumes, and it is worth learning to see through all of them now. Brosius writes the valley’s bottom as $Z = VHM/(VHM + EPV)$: "variance of hypothetical means" over itself plus "expected process variance": which is exactly τ² and s² wearing actuarial name tags. Mack 2000 walks the same valley for the blend between BF and chain ladder and finds the bottom at $c^* = p/(p+t)$. Benktander’s method never computes the bottom at all: it iterates the blend once and lands NEAR it, a heuristic that the valley explains. So build the habit: when any exam question says "credibility", do not reach for a memorized formula first. Reach for the two variances: ask "how different are these risks, really?" and "how noisy is my estimate of each?": and the formula, whichever costume it wears, is just their ratio.',
       preset: 'distinct',
     },
   ],
@@ -4530,28 +4530,28 @@ defineModule({
     },
     {
       title: 'The link bends the world',
-      text: 'Switch to a log link. The same straight $\\eta$ now means a multiplicative world: each step of $x$ MULTIPLIES the mean by $e^{\\beta_1}$. Loss development is multiplicative, which is why reserving GLMs almost always carry a log link.',
+      text: 'Apply the ODP preset and hold both panels in view at once: the mean curve now sweeps upward in a curve: yet the inset $\\eta$ is still perfectly straight. The new ingredient is the **link**: the rule that connects them. With a log link the model says $\\log \\mu = \\eta$, that is, $\\mu = e^{\\eta}$: the straight line lives on the log scale. Why would anyone want that? Because it makes the world MULTIPLICATIVE. Watch the $e^{\\beta_1}$ readout: with a log link, each step of $x$ multiplies the mean by that same factor, instead of adding the same amount. And loss development is multiplicative to its bones: a year that starts 30% bigger pays roughly 30% more at every age: which is why reserving GLMs almost always carry a log link. Two bonuses come free: $e^{\\eta}$ can never go negative (neither can paid losses), and multiplicative effects become ADDITIVE on the η scale, which is exactly where the straight line lives. The link is not a distortion; it is a translation.',
       preset: 'odp',
     },
     {
       title: 'Commit to a guess',
-      text: 'Now the error family. In the ODP world, variance is $\\varphi\\mu$.',
+      text: 'The second upgrade is the noise. In this ODP world the variance is not constant: it follows the mean, $V(\\mu) = \\varphi\\mu$. Before studying the cloud, commit to what that implies.',
       predict: {
         prompt: 'With V(μ) = φμ, which cells sit farther from the mean curve IN DOLLARS?',
         options: ['The big ones: SD grows like √μ', 'The small ones: little means wobble more', 'All the same: that is what dispersion means'],
         answer: 0,
-        explain: 'SD = √(φμ) rises with the mean, so late, large cells miss by more dollars even though they miss by fewer percent. Weighting big cells properly is most of why GLM fitting beats least squares on triangles.',
+        explain: 'The SD at any point is √(φμ), which grows with the mean: watch the envelope widen toward the right of the error panel. So large cells miss by more DOLLARS: while in percent terms (SD/μ = √(φ/μ)) they are actually the steady ones. Why this matters beyond trivia: a fitting method must decide which cells to believe when they disagree, and it believes cells in inverse proportion to their assumed variance. Ordinary least squares (constant V) treats a small early cell and a huge late cell as equally reliable in dollars, which over-trusts the big ones. Get V(μ) right and the fit weights every cell by its actual reliability. Much of GLM’s advantage on triangles is exactly this, quietly.',
       },
       preset: 'odp',
     },
     {
       title: 'The p dial',
-      text: 'Slide $p$ from 1 to 2 and watch the cloud change species: ODP’s even dollar-growth, Tweedie’s zero-mass with a heavy lean, gamma’s constant percent spread. One dial, the whole error family the exam draws from.',
+      text: 'The third ingredient is the error FAMILY: what the scatter around the mean actually looks like: and one dial sweeps through every family the exam uses, via the law $V(\\mu) = \\varphi\\,\\mu^{p}$. Slide $p$ slowly from 1 to 2 and narrate the species change. At $p = 1$, the ODP: dollar-spread grows like $\\sqrt{\\mu}$, count-flavored noise. At $p = 2$, the gamma: constant PERCENT spread, every cell equally uncertain relative to its size: severity’s natural habitat. And in between sits **Tweedie**, which is not an interpolation gimmick but a real physical object: a compound Poisson sum of gamma-sized pieces: literally the aggregate-losses machine from Level 2: complete with a genuine lump of probability at exactly zero. Look for it in the cloud around $p = 1.5$: some cells sit ON the axis. Quiet cells, zero-payment months: real triangles have them, and now your error family does too. One dial, and every "assume gamma errors" in the syllabus becomes a position on it rather than a separate fact.',
       preset: 'tweedie',
     },
     {
       title: 'Why the exam cares',
-      text: 'Put one parameter per accident year and one per development age into $\\eta$, keep the log link and $p = 1$: the fitted values ARE chain ladder (Taylor), and resampling this model’s residuals IS the bootstrap (Shapland). The GLM is not adjacent to the syllabus; it is under it.',
+      text: 'Now assemble the three parts you can each see on this screen: a straight $\\eta$, a log link, ODP errors: and aim the assembly at a loss triangle, with one $\\beta$ per accident year and one per development age inside $\\eta$. Two theorems then carry most of the reserving syllabus on their backs. Taylor: the maximum likelihood fit of THAT model reproduces the chain ladder’s numbers exactly, cell for cell: the Taylor module upstairs lets you verify it to nine decimal places. So the folklore method was secretly a GLM all along, which means it quietly inherits everything GLMs own: standard errors, residual diagnostics, principled extensions. Shapland: resample THAT model’s Pearson residuals and you get the bootstrap’s alternate histories. So when an exam paper writes "the ODP model underlying the bootstrap", it is pointing at this screen: these three parts, set exactly this way. The GLM is not adjacent to the syllabus. It is underneath it.',
       preset: 'odp',
     },
   ],
@@ -4700,28 +4700,28 @@ defineModule({
   story: [
     {
       title: 'The funnel',
-      text: 'The world is ODP: variance $\\varphi\\mu$, honestly. But you standardized by a CONSTANT variance, so residuals at large fitted values tower over the small ones. Structure in a residual plot is the model confessing.',
+      text: 'A model’s residuals: actual minus fitted, one per cell: are its confession tape: any pattern left in them is something the model failed to hear. But there is a catch most people learn the hard way: you must listen at the right VOLUME, and volume here means the variance you divide each residual by. The world on stage is honestly ODP: bigger cells genuinely wobble by more dollars, and the model’s mean is exactly right. Yet standardize the residuals by a CONSTANT variance ($p_a = 0$, the naive lens) and look at the left panel: a funnel: quiet on the left, wild on the right. Nothing is wrong with the model. The funnel is an artifact of measuring every cell’s miss with the same dollar yardstick when the cells live on different scales. Misread it as "the model fails on large cells" and you will go fix something that was never broken. Residual plots do not just show model errors: they show YOUR assumptions about the noise, reflected back.',
       preset: 'wrong',
     },
     {
       title: 'Commit to a guess',
-      text: 'One dial fixes it.',
+      text: 'The dial $p_a$ is YOUR assumption about how the noise scales: divide each residual by $\\sqrt{\\varphi\\mu^{p_a}}$. The world’s true power is 1. Commit to what happens when your assumption meets the truth.',
       predict: {
         prompt: 'Slide the assumed power p_a from 0 up to 1. The funnel…',
         options: ['Flattens into an even band', 'Rotates: small cells start funneling instead', 'Nothing changes: residuals are residuals'],
         answer: 0,
-        explain: 'Dividing each residual by √(φμ^{p_a}) with the TRUE p removes exactly the spread the mean was adding. That is all a Pearson residual is: the raw residual, measured in units of its own standard deviation.',
+        explain: 'Dividing each residual by its OWN standard deviation, √(φμ) here, converts every cell’s miss into the same currency: "how many of MY typical wobbles did I miss by?" A big cell missing by many dollars and a small cell missing by few can both be perfectly ordinary one-wobble misses, and once standardized correctly they look identical: the funnel flattens into an even band. That is the entire content of the phrase **Pearson residual**: a raw residual measured in units of its own SD. And the move generalizes far beyond triangles: z-scores in school testing, Sharpe ratios in finance, standardized residuals here: one idea, three costumes: never compare raw misses across different scales.',
       },
       preset: 'pearson',
     },
     {
       title: 'Exchangeable at last',
-      text: 'Flat means the residuals are now on one common scale: any of them could have happened at any cell. THAT property, exchangeability, is what lets Shapland shuffle them across the whole triangle and rebuild plausible histories.',
+      text: 'Look at what the flattening bought you, because it is the ticket the bootstrap rides on. The right panel shows the standardized pool: hundreds of leftovers that are now statistically interchangeable: any of them could plausibly have occurred at any cell, since each is expressed in its own cell’s natural units. Statisticians call this property **exchangeability**, and for Shapland it is not a nicety but the load-bearing wall. His alternate histories are manufactured by drawing from EXACTLY this pool and rescaling each draw to its destination cell (multiply back by that cell’s $\\sqrt{\\varphi\\mu}$). Now run the failure case in your head: if the pool still funneled: big-cell residuals systematically larger: then shuffling would transplant big-cell noise into small cells, and every manufactured history would be subtly, systematically wrong. Diagnose flatness FIRST, then resample: that ordering is why Shapland’s paper spends an entire chapter on residual plots before it dares to bootstrap anything.',
       preset: 'pearson',
     },
     {
       title: 'Overshooting is also a confession',
-      text: 'Push $p_a$ to 2 and the funnel inverts: small cells look wild. Venter’s diagnostics on real triangles are this module played in reverse: look at the residual plot, and read off which variance assumption the data actually wants.',
+      text: 'One more turn of the dial teaches the final reading skill. Push $p_a$ past the truth to 2: now you are dividing the big cells by TOO much, and watch the funnel invert: suddenly the SMALL cells look wild. Pause on what you just learned: a tilt in either direction is the same single message: your assumed variance law disagrees with the data’s actual one: and the DIRECTION of the tilt tells you which way to move $p$. Widening to the right means assume faster variance growth; widening to the left means assume slower. That turns residual plots from a pass/fail ritual into an instrument with a needle you can read. Venter’s paper on testing chain-ladder assumptions is this exact move run on real triangles, systematically, plot by plot. Flat is not a formality to check off. Flat is the evidence that your noise model and reality have stopped arguing: and every tilt is the argument, written down.',
       preset: 'overshoot',
     },
   ],
@@ -4860,38 +4860,38 @@ defineModule({
   story: [
     {
       title: 'Test the incumbents first',
-      text: 'Meyers scored Mack on 200 real incurred triangles: evaluate each model’s CDF at what actually happened, collect the percentiles, and demand uniformity. The p-p plot on the right is that demand drawn as a picture; the band is how much wiggle 100 outcomes are allowed.',
+      text: 'Meyers held something rare in this field: a database of 200 real triangles WHOSE FUTURES HAD ALREADY HAPPENED: the outcomes were settled and known. That let him do to reserving models what backtesting does to trading strategies: no arguing about assumptions, just scorekeeping against reality. The procedure is the Model Validation machine you have already drilled: for each insurer, ask what percentile of Mack’s predictive distribution the actual outcome landed on, then demand the 200 percentiles come out uniform. The stage replays the audit in stylized form: the left panel shows what the model CLAIMED (accent) against the truth (dashed); along the axis, the outcome dots burn red wherever they landed in percentiles the model called nearly impossible. Count the red: far more than the honest handful: and the KS distance blows through the band. Mack on incurred data: the industry’s default: failed its audit. What matters next is not THAT it failed, but the SHAPE of the failure.',
       preset: 'mack-incurred',
     },
     {
       title: 'Commit to a diagnosis',
-      text: 'Look at where the outcomes land under Mack-incurred.',
+      text: 'You learned the three fingerprints in the Validation Machine: extremes, middle, one side. Look at where the outcome dots actually land under Mack-incurred, and commit to a diagnosis like a clinician: symptom first, then cause.',
       predict: {
         prompt: 'Outcomes cluster in the EXTREME percentiles (near 0 and 100). The predictive distribution is…',
         options: ['Too narrow: real life keeps escaping its tails', 'Too wide: everything looks middling', 'Biased high: outcomes land low'],
         answer: 0,
-        explain: 'An outcome in the 1st or 99th percentile is an outcome the model called nearly impossible. Seeing too many of them means the model’s tails are too thin: it is underestimating variability, exactly Meyers’ finding for Mack on incurred data.',
+        explain: 'An outcome at the 1st or 99th percentile is one the model called a once-in-a-century event: and they keep arriving. Too many extremes means reality keeps escaping the model’s tails: the claimed distribution is too NARROW, understating variability. Notice what the symptom rules OUT, because that is where diagnosis earns its keep: the escapes go in BOTH directions, so this is not bias, and Mack’s central estimates are fine. Nothing is wrong with the point reserve: only with the claimed width around it. A diagnosis that specific tells you exactly what to build: something that widens the distribution without moving its center: and that is precisely what comes next.',
       },
       preset: 'mack-incurred',
     },
     {
       title: 'Diagnose, then build: CCL',
-      text: 'WHY is Mack too thin? He treats accident years as independent, but they share calendar-year weather: inflation, courts, case-reserving philosophy. Drag $\\rho$ toward the truth and watch the claimed width $w(\\rho)$ climb and the p-p plot straighten. That single added parameter IS the Correlated Chain Ladder.',
+      text: 'WHY is Mack too thin? Follow the cause: his formulas treat the accident years as independent: each year’s luck rolled separately: but real years share calendar-year weather: one inflation spike, one court doctrine, one claims-department reorganization touches every open year at once. And you know from Correlation & Diversification exactly what ignoring shared wobble does to a TOTAL: the width computed under independence, $w(0)$, sits far below the true correlated width: the readout shows the independence claim understating by roughly a third here. So the total reserve’s distribution was built too narrow, and reality kept escaping it: the symptom you just diagnosed, now with its mechanism exposed. Drag $\\rho$ up toward the truth and watch both panels heal in real time: the claimed density widens onto reality and the p-p dots straighten into the band. One added parameter: correlation between accident years: is the entire Correlated Chain Ladder. Not a new philosophy: one diagnosed omission, repaired, and re-audited.',
       preset: 'ccl',
     },
     {
       title: 'The paid side fails differently',
-      text: 'Run the same audit on paid data and the failure changes species: outcomes pile into the LOW percentiles. The models are biased HIGH, not thin. A width fix cannot cure a location problem; this failure needs its own diagnosis.',
+      text: 'Now switch datasets: the same audit, run on models built from PAID losses instead of incurred: and watch the failure change species entirely. Look at the dots: no longer split between both extremes, they pile into the LOW percentiles: outcomes keep landing BELOW where the models pointed. That is not a width problem: it is bias: the models systematically aim high. Try to fix it with the tools from the incurred side: the ρ dial is right there, and it is powerless: widening a distribution that is centered in the wrong place just spreads the wrongness. This is the module’s central skill made concrete: extreme-percentile pileup means too narrow, one-sided slide means biased, middle-crowding means too wide: and each fingerprint demands its OWN repair. Diagnosing WHICH failure you are looking at, before reaching for a fix, is what separates Meyers’ method from the model-shopping it replaced: where practitioners swapped models until one flattered the data, learning nothing.',
       preset: 'mack-paid',
     },
     {
       title: 'CSR: model the speedup',
-      text: 'The diagnosis: claims have been settling FASTER across the data period, and development methods read faster payment as more ultimate loss. The CSR model gives settlement rate its own parameter with its own prior. Dial $s$ to the truth and the bias dies. The dedicated CSR module walks this model’s interior.',
+      text: 'The diagnosis for the paid side: across the database’s calendar years, claims had been SETTLING FASTER: better claims systems, earlier settlements: and a development method that assumes a frozen payout pattern cannot tell "money arriving sooner" from "more money coming". It reads speed as growth and projects high: the one-sided bias you just watched. The repair is again a single honest parameter: give the settlement rate its own dial $s$, with its own prior, and let each triangle’s data say how much speedup it actually contains. Slide $s$ toward the truth and watch the residual bias die and the percentiles spread back into uniformity. Note the craftsmanship in what did NOT change: the model still cannot manufacture a low reserve to flatter anyone: it can only reallocate TIMING, which is exactly the thing the diagnosis implicated. The dedicated CSR module, one shelf over, opens this model’s interior lag by lag: here, what matters is that it exists as an ANSWER to a specific, demonstrated failure.',
       preset: 'csr',
     },
     {
       title: 'The discipline is the content',
-      text: 'Validate. Diagnose the failure’s SHAPE (thin tails vs bias). Build the smallest model that addresses that shape. Re-validate. The monograph’s lasting lesson is this loop, not any one model on the ladder; it is how every model on this exam should be read.',
+      text: 'Step back and name what you actually watched, because it was a LOOP, not a leaderboard. Validate against real outcomes. Read the failure’s SHAPE: thin tails on incurred, bias on paid: because the shape is the diagnosis. Build the SMALLEST model that repairs that specific shape: one correlation parameter for the width failure, one settlement-rate parameter for the bias: never a kitchen-sink rebuild that fixes everything and explains nothing. Then re-validate, because a repair is a hypothesis until reality grades it. Notice what the loop never required: nothing about it is inherently Bayesian or MCMC: those are Meyers’ TOOLS, chosen because posteriors handle many-parameter models gracefully: the loop itself is just honest science applied to reserving. The exam will ask which model fixes which failure, and you now know that cold. But the durable lesson is the loop: it is how every model on this ladder: Mack, Clark, Shapland, all of them: deserves to be read: as an answer to a diagnosed failure of the one before it.',
       preset: 'ccl',
     },
   ],
@@ -5008,6 +5008,14 @@ const CL_CSS = `
   border-top: 1px solid var(--px-divider);
   padding-top: var(--px-space-3);
   margin-top: var(--px-space-2);
+  flex: 0 0 auto;
+}
+.cl-story-intro {
+  font-size: var(--px-text-xs);
+  color: var(--px-text-muted);
+  line-height: var(--px-leading-base);
+  padding-bottom: var(--px-space-2);
+  border-bottom: 1px solid var(--px-divider);
   flex: 0 0 auto;
 }
 .cl-story-nav {
@@ -10090,6 +10098,14 @@ function renderModuleView(root, mod) {
   nav.insertBefore(prevBtn, nav.firstChild);
   nav.appendChild(nextBtn);
   story.appendChild(nav);
+  // The advance organizer: what this module is about, always visible above
+  // the current step so the learner never loses the thread.
+  if (mod.intro) {
+    const introEl = document.createElement('div');
+    introEl.className = 'cl-story-intro';
+    introEl.textContent = mod.intro;
+    story.appendChild(introEl);
+  }
   story.appendChild(storyText);
   prevBtn.addEventListener('click', () => applyStory(st.storyIndex - 1));
   nextBtn.addEventListener('click', () => applyStory(st.storyIndex + 1));

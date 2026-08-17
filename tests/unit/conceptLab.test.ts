@@ -111,6 +111,22 @@ describe('module definitions', () => {
     }
   });
 
+  it('story steps TEACH: no caption-length steps (Mufaro 2026-08-17)', () => {
+    // A step must carry a real explanation: anchor, action, mechanism,
+    // consequence. Captions were rejected; this gate keeps them out.
+    for (const mod of MODULES) {
+      for (const step of mod.story) {
+        if (step.predict) {
+          const combined = step.text.length + step.predict.prompt.length + step.predict.explain.length;
+          expect(combined, `${mod.id} / "${step.title}" predict teaches ${combined} chars`).toBeGreaterThanOrEqual(500);
+        } else {
+          expect(step.text.length, `${mod.id} / "${step.title}" is ${step.text.length} chars`).toBeGreaterThanOrEqual(350);
+        }
+      }
+      expect((mod.intro || '').length, `${mod.id} intro`).toBeGreaterThanOrEqual(200);
+    }
+  });
+
   it('story steps reference real presets and carry well-formed predicts', () => {
     for (const mod of MODULES) {
       for (const step of mod.story) {
