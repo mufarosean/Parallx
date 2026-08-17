@@ -9,6 +9,17 @@ export interface IChatWidgetAttachmentAdapterDeps {
   readonly openFile?: (fullPath: string) => void;
   readonly openPage?: (pageId: string) => void;
   readonly openMemory?: (sessionId: string) => void;
+  readonly notifyWarning?: (message: string) => void;
+}
+
+/**
+ * True when the string is a real filesystem path (Windows drive, UNC, or
+ * POSIX absolute). Tool editors carry `Tool editor: <typeId>` as their
+ * description — attaching that produces a junk file attachment the model
+ * reports as unreadable, so editor lists must filter on this first.
+ */
+export function isAttachableFsPath(p: string): boolean {
+  return /^[a-zA-Z]:[\\/]/.test(p) || p.startsWith('/') || p.startsWith('\\\\');
 }
 
 export function buildChatWidgetAttachmentServices(
@@ -23,6 +34,7 @@ export function buildChatWidgetAttachmentServices(
           listWorkspaceFiles: deps.listWorkspaceFiles
             ? async () => [...await deps.listWorkspaceFiles!()]
             : undefined,
+          notifyWarning: deps.notifyWarning,
         }
       : undefined,
     openFile: deps.openFile

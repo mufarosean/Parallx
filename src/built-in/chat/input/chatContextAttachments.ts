@@ -91,6 +91,12 @@ export class ChatContextAttachments extends Disposable {
    */
   private static readonly _LLM_NATIVE_MIME = new Set(['image/png', 'image/jpeg']);
 
+  /** Payload cap for a vision attachment. Larger sources are downscaled in memory. */
+  private static readonly _MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+
+  /** Refuse to decode sources beyond this — a memory guard, not a payload cap. */
+  private static readonly _MAX_SOURCE_IMAGE_BYTES = 100 * 1024 * 1024;
+
   /** Decode arbitrary image bytes (base64 + mime) and re-encode as PNG base64. */
   private static async _transcodeToPng(base64: string, mimeType: string): Promise<{ data: string; mimeType: string } | null> {
     try {
@@ -124,53 +130,139 @@ export class ChatContextAttachments extends Disposable {
     }
   }
 
+  /**
+   * Downscale an oversized image until its payload fits the vision cap.
+   *
+   * This works ENTIRELY IN MEMORY: the source file on disk is never modified.
+   * A copy of the bytes is decoded, drawn smaller onto a canvas, and the
+   * re-encoded copy becomes the attachment payload. Returns null when the
+   * bytes cannot be decoded or no ladder step fits under the cap.
+   */
+  private static async _downscaleToFit(base64: string, mimeType: string): Promise<{ data: string; mimeType: string } | null> {
+    try {
+      const img = new Image();
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error('image decode failed'));
+        img.src = `data:${mimeType};base64,${base64}`;
+      });
+      const srcW = img.naturalWidth || img.width;
+      const srcH = img.naturalHeight || img.height;
+      if (!srcW || !srcH) {
+        return null;
+      }
+      // Vision models see at most ~2K pixels per edge; try progressively
+      // smaller encodes until the payload fits.
+      const ladder = [
+        { edge: 2048, quality: 0.85 },
+        { edge: 1600, quality: 0.75 },
+        { edge: 1024, quality: 0.6 },
+      ];
+      for (const step of ladder) {
+        const scale = Math.min(1, step.edge / Math.max(srcW, srcH));
+        const w = Math.max(1, Math.round(srcW * scale));
+        const h = Math.max(1, Math.round(srcH * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          return null;
+        }
+        // JPEG has no alpha channel — flatten transparency onto white, not black.
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        const out = canvas.toDataURL('image/jpeg', step.quality);
+        const comma = out.indexOf(',');
+        if (comma < 0) {
+          continue;
+        }
+        const data = out.slice(comma + 1);
+        if ((data.length * 3) / 4 <= ChatContextAttachments._MAX_IMAGE_BYTES) {
+          return { data, mimeType: 'image/jpeg' };
+        }
+      }
+      return null;
+    } catch (err) {
+      console.warn('[ChatAttachments] Failed to downscale image:', err);
+      return null;
+    }
+  }
+
+  /** Surface an attachment failure to the user — these must never be silent. */
+  private _warn(message: string): void {
+    console.warn('[ChatAttachments]', message);
+    this._services?.notifyWarning?.(message);
+  }
+
+  /** Public warning relay so the drop handler can report path-less drops. */
+  notifyWarning(message: string): void {
+    this._warn(message);
+  }
+
   /** Add a file as an explicit attachment. Images are read as base64 for vision. */
   async addAttachment(file: IOpenEditorFile): Promise<void> {
     if (this._explicit.has(file.fullPath)) {
       return;
     }
 
-    // If it's an image, read it via the Electron bridge and store as IChatImageAttachment
+    // If it's an image, read it via the Electron bridge and store as IChatImageAttachment.
+    // Any failure warns and skips — a binary image attached as a text file is
+    // junk the model reports as "(Unable to read file content.)", so image
+    // extensions never fall through to the plain file chip.
     const dotIndex = file.name.lastIndexOf('.');
     const ext = dotIndex >= 0 ? file.name.slice(dotIndex).toLowerCase() : '';
-    if (ChatContextAttachments._IMAGE_EXTENSIONS.has(ext)) {
+    const api = (window as any).parallxElectron;
+    if (ChatContextAttachments._IMAGE_EXTENSIONS.has(ext) && api?.fs) {
       try {
-        const api = (window as any).parallxElectron;
-        if (api?.fs) {
-          const result = await api.fs.readFile(file.fullPath);
-          if (result && !result.error && result.encoding === 'base64') {
-            const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
-            if (result.size <= MAX_IMAGE_BYTES) {
-              const id = `parallx-image://${Date.now()}-${Math.random().toString(36).slice(2)}`;
-              let mimeType = ChatContextAttachments._IMAGE_MIME[ext] ?? 'image/png';
-              let data = result.content;
-              if (!ChatContextAttachments._LLM_NATIVE_MIME.has(mimeType)) {
-                const transcoded = await ChatContextAttachments._transcodeToPng(data, mimeType);
-                if (transcoded) {
-                  data = transcoded.data;
-                  mimeType = transcoded.mimeType;
-                }
-              }
-              const attachment: IChatImageAttachment = {
-                kind: 'image',
-                id,
-                name: file.name,
-                fullPath: file.fullPath,
-                isImplicit: false,
-                mimeType,
-                data,
-                origin: 'file',
-              };
-              this._explicit.set(id, attachment);
-              this._dismissed.delete(file.fullPath);
-              this._render();
-              this._onDidChange.fire();
-              return;
-            }
+        const result = await api.fs.readFile(file.fullPath);
+        if (!result || result.error || result.encoding !== 'base64') {
+          this._warn(`Couldn't attach "${file.name}" as an image: ${result?.error?.message ?? 'the file could not be read'}.`);
+          return;
+        }
+        if (result.size > ChatContextAttachments._MAX_SOURCE_IMAGE_BYTES) {
+          this._warn(`Couldn't attach "${file.name}": ${(result.size / 1024 / 1024).toFixed(0)}MB is too large to decode for vision.`);
+          return;
+        }
+        let mimeType = ChatContextAttachments._IMAGE_MIME[ext] ?? 'image/png';
+        let data = result.content;
+        if (result.size > ChatContextAttachments._MAX_IMAGE_BYTES) {
+          // Oversized: attach a downscaled IN-MEMORY copy. The file on disk
+          // is never modified.
+          const scaled = await ChatContextAttachments._downscaleToFit(data, mimeType);
+          if (!scaled) {
+            this._warn(`Couldn't attach "${file.name}": the image is over ${ChatContextAttachments._MAX_IMAGE_BYTES / 1024 / 1024}MB and could not be downscaled.`);
+            return;
+          }
+          data = scaled.data;
+          mimeType = scaled.mimeType;
+        } else if (!ChatContextAttachments._LLM_NATIVE_MIME.has(mimeType)) {
+          const transcoded = await ChatContextAttachments._transcodeToPng(data, mimeType);
+          if (transcoded) {
+            data = transcoded.data;
+            mimeType = transcoded.mimeType;
           }
         }
+        const id = `parallx-image://${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const attachment: IChatImageAttachment = {
+          kind: 'image',
+          id,
+          name: file.name,
+          fullPath: file.fullPath,
+          isImplicit: false,
+          mimeType,
+          data,
+          origin: 'file',
+        };
+        this._explicit.set(id, attachment);
+        this._dismissed.delete(file.fullPath);
+        this._render();
+        this._onDidChange.fire();
+        return;
       } catch (err) {
-        console.warn(`[ChatAttachments] Failed to read image file as base64, falling back to file attachment:`, err);
+        this._warn(`Couldn't attach "${file.name}" as an image: ${err instanceof Error ? err.message : String(err)}.`);
+        return;
       }
     }
 
@@ -187,10 +279,8 @@ export class ChatContextAttachments extends Disposable {
   }
 
   async addPastedImage(file: File): Promise<void> {
-    // Reject images larger than 10MB to avoid OOM and excessive base64 encoding
-    const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
-    if (file.size > MAX_IMAGE_BYTES) {
-      console.warn(`[ChatAttachments] Rejecting pasted image: ${(file.size / 1024 / 1024).toFixed(1)}MB exceeds ${MAX_IMAGE_BYTES / 1024 / 1024}MB limit`);
+    if (file.size > ChatContextAttachments._MAX_SOURCE_IMAGE_BYTES) {
+      this._warn(`Couldn't attach the pasted image: ${(file.size / 1024 / 1024).toFixed(0)}MB is too large to decode for vision.`);
       return;
     }
     const dataUrl = await this._readFileAsDataUrl(file);
@@ -201,7 +291,16 @@ export class ChatContextAttachments extends Disposable {
 
     let mimeType = dataUrl.slice(5, dataUrl.indexOf(';', 5)) || file.type || 'image/png';
     let data = dataUrl.slice(commaIndex + 1);
-    if (!ChatContextAttachments._LLM_NATIVE_MIME.has(mimeType)) {
+    if (file.size > ChatContextAttachments._MAX_IMAGE_BYTES) {
+      // Oversized: attach a downscaled IN-MEMORY copy — the source is untouched.
+      const scaled = await ChatContextAttachments._downscaleToFit(data, mimeType);
+      if (!scaled) {
+        this._warn(`Couldn't attach the pasted image: it is over ${ChatContextAttachments._MAX_IMAGE_BYTES / 1024 / 1024}MB and could not be downscaled.`);
+        return;
+      }
+      data = scaled.data;
+      mimeType = scaled.mimeType;
+    } else if (!ChatContextAttachments._LLM_NATIVE_MIME.has(mimeType)) {
       const transcoded = await ChatContextAttachments._transcodeToPng(data, mimeType);
       if (transcoded) {
         data = transcoded.data;

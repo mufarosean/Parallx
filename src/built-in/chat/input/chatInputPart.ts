@@ -588,7 +588,15 @@ export class ChatInputPart extends Disposable {
     // Native OS file drag — DataTransfer.files. In Electron these expose a
     // `.path` property too; prefer the path-based pipeline when available.
     const files = Array.from(dt.files || []);
-    if (files.length === 0) { return; }
+    if (files.length === 0) {
+      // A media-organizer card whose file path never resolved (thumbnail still
+      // pending) would otherwise vanish without a trace — say so.
+      if (dt.types && Array.from(dt.types).includes('application/x-mo-items')) {
+        event.preventDefault();
+        this._contextRibbon.notifyWarning('That media card did not carry a file path, so nothing was attached. Wait for its thumbnail to load and drag again.');
+      }
+      return;
+    }
     event.preventDefault();
     for (const file of files) {
       const fullPath = (file as File & { path?: string }).path;

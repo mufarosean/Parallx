@@ -144,6 +144,7 @@ interface ParallxApi {
   };
   window: {
     showInformationMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
+    showWarningMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
     showQuickPick(items: readonly { label: string; description?: string; detail?: string }[], options?: { placeHolder?: string; title?: string }): Promise<{ label: string; description?: string; detail?: string } | undefined>;
     createStatusBarItem(alignment?: number, priority?: number): {
       text: string;
@@ -995,6 +996,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     agentPolicyService: agentPolicyService ?? undefined,
     agentTaskStore: agentTaskStore ?? undefined,
     openFileEditor: (uri, opts) => api.editors.openFileEditor(uri, opts),
+    notifyWarning: (message: string) => { void api.window.showWarningMessage(message); },
   });
 
   const createAgentTaskDebugDriver = () => ({

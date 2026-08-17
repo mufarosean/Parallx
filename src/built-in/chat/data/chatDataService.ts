@@ -55,7 +55,7 @@ import type { PermissionService } from '../../../services/permissionService.js';
 
 import { extractTextContent } from '../tools/builtInTools.js';
 import { buildChatAgentTaskWidgetServices } from '../utilities/chatAgentTaskWidgetAdapter.js';
-import { buildChatWidgetAttachmentServices } from '../utilities/chatWidgetAttachmentAdapter.js';
+import { buildChatWidgetAttachmentServices, isAttachableFsPath } from '../utilities/chatWidgetAttachmentAdapter.js';
 import { buildChatWidgetPickerServices } from '../utilities/chatWidgetPickerAdapter.js';
 import { buildChatWidgetRequestServices } from '../utilities/chatWidgetRequestAdapter.js';
 import { buildChatWidgetSessionServices } from '../utilities/chatWidgetSessionAdapter.js';
@@ -158,6 +158,8 @@ export interface ChatDataServiceDeps {
   readonly agentTaskStore?: IAgentTaskStore;
   /** Open a file in the editor via the standard EditorsBridge resolver (same as explorer). */
   readonly openFileEditor?: (uri: string, options?: { pinned?: boolean }) => Promise<void>;
+  /** Surface a user-visible warning toast (attachment failures must never be silent). */
+  readonly notifyWarning?: (message: string) => void;
 }
 
 export interface IChatTestDebugSnapshot {
@@ -2002,13 +2004,17 @@ export class ChatDataService {
     });
     const attachmentServices = buildChatWidgetAttachmentServices({
       getOpenEditorFiles: this._d.editorService
-        ? () => this._d.editorService!.getOpenEditors().map((ed) => {
+        ? () => this._d.editorService!.getOpenEditors().flatMap((ed) => {
             // Canvas/database editors: description is "Tool editor: canvas" / "Tool editor: database"
             // and id is the raw page UUID
             if (ed.description === 'Tool editor: canvas' || ed.description === 'Tool editor: database') {
-              return { name: ed.name, fullPath: `parallx-page://${ed.id}` };
+              return [{ name: ed.name, fullPath: `parallx-page://${ed.id}` }];
             }
-            return { name: ed.name, fullPath: ed.description || ed.name };
+            // Other tool editors (media-organizer, settings, …) have no file
+            // identity — their description is "Tool editor: <typeId>", which
+            // would attach as an unreadable junk file. Only real paths pass.
+            const fullPath = ed.description || ed.name;
+            return isAttachableFsPath(fullPath) ? [{ name: ed.name, fullPath }] : [];
           })
         : undefined,
       getActiveEditorFile: this._d.editorService
@@ -2018,13 +2024,15 @@ export class ChatDataService {
             if (active.typeId === 'canvas' || active.typeId === 'database') {
               return { name: active.name, fullPath: `parallx-page://${active.id}` };
             }
-            return { name: active.name, fullPath: active.description || active.name };
+            const fullPath = active.description || active.name;
+            return isAttachableFsPath(fullPath) ? { name: active.name, fullPath } : undefined;
           }
         : undefined,
       onDidChangeOpenEditors: this._d.editorService?.onDidChangeOpenEditors,
       listWorkspaceFiles: this._d.fsAccessor
         ? () => this.listWorkspaceFiles()
         : undefined,
+      notifyWarning: this._d.notifyWarning,
       openFile: (this._d.editorService && this._d.fileService)
         ? (fullPath: string) => openChatFile({
             fullPath,

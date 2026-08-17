@@ -483,6 +483,8 @@ export interface IAttachmentServices {
   getActiveEditorFile(): IOpenEditorFile | undefined;
   readonly onDidChangeOpenEditors: Event<void>;
   listWorkspaceFiles?(): Promise<IWorkspaceFileEntry[]>;
+  /** Surface a user-visible warning toast — attachment failures must never be silent. */
+  notifyWarning?(message: string): void;
 }
 
 export type RegenerateMessageHandler = (request: import('../../services/chatTypes.js').IChatUserMessage) => void;
