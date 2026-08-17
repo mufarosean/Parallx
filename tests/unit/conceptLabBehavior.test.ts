@@ -142,6 +142,12 @@ describe('concept lab pane', () => {
     }
     // Live formula bar carries term values.
     expect(paneHost!.querySelectorAll('.cl-term').length).toBeGreaterThan(2);
+    // One understanding surface: the formula and readouts live IN the story
+    // column, not on a separate bottom bar or the controls rail.
+    expect(paneHost!.querySelector('.cl-story .cl-formula-bar')).toBeTruthy();
+    expect(paneHost!.querySelector('.cl-story .cl-readouts')).toBeTruthy();
+    expect(paneHost!.querySelector('.cl-stage-col .cl-formula-bar')).toBeNull();
+    expect(paneHost!.querySelector('.cl-rail .cl-readouts')).toBeNull();
   });
 
   it('story step 1 applied the Poisson preset (Z = 0.500)', async () => {

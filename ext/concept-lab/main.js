@@ -4868,10 +4868,10 @@ const CL_CSS = `
 .cl-source-chip .cl-chip-icon { display: inline-flex; opacity: 0.7; }
 
 /* ── Story strip ────────────────────────────────────────────────────── */
-/* The story reads as a column beside the stage, not a one-line banner:
-   guidance wraps like prose and the charts keep their full height. */
+/* The understand column: step, formula, live numbers — ONE surface to
+   read, beside a stage that stays pure picture. */
 .cl-story {
-  flex: 0 0 252px;
+  flex: 0 0 288px;
   display: flex;
   flex-direction: column;
   gap: var(--px-space-2);
@@ -4879,6 +4879,12 @@ const CL_CSS = `
   border-right: 1px solid var(--px-divider);
   background: var(--px-bg-inset);
   overflow-y: auto;
+}
+.cl-story .cl-under {
+  border-top: 1px solid var(--px-divider);
+  padding-top: var(--px-space-3);
+  margin-top: var(--px-space-2);
+  flex: 0 0 auto;
 }
 .cl-story-nav {
   display: flex;
@@ -4899,7 +4905,7 @@ const CL_CSS = `
 .cl-story-dot:hover { transform: scale(1.35); }
 .cl-story-dot.cl-active { background: var(--px-accent); transform: scale(1.2); }
 .cl-story-text {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   min-width: 0;
   font-size: var(--px-text-sm);
   color: var(--px-text-secondary);
@@ -5219,11 +5225,9 @@ const CL_CSS = `
 /* ── Formula panel ──────────────────────────────────────────────────── */
 .cl-formula-bar {
   display: flex;
-  align-items: center;
-  gap: var(--px-space-6);
-  padding: var(--px-space-3) var(--px-space-4) var(--px-space-4);
-  border-top: 1px solid var(--px-divider);
-  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--px-space-2);
   overflow-x: auto;
 }
 .cl-formula-sym {
@@ -5232,7 +5236,7 @@ const CL_CSS = `
   flex: 0 0 auto;
 }
 .cl-formula-sym .px-markdown p { margin: 0; }
-.cl-terms { display: flex; align-items: center; gap: var(--px-space-2); flex: 0 0 auto; }
+.cl-terms { display: flex; align-items: center; gap: var(--px-space-1); flex-wrap: wrap; }
 .cl-term {
   display: flex;
   flex-direction: column;
@@ -9947,10 +9951,20 @@ function renderModuleView(root, mod) {
   stageCol.className = 'cl-stage-col';
   const stageRow = document.createElement('div');
   stageRow.className = 'cl-stage-row';
+  // The formula lives WITH the narrative, not on a third surface: the left
+  // column is the one place to understand (step, formula, live numbers);
+  // the stage stays pure picture and the rail stays pure controls.
+  const formulaSection = document.createElement('div');
+  formulaSection.className = 'cl-under';
+  const formulaLabel = document.createElement('div');
+  formulaLabel.className = 'cl-rail-label';
+  formulaLabel.textContent = 'The Formula';
+  formulaSection.appendChild(formulaLabel);
   const formulaBar = document.createElement('div');
   formulaBar.className = 'cl-formula-bar';
+  formulaSection.appendChild(formulaBar);
+  story.appendChild(formulaSection);
   stageCol.appendChild(stageRow);
-  stageCol.appendChild(formulaBar);
   // Story guides on the left, stage in the middle, controls on the right:
   // read the step, look at the picture, then reach for the dials.
   body.appendChild(story);
@@ -10003,6 +10017,7 @@ function renderModuleView(root, mod) {
 
   // ── Rail: readouts ──
   const readoutSection = document.createElement('div');
+  readoutSection.className = 'cl-under';
   const readoutLabel = document.createElement('div');
   readoutLabel.className = 'cl-rail-label';
   readoutLabel.textContent = 'Readouts';
@@ -10030,7 +10045,7 @@ function renderModuleView(root, mod) {
     readoutEls.push({ def: r, el: value });
   }
   readoutSection.appendChild(readoutGrid);
-  rail.appendChild(readoutSection);
+  story.appendChild(readoutSection);
 
   // ── Rail: ghosts ──
   const ghostSection = document.createElement('div');

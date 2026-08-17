@@ -288,7 +288,12 @@ for the dials:
   drag the query marker on a scatter, the weight dot along a curve, the
   position on a regime map, a truncation line, a posterior marker. If a
   dot looks grabbable, it is.
-- **Hover to trace.** Hover any formula term in the bottom bar, any
+- **The Formula and Readouts** sit in the story column, directly under
+  the step that explains them: the governing equation with the CURRENT
+  values live beneath its symbols, then the derived numbers. One column
+  answers "what am I looking at, what does it say, what do the numbers
+  come to."
+- **Hover to trace.** Hover any formula term in the story column, any
   readout in the rail, or any legend entry — the exact element it drives
   lights up and everything else dims. This is how the formulas and the
   pictures are welded together.
