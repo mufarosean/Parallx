@@ -253,7 +253,9 @@ through into them. Open one with `Ctrl+Shift+H` or **Dashboard: Open**.
 ## 6. Concept Lab (the stats-to-reserving ladder)
 
 Concept Lab is a **bottom-up statistics curriculum that ends at the Exam 7
-papers**, taught entirely through live, draggable pictures. Levels 1–6 are
+papers**, taught entirely through live, draggable pictures. It assumes no
+statistics background: probability itself is defined on the first rung,
+and every symbol and insurance term is introduced before it is used. Levels 1–6 are
 concept modules — probability, random variables, processes, estimation,
 Bayesian theory, GLMs — and level 7 applies it all on the papers' own
 printed exhibits. Open it from the command palette (**Open Concept Lab**),

@@ -970,6 +970,11 @@ defineModule({
   ],
   story: [
     {
+      title: 'The question first',
+      text: 'A year has reported $x$ so far. What is the fairest guess for where it ends up? Level 2 taught the answer’s shape: the best guess given what you know, $E[Y|X{=}x]$, drawn as a line through the cloud. Every classical reserving method is just an OPINION about that line; this paper lets the data draw it instead.',
+      preset: 'poisson',
+    },
+    {
       title: 'Three methods, one picture',
       text: 'Chain ladder says $L(x) = x/d$, a ray from the origin. Budgeted loss says $L(x) = E[Y]$, a flat line that ignores $x$ entirely. BF splits the difference with slope one. Watch all three live as reference lines.',
       preset: 'poisson',
@@ -1120,6 +1125,11 @@ defineModule({
     },
   ],
   story: [
+    {
+      title: 'The question first',
+      text: 'You hold two answers for the same reserve: one that ignores this year’s losses entirely (BF) and one that trusts nothing else (chain ladder). Blending them is the shrinkage dial from Level 5, and "how much of each" has a RIGHT answer: the bottom of an error valley. This paper finds that bottom with pencil and paper.',
+      preset: 'base',
+    },
     {
       title: 'One knob between two extremes',
       text: 'BF ignores your losses ($c = 0$); chain ladder trusts nothing else ($c = 1$). Benktander proposed $c = p_k$: trust the data exactly as fast as it pays in.',
@@ -1286,6 +1296,11 @@ defineModule({
     },
   ],
   story: [
+    {
+      title: 'Belief, evidence, compromise',
+      text: 'You guessed pizza night would cost about twenty dollars. The smudged receipt looks like twenty-six. You settle near twenty-four: closer to the receipt, because your guess was vague and the receipt, though blurry, is evidence. That is all of Bayes: a **prior** (what you believed), a **likelihood** (what the evidence says), a **posterior** (the compromise). The only math is HOW FAR to move, and variances decide it. Here the unknown is a year’s **ultimate** $U$: what it will finally cost once every claim settles, measured as a percent of premium.',
+      preset: 'normal',
+    },
     {
       title: 'Belief before data',
       text: 'The prior is a full distribution over the true ultimate $U$, not a number. Its spread $\\sqrt{Var(U)}$ is a statement of how little the premium calculation really knows.',
@@ -1487,6 +1502,11 @@ defineModule({
   ],
   story: [
     {
+      title: 'Shapes of randomness',
+      text: 'Randomness comes in shapes. Heights cluster symmetrically (normal). Losses pile up small with a long expensive tail (lognormal). Counts come in whole numbers (Poisson). Same mean, different shape, wildly different tail: and in insurance the tail is where the money is. This zoo holds the six shapes the exam lives on; meet them before you need them.',
+      preset: 'ranges',
+    },
+    {
       title: 'Two ranges, one pair of moments',
       text: 'Mack computes a mean and a standard error, then needs a DISTRIBUTION to quote percentiles. Normal and lognormal agree on both moments and still disagree about the tail you care about.',
       preset: 'ranges',
@@ -1628,6 +1648,11 @@ defineModule({
     },
   ],
   story: [
+    {
+      title: 'The question first',
+      text: 'A model hands you a whole distribution, not a number. How do you check a DISTRIBUTION against reality? With Level 1’s percentile read, run backward: score where each real outcome lands on the model’s own CDF. If the model is honest, those landing spots spread out evenly, like raindrops on a sidewalk. Any pattern in them is a confession.',
+      preset: 'uniform',
+    },
     {
       title: 'Score the whole distribution',
       text: 'For each of $n$ insurers, ask: at what percentile of the model\'s predictive distribution did the ACTUAL outcome land? A correct model has no opinion about where: the percentiles must come out uniform.',
@@ -1797,6 +1822,11 @@ defineModule({
   ],
   story: [
     {
+      title: 'The question first',
+      text: 'Claims have been settling FASTER, year after year. A method that assumes one fixed payout pattern reads that speed as growth and over-reserves. The fix is one honest parameter: let the pattern itself drift. This module walks the machinery of that parameter; the CCL & CSR module shows the validation failure that demanded it.',
+      preset: 'crc',
+    },
+    {
       title: 'One curve or a family',
       text: 'Every fixed-pattern method assumes the payout curve is shared across accident years. CSR adds one parameter: $\\beta_d$ is scaled by $(1-\\gamma)^{w-1}$, so each successive year walks its own curve.',
       preset: 'crc',
@@ -1940,7 +1970,7 @@ defineModule({
   story: [
     {
       title: 'Why sample at all',
-      text: 'The CSR posterior lives in ~24 dimensions with no closed form. MCMC never needs one: it only ever COMPARES the posterior density at two points, and that ratio is computable. Stan does this; JAGS did before it.',
+      text: 'Some belief-curves are too complicated for any formula: the CSR posterior lives in about 24 dimensions and nobody can write it down. MCMC’s trick is that you never need the whole map, only the ability to COMPARE two spots ("is it more probable here, or there?"), and that ratio is always computable. So you wander: propose a step, keep it if the new spot is more probable, sometimes keep it anyway if less. Where the walk LINGERS is where the probability lives. Stan does this; JAGS did before it.',
       preset: 'tuned',
     },
     {
@@ -2118,6 +2148,11 @@ defineModule({
   ],
   story: [
     {
+      title: 'The question first',
+      text: 'The chain ladder gives one number, and one number is not an answer until you know how wrong it could be. Level 4 split every prediction error into process risk plus estimation risk; Mack writes BOTH terms for the chain ladder in closed form. This module reproduces his printed example to the digit.',
+      preset: 'chain-ladder',
+    },
+    {
       title: 'Three chain ladders',
       text: 'All three factor sets are least-squares answers under different variance laws: weight by $C_k^2$, by $C_k$, or not at all. At $k=1$ they answer 2.217, 2.999, and 8.206. By $k \\geq 6$ they agree. Maturity is what settles arguments.',
       preset: 'chain-ladder',
@@ -2276,6 +2311,11 @@ defineModule({
   ],
   story: [
     {
+      title: 'The question first',
+      text: 'Instead of nine separate development factors, suppose the payout follows ONE smooth curve with two dials. Which dial settings fit best? That is Level 4’s likelihood machine, verbatim: let every triangle cell vote. Two parameters replace nine, and odd evaluation dates, partial years, and tails stop being special cases.',
+      preset: 'loglogistic',
+    },
+    {
       title: 'Name the curve',
       text: 'Fifty-five increments, two parameters, one likelihood. $G(x)$ IS the payout pattern, defined at every age at once, so odd evaluation dates and partial years stop being special cases.',
       preset: 'loglogistic',
@@ -2404,6 +2444,11 @@ defineModule({
     },
   ],
   story: [
+    {
+      title: 'The question first',
+      text: 'History only happened once, so how do you know how different it COULD have been? Manufacture thousands of alternate histories by reshuffling the model’s own leftovers: the flat, exchangeable Pearson residuals from Level 6. Price every fake history, and the pile of answers IS the reserve distribution.',
+      preset: 'full',
+    },
     {
       title: 'What a residual pool is',
       text: 'Fit the ODP chain ladder and every observed increment leaves a standardized residual $r = (q-m)/\\sqrt{m}$. Fifty-five of them, assumed exchangeable. That exchangeability IS the bootstrap\'s assumption, which is why Shapland spends a whole chapter diagnosing it.',
@@ -2652,6 +2697,11 @@ defineModule({
   ],
   story: [
     {
+      title: 'The question first',
+      text: 'The chain ladder looks like folklore: averages of ratios, no model anywhere in sight. Taylor’s theorem says otherwise. Take Level 6’s GLM (log link, ODP errors), give it one dial per accident year and one per development age, and its best fit lands on EXACTLY the chain ladder’s numbers. The folklore was a maximum likelihood estimate all along.',
+      preset: 'reconcile',
+    },
+    {
       title: 'The folklore algorithm',
       text: 'Volume-weighted factors on the workers comp triangle: $\\hat{f}_1 = 1.815$ down to $\\hat{f}_9 = 1.021$, projecting a total reserve of 373,346. Nothing here looks like a statistical model. Yet.',
       preset: 'reconcile',
@@ -2796,6 +2846,11 @@ defineModule({
   ],
   story: [
     {
+      title: 'The question first',
+      text: 'A whole company’s reserve risk is not one class’s risk times ten: Level 2 showed independent wobbles partially cancel while shared ones refuse to. Marshall industrializes that lesson: sort every source of uncertainty by whether diversification can touch it, and only then add.',
+      preset: 'base',
+    },
+    {
       title: 'Three kinds of not knowing',
       text: 'Independent risk averages out across classes. Internal systemic risk (your model\'s own specification, parameters, data) does not. External systemic risk (inflation, courts, events, latency) does not either. The framework refuses to blend them.',
       preset: 'base',
@@ -2847,11 +2902,12 @@ defineModule({
     { module: 'odp-bootstrap', text: 'The bootstrap answers a reserve question by literally drawing the random variable thousands of times.' },
   ],
   intro:
-    'Before a year happens, the number of claims it will bring is not a number. ' +
-    'It is a random variable: a machine that turns chance into a number. Draw ' +
-    'years one at a time and watch the histogram of what HAPPENED climb onto ' +
-    'the curve of what was PROBABLE. That convergence is the law of large ' +
-    'numbers, and it is the license for everything else in this lab.',
+    'Roll a die forever and the share of sixes settles near 1 in 6. ' +
+    'Probability IS that settling number. A random variable is a number that ' +
+    'chance has not picked yet, like next year’s claim count. Draw years one ' +
+    'at a time and watch the histogram of what HAPPENED climb onto the curve ' +
+    'of what was PROBABLE. That convergence is the law of large numbers, and ' +
+    'it is the license for everything else in this lab.',
   params: [
     { key: 'lam', tex: '\\lambda', label: 'Expected Claims Per Year', min: 0.5, max: 12, step: 0.1, init: 4, fmt: 'num', link: 'true' },
   ],
@@ -2896,8 +2952,8 @@ defineModule({
   ],
   story: [
     {
-      title: 'A number attached to chance',
-      text: 'Next year has not happened, so "next year’s claim count" is not a number: it is a **random variable** $X$. The curve shows every value it could take and how probable each one is. Press **Draw A Year** and make one year real.',
+      title: 'What probability even means',
+      text: 'Roll a die over and over: the share of sixes wobbles, then settles near 1 in 6. **Probability is that settling number**: the fraction of times something happens if you could repeat the world forever. A **random variable** is a number chance has not picked yet. Here it is $X$, next year’s claim count: unknowable today, but with steady long-run habits. The dotted curve IS those habits: the taller a value, the more often the long run visits it. Press **Draw A Year** and make one year real.',
       preset: 'book',
     },
     {
@@ -2913,7 +2969,7 @@ defineModule({
     },
     {
       title: 'The law of large numbers',
-      text: 'Now press **Run** and let hundreds of years pour in. The bars settle onto the curve and $\\bar{X}_n$ walks into $E[X]$. Nothing forces any single year to behave; the AVERAGE is what converges.',
+      text: 'Now press **Run** and let hundreds of years pour in. The bars settle onto the curve, and the running average $\\bar{X}_n$ walks into the long-run average $E[X]$ (the "expected value": what the average WOULD be after forever). Nothing forces any single year to behave; the AVERAGE is what converges.',
       preset: 'book',
     },
     {
@@ -3064,7 +3120,7 @@ defineModule({
     },
     {
       title: 'Spread is variance',
-      text: 'The bracket above the beam spans $E[X]\\pm\\sigma$. Squeeze the mass together and it tightens; smear the mass out and it widens. Variance is the average SQUARED distance from balance, so far-out mass counts double-extra.',
+      text: 'The bracket above the beam spans $E[X]\\pm\\sigma$. Squeeze the mass together and it tightens; smear the mass out and it widens. Variance is the average SQUARED distance from balance: squaring makes far-away mass count extra, so twice as far counts four times as much. One bar far out widens $\\sigma$ more than several near the middle.',
       preset: 'symmetric',
     },
     {
@@ -3119,15 +3175,26 @@ defineModule({
     { key: 'M', tex: 'E[X]', label: 'Mean Loss', min: 2, max: 40, step: 0.5, init: 10, fmt: 'num', link: 'skew' },
     { key: 'cv', tex: 'cv', label: 'Coefficient Of Variation', min: 0.15, max: 1.5, step: 0.01, init: 0.5, fmt: 'num2', link: 'skew' },
     { key: 'q', tex: 'q', label: 'Probability Level', min: 0.01, max: 0.99, step: 0.01, init: 0.75, fmt: 'pct', link: 'q' },
+    { key: 'bins', tex: 'k', label: 'Number Of Buckets', min: 4, max: 80, step: 1, init: 16, fmt: 'num', link: 'bars', modes: ['bars'] },
   ],
   derived(p) {
     const { mu, sigma } = clMatchLognormal(p.M, p.M * p.cv);
     const xq = clLognInv(p.q, mu, sigma);
+    // The fullest bucket's probability: watching it shrink as buckets thin
+    // is the "no exact value has a chance, only ranges do" lesson.
+    const xEnd = clLognInv(0.995, mu, sigma);
+    const k = Math.max(1, Math.round(p.bins || 16));
+    let maxBucket = 0;
+    for (let i = 0; i < k; i++) {
+      const a = (i / k) * xEnd, b = ((i + 1) / k) * xEnd;
+      maxBucket = Math.max(maxBucket, clLognCdf(b, mu, sigma) - clLognCdf(a, mu, sigma));
+    }
     return {
       mu, sigma, xq,
       median: Math.exp(mu),
       meanOverMedian: Math.exp(sigma * sigma / 2),
       tail: 1 - p.q,
+      maxBucket,
     };
   },
   readouts: [
@@ -3136,7 +3203,17 @@ defineModule({
     { sym: 'E[X]/\\tilde{x}', id: 'meanOverMedian', fmt: 'num2', label: 'Mean Over Median', link: 'skew' },
     { sym: 'P(X{>}x_q)', id: 'tail', fmt: 'pct', label: 'Tail Beyond x_q', link: 'q' },
   ],
-  formula() {
+  formula(state) {
+    if (state.mode === 'bars') {
+      return {
+        sym: '\\text{area of bucket } i = P(X \\in \\text{bucket}_i), \\qquad \\textstyle\\sum_i P_i = 1',
+        terms: [
+          { sym: 'k', fmt: 'num', get: (d) => d.bins, primary: true, link: 'bars' },
+          { op: ',' },
+          { sym: 'P_{\\max}', fmt: 'pct', get: (d) => d.maxBucket, link: 'bars' },
+        ],
+      };
+    }
     return {
       sym: 'F(x_q) = q \\;\\Longleftrightarrow\\; x_q = F^{-1}(q)',
       terms: [
@@ -3151,6 +3228,13 @@ defineModule({
     };
   },
   presets: [
+    {
+      id: 'buckets',
+      label: 'Buckets First',
+      note: 'Chop the possible losses into buckets: each bar’s AREA is the chance of landing in that bucket. Slide Number Of Buckets up and the staircase melts into the smooth curve.',
+      mode: 'bars',
+      params: { M: { value: 10 }, cv: { value: 0.5 }, q: { value: 0.75 }, bins: { value: 16 } },
+    },
     {
       id: 'range',
       label: 'The 75th Percentile Reserve',
@@ -3171,6 +3255,11 @@ defineModule({
     },
   ],
   story: [
+    {
+      title: 'From buckets to a curve',
+      text: 'The claim counts you drew before were whole numbers, so each one could own a bar. A LOSS can land anywhere, so start by chopping the possibilities into buckets. Each bar’s AREA is the chance of landing in that bucket; all the areas together make 100%. Now slide **Number Of Buckets** up. The staircase melts into a smooth curve, the chance of any single bucket ($P_{max}$ below) shrinks toward zero, and only one idea survives the melting: **area under the curve = probability**. Height alone stops meaning anything.',
+      preset: 'buckets',
+    },
     {
       title: 'Three questions, one object',
       text: 'The left panel answers "where is probability DENSE?" The right panel answers "how much lies BELOW $x$?" And reading the right panel backward answers "which loss holds $q$ of the probability under it?" Drag on either panel; both answer at once.',
@@ -3217,6 +3306,41 @@ defineModule({
       },
     },
     { name: 'A heavier cv pushes the 95th percentile out', expect: 1, tol: 0, got: () => { const a = clMatchLognormal(10, 5), b = clMatchLognormal(10, 12); return clLognInv(0.95, b.mu, b.sigma) > clLognInv(0.95, a.mu, a.sigma) ? 1 : 0; } },
+    {
+      name: 'Buckets melt into the density: bar heights approach f(x) as k grows',
+      expect: 1, tol: 0,
+      got: () => {
+        const { mu, sigma } = clMatchLognormal(10, 5);
+        const xEnd = clLognInv(0.995, mu, sigma);
+        const gap = (k) => {
+          let worst = 0;
+          for (let i = 0; i < k; i++) {
+            const a = (i / k) * xEnd, b = ((i + 1) / k) * xEnd;
+            const h = (clLognCdf(b, mu, sigma) - clLognCdf(a, mu, sigma)) / (b - a);
+            worst = Math.max(worst, Math.abs(h - clLognPdf((a + b) / 2, mu, sigma)));
+          }
+          return worst;
+        };
+        return gap(64) < gap(8) ? 1 : 0;
+      },
+    },
+    {
+      name: 'Thinner buckets each hold less: P_max falls from k=8 to k=64',
+      expect: 1, tol: 0,
+      got: () => {
+        const { mu, sigma } = clMatchLognormal(10, 5);
+        const xEnd = clLognInv(0.995, mu, sigma);
+        const pMax = (k) => {
+          let m = 0;
+          for (let i = 0; i < k; i++) {
+            const a = (i / k) * xEnd, b = ((i + 1) / k) * xEnd;
+            m = Math.max(m, clLognCdf(b, mu, sigma) - clLognCdf(a, mu, sigma));
+          }
+          return m;
+        };
+        return pMax(64) < pMax(8) ? 1 : 0;
+      },
+    },
   ],
 });
 
@@ -3316,7 +3440,7 @@ defineModule({
     },
     {
       title: 'Variance rides the SECOND moment',
-      text: 'Push severity cv up and watch $\\sigma_S$ jump: $\\mathrm{Var}(S) = \\lambda E[X^2]$, and $E[X^2]$ grows with the SQUARE of severity spread. A book’s risk lives in its large-claim tail, not its claim count.',
+      text: 'Push severity cv up and watch $\\sigma_S$ jump. The formula is $\\mathrm{Var}(S) = \\lambda\\,E[X^2]$, and $E[X^2]$ is the average of the SQUARED claim sizes: squaring is the beam module’s lesson again, so one rare giant claim moves the total’s spread more than dozens of ordinary ones. A book’s risk lives in its large-claim tail, not its claim count.',
       preset: 'stormy',
     },
     {
@@ -3786,7 +3910,7 @@ defineModule({
   story: [
     {
       title: 'A path through time',
-      text: 'Every gray path is a possible life of this accident year, drawn from the same pattern and the same noise. The dashed spine is the expected pattern $E[C_a]$. Nothing has been observed yet; everything is still possible.',
+      text: 'First, the words. An **accident year** is the batch of claims that happened in one year; they get paid out slowly over the following decade. The running total paid so far traces a path, and the path’s final height is the **ultimate**: what the year truly cost. Every gray path is a possible life of this year, drawn from the same pattern and the same noise; the dashed spine is the average pattern $E[C_a]$. Nothing has been observed yet; everything is still possible.',
       preset: 'young',
     },
     {
@@ -4401,7 +4525,7 @@ defineModule({
   story: [
     {
       title: 'The straight line under the hood',
-      text: 'The inset strip shows $\\eta = \\beta_0 + \\beta_1 x$: it NEVER bends. Everything a GLM fits, it fits on that straight line’s scale. Start in the classical corner: identity link, constant noise.',
+      text: 'A GLM is the best-guess line from Level 2 with two upgrades, and underneath it is STILL a straight line: the inset strip shows $\\eta = \\beta_0 + \\beta_1 x$, and it never bends. Everything a GLM fits, it fits on that straight line’s scale. Start in the classical corner (identity link, constant noise): this is ordinary regression, the version every statistics course starts from.',
       preset: 'ols',
     },
     {
@@ -8222,6 +8346,10 @@ function buildAnatomyScenes(stageRow, ctx) {
   const axes2 = createAxes(s2.svg, { xFmt: (v) => clFmt(v, 'num'), yFmt: (v) => Math.round(v * 100) + '%', yTicks: 4 });
 
   const gGhosts = svgEl('g'); s1.svg.appendChild(gGhosts);
+  // The buckets under the curve: heights in density scale so the staircase
+  // visibly melts INTO the pdf as the bin count climbs.
+  const buckets = makeBarPool(s1.svg, 'cl-bar');
+  buckets.g.dataset.clLink = 'bars';
   const areaPath = svgEl('path', { fill: 'var(--px-accent)' }, 'cl-band');
   areaPath.dataset.clLink = 'q';
   const pdfPath = svgEl('path', { stroke: 'var(--px-accent)' }, 'cl-curve');
@@ -8301,6 +8429,30 @@ function buildAnatomyScenes(stageRow, ctx) {
         areaPath.setAttribute('d', ap);
       } else {
         areaPath.setAttribute('d', '');
+      }
+
+      // Bucket mode: bars whose AREAS are bucket probabilities; the quantile
+      // furniture stands down so the melting is the only thing on stage.
+      const barsMode = st.mode === 'bars';
+      const qFurniture = [areaPath, medianLine, meanLine, xqLine1, xqDot1, xqTag1];
+      for (const el of qFurniture) el.style.display = barsMode ? 'none' : '';
+      if (barsMode) {
+        const k = Math.max(1, Math.round(st.values.bins || 16));
+        const rects = [];
+        for (let i = 0; i < k; i++) {
+          const a = (i / k) * xMax, b = ((i + 1) / k) * xMax;
+          const hDens = (clLognCdf(b, d.mu, d.sigma) - clLognCdf(a, d.mu, d.sigma)) / Math.max(1e-9, b - a);
+          rects.push({
+            x: sx1(a) + 0.5,
+            y: sy1(hDens),
+            w: Math.max(1, sx1(b) - sx1(a) - 1),
+            h: Math.max(0, f1.bottom - sy1(hDens)),
+          });
+        }
+        buckets.set(rects, 'var(--px-accent)');
+        buckets.g.style.display = '';
+      } else {
+        buckets.g.style.display = 'none';
       }
 
       const putV = (line, x, yTop) => {

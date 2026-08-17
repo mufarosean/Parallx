@@ -13,7 +13,17 @@
 > Marshall/Taylor prefixes) as the top rung. Feel-check round 1: titles
 > use standard stats or exam vocabulary (evocative names rejected); the
 > story moved from a top strip to a LEFT COLUMN with the controls rail
-> on the right (read the step, look at the stage, reach for the dials). Framework additions: LEVELS + home ladder,
+> on the right (read the step, look at the stage, reach for the dials).
+> Round 2: formula + readouts joined the story column (one understanding
+> surface). Round 3, the no-background pass: probability itself defined
+> from first principles on the first rung; a new buckets-to-curve bars
+> mode in PDF/CDF teaches area-equals-probability (the discrete →
+> continuous bridge); Bayes opens with an everyday compromise before
+> Gogol; MCMC motivation in plain words; every exam module now opens on
+> a "The question first" step framing the concept before the exhibit
+> (each reuses the module's original first preset, so mount behavior is
+> unchanged); insurance vocabulary (accident year, ultimate) defined at
+> first use. Framework additions: LEVELS + home ladder,
 > Builds On / Where The Exam Uses This link rails (every link
 > test-verified to resolve; concept modules without bridges fail
 > hygiene), predict-then-reveal story steps, level-grouped sidebar,
