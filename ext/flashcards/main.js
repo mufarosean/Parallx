@@ -427,17 +427,35 @@ function fcFlagFirst(then) {
 }
 
 /**
+ * New-card introduction order: flags first (user override), then importance
+ * (highest exam criticality first; unscored cards rank below every scored
+ * card), then age. When time runs short before the exam, what got introduced
+ * first was what mattered most.
+ */
+function fcNewOrder(a, b) {
+  const ia = a.importance || 0;
+  const ib = b.importance || 0;
+  if (ia !== ib) return ib - ia;
+  return (a.createdAt || 0) - (b.createdAt || 0);
+}
+
+/**
  * Build a study queue. Pure: cards in, ordered queue out.
  * Order: due learning/relearning (soonest first) → due reviews (most overdue
- * first, capped by reviewLimit) → new cards (oldest first, capped by
- * newLimit). Suspended cards never appear.
+ * first, capped by reviewLimit) → new cards (flags, then importance, then
+ * age — capped by newLimit). Suspended cards never appear.
  *
  * Flagged cards sort to the FRONT of the review and new bands, so they also
  * survive the caps — that is the point of flagging something. The learning
  * band is left strictly time-ordered: its steps are minute-scale, and
  * reordering them would break the "Again 1m means one minute" contract.
+ *
+ * `newAllowanceByDeck` (Map deckId → count) is the pacing seam for all-decks
+ * sessions: each deck's new band is sliced to ITS allowance before the merged
+ * band is ordered and capped by newLimit, so one deck's early import cannot
+ * monopolize introduction while another deck's deadline slips.
  */
-function fcBuildQueue(cards, now, { newLimit = 20, reviewLimit = 200 } = {}) {
+function fcBuildQueue(cards, now, { newLimit = 20, reviewLimit = 200, newAllowanceByDeck = null } = {}) {
   const active = cards.filter((c) => !c.suspended);
   const learning = active
     .filter((c) => (c.state === 'learning' || c.state === 'relearning') && c.dueAt <= now)
@@ -446,11 +464,73 @@ function fcBuildQueue(cards, now, { newLimit = 20, reviewLimit = 200 } = {}) {
     .filter((c) => c.state === 'review' && c.dueAt <= now)
     .sort(fcFlagFirst((a, b) => a.dueAt - b.dueAt))
     .slice(0, Math.max(0, reviewLimit));
-  const fresh = active
-    .filter((c) => c.state === 'new')
-    .sort(fcFlagFirst((a, b) => (a.createdAt || 0) - (b.createdAt || 0)))
+  let freshPool = active.filter((c) => c.state === 'new');
+  if (newAllowanceByDeck instanceof Map) {
+    const byDeck = new Map();
+    for (const c of freshPool) {
+      if (!byDeck.has(c.deckId)) byDeck.set(c.deckId, []);
+      byDeck.get(c.deckId).push(c);
+    }
+    freshPool = [];
+    for (const [deckId, group] of byDeck) {
+      const allowance = newAllowanceByDeck.has(deckId)
+        ? Math.max(0, Number(newAllowanceByDeck.get(deckId)) || 0)
+        : Number.POSITIVE_INFINITY;
+      group.sort(fcFlagFirst(fcNewOrder));
+      freshPool.push(...(allowance === Number.POSITIVE_INFINITY ? group : group.slice(0, allowance)));
+    }
+  }
+  const fresh = freshPool
+    .sort(fcFlagFirst(fcNewOrder))
     .slice(0, Math.max(0, newLimit));
   return [...learning, ...review, ...fresh];
+}
+
+/**
+ * Deadline-aware pacing for one deck (M101). Pure.
+ *
+ * The user gives the TRUE exam date; this derives the internal dates. The
+ * introduction cutoff sits `freezeDays` before the exam — after it, sessions
+ * are pure consolidation (rate 0, frozen). Before it, the required rate is
+ * simply "remaining new cards spread over the days left", clamped to the
+ * session ceiling. Decks without a future exam date return null: the fixed
+ * batch size applies as before.
+ */
+function fcPacePlan({ examDate, newCount }, now, { freezeDays = 14, ceiling = 20 } = {}) {
+  if (!examDate || examDate <= now) return null;
+  const freeze = Math.max(0, Number(freezeDays) || 0);
+  const cutoff = examDate - freeze * DAY;
+  if (now >= cutoff) {
+    return { rate: 0, frozen: true, cutoff, daysLeft: 0 };
+  }
+  const daysLeft = Math.max(1, Math.ceil((cutoff - now) / DAY));
+  const needed = Math.ceil(Math.max(0, Number(newCount) || 0) / daysLeft);
+  const rate = Math.min(Math.max(0, Number(ceiling) || 0), needed);
+  // At `rate`/day, when does the last waiting card get introduced?
+  const doneInDays = rate > 0 ? Math.ceil(Math.max(0, Number(newCount) || 0) / rate) : 0;
+  return { rate, frozen: false, cutoff, daysLeft, doneAt: now + doneInDays * DAY };
+}
+
+/**
+ * Per-deck new-card allowances for a session (M101). Pure.
+ *
+ * Decks with a future exam date get their paced rate; decks without one get
+ * the fixed batch ceiling (pre-pacing behavior). `total` is the sum, used to
+ * keep the sidebar's "Study N cards" promise truthful.
+ */
+function fcNewAllowances(decks, now, { paceEnabled = true, freezeDays = 14, ceiling = 20 } = {}) {
+  const byDeck = new Map();
+  let total = 0;
+  for (const deck of decks) {
+    let allowance = Math.max(0, Number(ceiling) || 0);
+    if (paceEnabled) {
+      const plan = fcPacePlan(deck, now, { freezeDays, ceiling });
+      if (plan) allowance = plan.rate;
+    }
+    byDeck.set(deck.id, allowance);
+    total += Math.min(allowance, Math.max(0, Number(deck.newCount) || 0));
+  }
+  return { byDeck, total };
 }
 
 /**
@@ -686,6 +766,12 @@ function fcExtractCardsJson(text) {
         ? item.tags.map((x) => String(x).trim()).filter(Boolean).slice(0, 8).join(',')
         : '';
       const card = { front, back, tags };
+      // M101 exam criticality: 1..100, anything unusable stays 0 (unscored).
+      const imp = Math.round(Number(item.importance ?? NaN));
+      if (Number.isFinite(imp) && imp > 0) {
+        card.importance = Math.min(100, imp);
+        card.importanceReason = String(item.importanceReason ?? item.importance_reason ?? '').trim().slice(0, 300);
+      }
       // M98 grounding: per-card page attribution when the prompt was paged.
       // fcGenerateCards validates the number against the real page range.
       const page = Number(item.page ?? item.source_page ?? NaN);
@@ -829,6 +915,28 @@ function _emitDataChanged() {
   for (const fn of _dataListeners) { try { fn(); } catch { /* noop */ } }
 }
 
+/** The pacing knobs (M101), normalized. */
+function fcPaceSettings() {
+  const freeze = Number(cfg('freezeDays', 14));
+  return {
+    paceEnabled: cfg('paceNewCards', true) !== false,
+    freezeDays: Number.isFinite(freeze) ? Math.max(0, freeze) : 14,
+    ceiling: Number(cfg('dailyNewLimit', 20)) || 20,
+  };
+}
+
+/**
+ * Per-deck new-card allowances for a session scope (one deck or all).
+ * Wraps the pure fcNewAllowances with live deck rows + settings.
+ */
+async function fcSessionNewAllowances(deckId = null) {
+  const decks = await fcListDecks();
+  // Route deck ids can arrive as strings (persisted routes, links); a typed
+  // mismatch here would silently drop the allowance and disable pacing.
+  const scoped = deckId != null ? decks.filter((d) => String(d.id) === String(deckId)) : decks;
+  return fcNewAllowances(scoped, Date.now(), fcPaceSettings());
+}
+
 function cfg(key, dflt) {
   try {
     const c = _api.workspace.getConfiguration('flashcards');
@@ -895,6 +1003,7 @@ function fcDeckMenuItems(deck) {
     { label: 'Add Cards with AI', icon: 'px-ai-mark', onSelect: () => void openFlashcards({ view: 'create', deckId: deck.id }) },
     { label: 'Find Duplicates', icon: 'px-ai-mark', onSelect: () => void openFlashcards({ view: 'dedup', deckId: deck.id }) },
     { label: 'Coverage Review', icon: 'px-ai-mark', onSelect: () => void openFlashcards({ view: 'coverage', deckId: deck.id }) },
+    { label: 'Score Importance (AI)', icon: 'px-ai-mark', onSelect: () => void _scoreImportanceFlow(deck) },
     { label: 'Merge Into Another Deck…', icon: 'layers', onSelect: () => void _mergeDeckFlow(deck) },
     { separator: true },
     { label: 'Rename', icon: 'pencil', onSelect: () => void _renameDeckFlow(deck) },
@@ -961,6 +1070,8 @@ function rowToCard(row) {
     cardType: row.card_type || 'basic',
     noteGroup: row.note_group || '',
     clozeIndex: row.cloze_index ?? 0,
+    importance: row.importance || 0,
+    importanceReason: row.importance_reason || '',
   };
 }
 
@@ -1096,10 +1207,17 @@ function fcRenderCloze(text, targetIndex, mode) {
   });
 }
 
+/** Clamp an importance value to the stored range: 0 = unscored, 1..100 scored. */
+function fcNormalizeImportance(v) {
+  const n = Math.round(Number(v));
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.min(100, n);
+}
+
 async function fcCreateCard(input) {
   const res = await db.run(`
-    INSERT INTO fc_cards (deck_id, front, back, notes, tags, source_uri, source_label, source_page, card_type, note_group, cloze_index, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO fc_cards (deck_id, front, back, notes, tags, source_uri, source_label, source_page, card_type, note_group, cloze_index, created_at, importance, importance_reason)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `, [
     input.deckId,
     fcNormalizeCardText(input.front),
@@ -1113,6 +1231,8 @@ async function fcCreateCard(input) {
     input.noteGroup || '',
     Number.isInteger(input.clozeIndex) && input.clozeIndex > 0 ? input.clozeIndex : 0,
     Date.now(),
+    fcNormalizeImportance(input.importance),
+    String(input.importanceReason || '').slice(0, 300),
   ]);
   _emitDataChanged();
   const id = res.lastInsertRowid ?? res.lastID ?? null;
@@ -1160,9 +1280,12 @@ async function fcCreateCardsBulk(deckId, cards, { sourceUri = '', sourceLabel = 
     // a flag is user-set organisation like tags, not scheduling state, so
     // dropping it while keeping the tags would be arbitrary.
     fcNormalizeFlag(c.flag),
+    fcNormalizeImportance(c.importance),
+    String(c.importanceReason || '').slice(0, 300),
   ];
-  const COLS = '(deck_id, front, back, notes, tags, source_uri, source_label, source_page, card_type, note_group, cloze_index, created_at, flag)';
-  const ROW_PH = '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+  const COLS = '(deck_id, front, back, notes, tags, source_uri, source_label, source_page, card_type, note_group, cloze_index, created_at, flag, importance, importance_reason)';
+  const ROW_PH = '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+  const ROW_WIDTH = 15;
 
   const statements = [];
   for (let i = 0; i < cards.length; i += CHUNK) {
@@ -1191,7 +1314,7 @@ async function fcCreateCardsBulk(deckId, cards, { sourceUri = '', sourceLabel = 
   try {
     for (const s of statements) {
       await db.run(s.sql, s.params);
-      inserted += s.params.length / 12;
+      inserted += s.params.length / ROW_WIDTH;
     }
   } catch (e) {
     try {
@@ -1627,6 +1750,8 @@ async function fcSweepDeckPairs(deckId, { onProgress } = {}) {
 
 const FC_JUDGE_SYSTEM = [
   'You judge whether flashcards in a cluster are DUPLICATES: cards asking essentially the same thing, even with different wording.',
+  'The decision test is KNOWLEDGE redundancy, never text similarity: would a student who reliably answers one card necessarily be able to answer the other? Only then are they duplicates.',
+  'CONTRAST TRAP: cards with near-identical wording but DIFFERENT answers (a different variable, method, assumption, sign, or case) are NOT duplicates. They are deliberate contrast pairs, often the most exam-valuable cards in a deck, and both must stay ("distinct"). Compare the ANSWERS before anything else.',
   'For each numbered cluster, decide:',
   '- "duplicate": the cards test the same fact or recall. Pick the single best card to keep (clearest wording, most complete answer) as keepId.',
   '- "overlap": the cards share substance but each adds something. Propose ONE merged card (front + back) that covers both without padding; keepId is the card whose scheduling history should survive.',
@@ -1717,12 +1842,160 @@ async function fcJudgeDuplicateClusters(clusters, cardById, { onProgress } = {})
   return out;
 }
 
+const FC_PAIR_JUDGE_SYSTEM = [
+  'You judge pairs of flashcards: a NEW card about to be added to a deck, and the EXISTING card it resembles.',
+  'The decision test is KNOWLEDGE redundancy, never text similarity: would a student who reliably answers the EXISTING card necessarily be able to answer the NEW one?',
+  'CONTRAST TRAP: near-identical wording with DIFFERENT answers (a different variable, method, assumption, sign, or case) is NOT redundancy. Such contrast pairs are deliberately similar and the new card should be kept ("distinct"). Compare the ANSWERS before anything else.',
+  'For each numbered pair, decide:',
+  '- "duplicate": the new card tests what the existing card already tests; adding it would waste reviews.',
+  '- "overlap": they share substance but the new card adds something real.',
+  '- "distinct": they only look similar; the new card stands on its own.',
+  'Never use em dashes.',
+  'Output ONLY a JSON array, one object per pair, echoing the pair number:',
+  '[{"pair": 1, "verdict": "distinct", "reason": "..."}]',
+].join('\n');
+
+/**
+ * Creation-time duplicate arbitration (M101). The embedding scan
+ * (fcFindDuplicates) is RECALL only — cosine similarity flags contrast
+ * pairs ("what is X under method A" vs "under method B") as duplicates,
+ * which made the warning read as noise (user report). This pass shows the
+ * judge both cards in full and keeps, downgrades, or clears each flag:
+ * "distinct" clears it; other verdicts replace the similarity chip with the
+ * verdict + reason. Judge unavailable → flags pass through unchanged, so
+ * the similarity-only behavior is the worst case, never the norm.
+ * Never throws.
+ */
+async function fcJudgeGenerationDups(cards, dups) {
+  const flagged = [];
+  for (let i = 0; i < dups.length; i++) if (dups[i]) flagged.push(i);
+  if (flagged.length === 0) return dups;
+  try {
+    const modelId = await fcPickModel();
+    if (!modelId || !_api?.lm?.sendChatRequest) return dups;
+    // The scan only carries matchFront; a judgment needs both SIDES of the
+    // existing card, so hydrate the backs by id.
+    const ids = [...new Set(flagged.map((i) => dups[i].matchId).filter(Boolean))];
+    const rows = ids.length
+      ? await db.all(`SELECT id, front, back FROM fc_cards WHERE id IN (${ids.map(() => '?').join(',')})`, ids)
+      : [];
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const { contextSetting, think } = fcAiOptions();
+    const modelCtx = await fcModelContextLength(modelId);
+    const out = dups.slice();
+    const BATCH = 10;
+    for (let start = 0; start < flagged.length; start += BATCH) {
+      const group = flagged.slice(start, start + BATCH);
+      const user = group.map((cardIdx, k) => {
+        const c = cards[cardIdx];
+        const ex = byId.get(dups[cardIdx].matchId);
+        return `PAIR ${k + 1}\nNEW CARD:\nFRONT: ${c.front}\nBACK: ${c.back}\nEXISTING CARD:\nFRONT: ${ex?.front ?? dups[cardIdx].matchFront}\nBACK: ${ex?.back ?? '(unavailable)'}`;
+      }).join('\n\n---\n\n');
+      const { numCtx } = fcContextPlan({ chars: user.length, count: group.length, modelCtx, setting: contextSetting });
+      let output = '';
+      const stream = _api.lm.sendChatRequest(modelId, [
+        { role: 'system', content: FC_PAIR_JUDGE_SYSTEM },
+        { role: 'user', content: user },
+      ], { temperature: 0.2, think, numCtx });
+      await fcStreamWithStall(stream, (chunk) => { if (chunk.content) output += chunk.content; });
+      const { items } = fcExtractJsonArray(output, (parsed) => parsed
+        .filter((v) => v && typeof v === 'object')
+        .map((v) => ({
+          pair: Number(v.pair),
+          verdict: ['duplicate', 'overlap', 'distinct'].includes(v.verdict) ? v.verdict : null,
+          reason: String(v.reason || '').slice(0, 300),
+        })));
+      for (let k = 0; k < group.length; k++) {
+        const v = items.find((x) => x.pair === k + 1) || items[k];
+        if (!v || !v.verdict) continue; // unjudged — similarity flag stands
+        const cardIdx = group[k];
+        if (v.verdict === 'distinct') {
+          out[cardIdx] = null;
+        } else {
+          out[cardIdx] = { ...out[cardIdx], verdict: v.verdict, reason: v.reason };
+        }
+      }
+    }
+    return out;
+  } catch (e) {
+    console.warn('[Flashcards] generation duplicate judging skipped:', e?.message);
+    return dups;
+  }
+}
+
+const FC_SCORE_SYSTEM = [
+  'You rate flashcards for exam preparation criticality on a 1-100 scale:',
+  '- 90-100: a method, formula, or procedure the exam tests directly as a workable problem.',
+  '- 70-89: an assumption, applicability condition, or input needed to correctly APPLY such a method.',
+  '- 40-69: interpretive or comparative nuance (when to prefer one method, what a result means).',
+  '- 1-39: background, derivation steps, history, notation trivia.',
+  'Rate what the card TESTS, not how it is worded. Give a short reason for each rating.',
+  'Never use em dashes.',
+  'Output ONLY a JSON array, one object per card, echoing the card id:',
+  '[{"id": 123, "importance": 85, "reason": "..."}]',
+].join('\n');
+
+/**
+ * Retroactively score a deck's unscored cards for exam criticality (M101).
+ * Cards created before importance existed (or added manually) sit at 0 and
+ * would introduce LAST behind every scored card; this backfills them so the
+ * paced queue orders the whole deck. Batched; a failed batch leaves its
+ * cards at 0 for the next run. Returns { scored, total }.
+ */
+async function fcScoreDeckImportance(deckId, { onProgress } = {}) {
+  const rows = await db.all(
+    "SELECT id, front, back FROM fc_cards WHERE deck_id = ? AND importance = 0 AND suspended = 0",
+    [deckId],
+  );
+  if (rows.length === 0) return { scored: 0, total: 0 };
+  const modelId = await fcPickModel();
+  if (!modelId || !_api?.lm?.sendChatRequest) {
+    throw new Error('No language model available. Configure a model in AI settings.');
+  }
+  const { contextSetting, think } = fcAiOptions();
+  const modelCtx = await fcModelContextLength(modelId);
+  let scored = 0;
+  const BATCH = 12;
+  for (let start = 0; start < rows.length; start += BATCH) {
+    const group = rows.slice(start, start + BATCH);
+    try {
+      const user = group.map((r) => `CARD ${r.id}:\nFRONT: ${r.front}\nBACK: ${r.back}`).join('\n\n---\n\n');
+      const { numCtx } = fcContextPlan({ chars: user.length, count: group.length, modelCtx, setting: contextSetting });
+      let output = '';
+      const stream = _api.lm.sendChatRequest(modelId, [
+        { role: 'system', content: FC_SCORE_SYSTEM },
+        { role: 'user', content: user },
+      ], { temperature: 0.2, think, numCtx });
+      await fcStreamWithStall(stream, (chunk) => { if (chunk.content) output += chunk.content; });
+      const { items } = fcExtractJsonArray(output, (parsed) => parsed
+        .filter((v) => v && typeof v === 'object')
+        .map((v) => ({
+          id: Number(v.id),
+          importance: fcNormalizeImportance(v.importance),
+          reason: String(v.reason || '').slice(0, 300),
+        })));
+      const validIds = new Set(group.map((r) => r.id));
+      for (const item of items) {
+        if (!validIds.has(item.id) || item.importance === 0) continue;
+        await db.run('UPDATE fc_cards SET importance = ?, importance_reason = ? WHERE id = ?',
+          [item.importance, item.reason, item.id]);
+        scored++;
+      }
+    } catch (e) {
+      console.warn('[Flashcards] importance batch failed (cards stay unscored):', e?.message);
+    }
+    try { onProgress?.(Math.min(start + BATCH, rows.length), rows.length); } catch { /* UI gone */ }
+  }
+  if (scored > 0) _emitDataChanged();
+  return { scored, total: rows.length };
+}
+
 const FC_COVERAGE_SYSTEM = [
   'You audit how well a flashcard deck covers its source material (user goal: confidence the deck offers a COMPREHENSIVE review, missing nothing).',
   'You receive the material and the deck\'s existing cards. Produce:',
   '1. "report": concise Markdown. Sections: **Covered Well** (topic bullets), **Thin Coverage** (topics with too few or too shallow cards, and why), **Not Covered** (facts, formulas, distinctions in the material with NO card). Ground every claim in the material; never invent topics the material does not contain. Formulas in $LaTeX$. Never use em dashes.',
-  '2. "missing": a JSON array of NEW flashcards filling the gaps you found, same card rules as generation: one atomic fact each, front asks, back answers, tags, and "page": N / "doc": k when the material carries those markers. Empty array when nothing is missing.',
-  'Output ONLY one JSON object: {"report": "...", "missing": [{"front": "...", "back": "...", "tags": ["topic"]}]}',
+  '2. "missing": a JSON array of NEW flashcards filling the gaps you found, same card rules as generation: one atomic fact each, front asks, back answers, tags, "importance": 1-100 exam criticality with a short "importanceReason" (90-100 directly-tested method/formula; 70-89 assumption/condition; 40-69 interpretive nuance; 1-39 background), and "page": N / "doc": k when the material carries those markers. Empty array when nothing is missing.',
+  'Output ONLY one JSON object: {"report": "...", "missing": [{"front": "...", "back": "...", "tags": ["topic"], "importance": 85, "importanceReason": "..."}]}',
 ].join('\n');
 
 /**
@@ -1799,6 +2072,8 @@ async function fcUpdateCard(id, patch) {
   }
   if (patch.suspended !== undefined) { sets.push('suspended = ?'); params.push(patch.suspended ? 1 : 0); }
   if (patch.flag !== undefined) { sets.push('flag = ?'); params.push(fcNormalizeFlag(patch.flag)); }
+  if (patch.importance !== undefined) { sets.push('importance = ?'); params.push(fcNormalizeImportance(patch.importance)); }
+  if (patch.importanceReason !== undefined) { sets.push('importance_reason = ?'); params.push(String(patch.importanceReason || '').slice(0, 300)); }
   if (sets.length === 0) return;
   // M98: text edits on a cloze sibling rewrite the whole group (the text IS
   // the note) — grab identity before the UPDATE.
@@ -2183,14 +2458,40 @@ const FC_GENERATE_SYSTEM = [
   '  text is corrupted, reconstruct the formula in its standard form in clean',
   '  LaTeX instead of copying the garble or skipping it. Repairing a known',
   '  formula\'s transcription is not inventing a fact.',
+  'Exam criticality: rate every card "importance" 1-100 for exam preparation, with a short "importanceReason":',
+  '- 90-100: a method, formula, or procedure the exam tests directly as a workable problem.',
+  '- 70-89: an assumption, applicability condition, or input needed to correctly APPLY such a method.',
+  '- 40-69: interpretive or comparative nuance (when to prefer one method, what a result means).',
+  '- 1-39: background, derivation steps, history, notation trivia.',
   'Formatting (cards render Markdown + KaTeX):',
   '- Write EVERY formula and symbol in LaTeX between $...$ (or $$...$$ for a display equation).',
   '- Use **bold** for the key term, and bullet lists when the answer enumerates items.',
   '- Never use em dashes.',
   'Output ONLY a JSON array, no prose, in this exact shape:',
-  '[{"front": "...", "back": "...", "tags": ["topic"]}]',
+  '[{"front": "...", "back": "...", "tags": ["topic"], "importance": 85, "importanceReason": "..."}]',
   'When the material carries [Page N] markers, add "page": N to each card; when it carries [Doc k] markers, also add "doc": k.',
 ].join('\n');
+
+/**
+ * Density levels for AUTO card count (M101). A truncation cap ("stop at N")
+ * would amputate coverage mid-chapter; these instead shape SELECTIVITY while
+ * the model plans across the whole material — every core concept still gets
+ * a card, the low-importance tail gets consolidated or skipped.
+ */
+const FC_DENSITY_LEVELS = {
+  thorough: 'Create one flashcard per atomic fact the material supports: as many as it warrants, up to 50. '
+    + 'Do not pad thin material with near-duplicate cards, and do not stop early on rich material.',
+  balanced: 'Create flashcards covering EVERY core concept, formula, method, and key assumption in the material, up to 50. '
+    + 'Be selective about the rest: consolidate minor details into the nearest core card instead of making separate cards for them, '
+    + 'and skip trivia no exam would test. Never skip a core concept to save cards.',
+  lean: 'Create flashcards ONLY for what a student must master for an exam: methods, formulas, key assumptions, and central results, up to 50. '
+    + 'One card each. Skip background, derivations, and peripheral detail entirely. Never skip a core method or formula.',
+};
+
+function fcGenerationDensity() {
+  const v = String(cfg('generationDensity', 'balanced'));
+  return FC_DENSITY_LEVELS[v] ? v : 'balanced';
+}
 
 // Context planning constants. CHARS_PER_TOKEN is the safe planning ratio,
 // not the prose average (~3.5-4): formula-dense PDF extraction measured
@@ -2406,13 +2707,13 @@ async function fcGenerateCards(sourceText, { count = null, focus = '', pageTexts
     console.warn(`[Flashcards] material clipped to ${maxChars} chars to fit a ${numCtx}-token window (model: ${modelId}${modelCtx ? `, max ${modelCtx}` : ', context length unknown'})`);
   }
   const user = [
-    // Explicit count = a ceiling the user chose. Auto = the material decides:
-    // a number here would only anchor the model into padding thin material
-    // or truncating rich material at an arbitrary line.
+    // Explicit count = a ceiling the user chose. Auto = the material decides,
+    // shaped by the density level: a raw number here would only anchor the
+    // model into padding thin material or truncating rich material at an
+    // arbitrary line, so density steers selectivity instead (M101).
     count
       ? `Create up to ${Math.min(50, Math.max(1, count))} flashcards from the material below.`
-      : 'Create one flashcard per atomic fact the material supports: as many as it warrants, up to 50. '
-        + 'Do not pad thin material with near-duplicate cards, and do not stop early on rich material.',
+      : FC_DENSITY_LEVELS[fcGenerationDensity()],
     multiDoc
       ? 'The material contains MULTIPLE source documents tagged [Doc k: name]. The documents overlap: treat them as one body of content and create ONE card per fact, never one per document. Add "doc": k to every card naming the document its fact comes from.'
         + (paged ? ' Page markers [Page N] restart inside each document; when the fact\'s document is paged, also add "page": N (the page within that document).' : '')
@@ -3159,7 +3460,72 @@ function injectStyles() {
   color: var(--px-accent); background: var(--px-accent-soft);
   border-radius: var(--px-radius-full, 999px); vertical-align: 2px;
   font-variant-numeric: tabular-nums;
+  border: 0; font-family: inherit; cursor: pointer;
+  transition: background var(--px-dur-fast) var(--px-ease);
 }
+button.fc-exam-chip:hover { background: var(--px-accent-faint); }
+
+/* ── Exam-date dialogs (M101) — centered mini-modal, portal above every
+   workbench layer (popup contract: >= 10005) ── */
+/* Scrim matches the core modal overlay (notificationService.css). */
+.fc-datedlg-overlay {
+  position: fixed; inset: 0; z-index: 10010;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(3px);
+}
+.fc-datedlg {
+  width: min(360px, calc(100vw - 48px)); max-height: min(80vh, 640px);
+  overflow-y: auto; box-sizing: border-box;
+  padding: var(--px-space-4);
+  background: var(--px-bg-elevated); color: var(--px-text);
+  border: 1px solid var(--px-border); border-radius: var(--px-radius-lg);
+  box-shadow: var(--px-shadow-lg);
+  display: flex; flex-direction: column; gap: var(--px-space-3);
+}
+.fc-datedlg__title { font-size: var(--px-text-md); font-weight: 650; letter-spacing: -0.01em; }
+.fc-datedlg__foot { display: flex; gap: var(--px-space-2); justify-content: flex-end; }
+.fc-datedlg__decks {
+  display: flex; flex-direction: column; gap: 2px;
+  max-height: 180px; overflow-y: auto;
+  border: 1px solid var(--px-divider); border-radius: var(--px-radius-md);
+  padding: var(--px-space-1) var(--px-space-2);
+}
+.fc-datedlg__deck { justify-content: flex-start; padding: 3px 0; }
+.fc-datedlg__deck > span:nth-of-type(1) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fc-datedlg__deckdate { color: var(--px-text-faint); font-size: var(--px-text-xs); font-variant-numeric: tabular-nums; }
+
+/* ── Month-grid calendar ── */
+.fc-cal { user-select: none; }
+.fc-cal__head { display: flex; align-items: center; gap: var(--px-space-2); margin-bottom: var(--px-space-2); }
+.fc-cal__label { flex: 1; text-align: center; font-size: var(--px-text-base); font-weight: 600; }
+.fc-cal__nav {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border: 1px solid var(--px-border); border-radius: var(--px-radius-md);
+  background: transparent; color: var(--px-text-muted); cursor: pointer;
+  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
+}
+.fc-cal__nav:hover { background: var(--px-surface-hover); color: var(--px-text); }
+.fc-cal__dow {
+  display: grid; grid-template-columns: repeat(7, 1fr); text-align: center;
+  font-size: var(--px-text-xs); font-weight: 600; color: var(--px-text-faint);
+  margin-bottom: 2px;
+}
+.fc-cal__grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.fc-cal__pad { min-height: 30px; }
+.fc-cal__day {
+  min-height: 30px; border: 0; border-radius: var(--px-radius-md);
+  background: transparent; color: var(--px-text);
+  font: inherit; font-size: var(--px-text-sm); font-variant-numeric: tabular-nums;
+  cursor: pointer; transition: background var(--px-dur-fast) var(--px-ease);
+}
+.fc-cal__day:hover:not(:disabled) { background: var(--px-surface-hover); }
+.fc-cal__day--past { color: var(--px-text-faint); cursor: default; }
+.fc-cal__day--today { box-shadow: inset 0 0 0 1px var(--px-border-strong); }
+.fc-cal__day--selected { background: var(--px-accent-soft); color: var(--px-accent); font-weight: 650; }
+.fc-cal__day--selected:hover:not(:disabled) { background: var(--px-accent-faint); }
+
+.fc-input--importance { width: 88px; flex: 0 0 auto; }
 .fc-deck-card__actions { display: flex; gap: var(--px-space-1); flex: 0 0 auto; opacity: 0; transition: opacity var(--px-dur-fast) var(--px-ease); }
 .fc-deck-card:hover .fc-deck-card__actions,
 .fc-deck-card:focus-within .fc-deck-card__actions { opacity: 1; }
@@ -3707,8 +4073,12 @@ function createSidebarView(container) {
       // Promise what the session will actually hand over. The counts above
       // are uncapped totals; fcBuildQueue's per-session caps are not, so a
       // 100-card import used to advertise "Study 103 cards" and serve 23.
+      // Pacing (M101) shrinks the new batch further — the promise follows it.
+      // Computed SYNCHRONOUSLY from the decks already fetched: an await here
+      // would split the paint and let an overlapping stale refresh land last.
+      const pace = fcNewAllowances(decks, Date.now(), fcPaceSettings());
       const served = fcCountServedToday(today, {
-        newLimit: Number(cfg('dailyNewLimit', 20)) || 20,
+        newLimit: Math.min(Number(cfg('dailyNewLimit', 20)) || 20, pace.total),
         reviewLimit: Number(cfg('dailyReviewLimit', 200)) || 200,
       });
       const studyBtn = el('button', 'fc-today__study');
@@ -3806,42 +4176,232 @@ async function _renameDeckFlow(deck) {
   if (name?.trim() && name.trim() !== deck.name) await fcRenameDeck(deck.id, name.trim());
 }
 
+// Guard: one scoring run per deck at a time — a second click mid-run would
+// double-score and double-toast.
+const _fcScoringDecks = new Set();
+
 /**
- * Set or clear a deck's exam date (M98 deadline-aware scheduling). Plain
- * YYYY-MM-DD input; blank clears. The scheduler caps intervals so at least
- * one more review fits before the date (fcDeadlineCapDays).
+ * Backfill exam-criticality scores on a deck's unscored cards (M101). Runs
+ * in the background with a start toast and a completion toast; progress is
+ * visible in the card browser as scores land (data-change events repaint).
+ */
+async function _scoreImportanceFlow(deck) {
+  if (_fcScoringDecks.has(deck.id)) {
+    _api.window.showInformationMessage?.(`Already scoring "${deck.name}" — scores appear as they land.`);
+    return;
+  }
+  _fcScoringDecks.add(deck.id);
+  try {
+    _api.window.showInformationMessage?.(`Scoring "${deck.name}" for exam criticality. Cards update as batches finish.`);
+    const { scored, total } = await fcScoreDeckImportance(deck.id);
+    if (total === 0) {
+      _api.window.showInformationMessage?.(`Every card in "${deck.name}" already has an importance score.`);
+    } else if (scored === total) {
+      _api.window.showInformationMessage?.(`Scored ${scored} ${scored === 1 ? 'card' : 'cards'} in "${deck.name}". High-importance cards now introduce first.`);
+    } else {
+      _api.window.showWarningMessage?.(`Scored ${scored} of ${total} cards in "${deck.name}". Run Score Importance again to finish the rest.`);
+    }
+  } catch (e) {
+    _api.window.showErrorMessage?.(`Importance scoring failed: ${e.message}`);
+  } finally {
+    _fcScoringDecks.delete(deck.id);
+  }
+}
+
+// ── Exam-date picking (M101) ─────────────────────────────────────────────────
+// A real calendar, not a typed YYYY-MM-DD box. One month-grid component
+// (fcCalendarEl) backs both the single-deck dialog and the bulk dialog.
+// Stored stamps stay local 23:59 — NOT toISOString, which is the NEXT day in
+// UTC west of Greenwich and silently advanced the exam a day per re-confirm
+// (M99 review).
+
+/** ms epoch → local 23:59 stamp for the given year/month/day. */
+function fcExamStamp(y, m, d) {
+  return new Date(y, m, d, 23, 59).getTime();
+}
+
+/**
+ * Month-grid calendar element. `onPick(ms)` fires with the local-23:59 stamp
+ * of the clicked day. Days at or before today are disabled — an exam date in
+ * the past caps every interval to nothing.
+ */
+function fcCalendarEl({ selected = 0, onPick }) {
+  const today = new Date();
+  const sel = selected ? new Date(selected) : null;
+  let viewYear = sel ? sel.getFullYear() : today.getFullYear();
+  let viewMonth = sel ? sel.getMonth() : today.getMonth();
+
+  const root = el('div', 'fc-cal');
+  const head = el('div', 'fc-cal__head');
+  const prev = el('button', 'fc-cal__nav');
+  prev.type = 'button';
+  prev.title = 'Previous Month';
+  prev.innerHTML = icon('chevron-left', 14) || '‹';
+  const label = el('div', 'fc-cal__label');
+  const next = el('button', 'fc-cal__nav');
+  next.type = 'button';
+  next.title = 'Next Month';
+  next.innerHTML = icon('chevron-right', 14) || '›';
+  head.append(prev, label, next);
+  root.appendChild(head);
+
+  const dow = el('div', 'fc-cal__dow');
+  for (const d of ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']) dow.appendChild(el('span', '', d));
+  root.appendChild(dow);
+  const grid = el('div', 'fc-cal__grid');
+  root.appendChild(grid);
+
+  const paint = () => {
+    label.textContent = new Date(viewYear, viewMonth, 1)
+      .toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+    grid.innerHTML = '';
+    const firstDow = new Date(viewYear, viewMonth, 1).getDay();
+    const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+    for (let i = 0; i < firstDow; i++) grid.appendChild(el('span', 'fc-cal__pad'));
+    for (let d = 1; d <= daysInMonth; d++) {
+      const btn = el('button', 'fc-cal__day', String(d));
+      btn.type = 'button';
+      const stamp = fcExamStamp(viewYear, viewMonth, d);
+      if (stamp <= Date.now()) {
+        btn.disabled = true;
+        btn.classList.add('fc-cal__day--past');
+      }
+      if (viewYear === today.getFullYear() && viewMonth === today.getMonth() && d === today.getDate()) {
+        btn.classList.add('fc-cal__day--today');
+      }
+      if (sel && viewYear === sel.getFullYear() && viewMonth === sel.getMonth() && d === sel.getDate()) {
+        btn.classList.add('fc-cal__day--selected');
+      }
+      btn.addEventListener('click', () => onPick(stamp));
+      grid.appendChild(btn);
+    }
+  };
+  prev.addEventListener('click', () => { viewMonth--; if (viewMonth < 0) { viewMonth = 11; viewYear--; } paint(); });
+  next.addEventListener('click', () => { viewMonth++; if (viewMonth > 11) { viewMonth = 0; viewYear++; } paint(); });
+  paint();
+  return root;
+}
+
+/**
+ * Centered dialog shell for the date flows. Portals to document.body above
+ * every workbench layer; Esc and backdrop-click cancel. `build(close)` fills
+ * the dialog and calls close(result) to resolve.
+ */
+function fcDateDialog(title, build) {
+  return new Promise((resolve) => {
+    const overlay = el('div', 'fc-datedlg-overlay');
+    const dlg = el('div', 'fc-datedlg');
+    dlg.setAttribute('role', 'dialog');
+    dlg.setAttribute('aria-label', title);
+    dlg.appendChild(el('div', 'fc-datedlg__title', title));
+    const close = (result) => {
+      document.removeEventListener('keydown', onKey, true);
+      overlay.remove();
+      resolve(result);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') { e.stopPropagation(); close(undefined); }
+    };
+    document.addEventListener('keydown', onKey, true);
+    overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(undefined); });
+    build(dlg, close);
+    overlay.appendChild(dlg);
+    document.body.appendChild(overlay);
+  });
+}
+
+/**
+ * Set or clear a deck's exam date via the calendar. The scheduler caps
+ * intervals so at least one more review fits before the date
+ * (fcDeadlineCapDays), and pacing spreads new-card introduction to land
+ * before the freeze window (fcPacePlan).
  */
 async function _setExamDateFlow(deck) {
-  // Local-date formatting, NOT toISOString: the stored stamp is local 23:59,
-  // which is the NEXT day in UTC west of Greenwich — a toISOString prefill
-  // would silently advance the exam a day on every re-confirm (M99 review).
-  const fmtLocal = (ms) => {
-    const d = new Date(ms);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  };
-  const current = deck.examDate ? fmtLocal(deck.examDate) : '';
-  const raw = await _api.window.showInputBox({
-    prompt: 'Exam date (YYYY-MM-DD). Leave blank to clear.',
-    value: current,
-    placeHolder: '2026-10-27',
+  const result = await fcDateDialog(`Exam Date — ${deck.name}`, (dlg, close) => {
+    dlg.appendChild(el('div', 'fc-hint',
+      deck.examDate
+        ? `Currently ${new Date(deck.examDate).toLocaleDateString()}. Pick a new date, or clear it.`
+        : 'Pick the real exam date. The scheduler plans backward from it: intervals cap so every card gets a final review in time, and new cards pace to finish introducing before the freeze window.'));
+    dlg.appendChild(fcCalendarEl({ selected: deck.examDate || 0, onPick: (ms) => close(ms) }));
+    const foot = el('div', 'fc-datedlg__foot');
+    if (deck.examDate) {
+      const clearBtn = el('button', 'fc-btn');
+      clearBtn.textContent = 'Clear Date';
+      clearBtn.addEventListener('click', () => close(0));
+      foot.appendChild(clearBtn);
+    }
+    const cancelBtn = el('button', 'fc-btn');
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.addEventListener('click', () => close(undefined));
+    foot.appendChild(cancelBtn);
+    dlg.appendChild(foot);
   });
-  if (raw === undefined) return; // cancelled
-  const trimmed = String(raw).trim();
-  if (trimmed === '') {
-    await fcSetDeckExamDate(deck.id, 0);
+  if (result === undefined) return;
+  await fcSetDeckExamDate(deck.id, result);
+}
+
+/**
+ * Set (or clear) exam dates for MANY decks at once (M101). One calendar,
+ * a checkbox per deck; sitting one exam usually means several source decks
+ * share the date, and setting six decks one dialog at a time was the chore
+ * that left decks unprotected by the deadline cap.
+ */
+async function _setExamDatesBulkFlow() {
+  const decks = await fcListDecks();
+  if (decks.length === 0) {
+    _api.window.showInformationMessage?.('No decks yet. Create a deck first.');
     return;
   }
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
-  const ts = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 23, 59).getTime() : NaN;
-  if (!m || Number.isNaN(ts)) {
-    _api.window.showErrorMessage?.(`"${trimmed}" is not a valid date. Use YYYY-MM-DD.`);
-    return;
+  const applied = await fcDateDialog('Exam Dates', (dlg, close) => {
+    dlg.appendChild(el('div', 'fc-hint',
+      'Tick the decks that share the exam, then pick its date on the calendar. Decks keep their own dates otherwise.'));
+    const list = el('div', 'fc-datedlg__decks');
+    const checks = new Map();
+    for (const deck of decks) {
+      const row = el('label', 'fc-check fc-datedlg__deck');
+      const cb = el('input');
+      cb.type = 'checkbox';
+      cb.checked = true;
+      checks.set(deck.id, cb);
+      row.appendChild(cb);
+      row.appendChild(el('span', '', deck.name));
+      row.appendChild(el('span', 'fc-datedlg__deckdate',
+        deck.examDate ? new Date(deck.examDate).toLocaleDateString() : 'no date'));
+      list.appendChild(row);
+    }
+    dlg.appendChild(list);
+    const checkedIds = () => decks.filter((d) => checks.get(d.id)?.checked).map((d) => d.id);
+    dlg.appendChild(fcCalendarEl({
+      selected: 0,
+      onPick: (ms) => {
+        const ids = checkedIds();
+        if (ids.length === 0) return; // nothing ticked — picking a day is a no-op
+        close({ ids, ms });
+      },
+    }));
+    const foot = el('div', 'fc-datedlg__foot');
+    const clearBtn = el('button', 'fc-btn');
+    clearBtn.textContent = 'Clear Dates';
+    clearBtn.title = 'Remove the exam date from every ticked deck.';
+    clearBtn.addEventListener('click', () => {
+      const ids = checkedIds();
+      if (ids.length > 0) close({ ids, ms: 0 });
+    });
+    foot.appendChild(clearBtn);
+    const cancelBtn = el('button', 'fc-btn');
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.addEventListener('click', () => close(undefined));
+    foot.appendChild(cancelBtn);
+    dlg.appendChild(foot);
+  });
+  if (!applied) return;
+  for (const id of applied.ids) {
+    await fcSetDeckExamDate(id, applied.ms);
   }
-  if (ts <= Date.now()) {
-    _api.window.showErrorMessage?.('The exam date must be in the future.');
-    return;
-  }
-  await fcSetDeckExamDate(deck.id, ts);
+  const n = applied.ids.length;
+  _api.window.showInformationMessage?.(applied.ms
+    ? `Exam date set on ${n} ${n === 1 ? 'deck' : 'decks'}.`
+    : `Exam date cleared on ${n} ${n === 1 ? 'deck' : 'decks'}.`);
 }
 
 async function _deleteDeckFlow(deck) {
@@ -4046,10 +4606,16 @@ async function renderDecks(body, setRoute) {
   customBtn.title = 'Work ahead: extra new cards, review ahead, difficult cards, or cram.';
   customBtn.addEventListener('click', () => setRoute({ view: 'custom' }));
   actions.appendChild(customBtn);
+  const datesBtn = el('button', 'fc-btn');
+  datesBtn.textContent = 'Exam Dates';
+  datesBtn.title = 'Set or clear the exam date on several decks at once.';
+  datesBtn.addEventListener('click', () => void _setExamDatesBulkFlow());
+  actions.appendChild(datesBtn);
   view.appendChild(actions);
   view.appendChild(el('div', 'fc-label', 'Decks'));
 
   const decks = await fcListDecks();
+  const paceSettings = fcPaceSettings();
   if (decks.length === 0) {
     // Same hero shape as the workbench voice registry (.px-empty is global).
     const empty = el('div', 'px-empty');
@@ -4064,13 +4630,26 @@ async function renderDecks(body, setRoute) {
     const nameRow = el('div', 'fc-deck-card__name', deck.name);
     if (deck.examDate && deck.examDate > Date.now()) {
       const daysLeft = Math.max(1, Math.ceil((deck.examDate - Date.now()) / DAY));
-      const chip = el('span', 'fc-exam-chip', `${daysLeft}d to exam`);
-      chip.title = `Exam ${new Date(deck.examDate).toLocaleDateString()} — intervals capped so every card gets a final review in time`;
+      const chip = el('button', 'fc-exam-chip', `${daysLeft}d to exam`);
+      chip.type = 'button';
+      chip.title = `Exam ${new Date(deck.examDate).toLocaleDateString()} — intervals capped so every card gets a final review in time. Click to change.`;
+      chip.addEventListener('click', (e) => { e.stopPropagation(); void _setExamDateFlow(deck); });
       nameRow.appendChild(chip);
     }
     info.appendChild(nameRow);
-    info.appendChild(el('div', 'fc-deck-card__meta',
-      `${deck.total} cards · ${deck.dueCount} due · ${deck.newCount} new`));
+    // The pace line (M101): what the deadline math actually plans for this
+    // deck, so the new-card backlog reads as a schedule instead of a dread
+    // counter.
+    let metaText = `${deck.total} cards · ${deck.dueCount} due · ${deck.newCount} new`;
+    if (paceSettings.paceEnabled && deck.newCount > 0) {
+      const plan = fcPacePlan(deck, Date.now(), paceSettings);
+      if (plan) {
+        metaText += plan.frozen
+          ? ' · introduction frozen — reviews only until the exam'
+          : ` · pace ${plan.rate}/day, introduced by ${new Date(plan.doneAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+      }
+    }
+    info.appendChild(el('div', 'fc-deck-card__meta', metaText));
     info.addEventListener('click', () => setRoute({ view: 'browse', deckId: deck.id }));
     card.appendChild(info);
 
@@ -4201,6 +4780,19 @@ function fcCardEditorEl(card, { onSave, onCancel }) {
   tagsIn.placeholder = 'space-separated';
   form.appendChild(tagsIn);
 
+  form.appendChild(el('div', 'fc-label', 'Importance'));
+  const impRow = el('div', 'fc-row');
+  const impIn = el('input', 'fc-input fc-input--importance');
+  impIn.type = 'number';
+  impIn.min = '0';
+  impIn.max = '100';
+  impIn.value = String(card.importance || 0);
+  impIn.title = 'Exam criticality, 1-100. 0 = unscored. High-importance cards introduce first when pacing is on; your value overrides the AI score.';
+  impRow.appendChild(impIn);
+  impRow.appendChild(el('span', 'fc-hint',
+    card.importanceReason ? `AI: ${card.importanceReason}` : '1-100 · high scores introduce first · 0 = unscored'));
+  form.appendChild(impRow);
+
   form.appendChild(err);
 
   const actions = el('div', 'fc-edit__actions');
@@ -4221,7 +4813,7 @@ function fcCardEditorEl(card, { onSave, onCancel }) {
       return;
     }
     const tags = tagsIn.value.split(/[\s,]+/).map((t) => t.trim()).filter(Boolean).join(',');
-    void onSave({ front, back, tags, notes: notesIn.value });
+    void onSave({ front, back, tags, notes: notesIn.value, importance: impIn.value });
   };
   saveBtn.addEventListener('click', save);
   cancelBtn.addEventListener('click', () => onCancel());
@@ -4652,6 +5244,12 @@ async function renderBrowse(body, route, setRoute) {
     // M98 card types: siblings announce themselves (edits propagate group-wide).
     if (card.cardType === 'cloze') meta.appendChild(el('span', '', `Cloze c${card.clozeIndex}`));
     else if (card.cardType === 'reverse') meta.appendChild(el('span', '', 'Reverse Pair'));
+    // M101 exam criticality — the introduction-order signal, kept auditable.
+    if (card.importance > 0) {
+      const imp = el('span', '', `Importance ${card.importance}`);
+      if (card.importanceReason) imp.title = card.importanceReason;
+      meta.appendChild(imp);
+    }
     if (card.state !== 'new') {
       meta.appendChild(el('span', '', card.dueAt <= Date.now()
         ? 'Due Now'
@@ -5584,6 +6182,10 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
     && (cachedSession.index < cachedSession.queue.length || cachedSession.pending.length > 0);
 
   const cards = await fcListAllCards(route.deckId ?? null);
+  // Deadline-aware pacing (M101): each deck's new band is sliced to its
+  // paced allowance. Custom study deliberately bypasses pacing — "extra"
+  // exists precisely to work past the paced batch.
+  const pace = (resuming || custom) ? null : await fcSessionNewAllowances(route.deckId ?? null);
   // aheadMs: learn-ahead (Study Now on the countdown screen) — build the
   // queue as of a moment slightly past the next learning card's dueAt.
   const queue = resuming ? []
@@ -5591,6 +6193,7 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
       : fcBuildQueue(cards, Date.now() + aheadMs, {
         newLimit: Number(cfg('dailyNewLimit', 20)) || 20,
         reviewLimit: Number(cfg('dailyReviewLimit', 200)) || 200,
+        newAllowanceByDeck: pace ? pace.byDeck : null,
       });
   // Preview modes grade for flow only — see fcCustomIsPreview.
   const previewOnly = !!custom && fcCustomIsPreview(custom.mode);
@@ -5866,8 +6469,17 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
         if (dueLeft) parts.push(`${dueLeft} ${dueLeft === 1 ? 'review' : 'reviews'}`);
         if (parts.length === 0) return;
         const batch = Number(cfg('dailyNewLimit', 20)) || 20;
+        let waitingNote = `new cards come out ${batch} to a session.`;
+        try {
+          const paceLeft = await fcSessionNewAllowances(route.deckId ?? null);
+          if (paceLeft.total < Math.min(batch, newLeft)) {
+            waitingNote = paceLeft.total === 0
+              ? 'new-card introduction is frozen this close to the exam — reviews only.'
+              : `introduction is paced to your exam dates: ${paceLeft.total} more ${paceLeft.total === 1 ? 'card' : 'cards'} today, Custom Study reaches the rest.`;
+          }
+        } catch { /* pacing note is best-effort */ }
         more.textContent = newLeft
-          ? `${parts.join(' and ')} still waiting — new cards come out ${batch} to a session.`
+          ? `${parts.join(' and ')} still waiting — ${waitingNote}`
           : `${parts.join(' and ')} still waiting.`;
         more.style.display = '';
         const go = el('button', 'fc-btn fc-btn--primary');
@@ -6434,7 +7046,25 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
   countIn.style.width = '70px';
   optRow.appendChild(el('span', 'fc-hint', 'Cards:'));
   optRow.appendChild(countIn);
-  optRow.appendChild(el('span', 'fc-hint', 'Blank = the material decides how many it warrants (50 max). A number sets a ceiling.'));
+  // Density (M101): shapes SELECTIVITY in auto mode. Writes straight to the
+  // setting so the choice sticks across runs and surfaces in Settings too.
+  optRow.appendChild(el('span', 'fc-hint', 'Density:'));
+  const densityDd = _api.ui.createDropdown(optRow, {
+    items: [
+      { value: 'thorough', label: 'Thorough' },
+      { value: 'balanced', label: 'Balanced' },
+      { value: 'lean', label: 'Lean' },
+    ],
+    selected: fcGenerationDensity(),
+    ariaLabel: 'Generation density',
+  });
+  densityDd.onDidChange((v) => {
+    try {
+      Promise.resolve(_api.workspace.getConfiguration('flashcards').update('generationDensity', v))
+        .catch(() => { /* setting write is best-effort */ });
+    } catch { /* setting write is best-effort */ }
+  });
+  optRow.appendChild(el('span', 'fc-hint', 'Blank = the material decides how many it warrants (50 max). Density steers how selective auto mode is; it never skips core concepts.'));
   view.appendChild(optRow);
 
   // Steering. Free text straight into the prompt, persisted because a study
@@ -6518,11 +7148,17 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
         });
         lastDocs = docs;
         // Duplicate scan against the target deck (existing decks only).
+        // Embeddings are recall; the judge decides (M101) — cosine similarity
+        // alone flagged contrast pairs as duplicates.
         let dups = cards.map(() => null);
         const deckSel = parseInt(deckDropdown.value, 10);
         if (Number.isFinite(deckSel)) {
           setGenLabel('Checking for duplicates…');
           dups = await fcFindDuplicates(deckSel, cards);
+          if (dups.some(Boolean)) {
+            setGenLabel('Judging similar cards…');
+            dups = await fcJudgeGenerationDups(cards, dups);
+          }
         }
         renderReview(cards, dups);
       } catch (e2) {
@@ -6548,17 +7184,30 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
       const c = cards[ci];
       const row = el('div', 'fc-genrow');
       const fields = el('div', 'fc-genrow__fields');
-      // Provenance + duplicate chips above the editors.
+      // Provenance + importance + duplicate chips above the editors.
       const dup = dups[ci];
-      if (c.page || c.doc || dup) {
+      if (c.page || c.doc || dup || c.importance) {
         const chips = el('div', 'fc-genrow__chips');
         if (c.doc && lastDocs[c.doc - 1]) {
           chips.appendChild(el('span', 'fc-chip', String(lastDocs[c.doc - 1].label).slice(0, 32)));
         }
         if (c.page) chips.appendChild(el('span', 'fc-chip', `p.${c.page}`));
+        if (c.importance) {
+          const impChip = el('span', 'fc-chip', `Importance ${c.importance}`);
+          impChip.title = c.importanceReason || 'Exam-criticality score (1-100). High scores introduce first when pacing is on.';
+          chips.appendChild(impChip);
+        }
         if (dup) {
-          const dupChip = el('span', 'fc-chip fc-chip--warn', `Similar to: ${String(dup.matchFront).slice(0, 60)}`);
-          dupChip.title = `${Math.round(dup.similarity * 100)}% similar to an existing card in this deck`;
+          // Judge verdicts (M101) replace the raw similarity reading; a
+          // similarity-only chip means the judge was unavailable this run.
+          const label = dup.verdict === 'duplicate'
+            ? `Duplicate of: ${String(dup.matchFront).slice(0, 60)}`
+            : dup.verdict === 'overlap'
+              ? `Overlaps: ${String(dup.matchFront).slice(0, 60)}`
+              : `Similar to: ${String(dup.matchFront).slice(0, 60)}`;
+          const dupChip = el('span', 'fc-chip fc-chip--warn', label);
+          dupChip.title = dup.reason
+            || `${Math.round(dup.similarity * 100)}% similar to an existing card in this deck (AI judge unavailable; similarity only)`;
           chips.appendChild(dupChip);
         }
         fields.appendChild(chips);
@@ -6569,7 +7218,10 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
       row.appendChild(fields);
       const dropBtn = el('button', 'fc-btn fc-btn--danger');
       dropBtn.textContent = 'Drop';
-      const entry = { row, front, back, tags: c.tags || '', page: c.page || 0, doc: c.doc || 0, dropped: false };
+      const entry = {
+        row, front, back, tags: c.tags || '', page: c.page || 0, doc: c.doc || 0,
+        importance: c.importance || 0, importanceReason: c.importanceReason || '', dropped: false,
+      };
       dropBtn.addEventListener('click', () => {
         entry.dropped = !entry.dropped;
         row.classList.toggle('fc-genrow--dropped', entry.dropped);
@@ -6614,6 +7266,8 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
               sourceUri: src?.uri ?? '',
               sourceLabel: src?.label ?? (lastDocs.length > 1 ? 'Multiple sources' : 'Pasted text'),
               sourcePage: src ? (r.page || 0) : 0,
+              importance: r.importance,
+              importanceReason: r.importanceReason,
             });
           }
           await _api.window.showInformationMessage(`Imported ${keep.length} cards.`);
@@ -7741,6 +8395,9 @@ export const __testables = {
   fcBuildCustomQueue,
   fcCustomIsPreview,
   fcCountServedToday,
+  fcPacePlan,
+  fcNewAllowances,
+  fcNormalizeImportance,
   FC_FLAGS,
   fcNormalizeFlag,
   fcFlagDef,

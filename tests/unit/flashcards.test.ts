@@ -25,6 +25,9 @@ const {
   fcBuildCustomQueue,
   fcCustomIsPreview,
   fcCountServedToday,
+  fcPacePlan,
+  fcNewAllowances,
+  fcNormalizeImportance,
   FC_FLAGS,
   fcNormalizeFlag,
   fcFlagDef,
@@ -366,6 +369,21 @@ describe('fcBuildMaterial', () => {
   });
 });
 
+describe('fcExtractCardsJson — importance (M101)', () => {
+  it('reads a per-card importance and reason', () => {
+    const { cards } = fcExtractCardsJson('[{"front":"Q","back":"A","importance":92,"importanceReason":"core formula"}]');
+    expect(cards[0].importance).toBe(92);
+    expect(cards[0].importanceReason).toBe('core formula');
+  });
+
+  it('clamps importance above 100 and drops unusable values', () => {
+    const { cards } = fcExtractCardsJson('[{"front":"Q","back":"A","importance":250},{"front":"Q2","back":"A2","importance":"x"},{"front":"Q3","back":"A3"}]');
+    expect(cards[0].importance).toBe(100);
+    expect(cards[1].importance).toBeUndefined();
+    expect(cards[2].importance).toBeUndefined();
+  });
+});
+
 describe('fcExtractCardsJson — page attribution', () => {
   it('reads a per-card page number', () => {
     const { cards } = fcExtractCardsJson('[{"front":"Q","back":"A","page":12}]');
@@ -627,6 +645,119 @@ describe('fcBuildQueue', () => {
     const ids = fcBuildQueue(cards, NOW).map((c: { id: number }) => c.id);
     expect(ids).not.toContain(5);
     expect(ids).not.toContain(8);
+  });
+
+  it('introduces new cards by importance before age; unscored cards last (M101)', () => {
+    const scored = [
+      { id: 1, state: 'new', dueAt: 0, createdAt: 10, importance: 0, suspended: false },
+      { id: 2, state: 'new', dueAt: 0, createdAt: 20, importance: 95, suspended: false },
+      { id: 3, state: 'new', dueAt: 0, createdAt: 30, importance: 60, suspended: false },
+      { id: 4, state: 'new', dueAt: 0, createdAt: 5, importance: 60, suspended: false },
+    ];
+    const q = fcBuildQueue(scored, NOW);
+    expect(q.map((c: { id: number }) => c.id)).toEqual([2, 4, 3, 1]);
+  });
+
+  it('flags still outrank importance in the new band', () => {
+    const mixed = [
+      { id: 1, state: 'new', dueAt: 0, createdAt: 10, importance: 99, flag: 0, suspended: false },
+      { id: 2, state: 'new', dueAt: 0, createdAt: 20, importance: 10, flag: 1, suspended: false },
+    ];
+    const q = fcBuildQueue(mixed, NOW);
+    expect(q.map((c: { id: number }) => c.id)).toEqual([2, 1]);
+  });
+
+  it('slices each deck to its allowance in all-decks sessions (M101)', () => {
+    const multi = [
+      { id: 1, deckId: 1, state: 'new', dueAt: 0, createdAt: 1, importance: 90, suspended: false },
+      { id: 2, deckId: 1, state: 'new', dueAt: 0, createdAt: 2, importance: 80, suspended: false },
+      { id: 3, deckId: 1, state: 'new', dueAt: 0, createdAt: 3, importance: 70, suspended: false },
+      { id: 4, deckId: 2, state: 'new', dueAt: 0, createdAt: 4, importance: 50, suspended: false },
+      { id: 5, deckId: 2, state: 'new', dueAt: 0, createdAt: 5, importance: 40, suspended: false },
+    ];
+    const allowances = new Map([[1, 1], [2, 2]]);
+    const q = fcBuildQueue(multi, NOW, { newLimit: 20, newAllowanceByDeck: allowances });
+    // Deck 1 contributes only its best card; deck 2 contributes both; the
+    // merged band re-orders by importance.
+    expect(q.map((c: { id: number }) => c.id)).toEqual([1, 4, 5]);
+  });
+
+  it('a deck missing from the allowance map is uncapped (fixed-batch decks)', () => {
+    const multi = [
+      { id: 1, deckId: 1, state: 'new', dueAt: 0, createdAt: 1, suspended: false },
+      { id: 2, deckId: 1, state: 'new', dueAt: 0, createdAt: 2, suspended: false },
+      { id: 3, deckId: 2, state: 'new', dueAt: 0, createdAt: 3, suspended: false },
+    ];
+    const q = fcBuildQueue(multi, NOW, { newLimit: 20, newAllowanceByDeck: new Map([[2, 0]]) });
+    expect(q.map((c: { id: number }) => c.id)).toEqual([1, 2]);
+  });
+});
+
+describe('fcPacePlan (M101 deadline-aware pacing)', () => {
+  it('returns null without a future exam date (fixed batch applies)', () => {
+    expect(fcPacePlan({ examDate: 0, newCount: 100 }, NOW)).toBeNull();
+    expect(fcPacePlan({ examDate: NOW - DAY, newCount: 100 }, NOW)).toBeNull();
+  });
+
+  it('spreads the backlog over the days before the freeze window', () => {
+    // 204 cards, exam in 67 days, 14-day freeze → 53 intro days → 4/day.
+    const plan = fcPacePlan({ examDate: NOW + 67 * DAY, newCount: 204 }, NOW, { freezeDays: 14, ceiling: 20 });
+    expect(plan).not.toBeNull();
+    expect(plan.frozen).toBe(false);
+    expect(plan.rate).toBe(4);
+    // At 4/day, 204 cards introduce in 51 days — before the 53-day cutoff.
+    expect(plan.doneAt).toBe(NOW + 51 * DAY);
+  });
+
+  it('clamps the rate to the session ceiling', () => {
+    const plan = fcPacePlan({ examDate: NOW + 10 * DAY, newCount: 500 }, NOW, { freezeDays: 2, ceiling: 20 });
+    expect(plan.rate).toBe(20);
+  });
+
+  it('freezes introduction inside the freeze window', () => {
+    const plan = fcPacePlan({ examDate: NOW + 5 * DAY, newCount: 50 }, NOW, { freezeDays: 14, ceiling: 20 });
+    expect(plan.frozen).toBe(true);
+    expect(plan.rate).toBe(0);
+  });
+
+  it('an empty backlog paces to zero without freezing', () => {
+    const plan = fcPacePlan({ examDate: NOW + 30 * DAY, newCount: 0 }, NOW, { freezeDays: 14, ceiling: 20 });
+    expect(plan.frozen).toBe(false);
+    expect(plan.rate).toBe(0);
+  });
+});
+
+describe('fcNewAllowances (M101)', () => {
+  const decks = [
+    { id: 1, examDate: NOW + 67 * DAY, newCount: 204 },  // paced → 4/day
+    { id: 2, examDate: 0, newCount: 100 },               // no date → ceiling
+    { id: 3, examDate: NOW + 5 * DAY, newCount: 50 },    // frozen → 0
+  ];
+
+  it('mixes paced, fixed, and frozen decks', () => {
+    const { byDeck, total } = fcNewAllowances(decks, NOW, { paceEnabled: true, freezeDays: 14, ceiling: 20 });
+    expect(byDeck.get(1)).toBe(4);
+    expect(byDeck.get(2)).toBe(20);
+    expect(byDeck.get(3)).toBe(0);
+    // total = min(4, 204) + min(20, 100) + min(0, 50)
+    expect(total).toBe(24);
+  });
+
+  it('pacing off restores the fixed batch everywhere', () => {
+    const { byDeck } = fcNewAllowances(decks, NOW, { paceEnabled: false, freezeDays: 14, ceiling: 20 });
+    expect(byDeck.get(1)).toBe(20);
+    expect(byDeck.get(3)).toBe(20);
+  });
+});
+
+describe('fcNormalizeImportance', () => {
+  it('clamps to 0..100 with 0 as the unscored sentinel', () => {
+    expect(fcNormalizeImportance(85)).toBe(85);
+    expect(fcNormalizeImportance(150)).toBe(100);
+    expect(fcNormalizeImportance(-5)).toBe(0);
+    expect(fcNormalizeImportance('72')).toBe(72);
+    expect(fcNormalizeImportance(undefined)).toBe(0);
+    expect(fcNormalizeImportance('nope')).toBe(0);
   });
 });
 

@@ -55,6 +55,21 @@
             "default": 200,
             "description": "How many due review cards one study session serves. A batch size, not a daily ceiling."
           },
+          "flashcards.paceNewCards": {
+            "type": "boolean",
+            "default": true,
+            "description": "Pace new-card introduction to each deck's exam date: a session's new batch shrinks to the rate that finishes introducing every card before the freeze window, instead of always serving the full daily limit. Decks without an exam date keep the fixed batch. Custom Study always reaches past the pace."
+          },
+          "flashcards.freezeDays": {
+            "type": "number",
+            "default": 14,
+            "description": "Days before the exam when new-card introduction stops and sessions become pure review. The pacing rate is computed to land every card before this window opens."
+          },
+          "flashcards.generationDensity": {
+            "type": "string",
+            "default": "balanced",
+            "description": "How selective AI card generation is when the count is Auto. 'thorough' = one card per atomic fact; 'balanced' = every core concept gets a card, minor detail consolidates; 'lean' = exam-critical methods, formulas, and assumptions only. Density shapes selectivity across the whole material - it never truncates coverage mid-chapter."
+          },
           "flashcards.leechThreshold": {
             "type": "number",
             "default": 5,
