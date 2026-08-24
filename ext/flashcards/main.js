@@ -3933,8 +3933,13 @@ function fcMarkingTranscript(marking) {
   const { answer, verdict, rubric, rating, reviewedAt } = marking;
   const s = fcScoreVerdict(verdict, rubric);
   const when = reviewedAt ? ` on ${new Date(reviewedAt).toLocaleDateString()}` : '';
+  // An overridden grade says both numbers. The disagreement is often the
+  // thing worth discussing — you thought it was harder than the marker did.
+  const graded = verdict?.aiRating != null && verdict.aiRating !== rating
+    ? `marked ${FC_RATING_LABELS[verdict.aiRating]} by the marker, changed to ${FC_RATING_LABELS[rating]} by me`
+    : `marked ${FC_RATING_LABELS[rating] || '?'}`;
   const lines = [
-    `MY ANSWER (marked ${FC_RATING_LABELS[rating] || '?'}, ${s.hits}/${s.total} points${when})`,
+    `MY ANSWER (${graded}, ${s.hits}/${s.total} points${when})`,
     String(answer || '').trim() || '(left blank)',
     '',
     'MARKING',
@@ -5006,6 +5011,16 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
   border-top: 1px solid var(--px-border-subtle); line-height: var(--px-leading-base);
 }
 .fc-verdict__foot { margin-top: var(--px-space-3); }
+.fc-verdict__overridden, .fc-answers__overridden { font-size: var(--px-text-2xs); color: var(--px-text-faint); font-style: italic; }
+/* The grade already on the card, in the row you change it from. Filled, not
+   merely hovered — hover state would vanish the moment the pointer left and
+   the row would stop saying which grade is current. */
+.fc-grade--chosen { background: var(--px-surface-hover); color: var(--px-text); }
+.fc-grade--chosen .fc-grade__label { font-weight: 750; }
+.fc-grade--chosen.fc-grade--again { background: var(--px-danger-soft); color: var(--px-danger); }
+.fc-grade--chosen.fc-grade--hard  { background: var(--px-warning-soft); color: var(--px-warning); }
+.fc-grade--chosen.fc-grade--good  { background: rgba(var(--px-green-rgb), 0.15); color: var(--px-success); }
+.fc-grade--chosen.fc-grade--easy  { background: rgba(var(--px-blue-rgb), 0.15); color: var(--px-info); }
 .fc-answers__discuss { margin-left: auto; }
 .fc-verdict--pending .fc-verdict__pending-text, .fc-verdict--fallback .fc-verdict__note {
   margin: 0; padding: 0; border: 0; font-size: var(--px-text-xs); color: var(--px-text-faint);
@@ -8013,6 +8028,11 @@ function fcAnswerHistoryEl(answers, rubric, { onDiscuss = null } = {}) {
       head.appendChild(el('span', 'fc-answers__score', `${s.hits}/${s.total}`));
     }
     if (a.verdict?.contradiction) head.appendChild(el('span', 'fc-answers__flag', 'Contradicted the source'));
+    // Where you overruled the marker. A run of these on one card usually
+    // means its rubric is wrong, not that you keep mis-grading.
+    if (a.verdict?.aiRating != null && a.verdict.aiRating !== a.rating) {
+      head.appendChild(el('span', 'fc-answers__overridden', `marker said ${FC_RATING_LABELS[a.verdict.aiRating]}`));
+    }
     // Any marking can go to chat, not just the live one: the useful question
     // is often about an answer from weeks ago that you can now see you kept
     // getting wrong the same way.
@@ -8041,12 +8061,18 @@ function fcAnswerHistoryEl(answers, rubric, { onDiscuss = null } = {}) {
  * trustworthy if its evidence is inspectable — this is the surface where a
  * bad rubric becomes visible, and the card editor is one keystroke away.
  */
-function fcVerdictEl(verdict, rubric, rating, { onDiscuss = null } = {}) {
+function fcVerdictEl(verdict, rubric, rating, { onDiscuss = null, aiRating = null } = {}) {
   const root = el('div', `fc-verdict fc-verdict--${FC_RATING_CLASSES[rating] || 'good'}`);
 
   const head = el('div', 'fc-verdict__head');
   head.appendChild(el('span', 'fc-verdict__dot'));
   head.appendChild(el('span', 'fc-verdict__rating', `Graded ${FC_RATING_LABELS[rating] || ''}`));
+  // A disagreement stays on screen rather than being quietly overwritten —
+  // the marker's call is evidence about the marker, and seeing where you
+  // keep overruling it is how a bad rubric or a bad threshold surfaces.
+  if (aiRating != null && aiRating !== rating) {
+    head.appendChild(el('span', 'fc-verdict__overridden', `You changed this from ${FC_RATING_LABELS[aiRating]}`));
+  }
   const s = fcScoreVerdict(verdict, rubric);
   head.appendChild(el('span', 'fc-verdict__score', `${s.hits}/${s.total} points`));
   if (!verdict.sourced) {
@@ -8282,7 +8308,9 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
   /** Undo the last grade (user ask: navigate back across seen cards).
    *  Reverts the DB (scheduling + review row) and steps the session back. */
   const undoLast = () => {
-    if (session.grading || session.history.length === 0) return;
+    // `overriding` counts too: an override is an undo-and-redo in flight, and
+    // popping the same history entry from both would undo one grade twice.
+    if (session.grading || session.overriding || session.history.length === 0) return;
     session.grading = true;
     void (async () => {
       const h = session.history.pop();
@@ -8771,6 +8799,10 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
       if (session.grading || session.settled) return;
       session.grading = true;
       const msTaken = Date.now() - session.cardShownAt;
+      // Stashed so an override can re-apply with the SAME answering time.
+      // Recomputing it later would fold the marking wait and your reading of
+      // the verdict into how long you took to answer.
+      session.lastMsTaken = msTaken;
 
       // Preview pass (Difficult Cards / Cram): nothing is written. Re-reading
       // a card here is not evidence you would have recalled it days out, and
@@ -8845,6 +8877,54 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
 
     /** Set by the production flow so a landed grade can paint its own footer. */
     let onSettled = null;
+    /** Set once a marked grade has landed, so 1-4 can change it. */
+    let onOverride = null;
+
+    /**
+     * Replace the grade the marker wrote with the one you think the answer
+     * earned. The marker proposes; this is how you dispose.
+     *
+     * The grade is already ON DISK by the time you see it — the card was
+     * rescheduled and a review row written — so this is not "change a pending
+     * choice", it is undo-and-redo. fcUndoGrade restores the pre-grade
+     * scheduling columns and DELETES the review row, then the new rating is
+     * written in its place, because fcHealFsrsState replays that log and two
+     * rows for one answer would count the card as reviewed twice.
+     *
+     * The marker's own call survives on the verdict as `aiRating`, so a
+     * disagreement stays visible afterwards instead of being overwritten.
+     */
+    const overrideGrade = (rating, repaint) => {
+      const marking = session.lastMarking;
+      if (!marking || session.overriding || session.grading || rating === marking.rating) return;
+      session.overriding = true;
+      void (async () => {
+        try {
+          const last = session.history.pop();
+          if (last) await fcUndoGrade(last.before, last.reviewedAt);
+          const before = last ? last.before : card;
+          const verdict = { ...marking.verdict, aiRating: marking.verdict.aiRating ?? marking.rating };
+          const updated = await fcGradeCard(before, rating, session.lastMsTaken || 0, optsFor(before), {
+            answer: marking.answer, verdict,
+          });
+          session.history.push({ before, reviewedAt: updated.lastReviewedAt });
+          // The grade being replaced may have parked this card in `pending`
+          // (Again puts it back in a minute). Drop that entry before deciding
+          // again from the NEW state, or an overridden card is served twice.
+          session.pending = session.pending.filter((p) => p.id !== before.id);
+          if ((updated.state === 'learning' || updated.state === 'relearning')
+              && updated.dueAt <= Date.now() + FC_LEARN_AHEAD_MS) {
+            session.pending.push(updated);
+          }
+          session.lastMarking = { ...marking, verdict, rating };
+          repaint(rating);
+        } catch (err) {
+          console.warn('[Flashcards] grade override failed:', err?.message || err);
+        } finally {
+          session.overriding = false;
+        }
+      })();
+    };
 
     /**
      * Submit a typed answer: reveal the back at once, mark behind it, then
@@ -8898,19 +8978,52 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
         // Held for the corner Discuss button too: with a marking in hand it
         // asks the sharper question, and one AI action beats two.
         session.lastMarking = { answer, verdict: result.verdict, rubric: result.rubric, rating: result.rating };
-        onSettled = () => {
-          strip.replaceWith(fcVerdictEl(result.verdict, result.rubric, result.rating, {
+
+        // Repaintable, because an override redraws both halves in place.
+        let verdictNode = strip;
+        const paintSettled = (rating) => {
+          const node = fcVerdictEl(session.lastMarking.verdict, result.rubric, rating, {
+            aiRating: result.rating,
             onDiscuss: () => void fcExplainInChat(card, deckNames.get(card.deckId), {
               marking: session.lastMarking,
             }),
-          }));
+          });
+          verdictNode.replaceWith(node);
+          verdictNode = node;
+
+          // The ordinary grade row, with the marker's call already chosen.
+          // Deliberately the same control the rest of the app grades with: an
+          // override is not a separate mode, it is correcting a pre-filled
+          // answer, and a bespoke widget would make it read as one.
           controls.innerHTML = '';
+          // Intervals are previewed from the PRE-grade card. `card` has
+          // already been rescheduled, so previewing off it would quote
+          // intervals for a state the buttons would not produce.
+          const base = session.history[session.history.length - 1]?.before ?? card;
+          const now = Date.now();
+          for (const g of [
+            { r: AGAIN, label: 'Again', cls: 'again' },
+            { r: HARD, label: 'Hard', cls: 'hard' },
+            { r: GOOD, label: 'Good', cls: 'good' },
+            { r: EASY, label: 'Easy', cls: 'easy' },
+          ]) {
+            const btn = el('button', `fc-grade fc-grade--${g.cls}`);
+            if (g.r === rating) btn.classList.add('fc-grade--chosen');
+            btn.appendChild(el('span', 'fc-grade__dot'));
+            btn.appendChild(el('span', 'fc-grade__label', g.label));
+            btn.appendChild(el('span', 'fc-grade__ivl', fcIntervalPreview(base, g.r, now, optsFor(base))));
+            btn.title = g.r === rating ? 'The grade on this card' : `Change the grade to ${g.label}`;
+            btn.addEventListener('click', () => overrideGrade(g.r, paintSettled));
+            controls.appendChild(btn);
+          }
           const next = el('button', 'fc-btn fc-btn--primary fc-study__reveal');
           next.textContent = 'Next Card';
           next.addEventListener('click', advance);
           controls.appendChild(next);
-          keys.textContent = 'Space Next Card · E Edit · Z Undo · Alt+1-4 Flag';
+          keys.textContent = '1-4 Change Grade · Space Next Card · E Edit · Z Undo · Alt+1-4 Flag';
         };
+        onSettled = () => paintSettled(result.rating);
+        onOverride = (r) => overrideGrade(r, paintSettled);
         grade(result.rating, { answer, verdict: result.verdict, hold: true });
       })();
     }
@@ -9043,7 +9156,11 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
       // looking live while they are not.
       if (session.revealed && !session.marking && ['1', '2', '3', '4'].includes(e.key)) {
         e.preventDefault();
-        grade(parseInt(e.key, 10));
+        // Once a marked grade has landed, the same keys CHANGE it rather than
+        // grading again — grade() refuses while settled, so without this the
+        // row would look live and do nothing.
+        if (session.settled) onOverride?.(parseInt(e.key, 10));
+        else grade(parseInt(e.key, 10));
       }
     };
     // A production card focuses its answer box instead (see above): focusing

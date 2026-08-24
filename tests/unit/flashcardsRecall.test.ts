@@ -615,3 +615,38 @@ describe('marking hand-off to chat', () => {
     expect(t).toMatch(/points on \S+/);
   });
 });
+
+describe('overriding the marker', () => {
+  const rubric = [{ text: 'a', required: true }, { text: 'b', required: true }];
+  const base = {
+    mode: 'conceptual',
+    points: [{ status: 'hit', note: '' }, { status: 'hit', note: '' }],
+    contradiction: false,
+    note: '',
+    sourced: true,
+  };
+
+  it('names both grades in the chat hand-off when they disagree', () => {
+    // The disagreement is often the thing worth discussing: you thought it
+    // was harder than the marker did, and the model should know that.
+    const t = fcMarkingTranscript({
+      answer: 'my answer',
+      verdict: { ...base, aiRating: 4 },
+      rubric,
+      rating: 2,
+    });
+    expect(t).toContain('marked Easy by the marker');
+    expect(t).toContain('changed to Hard by me');
+  });
+
+  it('says it plainly when the grade was left alone', () => {
+    const t = fcMarkingTranscript({ answer: 'x', verdict: base, rubric, rating: 4 });
+    expect(t).toContain('marked Easy');
+    expect(t).not.toContain('changed to');
+  });
+
+  it('does not report an override when the user picked the same grade', () => {
+    const t = fcMarkingTranscript({ answer: 'x', verdict: { ...base, aiRating: 3 }, rubric, rating: 3 });
+    expect(t).not.toContain('changed to');
+  });
+});
