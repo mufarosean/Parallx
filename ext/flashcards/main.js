@@ -1070,6 +1070,36 @@ function icon(name, size = 14) {
   return '';
 }
 
+/**
+ * Grow a textarea to fit its content as it is typed, up to `maxPx`.
+ *
+ * A fixed tall box is dead space on a card with no notes and a scrollbar on
+ * one with plenty — and making the user drag the resize handle to see their
+ * own writing is work the box can do itself. Past maxPx it stops growing and
+ * scrolls, so a long note cannot push the grade buttons off screen.
+ *
+ * Height is reset to 'auto' before each measurement: scrollHeight only ever
+ * reports the CURRENT height when the content shrinks, so without the reset
+ * the box would grow and never come back down.
+ */
+function fcAutoGrow(textarea, { maxPx = 320 } = {}) {
+  const fit = () => {
+    textarea.style.height = 'auto';
+    const measured = textarea.scrollHeight;
+    // Unmeasurable (not laid out yet, detached, hidden) reads 0. Writing that
+    // back would collapse the box to nothing and leave it unusable, so leave
+    // the height alone and let the `rows` attribute govern until a later fit.
+    if (!measured) { textarea.style.height = ''; return; }
+    textarea.style.height = `${Math.min(measured, maxPx)}px`;
+    textarea.style.overflowY = measured > maxPx ? 'auto' : 'hidden';
+  };
+  textarea.addEventListener('input', fit);
+  // The element has no layout until it is in the document, and scrollHeight
+  // reads 0 before then — measure after the current paint, not inline.
+  requestAnimationFrame(fit);
+  return fit;
+}
+
 function el(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -4927,7 +4957,7 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
   font-size: var(--px-text-2xs); font-weight: 700; text-transform: uppercase;
   letter-spacing: 0.07em; color: var(--px-text-faint); margin-bottom: 4px;
 }
-.fc-study__produce-input { width: 100%; box-sizing: border-box; resize: vertical; line-height: var(--px-leading-relaxed); }
+.fc-study__produce-input { width: 100%; box-sizing: border-box; resize: none; line-height: var(--px-leading-relaxed); }
 .fc-study__produce-input[readonly] { opacity: 0.72; cursor: default; }
 
 .fc-verdict {
@@ -4994,7 +5024,10 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
 }
 .fc-study__notes { width: 100%; text-align: left; }
 .fc-study__notes-label { font-size: var(--px-text-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--px-text-faint); margin-bottom: 4px; }
-.fc-study__notes-input { width: 100%; box-sizing: border-box; min-height: 132px; resize: vertical; }
+/* Auto-grown (fcAutoGrow), so no min-height and no drag handle: the box is
+   already the size of what is in it, and a manual resize would be undone by
+   the next keystroke. */
+.fc-study__notes-input { width: 100%; box-sizing: border-box; resize: none; }
 .fc-cardrow__notes { font-size: var(--px-text-xs); color: var(--px-text-muted); font-style: italic; margin-top: 2px; }
 .fc-study__done { text-align: center; padding: var(--px-space-8) var(--px-space-5); }
 .fc-study__done .fc-btn { margin-top: var(--px-space-4); }
@@ -8331,8 +8364,16 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
 
     // A learning card that has come DUE cuts in ahead of the rest — this is
     // what makes "Again 1m" mean one minute instead of "end of queue".
+    //
+    // NOT after an edit (`keepCurrent`). The cut-in splices at session.index,
+    // so it displaced the card the user had just saved and showed a different
+    // one instead — reported as "the card that gets shown is not the one you
+    // just edited". Editing is precisely when this fires, too: Again schedules
+    // at one minute and an edit takes longer than that, so it hit nearly every
+    // time. The waiting card is served on the very next card, so the contract
+    // costs one card of delay and the edit is no longer swallowed.
     session.pending.sort((a, b) => a.dueAt - b.dueAt);
-    if (session.pending.length > 0 && session.pending[0].dueAt <= Date.now()) {
+    if (!opts.keepCurrent && session.pending.length > 0 && session.pending[0].dueAt <= Date.now()) {
       session.queue.splice(session.index, 0, session.pending.shift());
       session.total++;
     }
@@ -8423,7 +8464,12 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
       // back on the question ("does not keep me at that card") forced a
       // pointless re-reveal.
       const wasRevealed = session.revealed;
-      const faceOpts = () => (wasRevealed ? { revealCardId: card.id } : {});
+      // keepCurrent: whatever else is due, the card you just saved is the card
+      // you see next. Leaving it off let a learning card cut in and swallow
+      // the edit.
+      const faceOpts = () => (wasRevealed
+        ? { revealCardId: card.id, keepCurrent: true }
+        : { keepCurrent: true });
       session.editing = true;
       main.innerHTML = '';
       const wrap = el('div', 'fc-study__edit');
@@ -8569,7 +8615,10 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
     const notesIn = el('textarea', 'fc-textarea fc-study__notes-input');
     notesIn.placeholder = 'Mnemonics, pitfalls, exam traps. They stay with the card.';
     notesIn.value = card.notes || '';
-    notesIn.rows = 6;
+    // Two rows, then it grows with what you write. A fixed six-row box was
+    // dead space on the many cards that carry no notes at all.
+    notesIn.rows = 2;
+    const fitNotes = fcAutoGrow(notesIn);
     let notesTimer = null;
     const saveNotes = () => {
       const v = notesIn.value;
@@ -8675,6 +8724,9 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
 
       // The answer is out — notes can come up without spoiling anything.
       notesWrap.style.display = '';
+      // Re-measure now it has layout: a hidden element reports scrollHeight 0,
+      // so a card with existing notes would open collapsed.
+      fitNotes();
 
       controls.innerHTML = '';
       const now = Date.now();
@@ -8700,8 +8752,8 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
       // The legend switches to grading keys in place — it lives in the rail
       // now, so there is nothing to re-append.
       keys.textContent = session.previewOnly
-        ? '1 Again · 2 Hard · 3 Good · 4 Easy · E edit · Alt+1-4 flag'
-        : '1 Again · 2 Hard · 3 Good · 4 Easy · E edit · Z undo · Alt+1-4 flag';
+        ? '1 Again · 2 Hard · 3 Good · 4 Easy · E Edit · Alt+1-4 Flag'
+        : '1 Again · 2 Hard · 3 Good · 4 Easy · E Edit · Z Undo · Alt+1-4 Flag';
     };
 
     /**
@@ -8823,7 +8875,7 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
         strip.className = 'fc-verdict fc-verdict--fallback';
         strip.innerHTML = '';
         strip.appendChild(el('span', 'fc-verdict__note', why));
-        keys.textContent = '1 Again · 2 Hard · 3 Good · 4 Easy · E edit · Z undo · Alt+1-4 flag';
+        keys.textContent = '1 Again · 2 Hard · 3 Good · 4 Easy · E Edit · Z Undo · Alt+1-4 Flag';
       };
 
       void (async () => {
@@ -8857,7 +8909,7 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
           next.textContent = 'Next Card';
           next.addEventListener('click', advance);
           controls.appendChild(next);
-          keys.textContent = 'Space or Enter for the next card · E edit · Z undo · Alt+1-4 flag';
+          keys.textContent = 'Space Next Card · E Edit · Z Undo · Alt+1-4 Flag';
         };
         grade(result.rating, { answer, verdict: result.verdict, hold: true });
       })();
@@ -8889,6 +8941,10 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
       answerInput = el('textarea', 'fc-textarea fc-study__produce-input');
       answerInput.placeholder = spec.placeholder;
       answerInput.rows = spec.rows;
+      // Grows with the answer instead of scrolling inside a fixed box — you
+      // need to see the whole thing to judge whether it is complete before
+      // submitting it.
+      fcAutoGrow(answerInput, { maxPx: 420 });
       wrap.appendChild(answerInput);
       col.insertBefore(wrap, controls);
 
@@ -8928,11 +8984,11 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
     // skip past the answer the card exists to elicit), and the legend used to
     // promise it anyway.
     const keys = el('div', 'fc-study__keys', [
-      production ? 'Ctrl+Enter submits' : 'Space reveals the answer',
-      canSkip() ? 'S skip' : '',
-      'E edit',
-      session.previewOnly ? '' : 'Z undo',
-      'Alt+1-4 flag',
+      production ? 'Ctrl+Enter Submit Answer' : 'Space Show Answer',
+      canSkip() ? 'S Skip' : '',
+      'E Edit',
+      session.previewOnly ? '' : 'Z Undo',
+      'Alt+1-4 Flag',
     ].filter(Boolean).join(' · '));
     rail.appendChild(keys);
 

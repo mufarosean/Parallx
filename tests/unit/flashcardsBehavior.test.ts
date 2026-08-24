@@ -618,6 +618,39 @@ describe('study flow', () => {
     expect(pane.querySelector('.fc-study__front')!.textContent).not.toBe(frontText);
   });
 
+  it('saving an edit shows the edited card, not a different one', async () => {
+    const pane = document.querySelector('.fc-pane')!;
+    const sidebar = document.querySelector('[data-role="sidebar-host"]')!;
+    (sidebar.querySelector('.fc-sb__nav-item[data-view="study"]') as HTMLElement).click();
+    await settle();
+
+    const before = pane.querySelector('.fc-study__front')!.textContent!;
+    ([...pane.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === 'Edit'
+      || b.title.startsWith('Fix this card')) as HTMLButtonElement).click();
+    await settle();
+    expect(pane.querySelector('.fc-study__edit')).toBeTruthy();
+
+    const frontIn = pane.querySelector('.fc-study__edit textarea') as HTMLTextAreaElement;
+    frontIn.value = 'EDITED FRONT';
+    frontIn.dispatchEvent(new window.Event('input', { bubbles: true }));
+    ([...pane.querySelectorAll('.fc-study__edit button')]
+      .find((b) => b.textContent === 'Save') as HTMLButtonElement).click();
+    await settle(8);
+
+    // The card on screen is the one just saved, carrying the new text.
+    expect(pane.querySelector('.fc-study__edit')).toBeNull();
+    const after = pane.querySelector('.fc-study__front')!.textContent!;
+    expect(after).not.toBe(before);
+    expect(after).toContain('EDITED FRONT');
+
+    // NOT covered here: the reported failure needed a LEARNING card to come
+    // due while the editor was open, which displaced the saved card at
+    // showCard's cut-in. `pending` only fills from in-session grading and the
+    // shortest learning step is one minute, so reproducing it needs real time
+    // travel — and this suite's settle() runs on real setTimeout, so fake
+    // timers would hang it. The `keepCurrent` guard is what fixes that path.
+  });
+
   it('Skip defers a card to the end of the session without grading it', async () => {
     const pane = document.querySelector('.fc-pane')!;
     const sidebar = document.querySelector('[data-role="sidebar-host"]')!;
