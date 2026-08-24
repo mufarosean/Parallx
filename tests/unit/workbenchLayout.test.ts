@@ -451,6 +451,12 @@ describe('stacking and placement recall', () => {
       'vertical[workbench.parts.sidebar, workbench.parts.panel]',
       'workbench.parts.editor',
     ]);
+    // The stack FILLS the body height. The field bug: the cross-axis move
+    // left half-of-width sizes as the stack's heights, only the editor path
+    // was reconciled, and the column rendered mostly as void.
+    const sidebarH = layout.grid.getViewSize('workbench.parts.sidebar')!;
+    const panelH = layout.grid.getViewSize('workbench.parts.panel')!;
+    expect(sidebarH + panelH).toBe(BODY_H);
   });
 
   it('brings a hidden part back to where the user put it, not the factory spot', () => {

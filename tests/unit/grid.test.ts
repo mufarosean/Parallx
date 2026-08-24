@@ -579,3 +579,40 @@ describe('structural changes leave sibling DOM attached', () => {
     expect(detached.has(b.element)).toBe(false);
   });
 });
+
+describe('resizeWithFixedViews off the flex path', () => {
+  it('settles a stack created beside the flex path — no void below it', () => {
+    // The regression from the field: stack a part over the sidebar (a
+    // cross-axis move leaves provisional half-of-WIDTH sizes as the stack's
+    // HEIGHTS), then settle with fixed views. Only the flex path used to be
+    // reconciled, so the stack rendered two ~100px parts in a full-height
+    // column with a black void underneath.
+    const grid = new Grid(Orientation.Horizontal, 1000, 600);
+    grid.addView(createMockView('side'), 200);
+    grid.addView(createMockView('ed'), 800);
+    grid.addView(createMockView('chat'), 100);
+    grid.moveView('chat', 'side', Orientation.Vertical, true);
+
+    grid.resizeWithFixedViews(1000, 600, 'ed');
+
+    expect(grid.getViewSize('chat')! + grid.getViewSize('side')!).toBe(600);
+    expect(grid.getViewSize('ed')).toBe(800);
+  });
+
+  it('settles deep stacks recursively', () => {
+    const grid = new Grid(Orientation.Horizontal, 1000, 600);
+    grid.addView(createMockView('side'), 200);
+    grid.addView(createMockView('ed'), 800);
+    grid.addView(createMockView('a'), 100);
+    grid.moveView('a', 'side', Orientation.Vertical, true);
+    grid.addView(createMockView('b'), 100);
+    grid.moveView('b', 'a', Orientation.Horizontal, false);
+
+    grid.resizeWithFixedViews(1000, 600, 'ed');
+
+    // The inner horizontal pair fills the stack's width...
+    expect(grid.getViewSize('a')! + grid.getViewSize('b')!).toBe(200);
+    // ...and the vertical stack fills the body height.
+    expect(grid.getViewSize('side')).toBeGreaterThan(0);
+  });
+});

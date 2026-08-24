@@ -449,26 +449,35 @@ export class Grid extends Disposable {
     this._width = width;
     this._height = height;
 
-    // Walk the root branch and assign sizes: keep every child at its
-    // current size except the flex view, which gets the remainder.
-    this._distributeWithFlex(this._root, flexViewId);
+    // Walk the tree and make EVERY branch's children sum to its allocation:
+    // along the path to the flex view the other children keep their sizes
+    // and the flex side absorbs the remainder; every branch OFF that path
+    // normalizes proportionally to fill. Without the second half, a stack
+    // created by a cross-axis move keeps its provisional sizes — two parts
+    // a hundred pixels tall in a full-height column, void below them.
+    this._distributeWithFlex(this._root, flexViewId, width, height);
 
-    // Sizes are already correct from _distributeWithFlex — use direct
-    // layout that skips _distributeSizes to avoid rounding re-scale jitter.
+    // Sizes are consistent everywhere now — use direct layout that skips
+    // _distributeSizes to avoid rounding re-scale jitter.
     this._layoutNodeDirect(this._root, width, height);
     this._onDidChange.fire({ type: 'resize' });
   }
 
   /**
-   * For a branch node, keep all non-flex children at their current sizes
-   * and assign the remaining space to the flex child.
+   * Distribute `branch`'s children within (width, height): the child on the
+   * flex-view path takes the remainder of the branch axis, the rest keep
+   * their sizes — then every child branch is settled recursively with its
+   * REAL allocation, so no subtree is left holding sizes measured against a
+   * space it no longer has.
    */
   private _distributeWithFlex(
     branch: GridBranchNode,
     flexViewId: string,
+    width: number,
+    height: number,
   ): void {
     const isHorizontal = branch.orientation === Orientation.Horizontal;
-    const totalAvailable = isHorizontal ? this._width : this._height;
+    const totalAvailable = isHorizontal ? width : height;
 
     let fixedTotal = 0;
     let flexChild: GridNode | null = null;
@@ -486,12 +495,44 @@ export class Grid extends Disposable {
       const min = this._getMinSizeAlongOrientation(flexChild, branch.orientation);
       const flexSize = Math.max(min, totalAvailable - fixedTotal);
       this._setNodeSize(flexChild, flexSize);
+    }
 
-      // Recurse into flex child if it's a branch (e.g. editorColumnAdapter
-      // wrapping vGrid doesn't need this, but future-proofs the logic)
-      if (flexChild.type === GridNodeType.Branch) {
-        this._distributeWithFlex(flexChild, flexViewId);
+    for (const child of branch.children) {
+      if (child.type !== GridNodeType.Branch) continue;
+      const main = this._getNodeSize(child);
+      const childWidth = isHorizontal ? main : width;
+      const childHeight = isHorizontal ? height : main;
+      if (child === flexChild) {
+        this._distributeWithFlex(child, flexViewId, childWidth, childHeight);
+      } else {
+        this._normalizeBranchToFill(child, childWidth, childHeight);
       }
+    }
+  }
+
+  /**
+   * Scale a branch's children proportionally so they exactly fill its
+   * allocation, recursively. The existing _distributeSizes does the
+   * min/max-clamped proportional math; this walks it through the tree.
+   */
+  private _normalizeBranchToFill(branch: GridBranchNode, width: number, height: number): void {
+    const isHorizontal = branch.orientation === Orientation.Horizontal;
+    const available = isHorizontal ? width : height;
+
+    const sizes = this._distributeSizes(branch, available);
+    for (let i = 0; i < branch.childCount; i++) {
+      this._setNodeSize(branch.getChild(i), sizes[i]);
+    }
+
+    for (let i = 0; i < branch.childCount; i++) {
+      const child = branch.getChild(i);
+      if (child.type !== GridNodeType.Branch) continue;
+      const main = sizes[i];
+      this._normalizeBranchToFill(
+        child,
+        isHorizontal ? main : width,
+        isHorizontal ? height : main,
+      );
     }
   }
 
