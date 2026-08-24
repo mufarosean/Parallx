@@ -579,6 +579,10 @@ export class WorkbenchContributionHandler extends Disposable {
     try {
       const view = await this._viewManager.createView(info.id);
       container.addView(view);
+      // A late-arriving view can be what a waiting floating shell (a
+      // detached panel tab from the saved tree) has been holding a spot
+      // for; the topology listeners retry seating on this signal.
+      this._onDidChangeRails.fire();
     } catch (err) {
       console.error(`[Workbench] Failed to add view "${info.id}" to container:`, err);
     }

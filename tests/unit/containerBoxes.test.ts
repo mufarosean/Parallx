@@ -166,3 +166,80 @@ describe('ContainerBoxManager', () => {
     expect(manager.has('gone-tool')).toBe(false);
   });
 });
+
+describe('panel tabs as drag sources', () => {
+  it('stamps a detachable payload on a view tab drag', () => {
+    const panel = new ViewContainer('panel');
+    document.body.appendChild(panel.element);
+
+    const fakeView = {
+      id: 'view.terminal',
+      name: 'Terminal',
+      element: document.createElement('div'),
+      createElement(parent: HTMLElement) { parent.appendChild(this.element); return this.element; },
+      layout() {},
+      setVisible() {},
+      focus() {},
+      saveState() { return {}; },
+      restoreState() {},
+      dispose() {},
+      minimumWidth: 0, maximumWidth: Infinity, minimumHeight: 0, maximumHeight: Infinity,
+    };
+    panel.addView(fakeView as never);
+
+    const tab = panel.element.querySelector<HTMLElement>('.view-tab[data-view-id="view.terminal"]');
+    expect(tab).not.toBeNull();
+    expect(tab!.draggable).toBe(true);
+
+    const store = new Map<string, string>();
+    const ev = new Event('dragstart', { bubbles: true });
+    Object.defineProperty(ev, 'dataTransfer', {
+      value: { setData: (t: string, v: string) => { store.set(t, v); } },
+    });
+    tab!.dispatchEvent(ev);
+
+    // The tab reorders within the panel by the plain payload, and detaches
+    // into the grid by the container payload — one gesture, two drops.
+    expect(store.get('text/plain')).toBe('view.terminal');
+    expect(JSON.parse(store.get(CONTAINER_DRAG_TYPE)!)).toEqual({
+      containerId: 'panelview:view.terminal',
+    });
+
+    panel.dispose();
+  });
+
+  it('round-trips a view between the panel and a wrapper container', () => {
+    const panel = new ViewContainer('panel');
+    document.body.appendChild(panel.element);
+    const fakeView = {
+      id: 'view.output',
+      name: 'Output',
+      element: document.createElement('div'),
+      createElement(parent: HTMLElement) { parent.appendChild(this.element); return this.element; },
+      layout() {}, setVisible() {}, focus() {},
+      saveState() { return {}; }, restoreState() {},
+      dispose() {},
+      minimumWidth: 0, maximumWidth: Infinity, minimumHeight: 0, maximumHeight: Infinity,
+    };
+    panel.addView(fakeView as never);
+    expect(panel.getView('view.output')).toBeDefined();
+
+    // Detach: the view leaves the panel for a wrapper (what the box seats).
+    const view = panel.getView('view.output')!;
+    panel.removeView('view.output');
+    expect(panel.getView('view.output')).toBeUndefined();
+
+    const wrapper = new ViewContainer('panelview.view.output');
+    wrapper.hideTabBar();
+    wrapper.addView(view);
+    expect(wrapper.getView('view.output')).toBe(view);
+
+    // Redock: back to the panel, wrapper gone.
+    wrapper.removeView('view.output');
+    wrapper.dispose();
+    panel.addView(view);
+    expect(panel.getView('view.output')).toBe(view);
+
+    panel.dispose();
+  });
+});

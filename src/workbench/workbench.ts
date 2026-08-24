@@ -1023,8 +1023,22 @@ export class Workbench extends Layout {
     // `container:` leaves through the manager, and container drops from the
     // grid's drop controller route here.
     this._containerBoxes = this._register(new ContainerBoxManager({
-      undockContainer: (id) => this._contributionHandler.undockContainer(id),
-      dockContainer: (id, vc, rail) => this._contributionHandler.dockContainer(id, vc, rail),
+      // Detached PANEL TABS ride the same pipeline: a panel view floats
+      // wrapped as panelview:<id>, and docking back means returning to the
+      // panel, whichever rail the gesture named.
+      undockContainer: (id) => {
+        if (id.startsWith('panelview:')) {
+          return this._undockPanelView(id.slice('panelview:'.length));
+        }
+        return this._contributionHandler.undockContainer(id);
+      },
+      dockContainer: (id, vc, rail) => {
+        if (id.startsWith('panelview:')) {
+          this._redockPanelView(id.slice('panelview:'.length), vc);
+          return;
+        }
+        this._contributionHandler.dockContainer(id, vc, rail);
+      },
       addFloatingView: (view, zone) => this.addFloatingView(view, zone),
       removeFloatingView: (viewId) => this.removeFloatingView(viewId),
       moveFloating: (viewId, zone) => {
@@ -2403,6 +2417,39 @@ export class Workbench extends Layout {
       document.removeEventListener('dragend', settleRibbon);
       document.removeEventListener('drop', settleRibbon, { capture: true });
     }));
+  }
+
+  /**
+   * Detach a view from the panel container into a wrapper container a
+   * floating box can seat. Undefined when the panel does not hold the view
+   * (yet) — a waiting shell keeps the spot and retries as views arrive.
+   */
+  private _undockPanelView(viewId: string): { vc: ViewContainer; label: string } | undefined {
+    const panel = this._panelContainer;
+    if (!panel) return undefined;
+    const view = panel.getView(viewId);
+    if (!view) return undefined;
+
+    panel.removeView(viewId);
+    const wrapper = new ViewContainer(`panelview.${viewId}`);
+    wrapper.hideTabBar();
+    wrapper.addView(view);
+    view.setVisible(true);
+    return { vc: wrapper, label: view.name };
+  }
+
+  /** Return a detached panel view to the panel; its wrapper goes. */
+  private _redockPanelView(viewId: string, wrapper: ViewContainer): void {
+    const view = wrapper.getView(viewId) ?? this._viewManager.getView(viewId);
+    wrapper.removeView(viewId);
+    wrapper.dispose();
+
+    const panel = this._panelContainer;
+    if (view && panel && !panel.getView(viewId)) {
+      panel.addView(view);
+      panel.activateView(viewId);
+    }
+    if (!this._panel.visible) this.togglePanel();
   }
 
   private _setupAuxBarViews(): ViewContainer {

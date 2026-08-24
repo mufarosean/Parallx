@@ -2,6 +2,7 @@
 
 import { Disposable, DisposableStore, IDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
+import { CONTAINER_DRAG_TYPE } from '../platform/dragTypes.js';
 import { Orientation } from '../layout/layoutTypes.js';
 import { $, addDisposableListener, hide, show, startDrag, endDrag } from '../ui/dom.js';
 import { IGridView } from '../layout/gridView.js';
@@ -916,6 +917,14 @@ export class ViewContainer extends Disposable implements IGridView {
     tab.draggable = true;
     tabStore.add(addDisposableListener(tab, 'dragstart', (e) => {
       e.dataTransfer?.setData('text/plain', view.id);
+      // Beyond the reorder: a tab dragged out into the grid DETACHES its
+      // view as a floating box. The view rides the container-drag pipeline
+      // wrapped as panelview:<id>; drops that cannot resolve it (a view
+      // not actually in the panel) fall through to nothing.
+      e.dataTransfer?.setData(
+        CONTAINER_DRAG_TYPE,
+        JSON.stringify({ containerId: `panelview:${view.id}` }),
+      );
       tab.classList.add('tab-dragging');
     }));
     tabStore.add(addDisposableListener(tab, 'dragend', () => {
