@@ -271,7 +271,7 @@ console.log(`Model: ${MODEL}`);
 
 // Probe A — canvas markdown.
 const t0 = Date.now();
-const canvasCards = await fcGenerateCards(CANVAS_MARKDOWN, { count: 8 });
+const { cards: canvasCards } = await fcGenerateCards(CANVAS_MARKDOWN, { count: 8 });
 console.log(`\n(canvas probe took ${((Date.now() - t0) / 1000).toFixed(1)}s)`);
 const a = judge('PROBE A · canvas page (chain ladder / BF)', CANVAS_MARKDOWN, canvasCards);
 
@@ -283,7 +283,7 @@ if (!extracted.text.includes('Mack') || !extracted.text.includes('process varian
   process.exit(1);
 }
 const t1 = Date.now();
-const pdfCards = await fcGenerateCards(extracted.text, { count: 8 });
+const { cards: pdfCards } = await fcGenerateCards(extracted.text, { count: 8 });
 console.log(`\n(pdf probe took ${((Date.now() - t1) / 1000).toFixed(1)}s)`);
 const b = judge('PROBE B · real PDF (Mack model)', extracted.text, pdfCards);
 

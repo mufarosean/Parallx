@@ -455,7 +455,36 @@ function fcNewOrder(a, b) {
  * band is ordered and capped by newLimit, so one deck's early import cannot
  * monopolize introduction while another deck's deadline slips.
  */
-function fcBuildQueue(cards, now, { newLimit = 20, reviewLimit = 200, newAllowanceByDeck = null } = {}) {
+/**
+ * Trim DUE cards that demand a typed answer down to `limit`. Pure.
+ *
+ * Applies to the review band only, and deliberately not to the other two:
+ *
+ *   learning — the same-session follow-ups an Again produced. Dropping one
+ *              breaks the "Again 1m means one minute" contract for exactly
+ *              the cards most likely to have earned it.
+ *   new      — introduction is deadline-owned. fcPacePlan has already
+ *              decided how many new cards this session must introduce to
+ *              land the deck before the exam, and letting a second,
+ *              unrelated cap silently overrule that is the same bug as
+ *              letting `newLimit` trim a raised pace back down. A deferred
+ *              REVIEW returns tomorrow at no cost to the plan; a deferred
+ *              INTRODUCTION pushes the whole schedule against a fixed date.
+ *
+ * So the cap bounds how much typing a session's *review* load can demand,
+ * and the pace bounds the rest.
+ */
+function fcCapProductionCards(review, limit) {
+  if (!limit || limit <= 0) return review;
+  let budget = limit;
+  return review.filter((c) => {
+    if (!fcIsProductionMode(c.recallMode)) return true;
+    if (budget > 0) { budget--; return true; }
+    return false;
+  });
+}
+
+function fcBuildQueue(cards, now, { newLimit = 20, reviewLimit = 200, newAllowanceByDeck = null, productionLimit = 0 } = {}) {
   const active = cards.filter((c) => !c.suspended);
   const learning = active
     .filter((c) => (c.state === 'learning' || c.state === 'relearning') && c.dueAt <= now)
@@ -483,7 +512,7 @@ function fcBuildQueue(cards, now, { newLimit = 20, reviewLimit = 200, newAllowan
   const fresh = freshPool
     .sort(fcFlagFirst(fcNewOrder))
     .slice(0, Math.max(0, newLimit));
-  return [...learning, ...review, ...fresh];
+  return [...learning, ...fcCapProductionCards(review, productionLimit), ...fresh];
 }
 
 /**
@@ -505,10 +534,23 @@ function fcPacePlan({ examDate, newCount }, now, { freezeDays = 14, ceiling = 20
   }
   const daysLeft = Math.max(1, Math.ceil((cutoff - now) / DAY));
   const needed = Math.ceil(Math.max(0, Number(newCount) || 0) / daysLeft);
-  const rate = Math.min(Math.max(0, Number(ceiling) || 0), needed);
+  // The deadline wins over the batch-size setting (M102 follow-up).
+  //
+  // This used to clamp to `ceiling`, which quietly made a large deck
+  // unfinishable: 2,000 cards with 76 intro days needs 27/day, the default
+  // ceiling is 20, so pacing handed over 20 and the deck card printed a
+  // completion date a month past the exam. The readout was honest and
+  // entirely passive — you had to notice the date was too late yourself.
+  //
+  // Pacing still REDUCES the batch when there is time to spare (that is the
+  // whole point of it); it just no longer refuses to raise it when there is
+  // not. `raised` records that it happened so the UI can say so rather than
+  // silently exceeding a number the user set.
+  const rate = needed;
+  const raised = needed > Math.max(0, Number(ceiling) || 0);
   // At `rate`/day, when does the last waiting card get introduced?
   const doneInDays = rate > 0 ? Math.ceil(Math.max(0, Number(newCount) || 0) / rate) : 0;
-  return { rate, frozen: false, cutoff, daysLeft, doneAt: now + doneInDays * DAY };
+  return { rate, raised, frozen: false, cutoff, daysLeft, doneAt: now + doneInDays * DAY };
 }
 
 /**
@@ -726,7 +768,74 @@ function fcExtractJsonArray(text, mapSlice) {
   let attempts = 0;
   while (start !== -1 && attempts < 8) {
     attempts++;
-    // Walk to the matching close bracket (string-aware).
+    // Walk to the matching close bracket (string-aware). Also remember where
+    // the last COMPLETE top-level object closed — that is the salvage point
+    // when the model's window filled and the array never terminates.
+    let depth = 0, curly = 0, end = -1, inStr = false, escape = false, lastObjEnd = -1;
+    for (let i = start; i < t.length; i++) {
+      const ch = t[i];
+      if (escape) { escape = false; continue; }
+      if (ch === '\\') { escape = true; continue; }
+      if (ch === '"') { inStr = !inStr; continue; }
+      if (inStr) continue;
+      if (ch === '{') curly++;
+      else if (ch === '}') {
+        curly--;
+        if (depth === 1 && curly === 0) lastObjEnd = i;
+      } else if (ch === '[') depth++;
+      else if (ch === ']') {
+        depth--;
+        if (depth === 0) { end = i; break; }
+      }
+    }
+    if (end === -1) {
+      // Truncated mid-array. A ten-minute generation must not evaporate over
+      // its missing last bracket: salvage every complete object before the
+      // cut and let the caller warn that the tail of the material is
+      // uncovered. Only the trailing partial object is lost.
+      if (lastObjEnd > start) {
+        const items = parseSlice(t.slice(start, lastObjEnd + 1) + ']');
+        if (items !== null && items.length > 0) {
+          return { items, error: null, truncated: true };
+        }
+      }
+      unterminated = true;
+      break;
+    }
+    const items = parseSlice(t.slice(start, end + 1));
+    if (items !== null) {
+      sawArray = true;
+      if (items.length > 0) return { items, error: null, truncated: false };
+    }
+    start = t.indexOf('[', start + 1);
+  }
+
+  if (unterminated) return { items: [], error: 'Unterminated JSON array. The response may have been cut off.', truncated: true };
+  if (sawArray) return { items: [], error: 'No usable items in response.', truncated: false };
+  return { items: [], error: 'No JSON array in response.', truncated: false };
+}
+
+/**
+ * Same hygiene as fcExtractJsonArray — think-tag leakage, markdown fences,
+ * LaTeX escape repair, string-aware brace walking — for a single top-level
+ * JSON OBJECT. Returns null when nothing parses.
+ *
+ * A grading verdict is one object, not an array, and coercing it into an
+ * array shape purely to reuse the existing extractor would push the
+ * awkwardness into the prompt, which is where local models are least
+ * reliable. Pure.
+ */
+function fcExtractJsonObject(text) {
+  if (typeof text !== 'string' || !text.trim()) return null;
+  let t = text.trim()
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/^[\s\S]*?<\/think>/i, '')
+    .replace(/```(?:json)?/gi, '');
+
+  let start = t.indexOf('{');
+  let attempts = 0;
+  while (start !== -1 && attempts < 8) {
+    attempts++;
     let depth = 0, end = -1, inStr = false, escape = false;
     for (let i = start; i < t.length; i++) {
       const ch = t[i];
@@ -734,28 +843,22 @@ function fcExtractJsonArray(text, mapSlice) {
       if (ch === '\\') { escape = true; continue; }
       if (ch === '"') { inStr = !inStr; continue; }
       if (inStr) continue;
-      if (ch === '[') depth++;
-      else if (ch === ']') {
-        depth--;
-        if (depth === 0) { end = i; break; }
-      }
+      if (ch === '{') depth++;
+      else if (ch === '}') { depth--; if (depth === 0) { end = i; break; } }
     }
-    if (end === -1) { unterminated = true; break; }
-    const items = parseSlice(t.slice(start, end + 1));
-    if (items !== null) {
-      sawArray = true;
-      if (items.length > 0) return { items, error: null };
-    }
-    start = t.indexOf('[', start + 1);
+    if (end === -1) return null;
+    const slice = t.slice(start, end + 1);
+    let parsed = null;
+    try { parsed = JSON.parse(fcRepairLatexEscapes(slice)); }
+    catch { try { parsed = JSON.parse(slice); } catch { parsed = null; } }
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+    start = t.indexOf('{', start + 1);
   }
-
-  if (unterminated) return { items: [], error: 'Unterminated JSON array. The response may have been cut off.' };
-  if (sawArray) return { items: [], error: 'No usable items in response.' };
-  return { items: [], error: 'No JSON array in response.' };
+  return null;
 }
 
 function fcExtractCardsJson(text) {
-  const { items, error } = fcExtractJsonArray(text, (parsed) => {
+  const { items, error, truncated } = fcExtractJsonArray(text, (parsed) => {
     const cards = [];
     for (const item of parsed.slice(0, 100)) {
       if (!item || typeof item !== 'object') continue;
@@ -772,6 +875,19 @@ function fcExtractCardsJson(text) {
         card.importance = Math.min(100, imp);
         card.importanceReason = String(item.importanceReason ?? item.importance_reason ?? '').trim().slice(0, 300);
       }
+      // M102 production recall. A rubric without a production mode is
+      // dropped rather than guessed at: a rubric on a recognition card is
+      // never read, and inferring the mode FROM the rubric's presence would
+      // promote cards the model deliberately left as recognition.
+      const recallMode = fcNormalizeRecallMode(item.recallMode ?? item.recall_mode);
+      if (fcIsProductionMode(recallMode)) {
+        const rubric = fcNormalizeRubric(item.rubric ?? item.points);
+        // A production card with no usable rubric has nothing to grade
+        // against, and fcEnsureRubric would derive one on first review from
+        // the same answer text the model just declined to distil. Storing it
+        // as recognition is the honest outcome.
+        if (rubric.length) { card.recallMode = recallMode; card.rubric = rubric; }
+      }
       // M98 grounding: per-card page attribution when the prompt was paged.
       // fcGenerateCards validates the number against the real page range.
       const page = Number(item.page ?? item.source_page ?? NaN);
@@ -785,7 +901,7 @@ function fcExtractCardsJson(text) {
     return cards;
   });
   const error2 = error === 'No usable items in response.' ? 'No usable cards in response.' : error;
-  return { cards: items, error: error2 };
+  return { cards: items, error: error2, truncated: !!truncated };
 }
 
 /** 'HH:MM' → 5-field cron for a daily firing, or null when malformed. */
@@ -1004,6 +1120,7 @@ function fcDeckMenuItems(deck) {
     { label: 'Find Duplicates', icon: 'px-ai-mark', onSelect: () => void openFlashcards({ view: 'dedup', deckId: deck.id }) },
     { label: 'Coverage Review', icon: 'px-ai-mark', onSelect: () => void openFlashcards({ view: 'coverage', deckId: deck.id }) },
     { label: 'Score Importance (AI)', icon: 'px-ai-mark', onSelect: () => void _scoreImportanceFlow(deck) },
+    { label: 'Classify Recall Modes (AI)', icon: 'px-ai-mark', onSelect: () => void _classifyRecallFlow(deck) },
     { label: 'Merge Into Another Deck…', icon: 'layers', onSelect: () => void _mergeDeckFlow(deck) },
     { separator: true },
     { label: 'Rename', icon: 'pencil', onSelect: () => void _renameDeckFlow(deck) },
@@ -1013,6 +1130,17 @@ function fcDeckMenuItems(deck) {
 }
 
 async function openFlashcards(route) {
+  // The route is stashed BEFORE anything else, on every path. An open TAB
+  // does not imply a live PANE: the workbench builds a tool pane lazily on
+  // first show, and drops it again on workspace restore or when the
+  // retention LRU evicts it. In those states the route event below has no
+  // listener, and every route-carrying entry point — Custom Study, Study
+  // Deck, Browse Cards, the deck menu — surfaced the tab on whatever view it
+  // last showed and swallowed the navigation ("Custom Study does nothing").
+  // The pending route is what survives to the rebuild; a live pane consumes
+  // it in onRouteEvent so it can never hijack a later mount.
+  if (route) _setRoute(route);
+
   // Focus, don't reopen. openEditor on an already-active tab does a FULL
   // pane teardown/rebuild in the workbench (editorGroupView seq quirk) —
   // every "open flashcards" from a command/link/toast was destroying the
@@ -1030,7 +1158,6 @@ async function openFlashcards(route) {
       return;
     }
   } catch { /* fall through to a fresh open */ }
-  if (route) _setRoute(route);
   await _api.editors.openEditor({
     typeId: 'flashcards',
     title: 'Flashcards',
@@ -1072,6 +1199,11 @@ function rowToCard(row) {
     clozeIndex: row.cloze_index ?? 0,
     importance: row.importance || 0,
     importanceReason: row.importance_reason || '',
+    // M102. Parsed here rather than at each call site so nothing downstream
+    // has to remember that `rubric` is JSON on the way out of SQLite.
+    recallMode: fcNormalizeRecallMode(row.recall_mode),
+    rubric: fcNormalizeRubric(row.rubric || ''),
+    sourceExcerpt: row.source_excerpt || '',
   };
 }
 
@@ -1113,6 +1245,14 @@ async function fcTodayCounts() {
   const learnCount = row?.learn_count || 0;
   const reviewCount = row?.review_count || 0;
   return { newCount, learnCount, reviewCount, dueTotal: learnCount + reviewCount + newCount };
+}
+
+/** One deck by id, or null. Used by the pane breadcrumb, which needs a name
+ *  and nothing else. */
+async function fcGetDeck(id) {
+  if (id == null) return null;
+  const row = await db.get('SELECT id, name FROM fc_decks WHERE id = ?', [id]);
+  return row ? { id: row.id, name: row.name } : null;
 }
 
 async function fcCreateDeck(name, description = '') {
@@ -1214,10 +1354,318 @@ function fcNormalizeImportance(v) {
   return Math.min(100, n);
 }
 
+// ── Recall modes (M102) ──────────────────────────────────────────────────────
+//
+// What a review ELICITS, and therefore which grader runs. Orthogonal to
+// card_type ('basic' | 'cloze' | 'reverse'), which picks how a note renders.
+
+/** Modes that require the learner to produce an answer before grading. */
+const FC_PRODUCTION_MODES = ['conceptual', 'list', 'formula'];
+const FC_RECALL_MODES = ['recognition', ...FC_PRODUCTION_MODES];
+
+/** Unknown/absent → 'recognition', so a bad value degrades to today's loop. */
+function fcNormalizeRecallMode(v) {
+  const s = String(v || '').trim().toLowerCase();
+  return FC_RECALL_MODES.includes(s) ? s : 'recognition';
+}
+
+function fcIsProductionMode(mode) {
+  return FC_PRODUCTION_MODES.includes(fcNormalizeRecallMode(mode));
+}
+
+/** Longest rubric we store. Past this the model is padding, not distilling. */
+const FC_RUBRIC_MAX_POINTS = 12;
+const FC_RUBRIC_POINT_MAX_CHARS = 400;
+
+/**
+ * Cap on the stored source passage. A dense actuarial PDF page extracts to
+ * roughly 3-4K chars, so this is most of a page and all of a typical one.
+ *
+ * Sized against the grading prompt, not storage: at the 2.5 chars/token
+ * planning ratio this is ~800 tokens, which leaves the rubric, the answer,
+ * and the system prompt fitting comfortably inside any model's window
+ * without a context plan of their own. Storage is the cheap constraint —
+ * 2K chars across even 2,000 cards is ~4MB.
+ */
+const FC_SOURCE_EXCERPT_MAX_CHARS = 2000;
+
+/**
+ * Normalize a rubric to the stored shape: [{ text, required }].
+ *
+ * Accepts what the model actually emits — a bare array of strings, or
+ * objects under any of a few plausible key names — because forcing one exact
+ * shape on a local model costs more in retries than normalizing here does.
+ * `required` defaults TRUE: a point the model bothered to list is part of the
+ * answer unless it explicitly says otherwise, and defaulting the other way
+ * would let a rubric of all-optional points grade every answer as complete.
+ *
+ * Pure.
+ */
+function fcNormalizeRubric(v) {
+  const raw = typeof v === 'string'
+    ? (() => { try { return JSON.parse(v); } catch { return []; } })()
+    : v;
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const item of raw) {
+    const text = String(
+      (item && typeof item === 'object' ? (item.text ?? item.point ?? item.item ?? '') : item) ?? '',
+    ).replace(/\s+/g, ' ').trim().slice(0, FC_RUBRIC_POINT_MAX_CHARS);
+    if (!text) continue;
+    const required = (item && typeof item === 'object' && item.required !== undefined)
+      ? !!item.required
+      : true;
+    out.push({ text, required });
+    if (out.length >= FC_RUBRIC_MAX_POINTS) break;
+  }
+  return out;
+}
+
+/** Stored form. Empty rubric stores as '' (not '[]') so `= ''` reads as absent. */
+function fcSerializeRubric(points) {
+  const norm = fcNormalizeRubric(points);
+  return norm.length ? JSON.stringify(norm) : '';
+}
+
+/**
+ * The hand-editable rubric format: one point per line, a trailing
+ * "(optional)" marking supporting detail. Pure.
+ *
+ * Not JSON, even though JSON is what gets stored. A syntax error in a
+ * hand-edited JSON textarea would parse to nothing and silently empty the
+ * rubric, which drops the card back to a self-grade with no visible cause —
+ * the exact failure this milestone exists to remove. Line-per-point cannot
+ * fail that way: the worst outcome is a point worded oddly.
+ */
+function fcParseRubricLines(text) {
+  return fcNormalizeRubric(
+    String(text || '')
+      .split('\n')
+      .map((line) => line.replace(/^\s*[-*•]\s*/, '').trim())
+      .filter(Boolean)
+      .map((line) => {
+        const m = /^(.*?)\s*\((?:optional|supporting)\)\s*$/i.exec(line);
+        return m ? { text: m[1].trim(), required: false } : { text: line, required: true };
+      })
+      .filter((p) => p.text),
+  );
+}
+
+/** One line of plain English per mode, shown beside the picker. */
+const FC_RECALL_MODE_HINTS = {
+  recognition: 'Reveal the answer and grade yourself. Right when the answer is a bare name, date, or number.',
+  conceptual: 'Write the answer out before it shows — anything that takes a sentence. Graded against the rubric below.',
+  list: 'Enumerate the items from memory. Scored on how many you produce.',
+  formula: 'Write the formula out. Compared exactly, ignoring spacing and delimiters.',
+};
+
+// ── Grading a produced answer (M102) ─────────────────────────────────────────
+//
+// The model is never asked for a rating. It answers the factual question it
+// is actually reliable at — for each rubric point, did the answer contain it?
+// — and this code turns that into 1..4. Two consequences worth keeping:
+// identical answers cannot land on different levels, and the thresholds are
+// testable without a model in the loop.
+
+const FC_POINT_STATUSES = ['hit', 'partial', 'miss'];
+
+/** Grade names and point marks — shared by the study UI, the browse
+ *  history, and the chat hand-off, so all three read a verdict alike. */
+const FC_RATING_LABELS = { 1: 'Again', 2: 'Hard', 3: 'Good', 4: 'Easy' };
+const FC_POINT_GLYPHS = { hit: '✓', partial: '~', miss: '✗' };
+
+/**
+ * Score at or above which an incomplete answer still reads as GOOD.
+ *
+ * Chosen against the scores small rubrics can actually produce, not as a
+ * round number: 2 of 3 is 0.67 and 3 of 4 is 0.75, and both are the
+ * "got it, missed a detail" answer this band is meant to catch, while 1 of 2
+ * (0.5) and 3 of 5 (0.6) are not and must fall to HARD.
+ */
+const FC_GRADE_GOOD_FLOOR = 0.65;
+
+/**
+ * Coerce a model's judgement into the stored verdict shape.
+ *
+ * `points` is positional — parallel to the rubric — because asking a local
+ * model to echo each point's text back costs output tokens and invites it to
+ * paraphrase the rubric into something that no longer matches. A short array
+ * is padded with misses rather than rejected: a model that judged 3 of 5
+ * points has still told us something, and discarding it would force a
+ * self-grade fallback on a card the learner already answered.
+ *
+ * Pure.
+ */
+function fcNormalizeVerdict(raw, rubric, { mode = 'conceptual', sourced = false } = {}) {
+  const points = fcNormalizeRubric(rubric);
+  const rawPoints = Array.isArray(raw?.points) ? raw.points : [];
+  const out = [];
+  for (let i = 0; i < points.length; i++) {
+    const p = rawPoints[i];
+    const statusRaw = String(
+      (p && typeof p === 'object' ? (p.status ?? p.verdict ?? p.result ?? '') : p) ?? '',
+    ).trim().toLowerCase();
+    const status = FC_POINT_STATUSES.includes(statusRaw) ? statusRaw
+      : statusRaw === 'yes' || statusRaw === 'true' ? 'hit'
+        : statusRaw === 'no' || statusRaw === 'false' ? 'miss'
+          : 'miss';
+    out.push({
+      status,
+      note: String((p && typeof p === 'object' ? p.note ?? p.reason ?? '' : '') || '')
+        .replace(/\s+/g, ' ').trim().slice(0, 200),
+    });
+  }
+  return {
+    mode: fcNormalizeRecallMode(mode),
+    points: out,
+    contradiction: !!(raw?.contradiction ?? raw?.contradicts ?? raw?.contradictsSource),
+    note: String(raw?.note ?? raw?.feedback ?? raw?.comment ?? '').replace(/\s+/g, ' ').trim().slice(0, 400),
+    sourced: !!sourced,
+  };
+}
+
+/**
+ * Score a verdict against its rubric. Pure.
+ *
+ * A partial counts half: it is the model saying the idea is present but
+ * incomplete or hedged, which is genuinely between knowing and not.
+ */
+function fcScoreVerdict(verdict, rubric) {
+  const points = fcNormalizeRubric(rubric);
+  const total = points.length;
+  if (!total) return { score: 0, hits: 0, partials: 0, misses: 0, requiredMissed: false, total: 0 };
+  let hits = 0, partials = 0, misses = 0, requiredMisses = 0;
+  for (let i = 0; i < total; i++) {
+    const status = verdict?.points?.[i]?.status || 'miss';
+    if (status === 'hit') hits++;
+    else if (status === 'partial') partials++;
+    else {
+      misses++;
+      if (points[i].required) requiredMisses++;
+    }
+  }
+  return {
+    score: (hits + 0.5 * partials) / total,
+    hits, partials, misses, total,
+    requiredMisses,
+    requiredMissed: requiredMisses > 0,
+    // Everything short of a clean hit — the "how many things went wrong"
+    // count, as distinct from how much credit the answer earned.
+    gaps: misses + partials,
+  };
+}
+
+/**
+ * Verdict → FSRS rating (1..4), or null when the verdict cannot be scored
+ * (no rubric) and the caller must fall back to a self-grade.
+ *
+ * Speed is deliberately NOT an input. For a recognition card, latency is
+ * evidence of retrieval effort; for a typed answer it measures typing, so
+ * folding it in would grade fast typists as knowing more. Completeness
+ * carries the whole signal.
+ *
+ * A contradiction outranks the score, including a high one. An answer that
+ * states something the source denies is worse evidence than a blank — and it
+ * is exactly what self-grading never catches, because reading the back and
+ * recognising your own error feels like a Hard, not an Again.
+ *
+ * EASY needs a rubric of at least two points. On a one-point rubric
+ * "complete" and "correct" are the same event, so awarding the top grade
+ * there would hand out FSRS's largest interval multiplier for what is really
+ * a single right answer.
+ *
+ * The GOOD threshold is 0.65, not the 0.8 it started at, because rubrics are
+ * small and the reachable scores are coarse. At 0.8, a 2-, 3- or 4-point
+ * rubric can only score 0.5 / 0.67 / 0.75 below a perfect answer, so GOOD was
+ * unreachable by hits alone and every review landed HARD or EASY. Most
+ * rubrics are 3-5 points, so that bimodal stream would have been the normal
+ * case, feeding FSRS far more HARDs than the answers earned and shrinking
+ * intervals across the deck.
+ *
+ * Pure.
+ */
+function fcMapVerdictToRating(verdict, rubric) {
+  const s = fcScoreVerdict(verdict, rubric);
+  if (!s.total) return null;
+  if (verdict?.contradiction) return AGAIN;
+  if (s.score < 0.5) return AGAIN;
+  // Missing something the rubric marked essential caps the grade, however
+  // well the rest scored. The single exception is the "almost there" answer:
+  // exactly one thing missing, and it was otherwise clean. Two or more
+  // essential gaps is not almost-there, it is partial understanding.
+  if (s.requiredMisses >= 2) return HARD;
+  if (s.requiredMisses === 1) return (s.gaps === 1 && s.score >= FC_GRADE_GOOD_FLOOR) ? GOOD : HARD;
+  if (s.score >= 1 && s.partials === 0) return s.total >= 2 ? EASY : GOOD;
+  return s.score >= FC_GRADE_GOOD_FLOOR ? GOOD : HARD;
+}
+
+/**
+ * Normalize a formula for comparison. Pure.
+ *
+ * Conservative on purpose: it removes the notation that is genuinely free
+ * (spacing, delimiters, `\left`/`\right`, `$`) and unifies the few commands
+ * that are pure synonyms, and it does NOT try to be a computer algebra
+ * system. Deciding that `\frac{a}{b}` and `a/b` are the same expression is
+ * the model's job on the mismatch path; a normalizer that guessed at it
+ * would mark real errors correct, which is the one failure mode a formula
+ * card cannot afford.
+ */
+function fcNormalizeFormula(s) {
+  return String(s || '')
+    .replace(/\$+/g, '')
+    .replace(/\\left|\\right/g, '')
+    .replace(/\\[,;:!]/g, '')
+    .replace(/\\(?:cdot|times)\b/g, '*')
+    .replace(/\\(?:mathrm|mathit|text|operatorname)\s*\{([^{}]*)\}/g, '$1')
+    .replace(/\s+/g, '')
+    .replace(/\{([A-Za-z0-9])\}/g, '$1')
+    .trim();
+}
+
+/** Exact-after-normalisation formula match. Pure. */
+function fcFormulaMatches(a, b) {
+  const na = fcNormalizeFormula(a);
+  return !!na && na === fcNormalizeFormula(b);
+}
+
+// Trigram bands for the deterministic list pre-pass. Wide uncertain band on
+// purpose: a wrong auto-hit inflates FSRS stability on a list the learner
+// cannot actually produce, and that error is invisible afterwards, so the
+// cheap outcome (one extra model call) is strongly preferred to the silent
+// one. Only answers that are clearly right or clearly absent skip the model.
+const FC_LIST_AUTO_HIT = 0.65;
+const FC_LIST_AUTO_MISS = 0.2;
+
+/**
+ * Deterministic first pass for `list` mode. Pure.
+ *
+ * Splits the typed answer into candidate items (lines, bullets, semicolons)
+ * and scores each rubric item against its best match. Returns provisional
+ * statuses plus whether anything landed in the uncertain band; when nothing
+ * did, the whole grading runs offline and costs no model call at all.
+ */
+function fcMatchListItems(answer, rubric) {
+  const points = fcNormalizeRubric(rubric);
+  const candidates = String(answer || '')
+    .split(/[\n;]+|^\s*[-*•]\s+|\s+\d+[.)]\s+/gm)
+    .map((t) => t.replace(/^\s*[-*•]\s*/, '').trim())
+    .filter(Boolean);
+  const statuses = [];
+  let uncertain = false;
+  for (const p of points) {
+    let best = 0;
+    for (const c of candidates) best = Math.max(best, fcTrigramSimilarity(p.text, c));
+    if (best >= FC_LIST_AUTO_HIT) statuses.push({ status: 'hit', note: '' });
+    else if (best < FC_LIST_AUTO_MISS) statuses.push({ status: 'miss', note: '' });
+    else { statuses.push({ status: 'partial', note: '' }); uncertain = true; }
+  }
+  return { statuses, uncertain, candidateCount: candidates.length };
+}
+
 async function fcCreateCard(input) {
   const res = await db.run(`
-    INSERT INTO fc_cards (deck_id, front, back, notes, tags, source_uri, source_label, source_page, card_type, note_group, cloze_index, created_at, importance, importance_reason)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO fc_cards (deck_id, front, back, notes, tags, source_uri, source_label, source_page, card_type, note_group, cloze_index, created_at, importance, importance_reason, recall_mode, rubric, source_excerpt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `, [
     input.deckId,
     fcNormalizeCardText(input.front),
@@ -1233,6 +1681,9 @@ async function fcCreateCard(input) {
     Date.now(),
     fcNormalizeImportance(input.importance),
     String(input.importanceReason || '').slice(0, 300),
+    fcNormalizeRecallMode(input.recallMode),
+    fcSerializeRubric(input.rubric),
+    String(input.sourceExcerpt || '').slice(0, FC_SOURCE_EXCERPT_MAX_CHARS),
   ]);
   _emitDataChanged();
   const id = res.lastInsertRowid ?? res.lastID ?? null;
@@ -1258,7 +1709,6 @@ let _lastBulkStamp = 0;
 async function fcCreateCardsBulk(deckId, cards, { sourceUri = '', sourceLabel = '' } = {}) {
   const now = Math.max(Date.now(), _lastBulkStamp + 1);
   _lastBulkStamp = now;
-  const CHUNK = 50;
   // M98: per-card provenance/type overrides (c.sourceUri, c.sourcePage,
   // c.cardType, c.noteGroup, …) win over the call-level defaults. Tags are
   // normalized to comma-joined — the bulk path used spaces while every other
@@ -1282,10 +1732,23 @@ async function fcCreateCardsBulk(deckId, cards, { sourceUri = '', sourceLabel = 
     fcNormalizeFlag(c.flag),
     fcNormalizeImportance(c.importance),
     String(c.importanceReason || '').slice(0, 300),
+    // M102. Generation and import leave these undefined → 'recognition' with
+    // an empty rubric, which is exactly today's behaviour.
+    fcNormalizeRecallMode(c.recallMode),
+    fcSerializeRubric(c.rubric),
+    String(c.sourceExcerpt || '').slice(0, FC_SOURCE_EXCERPT_MAX_CHARS),
   ];
-  const COLS = '(deck_id, front, back, notes, tags, source_uri, source_label, source_page, card_type, note_group, cloze_index, created_at, flag, importance, importance_reason)';
-  const ROW_PH = '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
-  const ROW_WIDTH = 15;
+  const COLS = '(deck_id, front, back, notes, tags, source_uri, source_label, source_page, card_type, note_group, cloze_index, created_at, flag, importance, importance_reason, recall_mode, rubric, source_excerpt)';
+  const ROW_PH = '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+  const ROW_WIDTH = 18;
+  // Rows per statement, DERIVED rather than the literal 50 it used to be.
+  // That literal was chosen when a row was 8 params wide (400 per statement,
+  // comfortably under SQLite's 999-parameter ceiling); the row has grown
+  // three times since and is now 18 wide, which would put a 50-row statement
+  // at 900 — still passing, but two columns from failing an import silently
+  // on the next milestone that adds one. Deriving it keeps the headroom no
+  // matter how wide the row gets.
+  const CHUNK = Math.max(1, Math.floor(900 / ROW_WIDTH));
 
   const statements = [];
   for (let i = 0; i < cards.length; i += CHUNK) {
@@ -1764,15 +2227,20 @@ const FC_JUDGE_SYSTEM = [
 ].join('\n');
 
 /**
- * AI arbitration over candidate clusters. Returns the clusters with
- * `verdict/keepId/mergedCard/reason` attached; a cluster whose batch fails
- * (no model, parse error, bad ids) keeps `verdict: null` — the UI still
- * shows it by similarity alone. Never throws.
+ * AI arbitration over candidate clusters. Returns
+ * `{ clusters, failure }`: clusters carry `verdict/keepId/mergedCard/reason`;
+ * a cluster whose batch fails (stall, parse error, bad ids) keeps
+ * `verdict: null` — the UI shows it as UNJUDGED, never as an AI opinion.
+ * `failure` is the human-readable reason when judging failed wholesale
+ * (no model, every batch dead), null otherwise. Never throws.
  */
 async function fcJudgeDuplicateClusters(clusters, cardById, { onProgress } = {}) {
   const modelId = await fcPickModel();
   if (!modelId || !_api?.lm?.sendChatRequest) {
-    return clusters.map((c) => ({ ...c, verdict: null }));
+    return {
+      clusters: clusters.map((c) => ({ ...c, verdict: null })),
+      failure: 'No language model is available. Configure one in AI settings.',
+    };
   }
   const { contextSetting, think } = fcAiOptions();
   const modelCtx = await fcModelContextLength(modelId);
@@ -1797,6 +2265,7 @@ async function fcJudgeDuplicateClusters(clusters, cardById, { onProgress } = {})
 
   const out = [];
   let done = 0;
+  let lastError = null;
   for (const group of batches) {
     let judged = null;
     try {
@@ -1834,12 +2303,21 @@ async function fcJudgeDuplicateClusters(clusters, cardById, { onProgress } = {})
             : { ...cluster, verdict: null };
         });
       }
-    } catch { /* stall or request failure — clusters stay unjudged */ }
+    } catch (e) {
+      // Stall or request failure — clusters stay unjudged, but the REASON
+      // must survive to the banner: "unavailable" with no cause left users
+      // acting on raw similarity without knowing anything went wrong.
+      lastError = e instanceof Error ? e.message : String(e);
+    }
     out.push(...(judged || group.map((c) => ({ ...c, verdict: null }))));
     done += group.length;
     try { onProgress?.(done, clusters.length); } catch { /* UI gone */ }
   }
-  return out;
+  const anyJudged = out.some((c) => c.verdict !== null);
+  return {
+    clusters: out,
+    failure: anyJudged ? null : (lastError || 'The model returned no usable verdicts.'),
+  };
 }
 
 const FC_PAIR_JUDGE_SYSTEM = [
@@ -1990,6 +2468,103 @@ async function fcScoreDeckImportance(deckId, { onProgress } = {}) {
   return { scored, total: rows.length };
 }
 
+// ── Retrofitting recall modes onto an existing deck (M102) ───────────────────
+//
+// Generation marks new cards as it makes them, but a deck built before M102 —
+// or imported from Anki — is entirely recognition, so the feature would do
+// nothing for the cards actually being studied. This is the catch-up pass.
+//
+// Deliberately user-invoked from the deck menu rather than automatic on
+// migration: promoting a card changes what a review COSTS (five seconds
+// becomes a minute), and a silent overnight change to that is not a decision
+// the app gets to make.
+
+const FC_CLASSIFY_SYSTEM = [
+  'You decide how each flashcard should be tested, and write the marking rubric when one is needed.',
+  'Decide by asking ONE question — what shape is a correct answer?',
+  '- "formula": a formula to write from memory. rubric = ["<the formula in LaTeX>"].',
+  '- "list": a set of items to enumerate. rubric = one entry per item.',
+  '- "conceptual": WRITING. Any answer the student has to put into their own words — a definition,',
+  '  a why, a mechanism, a comparison, an assumption and what it buys, what a result means.',
+  '  If a correct answer is a sentence rather than a formula or a list, it is conceptual.',
+  '  rubric = the 2-6 claims a correct answer must make. A claim, not a topic:',
+  '  "variance is proportional to the prior column", never "variance".',
+  '- "recognition": the answer is a bare token — a name, a date, a single number, a term.',
+  '  Nothing is composed, so there is nothing to write. No rubric.',
+  'When unsure, ask whether the card could be answered correctly in three words.',
+  'If not, it is "conceptual". Definitions are conceptual: stating one in your own words is',
+  'exactly the skill being tested, and reading one back is the recognition this exists to stop.',
+  'Rubric entries may be {"text": "...", "required": false} for supporting detail a complete answer could omit.',
+  'Never invent content the card does not already contain.',
+  'Output ONLY a JSON array, no prose:',
+  '[{"id": 12, "recallMode": "conceptual", "rubric": [{"text": "...", "required": true}]}]',
+  'Omit any card you would leave as "recognition".',
+].join('\n');
+
+/**
+ * Classify a deck's unclassified cards. Returns { promoted, total }.
+ *
+ * Only touches cards still sitting at the default: `recall_mode` untouched
+ * AND no rubric. A card you have already set by hand is never revisited, so
+ * running this twice cannot undo your own decisions.
+ */
+async function fcClassifyDeckRecall(deckId, { onProgress } = {}) {
+  const rows = await db.all(
+    "SELECT id, front, back FROM fc_cards WHERE deck_id = ? AND recall_mode = 'recognition' AND rubric = '' AND suspended = 0",
+    [deckId],
+  );
+  if (rows.length === 0) return { promoted: 0, total: 0 };
+  const modelId = await fcPickModel();
+  if (!modelId || !_api?.lm?.sendChatRequest) {
+    throw new Error('No language model available. Configure a model in AI settings.');
+  }
+  const { contextSetting, think } = fcAiOptions();
+  const modelCtx = await fcModelContextLength(modelId);
+  let promoted = 0;
+  // Smaller than importance's 12: every promoted card carries a rubric, so
+  // the per-card output is several times larger and a bigger batch is what
+  // fills the window mid-array.
+  const BATCH = 8;
+  for (let start = 0; start < rows.length; start += BATCH) {
+    const group = rows.slice(start, start + BATCH);
+    try {
+      const user = group.map((r) => `CARD ${r.id}:\nFRONT: ${r.front}\nBACK: ${r.back}`).join('\n\n---\n\n');
+      const { numCtx } = fcContextPlan({
+        chars: user.length, count: group.length, modelCtx, setting: contextSetting, withRubrics: true,
+      });
+      let output = '';
+      const stream = _api.lm.sendChatRequest(modelId, [
+        { role: 'system', content: FC_CLASSIFY_SYSTEM },
+        { role: 'user', content: user },
+      ], { temperature: 0.1, think, numCtx });
+      await fcStreamWithStall(stream, (chunk) => { if (chunk.content) output += chunk.content; });
+      const { items } = fcExtractJsonArray(output, (parsed) => parsed
+        .filter((v) => v && typeof v === 'object')
+        .map((v) => ({
+          id: Number(v.id),
+          recallMode: fcNormalizeRecallMode(v.recallMode ?? v.recall_mode),
+          rubric: fcNormalizeRubric(v.rubric ?? v.points),
+        })));
+      const validIds = new Set(group.map((r) => r.id));
+      for (const item of items) {
+        // A production mode without a rubric has nothing to mark against,
+        // and the model returning an id from another batch means it lost
+        // track of which cards it was looking at — neither gets written.
+        if (!validIds.has(item.id)) continue;
+        if (!fcIsProductionMode(item.recallMode) || !item.rubric.length) continue;
+        await db.run('UPDATE fc_cards SET recall_mode = ?, rubric = ? WHERE id = ?',
+          [item.recallMode, fcSerializeRubric(item.rubric), item.id]);
+        promoted++;
+      }
+    } catch (e) {
+      console.warn('[Flashcards] classify batch failed (cards stay recognition):', e?.message);
+    }
+    try { onProgress?.(Math.min(start + BATCH, rows.length), rows.length); } catch { /* UI gone */ }
+  }
+  if (promoted > 0) _emitDataChanged();
+  return { promoted, total: rows.length };
+}
+
 const FC_COVERAGE_SYSTEM = [
   'You audit how well a flashcard deck covers its source material (user goal: confidence the deck offers a COMPREHENSIVE review, missing nothing).',
   'You receive the material and the deck\'s existing cards. Produce:',
@@ -2074,6 +2649,9 @@ async function fcUpdateCard(id, patch) {
   if (patch.flag !== undefined) { sets.push('flag = ?'); params.push(fcNormalizeFlag(patch.flag)); }
   if (patch.importance !== undefined) { sets.push('importance = ?'); params.push(fcNormalizeImportance(patch.importance)); }
   if (patch.importanceReason !== undefined) { sets.push('importance_reason = ?'); params.push(String(patch.importanceReason || '').slice(0, 300)); }
+  if (patch.recallMode !== undefined) { sets.push('recall_mode = ?'); params.push(fcNormalizeRecallMode(patch.recallMode)); }
+  if (patch.rubric !== undefined) { sets.push('rubric = ?'); params.push(fcSerializeRubric(patch.rubric)); }
+  if (patch.sourceExcerpt !== undefined) { sets.push('source_excerpt = ?'); params.push(String(patch.sourceExcerpt || '').slice(0, FC_SOURCE_EXCERPT_MAX_CHARS)); }
   if (sets.length === 0) return;
   // M98: text edits on a cloze sibling rewrite the whole group (the text IS
   // the note) — grab identity before the UPDATE.
@@ -2277,7 +2855,16 @@ async function fcUndoGrade(cardBefore, reviewedAt) {
   _emitDataChanged();
 }
 
-async function fcGradeCard(card, rating, msTaken = 0, deckOpts = {}) {
+/**
+ * Apply a grading: schedule + persist + log.
+ *
+ * `answer` / `verdict` (M102) are the production-recall record — what was
+ * typed and what the grader made of it. They ride on the review row rather
+ * than the card because they are history: fc_reviews is append-only and
+ * fcHealFsrsState replays it, so a card's answers accumulate instead of
+ * overwriting. Recognition cards pass neither and store empty strings.
+ */
+async function fcGradeCard(card, rating, msTaken = 0, deckOpts = {}, { answer = '', verdict = null } = {}) {
   const now = Date.now();
   const next = fcScheduleFsrs(card, rating, now, deckOpts);
   await db.run(`
@@ -2289,9 +2876,10 @@ async function fcGradeCard(card, rating, msTaken = 0, deckOpts = {}) {
     next.stability, next.difficulty, next.lastReviewedAt, card.id]);
   await db.run(`
     INSERT INTO fc_reviews (card_id, reviewed_at, rating, interval_before, interval_after,
-      ease_before, ease_after, state_before, state_after, ms_taken)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `, [card.id, now, rating, card.intervalDays, next.intervalDays, card.ease, next.ease, card.state, next.state, msTaken]);
+      ease_before, ease_after, state_before, state_after, ms_taken, answer_text, verdict)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, [card.id, now, rating, card.intervalDays, next.intervalDays, card.ease, next.ease, card.state, next.state, msTaken,
+    String(answer || ''), verdict ? JSON.stringify(verdict) : '']);
   _emitDataChanged();
   return { ...card, ...next };
 }
@@ -2330,6 +2918,28 @@ async function fcHealFsrsState() {
     );
   }
   return rows.length;
+}
+
+/**
+ * Written answers for one card, newest first (M102).
+ *
+ * Only reviews that actually carry an answer — a card promoted to a
+ * production mode partway through its life has recognition reviews behind
+ * it, and listing those as blank answers would read as failures.
+ */
+async function fcCardAnswerHistory(cardId, limit = 20) {
+  const rows = await db.all(`
+    SELECT reviewed_at AS reviewedAt, rating, answer_text AS answerText, verdict
+    FROM fc_reviews
+    WHERE card_id = ? AND answer_text != ''
+    ORDER BY reviewed_at DESC
+    LIMIT ?
+  `, [cardId, Math.max(1, limit)]);
+  return rows.map((r) => {
+    let verdict = null;
+    try { verdict = r.verdict ? JSON.parse(r.verdict) : null; } catch { verdict = null; }
+    return { reviewedAt: r.reviewedAt, rating: r.rating, answerText: r.answerText, verdict };
+  });
 }
 
 async function fcDueSummary() {
@@ -2473,6 +3083,30 @@ const FC_GENERATE_SYSTEM = [
 ].join('\n');
 
 /**
+ * Appended when production recall is on (M102). Kept as a separate block so
+ * the base prompt above stays exactly what it was when the feature is off —
+ * a model asked for fields it then never uses is a model spending output
+ * tokens on nothing.
+ */
+const FC_GENERATE_RECALL_RULES = [
+  '',
+  'Recall mode: add "recallMode" to every card, naming what the student should have to PRODUCE from memory.',
+  'Decide it by asking ONE question — what shape is a correct answer?',
+  '- "formula": a formula. Add "rubric": ["<the formula in LaTeX>"].',
+  '- "list": a set of items to enumerate. Add "rubric" listing the items, one entry each.',
+  '- "conceptual": WRITING. Any answer a student has to put into their own words — a definition,',
+  '  a why, a mechanism, a comparison, an assumption and what it buys, what a result means.',
+  '  If a correct answer is a sentence rather than a formula or a list, it is conceptual.',
+  '  Add "rubric": the 2-6 claims a correct answer must make. A claim, not a topic:',
+  '  "variance is proportional to the prior column", never "variance".',
+  '- "recognition": the answer is a bare token — a name, a date, a single number, a term.',
+  '  Nothing is composed, so there is nothing to write. No rubric.',
+  'Rubric entries may be {"text": "...", "required": false} to mark supporting detail a complete answer could omit.',
+  'When unsure, ask whether you could answer it correctly in three words. If not, it is conceptual, NOT recognition.',
+  'Definitions are conceptual: stating one in your own words is exactly the skill being tested.',
+].join('\n');
+
+/**
  * Density levels for AUTO card count (M101). A truncation cap ("stop at N")
  * would amputate coverage mid-chapter; these instead shape SELECTIVITY while
  * the model plans across the whole material — every core concept still gets
@@ -2493,14 +3127,59 @@ function fcGenerationDensity() {
   return FC_DENSITY_LEVELS[v] ? v : 'balanced';
 }
 
+/** M102: whether generation marks recall modes and writes rubrics. */
+function fcProductionRecallEnabled() {
+  return cfg('productionRecall', true) !== false;
+}
+
+/**
+ * Per-session cap on cards that need a typed answer. 0 disables the cap.
+ * Separate from the review batch because a typed answer costs 30-60s against
+ * roughly 5s for a recognition card, so one shared allowance would let a
+ * handful of production cards consume a whole session's time budget.
+ */
+function fcProductionDailyLimit() {
+  const n = Number(cfg('productionDailyLimit', 12));
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+
 // Context planning constants. CHARS_PER_TOKEN is the safe planning ratio,
 // not the prose average (~3.5-4): formula-dense PDF extraction measured
 // 2.44 on a real actuarial paper (38,263 chars -> 15,709 tokens), and
 // under-estimating chars/token overflows the window, which hard-truncates
 // the model's output mid-JSON. Prose just gets extra headroom.
 const FC_CHARS_PER_TOKEN = 2.5;
+/**
+ * Headroom multiplier on the prompt estimate. 2.5 is an average; the 2.44
+ * measured on real material means the estimate runs ~2.5% short, and that
+ * error grows linearly with size: a 143K-char four-source run planned
+ * ~1,400 tokens under, ate the entire 2048-rounding slack, and the window
+ * filled mid-JSON ("Unterminated JSON array", 2026-08-18). 8% keeps the
+ * plan honest at exactly the sizes where a rerun costs the most.
+ */
+const FC_PROMPT_HEADROOM = 1.08;
 /** System prompt + user wrapper + chat template, in tokens. */
 const FC_SCAFFOLD_TOKENS = 600;
+/**
+ * Output reserve: base + per-card. M101 added "importance" and
+ * "importanceReason" to every generated card's JSON; the old 220/card
+ * budget predated them and under-reserved a 50-card run by ~2K tokens.
+ */
+const FC_OUTPUT_BASE_TOKENS = 1500;
+const FC_OUTPUT_TOKENS_PER_CARD = 280;
+/**
+ * Extra output reserve per card when generation also emits a recall mode and
+ * a rubric (M102). A rubric is 2-6 claims at roughly 15 tokens each plus the
+ * JSON scaffolding around them, and `recallMode` adds a short string.
+ *
+ * Reserved separately rather than folded into the 280 because most of the
+ * cost is conditional: a run with production recall off must not pay for
+ * headroom it will never emit into, since the reserve is subtracted from
+ * the material clip limit and would silently shrink coverage. This is the
+ * same failure the 280 itself was raised to fix in M101 — under-reserving
+ * fills the window mid-array and the response is cut off.
+ */
+const FC_OUTPUT_TOKENS_PER_RUBRIC = 140;
 /** When the model's context length is unknown (probe failed), assume this
  *  ceiling rather than clipping against a guess. Ollama clamps num_ctx to
  *  the model's real maximum server-side. */
@@ -2523,21 +3202,24 @@ const FC_FALLBACK_MODEL_CTX = 131072;
  * clip limit for the chosen window — in auto mode it only bites when even
  * the model's maximum window can't hold document + output.
  */
-function fcContextPlan({ chars, count = 15, modelCtx = 0, setting = 0 } = {}) {
+function fcContextPlan({ chars, count = 15, modelCtx = 0, setting = 0, withRubrics = false } = {}) {
   const nCards = Math.min(50, Math.max(1, Number(count) || 15));
-  const outputTokens = 1500 + 220 * nCards;
+  const perCard = FC_OUTPUT_TOKENS_PER_CARD + (withRubrics ? FC_OUTPUT_TOKENS_PER_RUBRIC : 0);
+  const outputTokens = FC_OUTPUT_BASE_TOKENS + perCard * nCards;
   const ceiling = modelCtx > 0 ? modelCtx : FC_FALLBACK_MODEL_CTX;
   let numCtx;
   if (Number.isFinite(setting) && setting > 0) {
     numCtx = Math.min(setting, ceiling);
   } else {
-    const neededTokens = Math.ceil((Number(chars) || 0) / FC_CHARS_PER_TOKEN)
+    const neededTokens = Math.ceil(((Number(chars) || 0) / FC_CHARS_PER_TOKEN) * FC_PROMPT_HEADROOM)
       + FC_SCAFFOLD_TOKENS + outputTokens;
     numCtx = Math.min(ceiling, Math.max(8192, Math.ceil(neededTokens / 2048) * 2048));
   }
+  // The clip limit divides the headroom back out, so material admitted under
+  // the limit still fits after the estimate's worst-case error.
   const maxChars = Math.max(
     4000,
-    Math.floor((numCtx - FC_SCAFFOLD_TOKENS - outputTokens) * FC_CHARS_PER_TOKEN),
+    Math.floor(((numCtx - FC_SCAFFOLD_TOKENS - outputTokens) * FC_CHARS_PER_TOKEN) / FC_PROMPT_HEADROOM),
   );
   return { numCtx, maxChars, outputTokens };
 }
@@ -2584,15 +3266,20 @@ function fcAutoCardEstimate(chars) {
  * abort the underlying request (no signal to abort with) — it abandons the
  * iterator, which is enough to unwedge the UI.
  */
-async function fcStreamWithStall(stream, onChunk, stallMs = 90_000) {
+async function fcStreamWithStall(stream, onChunk, stallMs = 90_000, firstChunkMs = 240_000) {
   const it = stream[Symbol.asyncIterator]();
+  let sawChunk = false;
   for (;;) {
+    // The FIRST chunk gets a longer leash: cold-loading a 17-20GB model
+    // behind a busy GPU takes minutes, and declaring a stall during the load
+    // is what made the duplicate judge read "unavailable" on healthy decks.
+    const limit = sawChunk ? stallMs : Math.max(stallMs, firstChunkMs);
     let timer;
     const stall = new Promise((_, reject) => {
       timer = setTimeout(() => reject(new Error(
-        `The model stopped responding (no output for ${Math.round(stallMs / 1000)}s). ` +
+        `The model stopped responding (no output for ${Math.round(limit / 1000)}s). ` +
         'Check that the model backend is running.',
-      )), stallMs);
+      )), limit);
     });
     // Keep a handle on the pending next() so a stall doesn't orphan it into
     // an unhandled rejection, and close the generator so its cleanup runs.
@@ -2608,6 +3295,7 @@ async function fcStreamWithStall(stream, onChunk, stallMs = 90_000) {
       clearTimeout(timer);
     }
     if (step.done) return;
+    sawChunk = true;
     onChunk(step.value);
   }
 }
@@ -2695,8 +3383,9 @@ async function fcGenerateCards(sourceText, { count = null, focus = '', pageTexts
       ? pageTexts.reduce((n, p) => n + String(p || '').length, 0)
       : sourceText.length);
   const planCount = count ?? fcAutoCardEstimate(totalChars);
+  const withRubrics = fcProductionRecallEnabled();
   const { numCtx, maxChars } = fcContextPlan({
-    chars: totalChars, count: planCount, modelCtx, setting: contextSetting,
+    chars: totalChars, count: planCount, modelCtx, setting: contextSetting, withRubrics,
   });
   const built = multiDoc
     ? fcBuildMaterialDocs(docs, maxChars)
@@ -2729,16 +3418,19 @@ async function fcGenerateCards(sourceText, { count = null, focus = '', pageTexts
 
   let output = '';
   const stream = _api.lm.sendChatRequest(modelId, [
-    { role: 'system', content: FC_GENERATE_SYSTEM },
+    { role: 'system', content: withRubrics ? FC_GENERATE_SYSTEM + FC_GENERATE_RECALL_RULES : FC_GENERATE_SYSTEM },
     { role: 'user', content: user },
   ], { temperature: 0.2, think, numCtx });
   await fcStreamWithStall(stream, (chunk) => {
     if (chunk.content) output += chunk.content;
   });
-  const { cards, error } = fcExtractCardsJson(output);
+  const { cards, error, truncated } = fcExtractCardsJson(output);
   if (error && cards.length === 0) {
     console.warn('[Flashcards] generation failed. Raw model output head:', output.slice(0, 400));
     throw new Error(`${error} (model: ${modelId}; raw output logged to console)`);
+  }
+  if (truncated) {
+    console.warn(`[Flashcards] response truncated by the context window — salvaged ${cards.length} complete card(s) (model: ${modelId}, numCtx: ${numCtx})`);
   }
   if (multiDoc) {
     // Attribution hygiene, per doc: a doc index must exist; a page must
@@ -2758,7 +3450,251 @@ async function fcGenerateCards(sourceText, { count = null, focus = '', pageTexts
   } else {
     for (const c of cards) { delete c.page; delete c.doc; }
   }
-  return cards;
+  // M102: freeze the passage each production card was made from.
+  //
+  // Captured here because generation is the only moment the page text is
+  // already in memory. Reading it back at review time would mean
+  // extractText() on the WHOLE document to grade one card, and the source
+  // could have moved or been edited by then — the card would silently start
+  // being marked against different words than it was written from.
+  //
+  // Production cards only: a recognition card never grades against it, so
+  // storing one would be dead weight on every row.
+  if (withRubrics) {
+    for (const c of cards) {
+      if (!fcIsProductionMode(c.recallMode)) continue;
+      const pages = multiDoc
+        ? (Number.isInteger(c.doc) ? docs[c.doc - 1]?.pageTexts : null)
+        : pageTexts;
+      const idx = multiDoc
+        ? (Number.isInteger(c.page) ? c.page - 1 : -1)
+        : (Number.isInteger(c.page) ? c.page - pageOffset - 1 : -1);
+      const page = Array.isArray(pages) && idx >= 0 ? pages[idx] : null;
+      // Unpaged single-source material is short enough that the whole of it
+      // IS the passage; anything longer always carries page markers.
+      const text = page != null ? String(page)
+        : (!multiDoc && !paged) ? String(sourceText || '') : '';
+      if (text.trim()) c.sourceExcerpt = text.slice(0, FC_SOURCE_EXCERPT_MAX_CHARS);
+    }
+  }
+  return { cards, truncated: !!truncated };
+}
+
+
+// ── Grading a produced answer (M102) ─────────────────────────────────────────
+//
+// The model judges facts; fcMapVerdictToRating turns the judgement into a
+// grade. Nothing here ever asks a model for a rating.
+
+const FC_MARK_SYSTEM = [
+  'You mark a student\'s written answer against a fixed list of points. You are a marker, not a teacher.',
+  'For EACH point, in order, decide whether the student\'s answer contains it:',
+  '- "hit": the point is there. Different wording, different order, and imperfect spelling are all fine.',
+  '- "partial": the idea is there but incomplete, hedged, or missing the part that makes it true.',
+  '- "miss": the point is absent.',
+  'Mark meaning only. Never reward fluent writing that says nothing, and never penalise terse writing that says everything.',
+  'Set "contradiction": true ONLY when the answer asserts something the reference denies — a wrong direction, a wrong sign, a reversed causal claim, a false condition. An omission is never a contradiction.',
+  'Write "note": one short sentence naming what was missing or wrong, addressed to the student. Empty when everything was hit.',
+  'Never award a point that is not in the list, and never invent points.',
+  'Output ONLY this JSON object, no prose:',
+  '{"points": [{"status": "hit|partial|miss", "note": "..."}], "contradiction": false, "note": "..."}',
+].join('\n');
+
+const FC_MARK_MODE_RULES = {
+  conceptual: 'The points are the ideas a correct explanation must contain.',
+  list: 'The points are items the student had to enumerate. Match each item on meaning, not wording, and ignore the order they were listed in.',
+  formula: 'The point is a formula. "hit" = mathematically equivalent, however it is written. "partial" = the right structure with a notation slip, a wrong constant, or a wrong index. "miss" = a different formula.',
+};
+
+const FC_RUBRIC_SYSTEM = [
+  'You reduce a flashcard\'s answer to the points a student must state to have answered it.',
+  'Rules:',
+  '- One point per idea. Between 2 and 6 points; fewer only when the answer genuinely holds fewer.',
+  '- A point is a claim, not a topic: "variance is proportional to the prior column", not "variance".',
+  '- Mark "required": false for supporting detail a complete answer could omit. Mark the load-bearing claims required.',
+  '- Never add a point the answer does not make.',
+  'Output ONLY a JSON array, no prose:',
+  '[{"text": "...", "required": true}]',
+].join('\n');
+
+/**
+ * The reference a produced answer is marked against. Pure.
+ *
+ * `back` plus the stored source excerpt, and deliberately NOT the card's
+ * notes: notes are the learner's own mnemonics and reminders, so marking
+ * their answer against them would be circular — a misconception written into
+ * the notes would then mark the same misconception correct forever.
+ *
+ * `sourced` reports whether the excerpt was there, so a verdict reached
+ * without one can be shown as the weaker evidence it is.
+ */
+function fcGradingContext(card) {
+  const excerpt = String(card?.sourceExcerpt || '').trim();
+  const parts = [`Reference answer:\n${String(card?.back || '').trim()}`];
+  if (excerpt) parts.push(`Source passage${card?.sourcePage ? ` (page ${card.sourcePage})` : ''}:\n${excerpt}`);
+  return { text: parts.join('\n\n'), sourced: !!excerpt };
+}
+
+/** Output reserve for a verdict: a status + short note per point, plus the tail. */
+const FC_MARK_OUTPUT_TOKENS = 700;
+
+/**
+ * Context window for one judging call. Judging is small and bounded — an
+ * excerpt capped at 2K chars, a short rubric, one answer — so it plans from
+ * the real lengths rather than borrowing generation's card-count model.
+ */
+function fcMarkNumCtx(promptChars) {
+  const tokens = Math.ceil(promptChars / FC_CHARS_PER_TOKEN * FC_PROMPT_HEADROOM)
+    + FC_SCAFFOLD_TOKENS + FC_MARK_OUTPUT_TOKENS;
+  return Math.max(2048, Math.ceil(tokens / 1024) * 1024);
+}
+
+/**
+ * Ask the model to reduce an existing card's answer to rubric points.
+ *
+ * Used for cards that were never generated with a rubric — hand-made cards,
+ * Anki imports, and everything that predates M102. Persisted by the caller,
+ * so it happens once per card rather than once per review: deriving it fresh
+ * each time would be exactly the drifting standard the stored rubric exists
+ * to prevent.
+ */
+async function fcDeriveRubric(card) {
+  const modelId = await fcPickModel();
+  if (!modelId) throw new Error('No language model available. Configure a model in AI settings.');
+  const { think } = fcAiOptions();
+  const ctx = fcGradingContext(card);
+  const user = [
+    `Card front (the question asked):\n${card.front}`,
+    '',
+    ctx.text,
+  ].join('\n');
+  let output = '';
+  const stream = _api.lm.sendChatRequest(modelId, [
+    { role: 'system', content: FC_RUBRIC_SYSTEM },
+    { role: 'user', content: user },
+  ], { temperature: 0.1, think, numCtx: fcMarkNumCtx(user.length) });
+  await fcStreamWithStall(stream, (chunk) => { if (chunk.content) output += chunk.content; });
+  const { items } = fcExtractJsonArray(output, (parsed) => fcNormalizeRubric(parsed));
+  return fcNormalizeRubric(items);
+}
+
+/**
+ * The card's rubric, deriving and persisting one the first time a card is
+ * graded without it. Returns [] when derivation fails, which the caller
+ * reads as "fall back to a self-grade" rather than as an error worth
+ * interrupting a study session for.
+ */
+async function fcEnsureRubric(card) {
+  if (card.rubric && card.rubric.length) return card.rubric;
+  try {
+    const derived = await fcDeriveRubric(card);
+    if (!derived.length) return [];
+    await fcUpdateCard(card.id, { rubric: derived });
+    card.rubric = derived;
+    return derived;
+  } catch (err) {
+    console.warn('[Flashcards] rubric derivation failed:', err?.message || err);
+    return [];
+  }
+}
+
+/** One judging call. Returns the normalized verdict, or null if nothing parsed. */
+async function fcMarkAnswer(card, answer, rubric, { provisional = null } = {}) {
+  const modelId = await fcPickModel();
+  if (!modelId) throw new Error('No language model available. Configure a model in AI settings.');
+  const { think } = fcAiOptions();
+  const mode = fcNormalizeRecallMode(card.recallMode);
+  const ctx = fcGradingContext(card);
+  const user = [
+    FC_MARK_MODE_RULES[mode] || FC_MARK_MODE_RULES.conceptual,
+    '',
+    `Question:\n${card.front}`,
+    '',
+    ctx.text,
+    '',
+    'Points to mark, in order:',
+    ...rubric.map((p, i) => `${i + 1}. ${p.text}${p.required ? '' : ' (supporting detail)'}`),
+    '',
+    `Student's answer:\n${String(answer || '').trim() || '(blank)'}`,
+  ].join('\n');
+  let output = '';
+  const stream = _api.lm.sendChatRequest(modelId, [
+    { role: 'system', content: FC_MARK_SYSTEM },
+    { role: 'user', content: user },
+  ], { temperature: 0, think, numCtx: fcMarkNumCtx(user.length) });
+  await fcStreamWithStall(stream, (chunk) => { if (chunk.content) output += chunk.content; });
+  const raw = fcExtractJsonObject(output);
+  if (!raw) {
+    console.warn('[Flashcards] judging failed. Raw model output head:', output.slice(0, 400));
+    return null;
+  }
+  // A provisional pass (list mode) already settled the confident items; the
+  // model only adjudicates what it was uncertain about, so its judgement is
+  // merged UNDER the deterministic one rather than over it.
+  const verdict = fcNormalizeVerdict(raw, rubric, { mode, sourced: ctx.sourced });
+  if (provisional) {
+    for (let i = 0; i < verdict.points.length; i++) {
+      const p = provisional[i];
+      if (p && p.status !== 'partial') verdict.points[i] = { ...verdict.points[i], status: p.status };
+    }
+  }
+  return verdict;
+}
+
+/**
+ * Grade a produced answer end to end: rubric → verdict → rating.
+ *
+ * Returns `{ rating, verdict, rubric }`, or `{ rating: null }` when the card
+ * cannot be graded automatically (no rubric could be derived, or the model
+ * returned nothing usable). A null rating is not an error — the study view
+ * falls back to the self-grade buttons, so a model outage costs the verdict,
+ * never the review.
+ *
+ * The cheap paths run first and can skip the model entirely: an exact
+ * formula match, and a list answer whose every item matched or missed
+ * decisively.
+ */
+async function fcGradeAnswer(card, answer) {
+  const mode = fcNormalizeRecallMode(card.recallMode);
+  if (!fcIsProductionMode(mode)) return { rating: null, verdict: null, rubric: [] };
+
+  const rubric = await fcEnsureRubric(card);
+  if (!rubric.length) return { rating: null, verdict: null, rubric: [] };
+
+  const ctx = fcGradingContext(card);
+  const base = { mode, contradiction: false, note: '', sourced: ctx.sourced };
+
+  // A blank answer is a legitimate "I cannot", and it is every point missed
+  // by definition. Sending it to the model would spend a call to be told so.
+  if (!String(answer || '').trim()) {
+    const verdict = {
+      ...base,
+      points: rubric.map(() => ({ status: 'miss', note: '' })),
+      note: 'Nothing written down.',
+    };
+    return { rating: fcMapVerdictToRating(verdict, rubric), verdict, rubric };
+  }
+
+  // Formula: an exact match after normalisation needs no judgement at all.
+  if (mode === 'formula' && rubric.length === 1 && fcFormulaMatches(answer, rubric[0].text)) {
+    const verdict = { ...base, points: [{ status: 'hit', note: '' }] };
+    return { rating: fcMapVerdictToRating(verdict, rubric), verdict, rubric };
+  }
+
+  // List: the deterministic pre-pass settles clear hits and clear misses.
+  let provisional = null;
+  if (mode === 'list') {
+    const pre = fcMatchListItems(answer, rubric);
+    if (!pre.uncertain) {
+      const verdict = { ...base, points: pre.statuses };
+      return { rating: fcMapVerdictToRating(verdict, rubric), verdict, rubric };
+    }
+    provisional = pre.statuses;
+  }
+
+  const verdict = await fcMarkAnswer(card, answer, rubric, { provisional });
+  if (!verdict) return { rating: null, verdict: null, rubric };
+  return { rating: fcMapVerdictToRating(verdict, rubric), verdict, rubric };
 }
 
 
@@ -2955,7 +3891,46 @@ async function fcLeechRewriteFlow(card) {
  * an instruction to go find and cite the material — with an explicit licence
  * to say "not found" instead of filling the gap from the card.
  */
-async function fcExplainInChat(card, deckName) {
+/**
+ * Render one marking as plain text for the chat hand-off. Pure.
+ *
+ * The per-point breakdown goes across verbatim rather than being summarised
+ * to a grade, because the grade is the least useful part: what makes the
+ * conversation worth having is WHICH claim was missing, and the model cannot
+ * ask about a gap it was only told the size of.
+ */
+function fcMarkingTranscript(marking) {
+  const { answer, verdict, rubric, rating, reviewedAt } = marking;
+  const s = fcScoreVerdict(verdict, rubric);
+  const when = reviewedAt ? ` on ${new Date(reviewedAt).toLocaleDateString()}` : '';
+  const lines = [
+    `MY ANSWER (marked ${FC_RATING_LABELS[rating] || '?'}, ${s.hits}/${s.total} points${when})`,
+    String(answer || '').trim() || '(left blank)',
+    '',
+    'MARKING',
+  ];
+  rubric.forEach((p, i) => {
+    const status = verdict?.points?.[i]?.status || 'miss';
+    const note = verdict?.points?.[i]?.note;
+    lines.push(`${FC_POINT_GLYPHS[status]} ${p.text}${note && status !== 'hit' ? ` — ${note}` : ''}`);
+  });
+  if (verdict?.contradiction) lines.push('! This answer contradicts the source.');
+  if (verdict?.note) lines.push(`Marker's note: ${verdict.note}`);
+  if (!verdict?.sourced) lines.push('(Marked against the card\'s answer only — no source passage is stored.)');
+  return lines.join('\n');
+}
+
+/**
+ * Stage a grounded question about a card in the chat.
+ *
+ * `marking` (M102) carries a graded answer across — live from the study
+ * verdict, or an older one picked out of the card's history. When it is
+ * present the ask changes entirely: not "explain this card" but "here is
+ * what I could not produce, close that gap". Handing the model the generic
+ * prompt while sitting on a specific failure would waste the most useful
+ * context the session has.
+ */
+async function fcExplainInChat(card, deckName, { marking = null } = {}) {
   await _api.commands.executeCommand('chat.show');
 
   const sourceRef = card.sourceLabel
@@ -2974,6 +3949,7 @@ async function fcExplainInChat(card, deckName) {
       `Front: ${card.front}`,
       `Back: ${card.back}`,
       sourceRef ? `Source: ${sourceRef}` : '',
+      marking ? `\n${fcMarkingTranscript(marking)}` : '',
     ].filter(Boolean).join('\n'),
   };
   if (card.sourcePage > 0) attachment.pageNumber = card.sourcePage;
@@ -2997,6 +3973,35 @@ async function fcExplainInChat(card, deckName) {
   const where = sourceRef
     ? `It came from ${sourceRef}${isFile ? ' (attached)' : ''} — start there.`
     : 'The card records no source, so search the workspace for the material it came from.';
+
+  if (marking) {
+    const gaps = marking.rubric
+      .map((p, i) => ({ p, status: marking.verdict?.points?.[i]?.status || 'miss' }))
+      .filter((x) => x.status !== 'hit')
+      .map((x) => `- ${x.p.text}`);
+    await _api.commands.executeCommand('chat.stagePrompt', {
+      text: [
+        `I tried to answer this from memory and it was marked ${FC_RATING_LABELS[marking.rating] || ''}. Help me close the gap.`,
+        '',
+        `Card: "${fcTruncate(card.front, 160)}"`,
+        '',
+        ...(marking.verdict?.contradiction
+          // A contradiction is the whole conversation: believing something the
+          // source denies is a different problem from having missed a point,
+          // and fixing it needs the false belief named first.
+          ? ['My answer contradicts the source. Start by naming exactly what I got backwards and what the material actually says.']
+          : gaps.length
+            ? ['What I did not produce:', ...gaps]
+            : ['I covered the points, so go deeper than the card does.']),
+        '',
+        where,
+        'Explain the material behind what I missed so I could produce it myself next time — do not just restate the card\'s answer back to me.',
+        'Cite the file and page behind each claim, and link back to the source so I can open it.',
+        '',
+      ].join('\n'),
+    });
+    return;
+  }
 
   await _api.commands.executeCommand('chat.stagePrompt', {
     text: [
@@ -3291,6 +4296,35 @@ function injectStyles() {
 .fc-sb__icon-btn:hover { background: var(--px-surface-hover); color: var(--px-text); }
 .fc-sb__icon-btn:active { transform: var(--px-press); }
 
+/* Navigation rail — the tool's destinations, pinned above the scroller.
+   Reads as sidebar navigation (row, glyph, selected slab), not as buttons:
+   the app's other navigators use the same left-accent selected state. */
+.fc-sb__nav {
+  display: flex; flex-direction: column; flex: 0 0 auto;
+  padding: var(--px-space-2) var(--px-space-1) var(--px-space-2);
+  border-bottom: 1px solid var(--px-divider);
+}
+.fc-sb__nav-item {
+  position: relative;
+  display: flex; align-items: center; gap: var(--px-space-2); width: 100%;
+  height: 28px; padding: 0 var(--px-space-2); border: 0; border-radius: var(--px-radius-sm);
+  background: transparent; color: var(--px-text-secondary);
+  font: inherit; font-size: var(--px-text-base); font-weight: 550;
+  text-align: left; cursor: pointer;
+  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
+}
+.fc-sb__nav-item:hover { background: var(--px-surface-hover); color: var(--px-text); }
+.fc-sb__nav-item:focus-visible { outline: none; box-shadow: var(--px-ring-accent); }
+.fc-sb__nav-item--active { background: var(--px-surface-selected); color: var(--px-text); font-weight: 650; }
+.fc-sb__nav-item--active::before {
+  content: ''; position: absolute; left: 0; top: 5px; bottom: 5px; width: 2px;
+  border-radius: 0 2px 2px 0; background: var(--px-accent);
+}
+.fc-sb__nav-icon { flex: 0 0 auto; display: inline-flex; width: 14px; height: 14px; color: var(--px-text-faint); }
+.fc-sb__nav-item--active .fc-sb__nav-icon { color: var(--px-accent); }
+.fc-sb__nav-icon svg { width: 100%; height: 100%; }
+.fc-sb__nav-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 .fc-sb__scroll { flex: 1; overflow-y: auto; padding-bottom: var(--px-space-3); }
 
 .fc-sb__section { display: flex; flex-direction: column; }
@@ -3407,23 +4441,22 @@ function injectStyles() {
   height: 46px; padding: 0 var(--px-space-4); flex: 0 0 auto;
   border-bottom: 1px solid var(--px-divider);
 }
-.fc-pane__tabs { display: flex; align-items: stretch; gap: 0; }
-.fc-pane__tab {
-  position: relative;
-  display: inline-flex; align-items: center; gap: 7px; height: 100%; padding: 0 var(--px-space-3);
-  border: 0; background: transparent; color: var(--px-text-muted);
-  font: inherit; font-size: var(--px-text-base); font-weight: 550; cursor: pointer;
-  transition: color var(--px-dur-fast) var(--px-ease);
+/* Breadcrumb — where you are, and the way back out. Navigation itself lives
+   in the sidebar rail; this must never grow into a second tab strip. */
+.fc-pane__crumbs { display: flex; align-items: center; gap: var(--px-space-2); min-width: 0; }
+.fc-crumb {
+  max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font: inherit; font-size: var(--px-text-base); font-weight: 650; color: var(--px-text);
 }
-.fc-pane__tab::after {
-  content: ''; position: absolute; left: var(--px-space-3); right: var(--px-space-3); bottom: -1px;
-  height: 2px; border-radius: 2px 2px 0 0; background: transparent;
-  transition: background var(--px-dur-fast) var(--px-ease);
+.fc-crumb--link {
+  border: 0; padding: 2px var(--px-space-1); margin: 0 calc(var(--px-space-1) * -1);
+  border-radius: var(--px-radius-sm); background: transparent;
+  color: var(--px-text-muted); font-weight: 550; cursor: pointer;
+  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
-.fc-pane__tab svg { width: 14px; height: 14px; opacity: 0.8; }
-.fc-pane__tab:hover { color: var(--px-text); }
-.fc-pane__tab--active { color: var(--px-text); font-weight: 650; }
-.fc-pane__tab--active::after { background: var(--px-accent); }
+.fc-crumb--link:hover { background: var(--px-surface-hover); color: var(--px-text); }
+.fc-crumb--link:focus-visible { outline: none; box-shadow: var(--px-ring-accent); }
+.fc-crumb__sep { color: var(--px-text-disabled); font-size: var(--px-text-sm); user-select: none; }
 .fc-pane__spacer { flex: 1; }
 .fc-pane__body { flex: 1; overflow-y: auto; }
 
@@ -3444,14 +4477,66 @@ function injectStyles() {
 }
 .fc-empty { padding: var(--px-space-8) var(--px-space-4); text-align: center; font-size: var(--px-text-base); color: var(--px-text-muted); }
 
-/* ── Deck list (Decks tab) — hairline-separated rows, not boxes; secondary
-   actions stay out of sight until the row is engaged ── */
+/* ── Decks home — the landing surface. A masthead, today's ask, the actions
+   that start work, then the decks. Same editorial voice as the rest of the
+   tool: space and weight carry hierarchy, signal hues only on counts. ── */
+.fc-home__head {
+  display: flex; align-items: flex-end; gap: var(--px-space-3);
+  padding-bottom: var(--px-space-3); border-bottom: 1px solid var(--px-divider);
+}
+.fc-home__head-text { flex: 1; min-width: 0; }
+.fc-home__title {
+  font-size: var(--px-text-xl); font-weight: 700; letter-spacing: -0.02em;
+  line-height: 1.15; color: var(--px-text);
+}
+.fc-home__sub {
+  margin-top: 3px; font-size: var(--px-text-sm); color: var(--px-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.fc-home__today {
+  display: flex; align-items: center; gap: var(--px-space-6); flex-wrap: wrap;
+  padding: var(--px-space-4) 0; border-bottom: 1px solid var(--px-divider);
+}
+.fc-home__stats { display: flex; align-items: stretch; gap: var(--px-space-5); }
+.fc-home__stat { display: flex; flex-direction: column; gap: 2px; min-width: 54px; }
+.fc-home__num {
+  font-size: var(--px-text-xl); font-weight: 680; line-height: 1;
+  letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--px-text);
+}
+.fc-home__num--zero { color: var(--px-text-disabled); }
+.fc-home__num--new { color: var(--px-accent); }
+.fc-home__num--learn { color: var(--px-warning); }
+.fc-home__num--due { color: var(--px-success); }
+.fc-home__stat-lbl {
+  font-size: var(--px-text-2xs); text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--px-text-muted);
+}
+.fc-home__cta { display: flex; align-items: center; gap: var(--px-space-2); flex-wrap: wrap; }
+.fc-home__cta .fc-btn { height: 32px; }
+.fc-home__behind { font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
+.fc-home__actions { margin-top: var(--px-space-4); }
+.fc-home__decks { display: flex; flex-direction: column; }
+
+/* Deck rows on the home page: identity and counts on the left, the actions
+   that operate on that deck on the right — visible, not hover-revealed. A
+   home page whose actions only appear on hover is not a home page. */
+.fc-deck-card__counts { display: flex; align-items: baseline; gap: var(--px-space-4); margin-top: var(--px-space-2); }
+.fc-deck-count { display: inline-flex; align-items: baseline; gap: 5px; }
+.fc-deck-count__n { font-size: var(--px-text-md); font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.fc-deck-count__n--zero { color: var(--px-text-disabled); }
+.fc-deck-count__n--new { color: var(--px-accent); }
+.fc-deck-count__n--due { color: var(--px-success); }
+.fc-deck-count__n--total { color: var(--px-text); }
+.fc-deck-count__l { font-size: var(--px-text-2xs); text-transform: uppercase; letter-spacing: 0.07em; color: var(--px-text-muted); }
+
 .fc-deck-card {
   display: flex; align-items: center; gap: var(--px-space-3);
-  padding: var(--px-space-3) var(--px-space-1);
+  padding: var(--px-space-4) var(--px-space-1);
   border-bottom: 1px solid var(--px-divider);
 }
-.fc-deck-card__info { flex: 1; min-width: 0; cursor: pointer; }
+.fc-deck-card:last-child { border-bottom: 0; }
+.fc-deck-card__info { flex: 1; min-width: 0; cursor: pointer; border-radius: var(--px-radius-sm); }
+.fc-deck-card__info:focus-visible { outline: none; box-shadow: var(--px-ring-accent); }
 .fc-deck-card__name { font-size: var(--px-text-md); font-weight: 600; letter-spacing: -0.01em; color: var(--px-text); }
 .fc-deck-card__meta { font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; margin-top: 3px; }
 .fc-exam-chip {
@@ -3526,9 +4611,7 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
 .fc-cal__day--selected:hover:not(:disabled) { background: var(--px-accent-faint); }
 
 .fc-input--importance { width: 88px; flex: 0 0 auto; }
-.fc-deck-card__actions { display: flex; gap: var(--px-space-1); flex: 0 0 auto; opacity: 0; transition: opacity var(--px-dur-fast) var(--px-ease); }
-.fc-deck-card:hover .fc-deck-card__actions,
-.fc-deck-card:focus-within .fc-deck-card__actions { opacity: 1; }
+.fc-deck-card__actions { display: flex; align-items: center; gap: var(--px-space-1); flex: 0 0 auto; }
 .fc-view__title { font-size: var(--px-text-lg); font-weight: 650; letter-spacing: -0.01em; color: var(--px-text); }
 
 /* ── Forms — sentence-case labels (no shouting), quiet inset inputs ── */
@@ -3811,6 +4894,99 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
 .fc-grade--good:hover  { background: rgba(var(--px-green-rgb), 0.15); color: var(--px-success); }
 .fc-grade--easy:hover  { background: rgba(var(--px-blue-rgb), 0.15); color: var(--px-info); }
 .fc-study__reveal { margin-top: var(--px-space-6); height: 32px; padding: 0 var(--px-space-6); }
+/* Sits beside the primary action on the same baseline, quieter by weight. */
+.fc-study__skip { margin-top: var(--px-space-6); height: 32px; padding: 0 var(--px-space-4); flex: none; }
+
+/* ── Production recall (M102) ──────────────────────────────────────────────
+   The answer box sits where the answer card will land, so submitting reads
+   as the page continuing rather than as a panel being swapped out. */
+.fc-meta-recall { color: var(--px-info); font-weight: 600; }
+.fc-cardrow__history { margin-top: var(--px-space-2); }
+.fc-answers { display: flex; flex-direction: column; gap: var(--px-space-2); }
+.fc-answers__entry {
+  border-left: 2px solid var(--px-border); padding-left: var(--px-space-3);
+}
+.fc-answers__head { display: flex; align-items: center; gap: var(--px-space-2); margin-bottom: 2px; }
+.fc-answers__grade { font-size: var(--px-text-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+.fc-answers__grade--again { color: var(--px-danger); }
+.fc-answers__grade--hard  { color: var(--px-warning); }
+.fc-answers__grade--good  { color: var(--px-success); }
+.fc-answers__grade--easy  { color: var(--px-info); }
+.fc-answers__when, .fc-answers__score { font-size: var(--px-text-2xs); color: var(--px-text-faint); font-variant-numeric: tabular-nums; }
+.fc-answers__flag { font-size: var(--px-text-2xs); color: var(--px-danger); }
+/* pre-wrap: a typed answer's line breaks ARE its structure, especially a list. */
+.fc-answers__text {
+  font-size: var(--px-text-xs); color: var(--px-text-secondary);
+  white-space: pre-wrap; line-height: var(--px-leading-base);
+}
+.fc-answers__note { font-size: var(--px-text-2xs); color: var(--px-text-faint); margin-top: 2px; }
+.fc-edit__rubric { margin-top: var(--px-space-3); }
+.fc-edit__rubric .fc-textarea { width: 100%; box-sizing: border-box; resize: vertical; }
+.fc-study__produce { width: 100%; max-width: min(100%, 920px); margin-top: var(--px-space-5); text-align: left; }
+.fc-study__produce-label {
+  font-size: var(--px-text-2xs); font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.07em; color: var(--px-text-faint); margin-bottom: 4px;
+}
+.fc-study__produce-input { width: 100%; box-sizing: border-box; resize: vertical; line-height: var(--px-leading-relaxed); }
+.fc-study__produce-input[readonly] { opacity: 0.72; cursor: default; }
+
+.fc-verdict {
+  width: 100%; box-sizing: border-box; margin-top: var(--px-space-3);
+  padding: var(--px-space-3) var(--px-space-4);
+  border: 1px solid var(--px-border); border-left-width: 3px;
+  border-radius: var(--px-radius-md); background: var(--px-surface-raised);
+  text-align: left;
+}
+.fc-verdict--again { border-left-color: var(--px-danger); }
+.fc-verdict--hard  { border-left-color: var(--px-warning); }
+.fc-verdict--good  { border-left-color: var(--px-success); }
+.fc-verdict--easy  { border-left-color: var(--px-info); }
+.fc-verdict--pending, .fc-verdict--fallback { display: flex; align-items: center; gap: var(--px-space-2); }
+
+.fc-verdict__head { display: flex; align-items: center; gap: var(--px-space-2); margin-bottom: var(--px-space-2); }
+.fc-verdict__dot { width: 6px; height: 6px; border-radius: var(--px-radius-full); background: currentColor; flex: none; }
+.fc-verdict--again .fc-verdict__dot { background: var(--px-danger); }
+.fc-verdict--hard  .fc-verdict__dot { background: var(--px-warning); }
+.fc-verdict--good  .fc-verdict__dot { background: var(--px-success); }
+.fc-verdict--easy  .fc-verdict__dot { background: var(--px-info); }
+.fc-verdict__rating { font-size: var(--px-text-sm); font-weight: 650; color: var(--px-text); }
+.fc-verdict__score { font-size: var(--px-text-xs); color: var(--px-text-faint); font-variant-numeric: tabular-nums; }
+.fc-verdict__unsourced {
+  font-size: var(--px-text-2xs); font-weight: 600; color: var(--px-text-faint);
+  border: 1px solid var(--px-border); border-radius: var(--px-radius-sm);
+  padding: 0 5px; line-height: 16px; cursor: help;
+}
+.fc-verdict__contradiction {
+  font-size: var(--px-text-xs); color: var(--px-danger);
+  margin-bottom: var(--px-space-2); line-height: var(--px-leading-base);
+}
+.fc-verdict__points { display: flex; flex-direction: column; gap: 5px; }
+.fc-verdict__point { display: flex; gap: var(--px-space-2); align-items: baseline; }
+.fc-verdict__glyph { flex: none; width: 12px; font-size: var(--px-text-xs); font-weight: 700; text-align: center; }
+.fc-verdict__point--hit     .fc-verdict__glyph { color: var(--px-success); }
+.fc-verdict__point--partial .fc-verdict__glyph { color: var(--px-warning); }
+.fc-verdict__point--miss    .fc-verdict__glyph { color: var(--px-danger); }
+.fc-verdict__point-body { display: flex; flex-direction: column; gap: 1px; }
+.fc-verdict__point-text { font-size: var(--px-text-xs); color: var(--px-text-secondary); line-height: var(--px-leading-base); }
+.fc-verdict__point--miss .fc-verdict__point-text { color: var(--px-text); }
+.fc-verdict__point-note { font-size: var(--px-text-2xs); color: var(--px-text-faint); line-height: var(--px-leading-base); }
+.fc-verdict__note {
+  font-size: var(--px-text-xs); color: var(--px-text-secondary);
+  margin-top: var(--px-space-2); padding-top: var(--px-space-2);
+  border-top: 1px solid var(--px-border-subtle); line-height: var(--px-leading-base);
+}
+.fc-verdict__foot { margin-top: var(--px-space-3); }
+.fc-answers__discuss { margin-left: auto; }
+.fc-verdict--pending .fc-verdict__pending-text, .fc-verdict--fallback .fc-verdict__note {
+  margin: 0; padding: 0; border: 0; font-size: var(--px-text-xs); color: var(--px-text-faint);
+}
+.fc-verdict__spinner {
+  width: 11px; height: 11px; flex: none; border-radius: var(--px-radius-full);
+  border: 2px solid var(--px-border); border-top-color: var(--px-text-faint);
+  animation: fc-verdict-spin 620ms linear infinite;
+}
+@keyframes fc-verdict-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .fc-verdict__spinner { animation-duration: 2s; } }
 /* Rail contents — quiet, left-aligned, full-width within the rail. */
 .fc-study__keys {
   font-size: var(--px-text-xs); color: var(--px-text-faint);
@@ -3893,8 +5069,16 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
   transition: border-color var(--px-dur-fast) var(--px-ease), box-shadow var(--px-dur-fast) var(--px-ease);
 }
 .fc-cs__mode--active .fc-cs__mode-dot { border-color: var(--px-accent); box-shadow: inset 0 0 0 3px var(--px-accent); }
-.fc-cs__mode-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.fc-cs__mode-name { font-size: var(--px-text-base); font-weight: 600; color: var(--px-text); }
+.fc-cs__mode-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+/* The count sits on the row's baseline, right-aligned: four of these read as
+   a column you can scan for "where are my cards". */
+.fc-cs__mode-namerow { display: flex; align-items: baseline; gap: var(--px-space-3); }
+.fc-cs__mode-name { font-size: var(--px-text-base); font-weight: 600; color: var(--px-text); flex: 1; min-width: 0; }
+.fc-cs__mode-count {
+  flex: 0 0 auto; font-size: var(--px-text-sm); font-weight: 650;
+  color: var(--px-accent); font-variant-numeric: tabular-nums;
+}
+.fc-cs__mode-count--zero { color: var(--px-text-disabled); font-weight: 550; }
 .fc-cs__mode-blurb { font-size: var(--px-text-sm); color: var(--px-text-muted); line-height: var(--px-leading-base); }
 .fc-cs__fields { display: flex; gap: var(--px-space-4); align-items: flex-end; }
 .fc-cs__field { flex: 0 1 180px; }
@@ -3957,6 +5141,14 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
   display: flex; flex-direction: column; gap: var(--px-space-2);
 }
 .fc-dupgroup--resolved { opacity: 0.5; }
+/* Cleared-by-the-judge section (M101): distinct verdicts collapse out of the
+   triage flow behind a toggle. */
+.fc-dupcleared {
+  margin-top: var(--px-space-4); padding-top: var(--px-space-3);
+  border-top: 1px solid var(--px-divider);
+  display: flex; flex-direction: column; gap: var(--px-space-2); align-items: flex-start;
+}
+.fc-dupcleared > div:last-child { align-self: stretch; }
 .fc-duprow { display: flex; gap: var(--px-space-3); align-items: flex-start; padding: var(--px-space-2) 0; border-top: 1px solid var(--px-divider); }
 .fc-duprow--staged { opacity: 0.45; }
 .fc-duprow__check { flex: 0 0 auto; font-size: var(--px-text-xs); color: var(--px-text-muted); display: inline-flex; align-items: center; gap: 4px; padding-top: 2px; cursor: pointer; }
@@ -3995,8 +5187,69 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 8: SIDEBAR VIEW
+// SECTION 8: NAVIGATION MODEL + SIDEBAR VIEW
 // ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * The tool's top-level destinations, in sidebar order.
+ *
+ * The SIDEBAR owns this navigation. It used to live only on the editor pane's
+ * tab strip, which meant the map was inside the thing it was supposed to map:
+ * with no deck open there was no pane, and with no pane there was no way to
+ * reach Decks, Stats, Create or Import at all. You had to click a deck (which
+ * lands in Browse) and only then find the tabs. Now the destinations sit above
+ * the deck list, always one click away, and the pane carries a breadcrumb
+ * instead of a second copy of the same navigation.
+ */
+const FC_NAV_DEFS = [
+  { view: 'decks', label: 'Decks', iconName: 'layers' },
+  { view: 'study', label: 'Study', iconName: 'play' },
+  { view: 'create', label: 'Create', iconName: 'px-ai-mark' },
+  { view: 'import', label: 'Import', iconName: 'inbox' },
+  { view: 'stats', label: 'Stats', iconName: 'chart-column' },
+];
+
+/** Human names for EVERY route, including the ones that are not destinations
+ *  (they are breadcrumb leaves, not rail entries). */
+const FC_VIEW_LABELS = {
+  decks: 'Decks',
+  study: 'Study',
+  create: 'Create',
+  import: 'Import',
+  stats: 'Stats',
+  browse: 'Browse Cards',
+  custom: 'Custom Study',
+  dedup: 'Find Duplicates',
+  coverage: 'Coverage Review',
+};
+
+/** Views that live UNDER one deck: they light Decks in the rail and put the
+ *  deck's name in the breadcrumb. */
+const FC_DECK_VIEWS = ['browse', 'dedup', 'coverage'];
+
+/** Which rail destination a route lights. Custom Study is a launcher for
+ *  Study, so it lights Study rather than nothing. */
+function fcNavViewFor(route) {
+  const view = route?.view || 'decks';
+  if (FC_DECK_VIEWS.includes(view)) return 'decks';
+  if (view === 'custom') return 'study';
+  return view;
+}
+
+/**
+ * The route the open pane is showing, mirrored here so the sidebar rail can
+ * light where you are. null when no pane is alive — the rail then shows no
+ * selection rather than a stale one.
+ */
+let _fcActiveRoute = null;
+const _navListeners = new Set();
+function _setActiveRoute(route) {
+  _fcActiveRoute = route;
+  for (const listener of [..._navListeners]) {
+    try { listener(route); } catch { /* a broken listener must not stop the rest */ }
+  }
+}
+
 
 function createSidebarView(container) {
   injectStyles();
@@ -4005,6 +5258,31 @@ function createSidebarView(container) {
   // No header title here: the sidebar part chrome already says FLASHCARDS —
   // repeating it read as sloppy duplication (user report). Actions live on
   // the section heads instead.
+
+  // ── Navigation rail ──
+  // Fixed above the scroller: navigation must not scroll away under a long
+  // deck list, and it must work with zero decks (which is exactly when
+  // Create and Import matter most).
+  const nav = el('div', 'fc-sb__nav');
+  nav.setAttribute('role', 'tablist');
+  nav.setAttribute('aria-label', 'Flashcards sections');
+  const navItems = new Map();
+  for (const def of FC_NAV_DEFS) {
+    const item = el('button', 'fc-sb__nav-item');
+    item.type = 'button';
+    item.setAttribute('role', 'tab');
+    item.setAttribute('aria-selected', 'false');
+    item.dataset.view = def.view;
+    const glyph = el('span', 'fc-sb__nav-icon');
+    glyph.innerHTML = icon(def.iconName, 14);
+    item.appendChild(glyph);
+    item.appendChild(el('span', 'fc-sb__nav-label', def.label));
+    item.addEventListener('click', () => void openFlashcards({ view: def.view }));
+    navItems.set(def.view, item);
+    nav.appendChild(item);
+  }
+  root.appendChild(nav);
+
   const scroll = el('div', 'fc-sb__scroll');
   root.appendChild(scroll);
 
@@ -4032,8 +5310,8 @@ function createSidebarView(container) {
   decksHead.appendChild(sectionGen);
   const sectionAdd = el('button', 'fc-sb__section-add');
   sectionAdd.type = 'button';
-  sectionAdd.title = 'New deck';
-  sectionAdd.setAttribute('aria-label', 'New deck');
+  sectionAdd.title = 'New Deck';
+  sectionAdd.setAttribute('aria-label', 'New Deck');
   sectionAdd.innerHTML = icon('plus', 14);
   sectionAdd.addEventListener('click', () => void _cmdNewDeck());
   decksHead.appendChild(sectionAdd);
@@ -4045,6 +5323,25 @@ function createSidebarView(container) {
   const openDeckMenu = (deck, x, y) => {
     if (!_api.ui.showContextMenu) { void openFlashcards({ view: 'browse', deckId: deck.id }); return; }
     _api.ui.showContextMenu({ x, y }, fcDeckMenuItems(deck));
+  };
+
+  /** Deck the pane is currently inside, or null. The sidebar should always be
+   *  able to answer "where am I?" — a rail entry alone cannot, because four of
+   *  the five destinations can be scoped to a deck. */
+  let activeDeckId = typeof _fcActiveRoute?.deckId === 'number' ? _fcActiveRoute.deckId : null;
+
+  const syncNav = (route) => {
+    const active = route ? fcNavViewFor(route) : null;
+    for (const [view, item] of navItems) {
+      const on = view === active;
+      item.classList.toggle('fc-sb__nav-item--active', on);
+      item.setAttribute('aria-selected', on ? 'true' : 'false');
+    }
+    activeDeckId = typeof route?.deckId === 'number' ? route.deckId : null;
+    for (const row of deckList.children) {
+      if (!row.dataset?.deckId) continue;
+      row.classList.toggle('fc-deck-row--active', Number(row.dataset.deckId) === activeDeckId);
+    }
   };
 
   let disposed = false;
@@ -4143,6 +5440,8 @@ function createSidebarView(container) {
         });
         row.appendChild(more);
 
+        row.dataset.deckId = String(deck.id);
+        row.classList.toggle('fc-deck-row--active', activeDeckId === deck.id);
         row.addEventListener('click', () => void openFlashcards({ view: 'browse', deckId: deck.id }));
         row.addEventListener('keydown', (e) => {
           if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); void openFlashcards({ view: 'browse', deckId: deck.id }); }
@@ -4158,12 +5457,15 @@ function createSidebarView(container) {
   void refresh();
   const onData = () => void refresh();
   _dataListeners.add(onData);
+  _navListeners.add(syncNav);
+  syncNav(_fcActiveRoute);
 
   container.appendChild(root);
   return {
     dispose() {
       disposed = true;
       _dataListeners.delete(onData);
+      _navListeners.delete(syncNav);
       root.remove();
     },
   };
@@ -4179,6 +5481,8 @@ async function _renameDeckFlow(deck) {
 // Guard: one scoring run per deck at a time — a second click mid-run would
 // double-score and double-toast.
 const _fcScoringDecks = new Set();
+/** Same guard for the M102 recall-mode classification pass. */
+const _fcClassifyingDecks = new Set();
 
 /**
  * Backfill exam-criticality scores on a deck's unscored cards (M101). Runs
@@ -4205,6 +5509,29 @@ async function _scoreImportanceFlow(deck) {
     _api.window.showErrorMessage?.(`Importance scoring failed: ${e.message}`);
   } finally {
     _fcScoringDecks.delete(deck.id);
+  }
+}
+
+async function _classifyRecallFlow(deck) {
+  if (_fcClassifyingDecks.has(deck.id)) {
+    _api.window.showInformationMessage?.(`Already classifying "${deck.name}" — cards update as batches finish.`);
+    return;
+  }
+  _fcClassifyingDecks.add(deck.id);
+  try {
+    _api.window.showInformationMessage?.(`Classifying "${deck.name}". Cards that need a written answer get a rubric as batches finish.`);
+    const { promoted, total } = await fcClassifyDeckRecall(deck.id);
+    if (total === 0) {
+      _api.window.showInformationMessage?.(`Every card in "${deck.name}" already has a recall mode set.`);
+    } else if (promoted === 0) {
+      _api.window.showInformationMessage?.(`Reviewed ${total} ${total === 1 ? 'card' : 'cards'} in "${deck.name}". None needed a written answer.`);
+    } else {
+      _api.window.showInformationMessage?.(`${promoted} of ${total} cards in "${deck.name}" now ask for a written answer. Check the rubrics in Browse before you rely on them.`);
+    }
+  } catch (e) {
+    _api.window.showErrorMessage?.(`Recall classification failed: ${e.message}`);
+  } finally {
+    _fcClassifyingDecks.delete(deck.id);
   }
 }
 
@@ -4420,16 +5747,33 @@ async function _deleteDeckFlow(deck) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 9: EDITOR PANE — router (decks / browse / study / stats / create)
+// SECTION 9: EDITOR PANE — breadcrumb + router
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const TAB_DEFS = [
-  { view: 'decks', label: 'Decks', iconName: 'layers' },
-  { view: 'study', label: 'Study', iconName: 'play' },
-  { view: 'create', label: 'Create', iconName: 'px-ai-mark' },
-  { view: 'import', label: 'Import', iconName: 'inbox' },
-  { view: 'stats', label: 'Stats', iconName: 'chart-column' },
-];
+/**
+ * What a crashed view shows instead of nothing. Names the view, carries the
+ * real message (so a screenshot is enough to diagnose), and offers the two
+ * things that actually help: retry, and get out.
+ */
+function renderViewError(body, route, err, setRoute, retry) {
+  console.error(`[Flashcards] the ${route.view} view failed to render:`, err);
+  body.innerHTML = '';
+  const view = el('div', 'fc-view');
+  const box = el('div', 'px-empty');
+  box.appendChild(el('div', 'px-empty__headline',
+    `${FC_VIEW_LABELS[route.view] || 'This view'} could not be rendered`));
+  box.appendChild(el('div', 'px-empty__hint', String(err?.message || err)));
+  const again = el('button', 'fc-btn fc-btn--primary');
+  again.textContent = 'Try Again';
+  again.addEventListener('click', () => retry());
+  box.appendChild(again);
+  const back = el('button', 'fc-btn');
+  back.textContent = 'Back to Decks';
+  back.addEventListener('click', () => setRoute({ view: 'decks' }));
+  box.appendChild(back);
+  view.appendChild(box);
+  body.appendChild(view);
+}
 
 function createEditorPane(container, input) {
   injectStyles();
@@ -4448,32 +5792,55 @@ function createEditorPane(container, input) {
 
   const root = el('div', 'fc-pane');
   const header = el('div', 'fc-pane__header');
-  const tabs = el('div', 'fc-pane__tabs');
-  header.appendChild(tabs);
+  // A breadcrumb, not a tab strip. Navigation moved to the sidebar rail
+  // (FC_NAV_DEFS) — repeating it here would be the same map in two places,
+  // and the pane's job is to say where you ARE and how to step back out.
+  const crumbs = el('nav', 'fc-pane__crumbs');
+  crumbs.setAttribute('aria-label', 'Breadcrumb');
+  header.appendChild(crumbs);
   header.appendChild(el('div', 'fc-pane__spacer'));
   root.appendChild(header);
   const body = el('div', 'fc-pane__body');
   root.appendChild(body);
   container.appendChild(root);
 
-  for (const def of TAB_DEFS) {
-    const tab = el('button', 'fc-pane__tab');
-    tab.type = 'button';
-    tab.dataset.view = def.view;
-    tab.innerHTML = `${icon(def.iconName, 13)}<span>${def.label}</span>`;
-    tab.addEventListener('click', () => setRoute({ view: def.view }));
-    tabs.appendChild(tab);
-  }
+  /** Guards the async deck-name lookup below: a fast route change must not
+   *  let an older breadcrumb finish painting after the newer one. */
+  let crumbSeq = 0;
 
-  const syncTabs = () => {
-    // Custom Study is a launcher for Study, so it lights the Study tab.
-    const deckScoped = ['browse', 'dedup', 'coverage'].includes(state.route.view);
-    const activeView = deckScoped ? 'decks'
-      : state.route.view === 'custom' ? 'study'
-        : state.route.view;
-    for (const t of tabs.children) {
-      t.classList.toggle('fc-pane__tab--active', t.dataset.view === activeView);
+  const syncCrumbs = async () => {
+    const seq = ++crumbSeq;
+    const route = state.route;
+    const view = route.view || 'decks';
+    const paint = (nodes) => {
+      if (seq !== crumbSeq || state.disposed) return;
+      crumbs.innerHTML = '';
+      for (const n of nodes) crumbs.appendChild(n);
+    };
+    const crumb = (label, onClick) => {
+      const node = el(onClick ? 'button' : 'span', onClick ? 'fc-crumb fc-crumb--link' : 'fc-crumb', label);
+      if (onClick) { node.type = 'button'; node.addEventListener('click', onClick); }
+      return node;
+    };
+    const sep = () => el('span', 'fc-crumb__sep', '/');
+
+    if (view === 'decks') { paint([crumb('Decks')]); return; }
+
+    const nodes = [crumb('Decks', () => setRoute({ view: 'decks' }))];
+    if (route.deckId != null) {
+      const deck = await fcGetDeck(route.deckId);
+      if (deck) {
+        nodes.push(sep());
+        nodes.push(view === 'browse'
+          ? crumb(deck.name)
+          : crumb(deck.name, () => setRoute({ view: 'browse', deckId: deck.id })));
+      }
     }
+    if (view !== 'browse' || route.deckId == null) {
+      nodes.push(sep());
+      nodes.push(crumb(FC_VIEW_LABELS[view] || view));
+    }
+    paint(nodes);
   };
 
   let rendering = false, renderQueued = false;
@@ -4489,20 +5856,31 @@ function createEditorPane(container, input) {
       do {
         renderQueued = false;
         if (state.disposed) return;
-        syncTabs();
+        void syncCrumbs();
+        _setActiveRoute(state.route); // the sidebar rail lights what we show
         state.session = null;
         disposeView();
         body.innerHTML = '';
         const route = state.route;
-        if (route.view === 'browse') await renderBrowse(body, route, setRoute);
-        else if (route.view === 'study') await renderStudy(body, route, state, setRoute);
-        else if (route.view === 'custom') await renderCustomStudy(body, route, setRoute);
-        else if (route.view === 'create') await renderCreate(body, route, setRoute, viewDisposables);
-        else if (route.view === 'import') await renderImport(body, route, setRoute, viewDisposables);
-        else if (route.view === 'stats') await renderStats(body);
-        else if (route.view === 'dedup') await renderDedup(body, route, setRoute);
-        else if (route.view === 'coverage') await renderCoverage(body, route, setRoute);
-        else await renderDecks(body, setRoute);
+        // Error boundary. A view that throws must SAY so: renderStudy once
+        // died on a type error after it had appended its (still empty) root,
+        // and the pane just sat there blank — no card, no message, nothing to
+        // report. That is why "Custom Study shows no cards" needed a
+        // reproduction rather than a screenshot. Any future crash lands here.
+        try {
+          if (route.view === 'browse') await renderBrowse(body, route, setRoute);
+          else if (route.view === 'study') await renderStudy(body, route, state, setRoute);
+          else if (route.view === 'custom') await renderCustomStudy(body, route, setRoute);
+          else if (route.view === 'create') await renderCreate(body, route, setRoute, viewDisposables);
+          else if (route.view === 'import') await renderImport(body, route, setRoute, viewDisposables);
+          else if (route.view === 'stats') await renderStats(body);
+          else if (route.view === 'dedup') await renderDedup(body, route, setRoute);
+          else if (route.view === 'coverage') await renderCoverage(body, route, setRoute);
+          else await renderDecks(body, setRoute);
+        } catch (err) {
+          if (state.disposed) return;
+          renderViewError(body, route, err, setRoute, () => void render());
+        }
       } while (renderQueued && !state.disposed);
     } finally {
       rendering = false;
@@ -4523,7 +5901,12 @@ function createEditorPane(container, input) {
   const onRouteEvent = (e) => {
     if (!root.isConnected) return;
     const route = e.detail;
-    if (route && route.view) setRoute(route);
+    if (!route || !route.view) return;
+    // This live pane is handling the navigation, so the copy openFlashcards
+    // stashed for a possibly-absent pane must be consumed here — otherwise it
+    // lingers and sends the NEXT fresh mount somewhere the user never asked for.
+    _takePendingRoute();
+    setRoute(route);
   };
   document.addEventListener('parallx.flashcards.route', onRouteEvent);
 
@@ -4558,6 +5941,10 @@ function createEditorPane(container, input) {
       disposeView();
       document.removeEventListener('parallx.flashcards.route', onRouteEvent);
       _dataListeners.delete(onData);
+      // Only clear the rail if WE are the pane it reflects: a rebuild can
+      // construct the new pane before the old one is torn down, and clearing
+      // then would blank a selection that is already correct.
+      if (_fcActiveRoute === state.route) _setActiveRoute(null);
       root.remove();
     },
     // The workbench rebuilds this pane on every tab switch (media-organizer
@@ -4588,12 +5975,101 @@ function createEditorPane(container, input) {
 
 // ── Decks view ───────────────────────────────────────────────────────────────
 
+/**
+ * Decks — the tool's home page.
+ *
+ * This used to be a bare list with four text buttons per row, and it was only
+ * reachable by opening a deck first (which lands in Browse) and then finding
+ * the pane's tab strip. It is now the surface you land on and the one the
+ * sidebar rail points at: what today asks of you, the actions that start
+ * work, then every deck with the schedule it is actually on.
+ *
+ * The Today promise is computed the same way the sidebar computes it —
+ * counts capped by the session limits AND by the deadline pace — so the two
+ * surfaces can never disagree about how many cards a session will hand over.
+ */
 async function renderDecks(body, setRoute) {
-  const view = el('div', 'fc-view');
+  const view = el('div', 'fc-view fc-home');
+  const now = Date.now();
+  const [decks, today] = await Promise.all([fcListDecks(), fcTodayCounts()]);
+  const paceSettings = fcPaceSettings();
 
-  const actions = el('div', 'fc-row');
-  const newDeckBtn = el('button', 'fc-btn fc-btn--primary');
-  newDeckBtn.innerHTML = `${icon('plus', 12)}<span>New deck</span>`;
+  // ── Masthead ──
+  const head = el('div', 'fc-home__head');
+  const headText = el('div', 'fc-home__head-text');
+  head.appendChild(headText);
+  headText.appendChild(el('div', 'fc-home__title', 'Decks'));
+  const totals = decks.reduce((acc, d) => {
+    acc.cards += d.total;
+    if (d.examDate > now && (acc.exam === 0 || d.examDate < acc.exam)) acc.exam = d.examDate;
+    return acc;
+  }, { cards: 0, exam: 0 });
+  const summary = [
+    `${decks.length} ${decks.length === 1 ? 'deck' : 'decks'}`,
+    `${totals.cards} ${totals.cards === 1 ? 'card' : 'cards'}`,
+  ];
+  if (totals.exam > 0) {
+    summary.push(`next exam in ${Math.max(1, Math.ceil((totals.exam - now) / DAY))} days`);
+  }
+  headText.appendChild(el('div', 'fc-home__sub', summary.join(' · ')));
+  // The sidebar rail owns navigation, but the pane must not become a dead end
+  // when the sidebar is showing another container: home is one breadcrumb
+  // click from anywhere, and every destination is reachable from home.
+  const statsBtn = el('button', 'fc-btn');
+  statsBtn.textContent = 'Stats';
+  statsBtn.title = 'Retention, workload, and review history.';
+  statsBtn.addEventListener('click', () => setRoute({ view: 'stats' }));
+  head.appendChild(statsBtn);
+  view.appendChild(head);
+
+  // ── Today ──
+  if (decks.length > 0) {
+    const pace = fcNewAllowances(decks, now, paceSettings);
+    const served = fcCountServedToday(today, {
+      newLimit: Math.min(Number(cfg('dailyNewLimit', 20)) || 20, pace.total),
+      reviewLimit: Number(cfg('dailyReviewLimit', 200)) || 200,
+    });
+    const behind = Math.max(0, today.dueTotal - served);
+
+    const panel = el('div', 'fc-home__today');
+    const stats = el('div', 'fc-home__stats');
+    const stat = (num, cls, label) => {
+      const box = el('div', 'fc-home__stat');
+      box.appendChild(el('div', `fc-home__num fc-home__num--${num > 0 ? cls : 'zero'}`, String(num)));
+      box.appendChild(el('div', 'fc-home__stat-lbl', label));
+      return box;
+    };
+    stats.appendChild(stat(today.newCount, 'new', 'New'));
+    stats.appendChild(stat(today.learnCount, 'learn', 'Learning'));
+    stats.appendChild(stat(today.reviewCount, 'due', 'Review'));
+    panel.appendChild(stats);
+
+    const cta = el('div', 'fc-home__cta');
+    const studyAll = el('button', 'fc-btn fc-btn--primary');
+    const studyLabel = served > 0 ? `Study ${served} ${served === 1 ? 'Card' : 'Cards'}` : 'Nothing Due Right Now';
+    studyAll.innerHTML = `${icon('play', 12)}<span>${studyLabel}</span>`;
+    // A zeroed daily limit still leaves work reachable — through Custom Study.
+    studyAll.disabled = served === 0;
+    studyAll.addEventListener('click', () => setRoute({ view: 'study' }));
+    cta.appendChild(studyAll);
+    const customAll = el('button', 'fc-btn');
+    customAll.textContent = 'Custom Study';
+    customAll.title = behind > 0
+      ? `${behind} more cards sit behind today's batch. Custom Study reaches them.`
+      : 'Work ahead: extra new cards, review ahead, difficult cards, or cram.';
+    customAll.addEventListener('click', () => setRoute({ view: 'custom' }));
+    cta.appendChild(customAll);
+    if (behind > 0) {
+      cta.appendChild(el('span', 'fc-home__behind', `${behind} more behind today's batch`));
+    }
+    panel.appendChild(cta);
+    view.appendChild(panel);
+  }
+
+  // ── Actions ──
+  const actions = el('div', 'fc-row fc-home__actions');
+  const newDeckBtn = el('button', decks.length === 0 ? 'fc-btn fc-btn--primary' : 'fc-btn');
+  newDeckBtn.innerHTML = `${icon('plus', 12)}<span>New Deck</span>`;
   newDeckBtn.addEventListener('click', () => void _cmdNewDeck());
   actions.appendChild(newDeckBtn);
   const genBtn = _api.ui.createAiButton
@@ -4601,35 +6077,44 @@ async function renderDecks(body, setRoute) {
     : el('button', 'fc-btn');
   if (!genBtn.parentElement) { genBtn.textContent = 'Generate Cards'; actions.appendChild(genBtn); }
   genBtn.addEventListener('click', () => setRoute({ view: 'create' }));
-  const customBtn = el('button', 'fc-btn');
-  customBtn.textContent = 'Custom Study';
-  customBtn.title = 'Work ahead: extra new cards, review ahead, difficult cards, or cram.';
-  customBtn.addEventListener('click', () => setRoute({ view: 'custom' }));
-  actions.appendChild(customBtn);
+  const importBtn = el('button', 'fc-btn');
+  importBtn.textContent = 'Import Cards';
+  importBtn.title = 'Bring in an Anki export, a front/back PDF, or pasted rows.';
+  importBtn.addEventListener('click', () => setRoute({ view: 'import' }));
+  actions.appendChild(importBtn);
   const datesBtn = el('button', 'fc-btn');
   datesBtn.textContent = 'Exam Dates';
   datesBtn.title = 'Set or clear the exam date on several decks at once.';
+  datesBtn.disabled = decks.length === 0;
   datesBtn.addEventListener('click', () => void _setExamDatesBulkFlow());
   actions.appendChild(datesBtn);
   view.appendChild(actions);
-  view.appendChild(el('div', 'fc-label', 'Decks'));
 
-  const decks = await fcListDecks();
-  const paceSettings = fcPaceSettings();
   if (decks.length === 0) {
     // Same hero shape as the workbench voice registry (.px-empty is global).
     const empty = el('div', 'px-empty');
     empty.appendChild(el('div', 'px-empty__headline', 'Build your first deck'));
     empty.appendChild(el('div', 'px-empty__hint',
-      'Click New deck, or Generate to turn a canvas page, PDF, or photo into cards.'));
+      'Click New Deck, Generate Cards to turn a canvas page, PDF, or photo into cards, or Import Cards to bring in a deck you already have.'));
     view.appendChild(empty);
+    body.appendChild(view);
+    return;
   }
+
+  view.appendChild(el('div', 'fc-label', 'All Decks'));
+  const list = el('div', 'fc-home__decks');
+  view.appendChild(list);
+
   for (const deck of decks) {
     const card = el('div', 'fc-deck-card');
+
     const info = el('div', 'fc-deck-card__info');
+    info.setAttribute('role', 'button');
+    info.tabIndex = 0;
+    info.title = `Browse the cards in ${deck.name}`;
     const nameRow = el('div', 'fc-deck-card__name', deck.name);
-    if (deck.examDate && deck.examDate > Date.now()) {
-      const daysLeft = Math.max(1, Math.ceil((deck.examDate - Date.now()) / DAY));
+    if (deck.examDate && deck.examDate > now) {
+      const daysLeft = Math.max(1, Math.ceil((deck.examDate - now) / DAY));
       const chip = el('button', 'fc-exam-chip', `${daysLeft}d to exam`);
       chip.type = 'button';
       chip.title = `Exam ${new Date(deck.examDate).toLocaleDateString()} — intervals capped so every card gets a final review in time. Click to change.`;
@@ -4637,20 +6122,49 @@ async function renderDecks(body, setRoute) {
       nameRow.appendChild(chip);
     }
     info.appendChild(nameRow);
+
+    // Counts carry the Anki colour language the sidebar already uses: new =
+    // accent, due = success. Two grey numbers were indistinguishable.
+    const counts = el('div', 'fc-deck-card__counts');
+    const count = (n, cls, label) => {
+      const box = el('span', 'fc-deck-count');
+      box.appendChild(el('span', `fc-deck-count__n fc-deck-count__n--${n > 0 ? cls : 'zero'}`, String(n)));
+      box.appendChild(el('span', 'fc-deck-count__l', label));
+      return box;
+    };
+    counts.appendChild(count(deck.newCount, 'new', 'new'));
+    counts.appendChild(count(deck.dueCount, 'due', 'due'));
+    counts.appendChild(count(deck.total, 'total', 'total'));
+    info.appendChild(counts);
+
     // The pace line (M101): what the deadline math actually plans for this
     // deck, so the new-card backlog reads as a schedule instead of a dread
     // counter.
-    let metaText = `${deck.total} cards · ${deck.dueCount} due · ${deck.newCount} new`;
     if (paceSettings.paceEnabled && deck.newCount > 0) {
-      const plan = fcPacePlan(deck, Date.now(), paceSettings);
+      const plan = fcPacePlan(deck, now, paceSettings);
       if (plan) {
-        metaText += plan.frozen
-          ? ' · introduction frozen — reviews only until the exam'
-          : ` · pace ${plan.rate}/day, introduced by ${new Date(plan.doneAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+        const doneLabel = new Date(plan.doneAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+        // A raised rate says so. The batch size is a setting the user chose,
+        // and exceeding it without a word would make the number in Settings
+        // a lie on exactly the decks where session length matters most.
+        const line = el('div', 'fc-deck-card__meta', plan.frozen
+          ? 'Introduction frozen — reviews only until the exam'
+          : plan.raised
+            ? `Pace ${plan.rate}/day (raised to meet the exam), introduced by ${doneLabel}`
+            : `Pace ${plan.rate}/day, introduced by ${doneLabel}`);
+        if (plan.raised && !plan.frozen) {
+          line.title = `Your batch size is ${paceSettings.ceiling}/day, which would not finish introducing `
+            + `this deck before the freeze window. Pacing raised it to ${plan.rate}/day so every card lands in time.`;
+        }
+        info.appendChild(line);
       }
     }
-    info.appendChild(el('div', 'fc-deck-card__meta', metaText));
-    info.addEventListener('click', () => setRoute({ view: 'browse', deckId: deck.id }));
+
+    const openDeck = () => setRoute({ view: 'browse', deckId: deck.id });
+    info.addEventListener('click', openDeck);
+    info.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDeck(); }
+    });
     card.appendChild(info);
 
     const btns = el('div', 'fc-deck-card__actions');
@@ -4658,7 +6172,7 @@ async function renderDecks(body, setRoute) {
     studyBtn.textContent = 'Study';
     // A live session (learning card pending its 1m step) must stay
     // reachable even when the due badges read zero.
-    studyBtn.disabled = deck.dueCount === 0 && deck.newCount === 0 && !_fcStudySessions.has(deck.id);
+    studyBtn.disabled = deck.dueCount === 0 && deck.newCount === 0 && !_fcStudySessions.has(String(deck.id));
     studyBtn.addEventListener('click', () => setRoute({ view: 'study', deckId: deck.id }));
     btns.appendChild(studyBtn);
     const deckCustomBtn = el('button', 'fc-btn');
@@ -4667,30 +6181,29 @@ async function renderDecks(body, setRoute) {
     deckCustomBtn.disabled = deck.total === 0;
     deckCustomBtn.addEventListener('click', () => setRoute({ view: 'custom', deckId: deck.id }));
     btns.appendChild(deckCustomBtn);
-    const renameBtn = el('button', 'fc-btn');
-    renameBtn.textContent = 'Rename';
-    renameBtn.addEventListener('click', () => {
-      void (async () => {
-        const name = await _api.window.showInputBox({ prompt: 'Rename deck', value: deck.name });
-        if (name?.trim()) await fcRenameDeck(deck.id, name);
-      })();
+    // Rename / Delete / Merge / Score / Coverage all live in the ONE deck
+    // menu the sidebar rows already use, instead of a second set of buttons
+    // that drifts away from it.
+    const more = el('button', 'fc-btn fc-btn--icon');
+    more.title = 'Deck actions';
+    more.setAttribute('aria-label', `Actions for ${deck.name}`);
+    more.innerHTML = icon('more-horizontal', 15);
+    more.addEventListener('click', () => {
+      if (!_api.ui.showContextMenu) { openDeck(); return; }
+      const r = more.getBoundingClientRect();
+      _api.ui.showContextMenu({ x: r.left, y: r.bottom + 2 }, fcDeckMenuItems(deck));
     });
-    btns.appendChild(renameBtn);
-    const delBtn = el('button', 'fc-btn fc-btn--danger');
-    delBtn.textContent = 'Delete';
-    delBtn.addEventListener('click', () => {
-      void (async () => {
-        const pick = await _api.window.showWarningMessage(
-          `Delete "${deck.name}" and its ${deck.total} cards? This cannot be undone.`,
-          { title: 'Delete' }, { title: 'Cancel' },
-        );
-        if (pick?.title === 'Delete') await fcDeleteDeck(deck.id);
-      })();
-    });
-    btns.appendChild(delBtn);
+    btns.appendChild(more);
     card.appendChild(btns);
-    view.appendChild(card);
+
+    card.addEventListener('contextmenu', (e) => {
+      if (!_api.ui.showContextMenu) return;
+      e.preventDefault();
+      _api.ui.showContextMenu({ x: e.clientX, y: e.clientY }, fcDeckMenuItems(deck));
+    });
+    list.appendChild(card);
   }
+
   body.appendChild(view);
 }
 
@@ -4793,6 +6306,53 @@ function fcCardEditorEl(card, { onSave, onCancel }) {
     card.importanceReason ? `AI: ${card.importanceReason}` : '1-100 · high scores introduce first · 0 = unscored'));
   form.appendChild(impRow);
 
+  // ── Recall mode + rubric (M102) ────────────────────────────────────────
+  //
+  // The rubric is editable here because it IS the grading standard: when a
+  // verdict looks wrong, the fix is a five-second edit to the points rather
+  // than regenerating the card or distrusting every grade it produces.
+  form.appendChild(el('div', 'fc-label', 'Recall Mode'));
+  const modeRow = el('div', 'fc-row');
+  const modeHost = el('div');
+  modeRow.appendChild(modeHost);
+  const modeHint = el('span', 'fc-hint');
+  modeRow.appendChild(modeHint);
+  form.appendChild(modeRow);
+
+  const rubricWrap = el('div', 'fc-edit__rubric');
+  rubricWrap.appendChild(el('div', 'fc-label', 'Rubric'));
+  const rubricIn = el('textarea', 'fc-textarea');
+  rubricIn.rows = 4;
+  rubricIn.placeholder = 'One point per line — the claims a correct answer must make.\nEnd a line with "(optional)" for supporting detail a complete answer could omit.';
+  // One point per line, not JSON: the stored shape is JSON, but hand-editing
+  // JSON in a textarea invites a syntax error that silently empties the
+  // rubric and drops the card back to a self-grade.
+  rubricIn.value = (card.rubric || [])
+    .map((p) => (p.required ? p.text : `${p.text} (optional)`))
+    .join('\n');
+  rubricWrap.appendChild(rubricIn);
+  rubricWrap.appendChild(el('div', 'fc-hint',
+    'Left empty on a production card, one is written from the answer the first time you are graded.'));
+  form.appendChild(rubricWrap);
+
+  let recallMode = fcNormalizeRecallMode(card.recallMode);
+  const syncMode = () => {
+    rubricWrap.style.display = fcIsProductionMode(recallMode) ? '' : 'none';
+    modeHint.textContent = FC_RECALL_MODE_HINTS[recallMode];
+  };
+  const modeDd = _api.ui.createDropdown(modeHost, {
+    items: [
+      { value: 'recognition', label: 'Recognition' },
+      { value: 'conceptual', label: 'Conceptual' },
+      { value: 'list', label: 'List' },
+      { value: 'formula', label: 'Formula' },
+    ],
+    selected: recallMode,
+    ariaLabel: 'Recall mode',
+  });
+  modeDd.onDidChange((v) => { recallMode = fcNormalizeRecallMode(v); syncMode(); });
+  syncMode();
+
   form.appendChild(err);
 
   const actions = el('div', 'fc-edit__actions');
@@ -4813,7 +6373,14 @@ function fcCardEditorEl(card, { onSave, onCancel }) {
       return;
     }
     const tags = tagsIn.value.split(/[\s,]+/).map((t) => t.trim()).filter(Boolean).join(',');
-    void onSave({ front, back, tags, notes: notesIn.value, importance: impIn.value });
+    void onSave({
+      front, back, tags, notes: notesIn.value, importance: impIn.value,
+      recallMode,
+      // A recognition card's rubric is never read, so clearing it on the way
+      // back to recognition keeps a stale standard from reappearing if the
+      // card is later promoted again.
+      rubric: fcIsProductionMode(recallMode) ? fcParseRubricLines(rubricIn.value) : [],
+    });
   };
   saveBtn.addEventListener('click', save);
   cancelBtn.addEventListener('click', () => onCancel());
@@ -5266,11 +6833,30 @@ async function renderBrowse(body, route, setRoute) {
       if (card.lapses > 0) meta.appendChild(el('span', '', `${card.lapses} ${card.lapses === 1 ? 'Lapse' : 'Lapses'}`));
       if (fcIsLeech(card)) meta.appendChild(el('span', 'fc-meta-leech', 'Leech'));
     }
+    // M102: the recall mode is scheduling-relevant metadata — it changes what
+    // a review of this card costs, so it belongs on the row rather than
+    // hidden one click deep in the editor.
+    if (fcIsProductionMode(card.recallMode)) {
+      const mode = el('span', 'fc-meta-recall', FC_RECALL_MODE_CHIPS[card.recallMode]);
+      mode.title = card.rubric.length
+        ? `${card.rubric.length} rubric ${card.rubric.length === 1 ? 'point' : 'points'} — ${FC_RECALL_MODE_HINTS[card.recallMode]}`
+        : FC_RECALL_MODE_HINTS[card.recallMode];
+      meta.appendChild(mode);
+    }
     for (const t of fcParseTags(card.tags)) {
       meta.appendChild(el('span', 'fc-chip', `#${t}`));
     }
     if (card.sourceLabel) meta.appendChild(el('span', '', card.sourceLabel));
     content.appendChild(meta);
+
+    // M102 answer history. Written answers accumulate on the append-only
+    // review log, and reading six months of them back-to-back shows whether
+    // an explanation is consolidating or drifting — which is the progress
+    // signal a score cannot carry. Loaded on demand: a deck of a thousand
+    // cards must not query a history nobody asked to see.
+    const historyHost = el('div', 'fc-cardrow__history');
+    historyHost.style.display = 'none';
+    content.appendChild(historyHost);
 
     const btns = el('div', 'fc-cardrow__actions');
     fcCreateFlagPicker(btns, {
@@ -5283,6 +6869,29 @@ async function renderBrowse(body, route, setRoute) {
         void fcUpdateCard(card.id, { flag: next });
       },
     });
+    if (fcIsProductionMode(card.recallMode)) {
+      const histBtn = el('button', 'fc-btn');
+      histBtn.textContent = 'Answers';
+      let loaded = false;
+      histBtn.addEventListener('click', () => {
+        const showing = historyHost.style.display !== 'none';
+        historyHost.style.display = showing ? 'none' : '';
+        if (showing || loaded) return;
+        loaded = true;
+        historyHost.appendChild(el('div', 'fc-hint', 'Loading…'));
+        void (async () => {
+          try {
+            const answers = await fcCardAnswerHistory(card.id);
+            historyHost.replaceChildren(fcAnswerHistoryEl(answers, card.rubric, {
+              onDiscuss: (marking) => void fcExplainInChat(card, deckRow.name, { marking }),
+            }));
+          } catch (e) {
+            historyHost.replaceChildren(el('div', 'fc-hint', `Could not load answers: ${e.message}`));
+          }
+        })();
+      });
+      btns.appendChild(histBtn);
+    }
     const editBtn = el('button', 'fc-btn');
     editBtn.textContent = 'Edit';
     editBtn.addEventListener('click', () => {
@@ -5357,19 +6966,65 @@ async function renderDedup(body, route, setRoute) {
   /** Card ids staged for deletion (checkboxes; applied on the footer click). */
   const staged = new Set();
 
+  // Judge state shared between the initial pass and Retry AI Judge.
+  let currentClusters = [];
+  let cardByIdRef = new Map();
+  let methodLabel = '';
+  let lastFailure = null;
+
+  const retryBtn = el('button', 'fc-btn');
+  retryBtn.textContent = 'Retry AI Judge';
+  retryBtn.title = 'Run the AI judge again over the groups it has not reviewed.';
+  retryBtn.style.display = 'none';
+  status.after(retryBtn);
+  retryBtn.addEventListener('click', () => void judgePass());
+
+  const unjudgedCount = () => currentClusters.filter((c) => !c.verdict).length;
+
+  /**
+   * The banner never says a bare "unavailable" again: it carries the actual
+   * failure and, for unjudged groups, the warning that raw similarity is NOT
+   * an opinion — near-identical wording with different answers is usually a
+   * deliberate contrast pair, the most exam-valuable card shape there is.
+   */
+  const updateStatus = () => {
+    const total = currentClusters.length;
+    const un = unjudgedCount();
+    let text = `${total} candidate ${total === 1 ? 'group' : 'groups'} (${methodLabel})`;
+    if (un === 0) {
+      text += ', all reviewed by the AI judge.';
+    } else {
+      text += `. ${un === total ? 'AI judge failed' : `${un} ${un === 1 ? 'group' : 'groups'} not judged`}`
+        + (lastFailure ? `: ${lastFailure}` : '.')
+        + ' Unjudged groups show wording similarity only - that is NOT a duplicate verdict, and look-alikes with different answers are usually deliberate contrast pairs.';
+    }
+    status.textContent = text;
+    retryBtn.style.display = un > 0 ? '' : 'none';
+  };
+
   const renderClusters = (clusters, cardById) => {
     resultsHost.replaceChildren();
     footer.replaceChildren();
     staged.clear();
 
-    for (const cluster of clusters) {
+    // Triage order: real duplicates first, then overlaps, then unjudged.
+    // Groups the judge CLEARED as distinct collapse out of the way - making
+    // the user re-triage pairs the judge already kept was pure noise.
+    const rank = (c) => (c.verdict === 'duplicate' ? 0 : c.verdict === 'overlap' ? 1 : !c.verdict ? 2 : 3);
+    const ordered = [...clusters].sort((a, b) => rank(a) - rank(b));
+    const cleared = ordered.filter((c) => c.verdict === 'distinct');
+    const actionable = ordered.filter((c) => c.verdict !== 'distinct');
+
+    const buildGroup = (cluster) => {
       const group = el('div', 'fc-dupgroup');
       const groupHead = el('div', 'fc-row');
-      const simChip = el('span', 'fc-chip fc-chip--warn', `${Math.round(cluster.similarity * 100)}% Similar`);
+      const judgedBad = cluster.verdict === 'duplicate' || cluster.verdict === 'overlap';
+      const simChip = el('span', judgedBad ? 'fc-chip fc-chip--warn' : 'fc-chip', `${Math.round(cluster.similarity * 100)}% Similar`);
       groupHead.appendChild(simChip);
       if (cluster.verdict === 'duplicate') groupHead.appendChild(el('span', 'fc-chip fc-chip--warn', 'AI: Duplicate'));
       else if (cluster.verdict === 'overlap') groupHead.appendChild(el('span', 'fc-chip', 'AI: Overlapping'));
-      else if (cluster.verdict === 'distinct') groupHead.appendChild(el('span', 'fc-chip', 'AI: Distinct'));
+      else if (cluster.verdict === 'distinct') groupHead.appendChild(el('span', 'fc-chip', 'AI: Distinct - Both Stay'));
+      else groupHead.appendChild(el('span', 'fc-chip', 'Unjudged - Similarity Only'));
       if (cluster.reason) groupHead.appendChild(el('span', 'fc-hint', cluster.reason));
       group.appendChild(groupHead);
 
@@ -5448,7 +7103,34 @@ async function renderDedup(body, route, setRoute) {
         actions.appendChild(mergeBtn);
       }
       group.appendChild(actions);
-      resultsHost.appendChild(group);
+      return group;
+    };
+
+    for (const cluster of actionable) resultsHost.appendChild(buildGroup(cluster));
+    if (actionable.length === 0 && cleared.length > 0) {
+      resultsHost.appendChild(el('div', 'fc-hint',
+        'The AI judge reviewed every look-alike group and kept them all - no duplicates to resolve.'));
+    }
+
+    if (cleared.length > 0) {
+      const clearedWrap = el('div', 'fc-dupcleared');
+      clearedWrap.appendChild(el('div', 'fc-hint',
+        `${cleared.length} look-alike ${cleared.length === 1 ? 'group' : 'groups'} judged distinct and kept - contrast pairs or different facts. Nothing to do.`));
+      const toggle = el('button', 'fc-btn');
+      const host = el('div');
+      host.style.display = 'none';
+      let shown = false;
+      const label = () => `${shown ? 'Hide' : 'Show'} ${cleared.length} Cleared ${cleared.length === 1 ? 'Group' : 'Groups'}`;
+      toggle.textContent = label();
+      toggle.addEventListener('click', () => {
+        shown = !shown;
+        host.style.display = shown ? '' : 'none';
+        toggle.textContent = label();
+      });
+      clearedWrap.appendChild(toggle);
+      for (const cluster of cleared) host.appendChild(buildGroup(cluster));
+      clearedWrap.appendChild(host);
+      resultsHost.appendChild(clearedWrap);
     }
 
     const applyBtn = el('button', 'fc-btn fc-btn--primary');
@@ -5483,6 +7165,33 @@ async function renderDedup(body, route, setRoute) {
     syncFooter();
   };
 
+  /**
+   * Judge the not-yet-judged clusters and repaint. Runs once after the sweep
+   * and again from Retry AI Judge — retry reuses the sweep, so a stalled
+   * model costs one click to recover from, not a full re-scan.
+   */
+  const judgePass = async () => {
+    retryBtn.disabled = true;
+    retryBtn.style.display = 'none';
+    const pending = currentClusters.map((c, i) => ({ c, i })).filter((x) => !x.c.verdict);
+    if (pending.length === 0) {
+      retryBtn.disabled = false;
+      updateStatus();
+      return;
+    }
+    status.textContent = `Reviewing ${pending.length} candidate ${pending.length === 1 ? 'group' : 'groups'} with AI…`;
+    const { clusters: judged, failure } = await fcJudgeDuplicateClusters(
+      pending.map((x) => x.c), cardByIdRef,
+      { onProgress: (done, total) => { status.textContent = `Reviewing with AI - ${done} / ${total} groups…`; } },
+    );
+    if (!body.isConnected) return;
+    judged.forEach((jc, k) => { currentClusters[pending[k].i] = jc; });
+    lastFailure = failure;
+    retryBtn.disabled = false;
+    updateStatus();
+    renderClusters(currentClusters, cardByIdRef);
+  };
+
   const run = async () => {
     resultsHost.replaceChildren();
     footer.replaceChildren();
@@ -5493,23 +7202,16 @@ async function renderDedup(body, route, setRoute) {
         onProgress: (done, total) => { status.textContent = `Scanning the deck - ${done} / ${total} cards…`; },
       });
       if (!body.isConnected) return;
-      let clusters = fcClusterPairs(pairs);
+      const clusters = fcClusterPairs(pairs);
       if (clusters.length === 0) {
         status.textContent = 'No likely duplicates found. The deck looks clean.';
         return;
       }
       const cards = await fcListAllCards(deckRow.id);
-      const cardById = new Map(cards.map((c) => [c.id, c]));
-      status.textContent = `Reviewing ${clusters.length} candidate ${clusters.length === 1 ? 'group' : 'groups'} with AI…`;
-      clusters = await fcJudgeDuplicateClusters(clusters, cardById, {
-        onProgress: (done, total) => { status.textContent = `Reviewing with AI - ${done} / ${total} groups…`; },
-      });
-      if (!body.isConnected) return;
-      const judged = clusters.some((c) => c.verdict !== null);
-      status.textContent = `${clusters.length} candidate ${clusters.length === 1 ? 'group' : 'groups'}`
-        + ` (${method === 'embedding' ? 'semantic match' : 'text match'})`
-        + (judged ? '.' : '. AI judge unavailable - showing similarity only.');
-      renderClusters(clusters, cardById);
+      cardByIdRef = new Map(cards.map((c) => [c.id, c]));
+      currentClusters = clusters;
+      methodLabel = method === 'embedding' ? 'semantic match' : 'text match';
+      await judgePass();
     } catch (e) {
       status.textContent = '';
       errEl.textContent = e.message;
@@ -5978,27 +7680,51 @@ async function renderCustomStudy(body, route, setRoute) {
 
   const def = () => FC_CUSTOM_MODE_DEFS.find((d) => d.mode === state.mode) || FC_CUSTOM_MODE_DEFS[0];
 
-  const renderModes = () => {
+  /**
+   * Every mode carries its OWN live count, not just the selected one.
+   *
+   * A deck of 48 new cards and 2 reviews made Review Ahead report "2 reviews
+   * in range" with no hint that 46 cards were sitting one mode away — which
+   * reads as "Custom Study can't reach my cards" (user report: "studying
+   * ahead only shows one or two cards"). Showing all four counts at once
+   * turns the mode list into the answer to "where ARE my cards".
+   */
+  const modeRows = new Map();
+
+  const buildModes = () => {
     modeList.innerHTML = '';
+    modeRows.clear();
     for (const d of FC_CUSTOM_MODE_DEFS) {
       const opt = el('button', 'fc-cs__mode');
       opt.type = 'button';
       opt.setAttribute('role', 'radio');
-      const active = d.mode === state.mode;
-      opt.setAttribute('aria-checked', active ? 'true' : 'false');
-      opt.classList.toggle('fc-cs__mode--active', active);
       opt.appendChild(el('span', 'fc-cs__mode-dot'));
       const text = el('span', 'fc-cs__mode-text');
-      text.appendChild(el('span', 'fc-cs__mode-name', d.label));
+      const nameRow = el('span', 'fc-cs__mode-namerow');
+      nameRow.appendChild(el('span', 'fc-cs__mode-name', d.label));
+      const count = el('span', 'fc-cs__mode-count');
+      nameRow.appendChild(count);
+      text.appendChild(nameRow);
       text.appendChild(el('span', 'fc-cs__mode-blurb', d.blurb));
       opt.appendChild(text);
       opt.addEventListener('click', () => {
         state.mode = d.mode;
-        renderModes();
+        paintModes();
         syncFields();
         updateAvail();
       });
+      modeRows.set(d.mode, { opt, count });
       modeList.appendChild(opt);
+    }
+    paintModes();
+  };
+
+  /** Selection state only — the DOM is built once. */
+  const paintModes = () => {
+    for (const [mode, row] of modeRows) {
+      const active = mode === state.mode;
+      row.opt.setAttribute('aria-checked', active ? 'true' : 'false');
+      row.opt.classList.toggle('fc-cs__mode--active', active);
     }
   };
 
@@ -6068,20 +7794,41 @@ async function renderCustomStudy(body, route, setRoute) {
 
   const updateAvail = () => {
     readInputs();
-    const all = fcBuildCustomQueue(scopeCards, Date.now(), {
-      mode: state.mode, aheadDays: state.aheadDays,
-      tags: [...state.tags], flags: [...state.flags],
-    });
-    matched = all.length;
+    const now = Date.now();
+    const scope = { aheadDays: state.aheadDays, tags: [...state.tags], flags: [...state.flags] };
+
+    // One pass over all four modes: the selected one drives the CTA, the rest
+    // label their own rows so the whole picture is visible at once.
+    const counts = new Map();
+    for (const d of FC_CUSTOM_MODE_DEFS) {
+      counts.set(d.mode, fcBuildCustomQueue(scopeCards, now, { ...scope, mode: d.mode }).length);
+      const row = modeRows.get(d.mode);
+      if (row) {
+        const n = counts.get(d.mode);
+        row.count.textContent = n === 0 ? 'none' : String(n);
+        row.count.classList.toggle('fc-cs__mode-count--zero', n === 0);
+      }
+    }
+
+    matched = counts.get(state.mode) ?? 0;
     const serving = Math.min(matched, state.count);
     const d = def();
     if (matched === 0) {
       const narrowed = [];
       if (state.flags.size > 0) narrowed.push(state.flags.size === 1 ? 'that flag' : 'those flags');
       if (state.tags.size > 0) narrowed.push(state.tags.size === 1 ? 'that tag' : 'all those tags');
-      avail.textContent = narrowed.length > 0
+      // Point at where the cards actually are. An empty mode with a full deck
+      // behind it is the difference between "no cards" and "wrong mode", and
+      // the user cannot tell those apart from a zero.
+      const elsewhere = FC_CUSTOM_MODE_DEFS
+        .filter((o) => o.mode !== state.mode && (counts.get(o.mode) || 0) > 0)
+        .sort((a, b) => counts.get(b.mode) - counts.get(a.mode))[0];
+      const hint = elsewhere
+        ? ` ${elsewhere.label} has ${counts.get(elsewhere.mode)}.`
+        : '';
+      avail.textContent = (narrowed.length > 0
         ? `No ${d.noun} match ${narrowed.join(' and ')}.`
-        : `No ${d.noun} available.`;
+        : `No ${d.noun} available.`) + hint;
     } else {
       avail.textContent = `${matched} ${d.noun} available — this session will serve ${serving}.`;
     }
@@ -6126,7 +7873,7 @@ async function renderCustomStudy(body, route, setRoute) {
     });
   });
 
-  renderModes();
+  buildModes();
   syncFields();
   await reloadScope();
 }
@@ -6146,7 +7893,14 @@ let _fcBrowseGroupTag = false;
 /** Live study sessions, keyed by deck scope. Editor panes are DESTROYED on
  *  every tab switch (pane-lifecycle contract) — following a card's source
  *  link and coming back must resume the session, not reset it (user report:
- *  "loses place", and the in-memory pending pool held the Again-1m card). */
+ *  "loses place", and the in-memory pending pool held the Again-1m card).
+ *
+ *  INVARIANT: keys are ALWAYS strings — the deck id stringified, '__all__',
+ *  or 'custom:<stamp>:<deckKey>'. A daily session used to key on the raw
+ *  NUMBER, and fcPruneCustomSessions then called String methods on it: the
+ *  moment you had studied any deck normally, launching Custom Study threw
+ *  mid-render and left a blank pane ("Custom Study literally does not show
+ *  any cards"). Never put a number in this map. */
 const _fcStudySessions = new Map();
 
 /**
@@ -6158,7 +7912,7 @@ const _fcStudySessions = new Map();
 function fcPruneCustomSessions(keepKey) {
   const live = [];
   for (const [key, s] of _fcStudySessions) {
-    if (key === keepKey || !key.startsWith('custom:')) continue;
+    if (key === keepKey || !String(key).startsWith('custom:')) continue;
     if (s.index >= s.queue.length && s.pending.length === 0) {
       _fcStudySessions.delete(key);
       continue;
@@ -6170,12 +7924,151 @@ function fcPruneCustomSessions(keepKey) {
   while (live.length > 3) _fcStudySessions.delete(live.shift());
 }
 
+// ── Production recall UI (M102) ──────────────────────────────────────────────
+
+/** What each production mode asks for, and how much room to ask for it in. */
+const FC_PRODUCE_SPECS = {
+  conceptual: {
+    label: 'Write Your Answer',
+    placeholder: 'In your own words, in full sentences. Recognising the answer is not the same as being able to state it.',
+    rows: 7,
+  },
+  list: {
+    label: 'List Them',
+    placeholder: 'One item per line. Order does not matter.',
+    rows: 6,
+  },
+  formula: {
+    label: 'Write The Formula',
+    placeholder: 'LaTeX or plain text. Spacing and delimiters are ignored.',
+    rows: 3,
+  },
+};
+
+/** Short row-chip names for the production modes. Title Case, like every chip. */
+const FC_RECALL_MODE_CHIPS = {
+  conceptual: 'Written',
+  list: 'List',
+  formula: 'Formula',
+};
+
+const FC_RATING_CLASSES = { 1: 'again', 2: 'hard', 3: 'good', 4: 'easy' };
+
+/**
+ * Past written answers for one card, newest first.
+ *
+ * Shows the answers themselves rather than a chart of the grades: the point
+ * is to read what you wrote and see whether it is getting sharper, which a
+ * score line cannot show. Each carries the grade it earned and, when the
+ * verdict was stored, which rubric points it hit.
+ */
+function fcAnswerHistoryEl(answers, rubric, { onDiscuss = null } = {}) {
+  const root = el('div', 'fc-answers');
+  if (!answers.length) {
+    root.appendChild(el('div', 'fc-hint', 'No written answers yet. They appear here after you study this card.'));
+    return root;
+  }
+  for (const a of answers) {
+    const entry = el('div', 'fc-answers__entry');
+    const head = el('div', 'fc-answers__head');
+    const badge = el('span', `fc-answers__grade fc-answers__grade--${FC_RATING_CLASSES[a.rating] || 'good'}`,
+      FC_RATING_LABELS[a.rating] || '');
+    head.appendChild(badge);
+    head.appendChild(el('span', 'fc-answers__when', new Date(a.reviewedAt).toLocaleDateString()));
+    if (a.verdict && rubric.length) {
+      const s = fcScoreVerdict(a.verdict, rubric);
+      head.appendChild(el('span', 'fc-answers__score', `${s.hits}/${s.total}`));
+    }
+    if (a.verdict?.contradiction) head.appendChild(el('span', 'fc-answers__flag', 'Contradicted the source'));
+    // Any marking can go to chat, not just the live one: the useful question
+    // is often about an answer from weeks ago that you can now see you kept
+    // getting wrong the same way.
+    if (onDiscuss && a.verdict) {
+      const btn = el('button', 'fc-btn fc-btn--small fc-answers__discuss');
+      btn.textContent = 'Discuss';
+      btn.title = 'Stage a question in the chat with this answer, its marking, and the source attached.';
+      btn.addEventListener('click', () => onDiscuss({
+        answer: a.answerText, verdict: a.verdict, rubric, rating: a.rating, reviewedAt: a.reviewedAt,
+      }));
+      head.appendChild(btn);
+    }
+    entry.appendChild(head);
+    entry.appendChild(el('div', 'fc-answers__text', a.answerText));
+    if (a.verdict?.note) entry.appendChild(el('div', 'fc-answers__note', a.verdict.note));
+    root.appendChild(entry);
+  }
+  return root;
+}
+
+/**
+ * The marked verdict: the grade it produced, then the points it was derived
+ * from, then the one-line note.
+ *
+ * The points are shown rather than summarised because the grade is only
+ * trustworthy if its evidence is inspectable — this is the surface where a
+ * bad rubric becomes visible, and the card editor is one keystroke away.
+ */
+function fcVerdictEl(verdict, rubric, rating, { onDiscuss = null } = {}) {
+  const root = el('div', `fc-verdict fc-verdict--${FC_RATING_CLASSES[rating] || 'good'}`);
+
+  const head = el('div', 'fc-verdict__head');
+  head.appendChild(el('span', 'fc-verdict__dot'));
+  head.appendChild(el('span', 'fc-verdict__rating', `Graded ${FC_RATING_LABELS[rating] || ''}`));
+  const s = fcScoreVerdict(verdict, rubric);
+  head.appendChild(el('span', 'fc-verdict__score', `${s.hits}/${s.total} points`));
+  if (!verdict.sourced) {
+    // An unsourced verdict was reached against the card's own answer text
+    // rather than the passage it came from. Weaker evidence, shown as such
+    // instead of hidden.
+    const tag = el('span', 'fc-verdict__unsourced', 'No source');
+    tag.title = 'Marked against this card\'s answer only — no source passage is stored for it.';
+    head.appendChild(tag);
+  }
+  root.appendChild(head);
+
+  if (verdict.contradiction) {
+    root.appendChild(el('div', 'fc-verdict__contradiction',
+      'This contradicts the source, which is why it is Again rather than a partial credit.'));
+  }
+
+  const list = el('div', 'fc-verdict__points');
+  rubric.forEach((p, i) => {
+    const status = verdict.points?.[i]?.status || 'miss';
+    const row = el('div', `fc-verdict__point fc-verdict__point--${status}`);
+    row.appendChild(el('span', 'fc-verdict__glyph', FC_POINT_GLYPHS[status]));
+    const body = el('div', 'fc-verdict__point-body');
+    body.appendChild(el('span', 'fc-verdict__point-text', p.text));
+    const note = verdict.points?.[i]?.note;
+    if (note && status !== 'hit') body.appendChild(el('span', 'fc-verdict__point-note', note));
+    row.appendChild(body);
+    list.appendChild(row);
+  });
+  root.appendChild(list);
+
+  if (verdict.note) root.appendChild(el('div', 'fc-verdict__note', verdict.note));
+
+  // The moment you have just been told what you could not produce is the
+  // moment the question is sharpest, so the hand-off lives here rather than
+  // only behind the answer card's corner mark. It stages the ask with the
+  // whole marking attached; you still edit and send it yourself.
+  if (onDiscuss) {
+    const foot = el('div', 'fc-verdict__foot');
+    const btn = el('button', 'fc-btn fc-btn--small');
+    btn.textContent = 'Discuss This Marking';
+    btn.title = 'Stage a question in the chat with your answer, the marking, and the source attached.';
+    btn.addEventListener('click', () => onDiscuss());
+    foot.appendChild(btn);
+    root.appendChild(foot);
+  }
+  return root;
+}
+
 async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
   // A custom session gets its own key (stamped at launch) so it neither
   // resumes into nor is resumed by the deck's daily session — but a tab
   // switch, which restores the same route, still lands back on the same key.
   const custom = route.custom || null;
-  const deckKey = route.deckId ?? '__all__';
+  const deckKey = String(route.deckId ?? '__all__');
   const sessionKey = custom ? `custom:${custom.startedAt}:${deckKey}` : deckKey;
   const cachedSession = _fcStudySessions.get(sessionKey);
   const resuming = !aheadMs && !!cachedSession
@@ -6191,9 +8084,16 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
   const queue = resuming ? []
     : custom ? fcBuildCustomQueue(cards, Date.now(), custom)
       : fcBuildQueue(cards, Date.now() + aheadMs, {
-        newLimit: Number(cfg('dailyNewLimit', 20)) || 20,
+        // The paced allowance has to be able to EXCEED the batch setting,
+        // and this global slice runs after the per-deck one — leaving it at
+        // the raw setting would trim a raised pace straight back down and
+        // make the raise a no-op.
+        newLimit: Math.max(Number(cfg('dailyNewLimit', 20)) || 20, pace ? pace.total : 0),
         reviewLimit: Number(cfg('dailyReviewLimit', 200)) || 200,
         newAllowanceByDeck: pace ? pace.byDeck : null,
+        // Custom study bypasses this the same way it bypasses pacing —
+        // "extra" exists precisely to work past the batch.
+        productionLimit: fcProductionDailyLimit(),
       });
   // Preview modes grade for flow only — see fcCustomIsPreview.
   const previewOnly = !!custom && fcCustomIsPreview(custom.mode);
@@ -6418,6 +8318,15 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
     main.innerHTML = '';
     session.revealed = false;
     session.editing = false;
+    // M102: a held card's grade has already landed, so both guards clear
+    // with the card. Leaving `settled` set would freeze grading on the next
+    // one; leaving `marking` set would do the same after a torn-down mark.
+    session.settled = false;
+    session.marking = false;
+    // Cleared with the card, not just overwritten on the next mark: a
+    // recognition card following a graded one would otherwise hand the
+    // PREVIOUS card's answer to the chat.
+    session.lastMarking = null;
     session.cardShownAt = Date.now();
 
     // A learning card that has come DUE cuts in ahead of the rest — this is
@@ -6751,7 +8660,10 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
         aiHost.appendChild(discussBtn);
       }
       discussBtn.addEventListener('click', () => {
-        void fcExplainInChat(card, deckNames.get(card.deckId));
+        // Carries the marking when this card was just answered and graded —
+        // same one action, sharper question when there is a failure to point
+        // at. A second button for the graded case would split one concept.
+        void fcExplainInChat(card, deckNames.get(card.deckId), { marking: session.lastMarking });
       });
       // In the head ROW, not absolutely positioned over it: a leech card
       // already puts its chip and Rewrite button at the top right, and an
@@ -6792,10 +8704,19 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
         : '1 Again · 2 Hard · 3 Good · 4 Easy · E edit · Z undo · Alt+1-4 flag';
     };
 
-    const grade = (rating) => {
+    /**
+     * @param rating 1..4
+     * @param hold   keep the card on screen after writing the grade, so a
+     *               marked answer's verdict can be read before moving on.
+     *               `advance()` then does the moving. Recognition grading
+     *               passes false and the next card appears immediately.
+     */
+    const grade = (rating, { answer = '', verdict = null, hold = false } = {}) => {
       // Re-entrancy guard (M99 review): a double-click or key repeat before
       // the async grade lands would grade the same card twice and skip one.
-      if (session.grading) return;
+      // `settled` extends that guard across the held window: the card is
+      // still on screen after its grade landed, so 1-4 must no longer fire.
+      if (session.grading || session.settled) return;
       session.grading = true;
       const msTaken = Date.now() - session.cardShownAt;
 
@@ -6817,7 +8738,7 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
       }
 
       void (async () => {
-        const updated = await fcGradeCard(card, rating, msTaken, optsFor(card));
+        const updated = await fcGradeCard(card, rating, msTaken, optsFor(card), { answer, verdict });
         // Undo material: the pre-grade card + the review row's timestamp.
         session.history.push({ before: card, reviewedAt: updated.lastReviewedAt });
         // Cards still in learning stay in the session when due within the
@@ -6832,18 +8753,187 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
         session.doneCount++;
         session.index++;
         session.grading = false;
+        if (hold) { session.settled = true; onSettled?.(rating); return; }
         showCard();
       })();
     };
 
+    /** Move past a held card. No-op unless a grade has actually landed. */
+    const advance = () => {
+      if (!session.settled) return;
+      session.settled = false;
+      showCard();
+    };
+
+    /**
+     * Move this card to the back of the session and serve the next one.
+     *
+     * Not a grade: nothing is written, no review row, no FSRS update, and
+     * neither counter moves — you have not done the card, you have deferred
+     * it. The card is spliced out and pushed, so the queue length and the
+     * progress denominator are unchanged; `index` already points at the next
+     * card once the splice lands.
+     *
+     * Only before the answer is revealed. Once you have seen it, re-serving
+     * the card in the same session tests nothing — that is what Again is
+     * for, and it schedules honestly.
+     */
+    const canSkip = () => !session.revealed && !session.grading && !session.marking && !session.settled
+      && (session.queue.length - session.index > 1
+        // A due learning card cuts in on the next showCard, so it counts as
+        // somewhere to skip TO even when the queue holds nothing else.
+        || session.pending.some((p) => p.dueAt <= Date.now()));
+
+    const skip = () => {
+      if (!canSkip()) return;
+      const [moved] = session.queue.splice(session.index, 1);
+      session.queue.push(moved);
+      showCard();
+    };
+
+    /** Set by the production flow so a landed grade can paint its own footer. */
+    let onSettled = null;
+
+    /**
+     * Submit a typed answer: reveal the back at once, mark behind it, then
+     * hold on the verdict.
+     *
+     * The reveal is deliberately NOT gated on the marking call. Reading the
+     * real answer is the pedagogically useful second the marking takes, so
+     * spending it on a spinner would be pure dead time — and dead time is
+     * how a daily habit dies. Only production cards pay any of this cost.
+     *
+     * Every failure path lands on the self-grade buttons that reveal()
+     * already rendered. A model outage costs the verdict, never the review.
+     */
+    function submitAnswer() {
+      if (session.revealed || session.grading || session.marking) return;
+      const answer = String(answerInput?.value || '');
+      if (answerInput) answerInput.readOnly = true;
+      session.marking = true;
+      reveal();
+
+      const strip = el('div', 'fc-verdict fc-verdict--pending');
+      strip.appendChild(el('span', 'fc-verdict__spinner'));
+      strip.appendChild(el('span', 'fc-verdict__pending-text', 'Marking your answer…'));
+      answerHost.appendChild(strip);
+
+      const fallback = (why) => {
+        session.marking = false;
+        strip.className = 'fc-verdict fc-verdict--fallback';
+        strip.innerHTML = '';
+        strip.appendChild(el('span', 'fc-verdict__note', why));
+        keys.textContent = '1 Again · 2 Hard · 3 Good · 4 Easy · E edit · Z undo · Alt+1-4 flag';
+      };
+
+      void (async () => {
+        let result;
+        try {
+          result = await fcGradeAnswer(card, answer);
+        } catch (err) {
+          fallback(`Marking failed (${err?.message || err}). Grade it yourself.`);
+          return;
+        }
+        if (result.rating == null) {
+          fallback(result.rubric.length
+            ? 'The model did not return a usable verdict. Grade it yourself.'
+            : 'No rubric for this card yet, and one could not be written. Grade it yourself.');
+          return;
+        }
+        // Clear the marking guard so grade() can run — it is the one caller
+        // allowed through, and `settled` takes over the guard immediately.
+        session.marking = false;
+        // Held for the corner Discuss button too: with a marking in hand it
+        // asks the sharper question, and one AI action beats two.
+        session.lastMarking = { answer, verdict: result.verdict, rubric: result.rubric, rating: result.rating };
+        onSettled = () => {
+          strip.replaceWith(fcVerdictEl(result.verdict, result.rubric, result.rating, {
+            onDiscuss: () => void fcExplainInChat(card, deckNames.get(card.deckId), {
+              marking: session.lastMarking,
+            }),
+          }));
+          controls.innerHTML = '';
+          const next = el('button', 'fc-btn fc-btn--primary fc-study__reveal');
+          next.textContent = 'Next Card';
+          next.addEventListener('click', advance);
+          controls.appendChild(next);
+          keys.textContent = 'Space or Enter for the next card · E edit · Z undo · Alt+1-4 flag';
+        };
+        grade(result.rating, { answer, verdict: result.verdict, hold: true });
+      })();
+    }
+
+    // ── Production recall (M102) ────────────────────────────────────────────
+    //
+    // A card whose value is an explanation asks for one BEFORE it shows the
+    // answer. Recognition cards are untouched: reveal-then-self-grade is the
+    // right measurement for a card you either produced in your head or did
+    // not, and it costs five seconds instead of a minute.
+    //
+    // Preview passes (Cram, Difficult Cards) stay recognition-style whatever
+    // the card's mode. They deliberately write nothing, so demanding a typed
+    // answer would charge the full cost for a grade that is discarded.
+    // `revealCardId` means this card is coming back to its ANSWER face after
+    // an edit — it was already answered, so asking again would put an empty
+    // box next to the revealed answer and lose what was typed.
+    const production = fcIsProductionMode(card.recallMode)
+      && !session.previewOnly
+      && opts.revealCardId !== card.id;
+    let answerInput = null;
+
     controls.innerHTML = '';
-    const revealBtn = el('button', 'fc-btn fc-btn--primary fc-study__reveal');
-    revealBtn.textContent = 'Show Answer';
-    revealBtn.addEventListener('click', reveal);
-    controls.appendChild(revealBtn);
-    const keys = el('div', 'fc-study__keys', session.previewOnly
-      ? 'Space reveals the answer · E edit · Alt+1-4 flag'
-      : 'Space reveals the answer · E edit · Z undo · Alt+1-4 flag');
+    if (production) {
+      const spec = FC_PRODUCE_SPECS[card.recallMode];
+      const wrap = el('div', 'fc-study__produce');
+      wrap.appendChild(el('div', 'fc-study__produce-label', spec.label));
+      answerInput = el('textarea', 'fc-textarea fc-study__produce-input');
+      answerInput.placeholder = spec.placeholder;
+      answerInput.rows = spec.rows;
+      wrap.appendChild(answerInput);
+      col.insertBefore(wrap, controls);
+
+      const submitBtn = el('button', 'fc-btn fc-btn--primary fc-study__reveal');
+      submitBtn.textContent = 'Submit Answer';
+      submitBtn.addEventListener('click', () => submitAnswer());
+      controls.appendChild(submitBtn);
+
+      // The textarea owns Enter (answers are multi-line), so submission is
+      // Ctrl/Cmd+Enter. main.onkeydown bails out inside form fields, so this
+      // has to live on the field itself.
+      answerInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submitAnswer(); }
+      });
+      // Focus the box, not the container: the first thing to do with this
+      // card is write, and a container-focused surface would swallow the
+      // first keystroke into a study shortcut.
+      queueMicrotask(() => answerInput.focus());
+    } else {
+      const revealBtn = el('button', 'fc-btn fc-btn--primary fc-study__reveal');
+      revealBtn.textContent = 'Show Answer';
+      revealBtn.addEventListener('click', reveal);
+      controls.appendChild(revealBtn);
+    }
+
+    // Rendered only when there is somewhere to skip TO. A button that
+    // silently does nothing on the last card of a session reads as broken.
+    if (canSkip()) {
+      const skipBtn = el('button', 'fc-btn fc-study__skip');
+      skipBtn.textContent = 'Skip';
+      skipBtn.title = 'Move this card to the end of the session. Nothing is graded and your schedule is unchanged.';
+      skipBtn.addEventListener('click', skip);
+      controls.appendChild(skipBtn);
+    }
+    // Built from the keys that ACTUALLY fire on this card. A production card
+    // does not reveal on Space (Submit owns the reveal, so Space must not
+    // skip past the answer the card exists to elicit), and the legend used to
+    // promise it anyway.
+    const keys = el('div', 'fc-study__keys', [
+      production ? 'Ctrl+Enter submits' : 'Space reveals the answer',
+      canSkip() ? 'S skip' : '',
+      'E edit',
+      session.previewOnly ? '' : 'Z undo',
+      'Alt+1-4 flag',
+    ].filter(Boolean).join(' · '));
     rail.appendChild(keys);
 
     // Container-scoped keyboard: only fires while the study surface has focus.
@@ -6869,7 +8959,11 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
       }
       if (e.key === ' ' || e.key === 'Enter') {
         e.preventDefault();
-        if (!session.revealed) reveal();
+        // Same key, three states: reveal, then (on a marked card) move on.
+        // A production card's reveal is owned by Submit, so Space must not
+        // short-circuit it and skip the answer the card exists to elicit.
+        if (session.settled) advance();
+        else if (!session.revealed && !production) reveal();
         return;
       }
       if (e.key === 'e' || e.key === 'E') {
@@ -6882,12 +8976,23 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
         undoLast();
         return;
       }
-      if (session.revealed && ['1', '2', '3', '4'].includes(e.key)) {
+      if (e.key === 's' || e.key === 'S') {
+        e.preventDefault();
+        skip();
+        return;
+      }
+      // Marking in flight: the grade is about to be written by the verdict,
+      // so a keypress here would race it into a double grade. grade() also
+      // guards on `marking`, but swallowing the key stops the buttons from
+      // looking live while they are not.
+      if (session.revealed && !session.marking && ['1', '2', '3', '4'].includes(e.key)) {
         e.preventDefault();
         grade(parseInt(e.key, 10));
       }
     };
-    main.focus();
+    // A production card focuses its answer box instead (see above): focusing
+    // the container would swallow the first keystroke into a shortcut.
+    if (!production) main.focus();
     // Return to the answer face after an edit made from it — but ONLY for
     // the same card: a newly-due learning card promoted ahead (or a cloze
     // edit dissolving the sibling) must start on its question, never with
@@ -7140,7 +9245,7 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
       setGenLabel('Generating…');
       try {
         const n = parseInt(countIn.value, 10);
-        const cards = await fcGenerateCards(docs.length === 1 ? docs[0].text : '', {
+        const { cards, truncated } = await fcGenerateCards(docs.length === 1 ? docs[0].text : '', {
           count: Number.isFinite(n) && n > 0 ? Math.min(50, n) : null,
           focus: guideIn.value.trim(),
           pageTexts: docs.length === 1 ? docs[0].pageTexts : null,
@@ -7160,7 +9265,7 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
             dups = await fcJudgeGenerationDups(cards, dups);
           }
         }
-        renderReview(cards, dups);
+        renderReview(cards, dups, truncated);
       } catch (e2) {
         err.textContent = e2.message;
         err.style.display = '';
@@ -7171,9 +9276,14 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
     })();
   });
 
-  const renderReview = (cards, dups = []) => {
+  const renderReview = (cards, dups = [], truncated = false) => {
     reviewHost.innerHTML = '';
     reviewHost.appendChild(el('div', 'fc-label', `Review ${cards.length} generated cards`));
+    if (truncated) {
+      reviewHost.appendChild(el('div', 'fc-error',
+        `The model hit its context window mid-response: these are the ${cards.length} cards it completed before the cut. `
+        + 'The tail of the material is likely uncovered - import these, then generate again or run Coverage Review to fill the gaps.'));
+    }
     const dupCount = dups.filter(Boolean).length;
     reviewHost.appendChild(el('div', 'fc-hint',
       'Edit anything inline; drop cards you do not want. Nothing is saved until you import.'
@@ -8061,7 +10171,7 @@ async function fcCaptureSelection(selectedText, source) {
   const sourcePage = Number.isInteger(source?.pageNumber) && source.pageNumber > 0 ? source.pageNumber : 0;
 
   try {
-    const cards = await fcGenerateCards(text, { count: 3 });
+    const { cards } = await fcGenerateCards(text, { count: 3 });
     // Same duplicate scan as the Create view — captures flag, never drop.
     const dups = await fcFindDuplicates(deckId, cards);
     const dupCount = dups.filter(Boolean).length;
@@ -8394,10 +10504,29 @@ export const __testables = {
   fcBuildQueue,
   fcBuildCustomQueue,
   fcCustomIsPreview,
+  fcCapProductionCards,
   fcCountServedToday,
   fcPacePlan,
   fcNewAllowances,
   fcNormalizeImportance,
+  // M102 production recall
+  FC_RECALL_MODES,
+  FC_PRODUCTION_MODES,
+  fcNormalizeRecallMode,
+  fcIsProductionMode,
+  fcNormalizeRubric,
+  fcSerializeRubric,
+  fcParseRubricLines,
+  fcNormalizeVerdict,
+  fcScoreVerdict,
+  fcMapVerdictToRating,
+  fcNormalizeFormula,
+  fcFormulaMatches,
+  fcMatchListItems,
+  fcGradingContext,
+  fcMarkingTranscript,
+  fcMarkNumCtx,
+  fcExtractJsonObject,
   FC_FLAGS,
   fcNormalizeFlag,
   fcFlagDef,
@@ -8410,13 +10539,21 @@ export const __testables = {
   fcReminderCron,
   fcParseTags,
   fcAggregateStats,
+  // Navigation model (sidebar rail + pane breadcrumb)
+  FC_NAV_DEFS,
+  FC_VIEW_LABELS,
+  FC_DECK_VIEWS,
+  fcNavViewFor,
   // Live-probe access (ext/flashcards/test/run-generation-probe.mjs): the
   // real generation pipeline against real Ollama. Requires activate() first
   // so _api is bound.
   fcGenerateCards,
   fcContextPlan,
   FC_CHARS_PER_TOKEN,
+  FC_PROMPT_HEADROOM,
   FC_SCAFFOLD_TOKENS,
+  FC_OUTPUT_BASE_TOKENS,
+  FC_OUTPUT_TOKENS_PER_CARD,
   FC_FALLBACK_MODEL_CTX,
   FC_GENERATE_SYSTEM,
   FC_LEARNING_STEPS_MIN,

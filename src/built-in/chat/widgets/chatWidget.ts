@@ -273,6 +273,14 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       }
     }) as EventListener));
 
+    // M102: a concept-map node click stages a follow-up about that idea.
+    // Staged, never sent — the label is what you want to ask ABOUT, and the
+    // user still has to say what they actually want to know.
+    this._register(addDisposableListener(this._messageListContainer, 'parallx:mindmap-ask' as keyof HTMLElementEventMap, ((e: CustomEvent<{ label: string }>) => {
+      const label = e.detail?.label?.trim();
+      if (label) this.stageInput(`Tell me more about "${label}" and how it connects to the rest.`);
+    }) as EventListener));
+
     this._register(addDisposableListener(this._messageListContainer, 'parallx:open-memory' as keyof HTMLElementEventMap, ((e: CustomEvent<{ sessionId: string }>) => {
       if (this._services.openMemory) {
         this._services.openMemory(e.detail.sessionId);

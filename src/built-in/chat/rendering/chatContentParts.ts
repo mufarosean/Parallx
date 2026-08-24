@@ -17,6 +17,7 @@ import katex from 'katex';
 import { $ } from '../../../ui/dom.js';
 import { chatIcons } from '../chatIcons.js';
 import { extractFilePath, renderCodeActionButtons } from './chatCodeActions.js';
+import { renderMindMapSvg } from './chatMindMap.js';
 import { ChatContentPartKind } from '../../../services/chatTypes.js';
 import { getFileTypeIcon, getPageIcon } from '../../../ui/iconRegistry.js';
 import type {
@@ -122,7 +123,41 @@ function _renderMarkdown(part: IChatMarkdownContent): HTMLElement {
     _autoLinkSourceMentions(el, part.citations);
   }
 
+  // M102: make concept-map nodes ask their own follow-up question.
+  _wireMindMapNodes(el);
+
   return el;
+}
+
+/**
+ * Clicking a concept-map node stages a follow-up question about it.
+ *
+ * Stages rather than sends: the node label is a hint at what you want to
+ * know, not the question itself, and firing a request off a stray click
+ * would be the wrong trade. This is the thing the workspace graph never
+ * did — its nodes were files you could open, not ideas you could pull on.
+ *
+ * Same bubbling-CustomEvent pattern as the citation badges, so the widget
+ * owns what actually happens and this stays a pure rendering concern.
+ */
+function _wireMindMapNodes(root: HTMLElement): void {
+  const nodes = root.querySelectorAll<SVGGElement>('.parallx-mindmap__node[data-mindmap-label]');
+  for (const node of Array.from(nodes)) {
+    const label = node.getAttribute('data-mindmap-label') ?? '';
+    if (!label) continue;
+    const ask = (): void => {
+      node.dispatchEvent(new CustomEvent('parallx:mindmap-ask', {
+        bubbles: true,
+        detail: { label },
+      }));
+    };
+    node.addEventListener('click', ask);
+    // The nodes carry role="button" and tabindex, so they have to answer the
+    // keyboard too — an SVG <g> gets no activation behaviour for free.
+    node.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ask(); }
+    });
+  }
 }
 
 /**
@@ -731,6 +766,21 @@ function _createChatMarkdownRenderer(): MarkdownIt {
   };
 
   _installKatexRules(markdown);
+
+  // M102: a ```mindmap fence renders as a concept map instead of code. Model
+  // prose reaches markdown-it as one blob (codeBlock() parts are an explicit
+  // participant API, not a split of the text), so overriding `fence` is
+  // enough — no custom block rule needed. Every other language falls through
+  // to the default renderer untouched.
+  const defaultFence = markdown.renderer.rules.fence
+    ?? ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options));
+  markdown.renderer.rules.fence = (tokens, idx, options, env, self) => {
+    const info = tokens[idx].info.trim().toLowerCase();
+    if (info === 'mindmap' || info === 'concept-map') {
+      return renderMindMapSvg(tokens[idx].content);
+    }
+    return defaultFence(tokens, idx, options, env, self);
+  };
 
   const defaultLinkOpen = markdown.renderer.rules.link_open
     ?? ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options));

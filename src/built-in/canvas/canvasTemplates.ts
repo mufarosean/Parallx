@@ -164,6 +164,43 @@ const BUILTIN_CANVAS_TEMPLATES: CanvasPageTemplate[] = [
     },
   },
   {
+    // M102. The structure IS the feature: grading finds your answers by
+    // position (the list under each question heading) rather than by
+    // guessing at page shape, and writes its marking into a callout so the
+    // three roles — asked, answered, marked — stay visually distinct on
+    // re-reading. Deviating from the shape still works, it just makes the
+    // AI's job of locating answers a guess again.
+    id: 'quiz',
+    name: 'Quiz',
+    description: 'Questions with room to answer, for AI marking in place.',
+    snapshot: 'Sections: Source | Question headings with answer lists',
+    icon: 'graduation-cap',
+    source: 'builtin',
+    defaultTitle: 'Quiz: ',
+    buildDoc(): unknown {
+      const question = (): unknown[] => ([
+        { type: 'heading', attrs: { level: 2 }, content: [] },
+        { type: 'bulletList', content: [
+          { type: 'listItem', content: [{ type: 'paragraph' }] },
+        ]},
+      ]);
+      return {
+        type: 'doc',
+        content: [
+          { type: 'paragraph', content: [
+            { type: 'text', marks: [{ type: 'bold' }], text: 'Source: ' },
+          ]},
+          { type: 'paragraph', content: [
+            { type: 'text', marks: [{ type: 'italic' }], text: 'Each heading is a question. Answer in the list under it, then ask the AI to mark this page.' },
+          ]},
+          ...question(),
+          ...question(),
+          ...question(),
+        ],
+      };
+    },
+  },
+  {
     id: 'project-brief',
     name: 'Project brief',
     description: 'Goal, scope, deliverables, and timeline outline.',

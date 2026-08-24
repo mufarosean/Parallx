@@ -77,6 +77,7 @@ const FOLDER_RULES: Record<string, string[]> = {
   'archivedRunViewer.ts':           ['rendering/'],  // M91 — read-only archived-run transcript viewer
   'rendering/chatDiffViewer.ts':    [],
   'rendering/chatListRenderer.ts':  ['chatIcons', 'rendering/'],
+  'rendering/chatMindMap.ts':       [],  // M102 — pure parse/layout/render, imports nothing
   'rendering/chatTaskCards.ts':     [],
 
   // ── tools/ — built-in tool implementations ──────────────────────────────

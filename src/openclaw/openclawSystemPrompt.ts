@@ -222,6 +222,10 @@ export function buildOpenclawSystemPrompt(params: IOpenclawSystemPromptParams): 
     sections.push(buildLinkingSection(params.linkContracts));
   }
 
+  // 3c. M102 — Concept maps. Unconditional: this is a rendering capability of
+  //     the reply itself, not a tool, so there is nothing to gate on.
+  sections.push(buildConceptMapSection());
+
   // 5. Context engine addition (upstream: systemPromptAddition from AssembleResult).
   //    Holds retrieved/assembled context for the turn. Placed after the
   //    capability sections and before preferences so it reads as supporting
@@ -466,6 +470,51 @@ export function buildLinkingSection(
  *
  * Upstream: resolveBootstrapContextForRun from bootstrap-files.ts:47-118
  */
+/**
+ * Concept maps (M102).
+ *
+ * A rendering capability of the reply, not a tool — a ```mindmap fence in the
+ * answer draws as a small diagram. The section exists because the model will
+ * never reach for a syntax nothing told it about; the same reasoning as the
+ * Memory and Delegation sections, which went unused until something taught
+ * WHEN to use them.
+ *
+ * The "when NOT to" half carries most of the weight. Left to itself a model
+ * will decorate every answer with a diagram, and a map of things that were
+ * already a list is noise that costs the reader more than it gives.
+ */
+export function buildConceptMapSection(): string {
+  return [
+    '## Concept maps',
+    'A fenced ```mindmap block in your reply renders as a small diagram.',
+    'Its syntax is an indented list — indentation is the only thing that',
+    'matters, and a child is any line indented further than the line above:',
+    '',
+    '```mindmap',
+    'Parameter risk',
+    '  does not diversify across years',
+    '    every year shares the same estimated parameters',
+    '  widens the predictive distribution',
+    'Process risk',
+    '  averages out across years',
+    '```',
+    '',
+    'Use one when the answer is about how several ideas RELATE — what depends',
+    'on what, what splits into what, how two things differ and where they',
+    'meet. Draw the map first, then explain it in prose; the map is the',
+    'skeleton of the explanation, never a replacement for one.',
+    '',
+    'Do NOT use one for a sequence of steps, a plain list, a comparison of',
+    'two things, or anything with fewer than four nodes. Prose is better for',
+    'all of those, and a diagram of something that was already a list makes',
+    'the reply longer without making it clearer. Most answers need no map.',
+    '',
+    'Keep it under about 15 nodes and 3 levels deep. Label nodes with short',
+    'claims or names, not sentences. The reader can click any node to ask a',
+    'follow-up about it.',
+  ].join('\n');
+}
+
 export function buildWorkspaceSection(
   bootstrapFiles: readonly IBootstrapFile[],
   workspaceDigest: string,

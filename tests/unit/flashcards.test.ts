@@ -47,6 +47,10 @@ const {
   fcReminderCron,
   fcParseTags,
   fcAggregateStats,
+  FC_NAV_DEFS,
+  FC_VIEW_LABELS,
+  FC_DECK_VIEWS,
+  fcNavViewFor,
   FC_LEARNING_STEPS_MIN,
   FC_MIN_EASE,
   AGAIN, HARD, GOOD, EASY,
@@ -369,6 +373,42 @@ describe('fcBuildMaterial', () => {
   });
 });
 
+describe('fcExtractCardsJson — truncation salvage', () => {
+  it('recovers every complete card from an unterminated array', () => {
+    // What a window-filled response actually looks like: complete objects,
+    // then a cut mid-object, no closing bracket.
+    const cut = '[{"front":"Q1","back":"A1","tags":["t"]},'
+      + '{"front":"Q2","back":"A2","tags":["u","v"],"importance":90,"importanceReason":"core"},'
+      + '{"front":"Q3","back":"A3 got cut off her';
+    const { cards, error, truncated } = fcExtractCardsJson(cut);
+    expect(error).toBeNull();
+    expect(truncated).toBe(true);
+    expect(cards).toHaveLength(2);
+    expect(cards[0].front).toBe('Q1');
+    expect(cards[1].importance).toBe(90);
+  });
+
+  it('nested tag arrays do not confuse the object-boundary walker', () => {
+    const cut = '[{"front":"Q1","back":"A1","tags":["a","b","c"]},{"front":"Q2","back":"A2","tags":["d"';
+    const { cards, truncated } = fcExtractCardsJson(cut);
+    expect(truncated).toBe(true);
+    expect(cards).toHaveLength(1);
+    expect(cards[0].front).toBe('Q1');
+  });
+
+  it('still errors when nothing is salvageable', () => {
+    const { cards, error, truncated } = fcExtractCardsJson('[{"front":"only one, cut mi');
+    expect(cards).toHaveLength(0);
+    expect(error).toMatch(/Unterminated/);
+    expect(truncated).toBe(true);
+  });
+
+  it('a complete response reports truncated: false', () => {
+    const { truncated } = fcExtractCardsJson('[{"front":"Q","back":"A"}]');
+    expect(truncated).toBe(false);
+  });
+});
+
 describe('fcExtractCardsJson — importance (M101)', () => {
   it('reads a per-card importance and reason', () => {
     const { cards } = fcExtractCardsJson('[{"front":"Q","back":"A","importance":92,"importanceReason":"core formula"}]');
@@ -527,6 +567,33 @@ describe('fcStreamWithStall', () => {
       fcStreamWithStall(stalled(), (c: { content: string }) => { out += c.content; }, 50),
     ).rejects.toThrow(/stopped responding/);
     expect(out).toBe('x');
+  });
+
+  it('gives the FIRST chunk a longer leash than later chunks (cold model load)', async () => {
+    const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    async function* slowLoad() {
+      await delay(80);           // slower than stallMs, within firstChunkMs
+      yield { content: 'loaded' };
+      await delay(10);           // fast once warm
+      yield { content: '!' };
+    }
+    let out = '';
+    await fcStreamWithStall(slowLoad(), (c: { content: string }) => { out += c.content; }, 40, 500);
+    expect(out).toBe('loaded!');
+  });
+
+  it('still stalls between chunks even when the first-chunk leash is long', async () => {
+    const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    async function* warmThenDead() {
+      yield { content: 'warm' };
+      await delay(300);          // past stallMs — the leash no longer applies
+      yield { content: 'never-delivered' };
+    }
+    let out = '';
+    await expect(
+      fcStreamWithStall(warmThenDead(), (c: { content: string }) => { out += c.content; }, 50, 10_000),
+    ).rejects.toThrow(/stopped responding/);
+    expect(out).toBe('warm');
   });
 });
 
@@ -709,9 +776,35 @@ describe('fcPacePlan (M101 deadline-aware pacing)', () => {
     expect(plan.doneAt).toBe(NOW + 51 * DAY);
   });
 
-  it('clamps the rate to the session ceiling', () => {
+  it('raises the rate above the batch size when the deadline needs it', () => {
+    // 500 cards, 8 intro days → 63/day needed. Clamping to the 20 ceiling
+    // (the old behaviour) handed over 20/day and printed a completion date
+    // 17 days past the exam, with nothing saying so. The deadline wins.
     const plan = fcPacePlan({ examDate: NOW + 10 * DAY, newCount: 500 }, NOW, { freezeDays: 2, ceiling: 20 });
-    expect(plan.rate).toBe(20);
+    expect(plan.rate).toBe(63);
+    expect(plan.raised).toBe(true);
+  });
+
+  it('still shrinks below the batch size when there is time to spare', () => {
+    // Pacing is not "always introduce more" — the reduction is the point.
+    const plan = fcPacePlan({ examDate: NOW + 67 * DAY, newCount: 204 }, NOW, { freezeDays: 14, ceiling: 20 });
+    expect(plan.rate).toBe(4);
+    expect(plan.raised).toBe(false);
+  });
+
+  it('a raised pace always finishes before the freeze window', () => {
+    // The property the raise exists to guarantee, across a range of decks.
+    for (const newCount of [500, 1200, 2000, 5000]) {
+      for (const days of [20, 45, 90]) {
+        const plan = fcPacePlan(
+          { examDate: NOW + days * DAY, newCount },
+          NOW,
+          { freezeDays: 14, ceiling: 20 },
+        );
+        if (!plan || plan.frozen) continue;
+        expect(plan.doneAt, `${newCount} cards / ${days} days`).toBeLessThanOrEqual(plan.cutoff);
+      }
+    }
   });
 
   it('freezes introduction inside the freeze window', () => {
@@ -1028,9 +1121,12 @@ describe('fcExtractCardsJson', () => {
     expect(cards[0].front).toBe('Q');
   });
 
-  it('reports a truncation-shaped error for a cut-off array', () => {
-    const { error } = fcExtractCardsJson('[{"front":"Q","back":"A"},{"front":"Q2","ba');
-    expect(error).toContain('cut off');
+  it('salvages complete cards from a cut-off array instead of erroring (2026-08-18)', () => {
+    const { cards, error, truncated } = fcExtractCardsJson('[{"front":"Q","back":"A"},{"front":"Q2","ba');
+    expect(error).toBeNull();
+    expect(truncated).toBe(true);
+    expect(cards).toHaveLength(1);
+    expect(cards[0].front).toBe('Q');
   });
 });
 
@@ -1049,7 +1145,10 @@ describe('fcReminderCron', () => {
 });
 
 describe('fcContextPlan', () => {
-  const { fcContextPlan, FC_CHARS_PER_TOKEN, FC_SCAFFOLD_TOKENS, FC_FALLBACK_MODEL_CTX } = __testables;
+  const {
+    fcContextPlan, FC_CHARS_PER_TOKEN, FC_PROMPT_HEADROOM, FC_SCAFFOLD_TOKENS,
+    FC_OUTPUT_BASE_TOKENS, FC_OUTPUT_TOKENS_PER_CARD, FC_FALLBACK_MODEL_CTX,
+  } = __testables;
 
   it('sizes the window to document + output, not a fixed constant', () => {
     // The regression that motivated this: a 38,263-char PDF tokenized to
@@ -1059,10 +1158,22 @@ describe('fcContextPlan', () => {
     const { numCtx, maxChars, outputTokens } = fcContextPlan({
       chars: 38_263, count: 15, modelCtx: 262_144, setting: 0,
     });
-    const promptEstimate = Math.ceil(38_263 / FC_CHARS_PER_TOKEN) + FC_SCAFFOLD_TOKENS;
+    const promptEstimate = Math.ceil((38_263 / FC_CHARS_PER_TOKEN) * FC_PROMPT_HEADROOM) + FC_SCAFFOLD_TOKENS;
     expect(numCtx).toBeGreaterThanOrEqual(promptEstimate + outputTokens);
     expect(numCtx % 2048).toBe(0);
     expect(maxChars).toBeGreaterThanOrEqual(38_263); // whole doc fits, no clip
+  });
+
+  it('survives the MEASURED tokenizer ratio at large multi-source size (2026-08-18 regression)', () => {
+    // The real run that failed: 4 sources, 143,882 chars, auto count (50).
+    // Planned at 2.5 chars/token the prompt came in ~1,400 tokens short of
+    // the measured 2.44 ratio, ate the rounding slack, and the window filled
+    // mid-JSON ("Unterminated JSON array"). The plan must hold at 2.44.
+    const { numCtx, outputTokens } = fcContextPlan({
+      chars: 143_882, count: 50, modelCtx: 131_072, setting: 0,
+    });
+    const realistPrompt = Math.ceil(143_882 / 2.44) + FC_SCAFFOLD_TOKENS;
+    expect(numCtx).toBeGreaterThanOrEqual(realistPrompt + outputTokens);
   });
 
   it('requests only what the job needs, never the model maximum', () => {
@@ -1077,7 +1188,8 @@ describe('fcContextPlan', () => {
     expect(numCtx).toBe(32_768);
     // Clip limit leaves the output reserve inside the ceiling.
     expect(maxChars).toBeLessThan(500_000);
-    expect(maxChars).toBe(Math.floor((32_768 - FC_SCAFFOLD_TOKENS - (1500 + 220 * 15)) * FC_CHARS_PER_TOKEN));
+    const reserve = FC_OUTPUT_BASE_TOKENS + FC_OUTPUT_TOKENS_PER_CARD * 15;
+    expect(maxChars).toBe(Math.floor(((32_768 - FC_SCAFFOLD_TOKENS - reserve) * FC_CHARS_PER_TOKEN) / FC_PROMPT_HEADROOM));
   });
 
   it('honors an explicit user override, still capped by the model', () => {
@@ -1244,5 +1356,40 @@ describe('fcExtractCardsJson + LaTeX', () => {
     expect(cards[0].back).toContain(String.raw`\hat{\sigma}^2`);
     expect(cards[0].back).toContain(String.raw`\frac{1}{n-1}`);
     expect(cards[0].back).not.toMatch(/[\f\b\t]/);
+  });
+});
+
+describe('navigation model', () => {
+  it('every rail destination has a label and an icon', () => {
+    expect(FC_NAV_DEFS.map((d: { view: string }) => d.view))
+      .toEqual(['decks', 'study', 'create', 'import', 'stats']);
+    for (const def of FC_NAV_DEFS) {
+      expect(FC_VIEW_LABELS[def.view]).toBe(def.label);
+      expect(def.iconName).toBeTruthy();
+    }
+  });
+
+  it('names every route the pane can render, so the breadcrumb never shows a raw id', () => {
+    // Mirrors createEditorPane's dispatch table.
+    const routed = ['browse', 'study', 'custom', 'create', 'import', 'stats', 'dedup', 'coverage', 'decks'];
+    for (const view of routed) expect(FC_VIEW_LABELS[view]).toBeTruthy();
+  });
+
+  it('lights Decks for the views that live under one deck', () => {
+    for (const view of FC_DECK_VIEWS) {
+      expect(fcNavViewFor({ view, deckId: 3 })).toBe('decks');
+    }
+  });
+
+  it('lights Study for Custom Study, which is a launcher for it', () => {
+    expect(fcNavViewFor({ view: 'custom' })).toBe('study');
+    expect(fcNavViewFor({ view: 'custom', deckId: 1 })).toBe('study');
+  });
+
+  it('lights the destination itself for plain routes, and Decks with no route', () => {
+    expect(fcNavViewFor({ view: 'stats' })).toBe('stats');
+    expect(fcNavViewFor({ view: 'import' })).toBe('import');
+    expect(fcNavViewFor({})).toBe('decks');
+    expect(fcNavViewFor(null)).toBe('decks');
   });
 });

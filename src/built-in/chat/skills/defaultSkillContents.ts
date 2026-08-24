@@ -581,4 +581,130 @@ Briefly confirm the page title, note any contradictions or open questions,
 and surface any links you did NOT follow that the user may want to fetch in
 a follow-up turn.
 `],
+
+  ['quiz', `---
+name: quiz
+description: "Write a quiz onto a canvas page from source material, or mark the answers already written on one. Triggered by /quiz, or when the user asks for practice questions or asks you to grade a quiz page."
+version: 1.0.0
+author: parallx
+kind: workflow
+permission: auto-allow
+user-invocable: true
+tags: [workflow, study, quiz, canvas, grading]
+parameters:
+  - name: target
+    type: string
+    description: The source to write questions from, or the quiz page to mark
+    required: false
+---
+
+# Quiz Workflow
+
+A quiz lives on a canvas page and nowhere else. There is no score to record
+and no database to update — the page IS the record, and it is searchable
+later like any other page.
+
+## The page convention
+
+Everything here depends on one shape, which the **Quiz** page template sets up:
+
+- A **heading** is a question.
+- The **list directly under it** is the user's answer.
+- A **callout** (\`> [!note] …\`) under that is your marking.
+
+Never restructure the page. Never rewrite the user's answers.
+
+## Which job is this?
+
+Read the request. If the page already has answers written under the
+questions, this is **Marking**. Otherwise it is **Writing**.
+
+# Writing a quiz
+
+## Step 1: Read the source
+
+The user names a source — a canvas page, a file, a deck's material, or a
+topic already discussed. Read it properly with \`canvas_read_page\` or
+\`fs_read_file\`. Do not write questions from memory of a filename.
+
+## Step 2: Write the questions
+
+Ask for what the source actually teaches. Prefer questions that need an
+explanation — *why*, *how*, *when would you use*, *what breaks if* — over
+questions answered by a single term, because a term is what a flashcard is
+for and a quiz is not.
+
+Aim for 5-8 unless the user asks for a different number. Every question must
+be answerable from the source; never test something it does not cover.
+
+## Step 3: Create the page
+
+Use \`canvas_create_page\` with a title of the form \`Quiz: <topic>\`, and a
+body in this exact shape:
+
+\`\`\`
+**Source:** <what the questions came from>
+
+## <the first question>
+
+-
+
+## <the second question>
+
+-
+\`\`\`
+
+One empty bullet under each heading is where the user writes. Leave it empty.
+
+## Step 4: Tell the user
+
+Name the page, say how many questions, and say that you will mark it when
+they ask.
+
+# Marking a quiz
+
+## Step 1: Read the whole page
+
+\`canvas_read_page\` on the quiz page. You need the block ids, so read it
+even if you wrote it earlier in this same conversation.
+
+## Step 2: Re-read the source
+
+Find the source named at the top of the page and read it. **Mark against the
+source, not against your own recollection of the topic.** If you cannot find
+the source, say so and mark against the question only, and tell the user that
+is what you did.
+
+## Step 3: Mark each answer in place
+
+For each question, take the list under it as the answer, and insert a callout
+immediately after that list with \`canvas_insert_block_after\`:
+
+\`\`\`
+> [!note] **Correct** — <or "Partly" / "Not quite">
+> <what was right, in one line>
+> <what was missing or wrong, and what the source actually says>
+\`\`\`
+
+Rules that matter:
+
+- **Mark meaning, not wording.** Terse and correct beats fluent and empty.
+- **Name what is missing.** "Partly right" with no gap named is useless.
+- **Quote the source** when correcting a claim, so the user can check you.
+- **An empty answer is not a failure to mark.** Say what the answer was.
+- Insert after the ANSWER list, never after the heading — inserting after the
+  heading would push your marking above the answer it refers to.
+
+Work through every question. Do not stop at the first few.
+
+## Step 4: Summarise
+
+After the callouts are in, reply with a short read on where the
+understanding is solid and where it is thin — the pattern across answers,
+not a restatement of each one. Offer to explain anything they got wrong.
+
+If the user asks a follow-up about a specific question, answer it in chat.
+Only add another callout if they ask you to record the clarification on the
+page.
+`],
 ]);

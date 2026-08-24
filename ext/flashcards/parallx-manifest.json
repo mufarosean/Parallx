@@ -58,7 +58,7 @@
           "flashcards.paceNewCards": {
             "type": "boolean",
             "default": true,
-            "description": "Pace new-card introduction to each deck's exam date: a session's new batch shrinks to the rate that finishes introducing every card before the freeze window, instead of always serving the full daily limit. Decks without an exam date keep the fixed batch. Custom Study always reaches past the pace."
+            "description": "Pace new-card introduction to each deck's exam date: a session's new batch becomes the rate that finishes introducing every card before the freeze window. It shrinks below the batch size when there is time to spare, and RAISES above it when the deadline needs more - a large deck would otherwise never finish, and the deck card would only show a completion date past the exam. The deck card says when a rate was raised. Decks without an exam date keep the fixed batch."
           },
           "flashcards.freezeDays": {
             "type": "number",
@@ -69,6 +69,16 @@
             "type": "string",
             "default": "balanced",
             "description": "How selective AI card generation is when the count is Auto. 'thorough' = one card per atomic fact; 'balanced' = every core concept gets a card, minor detail consolidates; 'lean' = exam-critical methods, formulas, and assumptions only. Density shapes selectivity across the whole material - it never truncates coverage mid-chapter."
+          },
+          "flashcards.productionRecall": {
+            "type": "boolean",
+            "default": true,
+            "description": "Let AI generation mark cards that should be ANSWERED rather than recognised, and give each one a rubric of the points a correct answer must make. A card is marked for a written answer whenever a correct response is a sentence rather than a bare name or number - definitions included; lists and formulas get their own answer types. Those cards ask you to type an answer, graded against the rubric and the source passage the card came from. Recognising a card you cannot actually state is the main way self-grading overstates what you know."
+          },
+          "flashcards.productionDailyLimit": {
+            "type": "number",
+            "default": 12,
+            "description": "How many cards requiring a typed answer one study session serves. Counted separately from the review batch because a typed answer takes 30-60 seconds against roughly 5 for a recognition card, so mixing them into one allowance would quietly shrink how much you actually cover. 0 = no separate cap."
           },
           "flashcards.leechThreshold": {
             "type": "number",

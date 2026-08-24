@@ -102,6 +102,7 @@ function makeFakeApi() {
   // ── editors: create panes on demand, once per instanceId ──
   const editorProviders = new Map<string, { createEditorPane(c: HTMLElement, i?: unknown): { dispose(): void } }>();
   const paneHosts = new Map<string, HTMLElement>();
+  const panes = new Map<string, { dispose(): void }>();
   const editors = {
     registerEditorProvider: (typeId: string, provider: { createEditorPane(c: HTMLElement, i?: unknown): { dispose(): void } }) => {
       editorProviders.set(typeId, provider);
@@ -115,8 +116,20 @@ function makeFakeApi() {
       const host = document.createElement('div');
       document.body.appendChild(host);
       paneHosts.set(key, host);
-      provider.createEditorPane(host, { setName() { /* noop */ } });
+      panes.set(key, provider.createEditorPane(host, { setName() { /* noop */ } }));
     },
+    // The real workbench exposes the open TABS and lets a tool refocus one
+    // without rebuilding its pane. Without these the extension falls back to
+    // openEditor, which is a no-op on an already-open editor — so every
+    // navigation from outside the pane looked like it did nothing, which is
+    // exactly the bug this fake must be able to reproduce.
+    get openEditors() {
+      return [...paneHosts.keys()].map((key) => ({
+        id: `parallx-community.flashcards:${key}`,
+        name: 'Flashcards',
+      }));
+    },
+    focusEditor: async (_editorId: string) => true,
   };
 
   // ── window: scripted prompts ──
@@ -291,7 +304,27 @@ function makeFakeApi() {
     },
   };
 
-  return { api, sqlite, scripted, setConfig, lmCalls, chatTools, cronJobs, widgets, linkContracts, paneHosts };
+  /**
+   * Reproduce the workbench state that broke navigation: the TAB stays open
+   * (so `openEditors` still lists it) while its PANE is gone — which is what
+   * a workspace restore, a retention-LRU eviction, and the pre-retention
+   * tab-switch teardown all leave behind.
+   */
+  const evictPane = (typeId = 'flashcards', instanceId = 'main') => {
+    const key = `${typeId}:${instanceId}`;
+    panes.get(key)?.dispose();
+    panes.delete(key);
+    paneHosts.get(key)?.remove();
+  };
+  /** The workbench rebuilding the pane when the tab is next shown. */
+  const rebuildPane = (typeId = 'flashcards', instanceId = 'main') => {
+    const key = `${typeId}:${instanceId}`;
+    const host = paneHosts.get(key)!;
+    document.body.appendChild(host);
+    panes.set(key, editorProviders.get(typeId)!.createEditorPane(host, { setName() { /* noop */ } }));
+  };
+
+  return { api, sqlite, scripted, setConfig, lmCalls, chatTools, cronJobs, widgets, linkContracts, paneHosts, evictPane, rebuildPane };
 }
 
 // ─── The story ───────────────────────────────────────────────────────────────
@@ -357,19 +390,42 @@ describe('chat tool: createCards', () => {
 });
 
 describe('editor pane', () => {
-  it('opens on the decks view and lists the deck', async () => {
+  it('opens on the decks home and lists the deck', async () => {
     await fake.api.commands.executeCommand('flashcards.open');
     await settle();
     const pane = document.querySelector('.fc-pane')!;
     expect(pane).toBeTruthy();
+    // The home leads with what the collection IS, then the decks in it.
+    expect(pane.querySelector('.fc-home__title')?.textContent).toBe('Decks');
+    expect(pane.querySelector('.fc-home__sub')?.textContent).toContain('1 deck');
+    expect(pane.querySelector('.fc-home__sub')?.textContent).toContain('2 cards');
     expect(pane.querySelector('.fc-deck-card__name')?.textContent).toBe('Reserving');
-    expect(pane.querySelector('.fc-deck-card__meta')?.textContent).toContain('2 cards');
+    // Counts are labelled per state, not a run-on meta string.
+    expect(pane.querySelector('.fc-deck-count__n--new')?.textContent).toBe('2');
+  });
+
+  it('navigation lives in the sidebar, not on the pane', async () => {
+    const pane = document.querySelector('.fc-pane')!;
+    const sidebar = document.querySelector('[data-role="sidebar-host"]')!;
+    // The pane's tab strip is gone: it was the tool's only map, and it was
+    // inside the thing it mapped.
+    expect(pane.querySelectorAll('.fc-pane__tab')).toHaveLength(0);
+    expect([...sidebar.querySelectorAll('.fc-sb__nav-item')].map((n) => n.textContent))
+      .toEqual(['Decks', 'Study', 'Create', 'Import', 'Stats']);
+    // The pane says where you are instead.
+    expect(pane.querySelector('.fc-pane__crumbs')?.textContent).toBe('Decks');
+    expect(sidebar.querySelector('.fc-sb__nav-item--active')?.getAttribute('data-view')).toBe('decks');
   });
 
   it('navigates to browse and adds a card through the inline form', async () => {
     const pane = document.querySelector('.fc-pane')!;
     (pane.querySelector('.fc-deck-card__info') as HTMLElement).click();
     await settle();
+
+    // Inside a deck the breadcrumb names it, and the sidebar selects its row.
+    expect(pane.querySelector('.fc-pane__crumbs')?.textContent).toContain('Reserving');
+    const sidebar = document.querySelector('[data-role="sidebar-host"]')!;
+    expect(sidebar.querySelector('.fc-deck-row--active')?.textContent).toContain('Reserving');
 
     // Open the add form, fill it, save.
     const addToggle = [...pane.querySelectorAll('button')].find((b) => b.textContent?.includes('Add Card'))!;
@@ -426,12 +482,114 @@ describe('editor pane', () => {
   });
 });
 
+describe('navigation reaches the pane', () => {
+  // The reported failure: "Custom Study and Study Ahead — neither one works."
+  // Clicking them surfaced the Flashcards tab on whatever view it last showed
+  // and swallowed the navigation, because the route event was dispatched at a
+  // tab whose pane was not alive to hear it.
+  it('honours a route issued while the tab is open but its pane is gone', async () => {
+    fake.evictPane();
+    await fake.api.commands.executeCommand('flashcards.customStudy');
+    await settle();
+    fake.rebuildPane();
+    await settle();
+
+    const pane = document.querySelector('.fc-pane')!;
+    expect(pane.querySelector('.fc-view__title')?.textContent).toBe('Custom Study');
+    expect(pane.querySelector('.fc-cs__avail')?.textContent).toContain('available');
+  });
+
+  it('starts a Custom Study session from the built queue', async () => {
+    const pane = document.querySelector('.fc-pane')!;
+    const start = [...pane.querySelectorAll('button')]
+      .find((b) => /^Study \d+ Cards?$/.test(b.textContent ?? '')) as HTMLButtonElement;
+    expect(start).toBeTruthy();
+    expect(start.disabled).toBe(false);
+    start.click();
+    await settle();
+    expect(pane.querySelector('.fc-study__front')).toBeTruthy();
+    // A custom session is labelled by its mode, never mistaken for the daily queue.
+    expect(pane.textContent).toContain('Extra New Cards');
+  });
+
+  it('does not leave the stashed route behind to hijack the next mount', async () => {
+    // A live pane consumed the route above, so rebuilding lands where the
+    // pane was, not back on Custom Study.
+    (document.querySelector('.fc-sb__nav-item[data-view="decks"]') as HTMLElement).click();
+    await settle();
+    fake.evictPane();
+    fake.rebuildPane();
+    await settle();
+    const pane = document.querySelector('.fc-pane')!;
+    expect(pane.querySelector('.fc-home__title')?.textContent).toBe('Decks');
+  });
+});
+
+describe('working ahead of the schedule', () => {
+  // Reported: "Custom Study literally does not show any cards." The daily
+  // session was keyed by the raw deck id (a NUMBER) while the custom-session
+  // pruner called String methods on every key, so launching Custom Study
+  // after studying that deck threw mid-render — after the study root was
+  // already appended — and left a blank pane with no error anywhere.
+  it('serves a custom session for a deck whose daily session is already live', async () => {
+    const pane = document.querySelector('.fc-pane')!;
+    const deckAction = (label: string) => [...pane.querySelectorAll('.fc-deck-card__actions button')]
+      .find((b) => b.textContent === label) as HTMLButtonElement;
+
+    deckAction('Study').click();
+    await settle();
+    expect(pane.querySelector('.fc-study__front')).toBeTruthy();
+
+    (document.querySelector('.fc-sb__nav-item[data-view="decks"]') as HTMLElement).click();
+    await settle();
+    deckAction('Custom').click();
+    await settle();
+
+    const start = [...pane.querySelectorAll('button')]
+      .find((b) => /^Study \d+ Cards?$/.test(b.textContent ?? '')) as HTMLButtonElement;
+    expect(start).toBeTruthy();
+    start.click();
+    await settle();
+
+    expect(pane.querySelector('.fc-study__front')).toBeTruthy();
+    expect(pane.querySelector('.fc-pane__body')!.textContent).not.toBe('');
+  });
+
+  it('shows every mode its own count, so an empty mode is not an empty deck', async () => {
+    // "Studying ahead only shows one or two cards" was Review Ahead telling
+    // the truth about 2 due reviews while the deck's real backlog sat in
+    // another mode, invisible until you clicked it.
+    const pane = document.querySelector('.fc-pane')!;
+    (document.querySelector('.fc-sb__nav-item[data-view="decks"]') as HTMLElement).click();
+    await settle();
+    ([...pane.querySelectorAll('.fc-deck-card__actions button')]
+      .find((b) => b.textContent === 'Custom') as HTMLButtonElement).click();
+    await settle();
+
+    const counts = new Map([...pane.querySelectorAll('.fc-cs__mode')].map((row) => [
+      row.querySelector('.fc-cs__mode-name')!.textContent!,
+      row.querySelector('.fc-cs__mode-count')!.textContent!,
+    ]));
+    expect(counts.get('Extra New Cards')).toBe('3');
+    expect(counts.get('Cram')).toBe('3');
+    expect(counts.get('Review Ahead')).toBe('none');
+    expect(counts.get('Difficult Cards')).toBe('none');
+
+    // An empty mode names the one that has the cards.
+    ([...pane.querySelectorAll('.fc-cs__mode')]
+      .find((m) => m.textContent?.includes('Review Ahead')) as HTMLElement).click();
+    await settle();
+    expect(pane.querySelector('.fc-cs__avail')!.textContent)
+      .toBe('No reviews in range available. Extra New Cards has 3.');
+  });
+});
+
 describe('study flow', () => {
   it('reveals, grades Good, persists SM-2 state and logs the review', async () => {
     const pane = document.querySelector('.fc-pane')!;
-    // Jump to study via the tab.
-    const studyTab = [...pane.querySelectorAll('.fc-pane__tab')].find((t) => t.textContent?.includes('Study')) as HTMLElement;
-    studyTab.click();
+    // Jump to study from the sidebar rail — the tool's navigation surface.
+    const sidebar = document.querySelector('[data-role="sidebar-host"]')!;
+    (sidebar.querySelector('.fc-sb__nav-item[data-view="study"]') as HTMLElement).click();
     await settle();
 
     // 3 new cards → the queue exists; front shown, no back yet.
@@ -459,13 +617,54 @@ describe('study flow', () => {
     // The session advanced to the next card.
     expect(pane.querySelector('.fc-study__front')!.textContent).not.toBe(frontText);
   });
+
+  it('Skip defers a card to the end of the session without grading it', async () => {
+    const pane = document.querySelector('.fc-pane')!;
+    const sidebar = document.querySelector('[data-role="sidebar-host"]')!;
+    (sidebar.querySelector('.fc-sb__nav-item[data-view="study"]') as HTMLElement).click();
+    await settle();
+
+    const reviewsBefore = fake.sqlite.prepare('SELECT COUNT(*) AS n FROM fc_reviews').get() as { n: number };
+    const first = pane.querySelector('.fc-study__front')!.textContent!;
+    const cardBefore = fake.sqlite.prepare('SELECT * FROM fc_cards WHERE front = ?').get(first) as Record<string, unknown>;
+
+    (pane.querySelector('.fc-study__skip') as HTMLButtonElement).click();
+    await settle();
+
+    // Moved on, without revealing anything.
+    const second = pane.querySelector('.fc-study__front')!.textContent!;
+    expect(second).not.toBe(first);
+    expect(pane.querySelector('.fc-study__back')).toBeNull();
+
+    // A skip is not a grade: no review row, and the card's scheduling state
+    // is untouched. This is the whole contract — deferring must cost the
+    // schedule nothing, or it becomes a way to quietly corrupt FSRS.
+    const reviewsAfter = fake.sqlite.prepare('SELECT COUNT(*) AS n FROM fc_reviews').get() as { n: number };
+    expect(reviewsAfter.n).toBe(reviewsBefore.n);
+    const cardAfter = fake.sqlite.prepare('SELECT * FROM fc_cards WHERE front = ?').get(first) as Record<string, unknown>;
+    expect(cardAfter.state).toBe(cardBefore.state);
+    expect(cardAfter.reps).toBe(cardBefore.reps);
+    expect(cardAfter.due_at).toBe(cardBefore.due_at);
+
+    // And it comes back later in the same session rather than being dropped.
+    const seen: string[] = [second];
+    for (let i = 0; i < 6 && !seen.includes(first); i++) {
+      const skipBtn = pane.querySelector('.fc-study__skip') as HTMLButtonElement | null;
+      if (!skipBtn) break;
+      skipBtn.click();
+      await settle();
+      const front = pane.querySelector('.fc-study__front')?.textContent;
+      if (front) seen.push(front);
+    }
+    expect(seen).toContain(first);
+  });
 });
 
 describe('AI generation flow', () => {
   it('canvas page → generate → editable review → import', async () => {
     const pane = document.querySelector('.fc-pane')!;
-    const createTab = [...pane.querySelectorAll('.fc-pane__tab')].find((t) => t.textContent?.includes('Create')) as HTMLElement;
-    createTab.click();
+    const sidebar = document.querySelector('[data-role="sidebar-host"]')!;
+    (sidebar.querySelector('.fc-sb__nav-item[data-view="create"]') as HTMLElement).click();
     await settle();
 
     // Load the canvas source (quick pick auto-selects the only page).
