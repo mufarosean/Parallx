@@ -612,10 +612,19 @@ describe('estimateSystemPromptTokens', () => {
 
 describe('budget-aware truncation', () => {
   it('does not truncate when under budget', () => {
-    const params = createBaseParams({ systemBudgetTokens: 100000 });
-    const withBudget = buildOpenclawSystemPrompt(params);
-    const withoutBudget = buildOpenclawSystemPrompt(createBaseParams());
-    expect(withBudget).toBe(withoutBudget);
+    // The prompt embeds a live timestamp; two builds straddling a
+    // millisecond tick differ by one digit and fail the identity check.
+    // Freeze the clock, as the runtime-section tests below already do.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-22T13:00:00.000Z'));
+    try {
+      const params = createBaseParams({ systemBudgetTokens: 100000 });
+      const withBudget = buildOpenclawSystemPrompt(params);
+      const withoutBudget = buildOpenclawSystemPrompt(createBaseParams());
+      expect(withBudget).toBe(withoutBudget);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('truncates when over budget', () => {
