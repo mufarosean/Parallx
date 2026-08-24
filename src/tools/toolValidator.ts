@@ -137,11 +137,39 @@ function _validateContributions(
   errors: ValidationError[],
   warnings: ValidationWarning[],
 ): void {
-  const knownPoints = new Set(['views', 'viewContainers', 'commands', 'configuration', 'menus', 'keybindings']);
+  const knownPoints = new Set([
+    'surfaces', 'views', 'viewContainers', 'commands', 'configuration',
+    'menus', 'keybindings', 'statusBar', 'editors',
+  ]);
 
   for (const key of Object.keys(contributes)) {
     if (!knownPoints.has(key)) {
       warnings.push({ path: `contributes.${key}`, message: `Unknown contribution point "${key}" — will be ignored` });
+    }
+  }
+
+  // ── surfaces ──
+  if (contributes.surfaces !== undefined) {
+    if (!Array.isArray(contributes.surfaces)) {
+      errors.push({ path: 'contributes.surfaces', message: 'must be an array' });
+    } else {
+      for (let i = 0; i < contributes.surfaces.length; i++) {
+        _validateSurfaceDescriptor(contributes.surfaces[i], `contributes.surfaces[${i}]`, errors, warnings);
+      }
+    }
+  }
+
+  // ── editors ──
+  if (contributes.editors !== undefined) {
+    if (!Array.isArray(contributes.editors)) {
+      errors.push({ path: 'contributes.editors', message: 'must be an array' });
+    } else {
+      for (let i = 0; i < contributes.editors.length; i++) {
+        const e = contributes.editors[i];
+        const p = `contributes.editors[${i}]`;
+        if (!_isObject(e)) { errors.push({ path: p, message: 'must be an object' }); continue; }
+        _requireNonEmptyStringAt(e as Record<string, unknown>, 'typeId', p, errors);
+      }
     }
   }
 
@@ -224,6 +252,33 @@ function _validateContributions(
         }
       }
     }
+  }
+}
+
+function _validateSurfaceDescriptor(
+  value: unknown,
+  path: string,
+  errors: ValidationError[],
+  warnings: ValidationWarning[],
+): void {
+  if (!_isObject(value)) { errors.push({ path, message: 'must be an object' }); return; }
+  const s = value as Record<string, unknown>;
+  _requireNonEmptyStringAt(s, 'typeId', path, errors);
+  _requireNonEmptyStringAt(s, 'name', path, errors);
+  if (s.icon !== undefined && typeof s.icon !== 'string') {
+    errors.push({ path: `${path}.icon`, message: 'must be a string' });
+  }
+  if (s.placement !== undefined && !['center', 'side', 'bottom'].includes(s.placement as string)) {
+    warnings.push({ path: `${path}.placement`, message: `Unknown placement "${String(s.placement)}" — will fall back to "center"` });
+  }
+  if (s.instances !== undefined && s.instances !== 'single' && s.instances !== 'many') {
+    warnings.push({ path: `${path}.instances`, message: `Unknown instances "${String(s.instances)}" — will fall back to "many"` });
+  }
+  if (s.bindingKinds !== undefined && !Array.isArray(s.bindingKinds)) {
+    errors.push({ path: `${path}.bindingKinds`, message: 'must be an array of strings' });
+  }
+  if (s.when !== undefined && typeof s.when !== 'string') {
+    errors.push({ path: `${path}.when`, message: 'must be a string' });
   }
 }
 
