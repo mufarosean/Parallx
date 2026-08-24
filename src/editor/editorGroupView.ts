@@ -8,7 +8,7 @@
 // and events. EditorGroupView maps the model to `ITabBarItem[]` and
 // wires TabBar events back to the model.
 
-import { Disposable, DisposableStore, type IDisposable } from '../platform/lifecycle.js';
+import { Disposable, type IDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { EditorGroupModel, EditorModelChangeEvent } from './editorGroupModel.js';
 import { EditorPane, PlaceholderEditorPane, type EditorPaneViewState } from './editorPane.js';
@@ -48,6 +48,12 @@ const TAB_STRIP_TOP_GAP = 8;
 const PANE_CONTAINER_CHROME_X = 18;
 const MIN_GROUP_WIDTH = 200;
 const MIN_GROUP_HEIGHT = 120;
+/** How many panes a group keeps ALIVE (hidden) for instant, stateful tab
+ *  returns. Beyond the cap the least-recently-shown pane is disposed after
+ *  its view state is captured, so an evicted tab still restores scroll and
+ *  selection on rebuild — it just pays the rebuild. Bounds DOM/memory for
+ *  users with many open tabs. */
+const MAX_RETAINED_PANES = 7;
 
 // ─── EditorGroupView ─────────────────────────────────────────────────────────
 
@@ -83,10 +89,10 @@ export class EditorGroupView extends Disposable implements IGridView {
   private _showActiveEditorSeq = 0;
 
   /**
-   * Per-input view-state cache. When a pane is swapped out (tab switch), its
-   * pane.saveViewState() result is stored here keyed by input.id. When the
-   * input is shown again, the new pane's restoreViewState() is called with
-   * the cached value before the user sees the first paint.
+   * Per-input view-state cache. Retention (below) keeps recently used panes
+   * ALIVE across tab switches, so this cache is the durable fallback: it
+   * restores scroll/selection for panes evicted by the retention cap, and
+   * for the first mount after a workspace restore.
    *
    * VS-Code-aligned: each editor input owns a view state (scroll, selection,
    * focus, etc.) that survives tab switching but is evicted when the editor
@@ -94,9 +100,23 @@ export class EditorGroupView extends Disposable implements IGridView {
    */
   private readonly _viewStateCache = new Map<string, EditorPaneViewState>();
 
+  /**
+   * Pane retention (M101 seamless tabs). Switching tabs used to DISPOSE the
+   * outgoing pane and rebuild the incoming one from scratch — every return
+   * to an open tab flashed empty, re-fetched content, and lost ephemeral
+   * state the view-state contract doesn't carry (a revealed flashcard answer,
+   * a finished duplicate scan, a half-loaded canvas). Panes now stay alive,
+   * hidden in the pane container, and are disposed only when their tab
+   * CLOSES, the group disposes, or the LRU cap evicts them. This covers
+   * every editor uniformly — built-in and extension tool editors alike —
+   * with zero per-editor work.
+   */
+  private readonly _retainedPanes = new Map<string, EditorPane>();
+  /** LRU order of retained input ids — most recently shown LAST. */
+  private _retainedOrder: string[] = [];
+
   /** The currently active editor pane (if any). */
   get activePane(): EditorPane | undefined { return this._activePane; }
-  private readonly _paneDisposables = this._register(new DisposableStore());
 
   private _width = 0;
   private _height = 0;
@@ -510,8 +530,12 @@ export class EditorGroupView extends Disposable implements IGridView {
         break;
       case EditorGroupChangeKind.EditorClose:
         // Evict the closed input's view state — only tab *switching* keeps it,
-        // an actual close should drop scroll/selection/focus.
-        if (e.editor) this._viewStateCache.delete(e.editor.id);
+        // an actual close should drop scroll/selection/focus. The retained
+        // pane dies with the tab: close is the real teardown boundary now.
+        if (e.editor) {
+          this._viewStateCache.delete(e.editor.id);
+          this._disposeRetainedPane(e.editor.id);
+        }
         this._renderTabs();
         this._updateRibbon(this.model.activeEditor); // Hide ribbon when last editor closes
         break;
@@ -520,7 +544,22 @@ export class EditorGroupView extends Disposable implements IGridView {
         await this._showActiveEditor();
         break;
     }
+    // Preview-replace removes an editor WITHOUT an EditorClose event (model
+    // invariant: one preview tab, silently swapped). Close-driven disposal
+    // alone would leak that editor's retained pane — alive, hidden, and
+    // bound to a disposed input that a future reopen could share an id
+    // with. Reconcile after every model change.
+    this._pruneRetainedPanes();
     this._updateEmptyState();
+  }
+
+  /** Dispose retained panes whose input no longer exists in the model. */
+  private _pruneRetainedPanes(): void {
+    if (this._retainedPanes.size === 0) return;
+    const live = new Set(this.model.editors.map((ed) => ed.id));
+    for (const inputId of [...this._retainedPanes.keys()]) {
+      if (!live.has(inputId)) this._disposeRetainedPane(inputId);
+    }
   }
 
   // ─── Tab Rendering ─────────────────────────────────────────────────────
@@ -738,9 +777,10 @@ export class EditorGroupView extends Disposable implements IGridView {
 
     const activeInput = this.model.activeEditor;
 
-    // Clear current pane (synchronous — safe to do even if a newer call follows).
-    // Before tearing down, capture the outgoing pane's view state so the next
-    // mount of that same input can restore scroll/selection/focus exactly.
+    // HIDE the outgoing pane — never dispose it here. Panes are retained per
+    // input so returning to a tab is instant and stateful (M101 seamless
+    // tabs). View state is still captured: it is the durable fallback when
+    // the retention cap later evicts this pane.
     if (this._activePane) {
       const outgoingInput = this._activePane.input;
       if (outgoingInput) {
@@ -753,11 +793,7 @@ export class EditorGroupView extends Disposable implements IGridView {
           console.warn('[EditorGroupView] saveViewState() threw:', err);
         }
       }
-      this._activePane.clearInput();
-      this._paneDisposables.clear();
-      if (this._activePane.element) {
-        this._activePane.element.remove();
-      }
+      this._activePane.element?.classList.add('hidden');
       this._activePane = undefined;
     }
 
@@ -766,8 +802,24 @@ export class EditorGroupView extends Disposable implements IGridView {
       return;
     }
 
-    // Create new pane — do NOT add to _paneDisposables yet.
-    // Only the call that "wins" the seq check will track it.
+    // Retained pane → reveal synchronously. No teardown, no async work, no
+    // flicker: the DOM the user left is the DOM they come back to.
+    const retained = this._retainedPanes.get(activeInput.id);
+    if (retained) {
+      this._touchRetained(activeInput.id);
+      retained.element?.classList.remove('hidden');
+      this._updateRibbon(activeInput);
+      // Re-layout on reveal — the group may have been resized while this
+      // pane sat hidden (hidden panes receive no layout calls).
+      const ribbonH = this._getRibbonHeight();
+      const paneH = Math.max(0, this._height - TAB_STRIP_TOP_GAP - TAB_HEIGHT - ribbonH);
+      retained.layout(Math.max(0, this._width - PANE_CONTAINER_CHROME_X), paneH);
+      this._activePane = retained;
+      this._onDidActivePaneChange.fire(retained);
+      return;
+    }
+
+    // First mount for this input — build a pane.
     const pane = this._paneFactory(activeInput);
     pane.create(this._paneContainer);
     try {
@@ -782,16 +834,19 @@ export class EditorGroupView extends Disposable implements IGridView {
 
     // After the await: check if we're still the latest call
     if (seq !== this._showActiveEditorSeq) {
-      // A newer _showActiveEditor() call superseded us — dispose our pane
-      // directly (NOT _paneDisposables, which may hold the winning pane).
+      // A newer _showActiveEditor() call superseded us. Dispose rather than
+      // retain: the newer call may be building a pane for this SAME input,
+      // and two retained panes for one id would collide.
       pane.clearInput();
       pane.dispose();
       if (pane.element) pane.element.remove();
       return;
     }
 
-    // This call is the latest — track the pane in the disposable store
-    this._paneDisposables.add(pane);
+    // This call is the latest — retain the pane for instant future returns.
+    this._retainedPanes.set(activeInput.id, pane);
+    this._touchRetained(activeInput.id);
+    this._evictRetainedOverCap(activeInput.id);
 
     // Update ribbon for the new editor THEN layout
     this._updateRibbon(activeInput);
@@ -818,6 +873,54 @@ export class EditorGroupView extends Disposable implements IGridView {
     this._onDidActivePaneChange.fire(pane);
   }
 
+  // ─── Pane Retention ────────────────────────────────────────────────────
+
+  /** Move an input id to the most-recently-shown end of the LRU order. */
+  private _touchRetained(inputId: string): void {
+    const i = this._retainedOrder.indexOf(inputId);
+    if (i >= 0) this._retainedOrder.splice(i, 1);
+    this._retainedOrder.push(inputId);
+  }
+
+  /**
+   * Dispose least-recently-shown retained panes beyond the cap. The active
+   * input is never evicted. Evicted panes save their view state first, so
+   * returning to an evicted tab rebuilds WITH scroll/selection restored.
+   */
+  private _evictRetainedOverCap(activeInputId: string): void {
+    while (this._retainedOrder.length > MAX_RETAINED_PANES) {
+      const victimId = this._retainedOrder.find((id) => id !== activeInputId);
+      if (!victimId) return;
+      const pane = this._retainedPanes.get(victimId);
+      if (pane) {
+        try {
+          const state = pane.saveViewState();
+          if (state) this._viewStateCache.set(victimId, state);
+        } catch (err) {
+          console.warn('[EditorGroupView] saveViewState() threw during eviction:', err);
+        }
+      }
+      this._disposeRetainedPane(victimId);
+    }
+  }
+
+  /** Dispose one retained pane (tab close, eviction, or group teardown). */
+  private _disposeRetainedPane(inputId: string): void {
+    const pane = this._retainedPanes.get(inputId);
+    if (!pane) return;
+    this._retainedPanes.delete(inputId);
+    const i = this._retainedOrder.indexOf(inputId);
+    if (i >= 0) this._retainedOrder.splice(i, 1);
+    if (pane === this._activePane) this._activePane = undefined;
+    try {
+      pane.clearInput();
+    } catch (err) {
+      console.warn('[EditorGroupView] clearInput() threw during pane disposal:', err);
+    }
+    pane.dispose();
+    pane.element?.remove();
+  }
+
   private _updateEmptyState(): void {
     if (this._emptyMessage) {
       this._emptyMessage.classList.toggle('hidden', !this.model.isEmpty);
@@ -831,7 +934,9 @@ export class EditorGroupView extends Disposable implements IGridView {
       this._ribbonDisposable.dispose();
       this._ribbonDisposable = undefined;
     }
-    this._paneDisposables.clear();
+    for (const inputId of [...this._retainedPanes.keys()]) {
+      this._disposeRetainedPane(inputId);
+    }
     this._activePane = undefined;
     this._viewStateCache.clear();
     super.dispose();
