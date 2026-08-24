@@ -237,7 +237,7 @@ export class Grid extends Disposable {
     // A branch left holding one child is no longer a split. Collapsing here
     // (not after re-insertion) keeps the tree canonical at every moment, so
     // the target's parent lookup below sees the final shape.
-    if (parent !== this._root) {
+    if (parent !== this._root && !parent.keepAlive) {
       if (parent.childCount === 0) {
         // Only reachable from an already non-canonical tree, but degrade
         // sanely: an empty branch is not a layout element. Remove it, and
@@ -345,16 +345,17 @@ export class Grid extends Disposable {
         // split, and leaving one mounted is exactly the non-canonical shape
         // _detachLeaf guards against. A lone BRANCH child sat perpendicular
         // to the old root, which makes it parallel to the turned one, so its
-        // children are hoisted rather than nested same-orientation.
+        // children are hoisted rather than nested same-orientation — unless
+        // it is a REGION, which stays whole whatever the axes do.
         const only = existingChildren[0];
-        if (only.type === GridNodeType.Branch) {
+        if (only.type === GridNodeType.Branch && !only.keepAlive) {
           while (only.childCount > 0) {
             rest.push(only.getChild(0));
             only.removeChild(0);
           }
           only.dispose();
         } else {
-          only.cachedSize = restShare;
+          this._setNodeSize(only, restShare);
           rest.push(only);
         }
       } else {
@@ -503,7 +504,13 @@ export class Grid extends Disposable {
       const childWidth = isHorizontal ? main : width;
       const childHeight = isHorizontal ? height : main;
       if (child === flexChild) {
-        this._distributeWithFlex(child, flexViewId, childWidth, childHeight);
+        if (child.regionId === flexViewId) {
+          // The flex target IS this region: its interior has no flex view
+          // to find — its children share the region's allocation.
+          this._normalizeBranchToFill(child, childWidth, childHeight);
+        } else {
+          this._distributeWithFlex(child, flexViewId, childWidth, childHeight);
+        }
       } else {
         this._normalizeBranchToFill(child, childWidth, childHeight);
       }
@@ -544,10 +551,61 @@ export class Grid extends Disposable {
     if (node.type === GridNodeType.Leaf) {
       return node.view.id === viewId;
     }
+    // A named region answers for its id, so a region can be the flex
+    // target of resizeWithFixedViews — "the editor area absorbs the
+    // window delta" keeps meaning the AREA, whatever splits live inside.
+    if (node.regionId === viewId) return true;
     for (const child of node.children) {
       if (this._nodeContainsView(child, viewId)) return true;
     }
     return false;
+  }
+
+  // ── Named regions ──
+
+  /** Find a named region branch anywhere in the tree. */
+  findRegion(regionId: string): GridBranchNode | undefined {
+    const walk = (branch: GridBranchNode): GridBranchNode | undefined => {
+      if (branch.regionId === regionId) return branch;
+      for (const child of branch.children) {
+        if (child.type === GridNodeType.Branch) {
+          const found = walk(child);
+          if (found) return found;
+        }
+      }
+      return undefined;
+    };
+    return walk(this._root);
+  }
+
+  /** Add a view INSIDE a named region, at the end or a specific index. */
+  addViewToRegion(regionId: string, view: IGridView, size: number, index?: number): boolean {
+    const region = this.findRegion(regionId);
+    if (!region) return false;
+    const leaf = new GridLeafNode(view, SizingMode.Pixel);
+    leaf.cachedSize = size;
+    this._views.set(view.id, leaf);
+    region.addChild(leaf, index);
+    this._onDidChange.fire({ type: 'add', viewId: view.id });
+    return true;
+  }
+
+  /** Split BESIDE a named region: the new view takes half the region's slot. */
+  splitBesideRegion(
+    regionId: string,
+    newView: IGridView,
+    size: number | undefined,
+    splitOrientation: Orientation,
+    insertBefore = false,
+  ): boolean {
+    const region = this.findRegion(regionId);
+    if (!region) return false;
+    const leaf = new GridLeafNode(newView, SizingMode.Pixel);
+    if (size !== undefined) leaf.cachedSize = size;
+    this._views.set(newView.id, leaf);
+    this._insertLeafBeside(leaf, region, size, splitOrientation, insertBefore);
+    this._onDidChange.fire({ type: 'structure', viewId: newView.id });
+    return true;
   }
 
   /**
@@ -560,10 +618,11 @@ export class Grid extends Disposable {
    * sit anywhere, the tree is the only honest source.
    */
   edgeTouches(viewId: string): { top: boolean; right: boolean; bottom: boolean; left: boolean } | undefined {
-    const leaf = this._views.get(viewId);
-    if (!leaf) return undefined;
+    // A named region answers for its id like a leaf answers for its view.
+    const start: GridNode | undefined = this._views.get(viewId) ?? this.findRegion(viewId);
+    if (!start) return undefined;
 
-    let node: GridNode = leaf;
+    let node: GridNode = start;
     let parent = this._findParent(node);
     const touches = { top: true, right: true, bottom: true, left: true };
 
@@ -1179,6 +1238,8 @@ export class Grid extends Disposable {
           childState.size,
           childState.sizingMode
         );
+        if (childState.regionId) branch.regionId = childState.regionId;
+        if (childState.keepAlive) branch.keepAlive = true;
         parent.addChild(branch);
         this._deserializeNode(branch, childState, viewFactory);
       }
@@ -1231,6 +1292,9 @@ export class Grid extends Disposable {
    * Collapse a branch node that has only one child into its parent.
    */
   private _collapseNode(branch: GridBranchNode): void {
+    // A region is not a split that happens to have one child — it is a
+    // NAMED PLACE, and a place with one thing in it is still a place.
+    if (branch.keepAlive) return;
     const parent = this._findParent(branch);
     if (!parent) return;
 

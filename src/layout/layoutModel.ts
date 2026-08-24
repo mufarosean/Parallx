@@ -30,6 +30,15 @@ export interface SerializedBranchNode {
   readonly size: number;
   readonly sizingMode: SizingMode;
   readonly children: SerializedGridNode[];
+  /**
+   * A NAMED REGION: a branch with an identity ("the editor area") that is
+   * addressable — insert into it, flex it on resize, stamp its edges — and
+   * that survives having one or zero children, exempt from the
+   * canonical-collapse rules. A region is a tree capability, not a typed
+   * slot: nothing about its CONTENT is implied by its name.
+   */
+  readonly regionId?: string;
+  readonly keepAlive?: boolean;
 }
 
 /**

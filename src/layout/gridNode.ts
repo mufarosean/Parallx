@@ -47,6 +47,14 @@ export class GridBranchNode extends Disposable {
   private readonly _onDidChangeConstraints = this._register(new Emitter<void>());
   readonly onDidChangeConstraints: Event<void> = this._onDidChangeConstraints.event;
 
+  /**
+   * A named region's identity, when this branch is one. Regions are
+   * addressable (insert into, flex by id, edge-stamp) and keep-alive.
+   */
+  regionId: string | undefined;
+  /** Exempt from canonical collapse: survives one or zero children. */
+  keepAlive = false;
+
   constructor(
     private _orientation: Orientation,
     private _size: number = 0,
@@ -235,6 +243,8 @@ export class GridBranchNode extends Disposable {
       size: this._size,
       sizingMode: this._sizingMode,
       children: this._children.map((child) => child.serialize()),
+      ...(this.regionId ? { regionId: this.regionId } : {}),
+      ...(this.keepAlive ? { keepAlive: true } : {}),
     };
   }
 

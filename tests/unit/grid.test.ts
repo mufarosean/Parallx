@@ -632,3 +632,100 @@ describe('edgeTouches', () => {
     expect(grid.edgeTouches('nope')).toBeUndefined();
   });
 });
+
+describe('named keep-alive regions', () => {
+  function gridWithRegion(): { grid: Grid; serialize: () => ReturnType<Grid['serialize']> } {
+    const grid = new Grid(Orientation.Horizontal, 1000, 600);
+    grid.addView(createMockView('side'), 200);
+    grid.restoreFrom({
+      orientation: Orientation.Horizontal, width: 1000, height: 600,
+      root: {
+        type: 'branch', orientation: Orientation.Horizontal, size: 0, sizingMode: 'pixel',
+        children: [
+          { type: 'leaf', viewId: 'side', size: 200, sizingMode: 'pixel' },
+          {
+            type: 'branch', orientation: Orientation.Horizontal, size: 800, sizingMode: 'pixel',
+            regionId: 'region.editor', keepAlive: true,
+            children: [
+              { type: 'leaf', viewId: 'g1', size: 400, sizingMode: 'pixel' },
+              { type: 'leaf', viewId: 'g2', size: 400, sizingMode: 'pixel' },
+            ],
+          },
+        ],
+      },
+    } as never, (id) => createMockView(id));
+    return { grid, serialize: () => grid.serialize() };
+  }
+
+  const regionOf = (s: ReturnType<Grid['serialize']>) =>
+    s.root.children.find((c) => c.type === 'branch') as
+      | { regionId?: string; keepAlive?: boolean; children: unknown[] }
+      | undefined;
+
+  it('round-trips region identity through serialize and restore', () => {
+    const { serialize } = gridWithRegion();
+    const region = regionOf(serialize());
+    expect(region?.regionId).toBe('region.editor');
+    expect(region?.keepAlive).toBe(true);
+  });
+
+  it('survives shrinking to ONE child — a place is not a split', () => {
+    const { grid, serialize } = gridWithRegion();
+    grid.removeView('g2');
+    const region = regionOf(serialize());
+    expect(region?.regionId).toBe('region.editor');
+    expect(region?.children).toHaveLength(1);
+  });
+
+  it('survives EMPTY, and takes new views by name', () => {
+    const { grid, serialize } = gridWithRegion();
+    grid.removeView('g1');
+    grid.removeView('g2');
+    let region = regionOf(serialize());
+    expect(region?.regionId).toBe('region.editor');
+    expect(region?.children).toHaveLength(0);
+
+    expect(grid.addViewToRegion('region.editor', createMockView('g3'), 400)).toBe(true);
+    region = regionOf(serialize());
+    expect(region?.children).toHaveLength(1);
+  });
+
+  it('flexes BY REGION on resizeWithFixedViews, normalizing its interior', () => {
+    const { grid } = gridWithRegion();
+    grid.resizeWithFixedViews(1200, 600, 'region.editor');
+    // The side strip kept its width; the region absorbed the growth…
+    expect(grid.getViewSize('side')).toBe(200);
+    // …and its interior fills the region exactly.
+    expect(grid.getViewSize('g1')! + grid.getViewSize('g2')!).toBe(1000);
+  });
+
+  it('splits beside a region as a whole', () => {
+    const { grid, serialize } = gridWithRegion();
+    expect(grid.splitBesideRegion('region.editor', createMockView('panel'), 200, Orientation.Vertical)).toBe(true);
+    // The region wrapped with the panel below it, groups untouched.
+    const s = serialize();
+    const wrapper = s.root.children[1] as { type: string; orientation: string; children: { regionId?: string; viewId?: string }[] };
+    expect(wrapper.orientation).toBe(Orientation.Vertical);
+    expect(wrapper.children[0].regionId).toBe('region.editor');
+    expect(wrapper.children[1].viewId).toBe('panel');
+  });
+
+  it('reports edge touches for a region by name', () => {
+    const { grid } = gridWithRegion();
+    expect(grid.edgeTouches('region.editor')).toEqual({
+      top: true, right: true, bottom: true, left: false,
+    });
+  });
+
+  it('is not hoisted when a root turn leaves it the lone child', () => {
+    const { grid, serialize } = gridWithRegion();
+    grid.moveViewToEdge('side', Orientation.Vertical, false);
+    const s = serialize();
+    // V root: [ region (whole), side ] — the region kept its identity and
+    // its children instead of being dissolved into the turned root.
+    expect(s.orientation).toBe(Orientation.Vertical);
+    const region = regionOf(s);
+    expect(region?.regionId).toBe('region.editor');
+    expect(region?.children).toHaveLength(2);
+  });
+});
