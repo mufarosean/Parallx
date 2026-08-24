@@ -152,9 +152,31 @@ export class Grid extends Disposable {
     newLeaf.cachedSize = size;
     this._views.set(newView.id, newLeaf);
 
+    this._insertLeafBeside(newLeaf, existingNode, size, splitOrientation, insertBefore);
+    this._onDidChange.fire({ type: 'structure', viewId: newView.id });
+  }
+
+  /**
+   * Place `leaf` next to `existingNode`, taking space from it.
+   *
+   * Shared by splitView (leaf is brand new) and moveView (leaf was just
+   * detached from elsewhere in the tree). Keeping one implementation matters:
+   * the size clamping and the cross-orientation wrap are the subtle parts, and
+   * a second copy would drift from this one the first time either is touched.
+   *
+   * `leaf` must already be registered in `_views` and must NOT currently be
+   * attached to a parent.
+   */
+  private _insertLeafBeside(
+    leaf: GridLeafNode,
+    existingNode: GridNode,
+    size: number,
+    splitOrientation: Orientation,
+    insertBefore: boolean,
+  ): void {
     const parent = this._findParent(existingNode);
     if (!parent) {
-      throw new Error(`Orphaned view: ${existingViewId}`);
+      throw new Error('Orphaned target node');
     }
 
     const existingIndex = parent.indexOfChild(existingNode);
@@ -164,39 +186,141 @@ export class Grid extends Disposable {
       // VS Code parity: the new view gets half the existing view's current size.
       // The `size` param is a hint, but we clamp to ensure correctness.
       const insertIndex = insertBefore ? existingIndex : existingIndex + 1;
-      const existingSize = existingNode.cachedSize;
+      const existingSize = this._getNodeSize(existingNode);
       const minExisting = this._getMinSizeAlongOrientation(existingNode, splitOrientation);
-      const minNew = this._getMinSizeAlongOrientation(newLeaf, splitOrientation);
+      const minNew = this._getMinSizeAlongOrientation(leaf, splitOrientation);
 
       // Ensure the split is at most what the existing view can give
       const clampedSize = Math.min(size, existingSize - minExisting);
       const actualNewSize = Math.max(clampedSize, minNew);
       const actualExistingSize = Math.max(existingSize - actualNewSize, minExisting);
 
-      existingNode.cachedSize = actualExistingSize;
-      newLeaf.cachedSize = actualNewSize;
-      parent.addChild(newLeaf, insertIndex);
+      this._setNodeSize(existingNode, actualExistingSize);
+      leaf.cachedSize = actualNewSize;
+      parent.addChild(leaf, insertIndex);
     } else {
       // Different orientation — wrap existing in a new branch
       parent.removeChild(existingIndex);
 
-      const wrapper = new GridBranchNode(splitOrientation, existingNode.cachedSize, SizingMode.Pixel);
-      const halfSize = Math.floor(existingNode.cachedSize / 2);
-      existingNode.cachedSize = halfSize;
-      newLeaf.cachedSize = halfSize;
+      const existingSize = this._getNodeSize(existingNode);
+      const wrapper = new GridBranchNode(splitOrientation, existingSize, SizingMode.Pixel);
+      const halfSize = Math.floor(existingSize / 2);
+      this._setNodeSize(existingNode, halfSize);
+      leaf.cachedSize = halfSize;
 
       if (insertBefore) {
-        wrapper.addChild(newLeaf);
+        wrapper.addChild(leaf);
         wrapper.addChild(existingNode);
       } else {
         wrapper.addChild(existingNode);
-        wrapper.addChild(newLeaf);
+        wrapper.addChild(leaf);
       }
 
       parent.addChild(wrapper, existingIndex);
     }
+  }
 
-    this._onDidChange.fire({ type: 'structure', viewId: newView.id });
+  /**
+   * Detach a leaf from its parent WITHOUT disposing it or its view.
+   *
+   * `removeView` cannot be reused for a move: it disposes the leaf, which
+   * tears down the live view the move exists to preserve. Returns the leaf so
+   * the caller can re-attach it.
+   */
+  private _detachLeaf(leaf: GridLeafNode): void {
+    const parent = this._findParent(leaf);
+    if (!parent) {
+      throw new Error(`Orphaned view: ${leaf.view.id}`);
+    }
+    parent.removeChild(parent.indexOfChild(leaf));
+    // A branch left holding one child is no longer a split. Collapsing here
+    // (not after re-insertion) keeps the tree canonical at every moment, so
+    // the target's parent lookup below sees the final shape.
+    if (parent.childCount === 1 && parent !== this._root) {
+      this._collapseNode(parent);
+    }
+  }
+
+  /**
+   * Move an existing view next to another one, preserving the live view.
+   *
+   * This is what makes a surface relocatable: the instance keeps running —
+   * same session, same scroll, same in-flight work — and only its position in
+   * the tree changes. Remove-then-add would destroy it, which is why
+   * `removeView` (it disposes) cannot be used here.
+   *
+   * No-ops when the view is already the target, or when the move is
+   * meaningless (a single-view grid has nowhere to move to).
+   */
+  moveView(
+    viewId: string,
+    targetViewId: string,
+    splitOrientation: Orientation,
+    insertBefore = false,
+  ): void {
+    if (viewId === targetViewId) return;
+
+    const leaf = this._views.get(viewId);
+    if (!leaf) throw new Error(`View not found: ${viewId}`);
+    const target = this._views.get(targetViewId);
+    if (!target) throw new Error(`View not found: ${targetViewId}`);
+
+    const size = leaf.cachedSize;
+    this._detachLeaf(leaf);
+    // The target's parent is resolved AFTER the detach: collapsing the old
+    // parent can reparent the target, and a lookup from before would insert
+    // into a branch that is no longer in the tree.
+    this._insertLeafBeside(leaf, target, size, splitOrientation, insertBefore);
+
+    this._onDidChange.fire({ type: 'structure', viewId });
+  }
+
+  /**
+   * Move an existing view to an outer edge of the grid, preserving the live
+   * view. This is the drop-on-the-edge case, where the target is the whole
+   * layout rather than a neighbouring view.
+   */
+  moveViewToEdge(
+    viewId: string,
+    edgeOrientation: Orientation,
+    insertBefore = false,
+  ): void {
+    const leaf = this._views.get(viewId);
+    if (!leaf) throw new Error(`View not found: ${viewId}`);
+    // Nothing to move relative to, and detaching would empty the grid.
+    if (this._views.size < 2) return;
+
+    const size = leaf.cachedSize;
+    this._detachLeaf(leaf);
+
+    if (this._root.orientation === edgeOrientation) {
+      leaf.cachedSize = size;
+      this._root.addChild(leaf, insertBefore ? 0 : this._root.childCount);
+    } else {
+      // The root runs the other way, so the whole existing layout becomes one
+      // child of a new root-level branch and the moved leaf becomes the other.
+      const existingChildren: GridNode[] = [];
+      while (this._root.childCount > 0) {
+        const child = this._root.getChild(0);
+        this._root.removeChild(0);
+        existingChildren.push(child);
+      }
+      const inner = new GridBranchNode(
+        edgeOrientation === Orientation.Horizontal ? Orientation.Vertical : Orientation.Horizontal,
+      );
+      for (const child of existingChildren) inner.addChild(child);
+      this._root.orientation = edgeOrientation;
+      leaf.cachedSize = size;
+      if (insertBefore) {
+        this._root.addChild(leaf);
+        this._root.addChild(inner);
+      } else {
+        this._root.addChild(inner);
+        this._root.addChild(leaf);
+      }
+    }
+
+    this._onDidChange.fire({ type: 'structure', viewId });
   }
 
   /**

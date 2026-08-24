@@ -265,3 +265,192 @@ describe('Grid', () => {
     });
   });
 });
+
+// ── moveView / moveViewToEdge ────────────────────────────────────────────────
+//
+// The primitive the whole surface foundation rests on: a view changes position
+// in the tree WITHOUT being torn down. removeView disposes, which is exactly
+// what a move must not do, so these tests pin the live-instance guarantee
+// first and the tree shape second.
+
+describe('moveView', () => {
+  let grid: Grid;
+
+  beforeEach(() => {
+    grid = new Grid(Orientation.Horizontal, 1000, 600);
+  });
+
+  /** A view that records whether anything disposed it. */
+  function trackedView(id: string) {
+    const view = createMockView(id);
+    let disposed = false;
+    const inner = view.dispose;
+    return {
+      view: { ...view, dispose: () => { disposed = true; inner.call(view); } } as IGridView,
+      wasDisposed: () => disposed,
+    };
+  }
+
+  it('keeps the SAME view instance alive across a move', () => {
+    // The whole point. A running terminal dragged to another edge must not
+    // restart, so the leaf may be detached but never disposed.
+    const a = trackedView('a');
+    grid.addView(a.view, 400);
+    grid.addView(createMockView('b'), 300);
+    grid.addView(createMockView('c'), 300);
+
+    grid.moveView('a', 'c', Orientation.Vertical);
+
+    expect(a.wasDisposed()).toBe(false);
+    expect(grid.getView('a')).toBe(a.view);
+    expect(grid.viewCount).toBe(3);
+  });
+
+  it('is a no-op when moving a view onto itself', () => {
+    grid.addView(createMockView('a'), 500);
+    grid.addView(createMockView('b'), 500);
+    grid.moveView('a', 'a', Orientation.Vertical);
+    expect(grid.viewCount).toBe(2);
+  });
+
+  it('throws for an unknown view or target', () => {
+    grid.addView(createMockView('a'), 500);
+    expect(() => grid.moveView('nope', 'a', Orientation.Vertical)).toThrow();
+    expect(() => grid.moveView('a', 'nope', Orientation.Vertical)).toThrow();
+  });
+
+  it('collapses the branch a move empties', () => {
+    // a | (b / c) — moving c away must leave a | b, not a | (b) with a
+    // one-child branch still wrapping b.
+    grid.addView(createMockView('a'), 500);
+    grid.addView(createMockView('b'), 500);
+    grid.splitView('b', createMockView('c'), 250, Orientation.Vertical);
+
+    grid.moveView('c', 'a', Orientation.Horizontal, true);
+
+    const root = grid.serialize().root;
+    expect(root.children).toHaveLength(3);
+    for (const child of root.children) {
+      expect(child.type).toBe('leaf');
+    }
+  });
+
+  it('survives a move whose source collapse reparents the target', () => {
+    // The ordering trap: after detaching, the old parent collapses and the
+    // target can end up under a different parent. Resolving the target's
+    // parent before the detach would insert into a branch no longer in the
+    // tree.
+    grid.addView(createMockView('a'), 500);
+    grid.addView(createMockView('b'), 500);
+    grid.splitView('b', createMockView('c'), 250, Orientation.Vertical);
+
+    expect(() => grid.moveView('b', 'c', Orientation.Horizontal)).not.toThrow();
+    expect(grid.viewCount).toBe(3);
+    expect(grid.hasView('b')).toBe(true);
+    expect(grid.hasView('c')).toBe(true);
+  });
+
+  it('moves across orientation by wrapping the target', () => {
+    grid.addView(createMockView('a'), 500);
+    grid.addView(createMockView('b'), 500);
+    grid.addView(createMockView('c'), 200);
+
+    grid.moveView('c', 'a', Orientation.Vertical);
+
+    const root = grid.serialize().root;
+    // a became a vertical branch holding a and c; b stays a leaf beside it.
+    expect(root.children.some((n) => n.type === 'branch')).toBe(true);
+    expect(grid.viewCount).toBe(3);
+  });
+
+  it('round-trips through serialize with every view intact', () => {
+    grid.addView(createMockView('a'), 400);
+    grid.addView(createMockView('b'), 300);
+    grid.addView(createMockView('c'), 300);
+    grid.moveView('a', 'c', Orientation.Vertical);
+
+    const ids: string[] = [];
+    const walk = (n: { type: string; children?: unknown[]; viewId?: string }): void => {
+      if (n.type === 'leaf') { ids.push(n.viewId as string); return; }
+      for (const child of (n.children ?? []) as typeof n[]) walk(child);
+    };
+    walk(grid.serialize().root as unknown as { type: string });
+    expect(ids.sort()).toEqual(['a', 'b', 'c']);
+  });
+});
+
+describe('moveViewToEdge', () => {
+  let grid: Grid;
+
+  beforeEach(() => {
+    grid = new Grid(Orientation.Horizontal, 1000, 600);
+  });
+
+  it('does nothing with a single view — there is no edge to move to', () => {
+    grid.addView(createMockView('a'), 1000);
+    grid.moveViewToEdge('a', Orientation.Vertical);
+    expect(grid.viewCount).toBe(1);
+  });
+
+  it('appends along the root axis without restructuring', () => {
+    grid.addView(createMockView('a'), 400);
+    grid.addView(createMockView('b'), 300);
+    grid.addView(createMockView('c'), 300);
+
+    grid.moveViewToEdge('a', Orientation.Horizontal);
+
+    const root = grid.serialize().root;
+    expect(root.children).toHaveLength(3);
+    expect((root.children[root.children.length - 1] as { viewId: string }).viewId).toBe('a');
+  });
+
+  it('inserts at the head when insertBefore is set', () => {
+    grid.addView(createMockView('a'), 400);
+    grid.addView(createMockView('b'), 300);
+    grid.addView(createMockView('c'), 300);
+
+    grid.moveViewToEdge('c', Orientation.Horizontal, true);
+
+    const root = grid.serialize().root;
+    expect((root.children[0] as { viewId: string }).viewId).toBe('c');
+  });
+
+  it('turns the root when the edge runs across it, keeping every view', () => {
+    // Dropping on the bottom edge of a horizontally-split layout: the whole
+    // existing layout becomes one child of a now-vertical root.
+    grid.addView(createMockView('a'), 400);
+    grid.addView(createMockView('b'), 300);
+    grid.addView(createMockView('c'), 300);
+
+    grid.moveViewToEdge('c', Orientation.Vertical);
+
+    const root = grid.serialize().root;
+    expect(root.children).toHaveLength(2);
+    expect(root.children.some((n) => n.type === 'branch')).toBe(true);
+    expect(grid.viewCount).toBe(3);
+    expect(grid.hasView('a')).toBe(true);
+    expect(grid.hasView('b')).toBe(true);
+    expect(grid.hasView('c')).toBe(true);
+  });
+
+  it('keeps the view instance alive across an edge move', () => {
+    const a = trackedEdgeView('a');
+    grid.addView(a.view, 400);
+    grid.addView(createMockView('b'), 600);
+
+    grid.moveViewToEdge('a', Orientation.Vertical);
+
+    expect(a.wasDisposed()).toBe(false);
+    expect(grid.getView('a')).toBe(a.view);
+  });
+
+  function trackedEdgeView(id: string) {
+    const view = createMockView(id);
+    let disposed = false;
+    const inner = view.dispose;
+    return {
+      view: { ...view, dispose: () => { disposed = true; inner.call(view); } } as IGridView,
+      wasDisposed: () => disposed,
+    };
+  }
+});

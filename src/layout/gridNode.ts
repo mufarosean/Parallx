@@ -48,7 +48,7 @@ export class GridBranchNode extends Disposable {
   readonly onDidChangeConstraints: Event<void> = this._onDidChangeConstraints.event;
 
   constructor(
-    readonly orientation: Orientation,
+    private _orientation: Orientation,
     private _size: number = 0,
     private _sizingMode: SizingMode = SizingMode.Pixel
   ) {
@@ -56,6 +56,29 @@ export class GridBranchNode extends Disposable {
     this.element = $('div');
     this.element.classList.add('grid-branch');
     this._applyStyles();
+  }
+
+  get orientation(): Orientation {
+    return this._orientation;
+  }
+
+  /**
+   * Re-orient a branch in place.
+   *
+   * Needed by `Grid.moveViewToEdge`: dropping a view on an edge that runs
+   * across the root's axis has to turn the root, and the root's element is
+   * already mounted in the workbench — swapping the node would mean swapping
+   * live DOM. Turning it re-applies flex-direction and leaves the children
+   * (and their views) untouched.
+   *
+   * Sizes along the new axis are the caller's problem: the grid re-layouts
+   * after any structural change.
+   */
+  set orientation(value: Orientation) {
+    if (this._orientation === value) return;
+    this._orientation = value;
+    this._applyStyles();
+    this._onDidChange.fire();
   }
 
   get children(): readonly GridNode[] {
