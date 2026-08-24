@@ -343,28 +343,52 @@ function renderGoogleSyncSection(
       const syncRow = el('div', 'planner-settings__google-row');
       const syncBtn = el('button', 'planner-settings__btn');
       syncBtn.type = 'button';
-      syncBtn.textContent = 'Sync now';
+      syncBtn.textContent = 'Sync Now';
       syncBtn.addEventListener('click', () => { if (!sync.isRunning) void sync.syncNow(); });
+
+      // Repair, not routine: a workspace whose cursor once advanced past changes
+      // it never applied can't catch up incrementally — Google treats those as
+      // delivered and won't resend. Re-reading the account from scratch is the
+      // only way back in line with the other workspaces on the same account.
+      const resyncBtn = el('button', 'planner-settings__btn');
+      resyncBtn.type = 'button';
+      resyncBtn.textContent = 'Resync From Scratch';
+      resyncBtn.title = 'Re-read every synced calendar from Google and drop local copies of events that no longer exist there. Use this if two workspaces disagree.';
+      resyncBtn.addEventListener('click', () => { if (!sync.isRunning) void sync.resyncFromScratch(); });
+
       const syncStatus = el('div', 'planner-settings__google-status');
-      syncRow.append(syncBtn, syncStatus);
+      syncRow.append(syncBtn, resyncBtn, syncStatus);
       section.appendChild(syncRow);
 
       const updateStatus = async (): Promise<void> => {
         syncBtn.disabled = sync.isRunning;
+        resyncBtn.disabled = sync.isRunning;
         if (sync.isRunning) {
           syncStatus.classList.remove('is-error');
           syncStatus.textContent = 'Syncing…';
           return;
         }
-        const failed = sync.lastResults.find((r) => r.provider === GOOGLE_PROVIDER_ID && !r.ok);
+        const mine = sync.lastResults.filter((r) => r.provider === GOOGLE_PROVIDER_ID);
+        const failed = mine.find((r) => !r.ok);
         if (failed) {
           syncStatus.classList.add('is-error');
           syncStatus.textContent = `Last sync failed: ${failed.error ?? 'unknown error'}`;
           return;
         }
+        // A run that pulled fine but couldn't push is not a success — those
+        // edits are still only in this workspace.
+        const stuck = mine.reduce((n, r) => n + r.pushFailed, 0);
+        if (stuck > 0) {
+          const why = mine.find((r) => r.pushError)?.pushError ?? 'unknown error';
+          syncStatus.classList.add('is-error');
+          syncStatus.textContent = `${stuck} change${stuck === 1 ? '' : 's'} not sent to Google (${why}). Retrying next sync.`;
+          return;
+        }
         const last = await sync.getLastSyncMs(GOOGLE_PROVIDER_ID);
         syncStatus.classList.remove('is-error');
-        syncStatus.textContent = last ? `Last synced ${formatRelative(Date.now() - last)}` : 'Not synced yet.';
+        const pruned = mine.reduce((n, r) => n + r.prunedStale, 0);
+        const suffix = pruned > 0 ? ` · removed ${pruned} stale event${pruned === 1 ? '' : 's'}` : '';
+        syncStatus.textContent = last ? `Last synced ${formatRelative(Date.now() - last)}${suffix}` : 'Not synced yet.';
       };
       statusUpdater = () => { void updateStatus(); };
       void updateStatus();

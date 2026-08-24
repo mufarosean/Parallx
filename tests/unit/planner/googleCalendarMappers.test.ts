@@ -9,6 +9,8 @@ import {
   mapPlannerTaskToGoogle,
   mapGoogleExceptionToOverride,
   googleInstanceId,
+  machineTimeZone,
+  rruleForGoogle,
 } from '../../../src/built-in/planner/sync/googleCalendarSyncProvider.js';
 import type { PlannerEvent, PlannerTask } from '../../../src/built-in/planner/plannerTypes.js';
 
@@ -79,8 +81,27 @@ describe('mapPlannerEventToGoogle', () => {
       title: 'Meet', allDay: false,
       startAt: Date.parse('2026-07-01T10:00:00Z'), endAt: Date.parse('2026-07-01T11:00:00Z'),
     }));
-    expect(body.start).toEqual({ dateTime: new Date(Date.parse('2026-07-01T10:00:00Z')).toISOString() });
+    expect(body.start).toEqual({
+      dateTime: new Date(Date.parse('2026-07-01T10:00:00Z')).toISOString(),
+      timeZone: machineTimeZone(),
+    });
     expect(body.summary).toBe('Meet');
+  });
+
+  // Google rejects a recurring create that carries no explicit timeZone with
+  // "Missing time zone definition for start time" — even though the dateTime
+  // already has a UTC offset. Single events were accepted, so every series a
+  // workspace created failed to push while the sync still looked clean.
+  it('always sends an explicit timeZone on start and end', () => {
+    const body = mapPlannerEventToGoogle(makeEvent({
+      startAt: Date.parse('2026-07-01T10:00:00Z'), endAt: Date.parse('2026-07-01T11:00:00Z'),
+      recurrence: 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH',
+    }));
+    const tz = machineTimeZone();
+    expect(tz).toBeTruthy();
+    expect((body.start as Record<string, unknown>).timeZone).toBe(tz);
+    expect((body.end as Record<string, unknown>).timeZone).toBe(tz);
+    expect(body.recurrence).toEqual(['RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH']);
   });
 
   it('emits floating dates for all-day events and prefixes RRULE', () => {
@@ -88,8 +109,8 @@ describe('mapPlannerEventToGoogle', () => {
       allDay: true, startAt: parseAllDayDate('2026-07-01'), endAt: parseAllDayDate('2026-07-03'),
       recurrence: 'FREQ=DAILY',
     }));
-    expect(body.start).toEqual({ date: '2026-07-01' });
-    expect(body.end).toEqual({ date: '2026-07-03' });
+    expect(body.start).toEqual({ date: '2026-07-01', timeZone: machineTimeZone() });
+    expect(body.end).toEqual({ date: '2026-07-03', timeZone: machineTimeZone() });
     expect(body.recurrence).toEqual(['RRULE:FREQ=DAILY']);
   });
 });
@@ -166,8 +187,41 @@ describe('recurring-instance exceptions', () => {
 
   it('constructs the deterministic Google instance id (timed UTC Z, all-day date)', () => {
     expect(googleInstanceId('g1', Date.parse('2026-07-06T17:00:00Z'), false)).toBe('g1_20260706T170000Z');
-    // All-day suffix is the UTC date of the slot.
-    const allDaySlot = Date.parse('2026-07-06T00:00:00Z');
-    expect(googleInstanceId('g1', allDaySlot, true)).toBe('g1_20260706');
+    // All-day slots are stored as LOCAL midnight, and the id is that local
+    // calendar date — reading the instant in UTC picks the previous day east
+    // of Greenwich and would address the wrong occurrence.
+    expect(googleInstanceId('g1', parseAllDayDate('2026-07-06'), true)).toBe('g1_20260706');
+  });
+});
+
+// RFC 5545: UNTIL must match DTSTART's value type. setRRuleUntil always writes
+// the UTC-datetime form, which is wrong for an all-day series — and the UTC
+// calendar date of "local midnight minus a second" is the NEXT day west of
+// Greenwich, so reading it as UTC would also extend the series by a day.
+describe('rruleForGoogle', () => {
+  it('leaves a timed rule untouched', () => {
+    expect(rruleForGoogle('FREQ=WEEKLY;UNTIL=20260821T045959Z', false))
+      .toBe('FREQ=WEEKLY;UNTIL=20260821T045959Z');
+  });
+
+  it('strips a leading RRULE: prefix', () => {
+    expect(rruleForGoogle('RRULE:FREQ=DAILY', false)).toBe('FREQ=DAILY');
+  });
+
+  it('renders UNTIL as a date for an all-day series, in LOCAL terms', () => {
+    // The instant a "delete this and following" cap produces: local midnight
+    // of the cut day, minus a second.
+    const cut = parseAllDayDate('2026-08-21') - 1000;
+    const d = new Date(cut);
+    const p = (n: number): string => String(n).padStart(2, '0');
+    const stamp = `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}`
+      + `T${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())}Z`;
+
+    const out = rruleForGoogle(`FREQ=WEEKLY;UNTIL=${stamp}`, true);
+    expect(out).toBe('FREQ=WEEKLY;UNTIL=20260820'); // the day BEFORE the cut
+  });
+
+  it('leaves an already-date UNTIL alone', () => {
+    expect(rruleForGoogle('FREQ=DAILY;UNTIL=20260820', true)).toBe('FREQ=DAILY;UNTIL=20260820');
   });
 });

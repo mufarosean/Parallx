@@ -17,11 +17,13 @@ import type {
   ICalendarSyncProvider,
   PlannerEvent,
   PlannerTask,
+  SyncCalendarSnapshot,
   SyncedEvent,
   SyncedEventOverride,
   SyncedTask,
   SyncPullResult,
   SyncPullState,
+  SyncPushResult,
 } from '../plannerTypes.js';
 import { googleSync } from './googleClient.js';
 
@@ -175,19 +177,71 @@ export function mapGoogleExceptionToOverride(item: GCalEvent): SyncedEventOverri
   };
 }
 
-/** Deterministic Google instance-event id: `{masterId}_{originalStartCompactUTC}`.
- *  Timed → `..._YYYYMMDDTHHMMSSZ`; all-day → `..._YYYYMMDD`. */
+/** Deterministic Google instance-event id: `{masterId}_{originalStartCompact}`.
+ *  Timed → `..._YYYYMMDDTHHMMSSZ` (the instant, in UTC).
+ *  All-day → `..._YYYYMMDD` (the LOCAL calendar date — all-day slots are stored
+ *  as local midnight, whose UTC date is the previous day east of Greenwich, so
+ *  reading it in UTC would address the wrong occurrence).
+ *  Only a best guess: `pushOverride` falls back to asking Google when it misses. */
 export function googleInstanceId(masterId: string, originalStartAt: number, allDay: boolean): string {
   const d = new Date(originalStartAt);
   const p = (n: number): string => String(n).padStart(2, '0');
   const suffix = allDay
-    ? `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}`
+    ? toAllDayDateStr(originalStartAt).replace(/-/g, '')
     : `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}T${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())}Z`;
   return `${masterId}_${suffix}`;
 }
 
+/**
+ * The machine's IANA zone, resolved at call time — never hardcoded, and never
+ * cached across a machine/OS zone change.
+ *
+ * Google REQUIRES an explicit timeZone on start and end for any RECURRING
+ * event, even when the dateTime already carries a UTC offset, and rejects the
+ * create outright with "Missing time zone definition for start time." (A
+ * one-off event is accepted from the offset alone, which is why single events
+ * synced fine while every series silently failed to push.) The zone is also
+ * what makes a series repeat at the right WALL-CLOCK time across a DST
+ * boundary rather than drifting an hour.
+ */
+export function machineTimeZone(): string | undefined {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return tz && tz.length > 0 ? tz : undefined;
+  } catch {
+    return undefined; // omit the field rather than guess a zone
+  }
+}
+
+/**
+ * A stored RRULE rendered for Google's wire format.
+ *
+ * RFC 5545 requires UNTIL to match DTSTART's value type: an all-day series
+ * (DTSTART is a DATE) must end on a DATE, not a UTC datetime. `setRRuleUntil`
+ * always writes the datetime form, so an all-day series capped by "this and
+ * following" produced a mismatched rule Google can reject.
+ *
+ * The date is taken in LOCAL time, not UTC. UNTIL for an all-day series is
+ * "local midnight minus a second", whose UTC calendar date is the NEXT day in
+ * negative-offset zones — reading it as UTC would extend the series by a day.
+ */
+export function rruleForGoogle(rule: string, allDay: boolean): string {
+  const bare = rule.replace(/^RRULE:/i, '');
+  if (!allDay) return bare;
+  return bare.replace(/UNTIL=(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z?)/i,
+    (_m, y: string, mo: string, d: string, hh: string, mm: string, ss: string, z: string) => {
+      // With Z the stamp is a UTC instant; without it, RFC 5545 floating local.
+      const ms = z
+        ? Date.UTC(+y, +mo - 1, +d, +hh, +mm, +ss)
+        : new Date(+y, +mo - 1, +d, +hh, +mm, +ss).getTime();
+      if (!Number.isFinite(ms)) return `UNTIL=${y}${mo}${d}`;
+      return `UNTIL=${toAllDayDateStr(ms).replace(/-/g, '')}`;
+    });
+}
+
 /** Planner event → Google event request body. */
 export function mapPlannerEventToGoogle(local: PlannerEvent): Record<string, unknown> {
+  const timeZone = machineTimeZone();
   const body: Record<string, unknown> = {
     summary: local.title,
     description: local.description ?? undefined,
@@ -195,15 +249,14 @@ export function mapPlannerEventToGoogle(local: PlannerEvent): Record<string, unk
   };
   if (local.allDay) {
     const endMs = local.endAt > local.startAt ? local.endAt : local.startAt + 86_400_000;
-    body.start = { date: toAllDayDateStr(local.startAt) };
-    body.end = { date: toAllDayDateStr(endMs) };
+    body.start = { date: toAllDayDateStr(local.startAt), timeZone };
+    body.end = { date: toAllDayDateStr(endMs), timeZone };
   } else {
-    body.start = { dateTime: new Date(local.startAt).toISOString() };
-    body.end = { dateTime: new Date(local.endAt).toISOString() };
+    body.start = { dateTime: new Date(local.startAt).toISOString(), timeZone };
+    body.end = { dateTime: new Date(local.endAt).toISOString(), timeZone };
   }
   if (local.recurrence) {
-    const rule = local.recurrence.startsWith('RRULE:') ? local.recurrence : `RRULE:${local.recurrence}`;
-    body.recurrence = [rule];
+    body.recurrence = [`RRULE:${rruleForGoogle(local.recurrence, local.allDay)}`];
   }
   return body;
 }
@@ -278,11 +331,29 @@ export async function fetchGoogleCalendarList(): Promise<GoogleCalendarListEntry
   return (res.data?.items ?? []).filter((c) => !!c.id);
 }
 
+/** The provider-clock stamp a write produced, when Google echoes it back. */
+function remoteStamp(updated: string | undefined): number | undefined {
+  if (!updated) return undefined;
+  const ms = Date.parse(updated);
+  return Number.isFinite(ms) ? ms : undefined;
+}
+
 // ─── Provider ──────────────────────────────────────────────────────────────────
 
 export class GoogleCalendarSyncProvider implements ICalendarSyncProvider {
   readonly id = GOOGLE_PROVIDER_ID;
   readonly displayName = 'Google Calendar';
+
+  /**
+   * Cursors produced by the last pull, held in memory until the orchestrator
+   * confirms it applied that pull (commitCursors). Writing a syncToken the
+   * moment paging finishes — the old behaviour — meant any failure between
+   * "Google told us" and "we stored it" silently burned those changes: Google
+   * considers a consumed token acknowledged and never resends. That is exactly
+   * how one workspace ends up permanently missing edits another one made.
+   */
+  private _pendingCalTokens = new Map<string, string>();
+  private _pendingTaskWatermark: number | null = null;
 
   constructor(private readonly _data: PlannerDataService) {}
 
@@ -290,15 +361,40 @@ export class GoogleCalendarSyncProvider implements ICalendarSyncProvider {
     return `sync.${this.id}.cal.${googleCalId}.token`;
   }
 
+  /** Publish the cursors buffered by the last successful pull. */
+  async commitCursors(): Promise<void> {
+    for (const [googleCalId, token] of this._pendingCalTokens) {
+      await this._data.setSetting(this._tokenKey(googleCalId), token);
+    }
+    this._pendingCalTokens.clear();
+    if (this._pendingTaskWatermark != null) {
+      await this._data.setSetting(`sync.${this.id}.tasks.updatedMin`, String(this._pendingTaskWatermark));
+      this._pendingTaskWatermark = null;
+    }
+  }
+
+  /** Drop every cursor so the next pull re-reads the account from scratch. */
+  async resetCursors(): Promise<void> {
+    this._pendingCalTokens.clear();
+    this._pendingTaskWatermark = null;
+    await this._data.clearSyncCursors(this.id);
+  }
+
   async wantsTaskSync(): Promise<boolean> {
     return (await this._data.getSetting(GOOGLE_TASKS_ENABLED_KEY)) === '1';
   }
 
   async pull(state: SyncPullState): Promise<SyncPullResult> {
+    // A pull that throws must leave NO cursor behind — otherwise the batch it
+    // half-read is acknowledged to Google and lost. Start from a clean buffer.
+    this._pendingCalTokens.clear();
+    this._pendingTaskWatermark = null;
+
     const cals = await this._data.listSyncedCalendars(this.id);
     const upsertedEvents: SyncedEvent[] = [];
     const deletedEventSourceIds: string[] = [];
     const upsertedOverrides: SyncedEventOverride[] = [];
+    const snapshots: SyncCalendarSnapshot[] = [];
     let anyReset = false;
 
     for (const cal of cals) {
@@ -308,6 +404,10 @@ export class GoogleCalendarSyncProvider implements ICalendarSyncProvider {
       deletedEventSourceIds.push(...r.deleted);
       upsertedOverrides.push(...r.overrides);
       if (r.reset) anyReset = true;
+      // A full listing is the whole truth for its window — hand it to the
+      // orchestrator so it can drop mirrors of events deleted while we were
+      // behind, which no incremental cursor could ever have reported.
+      if (r.full) snapshots.push({ calendarId: cal.id, sourceIds: r.seenIds, fromMs: r.fromMs });
     }
 
     let upsertedTasks: SyncedTask[] | undefined;
@@ -318,7 +418,11 @@ export class GoogleCalendarSyncProvider implements ICalendarSyncProvider {
       deletedTaskSourceIds = t.deleted;
     }
 
-    return { upsertedEvents, deletedEventSourceIds, upsertedOverrides, upsertedTasks, deletedTaskSourceIds, reset: anyReset };
+    return {
+      upsertedEvents, deletedEventSourceIds, upsertedOverrides,
+      upsertedTasks, deletedTaskSourceIds, reset: anyReset,
+      snapshots: snapshots.length ? snapshots : undefined,
+    };
   }
 
   /** Pull the default tasklist. Tasks API has no syncToken — we page by
@@ -355,7 +459,9 @@ export class GoogleCalendarSyncProvider implements ICalendarSyncProvider {
       if (!pageToken) break;
     }
 
-    await this._data.setSetting(wmKey, String(runStart));
+    // Buffered, not written: the watermark only becomes true once these tasks
+    // have actually landed locally (see commitCursors).
+    this._pendingTaskWatermark = runStart;
     return { upserted, deleted };
   }
 
@@ -364,13 +470,19 @@ export class GoogleCalendarSyncProvider implements ICalendarSyncProvider {
     googleCalId: string,
     plannerCalId: string,
     sinceMs: number,
-  ): Promise<{ upserted: SyncedEvent[]; deleted: string[]; overrides: SyncedEventOverride[]; reset: boolean }> {
+  ): Promise<{
+    upserted: SyncedEvent[]; deleted: string[]; overrides: SyncedEventOverride[];
+    reset: boolean; full: boolean; seenIds: string[]; fromMs: number;
+  }> {
     const upserted: SyncedEvent[] = [];
     const deleted: string[] = [];
     const overrides: SyncedEventOverride[] = [];
+    const seenIds: string[] = [];
     let reset = false;
 
     let token = (await this._data.getSetting(this._tokenKey(googleCalId))) || undefined;
+    // No token ⇒ this listing is a COMPLETE snapshot of [sinceMs, ∞), not a delta.
+    const full = !token;
     let pageToken: string | undefined;
     let nextSyncToken: string | undefined;
     let triedFullResync = false;
@@ -394,6 +506,9 @@ export class GoogleCalendarSyncProvider implements ICalendarSyncProvider {
           reset = true;
           token = undefined;
           pageToken = undefined;
+          upserted.length = 0; deleted.length = 0; overrides.length = 0; seenIds.length = 0;
+          // Clearing a dead cursor is always safe (worst case: one extra full
+          // pull). Advancing one is not — that write happens in commitCursors.
           await this._data.setSetting(this._tokenKey(googleCalId), '');
           continue;
         }
@@ -402,6 +517,7 @@ export class GoogleCalendarSyncProvider implements ICalendarSyncProvider {
 
       const body = res.data ?? {};
       for (const item of body.items ?? []) {
+        if (item.id && !item.recurringEventId) seenIds.push(item.id);
         // A single-occurrence exception (edit or cancel) — carries recurringEventId.
         // Route it to an override rather than treating a cancelled occurrence as
         // a whole-series delete.
@@ -423,11 +539,13 @@ export class GoogleCalendarSyncProvider implements ICalendarSyncProvider {
       if (!pageToken) break;
     }
 
-    if (nextSyncToken) await this._data.setSetting(this._tokenKey(googleCalId), nextSyncToken);
-    return { upserted, deleted, overrides, reset };
+    // Buffered, NOT written — see commitCursors(). Persisting here would tell
+    // Google "delivered" before a single row had been applied locally.
+    if (nextSyncToken) this._pendingCalTokens.set(googleCalId, nextSyncToken);
+    return { upserted, deleted, overrides, reset, full: full || triedFullResync, seenIds, fromMs: sinceMs };
   }
 
-  async pushEvent(local: PlannerEvent): Promise<{ providerId: string }> {
+  async pushEvent(local: PlannerEvent): Promise<SyncPushResult> {
     const cal = await this._data.getCalendar(local.calendarId ?? '');
     const googleCalId = cal?.sourceProvider === this.id ? cal.sourceId : null;
     if (!googleCalId) throw new Error(`Event ${local.id} is not in a Google-synced calendar`);
@@ -439,14 +557,14 @@ export class GoogleCalendarSyncProvider implements ICalendarSyncProvider {
       const url = `${CAL_BASE}/${encodeURIComponent(googleCalId)}/events/${encodeURIComponent(local.sourceId)}`;
       const res = await googleSync.fetch<GCalEvent>({ method: 'PATCH', url, body });
       if (!res.ok) throw new Error(`Google Calendar update failed: ${res.error ?? 'unknown'}`);
-      return { providerId: res.data?.id ?? local.sourceId };
+      return { providerId: res.data?.id ?? local.sourceId, remoteUpdatedAt: remoteStamp(res.data?.updated) };
     }
 
     // Create new remote event.
     const url = `${CAL_BASE}/${encodeURIComponent(googleCalId)}/events`;
     const res = await googleSync.fetch<GCalEvent>({ method: 'POST', url, body });
     if (!res.ok || !res.data?.id) throw new Error(`Google Calendar create failed: ${res.error ?? 'no id'}`);
-    return { providerId: res.data.id };
+    return { providerId: res.data.id, remoteUpdatedAt: remoteStamp(res.data.updated) };
   }
 
   async deleteEvent(sourceId: string, remoteParentId?: string): Promise<void> {
@@ -460,21 +578,29 @@ export class GoogleCalendarSyncProvider implements ICalendarSyncProvider {
   }
 
   /**
-   * Push a single-occurrence exception. Google addresses the instance by the
-   * deterministic id `{masterId}_{originalStartUTC}`; PATCHing it with new
-   * start/end materializes a modified exception, PATCHing status=cancelled
-   * removes just that occurrence. originalStartTime must NOT change — it's the
-   * pin to the slot being overridden.
+   * Push a single-occurrence exception.
+   *
+   * Google addresses an instance by id, and the id is *usually* the derivable
+   * `{masterId}_{originalStartUTC}`. Usually is not always: once an exception
+   * exists Google may hand back a different id, an all-day slot uses the date
+   * form, and a slot our local expander computes can land a second (or an hour,
+   * across a zone change) away from the one Google expanded. A miss is a bare
+   * 404 — "Not Found" — and the edit retries forever against an id that will
+   * never exist.
+   *
+   * So: try the id we already recorded, then the derived one, and if both 404
+   * ASK Google which instance occupies that slot rather than guessing again.
+   * The id that works is stored (markOverrideSynced) so the next push is a
+   * direct hit. originalStartTime is never sent — it is the pin to the slot
+   * being overridden, and changing it would move the exception.
    */
-  async pushOverride(baseSourceId: string, override: EventOverride): Promise<{ providerId: string }> {
+  async pushOverride(baseSourceId: string, override: EventOverride): Promise<SyncPushResult> {
     const base = await this._data.getEventBySource(this.id, baseSourceId);
     const cal = base ? await this._data.getCalendar(base.calendarId ?? '') : null;
     const googleCalId = cal?.sourceProvider === this.id ? cal.sourceId : null;
     if (!googleCalId) throw new Error('Override master is not in a Google-synced calendar');
 
     const allDay = override.allDay ?? base?.allDay ?? false;
-    const instanceId = googleInstanceId(baseSourceId, override.originalStartAt, allDay);
-    const url = `${CAL_BASE}/${encodeURIComponent(googleCalId)}/events/${encodeURIComponent(instanceId)}`;
 
     let body: Record<string, unknown>;
     if (override.cancelled) {
@@ -487,32 +613,105 @@ export class GoogleCalendarSyncProvider implements ICalendarSyncProvider {
       const start = override.startAt ?? override.originalStartAt;
       const dur = base ? base.endAt - base.startAt : 3_600_000;
       const end = override.endAt ?? start + dur;
+      // Same timeZone requirement as the series itself — an instance of a
+      // recurring event is still a recurring-event write.
+      const timeZone = machineTimeZone();
       if (allDay) {
-        body.start = { date: toAllDayDateStr(start) };
-        body.end = { date: toAllDayDateStr(end > start ? end : start + 86_400_000) };
+        body.start = { date: toAllDayDateStr(start), timeZone };
+        body.end = { date: toAllDayDateStr(end > start ? end : start + 86_400_000), timeZone };
       } else {
-        body.start = { dateTime: new Date(start).toISOString() };
-        body.end = { dateTime: new Date(end).toISOString() };
+        body.start = { dateTime: new Date(start).toISOString(), timeZone };
+        body.end = { dateTime: new Date(end).toISOString(), timeZone };
       }
     }
 
-    const res = await googleSync.fetch<GCalEvent>({ method: 'PATCH', url, body });
+    const patch = async (instanceId: string): Promise<{ ok: boolean; status?: number; error?: string; data?: GCalEvent }> => {
+      const url = `${CAL_BASE}/${encodeURIComponent(googleCalId)}/events/${encodeURIComponent(instanceId)}`;
+      const res = await googleSync.fetch<GCalEvent>({ method: 'PATCH', url, body });
+      return { ok: res.ok, status: res.status, error: res.error, data: res.data ?? undefined };
+    };
+
+    const derived = googleInstanceId(baseSourceId, override.originalStartAt, allDay);
+    const candidates = override.sourceId && override.sourceId !== derived
+      ? [override.sourceId, derived]
+      : [derived];
+
+    for (const id of candidates) {
+      const res = await patch(id);
+      if (res.ok) return { providerId: res.data?.id ?? id, remoteUpdatedAt: remoteStamp(res.data?.updated) };
+      // Anything but "that instance isn't there" is a real failure — surface it
+      // rather than papering over it with a lookup.
+      if (res.status !== 404 && res.status !== 410) {
+        throw new Error(`Google Calendar override push failed: ${res.error ?? 'unknown'}`);
+      }
+    }
+
+    const resolved = await this._resolveInstanceId(googleCalId, baseSourceId, override.originalStartAt, allDay);
+    if (!resolved) {
+      const when = new Date(override.originalStartAt).toLocaleString();
+      throw new Error(`no occurrence of the series at ${when} on Google (the series may have changed there)`);
+    }
+    const res = await patch(resolved);
     if (!res.ok) throw new Error(`Google Calendar override push failed: ${res.error ?? 'unknown'}`);
-    return { providerId: res.data?.id ?? instanceId };
+    return { providerId: res.data?.id ?? resolved, remoteUpdatedAt: remoteStamp(res.data?.updated) };
   }
 
-  async pushTask(local: PlannerTask): Promise<{ providerId: string }> {
+  /**
+   * Ask Google for the real id of the instance occupying `originalStartAt`.
+   *
+   * Matching is exact first. Failing that, same LOCAL calendar day: a daily or
+   * weekly series has one occurrence per day, so the day identifies the slot
+   * unambiguously even when our expansion and Google's disagree about the
+   * instant (a DST boundary, a series whose zone changed). If a day somehow
+   * holds several, the nearest in time wins. Anything looser would risk
+   * rewriting the wrong occurrence, so it returns null instead.
+   */
+  private async _resolveInstanceId(
+    googleCalId: string,
+    masterId: string,
+    originalStartAt: number,
+    allDay: boolean,
+  ): Promise<string | null> {
+    const WINDOW_MS = 36 * 60 * 60 * 1000; // wide enough for any zone/DST slip
+    const params = new URLSearchParams();
+    params.set('timeMin', new Date(originalStartAt - WINDOW_MS).toISOString());
+    params.set('timeMax', new Date(originalStartAt + WINDOW_MS).toISOString());
+    params.set('maxResults', '50');
+    params.set('showDeleted', 'true');
+
+    const url = `${CAL_BASE}/${encodeURIComponent(googleCalId)}/events/${encodeURIComponent(masterId)}/instances?${params.toString()}`;
+    const res = await googleSync.fetch<GCalEventsResponse>({ method: 'GET', url });
+    if (!res.ok) return null;
+
+    const wantedDay = toAllDayDateStr(originalStartAt);
+    let sameDay: { id: string; delta: number } | null = null;
+
+    for (const item of res.data?.items ?? []) {
+      if (!item.id) continue;
+      const slot = item.originalStartTime ?? item.start;
+      const slotMs = slot?.date ? parseAllDayDate(slot.date) : Date.parse(slot?.dateTime ?? '');
+      if (!Number.isFinite(slotMs)) continue;
+      if (slotMs === originalStartAt) return item.id;
+      if (allDay || toAllDayDateStr(slotMs) === wantedDay) {
+        const delta = Math.abs(slotMs - originalStartAt);
+        if (!sameDay || delta < sameDay.delta) sameDay = { id: item.id, delta };
+      }
+    }
+    return sameDay?.id ?? null;
+  }
+
+  async pushTask(local: PlannerTask): Promise<SyncPushResult> {
     const body = mapPlannerTaskToGoogle(local);
     if (local.sourceId) {
       const url = `${TASKS_BASE}/lists/${encodeURIComponent(DEFAULT_TASKLIST)}/tasks/${encodeURIComponent(local.sourceId)}`;
       const res = await googleSync.fetch<GTask>({ method: 'PATCH', url, body });
       if (!res.ok) throw new Error(`Google Tasks update failed: ${res.error ?? 'unknown'}`);
-      return { providerId: res.data?.id ?? local.sourceId };
+      return { providerId: res.data?.id ?? local.sourceId, remoteUpdatedAt: remoteStamp(res.data?.updated) };
     }
     const url = `${TASKS_BASE}/lists/${encodeURIComponent(DEFAULT_TASKLIST)}/tasks`;
     const res = await googleSync.fetch<GTask>({ method: 'POST', url, body });
     if (!res.ok || !res.data?.id) throw new Error(`Google Tasks create failed: ${res.error ?? 'no id'}`);
-    return { providerId: res.data.id };
+    return { providerId: res.data.id, remoteUpdatedAt: remoteStamp(res.data.updated) };
   }
 
   async deleteTask(sourceId: string, remoteParentId?: string): Promise<void> {

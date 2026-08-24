@@ -33,6 +33,12 @@ export interface PlannerTask {
   readonly sourceId: string | null;
   readonly createdAt: number;
   readonly updatedAt: number;
+  /** The PROVIDER's own last-modified stamp for this row (its clock, not ours).
+   *  Undefined/null = never reconciled. Never compare it to `updatedAt`. */
+  readonly remoteUpdatedAt?: number | null;
+  /** Local ms-epoch of the last reconcile with the provider. Dirty ⇔
+   *  `updatedAt > syncedAt`. */
+  readonly syncedAt?: number | null;
 }
 
 export interface CreateTaskInput {
@@ -95,6 +101,12 @@ export interface PlannerEvent {
   readonly sourceId: string | null;
   readonly createdAt: number;
   readonly updatedAt: number;
+  /** The PROVIDER's own last-modified stamp for this row (its clock, not ours).
+   *  Undefined/null = never reconciled. Never compare it to `updatedAt`. */
+  readonly remoteUpdatedAt?: number | null;
+  /** Local ms-epoch of the last reconcile with the provider. Dirty ⇔
+   *  `updatedAt > syncedAt`. */
+  readonly syncedAt?: number | null;
 }
 
 export interface CreateEventInput {
@@ -150,6 +162,8 @@ export interface EventOverride {
   readonly location: string | null;
   readonly color: string | null;
   readonly sourceId: string | null;
+  /** The provider's last-modified stamp for the remote exception (its clock). */
+  readonly remoteUpdatedAt?: number | null;
 }
 
 /** Fields an override can carry (all optional; omitted = inherit from base). */
@@ -272,6 +286,30 @@ export interface SyncPullResult {
   /** True when the incremental cursor expired and the provider returned a full
    *  snapshot — the orchestrator should not infer deletions from absence. */
   readonly reset?: boolean;
+  /** Complete snapshots produced by this pull (only on a full/reset pull). Each
+   *  entry lets the orchestrator reconcile deletions it could never have seen
+   *  incrementally: any local row in that calendar, inside the snapshot window,
+   *  whose source_id is absent from `sourceIds` is gone upstream. */
+  readonly snapshots?: readonly SyncCalendarSnapshot[];
+}
+
+/** A complete listing of one calendar over a bounded window. */
+export interface SyncCalendarSnapshot {
+  /** The LOCAL planner calendar id the snapshot covers. */
+  readonly calendarId: string;
+  /** Every remote id present in the window (upserted or cancelled). */
+  readonly sourceIds: readonly string[];
+  /** Lower bound of the window (ms epoch) — rows ending before it weren't listed. */
+  readonly fromMs: number;
+}
+
+/** What a push returns: the provider's id for the row, plus — when the provider
+ *  echoes it — the provider-clock timestamp the write produced. Recording that
+ *  stamp is what keeps the next pull from mistaking our own write for someone
+ *  else's remote change. */
+export interface SyncPushResult {
+  readonly providerId: string;
+  readonly remoteUpdatedAt?: number;
 }
 
 /**
@@ -288,11 +326,26 @@ export interface ICalendarSyncProvider {
   readonly id: string;
   readonly displayName: string;
 
-  /** Pull remote changes since `state`. Returns upserts, deletions, next cursor. */
+  /** Pull remote changes since `state`. Returns upserts, deletions, next cursor.
+   *
+   *  MUST NOT persist its own cursors — a cursor written before the caller has
+   *  applied the rows it covers turns any later failure into permanent data
+   *  loss (the provider will never resend those changes). Buffer them and
+   *  publish in `commitCursors()`, which the orchestrator calls only after
+   *  every pulled row has landed locally. */
   pull(state: SyncPullState): Promise<SyncPullResult>;
 
+  /** Durably persist the cursors buffered by the last successful `pull()`.
+   *  Called once the orchestrator has applied that pull in full. Providers
+   *  holding no internal cursor may omit it. */
+  commitCursors?(): Promise<void>;
+
+  /** Throw away every incremental cursor so the next `pull()` is a full one.
+   *  Backs the user-facing "Resync from scratch" repair. */
+  resetCursors?(): Promise<void>;
+
   /** Push a local event upstream. Returns the provider's id to store as source_id. */
-  pushEvent?(local: PlannerEvent): Promise<{ providerId: string }>;
+  pushEvent?(local: PlannerEvent): Promise<SyncPushResult>;
   /** Delete an event upstream by its provider id. `remoteParentId` is the
    *  container recorded at delete time (Google calendar id). */
   deleteEvent?(sourceId: string, remoteParentId?: string): Promise<void>;
@@ -300,10 +353,10 @@ export interface ICalendarSyncProvider {
   /** Push a single-occurrence exception upstream. `baseSourceId` is the remote
    *  recurring master id; `override` carries the local exception. Returns the
    *  remote instance id to store as the override's source_id. */
-  pushOverride?(baseSourceId: string, override: EventOverride): Promise<{ providerId: string }>;
+  pushOverride?(baseSourceId: string, override: EventOverride): Promise<SyncPushResult>;
 
   /** Push a local task upstream. Returns the provider's id to store as source_id. */
-  pushTask?(local: PlannerTask): Promise<{ providerId: string }>;
+  pushTask?(local: PlannerTask): Promise<SyncPushResult>;
   /** Delete a task upstream by its provider id. `remoteParentId` is the tasklist id. */
   deleteTask?(sourceId: string, remoteParentId?: string): Promise<void>;
 

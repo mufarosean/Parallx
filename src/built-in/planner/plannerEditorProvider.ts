@@ -13,7 +13,7 @@ import { takePendingPlannerTab } from './plannerNavState.js';
 import { buildSimpleRRule, describeRRule, rruleToPreset } from './plannerRecurrence.js';
 import { packLanes } from './plannerLayout.js';
 import { PlannerAutomationsController, type CronServiceLike } from './plannerAutomations.js';
-import { Dropdown } from '../../ui/dropdown.js';
+import { Dropdown, type IDropdownItem } from '../../ui/dropdown.js';
 import { getIcon } from '../../ui/iconRegistry.js';
 
 interface PlannerEditorInput {
@@ -166,6 +166,27 @@ function addDays(date: Date, n: number): Date {
 }
 
 // ─── Provider ────────────────────────────────────────────────────────────────
+
+/**
+ * Calendar options for the event dialog.
+ *
+ * An event only reaches Google if its calendar is a Google MIRROR row
+ * (`source_provider = 'google'`, created when you tick a calendar in Settings).
+ * Put an event on a local calendar and it stays on this machine forever — no
+ * error, no upstream copy, and invisible in every other workspace on the same
+ * account. The picker showed bare names, so a local "Personal" and a synced
+ * "Nutty Plan" looked like equivalent choices.
+ *
+ * The hint is only added once something actually syncs; with Google not
+ * connected, "Not Synced" on every row would be noise.
+ */
+export function eventCalendarItems(cals: readonly PlannerCalendar[]): IDropdownItem[] {
+  const anySynced = cals.some((c) => !!c.sourceProvider);
+  return cals.map((c) => ({
+    value: c.id,
+    label: anySynced && !c.sourceProvider ? `${c.name} · Not Synced` : c.name,
+  }));
+}
 
 export class PlannerEditorProvider {
   constructor(
@@ -901,7 +922,19 @@ class PlannerEditorPane implements IDisposable {
               await presentFailure(failed.error ?? 'unknown error');
             } else {
               const changes = results.reduce((n, r) => n + r.pulledUpserts + r.pulledDeletes + r.pushed + r.pushedDeletes, 0);
-              await this._api.window.showInformationMessage(changes > 0 ? `Synced ${changes} change${changes === 1 ? '' : 's'}.` : 'Synced. Already up to date.');
+              // Pushes that failed used to be console-only, so a workspace that
+              // sent nothing upstream still reported "already up to date" — the
+              // reason a sync could look clean while the other workspace never
+              // saw the edit. Say it out loud instead.
+              const stuck = results.reduce((n, r) => n + r.pushFailed, 0);
+              if (stuck > 0) {
+                const why = results.find((r) => r.pushError)?.pushError ?? 'unknown error';
+                await this._api.window.showErrorMessage(
+                  `Synced, but ${stuck} change${stuck === 1 ? '' : 's'} couldn’t be sent to Google (${why}). They’ll be retried on the next sync.`,
+                );
+              } else {
+                await this._api.window.showInformationMessage(changes > 0 ? `Synced ${changes} change${changes === 1 ? '' : 's'}.` : 'Synced. Already up to date.');
+              }
             }
           }
         } catch (err) {
@@ -2601,11 +2634,16 @@ class PlannerEditorPane implements IDisposable {
     calRow.appendChild(calHost);
     body.appendChild(calRow);
     const seedCalId = isEdit ? (init.event.calendarId ?? null) : null;
-    void this._data.listCalendars().then((cals) => {
-      calSelect.items = cals.map((c) => ({ value: c.id, label: c.name }));
-      const want = seedCalId ?? cals.find(c => c.id === 'cal-personal')?.id ?? cals.find(c => c.isDefault)?.id ?? (cals[0]?.id ?? '');
-      if (want) calSelect.value = want;
-    });
+    void Promise.all([this._data.listCalendars(), this._data.resolveDefaultEventCalendarId()])
+      .then(([cals, defaultCalId]) => {
+        calSelect.items = eventCalendarItems(cals);
+        // New events follow the resolved default — the user's "New events go to"
+        // setting, else a Google-synced calendar. Hard-preferring 'cal-personal'
+        // here (the old behaviour) quietly overrode both, so every event made in
+        // this dialog landed on a LOCAL calendar and never reached Google.
+        const want = seedCalId ?? defaultCalId;
+        if (want && cals.some(c => c.id === want)) calSelect.value = want;
+      });
 
     // Colour — overrides the calendar's colour for this event/series. Default
     // (hollow chip) inherits the calendar colour.

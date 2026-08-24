@@ -69,6 +69,8 @@ function rowToTask(row: Record<string, unknown>): PlannerTask {
     sourceId: (row.source_id as string) ?? null,
     createdAt: (row.created_at as number) ?? 0,
     updatedAt: (row.updated_at as number) ?? 0,
+    remoteUpdatedAt: typeof row.remote_updated_at === 'number' ? row.remote_updated_at : null,
+    syncedAt: typeof row.synced_at === 'number' ? row.synced_at : null,
   };
 }
 
@@ -88,6 +90,8 @@ function rowToEvent(row: Record<string, unknown>): PlannerEvent {
     sourceId: (row.source_id as string) ?? null,
     createdAt: (row.created_at as number) ?? 0,
     updatedAt: (row.updated_at as number) ?? 0,
+    remoteUpdatedAt: typeof row.remote_updated_at === 'number' ? row.remote_updated_at : null,
+    syncedAt: typeof row.synced_at === 'number' ? row.synced_at : null,
   };
 }
 
@@ -105,6 +109,7 @@ function rowToOverride(row: Record<string, unknown>): EventOverride {
     location: (row.location as string) ?? null,
     color: (row.color as string) ?? null,
     sourceId: (row.source_id as string) ?? null,
+    remoteUpdatedAt: typeof row.remote_updated_at === 'number' ? row.remote_updated_at : null,
   };
 }
 
@@ -355,10 +360,15 @@ export class PlannerDataService extends Disposable {
     return (res.rows ?? []).map(rowToTask);
   }
 
+  /** reminder_fired is purely LOCAL bookkeeping — the provider has no such
+   *  field and nothing about the row's content changed. Bumping updated_at here
+   *  (the old behaviour) made the task a push candidate, so a fired reminder
+   *  was enough to send this workspace's copy back upstream and clobber an edit
+   *  made elsewhere. Flip the flag and leave the sync clocks alone. */
   async markReminderFired(taskId: string): Promise<void> {
     await this._db.run(
-      `UPDATE planner_tasks SET reminder_fired = 1, updated_at = ? WHERE id = ?`,
-      [Date.now(), taskId],
+      `UPDATE planner_tasks SET reminder_fired = 1 WHERE id = ?`,
+      [taskId],
     );
   }
 
@@ -729,17 +739,27 @@ export class PlannerDataService extends Disposable {
    *  remote master id; no-op if that series isn't synced locally yet. */
   async applyOverrideFromSync(provider: string, ov: SyncedEventOverride): Promise<void> {
     const base = await this.getEventBySource(provider, ov.baseSourceId);
-    if (!base) return;
+    if (!base) {
+      // The exception arrived without its series — the master is older than the
+      // pull window, or lives on a calendar this workspace doesn't sync. It is
+      // dropped, and the cursor will move past it, so say so: a full resync
+      // (which lists master and exceptions together) is the way to recover.
+      console.warn(`[PlannerDataService] override for unknown series ${ov.baseSourceId} dropped — resync to recover`);
+      return;
+    }
     await this.upsertOverride(base.id, ov.originalStartAt, {
       cancelled: ov.cancelled,
       title: ov.title, description: ov.description,
       startAt: ov.startAt, endAt: ov.endAt, allDay: ov.allDay,
       location: ov.location, sourceId: ov.sourceId,
     });
-    // Echo-proof: mark synced so the next push doesn't send it back.
+    // Echo-proof: mark synced so the next push doesn't send it back, and keep
+    // the provider's own stamp for the next conflict check.
+    const remoteUpdatedAt = Number.isFinite(ov.updatedAt as number) ? (ov.updatedAt as number) : null;
     await this._db.run(
-      `UPDATE planner_event_overrides SET synced_at = updated_at WHERE base_id = ? AND original_start_at = ?`,
-      [base.id, ov.originalStartAt],
+      `UPDATE planner_event_overrides SET synced_at = updated_at, remote_updated_at = ?
+        WHERE base_id = ? AND original_start_at = ?`,
+      [remoteUpdatedAt, base.id, ov.originalStartAt],
     );
   }
 
@@ -761,11 +781,19 @@ export class PlannerDataService extends Disposable {
     }));
   }
 
-  async markOverrideSynced(overrideId: string, sourceId: string): Promise<void> {
+  async markOverrideSynced(overrideId: string, sourceId: string, remoteUpdatedAt?: number | null): Promise<void> {
     const now = Date.now();
+    const stamp = Number.isFinite(remoteUpdatedAt as number) ? (remoteUpdatedAt as number) : null;
+    if (stamp == null) {
+      await this._db.run(
+        `UPDATE planner_event_overrides SET source_id = ?, synced_at = ?, updated_at = ? WHERE id = ?`,
+        [sourceId, now, now, overrideId],
+      );
+      return;
+    }
     await this._db.run(
-      `UPDATE planner_event_overrides SET source_id = ?, synced_at = ?, updated_at = ? WHERE id = ?`,
-      [sourceId, now, now, overrideId],
+      `UPDATE planner_event_overrides SET source_id = ?, synced_at = ?, updated_at = ?, remote_updated_at = ? WHERE id = ?`,
+      [sourceId, now, now, stamp, overrideId],
     );
   }
 
@@ -969,6 +997,10 @@ export class PlannerDataService extends Disposable {
     const now = Date.now();
     const provider = synced.sourceProvider;
     const sourceId = synced.sourceId;
+    // The provider's own stamp, kept verbatim. This is the ONLY value that may
+    // be compared against a future remote `updatedAt` — `updated_at` below is
+    // our clock and means "when this workspace last touched the row".
+    const remoteUpdatedAt = Number.isFinite(synced.updatedAt as number) ? (synced.updatedAt as number) : null;
     const existing = await this.getEventBySource(provider, sourceId);
     const vals = [
       synced.title,
@@ -1000,8 +1032,8 @@ export class PlannerDataService extends Disposable {
         && (existing.recurrence ?? null) === (synced.recurrence ?? null);
       if (unchanged) {
         const res = await this._db.run(
-          'UPDATE planner_events SET updated_at=?, synced_at=? WHERE id=?',
-          [now, now, existing.id],
+          'UPDATE planner_events SET updated_at=?, synced_at=?, remote_updated_at=? WHERE id=?',
+          [now, now, remoteUpdatedAt, existing.id],
         );
         if (res.error) throw new Error(`upsertEventFromSync(stamp) failed: ${res.error.message}`);
         return;
@@ -1009,9 +1041,9 @@ export class PlannerDataService extends Disposable {
       const res = await this._db.run(
         `UPDATE planner_events
             SET title=?, description=?, start_at=?, end_at=?, all_day=?, location=?,
-                calendar_id=?, color=?, recurrence=?, updated_at=?, synced_at=?
+                calendar_id=?, color=?, recurrence=?, updated_at=?, synced_at=?, remote_updated_at=?
           WHERE id=?`,
-        [...vals, now, now, existing.id],
+        [...vals, now, now, remoteUpdatedAt, existing.id],
       );
       if (res.error) throw new Error(`upsertEventFromSync(update) failed: ${res.error.message}`);
       this._onDidChange.fire({ kind: 'event-updated', eventId: existing.id });
@@ -1020,9 +1052,9 @@ export class PlannerDataService extends Disposable {
       const res = await this._db.run(
         `INSERT INTO planner_events
            (id, title, description, start_at, end_at, all_day, location, calendar_id, color,
-            recurrence, source_provider, source_id, created_at, updated_at, synced_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [id, ...vals, provider, sourceId, now, now, now],
+            recurrence, source_provider, source_id, created_at, updated_at, synced_at, remote_updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [id, ...vals, provider, sourceId, now, now, now, remoteUpdatedAt],
       );
       if (res.error) throw new Error(`upsertEventFromSync(insert) failed: ${res.error.message}`);
       this._onDidChange.fire({ kind: 'event-created', eventId: id });
@@ -1053,6 +1085,7 @@ export class PlannerDataService extends Disposable {
     const now = Date.now();
     const provider = synced.sourceProvider;
     const sourceId = synced.sourceId;
+    const remoteUpdatedAt = Number.isFinite(synced.updatedAt as number) ? (synced.updatedAt as number) : null;
     const existing = await this.getTaskBySource(provider, sourceId);
     const status: TaskStatus = synced.status ?? 'planned';
     // Google Tasks are date-only (the API discards the time). The time-of-day
@@ -1089,8 +1122,8 @@ export class PlannerDataService extends Disposable {
         && (existing.calendarId ?? 'cal-tasks') === (synced.calendarId ?? 'cal-tasks');
       if (unchanged) {
         const res = await this._db.run(
-          'UPDATE planner_tasks SET updated_at=?, synced_at=? WHERE id=?',
-          [now, now, existing.id],
+          'UPDATE planner_tasks SET updated_at=?, synced_at=?, remote_updated_at=? WHERE id=?',
+          [now, now, remoteUpdatedAt, existing.id],
         );
         if (res.error) throw new Error(`upsertTaskFromSync(stamp) failed: ${res.error.message}`);
         return;
@@ -1098,9 +1131,9 @@ export class PlannerDataService extends Disposable {
       const res = await this._db.run(
         `UPDATE planner_tasks
             SET title=?, description=?, status=?, due_at=?, completed_at=?, tags_json=?,
-                calendar_id=?, updated_at=?, synced_at=?
+                calendar_id=?, updated_at=?, synced_at=?, remote_updated_at=?
           WHERE id=?`,
-        [...vals, now, now, existing.id],
+        [...vals, now, now, remoteUpdatedAt, existing.id],
       );
       if (res.error) throw new Error(`upsertTaskFromSync(update) failed: ${res.error.message}`);
       this._onDidChange.fire({ kind: 'task-updated', taskId: existing.id });
@@ -1110,30 +1143,44 @@ export class PlannerDataService extends Disposable {
         `INSERT INTO planner_tasks
            (id, title, description, status, due_at, reminder_at, reminder_fired, completed_at,
             tags_json, calendar_id, color, source_uri, source_provider, source_id,
-            created_at, updated_at, synced_at)
-         VALUES (?, ?, ?, ?, ?, NULL, 0, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?)`,
-        [id, vals[0], vals[1], vals[2], vals[3], vals[4], vals[5], vals[6], provider, sourceId, now, now, now],
+            created_at, updated_at, synced_at, remote_updated_at)
+         VALUES (?, ?, ?, ?, ?, NULL, 0, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?)`,
+        [id, vals[0], vals[1], vals[2], vals[3], vals[4], vals[5], vals[6], provider, sourceId, now, now, now, remoteUpdatedAt],
       );
       if (res.error) throw new Error(`upsertTaskFromSync(insert) failed: ${res.error.message}`);
       this._onDidChange.fire({ kind: 'task-created', taskId: id });
     }
   }
 
-  /** Mark a local task as reconciled after a successful push. */
-  async markTaskSynced(id: string, provider: string, sourceId: string): Promise<void> {
-    const res = await this._db.run(
-      `UPDATE planner_tasks SET source_provider=?, source_id=?, synced_at=? WHERE id=?`,
-      [provider, sourceId, Date.now(), id],
-    );
+  /** Mark a local task as reconciled after a successful push. `remoteUpdatedAt`
+   *  is the provider stamp OUR write produced — recording it is what stops the
+   *  next pull from reading our own echo as somebody else's remote change. */
+  async markTaskSynced(id: string, provider: string, sourceId: string, remoteUpdatedAt?: number | null): Promise<void> {
+    const stamp = Number.isFinite(remoteUpdatedAt as number) ? (remoteUpdatedAt as number) : null;
+    const res = stamp == null
+      ? await this._db.run(
+        `UPDATE planner_tasks SET source_provider=?, source_id=?, synced_at=? WHERE id=?`,
+        [provider, sourceId, Date.now(), id],
+      )
+      : await this._db.run(
+        `UPDATE planner_tasks SET source_provider=?, source_id=?, synced_at=?, remote_updated_at=? WHERE id=?`,
+        [provider, sourceId, Date.now(), stamp, id],
+      );
     if (res.error) throw new Error(`markTaskSynced failed: ${res.error.message}`);
   }
 
-  /** Mark a local event as reconciled after a successful push. */
-  async markEventSynced(id: string, provider: string, sourceId: string): Promise<void> {
-    const res = await this._db.run(
-      `UPDATE planner_events SET source_provider=?, source_id=?, synced_at=? WHERE id=?`,
-      [provider, sourceId, Date.now(), id],
-    );
+  /** Mark a local event as reconciled after a successful push. See markTaskSynced. */
+  async markEventSynced(id: string, provider: string, sourceId: string, remoteUpdatedAt?: number | null): Promise<void> {
+    const stamp = Number.isFinite(remoteUpdatedAt as number) ? (remoteUpdatedAt as number) : null;
+    const res = stamp == null
+      ? await this._db.run(
+        `UPDATE planner_events SET source_provider=?, source_id=?, synced_at=? WHERE id=?`,
+        [provider, sourceId, Date.now(), id],
+      )
+      : await this._db.run(
+        `UPDATE planner_events SET source_provider=?, source_id=?, synced_at=?, remote_updated_at=? WHERE id=?`,
+        [provider, sourceId, Date.now(), stamp, id],
+      );
     if (res.error) throw new Error(`markEventSynced failed: ${res.error.message}`);
   }
 
@@ -1197,6 +1244,67 @@ export class PlannerDataService extends Disposable {
       kind: (r.kind as 'event' | 'task') ?? 'event',
       remoteParent: (r.remote_parent as string) ?? null,
     }));
+  }
+
+  /**
+   * Reconcile a local calendar mirror against a COMPLETE remote listing.
+   *
+   * Incremental cursors can only report deletions that happen while the cursor
+   * is alive. Anything deleted upstream while this workspace was behind (an
+   * expired token, a dropped batch, a workspace left closed for weeks) is
+   * invisible forever after — the row just sits here looking real. A full pull
+   * carries the whole truth for its window, so anything we hold in that window
+   * and Google didn't list is gone.
+   *
+   * Bounded deliberately:
+   *   - only rows sourced from `provider` (local-only rows are never Google's
+   *     to delete),
+   *   - only rows whose end_at is inside the snapshot window, mirroring the
+   *     provider's own timeMin filter,
+   *   - never recurring bases: with singleEvents=false a live series whose FIRST
+   *     occurrence predates the window isn't listed, and pruning it would delete
+   *     a series that is very much alive.
+   * Deleted as a remote deletion — no tombstone, nothing pushed back upstream.
+   */
+  async pruneCalendarToSnapshot(
+    provider: string,
+    calendarId: string,
+    sourceIds: readonly string[],
+    fromMs: number,
+  ): Promise<number> {
+    const res = await this._db.all(
+      `SELECT id, source_id FROM planner_events
+        WHERE calendar_id = ? AND source_provider = ? AND source_id IS NOT NULL
+          AND recurrence IS NULL
+          AND end_at >= ?`,
+      [calendarId, provider, fromMs],
+    );
+    if (res.error) return 0;
+    const keep = new Set(sourceIds);
+    const doomed = (res.rows ?? []).filter((r) => !keep.has(r.source_id as string));
+    for (const row of doomed) {
+      const del = await this._db.run(`DELETE FROM planner_events WHERE id = ?`, [row.id as string]);
+      if (!del.error) this._onDidChange.fire({ kind: 'event-removed', eventId: row.id as string });
+    }
+    return doomed.length;
+  }
+
+  /** Wipe every persisted sync cursor/watermark for a provider (keys under
+   *  `sync.<provider>.` that end in a cursor), so the next pull is a full one.
+   *  User preferences under the same prefix (which calendars, tasks on/off) are
+   *  left alone — this repairs position, not configuration. */
+  async clearSyncCursors(provider: string): Promise<void> {
+    const res = await this._db.run(
+      `DELETE FROM planner_settings
+        WHERE key LIKE ? OR key = ? OR key = ? OR key = ?`,
+      [
+        `sync.${provider}.cal.%.token`,
+        `sync.${provider}.token`,
+        `sync.${provider}.tasks.updatedMin`,
+        `sync.${provider}.sinceFloorMs`,
+      ],
+    );
+    if (res.error) throw new Error(`clearSyncCursors failed: ${res.error.message}`);
   }
 
   /** Clear a tombstone once the provider has confirmed the upstream delete. */
