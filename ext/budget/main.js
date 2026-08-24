@@ -3054,6 +3054,7 @@ function renderDashboardSection(body, api) {
         `<b>Sync complete:</b> ${c.confirmed||0} new transaction(s) confirmed and categorized, ${c.review||0} flagged for review, ${c.snapshot||0} balance snapshot(s) recorded` +
         ((c.skipped||0) ? `, ${c.skipped} skipped (already imported)` : '') +
         ((c.errors||0) ? `, <span style="color:var(--vscode-charts-red,#a43b38)">${c.errors} error(s)</span>` : '') +
+        ((c.stalled||0) ? `, <span style="color:var(--vscode-charts-red,#a43b38)">${c.stalled} stalled (model went quiet; the next sync retries them)</span>` : '') +
         '.');
       void refresh();
     } else if (evt.kind === 'error') {
@@ -7776,6 +7777,74 @@ function tryParseModelJson(raw) {
   return undefined;
 }
 
+// ─── LM stall watchdog ───────────────────────────────────────────────────────
+// The extension-facing LM API has no AbortSignal and no timeout, so a hung
+// Ollama socket used to freeze budgetSync mid-run FOREVER: the dashboard
+// banner sat at "77 of 98" and the cursor never advanced (observed
+// 2026-08-18 — three runs with a fetch line and no commit, no error, no
+// per-email log rows). This consumer re-arms a timer per chunk and throws
+// once the stream goes quiet. It cannot abort the underlying request
+// (nothing to abort with) — abandoning the iterator is enough to unwedge
+// the sync loop.
+//
+// Deliberately DUPLICATED from the flashcards extension's equivalent:
+// extensions stay self-contained, so neither can break the other.
+
+/** Between-chunk quiet limit once the model is streaming. */
+const BUDGET_LM_STALL_MS = 90_000;
+/** First-chunk limit. Cold-loading a 17-20GB model behind a busy GPU can
+ *  take minutes; declaring a stall during the load would fail healthy
+ *  emails, so the first chunk gets a longer leash than the rest. */
+const BUDGET_LM_FIRST_CHUNK_MS = 240_000;
+
+/**
+ * Thrown when the model stream goes quiet. `isLmStall` lets budgetSync
+ * distinguish an infra stall (leave the email unrecorded — retry next run)
+ * from malformed model output (permanent, recorded).
+ */
+class BudgetLmStallError extends Error {
+  constructor(seconds) {
+    super(`The model stopped responding (no output for ${Math.round(seconds)}s). Check that the model backend is running and not out of memory.`);
+    this.name = 'BudgetLmStallError';
+    this.isLmStall = true;
+  }
+}
+
+/**
+ * Consume an LM stream with the stall watchdog. `onChunk` may return `true`
+ * to stop early (the done-chunk contract of the previous bare loop).
+ */
+async function budgetStreamWithStall(stream, onChunk, { stallMs = BUDGET_LM_STALL_MS, firstChunkMs = BUDGET_LM_FIRST_CHUNK_MS } = {}) {
+  const it = stream[Symbol.asyncIterator]();
+  let sawChunk = false;
+  for (;;) {
+    const limit = sawChunk ? stallMs : firstChunkMs;
+    let timer;
+    const stall = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new BudgetLmStallError(limit / 1000)), limit);
+    });
+    // Keep a handle on the pending next() so a stall doesn't orphan it into
+    // an unhandled rejection, and close the generator so its cleanup runs.
+    const next = it.next();
+    next.catch(() => { /* orphaned after a stall; already surfaced */ });
+    let step;
+    try {
+      step = await Promise.race([next, stall]);
+    } catch (err) {
+      try { void it.return?.(); } catch { /* generator cleanup is best-effort */ }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+    if (step.done) return;
+    sawChunk = true;
+    if (onChunk(step.value) === true) {
+      try { void it.return?.(); } catch { /* generator cleanup is best-effort */ }
+      return;
+    }
+  }
+}
+
 async function lmRunJson(api, modelId, systemPrompt, userPrompt, stage = 'default') {
   const messages = [
     { role: 'system', content: systemPrompt },
@@ -7784,10 +7853,10 @@ async function lmRunJson(api, modelId, systemPrompt, userPrompt, stage = 'defaul
   const opts = budgetLmOptions(stage);
   const collect = async (msgs) => {
     let out = '';
-    for await (const chunk of api.lm.sendChatRequest(modelId, msgs, opts)) {
+    await budgetStreamWithStall(api.lm.sendChatRequest(modelId, msgs, opts), (chunk) => {
       if (chunk && typeof chunk.content === 'string') out += chunk.content;
-      if (chunk && chunk.done) break;
-    }
+      return !!(chunk && chunk.done);
+    });
     return out;
   };
   let raw = await collect(messages);
@@ -8124,7 +8193,22 @@ async function budgetSync(api) {
   _emitSync({ kind: 'start', runId, startedAt });
   _lastMalformedSample = null;
 
-  const counts = { confirmed: 0, review: 0, snapshot: 0, skipped: 0, errors: 0, malformed: 0, classifiedOther: 0 };
+  const counts = { confirmed: 0, review: 0, snapshot: 0, skipped: 0, errors: 0, malformed: 0, classifiedOther: 0, stalled: 0 };
+  // Stall circuit breaker: one stalled email is an anomaly worth skipping;
+  // three IN A ROW means the model backend is down and every remaining email
+  // would burn its own multi-minute timeout — abort the run instead. Stalled
+  // emails are left unrecorded so the next sync retries them.
+  let consecutiveStalls = 0;
+  const stalledReceivedAts = [];
+  const stallAbort = () => {
+    if (consecutiveStalls >= 3) {
+      throw new Error(
+        'Sync aborted: the model stalled on 3 consecutive emails. The model backend looks unresponsive '
+        + '(crashed, out of memory, or stuck loading a model). Completed work is saved and will be skipped; '
+        + 'run Sync Now again once the backend recovers.',
+      );
+    }
+  };
   try {
     const cfg = api.workspace.getConfiguration('budget');
     const serverId = cfg.get('gmailMcpServerId', 'gmail');
@@ -8227,8 +8311,20 @@ async function budgetSync(api) {
 
       // Stage 1 — classify
       let cls;
-      try { cls = await aiStage1(api, modelId, msg); }
-      catch (e) {
+      try {
+        cls = await aiStage1(api, modelId, msg);
+        consecutiveStalls = 0; // the backend answered — reset the breaker
+      } catch (e) {
+        if (e && e.isLmStall) {
+          // Infra stall, not bad content: leave the email UNRECORDED so the
+          // next sync retries it instead of tombstoning it as malformed.
+          counts.stalled++;
+          consecutiveStalls++;
+          stalledReceivedAts.push(msg.receivedAt || null);
+          await syncLog(runId, 'warn', 'stage1', 'Stall: ' + e.message + ' Email left unrecorded; the next sync retries it.', msg.id);
+          stallAbort();
+          continue;
+        }
         await syncLog(runId, 'warn', 'stage1', 'Classify error: ' + (e instanceof Error ? e.message : String(e)), msg.id);
         cls = { is_transaction: false, is_balance: false, malformed: true };
         counts.errors++;
@@ -8247,8 +8343,21 @@ async function budgetSync(api) {
       // Stage 2 — extract transaction(s)
       if (cls.is_transaction) {
         let extracted;
-        try { extracted = await aiStage2(api, modelId, msg); }
-        catch (e) {
+        try {
+          extracted = await aiStage2(api, modelId, msg);
+          consecutiveStalls = 0;
+        } catch (e) {
+          if (e && e.isLmStall) {
+            counts.stalled++;
+            consecutiveStalls++;
+            stalledReceivedAts.push(msg.receivedAt || null);
+            // The email_imports row above already recorded this email —
+            // remove it so the retry redoes classify + extract from scratch.
+            await db.run('DELETE FROM email_imports WHERE gmail_message_id=?', [msg.id]);
+            await syncLog(runId, 'warn', 'stage2', 'Stall: ' + e.message + ' Email left unrecorded; the next sync retries it.', msg.id);
+            stallAbort();
+            continue;
+          }
           await syncLog(runId, 'warn', 'stage2', 'Extract error: ' + (e instanceof Error ? e.message : String(e)), msg.id);
           extracted = { items: [], malformed: true };
         }
@@ -8293,13 +8402,31 @@ async function budgetSync(api) {
                 // 2) AI fallback.
                 try {
                   const picked = await aiStage3(api, modelId, item, categoryNames);
+                  consecutiveStalls = 0;
                   if (picked) {
                     categoryId = categoryByName.get(picked.toLowerCase()) || null;
                     categorizerModel = modelId;
                     if (categoryId) categorizationSource = 'ai';
                   }
                 } catch (e) {
-                  await syncLog(runId, 'warn', 'stage3', 'Categorize error: ' + (e instanceof Error ? e.message : String(e)), msg.id);
+                  if (e && e.isLmStall) {
+                    // Extraction already succeeded — a categorize stall costs
+                    // the category, never the transaction. Breaker still
+                    // counts it: a dead backend stalls here on every purchase.
+                    counts.stalled++;
+                    consecutiveStalls++;
+                    await syncLog(runId, 'warn', 'stage3', 'Stall during categorize: ' + e.message + ' Transaction recorded without a category.', msg.id);
+                    if (consecutiveStalls >= 3) {
+                      // Roll this email back before aborting: its imports row
+                      // is written but its transactions are incomplete, and a
+                      // recorded email is skipped forever on the next run.
+                      await db.run('DELETE FROM transactions WHERE gmail_message_id=?', [msg.id]);
+                      await db.run('DELETE FROM email_imports WHERE gmail_message_id=?', [msg.id]);
+                      stallAbort();
+                    }
+                  } else {
+                    await syncLog(runId, 'warn', 'stage3', 'Categorize error: ' + (e instanceof Error ? e.message : String(e)), msg.id);
+                  }
                 }
               }
             }
@@ -8340,6 +8467,7 @@ async function budgetSync(api) {
       if (cls.is_balance) {
         try {
           const snap = await aiStage1bExtract(api, modelId, msg);
+          consecutiveStalls = 0;
           if (snap && Array.isArray(snap.accounts) && snap.accounts.length > 0) {
             for (const a of snap.accounts) {
               let accountId = null;
@@ -8359,6 +8487,17 @@ async function budgetSync(api) {
             counts.errors++;
           }
         } catch (e) {
+          if (e && e.isLmStall) {
+            counts.stalled++;
+            consecutiveStalls++;
+            stalledReceivedAts.push(msg.receivedAt || null);
+            // Remove the imports row written above so the retry redoes the
+            // whole email (a recorded email is never revisited).
+            await db.run('DELETE FROM email_imports WHERE gmail_message_id=?', [msg.id]);
+            await syncLog(runId, 'warn', 'snapshot', 'Stall: ' + e.message + ' Email left unrecorded; the next sync retries it.', msg.id);
+            stallAbort();
+            continue;
+          }
           await syncLog(runId, 'warn', 'snapshot', 'Snapshot error: ' + (e instanceof Error ? e.message : String(e)), msg.id);
           counts.errors++;
         }
@@ -8389,7 +8528,17 @@ async function budgetSync(api) {
     // recorded cannot advance the cursor past itself. computeSettledCursor() is
     // a global, monotonic high-water mark; fall back to the per-run seen value
     // only when the table is still empty (e.g. a first run that matched nothing).
-    const settledCursor = (await computeSettledCursor()) || newestSeenIso;
+    let settledCursor = (await computeSettledCursor()) || newestSeenIso;
+    // Stall-skipped emails are unrecorded ON PURPOSE (the next run retries
+    // them) — but computeSettledCursor() is MAX(received_at) over recorded
+    // rows, which would leap the cursor straight past a skipped email and
+    // lose it forever. Cap the cursor just below the oldest stalled email so
+    // the next fetch window still contains it; dedup makes the wider window
+    // cheap.
+    const oldestStalled = stalledReceivedAts.filter(Boolean).sort()[0];
+    if (oldestStalled && settledCursor && oldestStalled <= settledCursor) {
+      settledCursor = new Date(Date.parse(oldestStalled) - 1000).toISOString();
+    }
     await db.run(
       `INSERT OR REPLACE INTO sync_state (key, value) VALUES ('last_gmail_message_id', ?)`,
       [JSON.stringify(newestSeenId)],
@@ -10185,6 +10334,8 @@ export async function deactivate() {
 // Pure helpers (no api/db/DOM dependency) are re-exported so they can be
 // imported by vitest. The blob-URL loader ignores extra named exports.
 export const __testables = {
+  budgetStreamWithStall,
+  BudgetLmStallError,
   median,
   coefficientOfVariation,
   gapDays,

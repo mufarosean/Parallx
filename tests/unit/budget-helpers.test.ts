@@ -15,7 +15,72 @@ const {
   inferCadence,
   parseCsvLine,
   ruleMatchesMerchant,
+  budgetStreamWithStall,
+  BudgetLmStallError,
 } = __testables;
+
+describe('budgetStreamWithStall (LM stall watchdog)', () => {
+  async function* healthyStream() {
+    yield { content: 'a' };
+    yield { content: 'b' };
+    yield { content: 'c', done: true };
+    yield { content: 'NEVER' }; // past the done chunk — must not be consumed
+  }
+
+  it('collects chunks and stops at the done chunk', async () => {
+    let out = '';
+    await budgetStreamWithStall(healthyStream(), (chunk: { content?: string; done?: boolean }) => {
+      if (typeof chunk.content === 'string') out += chunk.content;
+      return !!chunk.done;
+    });
+    expect(out).toBe('abc');
+  });
+
+  it('completes when the stream ends without a done chunk', async () => {
+    async function* short() { yield { content: 'x' }; }
+    let out = '';
+    await budgetStreamWithStall(short(), (c: { content?: string }) => { out += c.content; });
+    expect(out).toBe('x');
+  });
+
+  it('throws BudgetLmStallError when the stream never produces a first chunk', async () => {
+    async function* hung(): AsyncGenerator<unknown> {
+      await new Promise(() => { /* never settles — a hung socket */ });
+      yield {};
+    }
+    await expect(
+      budgetStreamWithStall(hung(), () => {}, { stallMs: 20, firstChunkMs: 40 }),
+    ).rejects.toMatchObject({ isLmStall: true, name: 'BudgetLmStallError' });
+  });
+
+  it('throws when the stream goes quiet after streaming started', async () => {
+    async function* diesMidway(): AsyncGenerator<unknown> {
+      yield { content: 'partial' };
+      await new Promise(() => { /* hung after the first token */ });
+    }
+    let out = '';
+    await expect(
+      budgetStreamWithStall(diesMidway(), (c: { content?: string }) => { out += c.content; }, { stallMs: 30, firstChunkMs: 200 }),
+    ).rejects.toBeInstanceOf(BudgetLmStallError);
+    expect(out).toBe('partial');
+  });
+
+  it('gives the FIRST chunk a longer leash than later chunks (cold model load)', async () => {
+    const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    async function* slowLoad() {
+      await delay(80);            // slower than stallMs, within firstChunkMs
+      yield { content: 'loaded' };
+      await delay(10);            // fast once warm
+      yield { content: '!', done: true };
+    }
+    let out = '';
+    await budgetStreamWithStall(slowLoad(), (c: { content?: string; done?: boolean }) => {
+      if (typeof c.content === 'string') out += c.content;
+      return !!c.done;
+    }, { stallMs: 40, firstChunkMs: 500 });
+    expect(out).toBe('loaded!');
+  });
+});
 
 describe('median', () => {
   it('returns 0 for an empty array', () => {
