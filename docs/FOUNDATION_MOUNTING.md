@@ -210,3 +210,30 @@ The stack concept this implies is the same one the editor area needs
 into it. Phase A ships the container layer: rails as stacks of container
 surfaces, dual ribbons, detach/dock by drag, all persisted with the body
 tree.
+
+## Phase A shipped (2026-08-24)
+
+All three slices, each a working app:
+
+1. **Rails and ribbons** (`ae88e2cd^^`): a right activity bar flanks the
+   grid; icons live in the ribbon of the rail their container is docked
+   in; dragging an icon to the other ribbon moves the container itself —
+   DOM, icon, active-state bookkeeping and builtin-origin all travel.
+   Chat gets a right-ribbon icon; the aux bar stops being an unswitchable
+   chat cubby. `WorkspaceState.containerRails` persists placement, applied
+   pending-style to containers whose tools activate after restore.
+2. **Floating boxes** (`78353203`): a container dragged into the grid
+   becomes a box (header = title + grip + dock-back), stable id
+   `container:<id>` riding the body-tree persistence. Waiting shells keep
+   a restored box's place until its tool arrives; a box whose leaf did
+   not survive a tree restore re-docks its container. Center-drop on a
+   rail card means JOIN; the floating icon stays on the primary ribbon as
+   reveal.
+3. **Panel tabs detach** (`ae88e2cd`): a panel view floats wrapped as
+   `panelview:<id>` through the same pipeline; docking back returns it to
+   the panel strip.
+
+Still open for phase B: the editor area as a stack of the same citizens
+(the deferred eyes-on step), rail-dock for detached panel views, a
+context-menu route for every drag gesture, and folding container
+placement into arrangements proper when surfaces and containers merge.
