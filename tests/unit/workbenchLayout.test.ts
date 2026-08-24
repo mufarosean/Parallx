@@ -807,3 +807,48 @@ describe('per-part placement reset', () => {
     expect(parts.panel.visible).toBe(true);
   });
 });
+
+describe('placement menu on the grips', () => {
+  it('right-click on the panel strip offers reset, and reset works from there', () => {
+    const container = document.createElement('div');
+    Object.defineProperty(container, 'clientWidth', { value: WIDTH, configurable: true });
+    Object.defineProperty(container, 'clientHeight', { value: HEIGHT, configurable: true });
+    document.body.appendChild(container);
+    const parts = {
+      titlebar: fakePart('workbench.parts.titlebar'),
+      activityBar: fakePart('workbench.parts.activitybar'),
+      sidebar: fakePart('workbench.parts.sidebar'),
+      editor: fakePart('workbench.parts.editor'),
+      panel: fakePart('workbench.parts.panel'),
+      auxiliaryBar: fakePart('workbench.parts.auxiliarybar', false),
+      statusBar: fakePart('workbench.parts.statusbar'),
+    };
+    // Give the fake panel a real strip so the grip machinery arms it.
+    const strip = document.createElement('div');
+    strip.classList.add('view-container-tabs');
+    parts.panel.element.appendChild(strip);
+
+    const layout = new TestLayout(container, parts);
+    try {
+      // Send the panel somewhere else entirely.
+      layout.movePartToEdge('workbench.parts.panel', Orientation.Horizontal, false);
+      expect(rootShape(layout)[rootShape(layout).length - 1]).toBe('workbench.parts.panel');
+
+      // Right-click the strip; pick Reset from the menu that appears.
+      strip.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+      const items = [...document.querySelectorAll<HTMLElement>('.context-menu-item')];
+      const reset = items.find((i) => i.textContent?.includes('Reset To Default Position'));
+      expect(reset, `menu items: ${items.map((i) => i.textContent).join(', ')}`).toBeDefined();
+      reset!.click();
+
+      expect(rootShape(layout)).toEqual([
+        'workbench.parts.sidebar',
+        'vertical[workbench.parts.editor, workbench.parts.panel]',
+      ]);
+    } finally {
+      layout.dispose();
+      container.remove();
+      document.querySelectorAll('.context-menu').forEach((el) => el.remove());
+    }
+  });
+});

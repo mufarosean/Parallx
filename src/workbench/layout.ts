@@ -44,6 +44,7 @@ import { auxiliaryBarPartDescriptor } from '../parts/auxiliaryBarPart.js';
 import { panelPartDescriptor } from '../parts/panelPart.js';
 import { statusBarPartDescriptor } from '../parts/statusBarPart.js';
 import { $ } from '../ui/dom.js';
+import { ContextMenu } from '../ui/contextMenu.js';
 
 // ── Layout Constants ──
 
@@ -648,6 +649,54 @@ export abstract class Layout extends Disposable {
     arm(this._sidebar, '.part-title');
     arm(this._auxiliaryBar, '.part-title');
     arm(this._panel, '.view-container-tabs');
+
+    // The same grips answer to RIGHT-CLICK with placement actions. The
+    // palette carries these commands too, but a grip you can already drag
+    // is where the hand goes looking — palette-only recovery does not
+    // exist for someone who rarely opens the palette.
+    this._armPlacementMenu(this._sidebar, '.part-title');
+    this._armPlacementMenu(this._auxiliaryBar, '.part-title');
+    this._armPlacementMenu(this._panel, '.view-container-tabs');
+  }
+
+  private _armPlacementMenu(part: Part, selector: string): void {
+    const handle = part.element.querySelector<HTMLElement>(selector);
+    if (!handle || handle.dataset.placementMenu === '1') return;
+    handle.dataset.placementMenu = '1';
+
+    handle.addEventListener('contextmenu', (e) => {
+      // A tab under the cursor keeps its own meaning; the strip's empty
+      // area speaks for the part.
+      if (e.target instanceof HTMLElement && e.target.closest('.view-tab')) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      const menu = ContextMenu.show({
+        items: [
+          { id: 'reset', label: 'Reset To Default Position', group: '1_reset' },
+          { id: 'edge-left', label: 'Move To Left Edge', group: '2_move', order: 1 },
+          { id: 'edge-right', label: 'Move To Right Edge', group: '2_move', order: 2 },
+          { id: 'edge-bottom', label: 'Move To Bottom Edge', group: '2_move', order: 3 },
+        ],
+        anchor: { x: e.clientX, y: e.clientY },
+      });
+      menu.onDidSelect(({ item }) => {
+        switch (item.id) {
+          case 'reset':
+            this.resetPartPlacement(part.id);
+            break;
+          case 'edge-left':
+            this.movePartToEdge(part.id, Orientation.Horizontal, true);
+            break;
+          case 'edge-right':
+            this.movePartToEdge(part.id, Orientation.Horizontal, false);
+            break;
+          case 'edge-bottom':
+            this.movePartToEdge(part.id, Orientation.Vertical, false);
+            break;
+        }
+      });
+    });
   }
 
   private _resetSashToDefault(branch: GridBranchNode, sashIndex: number): void {

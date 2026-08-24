@@ -198,9 +198,11 @@ describe('panel tabs as drag sources', () => {
     });
     tab!.dispatchEvent(ev);
 
-    // The tab reorders within the panel by the plain payload, and detaches
-    // into the grid by the container payload — one gesture, two drops.
-    expect(store.get('text/plain')).toBe('view.terminal');
+    // The tab reorders within the panel by its PRIVATE payload (never
+    // text/plain — a missed drop over the canvas used to paste the view
+    // id into notes), and detaches into the grid by the container payload.
+    expect(store.get('application/x-parallx-view-tab')).toBe('view.terminal');
+    expect(store.has('text/plain')).toBe(false);
     expect(JSON.parse(store.get(CONTAINER_DRAG_TYPE)!)).toEqual({
       containerId: 'panelview:view.terminal',
     });

@@ -447,3 +447,29 @@ test.describe('the way home', () => {
     await runCommand(window, 'Reset Layout to Defaults');
   });
 });
+
+test.describe('right-click recovery', () => {
+  test('reset the wandering panel from its own strip, no palette needed', async ({ window }, testInfo) => {
+    await window.waitForTimeout(1500);
+    await runCommand(window, 'Reset Layout to Defaults');
+    await window.waitForTimeout(300);
+    await runCommand(window, 'Move Panel To Left Edge');
+    await window.waitForTimeout(300);
+
+    // Right-click the panel's tab strip (its empty area) and pick Reset.
+    const strip = window.locator('[data-part-id="workbench.parts.panel"] .view-container-tabs');
+    await strip.click({ button: 'right', position: { x: 5, y: 30 } });
+    const item = window.locator('.context-menu-item', { hasText: 'Reset To Default Position' });
+    await expect(item, 'placement menu appears on the strip').toBeVisible({ timeout: 3000 });
+    await item.click();
+    await window.waitForTimeout(400);
+
+    await snap(window, testInfo, '19-right-click-reset');
+    const s = await shape(window);
+    expect(s.panel, 'panel back home').not.toBeNull();
+    expect(s.panel!.y).toBeGreaterThan(s.editor!.y);
+    expect(Math.abs((s.panel!.x + s.panel!.w) - (s.editor!.x + s.editor!.w))).toBeLessThanOrEqual(12);
+
+    await runCommand(window, 'Reset Layout to Defaults');
+  });
+});

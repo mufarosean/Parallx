@@ -14,6 +14,13 @@ export const PART_DRAG_TYPE = 'application/x-parallx-part';
 /** A view container — the unit the USER means: Explorer, Chat, Flashcards. */
 export const CONTAINER_DRAG_TYPE = 'application/x-parallx-container';
 
+/**
+ * A view tab reordering within its container. PRIVATE type on purpose:
+ * this used to be text/plain, and a tab drag dropped over the canvas
+ * pasted the view id into the user's notes as text.
+ */
+export const VIEW_TAB_DRAG_TYPE = 'application/x-parallx-view-tab';
+
 export interface ContainerDragData {
   readonly containerId: string;
 }
