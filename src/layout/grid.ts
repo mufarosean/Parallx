@@ -510,6 +510,36 @@ export class Grid extends Disposable {
   }
 
   /**
+   * Resize one view to a target size along its parent branch's axis, by
+   * moving the sash it shares with a neighbour. Zero-sum with that
+   * neighbour and clamped by both sides' minimums, exactly like a drag.
+   *
+   * This replaces the callers that used to walk `root.children` for a sash
+   * index by hand — an index-based dance that broke the moment the view sat
+   * one branch deeper. Works wherever the view is in the tree.
+   */
+  resizeView(viewId: string, size: number): void {
+    const leaf = this._views.get(viewId);
+    if (!leaf) return;
+    const parent = this._findParent(leaf);
+    if (!parent || parent.childCount < 2) return;
+
+    const index = parent.indexOfChild(leaf);
+    const delta = size - this._getNodeSize(leaf);
+    if (delta === 0) return;
+
+    // resizeSash grows its FIRST child on a positive delta. Prefer the sash
+    // before the view (the view is the second child there, so negate);
+    // the first child in a branch only has the sash after it.
+    if (index > 0) {
+      this.resizeSash(parent, index - 1, -delta);
+    } else {
+      this.resizeSash(parent, 0, delta);
+    }
+    this.layout();
+  }
+
+  /**
    * Resize a specific sash between two children.
    *
    * @param parentNode - The branch containing the sash

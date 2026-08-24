@@ -84,24 +84,10 @@ const layoutReset: CommandDescriptor = {
   aiInvocable: true,
   aiDescription: 'Restore the workbench layout to its default arrangement.',
   handler(ctx) {
-    const w = wb(ctx);
-    // Ensure sidebar, panel, aux bar are in default state
-    if (!w._sidebar.visible) {
-      w._sidebar.setVisible(true);
-      w._hGrid.addView(w._sidebar as any, 202);
-    }
-    if (!w._panel.visible) {
-      w.togglePanel();
-    }
-    if (w._auxiliaryBar.visible) {
-      w.toggleAuxiliaryBar(); // hide it
-    }
-    if (!w._statusBar.visible) {
-      w._statusBar.setVisible(true);
-    }
-    w._hGrid.layout();
-    w._vGrid.layout();
-    w._layoutViewContainers();
+    // The default shape is data (defaultLayoutState) and the layout rebuilds
+    // it in place. The hand-rolled version this replaces re-added the
+    // sidebar at the END of the grid — on the right.
+    wb(ctx).resetLayout();
     console.log('[Command] Layout reset to defaults');
   },
 };

@@ -13,8 +13,7 @@ import type { ILayoutService, PartVisibilityChangeEvent } from './serviceTypes.j
  */
 interface LayoutHost {
   readonly container: HTMLElement;
-  readonly _hGrid: { layout(): void; resize(w: number, h: number): void };
-  readonly _vGrid: { layout(): void; resize(w: number, h: number): void };
+  readonly _grid: { layout(): void; resize(w: number, h: number): void };
   _layoutViewContainers(): void;
   /** Check if a part is visible by its Part ID. */
   isPartVisible(partId: string): boolean;
@@ -60,8 +59,7 @@ export class LayoutService extends Disposable implements ILayoutService {
 
   layout(): void {
     if (!this._host) return;
-    this._host._hGrid.layout();
-    this._host._vGrid.layout();
+    this._host._grid.layout();
     this._host._layoutViewContainers();
   }
 

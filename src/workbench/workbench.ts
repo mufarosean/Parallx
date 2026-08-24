@@ -839,9 +839,7 @@ export class Workbench extends Layout {
     });
 
     lc.onTeardown(LifecyclePhase.Layout, () => {
-      this._editorColumnAdapter?.dispose();
-      this._hGrid?.dispose();
-      this._vGrid?.dispose();
+      this._tree?.dispose();
       this._partRegistry?.dispose();
       this._layoutRenderer?.dispose();
     });
@@ -1376,13 +1374,16 @@ export class Workbench extends Layout {
             // Sidebar toggle has animation; skip it during restore.
             // Directly remove from grid + set invisible.
             if (part.visible && !partSnap.visible) {
-              this._hGrid.removeView(this._sidebar.id);
+              this._grid.removeView(this._sidebar.id);
               part.setVisible(false);
-              this._hGrid.layout();
+              this._grid.layout();
             } else if (!part.visible && partSnap.visible) {
               part.setVisible(true);
-              this._hGrid.addView(this._sidebar as any, this._lastSidebarWidth, 0);
-              this._hGrid.layout();
+              this._grid.addView(this._sidebar, this._lastSidebarWidth);
+              this._grid.moveViewToEdge(
+                this._sidebar.id, Orientation.Horizontal, true, this._lastSidebarWidth,
+              );
+              this._grid.layout();
             }
             break;
           case PartId.StatusBar:
@@ -1407,57 +1408,32 @@ export class Workbench extends Layout {
       }
     }
 
-    // 1b. Restore sidebar width — always remember the saved width so that
-    //     toggleSidebar() uses it when the user re-shows the sidebar.
-    //     Only resize the live grid when the sidebar is currently visible.
+    // 1b-1d. Restore companion strip sizes — always remember the saved size
+    //        so the toggles use it on re-show; only resize the live grid
+    //        when the part is currently visible. resizeView finds the part
+    //        wherever it sits in the tree, so there is no sash index to get
+    //        wrong here any more.
     const sidebarSnap = state.parts.find(p => p.partId === PartId.Sidebar);
     if (sidebarSnap?.width && sidebarSnap.width > 0) {
       this._lastSidebarWidth = sidebarSnap.width;
       if (this._sidebar.visible) {
-        const currentWidth = this._hGrid.getViewSize(this._sidebar.id);
-        if (currentWidth !== undefined && currentWidth !== sidebarSnap.width) {
-          const delta = sidebarSnap.width - currentWidth;
-          this._hGrid.resizeSash(this._hGrid.root, 0, delta);
-          this._hGrid.layout();
-        }
+        this._grid.resizeView(this._sidebar.id, sidebarSnap.width);
       }
     }
 
-    // 1c. Restore panel height — always remember the saved height so that
-    //     togglePanel() uses it when the user re-shows the panel.
-    //     Only resize the live grid when the panel is currently visible.
-    //     Panel is childB (index 1, below the editor). resizeSash positive
-    //     delta grows childA (editor), so to grow the panel we negate.
     const panelSnap = state.parts.find(p => p.partId === PartId.Panel);
     if (panelSnap?.height && panelSnap.height > 0) {
       this._lastPanelHeight = panelSnap.height;
       if (this._panel.visible) {
-        const currentHeight = this._vGrid.getViewSize(this._panel.id);
-        if (currentHeight !== undefined && currentHeight !== panelSnap.height) {
-          const delta = currentHeight - panelSnap.height;
-          this._vGrid.resizeSash(this._vGrid.root, 0, delta);
-          this._vGrid.layout();
-        }
+        this._grid.resizeView(this._panel.id, panelSnap.height);
       }
     }
 
-    // 1d. Restore auxiliary bar width — always remember the saved width so
-    //     that toggleAuxiliaryBar() uses it when the user re-shows the bar.
-    //     Only resize the live grid when the aux bar is currently visible.
-    //     Aux bar is childB (right of its sash). resizeSash positive delta
-    //     grows childA (editor column), so to grow the aux bar we negate.
     const auxBarSnap = state.parts.find(p => p.partId === PartId.AuxiliaryBar);
     if (auxBarSnap?.width && auxBarSnap.width > 0) {
       this._lastAuxBarWidth = auxBarSnap.width;
       if (this._auxBarVisible) {
-        // Aux bar is the last child in hGrid; its sash is at index childCount - 2
-        const auxSashIndex = this._hGrid.root.childCount - 2;
-        const currentWidth = this._hGrid.getViewSize(this._auxiliaryBar.id);
-        if (currentWidth !== undefined && currentWidth !== auxBarSnap.width) {
-          const delta = currentWidth - auxBarSnap.width;
-          this._hGrid.resizeSash(this._hGrid.root, auxSashIndex, delta);
-          this._hGrid.layout();
-        }
+        this._grid.resizeView(this._auxiliaryBar.id, auxBarSnap.width);
       }
     }
 
@@ -1748,8 +1724,7 @@ export class Workbench extends Layout {
 
     // Wire auto-save on structural changes (dispose old listeners first)
     this._saverListeners.clear();
-    this._saverListeners.add(this._hGrid.onDidChange(() => this._workspaceSaver.requestSave()));
-    this._saverListeners.add(this._vGrid.onDidChange(() => this._workspaceSaver.requestSave()));
+    this._saverListeners.add(this._grid.onDidChange(() => this._workspaceSaver.requestSave()));
     this._saverListeners.add(this._activityBarPart.onDidChangeIconOrder(() => this._workspaceSaver.requestSave()));
 
     // Wire auto-save on editor changes (open, close, activate)
@@ -2401,8 +2376,7 @@ export class Workbench extends Layout {
     const self = this;
     const host: FacadeFactoryHost = {
       get container() { return self._container; },
-      get _hGrid() { return self._hGrid; },
-      get _vGrid() { return self._vGrid; },
+      get _grid() { return self._grid; },
       get workspace() { return self._workspace; },
       get _workspaceSaver() { return self._workspaceSaver; },
       _layoutViewContainers: () => this._layoutViewContainers(),

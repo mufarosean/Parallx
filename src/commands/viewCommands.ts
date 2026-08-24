@@ -186,31 +186,14 @@ export const partResize: CommandDescriptor = {
       return;
     }
     const w = wb(ctx);
-    // Determine which grid contains the part and find its sash index.
-    // Sidebar and auxiliary bar live in hGrid; panel lives in vGrid.
-    const grid = _resolveGridForPart(w, partId);
-    if (!grid) {
-      console.warn('[Command] part.resize — part "%s" not found in any grid', partId);
+    const current = w._grid.getViewSize(partId);
+    if (current === undefined) {
+      console.warn('[Command] part.resize — part "%s" not found in the grid', partId);
       return;
     }
-    // Find the leaf index within the root branch
-    const root = grid.root as { readonly children: readonly { readonly type?: string; view?: { id: string } }[] };
-    const sashIndex = root.children.findIndex((child: any) => {
-      if (child.type === 'leaf' && child.view?.id === partId) return true;
-      // Also match the editor column adapter
-      if (child.view?.id === partId) return true;
-      return false;
-    });
-    if (sashIndex < 0) {
-      console.warn('[Command] part.resize — cannot find sash for part "%s"', partId);
-      return;
-    }
-    // Resize the sash between this part and its neighbor.
-    // Use max(0, sashIndex - 1) to resize the sash *before* this part,
-    // so a positive delta increases the part's size.
-    const actualSashIndex = sashIndex > 0 ? sashIndex - 1 : 0;
-    grid.resizeSash(grid.root, actualSashIndex, sashIndex > 0 ? delta : -delta);
-    grid.layout();
+    // Address the part by id, wherever it sits in the tree. The sash-index
+    // walk this replaces broke the moment a part sat one branch deeper.
+    w._grid.resizeView(partId, current + delta);
     w._layoutViewContainers();
     console.log('[Command] Resized part "%s" by %dpx', partId, delta);
   },
@@ -261,8 +244,3 @@ function _findViewContainer(w: WorkbenchLike, viewId: string): ViewContainerLike
   return containers.find(c => c.getView(viewId) !== undefined);
 }
 
-function _resolveGridForPart(w: WorkbenchLike, partId: string): WorkbenchLike['_hGrid'] | WorkbenchLike['_vGrid'] | undefined {
-  if (w._hGrid.hasView(partId)) return w._hGrid;
-  if (w._vGrid.hasView(partId)) return w._vGrid;
-  return undefined;
-}

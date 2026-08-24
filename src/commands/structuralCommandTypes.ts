@@ -42,25 +42,19 @@ export interface WorkbenchLike {
   readonly _statusBar: { visible: boolean; setVisible(v: boolean): void };
   readonly _auxiliaryBar: { visible: boolean; setVisible(v: boolean): void };
   _relayout(): void;
-  readonly _hGrid: {
-    addView(view: unknown, size: number, index?: number): void;
-    removeView(id: string): void;
+  /**
+   * The one body grid. Commands address parts by view id — never by sash
+   * index or child position, which stopped meaning anything when the layout
+   * became a tree.
+   */
+  readonly _grid: {
     layout(): void;
-    readonly root: { readonly children: readonly unknown[]; readonly orientation: string };
-    getView(viewId: string): unknown | undefined;
-    hasView(viewId: string): boolean;
-    resizeSash(parentNode: unknown, sashIndex: number, delta: number): void;
-  };
-  readonly _vGrid: {
-    addView(view: unknown, size: number): void;
-    removeView(id: string): void;
-    layout(): void;
-    readonly root: { readonly children: readonly unknown[]; readonly orientation: string };
-    getView(viewId: string): unknown | undefined;
     hasView(viewId: string): boolean;
     getViewSize(viewId: string): number | undefined;
-    resizeSash(parentNode: unknown, sashIndex: number, delta: number): void;
+    resizeView(viewId: string, size: number): void;
   };
+  /** Rebuild the default shape — the reset command's whole implementation. */
+  resetLayout(): void;
   readonly _workspaceSaver: { save(): Promise<void>; collectState(): unknown };
   readonly _titlebar: { setWorkspaceName(name: string): void };
   _updateWindowTitle(editor?: unknown): void;

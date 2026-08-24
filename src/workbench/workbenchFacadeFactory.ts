@@ -58,8 +58,7 @@ import type { RecentWorkspaceEntry } from '../workspace/workspaceTypes.js';
 
 export interface FacadeFactoryHost {
   readonly container: HTMLElement;
-  readonly _hGrid: { layout(): void; resize(w: number, h: number): void };
-  readonly _vGrid: { layout(): void; resize(w: number, h: number): void };
+  readonly _grid: { layout(): void; resize(w: number, h: number): void };
 
   readonly workspace: Workspace;
   readonly _workspaceSaver: WorkspaceSaver;
@@ -98,8 +97,7 @@ export function registerFacadeServices(deps: FacadeFactoryDeps): IDisposable[] {
   const layoutService = new LayoutService();
   layoutService.setHost({
     get container() { return host.container; },
-    get _hGrid() { return host._hGrid; },
-    get _vGrid() { return host._vGrid; },
+    get _grid() { return host._grid; },
     _layoutViewContainers: () => host._layoutViewContainers(),
     isPartVisible: (partId: string) => host.isPartVisible(partId),
     setPartHidden: (hidden: boolean, partId: string) => host.setPartHidden(hidden, partId),
