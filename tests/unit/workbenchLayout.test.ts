@@ -413,3 +413,103 @@ describe('body tree persistence and relocation', () => {
     expect(layout.restoreBodyTree(stripped)).toBe(false);
   });
 });
+
+describe('stacking and placement recall', () => {
+  let container: HTMLElement;
+  let layout: TestLayout;
+  let parts: TestLayout['parts'];
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    Object.defineProperty(container, 'clientWidth', { value: WIDTH, configurable: true });
+    Object.defineProperty(container, 'clientHeight', { value: HEIGHT, configurable: true });
+    document.body.appendChild(container);
+    parts = {
+      titlebar: fakePart('workbench.parts.titlebar'),
+      activityBar: fakePart('workbench.parts.activitybar'),
+      sidebar: fakePart('workbench.parts.sidebar'),
+      editor: fakePart('workbench.parts.editor'),
+      panel: fakePart('workbench.parts.panel'),
+      auxiliaryBar: fakePart('workbench.parts.auxiliarybar', false),
+      statusBar: fakePart('workbench.parts.statusbar'),
+    };
+    layout = new TestLayout(container, parts);
+  });
+
+  afterEach(() => {
+    layout.dispose();
+    container.remove();
+  });
+
+  it('stacks the panel under the sidebar', () => {
+    // The ask, verbatim: "if I wanted to stack sidebar with something
+    // underneath, I need to be able to do that easily."
+    layout.movePartBeside(
+      'workbench.parts.panel', 'workbench.parts.sidebar', Orientation.Vertical, false,
+    );
+    expect(rootShape(layout)).toEqual([
+      'vertical[workbench.parts.sidebar, workbench.parts.panel]',
+      'workbench.parts.editor',
+    ]);
+  });
+
+  it('brings a hidden part back to where the user put it, not the factory spot', () => {
+    layout.movePartBeside(
+      'workbench.parts.panel', 'workbench.parts.sidebar', Orientation.Vertical, false,
+    );
+    layout.togglePanel(); // hide
+    expect(rootShape(layout)).toEqual([
+      'workbench.parts.sidebar',
+      'workbench.parts.editor',
+    ]);
+
+    layout.togglePanel(); // show
+    expect(rootShape(layout)).toEqual([
+      'vertical[workbench.parts.sidebar, workbench.parts.panel]',
+      'workbench.parts.editor',
+    ]);
+  });
+
+  it('falls back to the default spot when the recalled neighbour is gone', () => {
+    layout.movePartBeside(
+      'workbench.parts.panel', 'workbench.parts.sidebar', Orientation.Vertical, false,
+    );
+    layout.togglePanel(); // hide — recalls "under the sidebar"
+    layout.toggleSidebar(); // and now the sidebar leaves too
+    parts.sidebar.element.dispatchEvent(new Event('transitionend'));
+
+    layout.togglePanel(); // show
+    // Default: below the editor.
+    expect(rootShape(layout)).toEqual([
+      'vertical[workbench.parts.editor, workbench.parts.panel]',
+    ]);
+  });
+
+  it('round-trips zen mode with a custom arrangement intact', () => {
+    layout.movePartBeside(
+      'workbench.parts.panel', 'workbench.parts.sidebar', Orientation.Vertical, false,
+    );
+    layout.toggleZenMode();
+    expect(layout.grid.viewCount).toBe(1);
+
+    layout.toggleZenMode();
+    expect(rootShape(layout)).toEqual([
+      'vertical[workbench.parts.sidebar, workbench.parts.panel]',
+      'workbench.parts.editor',
+    ]);
+  });
+
+  it('forgets recalled positions on reset', () => {
+    layout.movePartBeside(
+      'workbench.parts.panel', 'workbench.parts.sidebar', Orientation.Vertical, false,
+    );
+    layout.togglePanel(); // hide with recall
+    layout.resetLayout();
+    layout.togglePanel(); // hide again (reset showed it)
+    layout.togglePanel(); // show — default spot, recall was cleared
+    expect(rootShape(layout)).toEqual([
+      'workbench.parts.sidebar',
+      'vertical[workbench.parts.editor, workbench.parts.panel]',
+    ]);
+  });
+});

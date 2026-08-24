@@ -33,6 +33,7 @@ import type { SerializedGrid, SerializedGridNode, SerializedLeafNode } from '../
 import type { IGridView } from '../layout/gridView.js';
 import { SurfaceTree } from '../surfaces/surfaceTree.js';
 import { surfaceRegistry } from '../surfaces/surfaceRegistry.js';
+import { PartDragController } from './partDrag.js';
 import { PartRegistry } from '../parts/partRegistry.js';
 import { TitlebarPart, titlebarPartDescriptor } from '../parts/titlebarPart.js';
 import { ActivityBarPart, activityBarPartDescriptor } from '../parts/activityBarPart.js';
@@ -197,6 +198,12 @@ export abstract class Layout extends Disposable {
   protected _zenMode = false;
   /** Pre–Zen-Mode visibility snapshot for restore. */
   protected _preZenState: ZenModeExitInfo | null = null;
+  /**
+   * The WHOLE body tree at zen entry. Exit restores it in one step —
+   * rebuilding part by part replays each one against a half-rebuilt tree
+   * and drifts from the arrangement the user actually had.
+   */
+  protected _preZenTree: SerializedGrid | null = null;
 
   /**
    * True while a layout METHOD is mutating the tree. The grid-change
@@ -207,6 +214,20 @@ export abstract class Layout extends Disposable {
    * silently did nothing.
    */
   private _suspendTracking = false;
+
+  /**
+   * Where each hidden part was, described re-creatably (see
+   * Grid.describePosition). A part the user stacked under the sidebar and
+   * then hid must come back UNDER THE SIDEBAR — snapping to the factory
+   * position would punish arranging things.
+   */
+  private readonly _placementRecall = new Map<
+    string,
+    | { kind: 'beside'; siblingId: string; orientation: Orientation; before: boolean }
+    | { kind: 'edge'; orientation: Orientation; before: boolean }
+  >();
+
+  private _partDrag: PartDragController | undefined;
 
   constructor(protected readonly _container: HTMLElement) {
     super();
@@ -327,6 +348,37 @@ export abstract class Layout extends Disposable {
       if (part.id === viewId) return part;
     }
     throw new Error(`Layout: no part backs view "${viewId}"`);
+  }
+
+  /** Record where a part sits, for restoring it there after a hide. */
+  private _recordPlacement(partId: string): void {
+    const described = this._grid.describePosition(partId);
+    if (described) this._placementRecall.set(partId, described);
+  }
+
+  /**
+   * Seat a part at its recalled position, falling back to its default
+   * placement when the recall no longer resolves (the neighbour is gone).
+   * Caller suspends tracking.
+   */
+  private _placePart(part: Part, size: number, fallback: () => void): void {
+    const recall = this._placementRecall.get(part.id);
+    if (recall?.kind === 'beside' && this._grid.hasView(recall.siblingId)) {
+      this._grid.addView(part, size);
+      this._grid.moveView(part.id, recall.siblingId, recall.orientation, recall.before);
+      // Settle real pixels first: a cross-axis move leaves provisional
+      // halves, and an exact resize computed against those would be scaled
+      // away by the next layout. Same order as _showPanelBelowEditor.
+      this._relayoutBody();
+      this._grid.resizeView(part.id, size);
+      return;
+    }
+    if (recall?.kind === 'edge') {
+      this._grid.addView(part, size);
+      this._grid.moveViewToEdge(part.id, recall.orientation, recall.before, size);
+      return;
+    }
+    fallback();
   }
 
   private _withTrackingSuspended(fn: () => void): void {
@@ -453,6 +505,39 @@ export abstract class Layout extends Disposable {
         this.togglePanel();
       }
     }));
+
+    // Drag a part by its header: drop zones over every other part (split
+    // beside, stack below) and along the window edges. The PRIMARY way to
+    // rearrange the workbench; the palette commands are the same moves for
+    // keyboard users.
+    this._partDrag = this._register(new PartDragController({
+      gridElement: this._grid.element,
+      onMoveBeside: (partId, targetId, orientation, before) =>
+        this.movePartBeside(partId, targetId, orientation, before),
+      onMoveToEdge: (partId, orientation, before) =>
+        this.movePartToEdge(partId, orientation, before),
+    }));
+    this._armPartDragHandles();
+  }
+
+  /**
+   * Give each movable part its drag grip. Sidebar and aux bar drag by their
+   * headers; the panel has no title area of its own, so it drags by the
+   * view container's tab strip (empty area — the tabs' own drag wins on the
+   * tabs themselves). Content-provided handles may not exist yet on early
+   * wiring, so this is safe to call again once they do.
+   */
+  protected _armPartDragHandles(): void {
+    if (!this._partDrag) return;
+    const arm = (part: Part, selector: string): void => {
+      const handle = part.element.querySelector<HTMLElement>(selector);
+      if (handle && !handle.classList.contains('part-drag-handle')) {
+        this._partDrag!.armHandle(part.id, handle);
+      }
+    };
+    arm(this._sidebar, '.part-title');
+    arm(this._auxiliaryBar, '.part-title');
+    arm(this._panel, '.view-container-tabs');
   }
 
   private _resetSashToDefault(branch: GridBranchNode, sashIndex: number): void {
@@ -505,18 +590,20 @@ export abstract class Layout extends Disposable {
         if (currentWidth !== undefined && currentWidth > 0) {
           this._lastAuxBarWidth = currentWidth;
         }
+        this._recordPlacement(this._auxiliaryBar.id);
         this._grid.removeView(this._auxiliaryBar.id);
         this._auxiliaryBar.setVisible(false);
         this._auxBarVisible = false;
       } else {
         this._auxiliaryBar.setVisible(true);
-        // Added then moved to the edge: "right edge" is a position in the
-        // tree, not an index, and this stays correct whatever shape the
-        // tree has grown into.
-        this._grid.addView(this._auxiliaryBar, this._lastAuxBarWidth);
-        this._grid.moveViewToEdge(
-          this._auxiliaryBar.id, Orientation.Horizontal, false, this._lastAuxBarWidth,
-        );
+        // Back where the user last had it; the right edge only as the
+        // first-time default.
+        this._placePart(this._auxiliaryBar, this._lastAuxBarWidth, () => {
+          this._grid.addView(this._auxiliaryBar, this._lastAuxBarWidth);
+          this._grid.moveViewToEdge(
+            this._auxiliaryBar.id, Orientation.Horizontal, false, this._lastAuxBarWidth,
+          );
+        });
         this._auxBarVisible = true;
       }
       this._relayoutBody();
@@ -553,6 +640,7 @@ export abstract class Layout extends Disposable {
         el.removeEventListener('transitionend', finish);
         el.classList.remove('sidebar-animating', 'sidebar-collapsed');
         this._withTrackingSuspended(() => {
+          this._recordPlacement(this._sidebar.id);
           this._grid.removeView(this._sidebar.id);
           this._sidebar.setVisible(false);
           this._relayoutBody();
@@ -568,10 +656,12 @@ export abstract class Layout extends Disposable {
       this._sidebar.setVisible(true);
       el.classList.add('sidebar-animating', 'sidebar-collapsed');
       this._withTrackingSuspended(() => {
-        this._grid.addView(this._sidebar, this._lastSidebarWidth);
-        this._grid.moveViewToEdge(
-          this._sidebar.id, Orientation.Horizontal, true, this._lastSidebarWidth,
-        );
+        this._placePart(this._sidebar, this._lastSidebarWidth, () => {
+          this._grid.addView(this._sidebar, this._lastSidebarWidth);
+          this._grid.moveViewToEdge(
+            this._sidebar.id, Orientation.Horizontal, true, this._lastSidebarWidth,
+          );
+        });
         this._relayoutBody();
       });
       this._layoutViewContainers();
@@ -600,8 +690,9 @@ export abstract class Layout extends Disposable {
         if (currentHeight !== undefined && currentHeight > 0) {
           this._lastPanelHeight = currentHeight;
         }
-        // Removing the panel collapses the editor-column branch it shared
-        // with the editor; the editor takes over the slot.
+        // Removing the panel collapses the branch it shared with its
+        // neighbour; the neighbour takes over the slot.
+        this._recordPlacement(this._panel.id);
         this._grid.removeView(this._panel.id);
         this._panel.setVisible(false);
         this._panelMaximized = false;
@@ -609,9 +700,12 @@ export abstract class Layout extends Disposable {
         this._relayoutBody();
       } else {
         this._panel.setVisible(true);
-        this._showPanelBelowEditor();
+        // Back where the user last had it — under the sidebar if that is
+        // where they stacked it; below the editor only as the default.
+        this._placePart(this._panel, this._lastPanelHeight, () => this._showPanelBelowEditor());
         this._panelMaximized = false;
         this._onDidChangePanelMaximized.fire(false);
+        this._relayoutBody();
       }
     });
     this._layoutViewContainers();
@@ -645,9 +739,10 @@ export abstract class Layout extends Disposable {
   toggleMaximizedPanel(): void {
     this._withTrackingSuspended(() => {
       if (!this._panel.visible) {
-        // Show + maximize in one go
+        // Show + maximize in one go, in the panel's own place
         this._panel.setVisible(true);
-        this._showPanelBelowEditor();
+        this._placePart(this._panel, this._lastPanelHeight, () => this._showPanelBelowEditor());
+        this._relayoutBody();
         this._onDidChangePartVisibility.fire({ partId: PartId.Panel, visible: true });
       }
 
@@ -699,20 +794,34 @@ export abstract class Layout extends Disposable {
       this._zenMode = false;
       this._container.classList.remove('zenMode');
 
-      // Restore pre-zen visibility state
+      // Restore the pre-zen arrangement — the exact tree, in one step.
       const s = this._preZenState;
-      if (s) {
+      const tree = this._preZenTree;
+      if (tree && this.restoreBodyTree(tree)) {
+        if (s) {
+          if (s.statusBar && !this._statusBar.visible) {
+            this._statusBar.setVisible(true);
+          }
+          if (s.activityBar) {
+            this._activityBarPart.element.classList.remove('hidden');
+          }
+        }
+      } else if (s) {
+        // The snapshot failed to apply (it should not — it is our own
+        // serialize): fall back to seating each part at its recalled spot.
         this._withTrackingSuspended(() => {
           if (s.sidebar && !this._sidebar.visible) {
             this._sidebar.setVisible(true);
-            this._grid.addView(this._sidebar, this._lastSidebarWidth);
-            this._grid.moveViewToEdge(
-              this._sidebar.id, Orientation.Horizontal, true, this._lastSidebarWidth,
-            );
+            this._placePart(this._sidebar, this._lastSidebarWidth, () => {
+              this._grid.addView(this._sidebar, this._lastSidebarWidth);
+              this._grid.moveViewToEdge(
+                this._sidebar.id, Orientation.Horizontal, true, this._lastSidebarWidth,
+              );
+            });
           }
           if (s.panel && !this._panel.visible) {
             this._panel.setVisible(true);
-            this._showPanelBelowEditor();
+            this._placePart(this._panel, this._lastPanelHeight, () => this._showPanelBelowEditor());
           }
           if (s.statusBar && !this._statusBar.visible) {
             this._statusBar.setVisible(true);
@@ -724,8 +833,9 @@ export abstract class Layout extends Disposable {
             this._activityBarPart.element.classList.remove('hidden');
           }
         });
-        this._preZenState = null;
       }
+      this._preZenState = null;
+      this._preZenTree = null;
 
       this._relayout();
       this._layoutViewContainers();
@@ -739,6 +849,8 @@ export abstract class Layout extends Disposable {
         auxBar: this._auxBarVisible,
         activityBar: !this._activityBarPart.element.classList.contains('hidden'),
       };
+      // Snapshot the arrangement BEFORE dismantling it.
+      this._preZenTree = this._grid.serialize();
       this._zenMode = true;
       this._container.classList.add('zenMode');
 
@@ -747,6 +859,7 @@ export abstract class Layout extends Disposable {
         if (this._sidebar.visible) {
           const w = this._grid.getViewSize(this._sidebar.id);
           if (w !== undefined && w > 0) this._lastSidebarWidth = w;
+          this._recordPlacement(this._sidebar.id);
           this._grid.removeView(this._sidebar.id);
           this._sidebar.setVisible(false);
         }
@@ -755,6 +868,7 @@ export abstract class Layout extends Disposable {
         if (this._panel.visible) {
           const h = this._grid.getViewSize(this._panel.id);
           if (h !== undefined && h > 0) this._lastPanelHeight = h;
+          this._recordPlacement(this._panel.id);
           this._grid.removeView(this._panel.id);
           this._panel.setVisible(false);
           this._panelMaximized = false;
@@ -811,6 +925,8 @@ export abstract class Layout extends Disposable {
     if (!this._statusBar.visible) {
       this.toggleStatusBar();
     }
+    // A reset means "forget my arrangement" — recalled positions included.
+    this._placementRecall.clear();
 
     const rw = this._container.clientWidth;
     const rh = this._container.clientHeight;
@@ -923,6 +1039,21 @@ export abstract class Layout extends Disposable {
       this._grid.moveViewToEdge(
         partId, orientation, before, size !== undefined && size > 0 ? size : undefined,
       );
+      this._relayoutBody();
+    });
+    this._layoutViewContainers();
+  }
+
+  /**
+   * Move a part beside another one — split its space or stack below it.
+   * "Panel under the sidebar" is this with a vertical orientation, and the
+   * dragged instance keeps running throughout.
+   */
+  movePartBeside(partId: string, targetId: string, orientation: Orientation, before: boolean): void {
+    if (partId === targetId) return;
+    if (!this._grid.hasView(partId) || !this._grid.hasView(targetId)) return;
+    this._withTrackingSuspended(() => {
+      this._grid.moveView(partId, targetId, orientation, before);
       this._relayoutBody();
     });
     this._layoutViewContainers();

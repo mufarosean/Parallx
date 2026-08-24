@@ -1580,6 +1580,38 @@ html, body {
   flex: 1 1 0;
   min-width: 0;
   min-height: 0;
+  /* The part-drop overlay positions against the grid. */
+  position: relative;
+}
+
+/* ── Part drag (move parts by hand) ── */
+/* Same visual language as the editor drop overlay above: same drop tokens,
+   same motion. One drag system, wherever the drag happens. */
+.part-drag-handle {
+  cursor: grab;
+}
+.part-drag-handle:active {
+  cursor: grabbing;
+}
+.part-drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10000;
+  /* The grid container owns the drag events; an overlay that cannot receive
+     input can never get stuck swallowing it. */
+  pointer-events: none;
+}
+.part-drop-overlay-indicator {
+  position: absolute;
+  background-color: var(--vscode-editorGroup-dropBackground);
+  border: 2px solid var(--vscode-editorGroup-dropBorder);
+  border-radius: var(--parallx-radius-sm);
+  box-sizing: border-box;
+  opacity: 1;
+  transition: opacity var(--px-dur-base) var(--px-ease);
+}
+.part-drop-overlay-indicator.overlay-move-transition {
+  transition: top var(--px-dur-base) var(--px-ease), left var(--px-dur-base) var(--px-ease), width var(--px-dur-base) var(--px-ease), height var(--px-dur-base) var(--px-ease), opacity var(--px-dur-base) var(--px-ease);
 }
 
 /* ── Editor Group View ── */

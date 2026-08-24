@@ -540,6 +540,44 @@ export class Grid extends Disposable {
   }
 
   /**
+   * Where a view sits, described re-creatably: next to which LEAF sibling,
+   * along which axis, on which side — or, when it has no leaf sibling in
+   * its branch, which end of that branch's axis it holds.
+   *
+   * This is what lets something REMOVED from the tree come back to the
+   * place the user put it: record the description before removing, replay
+   * it with moveView/moveViewToEdge on re-add.
+   */
+  describePosition(viewId: string):
+    | { kind: 'beside'; siblingId: string; orientation: Orientation; before: boolean }
+    | { kind: 'edge'; orientation: Orientation; before: boolean }
+    | undefined {
+    const leaf = this._views.get(viewId);
+    if (!leaf) return undefined;
+    const parent = this._findParent(leaf);
+    if (!parent) return undefined;
+
+    const orientation = parent.orientation;
+    const index = parent.indexOfChild(leaf);
+
+    // Only DIRECTLY adjacent leaves count. "Beside X" with a branch sitting
+    // between us would replay into a different position than the one being
+    // described — a recall that lies is worse than a default.
+    const prev = index > 0 ? parent.getChild(index - 1) : undefined;
+    if (prev && prev.type === GridNodeType.Leaf) {
+      return { kind: 'beside', siblingId: prev.view.id, orientation, before: false };
+    }
+    const next = index < parent.childCount - 1 ? parent.getChild(index + 1) : undefined;
+    if (next && next.type === GridNodeType.Leaf) {
+      return { kind: 'beside', siblingId: next.view.id, orientation, before: true };
+    }
+
+    // Neighbours are branches (or absent): the view holds an end of this
+    // axis. An edge description survives those branches reshaping.
+    return { kind: 'edge', orientation, before: index <= (parent.childCount - 1) / 2 };
+  }
+
+  /**
    * Resize a specific sash between two children.
    *
    * @param parentNode - The branch containing the sash
