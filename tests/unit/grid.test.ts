@@ -616,3 +616,19 @@ describe('resizeWithFixedViews off the flex path', () => {
     expect(grid.getViewSize('side')).toBeGreaterThan(0);
   });
 });
+
+describe('edgeTouches', () => {
+  it('reports which window edges a nested cell touches', () => {
+    const grid = new Grid(Orientation.Horizontal, 1000, 600);
+    grid.addView(createMockView('side'), 200);
+    grid.addView(createMockView('ed'), 800);
+    grid.addView(createMockView('chat'), 100);
+    grid.moveView('chat', 'side', Orientation.Vertical, true);
+    // H[ V[chat, side], ed ]
+
+    expect(grid.edgeTouches('chat')).toEqual({ top: true, right: false, bottom: false, left: true });
+    expect(grid.edgeTouches('side')).toEqual({ top: false, right: false, bottom: true, left: true });
+    expect(grid.edgeTouches('ed')).toEqual({ top: true, right: true, bottom: true, left: false });
+    expect(grid.edgeTouches('nope')).toBeUndefined();
+  });
+});

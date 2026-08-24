@@ -320,6 +320,25 @@ export abstract class Layout extends Disposable {
 
     this._bodyRow.appendChild(this._grid.element);
     this._grid.element.classList.add('workbench-grid');
+
+    this._updateEdgeAttributes();
+  }
+
+  /**
+   * Stamp each part with which WINDOW edges its cell touches, straight from
+   * the tree. The card CSS keys its top/right seams on these — per-part
+   * margin assumptions ("the aux bar is rightmost") stopped being true the
+   * moment parts became movable, and a card that guesses wrong loses its
+   * box on the edge it guessed about.
+   */
+  protected _updateEdgeAttributes(): void {
+    for (const part of [this._sidebar, this._editor, this._panel, this._auxiliaryBar]) {
+      if (!this._grid.hasView(part.id)) continue;
+      const edges = this._grid.edgeTouches(part.id);
+      if (!edges) continue;
+      part.element.setAttribute('data-edge-top', edges.top ? '1' : '0');
+      part.element.setAttribute('data-edge-right', edges.right ? '1' : '0');
+    }
   }
 
   /** The default shape for the CURRENT visibility flags and remembered sizes. */
@@ -464,6 +483,7 @@ export abstract class Layout extends Disposable {
     // Layout contributed containers synchronously here so nested views do not
     // visually lag behind the structural resize.
     this._register(this._grid.onDidChange(() => {
+      this._updateEdgeAttributes();
       this._layoutViewContainers();
 
       // Track sizes after USER sash drags so toggles restore the right

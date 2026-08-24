@@ -874,9 +874,9 @@ html, body {
 }
 
 /* Panel: the whole part wraps in .part-content, so a single card covers it.
-   Top margin 0 — the editor pane's 5px bottom margin IS the seam (see the
-   seam arithmetic note below). Right margin 0 matches the editor pieces;
-   the :last-child variant restores it when the aux bar is hidden. */
+   Top and right margins are 0 by default — whatever sits above or beside
+   brings those seams — and the data-edge-top/right stamps below restore
+   them when the panel actually touches those WINDOW edges. */
 .part-workbench-parts-panel .part-content {
   margin: 0 0 var(--px-seam) var(--px-seam);
   border: 1px solid var(--px-border);
@@ -885,12 +885,14 @@ html, body {
   overflow: hidden;
   box-sizing: border-box;
 }
-/* When the editor column is the right-most thing in the body grid (aux bar
-   hidden), the panel card re-gains the outer right seam. The column is either
-   a grid branch (editor + panel) or the bare editor part, so match the grid's
-   last child whatever node kind it is. Sashes sit BETWEEN children, so the
-   last element is always a real child. */
-.workbench-grid > :last-child .part-workbench-parts-panel .part-content {
+/* Window-edge seams for the panel, stamped by the layout from the real tree
+   geometry (see the positionless seam-ownership note below). Top matters
+   when the panel is dragged to the top edge or a column's top; right when
+   nothing sits to its right. */
+.part-workbench-parts-panel[data-edge-top="1"] .part-content {
+  margin-top: var(--px-seam);
+}
+.part-workbench-parts-panel[data-edge-right="1"] .part-content {
   margin-right: var(--px-seam);
 }
 
@@ -913,7 +915,8 @@ html, body {
      editorGroupView.ts, which subtracts it from the pane height.)
      Right margin is 0 per the seam arithmetic above: the neighbour to the
      right (aux bar card, or the next editor group in a split) brings the
-     5px. The :last-child variants below restore the outer right edge. */
+     5px. The data-edge-right variants below restore the outer right edge
+     when the editor part touches the window's right edge. */
   margin: var(--px-seam) 0 0 var(--px-seam);
   background: var(--px-window);
 }
@@ -941,15 +944,15 @@ html, body {
   background: var(--px-bg);
   box-sizing: border-box;
 }
-/* Outer right edge: when the editor column is the right-most part (aux bar
-   hidden), the LAST editor group's pieces re-gain the 5px right margin.
-   (Known cosmetic edge: nested orthogonal splits at the right edge — only
-   the branch's last group matches :last-child.) */
-.workbench-grid > :last-child .editor-group:last-child .editor-tab-bar {
+/* Outer right edge: when the editor part touches the window's right edge
+   (stamped from tree geometry), the LAST editor group's pieces re-gain the
+   5px right margin. (Known cosmetic edge: nested orthogonal splits at the
+   right edge — only the inner grid's last group matches :last-child.) */
+.part-workbench-parts-editor[data-edge-right="1"] .editor-group:last-child .editor-tab-bar {
   margin-right: var(--px-seam);
 }
-.workbench-grid > :last-child .editor-group:last-child .editor-ribbon:not(.hidden),
-.workbench-grid > :last-child .editor-group:last-child .editor-pane-container {
+.part-workbench-parts-editor[data-edge-right="1"] .editor-group:last-child .editor-ribbon:not(.hidden),
+.part-workbench-parts-editor[data-edge-right="1"] .editor-group:last-child .editor-pane-container {
   margin-right: var(--px-seam);
 }
 
@@ -967,23 +970,24 @@ html, body {
 /* Sidebar/aux cards round at --px-radius-xs, NOT -sm: chrome should read
    crisp and architectural. The editor + panel keep -sm — content cards can
    afford the softness; the rails framing them cannot. */
-.sidebar-header {
-  margin: var(--px-seam) 0 0 var(--px-seam);
-  border: 1px solid var(--px-border);
-  border-bottom: 0;
-  border-radius: var(--px-radius-xs) var(--px-radius-xs) 0 0;
-  background: var(--px-bg);
-  box-sizing: border-box;
-}
+/* Positionless seam ownership. Parts move now, so "the aux bar is
+   rightmost" stopped being a fact CSS may assume. The one rule: every card
+   owns its LEFT and BOTTOM seam; the card above provides your top gap and
+   your left neighbour takes your right one — so top/right seams exist only
+   against the WINDOW edges, and the layout stamps data-edge-top /
+   data-edge-right on each part from the real tree geometry. Sidebar and
+   aux cards are the SAME card; where they sit decides the rest. */
+.sidebar-header,
 .auxiliary-bar-header {
-  margin: var(--px-seam) var(--px-seam) 0 var(--px-seam);
+  margin: 0 0 0 var(--px-seam);
   border: 1px solid var(--px-border);
   border-bottom: 0;
   border-radius: var(--px-radius-xs) var(--px-radius-xs) 0 0;
   background: var(--px-bg);
   box-sizing: border-box;
 }
-.part-workbench-parts-sidebar .part-content {
+.part-workbench-parts-sidebar .part-content,
+.part-workbench-parts-auxiliarybar .part-content {
   margin: 0 0 var(--px-seam) var(--px-seam);
   border: 1px solid var(--px-border);
   border-top: 0;
@@ -992,14 +996,17 @@ html, body {
   overflow: hidden;
   box-sizing: border-box;
 }
-.part-workbench-parts-auxiliarybar .part-content {
-  margin: 0 var(--px-seam) var(--px-seam) var(--px-seam);
-  border: 1px solid var(--px-border);
-  border-top: 0;
-  border-radius: 0 0 var(--px-radius-xs) var(--px-radius-xs);
-  background: var(--px-bg);
-  overflow: hidden;
-  box-sizing: border-box;
+.part[data-edge-top="1"] .sidebar-header,
+.part[data-edge-top="1"] .auxiliary-bar-header {
+  margin-top: var(--px-seam);
+}
+.part[data-edge-right="1"] .sidebar-header,
+.part[data-edge-right="1"] .auxiliary-bar-header {
+  margin-right: var(--px-seam);
+}
+.part-workbench-parts-sidebar[data-edge-right="1"] .part-content,
+.part-workbench-parts-auxiliarybar[data-edge-right="1"] .part-content {
+  margin-right: var(--px-seam);
 }
 
 /* Panel tab bar is provided by ViewContainer — no separate .panel-tab-bar needed */

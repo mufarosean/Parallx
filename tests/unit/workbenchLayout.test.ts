@@ -519,3 +519,62 @@ describe('stacking and placement recall', () => {
     ]);
   });
 });
+
+describe('window-edge stamping for card seams', () => {
+  let container: HTMLElement;
+  let layout: TestLayout;
+  let parts: TestLayout['parts'];
+
+  const edges = (part: FakePart): string =>
+    `top:${part.element.getAttribute('data-edge-top')} right:${part.element.getAttribute('data-edge-right')}`;
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    Object.defineProperty(container, 'clientWidth', { value: WIDTH, configurable: true });
+    Object.defineProperty(container, 'clientHeight', { value: HEIGHT, configurable: true });
+    document.body.appendChild(container);
+    parts = {
+      titlebar: fakePart('workbench.parts.titlebar'),
+      activityBar: fakePart('workbench.parts.activitybar'),
+      sidebar: fakePart('workbench.parts.sidebar'),
+      editor: fakePart('workbench.parts.editor'),
+      panel: fakePart('workbench.parts.panel'),
+      auxiliaryBar: fakePart('workbench.parts.auxiliarybar', false),
+      statusBar: fakePart('workbench.parts.statusbar'),
+    };
+    layout = new TestLayout(container, parts);
+  });
+
+  afterEach(() => {
+    layout.dispose();
+    container.remove();
+  });
+
+  it('stamps the classic shape as the old fixed rules assumed it', () => {
+    // Sidebar top-left, editor column rightmost (aux hidden), panel at the
+    // bottom of that column: the stamps must reproduce what the per-part
+    // CSS used to hardcode.
+    expect(edges(parts.sidebar)).toBe('top:1 right:0');
+    expect(edges(parts.editor)).toBe('top:1 right:1');
+    expect(edges(parts.panel)).toBe('top:0 right:1');
+  });
+
+  it('re-stamps when a part is stacked into a column', () => {
+    // The field report: chat stacked above the explorer. The upper card owns
+    // the top seam; the lower one must NOT double it, and neither owns the
+    // right seam while the editor sits beside them.
+    layout.toggleAuxiliaryBar();
+    layout.movePartBeside(
+      'workbench.parts.auxiliarybar', 'workbench.parts.sidebar', Orientation.Vertical, true,
+    );
+    expect(edges(parts.auxiliaryBar)).toBe('top:1 right:0');
+    expect(edges(parts.sidebar)).toBe('top:0 right:0');
+    expect(edges(parts.editor)).toBe('top:1 right:1');
+  });
+
+  it('re-stamps when a part moves to the other edge', () => {
+    layout.movePartToEdge('workbench.parts.sidebar', Orientation.Horizontal, false);
+    expect(edges(parts.sidebar)).toBe('top:1 right:1');
+    expect(edges(parts.editor)).toBe('top:1 right:0');
+  });
+});
