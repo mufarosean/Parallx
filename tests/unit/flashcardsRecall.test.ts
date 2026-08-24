@@ -24,6 +24,7 @@ const {
   fcFormulaMatches,
   fcMatchListItems,
   fcCapProductionCards,
+  fcBuildCustomQueue,
   fcGradingContext,
   fcMarkingTranscript,
   fcExtractJsonObject,
@@ -648,5 +649,52 @@ describe('overriding the marker', () => {
   it('does not report an override when the user picked the same grade', () => {
     const t = fcMarkingTranscript({ answer: 'x', verdict: { ...base, aiRating: 3 }, rubric, rating: 3 });
     expect(t).not.toContain('changed to');
+  });
+});
+
+describe('single-card study', () => {
+  const NOW = 1_800_000_000_000;
+  const card = (id: number, extra: Record<string, unknown> = {}) => ({
+    id, deckId: 1, state: 'review', dueAt: NOW + 90 * 86_400_000, suspended: false,
+    tags: 'mack', flag: 0, lapses: 0, createdAt: NOW, ...extra,
+  });
+  const cards = [card(1), card(2), card(3, { suspended: true })];
+
+  it('serves exactly the card you picked', () => {
+    const q = fcBuildCustomQueue(cards, NOW, { mode: 'single', cardId: 2 });
+    expect(q.map((c: { id: number }) => c.id)).toEqual([2]);
+  });
+
+  it('serves it even though nothing about it is due', () => {
+    // The point of picking a card by hand: schedule is not the filter.
+    expect(cards[1].dueAt).toBeGreaterThan(NOW);
+    expect(fcBuildCustomQueue(cards, NOW, { mode: 'single', cardId: 2 })).toHaveLength(1);
+  });
+
+  it('ignores tag and flag scope, which the user did not ask for', () => {
+    // A filter that silently excluded the card you clicked could only surprise.
+    const q = fcBuildCustomQueue(cards, NOW, {
+      mode: 'single', cardId: 2, tags: ['nonexistent'], flags: [3],
+    });
+    expect(q.map((c: { id: number }) => c.id)).toEqual([2]);
+  });
+
+  it('still refuses a suspended card', () => {
+    expect(fcBuildCustomQueue(cards, NOW, { mode: 'single', cardId: 3 })).toEqual([]);
+  });
+
+  it('returns empty for a card that no longer exists', () => {
+    expect(fcBuildCustomQueue(cards, NOW, { mode: 'single', cardId: 999 })).toEqual([]);
+  });
+
+  it('tolerates a string card id from a persisted route', () => {
+    const q = fcBuildCustomQueue(cards, NOW, { mode: 'single', cardId: '2' });
+    expect(q.map((c: { id: number }) => c.id)).toEqual([2]);
+  });
+
+  it('is not a preview mode — grading it counts', () => {
+    // Unlike cram, one deliberately chosen card cannot distort a deck, and
+    // answering it properly is real evidence about recall.
+    expect(__testables.fcCustomIsPreview('single')).toBe(false);
   });
 });

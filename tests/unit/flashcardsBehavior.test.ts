@@ -618,6 +618,33 @@ describe('study flow', () => {
     expect(pane.querySelector('.fc-study__front')!.textContent).not.toBe(frontText);
   });
 
+  it('Study on a card row studies that card and nothing else', async () => {
+    const pane = document.querySelector('.fc-pane')!;
+    const sidebar = document.querySelector('[data-role="sidebar-host"]')!;
+    (sidebar.querySelector('.fc-sb__nav-item[data-view="decks"]') as HTMLElement).click();
+    await settle();
+    (pane.querySelector('.fc-deck-card__info') as HTMLElement).click();
+    await settle();
+
+    const rows = [...pane.querySelectorAll('.fc-cardrow')];
+    expect(rows.length).toBeGreaterThan(1);
+    // Pick the SECOND card, so "the one you clicked" is distinguishable from
+    // "whatever the session would have served first".
+    const target = rows[1] as HTMLElement;
+    const wanted = target.querySelector('.fc-cardrow__front')?.textContent
+      ?? target.textContent!.slice(0, 40);
+    ([...target.querySelectorAll('button')]
+      .find((b) => b.textContent === 'Study') as HTMLButtonElement).click();
+    await settle(8);
+
+    expect(pane.querySelector('.fc-study__front')).toBeTruthy();
+    expect(pane.querySelector('.fc-study__front')!.textContent!.trim())
+      .toContain(wanted.trim().slice(0, 20));
+    // A one-card session: the banner names the mode, and it is not a preview,
+    // so grading writes as usual.
+    expect(pane.querySelector('.fc-study__mode-name')?.textContent).toBe('This Card');
+  });
+
   it('saving an edit shows the edited card, not a different one', async () => {
     const pane = document.querySelector('.fc-pane')!;
     const sidebar = document.querySelector('[data-role="sidebar-host"]')!;

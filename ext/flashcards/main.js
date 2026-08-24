@@ -590,7 +590,7 @@ function fcCountServedToday(counts, limits = {}) {
 }
 
 /** Custom-study modes, in the order the dialog lists them. */
-const FC_CUSTOM_MODES = ['extra', 'ahead', 'hard', 'cram'];
+const FC_CUSTOM_MODES = ['extra', 'ahead', 'hard', 'cram', 'single'];
 
 /**
  * True for modes that must NOT write scheduling. Re-reading a card during a
@@ -646,7 +646,12 @@ function fcBuildCustomQueue(cards, now, opts = {}) {
   });
 
   let picked;
-  if (mode === 'extra') {
+  if (mode === 'single') {
+    // One named card, and no tag/flag scope applies — you already chose it by
+    // hand, so a filter that silently excluded it would only ever surprise.
+    // Suspended is still honoured: Browse hides the action on those.
+    picked = cards.filter((c) => !c.suspended && String(c.id) === String(opts.cardId));
+  } else if (mode === 'extra') {
     picked = inScope
       .filter((c) => c.state === 'new')
       .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
@@ -6917,6 +6922,23 @@ async function renderBrowse(body, route, setRoute) {
         void fcUpdateCard(card.id, { flag: next });
       },
     });
+    // Study just this one. Not a preview pass: you picked the card
+    // deliberately, and one card answered properly is real evidence — it
+    // cannot distort a deck the way a bulk cram pass can. Grading it counts.
+    // Hidden on suspended cards, whose queue would come back empty.
+    if (!card.suspended) {
+      const studyBtn = el('button', 'fc-btn');
+      studyBtn.textContent = 'Study';
+      studyBtn.title = 'Study this card on its own. Grading it updates its schedule as usual.';
+      studyBtn.addEventListener('click', () => setRoute({
+        view: 'study',
+        deckId: deckRow.id,
+        // startedAt keys the session, so this never resumes into — or is
+        // resumed by — the deck's daily session.
+        custom: { mode: 'single', cardId: card.id, startedAt: Date.now() },
+      }));
+      btns.appendChild(studyBtn);
+    }
     if (fcIsProductionMode(card.recallMode)) {
       const histBtn = el('button', 'fc-btn');
       histBtn.textContent = 'Answers';
@@ -7609,7 +7631,21 @@ const FC_CUSTOM_MODE_DEFS = [
     unit: 'Cards At Most',
     noun: 'cards in scope',
   },
+  {
+    // Launched from a single card's row in Browse, never from this dialog —
+    // you cannot pick one card out of a thousand from a radio list, and the
+    // mode is meaningless without the card id it carries.
+    mode: 'single',
+    hidden: true,
+    label: 'This Card',
+    blurb: 'One card, chosen from Browse.',
+    unit: 'Cards At Most',
+    noun: 'cards',
+  },
 ];
+
+/** The modes the Custom Study dialog offers. `single` is launched by card. */
+const FC_CUSTOM_LAUNCHER_DEFS = FC_CUSTOM_MODE_DEFS.filter((d) => !d.hidden);
 
 /** Custom Study choices survive pane rebuilds — the workbench destroys this
  *  pane on every tab switch, and retyping the form each time would make the
@@ -7634,7 +7670,7 @@ async function renderCustomStudy(body, route, setRoute) {
   if (deckId != null && !decks.some((d) => d.id === deckId)) deckId = null;
 
   const state = {
-    mode: FC_CUSTOM_MODES.includes(_fcCustomPrefs.mode) ? _fcCustomPrefs.mode : 'extra',
+    mode: FC_CUSTOM_LAUNCHER_DEFS.some((d) => d.mode === _fcCustomPrefs.mode) ? _fcCustomPrefs.mode : 'extra',
     count: _fcCustomPrefs.count,
     aheadDays: _fcCustomPrefs.aheadDays,
     tags: new Set(_fcCustomPrefs.tags || []),
@@ -7742,7 +7778,7 @@ async function renderCustomStudy(body, route, setRoute) {
   const buildModes = () => {
     modeList.innerHTML = '';
     modeRows.clear();
-    for (const d of FC_CUSTOM_MODE_DEFS) {
+    for (const d of FC_CUSTOM_LAUNCHER_DEFS) {
       const opt = el('button', 'fc-cs__mode');
       opt.type = 'button';
       opt.setAttribute('role', 'radio');
@@ -7848,7 +7884,7 @@ async function renderCustomStudy(body, route, setRoute) {
     // One pass over all four modes: the selected one drives the CTA, the rest
     // label their own rows so the whole picture is visible at once.
     const counts = new Map();
-    for (const d of FC_CUSTOM_MODE_DEFS) {
+    for (const d of FC_CUSTOM_LAUNCHER_DEFS) {
       counts.set(d.mode, fcBuildCustomQueue(scopeCards, now, { ...scope, mode: d.mode }).length);
       const row = modeRows.get(d.mode);
       if (row) {
@@ -7868,7 +7904,7 @@ async function renderCustomStudy(body, route, setRoute) {
       // Point at where the cards actually are. An empty mode with a full deck
       // behind it is the difference between "no cards" and "wrong mode", and
       // the user cannot tell those apart from a zero.
-      const elsewhere = FC_CUSTOM_MODE_DEFS
+      const elsewhere = FC_CUSTOM_LAUNCHER_DEFS
         .filter((o) => o.mode !== state.mode && (counts.get(o.mode) || 0) > 0)
         .sort((a, b) => counts.get(b.mode) - counts.get(a.mode))[0];
       const hint = elsewhere
@@ -8170,13 +8206,20 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
     // A custom queue that matched nothing must say so. Falling through to
     // "All caught up" would credit the daily schedule for an empty result
     // the user's own filters produced.
+    const isSingle = custom.mode === 'single';
     const none = el('div', 'fc-study__done px-empty');
-    none.appendChild(el('div', 'px-empty__headline', 'Nothing to study'));
-    none.appendChild(el('div', 'px-empty__hint',
-      `No ${customDef.noun} match this scope. Widen the tags, raise the range, or pick another mode.`));
+    none.appendChild(el('div', 'px-empty__headline', isSingle ? 'Card unavailable' : 'Nothing to study'));
+    // A single-card session has no filters to widen — it was one card, and it
+    // is gone or suspended. Offering "Change Filters" there would send the
+    // user to a dialog that cannot produce the card they asked for.
+    none.appendChild(el('div', 'px-empty__hint', isSingle
+      ? 'That card was deleted or suspended since you opened this list.'
+      : `No ${customDef.noun} match this scope. Widen the tags, raise the range, or pick another mode.`));
     const again = el('button', 'fc-btn fc-btn--primary');
-    again.textContent = 'Change Filters';
-    again.addEventListener('click', () => setRoute({ view: 'custom', ...(route.deckId != null ? { deckId: route.deckId } : {}) }));
+    again.textContent = isSingle ? 'Back to Cards' : 'Change Filters';
+    again.addEventListener('click', () => setRoute(isSingle
+      ? { view: 'browse', deckId: route.deckId }
+      : { view: 'custom', ...(route.deckId != null ? { deckId: route.deckId } : {}) }));
     none.appendChild(again);
     const backDecks = el('button', 'fc-btn');
     backDecks.textContent = 'Back to Decks';
