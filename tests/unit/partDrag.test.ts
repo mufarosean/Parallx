@@ -258,3 +258,83 @@ describe('PartDragController', () => {
     expect(grid.querySelector('.part-drop-overlay')).toBeNull();
   });
 });
+
+describe('container drags over the grid', () => {
+  let grid: HTMLElement;
+  let sidebar: HTMLElement;
+  let editor: HTMLElement;
+  let controller: PartDragController;
+  let containerMoves: string[];
+
+  beforeEach(() => {
+    grid = document.createElement('div');
+    grid.getBoundingClientRect = () => rectOf(GRID);
+    sidebar = document.createElement('div');
+    sidebar.setAttribute('data-part-id', 'workbench.parts.sidebar');
+    sidebar.getBoundingClientRect = () => rectOf({ left: 0, top: 0, width: 200, height: 800 });
+    editor = document.createElement('div');
+    editor.setAttribute('data-part-id', 'workbench.parts.editor');
+    editor.getBoundingClientRect = () => rectOf({ left: 200, top: 0, width: 800, height: 800 });
+    grid.appendChild(sidebar);
+    grid.appendChild(editor);
+    document.body.appendChild(grid);
+
+    containerMoves = [];
+    controller = new PartDragController({
+      gridElement: grid,
+      onMoveBeside: () => containerMoves.push('part-beside'),
+      onMoveToEdge: () => containerMoves.push('part-edge'),
+      dockTargets: { left: 'workbench.parts.sidebar', right: 'workbench.parts.auxiliarybar' },
+      onContainerDrop: (id, zone) => containerMoves.push(`drop:${id}:${zone.kind}`),
+      onContainerDock: (id, rail) => containerMoves.push(`dock:${id}:${rail}`),
+    });
+  });
+
+  afterEach(() => {
+    controller.dispose();
+    grid.remove();
+  });
+
+  function containerDrag(type: string, x: number, y: number): Event {
+    const ev = new Event(type, { bubbles: true, cancelable: true });
+    Object.defineProperty(ev, 'dataTransfer', {
+      configurable: true,
+      value: {
+        types: ['application/x-parallx-container'],
+        dropEffect: '', effectAllowed: '',
+        setData: () => {},
+        getData: () => JSON.stringify({ containerId: 'view.explorer' }),
+      },
+    });
+    Object.defineProperty(ev, 'clientX', { configurable: true, value: x });
+    Object.defineProperty(ev, 'clientY', { configurable: true, value: y });
+    return ev;
+  }
+
+  it('treats the whole rail card as a join zone for containers', async () => {
+    // Deep inside the sidebar — a PART drag would read this as a split
+    // zone; a CONTAINER means "dock into this rail".
+    sidebar.dispatchEvent(containerDrag('dragover', 120, 400));
+    await nextFrame();
+    const indicator = grid.querySelector<HTMLElement>('.part-drop-overlay-indicator');
+    expect(indicator).not.toBeNull();
+    // The whole card lights, not a half of it.
+    expect(indicator!.style.width).toBe('200px');
+    expect(indicator!.style.height).toBe('800px');
+
+    sidebar.dispatchEvent(containerDrag('drop', 120, 400));
+    expect(containerMoves).toEqual(['dock:view.explorer:left']);
+  });
+
+  it('keeps the split language over non-rail targets — detach beside', () => {
+    editor.dispatchEvent(containerDrag('dragover', 600, 700));
+    editor.dispatchEvent(containerDrag('drop', 600, 700));
+    expect(containerMoves).toEqual(['drop:view.explorer:beside']);
+  });
+
+  it('keeps the edge language at the window edges', () => {
+    editor.dispatchEvent(containerDrag('dragover', 995, 400));
+    editor.dispatchEvent(containerDrag('drop', 995, 400));
+    expect(containerMoves).toEqual(['drop:view.explorer:edge']);
+  });
+});

@@ -578,3 +578,96 @@ describe('window-edge stamping for card seams', () => {
     expect(edges(parts.editor)).toBe('top:1 right:0');
   });
 });
+
+describe('floating leaves in the saved tree', () => {
+  let container: HTMLElement;
+  let layout: TestLayout;
+  let parts: TestLayout['parts'];
+
+  class FloatingTestLayout extends TestLayout {
+    resolved: string[] = [];
+    constructor(c: HTMLElement, p: TestLayout['parts']) {
+      super(c, p);
+      this._floatingViewFactory = (viewId) => {
+        this.resolved.push(viewId);
+        const view = fakePart(viewId);
+        return view as never;
+      };
+    }
+    get floatingIds() { return this.floatingViewIds(); }
+  }
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    Object.defineProperty(container, 'clientWidth', { value: WIDTH, configurable: true });
+    Object.defineProperty(container, 'clientHeight', { value: HEIGHT, configurable: true });
+    document.body.appendChild(container);
+    parts = {
+      titlebar: fakePart('workbench.parts.titlebar'),
+      activityBar: fakePart('workbench.parts.activitybar'),
+      sidebar: fakePart('workbench.parts.sidebar'),
+      editor: fakePart('workbench.parts.editor'),
+      panel: fakePart('workbench.parts.panel'),
+      auxiliaryBar: fakePart('workbench.parts.auxiliarybar', false),
+      statusBar: fakePart('workbench.parts.statusbar'),
+    };
+  });
+
+  afterEach(() => {
+    layout.dispose();
+    container.remove();
+  });
+
+  it('accepts container leaves when the factory is wired, building shells', () => {
+    const source = new FloatingTestLayout(container, parts);
+    source.addFloatingView(fakePart('container:chat-container') as never);
+    const saved = source.serializeBodyTree();
+    source.dispose();
+
+    const c2 = document.createElement('div');
+    Object.defineProperty(c2, 'clientWidth', { value: WIDTH, configurable: true });
+    Object.defineProperty(c2, 'clientHeight', { value: HEIGHT, configurable: true });
+    document.body.appendChild(c2);
+    layout = new FloatingTestLayout(c2, {
+      titlebar: fakePart('workbench.parts.titlebar'),
+      activityBar: fakePart('workbench.parts.activitybar'),
+      sidebar: fakePart('workbench.parts.sidebar'),
+      editor: fakePart('workbench.parts.editor'),
+      panel: fakePart('workbench.parts.panel'),
+      auxiliaryBar: fakePart('workbench.parts.auxiliarybar', false),
+      statusBar: fakePart('workbench.parts.statusbar'),
+    });
+    container.remove();
+    container = c2;
+
+    expect(layout.restoreBodyTree(saved)).toBe(true);
+    expect((layout as FloatingTestLayout).resolved).toContain('container:chat-container');
+    expect(layout.grid.hasView('container:chat-container')).toBe(true);
+    expect((layout as FloatingTestLayout).floatingIds).toContain('container:chat-container');
+  });
+
+  it('rejects container leaves when no factory is wired', () => {
+    const source = new FloatingTestLayout(container, parts);
+    source.addFloatingView(fakePart('container:chat-container') as never);
+    const saved = source.serializeBodyTree();
+    source.dispose();
+
+    const c2 = document.createElement('div');
+    Object.defineProperty(c2, 'clientWidth', { value: WIDTH, configurable: true });
+    Object.defineProperty(c2, 'clientHeight', { value: HEIGHT, configurable: true });
+    document.body.appendChild(c2);
+    layout = new TestLayout(c2, {
+      titlebar: fakePart('workbench.parts.titlebar'),
+      activityBar: fakePart('workbench.parts.activitybar'),
+      sidebar: fakePart('workbench.parts.sidebar'),
+      editor: fakePart('workbench.parts.editor'),
+      panel: fakePart('workbench.parts.panel'),
+      auxiliaryBar: fakePart('workbench.parts.auxiliarybar', false),
+      statusBar: fakePart('workbench.parts.statusbar'),
+    }) as FloatingTestLayout;
+    container.remove();
+    container = c2;
+
+    expect(layout.restoreBodyTree(saved)).toBe(false);
+  });
+});

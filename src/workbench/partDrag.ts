@@ -24,7 +24,8 @@ import { Orientation } from '../layout/layoutTypes.js';
 import { rafThrottle } from '../platform/rafThrottle.js';
 import { $ } from '../ui/dom.js';
 
-import { PART_DRAG_TYPE } from '../platform/dragTypes.js';
+import { PART_DRAG_TYPE, CONTAINER_DRAG_TYPE } from '../platform/dragTypes.js';
+import type { ContainerDragData } from '../platform/dragTypes.js';
 
 export { PART_DRAG_TYPE };
 
@@ -41,7 +42,9 @@ export interface RectLike {
 
 export type PartDropZone =
   | { kind: 'beside'; targetId: string; orientation: Orientation; before: boolean }
-  | { kind: 'edge'; orientation: Orientation; before: boolean };
+  | { kind: 'edge'; orientation: Orientation; before: boolean }
+  /** Container drags only: the whole target is a rail — dock into it. */
+  | { kind: 'dock'; rail: 'left' | 'right'; targetId: string };
 
 /** Within this many pixels of the grid boundary, the drop means "take the edge". */
 export const EDGE_ZONE_PX = 28;
@@ -103,6 +106,16 @@ export function indicatorRect(
   gridRect: RectLike,
   targetRect: RectLike | undefined,
 ): RectLike {
+  if (zone.kind === 'dock') {
+    // Join the rail: the whole target lights up, not a half of it.
+    const t = targetRect ?? gridRect;
+    return {
+      left: t.left - gridRect.left,
+      top: t.top - gridRect.top,
+      width: t.width,
+      height: t.height,
+    };
+  }
   if (zone.kind === 'edge') {
     const strip = zone.orientation === Orientation.Horizontal
       ? Math.min(gridRect.width * EDGE_STRIP_FRACTION, EDGE_STRIP_MAX_PX)
@@ -140,6 +153,15 @@ export interface PartDragControllerOptions {
   readonly gridElement: HTMLElement;
   onMoveBeside(partId: string, targetId: string, orientation: Orientation, before: boolean): void;
   onMoveToEdge(partId: string, orientation: Orientation, before: boolean): void;
+  /**
+   * Grid view ids of the rails. During a CONTAINER drag these targets mean
+   * "dock into this rail" — the whole card lights up — rather than a split.
+   */
+  readonly dockTargets?: { readonly left: string; readonly right: string };
+  /** A container dropped on a beside/edge zone (detach or move its box). */
+  onContainerDrop?(containerId: string, zone: PartDropZone): void;
+  /** A container dropped on a rail card: dock it there. */
+  onContainerDock?(containerId: string, rail: 'left' | 'right'): void;
 }
 
 export class PartDragController extends Disposable {
@@ -188,31 +210,46 @@ export class PartDragController extends Disposable {
 
     // preventDefault must be synchronous or the browser refuses the drop;
     // the geometry work coalesces to one run per painted frame.
-    const position = rafThrottle((x: number, y: number, eventTarget: EventTarget | null) => {
-      this._position(x, y, eventTarget);
+    const position = rafThrottle((x: number, y: number, eventTarget: EventTarget | null, kind: 'part' | 'container') => {
+      this._position(x, y, eventTarget, kind);
     });
 
     const onDragOver = (e: DragEvent): void => {
-      if (!this._isPartDrag(e)) return;
+      const kind = this._dragKindOf(e);
+      if (!kind) return;
       e.preventDefault();
       if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-      position(e.clientX, e.clientY, e.target);
+      position(e.clientX, e.clientY, e.target, kind);
     };
 
     const onDrop = (e: DragEvent): void => {
-      if (!this._isPartDrag(e)) return;
+      const kind = this._dragKindOf(e);
+      if (!kind) return;
       e.preventDefault();
       e.stopPropagation();
       position.flush();
 
-      const partId = this._draggedPartId ?? this._parseDropData(e)?.partId;
       const zone = this._zone;
+
+      if (kind === 'container') {
+        const containerId = this._parseContainerData(e)?.containerId;
+        this._teardown();
+        if (!containerId || !zone) return;
+        if (zone.kind === 'dock') {
+          this._opts.onContainerDock?.(containerId, zone.rail);
+        } else {
+          this._opts.onContainerDrop?.(containerId, zone);
+        }
+        return;
+      }
+
+      const partId = this._draggedPartId ?? this._parseDropData(e)?.partId;
       this._teardown();
       if (!partId || !zone) return;
 
       if (zone.kind === 'edge') {
         this._opts.onMoveToEdge(partId, zone.orientation, zone.before);
-      } else if (zone.targetId !== partId) {
+      } else if (zone.kind === 'beside' && zone.targetId !== partId) {
         this._opts.onMoveBeside(partId, zone.targetId, zone.orientation, zone.before);
       }
     };
@@ -256,24 +293,34 @@ export class PartDragController extends Disposable {
 
   // ── Geometry → overlay ──
 
-  private _position(x: number, y: number, eventTarget: EventTarget | null): void {
+  private _position(x: number, y: number, eventTarget: EventTarget | null, kind: 'part' | 'container' = 'part'): void {
     const grid = this._opts.gridElement;
     const gridRect = grid.getBoundingClientRect();
 
-    // The part under the cursor — excluding the one being dragged, whose
-    // own body is not a meaningful target.
+    // The view under the cursor — for part drags, excluding the one being
+    // dragged, whose own body is not a meaningful target.
     let target: { id: string; rect: RectLike } | undefined;
     const partEl = eventTarget instanceof HTMLElement
       ? partElementWithin(eventTarget, grid)
       : null;
     if (partEl) {
       const id = partEl.getAttribute('data-part-id') ?? '';
-      if (id && id !== this._draggedPartId) {
+      if (id && (kind === 'container' || id !== this._draggedPartId)) {
         target = { id, rect: partEl.getBoundingClientRect() };
       }
     }
 
-    const zone = computeDropZone(gridRect, x, y, target);
+    // A container over a rail card means JOIN it, whole card lit — the
+    // centre drop finally has a meaning. Everything else keeps the split
+    // and edge language.
+    let zone: PartDropZone | undefined;
+    const dock = this._opts.dockTargets;
+    if (kind === 'container' && target && dock
+      && (target.id === dock.left || target.id === dock.right)) {
+      zone = { kind: 'dock', rail: target.id === dock.left ? 'left' : 'right', targetId: target.id };
+    } else {
+      zone = computeDropZone(gridRect, x, y, target);
+    }
     if (!zone) {
       this._clearOverlay();
       return;
@@ -320,14 +367,30 @@ export class PartDragController extends Disposable {
 
   // ── Helpers ──
 
-  private _isPartDrag(e: DragEvent): boolean {
-    return e.dataTransfer?.types.includes(PART_DRAG_TYPE) ?? false;
+  private _dragKindOf(e: DragEvent): 'part' | 'container' | undefined {
+    const types = e.dataTransfer?.types;
+    if (!types) return undefined;
+    if (types.includes(PART_DRAG_TYPE)) return 'part';
+    if (types.includes(CONTAINER_DRAG_TYPE)
+      && (this._opts.onContainerDrop || this._opts.onContainerDock)) {
+      return 'container';
+    }
+    return undefined;
   }
 
   private _parseDropData(e: DragEvent): PartDragData | undefined {
     try {
       const raw = e.dataTransfer?.getData(PART_DRAG_TYPE);
       return raw ? JSON.parse(raw) as PartDragData : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private _parseContainerData(e: DragEvent): ContainerDragData | undefined {
+    try {
+      const raw = e.dataTransfer?.getData(CONTAINER_DRAG_TYPE);
+      return raw ? JSON.parse(raw) as ContainerDragData : undefined;
     } catch {
       return undefined;
     }
@@ -345,6 +408,9 @@ function partElementWithin(el: HTMLElement | null, boundary: HTMLElement): HTMLE
 
 function zonesEqual(a: PartDropZone, b: PartDropZone): boolean {
   if (a.kind !== b.kind) return false;
+  if (a.kind === 'dock' || b.kind === 'dock') {
+    return a.kind === 'dock' && b.kind === 'dock' && a.targetId === b.targetId;
+  }
   if (a.kind === 'edge' || b.kind === 'edge') {
     return a.orientation === b.orientation && a.before === b.before;
   }

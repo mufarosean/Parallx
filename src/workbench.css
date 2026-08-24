@@ -874,6 +874,94 @@ html, body {
   border-radius: var(--parallx-radius-sm);
 }
 
+/* ── Container boxes (floating view containers) ── */
+/* The same card the rails draw, standing alone in the grid: positionless
+   seam ownership (left+bottom yours, top/right stamped from tree geometry)
+   and the rail-card radius, so a detached Explorer reads as the same
+   citizen it was in the rail. */
+.container-box {
+  background: var(--px-window);
+  overflow: hidden;
+}
+.container-box-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  margin: 0 0 var(--px-seam) var(--px-seam);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-xs);
+  background: var(--px-bg);
+  overflow: hidden;
+  box-sizing: border-box;
+}
+.container-box[data-edge-top="1"] .container-box-card {
+  margin-top: var(--px-seam);
+}
+.container-box[data-edge-right="1"] .container-box-card {
+  margin-right: var(--px-seam);
+}
+.container-box-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 35px;
+  flex: 0 0 35px;
+  padding: 0 8px 0 12px;
+  border-bottom: 1px solid var(--px-divider);
+  box-sizing: border-box;
+}
+.container-box-title {
+  font-size: 11px;
+  letter-spacing: 0.4px;
+  color: var(--px-fg-muted, var(--vscode-sideBarTitle-foreground));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.container-box-dock-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: var(--px-radius-xs);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.container-box-dock-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+.container-box-dock-btn svg {
+  width: 14px;
+  height: 14px;
+}
+.container-box-body {
+  flex: 1 1 0;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+.container-box-body .view-container {
+  height: 100%;
+}
+.container-box-waiting-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 12px;
+  text-align: center;
+  color: var(--px-fg-muted, var(--vscode-descriptionForeground));
+  font-size: 12px;
+}
+.container-box--revealed .container-box-card {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: -2px;
+  transition: outline-color var(--px-dur-base) var(--px-ease);
+}
+
 /* Content parts: container is the gap colour; the inner content is the card. */
 .part-workbench-parts-sidebar,
 .part-workbench-parts-editor,

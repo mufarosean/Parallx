@@ -129,7 +129,7 @@ export interface SerializedViewContainerSnapshot {
  */
 export interface SerializedContainerRail {
   readonly id: string;
-  readonly rail: 'left' | 'right';
+  readonly rail: 'left' | 'right' | 'floating';
 }
 
 // ─── View Snapshot ───────────────────────────────────────────────────────────

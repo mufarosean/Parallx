@@ -34,6 +34,7 @@ import type { IGridView } from '../layout/gridView.js';
 import { SurfaceTree } from '../surfaces/surfaceTree.js';
 import { surfaceRegistry } from '../surfaces/surfaceRegistry.js';
 import { PartDragController } from './partDrag.js';
+import type { PartDropZone } from './partDrag.js';
 import { PartRegistry } from '../parts/partRegistry.js';
 import { TitlebarPart, titlebarPartDescriptor } from '../parts/titlebarPart.js';
 import { ActivityBarPart, activityBarPartDescriptor } from '../parts/activityBarPart.js';
@@ -238,6 +239,26 @@ export abstract class Layout extends Disposable {
 
   private _partDrag: PartDragController | undefined;
 
+  /**
+   * Floating grid citizens beyond the four parts (container boxes today,
+   * surfaces tomorrow). Registered so the tree validator accepts their
+   * leaves, the restore factory can resolve them, and the seam stamping
+   * covers their cards.
+   */
+  private readonly _floatingViews = new Map<string, IGridView>();
+
+  /**
+   * Resolver for floating leaves found in a SAVED tree whose views do not
+   * exist yet (a box shell for a container whose tool activates later).
+   * Set by the workbench before restore.
+   */
+  protected _floatingViewFactory: ((viewId: string) => IGridView | undefined) | undefined;
+
+  /** Container drops on the grid (detach/move-beside/edge). Set by Workbench. */
+  protected _onContainerDropped: ((containerId: string, zone: PartDropZone) => void) | undefined;
+  /** Container drops that mean "dock into this rail". Set by Workbench. */
+  protected _onContainerDockRequested: ((containerId: string, rail: 'left' | 'right') => void) | undefined;
+
   constructor(protected readonly _container: HTMLElement) {
     super();
   }
@@ -377,13 +398,24 @@ export abstract class Layout extends Disposable {
    * box on the edge it guessed about.
    */
   protected _updateEdgeAttributes(): void {
+    const stamp = (id: string, element: HTMLElement | undefined): void => {
+      if (!element || !this._grid.hasView(id)) return;
+      const edges = this._grid.edgeTouches(id);
+      if (!edges) return;
+      element.setAttribute('data-edge-top', edges.top ? '1' : '0');
+      element.setAttribute('data-edge-right', edges.right ? '1' : '0');
+    };
     for (const part of [this._sidebar, this._editor, this._panel, this._auxiliaryBar]) {
-      if (!this._grid.hasView(part.id)) continue;
-      const edges = this._grid.edgeTouches(part.id);
-      if (!edges) continue;
-      part.element.setAttribute('data-edge-top', edges.top ? '1' : '0');
-      part.element.setAttribute('data-edge-right', edges.right ? '1' : '0');
+      stamp(part.id, part.element);
     }
+    for (const [id, view] of this._floatingViews) {
+      stamp(id, view.element);
+    }
+  }
+
+  /** Ids of the floating views currently registered with the grid layer. */
+  floatingViewIds(): readonly string[] {
+    return [...this._floatingViews.keys()];
   }
 
   /** The default shape for the CURRENT visibility flags and remembered sizes. */
@@ -406,12 +438,17 @@ export abstract class Layout extends Disposable {
     });
   }
 
-  /** Resolve a default-state viewId to the part that backs it. */
+  /** Resolve a saved leaf id to the grid view that backs it. */
   private _partGridView(viewId: string): IGridView {
     for (const part of [this._sidebar, this._editor, this._panel, this._auxiliaryBar]) {
       if (part.id === viewId) return part;
     }
-    throw new Error(`Layout: no part backs view "${viewId}"`);
+    const floating = this._floatingViews.get(viewId) ?? this._floatingViewFactory?.(viewId);
+    if (floating) {
+      this._floatingViews.set(viewId, floating);
+      return floating;
+    }
+    throw new Error(`Layout: no view backs "${viewId}"`);
   }
 
   /** Record where a part sits, for restoring it there after a hide. */
@@ -580,6 +617,11 @@ export abstract class Layout extends Disposable {
         this.movePartBeside(partId, targetId, orientation, before),
       onMoveToEdge: (partId, orientation, before) =>
         this.movePartToEdge(partId, orientation, before),
+      dockTargets: { left: this._sidebar.id, right: this._auxiliaryBar.id },
+      onContainerDrop: (containerId, zone) =>
+        this._onContainerDropped?.(containerId, zone),
+      onContainerDock: (containerId, rail) =>
+        this._onContainerDockRequested?.(containerId, rail),
     }));
     this._armPartDragHandles();
   }
@@ -1066,12 +1108,26 @@ export abstract class Layout extends Disposable {
       [this._sidebar, this._editor, this._panel, this._auxiliaryBar].map((p) => p.id),
     );
     for (const id of unique) {
-      if (!known.has(id)) return false;
+      if (known.has(id)) continue;
+      // A floating container box: resolvable whenever the factory is wired,
+      // because a box shell can be built for ANY container id — its content
+      // seats when the tool arrives. Anything else is a tree from a model
+      // this build does not speak: legacy path.
+      if (id.startsWith('container:') && this._floatingViewFactory) continue;
+      if (this._floatingViews.has(id)) continue;
+      return false;
     }
 
     const sidebarWas = this._sidebar.visible;
     const panelWas = this._panel.visible;
     const auxWas = this._auxBarVisible;
+
+    // Floating views not present in the restored tree do not survive it: an
+    // arrangement is a whole shape (drop from the registry; the box manager
+    // reconciles its own state via floatingViewIds()).
+    for (const id of [...this._floatingViews.keys()]) {
+      if (!unique.has(id)) this._floatingViews.delete(id);
+    }
 
     this._withTrackingSuspended(() => {
       this._grid.restoreFrom(saved, (viewId) => this._partGridView(viewId));
@@ -1129,6 +1185,51 @@ export abstract class Layout extends Disposable {
       this._relayoutBody();
     });
     this._layoutViewContainers();
+  }
+
+  // ── Floating views (container boxes; surfaces later) ──
+
+  /**
+   * Seat a floating citizen in the grid at a drop zone — beside another
+   * view, at an edge, or (no zone) at the right edge as the default.
+   */
+  addFloatingView(view: IGridView, zone?: PartDropZone): void {
+    this._floatingViews.set(view.id, view);
+    this._withTrackingSuspended(() => {
+      if (zone?.kind === 'beside' && this._grid.hasView(zone.targetId)) {
+        this._grid.addView(view, 300);
+        this._grid.moveView(view.id, zone.targetId, zone.orientation, zone.before);
+      } else if (zone?.kind === 'edge') {
+        const size = zone.orientation === Orientation.Horizontal ? 300 : 220;
+        this._grid.addView(view, size);
+        this._grid.moveViewToEdge(view.id, zone.orientation, zone.before, size);
+      } else {
+        this._grid.addView(view, 300);
+        this._grid.moveViewToEdge(view.id, Orientation.Horizontal, false, 300);
+      }
+      this._relayoutBody();
+    });
+    this._layoutViewContainers();
+  }
+
+  /** Remove a floating citizen from the grid. Removal, not disposal. */
+  removeFloatingView(viewId: string): void {
+    this._floatingViews.delete(viewId);
+    if (!this._grid.hasView(viewId)) return;
+    this._withTrackingSuspended(() => {
+      this._grid.removeView(viewId);
+      this._relayoutBody();
+    });
+    this._layoutViewContainers();
+  }
+
+  /** Register a floating view that restore created through the factory. */
+  protected _adoptFloatingView(view: IGridView): void {
+    this._floatingViews.set(view.id, view);
+  }
+
+  hasFloatingView(viewId: string): boolean {
+    return this._floatingViews.has(viewId);
   }
 
   // ── LayoutHost Protocol ──────────────────────────────────────────────────

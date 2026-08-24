@@ -140,6 +140,7 @@ import { ViewContributionProcessor } from '../contributions/viewContribution.js'
 
 // Contribution handler (D.1 extraction)
 import { WorkbenchContributionHandler } from './workbenchContributionHandler.js';
+import { ContainerBoxManager } from './containerBox.js';
 
 // Built-in Tools (M2 Capability 7)
 import * as ExplorerTool from '../built-in/explorer/main.js';
@@ -239,6 +240,7 @@ export class Workbench extends Layout {
 
   // Contribution handler (D.1 extraction — owns container maps, contribution events)
   private _contributionHandler!: WorkbenchContributionHandler;
+  private _containerBoxes!: ContainerBoxManager;
 
   private _viewManager!: ViewManager;
   private _dndController!: DragAndDropController;
@@ -1016,6 +1018,35 @@ export class Workbench extends Layout {
     }));
     this._contributionHandler.setWorkbenchContext(this._workbenchContext);
 
+    // Floating container boxes: detach into the grid, waiting shells on
+    // restore, dock back by drop or button. The layout learns to resolve
+    // `container:` leaves through the manager, and container drops from the
+    // grid's drop controller route here.
+    this._containerBoxes = this._register(new ContainerBoxManager({
+      undockContainer: (id) => this._contributionHandler.undockContainer(id),
+      dockContainer: (id, vc, rail) => this._contributionHandler.dockContainer(id, vc, rail),
+      addFloatingView: (view, zone) => this.addFloatingView(view, zone),
+      removeFloatingView: (viewId) => this.removeFloatingView(viewId),
+      moveFloating: (viewId, zone) => {
+        if (zone.kind === 'beside') {
+          this.movePartBeside(viewId, zone.targetId, zone.orientation, zone.before);
+        } else if (zone.kind === 'edge') {
+          this.movePartToEdge(viewId, zone.orientation, zone.before);
+        }
+      },
+      requestSave: () => this._workspaceSaver?.requestSave(),
+    }));
+    this._floatingViewFactory = (viewId) => this._containerBoxes.resolveShell(viewId);
+    this._onContainerDropped = (containerId, zone) =>
+      this._containerBoxes.handleContainerDrop(containerId, zone);
+    this._onContainerDockRequested = (containerId, rail) => {
+      if (this._containerBoxes.has(containerId)) {
+        this._containerBoxes.dock(containerId, rail);
+      } else {
+        this._contributionHandler.moveContainerToRail(containerId, rail);
+      }
+    };
+
     // 1. Titlebar: app icon + menu bar + window controls
     this._setupTitlebar();
 
@@ -1366,14 +1397,26 @@ export class Workbench extends Layout {
     // carries titlebar/statusbar leaves) and take the legacy path instead.
     const treeRestored = this.restoreBodyTree(state.layout?.grid);
 
+    // 0a2. The restored tree may have replaced boxes wholesale; any box
+    // whose leaf did not survive re-docks its container instead of losing
+    // it.
+    if (treeRestored) {
+      this._containerBoxes.pruneAbsent(new Set(this.floatingViewIds()));
+    }
+
     // 0b. Restore container rails — where the user docked each container.
-    // Applied now for containers that already exist; containers whose tools
-    // activate later consult the pending assignments as they arrive.
+    // Docked placements go to the handler (applied now if the container
+    // exists, pending otherwise); floating placements are realised by the
+    // tree's box shells, seated as their containers arrive.
     if (state.containerRails?.length) {
-      this._contributionHandler.setPendingRailAssignments(state.containerRails);
-      for (const entry of state.containerRails) {
+      const docked = state.containerRails.filter(
+        (e): e is { id: string; rail: 'left' | 'right' } => e.rail !== 'floating',
+      );
+      this._contributionHandler.setPendingRailAssignments(docked);
+      for (const entry of docked) {
         this._contributionHandler.applyPendingRailAssignment(entry.id);
       }
+      this._containerBoxes.seatWaiting();
     }
 
     // 1. Restore part visibility and sizes.
@@ -1750,7 +1793,12 @@ export class Workbench extends Layout {
           views: [],
         };
       },
-      railProvider: () => this._contributionHandler.railAssignments(),
+      railProvider: () => [
+        ...this._contributionHandler.railAssignments(),
+        ...this._containerBoxes.floatingContainerIds().map(
+          (id) => ({ id, rail: 'floating' as const }),
+        ),
+      ],
       contextProvider: () => {
         return {
           activePart: undefined,
@@ -1956,6 +2004,14 @@ export class Workbench extends Layout {
 
     // Wire icon click events — delegate container switching to handler
     this._register(this._activityBarPart.onDidClickIcon((event) => {
+      // A floating container's icon stays on the primary ribbon and acts
+      // as reveal — clicking it flashes its box instead of driving the
+      // sidebar.
+      if (this._containerBoxes?.has(event.iconId)) {
+        this._containerBoxes.reveal(event.iconId);
+        return;
+      }
+
       const isAlreadyActive = event.iconId === this._activityBarPart.activeIconId;
 
       if (isAlreadyActive) {
@@ -2326,6 +2382,9 @@ export class Workbench extends Layout {
     };
     this._register(this._contributionHandler.onDidChangeRails(() => {
       syncRibbon();
+      // A newly registered container may be what a waiting box shell from
+      // the restored tree has been holding a spot for.
+      this._containerBoxes.seatWaiting();
       this._workspaceSaver?.requestSave();
     }));
     syncRibbon();

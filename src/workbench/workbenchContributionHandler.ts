@@ -221,6 +221,40 @@ export class WorkbenchContributionHandler extends Disposable {
     return true;
   }
 
+  /**
+   * Undock a container for a FLOATING box. It leaves its rail entirely; the
+   * caller (the box manager) owns where it goes. Its icon moves to the
+   * PRIMARY ribbon, which acts as reveal for floating containers — the
+   * decided rule: middle things keep their icon on the left.
+   */
+  undockContainer(containerId: string): { vc: ViewContainer; label: string } | undefined {
+    const label =
+      this._containerIcons.get(containerId)?.label
+      ?? this._viewContribution?.getContainer(containerId)?.title
+      ?? containerId;
+    const vc = this._takeContainer(containerId);
+    if (!vc) return undefined;
+    this._railAssignments.delete(containerId);
+    const icon = this._containerIcons.get(containerId);
+    if (icon) this._host.activityBarPart.addIcon(icon);
+    this._onDidChangeRails.fire();
+    return { vc, label };
+  }
+
+  /**
+   * Dock a FLOATING container back into a rail. The inverse of
+   * undockContainer; the box manager hands the container back.
+   */
+  dockContainer(containerId: string, vc: ViewContainer, rail: ContainerRail): void {
+    // Floating containers keep a reveal icon on the primary ribbon; seating
+    // re-adds the icon on the rail's own ribbon.
+    this._host.activityBarPart.removeIcon(containerId);
+    this._seatContainer(containerId, vc, rail);
+    this._railAssignments.set(containerId, rail);
+    this._host.layoutViewContainers();
+    this._onDidChangeRails.fire();
+  }
+
   /** Detach a container from whichever rail holds it. Undocked, not disposed. */
   private _takeContainer(containerId: string): ViewContainer | undefined {
     const inBuiltin = this._builtinSidebarContainers.get(containerId);
