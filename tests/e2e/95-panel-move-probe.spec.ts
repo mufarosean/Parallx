@@ -369,3 +369,81 @@ test.describe('separation and reunion', () => {
     await runCommand(window, 'Reset Layout to Defaults');
   });
 });
+
+test.describe('the way home', () => {
+  test('a detached panel tab rejoins the panel on a centre drop', async ({ window }, testInfo) => {
+    await window.waitForTimeout(1500);
+    await runCommand(window, 'Reset Layout to Defaults');
+    await window.waitForTimeout(300);
+
+    // 1. Detach the first panel tab into the grid (drop on the editor).
+    await window.evaluate(async () => {
+      const tab = document.querySelector(
+        '[data-part-id="workbench.parts.panel"] .view-tab',
+      ) as HTMLElement | null;
+      const editor = document.querySelector('[data-part-id="workbench.parts.editor"]') as HTMLElement | null;
+      if (!tab || !editor) return;
+      const dt = new DataTransfer();
+      const fire = (type: string, el: Element, x: number, y: number): void => {
+        el.dispatchEvent(new DragEvent(type, {
+          bubbles: true, cancelable: true, clientX: x, clientY: y, dataTransfer: dt,
+        }));
+      };
+      const t = tab.getBoundingClientRect();
+      fire('dragstart', tab, t.left + 4, t.top + 4);
+      const r = editor.getBoundingClientRect();
+      fire('dragover', editor, r.right - 60, r.top + r.height / 2);
+      await new Promise((res) => requestAnimationFrame(() => res(undefined)));
+      fire('drop', editor, r.right - 60, r.top + r.height / 2);
+      fire('dragend', tab, 0, 0);
+    });
+    await window.waitForTimeout(500);
+    await snap(window, testInfo, '16-tab-detached');
+    const box = window.locator('.container-box[data-part-id^="container:panelview:"]');
+    await expect(box, 'detached view floated into a box').toBeVisible();
+
+    // 2. Drag the box back onto the PANEL'S CENTRE — it rejoins the strip.
+    await window.evaluate(async () => {
+      const header = document.querySelector('.container-box[data-part-id^="container:panelview:"] .container-box-header') as HTMLElement | null;
+      const panel = document.querySelector('[data-part-id="workbench.parts.panel"]') as HTMLElement | null;
+      if (!header || !panel) return;
+      const dt = new DataTransfer();
+      const fire = (type: string, el: Element, x: number, y: number): void => {
+        el.dispatchEvent(new DragEvent(type, {
+          bubbles: true, cancelable: true, clientX: x, clientY: y, dataTransfer: dt,
+        }));
+      };
+      const h = header.getBoundingClientRect();
+      fire('dragstart', header, h.left + 5, h.top + 5);
+      const r = panel.getBoundingClientRect();
+      const x = r.left + r.width / 2;
+      const y = r.top + r.height / 2; // centre → rejoin the panel
+      fire('dragover', panel, x, y);
+      await new Promise((res) => requestAnimationFrame(() => res(undefined)));
+      fire('drop', panel, x, y);
+      fire('dragend', header, x, y);
+    });
+    await window.waitForTimeout(500);
+    await snap(window, testInfo, '17-tab-rejoined');
+    await expect(box, 'box gone — the view is a panel tab again').toHaveCount(0);
+  });
+
+  test('Reset Panel To Default Position brings a wandering panel home', async ({ window }, testInfo) => {
+    await window.waitForTimeout(1500);
+    await runCommand(window, 'Reset Layout to Defaults');
+    await window.waitForTimeout(300);
+    await runCommand(window, 'Move Panel To Right Edge');
+    await window.waitForTimeout(300);
+
+    await runCommand(window, 'Reset Panel To Default Position');
+    await window.waitForTimeout(400);
+    await snap(window, testInfo, '18-panel-reset-home');
+    const s = await shape(window);
+    expect(s.panel, 'panel back').not.toBeNull();
+    // Below the editor, editor-column-wide (not a right column).
+    expect(s.panel!.y).toBeGreaterThan(s.editor!.y);
+    expect(Math.abs((s.panel!.x + s.panel!.w) - (s.editor!.x + s.editor!.w))).toBeLessThanOrEqual(12);
+
+    await runCommand(window, 'Reset Layout to Defaults');
+  });
+});

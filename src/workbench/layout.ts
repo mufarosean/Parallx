@@ -256,8 +256,10 @@ export abstract class Layout extends Disposable {
 
   /** Container drops on the grid (detach/move-beside/edge). Set by Workbench. */
   protected _onContainerDropped: ((containerId: string, zone: PartDropZone) => void) | undefined;
-  /** Container drops that mean "dock into this rail". Set by Workbench. */
-  protected _onContainerDockRequested: ((containerId: string, rail: 'left' | 'right') => void) | undefined;
+  /** Container drops that mean "join this target". Set by Workbench. */
+  protected _onContainerDockRequested: ((containerId: string, rail: 'left' | 'right' | 'panel') => void) | undefined;
+  /** Eligibility for joining a dock target. Set by Workbench. */
+  protected _canContainerDockInto: ((containerId: string, rail: 'left' | 'right' | 'panel') => boolean) | undefined;
 
   constructor(protected readonly _container: HTMLElement) {
     super();
@@ -617,7 +619,9 @@ export abstract class Layout extends Disposable {
         this.movePartBeside(partId, targetId, orientation, before),
       onMoveToEdge: (partId, orientation, before) =>
         this.movePartToEdge(partId, orientation, before),
-      dockTargets: { left: this._sidebar.id, right: this._auxiliaryBar.id },
+      dockTargets: { left: this._sidebar.id, right: this._auxiliaryBar.id, panel: this._panel.id },
+      canDockInto: (containerId, rail) =>
+        this._canContainerDockInto?.(containerId, rail) ?? true,
       onContainerDrop: (containerId, zone) =>
         this._onContainerDropped?.(containerId, zone),
       onContainerDock: (containerId, rail) =>
@@ -1169,6 +1173,62 @@ export abstract class Layout extends Disposable {
       );
       this._relayoutBody();
     });
+    this._layoutViewContainers();
+  }
+
+  /**
+   * Put ONE companion part back at its default position and size, leaving
+   * everything else exactly where the user has it. The escape hatch for
+   * "this thing wandered off and I want it home" without resetting the
+   * whole layout.
+   */
+  resetPartPlacement(partId: string): void {
+    this._placementRecall.delete(partId);
+    const wasHidden = !this._grid.hasView(partId);
+
+    if (partId === this._panel.id) {
+      this._lastPanelHeight = DEFAULT_PANEL_HEIGHT;
+      this._withTrackingSuspended(() => {
+        if (this._grid.hasView(partId)) this._grid.removeView(partId);
+        this._panel.setVisible(true);
+        this._showPanelBelowEditor();
+        if (this._panelMaximized) {
+          this._panelMaximized = false;
+          this._onDidChangePanelMaximized.fire(false);
+        }
+        this._relayoutBody();
+      });
+      if (wasHidden) {
+        this._onDidChangePartVisibility.fire({ partId: PartId.Panel, visible: true });
+      }
+    } else if (partId === this._sidebar.id) {
+      this._lastSidebarWidth = DEFAULT_SIDEBAR_WIDTH;
+      this._withTrackingSuspended(() => {
+        if (this._grid.hasView(partId)) this._grid.removeView(partId);
+        this._sidebar.setVisible(true);
+        this._grid.addView(this._sidebar, DEFAULT_SIDEBAR_WIDTH);
+        this._grid.moveViewToEdge(partId, Orientation.Horizontal, true, DEFAULT_SIDEBAR_WIDTH);
+        this._relayoutBody();
+      });
+      if (wasHidden) {
+        this._onDidChangePartVisibility.fire({ partId: PartId.Sidebar, visible: true });
+      }
+    } else if (partId === this._auxiliaryBar.id) {
+      this._lastAuxBarWidth = DEFAULT_AUX_BAR_WIDTH;
+      this._withTrackingSuspended(() => {
+        if (this._grid.hasView(partId)) this._grid.removeView(partId);
+        this._auxiliaryBar.setVisible(true);
+        this._grid.addView(this._auxiliaryBar, DEFAULT_AUX_BAR_WIDTH);
+        this._grid.moveViewToEdge(partId, Orientation.Horizontal, false, DEFAULT_AUX_BAR_WIDTH);
+        this._relayoutBody();
+      });
+      if (!this._auxBarVisible) {
+        this._auxBarVisible = true;
+        this._onDidChangePartVisibility.fire({ partId: PartId.AuxiliaryBar, visible: true });
+      }
+    } else {
+      return;
+    }
     this._layoutViewContainers();
   }
 

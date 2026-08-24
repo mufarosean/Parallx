@@ -1055,11 +1055,17 @@ export class Workbench extends Layout {
       this._containerBoxes.handleContainerDrop(containerId, zone);
     this._onContainerDockRequested = (containerId, rail) => {
       if (this._containerBoxes.has(containerId)) {
-        this._containerBoxes.dock(containerId, rail);
-      } else {
+        // A detached panel view's home is the panel whatever the target
+        // said; the manager's dock path routes it there.
+        this._containerBoxes.dock(containerId, rail === 'panel' ? 'left' : rail);
+      } else if (rail !== 'panel') {
         this._contributionHandler.moveContainerToRail(containerId, rail);
       }
     };
+    // Only detached panel views may JOIN the panel; anything else dropped
+    // on the panel's centre lands beside it instead.
+    this._canContainerDockInto = (containerId, rail) =>
+      rail !== 'panel' || containerId.startsWith('panelview:');
 
     // 1. Titlebar: app icon + menu bar + window controls
     this._setupTitlebar();

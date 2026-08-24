@@ -43,8 +43,11 @@ export interface RectLike {
 export type PartDropZone =
   | { kind: 'beside'; targetId: string; orientation: Orientation; before: boolean }
   | { kind: 'edge'; orientation: Orientation; before: boolean }
-  /** Container drags only: the whole target is a rail — dock into it. */
-  | { kind: 'dock'; rail: 'left' | 'right'; targetId: string };
+  /**
+   * Container drags only: the centre of a dock target means JOIN it —
+   * a rail for containers, the panel strip for detached panel views.
+   */
+  | { kind: 'dock'; rail: 'left' | 'right' | 'panel'; targetId: string };
 
 /**
  * Within this many pixels of the grid boundary, a drop over NO target means
@@ -176,14 +179,21 @@ export interface PartDragControllerOptions {
   onMoveBeside(partId: string, targetId: string, orientation: Orientation, before: boolean): void;
   onMoveToEdge(partId: string, orientation: Orientation, before: boolean): void;
   /**
-   * Grid view ids of the rails. During a CONTAINER drag these targets mean
-   * "dock into this rail" — the whole card lights up — rather than a split.
+   * Grid view ids of the dock targets. During a CONTAINER drag their
+   * CENTRE means "join this" — a rail for containers, the panel for
+   * detached panel views — while their peripheral bands stay beside zones.
    */
-  readonly dockTargets?: { readonly left: string; readonly right: string };
+  readonly dockTargets?: { readonly left: string; readonly right: string; readonly panel?: string };
+  /**
+   * Whether THIS container may dock into that target. A chat box cannot
+   * become a panel tab; when refused, the drop falls back to a beside
+   * zone computed at the drop point.
+   */
+  canDockInto?(containerId: string, rail: 'left' | 'right' | 'panel'): boolean;
   /** A container dropped on a beside/edge zone (detach or move its box). */
   onContainerDrop?(containerId: string, zone: PartDropZone): void;
-  /** A container dropped on a rail card: dock it there. */
-  onContainerDock?(containerId: string, rail: 'left' | 'right'): void;
+  /** A container dropped on a dock centre: join it. */
+  onContainerDock?(containerId: string, rail: 'left' | 'right' | 'panel'): void;
 }
 
 export class PartDragController extends Disposable {
@@ -267,7 +277,22 @@ export class PartDragController extends Disposable {
         this._teardown();
         if (!containerId || !zone) return;
         if (zone.kind === 'dock') {
-          this._opts.onContainerDock?.(containerId, zone.rail);
+          // The id is only readable at DROP time, so eligibility is
+          // checked here: a container that cannot join this target (a
+          // chat box on the panel) lands BESIDE it instead of dying.
+          if (this._opts.canDockInto?.(containerId, zone.rail) ?? true) {
+            this._opts.onContainerDock?.(containerId, zone.rail);
+          } else {
+            const grid = this._opts.gridElement.getBoundingClientRect();
+            const targetEl = this._opts.gridElement.querySelector<HTMLElement>(
+              `[data-part-id="${zone.targetId}"]`,
+            );
+            const fallback = computeDropZone(
+              grid, e.clientX, e.clientY,
+              targetEl ? { id: zone.targetId, rect: targetEl.getBoundingClientRect() } : undefined,
+            );
+            if (fallback) this._opts.onContainerDrop?.(containerId, fallback);
+          }
         } else {
           this._opts.onContainerDrop?.(containerId, zone);
         }
@@ -347,10 +372,14 @@ export class PartDragController extends Disposable {
     // separated things could never be put back together beside each other.
     let zone: PartDropZone | undefined;
     const dock = this._opts.dockTargets;
-    if (kind === 'container' && target && dock
-      && (target.id === dock.left || target.id === dock.right)
-      && inDockCentre(target.rect, x, y)) {
-      zone = { kind: 'dock', rail: target.id === dock.left ? 'left' : 'right', targetId: target.id };
+    const dockRail = kind === 'container' && target && dock
+      ? (target.id === dock.left ? 'left'
+        : target.id === dock.right ? 'right'
+        : target.id === dock.panel ? 'panel'
+        : undefined)
+      : undefined;
+    if (dockRail && target && inDockCentre(target.rect, x, y)) {
+      zone = { kind: 'dock', rail: dockRail, targetId: target.id };
     } else {
       zone = computeDropZone(gridRect, x, y, target);
     }

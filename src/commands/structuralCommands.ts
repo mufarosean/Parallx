@@ -118,6 +118,40 @@ function movePartCommand(
   };
 }
 
+function resetPartCommand(
+  id: string,
+  title: string,
+  partId: string,
+  aiDescription: string,
+): CommandDescriptor {
+  return {
+    id,
+    title,
+    category: 'Layout',
+    aiInvocable: true,
+    aiDescription,
+    handler(ctx) {
+      wb(ctx).resetPartPlacement(partId);
+    },
+  };
+}
+
+const resetPanelPosition = resetPartCommand(
+  'layout.resetPanelPosition', 'Reset Panel To Default Position',
+  'workbench.parts.panel',
+  'Move the panel back to its default place below the editor, leaving everything else where it is.',
+);
+const resetSidebarPosition = resetPartCommand(
+  'layout.resetSidebarPosition', 'Reset Primary Sidebar To Default Position',
+  'workbench.parts.sidebar',
+  'Move the primary sidebar back to the left edge at its default width.',
+);
+const resetAuxBarPosition = resetPartCommand(
+  'layout.resetAuxBarPosition', 'Reset Secondary Sidebar To Default Position',
+  'workbench.parts.auxiliarybar',
+  'Move the secondary sidebar back to the right edge at its default width.',
+);
+
 const moveSidebarLeft = movePartCommand(
   'layout.moveSidebarLeft', 'Move Primary Sidebar To Left Edge',
   'workbench.parts.sidebar', 'horizontal', true,
@@ -308,6 +342,9 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   previousEditor,
   // Layout
   layoutReset,
+  resetPanelPosition,
+  resetSidebarPosition,
+  resetAuxBarPosition,
   moveSidebarLeft,
   moveSidebarRight,
   movePanelBottom,

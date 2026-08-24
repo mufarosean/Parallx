@@ -55,6 +55,8 @@ export interface WorkbenchLike {
   };
   /** Rebuild the default shape — the reset command's whole implementation. */
   resetLayout(): void;
+  /** Put ONE part back at its default position, leaving the rest alone. */
+  resetPartPlacement(partId: string): void;
   /**
    * Move a part to an outer edge of the body. Orientation values are the
    * grid's ('horizontal' | 'vertical'); before = left/top edge.

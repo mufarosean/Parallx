@@ -406,3 +406,70 @@ describe('nested drag sources inside a handle', () => {
     }
   });
 });
+
+describe('the panel as a dock target for detached panel views', () => {
+  let grid: HTMLElement;
+  let panel: HTMLElement;
+  let controller: PartDragController;
+  let routed: string[];
+
+  function containerDragAs(id: string, type: string, x: number, y: number): Event {
+    const ev = new Event(type, { bubbles: true, cancelable: true });
+    Object.defineProperty(ev, 'dataTransfer', {
+      configurable: true,
+      value: {
+        types: ['application/x-parallx-container'],
+        dropEffect: '', effectAllowed: '',
+        setData: () => {},
+        getData: () => JSON.stringify({ containerId: id }),
+      },
+    });
+    Object.defineProperty(ev, 'clientX', { configurable: true, value: x });
+    Object.defineProperty(ev, 'clientY', { configurable: true, value: y });
+    return ev;
+  }
+
+  beforeEach(() => {
+    grid = document.createElement('div');
+    grid.getBoundingClientRect = () => rectOf(GRID);
+    panel = document.createElement('div');
+    panel.setAttribute('data-part-id', 'workbench.parts.panel');
+    panel.getBoundingClientRect = () => rectOf({ left: 0, top: 600, width: 1000, height: 200 });
+    grid.appendChild(panel);
+    document.body.appendChild(grid);
+
+    routed = [];
+    controller = new PartDragController({
+      gridElement: grid,
+      onMoveBeside: () => {},
+      onMoveToEdge: () => {},
+      dockTargets: {
+        left: 'workbench.parts.sidebar',
+        right: 'workbench.parts.auxiliarybar',
+        panel: 'workbench.parts.panel',
+      },
+      canDockInto: (id, rail) => rail !== 'panel' || id.startsWith('panelview:'),
+      onContainerDrop: (id, zone) => routed.push(`drop:${id}:${zone.kind}`),
+      onContainerDock: (id, rail) => routed.push(`dock:${id}:${rail}`),
+    });
+  });
+
+  afterEach(() => {
+    controller.dispose();
+    grid.remove();
+  });
+
+  it('rejoins a detached panel view dropped on the panel centre', () => {
+    panel.dispatchEvent(containerDragAs('panelview:view.terminal', 'dragover', 500, 700));
+    panel.dispatchEvent(containerDragAs('panelview:view.terminal', 'drop', 500, 700));
+    expect(routed).toEqual(['dock:panelview:view.terminal:panel']);
+  });
+
+  it('lands an ineligible container BESIDE the panel, never dead', () => {
+    // A chat box cannot become a panel tab; the centre drop degrades to
+    // the nearest-side beside zone instead of doing nothing.
+    panel.dispatchEvent(containerDragAs('chat-container', 'dragover', 500, 700));
+    panel.dispatchEvent(containerDragAs('chat-container', 'drop', 500, 700));
+    expect(routed).toEqual(['drop:chat-container:beside']);
+  });
+});

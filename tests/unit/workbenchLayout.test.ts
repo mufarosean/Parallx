@@ -735,3 +735,75 @@ describe('edge-cycle degeneracy (field bug: 20px panel sliver)', () => {
     expect(bottomH, all).toBeGreaterThan(40);
   });
 });
+
+describe('per-part placement reset', () => {
+  let container: HTMLElement;
+  let layout: TestLayout;
+  let parts: TestLayout['parts'];
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    Object.defineProperty(container, 'clientWidth', { value: WIDTH, configurable: true });
+    Object.defineProperty(container, 'clientHeight', { value: HEIGHT, configurable: true });
+    document.body.appendChild(container);
+    parts = {
+      titlebar: fakePart('workbench.parts.titlebar'),
+      activityBar: fakePart('workbench.parts.activitybar'),
+      sidebar: fakePart('workbench.parts.sidebar'),
+      editor: fakePart('workbench.parts.editor'),
+      panel: fakePart('workbench.parts.panel'),
+      auxiliaryBar: fakePart('workbench.parts.auxiliarybar', false),
+      statusBar: fakePart('workbench.parts.statusbar'),
+    };
+    layout = new TestLayout(container, parts);
+  });
+
+  afterEach(() => {
+    layout.dispose();
+    container.remove();
+  });
+
+  it('sends a wandering panel home without touching anything else', () => {
+    // Widen the sidebar, stack the panel under it, then reset just the
+    // panel — the column width is the user's and must survive.
+    layout.grid.resizeView('workbench.parts.sidebar', 300);
+    layout.movePartBeside(
+      'workbench.parts.panel', 'workbench.parts.sidebar', Orientation.Vertical, false,
+    );
+
+    layout.resetPartPlacement('workbench.parts.panel');
+
+    expect(rootShape(layout)).toEqual([
+      'workbench.parts.sidebar',
+      'vertical[workbench.parts.editor, workbench.parts.panel]',
+    ]);
+    expect(layout.grid.getViewSize('workbench.parts.panel')).toBe(DEFAULT_PANEL_HEIGHT);
+    // The sidebar kept the user's width — only the panel was reset.
+    expect(layout.grid.getViewSize('workbench.parts.sidebar')).toBe(300);
+  });
+
+  it('clears the panel recall: hide and show after a reset stays default', () => {
+    layout.movePartBeside(
+      'workbench.parts.panel', 'workbench.parts.sidebar', Orientation.Vertical, false,
+    );
+    layout.resetPartPlacement('workbench.parts.panel');
+    layout.togglePanel();
+    layout.togglePanel();
+    expect(rootShape(layout)[1]).toBe('vertical[workbench.parts.editor, workbench.parts.panel]');
+  });
+
+  it('sends the sidebar back to the left edge at its default width', () => {
+    layout.movePartToEdge('workbench.parts.sidebar', Orientation.Horizontal, false);
+    layout.resetPartPlacement('workbench.parts.sidebar');
+    expect(rootShape(layout)[0]).toBe('workbench.parts.sidebar');
+    expect(layout.grid.getViewSize('workbench.parts.sidebar')).toBe(DEFAULT_SIDEBAR_WIDTH);
+  });
+
+  it('revives a hidden part at its default place', () => {
+    layout.togglePanel(); // hide
+    expect(layout.grid.hasView('workbench.parts.panel')).toBe(false);
+    layout.resetPartPlacement('workbench.parts.panel');
+    expect(layout.grid.hasView('workbench.parts.panel')).toBe(true);
+    expect(parts.panel.visible).toBe(true);
+  });
+});
