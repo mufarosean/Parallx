@@ -2114,6 +2114,42 @@ let _toolsDetected = false;
 const _isWindows = window.parallxElectron.platform === 'win32';
 
 /**
+ * Fixed-length random filename stem — lowercase letters and digits only.
+ *
+ * Every file the exporter writes (clips, batch clips, frame grabs, screen
+ * recording temps) is named with one of these instead of a source-derived
+ * name. Deliberately carries NO meaning: no source basename, no in/out
+ * seconds, no timestamp, no wordlist.
+ *
+ * 10 chars over a 36-symbol alphabet is ~3.7e15 combinations, so collisions
+ * are vanishingly rare; the call sites still re-roll on an existing path
+ * rather than appending a suffix, which would break the fixed length.
+ */
+const MO_NAME_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
+const MO_NAME_LEN = 10;
+function moRandomName(len = MO_NAME_LEN) {
+  const bytes = new Uint8Array(len);
+  crypto.getRandomValues(bytes);
+  let out = '';
+  for (let i = 0; i < len; i++) out += MO_NAME_ALPHABET[bytes[i] % MO_NAME_ALPHABET.length];
+  return out;
+}
+
+/**
+ * moRandomName that is guaranteed not to collide with an existing file.
+ * Re-rolls rather than suffixing so every name stays exactly MO_NAME_LEN.
+ */
+async function moRandomNameFree(dir, sep, ext) {
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const candidate = `${dir}${sep}${moRandomName()}.${ext}`;
+    if (!(await window.parallxElectron.fs.exists(candidate))) return candidate;
+  }
+  // 50 collisions in a 3.7e15 space means fs.exists is lying to us (permissions,
+  // unmounted share). Fall through with a longer name rather than looping.
+  return `${dir}${sep}${moRandomName(MO_NAME_LEN + 6)}.${ext}`;
+}
+
+/**
  * Shell-safe path quoting. On Unix, wraps in single quotes with internal
  * single-quote escaping. On Windows PowerShell, wraps in single quotes
  * (no interpolation) with internal single-quote doubling.
@@ -17450,8 +17486,6 @@ function moOpenFrameDialog(api, videoPath, timestampSec, _ctx) {
     const sep = _isWindows ? '\\' : '/';
     const lastSep = videoPath.lastIndexOf(sep);
     const srcDir = videoPath.slice(0, lastSep);
-    const srcBase = videoPath.slice(lastSep + 1).replace(/\.[^.]+$/, '');
-    const ts = moTimeStr(timestampSec || 0, true).replace(/[:.]/g, '-');
     const ext = fmtSel.value;
     const filterMap = {
       jpg:  [{ name: 'JPEG', extensions: ['jpg', 'jpeg'] }],
@@ -17459,7 +17493,7 @@ function moOpenFrameDialog(api, videoPath, timestampSec, _ctx) {
       webp: [{ name: 'WebP', extensions: ['webp'] }],
     };
     const chosen = await window.parallxElectron.dialog.saveFile({
-      defaultPath: srcDir + sep + `${srcBase}_frame_${ts}.${ext}`,
+      defaultPath: await moRandomNameFree(srcDir, sep, ext),
       filters: filterMap[ext] || [],
     });
     if (!chosen) return;
@@ -17634,7 +17668,10 @@ async function moStartScreenRecording(api) {
   }
   try { await window.parallxElectron.fs.mkdir(dir); } catch { /* openFrame re-validates */ }
   const sep = _isWindows ? '\\' : '/';
-  const outputPath = dir + sep + MO_REC_PREFIX + Date.now() + '.mp4';
+  // Random stem, but the rec_ prefix STAYS: moPurgeOrphanRecordings() finds
+  // leftover temps to securely erase by matching /^rec_/, so dropping it
+  // would strand crashed-session recordings on disk forever.
+  const outputPath = dir + sep + MO_REC_PREFIX + moRandomName() + '.mp4';
   // Final containment gate before handing the path to a spawned process.
   if (!(await moPathInWorkspace(outputPath))) {
     api.window.showErrorMessage('Recording path is outside the workspace. Aborted to prevent data leakage.');
@@ -20288,7 +20325,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
         nameInput.type = 'text';
         nameInput.placeholder = 'name\u2026';
         nameInput.value = c.name || '';
-        nameInput.title = 'Optional name \u2014 used as the filename suffix in place of the auto number';
+        nameInput.title = 'Optional name \u2014 used as the filename in place of the random name';
         nameInput.addEventListener('click', (e) => e.stopPropagation());
         nameInput.addEventListener('input', () => { c.name = nameInput.value; });
         row.appendChild(nameInput);
@@ -20616,7 +20653,6 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       const sep = _isWindows ? '\\' : '/';
       const lastSep = videoPath.lastIndexOf(sep);
       const srcDir = videoPath.slice(0, lastSep);
-      const srcBase = videoPath.slice(lastSep + 1).replace(/\.[^.]+$/, '');
       // Default the picker to the source video's folder so the user can
       // navigate from there to wherever they actually want to save.
       const folderRes = await window.parallxElectron.dialog.openFolder({
@@ -20626,7 +20662,6 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       const outDir = Array.isArray(folderRes) ? folderRes[0] : folderRes;
       if (!outDir) return; // cancelled
 
-      const pad = String(clipQueue.length).length;
       // While the batch runs, the Export button morphs into Cancel.
       batchCancelled = false;
       const origExportLabel = exportBtn.textContent;
@@ -20647,16 +20682,22 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
           if (batchCancelled) break;
           const c = clipQueue[i];
           const ext = c.format === 'mp4' ? 'mp4' : (c.format === 'webm' ? 'webm' : 'gif');
-          const num = String(i + 1).padStart(pad, '0');
+          // A typed name still wins — it is an explicit override. Otherwise the
+          // clip gets a fixed-length random stem; unnamed clips in one batch are
+          // deliberately unrelated to each other and to the source video.
           const named = safeName(c.name);
-          const stem = named ? `${srcBase}_${named}` : `${srcBase}_clip_${num}`;
-          let candidate = `${outDir}${sep}${stem}.${ext}`;
-          let suffix = 0;
-          while (await window.parallxElectron.fs.exists(candidate)) {
-            suffix++;
-            const tail = String.fromCharCode(96 + suffix);
-            candidate = `${outDir}${sep}${stem}_${tail}.${ext}`;
-            if (suffix > 25) { candidate = `${outDir}${sep}${stem}_${Date.now()}.${ext}`; break; }
+          let candidate;
+          if (named) {
+            candidate = `${outDir}${sep}${named}.${ext}`;
+            let suffix = 0;
+            while (await window.parallxElectron.fs.exists(candidate)) {
+              suffix++;
+              const tail = String.fromCharCode(96 + suffix);
+              candidate = `${outDir}${sep}${named}_${tail}.${ext}`;
+              if (suffix > 25) { candidate = `${outDir}${sep}${named}_${moRandomName(6)}.${ext}`; break; }
+            }
+          } else {
+            candidate = await moRandomNameFree(outDir, sep, ext);
           }
           status.textContent = `Exporting ${i + 1} / ${clipQueue.length}\u2026`;
           try {
@@ -20765,8 +20806,6 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     const sep = _isWindows ? '\\' : '/';
     const lastSep = videoPath.lastIndexOf(sep);
     const srcDir = videoPath.slice(0, lastSep);
-    const srcBase = videoPath.slice(lastSep + 1).replace(/\.[^.]+$/, '');
-    const tag = `clip_${Math.floor(a)}-${Math.floor(b)}`;
     const ext = fmtSel.value === 'mp4' ? 'mp4' : (fmtSel.value === 'webm' ? 'webm' : 'gif');
     const filterMap = {
       gif:  [{ name: 'GIF',  extensions: ['gif'] }],
@@ -20774,7 +20813,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       webm: [{ name: 'WebM', extensions: ['webm'] }],
     };
     const chosen = await window.parallxElectron.dialog.saveFile({
-      defaultPath: srcDir + sep + `${srcBase}_${tag}.${ext}`,
+      defaultPath: await moRandomNameFree(srcDir, sep, ext),
       filters: filterMap[fmtSel.value] || [],
     });
     if (!chosen) return; // cancelled — keep the dialog open
@@ -20984,8 +21023,6 @@ async function moExportClip(api, opts) {
   const sep = _isWindows ? '\\' : '/';
   const lastSep = opts.videoPath.lastIndexOf(sep);
   const dir = opts.videoPath.slice(0, lastSep);
-  const base = opts.videoPath.slice(lastSep + 1).replace(/\.[^.]+$/, '');
-  const tag = `clip_${Math.floor(opts.inPoint)}-${Math.floor(opts.outPoint)}`;
   const outExt = opts.format === 'mp4' ? 'mp4' : (opts.format === 'webm' ? 'webm' : 'gif');
   let outPath;
   if (opts.outPath) {
@@ -20993,13 +21030,8 @@ async function moExportClip(api, opts) {
     // native save dialog already prompted for replacement confirmation).
     outPath = opts.outPath;
   } else {
-    outPath = `${dir}${sep}${base}_${tag}.${outExt}`;
-    // Avoid clobbering existing files by adding a counter
-    let counter = 1;
-    while (await window.parallxElectron.fs.exists(outPath)) {
-      outPath = `${dir}${sep}${base}_${tag}_${counter}.${outExt}`;
-      counter++;
-    }
+    // No path supplied — random stem alongside the source, re-rolled until free.
+    outPath = await moRandomNameFree(dir, sep, outExt);
   }
 
   const startSs = String(opts.inPoint);
