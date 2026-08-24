@@ -141,3 +141,43 @@ Small reviewable changes, each leaving a working app, roughly:
 Steps 2-4 cannot be fully verified without opening the app. They should
 land when the app can actually be opened between them — which is exactly
 why the foundation was built and reviewed inert first.
+
+## Progress, and a resequencing decision (2026-08-24)
+
+**Done — the outer surgery:**
+
+1. The body is ONE grid (`42b84b82`). `Layout` owns a `SurfaceTree`; sidebar,
+   editor column and panel are positions in its grid; the default shape is
+   data (`defaultLayoutState`); toggles, zen, reset, restore and
+   `part.resize` are re-cut over view ids via `Grid.resizeView`. The
+   editor-column adapter, the second grid and every sash index are gone.
+   Two latent defects fixed along the way: bare `layout()` rescales all
+   children proportionally (showing the aux bar used to squeeze the
+   sidebar), and the size tracker raced programmatic mutations (restoring
+   a maximized panel was a silent no-op in the old code too).
+   First-ever unit coverage for this layer: `workbenchLayout.test.ts`.
+2. Part positions persist and move (`23e0e18d`). The saver writes the real
+   body tree; restore validates strictly (old saves fall through to the
+   legacy path); `movePartToEdge` + seven palette commands put the sidebar
+   on either edge and the panel anywhere. Drag-and-drop for the same moves
+   is deferred to an eyes-on session — commands are the capability, the
+   drag is polish.
+
+**Deferred, deliberately — the editor dissolution.** Reading EditorPart in
+full changed the cost/benefit: its group coordination (merge targets,
+auto-close, cross-group drops, watermark) is sound and grid-agnostic, and
+the payoff of moving groups into the body tree only truly lands when TABS
+become surfaces — while the surgery risks exactly the flows that cannot be
+verified without opening the app (pane chrome CSS keyed to the part class,
+drop overlays, flat-snapshot restore). It stays a separate, eyes-on step.
+
+**Design decided for that step, recorded now:** once groups live in the
+body tree, "the editor area" must survive as an ADDRESSABLE position — the
+panel splits below it, resize flexes it, drops can target it empty — but
+canonical-tree rules collapse one-child branches. The answer is a generic
+tree feature, not a typed slot: NAMED, KEEP-ALIVE BRANCHES. A region is a
+branch with an identity that survives having one (or zero) children; the
+grid's collapse rules skip it, arrangements serialize it, and any region
+can use it. `resizeWithFixedViews` and `splitView` learn to target branch
+ids. That keeps Decision 3 honest — one tree, no special cases — while
+giving regions a name.
