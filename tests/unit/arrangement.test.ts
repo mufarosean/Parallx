@@ -302,3 +302,115 @@ describe('requiredTypeIds', () => {
       .toEqual(['editor.text', 'flashcards.study']);
   });
 });
+
+// ── Hostile and degenerate inputs ───────────────────────────────────────────
+
+describe('what an untrusted file cannot do', () => {
+  it('absorbs a nesting bomb as malformed rather than overflowing the stack', () => {
+    // JSON.parse handles tens of thousands of nesting levels; a recursive
+    // walker does not. A hostile shared arrangement must cost the layout,
+    // never a RangeError in the startup path.
+    let node: Record<string, unknown> = {
+      type: 'leaf', typeId: 'x', size: 100, sizingMode: SizingMode.Pixel,
+    };
+    for (let i = 0; i < 5000; i++) {
+      node = {
+        type: 'branch', orientation: Orientation.Horizontal,
+        size: 0, sizingMode: SizingMode.Pixel, children: [node],
+      };
+    }
+    const raw = {
+      version: 1, id: 'bomb', name: 'Bomb',
+      rootOrientation: Orientation.Horizontal, root: node,
+    };
+
+    let parsed: unknown = 'unset';
+    expect(() => { parsed = parseArrangement(raw); }).not.toThrow();
+    expect(parsed).toBeUndefined();
+  });
+
+  it('clamps absurd sizes instead of storing them', () => {
+    const raw = {
+      version: 1, id: 'n', name: 'N', rootOrientation: Orientation.Horizontal,
+      root: {
+        type: 'branch', orientation: Orientation.Horizontal, size: -5, sizingMode: SizingMode.Pixel,
+        children: [
+          { type: 'leaf', typeId: 'x', size: Number.POSITIVE_INFINITY, sizingMode: SizingMode.Pixel },
+          { type: 'leaf', typeId: 'y', size: -200, sizingMode: SizingMode.Pixel },
+        ],
+      },
+    };
+    const parsed = parseArrangement(raw);
+    expect(parsed).toBeDefined();
+    expect(parsed!.root.size).toBe(0);
+    expect((parsed!.root.children[0] as { size: number }).size).toBe(0);
+    expect((parsed!.root.children[1] as { size: number }).size).toBe(0);
+  });
+
+  it('round-trips an empty capture', () => {
+    // Capturing an empty grid is legal, so its file must parse back — an
+    // asymmetry here means the one arrangement the app itself wrote refuses
+    // to load.
+    const { arrangement } = captureArrangement(gridOf([]), { id: 'e', name: 'Empty' }, () => undefined);
+    const parsed = parseArrangement(JSON.parse(JSON.stringify(arrangement)));
+    expect(parsed).toBeDefined();
+    expect(parsed!.root.children).toHaveLength(0);
+  });
+});
+
+// ── Capture fidelity under mutation and collapse ────────────────────────────
+
+describe('capture fidelity', () => {
+  it('captures state as a snapshot, not a live reference', () => {
+    const state: Record<string, unknown> = { page: 1 };
+    const { arrangement } = captureArrangement(
+      gridOf([leaf('v1')]),
+      { id: 's', name: 'S' },
+      () => fakeSurface('v1', 'editor.text', undefined, state),
+    );
+    state.page = 99;
+    const stored = (arrangement.root.children[0] as { state?: Record<string, unknown> }).state;
+    expect(stored).toEqual({ page: 1 });
+  });
+
+  it('a collapsed one-child branch keeps the branch slot size, not the child measure', () => {
+    // The child's size runs along the collapsing branch's axis; the slot it
+    // is promoted into runs along the parent's. 300 vertical pixels are not
+    // 300 horizontal ones.
+    const grid = gridOf([
+      {
+        type: SerializedNodeType.Branch, orientation: Orientation.Vertical,
+        size: 420, sizingMode: SizingMode.Pixel,
+        children: [leaf('a', 300)],
+      },
+      leaf('b', 780),
+    ]);
+    const { arrangement } = captureArrangement(
+      grid, { id: 'c', name: 'C' },
+      (id) => fakeSurface(id, 'editor.text'),
+    );
+    const first = arrangement.root.children[0] as { type: string; size: number };
+    expect(first.type).toBe('leaf');
+    expect(first.size).toBe(420);
+  });
+
+  it('keeps a placeholder leaf state through resolution', () => {
+    // A missing extension freezes the pane; it must not also wipe it. The
+    // state rides through resolve so a re-save after restore loses nothing.
+    const arrangement: Arrangement = {
+      version: ARRANGEMENT_VERSION, id: 'p', name: 'P',
+      rootOrientation: Orientation.Horizontal,
+      root: {
+        type: 'branch', orientation: Orientation.Horizontal, size: 0, sizingMode: SizingMode.Pixel,
+        children: [{
+          type: 'leaf', size: 300, sizingMode: SizingMode.Pixel,
+          typeId: 'gone.type', state: { queue: [1, 2] },
+        }],
+      },
+    };
+    const resolved = resolveArrangement(arrangement, () => undefined);
+    const ph = resolved.root.children[0] as { kind: string; state?: Record<string, unknown> };
+    expect(ph.kind).toBe('placeholder');
+    expect(ph.state).toEqual({ queue: [1, 2] });
+  });
+});

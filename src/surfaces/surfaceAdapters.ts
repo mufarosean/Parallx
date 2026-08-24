@@ -82,15 +82,35 @@ export interface IEditorBindingBridge {
 /**
  * Bridge for file-backed and uri-backed inputs.
  *
- * `uri` when there is one, otherwise the input's own typeId+id. The fallback
- * matters: a welcome or diff input has no uri but still needs a stable key, or
- * an arrangement containing one cannot round-trip.
+ * The uri's scheme is the binding kind when there is one — 'file' for files,
+ * 'untitled' for buffers that are not files and should not claim to be.
+ *
+ * Without a uri, the input's SERIALIZED form is the key: the same payload the
+ * editor-restore path already round-trips. The instance id would be simpler,
+ * but it is a session counter, and an arrangement written with one could
+ * never resolve after a restart.
  */
 export function editorInputToBinding(input: IEditorInput): ISurfaceBinding {
   const uri = input.uri;
+  if (uri) {
+    return {
+      kind: uri.scheme || 'file',
+      key: String(uri),
+      label: input.name,
+      description: input.description || undefined,
+    };
+  }
+  let key: string;
+  try {
+    key = JSON.stringify(input.serialize());
+  } catch {
+    // Session-local, and marked as such: still good enough to match a live
+    // instance, never good enough to persist quietly as if it were stable.
+    key = `session:${input.id}`;
+  }
   return {
-    kind: uri ? 'file' : input.typeId,
-    key: uri ? String(uri) : input.id,
+    kind: input.typeId,
+    key,
     label: input.name,
     description: input.description || undefined,
   };
@@ -104,6 +124,9 @@ export function editorInputToBinding(input: IEditorInput): ISurfaceBinding {
  */
 export class EditorPaneSurface extends Disposable implements ISurface {
   private _input: IEditorInput | undefined;
+  private _inputListener: { dispose(): void } | undefined;
+  private _created = false;
+  private _pendingInput: IEditorInput | undefined;
 
   private readonly _onDidChangeTitle = this._register(new Emitter<void>());
   readonly onDidChangeTitle: Event<void> = this._onDidChangeTitle.event;
@@ -139,12 +162,23 @@ export class EditorPaneSurface extends Disposable implements ISurface {
   }
   get element(): HTMLElement | undefined { return this._pane.element; }
 
-  create(container: HTMLElement): void { this._pane.create(container); }
+  create(container: HTMLElement): void {
+    this._pane.create(container);
+    this._created = true;
+    if (this._pendingInput) {
+      const input = this._pendingInput;
+      this._pendingInput = undefined;
+      void this._pane.setInput(input).catch((err) => {
+        console.error('[surfaces] deferred setInput failed', err);
+      });
+    }
+  }
 
   async setBinding(binding: ISurfaceBinding | undefined): Promise<void> {
     if (!binding) {
-      this._pane.clearInput();
-      this._input = undefined;
+      if (this._created) this._pane.clearInput();
+      this._pendingInput = undefined;
+      this._setInput(undefined);
       this._onDidChangeTitle.fire();
       return;
     }
@@ -155,9 +189,39 @@ export class EditorPaneSurface extends Disposable implements ISurface {
       // placeholder, not an empty pane and no explanation.
       throw new Error(`Cannot resolve binding: ${binding.kind}:${binding.key}`);
     }
-    this._input = input;
-    await this._pane.setInput(input);
+    this._setInput(input);
+    if (this._created) {
+      await this._pane.setInput(input);
+    } else {
+      // No DOM yet — SurfaceGridView creates lazily on first layout, and a
+      // pane fed setInput before create renders nothing. Hold the input and
+      // apply it when create runs.
+      this._pendingInput = input;
+    }
     this._onDidChangeTitle.fire();
+  }
+
+  /** Swap the tracked input: re-wire the label listener, dispose the old one. */
+  private _setInput(input: IEditorInput | undefined): void {
+    if (this._input === input) return;
+    this._inputListener?.dispose();
+    const previous = this._input;
+    this._input = input;
+    // A renamed file must repaint its tab: the input's label event is the
+    // only channel that knows.
+    this._inputListener = input?.onDidChangeLabel(() => this._onDidChangeTitle.fire());
+    // The bridge builds inputs for this adapter alone; a replaced one has no
+    // other owner left to dispose it.
+    previous?.dispose();
+  }
+
+  override dispose(): void {
+    this._inputListener?.dispose();
+    this._inputListener = undefined;
+    this._input?.dispose();
+    this._input = undefined;
+    this._pendingInput = undefined;
+    super.dispose();
   }
 
   layout(width: number, height: number): void { this._pane.layout(width, height); }

@@ -95,14 +95,26 @@ export function captureArrangement(
       if (!surface) { dropped++; return undefined; }
       captured++;
       const binding = surface.binding;
-      const state = surface.saveState();
+      // Snapshot, not reference: the surface keeps mutating its live state
+      // object, and a captured arrangement must mean what was on screen at
+      // capture time. JSON is the fidelity bar anyway — persistence will do
+      // exactly this to it.
+      let state: SurfaceState | undefined;
+      const live = surface.saveState();
+      if (live && Object.keys(live).length > 0) {
+        try {
+          state = JSON.parse(JSON.stringify(live)) as SurfaceState;
+        } catch {
+          state = undefined;
+        }
+      }
       return {
         type: 'leaf',
         size: node.size,
         sizingMode: node.sizingMode,
         typeId: surface.typeId,
         ...(binding ? { binding } : {}),
-        ...(state && Object.keys(state).length > 0 ? { state } : {}),
+        ...(state ? { state } : {}),
       };
     }
 
@@ -113,7 +125,17 @@ export function captureArrangement(
     // down to one child is no longer a split, so it collapses — the same
     // canonical-tree rule the grid itself keeps.
     if (children.length === 0) return undefined;
-    if (children.length === 1) return children[0];
+    if (children.length === 1) {
+      // The survivor takes over the collapsed branch's SLOT. Its own size was
+      // measured along the branch's axis; the slot it is promoted into runs
+      // along the parent's, and keeping the perpendicular measure would
+      // shrink the subtree on restore. A zero slot means the branch was never
+      // laid out, and zero is no opinion — keep the child's own measure then.
+      return {
+        ...children[0],
+        ...(node.size > 0 ? { size: node.size, sizingMode: node.sizingMode } : {}),
+      };
+    }
     return {
       type: 'branch',
       orientation: node.orientation,
@@ -241,6 +263,10 @@ export function resolveArrangement(
         sizingMode: node.sizingMode,
         typeId: node.typeId,
         ...(node.binding ? { binding: node.binding } : {}),
+        // The state rides along even though nothing can render it: the
+        // placeholder hands it back on capture, so saving an arrangement
+        // that contains one loses nothing.
+        ...(node.state ? { state: node.state } : {}),
         unavailable: miss,
       };
     }
@@ -281,7 +307,7 @@ export function parseArrangement(raw: unknown): Arrangement | undefined {
   if (typeof a['id'] !== 'string' || typeof a['name'] !== 'string') return undefined;
   if (typeof a['version'] !== 'number' || a['version'] > ARRANGEMENT_VERSION) return undefined;
 
-  const root = parseNode(a['root']);
+  const root = parseNode(a['root'], 0);
   if (!root || root.type !== 'branch') return undefined;
 
   const orientation = a['rootOrientation'] === Orientation.Vertical
@@ -298,10 +324,22 @@ export function parseArrangement(raw: unknown): Arrangement | undefined {
   };
 }
 
-function parseNode(raw: unknown): ArrangementNode | undefined {
+/**
+ * No real layout nests anywhere near this deep; a file that does is either
+ * corrupt or hostile, and JSON.parse accepts nesting far deeper than the call
+ * stack this walker would need. The cap keeps "malformed degrades" true
+ * instead of turning into a RangeError in the startup path.
+ */
+const MAX_ARRANGEMENT_DEPTH = 64;
+
+function parseNode(raw: unknown, depth: number): ArrangementNode | undefined {
+  if (depth > MAX_ARRANGEMENT_DEPTH) return undefined;
   if (!raw || typeof raw !== 'object') return undefined;
   const n = raw as Record<string, unknown>;
-  const size = typeof n['size'] === 'number' ? n['size'] : 0;
+  const rawSize = n['size'];
+  const size = typeof rawSize === 'number' && Number.isFinite(rawSize) && rawSize >= 0
+    ? rawSize
+    : 0;
   const sizingMode = n['sizingMode'] === SizingMode.Proportional
     ? SizingMode.Proportional
     : SizingMode.Pixel;
@@ -323,10 +361,15 @@ function parseNode(raw: unknown): ArrangementNode | undefined {
   if (n['type'] === 'branch') {
     const rawChildren = Array.isArray(n['children']) ? n['children'] : [];
     const children = rawChildren
-      .map(parseNode)
+      .map((c) => parseNode(c, depth + 1))
       .filter((c): c is ArrangementNode => c !== undefined);
-    // A branch with nothing usable in it is dropped by the caller's filter.
-    if (children.length === 0) return undefined;
+    // A deeper branch with nothing usable in it is dropped by the caller's
+    // filter. The ROOT may be empty only when the file genuinely SAYS empty:
+    // capturing an empty grid is legal and must parse back. Children that
+    // were all DROPPED mean the file is malformed (or a nesting bomb), and
+    // pretending that was an empty layout would replace the user's workspace
+    // with nothing on restore.
+    if (children.length === 0 && (depth > 0 || rawChildren.length > 0)) return undefined;
     return {
       type: 'branch',
       orientation: n['orientation'] === Orientation.Vertical

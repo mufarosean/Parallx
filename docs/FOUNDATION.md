@@ -227,8 +227,11 @@ place.
 Each step leaves a working app and is independently shippable.
 
 1. **`Grid.moveView`** plus tests. No user-visible change. Unblocks everything.
-2. **The Surface type**, with the four existing classes adapted onto it
-   behind their current APIs. No user-visible change.
+2. **The Surface type**, with adapters for the two content contracts that
+   need them: views (`ViewSurface`) and editor panes (`EditorPaneSurface`).
+   The status bar is chrome, not content (Decision 3), so it gets no adapter;
+   dashboard widgets become surfaces when the dashboard itself migrates onto
+   the tree, not before. No user-visible change.
 3. **One tree.** Delete `EditorPart`'s nested grid; editor groups become
    nodes in the workspace tree. Sidebar/aux/panel become positions. Highest
    risk step; everything after it is small.

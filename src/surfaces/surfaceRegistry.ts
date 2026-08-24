@@ -1,8 +1,10 @@
 // surfaceRegistry.ts — the one place a renderable thing is registered
 //
-// Foundation Decision 6 (docs/FOUNDATION.md). Replaces four registration
-// paths: `contributes.views` + `viewContainers`, `contributes.editors`, the
-// dashboard widget API, and `contributes.statusBar`.
+// Foundation Decision 6 (docs/FOUNDATION.md). Replaces the registration paths
+// for content: `contributes.views` + `viewContainers`, `contributes.editors`,
+// and (when the dashboard migrates onto the tree) the dashboard widget API.
+// The status bar is window chrome, not content (Decision 3), and keeps its
+// own registration.
 //
 // Module singleton, matching colorRegistry / settingsPanelRegistry: a tool may
 // register before or after the workbench is built, and service-activation
@@ -20,6 +22,13 @@ import { bindingsEqual } from './surfaceTypes.js';
 export interface ISurfaceInstance {
   readonly surface: ISurface;
   readonly descriptor: ISurfaceDescriptor;
+  /**
+   * The binding this instance was created FOR. Surfaces apply bindings
+   * asynchronously, so `surface.binding` can lag the truth by an await — long
+   * enough for a second identical open to slip past reuse and duplicate the
+   * pane. Matching falls back to this record until the surface catches up.
+   */
+  readonly requestedBinding?: ISurfaceBinding;
 }
 
 export class SurfaceRegistry {
@@ -94,15 +103,41 @@ export class SurfaceRegistry {
     const descriptor = this._descriptors.get(typeId);
     if (!descriptor) throw new Error(`Surface type not registered: ${typeId}`);
 
-    if (!opts.forceNew) {
+    // A single-instance type ignores forceNew: "another view of this" is
+    // exactly the thing its declaration says is meaningless, and honouring
+    // the flag would strand a duplicate no lookup can ever return.
+    if (!opts.forceNew || descriptor.instances === 'single') {
       const existing = this.findInstance(typeId, binding);
       if (existing) return existing;
     }
 
     const instanceId = `${typeId}#${this._nextInstance++}`;
     const surface = descriptor.create(instanceId);
-    const instance: ISurfaceInstance = { surface, descriptor };
+    const instance: ISurfaceInstance = {
+      surface,
+      descriptor,
+      ...(binding ? { requestedBinding: binding } : {}),
+    };
     this._instances.set(instanceId, instance);
+    this._onDidCreateInstance.fire(instance);
+    return instance;
+  }
+
+  /**
+   * Track a surface built outside any registration.
+   *
+   * Today that is only the restore placeholder, which stands in for a type
+   * that is NOT registered — the absence is why it exists, so it cannot come
+   * through `createInstance`. Adoption gives it the same lifetime as every
+   * other instance: one `disposeInstance`, one event, no special casing
+   * anywhere downstream.
+   */
+  adoptInstance(surface: ISurface, descriptor: ISurfaceDescriptor): ISurfaceInstance {
+    if (this._instances.has(surface.id)) {
+      throw new Error(`Instance already tracked: ${surface.id}`);
+    }
+    const instance: ISurfaceInstance = { surface, descriptor };
+    this._instances.set(surface.id, instance);
     this._onDidCreateInstance.fire(instance);
     return instance;
   }
@@ -119,7 +154,9 @@ export class SurfaceRegistry {
     for (const inst of this._instances.values()) {
       if (inst.descriptor.typeId !== typeId) continue;
       if (single) return inst;
-      if (bindingsEqual(inst.surface.binding, binding)) return inst;
+      // The live binding wins once the surface has applied it; until then the
+      // requested one stands in, so an instance mid-load is still findable.
+      if (bindingsEqual(inst.surface.binding ?? inst.requestedBinding, binding)) return inst;
     }
     return undefined;
   }
