@@ -58,8 +58,16 @@ function normalizeEnvironments(src: string): string {
 /** Pull math out of the raw markdown, longest constructs first. */
 function extractMath(markdown: string): { text: string; segments: MathSegment[] } {
   const segments: MathSegment[] = [];
+  // An earlier pass may have stashed a construct INSIDE this one — the
+  // environment pass fires on `\begin{cases}…\end{cases}` sitting within a
+  // `$…$` span, hollowing it out to `$Expos(t) = ⟪1⟫$`; KaTeX then drew the
+  // private-use placeholder as red tofu (user report: cases formulas
+  // rendering as boxes). Expanding nested placeholders back to their raw
+  // source makes the passes compose in any nesting order.
+  const unstash = (s: string): string =>
+    s.replace(new RegExp(PH_RE.source, 'g'), (whole, n: string) => segments[Number(n)]?.raw ?? whole);
   const stash = (raw: string, src: string, display: boolean): string => {
-    segments.push({ raw, src: src.trim(), display });
+    segments.push({ raw: unstash(raw), src: unstash(src).trim(), display });
     return `${PH_OPEN}${segments.length - 1}${PH_CLOSE}`;
   };
   let t = String(markdown ?? '');

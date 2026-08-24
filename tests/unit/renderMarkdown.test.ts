@@ -56,6 +56,29 @@ describe('renderMarkdown — math protection', () => {
     expect(el.querySelectorAll('.katex').length).toBe(3);
   });
 
+  it('a cases environment INSIDE $...$ renders whole (2026-08-18 tofu regression)', () => {
+    // The real failing card: the environment pass stashed the cases block
+    // out of the inline span, leaving "Expos(t) = <placeholder>" for KaTeX,
+    // which drew the private-use placeholder characters as red boxes.
+    const src = '$G(t) = Expos(t) \\cdot G^*(AvgAge(t))$\n'
+      + '$Expos(t) = \\begin{cases} t/12 & t \\le 12 \\\\ 1 & t > 12 \\end{cases}$\n'
+      + '$AvgAge(t) = \\begin{cases} t/2 & t \\le 12 \\\\ t - 6 & t > 12 \\end{cases}$';
+    const el = renderMarkdown(src);
+    expect(el.querySelectorAll('.katex').length).toBe(3);
+    expect(el.querySelector('.katex-error')).toBeNull();
+    // No private-use placeholder characters may survive into the output.
+    expect(text(el)).not.toMatch(/[\uE000-\uF8FF]/);
+    // The cases content actually made it into the math.
+    expect(text(el)).toContain('t/12');
+  });
+
+  it('a matrix environment inside $...$ renders whole', () => {
+    const el = renderMarkdown('$M = \\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}$');
+    expect(el.querySelectorAll('.katex').length).toBe(1);
+    expect(el.querySelector('.katex-error')).toBeNull();
+    expect(text(el)).not.toMatch(/[\uE000-\uF8FF]/);
+  });
+
   it('dollars inside code stay literal', () => {
     const el = renderMarkdown('Use `awk $1 $2` and:\n\n```\nprice = $100\n```');
     expect(el.querySelectorAll('.katex').length).toBe(0);
