@@ -181,3 +181,32 @@ grid's collapse rules skip it, arrangements serialize it, and any region
 can use it. `resizeWithFixedViews` and `splitView` learn to target branch
 ids. That keeps Decision 3 honest — one tree, no special cases — while
 giving regions a name.
+
+## Phase A design — containers are citizens, rails are stacks (2026-08-24)
+
+Decided in use, not in theory: moving the primary sidebar moved a SHELL,
+and the shell owned every tool inside it. The shell was never the thing
+the user meant. These are the decisions, made by Mufaro:
+
+- **The unit of dragging is the VIEW CONTAINER** — Explorer as a whole,
+  Search as a whole, an extension's sidebar UI as a whole. Views inside a
+  container stay its internal business.
+- **A container lives in one of three places:** docked in the LEFT rail,
+  docked in the RIGHT rail, or DETACHED as a free box in the body grid.
+  The rails keep today's convenience: many tools, one slot, one showing.
+- **Icons follow the rail.** A right-docked container's icon lives in a
+  RIGHT activity bar — clicking the left ribbon for a right sidebar is
+  awkward, so the ribbon is part of the rail, not global chrome. Detached
+  (middle) containers keep their icon in the PRIMARY (left) ribbon, which
+  acts as reveal/focus.
+- **The icon IS a handle.** Dragging an icon to the other ribbon moves the
+  container to that rail. Dragging the container's window does the same;
+  both gestures are the same move.
+- **Panel tabs detach too.** The panel is the same kind of stack with tab
+  chrome; a tab dragged out becomes a box like any other.
+
+The stack concept this implies is the same one the editor area needs
+(groups = stacks of documents with tab chrome); phase B folds the editor
+into it. Phase A ships the container layer: rails as stacks of container
+surfaces, dual ribbons, detach/dock by drag, all persisted with the body
+tree.
