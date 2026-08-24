@@ -55,7 +55,7 @@ import {
   createDefaultEditorSnapshot,
 } from '../workspace/workspaceTypes.js';
 import type { SerializedEditorSnapshot, SerializedEditorInputSnapshot } from '../workspace/workspaceTypes.js';
-import { createDefaultLayoutState } from '../layout/layoutModel.js';
+import { LAYOUT_SCHEMA_VERSION } from '../layout/layoutModel.js';
 import { registerBuiltinEditorDeserializers, deserializeEditorInput, hasEditorInputDeserializer } from '../editor/editorInputDeserializer.js';
 import type { IEditorInput } from '../editor/editorInput.js';
 
@@ -1350,8 +1350,15 @@ export class Workbench extends Layout {
     const state = this._restoredState;
     if (!state) return;
 
+    // 0. Restore the saved body tree — part POSITIONS and sizes in one
+    // step. Presence in the tree is visibility, so when this succeeds the
+    // per-part visibility switches below are skipped for the body parts.
+    // Saves from the old three-grid model fail its validation (their grid
+    // carries titlebar/statusbar leaves) and take the legacy path instead.
+    const treeRestored = this.restoreBodyTree(state.layout?.grid);
+
     // 1. Restore part visibility and sizes.
-    // Parts that live inside grids (sidebar, panel, aux bar) must use
+    // Parts that live in the grid (sidebar, panel, aux bar) must use
     // their toggle methods — not bare setVisible() — so the grid adds
     // or removes the view correctly. A bare setVisible() only flips the
     // CSS class and leaves the grid allocating space for a hidden part,
@@ -1365,14 +1372,15 @@ export class Workbench extends Layout {
       if (part.visible !== partSnap.visible) {
         switch (partSnap.partId) {
           case PartId.AuxiliaryBar:
-            this.toggleAuxiliaryBar();
+            if (!treeRestored) this.toggleAuxiliaryBar();
             break;
           case PartId.Panel:
-            this.togglePanel();
+            if (!treeRestored) this.togglePanel();
             break;
           case PartId.Sidebar:
             // Sidebar toggle has animation; skip it during restore.
             // Directly remove from grid + set invisible.
+            if (treeRestored) break;
             if (part.visible && !partSnap.visible) {
               this._grid.removeView(this._sidebar.id);
               part.setVisible(false);
@@ -1416,7 +1424,7 @@ export class Workbench extends Layout {
     const sidebarSnap = state.parts.find(p => p.partId === PartId.Sidebar);
     if (sidebarSnap?.width && sidebarSnap.width > 0) {
       this._lastSidebarWidth = sidebarSnap.width;
-      if (this._sidebar.visible) {
+      if (!treeRestored && this._sidebar.visible) {
         this._grid.resizeView(this._sidebar.id, sidebarSnap.width);
       }
     }
@@ -1424,7 +1432,7 @@ export class Workbench extends Layout {
     const panelSnap = state.parts.find(p => p.partId === PartId.Panel);
     if (panelSnap?.height && panelSnap.height > 0) {
       this._lastPanelHeight = panelSnap.height;
-      if (this._panel.visible) {
+      if (!treeRestored && this._panel.visible) {
         this._grid.resizeView(this._panel.id, panelSnap.height);
       }
     }
@@ -1432,7 +1440,7 @@ export class Workbench extends Layout {
     const auxBarSnap = state.parts.find(p => p.partId === PartId.AuxiliaryBar);
     if (auxBarSnap?.width && auxBarSnap.width > 0) {
       this._lastAuxBarWidth = auxBarSnap.width;
-      if (this._auxBarVisible) {
+      if (!treeRestored && this._auxBarVisible) {
         this._grid.resizeView(this._auxiliaryBar.id, auxBarSnap.width);
       }
     }
@@ -1709,7 +1717,15 @@ export class Workbench extends Layout {
       viewContainers: allContainers,
       viewManager: this._viewManager,
       layoutSerializer: () => {
-        return createDefaultLayoutState(this._container.clientWidth, this._container.clientHeight);
+        // The REAL body tree — part positions included. The old model saved
+        // a regenerated default here, which is why a relocated part never
+        // survived a restart.
+        return {
+          version: LAYOUT_SCHEMA_VERSION,
+          grid: this.serializeBodyTree(),
+          parts: [],
+          views: [],
+        };
       },
       contextProvider: () => {
         return {

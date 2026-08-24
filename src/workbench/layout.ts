@@ -835,6 +835,99 @@ export abstract class Layout extends Disposable {
     this._layoutViewContainers();
   }
 
+  // ════════════════════════════════════════════════════════════════════════
+  // Body tree persistence and relocation
+  // ════════════════════════════════════════════════════════════════════════
+
+  /** The body tree as saved state. Leaves are part ids — stable across runs. */
+  serializeBodyTree(): SerializedGrid {
+    return this._grid.serialize();
+  }
+
+  /**
+   * Restore a saved body tree — the user's part POSITIONS, which the old
+   * three-grid model never persisted (a sidebar moved to the right edge
+   * snapped back to the left on restart).
+   *
+   * Only a tree whose every leaf is one of the four body parts, exactly
+   * once, editor included, is accepted. That is deliberate validation, not
+   * pedantry: saves from the OLD model carry the aspirational default state
+   * with titlebar and statusbar leaves, and they fall through here to the
+   * legacy visibility path rather than restoring a shape the app never had.
+   */
+  restoreBodyTree(saved: SerializedGrid | undefined): boolean {
+    if (!saved || typeof saved !== 'object' || !saved.root) return false;
+
+    const leaves: string[] = [];
+    const walk = (node: SerializedGridNode): void => {
+      if (!node || typeof node !== 'object') return;
+      if (node.type === SerializedNodeType.Leaf) {
+        leaves.push(node.viewId);
+        return;
+      }
+      if (Array.isArray(node.children)) {
+        for (const child of node.children) walk(child);
+      }
+    };
+    walk(saved.root);
+
+    const unique = new Set(leaves);
+    if (leaves.length === 0 || unique.size !== leaves.length) return false;
+    if (!unique.has(this._editor.id)) return false;
+    const known = new Set(
+      [this._sidebar, this._editor, this._panel, this._auxiliaryBar].map((p) => p.id),
+    );
+    for (const id of unique) {
+      if (!known.has(id)) return false;
+    }
+
+    const sidebarWas = this._sidebar.visible;
+    const panelWas = this._panel.visible;
+    const auxWas = this._auxBarVisible;
+
+    this._withTrackingSuspended(() => {
+      this._grid.restoreFrom(saved, (viewId) => this._partGridView(viewId));
+      // Presence in the tree IS visibility now.
+      this._sidebar.setVisible(unique.has(this._sidebar.id));
+      this._panel.setVisible(unique.has(this._panel.id));
+      const auxVisible = unique.has(this._auxiliaryBar.id);
+      this._auxiliaryBar.setVisible(auxVisible);
+      this._auxBarVisible = auxVisible;
+      this._panelMaximized = false;
+      this._relayoutBody();
+    });
+
+    if (sidebarWas !== this._sidebar.visible) {
+      this._onDidChangePartVisibility.fire({ partId: PartId.Sidebar, visible: this._sidebar.visible });
+    }
+    if (panelWas !== this._panel.visible) {
+      this._onDidChangePartVisibility.fire({ partId: PartId.Panel, visible: this._panel.visible });
+    }
+    if (auxWas !== this._auxBarVisible) {
+      this._onDidChangePartVisibility.fire({ partId: PartId.AuxiliaryBar, visible: this._auxBarVisible });
+    }
+    this._layoutViewContainers();
+    return true;
+  }
+
+  /**
+   * Move a part to an outer edge of the body — the sidebar to the right,
+   * the panel to a side. A position change, nothing more: the part keeps
+   * its instance, its content and its size along the new axis, and the
+   * shape persists with the body tree.
+   */
+  movePartToEdge(partId: string, orientation: Orientation, before: boolean): void {
+    if (!this._grid.hasView(partId)) return;
+    this._withTrackingSuspended(() => {
+      const size = this._grid.getViewSize(partId);
+      this._grid.moveViewToEdge(
+        partId, orientation, before, size !== undefined && size > 0 ? size : undefined,
+      );
+      this._relayoutBody();
+    });
+    this._layoutViewContainers();
+  }
+
   // ── LayoutHost Protocol ──────────────────────────────────────────────────
   // These methods fulfil the LayoutHost interface expected by LayoutService.
   // VS Code reference: IWorkbenchLayoutService.isVisible / setPartHidden.

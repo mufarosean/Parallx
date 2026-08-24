@@ -92,6 +92,68 @@ const layoutReset: CommandDescriptor = {
   },
 };
 
+// ── Part relocation — positions, not classes ──
+//
+// The body is one tree, so "the sidebar on the right" is a move, not a
+// feature. Obsidian's sidebar-on-either-edge, from the palette; the shape
+// persists with the body tree.
+
+function movePartCommand(
+  id: string,
+  title: string,
+  partId: string,
+  orientation: 'horizontal' | 'vertical',
+  before: boolean,
+  aiDescription: string,
+): CommandDescriptor {
+  return {
+    id,
+    title,
+    category: 'Layout',
+    aiInvocable: true,
+    aiDescription,
+    handler(ctx) {
+      wb(ctx).movePartToEdge(partId, orientation, before);
+    },
+  };
+}
+
+const moveSidebarLeft = movePartCommand(
+  'layout.moveSidebarLeft', 'Move Primary Sidebar To Left Edge',
+  'workbench.parts.sidebar', 'horizontal', true,
+  'Move the primary sidebar to the left edge of the window.',
+);
+const moveSidebarRight = movePartCommand(
+  'layout.moveSidebarRight', 'Move Primary Sidebar To Right Edge',
+  'workbench.parts.sidebar', 'horizontal', false,
+  'Move the primary sidebar to the right edge of the window.',
+);
+const movePanelBottom = movePartCommand(
+  'layout.movePanelBottom', 'Move Panel To Bottom Edge',
+  'workbench.parts.panel', 'vertical', false,
+  'Move the panel back to the bottom edge of the window.',
+);
+const movePanelLeft = movePartCommand(
+  'layout.movePanelLeft', 'Move Panel To Left Edge',
+  'workbench.parts.panel', 'horizontal', true,
+  'Move the panel to the left edge of the window as a side column.',
+);
+const movePanelRight = movePartCommand(
+  'layout.movePanelRight', 'Move Panel To Right Edge',
+  'workbench.parts.panel', 'horizontal', false,
+  'Move the panel to the right edge of the window as a side column.',
+);
+const moveAuxBarLeft = movePartCommand(
+  'layout.moveAuxBarLeft', 'Move Secondary Sidebar To Left Edge',
+  'workbench.parts.auxiliarybar', 'horizontal', true,
+  'Move the secondary sidebar to the left edge of the window.',
+);
+const moveAuxBarRight = movePartCommand(
+  'layout.moveAuxBarRight', 'Move Secondary Sidebar To Right Edge',
+  'workbench.parts.auxiliarybar', 'horizontal', false,
+  'Move the secondary sidebar to the right edge of the window.',
+);
+
 //  Edit Commands (browser-native delegates) 
 
 // Undo/redo first offer the action to the focused editor pane via a cancelable
@@ -246,6 +308,13 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   previousEditor,
   // Layout
   layoutReset,
+  moveSidebarLeft,
+  moveSidebarRight,
+  movePanelBottom,
+  movePanelLeft,
+  movePanelRight,
+  moveAuxBarLeft,
+  moveAuxBarRight,
   // Workspace
   workspaceSave,
   workspaceSwitch,

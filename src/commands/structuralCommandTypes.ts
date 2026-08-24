@@ -55,6 +55,11 @@ export interface WorkbenchLike {
   };
   /** Rebuild the default shape — the reset command's whole implementation. */
   resetLayout(): void;
+  /**
+   * Move a part to an outer edge of the body. Orientation values are the
+   * grid's ('horizontal' | 'vertical'); before = left/top edge.
+   */
+  movePartToEdge(partId: string, orientation: 'horizontal' | 'vertical', before: boolean): void;
   readonly _workspaceSaver: { save(): Promise<void>; collectState(): unknown };
   readonly _titlebar: { setWorkspaceName(name: string): void };
   _updateWindowTitle(editor?: unknown): void;

@@ -311,3 +311,105 @@ describe('defaultLayoutState', () => {
     expect(panel.size).toBe(200);
   });
 });
+
+describe('body tree persistence and relocation', () => {
+  let container: HTMLElement;
+  let layout: TestLayout;
+  let parts: TestLayout['parts'];
+
+  const freshParts = (): TestLayout['parts'] => ({
+    titlebar: fakePart('workbench.parts.titlebar'),
+    activityBar: fakePart('workbench.parts.activitybar'),
+    sidebar: fakePart('workbench.parts.sidebar'),
+    editor: fakePart('workbench.parts.editor'),
+    panel: fakePart('workbench.parts.panel'),
+    auxiliaryBar: fakePart('workbench.parts.auxiliarybar', false),
+    statusBar: fakePart('workbench.parts.statusbar'),
+  });
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    Object.defineProperty(container, 'clientWidth', { value: WIDTH, configurable: true });
+    Object.defineProperty(container, 'clientHeight', { value: HEIGHT, configurable: true });
+    document.body.appendChild(container);
+    parts = freshParts();
+    layout = new TestLayout(container, parts);
+  });
+
+  afterEach(() => {
+    layout.dispose();
+    container.remove();
+  });
+
+  it('moves the sidebar to the right edge, size intact', () => {
+    layout.movePartToEdge('workbench.parts.sidebar', Orientation.Horizontal, false);
+    const shape = rootShape(layout);
+    expect(shape[shape.length - 1]).toBe('workbench.parts.sidebar');
+    expect(layout.grid.getViewSize('workbench.parts.sidebar')).toBe(DEFAULT_SIDEBAR_WIDTH);
+  });
+
+  it('moves the panel to a side column', () => {
+    layout.movePartToEdge('workbench.parts.panel', Orientation.Horizontal, true);
+    const shape = rootShape(layout);
+    expect(shape[0]).toBe('workbench.parts.panel');
+    // The editor no longer shares a branch with it.
+    expect(shape).toContain('workbench.parts.editor');
+  });
+
+  it('round-trips a relocated shape through serialize and restore', () => {
+    layout.movePartToEdge('workbench.parts.sidebar', Orientation.Horizontal, false);
+    layout.togglePanel(); // hidden at save time
+    const saved = layout.serializeBodyTree();
+
+    const container2 = document.createElement('div');
+    Object.defineProperty(container2, 'clientWidth', { value: WIDTH, configurable: true });
+    Object.defineProperty(container2, 'clientHeight', { value: HEIGHT, configurable: true });
+    document.body.appendChild(container2);
+    const parts2 = freshParts();
+    const layout2 = new TestLayout(container2, parts2);
+
+    try {
+      expect(layout2.restoreBodyTree(saved)).toBe(true);
+      const shape = rootShape(layout2);
+      // Sidebar came back on the RIGHT — the position survived the restart.
+      expect(shape[shape.length - 1]).toBe('workbench.parts.sidebar');
+      // Presence is visibility: the hidden panel is not in the tree.
+      expect(parts2.panel.visible).toBe(false);
+      expect(layout2.grid.hasView('workbench.parts.panel')).toBe(false);
+      expect(layout2.isPartVisible('workbench.parts.panel')).toBe(false);
+    } finally {
+      layout2.dispose();
+      container2.remove();
+    }
+  });
+
+  it('rejects a tree from the old model and reports it for the legacy path', () => {
+    // Old saves carry the aspirational default state, titlebar and statusbar
+    // leaves included. Restoring that would build a shape the app never had.
+    const legacy = {
+      orientation: Orientation.Vertical, width: 1000, height: 700,
+      root: {
+        type: 'branch', orientation: Orientation.Vertical, size: 700, sizingMode: 'pixel',
+        children: [
+          { type: 'leaf', viewId: 'workbench.parts.titlebar', size: 30, sizingMode: 'pixel' },
+          { type: 'leaf', viewId: 'workbench.parts.editor', size: 648, sizingMode: 'pixel' },
+          { type: 'leaf', viewId: 'workbench.parts.statusbar', size: 22, sizingMode: 'pixel' },
+        ],
+      },
+    };
+    expect(layout.restoreBodyTree(legacy as never)).toBe(false);
+    // The live tree is untouched.
+    expect(rootShape(layout)).toEqual([
+      'workbench.parts.sidebar',
+      'vertical[workbench.parts.editor, workbench.parts.panel]',
+    ]);
+  });
+
+  it('rejects undefined, editor-less and duplicate-leaf trees', () => {
+    expect(layout.restoreBodyTree(undefined)).toBe(false);
+
+    const noEditor = layout.serializeBodyTree();
+    const stripped = JSON.parse(JSON.stringify(noEditor).replace('workbench.parts.editor', 'workbench.parts.sidebar'));
+    expect(layout.restoreBodyTree(stripped)).toBe(false);
+  });
+});
