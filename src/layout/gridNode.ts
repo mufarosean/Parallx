@@ -78,6 +78,9 @@ export class GridBranchNode extends Disposable {
     if (this._orientation === value) return;
     this._orientation = value;
     this._applyStyles();
+    // Sashes carry their axis in class and cursor; a turned branch that kept
+    // its children needs them recut for the new axis.
+    if (this._children.length > 0) this._rebuildSashes();
     this._onDidChange.fire();
   }
 
@@ -115,7 +118,12 @@ export class GridBranchNode extends Disposable {
       this._childConstraintListeners.set(child, listener);
     }
 
-    this._rebuildDOM();
+    // Insert ONLY the new element. Re-appending the siblings would detach
+    // them from the document for a moment, and a detached iframe or webview
+    // reloads — adding a view must never restart the ones already there.
+    const next = this._children[index + 1];
+    this.element.insertBefore(child.element, next ? next.element : null);
+    this._rebuildSashes();
     this._onDidChange.fire();
   }
 
@@ -129,7 +137,8 @@ export class GridBranchNode extends Disposable {
     this._childConstraintListeners.get(removed)?.dispose();
     this._childConstraintListeners.delete(removed);
 
-    this._rebuildDOM();
+    removed.element.remove();
+    this._rebuildSashes();
     this._onDidChange.fire();
     return removed;
   }
@@ -149,33 +158,21 @@ export class GridBranchNode extends Disposable {
   }
 
   /**
-   * Rebuild the DOM: clear and re-append children with sashes between them.
+   * Drop and recreate the sashes between children.
+   *
+   * Sashes are stateless handles, so recutting them is cheap. The children's
+   * own elements are deliberately never touched here — see addChild for why.
    */
-  private _rebuildDOM(): void {
-    // Clear existing sashes
+  private _rebuildSashes(): void {
     for (const sash of this._sashes) {
       sash.remove();
     }
     this._sashes = [];
 
-    // Clear element
-    while (this.element.firstChild) {
-      this.element.removeChild(this.element.firstChild);
-    }
-
-    // Append children with sashes
-    for (let i = 0; i < this._children.length; i++) {
-      const child = this._children[i];
-      const childElement =
-        child.type === GridNodeType.Branch ? child.element : child.element;
-      this.element.appendChild(childElement);
-
-      // Add sash between children (not after last)
-      if (i < this._children.length - 1) {
-        const sash = this._createSash(i);
-        this._sashes.push(sash);
-        this.element.appendChild(sash);
-      }
+    for (let i = 0; i < this._children.length - 1; i++) {
+      const sash = this._createSash(i);
+      this._sashes.push(sash);
+      this._children[i].element.insertAdjacentElement('afterend', sash);
     }
   }
 

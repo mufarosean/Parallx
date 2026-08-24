@@ -170,7 +170,7 @@ export class Grid extends Disposable {
   private _insertLeafBeside(
     leaf: GridLeafNode,
     existingNode: GridNode,
-    size: number,
+    size: number | undefined,
     splitOrientation: Orientation,
     insertBefore: boolean,
   ): void {
@@ -183,15 +183,16 @@ export class Grid extends Disposable {
 
     if (parent.orientation === splitOrientation) {
       // Same orientation — add as sibling, splitting the existing view's space.
-      // VS Code parity: the new view gets half the existing view's current size.
-      // The `size` param is a hint, but we clamp to ensure correctness.
+      // VS Code parity: with no meaningful hint the new view gets half the
+      // existing view's current size. A hint is still clamped for correctness.
       const insertIndex = insertBefore ? existingIndex : existingIndex + 1;
       const existingSize = this._getNodeSize(existingNode);
       const minExisting = this._getMinSizeAlongOrientation(existingNode, splitOrientation);
       const minNew = this._getMinSizeAlongOrientation(leaf, splitOrientation);
 
       // Ensure the split is at most what the existing view can give
-      const clampedSize = Math.min(size, existingSize - minExisting);
+      const hint = size ?? Math.floor(existingSize / 2);
+      const clampedSize = Math.min(hint, existingSize - minExisting);
       const actualNewSize = Math.max(clampedSize, minNew);
       const actualExistingSize = Math.max(existingSize - actualNewSize, minExisting);
 
@@ -236,8 +237,23 @@ export class Grid extends Disposable {
     // A branch left holding one child is no longer a split. Collapsing here
     // (not after re-insertion) keeps the tree canonical at every moment, so
     // the target's parent lookup below sees the final shape.
-    if (parent.childCount === 1 && parent !== this._root) {
-      this._collapseNode(parent);
+    if (parent !== this._root) {
+      if (parent.childCount === 0) {
+        // Only reachable from an already non-canonical tree, but degrade
+        // sanely: an empty branch is not a layout element. Remove it, and
+        // collapse the grandparent if that removal leaves it a one-child
+        // branch in turn.
+        const grand = this._findParent(parent);
+        if (grand) {
+          grand.removeChild(grand.indexOfChild(parent));
+          parent.dispose();
+          if (grand.childCount === 1 && grand !== this._root) {
+            this._collapseNode(grand);
+          }
+        }
+      } else if (parent.childCount === 1) {
+        this._collapseNode(parent);
+      }
     }
   }
 
@@ -265,7 +281,13 @@ export class Grid extends Disposable {
     const target = this._views.get(targetViewId);
     if (!target) throw new Error(`View not found: ${targetViewId}`);
 
-    const size = leaf.cachedSize;
+    // cachedSize is measured along the SOURCE parent's axis. It only means
+    // anything as a split size when the split runs the same way; a 1000px
+    // width fed into a vertical split would crush the target to its minimum.
+    const sourceParent = this._findParent(leaf);
+    const size = sourceParent?.orientation === splitOrientation && leaf.cachedSize > 0
+      ? leaf.cachedSize
+      : undefined;
     this._detachLeaf(leaf);
     // The target's parent is resolved AFTER the detach: collapsing the old
     // parent can reparent the target, and a lookup from before would insert
@@ -284,38 +306,72 @@ export class Grid extends Disposable {
     viewId: string,
     edgeOrientation: Orientation,
     insertBefore = false,
+    size?: number,
   ): void {
     const leaf = this._views.get(viewId);
     if (!leaf) throw new Error(`View not found: ${viewId}`);
     // Nothing to move relative to, and detaching would empty the grid.
     if (this._views.size < 2) return;
 
-    const size = leaf.cachedSize;
+    // As in moveView: the detached cachedSize only means anything along the
+    // axis it was measured on. An explicit size wins; otherwise fall back to
+    // a quarter of the edge's axis when the old measure ran the other way.
+    const axisTotal = edgeOrientation === Orientation.Horizontal ? this._width : this._height;
+    const sourceParent = this._findParent(leaf);
+    const share = size
+      ?? (sourceParent?.orientation === edgeOrientation && leaf.cachedSize > 0
+        ? leaf.cachedSize
+        : Math.max(Math.floor(axisTotal / 4), 0) || leaf.cachedSize);
     this._detachLeaf(leaf);
 
     if (this._root.orientation === edgeOrientation) {
-      leaf.cachedSize = size;
+      leaf.cachedSize = share;
       this._root.addChild(leaf, insertBefore ? 0 : this._root.childCount);
     } else {
-      // The root runs the other way, so the whole existing layout becomes one
-      // child of a new root-level branch and the moved leaf becomes the other.
+      // The root runs the other way, so the whole existing layout becomes
+      // the moved leaf's sibling along the turned root.
+      const restShare = Math.max(axisTotal - share, 0);
       const existingChildren: GridNode[] = [];
       while (this._root.childCount > 0) {
         const child = this._root.getChild(0);
         this._root.removeChild(0);
         existingChildren.push(child);
       }
-      const inner = new GridBranchNode(
-        edgeOrientation === Orientation.Horizontal ? Orientation.Vertical : Orientation.Horizontal,
-      );
-      for (const child of existingChildren) inner.addChild(child);
       this._root.orientation = edgeOrientation;
-      leaf.cachedSize = size;
+
+      const rest: GridNode[] = [];
+      if (existingChildren.length === 1) {
+        // No wrapper around a single child — a one-child branch is not a
+        // split, and leaving one mounted is exactly the non-canonical shape
+        // _detachLeaf guards against. A lone BRANCH child sat perpendicular
+        // to the old root, which makes it parallel to the turned one, so its
+        // children are hoisted rather than nested same-orientation.
+        const only = existingChildren[0];
+        if (only.type === GridNodeType.Branch) {
+          while (only.childCount > 0) {
+            rest.push(only.getChild(0));
+            only.removeChild(0);
+          }
+          only.dispose();
+        } else {
+          only.cachedSize = restShare;
+          rest.push(only);
+        }
+      } else {
+        const inner = new GridBranchNode(
+          edgeOrientation === Orientation.Horizontal ? Orientation.Vertical : Orientation.Horizontal,
+          restShare,
+        );
+        for (const child of existingChildren) inner.addChild(child);
+        rest.push(inner);
+      }
+
+      leaf.cachedSize = share;
       if (insertBefore) {
         this._root.addChild(leaf);
-        this._root.addChild(inner);
+        for (const node of rest) this._root.addChild(node);
       } else {
-        this._root.addChild(inner);
+        for (const node of rest) this._root.addChild(node);
         this._root.addChild(leaf);
       }
     }
@@ -548,6 +604,29 @@ export class Grid extends Disposable {
     grid._deserializeNode(grid._root, state.root, viewFactory);
     grid.layout();
     return grid;
+  }
+
+  /**
+   * Replace this grid's contents in place from serialized state.
+   *
+   * `deserialize` builds a NEW grid, and with it a new root element, which
+   * forces whoever mounted the old one to re-mount. Restoring in place keeps
+   * the mounted element stable, so switching layouts is a content change
+   * rather than DOM surgery.
+   *
+   * Views still in the tree are removed through the normal path first; as
+   * everywhere else in the grid, view LIFETIME stays the caller's business —
+   * removal detaches, it does not dispose. The state's width/height are
+   * ignored in favour of the grid's current ones: the window did not change
+   * size just because the layout did.
+   */
+  restoreFrom(state: SerializedGrid, viewFactory: (viewId: string) => IGridView): void {
+    for (const id of [...this._views.keys()]) {
+      this.removeView(id);
+    }
+    this._root.orientation = state.orientation;
+    this._deserializeNode(this._root, state.root, viewFactory);
+    this.layout();
   }
 
   /**
@@ -1018,6 +1097,13 @@ export class Grid extends Disposable {
     const onlyChild = branch.getChild(0);
     branch.removeChild(0);
     parent.removeChild(index);
+    // The child's own size was measured along the collapsing branch's axis;
+    // the slot it is promoted into runs along the parent's. Hand it the
+    // branch's slot size, or the subtree shrinks to a stale perpendicular
+    // measure on the next layout.
+    if (branch.size > 0) {
+      this._setNodeSize(onlyChild, branch.size);
+    }
     parent.addChild(onlyChild, index);
     branch.dispose();
   }

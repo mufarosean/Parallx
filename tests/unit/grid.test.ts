@@ -454,3 +454,128 @@ describe('moveViewToEdge', () => {
     };
   }
 });
+
+describe('moveViewToEdge canonical shapes', () => {
+  let grid: Grid;
+
+  beforeEach(() => {
+    grid = new Grid(Orientation.Horizontal, 1000, 600);
+  });
+
+  it('turns the root for two views without minting a one-child wrapper', () => {
+    grid.addView(createMockView('a'), 500);
+    grid.addView(createMockView('b'), 500);
+
+    grid.moveViewToEdge('a', Orientation.Vertical);
+
+    const s = grid.serialize();
+    expect(s.orientation).toBe(Orientation.Vertical);
+    expect(s.root.children).toHaveLength(2);
+    // A flat pair: a one-child branch is not a split, and an edge move must
+    // not create the very shape the tree's canonical rule forbids.
+    expect(s.root.children.every((n) => n.type === 'leaf')).toBe(true);
+  });
+
+  it('hoists a lone branch child instead of nesting same-orientation branches', () => {
+    grid.addView(createMockView('a'), 500);
+    grid.addView(createMockView('b'), 500);
+    grid.splitView('b', createMockView('c'), 200, Orientation.Vertical);
+
+    // H[a, V[b, c]] — move a to the bottom edge. Detaching a leaves V[b, c]
+    // as the root's only child, which is PARALLEL to the turned root.
+    grid.moveViewToEdge('a', Orientation.Vertical);
+
+    const s = grid.serialize();
+    expect(s.orientation).toBe(Orientation.Vertical);
+    expect(s.root.children).toHaveLength(3);
+    expect(s.root.children.every((n) => n.type === 'leaf')).toBe(true);
+    expect(s.root.children.map((n) => (n as { viewId: string }).viewId))
+      .toEqual(['b', 'c', 'a']);
+  });
+
+  it('shares the new axis between the moved view and the rest', () => {
+    grid.addView(createMockView('a'), 500);
+    grid.addView(createMockView('b'), 500);
+
+    grid.moveViewToEdge('a', Orientation.Vertical, false, 200);
+
+    const s = grid.serialize();
+    const byId = new Map(s.root.children.map((n) => [(n as { viewId: string }).viewId, n]));
+    expect((byId.get('a') as { size: number }).size).toBe(200);
+    // The rest takes the remainder of the axis — not the zero share that
+    // crushed the whole existing layout to its minimums on the next layout.
+    expect((byId.get('b') as { size: number }).size).toBe(400);
+  });
+});
+
+describe('restoreFrom', () => {
+  it('rebuilds a serialized shape in place, keeping the root element', () => {
+    const source = new Grid(Orientation.Horizontal, 1000, 600);
+    source.addView(createMockView('a'), 500);
+    source.addView(createMockView('b'), 500);
+    source.splitView('b', createMockView('c'), 200, Orientation.Vertical);
+    source.layout();
+    const state = source.serialize();
+
+    const grid = new Grid(Orientation.Horizontal, 1000, 600);
+    grid.addView(createMockView('x'), 1000);
+    const element = grid.element;
+
+    grid.restoreFrom(state, (viewId) => createMockView(viewId));
+
+    // Same DOM node: whoever mounted the grid does not have to re-mount it.
+    expect(grid.element).toBe(element);
+    // What was there before is out of the tree. Removal detaches, it never
+    // disposes — view lifetime is the caller's everywhere in the grid.
+    expect(grid.hasView('x')).toBe(false);
+    expect(grid.viewCount).toBe(3);
+    // Same dimensions in, same tree out — nesting, order and sizes included.
+    expect(grid.serialize()).toEqual(state);
+  });
+
+  it('restores an empty state to an empty grid', () => {
+    const empty = new Grid(Orientation.Horizontal, 1000, 600).serialize();
+    const grid = new Grid(Orientation.Horizontal, 1000, 600);
+    grid.addView(createMockView('a'), 1000);
+
+    grid.restoreFrom(empty, () => { throw new Error('no views to build'); });
+
+    expect(grid.viewCount).toBe(0);
+  });
+});
+
+describe('structural changes leave sibling DOM attached', () => {
+  it('never detaches a bystander element while its neighbours rearrange', () => {
+    const grid = new Grid(Orientation.Horizontal, 1000, 600);
+    const a = createMockView('a');
+    const b = createMockView('b');
+    grid.addView(a, 400);
+    grid.addView(b, 300);
+
+    // Record every element detached from here on. A detached iframe or
+    // webview reloads, so an untouched sibling must never appear here.
+    const detached = new Set<Node>();
+    const origRemove = Element.prototype.remove;
+    const origRemoveChild = Node.prototype.removeChild;
+    Element.prototype.remove = function (this: Element) {
+      detached.add(this);
+      return origRemove.call(this);
+    };
+    Node.prototype.removeChild = function <T extends Node>(this: Node, child: T): T {
+      detached.add(child);
+      return origRemoveChild.call(this, child) as T;
+    } as typeof Node.prototype.removeChild;
+
+    try {
+      grid.addView(createMockView('c'), 300);
+      grid.moveView('c', 'a', Orientation.Vertical);
+      grid.removeView('c');
+    } finally {
+      Element.prototype.remove = origRemove;
+      Node.prototype.removeChild = origRemoveChild;
+    }
+
+    // b was a bystander throughout the add, the move and the close.
+    expect(detached.has(b.element)).toBe(false);
+  });
+});
