@@ -15,7 +15,9 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import { SurfaceTree } from '../../src/surfaces/surfaceTree';
 import { SurfaceRegistry } from '../../src/surfaces/surfaceRegistry';
-import { resolveArrangement } from '../../src/surfaces/arrangement';
+import { resolveArrangement, type Arrangement } from '../../src/surfaces/arrangement';
+import { SizingMode } from '../../src/layout/layoutTypes';
+import type { SerializedBranchNode } from '../../src/layout/layoutModel';
 import {
   SurfacePlacement,
   type ISurface,
@@ -69,6 +71,16 @@ function descriptor(typeId: string, placement = SurfacePlacement.Center): ISurfa
 }
 
 const file = (p: string): ISurfaceBinding => ({ kind: 'file', key: p, label: p });
+
+/** Loose view of a captured arrangement node, for walking in asserts. */
+type SerializedArrangementNode = {
+  type: string;
+  typeId?: string;
+  orientation?: Orientation;
+  binding?: { key?: string };
+  state?: Record<string, unknown>;
+  children?: SerializedArrangementNode[];
+};
 
 describe('SurfaceTree', () => {
   let registry: SurfaceRegistry;
@@ -191,7 +203,7 @@ describe('SurfaceTree', () => {
 
   // ── Arrangements ──
 
-  it('captures and restores a layout with its bindings', () => {
+  it('captures and restores a layout with its bindings', async () => {
     const a = tree.open('editor.text', file('/taylor.pdf')) as TestSurface;
     a.setState({ page: 12 });
     tree.open('explorer');
@@ -202,14 +214,68 @@ describe('SurfaceTree', () => {
     const resolved = resolveArrangement(arrangement, (t) => registry.getDescriptor(t));
     expect(resolved.unavailable).toHaveLength(0);
 
-    const { opened, skipped } = tree.restore(resolved);
+    const { opened, placeholders } = tree.restore(resolved);
     expect(opened).toBe(2);
-    expect(skipped).toBe(0);
+    expect(placeholders).toBe(0);
     expect(tree.surfaceCount).toBe(2);
+
+    // State is applied after the binding resolves, not before — a scroll
+    // position applied to a not-yet-loaded document would be clobbered by
+    // the load. Give the microtask chain a turn.
+    await Promise.resolve();
+    await Promise.resolve();
 
     const restoredEditor = tree.surfaces.find((s) => s.typeId === 'editor.text') as TestSurface;
     expect(restoredEditor.binding?.key).toBe('/taylor.pdf');
     expect(restoredEditor.restored).toEqual({ page: 12 });
+  });
+
+  it('restores nesting and sizes exactly as captured', () => {
+    const mkLeaf = (key: string, size: number) => ({
+      type: 'leaf' as const, size, sizingMode: SizingMode.Pixel,
+      typeId: 'editor.text', binding: file(key),
+    });
+    const arrangement: Arrangement = {
+      version: 1, id: 'nested', name: 'Nested',
+      rootOrientation: Orientation.Horizontal,
+      root: {
+        type: 'branch', orientation: Orientation.Horizontal, size: 0, sizingMode: SizingMode.Pixel,
+        children: [
+          {
+            type: 'branch', orientation: Orientation.Vertical, size: 700, sizingMode: SizingMode.Pixel,
+            children: [mkLeaf('/a.md', 500), mkLeaf('/b.md', 300)],
+          },
+          {
+            type: 'branch', orientation: Orientation.Vertical, size: 500, sizingMode: SizingMode.Pixel,
+            children: [mkLeaf('/c.md', 400), mkLeaf('/d.md', 400)],
+          },
+        ],
+      },
+    };
+
+    const { opened, placeholders } = tree.restore(
+      resolveArrangement(arrangement, (t) => registry.getDescriptor(t)),
+    );
+    expect(opened).toBe(4);
+    expect(placeholders).toBe(0);
+
+    // H[ V[a,b], V[c,d] ] — the shape, not a flattened stack of four. The
+    // single-anchor rebuild this replaces produced exactly that flattening,
+    // and the old round-trip test compared sorted typeIds so it never saw.
+    const s = tree.grid.serialize();
+    expect(s.root.children).toHaveLength(2);
+    const [left, right] = s.root.children as [SerializedBranchNode, SerializedBranchNode];
+    expect(left.type).toBe('branch');
+    expect(right.type).toBe('branch');
+    expect(left.orientation).toBe(Orientation.Vertical);
+    expect(right.orientation).toBe(Orientation.Vertical);
+    expect(left.size).toBe(700);
+    expect(right.size).toBe(500);
+
+    const keys = (b: SerializedBranchNode): (string | undefined)[] =>
+      b.children.map((c) => tree.getSurface((c as { viewId: string }).viewId)?.binding?.key);
+    expect(keys(left)).toEqual(['/a.md', '/b.md']);
+    expect(keys(right)).toEqual(['/c.md', '/d.md']);
   });
 
   it('closes everything already open before restoring', () => {
@@ -225,9 +291,10 @@ describe('SurfaceTree', () => {
     expect(tree.surfaces[0].binding?.key).toBe('/old.md');
   });
 
-  it('restores what it can when a type is missing, and reports the rest', () => {
+  it('keeps a missing type as a named placeholder pane instead of a hole', () => {
+    const ex = tree.open('explorer') as TestSurface;
+    ex.setState({ scroll: 40 });
     tree.open('editor.text', file('/a.md'));
-    tree.open('explorer');
     const arrangement = tree.capture({ id: 'x', name: 'X' });
 
     // The explorer's extension is gone.
@@ -237,10 +304,36 @@ describe('SurfaceTree', () => {
     );
     expect(resolved.unavailable).toHaveLength(1);
 
-    const { opened, skipped } = tree.restore(resolved);
+    const { opened, placeholders } = tree.restore(resolved);
     expect(opened).toBe(1);
-    expect(skipped).toBe(1);
-    expect(tree.surfaceCount).toBe(1);
+    expect(placeholders).toBe(1);
+    // The SHAPE survives: both panes are in the tree, one of them standing
+    // in. A layout with a hole where the explorer was is not the layout the
+    // user saved.
+    expect(tree.surfaceCount).toBe(2);
+    expect(tree.grid.viewCount).toBe(2);
+
+    // The placeholder answers for what is missing, and focus went to the
+    // real surface rather than the apology.
+    const ph = tree.surfaces.find((s) => s.typeId === 'explorer');
+    expect(ph?.title).toBe('explorer');
+    const real = tree.surfaces.find((s) => s.typeId === 'editor.text');
+    expect(tree.activeSurfaceId).toBe(real?.id);
+
+    // Saving again loses nothing: the missing type is stored as itself, with
+    // the state it went missing with.
+    const again = tree.capture({ id: 'x2', name: 'X2' });
+    const leaves: { typeId: string; state?: Record<string, unknown> }[] = [];
+    const walk = (n: SerializedArrangementNode): void => {
+      if (n.type === 'leaf') {
+        leaves.push({ typeId: n.typeId as string, ...(n.state ? { state: n.state } : {}) });
+        return;
+      }
+      for (const c of n.children ?? []) walk(c);
+    };
+    walk(again.root as SerializedArrangementNode);
+    expect(leaves.map((l) => l.typeId).sort()).toEqual(['editor.text', 'explorer']);
+    expect(leaves.find((l) => l.typeId === 'explorer')?.state).toEqual({ scroll: 40 });
   });
 
   it('survives a restore of an empty arrangement', () => {
@@ -264,16 +357,14 @@ describe('SurfaceTree', () => {
     tree.restore(resolveArrangement(first, (t) => registry.getDescriptor(t)));
     const second = tree.capture({ id: 'x', name: 'X' });
 
-    const bindings = (a: typeof first): string[] => {
-      const out: string[] = [];
-      const walk = (n: { type: string; children?: unknown[]; typeId?: string }): void => {
-        if (n.type === 'leaf') { out.push(n.typeId as string); return; }
-        for (const c of (n.children ?? []) as typeof n[]) walk(c);
-      };
-      walk(a.root);
-      return out.sort();
-    };
-    expect(bindings(second)).toEqual(bindings(first));
+    // Deep equality of nesting, order and bindings. Comparing a sorted
+    // multiset of typeIds here once let a restore that flattened the whole
+    // tree pass — the shape IS the property.
+    const strip = (n: SerializedArrangementNode): unknown => n.type === 'leaf'
+      ? { t: n.typeId, b: n.binding?.key }
+      : { o: n.orientation, c: (n.children ?? []).map(strip) };
+    expect(strip(second.root as SerializedArrangementNode))
+      .toEqual(strip(first.root as SerializedArrangementNode));
   });
 
   // ── Teardown ──

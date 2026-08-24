@@ -29,6 +29,9 @@ import {
   type ResolvedArrangement,
   type ResolvedNode,
 } from './arrangement.js';
+import { PlaceholderSurface, PLACEHOLDER_DESCRIPTOR } from './surfacePlaceholder.js';
+import { SerializedNodeType } from '../layout/layoutModel.js';
+import type { SerializedBranchNode, SerializedGridNode } from '../layout/layoutModel.js';
 
 /** Default sizes for a first open. Advisory, like placement itself. */
 const DEFAULT_SIDE_SIZE = 260;
@@ -44,16 +47,59 @@ export interface ISurfaceOpenOptions {
   readonly preserveFocus?: boolean;
 }
 
+/** A surface was relocated. What the activity stream calls "adjacent to what". */
+export interface ISurfaceMoveEvent {
+  readonly surfaceId: string;
+  readonly kind: 'beside' | 'edge';
+  /** The neighbour, for a 'beside' move. */
+  readonly targetSurfaceId?: string;
+  readonly orientation: Orientation;
+  readonly insertBefore: boolean;
+}
+
+export interface IArrangementRestoreEvent {
+  readonly name: string;
+  readonly opened: number;
+  readonly placeholders: number;
+}
+
 export class SurfaceTree extends Disposable {
   private readonly _grid: Grid;
   private readonly _views = new Map<string, SurfaceGridView>();
   private _activeId: string | undefined;
+  /** Placeholder ids get their own prefix so they can never collide with the
+   *  registry's `typeId#n` ids. */
+  private _nextPlaceholder = 1;
 
   private readonly _onDidChangeActive = this._register(new Emitter<string | undefined>());
   readonly onDidChangeActive: Event<string | undefined> = this._onDidChangeActive.event;
 
   private readonly _onDidChangeStructure = this._register(new Emitter<void>());
   readonly onDidChangeStructure: Event<void> = this._onDidChangeStructure.event;
+
+  // The specific events Decision 7 promised: which surface, where, next to
+  // what. The structure event says "something changed"; these say what.
+
+  /** A DELIBERATE open — restore does not fire this per leaf. */
+  private readonly _onDidOpenSurface = this._register(new Emitter<ISurface>());
+  readonly onDidOpenSurface: Event<ISurface> = this._onDidOpenSurface.event;
+
+  private readonly _onDidMoveSurface = this._register(new Emitter<ISurfaceMoveEvent>());
+  readonly onDidMoveSurface: Event<ISurfaceMoveEvent> = this._onDidMoveSurface.event;
+
+  private readonly _onDidCaptureArrangement = this._register(new Emitter<string>());
+  readonly onDidCaptureArrangement: Event<string> = this._onDidCaptureArrangement.event;
+
+  private readonly _onDidRestoreArrangement = this._register(new Emitter<IArrangementRestoreEvent>());
+  readonly onDidRestoreArrangement: Event<IArrangementRestoreEvent> = this._onDidRestoreArrangement.event;
+
+  /**
+   * True while restore is tearing down and rebuilding. A listener narrating
+   * closes (the activity tap) checks this so switching arrangements reads as
+   * ONE act, not a burst of individual closings nobody performed.
+   */
+  private _restoring = false;
+  get isRestoring(): boolean { return this._restoring; }
 
   constructor(
     private readonly _registry: SurfaceRegistry,
@@ -99,7 +145,14 @@ export class SurfaceTree extends Disposable {
     }
 
     const instance = this._registry.createInstance(typeId, binding, { forceNew: opts.forceNew });
-    if (binding) void instance.surface.setBinding(binding);
+    if (binding) {
+      instance.surface.setBinding(binding).catch((err) => {
+        // An unresolvable binding must not become an unhandled rejection; the
+        // surface stays open and unbound, which its own UI is in charge of
+        // explaining.
+        console.error(`[surfaces] binding failed for ${typeId} (${binding.kind}:${binding.key})`, err);
+      });
+    }
 
     const view = new SurfaceGridView(instance.surface);
     this._views.set(instance.surface.id, view);
@@ -108,6 +161,7 @@ export class SurfaceTree extends Disposable {
     this._place(view, placement);
 
     if (!opts.preserveFocus) this.setActive(instance.surface.id);
+    this._onDidOpenSurface.fire(instance.surface);
     this._onDidChangeStructure.fire();
     return instance.surface;
   }
@@ -130,13 +184,15 @@ export class SurfaceTree extends Disposable {
       case SurfacePlacement.Side:
         // Added then moved to the edge rather than inserted at index 0: the
         // root is not always horizontal (a bottom strip re-roots it), and
-        // index 0 of a vertical root is the TOP, not the left.
+        // index 0 of a vertical root is the TOP, not the left. The size is
+        // passed again because the edge may run across the axis addView
+        // measured along.
         this._grid.addView(view, DEFAULT_SIDE_SIZE);
-        this._grid.moveViewToEdge(view.id, Orientation.Horizontal, true);
+        this._grid.moveViewToEdge(view.id, Orientation.Horizontal, true, DEFAULT_SIDE_SIZE);
         break;
       case SurfacePlacement.Bottom:
         this._grid.addView(view, DEFAULT_BOTTOM_SIZE);
-        this._grid.moveViewToEdge(view.id, Orientation.Vertical);
+        this._grid.moveViewToEdge(view.id, Orientation.Vertical, false, DEFAULT_BOTTOM_SIZE);
         break;
       case SurfacePlacement.Center:
       default: {
@@ -166,6 +222,9 @@ export class SurfaceTree extends Disposable {
   ): void {
     if (!this._views.has(surfaceId) || !this._views.has(targetSurfaceId)) return;
     this._grid.moveView(surfaceId, targetSurfaceId, orientation, insertBefore);
+    this._onDidMoveSurface.fire({
+      surfaceId, kind: 'beside', targetSurfaceId, orientation, insertBefore,
+    });
     this._onDidChangeStructure.fire();
   }
 
@@ -179,6 +238,7 @@ export class SurfaceTree extends Disposable {
   moveToEdge(surfaceId: string, orientation: Orientation, insertBefore = false): void {
     if (!this._views.has(surfaceId)) return;
     this._grid.moveViewToEdge(surfaceId, orientation, insertBefore);
+    this._onDidMoveSurface.fire({ surfaceId, kind: 'edge', orientation, insertBefore });
     this._onDidChangeStructure.fire();
   }
 
@@ -225,11 +285,13 @@ export class SurfaceTree extends Disposable {
 
   /** Capture the current shape, bindings and state. */
   capture(meta: { id: string; name: string; icon?: string }): Arrangement {
-    return captureArrangement(
+    const { arrangement } = captureArrangement(
       this._grid.serialize(),
       meta,
       (viewId) => this._views.get(viewId)?.surface,
-    ).arrangement;
+    );
+    this._onDidCaptureArrangement.fire(meta.name);
+    return arrangement;
   }
 
   /**
@@ -239,41 +301,99 @@ export class SurfaceTree extends Disposable {
    * arrangement is a whole shape of the app, and merging one into another
    * produces a layout neither the user nor the arrangement asked for.
    *
-   * Placeholder leaves are skipped — the caller has the `unavailable` list and
-   * decides how to tell the user. Skipping keeps the rest of the layout,
-   * which is the point of resolving before restoring.
+   * The grid is rebuilt IN PLACE from the arrangement's own tree, so nesting
+   * and sizes come back exactly as captured. A leaf whose type is missing
+   * becomes a placeholder pane that keeps its spot, its binding and its
+   * stored state (see surfacePlaceholder.ts) rather than being skipped: a
+   * layout with a hole where the flashcards were is not the layout the user
+   * saved.
    */
-  restore(resolved: ResolvedArrangement): { opened: number; skipped: number } {
+  restore(resolved: ResolvedArrangement): { opened: number; placeholders: number } {
+    this._restoring = true;
+    try {
+      return this._doRestore(resolved);
+    } finally {
+      this._restoring = false;
+    }
+  }
+
+  private _doRestore(resolved: ResolvedArrangement): { opened: number; placeholders: number } {
     for (const id of [...this._views.keys()]) this.close(id);
 
     let opened = 0;
-    let skipped = 0;
-    let anchor: string | undefined;
+    let placeholders = 0;
+    let firstRealId: string | undefined;
+    const built = new Map<string, SurfaceGridView>();
 
-    const walk = (node: ResolvedNode, parentOrientation: Orientation): void => {
+    const build = (node: ResolvedNode): SerializedGridNode => {
       if (node.kind === 'branch') {
-        for (const child of node.children) walk(child, node.orientation);
-        return;
+        return {
+          type: SerializedNodeType.Branch,
+          orientation: node.orientation,
+          size: node.size,
+          sizingMode: node.sizingMode,
+          children: node.children.map(build),
+        };
       }
-      if (node.kind !== 'surface') { skipped++; return; }
 
-      const surface = this.open(node.typeId, node.binding, {
-        preserveFocus: true,
-        forceNew: true,
-      });
-      if (node.state) surface.restoreState(node.state);
-      // Rebuild the shape by placing each surface next to the previous one
-      // along its branch's axis. The tree is reconstructed by moves, which is
-      // why moveView had to exist before arrangements could.
-      if (anchor) this._grid.moveView(surface.id, anchor, parentOrientation);
-      anchor = surface.id;
-      opened++;
+      let surface: ISurface;
+      if (node.kind === 'surface') {
+        surface = this._registry.createInstance(node.typeId, node.binding, {
+          forceNew: true,
+        }).surface;
+        if (node.binding) {
+          // State waits for the binding: restoreState before the content has
+          // loaded gets clobbered by the load, and a scroll position applied
+          // to the wrong document is worse than none.
+          const s = surface;
+          const state = node.state;
+          surface.setBinding(node.binding)
+            .then(() => { if (state) s.restoreState(state); })
+            .catch((err) => {
+              console.error(`[surfaces] restore binding failed for ${node.typeId}`, err);
+            });
+        } else if (node.state) {
+          surface.restoreState(node.state);
+        }
+        firstRealId ??= surface.id;
+        opened++;
+      } else {
+        surface = new PlaceholderSurface(
+          `placeholder#${this._nextPlaceholder++}`,
+          node.typeId,
+          node.binding,
+          node.state,
+        );
+        this._registry.adoptInstance(surface, PLACEHOLDER_DESCRIPTOR);
+        placeholders++;
+      }
+
+      const view = new SurfaceGridView(surface);
+      this._views.set(surface.id, view);
+      built.set(view.id, view);
+      return {
+        type: SerializedNodeType.Leaf,
+        viewId: view.id,
+        size: node.size,
+        sizingMode: node.sizingMode,
+      };
     };
 
-    walk(resolved.root, resolved.rootOrientation);
-    this._activeId = this._views.keys().next().value as string | undefined;
+    const root = build(resolved.root) as SerializedBranchNode;
+    this._grid.restoreFrom(
+      { root, orientation: resolved.rootOrientation, width: 0, height: 0 },
+      (viewId) => {
+        const view = built.get(viewId);
+        if (!view) throw new Error(`Restore built no view for ${viewId}`);
+        return view;
+      },
+    );
+
+    // A placeholder can hold a spot but should not hold the user's focus.
+    this._activeId = firstRealId ?? this._views.keys().next().value as string | undefined;
     this._onDidChangeActive.fire(this._activeId);
+    this._onDidRestoreArrangement.fire({ name: resolved.name, opened, placeholders });
     this._onDidChangeStructure.fire();
-    return { opened, skipped };
+    return { opened, placeholders };
   }
 }
