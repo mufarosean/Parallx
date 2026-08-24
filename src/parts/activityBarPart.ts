@@ -29,6 +29,8 @@ import { PartId, PartPosition, PartDescriptor } from './partTypes.js';
 import { SizeConstraints } from '../layout/layoutTypes.js';
 import { Emitter, Event } from '../platform/events.js';
 import { IDisposable, toDisposable } from '../platform/lifecycle.js';
+import { CONTAINER_DRAG_TYPE } from '../platform/dragTypes.js';
+import type { ContainerDragData } from '../platform/dragTypes.js';
 import { $ } from '../ui/dom.js';
 import { setupTooltip } from '../ui/tooltip.js';
 
@@ -138,13 +140,31 @@ export class ActivityBarPart extends Part {
   private readonly _onDidChangeIconOrder = this._register(new Emitter<void>());
   readonly onDidChangeIconOrder: Event<void> = this._onDidChangeIconOrder.event;
 
+  /**
+   * A container icon from ANOTHER ribbon (or any container drag source) was
+   * dropped on this bar. The bar only reports it — moving the container is
+   * the workbench's business.
+   */
+  private readonly _onDidDropContainerIcon = this._register(new Emitter<ContainerDragData>());
+  readonly onDidDropContainerIcon: Event<ContainerDragData> = this._onDidDropContainerIcon.event;
+
   // ── Constructor ──
 
-  constructor() {
+  /**
+   * There are two ribbons now — the classic left one, and a right one whose
+   * icons belong to containers docked in the right rail. Same part, same
+   * behavior; only identity and tooltip side differ.
+   */
+  constructor(
+    id: PartId = PartId.ActivityBar,
+    name = 'Activity Bar',
+    private readonly _tooltipPlacement: 'left' | 'right' = 'right',
+    position: PartPosition = PartPosition.Left,
+  ) {
     super(
-      PartId.ActivityBar,
-      'Activity Bar',
-      PartPosition.Left,
+      id,
+      name,
+      position,
       ACTIVITY_BAR_CONSTRAINTS,
       true,
     );
@@ -335,6 +355,43 @@ export class ActivityBarPart extends Part {
       if (this._draggedIconId) e.preventDefault();
     });
 
+    // FOREIGN container drags — an icon from the other ribbon, a detached
+    // box's header — dock into this bar's rail on drop. Internal reorders
+    // (_draggedIconId set) keep their own per-button handling above.
+    const isForeignContainerDrag = (e: DragEvent): boolean =>
+      !this._draggedIconId && (e.dataTransfer?.types.includes(CONTAINER_DRAG_TYPE) ?? false);
+
+    container.addEventListener('dragover', (e) => {
+      if (!isForeignContainerDrag(e)) return;
+      e.preventDefault();
+      e.dataTransfer!.dropEffect = 'move';
+      container.classList.add('activity-bar--drop-target');
+    });
+    container.addEventListener('dragleave', (e) => {
+      if (container.contains(e.relatedTarget as Node)) return;
+      container.classList.remove('activity-bar--drop-target');
+    });
+    container.addEventListener('drop', (e) => {
+      container.classList.remove('activity-bar--drop-target');
+      if (!isForeignContainerDrag(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      try {
+        const raw = e.dataTransfer!.getData(CONTAINER_DRAG_TYPE);
+        const data = raw ? JSON.parse(raw) as ContainerDragData : undefined;
+        if (data?.containerId) this._onDidDropContainerIcon.fire(data);
+      } catch {
+        // Malformed payload: not this bar's problem to explain.
+      }
+    });
+    this._register(
+      (() => {
+        const clear = () => container.classList.remove('activity-bar--drop-target');
+        document.addEventListener('dragend', clear);
+        return toDisposable(() => document.removeEventListener('dragend', clear));
+      })(),
+    );
+
     // Spacer (pushes bottom section down)
     this._spacer = $('div');
     this._spacer.classList.add('activity-bar-spacer');
@@ -505,7 +562,7 @@ export class ActivityBarPart extends Part {
     btn.appendChild(indicator);
 
     // Custom themed tooltip (replaces native title attribute)
-    setupTooltip(btn, descriptor.label, { placement: 'right' });
+    setupTooltip(btn, descriptor.label, { placement: this._tooltipPlacement });
 
     btn.addEventListener('click', () => {
       this._onDidClickIcon.fire({
@@ -531,6 +588,13 @@ export class ActivityBarPart extends Part {
       this._draggedIconId = descriptor.id;
       btn.classList.add('activity-bar-item--dragging');
       e.dataTransfer!.effectAllowed = 'move';
+      // The icon IS a handle for the container it stands for: dragging it
+      // to the other ribbon docks the container there, dragging it into
+      // the grid detaches it. Within this bar the drag stays a reorder.
+      e.dataTransfer!.setData(
+        CONTAINER_DRAG_TYPE,
+        JSON.stringify({ containerId: descriptor.id } satisfies ContainerDragData),
+      );
     });
 
     btn.addEventListener('dragover', (e) => {

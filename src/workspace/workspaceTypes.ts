@@ -121,6 +121,17 @@ export interface SerializedViewContainerSnapshot {
   readonly hiddenTabs?: readonly string[];
 }
 
+// ─── Container Rail Snapshot ────────────────────────────────────────────────
+
+/**
+ * Which rail a view container is docked in. The manifest's location is only
+ * the DEFAULT; this records where the user actually put it.
+ */
+export interface SerializedContainerRail {
+  readonly id: string;
+  readonly rail: 'left' | 'right';
+}
+
 // ─── View Snapshot ───────────────────────────────────────────────────────────
 
 /**
@@ -206,6 +217,8 @@ export interface WorkspaceState {
   readonly parts: readonly SerializedPartSnapshot[];
   /** Per-view-container state. */
   readonly viewContainers: readonly SerializedViewContainerSnapshot[];
+  /** Where each view container is docked. Absent in old saves: defaults apply. */
+  readonly containerRails?: readonly SerializedContainerRail[];
   /** Per-view state blobs. */
   readonly views: readonly SerializedViewSnapshot[];
   /** Editor state (groups, tabs, scroll positions). */

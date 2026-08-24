@@ -56,6 +56,7 @@ import {
 } from '../workspace/workspaceTypes.js';
 import type { SerializedEditorSnapshot, SerializedEditorInputSnapshot } from '../workspace/workspaceTypes.js';
 import { LAYOUT_SCHEMA_VERSION } from '../layout/layoutModel.js';
+import { CONTAINER_DRAG_TYPE } from '../platform/dragTypes.js';
 import { registerBuiltinEditorDeserializers, deserializeEditorInput, hasEditorInputDeserializer } from '../editor/editorInputDeserializer.js';
 import type { IEditorInput } from '../editor/editorInput.js';
 
@@ -840,6 +841,7 @@ export class Workbench extends Layout {
 
     lc.onTeardown(LifecyclePhase.Layout, () => {
       this._tree?.dispose();
+      this._activityBarRight?.dispose();
       this._partRegistry?.dispose();
       this._layoutRenderer?.dispose();
     });
@@ -999,11 +1001,14 @@ export class Workbench extends Layout {
     }));
 
     // Contribution handler (D.1 extraction — view container/contribution event management)
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const workbenchSelf = this;
     this._contributionHandler = this._register(new WorkbenchContributionHandler({
       sidebar: this._sidebar,
       panel: this._panel,
       auxiliaryBar: this._auxiliaryBar,
       activityBarPart: this._activityBarPart,
+      get rightActivityBar() { return workbenchSelf._activityBarRight; },
       toggleSidebar: () => this.toggleSidebar(),
       togglePanel: () => this.togglePanel(),
       toggleAuxiliaryBar: () => this.toggleAuxiliaryBar(),
@@ -1044,6 +1049,10 @@ export class Workbench extends Layout {
 
     // 4c. Manage gear icon in activity bar (bottom) — VS Code parity
     this._menuBuilder.addManageGearIcon();
+
+    // 4d. The right rail's ribbon: clicks, cross-ribbon icon drops, and
+    // visibility following the rail's population.
+    this._setupRightRail();
 
     // 5. DnD between parts
     this._dndController = this._setupDragAndDrop();
@@ -1357,6 +1366,16 @@ export class Workbench extends Layout {
     // carries titlebar/statusbar leaves) and take the legacy path instead.
     const treeRestored = this.restoreBodyTree(state.layout?.grid);
 
+    // 0b. Restore container rails — where the user docked each container.
+    // Applied now for containers that already exist; containers whose tools
+    // activate later consult the pending assignments as they arrive.
+    if (state.containerRails?.length) {
+      this._contributionHandler.setPendingRailAssignments(state.containerRails);
+      for (const entry of state.containerRails) {
+        this._contributionHandler.applyPendingRailAssignment(entry.id);
+      }
+    }
+
     // 1. Restore part visibility and sizes.
     // Parts that live in the grid (sidebar, panel, aux bar) must use
     // their toggle methods — not bare setVisible() — so the grid adds
@@ -1365,7 +1384,10 @@ export class Workbench extends Layout {
     // causing the editor not to fill the full height when the panel was
     // hidden at save-time.
     for (const partSnap of state.parts) {
-      const part = this._partRegistry.getPart(partSnap.partId) as Part | undefined;
+      // The right ribbon is dynamic chrome outside the part registry, but
+      // its icon order persists like any part's data.
+      const part = (this._partRegistry.getPart(partSnap.partId) as Part | undefined)
+        ?? (partSnap.partId === PartId.ActivityBarRight ? this._activityBarRight : undefined);
       if (!part) continue;
 
       // Restore visibility — use toggle methods for grid-managed parts
@@ -1697,6 +1719,7 @@ export class Workbench extends Layout {
     const allParts = [
       this._titlebar,
       this._activityBarPart,
+      ...(this._activityBarRight ? [this._activityBarRight] : []),
       this._sidebar,
       this._editor,
       this._auxiliaryBar,
@@ -1727,6 +1750,7 @@ export class Workbench extends Layout {
           views: [],
         };
       },
+      railProvider: () => this._contributionHandler.railAssignments(),
       contextProvider: () => {
         return {
           activePart: undefined,
@@ -1910,6 +1934,11 @@ export class Workbench extends Layout {
         label: v.label,
         isSvg: v.isSvg ?? false,
         source: 'builtin',
+      });
+      // The handler owns the descriptor so the icon can travel with its
+      // container between ribbons.
+      this._contributionHandler.registerContainerIcon(v.id, {
+        id: v.id, icon: v.icon, label: v.label, isSvg: v.isSvg ?? false, source: 'builtin',
       });
 
       if (sidebarContent) {
@@ -2260,6 +2289,62 @@ export class Workbench extends Layout {
   // ════════════════════════════════════════════════════════════════════════
   // Auxiliary bar views
   // ════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Wire the right ribbon: rail switching on click, cross-ribbon icon drops
+   * moving the container itself, visibility following the rail's population
+   * (materialising as a drop strip during any container drag, so the FIRST
+   * move to the right has somewhere to land).
+   */
+  private _setupRightRail(): void {
+    const rightBar = this._activityBarRight;
+    if (!rightBar) return;
+
+    // Click: switch the right rail's container; clicking the active icon
+    // toggles the rail — mirroring the left ribbon exactly.
+    this._register(rightBar.onDidClickIcon((event) => {
+      const isActive = event.iconId === rightBar.activeIconId && this._auxiliaryBar.visible;
+      if (isActive) {
+        this.toggleAuxiliaryBar();
+        return;
+      }
+      if (!this._auxiliaryBar.visible) this.toggleAuxiliaryBar();
+      this._contributionHandler.switchAuxBarContainer(event.iconId);
+    }));
+
+    // The icon IS a handle: dropped on a ribbon, its container docks in
+    // that ribbon's rail.
+    this._register(rightBar.onDidDropContainerIcon(({ containerId }) => {
+      this._contributionHandler.moveContainerToRail(containerId, 'right');
+    }));
+    this._register(this._activityBarPart.onDidDropContainerIcon(({ containerId }) => {
+      this._contributionHandler.moveContainerToRail(containerId, 'left');
+    }));
+
+    const syncRibbon = (): void => {
+      this.setRightActivityBarVisible(rightBar.getIcons().length > 0);
+    };
+    this._register(this._contributionHandler.onDidChangeRails(() => {
+      syncRibbon();
+      this._workspaceSaver?.requestSave();
+    }));
+    syncRibbon();
+
+    const onDragStart = (e: DragEvent): void => {
+      if (!e.dataTransfer?.types.includes(CONTAINER_DRAG_TYPE)) return;
+      this.setRightActivityBarVisible(true);
+    };
+    // Defer past the drop handlers so a dock-to-right keeps its new ribbon.
+    const settleRibbon = (): void => { setTimeout(syncRibbon, 0); };
+    document.addEventListener('dragstart', onDragStart);
+    document.addEventListener('dragend', settleRibbon);
+    document.addEventListener('drop', settleRibbon, { capture: true });
+    this._register(toDisposable(() => {
+      document.removeEventListener('dragstart', onDragStart);
+      document.removeEventListener('dragend', settleRibbon);
+      document.removeEventListener('drop', settleRibbon, { capture: true });
+    }));
+  }
 
   private _setupAuxBarViews(): ViewContainer {
     const container = new ViewContainer('auxiliaryBar');

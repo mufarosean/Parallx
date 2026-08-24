@@ -5,6 +5,7 @@ import {
   WorkspaceState,
   SerializedPartSnapshot,
   SerializedViewContainerSnapshot,
+  SerializedContainerRail,
   SerializedViewSnapshot,
   SerializedEditorSnapshot,
   SerializedContextSnapshot,
@@ -37,6 +38,8 @@ export interface WorkspaceStateSources {
   viewManager: ViewManager;
   /** Function that builds a SerializedLayoutState from the current grid. */
   layoutSerializer: () => SerializedLayoutState;
+  /** Where each view container is docked (rails are user placement, not manifest defaults). */
+  railProvider?: () => readonly SerializedContainerRail[];
   /** Current context snapshot. */
   contextProvider: () => SerializedContextSnapshot;
   /** Current editor snapshot (placeholder until Capability 9). */
@@ -152,6 +155,7 @@ export class WorkspaceSaver extends Disposable {
       layout: src.layoutSerializer(),
       parts: this._collectPartStates(src.parts),
       viewContainers: this._collectViewContainerStates(src.viewContainers),
+      containerRails: src.railProvider?.() ?? [],
       views: this._collectViewStates(src),
       editors: src.editorProvider?.() ?? createDefaultEditorSnapshot(),
       context: src.contextProvider(),

@@ -859,9 +859,19 @@ html, body {
 .part-workbench-parts-titlebar {
   border-bottom: 1px solid var(--vscode-titleBar-border, var(--px-divider));
 }
-.part-workbench-parts-activitybar {
+.part-workbench-parts-activitybar,
+.part-workbench-parts-activitybar-right {
   background: var(--px-window);
   box-shadow: none;
+}
+
+/* A ribbon accepting a container drop — same drop tokens as every other
+   drop affordance, so the gesture reads as one system. */
+.activity-bar--drop-target {
+  background-color: var(--vscode-editorGroup-dropBackground);
+  outline: 2px solid var(--vscode-editorGroup-dropBorder);
+  outline-offset: -2px;
+  border-radius: var(--parallx-radius-sm);
 }
 
 /* Content parts: container is the gap colour; the inner content is the card. */

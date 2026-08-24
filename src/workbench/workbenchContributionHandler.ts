@@ -13,16 +13,24 @@
 //   - Replace built-in placeholders with real tool views
 
 import { Disposable, DisposableStore } from '../platform/lifecycle.js';
+import { Emitter } from '../platform/events.js';
+import type { Event } from '../platform/events.js';
+import type { IDisposable } from '../platform/lifecycle.js';
 import { getIcon } from '../ui/iconRegistry.js';
 import { ViewContainer } from '../views/viewContainer.js';
 import { ViewManager } from '../views/viewManager.js';
 import { AuxiliaryBarPart } from '../parts/auxiliaryBarPart.js';
 import { $ } from '../ui/dom.js';
 import type { ViewContributionProcessor, IContributedContainer, IContributedView } from '../contributions/viewContribution.js';
-import type { ActivityBarPart } from '../parts/activityBarPart.js';
+import type { ActivityBarPart, ActivityBarIconDescriptor } from '../parts/activityBarPart.js';
 import type { WorkbenchContextManager } from '../context/workbenchContext.js';
 import type { Part } from '../parts/part.js';
 import type { Orientation } from '../layout/layoutTypes.js';
+
+// ─── Rails ───────────────────────────────────────────────────────────────────
+
+/** Which rail a view container is docked in. */
+export type ContainerRail = 'left' | 'right';
 
 // ─── Host interface ──────────────────────────────────────────────────────────
 
@@ -35,6 +43,8 @@ export interface ContributionHandlerHost {
   readonly panel: Part;
   readonly auxiliaryBar: Part;
   readonly activityBarPart: ActivityBarPart;
+  /** The right ribbon — icons for right-docked containers. */
+  readonly rightActivityBar: ActivityBarPart | undefined;
   toggleSidebar(): void;
   togglePanel(): void;
   toggleAuxiliaryBar(): void;
@@ -72,6 +82,23 @@ export class WorkbenchContributionHandler extends Disposable {
 
   // ── Auxiliary bar header label (set by workbench after setup) ──
   private _auxBarHeaderLabel: HTMLElement | undefined;
+
+  // ── Rails (which side each container is docked on) ──
+  //
+  // Rail membership IS which map holds the container; these structures add
+  // what the maps cannot express: where the user PUT things (persisted),
+  // where things go when they arrive later (pending), which containers were
+  // born built-in (so a round trip returns them to the builtin map), the
+  // icon each container carries between ribbons, and per-container aux
+  // header wiring so it can be unwired on the way out.
+  private readonly _railAssignments = new Map<string, ContainerRail>();
+  private readonly _pendingRailAssignments = new Map<string, ContainerRail>();
+  private readonly _builtinOrigin = new Set<string>();
+  private readonly _containerIcons = new Map<string, ActivityBarIconDescriptor>();
+  private readonly _auxHeaderWiring = new Map<string, IDisposable>();
+
+  private readonly _onDidChangeRails = this._register(new Emitter<void>());
+  readonly onDidChangeRails: Event<void> = this._onDidChangeRails.event;
 
   // ── Event listener store (cleared on workspace switch) ──
   private readonly _viewContribListeners = this._register(new DisposableStore());
@@ -122,10 +149,163 @@ export class WorkbenchContributionHandler extends Disposable {
 
   registerBuiltinSidebarContainer(id: string, vc: ViewContainer): void {
     this._builtinSidebarContainers.set(id, vc);
+    this._builtinOrigin.add(id);
   }
 
   setActiveSidebarContainerId(id: string | undefined): void {
     this._activeSidebarContainerId = id;
+  }
+
+  // ── Rails ──
+
+  /**
+   * Remember the icon a container carries. The icon moves WITH the
+   * container between ribbons, so the handler has to own the descriptor —
+   * the bars only ever see copies.
+   */
+  registerContainerIcon(id: string, descriptor: ActivityBarIconDescriptor): void {
+    this._containerIcons.set(id, descriptor);
+  }
+
+  /** Which rail currently holds this container, if any rail does. */
+  railOf(containerId: string): ContainerRail | undefined {
+    if (this._builtinSidebarContainers.has(containerId)) return 'left';
+    if (this._contributedSidebarContainers.has(containerId)) return 'left';
+    if (this._contributedAuxBarContainers.has(containerId)) return 'right';
+    return undefined;
+  }
+
+  /** All current rail placements, for persistence. */
+  railAssignments(): readonly { id: string; rail: ContainerRail }[] {
+    const out: { id: string; rail: ContainerRail }[] = [];
+    for (const id of this._builtinSidebarContainers.keys()) out.push({ id, rail: 'left' });
+    for (const id of this._contributedSidebarContainers.keys()) out.push({ id, rail: 'left' });
+    for (const id of this._contributedAuxBarContainers.keys()) out.push({ id, rail: 'right' });
+    return out;
+  }
+
+  /**
+   * Rail placements restored from the workspace, applied to containers as
+   * they appear. Contributed containers arrive whenever their tool
+   * activates, which can be well after restore.
+   */
+  setPendingRailAssignments(entries: readonly { id: string; rail: ContainerRail }[]): void {
+    this._pendingRailAssignments.clear();
+    for (const e of entries) this._pendingRailAssignments.set(e.id, e.rail);
+  }
+
+  /** Apply a pending assignment to a container that already exists. */
+  applyPendingRailAssignment(containerId: string): void {
+    const pending = this._pendingRailAssignments.get(containerId);
+    if (!pending) return;
+    const current = this.railOf(containerId);
+    if (current && current !== pending) {
+      this.moveContainerToRail(containerId, pending);
+    }
+  }
+
+  /**
+   * Dock a container in the other rail — the move behind dragging an icon
+   * to the other ribbon, or a container's window onto the other side.
+   * The container's element, icon and active-state bookkeeping all travel;
+   * the ViewContainer instance keeps running throughout.
+   */
+  moveContainerToRail(containerId: string, rail: ContainerRail): boolean {
+    if (this.railOf(containerId) === rail) return false;
+    const vc = this._takeContainer(containerId);
+    if (!vc) return false;
+    this._seatContainer(containerId, vc, rail);
+    this._railAssignments.set(containerId, rail);
+    this._host.layoutViewContainers();
+    this._onDidChangeRails.fire();
+    return true;
+  }
+
+  /** Detach a container from whichever rail holds it. Undocked, not disposed. */
+  private _takeContainer(containerId: string): ViewContainer | undefined {
+    const inBuiltin = this._builtinSidebarContainers.get(containerId);
+    const inSidebar = inBuiltin ?? this._contributedSidebarContainers.get(containerId);
+    if (inSidebar) {
+      if (this._activeSidebarContainerId === containerId) {
+        const replacement = [
+          ...this._builtinSidebarContainers.keys(),
+          ...this._contributedSidebarContainers.keys(),
+        ].find((id) => id !== containerId);
+        this.switchSidebarContainer(replacement);
+      }
+      this._builtinSidebarContainers.delete(containerId);
+      this._contributedSidebarContainers.delete(containerId);
+      this._host.activityBarPart.removeIcon(containerId);
+      inSidebar.setVisible(false);
+      return inSidebar;
+    }
+
+    const inAux = this._contributedAuxBarContainers.get(containerId);
+    if (inAux) {
+      if (this._defaultAuxBarContainerId === containerId) {
+        this._defaultAuxBarContainerId =
+          [...this._contributedAuxBarContainers.keys()].find((id) => id !== containerId);
+      }
+      if (this._activeAuxBarContainerId === containerId) {
+        this.switchAuxBarContainer(this._defaultAuxBarContainerId);
+      }
+      this._contributedAuxBarContainers.delete(containerId);
+      this._auxHeaderWiring.get(containerId)?.dispose();
+      this._auxHeaderWiring.delete(containerId);
+      this._host.rightActivityBar?.removeIcon(containerId);
+      inAux.setVisible(false);
+      if (this._contributedAuxBarContainers.size === 0) {
+        this._genericAuxBarContainer?.setVisible(true);
+        this._activeAuxBarContainerId = undefined;
+      }
+      return inAux;
+    }
+
+    return undefined;
+  }
+
+  /** Seat an undocked container in a rail: DOM, map, icon, activation. */
+  private _seatContainer(containerId: string, vc: ViewContainer, rail: ContainerRail): void {
+    const icon = this._containerIcons.get(containerId);
+
+    if (rail === 'left') {
+      const map = this._builtinOrigin.has(containerId)
+        ? this._builtinSidebarContainers
+        : this._contributedSidebarContainers;
+      map.set(containerId, vc);
+      if (this._sidebarViewsSlot) this._sidebarViewsSlot.appendChild(vc.element);
+      if (icon) this._host.activityBarPart.addIcon(icon);
+      if (!this._host.sidebar.visible) this._host.toggleSidebar();
+      this.switchSidebarContainer(containerId);
+      return;
+    }
+
+    this._contributedAuxBarContainers.set(containerId, vc);
+    const auxBarPart = this._host.auxiliaryBar as unknown as AuxiliaryBarPart;
+    auxBarPart.viewContainerSlot?.appendChild(vc.element);
+    this._wireAuxHeader(containerId, vc);
+    if (icon) this._host.rightActivityBar?.addIcon(icon);
+    if (!this._defaultAuxBarContainerId) {
+      this._defaultAuxBarContainerId = containerId;
+      this._genericAuxBarContainer?.setVisible(false);
+    }
+    if (!this._host.auxiliaryBar.visible) this._host.toggleAuxiliaryBar();
+    this.switchAuxBarContainer(containerId);
+  }
+
+  /** Keep the aux header label following this container's active view. */
+  private _wireAuxHeader(containerId: string, vc: ViewContainer): void {
+    this._auxHeaderWiring.get(containerId)?.dispose();
+    const title = (): string =>
+      this._containerIcons.get(containerId)?.label
+      ?? this._viewContribution?.getContainer(containerId)?.title
+      ?? 'SECONDARY SIDE BAR';
+    this._auxHeaderWiring.set(containerId, vc.onDidChangeActiveView((viewId) => {
+      if (viewId && this._activeAuxBarContainerId === containerId && this._auxBarHeaderLabel) {
+        const view = vc.getView(viewId);
+        this._auxBarHeaderLabel.textContent = (view?.name ?? title()).toUpperCase();
+      }
+    }));
   }
 
   // ── Wire contribution events ──
@@ -189,6 +369,9 @@ export class WorkbenchContributionHandler extends Disposable {
         this._addContributedActivityBarIcon(info);
       }
       console.log(`[Workbench] Added sidebar container "${info.id}" (${info.title})`);
+      // The manifest location is the DEFAULT; where the user PUT it wins.
+      this.applyPendingRailAssignment(info.id);
+      this._onDidChangeRails.fire();
 
     } else if (info.location === 'panel') {
       vc.setVisible(false);
@@ -219,24 +402,29 @@ export class WorkbenchContributionHandler extends Disposable {
         vc.setVisible(false);
       }
 
-      // Wire header label to the contributed container's active view
-      if (this._auxBarHeaderLabel) {
-        vc.onDidChangeActiveView((viewId) => {
-          // Only update header if this container is the currently active one
-          if (viewId && this._activeAuxBarContainerId === info.id) {
-            const view = vc.getView(viewId);
-            if (this._auxBarHeaderLabel) {
-              this._auxBarHeaderLabel.textContent = (view?.name ?? info.title).toUpperCase();
-            }
-          }
-        });
-        // Set header immediately only for the active container
+      // A right-docked container's icon lives on the RIGHT ribbon —
+      // clicking the left ribbon for a right sidebar is awkward. Hidden
+      // containers (ai-settings) get no icon, same as the sidebar rule.
+      if (!info.hidden) {
+        const descriptor = this._containerIconDescriptor(info);
+        this._containerIcons.set(info.id, descriptor);
+        this._host.rightActivityBar?.addIcon(descriptor);
         if (this._activeAuxBarContainerId === info.id) {
-          this._auxBarHeaderLabel.textContent = info.title.toUpperCase();
+          this._host.rightActivityBar?.setActiveIcon(info.id);
         }
       }
 
+      // Wire header label to the contributed container's active view
+      this._wireAuxHeader(info.id, vc);
+      if (this._auxBarHeaderLabel && this._activeAuxBarContainerId === info.id) {
+        this._auxBarHeaderLabel.textContent = info.title.toUpperCase();
+      }
+
       console.log(`[Workbench] Added auxiliary bar container "${info.id}" (${info.title})`);
+
+      // The manifest location is the DEFAULT; where the user PUT it wins.
+      this.applyPendingRailAssignment(info.id);
+      this._onDidChangeRails.fire();
 
       // Trigger a layout pass so the newly-added container gets proper dimensions.
       this._host.layoutViewContainers();
@@ -257,6 +445,9 @@ export class WorkbenchContributionHandler extends Disposable {
       sidebarVc.dispose();
       this._contributedSidebarContainers.delete(containerId);
       this._removeContributedActivityBarIcon(containerId);
+      this._containerIcons.delete(containerId);
+      this._railAssignments.delete(containerId);
+      this._onDidChangeRails.fire();
       return;
     }
 
@@ -280,11 +471,17 @@ export class WorkbenchContributionHandler extends Disposable {
       }
       auxVc.dispose();
       this._contributedAuxBarContainers.delete(containerId);
+      this._auxHeaderWiring.get(containerId)?.dispose();
+      this._auxHeaderWiring.delete(containerId);
+      this._host.rightActivityBar?.removeIcon(containerId);
+      this._containerIcons.delete(containerId);
+      this._railAssignments.delete(containerId);
       // If no more contributed aux bar containers, restore the generic one
       if (this._contributedAuxBarContainers.size === 0) {
         this._genericAuxBarContainer?.setVisible(true);
         this._activeAuxBarContainerId = undefined;
       }
+      this._onDidChangeRails.fire();
       return;
     }
   }
@@ -405,15 +602,21 @@ export class WorkbenchContributionHandler extends Disposable {
 
   // ── Activity bar icon management ──
 
-  private _addContributedActivityBarIcon(info: IContributedContainer): void {
+  private _containerIconDescriptor(info: IContributedContainer): ActivityBarIconDescriptor {
     const svgIcon = this._resolveCodiconSvg(info.icon);
-    this._host.activityBarPart.addIcon({
+    return {
       id: info.id,
       icon: svgIcon ?? info.icon ?? info.title.charAt(0).toUpperCase(),
       isSvg: svgIcon !== undefined,
       label: info.title,
       source: 'contributed',
-    });
+    };
+  }
+
+  private _addContributedActivityBarIcon(info: IContributedContainer): void {
+    const descriptor = this._containerIconDescriptor(info);
+    this._containerIcons.set(info.id, descriptor);
+    this._host.activityBarPart.addIcon(descriptor);
   }
 
   private _resolveCodiconSvg(icon?: string): string | undefined {
@@ -529,12 +732,17 @@ export class WorkbenchContributionHandler extends Disposable {
           const activeViewId = vc.activeViewId;
           const activeView = activeViewId ? vc.getView(activeViewId) : undefined;
           const info = this._viewContribution?.getContainer(targetId);
-          this._auxBarHeaderLabel.textContent = (activeView?.name ?? info?.title ?? 'SECONDARY SIDE BAR').toUpperCase();
+          const iconLabel = this._containerIcons.get(targetId)?.label;
+          this._auxBarHeaderLabel.textContent =
+            (activeView?.name ?? info?.title ?? iconLabel ?? 'SECONDARY SIDE BAR').toUpperCase();
         }
       } else {
         this._auxBarHeaderLabel.textContent = 'SECONDARY SIDE BAR';
       }
     }
+
+    // Keep the right ribbon's highlight in step with the rail.
+    this._host.rightActivityBar?.setActiveIcon(targetId);
 
     this._host.layoutViewContainers();
   }
@@ -700,5 +908,13 @@ export class WorkbenchContributionHandler extends Disposable {
     this._sidebarHeaderLabel = undefined;
     this._auxBarHeaderLabel = undefined;
     this._containerRedirects.clear();
+
+    // Rail state rebuilds with the next workspace's setup + restore.
+    for (const d of this._auxHeaderWiring.values()) d.dispose();
+    this._auxHeaderWiring.clear();
+    this._containerIcons.clear();
+    this._railAssignments.clear();
+    this._pendingRailAssignments.clear();
+    this._builtinOrigin.clear();
   }
 }

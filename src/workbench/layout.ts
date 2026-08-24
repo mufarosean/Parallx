@@ -23,7 +23,7 @@
 import { Disposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { Part } from '../parts/part.js';
-import { PartId } from '../parts/partTypes.js';
+import { PartId, PartPosition } from '../parts/partTypes.js';
 import { Grid } from '../layout/grid.js';
 import { GridNodeType } from '../layout/gridNode.js';
 import type { GridBranchNode } from '../layout/gridNode.js';
@@ -66,6 +66,7 @@ export interface ZenModeExitInfo {
   statusBar: boolean;
   auxBar: boolean;
   activityBar: boolean;
+  activityBarRight: boolean;
 }
 
 // ── The default shape, as data ───────────────────────────────────────────────
@@ -175,6 +176,14 @@ export abstract class Layout extends Disposable {
   protected _partRegistry!: PartRegistry;
   protected _titlebar!: TitlebarPart;
   protected _activityBarPart!: ActivityBarPart;
+  /**
+   * The right ribbon. Icons here belong to containers docked in the RIGHT
+   * rail — clicking the left ribbon for a right sidebar is awkward, so the
+   * ribbon is part of the rail, not global chrome. Hidden while empty;
+   * revealed by the rails coordinator (and as a drop strip during a
+   * container drag).
+   */
+  protected _activityBarRight: ActivityBarPart | undefined;
   protected _sidebar!: Part;
   protected _editor!: Part;
   protected _auxiliaryBar!: Part;
@@ -270,6 +279,15 @@ export abstract class Layout extends Disposable {
 
     this._titlebar.create(tempDiv);
     this._activityBarPart.create(tempDiv);
+
+    // The right ribbon is workbench chrome like the left one, but DYNAMIC:
+    // it exists for the containers docked on the right, so it starts hidden
+    // and is not in the part registry's fixed seven.
+    this._activityBarRight = new ActivityBarPart(
+      PartId.ActivityBarRight, 'Right Activity Bar', 'left', PartPosition.Right,
+    );
+    this._activityBarRight.create(tempDiv);
+    this._activityBarRight.setVisible(false);
     this._sidebar.create(tempDiv);
     this._editor.create(tempDiv);
     this._auxiliaryBar.create(tempDiv);
@@ -321,7 +339,34 @@ export abstract class Layout extends Disposable {
     this._bodyRow.appendChild(this._grid.element);
     this._grid.element.classList.add('workbench-grid');
 
+    if (this._activityBarRight) {
+      this._bodyRow.appendChild(this._activityBarRight.element);
+      this._activityBarRight.layout(ACTIVITY_BAR_WIDTH, bodyH, Orientation.Vertical);
+    }
+
     this._updateEdgeAttributes();
+  }
+
+  /** Combined width of the visible ribbons flanking the grid. */
+  protected _chromeBarsWidth(): number {
+    const left = this._activityBarPart.element.classList.contains('hidden')
+      ? 0 : ACTIVITY_BAR_WIDTH;
+    const right = this._activityBarRight?.visible ? ACTIVITY_BAR_WIDTH : 0;
+    return left + right;
+  }
+
+  /**
+   * Show or hide the right ribbon. Driven by whether the right rail has any
+   * containers (and by a container drag needing a visible drop strip).
+   */
+  setRightActivityBarVisible(visible: boolean): void {
+    if (!this._activityBarRight || this._activityBarRight.visible === visible) return;
+    this._activityBarRight.setVisible(visible);
+    this._relayout();
+  }
+
+  get rightActivityBar(): ActivityBarPart | undefined {
+    return this._activityBarRight;
   }
 
   /**
@@ -417,11 +462,9 @@ export abstract class Layout extends Disposable {
    * proportionally, squeezing the sidebar because the aux bar appeared.
    */
   protected _relayoutBody(): void {
-    const activityBarHidden = this._activityBarPart.element.classList.contains('hidden');
-    const abw = activityBarHidden ? 0 : ACTIVITY_BAR_WIDTH;
     const statusH = this._statusBar.visible ? STATUS_HEIGHT : 0;
     this._grid.resizeWithFixedViews(
-      this._container.clientWidth - abw,
+      this._container.clientWidth - this._chromeBarsWidth(),
       this._container.clientHeight - TITLE_HEIGHT - statusH,
       this._editor.id,
     );
@@ -455,17 +498,18 @@ export abstract class Layout extends Disposable {
       this._statusBar.layout(rw, STATUS_HEIGHT, Orientation.Horizontal);
     }
 
-    // Re-layout activity bar (chrome, outside the grid)
-    const activityBarHidden = this._activityBarPart.element.classList.contains('hidden');
-    const activityBarW = activityBarHidden ? 0 : ACTIVITY_BAR_WIDTH;
-    if (!activityBarHidden) {
+    // Re-layout the ribbons (chrome, outside the grid)
+    if (!this._activityBarPart.element.classList.contains('hidden')) {
       this._activityBarPart.layout(ACTIVITY_BAR_WIDTH, rbodyH, Orientation.Vertical);
+    }
+    if (this._activityBarRight?.visible) {
+      this._activityBarRight.layout(ACTIVITY_BAR_WIDTH, rbodyH, Orientation.Vertical);
     }
 
     // Keep the companion strips at their sizes; the editor absorbs the
     // window delta (VS Code parity). The distribution recurses into nested
     // branches, so it finds the editor wherever it sits.
-    this._grid.resizeWithFixedViews(rw - activityBarW, rbodyH, this._editor.id);
+    this._grid.resizeWithFixedViews(rw - this._chromeBarsWidth(), rbodyH, this._editor.id);
 
     this._layoutViewContainers();
   };
@@ -825,6 +869,9 @@ export abstract class Layout extends Disposable {
           if (s.activityBar) {
             this._activityBarPart.element.classList.remove('hidden');
           }
+          if (s.activityBarRight) {
+            this._activityBarRight?.setVisible(true);
+          }
         }
       } else if (s) {
         // The snapshot failed to apply (it should not — it is our own
@@ -852,6 +899,9 @@ export abstract class Layout extends Disposable {
           if (s.activityBar) {
             this._activityBarPart.element.classList.remove('hidden');
           }
+          if (s.activityBarRight) {
+            this._activityBarRight?.setVisible(true);
+          }
         });
       }
       this._preZenState = null;
@@ -868,6 +918,7 @@ export abstract class Layout extends Disposable {
         statusBar: this._statusBar.visible,
         auxBar: this._auxBarVisible,
         activityBar: !this._activityBarPart.element.classList.contains('hidden'),
+        activityBarRight: this._activityBarRight?.visible ?? false,
       };
       // Snapshot the arrangement BEFORE dismantling it.
       this._preZenTree = this._grid.serialize();
@@ -905,8 +956,9 @@ export abstract class Layout extends Disposable {
           this.toggleAuxiliaryBar();
         }
 
-        // Hide activity bar
+        // Hide the ribbons
         this._activityBarPart.element.classList.add('hidden');
+        this._activityBarRight?.setVisible(false);
       });
 
       this._relayout();

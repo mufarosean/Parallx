@@ -24,7 +24,9 @@ import { Orientation } from '../layout/layoutTypes.js';
 import { rafThrottle } from '../platform/rafThrottle.js';
 import { $ } from '../ui/dom.js';
 
-export const PART_DRAG_TYPE = 'application/x-parallx-part';
+import { PART_DRAG_TYPE } from '../platform/dragTypes.js';
+
+export { PART_DRAG_TYPE };
 
 export interface PartDragData {
   readonly partId: string;

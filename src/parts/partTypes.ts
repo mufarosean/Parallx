@@ -12,6 +12,8 @@ import { SizeConstraints, Dimensions, Orientation } from '../layout/layoutTypes.
 export enum PartId {
   Titlebar = 'workbench.parts.titlebar',
   ActivityBar = 'workbench.parts.activitybar',
+  /** The right ribbon — icons for containers docked in the right rail. */
+  ActivityBarRight = 'workbench.parts.activitybar.right',
   Sidebar = 'workbench.parts.sidebar',
   Panel = 'workbench.parts.panel',
   Editor = 'workbench.parts.editor',
