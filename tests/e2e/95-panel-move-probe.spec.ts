@@ -402,6 +402,26 @@ test.describe('the way home', () => {
     const box = window.locator('.container-box[data-part-id^="container:panelview:"]');
     await expect(box, 'detached view floated into a box').toBeVisible();
 
+    // THE CONTENT MUST TRAVEL. Field bug: the box rendered EMPTY because the
+    // contributed-view factory rebuilt a blank element on re-mount while its
+    // provider resolution ran once per lifetime. The moved view must carry
+    // its real content — same element, populated, no placeholder.
+    const detachedContent = await window.evaluate(() => {
+      const viewEl = document.querySelector(
+        '.container-box[data-part-id^="container:panelview:"] .view.visible',
+      );
+      return {
+        found: !!viewEl,
+        childCount: viewEl?.childElementCount ?? 0,
+        isPlaceholder: !!viewEl?.querySelector('.contributed-view-placeholder'),
+        height: viewEl ? (viewEl as HTMLElement).offsetHeight : 0,
+      };
+    });
+    expect(detachedContent.found, 'the detached view element is in the box and visible').toBe(true);
+    expect(detachedContent.childCount, 'the view carries its real content, not an empty shell').toBeGreaterThan(0);
+    expect(detachedContent.isPlaceholder, 'and it is not the waiting-for-provider placeholder').toBe(false);
+    expect(detachedContent.height, 'and it has real height').toBeGreaterThan(50);
+
     // 2. Drag the box back onto the PANEL'S CENTRE — it rejoins the strip.
     await window.evaluate(async () => {
       const header = document.querySelector('.container-box[data-part-id^="container:panelview:"] .container-box-header') as HTMLElement | null;
@@ -426,6 +446,26 @@ test.describe('the way home', () => {
     await window.waitForTimeout(500);
     await snap(window, testInfo, '17-tab-rejoined');
     await expect(box, 'box gone — the view is a panel tab again').toHaveCount(0);
+
+    // And home means WORKING: the redocked view still shows its content.
+    const rejoined = await window.evaluate(() => {
+      const tabs = [...document.querySelectorAll(
+        '[data-part-id="workbench.parts.panel"] .view-tab',
+      )] as HTMLElement[];
+      const last = tabs[tabs.length - 1];
+      last?.click();
+      const viewEl = document.querySelector(
+        '[data-part-id="workbench.parts.panel"] .view-container-content .view.visible',
+      );
+      return {
+        found: !!viewEl,
+        childCount: viewEl?.childElementCount ?? 0,
+        isPlaceholder: !!viewEl?.querySelector('.contributed-view-placeholder'),
+      };
+    });
+    expect(rejoined.found, 'the rejoined view renders in the panel').toBe(true);
+    expect(rejoined.childCount, 'with its content intact after the round trip').toBeGreaterThan(0);
+    expect(rejoined.isPlaceholder, 'not degraded to a placeholder').toBe(false);
   });
 
   test('Reset Panel To Default Position brings a wandering panel home', async ({ window }, testInfo) => {

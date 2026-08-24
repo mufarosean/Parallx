@@ -159,6 +159,16 @@ function _createToolView(viewId: string, name: string, provider: ToolViewProvide
 
     createElement(container: HTMLElement): void {
       if (_disposed) return;
+
+      // Idempotent, like the base View class: a view moved between
+      // containers re-mounts its ONE element. Re-running provider.createView
+      // here would build a second live instance and leak the first's
+      // disposable.
+      if (_element) {
+        container.appendChild(_element);
+        return;
+      }
+
       _element = $('div');
       _element.className = 'tool-view-content fill-container-scroll';
       container.appendChild(_element);

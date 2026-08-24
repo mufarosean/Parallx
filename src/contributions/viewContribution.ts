@@ -472,6 +472,15 @@ export class ViewContributionProcessor extends Disposable implements IContributi
       createElement(container: HTMLElement): void {
         if (_disposed) return;
 
+        // Idempotent, like the base View class: a view moved between
+        // containers re-mounts its ONE element, provider content riding
+        // along. Rebuilding here orphaned the resolved content — doResolve
+        // runs once per lifetime, so the fresh div stayed empty forever.
+        if (_element) {
+          container.appendChild(_element);
+          return;
+        }
+
         _element = $('div');
         _element.className = `view view-${viewId} contributed-view`;
         _element.setAttribute('data-view-id', viewId);
