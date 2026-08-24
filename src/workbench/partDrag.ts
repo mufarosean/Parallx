@@ -341,13 +341,15 @@ export class PartDragController extends Disposable {
       }
     }
 
-    // A container over a rail card means JOIN it, whole card lit — the
-    // centre drop finally has a meaning. Everything else keeps the split
-    // and edge language.
+    // A container over a rail card: the CENTRE means JOIN the rail; the
+    // peripheral bands keep the split/stack language, so a box can still
+    // be placed NEXT TO a rail. Field-found: when the whole card docked,
+    // separated things could never be put back together beside each other.
     let zone: PartDropZone | undefined;
     const dock = this._opts.dockTargets;
     if (kind === 'container' && target && dock
-      && (target.id === dock.left || target.id === dock.right)) {
+      && (target.id === dock.left || target.id === dock.right)
+      && inDockCentre(target.rect, x, y)) {
       zone = { kind: 'dock', rail: target.id === dock.left ? 'left' : 'right', targetId: target.id };
     } else {
       zone = computeDropZone(gridRect, x, y, target);
@@ -426,6 +428,22 @@ export class PartDragController extends Disposable {
       return undefined;
     }
   }
+}
+
+/**
+ * The central region of a rail card where a container drop means "join the
+ * rail". Outside it, the card's peripheral bands mean stack/split BESIDE
+ * the rail — both meanings must be reachable on one card.
+ */
+export const DOCK_CENTRE_FRACTION = 0.5;
+
+export function inDockCentre(rect: RectLike, x: number, y: number): boolean {
+  if (rect.width <= 0 || rect.height <= 0) return false;
+  const fx = (x - rect.left) / rect.width;
+  const fy = (y - rect.top) / rect.height;
+  const lo = (1 - DOCK_CENTRE_FRACTION) / 2;
+  const hi = 1 - lo;
+  return fx > lo && fx < hi && fy > lo && fy < hi;
 }
 
 /** Nearest ancestor with a data-part-id, stopping at the grid boundary. */

@@ -278,3 +278,94 @@ test.describe('panel relocation probe — sequences', () => {
     expect(s.panel!.h).toBeGreaterThan(40);
   });
 });
+
+test.describe('separation and reunion', () => {
+  test('a floated container stacks back under the rail, and centre re-docks it', async ({ window }, testInfo) => {
+    await window.waitForTimeout(1500);
+    await runCommand(window, 'Reset Layout to Defaults');
+    await window.waitForTimeout(300);
+
+    // 1. Float the Explorer: drag its ribbon icon onto the editor.
+    await window.evaluate(async () => {
+      const icon = document.querySelector('[data-icon-id="view.explorer"]') as HTMLElement | null;
+      const editor = document.querySelector('[data-part-id="workbench.parts.editor"]') as HTMLElement | null;
+      if (!icon || !editor) return;
+      const dt = new DataTransfer();
+      const fire = (type: string, el: Element, x: number, y: number): void => {
+        el.dispatchEvent(new DragEvent(type, {
+          bubbles: true, cancelable: true, clientX: x, clientY: y, dataTransfer: dt,
+        }));
+      };
+      const i = icon.getBoundingClientRect();
+      fire('dragstart', icon, i.left + 5, i.top + 5);
+      const r = editor.getBoundingClientRect();
+      fire('dragover', editor, r.right - 60, r.top + r.height / 2);
+      await new Promise((res) => requestAnimationFrame(() => res(undefined)));
+      fire('drop', editor, r.right - 60, r.top + r.height / 2);
+      fire('dragend', icon, 0, 0);
+    });
+    await window.waitForTimeout(500);
+    await snap(window, testInfo, '13-explorer-floated');
+    const box = window.locator('.container-box[data-part-id="container:view.explorer"]');
+    await expect(box, 'explorer floated into a box').toBeVisible();
+
+    // 2. Put it BACK: drag the box header onto the sidebar's bottom band.
+    await window.evaluate(async () => {
+      const header = document.querySelector('.container-box[data-part-id="container:view.explorer"] .container-box-header') as HTMLElement | null;
+      const sidebar = document.querySelector('[data-part-id="workbench.parts.sidebar"]') as HTMLElement | null;
+      if (!header || !sidebar) return;
+      const dt = new DataTransfer();
+      const fire = (type: string, el: Element, x: number, y: number): void => {
+        el.dispatchEvent(new DragEvent(type, {
+          bubbles: true, cancelable: true, clientX: x, clientY: y, dataTransfer: dt,
+        }));
+      };
+      const h = header.getBoundingClientRect();
+      fire('dragstart', header, h.left + 5, h.top + 5);
+      const r = sidebar.getBoundingClientRect();
+      const x = r.left + r.width / 2;
+      const y = r.top + r.height * 0.9; // bottom band → BESIDE, not dock
+      fire('dragover', sidebar, x, y);
+      await new Promise((res) => requestAnimationFrame(() => res(undefined)));
+      fire('drop', sidebar, x, y);
+      fire('dragend', header, x, y);
+    });
+    await window.waitForTimeout(500);
+    await snap(window, testInfo, '14-box-stacked-under-rail');
+
+    const boxBb = await box.boundingBox();
+    const sidebarBb = await window.locator('[data-part-id="workbench.parts.sidebar"]').boundingBox();
+    expect(boxBb, 'box still exists after beside-drop').not.toBeNull();
+    // Reunited: same column as the rail, below it, column-wide.
+    expect(Math.abs(boxBb!.x - sidebarBb!.x)).toBeLessThanOrEqual(8);
+    expect(boxBb!.y).toBeGreaterThan(sidebarBb!.y);
+    expect(Math.abs(boxBb!.width - sidebarBb!.width)).toBeLessThanOrEqual(12);
+
+    // 3. Centre still docks: drop the header mid-card and the box goes away.
+    await window.evaluate(async () => {
+      const header = document.querySelector('.container-box[data-part-id="container:view.explorer"] .container-box-header') as HTMLElement | null;
+      const sidebar = document.querySelector('[data-part-id="workbench.parts.sidebar"]') as HTMLElement | null;
+      if (!header || !sidebar) return;
+      const dt = new DataTransfer();
+      const fire = (type: string, el: Element, x: number, y: number): void => {
+        el.dispatchEvent(new DragEvent(type, {
+          bubbles: true, cancelable: true, clientX: x, clientY: y, dataTransfer: dt,
+        }));
+      };
+      const h = header.getBoundingClientRect();
+      fire('dragstart', header, h.left + 5, h.top + 5);
+      const r = sidebar.getBoundingClientRect();
+      const x = r.left + r.width / 2;
+      const y = r.top + r.height / 2; // centre → dock
+      fire('dragover', sidebar, x, y);
+      await new Promise((res) => requestAnimationFrame(() => res(undefined)));
+      fire('drop', sidebar, x, y);
+      fire('dragend', header, x, y);
+    });
+    await window.waitForTimeout(500);
+    await snap(window, testInfo, '15-box-redocked');
+    await expect(box, 'box gone after centre dock').toHaveCount(0);
+
+    await runCommand(window, 'Reset Layout to Defaults');
+  });
+});

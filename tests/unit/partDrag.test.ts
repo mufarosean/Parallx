@@ -321,19 +321,32 @@ describe('container drags over the grid', () => {
     return ev;
   }
 
-  it('treats the whole rail card as a join zone for containers', async () => {
-    // Deep inside the sidebar — a PART drag would read this as a split
-    // zone; a CONTAINER means "dock into this rail".
+  it('docks a container dropped in the CENTRE of a rail card', async () => {
+    // Central region — a PART drag would read this as a split zone; a
+    // CONTAINER means "dock into this rail", and the whole card lights.
     sidebar.dispatchEvent(containerDrag('dragover', 120, 400));
     await nextFrame();
     const indicator = grid.querySelector<HTMLElement>('.part-drop-overlay-indicator');
     expect(indicator).not.toBeNull();
-    // The whole card lights, not a half of it.
     expect(indicator!.style.width).toBe('200px');
     expect(indicator!.style.height).toBe('800px');
 
     sidebar.dispatchEvent(containerDrag('drop', 120, 400));
     expect(containerMoves).toEqual(['dock:view.explorer:left']);
+  });
+
+  it('keeps the peripheral bands of a rail card as BESIDE zones', () => {
+    // Field-found: when the whole card docked, a box could never again be
+    // placed next to or under a rail — separated things could not be put
+    // back together. The card's edges mean "beside the rail".
+    sidebar.dispatchEvent(containerDrag('dragover', 100, 700)); // bottom band
+    sidebar.dispatchEvent(containerDrag('drop', 100, 700));
+    expect(containerMoves).toEqual(['drop:view.explorer:beside']);
+
+    containerMoves.length = 0;
+    sidebar.dispatchEvent(containerDrag('dragover', 15, 400)); // left band
+    sidebar.dispatchEvent(containerDrag('drop', 15, 400));
+    expect(containerMoves).toEqual(['drop:view.explorer:beside']);
   });
 
   it('keeps the split language over non-rail targets — detach beside', () => {
