@@ -187,6 +187,15 @@ export class PartDragController extends Disposable {
 
     const onDragStart = (e: DragEvent): void => {
       if (!e.dataTransfer) return;
+      // dragstart BUBBLES: a nested drag source inside the handle (a view
+      // tab in the panel's strip) starts its own gesture and the event
+      // still reaches here. The handle claims only drags that originate on
+      // itself — stamping the part payload over a tab's would turn every
+      // tab detach into "move the whole panel".
+      const origin = e.target instanceof HTMLElement
+        ? e.target.closest('[draggable="true"]')
+        : null;
+      if (origin && origin !== handle) return;
       e.dataTransfer.setData(PART_DRAG_TYPE, JSON.stringify({ partId } satisfies PartDragData));
       e.dataTransfer.effectAllowed = 'move';
       // Chromium hides payloads during dragover (only types are readable),

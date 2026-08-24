@@ -338,3 +338,48 @@ describe('container drags over the grid', () => {
     expect(containerMoves).toEqual(['drop:view.explorer:edge']);
   });
 });
+
+describe('nested drag sources inside a handle', () => {
+  it('a tab drag inside the panel strip stays a detach, never a panel move', () => {
+    // Field report: dragging one panel tab moved the whole panel. The
+    // strip is the panel's grip; tabs are their own drag sources; and
+    // dragstart bubbles — so the grip stamped the PART payload over the
+    // tab's detach payload, and the drop read as a part move.
+    const grid = document.createElement('div');
+    grid.getBoundingClientRect = () => rectOf(GRID);
+    const panel = document.createElement('div');
+    panel.setAttribute('data-part-id', 'workbench.parts.panel');
+    const strip = document.createElement('div');
+    strip.classList.add('view-container-tabs');
+    const tab = document.createElement('div');
+    tab.draggable = true;
+    strip.appendChild(tab);
+    panel.appendChild(strip);
+    grid.appendChild(panel);
+    document.body.appendChild(grid);
+
+    const moves: string[] = [];
+    const controller = new PartDragController({
+      gridElement: grid,
+      onMoveBeside: () => moves.push('part-move'),
+      onMoveToEdge: () => moves.push('part-move'),
+    });
+    controller.armHandle('workbench.parts.panel', strip);
+
+    try {
+      // Drag starting ON the tab: the handle must not claim it.
+      const tabDt = fakeDataTransfer();
+      tab.dispatchEvent(dragEvent('dragstart', tabDt, 10, 10));
+      expect(tabDt.types.includes(PART_DRAG_TYPE)).toBe(false);
+      expect(grid.classList.contains('part-dragging')).toBe(false);
+
+      // Drag starting on the strip's own empty area still moves the panel.
+      const stripDt = fakeDataTransfer();
+      strip.dispatchEvent(dragEvent('dragstart', stripDt, 10, 10));
+      expect(stripDt.types.includes(PART_DRAG_TYPE)).toBe(true);
+    } finally {
+      controller.dispose();
+      grid.remove();
+    }
+  });
+});
