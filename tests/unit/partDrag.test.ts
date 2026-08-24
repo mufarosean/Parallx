@@ -29,15 +29,25 @@ const GRID = { left: 0, top: 0, width: 1000, height: 800 };
 describe('computeDropZone', () => {
   const target = { id: 'p', rect: { left: 200, top: 0, width: 800, height: 800 } };
 
-  it('gives the window edges priority inside their threshold', () => {
+  it('keeps a thin true-edge sliver even over a target', () => {
     expect(computeDropZone(GRID, 5, 400, target)).toEqual(
       { kind: 'edge', orientation: Orientation.Horizontal, before: true });
     expect(computeDropZone(GRID, 995, 400, target)).toEqual(
       { kind: 'edge', orientation: Orientation.Horizontal, before: false });
-    expect(computeDropZone(GRID, 500, 10, target)).toEqual(
+    expect(computeDropZone(GRID, 500, 4, target)).toEqual(
       { kind: 'edge', orientation: Orientation.Vertical, before: true });
     expect(computeDropZone(GRID, 500, 795, target)).toEqual(
       { kind: 'edge', orientation: Orientation.Vertical, before: false });
+  });
+
+  it('lets the TARGET own low-aimed drops — the stack-hijack regression', () => {
+    // Field-found: a full-height target's bottom is the window's bottom.
+    // Aiming low to say "stack under this" must read as the target's
+    // bottom zone, not a full-width window-edge move.
+    expect(computeDropZone(GRID, 600, 780, target)).toEqual(
+      { kind: 'beside', targetId: 'p', orientation: Orientation.Vertical, before: false });
+    expect(computeDropZone(GRID, 600, 20, target)).toEqual(
+      { kind: 'beside', targetId: 'p', orientation: Orientation.Vertical, before: true });
   });
 
   it('splits a target by its nearest side — left, right, top, bottom', () => {

@@ -46,8 +46,20 @@ export type PartDropZone =
   /** Container drags only: the whole target is a rail — dock into it. */
   | { kind: 'dock'; rail: 'left' | 'right'; targetId: string };
 
-/** Within this many pixels of the grid boundary, the drop means "take the edge". */
+/**
+ * Within this many pixels of the grid boundary, a drop over NO target means
+ * "take the edge" — sashes and empty space near the boundary read as edge.
+ */
 export const EDGE_ZONE_PX = 28;
+
+/**
+ * The absolute boundary sliver where the edge wins even over a target.
+ * Field-found: with a generous band, a full-height sidebar's bottom IS the
+ * window bottom, so every "stack under the explorer" aimed low was hijacked
+ * into a full-width bottom-edge move. Over a target, the TARGET's zones own
+ * the drop; the window edge keeps only this thin strip.
+ */
+export const TRUE_EDGE_PX = 8;
 
 /** Edge indicator strip: this fraction of the axis, capped. */
 const EDGE_STRIP_FRACTION = 0.22;
@@ -78,23 +90,33 @@ export function computeDropZone(
   const dBottom = gridRect.top + gridRect.height - y;
   const minEdge = Math.min(dLeft, dRight, dTop, dBottom);
 
-  if (minEdge <= edgeThreshold) {
+  const edgeZone = (): PartDropZone => {
     if (minEdge === dLeft) return { kind: 'edge', orientation: Orientation.Horizontal, before: true };
     if (minEdge === dRight) return { kind: 'edge', orientation: Orientation.Horizontal, before: false };
     if (minEdge === dTop) return { kind: 'edge', orientation: Orientation.Vertical, before: true };
     return { kind: 'edge', orientation: Orientation.Vertical, before: false };
+  };
+
+  // The hard boundary sliver always means the window edge.
+  if (minEdge <= TRUE_EDGE_PX) return edgeZone();
+
+  // Over a target, the TARGET owns the drop. A full-height sidebar's bottom
+  // is the window's bottom; letting a wide edge band shadow it turned every
+  // low-aimed "stack under the explorer" into a full-width edge move.
+  if (target && target.rect.width > 0 && target.rect.height > 0) {
+    const fx = (x - target.rect.left) / target.rect.width;
+    const fy = (y - target.rect.top) / target.rect.height;
+    const d = Math.min(fx, 1 - fx, fy, 1 - fy);
+
+    if (d === fx) return { kind: 'beside', targetId: target.id, orientation: Orientation.Horizontal, before: true };
+    if (d === 1 - fx) return { kind: 'beside', targetId: target.id, orientation: Orientation.Horizontal, before: false };
+    if (d === fy) return { kind: 'beside', targetId: target.id, orientation: Orientation.Vertical, before: true };
+    return { kind: 'beside', targetId: target.id, orientation: Orientation.Vertical, before: false };
   }
 
-  if (!target || target.rect.width <= 0 || target.rect.height <= 0) return undefined;
-
-  const fx = (x - target.rect.left) / target.rect.width;
-  const fy = (y - target.rect.top) / target.rect.height;
-  const d = Math.min(fx, 1 - fx, fy, 1 - fy);
-
-  if (d === fx) return { kind: 'beside', targetId: target.id, orientation: Orientation.Horizontal, before: true };
-  if (d === 1 - fx) return { kind: 'beside', targetId: target.id, orientation: Orientation.Horizontal, before: false };
-  if (d === fy) return { kind: 'beside', targetId: target.id, orientation: Orientation.Vertical, before: true };
-  return { kind: 'beside', targetId: target.id, orientation: Orientation.Vertical, before: false };
+  // No target under the cursor (a sash, empty space): the generous band.
+  if (minEdge <= edgeThreshold) return edgeZone();
+  return undefined;
 }
 
 /**

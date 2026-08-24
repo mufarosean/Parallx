@@ -488,7 +488,14 @@ export class Grid extends Disposable {
       if (this._nodeContainsView(child, flexViewId)) {
         flexChild = child;
       } else {
-        fixedTotal += this._getNodeSize(child);
+        // Fixed children keep their size — but never BELOW their minimum.
+        // Without this clamp a degenerate size, once introduced, was
+        // preserved by every settle forever (field-found: a 20px panel
+        // sliver declaring minimumHeight 100).
+        const min = this._getMinSizeAlongOrientation(child, branch.orientation);
+        const size = Math.max(this._getNodeSize(child), min);
+        this._setNodeSize(child, size);
+        fixedTotal += size;
       }
     }
 

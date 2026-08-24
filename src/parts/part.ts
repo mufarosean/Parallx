@@ -22,6 +22,23 @@ export abstract class Part extends Disposable implements IPart, IGridView {
 
   private _element!: HTMLElement;
   private _contentElement!: HTMLElement;
+
+  /**
+   * Adopt an element built elsewhere as this part's root — the editor part
+   * dissolving into a named region of the body tree keeps its Part API and
+   * identity (classes, data-part-id) by stamping them onto the REGION's
+   * element instead of owning a leaf of its own. Content and element are
+   * the same node in that model.
+   */
+  protected _adoptExternalElement(element: HTMLElement): void {
+    element.classList.add('part', `part-${this.id.replace(/\./g, '-')}`);
+    element.setAttribute('role', 'region');
+    element.setAttribute('aria-label', this.name);
+    element.setAttribute('data-part-id', this.id);
+    this._element = element;
+    this._contentElement = element;
+    this._created = true;
+  }
   private _titleElement: HTMLElement | undefined;
   private _created = false;
 

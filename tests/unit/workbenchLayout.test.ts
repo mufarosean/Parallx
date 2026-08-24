@@ -671,3 +671,67 @@ describe('floating leaves in the saved tree', () => {
     expect(layout.restoreBodyTree(saved)).toBe(false);
   });
 });
+
+describe('edge-cycle degeneracy (field bug: 20px panel sliver)', () => {
+  let container: HTMLElement;
+  let layout: TestLayout;
+  let parts: TestLayout['parts'];
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    Object.defineProperty(container, 'clientWidth', { value: WIDTH, configurable: true });
+    Object.defineProperty(container, 'clientHeight', { value: HEIGHT, configurable: true });
+    document.body.appendChild(container);
+    parts = {
+      titlebar: fakePart('workbench.parts.titlebar'),
+      activityBar: fakePart('workbench.parts.activitybar'),
+      sidebar: fakePart('workbench.parts.sidebar'),
+      editor: fakePart('workbench.parts.editor'),
+      panel: fakePart('workbench.parts.panel'),
+      auxiliaryBar: fakePart('workbench.parts.auxiliarybar', false),
+      statusBar: fakePart('workbench.parts.statusbar'),
+    };
+    layout = new TestLayout(container, parts);
+  });
+
+  afterEach(() => {
+    layout.dispose();
+    container.remove();
+  });
+
+  const h = (id: string) => layout.grid.getViewSize(id)!;
+
+  it('keeps the panel healthy through left → right → bottom, aux visible', () => {
+    layout.toggleAuxiliaryBar();
+    const sizes: Record<string, number> = {};
+
+    layout.movePartToEdge('workbench.parts.panel', Orientation.Horizontal, true);
+    sizes.afterLeft = h('workbench.parts.panel');
+    layout.movePartToEdge('workbench.parts.panel', Orientation.Horizontal, false);
+    sizes.afterRight = h('workbench.parts.panel');
+    layout.movePartToEdge('workbench.parts.panel', Orientation.Vertical, false);
+    sizes.afterBottom = h('workbench.parts.panel');
+
+    expect(sizes.afterLeft, `sizes: ${JSON.stringify(sizes)}`).toBeGreaterThan(40);
+    expect(sizes.afterRight, `sizes: ${JSON.stringify(sizes)}`).toBeGreaterThan(40);
+    expect(sizes.afterBottom, `sizes: ${JSON.stringify(sizes)}`).toBeGreaterThan(40);
+  });
+
+  it('keeps the panel healthy from a beside-editor start', () => {
+    layout.toggleAuxiliaryBar();
+    layout.movePartBeside('workbench.parts.panel', 'workbench.parts.editor', Orientation.Horizontal, true);
+    const besideW = h('workbench.parts.panel');
+    layout.movePartToEdge('workbench.parts.panel', Orientation.Horizontal, true);
+    const leftW = h('workbench.parts.panel');
+    layout.movePartToEdge('workbench.parts.panel', Orientation.Horizontal, false);
+    const rightW = h('workbench.parts.panel');
+    layout.movePartToEdge('workbench.parts.panel', Orientation.Vertical, false);
+    const bottomH = h('workbench.parts.panel');
+
+    const all = JSON.stringify({ besideW, leftW, rightW, bottomH });
+    expect(besideW, all).toBeGreaterThan(40);
+    expect(leftW, all).toBeGreaterThan(40);
+    expect(rightW, all).toBeGreaterThan(40);
+    expect(bottomH, all).toBeGreaterThan(40);
+  });
+});
