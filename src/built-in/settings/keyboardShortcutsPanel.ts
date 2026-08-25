@@ -9,6 +9,7 @@ import { $, addDisposableListener } from '../../ui/dom.js';
 import { InputBox } from '../../ui/inputBox.js';
 import type { IKeybindingService, ICommandService } from '../../services/serviceTypes.js';
 import { reservedKeyOwner } from '../../contributions/keybindingContribution.js';
+import { enterMode } from '../../ui/interactionMode.js';
 import { setKbOverride, clearKbOverride } from '../../services/keybindingOverrides.js';
 import './keyboardShortcuts.css';
 
@@ -18,7 +19,7 @@ export class KeyboardShortcutsPanel extends Disposable {
   private _search = '';
   /** commandId currently being captured, or null. */
   private _capturingId: string | null = null;
-  private _captureCleanup: (() => void) | null = null;
+
 
   constructor(
     container: HTMLElement,
@@ -166,25 +167,40 @@ export class KeyboardShortcutsPanel extends Disposable {
     this._capturingId = id;
     this._renderList();
 
-    const onKey = (e: KeyboardEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (e.key === 'Escape') { this._cancelCapture(); this._renderList(); return; }
-      // Ignore lone modifier presses — wait for a real key.
-      if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return;
-
-      const combo = this._comboFromEvent(e);
-      if (!combo) return;
-      this._applyRebind(id, combo);
-    };
-    // Capture phase so we beat the global keybinding dispatcher.
-    document.addEventListener('keydown', onKey, true);
-    this._captureCleanup = () => document.removeEventListener('keydown', onKey, true);
+    // Key capture is an INTERACTION MODE (interactionMode.ts) — the
+    // audit's worst single instance of the stale-mode class: capture
+    // used to exit only on Escape or a captured combo, so arming a
+    // keycap and clicking into the editor meant the FIRST CHARACTER
+    // TYPED was silently bound as a global shortcut and persisted. The
+    // mode now dies on any outside press, on focus leaving the panel,
+    // and on window blur — and refuses to bind once it is no longer
+    // the topmost mode.
+    this._captureMode = enterMode({
+      id: 'keybinding-capture',
+      ownedRoots: () => [this._root],
+      exitOnFocusLoss: true,
+      onExit: () => {
+        this._captureMode = undefined;
+        this._capturingId = null;
+        this._renderList();
+      },
+      onKeydown: (e) => {
+        // Lone modifiers: wait for a real key (consumed — they are part
+        // of the combo being formed).
+        if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return true;
+        const combo = this._comboFromEvent(e);
+        if (!combo) return true;
+        this._applyRebind(id, combo);
+        return true;
+      },
+    });
   }
 
+  private _captureMode: import('../../ui/interactionMode.js').ModeHandle | undefined;
+
   private _cancelCapture(): void {
-    this._captureCleanup?.();
-    this._captureCleanup = null;
+    this._captureMode?.exit();
+    this._captureMode = undefined;
     this._capturingId = null;
   }
 

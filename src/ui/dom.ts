@@ -7,6 +7,7 @@
 import './ui.css';
 
 import { IDisposable, toDisposable } from '../platform/lifecycle.js';
+import { enterMode } from './interactionMode.js';
 
 // ─── Element Creation ────────────────────────────────────────────────────────
 
@@ -348,38 +349,30 @@ export function attachPopupDismiss(
   options: IPopupDismissOptions = {},
 ): () => void {
   const { isDismissable, escapeKey = true, onEscape } = options;
-  const roots = Array.isArray(popup) ? popup : [popup as HTMLElement];
+  const roots = Array.isArray(popup) ? [...popup] : [popup as HTMLElement];
 
-  const outsideClick = (event: MouseEvent) => {
-    if (isDismissable && !isDismissable(event)) return;
-    const target = event.target as Node;
-    for (const root of roots) {
-      if (root.contains(target)) return;
-    }
-    onDismiss();
-  };
-
-  const escape = (event: KeyboardEvent) => {
-    if (event.key !== 'Escape') return;
-    event.preventDefault();
-    event.stopPropagation();
-    (onEscape ?? onDismiss)();
-  };
-
-  let attached = false;
-  let detached = false;
-  const raf = requestAnimationFrame(() => {
-    if (detached) return;
-    attached = true;
-    document.addEventListener('mousedown', outsideClick, true);
-    if (escapeKey) document.addEventListener('keydown', escape, true);
+  // Reimplemented over the interaction-mode subsystem (interactionMode.ts,
+  // SYSTEM_INTEGRITY.md Phase A): every popup using this helper now gets
+  // the COMPLETE dismissal contract — Escape, outside press, and window
+  // blur — with stack semantics (Escape resolves topmost-first) instead of
+  // each popup's Escape handler swallowing the key app-wide. A helper that
+  // a caller forgets to detach can no longer arm forever: the mode exits
+  // itself on blur or an outside press.
+  let manual = false;
+  const handle = enterMode({
+    id: 'popup',
+    ownedRoots: () => roots,
+    exitOnEscape: escapeKey,
+    canExitOnOutsidePointer: isDismissable,
+    onExit: (reason) => {
+      if (manual) return; // caller detached — the popup owns its own teardown
+      if (reason === 'escape') (onEscape ?? onDismiss)();
+      else onDismiss();
+    },
   });
 
   return () => {
-    if (detached) return;
-    detached = true;
-    if (!attached) cancelAnimationFrame(raf);
-    document.removeEventListener('mousedown', outsideClick, true);
-    if (escapeKey) document.removeEventListener('keydown', escape, true);
+    manual = true;
+    handle.exit();
   };
 }

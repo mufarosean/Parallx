@@ -65,6 +65,10 @@ export interface InteractionModeOptions {
   readonly exitOnEscape?: boolean;
   /** Default true. Opt out only for full-screen modals with backdrops. */
   readonly exitOnOutsidePointer?: boolean;
+  /** Fine-grained veto for one outside press (e.g. a sibling popup that
+   *  counts as "inside"). Returning false keeps the mode for THIS press;
+   *  the exit set is otherwise unchanged. */
+  readonly canExitOnOutsidePointer?: (e: PointerEvent) => boolean;
   /**
    * Default true — no mode survives Alt-Tab armed. Opt out only for
    * states that genuinely represent persisted UI (none known today).
@@ -93,7 +97,7 @@ interface ActiveMode {
   readonly options: Required<Pick<InteractionModeOptions,
     'id' | 'ownedRoots' | 'onExit' | 'exitOnEscape' | 'exitOnOutsidePointer'
     | 'exitOnWindowBlur' | 'exitOnFocusLoss' | 'exitOnScroll' | 'restoreFocus'>>
-    & Pick<InteractionModeOptions, 'onKeydown'>;
+    & Pick<InteractionModeOptions, 'onKeydown' | 'canExitOnOutsidePointer'>;
   /** Where focus was when the mode began, for the restore contract. */
   readonly previousFocus: HTMLElement | null;
   /** Outside-pointer arming is deferred one tick past the opening press. */
@@ -171,6 +175,7 @@ function _installDocListeners(): void {
       const mode = _stack[i];
       if (!mode.armed || !mode.options.exitOnOutsidePointer) continue;
       if (_contains(mode, target)) break; // inside this one — lower modes keep their state
+      if (mode.options.canExitOnOutsidePointer && !mode.options.canExitOnOutsidePointer(e)) continue;
       _exitMode(mode, 'outside-pointer');
     }
   };
@@ -235,6 +240,7 @@ export function enterMode(options: InteractionModeOptions): ModeHandle {
       onKeydown: options.onKeydown,
       exitOnEscape: options.exitOnEscape ?? true,
       exitOnOutsidePointer: options.exitOnOutsidePointer ?? true,
+      canExitOnOutsidePointer: options.canExitOnOutsidePointer,
       exitOnWindowBlur: options.exitOnWindowBlur ?? true,
       exitOnFocusLoss: options.exitOnFocusLoss ?? false,
       exitOnScroll: options.exitOnScroll ?? false,
