@@ -98,6 +98,15 @@ export class ServiceCollection implements IDisposable, IServiceProvider {
   }
 
   /**
+   * The ids of every registered service, sorted. Phase C
+   * (SYSTEM_INTEGRITY.md): the collection could hold ~79 services and
+   * could not say which. Enumeration only — instantiation stays lazy.
+   */
+  keys(): readonly string[] {
+    return [...this._entries.keys()].sort();
+  }
+
+  /**
    * Try to get a service, returning undefined if not registered.
    */
   tryGet<T>(id: ServiceIdentifier<T>): T | undefined {

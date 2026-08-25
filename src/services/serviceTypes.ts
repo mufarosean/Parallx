@@ -832,6 +832,13 @@ export interface IContextKeyService extends IDisposable {
 
   /** Create a lookup function for a scope. */
   createLookup(scopeId?: string): ContextKeyLookup;
+
+  /**
+   * All effective context keys for a scope (default: global), inherited
+   * chain included. Phase C (SYSTEM_INTEGRITY.md): the map existed on the
+   * class but was unreadable through its own DI interface.
+   */
+  getAllContext(scopeId?: string): Map<string, ContextKeyValue>;
 }
 
 export const IContextKeyService = createServiceIdentifier<IContextKeyService>('IContextKeyService');
@@ -978,6 +985,11 @@ export interface IToolErrorService extends IDisposable {
   getErrorCount(toolId: string): number;
   /** Clear recorded errors for a tool. */
   clearErrors(toolId: string): void;
+  /**
+   * Every recorded error, keyed by tool id. Phase C (SYSTEM_INTEGRITY.md):
+   * the class had this and the interface hid it.
+   */
+  getAllErrors(): ReadonlyMap<string, readonly ToolError[]>;
   /** Fires whenever a tool error is recorded. */
   readonly onDidRecordError: Event<ToolErrorEvent>;
   /** Fires when a tool should be force-deactivated. */

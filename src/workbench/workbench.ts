@@ -59,7 +59,8 @@ import {
   createDefaultEditorSnapshot,
 } from '../workspace/workspaceTypes.js';
 import type { SerializedEditorSnapshot, SerializedEditorInputSnapshot } from '../workspace/workspaceTypes.js';
-import { LAYOUT_SCHEMA_VERSION } from '../layout/layoutModel.js';
+import { LAYOUT_SCHEMA_VERSION, SerializedNodeType, type SerializedGridNode } from '../layout/layoutModel.js';
+import { IIntrospectionService, IntrospectionService } from '../services/introspectionService.js';
 import { CONTAINER_DRAG_TYPE } from '../platform/dragTypes.js';
 import { registerBuiltinEditorDeserializers, deserializeEditorInput, hasEditorInputDeserializer } from '../editor/editorInputDeserializer.js';
 import type { IEditorInput } from '../editor/editorInput.js';
@@ -3212,6 +3213,24 @@ export class Workbench extends Layout {
       new ToolActivator(registry, errorService, activationEvents, apiFactoryDeps, storageDeps),
     );
     this._services.registerInstance(IToolActivatorService, this._toolActivator);
+
+    // ── Introspection (SYSTEM_INTEGRITY.md Phase C): the read-only join
+    // over everything registered above — "what is running right now" as a
+    // service. The workbench supplies only what DI cannot: the layout's
+    // leaf/area/rail facts.
+    this._services.registerInstance(IIntrospectionService, new IntrospectionService(this._services, {
+      bodyLeafViewIds: () => {
+        const leaves: string[] = [];
+        const walk = (n: SerializedGridNode): void => {
+          if (n.type === SerializedNodeType.Leaf) leaves.push(n.viewId);
+          else for (const child of n.children) walk(child);
+        };
+        walk(this.serializeBodyTree().root);
+        return leaves;
+      },
+      areaOf: (viewId) => this.areaOf(viewId),
+      railIconPlacements: () => this.railIconPlacements(),
+    }));
 
     // Wire activation events to the activator
     this._register(activationEvents.onDidRequestActivation(async (request) => {
