@@ -217,6 +217,22 @@ container to a real API).
 
 ## The program — fixing classes, in order
 
+### Execution ledger
+
+- PHASE A — SHIPPED 2026-08-25. The interaction-mode subsystem
+  (src/ui/interactionMode.ts: enterMode with a complete default exit
+  set, mode stack, one idempotent exit path, focus capture/restore;
+  beginPointerDrag with pointer capture and cancel routing) plus 17
+  contract tests (tests/unit/interactionMode.test.ts). Citizens:
+  ContextMenu (keyboard grab fixed: Enter only when armed), keybinding
+  capture, attachPopupDismiss, four sash drags, dashboard drawers,
+  showConfirmModal, and the nine hand-rolled popup dismissals (planner
+  menus, chat system-prompt viewer / token popup / copy menu, database
+  popovers, canvas add-popover, dashboard sidebar menu). Commits
+  4e39cdd6, 353723e7, 9e5735d7, 72db5175, 1c8faaf5. Blur-as-commit for
+  inline renames (A.4 tail) folded into Phase B's command pass.
+- PHASE B — IN PROGRESS.
+
 PHASE A — THE INTERACTION CONTRACT (usability first; the class of the
 field bug):
 1. ContextMenu engine: conditional keyboard grab (Enter only when a row
