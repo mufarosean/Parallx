@@ -264,7 +264,27 @@ container to a real API).
   picker and the panel tab-visibility checklist (radio/checkbox UI; the
   choice parameterizes, it does not name, a command). Editor tab
   reorder / cross-group move commands ride with the editor-tab seam.
-- PHASE C — NOT STARTED.
+- PHASE C — SHIPPED 2026-08-25, three slices (6112e205, 4062af26, this
+  commit). Tier 0: getAllContext on IContextKeyService, getAllErrors on
+  IToolErrorService, keys() on ServiceCollection. Tier 1:
+  IIntrospectionService (src/services/introspectionService.ts) — the
+  read-only join: describeTools (registry × activator × errors ×
+  enablement), commands, keybindings, findKeyConflicts (when-clauses
+  attached), describeLayout (leaves by areaOf + rail icons + prose),
+  editors, settings (secrets never read), context, services, snapshot;
+  every answer degrades to empty. Tier 2: inspect(key) on BOTH settings
+  services naming the exact precedence branch. Tier 3: storage
+  onDidError → notification + journal (the load-throw paths now fire
+  too); tool lifecycle under journal source 'runtime' (failed
+  activations, deactivations, enablement flips, force-deactivation with
+  an error notification); successful boot activations deliberately
+  quiet. Tier 4: app__describe chat tool (always-allowed, topic enum,
+  compact summary default); DiagnosticsService.addChecks + four
+  'workbench'-category checks (tool health, unguarded keybinding
+  collisions, layout integrity, enablement) that /doctor renders like
+  any other; the Tool Gallery's Runtime Status tab gains Activated At /
+  Activation Took / Recorded Errors / last-error detail via the join.
+- PHASE D — NOT STARTED.
 
 PHASE A — THE INTERACTION CONTRACT (usability first; the class of the
 field bug):

@@ -14,7 +14,7 @@ import { addDisposableListener } from '../ui/dom.js';
 import { Emitter, Event } from '../platform/events.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { URI } from '../platform/uri.js';
-import { IAgentApprovalService, IAgentTaskStore, ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IToolEnablementService, IWindowService, IFileService, ITextFileModelManager, IThemeService, IKeybindingService, ISessionManager, IAISettingsService, IUnifiedAIConfigService, IWorkspaceTranscriptService, IGlobalStorageService, IWorkspaceStorageService, ISurfaceRouterService } from '../services/serviceTypes.js';
+import { IAgentApprovalService, IAgentTaskStore, ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IToolEnablementService, IWindowService, IFileService, ITextFileModelManager, IThemeService, IKeybindingService, ISessionManager, IAISettingsService, IUnifiedAIConfigService, IWorkspaceTranscriptService, IGlobalStorageService, IWorkspaceStorageService, ISurfaceRouterService, IDiagnosticsService } from '../services/serviceTypes.js';
 import { SurfaceRouterService } from '../services/surfaceRouterService.js';
 import { NotificationsSurfacePlugin } from './surfaces/notificationSurface.js';
 import { StatusSurfacePlugin } from './surfaces/statusSurface.js';
@@ -61,6 +61,7 @@ import {
 import type { SerializedEditorSnapshot, SerializedEditorInputSnapshot } from '../workspace/workspaceTypes.js';
 import { LAYOUT_SCHEMA_VERSION, SerializedNodeType, type SerializedGridNode } from '../layout/layoutModel.js';
 import { IIntrospectionService, IntrospectionService } from '../services/introspectionService.js';
+import { createWorkbenchDiagnosticChecks } from '../services/workbenchDiagnosticChecks.js';
 import { CONTAINER_DRAG_TYPE } from '../platform/dragTypes.js';
 import { registerBuiltinEditorDeserializers, deserializeEditorInput, hasEditorInputDeserializer } from '../editor/editorInputDeserializer.js';
 import type { IEditorInput } from '../editor/editorInput.js';
@@ -3262,6 +3263,13 @@ export class Workbench extends Layout {
       areaOf: (viewId) => this.areaOf(viewId),
       railIconPlacements: () => this.railIconPlacements(),
     }));
+
+    // The workbench becomes a diagnostics category (Phase C): tool health,
+    // keybinding conflicts, layout integrity, enablement — /doctor stops
+    // being AI-stack-only.
+    this._services.tryGet(IDiagnosticsService)?.addChecks(
+      createWorkbenchDiagnosticChecks(this._services.get(IIntrospectionService)),
+    );
 
     // ── Tool lifecycle in the journal (Phase C). Successful boot
     // activations stay quiet — nineteen "activated" lines would bury the

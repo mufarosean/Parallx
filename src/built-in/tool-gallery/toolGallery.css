@@ -574,6 +574,16 @@
   font-weight: 500;
 }
 
+.tool-editor-status-error {
+  margin-top: 8px;
+  padding: 6px 10px;
+  font-size: var(--parallx-fontSize-base);
+  color: var(--px-danger);
+  background: var(--px-danger-soft);
+  border-radius: var(--px-radius-sm, 4px);
+  word-break: break-word;
+}
+
 .tool-editor-status-value {
   color: var(--vscode-foreground);
 }

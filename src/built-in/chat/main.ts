@@ -112,6 +112,7 @@ import {
   createSubagentAnnouncer,
 } from '../../openclaw/openclawSubagentExecutor.js';
 import { IEditorService, IToolRegistryService, IConfigurationService, ICommandService } from '../../services/serviceTypes.js';
+import { IIntrospectionService } from '../../services/introspectionService.js';
 import { registerManifestConfiguration } from '../../services/manifestSettings.js';
 import type { IBuiltInToolFileSystem } from './chatTypes.js';
 import { PromptFileService } from '../../services/promptFileService.js';
@@ -2142,6 +2143,20 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       readFile: (p) => dataService.readFileRelative(p),
       writeFile: (p, c) => dataService.writeFileRelative(p, c),
     })));
+
+    // Phase C (SYSTEM_INTEGRITY.md) — `app__describe`: the system diagnosing
+    // itself. Read-only, always allowed, modeled on activity_log. The
+    // introspection service resolves LAZILY at call time — it registers
+    // during workbench init, which may still be running when chat activates.
+    void import('./tools/appDescribeTool.js').then((mod) => {
+      const getIntrospection = () => {
+        const id = IIntrospectionService;
+        return api.services.has(id)
+          ? api.services.get<import('../../services/introspectionService.js').IIntrospectionService>(id)
+          : undefined;
+      };
+      context.subscriptions.push(languageModelToolsService.registerTool(mod.createAppDescribeTool(getIntrospection)));
+    }).catch(() => { /* tool module load failed — chat continues without it */ });
 
     // M66 §4a — `link_create` chat tool. Registered separately so it can
     // close over the `api.links` snapshot without threading it through the

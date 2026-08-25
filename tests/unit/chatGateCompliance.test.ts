@@ -101,6 +101,7 @@ const FOLDER_RULES: Record<string, string[]> = {
   'tools/parallxLinkTool.ts': [],              // M66 §4a — link_create URI minter
   'tools/notebookTools.ts': ['tools/'],        // notebook_create/read/edit_cell/run — reuses writeTools' path sanitiser
   'tools/appCommandTools.ts': [],              // M70 — app__find_commands + app__run_command
+  'tools/appDescribeTool.ts': [],              // Phase C — app__describe (the introspection join, read-only)
   'tools/pythonTools.ts':   [],                // M94 — python_run_script / install / list packages
   'surfaces/chatSurface.ts': [],                // M58 W6 — ChatSurfacePlugin (trace logger)
 

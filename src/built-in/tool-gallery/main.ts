@@ -14,6 +14,7 @@ import type { IDisposable } from '../../platform/lifecycle.js';
 import { $, clearNode } from '../../ui/dom.js';
 import { getIcon } from '../../ui/iconRegistry.js';
 import { renderEmptyState } from '../../ui/emptyStates.js';
+import { IIntrospectionService } from '../../services/introspectionService.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -76,6 +77,10 @@ interface ParallxApi {
       delete(uri: string): Promise<void>;
     };
   };
+  services: {
+    has(id: unknown): boolean;
+    get<T>(id: unknown): T;
+  };
 }
 
 // ─── SVG Icon Constants — from the central Lucide icon registry ──────────────
@@ -99,9 +104,20 @@ const SVG_ICON_INSTALL = getIcon('export')!;
 
 let _sidebarRefresh: (() => void) | null = null;
 
+/** The self-knowledge join (Phase C) — feeds the Runtime Status tab's
+ *  activation timing and error history. Optional: the tab degrades to its
+ *  static fields when introspection is unavailable. */
+let _getIntrospection: (() => import('../../services/introspectionService.js').IIntrospectionService | undefined) | undefined;
+
 // ─── Activation ──────────────────────────────────────────────────────────────
 
 export function activate(api: ParallxApi, context: ToolContext): void {
+  // Resolve the introspection join for the Runtime Status tab (Phase C).
+  // Lazy: it registers during workbench init, which may still be running.
+  _getIntrospection = () => api.services.has(IIntrospectionService)
+    ? api.services.get<import('../../services/introspectionService.js').IIntrospectionService>(IIntrospectionService)
+    : undefined;
+
   // Register the editor provider for tool detail pages
   const editorDisposable = api.editors.registerEditorProvider('tool-detail', {
     createEditorPane(container: HTMLElement, input?: { id: string; name: string; instanceId?: string }): IDisposable {
@@ -888,9 +904,23 @@ function renderStatusTab(container: HTMLElement, tool: ToolInfo): void {
   const section = $('div');
   section.classList.add('tool-editor-status');
 
+  // The runtime facts the audit found missing from this tab (Phase C):
+  // WHEN the tool activated, how long that took, and what has failed —
+  // joined for us by the introspection service.
+  const runtime = _getIntrospection?.()?.describeTools().find((t) => t.id === tool.id);
+
   const fields: [string, string][] = [
     ['State', tool.state],
     ['Activation Events', (tool.activationEvents ?? []).join(', ') || 'none'],
+    ...(runtime?.activatedAt !== undefined
+      ? [['Activated At', new Date(runtime.activatedAt).toLocaleTimeString()] as [string, string]]
+      : []),
+    ...(runtime?.activationDurationMs !== undefined
+      ? [['Activation Took', `${Math.round(runtime.activationDurationMs)} ms`] as [string, string]]
+      : []),
+    ...(runtime
+      ? [['Recorded Errors', String(runtime.errorCount)] as [string, string]]
+      : []),
     ['Tool Path', tool.toolPath],
     ['Built-in', tool.isBuiltin ? 'Yes' : 'No'],
   ];
@@ -910,6 +940,15 @@ function renderStatusTab(container: HTMLElement, tool: ToolInfo): void {
     row.appendChild(val);
 
     section.appendChild(row);
+  }
+
+  // The most recent recorded error, in full — the count row says how many,
+  // this says what.
+  if (runtime?.lastError) {
+    const err = $('div');
+    err.classList.add('tool-editor-status-error');
+    err.textContent = `Last error (${runtime.lastError.context}, ${new Date(runtime.lastError.timestamp).toLocaleString()}): ${runtime.lastError.message}`;
+    section.appendChild(err);
   }
 
   // State indicator

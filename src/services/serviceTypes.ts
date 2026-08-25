@@ -2104,7 +2104,7 @@ export interface IDiagnosticResult {
   readonly status: 'pass' | 'fail' | 'warn';
   readonly detail: string;
   readonly timestamp: number;
-  readonly category?: 'connection' | 'model' | 'rag' | 'config' | 'workspace';
+  readonly category?: 'connection' | 'model' | 'rag' | 'config' | 'workspace' | 'workbench';
 }
 
 export type IDiagnosticCheckProducer = (deps: IDiagnosticCheckDeps) => Promise<IDiagnosticResult>;
@@ -2134,6 +2134,12 @@ export interface IDiagnosticsService {
   runChecks(): Promise<readonly IDiagnosticResult[]>;
   getLastResults(): readonly IDiagnosticResult[];
   updateDeps(patch: Partial<IDiagnosticCheckDeps>): void;
+  /**
+   * Add checks after construction (SYSTEM_INTEGRITY.md Phase C: the
+   * workbench registers its own health checks once introspection exists —
+   * the check list was fixed at construction and 15/15 about the AI stack).
+   */
+  addChecks(checks: readonly IDiagnosticCheckProducer[]): void;
   readonly onDidChange: Event<readonly IDiagnosticResult[]>;
 }
 

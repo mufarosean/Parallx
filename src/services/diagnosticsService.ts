@@ -25,6 +25,14 @@ export class DiagnosticsService {
     this._deps = { ...this._deps, ...patch };
   }
 
+  /**
+   * Add checks after construction — the workbench registers its own health
+   * checks once introspection exists (SYSTEM_INTEGRITY.md Phase C).
+   */
+  addChecks(checks: readonly IDiagnosticCheckProducer[]): void {
+    this._checks.push(...checks);
+  }
+
   async runChecks(): Promise<readonly IDiagnosticResult[]> {
     const results = await Promise.all(
       this._checks.map(check =>
