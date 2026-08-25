@@ -72,7 +72,7 @@ export class CommandsBridge {
    */
   async executeCommand<T = unknown>(id: string, ...args: unknown[]): Promise<T> {
     this._throwIfDisposed();
-    return this._commandService.executeCommand<T>(id, ...args);
+    return this._commandService.executeCommandFrom<T>(`ext:${this._toolId}`, id, ...args);
   }
 
   /**

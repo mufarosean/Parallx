@@ -417,7 +417,7 @@ export class KeybindingContributionProcessor extends Disposable implements ICont
       e.stopPropagation();
 
       // Execute the command (fire and forget, errors handled by CommandService)
-      this._commandService.executeCommand(matchedBinding.commandId).catch(err => {
+      this._commandService.executeCommandFrom('keybinding', matchedBinding.commandId).catch(err => {
         console.error(
           `[KeybindingContribution] Error executing command "${matchedBinding!.commandId}" ` +
           `via keybinding "${matchedBinding!.key}":`,

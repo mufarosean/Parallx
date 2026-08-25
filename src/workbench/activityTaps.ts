@@ -48,17 +48,14 @@ function editorObject(typeId: string | undefined, name: string | undefined): str
   return kind ?? 'editor';
 }
 
-// Commands too chatty or too internal to narrate: getter-style commands other
-// code executes programmatically (observed at boot in e2e 93), focus plumbing,
-// status polls, and dispatch plumbing (signal emission, background-prompt
-// routing) that subsystems fire on the user's behalf — those events are
-// narrated by their OWN taps (signal bus, chat emitter); a second line here
-// would mislabel machine traffic as a user gesture. The journal narrates
-// intent, not implementation traffic.
+// Commands that are never intent, whatever their origin: private/internal
+// ids, focus plumbing, and getter-style query commands (cross-tool plumbing
+// that happens to ride the command bus). Machine traffic in general no
+// longer needs listing here — executions with origin 'programmatic' are
+// skipped wholesale, because the subsystem that fired them narrates through
+// its OWN tap. The journal narrates intent, not implementation traffic.
 const COMMAND_NOISE = [
-  /^_/, /\.internal\./, /^workbench\.action\.focus/, /^parallx\.heartbeat\.status$/,
-  /^chat\.get[A-Z]/, /^parallx\.mind\.status$/, /\.get[A-Z][a-zA-Z]*Provider$/,
-  /^parallx\.autonomy\.signal$/, /^chat\.runBackgroundPrompt$/, /^chat\.submitPrompt$/,
+  /^_/, /\.internal\./, /^workbench\.action\.focus/, /\.get[A-Z]/,
 ];
 
 export interface IActivityTapDeps {
@@ -93,20 +90,30 @@ export function wireActivityTaps(deps: IActivityTapDeps): IDisposable {
   store.add({ dispose: () => { window.removeEventListener('blur', onBlur); window.removeEventListener('focus', onFocus); } });
 
   // ── Commands: palette, keybindings, menus, extensions, and the AI's
-  //    app__run_command all funnel through this one emitter. ──
+  //    app__run_command all funnel through this one emitter, each stamping
+  //    its origin. The actor is derived from that stamp:
+  //      programmatic  skipped — code calling code is narrated by its own tap
+  //      ai            the assistant acted
+  //      ext:<id>      an extension's UI relayed a person's gesture → user
+  //      anything else a person acted through app chrome → user ──
   if (services.has(ICommandService)) {
     const cmdSvc = services.get(ICommandService) as unknown as {
-      onDidExecuteCommand?: (l: (e: { commandId: string; duration?: number }) => void) => IDisposable;
+      onDidExecuteCommand?: (l: (e: { commandId: string; duration?: number; origin?: string }) => void) => IDisposable;
       getCommand?: (id: string) => { title?: string; category?: string } | undefined;
     };
     if (typeof cmdSvc.onDidExecuteCommand === 'function') {
       store.add(cmdSvc.onDidExecuteCommand((e) => {
+        const origin = e.origin ?? 'programmatic';
+        if (origin === 'programmatic') return;
         if (COMMAND_NOISE.some((re) => re.test(e.commandId))) return;
         const desc = cmdSvc.getCommand?.(e.commandId);
         const title = desc?.title
           ? (desc.category ? `${desc.category}: ${desc.title}` : desc.title)
           : e.commandId;
-        journal.note({ actor: 'user', source: 'command', verb: 'ran', object: `"${title}"` });
+        journal.note({
+          actor: origin === 'ai' ? 'ai' : 'user',
+          source: 'command', verb: 'ran', object: `"${title}"`,
+        });
       }));
     }
   }
@@ -157,7 +164,8 @@ export function wireActivityTaps(deps: IActivityTapDeps): IDisposable {
     journal.note({ actor: 'user', source: 'menu', verb: 'chose', object: `"${label}" from a menu` });
   }));
 
-  // ── Settings + theme. ──
+  // ── Settings + theme. Actor from the write's origin stamp: person, model,
+  //    extension, or machine (binding echoes and system writes → 'system'). ──
   if (services.has(ISettingsRegistryService)) {
     const settings = services.get(ISettingsRegistryService);
     store.add(settings.onDidChange((c) => {
@@ -165,7 +173,11 @@ export function wireActivityTaps(deps: IActivityTapDeps): IDisposable {
       const v = typeof c.value === 'string' || typeof c.value === 'number' || typeof c.value === 'boolean'
         ? String(c.value).slice(0, 60)
         : '(updated)';
-      journal.note({ actor: 'user', source: 'settings', verb: 'changed setting', object: c.key, detail: v });
+      const actor = c.origin === 'ai' ? 'ai'
+        : c.origin === 'user' ? 'user'
+        : c.origin?.startsWith('ext:') ? c.origin
+        : 'system';
+      journal.note({ actor, source: 'settings', verb: 'changed setting', object: c.key, detail: v });
     }));
   }
   if (deps.themeService) {

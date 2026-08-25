@@ -22,6 +22,10 @@ function createMockCommandService() {
       executed.push(id);
       return undefined;
     },
+    async executeCommandFrom(_origin: string, id: string) {
+      executed.push(id);
+      return undefined;
+    },
     addCommand(id: string) { commands.add(id); },
     getExecuted() { return executed; },
     clearExecuted() { executed.length = 0; },

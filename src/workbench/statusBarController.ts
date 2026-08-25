@@ -67,7 +67,7 @@ export class StatusBarController extends Disposable {
     const commandService = this._services.get(ICommandService);
     if (commandService) {
       sb.setCommandExecutor((cmdId: string) => {
-        commandService.executeCommand(cmdId);
+        commandService.executeCommandFrom('ui', cmdId);
       });
     }
 

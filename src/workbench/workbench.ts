@@ -2187,7 +2187,7 @@ export class Workbench extends Layout {
               commandId = undefined;
           }
           if (commandId) {
-            cmdService.executeCommand(commandId).catch(err => {
+            cmdService.executeCommandFrom('ui', commandId).catch(err => {
               console.error(`[Workbench] Sidebar refresh command "${commandId}" failed:`, err);
             });
           }
@@ -2398,7 +2398,7 @@ export class Workbench extends Layout {
         anchor: { x, y },
       });
       ctxMenu.onDidSelect(({ item }) => {
-        cmdService.executeCommand(item.id).catch(err => {
+        cmdService.executeCommandFrom('menu', item.id).catch(err => {
           console.error(`[Workbench] Context menu action error:`, err);
         });
       });

@@ -19,6 +19,7 @@ import type { IKeybindingService } from './serviceTypes.js';
 interface ICommandServiceLike {
   hasCommand(commandId: string): boolean;
   executeCommand(commandId: string, ...args: unknown[]): Promise<unknown>;
+  executeCommandFrom(origin: 'keybinding', commandId: string, ...args: unknown[]): Promise<unknown>;
 }
 
 interface IContextKeyServiceLike {
@@ -445,7 +446,7 @@ export class KeybindingService extends Disposable implements IKeybindingService 
   // ── Command execution ──
 
   private _executeBinding(entry: KeybindingEntry): void {
-    this._commandService.executeCommand(entry.commandId).then(
+    this._commandService.executeCommandFrom('keybinding', entry.commandId).then(
       () => {
         this._onDidDispatch.fire({ key: entry.fullKey, commandId: entry.commandId });
       },

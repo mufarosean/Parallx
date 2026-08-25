@@ -155,8 +155,8 @@ export function createAppRunCommandTool(
       const arg = readString(args.arg);
       try {
         const result = arg !== undefined
-          ? await commandService.executeCommand(commandId, arg)
-          : await commandService.executeCommand(commandId);
+          ? await commandService.executeCommandFrom('ai', commandId, arg)
+          : await commandService.executeCommandFrom('ai', commandId);
         return ok({
           commandId,
           executed: true,

@@ -111,7 +111,7 @@ import {
   createSubagentTurnExecutor,
   createSubagentAnnouncer,
 } from '../../openclaw/openclawSubagentExecutor.js';
-import { IEditorService, IToolRegistryService, IConfigurationService } from '../../services/serviceTypes.js';
+import { IEditorService, IToolRegistryService, IConfigurationService, ICommandService } from '../../services/serviceTypes.js';
 import { registerManifestConfiguration } from '../../services/manifestSettings.js';
 import type { IBuiltInToolFileSystem } from './chatTypes.js';
 import { PromptFileService } from '../../services/promptFileService.js';
@@ -1395,7 +1395,13 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     checkProviderStatus: _ollamaProvider ? () => _ollamaProvider!.checkAvailability() : undefined,
     getSessionFlag: (key: string) => _sessionFlags.get(key) ?? false,
     setSessionFlag: (key: string, value: boolean) => { _sessionFlags.set(key, value); },
-    executeCommand: (commandId: string, ...args: unknown[]) => { api.commands.executeCommand(commandId, ...args); },
+    // The participant delegate is the AGENT acting — stamp origin 'ai', not
+    // the extension bridge's ext:chat (which reads as a user gesture).
+    executeCommand: (commandId: string, ...args: unknown[]) => {
+      const cmd = api.services.has(ICommandService) ? api.services.get<import('../../services/serviceTypes.js').ICommandService>(ICommandService) : undefined;
+      if (cmd) { void cmd.executeCommandFrom('ai', commandId, ...args); }
+      else { void api.commands.executeCommand(commandId, ...args); }
+    },
     // W1 (M58): Bridge followup runner to chat service queue.
     // Upstream: scheduleFollowupDrain + enqueueFollowupRun.
     queueFollowupRequest: (sessionId: string, message: string) => {

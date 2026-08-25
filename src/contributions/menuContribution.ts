@@ -286,7 +286,7 @@ export class MenuContributionProcessor extends Disposable implements IContributi
 
       button.addEventListener('click', (e) => {
         e.stopPropagation();
-        this._commandService.executeCommand(action.commandId).catch(err => {
+        this._commandService.executeCommandFrom('ui', action.commandId).catch(err => {
           console.error(`[MenuContribution] Error executing view title action "${action.commandId}":`, err);
         });
       });
@@ -372,7 +372,7 @@ export class MenuContributionProcessor extends Disposable implements IContributi
 
     // Execute the command when a menu item is selected
     this._activeMenu.onDidSelect(e => {
-      this._commandService.executeCommand(e.item.id).catch(err => {
+      this._commandService.executeCommandFrom('menu', e.item.id).catch(err => {
         console.error(`[MenuContribution] Error executing context menu item "${e.item.id}":`, err);
       });
     });

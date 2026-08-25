@@ -54,6 +54,7 @@ export interface IKeybindingLookup {
 /** Service for executing commands. */
 export interface ICommandExecutor {
   executeCommand(commandId: string, ...args: unknown[]): Promise<unknown>;
+  executeCommandFrom(origin: 'menu' | 'ui', commandId: string, ...args: unknown[]): Promise<unknown>;
   hasCommand(commandId: string): boolean;
 }
 
@@ -315,7 +316,7 @@ export class TitlebarPart extends Part {
 
     // Item selected → execute command
     ctxMenu.onDidSelect(({ item }) => {
-      this._commandExecutor?.executeCommand(item.id);
+      this._commandExecutor?.executeCommandFrom('menu', item.id);
     });
 
     // When dismissed (Escape, click outside, or selection), clean up.

@@ -96,10 +96,27 @@ export interface ISettingBinding<T = unknown> {
 
 // ─── Change event ──────────────────────────────────────────────────────────
 
+/**
+ * WHO caused a settings write — the attribution half of the action language
+ * (SYSTEM_INTEGRITY.md, Dimension II). The journal tap derives the actor
+ * from this instead of hardcoding 'user'.
+ *
+ *   user      a person editing through the Settings hub or another UI surface
+ *   ai        the model writing through a tool
+ *   system    a subsystem writing on its own initiative (migrations, restore)
+ *   binding   an external store echoed through a bound key (ConfigurationService
+ *             bridges, config-file reloads) — the origin of the underlying
+ *             change is unknown here
+ *   ext:<id>  an extension writing through the API
+ */
+export type SettingsWriteOrigin = 'user' | 'ai' | 'system' | 'binding' | `ext:${string}`;
+
 export interface ISettingChange {
   readonly key: string;
   readonly value: unknown;
   readonly scope: SettingScope;
+  /** Who caused the write. Defaults to 'user' — the common case for UI writes. */
+  readonly origin: SettingsWriteOrigin;
 }
 
 // ─── Service interface ─────────────────────────────────────────────────────
@@ -132,11 +149,14 @@ export interface ISettingsRegistryService {
    * `scope` is read from the schema; the optional override is honored only
    * when explicitly the same scope (defensive — prevents accidental scope
    * cross-pollination from extension code).
+   * `origin` attributes the write in the change event (default 'user');
+   * programmatic writers pass 'system'/'ai'/'ext:<id>' so the journal
+   * does not misattribute machine writes to the person.
    */
-  setValue(key: string, value: unknown, scope?: SettingScope): Promise<void>;
+  setValue(key: string, value: unknown, scope?: SettingScope, origin?: SettingsWriteOrigin): Promise<void>;
 
   /** Reset a key to its schema default. */
-  reset(key: string): Promise<void>;
+  reset(key: string, origin?: SettingsWriteOrigin): Promise<void>;
 
   /**
    * Read a secret setting asynchronously.
@@ -211,7 +231,7 @@ export class SettingsRegistryService extends Disposable implements ISettingsRegi
       this._register(binding.onDidChange((value) => {
         const schema = this._schemas.get(key);
         if (!schema) return;
-        this._onDidChange.fire({ key, value, scope: schema.scope });
+        this._onDidChange.fire({ key, value, scope: schema.scope, origin: 'binding' });
       }));
     }
   }
@@ -266,7 +286,7 @@ export class SettingsRegistryService extends Disposable implements ISettingsRegi
 
   // ── Write ───────────────────────────────────────────────────────────────
 
-  async setValue(key: string, value: unknown, scope?: SettingScope): Promise<void> {
+  async setValue(key: string, value: unknown, scope?: SettingScope, origin: SettingsWriteOrigin = 'user'): Promise<void> {
     const schema = this._schemas.get(key);
     if (!schema) {
       throw new Error(`[SettingsRegistry] unregistered key: ${key}`);
@@ -282,7 +302,7 @@ export class SettingsRegistryService extends Disposable implements ISettingsRegi
     if (binding) {
       await binding.setValue(value);
       console.info(`[settings] write key=${key} scope=${schema.scope} (binding)`);
-      this._onDidChange.fire({ key, value, scope: schema.scope });
+      this._onDidChange.fire({ key, value, scope: schema.scope, origin });
       return;
     }
 
@@ -294,7 +314,7 @@ export class SettingsRegistryService extends Disposable implements ISettingsRegi
         await this._secretStorage.setString(key, typeof value === 'string' ? value : String(value));
       }
       console.info(`[settings] write key=${key} scope=${schema.scope} (secret)`);
-      this._onDidChange.fire({ key, value, scope: schema.scope });
+      this._onDidChange.fire({ key, value, scope: schema.scope, origin });
       return;
     }
 
@@ -306,10 +326,10 @@ export class SettingsRegistryService extends Disposable implements ISettingsRegi
       await this._persistUser();
     }
     console.info(`[settings] write key=${key} scope=${schema.scope}`);
-    this._onDidChange.fire({ key, value, scope: schema.scope });
+    this._onDidChange.fire({ key, value, scope: schema.scope, origin });
   }
 
-  async reset(key: string): Promise<void> {
+  async reset(key: string, origin: SettingsWriteOrigin = 'user'): Promise<void> {
     const schema = this._schemas.get(key);
     if (!schema) {
       throw new Error(`[SettingsRegistry] unregistered key: ${key}`);
@@ -329,7 +349,7 @@ export class SettingsRegistryService extends Disposable implements ISettingsRegi
       await this._persistUser();
     }
     console.info(`[settings] reset key=${key} scope=${schema.scope}`);
-    this._onDidChange.fire({ key, value: schema.default, scope: schema.scope });
+    this._onDidChange.fire({ key, value: schema.default, scope: schema.scope, origin });
   }
 
   // ── Persistence helpers ─────────────────────────────────────────────────

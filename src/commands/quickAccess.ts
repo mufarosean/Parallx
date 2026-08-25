@@ -1288,7 +1288,7 @@ export class QuickAccessWidget extends Disposable {
   }
 
   private _executeCommandById(commandId: string): void {
-    this._commandService.executeCommand(commandId).catch((err) => {
+    this._commandService.executeCommandFrom('palette', commandId).catch((err) => {
       console.error('[QuickAccess] Failed to execute command:', commandId, err);
     });
     this._onDidExecute.fire(commandId);

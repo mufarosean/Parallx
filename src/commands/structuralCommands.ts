@@ -298,7 +298,8 @@ const openSettings: CommandDescriptor = {
   async handler(ctx) {
     const commandService = ctx.getService<import('../services/serviceTypes.js').ICommandService>('ICommandService');
     if (commandService) {
-      await commandService.executeCommand('settings.open');
+      // Alias: forward the origin so the palette/menu attribution survives.
+      await commandService.executeCommandFrom(ctx.origin, 'settings.open');
     }
   },
 };
@@ -314,8 +315,8 @@ const openKeybindings: CommandDescriptor = {
     // ONE shortcuts surface (STANDARDIZATION.md P1): the Settings hub's
     // panel, which can actually REBIND keys. The read-only editor tab this
     // used to open is deleted.
-    const commandService = ctx.getService<{ executeCommand(id: string, ...args: unknown[]): Promise<unknown> }>('ICommandService');
-    await commandService?.executeCommand('settings.openKeyboardShortcuts');
+    const commandService = ctx.getService<import('../services/serviceTypes.js').ICommandService>('ICommandService');
+    await commandService?.executeCommandFrom(ctx.origin, 'settings.openKeyboardShortcuts');
   },
 };
 

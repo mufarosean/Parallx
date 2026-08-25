@@ -295,7 +295,7 @@ export class MenuBuilder extends Disposable {
       }
 
       // Execute via command service for registered commands
-      cmdService.executeCommand(item.id).catch(err => {
+      cmdService.executeCommandFrom('menu', item.id).catch(err => {
         console.error(`[MenuBuilder] Manage menu action error:`, err);
       });
     });

@@ -6,6 +6,33 @@
 import type { IDisposable } from '../platform/lifecycle.js';
 import type { Event } from '../platform/events.js';
 
+// ─── Command Origin ──────────────────────────────────────────────────────────
+
+/**
+ * WHERE an execution came from — the attribution half of the action language
+ * (SYSTEM_INTEGRITY.md, Dimension II). Every route into executeCommand stamps
+ * its origin; un-stamped calls are 'programmatic' (machine traffic executed on
+ * some subsystem's behalf, narrated by that subsystem's own journal tap).
+ *
+ *   palette      command palette / quick access
+ *   keybinding   either keybinding dispatcher
+ *   menu         any context/dropdown menu (IContextMenuItem.id = command id)
+ *   gesture      a drag/drop or other pointer gesture with a command equivalent
+ *   ui           direct chrome controls: buttons, statusbar entries, window controls
+ *   ai           the model, through app__run_command or an agent delegate
+ *   ext:<id>     an extension calling through the commands bridge
+ *   programmatic code calling code (the default)
+ */
+export type CommandOrigin =
+  | 'palette'
+  | 'keybinding'
+  | 'menu'
+  | 'gesture'
+  | 'ui'
+  | 'ai'
+  | `ext:${string}`
+  | 'programmatic';
+
 // ─── Command Handler ─────────────────────────────────────────────────────────
 
 /**
@@ -27,6 +54,13 @@ export interface CommandExecutionContext {
    * Commands that need layout mutation, workspace operations, etc. use this.
    */
   readonly workbench: unknown; // typed as unknown to avoid circular import; cast in handler
+
+  /**
+   * The origin of THIS execution. Alias commands forward it when chaining
+   * (`executeCommandFrom(ctx.origin, …)`) so a palette-invoked alias still
+   * journals as a palette action.
+   */
+  readonly origin: CommandOrigin;
 }
 
 // ─── Command Metadata ────────────────────────────────────────────────────────
@@ -107,6 +141,8 @@ export interface CommandExecutedEvent {
   readonly args: readonly unknown[];
   readonly result: unknown;
   readonly duration: number; // ms
+  /** Where the execution came from. Journal taps derive the actor from this. */
+  readonly origin: CommandOrigin;
 }
 
 /** Fired when a new command is registered. */
@@ -161,8 +197,17 @@ export interface ICommandServiceShape extends ICommandRegistry, IDisposable {
    * Throws if the command does not exist.
    * Throws if the precondition (when clause) is not satisfied.
    * Returns the result of the handler.
+   * Origin is stamped 'programmatic' — UI routes use executeCommandFrom.
    */
   executeCommand<T = unknown>(id: string, ...args: unknown[]): Promise<T>;
+
+  /**
+   * Execute a command with an explicit origin. This is the primary execution
+   * path: every UI route (palette, keybinding, menu, chrome control, AI,
+   * extension bridge) stamps where the call came from so the journal can
+   * attribute the action truthfully.
+   */
+  executeCommandFrom<T = unknown>(origin: CommandOrigin, id: string, ...args: unknown[]): Promise<T>;
 
   /** Fires after every successful command execution. */
   readonly onDidExecuteCommand: Event<CommandExecutedEvent>;

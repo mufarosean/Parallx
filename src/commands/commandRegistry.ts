@@ -17,6 +17,7 @@ import type {
   CommandDescriptor,
   CommandExecutionContext,
   CommandExecutedEvent,
+  CommandOrigin,
   CommandRegisteredEvent,
   CommandUnregisteredEvent,
   ICommandServiceShape,
@@ -120,6 +121,10 @@ export class CommandService extends Disposable implements ICommandServiceShape {
   // ─── Execution ─────────────────────────────────────────────────────────────
 
   async executeCommand<T = unknown>(id: string, ...args: unknown[]): Promise<T> {
+    return this.executeCommandFrom<T>('programmatic', id, ...args);
+  }
+
+  async executeCommandFrom<T = unknown>(origin: CommandOrigin, id: string, ...args: unknown[]): Promise<T> {
     const descriptor = this._commands.get(id);
     if (!descriptor) {
       throw new Error(`[CommandService] Unknown command: ${id}`);
@@ -135,7 +140,7 @@ export class CommandService extends Disposable implements ICommandServiceShape {
       }
     }
 
-    const ctx = this._createContext();
+    const ctx = this._createContext(origin);
     const start = performance.now();
 
     const result = await Promise.resolve(descriptor.handler(ctx, ...args));
@@ -146,6 +151,7 @@ export class CommandService extends Disposable implements ICommandServiceShape {
       args,
       result,
       duration,
+      origin,
     });
 
     return result as T;
@@ -153,7 +159,7 @@ export class CommandService extends Disposable implements ICommandServiceShape {
 
   // ─── Internals ─────────────────────────────────────────────────────────────
 
-  private _createContext(): CommandExecutionContext {
+  private _createContext(origin: CommandOrigin): CommandExecutionContext {
     const services = this._services;
     const workbench = this._workbench;
     return {
@@ -165,6 +171,7 @@ export class CommandService extends Disposable implements ICommandServiceShape {
         }
       },
       workbench,
+      origin,
     };
   }
 
