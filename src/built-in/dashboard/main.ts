@@ -203,6 +203,17 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     setError: (id, message) => _dataService!.setWidgetError(id, message),
     clearError: (id) => _dataService!.clearWidgetError(id),
     updateAppearance: (id, appearance) => _dataService!.updateWidgetAppearance(id, appearance),
+    updateConfig: (id, config) => _dataService!.updateWidgetConfig(id, config),
+    returnInstanceToDashboard: async (id) => {
+      const row = await _dataService!.getWidget(id);
+      if (!row) return null;
+      // Home first; when home is gone (or never existed — a widget born
+      // in the workbench), the default dashboard page, created if none.
+      const origin = row.originPageId ? await _dataService!.getPage(row.originPageId) : null;
+      const pageId = origin ? origin.id : (await _dataService!.ensureDefaultPage()).id;
+      await _dataService!.moveWidgetToPage(id, pageId);
+      return pageId;
+    },
     refreshWidget: async (id) => {
       const row = await _dataService!.getWidget(id);
       if (!row) return;

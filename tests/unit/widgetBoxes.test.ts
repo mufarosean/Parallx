@@ -94,6 +94,20 @@ function fakeSystem() {
       calls.push(`appearance:${id}:${JSON.stringify(appearance)}`);
       dataChanged.fire({ kind: 'widget-updated', widgetId: id });
     },
+    updateConfig: async (id: string, config: Record<string, unknown>) => {
+      const row = rows.get(id);
+      if (row) row.config = config;
+      calls.push(`config:${id}:${JSON.stringify(config)}`);
+      dataChanged.fire({ kind: 'widget-updated', widgetId: id });
+    },
+    returnInstanceToDashboard: async (id: string) => {
+      const row = rows.get(id);
+      if (!row) return null;
+      const dest = (row as FakeRow & { originPageId?: string }).originPageId ?? 'page-default';
+      row.pageId = dest;
+      calls.push(`return:${id}:${dest}`);
+      return dest;
+    },
     refreshWidget: async (id: string) => { calls.push(`refresh:${id}`); },
     scheduleWidget: async (id: string) => { calls.push(`schedule:${id}`); },
     cancelSchedule: (id: string) => { calls.push(`cancel:${id}`); },
@@ -224,6 +238,20 @@ describe('WidgetBoxManager', () => {
     expect(system.calls).not.toContain('removeInstance:w1');
   });
 
+  it('Return To Dashboard drops the SEAT and keeps the INSTANCE', async () => {
+    manager.connectSystem(system);
+    (system.rows.get('w1') as FakeRow & { originPageId?: string }).originPageId = 'page-home';
+    manager.place('w1');
+    await flush();
+
+    expect(await manager.returnToDashboard('w1')).toBe(true);
+    expect(manager.has('w1')).toBe(false);
+    expect(calls).toContain('remove:widget:w1');
+    expect(system.calls).toContain('return:w1:page-home'); // home first
+    expect(system.rows.get('w1')).toBeDefined(); // never deleted
+    expect(system.calls).not.toContain('removeInstance:w1');
+  });
+
   it('the grip menu offers moves, alignment, and Remove Widget', async () => {
     manager.connectSystem(system);
     manager.place('w1');
@@ -236,7 +264,10 @@ describe('WidgetBoxManager', () => {
       expect(labels.some((l) => l.includes('Edit Appearance…'))).toBe(true);
       expect(labels.some((l) => l.includes('Align Content'))).toBe(true);
       expect(labels.some((l) => l.includes('Move To Bottom Edge'))).toBe(true);
+      expect(labels.some((l) => l.includes('Return To Dashboard'))).toBe(true);
       expect(labels.some((l) => l.includes('Remove Widget'))).toBe(true);
+      // No configSchema on the fake type — settings stays out of the menu.
+      expect(labels.some((l) => l.includes('Widget Settings…'))).toBe(false);
     } finally {
       document.querySelectorAll('.context-menu').forEach((el) => el.remove());
     }

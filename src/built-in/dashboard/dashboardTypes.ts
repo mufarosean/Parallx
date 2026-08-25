@@ -72,6 +72,14 @@ export interface WorkbenchWidgetHost {
   clearError(id: string): Promise<void>;
   /** Persist per-instance look customization (fires widget-updated). */
   updateAppearance(id: string, appearance: WidgetAppearance): Promise<void>;
+  /** Persist a widget's type-specific settings (fires widget-updated). */
+  updateConfig(id: string, config: Record<string, unknown>): Promise<void>;
+  /**
+   * Send a workbench-seated widget back to a dashboard: its origin page
+   * when that still exists, otherwise the default page (created if none).
+   * Returns the destination page id, or null when the widget is gone.
+   */
+  returnInstanceToDashboard(id: string): Promise<string | null>;
 
   /** Run one refresh through the real scheduler's admission (headless). */
   refreshWidget(id: string): Promise<void>;
@@ -173,6 +181,9 @@ export interface DashboardWidgetRow {
    * to re-enable. Null for instances created before the column existed.
    */
   readonly providerToolId: string | null;
+  /** The dashboard page a workbench-seated widget was adopted FROM (006);
+   *  null for widgets on dashboards and workbench-born instances. */
+  readonly originPageId: string | null;
   readonly createdAt: number;
   readonly updatedAt: number;
 }

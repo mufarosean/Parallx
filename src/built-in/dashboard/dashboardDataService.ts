@@ -101,6 +101,7 @@ function rowToWidget(row: Record<string, unknown>): DashboardWidgetRow {
     status,
     errorMessage: (row.error_message as string) ?? null,
     providerToolId: (row.provider_tool_id as string) ?? null,
+    originPageId: (row.origin_page_id as string) ?? null,
     createdAt: (row.created_at as number) ?? 0,
     updatedAt: (row.updated_at as number) ?? 0,
   };
@@ -191,9 +192,16 @@ export class DashboardDataService extends Disposable {
     const before = await this.getWidget(id);
     if (!before) return null;
     const now = Date.now();
+    // Origin bookkeeping (migration 006): crossing INTO the workbench
+    // remembers which dashboard page the widget left, so Return To
+    // Dashboard can send it home; landing on any dashboard page clears it.
+    const movingToWorkbench = pageId === WORKBENCH_PAGE_ID && before.pageId !== WORKBENCH_PAGE_ID;
+    const originPageId = movingToWorkbench
+      ? before.pageId
+      : pageId === WORKBENCH_PAGE_ID ? before.originPageId : null;
     const res = await this._db.run(
-      `UPDATE dashboard_widgets SET page_id = ?, updated_at = ? WHERE id = ?`,
-      [pageId, now, id],
+      `UPDATE dashboard_widgets SET page_id = ?, origin_page_id = ?, updated_at = ? WHERE id = ?`,
+      [pageId, originPageId, now, id],
     );
     if (res.error) throw new Error(`moveWidgetToPage failed: ${res.error.message}`);
     // Fired as remove+add so page-scoped listeners (an open dashboard
@@ -275,7 +283,7 @@ export class DashboardDataService extends Disposable {
     const res = await this._db.all(
       `SELECT id, page_id, widget_type_id, row, col, row_span, col_span, position,
               config_json, refresh_policy_json, appearance_json, cached_output, cached_at, status,
-              error_message, provider_tool_id, created_at, updated_at
+              error_message, provider_tool_id, origin_page_id, created_at, updated_at
          FROM dashboard_widgets
         WHERE page_id = ?
         ORDER BY row ASC, col ASC, position ASC`,
@@ -292,7 +300,7 @@ export class DashboardDataService extends Disposable {
     const res = await this._db.get(
       `SELECT id, page_id, widget_type_id, row, col, row_span, col_span, position,
               config_json, refresh_policy_json, appearance_json, cached_output, cached_at, status,
-              error_message, provider_tool_id, created_at, updated_at
+              error_message, provider_tool_id, origin_page_id, created_at, updated_at
          FROM dashboard_widgets WHERE id = ?`,
       [id],
     );
@@ -313,7 +321,7 @@ export class DashboardDataService extends Disposable {
     const res = await this._db.all(
       `SELECT id, page_id, widget_type_id, row, col, row_span, col_span, position,
               config_json, refresh_policy_json, appearance_json, cached_output, cached_at, status,
-              error_message, provider_tool_id, created_at, updated_at
+              error_message, provider_tool_id, origin_page_id, created_at, updated_at
          FROM dashboard_widgets`,
     );
     if (res.error) {
@@ -376,6 +384,7 @@ export class DashboardDataService extends Disposable {
       status: 'ok',
       errorMessage: null,
       providerToolId: input.providerToolId ?? null,
+      originPageId: null,
       createdAt: now,
       updatedAt: now,
     };

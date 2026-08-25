@@ -31,6 +31,7 @@ import {
 import { renderMarkdownToDom } from './widgets/markdownRenderer.js';
 import { applyWidgetAppearance } from './widgetAppearance.js';
 import { openAppearanceDrawer } from './appearanceDrawer.js';
+import { openWidgetSettingsDrawer } from './settingsDrawer.js';
 import { ILinkResolverService } from '../../links/linkResolverService.js';
 import { WIDGET_TEMPLATES } from './widgetTemplates.js';
 
@@ -1480,190 +1481,19 @@ class DashboardEditorPane implements IDisposable {
     if (!inst) return;
     const typeReg = inst.typeReg;
     if (!typeReg?.configSchema) return;
-    const schema = typeReg.configSchema;
-
-    const overlay = el('div', 'dashboard-settings-overlay');
-    // See _openAppearanceDrawer: the dropdowns own global listeners and a
-    // body-level list, so every exit has to dispose them.
-    const selects: CustomSelect[] = [];
-    const closeDrawer = (): void => {
-      for (const s of selects) s.dispose();
-      overlay.remove();
-    };
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) closeDrawer();
-    });
-
-    const sheet = el('aside', 'dashboard-settings');
-
-    const head = el('div', 'dashboard-settings__head');
-    const ht = el('h2', 'dashboard-settings__title');
-    ht.textContent = `Configure ${typeReg.displayName}`;
-    head.appendChild(ht);
-    const hint = el('p', 'dashboard-settings__hint');
-    hint.textContent = typeReg.description ?? 'Adjust this widget instance.';
-    head.appendChild(hint);
-    sheet.appendChild(head);
-
-    const body = el('div', 'dashboard-settings__body');
-    sheet.appendChild(body);
-
-    const current = { ...(inst.row.config as Record<string, unknown>) };
-    const inputs = new Map<string, () => unknown>();
-
-    for (const [name, field] of Object.entries(schema.fields)) {
-      const block = el('div', 'dashboard-field');
-
-      const addLabelAndHint = () => {
-        const label = el('label', 'dashboard-field__label');
-        label.textContent = field.label;
-        block.appendChild(label);
-        if (field.description) {
-          const hint = el('span', 'dashboard-field__hint');
-          hint.textContent = field.description;
-          block.appendChild(hint);
-        }
-      };
-
-      if (field.type === 'boolean') {
-        // Boolean fields render label inline with the checkbox.
-        const row = el('div', 'dashboard-field__checkbox-row');
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.checked = Boolean(current[name] ?? field.default ?? false);
-        row.appendChild(checkbox);
-        const text = document.createElement('span');
-        text.textContent = field.label;
-        row.appendChild(text);
-        block.appendChild(row);
-        if (field.description) {
-          const hint = el('span', 'dashboard-field__hint');
-          hint.textContent = field.description;
-          block.appendChild(hint);
-        }
-        inputs.set(name, () => checkbox.checked);
-      } else if (field.type === 'enum') {
-        addLabelAndHint();
-        const opts = (field.options ?? []).map(o => ({ value: o.value, label: o.label }));
-        const cur = String(current[name] ?? field.default ?? opts[0]?.value ?? '');
-        const sel = createSelect(opts, cur, () => {});
-        selects.push(sel);
-        block.appendChild(sel.el);
-        inputs.set(name, () => sel.getValue());
-      } else if (field.type === 'textarea') {
-        addLabelAndHint();
-        const ta = document.createElement('textarea');
-        ta.className = 'dashboard-field__textarea';
-        ta.value = String(current[name] ?? field.default ?? '');
-        if (field.placeholder) ta.placeholder = field.placeholder;
-        block.appendChild(ta);
-        inputs.set(name, () => ta.value);
-      } else if (field.type === 'markdown') {
-        addLabelAndHint();
-        // Live-preview markdown editor: a textarea whose formatted result
-        // renders beneath it as you type. Reuses the dashboard's shared
-        // markdown renderer, so the input reads the way the widget output will.
-        const wrap = document.createElement('div');
-        wrap.className = 'dashboard-field__markdown';
-        const ta = document.createElement('textarea');
-        ta.className = 'dashboard-field__textarea dashboard-field__markdown-input';
-        ta.value = String(current[name] ?? field.default ?? '');
-        if (field.placeholder) ta.placeholder = field.placeholder;
-        const preview = document.createElement('div');
-        // Reuse dashboard-md__body so the preview matches the widget's own
-        // rendered output exactly.
-        preview.className = 'dashboard-field__markdown-preview dashboard-md__body';
-        let rafId = 0;
-        const renderPreview = (): void => {
-          rafId = 0;
-          preview.replaceChildren(renderMarkdownToDom(ta.value));
-          preview.classList.toggle('is-empty', ta.value.trim() === '');
-        };
-        ta.addEventListener('input', () => {
-          if (!rafId) rafId = requestAnimationFrame(renderPreview);
-        });
-        renderPreview();
-        wrap.appendChild(ta);
-        wrap.appendChild(preview);
-        block.appendChild(wrap);
-        inputs.set(name, () => ta.value);
-      } else if (field.type === 'string-list') {
-        addLabelAndHint();
-        const ta = document.createElement('textarea');
-        ta.className = 'dashboard-field__textarea';
-        const value = current[name];
-        ta.value = Array.isArray(value)
-          ? value.map((v: unknown) => {
-              if (typeof v === 'string') return v;
-              if (v && typeof v === 'object' && 'label' in v && 'url' in v) {
-                const o = v as { label?: unknown; url?: unknown };
-                return `${o.label ?? ''} | ${o.url ?? ''}`;
-              }
-              return '';
-            }).join('\n')
-          : String(value ?? '');
-        if (field.placeholder) ta.placeholder = field.placeholder;
-        block.appendChild(ta);
-        inputs.set(name, () => ta.value.split('\n').map(s => s.trim()).filter(Boolean));
-      } else if (field.type === 'number') {
-        addLabelAndHint();
-        const input = document.createElement('input');
-        input.type = 'number';
-        input.className = 'dashboard-field__input';
-        const v = current[name];
-        if (typeof v === 'number' && Number.isFinite(v)) input.value = String(v);
-        else if (typeof field.default === 'number') input.value = String(field.default);
-        if (field.placeholder) input.placeholder = field.placeholder;
-        block.appendChild(input);
-        inputs.set(name, () => {
-          const v = Number(input.value);
-          return Number.isFinite(v) ? v : 0;
-        });
-      } else {
-        // 'string' default
-        addLabelAndHint();
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.className = 'dashboard-field__input';
-        input.value = String(current[name] ?? field.default ?? '');
-        if (field.placeholder) input.placeholder = field.placeholder;
-        block.appendChild(input);
-        inputs.set(name, () => input.value);
-      }
-
-      body.appendChild(block);
-    }
-
-    const foot = el('div', 'dashboard-settings__foot');
-    const cancel = el('button', 'dashboard-btn dashboard-btn--ghost');
-    cancel.type = 'button';
-    cancel.textContent = 'Cancel';
-    cancel.addEventListener('click', () => closeDrawer());
-    foot.appendChild(cancel);
-    const save = el('button', 'dashboard-btn dashboard-btn--primary');
-    save.type = 'button';
-    save.textContent = 'Save';
-    save.addEventListener('click', async () => {
-      const next: Record<string, unknown> = {};
-      // Read every value BEFORE disposing anything.
-      for (const [k, getter] of inputs) next[k] = getter();
-      try {
+    // One drawer for every host — the workbench opens the same editor on
+    // its seated widgets (settingsDrawer.ts). This pane supplies
+    // persistence, the live config emitter, and its own error surface.
+    openWidgetSettingsDrawer({
+      typeReg,
+      config: inst.row.config as Record<string, unknown>,
+      onSave: async (next) => {
         await this._data.updateWidgetConfig(widgetId, next);
         inst.row = { ...inst.row, config: next };
         inst.configEmitter.fire(next);
-      } catch (err) {
-        console.error('[Dashboard] updateWidgetConfig failed:', err);
-        const msg = err instanceof Error ? err.message : String(err);
-        await this._api.window.showErrorMessage(`Could not save configuration: ${msg}`);
-        return;
-      }
-      closeDrawer();
+      },
+      showError: (msg) => void this._api.window.showErrorMessage(msg),
     });
-    foot.appendChild(save);
-    sheet.appendChild(foot);
-
-    overlay.appendChild(sheet);
-    document.body.appendChild(overlay);
   }
 
   // ── Disposal ───────────────────────────────────────────────────────────

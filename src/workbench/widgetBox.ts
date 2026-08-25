@@ -28,6 +28,7 @@ import type { WorkbenchWidgetHost, DashboardWidgetRow, WidgetAppearance } from '
 import type { WidgetContext, WidgetHandle } from '../api/bridges/dashboardBridge.js';
 import { renderMarkdownToDom } from '../built-in/dashboard/widgets/markdownRenderer.js';
 import { openAppearanceDrawer } from '../built-in/dashboard/appearanceDrawer.js';
+import { openWidgetSettingsDrawer } from '../built-in/dashboard/settingsDrawer.js';
 
 export const WIDGET_BOX_PREFIX = 'widget:';
 
@@ -455,6 +456,9 @@ export class WidgetBoxManager extends Disposable {
       ...(canRefresh
         ? [{ id: 'refresh', label: 'Refresh Widget', group: '0_refresh' }]
         : []),
+      ...(this._mountedTypeReg(box.instanceId)?.configSchema
+        ? [{ id: 'settings', label: 'Widget Settings…', group: '1_look', order: -1 }]
+        : []),
       ...(this._mounts.has(box.instanceId)
         ? [{ id: 'appearance', label: 'Edit Appearance…', group: '1_look', order: 0 }]
         : []),
@@ -469,13 +473,18 @@ export class WidgetBoxManager extends Disposable {
       { id: 'edge-left', label: 'Move To Left Edge', group: '1_move', order: 1 },
       { id: 'edge-right', label: 'Move To Right Edge', group: '1_move', order: 2 },
       { id: 'edge-bottom', label: 'Move To Bottom Edge', group: '1_move', order: 3 },
-      { id: 'remove', label: 'Remove Widget', group: '2_remove' },
+      // The non-destructive exit first: the widget leaves the workbench
+      // but lives on, back on the dashboard it came from.
+      { id: 'return', label: 'Return To Dashboard', group: '2_remove', order: 1 },
+      { id: 'remove', label: 'Remove Widget', group: '2_remove', order: 2 },
     ];
     const menu = ContextMenu.show({ items, anchor: { x, y } });
     menu.onDidSelect(({ item }) => {
       switch (item.id) {
         case 'refresh': void this._system?.refreshWidget(box.instanceId); break;
+        case 'settings': this._openSettings(box); break;
         case 'appearance': this._openAppearance(box); break;
+        case 'return': void this.returnToDashboard(box.instanceId); break;
         case 'align-start': void this.setContentAlign(box.instanceId, 'start'); break;
         case 'align-start-padded': void this.setContentAlign(box.instanceId, 'start-padded'); break;
         case 'align-center': void this.setContentAlign(box.instanceId, 'center'); break;
@@ -484,6 +493,47 @@ export class WidgetBoxManager extends Disposable {
         case 'edge-bottom': this._host.moveFloatingToEdge(box.id, Orientation.Vertical, false); break;
         case 'remove': void this.removeWidget(box.instanceId); break;
       }
+    });
+  }
+
+  private _mountedTypeReg(instanceId: string) {
+    const mount = this._mounts.get(instanceId);
+    if (!mount || !this._system) return undefined;
+    return this._system.getWidgetType(mount.row.widgetTypeId);
+  }
+
+  /**
+   * The non-destructive inverse of adoption: the widget goes back to the
+   * dashboard it came from — or the default page when home is gone or it
+   * was born in the workbench. The SEAT leaves the grid; the instance,
+   * its config, look, and schedule all live on.
+   */
+  async returnToDashboard(instanceId: string): Promise<boolean> {
+    const system = this._system;
+    if (!system) return false;
+    const pageId = await system.returnInstanceToDashboard(instanceId);
+    if (!pageId) return false;
+    this._dropSeat(instanceId);
+    this._host.requestSave();
+    return true;
+  }
+
+  /**
+   * Open the shared settings drawer on a seated widget — the SAME editor
+   * a dashboard card gets, fields from the type's configSchema, saved
+   * through the system. The widget-updated event remounts with the new
+   * config.
+   */
+  private _openSettings(box: WidgetBox): void {
+    const system = this._system;
+    const mount = this._mounts.get(box.instanceId);
+    const reg = this._mountedTypeReg(box.instanceId);
+    if (!system || !mount || !reg?.configSchema) return;
+    openWidgetSettingsDrawer({
+      typeReg: reg,
+      config: mount.row.config as Record<string, unknown>,
+      onSave: (next) => system.updateConfig(box.instanceId, next),
+      showError: (message) => console.error('[WidgetBox] settings save failed:', message),
     });
   }
 
