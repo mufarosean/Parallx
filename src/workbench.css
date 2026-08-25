@@ -994,6 +994,91 @@ html, body {
   transition: outline-color var(--px-dur-base) var(--px-ease);
 }
 
+/* ── Widget boxes (widgets standing alone in the grid) ── */
+/* CHROMELESS by decision: the widget wears its own look inside a
+   seam-respecting card; the grip strip and ⋯ reveal on hover. Flex
+   sizing, never height:100% — percentage heights ignore margins and the
+   bottom seam would clip (the container-box lesson). */
+.widget-box {
+  display: flex;
+  flex-direction: column;
+  background: var(--px-window);
+  overflow: hidden;
+}
+.widget-box-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0 0 var(--px-seam) var(--px-seam);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-xs);
+  background: var(--px-bg);
+  overflow: hidden;
+  box-sizing: border-box;
+}
+.widget-box[data-edge-top="1"] .widget-box-card {
+  margin-top: var(--px-seam);
+}
+.widget-box[data-edge-right="1"] .widget-box-card {
+  margin-right: var(--px-seam);
+}
+.widget-box-grip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 4px;
+  cursor: grab;
+  opacity: 0;
+  z-index: 2;
+  background: linear-gradient(var(--px-bg-elevated), transparent);
+  transition: opacity var(--px-dur-fast, 100ms) var(--px-ease, ease);
+  box-sizing: border-box;
+}
+.widget-box:hover .widget-box-grip,
+.widget-box-grip:focus-within {
+  opacity: 1;
+}
+.widget-box-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 18px;
+  border: 0;
+  border-radius: var(--px-radius-xs);
+  background: transparent;
+  color: var(--px-text-faint);
+  cursor: pointer;
+  font-size: 12px;
+}
+.widget-box-menu-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+  color: var(--px-text);
+}
+.widget-box-body {
+  flex: 1 1 0;
+  min-height: 0;
+  position: relative;
+  overflow: auto;
+}
+.widget-box-waiting-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 12px;
+  text-align: center;
+  color: var(--px-fg-muted, var(--vscode-descriptionForeground));
+  font-size: 12px;
+}
+
 /* Content parts: container is the gap colour; the inner content is the card. */
 .part-workbench-parts-sidebar,
 .part-workbench-parts-editor,

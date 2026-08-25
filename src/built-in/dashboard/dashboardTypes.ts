@@ -37,6 +37,52 @@ export type {
   WidgetTypeDescriptor,
 } from '../../api/bridges/dashboardBridge.js';
 
+// ─── Workbench widget hosting ────────────────────────────────────────────────
+
+/**
+ * The reserved page whose widgets are seated in the WORKBENCH, not on any
+ * dashboard. One instance table, many hosts: moving a widget between a
+ * dashboard and the workbench is a pageId flip with a stable id, which is
+ * what keeps the AI delivery tool (dashboard_render_widget), the refresh
+ * scheduler, and appearance persistence working identically in both.
+ * listPages() excludes it, so no dashboard UI ever shows it as a page.
+ */
+export const WORKBENCH_PAGE_ID = 'page-workbench-seats';
+
+/**
+ * What the workbench needs from the widget system to host widgets itself.
+ * Returned live by the `dashboard.getWorkbenchWidgetHost` command (the
+ * same in-process pattern as `dashboard.getRegistry`).
+ */
+export interface WorkbenchWidgetHost {
+  listWidgetTypes(): readonly WidgetTypeRegistration<unknown>[];
+  getWidgetType(typeId: string): WidgetTypeRegistration<unknown> | undefined;
+  onDidChangeTypes(listener: () => void): IDisposable;
+  onDidChangeData(listener: (e: DashboardChangeEvent) => void): IDisposable;
+
+  /** Create a widget instance seated in the workbench (the reserved page). */
+  createInstance(widgetTypeId: string): Promise<DashboardWidgetRow>;
+  getInstance(id: string): Promise<DashboardWidgetRow | null>;
+  removeInstance(id: string): Promise<void>;
+  /** Adopt an existing dashboard widget into the workbench (pageId flip). */
+  adoptInstance(id: string): Promise<DashboardWidgetRow | null>;
+
+  setCachedOutput(id: string, output: string): Promise<void>;
+  setError(id: string, message: string): Promise<void>;
+  clearError(id: string): Promise<void>;
+
+  /** Run one refresh through the real scheduler's admission (headless). */
+  refreshWidget(id: string): Promise<void>;
+  /** Install the row's interval/cron policy on the real scheduler. */
+  scheduleWidget(id: string): Promise<void>;
+  cancelSchedule(id: string): void;
+
+  /** The api surface widgets receive as `WidgetContext.api`. */
+  readonly api: unknown;
+  /** Apply per-instance look customization to a card element. */
+  applyAppearance(card: HTMLElement, appearance: WidgetAppearance): void;
+}
+
 // ─── Public registry surface (exposed to other built-ins / extensions) ───────
 
 export interface DashboardRegistry {

@@ -28,7 +28,8 @@ import { DashboardWidgetRegistry } from './dashboardWidgetRegistry.js';
 import { DashboardRefreshScheduler, validateRefreshPolicy } from './dashboardRefreshScheduler.js';
 import { DashboardEditorProvider } from './dashboardEditorProvider.js';
 import { DashboardSidebar } from './dashboardSidebar.js';
-import type { DashboardRegistry, WidgetTypeRegistration } from './dashboardTypes.js';
+import type { DashboardRegistry, WidgetTypeRegistration, WorkbenchWidgetHost } from './dashboardTypes.js';
+import { applyWidgetAppearance } from './widgetAppearance.js';
 import { registerBuiltInDashboardWidgets } from './widgets/builtInWidgets.js';
 
 // ─── Minimal Parallx API surface (kept narrow on purpose) ────────────────────
@@ -164,6 +165,68 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   // Surface via a command for tools that haven't yet been given DI access.
   context.subscriptions.push(
     api.commands.registerCommand('dashboard.getRegistry', () => publicRegistry),
+  );
+
+  // 4a. The WORKBENCH widget host (one widget system, many hosts): the
+  //     workbench seats widget instances as grid citizens; their rows live
+  //     on the reserved workbench page so AI delivery, scheduling, and
+  //     appearance work identically in both hosts. Same in-process command
+  //     pattern as getRegistry.
+  const workbenchHost: WorkbenchWidgetHost = {
+    listWidgetTypes: () => _registry!.listWidgetTypes(),
+    getWidgetType: (typeId) => _registry!.getWidgetType(typeId),
+    onDidChangeTypes: (listener) => _registry!.onDidChange(listener),
+    onDidChangeData: (listener) => _dataService!.onDidChange(listener),
+    createInstance: async (widgetTypeId) => {
+      const pageId = await _dataService!.ensureWorkbenchPage();
+      const reg = _registry!.getWidgetType(widgetTypeId);
+      const size = reg?.defaultSize ?? { rowSpan: 2, colSpan: 3 };
+      return _dataService!.createWidget({
+        pageId,
+        widgetTypeId,
+        placement: { row: 0, col: 0, rowSpan: size.rowSpan, colSpan: size.colSpan },
+        config: { ...(reg?.defaultConfig ?? {}) },
+        refreshPolicy: reg?.defaultRefreshPolicy ?? { kind: 'manual' },
+        providerToolId: _registry!.getWidgetTypeOwner(widgetTypeId),
+      });
+    },
+    getInstance: (id) => _dataService!.getWidget(id),
+    removeInstance: async (id) => {
+      _scheduler?.cancel(id);
+      await _dataService!.removeWidget(id);
+    },
+    adoptInstance: async (id) => {
+      const pageId = await _dataService!.ensureWorkbenchPage();
+      return _dataService!.moveWidgetToPage(id, pageId);
+    },
+    setCachedOutput: (id, output) => _dataService!.setWidgetCachedOutput(id, output),
+    setError: (id, message) => _dataService!.setWidgetError(id, message),
+    clearError: (id) => _dataService!.clearWidgetError(id),
+    refreshWidget: async (id) => {
+      const row = await _dataService!.getWidget(id);
+      if (!row) return;
+      const typeReg = _registry!.getWidgetType(row.widgetTypeId);
+      if (!typeReg?.refresh) return;
+      await _scheduler!.runOnce(id, () => _headlessWidgetRefresh(api, id), typeReg);
+    },
+    scheduleWidget: async (id) => {
+      const row = await _dataService!.getWidget(id);
+      if (!row) return;
+      const typeReg = _registry!.getWidgetType(row.widgetTypeId);
+      if (!typeReg) return;
+      _scheduler!.schedule(id, typeReg, row.refreshPolicy, () => _headlessWidgetRefresh(api, id));
+    },
+    cancelSchedule: (id) => _scheduler?.cancel(id),
+    api: {
+      editors: api.editors,
+      commands: api.commands,
+      window: api.window,
+      services: api.services,
+    },
+    applyAppearance: applyWidgetAppearance,
+  };
+  context.subscriptions.push(
+    api.commands.registerCommand('dashboard.getWorkbenchWidgetHost', () => workbenchHost),
   );
 
   // 4b. Mirror the `parallx.dashboard` contribution hub into the registry

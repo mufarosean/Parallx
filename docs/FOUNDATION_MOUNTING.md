@@ -335,3 +335,43 @@ refresh goes through the SAME runner (sendRequest never rejects —
 inspect errorDetails; session.origin set; timeout + model stamping;
 scheduler backoff); tokens only, no hex; Title Case labels; one
 dropdown.
+
+### Workbench widgets — shipped (2026-08-24, no-Playwright session)
+
+Built as decided, with the instance model UPGRADED after reading the
+real dashboard internals: widget instances are dashboard rows (SQLite,
+dashboard_widgets) on a reserved workbench page (WORKBENCH_PAGE_ID,
+excluded from listPages so no dashboard UI shows it). That — not a
+parallel JSON store — is what keeps the AI delivery tool
+(dashboard_render_widget resolves instances by row), the refresh
+scheduler, headless refresh, and appearance persistence working
+identically in both hosts. Moving a widget between a dashboard and the
+workbench is a pageId flip with a STABLE id.
+
+Shipped: the WorkbenchWidgetHost surface (dashboard.getWorkbenchWidgetHost
+command, mirroring getRegistry); applyWidgetAppearance extracted
+host-agnostic; WidgetBox chromeless seats (`widget:` leaves riding the
+same restore/validation/prune path as `container:` leaves — seams, drag
+zones, edge stamps, area toggles, saved layouts all apply for free);
+drags ride the container pipeline as `widget:` ids (rail docks refused →
+automatic beside fallback); boxes born waiting, filled on system
+connect / late type registration; markdown renderMode fallback; the
+three creation routes — Move To Workbench button on every dashboard
+card (workbench.action.adoptWidget), Add Widget… in grip right-click
+menus (seats beside the asking part), Add Widget To Workbench in the
+palette.
+
+Honest deviations, queued for the eyes-on pass:
+- Drag-out-of-dashboard is the Move To Workbench BUTTON, not a literal
+  drag: the dashboard's widget-move gesture is pointerdown-based
+  (setPointerCapture suppresses native DnD on the same handle), and
+  reconciling the two blind risks breaking the dashboard's own drag.
+- Config/appearance EDITING from a workbench seat: the stored look and
+  config render faithfully, but the drawers stay dashboard-side for now
+  (drawer extraction is pane surgery).
+- ctx.requestRefresh from a workbench seat runs the headless path with
+  initiator 'autonomous' (stricter consent than the pane's user-click
+  path — safe direction, but a widget's Refresh from the workbench may
+  prompt where the dashboard would not).
+- dashboardDataService's new SQL (listPages filter, ensureWorkbenchPage,
+  moveWidgetToPage) is tsc-verified only; no DB-fake harness exists.

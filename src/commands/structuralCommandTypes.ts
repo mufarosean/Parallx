@@ -23,6 +23,10 @@ export interface WorkbenchLike {
   /** Capture the live body shape under a name (Settings > Layouts is the
    *  management home; empty name = a default dated name). */
   saveCurrentLayout(name: string): Promise<unknown>;
+  /** Adopt a dashboard widget into the workbench as a standalone seat. */
+  adoptWidget(widgetId: string): Promise<boolean>;
+  /** Open the widget type picker; choosing a type creates and seats one. */
+  showAddWidgetMenu(anchor?: { x: number; y: number }): void;
   toggleMaximizedPanel(): void;
   toggleStatusBar(): void;
   toggleZenMode(): void;

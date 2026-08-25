@@ -16,7 +16,7 @@ import type {
   WidgetRefreshPolicy,
   WidgetStatus,
 } from './dashboardTypes.js';
-import { DASHBOARD_LIMITS, DEFAULT_WIDGET_APPEARANCE } from './dashboardTypes.js';
+import { DASHBOARD_LIMITS, DEFAULT_WIDGET_APPEARANCE, WORKBENCH_PAGE_ID } from './dashboardTypes.js';
 
 // ─── DB bridge type ──────────────────────────────────────────────────────────
 
@@ -137,10 +137,15 @@ export class DashboardDataService extends Disposable {
   // ── Pages ───────────────────────────────────────────────────────────────
 
   async listPages(): Promise<DashboardPageRow[]> {
+    // The reserved workbench page is a SEAT TABLE, not a dashboard — every
+    // page-driven surface (sidebar, tabs, schedules, default-page pick)
+    // funnels through here, so excluding it once hides it everywhere.
     const res = await this._db.all(
       `SELECT id, name, position, header_hidden, refresh_policy_json, created_at, updated_at
          FROM dashboard_pages
+        WHERE id != ?
         ORDER BY position ASC, created_at ASC`,
+      [WORKBENCH_PAGE_ID],
     );
     if (res.error) {
       console.error('[DashboardDataService] listPages failed:', res.error.message);
@@ -157,6 +162,43 @@ export class DashboardDataService extends Disposable {
     );
     if (res.error || !res.row) return null;
     return rowToPage(res.row);
+  }
+
+  /**
+   * Ensure the reserved workbench seat page exists. Fixed id, idempotent.
+   * Positioned far past any real page so ordering-based logic never picks
+   * it, and excluded from listPages regardless.
+   */
+  async ensureWorkbenchPage(): Promise<string> {
+    const now = Date.now();
+    const res = await this._db.run(
+      `INSERT OR IGNORE INTO dashboard_pages (id, name, position, created_at, updated_at)
+       VALUES (?, 'Workbench', 999999, ?, ?)`,
+      [WORKBENCH_PAGE_ID, now, now],
+    );
+    if (res.error) throw new Error(`ensureWorkbenchPage failed: ${res.error.message}`);
+    return WORKBENCH_PAGE_ID;
+  }
+
+  /**
+   * Move a widget instance to another page — the seat flip that carries a
+   * widget between hosts (dashboard ⇄ workbench) with a STABLE id, so
+   * AI delivery, schedules, and appearance follow it untouched.
+   */
+  async moveWidgetToPage(id: string, pageId: string): Promise<DashboardWidgetRow | null> {
+    const before = await this.getWidget(id);
+    if (!before) return null;
+    const now = Date.now();
+    const res = await this._db.run(
+      `UPDATE dashboard_widgets SET page_id = ?, updated_at = ? WHERE id = ?`,
+      [pageId, now, id],
+    );
+    if (res.error) throw new Error(`moveWidgetToPage failed: ${res.error.message}`);
+    // Fired as remove+add so page-scoped listeners (an open dashboard
+    // editor) reconcile the card away/in without learning a new kind.
+    this._onDidChange.fire({ kind: 'widget-removed', pageId: before.pageId, widgetId: id });
+    this._onDidChange.fire({ kind: 'widget-added', pageId, widgetId: id });
+    return this.getWidget(id);
   }
 
   async createPage(name: string = 'Dashboard'): Promise<DashboardPageRow> {

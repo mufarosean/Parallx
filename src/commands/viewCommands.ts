@@ -82,6 +82,30 @@ export const saveLayout: CommandDescriptor = {
   },
 };
 
+export const addWidget: CommandDescriptor = {
+  id: 'workbench.action.addWidget',
+  title: 'Add Widget To Workbench',
+  category: 'View',
+  aiInvocable: true,
+  aiDescription: 'Open the widget type picker; the chosen widget is seated in the workbench itself (not a dashboard).',
+  handler(ctx) {
+    wb(ctx).showAddWidgetMenu();
+  },
+};
+
+export const adoptWidget: CommandDescriptor = {
+  id: 'workbench.action.adoptWidget',
+  title: 'Move Widget To Workbench',
+  category: 'View',
+  aiDescription: 'Move an existing dashboard widget (by instance id) into the workbench as a standalone seat.',
+  handler(ctx, ...args: unknown[]) {
+    const widgetId = args[0];
+    if (typeof widgetId === 'string') {
+      void wb(ctx).adoptWidget(widgetId);
+    }
+  },
+};
+
 export const toggleMaximizedPanel: CommandDescriptor = {
   id: 'workbench.action.toggleMaximizedPanel',
   title: 'Toggle Maximized Panel',

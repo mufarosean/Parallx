@@ -288,6 +288,9 @@ export abstract class Layout extends Disposable {
   protected _onContainerDockRequested: ((containerId: string, rail: 'left' | 'right' | 'panel') => void) | undefined;
   /** Eligibility for joining a dock target. Set by Workbench. */
   protected _canContainerDockInto: ((containerId: string, rail: 'left' | 'right' | 'panel') => boolean) | undefined;
+  /** Grip menus offer Add Widget when the workbench wires this — the
+   *  picker seats a new widget beside the asking part. */
+  protected _onAddWidgetRequested: ((anchor: { x: number; y: number }, partId: string) => void) | undefined;
 
   constructor(protected readonly _container: HTMLElement) {
     super();
@@ -704,6 +707,9 @@ export abstract class Layout extends Disposable {
           { id: 'edge-left', label: 'Move To Left Edge', group: '2_move', order: 1 },
           { id: 'edge-right', label: 'Move To Right Edge', group: '2_move', order: 2 },
           { id: 'edge-bottom', label: 'Move To Bottom Edge', group: '2_move', order: 3 },
+          ...(this._onAddWidgetRequested
+            ? [{ id: 'add-widget', label: 'Add Widget…', group: '3_widget' }]
+            : []),
         ],
         anchor: { x: e.clientX, y: e.clientY },
       });
@@ -720,6 +726,9 @@ export abstract class Layout extends Disposable {
             break;
           case 'edge-bottom':
             this.movePartToEdge(part.id, Orientation.Vertical, false);
+            break;
+          case 'add-widget':
+            this._onAddWidgetRequested?.({ x: e.clientX, y: e.clientY }, part.id);
             break;
         }
       });
@@ -1352,11 +1361,11 @@ export abstract class Layout extends Disposable {
     );
     for (const id of unique) {
       if (known.has(id)) continue;
-      // A floating container box: resolvable whenever the factory is wired,
-      // because a box shell can be built for ANY container id — its content
-      // seats when the tool arrives. Anything else is a tree from a model
-      // this build does not speak: legacy path.
-      if (id.startsWith('container:') && this._floatingViewFactory) continue;
+      // A floating container box or a widget seat: resolvable whenever the
+      // factory is wired, because a shell can be built for ANY id of these
+      // prefixes — its content arrives when the tool/type does. Anything
+      // else is a tree from a model this build does not speak: legacy path.
+      if ((id.startsWith('container:') || id.startsWith('widget:')) && this._floatingViewFactory) continue;
       if (this._floatingViews.has(id)) continue;
       return false;
     }

@@ -145,6 +145,9 @@ import { ViewContributionProcessor } from '../contributions/viewContribution.js'
 // Contribution handler (D.1 extraction)
 import { WorkbenchContributionHandler } from './workbenchContributionHandler.js';
 import { ContainerBoxManager } from './containerBox.js';
+import { WidgetBoxManager, WIDGET_BOX_PREFIX, widgetBoxViewId } from './widgetBox.js';
+import type { PartDropZone } from './partDrag.js';
+import type { WorkbenchWidgetHost } from '../built-in/dashboard/dashboardTypes.js';
 
 // Built-in Tools (M2 Capability 7)
 import * as ExplorerTool from '../built-in/explorer/main.js';
@@ -259,6 +262,7 @@ export class Workbench extends Layout {
   // Contribution handler (D.1 extraction — owns container maps, contribution events)
   private _contributionHandler!: WorkbenchContributionHandler;
   private _containerBoxes!: ContainerBoxManager;
+  private _widgetBoxes!: WidgetBoxManager;
 
   private _viewManager!: ViewManager;
   private _dndController!: DragAndDropController;
@@ -1075,10 +1079,38 @@ export class Workbench extends Layout {
         this.movePartToEdge(viewId, orientation, before),
       requestSave: () => this._workspaceSaver?.requestSave(),
     }));
-    this._floatingViewFactory = (viewId) => this._containerBoxes.resolveShell(viewId);
-    this._onContainerDropped = (containerId, zone) =>
+    // Widget seats: widgets standing alone in the grid, rendered through
+    // the dashboard's widget system (one widget system, many hosts). Their
+    // drags ride the container pipeline as `widget:` ids, routed here by
+    // prefix; the system itself connects when the dashboard tool activates.
+    this._widgetBoxes = this._register(new WidgetBoxManager({
+      addFloatingView: (view, zone) => this.addFloatingView(view, zone),
+      removeFloatingView: (viewId) => this.removeFloatingView(viewId),
+      moveFloating: (viewId, zone) => {
+        if (zone.kind === 'beside') {
+          this.movePartBeside(viewId, zone.targetId, zone.orientation, zone.before);
+        } else if (zone.kind === 'edge') {
+          this.movePartToEdge(viewId, zone.orientation, zone.before);
+        }
+      },
+      moveFloatingToEdge: (viewId, orientation, before) =>
+        this.movePartToEdge(viewId, orientation, before),
+      requestSave: () => this._workspaceSaver?.requestSave(),
+    }));
+
+    this._floatingViewFactory = (viewId) =>
+      viewId.startsWith(WIDGET_BOX_PREFIX)
+        ? this._widgetBoxes.resolveShell(viewId)
+        : this._containerBoxes.resolveShell(viewId);
+    this._onContainerDropped = (containerId, zone) => {
+      if (containerId.startsWith(WIDGET_BOX_PREFIX)) {
+        this._widgetBoxes.handleDrop(containerId, zone);
+        return;
+      }
       this._containerBoxes.handleContainerDrop(containerId, zone);
+    };
     this._onContainerDockRequested = (containerId, rail) => {
+      if (containerId.startsWith(WIDGET_BOX_PREFIX)) return; // widgets never dock rails
       if (this._containerBoxes.has(containerId)) {
         // A detached panel view's home is the panel whatever the target
         // said; the manager's dock path routes it there.
@@ -1088,9 +1120,23 @@ export class Workbench extends Layout {
       }
     };
     // Only detached panel views may JOIN the panel; anything else dropped
-    // on the panel's centre lands beside it instead.
-    this._canContainerDockInto = (containerId, rail) =>
-      rail !== 'panel' || containerId.startsWith('panelview:');
+    // on the panel's centre lands beside it instead. Widgets join nothing —
+    // their dock zones fall back to beside splits.
+    this._canContainerDockInto = (containerId, rail) => {
+      if (containerId.startsWith(WIDGET_BOX_PREFIX)) return false;
+      return rail !== 'panel' || containerId.startsWith('panelview:');
+    };
+    // Grip right-click menus offer Add Widget; the picker seats the new
+    // instance beside the part whose grip was asked.
+    this._onAddWidgetRequested = (anchor, partId) => {
+      this.showAddWidgetMenu(anchor, {
+        kind: 'beside',
+        targetId: partId,
+        orientation: Orientation.Vertical,
+        before: false,
+      });
+    };
+    this._connectWidgetSystem();
 
     // 1. Titlebar: app icon + menu bar + window controls
     this._setupTitlebar();
@@ -1447,6 +1493,7 @@ export class Workbench extends Layout {
     // it.
     if (treeRestored) {
       this._containerBoxes.pruneAbsent(new Set(this.floatingViewIds()));
+      this._widgetBoxes.pruneAbsent(new Set(this.floatingViewIds()));
     }
 
     // 0b. Restore container rails — where the user docked each container.
@@ -2522,6 +2569,7 @@ export class Workbench extends Layout {
     if (!this.restoreBodyTree(saved.tree)) return false;
 
     this._containerBoxes.pruneAbsent(new Set(this.floatingViewIds()));
+    this._widgetBoxes.pruneAbsent(new Set(this.floatingViewIds()));
     const docked = saved.rails.filter(
       (e): e is { id: string; rail: 'left' | 'right' } => e.rail !== 'floating',
     );
@@ -2533,6 +2581,83 @@ export class Workbench extends Layout {
     this._syncPartRailIcons();
     this._workspaceSaver?.requestSave();
     return true;
+  }
+
+  // ── Workbench widgets ─────────────────────────────────────────────────
+
+  /**
+   * Resolve the widget system (the dashboard tool's host surface) with
+   * patient retries — the tool activates on its own schedule, and every
+   * widget seat is born waiting until this connects.
+   */
+  private _connectWidgetSystem(attempt = 0): void {
+    if (this._widgetBoxes.system) return;
+    const tryResolve = async (): Promise<boolean> => {
+      try {
+        const cmdService = this._services.get(ICommandService) as CommandService;
+        const host = await cmdService.executeCommand<WorkbenchWidgetHost>(
+          'dashboard.getWorkbenchWidgetHost',
+        );
+        if (host && typeof host.getWidgetType === 'function') {
+          this._widgetBoxes.connectSystem(host);
+          return true;
+        }
+      } catch {
+        // Command not registered yet — the dashboard tool is still coming up.
+      }
+      return false;
+    };
+    void tryResolve().then((connected) => {
+      if (connected || attempt >= 60) return;
+      setTimeout(() => this._connectWidgetSystem(attempt + 1), 1000);
+    });
+  }
+
+  /** Adopt a dashboard widget into the workbench (the Move To Workbench
+   *  button on every dashboard card executes this command). */
+  async adoptWidget(widgetId: string): Promise<boolean> {
+    return this._widgetBoxes.adopt(widgetId);
+  }
+
+  /**
+   * The type picker: a menu of every registered widget type; choosing one
+   * creates a fresh instance seated at the zone (or at the bottom edge).
+   * Serves all three creation routes — the palette command anchors it at
+   * the window centre, grip menus anchor it at the cursor.
+   */
+  showAddWidgetMenu(anchor?: { x: number; y: number }, zone?: PartDropZone): void {
+    const system = this._widgetBoxes.system;
+    const at = anchor ?? {
+      x: Math.round(window.innerWidth / 2) - 80,
+      y: Math.round(window.innerHeight / 3),
+    };
+    if (!system) {
+      ContextMenu.show({
+        items: [{ id: 'none', label: 'Widget System Is Still Loading', group: '1' }],
+        anchor: at,
+      });
+      return;
+    }
+    const types = [...system.listWidgetTypes()]
+      .sort((a, b) => (a.displayName ?? a.typeId).localeCompare(b.displayName ?? b.typeId));
+    if (types.length === 0) return;
+    const menu = ContextMenu.show({
+      items: types.map((t, i) => ({
+        id: t.typeId,
+        label: t.displayName ?? t.typeId,
+        group: '1_types',
+        order: i,
+      })),
+      anchor: at,
+    });
+    menu.onDidSelect(({ item }) => {
+      void system.createInstance(item.id).then((row) => {
+        this._widgetBoxes.place(row.id, zone);
+        if (!zone) {
+          this.movePartToEdge(widgetBoxViewId(row.id), Orientation.Vertical, false);
+        }
+      });
+    });
   }
 
   /** Where each part's rail icon currently lives, for diffing. */

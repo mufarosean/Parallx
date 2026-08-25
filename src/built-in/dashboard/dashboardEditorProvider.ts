@@ -29,6 +29,7 @@ import {
   type WidgetTypeRegistration,
 } from './dashboardTypes.js';
 import { renderMarkdownToDom } from './widgets/markdownRenderer.js';
+import { applyWidgetAppearance } from './widgetAppearance.js';
 import { ILinkResolverService } from '../../links/linkResolverService.js';
 import { WIDGET_TEMPLATES } from './widgetTemplates.js';
 
@@ -634,6 +635,19 @@ class DashboardEditorPane implements IDisposable {
     appearanceBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>';
     appearanceBtn.addEventListener('click', () => this._openAppearanceDrawer(row.id));
     actions.appendChild(appearanceBtn);
+
+    // Move To Workbench — the widget leaves the dashboard and becomes a
+    // workbench citizen (same instance, new seat). The workbench command
+    // does the pageId flip and seats the box; this card reconciles away
+    // on the resulting data event.
+    const adoptBtn = el('button', 'dashboard-widget__btn');
+    adoptBtn.type = 'button';
+    adoptBtn.title = 'Move To Workbench';
+    adoptBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
+    adoptBtn.addEventListener('click', () => {
+      void this._api.commands.executeCommand('workbench.action.adoptWidget', row.id);
+    });
+    actions.appendChild(adoptBtn);
 
     const removeBtn = el('button', 'dashboard-widget__btn dashboard-widget__btn--danger');
     removeBtn.type = 'button';
@@ -1436,36 +1450,9 @@ class DashboardEditorPane implements IDisposable {
    * Each axis left at 'default' clears the inline style and defers to chrome.
    */
   private _applyAppearance(card: HTMLElement, a: WidgetAppearance): void {
-    if (a.background === 'transparent') {
-      card.style.background = 'transparent';
-    } else if (a.background === 'custom' && a.backgroundColor) {
-      card.style.background = a.backgroundColor;
-    } else {
-      card.style.removeProperty('background');
-    }
-
-    if (a.border === 'none') {
-      card.style.border = 'none';
-    } else if (a.border === 'custom' && a.borderColor) {
-      card.style.border = `1px solid ${a.borderColor}`;
-    } else {
-      card.style.removeProperty('border');
-    }
-
-    // When the outer border is gone, the inner header/footer separators look
-    // orphaned — drop them too so the card reads as a single clean surface.
-    if (a.border === 'none') card.dataset.borderless = 'true';
-    else delete card.dataset.borderless;
-
-    // Title override + hide. Title text only updates when the element already
-    // exists (it doesn't during the very first mount call — _mountWidget sets
-    // the initial text itself); this branch drives live preview in the drawer.
-    if (a.titleHidden) card.dataset.titleHidden = 'true';
-    else delete card.dataset.titleHidden;
-    const titleEl = card.querySelector<HTMLElement>('.dashboard-widget__title');
-    if (titleEl) {
-      titleEl.textContent = a.title?.trim() || titleEl.dataset.defaultTitle || '';
-    }
+    // One implementation for every host — the workbench applies the same
+    // look to its seated widgets (widgetAppearance.ts).
+    applyWidgetAppearance(card, a);
   }
 
   // ── Appearance drawer ──────────────────────────────────────────────────
