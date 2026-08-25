@@ -9,9 +9,10 @@
 //   - src/vs/base/browser/ui/menu/menu.ts
 //   - src/vs/base/browser/ui/contextview/contextview.ts
 
-import { Disposable, toDisposable, IDisposable } from '../platform/lifecycle.js';
+import { Disposable, toDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { layoutPopup } from './dom.js';
+import { enterMode, type ModeHandle } from './interactionMode.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -111,6 +112,7 @@ export class ContextMenu extends Disposable {
   // ── Lifecycle ──
 
   private _dismissed = false;
+  private _mode: ModeHandle | undefined;
 
   private constructor(private readonly _options: IContextMenuOptions) {
     super();
@@ -140,14 +142,31 @@ export class ContextMenu extends Disposable {
       this._highlight(0);
     }
 
-    // Keyboard navigation
-    this._register(this._listenKeyboard());
+    // The menu is an INTERACTION MODE (interactionMode.ts): the subsystem
+    // owns Escape, outside-press, window-blur and anchored-scroll exits,
+    // the mode stack (a menu over the palette no longer grabs the
+    // palette's keys), and focus return. This replaced a hand-rolled
+    // document-capture keyboard grab that preventDefaulted Enter and
+    // arrows UNCONDITIONALLY while focus stayed in the underlying
+    // editable — the engine of the eaten-keystrokes bug class.
+    this._mode = enterMode({
+      id: 'context-menu',
+      ownedRoots: () => [this._el],
+      exitOnScroll: true,
+      onExit: () => this._completeDismiss(),
+      onKeydown: (e) => this._handleKeydown(e),
+    });
 
-    // Click outside to dismiss
-    this._register(this._listenOutsideClick());
+    // A pointer that LEAVES the menu un-arms it: merely grazing a row on
+    // the way elsewhere must not leave that row primed for Enter.
+    this._el.addEventListener('mouseleave', () => {
+      if (!this._activeSubmenu) this._highlight(-1);
+    });
 
-    // Clean up DOM and submenus on dispose
+    // Clean up DOM, submenus, and the mode on dispose — including the
+    // direct-dispose path some callers use instead of dismiss().
     this._register(toDisposable(() => {
+      this._mode?.exit();
       this._cancelSubmenu();
       if (this._el.parentNode) this._el.remove();
     }));
@@ -158,12 +177,76 @@ export class ContextMenu extends Disposable {
     return new ContextMenu(options);
   }
 
+  override dispose(): void {
+    // Exit the mode BEFORE the registered disposables run: dismissal must
+    // fire while the emitters are still alive, whichever path got here —
+    // including callers that dispose() directly instead of dismiss().
+    this._mode?.exit();
+    super.dispose();
+  }
+
   /** Programmatically dismiss the menu. */
   dismiss(): void {
+    if (this._mode?.isActive) {
+      this._mode.exit();
+    } else {
+      this._completeDismiss();
+    }
+  }
+
+  /** The ONE dismissal path — reached from every exit route. */
+  private _completeDismiss(): void {
     if (this._dismissed) return;
     this._dismissed = true;
     this._onDidDismiss.fire();
     this.dispose();
+  }
+
+  /**
+   * Keyboard while this menu is the TOPMOST mode. The contract that
+   * fixes the eaten-keystrokes class: navigation keys are consumed only
+   * when they MEAN navigation — Enter fires only an ARMED row (and when
+   * nothing is armed, the menu gets out of the way and lets the key
+   * reach its real target); Home/End stay with the editable unless a row
+   * is armed.
+   */
+  private _handleKeydown(e: KeyboardEvent): boolean {
+    const enabledIndices = this._getEnabledIndices();
+    switch (e.key) {
+      case 'ArrowDown': {
+        const next = this._nextEnabled(this._highlightIndex, 1, enabledIndices);
+        if (next >= 0) this._highlight(next);
+        return true;
+      }
+      case 'ArrowUp': {
+        const prev = this._nextEnabled(this._highlightIndex, -1, enabledIndices);
+        if (prev >= 0) this._highlight(prev);
+        return true;
+      }
+      case 'Home': {
+        if (this._highlightIndex < 0) return false;
+        if (enabledIndices.length) this._highlight(enabledIndices[0]);
+        return true;
+      }
+      case 'End': {
+        if (this._highlightIndex < 0) return false;
+        if (enabledIndices.length) this._highlight(enabledIndices[enabledIndices.length - 1]);
+        return true;
+      }
+      case 'Enter': {
+        if (this._highlightIndex >= 0) {
+          const items = this._options.items.filter(i => !i.disabled);
+          const pos = enabledIndices.indexOf(this._highlightIndex);
+          if (pos >= 0 && pos < items.length) this._select(items[pos]);
+          return true;
+        }
+        // Nothing armed: the user is typing. Step aside, pass the key.
+        this._mode?.exit();
+        return false;
+      }
+      default:
+        return false;
+    }
   }
 
   // ── Rendering ──────────────────────────────────────────────────────────
@@ -260,7 +343,7 @@ export class ContextMenu extends Disposable {
       this._itemEls[i].classList.toggle('context-menu-item--selected', i === index);
     }
     this._highlightIndex = index;
-    this._itemEls[index]?.scrollIntoView({ block: 'nearest' });
+    this._itemEls[index]?.scrollIntoView?.({ block: 'nearest' });
   }
 
   private _select(item: IContextMenuItem): void {
@@ -326,54 +409,6 @@ export class ContextMenu extends Disposable {
 
   // ── Keyboard ───────────────────────────────────────────────────────────
 
-  private _listenKeyboard(): IDisposable {
-    const enabledIndices = this._getEnabledIndices();
-
-    const handler = (e: KeyboardEvent) => {
-      switch (e.key) {
-        case 'ArrowDown': {
-          e.preventDefault();
-          const next = this._nextEnabled(this._highlightIndex, 1, enabledIndices);
-          if (next >= 0) this._highlight(next);
-          break;
-        }
-        case 'ArrowUp': {
-          e.preventDefault();
-          const prev = this._nextEnabled(this._highlightIndex, -1, enabledIndices);
-          if (prev >= 0) this._highlight(prev);
-          break;
-        }
-        case 'Home': {
-          e.preventDefault();
-          if (enabledIndices.length) this._highlight(enabledIndices[0]);
-          break;
-        }
-        case 'End': {
-          e.preventDefault();
-          if (enabledIndices.length) this._highlight(enabledIndices[enabledIndices.length - 1]);
-          break;
-        }
-        case 'Enter': {
-          e.preventDefault();
-          const items = this._options.items.filter(i => !i.disabled);
-          const enabledIndexPos = enabledIndices.indexOf(this._highlightIndex);
-          if (enabledIndexPos >= 0 && enabledIndexPos < items.length) {
-            this._select(items[enabledIndexPos]);
-          }
-          break;
-        }
-        case 'Escape': {
-          e.preventDefault();
-          this.dismiss();
-          break;
-        }
-      }
-    };
-
-    document.addEventListener('keydown', handler, true);
-    return toDisposable(() => document.removeEventListener('keydown', handler, true));
-  }
-
   private _getEnabledIndices(): number[] {
     const result: number[] = [];
     for (let i = 0; i < this._itemEls.length; i++) {
@@ -396,24 +431,5 @@ export class ContextMenu extends Disposable {
   }
 
   // ── Outside click ──────────────────────────────────────────────────────
-
-  private _listenOutsideClick(): IDisposable {
-    const handler = (e: MouseEvent) => {
-      const target = e.target as Node;
-      // Don't dismiss if the click is inside this menu OR inside an active submenu
-      if (this._el.contains(target)) return;
-      if (this._activeSubmenu && !this._activeSubmenu._dismissed && this._activeSubmenu._el.contains(target)) return;
-      this.dismiss();
-    };
-    // Defer to avoid catching the click that opened the menu
-    const timerId = setTimeout(() => {
-      document.addEventListener('mousedown', handler, true);
-    }, 0);
-
-    return toDisposable(() => {
-      clearTimeout(timerId);
-      document.removeEventListener('mousedown', handler, true);
-    });
-  }
 
 }

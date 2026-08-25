@@ -268,7 +268,7 @@ export class TitlebarPart extends Part {
   }
 
   /** Toggle a dropdown menu below a menu bar item. */
-  private _toggleDropdown(menuId: string, anchor: HTMLElement): void {
+  private _toggleDropdown(menuId: string, anchor: HTMLElement, viaKeyboard = false): void {
     // Close current dropdown if same menu
     if (this._activeDropdown) {
       const wasActive = this._activeDropdown.menuId === menuId;
@@ -309,7 +309,7 @@ export class TitlebarPart extends Part {
     const ctxMenu = ContextMenu.show({
       items: menuItems,
       anchor: { x: rect.left, y: rect.bottom },
-      autoSelectFirst: true,
+      autoSelectFirst: viaKeyboard,
       className: 'titlebar-dropdown',
     });
 
@@ -349,7 +349,7 @@ export class TitlebarPart extends Part {
         if (idx >= 0 && idx < this._menuBarItems.length - 1) {
           const nextItem = this._menuBarItems[idx + 1];
           const nextEl = this._menuBarContainer?.querySelector(`[data-menu-id="${nextItem.id}"]`) as HTMLElement;
-          if (nextEl) this._toggleDropdown(nextItem.id, nextEl);
+          if (nextEl) this._toggleDropdown(nextItem.id, nextEl, true);
         }
       } else if (e.key === 'ArrowLeft') {
         e.preventDefault();
@@ -358,7 +358,7 @@ export class TitlebarPart extends Part {
         if (idx > 0) {
           const prevItem = this._menuBarItems[idx - 1];
           const prevEl = this._menuBarContainer?.querySelector(`[data-menu-id="${prevItem.id}"]`) as HTMLElement;
-          if (prevEl) this._toggleDropdown(prevItem.id, prevEl);
+          if (prevEl) this._toggleDropdown(prevItem.id, prevEl, true);
         }
       }
     };
@@ -494,7 +494,7 @@ export class TitlebarPart extends Part {
           if (this._focusedMenuIndex >= 0 && this._focusedMenuIndex < this._menuBarItems.length) {
             const item = this._menuBarItems[this._focusedMenuIndex];
             const el = menuEls[this._focusedMenuIndex];
-            if (el) this._toggleDropdown(item.id, el);
+            if (el) this._toggleDropdown(item.id, el, true);
           }
           break;
         case 'Escape':
