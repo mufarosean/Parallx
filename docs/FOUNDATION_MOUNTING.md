@@ -283,8 +283,11 @@ exception window tonight).
    spills outside its cell; resizing the other axis afterwards settles
    it, which smells like one layout path writing a stale cross-axis size
    (or skipping cross-axis reclamp) that only heals when that axis gets
-   its own pass. Suspects to check when work starts: _doLayout's
-   measured-vs-handed sizes during sash drags, ContainerBox.layout
+   its own pass. NOT limited to the window being resized: ADJACENT
+   windows spill too — a neighbour's content breaks from someone else's
+   drag, so the bad write happens wherever the layout pass touches, not
+   just at the drag target. Suspects to check when work starts:
+   _doLayout's measured-vs-handed sizes during sash drags, ContainerBox.layout
    pinning both dimensions while the ViewContainer inside self-measures,
    and _distributeWithFlex normalization only running on the dragged
    axis. Reproduce with a window resize + a floated box before touching
