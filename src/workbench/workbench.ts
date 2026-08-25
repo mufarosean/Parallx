@@ -2485,12 +2485,21 @@ export class Workbench extends Layout {
     }));
 
     // The icon IS a handle: dropped on a ribbon, its container docks in
-    // that ribbon's rail.
+    // that ribbon's rail. A FLOATING container's icon routes through the
+    // box manager — moveContainerToRail cannot take what no rail holds,
+    // and silently doing nothing is how a gesture dies.
+    const dockByIcon = (containerId: string, rail: 'left' | 'right'): void => {
+      if (this._containerBoxes.has(containerId)) {
+        this._containerBoxes.dock(containerId, rail);
+        return;
+      }
+      this._contributionHandler.moveContainerToRail(containerId, rail);
+    };
     this._register(rightBar.onDidDropContainerIcon(({ containerId }) => {
-      this._contributionHandler.moveContainerToRail(containerId, 'right');
+      dockByIcon(containerId, 'right');
     }));
     this._register(this._activityBarPart.onDidDropContainerIcon(({ containerId }) => {
-      this._contributionHandler.moveContainerToRail(containerId, 'left');
+      dockByIcon(containerId, 'left');
     }));
 
     const syncRibbon = (): void => {
@@ -2501,6 +2510,11 @@ export class Workbench extends Layout {
       // A newly registered container may be what a waiting box shell from
       // the restored tree has been holding a spot for.
       this._containerBoxes.seatWaiting();
+      // Seating a restored container into its box changes NO grid
+      // structure, so the geometry icon sync must also run here — its
+      // grid-change trigger alone left a restored floating container's
+      // icon wherever the pre-seating pass put it.
+      this._syncPartRailIcons();
       this._workspaceSaver?.requestSave();
     }));
     syncRibbon();
