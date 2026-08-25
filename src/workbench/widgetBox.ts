@@ -27,6 +27,7 @@ import { $ } from '../ui/dom.js';
 import type { WorkbenchWidgetHost, DashboardWidgetRow, WidgetAppearance } from '../built-in/dashboard/dashboardTypes.js';
 import type { WidgetContext, WidgetHandle } from '../api/bridges/dashboardBridge.js';
 import { renderMarkdownToDom } from '../built-in/dashboard/widgets/markdownRenderer.js';
+import { openAppearanceDrawer } from '../built-in/dashboard/appearanceDrawer.js';
 
 export const WIDGET_BOX_PREFIX = 'widget:';
 
@@ -454,8 +455,11 @@ export class WidgetBoxManager extends Disposable {
       ...(canRefresh
         ? [{ id: 'refresh', label: 'Refresh Widget', group: '0_refresh' }]
         : []),
+      ...(this._mounts.has(box.instanceId)
+        ? [{ id: 'appearance', label: 'Edit Appearance…', group: '1_look', order: 0 }]
+        : []),
       {
-        id: 'align', label: 'Align Content', group: '1_move', order: 0,
+        id: 'align', label: 'Align Content', group: '1_look', order: 1,
         submenu: [
           { id: 'align-start', label: alignLabel('Top Left', 'start') },
           { id: 'align-start-padded', label: alignLabel('Top Left With Margin', 'start-padded') },
@@ -471,6 +475,7 @@ export class WidgetBoxManager extends Disposable {
     menu.onDidSelect(({ item }) => {
       switch (item.id) {
         case 'refresh': void this._system?.refreshWidget(box.instanceId); break;
+        case 'appearance': this._openAppearance(box); break;
         case 'align-start': void this.setContentAlign(box.instanceId, 'start'); break;
         case 'align-start-padded': void this.setContentAlign(box.instanceId, 'start-padded'); break;
         case 'align-center': void this.setContentAlign(box.instanceId, 'center'); break;
@@ -479,6 +484,26 @@ export class WidgetBoxManager extends Disposable {
         case 'edge-bottom': this._host.moveFloatingToEdge(box.id, Orientation.Vertical, false); break;
         case 'remove': void this.removeWidget(box.instanceId); break;
       }
+    });
+  }
+
+  /**
+   * Open the shared appearance drawer on a seated widget — the SAME
+   * editor a dashboard card gets (background, border, title, alignment),
+   * previewing live on this box's card and saving through the system.
+   * The widget-updated event remounts the seat with the saved look.
+   */
+  private _openAppearance(box: WidgetBox): void {
+    const system = this._system;
+    const mount = this._mounts.get(box.instanceId);
+    if (!system || !mount) return;
+    const reg = system.getWidgetType(mount.row.widgetTypeId);
+    openAppearanceDrawer({
+      card: box.card,
+      appearance: mount.row.appearance,
+      defaultTitle: reg?.displayName ?? mount.row.widgetTypeId,
+      onSave: (next) => system.updateAppearance(box.instanceId, next),
+      showError: (message) => console.error('[WidgetBox] appearance save failed:', message),
     });
   }
 

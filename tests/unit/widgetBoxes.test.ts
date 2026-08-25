@@ -233,6 +233,7 @@ describe('WidgetBoxManager', () => {
     try {
       const labels = [...document.querySelectorAll<HTMLElement>('.context-menu-item')]
         .map((i) => i.textContent ?? '');
+      expect(labels.some((l) => l.includes('Edit Appearance…'))).toBe(true);
       expect(labels.some((l) => l.includes('Align Content'))).toBe(true);
       expect(labels.some((l) => l.includes('Move To Bottom Edge'))).toBe(true);
       expect(labels.some((l) => l.includes('Remove Widget'))).toBe(true);

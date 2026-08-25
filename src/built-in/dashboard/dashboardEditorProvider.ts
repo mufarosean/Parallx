@@ -30,6 +30,7 @@ import {
 } from './dashboardTypes.js';
 import { renderMarkdownToDom } from './widgets/markdownRenderer.js';
 import { applyWidgetAppearance } from './widgetAppearance.js';
+import { openAppearanceDrawer } from './appearanceDrawer.js';
 import { ILinkResolverService } from '../../links/linkResolverService.js';
 import { WIDGET_TEMPLATES } from './widgetTemplates.js';
 
@@ -69,10 +70,6 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string): 
   const node = document.createElement(tag);
   if (className) node.className = className;
   return node;
-}
-
-function isHexColor(v: string | null): v is string {
-  return typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v);
 }
 
 /** Resize handle direction — cardinal edges + corners. */
@@ -1460,160 +1457,20 @@ class DashboardEditorPane implements IDisposable {
   private async _openAppearanceDrawer(widgetId: string): Promise<void> {
     const inst = this._instances.get(widgetId);
     if (!inst) return;
-    const original = inst.row.appearance;
-
-    const overlay = el('div', 'dashboard-settings-overlay');
-    // Every exit routes through here. The dropdowns in this drawer hold
-    // document/window listeners and, while open, a list mounted on document.body
-    // — so removing the overlay alone would accumulate listeners across opens and
-    // could strand a floating option list over the dashboard.
-    const selects: CustomSelect[] = [];
-    const closeDrawer = (): void => {
-      for (const s of selects) s.dispose();
-      overlay.remove();
-    };
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) { this._applyAppearance(inst.cardEl, original); closeDrawer(); }
-    });
-
-    const sheet = el('aside', 'dashboard-settings');
-
-    const head = el('div', 'dashboard-settings__head');
-    const ht = el('h2', 'dashboard-settings__title');
-    ht.textContent = 'Appearance';
-    head.appendChild(ht);
-    const hint = el('p', 'dashboard-settings__hint');
-    hint.textContent = 'Background and border for this widget. Changes preview live.';
-    head.appendChild(hint);
-    sheet.appendChild(head);
-
-    const body = el('div', 'dashboard-settings__body');
-    sheet.appendChild(body);
-
-    // Working copy mutated by the controls; previewed live on the card.
-    const draft: { -readonly [K in keyof WidgetAppearance]: WidgetAppearance[K] } = { ...original };
-    const preview = () => this._applyAppearance(inst.cardEl, draft);
-
-    // ── Background ──
-    const bgBlock = el('div', 'dashboard-field');
-    const bgLabel = el('label', 'dashboard-field__label');
-    bgLabel.textContent = 'Background';
-    bgBlock.appendChild(bgLabel);
-    const bgColor = document.createElement('input');
-    bgColor.type = 'color';
-    bgColor.className = 'dashboard-field__color';
-    bgColor.value = isHexColor(draft.backgroundColor) ? draft.backgroundColor! : '#1e1e1e';
-    bgColor.style.display = draft.background === 'custom' ? '' : 'none';
-    const bgSelect = createSelect(
-      [{ value: 'default', label: 'Theme default' }, { value: 'transparent', label: 'Transparent' }, { value: 'custom', label: 'Custom color' }],
-      draft.background,
-      (v) => {
-        draft.background = v as WidgetAppearance['background'];
-        bgColor.style.display = draft.background === 'custom' ? '' : 'none';
-        if (draft.background === 'custom') draft.backgroundColor = bgColor.value;
-        preview();
-      },
-    );
-    selects.push(bgSelect);
-    bgBlock.appendChild(bgSelect.el);
-    bgBlock.appendChild(bgColor);
-    bgColor.addEventListener('input', () => { draft.backgroundColor = bgColor.value; preview(); });
-    body.appendChild(bgBlock);
-
-    // ── Border ──
-    const bdBlock = el('div', 'dashboard-field');
-    const bdLabel = el('label', 'dashboard-field__label');
-    bdLabel.textContent = 'Border';
-    bdBlock.appendChild(bdLabel);
-    const bdColor = document.createElement('input');
-    bdColor.type = 'color';
-    bdColor.className = 'dashboard-field__color';
-    bdColor.value = isHexColor(draft.borderColor) ? draft.borderColor! : '#3c3c3c';
-    bdColor.style.display = draft.border === 'custom' ? '' : 'none';
-    const bdSelect = createSelect(
-      [{ value: 'default', label: 'Theme default' }, { value: 'none', label: 'No border' }, { value: 'custom', label: 'Custom color' }],
-      draft.border,
-      (v) => {
-        draft.border = v as WidgetAppearance['border'];
-        bdColor.style.display = draft.border === 'custom' ? '' : 'none';
-        if (draft.border === 'custom') draft.borderColor = bdColor.value;
-        preview();
-      },
-    );
-    selects.push(bdSelect);
-    bdBlock.appendChild(bdSelect.el);
-    bdBlock.appendChild(bdColor);
-    bdColor.addEventListener('input', () => { draft.borderColor = bdColor.value; preview(); });
-    body.appendChild(bdBlock);
-
-    // ── Title ──
-    const defaultTitle = inst.cardEl.querySelector<HTMLElement>('.dashboard-widget__title')?.dataset.defaultTitle
-      ?? inst.typeReg?.displayName ?? '';
-    const titleBlock = el('div', 'dashboard-field');
-    const titleLabel = el('label', 'dashboard-field__label');
-    titleLabel.textContent = 'Title';
-    titleBlock.appendChild(titleLabel);
-    const titleInput = document.createElement('input');
-    titleInput.type = 'text';
-    titleInput.className = 'dashboard-field__input';
-    titleInput.value = draft.title ?? '';
-    titleInput.placeholder = defaultTitle;
-    titleBlock.appendChild(titleInput);
-    titleInput.addEventListener('input', () => {
-      draft.title = titleInput.value.trim() ? titleInput.value : null;
-      preview();
-    });
-    body.appendChild(titleBlock);
-
-    // ── Hide title ──
-    const hideBlock = el('div', 'dashboard-field');
-    const hideRow = el('div', 'dashboard-field__checkbox-row');
-    const hideCheckbox = document.createElement('input');
-    hideCheckbox.type = 'checkbox';
-    hideCheckbox.checked = draft.titleHidden;
-    hideRow.appendChild(hideCheckbox);
-    const hideText = document.createElement('span');
-    hideText.textContent = 'Hide title bar';
-    hideRow.appendChild(hideText);
-    hideBlock.appendChild(hideRow);
-    hideCheckbox.addEventListener('change', () => { draft.titleHidden = hideCheckbox.checked; preview(); });
-    body.appendChild(hideBlock);
-
-    const foot = el('div', 'dashboard-settings__foot');
-    const cancel = el('button', 'dashboard-btn dashboard-btn--ghost');
-    cancel.type = 'button';
-    cancel.textContent = 'Cancel';
-    cancel.addEventListener('click', () => { this._applyAppearance(inst.cardEl, original); closeDrawer(); });
-    foot.appendChild(cancel);
-    const save = el('button', 'dashboard-btn dashboard-btn--primary');
-    save.type = 'button';
-    save.textContent = 'Save';
-    save.addEventListener('click', async () => {
-      const next: WidgetAppearance = {
-        background: draft.background,
-        backgroundColor: draft.background === 'custom' ? bgColor.value : null,
-        border: draft.border,
-        borderColor: draft.border === 'custom' ? bdColor.value : null,
-        title: titleInput.value.trim() ? titleInput.value.trim() : null,
-        titleHidden: hideCheckbox.checked,
-      };
-      try {
+    // One drawer for every host — the workbench opens the same editor on
+    // its seated widgets (appearanceDrawer.ts). This pane only supplies
+    // persistence and its own error surface.
+    openAppearanceDrawer({
+      card: inst.cardEl,
+      appearance: inst.row.appearance,
+      defaultTitle: inst.cardEl.querySelector<HTMLElement>('.dashboard-widget__title')?.dataset.defaultTitle
+        ?? inst.typeReg?.displayName ?? '',
+      onSave: async (next) => {
         await this._data.updateWidgetAppearance(widgetId, next);
         inst.row = { ...inst.row, appearance: next };
-        this._applyAppearance(inst.cardEl, next);
-      } catch (err) {
-        console.error('[Dashboard] updateWidgetAppearance failed:', err);
-        const msg = err instanceof Error ? err.message : String(err);
-        await this._api.window.showErrorMessage(`Could not save appearance: ${msg}`);
-        return;
-      }
-      closeDrawer();
+      },
+      showError: (msg) => void this._api.window.showErrorMessage(msg),
     });
-    foot.appendChild(save);
-    sheet.appendChild(foot);
-
-    overlay.appendChild(sheet);
-    document.body.appendChild(overlay);
   }
 
   // ── Settings drawer ────────────────────────────────────────────────────
