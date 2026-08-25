@@ -275,3 +275,17 @@ exception window tonight).
    container icon?), and how it keys off areaOf so the icon appears
    from GEOMETRY (the part occupying the rail's area), not from which
    gesture put it there.
+
+4. **BUG: one-axis resize dirties BOTH axes of container content.**
+   Seen on several surfaces (screenshots: the Activity box spilling well
+   past its slot, over the panel row and status bar). Resizing along one
+   axis changes the container's size on the OTHER axis too, and content
+   spills outside its cell; resizing the other axis afterwards settles
+   it, which smells like one layout path writing a stale cross-axis size
+   (or skipping cross-axis reclamp) that only heals when that axis gets
+   its own pass. Suspects to check when work starts: _doLayout's
+   measured-vs-handed sizes during sash drags, ContainerBox.layout
+   pinning both dimensions while the ViewContainer inside self-measures,
+   and _distributeWithFlex normalization only running on the dragged
+   axis. Reproduce with a window resize + a floated box before touching
+   anything.
