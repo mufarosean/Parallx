@@ -129,6 +129,8 @@ import { WATCH_IGNORE_SEGMENTS } from '../services/parallxIgnore.js';
 import { IPythonEnvService, type PythonEnvService } from '../services/pythonEnvService.js';
 import { INotebookKernelService, type NotebookKernelService } from '../services/notebookKernelService.js';
 import { wireActivityTaps } from './activityTaps.js';
+import { SurfaceActivityTap } from '../surfaces/surfaceActivity.js';
+import { surfaceRegistry } from '../surfaces/surfaceRegistry.js';
 
 // Contribution Processors (M2 Capability 5)
 import { registerContributionProcessors, registerViewContributionProcessor } from './workbenchServices.js';
@@ -3123,6 +3125,12 @@ export class Workbench extends Layout {
         themeService: this._services.has(IThemeService) ? this._services.get(IThemeService) : undefined,
         workspaceName: this._workspace?.name,
       }));
+
+      // Decision 7's narrator, finally mounted (SYSTEM_INTEGRITY.md Phase B):
+      // the surface tree tells the journal which surface opened or closed,
+      // what the user dwelled in and for how long, what moved next to what,
+      // and which arrangement was captured or restored.
+      this._register(new SurfaceActivityTap(this._tree, surfaceRegistry, (n) => journal.note(n)));
 
       // Python runs are consequential enough that they belong in the same
       // narrative as everything else the user and assistant did.

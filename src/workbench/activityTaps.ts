@@ -12,6 +12,7 @@ import {
   IEditorService,
   ISettingsRegistryService,
   IRuntimeHookRegistry,
+  IWindowService,
 } from '../services/serviceTypes.js';
 import { IChatService } from '../services/chatTypes.js';
 import { IAutonomySignalService } from '../services/autonomySignalService.js';
@@ -88,6 +89,19 @@ export function wireActivityTaps(deps: IActivityTapDeps): IDisposable {
   window.addEventListener('blur', onBlur);
   window.addEventListener('focus', onFocus);
   store.add({ dispose: () => { window.removeEventListener('blur', onBlur); window.removeEventListener('focus', onFocus); } });
+
+  // ── Window shape: maximize/restore, whichever door it came through —
+  //    our controls, the OS titlebar double-click, or a Win+Arrow snap. ──
+  if (services.has(IWindowService)) {
+    const win = services.get(IWindowService);
+    store.add(win.onDidChangeMaximized((maximized) => {
+      journal.note({
+        actor: 'user', source: 'window',
+        verb: maximized ? 'maximized' : 'restored',
+        object: 'the app window',
+      });
+    }));
+  }
 
   // ── Commands: palette, keybindings, menus, extensions, and the AI's
   //    app__run_command all funnel through this one emitter, each stamping

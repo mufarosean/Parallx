@@ -11,9 +11,8 @@
 // (`verb object "label" [kind:key]`). It takes a plain sink function rather
 // than the journal service so the surfaces layer stays free of service
 // imports and the whole thing tests as a pure event-in/line-out box; the
-// workbench hands it `journal.note` when the tree is mounted.
-//
-// NOT YET WIRED — like the tree it narrates, it waits for the mounting step.
+// workbench hands it `journal.note` where the activity taps are wired
+// (SYSTEM_INTEGRITY.md Phase B mounted it).
 
 import { Disposable } from '../platform/lifecycle.js';
 import { Orientation } from '../layout/layoutTypes.js';
