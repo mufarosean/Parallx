@@ -19,6 +19,11 @@ import { TIMER_WIDGET } from './timerWidget.js';
 import { TRACKER_BOARD_WIDGET } from './trackerBoardWidget.js';
 import { SAVED_QUERY_WIDGET } from './savedQueryWidget.js';
 import { TABLE_WIDGET } from './tableWidget.js';
+import { YEAR_PROGRESS_WIDGET } from './yearProgressWidget.js';
+import { QUOTE_WIDGET } from './quoteWidget.js';
+import { BREATHE_WIDGET } from './breatheWidget.js';
+import { DECISION_COIN_WIDGET } from './decisionCoinWidget.js';
+import { COMPANION_WIDGET } from './companionWidget.js';
 
 interface ApiSurfaceUsedByWidgets {
   commands: { executeCommand<T = unknown>(id: string, ...args: unknown[]): Promise<T> };
@@ -54,6 +59,12 @@ export function registerBuiltInDashboardWidgets(
     registry.registerWidgetType(TRACKER_BOARD_WIDGET),
     registry.registerWidgetType(SAVED_QUERY_WIDGET),
     registry.registerWidgetType(TABLE_WIDGET),
+    // The personality shelf: small, config-shaped, no data dependencies.
+    registry.registerWidgetType(YEAR_PROGRESS_WIDGET),
+    registry.registerWidgetType(QUOTE_WIDGET),
+    registry.registerWidgetType(BREATHE_WIDGET),
+    registry.registerWidgetType(DECISION_COIN_WIDGET),
+    registry.registerWidgetType(COMPANION_WIDGET),
   ];
 
   return toDisposable(() => {

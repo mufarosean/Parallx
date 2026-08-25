@@ -1965,3 +1965,230 @@ video.vw__fill { object-fit: contain; background: #000; }
 .dashboard-picker__templates::-webkit-scrollbar {
   height: 6px;
 }
+
+/* ============================================================================
+   Widget — year progress
+   ========================================================================== */
+
+.ypw {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+  height: 100%;
+}
+.ypw__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 4px;
+}
+.ypw__label {
+  font-size: var(--px-text-sm);
+  font-weight: 500;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 70%, transparent);
+}
+.ypw__pct {
+  font-size: var(--px-text-sm);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--vscode-editor-foreground, #f3f3f3);
+}
+.ypw__track {
+  height: 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 12%, transparent);
+  overflow: hidden;
+}
+.ypw__fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--px-accent, var(--vscode-focusBorder, #007fd4));
+  transition: width var(--px-dur-slow, 300ms) var(--px-ease);
+}
+.ypw__caption {
+  margin-top: 4px;
+  font-size: var(--px-text-2xs);
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 50%, transparent);
+}
+
+/* ============================================================================
+   Widget — daily quote
+   ========================================================================== */
+
+.qtw {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  height: 100%;
+  cursor: pointer;
+  user-select: none;
+}
+.qtw__mark {
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 30%, transparent);
+}
+.qtw__text {
+  font-size: var(--px-text-md, 15px);
+  line-height: 1.45;
+  font-style: italic;
+  color: var(--vscode-editor-foreground, #f3f3f3);
+}
+.qtw__author {
+  font-size: var(--px-text-sm);
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent);
+}
+.qtw__author:not(:empty)::before {
+  content: '\2014\00a0';
+}
+
+/* ============================================================================
+   Widget — breathing circle
+   ========================================================================== */
+
+.brw {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 100%;
+}
+.brw__stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+.brw__circle {
+  width: 34%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--px-accent, var(--vscode-focusBorder, #007fd4)) 30%, transparent);
+  border: 1px solid color-mix(in srgb, var(--px-accent, var(--vscode-focusBorder, #007fd4)) 55%, transparent);
+  transform: scale(1);
+  transition-property: transform;
+  transition-timing-function: ease-in-out;
+}
+.brw__circle--full {
+  transform: scale(1.9);
+}
+.brw__label {
+  font-size: var(--px-text-sm);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent);
+}
+
+/* ============================================================================
+   Widget — decision coin
+   ========================================================================== */
+
+.dcw {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 100%;
+}
+.dcw__question {
+  font-size: var(--px-text-sm);
+  font-weight: 500;
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 70%, transparent);
+}
+.dcw__coin {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--px-accent, var(--vscode-focusBorder, #007fd4)) 60%, transparent);
+  background: color-mix(in srgb, var(--px-accent, var(--vscode-focusBorder, #007fd4)) 18%, transparent);
+  color: var(--vscode-editor-foreground, #f3f3f3);
+  font-size: var(--px-text-md, 15px);
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform var(--px-dur-fast, 150ms) var(--px-ease);
+}
+.dcw__coin:hover {
+  transform: scale(1.05);
+}
+.dcw__coin--spin {
+  animation: dcw-spin 0.9s ease-in-out;
+}
+.dcw__coin--landed {
+  animation: dcw-land var(--px-dur-slow, 300ms) var(--px-ease);
+}
+.dcw__face {
+  padding: 0 8px;
+  text-align: center;
+  line-height: 1.15;
+}
+.dcw__hint {
+  font-size: var(--px-text-2xs);
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 50%, transparent);
+  text-align: center;
+}
+@keyframes dcw-spin {
+  0% { transform: rotateY(0deg); }
+  100% { transform: rotateY(1080deg); }
+}
+@keyframes dcw-land {
+  0% { transform: scale(0.85); }
+  60% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
+/* ============================================================================
+   Widget — desk companion
+   ========================================================================== */
+
+.cmw {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 100%;
+}
+.cmw__stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+.cmw__svg {
+  height: 100%;
+  max-height: 110px;
+  width: auto;
+}
+.cmw__head {
+  fill: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 10%, transparent);
+  stroke: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 75%, transparent);
+  stroke-width: 2.5;
+}
+.cmw__stroke {
+  fill: none;
+  stroke: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 80%, transparent);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+.cmw__fill {
+  fill: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 85%, transparent);
+}
+.cmw__zzz {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  fill: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent);
+}
+.cmw__status {
+  font-size: var(--px-text-sm);
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent);
+  text-align: center;
+}
