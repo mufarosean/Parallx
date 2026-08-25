@@ -403,15 +403,52 @@ function loadWindowState() {
 
 function saveWindowState() {
   if (!mainWindow) return;
+  const raw = mainWindow.isMaximized()
+    ? mainWindow._lastNormalBounds ?? mainWindow.getNormalBounds()
+    : mainWindow.getBounds();
   const state = {
     isMaximized: mainWindow.isMaximized(),
-    bounds: mainWindow.isMaximized()
-      ? mainWindow._lastNormalBounds ?? mainWindow.getNormalBounds()
-      : mainWindow.getBounds(),
+    // Clamp at WRITE time too: a maximized frame parks at y=-8/-16 on
+    // Windows to hide its resize borders, and that offset was leaking into
+    // the saved normal bounds — un-maximizing after a restore jumped the
+    // frameless titlebar above the top of the screen, with no OS chrome to
+    // drag it back by.
+    bounds: clampBoundsToDisplay(raw),
   };
   try {
     fsSync.writeFileSync(WINDOW_STATE_FILE, JSON.stringify(state), 'utf8');
   } catch { /* non-critical */ }
+}
+
+// Debounced save on live resize/move, so a crash or force-kill does not
+// lose the whole session's geometry (previously the ONLY save was in the
+// close handler). Same pattern the recorder frame has used all along.
+let _windowStateSaveTimer = null;
+function scheduleWindowStateSave() {
+  if (_windowStateSaveTimer) clearTimeout(_windowStateSaveTimer);
+  _windowStateSaveTimer = setTimeout(() => {
+    _windowStateSaveTimer = null;
+    saveWindowState();
+  }, 500);
+}
+
+/**
+ * Fit bounds inside the work area of whichever display they mostly live
+ * on. boundsOnScreen only proves 100px of OVERLAP — a 3440px-wide window
+ * restored onto a 1920px laptop passed that check and put the frameless
+ * window controls off the right edge.
+ */
+function clampBoundsToDisplay(bounds) {
+  try {
+    const wa = screen.getDisplayMatching(bounds).workArea;
+    const width = Math.min(bounds.width, wa.width);
+    const height = Math.min(bounds.height, wa.height);
+    const x = Math.min(Math.max(bounds.x, wa.x), wa.x + wa.width - width);
+    const y = Math.min(Math.max(bounds.y, wa.y), wa.y + wa.height - height);
+    return { x, y, width, height };
+  } catch {
+    return bounds; // screen module unavailable (tests) — pass through
+  }
 }
 
 /**
@@ -546,11 +583,17 @@ function buildEditableMenuState(params) {
 async function createWindow() {
   const saved = loadWindowState();
   const useSaved = saved?.bounds && boundsOnScreen(saved.bounds);
+  // Restored bounds are clamped to the display they will actually land on
+  // — surviving-the-monitor-check is not the same as fitting it.
+  const restored = useSaved ? clampBoundsToDisplay(saved.bounds) : null;
 
   const opts = {
-    width: useSaved ? saved.bounds.width : DEFAULT_BOUNDS.width,
-    height: useSaved ? saved.bounds.height : DEFAULT_BOUNDS.height,
-    ...(useSaved ? { x: saved.bounds.x, y: saved.bounds.y } : {}),
+    width: restored ? restored.width : DEFAULT_BOUNDS.width,
+    height: restored ? restored.height : DEFAULT_BOUNDS.height,
+    ...(restored ? { x: restored.x, y: restored.y } : {}),
+    // Painted only at ready-to-show — creating the window visible flashed
+    // the pre-renderer background before the app could draw.
+    show: false,
     minWidth: 800,
     minHeight: 600,
     // Frameless for custom titlebar (like VS Code)
@@ -645,18 +688,31 @@ async function createWindow() {
   setupNotebookKernelBridge(ipcMain, () => mainWindow);
 
   // Track normal (non-maximized) bounds so we can save them even when
-  // the window is maximized at quit time.
+  // the window is maximized at quit time — and persist debounced, so an
+  // unclean exit keeps the session's geometry.
   mainWindow._lastNormalBounds = mainWindow.getNormalBounds();
   mainWindow.on('resize', () => {
     if (!mainWindow.isMaximized()) {
       mainWindow._lastNormalBounds = mainWindow.getBounds();
     }
+    scheduleWindowStateSave();
   });
   mainWindow.on('move', () => {
     if (!mainWindow.isMaximized()) {
       mainWindow._lastNormalBounds = mainWindow.getBounds();
     }
+    scheduleWindowStateSave();
   });
+
+  // First paint only when the renderer is ready (kills the boot flash);
+  // a fallback timer guarantees the window can never be permanently
+  // invisible if the renderer stalls.
+  mainWindow.once('ready-to-show', () => {
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) mainWindow.show();
+  });
+  setTimeout(() => {
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) mainWindow.show();
+  }, 10000);
 
   const rendererUrl = await ensureRendererServer();
   mainWindow.loadURL(rendererUrl);
