@@ -292,6 +292,15 @@ export abstract class Layout extends Disposable {
    *  picker seats a new widget beside the asking part. */
   protected _onAddWidgetRequested: ((anchor: { x: number; y: number }, partId: string) => void) | undefined;
 
+  /**
+   * Placement-menu route into the command bus (Phase B: item id = command
+   * id, origin 'menu'). The workbench assigns it once commands register;
+   * until then the menu falls back to the direct methods.
+   */
+  protected _menuCommandExecutor:
+    | ((origin: 'menu', commandId: string, ...args: unknown[]) => Promise<unknown>)
+    | undefined;
+
   constructor(protected readonly _container: HTMLElement) {
     super();
   }
@@ -713,23 +722,33 @@ export abstract class Layout extends Disposable {
         ],
         anchor: { x: e.clientX, y: e.clientY },
       });
+      // Placement rows route through the command bus; Add Widget stays a
+      // gesture (it opens the type PICKER anchored at the cursor with a
+      // beside-this-part zone — a parameterization no bare command carries;
+      // workbench.action.addWidget exists for the palette route).
+      const actions: Record<string, readonly [string, ...unknown[]]> = {
+        'reset': ['workbench.action.resetPartPlacement', part.id],
+        'edge-left': ['workbench.action.movePartToEdge', part.id, 'left'],
+        'edge-right': ['workbench.action.movePartToEdge', part.id, 'right'],
+        'edge-bottom': ['workbench.action.movePartToEdge', part.id, 'bottom'],
+      };
       menu.onDidSelect(({ item }) => {
+        if (item.id === 'add-widget') {
+          this._onAddWidgetRequested?.({ x: e.clientX, y: e.clientY }, part.id);
+          return;
+        }
+        const action = actions[item.id];
+        if (!action) return;
+        if (this._menuCommandExecutor) {
+          void this._menuCommandExecutor('menu', action[0], ...action.slice(1));
+          return;
+        }
+        // Pre-command fallback (early startup).
         switch (item.id) {
-          case 'reset':
-            this.resetPartPlacement(part.id);
-            break;
-          case 'edge-left':
-            this.movePartToEdge(part.id, Orientation.Horizontal, true);
-            break;
-          case 'edge-right':
-            this.movePartToEdge(part.id, Orientation.Horizontal, false);
-            break;
-          case 'edge-bottom':
-            this.movePartToEdge(part.id, Orientation.Vertical, false);
-            break;
-          case 'add-widget':
-            this._onAddWidgetRequested?.({ x: e.clientX, y: e.clientY }, part.id);
-            break;
+          case 'reset': this.resetPartPlacement(part.id); break;
+          case 'edge-left': this.movePartToEdge(part.id, Orientation.Horizontal, true); break;
+          case 'edge-right': this.movePartToEdge(part.id, Orientation.Horizontal, false); break;
+          case 'edge-bottom': this.movePartToEdge(part.id, Orientation.Vertical, false); break;
         }
       });
     });

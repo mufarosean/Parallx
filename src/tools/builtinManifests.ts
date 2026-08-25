@@ -36,6 +36,18 @@ export const EXPLORER_MANIFEST: IToolManifest = {
       { id: 'explorer.revealInExplorer', title: 'Explorer: Reveal in Explorer' },
       { id: 'explorer.toggleHiddenFiles', title: 'Explorer: Toggle Hidden Files',
         aiInvocable: true, aiDescription: 'Show or hide dotfiles and hidden files in the explorer.' },
+      // Phase B (SYSTEM_INTEGRITY.md): the context menu's remaining actions
+      // become commands so the menu is a door onto the command bus, not a
+      // parallel implementation. Target-taking; menu supplies its cursor node.
+      { id: 'explorer.open', title: 'Explorer: Open' },
+      { id: 'explorer.openToSide', title: 'Explorer: Open to the Side' },
+      { id: 'explorer.addToChat', title: 'Explorer: Add to Chat' },
+      { id: 'explorer.cut', title: 'Explorer: Cut' },
+      { id: 'explorer.copy', title: 'Explorer: Copy' },
+      { id: 'explorer.paste', title: 'Explorer: Paste' },
+      { id: 'explorer.copyPath', title: 'Explorer: Copy Path' },
+      { id: 'explorer.copyRelativePath', title: 'Explorer: Copy Relative Path' },
+      { id: 'explorer.revealInFileExplorer', title: 'Explorer: Reveal in File Explorer' },
     ],
     keybindings: [
       { command: 'explorer.rename', key: 'F2', when: "focusedView == 'view.explorer'" },

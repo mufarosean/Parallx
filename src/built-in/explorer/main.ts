@@ -1185,53 +1185,58 @@ function showContextMenu(x: number, y: number, node: TreeNode | null): void {
   _activeContextMenu?.dismiss();
   _activeContextMenu = null;
 
+  // Item ids ARE the explorer's registered command ids (Phase B menu
+  // contract) — the menu used to be a parallel door that reran the same
+  // logic inline against a DIFFERENT target (its cursor node vs the
+  // commands' selected node). Now there is one door: every choice executes
+  // the command with the cursor node as its explicit target.
   const items: IContextMenuItem[] = [];
 
   if (node) {
     if (node.type === FILE_TYPE_FILE) {
-      items.push({ id: 'open', label: 'Open', group: '1_open' });
-      items.push({ id: 'openToSide', label: 'Open to the Side', group: '1_open' });
-      items.push({ id: 'addToChat', label: 'Add to Chat', group: '1_open' });
-      items.push({ id: 'newFile', label: 'New File…', group: '2_create' });
-      items.push({ id: 'newFolder', label: 'New Folder…', group: '2_create' });
-      items.push({ id: 'cut', label: 'Cut', keybinding: 'Ctrl+X', group: '3_clipboard' });
-      items.push({ id: 'copy', label: 'Copy', keybinding: 'Ctrl+C', group: '3_clipboard' });
+      items.push({ id: 'explorer.open', label: 'Open', group: '1_open' });
+      items.push({ id: 'explorer.openToSide', label: 'Open to the Side', group: '1_open' });
+      items.push({ id: 'explorer.addToChat', label: 'Add to Chat', group: '1_open' });
+      items.push({ id: 'explorer.newFile', label: 'New File…', group: '2_create' });
+      items.push({ id: 'explorer.newFolder', label: 'New Folder…', group: '2_create' });
+      items.push({ id: 'explorer.cut', label: 'Cut', keybinding: 'Ctrl+X', group: '3_clipboard' });
+      items.push({ id: 'explorer.copy', label: 'Copy', keybinding: 'Ctrl+C', group: '3_clipboard' });
       if (_clipboard) {
-        items.push({ id: 'paste', label: 'Paste', keybinding: 'Ctrl+V', group: '3_clipboard' });
+        items.push({ id: 'explorer.paste', label: 'Paste', keybinding: 'Ctrl+V', group: '3_clipboard' });
       }
-      items.push({ id: 'rename', label: 'Rename', keybinding: 'F2', group: '4_edit' });
-      items.push({ id: 'delete', label: 'Delete', keybinding: 'Delete', group: '4_edit' });
-      items.push({ id: 'copyPath', label: 'Copy Path', group: '5_copy' });
-      items.push({ id: 'copyRelativePath', label: 'Copy Relative Path', group: '5_copy' });
-      items.push({ id: 'revealInFileExplorer', label: 'Reveal in File Explorer', group: '6_reveal' });
+      items.push({ id: 'explorer.rename', label: 'Rename', keybinding: 'F2', group: '4_edit' });
+      items.push({ id: 'explorer.delete', label: 'Delete', keybinding: 'Delete', group: '4_edit' });
+      items.push({ id: 'explorer.copyPath', label: 'Copy Path', group: '5_copy' });
+      items.push({ id: 'explorer.copyRelativePath', label: 'Copy Relative Path', group: '5_copy' });
+      items.push({ id: 'explorer.revealInFileExplorer', label: 'Reveal in File Explorer', group: '6_reveal' });
     } else {
       // Folder context — hide rename/delete for workspace root folders
       const isRootFolder = _roots.some(r => r.uri === node.uri);
-      items.push({ id: 'newFile', label: 'New File…', group: '1_create' });
-      items.push({ id: 'newFolder', label: 'New Folder…', group: '1_create' });
-      items.push({ id: 'addToChat', label: 'Add to Chat', group: '1_create' });
+      items.push({ id: 'explorer.newFile', label: 'New File…', group: '1_create' });
+      items.push({ id: 'explorer.newFolder', label: 'New Folder…', group: '1_create' });
+      items.push({ id: 'explorer.addToChat', label: 'Add to Chat', group: '1_create' });
       if (!isRootFolder) {
-        items.push({ id: 'cut', label: 'Cut', keybinding: 'Ctrl+X', group: '2_clipboard' });
+        items.push({ id: 'explorer.cut', label: 'Cut', keybinding: 'Ctrl+X', group: '2_clipboard' });
       }
-      items.push({ id: 'copy', label: 'Copy', keybinding: 'Ctrl+C', group: '2_clipboard' });
+      items.push({ id: 'explorer.copy', label: 'Copy', keybinding: 'Ctrl+C', group: '2_clipboard' });
       if (_clipboard) {
-        items.push({ id: 'paste', label: 'Paste', keybinding: 'Ctrl+V', group: '2_clipboard' });
+        items.push({ id: 'explorer.paste', label: 'Paste', keybinding: 'Ctrl+V', group: '2_clipboard' });
       }
       if (!isRootFolder) {
-        items.push({ id: 'rename', label: 'Rename', keybinding: 'F2', group: '3_edit' });
-        items.push({ id: 'delete', label: 'Delete', keybinding: 'Delete', group: '3_edit' });
+        items.push({ id: 'explorer.rename', label: 'Rename', keybinding: 'F2', group: '3_edit' });
+        items.push({ id: 'explorer.delete', label: 'Delete', keybinding: 'Delete', group: '3_edit' });
       }
-      items.push({ id: 'copyPath', label: 'Copy Path', group: '4_copy' });
-      items.push({ id: 'copyRelativePath', label: 'Copy Relative Path', group: '4_copy' });
-      items.push({ id: 'revealInFileExplorer', label: 'Reveal in File Explorer', group: '5_reveal' });
+      items.push({ id: 'explorer.copyPath', label: 'Copy Path', group: '4_copy' });
+      items.push({ id: 'explorer.copyRelativePath', label: 'Copy Relative Path', group: '4_copy' });
+      items.push({ id: 'explorer.revealInFileExplorer', label: 'Reveal in File Explorer', group: '5_reveal' });
       if (node.expanded) {
-        items.push({ id: 'collapseAll', label: 'Collapse All', group: '6_collapse' });
+        items.push({ id: 'explorer.collapse', label: 'Collapse All', group: '6_collapse' });
       }
     }
   } else {
-    items.push({ id: 'newFile', label: 'New File…', group: '1_create' });
-    items.push({ id: 'newFolder', label: 'New Folder…', group: '1_create' });
-    items.push({ id: 'refresh', label: 'Refresh', group: '2_refresh' });
+    items.push({ id: 'explorer.newFile', label: 'New File…', group: '1_create' });
+    items.push({ id: 'explorer.newFolder', label: 'New Folder…', group: '1_create' });
+    items.push({ id: 'explorer.refresh', label: 'Refresh', group: '2_refresh' });
   }
 
   const menu = ContextMenu.show({
@@ -1243,23 +1248,10 @@ function showContextMenu(x: number, y: number, node: TreeNode | null): void {
   _activeContextMenu = menu;
 
   menu.onDidSelect(({ item }) => {
-    switch (item.id) {
-      case 'open': if (node) openFile(node, true); break;
-      case 'openToSide': if (node) openFileToSide(node); break;
-      case 'newFile': startInlineCreate(node ? getParentForCreate(node) : getActiveRoot(), 'file'); break;
-      case 'newFolder': startInlineCreate(node ? getParentForCreate(node) : getActiveRoot(), 'folder'); break;
-      case 'cut': if (node && !isRootNode(node)) setCopyClipboard(node, 'cut'); break;
-      case 'copy': if (node) setCopyClipboard(node, 'copy'); break;
-      case 'paste': if (node) pasteFromClipboard(getTargetFolderForPaste(node)); break;
-      case 'rename': if (node) startInlineRename(node); break;
-      case 'delete': if (node) confirmDelete(node); break;
-      case 'copyPath': if (node) copyToClipboard(uriToPath(node.uri)); break;
-      case 'copyRelativePath': if (node) copyToClipboard(getRelativePath(node)); break;
-      case 'collapseAll': if (node) collapseAll(node); break;
-      case 'revealInFileExplorer': if (node) revealInOsExplorer(node); break;
-      case 'addToChat': if (node) addToChat(node); break;
-      case 'refresh': refreshTree(); break;
-    }
+    // A background click means "act at the active root" — the 'root'
+    // sentinel says so explicitly, since an absent arg means "use the
+    // selection" (the keybinding/palette context).
+    void _api?.commands.executeCommand(item.id, node ?? 'root');
   });
 
   menu.onDidDismiss(() => {
@@ -1776,30 +1768,53 @@ function createOpenEditorRow(
 
 // ─── Commands Registration ───────────────────────────────────────────────────
 
+/**
+ * Resolve a command's target node from its first argument (Phase B: the
+ * context menu passes its cursor node explicitly; 'root' means a background
+ * click — act at the active root; no argument means the keybinding/palette
+ * context — act on the selection).
+ */
+function commandTarget(arg: unknown): TreeNode | null {
+  if (arg === 'root') return getActiveRoot();
+  if (arg && typeof arg === 'object'
+      && typeof (arg as TreeNode).uri === 'string'
+      && typeof (arg as TreeNode).name === 'string'
+      && Array.isArray((arg as TreeNode).children)) {
+    return arg as TreeNode;
+  }
+  return _selectedNode;
+}
+
 function registerCommands(api: ParallxApi, context: ToolContext): void {
   context.subscriptions.push(
-    api.commands.registerCommand('explorer.newFile', () => {
-      const parent = _selectedNode?.type === FILE_TYPE_DIRECTORY ? _selectedNode : (_selectedNode?.parent ?? getActiveRoot());
+    api.commands.registerCommand('explorer.newFile', (...args: unknown[]) => {
+      const base = commandTarget(args[0]);
+      const parent = base ? getParentForCreate(base) : getActiveRoot();
       if (parent) startInlineCreate(parent, 'file');
     }),
   );
 
   context.subscriptions.push(
-    api.commands.registerCommand('explorer.newFolder', () => {
-      const parent = _selectedNode?.type === FILE_TYPE_DIRECTORY ? _selectedNode : (_selectedNode?.parent ?? getActiveRoot());
+    api.commands.registerCommand('explorer.newFolder', (...args: unknown[]) => {
+      const base = commandTarget(args[0]);
+      const parent = base ? getParentForCreate(base) : getActiveRoot();
       if (parent) startInlineCreate(parent, 'folder');
     }),
   );
 
   context.subscriptions.push(
-    api.commands.registerCommand('explorer.rename', () => {
-      if (_selectedNode) startInlineRename(_selectedNode);
+    api.commands.registerCommand('explorer.rename', (...args: unknown[]) => {
+      const node = commandTarget(args[0]);
+      // Workspace roots are not renameable — the menu hides the row; the
+      // command holds the same line for the keybinding route.
+      if (node && !isRootNode(node)) startInlineRename(node);
     }),
   );
 
   context.subscriptions.push(
-    api.commands.registerCommand('explorer.delete', () => {
-      if (_selectedNode) confirmDelete(_selectedNode);
+    api.commands.registerCommand('explorer.delete', (...args: unknown[]) => {
+      const node = commandTarget(args[0]);
+      if (node && !isRootNode(node)) confirmDelete(node);
     }),
   );
 
@@ -1810,8 +1825,76 @@ function registerCommands(api: ParallxApi, context: ToolContext): void {
   );
 
   context.subscriptions.push(
-    api.commands.registerCommand('explorer.collapse', () => {
-      for (const root of _roots) collapseAll(root);
+    api.commands.registerCommand('explorer.collapse', (...args: unknown[]) => {
+      // Target-scoped when the caller names a folder EXPLICITLY (the menu's
+      // cursor node); whole tree from the palette, keybinding, or header.
+      const arg = args[0];
+      const explicit = arg && arg !== 'root' && typeof arg === 'object' ? commandTarget(arg) : null;
+      if (explicit) collapseAll(explicit);
+      else for (const root of _roots) collapseAll(root);
+    }),
+  );
+
+  context.subscriptions.push(
+    api.commands.registerCommand('explorer.open', (...args: unknown[]) => {
+      const node = commandTarget(args[0]);
+      if (node && node.type === FILE_TYPE_FILE) openFile(node, true);
+    }),
+  );
+
+  context.subscriptions.push(
+    api.commands.registerCommand('explorer.openToSide', (...args: unknown[]) => {
+      const node = commandTarget(args[0]);
+      if (node && node.type === FILE_TYPE_FILE) openFileToSide(node);
+    }),
+  );
+
+  context.subscriptions.push(
+    api.commands.registerCommand('explorer.addToChat', (...args: unknown[]) => {
+      const node = commandTarget(args[0]);
+      if (node) addToChat(node);
+    }),
+  );
+
+  context.subscriptions.push(
+    api.commands.registerCommand('explorer.cut', (...args: unknown[]) => {
+      const node = commandTarget(args[0]);
+      if (node && !isRootNode(node)) setCopyClipboard(node, 'cut');
+    }),
+  );
+
+  context.subscriptions.push(
+    api.commands.registerCommand('explorer.copy', (...args: unknown[]) => {
+      const node = commandTarget(args[0]);
+      if (node) setCopyClipboard(node, 'copy');
+    }),
+  );
+
+  context.subscriptions.push(
+    api.commands.registerCommand('explorer.paste', (...args: unknown[]) => {
+      const node = commandTarget(args[0]);
+      if (node) pasteFromClipboard(getTargetFolderForPaste(node));
+    }),
+  );
+
+  context.subscriptions.push(
+    api.commands.registerCommand('explorer.copyPath', (...args: unknown[]) => {
+      const node = commandTarget(args[0]);
+      if (node) copyToClipboard(uriToPath(node.uri));
+    }),
+  );
+
+  context.subscriptions.push(
+    api.commands.registerCommand('explorer.copyRelativePath', (...args: unknown[]) => {
+      const node = commandTarget(args[0]);
+      if (node) copyToClipboard(getRelativePath(node));
+    }),
+  );
+
+  context.subscriptions.push(
+    api.commands.registerCommand('explorer.revealInFileExplorer', (...args: unknown[]) => {
+      const node = commandTarget(args[0]);
+      if (node) revealInOsExplorer(node);
     }),
   );
 

@@ -231,7 +231,40 @@ container to a real API).
   popovers, canvas add-popover, dashboard sidebar menu). Commits
   4e39cdd6, 353723e7, 9e5735d7, 72db5175, 1c8faaf5. Blur-as-commit for
   inline renames (A.4 tail) folded into Phase B's command pass.
-- PHASE B — IN PROGRESS.
+- PHASE B — SHIPPED 2026-08-25, with a documented tail. The action
+  language, in five slices:
+  1. Origin on the command bus (62a010e0): executeCommandFrom stamps
+     palette/keybinding/menu/gesture/ui/ai/ext:<id>/programmatic on
+     every route; origin rides CommandExecutedEvent and the handler
+     context (aliases forward it); ISettingChange carries a
+     SettingsWriteOrigin; the command and settings taps derive the
+     actor from the stamp; the noise blocklist shrank 10 → 4 patterns.
+  2. Nineteen layout commands + menu conversion (64cfb313, this
+     commit): widget seat ops, container float/dock/edge, generic
+     movePartToEdge/resetPartPlacement/movePartBeside, saved-layout
+     apply/rename/delete, window minimize/maximize/close. The widget
+     and container box menus, the part placement menu, the Layouts
+     panel, the titlebar window controls, the statusbar hide row, and
+     the sidebar header menu all route through the bus with origin
+     stamped; the dead activity-bar "Hide" menu is deleted. The
+     explorer's parallel door is closed: its context menu executes the
+     explorer's own commands (nine new ones registered for the
+     previously inline-only actions), with the cursor node passed as
+     the explicit target and 'root' as the background-click sentinel.
+  3. Journal taps (fc8a6217): SurfaceActivityTap mounted (opens,
+     closes, dwell, moves, arrangements); window maximize/restore tap.
+  4. Typed vocabulary + query + tool (0198aa45): ActivityActor closed
+     union, ActivitySource write-side union, documented verb set,
+     query() actor/verb/source/ref filters, activity_log returns
+     structured events with filter parameters.
+  TAIL (queued, honest): the editor-tab context menu still switches
+  inline — converting it needs group/editor-addressed editor commands
+  (close-by-id, close-others-of, move-tab), its own seam. Two menus are
+  documented PICKER exceptions, not command rows: the add-widget type
+  picker and the panel tab-visibility checklist (radio/checkbox UI; the
+  choice parameterizes, it does not name, a command). Editor tab
+  reorder / cross-group move commands ride with the editor-tab seam.
+- PHASE C — NOT STARTED.
 
 PHASE A — THE INTERACTION CONTRACT (usability first; the class of the
 field bug):

@@ -30,6 +30,8 @@ function makeWorkbench() {
       moveToEdge: vi.fn(),
     },
     movePartBeside: vi.fn(),
+    movePartToEdge: vi.fn(),
+    resetPartPlacement: vi.fn(),
     applySavedLayout: vi.fn().mockReturnValue(true),
     savedLayouts: {
       list: vi.fn().mockReturnValue([{ id: 'L1', name: 'Focus' }]),
@@ -107,6 +109,20 @@ describe('layout commands — gesture parity', () => {
     const { bus, workbench } = makeBus();
     await bus.executeCommandFrom('ai', 'workbench.action.movePartBeside', 'a', 'b', 'vertical', true);
     expect(workbench.movePartBeside).toHaveBeenCalledWith('a', 'b', 'vertical', true);
+    bus.dispose();
+  });
+
+  it('the generic part commands translate edges and reset by part id', async () => {
+    const { bus, workbench } = makeBus();
+
+    await bus.executeCommandFrom('menu', 'workbench.action.movePartToEdge', 'workbench.parts.sidebar', 'left');
+    expect(workbench.movePartToEdge).toHaveBeenCalledWith('workbench.parts.sidebar', 'horizontal', true);
+
+    await bus.executeCommandFrom('menu', 'workbench.action.movePartToEdge', 'workbench.parts.panel', 'bottom');
+    expect(workbench.movePartToEdge).toHaveBeenCalledWith('workbench.parts.panel', 'vertical', false);
+
+    await bus.executeCommandFrom('menu', 'workbench.action.resetPartPlacement', 'workbench.parts.panel');
+    expect(workbench.resetPartPlacement).toHaveBeenCalledWith('workbench.parts.panel');
     bus.dispose();
   });
 

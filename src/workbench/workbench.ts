@@ -1227,6 +1227,10 @@ export class Workbench extends Layout {
     cmdService.setWorkbench(this);
     this._register(registerBuiltinCommands(cmdService));
 
+    // The layout's placement menus can now speak command (Phase B).
+    this._menuCommandExecutor = (origin, id, ...args) =>
+      cmdService.executeCommandFrom(origin, id, ...args);
+
     // Quick Access — unified overlay for commands + workspace switching
     this._commandPalette = new QuickAccessWidget(cmdService, this._storage);
     this._register(this._commandPalette);

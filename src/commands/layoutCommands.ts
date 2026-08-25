@@ -156,6 +156,35 @@ export const containerMoveToEdge: CommandDescriptor = {
 
 // ─── Parts ───────────────────────────────────────────────────────────────────
 
+export const movePartToEdge: CommandDescriptor = {
+  id: 'workbench.action.movePartToEdge',
+  title: 'Move Part to Edge',
+  category: 'View',
+  aiDescription: 'Move any workbench part to a window edge (partId, then "left", "right", or "bottom"). The fixed-part forms (layout.moveSidebarLeft and friends) remain for the common cases.',
+  handler(ctx, ...args) {
+    const partId = str(args[0]);
+    const edge = args[1];
+    if (partId && EDGES.includes(edge as Edge)) {
+      wb(ctx).movePartToEdge(
+        partId,
+        edge === 'bottom' ? 'vertical' : 'horizontal',
+        edge === 'left',
+      );
+    }
+  },
+};
+
+export const resetPartPlacement: CommandDescriptor = {
+  id: 'workbench.action.resetPartPlacement',
+  title: 'Reset Part Placement',
+  category: 'View',
+  aiDescription: 'Put one workbench part (by part id) back at its default position, leaving the rest of the layout alone.',
+  handler(ctx, ...args) {
+    const partId = str(args[0]);
+    if (partId) wb(ctx).resetPartPlacement(partId);
+  },
+};
+
 export const movePartBeside: CommandDescriptor = {
   id: 'workbench.action.movePartBeside',
   title: 'Move Part Beside Another',
@@ -263,6 +292,8 @@ export const ALL_LAYOUT_COMMANDS: CommandDescriptor[] = [
   containerFloat,
   containerDock,
   containerMoveToEdge,
+  movePartToEdge,
+  resetPartPlacement,
   movePartBeside,
   applyLayout,
   renameLayout,

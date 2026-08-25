@@ -17,7 +17,16 @@
       { "id": "explorer.refresh", "title": "Explorer: Refresh" },
       { "id": "explorer.collapse", "title": "Explorer: Collapse All" },
       { "id": "explorer.revealInExplorer", "title": "Explorer: Reveal in Explorer" },
-      { "id": "explorer.toggleHiddenFiles", "title": "Explorer: Toggle Hidden Files" }
+      { "id": "explorer.toggleHiddenFiles", "title": "Explorer: Toggle Hidden Files" },
+      { "id": "explorer.open", "title": "Explorer: Open" },
+      { "id": "explorer.openToSide", "title": "Explorer: Open to the Side" },
+      { "id": "explorer.addToChat", "title": "Explorer: Add to Chat" },
+      { "id": "explorer.cut", "title": "Explorer: Cut" },
+      { "id": "explorer.copy", "title": "Explorer: Copy" },
+      { "id": "explorer.paste", "title": "Explorer: Paste" },
+      { "id": "explorer.copyPath", "title": "Explorer: Copy Path" },
+      { "id": "explorer.copyRelativePath", "title": "Explorer: Copy Relative Path" },
+      { "id": "explorer.revealInFileExplorer", "title": "Explorer: Reveal in File Explorer" }
     ],
     "keybindings": [
       { "command": "explorer.rename", "key": "F2", "when": "focusedView == 'view.explorer'" },
