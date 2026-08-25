@@ -236,3 +236,45 @@ P3 font aliases (cheap, visible) → P2 data seam (route tools, emit
 events, schema ownership) → P4 window → P5 copy + compliance tests.
 Compliance tests land WITH each sweep, not after. The autonomy-stream
 collapse and dual-store dedup (P2 tail) are their own later passes.
+
+## Execution ledger — session 2026-08-25 (commits fdce6423..139e1011)
+
+SHIPPED, gates green (tsc + 5,753 tests + build), each with its canary:
+
+- P3 FONTS: the four undefined var namespaces aliased onto the parallx
+  tokens (65 stray declarations healed without being touched; terminal/
+  logs/search/chat code get real mono again); boot flash killed
+  (#1e1e1e → --px-base-00 in index.html + BrowserWindow); fontCompliance
+  canary bans literal stacks and pins the aliases.
+- P1 SETTINGS DATA: the two stores BRIDGED — every manifest key binds to
+  the ConfigurationService through the registry's bind() seam; hub edits
+  reach extensions, extension writes reach the hub live; orphaned chat.*
+  keys registered in CHAT_MANIFEST (fontSize/fontFamily/defaultMode/
+  ollama.baseUrl), duplicates deliberately excluded. Pinned end to end
+  with the real services.
+- P1 SETTINGS SURFACES: view.aiSettings retired (all entry points land
+  on the hub's AI panel; scrollToSection targets it); SettingsEditorPane
+  + KeybindingsEditorPane + their inputs DELETED; openKeybindings +
+  gear menu land on the hub's rebindable panel; theme-editor.open lands
+  on Settings > Appearance. Retired tab types do not deserialize.
+- P4 WINDOW: debounced bounds save on resize/move; restore clamped to
+  the landing display's workArea; write-time clamp kills the y:-16
+  maximized-offset leak; show:false + ready-to-show with a 10s
+  visibility fallback.
+- P5 COPY: ellipsis (24), em dashes out of palette/toast/recorder
+  strings, emoji out of openclaw command output and status prefixes,
+  "To Workbench" casing; copyCompliance canary sweeps UI-shaped string
+  props for all three rules (passed first run).
+- P2 DATA SEAM (core): DatabaseService.onDidWrite ({table, sql} on every
+  successful mutation) + asBridge() envelope adapter; canvas,
+  canvas-databases, dashboard, planner, worksheet all attach it at
+  activation — zero call-site changes, every SQL write behind one seam.
+
+REMAINING (queued, unstarted): P1 tail — px-appearance/webResearch.*
+schema registration, duplicated-knob collapse (default model/context/
+iterations), px-keybindings out of localStorage (needs the sync-primed
+cache). P2 tail — storage-flush events, core-schema migration dir owned
+by the workbench, inline-DDL services onto real migrations, autonomy
+stream collapse, transcript/memory dual-store dedup, one recents
+service, localStorage kill. P5 tail — the ~118 casing-register
+normalizations. P0 — deferred whole, by decision.
