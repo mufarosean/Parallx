@@ -2144,7 +2144,8 @@ video.vw__fill { object-fit: contain; background: #000; }
 }
 
 /* ============================================================================
-   Widget — desk companion
+   Widget — desk companion (v2: an ink-line character that is ALIVE —
+   blinking, breathing, gazing, glancing; moods morph the same face)
    ========================================================================== */
 
 .cmw {
@@ -2165,30 +2166,154 @@ video.vw__fill { object-fit: contain; background: #000; }
 }
 .cmw__svg {
   height: 100%;
-  max-height: 110px;
+  max-height: 150px;
   width: auto;
+  overflow: visible;
+}
+
+/* Ink + paper: the palette is two mixes of the theme foreground, so the
+   character reads as line art in both light and dark themes. */
+.cmw__svg .cmw__ink {
+  fill: none;
+  stroke: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 85%, transparent);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.cmw__svg .cmw__ink-fill {
+  fill: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 14%, var(--vscode-editor-background, #1e1e1e));
+  stroke: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 85%, transparent);
+  stroke-width: 3;
+  stroke-linejoin: round;
 }
 .cmw__head {
-  fill: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 10%, transparent);
-  stroke: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 75%, transparent);
-  stroke-width: 2.5;
+  fill: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 10%, var(--vscode-editor-background, #1e1e1e));
+  stroke: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 85%, transparent);
+  stroke-width: 3.5;
 }
-.cmw__stroke {
+.cmw__ear {
   fill: none;
-  stroke: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 80%, transparent);
-  stroke-width: 2.5;
+  stroke: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 85%, transparent);
+  stroke-width: 3;
   stroke-linecap: round;
 }
-.cmw__fill {
-  fill: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 85%, transparent);
+.cmw__white {
+  fill: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 4%, var(--vscode-editor-background, #1e1e1e));
+  stroke: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 80%, transparent);
+  stroke-width: 2.5;
 }
-.cmw__zzz {
-  font-size: 9px;
-  letter-spacing: 0.1em;
+.cmw__pupil {
+  fill: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 90%, transparent);
+}
+
+/* Breathing: the whole character bobs; drowsiness slows it, sleep deepens it. */
+.cmw__char {
+  transform-box: fill-box;
+  transform-origin: 50% 90%;
+  animation: cmw-bob 4.2s ease-in-out infinite;
+}
+.cmw--drowsy .cmw__char { animation-duration: 6.5s; }
+.cmw--asleep .cmw__char { animation: cmw-bob 7.5s ease-in-out infinite; }
+.cmw--greeting .cmw__char { animation: cmw-hop 0.7s var(--px-ease), cmw-bob 4.2s ease-in-out 0.7s infinite; }
+@keyframes cmw-bob {
+  0%, 100% { transform: translateY(0) scaleY(1); }
+  50% { transform: translateY(1.2px) scaleY(0.985); }
+}
+@keyframes cmw-hop {
+  0% { transform: translateY(0); }
+  35% { transform: translateY(-6px); }
+  60% { transform: translateY(0) scaleY(0.94); }
+  100% { transform: translateY(0) scaleY(1); }
+}
+
+/* Brows: the whole attitude lives here. */
+.cmw__brow {
+  fill: none;
+  stroke: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 88%, transparent);
+  stroke-width: 3.4;
+  stroke-linecap: round;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform var(--px-dur-slow, 300ms) var(--px-ease);
+}
+.cmw--happy .cmw__brow,
+.cmw--greeting .cmw__brow { transform: translateY(-2.5px); }
+.cmw--greeting .cmw__brow--l { transform: translateY(-3px) rotate(-4deg); }
+.cmw--greeting .cmw__brow--r { transform: translateY(-3px) rotate(4deg); }
+.cmw--drowsy .cmw__brow { transform: translateY(2px); }
+.cmw--asleep .cmw__brow { transform: translateY(3px); }
+
+/* Blink: quick and periodic; drowsiness blinks slower and heavier. */
+.cmw__eye-open {
+  transform-box: fill-box;
+  transform-origin: 50% 55%;
+  animation: cmw-blink 5.4s infinite;
+  transition: opacity var(--px-dur-normal, 200ms) var(--px-ease);
+}
+.cmw--drowsy .cmw__eye-open { animation: cmw-blink 3.2s infinite; }
+.cmw--asleep .cmw__eye-open { opacity: 0; animation: none; }
+@keyframes cmw-blink {
+  0%, 92.5%, 100% { transform: scaleY(1); }
+  95% { transform: scaleY(0.06); }
+  97.5% { transform: scaleY(1); }
+}
+
+/* Pupils chase the cursor (JS sets the transform; CSS smooths it). */
+.cmw__pupils {
+  transition: transform var(--px-dur-normal, 200ms) var(--px-ease);
+}
+
+/* Lids: hidden normally, half-drawn when drowsy. */
+.cmw__lid {
+  fill: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 10%, var(--vscode-editor-background, #1e1e1e));
+  stroke: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 70%, transparent);
+  stroke-width: 2;
+  opacity: 0;
+  transform: translateY(-3px);
+  transition: opacity var(--px-dur-slow, 300ms) var(--px-ease), transform var(--px-dur-slow, 300ms) var(--px-ease);
+}
+.cmw--drowsy .cmw__lid { opacity: 1; transform: translateY(3.5px); }
+
+/* Closed eyes: two content arcs, only while asleep. */
+.cmw__eye-closed {
+  opacity: 0;
+  transition: opacity var(--px-dur-normal, 200ms) var(--px-ease);
+}
+.cmw--asleep .cmw__eye-closed { opacity: 1; }
+
+/* Greeting blush marks. */
+.cmw__blush {
+  opacity: 0;
+  transition: opacity var(--px-dur-slow, 300ms) var(--px-ease);
+}
+.cmw--greeting .cmw__blush,
+.cmw--happy .cmw__blush { opacity: 1; }
+
+/* The mouth morphs via a JS path swap; ease the moment with a soft fade. */
+.cmw__mouth { transition: opacity var(--px-dur-fast, 150ms) var(--px-ease); }
+
+/* Sleep: floating z z. */
+.cmw__zzz { opacity: 0; transition: opacity var(--px-dur-slow, 300ms) var(--px-ease); }
+.cmw--asleep .cmw__zzz { opacity: 1; }
+.cmw__zzz-t {
+  font-size: 11px;
+  font-weight: 600;
   fill: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent);
 }
+.cmw__zzz-t1 { animation: cmw-float 3s ease-in-out infinite; }
+.cmw__zzz-t2 { font-size: 8px; animation: cmw-float 3s ease-in-out 1.2s infinite; }
+@keyframes cmw-float {
+  0%, 100% { transform: translateY(0); opacity: 0.4; }
+  50% { transform: translateY(-4px); opacity: 1; }
+}
+
 .cmw__status {
   font-size: var(--px-text-sm);
   color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent);
   text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cmw__char, .cmw__eye-open, .cmw__zzz-t1, .cmw__zzz-t2 { animation: none; }
+  .cmw__pupils { transition: none; }
 }
