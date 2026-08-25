@@ -18,6 +18,8 @@ import {
 } from '../../src/workbench/workbenchContributionHandler';
 import { ActivityBarPart } from '../../src/parts/activityBarPart';
 import { ViewContainer } from '../../src/views/viewContainer';
+import { ViewManager } from '../../src/views/viewManager';
+import { ViewContributionProcessor } from '../../src/contributions/viewContribution';
 import { PartId, PartPosition } from '../../src/parts/partTypes';
 import { CONTAINER_DRAG_TYPE } from '../../src/platform/dragTypes';
 import type { Part } from '../../src/parts/part';
@@ -175,6 +177,80 @@ describe('container rails', () => {
     handler.moveContainerToRail('view.explorer', 'right');
     handler.moveContainerToRail('view.explorer', 'left');
     expect(changed).toHaveBeenCalledTimes(2);
+  });
+
+  // ── The restart order: placement restores BEFORE providers register ──
+  //
+  // Field bug: planner moved to the right rail, app restarted — empty
+  // container, forever. The saved placement moves the container out of
+  // the builtin sidebar map at boot; the tool's provider registers
+  // AFTERWARD, and placeholder replacement searched only that one map.
+  // Content that had worked all session died on restart.
+
+  function placeholderView(id: string, name: string) {
+    const element = document.createElement('div');
+    element.classList.add('view');
+    return {
+      id, name,
+      element,
+      createElement(container: HTMLElement) { container.appendChild(element); },
+      setVisible() {}, layout() {}, focus() {},
+      minimumWidth: 0, maximumWidth: Infinity, minimumHeight: 0, maximumHeight: Infinity,
+      saveState: () => ({}), restoreState: () => {},
+      dispose() {},
+    };
+  }
+
+  function wireProcessor() {
+    const vm = new ViewManager();
+    const processor = new ViewContributionProcessor(vm);
+    handler.setViewContribution(processor);
+    handler.wireViewContributionEvents();
+    return processor;
+  }
+
+  it('placeholder replacement follows a container moved to the RIGHT RAIL before its provider registered', () => {
+    const processor = wireProcessor();
+    explorer.addView(placeholderView('view.test', 'Planner') as never);
+
+    handler.moveContainerToRail('view.explorer', 'right'); // restore order
+    processor.registerProvider('view.test', {
+      resolveView: (_id, el) => { el.textContent = 'LIVE'; },
+    });
+
+    const body = explorer.element.querySelector('[data-view-id="view.test"] .view-section-body');
+    expect(body?.textContent).toBe('LIVE');
+  });
+
+  it('a floating box’s reveal icon follows the area its box occupies', () => {
+    handler.undockContainer('view.explorer');
+    expect(leftBar.icons.includes('view.explorer')).toBe(true); // default reveal home
+
+    handler.setFloatingIconRail('view.explorer', 'right');
+    expect(leftBar.icons.includes('view.explorer')).toBe(false);
+    expect(rightBar.icons.includes('view.explorer')).toBe(true);
+
+    handler.setFloatingIconRail('view.explorer', 'left');
+    expect(rightBar.icons.includes('view.explorer')).toBe(false);
+    expect(leftBar.icons.includes('view.explorer')).toBe(true);
+
+    // Not floating any more — the call becomes a no-op.
+    handler.dockContainer('view.explorer', explorer, 'left');
+    handler.setFloatingIconRail('view.explorer', 'right');
+    expect(rightBar.icons.includes('view.explorer')).toBe(false);
+  });
+
+  it('placeholder replacement follows a container seated in a FLOATING box', () => {
+    const processor = wireProcessor();
+    explorer.addView(placeholderView('view.test', 'Planner') as never);
+
+    expect(handler.undockContainer('view.explorer')).toBeDefined(); // restore order
+    processor.registerProvider('view.test', {
+      resolveView: (_id, el) => { el.textContent = 'LIVE'; },
+    });
+
+    const body = explorer.element.querySelector('[data-view-id="view.test"] .view-section-body');
+    expect(body?.textContent).toBe('LIVE');
   });
 });
 

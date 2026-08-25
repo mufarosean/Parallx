@@ -144,7 +144,7 @@ import { ViewContributionProcessor } from '../contributions/viewContribution.js'
 
 // Contribution handler (D.1 extraction)
 import { WorkbenchContributionHandler } from './workbenchContributionHandler.js';
-import { ContainerBoxManager } from './containerBox.js';
+import { ContainerBoxManager, containerBoxViewId } from './containerBox.js';
 import { WidgetBoxManager, WIDGET_BOX_PREFIX, widgetBoxViewId } from './widgetBox.js';
 import type { PartDropZone } from './partDrag.js';
 import type { WorkbenchWidgetHost } from '../built-in/dashboard/dashboardTypes.js';
@@ -2468,6 +2468,13 @@ export class Workbench extends Layout {
         return;
       }
 
+      // A floating box's reveal icon (living here because its box occupies
+      // the right area) flashes the box, mirroring the left ribbon.
+      if (this._containerBoxes?.has(event.iconId)) {
+        this._containerBoxes.reveal(event.iconId);
+        return;
+      }
+
       const isActive = event.iconId === rightBar.activeIconId && this._auxiliaryBar.visible;
       if (isActive) {
         this.toggleAuxiliaryBar();
@@ -2693,6 +2700,15 @@ export class Workbench extends Layout {
         priority: 500,
       });
       this._partRailIcons.set(partId, rail);
+    }
+
+    // Floating container boxes follow the same geometry rule: the reveal
+    // icon lives on the ribbon of the area the box occupies.
+    for (const containerId of this._containerBoxes?.floatingContainerIds() ?? []) {
+      const area = this.areaOf(containerBoxViewId(containerId));
+      this._contributionHandler?.setFloatingIconRail(
+        containerId, area === 'right' ? 'right' : 'left',
+      );
     }
 
     // A part icon can be the only thing keeping the right ribbon alive.

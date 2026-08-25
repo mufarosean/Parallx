@@ -92,6 +92,14 @@ export class WorkbenchContributionHandler extends Disposable {
   // icon each container carries between ribbons, and per-container aux
   // header wiring so it can be unwired on the way out.
   private readonly _railAssignments = new Map<string, ContainerRail>();
+
+  /**
+   * Containers currently seated in FLOATING boxes. The box manager owns
+   * where they sit; the handler must still FIND them — late views and
+   * placeholder replacement resolve against live containers wherever they
+   * live, and a floating container is in no rail map.
+   */
+  private readonly _floatingContainers = new Map<string, ViewContainer>();
   private readonly _pendingRailAssignments = new Map<string, ContainerRail>();
   private readonly _builtinOrigin = new Set<string>();
   private readonly _containerIcons = new Map<string, ActivityBarIconDescriptor>();
@@ -235,6 +243,7 @@ export class WorkbenchContributionHandler extends Disposable {
     const vc = this._takeContainer(containerId);
     if (!vc) return undefined;
     this._railAssignments.delete(containerId);
+    this._floatingContainers.set(containerId, vc);
     const icon = this._containerIcons.get(containerId);
     if (icon) this._host.activityBarPart.addIcon(icon);
     this._onDidChangeRails.fire();
@@ -246,6 +255,7 @@ export class WorkbenchContributionHandler extends Disposable {
    * undockContainer; the box manager hands the container back.
    */
   dockContainer(containerId: string, vc: ViewContainer, rail: ContainerRail): void {
+    this._floatingContainers.delete(containerId);
     // Floating containers keep a reveal icon on the primary ribbon; seating
     // re-adds the icon on the rail's own ribbon.
     this._host.activityBarPart.removeIcon(containerId);
@@ -296,6 +306,26 @@ export class WorkbenchContributionHandler extends Disposable {
     }
 
     return undefined;
+  }
+
+  /**
+   * Put a FLOATING container's reveal icon on the ribbon of the area its
+   * box occupies — the same geometry rule rail-stacked parts follow: a
+   * planner box stacked in the right column announces itself on the RIGHT
+   * ribbon, not across the window. Synced by the workbench on tree
+   * changes.
+   */
+  setFloatingIconRail(containerId: string, rail: 'left' | 'right'): void {
+    if (!this._floatingContainers.has(containerId)) return;
+    const icon = this._containerIcons.get(containerId);
+    if (!icon) return;
+    if (rail === 'right') {
+      this._host.activityBarPart.removeIcon(containerId);
+      this._host.rightActivityBar?.addIcon(icon);
+    } else {
+      this._host.rightActivityBar?.removeIcon(containerId);
+      this._host.activityBarPart.addIcon(icon);
+    }
   }
 
   /** Seat an undocked container in a rail: DOM, map, icon, activation. */
@@ -559,6 +589,11 @@ export class WorkbenchContributionHandler extends Disposable {
     const auxVc = this._contributedAuxBarContainers.get(containerId);
     if (auxVc) { this._addViewToContainer(info, auxVc); return; }
 
+    // A container seated in a FLOATING box still receives its views — it
+    // left the rail maps, not the world.
+    const floatingVc = this._floatingContainers.get(containerId);
+    if (floatingVc) { this._addViewToContainer(info, floatingVc); return; }
+
     if (containerId === 'sidebar' || containerId === 'workbench.parts.sidebar') {
       if (this._defaultSidebarContainer) this._addViewToContainer(info, this._defaultSidebarContainer);
       return;
@@ -608,12 +643,27 @@ export class WorkbenchContributionHandler extends Disposable {
     for (const vc of this._contributedAuxBarContainers.values()) {
       if (vc.getView(viewId)) { vc.removeView(viewId); return; }
     }
+    for (const vc of this._floatingContainers.values()) {
+      if (vc.getView(viewId)) { vc.removeView(viewId); return; }
+    }
   }
 
   // ── Placeholder replacement ──
 
   private _replaceBuiltinPlaceholderIfNeeded(viewId: string): void {
-    for (const [_id, vc] of this._builtinSidebarContainers) {
+    // Search EVERY live home, not just the builtin sidebar map. The field
+    // bug: a builtin-origin container moved to the right rail (or floated
+    // as a box) leaves that map; on the NEXT LAUNCH the saved placement
+    // moves it before the tool's provider registers, this loop missed it,
+    // and the placeholder stayed empty forever — content that had worked
+    // all session died on restart.
+    const homes: Iterable<ViewContainer>[] = [
+      this._builtinSidebarContainers.values(),
+      this._contributedSidebarContainers.values(),
+      this._contributedAuxBarContainers.values(),
+      this._floatingContainers.values(),
+    ];
+    for (const home of homes) for (const vc of home) {
       const existingView = vc.getView(viewId);
       if (!existingView) continue;
 
