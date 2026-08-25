@@ -292,3 +292,46 @@ exception window tonight).
    and _distributeWithFlex normalization only running on the dragged
    axis. Reproduce with a window resize + a floated box before touching
    anything.
+
+## Feature: workbench widgets — the smallest citizen (decided 2026-08-24)
+
+Dashboards work, but in the mounted foundation they read as a container
+inside a container. The step further: WIDGETS AS WORKBENCH CITIZENS —
+the app's own form becomes user-composable. Dashboards stay exactly as
+they are for now; the redundancy dissolves later on its own once a
+dashboard is just one host of many.
+
+**Architecture (agreed):**
+- ONE widget system, MANY hosts. The dashboard's registry (widget types,
+  renderers, look/border customization, the AI refresh runner with the
+  ephemeral-rail invariants) IS the widget system; the workbench becomes
+  its second host. No forked renderers — a clock renders identically in
+  a dashboard cell and the sidebar.
+- One INSTANCE, many possible seats. A widget instance (type + config +
+  look) lives in a workspace store independent of placement. Seats:
+  (a) standalone grid cell — `widget:<instanceId>` leaf riding the same
+  validation/factory path `container:` leaves use, so seams, drag zones,
+  edge stamps, area toggles, saved layouts, and body-tree persistence
+  all apply with no new layout machinery; (b) inline in a container —
+  wrapped as a view/section in a stacked sidebar container. Moving
+  between seats RE-SEATS the same instance; never re-instantiate (the
+  idempotent-createElement law). Delete removes instance + seat.
+- Drag vocabulary gains WIDGET_DRAG_TYPE; drops reuse the existing zone
+  machinery.
+
+**Decisions made by Mufaro:**
+1. Creation: ALL THREE routes — drag a widget out of a dashboard onto
+   the workbench; "Add Widget" in the right-click placement menus; a
+   palette command.
+2. Standalone chrome: CHROMELESS card — the widget in a seam-respecting
+   card wearing its own look/border customization, with a hover-revealed
+   grip strip + ⋯ menu for drag/placement/delete. No 35px header.
+3. V1 scope: ALL registered widget types (clock, images, AI widgets,
+   contributed) — renderers and refresh runner are reused, and features
+   ship complete, not as MVPs.
+
+**Invariants to honour:** widget look customization is kept; AI-widget
+refresh goes through the SAME runner (sendRequest never rejects —
+inspect errorDetails; session.origin set; timeout + model stamping;
+scheduler backoff); tokens only, no hex; Title Case labels; one
+dropdown.
