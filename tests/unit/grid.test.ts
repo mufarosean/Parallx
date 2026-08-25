@@ -9,6 +9,8 @@
 
 import { describe, expect, it, beforeEach } from 'vitest';
 import { Grid } from '../../src/layout/grid';
+import { GridNodeType } from '../../src/layout/gridNode';
+import type { GridBranchNode } from '../../src/layout/gridNode';
 import { Orientation } from '../../src/layout/layoutTypes';
 import type { IGridView } from '../../src/layout/gridView';
 import { Emitter } from '../../src/platform/events';
@@ -749,6 +751,59 @@ describe('cellRect — model-derived geometry', () => {
     expect(panel.top).toBe(editor.height);
     expect(editor.height + panel.height).toBe(600);
     expect(grid.cellRect('nonexistent')).toBeUndefined();
+    grid.dispose();
+  });
+});
+
+describe('resizeSash in a nested branch — cross axis stays truthful', () => {
+  it('hands children the PARENT BRANCH cross size, not the grid size', () => {
+    const grid = new Grid(Orientation.Horizontal, 1000, 600);
+    // H[ side(200), V[ editor(400), panel(200) ] ] — the inner column is
+    // 800 wide; its sash drags must never write width:1000 into the
+    // children (the field bug: content spilling across the window,
+    // neighbours included, healing only on an other-axis resize).
+    grid.addView(createMockView('side'), 200);
+    const editor = createMockView('editor');
+    grid.addView(editor, 800);
+    const panel = createMockView('panel');
+    grid.splitView('editor', panel, 200, Orientation.Vertical);
+    grid.layout(1000, 600);
+    // A cross-axis split halves the slot; settle exact pixels first.
+    grid.resizeView('panel', 200);
+
+    const inner = grid.root.children.find(
+      (c) => c.type === GridNodeType.Branch,
+    ) as GridBranchNode;
+    expect(inner).toBeDefined();
+
+    grid.resizeSash(inner, 0, 50);
+
+    expect(editor.element.style.width).toBe('800px');
+    expect(panel.element.style.width).toBe('800px');
+    expect(editor.element.style.height).toBe('450px');
+    expect(panel.element.style.height).toBe('150px');
+    grid.dispose();
+  });
+
+  it('a sash drag in a nested HORIZONTAL branch keeps real heights', () => {
+    const grid = new Grid(Orientation.Vertical, 1000, 600);
+    // V[ top(400), H[ a(500), b(500) ] ] — the inner row is 200 tall.
+    grid.addView(createMockView('top'), 400);
+    const a = createMockView('a');
+    grid.addView(a, 200);
+    const b = createMockView('b');
+    grid.splitView('a', b, 500, Orientation.Horizontal);
+    grid.layout(1000, 600);
+
+    const inner = grid.root.children.find(
+      (c) => c.type === GridNodeType.Branch,
+    ) as GridBranchNode;
+    grid.resizeSash(inner, 0, 100);
+
+    expect(a.element.style.height).toBe('200px');
+    expect(b.element.style.height).toBe('200px');
+    expect(a.element.style.width).toBe('600px');
+    expect(b.element.style.width).toBe('400px');
     grid.dispose();
   });
 });

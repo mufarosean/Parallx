@@ -785,10 +785,20 @@ export class Grid extends Disposable {
 
     // Re-layout only the two affected children so that sibling views
     // (e.g. the sidebar) are never touched by _distributeSizes.
+    //
+    // The cross size must be THE PARENT BRANCH'S real cross dimension,
+    // walked from the model. This used to read the whole GRID's
+    // width/height — correct only for the root branch. For any nested
+    // branch (a right column, the editor/panel stack) every sash drag
+    // handed BOTH children the full grid dimension on the cross axis,
+    // which _setNodeDimensions wrote straight into style.width/height:
+    // content spilled across the window, neighbours included, until a
+    // pass on the other axis rewrote the truth.
     const isHorizontal = parentNode.orientation === Orientation.Horizontal;
+    const parentDims = this._nodeDims(parentNode);
     const crossSize = isHorizontal
-      ? this._getNodeHeight(parentNode)
-      : this._getNodeWidth(parentNode);
+      ? (parentDims?.height ?? this._height)
+      : (parentDims?.width ?? this._width);
 
     if (isHorizontal) {
       this._setNodeDimensions(childA, newSizeA, crossSize);
@@ -1375,16 +1385,28 @@ export class Grid extends Disposable {
     el.style.flexShrink = '0';
   }
 
-  private _getNodeWidth(_node: GridNode): number {
-    // Use cached grid width instead of el.clientWidth to avoid
-    // synchronous reflow when called between style writes.
-    return this._width;
-  }
-
-  private _getNodeHeight(_node: GridNode): number {
-    // Use cached grid height instead of el.clientHeight to avoid
-    // synchronous reflow when called between style writes.
-    return this._height;
+  /**
+   * The real width and height of ANY node, walked from the model — the
+   * same no-DOM arithmetic as cellRect. Replaces a pair of helpers that
+   * returned the GRID's dimensions for every node, which was only true
+   * at the root.
+   */
+  private _nodeDims(target: GridNode): { width: number; height: number } | undefined {
+    const walk = (
+      node: GridNode, w: number, h: number,
+    ): { width: number; height: number } | undefined => {
+      if (node === target) return { width: w, height: h };
+      if (node.type === GridNodeType.Leaf) return undefined;
+      for (const child of node.children) {
+        const size = this._getNodeSize(child);
+        const found = node.orientation === Orientation.Horizontal
+          ? walk(child, size, h)
+          : walk(child, w, size);
+        if (found) return found;
+      }
+      return undefined;
+    };
+    return walk(this._root, this._width, this._height);
   }
 
   private _getMinSizeAlongOrientation(node: GridNode, orientation: Orientation): number {
