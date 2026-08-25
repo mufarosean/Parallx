@@ -375,3 +375,32 @@ Honest deviations, queued for the eyes-on pass:
   prompt where the dashboard would not).
 - dashboardDataService's new SQL (listPages filter, ensureWorkbenchPage,
   moveWidgetToPage) is tsc-verified only; no DB-fake harness exists.
+
+## Decision: the editor is the ANCHOR, not another citizen (2026-08-24)
+
+Mufaro, after living with the mounted system: "Editor remains editor,
+while everything else is movable. This keeps the central space
+centralized for the actual content user is working on." This is now a
+DESIGN PRINCIPLE, not a deferral.
+
+The sandbox needs one fixed point, and the code already agrees: areaOf
+classifies every citizen RELATIVE TO THE EDITOR precisely because it is
+the one thing that never hides and never wanders; the area toggles, the
+rail icons, and the drop-zone geometry all inherit their meaning from
+that anchor. A fully-dissolved editor would have dissolved the frame of
+reference along with it.
+
+Consequences:
+- Phase B's editor DISSOLUTION (E2: EditorPart.attachToRegion, groups as
+  body-grid leaves) is OFF the roadmap by decision, not by deferral. The
+  E1 groundwork (named keep-alive regions) stays — it is generic grid
+  capability, useful regardless — and Part._adoptExternalElement stays
+  as inert scaffolding.
+- The editor keeps its own inner grid, tabs, and drag semantics. If
+  editor tabs ever join the universal drag vocabulary, they do so as a
+  BRIDGE (drag a tab out to create a citizen beside the editor), never
+  by making the editor area itself a movable citizen.
+- The remaining foundation work is refinement of the orbit, not surgery
+  on the center: the eyes-on probe pass over the widget/layout UI, the
+  arrangements merge for saved layouts, and the queued drag-out-of-
+  dashboard gesture.
