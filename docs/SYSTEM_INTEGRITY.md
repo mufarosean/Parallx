@@ -284,7 +284,10 @@ container to a real API).
   collisions, layout integrity, enablement) that /doctor renders like
   any other; the Tool Gallery's Runtime Status tab gains Activated At /
   Activation Took / Recorded Errors / last-error detail via the join.
-- PHASE D — NOT STARTED.
+- PHASE D — NOT STARTED. docs/PHASE_D_BRIEF.md holds the execution
+  order, the three decisions that are Mufaro's (api.services gating,
+  activation-event scope, the editor's structural home), the eyes-on
+  probe list that precedes it, and the budget shape.
 
 PHASE A — THE INTERACTION CONTRACT (usability first; the class of the
 field bug):
