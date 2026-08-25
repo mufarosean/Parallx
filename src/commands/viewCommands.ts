@@ -71,6 +71,17 @@ export const togglePanel: CommandDescriptor = {
   },
 };
 
+export const saveLayout: CommandDescriptor = {
+  id: 'workbench.action.saveLayout',
+  title: 'Save Current Layout',
+  category: 'View',
+  aiInvocable: true,
+  aiDescription: 'Save the current workbench layout under a dated name; rename or apply it from Settings > Layouts.',
+  handler(ctx) {
+    void wb(ctx).saveCurrentLayout('');
+  },
+};
+
 export const toggleMaximizedPanel: CommandDescriptor = {
   id: 'workbench.action.toggleMaximizedPanel',
   title: 'Toggle Maximized Panel',

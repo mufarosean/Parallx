@@ -1,0 +1,91 @@
+/* layoutsSettings.css — the Layouts panel in the Settings hub. */
+
+.layouts-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.layouts-panel__save {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.layouts-panel__save .ui-input-box {
+  flex: 1 1 auto;
+  max-width: 340px;
+}
+
+.layouts-panel__btn {
+  padding: 5px 12px;
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-sm, 4px);
+  background: var(--px-bg-elevated);
+  color: var(--px-text);
+  font-size: var(--px-text-sm, 12px);
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--px-dur-fast, 120ms) var(--px-ease, ease),
+              border-color var(--px-dur-fast, 120ms) var(--px-ease, ease);
+}
+.layouts-panel__btn:hover:not(:disabled) {
+  background: var(--px-surface-hover);
+  border-color: var(--px-border-strong);
+}
+.layouts-panel__btn:disabled { opacity: 0.5; cursor: default; }
+
+.layouts-panel__btn--primary {
+  background: var(--px-accent);
+  border-color: var(--px-accent);
+  color: var(--px-text-on-accent);
+}
+.layouts-panel__btn--primary:hover:not(:disabled) {
+  background: var(--px-accent-hover, var(--px-accent));
+  border-color: var(--px-accent-hover, var(--px-accent));
+}
+
+.layouts-panel__btn--danger { color: var(--px-danger); }
+.layouts-panel__btn--danger:hover:not(:disabled) { border-color: var(--px-danger); }
+
+.layouts-panel__list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-sm, 4px);
+  overflow: hidden;
+}
+
+.layouts-panel__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+}
+.layouts-panel__row + .layouts-panel__row {
+  border-top: 1px solid var(--px-divider);
+}
+
+.layouts-panel__name {
+  font-size: var(--px-text-sm, 12px);
+  color: var(--px-text);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.layouts-panel__row .ui-input-box {
+  flex: 0 1 240px;
+}
+
+.layouts-panel__date {
+  font-size: var(--px-text-xs, 11px);
+  color: var(--px-text-faint);
+  flex: 1 1 auto;
+}
+
+.layouts-panel__empty {
+  padding: 14px 12px;
+  font-size: var(--px-text-sm, 12px);
+  color: var(--px-text-faint);
+}

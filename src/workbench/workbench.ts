@@ -51,6 +51,9 @@ import { Workspace } from '../workspace/workspace.js';
 import { RecentWorkspaces } from '../workspace/recentWorkspaces.js';
 import { WorkspaceLoader } from '../workspace/workspaceLoader.js';
 import { WorkspaceSaver } from '../workspace/workspaceSaver.js';
+import { SavedLayoutStore, type SavedLayout } from './savedLayouts.js';
+import { createLayoutsSettingsPanel } from './layoutsSettingsPanel.js';
+import { settingsPanelRegistry } from '../services/settingsPanelRegistry.js';
 import {
   WorkspaceState,
   createDefaultEditorSnapshot,
@@ -907,6 +910,11 @@ export class Workbench extends Layout {
     // Workspace persistence
     this._workspaceLoader = new WorkspaceLoader(this._storage);
     this._workspaceSaver = this._register(new WorkspaceSaver(this._storage));
+
+    // Saved layouts — named body shapes, switchable from Settings.
+    this._savedLayouts = new SavedLayoutStore(this._storage);
+    await this._savedLayouts.load();
+    this._register(settingsPanelRegistry.register(createLayoutsSettingsPanel(this)));
 
     // M53 D4.1: The workspace object is a placeholder until Phase 4 restores the real workspace.
     // On first launch (no folders), the user sees the welcome screen.
@@ -2472,6 +2480,61 @@ export class Workbench extends Layout {
    * floating box can seat. Undefined when the panel does not hold the view
    * (yet) — a waiting shell keeps the spot and retries as views arrive.
    */
+  // ── Saved layouts ─────────────────────────────────────────────────────
+
+  private _savedLayouts!: SavedLayoutStore;
+
+  get savedLayouts(): SavedLayoutStore {
+    return this._savedLayouts;
+  }
+
+  /**
+   * Capture the live body shape — the tree with its boxes, plus the rail
+   * assignments the tree does not carry — under a name.
+   */
+  async saveCurrentLayout(name: string): Promise<SavedLayout> {
+    const layout: SavedLayout = {
+      id: `layout-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+      name: name.trim() || `Layout ${new Date().toLocaleString()}`,
+      savedAt: new Date().toISOString(),
+      tree: this.serializeBodyTree(),
+      rails: [
+        ...this._contributionHandler.railAssignments(),
+        ...this._containerBoxes.floatingContainerIds().map(
+          (id) => ({ id, rail: 'floating' as const }),
+        ),
+      ],
+    };
+    await this._savedLayouts.save(layout);
+    return layout;
+  }
+
+  /**
+   * Apply a saved layout to the LIVE workbench — the same sequence the
+   * boot restore runs: tree first (box shells resolve through the
+   * floating-view factory), then re-dock any box whose leaf did not
+   * survive, then rail assignments, then seat the shells the tree
+   * created for containers that should float.
+   */
+  applySavedLayout(id: string): boolean {
+    const saved = this._savedLayouts.get(id);
+    if (!saved) return false;
+    if (!this.restoreBodyTree(saved.tree)) return false;
+
+    this._containerBoxes.pruneAbsent(new Set(this.floatingViewIds()));
+    const docked = saved.rails.filter(
+      (e): e is { id: string; rail: 'left' | 'right' } => e.rail !== 'floating',
+    );
+    this._contributionHandler.setPendingRailAssignments(docked);
+    for (const entry of docked) {
+      this._contributionHandler.applyPendingRailAssignment(entry.id);
+    }
+    this._containerBoxes.seatWaiting();
+    this._syncPartRailIcons();
+    this._workspaceSaver?.requestSave();
+    return true;
+  }
+
   /** Where each part's rail icon currently lives, for diffing. */
   private readonly _partRailIcons = new Map<string, 'left' | 'right'>();
 

@@ -22,7 +22,7 @@ import { wb } from './structuralCommandTypes.js';
 //  Re-export sub-modules for backward compatibility 
 export {
   showCommands, quickOpen, gotoLine,
-  toggleSidebar, togglePanel, toggleMaximizedPanel, toggleAuxiliaryBar, toggleStatusBar, toggleZenMode,
+  toggleSidebar, togglePanel, toggleMaximizedPanel, toggleAuxiliaryBar, toggleStatusBar, toggleZenMode, saveLayout,
   viewMoveToSidebar, viewMoveToPanel, partResize,
   showSearchView, showExplorerView, showView,
 } from './viewCommands.js';
@@ -50,7 +50,7 @@ export { installDocling } from './doclingCommands.js';
 //  Import for aggregation 
 import {
   showCommands, quickOpen, gotoLine,
-  toggleSidebar, togglePanel, toggleMaximizedPanel, toggleAuxiliaryBar, toggleStatusBar, toggleZenMode,
+  toggleSidebar, togglePanel, toggleMaximizedPanel, toggleAuxiliaryBar, toggleStatusBar, toggleZenMode, saveLayout,
   viewMoveToSidebar, viewMoveToPanel, partResize,
   showSearchView, showExplorerView, showView,
 } from './viewCommands.js';
@@ -328,6 +328,7 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   toggleSidebar,
   togglePanel,
   toggleMaximizedPanel,
+  saveLayout,
   toggleAuxiliaryBar,
   toggleStatusBar,
   toggleZenMode,

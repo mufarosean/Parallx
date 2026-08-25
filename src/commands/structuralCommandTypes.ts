@@ -20,6 +20,9 @@ export interface WorkbenchLike {
    * the editor. What the titlebar toggles and Ctrl+B / Ctrl+J mean.
    */
   toggleArea(area: 'left' | 'right' | 'bottom'): void;
+  /** Capture the live body shape under a name (Settings > Layouts is the
+   *  management home; empty name = a default dated name). */
+  saveCurrentLayout(name: string): Promise<unknown>;
   toggleMaximizedPanel(): void;
   toggleStatusBar(): void;
   toggleZenMode(): void;
