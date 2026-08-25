@@ -880,13 +880,22 @@ html, body {
    and the rail-card radius, so a detached Explorer reads as the same
    citizen it was in the rail. */
 .container-box {
+  /* Flex, NOT height:100% on the card: percentage heights ignore margins,
+     so the card's bottom-seam margin overflowed the leaf and was clipped —
+     a floated box visually TOUCHED whatever sat below it while every part
+     kept its gap. Flex sizing subtracts margins from the allocation, the
+     same arithmetic .part-content gets, so boxes and parts read as one
+     seam system. */
+  display: flex;
+  flex-direction: column;
   background: var(--px-window);
   overflow: hidden;
 }
 .container-box-card {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
   margin: 0 0 var(--px-seam) var(--px-seam);
   border: 1px solid var(--px-border);
   border-radius: var(--px-radius-xs);
@@ -918,7 +927,11 @@ html, body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.container-box-dock-btn {
+/* The header's ⋯ control: hidden until the header is hovered or the
+   button holds keyboard focus, then it opens the box's placement menu.
+   An always-on arrow read as clutter; a quiet ⋯ under the pointer is the
+   same affordance every header row in the app already carries. */
+.container-box-menu-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -929,11 +942,17 @@ html, body {
   background: transparent;
   color: inherit;
   cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--px-dur-fast, 100ms) var(--px-ease, ease);
 }
-.container-box-dock-btn:hover {
+.container-box-header:hover .container-box-menu-btn,
+.container-box-menu-btn:focus-visible {
+  opacity: 1;
+}
+.container-box-menu-btn:hover {
   background: var(--vscode-toolbar-hoverBackground);
 }
-.container-box-dock-btn svg {
+.container-box-menu-btn svg {
   width: 14px;
   height: 14px;
 }

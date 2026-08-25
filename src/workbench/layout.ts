@@ -60,6 +60,22 @@ export const MIN_EDITOR_WIDTH = 200;
 /** Editor strip left visible when the panel is maximized. */
 const MAXIMIZED_EDITOR_MIN = 30;
 
+/**
+ * The three toggleable regions of the body, defined RELATIVE TO THE EDITOR
+ * (left of it, right of it, below it) — never by which part started there.
+ * The titlebar toggles and their shortcuts address these areas: hiding
+ * "the bottom" hides whatever occupies the bottom.
+ */
+export type BodyArea = 'left' | 'right' | 'bottom';
+
+/** Each area's window edge — the home for a restored occupant with no
+ *  resolvable recall. */
+const AREA_EDGES: Record<BodyArea, { orientation: Orientation; before: boolean }> = {
+  left: { orientation: Orientation.Horizontal, before: true },
+  right: { orientation: Orientation.Horizontal, before: false },
+  bottom: { orientation: Orientation.Vertical, before: false },
+};
+
 // ── Zen Mode Exit Info ──
 
 export interface ZenModeExitInfo {
@@ -237,6 +253,17 @@ export abstract class Layout extends Disposable {
     | { kind: 'beside'; siblingId: string; orientation: Orientation; before: boolean }
     | { kind: 'edge'; orientation: Orientation; before: boolean }
   >();
+
+  /**
+   * What each body AREA held when its toggle hid it, in hide order. The
+   * toggles address areas, not parts — "hide the bottom" means whatever
+   * occupies the bottom — so the restore half needs the actual occupant
+   * set, not an assumption that it was the panel.
+   */
+  private readonly _areaMemory = new Map<BodyArea, string[]>();
+
+  /** Sizes of floating views hidden by an area toggle, for their return. */
+  private readonly _hiddenFloatingSizes = new Map<string, number>();
 
   private _partDrag: PartDragController | undefined;
 
@@ -465,7 +492,7 @@ export abstract class Layout extends Disposable {
    * placement when the recall no longer resolves (the neighbour is gone).
    * Caller suspends tracking.
    */
-  private _placePart(part: Part, size: number, fallback: () => void): void {
+  private _placePart(part: IGridView, size: number, fallback: () => void): void {
     const recall = this._placementRecall.get(part.id);
     if (recall?.kind === 'beside' && this._grid.hasView(recall.siblingId)) {
       this._grid.addView(part, size);
@@ -924,6 +951,133 @@ export abstract class Layout extends Disposable {
     this._layoutViewContainers();
   }
 
+  // ════════════════════════════════════════════════════════════════════════
+  // Area toggles — visibility of REGIONS, not hardcoded parts
+  // ════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Which body area a view occupies, measured from the TREE's geometry
+   * against the editor — the one citizen that never hides, so it anchors
+   * the frame of reference. "Left" is everything wholly left of the
+   * editor's column, wherever it started life: a sidebar moved to the
+   * right edge is a RIGHT-area occupant now, and the left toggle has no
+   * business touching it.
+   */
+  areaOf(viewId: string): BodyArea | 'center' {
+    if (viewId === this._editor.id) return 'center';
+    const r = this._grid.cellRect(viewId);
+    const er = this._grid.cellRect(this._editor.id);
+    if (!r || !er) return 'center';
+    const eps = 2;
+    if (r.left + r.width <= er.left + eps) return 'left';
+    if (r.left >= er.left + er.width - eps) return 'right';
+    if (r.top >= er.top + er.height - eps) return 'bottom';
+    return 'center';
+  }
+
+  /** Everything currently occupying an area: companion parts and floating
+   *  boxes alike. The editor is no area's occupant. */
+  private _areaOccupants(area: BodyArea): string[] {
+    const ids: string[] = [];
+    for (const part of [this._sidebar, this._panel, this._auxiliaryBar]) {
+      if (this._grid.hasView(part.id) && this.areaOf(part.id) === area) ids.push(part.id);
+    }
+    for (const id of this._floatingViews.keys()) {
+      if (this._grid.hasView(id) && this.areaOf(id) === area) ids.push(id);
+    }
+    return ids;
+  }
+
+  isAreaOccupied(area: BodyArea): boolean {
+    return this._areaOccupants(area).length > 0;
+  }
+
+  /**
+   * Show or hide a body AREA. This is what the titlebar toggles and their
+   * shortcuts mean: "hide the bottom" hides whatever occupies the bottom —
+   * the panel if it lives there, a detached terminal box if that is what
+   * the user parked there instead. Hiding remembers the occupant set;
+   * toggling an empty area restores that set, or the area's default part
+   * when nothing was ever hidden.
+   */
+  toggleArea(area: BodyArea): void {
+    const occupants = this._areaOccupants(area);
+    if (occupants.length > 0) {
+      this._areaMemory.set(area, occupants);
+      for (const id of occupants) this._hideBodyView(id);
+      return;
+    }
+    const remembered = this._areaMemory.get(area);
+    const toShow = remembered && remembered.length > 0
+      ? remembered : [this._defaultAreaPart(area).id];
+    // Reverse hide order: the first-hidden view's recall may name a
+    // later-hidden sibling, which must already be back for it to resolve.
+    for (const id of [...toShow].reverse()) this._showBodyView(id, area);
+  }
+
+  private _defaultAreaPart(area: BodyArea): Part {
+    switch (area) {
+      case 'left': return this._sidebar;
+      case 'bottom': return this._panel;
+      case 'right': return this._auxiliaryBar;
+    }
+  }
+
+  /** Hide one body view, whatever kind it is, remembering its place. */
+  private _hideBodyView(viewId: string): void {
+    if (viewId === this._sidebar.id) {
+      if (this._sidebar.visible) this.toggleSidebar();
+      return;
+    }
+    if (viewId === this._panel.id) {
+      if (this._panel.visible) this.togglePanel();
+      return;
+    }
+    if (viewId === this._auxiliaryBar.id) {
+      if (this._auxBarVisible) this.toggleAuxiliaryBar();
+      return;
+    }
+    // A floating box: out of the tree, place and size remembered. The box
+    // object itself stays registered so its leaf can come back.
+    if (!this._grid.hasView(viewId)) return;
+    this._withTrackingSuspended(() => {
+      const size = this._grid.getViewSize(viewId);
+      if (size !== undefined && size > 0) this._hiddenFloatingSizes.set(viewId, size);
+      this._recordPlacement(viewId);
+      this._grid.removeView(viewId);
+      this._relayoutBody();
+    });
+    this._layoutViewContainers();
+  }
+
+  /** Bring one body view back — recalled place first, area edge as home. */
+  private _showBodyView(viewId: string, area: BodyArea): void {
+    if (viewId === this._sidebar.id) {
+      if (!this._sidebar.visible) this.toggleSidebar();
+      return;
+    }
+    if (viewId === this._panel.id) {
+      if (!this._panel.visible) this.togglePanel();
+      return;
+    }
+    if (viewId === this._auxiliaryBar.id) {
+      if (!this._auxBarVisible) this.toggleAuxiliaryBar();
+      return;
+    }
+    const view = this._floatingViews.get(viewId);
+    if (!view || this._grid.hasView(viewId)) return;
+    const size = this._hiddenFloatingSizes.get(viewId) ?? DEFAULT_PANEL_HEIGHT;
+    this._withTrackingSuspended(() => {
+      this._placePart(view, size, () => {
+        this._grid.addView(view, size);
+        const edge = AREA_EDGES[area];
+        this._grid.moveViewToEdge(viewId, edge.orientation, edge.before, size);
+      });
+      this._relayoutBody();
+    });
+    this._layoutViewContainers();
+  }
+
   /**
    * Toggle status bar visibility.
    *
@@ -1092,8 +1246,11 @@ export abstract class Layout extends Disposable {
     if (!this._statusBar.visible) {
       this.toggleStatusBar();
     }
-    // A reset means "forget my arrangement" — recalled positions included.
+    // A reset means "forget my arrangement" — recalled positions and
+    // hidden-area memory included.
     this._placementRecall.clear();
+    this._areaMemory.clear();
+    this._hiddenFloatingSizes.clear();
 
     const rw = this._container.clientWidth;
     const rh = this._container.clientHeight;

@@ -852,3 +852,103 @@ describe('placement menu on the grips', () => {
     }
   });
 });
+
+describe('area toggles — regions, not hardcoded parts', () => {
+  let container: HTMLElement;
+  let layout: TestLayout;
+  let parts: TestLayout['parts'];
+
+  const build = () => {
+    container = document.createElement('div');
+    Object.defineProperty(container, 'clientWidth', { value: WIDTH, configurable: true });
+    Object.defineProperty(container, 'clientHeight', { value: HEIGHT, configurable: true });
+    document.body.appendChild(container);
+    parts = {
+      titlebar: fakePart('workbench.parts.titlebar'),
+      activityBar: fakePart('workbench.parts.activitybar'),
+      sidebar: fakePart('workbench.parts.sidebar'),
+      editor: fakePart('workbench.parts.editor'),
+      panel: fakePart('workbench.parts.panel'),
+      auxiliaryBar: fakePart('workbench.parts.auxiliarybar', false),
+      statusBar: fakePart('workbench.parts.statusbar'),
+    };
+    layout = new TestLayout(container, parts);
+  };
+
+  afterEach(() => {
+    layout.dispose();
+    container.remove();
+  });
+
+  it('classifies the default layout by geometry: sidebar left, panel bottom', () => {
+    build();
+    expect(layout.areaOf('workbench.parts.sidebar')).toBe('left');
+    expect(layout.areaOf('workbench.parts.panel')).toBe('bottom');
+    expect(layout.areaOf('workbench.parts.editor')).toBe('center');
+    expect(layout.isAreaOccupied('left')).toBe(true);
+    expect(layout.isAreaOccupied('bottom')).toBe(true);
+    expect(layout.isAreaOccupied('right')).toBe(false);
+  });
+
+  it('a part moved to another area is classified by WHERE IT IS, not what it is', () => {
+    build();
+    layout.movePartToEdge('workbench.parts.panel', Orientation.Horizontal, true);
+    expect(layout.areaOf('workbench.parts.panel')).toBe('left');
+    expect(layout.isAreaOccupied('bottom')).toBe(false);
+  });
+
+  it('toggling an area hides its occupant and brings it back', () => {
+    build();
+    layout.toggleArea('bottom');
+    expect(layout.grid.hasView('workbench.parts.panel')).toBe(false);
+    layout.toggleArea('bottom');
+    expect(layout.grid.hasView('workbench.parts.panel')).toBe(true);
+    expect(layout.areaOf('workbench.parts.panel')).toBe('bottom');
+  });
+
+  it('the bottom toggle takes the bottom OCCUPANT, leaving an exiled panel alone', () => {
+    build();
+    // Panel lives on the left now; a floating box occupies the bottom.
+    layout.movePartToEdge('workbench.parts.panel', Orientation.Horizontal, true);
+    const box = fakePart('container:bottom-box');
+    layout.addFloatingView(box as never);
+    layout.movePartToEdge('container:bottom-box', Orientation.Vertical, false);
+    expect(layout.areaOf('container:bottom-box')).toBe('bottom');
+
+    layout.toggleArea('bottom');
+    expect(layout.grid.hasView('container:bottom-box')).toBe(false);
+    expect(layout.grid.hasView('workbench.parts.panel')).toBe(true);
+
+    layout.toggleArea('bottom');
+    expect(layout.grid.hasView('container:bottom-box')).toBe(true);
+    expect(layout.areaOf('container:bottom-box')).toBe('bottom');
+  });
+
+  it('a stacked area hides and restores as a set', () => {
+    build();
+    const box = fakePart('container:left-box');
+    layout.addFloatingView(box as never);
+    layout.grid.moveView('container:left-box', 'workbench.parts.sidebar', Orientation.Vertical, false);
+    expect(layout.areaOf('container:left-box')).toBe('left');
+
+    layout.toggleArea('left');
+    // The sidebar's hide path animates out; finish it like the toggle tests do.
+    parts.sidebar.element.dispatchEvent(new Event('transitionend'));
+    expect(layout.grid.hasView('workbench.parts.sidebar')).toBe(false);
+    expect(layout.grid.hasView('container:left-box')).toBe(false);
+
+    layout.toggleArea('left');
+    expect(layout.grid.hasView('workbench.parts.sidebar')).toBe(true);
+    expect(layout.grid.hasView('container:left-box')).toBe(true);
+    expect(layout.areaOf('workbench.parts.sidebar')).toBe('left');
+    expect(layout.areaOf('container:left-box')).toBe('left');
+  });
+
+  it('toggling an empty area with no memory shows its default part', () => {
+    build();
+    expect(layout.isAreaOccupied('right')).toBe(false);
+    layout.toggleArea('right');
+    expect(layout.grid.hasView('workbench.parts.auxiliarybar')).toBe(true);
+    expect(layout.areaOf('workbench.parts.auxiliarybar')).toBe('right');
+  });
+});

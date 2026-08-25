@@ -649,6 +649,35 @@ export class Grid extends Disposable {
   }
 
   /**
+   * The rectangle a view's cell occupies within the grid, in grid-local
+   * pixels, computed from the TREE — not the DOM. Model-derived geometry is
+   * what "which area of the body is this view in?" questions stand on: it
+   * answers identically in a headless test and a rendered window, and it
+   * cannot be fooled by CSS margins or mid-animation positions.
+   */
+  cellRect(viewId: string): { left: number; top: number; width: number; height: number } | undefined {
+    const walk = (
+      node: GridNode, x: number, y: number, w: number, h: number,
+    ): { left: number; top: number; width: number; height: number } | undefined => {
+      if (node.type === GridNodeType.Leaf) {
+        return node.view.id === viewId ? { left: x, top: y, width: w, height: h } : undefined;
+      }
+      let offset = 0;
+      for (const child of node.children) {
+        const size = this._getNodeSize(child);
+        const found = node.orientation === Orientation.Horizontal
+          ? walk(child, x + offset, y, size, h)
+          : walk(child, x, y + offset, w, size);
+        if (found) return found;
+        offset += size;
+      }
+      return undefined;
+    };
+    if (!this._views.has(viewId)) return undefined;
+    return walk(this._root, 0, 0, this._width, this._height);
+  }
+
+  /**
    * Resize one view to a target size along its parent branch's axis, by
    * moving the sash it shares with a neighbour. Zero-sum with that
    * neighbour and clamped by both sides' minimums, exactly like a drag.

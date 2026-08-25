@@ -729,3 +729,26 @@ describe('named keep-alive regions', () => {
     expect(region?.children).toHaveLength(2);
   });
 });
+
+describe('cellRect — model-derived geometry', () => {
+  it('reports nested cells in grid-local pixels, no DOM involved', () => {
+    const grid = new Grid(Orientation.Horizontal, 1000, 600);
+    // H[ side(200), V[ editor(400), panel(200) ] ] via split
+    grid.addView(createMockView('side'), 200);
+    grid.addView(createMockView('editor'), 800);
+    grid.splitView('editor', createMockView('panel'), 200, Orientation.Vertical);
+    grid.layout(1000, 600);
+
+    expect(grid.cellRect('side')).toEqual({ left: 0, top: 0, width: 200, height: 600 });
+    const editor = grid.cellRect('editor')!;
+    expect(editor.left).toBe(200);
+    expect(editor.top).toBe(0);
+    expect(editor.width).toBe(800);
+    const panel = grid.cellRect('panel')!;
+    expect(panel.left).toBe(200);
+    expect(panel.top).toBe(editor.height);
+    expect(editor.height + panel.height).toBe(600);
+    expect(grid.cellRect('nonexistent')).toBeUndefined();
+    grid.dispose();
+  });
+});

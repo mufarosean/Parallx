@@ -59,12 +59,16 @@ describe('ContainerBox', () => {
     box.dispose();
   });
 
-  it('asks to dock back from its header control', () => {
+  it('asks for the placement menu from its ⋯ control and from right-click', () => {
     const box = new ContainerBox('view.explorer', 'Explorer');
     const requested = vi.fn();
-    box.onDidRequestDock(requested);
-    box.element.querySelector<HTMLElement>('.container-box-dock-btn')!.click();
+    box.onDidRequestMenu(requested);
+    box.element.querySelector<HTMLElement>('.container-box-menu-btn')!.click();
     expect(requested).toHaveBeenCalledTimes(1);
+    box.element.querySelector<HTMLElement>('.container-box-header')!.dispatchEvent(
+      new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
+    );
+    expect(requested).toHaveBeenCalledTimes(2);
     box.dispose();
   });
 });
@@ -95,6 +99,8 @@ describe('ContainerBoxManager', () => {
       },
       removeFloatingView: (viewId) => calls.push(`remove:${viewId}`),
       moveFloating: (viewId, zone) => calls.push(`move:${viewId}:${zone.kind}`),
+      moveFloatingToEdge: (viewId, orientation, before) =>
+        calls.push(`edge:${viewId}:${orientation}:${before}`),
       requestSave: () => calls.push('save'),
     };
     manager = new ContainerBoxManager(host);
@@ -150,6 +156,44 @@ describe('ContainerBoxManager', () => {
     dockable.set('chat-container', new ViewContainer('chat-container'));
     manager.seatWaiting();
     expect((shell as ContainerBox).isWaiting).toBe(false);
+  });
+
+  it('the box menu offers the rails for a container, and docking works from it', () => {
+    dockable.set('view.explorer', new ViewContainer('sidebar.view.explorer'));
+    manager.float('view.explorer');
+    calls.length = 0;
+
+    const box = manager.resolveShell(containerBoxViewId('view.explorer')) as ContainerBox;
+    box.element.querySelector<HTMLElement>('.container-box-menu-btn')!.click();
+    try {
+      const items = [...document.querySelectorAll<HTMLElement>('.context-menu-item')];
+      const labels = items.map((i) => i.textContent ?? '');
+      expect(labels.some((l) => l.includes('Dock To Left Rail'))).toBe(true);
+      expect(labels.some((l) => l.includes('Dock To Right Rail'))).toBe(true);
+      expect(labels.some((l) => l.includes('Move To Bottom Edge'))).toBe(true);
+
+      items.find((i) => i.textContent?.includes('Dock To Right Rail'))!.click();
+      expect(calls).toContain('dock:view.explorer:right');
+    } finally {
+      document.querySelectorAll('.context-menu').forEach((el) => el.remove());
+    }
+  });
+
+  it('a detached panel view’s menu offers Return To Panel, not the rails', () => {
+    dockable.set('panelview:view.terminal', new ViewContainer('panelview.view.terminal'));
+    manager.float('panelview:view.terminal');
+    calls.length = 0;
+
+    const box = manager.resolveShell(containerBoxViewId('panelview:view.terminal')) as ContainerBox;
+    box.element.querySelector<HTMLElement>('.container-box-menu-btn')!.click();
+    try {
+      const labels = [...document.querySelectorAll<HTMLElement>('.context-menu-item')]
+        .map((i) => i.textContent ?? '');
+      expect(labels.some((l) => l.includes('Return To Panel'))).toBe(true);
+      expect(labels.some((l) => l.includes('Rail'))).toBe(false);
+    } finally {
+      document.querySelectorAll('.context-menu').forEach((el) => el.remove());
+    }
   });
 
   it('re-docks a seated container whose leaf did not survive a tree restore', () => {

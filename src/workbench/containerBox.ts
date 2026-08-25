@@ -23,10 +23,10 @@ import { Disposable } from '../platform/lifecycle.js';
 import { CONTAINER_DRAG_TYPE } from '../platform/dragTypes.js';
 import type { ContainerDragData } from '../platform/dragTypes.js';
 import type { IGridView } from '../layout/gridView.js';
-import type { Orientation } from '../layout/layoutTypes.js';
+import { Orientation } from '../layout/layoutTypes.js';
 import type { ViewContainer } from '../views/viewContainer.js';
 import type { PartDropZone } from './partDrag.js';
-import { getIcon } from '../ui/iconRegistry.js';
+import { ContextMenu } from '../ui/contextMenu.js';
 import { $ } from '../ui/dom.js';
 
 export const CONTAINER_BOX_PREFIX = 'container:';
@@ -61,9 +61,10 @@ export class ContainerBox extends Disposable implements IGridView {
   private readonly _onDidChangeConstraints = this._register(new Emitter<void>());
   readonly onDidChangeConstraints: Event<void> = this._onDidChangeConstraints.event;
 
-  /** The dock-back control was pressed. */
-  private readonly _onDidRequestDock = this._register(new Emitter<void>());
-  readonly onDidRequestDock: Event<void> = this._onDidRequestDock.event;
+  /** The header's ⋯ control (or a right-click on the header) asked for the
+   *  placement menu, at these viewport coordinates. */
+  private readonly _onDidRequestMenu = this._register(new Emitter<{ x: number; y: number }>());
+  readonly onDidRequestMenu: Event<{ x: number; y: number }> = this._onDidRequestMenu.event;
 
   constructor(readonly containerId: string, label: string) {
     super();
@@ -88,17 +89,28 @@ export class ContainerBox extends Disposable implements IGridView {
     this._title.textContent = label.toUpperCase();
     this._header.appendChild(this._title);
 
-    const dockBtn = $('button');
-    dockBtn.classList.add('container-box-dock-btn');
-    dockBtn.setAttribute('aria-label', 'Dock Back');
-    const dockIcon = getIcon('layout-sidebar-left');
-    if (dockIcon) {
-      dockBtn.innerHTML = dockIcon;
-    } else {
-      dockBtn.textContent = '←';
-    }
-    dockBtn.addEventListener('click', () => this._onDidRequestDock.fire());
-    this._header.appendChild(dockBtn);
+    // A quiet ⋯ that shows on header hover, opening the placement menu
+    // (return home, dock to a rail, move to an edge). The always-visible
+    // dock-back arrow it replaces was one hardcoded action wearing chrome;
+    // the menu is every way home in the place the hand already hovers.
+    const menuBtn = $('button');
+    menuBtn.classList.add('container-box-menu-btn');
+    menuBtn.setAttribute('aria-label', 'More Actions');
+    menuBtn.textContent = '⋯';
+    menuBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const r = menuBtn.getBoundingClientRect();
+      this._onDidRequestMenu.fire({ x: r.left, y: r.bottom + 2 });
+    });
+    this._header.appendChild(menuBtn);
+
+    // Right-click anywhere on the header opens the same menu — the box's
+    // grip answers to right-click exactly like the parts' grips do.
+    this._header.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this._onDidRequestMenu.fire({ x: e.clientX, y: e.clientY });
+    });
 
     // The header is the drag grip, same payload as an activity-bar icon —
     // drop it on a ribbon to dock, on another view to split beside it.
@@ -200,6 +212,8 @@ export interface ContainerBoxHost {
   addFloatingView(view: IGridView, zone?: PartDropZone): void;
   removeFloatingView(viewId: string): void;
   moveFloating(viewId: string, zone: PartDropZone): void;
+  /** Relocate a floating box to a window edge — the menu's move actions. */
+  moveFloatingToEdge(viewId: string, orientation: Orientation, before: boolean): void;
   requestSave(): void;
 }
 
@@ -335,9 +349,36 @@ export class ContainerBoxManager extends Disposable {
   private _createBox(containerId: string, label: string): ContainerBox {
     const box = new ContainerBox(containerId, label);
     this._boxes.set(containerId, box);
-    // The header's dock-back control returns it to the primary rail; a drag
-    // to the right ribbon is the way to dock right.
-    this._register(box.onDidRequestDock(() => this.dock(containerId, 'left')));
+    // The header's ⋯ (and right-click) opens the placement menu: the way
+    // home first, then the rails, then the edges. A detached panel view's
+    // home is the panel; a container's home is a rail.
+    this._register(box.onDidRequestMenu(({ x, y }) => {
+      const isPanelView = containerId.startsWith('panelview:');
+      const items = isPanelView
+        ? [{ id: 'dock-left', label: 'Return To Panel', group: '1_dock' }]
+        : [
+            { id: 'dock-left', label: 'Dock To Left Rail', group: '1_dock', order: 1 },
+            { id: 'dock-right', label: 'Dock To Right Rail', group: '1_dock', order: 2 },
+          ];
+      const menu = ContextMenu.show({
+        items: [
+          ...items,
+          { id: 'edge-left', label: 'Move To Left Edge', group: '2_move', order: 1 },
+          { id: 'edge-right', label: 'Move To Right Edge', group: '2_move', order: 2 },
+          { id: 'edge-bottom', label: 'Move To Bottom Edge', group: '2_move', order: 3 },
+        ],
+        anchor: { x, y },
+      });
+      menu.onDidSelect(({ item }) => {
+        switch (item.id) {
+          case 'dock-left': this.dock(containerId, 'left'); break;
+          case 'dock-right': this.dock(containerId, 'right'); break;
+          case 'edge-left': this._host.moveFloatingToEdge(box.id, Orientation.Horizontal, true); break;
+          case 'edge-right': this._host.moveFloatingToEdge(box.id, Orientation.Horizontal, false); break;
+          case 'edge-bottom': this._host.moveFloatingToEdge(box.id, Orientation.Vertical, false); break;
+        }
+      });
+    }));
     return box;
   }
 

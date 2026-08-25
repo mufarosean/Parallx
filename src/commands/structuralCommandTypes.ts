@@ -15,6 +15,11 @@ export interface WorkbenchLike {
   toggleAuxiliaryBar(): void;
   toggleSidebar(): void;
   togglePanel(): void;
+  /**
+   * Toggle a body AREA: hide/show whatever occupies the region relative to
+   * the editor. What the titlebar toggles and Ctrl+B / Ctrl+J mean.
+   */
+  toggleArea(area: 'left' | 'right' | 'bottom'): void;
   toggleMaximizedPanel(): void;
   toggleStatusBar(): void;
   toggleZenMode(): void;

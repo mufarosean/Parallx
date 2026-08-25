@@ -27,6 +27,7 @@ import { consolidateOrphanedSessions } from '../services/chatSessionPersistence.
 import {
   Layout,
   PART_HEADER_HEIGHT_PX,
+  type BodyArea,
 } from './layout.js';
 
 // Parts
@@ -1048,6 +1049,8 @@ export class Workbench extends Layout {
           this.movePartToEdge(viewId, zone.orientation, zone.before);
         }
       },
+      moveFloatingToEdge: (viewId, orientation, before) =>
+        this.movePartToEdge(viewId, orientation, before),
       requestSave: () => this._workspaceSaver?.requestSave(),
     }));
     this._floatingViewFactory = (viewId) => this._containerBoxes.resolveShell(viewId);
@@ -1922,22 +1925,30 @@ export class Workbench extends Layout {
         if (slot.querySelector('.titlebar-layout-controls')) return; // idempotent
         const layoutGroup = document.createElement('div');
         layoutGroup.className = 'titlebar-layout-controls';
-        const makeToggle = (svg: string, label: string, partId: string, run: () => void): void => {
+        // The buttons address AREAS, not parts: each glyph is a region of
+        // the window, and pressing it hides whatever occupies that region.
+        // A panel exiled to the left edge belongs to the LEFT button now —
+        // an icon that still claimed it while pointing at the bottom would
+        // be lying about the layout. `is-on` = the area is occupied, synced
+        // on every visibility change AND every tree change, since drags
+        // move occupants between areas without any part toggling.
+        const makeToggle = (svg: string, label: string, area: BodyArea): void => {
           const btn = document.createElement('button');
           btn.className = 'titlebar-layout-btn';
           btn.type = 'button';
           btn.title = label;
           btn.setAttribute('aria-label', label);
           btn.innerHTML = svg;
-          btn.addEventListener('click', (e) => { e.stopPropagation(); run(); });
-          const syncState = () => btn.classList.toggle('is-on', this.isPartVisible(partId));
+          btn.addEventListener('click', (e) => { e.stopPropagation(); this.toggleArea(area); });
+          const syncState = () => btn.classList.toggle('is-on', this.isAreaOccupied(area));
           syncState();
-          this._register(this.onDidChangePartVisibility((e) => { if (e.partId === partId) syncState(); }));
+          this._register(this.onDidChangePartVisibility(() => syncState()));
+          this._register(this._grid.onDidChange(() => syncState()));
           layoutGroup.appendChild(btn);
         };
-        makeToggle(ICON_SIDEBAR, 'Toggle Primary Side Bar', PartId.Sidebar, () => this.toggleSidebar());
-        makeToggle(ICON_PANEL, 'Toggle Panel', PartId.Panel, () => this.togglePanel());
-        makeToggle(ICON_AUX, 'Toggle Secondary Side Bar', PartId.AuxiliaryBar, () => this.toggleAuxiliaryBar());
+        makeToggle(ICON_SIDEBAR, 'Toggle Left Area', 'left');
+        makeToggle(ICON_PANEL, 'Toggle Bottom Area', 'bottom');
+        makeToggle(ICON_AUX, 'Toggle Right Area', 'right');
         // Prepend so the toggles land to the LEFT of the min/max/close controls.
         slot.prepend(layoutGroup);
       };

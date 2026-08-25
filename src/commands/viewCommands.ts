@@ -42,27 +42,32 @@ export const gotoLine: CommandDescriptor = {
   },
 };
 
+// The three visibility toggles address AREAS of the body, not parts: with
+// everything movable, "toggle the panel" stopped meaning anything once the
+// panel could live on the left edge. Ctrl+J hides whatever occupies the
+// bottom; the ids stay stable for keybindings and old muscle memory.
+
 export const toggleSidebar: CommandDescriptor = {
   id: 'workbench.action.toggleSidebar',
-  title: 'Toggle Primary Sidebar',
+  title: 'Toggle Left Area',
   category: 'View',
   keybinding: 'Ctrl+B',
   aiInvocable: true,
-  aiDescription: 'Show or hide the primary sidebar (explorer, search, etc.).',
+  aiDescription: 'Show or hide everything left of the editor (sidebar, and anything stacked with it).',
   handler(ctx) {
-    wb(ctx).toggleSidebar();
+    wb(ctx).toggleArea('left');
   },
 };
 
 export const togglePanel: CommandDescriptor = {
   id: 'workbench.action.togglePanel',
-  title: 'Toggle Panel',
+  title: 'Toggle Bottom Area',
   category: 'View',
   keybinding: 'Ctrl+J',
   aiInvocable: true,
-  aiDescription: 'Show or hide the bottom panel (terminal, output, diagnostics).',
+  aiDescription: 'Show or hide everything below the editor (panel, and anything parked at the bottom).',
   handler(ctx) {
-    wb(ctx).togglePanel();
+    wb(ctx).toggleArea('bottom');
   },
 };
 
@@ -79,12 +84,12 @@ export const toggleMaximizedPanel: CommandDescriptor = {
 
 export const toggleAuxiliaryBar: CommandDescriptor = {
   id: 'workbench.action.toggleAuxiliaryBar',
-  title: 'Toggle Secondary Sidebar',
+  title: 'Toggle Right Area',
   category: 'View',
   aiInvocable: true,
-  aiDescription: 'Show or hide the secondary side bar.',
+  aiDescription: 'Show or hide everything right of the editor (secondary side bar, and anything docked there).',
   handler(ctx) {
-    wb(ctx).toggleAuxiliaryBar();
+    wb(ctx).toggleArea('right');
   },
 };
 

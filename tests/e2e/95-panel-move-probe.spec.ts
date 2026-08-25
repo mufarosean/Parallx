@@ -46,6 +46,31 @@ async function snap(window: Page, testInfo: TestInfo, name: string): Promise<voi
   await window.screenshot({ path: `test-results/panel-probe/${name}.png` });
 }
 
+/** Detach the panel's first tab into a floating box (drop beside the editor). */
+async function detachFirstPanelTab(window: Page): Promise<void> {
+  await window.evaluate(async () => {
+    const tab = document.querySelector(
+      '[data-part-id="workbench.parts.panel"] .view-tab',
+    ) as HTMLElement | null;
+    const editor = document.querySelector('[data-part-id="workbench.parts.editor"]') as HTMLElement | null;
+    if (!tab || !editor) return;
+    const dt = new DataTransfer();
+    const fire = (type: string, el: Element, x: number, y: number): void => {
+      el.dispatchEvent(new DragEvent(type, {
+        bubbles: true, cancelable: true, clientX: x, clientY: y, dataTransfer: dt,
+      }));
+    };
+    const t = tab.getBoundingClientRect();
+    fire('dragstart', tab, t.left + 4, t.top + 4);
+    const r = editor.getBoundingClientRect();
+    fire('dragover', editor, r.right - 60, r.top + r.height / 2);
+    await new Promise((res) => requestAnimationFrame(() => res(undefined)));
+    fire('drop', editor, r.right - 60, r.top + r.height / 2);
+    fire('dragend', tab, 0, 0);
+  });
+  await window.waitForTimeout(500);
+}
+
 async function runCommand(window: Page, title: string): Promise<void> {
   await window.keyboard.press('Control+Shift+p');
   const input = window.locator('.command-palette-input');
@@ -422,6 +447,21 @@ test.describe('the way home', () => {
     expect(detachedContent.isPlaceholder, 'and it is not the waiting-for-provider placeholder').toBe(false);
     expect(detachedContent.height, 'and it has real height').toBeGreaterThan(50);
 
+    // SEAMS ARE PART OF THE CITIZENSHIP. The box's card must end ABOVE the
+    // leaf's bottom edge (its owned bottom seam), exactly like a part's
+    // card does — height:100% used to swallow that margin under
+    // overflow:hidden, and the box visually touched whatever sat below it.
+    const seam = await window.evaluate(() => {
+      const leaf = document.querySelector('.container-box[data-part-id^="container:panelview:"]');
+      const card = leaf?.querySelector('.container-box-card');
+      if (!leaf || !card) return null;
+      const lr = leaf.getBoundingClientRect();
+      const cr = card.getBoundingClientRect();
+      return { gap: lr.bottom - cr.bottom };
+    });
+    expect(seam, 'box + card present for the seam check').not.toBeNull();
+    expect(seam!.gap, 'the card keeps its bottom seam inside the leaf').toBeGreaterThanOrEqual(6);
+
     // 2. Drag the box back onto the PANEL'S CENTRE — it rejoins the strip.
     await window.evaluate(async () => {
       const header = document.querySelector('.container-box[data-part-id^="container:panelview:"] .container-box-header') as HTMLElement | null;
@@ -483,6 +523,75 @@ test.describe('the way home', () => {
     // Below the editor, editor-column-wide (not a right column).
     expect(s.panel!.y).toBeGreaterThan(s.editor!.y);
     expect(Math.abs((s.panel!.x + s.panel!.w) - (s.editor!.x + s.editor!.w))).toBeLessThanOrEqual(12);
+
+    await runCommand(window, 'Reset Layout to Defaults');
+  });
+});
+
+test.describe('the box menu', () => {
+  test('⋯ on a detached tab’s box offers Return To Panel, and it works', async ({ window }, testInfo) => {
+    await window.waitForTimeout(1500);
+    await runCommand(window, 'Reset Layout to Defaults');
+    await window.waitForTimeout(300);
+    await detachFirstPanelTab(window);
+
+    const box = window.locator('.container-box[data-part-id^="container:panelview:"]');
+    await expect(box, 'detached view floated into a box').toBeVisible();
+
+    // Hover the header so the ⋯ reveals, then click it and take the way home.
+    await box.locator('.container-box-header').hover();
+    await box.locator('.container-box-menu-btn').click();
+    await snap(window, testInfo, '19-box-menu-open');
+    const item = window.locator('.context-menu-item', { hasText: 'Return To Panel' });
+    await expect(item, 'the menu offers the way home').toBeVisible();
+    await item.click();
+    await window.waitForTimeout(400);
+    await snap(window, testInfo, '20-box-menu-returned');
+    await expect(box, 'box gone — the view is a panel tab again').toHaveCount(0);
+
+    await runCommand(window, 'Reset Layout to Defaults');
+  });
+});
+
+test.describe('area toggles', () => {
+  test('the bottom toggle hides the bottom OCCUPANTS and brings them back', async ({ window }, testInfo) => {
+    await window.waitForTimeout(1500);
+    await runCommand(window, 'Reset Layout to Defaults');
+    await window.waitForTimeout(300);
+
+    // Park a detached tab at the bottom too: detach, then send its box to
+    // the bottom edge from its own menu.
+    await detachFirstPanelTab(window);
+    const box = window.locator('.container-box[data-part-id^="container:panelview:"]');
+    await expect(box).toBeVisible();
+    await box.locator('.container-box-header').hover();
+    await box.locator('.container-box-menu-btn').click();
+    await window.locator('.context-menu-item', { hasText: 'Move To Bottom Edge' }).click();
+    await window.waitForTimeout(400);
+    await snap(window, testInfo, '21-box-at-bottom');
+
+    // Toggle the bottom area: BOTH bottom occupants leave.
+    await runCommand(window, 'Toggle Bottom Area');
+    await window.waitForTimeout(400);
+    await snap(window, testInfo, '22-bottom-hidden');
+    let s = await shape(window);
+    expect(s.panel, 'panel hidden with its area').toBeNull();
+    await expect(box, 'the parked box hidden with its area').toHaveCount(0);
+
+    // Toggle again: the SET returns — panel and box both.
+    await runCommand(window, 'Toggle Bottom Area');
+    await window.waitForTimeout(400);
+    await snap(window, testInfo, '23-bottom-restored');
+    s = await shape(window);
+    expect(s.panel, 'panel back').not.toBeNull();
+    await expect(box, 'box back too').toHaveCount(1);
+    const boxBelowEditor = await window.evaluate(() => {
+      const b = document.querySelector('.container-box[data-part-id^="container:panelview:"]');
+      const e = document.querySelector('[data-part-id="workbench.parts.editor"]');
+      if (!b || !e) return false;
+      return b.getBoundingClientRect().top >= e.getBoundingClientRect().bottom - 2;
+    });
+    expect(boxBelowEditor, 'the box came back to the bottom area').toBe(true);
 
     await runCommand(window, 'Reset Layout to Defaults');
   });
