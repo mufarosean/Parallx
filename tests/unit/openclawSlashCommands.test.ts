@@ -73,7 +73,7 @@ describe('/status command', () => {
     const text = response._chunks[0];
     expect(text).toContain('AI Runtime Status');
     expect(text).toContain('gpt-oss:20b');
-    expect(text).toContain('✅ Connected');
+    expect(text).toContain('Connected'); // plain text marker — emoji banned in system UI
     expect(text).toContain('42');
   });
 
@@ -195,7 +195,7 @@ describe('/doctor command', () => {
     const result = await tryHandleOpenclawDoctorCommand(services, 'doctor', response);
     expect(result).toBe(true);
     const text = response._chunks[0];
-    expect(text).toContain('❌');
+    expect(text).toContain('FAIL');
     expect(text).toContain('Recommended Actions');
   });
 });
@@ -466,7 +466,7 @@ describe('/doctor edge cases', () => {
     expect(result).toBe(true);
     const text = response._chunks[0];
     expect(text).toContain('Diagnostic Report');
-    expect(text).toContain('❌'); // connection check failed
+    expect(text).toContain('FAIL'); // connection check failed
   });
 });
 
