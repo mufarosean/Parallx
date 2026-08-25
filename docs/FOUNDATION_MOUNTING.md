@@ -237,3 +237,41 @@ Still open for phase B: the editor area as a stack of the same citizens
 (the deferred eyes-on step), rail-dock for detached panel views, a
 context-menu route for every drag gesture, and folding container
 placement into arrangements proper when surfaces and containers merge.
+
+## Field directives — called out 2026-08-24, queued (NOT started)
+
+Mufaro called these out from live use; documented verbatim-in-spirit
+before any design. A separate feature discussion comes first; the work
+session after it runs WITHOUT Playwright (no visible probes while the
+machine is in use for gaming — the standing no-visible-probes rule, no
+exception window tonight).
+
+1. **Saved layouts, switchable in Settings.** The user can save the
+   current layout under a name and switch between saved layouts from
+   Settings. This is the arrangements story (FOUNDATION.md decision 4:
+   arrangements are first-class) finally surfacing as UX: the
+   ArrangementStore exists and is inert; what is missing is capture/apply
+   wired to the LIVE body tree (which now includes container boxes and
+   rails, not just surfaces) and a Settings surface to manage them.
+   Design questions to settle when work starts: what an arrangement
+   captures today (body tree + rails + hidden-area memory?), collision
+   with the workspace's own layout persistence, and whether switching is
+   also offered outside Settings (the palette carries commands anyway,
+   but Settings is the required home).
+
+2. **Right ribbon is a mirror, not a copy.** The right activity bar's
+   active-icon ACCENT must sit on the RIGHT side (flipped from the left
+   ribbon), and a visible border must separate the right ribbon from the
+   sidebar content it flanks. Chrome polish, but it is the difference
+   between "a second ribbon" and "the same ribbon reflected".
+
+3. **A part stacked into a rail area gets a ribbon icon.** When the
+   PANEL moves into the secondary sidebar area (stacked with it), an
+   icon for it appears in the right ribbon; same for the primary
+   sidebar side. Today only view containers have ribbon icons — parts
+   that join a rail's column are invisible from the ribbon. Wants a
+   design pass: what the icon reveals/toggles (the part's slot in that
+   stack), what happens on click-when-visible (collapse like a
+   container icon?), and how it keys off areaOf so the icon appears
+   from GEOMETRY (the part occupying the rail's area), not from which
+   gesture put it there.
