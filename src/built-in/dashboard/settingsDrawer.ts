@@ -12,6 +12,7 @@
 
 import type { WidgetTypeRegistration } from '../../api/bridges/dashboardBridge.js';
 import { createSelect } from './dashboardEditorProvider.js';
+import { attachPopupDismiss } from '../../ui/dom.js';
 import { renderMarkdownToDom } from './widgets/markdownRenderer.js';
 
 export interface SettingsDrawerHost {
@@ -39,15 +40,21 @@ export function openWidgetSettingsDrawer(host: SettingsDrawerHost): void {
   // The dropdowns own global listeners and a body-level list, so every
   // exit has to dispose them.
   const selects: ReturnType<typeof createSelect>[] = [];
+  let detachDismiss: (() => void) | undefined;
   const closeDrawer = (): void => {
+    detachDismiss?.();
     for (const s of selects) s.dispose();
     overlay.remove();
   };
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) closeDrawer();
-  });
 
   const sheet = el('aside', 'dashboard-settings');
+
+  // Standard popup contract (Escape / outside press / window blur — the
+  // drawer previously had NO Escape at all). Dropdown option lists mount
+  // on document.body, outside the sheet — pressing one is not an exit.
+  detachDismiss = attachPopupDismiss(sheet, closeDrawer, {
+    isDismissable: (e) => !(e.target as Element | null)?.closest?.('.ui-dropdown__list'),
+  });
 
   const head = el('div', 'dashboard-settings__head');
   const ht = el('h2', 'dashboard-settings__title');

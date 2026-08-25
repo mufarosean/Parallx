@@ -10,6 +10,7 @@ import './notificationService.css';
 import { Disposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { $ } from '../ui/dom.js';
+import { enterMode } from '../ui/interactionMode.js';
 import { getIcon } from '../ui/iconRegistry.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -433,7 +434,7 @@ export function showConfirmModal(
       if (resolved) return;
       resolved = true;
       overlay.remove();
-      document.removeEventListener('keydown', onKey, true);
+      mode.exit();
       resolve(result);
     };
 
@@ -459,14 +460,18 @@ export function showConfirmModal(
     box.appendChild(btnRow);
     overlay.appendChild(box);
 
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); }
-      else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); finish(true); }
-    };
-    document.addEventListener('keydown', onKey, true);
-
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) finish(false);
+    // The modal is an interaction mode (interactionMode.ts): Escape and
+    // Enter act only while THIS modal is topmost — two stacked confirms
+    // used to both bind capture-phase Enter, so one keypress confirmed
+    // BOTH. Backdrop click = the outside-pointer exit.
+    const mode = enterMode({
+      id: 'confirm-modal',
+      ownedRoots: () => [box],
+      onExit: () => finish(false),
+      onKeydown: (e) => {
+        if (e.key === 'Enter') { finish(true); return true; }
+        return false;
+      },
     });
 
     // Focus the SAFE button by default on destructive confirms.

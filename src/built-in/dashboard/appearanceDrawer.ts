@@ -16,6 +16,7 @@
 import type { WidgetAppearance } from './dashboardTypes.js';
 import { applyWidgetAppearance } from './widgetAppearance.js';
 import { createSelect } from './dashboardEditorProvider.js';
+import { attachPopupDismiss } from '../../ui/dom.js';
 
 export interface AppearanceDrawerHost {
   /** The live card the draft previews onto. */
@@ -48,18 +49,26 @@ export function openAppearanceDrawer(host: AppearanceDrawerHost): void {
   // document.body — so removing the overlay alone would accumulate
   // listeners across opens and could strand a floating option list.
   const selects: ReturnType<typeof createSelect>[] = [];
+  let detachDismiss: (() => void) | undefined;
   const closeDrawer = (): void => {
+    detachDismiss?.();
     for (const s of selects) s.dispose();
     overlay.remove();
   };
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) {
-      applyWidgetAppearance(host.card, original);
-      closeDrawer();
-    }
-  });
 
   const sheet = el('aside', 'dashboard-settings');
+
+  // Standard popup contract (Escape / outside press / window blur — the
+  // drawer previously had NO Escape at all). Every non-Save exit cancels:
+  // the live preview reverts to the persisted look. Dropdown option lists
+  // mount on document.body, outside the sheet — pressing one must not
+  // count as leaving the drawer.
+  detachDismiss = attachPopupDismiss(sheet, () => {
+    applyWidgetAppearance(host.card, original);
+    closeDrawer();
+  }, {
+    isDismissable: (e) => !(e.target as Element | null)?.closest?.('.ui-dropdown__list'),
+  });
 
   const head = el('div', 'dashboard-settings__head');
   const ht = el('h2', 'dashboard-settings__title');
