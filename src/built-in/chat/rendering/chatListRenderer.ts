@@ -12,7 +12,7 @@
 //   src/vs/workbench/contrib/chat/browser/chatListRenderer.ts
 
 import { Disposable } from '../../../platform/lifecycle.js';
-import { $ } from '../../../ui/dom.js';
+import { $, attachPopupDismiss } from '../../../ui/dom.js';
 import { renderContentPart, createAgentPresence } from './chatContentParts.js';
 import type { ChatPartElement } from './chatContentParts.js';
 import { chatIcons } from '../chatIcons.js';
@@ -272,23 +272,8 @@ export class ChatListRenderer extends Disposable {
         }
       });
 
-      // Dismiss on click outside or Escape
-      const dismiss = () => this._dismissContextMenu();
-      const onMouseDown = (ev: MouseEvent) => {
-        if (!menu.contains(ev.target as Node)) { dismiss(); }
-      };
-      const onKeyDown = (ev: KeyboardEvent) => {
-        if (ev.key === 'Escape') { dismiss(); }
-      };
-      // Use setTimeout so the current click doesn't immediately dismiss
-      setTimeout(() => {
-        document.addEventListener('mousedown', onMouseDown, { once: true });
-        document.addEventListener('keydown', onKeyDown, { once: true });
-        this._contextMenuCleanup = () => {
-          document.removeEventListener('mousedown', onMouseDown);
-          document.removeEventListener('keydown', onKeyDown);
-        };
-      }, 0);
+      // Dismissal contract (Escape, outside pointer, window blur).
+      this._contextMenuCleanup = attachPopupDismiss(menu, () => this._dismissContextMenu());
     });
   }
 

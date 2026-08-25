@@ -16,7 +16,7 @@ import { Disposable } from '../../../platform/lifecycle.js';
 import { ChatMode } from '../../../services/chatTypes.js';
 import { Emitter } from '../../../platform/events.js';
 import type { Event } from '../../../platform/events.js';
-import { $, addDisposableListener } from '../../../ui/dom.js';
+import { $, addDisposableListener, attachPopupDismiss } from '../../../ui/dom.js';
 import { chatIcons } from '../chatIcons.js';
 import { ChatContextAttachments } from './chatContextAttachments.js';
 import type { IAttachmentServices, IWorkspaceFileEntry } from '../chatTypes.js';
@@ -43,6 +43,7 @@ export class ChatInputPart extends Disposable {
   private readonly _contextRibbon: ChatContextAttachments;
   private readonly _contextPills: ChatContextPills;
   private _filePickerDropdown: HTMLElement | undefined;
+  private _filePickerDismiss: (() => void) | undefined;
   private readonly _toolsBtn: HTMLButtonElement;
   private readonly _mentionAutocomplete: ChatMentionAutocomplete;
 
@@ -786,23 +787,15 @@ export class ChatInputPart extends Disposable {
     // Focus search input
     requestAnimationFrame(() => searchInput.focus());
 
-    // Close on outside click
-    const closeHandler = (e: MouseEvent) => {
-      if (!dropdown.contains(e.target as Node) && !this._attachBtn.contains(e.target as Node)) {
-        this._closeFilePicker();
-        document.removeEventListener('mousedown', closeHandler);
-      }
-    };
-    document.addEventListener('mousedown', closeHandler);
-
-    // Close on Escape
-    const escHandler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        this._closeFilePicker();
-        document.removeEventListener('keydown', escHandler);
-      }
-    };
-    document.addEventListener('keydown', escHandler);
+    // Standard popup contract (Escape / outside press / window blur).
+    // The two hand-rolled listeners this replaces removed themselves only
+    // in their own branches: closing via the Done button leaked BOTH, and
+    // the stale outside-click check against the detached dropdown then
+    // closed the NEXT picker on its first inside click.
+    this._filePickerDismiss = attachPopupDismiss(
+      [dropdown, this._attachBtn],
+      () => this._closeFilePicker(),
+    );
   }
 
   /** Create a multi-select picker item row with checkbox (Task 4.7). */
@@ -854,6 +847,8 @@ export class ChatInputPart extends Disposable {
   }
 
   private _closeFilePicker(): void {
+    this._filePickerDismiss?.();
+    this._filePickerDismiss = undefined;
     if (this._filePickerDropdown) {
       this._filePickerDropdown.remove();
       this._filePickerDropdown = undefined;

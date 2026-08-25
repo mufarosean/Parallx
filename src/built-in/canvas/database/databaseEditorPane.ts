@@ -26,6 +26,7 @@ import type { IPropertyDefinition, PropertyType } from '../properties/propertyTy
 import { resolvePageIcon, svgIcon } from '../config/iconRegistry.js';
 import { showConfirmModal } from '../../../api/notificationService.js';
 import { Dropdown } from '../../../ui/dropdown.js';
+import { attachPopupDismiss } from '../../../ui/dom.js';
 
 function renderPageIconHtml(icon: string | null | undefined): string {
   const id = resolvePageIcon(icon);
@@ -529,13 +530,14 @@ export class DatabaseEditorPane implements IDisposable {
     pop.style.left = `${Math.min(rect.left, window.innerWidth - pop.offsetWidth - 12)}px`;
     pop.style.top = `${rect.bottom + 4}px`;
     this._activePopover = pop;
-    const onDown = (e: MouseEvent) => {
-      if (!pop.contains(e.target as Node)) {
-        document.removeEventListener('mousedown', onDown, true);
-        this._closePopover();
-      }
-    };
-    setTimeout(() => document.addEventListener('mousedown', onDown, true), 0);
+    // Standard popup contract via the mode subsystem. The hand-rolled
+    // listener this replaces removed itself ONLY in its own outside-click
+    // branch — closing via a menu-item click or a re-open leaked it bound
+    // to the OLD popover, and the stale check then closed the NEXT
+    // popover on its first inside click (the "header rename input cannot
+    // be clicked on the 2nd open" bug).
+    const detach = attachPopupDismiss(pop, () => this._closePopover());
+    this._popoverDisposables.push({ dispose: detach });
   }
 
   private _menuItem(label: string, onClick: () => void, danger = false): HTMLElement {

@@ -14,7 +14,7 @@ import { EMPTY_STATES } from '../../../ui/emptyStates.js';
 import { rafThrottle } from '../../../platform/rafThrottle.js';
 import { Emitter } from '../../../platform/events.js';
 import type { Event } from '../../../platform/events.js';
-import { $, append, addDisposableListener } from '../../../ui/dom.js';
+import { $, append, addDisposableListener, attachPopupDismiss } from '../../../ui/dom.js';
 import { beginPointerDrag } from '../../../ui/interactionMode.js';
 import type { OllamaProvider } from '../providers/ollamaProvider.js';
 import { ChatInputPart } from '../input/chatInputPart.js';
@@ -1333,11 +1333,10 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
 
     const promptText = await this._services.getSystemPrompt();
 
-    // Create modal overlay
+    // Create modal overlay. Dismissal (Escape, backdrop click, window blur)
+    // is owned by the popup-dismiss contract attached below.
     const overlay = $('div.parallx-system-prompt-overlay');
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) { overlay.remove(); }
-    });
+    const close = (): void => { detach(); overlay.remove(); };
 
     const modal = $('div.parallx-system-prompt-modal');
 
@@ -1356,7 +1355,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     closeBtn.type = 'button';
     closeBtn.title = 'Close';
     closeBtn.innerHTML = chatIcons.close;
-    closeBtn.addEventListener('click', () => overlay.remove());
+    closeBtn.addEventListener('click', () => close());
     header.appendChild(closeBtn);
 
     modal.appendChild(header);
@@ -1387,14 +1386,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
 
-    // Close on Escape
-    const escHandler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        overlay.remove();
-        document.removeEventListener('keydown', escHandler);
-      }
-    };
-    document.addEventListener('keydown', escHandler);
+    const detach = attachPopupDismiss(modal, close);
   }
 
   // ── Empty / Offline State Builders ──

@@ -1340,8 +1340,7 @@ export class CanvasSidebar {
       label.textContent = item.label;
       row.appendChild(label);
       row.addEventListener('click', () => {
-        pop.remove();
-        document.removeEventListener('keydown', onKeyDown, true);
+        close();
         item.onClick();
       });
       pop.appendChild(row);
@@ -1354,26 +1353,14 @@ export class CanvasSidebar {
     pop.style.top = `${rect.bottom + 4}px`;
     pop.style.left = `${Math.max(8, rect.right - popRect.width)}px`;
 
-    const dismiss = (e: MouseEvent): void => {
-      if (!pop.contains(e.target as Node) && e.target !== anchor) {
-        pop.remove();
-        document.removeEventListener('mousedown', dismiss, true);
-        document.removeEventListener('keydown', onKeyDown, true);
-      }
+    // Standard popup contract — the hand-rolled pair this replaces
+    // removed each listener only in its own branch, so the item-click
+    // path leaked the capture mousedown until the next stray press.
+    const detach = attachPopupDismiss([pop, anchor], () => close());
+    const close = (): void => {
+      detach();
+      pop.remove();
     };
-    const onKeyDown = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') {
-        pop.remove();
-        document.removeEventListener('mousedown', dismiss, true);
-        document.removeEventListener('keydown', onKeyDown, true);
-      }
-    };
-    // Defer registration so the current click doesn't immediately
-    // close the popover we just opened.
-    setTimeout(() => {
-      document.addEventListener('mousedown', dismiss, true);
-      document.addEventListener('keydown', onKeyDown, true);
-    }, 0);
   }
 
   private async _createPage(parentId?: string | null): Promise<void> {

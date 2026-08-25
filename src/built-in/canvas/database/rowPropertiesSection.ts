@@ -25,6 +25,7 @@ import { createIconElement } from '../../../ui/iconRegistry.js';
 import type { IPropertyDefinition, PropertyType } from '../properties/propertyTypes.js';
 import { showPropertyPicker } from '../properties/propertyPicker.js';
 import { showConfirmModal } from '../../../api/notificationService.js';
+import { attachPopupDismiss } from '../../../ui/dom.js';
 
 const COLLAPSED_KEY = 'canvas.propertyBar.collapsed';
 const TAGS_DB_TITLE = 'Tags';
@@ -130,13 +131,11 @@ export async function mountRowPropertiesSection(
     pop.style.left = `${Math.min(rect.left, window.innerWidth - 280)}px`;
     pop.style.top = `${rect.bottom + 4}px`;
     activePopover = pop;
-    const onDown = (e: MouseEvent): void => {
-      if (!pop.contains(e.target as Node)) {
-        document.removeEventListener('mousedown', onDown, true);
-        closePopover();
-      }
-    };
-    setTimeout(() => document.addEventListener('mousedown', onDown, true), 0);
+    // Standard popup contract — the branch-local removal this replaces
+    // leaked the capture listener whenever the popover closed any other
+    // way (item click, re-open, section dispose).
+    const detach = attachPopupDismiss(pop, closePopover);
+    disposables.add({ dispose: detach });
   };
 
   // ── Row builders ──

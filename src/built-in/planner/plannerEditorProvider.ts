@@ -5,6 +5,7 @@
 
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { renderEmptyState } from '../../ui/emptyStates.js';
+import { attachPopupDismiss } from '../../ui/dom.js';
 import type { PlannerDataService } from './plannerDataService.js';
 import type { PlannerCalendar, PlannerEvent, PlannerTask, SeriesEditScope, TaskStatus, UpdateEventInput } from './plannerTypes.js';
 import type { IPlannerSyncController } from './sync/plannerSyncOrchestrator.js';
@@ -783,7 +784,8 @@ class PlannerEditorPane implements IDisposable {
 
   private _openTaskMenu(task: PlannerTask, anchor: DOMRect): void {
     const overlay = el('div', 'planner-menu-overlay');
-    overlay.addEventListener('click', () => overlay.remove());
+    const close = (): void => { detach(); overlay.remove(); };
+    overlay.addEventListener('click', () => close());
 
     const menu = el('div', 'planner-menu');
     menu.style.position = 'fixed';
@@ -799,7 +801,7 @@ class PlannerEditorPane implements IDisposable {
       btn.type = 'button';
       if (it.danger) btn.classList.add('planner-menu__item--danger');
       btn.textContent = it.label;
-      btn.addEventListener('click', () => { overlay.remove(); it.action(); });
+      btn.addEventListener('click', () => { close(); it.action(); });
       menu.appendChild(btn);
     }
     overlay.appendChild(menu);
@@ -814,10 +816,7 @@ class PlannerEditorPane implements IDisposable {
     menu.style.left = `${left}px`;
     menu.style.top = `${top}px`;
 
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', onKey); }
-    };
-    document.addEventListener('keydown', onKey);
+    const detach = attachPopupDismiss(menu, close);
   }
 
   private _captureNewTask(anchor?: DOMRect): void {
@@ -980,7 +979,8 @@ class PlannerEditorPane implements IDisposable {
   /** Dropdown menu for Month / Week / Day — replaces the inline tab strip. */
   private _openViewMenu(anchorBtn: HTMLElement): void {
     const overlay = el('div', 'planner-menu-overlay');
-    overlay.addEventListener('click', () => overlay.remove());
+    const close = (): void => { detach(); overlay.remove(); };
+    overlay.addEventListener('click', () => close());
     const menu = el('div', 'planner-menu planner-menu--narrow');
     menu.style.position = 'fixed';
 
@@ -991,7 +991,7 @@ class PlannerEditorPane implements IDisposable {
       const check = v === this._calendarView ? '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>' : '<span style="display:inline-block;width:13px"></span>';
       item.innerHTML = `${check}<span>${labelText}</span>`;
       item.addEventListener('click', () => {
-        overlay.remove();
+        close();
         this._setCalendarView(v);
         void this._renderTab();
       });
@@ -1011,10 +1011,7 @@ class PlannerEditorPane implements IDisposable {
     menu.style.left = `${left}px`;
     menu.style.top = `${top}px`;
 
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', onKey); }
-    };
-    document.addEventListener('keydown', onKey);
+    const detach = attachPopupDismiss(menu, close);
   }
 
   /** Set the calendar view and persist it per-workspace (M86). */

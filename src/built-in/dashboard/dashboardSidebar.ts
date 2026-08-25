@@ -8,6 +8,7 @@
 // dashboard page.
 
 import { toDisposable, type IDisposable } from '../../platform/lifecycle.js';
+import { attachPopupDismiss } from '../../ui/dom.js';
 import type { DashboardDataService } from './dashboardDataService.js';
 import type { DashboardPageRow } from './dashboardTypes.js';
 
@@ -297,8 +298,15 @@ export class DashboardSidebar implements IDisposable {
     // Lightweight, self-contained context menu — no dependency on
     // workbench-level menu services. Closes on outside click / Escape.
     const overlay = el('div', 'dashboard-sidebar-menu-overlay');
-    overlay.addEventListener('click', () => overlay.remove());
-    overlay.addEventListener('contextmenu', (e) => { e.preventDefault(); overlay.remove(); });
+    // One close path — the Escape listener this replaces was removed only
+    // in its own branch, leaking one document handler per right-click,
+    // unbounded, never cleaned by dispose().
+    const close = (): void => {
+      detach();
+      overlay.remove();
+    };
+    overlay.addEventListener('click', close);
+    overlay.addEventListener('contextmenu', (e) => { e.preventDefault(); close(); });
 
     const menu = el('div', 'dashboard-sidebar-menu');
     menu.style.position = 'fixed';
@@ -316,7 +324,7 @@ export class DashboardSidebar implements IDisposable {
       if (item.danger) btn.classList.add('dashboard-sidebar-menu__item--danger');
       btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${item.icon}"/></svg><span>${item.label}</span>`;
       btn.addEventListener('click', () => {
-        overlay.remove();
+        close();
         void item.action();
       });
       menu.appendChild(btn);
@@ -336,14 +344,8 @@ export class DashboardSidebar implements IDisposable {
     menu.style.left = `${left}px`;
     menu.style.top = `${top}px`;
 
-    // Esc closes.
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        overlay.remove();
-        document.removeEventListener('keydown', onKey);
-      }
-    };
-    document.addEventListener('keydown', onKey);
+    // Standard popup contract (Escape / outside press / window blur).
+    const detach = attachPopupDismiss(menu, close);
   }
 
   // ── Disposal ─────────────────────────────────────────────────────────

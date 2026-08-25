@@ -17,7 +17,7 @@
 // which calls Ollama's /api/show endpoint to read the model's native context_length.
 
 import { Disposable, toDisposable, type IDisposable } from '../../../platform/lifecycle.js';
-import { layoutPopup } from '../../../ui/dom.js';
+import { layoutPopup, attachPopupDismiss } from '../../../ui/dom.js';
 import { $ } from '../../../ui/dom.js';
 
 import './chatTokenStatusBar.css';
@@ -377,24 +377,11 @@ export class ChatTokenStatusBar extends Disposable {
     this._popupAnchorRect = this._root.getBoundingClientRect();
     layoutPopup(popup, this._popupAnchorRect, { position: 'above', gap: 4, margin: 8 });
 
-    // Close on click outside (next tick to avoid the current click)
-    requestAnimationFrame(() => {
-      const handler = (e: MouseEvent) => {
-        if (!popup.contains(e.target as Node) && !this._root.contains(e.target as Node)) {
-          this._dismissPopup();
-        }
-      };
-      document.addEventListener('mousedown', handler, true);
-      this._dismissListener = toDisposable(() => document.removeEventListener('mousedown', handler, true));
-    });
-
-    // Close on Escape
-    const escHandler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { this._dismissPopup(); }
-    };
-    document.addEventListener('keydown', escHandler, true);
-    const escDisposable = toDisposable(() => document.removeEventListener('keydown', escHandler, true));
-    this._register(escDisposable);
+    // Dismissal contract (Escape, outside pointer, window blur). The root is
+    // part of the popup's roots so a click on the indicator reaches
+    // _togglePopup instead of dismiss-then-reopen.
+    const detach = attachPopupDismiss([popup, this._root], () => this._dismissPopup());
+    this._dismissListener = toDisposable(detach);
   }
 
   private _dismissPopup(): void {
