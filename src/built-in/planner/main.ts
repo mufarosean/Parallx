@@ -15,7 +15,7 @@ import './planner.css';
 import { toDisposable, type IDisposable } from '../../platform/lifecycle.js';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import { PlannerDataService } from './plannerDataService.js';
-import { IPlannerQueryService } from '../../services/serviceTypes.js';
+import { IPlannerQueryService, IDatabaseService } from '../../services/serviceTypes.js';
 import type { ICalendarSyncProvider } from './plannerTypes.js';
 import { PlannerSidebar } from './plannerSidebar.js';
 import { PlannerEditorProvider } from './plannerEditorProvider.js';
@@ -136,6 +136,13 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   // 2. Data service.
   _data = new PlannerDataService();
   context.subscriptions.push(_data);
+  // Route SQL through the IDatabaseService tool bridge so planner writes
+  // land on the unified data stream (STANDARDIZATION.md P2).
+  if (api.services.has(IDatabaseService)) {
+    _data.attachDatabase(
+      api.services.get<import('../../services/serviceTypes.js').IDatabaseService>(IDatabaseService).asBridge(),
+    );
+  }
 
   // 2a. Expose a narrow read surface cross-extension so the autonomy review (and
   //     anything else) can see the user's open tasks — real workspace awareness.

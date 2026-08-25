@@ -202,7 +202,14 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
 
   // ── Bridge accessor ──
 
+  /** Injected at activation: the IDatabaseService tool bridge, so writes
+   *  land on the unified data stream. Raw preload bridge stays as the
+   *  fallback (tests, pre-DI construction). */
+  private _attachedDb: DatabaseBridge | undefined;
+  attachDatabase(bridge: DatabaseBridge): void { this._attachedDb = bridge; }
+
   private get _db(): DatabaseBridge {
+    if (this._attachedDb) return this._attachedDb;
     const electron = (window as any).parallxElectron;
     if (!electron?.database) {
       throw new Error('[CanvasDataService] window.parallxElectron.database not available');

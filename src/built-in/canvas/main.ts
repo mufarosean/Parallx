@@ -263,11 +263,24 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   _dataService = new CanvasDataService();
   context.subscriptions.push(_dataService);
 
+  // Route SQL through the IDatabaseService tool bridge so canvas writes
+  // land on the unified data stream (STANDARDIZATION.md P2).
+  if (api.services.has(IDatabaseService)) {
+    _dataService.attachDatabase(
+      api.services.get<import('../../services/serviceTypes.js').IDatabaseService>(IDatabaseService).asBridge(),
+    );
+  }
+
   // 2z. Database engine (Notion-style databases over migrations 006/007).
   // Created before the AI tools registration so the database tools get a live
   // service reference.
   _databaseService = new DatabaseDataService(_dataService);
   context.subscriptions.push(_databaseService);
+  if (api.services.has(IDatabaseService)) {
+    _databaseService.attachDatabase(
+      api.services.get<import('../../services/serviceTypes.js').IDatabaseService>(IDatabaseService).asBridge(),
+    );
+  }
   void _databaseService.ensureIdsLoaded();
   // Single-home invariant: collapse any multi-membership left by earlier
   // versions (values merge into the surviving home). Idempotent + cheap

@@ -190,7 +190,14 @@ export class PlannerDataService extends Disposable {
   private readonly _onDidChange = this._register(new Emitter<PlannerChangeEvent>());
   readonly onDidChange: Event<PlannerChangeEvent> = this._onDidChange.event;
 
+  /** Injected at activation: the IDatabaseService tool bridge, so writes
+   *  land on the unified data stream. Raw preload bridge stays as the
+   *  fallback (tests, pre-DI construction). */
+  private _attachedDb: DatabaseBridge | undefined;
+  attachDatabase(bridge: DatabaseBridge): void { this._attachedDb = bridge; }
+
   private get _db(): DatabaseBridge {
+    if (this._attachedDb) return this._attachedDb;
     const electron = (window as { parallxElectron?: { database?: DatabaseBridge } }).parallxElectron;
     if (!electron?.database) {
       throw new Error('[PlannerDataService] window.parallxElectron.database not available');

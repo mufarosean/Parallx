@@ -13,7 +13,16 @@ interface DatabaseBridge {
   all(sql: string, params?: unknown[]): Promise<{ error: { message: string } | null; rows?: Record<string, unknown>[] }>;
 }
 
+/** Injected at activation: the IDatabaseService tool bridge, so writes
+ *  land on the unified data stream. Raw preload bridge stays as the
+ *  fallback (tests, pre-DI activation). */
+let _attachedDb: DatabaseBridge | undefined;
+export function attachWorksheetDatabase(bridge: DatabaseBridge): void {
+  _attachedDb = bridge;
+}
+
 function db(): DatabaseBridge {
+  if (_attachedDb) return _attachedDb;
   const electron = (window as { parallxElectron?: { database?: DatabaseBridge } }).parallxElectron;
   if (!electron?.database) throw new Error('[WorksheetData] window.parallxElectron.database not available');
   return electron.database;

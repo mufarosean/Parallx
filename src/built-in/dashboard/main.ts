@@ -30,6 +30,7 @@ import { DashboardEditorProvider } from './dashboardEditorProvider.js';
 import { DashboardSidebar } from './dashboardSidebar.js';
 import type { DashboardRegistry, WidgetTypeRegistration, WorkbenchWidgetHost } from './dashboardTypes.js';
 import { applyWidgetAppearance } from './widgetAppearance.js';
+import { IDatabaseService } from '../../services/serviceTypes.js';
 import { registerBuiltInDashboardWidgets } from './widgets/builtInWidgets.js';
 
 // ─── Minimal Parallx API surface (kept narrow on purpose) ────────────────────
@@ -97,6 +98,13 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   // 2. Construct services.
   _dataService = new DashboardDataService();
   context.subscriptions.push(_dataService);
+  // Route SQL through the IDatabaseService tool bridge so dashboard writes
+  // land on the unified data stream (STANDARDIZATION.md P2).
+  if (api.services.has(IDatabaseService)) {
+    _dataService.attachDatabase(
+      api.services.get<import('../../services/serviceTypes.js').IDatabaseService>(IDatabaseService).asBridge(),
+    );
+  }
 
   _registry = new DashboardWidgetRegistry();
   context.subscriptions.push(_registry);

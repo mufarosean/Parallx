@@ -43,6 +43,37 @@ interface DatabaseBridge {
   runTransaction(operations: TransactionOp[]): Promise<{ error: DatabaseIpcError | null; results?: unknown[] }>;
 }
 
+// ─── The unified write stream + the tool bridge ──────────────────────────────
+
+/** One persistent SQL mutation, as seen at the service chokepoint. */
+export interface DatabaseWriteEvent {
+  /** Table the statement targets, parsed from the SQL; null when unparsable. */
+  readonly table: string | null;
+  readonly sql: string;
+}
+
+/**
+ * The envelope-style database surface built-in tools consume: results carry
+ * `{error, ...}` instead of throwing, exactly like the raw preload bridge
+ * they used to reach directly. Superset of every tool's local
+ * `DatabaseBridge` interface, so swapping the SOURCE needs no call-site
+ * changes.
+ */
+export interface ToolDatabaseBridge {
+  isOpen(): Promise<{ isOpen: boolean }>;
+  migrate(migrationsDir: string): Promise<{ error: { code: string; message: string } | null }>;
+  run(sql: string, params?: unknown[]): Promise<{ error: { code: string; message: string } | null; changes?: number; lastInsertRowid?: number }>;
+  get(sql: string, params?: unknown[]): Promise<{ error: { code: string; message: string } | null; row?: Record<string, unknown> | null }>;
+  all(sql: string, params?: unknown[]): Promise<{ error: { code: string; message: string } | null; rows?: Record<string, unknown>[] }>;
+  runTransaction(operations: TransactionOp[]): Promise<{ error: { code: string; message: string } | null; results?: unknown[] }>;
+}
+
+/** Best-effort table name from a mutation statement. */
+export function tableFromSql(sql: string): string | null {
+  const m = /(?:insert\s+(?:or\s+\w+\s+)?into|update|delete\s+from|create\s+table(?:\s+if\s+not\s+exists)?|alter\s+table|drop\s+table(?:\s+if\s+exists)?)\s+[`"']?([A-Za-z0-9_]+)/i.exec(sql);
+  return m ? m[1] : null;
+}
+
 // ─── DatabaseService ─────────────────────────────────────────────────────────
 
 /**
@@ -65,6 +96,48 @@ export class DatabaseService extends Disposable implements IDatabaseService {
 
   private readonly _onDidClose = this._register(new Emitter<void>());
   readonly onDidClose: Event<void> = this._onDidClose.event;
+
+  private readonly _onDidWrite = this._register(new Emitter<DatabaseWriteEvent>());
+  /** Every successful SQL mutation through this service or its tool bridge. */
+  readonly onDidWrite: Event<DatabaseWriteEvent> = this._onDidWrite.event;
+
+  private _toolBridge: ToolDatabaseBridge | undefined;
+
+  private _fireWrite(sql: string): void {
+    this._onDidWrite.fire({ table: tableFromSql(sql), sql });
+  }
+
+  /**
+   * The envelope-style bridge tools consume. Same result shapes as the raw
+   * preload bridge (no throws, not-open surfaces as an error envelope), so
+   * tools swap their SOURCE without touching a call site — and every write
+   * they make lands on onDidWrite, the workspace data stream's source.
+   */
+  asBridge(): ToolDatabaseBridge {
+    if (!this._toolBridge) {
+      this._toolBridge = {
+        isOpen: () => this._bridge.isOpen(),
+        migrate: (dir) => this._bridge.migrate(dir),
+        get: (sql, params) => this._bridge.get(sql, params),
+        all: (sql, params) => this._bridge.all(sql, params),
+        run: async (sql, params) => {
+          const res = await this._bridge.run(sql, params);
+          if (!res.error) this._fireWrite(sql);
+          return res;
+        },
+        runTransaction: async (operations) => {
+          const res = await this._bridge.runTransaction(operations);
+          if (!res.error) {
+            for (const op of operations) {
+              if (op.type === 'run') this._fireWrite(op.sql);
+            }
+          }
+          return res;
+        },
+      };
+    }
+    return this._toolBridge;
+  }
 
   // ── Bridge accessor ──
 
@@ -172,6 +245,7 @@ export class DatabaseService extends Disposable implements IDatabaseService {
     if (result.error) {
       throw new Error(`[DatabaseService] SQL error: ${result.error.message}`);
     }
+    this._fireWrite(sql);
     return {
       changes: result.changes!,
       lastInsertRowid: result.lastInsertRowid!,
@@ -216,6 +290,9 @@ export class DatabaseService extends Disposable implements IDatabaseService {
     const result = await this._bridge.runTransaction(operations);
     if (result.error) {
       throw new Error(`[DatabaseService] Transaction error: ${result.error.message}`);
+    }
+    for (const op of operations) {
+      if (op.type === 'run') this._fireWrite(op.sql);
     }
     return result.results ?? [];
   }

@@ -23,8 +23,9 @@ import { renderMarkdown } from '../../ui/renderMarkdown.js';
 import {
   listItems, getItem, createItem, deleteItem, getOpenAttempt, saveAttemptCells,
   discardOpenAttempt, completeAttempt, saveAttemptReview, onWorksheetDataChanged,
-  getSessionGrades, type WorksheetItem, type WorksheetItemSummary,
+  getSessionGrades, attachWorksheetDatabase, type WorksheetItem, type WorksheetItemSummary,
 } from './worksheetData.js';
+import { IDatabaseService } from '../../services/serviceTypes.js';
 import { buildPracticeSet, tagCounts, itemTags } from './practiceSession.js';
 import { itemToWorkbooks, workbookHasOnSheetQuestion, type GeneratedItem } from './itemFormat.js';
 import { generateItems, reviewAttempt, type LmApiLike } from './worksheetAi.js';
@@ -46,6 +47,10 @@ interface ParallxApiLike {
   };
   commands: {
     registerCommand(id: string, handler: (...args: unknown[]) => unknown): { dispose(): void };
+  };
+  services?: {
+    get<T>(id: { readonly id: string }): T;
+    has(id: { readonly id: string }): boolean;
   };
   window?: {
     showConfirmModal?(options: { message: string; detail?: string; confirmLabel?: string; danger?: boolean }): Promise<boolean>;
@@ -1410,6 +1415,13 @@ async function runMigrations(): Promise<void> {
 
 export async function activate(api: ParallxApiLike, context: ToolContextLike): Promise<void> {
   _api = api;
+  // Route SQL through the IDatabaseService tool bridge so worksheet writes
+  // land on the unified data stream (STANDARDIZATION.md P2).
+  if (api.services?.has(IDatabaseService)) {
+    attachWorksheetDatabase(
+      api.services.get<import('../../services/serviceTypes.js').IDatabaseService>(IDatabaseService).asBridge(),
+    );
+  }
   await runMigrations();
 
   context.subscriptions.push(

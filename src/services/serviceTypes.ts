@@ -618,6 +618,20 @@ export interface IDatabaseService extends IDisposable {
 
   /** Execute multiple operations in a transaction. */
   runTransaction(operations: import('./databaseService.js').TransactionOp[]): Promise<unknown[]>;
+
+  /**
+   * Fires after any successful WRITE through this service or through a
+   * tool bridge from asBridge() — the chokepoint every persistent SQL
+   * mutation passes, and therefore the workspace data stream's source.
+   */
+  readonly onDidWrite: Event<import('./databaseService.js').DatabaseWriteEvent>;
+
+  /**
+   * The envelope-style bridge tools consume ({error, rows} results, no
+   * throws). Routing tools through this — instead of the raw
+   * window.parallxElectron.database — puts their writes on onDidWrite.
+   */
+  asBridge(): import('./databaseService.js').ToolDatabaseBridge;
 }
 
 export const IDatabaseService = createServiceIdentifier<IDatabaseService>('IDatabaseService');
