@@ -246,6 +246,11 @@ export class TitlebarPart extends Part {
       el.setAttribute('tabindex', '-1');
       el.setAttribute('data-menu-id', item.id);
 
+      // Mouse interaction must never park DOM focus in the ribbon — a
+      // focused menu span was a keyboard dead zone (typing went nowhere,
+      // "focus stuck on the top ribbon"). Keyboard mode focuses items
+      // explicitly; the mouse path stays focus-neutral.
+      el.addEventListener('mousedown', (e) => e.preventDefault());
       el.addEventListener('click', (e) => {
         e.stopPropagation();
         this._toggleDropdown(item.id, el);
@@ -323,6 +328,16 @@ export class TitlebarPart extends Part {
       document.removeEventListener('keydown', onLateralNav, true);
       this._activeDropdown = undefined;
       anchor.classList.remove('titlebar-menu-item--active');
+      // The ribbon never keeps focus after a menu closes — a lingering
+      // focused span made the next Enter re-open the menu.
+      const active = document.activeElement as HTMLElement | null;
+      if (active?.classList.contains('titlebar-menu-item')) active.blur();
+    });
+
+    // Selecting a command ENDS the menu interaction entirely: keyboard
+    // mode exits so a later Enter in the editor can never re-arm it.
+    ctxMenu.onDidSelect(() => {
+      if (this._menuBarFocused) this._unfocusMenuBar();
     });
 
     // ArrowLeft / ArrowRight — navigate between menu bar items
@@ -436,8 +451,28 @@ export class TitlebarPart extends Part {
   private _setupMenuBarKeyNav(): void {
     this._menuBarKeyNavCleanup?.dispose();
 
+    // THE FOCUS CONTRACT (the field bug this encodes against): menu-bar
+    // keyboard mode is a MODE, and a mode needs exits. It used to exit
+    // only on Escape or another Alt — so after an accidental Alt tap,
+    // clicking back into the editor left the mode armed, and the next
+    // Enter mid-typing opened the File dropdown with auto-select-first
+    // primed: one more Enter created a text file over the user's work.
+    // Exits now: Escape, Alt, selecting a command, ANY pointer press
+    // outside the ribbon, DOM focus leaving the ribbon, and any
+    // non-navigation key. The mode can never outlive the user's
+    // attention.
+
     const handler = (e: KeyboardEvent) => {
       if (!this._menuBarFocused) return;
+
+      // Focus has left the ribbon (a click, a command, a view reveal):
+      // the mode is stale. Exit and let the key flow to its real target.
+      const active = document.activeElement as HTMLElement | null;
+      if (!active?.classList.contains('titlebar-menu-item')) {
+        this._unfocusMenuBar();
+        return;
+      }
+
       const menuEls = Array.from(
         this._menuBarContainer?.querySelectorAll('.titlebar-menu-item') ?? [],
       ) as HTMLElement[];
@@ -466,12 +501,28 @@ export class TitlebarPart extends Part {
           e.preventDefault();
           this._unfocusMenuBar();
           break;
+        default:
+          // Typing is never menu navigation — abandon the mode rather
+          // than swallowing or shadowing the user's keys.
+          if (e.key !== 'Alt' && e.key !== 'Shift' && e.key !== 'Control' && e.key !== 'Meta' && e.key !== 'Tab') {
+            this._unfocusMenuBar();
+          }
+          break;
+      }
+    };
+
+    // A pointer press anywhere outside the ribbon ends the mode.
+    const onPointerDown = (e: PointerEvent) => {
+      if (this._menuBarFocused && !this._menuBarContainer?.contains(e.target as Node)) {
+        this._unfocusMenuBar();
       }
     };
 
     document.addEventListener('keydown', handler);
+    document.addEventListener('pointerdown', onPointerDown, true);
     this._menuBarKeyNavCleanup = toDisposable(() => {
       document.removeEventListener('keydown', handler);
+      document.removeEventListener('pointerdown', onPointerDown, true);
     });
   }
 
