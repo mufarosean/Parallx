@@ -3130,7 +3130,11 @@ export class Workbench extends Layout {
       // the surface tree tells the journal which surface opened or closed,
       // what the user dwelled in and for how long, what moved next to what,
       // and which arrangement was captured or restored.
-      this._register(new SurfaceActivityTap(this._tree, surfaceRegistry, (n) => journal.note(n)));
+      // The surfaces layer stays free of service imports by design, so its
+      // note shape is structural; the boundary asserts it into the journal's
+      // typed grammar (the tap only ever writes actor 'user', source 'surface').
+      this._register(new SurfaceActivityTap(this._tree, surfaceRegistry,
+        (n) => journal.note(n as Parameters<typeof journal.note>[0])));
 
       // Python runs are consequential enough that they belong in the same
       // narrative as everything else the user and assistant did.

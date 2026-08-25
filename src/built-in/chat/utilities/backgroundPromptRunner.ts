@@ -78,7 +78,7 @@ export interface IBackgroundPromptDeps {
   readonly getActiveModelId?: () => string | undefined;
   /** Activity journal — background failures must be narratable. */
   readonly activity?: {
-    note(n: { actor?: string; verb: string; object: string; detail?: string; source?: string }): void;
+    note(n: import('../../../services/activityJournalService.js').IActivityNote): void;
   };
 }
 
@@ -178,7 +178,7 @@ export function createBackgroundPromptRunner(
       });
       deps.activity?.note({
         actor: 'ai',
-        source: origin,
+        source: `chat:${origin}`,
         verb: 'background task failed',
         object: label,
         detail: model ? `${error} (model: ${model})` : error,

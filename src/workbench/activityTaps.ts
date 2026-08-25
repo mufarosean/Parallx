@@ -59,6 +59,11 @@ const COMMAND_NOISE = [
   /^_/, /\.internal\./, /^workbench\.action\.focus/, /\.get[A-Z]/,
 ];
 
+/** Narrow an origin string to the journal's `ext:<toolId>` actor form. */
+function isExtId(v: string | undefined): v is `ext:${string}` {
+  return typeof v === 'string' && v.startsWith('ext:');
+}
+
 export interface IActivityTapDeps {
   readonly services: ServiceCollection;
   readonly focusTracker?: FocusTracker;
@@ -195,9 +200,10 @@ export function wireActivityTaps(deps: IActivityTapDeps): IDisposable {
       const v = typeof c.value === 'string' || typeof c.value === 'number' || typeof c.value === 'boolean'
         ? String(c.value).slice(0, 60)
         : '(updated)';
-      const actor = c.origin === 'ai' ? 'ai'
+      const actor: import('../services/activityJournalService.js').ActivityActor =
+        c.origin === 'ai' ? 'ai'
         : c.origin === 'user' ? 'user'
-        : c.origin?.startsWith('ext:') ? c.origin
+        : isExtId(c.origin) ? c.origin
         : 'system';
       journal.note({ actor, source: 'settings', verb: 'changed setting', object: c.key, detail: v });
     }));
@@ -216,9 +222,10 @@ export function wireActivityTaps(deps: IActivityTapDeps): IDisposable {
       // The publisher's actor stamp wins (a canvas page the AI created is the
       // assistant's action, not the user's); the source heuristic is only the
       // fallback for actor-blind publishers.
-      const actor = sig.actor === 'agent' ? 'ai'
+      const actor: import('../services/activityJournalService.js').ActivityActor =
+        sig.actor === 'agent' ? 'ai'
         : sig.actor === 'user' ? 'user'
-        : (sig.source === 'canvas' || sig.source === 'planner' ? 'user' : `ext:${sig.source}`);
+        : (sig.source === 'canvas' || sig.source === 'planner' ? 'user' : `ext:${sig.source}` as const);
       journal.note({
         actor,
         source: `signal:${sig.source}`,

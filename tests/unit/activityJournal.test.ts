@@ -208,4 +208,34 @@ describe('ActivityJournalService', () => {
     await journal.flush(); // no DB attached — must not throw
     expect(journal.tail(1)).toHaveLength(1);
   });
+
+  it('query filters by actor, verb, source, and ref (ring fallback)', async () => {
+    journal.note({ actor: 'user', source: 'editor', verb: 'opened', object: '"a.md"', ref: 'file:a' });
+    now += 1000;
+    journal.note({ actor: 'ai', source: 'tool', verb: 'ran tool', object: 'web_search' });
+    now += 1000;
+    journal.note({ actor: 'user', source: 'editor', verb: 'closed', object: '"a.md"', ref: 'file:a' });
+    now += 1000;
+    journal.note({ actor: 'ext:budget', source: 'ext:budget', verb: 'imported', object: 'ledger' });
+
+    expect((await journal.query({ actor: 'ai' })).map((e) => e.object)).toEqual(['web_search']);
+    expect((await journal.query({ verb: 'closed' })).map((e) => e.object)).toEqual(['"a.md"']);
+    expect((await journal.query({ source: 'editor' }))).toHaveLength(2);
+    expect((await journal.query({ ref: 'file:a' }))).toHaveLength(2);
+    expect((await journal.query({ actor: 'user', verb: 'opened' })).map((e) => e.verb)).toEqual(['opened']);
+    expect(await journal.query({ actor: 'nobody' })).toEqual([]);
+  });
+
+  it('query filters compose with sinceTs and limit', async () => {
+    for (let i = 0; i < 5; i++) {
+      journal.note({ actor: 'user', source: 'editor', verb: 'opened', object: `doc-${i}`, ref: `file:${i}` });
+      now += 100_000; // outside the coalesce window
+    }
+    const late = await journal.query({ actor: 'user', sinceTs: now - 250_000 });
+    expect(late.length).toBeLessThan(5);
+    const capped = await journal.query({ actor: 'user', limit: 2 });
+    expect(capped).toHaveLength(2);
+    // Newest kept when the limit trims (ring fallback slices from the end).
+    expect(capped[capped.length - 1].object).toBe('doc-4');
+  });
 });

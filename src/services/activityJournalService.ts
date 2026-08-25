@@ -30,11 +30,49 @@ import { Disposable, toDisposable } from '../platform/lifecycle.js';
 import { Emitter, type Event } from '../platform/events.js';
 import type { IDatabaseService } from './serviceTypes.js';
 
-export type ActivityActor = 'user' | 'ai' | 'system' | string; // or 'ext:<toolId>'
+/**
+ * WHO did it. A closed union (SYSTEM_INTEGRITY.md Phase B) — the old
+ * `| string` escape hatch collapsed the type and let misattribution
+ * compile. Extensions are `ext:<toolId>`.
+ */
+export type ActivityActor = 'user' | 'ai' | 'system' | `ext:${string}`;
+
+/**
+ * WHICH TAP produced it. Closed on the write side so new narration is a
+ * deliberate vocabulary decision, not drift; events read back from
+ * storage stay plain strings (older rows predate the union).
+ */
+export type ActivitySource =
+  | 'session' | 'window' | 'command' | 'editor' | 'focus' | 'menu'
+  | 'settings' | 'chat' | 'tool' | 'canvas' | 'notebook' | 'python'
+  | 'surface' | 'app'
+  | `signal:${string}` | `chat:${string}` | `ext:${string}`;
+
+/**
+ * The canonical verb vocabulary. Verbs stay an open string (extensions
+ * narrate domains this list cannot know), but core taps draw from here so
+ * the stream reads as ONE narrator:
+ *
+ *   session   started, ended
+ *   window    left, returned to, maximized, restored
+ *   command   ran
+ *   editor    opened, closed, viewing
+ *   surface   opened, closed, saved, switched to, worked in, moved
+ *   focus     focused
+ *   menu      chose
+ *   settings  changed setting, switched theme to
+ *   chat      asked the assistant, began autonomous turn
+ *   tool      ran tool, tool failed
+ *   content   edited, created, deleted, imported, generated
+ *   runtime   installed, removed, started, stopped, restarted, enabled,
+ *             disabled, ran, finished; failures phrase as `<verb> failed`
+ *             or `failed to <verb>`
+ */
 
 export interface IActivityEvent {
   readonly ts: number;
-  readonly actor: ActivityActor;
+  /** Write-side notes carry ActivityActor; rows read back may predate it. */
+  readonly actor: string;
   readonly verb: string;
   readonly object: string;
   readonly detail?: string;
@@ -57,7 +95,7 @@ export interface IActivityNote {
   readonly verb: string;
   readonly object: string;
   readonly detail?: string;
-  readonly source?: string;
+  readonly source?: ActivitySource;
   readonly ref?: string;
 }
 
@@ -68,13 +106,25 @@ export interface IActivityJournalService {
   tail(n: number): readonly IActivityEvent[];
   /** Human-readable narrative of recent events (for prompts/diagnostics). */
   renderRecent(opts?: { maxLines?: number; sinceMs?: number }): string;
-  /** Query persisted history (falls back to the ring when the DB is closed). */
-  query(opts?: { limit?: number; sinceTs?: number }): Promise<readonly IActivityEvent[]>;
+  /**
+   * Query persisted history (falls back to the ring when the DB is closed).
+   * actor/verb/source/ref are exact-match filters over the stored columns.
+   */
+  query(opts?: ActivityQueryOptions): Promise<readonly IActivityEvent[]>;
   /** Drain pending rows to SQLite. Safe to call any time. */
   flush(): Promise<void>;
   /** Wire the per-workspace database (idempotent; re-arms on open/close). */
   attachDatabase(db: IDatabaseService): void;
   readonly onDidAppend: Event<IActivityEvent>;
+}
+
+export interface ActivityQueryOptions {
+  readonly limit?: number;
+  readonly sinceTs?: number;
+  readonly actor?: string;
+  readonly verb?: string;
+  readonly source?: string;
+  readonly ref?: string;
 }
 
 export const IActivityJournalService =
@@ -92,7 +142,7 @@ export function redactActivityText(s: string): string {
     .replace(LONG_HEX_RE, '[hex]');
 }
 
-function actorLabel(actor: ActivityActor): string {
+function actorLabel(actor: string): string {
   if (actor === 'user') return 'user';
   if (actor === 'ai') return 'assistant';
   if (actor === 'system') return 'app';
@@ -224,16 +274,24 @@ export class ActivityJournalService extends Disposable implements IActivityJourn
     return events.map(renderActivityLine).join('\n');
   }
 
-  async query(opts?: { limit?: number; sinceTs?: number }): Promise<readonly IActivityEvent[]> {
+  async query(opts?: ActivityQueryOptions): Promise<readonly IActivityEvent[]> {
     const limit = Math.max(1, Math.min(500, opts?.limit ?? 100));
     const since = opts?.sinceTs ?? 0;
+    // Exact-match column filters (Phase B): the columns existed, the query
+    // could not reach them.
+    const filters: { column: 'actor' | 'verb' | 'source' | 'ref'; value: string }[] = [];
+    if (typeof opts?.actor === 'string' && opts.actor) filters.push({ column: 'actor', value: opts.actor });
+    if (typeof opts?.verb === 'string' && opts.verb) filters.push({ column: 'verb', value: opts.verb });
+    if (typeof opts?.source === 'string' && opts.source) filters.push({ column: 'source', value: opts.source });
+    if (typeof opts?.ref === 'string' && opts.ref) filters.push({ column: 'ref', value: opts.ref });
     if (this._db?.isOpen && this._tableReady) {
       try {
         await this.flush();
+        const where = ['ts >= ?', ...filters.map((f) => `${f.column} = ?`)].join(' AND ');
         const rows = await this._db.all<{ ts: number; actor: string; verb: string; object: string; detail: string | null; source: string; ref: string | null; count: number }>(
           `SELECT ts, actor, verb, object, detail, source, ref, count
-             FROM activity_log WHERE ts >= ? ORDER BY ts DESC LIMIT ?`,
-          [since, limit],
+             FROM activity_log WHERE ${where} ORDER BY ts DESC LIMIT ?`,
+          [since, ...filters.map((f) => f.value), limit],
         );
         return rows.reverse().map((r) => ({
           ts: Number(r.ts) || 0,
@@ -247,7 +305,9 @@ export class ActivityJournalService extends Disposable implements IActivityJourn
         }));
       } catch { /* fall through to ring */ }
     }
-    return this.tail(limit).filter((e) => e.ts >= since);
+    const matches = (e: IActivityEvent): boolean =>
+      e.ts >= since && filters.every((f) => (e[f.column] ?? '') === f.value);
+    return this._ring.filter(matches).slice(-limit);
   }
 
   attachDatabase(db: IDatabaseService): void {
