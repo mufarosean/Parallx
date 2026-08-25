@@ -992,6 +992,39 @@ export abstract class Layout extends Disposable {
     return this._areaOccupants(area).length > 0;
   }
 
+  /** Last known area per part — kept while a part is HIDDEN so its rail
+   *  icon (and the way back it offers) survives the hide. */
+  private readonly _lastPartArea = new Map<string, BodyArea | 'center'>();
+
+  /**
+   * Which parts have wandered into a rail AREA that is not their home —
+   * each earns an icon in that rail's ribbon, exactly like a docked
+   * container announces itself there. Keyed off GEOMETRY (areaOf), never
+   * off which gesture put the part there. A hidden part keeps its last
+   * known rail so the icon remains a way back.
+   */
+  railIconPlacements(): ReadonlyArray<{ partId: string; rail: 'left' | 'right' }> {
+    const homes: ReadonlyArray<[Part, BodyArea]> = [
+      [this._sidebar, 'left'],
+      [this._panel, 'bottom'],
+      [this._auxiliaryBar, 'right'],
+    ];
+    const out: { partId: string; rail: 'left' | 'right' }[] = [];
+    for (const [part, home] of homes) {
+      let area: BodyArea | 'center' | undefined;
+      if (this._grid.hasView(part.id)) {
+        area = this.areaOf(part.id);
+        this._lastPartArea.set(part.id, area);
+      } else {
+        area = this._lastPartArea.get(part.id);
+      }
+      if ((area === 'left' || area === 'right') && area !== home) {
+        out.push({ partId: part.id, rail: area });
+      }
+    }
+    return out;
+  }
+
   /**
    * Show or hide a body AREA. This is what the titlebar toggles and their
    * shortcuts mean: "hide the bottom" hides whatever occupies the bottom —

@@ -221,6 +221,20 @@ export enum WorkbenchState {
   Disposed = 'disposed',
 }
 
+// Part glyphs — shared by the titlebar area toggles and the ribbon icons
+// a rail-stacked part earns (`part:` icon ids).
+const ICON_SIDEBAR = '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2.5" width="12" height="11" rx="1.6" stroke="currentColor" stroke-width="1.1"/><path d="M6 3v10" stroke="currentColor" stroke-width="1.1"/><rect class="titlebar-layout-fill" x="2.7" y="3.2" width="2.6" height="9.6" rx="0.6" fill="currentColor"/></svg>';
+const ICON_PANEL = '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2.5" width="12" height="11" rx="1.6" stroke="currentColor" stroke-width="1.1"/><path d="M2.5 9.8h11" stroke="currentColor" stroke-width="1.1"/><rect class="titlebar-layout-fill" x="2.7" y="10.2" width="10.6" height="2.5" rx="0.6" fill="currentColor"/></svg>';
+const ICON_AUX = '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2.5" width="12" height="11" rx="1.6" stroke="currentColor" stroke-width="1.1"/><path d="M10 3v10" stroke="currentColor" stroke-width="1.1"/><rect class="titlebar-layout-fill" x="10.7" y="3.2" width="2.6" height="9.6" rx="0.6" fill="currentColor"/></svg>';
+
+const PART_ICON_PREFIX = 'part:';
+
+const PART_ICONS: Record<string, { svg: string; label: string }> = {
+  'workbench.parts.sidebar': { svg: ICON_SIDEBAR, label: 'Side Bar' },
+  'workbench.parts.panel': { svg: ICON_PANEL, label: 'Panel' },
+  'workbench.parts.auxiliarybar': { svg: ICON_AUX, label: 'Secondary Side Bar' },
+};
+
 /**
  * Root workbench shell. Creates and owns all subsystems.
  *
@@ -1913,9 +1927,6 @@ export class Workbench extends Layout {
     // exists, then prepend the three glyph buttons left of the window controls.
     // `is-on` (filled pane region) tracks live visibility.
     {
-      const ICON_SIDEBAR = '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2.5" width="12" height="11" rx="1.6" stroke="currentColor" stroke-width="1.1"/><path d="M6 3v10" stroke="currentColor" stroke-width="1.1"/><rect class="titlebar-layout-fill" x="2.7" y="3.2" width="2.6" height="9.6" rx="0.6" fill="currentColor"/></svg>';
-      const ICON_PANEL = '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2.5" width="12" height="11" rx="1.6" stroke="currentColor" stroke-width="1.1"/><path d="M2.5 9.8h11" stroke="currentColor" stroke-width="1.1"/><rect class="titlebar-layout-fill" x="2.7" y="10.2" width="10.6" height="2.5" rx="0.6" fill="currentColor"/></svg>';
-      const ICON_AUX = '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2.5" width="12" height="11" rx="1.6" stroke="currentColor" stroke-width="1.1"/><path d="M10 3v10" stroke="currentColor" stroke-width="1.1"/><rect class="titlebar-layout-fill" x="10.7" y="3.2" width="2.6" height="9.6" rx="0.6" fill="currentColor"/></svg>';
       const addLayoutControls = (attempt = 0): void => {
         const slot = this._titlebar.rightSlot;
         if (!slot) {
@@ -2035,6 +2046,12 @@ export class Workbench extends Layout {
 
     // Wire icon click events — delegate container switching to handler
     this._register(this._activityBarPart.onDidClickIcon((event) => {
+      // A rail-stacked part's icon toggles that part in place.
+      if (event.iconId.startsWith(PART_ICON_PREFIX)) {
+        this._togglePartById(event.iconId.slice(PART_ICON_PREFIX.length));
+        return;
+      }
+
       // A floating container's icon stays on the primary ribbon and acts
       // as reveal — clicking it flashes its box instead of driving the
       // sidebar.
@@ -2390,6 +2407,12 @@ export class Workbench extends Layout {
     // Click: switch the right rail's container; clicking the active icon
     // toggles the rail — mirroring the left ribbon exactly.
     this._register(rightBar.onDidClickIcon((event) => {
+      // A rail-stacked part's icon toggles that part in place.
+      if (event.iconId.startsWith(PART_ICON_PREFIX)) {
+        this._togglePartById(event.iconId.slice(PART_ICON_PREFIX.length));
+        return;
+      }
+
       const isActive = event.iconId === rightBar.activeIconId && this._auxiliaryBar.visible;
       if (isActive) {
         this.toggleAuxiliaryBar();
@@ -2420,6 +2443,14 @@ export class Workbench extends Layout {
     }));
     syncRibbon();
 
+    // Parts stacked into a rail area announce themselves on that rail's
+    // ribbon, exactly like docked containers do. Synced from geometry on
+    // every tree change — a drag moves a part between areas without any
+    // toggle firing.
+    this._register(this._grid.onDidChange(() => this._syncPartRailIcons()));
+    this._register(this.onDidChangePartVisibility(() => this._syncPartRailIcons()));
+    this._syncPartRailIcons();
+
     const onDragStart = (e: DragEvent): void => {
       if (!e.dataTransfer?.types.includes(CONTAINER_DRAG_TYPE)) return;
       this.setRightActivityBarVisible(true);
@@ -2441,6 +2472,51 @@ export class Workbench extends Layout {
    * floating box can seat. Undefined when the panel does not hold the view
    * (yet) — a waiting shell keeps the spot and retries as views arrive.
    */
+  /** Where each part's rail icon currently lives, for diffing. */
+  private readonly _partRailIcons = new Map<string, 'left' | 'right'>();
+
+  /**
+   * Give each rail-stacked part its ribbon icon, and take back the icons
+   * of parts that left. Idempotent; safe to run on every tree change.
+   */
+  private _syncPartRailIcons(): void {
+    const rightBar = this._activityBarRight;
+    const want = new Map(this.railIconPlacements().map((p) => [p.partId, p.rail]));
+
+    for (const [partId, rail] of [...this._partRailIcons]) {
+      if (want.get(partId) === rail) continue;
+      const bar = rail === 'right' ? rightBar : this._activityBarPart;
+      bar?.removeIcon(PART_ICON_PREFIX + partId);
+      this._partRailIcons.delete(partId);
+    }
+
+    for (const [partId, rail] of want) {
+      if (this._partRailIcons.get(partId) === rail) continue;
+      const meta = PART_ICONS[partId];
+      if (!meta) continue;
+      const bar = rail === 'right' ? rightBar : this._activityBarPart;
+      if (!bar) continue;
+      bar.addIcon({
+        id: PART_ICON_PREFIX + partId,
+        icon: meta.svg,
+        isSvg: true,
+        label: meta.label,
+        source: 'builtin',
+        priority: 500,
+      });
+      this._partRailIcons.set(partId, rail);
+    }
+
+    // A part icon can be the only thing keeping the right ribbon alive.
+    if (rightBar) this.setRightActivityBarVisible(rightBar.getIcons().length > 0);
+  }
+
+  private _togglePartById(partId: string): void {
+    if (partId === this._sidebar.id) this.toggleSidebar();
+    else if (partId === this._panel.id) this.togglePanel();
+    else if (partId === this._auxiliaryBar.id) this.toggleAuxiliaryBar();
+  }
+
   private _undockPanelView(viewId: string): { vc: ViewContainer; label: string } | undefined {
     const panel = this._panelContainer;
     if (!panel) return undefined;

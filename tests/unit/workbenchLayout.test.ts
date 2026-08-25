@@ -952,3 +952,65 @@ describe('area toggles — regions, not hardcoded parts', () => {
     expect(layout.areaOf('workbench.parts.auxiliarybar')).toBe('right');
   });
 });
+
+describe('rail icons for wandering parts', () => {
+  let container: HTMLElement;
+  let layout: TestLayout;
+  let parts: TestLayout['parts'];
+
+  const build = () => {
+    container = document.createElement('div');
+    Object.defineProperty(container, 'clientWidth', { value: WIDTH, configurable: true });
+    Object.defineProperty(container, 'clientHeight', { value: HEIGHT, configurable: true });
+    document.body.appendChild(container);
+    parts = {
+      titlebar: fakePart('workbench.parts.titlebar'),
+      activityBar: fakePart('workbench.parts.activitybar'),
+      sidebar: fakePart('workbench.parts.sidebar'),
+      editor: fakePart('workbench.parts.editor'),
+      panel: fakePart('workbench.parts.panel'),
+      auxiliaryBar: fakePart('workbench.parts.auxiliarybar', false),
+      statusBar: fakePart('workbench.parts.statusbar'),
+    };
+    layout = new TestLayout(container, parts);
+  };
+
+  afterEach(() => {
+    layout.dispose();
+    container.remove();
+  });
+
+  it('parts at home earn no icon', () => {
+    build();
+    expect(layout.railIconPlacements()).toEqual([]);
+  });
+
+  it('a panel stacked into a rail area earns that rail’s icon, keyed off geometry', () => {
+    build();
+    layout.movePartToEdge('workbench.parts.panel', Orientation.Horizontal, false);
+    expect(layout.railIconPlacements()).toEqual([
+      { partId: 'workbench.parts.panel', rail: 'right' },
+    ]);
+
+    layout.movePartToEdge('workbench.parts.panel', Orientation.Horizontal, true);
+    expect(layout.railIconPlacements()).toEqual([
+      { partId: 'workbench.parts.panel', rail: 'left' },
+    ]);
+
+    layout.resetPartPlacement('workbench.parts.panel');
+    expect(layout.railIconPlacements()).toEqual([]);
+  });
+
+  it('a HIDDEN wandering part keeps its icon — the way back survives the hide', () => {
+    build();
+    layout.movePartToEdge('workbench.parts.panel', Orientation.Horizontal, false);
+    layout.railIconPlacements(); // record the live area
+    layout.togglePanel(); // hide it in place
+    expect(layout.grid.hasView('workbench.parts.panel')).toBe(false);
+    expect(layout.railIconPlacements()).toEqual([
+      { partId: 'workbench.parts.panel', rail: 'right' },
+    ]);
+    layout.togglePanel(); // and the way back still lands in that rail
+    expect(layout.areaOf('workbench.parts.panel')).toBe('right');
+  });
+});

@@ -865,6 +865,19 @@ html, body {
   box-shadow: none;
 }
 
+/* The right ribbon is a MIRROR of the left one, not a copy: its accent
+   indicator hugs its own window edge (the RIGHT), and a divider line
+   separates it from the sidebar content it flanks — the card gaps alone
+   do not read as a boundary on that side. */
+.part-workbench-parts-activitybar-right {
+  border-left: 1px solid var(--vscode-activityBar-border, var(--px-divider));
+}
+.part-workbench-parts-activitybar-right .activity-bar-item.active::before {
+  left: auto;
+  right: 0;
+  border-radius: var(--px-radius-full) 0 0 var(--px-radius-full);
+}
+
 /* A ribbon accepting a container drop — same drop tokens as every other
    drop affordance, so the gesture reads as one system. */
 .activity-bar--drop-target {
