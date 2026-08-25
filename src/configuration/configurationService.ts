@@ -17,6 +17,7 @@ import type {
   IConfigurationPropertySchema,
   IRegisteredConfigurationSection,
   IConfigurationServiceShape,
+  IConfigurationInspection,
   ConfigurationValueType,
 } from './configurationTypes.js';
 
@@ -148,6 +149,22 @@ export class ConfigurationService extends Disposable implements IConfigurationSe
    */
   getAllSections(): readonly IRegisteredConfigurationSection[] {
     return this._registry.getAllSections();
+  }
+
+  /**
+   * Which precedence branch answers for a key — mirrors _getValue exactly
+   * (SYSTEM_INTEGRITY.md Phase C: reads no longer discard where the value
+   * came from).
+   */
+  inspect(key: string): IConfigurationInspection {
+    const schemaDefault = this._registry.getDefault(key);
+    if (this._values.has(key)) {
+      return { key, value: this._values.get(key), origin: 'explicit', schemaDefault };
+    }
+    if (schemaDefault !== undefined) {
+      return { key, value: schemaDefault, origin: 'default', schemaDefault };
+    }
+    return { key, value: undefined, origin: 'unset' };
   }
 
   // ── Internal Read/Write ──────────────────────────────────────────────

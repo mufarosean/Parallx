@@ -118,6 +118,7 @@ import type { ConfigurationRegistry } from '../configuration/configurationRegist
 
 // Tool Enablement (M6 Capability 0)
 import { ToolEnablementService } from '../tools/toolEnablementService.js';
+import { ToolEnablementState } from '../tools/toolEnablement.js';
 
 // M66 — Unified linking (link contracts registered per extension)
 import { ILinkResolverService, LinkResolverService } from '../links/linkResolverService.js';
@@ -3056,6 +3057,19 @@ export class Workbench extends Layout {
     await this._toolEnablementService.load();
     this._services.registerInstance(IToolEnablementService, this._toolEnablementService);
 
+    // Enablement flips are user decisions about the app's shape — journaled
+    // (Phase C). The actor is 'user': the only doors are the Gallery toggles.
+    if (this._services.has(IActivityJournalService)) {
+      const enablementJournal = this._services.get(IActivityJournalService);
+      this._register(this._toolEnablementService.onDidChangeEnablement((e) => {
+        enablementJournal.note({
+          actor: 'user', source: 'runtime',
+          verb: e.newState === ToolEnablementState.EnabledGlobally ? 'enabled' : 'disabled',
+          object: `tool ${e.toolId}`,
+        });
+      }));
+    }
+
     // Wire enablement service into API factory deps (created before enablement service)
     (apiFactoryDeps as any).toolEnablementService = this._toolEnablementService;
 
@@ -3140,6 +3154,23 @@ export class Workbench extends Layout {
       // typed grammar (the tap only ever writes actor 'user', source 'surface').
       this._register(new SurfaceActivityTap(this._tree, surfaceRegistry,
         (n) => journal.note(n as Parameters<typeof journal.note>[0])));
+
+      // ── Storage failures reach the person (SYSTEM_INTEGRITY.md Phase C).
+      // A failed state read or write used to die in the console while the
+      // app silently continued from an empty cache.
+      const surfaceStorageErrors = (storage: { onDidError?: (l: (e: { kind: string; key: string; message: string }) => void) => IDisposable } | undefined, label: string): void => {
+        if (!storage?.onDidError) return;
+        this._register(storage.onDidError((e) => {
+          journal.note({
+            actor: 'system', source: 'storage', verb: 'storage failed', object: label,
+            detail: `${e.kind}${e.key ? ` key=${e.key}` : ''}: ${e.message}`.slice(0, 200),
+          });
+          const notifications = this._services.tryGet(INotificationService);
+          void notifications?.warn(`${label[0].toUpperCase()}${label.slice(1)} failed (${e.kind}). Recent changes may not persist.`);
+        }));
+      };
+      surfaceStorageErrors(this._storage, 'workspace storage');
+      surfaceStorageErrors(this._globalStorage, 'global storage');
 
       // Python runs are consequential enough that they belong in the same
       // narrative as everything else the user and assistant did.
@@ -3231,6 +3262,33 @@ export class Workbench extends Layout {
       areaOf: (viewId) => this.areaOf(viewId),
       railIconPlacements: () => this.railIconPlacements(),
     }));
+
+    // ── Tool lifecycle in the journal (Phase C). Successful boot
+    // activations stay quiet — nineteen "activated" lines would bury the
+    // heartbeat's context, and introspection carries their timing — but a
+    // failure, a deactivation, or a forced shutdown is a story the stream
+    // must tell, and a forced shutdown must reach the person too.
+    if (this._services.has(IActivityJournalService)) {
+      const lifecycleJournal = this._services.get(IActivityJournalService);
+      this._register(this._toolActivator.onDidActivate((e) => {
+        if (e.success) return;
+        lifecycleJournal.note({
+          actor: 'system', source: 'runtime', verb: 'failed to activate', object: e.toolId,
+          detail: e.error ? e.error.slice(0, 200) : undefined,
+        });
+      }));
+      this._register(this._toolActivator.onDidDeactivate((e) => {
+        lifecycleJournal.note({ actor: 'system', source: 'runtime', verb: 'deactivated', object: e.toolId });
+      }));
+      this._register(errorService.onWillForceDeactivate((toolId) => {
+        lifecycleJournal.note({
+          actor: 'system', source: 'runtime', verb: 'force-deactivated', object: toolId,
+          detail: 'error threshold reached',
+        });
+        const notifications = this._services.tryGet(INotificationService);
+        void notifications?.error(`Tool "${toolId}" was deactivated after repeated errors. Its views and commands are unavailable until the app restarts.`);
+      }));
+    }
 
     // Wire activation events to the activator
     this._register(activationEvents.onDidRequestActivation(async (request) => {

@@ -98,4 +98,19 @@ describe('the manifest settings bridge — one store, both readers', () => {
     await bare.setValue('testTool.color', 'green');
     expect(bare.getValue('testTool.color')).toBe('green');
   });
+
+  it('ConfigurationService.inspect names the precedence branch (Phase C)', async () => {
+    const cfg = new ConfigurationService(memStorage(), new ConfigurationRegistry());
+    await cfg.load();
+    cfg.registerSchema('testTool', 'Test', {
+      'testTool.mode': { type: 'string', default: 'auto', description: 'mode' },
+    });
+
+    expect(cfg.inspect('testTool.mode')).toMatchObject({ origin: 'default', value: 'auto', schemaDefault: 'auto' });
+    expect(cfg.inspect('testTool.unknown')).toMatchObject({ origin: 'unset', value: undefined });
+
+    await cfg.getConfiguration('testTool').update('mode', 'manual');
+    expect(cfg.inspect('testTool.mode')).toMatchObject({ origin: 'explicit', value: 'manual', schemaDefault: 'auto' });
+    cfg.dispose();
+  });
 });

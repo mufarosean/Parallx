@@ -125,4 +125,20 @@ export interface IConfigurationServiceShape extends IDisposable {
 
   /** Get all registered sections. */
   getAllSections(): readonly IRegisteredConfigurationSection[];
+
+  /**
+   * Which precedence branch produces a key's value (SYSTEM_INTEGRITY.md
+   * Phase C): 'explicit' when a persisted user value exists, 'default'
+   * when the schema default answers, 'unset' when neither does.
+   */
+  inspect(key: string): IConfigurationInspection;
+}
+
+/** Where a configuration value came from. */
+export interface IConfigurationInspection {
+  readonly key: string;
+  readonly value: unknown;
+  readonly origin: 'explicit' | 'default' | 'unset';
+  /** The schema default, when a schema is registered for the key. */
+  readonly schemaDefault?: unknown;
 }

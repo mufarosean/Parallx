@@ -44,8 +44,8 @@ export type ActivityActor = 'user' | 'ai' | 'system' | `ext:${string}`;
  */
 export type ActivitySource =
   | 'session' | 'window' | 'command' | 'editor' | 'focus' | 'menu'
-  | 'settings' | 'chat' | 'tool' | 'canvas' | 'notebook' | 'python'
-  | 'surface' | 'app'
+  | 'settings' | 'chat' | 'tool' | 'runtime' | 'storage' | 'canvas'
+  | 'notebook' | 'python' | 'surface' | 'app'
   | `signal:${string}` | `chat:${string}` | `ext:${string}`;
 
 /**
@@ -63,10 +63,14 @@ export type ActivitySource =
  *   settings  changed setting, switched theme to
  *   chat      asked the assistant, began autonomous turn
  *   tool      ran tool, tool failed
+ *   runtime   failed to activate, deactivated, force-deactivated,
+ *             enabled, disabled (extension lifecycle; successful boot
+ *             activations stay quiet — introspection carries their timing)
+ *   storage   storage failed
  *   content   edited, created, deleted, imported, generated
- *   runtime   installed, removed, started, stopped, restarted, enabled,
- *             disabled, ran, finished; failures phrase as `<verb> failed`
- *             or `failed to <verb>`
+ *   processes installed, removed, started, stopped, restarted, ran,
+ *             finished; failures phrase as `<verb> failed` or
+ *             `failed to <verb>`
  */
 
 export interface IActivityEvent {

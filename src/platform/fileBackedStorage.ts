@@ -68,6 +68,10 @@ export class FileBackedGlobalStorage implements IStorage, IDisposable {
       } catch (err) {
         console.warn(`[FileBackedGlobalStorage] Load failed:`, err);
         this._cache = new Map();
+        // The load-throw path used to be the ONE storage failure that never
+        // fired onDidError (SYSTEM_INTEGRITY.md Phase C) — silently starting
+        // from an empty cache is the worst failure to keep quiet.
+        this._onDidError.fire({ kind: StorageErrorKind.Unknown, key: '', message: err instanceof Error ? err.message : String(err) });
       } finally {
         this._loading = undefined;
       }
@@ -187,6 +191,9 @@ export class FileBackedWorkspaceStorage implements IStorage, IDisposable {
       } catch (err) {
         console.warn(`[FileBackedWorkspaceStorage] Load failed:`, err);
         this._cache = new Map();
+        // Same contract as the global store: a load failure is a storage
+        // error the listener must hear, not a silent empty start.
+        this._onDidError.fire({ kind: StorageErrorKind.Unknown, key: '', message: err instanceof Error ? err.message : String(err) });
       } finally {
         this._loading = undefined;
       }

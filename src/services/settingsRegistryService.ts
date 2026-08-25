@@ -119,6 +119,22 @@ export interface ISettingChange {
   readonly origin: SettingsWriteOrigin;
 }
 
+/** Where a setting's effective value comes from (the read side's origin). */
+export interface ISettingInspection {
+  readonly key: string;
+  readonly scope: SettingScope;
+  /**
+   * The precedence branch that answers getValue for this key:
+   * 'binding' (an external store owns it), 'secret' (safeStorage; the
+   * value is never surfaced here), 'override' (a persisted user or
+   * workspace value), or 'default' (the schema default).
+   */
+  readonly origin: 'binding' | 'secret' | 'override' | 'default';
+  /** The effective value; '[secret]' for secret keys. */
+  readonly value: unknown;
+  readonly schemaDefault: unknown;
+}
+
 // ─── Service interface ─────────────────────────────────────────────────────
 
 export interface ISettingsRegistryService {
@@ -143,6 +159,13 @@ export interface ISettingsRegistryService {
 
   /** Read effective value (override → default), with binding precedence. */
   getValue<T = unknown>(key: string): T;
+
+  /**
+   * Which precedence branch answers for a key — mirrors getValue exactly
+   * (SYSTEM_INTEGRITY.md Phase C). Secrets report origin 'secret' and are
+   * never read. Throws on unregistered keys, like getValue.
+   */
+  inspect(key: string): ISettingInspection;
 
   /**
    * Write a value. Validates against schema; throws on type/range mismatch.
@@ -272,6 +295,26 @@ export class SettingsRegistryService extends Disposable implements ISettingsRegi
       return overrides[key] as T;
     }
     return schema.default as T;
+  }
+
+  inspect(key: string): ISettingInspection {
+    const schema = this._schemas.get(key);
+    if (!schema) {
+      throw new Error(`[SettingsRegistry] unregistered key: ${key}`);
+    }
+    const base = { key, scope: schema.scope, schemaDefault: schema.default };
+    const binding = this._bindings.get(key);
+    if (binding) {
+      return { ...base, origin: 'binding', value: binding.getValue() };
+    }
+    if (schema.secret) {
+      return { ...base, origin: 'secret', value: '[secret]' };
+    }
+    const overrides = schema.scope === 'workspace' ? this._workspaceOverrides : this._userOverrides;
+    if (Object.prototype.hasOwnProperty.call(overrides, key)) {
+      return { ...base, origin: 'override', value: overrides[key] };
+    }
+    return { ...base, origin: 'default', value: schema.default };
   }
 
   async getSecretValue(key: string): Promise<string | null> {

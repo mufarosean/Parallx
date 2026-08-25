@@ -245,4 +245,30 @@ describe('SettingsRegistryService — D1 contract', () => {
     const keys = registry.getAllSchemas().map((s) => s.key);
     expect(keys).toEqual(['a.thing', 'b.thing']);
   });
+
+  it('inspect names the precedence branch getValue would take (Phase C)', async () => {
+    registry.register({
+      key: 'ui.size', type: 'number', default: 14, scope: 'user', description: 'size',
+    });
+    expect(registry.inspect('ui.size')).toMatchObject({ origin: 'default', value: 14, schemaDefault: 14 });
+
+    await registry.setValue('ui.size', 18);
+    expect(registry.inspect('ui.size')).toMatchObject({ origin: 'override', value: 18 });
+
+    // A bound key answers from its binding, whatever overrides exist.
+    registry.register({
+      key: 'ext.flag', type: 'boolean', default: false, scope: 'user', description: 'flag',
+    });
+    let bound = true;
+    registry.bind<boolean>('ext.flag', { getValue: () => bound, setValue: (v) => { bound = v; } });
+    expect(registry.inspect('ext.flag')).toMatchObject({ origin: 'binding', value: true });
+
+    // Secrets report the branch but never the value.
+    registry.register({
+      key: 'ai.key', type: 'string', default: '', scope: 'user', description: 'key', secret: true,
+    });
+    expect(registry.inspect('ai.key')).toMatchObject({ origin: 'secret', value: '[secret]' });
+
+    expect(() => registry.inspect('no.such')).toThrow(/unregistered/);
+  });
 });
