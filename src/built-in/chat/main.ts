@@ -111,7 +111,7 @@ import {
   createSubagentTurnExecutor,
   createSubagentAnnouncer,
 } from '../../openclaw/openclawSubagentExecutor.js';
-import { IEditorService, IToolRegistryService } from '../../services/serviceTypes.js';
+import { IEditorService, IToolRegistryService, IConfigurationService } from '../../services/serviceTypes.js';
 import { registerManifestConfiguration } from '../../services/manifestSettings.js';
 import type { IBuiltInToolFileSystem } from './chatTypes.js';
 import { PromptFileService } from '../../services/promptFileService.js';
@@ -557,12 +557,19 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     // Settings hub. Sweep already-registered tools, then watch for new ones.
     if (api.services.has(IToolRegistryService)) {
       const toolRegistry = api.services.get<import('../../services/serviceTypes.js').IToolRegistryService>(IToolRegistryService);
+      // The bridge (STANDARDIZATION.md P1): every manifest key BINDS to the
+      // ConfigurationService, so the store extensions read is the store the
+      // Settings hub writes. Without it the hub silently edited a value no
+      // extension ever saw.
+      const configBridge = api.services.has(IConfigurationService)
+        ? api.services.get<import('../../services/serviceTypes.js').IConfigurationService>(IConfigurationService)
+        : undefined;
       for (const entry of toolRegistry.getAll()) {
-        registerManifestConfiguration(settingsRegistry, entry.description.manifest as never);
+        registerManifestConfiguration(settingsRegistry, entry.description.manifest as never, configBridge);
       }
       context.subscriptions.push(
         toolRegistry.onDidRegisterTool((e) => {
-          registerManifestConfiguration(settingsRegistry, e.description.manifest as never);
+          registerManifestConfiguration(settingsRegistry, e.description.manifest as never, configBridge);
         }),
       );
     }

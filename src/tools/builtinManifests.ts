@@ -334,6 +334,41 @@ export const CHAT_MANIFEST: IToolManifest = {
     views: [
       { id: 'view.chat', name: 'Chat', defaultContainerId: 'chat-container' },
     ],
+    // Live chat.* keys the runtime reads (main.ts). Built-ins load from THIS
+    // manifest, not parallx-manifest.json — these keys were declared only
+    // there and therefore registered NOWHERE: stuck at their hardcoded
+    // fallbacks and invisible in Settings. Deliberately EXCLUDED:
+    // chat.defaultModel / chat.contextLength (legacy fallbacks superseded by
+    // the unified AI config — registering them would duplicate the Model
+    // section) and chat.agent.* (superseded by the permission model).
+    configuration: [
+      {
+        title: 'Chat',
+        properties: {
+          'chat.ollama.baseUrl': {
+            type: 'string',
+            default: 'http://localhost:11434',
+            description: 'Ollama server URL.',
+          },
+          'chat.defaultMode': {
+            type: 'string',
+            default: 'agent',
+            description: 'Chat mode a new session starts in.',
+            enum: ['ask', 'edit', 'agent'],
+          },
+          'chat.fontSize': {
+            type: 'number',
+            default: 13,
+            description: 'Chat message font size in pixels.',
+          },
+          'chat.fontFamily': {
+            type: 'string',
+            default: '',
+            description: 'Chat message font family (empty = app font).',
+          },
+        },
+      },
+    ],
   },
 };
 

@@ -5,8 +5,20 @@
 // This maps the manifest form into the same unified registry, so declared
 // settings show up in the Settings hub and read/write through one service —
 // the standard way new extensions wire settings into the app.
+//
+// THE BRIDGE (standardization P1): manifest keys are ALSO what extensions
+// read through `parallx.workspace.getConfiguration()` — a different store
+// (`config:` keys) from the registry's `settings.overrides`. Before this
+// bridge the two never met: editing an extension setting in the Settings
+// hub wrote a value the extension never read (media-organizer documents
+// the defect in its own comments). Every manifest key now registers WITH
+// a binding onto the ConfigurationService, making the `config:` store the
+// single truth: hub edits write it, extension reads see them, extension
+// writes flow back into the hub via the change event.
 
-import type { ISettingSchema, SettingType } from './settingsRegistryService.js';
+import type { ISettingSchema, SettingType, ISettingBinding } from './settingsRegistryService.js';
+import { Emitter } from '../platform/events.js';
+import type { Event } from '../platform/events.js';
 
 interface ManifestConfigProperty {
   type?: string;
@@ -32,6 +44,16 @@ interface ManifestLike {
 interface RegistryLike {
   register(schema: ISettingSchema): void;
   getSchema(key: string): ISettingSchema | undefined;
+  bind?<T>(key: string, binding: ISettingBinding<T>): void;
+}
+
+/** Minimal slice of the ConfigurationService the binding routes through. */
+export interface ConfigBridgeLike {
+  getConfiguration(section?: string): {
+    get<T>(key: string, defaultValue?: T): T | undefined;
+    update(key: string, value: unknown): Promise<void>;
+  };
+  onDidChangeConfiguration?: Event<{ affectedKeys: readonly string[] }>;
 }
 
 function mapType(t: string | undefined, hasEnum: boolean): SettingType | null {
@@ -60,8 +82,16 @@ function defaultFor(type: SettingType, prop: ManifestConfigProperty): unknown {
  * Register every `contributes.configuration` property from a manifest into the
  * unified settings registry. Idempotent — keys already registered (e.g. by the
  * extension imperatively) are skipped.
+ *
+ * When `config` is provided, each key is BOUND to the ConfigurationService:
+ * the `config:` store the extension reads becomes the single truth, and hub
+ * edits finally reach the extension (and vice versa, live).
  */
-export function registerManifestConfiguration(registry: RegistryLike, manifest: ManifestLike): void {
+export function registerManifestConfiguration(
+  registry: RegistryLike,
+  manifest: ManifestLike,
+  config?: ConfigBridgeLike,
+): void {
   const sections = manifest.contributes?.configuration;
   if (!sections || sections.length === 0) return;
 
@@ -87,9 +117,38 @@ export function registerManifestConfiguration(registry: RegistryLike, manifest: 
       };
       try {
         registry.register(schema);
+        if (config && registry.bind) {
+          registry.bind(key, _configBinding(key, schema.default, config));
+        }
       } catch (err) {
         console.warn(`[manifestSettings] failed to register "${key}" from "${manifest.id}":`, err);
       }
     }
   }
+}
+
+/** A registry binding that routes one key through the ConfigurationService. */
+function _configBinding(key: string, schemaDefault: unknown, config: ConfigBridgeLike): ISettingBinding {
+  const cfg = config.getConfiguration();
+
+  // External mutations (the extension calling cfg.update) propagate into
+  // the registry so the hub stays live. One filtered subscription per key —
+  // manifest keys are bounded and app-lifetime, matching bind() semantics.
+  let onDidChange: Event<unknown> | undefined;
+  if (config.onDidChangeConfiguration) {
+    const emitter = new Emitter<unknown>();
+    config.onDidChangeConfiguration((e) => {
+      if (e.affectedKeys.includes(key)) emitter.fire(cfg.get(key) ?? schemaDefault);
+    });
+    onDidChange = emitter.event;
+  }
+
+  return {
+    getValue: () => {
+      const v = cfg.get(key);
+      return v === undefined ? schemaDefault : v;
+    },
+    setValue: (value) => cfg.update(key, value),
+    ...(onDidChange ? { onDidChange } : {}),
+  };
 }
