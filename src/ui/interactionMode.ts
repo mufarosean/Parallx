@@ -299,32 +299,35 @@ export interface PointerDragHandle {
  * with no button held and text selection dead. Every end path here
  * routes through one cleanup.
  */
-export function beginPointerDrag(start: PointerEvent, options: PointerDragOptions): PointerDragHandle {
+export function beginPointerDrag(start: PointerEvent | MouseEvent | null, options: PointerDragOptions): PointerDragHandle {
   let ended = false;
   const body = document.body;
   const prevCursor = body.style.cursor;
   const prevUserSelect = body.style.userSelect;
+  const pointerId = start && 'pointerId' in start ? (start as PointerEvent).pointerId : undefined;
 
   if (options.cursor) body.style.cursor = options.cursor;
   if (options.disableUserSelect ?? true) body.style.userSelect = 'none';
 
-  if (options.captureTarget && start.pointerId !== undefined) {
-    try { options.captureTarget.setPointerCapture(start.pointerId); } catch { /* capture unsupported */ }
+  if (options.captureTarget && pointerId !== undefined) {
+    try { options.captureTarget.setPointerCapture(pointerId); } catch { /* capture unsupported */ }
   }
 
   const end = (canceled: boolean): void => {
     if (ended) return;
     ended = true;
     document.removeEventListener('pointermove', onMove);
+    document.removeEventListener('mousemove', onMove as EventListener);
     document.removeEventListener('pointerup', onUp);
+    document.removeEventListener('mouseup', onUp);
     document.removeEventListener('pointercancel', onCancel);
     document.removeEventListener('keydown', onKey, true);
     window.removeEventListener('blur', onBlur);
     options.captureTarget?.removeEventListener('lostpointercapture', onCancel);
     body.style.cursor = prevCursor;
     body.style.userSelect = prevUserSelect;
-    if (options.captureTarget && start.pointerId !== undefined) {
-      try { options.captureTarget.releasePointerCapture(start.pointerId); } catch { /* already released */ }
+    if (options.captureTarget && pointerId !== undefined) {
+      try { options.captureTarget.releasePointerCapture(pointerId); } catch { /* already released */ }
     }
     options.onEnd(canceled);
   };
@@ -341,8 +344,14 @@ export function beginPointerDrag(start: PointerEvent, options: PointerDragOption
     }
   };
 
+  // Both event families: real input fires pointer events (and mouse
+  // shadows), synthetic test events often fire ONLY mouse events. The
+  // single-end guard makes the doubling harmless; onMove is delta-based
+  // at every call site, so a shadowed move recomputes the same answer.
   document.addEventListener('pointermove', onMove);
+  document.addEventListener('mousemove', onMove as EventListener);
   document.addEventListener('pointerup', onUp);
+  document.addEventListener('mouseup', onUp);
   document.addEventListener('pointercancel', onCancel);
   document.addEventListener('keydown', onKey, true);
   window.addEventListener('blur', onBlur);

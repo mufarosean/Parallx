@@ -45,7 +45,8 @@ import './pdfEditorPane.css';
 import { EditorPane } from '../../editor/editorPane.js';
 import type { IEditorInput } from '../../editor/editorInput.js';
 import { PdfEditorInput } from './pdfEditorInput.js';
-import { $, hide, show, startDrag, endDrag } from '../../ui/dom.js';
+import { $, hide, show } from '../../ui/dom.js';
+import { beginPointerDrag } from '../../ui/interactionMode.js';
 import { ContextMenu } from '../../ui/contextMenu.js';
 import { toDisposable } from '../../platform/lifecycle.js';
 import type { IStorage } from '../../platform/storage.js';
@@ -1897,26 +1898,23 @@ export class PdfEditorPane extends EditorPane {
       let startX = startEvt.clientX;
       let currentW = this._outlineSidebar.offsetWidth;
       this._outlineSash.classList.add('active');
-      startDrag('col-resize');
 
-      const onMouseMove = (e: MouseEvent): void => {
-        const delta = e.clientX - startX;
-        startX = e.clientX;
-        currentW = Math.max(MIN_W, Math.min(MAX_W, currentW + delta));
-        this._outlineSidebar.style.width = `${currentW}px`;
-      };
-
-      const onMouseUp = (): void => {
-        document.removeEventListener('mousemove', onMouseMove);
-        document.removeEventListener('mouseup', onMouseUp);
-        this._outlineSash.classList.remove('active');
-        endDrag();
-        // Persist width
-        this._globalStorage?.set('parallx.pdfOutlineWidth', String(currentW));  // fire-and-forget
-      };
-
-      document.addEventListener('mousemove', onMouseMove);
-      document.addEventListener('mouseup', onMouseUp);
+      // Guarded drag (interactionMode.ts): every end path — release,
+      // Escape, window blur — runs the one cleanup.
+      beginPointerDrag(startEvt, {
+        id: 'pdf-outline-sash',
+        cursor: 'col-resize',
+        onMove: (e) => {
+          const delta = e.clientX - startX;
+          startX = e.clientX;
+          currentW = Math.max(MIN_W, Math.min(MAX_W, currentW + delta));
+          this._outlineSidebar.style.width = `${currentW}px`;
+        },
+        onEnd: () => {
+          this._outlineSash.classList.remove('active');
+          this._globalStorage?.set('parallx.pdfOutlineWidth', String(currentW)); // fire-and-forget
+        },
+      });
     });
   }
 

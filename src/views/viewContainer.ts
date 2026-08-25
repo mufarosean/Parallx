@@ -4,7 +4,8 @@ import { Disposable, DisposableStore, IDisposable } from '../platform/lifecycle.
 import { Emitter, Event } from '../platform/events.js';
 import { CONTAINER_DRAG_TYPE, VIEW_TAB_DRAG_TYPE } from '../platform/dragTypes.js';
 import { Orientation } from '../layout/layoutTypes.js';
-import { $, addDisposableListener, hide, show, startDrag, endDrag } from '../ui/dom.js';
+import { $, addDisposableListener, hide, show } from '../ui/dom.js';
+import { beginPointerDrag } from '../ui/interactionMode.js';
 import { IGridView } from '../layout/gridView.js';
 import { IView } from './view.js';
 import { ContextMenu, type IContextMenuItem } from '../ui/contextMenu.js';
@@ -763,15 +764,14 @@ export class ViewContainer extends Disposable implements IGridView {
       belowView?.layout(this._width, newBelow);
     };
 
-    const onMouseUp = (): void => {
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
-      endDrag();
-    };
-
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
-    startDrag('row-resize');
+    // Guarded drag (interactionMode.ts): Escape/blur/lost-pointer all end
+    // it through one cleanup that restores the app-wide drag styles.
+    beginPointerDrag(null, {
+      id: 'section-sash',
+      cursor: 'row-resize',
+      onMove: onMouseMove,
+      onEnd: () => {},
+    });
   }
 
   /**

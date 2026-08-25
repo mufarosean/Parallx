@@ -15,6 +15,7 @@ import { rafThrottle } from '../../../platform/rafThrottle.js';
 import { Emitter } from '../../../platform/events.js';
 import type { Event } from '../../../platform/events.js';
 import { $, append, addDisposableListener } from '../../../ui/dom.js';
+import { beginPointerDrag } from '../../../ui/interactionMode.js';
 import type { OllamaProvider } from '../providers/ollamaProvider.js';
 import { ChatInputPart } from '../input/chatInputPart.js';
 import { chatIcons } from '../chatIcons.js';
@@ -1196,18 +1197,6 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       });
     };
 
-    const onMouseUp = () => {
-      if (!dragging) return;
-      dragging = false;
-      cancelAnimationFrame(sashRafId);
-      this._sash.classList.remove('parallx-chat-sidebar-sash--active');
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      this._saveSidebarWidth(this._sidebarWidth);
-    };
-
     this._register(addDisposableListener(this._sash, 'mousedown', (e: MouseEvent) => {
       // Only start drag when sidebar is visible
       if (!this._sessionSidebar.isVisible) return;
@@ -1216,10 +1205,23 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       startX = e.clientX;
       startWidth = this._sessionSidebar.rootElement.getBoundingClientRect().width;
       this._sash.classList.add('parallx-chat-sidebar-sash--active');
-      document.body.style.cursor = 'col-resize';
-      document.body.style.userSelect = 'none';
-      document.addEventListener('mousemove', onMouseMove);
-      document.addEventListener('mouseup', onMouseUp);
+
+      // Guarded drag (interactionMode.ts): this was the worst of the four
+      // sash copies — it set body user-select:none inline with only a
+      // mouseup to undo it, so a release outside the window killed text
+      // selection app-wide until recovery.
+      beginPointerDrag(e, {
+        id: 'chat-sidebar-sash',
+        cursor: 'col-resize',
+        onMove: onMouseMove,
+        onEnd: () => {
+          if (!dragging) return;
+          dragging = false;
+          cancelAnimationFrame(sashRafId);
+          this._sash.classList.remove('parallx-chat-sidebar-sash--active');
+          this._saveSidebarWidth(this._sidebarWidth);
+        },
+      });
     }));
 
     // Popout layout: width is CSS-driven, and the sash stays hidden — so the

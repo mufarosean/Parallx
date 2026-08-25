@@ -2,7 +2,7 @@
 
 import { Disposable, DisposableStore, toDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
-import { startDrag, endDrag } from '../ui/dom.js';
+import { beginPointerDrag } from '../ui/interactionMode.js';
 import { Orientation, SizingMode, SashState } from './layoutTypes.js';
 import { IGridView } from './gridView.js';
 import { GridBranchNode, GridLeafNode, GridNode, GridNodeType } from './gridNode.js';
@@ -1146,49 +1146,41 @@ export class Grid extends Disposable {
       }
     };
 
-    const onMouseMove = (moveEvent: MouseEvent) => {
-      if (!this._sashDragState || didSnap) return;
-      const currentPos = isHorizontal ? moveEvent.clientX : moveEvent.clientY;
-      const delta = currentPos - this._sashDragState.startPos;
-      if (Math.abs(delta) < 1) return;
+    // The drag rides the guarded primitive (interactionMode.ts): pointer
+    // up/cancel, lost capture, Escape and window blur ALL route to one
+    // cleanup — a release outside the window can no longer leave the app
+    // resizing with no button held and text selection dead app-wide.
+    const drag = beginPointerDrag(e as unknown as PointerEvent, {
+      id: 'grid-sash',
+      cursor: isHorizontal ? 'col-resize' : 'row-resize',
+      onMove: (moveEvent) => {
+        if (!this._sashDragState || didSnap) return;
+        const currentPos = isHorizontal ? moveEvent.clientX : moveEvent.clientY;
+        const delta = currentPos - this._sashDragState.startPos;
+        if (Math.abs(delta) < 1) return;
 
-      pendingDelta = delta;
-      if (!rafId) {
-        rafId = requestAnimationFrame(applyResize);
-      }
-    };
+        pendingDelta = delta;
+        if (!rafId) {
+          rafId = requestAnimationFrame(applyResize);
+        }
+      },
+      onEnd: (canceled) => {
+        if (rafId) {
+          cancelAnimationFrame(rafId);
+          rafId = 0;
+        }
+        // Flush the last pending resize only on a REAL release — a
+        // canceled drag (Escape, blur) stops where it is.
+        if (!canceled && !didSnap && pendingDelta !== 0) {
+          applyResize();
+        }
+        target.classList.remove('active');
+        this._sashDragState = null;
+      },
+    });
 
-    /** Clean up drag state, listeners, and visual feedback. */
-    const cleanupDrag = () => {
-      if (rafId) {
-        cancelAnimationFrame(rafId);
-        rafId = 0;
-      }
-      target.classList.remove('active');
-      this._sashDragState = null;
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
-      endDrag();
-    };
-
-    const onMouseUp = () => {
-      // Flush any pending resize before cleanup
-      if (didSnap) return; // Already cleaned up by snap handler
-      if (rafId) {
-        cancelAnimationFrame(rafId);
-        rafId = 0;
-      }
-      if (pendingDelta !== 0) {
-        applyResize();
-      }
-      if (!didSnap) {
-        cleanupDrag();
-      }
-    };
-
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
-    startDrag(isHorizontal ? 'col-resize' : 'row-resize');
+    /** Snap path abort: end the drag through the one cleanup. */
+    const cleanupDrag = () => drag.cancel();
   };
 
   // NOTE: sash drags deliberately do NOT set `will-change: transform` on the
