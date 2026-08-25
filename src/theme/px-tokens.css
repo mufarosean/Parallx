@@ -19,6 +19,22 @@
    ========================================================================== */
 
 :root {
+  /* ── Fonts: ONE vocabulary, aliased ─────────────────────────────────────
+     The real tokens are --parallx-fontFamily-ui/-editor/-mono (design-token
+     registry, overridden by the M83 bridge in themeService). The three
+     other namespaces below were referenced 65 times across 21 files and
+     DEFINED NOWHERE — every such site silently rendered its hardcoded
+     fallback (the terminal and log panes drew Courier New; four chat
+     surfaces drew Segoe instead of Inter). Aliasing them here re-homes
+     every stray declaration onto the one vocabulary; the compliance test
+     bans NEW uses of the legacy namespaces. */
+  --px-font-ui: var(--parallx-fontFamily-ui, 'Inter', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif);
+  --px-font-mono: var(--parallx-fontFamily-mono, 'Cascadia Code', 'Fira Code', Consolas, ui-monospace, monospace);
+  --vscode-font-family: var(--px-font-ui);
+  /* VS Code's "editor font" is its CODE font — the mono token, not the
+     prose editor face. Every referencing site here is a code context. */
+  --vscode-editor-font-family: var(--px-font-mono);
+
   /* ── Tier 1 · Primitives — DEFAULT THEME: "Parallx Warm Dark" ──────────────
      A warm-neutral charcoal (Obsidian density, Notion warmth) — deliberately
      NOT VS Code's cold #1e1e1e/#d4d4d4. Base scale runs 00 (app background)

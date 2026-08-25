@@ -52,7 +52,12 @@ before any window exists; the taskbar relaunch command shells out to
 `node`, which the portable host does not have (hidden window, so nothing
 happens at all).
 
-## P0 — Packaging correctness (do first; upstream of everything)
+## P0 — Packaging correctness (DEFERRED by decision 2026-08-25)
+
+Mufaro: packaging work waits for its own session. The unification work
+below (P1-P5) is the priority — a simpler, more centralized app is
+easier to package by construction. P0 stays recorded here untouched.
+
 
 - [ ] `preload.cjs`: expose the main process's real `APP_ROOT` (IPC or
       injected value), never `process.cwd()`. One line, upstream of most

@@ -558,7 +558,7 @@ async function createWindow() {
     titleBarStyle: 'hidden',
     icon: path.join(__dirname, 'parallx.ico'),
     // Dark background while loading
-    backgroundColor: '#1e1e1e',
+    backgroundColor: '#16171a', // --px-base-00 — the app's real ground, not VS Code's gray
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,

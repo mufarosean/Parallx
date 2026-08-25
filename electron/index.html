@@ -19,9 +19,12 @@
       align-items: center;
       justify-content: center;
       gap: 12px;
-      background: #1e1e1e;
-      color: #888;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      /* Pre-CSS boot frame: literals must MATCH the token values
+         (--px-base-00 #16171a; the UI font stack) — this paints before
+         any stylesheet loads, and a mismatched color here is the flash. */
+      background: #16171a;
+      color: #838893;
+      font-family: 'Inter', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
       font-size: 13px;
     }
     #parallx-loading-overlay.fade-out {
