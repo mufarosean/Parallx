@@ -74,13 +74,14 @@ export class StatusBarController extends Disposable {
     // Context menu on right-click
     this._register(sb.onDidContextMenu((event) => {
       const entries = sb.getEntries();
+      // The hide row's id IS the command id (Phase B menu contract).
       const ctxMenu = ContextMenu.show({
         items: [
           {
-            id: 'hideStatusBar',
+            id: 'workbench.action.toggleStatusBar',
             label: 'Hide Status Bar',
             group: '0_visibility',
-            keybinding: this._keybindingHint('workbench.action.toggleStatusbarVisibility'),
+            keybinding: this._keybindingHint('workbench.action.toggleStatusBar'),
           },
           ...entries.map((e) => ({
             id: e.id,
@@ -91,8 +92,13 @@ export class StatusBarController extends Disposable {
         anchor: { x: event.x, y: event.y },
       });
       ctxMenu.onDidSelect((e) => {
-        if (e.item.id === 'hideStatusBar') {
-          this._toggleStatusBar();
+        if (e.item.id === 'workbench.action.toggleStatusBar') {
+          const commandService = this._services.get(ICommandService);
+          if (commandService) {
+            void commandService.executeCommandFrom('menu', e.item.id);
+          } else {
+            this._toggleStatusBar();
+          }
         }
       });
     }));

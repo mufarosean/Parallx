@@ -552,12 +552,23 @@ export class TitlebarPart extends Part {
     const controls = $('div');
     controls.classList.add('window-controls');
 
+    // Window controls route through the command bus when it is wired
+    // (Phase B: journaled, palette-reachable, bindable) and fall back to
+    // the window service directly during early startup.
+    const run = (commandId: string, direct: () => void): void => {
+      if (this._commandExecutor?.hasCommand(commandId)) {
+        void this._commandExecutor.executeCommandFrom('ui', commandId);
+      } else {
+        direct();
+      }
+    };
+
     // Minimize
     const minimizeBtn = $('button');
     minimizeBtn.classList.add('window-control-btn');
     minimizeBtn.setAttribute('aria-label', 'Minimize');
     minimizeBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 1"><path d="M0 0h10v1H0z" fill="currentColor"/></svg>';
-    minimizeBtn.addEventListener('click', () => svc.minimize());
+    minimizeBtn.addEventListener('click', () => run('workbench.action.minimizeWindow', () => svc.minimize()));
     controls.appendChild(minimizeBtn);
 
     // Maximize / Restore
@@ -565,7 +576,7 @@ export class TitlebarPart extends Part {
     this._maximizeBtn.classList.add('window-control-btn');
     this._maximizeBtn.setAttribute('aria-label', 'Maximize');
     this._maximizeBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 0v10h10V0H0zm1 1h8v8H1V1z" fill="currentColor"/></svg>';
-    this._maximizeBtn.addEventListener('click', () => svc.maximize());
+    this._maximizeBtn.addEventListener('click', () => run('workbench.action.toggleMaximizeWindow', () => svc.maximize()));
     controls.appendChild(this._maximizeBtn);
 
     // Close
@@ -573,7 +584,7 @@ export class TitlebarPart extends Part {
     closeBtn.classList.add('window-control-btn', 'window-control-btn--close');
     closeBtn.setAttribute('aria-label', 'Close');
     closeBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10"><path d="M1.41 0L5 3.59 8.59 0 10 1.41 6.41 5 10 8.59 8.59 10 5 6.41 1.41 10 0 8.59 3.59 5 0 1.41z" fill="currentColor"/></svg>';
-    closeBtn.addEventListener('click', () => svc.close());
+    closeBtn.addEventListener('click', () => run('workbench.action.closeWindow', () => svc.close()));
     controls.appendChild(closeBtn);
 
     container.appendChild(controls);

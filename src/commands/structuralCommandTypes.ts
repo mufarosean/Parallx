@@ -74,6 +74,33 @@ export interface WorkbenchLike {
    * grid's ('horizontal' | 'vertical'); before = left/top edge.
    */
   movePartToEdge(partId: string, orientation: 'horizontal' | 'vertical', before: boolean): void;
+  /** Place one part next to another — the drag gesture's programmatic form. */
+  movePartBeside(partId: string, targetId: string, orientation: 'horizontal' | 'vertical', before: boolean): void;
+  /** Restore a saved layout by id. */
+  applySavedLayout(id: string): boolean;
+  /** The saved-layout store (Settings > Layouts is the management home). */
+  readonly savedLayouts: {
+    list(): readonly { readonly id: string; readonly name: string }[];
+    get(id: string): { readonly id: string; readonly name: string } | undefined;
+    rename(id: string, name: string): Promise<boolean>;
+    remove(id: string): Promise<boolean>;
+  };
+  /** Workbench-seated widget operations, by widget instance id. */
+  readonly _widgetBoxes: {
+    refreshWidget(instanceId: string): void;
+    openSettings(instanceId: string): void;
+    openAppearance(instanceId: string): void;
+    setContentAlign(instanceId: string, align: 'start' | 'start-padded' | 'center'): Promise<void>;
+    moveToEdge(instanceId: string, edge: 'left' | 'right' | 'bottom'): void;
+    returnToDashboard(instanceId: string): Promise<boolean>;
+    removeWidget(instanceId: string): Promise<void>;
+  };
+  /** Floating-container operations, by container id. */
+  readonly _containerBoxes: {
+    float(containerId: string): boolean;
+    dock(containerId: string, rail: 'left' | 'right'): boolean;
+    moveToEdge(containerId: string, edge: 'left' | 'right' | 'bottom'): void;
+  };
   readonly _workspaceSaver: { save(): Promise<void>; collectState(): unknown };
   readonly _titlebar: { setWorkspaceName(name: string): void };
   _updateWindowTitle(editor?: unknown): void;

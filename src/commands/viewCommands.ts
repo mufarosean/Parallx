@@ -76,9 +76,10 @@ export const saveLayout: CommandDescriptor = {
   title: 'Save Current Layout',
   category: 'View',
   aiInvocable: true,
-  aiDescription: 'Save the current workbench layout under a dated name; rename or apply it from Settings > Layouts.',
-  handler(ctx) {
-    void wb(ctx).saveCurrentLayout('');
+  aiDescription: 'Save the current workbench layout, optionally under a given name (default: a dated name); rename or apply it from Settings > Layouts.',
+  handler(ctx, ...args: unknown[]) {
+    const name = typeof args[0] === 'string' ? args[0] : '';
+    void wb(ctx).saveCurrentLayout(name);
   },
 };
 

@@ -215,6 +215,8 @@ export interface ContainerBoxHost {
   /** Relocate a floating box to a window edge — the menu's move actions. */
   moveFloatingToEdge(viewId: string, orientation: Orientation, before: boolean): void;
   requestSave(): void;
+  /** Route a box-menu choice through the command bus (origin 'menu'). */
+  executeCommandFrom(origin: 'menu', commandId: string, ...args: unknown[]): Promise<unknown>;
 }
 
 /**
@@ -305,6 +307,18 @@ export class ContainerBoxManager extends Disposable {
     return true;
   }
 
+  /** Move a floating container's box to a window edge (command surface). */
+  moveToEdge(containerId: string, edge: 'left' | 'right' | 'bottom'): void {
+    const box = this._boxes.get(containerId);
+    if (!box) return;
+    this._host.moveFloatingToEdge(
+      box.id,
+      edge === 'bottom' ? Orientation.Vertical : Orientation.Horizontal,
+      edge === 'left',
+    );
+    this._host.requestSave();
+  }
+
   /** The reveal behind a floating container's primary-ribbon icon. */
   reveal(containerId: string): boolean {
     const box = this._boxes.get(containerId);
@@ -369,14 +383,18 @@ export class ContainerBoxManager extends Disposable {
         ],
         anchor: { x, y },
       });
+      // Every choice routes through the command bus (Phase B): one command
+      // per operation, this menu supplying the target and parameter.
+      const actions: Record<string, readonly [string, ...unknown[]]> = {
+        'dock-left': ['workbench.action.container.dock', containerId, 'left'],
+        'dock-right': ['workbench.action.container.dock', containerId, 'right'],
+        'edge-left': ['workbench.action.container.moveToEdge', containerId, 'left'],
+        'edge-right': ['workbench.action.container.moveToEdge', containerId, 'right'],
+        'edge-bottom': ['workbench.action.container.moveToEdge', containerId, 'bottom'],
+      };
       menu.onDidSelect(({ item }) => {
-        switch (item.id) {
-          case 'dock-left': this.dock(containerId, 'left'); break;
-          case 'dock-right': this.dock(containerId, 'right'); break;
-          case 'edge-left': this._host.moveFloatingToEdge(box.id, Orientation.Horizontal, true); break;
-          case 'edge-right': this._host.moveFloatingToEdge(box.id, Orientation.Horizontal, false); break;
-          case 'edge-bottom': this._host.moveFloatingToEdge(box.id, Orientation.Vertical, false); break;
-        }
+        const action = actions[item.id];
+        if (action) void this._host.executeCommandFrom('menu', action[0], ...action.slice(1));
       });
     }));
     return box;

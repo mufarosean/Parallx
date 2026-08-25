@@ -1078,6 +1078,8 @@ export class Workbench extends Layout {
       moveFloatingToEdge: (viewId, orientation, before) =>
         this.movePartToEdge(viewId, orientation, before),
       requestSave: () => this._workspaceSaver?.requestSave(),
+      executeCommandFrom: (origin, id, ...args) =>
+        (this._services.get(ICommandService) as CommandService).executeCommandFrom(origin, id, ...args),
     }));
     // Widget seats: widgets standing alone in the grid, rendered through
     // the dashboard's widget system (one widget system, many hosts). Their
@@ -1096,6 +1098,8 @@ export class Workbench extends Layout {
       moveFloatingToEdge: (viewId, orientation, before) =>
         this.movePartToEdge(viewId, orientation, before),
       requestSave: () => this._workspaceSaver?.requestSave(),
+      executeCommandFrom: (origin, id, ...args) =>
+        (this._services.get(ICommandService) as CommandService).executeCommandFrom(origin, id, ...args),
     }));
 
     this._floatingViewFactory = (viewId) =>
@@ -2129,16 +2133,10 @@ export class Workbench extends Layout {
       this._contributionHandler.switchSidebarContainer(event.iconId);
     }));
 
-    // P2.7: Activity bar icon context menu
-    this._register(this._activityBarPart.onDidContextMenuIcon((event) => {
-      const icon = this._activityBarPart.getIcons().find((i) => i.id === event.iconId);
-      ContextMenu.show({
-        items: [
-          { id: 'hide', label: `Hide ${icon?.label ?? 'View'}`, group: '1_visibility', keybinding: this._keybindingHint('hide') },
-        ],
-        anchor: { x: event.x, y: event.y },
-      });
-    }));
+    // The icon context menu once offered a "Hide <View>" item that was never
+    // wired to anything (its onDidSelect was discarded) — a dead affordance
+    // the integrity audit flagged. Removed until icon hiding EXISTS as an
+    // operation with an inverse; a menu that lies is worse than no menu.
 
     this._activityBarPart.setActiveIcon('view.explorer');
     this._contributionHandler.setActiveSidebarContainerId('view.explorer');
@@ -2163,34 +2161,33 @@ export class Workbench extends Layout {
       moreBtn.textContent = '⋯';
       this._register(addDisposableListener(moreBtn, 'click', (_e) => {
         const rect = moreBtn.getBoundingClientRect();
+        // Item ids ARE command ids (Phase B menu contract), resolved per
+        // active container — each owner registers its own commands and
+        // decides what "collapse" and "refresh" mean. Containers without a
+        // matching command simply don't offer the item; no dead rows.
+        const activeId = this._contributionHandler.activeSidebarContainerId;
+        const cmdService = this._services.get(ICommandService) as CommandService;
+        const collapseCmd = activeId === 'view.explorer' ? 'explorer.collapse' : undefined;
+        const refreshCmd = activeId === 'view.explorer' ? 'explorer.refresh'
+          : activeId === 'media-organizer-container' ? 'media-organizer.rescan'
+          : undefined;
+        const items = [
+          ...(collapseCmd && cmdService.hasCommand(collapseCmd)
+            ? [{ id: collapseCmd, label: 'Collapse All', group: '1_actions', keybinding: this._keybindingHint(collapseCmd) }]
+            : []),
+          ...(refreshCmd && cmdService.hasCommand(refreshCmd)
+            ? [{ id: refreshCmd, label: 'Refresh', group: '1_actions', keybinding: this._keybindingHint(refreshCmd) }]
+            : []),
+        ];
+        if (items.length === 0) return;
         const menu = ContextMenu.show({
-          items: [
-            { id: 'collapse-all', label: 'Collapse All', group: '1_actions', keybinding: this._keybindingHint('collapse-all') },
-            { id: 'refresh', label: 'Refresh', group: '1_actions', keybinding: this._keybindingHint('refresh') },
-          ],
+          items,
           anchor: { x: rect.left, y: rect.bottom + 2 },
         });
         menu.onDidSelect(({ item }) => {
-          if (item.id !== 'refresh') return;
-          // Route Refresh to a per-container command based on which
-          // sidebar is currently active. Each owner registers its own
-          // command and decides what "refresh" means (e.g. media
-          // organizer = re-walk scan roots + reconcile DB).
-          const activeId = this._contributionHandler.activeSidebarContainerId;
-          const cmdService = this._services.get(ICommandService) as CommandService;
-          let commandId: string | undefined;
-          switch (activeId) {
-            case 'media-organizer-container':
-              commandId = 'media-organizer.rescan';
-              break;
-            default:
-              commandId = undefined;
-          }
-          if (commandId) {
-            cmdService.executeCommandFrom('ui', commandId).catch(err => {
-              console.error(`[Workbench] Sidebar refresh command "${commandId}" failed:`, err);
-            });
-          }
+          cmdService.executeCommandFrom('menu', item.id).catch(err => {
+            console.error(`[Workbench] Sidebar action "${item.id}" failed:`, err);
+          });
         });
       }));
       actionsContainer.appendChild(moreBtn);
@@ -2602,6 +2599,16 @@ export class Workbench extends Layout {
     this._syncPartRailIcons();
     this._workspaceSaver?.requestSave();
     return true;
+  }
+
+  /**
+   * Route a chrome action through the command bus with its origin stamped
+   * (SYSTEM_INTEGRITY.md Phase B) — the door workbench-owned panels and
+   * hosts use instead of holding the command service themselves.
+   */
+  executeCommandFrom(origin: 'ui' | 'menu', id: string, ...args: unknown[]): Promise<unknown> {
+    const commandService = this._services.get(ICommandService) as CommandService;
+    return commandService.executeCommandFrom(origin, id, ...args);
   }
 
   // ── Workbench widgets ─────────────────────────────────────────────────

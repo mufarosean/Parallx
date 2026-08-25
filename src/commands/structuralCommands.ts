@@ -18,6 +18,7 @@ import type { CommandService } from './commandRegistry.js';
 import type { IDisposable } from '../platform/lifecycle.js';
 import type { IEditorGroupService } from '../services/serviceTypes.js';
 import { wb } from './structuralCommandTypes.js';
+import { ALL_LAYOUT_COMMANDS } from './layoutCommands.js';
 
 //  Re-export sub-modules for backward compatibility 
 export {
@@ -336,6 +337,9 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   toggleAuxiliaryBar,
   toggleStatusBar,
   toggleZenMode,
+  // Layout gestures: widgets, containers, parts, saved layouts, window
+  // (SYSTEM_INTEGRITY.md Phase B — every gesture has a command)
+  ...ALL_LAYOUT_COMMANDS,
   // Editor
   splitEditor,
   splitEditorOrthogonal,

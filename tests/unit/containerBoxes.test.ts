@@ -102,6 +102,7 @@ describe('ContainerBoxManager', () => {
       moveFloatingToEdge: (viewId, orientation, before) =>
         calls.push(`edge:${viewId}:${orientation}:${before}`),
       requestSave: () => calls.push('save'),
+      executeCommandFrom: async (_origin, id, ...args) => calls.push(`cmd:${id}:${args.join(':')}`),
     };
     manager = new ContainerBoxManager(host);
   });
@@ -172,8 +173,10 @@ describe('ContainerBoxManager', () => {
       expect(labels.some((l) => l.includes('Dock To Right Rail'))).toBe(true);
       expect(labels.some((l) => l.includes('Move To Bottom Edge'))).toBe(true);
 
+      // Menu choices route through the command bus (Phase B) — the host
+      // receives the command, not a direct dock() call.
       items.find((i) => i.textContent?.includes('Dock To Right Rail'))!.click();
-      expect(calls).toContain('dock:view.explorer:right');
+      expect(calls).toContain('cmd:workbench.action.container.dock:view.explorer:right');
     } finally {
       document.querySelectorAll('.context-menu').forEach((el) => el.remove());
     }

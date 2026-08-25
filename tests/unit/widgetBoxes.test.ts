@@ -154,6 +154,7 @@ describe('WidgetBoxManager', () => {
       moveFloating: (viewId, zone) => calls.push(`move:${viewId}:${zone.kind}`),
       moveFloatingToEdge: (viewId, o, b) => calls.push(`edge:${viewId}:${o}:${b}`),
       requestSave: () => calls.push('save'),
+      executeCommandFrom: async (_origin, id, ...args) => calls.push(`cmd:${id}:${args.join(':')}`),
     };
     manager = new WidgetBoxManager(host);
     system = fakeSystem();

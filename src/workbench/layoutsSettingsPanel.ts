@@ -14,9 +14,13 @@ import './layoutsSettings.css';
 
 /** What the panel needs from the workbench; narrow and testable. */
 export interface LayoutsPanelHost {
+  /** Read side: listing the saved layouts for display. */
   readonly savedLayouts: SavedLayoutStore;
-  saveCurrentLayout(name: string): Promise<SavedLayout>;
-  applySavedLayout(id: string): boolean;
+  /**
+   * Write side: every action routes through the command bus (Phase B —
+   * journaled, origin-stamped, same path the palette takes).
+   */
+  executeCommandFrom(origin: 'ui', commandId: string, ...args: unknown[]): Promise<unknown>;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -87,7 +91,7 @@ export function createLayoutsSettingsPanel(host: LayoutsPanelHost): ISettingsPan
 
         const applyBtn = button('Apply');
         applyBtn.addEventListener('click', () => {
-          host.applySavedLayout(layout.id);
+          void host.executeCommandFrom('ui', 'workbench.action.applyLayout', layout.id);
         });
         row.appendChild(applyBtn);
 
@@ -103,7 +107,7 @@ export function createLayoutsSettingsPanel(host: LayoutsPanelHost): ISettingsPan
             if (done) return;
             done = true;
             if (commit) {
-              await host.savedLayouts.rename(layout.id, editor.inputElement.value);
+              await host.executeCommandFrom('ui', 'workbench.action.renameLayout', layout.id, editor.inputElement.value);
             }
             editor.dispose();
             renderList();
@@ -118,14 +122,14 @@ export function createLayoutsSettingsPanel(host: LayoutsPanelHost): ISettingsPan
 
         const deleteBtn = button('Delete', 'danger');
         deleteBtn.addEventListener('click', () => {
-          void host.savedLayouts.remove(layout.id).then(renderList);
+          void host.executeCommandFrom('ui', 'workbench.action.deleteLayout', layout.id).then(renderList);
         });
         row.appendChild(deleteBtn);
         return row;
       };
 
       const doSave = async (): Promise<void> => {
-        await host.saveCurrentLayout(nameInput.inputElement.value);
+        await host.executeCommandFrom('ui', 'workbench.action.saveLayout', nameInput.inputElement.value);
         nameInput.inputElement.value = '';
         renderList();
       };

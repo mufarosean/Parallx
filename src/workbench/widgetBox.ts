@@ -183,6 +183,8 @@ export interface WidgetBoxHost {
   moveFloating(viewId: string, zone: PartDropZone): void;
   moveFloatingToEdge(viewId: string, orientation: Orientation, before: boolean): void;
   requestSave(): void;
+  /** Route a box-menu choice through the command bus (origin 'menu'). */
+  executeCommandFrom(origin: 'menu', commandId: string, ...args: unknown[]): Promise<unknown>;
 }
 
 /**
@@ -454,13 +456,13 @@ export class WidgetBoxManager extends Disposable {
 
     const items = [
       ...(canRefresh
-        ? [{ id: 'refresh', label: 'Refresh Widget', group: '0_refresh' }]
+        ? [{ id: 'workbench.action.widget.refresh', label: 'Refresh Widget', group: '0_refresh' }]
         : []),
       ...(this._mountedTypeReg(box.instanceId)?.configSchema
-        ? [{ id: 'settings', label: 'Widget Settings…', group: '1_look', order: -1 }]
+        ? [{ id: 'workbench.action.widget.openSettings', label: 'Widget Settings…', group: '1_look', order: -1 }]
         : []),
       ...(this._mounts.has(box.instanceId)
-        ? [{ id: 'appearance', label: 'Edit Appearance…', group: '1_look', order: 0 }]
+        ? [{ id: 'workbench.action.widget.editAppearance', label: 'Edit Appearance…', group: '1_look', order: 0 }]
         : []),
       {
         id: 'align', label: 'Align Content', group: '1_look', order: 1,
@@ -475,24 +477,31 @@ export class WidgetBoxManager extends Disposable {
       { id: 'edge-bottom', label: 'Move To Bottom Edge', group: '1_move', order: 3 },
       // The non-destructive exit first: the widget leaves the workbench
       // but lives on, back on the dashboard it came from.
-      { id: 'return', label: 'Return To Dashboard', group: '2_remove', order: 1 },
-      { id: 'remove', label: 'Remove Widget', group: '2_remove', order: 2 },
+      { id: 'workbench.action.widget.returnToDashboard', label: 'Return To Dashboard', group: '2_remove', order: 1 },
+      { id: 'workbench.action.widget.remove', label: 'Remove Widget', group: '2_remove', order: 2 },
     ];
     const menu = ContextMenu.show({ items, anchor: { x, y } });
+    // Item ids ARE command ids (the Phase B menu contract); the args map
+    // supplies each command's target. The align radios are the documented
+    // exception — one command, three parameterizations — so their item ids
+    // stay semantic and map to the same command with different arguments.
+    const iid = box.instanceId;
+    const actions: Record<string, readonly [string, ...unknown[]]> = {
+      'workbench.action.widget.refresh': ['workbench.action.widget.refresh', iid],
+      'workbench.action.widget.openSettings': ['workbench.action.widget.openSettings', iid],
+      'workbench.action.widget.editAppearance': ['workbench.action.widget.editAppearance', iid],
+      'workbench.action.widget.returnToDashboard': ['workbench.action.widget.returnToDashboard', iid],
+      'workbench.action.widget.remove': ['workbench.action.widget.remove', iid],
+      'align-start': ['workbench.action.widget.setContentAlign', iid, 'start'],
+      'align-start-padded': ['workbench.action.widget.setContentAlign', iid, 'start-padded'],
+      'align-center': ['workbench.action.widget.setContentAlign', iid, 'center'],
+      'edge-left': ['workbench.action.widget.moveToEdge', iid, 'left'],
+      'edge-right': ['workbench.action.widget.moveToEdge', iid, 'right'],
+      'edge-bottom': ['workbench.action.widget.moveToEdge', iid, 'bottom'],
+    };
     menu.onDidSelect(({ item }) => {
-      switch (item.id) {
-        case 'refresh': void this._system?.refreshWidget(box.instanceId); break;
-        case 'settings': this._openSettings(box); break;
-        case 'appearance': this._openAppearance(box); break;
-        case 'return': void this.returnToDashboard(box.instanceId); break;
-        case 'align-start': void this.setContentAlign(box.instanceId, 'start'); break;
-        case 'align-start-padded': void this.setContentAlign(box.instanceId, 'start-padded'); break;
-        case 'align-center': void this.setContentAlign(box.instanceId, 'center'); break;
-        case 'edge-left': this._host.moveFloatingToEdge(box.id, Orientation.Horizontal, true); break;
-        case 'edge-right': this._host.moveFloatingToEdge(box.id, Orientation.Horizontal, false); break;
-        case 'edge-bottom': this._host.moveFloatingToEdge(box.id, Orientation.Vertical, false); break;
-        case 'remove': void this.removeWidget(box.instanceId); break;
-      }
+      const action = actions[item.id];
+      if (action) void this._host.executeCommandFrom('menu', action[0], ...action.slice(1));
     });
   }
 
@@ -571,6 +580,39 @@ export class WidgetBoxManager extends Disposable {
     const row = await system.getInstance(instanceId);
     if (!row) return;
     await system.updateAppearance(instanceId, { ...row.appearance, contentAlign });
+  }
+
+  // ── Command surface (SYSTEM_INTEGRITY.md Phase B) ─────────────────────────
+  // Id-based public forms of every box-menu operation, so the layout
+  // commands can drive a seat without holding the box.
+
+  /** Ask the system to refresh a seated widget's content. */
+  refreshWidget(instanceId: string): void {
+    void this._system?.refreshWidget(instanceId);
+  }
+
+  /** Open the settings drawer on a seated widget. */
+  openSettings(instanceId: string): void {
+    const box = this._boxes.get(instanceId);
+    if (box) this._openSettings(box);
+  }
+
+  /** Open the appearance drawer on a seated widget. */
+  openAppearance(instanceId: string): void {
+    const box = this._boxes.get(instanceId);
+    if (box) this._openAppearance(box);
+  }
+
+  /** Move a seated widget's box to a window edge. */
+  moveToEdge(instanceId: string, edge: 'left' | 'right' | 'bottom'): void {
+    const box = this._boxes.get(instanceId);
+    if (!box) return;
+    this._host.moveFloatingToEdge(
+      box.id,
+      edge === 'bottom' ? Orientation.Vertical : Orientation.Horizontal,
+      edge === 'left',
+    );
+    this._host.requestSave();
   }
 
   override dispose(): void {

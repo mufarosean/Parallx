@@ -158,9 +158,17 @@ export function wireActivityTaps(deps: IActivityTapDeps): IDisposable {
     }));
   }
 
-  // ── Context menus: every menu selection app-wide, by label. ──
+  // ── Context menus: every menu selection app-wide, by label. Items whose
+  //    id IS a registered command (the Phase B menu contract) are skipped —
+  //    the command tap narrates those with origin 'menu', and a second
+  //    "chose" line would say the same thing twice. ──
+  const cmdRegistry = services.has(ICommandService)
+    ? (services.get(ICommandService) as unknown as { hasCommand?: (id: string) => boolean })
+    : undefined;
   store.add(ContextMenu.onDidSelectAny((e) => {
-    const label = (e.item as { label?: string }).label || (e.item as { id?: string }).id || 'menu item';
+    const id = (e.item as { id?: string }).id;
+    if (id && cmdRegistry?.hasCommand?.(id)) return;
+    const label = (e.item as { label?: string }).label || id || 'menu item';
     journal.note({ actor: 'user', source: 'menu', verb: 'chose', object: `"${label}" from a menu` });
   }));
 
