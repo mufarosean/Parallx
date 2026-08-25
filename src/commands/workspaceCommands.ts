@@ -51,7 +51,7 @@ export const workspaceDuplicate: CommandDescriptor = {
 
 export const workspaceAddFolder: CommandDescriptor = {
   id: 'workspace.addFolderToWorkspace',
-  title: 'Add Folder to Workspace...',
+  title: 'Add Folder to Workspace…',
   category: 'Workspace',
   // M53 D4.6: Single-folder workspaces only — redirect to open folder
   handler: async (ctx) => {
@@ -152,7 +152,7 @@ export const workspaceCloseWindow: CommandDescriptor = {
 
 export const workspaceOpenRecent: CommandDescriptor = {
   id: 'workspace.openRecent',
-  title: 'Open Recent Workspace...',
+  title: 'Open Recent Workspace…',
   category: 'Workspace',
   handler: async (ctx) => {
     const w = wb(ctx);
@@ -165,7 +165,7 @@ export const workspaceOpenRecent: CommandDescriptor = {
 
 export const workspaceSaveAs: CommandDescriptor = {
   id: 'workspace.saveAs',
-  title: 'Save Workspace As...',
+  title: 'Save Workspace As…',
   category: 'Workspace',
   handler: async (ctx, newName?: unknown) => {
     const w = wb(ctx);
@@ -199,7 +199,7 @@ export const workspaceSaveAs: CommandDescriptor = {
 
 export const workspaceRename: CommandDescriptor = {
   id: 'workspace.rename',
-  title: 'Rename Workspace...',
+  title: 'Rename Workspace…',
   category: 'Workspace',
   handler: async (ctx) => {
     const w = wb(ctx);
@@ -224,7 +224,7 @@ export const workspaceRename: CommandDescriptor = {
 
 export const workspaceOpenFolder: CommandDescriptor = {
   id: 'workspace.openFolder',
-  title: 'Open Folder...',
+  title: 'Open Folder…',
   category: 'Workspace',
   handler: async (ctx) => {
     const w = wb(ctx);
@@ -250,7 +250,7 @@ export const workspaceOpenFolder: CommandDescriptor = {
 
 export const workspaceExportToFile: CommandDescriptor = {
   id: 'workspace.exportToFile',
-  title: 'Save Workspace to File...',
+  title: 'Save Workspace to File…',
   category: 'Workspace',
   handler: async (ctx) => {
     const w = wb(ctx);
@@ -291,7 +291,7 @@ export const workspaceExportToFile: CommandDescriptor = {
 
 export const workspaceImportFromFile: CommandDescriptor = {
   id: 'workspace.importFromFile',
-  title: 'Open Workspace from File...',
+  title: 'Open Workspace from File…',
   category: 'Workspace',
   handler: async (ctx) => {
     const w = wb(ctx);

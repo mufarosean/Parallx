@@ -53,7 +53,7 @@ export class WebResearchSection extends SettingsSection {
       });
       const keyInput = this._register(new InputBox(keyRow.controlSlot, {
         type: 'password',
-        placeholder: 'BSA...',
+        placeholder: 'BSA…',
         ariaLabel: 'Brave Search API key',
       }));
       const saveKey = () => {

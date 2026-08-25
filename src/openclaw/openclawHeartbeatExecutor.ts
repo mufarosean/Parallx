@@ -204,7 +204,7 @@ export interface IHeartbeatRealTurnDeps {
 // ---------------------------------------------------------------------------
 
 const IDLE_TEXT = '';
-const THINKING_PREFIX = '⏺ heartbeat';
+const THINKING_PREFIX = 'heartbeat';
 const DEFAULT_DEBOUNCE_MS = 30_000;
 const DEFAULT_OUTPUT_DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000; // 24h (OpenClaw parity)
 const OUTPUT_DEDUP_MAX_ENTRIES = 200;

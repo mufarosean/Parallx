@@ -70,7 +70,7 @@ export class ContextBridge {
 
   private _throwIfDisposed(): void {
     if (this._disposed) {
-      throw new Error(`[ContextBridge] Tool "${this._toolId}" has been deactivated — API access is no longer allowed.`);
+      throw new Error(`[ContextBridge] Tool "${this._toolId}" has been deactivated; API access is no longer allowed.`);
     }
   }
 }

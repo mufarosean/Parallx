@@ -35,13 +35,13 @@ function renderDiagnosticReport(checks: readonly IDiagnosticResult[], response: 
   const warnCount = checks.filter(c => c.status === 'warn').length;
 
   const lines: string[] = ['## Diagnostic Report\n'];
-  const statusIcon = failCount > 0 ? '❌' : warnCount > 0 ? '⚠️' : '✅';
+  const statusIcon = failCount > 0 ? 'FAIL' : warnCount > 0 ? 'WARN' : 'OK';
   lines.push(`${statusIcon} **${passCount}** pass, **${failCount}** fail, **${warnCount}** warn\n`);
 
   lines.push('| Check | Status | Detail |');
   lines.push('|-------|--------|--------|');
   for (const c of checks) {
-    const icon = c.status === 'pass' ? '✅' : c.status === 'fail' ? '❌' : '⚠️';
+    const icon = c.status === 'pass' ? 'pass' : c.status === 'fail' ? 'FAIL' : 'warn';
     lines.push(`| ${c.name} | ${icon} | ${c.detail} |`);
   }
 

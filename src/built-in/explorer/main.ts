@@ -1192,8 +1192,8 @@ function showContextMenu(x: number, y: number, node: TreeNode | null): void {
       items.push({ id: 'open', label: 'Open', group: '1_open' });
       items.push({ id: 'openToSide', label: 'Open to the Side', group: '1_open' });
       items.push({ id: 'addToChat', label: 'Add to Chat', group: '1_open' });
-      items.push({ id: 'newFile', label: 'New File...', group: '2_create' });
-      items.push({ id: 'newFolder', label: 'New Folder...', group: '2_create' });
+      items.push({ id: 'newFile', label: 'New File…', group: '2_create' });
+      items.push({ id: 'newFolder', label: 'New Folder…', group: '2_create' });
       items.push({ id: 'cut', label: 'Cut', keybinding: 'Ctrl+X', group: '3_clipboard' });
       items.push({ id: 'copy', label: 'Copy', keybinding: 'Ctrl+C', group: '3_clipboard' });
       if (_clipboard) {
@@ -1207,8 +1207,8 @@ function showContextMenu(x: number, y: number, node: TreeNode | null): void {
     } else {
       // Folder context — hide rename/delete for workspace root folders
       const isRootFolder = _roots.some(r => r.uri === node.uri);
-      items.push({ id: 'newFile', label: 'New File...', group: '1_create' });
-      items.push({ id: 'newFolder', label: 'New Folder...', group: '1_create' });
+      items.push({ id: 'newFile', label: 'New File…', group: '1_create' });
+      items.push({ id: 'newFolder', label: 'New Folder…', group: '1_create' });
       items.push({ id: 'addToChat', label: 'Add to Chat', group: '1_create' });
       if (!isRootFolder) {
         items.push({ id: 'cut', label: 'Cut', keybinding: 'Ctrl+X', group: '2_clipboard' });
@@ -1229,8 +1229,8 @@ function showContextMenu(x: number, y: number, node: TreeNode | null): void {
       }
     }
   } else {
-    items.push({ id: 'newFile', label: 'New File...', group: '1_create' });
-    items.push({ id: 'newFolder', label: 'New Folder...', group: '1_create' });
+    items.push({ id: 'newFile', label: 'New File…', group: '1_create' });
+    items.push({ id: 'newFolder', label: 'New Folder…', group: '1_create' });
     items.push({ id: 'refresh', label: 'Refresh', group: '2_refresh' });
   }
 

@@ -121,7 +121,7 @@ export class FileSystemBridge {
   private _throwIfDisposed(): void {
     if (this._disposed) {
       throw new Error(
-        `[FileSystemBridge] Tool "${this._toolId}" has been deactivated — API access is no longer allowed.`,
+        `[FileSystemBridge] Tool "${this._toolId}" has been deactivated; API access is no longer allowed.`,
       );
     }
   }

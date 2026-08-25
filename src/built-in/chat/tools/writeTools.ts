@@ -17,13 +17,13 @@ import { markResourceSeen, wasResourceSeen, fileResourceKey } from '../../../ser
 
 function requireFs(fs: IBuiltInToolFileSystem | undefined): asserts fs is IBuiltInToolFileSystem {
   if (!fs) {
-    throw new Error('File system is not available — no workspace folder is open');
+    throw new Error('File system is not available; no workspace folder is open');
   }
 }
 
 function requireWriter(writer: IBuiltInToolFileWriter | undefined): asserts writer is IBuiltInToolFileWriter {
   if (!writer) {
-    throw new Error('File writer is not available — no workspace folder is open');
+    throw new Error('File writer is not available; no workspace folder is open');
   }
 }
 

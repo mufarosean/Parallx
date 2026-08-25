@@ -84,7 +84,7 @@ export const saveLayout: CommandDescriptor = {
 
 export const addWidget: CommandDescriptor = {
   id: 'workbench.action.addWidget',
-  title: 'Add Widget To Workbench',
+  title: 'Add Widget to Workbench',
   category: 'View',
   aiInvocable: true,
   aiDescription: 'Open the widget type picker; the chosen widget is seated in the workbench itself (not a dashboard).',
@@ -95,7 +95,7 @@ export const addWidget: CommandDescriptor = {
 
 export const adoptWidget: CommandDescriptor = {
   id: 'workbench.action.adoptWidget',
-  title: 'Move Widget To Workbench',
+  title: 'Move Widget to Workbench',
   category: 'View',
   aiDescription: 'Move an existing dashboard widget (by instance id) into the workbench as a standalone seat.',
   handler(ctx, ...args: unknown[]) {

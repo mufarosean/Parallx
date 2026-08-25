@@ -44,7 +44,7 @@ export function showPropertyPicker(
   searchWrap.className = 'canvas-property-picker__search';
   const searchInput = document.createElement('input');
   searchInput.type = 'text';
-  searchInput.placeholder = 'Search properties...';
+  searchInput.placeholder = 'Search properties…';
   searchWrap.appendChild(searchInput);
   picker.appendChild(searchWrap);
 

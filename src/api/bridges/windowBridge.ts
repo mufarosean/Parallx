@@ -92,7 +92,7 @@ export class WindowBridge {
 
   private _throwIfDisposed(): void {
     if (this._disposed) {
-      throw new Error(`[WindowBridge] Tool "${this._toolId}" has been deactivated — API access is no longer allowed.`);
+      throw new Error(`[WindowBridge] Tool "${this._toolId}" has been deactivated; API access is no longer allowed.`);
     }
   }
 }

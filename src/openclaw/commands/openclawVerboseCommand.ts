@@ -28,7 +28,7 @@ export async function tryHandleOpenclawVerboseCommand(
         : '**Verbose mode disabled.** Returning to standard output.',
     );
   } else {
-    response.markdown('⚠️ Session flag storage is not available. Verbose mode cannot be toggled.');
+    response.markdown('Warning: Session flag storage is not available. Verbose mode cannot be toggled.');
   }
 
   return true;

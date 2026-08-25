@@ -24,7 +24,7 @@ export async function tryHandleOpenclawThinkCommand(
         : '**Thinking mode disabled.** Returning to standard response mode.',
     );
   } else {
-    response.markdown('⚠️ Session flag storage is not available. Thinking mode cannot be toggled.');
+    response.markdown('Warning: Session flag storage is not available. Thinking mode cannot be toggled.');
   }
 
   return true;

@@ -107,13 +107,13 @@
     } else {
       const label = api.audio === 'mic' ? 'Microphone' : 'System audio';
       audioBtn.innerHTML = SPK_ON;
-      audioBtn.title = label + ': on — click to mute';
+      audioBtn.title = label + ': on. Click to mute';
       audioBtn.addEventListener('click', () => {
         if (recording) return;
         audioOn = !audioOn;
         audioBtn.innerHTML = audioOn ? SPK_ON : SPK_OFF;
         audioBtn.classList.toggle('muted', !audioOn);
-        audioBtn.title = label + (audioOn ? ': on — click to mute' : ': muted — click to enable');
+        audioBtn.title = label + (audioOn ? ': on. Click to mute' : ': muted. Click to enable');
       });
     }
 
@@ -332,7 +332,7 @@
         sizePanel.classList.remove('open');
         sizeBtn.classList.add('hidden');
         if (audioOn && api.audio !== 'off' && !audioStarted) {
-          hintEl.textContent = 'Audio unavailable — video only';
+          hintEl.textContent = 'Audio unavailable; video only';
           hintEl.classList.add('warn');
         }
       } else {

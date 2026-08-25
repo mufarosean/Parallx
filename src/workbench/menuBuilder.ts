@@ -202,7 +202,7 @@ export class MenuBuilder extends Disposable {
     const items: import('../ui/contextMenu.js').IContextMenuItem[] = [
       {
         id: 'workbench.action.showCommands',
-        label: 'Command Palette...',
+        label: 'Command Palette…',
         keybinding: this.keybindingHint('workbench.action.showCommands'),
         group: '1_commands',
       },
@@ -244,7 +244,7 @@ export class MenuBuilder extends Disposable {
       },
       {
         id: 'manage.checkUpdates',
-        label: 'Check for Updates...',
+        label: 'Check for Updates…',
         group: '4_updates',
         disabled: true,
       },

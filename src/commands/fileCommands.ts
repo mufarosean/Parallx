@@ -11,7 +11,7 @@ import { electronBridge, ensureUriWithinWorkspaceOrPrompt } from './structuralCo
 
 export const fileOpenFile: CommandDescriptor = {
   id: 'file.openFile',
-  title: 'Open File...',
+  title: 'Open File…',
   category: 'File',
   keybinding: 'Ctrl+O',
   handler: async (ctx) => {
@@ -136,7 +136,7 @@ export const fileSave: CommandDescriptor = {
 
 export const fileSaveAs: CommandDescriptor = {
   id: 'file.saveAs',
-  title: 'Save As...',
+  title: 'Save As…',
   category: 'File',
   keybinding: 'Ctrl+Shift+S',
   handler: async (ctx) => {

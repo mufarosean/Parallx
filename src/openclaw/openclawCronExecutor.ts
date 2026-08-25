@@ -94,7 +94,7 @@ import type {
 // Status / notification text helpers
 // ---------------------------------------------------------------------------
 
-const STATUS_PREFIX = '⏰ cron';
+const STATUS_PREFIX = 'cron';
 
 function formatStatusText(job: ICronJob): string {
   return `${STATUS_PREFIX} · ${job.name}`;

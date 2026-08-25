@@ -1296,7 +1296,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         const now = chatService.getSession(sid)?.messages.length ?? plan.atMessageCount;
         const drift = now - plan.atMessageCount;
         if (drift >= 3) {
-          text += `\n\n⚠ This plan has not been updated for ${drift} messages. Before anything else: `
+          text += `\n\nWarning: This plan has not been updated for ${drift} messages. Before anything else: `
             + 'if the work is finished, call plan_update with {"clear": true}; '
             + 'otherwise update the step statuses and `note` to match reality NOW.';
         }
@@ -3529,7 +3529,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         ? async (relativePath: string, content: string) => {
             const folders = workspaceService!.folders;
             if (!folders || folders.length === 0) {
-              throw new Error('No workspace folder — cannot write config');
+              throw new Error('No workspace folder; cannot write config');
             }
             const rootUri = folders[0].uri;
             const clean = normalizeWorkspaceRelativePath(relativePath);

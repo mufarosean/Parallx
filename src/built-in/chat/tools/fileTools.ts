@@ -28,7 +28,7 @@ const MAX_DOC_TEXT_CHARS = 50_000;
 
 function requireFs(fs: IBuiltInToolFileSystem | undefined): asserts fs is IBuiltInToolFileSystem {
   if (!fs) {
-    throw new Error('File system is not available — no workspace folder is open');
+    throw new Error('File system is not available; no workspace folder is open');
   }
 }
 

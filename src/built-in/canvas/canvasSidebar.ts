@@ -1178,7 +1178,7 @@ export class CanvasSidebar {
     const searchIcon = createIconElement('search', 14);
     searchRow.appendChild(searchIcon);
     const searchBox = new InputBox(searchRow, {
-      placeholder: 'Search trash...',
+      placeholder: 'Search trash…',
       value: this._trashSearchQuery,
     });
     searchBox.inputElement.classList.add('canvas-trash-panel-search-input');

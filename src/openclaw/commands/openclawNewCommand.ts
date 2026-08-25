@@ -26,6 +26,6 @@ export async function tryHandleOpenclawNewCommand(
     return true;
   }
 
-  response.markdown('⚠️ New session command is not available in this context.');
+  response.markdown('Warning: New session command is not available in this context.');
   return true;
 }

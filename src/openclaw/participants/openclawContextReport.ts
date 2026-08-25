@@ -203,7 +203,7 @@ function formatContextReport(
   ];
 
   if (report.bootstrapWarningLines.length > 0) {
-    lines.push('', `⚠ Bootstrap context is over configured limits: ${report.bootstrapWarningLines.length} warning line(s).`);
+    lines.push('', `Warning: Bootstrap context is over configured limits: ${report.bootstrapWarningLines.length} warning line(s).`);
     for (const warningLine of report.bootstrapWarningLines) {
       lines.push(`- ${warningLine}`);
     }

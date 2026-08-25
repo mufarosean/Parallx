@@ -23,7 +23,7 @@ export async function tryHandleOpenclawStatusCommand(
   // Connection
   lines.push('### Connection');
   if (providerStatus) {
-    lines.push(`- **Provider:** Ollama ${providerStatus.available ? '✅ Connected' : '❌ Disconnected'}`);
+    lines.push(`- **Provider:** Ollama ${providerStatus.available ? 'Connected' : 'Disconnected'}`);
     if ('version' in providerStatus && providerStatus.version) lines.push(`- **Version:** ${providerStatus.version}`);
     if ('error' in providerStatus && providerStatus.error) lines.push(`- **Error:** ${providerStatus.error}`);
   } else {
@@ -43,7 +43,7 @@ export async function tryHandleOpenclawStatusCommand(
 
   // RAG & Indexing
   lines.push('\n### Retrieval');
-  lines.push(`- **RAG:** ${ragAvailable ? '✅ Available' : '❌ Not available'}`);
+  lines.push(`- **RAG:** ${ragAvailable ? 'Available' : 'Not available'}`);
   lines.push(`- **Indexing:** ${indexing ? 'In progress' : 'Idle'}`);
   const fileCount = await services.getFileCount?.().catch(() => 0) ?? 0;
   if (fileCount > 0) lines.push(`- **Indexed Files:** ${fileCount}`);

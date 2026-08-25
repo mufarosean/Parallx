@@ -122,9 +122,9 @@ export function buildOpenclawRuntimeSkillState(
 
   // Upstream: agents/skills/workspace.ts resolveWorkspaceSkillPromptState `truncationNote`.
   const truncationNote = truncated
-    ? `⚠️ Skills truncated: included ${candidates.length} of ${visibleCount}${compact ? ' (compact format, descriptions omitted)' : ''}.`
+    ? `Warning: Skills truncated: included ${candidates.length} of ${visibleCount}${compact ? ' (compact format, descriptions omitted)' : ''}.`
     : compact
-      ? '⚠️ Skills catalog using compact format (descriptions omitted).'
+      ? 'Warning: Skills catalog using compact format (descriptions omitted).'
       : '';
 
   const promptReportEntries: IOpenclawSkillPromptEntry[] = candidates.map((entry) => ({

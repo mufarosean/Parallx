@@ -124,7 +124,7 @@ export class ViewsBridge {
 
   private _throwIfDisposed(): void {
     if (this._disposed) {
-      throw new Error(`[ViewsBridge] Tool "${this._toolId}" has been deactivated — API access is no longer allowed.`);
+      throw new Error(`[ViewsBridge] Tool "${this._toolId}" has been deactivated; API access is no longer allowed.`);
     }
   }
 }
