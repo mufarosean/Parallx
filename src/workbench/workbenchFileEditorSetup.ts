@@ -18,7 +18,7 @@ import {
   IFileService,
   IEditorService,
   ITextFileModelManager,
-  IKeybindingService,
+
   ICommandService,
   IGlobalStorageService,
 } from '../services/serviceTypes.js';
@@ -38,8 +38,6 @@ import { PdfEditorInput } from '../built-in/editor/pdfEditorInput.js';
 import { EpubEditorInput } from '../built-in/editor/epubEditorInput.js';
 import { WordEditorInput } from '../built-in/editor/wordEditorInput.js';
 import { ExcelEditorInput } from '../built-in/editor/excelEditorInput.js';
-import { KeybindingsEditorInput } from '../built-in/editor/keybindingsEditorInput.js';
-import { SettingsEditorInput } from '../built-in/editor/settingsEditorInput.js';
 
 // Editor panes
 import { TextEditorPane } from '../built-in/editor/textEditorPane.js';
@@ -58,15 +56,12 @@ import { PdfEditorPane } from '../built-in/editor/pdfEditorPane.js';
 import { EpubEditorPane } from '../built-in/editor/epubEditorPane.js';
 import { WordEditorPane } from '../built-in/editor/wordEditorPane.js';
 import { ExcelEditorPane } from '../built-in/editor/excelEditorPane.js';
-import { KeybindingsEditorPane } from '../built-in/editor/keybindingsEditorPane.js';
-import { SettingsEditorPane } from '../built-in/editor/settingsEditorPane.js';
 
 // Editor resolver + pane factory
 import { EditorResolverService, EditorResolverPriority } from '../services/editorResolverService.js';
 import { registerEditorPaneFactory } from '../editor/editorPane.js';
 import { setFileEditorResolver } from '../api/bridges/editorsBridge.js';
 
-import type { KeybindingService } from '../services/keybindingService.js';
 
 // ─── Dependencies ────────────────────────────────────────────────────────────
 
@@ -246,16 +241,15 @@ function _initFileEditorResolver(
       return new NotebookEditorPane(getKernelService(), getNotebookGenerateProvider, getPythonService());
     }
 
-    if (input instanceof KeybindingsEditorInput) {
-      const kbService = services.has(IKeybindingService)
-        ? (services.get(IKeybindingService) as unknown as KeybindingService)
-        : undefined;
-      return new KeybindingsEditorPane(() => kbService?.getAllKeybindings() ?? []);
-    }
+    // The read-only keybindings-editor tab is DELETED alongside it — the
+    // hub's Keyboard Shortcuts panel (which can rebind) is the one surface.
 
-    if (input instanceof SettingsEditorInput) {
-      return new SettingsEditorPane(services);
-    }
+    // The second settings editor (SettingsEditorPane) is DELETED
+    // (STANDARDIZATION.md P1) — it was reachable only through restored
+    // editor state, duplicated the hub with its own schema renderer, and
+    // carried its own quick-action buttons to yet more surfaces. A restored
+    // settings tab now simply does not deserialize (see
+    // editorInputDeserializer) — the hub is the one settings surface.
 
     // Code files get the real editing surface; everything else keeps the
     // textarea pane. Routing on language support rather than a second

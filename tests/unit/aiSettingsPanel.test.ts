@@ -17,6 +17,7 @@ import { DEFAULT_PROFILE, BUILT_IN_PRESETS } from '../../src/aiSettings/aiSettin
 import { Emitter } from '../../src/platform/events';
 import { createSettingRow } from '../../src/aiSettings/ui/sectionBase';
 import { AISettingsPanel } from '../../src/aiSettings/ui/aiSettingsPanel';
+import { settingsPanelRegistry } from '../../src/services/settingsPanelRegistry';
 import { ToolsSection } from '../../src/aiSettings/ui/sections/toolsSection';
 import { activate, deactivate } from '../../src/built-in/ai-settings/main';
 
@@ -253,12 +254,28 @@ describe('AI Settings built-in activation', () => {
     context = { subscriptions: [] };
   });
 
-  it('registers view provider for view.aiSettings', () => {
+  it('does NOT register the retired view.aiSettings sidebar view', () => {
+    // ONE settings surface (STANDARDIZATION.md P1): AI Settings lives only
+    // in the unified Settings hub; the parallel sidebar view is gone.
     activate(mockApi, context as any);
-    expect(mockApi.views.registerViewProvider).toHaveBeenCalledWith(
-      'view.aiSettings',
-      expect.objectContaining({ createView: expect.any(Function) }),
-    );
+    expect(mockApi.views.registerViewProvider).not.toHaveBeenCalled();
+  });
+
+  it('registers the AI panel in the unified Settings hub', () => {
+    activate(mockApi, context as any);
+    const panel = settingsPanelRegistry.get('ai');
+    expect(panel).toBeDefined();
+    expect(panel!.label).toBe('AI & Models');
+    expect(panel!.fill).toBe(true);
+  });
+
+  it('ai-settings.open routes to the Settings hub', async () => {
+    activate(mockApi, context as any);
+    const call = mockApi.commands.registerCommand.mock.calls
+      .find((c: unknown[]) => c[0] === 'ai-settings.open');
+    expect(call).toBeDefined();
+    await call![1]();
+    expect(mockApi.commands.executeCommand).toHaveBeenCalledWith('settings.open', 'ai');
   });
 
   it('registers ai-settings.open command', () => {
@@ -279,13 +296,13 @@ describe('AI Settings built-in activation', () => {
     expect(() => deactivate()).not.toThrow();
   });
 
-  it('view provider creates AISettingsPanel', () => {
+  it('the hub panel render creates AISettingsPanel', () => {
     activate(mockApi, context as any);
-    const providerArg = mockApi.views.registerViewProvider.mock.calls[0][1];
+    const panel = settingsPanelRegistry.get('ai')!;
 
     const container = document.createElement('div');
     document.body.appendChild(container);
-    const disposable = providerArg.createView(container);
+    const disposable = panel.render(container) as { dispose(): void };
 
     expect(container.querySelector('.ai-settings-panel')).toBeTruthy();
     expect(disposable).toBeTruthy();

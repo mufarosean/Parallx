@@ -16,7 +16,7 @@
 import type { CommandDescriptor } from './commandTypes.js';
 import type { CommandService } from './commandRegistry.js';
 import type { IDisposable } from '../platform/lifecycle.js';
-import type { IEditorGroupService, IEditorService } from '../services/serviceTypes.js';
+import type { IEditorGroupService } from '../services/serviceTypes.js';
 import { wb } from './structuralCommandTypes.js';
 
 //  Re-export sub-modules for backward compatibility 
@@ -309,12 +309,13 @@ const openKeybindings: CommandDescriptor = {
   category: 'Preferences',
   keybinding: 'Ctrl+K Ctrl+S',
   aiInvocable: true,
-  aiDescription: 'Open the keyboard shortcuts editor.',
+  aiDescription: 'Open the keyboard shortcuts panel in Settings.',
   async handler(ctx) {
-    const editorService = ctx.getService<IEditorService>('IEditorService');
-    if (!editorService) return;
-    const { KeybindingsEditorInput } = await import('../built-in/editor/keybindingsEditorInput.js');
-    await editorService.openEditor(KeybindingsEditorInput.getInstance(), { pinned: true });
+    // ONE shortcuts surface (STANDARDIZATION.md P1): the Settings hub's
+    // panel, which can actually REBIND keys. The read-only editor tab this
+    // used to open is deleted.
+    const commandService = ctx.getService<{ executeCommand(id: string, ...args: unknown[]): Promise<unknown> }>('ICommandService');
+    await commandService?.executeCommand('settings.openKeyboardShortcuts');
   },
 };
 

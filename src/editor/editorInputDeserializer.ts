@@ -12,8 +12,6 @@ import { PdfEditorInput } from '../built-in/editor/pdfEditorInput.js';
 import { EpubEditorInput } from '../built-in/editor/epubEditorInput.js';
 import { ImageEditorInput } from '../built-in/editor/imageEditorInput.js';
 import { MarkdownPreviewInput } from '../built-in/editor/markdownPreviewInput.js';
-import { SettingsEditorInput } from '../built-in/editor/settingsEditorInput.js';
-import { KeybindingsEditorInput } from '../built-in/editor/keybindingsEditorInput.js';
 import { NotebookEditorInput } from '../built-in/editor/notebook/notebookEditorInput.js';
 import type { ITextFileModelManager, IFileService } from '../services/serviceTypes.js';
 
@@ -137,15 +135,12 @@ export function registerBuiltinEditorDeserializers(ctx: EditorDeserializerContex
     return NotebookEditorInput.create(URI.parse(uri), ctx.fileService, relativePath);
   });
 
-  // Settings editor — singleton, no data needed
-  registerEditorInputDeserializer(SettingsEditorInput.TYPE_ID, () => {
-    return SettingsEditorInput.getInstance();
-  });
+  // The old settings-editor tab type is retired: restored 'settings'
+  // editors are dropped on deserialize (no factory registered), and the
+  // unified Settings hub is the one settings surface.
 
-  // Keybindings editor — singleton, no data needed
-  registerEditorInputDeserializer(KeybindingsEditorInput.TYPE_ID, () => {
-    return KeybindingsEditorInput.getInstance();
-  });
+  // The old keybindings-editor tab type is retired the same way: the hub's
+  // Keyboard Shortcuts panel (which can rebind) is the one surface.
 
   // Note: 'parallx.welcome.editor' is a ToolEditorInput created by the Welcome tool.
   // It re-registers its provider during tool activation. We skip it here because

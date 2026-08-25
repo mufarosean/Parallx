@@ -157,7 +157,10 @@ describe('registerBuiltinEditorDeserializers', () => {
     expect(hasEditorInputDeserializer('parallx.editor.epub')).toBe(true);
     expect(hasEditorInputDeserializer('parallx.editor.image')).toBe(true);
     expect(hasEditorInputDeserializer('parallx.editor.markdownPreview')).toBe(true);
-    expect(hasEditorInputDeserializer('parallx.editor.settings')).toBe(true);
-    expect(hasEditorInputDeserializer('parallx.editor.keybindings')).toBe(true);
+    // The settings/keybindings editor TABS are retired (STANDARDIZATION.md
+    // P1) — the unified Settings hub is the one surface for both, so their
+    // restored tabs deliberately do not deserialize.
+    expect(hasEditorInputDeserializer('parallx.editor.settings')).toBe(false);
+    expect(hasEditorInputDeserializer('parallx.editor.keybindings')).toBe(false);
   });
 });

@@ -29,7 +29,6 @@ interface ParallxApi {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const EDITOR_TYPE_ID = 'parallx.theme-editor';
 
 // ─── Activation ──────────────────────────────────────────────────────────────
 
@@ -37,23 +36,12 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   const themeService = api.services.get<import('../../services/serviceTypes.js').IThemeService>(IThemeService);
   const globalStorage = api.services.get<IStorage>(IGlobalStorageService);
 
-  // Register theme editor as an editor provider (opens in tab)
-  context.subscriptions.push(
-    api.editors.registerEditorProvider(EDITOR_TYPE_ID, {
-      createEditorPane(container: HTMLElement): IDisposable {
-        return new PxAppearancePanel(container, themeService, globalStorage);
-      },
-    }),
-  );
-
-  // Register the "Open Theme Editor" command
+  // ONE appearance surface (STANDARDIZATION.md P1): the Settings hub's
+  // Appearance panel. The separate editor-tab surface is retired — same
+  // panel class, second door. The historical command id routes to the hub.
   context.subscriptions.push(
     api.commands.registerCommand('theme-editor.open', () => {
-      api.editors.openEditor({
-        typeId: EDITOR_TYPE_ID,
-        title: 'Appearance',
-        icon: 'palette',
-      }).catch(err => console.error('[Appearance] Failed to open:', err));
+      api.commands.executeCommand('settings.openAppearance');
     }),
   );
 

@@ -393,12 +393,9 @@ export const AI_SETTINGS_MANIFEST: IToolManifest = {
     keybindings: [
       { command: 'ai-settings.open', key: 'Ctrl+Shift+A' },
     ],
-    viewContainers: [
-      { id: 'ai-settings-container', title: 'AI Settings', icon: 'px-ai', location: 'auxiliaryBar' as const, hidden: true },
-    ],
-    views: [
-      { id: 'view.aiSettings', name: 'AI Settings', defaultContainerId: 'ai-settings-container' },
-    ],
+    // The `view.aiSettings` sidebar view + its hidden container are RETIRED
+    // (STANDARDIZATION.md P1): AI Settings lives only in the Settings hub,
+    // and ai-settings.open routes there. The command + keybinding stay.
   },
 };
 
@@ -469,7 +466,8 @@ export const THEME_EDITOR_MANIFEST: IToolManifest = {
     keybindings: [
       { command: 'theme-editor.open', key: 'Ctrl+Shift+T' },
     ],
-    editors: [{ typeId: 'parallx.theme-editor', displayName: 'Appearance' }],
+    // The editor-tab surface is retired (STANDARDIZATION.md P1) — the
+    // command routes to Settings > Appearance; the keybinding stays.
   },
 };
 

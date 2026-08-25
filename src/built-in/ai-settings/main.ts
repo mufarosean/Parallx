@@ -117,37 +117,16 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     ? api.services.get<import('../../platform/storage.js').IStorage>(IGlobalStorageService)
     : undefined;
 
-  // Register view provider. CronService is resolved INSIDE createView (not
-  // at activation time) because chat-extension activation may not have
-  // registered `ICronService` in DI yet when ai-settings activates. The
-  // view is constructed lazily on first reveal, by which point chat is
-  // guaranteed to have run (both share `onStartupFinished`), so the lookup
-  // succeeds. Capturing the service at activation time would silently lock
-  // the panel into the no-service degraded path for the whole session.
-  context.subscriptions.push(
-    api.views.registerViewProvider('view.aiSettings', {
-      createView(container: HTMLElement): IDisposable {
-        const cronService = api.services.has(ICronService)
-          ? api.services.get<import('../../openclaw/openclawCronService.js').CronService>(ICronService)
-          : undefined;
-        _panel = new AISettingsPanel(container, aiSettingsService, languageModelsService, unifiedConfigService, toolPickerServices, mcpClientService, autonomyFlagsService, globalStorage, cronService, notificationService);
-        return _panel;
-      },
-    }),
-  );
-
-  // Register the "Open AI Settings" command
-  context.subscriptions.push(
-    api.commands.registerCommand('ai-settings.open', () => {
-      api.commands.executeCommand('workbench.view.show', 'view.aiSettings');
-    }),
-  );
-
-  // Contribute AI as a panel inside the unified Settings hub. This is a
-  // self-contained, internally-scrolling panel (its own sub-nav), so it fills
-  // the hub content pane. It's an independent instance — we deliberately do
-  // NOT assign module `_panel` here (that belongs to the sidebar view, which
-  // ai-settings.scrollToSection targets).
+  // ONE settings surface (STANDARDIZATION.md P1): AI Settings lives ONLY
+  // inside the unified Settings hub. The parallel `view.aiSettings`
+  // sidebar view is retired — it was the majority path (Ctrl+Shift+A, the
+  // chat gear and wrench, every manage command routed there), which meant
+  // the hub's own AI action rows opened a DIFFERENT surface. All entry
+  // points now land on the hub panel; scrollToSection targets it.
+  //
+  // CronService is resolved INSIDE render (not at activation) because
+  // chat-extension activation may not have registered `ICronService` in DI
+  // yet when ai-settings activates; by first open it has.
   context.subscriptions.push(
     settingsPanelRegistry.register({
       id: 'ai',
@@ -159,16 +138,33 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         const cronService = api.services.has(ICronService)
           ? api.services.get<import('../../openclaw/openclawCronService.js').CronService>(ICronService)
           : undefined;
-        return new AISettingsPanel(
+        const panel = new AISettingsPanel(
           container, aiSettingsService, languageModelsService, unifiedConfigService,
           toolPickerServices, mcpClientService, autonomyFlagsService, globalStorage, cronService,
           notificationService,
         );
+        _panel = panel;
+        return {
+          dispose: () => {
+            if (_panel === panel) _panel = null;
+            panel.dispose();
+          },
+        };
       },
     }),
   );
 
-  // Register the "Scroll to section" command (M20 E.2 — wrench icon redirect)
+  // "Open AI Settings" — the historical command id every entry point uses
+  // (Ctrl+Shift+A, chat gear/wrench, autonomy-log deep links). It now opens
+  // the hub on the AI panel.
+  context.subscriptions.push(
+    api.commands.registerCommand('ai-settings.open', () => {
+      api.commands.executeCommand('settings.open', 'ai');
+    }),
+  );
+
+  // "Scroll to section" (M20 E.2 — wrench icon redirect). Targets the hub
+  // panel instance; callers open first, then scroll a tick later.
   context.subscriptions.push(
     api.commands.registerCommand('ai-settings.scrollToSection', (sectionId: unknown) => {
       if (_panel && typeof sectionId === 'string') {
@@ -178,11 +174,10 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   );
 
   // ── M61 Phase 5 manager commands ──
-  // Action rows in the unified settings overlay use these to launch the
-  // existing section-scoped managers. Each opens the AI Settings sidebar
-  // and scrolls to the right section.
+  // Action rows in the unified settings overlay use these to reach a
+  // section. Same surface now — open the hub's AI panel, scroll within it.
   const _openSection = async (sectionId: string): Promise<void> => {
-    await api.commands.executeCommand('workbench.view.show', 'view.aiSettings');
+    await api.commands.executeCommand('settings.open', 'ai');
     // Wait one tick so the panel has time to mount before we scroll.
     setTimeout(() => api.commands.executeCommand('ai-settings.scrollToSection', sectionId), 0);
   };
