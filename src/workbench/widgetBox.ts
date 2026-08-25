@@ -24,7 +24,7 @@ import { Orientation } from '../layout/layoutTypes.js';
 import type { PartDropZone } from './partDrag.js';
 import { ContextMenu } from '../ui/contextMenu.js';
 import { $ } from '../ui/dom.js';
-import type { WorkbenchWidgetHost } from '../built-in/dashboard/dashboardTypes.js';
+import type { WorkbenchWidgetHost, DashboardWidgetRow, WidgetAppearance } from '../built-in/dashboard/dashboardTypes.js';
 import type { WidgetContext, WidgetHandle } from '../api/bridges/dashboardBridge.js';
 import { renderMarkdownToDom } from '../built-in/dashboard/widgets/markdownRenderer.js';
 
@@ -192,7 +192,7 @@ export interface WidgetBoxHost {
  */
 export class WidgetBoxManager extends Disposable {
   private readonly _boxes = new Map<string, WidgetBox>();
-  private readonly _mounts = new Map<string, { store: DisposableStore; handle: WidgetHandle }>();
+  private readonly _mounts = new Map<string, { store: DisposableStore; handle: WidgetHandle; row: DashboardWidgetRow }>();
   private readonly _listeners = this._register(new DisposableStore());
   private readonly _systemListeners = this._register(new DisposableStore());
   private _system: WorkbenchWidgetHost | undefined;
@@ -374,7 +374,7 @@ export class WidgetBoxManager extends Disposable {
         return;
       }
       store.add(handle);
-      this._mounts.set(box.instanceId, { store, handle });
+      this._mounts.set(box.instanceId, { store, handle, row });
       system.applyAppearance(box.card, row.appearance);
       box.markMounted();
 
@@ -444,10 +444,24 @@ export class WidgetBoxManager extends Disposable {
       // the system decides whether the type actually refreshes.
       return this._mounts.has(box.instanceId);
     })();
+    // Content placement submenu — the current mode is marked so the menu
+    // reads as the radio group it is.
+    const current = this._mounts.get(box.instanceId)?.row.appearance.contentAlign ?? 'start';
+    const alignLabel = (label: string, value: string): string =>
+      current === value ? `${label} (Current)` : label;
+
     const items = [
       ...(canRefresh
         ? [{ id: 'refresh', label: 'Refresh Widget', group: '0_refresh' }]
         : []),
+      {
+        id: 'align', label: 'Align Content', group: '1_move', order: 0,
+        submenu: [
+          { id: 'align-start', label: alignLabel('Top Left', 'start') },
+          { id: 'align-start-padded', label: alignLabel('Top Left With Margin', 'start-padded') },
+          { id: 'align-center', label: alignLabel('Centered', 'center') },
+        ],
+      },
       { id: 'edge-left', label: 'Move To Left Edge', group: '1_move', order: 1 },
       { id: 'edge-right', label: 'Move To Right Edge', group: '1_move', order: 2 },
       { id: 'edge-bottom', label: 'Move To Bottom Edge', group: '1_move', order: 3 },
@@ -457,12 +471,31 @@ export class WidgetBoxManager extends Disposable {
     menu.onDidSelect(({ item }) => {
       switch (item.id) {
         case 'refresh': void this._system?.refreshWidget(box.instanceId); break;
+        case 'align-start': void this.setContentAlign(box.instanceId, 'start'); break;
+        case 'align-start-padded': void this.setContentAlign(box.instanceId, 'start-padded'); break;
+        case 'align-center': void this.setContentAlign(box.instanceId, 'center'); break;
         case 'edge-left': this._host.moveFloatingToEdge(box.id, Orientation.Horizontal, true); break;
         case 'edge-right': this._host.moveFloatingToEdge(box.id, Orientation.Horizontal, false); break;
         case 'edge-bottom': this._host.moveFloatingToEdge(box.id, Orientation.Vertical, false); break;
         case 'remove': void this.removeWidget(box.instanceId); break;
       }
     });
+  }
+
+  /**
+   * Persist a content-placement choice into the instance's appearance —
+   * the same record the border/look customization lives in, so it follows
+   * the widget between hosts. The widget-updated event remounts the seat.
+   */
+  async setContentAlign(
+    instanceId: string,
+    contentAlign: NonNullable<WidgetAppearance['contentAlign']>,
+  ): Promise<void> {
+    const system = this._system;
+    if (!system) return;
+    const row = await system.getInstance(instanceId);
+    if (!row) return;
+    await system.updateAppearance(instanceId, { ...row.appearance, contentAlign });
   }
 
   override dispose(): void {

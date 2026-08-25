@@ -88,6 +88,12 @@ function fakeSystem() {
     setCachedOutput: async (id: string, o: string) => { calls.push(`cache:${id}:${o}`); },
     setError: async (id: string, m: string) => { calls.push(`error:${id}:${m}`); },
     clearError: async (id: string) => { calls.push(`clearError:${id}`); },
+    updateAppearance: async (id: string, appearance: Record<string, unknown>) => {
+      const row = rows.get(id);
+      if (row) row.appearance = appearance;
+      calls.push(`appearance:${id}:${JSON.stringify(appearance)}`);
+      dataChanged.fire({ kind: 'widget-updated', widgetId: id });
+    },
     refreshWidget: async (id: string) => { calls.push(`refresh:${id}`); },
     scheduleWidget: async (id: string) => { calls.push(`schedule:${id}`); },
     cancelSchedule: (id: string) => { calls.push(`cancel:${id}`); },
@@ -218,7 +224,7 @@ describe('WidgetBoxManager', () => {
     expect(system.calls).not.toContain('removeInstance:w1');
   });
 
-  it('the grip menu offers moves and Remove Widget', async () => {
+  it('the grip menu offers moves, alignment, and Remove Widget', async () => {
     manager.connectSystem(system);
     manager.place('w1');
     await flush();
@@ -227,10 +233,48 @@ describe('WidgetBoxManager', () => {
     try {
       const labels = [...document.querySelectorAll<HTMLElement>('.context-menu-item')]
         .map((i) => i.textContent ?? '');
+      expect(labels.some((l) => l.includes('Align Content'))).toBe(true);
       expect(labels.some((l) => l.includes('Move To Bottom Edge'))).toBe(true);
       expect(labels.some((l) => l.includes('Remove Widget'))).toBe(true);
     } finally {
       document.querySelectorAll('.context-menu').forEach((el) => el.remove());
     }
+  });
+
+  it('setContentAlign persists into appearance and the seat remounts with it', async () => {
+    manager.connectSystem(system);
+    manager.place('w1');
+    await flush();
+
+    await manager.setContentAlign('w1', 'center');
+    await flush();
+    expect(system.calls.some((c) => c.startsWith('appearance:w1:') && c.includes('"contentAlign":"center"'))).toBe(true);
+    // The widget-updated event remounted the seat; the fake system's
+    // applyAppearance ran again against the updated row.
+    expect(system.rows.get('w1')?.appearance).toMatchObject({ contentAlign: 'center' });
+  });
+});
+
+describe('applyWidgetAppearance content alignment', () => {
+  it('stamps data-content-align for non-default modes and clears it for start', async () => {
+    const { applyWidgetAppearance } = await import('../../src/built-in/dashboard/widgetAppearance');
+    const card = document.createElement('div');
+    const base = {
+      background: 'default', backgroundColor: null,
+      border: 'default', borderColor: null,
+      title: null, titleHidden: false,
+    } as const;
+
+    applyWidgetAppearance(card, { ...base, contentAlign: 'center' });
+    expect(card.dataset.contentAlign).toBe('center');
+
+    applyWidgetAppearance(card, { ...base, contentAlign: 'start-padded' });
+    expect(card.dataset.contentAlign).toBe('start-padded');
+
+    applyWidgetAppearance(card, { ...base, contentAlign: 'start' });
+    expect(card.dataset.contentAlign).toBeUndefined();
+
+    applyWidgetAppearance(card, { ...base });
+    expect(card.dataset.contentAlign).toBeUndefined();
   });
 });

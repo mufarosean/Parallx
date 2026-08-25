@@ -202,6 +202,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     setCachedOutput: (id, output) => _dataService!.setWidgetCachedOutput(id, output),
     setError: (id, message) => _dataService!.setWidgetError(id, message),
     clearError: (id) => _dataService!.clearWidgetError(id),
+    updateAppearance: (id, appearance) => _dataService!.updateWidgetAppearance(id, appearance),
     refreshWidget: async (id) => {
       const row = await _dataService!.getWidget(id);
       if (!row) return;

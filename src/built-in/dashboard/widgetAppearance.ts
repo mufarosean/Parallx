@@ -28,6 +28,14 @@ export function applyWidgetAppearance(card: HTMLElement, a: WidgetAppearance): v
   if (a.border === 'none') card.dataset.borderless = 'true';
   else delete card.dataset.borderless;
 
+  // Content placement within the cell — CSS keys on this in both hosts
+  // (.widget-box-card in the workbench, .dashboard-widget on a dashboard).
+  if (a.contentAlign && a.contentAlign !== 'start') {
+    card.dataset.contentAlign = a.contentAlign;
+  } else {
+    delete card.dataset.contentAlign;
+  }
+
   // Title override + hide. Title text only updates when the element already
   // exists (it doesn't during the very first mount call — _mountWidget sets
   // the initial text itself); this branch drives live preview in the drawer.

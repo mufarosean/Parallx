@@ -70,6 +70,8 @@ export interface WorkbenchWidgetHost {
   setCachedOutput(id: string, output: string): Promise<void>;
   setError(id: string, message: string): Promise<void>;
   clearError(id: string): Promise<void>;
+  /** Persist per-instance look customization (fires widget-updated). */
+  updateAppearance(id: string, appearance: WidgetAppearance): Promise<void>;
 
   /** Run one refresh through the real scheduler's admission (headless). */
   refreshWidget(id: string): Promise<void>;
@@ -133,6 +135,13 @@ export interface WidgetAppearance {
   readonly title: string | null;
   /** Hide the header title row entirely (actions still reveal on hover). */
   readonly titleHidden: boolean;
+  /**
+   * Where the widget's content sits within its cell — workbench seats and
+   * dashboard cards alike. 'start' = flush top-left (the default);
+   * 'start-padded' = top-left with a breathing margin; 'center' = centred
+   * in the visible space.
+   */
+  readonly contentAlign?: 'start' | 'start-padded' | 'center';
 }
 
 export const DEFAULT_WIDGET_APPEARANCE: WidgetAppearance = {
@@ -142,6 +151,7 @@ export const DEFAULT_WIDGET_APPEARANCE: WidgetAppearance = {
   borderColor: null,
   title: null,
   titleHidden: false,
+  contentAlign: 'start',
 };
 
 export interface DashboardWidgetRow {

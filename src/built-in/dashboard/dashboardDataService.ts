@@ -58,6 +58,8 @@ function parseAppearance(raw: string | undefined): WidgetAppearance {
       borderColor: typeof p.borderColor === 'string' ? p.borderColor : null,
       title: typeof p.title === 'string' && p.title.trim() ? p.title : null,
       titleHidden: p.titleHidden === true,
+      contentAlign: p.contentAlign === 'center' || p.contentAlign === 'start-padded'
+        ? p.contentAlign : 'start',
     };
   } catch {
     return DEFAULT_WIDGET_APPEARANCE;

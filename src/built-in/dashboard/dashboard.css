@@ -452,6 +452,19 @@
   overflow: hidden;
   min-height: 0;
 }
+/* appearance.contentAlign — the card body already pads, so only the
+   centred mode changes anything on a dashboard. Workbench seats key the
+   same appearance field on their own body (workbench.css). */
+.dashboard-widget[data-content-align='center'] .dashboard-widget__body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.dashboard-widget[data-content-align='center'] .dashboard-widget__body > * {
+  width: auto;
+  max-width: 100%;
+}
 
 .dashboard-widget__footer {
   padding: 6px 14px 10px;
