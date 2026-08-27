@@ -1970,46 +1970,168 @@ video.vw__fill { object-fit: contain; background: #000; }
    Widget — year progress
    ========================================================================== */
 
+/* Two knobs drive every variant: --ypw-fill (six token-backed colors) and
+   the bar geometry (--ypw-height / --ypw-radius). Layout is chosen by
+   [data-layout]; nothing here is per-instance CSS. */
 .ypw {
+  --ypw-fill: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 90%, transparent);
+  --ypw-track: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 12%, transparent);
+  --ypw-height: 6px;
+  --ypw-radius: 3px;
+
   display: flex;
   flex-direction: column;
   justify-content: center;
   gap: 12px;
   height: 100%;
 }
+
+/* Bar color. Neutral is the default declared above — the quiet white that
+   reads as part of the card rather than a notification. */
+.ypw[data-color='accent'] { --ypw-fill: var(--px-accent); }
+.ypw[data-color='green']  { --ypw-fill: var(--px-success); }
+.ypw[data-color='amber']  { --ypw-fill: var(--px-warning); }
+.ypw[data-color='red']    { --ypw-fill: var(--px-danger); }
+.ypw[data-color='blue']   { --ypw-fill: var(--px-info); }
+
+/* Bar style. Height and radius only — the geometry is shared, so a style
+   change can never move anything else on the card. */
+.ypw[data-style='slim']     { --ypw-height: 2px;  --ypw-radius: 1px; }
+.ypw[data-style='pill']     { --ypw-height: 10px; --ypw-radius: 999px; }
+.ypw[data-style='segments'] { --ypw-height: 8px;  --ypw-radius: 2px; }
+
+/* ── Inline: label, bar, number on one line ── */
+
+/* One grid for the whole widget, with the rows collapsing into it, so the
+   labels and the numbers line up as columns across every row. */
+.ypw[data-layout='inline'] {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  align-content: center;
+  column-gap: 12px;
+  row-gap: 12px;
+}
+.ypw[data-layout='inline'] .ypw__row--inline,
+.ypw[data-layout='inline'] .ypw__line {
+  display: contents;
+}
+.ypw[data-layout='inline'] .ypw__caption {
+  grid-column: 1 / -1;
+  margin-top: -6px;
+}
+
+/* ── Stacked: label and number above the bar ── */
+
+.ypw__row--stacked {
+  display: flex;
+  flex-direction: column;
+}
 .ypw__head {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
 }
+
+/* ── Detail: the bar, its endpoints, the counts ── */
+
+.ypw__row--detail {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ypw__ends {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--px-text-2xs);
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 50%, transparent);
+}
+.ypw__stats {
+  display: flex;
+  margin-top: 6px;
+}
+.ypw__stat {
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: center;
+  border-left: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 12%, transparent);
+}
+.ypw__stat:first-child {
+  border-left: none;
+}
+.ypw__stat-n {
+  font-size: var(--px-text-xl);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  color: var(--vscode-editor-foreground, #f3f3f3);
+}
+.ypw__stat-l {
+  margin-top: 2px;
+  font-size: var(--px-text-2xs);
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 50%, transparent);
+}
+
+/* ── Text ── */
+
 .ypw__label {
   font-size: var(--px-text-sm);
   font-weight: 500;
+  white-space: nowrap;
   color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 70%, transparent);
 }
 .ypw__pct {
   font-size: var(--px-text-sm);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
   color: var(--vscode-editor-foreground, #f3f3f3);
 }
+.ypw__caption {
+  margin-top: 6px;
+  font-size: var(--px-text-2xs);
+  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 50%, transparent);
+}
+
+/* ── The bar itself ── */
+
 .ypw__track {
-  height: 6px;
-  border-radius: 3px;
-  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 12%, transparent);
+  height: var(--ypw-height);
+  border-radius: var(--ypw-radius);
+  background: var(--ypw-track);
   overflow: hidden;
 }
 .ypw__fill {
   height: 100%;
-  border-radius: 3px;
-  background: var(--px-accent, var(--vscode-focusBorder, #007fd4));
+  width: 0;
+  border-radius: inherit;
+  background: var(--ypw-fill);
   transition: width var(--px-dur-slow, 300ms) var(--px-ease);
 }
-.ypw__caption {
-  margin-top: 4px;
-  font-size: var(--px-text-2xs);
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 50%, transparent);
+
+/* Segments: the same fill, cut into the divisions the unit actually has —
+   twelve months, seven days, twenty-four hours. */
+.ypw__segs {
+  display: flex;
+  gap: 3px;
+  height: var(--ypw-height);
+}
+.ypw__seg {
+  display: block;
+  flex: 1 1 0;
+  min-width: 0;
+  border-radius: var(--ypw-radius);
+  background: var(--ypw-track);
+  overflow: hidden;
+}
+.ypw__segfill {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: var(--ypw-fill);
+  transition: width var(--px-dur-slow, 300ms) var(--px-ease);
 }
 
 /* ============================================================================
