@@ -19,6 +19,7 @@ import { $ } from '../../../ui/dom.js';
 import { SlashMenuController, type SlashMenuHost } from './slashMenu.js';
 import { BubbleMenuController, type BubbleMenuHost } from './bubbleMenu.js';
 import { BlockActionMenuController, type BlockActionMenuHost } from './blockActionMenu.js';
+import { TableActionMenuController, type TableMenuTarget } from './tableActionMenu.js';
 import { IconMenuController, type IconMenuHost, type IconMenuOptions } from './iconMenu.js';
 import { CoverMenuController, type CoverMenuHost, type CoverMenuOptions } from './coverMenu.js';
 import { InlineMathEditorController, type InlineMathEditorHost } from '../math/inlineMathEditor.js';
@@ -71,6 +72,43 @@ export {
   canTakeBackgroundColor,
   canTurnInto,
 } from '../config/blockStateRegistry/blockStateRegistry.js';
+
+// ── Table operations (source: blockStateRegistry/tableOps.ts) ──────────────
+// The row/column grips and the table action menu are two doors onto ONE set
+// of table operations; both reach them through this gate.
+
+/** @see {@link import('../config/blockStateRegistry/tableOps.js')} — origin */
+export {
+  tableFrameAt,
+  resolveTableFrame,
+  selectTableRow,
+  selectTableColumn,
+  selectWholeTable,
+  selectTableNode,
+  focusTableCell,
+  insertRowAbove,
+  insertRowBelow,
+  insertColumnLeft,
+  insertColumnRight,
+  appendRow,
+  appendColumn,
+  removeRow,
+  removeColumn,
+  removeTable,
+  clearSelectedCells,
+  duplicateRow,
+  duplicateColumn,
+  moveRowBy,
+  moveColumnBy,
+  toggleHeaderRowOp,
+  toggleHeaderColumnOp,
+  mergeSelectedCells,
+  splitSelectedCell,
+  canMergeCells,
+  canSplitCell,
+  selectionIsInTable,
+} from '../config/blockStateRegistry/blockStateRegistry.js';
+export type { TableFrame } from '../config/blockStateRegistry/blockStateRegistry.js';
 
 /** @see {@link import('../config/iconRegistry.js').PAGE_SELECTABLE_ICONS} — original source (IconRegistry → here) */
 export const PAGE_SELECTABLE_ICONS: readonly string[] = _ir_PAGE_SELECTABLE_ICONS;
@@ -363,6 +401,26 @@ export interface IBlockActionMenu extends ICanvasMenu {
   readonly menu: HTMLElement | null;
 }
 
+// ── Table Action Menu interface (consumed by handles/tableControls.ts) ──────
+
+/** Re-exported so the handle layer can name the grip menu's target axis. */
+export type { TableMenuTarget } from './tableActionMenu.js';
+
+/**
+ * The row / column / table menu the grips open.  Targeting is the CALLER's
+ * job: put a visible CellSelection on the row or column first, then show —
+ * every command in the menu reads the selection.
+ */
+export interface ITableActionMenu extends ICanvasMenu {
+  show(
+    target: TableMenuTarget,
+    tablePos: number,
+    index: number,
+    anchor: DOMRect,
+    anchorEl?: HTMLElement,
+  ): void;
+}
+
 // ── Combined host type (union of all menu hosts) ────────────────────────────
 
 export type CanvasMenuHost = SlashMenuHost & BubbleMenuHost & BlockActionMenuHost & IconMenuHost & CoverMenuHost & InlineMathEditorHost & InlineAIChatHost;
@@ -377,6 +435,7 @@ export class CanvasMenuRegistry {
   private readonly _getEditor: () => Editor | null;
   private _iconMenu: IconMenuController | null = null;
   private _coverMenu: CoverMenuController | null = null;
+  private _tableActionMenu: TableActionMenuController | null = null;
   private _inlineMathEditor: InlineMathEditorController | null = null;
   private _aiChat: InlineAIChatController | null = null;
   private _contextMenuGestureUntil = 0;
@@ -431,10 +490,23 @@ export class CanvasMenuRegistry {
     inlineMath.create();
     this._inlineMathEditor = inlineMath;
 
+    const tableAction = new TableActionMenuController(host, this);
+    tableAction.create();
+    this._tableActionMenu = tableAction;
+
     // InlineAIChatController is created lazily via createAIChat() after
     // the AI provider is available — not in this factory.
 
     return blockAction;
+  }
+
+  /**
+   * The row/column grip menu, created by `createStandardMenus`.  Handed to
+   * TableControlsController the same way the block-action menu is handed to
+   * BlockHandlesController.
+   */
+  get tableActionMenu(): ITableActionMenu | null {
+    return this._tableActionMenu;
   }
 
   // ── Registration ────────────────────────────────────────────────────────

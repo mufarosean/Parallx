@@ -24,6 +24,7 @@ import {
   BlockHandlesController,
   BlockSelectionController,
   BlockMarqueeController,
+  TableControlsController,
   createBlockSelectionPlugin,
 } from './handles/handleRegistry.js';
 import type { ICanvasDataService } from './canvasTypes.js';
@@ -61,6 +62,7 @@ export class CanvasEditorView implements CanvasMenuHost {
   private _blockHandles: BlockHandlesController | null = null;
   private _blockSelection!: BlockSelectionController;
   private _blockMarquee: BlockMarqueeController | null = null;
+  private _tableControls: TableControlsController | null = null;
   private readonly _store = new DisposableStore();
 
   private _disposed = false;
@@ -164,7 +166,10 @@ export class CanvasEditorView implements CanvasMenuHost {
       onTransaction: ({ editor, transaction }) => {
         if (this._suppressUpdate) return;
         this._menuRegistry?.notifyTransaction(editor);
-        if (transaction.docChanged) this._blockHandles?.notifyDocChanged();
+        if (transaction.docChanged) {
+          this._blockHandles?.notifyDocChanged();
+          this._tableControls?.notifyDocChanged();
+        }
       },
       onSelectionUpdate: ({ editor }) => {
         this._menuRegistry?.notifySelectionUpdate(editor);
@@ -190,6 +195,11 @@ export class CanvasEditorView implements CanvasMenuHost {
     this._blockSelection = new BlockSelectionController(this);
     this._blockSelection.setup();
     this._blockMarquee = new BlockMarqueeController(this);
+    const tableMenu = this._menuRegistry.tableActionMenu;
+    if (tableMenu) {
+      this._tableControls = new TableControlsController(this, tableMenu);
+      this._tableControls.setup();
+    }
 
     // Live-reload when an external writer (the full editor, an AI tool) edits
     // this page — keeps the embed and the full page in sync both ways.
@@ -227,6 +237,7 @@ export class CanvasEditorView implements CanvasMenuHost {
     this._store.dispose();
     this._blockMarquee?.dispose();
     this._blockHandles?.dispose();
+    this._tableControls?.dispose();
     this._blockSelection?.dispose();
     this._menuRegistry?.dispose();
     if (this._editor) {

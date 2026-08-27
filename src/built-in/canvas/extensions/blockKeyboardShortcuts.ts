@@ -7,6 +7,26 @@
 // a single owner for Mod-Shift-ArrowUp/Down and Mod-d behavior.
 
 import { Extension } from '@tiptap/core';
+import { selectionIsInTable } from '../config/blockStateRegistry/blockStateRegistry.js';
+
+/**
+ * The block layer stands down for a caret inside a table cell.
+ *
+ * Both extend handlers BOOTSTRAP: with nothing selected they call
+ * selectAtCursor() first, which resolves a cursor in ANY cell to the whole
+ * TABLE.  So a plain Shift+ArrowUp typed while editing a cell block-selected
+ * the table *and* its neighbour above, and the next Backspace deleted both
+ * (measured 2026-08-27).  Declining here lets prosemirror-tables' own keymap
+ * extend the CELL selection, which is what the keystroke meant.
+ *
+ * An ACTIVE block selection is left alone: the user stepped out of the cell
+ * deliberately (Escape, or the drag handle) and wants block semantics.
+ */
+function standDownInsideTable(ctx: any): boolean {
+  if (ctx.storage?.hasSelection?.()) return false;
+  const state = ctx.editor?.state;
+  return !!state && selectionIsInTable(state);
+}
 
 export const BlockKeyboardShortcuts = Extension.create({
   name: 'blockKeyboardShortcuts',
@@ -53,6 +73,7 @@ export const BlockKeyboardShortcuts = Extension.create({
 
       // ── Shift+ArrowUp — Extend block selection upward ──
       'Shift-ArrowUp': () => {
+        if (standDownInsideTable(this)) return false;
         const fn = this.storage.extendSelectionUp;
         if (fn) return fn();
         return false;
@@ -60,6 +81,7 @@ export const BlockKeyboardShortcuts = Extension.create({
 
       // ── Shift+ArrowDown — Extend block selection downward ──
       'Shift-ArrowDown': () => {
+        if (standDownInsideTable(this)) return false;
         const fn = this.storage.extendSelectionDown;
         if (fn) return fn();
         return false;

@@ -34,7 +34,7 @@ import { Editor } from '@tiptap/core';
 import { common, createLowlight } from 'lowlight';
 import { $ } from '../../ui/dom.js';
 import { createEditorExtensions, PageChromeController, renderPageIconHtml } from './config/blockRegistry.js';
-import { BlockHandlesController, BlockSelectionController, BlockMarqueeController, BlockClipboardController, createBlockSelectionPlugin } from './handles/handleRegistry.js';
+import { BlockHandlesController, BlockSelectionController, BlockMarqueeController, BlockClipboardController, TableControlsController, createBlockSelectionPlugin } from './handles/handleRegistry.js';
 import { CanvasMenuRegistry, type IBlockActionMenu } from './menus/canvasMenuRegistry.js';
 import type { SendChatRequestFn, RetrieveContextFn } from './menus/canvasMenuRegistry.js';
 
@@ -320,6 +320,7 @@ class CanvasEditorPane implements IDisposable {
 
   // ── Block marquee (box-drag lasso selection) ──
   private _blockMarquee!: BlockMarqueeController;
+  private _tableControls: TableControlsController | null = null;
   private _blockClipboard!: BlockClipboardController;
 
   // ── Property bar ──
@@ -565,6 +566,7 @@ class CanvasEditorPane implements IDisposable {
         // _resolveBlockFromHandle() to target the wrong block.
         if (transaction.docChanged) {
           this._blockHandles?.notifyDocChanged();
+          this._tableControls?.notifyDocChanged();
           // Only reconcile after the initial content load has seeded the
           // pageBlock snapshot.  Otherwise an early docChanged transaction
           // (UniqueID id assignment, etc.) would diff against an empty set
@@ -637,6 +639,13 @@ class CanvasEditorPane implements IDisposable {
     this._blockMarquee.setup();
     this._blockClipboard = new BlockClipboardController(this);
     this._blockClipboard.setup();
+
+    // Setup table row/column grips (+ ✛ add bars, drag-to-reorder).
+    const tableMenu = this._menuRegistry.tableActionMenu;
+    if (tableMenu) {
+      this._tableControls = new TableControlsController(this, tableMenu);
+      this._tableControls.setup();
+    }
 
     // Wire block-selection callbacks into the extension storage.
     //
@@ -1145,6 +1154,7 @@ class CanvasEditorPane implements IDisposable {
     this._blockSelection?.dispose();
     this._blockMarquee?.dispose();
     this._blockClipboard?.dispose();
+    this._tableControls?.dispose();
 
 
     // Dispose save-state subscriptions

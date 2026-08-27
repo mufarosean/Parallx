@@ -35,6 +35,7 @@ export * from './blockLifecycle.js';
 export * from './blockTransforms.js';
 export * from './blockMovement.js';
 export * from './blockNesting.js';
+export * from './tableOps.js';
 export * from './crossPageMovement.js';
 export * from './pageBlockDropRouting.js';
 

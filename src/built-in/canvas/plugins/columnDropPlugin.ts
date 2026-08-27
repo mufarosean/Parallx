@@ -743,7 +743,17 @@ export function columnDropPlugin(): Plugin {
           const dragging = view.dragging;
           if (!dragging?.slice) return false;
           const slice = dragging.slice;
-          if (slice.openStart > 0 || slice.openEnd > 0) return false;
+          if (slice.openStart > 0 || slice.openEnd > 0) {
+            // An OPEN slice on a drag WE started means dragstart produced
+            // something this plugin cannot place.  Falling through would hand
+            // the drop to ProseMirror's default, which move-deletes via
+            // `tr.deleteSelection()` — on a rewritten selection (the
+            // prosemirror-tables cell-selection case) that empties the source
+            // block instead of removing it, leaving a husk behind.  Swallow
+            // the drop instead: a no-op beats a mangled document.
+            if (getActiveCanvasDragSession()) { event.preventDefault(); return true; }
+            return false;
+          }
           if (slice.content.childCount === 0) return false;
           if (slice.content.firstChild?.type.name === 'columnList') return false;
 

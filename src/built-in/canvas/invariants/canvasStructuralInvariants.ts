@@ -232,17 +232,28 @@ function validateTable(ctx: TraversalContext, issues: CanvasInvariantIssue[]): v
     return;
   }
 
-  // First row cells should be tableHeader, not tableCell
+  // The first row must be HOMOGENEOUS — all header cells or all body cells.
+  //
+  // This used to require a header row outright, which was true only while the
+  // slash command was the sole way to make a table.  "Remove Header Row" is
+  // now a first-class action (tableOps.toggleHeaderRowOp, offered by the row
+  // grip and the corner menu), and a header-less table is a legitimate shape
+  // that Notion and prosemirror-tables both support.  What is never legitimate
+  // is HALF a header row: rowIsHeader() reads false, so the header pinning in
+  // tableOps (no insert above, no move into row 0) silently stops applying
+  // while the row still renders as a heading.  That mixed state is the bug
+  // this code catches now.
   const firstRow = node.child(0);
   if (firstRow.type.name === 'tableRow' && firstRow.childCount > 0) {
-    const firstCell = firstRow.child(0);
-    if (firstCell.type.name !== 'tableHeader') {
+    const kinds = new Set<string>();
+    firstRow.forEach((cellNode) => kinds.add(cellNode.type.name));
+    if (kinds.size > 1) {
       pushIssue(
         issues,
         ctx,
         'PX-TBL-002',
-        'table first row should contain tableHeader cells, not tableCell.',
-        'Convert first-row tableCells to tableHeader during table creation/migration.',
+        "table first row mixes tableHeader and tableCell — it must be all one or the other.",
+        'Use toggleHeaderRow (tableOps) to flip the whole row instead of converting individual cells.',
       );
     }
   }

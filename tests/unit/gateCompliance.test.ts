@@ -118,6 +118,7 @@ const GATE_RULES: Record<string, string[]> = {
   'menus/slashMenu.ts':                    ['menus/canvasMenuRegistry'],
   'menus/bubbleMenu.ts':                   ['menus/canvasMenuRegistry'],
   'menus/blockActionMenu.ts':              ['menus/canvasMenuRegistry'],
+  'menus/tableActionMenu.ts':              ['menus/canvasMenuRegistry'],
   'menus/iconMenu.ts':                     ['menus/canvasMenuRegistry'],
   'menus/coverMenu.ts':                    ['menus/canvasMenuRegistry'],
   'menus/inlineAIChat.ts':                 ['menus/canvasMenuRegistry'],   // M48 Phase 5
@@ -139,6 +140,8 @@ const GATE_RULES: Record<string, string[]> = {
   'config/blockStateRegistry/columnInvariants.ts':    ['config/blockStateRegistry/blockStateRegistry'],  // PAGE_CONTAINERS via resolveBlockAncestry
   'config/blockStateRegistry/crossPageMovement.ts':   ['config/blockStateRegistry/blockStateRegistry'],
   'config/blockStateRegistry/blockNesting.ts':         ['config/blockStateRegistry/blockStateRegistry'],
+  // Table row/column structure ops — pure ProseMirror, zero canvas imports.
+  'config/blockStateRegistry/tableOps.ts':            ['config/blockStateRegistry/blockStateRegistry'],
   'config/blockStateRegistry/pageBlockDropRouting.ts': ['config/blockStateRegistry/blockStateRegistry'],
   'config/blockStateRegistry/dragSession.ts':         [],  // zero canvas imports
 
@@ -154,6 +157,7 @@ const GATE_RULES: Record<string, string[]> = {
   'handles/blockMarquee.ts':               ['handles/handleRegistry'],
   'handles/handleGeometry.ts':             ['handles/handleRegistry'],
   'handles/blockClipboard.ts':             ['handles/handleRegistry'],
+  'handles/tableControls.ts':              ['handles/handleRegistry'],
 
   // ── Infrastructure extensions (gate-exempt leaves) ──────────────────────
   // These have zero canvas-internal relative imports (only @tiptap).
@@ -161,10 +165,15 @@ const GATE_RULES: Record<string, string[]> = {
   'extensions/blockBackground.ts':         [],
   // M77 Phase 11.6 — Mod-/ shortcut lazy-loads the canvasShortcutsOverlay
   // module to keep the extension light at import time.
-  'extensions/blockKeyboardShortcuts.ts':  ['canvasShortcutsOverlay'],
+  // The table stand-down predicate (selectionIsInTable) comes from tableOps
+  // through the block-state gate — see tableKeyboardPolicy.ts for the rule.
+  'extensions/blockKeyboardShortcuts.ts':  ['canvasShortcutsOverlay', 'config/blockStateRegistry/blockStateRegistry'],
   // Notion-parity Backspace policy (list-row outdent + atom select) resolves
   // its unit through the registry facade, same pattern as databaseInlineNode.
   'extensions/listKeyboardPolicy.ts':      ['config/blockRegistry'],
+  // Table-scoped meaning for the keys the block layer would otherwise aim at
+  // the whole table; structural edits come from tableOps via the gate.
+  'extensions/tableKeyboardPolicy.ts':     ['config/blockStateRegistry/blockStateRegistry'],
   'extensions/detailsEnterHandler.ts':     [],
   'extensions/mathBlockNode.ts':           [],
   'extensions/tableOfContentsNode.ts':     [],

@@ -183,9 +183,29 @@ describe('canvas structural invariants', () => {
     expect(hasCode(issues, 'PX-TBL-001')).toBe(true);
   });
 
-  it('PX-TBL-002: detects first row without tableHeader cells', () => {
+  it('PX-TBL-002: detects a first row that MIXES header and body cells', () => {
     const doc = node('doc', [
       node('table', [
+        node('tableRow', [
+          node('tableHeader', [node('paragraph')]),
+          node('tableCell', [node('paragraph')]),
+        ]),
+      ]),
+    ]);
+    const issues = validateCanvasStructuralInvariants(doc as any);
+    expect(hasCode(issues, 'PX-TBL-002')).toBe(true);
+  });
+
+  // "Remove Header Row" is a first-class action now (row grip → menu, and
+  // toggleHeaderRow from the corner menu), so a table with no header row is a
+  // legitimate shape, not a defect.
+  it('accepts a header-less table (every first-row cell is a body cell)', () => {
+    const doc = node('doc', [
+      node('table', [
+        node('tableRow', [
+          node('tableCell', [node('paragraph')]),
+          node('tableCell', [node('paragraph')]),
+        ]),
         node('tableRow', [
           node('tableCell', [node('paragraph')]),
           node('tableCell', [node('paragraph')]),
@@ -193,7 +213,7 @@ describe('canvas structural invariants', () => {
       ]),
     ]);
     const issues = validateCanvasStructuralInvariants(doc as any);
-    expect(hasCode(issues, 'PX-TBL-002')).toBe(true);
+    expect(hasCode(issues, 'PX-TBL')).toBe(false);
   });
 
   it('PX-TBL-003: detects non-tableRow children in table', () => {

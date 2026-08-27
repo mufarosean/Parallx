@@ -504,8 +504,17 @@ export class BlockHandlesController {
       }
     }
 
+    // The slice is built from the NODE, never from `selection.content()`.
+    // Selection-derived slices are only as trustworthy as the selection, and
+    // plugins are allowed to rewrite it: prosemirror-tables turns a
+    // NodeSelection on a table into a CellSelection whose content() is an
+    // OPEN slice (openStart/openEnd = 1).  columnDropPlugin requires a closed
+    // slice, so that drag fell through to ProseMirror's fallback drop — which
+    // move-deletes by `tr.deleteSelection()` and therefore emptied the cells
+    // while leaving the table husk at the source.  A node-derived slice is
+    // exactly the dragged block for EVERY block type, with no such coupling.
     view.dragging = {
-      slice: view.state.selection.content(),
+      slice: new Slice(Fragment.from(block.node), 0, 0),
       move: true,
       from: block.pos,
       to: block.pos + block.node.nodeSize,

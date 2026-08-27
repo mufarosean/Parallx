@@ -1207,7 +1207,11 @@
 }
 
 /* ── Node selection — soft highlight, no harsh outline ── */
-.canvas-tiptap-editor:not(.dragging) .ProseMirror-selectednode {
+/* `.tableWrapper` is excluded: a table's cells paint their own backgrounds
+   over a wash, so a selected table would read as unselected.  It gets an
+   explicit outline in the table section instead — and this rule's
+   `outline: none !important` would otherwise win against it. */
+.canvas-tiptap-editor:not(.dragging) .ProseMirror-selectednode:not(.tableWrapper) {
   outline: none !important;
   background-color: var(--vscode-editor-selectionBackground, rgba(45, 170, 219, 0.15));
   transition: background-color var(--px-dur-base) var(--px-ease);
@@ -2276,7 +2280,12 @@
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * Tier 2 — Table (Notion-style clean lines)
- * ───────────────────────────────────────────────────────────────────────────── */
+ *
+ * Palette is tokens only (design gate): --px-divider for the inner grid,
+ * --px-border for the outer edge, --px-bg-inset for the header band.  The
+ * previous hard-coded rgba(255,255,255,…) values predated the token system
+ * and drifted from every other surface under a non-default theme.
+ * ───────────────────────────────────────────────────────────────────────── */
 
 .canvas-tiptap-editor .canvas-table,
 .canvas-tiptap-editor table {
@@ -2284,13 +2293,17 @@
   width: 100%;
   margin: 8px 0;
   table-layout: fixed;
+  border-radius: var(--px-radius-sm);
+  /* Restored after the token rewrite dropped it (2026-08-27).  Treat it as
+   * intent, NOT as the guarantee: under `border-collapse: collapse` Chromium
+   * does not apply overflow clipping to the table box.  The load-bearing
+   * guard is `overflow-y` on `.tableWrapper` below. */
   overflow: hidden;
-  border-radius: 4px;
 }
 
 .canvas-tiptap-editor table td,
 .canvas-tiptap-editor table th {
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--px-divider);
   padding: 8px 12px;
   vertical-align: top;
   position: relative;
@@ -2299,10 +2312,10 @@
 }
 
 .canvas-tiptap-editor table th {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--px-bg-inset);
   font-weight: 500;
   font-size: var(--parallx-fontSize-lg);
-  color: rgba(255, 255, 255, 0.65);
+  color: var(--px-text-secondary);
   /* Browsers default <th> to text-align: center; Notion and most modern
    * notes apps left-align header cells. Without this override the cursor
    * (and the placeholder pseudo) sat in the middle of the cell, so the
@@ -2316,36 +2329,217 @@
   margin-top: 0;
 }
 
+/* THE HOVER-JUMP RULE.  Read this before touching the selector list.
+ *
+ * A cell's last block must not carry a bottom margin — margins do not collapse
+ * out of a table cell, so 2px of margin is 2px of extra ROW height.
+ *
+ * `:last-child` alone cannot express that, because it is a statement about DOM
+ * ORDER and the DOM order changes on hover: prosemirror-tables appends its
+ * `.column-resize-handle` widget as the cell's LAST CHILD when the pointer
+ * nears a column boundary, and removes it when the pointer leaves.  While that
+ * widget is there the real last block stops matching `:last-child` and gets its
+ * `margin-bottom: 2px` back — in EVERY row of that column at once.  A six-row
+ * table grew ~12px the moment you hovered a column edge and shrank again when
+ * you moved away.  That is the "hovering the edge makes the table expand down"
+ * report (2026-08-27), and it is purely vertical: no scrollbar involved.
+ *
+ * So: match the last block that isn't followed by editor chrome.
+ * `.ProseMirror-widget` is added by prosemirror-view to every widget
+ * decoration, so this covers any future plugin that appends to a cell, not
+ * just the resize handle.
+ *
+ * (The mirror case — a widget PREPENDED to a cell reviving the first block's
+ * top margin — is not reachable today; nothing inserts at a cell's start.) */
 .canvas-tiptap-editor table td > *:last-child,
-.canvas-tiptap-editor table th > *:last-child {
+.canvas-tiptap-editor table th > *:last-child,
+.canvas-tiptap-editor table td > *:has(+ .ProseMirror-widget),
+.canvas-tiptap-editor table th > *:has(+ .ProseMirror-widget) {
   margin-bottom: 0;
 }
 
-/* Selected cell highlight */
+/* Selected cell highlight (prosemirror-tables CellSelection) */
 .canvas-tiptap-editor table .selectedCell::after {
   content: '';
   position: absolute;
   inset: 0;
-  background: rgba(45, 170, 219, 0.12);
+  background: rgba(var(--px-accent-rgb), 0.14);
   pointer-events: none;
   z-index: 1;
 }
 
-/* Column resize handle */
+/* Whole-table node selection.
+ * A table runs with allowTableNodeSelection:true so the canvas block model and
+ * ProseMirror agree that a table is ONE unit.  That makes the table reachable
+ * as a NodeSelection — from the corner grip, from Escape-Escape, and from
+ * Backspace in the block below (select-then-confirm, same contract as atoms).
+ * It must therefore LOOK selected, or that Backspace step is invisible and the
+ * next keystroke feels like it ate the table out of nowhere. */
+/* box-shadow, not outline: an outline paints outside the border box and can
+ * grow the scrollable overflow of the editor wrapper (overflow-y: auto), which
+ * is the same "a decoration moved the layout" trap as the resize handle above.
+ * A spread shadow paints identically and is invisible to layout. */
+.canvas-tiptap-editor .tableWrapper.ProseMirror-selectednode {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--px-accent);
+  border-radius: var(--px-radius-sm);
+  background: transparent;
+}
+
+/* Column resize handle.
+ *
+ * prosemirror-tables injects this as a widget decoration INSIDE the cell on
+ * every row of the hovered column, and removes it when the pointer leaves.
+ * It must therefore be layout-neutral: entirely within the cell's border box,
+ * no negative offsets.  It used to sit at `right: -2px; bottom: -2px`, so the
+ * last row's handles spilled 2px below the table and the last column's spilled
+ * 2px past its right edge — enough to give `.tableWrapper` scrollable overflow,
+ * which materialised a 10px scrollbar, which shrank the `width: 100%` table.
+ * Hovering a column edge made the whole table jump, and moving away undid it.
+ * A hover affordance may never change layout. */
 .canvas-tiptap-editor .column-resize-handle {
   position: absolute;
-  right: -2px;
+  right: 0;
   top: 0;
-  bottom: -2px;
-  width: 4px;
-  background-color: var(--vscode-button-background);
+  bottom: 0;
+  width: 2px;
+  background-color: var(--px-accent);
   pointer-events: none;
   z-index: 2;
 }
 
 .canvas-tiptap-editor .tableWrapper {
+  /* `overflow-y: hidden` is LOAD-BEARING, not tidiness.
+   *
+   * Leaving overflow-y at its initial `visible` does not mean "no vertical
+   * scrolling": per CSS Overflow, when one axis is not `visible` the other
+   * computes to `auto`.  So this wrapper was a scroll container on BOTH axes —
+   * and this app's scrollbars are classic, not overlay (`::-webkit-scrollbar`
+   * is 10px in workbench.css).  One pixel of vertical overflow from any
+   * transient decoration therefore materialised a vertical scrollbar, which
+   * stole 10px of WIDTH from a `width: 100%` table and reflowed every column.
+   * That is the "hover a column edge and the table jumps" report: the jump is
+   * HORIZONTAL, caused by a VERTICAL scrollbar.
+   *
+   * A table wrapper only ever needs to scroll horizontally — its height is
+   * driven by the table, so it can never have vertical content to reach.
+   * Pinning that axis closed makes the failure mode unreachable regardless of
+   * what a plugin renders inside a cell. */
   overflow-x: auto;
+  overflow-y: hidden;
   margin: 8px 0;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Table controls — row / column grips, ✛ add bars, reorder line
+ *
+ * Absolutely positioned inside .canvas-editor-wrapper (same coordinate
+ * convention as the block drag handle: viewport rect − container rect +
+ * container scroll).  Owned by handles/tableControls.ts.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+.table-controls {
+  /* A zero-size anchor at the scroll-content origin, not a full-bleed sheet:
+     the children carry their own absolute coordinates, and a sized overlay
+     would sit on top of the editor for no reason. */
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  overflow: visible;
+  pointer-events: none;   /* only the children take the pointer */
+  z-index: 55;            /* just under .drag-handle (56) */
+  opacity: 1;
+  transition: opacity var(--px-dur-fast) var(--px-ease);
+}
+
+.table-controls.hide {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.table-controls.hide > * {
+  pointer-events: none;
+}
+
+.table-grip,
+.table-add,
+.table-reorder-line {
+  position: absolute;
+  pointer-events: auto;
+  box-sizing: border-box;
+}
+
+/* ── Grips ── */
+
+.table-grip {
+  background: var(--px-border);
+  border-radius: var(--px-radius-xs);
+  cursor: pointer;
+  transition: background-color var(--px-dur-fast) var(--px-ease);
+}
+
+.table-grip:hover {
+  background: var(--px-accent);
+}
+
+.table-grip--row {
+  cursor: grab;
+}
+
+.table-grip--column {
+  cursor: grab;
+}
+
+.table-grip--corner {
+  background: var(--px-border-strong);
+  cursor: pointer;
+}
+
+.table-controls--reordering .table-grip--row,
+.table-controls--reordering .table-grip--column {
+  cursor: grabbing;
+}
+
+/* ── Add bars ── */
+
+.table-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--px-radius-sm);
+  color: var(--px-text-faint);
+  background: transparent;
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity var(--px-dur-fast) var(--px-ease),
+    background-color var(--px-dur-fast) var(--px-ease),
+    color var(--px-dur-fast) var(--px-ease);
+}
+
+.table-controls:not(.hide) .table-add {
+  opacity: 1;
+}
+
+.table-add:hover {
+  background: var(--px-surface-hover);
+  color: var(--px-text);
+}
+
+.table-add svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* ── Reorder drop line ── */
+
+.table-reorder-line {
+  background: var(--px-accent);
+  border-radius: var(--px-radius-full);
+  pointer-events: none;
+  z-index: 2;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────

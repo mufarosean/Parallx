@@ -39,6 +39,19 @@ const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
     ],
   },
   {
+    title: 'Inside a table',
+    entries: [
+      { keys: 'Tab / Shift+Tab',           label: 'Next / previous cell (Tab in the last cell adds a row)' },
+      { keys: 'Ctrl+A',                    label: 'Select the cell, then the whole table' },
+      { keys: 'Esc',                       label: 'Select the cell, then the table as a block' },
+      { keys: 'Shift+↑ / Shift+↓',         label: 'Extend the cell selection' },
+      { keys: 'Ctrl+D',                    label: 'Duplicate the row' },
+      { keys: 'Ctrl+Shift+↑ / Ctrl+Shift+↓', label: 'Move the row' },
+      { keys: 'Ctrl+Shift+← / Ctrl+Shift+→', label: 'Move the column' },
+      { keys: 'Backspace',                 label: 'Clear the selected cells' },
+    ],
+  },
+  {
     title: 'Text formatting',
     entries: [
       { keys: 'Ctrl+B',      label: 'Bold' },

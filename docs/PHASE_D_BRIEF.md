@@ -113,6 +113,15 @@ panel buttons; titlebar window controls; the dashboard drawers; the
 Tool Gallery Runtime Status tab; `/doctor` showing the four workbench
 checks; and `app__describe` from chat.
 
+Added 2026-08-27 — the canvas table rebuild landed a new hover/gesture
+surface that is verified only by tests, so fold it into the same pass:
+hover a table (row/column grips and the two ✛ bars appear, nothing
+shifts); click a grip (row highlights AND its menu opens); drag a grip
+(drop line follows, row/column reorders, Escape mid-drag CANCELS it and
+restores the cursor); the ✛ bars append a row/column; Ctrl+A / Escape
+ladders inside a cell; Ctrl+D and Ctrl+Shift+Arrow acting on the ROW;
+and dragging a table across the page leaving nothing behind.
+
 ## Budget shape (rough, for planning Saturday)
 
 - Probe pass + field fixes: ~1 unit (a Phase-B-slice's worth)

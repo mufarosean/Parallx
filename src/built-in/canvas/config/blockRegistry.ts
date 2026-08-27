@@ -500,7 +500,29 @@ const definitions: BlockDefinition[] = [
       }).focus().run();
     },
     extension: () => TableKit.configure({
-      table: { resizable: true, HTMLAttributes: { class: 'canvas-table' } },
+      table: {
+        resizable: true,
+        HTMLAttributes: { class: 'canvas-table' },
+        // The canvas block model treats a table as ONE unit (drag handle,
+        // marquee, block selection all resolve a cursor inside a cell to the
+        // table).  prosemirror-tables' default (`false`) actively fights that:
+        // its `normalizeSelection` rewrites any NodeSelection on a table into
+        // a CellSelection spanning every cell.  Two consequences, both shipped
+        // bugs:
+        //   • the drag handle's slice became `CellSelection.content()` —
+        //     openStart/openEnd = 1 — so columnDropPlugin's closed-slice guard
+        //     bailed and ProseMirror's fallback drop ran `tr.deleteSelection()`
+        //     on the cell selection: the cells emptied, the TABLE STAYED.
+        //     That is the "moving a table leaves an empty husk behind" report.
+        //   • Backspace into a table from the block below silently produced an
+        //     invisible whole-table cell selection whose next keystroke ate the
+        //     table with no select-then-confirm step.
+        // Letting a table be node-selected makes PM agree with the canvas.
+        allowTableNodeSelection: true,
+        // Match the CSS floor (`table td/th { min-width: 80px }`) so the
+        // resize handle and the rendered cell agree on the minimum.
+        cellMinWidth: 80,
+      },
     }),
   },
   {

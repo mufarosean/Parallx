@@ -16,6 +16,7 @@ import { BlockBackgroundColor } from '../extensions/blockBackground.js';
 import { DetailsEnterHandler } from '../extensions/detailsEnterHandler.js';
 import { BlockKeyboardShortcuts } from '../extensions/blockKeyboardShortcuts.js';
 import { ListKeyboardPolicy } from '../extensions/listKeyboardPolicy.js';
+import { TableKeyboardPolicy } from '../extensions/tableKeyboardPolicy.js';
 import { Dataview } from '../extensions/dataviewNode.js';
 import { structuralInvariantPlugin } from '../plugins/structuralInvariantPlugin.js';
 import { structuralRepairPlugin } from '../plugins/structuralRepair.js';
@@ -504,6 +505,10 @@ export function createEditorExtensions(lowlight: any, context?: EditorExtensionC
     DetailsEnterHandler,
     BlockKeyboardShortcuts,
     ListKeyboardPolicy,
+    // Above both of the above (priority 300): a caret inside a table cell
+    // gets table-scoped meaning for the keys the block layer would otherwise
+    // aim at the whole table.
+    TableKeyboardPolicy,
     Extension.create({
       name: 'structuralInvariantGuard',
       priority: 1000,
