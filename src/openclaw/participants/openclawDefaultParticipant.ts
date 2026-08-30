@@ -44,6 +44,7 @@ import { tryHandleOpenclawThinkCommand, THINK_SESSION_FLAG } from '../commands/o
 import { tryHandleOpenclawUsageCommand } from '../commands/openclawUsageCommand.js';
 import { tryHandleOpenclawToolsCommand } from '../commands/openclawToolsCommand.js';
 import { tryHandleOpenclawVerboseCommand, VERBOSE_SESSION_FLAG } from '../commands/openclawVerboseCommand.js';
+import { tryHandleOpenclawRewindCommand } from '../commands/openclawRewindCommand.js';
 // W1 (M58): Self-continuation wiring
 import {
   createFollowupRunner,
@@ -127,6 +128,7 @@ export function createOpenclawDefaultParticipant(
       { name: 'usage', description: 'Show token usage statistics for this session' },
       { name: 'tools', description: 'List available tools and their status' },
       { name: 'verbose', description: 'Toggle verbose debug output for this session' },
+      { name: 'rewind', description: 'List file checkpoints or restore one (/rewind, /rewind last, /rewind <id>)' },
       { name: 'skill', description: 'Run a skill by name' },
     ],
     handler,
@@ -178,6 +180,7 @@ async function runOpenclawDefaultTurn(
   if (await tryHandleOpenclawUsageCommand(services, request.command, context, response)) return {};
   if (await tryHandleOpenclawToolsCommand(services, request.command, response, request.mode)) return {};
   if (await tryHandleOpenclawVerboseCommand(services, request.command, response)) return {};
+  if (await tryHandleOpenclawRewindCommand(request.command, request.text, response)) return {};
 
   // No handler above claimed this /command. Two cases, and the old code got
   // both wrong by always dropping the token (parseChatRequest strips ANY

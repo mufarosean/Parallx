@@ -12,6 +12,27 @@ import type {
   IBuiltInToolFileWriter,
 } from '../chatTypes.js';
 import { markResourceSeen, wasResourceSeen, fileResourceKey } from '../../../services/toolResourceRegistry.js';
+import { recordCheckpoint } from './fileCheckpoints.js';
+
+/** HARNESS.md §2.2 — checkpoint prior state; a failure never blocks the write. */
+function checkpointSafely(
+  path: string,
+  priorContent: string | null,
+  tool: string,
+  intent: unknown,
+): string {
+  try {
+    const entry = recordCheckpoint({
+      path,
+      priorContent,
+      tool,
+      intent: typeof intent === 'string' && intent.trim() ? intent.trim() : undefined,
+    });
+    return ` (checkpoint #${entry.id} — /rewind restores)`;
+  } catch {
+    return ' (checkpoint could not be saved)';
+  }
+}
 
 // ── Tool helpers ──
 
@@ -113,6 +134,13 @@ export function createWriteFileTool(
           };
         }
 
+        // §2.2 — capture the prior state before it is gone.
+        let priorContent: string | null = null;
+        if (existed && fs) {
+          try { priorContent = (await fs.readFileContent(cleanPath)).content; } catch { /* binary/unreadable: checkpoint absence */ }
+        }
+        const checkpointNote = checkpointSafely(cleanPath, existed ? priorContent : null, 'fs_write_file', args.description);
+
         await writer.writeFile(cleanPath, content);
 
         // The writer knows the file's exact content now — unlock edits on it.
@@ -122,7 +150,7 @@ export function createWriteFileTool(
 
         const action = existed ? 'Overwrote' : 'Created';
         const lineCount = content.split('\n').length;
-        return { content: `${action} "${cleanPath}" (${lineCount} lines, ${content.length} chars)` };
+        return { content: `${action} "${cleanPath}" (${lineCount} lines, ${content.length} chars)${checkpointNote}` };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         return { content: `Failed to write file: ${msg}`, isError: true };
@@ -205,7 +233,8 @@ export function createEditFileTool(
           };
         }
 
-        // Apply the edit
+        // Apply the edit — checkpointing the pre-edit state first (§2.2).
+        const checkpointNote = checkpointSafely(cleanPath, currentContent, 'fs_edit_file', args.description);
         const newFile = currentContent.slice(0, idx) + newContent + currentContent.slice(idx + oldContent.length);
 
         await writer.writeFile(cleanPath, newFile);
@@ -227,7 +256,7 @@ export function createEditFileTool(
           .map((l, i) => `${snippetStart + i + 1}| ${l}`)
           .join('\n');
         return {
-          content: `Edited "${cleanPath}": replaced ${oldLines} line(s) with ${newLines} line(s).\n\nResult (lines ${snippetStart + 1}-${snippetEnd}):\n\`\`\`\n${snippet}\n\`\`\``,
+          content: `Edited "${cleanPath}": replaced ${oldLines} line(s) with ${newLines} line(s)${checkpointNote}.\n\nResult (lines ${snippetStart + 1}-${snippetEnd}):\n\`\`\`\n${snippet}\n\`\`\``,
         };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -277,6 +306,14 @@ export function createDeleteFileTool(
           return { content: `File "${cleanPath}" does not exist.`, isError: true };
         }
 
+        // §2.2 — checkpoint the content when readable (trash remains the
+        // deeper net for deletes; the checkpoint makes /rewind symmetrical).
+        let deleteCheckpointNote = '';
+        try {
+          const prior = (await fs!.readFileContent(cleanPath)).content;
+          deleteCheckpointNote = checkpointSafely(cleanPath, prior, 'fs_delete_file', args.description);
+        } catch { /* binary/unreadable — trash covers it */ }
+
         // Resolve to absolute path and delete via Electron IPC (to use trash)
         const electron = (globalThis as Record<string, unknown>).parallxElectron as Record<string, unknown> | undefined;
         const fsBridge = electron?.fs as { delete?: (path: string, options?: { useTrash?: boolean }) => Promise<{ error: { code: string; message: string } | null }> } | undefined;
@@ -290,7 +327,7 @@ export function createDeleteFileTool(
           if (result.error) {
             return { content: `Failed to delete "${cleanPath}": ${result.error.message}`, isError: true };
           }
-          return { content: `Deleted "${cleanPath}" (moved to trash)` };
+          return { content: `Deleted "${cleanPath}" (moved to trash)${deleteCheckpointNote}` };
         }
 
         return { content: `Cannot delete "${cleanPath}": no file system bridge available`, isError: true };

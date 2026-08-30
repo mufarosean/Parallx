@@ -75,6 +75,7 @@ import { createAutonomyLogTool } from './autonomyLogTool.js';
 import { createActivityLogTool } from './activityLogTool.js';
 import type { IActivityJournalService } from '../../../services/activityJournalService.js';
 import { createSessionsSpawnTool } from './subagentTools.js';
+import { bindCheckpointEnvironment } from './fileCheckpoints.js';
 import type { SubagentSpawner } from '../../../openclaw/openclawSubagentSpawn.js';
 
 // ── Registration ──
@@ -102,6 +103,10 @@ export function registerBuiltInTools(
   activityJournal?: IActivityJournalService,
 ): IDisposable[] {
   const disposables: IDisposable[] = [];
+
+  // HARNESS.md §2.2 — give the checkpoint store its file access so the write
+  // tools can capture prior state and /rewind can restore it.
+  bindCheckpointEnvironment({ fs, writer, workspaceRoot });
 
   // Canvas page/block tools are no longer registered here — the canvas tool
   // owns them (src/built-in/canvas/ai/). This module keeps the workspace-level
