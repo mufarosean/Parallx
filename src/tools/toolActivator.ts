@@ -121,6 +121,10 @@ export class ToolActivator extends Disposable {
    * 7. Transition to `Activated` (or `Deactivated` on failure)
    */
   async activate(toolId: string): Promise<boolean> {
+    return this._activateWithChain(toolId, [toolId]);
+  }
+
+  private async _activateWithChain(toolId: string, chain: readonly string[]): Promise<boolean> {
     // Guard against concurrent activation of the same tool
     const inFlight = this._activating.get(toolId);
     if (inFlight) {
@@ -128,7 +132,7 @@ export class ToolActivator extends Disposable {
       return inFlight;
     }
 
-    const promise = this._doActivate(toolId);
+    const promise = this._doActivate(toolId, chain);
     this._activating.set(toolId, promise);
     try {
       return await promise;
@@ -137,7 +141,39 @@ export class ToolActivator extends Disposable {
     }
   }
 
-  private async _doActivate(toolId: string): Promise<boolean> {
+  /**
+   * Phase D step 8 — honor manifest `dependencies`: every declared dep
+   * must be ACTIVATED before this tool's activate() runs. An in-flight
+   * dep is awaited; an external dep that has not started is activated
+   * here (depth-first, cycle-guarded); a dep that is missing, disabled,
+   * or failed fails THIS activation loudly instead of letting it limp.
+   */
+  private async _awaitDependencies(toolId: string, chain: readonly string[]): Promise<void> {
+    const deps = this._registry.getById(toolId)?.description.manifest.dependencies ?? [];
+    for (const dep of deps) {
+      if (chain.includes(dep)) {
+        throw new Error(`dependency cycle: ${[...chain, dep].join(' -> ')}`);
+      }
+      if (this._activatedTools.has(dep)) continue;
+      const inFlight = this._activating.get(dep);
+      if (inFlight) {
+        if (!(await inFlight)) throw new Error(`dependency "${dep}" failed to activate`);
+        continue;
+      }
+      const entry = this._registry.getById(dep);
+      if (!entry) throw new Error(`dependency "${dep}" is not registered`);
+      if (entry.description.isBuiltin) {
+        // Built-ins activate from the boot list (their modules are
+        // pre-imported there); one that is neither active nor in flight
+        // is disabled, failed, or ordered after its dependent.
+        throw new Error(`built-in dependency "${dep}" is not active (disabled, failed, or registered after this tool)`);
+      }
+      const ok = await this._activateWithChain(dep, [...chain, dep]);
+      if (!ok) throw new Error(`dependency "${dep}" failed to activate`);
+    }
+  }
+
+  private async _doActivate(toolId: string, chain: readonly string[]): Promise<boolean> {
     const startTime = performance.now();
 
     // 1. Lookup and validate
@@ -155,6 +191,18 @@ export class ToolActivator extends Disposable {
     // Check state is valid for activation
     if (entry.state !== ToolState.Registered && entry.state !== ToolState.Deactivated) {
       console.error(`[ToolActivator] Cannot activate tool "${toolId}" in state: ${entry.state}`);
+      return false;
+    }
+
+    // 1b. Dependencies first (Phase D step 8) — before any state change,
+    // so a failed dependency leaves this tool re-activatable.
+    try {
+      await this._awaitDependencies(toolId, chain);
+    } catch (err) {
+      const duration = performance.now() - startTime;
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      this._errorService.recordError(toolId, err, 'activation');
+      this._onDidActivate.fire({ toolId, success: false, durationMs: duration, error: errorMsg });
       return false;
     }
 
@@ -245,11 +293,42 @@ export class ToolActivator extends Disposable {
     toolId: string,
     moduleExports: { activate: ActivateFunction; deactivate?: DeactivateFunction },
   ): Promise<boolean> {
+    // In-flight registration (Phase D step 8): the boot loop starts every
+    // built-in without awaiting, so a LATER built-in that declares this one
+    // as a dependency finds the promise here and awaits it.
+    const inFlight = this._activating.get(toolId);
+    if (inFlight) {
+      return inFlight;
+    }
+    const promise = this._doActivateBuiltin(toolId, moduleExports);
+    this._activating.set(toolId, promise);
+    try {
+      return await promise;
+    } finally {
+      this._activating.delete(toolId);
+    }
+  }
+
+  private async _doActivateBuiltin(
+    toolId: string,
+    moduleExports: { activate: ActivateFunction; deactivate?: DeactivateFunction },
+  ): Promise<boolean> {
     const startTime = performance.now();
 
     const entry = this._registry.getById(toolId);
     if (!entry) {
       console.error(`[ToolActivator] Cannot activate unknown built-in tool: "${toolId}"`);
+      return false;
+    }
+
+    // Dependencies first (Phase D step 8) — same contract as external tools.
+    try {
+      await this._awaitDependencies(toolId, [toolId]);
+    } catch (err) {
+      const duration = performance.now() - startTime;
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      this._errorService.recordError(toolId, err, 'activation');
+      this._onDidActivate.fire({ toolId, success: false, durationMs: duration, error: errorMsg });
       return false;
     }
 

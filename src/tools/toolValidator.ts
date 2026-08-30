@@ -91,6 +91,22 @@ export function validateManifest(manifest: unknown): ValidationResult {
     }
   }
 
+  // ── dependencies (Phase D step 8) ──
+  if (m.dependencies !== undefined) {
+    if (!Array.isArray(m.dependencies)) {
+      errors.push({ path: 'dependencies', message: 'dependencies must be an array of tool ids' });
+    } else {
+      for (let i = 0; i < m.dependencies.length; i++) {
+        const dep = m.dependencies[i];
+        if (typeof dep !== 'string' || dep.length === 0) {
+          errors.push({ path: `dependencies[${i}]`, message: 'must be a non-empty tool id' });
+        } else if (dep === m.id) {
+          errors.push({ path: `dependencies[${i}]`, message: 'a tool cannot depend on itself' });
+        }
+      }
+    }
+  }
+
   // ── engines ──
   if (m.engines === undefined || m.engines === null || typeof m.engines !== 'object') {
     errors.push({ path: 'engines', message: 'engines must be an object with a "parallx" field' });

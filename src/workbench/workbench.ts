@@ -3728,14 +3728,15 @@ export class Workbench extends Layout {
       { manifest: CHAT_MANIFEST, module: ChatTool },
       { manifest: AI_SETTINGS_MANIFEST, module: AISettingsTool },
       { manifest: THEME_EDITOR_MANIFEST, module: ThemeEditorTool },
-      // Settings (M60 Phase ε §7 T4.D2) — must come after ChatTool so the
-      // registry registered by chat activation is available via DI.
+      // Phase D step 8: activation-order CONSTRAINTS are declared as
+      // manifest `dependencies` and honored by the activator — never as
+      // comments here. This array's order still matters for UI seating
+      // (panel tab order follows registration), nothing else. The old
+      // "after ChatTool" notes died with the extractions: the settings
+      // registry and the autonomy substrate are core-built before any
+      // tool, and cross-tool resolution is lazy or bridge-queued.
       { manifest: SETTINGS_MANIFEST, module: SettingsTool },
-      // Dashboard (M71) — after ChatTool so it can lazily resolve the
-      // background AI provider (chat.getInlineAIProvider command).
       { manifest: DASHBOARD_MANIFEST, module: DashboardTool },
-      // Planner (M82) — after ChatTool so it can register its chat tools,
-      // after DashboardTool so it can register dashboard widgets.
       { manifest: PLANNER_MANIFEST, module: PlannerTool },
       // Worksheets (M99) — exam-faithful practice sheets; the Univer engine
       // loads lazily from its own bundle when a sheet first opens.

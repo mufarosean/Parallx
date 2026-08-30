@@ -336,6 +336,15 @@ export interface IToolManifest {
    */
   readonly activationEvents: readonly string[];
 
+  /**
+   * Tool ids that must be ACTIVATED before this tool activates (Phase D
+   * step 8 — ordering constraints are declared here, never encoded as
+   * comments on a registration array). The activator awaits each declared
+   * dependency's activation first; a missing or disabled dependency fails
+   * this tool's activation loudly instead of letting it limp.
+   */
+  readonly dependencies?: readonly string[];
+
   // ── Contributions ──
 
   /**
