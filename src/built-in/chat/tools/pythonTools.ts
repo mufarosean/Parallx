@@ -58,6 +58,10 @@ export function createPythonRunScriptTool(service: IPythonEnvService): IChatTool
           items: { type: 'string' },
           description: 'Command-line arguments passed to the script.',
         },
+        description: {
+          type: 'string',
+          description: 'One short sentence, active voice, saying what this action does and why. Shown to the user in the approval prompt and activity journal.',
+        },
       },
     },
     requiresConfirmation: true,

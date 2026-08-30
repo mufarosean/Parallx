@@ -71,6 +71,8 @@ export interface ILanguageModelToolsRuntimeMetadata {
   readonly source?: 'built-in' | 'bridge' | 'mcp';
   readonly ownerToolId?: string;
   readonly description?: string;
+  /** HARNESS.md §2.1 — model-written intent from the call's `description` arg. */
+  readonly intent?: string;
 }
 
 export interface ILanguageModelToolsRuntimeObserver {
@@ -363,6 +365,9 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
       approvalSource: decision.permSource,
       source: tool.source,
       ownerToolId: tool.ownerToolId,
+      intent: typeof args['description'] === 'string' && args['description'].trim()
+        ? args['description'].trim()
+        : undefined,
     };
     observer?.onValidated?.(metadata);
 

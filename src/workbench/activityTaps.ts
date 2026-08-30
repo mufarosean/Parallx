@@ -267,6 +267,9 @@ export function wireActivityTaps(deps: IActivityTapDeps): IDisposable {
           source: 'tool',
           verb: failed ? 'tool failed' : 'ran tool',
           object: meta.name,
+          // HARNESS.md §2.1 — the model's own statement of intent rides along
+          // (tooltip in the panel, full line in model-facing prompts).
+          detail: meta.intent,
         });
       },
     }));

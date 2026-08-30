@@ -44,6 +44,7 @@ export function createRunCommandTool(terminal: IBuiltInToolTerminal | undefined,
       properties: {
         command: { type: 'string', description: 'Shell command.' },
         timeout: { type: 'number', description: 'Timeout ms (default 30000).' },
+        description: { type: 'string', description: 'One short sentence, active voice, saying what this action does and why. Shown to the user in the approval prompt and activity journal.' },
       },
     },
     requiresConfirmation: true,

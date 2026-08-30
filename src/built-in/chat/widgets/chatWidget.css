@@ -1813,6 +1813,13 @@
 
 /* ── Tool Arguments ── */
 
+/* HARNESS.md 2.1 — the model's stated intent, read before raw arguments. */
+.parallx-chat-tool-invocation-intent {
+  font-size: var(--px-text-sm);
+  color: var(--vscode-foreground);
+  padding: 1px 0 2px;
+}
+
 .parallx-chat-tool-invocation-args {
   font-size: var(--px-text-xs);
   color: var(--vscode-descriptionForeground, #686868);
@@ -1876,6 +1883,14 @@
   font-size: var(--px-text-md);
   color: var(--vscode-foreground, #cccccc);
   margin-bottom: 8px;
+}
+
+/* HARNESS.md 2.1 — intent leads the approval card. */
+.parallx-chat-confirmation-intent {
+  font-size: var(--px-text-sm);
+  color: var(--vscode-foreground);
+  font-style: italic;
+  margin-bottom: 6px;
 }
 
 .parallx-chat-confirmation-args {

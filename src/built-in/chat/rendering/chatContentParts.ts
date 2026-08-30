@@ -1291,10 +1291,20 @@ function _renderToolInvocation(part: IChatToolInvocationContent): HTMLElement {
   header.appendChild(badge);
   root.appendChild(header);
 
-  // Arguments summary (collapsible)
-  if (part.args && Object.keys(part.args).length > 0) {
+  // HARNESS.md §2.1 — the model's own statement of what this call does.
+  // Rendered as its own line so the user reads intent, not raw arguments.
+  const intent = typeof part.args?.['description'] === 'string' ? part.args['description'].trim() : '';
+  if (intent) {
+    const intentLine = $('div.parallx-chat-tool-invocation-intent');
+    intentLine.textContent = intent;
+    root.appendChild(intentLine);
+  }
+
+  // Arguments summary (collapsible); the intent line already shows `description`.
+  const argEntries = Object.entries(part.args ?? {}).filter(([k]) => k !== 'description');
+  if (argEntries.length > 0) {
     const argsContainer = $('div.parallx-chat-tool-invocation-args');
-    const argsSummary = Object.entries(part.args)
+    const argsSummary = argEntries
       .map(([k, v]) => `${k}: ${_truncate(String(v), 80)}`)
       .join(', ');
     argsContainer.textContent = argsSummary;
@@ -1352,10 +1362,23 @@ function _renderConfirmation(part: IChatConfirmationContent): HTMLElement {
   message.textContent = part.message;
   root.appendChild(message);
 
-  // Show tool arguments summary when available (M11 Task 2.1)
-  if (part.toolArgs && Object.keys(part.toolArgs).length > 0) {
+  // HARNESS.md §2.1 — lead the approval with the model's stated intent, so
+  // the user decides on "what this does", not on a raw argument dump.
+  const confirmIntent = typeof part.toolArgs?.['description'] === 'string'
+    ? String(part.toolArgs['description']).trim()
+    : '';
+  if (confirmIntent) {
+    const intentLine = $('div.parallx-chat-confirmation-intent');
+    intentLine.textContent = confirmIntent;
+    root.appendChild(intentLine);
+  }
+
+  // Show tool arguments summary when available (M11 Task 2.1); the intent
+  // line already shows `description`.
+  const confirmArgEntries = Object.entries(part.toolArgs ?? {}).filter(([k]) => k !== 'description');
+  if (confirmArgEntries.length > 0) {
     const argsBlock = $('div.parallx-chat-confirmation-args');
-    const argsSummary = Object.entries(part.toolArgs)
+    const argsSummary = confirmArgEntries
       .map(([k, v]) => {
         const val = typeof v === 'string'
           ? (v.length > 80 ? v.slice(0, 80) + '…' : v)

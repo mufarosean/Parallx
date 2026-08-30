@@ -76,6 +76,7 @@ export function createWriteFileTool(
       properties: {
         path: { type: 'string', description: 'Relative path.' },
         content: { type: 'string', description: 'File content.' },
+        description: { type: 'string', description: 'One short sentence, active voice, saying what this action does and why. Shown to the user in the approval prompt and activity journal.' },
       },
     },
     requiresConfirmation: true,
@@ -145,6 +146,7 @@ export function createEditFileTool(
         path: { type: 'string', description: 'Relative path.' },
         old_content: { type: 'string', description: 'Exact text to replace.' },
         new_content: { type: 'string', description: 'Replacement text.' },
+        description: { type: 'string', description: 'One short sentence, active voice, saying what this action does and why. Shown to the user in the approval prompt and activity journal.' },
       },
     },
     requiresConfirmation: true,
@@ -251,6 +253,7 @@ export function createDeleteFileTool(
       required: ['path'],
       properties: {
         path: { type: 'string', description: 'Relative path.' },
+        description: { type: 'string', description: 'One short sentence, active voice, saying what this action does and why. Shown to the user in the approval prompt and activity journal.' },
       },
     },
     requiresConfirmation: true,

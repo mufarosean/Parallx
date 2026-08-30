@@ -168,6 +168,13 @@ export interface IChatRuntimeToolMetadata {
   readonly approvalSource: 'default' | 'session' | 'persistent' | 'autonomy-allow-policy' | 'strictness' | 'missing-permission-service' | 'user-consent';
   readonly source?: 'built-in' | 'bridge' | 'mcp';
   readonly ownerToolId?: string;
+  /**
+   * HARNESS.md §2.1 (legible action) — the model's own one-sentence summary
+   * of what this call is about to do, taken from the call's `description`
+   * argument when the tool declares one. Surfaced in the approval UI and the
+   * activity journal. Upstream: Claude Code's required Bash `description`.
+   */
+  readonly intent?: string;
   readonly description?: string;
 }
 
