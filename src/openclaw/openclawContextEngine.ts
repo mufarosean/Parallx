@@ -250,6 +250,7 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
     // turn (or, before Slice B, silently dropped oldest-first). Substitute
     // the cached summary for the prefix it covers; the fingerprint guards
     // against replay/regenerate splices rewriting the covered past.
+    let compactionApplied = usedMidTurnState;
     if (!usedMidTurnState && this.services.readCompactionCache) {
       const cache = this.services.readCompactionCache(params.sessionId);
       if (cache
@@ -261,6 +262,7 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
           { role: 'assistant' as const, content: 'Understood, I have the conversation context.' },
           ...dropOrphanedToolHead(effectiveHistory.slice(cache.coveredCount)),
         ];
+        compactionApplied = true;
       }
     }
 
@@ -273,6 +275,7 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
       contextWindow: params.tokenBudget,
       historyActual: historyTokenEstimate,
       userActual: userTokenEstimate,
+      capRagAtBase: compactionApplied,
     });
 
     // ── M85 Slice B: summarize-then-fit at the trim boundary ──
@@ -310,6 +313,7 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
             contextWindow: params.tokenBudget,
             historyActual: historyTokenEstimate,
             userActual: userTokenEstimate,
+            capRagAtBase: true,
           });
         }
       } catch {
@@ -461,10 +465,28 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
       return { compacted: false, tokensBefore: historyTokens, tokensAfter: historyTokens };
     }
 
-    // Build a transcript of history for summarization
+    // Build a transcript of history for summarization. HARNESS.md §1.2 —
+    // history now carries the tool exchange record; the summarizer must see
+    // what ran and what came back, or the Failures/State sections of the
+    // continuation contract have nothing to draw on.
     const transcript = history
       .map((msg) => {
+        if (msg.role === 'tool') {
+          return `Tool result (${msg.toolName ?? 'unknown'}): ${msg.content}`;
+        }
         let line = `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`;
+        if (msg.role === 'assistant' && msg.toolCalls?.length) {
+          const calls = msg.toolCalls
+            .map((tc) => {
+              try {
+                return `${tc.function.name}(${JSON.stringify(tc.function.arguments)})`;
+              } catch {
+                return tc.function.name;
+              }
+            })
+            .join(', ');
+          line += `\n[called: ${calls}]`;
+        }
         if (msg.role === 'user' && msg.images?.length) {
           line += ` [attached ${msg.images.length} image(s)]`;
         }

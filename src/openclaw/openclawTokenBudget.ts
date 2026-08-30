@@ -71,6 +71,14 @@ export interface IOpenclawElasticBudgetParams {
   readonly systemActual?: number;
   readonly historyActual?: number;
   readonly userActual?: number;
+  /**
+   * HARNESS.md §1.2 — when history was compacted for this assemble, the freed
+   * space must STAY free: context pressure (and the KV-cache growth behind it)
+   * is why compaction ran, and redistributing the savings to RAG re-spends
+   * them immediately (observed as "compaction only gets 100% → 70%"). When
+   * set, RAG is capped at its base ceiling and lane surplus is left unspent.
+   */
+  readonly capRagAtBase?: boolean;
 }
 
 /**
@@ -99,8 +107,10 @@ export function computeElasticBudget(params: IOpenclawElasticBudgetParams): IOpe
   const historyUsed = Math.min(params.historyActual ?? historyCeil, historyCeil);
   const userUsed = Math.min(params.userActual ?? userCeil, userCeil);
 
-  // Surplus redistributed to RAG
-  const surplus = (systemCeil - systemUsed) + (historyCeil - historyUsed) + (userCeil - userUsed);
+  // Surplus redistributed to RAG — unless compaction just freed this space
+  const surplus = params.capRagAtBase
+    ? 0
+    : (systemCeil - systemUsed) + (historyCeil - historyUsed) + (userCeil - userUsed);
 
   return {
     total,

@@ -1117,3 +1117,41 @@ describe('D6: compact quality retry', () => {
   // M81 Phase 3 Stage 2 — concept-store / concept-failure compact tests
   // removed alongside the auto-extraction pipeline.
 });
+
+// ---------------------------------------------------------------------------
+// HARNESS.md §1.2 — compaction honesty
+// ---------------------------------------------------------------------------
+
+describe('compaction honesty (HARNESS.md 1.2)', () => {
+  it('capRagAtBase stops the elastic budget re-spending freed space on RAG', () => {
+    const free = computeElasticBudget({ contextWindow: 10_000, historyActual: 100, userActual: 100 });
+    const capped = computeElasticBudget({ contextWindow: 10_000, historyActual: 100, userActual: 100, capRagAtBase: true });
+    expect(free.rag).toBeGreaterThan(capped.rag);
+    expect(capped.rag).toBe(Math.floor(10_000 * 0.30));
+    expect(capped.history).toBe(100);
+  });
+
+  it('compact() transcript labels tool activity so the summarizer can fill Failures/State', async () => {
+    const summarizer = vi.fn(async function* (): AsyncIterable<IChatResponseChunk> {
+      yield { content: 'Mission: keep going. fs_read_file a.ts 2026-08-30', done: true } as IChatResponseChunk;
+    });
+    const services = createMockServices({ sendSummarizationRequest: summarizer as never });
+    const engine = new OpenclawContextEngine(services);
+    await engine.bootstrap({ sessionId: 's-tools', tokenBudget: 100_000 });
+
+    const history: IChatMessage[] = [
+      { role: 'user', content: 'read the file' },
+      { role: 'assistant', content: 'Reading.', toolCalls: [{ function: { name: 'fs_read_file', arguments: { path: 'a.ts' } } }] },
+      { role: 'tool', toolName: 'fs_read_file', content: '[TOOL ERROR] File not found' },
+      { role: 'assistant', content: 'It is missing.' },
+    ];
+    await engine.assemble({ sessionId: 's-tools', history, tokenBudget: 100_000, prompt: 'next' });
+    const result = await engine.compact({ sessionId: 's-tools', tokenBudget: 100_000, force: true });
+
+    expect(result.compacted).toBe(true);
+    const summaryPrompt = summarizer.mock.calls[0][0] as IChatMessage[];
+    const transcript = summaryPrompt[1].content;
+    expect(transcript).toContain('[called: fs_read_file({"path":"a.ts"})]');
+    expect(transcript).toContain('Tool result (fs_read_file): [TOOL ERROR] File not found');
+  });
+});
