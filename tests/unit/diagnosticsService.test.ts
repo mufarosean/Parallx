@@ -332,7 +332,10 @@ describe('/doctor command delegation', () => {
     expect(markdownChunks[0]).toContain('Diagnostic Report');
   });
 
-  it('falls back to inline checks without diagnosticsService', async () => {
+  // RETIREMENT.md 3.1: the 49-line inline fallback is deleted — the service
+  // registers unconditionally at boot, so an absent one is broken wiring
+  // and /doctor says so plainly instead of running a drifting duplicate.
+  it('says diagnostics are unavailable when the service is missing (no inline fallback)', async () => {
     const { tryHandleOpenclawDoctorCommand } = await import('../../src/openclaw/commands/openclawDoctorCommand');
 
     const markdownChunks: string[] = [];
@@ -350,6 +353,6 @@ describe('/doctor command delegation', () => {
 
     const handled = await tryHandleOpenclawDoctorCommand(services, 'doctor', response);
     expect(handled).toBe(true);
-    expect(markdownChunks[0]).toContain('Diagnostic Report');
+    expect(markdownChunks[0]).toContain('Diagnostics are unavailable');
   });
 });

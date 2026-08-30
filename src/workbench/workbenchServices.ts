@@ -98,6 +98,18 @@ export function registerWorkbenchServices(services: ServiceCollection): void {
   // silently no-ops the taps' has() check. Ordering verified by e2e 93.
   services.registerInstance(IActivityJournalService, new ActivityJournalService());
 
+  // ── Diagnostics (RETIREMENT.md Part 3.1) ──
+  // Constructed UNCONDITIONALLY in the first pass. It used to be built
+  // inside registerIndexingServices, which only runs once a workspace DB
+  // opens — so /doctor on the welcome screen fell back to a duplicated
+  // 49-line inline copy of nine checks that drifted from the real ones.
+  // Every dep except getWorkspaceName is optional and the checks degrade
+  // honestly; registerIndexingServices patches the richer deps in later.
+  services.registerInstance(IDiagnosticsService, new DiagnosticsService(
+    { getWorkspaceName: () => services.tryGet(IWorkspaceService)?.workspaceName ?? '' },
+    ALL_DIAGNOSTIC_CHECKS,
+  ));
+
   // ── Per-workspace Python runtime (M94) ──
   // Dep-free like the journal: it registers its settings schemas at
   // construction (so Settings can render the Python category even before a
@@ -360,19 +372,17 @@ export function registerIndexingServices(
   services.registerInstance(ISemanticGraphService, semanticGraphService);
   services.registerInstance(IMindMapRefreshOrchestrator, mindMapRefreshOrchestrator);
 
-  // ── D3: Diagnostics Service ──
-  const diagnosticsService = new DiagnosticsService(
-    {
-      getWorkspaceName: () => workspaceService.workspaceName ?? '',
-      getEffectiveConfig: () => unifiedConfigService?.getEffectiveConfig(),
-      checkEmbedding: async () => { try { const r = await embeddingService.embedQuery('test'); return r.length > 0; } catch { return false; } },
-      getEmbeddingModelInfo: () => embeddingService.getModelInfo(),
-      checkVectorStore: async () => { try { const s = await vectorStoreService.getStats(); return s.totalChunks >= 0; } catch { return false; } },
-      checkMemoryService: async () => { try { await memoryService.getAllMemories(); return true; } catch { return false; } },
-    },
-    ALL_DIAGNOSTIC_CHECKS,
-  );
-  services.registerInstance(IDiagnosticsService, diagnosticsService);
+  // ── D3: Diagnostics — patch the indexing-stack deps into the service the
+  // first pass registered unconditionally (RETIREMENT.md Part 3.1). ──
+  const diagnosticsService = services.get(IDiagnosticsService);
+  diagnosticsService.updateDeps({
+    getWorkspaceName: () => workspaceService.workspaceName ?? '',
+    getEffectiveConfig: () => unifiedConfigService?.getEffectiveConfig(),
+    checkEmbedding: async () => { try { const r = await embeddingService.embedQuery('test'); return r.length > 0; } catch { return false; } },
+    getEmbeddingModelInfo: () => embeddingService.getModelInfo(),
+    checkVectorStore: async () => { try { const s = await vectorStoreService.getStats(); return s.totalChunks >= 0; } catch { return false; } },
+    checkMemoryService: async () => { try { await memoryService.getAllMemories(); return true; } catch { return false; } },
+  });
 
   // ── Autonomy signal bus (heartbeat senses) ──
   const autonomySignalService = new AutonomySignalService();

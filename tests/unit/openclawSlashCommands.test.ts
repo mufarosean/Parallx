@@ -4,6 +4,8 @@ import { tryHandleOpenclawStatusCommand } from '../../src/openclaw/commands/open
 import { tryHandleOpenclawNewCommand } from '../../src/openclaw/commands/openclawNewCommand';
 import { tryHandleOpenclawModelsCommand } from '../../src/openclaw/commands/openclawModelsCommand';
 import { tryHandleOpenclawDoctorCommand } from '../../src/openclaw/commands/openclawDoctorCommand';
+import { DiagnosticsService } from '../../src/services/diagnosticsService';
+import { ALL_DIAGNOSTIC_CHECKS } from '../../src/services/diagnosticChecks';
 import { tryHandleOpenclawThinkCommand, THINK_SESSION_FLAG } from '../../src/openclaw/commands/openclawThinkCommand';
 import { tryHandleOpenclawUsageCommand } from '../../src/openclaw/commands/openclawUsageCommand';
 import { tryHandleOpenclawToolsCommand } from '../../src/openclaw/commands/openclawToolsCommand';
@@ -176,6 +178,9 @@ describe('/doctor command', () => {
       existsRelative: async () => true,
       getModelContextLength: () => 131072,
     });
+    // RETIREMENT.md 3.1: the inline fallback is gone — these fixtures now
+    // drive the ONE diagnostics engine directly.
+    services.diagnosticsService = new DiagnosticsService(services as never, ALL_DIAGNOSTIC_CHECKS);
     const result = await tryHandleOpenclawDoctorCommand(services, 'doctor', response);
     expect(result).toBe(true);
     expect(response.progress).toHaveBeenCalledWith('Running diagnostics...');
@@ -192,6 +197,7 @@ describe('/doctor command', () => {
       checkProviderStatus: async () => ({ available: false, error: 'Connection refused' }),
       getActiveModel: () => undefined,
     });
+    services.diagnosticsService = new DiagnosticsService(services as never, ALL_DIAGNOSTIC_CHECKS);
     const result = await tryHandleOpenclawDoctorCommand(services, 'doctor', response);
     expect(result).toBe(true);
     const text = response._chunks[0];
@@ -449,6 +455,7 @@ describe('/doctor edge cases', () => {
       getFileCount: async () => 0,
       getModelContextLength: () => 0,
     });
+    services.diagnosticsService = new DiagnosticsService(services as never, ALL_DIAGNOSTIC_CHECKS);
     const result = await tryHandleOpenclawDoctorCommand(services, 'doctor', response);
     expect(result).toBe(true);
     const text = response._chunks[0];
@@ -462,6 +469,7 @@ describe('/doctor edge cases', () => {
     const services = createMinimalServices({
       checkProviderStatus: async () => { throw new Error('Timeout'); },
     });
+    services.diagnosticsService = new DiagnosticsService(services as never, ALL_DIAGNOSTIC_CHECKS);
     const result = await tryHandleOpenclawDoctorCommand(services, 'doctor', response);
     expect(result).toBe(true);
     const text = response._chunks[0];
