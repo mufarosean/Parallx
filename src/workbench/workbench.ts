@@ -133,8 +133,6 @@ import { WATCH_IGNORE_SEGMENTS } from '../services/parallxIgnore.js';
 import { IPythonEnvService, type PythonEnvService } from '../services/pythonEnvService.js';
 import { INotebookKernelService, type NotebookKernelService } from '../services/notebookKernelService.js';
 import { wireActivityTaps } from './activityTaps.js';
-import { SurfaceActivityTap } from '../surfaces/surfaceActivity.js';
-import { surfaceRegistry } from '../surfaces/surfaceRegistry.js';
 
 // Contribution Processors (M2 Capability 5)
 import { registerContributionProcessors, registerViewContributionProcessor } from './workbenchServices.js';
@@ -868,7 +866,7 @@ export class Workbench extends Layout {
     });
 
     lc.onTeardown(LifecyclePhase.Layout, () => {
-      this._tree?.dispose();
+      this._grid?.dispose();
       this._activityBarRight?.dispose();
       this._partRegistry?.dispose();
     });
@@ -3162,15 +3160,11 @@ export class Workbench extends Layout {
         workspaceName: this._workspace?.name,
       }));
 
-      // Decision 7's narrator, finally mounted (SYSTEM_INTEGRITY.md Phase B):
-      // the surface tree tells the journal which surface opened or closed,
-      // what the user dwelled in and for how long, what moved next to what,
-      // and which arrangement was captured or restored.
-      // The surfaces layer stays free of service imports by design, so its
-      // note shape is structural; the boundary asserts it into the journal's
-      // typed grammar (the tap only ever writes actor 'user', source 'surface').
-      this._register(new SurfaceActivityTap(this._tree, surfaceRegistry,
-        (n) => journal.note(n as Parameters<typeof journal.note>[0])));
+      // (The surface-activity narrator was retired with the unmounted
+      // surfaces layer, Retirement Part 4b: the surface registry was empty
+      // in production, so the tap subscribed to events that could never
+      // fire and narrated nothing from the day it mounted. Editor and
+      // window activity reach the journal through their own taps.)
 
       // ── Storage failures reach the person (SYSTEM_INTEGRITY.md Phase C).
       // A failed state read or write used to die in the console while the

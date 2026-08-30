@@ -171,23 +171,7 @@ export interface IManifestStatusBarEntry {
  * Each key is a contribution point; the shell reads these at load time.
  */
 export interface IManifestContributions {
-  /**
-   * Surfaces contributed by this tool — the one contribution point for
-   * anything that renders (Foundation Decision 6, docs/FOUNDATION.md).
-   *
-   * Replaces `views` + `viewContainers`, `editors`, and the dashboard widget
-   * API. Those four declared the same thing four ways, each with a hardcoded
-   * home, which is why nothing in the app could be moved. A surface declares
-   * what it IS and where it would PREFER to open; the user's arrangement
-   * decides where it actually lives, permanently, from the first time they
-   * move it.
-   *
-   * The older points still work and are read as surfaces. They are deprecated
-   * rather than removed: an extension should not have to be rewritten in the
-   * same release the foundation changes under it.
-   */
-  readonly surfaces?: readonly IManifestSurfaceDescriptor[];
-  /** @deprecated Declare a surface instead. Read as a Side-placed surface. */
+  /** View descriptors contributed by this tool. */
   readonly views?: readonly IManifestViewDescriptor[];
   /** View container descriptors contributed by this tool. */
   readonly viewContainers?: readonly IManifestViewContainerDescriptor[];
@@ -211,38 +195,6 @@ export interface IManifestContributions {
    * `activate()` via `api.editors.registerEditorProvider(typeId, ...)`.
    */
   readonly editors?: readonly IManifestEditorDescriptor[];
-}
-
-/**
- * A surface contributed by a tool.
- *
- * `placement` is advisory — the preferred position the FIRST time this surface
- * opens, before the user has expressed an opinion. It is deliberately not a
- * constraint: an extension cannot pin itself to a region, and once a surface
- * has been moved its position belongs to the arrangement forever after.
- */
-export interface IManifestSurfaceDescriptor {
-  /** Stable, namespaced type id: 'canvas.page', 'flashcards.study'. */
-  readonly typeId: string;
-  /** Name shown in menus and the palette. Title Case. */
-  readonly name: string;
-  /** Registry icon id. Never an emoji. */
-  readonly icon?: string;
-  /**
-   * Preferred FIRST placement: 'center' (documents, readers), 'side' (trees,
-   * outlines), 'bottom' (terminals, logs). Defaults to 'center'.
-   */
-  readonly placement?: 'center' | 'side' | 'bottom';
-  /**
-   * Binding kinds this surface can be pointed at ('file', 'page', 'deck').
-   * Omit or leave empty for a surface that takes no binding, such as a
-   * settings hub or a graph of everything.
-   */
-  readonly bindingKinds?: readonly string[];
-  /** 'single' when a second live copy would be meaningless. Default 'many'. */
-  readonly instances?: 'single' | 'many';
-  /** Context-key expression gating availability. */
-  readonly when?: string;
 }
 
 /**

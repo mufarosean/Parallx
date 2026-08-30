@@ -99,7 +99,7 @@ class TestLayout extends Layout {
   }
 
   override dispose(): void {
-    this._tree.dispose();
+    this._grid.dispose();
     super.dispose();
   }
 }

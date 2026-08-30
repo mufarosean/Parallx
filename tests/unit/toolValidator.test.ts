@@ -1,11 +1,14 @@
 /**
- * Manifest validation for the surfaces contribution point.
+ * Manifest validation for contribution points the validator must know.
  *
  * The gap these pin: a point the validator does not know is only WARNED as
- * unknown, so a malformed `contributes.surfaces` used to sail through
- * validation and become a TypeError inside readSurfaceContributions instead.
- * Validation is where a bad manifest is supposed to cost its author a
- * message; the reader downstream stays defensive but silent.
+ * unknown, so a malformed declaration used to sail through validation and
+ * become a TypeError in the reader downstream instead. Validation is where
+ * a bad manifest is supposed to cost its author a message.
+ *
+ * (The `contributes.surfaces` suite that used to live here was deleted with
+ * the point itself — Retirement Part 4b retired the unmounted surfaces
+ * layer, and an unknown `surfaces` key now correctly warns.)
  */
 
 import { describe, expect, it } from 'vitest';
@@ -23,50 +26,13 @@ const manifest = (contributes: unknown): unknown => ({
   contributes,
 });
 
-describe('contributes.surfaces validation', () => {
-  it('accepts a well-formed surface declaration without warnings', () => {
-    const r = validateManifest(manifest({
-      surfaces: [{
-        typeId: 'flashcards.study', name: 'Study', icon: 'layers',
-        placement: 'side', bindingKinds: ['deck'], instances: 'single',
-      }],
-    }));
-    expect(r.valid).toBe(true);
-    expect(r.errors).toEqual([]);
-    expect(r.warnings).toEqual([]);
-  });
-
-  it('does not call the surfaces point unknown', () => {
+describe('contribution point validation', () => {
+  it('warns that the retired surfaces point is unknown', () => {
     const r = validateManifest(manifest({ surfaces: [] }));
-    expect(r.warnings.filter((w) => w.message.includes('Unknown contribution point'))).toEqual([]);
+    expect(r.warnings.some((w) => w.message.includes('Unknown contribution point'))).toBe(true);
   });
 
-  it('rejects a non-array surfaces point', () => {
-    const r = validateManifest(manifest({ surfaces: {} }));
-    expect(r.valid).toBe(false);
-    expect(r.errors.some((e) => e.path === 'contributes.surfaces')).toBe(true);
-  });
-
-  it('rejects entries missing typeId or name', () => {
-    const r = validateManifest(manifest({
-      surfaces: [null, { typeId: 'x' }, { name: 'No Id' }],
-    }));
-    expect(r.valid).toBe(false);
-    expect(r.errors.length).toBeGreaterThanOrEqual(3);
-  });
-
-  it('warns on an unknown placement instead of failing the manifest', () => {
-    // A typo costs a preference, not the extension.
-    const r = validateManifest(manifest({
-      surfaces: [{ typeId: 'x', name: 'X', placement: 'starboard' }],
-    }));
-    expect(r.valid).toBe(true);
-    expect(r.warnings.some((w) => w.path.endsWith('.placement'))).toBe(true);
-  });
-
-  it('treats editors and statusBar as known points too', () => {
-    // Both predate surfaces and were already real; warning "unknown, will be
-    // ignored" about a point the app reads is the validator lying.
+  it('treats editors and statusBar as known points', () => {
     const r = validateManifest(manifest({
       editors: [{ typeId: 'canvas' }],
       statusBar: [],

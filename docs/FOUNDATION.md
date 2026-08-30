@@ -7,6 +7,19 @@
 > This document supersedes the layout assumptions in every prior milestone.
 > Where it contradicts an older doc, this wins.
 
+> **RETIREMENT NOTE (2026-08-30, docs/RETIREMENT.md Part 4b).** The staged
+> half of this plan was retired by decision. What SHIPPED and stands:
+> Decision 3's one grid tree, floating containers, saved layouts, widgets
+> as citizens. What was RETIRED before mounting: the ISurface citizen type
+> (Decision 2), surface adapters, `contributes.surfaces` (Decision 6),
+> arrangements as first-class objects (Decision 5), and the surface
+> activity narrator (Decision 7) — the surface registry was empty in
+> production and the anchor decision (the editor is the ANCHOR; parts do
+> not dissolve) closed this plan's destination. The code lives in git
+> history (`1202ffb3`…`8904e17a`) if the direction ever reopens.
+> Arrangements-that-restore-content remains achievable as a future
+> increment on Saved Layouts within the anchor model.
+
 ## The vision, stated plainly
 
 Parallx is **sandbox software**. One install. A student picks it up and

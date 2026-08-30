@@ -31,8 +31,6 @@ import { Orientation, SizingMode } from '../layout/layoutTypes.js';
 import { SerializedNodeType } from '../layout/layoutModel.js';
 import type { SerializedGrid, SerializedGridNode, SerializedLeafNode } from '../layout/layoutModel.js';
 import type { IGridView } from '../layout/gridView.js';
-import { SurfaceTree } from '../surfaces/surfaceTree.js';
-import { surfaceRegistry } from '../surfaces/surfaceRegistry.js';
 import { PartDragController } from './partDrag.js';
 import type { PartDropZone } from './partDrag.js';
 import { PartRegistry } from '../parts/partRegistry.js';
@@ -175,19 +173,16 @@ export abstract class Layout extends Disposable {
   private readonly _onDidChangePanelMaximized = this._register(new Emitter<boolean>());
   readonly onDidChangePanelMaximized: Event<boolean> = this._onDidChangePanelMaximized.event;
 
-  // ── The one tree ──────────────────────────────────────────────────────
-
-  protected _tree!: SurfaceTree;
-  protected _bodyRow!: HTMLElement;
+  // ── The one grid ──────────────────────────────────────────────────────
 
   /**
-   * The body grid. Parts sit in it as plain grid views for now; surfaces
-   * join them as the migration proceeds, and the parts dissolve. Capture
-   * ignores non-surface leaves, so arrangements stay clean throughout.
+   * The body grid — ONE tree of parts. (The SurfaceTree wrapper that used
+   * to hold it was retired with the unmounted surfaces layer, Retirement
+   * Part 4b: the editor is the ANCHOR, parts do not dissolve into generic
+   * surfaces, and the wrapper's only production duty was holding this.)
    */
-  protected get _grid(): Grid {
-    return this._tree.grid;
-  }
+  protected _grid!: Grid;
+  protected _bodyRow!: HTMLElement;
 
   // ── Part References ───────────────────────────────────────────────────
 
@@ -387,7 +382,7 @@ export abstract class Layout extends Disposable {
     const bodyH = height - TITLE_HEIGHT - STATUS_HEIGHT;
     const bodyW = width - ACTIVITY_BAR_WIDTH;
 
-    this._tree = new SurfaceTree(surfaceRegistry, Orientation.Horizontal, bodyW, bodyH);
+    this._grid = new Grid(Orientation.Horizontal, bodyW, bodyH);
     this._grid.restoreFrom(
       this._currentDefaultState(bodyW, bodyH),
       (viewId) => this._partGridView(viewId),

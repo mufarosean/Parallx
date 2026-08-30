@@ -288,4 +288,22 @@ either an afternoon (retire) or the next milestone (mount).
   pre-3.7 keys — recency lists repopulate passively with zero user
   effort (the 3.4 keybinding adoption was different: rebinds cost
   manual re-entry). Behavior pinned in tests/unit/recentsService.test.ts.
-- 4a / 4b — PENDING (4b needs Mufaro's mount-or-retire decision).
+- 4b surfaces — DECIDED BY MUFARO 2026-08-30 (delete) and SHIPPED. The
+  entire src/surfaces/ folder is gone (10 files + 7 test suites): the
+  scaffolding half (adapters, contribution point, arrangements, store)
+  had zero production importers, and the "live" half turned out to be
+  dead too — SurfaceTree's only production duty was holding the Grid
+  (layout now constructs Grid directly), and the SurfaceActivityTap
+  subscribed to registry/tree events that could never fire (registry
+  empty in production): a narrator mounted and silent since birth.
+  contributes.surfaces removed from the manifest schema + validator;
+  contributes.views un-deprecated. FOUNDATION.md carries a retirement
+  note (what shipped stands: one grid tree, floating containers, saved
+  layouts, widgets). The design lives in git (1202ffb3…8904e17a).
+  Arrangements-that-restore-content stays available as a future Saved
+  Layouts increment on the anchor model. The openclaw "surfaces" →
+  channels rename is DROPPED as no longer needed: the 3-way name
+  collision died with the deletion — "surface" now means exactly one
+  thing in-tree (an OpenClaw delivery channel). Optional upstream-parity
+  polish only; re-open only if Mufaro wants the upstream vocabulary.
+- 4a sidebar — PENDING (the last part; Mufaro reachable, eyes-on).
