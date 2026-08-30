@@ -8,9 +8,9 @@
 //
 // The tracker hooks the editor service's active-editor changes — explorer
 // files, canvas pages, and Ctrl+P opens are all captured uniformly — and
-// persists a small recency list in the explorer's workspaceState. Widgets and
-// other tools read it via `explorer.getRecentItems` (the pre-M86 alias
-// `dashboard.getRecentItems` stays registered for back-compat).
+// records them into core RecentsService (Retirement 3.7: ONE recency owner).
+// Widgets and other tools read via `explorer.getRecentItems` (the pre-M86
+// alias `dashboard.getRecentItems` stays registered for back-compat).
 //
 // Visual styles (`rfw__*`) intentionally remain in dashboard.css: the widget
 // renders inside the dashboard pane's DOM.
@@ -24,22 +24,17 @@ import type {
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import { IEditorService } from '../../services/serviceTypes.js';
+import { IRecentsService, type IRecentsServiceShape, type RecentOpenedItem } from '../../services/recentsService.js';
 
-// ─── Recency tracking (source of truth) ──────────────────────────────────────
+// ─── Recency tracking (tap + read commands) ──────────────────────────────────
+//
+// Retirement 3.7: the LIST lives in core RecentsService (one owner for all
+// per-workspace recency — palette, Welcome, and this widget read the same
+// list). This module keeps only what is explorer-shaped: the editor-service
+// tap that knows the canvas editor-id convention, and the two frozen read
+// commands.
 
-interface RecentItem {
-  /** Dedup key: `file:<uri>` or `page:<pageId>`. */
-  readonly key: string;
-  readonly kind: 'file' | 'page';
-  readonly title: string;
-  /** File URI (kind 'file') or page id (kind 'page') — used to reopen. */
-  readonly target: string;
-  readonly ts: number;
-}
-
-const RECENT_ITEMS_KEY = 'explorer.recentItems';
-const RECENT_ITEMS_CAP = 30;
-let _recentItems: RecentItem[] = [];
+type RecentItem = RecentOpenedItem;
 
 interface TrackerApi {
   commands: { registerCommand(id: string, handler: (...args: unknown[]) => unknown): IDisposable };
@@ -47,28 +42,26 @@ interface TrackerApi {
 }
 
 /**
- * Track recently-opened files + canvas pages. ONE recency-ordered list of
- * everything the user opened, captured from the editor service's
- * active-editor changes — the single signal both surfaces flow through.
- * Persisted per-workspace so it survives reloads.
+ * Track recently-opened files + canvas pages into RecentsService, captured
+ * from the editor service's active-editor changes — the single signal both
+ * surfaces flow through.
  */
 export function setupRecentItemsTracking(api: TrackerApi, context: ToolContext): void {
+  let recents: IRecentsServiceShape | undefined;
   try {
-    const saved = context.workspaceState.get<RecentItem[]>(RECENT_ITEMS_KEY, []);
-    if (Array.isArray(saved)) {
-      _recentItems = saved.filter((x): x is RecentItem => !!x && typeof x.key === 'string' && typeof x.title === 'string');
-    }
-  } catch { /* fresh start */ }
+    recents = api.services.has(IRecentsService) ? api.services.get<IRecentsServiceShape>(IRecentsService) : undefined;
+  } catch { recents = undefined; }
 
-  // Expose the read commands regardless — if the editor service is
-  // unavailable the widget still shows whatever was persisted.
+  // The read commands: the widget reads through these; external callers may too.
   context.subscriptions.push(
-    api.commands.registerCommand('explorer.getRecentItems', () => _recentItems),
+    api.commands.registerCommand('explorer.getRecentItems', () => recents?.getRecentOpens() ?? []),
   );
   // Pre-M86 alias — the widget shipped reading this id; external callers may too.
   context.subscriptions.push(
-    api.commands.registerCommand('dashboard.getRecentItems', () => _recentItems),
+    api.commands.registerCommand('dashboard.getRecentItems', () => recents?.getRecentOpens() ?? []),
   );
+  if (!recents) return;
+  const sink = recents;
 
   let editorService: IEditorService | undefined;
   try {
@@ -78,23 +71,18 @@ export function setupRecentItemsTracking(api: TrackerApi, context: ToolContext):
 
   const record = (input: { readonly id: string; readonly name: string; readonly uri?: { toString(): string } } | undefined): void => {
     if (!input) return;
-    let item: RecentItem | null = null;
     if (input.uri) {
       const uri = input.uri.toString();
-      item = { key: 'file:' + uri, kind: 'file', title: input.name || _basename(uri), target: uri, ts: Date.now() };
-    } else {
-      // Canvas editor ids look like `parallx.canvas:canvas:<pageId>` /
-      // `…:database:<pageId>`. Anything else (dashboard, welcome) is skipped.
-      const parts = (input.id || '').split(':');
-      if (parts.length >= 3 && (parts[1] === 'canvas' || parts[1] === 'database')) {
-        const pageId = parts.slice(2).join(':');
-        item = { key: 'page:' + pageId, kind: 'page', title: input.name || 'Untitled', target: pageId, ts: Date.now() };
-      }
+      sink.recordOpen({ key: 'file:' + uri, kind: 'file', title: input.name || _basename(uri), target: uri });
+      return;
     }
-    if (!item) return;
-    const next = item;
-    _recentItems = [next, ..._recentItems.filter((r) => r.key !== next.key)].slice(0, RECENT_ITEMS_CAP);
-    void context.workspaceState.update(RECENT_ITEMS_KEY, _recentItems);
+    // Canvas editor ids look like `parallx.canvas:canvas:<pageId>` /
+    // `…:database:<pageId>`. Anything else (dashboard, welcome) is skipped.
+    const parts = (input.id || '').split(':');
+    if (parts.length >= 3 && (parts[1] === 'canvas' || parts[1] === 'database')) {
+      const pageId = parts.slice(2).join(':');
+      sink.recordOpen({ key: 'page:' + pageId, kind: 'page', title: input.name || 'Untitled', target: pageId });
+    }
   };
 
   record(editorService.activeEditor);

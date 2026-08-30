@@ -70,6 +70,7 @@ import type { IEditorInput } from '../editor/editorInput.js';
 import { CommandService } from '../commands/commandRegistry.js';
 import { registerBuiltinCommands, ALL_BUILTIN_COMMANDS } from '../commands/structuralCommands.js';
 import { QuickAccessWidget } from '../commands/quickAccess.js';
+import { RecentsService, IRecentsService } from '../services/recentsService.js';
 
 // Context (Capability 8)
 import { ContextKeyService } from '../context/contextKey.js';
@@ -312,6 +313,7 @@ export class Workbench extends Layout {
   private _configService!: ConfigurationService;
   private _configRegistry!: ConfigurationRegistry;
   private _globalStorage!: IStorage;
+  private _recentsService!: RecentsService;
 
   // Contribution Processors (M2 Capability 5)
   private _menuContribution!: MenuContributionProcessor;
@@ -929,6 +931,12 @@ export class Workbench extends Layout {
     this._services.registerInstance(IGlobalStorageService, this._globalStorage);
     this._services.registerInstance(IWorkspaceStorageService, this._storage);
 
+    // Retirement 3.7: ONE owner for per-workspace recency (opened items +
+    // palette command MRU). The palette, dashboard widget, and Welcome all
+    // read from here instead of keeping private lists.
+    this._recentsService = new RecentsService(this._storage);
+    this._services.registerInstance(IRecentsService, this._recentsService);
+
     // Configuration system (M2 Capability 4)
     const { configService, configRegistry } = registerConfigurationServices(
       this._services,
@@ -1233,7 +1241,7 @@ export class Workbench extends Layout {
       cmdService.executeCommandFrom(origin, id, ...args);
 
     // Quick Access — unified overlay for commands + workspace switching
-    this._commandPalette = new QuickAccessWidget(cmdService, this._storage);
+    this._commandPalette = new QuickAccessWidget(cmdService, this._recentsService);
     this._register(this._commandPalette);
 
     // Wire editor group service for Go to Line provider

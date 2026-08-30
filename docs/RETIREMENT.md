@@ -272,5 +272,20 @@ either an afternoon (retire) or the next milestone (mount).
   M61-era global jobs). settingsRegistryBootstrap has no shims.
 - 3.6 dead settings stores — SHIPPED 37182531 (AISettingsService +
   ParallxConfigService class, 1,446 lines with their orphan tests).
-- 3.7 recents — PENDING.
+- 3.7 recents — SHIPPED. New core RecentsService (src/services/
+  recentsService.ts) is the ONE owner of per-workspace recency: the
+  opened-items list (files + canvas pages) and the palette's command
+  MRU, hydrated once, sync in-memory reads, `whenReady` for early
+  readers. quickAccess deleted both private lists + both storage keys
+  + three parsers; the explorer tracker kept only its canvas-id tap
+  and the two frozen read commands (explorer/dashboard.getRecentItems)
+  as thin service reads; Welcome deleted its duplicated key constants
+  and raw parsers — recent workspaces now via
+  IWorkspaceService.getRecentWorkspaces(), recent files via the
+  service. Ctrl+P recency now sees ALL editor opens (explorer clicks
+  included), not just palette picks. RecentWorkspaces stays the single
+  global-scope owner. DECIDED: no data migration from the orphaned
+  pre-3.7 keys — recency lists repopulate passively with zero user
+  effort (the 3.4 keybinding adoption was different: rebinds cost
+  manual re-entry). Behavior pinned in tests/unit/recentsService.test.ts.
 - 4a / 4b — PENDING (4b needs Mufaro's mount-or-retire decision).

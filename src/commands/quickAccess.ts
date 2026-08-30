@@ -23,14 +23,12 @@
 import { Disposable, IDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import type { CommandService } from './commandRegistry.js';
-import type { IStorage } from '../platform/storage.js';
+import type { IRecentsServiceShape } from '../services/recentsService.js';
 import { $ } from '../ui/dom.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const MAX_VISIBLE_ITEMS = 15;
-const MAX_RECENT_COMMANDS = 5;
-const RECENT_STORAGE_KEY = 'parallx:commandPalette:recent';
 
 /** VS Code prefix for command mode. */
 const COMMAND_PREFIX = '>';
@@ -40,8 +38,6 @@ const GOTO_LINE_PREFIX = ':';
 
 // ── File picker constants (M4 Cap 6) ────────────────────────────────────────
 
-const RECENT_FILES_KEY = 'parallx:quickAccess:recentFiles';
-const MAX_RECENT_FILES = 20;
 const MAX_FILE_RESULTS = 50;
 const FILE_SCAN_DEPTH = 10;
 
@@ -434,16 +430,11 @@ class GeneralProvider implements IQuickAccessProvider {
   // ── File picker state (M4 Cap 6) ──────────────────────────────────────
   private _fileScanner: WorkspaceFileScanner | undefined;
   private _openFileEditor: ((uri: string) => void) | undefined;
-  private _recentFileUris: string[] = [];
-  private readonly _workspaceStorage: IStorage | undefined;
 
   constructor(
     private readonly _getWorkspaceService: () => IWorkspaceServiceLike | undefined,
-    workspaceStorage?: IStorage,
-  ) {
-    this._workspaceStorage = workspaceStorage;
-    this._loadRecentFiles();
-  }
+    private readonly _recents?: IRecentsServiceShape,
+  ) {}
 
   // ── File picker setters (M4 Cap 6) ────────────────────────────────────
 
@@ -453,29 +444,6 @@ class GeneralProvider implements IQuickAccessProvider {
 
   setOpenFileEditor(fn: (uri: string) => void): void {
     this._openFileEditor = fn;
-  }
-
-  // ── Recent files persistence (M4 Cap 6) ───────────────────────────────
-
-  private _loadRecentFiles(): void {
-    if (this._workspaceStorage) {
-      this._workspaceStorage.get(RECENT_FILES_KEY).then(raw => {
-        try { this._recentFileUris = raw ? JSON.parse(raw) : []; }
-        catch { this._recentFileUris = []; }
-      });
-    }
-  }
-
-  private _saveRecentFiles(): void {
-    this._workspaceStorage?.set(RECENT_FILES_KEY, JSON.stringify(this._recentFileUris));  // fire-and-forget
-  }
-
-  pushRecentFile(uri: string): void {
-    this._recentFileUris = [
-      uri,
-      ...this._recentFileUris.filter((u) => u !== uri),
-    ].slice(0, MAX_RECENT_FILES);
-    this._saveRecentFiles();
   }
 
   // ── Items ─────────────────────────────────────────────────────────────
@@ -489,8 +457,8 @@ class GeneralProvider implements IQuickAccessProvider {
       const files = this._fileScanner.cached;
 
       if (files) {
-        const recentSet = new Set(this._recentFileUris);
-        const recentOrder = this._recentFileUris;
+        const recentOrder = this._recents?.getRecentFileUris() ?? [];
+        const recentSet = new Set(recentOrder);
         const openFn = this._openFileEditor;
 
         // Score and collect
@@ -538,7 +506,7 @@ class GeneralProvider implements IQuickAccessProvider {
             labelMatches,
             detailMatches,
             accept: () => {
-              this.pushRecentFile(entry.uri);
+              this._recents?.recordOpen({ key: `file:${entry.uri}`, kind: 'file', title: entry.name, target: entry.uri });
               openFn?.(entry.uri);
             },
           });
@@ -785,7 +753,6 @@ export class QuickAccessWidget extends Disposable {
   private _items: QuickAccessItem[] = [];
   private _selectedIndex = 0;
   private _activeProvider: IQuickAccessProvider | undefined;
-  private _recentCommandIds: string[] = [];
   /** Monotonic token used to discard stale async results from `_updateItems`. */
   private _updateToken = 0;
 
@@ -810,14 +777,14 @@ export class QuickAccessWidget extends Disposable {
 
   constructor(
     private readonly _commandService: CommandService,
-    private readonly _workspaceStorage?: IStorage,
+    private readonly _recents?: IRecentsServiceShape,
   ) {
     super();
-    this._loadRecent();
 
-    // Track executed commands for recents
+    // Track executed commands for the palette's recents MRU (Retirement 3.7:
+    // the list lives in RecentsService, not a private palette copy).
     this._register(this._commandService.onDidExecuteCommand((e) => {
-      this._pushRecent(e.commandId);
+      this._recents?.recordCommand(e.commandId);
     }));
 
     // Create providers
@@ -826,7 +793,7 @@ export class QuickAccessWidget extends Disposable {
       () => this._contextKeyService,
       () => this._menuContribution,
       () => this._keybindingContribution,
-      () => this._recentCommandIds,
+      () => this._recents?.getRecentCommandIds() ?? [],
       (id) => this._executeCommandById(id),
     );
 
@@ -834,7 +801,7 @@ export class QuickAccessWidget extends Disposable {
 
     this._generalProvider = new GeneralProvider(
       () => this._workspaceService,
-      this._workspaceStorage,
+      this._recents,
     );
   }
 
@@ -946,29 +913,6 @@ export class QuickAccessWidget extends Disposable {
     } else {
       this.show(COMMAND_PREFIX);
     }
-  }
-
-  // ── Recent commands persistence ────────────────────────────────────────
-
-  private _loadRecent(): void {
-    if (this._workspaceStorage) {
-      this._workspaceStorage.get(RECENT_STORAGE_KEY).then(raw => {
-        try { this._recentCommandIds = raw ? JSON.parse(raw) : []; }
-        catch { this._recentCommandIds = []; }
-      });
-    }
-  }
-
-  private _saveRecent(): void {
-    this._workspaceStorage?.set(RECENT_STORAGE_KEY, JSON.stringify(this._recentCommandIds));  // fire-and-forget
-  }
-
-  private _pushRecent(commandId: string): void {
-    this._recentCommandIds = [
-      commandId,
-      ...this._recentCommandIds.filter((id) => id !== commandId),
-    ].slice(0, MAX_RECENT_COMMANDS);
-    this._saveRecent();
   }
 
   // ── Provider resolution ────────────────────────────────────────────────

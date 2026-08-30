@@ -6,8 +6,8 @@
 import './welcome.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
-import type { IStorage } from '../../platform/storage.js';
-import { IGlobalStorageService, IWorkspaceStorageService } from '../../services/serviceTypes.js';
+import { IWorkspaceService } from '../../services/serviceTypes.js';
+import { IRecentsService, type IRecentsServiceShape } from '../../services/recentsService.js';
 import { $ } from '../../ui/dom.js';
 import { getIcon, getFileTypeIcon } from '../../ui/iconRegistry.js';
 import { EMPTY_STATES } from '../../ui/emptyStates.js';
@@ -39,27 +39,34 @@ const EDITOR_TYPE_ID = 'parallx.welcome.editor';
 const FIRST_LAUNCH_KEY = 'welcome.hasShownWelcome';
 
 export function activate(api: ParallxApi, context: ToolContext): void {
-  // M53 D3.9: Pre-fetch recent data from file-backed storage
-  let globalStorage: IStorage | undefined;
-  let workspaceStorage: IStorage | undefined;
-  try {
-    globalStorage = api.services.get<IStorage>(IGlobalStorageService);
-  } catch { /* service may not be registered */ }
-  try {
-    workspaceStorage = api.services.get<IStorage>(IWorkspaceStorageService);
-  } catch { /* service may not be registered */ }
+  // Retirement 3.7: recents come from their OWNERS — recent workspaces from
+  // IWorkspaceService, recent files from IRecentsService. This module used
+  // to re-implement raw storage reads with its own copies of the keys, and
+  // one copied key was wrong ('parallx.recentWorkspaces', which nothing
+  // wrote) — Welcome's recent-workspaces list was permanently empty.
 
   // Pre-fetch recent data so the sync renderWelcomePage can use it
   let cachedWorkspaces: { id: string; name: string; path?: string }[] = [];
   let cachedFiles: string[] = [];
 
   const prefetch = async () => {
-    if (globalStorage) {
-      cachedWorkspaces = await _getRecentWorkspaces(globalStorage);
-    }
-    if (workspaceStorage) {
-      cachedFiles = await _getRecentFiles(workspaceStorage);
-    }
+    try {
+      if (api.services.has(IWorkspaceService)) {
+        const ws = api.services.get<{ getRecentWorkspaces(): Promise<readonly { identity: { id: string; name: string; path?: string } }[]> }>(IWorkspaceService);
+        cachedWorkspaces = (await ws.getRecentWorkspaces()).map(e => ({
+          id: e.identity.id,
+          name: e.identity.name,
+          path: e.identity.path,
+        }));
+      }
+    } catch { /* service may not be registered */ }
+    try {
+      if (api.services.has(IRecentsService)) {
+        const recents = api.services.get<IRecentsServiceShape>(IRecentsService);
+        await recents.whenReady;
+        cachedFiles = recents.getRecentFileUris();
+      }
+    } catch { /* service may not be registered */ }
   };
   prefetch();
 
@@ -350,42 +357,7 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi, recentWorksp
   return { dispose() { wrapper.remove(); } };
 }
 
-// ─── Recent Data Readers ─────────────────────────────────────────────────────
-
-// The key RecentWorkspaces actually writes (src/workspace/recentWorkspaces.ts).
-// This read used 'parallx.recentWorkspaces' — a key nothing ever wrote — so
-// the Welcome page's recent-workspaces list was permanently empty. Found by
-// the retirement audit (docs/RETIREMENT.md): two recents systems that never
-// met, the exact cost of unretired duplication.
-const RECENT_WORKSPACES_STORAGE_KEY = 'recentWorkspaces';
-const RECENT_FILES_STORAGE_KEY = 'parallx:quickAccess:recentFiles';
-
-/** Read recent workspaces from global storage (M53 D3.9). */
-async function _getRecentWorkspaces(globalStorage: IStorage): Promise<{ id: string; name: string; path?: string }[]> {
-  try {
-    const raw = await globalStorage.get(RECENT_WORKSPACES_STORAGE_KEY);
-    if (!raw) return [];
-    const entries = JSON.parse(raw) as { identity: { id: string; name: string; path?: string } }[];
-    return entries.map(e => ({
-      id: e.identity.id,
-      name: e.identity.name,
-      path: e.identity.path,
-    }));
-  } catch {
-    return [];
-  }
-}
-
-/** Read recent file URIs from workspace storage (M53 D3.9). */
-async function _getRecentFiles(workspaceStorage: IStorage): Promise<string[]> {
-  try {
-    const raw = await workspaceStorage.get(RECENT_FILES_STORAGE_KEY);
-    if (!raw) return [];
-    return JSON.parse(raw) as string[];
-  } catch {
-    return [];
-  }
-}
+// ─── Display Helpers ─────────────────────────────────────────────────────────
 
 /** Convert a file URI to a short display path. */
 function _uriToDisplayPath(uri: string): string {
