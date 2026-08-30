@@ -7,7 +7,7 @@ import {
   latestCheckpoint,
   revertCheckpoint,
   _resetCheckpointsForTests,
-} from '../../src/built-in/chat/tools/fileCheckpoints';
+} from '../../src/services/fileCheckpointService';
 import { tryHandleOpenclawRewindCommand } from '../../src/openclaw/commands/openclawRewindCommand';
 import type { IChatResponseStream } from '../../src/services/chatTypes';
 

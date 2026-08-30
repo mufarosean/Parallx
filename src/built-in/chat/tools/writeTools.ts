@@ -12,7 +12,7 @@ import type {
   IBuiltInToolFileWriter,
 } from '../chatTypes.js';
 import { markResourceSeen, wasResourceSeen, fileResourceKey } from '../../../services/toolResourceRegistry.js';
-import { recordCheckpoint } from './fileCheckpoints.js';
+import { recordCheckpoint } from '../../../services/fileCheckpointService.js';
 
 /** HARNESS.md §2.2 — checkpoint prior state; a failure never blocks the write. */
 function checkpointSafely(

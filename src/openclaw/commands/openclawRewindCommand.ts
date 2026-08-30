@@ -14,7 +14,7 @@ import {
   listCheckpoints,
   latestCheckpoint,
   revertCheckpoint,
-} from '../../built-in/chat/tools/fileCheckpoints.js';
+} from '../../services/fileCheckpointService.js';
 
 export async function tryHandleOpenclawRewindCommand(
   command: string | undefined,

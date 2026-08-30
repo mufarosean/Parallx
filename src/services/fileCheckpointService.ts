@@ -11,11 +11,22 @@
 // CHECKPOINT_CAP entries), matching Claude Code's session-scoped model. The
 // deep safety nets beneath this remain trash (deletes) and git.
 //
-// Module-level store, same pattern as toolResourceRegistry (M85 Slice C):
-// write tools and the /rewind command import it directly instead of
-// threading yet another parameter through the registration chain.
+// Module-level store in the SERVICES layer, same pattern (and for the same
+// gate-compliance reason) as toolResourceRegistry (M85 Slice C): the chat
+// write tools and the openclaw /rewind command both import it, and neither
+// tree may import from the other. File access is bound structurally so this
+// module needs no chat-tree type imports.
 
-import type { IBuiltInToolFileSystem, IBuiltInToolFileWriter } from '../chatTypes.js';
+/** Structural subset of the chat fs accessor — no cross-tree import. */
+export interface ICheckpointFileReader {
+  exists(relativePath: string): Promise<boolean>;
+  readFileContent(relativePath: string): Promise<{ readonly content: string }>;
+}
+
+/** Structural subset of the chat writer accessor — no cross-tree import. */
+export interface ICheckpointFileWriter {
+  writeFile(relativePath: string, content: string): Promise<void>;
+}
 
 export interface IFileCheckpointEntry {
   /** Monotonic id, 1-based within this app run. */
@@ -35,8 +46,8 @@ export interface IFileCheckpointEntry {
 const CHECKPOINT_CAP = 50;
 
 interface ICheckpointEnvironment {
-  readonly fs?: IBuiltInToolFileSystem;
-  readonly writer?: IBuiltInToolFileWriter;
+  readonly fs?: ICheckpointFileReader;
+  readonly writer?: ICheckpointFileWriter;
   readonly workspaceRoot?: string;
 }
 

@@ -75,7 +75,7 @@ import { createAutonomyLogTool } from './autonomyLogTool.js';
 import { createActivityLogTool } from './activityLogTool.js';
 import type { IActivityJournalService } from '../../../services/activityJournalService.js';
 import { createSessionsSpawnTool } from './subagentTools.js';
-import { bindCheckpointEnvironment } from './fileCheckpoints.js';
+import { bindCheckpointEnvironment } from '../../../services/fileCheckpointService.js';
 import type { SubagentSpawner } from '../../../openclaw/openclawSubagentSpawn.js';
 
 // ── Registration ──
