@@ -1,6 +1,5 @@
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type {
-  IChatMessage,
   IChatParticipant,
   IChatParticipantContext,
   IChatParticipantRequest,
@@ -24,7 +23,7 @@ import {
   tryHandleOpenclawInitCommand,
 } from '../openclawDefaultRuntimeSupport.js';
 import { tryHandleOpenclawContextCommand } from './openclawContextReport.js';
-import { buildOpenclawBootstrapContext, loadOpenclawBootstrapEntries } from './openclawParticipantRuntime.js';
+import { buildOpenclawBootstrapContext, flattenPairsToMessages, loadOpenclawBootstrapEntries } from './openclawParticipantRuntime.js';
 import type { IOpenclawTurnContext } from '../openclawAttempt.js';
 import { runOpenclawTurn } from '../openclawTurnRunner.js';
 import { OpenclawContextEngine } from '../openclawContextEngine.js';
@@ -595,8 +594,9 @@ async function buildOpenclawTurnContext(
     agentTools: resolvedAgentConfig?.tools,
   });
 
-  // Flatten history pairs into IChatMessage[]
-  const history = flattenHistory(context.history);
+  // Flatten history pairs into IChatMessage[] — the shared flattener
+  // preserves the tool exchange record (docs/HARNESS.md §1).
+  const history = flattenPairsToMessages(context.history);
 
   // Model fallback: resolve available models for retry on model errors
   const fallbackModels = services.getAvailableModelIds
@@ -649,30 +649,9 @@ async function buildOpenclawTurnContext(
   };
 }
 
-function flattenHistory(
-  history: IChatParticipantContext['history'],
-): IChatMessage[] {
-  const messages: IChatMessage[] = [];
-  for (const pair of history) {
-    messages.push({ role: 'user', content: pair.request.text });
-    const assistantText = pair.response.parts
-      .map(part => {
-        if ('content' in part && typeof part.content === 'string') {
-          return part.content;
-        }
-        if ('code' in part && typeof part.code === 'string') {
-          return '```\n' + part.code + '\n```';
-        }
-        return '';
-      })
-      .filter(Boolean)
-      .join('\n');
-    if (assistantText) {
-      messages.push({ role: 'assistant', content: assistantText });
-    }
-  }
-  return messages;
-}
+// (flattenHistory retired 2026-08-30 — replaced by the shared
+// flattenPairsToMessages in openclawParticipantRuntime.ts, which preserves
+// the persisted tool exchange record instead of dropping it. HARNESS.md §1.)
 
 // ---------------------------------------------------------------------------
 // Followup suggestions removed (M41 anti-pattern A3: heuristic patchwork).

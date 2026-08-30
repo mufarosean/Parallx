@@ -15,7 +15,7 @@
 
 import type { IChatMessage } from '../services/chatTypes.js';
 import type { IDefaultParticipantServices } from './openclawTypes.js';
-import { computeElasticBudget, estimateTokens, estimateMessagesTokens } from './openclawTokenBudget.js';
+import { computeElasticBudget, estimateTokens, estimateMessagesTokens, estimateMessageTokens } from './openclawTokenBudget.js';
 
 
 // ---------------------------------------------------------------------------
@@ -259,7 +259,7 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
         effectiveHistory = [
           { role: 'user' as const, content: `[Context summary]\n${cache.summaryText}` },
           { role: 'assistant' as const, content: 'Understood, I have the conversation context.' },
-          ...effectiveHistory.slice(cache.coveredCount),
+          ...dropOrphanedToolHead(effectiveHistory.slice(cache.coveredCount)),
         ];
       }
     }
@@ -547,8 +547,10 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
       return { compacted: true, tokensBefore: historyTokens, tokensAfter: afterTokens };
     }
 
-    // Replace internal history with a single summary message + keep the last exchange
-    const lastExchange = history.length >= 2 ? history.slice(-2) : [...history];
+    // Replace internal history with a single summary message + keep the last
+    // exchange. Round-boundary guard: slice(-2) can land between an assistant
+    // tool-call message and its results now that history preserves them.
+    const lastExchange = dropOrphanedToolHead(history.length >= 2 ? history.slice(-2) : [...history]);
     this._lastHistory = [
       { role: 'user' as const, content: `[Context summary]\n${summaryText}` },
       { role: 'assistant' as const, content: 'Understood, I have the conversation context.' },
@@ -862,6 +864,22 @@ export function historyFingerprint(history: readonly IChatMessage[], count: numb
   return `${count}:${chars}:${first.slice(0, 24)}:${last.length}`;
 }
 
+/**
+ * HARNESS.md §1 — history now carries the tool exchange record, so every cut
+ * point must respect round boundaries: a `role: 'tool'` message whose
+ * assistant tool-call message was cut is an orphan. The Anthropic seam would
+ * fabricate a `tool_use_id` for it that references nothing (a 400), and other
+ * providers would show the model a result with no visible cause. Drop the
+ * orphaned head instead.
+ */
+export function dropOrphanedToolHead(messages: readonly IChatMessage[]): IChatMessage[] {
+  let start = 0;
+  while (start < messages.length && messages[start].role === 'tool') {
+    start++;
+  }
+  return start === 0 ? [...messages] : messages.slice(start);
+}
+
 function trimHistoryToBudget(
   history: readonly IChatMessage[],
   budgetTokens: number,
@@ -876,7 +894,7 @@ function trimHistoryToBudget(
 
   for (let i = history.length - 1; i >= 0; i--) {
     const msg = history[i];
-    const msgTokens = 4 + estimateTokens(msg.content); // 4 for role overhead
+    const msgTokens = estimateMessageTokens(msg);
     if (usedTokens + msgTokens > budgetTokens) {
       break;
     }
@@ -884,5 +902,5 @@ function trimHistoryToBudget(
     usedTokens += msgTokens;
   }
 
-  return result;
+  return dropOrphanedToolHead(result);
 }

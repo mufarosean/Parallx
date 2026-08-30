@@ -124,19 +124,39 @@ export function computeElasticBudget(params: IOpenclawElasticBudgetParams): IOpe
 export const VISION_TOKENS_PER_IMAGE = 768;
 
 /**
- * Estimate token count from an array of chat messages.
+ * Estimate token count for a single chat message.
  * D5: includes fixed per-image token cost when images are present.
+ * HARNESS.md §1: counts toolCalls (name + serialized arguments) — preserved
+ * tool history rides in the request, so budget decisions must see its weight.
+ */
+export function estimateMessageTokens(msg: IChatMessage): number {
+  // Each message has role overhead (~4 tokens) + content
+  let total = 4 + estimateTokens(msg.content);
+  if (msg.toolCalls?.length) {
+    for (const tc of msg.toolCalls) {
+      total += 4 + estimateTokens(tc.function.name);
+      try {
+        total += estimateTokens(JSON.stringify(tc.function.arguments));
+      } catch {
+        // Non-serializable arguments contribute 0 — better under than over.
+      }
+    }
+  }
+  if (msg.images?.length) {
+    total += msg.images.length * VISION_TOKENS_PER_IMAGE;
+  }
+  return total;
+}
+
+/**
+ * Estimate token count from an array of chat messages.
  */
 export function estimateMessagesTokens(
   messages: readonly IChatMessage[],
 ): number {
   let total = 0;
   for (const msg of messages) {
-    // Each message has role overhead (~4 tokens) + content
-    total += 4 + estimateTokens(msg.content);
-    if (msg.images?.length) {
-      total += msg.images.length * VISION_TOKENS_PER_IMAGE;
-    }
+    total += estimateMessageTokens(msg);
   }
   return total;
 }

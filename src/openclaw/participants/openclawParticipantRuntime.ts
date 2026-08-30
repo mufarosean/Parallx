@@ -5,10 +5,12 @@ import type {
   IChatRequestOptions,
   IChatResponseChunk,
   IChatResponseStream,
+  IChatToolInvocationContent,
   ICancellationToken,
   IToolCall,
   IToolDefinition,
 } from '../../services/chatTypes.js';
+import { ChatContentPartKind } from '../../services/chatTypes.js';
 import type {
   IChatContextPlan,
   IChatRuntimeTrace,
@@ -305,6 +307,138 @@ function trimBootstrapContent(content: string, fileName: string, maxChars: numbe
   };
 }
 
+// ── History flattening — "the transcript is sacred" (docs/HARNESS.md §1) ──
+//
+// The ONE owner of pair→message flattening. Session pairs already persist the
+// full tool record (`IChatToolInvocationContent`: name, args, status, isError,
+// result) — the old flatteners here and in openclawDefaultParticipant dropped
+// every tool part, so each turn the model forgot what it had read and run,
+// then re-read and re-derived it. This flattener re-emits the tool exchanges
+// in round order, exactly the shape the live tool loop produces
+// (assistant+toolCalls followed by role:'tool' results), which both providers
+// already translate.
+//
+// Aging policy (upstream pattern: Anthropic context-management clears OLD
+// tool results but keeps the calls): pairs older than the most recent
+// RECENT_FULL_FIDELITY_PAIRS keep their tool CALLS verbatim (long string args
+// elided) while RESULTS decay to a head preview + an explicit marker telling
+// the model to re-run the tool if it needs the full output. Error results
+// keep a longer preview — failure memory is what prevents repeated failures.
+
+const RECENT_FULL_FIDELITY_PAIRS = 2;
+const AGED_RESULT_PREVIEW_CHARS = 200;
+const AGED_ERROR_PREVIEW_CHARS = 800;
+const AGED_ARG_VALUE_CHARS = 200;
+
+function elideAgedArgs(args: Record<string, unknown>): Record<string, unknown> {
+  let changed = false;
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(args)) {
+    if (typeof value === 'string' && value.length > AGED_ARG_VALUE_CHARS) {
+      out[key] = `${value.slice(0, AGED_ARG_VALUE_CHARS)}…[+${value.length - AGED_ARG_VALUE_CHARS} chars elided by history aging]`;
+      changed = true;
+    } else {
+      out[key] = value;
+    }
+  }
+  return changed ? out : args;
+}
+
+function toolResultText(inv: IChatToolInvocationContent, aged: boolean): string {
+  if (inv.status === 'rejected') {
+    return '[Tool call rejected by user]';
+  }
+  const isError = inv.status === 'error' || inv.isError === true || inv.result?.isError === true;
+  let base = inv.result?.content ?? '';
+  if (!base) {
+    return isError ? '[TOOL ERROR] (no result recorded)' : '[no result recorded]';
+  }
+  if (isError && !base.startsWith('[TOOL ERROR]')) {
+    base = `[TOOL ERROR] ${base}`;
+  }
+  if (!aged) {
+    return base;
+  }
+  const cap = isError ? AGED_ERROR_PREVIEW_CHARS : AGED_RESULT_PREVIEW_CHARS;
+  if (base.length <= cap) {
+    return base;
+  }
+  return `${base.slice(0, cap)}\n[…result truncated by history aging — ${base.length} chars total; re-run ${inv.toolName} if the full output is needed]`;
+}
+
+/**
+ * Flatten persisted request/response pairs into provider-ready messages,
+ * preserving the tool exchange record.
+ *
+ * Text parts included: Markdown and CodeBlock. Thinking parts are deliberately
+ * EXCLUDED — the old duck-typed check (`'content' in part`) replayed prior
+ * reasoning as assistant prose; upstream strips prior-turn thinking (the
+ * Anthropic API does this server-side), and replaying it both bloats history
+ * and teaches the model to narrate instead of act.
+ */
+export function flattenPairsToMessages(
+  history: IChatParticipantContext['history'],
+): IChatMessage[] {
+  const messages: IChatMessage[] = [];
+  const agedBefore = history.length - RECENT_FULL_FIDELITY_PAIRS;
+
+  for (let i = 0; i < history.length; i++) {
+    const pair = history[i];
+    const aged = i < agedBefore;
+    messages.push({ role: 'user', content: pair.request.text });
+
+    const textBuf: string[] = [];
+    let toolGroup: IChatToolInvocationContent[] = [];
+
+    const flushRound = (): void => {
+      const text = textBuf.join('\n');
+      if (toolGroup.length > 0) {
+        messages.push({
+          role: 'assistant',
+          content: text,
+          toolCalls: toolGroup.map((inv) => ({
+            function: {
+              name: inv.toolName,
+              arguments: aged ? elideAgedArgs(inv.args) : inv.args,
+            },
+          })),
+        });
+        for (const inv of toolGroup) {
+          messages.push({
+            role: 'tool',
+            toolName: inv.toolName,
+            content: toolResultText(inv, aged),
+          });
+        }
+      } else if (text) {
+        messages.push({ role: 'assistant', content: text });
+      }
+      textBuf.length = 0;
+      toolGroup = [];
+    };
+
+    for (const part of pair.response.parts) {
+      if (part.kind === ChatContentPartKind.ToolInvocation) {
+        toolGroup.push(part as IChatToolInvocationContent);
+        continue;
+      }
+      // A text part after a tool group closes that round.
+      if (toolGroup.length > 0) {
+        flushRound();
+      }
+      if (part.kind === ChatContentPartKind.Markdown && typeof (part as { content?: unknown }).content === 'string') {
+        textBuf.push((part as { content: string }).content);
+      } else if (part.kind === ChatContentPartKind.CodeBlock && typeof (part as { code?: unknown }).code === 'string') {
+        textBuf.push('```\n' + (part as { code: string }).code + '\n```');
+      }
+      // Thinking / Progress / Warning / Confirmation / Edit* parts: skipped.
+    }
+    flushRound();
+  }
+
+  return messages;
+}
+
 export function buildOpenclawSeedMessages(
   systemPrompt: string,
   history: IChatParticipantContext['history'],
@@ -315,25 +449,7 @@ export function buildOpenclawSeedMessages(
     content: systemPrompt,
   }];
 
-  for (const pair of history) {
-    messages.push({ role: 'user', content: pair.request.text });
-    const assistantText = pair.response.parts
-      .map((part) => {
-        if ('content' in part && typeof part.content === 'string') {
-          return part.content;
-        }
-        if ('code' in part && typeof part.code === 'string') {
-          return '```\n' + part.code + '\n```';
-        }
-        return '';
-      })
-      .filter(Boolean)
-      .join('\n');
-
-    if (assistantText) {
-      messages.push({ role: 'assistant', content: assistantText });
-    }
-  }
+  messages.push(...flattenPairsToMessages(history));
 
   messages.push({
     role: 'user',
