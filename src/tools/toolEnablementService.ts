@@ -108,12 +108,16 @@ export class ToolEnablementService extends Disposable implements IToolEnablement
   // ── IToolEnablementService ──
 
   isEnabled(toolId: string): boolean {
-    // Explicit disable always wins
-    if (this._disabled.has(toolId)) return false;
-
     const entry = this._registry.getById(toolId);
 
-    // Built-in tools are always enabled
+    // Required tools (Phase D step 10) are always enabled — the app does
+    // not function without them, and a stale disable record cannot win.
+    if (entry?.description.manifest.required) return true;
+
+    // Explicit disable wins for everything else, built-in or external.
+    if (this._disabled.has(toolId)) return false;
+
+    // Non-required built-ins are enabled unless explicitly disabled.
     if (entry?.description.isBuiltin) return true;
 
     // External tools default to DISABLED — they must be explicitly enabled
@@ -138,8 +142,12 @@ export class ToolEnablementService extends Disposable implements IToolEnablement
   canChangeEnablement(toolId: string): boolean {
     const entry = this._registry.getById(toolId);
     if (!entry) return false;
-    // Built-in tools are always enabled and cannot be toggled
-    return !entry.description.isBuiltin;
+    // Phase D step 10 — "add or remove things as they please" becomes
+    // structurally true: only REQUIRED tools (the load-bearing set plus
+    // the two recovery surfaces) are pinned; every other tool, built-in
+    // or external, can be toggled, and the M6 orchestration deactivates
+    // or re-activates it live.
+    return !entry.description.manifest.required;
   }
 
   getDisabledToolIds(): ReadonlySet<string> {
@@ -151,7 +159,7 @@ export class ToolEnablementService extends Disposable implements IToolEnablement
     if (!this.canChangeEnablement(toolId)) {
       throw new Error(
         `[ToolEnablementService] Cannot change enablement for tool "${toolId}" ` +
-        `(built-in or not registered).`,
+        `(required by the app, or not registered).`,
       );
     }
 

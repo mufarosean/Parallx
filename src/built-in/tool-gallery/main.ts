@@ -62,6 +62,7 @@ interface ParallxApi {
     getAll(): ToolInfo[];
     getById(id: string): ToolInfo | undefined;
     isEnabled(toolId: string): boolean;
+    canChangeEnablement(toolId: string): boolean;
     setEnabled(toolId: string, enabled: boolean): Promise<void>;
     onDidChangeEnablement: (listener: (e: { toolId: string; enabled: boolean }) => void) => IDisposable;
     installFromFile(): Promise<{ toolId: string } | { error: string } | { canceled: true }>;
@@ -314,9 +315,9 @@ function renderToolSidebar(container: HTMLElement, api: ParallxApi): IDisposable
     // Enable/Disable toggle
     const toggle = $('button');
     toggle.classList.add('tool-gallery-toggle');
-    if (tool.isBuiltin) {
+    if (!api.tools.canChangeEnablement(tool.id)) {
       toggle.textContent = 'Disable';
-      toggle.title = 'Built-in tools cannot be disabled';
+      toggle.title = 'Required by the app and cannot be disabled';
       toggle.disabled = true;
       toggle.classList.add('tool-gallery-toggle-builtin');
     } else {
@@ -514,9 +515,9 @@ function renderToolEditor(container: HTMLElement, api: ParallxApi, toolId: strin
 
   const toggleBtn = $('button');
   toggleBtn.classList.add('tool-editor-action-btn');
-  if (tool.isBuiltin) {
+  if (!api.tools.canChangeEnablement(tool.id)) {
     toggleBtn.textContent = 'Disable';
-    toggleBtn.title = 'Built-in tools cannot be disabled';
+    toggleBtn.title = 'Required by the app and cannot be disabled';
     toggleBtn.disabled = true;
     toggleBtn.classList.add('tool-editor-action-builtin');
   } else {

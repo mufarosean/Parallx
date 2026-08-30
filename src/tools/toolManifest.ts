@@ -345,6 +345,16 @@ export interface IToolManifest {
    */
   readonly dependencies?: readonly string[];
 
+  /**
+   * The app does not function without this tool (Phase D step 10). A
+   * required tool is always enabled and its Gallery toggle is inert with
+   * an honest label; every other tool — built-in or external — can be
+   * disabled and the app degrades loudly and diagnosably. Reserved for
+   * the load-bearing set and the two recovery surfaces (Settings, the
+   * Gallery) that a user needs to undo a disable.
+   */
+  readonly required?: boolean;
+
   // ── Contributions ──
 
   /**

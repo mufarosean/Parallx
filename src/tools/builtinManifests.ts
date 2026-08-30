@@ -13,6 +13,7 @@ import type { IToolManifest } from './toolManifest.js';
 export const EXPLORER_MANIFEST: IToolManifest = {
   manifestVersion: 1,
   id: 'parallx.explorer',
+  required: true,
   name: 'Explorer',
   version: '1.0.0',
   publisher: 'parallx',
@@ -94,31 +95,6 @@ export const SEARCH_MANIFEST: IToolManifest = {
     ],
     views: [
       { id: 'view.search', name: 'Search', defaultContainerId: 'search-container' },
-    ],
-  },
-};
-
-// ── Text Editor ──────────────────────────────────────────────────────────
-
-export const TEXT_EDITOR_MANIFEST: IToolManifest = {
-  manifestVersion: 1,
-  id: 'parallx.editor.text',
-  name: 'Text Editor',
-  version: '1.0.0',
-  publisher: 'parallx',
-  description: 'Built-in text editor for files and untitled documents.',
-  main: './main.js',
-  engines: { parallx: '^0.1.0' },
-  activationEvents: ['*'],
-  contributes: {
-    commands: [
-      { id: 'editor.toggleWordWrap', title: 'View: Toggle Word Wrap',
-        aiInvocable: true, aiDescription: 'Toggle word-wrap in the active editor.' },
-      { id: 'editor.changeEncoding', title: 'Change File Encoding',
-        aiInvocable: true, aiDescription: 'Open the file encoding picker for the active editor.' },
-    ],
-    keybindings: [
-      { command: 'editor.toggleWordWrap', key: 'Alt+Z' },
     ],
   },
 };
@@ -284,6 +260,7 @@ export const AUTONOMY_LOG_MANIFEST: IToolManifest = {
 export const TOOL_GALLERY_MANIFEST: IToolManifest = {
   manifestVersion: 1,
   id: 'parallx.tool-gallery',
+  required: true,
   name: 'Tools',
   version: '1.0.0',
   publisher: 'parallx',
@@ -307,6 +284,7 @@ export const TOOL_GALLERY_MANIFEST: IToolManifest = {
 export const CHAT_MANIFEST: IToolManifest = {
   manifestVersion: 1,
   id: 'parallx.chat',
+  required: true,
   name: 'Chat',
   version: '1.0.0',
   publisher: 'parallx',
@@ -416,6 +394,7 @@ export const AI_SETTINGS_MANIFEST: IToolManifest = {
 export const CANVAS_MANIFEST: IToolManifest = {
   manifestVersion: 1,
   id: 'parallx.canvas',
+  required: true,
   name: 'Canvas',
   version: '0.1.0',
   publisher: 'parallx',
@@ -572,6 +551,7 @@ export const WORKSHEET_MANIFEST: IToolManifest = {
 export const DASHBOARD_MANIFEST: IToolManifest = {
   manifestVersion: 1,
   id: 'parallx.dashboard',
+  required: true,
   name: 'Dashboard',
   version: '0.1.0',
   publisher: 'parallx',
@@ -620,6 +600,7 @@ export const DASHBOARD_MANIFEST: IToolManifest = {
 export const SETTINGS_MANIFEST: IToolManifest = {
   manifestVersion: 1,
   id: 'parallx.settings',
+  required: true,
   name: 'Settings',
   version: '1.0.0',
   publisher: 'parallx',
