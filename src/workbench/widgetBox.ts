@@ -26,9 +26,6 @@ import { ContextMenu } from '../ui/contextMenu.js';
 import { $ } from '../ui/dom.js';
 import type { WorkbenchWidgetHost, DashboardWidgetRow, WidgetAppearance } from '../built-in/dashboard/dashboardTypes.js';
 import type { WidgetContext, WidgetHandle } from '../api/bridges/dashboardBridge.js';
-import { renderMarkdownToDom } from '../built-in/dashboard/widgets/markdownRenderer.js';
-import { openAppearanceDrawer } from '../built-in/dashboard/appearanceDrawer.js';
-import { openWidgetSettingsDrawer } from '../built-in/dashboard/settingsDrawer.js';
 
 export const WIDGET_BOX_PREFIX = 'widget:';
 
@@ -402,7 +399,7 @@ export class WidgetBoxManager extends Disposable {
         || !system.getWidgetType(row.widgetTypeId)?.createWidget) {
         // Markdown-mode widget: re-render the body from the new cache.
         box.clearBody();
-        box.body.appendChild(renderMarkdownToDom(row.cachedOutput ?? ''));
+        box.body.appendChild(system.renderMarkdown(row.cachedOutput ?? ''));
       }
     });
   }
@@ -413,7 +410,9 @@ export class WidgetBoxManager extends Disposable {
       body.textContent = '';
       const content = $('div');
       content.classList.add('widget-box-markdown');
-      content.appendChild(renderMarkdownToDom(markdown ?? ''));
+      const system = this._system;
+      if (system) content.appendChild(system.renderMarkdown(markdown ?? ''));
+      else content.textContent = markdown ?? '';
       body.appendChild(content);
     };
     render(cachedOutput);
@@ -538,7 +537,7 @@ export class WidgetBoxManager extends Disposable {
     const mount = this._mounts.get(box.instanceId);
     const reg = this._mountedTypeReg(box.instanceId);
     if (!system || !mount || !reg?.configSchema) return;
-    openWidgetSettingsDrawer({
+    system.openSettingsDrawer({
       typeReg: reg,
       config: mount.row.config as Record<string, unknown>,
       onSave: (next) => system.updateConfig(box.instanceId, next),
@@ -557,7 +556,7 @@ export class WidgetBoxManager extends Disposable {
     const mount = this._mounts.get(box.instanceId);
     if (!system || !mount) return;
     const reg = system.getWidgetType(mount.row.widgetTypeId);
-    openAppearanceDrawer({
+    system.openAppearanceDrawer({
       card: box.card,
       appearance: mount.row.appearance,
       defaultTitle: reg?.displayName ?? mount.row.widgetTypeId,

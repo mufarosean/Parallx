@@ -30,6 +30,9 @@ import { DashboardEditorProvider } from './dashboardEditorProvider.js';
 import { DashboardSidebar } from './dashboardSidebar.js';
 import type { DashboardRegistry, WidgetTypeRegistration, WorkbenchWidgetHost } from './dashboardTypes.js';
 import { applyWidgetAppearance } from './widgetAppearance.js';
+import { renderMarkdownToDom } from './widgets/markdownRenderer.js';
+import { openAppearanceDrawer } from './appearanceDrawer.js';
+import { openWidgetSettingsDrawer } from './settingsDrawer.js';
 import { IDatabaseService } from '../../services/serviceTypes.js';
 import { registerBuiltInDashboardWidgets } from './widgets/builtInWidgets.js';
 
@@ -244,6 +247,11 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       services: api.services,
     },
     applyAppearance: applyWidgetAppearance,
+    // Phase D step 6 — the UI capabilities the workbench seat used to
+    // hard-import from this built-in now travel on the host.
+    renderMarkdown: (markdown) => renderMarkdownToDom(markdown),
+    openAppearanceDrawer: (host) => openAppearanceDrawer(host),
+    openSettingsDrawer: (host) => openWidgetSettingsDrawer(host),
   };
   context.subscriptions.push(
     api.commands.registerCommand('dashboard.getWorkbenchWidgetHost', () => workbenchHost),

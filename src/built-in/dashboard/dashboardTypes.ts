@@ -91,6 +91,19 @@ export interface WorkbenchWidgetHost {
   readonly api: unknown;
   /** Apply per-instance look customization to a card element. */
   applyAppearance(card: HTMLElement, appearance: WidgetAppearance): void;
+
+  // ── UI capabilities (Phase D step 6) ──
+  // The workbench's widgetBox used to VALUE-import the markdown renderer
+  // and both drawers straight out of this built-in — core code chained to
+  // a tool's modules. The host carries them instead: one seam, fully
+  // inverted, and the seat degrades gracefully while the host is absent.
+
+  /** Render widget markdown output (the dashboard's shared renderer). */
+  renderMarkdown(markdown: string): Node;
+  /** Open the shared appearance drawer (same editor a dashboard card gets). */
+  openAppearanceDrawer(host: import('./appearanceDrawer.js').AppearanceDrawerHost): void;
+  /** Open the shared per-type settings drawer. */
+  openSettingsDrawer(host: import('./settingsDrawer.js').SettingsDrawerHost): void;
 }
 
 // ─── Public registry surface (exposed to other built-ins / extensions) ───────
