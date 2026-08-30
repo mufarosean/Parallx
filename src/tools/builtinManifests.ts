@@ -57,9 +57,12 @@ export const EXPLORER_MANIFEST: IToolManifest = {
     viewContainers: [
       { id: 'explorer-container', title: 'Explorer', icon: 'folder', location: 'sidebar' as const },
     ],
+    // Manifest order IS stacked-section order (Retirement 4a: views seat in
+    // contribution order). Files first, Open Editors below — the layout the
+    // old builtin boot loop produced by accident and users rely on.
     views: [
-      { id: 'view.openEditors', name: 'Open Editors', defaultContainerId: 'explorer-container' },
       { id: 'view.explorer', name: 'Explorer', defaultContainerId: 'explorer-container' },
+      { id: 'view.openEditors', name: 'Open Editors', defaultContainerId: 'explorer-container' },
     ],
   },
 };
