@@ -9,7 +9,7 @@ import './theme/px-controls.css'; // M83: tactile control primitives
 import './theme/px-motion.css';   // M83: purposeful motion for overlays
 import { Workbench } from './workbench/workbench.js';
 import { installGlobalTooltipDelegate } from './ui/tooltip.js';
-import { applySavedAppearance, healAppearanceFromDurable } from './theme/pxAppearance.js'; // M83: restore base palette + accent
+import { applySavedAppearance, healAppearanceFromDurable, healPresetsFromDurable } from './theme/pxAppearance.js'; // M83: restore base palette + accent
 
 // ── Electron window controls bridge ──
 
@@ -101,6 +101,7 @@ async function bootstrap(): Promise<void> {
   // once, off the critical path).
   applySavedAppearance();
   void healAppearanceFromDurable();
+  void healPresetsFromDurable();
 
   const container = document.getElementById('workbench');
   if (!container) {

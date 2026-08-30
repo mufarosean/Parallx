@@ -243,3 +243,34 @@ the tree. Part 3 items: one slice each, any order; 3.1 and 3.2 first
 (they close live lies). Part 4a: a full sitting with Mufaro reachable
 (sidebar chrome is eyes-on territory). Part 4b: decision first, then
 either an afternoon (retire) or the next milestone (mount).
+
+## Ledger
+
+- Part 1 — SHIPPED 58ff7393 (~2,600 lines deleted, 16 corpses).
+- Part 2 — SHIPPED (chat fallbacks honest; palette lie fixed by 3.2).
+- 3.1 diagnostics — SHIPPED 89dc0a90 (unconditional service, inline
+  doctor copy deleted).
+- 3.2 keybindings — SHIPPED aa57ed9e (keybindingUtils.ts, central
+  reserved guard, palette reads the live service).
+- 3.3 storage dedup — SHIPPED (one FileBackedStorage, options bag).
+- 3.4 localStorage exits — SHIPPED. px-keybindings → global storage
+  (self-terminating localStorage adoption inside readKbOverrides);
+  px-appearance-presets gained the stamped durable mirror
+  (data/appearance-presets.json, healed at boot beside appearance).
+  DECIDED: the canvas/icon MRU keys and collapsed-flags STAY on
+  localStorage — same class as px-appearance's fast layer (sync reads
+  at popup-render time), but loss is costless so they need no mirror.
+  themeCatalog was already durable since M53; its lying "localStorage"
+  comments fixed, and two dead exports (updateUserThemesCache,
+  getUserThemeSources — the user-theme WRITE path died with the old
+  theme editor) deleted.
+- 3.5 migration windows — SHIPPED. storageMigration.ts (M53) deleted;
+  all three M61 shims in autonomyBootstrap closed: event-log move and
+  approvals rename had physically consumed their sources long ago, and
+  the cron copy shim was a live misfeature (copied but never removed
+  data/cron.json, so every future fresh workspace would inherit
+  M61-era global jobs). settingsRegistryBootstrap has no shims.
+- 3.6 dead settings stores — SHIPPED 37182531 (AISettingsService +
+  ParallxConfigService class, 1,446 lines with their orphan tests).
+- 3.7 recents — PENDING.
+- 4a / 4b — PENDING (4b needs Mufaro's mount-or-retire decision).

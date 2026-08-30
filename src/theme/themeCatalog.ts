@@ -29,7 +29,7 @@ const BUILTIN_THEMES: ThemeCatalogEntry[] = [
 
 // ─── Theme catalog API ───────────────────────────────────────────────────────
 
-/** localStorage key for user-created themes. */
+/** Global-storage key for user-created themes (file-backed since M53). */
 export const USER_THEMES_KEY = 'parallx.userThemes';
 
 // ─── User theme cache (M53 D3) ──────────────────────────────────────────────
@@ -67,39 +67,13 @@ export async function initUserThemesCache(globalStorage: IStorage): Promise<void
 }
 
 /**
- * Update the user themes cache when themes are modified at runtime.
- * Call this after writing user themes to storage.
- */
-export function updateUserThemesCache(themes: ThemeSource[]): void {
-  _userThemesCache = themes
-    .filter(
-      (t): t is ThemeSource =>
-        typeof t === 'object' && t !== null &&
-        typeof t.id === 'string' &&
-        typeof t.label === 'string' &&
-        typeof t.colors === 'object',
-    )
-    .map((source) => ({
-      id: source.id,
-      label: source.label,
-      uiTheme: source.uiTheme,
-      source,
-    }));
-}
-
-/**
  * Load user themes from cache (populated at startup).
+ * (The runtime WRITE path for user themes was retired with the old theme
+ * editor — M83's --px appearance system is the user's path to change the
+ * look. Existing saved themes still load and appear in the catalog.)
  */
 function loadUserThemes(): ThemeCatalogEntry[] {
   return _userThemesCache ?? [];
-}
-
-/**
- * Return raw user theme sources from cache.
- * Used by ThemeEditorPanel for save/load operations.
- */
-export function getUserThemeSources(): ThemeSource[] {
-  return (_userThemesCache ?? []).map(e => e.source);
 }
 
 /**
@@ -126,5 +100,5 @@ export function findThemeById(themeId: string): ThemeCatalogEntry | undefined {
 /** The default theme ID for fresh installations. */
 export const DEFAULT_THEME_ID = 'parallx-dark-modern';
 
-/** localStorage key for persisted theme selection. */
+/** Global-storage key for persisted theme selection (file-backed since M53). */
 export const THEME_STORAGE_KEY = 'parallx.colorTheme';

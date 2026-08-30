@@ -148,19 +148,70 @@ export interface PxThemePreset extends PxAppearanceState {
   name: string;
 }
 
+function presetsFile(): { bridge: StorageBridgeShape; file: string } | null {
+  const t = durableTarget();
+  return t ? { bridge: t.bridge, file: t.file.replace(/appearance\.json$/, 'appearance-presets.json') } : null;
+}
+
+function sanitizePresets(value: unknown): PxThemePreset[] {
+  return Array.isArray(value)
+    ? value.filter(p => p && typeof p.id === 'string' && typeof p.name === 'string')
+    : [];
+}
+
+/** Parse either the stamped envelope or the legacy bare array (stamp 0). */
+function parsePresetsRaw(raw: unknown): { savedAt: number; presets: PxThemePreset[] } {
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    const env = raw as { savedAt?: number; presets?: unknown };
+    return { savedAt: typeof env.savedAt === 'number' ? env.savedAt : 0, presets: sanitizePresets(env.presets) };
+  }
+  return { savedAt: 0, presets: sanitizePresets(raw) };
+}
+
 export function readPresets(): PxThemePreset[] {
   try {
     const raw = window.localStorage.getItem(PRESETS_KEY);
-    if (raw) {
-      const arr = JSON.parse(raw);
-      if (Array.isArray(arr)) return arr.filter(p => p && typeof p.id === 'string' && typeof p.name === 'string');
-    }
+    if (raw) return parsePresetsRaw(JSON.parse(raw)).presets;
   } catch { /* ignore */ }
   return [];
 }
 
+// Same two-layer contract as the appearance state: localStorage is the sync
+// read layer the panel uses, the data/ file is the durable one — saved looks
+// must not die with a lazy localStorage flush or cleared site data.
 function writePresets(presets: PxThemePreset[]): void {
-  try { window.localStorage.setItem(PRESETS_KEY, JSON.stringify(presets)); } catch { /* ignore */ }
+  const stamped = { savedAt: Date.now(), presets };
+  try { window.localStorage.setItem(PRESETS_KEY, JSON.stringify(stamped)); } catch { /* ignore */ }
+  const t = presetsFile();
+  if (t) { void t.bridge.writeJson(t.file, stamped).catch(() => { /* fast layer still holds */ }); }
+}
+
+/** Reconcile the preset layers after boot — newer stamp wins, loser healed. */
+export async function healPresetsFromDurable(): Promise<void> {
+  const t = presetsFile();
+  if (!t) return;
+  try {
+    let local = { savedAt: 0, presets: [] as PxThemePreset[] };
+    try {
+      const raw = window.localStorage.getItem(PRESETS_KEY);
+      if (raw) local = parsePresetsRaw(JSON.parse(raw));
+    } catch { /* treat as unstamped */ }
+
+    const res = await t.bridge.readJson(t.file);
+    if (res?.data == null) {
+      if (local.presets.length > 0) {
+        void t.bridge.writeJson(t.file, { savedAt: local.savedAt || Date.now(), presets: local.presets }).catch(() => {});
+      }
+      return;
+    }
+    const durable = parsePresetsRaw(res.data);
+
+    if (durable.savedAt > local.savedAt || (local.presets.length === 0 && durable.presets.length > 0)) {
+      try { window.localStorage.setItem(PRESETS_KEY, JSON.stringify({ savedAt: durable.savedAt, presets: durable.presets })); } catch { /* ignore */ }
+    } else if (local.savedAt > durable.savedAt) {
+      void t.bridge.writeJson(t.file, { savedAt: local.savedAt, presets: local.presets }).catch(() => {});
+    }
+  } catch { /* stay on the fast-layer value */ }
 }
 
 export function savePreset(name: string, state: PxAppearanceState): PxThemePreset {

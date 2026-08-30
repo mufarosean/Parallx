@@ -6,7 +6,7 @@
 
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
-import { ISettingsRegistryService, IKeybindingService, ICommandService } from '../../services/serviceTypes.js';
+import { ISettingsRegistryService, IKeybindingService, ICommandService, IGlobalStorageService } from '../../services/serviceTypes.js';
 import { settingsPanelRegistry } from '../../services/settingsPanelRegistry.js';
 import { SettingsEditor } from './settingsEditor.js';
 import { KeyboardShortcutsPanel } from './keyboardShortcutsPanel.js';
@@ -205,16 +205,17 @@ export function activate(api: ParallxApi, context: ToolContext): void {
 
   // ── Keyboard Shortcuts panel inside the Settings hub ─────────────────
   // View + rebind every command, with a reserved-key + duplicate guard.
-  if (api.services.has(IKeybindingService) && api.services.has(ICommandService)) {
+  if (api.services.has(IKeybindingService) && api.services.has(ICommandService) && api.services.has(IGlobalStorageService)) {
     const keybindings = api.services.get<import('../../services/serviceTypes.js').IKeybindingService>(IKeybindingService);
     const commands = api.services.get<import('../../services/serviceTypes.js').ICommandService>(ICommandService);
+    const globalStorage = api.services.get<import('../../platform/storage.js').IStorage>(IGlobalStorageService);
     context.subscriptions.push(
       settingsPanelRegistry.register({
         id: 'keyboard',
         label: 'Keyboard Shortcuts',
         order: 80,
         description: 'View and rebind the keyboard shortcut for any command.',
-        render: (container) => new KeyboardShortcutsPanel(container, keybindings, commands),
+        render: (container) => new KeyboardShortcutsPanel(container, keybindings, commands, globalStorage),
       }),
     );
   }

@@ -8,6 +8,7 @@ import { Disposable } from '../../platform/lifecycle.js';
 import { $, addDisposableListener } from '../../ui/dom.js';
 import { InputBox } from '../../ui/inputBox.js';
 import type { IKeybindingService, ICommandService } from '../../services/serviceTypes.js';
+import type { IStorage } from '../../platform/storage.js';
 import { reservedKeyOwner } from '../../services/keybindingUtils.js';
 import { enterMode } from '../../ui/interactionMode.js';
 import { setKbOverride, clearKbOverride } from '../../services/keybindingOverrides.js';
@@ -25,6 +26,7 @@ export class KeyboardShortcutsPanel extends Disposable {
     container: HTMLElement,
     private readonly _keybindings: IKeybindingService,
     private readonly _commands: ICommandService,
+    private readonly _storage: IStorage,
   ) {
     super();
 
@@ -130,7 +132,7 @@ export class KeyboardShortcutsPanel extends Disposable {
       reset.className = 'kbs__reset';
       reset.title = 'Reset to default';
       reset.textContent = '↺';
-      this._register(addDisposableListener(reset, 'click', () => this._reset(id)));
+      this._register(addDisposableListener(reset, 'click', () => void this._reset(id)));
       actions.appendChild(reset);
     }
     row.appendChild(actions);
@@ -233,7 +235,7 @@ export class KeyboardShortcutsPanel extends Disposable {
     const others = this._keybindings.getCommandsForKey(combo).filter((c) => c !== id);
 
     this._keybindings.setUserKeybinding(id, combo);
-    setKbOverride(id, combo, defaultKey);
+    void setKbOverride(this._storage, id, combo, defaultKey);
     this._cancelCapture();
     this._renderList();
 
@@ -244,8 +246,8 @@ export class KeyboardShortcutsPanel extends Disposable {
     }
   }
 
-  private _reset(id: string): void {
-    const prev = clearKbOverride(id);
+  private async _reset(id: string): Promise<void> {
+    const prev = await clearKbOverride(this._storage, id);
     this._keybindings.clearUserKeybinding(id, prev?.default);
     this._renderList();
     this._flash('Reset to default.', false);

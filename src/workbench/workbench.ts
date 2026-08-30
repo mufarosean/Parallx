@@ -3417,7 +3417,7 @@ export class Workbench extends Layout {
     // Tool keybindings have now registered (last-registered wins), so user
     // rebinds from the Keyboard Shortcuts editor are applied on top.
     if (this._services.has(IKeybindingService)) {
-      applyKbOverrides(this._services.get(IKeybindingService) as unknown as KeybindingService);
+      await applyKbOverrides(this._globalStorage, this._services.get(IKeybindingService) as unknown as KeybindingService);
     }
 
     // ── Post-activation layout pass ──

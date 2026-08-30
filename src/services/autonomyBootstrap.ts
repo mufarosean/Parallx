@@ -67,34 +67,9 @@ export async function bootstrapAutonomyServices(
     ? `${workspaceFolder}/.parallx/logs`
     : (appPath ? `${appPath}/data` : undefined);
 
-  // One-shot migration: legacy global autonomy-events.*.ndjson move into the
-  // workspace's `legacy/` subfolder so old runs don't interleave with new
-  // workspace-scoped events. Best-effort.
-  if (workspaceFolder && appPath && fs?.readdir && fs.rename && fs.exists && fs.mkdir) {
-    void (async () => {
-      try {
-        const legacyDir = `${appPath}/data`;
-        const targetDir = `${workspaceFolder}/.parallx/logs/legacy`;
-        const listing = await fs.readdir!(legacyDir);
-        if (!listing.ok || !listing.entries) return;
-        const matches = listing.entries
-          .map((e) => e.name)
-          .filter((n) => typeof n === 'string' && n.startsWith('autonomy-events.') && n.endsWith('.ndjson'));
-        if (matches.length === 0) return;
-        await fs.mkdir!(targetDir);
-        for (const name of matches) {
-          const src = `${legacyDir}/${name}`;
-          const dst = `${targetDir}/${name}`;
-          const dstExists = await fs.exists!(dst);
-          if (dstExists.ok && dstExists.exists) continue;
-          await fs.rename!(src, dst);
-        }
-        console.log(`[AutonomyEventLog] Migrated ${matches.length} legacy global log(s) to ${targetDir}`);
-      } catch (err) {
-        console.warn('[AutonomyEventLog] Legacy log migration skipped:', err);
-      }
-    })();
-  }
+  // (The M61 legacy-global log migration window CLOSED in the Retirement
+  // phase: the one-shot move of autonomy-events.*.ndjson into the
+  // workspace's legacy/ subfolder ran on first boot long ago.)
 
   let eventLog: AutonomyEventLog | undefined;
   if (logDir && fs) {
@@ -120,24 +95,9 @@ export async function bootstrapAutonomyServices(
     ? `${workspaceFolder}/.parallx`
     : (appPath ? `${appPath}/data` : undefined);
 
-  // One-shot migration of the legacy global approvals file. Best-effort.
-  if (workspaceFolder && appPath && fs?.exists && fs.rename && fs.mkdir) {
-    void (async () => {
-      try {
-        const legacyFile = `${appPath}/data/autonomy-patterns.json`;
-        const targetFile = `${workspaceFolder}/.parallx/autonomy-patterns.json`;
-        const legacyExists = await fs.exists!(legacyFile);
-        if (!legacyExists.ok || !legacyExists.exists) return;
-        const targetExists = await fs.exists!(targetFile);
-        if (targetExists.ok && targetExists.exists) return;
-        await fs.mkdir!(`${workspaceFolder}/.parallx`);
-        await fs.rename!(legacyFile, targetFile);
-        console.log(`[AutonomyPatternMemory] Migrated legacy global approvals to ${targetFile}`);
-      } catch (err) {
-        console.warn('[AutonomyPatternMemory] Legacy approvals migration skipped:', err);
-      }
-    })();
-  }
+  // (The M61 legacy-global approvals migration window CLOSED in the
+  // Retirement phase: the rename physically consumed the legacy file on
+  // its first run, so the every-boot probe was pure cost.)
 
   if (patternDir) {
     const patterns = new AutonomyPatternMemoryService({
@@ -178,13 +138,14 @@ export async function bootstrapAutonomyServices(
       : undefined,
   });
 
-  // Per-workspace persistence (`<workspace>/.parallx/cron.json`) with the
-  // one-shot legacy-global copy shim (M61 decision B). In-memory when the
-  // bridge or folder is unavailable.
+  // Per-workspace persistence (`<workspace>/.parallx/cron.json`). In-memory
+  // when the bridge or folder is unavailable. (The M61 legacy-global copy
+  // shim was DELETED by the Retirement phase — it copied but never removed
+  // `data/cron.json`, so every future fresh workspace would have silently
+  // inherited M61-era global jobs. A new workspace now starts empty.)
   if (workspaceFolder && appPath && fs?.exists && fs.readFile && fs.writeFile && fs.mkdir) {
     const cronJsonPath = `${workspaceFolder}/.parallx/cron.json`;
     const cronJsonDir = `${workspaceFolder}/.parallx`;
-    const legacyCronJsonPath = `${appPath}/data/cron.json`;
     cron.setPersistence({
       load: async () => {
         try {
@@ -193,15 +154,6 @@ export async function bootstrapAutonomyServices(
             const result = await fs.readFile!(cronJsonPath, 'utf-8');
             if (!result.ok || typeof result.data !== 'string') return null;
             return JSON.parse(result.data);
-          }
-          const legacyExists = await fs.exists!(legacyCronJsonPath);
-          if (legacyExists.ok && legacyExists.exists) {
-            const legacyRead = await fs.readFile!(legacyCronJsonPath, 'utf-8');
-            if (legacyRead.ok && typeof legacyRead.data === 'string') {
-              await fs.mkdir!(cronJsonDir);
-              await fs.writeFile!(cronJsonPath, legacyRead.data, 'utf-8');
-              return JSON.parse(legacyRead.data);
-            }
           }
           return null;
         } catch {
