@@ -86,8 +86,24 @@ chat keeps only its domain schemas behind a sentinel; the four canvas.*
 keys moved home to canvas). Step 5a SHIPPED (1ffee8c9: autonomyBootstrap
 in core builds flags/event-log/rail/patterns + both legacy migrations;
 chat resolves; cron + background runner stay for 5b's executor seam).
-NEXT: field-verify boot (registry + autonomy substrate now core-built),
-then 5b → 6 → 7 → 8 → 9 → 10.
+Boot field-verified by Mufaro after 5a. Then, same day: Step 5b SHIPPED
+(985c39f0: CronService.attachExecution seam; core constructs + observes +
+persists + AWAITS hydration, chat attaches the ephemeral-session executor
+and starts). Step 6 SHIPPED (998b77b8: WorkbenchWidgetHost carries
+renderMarkdown + both drawers; zero runtime core→dashboard imports).
+Step 7 SHIPPED (445a1223: built-in/editor → src/editor/panes; the two
+commands became core descriptors; TEXT_EDITOR_MANIFEST and the app's only
+'*' activation deleted). Step 8 SHIPPED (7171a70c: manifest
+`dependencies` validated + honored by the activator, cycle-guarded,
+failing dependents loudly pre-state-change; the array's ordering folklore
+retired). Step 10 SHIPPED (8c22c1af: manifest `required` pins six —
+explorer/canvas/chat/dashboard/settings/gallery; every other tool
+toggles live through the until-now-unreachable M6 orchestration). Step 9
+SHIPPED (abbfc820: boot honors lazy events, viewContribution fires
+onView on first mount — it had ZERO callers — and the activation
+listener gains the built-in module branch; Search, Gallery, Appearance
+are the lazy pilots). PHASE D CODE-COMPLETE — pending the second field
+check (lazy wakes, editor panes, enablement toggles).
 
 1. **Delete the six shadow parallx-manifest.json files.** They are dead
    copies of builtinManifests.ts that mislead (I updated explorer's this
