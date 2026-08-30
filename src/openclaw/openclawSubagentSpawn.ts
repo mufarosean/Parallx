@@ -84,6 +84,25 @@ export interface ISubagentSpawnParams {
   readonly runTimeoutSeconds?: number;
   /** Caller's current depth in the spawn tree. */
   readonly callerDepth?: number;
+  /**
+   * HARNESS.md §4 — typed subagent profile. 'reader' runs with the readonly
+   * tool profile (research / summarize — context isolation is the point);
+   * 'worker' runs with the standard profile (reads + safe writes, no shell).
+   * Absent = legacy behavior (parent-mode profile).
+   */
+  readonly profile?: 'reader' | 'worker';
+  /**
+   * HARNESS.md §4.1 (the M59 debt, finally paid) — explicit tool allowlist
+   * for the subagent turn. Applied as the agent-tools allow filter in the
+   * tool policy pipeline; empty/absent = no extra restriction.
+   */
+  readonly tools?: readonly string[];
+}
+
+/** The per-spawn policy the executor registers for the ephemeral session. */
+export interface ISubagentSessionPolicy {
+  readonly profile?: 'reader' | 'worker';
+  readonly tools?: readonly string[];
 }
 
 /**
@@ -131,6 +150,7 @@ export interface ISubagentSpawnResult {
 export type SubagentTurnExecutor = (
   task: string,
   model: string | null,
+  policy?: ISubagentSessionPolicy,
 ) => Promise<string>;
 
 /**
@@ -438,6 +458,7 @@ export class SubagentSpawner implements IDisposable {
         params.task,
         params.model ?? null,
         run.timeoutMs,
+        { profile: params.profile, tools: params.tools },
       );
 
       // Step 4: Mark completed
@@ -567,6 +588,7 @@ export class SubagentSpawner implements IDisposable {
     task: string,
     model: string | null,
     timeoutMs: number,
+    policy?: ISubagentSessionPolicy,
   ): Promise<string> {
     return new Promise<string>((resolve, reject) => {
       let settled = false;
@@ -578,7 +600,7 @@ export class SubagentSpawner implements IDisposable {
         }
       }, timeoutMs);
 
-      this._executor(task, model)
+      this._executor(task, model, policy)
         .then(result => {
           if (!settled) {
             settled = true;

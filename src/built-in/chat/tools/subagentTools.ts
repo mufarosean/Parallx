@@ -73,7 +73,8 @@ export function createSessionsSpawnTool(
       + 'Use it to keep your context lean: bulk work whose intermediate output would flood this conversation — sweeping many files, digesting a long document, researching a side question — comes back as one distilled result instead of raw dumps. '
       + 'The subagent starts FRESH: it shares none of this conversation, so the task prompt must be fully self-contained (include paths/page titles, constraints, and the exact shape of the answer you want back). '
       + 'Do not use it for trivial single-tool work (just call the tool), and treat its answer as a report to verify, not ground truth. '
-      + 'Each spawn is a real model run and requires user approval. Max depth 1 — subagents cannot spawn further subagents.',
+      + 'Each spawn is a real model run; on a user-initiated turn it runs without a prompt (the user\'s gesture is the approval), autonomous turns stay gated. '
+      + 'Prefer profile "reader" for research and digestion — it runs read-only. Max depth 1 — subagents cannot spawn further subagents.',
     parameters: {
       type: 'object',
       required: ['task'],
@@ -90,9 +91,15 @@ export function createSessionsSpawnTool(
           type: 'string',
           description: 'Model override (defaults to parent model).',
         },
+        profile: {
+          type: 'string',
+          enum: ['reader', 'worker'],
+          description: 'reader = read-only tools (research, digest — default choice); worker = reads + safe writes, no shell.',
+        },
         tools: {
           type: 'array',
           items: { type: 'string' },
+          description: 'Optional tool-name allowlist; the subagent sees only these tools.',
         },
         timeoutMs: {
           type: 'number',
@@ -127,9 +134,12 @@ export function createSessionsSpawnTool(
         ? Math.ceil(timeoutMs / 1000)
         : undefined;
 
-      // `tools` is captured but not yet enforced — M59 will wire
-      // per-subagent tool allowlisting through the tool policy pipeline.
-      readStringArray(args.tools);
+      // HARNESS.md §4.1 — the M59 debt, paid: the allowlist and typed
+      // profile flow through the spawner into the ephemeral session's tool
+      // policy (enforced by the default participant's tool state).
+      const tools = readStringArray(args.tools);
+      const profileRaw = readString(args.profile);
+      const profile = profileRaw === 'reader' || profileRaw === 'worker' ? profileRaw : undefined;
 
       const result = await spawner.spawn({
         task,
@@ -137,6 +147,8 @@ export function createSessionsSpawnTool(
         model,
         runTimeoutSeconds,
         callerDepth,
+        profile,
+        tools: tools && tools.length > 0 ? tools : undefined,
       });
 
       if (result.status !== 'completed') {

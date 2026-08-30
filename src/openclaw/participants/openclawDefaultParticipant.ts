@@ -35,6 +35,7 @@ import type { IBootstrapFile, IOpenclawRuntimeInfo } from '../openclawSystemProm
 import { buildOpenclawRuntimeSkillState } from '../openclawSkillState.js';
 import { buildOpenclawRuntimeToolState } from '../openclawToolState.js';
 import { resolveAgentConfig, type IGlobalConfigSlice } from '../agents/openclawAgentResolver.js';
+import { getSubagentSessionPolicy } from '../openclawSubagentExecutor.js';
 // D2: Command handlers
 import { tryHandleOpenclawStatusCommand } from '../commands/openclawStatusCommand.js';
 import { tryHandleOpenclawNewCommand } from '../commands/openclawNewCommand.js';
@@ -585,6 +586,14 @@ async function buildOpenclawTurnContext(
     } satisfies IGlobalConfigSlice,
   ) : undefined;
 
+  // HARNESS.md §4 — a spawn-typed subagent session overrides the tool
+  // profile ('reader' → readonly, 'worker' → standard) and applies the
+  // spawn's tool allowlist (the M59 debt, finally enforced).
+  const spawnPolicy = getSubagentSessionPolicy(context.sessionId);
+  const spawnProfile = spawnPolicy?.profile === 'reader' ? 'readonly'
+    : spawnPolicy?.profile === 'worker' ? 'standard'
+    : undefined;
+
   const toolState = buildOpenclawRuntimeToolState({
     platformTools,
     skillCatalog,
@@ -592,9 +601,11 @@ async function buildOpenclawTurnContext(
     // small models so the prompt's tool catalog stays compact. Upstream
     // achieves the same effect by selecting a tighter profile per
     // deployment; Parallx couples this to detected tier automatically.
-    mode: applyTierToProfile(resolveToolProfile(request.mode), resolveModelTier(runtimeInfo.model)),
+    mode: spawnProfile ?? applyTierToProfile(resolveToolProfile(request.mode), resolveModelTier(runtimeInfo.model)),
     permissions: services.getToolPermissions?.(),
-    agentTools: resolvedAgentConfig?.tools,
+    agentTools: spawnPolicy?.tools?.length
+      ? { allow: spawnPolicy.tools, deny: resolvedAgentConfig?.tools?.deny }
+      : resolvedAgentConfig?.tools,
   });
 
   // Flatten history pairs into IChatMessage[] — the shared flattener

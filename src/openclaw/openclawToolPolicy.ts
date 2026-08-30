@@ -343,17 +343,17 @@ export function cronToolPermissionLevel(toolName: string): ToolPermissionLevel {
  * The `sessions_spawn` tool (M58 W5) delegates work to an isolated
  * subagent turn that runs a real LLM call against an ephemeral session.
  *
- * **Subagent spawn is ALWAYS approval-gated** — no read-only exemption, no
- * dev-mode bypass, no per-surface loosening (unlike the `surface_send`
- * helper in this file which has a per-surface carve-out map). Spawning a
- * subagent is a privileged action: it consumes model tokens, runs with
- * full tool access inside an isolated session, and returns a result the
- * parent agent will treat as trusted context. The user must approve every
- * spawn.
+ * Subagent spawn keeps the `requires-approval` permission level, and the
+ * M90 initiator model decides what that means (HARNESS.md §4.2): a spawn on
+ * a user-initiated turn proceeds on user consent — the gesture is the
+ * approval, and delegation must be cheap or the model rationally never
+ * delegates — while autonomous turns (heartbeat/cron) stay gated through
+ * the autonomy dial. Typed profiles ('reader' → readonly tools) bound what
+ * the spawned session can do; the spawn's tool allowlist is enforced in the
+ * participant's tool policy (M59 debt, paid in HARNESS §4.1).
  *
- * Upstream parity: subagent-spawn.ts + sessions-spawn-tool.ts in
- * github.com/openclaw/openclaw require explicit caller opt-in for each
- * spawn. Parallx enforces this via the M11 3-tier permission system.
+ * Upstream parity: Claude Code's Agent tool runs without per-spawn
+ * prompts; the subagent's tool set is bounded by its agent definition.
  */
 export function subagentToolRequiresApproval(_toolName: string): boolean {
   return true;

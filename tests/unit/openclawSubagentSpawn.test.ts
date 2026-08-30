@@ -263,7 +263,7 @@ describe('SubagentSpawner', () => {
       expect(result.runId).toMatch(/^subagent-/);
       expect(result.durationMs).toBeGreaterThanOrEqual(0);
 
-      expect(executor).toHaveBeenCalledWith('Analyze the test file for coverage', null);
+      expect(executor).toHaveBeenCalledWith('Analyze the test file for coverage', null, { profile: undefined, tools: undefined });
 
       spawner.dispose();
     });
@@ -273,7 +273,7 @@ describe('SubagentSpawner', () => {
 
       await spawner.spawn(createParams({ model: 'qwen3.5' }));
 
-      expect(executor).toHaveBeenCalledWith(expect.any(String), 'qwen3.5');
+      expect(executor).toHaveBeenCalledWith(expect.any(String), 'qwen3.5', { profile: undefined, tools: undefined });
 
       spawner.dispose();
     });
@@ -497,5 +497,41 @@ describe('subagent constants', () => {
   it('MAX_CONCURRENT_RUNS is reasonable', () => {
     expect(MAX_CONCURRENT_RUNS).toBeGreaterThanOrEqual(1);
     expect(MAX_CONCURRENT_RUNS).toBeLessThanOrEqual(20);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// HARNESS.md §4 — typed profiles + enforced allowlist (the M59 debt, paid)
+// ---------------------------------------------------------------------------
+
+describe('spawn policy threading (HARNESS.md 4)', () => {
+  it('passes profile and tools through to the executor', async () => {
+    const seen: unknown[] = [];
+    const executor = vi.fn(async (_task: string, _model: string | null, policy?: unknown) => {
+      seen.push(policy);
+      return 'done';
+    });
+    const announcer = vi.fn(async () => {});
+    const spawner = new SubagentSpawner(executor, announcer);
+
+    const result = await spawner.spawn({
+      task: 'Sweep the source papers for Hurlimann references',
+      profile: 'reader',
+      tools: ['fs_search_knowledge', 'fs_read_file'],
+    });
+
+    expect(result.status).toBe('completed');
+    expect(seen[0]).toEqual({ profile: 'reader', tools: ['fs_search_knowledge', 'fs_read_file'] });
+  });
+
+  it('omits policy content when neither profile nor tools are given', async () => {
+    const seen: unknown[] = [];
+    const executor = vi.fn(async (_task: string, _model: string | null, policy?: unknown) => {
+      seen.push(policy);
+      return 'done';
+    });
+    const spawner = new SubagentSpawner(executor, vi.fn(async () => {}));
+    await spawner.spawn({ task: 'plain task' });
+    expect(seen[0]).toEqual({ profile: undefined, tools: undefined });
   });
 });

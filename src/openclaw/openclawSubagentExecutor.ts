@@ -44,6 +44,7 @@ import type {
   SubagentTurnExecutor,
   SubagentAnnouncer,
   ISubagentRun,
+  ISubagentSessionPolicy,
 } from './openclawSubagentSpawn.js';
 import {
   ORIGIN_SUBAGENT,
@@ -74,6 +75,22 @@ import type {
 // than 0" signal to reject recursion, so the sum is safe.
 
 let _subagentDepth = 0;
+
+// HARNESS.md §4 — per-ephemeral-session spawn policy (typed profile + tool
+// allowlist). Written by the executor around the turn, read by the default
+// participant when it resolves the turn's tool policy, cleared in `finally`.
+// Same module-level shared-state pattern as the depth counter above.
+const _sessionPolicies = new Map<string, ISubagentSessionPolicy>();
+
+/** The spawn policy registered for an ephemeral subagent session, if any. */
+export function getSubagentSessionPolicy(sessionId: string | undefined): ISubagentSessionPolicy | undefined {
+  return sessionId ? _sessionPolicies.get(sessionId) : undefined;
+}
+
+/** Test-only: reset shared subagent state. */
+export function _resetSubagentSessionPoliciesForTests(): void {
+  _sessionPolicies.clear();
+}
 
 /** Current observed subagent depth. 0 == caller is the user / parent turn. */
 export function currentSubagentDepth(): number {
@@ -189,7 +206,7 @@ export interface ICreateSubagentTurnExecutorOpts {
 export function createSubagentTurnExecutor(
   opts: ICreateSubagentTurnExecutorOpts,
 ): SubagentTurnExecutor {
-  return async (task: string, model: string | null): Promise<string> => {
+  return async (task: string, model: string | null, policy?: ISubagentSessionPolicy): Promise<string> => {
     const parentId = opts.getParentSessionId();
     if (!parentId) {
       throw new Error('SubagentTurnExecutor: no active parent session');
@@ -209,6 +226,12 @@ export function createSubagentTurnExecutor(
     // `finally`.
     const subagentAutonomy = opts.getAutonomyLevel?.();
     opts.permissionService?.markSubagentSession(handle.sessionId, subagentAutonomy);
+    // HARNESS.md §4 — register the spawn's typed profile / tool allowlist for
+    // the ephemeral session; the default participant consults it when
+    // resolving the turn's tool policy. Cleared in `finally`.
+    if (policy && (policy.profile || policy.tools?.length)) {
+      _sessionPolicies.set(handle.sessionId, policy);
+    }
     try {
       const sendOptions = opts.buildSendOptions?.(task, model);
       await opts.chatService.sendRequest(handle.sessionId, task, sendOptions);
@@ -221,6 +244,7 @@ export function createSubagentTurnExecutor(
       return extractFinalAssistantText(lastPair.response.parts);
     } finally {
       _subagentDepth = Math.max(0, _subagentDepth - 1);
+      _sessionPolicies.delete(handle.sessionId);
       opts.permissionService?.unmarkSubagentSession(handle.sessionId);
       // Always purge — even on error — so scratch state doesn't leak.
       opts.chatService.purgeEphemeralSession(handle);
