@@ -628,6 +628,34 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     }),
   );
 
+  // Phase D step 2 (PHASE_D_BRIEF.md): the embedded-note seam. The
+  // dashboard's notes widget used to VALUE-import CanvasEditorView, which
+  // chained dashboard's ability to load to canvas's. Now canvas OFFERS
+  // embedding through this getter command (the getWorkbenchWidgetHost
+  // pattern) and the widget holds only structural types. The editor module
+  // loads lazily, on the first embed, not at activation.
+  context.subscriptions.push(
+    api.commands.registerCommand('canvas.getEmbeddedNoteHost', () => {
+      const data = _dataService;
+      if (!data) return undefined;
+      return {
+        getPage: (id: string) => data.getPage(id),
+        createPage: (parentId: string | null, title: string) => data.createPage(parentId, title),
+        mount: async (host: HTMLElement, pageId: string) => {
+          const { CanvasEditorView } = await import('./canvasEditorView.js');
+          const view = new CanvasEditorView(host, pageId, data, {});
+          await view.init();
+          return {
+            setContent: (content: unknown): void => {
+              try { view.editor?.commands.setContent(content as never); } catch { /* non-fatal */ }
+            },
+            dispose: (): void => view.dispose(),
+          };
+        },
+      };
+    }),
+  );
+
   // 5a. When a page-linked block (pageBlock, databaseInline) is deleted from
   //     editor content, run the normal page deletion process (same as sidebar).
   setOnLinkedPageBlockDeleted((pageId) => {

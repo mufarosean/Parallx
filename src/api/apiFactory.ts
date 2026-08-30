@@ -301,7 +301,13 @@ export interface ParallxApiObject {
     get<T>(id: { readonly id: string }): T;
     /** Check if a DI service is registered. */
     has(id: { readonly id: string }): boolean;
-    /** Register a pre-built service instance (M56). */
+    /**
+     * Register a pre-built service instance (M56).
+     *
+     * BUILT-IN PRIVILEGE (Phase D Decision 1, 2026-08-29): external tools
+     * may read services but not register them — an external write here
+     * could silently overwrite a core service. Throws for external tools.
+     */
     registerInstance<T>(id: { readonly id: string }, instance: T): void;
   };
   readonly icons: {
@@ -1018,7 +1024,17 @@ export function createToolApi(
     services: Object.freeze({
       get: <T>(id: { readonly id: string }) => deps.services.get(id as any) as T,
       has: (id: { readonly id: string }) => deps.services.has(id as any),
-      registerInstance: <T>(id: { readonly id: string }, instance: T) => deps.services.registerInstance(id as any, instance),
+      registerInstance: <T>(id: { readonly id: string }, instance: T) => {
+        // Phase D Decision 1: reads are how the sandbox composes; WRITES are
+        // how a core service gets silently overwritten. Built-ins only.
+        if (!toolDescription.isBuiltin) {
+          throw new Error(
+            `[parallx.services] External tool "${toolId}" may read services but not register them ` +
+            `(attempted "${id.id}"). Service registration is a built-in privilege.`,
+          );
+        }
+        deps.services.registerInstance(id as any, instance);
+      },
     }),
 
     icons: Object.freeze({

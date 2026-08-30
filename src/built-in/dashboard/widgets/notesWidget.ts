@@ -2,17 +2,17 @@
 //
 // The note IS a canvas page: it shows in the canvas sidebar, lands in the
 // workspace graph, and opens full-screen — so mind-mapping / grouping works.
-// The widget just hosts CanvasEditorView (the actual canvas editor — every
-// block, the real slash menu, bubble, handles), and edits sync both ways with
-// the full page via the data service's reload events. No parallel editor.
+// The widget hosts the actual canvas editor (every block, the real slash
+// menu, bubble, handles) THROUGH the embedded-note seam canvas registers as
+// `canvas.getEmbeddedNoteHost` (Phase D step 2): this file holds only
+// structural types, so the dashboard loads whether or not canvas does —
+// the widget simply shows its unavailable state when canvas is absent.
 
 import type {
   WidgetContext,
   WidgetHandle,
   WidgetTypeRegistration,
 } from '../dashboardTypes.js';
-import { CanvasEditorView } from '../../canvas/canvasEditorView.js';
-import { ICanvasDataService } from '../../canvas/canvasTypes.js';
 
 interface NotesConfig {
   readonly textSize: 'sm' | 'md' | 'lg';
@@ -23,8 +23,18 @@ const DEFAULT_CONFIG: NotesConfig = { textSize: 'md' };
 const ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9z"/><path d="M15 3v6h6"/><path d="M8 13h6"/><path d="M8 17h4"/></svg>';
 
 interface DashboardApi {
-  services?: { get<T>(id: { readonly id: string }): T; has(id: { readonly id: string }): boolean };
   commands?: { executeCommand<T = unknown>(id: string, ...args: unknown[]): Promise<T> };
+}
+
+/** What the canvas offers an embedded note — structural, canvas-owned. */
+interface EmbeddedNoteHandle {
+  setContent(content: unknown): void;
+  dispose(): void;
+}
+interface EmbeddedNoteHost {
+  getPage(id: string): Promise<unknown | null>;
+  createPage(parentId: string | null, title: string): Promise<{ readonly id: string }>;
+  mount(host: HTMLElement, pageId: string): Promise<EmbeddedNoteHandle>;
 }
 
 function normalizeConfig(raw: unknown): NotesConfig {
@@ -80,13 +90,8 @@ export const NOTES_WIDGET: WidgetTypeRegistration<NotesConfig> = {
     container.append(bar, host);
 
     const api = ctx.api as DashboardApi;
-    const dataService = (() => {
-      try {
-        return api.services?.has(ICanvasDataService) ? api.services.get<ICanvasDataService>(ICanvasDataService) : null;
-      } catch { return null; }
-    })();
 
-    let view: CanvasEditorView | null = null;
+    let view: EmbeddedNoteHandle | null = null;
     let pageId = '';
     let disposed = false;
     openBtn.addEventListener('click', () => {
@@ -94,7 +99,13 @@ export const NOTES_WIDGET: WidgetTypeRegistration<NotesConfig> = {
     });
 
     async function setup(): Promise<void> {
-      if (!dataService) {
+      // The seam: canvas offers embedding through a getter command; absent
+      // (tool inactive or not installed) means the honest empty state.
+      let noteHost: EmbeddedNoteHost | null = null;
+      try {
+        noteHost = (await api.commands?.executeCommand<EmbeddedNoteHost | undefined>('canvas.getEmbeddedNoteHost')) ?? null;
+      } catch { noteHost = null; }
+      if (!noteHost || typeof noteHost.mount !== 'function') {
         host.innerHTML = '<div class="ntw__empty"><strong>Canvas unavailable</strong><p>The canvas tool isn’t active, so this note can’t be hosted.</p></div>';
         return;
       }
@@ -109,14 +120,14 @@ export const NOTES_WIDGET: WidgetTypeRegistration<NotesConfig> = {
 
       // Validate an existing page (it may have been deleted from the canvas).
       if (pageId) {
-        try { if (!(await dataService.getPage(pageId))) pageId = ''; } catch { pageId = ''; }
+        try { if (!(await noteHost.getPage(pageId))) pageId = ''; } catch { pageId = ''; }
       }
       if (disposed) return;
 
       // First run (or page gone): mint a real canvas page for this note.
       if (!pageId) {
         try {
-          const page = await dataService.createPage(null, 'Note');
+          const page = await noteHost.createPage(null, 'Note');
           pageId = page.id;
           ctx.setCachedOutput(JSON.stringify({ pageId }));
         } catch (err) {
@@ -127,18 +138,17 @@ export const NOTES_WIDGET: WidgetTypeRegistration<NotesConfig> = {
       }
       if (disposed) return;
 
-      const v = new CanvasEditorView(host, pageId, dataService, {});
+      const v = await noteHost.mount(host, pageId);
       view = v;
-      await v.init();
       if (disposed) { v.dispose(); return; }
 
       // One-time migration of the previous in-widget note into the new page.
       if (legacyDoc) {
-        try { v.editor?.commands.setContent(legacyDoc as never); } catch { /* non-fatal */ }
+        v.setContent(legacyDoc);
       } else if (ctx.cachedOutput && !ctx.cachedOutput.trim().startsWith('{')) {
         // Oldest format: a raw markdown/text note. Seed it as plain text so the
         // content isn't lost; the user reformats with the real block tools.
-        try { v.editor?.commands.setContent(ctx.cachedOutput); } catch { /* non-fatal */ }
+        v.setContent(ctx.cachedOutput);
       }
     }
     void setup();

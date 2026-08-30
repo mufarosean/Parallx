@@ -10,6 +10,12 @@ three decisions are yours, everything else is sequenced execution.
 
 ## The three decisions
 
+**DECIDED 2026-08-29 (Mufaro): all three recommendations adopted —
+api.services goes read-only for externals; activation events flip for
+leaf tools only, after the extractions; the editor moves into core.
+The eyes-on probe pass is waived on field use (a week of daily driving
+with no issues). Execution begins.**
+
 ### Decision 1 — api.services: gate it, or document it?
 
 Today any extension can resolve ANY core service and even overwrite one
