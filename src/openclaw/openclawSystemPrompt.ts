@@ -47,9 +47,11 @@ export interface IToolSummary {
   readonly name: string;
   readonly description: string;
   /**
-   * Optional short prompt-only summary (≤120 chars). When present, the
-   * prompt builder uses this verbatim; otherwise it derives a summary
-   * from `description` via summarizeToolDescriptionText().
+   * Optional short prompt-only summary (≤120 chars). Consumed by prompt
+   * introspection (openclawPromptArtifacts) — buildToolSummariesSection no
+   * longer renders per-tool summaries (the function-calling schema carries
+   * descriptions), and the runtime summarizer that once derived one from
+   * `description` was never wired and is deleted (HARNESS.md §1.5).
    *
    * Upstream parity: src/agents/tool-description-presets.ts —
    * upstream's `coreToolSummaries` map is the equivalent.
