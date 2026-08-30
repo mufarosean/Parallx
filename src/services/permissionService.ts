@@ -180,6 +180,22 @@ export class PermissionService extends Disposable {
     this._userTaskSessions.delete(sessionId);
   }
 
+  // ── Careful Mode (HARNESS.md §2.3) ────────────────────────────────────────
+  // One window-scoped switch, off by default. When on, the M90 user-consent
+  // relaxation is suspended: interactive turns prompt for every
+  // requires-approval tool again, exactly as the old UI *claimed* the
+  // (never-wired) "Manual" dial did. In-memory — deliberate work sessions
+  // turn it on, and it resets with the window.
+  private _carefulMode = false;
+
+  setCarefulMode(on: boolean): void {
+    this._carefulMode = on;
+  }
+
+  isCarefulMode(): boolean {
+    return this._carefulMode;
+  }
+
   /**
    * M90 — who started the turn this session is running. Decides consent:
    * 'interactive' (normal chat; the user is present), 'user-task'

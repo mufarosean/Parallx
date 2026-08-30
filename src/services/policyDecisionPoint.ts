@@ -188,8 +188,14 @@ export class PolicyDecisionPoint {
       // require-approval on EVERY initiator — irreversible, low-frequency,
       // and NOT part of the M90 relaxation (Mufaro kept it). Downstream:
       // interactive prompts, user-task/autonomous defer to the log.
-      if (initiator === 'autonomous' || forceConfirm) {
-        reasons.push(forceConfirm ? 'destruction-belt' : `requires-approval:${permCheck.source}`);
+      //
+      // HARNESS.md §2.3 — Careful Mode suspends the user-consent relaxation:
+      // when the user flips it on, interactive turns prompt for every
+      // consequential tool again. This is the ONE honest gating switch that
+      // replaced the never-wired autonomy dial in the mode picker.
+      const careful = this._permissionService?.isCarefulMode() === true;
+      if (initiator === 'autonomous' || forceConfirm || careful) {
+        reasons.push(forceConfirm ? 'destruction-belt' : careful ? 'careful-mode' : `requires-approval:${permCheck.source}`);
         return this._emit(caller, name, {
           outcome: 'require-approval', reasons, autoApproved: false,
           permSource: permCheck.source, willTaintOnSuccess: willTaint,

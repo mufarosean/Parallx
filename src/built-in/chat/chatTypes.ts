@@ -468,6 +468,14 @@ export interface IModePickerServices {
   setMode(mode: ChatMode): void;
   getAvailableModes(): readonly ChatMode[];
   readonly onDidChangeMode: Event<ChatMode>;
+  /**
+   * HARNESS.md §2.3 — Careful Mode: window-scoped switch that suspends the
+   * M90 user-consent relaxation (every consequential action prompts again).
+   * Optional so headless/test constructions need not wire it; the picker
+   * hides the toggle when absent.
+   */
+  getCarefulMode?(): boolean;
+  setCarefulMode?(on: boolean): void;
 }
 
 /** Services needed by the session history sidebar. */

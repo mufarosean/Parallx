@@ -217,12 +217,15 @@ describe('LanguageModelToolsService', () => {
       expect(result.content).toBe('ok');
     });
 
-    it('returns error when tool requires approval but no permission service wired', async () => {
+    it('M90 re-pin: requires-approval on an interactive turn executes under user consent', async () => {
+      // Pre-M90 this errored without a permission service. The ONE decision
+      // owner (HARNESS.md 2.3) applies the M90 contract everywhere: an
+      // interactive gesture IS the approval for ordinary consequential tools.
       service.registerTool(createTool({ requiresConfirmation: true }));
 
       const result = await service.invokeTool('test_tool', {}, createToken());
-      expect(result.isError).toBe(true);
-      expect(result.content).toContain('requires approval');
+      expect(result.isError).toBeUndefined();
+      expect(result.content).toBe('OK');
     });
 
     it('invokes tool when permission service approves', async () => {
@@ -232,6 +235,7 @@ describe('LanguageModelToolsService', () => {
       const permissionService = new PermissionService();
       const confirm = vi.fn(async () => 'allow-once' as const);
       permissionService.setConfirmationHandler(confirm);
+      permissionService.setCarefulMode(true); // HARNESS.md 2.3 — the prompt path
       service.setPermissionService(permissionService);
 
       const result = await service.invokeTool('test_tool', { title: 'New Page' }, createToken());
@@ -248,6 +252,7 @@ describe('LanguageModelToolsService', () => {
 
       const permissionService = new PermissionService();
       permissionService.setConfirmationHandler(vi.fn(async () => 'reject' as const));
+      permissionService.setCarefulMode(true); // HARNESS.md 2.3 — the prompt path
       service.setPermissionService(permissionService);
 
       const result = await service.invokeTool('test_tool', {}, createToken());
@@ -282,6 +287,7 @@ describe('LanguageModelToolsService', () => {
 
       const permissionService = new PermissionService();
       permissionService.setConfirmationHandler(vi.fn(async () => 'allow-once' as const));
+      permissionService.setCarefulMode(true); // HARNESS.md 2.3 — the prompt path
       service.setPermissionService(permissionService);
 
       const events: Array<{ type: string; metadata: ILanguageModelToolsRuntimeMetadata; approved?: boolean; result?: IToolResult }> = [];
@@ -410,6 +416,7 @@ describe('LanguageModelToolsService', () => {
       const permissionService = new PermissionService();
       const confirm = vi.fn(async () => 'allow-once' as const);
       permissionService.setConfirmationHandler(confirm);
+      permissionService.setCarefulMode(true); // HARNESS.md 2.3 — the prompt path
       service.setPermissionService(permissionService);
       // No markHeartbeatSession.
 

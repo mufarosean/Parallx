@@ -13,6 +13,9 @@ export interface IChatWidgetPickerAdapterDeps {
   readonly setMode: (mode: ChatMode) => void;
   readonly getAvailableModes: () => readonly ChatMode[];
   readonly onDidChangeMode: Event<ChatMode>;
+  /** HARNESS.md §2.3 — Careful Mode passthrough (optional). */
+  readonly getCarefulMode?: () => boolean;
+  readonly setCarefulMode?: (on: boolean) => void;
 }
 
 export function buildChatWidgetPickerServices(
@@ -32,6 +35,8 @@ export function buildChatWidgetPickerServices(
       setMode: deps.setMode,
       getAvailableModes: deps.getAvailableModes,
       onDidChangeMode: deps.onDidChangeMode,
+      getCarefulMode: deps.getCarefulMode,
+      setCarefulMode: deps.setCarefulMode,
     },
   };
 }

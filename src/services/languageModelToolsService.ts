@@ -25,11 +25,9 @@ import type {
   ToolPermissionLevel,
 } from './chatTypes.js';
 import type { PermissionService } from './permissionService.js';
-import type { PolicyDecisionPoint } from './policyDecisionPoint.js';
+import { PolicyDecisionPoint } from './policyDecisionPoint.js';
 import {
-  getToolColor,
   markTurnTainted,
-  resolveColorGate,
 } from '../openclaw/openclawToolPolicy.js';
 
 /**
@@ -127,7 +125,10 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
   // ── Permission service (M11 Task 2.1) + Policy Decision Point (M67 Phase 2) ──
 
   private _permissionService: PermissionService | undefined;
-  private _pdp: PolicyDecisionPoint | undefined;
+  // HARNESS.md §2.3 — ONE decision owner, constructed here so a "PDP not
+  // wired yet" state cannot exist (same move as retirement Part 3.1's one
+  // diagnostics engine). setPermissionService forwards the dependency.
+  private readonly _pdp = new PolicyDecisionPoint();
 
   constructor() {
     super();
@@ -166,6 +167,7 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
    */
   setPermissionService(service: PermissionService): void {
     this._permissionService = service;
+    this._pdp.setPermissionService(service);
   }
 
   /** Get the bound permission service (if any). */
@@ -173,9 +175,9 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
     return this._permissionService;
   }
 
-  /** Set the Policy Decision Point (M67 Phase 2). */
-  setPolicyDecisionPoint(pdp: PolicyDecisionPoint): void {
-    this._pdp = pdp;
+  /** The Policy Decision Point — for audit-log introspection surfaces. */
+  get policyDecisionPoint(): PolicyDecisionPoint {
+    return this._pdp;
   }
 
   // ── Tool-enablement binding (M62 follow-up) ──
@@ -340,14 +342,15 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
 
     const defaultLevel = getEffectivePermission(tool);
 
-    // M67 Phase 2 — every invocation goes through the Policy Decision Point.
-    // The PDP consolidates: command blocklist + heartbeat-manual gate +
-    // never-allowed check + ALWAYS_REQUIRE_CONFIRMATION belt + M65 color gate +
-    // checkPermission. When the PDP is not yet wired (test or early init path),
-    // fall back to the legacy inline logic.
-    const decision = this._pdp
-      ? this._pdp.decide({ caller: { kind: 'built-in', id: 'chat' }, tool: { name, defaultLevel }, args, sessionId })
-      : this._legacyDecide(name, defaultLevel, sessionId);
+    // M67 Phase 2 + HARNESS.md §2.3 — every invocation goes through the ONE
+    // Policy Decision Point (constructed with this service, so no unwired
+    // state exists). It consolidates: command blocklist + heartbeat-manual
+    // gate + never-allowed check + ALWAYS_REQUIRE_CONFIRMATION belt +
+    // checkPermission + M90 initiator consent + Careful Mode. The legacy
+    // inline path is deleted — it had drifted (it still enforced the M65
+    // color gate Mufaro removed in M90, and still gated interactive turns
+    // pre-M90-style), which meant two decision owners disagreeing.
+    const decision = this._pdp.decide({ caller: { kind: 'built-in', id: 'chat' }, tool: { name, defaultLevel }, args, sessionId });
 
     // Derive the permission-level for the observer from the PDP outcome.
     const permLevel: ToolPermissionLevel =
@@ -403,17 +406,18 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
           isError: true,
         };
       }
-      // Pass forceApproval=true when the color gate triggered the require-approval
-      // so that a persistent "always-allow" override cannot silently bypass the
-      // mid-turn taint check inside confirmToolInvocation.
-      const colorGateForced = decision.reasons.includes('color-gate-blue-post-red');
+      // Pass forceApproval=true when the destruction belt or Careful Mode
+      // triggered the require-approval, so a persistent "always-allow"
+      // override cannot silently bypass either. (The M65 color-gate reason
+      // is gone with the legacy decision path — M90 removed that gate.)
+      const forced = decision.reasons.includes('destruction-belt') || decision.reasons.includes('careful-mode');
       const approved = await this._permissionService.confirmToolInvocation(
         name,
         tool.description,
         args,
         defaultLevel,
         sessionId,
-        { forceApproval: colorGateForced },
+        { forceApproval: forced },
       );
       observer?.onApprovalResolved?.(metadata, approved);
       if (!approved) {
@@ -447,41 +451,6 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
     }
   }
 
-  /**
-   * Legacy decision path used when the PDP has not been wired yet (e.g. in
-   * unit tests that construct LanguageModelToolsService in isolation).
-   * Mirrors the pre-M67 inline logic: checkPermission + color gate only.
-   */
-  private _legacyDecide(
-    name: string,
-    defaultLevel: ToolPermissionLevel,
-    sessionId: string | undefined,
-  ): import('./policyDecisionPoint.js').PolicyDecision {
-    const permCheck = this._permissionService
-      ? this._permissionService.checkPermission(name, defaultLevel)
-      : { level: defaultLevel, autoApproved: defaultLevel === 'always-allowed', source: 'missing-permission-service' as const };
-
-    // Heartbeat autonomy=manual
-    if (sessionId && this._permissionService?.isManagedSessionBlocked(sessionId)) {
-      return { outcome: 'deny', reasons: ['autonomy-manual'], autoApproved: false, permSource: permCheck.source, willTaintOnSuccess: false };
-    }
-
-    if (permCheck.level === 'never-allowed') {
-      return { outcome: 'deny', reasons: ['never-allowed'], autoApproved: false, permSource: permCheck.source, willTaintOnSuccess: false };
-    }
-
-    const willTaint = getToolColor(name) === 'red';
-
-    if (resolveColorGate(name, sessionId) === 'requires-approval') {
-      return { outcome: 'require-approval', reasons: ['color-gate-blue-post-red'], autoApproved: false, permSource: permCheck.source, willTaintOnSuccess: willTaint };
-    }
-
-    if (permCheck.level === 'requires-approval' && !permCheck.autoApproved) {
-      return { outcome: 'require-approval', reasons: [`requires-approval:${permCheck.source}`], autoApproved: false, permSource: permCheck.source, willTaintOnSuccess: willTaint };
-    }
-
-    return { outcome: 'allow', reasons: [`allow:${permCheck.source}`], autoApproved: permCheck.autoApproved, permSource: permCheck.source, willTaintOnSuccess: willTaint };
-  }
 
   // ── Tool enablement ──
 

@@ -543,27 +543,13 @@ export function resetSession(sessionId: string | undefined): void {
   _taintedSessions.delete(sessionId);
 }
 
-/**
- * Resolve whether the color gate should force approval for the given
- * tool/session pair.
- *
- * Returns `'requires-approval'` iff the tool is BLUE AND the session is
- * tainted. Returns `null` otherwise — the caller's normal permission flow
- * applies unchanged.
- *
- * This gate is NOT bypassable by a prior `always-allowed` user override:
- * the runtime must override the resolved permission level when this
- * function returns `'requires-approval'`. (See `languageModelToolsService.
- * invokeToolWithRuntimeControl`.)
- */
-export function resolveColorGate(
-  toolName: string,
-  sessionId: string | undefined,
-): ToolPermissionLevel | null {
-  if (getToolColor(toolName) !== 'blue') return null;
-  if (!isTurnTainted(sessionId)) return null;
-  return 'requires-approval';
-}
+// resolveColorGate DELETED (HARNESS.md §2.3, completing the M90 decision of
+// 2026-07-20: "remove it entirely"). The PolicyDecisionPoint dropped the gate
+// in M90; the legacy fallback in languageModelToolsService kept enforcing it
+// — two decision owners, drifted. Taint BOOKKEEPING stays: chatService stamps
+// `usedWebTools` on tainted turns' markdown so the renderer strips image
+// vectors (the exfil guard), and the PDP records willTaintOnSuccess for
+// audit. BLUE_TOOLS stays as the classification of consequential writes.
 
 // Testing hook — clears the entire registry. Not exported via index; tests
 // import directly.

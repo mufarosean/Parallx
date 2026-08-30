@@ -52,7 +52,6 @@ import { INotebookKernelService } from '../../services/notebookKernelService.js'
 import { findOpenNotebook } from '../../editor/panes/notebook/notebookEditorInput.js';
 import { writeThroughOpenDocument } from '../../services/openDocumentWriter.js';
 import { getGlobalSettingsRegistry } from '../../services/settingsRegistryService.js';
-import { PolicyDecisionPoint as _PolicyDecisionPoint } from '../../services/policyDecisionPoint.js';
 import { registerAutonomyFlagSettings } from '../../services/autonomySettingsSchemas.js';
 import {
   registerAIProfileSettings,
@@ -1448,12 +1447,9 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     const _lmts = languageModelToolsService as import('../../services/languageModelToolsService.js').LanguageModelToolsService;
     _lmts.setPermissionService(_permissionService);
 
-    // M67 Phase 2 — wire Policy Decision Point
-    {
-      const pdp = new _PolicyDecisionPoint();
-      pdp.setPermissionService(_permissionService);
-      _lmts.setPolicyDecisionPoint(pdp);
-    }
+    // M67 Phase 2 → HARNESS.md §2.3 — the PDP is constructed INSIDE
+    // LanguageModelToolsService now (one decision owner, no unwired state);
+    // setPermissionService above already forwarded the dependency.
 
     // Build retrieval accessor for the fs_search_knowledge tool (M10 Phase 3)
     const retrievalAccessor = retrievalService && indexingPipelineService

@@ -72,3 +72,28 @@ describe('PDP initiator routing (M90)', () => {
     expect(d.outcome).toBe('allow');
   });
 });
+
+describe('Careful Mode (HARNESS.md 2.3)', () => {
+  it('careful on: interactive consequential tools prompt again', () => {
+    const { pdp, perms } = setup();
+    perms.setCarefulMode(true);
+    const d = pdp.decide(req('canvas_edit_page', 'chat-1'));
+    expect(d.outcome).toBe('require-approval');
+    expect(d.reasons).toContain('careful-mode');
+  });
+
+  it('careful off restores user-consent flow', () => {
+    const { pdp, perms } = setup();
+    perms.setCarefulMode(true);
+    perms.setCarefulMode(false);
+    const d = pdp.decide(req('canvas_edit_page', 'chat-1'));
+    expect(d.outcome).toBe('allow');
+    expect(d.reasons).toContain('user-consent');
+  });
+
+  it('careful never loosens: autonomous turns still gate with careful off', () => {
+    const { pdp } = setup({ id: 'hb-1', kind: 'autonomous' });
+    const d = pdp.decide(req('canvas_edit_page', 'hb-1'));
+    expect(d.outcome).toBe('require-approval');
+  });
+});

@@ -19,15 +19,12 @@ import type { IModePickerServices } from '../chatTypes.js';
 // IModePickerServices — now defined in chatTypes.ts (M13 Phase 1)
 export type { IModePickerServices } from '../chatTypes.js';
 
-/** Autonomy levels for Agent mode. */
-export type AgentAutonomyLevel = 'manual' | 'allow-reads' | 'allow-safe' | 'custom';
-
-const AUTONOMY_LEVELS: { value: AgentAutonomyLevel; label: string; description: string }[] = [
-  { value: 'manual', label: 'Manual', description: 'Every action requires your OK' },
-  { value: 'allow-reads', label: 'Allow Reads', description: 'Auto-search, ask for changes' },
-  { value: 'allow-safe', label: 'Allow Safe', description: 'Reads + safe edits run automatically' },
-  { value: 'custom', label: 'Custom', description: 'You set the rules in Settings → Agent' },
-];
+// HARNESS.md §2.3 — the old "Agent autonomy" dial (Manual / Allow Reads /
+// Allow Safe / Custom) is DELETED: it was connected to nothing (zero
+// subscribers, values that didn't match the real autonomy vocabulary), while
+// M90 had already made interactive turns run on user consent. What replaced
+// it tells the truth: one status line describing the actual policy, and one
+// Careful toggle that genuinely suspends the consent relaxation.
 
 /**
  * Mode display metadata. EXPORTED so other surfaces (the chat empty state)
@@ -60,13 +57,9 @@ export class ChatModePicker extends Disposable {
   private _dropdown: HTMLElement | undefined;
   private _closeHandler: ((e: MouseEvent) => void) | undefined;
   private _services: IModePickerServices;
-  private _autonomyLevel: AgentAutonomyLevel = 'allow-reads';
 
   private readonly _onDidSelectMode = this._register(new Emitter<ChatMode>());
   readonly onDidSelectMode: Event<ChatMode> = this._onDidSelectMode.event;
-
-  private readonly _onDidChangeAutonomy = this._register(new Emitter<AgentAutonomyLevel>());
-  readonly onDidChangeAutonomy: Event<AgentAutonomyLevel> = this._onDidChangeAutonomy.event;
 
   constructor(container: HTMLElement, services: IModePickerServices) {
     super();
@@ -171,38 +164,38 @@ export class ChatModePicker extends Disposable {
       dropdown.appendChild(item);
     }
 
-    // ── Autonomy level sub-selector (visible when Agent is current mode) ──
-    if (currentMode === ChatMode.Agent) {
+    // ── Gating truth + Careful toggle (HARNESS.md §2.3) ──
+    // Replaces the never-wired autonomy dial. The status line states the
+    // actual policy; the Careful row is the ONE real switch, wired through
+    // IModePickerServices to the permission service.
+    if (currentMode === ChatMode.Agent && this._services.setCarefulMode && this._services.getCarefulMode) {
       const separator = $('div.parallx-chat-picker-separator');
       dropdown.appendChild(separator);
 
-      const autonomyHeader = $('div.parallx-chat-picker-autonomy-header', 'Agent autonomy');
-      dropdown.appendChild(autonomyHeader);
+      const truth = $('div.parallx-chat-picker-gating-truth',
+        'Writes run automatically and are checkpointed — /rewind restores. Shell commands and deletes always ask first.');
+      dropdown.appendChild(truth);
 
-      for (const level of AUTONOMY_LEVELS) {
-        const row = $('div.parallx-chat-picker-autonomy-row');
-        if (level.value === this._autonomyLevel) {
-          row.classList.add('parallx-chat-picker-autonomy-row--active');
-        }
-
-        const textCol = $('div.parallx-chat-picker-item-text');
-
-        const name = $('span.parallx-chat-picker-item-name', level.label);
-        textCol.appendChild(name);
-
-        const desc = $('span.parallx-chat-picker-item-description', level.description);
-        textCol.appendChild(desc);
-
-        row.appendChild(textCol);
-
-        row.addEventListener('click', (e) => {
-          e.stopPropagation();
-          this._autonomyLevel = level.value;
-          this._onDidChangeAutonomy.fire(level.value);
-          this._closeDropdown();
-        });
-        dropdown.appendChild(row);
+      const carefulOn = this._services.getCarefulMode();
+      const row = $('div.parallx-chat-picker-autonomy-row');
+      if (carefulOn) {
+        row.classList.add('parallx-chat-picker-autonomy-row--active');
       }
+
+      const textCol = $('div.parallx-chat-picker-item-text');
+      const name = $('span.parallx-chat-picker-item-name', carefulOn ? 'Careful · On' : 'Careful');
+      textCol.appendChild(name);
+      const desc = $('span.parallx-chat-picker-item-description',
+        'Every consequential action asks first');
+      textCol.appendChild(desc);
+      row.appendChild(textCol);
+
+      row.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._services.setCarefulMode!(!carefulOn);
+        this._closeDropdown();
+      });
+      dropdown.appendChild(row);
     }
 
     // Position below button (opening upward from the input bar)
@@ -237,9 +230,5 @@ export class ChatModePicker extends Disposable {
   override dispose(): void {
     this._closeDropdown();
     super.dispose();
-  }
-
-  get autonomyLevel(): AgentAutonomyLevel {
-    return this._autonomyLevel;
   }
 }

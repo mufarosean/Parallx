@@ -2001,6 +2001,13 @@ export class ChatDataService {
       setMode: (mode) => this._d.modeService.setMode(mode),
       getAvailableModes: () => this._d.modeService.getAvailableModes(),
       onDidChangeMode: this._d.modeService.onDidChangeMode,
+      // HARNESS.md §2.3 — the Careful toggle's real wiring.
+      getCarefulMode: this._d.permissionService
+        ? () => this._d.permissionService!.isCarefulMode()
+        : undefined,
+      setCarefulMode: this._d.permissionService
+        ? (on) => this._d.permissionService!.setCarefulMode(on)
+        : undefined,
     });
     const attachmentServices = buildChatWidgetAttachmentServices({
       getOpenEditorFiles: this._d.editorService

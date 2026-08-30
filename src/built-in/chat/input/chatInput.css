@@ -402,6 +402,15 @@
   letter-spacing: 0.5px;
 }
 
+/* HARNESS.md 2.3 — the gating truth line above the Careful toggle. */
+.parallx-chat-picker-gating-truth {
+  font-size: var(--parallx-fontSize-sm);
+  color: var(--vscode-descriptionForeground, #8b8b8b);
+  padding: 4px 8px 6px;
+  line-height: 1.4;
+  max-width: 260px;
+}
+
 .parallx-chat-picker-autonomy-row {
   display: flex;
   align-items: flex-start;

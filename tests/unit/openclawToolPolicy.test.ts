@@ -9,7 +9,6 @@ import {
   isTurnTainted,
   beginNewTurn,
   resetSession,
-  resolveColorGate,
   _resetColorGateRegistryForTests,
 } from '../../src/openclaw/openclawToolPolicy';
 import {
@@ -448,43 +447,8 @@ describe('tainted-turn registry (M65 Iter 2)', () => {
   });
 });
 
-describe('resolveColorGate (M65 Iter 2)', () => {
-  beforeEach(() => _resetColorGateRegistryForTests());
-
-  it('blue tool in untainted turn ? no gate (null)', () => {
-    expect(resolveColorGate('fs_write_file', 'session-a')).toBeNull();
-  });
-
-  it('blue tool in tainted turn ? requires-approval', () => {
-    markTurnTainted('session-a');
-    expect(resolveColorGate('fs_write_file', 'session-a')).toBe('requires-approval');
-  });
-
-  it('red tool returns null (its own permission posture applies)', () => {
-    markTurnTainted('session-a');
-    expect(resolveColorGate('webFetch', 'session-a')).toBeNull();
-    expect(resolveColorGate('webSearch', 'session-a')).toBeNull();
-  });
-
-  it('green tool returns null even in tainted turn', () => {
-    markTurnTainted('session-a');
-    expect(resolveColorGate('fs_read_file', 'session-a')).toBeNull();
-  });
-
-  it('blue tool with no sessionId returns null (no gate)', () => {
-    markTurnTainted('session-a');
-    expect(resolveColorGate('fs_write_file', undefined)).toBeNull();
-  });
-
-  it('beginNewTurn re-opens blue tools (taint resets per turn)', () => {
-    markTurnTainted('session-a');
-    expect(resolveColorGate('fs_write_file', 'session-a')).toBe('requires-approval');
-    beginNewTurn('session-a');
-    expect(resolveColorGate('fs_write_file', 'session-a')).toBeNull();
-  });
-
-  it('taint of session-a does not affect session-b', () => {
-    markTurnTainted('session-a');
-    expect(resolveColorGate('fs_write_file', 'session-b')).toBeNull();
-  });
-});
+// resolveColorGate tests DELETED with the function (HARNESS.md 2.3): the
+// M90 decision ("remove the web-taint gate entirely") is now complete — the
+// legacy fallback in languageModelToolsService that still enforced it is
+// gone, and the ONE PolicyDecisionPoint never gated on color. Taint
+// bookkeeping (tested above) survives for the markdown-image exfil guard.
