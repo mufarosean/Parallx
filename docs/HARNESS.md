@@ -95,25 +95,32 @@ delegation is free. *(Evidence: Claude Code's Agent tool.)*
       ring of 50 per app run) wired into the three write tools; `/rewind`
       lists and restores; reverts are themselves revertible. (SHIPPED
       2026-08-30)
-- [ ] 2.3 Gating truth pass — findings from the full policy read:
-      interactive turns are ALREADY default-allow (M90 Rule 6
-      user-consent); the chat-input "Agent Autonomy" dial is CONNECTED TO
-      NOTHING (zero subscribers to onDidChangeAutonomy; its values don't
-      even match agentTypes' real vocabulary); the M65 color gate is
-      disarmed in the PolicyDecisionPoint by explicit M90 decision but a
-      FALLBACK decision path in languageModelToolsService still enforces
-      it and still gates old-style — two decision owners, drifted.
-      Proposal pending Mufaro's call (see session notes).
+- [x] 2.3 Gating truth (SHIPPED 2026-08-30): ONE decision owner — the
+      PDP is constructed inside the tools service, the drifted legacy
+      fallback is deleted, resolveColorGate goes with it (completing the
+      M90 removal; taint bookkeeping stays for the exfil guard). The
+      never-wired autonomy dial is replaced by a truthful status line +
+      ONE real switch: Careful (suspends the M90 user-consent relaxation;
+      tighten-only), wired picker → adapter → permission service → PDP.
 
 ### Wave 3 — disclosure (flagged, behavior-affecting)
-- [ ] 3.1 Teaching prose moves from tool schemas to loadable guidance.
-- [ ] 3.2 Standing context becomes state-not-content; search gains a real
-      relevance floor + citations.
+- [~] 3.1 First cut SHIPPED 2026-08-30: memory_write deduped against the
+      '## Memory' prompt section (4K → ~1K chars, lossless). Canvas
+      descriptions await their own prompt section (no twin to dedup).
+- [~] 3.2 First cut SHIPPED 2026-08-30: relevance scores on every
+      retrieved chunk + conditional citation rule in the standing-context
+      preamble. No invented threshold — evidence surfaced, model judges.
+      The state-not-content reorder of the standing context itself stays
+      eval-gated.
 - [ ] 3.3 Tool tiers / deferral — **away-day eval required before default-on.**
 
-### Wave 4 — delegation
-- [ ] 4.1 Enforce the parsed-then-discarded subagent tools allowlist (M59 debt).
-- [ ] 4.2 Free read-only spawns; typed profiles (searcher / reader / worker).
+### Wave 4 — delegation — SHIPPED 2026-08-30
+- [x] 4.1 The M59 debt paid: spawn's tools allowlist flows spawner →
+      executor → session policy registry → participant tool policy.
+- [x] 4.2 Typed profiles: 'reader' (readonly tools) / 'worker' (standard);
+      2.3's M90 consent already freed interactive spawns; autonomous
+      spawns stay gated. Depth stays 1; delegation framed as context
+      hygiene, not parallelism.
 
 ## Ledger
 
@@ -127,6 +134,9 @@ delegation is free. *(Evidence: Claude Code's Agent tool.)*
 | 2026-08-30 | 2.1 legible action | ff6d48fb | description arg on 5 tools; approval card + tool node + journal |
 | 2026-08-30 | 2.2 checkpoints + /rewind | 362b1487 | services/fileCheckpointService; reverts revertible |
 | 2026-08-30 | 2.2b gate compliance | (this) | checkpoints moved to services layer per the import gates |
+| 2026-08-30 | 2.3 gating truth | 01964c40 | one PDP owner; color gate finished; Careful switch |
+| 2026-08-30 | Wave 4 delegation | daeb5949 | M59 allowlist enforced; reader/worker profiles |
+| 2026-08-30 | 3.1+3.2 first cut | (next) | memory_write deduped; relevance scores + citation rule |
 
 Wave 1 verification: tsc clean, full vitest 5,709 passed / 16 skipped / 0
 failed, build green. In-app eyes-on owed at next session: a long tool-heavy
