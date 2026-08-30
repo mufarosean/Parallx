@@ -256,8 +256,9 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     },
   });
 
-  // 1. Run Canvas migrations on the open database
-  await _runMigrations();
+  // 1. The workspace-DB schema is CORE's now (Phase D step 3): the workbench
+  //    applies src/services/db-migrations when it opens the database, before
+  //    any tool activates. Canvas just uses the tables.
 
   // 2. Create CanvasDataService
   _dataService = new CanvasDataService();
@@ -864,16 +865,13 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   // 7. Restore last-opened page (Task 6.3)
   await _restoreLastOpenedPage(api, context, _dataService);
 
-  // 8. Listen for workspace folder changes â€” run migrations when a folder is opened
-  //    This handles the case where Canvas activates before any workspace is open.
+  // 8. Listen for workspace folder changes — the workbench opens the database
+  //    and applies the core migration chain; canvas only refreshes its sidebar
+  //    once that has had a moment to land.
   context.subscriptions.push(
     api.workspace.onDidChangeWorkspaceFolders(async (e) => {
       if (e.added.length > 0) {
-        // A folder was added â€” database should now be open. Run migrations.
-        // Small delay to let the database service open the DB file.
         await new Promise(r => setTimeout(r, 500));
-        await _runMigrations();
-        // Refresh the sidebar to show data from the new workspace
         _sidebar?.refresh();
       }
     }),
@@ -900,34 +898,6 @@ export async function deactivate(): Promise<void> {
   _api = undefined!;
 
   if (isDevMode) console.log('[Canvas] Tool deactivated');
-}
-
-// â”€â”€â”€ Migrations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-async function _runMigrations(): Promise<void> {
-  const electron = (window as any).parallxElectron;
-  if (!electron?.database || !electron.appPath) {
-    console.warn('[Canvas] Cannot run migrations â€” database or appPath not available');
-    return;
-  }
-
-  // Check if database is open
-  const status = await electron.database.isOpen();
-  if (!status.isOpen) {
-    console.warn('[Canvas] Database not open â€” skipping migrations');
-    return;
-  }
-
-  // Resolve migrations directory from the app root
-  // In dev: <appPath>/src/built-in/canvas/migrations
-  const sep = electron.platform === 'win32' ? '\\' : '/';
-  const migrationsDir = [electron.appPath, 'src', 'built-in', 'canvas', 'migrations'].join(sep);
-  const result = await electron.database.migrate(migrationsDir);
-  if (result.error) {
-    console.error('[Canvas] Migration failed:', result.error.message);
-  } else {
-    if (isDevMode) console.log('[Canvas] Migrations applied from:', migrationsDir);
-  }
 }
 
 // â”€â”€â”€ Restore Last-Opened Page (Task 6.3) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

@@ -3535,14 +3535,29 @@ export class Workbench extends Layout {
     const firstFolder = folders[0];
     const folderPath = firstFolder.uri.fsPath;
 
-    // Open the base workspace database. Schema migrations are intentionally NOT
-    // applied here: the Canvas extension owns its schema and applies its own
-    // migrations when it activates (via the `database:open` IPC with its own
-    // migrations dir). So this workbench-level open passes no migrations by
-    // design — they're handled by the extension that owns them, not duplicated.
+    // Open the base workspace database, then apply the workspace-DB schema.
+    // Phase D step 3 (PHASE_D_BRIEF.md): CORE owns the one ordered migration
+    // chain (src/services/db-migrations) — canvas used to run it from its own
+    // activate, which made a "tool" load-bearing for tables that core
+    // services (embeddings, retrieval, chat persistence, the journal) read.
+    // The chain moved wholesale with filenames unchanged, so the _migrations
+    // tracking table in existing databases continues seamlessly.
     try {
       await this._databaseService.openForWorkspace(folderPath);
       console.log('[Workbench] Database opened for workspace folder: %s', folderPath);
+      const electron = (window as unknown as { parallxElectron?: { appPath?: string; platform?: string } }).parallxElectron;
+      if (electron?.appPath) {
+        const sep = electron.platform === 'win32' ? '\\' : '/';
+        const migrationsDir = [electron.appPath, 'src', 'services', 'db-migrations'].join(sep);
+        try {
+          await this._databaseService.migrate(migrationsDir);
+        } catch (err) {
+          console.error('[Workbench] Workspace-DB migration failed:', err);
+          this._services.tryGet(INotificationService)?.error(
+            'The workspace database schema could not be updated. Some features may not work until the app restarts.',
+          );
+        }
+      }
     } catch (err) {
       console.error('[Workbench] Failed to open database for workspace:', err);
     }
