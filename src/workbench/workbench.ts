@@ -42,8 +42,7 @@ import { Orientation } from '../layout/layoutTypes.js';
 
 // Storage + Persistence
 import { IStorage, InMemoryStorage } from '../platform/storage.js';
-import { FileBackedGlobalStorage, FileBackedWorkspaceStorage } from '../platform/fileBackedStorage.js';
-import { migrateFromLocalStorage } from '../platform/storageMigration.js';
+import { FileBackedStorage } from '../platform/fileBackedStorage.js';
 
 // Workspace
 import { Workspace } from '../workspace/workspace.js';
@@ -890,7 +889,7 @@ export class Workbench extends Layout {
     const appPath = window.parallxElectron!.appPath;
 
     // Global storage (settings, models, etc.) — app-level, persists across workspaces
-    this._globalStorage = new FileBackedGlobalStorage(storageBridge, `${appPath}/data/global-storage.json`);
+    this._globalStorage = new FileBackedStorage(storageBridge, `${appPath}/data/global-storage.json`, { label: 'global' });
 
     // Read last workspace path (may not exist on first launch)
     const lastWsResult = await storageBridge.readJson(`${appPath}/data/last-workspace.json`);
@@ -898,14 +897,14 @@ export class Workbench extends Layout {
     this._workspaceFolderPath = wsPath;
 
     if (wsPath) {
-      this._storage = new FileBackedWorkspaceStorage(storageBridge, `${wsPath}/.parallx/workspace-state.json`);
+      this._storage = new FileBackedStorage(storageBridge, `${wsPath}/.parallx/workspace-state.json`, { label: 'workspace', envelope: true });
     } else {
       // First launch or no workspace — use in-memory storage
       this._storage = new InMemoryStorage();
     }
-
-    // M53 D5: One-time migration from localStorage to file-backed storage
-    await migrateFromLocalStorage(this._globalStorage, this._storage, wsPath, storageBridge, appPath);
+    // (The M53 localStorage migration window CLOSED in the Retirement phase:
+    // the one-shot, sentinel-gated migrateFromLocalStorage ran on every
+    // install long ago and its module is deleted.)
 
     // Layout persistence: save/load layout state via storage
     // (handled by WorkspaceSaver — LayoutPersistence not needed directly)

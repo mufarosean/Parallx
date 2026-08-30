@@ -12,10 +12,10 @@
 //   - Extensions can register their own schemas via the M56 service path.
 //
 // Storage:
-//   - User scope     → IGlobalStorageService    (FileBackedGlobalStorage,
+//   - User scope     → IGlobalStorageService    (FileBackedStorage,
 //                      <APP_ROOT>/data/global-storage.json)
-//   - Workspace scope → IWorkspaceStorageService (FileBackedWorkspaceStorage,
-//                       <workspaceRoot>/.parallx/workspace-storage.json)
+//   - Workspace scope → IWorkspaceStorageService (FileBackedStorage envelope,
+//                       <workspaceRoot>/.parallx/workspace-state.json)
 //
 // Both backends are M53 portable storage — JSON via the existing electron
 // IPC bridge. No new IPC handlers needed (M60 §3.4 boundary preserved).
