@@ -87,11 +87,23 @@ delegation is free. *(Evidence: Claude Code's Agent tool.)*
       toolDescriptionSummary), stale JSDoc fixed.
 
 ### Wave 2 — legibility + recovery
-- [ ] 2.1 `description` param on writes/terminal/python, surfaced in
-      approval UI + activity journal.
-- [ ] 2.2 File checkpoints + per-turn Revert.
-- [ ] 2.3 Mode collapse: Chat / Agent (default) / Careful; strip dead
-      color-gate machinery. (Read applyOpenclawToolPolicy path fully first.)
+- [x] 2.1 `description` param on fs_write_file / fs_edit_file /
+      fs_delete_file / terminal_run_command / python_run_script; intent
+      leads the approval card and the transcript tool node; journal notes
+      carry it as detail. (SHIPPED 2026-08-30)
+- [x] 2.2 File checkpoints (services/fileCheckpointService.ts, in-memory
+      ring of 50 per app run) wired into the three write tools; `/rewind`
+      lists and restores; reverts are themselves revertible. (SHIPPED
+      2026-08-30)
+- [ ] 2.3 Gating truth pass — findings from the full policy read:
+      interactive turns are ALREADY default-allow (M90 Rule 6
+      user-consent); the chat-input "Agent Autonomy" dial is CONNECTED TO
+      NOTHING (zero subscribers to onDidChangeAutonomy; its values don't
+      even match agentTypes' real vocabulary); the M65 color gate is
+      disarmed in the PolicyDecisionPoint by explicit M90 decision but a
+      FALLBACK decision path in languageModelToolsService still enforces
+      it and still gates old-style — two decision owners, drifted.
+      Proposal pending Mufaro's call (see session notes).
 
 ### Wave 3 — disclosure (flagged, behavior-affecting)
 - [ ] 3.1 Teaching prose moves from tool schemas to loadable guidance.
@@ -112,6 +124,9 @@ delegation is free. *(Evidence: Claude Code's Agent tool.)*
 | 2026-08-30 | 1.3 /compact fidelity | d935c96d | audit correction: trigger existed; third flattener replaced; cache dropped |
 | 2026-08-30 | 1.4 real token accounting | 0807e61a | mid-loop check anchored to provider promptTokens |
 | 2026-08-30 | 1.5 housekeeping | 5f25a117 | 4 dead modules deleted; displaySummary JSDoc truthful |
+| 2026-08-30 | 2.1 legible action | ff6d48fb | description arg on 5 tools; approval card + tool node + journal |
+| 2026-08-30 | 2.2 checkpoints + /rewind | 362b1487 | services/fileCheckpointService; reverts revertible |
+| 2026-08-30 | 2.2b gate compliance | (this) | checkpoints moved to services layer per the import gates |
 
 Wave 1 verification: tsc clean, full vitest 5,709 passed / 16 skipped / 0
 failed, build green. In-app eyes-on owed at next session: a long tool-heavy
