@@ -359,9 +359,9 @@ describe('RetrievalService', () => {
       const formatted = service.formatContext(chunks);
       const lines = formatted.split('\n');
       const sourceLines = lines.filter(l => l.includes('Source:'));
-      expect(sourceLines[0]).toBe('[1] Source: src/auth.ts');
-      expect(sourceLines[1]).toBe('[1] Source: src/auth.ts');
-      expect(sourceLines[2]).toBe('[2] Source: Notes');
+      expect(sourceLines[0]).toBe('[1] Source: src/auth.ts (relevance 0.90)');
+      expect(sourceLines[1]).toBe('[1] Source: src/auth.ts (relevance 0.80)');
+      expect(sourceLines[2]).toMatch(/^\[2\] Source: Notes \(relevance /);
     });
   });
 });

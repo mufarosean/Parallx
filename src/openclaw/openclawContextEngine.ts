@@ -428,7 +428,12 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
     if (contextSections.length > 0) {
       messages.push({
         role: 'user' as const,
-        content: `The following is standing context for this conversation (your plan, retrieved workspace content, recalled memories). Use it to inform your responses.\n\n${contextSections.join('\n\n---\n\n')}`,
+        // §3.2 — the citation rule rides only when there is something to cite.
+        content: 'The following is standing context for this conversation (your plan, retrieved workspace content, recalled memories). Use it to inform your responses.'
+          + (retrievedContextText
+            ? ' When you state a fact drawn from Retrieved Context, name its source ([n] label); each chunk carries a relevance score — treat low-relevance chunks as leads to verify with a read or search, never as answers.'
+            : '')
+          + `\n\n${contextSections.join('\n\n---\n\n')}`,
       });
     }
 

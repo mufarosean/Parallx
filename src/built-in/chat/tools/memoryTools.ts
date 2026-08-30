@@ -423,26 +423,19 @@ export function createMemoryEditTool(
   return {
     name: 'memory_write',
     displaySummary: 'Add, replace, or remove an entry in workspace memory.',
+    // HARNESS.md §3.1 — teaching lives ONCE, in the system prompt's
+    // "## Memory" section (buildMemorySection): file semantics, when to
+    // write, cap discipline, read-first. This description carries only the
+    // mechanical contract the schema can't express. It was 4K chars of
+    // duplicate prose re-billed on every request.
     description:
-      'Adds, replaces, or removes an entry in one of the workspace memory files — the canonical, durable record. ' +
-      '(For your OWN soft, evolving beliefs or hunches about the user that decay over time, use `mind_remember` instead.) ' +
-      'Use `file=USER` for facts about the user (identity, preferences, current focus). ' +
-      'Use `file=MEMORY` for durable workspace facts (decisions, conventions, project state). ' +
-      'Use `file=daily` to log dated events (today by default). ' +
-      'Use `file=lesson` for durable tool-use lessons / workarounds / things-to-remember-across-sessions ' +
-      '(e.g. "don\'t use X, use Y instead", recurring tool mistakes, gotchas). Each lesson is its own file at ' +
-      '`.parallx/memory/lessons/<slug>.md`; MEMORY.md only stores a short index pointing at it. ' +
-      'For `file=lesson` you must supply `slug` (kebab-case, ≤40 chars) — `description` (≤120 chars, one-line summary) ' +
-      'is required for add and optional for replace; `entry` is the lesson body. ' +
-      'Actions: `add` appends `entry` (or for lesson: writes a new lesson file + index entry); ' +
-      '`replace` substitutes `entry` for the first occurrence of `target` (or for lesson: rewrites the lesson body); ' +
-      '`remove` deletes the first occurrence of `target` (or for lesson: archives the file + drops the index entry). ' +
-      'USER.md is capped at 1,500 chars and MEMORY.md at 2,500 chars — if an `add` would exceed the cap (for lessons: ' +
-      'if the INDEX would exceed it), the tool returns the current contents so you can consolidate via `replace` or `remove` first. ' +
-      'Daily logs are unbounded. ' +
-      'Use this tool when the user states a durable preference, when a project decision is made, ' +
-      'when the user corrects a tool-use mistake (use `file=lesson`), or when a fact emerges that should carry across future sessions. ' +
-      'Read the file first with `memory_read` (or `memory_read name=<slug>` for a lesson) if you are unsure what is already there.',
+      'Mutate canonical workspace memory (see the Memory section for when and where). ' +
+      'Targets: `file=USER` | `MEMORY` | `daily` | `lesson`. ' +
+      'For `file=lesson`: `slug` (kebab-case, ≤40 chars) is required; `description` (≤120 chars) required on add; `entry` is the body. ' +
+      'Actions: `add` appends (lesson: new file + index line); `replace` swaps `entry` for the first occurrence of `target` (lesson: rewrites body); ' +
+      '`remove` deletes the first `target` occurrence (lesson: archives file + drops index line). ' +
+      'On a cap overflow the tool returns the current contents so you can consolidate first. ' +
+      '(For your own soft, decaying beliefs use `mind_remember` instead.)',
     parameters: {
       type: 'object',
       required: ['file', 'action'],

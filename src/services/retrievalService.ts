@@ -254,7 +254,11 @@ export class RetrievalService extends Disposable implements IRetrievalService {
 
       sections.push('---');
       const source = chunk.contextPrefix || chunk.sourceId;
-      sections.push(`[${idx}] Source: ${source}`);
+      // HARNESS.md §3.2 — surface the relevance score so the model can judge
+      // a strong hit from a near-miss instead of trusting every chunk equally.
+      // The harness surfaces evidence; the model judges (the same contract as
+      // raw search results in frontier harnesses).
+      sections.push(`[${idx}] Source: ${source} (relevance ${chunk.score.toFixed(2)})`);
       if (chunk.sourceType === 'file_chunk' && chunk.sourceId) {
         sections.push(`Path: ${chunk.sourceId}`);
       }
