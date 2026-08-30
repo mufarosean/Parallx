@@ -648,10 +648,24 @@ export async function executeOpenclawAttempt(
       break;
     }
 
-    // Mid-loop budget check: estimate total token usage after tool results.
-    // If accumulated messages exceed budget, compact before next model call.
-    // Upstream: re-budgets after each tool call in loop.
-    const loopTokenEstimate = estimateMessagesTokens(currentMessages);
+    // Mid-loop budget check: if accumulated messages exceed budget, compact
+    // before the next model call. Upstream: re-budgets after each tool call.
+    //
+    // HARNESS.md §1.4 — real token accounting. The provider just reported the
+    // TRUE prompt size of this round (promptTokens counts everything the
+    // estimate can't see: tool schemas, system prompt, provider framing, and
+    // real tokenization instead of chars/4 — which under-counts code by
+    // 20-50%). Use it as the base and only estimate this round's additions;
+    // fall back to the full estimate when the provider reported nothing.
+    // This round's completion (narration + tool-call JSON) is covered by the
+    // provider's completionTokens when reported — estimating the assistant
+    // message on top of it would double-count. Tool results are never in
+    // either provider figure, so they are always estimated.
+    const completionEstimate = turnResult.completionTokens
+      ?? estimateMessagesTokens([{ role: 'assistant', content: markdown, toolCalls: turnResult.toolCalls }]);
+    const loopTokenEstimate = promptTokens != null && promptTokens > 0
+      ? promptTokens + completionEstimate + estimateMessagesTokens(toolResultMessages)
+      : estimateMessagesTokens(currentMessages);
     if (context.tokenBudget > 0 && loopTokenEstimate > context.tokenBudget * 0.85) {
       response.progress(`Tool loop context near capacity (${loopTokenEstimate}/${context.tokenBudget} tokens), compacting...`);
       try {
