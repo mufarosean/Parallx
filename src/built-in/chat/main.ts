@@ -90,7 +90,6 @@ import { AutonomyLogService } from '../../services/autonomyLogService.js';
 import {
   AutonomyFeatureFlagsService,
   FLAG_PAUSED_GLOBAL,
-  FLAG_CRON_ENABLED,
   FLAG_SUBAGENT_ENABLED,
   FLAG_PATTERN_MEMORY_ENABLED,
   isAutonomyTriggerAllowed,
@@ -493,7 +492,6 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       rename?: (oldPath: string, newPath: string) => Promise<{ ok: boolean; error?: string }>;
     };
   } }).parallxElectron;
-  const _appPath = _bridge?.appPath;
   const _fsBridge = _bridge?.fs;
 
   const autonomyEventLog = api.services.has(IAutonomyEventLog)
@@ -1631,125 +1629,37 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     // (§3c) and is patched into `cronHeartbeatRunnerRef` at that point.
     // If cron fires before heartbeat is up, the wake is a no-op.
     if (surfaceRouter) {
-      // M58-real (W4-real): cron executor now runs real isolated LLM turns
-      // via the W5 ephemeral-session substrate when `payload.agentTurn` is
-      // set. See openclawCronExecutor.ts for the reason §6.5 ship-thin was
-      // superseded.
-      const chatServiceForCron = chatService as unknown as import('../../services/chatService.js').ChatService;
-      const cronExecutor = createCronTurnExecutor(surfaceRouter, {
-        chatService: {
-          createEphemeralSession: (parentId, seed) =>
-            chatServiceForCron.createEphemeralSession(parentId, seed),
-          purgeEphemeralSession: (handle) =>
-            chatServiceForCron.purgeEphemeralSession(handle),
-          sendRequest: (sid, msg, opts) => chatService.sendRequest(sid, msg, opts),
-          getSession: (sid) => chatService.getSession(sid),
-        },
-        getParentSessionId: () => _activeWidget?.getSession()?.id,
-      });
-      const cronContextFetcher = createCronContextLineFetcher({
-        getActiveSession: () => {
-          const id = _activeWidget?.getSession()?.id;
-          return id ? chatService.getSession(id) : undefined;
-        },
-      });
-      cronService = new CronService(cronExecutor, cronContextFetcher, cronHeartbeatWaker);
-
-      // M63 P0 — expose CronService through DI so extensions can reach it
-      // via parallx.services.get(ICronService) (used by parallx.cron.upsertJob).
-      api.services.registerInstance(ICronService, cronService);
-
-      // ── M60 Phase γ §3.8/§3.10 — cron controls layer ──
-      cronService.setObservers({
-        isFlagEnabled: () => isAutonomyTriggerAllowed(autonomyFlags, FLAG_CRON_ENABLED),
-        onAutonomyEvent: autonomyEventLog
-          ? (info) => {
-              autonomyEventLog!.emit({
-                trigger: { kind: 'cron', ref: info.jobId },
-                outcome: info.outcome,
-                durationMs: info.durationMs,
-                toolCalls: [{
-                  name: 'cron.fire',
-                  argsDigest: info.idempotencyKey,
-                  durationMs: info.durationMs,
-                  idempotencyKey: info.idempotencyKey,
-                  ...(info.note ? { error: info.note } : {}),
-                }],
-                note: info.note,
-              });
-            }
-          : undefined,
-      });
-
-      // ── M61 Phase 2 — cron persistence (`<workspace>/.parallx/cron.json`) ──
-      //
-      // Per-workspace persistence so cron jobs scheduled in workspace A
-      // don't fire in workspace B (decision B in `Parallx_Milestone_61.md`).
-      // Migration shim: on first load, if the legacy global file
-      // `<APP_ROOT>/data/cron.json` exists and the workspace file does not,
-      // copy it once. The legacy file is left in place for one release.
-      //
-      // Falls back to in-memory when the fs bridge or workspace folder is
-      // unavailable (test envs, no folder open).
-      const _cronWorkspaceFolder = workspaceService?.folders[0]?.uri.fsPath;
-      if (_appPath && _fsBridge && _cronWorkspaceFolder) {
-        const cronJsonPath = `${_cronWorkspaceFolder}/.parallx/cron.json`;
-        const cronJsonDir = `${_cronWorkspaceFolder}/.parallx`;
-        const legacyCronJsonPath = `${_appPath}/data/cron.json`;
-        cronService.setPersistence({
-          load: async () => {
-            try {
-              const wsExists = await _fsBridge.exists(cronJsonPath);
-              if (wsExists.ok && wsExists.exists) {
-                const result = await _fsBridge.readFile(cronJsonPath, 'utf-8');
-                if (!result.ok || typeof result.data !== 'string') return null;
-                return JSON.parse(result.data);
-              }
-              // Migration shim: copy legacy global file once.
-              const legacyExists = await _fsBridge.exists(legacyCronJsonPath);
-              if (legacyExists.ok && legacyExists.exists) {
-                const legacyRead = await _fsBridge.readFile(legacyCronJsonPath, 'utf-8');
-                if (legacyRead.ok && typeof legacyRead.data === 'string') {
-                  await _fsBridge.mkdir(cronJsonDir);
-                  await _fsBridge.writeFile(cronJsonPath, legacyRead.data, 'utf-8');
-                  return JSON.parse(legacyRead.data);
-                }
-              }
-              return null;
-            } catch {
-              return null;
-            }
+      // Phase D step 5b: the scheduler is CORE's — constructed, observed,
+      // persisted, and hydrated in autonomyBootstrap before any tool
+      // activated. Chat attaches the half only it can supply — the
+      // executor that runs real isolated LLM turns via the W5
+      // ephemeral-session substrate — and then starts the timer, so
+      // missed-job catchup (M60 §3.7) still runs against the restored set.
+      cronService = api.services.has(ICronService)
+        ? api.services.get<CronService>(ICronService)
+        : undefined;
+      if (cronService) {
+        const chatServiceForCron = chatService as unknown as import('../../services/chatService.js').ChatService;
+        const cronExecutor = createCronTurnExecutor(surfaceRouter, {
+          chatService: {
+            createEphemeralSession: (parentId, seed) =>
+              chatServiceForCron.createEphemeralSession(parentId, seed),
+            purgeEphemeralSession: (handle) =>
+              chatServiceForCron.purgeEphemeralSession(handle),
+            sendRequest: (sid, msg, opts) => chatService.sendRequest(sid, msg, opts),
+            getSession: (sid) => chatService.getSession(sid),
           },
-          save: async (snapshot) => {
-            try {
-              await _fsBridge.mkdir(cronJsonDir);
-              await _fsBridge.writeFile(cronJsonPath, JSON.stringify(snapshot, null, 2), 'utf-8');
-            } catch {
-              /* persistence failures don't affect in-memory truth */
-            }
+          getParentSessionId: () => _activeWidget?.getSession()?.id,
+        });
+        const cronContextFetcher = createCronContextLineFetcher({
+          getActiveSession: () => {
+            const id = _activeWidget?.getSession()?.id;
+            return id ? chatService.getSession(id) : undefined;
           },
         });
-        // Hydrate before start() so missed-job catchup (M60 §3.7) sees
-        // the restored job set; coalesces multiple missed firings into one.
-        //
-        // CRITICAL: we MUST await hydration here, not fire-and-forget.
-        // The activator awaits this `activate()` before moving to the next
-        // extension, so awaiting loadFromPersistence guarantees that any
-        // downstream extension (budget, etc.) calling `api.cron.upsertJob`
-        // sees the already-restored job set via `_findByName`. The earlier
-        // `void load.then(start)` pattern raced: budget would addJob with
-        // a fresh anchor (= now) before persistence loaded, then the
-        // hydration would restore the original in memory but the racing
-        // save had already written the fresh-anchor snapshot to disk,
-        // corrupting it for the next launch. Net effect: cron's
-        // `nextRunAt` reset on every launch. Awaiting closes the race.
-        await cronService.loadFromPersistence();
-        cronService.start();
-      } else {
+        cronService.attachExecution(cronExecutor, cronContextFetcher, cronHeartbeatWaker);
         cronService.start();
       }
-
-      context.subscriptions.push(cronService);
     }
 
     // ── SubagentSpawner (M58 W5) ──

@@ -9,13 +9,17 @@
 // the workspace folders are known and before any tool activates; chat
 // resolves them like every other consumer.
 //
-// Cron and the background prompt runner stay chat-constructed for now:
-// their EXECUTORS are genuinely chat-domain (ephemeral sessions,
-// sendRequest). Step 5b gives cron a pluggable-executor seam.
+// Step 5b adds the cron scheduler: CORE constructs and hydrates it (so
+// every extension sees the restored job set from boot, and the AI Hub's
+// job list works whether or not chat is up), while the EXECUTION half —
+// genuinely chat-domain, it runs turns in ephemeral sessions — is
+// late-bound: chat calls attachExecution(...) and then start(). The
+// background prompt runner stays chat-constructed for the same reason.
 
 import type { IDisposable } from '../platform/lifecycle.js';
 import type { ServiceCollection } from './serviceCollection.js';
-import { AutonomyFeatureFlagsService } from './autonomyFeatureFlags.js';
+import { CronService, ICronService } from '../openclaw/openclawCronService.js';
+import { AutonomyFeatureFlagsService, isAutonomyTriggerAllowed, FLAG_CRON_ENABLED } from './autonomyFeatureFlags.js';
 import { AutonomyEventLog, type IAutonomyEventLogFs } from './autonomyEventLog.js';
 import { AutonomyPatternMemoryService, type IAutonomyPatternMemoryFs } from './autonomyPatternMemoryService.js';
 import { AutonomyTaskRailService } from './autonomyTaskRailService.js';
@@ -33,6 +37,8 @@ interface AutonomyFsBridge {
   rename?: (oldPath: string, newPath: string) => Promise<{ ok: boolean; error?: string }>;
   exists?: (path: string) => Promise<{ ok: boolean; exists?: boolean; error?: string }>;
   mkdir?: (path: string) => Promise<{ ok: boolean; error?: string }>;
+  readFile?: (path: string, encoding: string) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
+  writeFile?: (path: string, data: string, encoding: string) => Promise<{ ok: boolean; error?: string }>;
 }
 
 /**
@@ -40,10 +46,10 @@ interface AutonomyFsBridge {
  * AFTER workspace folders are restored (the log and pattern dirs are
  * workspace-scoped) and before any tool activates.
  */
-export function bootstrapAutonomyServices(
+export async function bootstrapAutonomyServices(
   services: ServiceCollection,
   workspaceFolder: string | undefined,
-): IDisposable[] {
+): Promise<IDisposable[]> {
   const disposables: IDisposable[] = [];
 
   const bridge = (globalThis as { parallxElectron?: { appPath?: string; fs?: AutonomyFsBridge } }).parallxElectron;
@@ -141,6 +147,77 @@ export function bootstrapAutonomyServices(
     void patterns.initialize().catch(() => { /* defaults apply */ });
     disposables.push(patterns);
     services.registerInstance(IAutonomyPatternMemoryService, patterns);
+  }
+
+  // ── Cron scheduler (M58 W4 / step 5b) — constructed and HYDRATED here,
+  //    started by chat once it attaches the execution half. Hydration is
+  //    awaited so every extension that upserts jobs during activation sees
+  //    the restored set (the fresh-anchor corruption race, M61). ──
+  const cron = new CronService();
+  disposables.push(cron);
+  services.registerInstance(ICronService, cron);
+
+  cron.setObservers({
+    isFlagEnabled: () => isAutonomyTriggerAllowed(flags, FLAG_CRON_ENABLED),
+    onAutonomyEvent: eventLog
+      ? (info) => {
+          eventLog!.emit({
+            trigger: { kind: 'cron', ref: info.jobId },
+            outcome: info.outcome,
+            durationMs: info.durationMs,
+            toolCalls: [{
+              name: 'cron.fire',
+              argsDigest: info.idempotencyKey,
+              durationMs: info.durationMs,
+              idempotencyKey: info.idempotencyKey,
+              ...(info.note ? { error: info.note } : {}),
+            }],
+            note: info.note,
+          });
+        }
+      : undefined,
+  });
+
+  // Per-workspace persistence (`<workspace>/.parallx/cron.json`) with the
+  // one-shot legacy-global copy shim (M61 decision B). In-memory when the
+  // bridge or folder is unavailable.
+  if (workspaceFolder && appPath && fs?.exists && fs.readFile && fs.writeFile && fs.mkdir) {
+    const cronJsonPath = `${workspaceFolder}/.parallx/cron.json`;
+    const cronJsonDir = `${workspaceFolder}/.parallx`;
+    const legacyCronJsonPath = `${appPath}/data/cron.json`;
+    cron.setPersistence({
+      load: async () => {
+        try {
+          const wsExists = await fs.exists!(cronJsonPath);
+          if (wsExists.ok && wsExists.exists) {
+            const result = await fs.readFile!(cronJsonPath, 'utf-8');
+            if (!result.ok || typeof result.data !== 'string') return null;
+            return JSON.parse(result.data);
+          }
+          const legacyExists = await fs.exists!(legacyCronJsonPath);
+          if (legacyExists.ok && legacyExists.exists) {
+            const legacyRead = await fs.readFile!(legacyCronJsonPath, 'utf-8');
+            if (legacyRead.ok && typeof legacyRead.data === 'string') {
+              await fs.mkdir!(cronJsonDir);
+              await fs.writeFile!(cronJsonPath, legacyRead.data, 'utf-8');
+              return JSON.parse(legacyRead.data);
+            }
+          }
+          return null;
+        } catch {
+          return null;
+        }
+      },
+      save: async (snapshot) => {
+        try {
+          await fs.mkdir!(cronJsonDir);
+          await fs.writeFile!(cronJsonPath, JSON.stringify(snapshot, null, 2), 'utf-8');
+        } catch {
+          /* persistence failures don't affect in-memory truth */
+        }
+      },
+    });
+    await cron.loadFromPersistence();
   }
 
   return disposables;

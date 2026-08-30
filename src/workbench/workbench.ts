@@ -3194,7 +3194,7 @@ export class Workbench extends Layout {
     // lived in src/services but whose CONSTRUCTION lived in chat's activate.
     // Core builds them now, after folders are restored and before any tool
     // activates; chat resolves them like every other consumer.
-    for (const d of bootstrapAutonomyServices(this._services, this._workspace.folders[0]?.uri.fsPath)) {
+    for (const d of await bootstrapAutonomyServices(this._services, this._workspace.folders[0]?.uri.fsPath)) {
       this._register(d);
     }
 

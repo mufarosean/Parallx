@@ -268,11 +268,36 @@ export class CronService implements IDisposable {
   private readonly _onDidChangeJobs = new Emitter<ICronJobChangeEvent>();
   readonly onDidChangeJobs: Event<ICronJobChangeEvent> = this._onDidChangeJobs.event;
 
+  private _executor: CronTurnExecutor | undefined;
+  private _contextFetcher: ContextLineFetcher | undefined;
+  private _heartbeatWaker: HeartbeatWaker | null;
+
   constructor(
-    private readonly _executor: CronTurnExecutor,
-    private readonly _contextFetcher: ContextLineFetcher,
-    private readonly _heartbeatWaker: HeartbeatWaker | null,
-  ) {}
+    executor?: CronTurnExecutor,
+    contextFetcher?: ContextLineFetcher,
+    heartbeatWaker: HeartbeatWaker | null = null,
+  ) {
+    this._executor = executor;
+    this._contextFetcher = contextFetcher;
+    this._heartbeatWaker = heartbeatWaker;
+  }
+
+  /**
+   * Phase D step 5b — late-bind the execution half. CORE constructs and
+   * hydrates the scheduler (autonomyBootstrap) so jobs are visible to
+   * every extension from boot; the tool that can actually RUN a turn
+   * (chat, whose executor needs ephemeral sessions) attaches here and
+   * then calls start(). Same setter pattern as observers/persistence.
+   */
+  attachExecution(
+    executor: CronTurnExecutor,
+    contextFetcher: ContextLineFetcher,
+    heartbeatWaker: HeartbeatWaker | null,
+  ): void {
+    this._executor = executor;
+    this._contextFetcher = contextFetcher;
+    this._heartbeatWaker = heartbeatWaker;
+  }
 
   /**
    * M60 Phase γ §3.8/§3.10 — install autonomy controls. Idempotent. Setter
@@ -724,6 +749,13 @@ export class CronService implements IDisposable {
     }
 
     try {
+      // A started scheduler always has its execution attached (chat calls
+      // attachExecution before start); a firing without one is a wiring bug
+      // and lands in the catch as a failed run, not a silent no-op.
+      if (!this._executor || !this._contextFetcher) {
+        throw new Error('cron execution not attached — attachExecution() must precede start()');
+      }
+
       // Handle wake mode
       if (job.wakeMode === 'next-heartbeat' && this._heartbeatWaker) {
         // Upstream: "next-heartbeat" piggybacks on next heartbeat
