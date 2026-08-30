@@ -98,12 +98,19 @@ commands became core descriptors; TEXT_EDITOR_MANIFEST and the app's only
 failing dependents loudly pre-state-change; the array's ordering folklore
 retired). Step 10 SHIPPED (8c22c1af: manifest `required` pins six —
 explorer/canvas/chat/dashboard/settings/gallery; every other tool
-toggles live through the until-now-unreachable M6 orchestration). Step 9
-SHIPPED (abbfc820: boot honors lazy events, viewContribution fires
-onView on first mount — it had ZERO callers — and the activation
-listener gains the built-in module branch; Search, Gallery, Appearance
-are the lazy pilots). PHASE D CODE-COMPLETE — pending the second field
-check (lazy wakes, editor panes, enablement toggles).
+toggles live through the until-now-unreachable M6 orchestration). Step 9 SHIPPED, then CORRECTED IN THE FIELD (abbfc820 + 8ead0d4c +
+d2596dea): the boot loop honors lazy events and the activation listener
+gained the built-in module branch — but the field run proved onView can
+NEVER fire lazily here: every view pre-materializes at boot (core
+sidebar createViewSync; contributed views in _addViewToContainer), so a
+lazy Search showed the legacy demo placeholder forever. Search and the
+Gallery are eager again with the reason written at their manifests;
+onCommand is the ONE real lazy path (the Appearance editor is the
+working pilot); lazyActivationCompliance.test.ts is the canary keeping
+view-owning built-ins eager until deferred materialization exists.
+LESSON: the waived probe pass earned its place — lazy activation was
+the flagged eyes-on step, and it was the one that broke. PHASE D
+COMPLETE pending the final relaunch check.
 
 1. **Delete the six shadow parallx-manifest.json files.** They are dead
    copies of builtinManifests.ts that mislead (I updated explorer's this
