@@ -63,6 +63,7 @@ import { LAYOUT_SCHEMA_VERSION, SerializedNodeType, type SerializedGridNode } fr
 import { IIntrospectionService, IntrospectionService } from '../services/introspectionService.js';
 import { createWorkbenchDiagnosticChecks } from '../services/workbenchDiagnosticChecks.js';
 import { bootstrapSettingsRegistry } from '../services/settingsRegistryBootstrap.js';
+import { bootstrapAutonomyServices } from '../services/autonomyBootstrap.js';
 import { CONTAINER_DRAG_TYPE } from '../platform/dragTypes.js';
 import { registerBuiltinEditorDeserializers, deserializeEditorInput, hasEditorInputDeserializer } from '../editor/editorInputDeserializer.js';
 import type { IEditorInput } from '../editor/editorInput.js';
@@ -3179,12 +3180,22 @@ export class Workbench extends Layout {
       };
       surfaceStorageErrors(this._storage, 'workspace storage');
       surfaceStorageErrors(this._globalStorage, 'global storage');
+    }
 
-      // Python runs are consequential enough that they belong in the same
-      // narrative as everything else the user and assistant did.
-      if (this._services.has(IPythonEnvService)) {
-        (this._services.get(IPythonEnvService) as PythonEnvService).attachJournal(journal);
-      }
+    // Python runs are consequential enough that they belong in the same
+    // narrative as everything else the user and assistant did.
+    if (this._services.has(IActivityJournalService) && this._services.has(IPythonEnvService)) {
+      (this._services.get(IPythonEnvService) as PythonEnvService)
+        .attachJournal(this._services.get(IActivityJournalService));
+    }
+
+    // ── Autonomy substrate (Phase D step 5a): flags, event log, task rail,
+    // pattern memory — storage-shaped infrastructure whose modules always
+    // lived in src/services but whose CONSTRUCTION lived in chat's activate.
+    // Core builds them now, after folders are restored and before any tool
+    // activates; chat resolves them like every other consumer.
+    for (const d of bootstrapAutonomyServices(this._services, this._workspace.folders[0]?.uri.fsPath)) {
+      this._register(d);
     }
 
     // Point the Python service at this workspace. Every environment lives at

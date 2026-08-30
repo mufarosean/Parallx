@@ -45,7 +45,7 @@ import type {
   IChatMessage,
   IChatResponseChunk,
 } from '../../services/chatTypes.js';
-import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService, IDiagnosticsService, IDocumentExtractionService, IObservabilityService, IRuntimeHookRegistry, ILayoutService, IEmbeddingService, IWorkspaceStorageService, ISurfaceRouterService, IAutonomyLogService, ISettingsRegistryService, IAutonomyTaskRailService, IAutonomyPatternMemoryService, IAutonomyFeatureFlagsService, ISemanticGraphService, IMindMapRefreshOrchestrator, ICanvasPageQueryService, IPlannerQueryService } from '../../services/serviceTypes.js';
+import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService, IDiagnosticsService, IDocumentExtractionService, IObservabilityService, IRuntimeHookRegistry, ILayoutService, IEmbeddingService, IWorkspaceStorageService, ISurfaceRouterService, IAutonomyLogService, IAutonomyEventLog, ISettingsRegistryService, IAutonomyTaskRailService, IAutonomyPatternMemoryService, IAutonomyFeatureFlagsService, ISemanticGraphService, IMindMapRefreshOrchestrator, ICanvasPageQueryService, IPlannerQueryService } from '../../services/serviceTypes.js';
 import { IActivityJournalService } from '../../services/activityJournalService.js';
 import { IPythonEnvService } from '../../services/pythonEnvService.js';
 import { INotebookKernelService } from '../../services/notebookKernelService.js';
@@ -102,7 +102,6 @@ import {
 import {
   AutonomyPatternMemoryService,
   computeArgsShape,
-  type IAutonomyPatternMemoryFs,
 } from '../../services/autonomyPatternMemoryService.js';
 import { AutonomyTaskRailService } from '../../services/autonomyTaskRailService.js';
 import type { IRailFilter, IRailRow } from '../../services/autonomyTaskRailService.js';
@@ -363,21 +362,17 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
 
   // ── M60 §3.8 + §3.10: Autonomy controls layer ──────────────────────────
   //
-  // Feature flags + structured event log. Constructed here in the chat
-  // extension activation so they sit alongside the autonomy machinery
-  // they gate, and are wired into:
-  //   - SurfaceRouterService (§3.8 surface gating + §3.10 route events)
-  //   - openclaw default participant services (§3.8 followup gating +
-  //     §3.10 followup outcome events)
-  //
-  // Defaults from M60 §3.8: followup + chat/notification/statusbar surfaces
-  // ON; canvas + filesystem surfaces OFF until C3 lands.
-  const _autonomyFlagsStorage = api.services.has(IWorkspaceStorageService)
-    ? api.services.get<import('../../platform/storage.js').IStorage>(IWorkspaceStorageService)
-    : undefined;
-  const autonomyFlags = new AutonomyFeatureFlagsService(_autonomyFlagsStorage);
-  void autonomyFlags.initialize().catch(() => { /* defaults apply */ });
-  context.subscriptions.push(autonomyFlags);
+  // Phase D step 5a: the substrate (feature flags, event log, task rail,
+  // pattern memory) is CORE's — the workbench constructs it in
+  // autonomyBootstrap before any tool activates. Chat resolves the pieces
+  // and wires them into the machinery they gate (SurfaceRouterService,
+  // the openclaw participant services, cron). Flags fail loudly like the
+  // autonomy log: a missing registration is a bootstrap-order bug, and a
+  // silent private fallback is how desyncs sneak in.
+  if (!api.services.has(IAutonomyFeatureFlagsService)) {
+    throw new Error('[chat] IAutonomyFeatureFlagsService not registered — workbench bootstrap order broken');
+  }
+  const autonomyFlags = api.services.get<AutonomyFeatureFlagsService>(IAutonomyFeatureFlagsService);
 
   // ── Settings schemas (chat's own) ────────────────────────────────────────
   //
@@ -486,12 +481,11 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     ]);
   }
 
-  // §3.10 event log — writes ndjson to per-workspace
-  // `<workspace>/.parallx/logs/autonomy-events.<day>.ndjson`. Legacy global
-  // logs at `<APP_ROOT>/data/autonomy-events.*.ndjson` are migrated into
-  // `<workspace>/.parallx/logs/legacy/` on first launch so old runs don't
-  // interleave with new workspace-scoped events. Falls back to a no-op
-  // writer when the fs bridge is unavailable (tests).
+  // The preload bridge — still needed by chat's own machinery below (fs
+  // workspace root, cron persistence). The autonomy substrate that used to
+  // be constructed here over this bridge (event log, task rail, pattern
+  // memory, with their legacy-file migrations) now comes from CORE's
+  // autonomyBootstrap (Phase D step 5a) and is resolved just below.
   const _bridge = (globalThis as { parallxElectron?: {
     appPath?: string;
     fs?: IAutonomyEventLogFs & {
@@ -502,109 +496,15 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   const _appPath = _bridge?.appPath;
   const _fsBridge = _bridge?.fs;
 
-  // Resolve the active workspace folder up front so the autonomy log can be
-  // scoped to it. We re-derive workspaceService here (the canonical lookup
-  // happens below at line ~495) rather than reorder the whole activate
-  // body — it's idempotent and keeps the autonomy block self-contained.
-  const _autonomyWsFolder = (api.services.has(IWorkspaceService)
-    ? api.services.get<import('../../services/serviceTypes.js').IWorkspaceService>(IWorkspaceService)
-    : undefined)?.folders[0]?.uri.fsPath;
-
-  const _autonomyLogDir = _autonomyWsFolder
-    ? `${_autonomyWsFolder}/.parallx/logs`
-    : (_appPath ? `${_appPath}/data` : undefined);
-
-  // One-shot migration: move any legacy global autonomy-events.*.ndjson into
-  // the workspace's `legacy/` subfolder. Best-effort — if it fails, legacy
-  // files remain at APP_ROOT/data and the workspace gets a fresh log dir.
-  if (_autonomyWsFolder && _appPath && _fsBridge?.readdir && _fsBridge.rename) {
-    void (async () => {
-      try {
-        const legacyDir = `${_appPath}/data`;
-        const targetDir = `${_autonomyWsFolder}/.parallx/logs/legacy`;
-        const listing = await _fsBridge.readdir!(legacyDir);
-        if (!listing.ok || !listing.entries) return;
-        const matches = listing.entries
-          .map(e => e.name)
-          .filter(n => typeof n === 'string' && n.startsWith('autonomy-events.') && n.endsWith('.ndjson'));
-        if (matches.length === 0) return;
-        await _fsBridge.mkdir(targetDir);
-        for (const name of matches) {
-          const src = `${legacyDir}/${name}`;
-          const dst = `${targetDir}/${name}`;
-          const dstExists = await _fsBridge.exists(dst);
-          if (dstExists.ok && dstExists.exists) continue;
-          await _fsBridge.rename!(src, dst);
-        }
-        console.log(`[AutonomyEventLog] Migrated ${matches.length} legacy global log(s) to ${targetDir}`);
-      } catch (err) {
-        console.warn('[AutonomyEventLog] Legacy log migration skipped:', err);
-      }
-    })();
-  }
-
-  let autonomyEventLog: AutonomyEventLog | undefined;
-  if (_autonomyLogDir && _fsBridge) {
-    autonomyEventLog = new AutonomyEventLog(_fsBridge, {
-      dataDir: _autonomyLogDir,
-    });
-    context.subscriptions.push(autonomyEventLog);
-  }
-
-  // ── M60 §8 Phase ζ — task rail viewmodel + pattern memory ───────────────
-  //
-  // Rail is a read-only viewmodel merging in-memory live entries
-  // (AutonomyLogService) with persisted ndjson history (AutonomyEventLog).
-  // Pattern memory persists "remember this approval" decisions for sub-agent
-  // spawns to `<workspace>/.parallx/autonomy-patterns.json` (per-workspace —
-  // approvals granted in workspace A must not auto-apply in workspace B).
-  // Legacy global file at `<APP_ROOT>/data/autonomy-patterns.json` is
-  // migrated into the current workspace on first launch.
-  const autonomyTaskRail = new AutonomyTaskRailService(autonomyLog, autonomyEventLog);
-  context.subscriptions.push(autonomyTaskRail);
-  if (!api.services.has(IAutonomyTaskRailService)) {
-    api.services.registerInstance(IAutonomyTaskRailService, autonomyTaskRail);
-  }
-
-  const _patternMemoryDir = _autonomyWsFolder
-    ? `${_autonomyWsFolder}/.parallx`
-    : (_appPath ? `${_appPath}/data` : undefined);
-
-  // One-shot migration: move legacy global autonomy-patterns.json into the
-  // workspace's `.parallx/` dir. Best-effort; skipped silently on failure.
-  if (_autonomyWsFolder && _appPath && _fsBridge?.exists && _fsBridge.rename && _fsBridge.mkdir) {
-    void (async () => {
-      try {
-        const legacyFile = `${_appPath}/data/autonomy-patterns.json`;
-        const targetFile = `${_autonomyWsFolder}/.parallx/autonomy-patterns.json`;
-        const legacyExists = await _fsBridge.exists(legacyFile);
-        if (!legacyExists.ok || !legacyExists.exists) return;
-        const targetExists = await _fsBridge.exists(targetFile);
-        if (targetExists.ok && targetExists.exists) return;
-        await _fsBridge.mkdir(`${_autonomyWsFolder}/.parallx`);
-        await _fsBridge.rename!(legacyFile, targetFile);
-        console.log(`[AutonomyPatternMemory] Migrated legacy global approvals to ${targetFile}`);
-      } catch (err) {
-        console.warn('[AutonomyPatternMemory] Legacy approvals migration skipped:', err);
-      }
-    })();
-  }
-
-  let autonomyPatternMemory: AutonomyPatternMemoryService | undefined;
-  if (_patternMemoryDir) {
-    autonomyPatternMemory = new AutonomyPatternMemoryService({
-      dataDir: _patternMemoryDir,
-      fs: _fsBridge as IAutonomyPatternMemoryFs | undefined,
-    });
-    void autonomyPatternMemory.initialize().catch(() => { /* defaults apply */ });
-    context.subscriptions.push(autonomyPatternMemory);
-    if (!api.services.has(IAutonomyPatternMemoryService)) {
-      api.services.registerInstance(IAutonomyPatternMemoryService, autonomyPatternMemory);
-    }
-  }
-  if (!api.services.has(IAutonomyFeatureFlagsService)) {
-    api.services.registerInstance(IAutonomyFeatureFlagsService, autonomyFlags);
-  }
+  const autonomyEventLog = api.services.has(IAutonomyEventLog)
+    ? api.services.get<AutonomyEventLog>(IAutonomyEventLog)
+    : undefined;
+  const autonomyTaskRail = api.services.has(IAutonomyTaskRailService)
+    ? api.services.get<AutonomyTaskRailService>(IAutonomyTaskRailService)
+    : undefined;
+  const autonomyPatternMemory = api.services.has(IAutonomyPatternMemoryService)
+    ? api.services.get<AutonomyPatternMemoryService>(IAutonomyPatternMemoryService)
+    : undefined;
 
   // ── 1. Retrieve DI services ──
 
@@ -3289,6 +3189,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       };
       let rows: readonly IRailRow[] = [];
       try {
+        if (!autonomyTaskRail) return [];
         rows = await autonomyTaskRail.readRows(filter);
       } catch (err) {
         console.warn('[chat] getRecentAutonomyEvents failed:', err);
