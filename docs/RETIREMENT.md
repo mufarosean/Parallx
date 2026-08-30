@@ -306,4 +306,33 @@ either an afternoon (retire) or the next milestone (mount).
   collision died with the deletion — "surface" now means exactly one
   thing in-tree (an OpenClaw delivery channel). Optional upstream-parity
   polish only; re-open only if Mufaro wants the upstream vocabulary.
-- 4a sidebar — PENDING (the last part; Mufaro reachable, eyes-on).
+- 4a sidebar — SHIPPED (the last part; verified by gates + static
+  seam-audit, in-app eyes-on owed at next boot). ONE sidebar path: the
+  hardcoded boot loop, demo-content placeholders (placeholderViews.ts,
+  the View base class, ViewDescriptorBuilder, their CSS), the
+  title-match container redirects, and the innerHTML placeholder
+  surgery are all deleted. Explorer and Search seat through the
+  contributed pipeline from their manifests (explorer-container /
+  search-container, icons from the registry). Parity closed: sidebar
+  containers are ALWAYS stacked (single-view containers look identical
+  — the section header hides at ≤1 view); the first-arriving container
+  becomes active (Explorer, required + first — replaces the ×3
+  hardcoded seeding); per-container chrome (section menus, draggable
+  tabs, saver registration, pending state) wires on
+  onDidAddSidebarContainer; the generic 'sidebar' fallback is a REAL
+  empty container now, not an alias of Explorer. Legacy persisted ids
+  (rails, floating boxes) resolve via resolveLegacyContainerId. Found
+  while cutting: builtin container state restore NEVER worked (saved
+  under 'sidebar.view.explorer', restored under 'view.explorer') —
+  contributed container state now saves AND restores for the first
+  time, via a live saver array + pending-state application.
+  containerRails.test.ts reworked against the real pipeline (14
+  tests); e2e 95/97 ids updated. Deferred materialization → real
+  onView is now POSSIBLE (future work; lazyActivationCompliance.test.ts
+  still guards).
+
+THE CHARTER IS COMPLETE. Every part shipped; the right systems are the
+only systems. Eyes-on verification owed on next boot: sidebar boots via
+the contributed path (brief blank sidebar before Explorer activates
+replaces the old fake-content flash), icon looks come from the
+registry, Welcome recents populate.

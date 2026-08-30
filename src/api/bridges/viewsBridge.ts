@@ -8,7 +8,7 @@ import { IDisposable, toDisposable } from '../../platform/lifecycle.js';
 import { Emitter } from '../../platform/events.js';
 import { $,  hide, show } from '../../ui/dom.js';
 import type { ViewManager } from '../../views/viewManager.js';
-import type { IView, ViewState } from '../../views/view.js';
+import type { IView, ViewState } from '../../views/viewTypes.js';
 import { DEFAULT_SIZE_CONSTRAINTS } from '../../layout/layoutTypes.js';
 import type { ViewContributionProcessor } from '../../contributions/viewContribution.js';
 

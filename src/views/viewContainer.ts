@@ -7,7 +7,7 @@ import { Orientation } from '../layout/layoutTypes.js';
 import { $, addDisposableListener, hide, show } from '../ui/dom.js';
 import { beginPointerDrag } from '../ui/interactionMode.js';
 import { IGridView } from '../layout/gridView.js';
-import { IView } from './view.js';
+import type { IView } from './viewTypes.js';
 import { ContextMenu, type IContextMenuItem } from '../ui/contextMenu.js';
 import type { ViewContainerState } from './viewTypes.js';
 export type { ViewContainerState } from './viewTypes.js';

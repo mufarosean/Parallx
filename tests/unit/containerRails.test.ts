@@ -1,12 +1,16 @@
 /**
  * Phase A — containers are citizens, rails are stacks.
+ * Reworked for Retirement 4a: ONE sidebar path — every sidebar container
+ * (Explorer included) arrives through the contributed pipeline.
  *
- * Pins the rail mechanics end to end: a container moved to the other rail
- * travels WITH its icon and its DOM, active-state bookkeeping heals on both
- * sides, a built-in returns to its builtin map on the way back, and rail
+ * Pins the rail mechanics end to end: a contributed container seats in the
+ * sidebar and auto-activates when it is first, moves to the other rail WITH
+ * its icon and its DOM, active-state bookkeeping heals on both sides, rail
  * placements survive as pending assignments for containers that arrive
- * after restore. Plus the ribbon itself: an icon drag carries the container
- * payload, and a foreign icon dropped on a ribbon reports the dock request.
+ * after restore (legacy pre-4a ids resolving to their manifest ids), and a
+ * provider registering AFTER its container moved or floated still fills the
+ * view. Plus the ribbon itself: an icon drag carries the container payload,
+ * and a foreign icon dropped on a ribbon reports the dock request.
  *
  * @vitest-environment jsdom
  */
@@ -14,6 +18,7 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest';
 import {
   WorkbenchContributionHandler,
+  resolveLegacyContainerId,
   type ContributionHandlerHost,
 } from '../../src/workbench/workbenchContributionHandler';
 import { ActivityBarPart } from '../../src/parts/activityBarPart';
@@ -65,15 +70,34 @@ function fakeRailPart(withContainerSlot = false): Part & { viewContainerSlot?: H
   return part;
 }
 
-describe('container rails', () => {
+const tick = () => new Promise<void>((r) => setTimeout(r, 0));
+
+describe('container rails (one contributed sidebar path)', () => {
   let handler: WorkbenchContributionHandler;
+  let processor: ViewContributionProcessor;
   let leftBar: FakeBar;
   let rightBar: FakeBar;
   let sidebar: ReturnType<typeof fakeRailPart>;
   let aux: ReturnType<typeof fakeRailPart>;
   let sidebarSlot: HTMLElement;
-  let explorer: ViewContainer;
   let toggles: string[];
+
+  /** Contribute a sidebar container (and optionally views) the manifest way. */
+  function contribute(toolId: string, containerId: string, title: string, viewIds: string[] = []): void {
+    processor.processContributions({
+      manifest: {
+        id: toolId,
+        contributes: {
+          viewContainers: [{ id: containerId, title, icon: 'folder', location: 'sidebar' as const }],
+          views: viewIds.map((id) => ({ id, name: id, defaultContainerId: containerId })),
+        },
+      },
+    } as never);
+  }
+
+  function explorerVc(): ViewContainer {
+    return handler.contributedSidebarContainers.get('explorer-container') as ViewContainer;
+  }
 
   beforeEach(() => {
     leftBar = fakeBar();
@@ -98,159 +122,155 @@ describe('container rails', () => {
     sidebarSlot = document.createElement('div');
     handler.sidebarViewsSlot = sidebarSlot;
 
-    explorer = new ViewContainer('sidebar.view.explorer');
-    explorer.setMode('stacked');
-    sidebarSlot.appendChild(explorer.element);
-    handler.registerBuiltinSidebarContainer('view.explorer', explorer);
-    handler.registerContainerIcon('view.explorer', {
-      id: 'view.explorer', icon: 'E', label: 'Explorer', source: 'builtin',
-    });
-    leftBar.addIcon({ id: 'view.explorer' });
-    handler.setActiveSidebarContainerId('view.explorer');
+    const vm = new ViewManager();
+    processor = new ViewContributionProcessor(vm);
+    handler.setViewManager(vm);
+    handler.setViewContribution(processor);
+    handler.wireViewContributionEvents();
+
+    contribute('parallx.explorer', 'explorer-container', 'Explorer');
+  });
+
+  it('seats a contributed sidebar container stacked, iconed, and active when first', () => {
+    const vc = explorerVc();
+    expect(vc).toBeDefined();
+    expect(vc.mode).toBe('stacked');
+    expect(vc.element.parentElement).toBe(sidebarSlot);
+    expect(leftBar.icons).toContain('explorer-container');
+    expect(handler.activeSidebarContainerId).toBe('explorer-container');
+    expect(leftBar.active).toBe('explorer-container');
   });
 
   it('moves a container to the right rail with its icon and its DOM', () => {
-    expect(handler.railOf('view.explorer')).toBe('left');
+    expect(handler.railOf('explorer-container')).toBe('left');
+    const vc = explorerVc();
 
-    const moved = handler.moveContainerToRail('view.explorer', 'right');
+    const moved = handler.moveContainerToRail('explorer-container', 'right');
 
     expect(moved).toBe(true);
-    expect(handler.railOf('view.explorer')).toBe('right');
+    expect(handler.railOf('explorer-container')).toBe('right');
     // The DOM travelled into the right rail's slot…
-    expect(explorer.element.parentElement).toBe(aux.viewContainerSlot);
+    expect(vc.element.parentElement).toBe(aux.viewContainerSlot);
     // …the icon crossed ribbons…
-    expect(leftBar.icons).not.toContain('view.explorer');
-    expect(rightBar.icons).toContain('view.explorer');
+    expect(leftBar.icons).not.toContain('explorer-container');
+    expect(rightBar.icons).toContain('explorer-container');
     // …and it is the right rail's shown container.
-    expect(rightBar.active).toBe('view.explorer');
+    expect(rightBar.active).toBe('explorer-container');
   });
 
-  it('returns a built-in to the builtin map on the way back', () => {
-    handler.moveContainerToRail('view.explorer', 'right');
-    expect(handler.builtinSidebarContainers.has('view.explorer')).toBe(false);
+  it('returns to the sidebar map on the way back', () => {
+    handler.moveContainerToRail('explorer-container', 'right');
+    expect(handler.contributedSidebarContainers.has('explorer-container')).toBe(false);
 
-    handler.moveContainerToRail('view.explorer', 'left');
+    handler.moveContainerToRail('explorer-container', 'left');
 
-    expect(handler.railOf('view.explorer')).toBe('left');
-    expect(handler.builtinSidebarContainers.has('view.explorer')).toBe(true);
-    expect(explorer.element.parentElement).toBe(sidebarSlot);
-    expect(leftBar.icons).toContain('view.explorer');
-    expect(rightBar.icons).not.toContain('view.explorer');
+    expect(handler.railOf('explorer-container')).toBe('left');
+    expect(handler.contributedSidebarContainers.has('explorer-container')).toBe(true);
+    expect(explorerVc().element.parentElement).toBe(sidebarSlot);
+    expect(leftBar.icons).toContain('explorer-container');
+    expect(rightBar.icons).not.toContain('explorer-container');
   });
 
   it('is a no-op toward the rail it is already in', () => {
-    expect(handler.moveContainerToRail('view.explorer', 'left')).toBe(false);
+    expect(handler.moveContainerToRail('explorer-container', 'left')).toBe(false);
   });
 
   it('shows a hidden target rail when a container docks into it', () => {
     (aux as { visible: boolean }).visible = false;
-    handler.moveContainerToRail('view.explorer', 'right');
+    handler.moveContainerToRail('explorer-container', 'right');
     expect(toggles).toContain('aux');
   });
 
   it('hands the left rail to a survivor when its active container leaves', () => {
-    const search = new ViewContainer('sidebar.view.search');
-    search.setMode('stacked');
-    sidebarSlot.appendChild(search.element);
-    handler.registerBuiltinSidebarContainer('view.search', search);
+    contribute('parallx.search', 'search-container', 'Search');
 
-    handler.moveContainerToRail('view.explorer', 'right');
-    expect(handler.activeSidebarContainerId).toBe('view.search');
+    handler.moveContainerToRail('explorer-container', 'right');
+    expect(handler.activeSidebarContainerId).toBe('search-container');
   });
 
   it('persists placements and applies them as pending to later arrivals', () => {
-    handler.moveContainerToRail('view.explorer', 'right');
+    handler.moveContainerToRail('explorer-container', 'right');
     const saved = handler.railAssignments();
-    expect(saved).toContainEqual({ id: 'view.explorer', rail: 'right' });
+    expect(saved).toContainEqual({ id: 'explorer-container', rail: 'right' });
 
     // Simulate the next session: container registered at its default (left),
     // then the restored placement applies.
-    handler.moveContainerToRail('view.explorer', 'left');
+    handler.moveContainerToRail('explorer-container', 'left');
     handler.setPendingRailAssignments(saved);
-    handler.applyPendingRailAssignment('view.explorer');
-    expect(handler.railOf('view.explorer')).toBe('right');
+    handler.applyPendingRailAssignment('explorer-container');
+    expect(handler.railOf('explorer-container')).toBe('right');
+  });
+
+  it('resolves pre-4a builtin ids in restored placements to their manifest ids', () => {
+    expect(resolveLegacyContainerId('view.explorer')).toBe('explorer-container');
+    expect(resolveLegacyContainerId('view.search')).toBe('search-container');
+    expect(resolveLegacyContainerId('anything-else')).toBe('anything-else');
+
+    // A rail assignment saved before the cut still lands.
+    handler.setPendingRailAssignments([{ id: 'view.explorer', rail: 'right' }]);
+    handler.applyPendingRailAssignment('explorer-container');
+    expect(handler.railOf('explorer-container')).toBe('right');
   });
 
   it('fires the rails-changed event on every move', () => {
     const changed = vi.fn();
     handler.onDidChangeRails(changed);
-    handler.moveContainerToRail('view.explorer', 'right');
-    handler.moveContainerToRail('view.explorer', 'left');
+    handler.moveContainerToRail('explorer-container', 'right');
+    handler.moveContainerToRail('explorer-container', 'left');
     expect(changed).toHaveBeenCalledTimes(2);
   });
 
   // ── The restart order: placement restores BEFORE providers register ──
   //
-  // Field bug: planner moved to the right rail, app restarted — empty
-  // container, forever. The saved placement moves the container out of
-  // the builtin sidebar map at boot; the tool's provider registers
-  // AFTERWARD, and placeholder replacement searched only that one map.
-  // Content that had worked all session died on restart.
+  // The old field bug: planner moved to the right rail, app restarted —
+  // empty container, forever, because placeholder replacement searched one
+  // map. The contributed path has no map search at all: the view instance
+  // resolves its own provider whenever it registers, wherever the
+  // container lives. These pin that the root cause stays dead.
 
-  function placeholderView(id: string, name: string) {
-    const element = document.createElement('div');
-    element.classList.add('view');
-    return {
-      id, name,
-      element,
-      createElement(container: HTMLElement) { container.appendChild(element); },
-      setVisible() {}, layout() {}, focus() {},
-      minimumWidth: 0, maximumWidth: Infinity, minimumHeight: 0, maximumHeight: Infinity,
-      saveState: () => ({}), restoreState: () => {},
-      dispose() {},
-    };
-  }
+  it('a provider registering AFTER its container moved to the RIGHT RAIL still fills the view', async () => {
+    contribute('parallx.planner', 'planner-container', 'Planner', ['view.planner']);
+    await tick(); // _addViewToContainer is async
 
-  function wireProcessor() {
-    const vm = new ViewManager();
-    const processor = new ViewContributionProcessor(vm);
-    handler.setViewContribution(processor);
-    handler.wireViewContributionEvents();
-    return processor;
-  }
-
-  it('placeholder replacement follows a container moved to the RIGHT RAIL before its provider registered', () => {
-    const processor = wireProcessor();
-    explorer.addView(placeholderView('view.test', 'Planner') as never);
-
-    handler.moveContainerToRail('view.explorer', 'right'); // restore order
-    processor.registerProvider('view.test', {
+    handler.moveContainerToRail('planner-container', 'right'); // restore order
+    processor.registerProvider('view.planner', {
       resolveView: (_id, el) => { el.textContent = 'LIVE'; },
     });
 
-    const body = explorer.element.querySelector('[data-view-id="view.test"] .view-section-body');
-    expect(body?.textContent).toBe('LIVE');
+    const vc = handler.contributedAuxBarContainers.get('planner-container') as ViewContainer;
+    expect(vc.element.querySelector('.tool-view-content')?.textContent).toBe('LIVE');
+  });
+
+  it('a provider registering AFTER its container floated still fills the view', async () => {
+    contribute('parallx.planner', 'planner-container', 'Planner', ['view.planner']);
+    await tick();
+
+    const undocked = handler.undockContainer('planner-container');
+    expect(undocked).toBeDefined();
+    processor.registerProvider('view.planner', {
+      resolveView: (_id, el) => { el.textContent = 'LIVE'; },
+    });
+
+    expect(undocked!.vc.element.querySelector('.tool-view-content')?.textContent).toBe('LIVE');
   });
 
   it('a floating box’s reveal icon follows the area its box occupies', () => {
-    handler.undockContainer('view.explorer');
-    expect(leftBar.icons.includes('view.explorer')).toBe(true); // default reveal home
+    handler.undockContainer('explorer-container');
+    expect(leftBar.icons.includes('explorer-container')).toBe(true); // default reveal home
 
-    handler.setFloatingIconRail('view.explorer', 'right');
-    expect(leftBar.icons.includes('view.explorer')).toBe(false);
-    expect(rightBar.icons.includes('view.explorer')).toBe(true);
+    handler.setFloatingIconRail('explorer-container', 'right');
+    expect(leftBar.icons.includes('explorer-container')).toBe(false);
+    expect(rightBar.icons.includes('explorer-container')).toBe(true);
 
-    handler.setFloatingIconRail('view.explorer', 'left');
-    expect(rightBar.icons.includes('view.explorer')).toBe(false);
-    expect(leftBar.icons.includes('view.explorer')).toBe(true);
+    handler.setFloatingIconRail('explorer-container', 'left');
+    expect(rightBar.icons.includes('explorer-container')).toBe(false);
+    expect(leftBar.icons.includes('explorer-container')).toBe(true);
 
     // Not floating any more — the call becomes a no-op.
-    handler.dockContainer('view.explorer', explorer, 'left');
-    handler.setFloatingIconRail('view.explorer', 'right');
-    expect(rightBar.icons.includes('view.explorer')).toBe(false);
-  });
-
-  it('placeholder replacement follows a container seated in a FLOATING box', () => {
-    const processor = wireProcessor();
-    explorer.addView(placeholderView('view.test', 'Planner') as never);
-
-    expect(handler.undockContainer('view.explorer')).toBeDefined(); // restore order
-    processor.registerProvider('view.test', {
-      resolveView: (_id, el) => { el.textContent = 'LIVE'; },
-    });
-
-    const body = explorer.element.querySelector('[data-view-id="view.test"] .view-section-body');
-    expect(body?.textContent).toBe('LIVE');
+    const vc = explorerVc() ?? new ViewContainer('explorer-container');
+    handler.dockContainer('explorer-container', vc, 'left');
+    handler.setFloatingIconRail('explorer-container', 'right');
+    expect(rightBar.icons.includes('explorer-container')).toBe(false);
   });
 });
 
@@ -281,36 +301,36 @@ describe('activity bar as a container drag surface', () => {
 
   it('stamps the container payload on an icon drag', () => {
     const bar = makeBar(PartId.ActivityBar, 'right');
-    bar.addIcon({ id: 'view.explorer', icon: 'E', label: 'Explorer', source: 'builtin' });
-    const btn = bar.element.querySelector<HTMLElement>('[data-icon-id="view.explorer"]')!;
+    bar.addIcon({ id: 'explorer-container', icon: 'E', label: 'Explorer', source: 'contributed' });
+    const btn = bar.element.querySelector<HTMLElement>('[data-icon-id="explorer-container"]')!;
 
     const store = new Map<string, string>();
     btn.dispatchEvent(dragEvent('dragstart', store));
 
     expect(store.has(CONTAINER_DRAG_TYPE)).toBe(true);
-    expect(JSON.parse(store.get(CONTAINER_DRAG_TYPE)!)).toEqual({ containerId: 'view.explorer' });
+    expect(JSON.parse(store.get(CONTAINER_DRAG_TYPE)!)).toEqual({ containerId: 'explorer-container' });
     bar.dispose();
   });
 
   it('reports a foreign icon dropped on it, and ignores its own reorders', () => {
     const left = makeBar(PartId.ActivityBar, 'right');
     const right = makeBar(PartId.ActivityBarRight, 'left');
-    left.addIcon({ id: 'view.explorer', icon: 'E', label: 'Explorer', source: 'builtin' });
+    left.addIcon({ id: 'explorer-container', icon: 'E', label: 'Explorer', source: 'contributed' });
 
     const docked = vi.fn();
     right.onDidDropContainerIcon(docked);
 
     // Foreign: payload from the LEFT bar's icon, dropped on the RIGHT bar.
     const store = new Map<string, string>();
-    store.set(CONTAINER_DRAG_TYPE, JSON.stringify({ containerId: 'view.explorer' }));
+    store.set(CONTAINER_DRAG_TYPE, JSON.stringify({ containerId: 'explorer-container' }));
     right.contentElement.dispatchEvent(dragEvent('dragover', store));
     right.contentElement.dispatchEvent(dragEvent('drop', store));
-    expect(docked).toHaveBeenCalledWith({ containerId: 'view.explorer' });
+    expect(docked).toHaveBeenCalledWith({ containerId: 'explorer-container' });
 
     // Internal: a reorder within one bar must NOT read as a dock request.
     const own = vi.fn();
     left.onDidDropContainerIcon(own);
-    const btn = left.element.querySelector<HTMLElement>('[data-icon-id="view.explorer"]')!;
+    const btn = left.element.querySelector<HTMLElement>('[data-icon-id="explorer-container"]')!;
     const ownStore = new Map<string, string>();
     btn.dispatchEvent(dragEvent('dragstart', ownStore));
     left.contentElement.dispatchEvent(dragEvent('drop', ownStore));

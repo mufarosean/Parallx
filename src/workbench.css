@@ -2064,37 +2064,9 @@ html, body {
   display: block;
 }
 
-/* ── Placeholder View: dimension badge ── */
-.placeholder-dimension-badge {
-  position: absolute;
-  top: 4px;
-  right: 8px;
-  font-size: var(--parallx-fontSize-xs);
-  color: var(--vscode-descriptionForeground);
-  font-family: var(--parallx-fontFamily-mono);
-  pointer-events: none;
-  z-index: 1;
-}
-
-/* ── Placeholder View: Explorer ── */
-.placeholder-explorer {
-  padding: 8px;
-  color: var(--vscode-sideBar-foreground);
-  font-size: var(--parallx-fontSize-md);
-  background-color: var(--vscode-sideBar-background);
-}
-
-.placeholder-tree-row {
-  line-height: 22px;
-  cursor: pointer;
-}
-
-.placeholder-tree-row:hover {
-  background-color: var(--vscode-list-hoverBackground);
-}
-
-/* ── Placeholder View: Search (replaced by built-in search tool) ── */
-/* Old placeholder styles removed — real search styles below */
+/* (Placeholder-view styles deleted with placeholderViews.ts — Retirement
+   4a: the demo-content Explorer/Search placeholders are gone; every
+   sidebar view is contributed.) */
 
 /* ═══════════════════════════════════════════════════════════════════
    Search View (built-in tool — Find in Files)

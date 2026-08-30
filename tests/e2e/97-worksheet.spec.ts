@@ -246,7 +246,7 @@ test.describe('Worksheets — item practice loop (workspace DB)', () => {
     // closed instead — probe-verified trap). The app may be in any restored
     // workspace, so pick ANY visible file node rather than a fixture path;
     // files have no expand chevron.
-    await window.locator('button.activity-bar-item[data-icon-id="view.explorer"]').click();
+    await window.locator('button.activity-bar-item[data-icon-id="explorer-container"]').click();
     await expect(window.locator('.tree-node').first()).toBeVisible({ timeout: 5_000 });
     const fileNode = window.locator('.tree-node:not(:has(.tree-node-chevron))').first();
     for (let i = 0; i < 3 && !(await fileNode.isVisible().catch(() => false)); i++) {

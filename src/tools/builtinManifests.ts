@@ -76,10 +76,10 @@ export const SEARCH_MANIFEST: IToolManifest = {
   main: './main.js',
   engines: { parallx: '^0.1.0' },
   // EAGER by architecture, not by choice (Phase D step 9 post-mortem):
-  // every workbench view pre-materializes at boot — the core sidebar loop
-  // createViewSync's this view before any tool activates — so onView can
-  // never fire lazily and a 'lazy' search just showed the legacy demo
-  // placeholder forever. Until views materialize on demand, view-owning
+  // every workbench view pre-materializes when its manifest processes —
+  // so onView can never fire lazily. (Retirement 4a deleted the demo
+  // placeholder that a 'lazy' search once showed forever; the constraint
+  // itself remains.) Until views materialize on demand, view-owning
   // built-ins stay onStartupFinished; onCommand is the one real lazy path.
   activationEvents: ['onStartupFinished'],
   contributes: {

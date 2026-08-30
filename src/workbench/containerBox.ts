@@ -28,6 +28,7 @@ import type { ViewContainer } from '../views/viewContainer.js';
 import type { PartDropZone } from './partDrag.js';
 import { ContextMenu } from '../ui/contextMenu.js';
 import { $ } from '../ui/dom.js';
+import { resolveLegacyContainerId } from './workbenchContributionHandler.js';
 
 export const CONTAINER_BOX_PREFIX = 'container:';
 
@@ -36,8 +37,11 @@ export function containerBoxViewId(containerId: string): string {
 }
 
 export function containerIdFromBoxViewId(viewId: string): string | undefined {
+  // Legacy ids resolve so a box floated before Retirement 4a (when Explorer
+  // and Search were builtin containers under their view ids) still finds
+  // its contributed container instead of waiting on an id nothing creates.
   return viewId.startsWith(CONTAINER_BOX_PREFIX)
-    ? viewId.slice(CONTAINER_BOX_PREFIX.length)
+    ? resolveLegacyContainerId(viewId.slice(CONTAINER_BOX_PREFIX.length))
     : undefined;
 }
 

@@ -312,7 +312,7 @@ test.describe('separation and reunion', () => {
 
     // 1. Float the Explorer: drag its ribbon icon onto the editor.
     await window.evaluate(async () => {
-      const icon = document.querySelector('[data-icon-id="view.explorer"]') as HTMLElement | null;
+      const icon = document.querySelector('[data-icon-id="explorer-container"]') as HTMLElement | null;
       const editor = document.querySelector('[data-part-id="workbench.parts.editor"]') as HTMLElement | null;
       if (!icon || !editor) return;
       const dt = new DataTransfer();
@@ -331,12 +331,12 @@ test.describe('separation and reunion', () => {
     });
     await window.waitForTimeout(500);
     await snap(window, testInfo, '13-explorer-floated');
-    const box = window.locator('.container-box[data-part-id="container:view.explorer"]');
+    const box = window.locator('.container-box[data-part-id="container:explorer-container"]');
     await expect(box, 'explorer floated into a box').toBeVisible();
 
     // 2. Put it BACK: drag the box header onto the sidebar's bottom band.
     await window.evaluate(async () => {
-      const header = document.querySelector('.container-box[data-part-id="container:view.explorer"] .container-box-header') as HTMLElement | null;
+      const header = document.querySelector('.container-box[data-part-id="container:explorer-container"] .container-box-header') as HTMLElement | null;
       const sidebar = document.querySelector('[data-part-id="workbench.parts.sidebar"]') as HTMLElement | null;
       if (!header || !sidebar) return;
       const dt = new DataTransfer();
@@ -368,7 +368,7 @@ test.describe('separation and reunion', () => {
 
     // 3. Centre still docks: drop the header mid-card and the box goes away.
     await window.evaluate(async () => {
-      const header = document.querySelector('.container-box[data-part-id="container:view.explorer"] .container-box-header') as HTMLElement | null;
+      const header = document.querySelector('.container-box[data-part-id="container:explorer-container"] .container-box-header') as HTMLElement | null;
       const sidebar = document.querySelector('[data-part-id="workbench.parts.sidebar"]') as HTMLElement | null;
       if (!header || !sidebar) return;
       const dt = new DataTransfer();

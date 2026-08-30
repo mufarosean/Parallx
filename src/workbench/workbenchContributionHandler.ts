@@ -5,12 +5,17 @@
 // dynamic container management. This module consolidates all tool-contributed
 // container/view wiring, activity bar icon management, and container switching.
 //
+// ONE sidebar path (Retirement 4a): EVERY sidebar container — Explorer and
+// Search included — arrives through this contributed pipeline, declared in
+// its tool's manifest. The old parallel builtin path (hardcoded boot loop,
+// demo-content placeholders, title-match redirects, placeholder-replacement
+// DOM surgery) is deleted; this file is the only architecture.
+//
 // Responsibilities:
 //   - Wire events from ViewContributionProcessor to workbench DOM
 //   - Handle tool container add/remove/switch
 //   - Handle tool view add/remove
 //   - Manage activity bar icons for contributed containers
-//   - Replace built-in placeholders with real tool views
 
 import { Disposable, DisposableStore } from '../platform/lifecycle.js';
 import { Emitter } from '../platform/events.js';
@@ -20,7 +25,6 @@ import { getIcon } from '../ui/iconRegistry.js';
 import { ViewContainer } from '../views/viewContainer.js';
 import { ViewManager } from '../views/viewManager.js';
 import { AuxiliaryBarPart } from '../parts/auxiliaryBarPart.js';
-import { $ } from '../ui/dom.js';
 import type { ViewContributionProcessor, IContributedContainer, IContributedView } from '../contributions/viewContribution.js';
 import type { ActivityBarPart, ActivityBarIconDescriptor } from '../parts/activityBarPart.js';
 import type { WorkbenchContextManager } from '../context/workbenchContext.js';
@@ -31,6 +35,24 @@ import type { Orientation } from '../layout/layoutTypes.js';
 
 /** Which rail a view container is docked in. */
 export type ContainerRail = 'left' | 'right';
+
+// ─── Legacy container ids ────────────────────────────────────────────────────
+
+/**
+ * Pre-4a persisted state (rail assignments, floating-box leaves) addressed
+ * the builtin Explorer/Search containers by their VIEW ids. Those containers
+ * are now contributed under their manifest ids; saved placements written
+ * before the cut resolve through this map so a floated or moved Explorer
+ * lands where the user left it instead of waiting on an id nothing creates.
+ */
+const LEGACY_CONTAINER_IDS: Readonly<Record<string, string>> = {
+  'view.explorer': 'explorer-container',
+  'view.search': 'search-container',
+};
+
+export function resolveLegacyContainerId(id: string): string {
+  return LEGACY_CONTAINER_IDS[id] ?? id;
+}
 
 // ─── Host interface ──────────────────────────────────────────────────────────
 
@@ -55,11 +77,15 @@ export interface ContributionHandlerHost {
 
 export class WorkbenchContributionHandler extends Disposable {
   // ── Container state (owned by this handler) ──
-  private _builtinSidebarContainers = new Map<string, ViewContainer>();
+  //
+  // ONE sidebar path (Retirement 4a): every sidebar container arrives
+  // through the contributed pipeline — Explorer and Search included, from
+  // their tools' manifests. The parallel builtin map, its title-match
+  // redirects, and the placeholder-replacement DOM surgery that stitched
+  // the two paths together are gone.
   private _contributedSidebarContainers = new Map<string, ViewContainer>();
   private _contributedPanelContainers = new Map<string, ViewContainer>();
   private _contributedAuxBarContainers = new Map<string, ViewContainer>();
-  private _containerRedirects = new Map<string, string>();
   private _activeSidebarContainerId: string | undefined;
   private _sidebarHeaderLabel: HTMLElement | undefined;
 
@@ -87,10 +113,9 @@ export class WorkbenchContributionHandler extends Disposable {
   //
   // Rail membership IS which map holds the container; these structures add
   // what the maps cannot express: where the user PUT things (persisted),
-  // where things go when they arrive later (pending), which containers were
-  // born built-in (so a round trip returns them to the builtin map), the
-  // icon each container carries between ribbons, and per-container aux
-  // header wiring so it can be unwired on the way out.
+  // where things go when they arrive later (pending), the icon each
+  // container carries between ribbons, and per-container aux header wiring
+  // so it can be unwired on the way out.
   private readonly _railAssignments = new Map<string, ContainerRail>();
 
   /**
@@ -101,12 +126,19 @@ export class WorkbenchContributionHandler extends Disposable {
    */
   private readonly _floatingContainers = new Map<string, ViewContainer>();
   private readonly _pendingRailAssignments = new Map<string, ContainerRail>();
-  private readonly _builtinOrigin = new Set<string>();
   private readonly _containerIcons = new Map<string, ActivityBarIconDescriptor>();
   private readonly _auxHeaderWiring = new Map<string, IDisposable>();
 
   private readonly _onDidChangeRails = this._register(new Emitter<void>());
   readonly onDidChangeRails: Event<void> = this._onDidChangeRails.event;
+
+  /**
+   * A sidebar container was created and seated (Retirement 4a). The
+   * workbench wires per-container chrome here — section context menus,
+   * draggable tabs — the wiring the old builtin boot loop did inline.
+   */
+  private readonly _onDidAddSidebarContainer = this._register(new Emitter<ViewContainer>());
+  readonly onDidAddSidebarContainer: Event<ViewContainer> = this._onDidAddSidebarContainer.event;
 
   // ── Event listener store (cleared on workspace switch) ──
   private readonly _viewContribListeners = this._register(new DisposableStore());
@@ -124,7 +156,6 @@ export class WorkbenchContributionHandler extends Disposable {
 
   // ── Accessors for workbench.ts ──
 
-  get builtinSidebarContainers(): ReadonlyMap<string, ViewContainer> { return this._builtinSidebarContainers; }
   get contributedSidebarContainers(): ReadonlyMap<string, ViewContainer> { return this._contributedSidebarContainers; }
   get contributedPanelContainers(): ReadonlyMap<string, ViewContainer> { return this._contributedPanelContainers; }
   get contributedAuxBarContainers(): ReadonlyMap<string, ViewContainer> { return this._contributedAuxBarContainers; }
@@ -153,13 +184,6 @@ export class WorkbenchContributionHandler extends Disposable {
     this._genericAuxBarContainer = auxBar;
   }
 
-  // ── Built-in sidebar container registration ──
-
-  registerBuiltinSidebarContainer(id: string, vc: ViewContainer): void {
-    this._builtinSidebarContainers.set(id, vc);
-    this._builtinOrigin.add(id);
-  }
-
   setActiveSidebarContainerId(id: string | undefined): void {
     this._activeSidebarContainerId = id;
   }
@@ -177,7 +201,6 @@ export class WorkbenchContributionHandler extends Disposable {
 
   /** Which rail currently holds this container, if any rail does. */
   railOf(containerId: string): ContainerRail | undefined {
-    if (this._builtinSidebarContainers.has(containerId)) return 'left';
     if (this._contributedSidebarContainers.has(containerId)) return 'left';
     if (this._contributedAuxBarContainers.has(containerId)) return 'right';
     return undefined;
@@ -186,7 +209,6 @@ export class WorkbenchContributionHandler extends Disposable {
   /** All current rail placements, for persistence. */
   railAssignments(): readonly { id: string; rail: ContainerRail }[] {
     const out: { id: string; rail: ContainerRail }[] = [];
-    for (const id of this._builtinSidebarContainers.keys()) out.push({ id, rail: 'left' });
     for (const id of this._contributedSidebarContainers.keys()) out.push({ id, rail: 'left' });
     for (const id of this._contributedAuxBarContainers.keys()) out.push({ id, rail: 'right' });
     return out;
@@ -199,7 +221,7 @@ export class WorkbenchContributionHandler extends Disposable {
    */
   setPendingRailAssignments(entries: readonly { id: string; rail: ContainerRail }[]): void {
     this._pendingRailAssignments.clear();
-    for (const e of entries) this._pendingRailAssignments.set(e.id, e.rail);
+    for (const e of entries) this._pendingRailAssignments.set(resolveLegacyContainerId(e.id), e.rail);
   }
 
   /** Apply a pending assignment to a container that already exists. */
@@ -267,17 +289,13 @@ export class WorkbenchContributionHandler extends Disposable {
 
   /** Detach a container from whichever rail holds it. Undocked, not disposed. */
   private _takeContainer(containerId: string): ViewContainer | undefined {
-    const inBuiltin = this._builtinSidebarContainers.get(containerId);
-    const inSidebar = inBuiltin ?? this._contributedSidebarContainers.get(containerId);
+    const inSidebar = this._contributedSidebarContainers.get(containerId);
     if (inSidebar) {
       if (this._activeSidebarContainerId === containerId) {
-        const replacement = [
-          ...this._builtinSidebarContainers.keys(),
-          ...this._contributedSidebarContainers.keys(),
-        ].find((id) => id !== containerId);
+        const replacement = [...this._contributedSidebarContainers.keys()]
+          .find((id) => id !== containerId);
         this.switchSidebarContainer(replacement);
       }
-      this._builtinSidebarContainers.delete(containerId);
       this._contributedSidebarContainers.delete(containerId);
       this._host.activityBarPart.removeIcon(containerId);
       inSidebar.setVisible(false);
@@ -333,10 +351,7 @@ export class WorkbenchContributionHandler extends Disposable {
     const icon = this._containerIcons.get(containerId);
 
     if (rail === 'left') {
-      const map = this._builtinOrigin.has(containerId)
-        ? this._builtinSidebarContainers
-        : this._contributedSidebarContainers;
-      map.set(containerId, vc);
+      this._contributedSidebarContainers.set(containerId, vc);
       if (this._sidebarViewsSlot) this._sidebarViewsSlot.appendChild(vc.element);
       if (icon) this._host.activityBarPart.addIcon(icon);
       if (!this._host.sidebar.visible) this._host.toggleSidebar();
@@ -395,35 +410,20 @@ export class WorkbenchContributionHandler extends Disposable {
 
     this._viewContribListeners.add(this._viewContribution.onDidRegisterProvider(({ viewId }) => {
       console.log(`[Workbench] View provider registered for "${viewId}"`);
-      this._replaceBuiltinPlaceholderIfNeeded(viewId);
     }));
   }
 
   // ── Container add/remove ──
 
   private _onToolContainerAdded(info: IContributedContainer): void {
-    // Skip duplicate sidebar containers that overlap with built-ins
-    if (info.location === 'sidebar') {
-      for (const [builtinViewId, builtinVc] of this._builtinSidebarContainers) {
-        const views = builtinVc.getViews();
-        const matchesTitle = views.some(
-          (v) => v.name.toLowerCase() === info.title.toLowerCase(),
-        );
-        if (matchesTitle) {
-          this._containerRedirects.set(info.id, builtinViewId);
-          console.log(
-            `[Workbench] Skipped duplicate sidebar container "${info.id}" — ` +
-            `redirecting views to built-in "${builtinViewId}"`,
-          );
-          return;
-        }
-      }
-    }
-
     const vc = new ViewContainer(info.id);
 
     if (info.location === 'sidebar') {
-      vc.hideTabBar();
+      // ONE mode for every sidebar container: stacked. With one view the
+      // section header hides (same look hideTabBar gave single-view
+      // containers); with several, collapsible sections — the Explorer
+      // look the old builtin path special-cased.
+      vc.setMode('stacked');
       vc.setVisible(false);
       if (this._sidebarViewsSlot) {
         this._sidebarViewsSlot.appendChild(vc.element);
@@ -433,8 +433,17 @@ export class WorkbenchContributionHandler extends Disposable {
         this._addContributedActivityBarIcon(info);
       }
       console.log(`[Workbench] Added sidebar container "${info.id}" (${info.title})`);
+      this._onDidAddSidebarContainer.fire(vc);
       // The manifest location is the DEFAULT; where the user PUT it wins.
       this.applyPendingRailAssignment(info.id);
+      // The first sidebar container to arrive becomes the active one —
+      // the boot seeding the builtin loop used to hardcode. Explorer is
+      // required and activates first, so this is deterministic.
+      if (this._activeSidebarContainerId === undefined
+          && this._contributedSidebarContainers.has(info.id)
+          && !info.hidden) {
+        this.switchSidebarContainer(info.id);
+      }
       this._onDidChangeRails.fire();
 
     } else if (info.location === 'panel') {
@@ -496,11 +505,6 @@ export class WorkbenchContributionHandler extends Disposable {
   }
 
   private _onToolContainerRemoved(containerId: string): void {
-    if (this._containerRedirects.has(containerId)) {
-      this._containerRedirects.delete(containerId);
-      return;
-    }
-
     const sidebarVc = this._contributedSidebarContainers.get(containerId);
     if (sidebarVc) {
       if (this._activeSidebarContainerId === containerId) {
@@ -555,31 +559,6 @@ export class WorkbenchContributionHandler extends Disposable {
   private _onToolViewAdded(info: IContributedView): void {
     const containerId = info.containerId;
 
-    for (const [_id, vc] of this._builtinSidebarContainers) {
-      if (vc.getView(info.id)) {
-        console.log(`[Workbench] View "${info.id}" already in built-in container — skipping contributed add`);
-        return;
-      }
-    }
-
-    const redirectTarget = this._containerRedirects.get(containerId);
-    if (redirectTarget) {
-      const builtinVc = this._builtinSidebarContainers.get(redirectTarget);
-      if (builtinVc) {
-        console.log(`[Workbench] Redirecting view "${info.id}" to built-in container "${redirectTarget}"`);
-        this._addViewToContainer(info, builtinVc);
-        return;
-      }
-    }
-
-    // Direct match on built-in sidebar container (e.g. "view.explorer", "view.search")
-    const directBuiltin = this._builtinSidebarContainers.get(containerId);
-    if (directBuiltin) {
-      console.log(`[Workbench] Adding view "${info.id}" to built-in container "${containerId}"`);
-      this._addViewToContainer(info, directBuiltin);
-      return;
-    }
-
     const sidebarVc = this._contributedSidebarContainers.get(containerId);
     if (sidebarVc) { this._addViewToContainer(info, sidebarVc); return; }
 
@@ -624,10 +603,6 @@ export class WorkbenchContributionHandler extends Disposable {
   }
 
   private _onToolViewRemoved(viewId: string): void {
-    // Check builtin + generic containers first
-    for (const vc of [...this._builtinSidebarContainers.values()]) {
-      if (vc?.getView(viewId)) { vc.removeView(viewId); return; }
-    }
     if (this._genericPanelContainer?.getView(viewId)) {
       this._genericPanelContainer.removeView(viewId); return;
     }
@@ -648,45 +623,10 @@ export class WorkbenchContributionHandler extends Disposable {
     }
   }
 
-  // ── Placeholder replacement ──
-
-  private _replaceBuiltinPlaceholderIfNeeded(viewId: string): void {
-    // Search EVERY live home, not just the builtin sidebar map. The field
-    // bug: a builtin-origin container moved to the right rail (or floated
-    // as a box) leaves that map; on the NEXT LAUNCH the saved placement
-    // moves it before the tool's provider registers, this loop missed it,
-    // and the placeholder stayed empty forever — content that had worked
-    // all session died on restart.
-    const homes: Iterable<ViewContainer>[] = [
-      this._builtinSidebarContainers.values(),
-      this._contributedSidebarContainers.values(),
-      this._contributedAuxBarContainers.values(),
-      this._floatingContainers.values(),
-    ];
-    for (const home of homes) for (const vc of home) {
-      const existingView = vc.getView(viewId);
-      if (!existingView) continue;
-
-      const provider = this._viewContribution.getProvider(viewId);
-      if (!provider) return;
-
-      const sectionEl = vc.element.querySelector(`[data-view-id="${viewId}"] .view-section-body`) as HTMLElement;
-      if (!sectionEl) return;
-
-      sectionEl.innerHTML = '';
-      const contentEl = $('div');
-      contentEl.className = 'tool-view-content fill-container-scroll';
-      sectionEl.appendChild(contentEl);
-
-      try {
-        provider.resolveView(viewId, contentEl);
-        console.log(`[Workbench] Replaced placeholder for "${viewId}" with real tool view`);
-      } catch (err) {
-        console.error(`[Workbench] Failed to resolve tool view for "${viewId}":`, err);
-      }
-      return;
-    }
-  }
+  // (The placeholder-replacement DOM surgery that used to live here —
+  // _replaceBuiltinPlaceholderIfNeeded, innerHTML and all — died with the
+  // builtin sidebar path, Retirement 4a. Contributed views resolve their
+  // own late-arriving providers inside _createContributedView.)
 
   // ── Activity bar icon management ──
 
@@ -730,9 +670,7 @@ export class WorkbenchContributionHandler extends Disposable {
 
     // Hide current active container
     if (this._activeSidebarContainerId) {
-      const current =
-        this._builtinSidebarContainers.get(this._activeSidebarContainerId) ??
-        this._contributedSidebarContainers.get(this._activeSidebarContainerId);
+      const current = this._contributedSidebarContainers.get(this._activeSidebarContainerId);
       current?.setVisible(false);
     } else {
       // No active container — hide the default sidebar container
@@ -741,12 +679,10 @@ export class WorkbenchContributionHandler extends Disposable {
 
     // Show new container
     this._activeSidebarContainerId = containerId;
-    this._workbenchContext?.setActiveViewContainer(containerId ?? 'view.explorer');
+    this._workbenchContext?.setActiveViewContainer(containerId ?? 'sidebar');
 
     if (containerId) {
-      const next =
-        this._builtinSidebarContainers.get(containerId) ??
-        this._contributedSidebarContainers.get(containerId);
+      const next = this._contributedSidebarContainers.get(containerId);
       if (next) {
         next.setVisible(true);
         this._host.layoutViewContainers();
@@ -760,24 +696,17 @@ export class WorkbenchContributionHandler extends Disposable {
     }
 
     // Update activity bar highlight
-    this._host.activityBarPart.setActiveIcon(containerId ?? 'view.explorer');
+    this._host.activityBarPart.setActiveIcon(containerId);
 
     // Update sidebar header label
     if (this._sidebarHeaderLabel) {
       if (containerId) {
-        const builtinVc = this._builtinSidebarContainers.get(containerId);
-        if (builtinVc) {
-          const views = builtinVc.getViews();
-          this._sidebarHeaderLabel.textContent = (views[0]?.name ?? 'SIDEBAR').toUpperCase();
-        } else {
-          const info = this._viewContribution?.getContainer(containerId);
-          this._sidebarHeaderLabel.textContent = (info?.title ?? 'SIDEBAR').toUpperCase();
-        }
+        const info = this._viewContribution?.getContainer(containerId);
+        this._sidebarHeaderLabel.textContent = (info?.title ?? 'SIDEBAR').toUpperCase();
       } else {
-        // Restore to the active view name in the built-in container
         const activeId = this._defaultSidebarContainer?.activeViewId;
         const activeView = activeId ? this._defaultSidebarContainer?.getView(activeId) : undefined;
-        this._sidebarHeaderLabel.textContent = (activeView?.name ?? 'EXPLORER').toUpperCase();
+        this._sidebarHeaderLabel.textContent = (activeView?.name ?? 'SIDEBAR').toUpperCase();
       }
     }
   }
@@ -847,20 +776,13 @@ export class WorkbenchContributionHandler extends Disposable {
    */
   showSidebarView(viewId: string): void {
     // 1. Direct container ID match (sidebar)
-    if (this._builtinSidebarContainers.has(viewId) || this._contributedSidebarContainers.has(viewId)) {
+    if (this._contributedSidebarContainers.has(viewId)) {
       if (!this._host.sidebar.visible) this._host.toggleSidebar();
       this.switchSidebarContainer(viewId);
       return;
     }
 
     // 2. Search sidebar containers for a view with that ID
-    for (const [containerId, vc] of this._builtinSidebarContainers) {
-      if (vc.getView(viewId)) {
-        if (!this._host.sidebar.visible) this._host.toggleSidebar();
-        this.switchSidebarContainer(containerId);
-        return;
-      }
-    }
     for (const [containerId, vc] of this._contributedSidebarContainers) {
       if (vc.getView(viewId)) {
         if (!this._host.sidebar.visible) this._host.toggleSidebar();
@@ -937,9 +859,7 @@ export class WorkbenchContributionHandler extends Disposable {
     if (sidebar.visible && sidebar.width > 0) {
       const sidebarH = sidebar.height - headerHeight;
       if (this._activeSidebarContainerId) {
-        const active =
-          this._builtinSidebarContainers.get(this._activeSidebarContainerId) ??
-          this._contributedSidebarContainers.get(this._activeSidebarContainerId);
+        const active = this._contributedSidebarContainers.get(this._activeSidebarContainerId);
         active?.layout(sidebar.width, sidebarH, orientation.vertical);
       } else {
         sidebarContainer.layout(sidebar.width, sidebarH, orientation.vertical);
@@ -978,10 +898,6 @@ export class WorkbenchContributionHandler extends Disposable {
       }
     }
 
-    // Dispose built-in sidebar containers
-    for (const vc of this._builtinSidebarContainers.values()) vc.dispose();
-    this._builtinSidebarContainers.clear();
-
     // Dispose contributed containers
     for (const vc of this._contributedSidebarContainers.values()) vc.dispose();
     this._contributedSidebarContainers.clear();
@@ -995,7 +911,6 @@ export class WorkbenchContributionHandler extends Disposable {
     this._defaultAuxBarContainerId = undefined;
     this._sidebarHeaderLabel = undefined;
     this._auxBarHeaderLabel = undefined;
-    this._containerRedirects.clear();
 
     // Rail state rebuilds with the next workspace's setup + restore.
     for (const d of this._auxHeaderWiring.values()) d.dispose();
@@ -1003,6 +918,5 @@ export class WorkbenchContributionHandler extends Disposable {
     this._containerIcons.clear();
     this._railAssignments.clear();
     this._pendingRailAssignments.clear();
-    this._builtinOrigin.clear();
   }
 }

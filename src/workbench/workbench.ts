@@ -98,7 +98,7 @@ import { installScrollbarReveal } from '../ui/scrollbarReveal.js';
 // Views
 import { ViewManager } from '../views/viewManager.js';
 import { ViewContainer } from '../views/viewContainer.js';
-import { allPlaceholderViewDescriptors } from '../views/placeholderViews.js';
+import type { ViewContainerState } from '../views/viewTypes.js';
 import { AuxiliaryBarPart } from '../parts/auxiliaryBarPart.js';
 
 // DnD
@@ -312,6 +312,15 @@ export class Workbench extends Layout {
   private _configRegistry!: ConfigurationRegistry;
   private _globalStorage!: IStorage;
   private _recentsService!: RecentsService;
+
+  /**
+   * Container-state snapshots for containers that did not exist at restore
+   * time (contributed sidebar containers arrive with tool activation);
+   * applied when the handler seats them.
+   */
+  private readonly _pendingContainerStates = new Map<string, ViewContainerState>();
+  /** LIVE array handed to the saver — contributed containers push into it. */
+  private _saverViewContainers: ViewContainer[] | undefined;
 
   // Contribution Processors (M2 Capability 5)
   private _menuContribution!: MenuContributionProcessor;
@@ -1155,9 +1164,9 @@ export class Workbench extends Layout {
     // 1. Titlebar: app icon + menu bar + window controls
     this._setupTitlebar();
 
-    // 2. View system — register ALL descriptors before creating any views
+    // 2. View system — descriptors arrive from tool manifests via the
+    // contribution pipeline (Retirement 4a: no core placeholder views).
     this._viewManager = new ViewManager();
-    this._viewManager.registerMany(allPlaceholderViewDescriptors);
 
     this._sidebarContainer = this._setupSidebarViews();
     this._panelContainer = this._setupPanelViews();
@@ -1218,10 +1227,22 @@ export class Workbench extends Layout {
       }
     }));
 
-    // 10. Wire view/title actions and context menus to stacked containers
-    for (const vc of this._contributionHandler.builtinSidebarContainers.values()) {
-      this._wireSectionMenus(vc as ViewContainer);
-    }
+    // 10. Wire per-container chrome as sidebar containers arrive (Retirement
+    // 4a: every sidebar container is contributed, so the wiring the old
+    // builtin boot loop did inline — section context menus, draggable tabs,
+    // saver registration — happens on this event instead).
+    this._register(this._contributionHandler.onDidAddSidebarContainer((vc) => {
+      this._wireSectionMenus(vc);
+      if (this._dndController) {
+        this._makeTabsDraggable(this._dndController, vc, this._sidebar.id);
+      }
+      this._saverViewContainers?.push(vc);
+      const pending = this._pendingContainerStates.get(vc.id);
+      if (pending) {
+        this._pendingContainerStates.delete(vc.id);
+        vc.restoreContainerState(pending);
+      }
+    }));
   }
 
   /**
@@ -1619,22 +1640,32 @@ export class Workbench extends Layout {
       }
     }
 
-    // 2. Restore view container states (tab order + active view)
+    // 2. Restore view container states (tab order + active view). Generic
+    // containers exist now and restore directly; contributed sidebar
+    // containers arrive when their tools activate, so their snapshots wait
+    // in _pendingContainerStates and apply on the handler's add event.
+    // (The old builtin-map restore matched NOTHING: the saver stored those
+    // containers under their ViewContainer ids — 'sidebar.view.explorer' —
+    // while this map was keyed 'view.explorer'. Builtin container state
+    // never actually restored; contributed state now does.)
     const containerMap = new Map<string, ViewContainer>([
       ['sidebar', this._sidebarContainer],
       ['panel', this._panelContainer],
     ]);
-    // Also include all built-in sidebar containers by their IDs
-    for (const [id, vc] of this._contributionHandler.builtinSidebarContainers) {
-      containerMap.set(id, vc as ViewContainer);
-    }
     if (this._auxBarContainer) {
       containerMap.set('auxiliaryBar', this._auxBarContainer);
     }
 
     for (const vcSnap of state.viewContainers) {
       const container = containerMap.get(vcSnap.containerId);
-      if (!container) continue;
+      if (!container) {
+        this._pendingContainerStates.set(vcSnap.containerId, {
+          activeViewId: vcSnap.activeViewId,
+          tabOrder: vcSnap.tabOrder,
+          hiddenTabs: vcSnap.hiddenTabs,
+        });
+        continue;
+      }
 
       container.restoreContainerState({
         activeViewId: vcSnap.activeViewId,
@@ -1879,10 +1910,18 @@ export class Workbench extends Layout {
       this._statusBar,
     ];
 
-    const allContainers: ViewContainer[] = [...this._contributionHandler.builtinSidebarContainers.values() as IterableIterator<ViewContainer>, this._panelContainer];
+    // LIVE array: contributed sidebar containers push into it as they
+    // arrive (the on-add subscription), so their state saves too — which
+    // the builtin path never actually achieved (its ids never matched at
+    // restore). Seeded with any that arrived before the saver wired up.
+    const allContainers: ViewContainer[] = [this._panelContainer];
+    for (const vc of this._contributionHandler.contributedSidebarContainers.values()) {
+      allContainers.push(vc);
+    }
     if (this._auxBarContainer) {
       allContainers.push(this._auxBarContainer);
     }
+    this._saverViewContainers = allContainers;
 
     this._workspaceSaver.setSources({
       workspace: this._workspace,
@@ -2062,58 +2101,26 @@ export class Workbench extends Layout {
   // ════════════════════════════════════════════════════════════════════════
 
   private _setupSidebarViews(): ViewContainer {
-    // ── VS Code parity ──────────────────────────────────────────────────
-    // In VS Code each activity-bar icon maps to its *own* ViewContainer
-    // that fills the entire sidebar.  Explorer, Search, Source-Control,
-    // etc. are separate containers — clicking an icon *switches* which
-    // container is visible rather than showing stacked sections inside a
-    // single container.
+    // ── ONE sidebar path (Retirement 4a) ─────────────────────────────────
+    // No containers are created here. Explorer and Search — like every
+    // other sidebar container — are manifest contributions seated by the
+    // contribution handler when their tools activate, exactly the journey
+    // the panel made at M86 (eager core placeholders froze panel views as
+    // empty voids). This method wires the sidebar CHROME: the slots, the
+    // icon-click handler, the header label and its actions menu — and
+    // returns the generic catch-all container for stray views that target
+    // 'sidebar' (which is no longer an alias of Explorer).
     // ─────────────────────────────────────────────────────────────────────
-
-    const codiconExplorer = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
-    const codiconSearch = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
-    const views = [
-      { id: 'view.explorer', icon: codiconExplorer, label: 'Explorer', isSvg: true },
-      { id: 'view.search', icon: codiconSearch, label: 'Search', isSvg: true },
-    ];
 
     // Cache sidebar views slot in contribution handler
     this._contributionHandler.sidebarViewsSlot = this._sidebar.element.querySelector('.sidebar-views') as HTMLElement;
     const sidebarContent = this._contributionHandler.sidebarViewsSlot;
 
-    for (const v of views) {
-      const vc = new ViewContainer(`sidebar.${v.id}`);
-      vc.setMode('stacked');
-
-      const view = this._viewManager.createViewSync(v.id)!;
-      vc.addView(view);
-
-      this._contributionHandler.registerBuiltinSidebarContainer(v.id, vc);
-
-      this._activityBarPart.addIcon({
-        id: v.id,
-        icon: v.icon,
-        label: v.label,
-        isSvg: v.isSvg ?? false,
-        source: 'builtin',
-      });
-      // The handler owns the descriptor so the icon can travel with its
-      // container between ribbons.
-      this._contributionHandler.registerContainerIcon(v.id, {
-        id: v.id, icon: v.icon, label: v.label, isSvg: v.isSvg ?? false, source: 'builtin',
-      });
-
-      if (sidebarContent) {
-        sidebarContent.appendChild(vc.element);
-      }
-    }
-
-    const defaultContainer = this._contributionHandler.builtinSidebarContainers.get('view.explorer')! as ViewContainer;
-
-    for (const [id, vc] of this._contributionHandler.builtinSidebarContainers) {
-      if (id !== 'view.explorer') {
-        (vc as ViewContainer).setVisible(false);
-      }
+    const defaultContainer = new ViewContainer('sidebar');
+    defaultContainer.setMode('stacked');
+    defaultContainer.setVisible(false);
+    if (sidebarContent) {
+      sidebarContent.appendChild(defaultContainer.element);
     }
 
     // Wire icon click events — delegate container switching to handler
@@ -2151,9 +2158,9 @@ export class Workbench extends Layout {
     // the integrity audit flagged. Removed until icon hiding EXISTS as an
     // operation with an inverse; a menu that lies is worse than no menu.
 
-    this._activityBarPart.setActiveIcon('view.explorer');
-    this._contributionHandler.setActiveSidebarContainerId('view.explorer');
-    this._workbenchContext?.setActiveViewContainer('view.explorer');
+    // No active-container seeding here: the first sidebar container to
+    // arrive (Explorer — required, activates first) becomes active in the
+    // handler, icon highlight and header label included.
 
     // Sidebar header label + toolbar
     this._contributionHandler.sidebarHeaderSlot = this._sidebar.element.querySelector('.sidebar-header') as HTMLElement;
@@ -2161,7 +2168,8 @@ export class Workbench extends Layout {
     if (headerSlot) {
       const headerLabel = $('span');
       headerLabel.classList.add('sidebar-header-label');
-      headerLabel.textContent = 'EXPLORER';
+      // Blank until the first container activates and names it.
+      headerLabel.textContent = '';
       headerSlot.appendChild(headerLabel);
 
       const actionsContainer = $('div');
@@ -2180,8 +2188,8 @@ export class Workbench extends Layout {
         // matching command simply don't offer the item; no dead rows.
         const activeId = this._contributionHandler.activeSidebarContainerId;
         const cmdService = this._services.get(ICommandService) as CommandService;
-        const collapseCmd = activeId === 'view.explorer' ? 'explorer.collapse' : undefined;
-        const refreshCmd = activeId === 'view.explorer' ? 'explorer.refresh'
+        const collapseCmd = activeId === 'explorer-container' ? 'explorer.collapse' : undefined;
+        const refreshCmd = activeId === 'explorer-container' ? 'explorer.refresh'
           : activeId === 'media-organizer-container' ? 'media-organizer.rescan'
           : undefined;
         const items = [
@@ -3004,13 +3012,13 @@ export class Workbench extends Layout {
     this._viewContribution = registerViewContributionProcessor(this._services, this._viewManager);
 
     // Phase D step 9 post-mortem: there is deliberately NO fireView wiring.
-    // Every workbench view pre-materializes at boot (the core sidebar loop
-    // createViewSync's its views; contributed views materialize in
-    // _addViewToContainer the moment their manifest processes), so a
-    // view-lifecycle fire would only re-create eager activation with extra
-    // steps and a replay-queue race. Until views materialize on demand,
-    // `onView` stays inert and onCommand (the proven proxy path) is the
-    // one real lazy trigger — a canary test pins built-in manifests to
+    // Every workbench view still pre-materializes when its tool's manifest
+    // processes (contributed views materialize in _addViewToContainer at
+    // contribution time — Retirement 4a removed the even-earlier core boot
+    // loop), so a view-lifecycle fire would only re-create eager activation
+    // with extra steps and a replay-queue race. Until views materialize on
+    // demand, `onView` stays inert and onCommand (the proven proxy path) is
+    // the one real lazy trigger — a canary test pins built-in manifests to
     // that truth.
     this._register(this._viewContribution);
     this._contributionHandler.setViewContribution(this._viewContribution);
@@ -3972,9 +3980,8 @@ export class Workbench extends Layout {
     dnd.registerTarget(this._panel.id, this._panel.element);
     dnd.registerTarget(this._auxiliaryBar.id, this._auxiliaryBar.element);
 
-    for (const vc of this._contributionHandler.builtinSidebarContainers.values()) {
-      this._makeTabsDraggable(dnd, vc as ViewContainer, this._sidebar.id);
-    }
+    // Sidebar containers are contributed and arrive later — their tabs are
+    // made draggable by the onDidAddSidebarContainer subscription.
     this._makeTabsDraggable(dnd, this._panelContainer, this._panel.id);
     this._makeTabsDraggable(dnd, this._auxBarContainer, this._auxiliaryBar.id);
 

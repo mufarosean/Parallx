@@ -42,7 +42,7 @@ describe('ContainerBox', () => {
   });
 
   it('drags by its header with the container payload', () => {
-    const box = new ContainerBox('view.explorer', 'Explorer');
+    const box = new ContainerBox('planner-container', 'Explorer');
     const header = box.element.querySelector<HTMLElement>('.container-box-header')!;
     expect(header.draggable).toBe(true);
 
@@ -55,12 +55,12 @@ describe('ContainerBox', () => {
       },
     });
     header.dispatchEvent(ev);
-    expect(JSON.parse(store.get(CONTAINER_DRAG_TYPE)!)).toEqual({ containerId: 'view.explorer' });
+    expect(JSON.parse(store.get(CONTAINER_DRAG_TYPE)!)).toEqual({ containerId: 'planner-container' });
     box.dispose();
   });
 
   it('asks for the placement menu from its ⋯ control and from right-click', () => {
-    const box = new ContainerBox('view.explorer', 'Explorer');
+    const box = new ContainerBox('planner-container', 'Explorer');
     const requested = vi.fn();
     box.onDidRequestMenu(requested);
     box.element.querySelector<HTMLElement>('.container-box-menu-btn')!.click();
@@ -113,33 +113,33 @@ describe('ContainerBoxManager', () => {
   };
 
   it('floats a docked container into a box at the drop zone', () => {
-    dockable.set('view.explorer', new ViewContainer('sidebar.view.explorer'));
+    dockable.set('planner-container', new ViewContainer('sidebar.planner-container'));
 
-    expect(manager.float('view.explorer', zoneBeside)).toBe(true);
-    expect(manager.has('view.explorer')).toBe(true);
-    expect(calls).toContain('undock:view.explorer');
-    expect(calls).toContain('add:container:view.explorer:beside');
+    expect(manager.float('planner-container', zoneBeside)).toBe(true);
+    expect(manager.has('planner-container')).toBe(true);
+    expect(calls).toContain('undock:planner-container');
+    expect(calls).toContain('add:container:planner-container:beside');
     expect(calls).toContain('save');
   });
 
   it('routes a drop on an already-floating container as a box move', () => {
-    dockable.set('view.explorer', new ViewContainer('sidebar.view.explorer'));
-    manager.float('view.explorer');
+    dockable.set('planner-container', new ViewContainer('sidebar.planner-container'));
+    manager.float('planner-container');
     calls.length = 0;
 
-    manager.handleContainerDrop('view.explorer', zoneBeside);
-    expect(calls).toEqual(['move:container:view.explorer:beside', 'save']);
+    manager.handleContainerDrop('planner-container', zoneBeside);
+    expect(calls).toEqual(['move:container:planner-container:beside', 'save']);
   });
 
   it('docks a floating container back: box leaves the grid, container re-rails', () => {
-    dockable.set('view.explorer', new ViewContainer('sidebar.view.explorer'));
-    manager.float('view.explorer');
+    dockable.set('planner-container', new ViewContainer('sidebar.planner-container'));
+    manager.float('planner-container');
     calls.length = 0;
 
-    expect(manager.dock('view.explorer', 'right')).toBe(true);
-    expect(manager.has('view.explorer')).toBe(false);
-    expect(calls).toContain('remove:container:view.explorer');
-    expect(calls).toContain('dock:view.explorer:right');
+    expect(manager.dock('planner-container', 'right')).toBe(true);
+    expect(manager.has('planner-container')).toBe(false);
+    expect(calls).toContain('remove:container:planner-container');
+    expect(calls).toContain('dock:planner-container:right');
   });
 
   it('keeps a waiting shell for a restored box and seats the late arrival', () => {
@@ -160,11 +160,11 @@ describe('ContainerBoxManager', () => {
   });
 
   it('the box menu offers the rails for a container, and docking works from it', () => {
-    dockable.set('view.explorer', new ViewContainer('sidebar.view.explorer'));
-    manager.float('view.explorer');
+    dockable.set('planner-container', new ViewContainer('sidebar.planner-container'));
+    manager.float('planner-container');
     calls.length = 0;
 
-    const box = manager.resolveShell(containerBoxViewId('view.explorer')) as ContainerBox;
+    const box = manager.resolveShell(containerBoxViewId('planner-container')) as ContainerBox;
     box.element.querySelector<HTMLElement>('.container-box-menu-btn')!.click();
     try {
       const items = [...document.querySelectorAll<HTMLElement>('.context-menu-item')];
@@ -176,7 +176,7 @@ describe('ContainerBoxManager', () => {
       // Menu choices route through the command bus (Phase B) — the host
       // receives the command, not a direct dock() call.
       items.find((i) => i.textContent?.includes('Dock To Right Rail'))!.click();
-      expect(calls).toContain('cmd:workbench.action.container.dock:view.explorer:right');
+      expect(calls).toContain('cmd:workbench.action.container.dock:planner-container:right');
     } finally {
       document.querySelectorAll('.context-menu').forEach((el) => el.remove());
     }
@@ -200,16 +200,16 @@ describe('ContainerBoxManager', () => {
   });
 
   it('re-docks a seated container whose leaf did not survive a tree restore', () => {
-    dockable.set('view.explorer', new ViewContainer('sidebar.view.explorer'));
-    manager.float('view.explorer');
+    dockable.set('planner-container', new ViewContainer('sidebar.planner-container'));
+    manager.float('planner-container');
     manager.resolveShell(containerBoxViewId('gone-tool'));
     calls.length = 0;
 
     manager.pruneAbsent(new Set<string>());
 
     // Seated → back to the left rail; waiting shell → simply gone.
-    expect(calls).toContain('dock:view.explorer:left');
-    expect(manager.has('view.explorer')).toBe(false);
+    expect(calls).toContain('dock:planner-container:left');
+    expect(manager.has('planner-container')).toBe(false);
     expect(manager.has('gone-tool')).toBe(false);
   });
 });
