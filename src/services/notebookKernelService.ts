@@ -18,7 +18,7 @@ import { Emitter, type Event } from '../platform/events.js';
 import { createServiceIdentifier } from '../platform/types.js';
 import type { IActivityJournalService } from './activityJournalService.js';
 import type { IPythonEnvService } from './pythonEnvService.js';
-import type { NotebookOutput } from '../built-in/editor/notebook/notebookModel.js';
+import type { NotebookOutput } from '../editor/panes/notebook/notebookModel.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

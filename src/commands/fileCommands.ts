@@ -47,7 +47,7 @@ export const fileOpenFile: CommandDescriptor = {
       }
 
       if (textFileManager && fileService) {
-        const { FileEditorInput } = await import('../built-in/editor/fileEditorInput.js');
+        const { FileEditorInput } = await import('../editor/panes/fileEditorInput.js');
         const input = FileEditorInput.create(uri, textFileManager, fileService);
         await editorService.openEditor(input, { pinned: result.length > 1 });
       } else {
@@ -73,7 +73,7 @@ export const fileNewTextFile: CommandDescriptor = {
       return;
     }
 
-    const { UntitledEditorInput } = await import('../built-in/editor/untitledEditorInput.js');
+    const { UntitledEditorInput } = await import('../editor/panes/untitledEditorInput.js');
     const input = UntitledEditorInput.create();
     await editorService.openEditor(input, { pinned: false });
     console.log('[Command] file.newTextFile — created untitled editor "%s"', input.name);

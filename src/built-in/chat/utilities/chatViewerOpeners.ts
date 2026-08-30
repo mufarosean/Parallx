@@ -1,5 +1,5 @@
 import type { IEditorService, IMemoryService, IWorkspaceMemoryService } from '../../../services/serviceTypes.js';
-import { ReadonlyMarkdownInput } from '../../editor/readonlyMarkdownInput.js';
+import { ReadonlyMarkdownInput } from '../../../editor/panes/readonlyMarkdownInput.js';
 
 interface IWorkspaceFolderRef {
   readonly uri: { fsPath: string };

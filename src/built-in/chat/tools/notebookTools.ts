@@ -37,8 +37,8 @@ import {
   type CellType,
   type NotebookCell,
   type NotebookDocument,
-} from '../../editor/notebook/notebookModel.js';
-import { outputToText } from '../../editor/notebook/outputRenderer.js';
+} from '../../../editor/panes/notebook/notebookModel.js';
+import { outputToText } from '../../../editor/panes/notebook/outputRenderer.js';
 
 /**
  * The slice of an open `NotebookEditorInput` a writer needs.

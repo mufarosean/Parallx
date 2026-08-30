@@ -56,6 +56,7 @@ import {
   showSearchView, showExplorerView, showView,
 } from './viewCommands.js';
 import {
+  toggleWordWrap, changeEncoding,
   splitEditor, splitEditorOrthogonal, closeActiveEditor, nextEditor, previousEditor,
   markdownOpenPreviewToSide, markdownOpenPreview,
   addSelectionToChat,
@@ -341,6 +342,8 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   // (SYSTEM_INTEGRITY.md Phase B — every gesture has a command)
   ...ALL_LAYOUT_COMMANDS,
   // Editor
+  toggleWordWrap,
+  changeEncoding,
   splitEditor,
   splitEditorOrthogonal,
   closeActiveEditor,

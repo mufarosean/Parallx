@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../../src/built-in/editor/readonlyMarkdownInput', () => ({
+vi.mock('../../src/editor/panes/readonlyMarkdownInput', () => ({
   ReadonlyMarkdownInput: {
     create: vi.fn((content: string, name: string) => ({ content, name })),
   },
 }));
 
-import { ReadonlyMarkdownInput } from '../../src/built-in/editor/readonlyMarkdownInput';
+import { ReadonlyMarkdownInput } from '../../src/editor/panes/readonlyMarkdownInput';
 import {
   buildSessionMemoryMarkdown,
   openChatFile,

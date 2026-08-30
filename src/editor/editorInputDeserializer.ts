@@ -7,12 +7,12 @@
 
 import type { IEditorInput } from './editorInput.js';
 import { URI } from '../platform/uri.js';
-import { FileEditorInput } from '../built-in/editor/fileEditorInput.js';
-import { PdfEditorInput } from '../built-in/editor/pdfEditorInput.js';
-import { EpubEditorInput } from '../built-in/editor/epubEditorInput.js';
-import { ImageEditorInput } from '../built-in/editor/imageEditorInput.js';
-import { MarkdownPreviewInput } from '../built-in/editor/markdownPreviewInput.js';
-import { NotebookEditorInput } from '../built-in/editor/notebook/notebookEditorInput.js';
+import { FileEditorInput } from '../editor/panes/fileEditorInput.js';
+import { PdfEditorInput } from '../editor/panes/pdfEditorInput.js';
+import { EpubEditorInput } from '../editor/panes/epubEditorInput.js';
+import { ImageEditorInput } from '../editor/panes/imageEditorInput.js';
+import { MarkdownPreviewInput } from '../editor/panes/markdownPreviewInput.js';
+import { NotebookEditorInput } from '../editor/panes/notebook/notebookEditorInput.js';
 import type { ITextFileModelManager, IFileService } from '../services/serviceTypes.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────

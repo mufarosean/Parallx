@@ -12,12 +12,12 @@
 // model configured.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { NotebookEditorPane } from '../../src/built-in/editor/notebook/notebookEditorPane.js';
-import { NotebookEditorInput } from '../../src/built-in/editor/notebook/notebookEditorInput.js';
+import { NotebookEditorPane } from '../../src/editor/panes/notebook/notebookEditorPane.js';
+import { NotebookEditorInput } from '../../src/editor/panes/notebook/notebookEditorInput.js';
 import { URI } from '../../src/platform/uri.js';
 import type { IFileService } from '../../src/services/serviceTypes.js';
 import type { IChatResponseChunk } from '../../src/services/chatTypes.js';
-import { createEmptyCell, type NotebookCell } from '../../src/built-in/editor/notebook/notebookModel.js';
+import { createEmptyCell, type NotebookCell } from '../../src/editor/panes/notebook/notebookModel.js';
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 

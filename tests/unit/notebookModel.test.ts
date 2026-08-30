@@ -23,7 +23,7 @@ import {
   setCellExecutionTiming,
   formatDuration,
   NotebookParseError,
-} from '../../src/built-in/editor/notebook/notebookModel.js';
+} from '../../src/editor/panes/notebook/notebookModel.js';
 import { ansiToHtml, stripAnsi } from '../../src/ui/ansiToHtml.js';
 
 const ESC = String.fromCharCode(27);

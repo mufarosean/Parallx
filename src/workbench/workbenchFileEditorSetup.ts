@@ -29,33 +29,33 @@ import type { IEditorInput } from '../editor/editorInput.js';
 import { GroupDirection } from '../editor/editorTypes.js';
 
 // Editor inputs
-import { FileEditorInput } from '../built-in/editor/fileEditorInput.js';
-import { UntitledEditorInput } from '../built-in/editor/untitledEditorInput.js';
-import { MarkdownPreviewInput } from '../built-in/editor/markdownPreviewInput.js';
-import { ReadonlyMarkdownInput } from '../built-in/editor/readonlyMarkdownInput.js';
-import { ImageEditorInput } from '../built-in/editor/imageEditorInput.js';
-import { PdfEditorInput } from '../built-in/editor/pdfEditorInput.js';
-import { EpubEditorInput } from '../built-in/editor/epubEditorInput.js';
-import { WordEditorInput } from '../built-in/editor/wordEditorInput.js';
-import { ExcelEditorInput } from '../built-in/editor/excelEditorInput.js';
+import { FileEditorInput } from '../editor/panes/fileEditorInput.js';
+import { UntitledEditorInput } from '../editor/panes/untitledEditorInput.js';
+import { MarkdownPreviewInput } from '../editor/panes/markdownPreviewInput.js';
+import { ReadonlyMarkdownInput } from '../editor/panes/readonlyMarkdownInput.js';
+import { ImageEditorInput } from '../editor/panes/imageEditorInput.js';
+import { PdfEditorInput } from '../editor/panes/pdfEditorInput.js';
+import { EpubEditorInput } from '../editor/panes/epubEditorInput.js';
+import { WordEditorInput } from '../editor/panes/wordEditorInput.js';
+import { ExcelEditorInput } from '../editor/panes/excelEditorInput.js';
 
 // Editor panes
-import { TextEditorPane } from '../built-in/editor/textEditorPane.js';
-import { CodeEditorPane } from '../built-in/editor/codeEditorPane.js';
+import { TextEditorPane } from '../editor/panes/textEditorPane.js';
+import { CodeEditorPane } from '../editor/panes/codeEditorPane.js';
 import { hasCodeLanguage } from '../ui/codeEditor.js';
 import { IPythonEnvService } from '../services/pythonEnvService.js';
 import { INotebookKernelService } from '../services/notebookKernelService.js';
-import { NotebookEditorInput } from '../built-in/editor/notebook/notebookEditorInput.js';
+import { NotebookEditorInput } from '../editor/panes/notebook/notebookEditorInput.js';
 import {
   NotebookEditorPane,
   type INotebookGenerateProvider as NotebookGenerateProvider,
-} from '../built-in/editor/notebook/notebookEditorPane.js';
-import { MarkdownEditorPane } from '../built-in/editor/markdownEditorPane.js';
-import { ImageEditorPane } from '../built-in/editor/imageEditorPane.js';
-import { PdfEditorPane } from '../built-in/editor/pdfEditorPane.js';
-import { EpubEditorPane } from '../built-in/editor/epubEditorPane.js';
-import { WordEditorPane } from '../built-in/editor/wordEditorPane.js';
-import { ExcelEditorPane } from '../built-in/editor/excelEditorPane.js';
+} from '../editor/panes/notebook/notebookEditorPane.js';
+import { MarkdownEditorPane } from '../editor/panes/markdownEditorPane.js';
+import { ImageEditorPane } from '../editor/panes/imageEditorPane.js';
+import { PdfEditorPane } from '../editor/panes/pdfEditorPane.js';
+import { EpubEditorPane } from '../editor/panes/epubEditorPane.js';
+import { WordEditorPane } from '../editor/panes/wordEditorPane.js';
+import { ExcelEditorPane } from '../editor/panes/excelEditorPane.js';
 
 // Editor resolver + pane factory
 import { EditorResolverService, EditorResolverPriority } from '../services/editorResolverService.js';

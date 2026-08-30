@@ -49,7 +49,7 @@ import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManage
 import { IActivityJournalService } from '../../services/activityJournalService.js';
 import { IPythonEnvService } from '../../services/pythonEnvService.js';
 import { INotebookKernelService } from '../../services/notebookKernelService.js';
-import { findOpenNotebook } from '../editor/notebook/notebookEditorInput.js';
+import { findOpenNotebook } from '../../editor/panes/notebook/notebookEditorInput.js';
 import { writeThroughOpenDocument } from '../../services/openDocumentWriter.js';
 import { getGlobalSettingsRegistry } from '../../services/settingsRegistryService.js';
 import { PolicyDecisionPoint as _PolicyDecisionPoint } from '../../services/policyDecisionPoint.js';

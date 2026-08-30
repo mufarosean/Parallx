@@ -20,7 +20,7 @@ const ROOT = resolve(__dirname, '../..');
 /** Files allowed to declare literal font stacks. */
 const EXEMPT_FILES = new Set<string>([
   'src/theme/px-tokens.css',            // defines the vocabulary itself
-  'src/built-in/editor/epubEditorPane.css', // book serif — deliberate reading face
+  'src/editor/panes/epubEditorPane.css', // book serif — deliberate reading face
 ]);
 
 describe('font compliance — one font vocabulary', () => {

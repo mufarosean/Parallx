@@ -165,7 +165,6 @@ import * as OutputTool from '../built-in/output/main.js';
 import * as IndexingLogTool from '../built-in/indexing-log/main.js';
 import * as ActivityLogTool from '../built-in/activity-log/main.js';
 import * as ToolGalleryTool from '../built-in/tool-gallery/main.js';
-import * as FileEditorTool from '../built-in/editor/main.js';
 import * as CanvasTool from '../built-in/canvas/main.js';
 import * as ChatTool from '../built-in/chat/main.js';
 import * as AISettingsTool from '../built-in/ai-settings/main.js';
@@ -180,7 +179,6 @@ import type { IToolManifest, IToolDescription } from '../tools/toolManifest.js';
 import {
   EXPLORER_MANIFEST,
   SEARCH_MANIFEST,
-  TEXT_EDITOR_MANIFEST,
   WELCOME_MANIFEST,
   TERMINAL_MANIFEST,
   OUTPUT_MANIFEST,
@@ -3716,7 +3714,6 @@ export class Workbench extends Layout {
     const builtins: { manifest: IToolManifest; module: { activate: Function; deactivate?: Function } }[] = [
       { manifest: EXPLORER_MANIFEST, module: ExplorerTool },
       { manifest: SEARCH_MANIFEST, module: SearchTool },
-      { manifest: TEXT_EDITOR_MANIFEST, module: FileEditorTool },
       { manifest: WELCOME_MANIFEST, module: WelcomeTool },
       // Terminal before Output so the panel tab order reads
       // Terminal · Output · Indexing · AI Diagnostics · Autonomy Log.

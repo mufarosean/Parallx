@@ -17,12 +17,12 @@ import {
   registerBuiltinEditorDeserializers,
   deserializeEditorInput,
 } from '../../src/editor/editorInputDeserializer.js';
-import { FileEditorInput } from '../../src/built-in/editor/fileEditorInput.js';
-import { PdfEditorInput } from '../../src/built-in/editor/pdfEditorInput.js';
-import { EpubEditorInput } from '../../src/built-in/editor/epubEditorInput.js';
-import { ImageEditorInput } from '../../src/built-in/editor/imageEditorInput.js';
-import { MarkdownPreviewInput } from '../../src/built-in/editor/markdownPreviewInput.js';
-import { NotebookEditorInput } from '../../src/built-in/editor/notebook/notebookEditorInput.js';
+import { FileEditorInput } from '../../src/editor/panes/fileEditorInput.js';
+import { PdfEditorInput } from '../../src/editor/panes/pdfEditorInput.js';
+import { EpubEditorInput } from '../../src/editor/panes/epubEditorInput.js';
+import { ImageEditorInput } from '../../src/editor/panes/imageEditorInput.js';
+import { MarkdownPreviewInput } from '../../src/editor/panes/markdownPreviewInput.js';
+import { NotebookEditorInput } from '../../src/editor/panes/notebook/notebookEditorInput.js';
 import { URI } from '../../src/platform/uri.js';
 
 /** Minimal stand-ins — deserialization must not touch disk. */

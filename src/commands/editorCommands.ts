@@ -8,6 +8,49 @@ import { GroupDirection } from '../services/serviceTypes.js';
 
 // ─── Editor Commands ─────────────────────────────────────────────────────────
 
+/**
+ * Phase D step 7 — the editor sheds its tool costume. These two commands
+ * were the ENTIRE activate() of the 'parallx.editor.text' built-in, which
+ * carried a '*' activation event for their sake. The editor is core by
+ * decision (the anchor); its commands register like every other core
+ * command, and the costume manifest is gone.
+ */
+export const toggleWordWrap: CommandDescriptor = {
+  id: 'editor.toggleWordWrap',
+  title: 'Toggle Word Wrap',
+  category: 'View',
+  keybinding: 'Alt+Z',
+  aiInvocable: true,
+  aiDescription: 'Toggle word-wrap in the active editor.',
+  handler() {
+    // The active editor group is marked with `.editor-group--active`; its
+    // textarea holds a back-reference to the TextEditorPane instance, whose
+    // toggleWordWrap() updates internal state, CSS, minimap, and events.
+    const textarea = document.querySelector(
+      '.editor-group--active .editor-pane .text-editor-textarea',
+    ) as (HTMLTextAreaElement & { __textEditorPane?: import('../editor/panes/textEditorPane.js').TextEditorPane }) | null;
+    if (!textarea) {
+      console.warn('[Command] toggleWordWrap — no active text editor');
+      return;
+    }
+    const pane = textarea.__textEditorPane;
+    if (pane) pane.toggleWordWrap();
+    else textarea.classList.toggle('text-editor-textarea--wrap');
+  },
+};
+
+export const changeEncoding: CommandDescriptor = {
+  id: 'editor.changeEncoding',
+  title: 'Change File Encoding',
+  category: 'Editor',
+  aiInvocable: true,
+  aiDescription: 'Open the file encoding picker for the active editor.',
+  handler(ctx) {
+    const notifications = ctx.getService<import('../services/serviceTypes.js').INotificationService>('INotificationService');
+    void notifications?.info('Encoding selection is not yet implemented.');
+  },
+};
+
 export const splitEditor: CommandDescriptor = {
   id: 'workbench.action.splitEditor',
   title: 'Split Editor Right',
@@ -141,7 +184,7 @@ export const markdownOpenPreviewToSide: CommandDescriptor = {
     }
 
     // Create a MarkdownPreviewInput wrapping the source FileEditorInput (dynamic import)
-    const { MarkdownPreviewInput } = await import('../built-in/editor/markdownPreviewInput.js');
+    const { MarkdownPreviewInput } = await import('../editor/panes/markdownPreviewInput.js');
     const previewInput = MarkdownPreviewInput.create(activeEditor as any);
     newGroup.openEditor(previewInput, { pinned: true });
   },
@@ -165,7 +208,7 @@ export const markdownOpenPreview: CommandDescriptor = {
     if (!isMarkdownFile(activeEditor.name)) return;
 
     // Open preview in the same group (replaces the text editor tab)
-    const { MarkdownPreviewInput } = await import('../built-in/editor/markdownPreviewInput.js');
+    const { MarkdownPreviewInput } = await import('../editor/panes/markdownPreviewInput.js');
     const previewInput = MarkdownPreviewInput.create(activeEditor as any);
     activeGroup.openEditor(previewInput, { pinned: true });
   },

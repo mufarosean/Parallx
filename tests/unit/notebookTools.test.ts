@@ -14,8 +14,8 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   createNotebookTools,
 } from '../../src/built-in/chat/tools/notebookTools.js';
-import { parseNotebook, serialiseNotebook, createEmptyNotebook, createEmptyCell } from '../../src/built-in/editor/notebook/notebookModel.js';
-import type { NotebookOutput } from '../../src/built-in/editor/notebook/notebookModel.js';
+import { parseNotebook, serialiseNotebook, createEmptyNotebook, createEmptyCell } from '../../src/editor/panes/notebook/notebookModel.js';
+import type { NotebookOutput } from '../../src/editor/panes/notebook/notebookModel.js';
 import { _resetResourceRegistryForTest } from '../../src/services/toolResourceRegistry.js';
 
 // ── Fakes ────────────────────────────────────────────────────────────────────

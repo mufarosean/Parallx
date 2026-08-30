@@ -7,13 +7,13 @@
 // and is not what breaks.
 
 import { describe, it, expect } from 'vitest';
-import { stripCodeFences } from '../../src/built-in/editor/notebook/codeFences.js';
+import { stripCodeFences } from '../../src/editor/panes/notebook/codeFences.js';
 import {
   buildNotebookContext,
   buildGenerateMessages,
   MAX_CONTEXT_CHARS,
-} from '../../src/built-in/editor/notebook/generatePrompt.js';
-import { createEmptyCell, type CellType, type NotebookCell } from '../../src/built-in/editor/notebook/notebookModel.js';
+} from '../../src/editor/panes/notebook/generatePrompt.js';
+import { createEmptyCell, type CellType, type NotebookCell } from '../../src/editor/panes/notebook/notebookModel.js';
 
 function cell(cellType: CellType, source: string): NotebookCell {
   const c = createEmptyCell(cellType);
