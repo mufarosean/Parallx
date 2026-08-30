@@ -6,9 +6,6 @@
 // VS Code reference:
 //   src/vs/platform/configuration/common/configurationModels.ts
 
-import { Disposable } from '../platform/lifecycle.js';
-import { Emitter, Event } from '../platform/events.js';
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // Configuration Schema Types
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -167,111 +164,7 @@ export interface IConfigFileSystem {
   writeFile?(relativePath: string, content: string): Promise<void>;
 }
 
-/**
- * Provides typed, validated access to `.parallx/config.json`.
- * Reads the file once at startup and re-reads on demand.
- */
-export class ParallxConfigService extends Disposable {
-
-  private _config: IParallxConfig = DEFAULT_CONFIG;
-  private _fs: IConfigFileSystem | undefined;
-  private _loaded = false;
-
-  private readonly _onDidChangeConfig = this._register(new Emitter<IParallxConfig>());
-  readonly onDidChangeConfig: Event<IParallxConfig> = this._onDidChangeConfig.event;
-
-  // ── File path ──
-  static readonly CONFIG_PATH = '.parallx/config.json';
-
-  // ── Public API ──
-
-  /** Bind a filesystem accessor. Must be called before `load()`. */
-  setFileSystem(fs: IConfigFileSystem): void {
-    this._fs = fs;
-  }
-
-  /** Current configuration (always returns a valid object). */
-  get config(): IParallxConfig {
-    return this._config;
-  }
-
-  /** Whether the config file has been loaded at least once. */
-  get isLoaded(): boolean {
-    return this._loaded;
-  }
-
-  // Typed accessors for convenience
-  get model(): IParallxModelConfig { return this._config.model; }
-  get agent(): IParallxAgentConfig { return this._config.agent; }
-  get contextBudget(): IParallxContextBudgetConfig { return this._config.contextBudget; }
-  get permissions(): IParallxPermissionsConfig { return this._config.permissions; }
-  get indexing(): IParallxIndexingConfig { return this._config.indexing; }
-
-  /**
-   * Load (or reload) configuration from `.parallx/config.json`.
-   * Falls back to defaults if the file doesn't exist or is invalid.
-   */
-  async load(): Promise<void> {
-    if (!this._fs) {
-      this._config = DEFAULT_CONFIG;
-      this._loaded = true;
-      return;
-    }
-
-    try {
-      const exists = await this._fs.exists(ParallxConfigService.CONFIG_PATH);
-      if (!exists) {
-        this._config = DEFAULT_CONFIG;
-        this._loaded = true;
-        return;
-      }
-
-      const content = await this._fs.readFile(ParallxConfigService.CONFIG_PATH);
-      const json = _parseJsonWithComments(content);
-      if (!json || typeof json !== 'object' || Array.isArray(json)) {
-        this._config = DEFAULT_CONFIG;
-      } else {
-        this._config = mergeConfig(json as Record<string, unknown>);
-      }
-    } catch {
-      this._config = DEFAULT_CONFIG;
-    }
-
-    this._loaded = true;
-    this._onDidChangeConfig.fire(this._config);
-  }
-
-  /**
-   * Get a specific config value by dot-path (e.g. `"agent.maxIterations"`).
-   * Returns undefined if the path doesn't match.
-   */
-  get<T = unknown>(path: string): T | undefined {
-    const parts = path.split('.');
-    let current: unknown = this._config;
-
-    for (const part of parts) {
-      if (current === null || current === undefined || typeof current !== 'object') {
-        return undefined;
-      }
-      current = (current as Record<string, unknown>)[part];
-    }
-
-    return current as T;
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// JSON with Comments parser
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/** Strip // and /* comments before parsing (jsonc → json). */
-function _parseJsonWithComments(text: string): unknown {
-  // Strip single-line comments (not inside strings)
-  let cleaned = text.replace(/\/\/.*$/gm, '');
-  // Strip block comments
-  cleaned = cleaned.replace(/\/\*[\s\S]*?\*\//g, '');
-  // Strip trailing commas before } or ]
-  cleaned = cleaned.replace(/,\s*([}\]])/g, '$1');
-
-  return JSON.parse(cleaned);
-}
+// (ParallxConfigService class + its jsonc parser were deleted by the
+// Retirement phase: UnifiedAIConfigService replaced it at M15/M61 and
+// no construction site survived. mergeConfig, DEFAULT_CONFIG, and the
+// config interfaces above remain — unified config imports them.)
