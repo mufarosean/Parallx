@@ -73,6 +73,22 @@ tools but gain `required: true` until their extractions land.)
 
 ## Execution order (risk-sorted; each step ships alone, green)
 
+**PROGRESS 2026-08-29:** Step 1 SHIPPED (73d0d798, shadows deleted after
+three-layer verification). Decision 1 SHIPPED (same commit: registerInstance
+throws for externals, apiServicesGate.test.ts pins it; the three externals
+using api.services only read). Step 2 SHIPPED (same commit:
+canvas.getEmbeddedNoteHost getter seam, editor loaded lazily on first
+embed, zero dashboard→canvas imports). Step 3 SHIPPED (3c26f74c: the
+13-file chain moved wholesale to src/services/db-migrations, workbench
+applies it on DB open; filename-keyed _migrations tracking continues
+seamlessly). Step 4 SHIPPED (0c354a7d: settingsRegistryBootstrap in core;
+chat keeps only its domain schemas behind a sentinel; the four canvas.*
+keys moved home to canvas). Step 5a SHIPPED (1ffee8c9: autonomyBootstrap
+in core builds flags/event-log/rail/patterns + both legacy migrations;
+chat resolves; cron + background runner stay for 5b's executor seam).
+NEXT: field-verify boot (registry + autonomy substrate now core-built),
+then 5b → 6 → 7 → 8 → 9 → 10.
+
 1. **Delete the six shadow parallx-manifest.json files.** They are dead
    copies of builtinManifests.ts that mislead (I updated explorer's this
    week purely to keep the lie consistent). Trivial, zero runtime risk.
