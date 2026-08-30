@@ -45,14 +45,13 @@ import type {
   IChatMessage,
   IChatResponseChunk,
 } from '../../services/chatTypes.js';
-import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService, IDiagnosticsService, IDocumentExtractionService, IObservabilityService, IRuntimeHookRegistry, ILayoutService, IEmbeddingService, IWorkspaceStorageService, IGlobalStorageService, ISurfaceRouterService, IAutonomyLogService, ISettingsRegistryService, IAutonomyTaskRailService, IAutonomyPatternMemoryService, IAutonomyFeatureFlagsService, ISemanticGraphService, IMindMapRefreshOrchestrator, ICanvasPageQueryService, IPlannerQueryService } from '../../services/serviceTypes.js';
+import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService, IDiagnosticsService, IDocumentExtractionService, IObservabilityService, IRuntimeHookRegistry, ILayoutService, IEmbeddingService, IWorkspaceStorageService, ISurfaceRouterService, IAutonomyLogService, ISettingsRegistryService, IAutonomyTaskRailService, IAutonomyPatternMemoryService, IAutonomyFeatureFlagsService, ISemanticGraphService, IMindMapRefreshOrchestrator, ICanvasPageQueryService, IPlannerQueryService } from '../../services/serviceTypes.js';
 import { IActivityJournalService } from '../../services/activityJournalService.js';
 import { IPythonEnvService } from '../../services/pythonEnvService.js';
 import { INotebookKernelService } from '../../services/notebookKernelService.js';
 import { findOpenNotebook } from '../editor/notebook/notebookEditorInput.js';
 import { writeThroughOpenDocument } from '../../services/openDocumentWriter.js';
-import { SettingsRegistryService, setGlobalSettingsRegistry, getGlobalSettingsRegistry } from '../../services/settingsRegistryService.js';
-import { createSecretStorageService } from '../../services/secretStorageService.js';
+import { getGlobalSettingsRegistry } from '../../services/settingsRegistryService.js';
 import { PolicyDecisionPoint as _PolicyDecisionPoint } from '../../services/policyDecisionPoint.js';
 import { registerAutonomyFlagSettings } from '../../services/autonomySettingsSchemas.js';
 import {
@@ -111,9 +110,8 @@ import {
   createSubagentTurnExecutor,
   createSubagentAnnouncer,
 } from '../../openclaw/openclawSubagentExecutor.js';
-import { IEditorService, IToolRegistryService, IConfigurationService, ICommandService } from '../../services/serviceTypes.js';
+import { IEditorService, ICommandService } from '../../services/serviceTypes.js';
 import { IIntrospectionService } from '../../services/introspectionService.js';
-import { registerManifestConfiguration } from '../../services/manifestSettings.js';
 import type { IBuiltInToolFileSystem } from './chatTypes.js';
 import { PromptFileService } from '../../services/promptFileService.js';
 import type { IPromptFileAccess } from '../../services/promptFileService.js';
@@ -381,76 +379,17 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   void autonomyFlags.initialize().catch(() => { /* defaults apply */ });
   context.subscriptions.push(autonomyFlags);
 
-  // ── M60 §7 Phase ε T4.D1: Settings registry ──────────────────────────────
+  // ── Settings schemas (chat's own) ────────────────────────────────────────
   //
-  // Schema-driven settings registry. Constructed here so it can be wired
-  // up alongside autonomyFlags (we adapter-bind all 11 flags into it).
-  // Registered globally via api.services.registerInstance (M56) so the
-  // settings extension and any third-party extension can consume it.
-  if (!api.services.has(ISettingsRegistryService)) {
-    const _userStorage = api.services.has(IGlobalStorageService)
-      ? api.services.get<import('../../platform/storage.js').IStorage>(IGlobalStorageService)
-      : undefined;
-    const _wsStorageForRegistry = api.services.has(IWorkspaceStorageService)
-      ? api.services.get<import('../../platform/storage.js').IStorage>(IWorkspaceStorageService)
-      : undefined;
-    const settingsRegistry = new SettingsRegistryService(_userStorage, _wsStorageForRegistry);
-    settingsRegistry.setSecretStorage(createSecretStorageService());
-    void settingsRegistry.initialize().catch(() => { /* defaults apply */ });
-    context.subscriptions.push(settingsRegistry);
-
-    // §3.8 the editor itself ships behind a flag, default on.
-    settingsRegistry.register({
-      key: 'settings.editor.enabled',
-      type: 'boolean',
-      default: true,
-      scope: 'user',
-      description: 'Enable the unified settings editor (M60 §3.8 rollback flag).',
-      category: 'General',
-    });
-
-    // Canvas page-creation layout defaults for AI-created pages. Registered here
-    // (the settings bootstrap) to avoid a chat→canvas import cycle; canvas reads
-    // them via getNewPageDefaults(). Keys must match canvas/ai/pageTools.ts
-    // CANVAS_AI_PAGE_{FULL_WIDTH,SMALL_TEXT}_KEY.
-    settingsRegistry.register({
-      key: 'canvas.aiPages.fullWidth',
-      type: 'boolean',
-      default: true,
-      scope: 'user',
-      description: 'New pages the AI creates use the full canvas width.',
-      category: 'Canvas',
-    });
-    settingsRegistry.register({
-      key: 'canvas.aiPages.smallText',
-      type: 'boolean',
-      default: true,
-      scope: 'user',
-      description: 'New pages the AI creates use the smaller text size.',
-      category: 'Canvas',
-    });
-
-    // Canvas page version history (keys match canvasDataService.ts
-    // VERSION_HISTORY_* constants).
-    settingsRegistry.register({
-      key: 'canvas.versionHistory.maxPerPage',
-      type: 'number',
-      default: 50,
-      min: 1,
-      scope: 'user',
-      description: 'How many version-history checkpoints to keep per canvas page (older ones are pruned).',
-      category: 'Canvas',
-    });
-    settingsRegistry.register({
-      key: 'canvas.versionHistory.intervalMinutes',
-      type: 'number',
-      default: 5,
-      min: 1,
-      scope: 'user',
-      description: 'How often (minutes) to checkpoint a changed canvas page for version history. Applies after restart.',
-      category: 'Canvas',
-    });
-
+  // Phase D step 4: the registry itself is CORE's — the workbench
+  // constructs it before any tool activates (settingsRegistryBootstrap).
+  // Chat is a consumer like everyone else: it resolves the registry and
+  // registers only its own domain. The sentinel key guards reactivation
+  // (schemas register once per app lifetime, as before).
+  const settingsRegistry = api.services.has(ISettingsRegistryService)
+    ? api.services.get<import('../../services/settingsRegistryService.js').ISettingsRegistryService>(ISettingsRegistryService)
+    : undefined;
+  if (settingsRegistry && !settingsRegistry.getSchema('ai.providers.ollama.enabled')) {
     // Model providers — each is enabled PER WORKSPACE from AI Settings → Model →
     // Providers. Ollama (local) defaults ON; Claude (cloud) defaults OFF so
     // nothing leaves the machine unless the user turns it on for a non-sensitive
@@ -545,35 +484,6 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         command: 'workspace.resetConfig',
       },
     ]);
-
-    api.services.registerInstance(ISettingsRegistryService, settingsRegistry);
-    setGlobalSettingsRegistry(settingsRegistry);
-    context.subscriptions.push({ dispose: () => setGlobalSettingsRegistry(undefined) });
-    // Migrate any secret values that were previously stored plaintext in
-    // settings.overrides JSON (e.g. mcp.gmail.clientSecret).
-    void settingsRegistry.migrateSecretsFromJson().catch(() => { /* best-effort */ });
-
-    // Declarative extension settings — register every tool's
-    // contributes.configuration into the unified registry so it appears in the
-    // Settings hub. Sweep already-registered tools, then watch for new ones.
-    if (api.services.has(IToolRegistryService)) {
-      const toolRegistry = api.services.get<import('../../services/serviceTypes.js').IToolRegistryService>(IToolRegistryService);
-      // The bridge (STANDARDIZATION.md P1): every manifest key BINDS to the
-      // ConfigurationService, so the store extensions read is the store the
-      // Settings hub writes. Without it the hub silently edited a value no
-      // extension ever saw.
-      const configBridge = api.services.has(IConfigurationService)
-        ? api.services.get<import('../../services/serviceTypes.js').IConfigurationService>(IConfigurationService)
-        : undefined;
-      for (const entry of toolRegistry.getAll()) {
-        registerManifestConfiguration(settingsRegistry, entry.description.manifest as never, configBridge);
-      }
-      context.subscriptions.push(
-        toolRegistry.onDidRegisterTool((e) => {
-          registerManifestConfiguration(settingsRegistry, e.description.manifest as never, configBridge);
-        }),
-      );
-    }
   }
 
   // §3.10 event log — writes ndjson to per-workspace

@@ -16,7 +16,7 @@ import 'katex/dist/katex.min.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { LinksApi } from '../../links/linksApi.js';
-import { ICanvasPageQueryService, IIndexingPipelineService, IVectorStoreService, IDatabaseService, IEditorService } from '../../services/serviceTypes.js';
+import { ICanvasPageQueryService, IIndexingPipelineService, IVectorStoreService, IDatabaseService, IEditorService, ISettingsRegistryService } from '../../services/serviceTypes.js';
 import { ILanguageModelToolsService } from '../../services/chatTypes.js';
 import { IActivityJournalService } from '../../services/activityJournalService.js';
 import { registerCanvasAITools, canvasPageIdFromEditorId } from './ai/canvasAITools.js';
@@ -259,6 +259,52 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   // 1. The workspace-DB schema is CORE's now (Phase D step 3): the workbench
   //    applies src/services/db-migrations when it opens the database, before
   //    any tool activates. Canvas just uses the tables.
+
+  // 1a. Canvas's own settings schemas (Phase D step 4). These lived in chat's
+  //     activate "to avoid a chat→canvas import cycle" — with the registry
+  //     constructed by CORE, canvas registers its own keys like every other
+  //     tool. Keys match ai/pageTools.ts CANVAS_AI_PAGE_*_KEY and
+  //     canvasDataService.ts VERSION_HISTORY_*. The sentinel guards
+  //     reactivation (register throws on duplicates).
+  if (api.services.has(ISettingsRegistryService)) {
+    const settingsRegistry = api.services.get<import('../../services/settingsRegistryService.js').ISettingsRegistryService>(ISettingsRegistryService);
+    if (!settingsRegistry.getSchema('canvas.aiPages.fullWidth')) {
+      settingsRegistry.register({
+        key: 'canvas.aiPages.fullWidth',
+        type: 'boolean',
+        default: true,
+        scope: 'user',
+        description: 'New pages the AI creates use the full canvas width.',
+        category: 'Canvas',
+      });
+      settingsRegistry.register({
+        key: 'canvas.aiPages.smallText',
+        type: 'boolean',
+        default: true,
+        scope: 'user',
+        description: 'New pages the AI creates use the smaller text size.',
+        category: 'Canvas',
+      });
+      settingsRegistry.register({
+        key: 'canvas.versionHistory.maxPerPage',
+        type: 'number',
+        default: 50,
+        min: 1,
+        scope: 'user',
+        description: 'How many version-history checkpoints to keep per canvas page (older ones are pruned).',
+        category: 'Canvas',
+      });
+      settingsRegistry.register({
+        key: 'canvas.versionHistory.intervalMinutes',
+        type: 'number',
+        default: 5,
+        min: 1,
+        scope: 'user',
+        description: 'How often (minutes) to checkpoint a changed canvas page for version history. Applies after restart.',
+        category: 'Canvas',
+      });
+    }
+  }
 
   // 2. Create CanvasDataService
   _dataService = new CanvasDataService();

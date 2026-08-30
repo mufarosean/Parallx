@@ -62,6 +62,7 @@ import type { SerializedEditorSnapshot, SerializedEditorInputSnapshot } from '..
 import { LAYOUT_SCHEMA_VERSION, SerializedNodeType, type SerializedGridNode } from '../layout/layoutModel.js';
 import { IIntrospectionService, IntrospectionService } from '../services/introspectionService.js';
 import { createWorkbenchDiagnosticChecks } from '../services/workbenchDiagnosticChecks.js';
+import { bootstrapSettingsRegistry } from '../services/settingsRegistryBootstrap.js';
 import { CONTAINER_DRAG_TYPE } from '../platform/dragTypes.js';
 import { registerBuiltinEditorDeserializers, deserializeEditorInput, hasEditorInputDeserializer } from '../editor/editorInputDeserializer.js';
 import type { IEditorInput } from '../editor/editorInput.js';
@@ -943,6 +944,12 @@ export class Workbench extends Layout {
     );
     this._configService = configService;
     this._configRegistry = configRegistry;
+
+    // ── Settings registry (Phase D step 4): CORE constructs the one
+    // schema-driven registry, before any tool activates — chat used to
+    // build it in its own activate, which made the Settings hub's store
+    // hostage to one tool and raced everything built earlier.
+    for (const d of bootstrapSettingsRegistry(this._services)) this._register(d);
 
     // Window service — abstracts Electron IPC for window controls
     const windowService = this._register(new WindowService());
