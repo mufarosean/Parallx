@@ -195,3 +195,48 @@ describe('dropOrphanedToolHead — round-boundary guard at history cut points', 
     expect(dropOrphanedToolHead(messages)).toEqual(messages);
   });
 });
+
+// ── /compact command (HARNESS.md §1.3) ──
+
+describe('tryHandleOpenclawCompactCommand', () => {
+  it('summarizes the tool-aware transcript, rewrites the session, clears the boundary cache', async () => {
+    const { tryHandleOpenclawCompactCommand } = await import('../../src/openclaw/openclawDefaultRuntimeSupport');
+    const captured: unknown[] = [];
+    const compactSession = vi.fn();
+    const writeCompactionCache = vi.fn();
+    async function* summarize(messages: unknown): AsyncIterable<{ content: string; done: boolean }> {
+      captured.push(messages);
+      yield { content: 'Mission: continue. fs_read_file a.ts', done: true };
+    }
+
+    const handled = await tryHandleOpenclawCompactCommand(
+      {
+        sendSummarizationRequest: summarize as never,
+        compactSession,
+        storeSessionMemory: undefined,
+        writeCompactionCache,
+      },
+      {
+        activeCommand: 'compact',
+        context: {
+          sessionId: 'sess-1',
+          history: history(
+            pair('read it', [
+              md('Reading.'),
+              tool('fs_read_file', { path: 'a.ts' }, '[TOOL ERROR] File not found', { status: 'error' }),
+            ]),
+            pair('ok', [md('Acknowledged.')]),
+          ),
+        } as never,
+        response: { markdown: vi.fn(), progress: vi.fn() } as never,
+      },
+    );
+
+    expect(handled).toBe(true);
+    const transcript = (captured[0] as Array<{ content: string }>)[1].content;
+    expect(transcript).toContain('[called: fs_read_file({"path":"a.ts"})]');
+    expect(transcript).toContain('Tool result (fs_read_file): [TOOL ERROR] File not found');
+    expect(compactSession).toHaveBeenCalledWith('sess-1', expect.stringContaining('Mission'));
+    expect(writeCompactionCache).toHaveBeenCalledWith('sess-1', undefined);
+  });
+});

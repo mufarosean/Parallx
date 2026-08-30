@@ -19,8 +19,9 @@ import {
   MAX_QUALITY_RETRIES,
   extractIdentifiers,
   auditCompactionQuality,
+  serializeHistoryTranscript,
 } from './openclawContextEngine.js';
-import { OPENCLAW_BOOTSTRAP_DEFAULTS } from './participants/openclawParticipantRuntime.js';
+import { OPENCLAW_BOOTSTRAP_DEFAULTS, flattenPairsToMessages } from './participants/openclawParticipantRuntime.js';
 
 const OPENCLAW_COMMANDS: Record<string, IChatSlashCommand> = {
   context: {
@@ -625,7 +626,7 @@ async function buildFileTree(
 }
 
 export async function tryHandleOpenclawCompactCommand(
-  services: Pick<IDefaultParticipantServices, 'sendSummarizationRequest' | 'compactSession' | 'storeSessionMemory'>,
+  services: Pick<IDefaultParticipantServices, 'sendSummarizationRequest' | 'compactSession' | 'storeSessionMemory' | 'writeCompactionCache'>,
   options: {
     readonly activeCommand?: string;
     readonly slashSpecialHandler?: string;
@@ -637,6 +638,7 @@ export async function tryHandleOpenclawCompactCommand(
     sendSummarizationRequest: services.sendSummarizationRequest,
     compactSession: services.compactSession,
     storeSessionMemory: services.storeSessionMemory,
+    writeCompactionCache: services.writeCompactionCache,
   }, {
     isCompactCommand: options.activeCommand === 'compact' || options.slashSpecialHandler === 'compact',
     sessionId: options.context.sessionId,
@@ -652,6 +654,7 @@ interface IOpenclawCompactCommandDeps {
   ) => AsyncIterable<IChatResponseChunk>;
   readonly compactSession?: (sessionId: string, summaryText: string) => void;
   readonly storeSessionMemory?: (sessionId: string, summary: string, messageCount: number) => Promise<void>;
+  readonly writeCompactionCache?: (sessionId: string, entry: undefined) => void;
 }
 
 async function tryExecuteCompactOpenclawCommand(
@@ -678,25 +681,10 @@ async function tryExecuteCompactOpenclawCommand(
 
   input.response.progress('Compacting conversation historyâ€¦');
 
-  const historyText = input.history.map((pair) => {
-    const responseText = pair.response.parts
-      .map((part) => {
-        const candidate = part as unknown as Record<string, unknown>;
-        if ('text' in candidate && typeof candidate.text === 'string') {
-          return candidate.text;
-        }
-        if ('content' in candidate && typeof candidate.content === 'string') {
-          return candidate.content;
-        }
-        if ('code' in candidate && typeof candidate.code === 'string') {
-          return `\`\`\`\n${candidate.code}\n\`\`\``;
-        }
-        return '';
-      })
-      .filter(Boolean)
-      .join('\n');
-    return `User: ${pair.request.text}\nAssistant: ${responseText}`;
-  }).join('\n\n---\n\n');
+  // HARNESS.md §1.2/§1.3 — this used to be a THIRD lossy flattener (duck-typed
+  // text parts only, tool record dropped). The shared flattener + transcript
+  // serializer give the summarizer the same tool-aware record the engine sees.
+  const historyText = serializeHistoryTranscript(flattenPairsToMessages(input.history));
 
   const beforeTokens = Math.ceil(historyText.length / 4);
 
@@ -747,6 +735,10 @@ async function tryExecuteCompactOpenclawCommand(
   const afterTokens = Math.ceil(summaryText.length / 4);
   const saved = beforeTokens - afterTokens;
   deps.compactSession?.(input.sessionId, summaryText);
+  // The boundary-compaction cache covered the pre-compact history; it can
+  // never match the rewritten session, so drop it rather than let a stale
+  // fingerprint linger until it happens to be overwritten.
+  deps.writeCompactionCache?.(input.sessionId, undefined);
 
   // Auto-flush summary to long-term memory (upstream pattern: compaction → memory flush)
   if (deps.storeSessionMemory) {

@@ -465,34 +465,9 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
       return { compacted: false, tokensBefore: historyTokens, tokensAfter: historyTokens };
     }
 
-    // Build a transcript of history for summarization. HARNESS.md §1.2 —
-    // history now carries the tool exchange record; the summarizer must see
-    // what ran and what came back, or the Failures/State sections of the
-    // continuation contract have nothing to draw on.
-    const transcript = history
-      .map((msg) => {
-        if (msg.role === 'tool') {
-          return `Tool result (${msg.toolName ?? 'unknown'}): ${msg.content}`;
-        }
-        let line = `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`;
-        if (msg.role === 'assistant' && msg.toolCalls?.length) {
-          const calls = msg.toolCalls
-            .map((tc) => {
-              try {
-                return `${tc.function.name}(${JSON.stringify(tc.function.arguments)})`;
-              } catch {
-                return tc.function.name;
-              }
-            })
-            .join(', ');
-          line += `\n[called: ${calls}]`;
-        }
-        if (msg.role === 'user' && msg.images?.length) {
-          line += ` [attached ${msg.images.length} image(s)]`;
-        }
-        return line;
-      })
-      .join('\n\n');
+    // Build a transcript of history for summarization (shared serializer —
+    // the /compact command uses the same one).
+    const transcript = serializeHistoryTranscript(history);
 
     let summaryText = '';
     let qualityScore: number | undefined;
@@ -884,6 +859,40 @@ export function historyFingerprint(history: readonly IChatMessage[], count: numb
   const first = covered[0]?.content ?? '';
   const last = covered[covered.length - 1]?.content ?? '';
   return `${count}:${chars}:${first.slice(0, 24)}:${last.length}`;
+}
+
+/**
+ * HARNESS.md §1.2 — the ONE serializer of history into a summarization
+ * transcript. History carries the tool exchange record; the summarizer must
+ * see what ran and what came back, or the Failures/State sections of the
+ * continuation contract have nothing to draw on. Used by engine compact()
+ * and the user-facing /compact command.
+ */
+export function serializeHistoryTranscript(history: readonly IChatMessage[]): string {
+  return history
+    .map((msg) => {
+      if (msg.role === 'tool') {
+        return `Tool result (${msg.toolName ?? 'unknown'}): ${msg.content}`;
+      }
+      let line = `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`;
+      if (msg.role === 'assistant' && msg.toolCalls?.length) {
+        const calls = msg.toolCalls
+          .map((tc) => {
+            try {
+              return `${tc.function.name}(${JSON.stringify(tc.function.arguments)})`;
+            } catch {
+              return tc.function.name;
+            }
+          })
+          .join(', ');
+        line += `\n[called: ${calls}]`;
+      }
+      if (msg.role === 'user' && msg.images?.length) {
+        line += ` [attached ${msg.images.length} image(s)]`;
+      }
+      return line;
+    })
+    .join('\n\n');
 }
 
 /**
