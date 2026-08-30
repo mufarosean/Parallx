@@ -75,10 +75,13 @@ export const SEARCH_MANIFEST: IToolManifest = {
   description: 'Find in Files: workspace-wide text search with results tree.',
   main: './main.js',
   engines: { parallx: '^0.1.0' },
-  // Phase D step 9 (Decision 2): LAZY — wakes when its view opens or a
-  // search command runs (the manifest command proxy activates it). The
-  // sidebar icon and Ctrl+Shift+F exist from the contribution alone.
-  activationEvents: ['onView:view.search', 'onCommand:search.findInFiles', 'onCommand:search.clearResults', 'onCommand:search.collapseAll', 'onCommand:search.expandAll'],
+  // EAGER by architecture, not by choice (Phase D step 9 post-mortem):
+  // every workbench view pre-materializes at boot — the core sidebar loop
+  // createViewSync's this view before any tool activates — so onView can
+  // never fire lazily and a 'lazy' search just showed the legacy demo
+  // placeholder forever. Until views materialize on demand, view-owning
+  // built-ins stay onStartupFinished; onCommand is the one real lazy path.
+  activationEvents: ['onStartupFinished'],
   contributes: {
     commands: [
       { id: 'search.findInFiles', title: 'Search: Find in Files',
@@ -270,9 +273,10 @@ export const TOOL_GALLERY_MANIFEST: IToolManifest = {
   description: 'Tool Gallery: shows all registered tools, their status, and contributions.',
   main: './main.js',
   engines: { parallx: '^0.1.0' },
-  // Phase D step 9: LAZY — required means always ENABLED, not always
-  // eager; the gallery wakes when its view or command is first used.
-  activationEvents: ['onView:view.tools', 'onCommand:tools.showInstalled'],
+  // EAGER by architecture (see the Search note): its contributed view
+  // materializes at boot via _addViewToContainer, so lazy-on-view is a
+  // fiction today. onCommand-only tools are the real lazy candidates.
+  activationEvents: ['onStartupFinished'],
   contributes: {
     commands: [{ id: 'tools.showInstalled', title: 'Tools: Show Installed Tools',
       aiInvocable: true, aiDescription: 'Show the list of installed tools and extensions.' }],
