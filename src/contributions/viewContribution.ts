@@ -134,19 +134,6 @@ export class ViewContributionProcessor extends Disposable implements IContributi
   private readonly _onDidRegisterProvider = this._register(new Emitter<{ viewId: string }>());
   readonly onDidRegisterProvider: Event<{ viewId: string }> = this._onDidRegisterProvider.event;
 
-  /**
-   * Phase D step 9 — the missing half of lazy activation. `onView:<id>`
-   * events were declared and parsed but NOTHING ever fired them; a tool
-   * that dared to be lazy on a view would have shown its "waiting for
-   * view provider" placeholder forever. The workbench injects the event
-   * service; the view fires its id the first time it mounts or shows.
-   */
-  private _activationEvents: { fireView(viewId: string): void } | undefined;
-
-  setActivationEvents(service: { fireView(viewId: string): void }): void {
-    this._activationEvents = service;
-  }
-
   constructor(
     private _viewManager: ViewManager,
   ) {
@@ -415,9 +402,6 @@ export class ViewContributionProcessor extends Disposable implements IContributi
    * Otherwise, a placeholder is shown until `registerProvider()` is called.
    */
   private _createContributedView(viewId: string, name: string, icon?: string): IView {
-    // The IView object below uses method shorthand, so `this` inside it is
-    // the view; the processor rides along for the activation-event fire.
-    const self = this;
     // Check if provider is already available when the factory runs
     let _provider = this._providers.get(viewId);
 
@@ -487,11 +471,6 @@ export class ViewContributionProcessor extends Disposable implements IContributi
 
       createElement(container: HTMLElement): void {
         if (_disposed) return;
-
-        // Lazy activation (Phase D step 9): the first mount IS the onView
-        // moment — a tool sleeping on `onView:<id>` wakes now, registers
-        // its provider, and the pending resolver fills this element.
-        self._activationEvents?.fireView(viewId);
 
         // Idempotent, like the base View class: a view moved between
         // containers re-mounts its ONE element, provider content riding

@@ -100,6 +100,7 @@ import { installScrollbarReveal } from '../ui/scrollbarReveal.js';
 import { ViewManager } from '../views/viewManager.js';
 import { ViewContainer } from '../views/viewContainer.js';
 import { allPlaceholderViewDescriptors, allAuxiliaryBarViewDescriptors } from '../views/placeholderViews.js';
+import { ViewLifecyclePhase } from '../views/viewManager.js';
 import { AuxiliaryBarPart } from '../parts/auxiliaryBarPart.js';
 
 // DnD
@@ -3004,9 +3005,21 @@ export class Workbench extends Layout {
 
     // Register view contribution processor (M2 Capability 6)
     this._viewContribution = registerViewContributionProcessor(this._services, this._viewManager);
-    // Phase D step 9: the view contribution fires onView:<id> on first
-    // mount, so tools may finally be LAZY on their views.
-    this._viewContribution.setActivationEvents(this._services.get(IActivationEventService));
+
+    // Phase D step 9 — the missing half of lazy activation. `onView:<id>`
+    // events were declared and parsed but NOTHING ever fired them. The
+    // ViewManager's lifecycle is the ONE seam every view crosses —
+    // contributed views AND the legacy core placeholders that still hold
+    // ids like view.search — so a view materializing or showing is the
+    // onView moment, whichever descriptor won the id.
+    {
+      const activationEvents = this._services.get(IActivationEventService);
+      this._register(this._viewManager.onDidLifecycle((e) => {
+        if (e.phase === ViewLifecyclePhase.Created || e.phase === ViewLifecyclePhase.Visible) {
+          activationEvents.fireView(e.viewId);
+        }
+      }));
+    }
     this._register(this._viewContribution);
     this._contributionHandler.setViewContribution(this._viewContribution);
     this._contributionHandler.wireViewContributionEvents();

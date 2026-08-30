@@ -900,11 +900,15 @@ export function createToolApi(
         const es = deps.toolEnablementService;
         return es ? es.isEnabled(id) : true;
       },
+      canChangeEnablement: (id: string) => {
+        const es = deps.toolEnablementService;
+        return es ? es.canChangeEnablement(id) : false;
+      },
       setEnabled: async (id: string, enabled: boolean) => {
         const es = deps.toolEnablementService;
         if (!es) throw new Error('ToolEnablementService not available');
         if (!es.canChangeEnablement(id)) {
-          throw new Error(`Cannot change enablement for tool "${id}" (built-in or not registered)`);
+          throw new Error(`Cannot change enablement for tool "${id}" (required by the app, or not registered)`);
         }
         await es.setEnablement(id, enabled);
       },
