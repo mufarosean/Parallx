@@ -44,22 +44,22 @@ export const FLAG_SUBAGENT_ENABLED = 'autonomy.subagent.enabled';
 // the flag exists for emergency rollback, not for opt-in.
 // dataview default ON for the same reason — the node is shipped read-only,
 // rendered by the canvas editor; flag gates registration.
-export const FLAG_CANVAS_BLOCKIDS_ENABLED = 'canvas.blockIds.enabled';
-export const FLAG_CANVAS_DATAVIEW_ENABLED = 'canvas.dataview.enabled';
+const FLAG_CANVAS_BLOCKIDS_ENABLED = 'canvas.blockIds.enabled';
+const FLAG_CANVAS_DATAVIEW_ENABLED = 'canvas.dataview.enabled';
 // M60 Phase ζ §8 — autonomy task rail polish.
 // `paused.global` is the kill switch (default false; trips → no autonomous
 // trigger fires). `rail.enabled` lets the user hide the whole rail UI
 // (default true). `patternMemory.enabled` gates the auto-approve-on-pattern
 // memory recorded by AutonomyPatternMemoryService (default true).
 export const FLAG_PAUSED_GLOBAL = 'autonomy.paused.global';
-export const FLAG_RAIL_ENABLED = 'autonomy.rail.enabled';
+const FLAG_RAIL_ENABLED = 'autonomy.rail.enabled';
 export const FLAG_PATTERN_MEMORY_ENABLED = 'autonomy.patternMemory.enabled';
 // M60 Phase θ §6 — T2 perf finish (B3 worker + B5 lazy mtime fast-skip).
 // `indexing.lazyMtime.enabled` (default ON) gates the page mtime fast-skip in
 // `IndexingPipelineService._indexAllPages`. `indexing.worker.enabled` (default
 // OFF per §3.8 line 188) gates the embedding worker offload.
-export const FLAG_INDEXING_LAZY_MTIME_ENABLED = 'indexing.lazyMtime.enabled';
-export const FLAG_INDEXING_WORKER_ENABLED = 'indexing.worker.enabled';
+const FLAG_INDEXING_LAZY_MTIME_ENABLED = 'indexing.lazyMtime.enabled';
+const FLAG_INDEXING_WORKER_ENABLED = 'indexing.worker.enabled';
 
 export type AutonomyFlagId =
   | typeof FLAG_FOLLOWUP_ENABLED

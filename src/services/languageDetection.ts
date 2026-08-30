@@ -61,10 +61,3 @@ export function getLanguageForFileName(name: string): string {
   return 'Plain Text';
 }
 
-/**
- * Returns the known extension→language map for read-only consumers
- * (e.g., settings UI, language mode picker).
- */
-export function getAllKnownLanguages(): ReadonlyMap<string, string> {
-  return new Map(Object.entries(EXT_TO_LANGUAGE));
-}

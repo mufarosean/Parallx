@@ -70,7 +70,7 @@ export interface IAutonomyLogReader {
 export const AUTONOMY_LOG_MAX_ENTRIES = 200;
 
 /** Default limit when a reader doesn't specify one. */
-export const AUTONOMY_LOG_DEFAULT_LIMIT = 50;
+const AUTONOMY_LOG_DEFAULT_LIMIT = 50;
 
 // ---------------------------------------------------------------------------
 // Secret redaction

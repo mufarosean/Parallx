@@ -17,7 +17,7 @@ import type { IConfigFileSystem } from './parallxConfigService.js';
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /** Path to the permissions file relative to workspace root. */
-export const PERMISSIONS_FILE_PATH = '.parallx/permissions.json';
+const PERMISSIONS_FILE_PATH = '.parallx/permissions.json';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PermissionsFileService

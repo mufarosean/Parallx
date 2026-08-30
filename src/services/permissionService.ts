@@ -253,14 +253,6 @@ export class PermissionService extends Disposable {
     return ctx?.autonomy === 'manual';
   }
 
-  /**
-   * @deprecated Use {@link isManagedSessionBlocked}. Kept for callers that
-   * still reference the heartbeat-only spelling; behaves identically.
-   */
-  isHeartbeatSessionBlocked(sessionId: string | undefined): boolean {
-    return this.isManagedSessionBlocked(sessionId);
-  }
-
   /** Record an autonomy-blocked entry. Called by the tools service. */
   recordManagedAutonomyBlock(sessionId: string, toolName: string): void {
     const ctx = this._getCallerContext(sessionId);
@@ -277,14 +269,6 @@ export class PermissionService extends Disposable {
       /* never break the gate */
     }
     this._audit({ tool: toolName, decision: 'blocked', source: 'default', timestamp: Date.now() });
-  }
-
-  /**
-   * @deprecated Use {@link recordManagedAutonomyBlock}. Kept for callers
-   * that still reference the heartbeat-only spelling.
-   */
-  recordHeartbeatAutonomyBlock(sessionId: string, toolName: string): void {
-    this.recordManagedAutonomyBlock(sessionId, toolName);
   }
 
   /**

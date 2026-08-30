@@ -43,7 +43,6 @@ import type { IAutonomyEventLog } from './autonomyEventLog.js';
 export const SURFACE_ORIGIN_KEY = '_origin';
 
 /** Well-known origin values. */
-export const ORIGIN_USER = 'user';
 export const ORIGIN_AGENT = 'agent';
 export const ORIGIN_HEARTBEAT = 'heartbeat';
 export const ORIGIN_CRON = 'cron';

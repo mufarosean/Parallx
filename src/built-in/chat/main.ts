@@ -682,9 +682,12 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   // a fallback so existing config.json files still work.
   const unifiedModelDefault = unifiedConfigService?.getEffectiveConfig().model.chatModel ?? '';
   const unifiedContextLength = unifiedConfigService?.getEffectiveConfig().model.contextWindow ?? 0;
-  const defaultModel = unifiedModelDefault || chatConfig.get<string>('defaultModel', '');
+  // Retirement: the chatConfig fallback read a key deliberately never
+  // registered (builtinManifests excludes chat.defaultModel as superseded),
+  // so it could only ever return '' — a constant in config costume.
+  const defaultModel = unifiedModelDefault || '';
   const defaultMode = chatConfig.get<string>('defaultMode', 'agent') as import('../../services/chatTypes.js').ChatMode;
-  const configuredContextLength = unifiedContextLength || chatConfig.get<number>('contextLength', 0);
+  const configuredContextLength = unifiedContextLength || 0;
 
   // Apply configured default mode
   if (defaultMode && modeService.getAvailableModes().includes(defaultMode)) {
@@ -797,7 +800,10 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     textFileModelManager: api.services.has(ITextFileModelManager)
       ? api.services.get<import('../../services/serviceTypes.js').ITextFileModelManager>(ITextFileModelManager)
       : undefined,
-    maxIterations: unifiedConfigService?.getEffectiveConfig().agent.maxIterations ?? chatConfig.get<number>('agent.maxIterations', 25),
+    // Retirement: chat.agent.maxIterations is deliberately unregistered
+    // (superseded by the permission model) — the old fallback could only
+    // ever return its literal 25.
+    maxIterations: unifiedConfigService?.getEffectiveConfig().agent.maxIterations ?? 25,
     networkTimeout: 60_000,
     getActiveWidget: () => _activeWidget,
     openPage: (pageId: string) => api.editors.openEditor({ typeId: 'canvas', title: 'Page', instanceId: pageId }),

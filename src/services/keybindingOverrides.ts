@@ -13,7 +13,7 @@ export interface KbOverride {
   default?: string;
 }
 
-export function readKbOverrides(): Record<string, KbOverride> {
+function readKbOverrides(): Record<string, KbOverride> {
   try {
     const raw = window.localStorage.getItem(KEY);
     if (raw) {
@@ -24,7 +24,7 @@ export function readKbOverrides(): Record<string, KbOverride> {
   return {};
 }
 
-export function writeKbOverrides(map: Record<string, KbOverride>): void {
+function writeKbOverrides(map: Record<string, KbOverride>): void {
   try { window.localStorage.setItem(KEY, JSON.stringify(map)); } catch { /* ignore */ }
 }
 

@@ -5,7 +5,7 @@
 // scattered across service files. Parallx centralizes registrations here.
 //
 // Responsibilities:
-//   - Create and register LayoutService, ViewService, WorkspaceService,
+//   - Create and register LayoutService, WorkspaceService,
 //     WorkspaceBoundaryService, WindowService, NotificationService
 //   - Wire workspace service into Quick Access for workspace switching
 //   - Enforce workspace boundary on FileService
@@ -26,7 +26,6 @@ import {
   IRetrievalService,
   IUnifiedAIConfigService,
   ILayoutService,
-  IViewService,
   IWorkspaceService,
   IWorkspaceBoundaryService,
   IWorkspaceMemoryService,
@@ -36,7 +35,6 @@ import {
 } from '../services/serviceTypes.js';
 
 import { LayoutService } from '../services/layoutService.js';
-import { ViewService } from '../services/viewService.js';
 import { WorkspaceService } from '../services/workspaceService.js';
 import { WorkspaceBoundaryService } from '../services/workspaceBoundaryService.js';
 import { WorkspaceMemoryService } from '../services/workspaceMemoryService.js';
@@ -105,11 +103,6 @@ export function registerFacadeServices(deps: FacadeFactoryDeps): IDisposable[] {
   });
   disposables.push(layoutService);
   services.registerInstance(ILayoutService, layoutService);
-
-  // View service — placeholder for M2 tool API surface
-  const viewService = new ViewService();
-  disposables.push(viewService);
-  services.registerInstance(IViewService, viewService);
 
   // Workspace service — delegates to workbench workspace operations
   const workspaceService = new WorkspaceService();

@@ -69,37 +69,5 @@ export class ViewDescriptorBuilder {
   }
 }
 
-// ─── Serialised form ─────────────────────────────────────────────────────────
-
-/**
- * JSON-serialisable subset of IViewDescriptor (excludes factory).
- * Used for persisting registered view information.
- */
-interface SerializedViewDescriptor {
-  readonly id: string;
-  readonly name: string;
-  readonly icon?: string;
-  readonly containerId: string;
-  readonly when?: string;
-  readonly constraints: SizeConstraints;
-  readonly focusOnActivate: boolean;
-  readonly keybinding?: string;
-  readonly order: number;
-}
-
-/**
- * Extract the serialisable portion of a descriptor.
- */
-export function serializeViewDescriptor(d: IViewDescriptor): SerializedViewDescriptor {
-  return {
-    id: d.id,
-    name: d.name,
-    icon: d.icon,
-    containerId: d.containerId,
-    when: d.when,
-    constraints: d.constraints,
-    focusOnActivate: d.focusOnActivate,
-    keybinding: d.keybinding,
-    order: d.order,
-  };
-}
+// (serializeViewDescriptor / SerializedViewDescriptor — zero consumers ever;
+// deleted by the Retirement phase.)

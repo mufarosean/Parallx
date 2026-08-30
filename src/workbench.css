@@ -2393,35 +2393,6 @@ html, body {
   padding: 0 1px;
 }
 
-/* ── Placeholder View: Terminal ── */
-.placeholder-terminal {
-  padding: 8px 12px;
-  font-family: var(--parallx-fontFamily-mono);
-  font-size: var(--parallx-fontSize-md);
-  line-height: 20px;
-  background-color: var(--vscode-editor-background);
-  color: var(--vscode-foreground);
-}
-
-.placeholder-terminal-prompt { color: var(--vscode-terminal-ansiGreen, #6a9955); }
-.placeholder-terminal-cmd { color: var(--vscode-terminal-ansiBlue, #569cd6); }
-.placeholder-terminal-ok { color: var(--vscode-terminal-ansiCyan, #4ec9b0); }
-
-/* ── Placeholder View: Output ── */
-.placeholder-output {
-  padding: 8px 12px;
-  font-family: var(--parallx-fontFamily-mono);
-  font-size: var(--parallx-fontSize-base);
-  line-height: 18px;
-  background-color: var(--vscode-editor-background);
-  color: var(--vscode-descriptionForeground);
-  overflow-y: auto;
-}
-
-.placeholder-output-line {
-  white-space: pre;
-}
-
 /* ── Activity Bar Badge visibility ── */
 .activity-bar-badge.badge-hidden {
   display: none;

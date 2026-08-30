@@ -39,7 +39,6 @@ import { StatusBarPart } from '../parts/statusBarPart.js';
 
 // Layout
 import { Orientation } from '../layout/layoutTypes.js';
-import { LayoutRenderer } from '../layout/layoutRenderer.js';
 
 // Storage + Persistence
 import { IStorage, InMemoryStorage } from '../platform/storage.js';
@@ -99,7 +98,7 @@ import { installScrollbarReveal } from '../ui/scrollbarReveal.js';
 // Views
 import { ViewManager } from '../views/viewManager.js';
 import { ViewContainer } from '../views/viewContainer.js';
-import { allPlaceholderViewDescriptors, allAuxiliaryBarViewDescriptors } from '../views/placeholderViews.js';
+import { allPlaceholderViewDescriptors } from '../views/placeholderViews.js';
 import { AuxiliaryBarPart } from '../parts/auxiliaryBarPart.js';
 
 // DnD
@@ -279,7 +278,6 @@ export class Workbench extends Layout {
   // Storage + Persistence
   private _storage!: IStorage;
   private _workspaceFolderPath: string | undefined;
-  private _layoutRenderer!: LayoutRenderer;
 
   // Workspace
   private _workspace!: Workspace;
@@ -872,7 +870,6 @@ export class Workbench extends Layout {
       this._tree?.dispose();
       this._activityBarRight?.dispose();
       this._partRegistry?.dispose();
-      this._layoutRenderer?.dispose();
     });
 
     lc.onTeardown(LifecyclePhase.Services, () => {
@@ -912,9 +909,6 @@ export class Workbench extends Layout {
 
     // Layout persistence: save/load layout state via storage
     // (handled by WorkspaceSaver — LayoutPersistence not needed directly)
-
-    // Layout renderer: available for future serialized-state rendering
-    this._layoutRenderer = this._register(new LayoutRenderer(this._container));
 
     // Workspace persistence
     this._workspaceLoader = new WorkspaceLoader(this._storage);
@@ -1159,7 +1153,6 @@ export class Workbench extends Layout {
     // 2. View system — register ALL descriptors before creating any views
     this._viewManager = new ViewManager();
     this._viewManager.registerMany(allPlaceholderViewDescriptors);
-    this._viewManager.registerMany(allAuxiliaryBarViewDescriptors);
 
     this._sidebarContainer = this._setupSidebarViews();
     this._panelContainer = this._setupPanelViews();

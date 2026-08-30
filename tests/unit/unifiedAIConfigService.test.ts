@@ -604,26 +604,11 @@ describe('A.4 Consumer wiring', () => {
     });
   });
 
-  // ── TokenBudgetService.setConfig ──
+  // ── Context budget shape ──
+  // (The TokenBudgetService-coupled test died with the class in the
+  // Retirement phase — openclawTokenBudget is the live elastic impl.)
 
-  describe('TokenBudgetService reads unified config budget', () => {
-    it('setElasticConfig applies elastic config from unified defaults', async () => {
-      const { TokenBudgetService } = await import('../../src/services/tokenBudgetService');
-      const budgetService = new TokenBudgetService();
-
-      const budget = DEFAULT_UNIFIED_CONFIG.retrieval.contextBudget;
-      budgetService.setElasticConfig({
-        trimPriority: budget.trimPriority,
-        minPercent: budget.minPercent,
-      });
-
-      const cfg = budgetService.getElasticConfig();
-      expect(cfg.trimPriority.history).toBe(1);
-      expect(cfg.trimPriority.ragContext).toBe(2);
-      expect(cfg.trimPriority.systemPrompt).toBe(3);
-      expect(cfg.trimPriority.userMessage).toBe(4);
-    });
-
+  describe('unified config context budget', () => {
     it('contextBudget shape has elastic trimPriority and minPercent', () => {
       const budget = DEFAULT_UNIFIED_CONFIG.retrieval.contextBudget;
       expect(budget).toHaveProperty('trimPriority');

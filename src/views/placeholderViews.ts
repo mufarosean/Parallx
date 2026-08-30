@@ -170,76 +170,10 @@ export const searchViewDescriptor: IViewDescriptor = ViewDescriptorBuilder
   .factory(() => new SearchPlaceholderView())
   .build();
 
-// ─── Console View ────────────────────────────────────────────────────────────
-
-/**
- * A generic console view for the panel area.
- * min-height: 100px, max-height: 500px
- */
-export class TerminalPlaceholderView extends PlaceholderView {
-
-  constructor() {
-    super('view.terminal', 'Console', 'codicon-terminal');
-  }
-
-  get minimumWidth(): number { return 200; }
-  get maximumWidth(): number { return Number.POSITIVE_INFINITY; }
-  get minimumHeight(): number { return 100; }
-  get maximumHeight(): number { return 500; }
-
-  protected override createPlaceholderContent(container: HTMLElement): void {
-    container.classList.add('placeholder-terminal');
-  }
-
-  protected override saveViewState(): Record<string, unknown> {
-    return { history: [] };
-  }
-}
-
-export const terminalViewDescriptor: IViewDescriptor = ViewDescriptorBuilder
-  .create('view.terminal', 'Console')
-  .icon('codicon-terminal')
-  .container('panel')
-  .order(1)
-  .constraints({ minimumWidth: 200, maximumWidth: Number.POSITIVE_INFINITY, minimumHeight: 100, maximumHeight: 500 })
-  .factory(() => new TerminalPlaceholderView())
-  .build();
-
-// ─── Output View ─────────────────────────────────────────────────────────────
-
-/**
- * A read-only log/output view for the panel area.
- */
-export class OutputPlaceholderView extends PlaceholderView {
-
-  constructor() {
-    super('view.output', 'Output', 'codicon-output');
-  }
-
-  get minimumWidth(): number { return 200; }
-  get maximumWidth(): number { return Number.POSITIVE_INFINITY; }
-  get minimumHeight(): number { return 80; }
-  get maximumHeight(): number { return 400; }
-
-  protected override createPlaceholderContent(container: HTMLElement): void {
-    container.classList.add('placeholder-output');
-  }
-
-  protected override saveViewState(): Record<string, unknown> {
-    return { channel: 'default' };
-  }
-}
-
-export const outputViewDescriptor: IViewDescriptor = ViewDescriptorBuilder
-  .create('view.output', 'Output')
-  .icon('codicon-output')
-  .container('panel')
-  .order(2)
-  .constraints({ minimumWidth: 200, maximumWidth: Number.POSITIVE_INFINITY, minimumHeight: 80, maximumHeight: 400 })
-  .factory(() => new OutputPlaceholderView())
-  .build();
-
 // ─── All descriptors (convenience) ──────────────────────────────────────────
+// (TerminalPlaceholderView / OutputPlaceholderView were retired at M86 in
+// registration and DELETED here by the Retirement phase — the classes
+// lingered for months, exported and never instantiated.)
 
 /**
  * All placeholder view descriptors for sidebar and panel.
@@ -256,10 +190,6 @@ export const allPlaceholderViewDescriptors: readonly IViewDescriptor[] = [
   // placeholder → live content), same as Indexing / Diagnostics / Autonomy.
 ];
 
-// ─── Auxiliary Bar Views ────────────────────────────────────────────────────
-
-/**
- * Auxiliary bar view descriptors.
- * Empty for now — extensions will register their views here in later milestones.
- */
-export const allAuxiliaryBarViewDescriptors: readonly IViewDescriptor[] = [];
+// (allAuxiliaryBarViewDescriptors — an empty array whose only consumer was a
+// no-op registerMany([]) — deleted by the Retirement phase. The contributed
+// aux-bar path does what its comment promised extensions would.)

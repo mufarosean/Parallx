@@ -61,33 +61,33 @@ export interface IParallxConfig {
 // Defaults
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export const DEFAULT_MODEL_CONFIG: IParallxModelConfig = {
+const DEFAULT_MODEL_CONFIG: IParallxModelConfig = {
   chat: 'qwen2.5:32b-instruct',
   embedding: 'nomic-embed-text',
   contextLength: null,
 };
 
-export const DEFAULT_AGENT_CONFIG: IParallxAgentConfig = {
+const DEFAULT_AGENT_CONFIG: IParallxAgentConfig = {
   maxIterations: 10,
   autoRag: true,
   ragTopK: 10,
   ragScoreThreshold: 0.3,
 };
 
-export const DEFAULT_CONTEXT_BUDGET: IParallxContextBudgetConfig = {
+const DEFAULT_CONTEXT_BUDGET: IParallxContextBudgetConfig = {
   systemPrompt: 10,
   ragContext: 30,
   history: 30,
   userMessage: 30,
 };
 
-export const DEFAULT_PERMISSIONS: IParallxPermissionsConfig = {
+const DEFAULT_PERMISSIONS: IParallxPermissionsConfig = {
   fileWrite: 'ask-every-time',
   fileDelete: 'ask-every-time',
   terminalCommand: 'ask-every-time',
 };
 
-export const DEFAULT_INDEXING: IParallxIndexingConfig = {
+const DEFAULT_INDEXING: IParallxIndexingConfig = {
   autoIndex: true,
   watchFiles: true,
   maxFileSize: 262144, // 256 KB

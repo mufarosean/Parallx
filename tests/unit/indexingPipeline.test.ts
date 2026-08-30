@@ -7,7 +7,6 @@ import {
   extToLanguage,
   INDEXABLE_EXTENSIONS,
   RICH_DOCUMENT_EXTENSIONS,
-  SKIP_DIRS,
   MAX_FILE_SIZE,
   MAX_RICH_DOC_SIZE,
   _generateSummary,
@@ -903,13 +902,6 @@ describe('INDEXABLE_EXTENSIONS', () => {
   });
 });
 
-describe('SKIP_DIRS', () => {
-  it('includes node_modules and .git', () => {
-    expect(SKIP_DIRS.has('node_modules')).toBe(true);
-    expect(SKIP_DIRS.has('.git')).toBe(true);
-    expect(SKIP_DIRS.has('.parallx')).toBe(true);
-  });
-});
 
 describe('RICH_DOCUMENT_EXTENSIONS', () => {
   it('includes PDF', () => {

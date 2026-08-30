@@ -11,7 +11,6 @@
 //   Parallx uses a simpler implementation focused on correctness and
 //   human-readable output rather than editor integration.
 
-import { Disposable } from '../platform/lifecycle.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Types
@@ -432,41 +431,5 @@ export function estimateDiffTokens(diff: IDiffResult): number {
   return Math.ceil(diff.unifiedDiff.length / 4);
 }
 
-/** Format a compact summary string: "+3 -2 lines in file.ts". */
-export function formatDiffSummary(diff: IDiffResult): string {
-  if (diff.isIdentical) {
-    return `No changes in ${diff.filePath}`;
-  }
-  return `+${diff.additions} -${diff.deletions} lines in ${diff.filePath}`;
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// DiffService (stateless utility service)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/**
- * Service wrapper for diff computation.
- * Provides a DI-compatible interface for the diff engine.
- */
-export class DiffService extends Disposable {
-
-  /** Compute a line-level diff between two texts. */
-  computeDiff(oldText: string, newText: string, filePath?: string, contextLines?: number): IDiffResult {
-    return computeDiff(oldText, newText, filePath, contextLines);
-  }
-
-  /** Compute word-level diff between two lines. */
-  computeWordDiff(oldLine: string, newLine: string): IWordChange[] {
-    return computeWordDiff(oldLine, newLine);
-  }
-
-  /** Estimate token count for a diff result. */
-  estimateTokens(diff: IDiffResult): number {
-    return estimateDiffTokens(diff);
-  }
-
-  /** Format a compact summary. */
-  formatSummary(diff: IDiffResult): string {
-    return formatDiffSummary(diff);
-  }
-}
+// (DiffService class + formatDiffSummary deleted by the Retirement phase:
+// every consumer imports the free functions above directly.)

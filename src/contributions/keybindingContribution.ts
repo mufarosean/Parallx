@@ -316,8 +316,6 @@ export class KeybindingContributionProcessor extends Disposable implements ICont
       }
     }
 
-    // Also update command descriptors with keybinding info for palette display
-    this._updateCommandKeybindings(contributedList);
   }
 
   /**
@@ -452,31 +450,6 @@ export class KeybindingContributionProcessor extends Disposable implements ICont
     }
 
     return editableAncestor.isContentEditable;
-  }
-
-  /**
-   * Update command descriptors with keybinding display strings.
-   * This allows the command palette to show keybindings alongside commands.
-   */
-  private _updateCommandKeybindings(keybindings: readonly IContributedKeybinding[]): void {
-    for (const kb of keybindings) {
-      const cmd = this._commandService.getCommand(kb.commandId);
-      if (cmd && !cmd.keybinding) {
-        // The CommandDescriptor is frozen, so we re-register with the keybinding
-        // Only if the command doesn't already have one
-        try {
-          // Unregister and re-register with keybinding info
-          // This is a best-effort — if it causes issues, we skip
-          const existing = this._commandService.getCommand(kb.commandId);
-          if (existing) {
-            // We can't mutate the descriptor, but the keybinding is stored
-            // in the contributed record for palette lookup
-          }
-        } catch {
-          // Best effort — non-critical
-        }
-      }
-    }
   }
 
   // ── Disposal ──

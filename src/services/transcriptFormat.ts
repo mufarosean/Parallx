@@ -8,7 +8,7 @@ function collapseWhitespace(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
 }
 
-export function parseTranscriptJsonl(rawContent: string): ParsedTranscriptLine[] {
+function parseTranscriptJsonl(rawContent: string): ParsedTranscriptLine[] {
   const lines: ParsedTranscriptLine[] = [];
 
   for (const rawLine of rawContent.replace(/\r\n/g, '\n').split('\n')) {

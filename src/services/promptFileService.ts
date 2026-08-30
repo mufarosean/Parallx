@@ -135,7 +135,7 @@ function parseFrontmatter(content: string): { meta: Record<string, string>; body
  * Supports: `*` (any chars except /), `**` (any path), `?` (single char).
  * Good enough for .parallx/rules/ patterns.
  */
-export function matchGlob(pattern: string, path: string): boolean {
+function matchGlob(pattern: string, path: string): boolean {
   // Normalise path separators
   const normPath = path.replace(/\\/g, '/');
   const normPattern = pattern.replace(/\\/g, '/');

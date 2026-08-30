@@ -118,21 +118,6 @@ export interface CommandDescriptor {
   readonly handler: CommandHandler;
 }
 
-// ─── Command Registration ────────────────────────────────────────────────────
-
-/**
- * Options for registering a command (everything except the handler,
- * which is required separately for type clarity).
- */
-export interface CommandRegistrationOptions {
-  readonly id: string;
-  readonly title: string;
-  readonly category?: string;
-  readonly icon?: string;
-  readonly keybinding?: string;
-  readonly when?: string;
-}
-
 // ─── Command Events ──────────────────────────────────────────────────────────
 
 /** Fired when a command is successfully executed. */

@@ -186,7 +186,7 @@ const DEFAULT_MIN_SCORE = 0.72;
 const DEFAULT_MAX_CACHED_EDGES = 500;
 const DEFAULT_CANDIDATE_K = 60;
 
-export function isSemanticGraphSourceType(value: string): value is SemanticGraphSourceType {
+function isSemanticGraphSourceType(value: string): value is SemanticGraphSourceType {
   return SOURCE_TYPES.has(value);
 }
 

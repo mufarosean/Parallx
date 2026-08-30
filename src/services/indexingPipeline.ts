@@ -137,12 +137,9 @@ const STARTUP_DEFER_FALLBACK_MS = 2_500;
  * activity right after workspace open). */
 const STARTUP_DEFER_RIC_TIMEOUT_MS = 3_000;
 
-/** @deprecated Use ParallxIgnore instead (M11 Task 1.9). Kept for backward compat / tests. */
-const SKIP_DIRS = new Set([
-  'node_modules', '.git', '.parallx', '.vscode', '.idea',
-  '__pycache__', '.next', '.nuxt', 'dist', 'build', 'out',
-  'coverage', '.cache', '.turbo', 'vendor', 'target',
-]);
+// (SKIP_DIRS deleted by the Retirement phase — superseded by ParallxIgnore
+// at M11; the set survived years past its deprecation, pinned only by a
+// test that tested the dead code itself.)
 
 /**
  * Pipeline version — bump this whenever the extraction / chunking / embedding
@@ -1584,4 +1581,4 @@ function toSourceIndexMetadata(
   };
 }
 
-export { getExtension, extToLanguage, INDEXABLE_EXTENSIONS, RICH_DOCUMENT_EXTENSIONS, IMAGE_EXTENSIONS, SKIP_DIRS, MAX_FILE_SIZE, MAX_RICH_DOC_SIZE };
+export { getExtension, extToLanguage, INDEXABLE_EXTENSIONS, RICH_DOCUMENT_EXTENSIONS, IMAGE_EXTENSIONS, MAX_FILE_SIZE, MAX_RICH_DOC_SIZE };

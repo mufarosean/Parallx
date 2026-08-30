@@ -35,7 +35,7 @@ export interface ISecretStorageService {
  * Resolve the renderer-side bridge from `window.parallxElectron.secret`.
  * Returns `undefined` when the preload isn't loaded (e.g. tests).
  */
-export function getSecretBridge(): ISecretBridge | undefined {
+function getSecretBridge(): ISecretBridge | undefined {
   const api = (globalThis as { parallxElectron?: { secret?: ISecretBridge } }).parallxElectron;
   return api?.secret;
 }

@@ -60,16 +60,6 @@ export interface ILayoutService extends IDisposable {
 
 export const ILayoutService = createServiceIdentifier<ILayoutService>('ILayoutService');
 
-// ─── IViewService ────────────────────────────────────────────────────────────
-
-/**
- * Manages view lifecycle and placement.
- */
-export interface IViewService extends IDisposable {
-  // Will be expanded in Capability 4
-}
-
-export const IViewService = createServiceIdentifier<IViewService>('IViewService');
 
 // ─── IWorkspaceService ───────────────────────────────────────────────────────
 
@@ -674,7 +664,10 @@ export interface IEditorResolverService extends IDisposable {
   getRegistrations(): readonly EditorResolverRegistration[];
 }
 
-export const IEditorResolverService = createServiceIdentifier<IEditorResolverService>('IEditorResolverService');
+// (The IEditorResolverService IDENTIFIER was deleted by the Retirement phase:
+// it was the only identifier in this file never registered and never resolved.
+// The interface above stays — EditorResolverService implements it and is
+// constructed directly in workbenchFileEditorSetup, outside DI.)
 
 // ─── IEditorService ──────────────────────────────────────────────────────────
 
