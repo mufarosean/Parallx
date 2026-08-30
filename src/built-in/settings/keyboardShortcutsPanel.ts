@@ -8,7 +8,7 @@ import { Disposable } from '../../platform/lifecycle.js';
 import { $, addDisposableListener } from '../../ui/dom.js';
 import { InputBox } from '../../ui/inputBox.js';
 import type { IKeybindingService, ICommandService } from '../../services/serviceTypes.js';
-import { reservedKeyOwner } from '../../contributions/keybindingContribution.js';
+import { reservedKeyOwner } from '../../services/keybindingUtils.js';
 import { enterMode } from '../../ui/interactionMode.js';
 import { setKbOverride, clearKbOverride } from '../../services/keybindingOverrides.js';
 import './keyboardShortcuts.css';

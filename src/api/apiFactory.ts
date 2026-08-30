@@ -27,7 +27,7 @@ import {
   IWorkspaceBoundaryService,
   IFileService,
 } from '../services/serviceTypes.js';
-import { reservedKeyOwner } from '../contributions/keybindingContribution.js';
+import { reservedKeyOwner } from '../services/keybindingUtils.js';
 import type { ContextKeyValue } from '../context/contextKey.js';
 import type { IToolDescription } from '../tools/toolManifest.js';
 import type { ToolRegistry, IToolEntry } from '../tools/toolRegistry.js';

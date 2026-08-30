@@ -7,17 +7,10 @@
 // M2 scope: basic keybinding map with single-key combos (no chords).
 // Full keybinding resolution system with chords and contexts deferred.
 
-import { Disposable, toDisposable } from '../platform/lifecycle.js';
+import { Disposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import type { IToolDescription } from '../tools/toolManifest.js';
-import type { CommandService } from '../commands/commandRegistry.js';
 import type { IContributedKeybinding, IContributionProcessor } from './contributionTypes.js';
-
-// ─── Minimal shape to avoid circular imports ─────────────────────────────────
-
-interface IContextKeyServiceLike {
-  contextMatchesRules(whenClause: string | undefined): boolean;
-}
 
 /** Minimal shape of KeybindingService to avoid circular imports (M3 Capability 0.3). */
 interface IKeybindingServiceLike {
@@ -181,16 +174,11 @@ export class KeybindingContributionProcessor extends Disposable implements ICont
   /** Keybindings per tool for cleanup. */
   private readonly _toolKeybindings = new Map<string, IContributedKeybinding[]>();
 
-  /** Optional context key service for when-clause evaluation. */
-  private _contextKeyService: IContextKeyServiceLike | undefined;
-
-  /** The global keyboard event listener (for cleanup) — only used in legacy mode. */
-  private _keydownHandler: ((e: KeyboardEvent) => void) | undefined;
-
   /**
-   * Centralized KeybindingService (M3 Capability 0.3).
-   * When set, new contributions are registered through the service
-   * instead of being dispatched by this processor's own listener.
+   * The centralized KeybindingService — the ONE dispatcher (M3 Capability
+   * 0.3; the processor's own legacy listener was deleted by Retirement
+   * Part 3.2). This class is now purely a manifest→service forwarder that
+   * keeps per-tool bookkeeping for clean removal.
    */
   private _keybindingService: IKeybindingServiceLike | undefined;
 
@@ -202,34 +190,12 @@ export class KeybindingContributionProcessor extends Disposable implements ICont
   private readonly _onDidRemoveKeybindings = this._register(new Emitter<{ toolId: string }>());
   readonly onDidRemoveKeybindings: Event<{ toolId: string }> = this._onDidRemoveKeybindings.event;
 
-  constructor(
-    private readonly _commandService: CommandService,
-  ) {
-    super();
-    // Legacy global listener — will be disabled when KeybindingService is set
-    this._installGlobalListener();
-  }
-
   /**
-   * Set the context key service for when-clause evaluation.
-   */
-  setContextKeyService(service: IContextKeyServiceLike): void {
-    this._contextKeyService = service;
-  }
-
-  /**
-   * Set the centralized KeybindingService (M3 Capability 0.3).
-   * Once set, this processor delegates dispatch to the service and
-   * removes its own global keydown listener.
+   * Set the centralized KeybindingService. Contributions processed before
+   * this arrives are replayed through it.
    */
   setKeybindingService(service: IKeybindingServiceLike): void {
     this._keybindingService = service;
-
-    // Remove the legacy global listener — the KeybindingService now owns dispatch
-    if (this._keydownHandler) {
-      document.removeEventListener('keydown', this._keydownHandler, true);
-      this._keydownHandler = undefined;
-    }
 
     // Re-register all existing tool keybindings through the centralized service
     for (const [toolId, keybindings] of this._toolKeybindings) {
@@ -372,87 +338,12 @@ export class KeybindingContributionProcessor extends Disposable implements ICont
     return all;
   }
 
-  // ── Internal ──
-
-  /**
-   * Install the global keydown handler that dispatches keybindings.
-   */
-  private _installGlobalListener(): void {
-    this._keydownHandler = (e: KeyboardEvent) => {
-      const target = e.target as Element | null;
-      if (this._isEditableTarget(target)) {
-        return;
-      }
-
-      const normalizedKey = keyFromEvent(e);
-      if (!normalizedKey) return;
-
-      const bindings = this._keybindings.get(normalizedKey);
-      if (!bindings || bindings.length === 0) return;
-
-      // Find the last binding whose when-clause is satisfied (last registered wins)
-      let matchedBinding: IContributedKeybinding | undefined;
-      for (let i = bindings.length - 1; i >= 0; i--) {
-        const binding = bindings[i];
-        if (binding.when) {
-          // Skip bindings with when-clauses when no context service is available
-          if (!this._contextKeyService) continue;
-          if (!this._contextKeyService.contextMatchesRules(binding.when)) continue;
-        }
-        matchedBinding = binding;
-        break;
-      }
-
-      if (!matchedBinding) return;
-
-      // Check that the command exists
-      if (!this._commandService.hasCommand(matchedBinding.commandId)) {
-        return;
-      }
-
-      // Prevent default browser behavior + stop propagation
-      e.preventDefault();
-      e.stopPropagation();
-
-      // Execute the command (fire and forget, errors handled by CommandService)
-      this._commandService.executeCommandFrom('keybinding', matchedBinding.commandId).catch(err => {
-        console.error(
-          `[KeybindingContribution] Error executing command "${matchedBinding!.commandId}" ` +
-          `via keybinding "${matchedBinding!.key}":`,
-          err,
-        );
-      });
-    };
-
-    document.addEventListener('keydown', this._keydownHandler, true);
-    this._register(toDisposable(() => {
-      if (this._keydownHandler) {
-        document.removeEventListener('keydown', this._keydownHandler, true);
-        this._keydownHandler = undefined;
-      }
-    }));
-  }
-
-  private _isEditableTarget(target: Element | null): boolean {
-    if (!target) return false;
-
-    const editableAncestor = target.closest('input, textarea, [contenteditable=""], [contenteditable="true"], [contenteditable="plaintext-only"]') as HTMLElement | null;
-    if (!editableAncestor) return false;
-
-    if (editableAncestor instanceof HTMLInputElement) {
-      const type = (editableAncestor.type || 'text').toLowerCase();
-      const nonTextTypes = new Set(['button', 'checkbox', 'color', 'file', 'hidden', 'image', 'radio', 'range', 'reset', 'submit']);
-      return !nonTextTypes.has(type) && !editableAncestor.readOnly && !editableAncestor.disabled;
-    }
-
-    if (editableAncestor instanceof HTMLTextAreaElement) {
-      return !editableAncestor.readOnly && !editableAncestor.disabled;
-    }
-
-    return editableAncestor.isContentEditable;
-  }
-
   // ── Disposal ──
+  // (The legacy global keydown dispatcher — _installGlobalListener and
+  // _isEditableTarget — was deleted by the Retirement phase, Part 3.2.
+  // KeybindingService has owned dispatch since M3; the legacy listener was
+  // removed synchronously at boot and unreachable in production, kept alive
+  // only by this class's constructor installing it for a zero-tick window.)
 
   override dispose(): void {
     this._keybindings.clear();

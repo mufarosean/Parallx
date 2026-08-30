@@ -10,7 +10,7 @@ import { Disposable } from '../platform/lifecycle.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { ICommandService, IKeybindingService } from '../services/serviceTypes.js';
 import { CommandService } from '../commands/commandRegistry.js';
-import { formatKeybindingForDisplay } from '../contributions/keybindingContribution.js';
+import { formatKeybindingForDisplay } from '../services/keybindingUtils.js';
 import { ContextMenu } from '../ui/contextMenu.js';
 import { $ } from '../ui/dom.js';
 import type { TitlebarPart } from '../parts/titlebarPart.js';

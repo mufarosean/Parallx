@@ -11,7 +11,7 @@
 
 import { Disposable, IDisposable, toDisposable, DisposableStore } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
-import { normalizeKeybinding, keyFromEvent } from '../contributions/keybindingContribution.js';
+import { normalizeKeybinding, keyFromEvent, reservedKeyOwner } from './keybindingUtils.js';
 import type { IKeybindingService } from './serviceTypes.js';
 
 // ─── Minimal shapes to avoid circular imports ────────────────────────────────
@@ -128,6 +128,16 @@ export class KeybindingService extends Disposable implements IKeybindingService 
   // ── Registration ──
 
   registerKeybinding(key: string, commandId: string, when?: string, source?: string): IDisposable {
+    // Reserved-key safety net (Retirement 3.2): whichever door a binding
+    // arrives through — manifest forwarder, extension API, structural
+    // registration — a reserved key may only point at its canonical owner.
+    // The guard used to live only in the callers, and the structural path
+    // bypassed it entirely.
+    const owner = reservedKeyOwner(key);
+    if (owner && owner !== commandId) {
+      console.warn(`[KeybindingService] Refusing "${key}" for "${commandId}": that key is reserved for "${owner}".`);
+      return toDisposable(() => {});
+    }
     const entry = this._createEntry(key, commandId, when, source);
     this._entries.push(entry);
     this._addToFirstPartMap(entry);

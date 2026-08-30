@@ -183,7 +183,7 @@ export function registerContributionProcessors(
   const activationEvents = services.get(IActivationEventService) as unknown as ActivationEventService;
 
   const commandContribution = new CommandContributionProcessor(commandService, activationEvents);
-  const keybindingContribution = new KeybindingContributionProcessor(commandService);
+  const keybindingContribution = new KeybindingContributionProcessor();
   const menuContribution = new MenuContributionProcessor(commandService);
 
   // Create the centralized KeybindingService (M3 Capability 0.3)
@@ -192,7 +192,6 @@ export function registerContributionProcessors(
   // Wire context key service if available
   if (services.has(IContextKeyService)) {
     const contextKeyService = services.get(IContextKeyService);
-    keybindingContribution.setContextKeyService(contextKeyService);
     menuContribution.setContextKeyService(contextKeyService);
     keybindingService.setContextKeyService(contextKeyService);
   }

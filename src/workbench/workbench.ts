@@ -138,7 +138,7 @@ import { surfaceRegistry } from '../surfaces/surfaceRegistry.js';
 
 // Contribution Processors (M2 Capability 5)
 import { registerContributionProcessors, registerViewContributionProcessor } from './workbenchServices.js';
-import { formatKeybindingForDisplay } from '../contributions/keybindingContribution.js';
+import { formatKeybindingForDisplay } from '../services/keybindingUtils.js';
 import type { MenuContributionProcessor } from '../contributions/menuContribution.js';
 
 // Keybinding Service (M3 Capability 0.3)
@@ -3374,10 +3374,18 @@ export class Workbench extends Layout {
       }
     }));
 
-    // Wire contribution processors into the command palette for display
+    // Wire contribution processors into the command palette for display.
+    // Retirement 3.2: the keybinding display reads the DISPATCHER, not the
+    // contribution map — the old wiring showed a stale original key after
+    // a user rebind, because rebinds only update the service.
     if (this._commandPalette) {
       this._commandPalette.setMenuContribution(menuContribution);
-      this._commandPalette.setKeybindingContribution(keybindingContribution);
+      this._commandPalette.setKeybindingContribution({
+        getKeybindingForCommand: (commandId: string) => {
+          const key = keybindingService.lookupKeybinding(commandId);
+          return key ? { key } : undefined;
+        },
+      });
     }
 
     // Wire keybinding lookup and command executor into TitlebarPart (M3 Capability 1)
