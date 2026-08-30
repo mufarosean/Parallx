@@ -352,7 +352,12 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi, recentWorksp
 
 // ─── Recent Data Readers ─────────────────────────────────────────────────────
 
-const RECENT_WORKSPACES_STORAGE_KEY = 'parallx.recentWorkspaces';
+// The key RecentWorkspaces actually writes (src/workspace/recentWorkspaces.ts).
+// This read used 'parallx.recentWorkspaces' — a key nothing ever wrote — so
+// the Welcome page's recent-workspaces list was permanently empty. Found by
+// the retirement audit (docs/RETIREMENT.md): two recents systems that never
+// met, the exact cost of unretired duplication.
+const RECENT_WORKSPACES_STORAGE_KEY = 'recentWorkspaces';
 const RECENT_FILES_STORAGE_KEY = 'parallx:quickAccess:recentFiles';
 
 /** Read recent workspaces from global storage (M53 D3.9). */
