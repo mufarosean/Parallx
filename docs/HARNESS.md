@@ -68,18 +68,22 @@ delegation is free. *(Evidence: Claude Code's Agent tool.)*
 
 ## Build order
 
-### Wave 1 — fidelity (static-verifiable, no flags needed)
-- [ ] 1.1 Transcript preservation: one shared flattener emits tool calls +
+### Wave 1 — fidelity (static-verifiable, no flags needed) — SHIPPED 2026-08-30
+- [x] 1.1 Transcript preservation: one shared flattener emits tool calls +
       results into history; aging policy elides old results (errors kept
       longer); orphaned-tool-head guard at every history cut point.
-- [ ] 1.2 Compaction honesty: compact() transcript labels tool activity;
+- [x] 1.2 Compaction honesty: compact() transcript labels tool activity;
       elastic budget stops refilling freed space after compaction;
       round-boundary-aware last-exchange selection.
-- [ ] 1.3 `/compact` user command (plumbing exists; add the trigger + report
-      before/after tokens).
-- [ ] 1.4 Real token accounting: feed provider-reported prompt tokens back
-      into budget decisions; count toolCalls args in estimates.
-- [ ] 1.5 Housekeeping: dead modules deleted (button, actionBar, countBadge,
+- [x] 1.3 `/compact` — audit correction: the command already existed
+      end-to-end; its lossy third flattener replaced with the shared
+      flattener + transcript serializer, stale boundary cache dropped on
+      compact, first test coverage added.
+- [x] 1.4 Real token accounting: mid-loop budget check uses
+      provider-reported prompt tokens as base (completion covered by
+      provider figure; only tool results estimated); toolCalls weight
+      counted in estimates.
+- [x] 1.5 Housekeeping: dead modules deleted (button, actionBar, countBadge,
       toolDescriptionSummary), stale JSDoc fixed.
 
 ### Wave 2 — legibility + recovery
@@ -103,3 +107,14 @@ delegation is free. *(Evidence: Claude Code's Agent tool.)*
 
 | Date | Item | Commit | Notes |
 |------|------|--------|-------|
+| 2026-08-30 | 1.1 transcript preservation | 48a954f6 | flattenPairsToMessages; aging; orphan guard; toolCalls in estimates |
+| 2026-08-30 | 1.2 compaction honesty | 07a910a3 | tool-aware transcript; capRagAtBase on all three compaction paths |
+| 2026-08-30 | 1.3 /compact fidelity | d935c96d | audit correction: trigger existed; third flattener replaced; cache dropped |
+| 2026-08-30 | 1.4 real token accounting | 0807e61a | mid-loop check anchored to provider promptTokens |
+| 2026-08-30 | 1.5 housekeeping | 5f25a117 | 4 dead modules deleted; displaySummary JSDoc truthful |
+
+Wave 1 verification: tsc clean, full vitest 5,709 passed / 16 skipped / 0
+failed, build green. In-app eyes-on owed at next session: a long tool-heavy
+turn should show (a) the model referencing earlier tool results without
+re-reading, (b) /compact reporting meaningfully larger savings, (c) the
+context gauge dropping further after compaction than before.
