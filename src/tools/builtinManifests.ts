@@ -75,7 +75,10 @@ export const SEARCH_MANIFEST: IToolManifest = {
   description: 'Find in Files: workspace-wide text search with results tree.',
   main: './main.js',
   engines: { parallx: '^0.1.0' },
-  activationEvents: ['onStartupFinished'],
+  // Phase D step 9 (Decision 2): LAZY — wakes when its view opens or a
+  // search command runs (the manifest command proxy activates it). The
+  // sidebar icon and Ctrl+Shift+F exist from the contribution alone.
+  activationEvents: ['onView:view.search', 'onCommand:search.findInFiles', 'onCommand:search.clearResults', 'onCommand:search.collapseAll', 'onCommand:search.expandAll'],
   contributes: {
     commands: [
       { id: 'search.findInFiles', title: 'Search: Find in Files',
@@ -267,7 +270,9 @@ export const TOOL_GALLERY_MANIFEST: IToolManifest = {
   description: 'Tool Gallery: shows all registered tools, their status, and contributions.',
   main: './main.js',
   engines: { parallx: '^0.1.0' },
-  activationEvents: ['onStartupFinished'],
+  // Phase D step 9: LAZY — required means always ENABLED, not always
+  // eager; the gallery wakes when its view or command is first used.
+  activationEvents: ['onView:view.tools', 'onCommand:tools.showInstalled'],
   contributes: {
     commands: [{ id: 'tools.showInstalled', title: 'Tools: Show Installed Tools',
       aiInvocable: true, aiDescription: 'Show the list of installed tools and extensions.' }],
@@ -448,7 +453,8 @@ export const THEME_EDITOR_MANIFEST: IToolManifest = {
   description: 'Choose a base palette and accent. Live preview, applied everywhere.',
   main: './main.js',
   engines: { parallx: '^0.1.0' },
-  activationEvents: ['onStartupFinished'],
+  // Phase D step 9: LAZY — one command is its whole surface.
+  activationEvents: ['onCommand:theme-editor.open'],
   contributes: {
     commands: [
       { id: 'theme-editor.open', title: 'Parallx: Appearance',

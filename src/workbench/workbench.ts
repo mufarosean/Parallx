@@ -3004,6 +3004,9 @@ export class Workbench extends Layout {
 
     // Register view contribution processor (M2 Capability 6)
     this._viewContribution = registerViewContributionProcessor(this._services, this._viewManager);
+    // Phase D step 9: the view contribution fires onView:<id> on first
+    // mount, so tools may finally be LAZY on their views.
+    this._viewContribution.setActivationEvents(this._services.get(IActivationEventService));
     this._register(this._viewContribution);
     this._contributionHandler.setViewContribution(this._viewContribution);
     this._contributionHandler.wireViewContributionEvents();
@@ -3314,10 +3317,18 @@ export class Workbench extends Layout {
       }));
     }
 
-    // Wire activation events to the activator
+    // Wire activation events to the activator. Built-ins are bundled —
+    // their modules come from the boot cache, not the dynamic loader —
+    // which is what lets a built-in be LAZY (Phase D step 9): a sleeping
+    // one wakes here when its view mounts or its command proxy fires.
     this._register(activationEvents.onDidRequestActivation(async (request) => {
       console.log(`[Workbench] Activation requested for tool "${request.toolId}" (event: ${request.event.raw})`);
-      await this._toolActivator.activate(request.toolId);
+      const builtinModule = this._builtinModules.get(request.toolId);
+      if (builtinModule) {
+        await this._toolActivator.activateBuiltin(request.toolId, builtinModule as { activate: Function; deactivate?: Function } as never);
+      } else {
+        await this._toolActivator.activate(request.toolId);
+      }
     }));
 
     // Clean up contributions when tools are deactivated
@@ -3763,6 +3774,16 @@ export class Workbench extends Layout {
         // Check enablement — disabled tools are registered but NOT activated
         if (!this._toolEnablementService.isEnabled(manifest.id)) {
           console.log(`[Workbench] Skipping activation for disabled tool "${manifest.id}"`);
+          continue;
+        }
+
+        // Lazy built-ins (Phase D step 9): a manifest that declares only
+        // onCommand:/onView: events is registered, its events wired, its
+        // module cached — and it sleeps until one of them fires. Only
+        // '*' and onStartupFinished activate at boot.
+        const eager = manifest.activationEvents.some((e) => e === '*' || e === 'onStartupFinished');
+        if (!eager) {
+          console.log(`[Workbench] Built-in "${manifest.id}" is lazy (${manifest.activationEvents.join(', ')})`);
           continue;
         }
 
