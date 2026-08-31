@@ -110,8 +110,15 @@ delegation is free. *(Evidence: Claude Code's Agent tool.)*
 - [~] 3.2 First cut SHIPPED 2026-08-30: relevance scores on every
       retrieved chunk + conditional citation rule in the standing-context
       preamble. No invented threshold — evidence surfaced, model judges.
-      The state-not-content reorder of the standing context itself stays
-      eval-gated.
+- [x] 3.4 Standing context moved AFTER history (stable cache prefix,
+      retrieval closest to the question). Eval gate waived by Mufaro
+      2026-08-30 after eyes-on; reversible via
+      retrieval.standingContextLate (schema registry, default on).
+- [x] 3.5 '## Since Your Last Turn' — journal-rendered workspace activity
+      since the previous turn, assistant's own actions excluded
+      (renderRecent excludeActor). Push state, pull content.
+- [x] 3.6 '## Canvas' prompt section (gated on canvas_* presence) states
+      the shared lessons once; 13 descriptions thinned to mechanics.
 - [ ] 3.3 Tool tiers / deferral — **away-day eval required before default-on.**
 
 ### Wave 4 — delegation — SHIPPED 2026-08-30
@@ -137,6 +144,9 @@ delegation is free. *(Evidence: Claude Code's Agent tool.)*
 | 2026-08-30 | 2.3 gating truth | 01964c40 | one PDP owner; color gate finished; Careful switch |
 | 2026-08-30 | Wave 4 delegation | daeb5949 | M59 allowlist enforced; reader/worker profiles |
 | 2026-08-30 | 3.1+3.2 first cut | (next) | memory_write deduped; relevance scores + citation rule |
+| 2026-08-30 | 3.4 context late + setting | (see log) | cache prefix stable; standingContextLate revert switch |
+| 2026-08-30 | 3.5 since-last-turn push | (see log) | journal excludeActor; snapshot at turn start |
+| 2026-08-30 | 3.6 canvas teach-once | (see log) | ## Canvas section; 13 descriptions to mechanics |
 
 Wave 1 verification: tsc clean, full vitest 5,709 passed / 16 skipped / 0
 failed, build green. In-app eyes-on owed at next session: a long tool-heavy
