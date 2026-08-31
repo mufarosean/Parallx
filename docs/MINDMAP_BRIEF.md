@@ -110,9 +110,15 @@ owns what the engine cannot know:
   injectable and the translation layer (`boardConvert.ts`) is pure and
   fully pinned.
 
-Still owed, named honestly: **LaTeX on the board** (formula → SVG →
-image element; the next slice), engine theme polish against the app
-tokens, and the eyes-on pass. The nodeCanvas primitive is unaffected —
+**LaTeX shipped same day** (Mufaro, rightly: "why not latex?? I was
+specific"): MathJax renders TeX to self-contained SVG (engine-bundle-side
+`boardMath.ts` — liteAdaptor, so the exact path is pinned headless);
+formulas travel as our one `math` pseudo-skeleton and materialise as
+image elements whose `customData` still speaks text (reads + dedupe see
+`$latex$`, not a picture). Three doors: pure-`$…$` AI labels render as
+real math, the Insert Math button gives a live-preview popover, and
+Excalidraw's dark theme inverts the fixed ink for free. Still owed:
+engine theme polish against the app tokens, and the eyes-on pass. The nodeCanvas primitive is unaffected —
 it remains the workflow editor's surface.
 
 ## Cards, not captions (reframed 2026-08-30, superseded by the board)

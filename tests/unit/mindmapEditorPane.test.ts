@@ -31,6 +31,8 @@ function legacyDocJson(): string {
 interface RecorderHost {
   mounts: BoardHostOptions[];
   added: BoardSkeleton[][];
+  math: string[];
+  previews: string[];
   scene: { elements: Record<string, unknown>[]; files: Record<string, unknown> };
   destroyed: number;
   fireChange(): void;
@@ -40,6 +42,8 @@ function makeRecorder(): { host: RecorderHost; loadBoardHost: () => Promise<any>
   const host: RecorderHost = {
     mounts: [],
     added: [],
+    math: [],
+    previews: [],
     scene: { elements: [], files: {} },
     destroyed: 0,
     fireChange: () => { /* replaced per mount */ },
@@ -50,6 +54,8 @@ function makeRecorder(): { host: RecorderHost; loadBoardHost: () => Promise<any>
       host.fireChange = () => opts.onChange();
       return {
         addSkeletons: (sk: readonly BoardSkeleton[]) => { host.added.push([...sk]); opts.onChange(); },
+        addMath: (latex: string) => { host.math.push(latex); opts.onChange(); return true; },
+        renderMathPreview: (latex: string) => { host.previews.push(latex); return { svg: '<svg data-preview="1"></svg>', error: null }; },
         getScene: () => host.scene,
         destroy: () => { host.destroyed++; },
       };
@@ -86,6 +92,10 @@ function makePane(storedJson: string | null, extraDeps: Record<string, unknown> 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 async function settle(): Promise<void> { await tick(); await tick(); }
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+function toolButton(container: HTMLElement, label: string): HTMLButtonElement {
+  return [...container.querySelectorAll('.mm-btn')].find((b) => b.textContent === label) as HTMLButtonElement;
+}
 
 describe('mounting & migration', () => {
   it('mounts the engine with stored elements and files', async () => {
@@ -201,7 +211,7 @@ describe('the AI door', () => {
     const { pane, host, container } = makePane(null, { draftWithAI, searchPages, getPageText });
     await settle();
 
-    (container.querySelectorAll('.mm-btn')[0] as HTMLButtonElement).click();
+    toolButton(container, 'Draft With AI').click();
     const ta = container.querySelector('.mm-draft-popover__input') as HTMLTextAreaElement;
     ta.value = 'Map the models';
     const src = container.querySelector('.mm-draft-popover__source-input') as HTMLInputElement;
@@ -235,7 +245,7 @@ describe('the AI door', () => {
       { id: 't1', type: 'text', text: 'Existing Label', containerId: 'r1' },
     ];
 
-    (container.querySelectorAll('.mm-btn')[0] as HTMLButtonElement).click();
+    toolButton(container, 'Draft With AI').click();
     const ta = container.querySelector('.mm-draft-popover__input') as HTMLTextAreaElement;
     ta.value = 'Add things';
     const go = [...container.querySelectorAll('.mm-btn--primary')].find((b) => b.textContent === 'Draft') as HTMLButtonElement;
@@ -251,9 +261,56 @@ describe('the AI door', () => {
   it('without a provider the button explains instead of opening a popover', async () => {
     const { pane, container } = makePane(null);
     await settle();
-    (container.querySelectorAll('.mm-btn')[0] as HTMLButtonElement).click();
+    toolButton(container, 'Draft With AI').click();
     expect(container.querySelector('.mm-draft-popover')).toBeNull();
     expect(container.querySelector('.mm-editor__hint')?.textContent).toContain('chat tool');
+    pane.dispose();
+    container.remove();
+  });
+});
+
+describe('the math door', () => {
+  it('Insert Math previews live and places the formula through the host', async () => {
+    const { pane, host, container } = makePane(null);
+    await settle();
+
+    toolButton(container, 'Insert Math').click();
+    const ta = container.querySelector('.mm-math-popover__input') as HTMLTextAreaElement;
+    expect(ta).toBeTruthy();
+    const tex = String.raw`\frac{dC}{dt} = \mu C`;
+    ta.value = tex;
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    await wait(200);
+    expect(host.previews).toContain(tex);
+    expect(container.querySelector('.mm-math-popover__preview svg')).toBeTruthy();
+
+    const go = [...container.querySelectorAll('.mm-btn--primary')].find((b) => b.textContent === 'Insert') as HTMLButtonElement;
+    go.click();
+    expect(host.math).toEqual([tex]);
+    expect(container.querySelector('.mm-math-popover')).toBeNull();
+    pane.dispose();
+    container.remove();
+  });
+
+  it('while the engine is loading the button explains instead of opening', async () => {
+    const changeEmitter = new Emitter<{ pageId: string; source: 'user' | 'ai' }>();
+    const service: any = {
+      getPage: vi.fn(async () => ({ id: 'map-1', title: 'T' })),
+      getData: vi.fn(async () => null),
+      saveData: vi.fn(),
+      renameMindmap: vi.fn(),
+      onDidChangeDoc: changeEmitter.event,
+    };
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const pane = new MindmapEditorPane(container, 'map-1', {
+      service,
+      loadBoardHost: () => new Promise(() => { /* never resolves */ }),
+    } as any);
+    await settle();
+    toolButton(container, 'Insert Math').click();
+    expect(container.querySelector('.mm-math-popover')).toBeNull();
+    expect(container.querySelector('.mm-editor__hint')?.textContent).toContain('loading');
     pane.dispose();
     container.remove();
   });

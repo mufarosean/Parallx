@@ -42,8 +42,37 @@ const BOARD_COLORS: Record<MindmapColor, { background: string; stroke: string }>
   accent:  { background: '#2a3f5c', stroke: '#748ffc' },
 };
 
+/**
+ * A label that IS a formula — "$E=mc^2$" or "$$\int f$$", nothing outside
+ * the delimiters. Returns the TeX source, or null for prose/mixed labels.
+ */
+export function extractPureMath(text: string): string | null {
+  const t = text.trim();
+  if (t.length < 3 || !t.startsWith('$') || !t.endsWith('$')) return null;
+  let start = 1;
+  let end = t.length - 1;
+  if (t.startsWith('$$') && t.endsWith('$$') && t.length >= 5) { start = 2; end = t.length - 2; }
+  const inner = t.slice(start, end).trim();
+  if (!inner || inner.includes('$')) return null;
+  return inner;
+}
+
 function nodeSkeleton(n: MindmapDoc['nodes'][number]): BoardSkeleton {
   const box = nodeBox(n);
+  // A pure-formula label becomes a math skeleton: the board host renders
+  // the TeX (MathJax → SVG image element) when it materialises. The
+  // original label rides along so reads and dedupe still speak text.
+  const latex = extractPureMath(n.label);
+  if (latex) {
+    return {
+      type: 'math',
+      id: `mm-${n.id}`,
+      x: n.x,
+      y: n.y,
+      latex,
+      label: { text: n.label.trim() },
+    };
+  }
   const pal = BOARD_COLORS[n.color] ?? BOARD_COLORS.neutral;
   return {
     type: 'rectangle',
@@ -106,27 +135,33 @@ export function outlineToSkeletons(
 
 /** The scene as an indented outline (labels + arrow relations). */
 export function boardOutlineText(envelope: BoardEnvelope): string {
-  type El = { id?: string; type?: string; isDeleted?: boolean; text?: string; containerId?: string | null; startBinding?: { elementId?: string } | null; endBinding?: { elementId?: string } | null };
+  type El = { id?: string; type?: string; isDeleted?: boolean; text?: string; containerId?: string | null; customData?: { mmLabel?: string; mmLatex?: string } | null; startBinding?: { elementId?: string } | null; endBinding?: { elementId?: string } | null };
   const els = (envelope.elements as El[]).filter((e) => !e.isDeleted);
 
-  const textByContainer = new Map<string, string>();
+  // Arrow endpoints bind to the CONTAINER (a labelled rect) or, for
+  // formulas, to the image element itself — one label map serves both.
+  const labelByElement = new Map<string, string>();
   const freeTexts: string[] = [];
   for (const e of els) {
-    if (e.type !== 'text' || !e.text?.trim()) continue;
-    if (e.containerId) textByContainer.set(e.containerId, e.text.trim());
-    else freeTexts.push(e.text.trim());
+    if (e.type === 'text' && e.text?.trim()) {
+      if (e.containerId) labelByElement.set(e.containerId, e.text.trim());
+      else freeTexts.push(e.text.trim());
+    } else if (e.type === 'image' && e.id && (e.customData?.mmLabel || e.customData?.mmLatex)) {
+      labelByElement.set(e.id, e.customData.mmLabel ?? `$${e.customData.mmLatex}$`);
+    }
   }
 
   const lines: string[] = [];
   const links: string[] = [];
   for (const e of els) {
     if (e.type === 'arrow') {
-      const a = e.startBinding?.elementId ? textByContainer.get(e.startBinding.elementId) : undefined;
-      const b = e.endBinding?.elementId ? textByContainer.get(e.endBinding.elementId) : undefined;
+      const a = e.startBinding?.elementId ? labelByElement.get(e.startBinding.elementId) : undefined;
+      const b = e.endBinding?.elementId ? labelByElement.get(e.endBinding.elementId) : undefined;
       if (a && b) links.push(`- ${a} → ${b}`);
       continue;
     }
-    const label = e.id ? textByContainer.get(e.id) : undefined;
+    if (e.type === 'text' && e.containerId) continue; // rendered via its container
+    const label = e.id ? labelByElement.get(e.id) : undefined;
     if (label) lines.push(`- ${label}`);
   }
   for (const t of freeTexts) lines.push(`- ${t}`);
@@ -141,10 +176,14 @@ export function boardOutlineText(envelope: BoardEnvelope): string {
 /** Every text on the board (bound labels, free text, pending skeletons) —
  *  the dedupe set that keeps mindmap_add from drawing duplicates. */
 export function boardLabels(envelope: BoardEnvelope): string[] {
-  type El = { type?: string; isDeleted?: boolean; text?: string };
+  type El = { type?: string; isDeleted?: boolean; text?: string; customData?: { mmLabel?: string; mmLatex?: string } | null };
   const out: string[] = [];
   for (const e of envelope.elements as El[]) {
-    if (!e.isDeleted && e.type === 'text' && e.text?.trim()) out.push(e.text.trim());
+    if (e.isDeleted) continue;
+    if (e.type === 'text' && e.text?.trim()) out.push(e.text.trim());
+    else if (e.type === 'image' && (e.customData?.mmLabel || e.customData?.mmLatex)) {
+      out.push(e.customData.mmLabel ?? `$${e.customData.mmLatex}$`);
+    }
   }
   for (const p of envelope.pending) {
     const label = p.label?.text ?? (typeof p.text === 'string' ? p.text : '');

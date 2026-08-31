@@ -7,10 +7,21 @@
 // type-only imports from the main tree. Main-bundle code speaks SKELETONS
 // (Excalidraw's declarative element JSON) and never imports the engine.
 
-/** Loose skeleton element — the shape `convertToExcalidrawElements` accepts.
- *  Kept intentionally open: the engine validates, we don't re-model it. */
+/**
+ * Our one skeleton type the engine does NOT know: a formula. Authored by
+ * boardConvert (pure-math labels) and the pane's Insert Math door; the
+ * board host renders it (MathJax → SVG file) into a real image element
+ * before conversion. It carries `latex`, geometry, and the original label.
+ */
+export const MATH_SKELETON_TYPE = 'math';
+
+/** Loose skeleton element — the shape `convertToExcalidrawElements` accepts,
+ *  plus our `math` pseudo-type. Kept intentionally open: the engine
+ *  validates, we don't re-model it. */
 export interface BoardSkeleton {
   readonly type: string;
+  /** Only on `type: 'math'` skeletons — the TeX source. */
+  readonly latex?: string;
   readonly id?: string;
   readonly x?: number;
   readonly y?: number;
@@ -51,6 +62,11 @@ export function emptyBoardEnvelope(): BoardEnvelope {
 export interface IBoardHost {
   /** Convert + add skeletons to the open scene (the editor AI door). */
   addSkeletons(skeletons: readonly BoardSkeleton[]): void;
+  /** Render a LaTeX formula and place it at the viewport centre. */
+  addMath(latex: string): boolean;
+  /** Formula preview for the Insert Math popover — SVG markup + any TeX
+   *  parse error. Works before the engine finishes mounting. */
+  renderMathPreview(latex: string): { svg: string; error: string | null };
   /** Current scene for persistence (deleted elements already dropped). */
   getScene(): { elements: readonly Record<string, unknown>[]; files: Record<string, unknown> };
   destroy(): void;

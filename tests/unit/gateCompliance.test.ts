@@ -90,6 +90,7 @@ const EXEMPT_FILES = new Set([
   'mindmap/boardTypes.ts',         // cross-bundle contract (worksheetConstants pattern) — zero canvas imports
   'mindmap/boardHost.ts',          // the ENGINE bundle entry (React+Excalidraw) — own esbuild output, never imported statically
   'mindmap/boardConvert.ts',       // pure doc/outline → skeleton translation over mindmapModel
+  'mindmap/boardMath.ts',          // LaTeX → SVG (MathJax) — engine-bundle-side, only boardHost imports it
 ]);
 
 // ── Child → allowed gate path fragments ─────────────────────────────────────

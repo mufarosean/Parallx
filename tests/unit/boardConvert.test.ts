@@ -80,6 +80,24 @@ describe('outlineToSkeletons — the AI door', () => {
   it('returns nothing when everything is a duplicate', () => {
     expect(outlineToSkeletons([{ label: 'X' }], [], ['x'])).toEqual([]);
   });
+
+  it('a pure-formula label becomes a math skeleton — arrows still bind to it', () => {
+    const skeletons = outlineToSkeletons([
+      { label: 'CCL Model' },
+      { label: '$\\rho = corr(C_{i,d}, C_{i,d+1})$', parent: 'CCL Model' },
+    ]);
+    const math = skeletons.find((s) => s.type === 'math')!;
+    expect(math.latex).toBe('\\rho = corr(C_{i,d}, C_{i,d+1})');
+    expect(math.label?.text).toBe('$\\rho = corr(C_{i,d}, C_{i,d+1})$');
+    expect(Number.isFinite(math.x) && Number.isFinite(math.y)).toBe(true);
+    const arrow = skeletons.find((s) => s.type === 'arrow')!;
+    expect([arrow.start?.id, arrow.end?.id]).toContain(math.id);
+  });
+
+  it('a mixed prose-and-math label stays a card', () => {
+    const skeletons = outlineToSkeletons([{ label: 'Variance: $\\sigma^2$' }]);
+    expect(skeletons[0].type).toBe('rectangle');
+  });
 });
 
 describe('envelope parse / migration', () => {
@@ -149,5 +167,24 @@ describe('reading the board back', () => {
     expect(labels).toContain('A loose note');
     expect(labels).toContain('Queued Concept');
     expect(labels).not.toContain('Deleted');
+  });
+
+  it('a materialised formula reads back as its LaTeX label, and arrows to it resolve', () => {
+    const env: BoardEnvelope = {
+      ...emptyBoardEnvelope(),
+      elements: [
+        { id: 'r1', type: 'rectangle' },
+        { id: 't1', type: 'text', text: 'CCL Model', containerId: 'r1' },
+        { id: 'img1', type: 'image', fileId: 'f', customData: { mmLatex: '\\rho', mmLabel: '$\\rho$' } },
+        { id: 'a1', type: 'arrow', startBinding: { elementId: 'r1' }, endBinding: { elementId: 'img1' } },
+      ],
+      pending: [{ type: 'math', latex: '\\mu', label: { text: '$\\mu$' } }],
+    };
+    const text = boardOutlineText(env);
+    expect(text).toContain('- $\\rho$');
+    expect(text).toContain('- $\\mu$ (pending)');
+    expect(text).toContain('CCL Model → $\\rho$');
+    expect(boardLabels(env)).toContain('$\\rho$');
+    expect(boardLabels(env)).toContain('$\\mu$');
   });
 });

@@ -13,6 +13,8 @@
 //     with a change guard so scrolling never writes);
 //   • the AI door — Draft With AI with the grounded source picker; the
 //     model's outline becomes skeleton elements the engine materialises;
+//   • the math door — Insert Math renders LaTeX (MathJax → SVG, host-side)
+//     with a live preview and places it as a real board element;
 //   • migration — v1 card documents open as board elements, once.
 //
 // jsdom cannot mount the engine, so `loadBoardHost` is injectable; tests
@@ -97,6 +99,7 @@ export class MindmapEditorPane implements IDisposable {
   private readonly _titleInput: HTMLInputElement;
   private readonly _hintEl: HTMLElement;
   private readonly _draftBtn: HTMLButtonElement;
+  private readonly _mathBtn: HTMLButtonElement;
   private readonly _boardContainer: HTMLElement;
 
   private _host: IBoardHost | null = null;
@@ -134,6 +137,8 @@ export class MindmapEditorPane implements IDisposable {
     header.appendChild(this._titleInput);
 
     const toolbar = el('div', 'mm-editor__toolbar');
+    this._mathBtn = this._toolButton('Insert Math', 'sigma', () => this._openMathPopover());
+    toolbar.appendChild(this._mathBtn);
     this._draftBtn = this._toolButton('Draft With AI', 'bolt', () => this._openDraftPopover());
     toolbar.appendChild(this._draftBtn);
     header.appendChild(toolbar);
@@ -400,6 +405,65 @@ export class MindmapEditorPane implements IDisposable {
       this._draftBtn.disabled = false;
       this._draftBtn.classList.remove('is-busy');
     }
+  }
+
+  // ── The math door ───────────────────────────────────────────────────────
+
+  private _openMathPopover(): void {
+    if (!this._host) {
+      this._showHint('The board is still loading.');
+      return;
+    }
+    const existing = this._root.querySelector('.mm-math-popover');
+    if (existing) { existing.remove(); return; }
+
+    const pop = el('div', 'mm-math-popover');
+    const ta = el('textarea', 'mm-math-popover__input') as HTMLTextAreaElement;
+    ta.rows = 2;
+    ta.placeholder = String.raw`LaTeX — e.g. \hat{\sigma}^2 = \frac{1}{n-1}\sum (X_i - \bar{X})^2`;
+    ta.spellcheck = false;
+    pop.appendChild(ta);
+
+    const preview = el('div', 'mm-math-popover__preview');
+    pop.appendChild(preview);
+
+    let previewTimer: ReturnType<typeof setTimeout> | null = null;
+    const renderPreview = (): void => {
+      const tex = ta.value.trim();
+      preview.textContent = '';
+      preview.classList.toggle('is-empty', !tex);
+      if (!tex || !this._host) return;
+      const { svg, error } = this._host.renderMathPreview(tex);
+      if (error) {
+        preview.appendChild(el('span', 'mm-math-popover__error', error));
+      } else {
+        preview.innerHTML = svg; // MathJax output, self-generated
+      }
+    };
+    renderPreview();
+    ta.addEventListener('input', () => {
+      if (previewTimer) clearTimeout(previewTimer);
+      previewTimer = setTimeout(renderPreview, 150);
+    });
+
+    const go = el('button', 'mm-btn mm-btn--primary', 'Insert') as HTMLButtonElement;
+    pop.appendChild(go);
+    this._root.appendChild(pop);
+
+    const detach = attachPopupDismiss([pop, this._mathBtn], () => pop.remove());
+    const run = (): void => {
+      const tex = ta.value.trim();
+      if (!tex || !this._host) return;
+      detach();
+      pop.remove();
+      if (this._host.addMath(tex)) this._showHint('Formula placed at the centre of the view.');
+    };
+    go.addEventListener('click', run);
+    ta.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); run(); }
+    });
+    ta.focus();
   }
 
   // ── Hint pill ───────────────────────────────────────────────────────────
