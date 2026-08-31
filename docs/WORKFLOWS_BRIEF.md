@@ -203,6 +203,11 @@ instead of debuting on the app's most ambitious feature.
 
 ## The decisions (Mufaro's)
 
+**Status (2026-08-30): D1–D5 decided — every recommendation accepted as
+written.** The one question still open is where Mind's row lands (see
+*Where it lives*); it stays in the panel until decided.
+
+
 **D1 — Replace, or sit above?** Recommendation: **sit above.** Cron stays
 the timer, the heartbeat lane stays the evaluator; both become *emitters*
 into the workflow runner rather than being rewritten. Lowest risk, and

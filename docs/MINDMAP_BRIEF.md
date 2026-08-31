@@ -45,6 +45,9 @@ face of it — a map CAN sit on your dashboard — without rebuilding the
 dashboard's grid. And the canvas gets the map as an embedded card with a
 print snapshot, without the map being trapped in a page.
 
+**Decided 2026-08-30: the mindmap is its own editor.** The inline canvas
+card and the dashboard widget follow as later faces, per D1.
+
 ---
 
 ## The contract
@@ -90,6 +93,9 @@ feature.
   for tomorrow's topic.
 
 ## Decisions (Mufaro's)
+
+**Status (2026-08-30): D1–D3 decided — recommendations accepted.**
+
 
 **D1 — v1 scope.** Recommendation: the full-pane editor + AI draft tools
 first; the canvas inline card second; the dashboard widget third. Each
