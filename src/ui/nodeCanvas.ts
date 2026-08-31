@@ -29,6 +29,8 @@ export interface NodeCanvasNodeItem {
   /** World coordinates of the node's top-left corner. */
   readonly x: number;
   readonly y: number;
+  /** Explicit width in world px, or null/undefined for auto-size. */
+  readonly w?: number | null;
 }
 
 export interface NodeCanvasEdgeItem {
@@ -55,6 +57,12 @@ export interface NodeCanvasDelegate {
   onCanvasDoubleClick?(point: { x: number; y: number }): void;
   /** A connect gesture completed from one node onto another. */
   onConnect?(fromId: string, toId: string): void;
+  /**
+   * A resize gesture committed a new explicit width. Presence of this
+   * callback is what makes nodes resizable at all — the handle renders
+   * only when the tenant can persist the result.
+   */
+  onResizeNode?(id: string, w: number): void;
 }
 
 // ── Internals ───────────────────────────────────────────────────────────────
@@ -80,6 +88,8 @@ interface EdgeView {
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 2.5;
 const CLICK_DIST = 4;
+const MIN_NODE_W = 96;
+const MAX_NODE_W = 640;
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 export class NodeCanvas implements IDisposable {
@@ -134,6 +144,8 @@ export class NodeCanvas implements IDisposable {
     this._nodeLayer.className = 'px-node-canvas__nodes';
     this._viewport.appendChild(this._nodeLayer);
 
+    if (this._delegate.onResizeNode) this._root.classList.add('is-resizable');
+
     this._root.addEventListener('pointerdown', this._onPointerDown);
     this._root.addEventListener('dblclick', this._onDoubleClick);
     this._root.addEventListener('wheel', this._onWheel, { passive: false });
@@ -172,6 +184,7 @@ export class NodeCanvas implements IDisposable {
       view.x = n.x;
       view.y = n.y;
       view.el.style.transform = `translate(${n.x}px, ${n.y}px)`;
+      this._applyExplicitWidth(view, n.w ?? null);
       this._delegate.renderNode(n.id, view.body);
       this._measure(n.id);
     }
@@ -285,6 +298,15 @@ export class NodeCanvas implements IDisposable {
   private readonly _onPointerDown = (e: PointerEvent | MouseEvent): void => {
     if (this._disposed || (e as MouseEvent).button !== 0) return;
     const target = e.target as HTMLElement;
+
+    const resize = target.closest('.px-node-canvas__resize') as HTMLElement | null;
+    if (resize) {
+      const nodeEl = resize.closest('.px-node-canvas__node') as HTMLElement | null;
+      if (nodeEl?.dataset.nodeId) this._beginResize(e, nodeEl.dataset.nodeId);
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
 
     const port = target.closest('.px-node-canvas__port') as HTMLElement | null;
     if (port) {
@@ -423,6 +445,47 @@ export class NodeCanvas implements IDisposable {
     });
   }
 
+  private _beginResize(e: PointerEvent | MouseEvent, nodeId: string): void {
+    const view = this._nodes.get(nodeId);
+    if (!view || !this._delegate.onResizeNode) return;
+    this.setSelection([nodeId], []);
+    const startX = e.clientX;
+    const startW = view.w;
+    const hadExplicit = view.el.classList.contains('has-explicit-width');
+    let w = startW;
+
+    this._drag = beginPointerDrag(e, {
+      id: 'node-canvas-resize',
+      cursor: 'ew-resize',
+      onMove: (ev) => {
+        w = Math.min(MAX_NODE_W, Math.max(MIN_NODE_W, Math.round(startW + (ev.clientX - startX) / this._zoom)));
+        this._applyExplicitWidth(view, w);
+        this._measure(nodeId);
+        this._rePathTouching(nodeId);
+      },
+      onEnd: (canceled) => {
+        this._drag = null;
+        if (canceled || w === startW) {
+          this._applyExplicitWidth(view, hadExplicit ? startW : null);
+          this._measure(nodeId);
+          this._rePathTouching(nodeId);
+          return;
+        }
+        this._delegate.onResizeNode!(nodeId, w);
+      },
+    });
+  }
+
+  private _applyExplicitWidth(view: NodeView, w: number | null): void {
+    if (w === null) {
+      view.el.style.width = '';
+      view.el.classList.remove('has-explicit-width');
+    } else {
+      view.el.style.width = `${w}px`;
+      view.el.classList.add('has-explicit-width');
+    }
+  }
+
   private _beginConnect(e: PointerEvent | MouseEvent, fromId: string): void {
     const fromView = this._nodes.get(fromId);
     if (!fromView) return;
@@ -470,6 +533,10 @@ export class NodeCanvas implements IDisposable {
     port.className = 'px-node-canvas__port';
     port.title = 'Drag To Connect';
     el.appendChild(port);
+    const resize = document.createElement('div');
+    resize.className = 'px-node-canvas__resize';
+    resize.title = 'Drag To Resize';
+    el.appendChild(resize);
     this._nodeLayer.appendChild(el);
     return { el, body, x: 0, y: 0, w: 0, h: 0 };
   }

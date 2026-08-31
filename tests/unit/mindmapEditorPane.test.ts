@@ -19,7 +19,7 @@ import {
 function docOf(nodes: Array<[string, string]>, edges: Array<[string, string]> = []): MindmapDoc {
   return {
     version: 1,
-    nodes: nodes.map(([id, label], i) => ({ id, label, x: i * 300, y: 0, color: 'neutral' as const, ref: null })),
+    nodes: nodes.map(([id, label], i) => ({ id, label, x: i * 300, y: 0, w: null, color: 'neutral' as const, kind: 'text', ref: null })),
     edges: edges.map(([from, to], i) => ({ id: `e${i}`, from, to, label: null })),
   };
 }
@@ -209,6 +209,73 @@ describe('persistence', () => {
     expect(nodes(host)).toHaveLength(2);
     expect(nodeByLabel(host, 'AI Added')).toBeTruthy();
     pane.dispose();
+    host.remove();
+  });
+});
+
+describe('rich cards', () => {
+  it('renders markdown and KaTeX in card labels; F2 edits the raw source', async () => {
+    const { pane, host } = makePane(docOf([['root', 'CCL: $f(d)c(w,d)$ **model**']]));
+    await settle();
+    const label = host.querySelector('.mm-node__label') as HTMLElement;
+    expect(label.querySelector('.katex')).toBeTruthy();  // math rendered
+    expect(label.querySelector('strong')).toBeTruthy();  // markdown rendered
+    expect(label.textContent).not.toContain('$');        // no raw source on display
+
+    selectNode(host, 'CCL');
+    key(root(host), 'F2');
+    await settle();
+    const ta = host.querySelector('.mm-node__edit') as HTMLTextAreaElement;
+    expect(ta.value).toBe('CCL: $f(d)c(w,d)$ **model**'); // the source, intact
+    key(ta, 'Escape');
+    await settle();
+    pane.dispose();
+    host.remove();
+  });
+
+  it('dragging the resize handle persists an explicit width as one undo entry', async () => {
+    const { pane, host, service, getStored } = makePane();
+    await settle();
+    selectNode(host, 'Root');
+    const handle = host.querySelector('.px-node-canvas__resize') as HTMLElement;
+    expect(handle).toBeTruthy();
+
+    handle.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button: 0, clientX: 100 }));
+    document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 250 }));
+    document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    await settle();
+
+    const node = nodes(host)[0];
+    expect(node.classList.contains('has-explicit-width')).toBe(true);
+    expect(node.style.width).not.toBe('');
+
+    key(root(host), 'z', { ctrlKey: true }); // one undo removes the sizing
+    await settle();
+    expect(nodes(host)[0].classList.contains('has-explicit-width')).toBe(false);
+
+    key(root(host), 'z', { ctrlKey: true, shiftKey: true });
+    await settle();
+    pane.dispose();
+    await settle();
+    expect(getStored().nodes[0].w).toBeGreaterThanOrEqual(96);
+    expect(service.saveDoc).toHaveBeenCalled();
+    pane.dispose();
+    host.remove();
+  });
+
+  it('Escape cancels a resize without touching the document', async () => {
+    const { pane, host, service } = makePane();
+    await settle();
+    selectNode(host, 'Root');
+    const handle = host.querySelector('.px-node-canvas__resize') as HTMLElement;
+    handle.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button: 0, clientX: 100 }));
+    document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 400 }));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await settle();
+    expect(nodes(host)[0].classList.contains('has-explicit-width')).toBe(false);
+    pane.dispose();
+    await settle();
+    expect(service.saveDoc).not.toHaveBeenCalled();
     host.remove();
   });
 });

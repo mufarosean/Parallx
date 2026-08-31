@@ -19,6 +19,7 @@
 import './mindmap.css';
 import type { IDisposable } from '../../../platform/lifecycle.js';
 import { getIcon } from '../../../ui/iconRegistry.js';
+import { renderMarkdown } from '../../../ui/renderMarkdown.js';
 import { createDropdownHandle, type IDropdownHandle } from '../../../ui/dropdown.js';
 import { attachPopupDismiss } from '../../../ui/dom.js';
 import { NodeCanvas, type NodeCanvasSelection } from '../../../ui/nodeCanvas.js';
@@ -181,6 +182,7 @@ export class MindmapEditorPane implements IDisposable {
       onEdgeDoubleClick: (id) => this._beginEdgeLabelEdit(id),
       onCanvasDoubleClick: (pt) => this._addFloatingNode(pt),
       onConnect: (from, to) => this._connect(from, to),
+      onResizeNode: (id, w) => this._onNodeResized(id, w),
     });
 
     this._root.addEventListener('keydown', this._onKeyDown);
@@ -289,7 +291,7 @@ export class MindmapEditorPane implements IDisposable {
 
   private _sync(): void {
     this._canvas.setModel(
-      this._doc.nodes.map((n) => ({ id: n.id, x: n.x, y: n.y })),
+      this._doc.nodes.map((n) => ({ id: n.id, x: n.x, y: n.y, w: n.w })),
       this._doc.edges.map((e) => ({ id: e.id, from: e.from, to: e.to, label: e.label })),
     );
     this._updateHint();
@@ -340,8 +342,15 @@ export class MindmapEditorPane implements IDisposable {
       return;
     }
 
+    // Cards are RICH: markdown + KaTeX through the app's one shared renderer
+    // (HTML-disabled, so model-authored labels are safe). The raw source —
+    // $…$ included — is what the textarea edits; this is the display half.
     const label = el('div', 'mm-node__label');
-    label.textContent = node.label || ' ';
+    if (node.label.trim()) {
+      label.appendChild(renderMarkdown(node.label));
+    } else {
+      label.textContent = ' ';
+    }
     body.appendChild(label);
 
     if (node.ref) {
@@ -440,7 +449,7 @@ export class MindmapEditorPane implements IDisposable {
     const color: MindmapColor = parent.color === 'accent' ? 'neutral' : parent.color;
     this._doc = {
       ...this._doc,
-      nodes: [...this._doc.nodes, { id, label: '', x: spot.x, y: spot.y, color, ref: null }],
+      nodes: [...this._doc.nodes, { id, label: '', x: spot.x, y: spot.y, w: null, color, kind: 'text', ref: null }],
       edges: [...this._doc.edges, { id: newId(), from: parentId, to: id, label: null }],
     };
     this._sync();
@@ -463,7 +472,7 @@ export class MindmapEditorPane implements IDisposable {
     const id = newId();
     this._doc = {
       ...this._doc,
-      nodes: [...this._doc.nodes, { id, label: '', x: spot.x, y: spot.y, color: 'neutral', ref: null }],
+      nodes: [...this._doc.nodes, { id, label: '', x: spot.x, y: spot.y, w: null, color: 'neutral', kind: 'text', ref: null }],
     };
     this._sync();
     this._beginEdit(id, true, undoBase);
@@ -509,6 +518,14 @@ export class MindmapEditorPane implements IDisposable {
         return m ? { ...n, x: m.x, y: m.y } : n;
       }),
     });
+  }
+
+  private _onNodeResized(id: string, w: number): void {
+    this._apply({
+      ...this._doc,
+      nodes: this._doc.nodes.map((n) => (n.id === id ? { ...n, w } : n)),
+    });
+    this._canvas.setSelection([id], []);
   }
 
   private _onSelectionChange(_sel: NodeCanvasSelection): void {
@@ -789,7 +806,7 @@ export class MindmapEditorPane implements IDisposable {
     if (this._hintTimer) return; // a transient message owns the bar right now
     if (this._doc.nodes.length <= 2) {
       this._hintEl.textContent =
-        'Double-click to add an idea · Tab adds a child · Enter adds a sibling · drag the dot to connect';
+        'Double-click to add an idea \u00b7 Tab child, Enter sibling \u00b7 drag the dot to connect \u00b7 $\u2026$ renders math';
       this._hintEl.classList.add('is-visible');
     } else {
       this._hintEl.classList.remove('is-visible');

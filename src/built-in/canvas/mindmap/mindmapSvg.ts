@@ -8,7 +8,7 @@
 // Pure string building over mindmapModel geometry; no DOM.
 
 import {
-  estimateNodeSize,
+  nodeBox,
   MAX_LABEL_WIDTH,
   type MindmapColor,
   type MindmapDoc,
@@ -32,9 +32,11 @@ function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-/** Greedy word wrap mirroring estimateNodeSize's per-line budget. */
-function wrapLabel(label: string): string[] {
-  const perLine = Math.max(4, Math.floor((MAX_LABEL_WIDTH - 26) / 7.4));
+/** Greedy word wrap mirroring estimateNodeSize's per-line budget. Math and
+ *  markdown render as their raw source here — the standalone SVG has no
+ *  KaTeX; the rendered-card snapshot is the custom-block face's job. */
+function wrapLabel(label: string, boxWidth: number = MAX_LABEL_WIDTH): string[] {
+  const perLine = Math.max(4, Math.floor((boxWidth - 26) / 7.4));
   const out: string[] = [];
   for (const raw of (label || ' ').split('\n')) {
     let line = '';
@@ -52,7 +54,7 @@ function wrapLabel(label: string): string[] {
 export function renderMindmapSvg(doc: MindmapDoc): string {
   if (doc.nodes.length === 0) return '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"></svg>';
 
-  const boxes = new Map(doc.nodes.map((n) => [n.id, { ...estimateNodeSize(n.label), x: n.x, y: n.y }]));
+  const boxes = new Map(doc.nodes.map((n) => [n.id, { ...nodeBox(n), x: n.x, y: n.y }]));
   const PAD = 40;
   let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
   for (const b of boxes.values()) {
@@ -99,7 +101,7 @@ export function renderMindmapSvg(doc: MindmapDoc): string {
     const pal = SVG_PALETTE[n.color] ?? SVG_PALETTE.neutral;
     const x = b.x + ox; const y = b.y + oy;
     parts.push(`<rect x="${x}" y="${y}" width="${b.w}" height="${b.h}" rx="10" fill="${pal.fill}" stroke="${pal.stroke}" stroke-width="1"/>`);
-    const lines = wrapLabel(n.label);
+    const lines = wrapLabel(n.label, n.w ?? undefined);
     lines.forEach((line, i) => {
       parts.push(`<text x="${x + b.w / 2}" y="${y + 13 + i * 19 + (b.h - lines.length * 19) / 2}" text-anchor="middle" font-size="13" fill="${TEXT_COLOR}">${esc(line)}</text>`);
     });

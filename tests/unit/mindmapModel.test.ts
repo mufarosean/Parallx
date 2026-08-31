@@ -15,6 +15,7 @@ import {
   estimateNodeSize,
   layoutNewNodes,
   mergeOutline,
+  nodeBox,
   parseMindmapDoc,
   placeChild,
   primaryParent,
@@ -28,7 +29,7 @@ import { extractOutlineJson } from '../../src/built-in/canvas/ai/mindmapTools';
 function doc(nodes: Array<[string, string, number, number]>, edges: Array<[string, string]> = []): MindmapDoc {
   return {
     version: 1,
-    nodes: nodes.map(([id, label, x, y]) => ({ id, label, x, y, color: 'neutral' as const, ref: null })),
+    nodes: nodes.map(([id, label, x, y]) => ({ id, label, x, y, w: null, color: 'neutral' as const, kind: 'text', ref: null })),
     edges: edges.map(([from, to], i) => ({ id: `e${i}`, from, to, label: null })),
   };
 }
@@ -127,7 +128,7 @@ describe('layoutNewNodes — the no-clobber rule', () => {
     };
     const withNew: MindmapDoc = {
       ...userMoved,
-      nodes: [...userMoved.nodes, { id: 'n1', label: 'New Idea', x: 0, y: 0, color: 'neutral', ref: null }],
+      nodes: [...userMoved.nodes, { id: 'n1', label: 'New Idea', x: 0, y: 0, w: null, color: 'neutral', kind: 'text', ref: null }],
       edges: [...userMoved.edges, { id: 'en', from: 'a', to: 'n1', label: null }],
     };
     const laid = layoutNewNodes(withNew, new Set(['n1']));
@@ -151,7 +152,7 @@ describe('layoutNewNodes — the no-clobber rule', () => {
       }
       d = {
         ...d,
-        nodes: [...d.nodes, { id: `k${i}`, label: `Kid ${i}`, x: spot.x, y: spot.y, color: 'neutral', ref: null }],
+        nodes: [...d.nodes, { id: `k${i}`, label: `Kid ${i}`, x: spot.x, y: spot.y, w: null, color: 'neutral', kind: 'text', ref: null }],
         edges: [...d.edges, { id: `ek${i}`, from: 'r', to: `k${i}`, label: null }],
       };
     }
@@ -234,6 +235,36 @@ describe('outline text & SVG snapshot', () => {
     expect(svg).toContain('Child');
     expect((svg.match(/<rect/g) ?? [])).toHaveLength(2);
     expect((svg.match(/<path/g) ?? [])).toHaveLength(1);
+  });
+});
+
+describe('explicit card width', () => {
+  it('round-trips, clamps to bounds, and drives the layout box', () => {
+    const parsed = parseMindmapDoc(JSON.stringify({ nodes: [
+      { id: 'a', label: 'Sized', x: 0, y: 0, w: 300 },
+      { id: 'b', label: 'Too Thin', x: 0, y: 0, w: 10 },
+      { id: 'c', label: 'Auto', x: 0, y: 0 },
+    ] }));
+    expect(parsed.nodes[0].w).toBe(300);
+    expect(parsed.nodes[1].w).toBeGreaterThanOrEqual(96); // clamped up
+    expect(parsed.nodes[2].w).toBeNull();
+    expect(nodeBox(parsed.nodes[0]).w).toBe(300);
+    // A wider box wraps fewer lines than a narrow one for the same text.
+    const long = 'a very long label that certainly wraps across several lines of text';
+    expect(estimateNodeSize(long, 600).h).toBeLessThan(estimateNodeSize(long, 120).h);
+  });
+
+  it('nodeBox tolerates fixtures without a w field', () => {
+    const box = nodeBox({ label: 'Legacy' } as any);
+    expect(Number.isFinite(box.w)).toBe(true);
+    expect(Number.isFinite(box.h)).toBe(true);
+  });
+
+  it('unknown kinds are preserved through parse (forward compatibility)', () => {
+    const parsed = parseMindmapDoc(JSON.stringify({ nodes: [
+      { id: 'a', label: 'Widget Card', x: 0, y: 0, kind: 'widget:pomodoro' },
+    ] }));
+    expect(parsed.nodes[0].kind).toBe('widget:pomodoro');
   });
 });
 

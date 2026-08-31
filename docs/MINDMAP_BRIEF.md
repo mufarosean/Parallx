@@ -83,12 +83,33 @@ the cheaper tenant (no ports, no runner, no arbiter) and it debugs the
 canvas so the workflow editor doesn't debut on the app's most ambitious
 feature.
 
+## Cards, not captions (reframed 2026-08-30, shipped same day)
+
+Mufaro's correction after first use: label-bubbles think too small. A map
+card is CONTENT — resizable, formatted, formula-bearing. Shipped:
+
+- **Rich cards**: labels render through the app's ONE shared
+  markdown+KaTeX renderer (ui/renderMarkdown — HTML-disabled, the same
+  engine as flashcards). `CCL: $f(d)c(w,d)$ **model**` displays as a real
+  formula; editing always edits the raw source. The AI doors know labels
+  may carry `$LaTeX$`.
+- **Resizable cards**: a resize handle on selected nodes persists an
+  explicit width (96–640px, one undo entry per gesture; Escape cancels).
+  The user's sizing is as protected as their positions — no layout pass
+  ever changes a width.
+- **The kind seam**: nodes carry `kind` ('text' today, preserved when
+  unknown) — this is where CUSTOM_BLOCK_BRIEF's widget/embed cards land,
+  connecting live widgets into maps without a schema change.
+
 ## Later, explicitly not v1
 
 - **Recall mode** — hide the labels, re-place them from memory, grade
   the topology. Turns the map into a study mechanic. Parked until the
   editor is loved.
 - Multi-map transclusion (a node that is another map).
+- Widget cards (`kind: 'widget:*'`) and embed cards — rendered through
+  the custom-block runtime once it exists; the model field is already
+  there.
 - Workflow integration: a workflow action node that writes a draft map
   for tomorrow's topic.
 

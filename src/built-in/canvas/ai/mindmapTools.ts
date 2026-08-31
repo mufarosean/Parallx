@@ -61,7 +61,7 @@ const NODES_SCHEMA = {
     type: 'object',
     required: ['label'],
     properties: {
-      label: { type: 'string', description: 'Short idea text (a few words, not a sentence).' },
+      label: { type: 'string', description: 'Short idea text (a few words, not a sentence). Inline math renders: e.g. "CCL: $f(d)c(w,d)$".' },
       parent: { type: 'string', description: 'Label or id of the parent node.' },
       id: { type: 'string', description: 'Optional stable id, referenced by `parent`/`edges`.' },
       color: { type: 'string', enum: [...MINDMAP_COLORS] },
@@ -292,7 +292,7 @@ const DRAFT_SYSTEM_PROMPT =
   'You design mindmaps: short idea labels connected into a tree, plus cross-links where ideas relate across branches. '
   + 'Respond with ONLY a JSON object — no prose, no code fences: '
   + '{"nodes":[{"label":"…","parent":"…"}],"edges":[{"from":"…","to":"…","label":"…"}]} '
-  + 'Rules: labels are a FEW WORDS, never sentences. Every node except one root has a "parent" naming another label. '
+  + 'Labels may carry inline $LaTeX$ for formulas. Rules: labels are a FEW WORDS, never sentences. Every node except one root has a "parent" naming another label. '
   + 'When extending an existing map, parent new nodes onto the EXISTING labels given, and never repeat existing labels. '
   + 'Use "edges" only for genuine cross-branch relations, with a one-or-two-word label. '
   + 'When SOURCE MATERIAL is provided, every label must be a concept that appears in it — no invented categories, '

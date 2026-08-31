@@ -172,3 +172,38 @@ g.is-selected > .px-node-canvas__edge {
   opacity: 0;
   pointer-events: none;
 }
+
+/* ── Explicit width: the body fills the wrapper the tenant sized ── */
+
+.px-node-canvas__node.has-explicit-width > .px-node-canvas__node-body {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+}
+
+/* ── Resize handle — selected nodes only, and only when the tenant can
+      persist a width (the root's is-resizable class) ── */
+
+.px-node-canvas__resize {
+  position: absolute;
+  right: -4px;
+  bottom: 6px;
+  width: 8px;
+  height: 18px;
+  border-radius: var(--px-radius-full);
+  background: var(--px-border-strong);
+  border: 1px solid var(--px-bg);
+  cursor: ew-resize;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--px-dur-fast) var(--px-ease), background-color var(--px-dur-fast) var(--px-ease);
+}
+
+.px-node-canvas.is-resizable .px-node-canvas__node.is-selected > .px-node-canvas__resize {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.px-node-canvas__resize:hover {
+  background: var(--px-accent);
+}

@@ -23,12 +23,28 @@
 export const MINDMAP_COLORS = ['neutral', 'red', 'yellow', 'green', 'blue', 'accent'] as const;
 export type MindmapColor = (typeof MINDMAP_COLORS)[number];
 
+/** Explicit card widths are clamped to this range; null = auto-size. */
+export const MIN_CARD_WIDTH = 96;
+export const MAX_CARD_WIDTH = 640;
+
 export interface MindmapNode {
   readonly id: string;
+  /** Card content — markdown with inline `$…$` / block `$$…$$` math. The
+   *  views render it (ui/renderMarkdown); this module only measures it. */
   readonly label: string;
   readonly x: number;
   readonly y: number;
+  /** Explicit card width, or null for auto (shrink-to-content up to
+   *  MAX_LABEL_WIDTH). Set by the resize handle; the user's sizing is as
+   *  protected as their positions — no layout pass ever changes it. */
+  readonly w: number | null;
   readonly color: MindmapColor;
+  /**
+   * What the card IS. 'text' is the only kind today; this is the seam the
+   * CUSTOM_BLOCK_BRIEF kinds (widget cards, embeds) land on — parse
+   * preserves unknown kinds so newer documents survive older builds.
+   */
+  readonly kind: string;
   /** Optional anchor to workspace content (click-through in the editor). */
   readonly ref: { readonly kind: 'page'; readonly id: string } | null;
 }
@@ -73,9 +89,14 @@ export function newId(): string {
 export function emptyMindmapDoc(rootLabel: string): MindmapDoc {
   return {
     version: 1,
-    nodes: [{ id: newId(), label: rootLabel || 'Central Idea', x: 0, y: 0, color: 'accent', ref: null }],
+    nodes: [{ id: newId(), label: rootLabel || 'Central Idea', x: 0, y: 0, w: null, color: 'accent', kind: 'text', ref: null }],
     edges: [],
   };
+}
+
+function asWidth(v: unknown): number | null {
+  if (!Number.isFinite(v as number)) return null;
+  return Math.min(MAX_CARD_WIDTH, Math.max(MIN_CARD_WIDTH, Math.round(v as number)));
 }
 
 function asColor(v: unknown): MindmapColor {
@@ -107,7 +128,9 @@ export function parseMindmapDoc(json: string): MindmapDoc {
         label: typeof n.label === 'string' ? n.label : '',
         x: Number.isFinite(n.x as number) ? (n.x as number) : 0,
         y: Number.isFinite(n.y as number) ? (n.y as number) : 0,
+        w: asWidth(n.w),
         color: asColor(n.color),
+        kind: typeof n.kind === 'string' && n.kind ? n.kind : 'text',
         ref: typeof refId === 'string' && refId ? { kind: 'page', id: refId } : null,
       });
     }
@@ -194,13 +217,25 @@ const PAD_Y = 9;  // 8px padding + 1px border
 export const MAX_LABEL_WIDTH = 220;
 const MIN_NODE_WIDTH = 56;
 
-export function estimateNodeSize(label: string): { w: number; h: number } {
+export function estimateNodeSize(label: string, explicitWidth: number | null = null): { w: number; h: number } {
   const text = label || ' ';
-  const perLine = Math.max(4, Math.floor((MAX_LABEL_WIDTH - 2 * PAD_X) / CHAR_W));
+  if (!Number.isFinite(explicitWidth as number)) explicitWidth = null;
+  const boxWidth = explicitWidth ?? MAX_LABEL_WIDTH;
+  const perLine = Math.max(4, Math.floor((boxWidth - 2 * PAD_X) / CHAR_W));
   const lines = text.split('\n').reduce((acc, l) => acc + Math.max(1, Math.ceil(l.length / perLine)), 0);
+  if (explicitWidth !== null) {
+    return { w: explicitWidth, h: lines * LINE_H + 2 * PAD_Y };
+  }
   const longest = Math.max(...text.split('\n').map((l) => Math.min(l.length, perLine)));
   const w = Math.max(MIN_NODE_WIDTH, Math.min(MAX_LABEL_WIDTH, longest * CHAR_W + 2 * PAD_X));
   return { w, h: lines * LINE_H + 2 * PAD_Y };
+}
+
+/** A node's layout box: explicit width wins, estimation covers the rest.
+ *  `?? null` matters: a node object without `w` (older data mid-migration,
+ *  test fixtures) must take the auto path, and `undefined !== null`. */
+export function nodeBox(node: Pick<MindmapNode, 'label' | 'w'>): { w: number; h: number } {
+  return estimateNodeSize(node.label, node.w ?? null);
 }
 
 const H_GAP = 72;  // horizontal distance between depth levels' boxes
@@ -229,7 +264,7 @@ export function autoLayout(doc: MindmapDoc): MindmapDoc {
   const treeChildren = (id: string): string[] =>
     childrenOf(doc, id).filter((c) => !placed.has(c) && primaryParent(doc, c) === id);
 
-  const sizeOf = (id: string) => estimateNodeSize(byId.get(id)?.label ?? '');
+  const sizeOf = (id: string) => { const n = byId.get(id); return n ? nodeBox(n) : estimateNodeSize(''); };
 
   /** Height of a subtree's vertical footprint. */
   function subtreeHeight(id: string, visited: Set<string>): number {
@@ -311,7 +346,7 @@ export function autoLayout(doc: MindmapDoc): MindmapDoc {
   for (const n of doc.nodes) {
     if (placed.has(n.id)) continue;
     pos.set(n.id, { x, y: bottom + 60 });
-    x += estimateNodeSize(n.label).w + H_GAP;
+    x += nodeBox(n).w + H_GAP;
   }
 
   return {
@@ -341,7 +376,7 @@ function findFreeSpot(
 ): { x: number; y: number } {
   const boxes = doc.nodes
     .filter((n) => !ignore.has(n.id))
-    .map((n) => ({ x: n.x, y: n.y, ...estimateNodeSize(n.label) }));
+    .map((n) => ({ x: n.x, y: n.y, ...nodeBox(n) }));
   const spot = { x: desired.x, y: desired.y };
   for (let guard = 0; guard < 200; guard++) {
     const hit = boxes.find((b) => rectsOverlap({ ...spot, ...size }, b, V_GAP / 2));
@@ -356,7 +391,7 @@ function findFreeSpot(
 export function placeChild(doc: MindmapDoc, parentId: string): { x: number; y: number } {
   const parent = doc.nodes.find((n) => n.id === parentId);
   if (!parent) return findFreeSpot(doc, { x: 0, y: 0 }, estimateNodeSize(''), new Set());
-  const psize = estimateNodeSize(parent.label);
+  const psize = nodeBox(parent);
   const root = doc.nodes.find((n) => n.id === rootOf(doc));
   const dir: 1 | -1 = root && parent.x + psize.w / 2 < root.x ? -1 : 1;
   const size = estimateNodeSize('');
@@ -365,7 +400,7 @@ export function placeChild(doc: MindmapDoc, parentId: string): { x: number; y: n
     .map((id) => doc.nodes.find((n) => n.id === id))
     .filter((n): n is MindmapNode => !!n);
   const y = kids.length > 0
-    ? Math.max(...kids.map((k) => k.y + estimateNodeSize(k.label).h)) + V_GAP
+    ? Math.max(...kids.map((k) => k.y + nodeBox(k).h)) + V_GAP
     : parent.y;
   return findFreeSpot(doc, { x, y }, size, new Set());
 }
@@ -485,7 +520,9 @@ export function mergeOutline(
       label,
       x: 0,
       y: 0,
+      w: null,
       color: asColor(on.color),
+      kind: 'text',
       ref: typeof on.refPageId === 'string' && on.refPageId ? { kind: 'page', id: on.refPageId } : null,
     });
   }
