@@ -30,6 +30,8 @@ export interface IOpenclawDefaultParticipantAdapterDeps {
   readonly storeSessionMemory?: IDefaultParticipantServices['storeSessionMemory'];
   readonly readCompactionCache?: IDefaultParticipantServices['readCompactionCache'];
   readonly writeCompactionCache?: IDefaultParticipantServices['writeCompactionCache'];
+  readonly getStandingContextLate?: IDefaultParticipantServices['getStandingContextLate'];
+  readonly renderActivitySince?: IDefaultParticipantServices['renderActivitySince'];
   readonly isSessionEligibleForSummary?: IDefaultParticipantServices['isSessionEligibleForSummary'];
   readonly hasSessionMemory?: IDefaultParticipantServices['hasSessionMemory'];
   readonly getSessionMemoryMessageCount?: IDefaultParticipantServices['getSessionMemoryMessageCount'];
@@ -161,6 +163,8 @@ export function buildOpenclawDefaultParticipantServices(
     storeSessionMemory: deps.storeSessionMemory,
     readCompactionCache: deps.readCompactionCache,
     writeCompactionCache: deps.writeCompactionCache,
+    getStandingContextLate: deps.getStandingContextLate,
+    renderActivitySince: deps.renderActivitySince,
     isSessionEligibleForSummary: deps.isSessionEligibleForSummary,
     hasSessionMemory: deps.hasSessionMemory,
     getSessionMemoryMessageCount: deps.getSessionMemoryMessageCount,

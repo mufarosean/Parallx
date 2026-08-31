@@ -161,6 +161,7 @@ export async function runOpenclawTurn(
       prompt: request.text,
       planText: currentContext.getPlanText?.(),
       mindText: currentContext.getMindText?.(),
+      sinceLastTurnText: currentContext.sinceLastTurnText,
     });
 
     // 1b. Auto-compact when assembled context is near capacity (>80% of budget)

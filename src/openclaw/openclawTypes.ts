@@ -269,6 +269,20 @@ export interface IDefaultParticipantServices {
    */
   readCompactionCache?(sessionId: string): IOpenclawCompactionCacheEntry | undefined;
   writeCompactionCache?(sessionId: string, entry: IOpenclawCompactionCacheEntry | undefined): void;
+  /**
+   * HARNESS.md §3.4 — when true (default), the standing-context block rides
+   * AFTER history, just before the user message: stable cache prefix,
+   * retrieved content closest to the question. Wired from
+   * `retrieval.standingContextLate` in AI settings.
+   */
+  getStandingContextLate?(): boolean;
+  /**
+   * HARNESS.md §3.5 — one-line-per-event narrative of workspace activity
+   * since the given timestamp, EXCLUDING the assistant's own actions (the
+   * preserved transcript already carries those). Backed by the activity
+   * journal's renderRecent.
+   */
+  renderActivitySince?(sinceMs: number): string | undefined;
   isSessionEligibleForSummary?(messageCount: number): boolean;
 
   hasSessionMemory?(sessionId: string): Promise<boolean>;

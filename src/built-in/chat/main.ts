@@ -1093,6 +1093,16 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     hasSessionMemory: memoryService ? (s) => dataService.hasSessionMemory(s) : undefined,
     getSessionMemoryMessageCount: memoryService ? (s) => dataService.getSessionMemoryMessageCount(s) : undefined,
     getPreferencesForPrompt: (memoryService || workspaceMemoryService) ? () => dataService.getPreferencesForPrompt() : undefined,
+    // HARNESS.md §3.4 — standing-context position (retrieval.standingContextLate).
+    getStandingContextLate: () => unifiedConfigService?.getEffectiveConfig().retrieval.standingContextLate ?? true,
+    // HARNESS.md §3.5 — workspace activity since the session's last turn,
+    // excluding the assistant's own actions (the transcript carries those).
+    renderActivitySince: _activityJournal
+      ? (sinceMs: number) => {
+        const text = _activityJournal.renderRecent({ sinceMs, maxLines: 12, excludeActor: 'ai' });
+        return text.trim() ? text : undefined;
+      }
+      : undefined,
     // M85 — the session's durable plan, formatted for the "## Active Plan"
     // context section. Read fresh per assembly so mid-turn plan_update calls
     // are reflected after compaction re-assembly.

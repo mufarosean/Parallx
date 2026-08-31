@@ -636,6 +636,17 @@ async function buildOpenclawTurnContext(
     // turns (previously a heartbeat-only sense). Same getter-not-snapshot
     // rationale as the plan: mid-turn mind_remember calls surface on re-assembly.
     getMindText: () => services.getMindContinuity?.(context.sessionId),
+    // HARNESS.md §3.5 — push state, pull content: what happened in the
+    // workspace since this session's previous turn (user edits, external
+    // changes — never the assistant's own actions). Snapshot, not getter:
+    // "since last turn" is fixed at turn start.
+    sinceLastTurnText: (() => {
+      const lastPair = context.history.length > 0 ? context.history[context.history.length - 1] : undefined;
+      const sinceMs = lastPair?.request.timestamp;
+      return typeof sinceMs === 'number' && sinceMs > 0
+        ? services.renderActivitySince?.(sinceMs)
+        : undefined;
+    })(),
     linkContracts: services.getLinkContractDescriptors?.(),
     temperature: resolvedAgentConfig?.temperature ?? effectiveConfig?.model?.temperature,
     maxTokens: resolvedAgentConfig?.maxTokens ?? effectiveConfig?.model?.maxTokens,

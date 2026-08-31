@@ -97,6 +97,15 @@ export interface IUnifiedContextBudgetConfig {
 export interface IUnifiedRetrievalConfig {
   /** @parallx-specific No upstream OpenClaw equivalent. Upstream context engine always runs if registered. Desktop toggle to disable RAG when workspace is empty. */
   readonly autoRag: boolean;
+  /**
+   * HARNESS.md §3.4 — place the standing-context block (plan, retrieved
+   * content, memories) AFTER conversation history, immediately before the
+   * user's message. Frontier pattern (reminders ride near the end): the
+   * per-turn-changing block no longer invalidates the KV-cache/prompt-cache
+   * prefix for the whole history, and retrieved content sits closest to the
+   * question. Off restores the pre-M103 position (block before history).
+   */
+  readonly standingContextLate: boolean;
   /** Upstream: memorySearch.query.maxResults. Controls retrievalService top-K. */
   readonly ragTopK: number;
   /** Upstream: memorySearch.query.minScore. RRF noise floor for retrievalService. */
@@ -510,6 +519,7 @@ export const DEFAULT_UNIFIED_CONFIG: IUnifiedAIConfig = {
   },
   retrieval: {
     autoRag: true,
+    standingContextLate: true,
     ragTopK: 20,
     ragScoreThreshold: 0.01,
     contextBudget: {

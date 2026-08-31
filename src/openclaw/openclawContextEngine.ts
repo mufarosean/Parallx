@@ -85,6 +85,12 @@ export interface IOpenclawAssembleParams {
    * cron/subagent/dashboard rails intentionally run without continuity.
    */
   readonly mindText?: string;
+  /**
+   * HARNESS.md §3.5 — workspace activity since the session's previous turn
+   * (assistant's own actions excluded). Push state, pull content: the agent
+   * is TOLD what changed; it pulls the content itself if it matters.
+   */
+  readonly sinceLastTurnText?: string;
 }
 
 /**
@@ -190,6 +196,7 @@ export type IOpenclawContextEngineServices = Pick<
   | 'sendSummarizationRequest'
   | 'readCompactionCache'
   | 'writeCompactionCache'
+  | 'getStandingContextLate'
 >;
 
 // ---------------------------------------------------------------------------
@@ -385,6 +392,18 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
       );
     }
 
+    // ── Since last turn — push state, not content (HARNESS.md §3.5) ──
+    // Small by construction (journal-rendered, ≤12 lines, assistant's own
+    // actions excluded), so not budget-competed. Frontier pattern: the
+    // environment tells the agent what changed; the agent pulls detail.
+    if (params.sinceLastTurnText) {
+      contextSections.push(
+        '## Since Your Last Turn\n'
+        + 'Workspace activity since this session\'s previous turn. Pull details with the read/search tools if relevant.\n\n'
+        + params.sinceLastTurnText,
+      );
+    }
+
     // ── RAG: retrieve workspace context relevant to prompt ──
     if (ragResult?.text) {
       const ragTokens = estimateTokens(ragResult.text);
@@ -424,9 +443,17 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
 
     // ── Deliver retrieval content via messages (upstream pattern) ──
     // Upstream: AssembleResult.messages is the primary delivery channel.
-    // RAG content goes in a context message BEFORE history, not in the system prompt.
-    if (contextSections.length > 0) {
-      messages.push({
+    //
+    // HARNESS.md §3.4 — position. Default is LATE: history first, standing
+    // context just before the user's message. The block changes every turn
+    // (fresh retrieval, plan updates), so placing it first invalidated the
+    // KV-cache/prompt-cache prefix for the entire history on every message —
+    // the mechanism behind "long chats get slower with every message" (and
+    // for cloud models, re-billing the whole history). Late placement keeps
+    // the prefix stable AND puts retrieved content closest to the question.
+    // `retrieval.standingContextLate = false` restores the old order.
+    const contextMsg: IChatMessage | undefined = contextSections.length > 0
+      ? {
         role: 'user' as const,
         // §3.2 — the citation rule rides only when there is something to cite.
         content: 'The following is standing context for this conversation (your plan, retrieved workspace content, recalled memories). Use it to inform your responses.'
@@ -434,12 +461,21 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
             ? ' When you state a fact drawn from Retrieved Context, name its source ([n] label); each chunk carries a relevance score — treat low-relevance chunks as leads to verify with a read or search, never as answers.'
             : '')
           + `\n\n${contextSections.join('\n\n---\n\n')}`,
-      });
+      }
+      : undefined;
+
+    const late = this.services.getStandingContextLate?.() !== false;
+    if (contextMsg && !late) {
+      messages.push(contextMsg);
     }
 
     // ── History: trim conversation history to fit budget ──
     const historyMessages = trimHistoryToBudget(effectiveHistory, budget.history);
     messages.push(...historyMessages);
+
+    if (contextMsg && late) {
+      messages.push(contextMsg);
+    }
 
     const estimatedTokens = estimateMessagesTokens(messages) +
       (systemPromptAddition ? estimateTokens(systemPromptAddition) : 0);

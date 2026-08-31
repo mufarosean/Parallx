@@ -1155,3 +1155,63 @@ describe('compaction honesty (HARNESS.md 1.2)', () => {
     expect(transcript).toContain('Tool result (fs_read_file): [TOOL ERROR] File not found');
   });
 });
+
+// ---------------------------------------------------------------------------
+// HARNESS.md §3.4 + §3.5 — standing-context position and since-last-turn
+// ---------------------------------------------------------------------------
+
+describe('standing-context position (HARNESS.md 3.4)', () => {
+  const history: IChatMessage[] = [
+    { role: 'user', content: 'earlier question' },
+    { role: 'assistant', content: 'earlier answer' },
+  ];
+
+  it('default (late): history first, standing context just before the user turn', async () => {
+    const engine = new OpenclawContextEngine(createMockServices());
+    await engine.bootstrap({ sessionId: 's1', tokenBudget: 100_000 });
+    const result = await engine.assemble({ sessionId: 's1', history, tokenBudget: 100_000, prompt: 'now' });
+
+    const last = result.messages[result.messages.length - 1];
+    expect(last.content).toContain('standing context');
+    expect(result.messages[0].content).toBe('earlier question');
+  });
+
+  it('retrieval.standingContextLate=false restores the legacy order', async () => {
+    const engine = new OpenclawContextEngine(createMockServices({ getStandingContextLate: () => false }));
+    await engine.bootstrap({ sessionId: 's1', tokenBudget: 100_000 });
+    const result = await engine.assemble({ sessionId: 's1', history, tokenBudget: 100_000, prompt: 'now' });
+
+    expect(result.messages[0].content).toContain('standing context');
+    expect(result.messages[result.messages.length - 1].content).toBe('earlier answer');
+  });
+});
+
+describe('since-last-turn state push (HARNESS.md 3.5)', () => {
+  it('renders the section when activity text is provided', async () => {
+    const engine = new OpenclawContextEngine(createMockServices());
+    await engine.bootstrap({ sessionId: 's1', tokenBudget: 100_000 });
+    const result = await engine.assemble({
+      sessionId: 's1',
+      history: [{ role: 'user', content: 'q' }, { role: 'assistant', content: 'a' }],
+      tokenBudget: 100_000,
+      prompt: 'now',
+      sinceLastTurnText: '14:02 user edited page "Mack Notes"',
+    });
+
+    const contextMsg = result.messages.find((m) => m.content.includes('Since Your Last Turn'));
+    expect(contextMsg).toBeDefined();
+    expect(contextMsg!.content).toContain('Mack Notes');
+  });
+
+  it('omits the section when absent', async () => {
+    const engine = new OpenclawContextEngine(createMockServices());
+    await engine.bootstrap({ sessionId: 's1', tokenBudget: 100_000 });
+    const result = await engine.assemble({
+      sessionId: 's1',
+      history: [],
+      tokenBudget: 100_000,
+      prompt: 'now',
+    });
+    expect(result.messages.find((m) => m.content.includes('Since Your Last Turn'))).toBeUndefined();
+  });
+});

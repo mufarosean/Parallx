@@ -181,6 +181,11 @@ export interface IOpenclawTurnContext {
    *  the same mid-turn-freshness reason as getPlanText. */
   readonly getMindText?: () => string | undefined;
 
+  /** HARNESS.md §3.5 — workspace activity since the session's previous turn
+   *  (assistant's own actions excluded). A snapshot: "since last turn" is
+   *  fixed at turn start. */
+  readonly sinceLastTurnText?: string;
+
   // Model parameters from config
   readonly temperature?: number;
   readonly maxTokens?: number;
@@ -681,6 +686,7 @@ export async function executeOpenclawAttempt(
           prompt: request.text,
           planText: context.getPlanText?.(),
           mindText: context.getMindText?.(),
+          sinceLastTurnText: context.sinceLastTurnText,
         });
         // Rebuild messages: system prompt stays, use re-assembled history,
         // keep recent tool exchange, add user message (with context prepended)

@@ -252,6 +252,18 @@ const SCHEMAS: readonly IBoundSchema[] = ([
   } as IBoundSchema<boolean>,
   {
     schema: {
+      key: 'retrieval.standingContextLate',
+      type: 'boolean',
+      default: true,
+      scope: 'workspace',
+      description: 'Place the standing-context block (plan, retrieved content, memories) after conversation history, just before your message. Keeps long chats fast (stable cache prefix) and retrieved content closest to the question. Turn off to restore the old position before history.',
+      category: 'Retrieval',
+    },
+    read: (c) => c.retrieval.standingContextLate,
+    write: (v) => ({ retrieval: { standingContextLate: v as boolean } }),
+  } as IBoundSchema<boolean>,
+  {
+    schema: {
       key: 'retrieval.ragTopK',
       type: 'number',
       default: 10,
