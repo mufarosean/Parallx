@@ -65,6 +65,38 @@ await build({
   assetNames: 'fonts/[name]',
 });
 
+// ── Mindmap board engine bundle ────────────────────────────────────────────
+// Excalidraw + React serve only the board surface, so they build as their
+// OWN esm bundle the pane dynamic-imports on first open — the exact Univer
+// discipline above. Statically importing boardHost.ts from the main tree
+// would inline React and the whole engine into main.js — never do that.
+await build({
+  entryPoints: ['src/built-in/canvas/mindmap/boardHost.ts'],
+  bundle: true,
+  outfile: 'dist/renderer/mindmap-board.js',
+  format: 'esm',
+  // Excalidraw's package exports gate `.` and `./index.css` behind
+  // development/production conditions with no default — without the extra
+  // condition esbuild cannot resolve the stylesheet at all.
+  conditions: [isProduction ? 'production' : 'development'],
+  platform: 'browser',
+  target: 'es2022',
+  sourcemap: isProduction ? 'external' : true,
+  minify: isProduction,
+  logLevel: 'info',
+  define: { 'process.env.NODE_ENV': isProduction ? '"production"' : '"development"' },
+  loader: {
+    '.woff2': 'file',
+    '.woff': 'file',
+    '.ttf': 'file',
+    '.svg': 'dataurl',
+    '.gif': 'dataurl',
+    '.cur': 'dataurl',
+    '.png': 'dataurl',
+  },
+  assetNames: 'fonts/[name]',
+});
+
 // ── Copy PDF.js runtime assets to dist ─────────────────────────────────────
 const workerSrc = 'node_modules/pdfjs-dist/build/pdf.worker.min.mjs';
 const workerDst = 'dist/renderer/pdf.worker.min.mjs';

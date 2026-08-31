@@ -1,62 +1,49 @@
-// mindmapEditorPane.ts — the full-pane mindmap editor (docs/MINDMAP_BRIEF.md).
+// mindmapEditorPane.ts — the board pane: a thin host around the whiteboard
+// engine, plus the app's own doors into it.
 //
-// The bar this pane is measured against, from the brief: "if making a
-// five-node map takes longer than typing five bullets, the feature failed."
-// So the whole editing loop is outliner keys on top of the shared node
-// canvas: double-click to add or edit, Tab commits-and-adds a child, Enter
-// commits-and-adds a sibling, drag to move, Delete to remove — and every
-// gesture is exactly ONE undo entry.
+// The 2026-08-31 pivot (Mufaro: "think Zoom Whiteboard, optimized for AI +
+// LaTeX — the bespoke card editor thinks too small"): the surface is now
+// Excalidraw, embedded the way Univer is for worksheets — a separate engine
+// bundle (dist/renderer/mindmap-board.js) dynamic-imported on first open,
+// with shapes, sticky-style notes, arrows, freehand, text styling, images,
+// selection and undo all owned by the engine.
 //
-// Division of labour:
-//   ui/nodeCanvas.ts   — geometry and gesture (pan/zoom/drag/connect/select);
-//   mindmapModel.ts    — the document, placement and layout rules;
-//   this file          — keyboard semantics, editing, undo, save, toolbar.
+// What THIS file owns is what the engine cannot know:
+//   • page identity (title rename, the mindmaps row, debounced persistence
+//     with a change guard so scrolling never writes);
+//   • the AI door — Draft With AI with the grounded source picker; the
+//     model's outline becomes skeleton elements the engine materialises;
+//   • migration — v1 card documents open as board elements, once.
 //
-// The AI door honours the brief's core rule: a draft merges through
-// mergeOutline + layoutNewNodes, which can add but can NEVER move a node the
-// user has placed. Only the user's own Auto Layout button repositions.
+// jsdom cannot mount the engine, so `loadBoardHost` is injectable; tests
+// drive the pane against a recorder host.
 
 import './mindmap.css';
 import type { IDisposable } from '../../../platform/lifecycle.js';
 import { getIcon } from '../../../ui/iconRegistry.js';
-import { renderMarkdown } from '../../../ui/renderMarkdown.js';
-import { createDropdownHandle, type IDropdownHandle } from '../../../ui/dropdown.js';
 import { attachPopupDismiss } from '../../../ui/dom.js';
-import { NodeCanvas, type NodeCanvasSelection } from '../../../ui/nodeCanvas.js';
 import type { MindmapDataService } from './mindmapDataService.js';
+import type { BoardHostModule, IBoardHost, BoardEnvelope } from './boardTypes.js';
 import {
-  assignBranchColors,
-  autoLayout,
-  emptyMindmapDoc,
-  layoutNewNodes,
-  mergeOutline,
-  newId,
-  parseMindmapDoc,
-  placeChild,
-  placeFloating,
-  primaryParent,
-  serializeMindmapDoc,
-  docToOutlineText,
-  MINDMAP_COLORS,
-  type MindmapColor,
-  type MindmapDoc,
-  type MindmapOutlineEdge,
-  type MindmapOutlineNode,
-} from './mindmapModel.js';
-import { renderMindmapSvg } from './mindmapSvg.js';
+  boardOutlineText,
+  outlineToSkeletons,
+  boardLabels,
+  serializeBoardEnvelope,
+  toBoardEnvelope,
+} from './boardConvert.js';
+import type { MindmapOutlineEdge, MindmapOutlineNode } from './mindmapModel.js';
 
-// ── Dependencies injected by canvas/main.ts ─────────────────────────────────
+// ── The AI draft contract (shared with ai/mindmapTools.ts) ──────────────────
 
 export interface MindmapDraftRequest {
   readonly pageId: string;
   readonly title: string;
-  /** The current map as an outline, so the model extends rather than repeats. */
+  /** The current board as an outline, so the model extends rather than repeats. */
   readonly outlineText: string;
   readonly instruction: string;
   /** Grounding: the document the user picked in the popover. When present,
    *  its text travels inside the prompt and the rules forbid inventing
-   *  concepts that are not in it — the answer to the "generic design map
-   *  instead of my Meyers notes" failure. */
+   *  concepts that are not in it. */
   readonly sourceTitle?: string;
   readonly sourceText?: string;
 }
@@ -68,8 +55,8 @@ export interface MindmapDraftResult {
 
 export interface MindmapEditorDeps {
   readonly service: MindmapDataService;
-  /** Open a workspace page (a node's ref click-through). */
-  readonly openPage: (pageId: string) => void;
+  /** Open a workspace page (reserved for element links). */
+  readonly openPage?: (pageId: string) => void;
   /** The editor door of the AI draft (D3: both doors, one implementation).
    *  Undefined until the chat tool's LM provider is available. */
   readonly draftWithAI?: (req: MindmapDraftRequest) => Promise<MindmapDraftResult>;
@@ -77,43 +64,48 @@ export interface MindmapEditorDeps {
   readonly searchPages?: (query: string) => Promise<ReadonlyArray<{ id: string; title: string }>>;
   /** A page's content as plain text (markdown) for grounding. */
   readonly getPageText?: (pageId: string) => Promise<string | null>;
+  /** Engine loader — defaults to the built bundle; injectable for tests. */
+  readonly loadBoardHost?: () => Promise<BoardHostModule>;
 }
 
-const UNDO_LIMIT = 100;
-const SAVE_DEBOUNCE_MS = 600;
+const SAVE_DEBOUNCE_MS = 900;
 
-interface EditingState {
-  readonly nodeId: string;
-  /** Snapshot to restore on cancel / to push as THE undo entry on commit —
-   *  a create-and-type gesture must be one undo step, not two. */
-  readonly undoBase: string;
-  /** True when the node was created by this gesture (cancel removes it). */
-  readonly isNew: boolean;
-  textarea: HTMLTextAreaElement | null;
+// ── Engine bundle loader (the Univer discipline) ────────────────────────────
+
+let _boardModule: Promise<BoardHostModule> | null = null;
+
+function loadBoardModule(): Promise<BoardHostModule> {
+  if (_boardModule) return _boardModule;
+  const cssId = 'mindmap-board-css';
+  if (!document.getElementById(cssId)) {
+    const link = document.createElement('link');
+    link.id = cssId;
+    link.rel = 'stylesheet';
+    link.href = new URL('dist/renderer/mindmap-board.css', document.baseURI).href;
+    document.head.appendChild(link);
+  }
+  // Runtime-computed specifier so esbuild cannot inline the engine here.
+  const jsUrl = new URL('dist/renderer/mindmap-board.js', document.baseURI).href;
+  _boardModule = import(/* webpackIgnore: true */ jsUrl) as Promise<BoardHostModule>;
+  return _boardModule;
 }
+
+// ── The pane ────────────────────────────────────────────────────────────────
 
 export class MindmapEditorPane implements IDisposable {
   private readonly _root: HTMLElement;
   private readonly _titleInput: HTMLInputElement;
   private readonly _hintEl: HTMLElement;
   private readonly _draftBtn: HTMLButtonElement;
-  private readonly _canvasHost: HTMLElement;
-  private readonly _canvas: NodeCanvas;
-  private _colorDropdown: IDropdownHandle | null = null;
+  private readonly _boardContainer: HTMLElement;
 
-  private _doc: MindmapDoc = emptyMindmapDoc('');
+  private _host: IBoardHost | null = null;
   private _loaded = false;
-  private _undo: string[] = [];
-  private _redo: string[] = [];
-
-  private _editing: EditingState | null = null;
-  private _edgeEditorDetach: (() => void) | null = null;
-
   private _dirty = false;
-  private _saveTimer: ReturnType<typeof setTimeout> | null = null;
   private _selfSave = false;
+  private _lastSavedJson = '';
+  private _saveTimer: ReturnType<typeof setTimeout> | null = null;
   private _hintTimer: ReturnType<typeof setTimeout> | null = null;
-  private _fitRaf: number | null = null;
 
   private readonly _disposables: IDisposable[] = [];
   private _disposed = false;
@@ -124,21 +116,19 @@ export class MindmapEditorPane implements IDisposable {
     private readonly _deps: MindmapEditorDeps,
   ) {
     this._root = el('div', 'mm-editor');
-    this._root.tabIndex = 0;
     container.appendChild(this._root);
 
-    // ── Header: icon · title · toolbar ──
+    // ── Header: icon · title · the AI door ──
     const header = el('div', 'mm-editor__header');
     const iconEl = el('span', 'mm-editor__icon');
     iconEl.innerHTML = getIcon('waypoints') ?? '';
     header.appendChild(iconEl);
 
     this._titleInput = el('input', 'mm-editor__title') as HTMLInputElement;
-    this._titleInput.placeholder = 'Untitled Mindmap';
+    this._titleInput.placeholder = 'Untitled Board';
     this._titleInput.addEventListener('keydown', (e) => {
       e.stopPropagation();
-      if (e.key === 'Enter') { e.preventDefault(); this._titleInput.blur(); }
-      if (e.key === 'Escape') { e.preventDefault(); this._titleInput.blur(); }
+      if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); this._titleInput.blur(); }
     });
     this._titleInput.addEventListener('blur', () => { void this._commitTitle(); });
     header.appendChild(this._titleInput);
@@ -146,53 +136,20 @@ export class MindmapEditorPane implements IDisposable {
     const toolbar = el('div', 'mm-editor__toolbar');
     this._draftBtn = this._toolButton('Draft With AI', 'bolt', () => this._openDraftPopover());
     toolbar.appendChild(this._draftBtn);
-    toolbar.appendChild(this._toolButton('Auto Layout', 'refresh', () => this._runAutoLayout()));
-    toolbar.appendChild(this._toolButton('Fit', 'fullscreen', () => this._canvas.fitToContent()));
-    toolbar.appendChild(this._toolButton('Copy As SVG', 'duplicate', () => this._copySvg()));
-
-    const colorHost = el('div', 'mm-editor__color');
-    this._colorDropdown = createDropdownHandle(colorHost, {
-      placeholder: 'Color',
-      ariaLabel: 'Node Color',
-      items: MINDMAP_COLORS.map((c) => ({
-        value: c,
-        label: c === 'accent' ? 'Accent' : c.charAt(0).toUpperCase() + c.slice(1),
-        swatch: SWATCH_CSS[c],
-      })),
-    });
-    this._disposables.push(this._colorDropdown.onDidChange((value) => {
-      this._applyColorToSelection(value as MindmapColor);
-    }));
-    toolbar.appendChild(colorHost);
     header.appendChild(toolbar);
     this._root.appendChild(header);
 
-    // ── Hint bar: discoverability for the outliner keys (sentence-case prose) ──
     this._hintEl = el('div', 'mm-editor__hint');
     this._root.appendChild(this._hintEl);
 
-    // ── Canvas ──
-    this._canvasHost = el('div', 'mm-editor__canvas');
-    this._root.appendChild(this._canvasHost);
-    this._canvas = new NodeCanvas(this._canvasHost, {
-      renderNode: (id, body) => this._renderNode(id, body),
-      onMoveNodes: (moves) => this._onNodesMoved(moves),
-      onSelectionChange: (sel) => this._onSelectionChange(sel),
-      onNodeDoubleClick: (id) => this._beginEdit(id, false),
-      onEdgeDoubleClick: (id) => this._beginEdgeLabelEdit(id),
-      onCanvasDoubleClick: (pt) => this._addFloatingNode(pt),
-      onConnect: (from, to) => this._connect(from, to),
-      onResizeNode: (id, w) => this._onNodeResized(id, w),
-    });
-
-    this._root.addEventListener('keydown', this._onKeyDown);
-    this._root.addEventListener('pointerdown', this._onRootPointerDown, true);
+    this._boardContainer = el('div', 'mm-editor__canvas');
+    this._root.appendChild(this._boardContainer);
 
     this._disposables.push(this._deps.service.onDidChangeDoc((e) => {
       if (e.pageId !== this._pageId || this._selfSave) return;
-      // Another writer (the AI tool, another window). A clean editor follows;
-      // a dirty one keeps its local state — its own save is already queued.
-      if (!this._dirty) void this._reload({ fit: false });
+      // Another writer (the chat AI tools, another window). A clean editor
+      // follows; a dirty one keeps local truth — its save is queued.
+      if (!this._dirty) void this._remount();
     }));
 
     void this._load();
@@ -201,50 +158,65 @@ export class MindmapEditorPane implements IDisposable {
   dispose(): void {
     if (this._disposed) return;
     this._disposed = true;
-    this._cancelEdit();
-    this._closeEdgeEditor();
     if (this._saveTimer) { clearTimeout(this._saveTimer); this._saveTimer = null; }
     if (this._hintTimer) { clearTimeout(this._hintTimer); this._hintTimer = null; }
-    if (this._fitRaf !== null) cancelAnimationFrame(this._fitRaf);
     if (this._dirty) void this._flushSave();
     for (const d of this._disposables) d.dispose();
-    this._colorDropdown?.dispose();
-    this._canvas.dispose();
-    this._root.removeEventListener('keydown', this._onKeyDown);
-    this._root.removeEventListener('pointerdown', this._onRootPointerDown, true);
+    this._host?.destroy();
+    this._host = null;
     this._root.remove();
   }
 
-  // ── Loading & saving ────────────────────────────────────────────────────
+  // ── Loading ─────────────────────────────────────────────────────────────
 
   private async _load(): Promise<void> {
-    const [page, doc] = await Promise.all([
+    const [page, data] = await Promise.all([
       this._deps.service.getPage(this._pageId),
-      this._deps.service.getDoc(this._pageId),
+      this._deps.service.getData(this._pageId),
     ]);
     if (this._disposed) return;
     this._titleInput.value = page?.title ?? '';
-    this._doc = doc ?? emptyMindmapDoc(page?.title ?? '');
-    this._loaded = true;
-    this._sync();
-    this._fitRaf = requestAnimationFrame(() => {
-      this._fitRaf = null;
-      this._canvas.fitToContent();
+
+    const envelope = toBoardEnvelope(data);
+    this._lastSavedJson = data ?? '';
+
+    let module: BoardHostModule;
+    try {
+      module = await (this._deps.loadBoardHost ?? loadBoardModule)();
+    } catch (err) {
+      this._showHint('The board engine failed to load — restart the app and try again.');
+      console.error('[Mindmap] board bundle load failed:', err);
+      return;
+    }
+    if (this._disposed) return;
+
+    this._host = module.createBoardHost({
+      container: this._boardContainer,
+      initialElements: envelope.elements,
+      initialFiles: envelope.files,
+      pending: envelope.pending,
+      theme: document.documentElement.dataset.theme === 'light' ? 'light' : 'dark',
+      onChange: () => this._scheduleSave(),
     });
-    this._root.focus({ preventScroll: true });
+    this._loaded = true;
+
+    if (envelope.elements.length === 0 && envelope.pending.length === 0) {
+      this._showHint('Draw freely — or Draft With AI to map a page of your notes.');
+    }
   }
 
-  private async _reload(opts: { fit: boolean }): Promise<void> {
-    const doc = await this._deps.service.getDoc(this._pageId);
-    if (this._disposed || !doc) return;
-    this._cancelEdit();
-    this._doc = doc;
-    this._sync();
-    if (opts.fit) this._canvas.fitToContent();
+  private async _remount(): Promise<void> {
+    if (!this._loaded) return;
+    this._host?.destroy();
+    this._host = null;
+    this._loaded = false;
+    await this._load();
   }
+
+  // ── Persistence — debounced, with a change guard ────────────────────────
 
   private _scheduleSave(): void {
-    if (!this._loaded) return;
+    if (!this._loaded || this._disposed) return;
     this._dirty = true;
     if (this._saveTimer) clearTimeout(this._saveTimer);
     this._saveTimer = setTimeout(() => { void this._flushSave(); }, SAVE_DEBOUNCE_MS);
@@ -252,14 +224,27 @@ export class MindmapEditorPane implements IDisposable {
 
   private async _flushSave(): Promise<void> {
     if (this._saveTimer) { clearTimeout(this._saveTimer); this._saveTimer = null; }
-    if (!this._dirty) return;
+    if (!this._dirty || !this._host) return;
+    const scene = this._host.getScene();
+    const envelope: BoardEnvelope = {
+      engine: 'excalidraw',
+      version: 1,
+      elements: scene.elements,
+      files: scene.files,
+      pending: [],
+    };
+    const json = serializeBoardEnvelope(envelope);
     this._dirty = false;
+    // The engine reports scroll/zoom as changes too; identical content is
+    // not a write.
+    if (json === this._lastSavedJson) return;
     this._selfSave = true;
     try {
-      await this._deps.service.saveDoc(this._pageId, this._doc, 'user');
+      await this._deps.service.saveData(this._pageId, json, 'user');
+      this._lastSavedJson = json;
     } catch (err) {
-      this._dirty = true; // keep local truth; the next edit retries
-      this._showHint('Saving failed — your changes are held in this pane. It will retry on the next edit.');
+      this._dirty = true; // local truth holds; the next change retries
+      this._showHint('Saving failed — your board is held in this pane and will retry.');
       console.warn('[Mindmap] save failed:', err);
     } finally {
       this._selfSave = false;
@@ -274,394 +259,21 @@ export class MindmapEditorPane implements IDisposable {
       return;
     }
     try { await this._deps.service.renameMindmap(this._pageId, title); }
-    catch { /* rename is cosmetic here; the sidebar path can retry */ }
-  }
-
-  // ── The single mutation pipeline ────────────────────────────────────────
-
-  /** Apply a document change as ONE undo entry, re-render, queue a save. */
-  private _apply(next: MindmapDoc, opts: { undoBase?: string } = {}): void {
-    this._undo.push(opts.undoBase ?? serializeMindmapDoc(this._doc));
-    if (this._undo.length > UNDO_LIMIT) this._undo.shift();
-    this._redo = [];
-    this._doc = next;
-    this._sync();
-    this._scheduleSave();
-  }
-
-  private _sync(): void {
-    this._canvas.setModel(
-      this._doc.nodes.map((n) => ({ id: n.id, x: n.x, y: n.y, w: n.w })),
-      this._doc.edges.map((e) => ({ id: e.id, from: e.from, to: e.to, label: e.label })),
-    );
-    this._updateHint();
-  }
-
-  private _undoStep(): void {
-    const prev = this._undo.pop();
-    if (prev === undefined) return;
-    this._cancelEdit();
-    this._redo.push(serializeMindmapDoc(this._doc));
-    this._doc = parseMindmapDoc(prev);
-    this._sync();
-    this._scheduleSave();
-  }
-
-  private _redoStep(): void {
-    const next = this._redo.pop();
-    if (next === undefined) return;
-    this._cancelEdit();
-    this._undo.push(serializeMindmapDoc(this._doc));
-    this._doc = parseMindmapDoc(next);
-    this._sync();
-    this._scheduleSave();
-  }
-
-  // ── Node rendering (NodeCanvas delegate) ────────────────────────────────
-
-  private _renderNode(id: string, body: HTMLElement): void {
-    const node = this._doc.nodes.find((n) => n.id === id);
-    if (!node) return;
-    body.className = `px-node-canvas__node-body mm-node mm-node--${node.color}`;
-    body.textContent = '';
-
-    if (this._editing?.nodeId === id) {
-      const ta = el('textarea', 'mm-node__edit') as HTMLTextAreaElement;
-      ta.value = node.label;
-      ta.rows = 1;
-      ta.addEventListener('keydown', (e) => this._onEditKeyDown(e));
-      ta.addEventListener('input', () => autosize(ta));
-      ta.addEventListener('blur', () => {
-        // Blur commits (the app-wide inline-rename standard) — unless the
-        // edit was already resolved by a key.
-        if (this._editing?.textarea === ta) this._commitEdit(null);
-      });
-      body.appendChild(ta);
-      this._editing.textarea = ta;
-      requestAnimationFrame(() => { autosize(ta); ta.focus(); ta.select(); });
-      return;
-    }
-
-    // Cards are RICH: markdown + KaTeX through the app's one shared renderer
-    // (HTML-disabled, so model-authored labels are safe). The raw source —
-    // $…$ included — is what the textarea edits; this is the display half.
-    const label = el('div', 'mm-node__label');
-    if (node.label.trim()) {
-      label.appendChild(renderMarkdown(node.label));
-    } else {
-      label.textContent = ' ';
-    }
-    body.appendChild(label);
-
-    if (node.ref) {
-      const ref = el('button', 'mm-node__ref');
-      ref.dataset.ncNoDrag = '';
-      ref.title = 'Open Linked Page';
-      ref.innerHTML = getIcon('page') ?? '';
-      ref.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this._deps.openPage(node.ref!.id);
-      });
-      body.appendChild(ref);
-    }
-  }
-
-  // ── Editing gestures ────────────────────────────────────────────────────
-
-  private _beginEdit(nodeId: string, isNew: boolean, undoBase?: string): void {
-    if (this._editing) this._commitEdit(null);
-    this._closeEdgeEditor();
-    const node = this._doc.nodes.find((n) => n.id === nodeId);
-    if (!node) return;
-    this._editing = {
-      nodeId,
-      isNew,
-      undoBase: undoBase ?? serializeMindmapDoc(this._doc),
-      textarea: null,
-    };
-    this._canvas.setSelection([nodeId], []);
-    this._canvas.refreshNode(nodeId);
-  }
-
-  /** `then` says what the resolving key wants next: a sibling, a child, or rest. */
-  private _commitEdit(then: 'sibling' | 'child' | null): void {
-    const editing = this._editing;
-    if (!editing) return;
-    const value = (editing.textarea?.value ?? '').replace(/\s+$/g, '');
-    this._editing = null;
-
-    const node = this._doc.nodes.find((n) => n.id === editing.nodeId);
-    if (!node) { this._sync(); return; }
-
-    if (!value.trim() && editing.isNew) {
-      // A created-then-abandoned node vanishes without an undo entry.
-      this._doc = parseMindmapDoc(editing.undoBase);
-      this._sync();
-      return;
-    }
-
-    const label = value.trim() || node.label;
-    const changed = label !== node.label || editing.isNew;
-    if (changed) {
-      const next: MindmapDoc = {
-        ...this._doc,
-        nodes: this._doc.nodes.map((n) => (n.id === node.id ? { ...n, label } : n)),
-      };
-      this._apply(next, { undoBase: editing.undoBase });
-    } else {
-      this._canvas.refreshNode(node.id);
-    }
-
-    if (then === 'sibling') this._addSibling(node.id);
-    else if (then === 'child') this._addChild(node.id);
-    else this._root.focus({ preventScroll: true });
-  }
-
-  private _cancelEdit(): void {
-    const editing = this._editing;
-    if (!editing) return;
-    this._editing = null;
-    this._doc = parseMindmapDoc(editing.undoBase);
-    this._sync();
-    this._root.focus({ preventScroll: true });
-  }
-
-  private _onEditKeyDown(e: KeyboardEvent): void {
-    e.stopPropagation();
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      this._commitEdit('sibling');
-    } else if (e.key === 'Tab') {
-      e.preventDefault();
-      this._commitEdit('child');
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      this._cancelEdit();
-    }
-  }
-
-  private _addChild(parentId: string): void {
-    const undoBase = serializeMindmapDoc(this._doc);
-    const parent = this._doc.nodes.find((n) => n.id === parentId);
-    if (!parent) return;
-    const spot = placeChild(this._doc, parentId);
-    const id = newId();
-    const color: MindmapColor = parent.color === 'accent' ? 'neutral' : parent.color;
-    this._doc = {
-      ...this._doc,
-      nodes: [...this._doc.nodes, { id, label: '', x: spot.x, y: spot.y, w: null, color, kind: 'text', ref: null }],
-      edges: [...this._doc.edges, { id: newId(), from: parentId, to: id, label: null }],
-    };
-    this._sync();
-    this._beginEdit(id, true, undoBase);
-  }
-
-  private _addSibling(nodeId: string): void {
-    const parent = primaryParent(this._doc, nodeId);
-    if (parent) {
-      this._addChild(parent);
-      return;
-    }
-    const node = this._doc.nodes.find((n) => n.id === nodeId);
-    this._addFloatingNode({ x: (node?.x ?? 0), y: (node?.y ?? 0) + 64 });
-  }
-
-  private _addFloatingNode(near: { x: number; y: number }): void {
-    const undoBase = serializeMindmapDoc(this._doc);
-    const spot = placeFloating(this._doc, near);
-    const id = newId();
-    this._doc = {
-      ...this._doc,
-      nodes: [...this._doc.nodes, { id, label: '', x: spot.x, y: spot.y, w: null, color: 'neutral', kind: 'text', ref: null }],
-    };
-    this._sync();
-    this._beginEdit(id, true, undoBase);
-  }
-
-  private _deleteSelection(): void {
-    const sel = this._canvas.getSelection();
-    if (sel.nodes.length === 0 && sel.edges.length === 0) return;
-    const nodeSet = new Set(sel.nodes);
-    const edgeSet = new Set(sel.edges);
-    // Never delete the last node — a map always has somewhere to stand.
-    const remaining = this._doc.nodes.filter((n) => !nodeSet.has(n.id));
-    if (remaining.length === 0) {
-      this._showHint('The last node stays — edit it instead.');
-      return;
-    }
-    this._apply({
-      ...this._doc,
-      nodes: remaining,
-      edges: this._doc.edges.filter(
-        (e) => !edgeSet.has(e.id) && !nodeSet.has(e.from) && !nodeSet.has(e.to),
-      ),
-    });
-  }
-
-  private _connect(from: string, to: string): void {
-    if (from === to) return;
-    if (this._doc.edges.some((e) => e.from === from && e.to === to)) return;
-    const edgeId = newId();
-    this._apply({
-      ...this._doc,
-      edges: [...this._doc.edges, { id: edgeId, from, to, label: null }],
-    });
-    this._canvas.setSelection([], [edgeId]);
-  }
-
-  private _onNodesMoved(moves: ReadonlyArray<{ id: string; x: number; y: number }>): void {
-    const byId = new Map(moves.map((m) => [m.id, m]));
-    this._apply({
-      ...this._doc,
-      nodes: this._doc.nodes.map((n) => {
-        const m = byId.get(n.id);
-        return m ? { ...n, x: m.x, y: m.y } : n;
-      }),
-    });
-  }
-
-  private _onNodeResized(id: string, w: number): void {
-    this._apply({
-      ...this._doc,
-      nodes: this._doc.nodes.map((n) => (n.id === id ? { ...n, w } : n)),
-    });
-    this._canvas.setSelection([id], []);
-  }
-
-  private _onSelectionChange(_sel: NodeCanvasSelection): void {
-    // Clicking into the canvas ends any label edit (blur handles the textarea
-    // itself; this covers selection changes made programmatically).
-    if (this._editing && !_sel.nodes.includes(this._editing.nodeId)) this._commitEdit(null);
-  }
-
-  // ── Edge label editing ──────────────────────────────────────────────────
-
-  private _beginEdgeLabelEdit(edgeId: string): void {
-    this._closeEdgeEditor();
-    if (this._editing) this._commitEdit(null);
-    const edge = this._doc.edges.find((e) => e.id === edgeId);
-    if (!edge) return;
-    const from = this._doc.nodes.find((n) => n.id === edge.from);
-    const to = this._doc.nodes.find((n) => n.id === edge.to);
-    if (!from || !to) return;
-
-    const mid = this._canvas.clientFromWorld((from.x + to.x) / 2, (from.y + to.y) / 2);
-    const rootRect = this._root.getBoundingClientRect();
-    const input = el('input', 'mm-edge-editor') as HTMLInputElement;
-    input.value = edge.label ?? '';
-    input.placeholder = 'Relation…';
-    input.style.left = `${mid.x - rootRect.left}px`;
-    input.style.top = `${mid.y - rootRect.top}px`;
-    this._root.appendChild(input);
-
-    let done = false;
-    const commit = (): void => {
-      if (done) return; // blur and the dismiss contract can both land here
-      done = true;
-      const label = input.value.trim() || null;
-      this._closeEdgeEditor();
-      if (label !== edge.label) {
-        this._apply({
-          ...this._doc,
-          edges: this._doc.edges.map((e) => (e.id === edgeId ? { ...e, label } : e)),
-        });
-      }
-      this._root.focus({ preventScroll: true });
-    };
-    const detachDismiss = attachPopupDismiss(input, commit, { onEscape: () => { done = true; this._closeEdgeEditor(); } });
-    input.addEventListener('keydown', (e) => {
-      e.stopPropagation();
-      if (e.key === 'Enter') { e.preventDefault(); commit(); }
-    });
-    input.addEventListener('blur', commit);
-    this._edgeEditorDetach = () => {
-      detachDismiss();
-      input.removeEventListener('blur', commit);
-      input.remove();
-    };
-    input.focus();
-    input.select();
-  }
-
-  private _closeEdgeEditor(): void {
-    this._edgeEditorDetach?.();
-    this._edgeEditorDetach = null;
-  }
-
-  // ── Keyboard (pane root) ────────────────────────────────────────────────
-
-  private readonly _onRootPointerDown = (e: PointerEvent | MouseEvent): void => {
-    const target = e.target as HTMLElement;
-    if (target.closest('input, textarea, .ui-dropdown')) return;
-    this._root.focus({ preventScroll: true });
-  };
-
-  private readonly _onKeyDown = (e: KeyboardEvent): void => {
-    const target = e.target as HTMLElement;
-    // Fields own their keys; buttons own Enter/Space (else Enter on a focused
-    // toolbar button would both click it and spawn a sibling node).
-    if (target.closest('input, textarea, [contenteditable], button, .ui-dropdown')) return;
-
-    const sel = this._canvas.getSelection();
-    const single = sel.nodes.length === 1 ? sel.nodes[0] : null;
-    const mod = e.ctrlKey || e.metaKey;
-
-    const handled = ((): boolean => {
-      if (mod && !e.shiftKey && e.key.toLowerCase() === 'z') { this._undoStep(); return true; }
-      if ((mod && e.shiftKey && e.key.toLowerCase() === 'z') || (mod && e.key.toLowerCase() === 'y')) { this._redoStep(); return true; }
-      if (mod && e.key.toLowerCase() === 'a') {
-        this._canvas.setSelection(this._doc.nodes.map((n) => n.id), []);
-        return true;
-      }
-      if (e.key === 'Tab' && single) { this._addChild(single); return true; }
-      if (e.key === 'Enter' && single) { this._addSibling(single); return true; }
-      if (e.key === 'F2' && single) { this._beginEdit(single, false); return true; }
-      if ((e.key === 'Delete' || e.key === 'Backspace')) { this._deleteSelection(); return true; }
-      if (e.key === 'Escape') {
-        if (sel.nodes.length || sel.edges.length) { this._canvas.setSelection([], []); return true; }
-        return false; // nothing selected — let the workbench have it
-      }
-      return false;
-    })();
-
-    if (handled) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-  };
-
-  // ── Toolbar actions ─────────────────────────────────────────────────────
-
-  private _runAutoLayout(): void {
-    this._cancelEdit();
-    this._apply(autoLayout(this._doc));
-    this._canvas.fitToContent();
-  }
-
-  private _applyColorToSelection(color: MindmapColor): void {
-    const sel = this._canvas.getSelection();
-    if (sel.nodes.length === 0) {
-      this._showHint('Select a node first, then pick a color.');
-      return;
-    }
-    const nodeSet = new Set(sel.nodes);
-    this._apply({
-      ...this._doc,
-      nodes: this._doc.nodes.map((n) => (nodeSet.has(n.id) ? { ...n, color } : n)),
-    });
-    this._canvas.setSelection(sel.nodes, sel.edges);
-  }
-
-  private async _copySvg(): Promise<void> {
-    try {
-      await navigator.clipboard.writeText(renderMindmapSvg(this._doc));
-      this._showHint('SVG copied to the clipboard.');
-    } catch {
-      this._showHint('Could not reach the clipboard.');
-    }
+    catch { /* cosmetic here; the sidebar path can retry */ }
   }
 
   // ── The AI door ─────────────────────────────────────────────────────────
+
+  private _currentEnvelope(): BoardEnvelope {
+    const scene = this._host?.getScene();
+    return {
+      engine: 'excalidraw',
+      version: 1,
+      elements: scene?.elements ?? [],
+      files: scene?.files ?? {},
+      pending: [],
+    };
+  }
 
   private _openDraftPopover(): void {
     if (!this._deps.draftWithAI) {
@@ -674,14 +286,10 @@ export class MindmapEditorPane implements IDisposable {
     const pop = el('div', 'mm-draft-popover');
     const ta = el('textarea', 'mm-draft-popover__input') as HTMLTextAreaElement;
     ta.rows = 3;
-    ta.placeholder = this._doc.nodes.length <= 1
-      ? 'What should this map cover?'
-      : 'What should be added to this map?';
+    ta.placeholder = 'What should be drawn onto this board?';
     pop.appendChild(ta);
 
-    // ── Source picker: ground the draft in a document's actual content —
-    // the user chooses WHICH notes the map is about, and their text rides
-    // inside the prompt (the "map my Meyers notes" fix). ──
+    // ── Source picker: ground the draft in a document's actual content ──
     let source: { id: string; title: string } | null = null;
     const sourceRow = el('div', 'mm-draft-popover__source');
     const sourceInput = el('input', 'mm-draft-popover__source-input') as HTMLInputElement;
@@ -700,7 +308,7 @@ export class MindmapEditorPane implements IDisposable {
         icon.innerHTML = getIcon('page') ?? '';
         chip.appendChild(icon);
         chip.appendChild(el('span', undefined, next.title));
-        const clear = el('button', 'mm-draft-popover__chip-clear', '\u00d7') as HTMLButtonElement;
+        const clear = el('button', 'mm-draft-popover__chip-clear', '×') as HTMLButtonElement;
         clear.title = 'Remove Source';
         clear.addEventListener('click', () => { setSource(null); sourceInput.focus(); });
         chip.appendChild(clear);
@@ -718,7 +326,7 @@ export class MindmapEditorPane implements IDisposable {
         void this._deps.searchPages(q).then((pages) => {
           results.textContent = '';
           for (const pg of pages.slice(0, 6)) {
-            if (pg.id === this._pageId) continue; // a map is not its own source
+            if (pg.id === this._pageId) continue; // a board is not its own source
             const row = el('button', 'mm-draft-popover__result', pg.title || 'Untitled') as HTMLButtonElement;
             row.addEventListener('click', () => setSource(pg));
             results.appendChild(row);
@@ -756,7 +364,7 @@ export class MindmapEditorPane implements IDisposable {
   }
 
   private async _runDraft(instruction: string, source: { id: string; title: string } | null = null): Promise<void> {
-    if (!this._deps.draftWithAI) return;
+    if (!this._deps.draftWithAI || !this._host) return;
     this._draftBtn.disabled = true;
     this._draftBtn.classList.add('is-busy');
     this._showHint(source ? `Reading "${source.title}" and drafting…` : 'Drafting…');
@@ -769,29 +377,23 @@ export class MindmapEditorPane implements IDisposable {
           sourceText = undefined;
         }
       }
+      const envelope = this._currentEnvelope();
       const result = await this._deps.draftWithAI({
         pageId: this._pageId,
-        title: this._titleInput.value.trim() || 'Untitled Mindmap',
-        outlineText: docToOutlineText(this._doc),
+        title: this._titleInput.value.trim() || 'Untitled Board',
+        outlineText: boardOutlineText(envelope),
         instruction,
         sourceTitle: source?.title,
         sourceText,
       });
       if (this._disposed) return;
-      const wasEmpty = this._doc.nodes.length <= 1 && this._doc.edges.length === 0;
-      const merged = mergeOutline(this._doc, result.nodes, result.edges ?? []);
-      if (merged.newNodeIds.length === 0) {
+      const skeletons = outlineToSkeletons(result.nodes, result.edges ?? [], boardLabels(envelope));
+      if (skeletons.length === 0) {
         this._showHint('The draft added nothing new.');
         return;
       }
-      // The brief's core rule: a draft may add, only the user repositions —
-      // except on an empty map, where the first draft earns a full layout.
-      const next = wasEmpty
-        ? assignBranchColors(autoLayout(merged.doc))
-        : layoutNewNodes(merged.doc, new Set(merged.newNodeIds));
-      this._apply(next);
-      this._canvas.fitToContent();
-      this._showHint(`Added ${merged.newNodeIds.length} node${merged.newNodeIds.length === 1 ? '' : 's'}.`);
+      this._host.addSkeletons(skeletons);
+      this._showHint(`Drew ${skeletons.length} elements.`);
     } catch (err) {
       this._showHint(err instanceof Error ? err.message : 'Drafting failed.');
     } finally {
@@ -800,18 +402,7 @@ export class MindmapEditorPane implements IDisposable {
     }
   }
 
-  // ── Hint bar ────────────────────────────────────────────────────────────
-
-  private _updateHint(): void {
-    if (this._hintTimer) return; // a transient message owns the bar right now
-    if (this._doc.nodes.length <= 2) {
-      this._hintEl.textContent =
-        'Double-click to add an idea \u00b7 Tab child, Enter sibling \u00b7 drag the dot to connect \u00b7 $\u2026$ renders math';
-      this._hintEl.classList.add('is-visible');
-    } else {
-      this._hintEl.classList.remove('is-visible');
-    }
-  }
+  // ── Hint pill ───────────────────────────────────────────────────────────
 
   private _showHint(text: string): void {
     this._hintEl.textContent = text;
@@ -819,11 +410,9 @@ export class MindmapEditorPane implements IDisposable {
     if (this._hintTimer) clearTimeout(this._hintTimer);
     this._hintTimer = setTimeout(() => {
       this._hintTimer = null;
-      this._updateHint();
-    }, 4000);
+      this._hintEl.classList.remove('is-visible');
+    }, 5000);
   }
-
-  // ── Small builders ──────────────────────────────────────────────────────
 
   private _toolButton(label: string, icon: string, onClick: () => void): HTMLButtonElement {
     const btn = el('button', 'mm-btn') as HTMLButtonElement;
@@ -848,18 +437,3 @@ function el<K extends keyof HTMLElementTagNameMap>(
   if (text !== undefined) node.textContent = text;
   return node;
 }
-
-function autosize(ta: HTMLTextAreaElement): void {
-  ta.style.height = 'auto';
-  ta.style.height = `${ta.scrollHeight}px`;
-}
-
-/** Swatch colors for the dropdown — resolved from tokens at render time. */
-const SWATCH_CSS: Record<MindmapColor, string> = {
-  neutral: 'var(--px-base-40)',
-  red: 'rgb(var(--px-red-rgb))',
-  yellow: 'rgb(var(--px-yellow-rgb))',
-  green: 'rgb(var(--px-green-rgb))',
-  blue: 'rgb(var(--px-blue-rgb))',
-  accent: 'var(--px-accent)',
-};

@@ -83,7 +83,39 @@ the cheaper tenant (no ports, no runner, no arbiter) and it debugs the
 canvas so the workflow editor doesn't debut on the app's most ambitious
 feature.
 
-## Cards, not captions (reframed 2026-08-30, shipped same day)
+## The board (re-reframed 2026-08-31, shipped same day)
+
+Mufaro's second correction, after using the card editor: *"think of a
+canvas app — shapes, sticky notes, full text styling, building complex
+things. Zoom Whiteboard. Optimized for AI + LaTeX."* The bespoke editor
+— even with rich cards — was the wrong altitude. The answer is the one
+this app already gave for worksheets: **embed a proven engine.**
+
+The surface is now **Excalidraw** (MIT), as its own lazy bundle
+(`dist/renderer/mindmap-board.js`, ~15MB dev — the Univer discipline:
+never statically imported). The engine owns shapes, notes, arrows,
+freehand, text styling, images, selection, undo, and export. The app
+owns what the engine cannot know:
+
+- **Persistence**: `mindmaps.data` stores a BoardEnvelope
+  (`{engine:'excalidraw', elements, files, pending}`); saves are
+  debounced with a change guard (scroll/zoom noise never writes); v1
+  card documents migrate on open with their geometry intact.
+- **The AI seam**: everything the app authors travels as Excalidraw
+  SKELETON JSON — the most AI-writable board format there is. The chat
+  tools (grounding rail unchanged) queue skeletons in `pending` for the
+  next open; the Draft With AI door (source picker unchanged) converts
+  live via the host. Layout still comes from our two-sided tidy tree.
+- **The engine cannot run headless**, so the pane's `loadBoardHost` is
+  injectable and the translation layer (`boardConvert.ts`) is pure and
+  fully pinned.
+
+Still owed, named honestly: **LaTeX on the board** (formula → SVG →
+image element; the next slice), engine theme polish against the app
+tokens, and the eyes-on pass. The nodeCanvas primitive is unaffected —
+it remains the workflow editor's surface.
+
+## Cards, not captions (reframed 2026-08-30, superseded by the board)
 
 Mufaro's correction after first use: label-bubbles think too small. A map
 card is CONTENT — resizable, formatted, formula-bearing. Shipped:

@@ -1,370 +1,260 @@
 // @vitest-environment jsdom
 //
-// mindmapEditorPane.test.ts — the editing loop the brief measures the pane
-// by: outliner keys on a real DOM, one undo entry per gesture, the last node
-// guarded, saves debounced and flushed on dispose, and external AI writes
-// reloading a clean editor. Runs against the real NodeCanvas in jsdom with a
-// scripted MindmapDataService.
+// mindmapEditorPane.test.ts — the board pane under the whiteboard pivot.
+//
+// The engine cannot mount in jsdom, so the pane's `loadBoardHost` seam takes
+// a RECORDER host; what these pins hold is everything the pane owns around
+// the engine: migration into pending skeletons, debounced persistence with
+// the change guard (scroll never writes), external-writer remounts, the
+// grounded Draft door feeding addSkeletons, and flush-on-dispose.
 
 import { describe, expect, it, vi } from 'vitest';
 import { Emitter } from '../../src/platform/events';
 import { MindmapEditorPane } from '../../src/built-in/canvas/mindmap/mindmapEditorPane';
-import {
-  emptyMindmapDoc,
-  parseMindmapDoc,
-  serializeMindmapDoc,
-  type MindmapDoc,
-} from '../../src/built-in/canvas/mindmap/mindmapModel';
+import { serializeMindmapDoc, type MindmapDoc } from '../../src/built-in/canvas/mindmap/mindmapModel';
+import { emptyBoardEnvelope } from '../../src/built-in/canvas/mindmap/boardTypes';
+import { serializeBoardEnvelope } from '../../src/built-in/canvas/mindmap/boardConvert';
+import type { BoardHostOptions, BoardSkeleton } from '../../src/built-in/canvas/mindmap/boardTypes';
 
-function docOf(nodes: Array<[string, string]>, edges: Array<[string, string]> = []): MindmapDoc {
-  return {
+function legacyDocJson(): string {
+  const doc: MindmapDoc = {
     version: 1,
-    nodes: nodes.map(([id, label], i) => ({ id, label, x: i * 300, y: 0, w: null, color: 'neutral' as const, kind: 'text', ref: null })),
-    edges: edges.map(([from, to], i) => ({ id: `e${i}`, from, to, label: null })),
+    nodes: [
+      { id: 'r', label: 'Root', x: 0, y: 0, w: null, color: 'accent', kind: 'text', ref: null },
+      { id: 'a', label: 'Branch', x: 300, y: 0, w: null, color: 'blue', kind: 'text', ref: null },
+    ],
+    edges: [{ id: 'e1', from: 'r', to: 'a', label: null }],
   };
+  return serializeMindmapDoc(doc);
 }
 
-function makePane(initial: MindmapDoc = docOf([['root', 'Root']])) {
+interface RecorderHost {
+  mounts: BoardHostOptions[];
+  added: BoardSkeleton[][];
+  scene: { elements: Record<string, unknown>[]; files: Record<string, unknown> };
+  destroyed: number;
+  fireChange(): void;
+}
+
+function makeRecorder(): { host: RecorderHost; loadBoardHost: () => Promise<any> } {
+  const host: RecorderHost = {
+    mounts: [],
+    added: [],
+    scene: { elements: [], files: {} },
+    destroyed: 0,
+    fireChange: () => { /* replaced per mount */ },
+  };
+  const loadBoardHost = async () => ({
+    createBoardHost(opts: BoardHostOptions) {
+      host.mounts.push(opts);
+      host.fireChange = () => opts.onChange();
+      return {
+        addSkeletons: (sk: readonly BoardSkeleton[]) => { host.added.push([...sk]); opts.onChange(); },
+        getScene: () => host.scene,
+        destroy: () => { host.destroyed++; },
+      };
+    },
+  });
+  return { host, loadBoardHost };
+}
+
+function makePane(storedJson: string | null, extraDeps: Record<string, unknown> = {}) {
   const changeEmitter = new Emitter<{ pageId: string; source: 'user' | 'ai' }>();
-  let stored = serializeMindmapDoc(initial);
+  let stored = storedJson;
   const service: any = {
-    getPage: vi.fn(async () => ({ id: 'map-1', title: 'My Map', icon: 'waypoints' })),
-    getDoc: vi.fn(async () => parseMindmapDoc(stored)),
-    saveDoc: vi.fn(async (_id: string, doc: MindmapDoc, _source: string) => {
-      stored = serializeMindmapDoc(doc);
-    }),
+    getPage: vi.fn(async () => ({ id: 'map-1', title: 'My Board', icon: 'waypoints' })),
+    getData: vi.fn(async () => stored),
+    saveData: vi.fn(async (_id: string, json: string) => { stored = json; }),
     renameMindmap: vi.fn(async () => undefined),
     onDidChangeDoc: changeEmitter.event,
   };
-  const openPage = vi.fn();
-  const host = document.createElement('div');
-  document.body.appendChild(host);
-  const pane = new MindmapEditorPane(host, 'map-1', { service, openPage });
+  const { host, loadBoardHost } = makeRecorder();
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const pane = new MindmapEditorPane(container, 'map-1', {
+    service,
+    loadBoardHost,
+    ...extraDeps,
+  } as any);
   return {
-    pane, host, service, openPage,
-    fireExternalChange: () => changeEmitter.fire({ pageId: 'map-1', source: 'ai' }),
-    getStored: () => parseMindmapDoc(stored),
+    pane, container, service, host,
+    fireExternal: () => changeEmitter.fire({ pageId: 'map-1', source: 'ai' }),
+    getStored: () => stored,
   };
 }
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
-const frame = () => new Promise((r) => requestAnimationFrame(() => r(0)));
-async function settle(): Promise<void> { await tick(); await frame(); await tick(); }
+async function settle(): Promise<void> { await tick(); await tick(); }
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-function root(host: HTMLElement): HTMLElement {
-  return host.querySelector('.mm-editor') as HTMLElement;
-}
-function nodes(host: HTMLElement): HTMLElement[] {
-  return [...host.querySelectorAll('.px-node-canvas__node')] as HTMLElement[];
-}
-function nodeByLabel(host: HTMLElement, label: string): HTMLElement {
-  const found = nodes(host).find((n) => n.textContent?.includes(label));
-  if (!found) throw new Error(`node not rendered: ${label}`);
-  return found;
-}
-function key(el: HTMLElement, k: string, init: KeyboardEventInit = {}): void {
-  el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, ...init }));
-}
-function selectNode(host: HTMLElement, label: string): void {
-  nodeByLabel(host, label).dispatchEvent(
-    new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 }),
-  );
-  document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-}
-
-describe('loading', () => {
-  it('renders the stored document and the page title', async () => {
-    const { pane, host } = makePane(docOf([['root', 'Root'], ['a', 'Branch']], [['root', 'a']]));
+describe('mounting & migration', () => {
+  it('mounts the engine with stored elements and files', async () => {
+    const env = { ...emptyBoardEnvelope(), elements: [{ id: 'x', type: 'rectangle' }] };
+    const { pane, host, container } = makePane(serializeBoardEnvelope(env));
     await settle();
-    expect(nodes(host)).toHaveLength(2);
-    expect((host.querySelector('.mm-editor__title') as HTMLInputElement).value).toBe('My Map');
-    expect(host.querySelectorAll('g[data-edge-id]')).toHaveLength(1);
+    expect(host.mounts).toHaveLength(1);
+    expect(host.mounts[0].initialElements).toHaveLength(1);
+    expect(host.mounts[0].pending).toHaveLength(0);
+    expect((container.querySelector('.mm-editor__title') as HTMLInputElement).value).toBe('My Board');
     pane.dispose();
-    host.remove();
-  });
-});
-
-describe('the outliner loop', () => {
-  it('Tab on a selected node opens a child editor; typing + Enter commits and chains a sibling', async () => {
-    const { pane, host } = makePane();
-    await settle();
-    selectNode(host, 'Root');
-    key(root(host), 'Tab');
-    await settle();
-
-    const ta = host.querySelector('.mm-node__edit') as HTMLTextAreaElement;
-    expect(ta).toBeTruthy();
-    ta.value = 'First Child';
-    key(ta, 'Enter');
-    await settle();
-
-    expect(nodeByLabel(host, 'First Child')).toBeTruthy();
-    // Enter chained straight into a sibling editor — the five-bullets bar.
-    expect(host.querySelector('.mm-node__edit')).toBeTruthy();
-
-    key(host.querySelector('.mm-node__edit') as HTMLElement, 'Escape');
-    await settle();
-    expect(nodes(host)).toHaveLength(2); // Root + First Child; empty sibling vanished
-    pane.dispose();
-    host.remove();
+    container.remove();
   });
 
-  it('a create-and-type gesture is ONE undo entry', async () => {
-    const { pane, host } = makePane();
+  it('a v1 card document arrives as pending skeletons — geometry intact', async () => {
+    const { pane, host, container } = makePane(legacyDocJson());
     await settle();
-    selectNode(host, 'Root');
-    key(root(host), 'Tab');
-    await settle();
-    const ta = host.querySelector('.mm-node__edit') as HTMLTextAreaElement;
-    ta.value = 'Kid';
-    ta.dispatchEvent(new FocusEvent('blur'));
-    await settle();
-    expect(nodes(host)).toHaveLength(2);
-
-    key(root(host), 'z', { ctrlKey: true });
-    await settle();
-    expect(nodes(host)).toHaveLength(1); // one Ctrl+Z removed node AND edge
-
-    key(root(host), 'z', { ctrlKey: true, shiftKey: true });
-    await settle();
-    expect(nodes(host)).toHaveLength(2); // redo brings it back
+    const pending = host.mounts[0].pending;
+    expect(pending.length).toBe(3); // 2 rects + 1 bound arrow
+    const rect = pending.find((p) => p.id === 'mm-a')!;
+    expect(rect).toMatchObject({ x: 300, y: 0 });
     pane.dispose();
-    host.remove();
+    container.remove();
   });
 
-  it('abandoning a brand-new empty node removes it without an undo entry', async () => {
-    const { pane, host } = makePane();
+  it('a failed engine load shows the hint instead of a broken pane', async () => {
+    const changeEmitter = new Emitter<{ pageId: string; source: 'user' | 'ai' }>();
+    const service: any = {
+      getPage: vi.fn(async () => ({ id: 'map-1', title: 'T' })),
+      getData: vi.fn(async () => null),
+      saveData: vi.fn(),
+      renameMindmap: vi.fn(),
+      onDidChangeDoc: changeEmitter.event,
+    };
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const pane = new MindmapEditorPane(container, 'map-1', {
+      service,
+      loadBoardHost: async () => { throw new Error('bundle missing'); },
+    } as any);
     await settle();
-    selectNode(host, 'Root');
-    key(root(host), 'Tab');
-    await settle();
-    key(host.querySelector('.mm-node__edit') as HTMLElement, 'Escape');
-    await settle();
-    expect(nodes(host)).toHaveLength(1);
-    // Nothing to undo — the aborted gesture left no history.
-    key(root(host), 'z', { ctrlKey: true });
-    await settle();
-    expect(nodes(host)).toHaveLength(1);
+    expect(container.querySelector('.mm-editor__hint')?.textContent).toContain('board engine failed');
     pane.dispose();
-    host.remove();
-  });
-
-  it('Delete removes a selected node with its edges, but never the last node', async () => {
-    const { pane, host } = makePane(docOf([['root', 'Root'], ['a', 'Branch']], [['root', 'a']]));
-    await settle();
-    selectNode(host, 'Branch');
-    key(root(host), 'Delete');
-    await settle();
-    expect(nodes(host)).toHaveLength(1);
-    expect(host.querySelectorAll('g[data-edge-id]')).toHaveLength(0);
-
-    selectNode(host, 'Root');
-    key(root(host), 'Delete');
-    await settle();
-    expect(nodes(host)).toHaveLength(1); // the guard
-    pane.dispose();
-    host.remove();
-  });
-
-  it('F2 edits an existing label; Escape restores it untouched', async () => {
-    const { pane, host } = makePane();
-    await settle();
-    selectNode(host, 'Root');
-    key(root(host), 'F2');
-    await settle();
-    const ta = host.querySelector('.mm-node__edit') as HTMLTextAreaElement;
-    ta.value = 'Scribbled over';
-    key(ta, 'Escape');
-    await settle();
-    expect(nodeByLabel(host, 'Root')).toBeTruthy();
-    pane.dispose();
-    host.remove();
+    container.remove();
   });
 });
 
 describe('persistence', () => {
-  it('debounces saves and flushes the last state on dispose', async () => {
-    const { pane, host, service, getStored } = makePane(docOf([['root', 'Root'], ['a', 'Branch']], [['root', 'a']]));
+  it('debounces engine changes into one envelope save', async () => {
+    const { pane, host, service, container, getStored } = makePane(null);
     await settle();
-    selectNode(host, 'Branch');
-    key(root(host), 'Delete');
-    await settle();
-    expect(service.saveDoc).not.toHaveBeenCalled(); // still inside the debounce
+    host.scene.elements = [{ id: 'n1', type: 'rectangle' }];
+    host.fireChange();
+    host.fireChange();
+    host.fireChange();
+    expect(service.saveData).not.toHaveBeenCalled(); // inside the debounce
+    await wait(1100);
+    expect(service.saveData).toHaveBeenCalledTimes(1);
+    const saved = JSON.parse(getStored()!);
+    expect(saved.engine).toBe('excalidraw');
+    expect(saved.elements).toHaveLength(1);
+    expect(saved.pending).toHaveLength(0);
     pane.dispose();
-    await settle();
-    expect(service.saveDoc).toHaveBeenCalledTimes(1);
-    expect(service.saveDoc.mock.calls[0][2]).toBe('user');
-    expect(getStored().nodes.map((n: any) => n.label)).toEqual(['Root']);
-    host.remove();
+    container.remove();
   });
 
-  it('an external (AI) write reloads a clean editor', async () => {
-    const { pane, host, service, fireExternalChange } = makePane();
+  it('the change guard: identical content (scroll/zoom noise) never writes', async () => {
+    const env = { ...emptyBoardEnvelope(), elements: [{ id: 'x', type: 'rectangle' }] };
+    const json = serializeBoardEnvelope(env);
+    const { pane, host, service, container } = makePane(json);
     await settle();
-    // The AI added a node behind our back.
-    const grown = docOf([['root', 'Root'], ['ai', 'AI Added']], [['root', 'ai']]);
-    service.getDoc.mockImplementation(async () => grown);
-    fireExternalChange();
-    await settle();
-    expect(nodes(host)).toHaveLength(2);
-    expect(nodeByLabel(host, 'AI Added')).toBeTruthy();
+    host.scene.elements = env.elements as Record<string, unknown>[];
+    host.fireChange();
+    await wait(1100);
+    expect(service.saveData).not.toHaveBeenCalled();
     pane.dispose();
-    host.remove();
-  });
-});
-
-describe('rich cards', () => {
-  it('renders markdown and KaTeX in card labels; F2 edits the raw source', async () => {
-    const { pane, host } = makePane(docOf([['root', 'CCL: $f(d)c(w,d)$ **model**']]));
-    await settle();
-    const label = host.querySelector('.mm-node__label') as HTMLElement;
-    expect(label.querySelector('.katex')).toBeTruthy();  // math rendered
-    expect(label.querySelector('strong')).toBeTruthy();  // markdown rendered
-    expect(label.textContent).not.toContain('$');        // no raw source on display
-
-    selectNode(host, 'CCL');
-    key(root(host), 'F2');
-    await settle();
-    const ta = host.querySelector('.mm-node__edit') as HTMLTextAreaElement;
-    expect(ta.value).toBe('CCL: $f(d)c(w,d)$ **model**'); // the source, intact
-    key(ta, 'Escape');
-    await settle();
-    pane.dispose();
-    host.remove();
+    container.remove();
   });
 
-  it('dragging the resize handle persists an explicit width as one undo entry', async () => {
-    const { pane, host, service, getStored } = makePane();
+  it('dispose flushes a pending save', async () => {
+    const { pane, host, service, container } = makePane(null);
     await settle();
-    selectNode(host, 'Root');
-    const handle = host.querySelector('.px-node-canvas__resize') as HTMLElement;
-    expect(handle).toBeTruthy();
-
-    handle.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button: 0, clientX: 100 }));
-    document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 250 }));
-    document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-    await settle();
-
-    const node = nodes(host)[0];
-    expect(node.classList.contains('has-explicit-width')).toBe(true);
-    expect(node.style.width).not.toBe('');
-
-    key(root(host), 'z', { ctrlKey: true }); // one undo removes the sizing
-    await settle();
-    expect(nodes(host)[0].classList.contains('has-explicit-width')).toBe(false);
-
-    key(root(host), 'z', { ctrlKey: true, shiftKey: true });
-    await settle();
+    host.scene.elements = [{ id: 'n1', type: 'ellipse' }];
+    host.fireChange();
     pane.dispose();
     await settle();
-    expect(getStored().nodes[0].w).toBeGreaterThanOrEqual(96);
-    expect(service.saveDoc).toHaveBeenCalled();
-    pane.dispose();
-    host.remove();
-  });
-
-  it('Escape cancels a resize without touching the document', async () => {
-    const { pane, host, service } = makePane();
-    await settle();
-    selectNode(host, 'Root');
-    const handle = host.querySelector('.px-node-canvas__resize') as HTMLElement;
-    handle.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button: 0, clientX: 100 }));
-    document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 400 }));
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    await settle();
-    expect(nodes(host)[0].classList.contains('has-explicit-width')).toBe(false);
-    pane.dispose();
-    await settle();
-    expect(service.saveDoc).not.toHaveBeenCalled();
-    host.remove();
+    expect(service.saveData).toHaveBeenCalledTimes(1);
+    container.remove();
   });
 });
 
-describe('the AI door — grounded drafting', () => {
-  it('picking a source page sends its text through draftWithAI', async () => {
-    const changeEmitter = new Emitter<{ pageId: string; source: 'user' | 'ai' }>();
-    const service: any = {
-      getPage: vi.fn(async () => ({ id: 'map-1', title: 'Meyers Models', icon: 'waypoints' })),
-      getDoc: vi.fn(async () => parseMindmapDoc(serializeMindmapDoc(docOf([['root', 'Root']])))),
-      saveDoc: vi.fn(async () => undefined),
-      renameMindmap: vi.fn(async () => undefined),
-      onDidChangeDoc: changeEmitter.event,
-    };
+describe('external writers', () => {
+  it('a clean pane remounts when the chat AI writes to the same board', async () => {
+    const { pane, host, container, fireExternal } = makePane(null);
+    await settle();
+    expect(host.mounts).toHaveLength(1);
+    fireExternal();
+    await settle();
+    expect(host.destroyed).toBe(1);
+    expect(host.mounts).toHaveLength(2);
+    pane.dispose();
+    container.remove();
+  });
+});
+
+describe('the AI door', () => {
+  it('a grounded draft becomes addSkeletons on the live board', async () => {
     const draftWithAI = vi.fn(async () => ({
-      nodes: [{ label: 'ODP', parent: 'Root' }],
+      nodes: [{ label: 'ODP' }, { label: 'Mack', parent: 'ODP' }],
     }));
     const searchPages = vi.fn(async () => [{ id: 'notes-1', title: 'Meyers Notes' }]);
     const getPageText = vi.fn(async () => 'The over-dispersed Poisson family…');
-    const host = document.createElement('div');
-    document.body.appendChild(host);
-    const pane = new MindmapEditorPane(host, 'map-1', {
-      service, openPage: vi.fn(), draftWithAI, searchPages, getPageText,
-    });
+    const { pane, host, container } = makePane(null, { draftWithAI, searchPages, getPageText });
     await settle();
 
-    // Open the popover, describe the draft, search and pick the source.
-    (host.querySelectorAll('.mm-btn')[0] as HTMLButtonElement).click(); // Draft With AI
-    const ta = host.querySelector('.mm-draft-popover__input') as HTMLTextAreaElement;
-    expect(ta).toBeTruthy();
+    (container.querySelectorAll('.mm-btn')[0] as HTMLButtonElement).click();
+    const ta = container.querySelector('.mm-draft-popover__input') as HTMLTextAreaElement;
     ta.value = 'Map the models';
-    const src = host.querySelector('.mm-draft-popover__source-input') as HTMLInputElement;
-    expect(src).toBeTruthy();
+    const src = container.querySelector('.mm-draft-popover__source-input') as HTMLInputElement;
     src.value = 'meyers';
     src.dispatchEvent(new Event('input', { bubbles: true }));
-    await new Promise((r) => setTimeout(r, 200)); // the picker's debounce
-    const row = host.querySelector('.mm-draft-popover__result') as HTMLButtonElement;
-    expect(row?.textContent).toBe('Meyers Notes');
-    row.click();
-    expect((host.querySelector('.mm-draft-popover__chip') as HTMLElement).textContent).toContain('Meyers Notes');
-
-    // Run the draft.
-    const go = [...host.querySelectorAll('.mm-btn--primary')].find((b) => b.textContent === 'Draft') as HTMLButtonElement;
+    await wait(200);
+    (container.querySelector('.mm-draft-popover__result') as HTMLButtonElement).click();
+    const go = [...container.querySelectorAll('.mm-btn--primary')].find((b) => b.textContent === 'Draft') as HTMLButtonElement;
     go.click();
     await settle();
 
     expect(getPageText).toHaveBeenCalledWith('notes-1');
-    expect(draftWithAI).toHaveBeenCalledTimes(1);
     expect(draftWithAI.mock.calls[0][0]).toMatchObject({
-      instruction: 'Map the models',
       sourceTitle: 'Meyers Notes',
       sourceText: 'The over-dispersed Poisson family…',
     });
-    // The grounded draft actually landed on the map.
-    expect(nodeByLabel(host, 'ODP')).toBeTruthy();
+    expect(host.added).toHaveLength(1);
+    const skeletons = host.added[0];
+    expect(skeletons.filter((s) => s.type === 'rectangle')).toHaveLength(2);
+    expect(skeletons.filter((s) => s.type === 'arrow')).toHaveLength(1);
     pane.dispose();
-    host.remove();
+    container.remove();
   });
 
-  it('without searchPages the popover simply has no source field', async () => {
-    const { pane, host } = makePane();
+  it('labels already on the board are not drawn twice', async () => {
+    const draftWithAI = vi.fn(async () => ({ nodes: [{ label: 'Existing Label' }] }));
+    const { pane, host, container } = makePane(null, { draftWithAI });
     await settle();
-    // makePane wires no draftWithAI — button shows the hint instead of a popover.
-    (host.querySelectorAll('.mm-btn')[0] as HTMLButtonElement).click();
-    expect(host.querySelector('.mm-draft-popover')).toBeNull();
-    pane.dispose();
-    host.remove();
-  });
-});
+    host.scene.elements = [
+      { id: 'r1', type: 'rectangle' },
+      { id: 't1', type: 'text', text: 'Existing Label', containerId: 'r1' },
+    ];
 
-describe('connect', () => {
-  it('a port drag between nodes adds exactly one labelled-less edge', async () => {
-    const { pane, host } = makePane(docOf([['root', 'Root'], ['a', 'Branch']]));
+    (container.querySelectorAll('.mm-btn')[0] as HTMLButtonElement).click();
+    const ta = container.querySelector('.mm-draft-popover__input') as HTMLTextAreaElement;
+    ta.value = 'Add things';
+    const go = [...container.querySelectorAll('.mm-btn--primary')].find((b) => b.textContent === 'Draft') as HTMLButtonElement;
+    go.click();
     await settle();
-    const target = nodeByLabel(host, 'Branch');
-    const orig = document.elementFromPoint;
-    (document as any).elementFromPoint = () => target;
-    try {
-      nodeByLabel(host, 'Root').querySelector('.px-node-canvas__port')!.dispatchEvent(
-        new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 }),
-      );
-      document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 200, clientY: 0 }));
-      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-    } finally {
-      (document as any).elementFromPoint = orig;
-    }
-    await settle();
-    expect(host.querySelectorAll('g[data-edge-id]')).toHaveLength(1);
+
+    expect(host.added).toHaveLength(0);
+    expect(container.querySelector('.mm-editor__hint')?.textContent).toContain('added nothing new');
     pane.dispose();
-    host.remove();
+    container.remove();
+  });
+
+  it('without a provider the button explains instead of opening a popover', async () => {
+    const { pane, container } = makePane(null);
+    await settle();
+    (container.querySelectorAll('.mm-btn')[0] as HTMLButtonElement).click();
+    expect(container.querySelector('.mm-draft-popover')).toBeNull();
+    expect(container.querySelector('.mm-editor__hint')?.textContent).toContain('chat tool');
+    pane.dispose();
+    container.remove();
   });
 });

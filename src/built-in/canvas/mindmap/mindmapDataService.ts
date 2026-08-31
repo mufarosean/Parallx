@@ -116,18 +116,29 @@ export class MindmapDataService extends Disposable {
   }
 
   async getDoc(pageId: string): Promise<MindmapDoc | null> {
-    const res = await this._db.get('SELECT data FROM mindmaps WHERE id = ?', [pageId]);
-    if (res.error || !res.row) return null;
-    return parseMindmapDoc(String(res.row.data ?? ''));
+    const raw = await this.getData(pageId);
+    return raw === null ? null : parseMindmapDoc(raw);
   }
 
-  async saveDoc(pageId: string, doc: MindmapDoc, source: 'user' | 'ai'): Promise<void> {
+  /** The stored payload verbatim — a BoardEnvelope for engine documents, a
+   *  v1 doc for maps that predate the board (boardConvert migrates). */
+  async getData(pageId: string): Promise<string | null> {
+    const res = await this._db.get('SELECT data FROM mindmaps WHERE id = ?', [pageId]);
+    if (res.error || !res.row) return null;
+    return String(res.row.data ?? '');
+  }
+
+  async saveData(pageId: string, json: string, source: 'user' | 'ai'): Promise<void> {
     const res = await this._db.run(
       "UPDATE mindmaps SET data = ?, updated_at = datetime('now') WHERE id = ?",
-      [serializeMindmapDoc(doc), pageId],
+      [json, pageId],
     );
     if (res.error) throw new Error(`Failed to save mindmap: ${res.error.message}`);
     this._onDidChangeDoc.fire({ pageId, source });
+  }
+
+  async saveDoc(pageId: string, doc: MindmapDoc, source: 'user' | 'ai'): Promise<void> {
+    await this.saveData(pageId, serializeMindmapDoc(doc), source);
   }
 
   // ── Page passthroughs the editor needs ──────────────────────────────────

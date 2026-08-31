@@ -1,8 +1,8 @@
-/* mindmap.css — the mindmap editor pane and its node skin.
+/* mindmap.css — the board pane chrome (header, hint pill, AI popover).
  *
- * Tokens only (design gate). Geometry constants here are COUPLED to
- * mindmapModel.estimateNodeSize (font 13px, wrap at 220px, padding 8/12,
- * border 1px) — change one, change both. */
+ * Tokens only (design gate). Everything INSIDE the board is the engine's
+ * (mindmap-board.css, loaded with the engine bundle); this file styles only
+ * the app-owned frame around it. */
 
 .mm-editor {
   display: flex;
@@ -151,111 +151,6 @@
 .mm-editor__canvas {
   flex: 1;
   min-height: 0;
-}
-
-/* ── Node skin (rendered into the shared canvas's node body) ── */
-
-.mm-node {
-  padding: 8px 12px;
-  max-width: 220px;
-  font-size: 13px;
-  line-height: 19px;
-  color: var(--px-text);
-}
-
-.mm-node__label {
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
-  min-width: 30px;
-  min-height: 19px;
-}
-
-.mm-node__edit {
-  display: block;
-  width: 100%;
-  min-width: 120px;
-  border: none;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  line-height: 19px;
-  padding: 0;
-  margin: 0;
-  resize: none;
-  outline: none;
-  overflow: hidden;
-}
-
-/* Branch colors — soft fills mixed from the token hues so they follow the
-   theme. The accent (root) reads strongest; neutral is the base card. */
-
-.mm-node--red {
-  background: color-mix(in srgb, rgb(var(--px-red-rgb)) 16%, var(--px-bg-elevated));
-  border-color: color-mix(in srgb, rgb(var(--px-red-rgb)) 45%, var(--px-border));
-}
-
-.mm-node--yellow {
-  background: color-mix(in srgb, rgb(var(--px-yellow-rgb)) 16%, var(--px-bg-elevated));
-  border-color: color-mix(in srgb, rgb(var(--px-yellow-rgb)) 45%, var(--px-border));
-}
-
-.mm-node--green {
-  background: color-mix(in srgb, rgb(var(--px-green-rgb)) 16%, var(--px-bg-elevated));
-  border-color: color-mix(in srgb, rgb(var(--px-green-rgb)) 45%, var(--px-border));
-}
-
-.mm-node--blue {
-  background: color-mix(in srgb, rgb(var(--px-blue-rgb)) 16%, var(--px-bg-elevated));
-  border-color: color-mix(in srgb, rgb(var(--px-blue-rgb)) 45%, var(--px-border));
-}
-
-.mm-node--accent {
-  background: color-mix(in srgb, var(--px-accent) 20%, var(--px-bg-elevated));
-  border-color: color-mix(in srgb, var(--px-accent) 55%, var(--px-border));
-  font-weight: 600;
-}
-
-/* ── Ref chip — a node anchored to real content ── */
-
-.mm-node__ref {
-  display: inline-flex;
-  align-items: center;
-  margin-top: 4px;
-  padding: 1px 6px;
-  gap: 4px;
-  border: 1px solid var(--px-border);
-  border-radius: var(--px-radius-full);
-  background: var(--px-bg-inset);
-  color: var(--px-text-muted);
-  font-size: var(--px-text-2xs);
-  cursor: pointer;
-}
-
-.mm-node__ref:hover {
-  color: var(--px-text);
-  border-color: var(--px-border-strong);
-}
-
-.mm-node__ref svg {
-  width: 11px;
-  height: 11px;
-}
-
-/* ── Edge label editor (floating, one at a time) ── */
-
-.mm-edge-editor {
-  position: absolute;
-  transform: translate(-50%, -50%);
-  z-index: 4;
-  width: 150px;
-  padding: 3px 8px;
-  border: 1px solid var(--px-accent);
-  border-radius: var(--px-radius-full);
-  background: var(--px-bg-elevated);
-  color: var(--px-text);
-  font-family: var(--px-font-ui);
-  font-size: var(--px-text-xs);
-  outline: none;
 }
 
 /* ── Draft With AI popover ── */

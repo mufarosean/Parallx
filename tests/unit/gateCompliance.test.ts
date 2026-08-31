@@ -87,6 +87,9 @@ const EXEMPT_FILES = new Set([
   'mindmap/mindmapDataService.ts', // data layer over canvasTypes + the DB bridge (like databaseDataService)
   'mindmap/mindmapEditorPane.ts',  // full-pane editor over ui/nodeCanvas (like databaseEditorPane)
   'ai/mindmapTools.ts',            // mindmap AI tools (dep-injected, like ai/databaseTools)
+  'mindmap/boardTypes.ts',         // cross-bundle contract (worksheetConstants pattern) — zero canvas imports
+  'mindmap/boardHost.ts',          // the ENGINE bundle entry (React+Excalidraw) — own esbuild output, never imported statically
+  'mindmap/boardConvert.ts',       // pure doc/outline → skeleton translation over mindmapModel
 ]);
 
 // ── Child → allowed gate path fragments ─────────────────────────────────────

@@ -31,17 +31,18 @@ import type { MindmapDataService } from '../mindmap/mindmapDataService.js';
 import type { SendChatRequestFn } from '../menus/canvasMenuRegistry.js';
 import type { MindmapDraftRequest, MindmapDraftResult } from '../mindmap/mindmapEditorPane.js';
 import {
-  assignBranchColors,
-  autoLayout,
-  layoutNewNodes,
-  mergeOutline,
-  docToOutlineText,
-  emptyMindmapDoc,
-  rootOf,
   MINDMAP_COLORS,
   type MindmapOutlineEdge,
   type MindmapOutlineNode,
 } from '../mindmap/mindmapModel.js';
+import {
+  boardLabels,
+  boardOutlineText,
+  outlineToSkeletons,
+  serializeBoardEnvelope,
+  toBoardEnvelope,
+} from '../mindmap/boardConvert.js';
+import { emptyBoardEnvelope } from '../mindmap/boardTypes.js';
 
 export interface IMindmapToolDeps {
   readonly mindmaps: MindmapDataService;
@@ -183,28 +184,19 @@ export function createMindmapTools(deps: IMindmapToolDeps): IChatTool[] {
 
         const parentPageId = typeof args['parentPageId'] === 'string' && args['parentPageId']
           ? args['parentPageId']
-          : sourcePageId; // a grounded map nests under its source by default
+          : sourcePageId; // a grounded board nests under its source by default
         const page = await mindmaps.createMindmap({ title, parentId: parentPageId });
 
-        // A fresh map has one seed root; if the outline brings its own root,
-        // start from empty instead so the seed doesn't dangle beside it.
-        const base = { ...emptyMindmapDoc(title), nodes: [], edges: [] };
-        const merged = mergeOutline(base, nodes, edges);
-        let doc = assignBranchColors(autoLayout(merged.doc));
-        // A grounded map's root carries the click-through anchor to its source.
-        if (sourcePageId) {
-          const rootId = rootOf(doc);
-          doc = {
-            ...doc,
-            nodes: doc.nodes.map((n) =>
-              n.id === rootId && !n.ref ? { ...n, ref: { kind: 'page', id: sourcePageId } } : n),
-          };
-        }
-        await mindmaps.saveDoc(page.id, doc, 'ai');
+        // Headless author: skeletons wait in `pending`; the board host
+        // materialises them (with real element ids and bindings) on open.
+        const envelope = {
+          ...emptyBoardEnvelope(),
+          pending: outlineToSkeletons(nodes, edges),
+        };
+        await mindmaps.saveData(page.id, serializeBoardEnvelope(envelope), 'ai');
         openMindmap(page.id);
         return {
-          content: `Created mindmap "${title}" (id: ${page.id}) with ${merged.newNodeIds.length} nodes`
-            + (merged.skipped.length ? ` (${merged.skipped.length} skipped)` : '') + '.',
+          content: `Created board "${title}" (id: ${page.id}) with ${envelope.pending.length} elements queued to draw.`,
         };
       },
     },
@@ -239,24 +231,22 @@ export function createMindmapTools(deps: IMindmapToolDeps): IChatTool[] {
         if (unread) return unread;
 
         const pageId = String(args['pageId'] ?? '').trim();
-        const doc = pageId ? await mindmaps.getDoc(pageId) : null;
-        if (!doc) return { content: `No mindmap found for id "${pageId}".`, isError: true };
+        const data = pageId ? await mindmaps.getData(pageId) : null;
+        if (data === null) return { content: `No mindmap board found for id "${pageId}".`, isError: true };
 
         const { nodes, edges } = readOutlineArgs(args);
         if (nodes.length === 0 && edges.length === 0) {
           return { content: 'Nothing to add — pass nodes and/or edges.', isError: true };
         }
-        const merged = mergeOutline(doc, nodes, edges);
-        if (merged.newNodeIds.length === 0 && merged.doc.edges.length === doc.edges.length) {
-          return { content: 'Nothing new: every node/edge already exists.', isError: true };
+        const envelope = toBoardEnvelope(data);
+        const fresh = outlineToSkeletons(nodes, edges, boardLabels(envelope));
+        if (fresh.length === 0) {
+          return { content: 'Nothing new: every label already exists on the board. Read it with mindmap_read.', isError: true };
         }
-        const next = layoutNewNodes(merged.doc, new Set(merged.newNodeIds));
-        await mindmaps.saveDoc(pageId, next, 'ai');
+        const next = { ...envelope, pending: [...envelope.pending, ...fresh] };
+        await mindmaps.saveData(pageId, serializeBoardEnvelope(next), 'ai');
         openMindmap(pageId);
-        return {
-          content: `Added ${merged.newNodeIds.length} nodes and ${merged.doc.edges.length - doc.edges.length} edges`
-            + (merged.skipped.length ? ` (${merged.skipped.length} skipped)` : '') + '.',
-        };
+        return { content: `Queued ${fresh.length} new elements onto the board.` };
       },
     },
 
@@ -278,9 +268,10 @@ export function createMindmapTools(deps: IMindmapToolDeps): IChatTool[] {
       category: 'canvas',
       async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
         const pageId = String(args['pageId'] ?? '').trim();
-        const doc = pageId ? await mindmaps.getDoc(pageId) : null;
-        if (!doc) return { content: `No mindmap found for id "${pageId}".`, isError: true };
-        return { content: docToOutlineText(doc) };
+        const data = pageId ? await mindmaps.getData(pageId) : null;
+        if (data === null) return { content: `No mindmap board found for id "${pageId}".`, isError: true };
+        const text = boardOutlineText(toBoardEnvelope(data));
+        return { content: text || '(the board is empty)' };
       },
     },
   ];

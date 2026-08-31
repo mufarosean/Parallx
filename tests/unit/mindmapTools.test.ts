@@ -2,10 +2,10 @@
 //
 // Written from the 2026-08-30 field failure: "map my Meyers notes" produced a
 // generic design map because the model never read the notes. What these pins
-// hold: a sourced map is REFUSED until the session has read the source, the
-// refusal names the recovery, a grounded root carries the click-through
-// anchor, and the editor door puts the source text inside the prompt with
-// grounding rules.
+// hold: a sourced board is REFUSED until the session has read the source,
+// the refusal names the recovery, headless writes queue as pending skeletons
+// in the envelope, and the editor door puts the source text inside the
+// prompt with grounding rules.
 
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -13,26 +13,20 @@ import {
   draftMindmapOutline,
 } from '../../src/built-in/canvas/ai/mindmapTools';
 import { markResourceSeen, pageResourceKey } from '../../src/services/toolResourceRegistry';
-import {
-  parseMindmapDoc,
-  serializeMindmapDoc,
-  emptyMindmapDoc,
-  rootOf,
-  type MindmapDoc,
-} from '../../src/built-in/canvas/mindmap/mindmapModel';
+import { toBoardEnvelope } from '../../src/built-in/canvas/mindmap/boardConvert';
 
 const CANCEL: any = { isCancellationRequested: false };
 
 function makeDeps() {
-  const saved = new Map<string, MindmapDoc>();
+  const saved = new Map<string, string>();
   let nextId = 0;
   const mindmaps: any = {
     createMindmap: vi.fn(async (opts: { title?: string; parentId?: string | null }) => ({
       id: `map-${++nextId}`,
       title: opts.title ?? 'Untitled Mindmap',
     })),
-    saveDoc: vi.fn(async (id: string, doc: MindmapDoc) => { saved.set(id, doc); }),
-    getDoc: vi.fn(async (id: string) => saved.get(id) ?? null),
+    saveData: vi.fn(async (id: string, json: string) => { saved.set(id, json); }),
+    getData: vi.fn(async (id: string) => saved.get(id) ?? null),
   };
   const openMindmap = vi.fn();
   const tools = createMindmapTools({ mindmaps, openMindmap });
@@ -53,7 +47,7 @@ describe('mindmap_create grounding', () => {
     expect(mindmaps.createMindmap).not.toHaveBeenCalled();
   });
 
-  it('creates once the source was read, nests under it, and anchors the root to it', async () => {
+  it('creates once the source was read, nests under it, and queues the drawing', async () => {
     const { create, mindmaps, saved } = makeDeps();
     markResourceSeen('session-B', pageResourceKey('meyers-notes'));
     const res = await create.handler(
@@ -70,12 +64,15 @@ describe('mindmap_create grounding', () => {
       { sessionId: 'session-B' } as any,
     );
     expect(res.isError).toBeFalsy();
-    // A grounded map nests under its source by default.
+    // A grounded board nests under its source by default.
     expect(mindmaps.createMindmap).toHaveBeenCalledWith({ title: 'Meyers Models', parentId: 'meyers-notes' });
-    const doc = [...saved.values()][0];
-    const root = doc.nodes.find((n) => n.id === rootOf(doc))!;
-    expect(root.label).toBe('Bayesian MCMC Reserving');
-    expect(root.ref).toEqual({ kind: 'page', id: 'meyers-notes' });
+    const env = toBoardEnvelope([...saved.values()][0]);
+    expect(env.elements).toHaveLength(0); // headless author: nothing materialised yet
+    const rects = env.pending.filter((p) => p.type === 'rectangle');
+    const arrows = env.pending.filter((p) => p.type === 'arrow');
+    expect(rects.map((r) => r.label?.text)).toContain('Bayesian MCMC Reserving');
+    expect(rects).toHaveLength(3);
+    expect(arrows).toHaveLength(2);
   });
 
   it('an unsourced map (brainstorm from scratch) needs no read', async () => {
@@ -89,7 +86,7 @@ describe('mindmap_create grounding', () => {
   });
 });
 
-describe('mindmap_add grounding', () => {
+describe('mindmap_add', () => {
   it('applies the same read-first rail as create', async () => {
     const { add } = makeDeps();
     const res = await add.handler(
@@ -99,6 +96,45 @@ describe('mindmap_add grounding', () => {
     );
     expect(res.isError).toBe(true);
     expect(res.content).toContain('canvas_read_page');
+  });
+
+  it('appends to pending and refuses pure duplicates', async () => {
+    const { create, add, saved } = makeDeps();
+    await create.handler(
+      { title: 'T', nodes: [{ label: 'Root' }, { label: 'Kid', parent: 'Root' }] },
+      CANCEL,
+      { sessionId: 'session-D2' } as any,
+    );
+    const mapId = [...saved.keys()][0];
+
+    const grow = await add.handler(
+      { pageId: mapId, nodes: [{ label: 'Fresh' }] },
+      CANCEL,
+      { sessionId: 'session-D2' } as any,
+    );
+    expect(grow.isError).toBeFalsy();
+    expect(toBoardEnvelope(saved.get(mapId)!).pending.some((p) => p.label?.text === 'Fresh')).toBe(true);
+
+    const dup = await add.handler(
+      { pageId: mapId, nodes: [{ label: 'fresh' }] },
+      CANCEL,
+      { sessionId: 'session-D2' } as any,
+    );
+    expect(dup.isError).toBe(true);
+    expect(dup.content).toContain('already exists');
+  });
+
+  it('mindmap_read lists what create queued', async () => {
+    const { create, read, saved } = makeDeps();
+    await create.handler(
+      { title: 'T', nodes: [{ label: 'Root' }, { label: 'Kid', parent: 'Root' }] },
+      CANCEL,
+      { sessionId: 'session-D3' } as any,
+    );
+    const mapId = [...saved.keys()][0];
+    const res = await read.handler({ pageId: mapId }, CANCEL, { sessionId: 'session-D3' } as any);
+    expect(res.content).toContain('Root');
+    expect(res.content).toContain('Kid');
   });
 });
 
@@ -157,7 +193,7 @@ describe('draftMindmapOutline — the editor door', () => {
 });
 
 describe('round-trip sanity', () => {
-  it('a grounded create survives serialize/parse with its ref intact', async () => {
+  it('what create stores parses back as an engine envelope', async () => {
     const { create, saved } = makeDeps();
     markResourceSeen('session-E', pageResourceKey('src-1'));
     await create.handler(
@@ -165,12 +201,8 @@ describe('round-trip sanity', () => {
       CANCEL,
       { sessionId: 'session-E' } as any,
     );
-    const doc = [...saved.values()][0];
-    const round = parseMindmapDoc(serializeMindmapDoc(doc));
-    expect(round.nodes[0].ref).toEqual({ kind: 'page', id: 'src-1' });
-  });
-
-  it('emptyMindmapDoc remains the unsourced base', () => {
-    expect(emptyMindmapDoc('X').nodes[0].ref).toBeNull();
+    const env = toBoardEnvelope([...saved.values()][0]);
+    expect(env.engine).toBe('excalidraw');
+    expect(env.pending[0].label?.text).toBe('Root');
   });
 });
