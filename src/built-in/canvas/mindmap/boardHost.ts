@@ -17,6 +17,7 @@ import React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import {
   Excalidraw,
+  MainMenu,
   convertToExcalidrawElements,
 } from '@excalidraw/excalidraw';
 import '@excalidraw/excalidraw/index.css';
@@ -115,6 +116,20 @@ export function createBoardHost(opts: BoardHostOptions): IBoardHost {
     }
   };
 
+  // A CURATED menu replaces the engine's stock one: the defaults ship
+  // upstream branding (GitHub/Discord/X links), file open/save actions that
+  // bypass the app's SQLite storage, and a Help dialog with external links.
+  // Parallx is the product here — only local, in-app actions remain.
+  const items = (MainMenu as unknown as { DefaultItems: Record<string, unknown> }).DefaultItems;
+  const menu = React.createElement(
+    MainMenu as never,
+    null,
+    React.createElement(items.SaveAsImage as never),
+    React.createElement(items.SearchMenu as never),
+    React.createElement(items.ClearCanvas as never),
+    React.createElement(items.ChangeCanvasBackground as never),
+  );
+
   const root: Root = createRoot(mount);
   root.render(
     React.createElement(Excalidraw as never, {
@@ -135,7 +150,7 @@ export function createBoardHost(opts: BoardHostOptions): IBoardHost {
         if (mountMaterialised) opts.onChange();
       },
       onChange: () => { if (!destroyed) opts.onChange(); },
-    } as never),
+    } as never, menu),
   );
 
   return {

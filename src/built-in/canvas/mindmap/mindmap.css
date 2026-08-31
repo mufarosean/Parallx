@@ -383,3 +383,17 @@
   font-family: var(--px-font-mono, monospace);
   word-break: break-word;
 }
+
+/* -- Engine chrome scrub -------------------------------------------------- */
+/* The curated MainMenu (boardHost.ts) removes upstream branding and file
+   actions; these two triggers cannot be composed away and lead to external
+   sites (libraries.excalidraw.com; the help dialog's doc links), so they
+   are hidden until a curated in-app replacement exists. */
+
+.mm-editor__canvas .excalidraw .default-sidebar-trigger {
+  display: none;
+}
+
+.mm-editor__canvas .excalidraw .help-icon {
+  display: none;
+}
