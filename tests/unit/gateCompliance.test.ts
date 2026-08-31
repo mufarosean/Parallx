@@ -81,16 +81,6 @@ const EXEMPT_FILES = new Set([
   'canvasTemplatePicker.ts',       // M77 Phase 11.4 — standalone modal, only imports its own template data
   'canvasShortcutsOverlay.ts',     // M77 Phase 11.6 — standalone modal, no canvas-internal imports
   'canvasVersionHistoryPanel.ts',  // standalone version-history modal (list/preview/restore)
-  // ── Mindmap (the database pattern: service + full-pane editor + pure model) ──
-  'mindmap/mindmapModel.ts',       // pure document/layout module — zero canvas imports
-  'mindmap/mindmapSvg.ts',         // pure SVG snapshot renderer over the model
-  'mindmap/mindmapDataService.ts', // data layer over canvasTypes + the DB bridge (like databaseDataService)
-  'mindmap/mindmapEditorPane.ts',  // full-pane editor over ui/nodeCanvas (like databaseEditorPane)
-  'ai/mindmapTools.ts',            // mindmap AI tools (dep-injected, like ai/databaseTools)
-  'mindmap/boardTypes.ts',         // cross-bundle contract (worksheetConstants pattern) — zero canvas imports
-  'mindmap/boardHost.ts',          // the ENGINE bundle entry (React+Excalidraw) — own esbuild output, never imported statically
-  'mindmap/boardConvert.ts',       // pure doc/outline → skeleton translation over mindmapModel
-  'mindmap/boardMath.ts',          // LaTeX → SVG (MathJax) — engine-bundle-side, only boardHost imports it
 ]);
 
 // ── Child → allowed gate path fragments ─────────────────────────────────────

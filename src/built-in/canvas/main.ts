@@ -35,10 +35,6 @@ import { CanvasSidebar } from './canvasSidebar.js';
 import { CanvasEditorProvider } from './canvasEditorProvider.js';
 import { DatabaseDataService } from './database/databaseDataService.js';
 import { DatabaseEditorPane } from './database/databaseEditorPane.js';
-import { MindmapDataService } from './mindmap/mindmapDataService.js';
-import { MindmapEditorPane, type MindmapDraftRequest, type MindmapDraftResult } from './mindmap/mindmapEditorPane.js';
-import { createMindmapTools, draftMindmapOutline } from './ai/mindmapTools.js';
-import type { SendChatRequestFn } from './menus/canvasMenuRegistry.js';
 import { setOnLinkedPageBlockDeleted, renderPageIconHtml } from './config/blockRegistry.js';
 
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -137,10 +133,8 @@ let _dataService: CanvasDataService | null = null;
 let _sidebar: CanvasSidebar | null = null;
 let _editorProvider: CanvasEditorProvider | null = null;
 let _databaseService: DatabaseDataService | null = null;
-let _mindmapService: MindmapDataService | null = null;
 // The editor-door AI draft: fed by the chat tool's inline provider when it
 // arrives (activation order is not guaranteed); panes read it lazily.
-let _inlineAISend: SendChatRequestFn | null = null;
 /** Pages the AI just mutated via the page tools (pageMutationNotifier) — the
  *  signal actor stamp reads this so agent work never counts as the user's. */
 const _aiMutatedPageIds = new Set<string>();
@@ -338,16 +332,6 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   }
   void _databaseService.ensureIdsLoaded();
 
-  // 2z2. Mindmap engine (migration 014) — the database pattern: a mindmap IS
-  // a page; this service owns only the graph document and editor routing.
-  _mindmapService = new MindmapDataService(_dataService);
-  context.subscriptions.push(_mindmapService);
-  if (api.services.has(IDatabaseService)) {
-    _mindmapService.attachDatabase(
-      api.services.get<import('../../services/serviceTypes.js').IDatabaseService>(IDatabaseService).asBridge(),
-    );
-  }
-  void _mindmapService.ensureIdsLoaded();
   // Single-home invariant: collapse any multi-membership left by earlier
   // versions (values merge into the surviving home). Idempotent + cheap
   // (no-op unless some page has >1 membership), so it runs every activation.
@@ -428,18 +412,6 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     const editorService = api.services.has(IEditorService)
       ? api.services.get<import('../../services/serviceTypes.js').IEditorService>(IEditorService)
       : undefined;
-    // Mindmap tools ride the same registration block, attributed to canvas.
-    if (_mindmapService) {
-      for (const tool of createMindmapTools({
-        mindmaps: _mindmapService,
-        openMindmap: (pageId) => void openPageInEditor(pageId),
-      })) {
-        context.subscriptions.push(
-          toolsService.registerTool({ ...tool, ownerToolId: 'parallx.canvas' }),
-        );
-      }
-    }
-
     const canvasToolDisposables = registerCanvasAITools({
       toolsService,
       db,
@@ -616,7 +588,6 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     _dataService,
     api,
     (id) => _databaseService?.isDatabase(id) ?? false,
-    (id) => _mindmapService?.isMindmap(id) ?? false,
   );
   context.subscriptions.push(
     api.views.registerViewProvider('view.canvas', {
@@ -641,7 +612,6 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   const editorProvider = new CanvasEditorProvider(_dataService, api.window);
   _editorProvider = editorProvider;
   editorProvider.setDatabaseService(_databaseService);
-  editorProvider.setMindmapService(_mindmapService);
   editorProvider.setOpenEditor((opts) => api.editors.openEditor(opts));
   context.subscriptions.push(
     api.editors.registerEditorProvider('canvas', {
@@ -667,55 +637,6 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     }),
   );
 
-  // 4a2. Mindmap editor — the full-pane node-canvas editor behind
-  // `mindmap:<pageId>` (docs/MINDMAP_BRIEF.md D1, first face).
-  context.subscriptions.push(
-    api.editors.registerEditorProvider('mindmap', {
-      createEditorPane(container: HTMLElement, input?: any): IDisposable {
-        const pageId = (input?.instanceId as string) ?? (input?.id as string) ?? '';
-        return new MindmapEditorPane(container, pageId, {
-          service: _mindmapService!,
-          openPage: (id) => void openPageInEditor(id),
-          draftWithAI: (req: MindmapDraftRequest): Promise<MindmapDraftResult> => {
-            if (!_inlineAISend) {
-              return Promise.reject(new Error('AI drafting needs the chat tool active.'));
-            }
-            return draftMindmapOutline(_inlineAISend, req);
-          },
-          // The popover's source picker: title search over the page tree, and
-          // a page's content as markdown for grounding the prompt.
-          searchPages: async (query: string) => {
-            const ds = _dataService;
-            if (!ds) return [];
-            const q = query.trim().toLowerCase();
-            const out: { id: string; title: string }[] = [];
-            const walk = (nodes: readonly IPageTreeNode[]): void => {
-              for (const n of nodes) {
-                if ((n.title || 'Untitled').toLowerCase().includes(q)) out.push({ id: n.id, title: n.title || 'Untitled' });
-                if (n.children?.length) walk(n.children);
-              }
-            };
-            try { walk(await ds.getPageTree()); } catch { return []; }
-            return out.slice(0, 12);
-          },
-          getPageText: async (id: string) => {
-            const ds = _dataService;
-            if (!ds) return null;
-            const page = await ds.getPage(id);
-            if (!page) return null;
-            if (!page.content) return page.title ?? null;
-            try {
-              const { doc } = decodeCanvasContent(page.content);
-              return tiptapJsonToMarkdown(doc, page.title);
-            } catch {
-              return null;
-            }
-          },
-        });
-      },
-    }),
-  );
-
   // 4b. Wire inline AI provider from chat tool (M10 Phase 7 — Task 7.3)
   //     The chat tool may activate before or after the canvas tool.
   //     Try immediately, and if the command doesn't exist yet, it's okay —
@@ -726,7 +647,6 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   }>('chat.getInlineAIProvider').then((provider) => {
     if (provider?.sendChatRequest) {
       editorProvider.setInlineAIProvider(provider.sendChatRequest, provider.retrieveContext);
-      _inlineAISend = provider.sendChatRequest as SendChatRequestFn;
     }
   }).catch(() => { /* chat tool not activated yet — that's fine */ });
 
@@ -752,15 +672,6 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     api.commands.registerCommand('canvas.captureSelection', (...args: unknown[]) =>
       captureNoteToCanvas(api, (args[0] ?? {}) as CaptureDetail),
     ),
-  );
-  context.subscriptions.push(
-    api.commands.registerCommand('canvas.newMindmap', async (...args: unknown[]) => {
-      if (!_mindmapService) return null;
-      const opts = (args[0] ?? {}) as { title?: string; parentId?: string };
-      const page = await _mindmapService.createMindmap({ title: opts.title, parentId: opts.parentId ?? null });
-      await openPageInEditor(page.id);
-      return page.id;
-    }),
   );
   context.subscriptions.push(
     api.commands.registerCommand('canvas.openPage', async (...args: unknown[]) => {
@@ -874,7 +785,6 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         if (
           ed.description === 'Tool editor: canvas'
           || ed.description === 'Tool editor: database'
-          || ed.description === 'Tool editor: mindmap'
         ) {
           await api.editors.closeEditor(ed.id);
         }
@@ -1597,9 +1507,7 @@ export async function openPageInEditor(pageId: string): Promise<void> {
     await _api.editors.openEditor({
       // Database pages open in the database editor (table/board views);
       // regular pages open in the canvas editor.
-      typeId: _databaseService?.isDatabase(pageId) ? 'database'
-        : _mindmapService?.isMindmap(pageId) ? 'mindmap'
-          : 'canvas',
+      typeId: _databaseService?.isDatabase(pageId) ? 'database' : 'canvas',
       title: page.title,
       icon: page.icon ?? undefined,
       iconHtml: renderPageIconHtml(page.icon),

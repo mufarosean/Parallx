@@ -2,7 +2,7 @@
  *
  * Tokens only (design gate). The primitive styles GEOMETRY and shared
  * chrome — base node card, edges, ports, selection rings. Tenant meaning
- * (mindmap branch colors, workflow node kinds) lives with the tenant. */
+ * (workflow node kinds) lives with the tenant. */
 
 .px-node-canvas {
   position: relative;

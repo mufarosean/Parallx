@@ -60,7 +60,7 @@ export interface PageBlockOptions {
   readonly dataService?: IPageBlockDataAccess;
   readonly currentPageId?: string;
   readonly openEditor?: (options: { typeId: string; title: string; icon?: string; iconHtml?: string; instanceId?: string }) => Promise<void>;
-  /** Which editor a linked page opens in ('canvas' | 'database' | 'mindmap').
+  /** Which editor a linked page opens in ('canvas' | 'database').
    *  A pageBlock card is shared by all three page kinds — a database and a
    *  mindmap ARE pages — so the card cannot hardcode its destination. */
   readonly resolveEditorTypeId?: (pageId: string) => string;

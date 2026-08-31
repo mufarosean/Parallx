@@ -1,9 +1,10 @@
 // nodeCanvas.ts — ONE pan/zoom node-graph surface for the whole app.
 //
-// docs/WORKFLOWS_BRIEF.md, "One canvas, two tenants": the mindmap editor and
-// the (coming) workflow editor need the same thing — a world-coordinate
-// surface with draggable nodes, curved edges, selection, and connect
-// gestures. This is that surface, built once, with NO domain knowledge:
+// docs/WORKFLOWS_BRIEF.md: the (coming) workflow editor needs a
+// world-coordinate surface with draggable nodes, curved edges, selection,
+// and connect gestures. (The mindmap editor was its first tenant; that
+// program was retired 2026-08-31 — this surface deliberately survives it.)
+// This is that surface, built once, with NO domain knowledge:
 // node CONTENT is rendered by the tenant through the delegate, node MEANING
 // never enters this file.
 //

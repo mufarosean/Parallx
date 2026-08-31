@@ -135,10 +135,9 @@ describe('blockRegistry', () => {
       }
     });
 
-    it('returns 29 slash menu items', () => {
-      // 28 + /mindmap (docs/MINDMAP_BRIEF.md — the map is its own editor,
-      // linked from the page by a pageBlock card, like /database).
-      expect(getSlashMenuBlocks()).toHaveLength(29);
+    it('returns 28 slash menu items', () => {
+      // /mindmap retired 2026-08-31 with the mindmap program.
+      expect(getSlashMenuBlocks()).toHaveLength(28);
     });
 
     it('includes Page as the first item (order 0)', () => {
@@ -207,7 +206,7 @@ describe('blockRegistry', () => {
     /** Original labels from the hardcoded SLASH_MENU_ITEMS, in order.
      *  'Database' was added with the databases feature (pageBlock variant). */
     const ORIGINAL_SLASH_LABELS = [
-      'Page', 'Database', 'Mindmap', 'Heading 1', 'Heading 2', 'Heading 3',
+      'Page', 'Database', 'Heading 1', 'Heading 2', 'Heading 3',
       'Bullet List', 'Numbered List', 'To-Do List',
       'Quote', 'Code Block', 'Divider',
       'Toggle List', 'Callout', 'Table',
@@ -218,8 +217,8 @@ describe('blockRegistry', () => {
       'Bookmark', 'Table of Contents',
     ];
 
-    it('produces 29 items', () => {
-      expect(SLASH_MENU_ITEMS).toHaveLength(29);
+    it('produces 28 items', () => {
+      expect(SLASH_MENU_ITEMS).toHaveLength(28);
     });
 
     it('preserves all original labels', () => {

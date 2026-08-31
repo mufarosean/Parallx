@@ -132,16 +132,6 @@ export class CanvasEditorProvider {
     return this._databaseService;
   }
 
-  /** Mindmap data service (set from main.ts) — drives the /mindmap slash
-   *  command's create-and-link flow. */
-  private _mindmapService: import('./mindmap/mindmapDataService.js').MindmapDataService | undefined;
-  setMindmapService(mm: import('./mindmap/mindmapDataService.js').MindmapDataService): void {
-    this._mindmapService = mm;
-  }
-  get mindmapService(): import('./mindmap/mindmapDataService.js').MindmapDataService | undefined {
-    return this._mindmapService;
-  }
-
   constructor(
     private readonly _dataService: ICanvasDataService,
     private readonly _window: CanvasWindowApi | undefined,
@@ -368,7 +358,6 @@ class CanvasEditorPane implements IDisposable {
   get editorContainer(): HTMLElement | null { return this._editorContainer; }
   get dataService(): ICanvasDataService { return this._dataService; }
   get databaseService(): import('./database/databaseDataService.js').DatabaseDataService | undefined { return this._provider.databaseService; }
-  get mindmapService(): import('./mindmap/mindmapDataService.js').MindmapDataService | undefined { return this._provider.mindmapService; }
   get pageId(): string { return this._pageId; }
   get suppressUpdate(): boolean { return this._suppressUpdate; }
   set suppressUpdate(v: boolean) { this._suppressUpdate = v; }
@@ -526,9 +515,7 @@ class CanvasEditorPane implements IDisposable {
         openEditor: this._openEditor,
         showIconPicker: (opts) => this._menuRegistry?.showIconMenu(opts),
         resolveEditorTypeId: (id) =>
-          this._provider.databaseService?.isDatabase(id) ? 'database'
-            : this._provider.mindmapService?.isMindmap(id) ? 'mindmap'
-              : 'canvas',
+          this._provider.databaseService?.isDatabase(id) ? 'database' : 'canvas',
       }),
       content: '',
       editorProps: {

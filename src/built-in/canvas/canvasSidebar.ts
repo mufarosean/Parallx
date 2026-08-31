@@ -140,8 +140,6 @@ export class CanvasSidebar {
     private readonly _api: CanvasSidebarApi,
     /** Whether a page is a database (routes opens to the database editor). */
     private readonly _isDatabasePage?: (pageId: string) => boolean,
-    /** Whether a page is a mindmap (routes opens to the mindmap editor). */
-    private readonly _isMindmapPage?: (pageId: string) => boolean,
   ) {}
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -1256,9 +1254,7 @@ export class CanvasSidebar {
     try {
       await this._api.editors.openEditor({
         // Database pages open in the database editor (table/board views).
-        typeId: this._isDatabasePage?.(page.id) ? 'database'
-          : this._isMindmapPage?.(page.id) ? 'mindmap'
-            : 'canvas',
+        typeId: this._isDatabasePage?.(page.id) ? 'database' : 'canvas',
         title: page.title,
         icon: page.icon || undefined,
         iconHtml: renderPageIconHtml(page.icon),
