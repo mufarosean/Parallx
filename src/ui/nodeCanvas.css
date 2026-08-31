@@ -112,6 +112,12 @@ g.is-selected > .px-node-canvas__edge {
   position: absolute;
   top: 0;
   left: 0;
+  /* The node layer is a zero-size positioning anchor, so an absolutely
+     positioned node's shrink-to-fit resolves against width 0 — every label
+     wrapped at ONE WORD PER LINE ("To-Do List" three lines tall; found in
+     the first real screenshot). max-content sizes the node to its content,
+     still capped by the body's own max-width. */
+  width: max-content;
   cursor: grab;
 }
 

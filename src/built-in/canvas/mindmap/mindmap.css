@@ -297,3 +297,102 @@
 .mm-draft-popover .mm-btn--primary {
   align-self: flex-end;
 }
+
+/* ── Source picker: ground the draft in a chosen page ── */
+
+.mm-draft-popover__source {
+  display: flex;
+  flex-direction: column;
+  gap: var(--px-space-1);
+}
+
+.mm-draft-popover__source-input {
+  width: 100%;
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-md);
+  background: var(--px-bg-inset);
+  color: var(--px-text);
+  font-family: var(--px-font-ui);
+  font-size: var(--px-text-sm);
+  padding: 5px 8px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.mm-draft-popover__source-input:focus {
+  border-color: var(--px-accent);
+}
+
+.mm-draft-popover__results {
+  display: flex;
+  flex-direction: column;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.mm-draft-popover__result {
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--px-text-secondary);
+  font-family: var(--px-font-ui);
+  font-size: var(--px-text-sm);
+  padding: 4px 8px;
+  border-radius: var(--px-radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mm-draft-popover__result:hover {
+  background: var(--px-surface-hover);
+  color: var(--px-text);
+}
+
+.mm-draft-popover__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 3px 6px 3px 8px;
+  border: 1px solid var(--px-border-strong);
+  border-radius: var(--px-radius-full);
+  background: var(--px-bg-inset);
+  color: var(--px-text);
+  font-family: var(--px-font-ui);
+  font-size: var(--px-text-sm);
+}
+
+.mm-draft-popover__chip > span:nth-child(2) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mm-draft-popover__chip-icon {
+  display: inline-flex;
+  color: var(--px-text-muted);
+  flex-shrink: 0;
+}
+
+.mm-draft-popover__chip-icon svg {
+  width: 12px;
+  height: 12px;
+}
+
+.mm-draft-popover__chip-clear {
+  border: none;
+  background: transparent;
+  color: var(--px-text-muted);
+  font-size: var(--px-text-base);
+  line-height: 1;
+  padding: 0 2px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.mm-draft-popover__chip-clear:hover {
+  color: var(--px-text);
+}

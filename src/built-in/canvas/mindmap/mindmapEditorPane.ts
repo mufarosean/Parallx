@@ -52,6 +52,12 @@ export interface MindmapDraftRequest {
   /** The current map as an outline, so the model extends rather than repeats. */
   readonly outlineText: string;
   readonly instruction: string;
+  /** Grounding: the document the user picked in the popover. When present,
+   *  its text travels inside the prompt and the rules forbid inventing
+   *  concepts that are not in it — the answer to the "generic design map
+   *  instead of my Meyers notes" failure. */
+  readonly sourceTitle?: string;
+  readonly sourceText?: string;
 }
 
 export interface MindmapDraftResult {
@@ -66,6 +72,10 @@ export interface MindmapEditorDeps {
   /** The editor door of the AI draft (D3: both doors, one implementation).
    *  Undefined until the chat tool's LM provider is available. */
   readonly draftWithAI?: (req: MindmapDraftRequest) => Promise<MindmapDraftResult>;
+  /** Title search over workspace pages — the popover's source picker. */
+  readonly searchPages?: (query: string) => Promise<ReadonlyArray<{ id: string; title: string }>>;
+  /** A page's content as plain text (markdown) for grounding. */
+  readonly getPageText?: (pageId: string) => Promise<string | null>;
 }
 
 const UNDO_LIMIT = 100;
@@ -650,8 +660,64 @@ export class MindmapEditorPane implements IDisposable {
     ta.placeholder = this._doc.nodes.length <= 1
       ? 'What should this map cover?'
       : 'What should be added to this map?';
-    const go = el('button', 'mm-btn mm-btn--primary', 'Draft') as HTMLButtonElement;
     pop.appendChild(ta);
+
+    // ── Source picker: ground the draft in a document's actual content —
+    // the user chooses WHICH notes the map is about, and their text rides
+    // inside the prompt (the "map my Meyers notes" fix). ──
+    let source: { id: string; title: string } | null = null;
+    const sourceRow = el('div', 'mm-draft-popover__source');
+    const sourceInput = el('input', 'mm-draft-popover__source-input') as HTMLInputElement;
+    sourceInput.placeholder = 'Ground in a page (search by title)…';
+    const results = el('div', 'mm-draft-popover__results');
+    const chip = el('div', 'mm-draft-popover__chip');
+    chip.style.display = 'none';
+    const setSource = (next: { id: string; title: string } | null): void => {
+      source = next;
+      results.textContent = '';
+      chip.textContent = '';
+      if (next) {
+        sourceInput.style.display = 'none';
+        chip.style.display = '';
+        const icon = el('span', 'mm-draft-popover__chip-icon');
+        icon.innerHTML = getIcon('page') ?? '';
+        chip.appendChild(icon);
+        chip.appendChild(el('span', undefined, next.title));
+        const clear = el('button', 'mm-draft-popover__chip-clear', '\u00d7') as HTMLButtonElement;
+        clear.title = 'Remove Source';
+        clear.addEventListener('click', () => { setSource(null); sourceInput.focus(); });
+        chip.appendChild(clear);
+      } else {
+        sourceInput.style.display = '';
+        chip.style.display = 'none';
+      }
+    };
+    let searchTimer: ReturnType<typeof setTimeout> | null = null;
+    sourceInput.addEventListener('input', () => {
+      if (searchTimer) clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => {
+        const q = sourceInput.value.trim();
+        if (!q || !this._deps.searchPages) { results.textContent = ''; return; }
+        void this._deps.searchPages(q).then((pages) => {
+          results.textContent = '';
+          for (const pg of pages.slice(0, 6)) {
+            if (pg.id === this._pageId) continue; // a map is not its own source
+            const row = el('button', 'mm-draft-popover__result', pg.title || 'Untitled') as HTMLButtonElement;
+            row.addEventListener('click', () => setSource(pg));
+            results.appendChild(row);
+          }
+        });
+      }, 150);
+    });
+    sourceInput.addEventListener('keydown', (e) => e.stopPropagation());
+    if (this._deps.searchPages && this._deps.getPageText) {
+      sourceRow.appendChild(sourceInput);
+      sourceRow.appendChild(chip);
+      sourceRow.appendChild(results);
+      pop.appendChild(sourceRow);
+    }
+
+    const go = el('button', 'mm-btn mm-btn--primary', 'Draft') as HTMLButtonElement;
     pop.appendChild(go);
     this._root.appendChild(pop);
 
@@ -659,9 +725,10 @@ export class MindmapEditorPane implements IDisposable {
     const run = async (): Promise<void> => {
       const instruction = ta.value.trim();
       if (!instruction) return;
+      const picked = source;
       detach();
       pop.remove();
-      await this._runDraft(instruction);
+      await this._runDraft(instruction, picked);
     };
     go.addEventListener('click', () => { void run(); });
     ta.addEventListener('keydown', (e) => {
@@ -671,17 +738,27 @@ export class MindmapEditorPane implements IDisposable {
     ta.focus();
   }
 
-  private async _runDraft(instruction: string): Promise<void> {
+  private async _runDraft(instruction: string, source: { id: string; title: string } | null = null): Promise<void> {
     if (!this._deps.draftWithAI) return;
     this._draftBtn.disabled = true;
     this._draftBtn.classList.add('is-busy');
-    this._showHint('Drafting…');
+    this._showHint(source ? `Reading "${source.title}" and drafting…` : 'Drafting…');
     try {
+      let sourceText: string | undefined;
+      if (source && this._deps.getPageText) {
+        sourceText = (await this._deps.getPageText(source.id)) ?? undefined;
+        if (!sourceText?.trim()) {
+          this._showHint(`"${source.title}" has no readable content — drafting without it.`);
+          sourceText = undefined;
+        }
+      }
       const result = await this._deps.draftWithAI({
         pageId: this._pageId,
         title: this._titleInput.value.trim() || 'Untitled Mindmap',
         outlineText: docToOutlineText(this._doc),
         instruction,
+        sourceTitle: source?.title,
+        sourceText,
       });
       if (this._disposed) return;
       const wasEmpty = this._doc.nodes.length <= 1 && this._doc.edges.length === 0;

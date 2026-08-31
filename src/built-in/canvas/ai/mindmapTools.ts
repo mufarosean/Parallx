@@ -10,13 +10,23 @@
 // chat door the CALLING model authors the outline (tool args). In the editor
 // door `draftMindmapOutline` below runs the LM itself and parses the same
 // outline shape. Neither door owns layout — the model module does.
+//
+// GROUNDING IS STRUCTURAL, NOT ADVISORY (field failure, 2026-08-30: asked to
+// map the user's Meyers notes, a local model never read them and produced a
+// generic "canvas notes" design map). A map OF EXISTING MATERIAL must name
+// its source: `sourcePageId` reuses the M85 read-before-edit registry — the
+// tool REFUSES to write a grounded map for a page the session has not read,
+// and the refusal tells the model exactly how to recover. The editor door
+// goes further: the source document's text travels INSIDE the prompt.
 
 import type {
   IChatTool,
   IToolResult,
   ICancellationToken,
+  IChatToolInvocationCallContext,
   ToolPermissionLevel,
 } from '../../../services/chatTypes.js';
+import { wasResourceSeen, pageResourceKey } from '../../../services/toolResourceRegistry.js';
 import type { MindmapDataService } from '../mindmap/mindmapDataService.js';
 import type { SendChatRequestFn } from '../menus/canvasMenuRegistry.js';
 import type { MindmapDraftRequest, MindmapDraftResult } from '../mindmap/mindmapEditorPane.js';
@@ -27,6 +37,7 @@ import {
   mergeOutline,
   docToOutlineText,
   emptyMindmapDoc,
+  rootOf,
   MINDMAP_COLORS,
   type MindmapOutlineEdge,
   type MindmapOutlineNode,
@@ -106,6 +117,25 @@ function readOutlineArgs(args: Record<string, unknown>): {
   return { nodes, edges };
 }
 
+/**
+ * The grounding rail, reusing M85's read-before-edit registry: a map that
+ * claims a source the session never read is exactly how the "generic design
+ * map instead of my Meyers notes" failure happens. The refusal names the
+ * recovery so even a small local model can follow the chain.
+ */
+function requireSourceRead(
+  sourcePageId: string,
+  invocation: IChatToolInvocationCallContext | undefined,
+): IToolResult | null {
+  if (!invocation?.sessionId) return null; // headless callers manage their own grounding
+  if (wasResourceSeen(invocation.sessionId, pageResourceKey(sourcePageId))) return null;
+  return {
+    content: `You have not read page ${sourcePageId} this session. `
+      + 'Call canvas_read_page with that id first, then build the map from concepts that appear in its content.',
+    isError: true,
+  };
+}
+
 // ── The tools ───────────────────────────────────────────────────────────────
 
 export function createMindmapTools(deps: IMindmapToolDeps): IChatTool[] {
@@ -116,10 +146,13 @@ export function createMindmapTools(deps: IMindmapToolDeps): IChatTool[] {
       name: 'mindmap_create',
       displaySummary: 'Create a mindmap of ideas.',
       description:
-        'CREATE a mindmap — a visual map of IDEAS and how they relate (not a page of prose). '
-        + 'Give the central idea as the first node (no parent) and every other node a `parent`. '
-        + 'Use `edges` for cross-links like family membership. The map opens for the user; they can rearrange it. '
-        + 'To extend an existing map use `mindmap_add`.',
+        'CREATE a mindmap — a visual map of IDEAS and how they relate (never of files, apps, or generic categories). '
+        + 'When the user asks to map THEIR notes, a paper, or any existing page: (1) find it with canvas_find_pages, '
+        + '(2) READ it with canvas_read_page, (3) pass its id as `sourcePageId` and build every node label from a '
+        + 'concept that actually appears in that content. The tool refuses a sourced map you have not read. '
+        + 'The root node is the SUBJECT of the material (e.g. "Bayesian MCMC Reserving"), never words like "notes". '
+        + 'Give the root no parent and every other node a `parent`; use `edges` for cross-links like family '
+        + 'membership. To extend an existing map use `mindmap_add`.',
       parameters: {
         type: 'object',
         required: ['title', 'nodes'],
@@ -127,26 +160,46 @@ export function createMindmapTools(deps: IMindmapToolDeps): IChatTool[] {
           title: { type: 'string', description: 'Map title (also the page title).' },
           nodes: NODES_SCHEMA,
           edges: EDGES_SCHEMA,
-          parentPageId: { type: 'string', description: 'Optional UUID of an existing page to nest the map under.' },
+          sourcePageId: {
+            type: 'string',
+            description: 'UUID of the page this map is grounded in. REQUIRED whenever the map is about existing '
+              + 'notes/material. You must have read the page this session (canvas_read_page).',
+          },
+          parentPageId: { type: 'string', description: 'Optional UUID of an existing page to nest the map under. Defaults to the source page.' },
         },
       },
       requiresConfirmation: true,
       permissionLevel: 'requires-approval' as ToolPermissionLevel,
       category: 'canvas',
-      async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
+      async handler(args: Record<string, unknown>, _token: ICancellationToken, invocation?: IChatToolInvocationCallContext): Promise<IToolResult> {
         const title = String(args['title'] ?? '').trim();
         if (!title) return { content: 'Title is required.', isError: true };
         const { nodes, edges } = readOutlineArgs(args);
         if (nodes.length === 0) return { content: 'At least one node is required.', isError: true };
 
-        const parentPageId = typeof args['parentPageId'] === 'string' && args['parentPageId'] ? args['parentPageId'] : null;
+        const sourcePageId = typeof args['sourcePageId'] === 'string' && args['sourcePageId'] ? args['sourcePageId'] : null;
+        const unread = sourcePageId ? requireSourceRead(sourcePageId, invocation) : null;
+        if (unread) return unread;
+
+        const parentPageId = typeof args['parentPageId'] === 'string' && args['parentPageId']
+          ? args['parentPageId']
+          : sourcePageId; // a grounded map nests under its source by default
         const page = await mindmaps.createMindmap({ title, parentId: parentPageId });
 
         // A fresh map has one seed root; if the outline brings its own root,
         // start from empty instead so the seed doesn't dangle beside it.
         const base = { ...emptyMindmapDoc(title), nodes: [], edges: [] };
         const merged = mergeOutline(base, nodes, edges);
-        const doc = assignBranchColors(autoLayout(merged.doc));
+        let doc = assignBranchColors(autoLayout(merged.doc));
+        // A grounded map's root carries the click-through anchor to its source.
+        if (sourcePageId) {
+          const rootId = rootOf(doc);
+          doc = {
+            ...doc,
+            nodes: doc.nodes.map((n) =>
+              n.id === rootId && !n.ref ? { ...n, ref: { kind: 'page', id: sourcePageId } } : n),
+          };
+        }
         await mindmaps.saveDoc(page.id, doc, 'ai');
         openMindmap(page.id);
         return {
@@ -161,8 +214,9 @@ export function createMindmapTools(deps: IMindmapToolDeps): IChatTool[] {
       displaySummary: 'Add ideas to an existing mindmap.',
       description:
         'ADD nodes/cross-links to an existing mindmap. Call `mindmap_read` first so you extend rather than repeat. '
-        + 'New nodes are placed automatically; nodes the user positioned are NEVER moved. '
-        + '`parent` may name any existing node by its label or id.',
+        + 'When the additions come from existing notes/material, read that page and pass `sourcePageId` — the same '
+        + 'grounding rule as mindmap_create. New nodes are placed automatically; nodes the user positioned are '
+        + 'NEVER moved. `parent` may name any existing node by its label or id.',
       parameters: {
         type: 'object',
         required: ['pageId', 'nodes'],
@@ -170,12 +224,20 @@ export function createMindmapTools(deps: IMindmapToolDeps): IChatTool[] {
           pageId: { type: 'string', description: 'The mindmap page id (from mindmap_create or canvas_find_pages).' },
           nodes: NODES_SCHEMA,
           edges: EDGES_SCHEMA,
+          sourcePageId: {
+            type: 'string',
+            description: 'UUID of the page the additions are grounded in (must be read this session).',
+          },
         },
       },
       requiresConfirmation: true,
       permissionLevel: 'requires-approval' as ToolPermissionLevel,
       category: 'canvas',
-      async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
+      async handler(args: Record<string, unknown>, _token: ICancellationToken, invocation?: IChatToolInvocationCallContext): Promise<IToolResult> {
+        const addSource = typeof args['sourcePageId'] === 'string' && args['sourcePageId'] ? args['sourcePageId'] : null;
+        const unread = addSource ? requireSourceRead(addSource, invocation) : null;
+        if (unread) return unread;
+
         const pageId = String(args['pageId'] ?? '').trim();
         const doc = pageId ? await mindmaps.getDoc(pageId) : null;
         if (!doc) return { content: `No mindmap found for id "${pageId}".`, isError: true };
@@ -232,7 +294,9 @@ const DRAFT_SYSTEM_PROMPT =
   + '{"nodes":[{"label":"…","parent":"…"}],"edges":[{"from":"…","to":"…","label":"…"}]} '
   + 'Rules: labels are a FEW WORDS, never sentences. Every node except one root has a "parent" naming another label. '
   + 'When extending an existing map, parent new nodes onto the EXISTING labels given, and never repeat existing labels. '
-  + 'Use "edges" only for genuine cross-branch relations, with a one-or-two-word label.';
+  + 'Use "edges" only for genuine cross-branch relations, with a one-or-two-word label. '
+  + 'When SOURCE MATERIAL is provided, every label must be a concept that appears in it — no invented categories, '
+  + 'no generic scaffold (never "Notes", "Ideas", "References", "To-Do"). The root is the subject of the material.';
 
 /** Pull the first JSON object out of a model response (fences tolerated). */
 export function extractOutlineJson(text: string): { nodes: MindmapOutlineNode[]; edges: MindmapOutlineEdge[] } | null {
@@ -254,6 +318,15 @@ export function extractOutlineJson(text: string): { nodes: MindmapOutlineNode[];
   return null;
 }
 
+/** Source excerpts are budgeted so a long paper never blows the context. */
+const SOURCE_CHAR_BUDGET = 9000;
+
+function clampSource(text: string): string {
+  const t = text.trim();
+  if (t.length <= SOURCE_CHAR_BUDGET) return t;
+  return t.slice(0, SOURCE_CHAR_BUDGET) + '\n\u2026[truncated]';
+}
+
 /**
  * The Draft With AI button's implementation: one LM call, strict-JSON
  * outline out, parsed into the same shape the chat tools consume. The pane
@@ -263,9 +336,17 @@ export async function draftMindmapOutline(
   send: SendChatRequestFn,
   req: MindmapDraftRequest,
 ): Promise<MindmapDraftResult> {
-  const context = req.outlineText.trim()
-    ? `The map "${req.title}" currently contains:\n${req.outlineText}\n\nExtend it — do not repeat existing labels.`
-    : `The map "${req.title}" is empty.`;
+  const parts: string[] = [];
+  if (req.sourceText?.trim()) {
+    parts.push(
+      `SOURCE MATERIAL${req.sourceTitle ? ` \u2014 "${req.sourceTitle}"` : ''} (map its concepts, nothing else):\n`
+      + clampSource(req.sourceText),
+    );
+  }
+  parts.push(req.outlineText.trim()
+    ? `The map "${req.title}" currently contains:\n${req.outlineText}\n\nExtend it \u2014 do not repeat existing labels.`
+    : `The map "${req.title}" is empty.`);
+  const context = parts.join('\n\n');
   const stream = send(
     [
       { role: 'system', content: DRAFT_SYSTEM_PROMPT },

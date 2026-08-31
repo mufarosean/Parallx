@@ -213,6 +213,72 @@ describe('persistence', () => {
   });
 });
 
+describe('the AI door — grounded drafting', () => {
+  it('picking a source page sends its text through draftWithAI', async () => {
+    const changeEmitter = new Emitter<{ pageId: string; source: 'user' | 'ai' }>();
+    const service: any = {
+      getPage: vi.fn(async () => ({ id: 'map-1', title: 'Meyers Models', icon: 'waypoints' })),
+      getDoc: vi.fn(async () => parseMindmapDoc(serializeMindmapDoc(docOf([['root', 'Root']])))),
+      saveDoc: vi.fn(async () => undefined),
+      renameMindmap: vi.fn(async () => undefined),
+      onDidChangeDoc: changeEmitter.event,
+    };
+    const draftWithAI = vi.fn(async () => ({
+      nodes: [{ label: 'ODP', parent: 'Root' }],
+    }));
+    const searchPages = vi.fn(async () => [{ id: 'notes-1', title: 'Meyers Notes' }]);
+    const getPageText = vi.fn(async () => 'The over-dispersed Poisson family…');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const pane = new MindmapEditorPane(host, 'map-1', {
+      service, openPage: vi.fn(), draftWithAI, searchPages, getPageText,
+    });
+    await settle();
+
+    // Open the popover, describe the draft, search and pick the source.
+    (host.querySelectorAll('.mm-btn')[0] as HTMLButtonElement).click(); // Draft With AI
+    const ta = host.querySelector('.mm-draft-popover__input') as HTMLTextAreaElement;
+    expect(ta).toBeTruthy();
+    ta.value = 'Map the models';
+    const src = host.querySelector('.mm-draft-popover__source-input') as HTMLInputElement;
+    expect(src).toBeTruthy();
+    src.value = 'meyers';
+    src.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 200)); // the picker's debounce
+    const row = host.querySelector('.mm-draft-popover__result') as HTMLButtonElement;
+    expect(row?.textContent).toBe('Meyers Notes');
+    row.click();
+    expect((host.querySelector('.mm-draft-popover__chip') as HTMLElement).textContent).toContain('Meyers Notes');
+
+    // Run the draft.
+    const go = [...host.querySelectorAll('.mm-btn--primary')].find((b) => b.textContent === 'Draft') as HTMLButtonElement;
+    go.click();
+    await settle();
+
+    expect(getPageText).toHaveBeenCalledWith('notes-1');
+    expect(draftWithAI).toHaveBeenCalledTimes(1);
+    expect(draftWithAI.mock.calls[0][0]).toMatchObject({
+      instruction: 'Map the models',
+      sourceTitle: 'Meyers Notes',
+      sourceText: 'The over-dispersed Poisson family…',
+    });
+    // The grounded draft actually landed on the map.
+    expect(nodeByLabel(host, 'ODP')).toBeTruthy();
+    pane.dispose();
+    host.remove();
+  });
+
+  it('without searchPages the popover simply has no source field', async () => {
+    const { pane, host } = makePane();
+    await settle();
+    // makePane wires no draftWithAI — button shows the hint instead of a popover.
+    (host.querySelectorAll('.mm-btn')[0] as HTMLButtonElement).click();
+    expect(host.querySelector('.mm-draft-popover')).toBeNull();
+    pane.dispose();
+    host.remove();
+  });
+});
+
 describe('connect', () => {
   it('a port drag between nodes adds exactly one labelled-less edge', async () => {
     const { pane, host } = makePane(docOf([['root', 'Root'], ['a', 'Branch']]));

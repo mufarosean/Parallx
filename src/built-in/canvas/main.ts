@@ -682,6 +682,35 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
             }
             return draftMindmapOutline(_inlineAISend, req);
           },
+          // The popover's source picker: title search over the page tree, and
+          // a page's content as markdown for grounding the prompt.
+          searchPages: async (query: string) => {
+            const ds = _dataService;
+            if (!ds) return [];
+            const q = query.trim().toLowerCase();
+            const out: { id: string; title: string }[] = [];
+            const walk = (nodes: readonly IPageTreeNode[]): void => {
+              for (const n of nodes) {
+                if ((n.title || 'Untitled').toLowerCase().includes(q)) out.push({ id: n.id, title: n.title || 'Untitled' });
+                if (n.children?.length) walk(n.children);
+              }
+            };
+            try { walk(await ds.getPageTree()); } catch { return []; }
+            return out.slice(0, 12);
+          },
+          getPageText: async (id: string) => {
+            const ds = _dataService;
+            if (!ds) return null;
+            const page = await ds.getPage(id);
+            if (!page) return null;
+            if (!page.content) return page.title ?? null;
+            try {
+              const { doc } = decodeCanvasContent(page.content);
+              return tiptapJsonToMarkdown(doc, page.title);
+            } catch {
+              return null;
+            }
+          },
         });
       },
     }),

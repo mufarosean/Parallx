@@ -107,6 +107,18 @@ pins across model/canvas/service/pane suites. Verified by tests, tsc and
 build only — the eyes-on pass is owed. Faces 2 (inline canvas card) and
 3 (dashboard widget) remain.
 
+**Grounding hardened 2026-08-30 (field failure, same day):** asked to map
+the user's Meyers notes, a local model never read them and produced a
+generic design map. The fix is structural, not advisory: the chat door's
+`mindmap_create`/`mindmap_add` take `sourcePageId` and REFUSE a sourced
+map for a page the session has not read (the M85 read-before-edit
+registry); a grounded map nests under its source and its root carries the
+click-through anchor. The editor door grew a source picker — choose the
+page, its text travels inside the prompt with rules forbidding invented
+concepts and generic scaffold labels. The same screenshot exposed a
+layout bug: nodes shrink-to-fit against the zero-width node layer and
+wrapped one word per line; `width: max-content` on the node wrapper.
+
 
 **D1 — v1 scope.** Recommendation: the full-pane editor + AI draft tools
 first; the canvas inline card second; the dashboard widget third. Each
