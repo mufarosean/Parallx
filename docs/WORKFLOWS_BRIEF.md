@@ -129,6 +129,78 @@ and stays working. Nothing has to be rewritten to start.
 
 ---
 
+## Where it lives (added 2026-08-30)
+
+Two surfaces, not one — a graph cannot be edited in a bottom panel, and a
+run feed should not cost a full tab:
+
+- **The Autonomy Log panel becomes the Workflows panel.** Its own header
+  comment already says "background runs land here"; it already carries
+  the Heartbeat / Cron / Mind enable rows, the Live/Patterns tabs, and it
+  is a plain panel-view contribution over autonomyLogService + the rail +
+  pattern memory + feature flags — so the reshape is content, not
+  plumbing. Tab one lists workflows the way ChatGPT's Scheduled Tasks
+  page lists tasks: name, trigger summary, enabled toggle, last result,
+  next run, with a template gallery in the empty state (the current "try
+  one" buttons, grown up). Tab two is today's live feed, grouped by
+  workflow. The Heartbeat/Cron/Mind header rows dissolve into stock
+  workflow rows — the enable toggles stop being a separate system.
+- **The editor opens as a pane**, like the database editor: full canvas,
+  node palette at the side, run controls in the header. Opening a run
+  from the panel shows the SAME graph read-only with the trace painted
+  on it.
+- **Mind is not a workflow.** Beliefs and noticed routines are a
+  different kind of thing; whether its row stays in this panel or moves
+  to the AI hub is an open question, but it must not be forced into the
+  node model.
+
+## What n8n proves (researched 2026-08-30)
+
+Adopt:
+
+- **Triggers are a distinct node kind**, and a workflow with no active
+  trigger is a draft, not a bug.
+- **Cluster nodes** — n8n's AI agent is a ROOT node with tools, model
+  and memory attached as SUB-nodes hanging off it. This is exactly
+  "skills and tools as nodes in the workflow": the graph shows what the
+  agent may reach *before* it runs. Adopt wholesale for the judgment
+  family — an Agent node's allowed tools are its visible children, not a
+  hidden config.
+- **Data pinning** — freeze a node's output while building downstream.
+  For local-model workflows this is the difference between usable and
+  maddening: you wire the formatter against a pinned answer instead of
+  re-running a 30-second model call on every test.
+- **Test vs production runs**, plus partial execution ("run to here").
+- **Executions are first-class.** Per-workflow history; opening a run
+  shows the graph with each node's input/output; retry a failed run from
+  the failed node, choosing the original or the current workflow
+  version. Our seams already exist: autonomyLogService for the feed,
+  autonomyReplayCommand for the precedent.
+- **Per-node retry-on-fail** (count + delay) and an on-error hook — a
+  designated workflow that fires when another one fails.
+- **Sticky notes on the canvas** — documentation that travels with the
+  graph.
+
+Skip:
+
+- Queue mode, horizontal scaling, webhook infrastructure: one desktop.
+- The credentials vault — M90's consent model is our gate; per-service
+  credential objects are cloud-product furniture.
+- **Per-item data piping.** n8n pipes ARRAYS of items through edges and
+  maps expressions across them; it is the single hardest thing to learn
+  in the product and the main source of broken workflows. See D5.
+
+## One canvas, two tenants (added 2026-08-30)
+
+The workflow editor needs a pan/zoom surface with draggable nodes, typed
+ports, curved edges, selection, and undo. The mindmap
+(docs/MINDMAP_BRIEF.md) needs the same surface minus ports and
+execution. Build ONE node-canvas primitive — src/ui/, no domain
+knowledge, gate-clean — and instantiate it twice. The mindmap is the
+cheaper tenant and ships first: it proves the canvas with no runner
+attached, and the workflow editor then inherits a debugged surface
+instead of debuting on the app's most ambitious feature.
+
 ## The decisions (Mufaro's)
 
 **D1 — Replace, or sit above?** Recommendation: **sit above.** Cron stays
@@ -152,6 +224,13 @@ the truth and the graph is a view.** Workflows stay diffable,
 committable, and writable by the AI; the canvas never becomes the only
 door.
 
+**D5 — What does an edge carry?** Recommendation: **one typed payload**
+(a fact bundle; a node that produces many things produces a list inside
+one payload) — not n8n-style item arrays with per-item expression
+mapping. Our workflows are "watch my workspace and act", not bulk ETL;
+the mapping semantics item-arrays buy are the complexity that made n8n
+hard to learn.
+
 ---
 
 ## Execution order (each step ships alone)
@@ -161,7 +240,9 @@ door.
 2. **The node palette from introspection** — tools, commands, skills
    enumerated from `IIntrospectionService` rather than a hand-written
    list that rots.
-3. **The editor surface** — its own pane, like the database editor.
+3. **The editor surface** — its own pane, like the database editor, on
+   the shared node canvas (see *One canvas, two tenants*) — plus the
+   Autonomy Log → Workflows panel reshape.
 4. **The arbiter** — class, attention budget, priority, mutex, cooldown.
 5. **Migrate the seven heartbeat checks to stock workflows**, shipped
    enabled, editable, with the current constants as their defaults.
