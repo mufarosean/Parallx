@@ -1,0 +1,168 @@
+/* nodeCanvas.css — the shared node-graph surface (ui/nodeCanvas.ts).
+ *
+ * Tokens only (design gate). The primitive styles GEOMETRY and shared
+ * chrome — base node card, edges, ports, selection rings. Tenant meaning
+ * (mindmap branch colors, workflow node kinds) lives with the tenant. */
+
+.px-node-canvas {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--px-bg);
+  /* The node-editor dot grid — orientation while panning. Static size on
+     purpose: a grid that rescales with zoom reads as the CONTENT moving. */
+  background-image: radial-gradient(var(--px-divider) 1px, transparent 1px);
+  background-size: 22px 22px;
+  cursor: grab;
+  user-select: none;
+}
+
+.px-node-canvas.is-connecting {
+  cursor: crosshair;
+}
+
+.px-node-canvas__viewport {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  overflow: visible;
+  transform-origin: 0 0;
+}
+
+/* ── Edges ── */
+
+.px-node-canvas__edges {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  overflow: visible;
+}
+
+.px-node-canvas__edge {
+  fill: none;
+  stroke: var(--px-border-strong);
+  stroke-width: 1.75;
+  stroke-linecap: round;
+}
+
+.px-node-canvas__edge-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+g.is-selected > .px-node-canvas__edge {
+  stroke: var(--px-accent);
+  stroke-width: 2.25;
+}
+
+.px-node-canvas__edge-temp {
+  fill: none;
+  stroke: var(--px-accent);
+  stroke-width: 1.75;
+  stroke-dasharray: 5 4;
+  pointer-events: none;
+}
+
+.px-node-canvas__edge-labels {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.px-node-canvas__edge-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  max-width: 160px;
+  padding: 1px 7px;
+  border-radius: var(--px-radius-full);
+  background: var(--px-bg-elevated);
+  border: 1px solid var(--px-border);
+  color: var(--px-text-muted);
+  font-family: var(--px-font-ui);
+  font-size: var(--px-text-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.px-node-canvas__edge-label.is-selected {
+  border-color: var(--px-accent);
+  color: var(--px-text);
+}
+
+/* ── Nodes ── */
+
+.px-node-canvas__nodes {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.px-node-canvas__node {
+  position: absolute;
+  top: 0;
+  left: 0;
+  cursor: grab;
+}
+
+.px-node-canvas__node:active {
+  cursor: grabbing;
+}
+
+.px-node-canvas__node.is-selected > .px-node-canvas__node-body {
+  box-shadow: 0 0 0 2px var(--px-accent);
+}
+
+.px-node-canvas__node.is-connect-target > .px-node-canvas__node-body {
+  box-shadow: 0 0 0 2px var(--px-accent), 0 0 0 5px var(--px-accent-soft);
+}
+
+.px-node-canvas__node-body {
+  border-radius: var(--px-radius-lg);
+  background: var(--px-bg-elevated);
+  border: 1px solid var(--px-border);
+  color: var(--px-text);
+  font-family: var(--px-font-ui);
+  transition: box-shadow var(--px-dur-fast) var(--px-ease);
+}
+
+/* ── Connect port — revealed on node hover, right edge ── */
+
+.px-node-canvas__port {
+  position: absolute;
+  top: 50%;
+  right: -7px;
+  width: 11px;
+  height: 11px;
+  margin-top: -6px;
+  border-radius: var(--px-radius-full);
+  background: var(--px-accent);
+  border: 2px solid var(--px-bg);
+  opacity: 0;
+  cursor: crosshair;
+  transition: opacity var(--px-dur-fast) var(--px-ease), transform var(--px-dur-fast) var(--px-ease);
+}
+
+.px-node-canvas__node:hover > .px-node-canvas__port {
+  opacity: 1;
+}
+
+.px-node-canvas__port:hover {
+  transform: scale(1.25);
+}
+
+/* While a connect gesture is live, ports stay out of the way. */
+.px-node-canvas.is-connecting .px-node-canvas__port {
+  opacity: 0;
+  pointer-events: none;
+}

@@ -96,6 +96,17 @@ feature.
 
 **Status (2026-08-30): D1–D3 decided — recommendations accepted.**
 
+**Face 1 SHIPPED 2026-08-30 (same day):** the full-pane editor
+(`mindmap/mindmapEditorPane.ts` over `ui/nodeCanvas.ts`), the data layer
+(migration 014, `mindmapDataService.ts` — a mindmap IS a page), both AI
+doors (`ai/mindmapTools.ts`: mindmap_create/add/read + the Draft With AI
+button over the inline provider), the `/mindmap` slash command, sidebar
+and pageBlock-card routing, and the SVG snapshot renderer (Copy As SVG;
+`mindmapSvg.ts` is what the inline card will consume). 47 behavioural
+pins across model/canvas/service/pane suites. Verified by tests, tsc and
+build only — the eyes-on pass is owed. Faces 2 (inline canvas card) and
+3 (dashboard widget) remain.
+
 
 **D1 — v1 scope.** Recommendation: the full-pane editor + AI draft tools
 first; the canvas inline card second; the dashboard widget third. Each

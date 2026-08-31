@@ -59,6 +59,9 @@ export interface EditorExtensionContext {
   readonly pageId?: string;
   readonly openEditor?: OpenEditorFn;
   readonly showIconPicker?: (options: ShowIconPickerOptions) => void;
+  /** Editor routing for linked pages — a card must open a database page in
+   *  the database editor and a mindmap page in the mindmap editor. */
+  readonly resolveEditorTypeId?: (pageId: string) => string;
 }
 
 // ── InsertActionContext ─────────────────────────────────────────────────────
@@ -79,6 +82,8 @@ export interface InsertActionBaseContext {
   readonly dataService?: ICanvasDataService;
   /** Database engine — used by the /database slash command. */
   readonly databaseService?: import('../database/databaseDataService.js').DatabaseDataService;
+  /** Mindmap engine — used by the /mindmap slash command. */
+  readonly mindmapService?: import('../mindmap/mindmapDataService.js').MindmapDataService;
   readonly openEditor?: OpenEditorFn;
 }
 
@@ -850,6 +855,7 @@ const definitions: BlockDefinition[] = [
       currentPageId: ctx.pageId,
       openEditor: ctx.openEditor,
       showIconPicker: ctx.showIconPicker,
+      resolveEditorTypeId: ctx.resolveEditorTypeId,
     }),
   },
   {
@@ -910,6 +916,59 @@ const definitions: BlockDefinition[] = [
         console.error('[Canvas] /database insert failed:', error);
         if (dbId) {
           try { await context.dataService.deletePage(dbId); } catch { /* best-effort rollback */ }
+        }
+      }
+    },
+  },
+  {
+    // /mindmap — creates a MINDMAP as a child page and drops its card at the
+    // cursor (docs/MINDMAP_BRIEF.md: the map is its own editor; the card is a
+    // pageBlock because a mindmap IS a page — the same reuse as /database).
+    id: 'mindmap',
+    name: 'pageBlock',
+    label: 'Mindmap',
+    icon: 'waypoints',
+    source: 'custom',
+    kind: 'atom',
+    capabilities: CUSTOM_DRAG,
+    slashMenu: { description: 'Map ideas visually — AI drafts, you shape', order: 2, category: 'basic' },
+    turnInto: undefined,
+    defaultContent: undefined,
+    insertAction: async (editor, range, context) => {
+      if (!context?.dataService || !context.mindmapService || !context.pageId) return;
+      let mapId: string | null = null;
+      try {
+        // Same manual-flow discipline as /database: the editor doc is the
+        // source of truth for the parent; the final flush persists it.
+        context.dataService.cancelPendingSave(context.pageId);
+
+        const page = await context.mindmapService.createMindmap({ title: 'Untitled Mindmap' });
+        mapId = page.id;
+        await context.dataService.movePage(page.id, context.pageId);
+
+        const attrs = { pageId: page.id, title: page.title, icon: 'waypoints' };
+        const inserted = editor.chain().insertContentAt(range, { type: 'pageBlock', attrs }).focus().run();
+        if (!inserted) {
+          const nodeType = editor.state.schema.nodes.pageBlock;
+          if (!nodeType) throw new Error('pageBlock schema node is unavailable');
+          const tr = editor.state.tr.replaceWith(range.from, range.to, nodeType.create(attrs));
+          editor.view.dispatch(tr);
+          editor.commands.focus();
+        }
+
+        await context.dataService.flushContentSave(context.pageId, editor.getJSON());
+        if (context.openEditor) {
+          await context.openEditor({
+            typeId: 'mindmap',
+            title: page.title,
+            icon: 'waypoints',
+            instanceId: page.id,
+          });
+        }
+      } catch (error) {
+        console.error('[Canvas] /mindmap insert failed:', error);
+        if (mapId) {
+          try { await context.dataService.deletePage(mapId); } catch { /* best-effort rollback */ }
         }
       }
     },

@@ -201,6 +201,9 @@ cheaper tenant and ships first: it proves the canvas with no runner
 attached, and the workflow editor then inherits a debugged surface
 instead of debuting on the app's most ambitious feature.
 
+*(2026-08-30: the primitive exists — `src/ui/nodeCanvas.ts`, tenant one
+is the mindmap editor. The workflow editor builds on it as tenant two.)*
+
 ## The decisions (Mufaro's)
 
 **Status (2026-08-30): D1–D5 decided — every recommendation accepted as

@@ -60,6 +60,10 @@ export interface PageBlockOptions {
   readonly dataService?: IPageBlockDataAccess;
   readonly currentPageId?: string;
   readonly openEditor?: (options: { typeId: string; title: string; icon?: string; iconHtml?: string; instanceId?: string }) => Promise<void>;
+  /** Which editor a linked page opens in ('canvas' | 'database' | 'mindmap').
+   *  A pageBlock card is shared by all three page kinds — a database and a
+   *  mindmap ARE pages — so the card cannot hardcode its destination. */
+  readonly resolveEditorTypeId?: (pageId: string) => string;
   readonly showIconPicker?: (options: {
     anchor: HTMLElement;
     showSearch?: boolean;
@@ -105,6 +109,7 @@ export const PageBlock = Node.create<PageBlockOptions>({
       currentPageId: undefined,
       openEditor: undefined,
       showIconPicker: undefined,
+      resolveEditorTypeId: undefined,
     };
   },
 
@@ -235,7 +240,7 @@ export const PageBlock = Node.create<PageBlockOptions>({
         const pageId = attrs.pageId;
         if (!pageId || !this.options.openEditor) return;
         void this.options.openEditor({
-          typeId: 'canvas',
+          typeId: this.options.resolveEditorTypeId?.(pageId) ?? 'canvas',
           title: resolvedTitle || 'Untitled',
           icon: resolvedIcon ?? undefined,
           iconHtml: renderPageIconHtml(resolvedIcon),

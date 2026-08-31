@@ -1,0 +1,299 @@
+/* mindmap.css — the mindmap editor pane and its node skin.
+ *
+ * Tokens only (design gate). Geometry constants here are COUPLED to
+ * mindmapModel.estimateNodeSize (font 13px, wrap at 220px, padding 8/12,
+ * border 1px) — change one, change both. */
+
+.mm-editor {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--px-bg);
+  outline: none;
+}
+
+/* ── Header ── */
+
+.mm-editor__header {
+  display: flex;
+  align-items: center;
+  gap: var(--px-space-2);
+  padding: var(--px-space-2) var(--px-space-4);
+  border-bottom: 1px solid var(--px-divider);
+  flex-shrink: 0;
+}
+
+.mm-editor__icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--px-text-muted);
+  flex-shrink: 0;
+}
+
+.mm-editor__icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.mm-editor__title {
+  flex: 0 1 auto;
+  min-width: 120px;
+  max-width: 380px;
+  border: none;
+  background: transparent;
+  color: var(--px-text);
+  font-family: var(--px-font-ui);
+  font-size: var(--px-text-lg);
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: var(--px-radius-sm);
+  outline: none;
+}
+
+.mm-editor__title:hover {
+  background: var(--px-surface-hover);
+}
+
+.mm-editor__title:focus {
+  background: var(--px-bg-inset);
+  box-shadow: 0 0 0 1px var(--px-border-strong);
+}
+
+.mm-editor__toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--px-space-1);
+  margin-left: auto;
+}
+
+.mm-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--px-radius-md);
+  background: transparent;
+  color: var(--px-text-secondary);
+  font-family: var(--px-font-ui);
+  font-size: var(--px-text-sm);
+  cursor: pointer;
+  transition: background-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
+}
+
+.mm-btn:hover {
+  background: var(--px-surface-hover);
+  color: var(--px-text);
+}
+
+.mm-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.mm-btn.is-busy {
+  color: var(--px-accent);
+}
+
+.mm-btn--primary {
+  background: var(--px-accent);
+  color: var(--px-text-on-accent);
+  border-color: transparent;
+}
+
+.mm-btn--primary:hover {
+  background: var(--px-accent-hover);
+  color: var(--px-text-on-accent);
+}
+
+.mm-btn__icon {
+  display: inline-flex;
+  align-items: center;
+}
+
+.mm-btn__icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ── Hint bar — sentence-case prose, quiet, no layout when hidden ── */
+
+.mm-editor__hint {
+  position: absolute;
+  bottom: var(--px-space-3);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 12px;
+  border-radius: var(--px-radius-full);
+  background: var(--px-bg-elevated);
+  border: 1px solid var(--px-border);
+  color: var(--px-text-muted);
+  font-family: var(--px-font-ui);
+  font-size: var(--px-text-xs);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--px-dur-base) var(--px-ease);
+  z-index: 3;
+}
+
+.mm-editor__hint.is-visible {
+  opacity: 1;
+}
+
+/* The hint anchors to the editor, which therefore needs a positioning
+   context; the canvas fills whatever is left under the header. */
+.mm-editor {
+  position: relative;
+}
+
+.mm-editor__canvas {
+  flex: 1;
+  min-height: 0;
+}
+
+/* ── Node skin (rendered into the shared canvas's node body) ── */
+
+.mm-node {
+  padding: 8px 12px;
+  max-width: 220px;
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--px-text);
+}
+
+.mm-node__label {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  min-width: 30px;
+  min-height: 19px;
+}
+
+.mm-node__edit {
+  display: block;
+  width: 100%;
+  min-width: 120px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 19px;
+  padding: 0;
+  margin: 0;
+  resize: none;
+  outline: none;
+  overflow: hidden;
+}
+
+/* Branch colors — soft fills mixed from the token hues so they follow the
+   theme. The accent (root) reads strongest; neutral is the base card. */
+
+.mm-node--red {
+  background: color-mix(in srgb, rgb(var(--px-red-rgb)) 16%, var(--px-bg-elevated));
+  border-color: color-mix(in srgb, rgb(var(--px-red-rgb)) 45%, var(--px-border));
+}
+
+.mm-node--yellow {
+  background: color-mix(in srgb, rgb(var(--px-yellow-rgb)) 16%, var(--px-bg-elevated));
+  border-color: color-mix(in srgb, rgb(var(--px-yellow-rgb)) 45%, var(--px-border));
+}
+
+.mm-node--green {
+  background: color-mix(in srgb, rgb(var(--px-green-rgb)) 16%, var(--px-bg-elevated));
+  border-color: color-mix(in srgb, rgb(var(--px-green-rgb)) 45%, var(--px-border));
+}
+
+.mm-node--blue {
+  background: color-mix(in srgb, rgb(var(--px-blue-rgb)) 16%, var(--px-bg-elevated));
+  border-color: color-mix(in srgb, rgb(var(--px-blue-rgb)) 45%, var(--px-border));
+}
+
+.mm-node--accent {
+  background: color-mix(in srgb, var(--px-accent) 20%, var(--px-bg-elevated));
+  border-color: color-mix(in srgb, var(--px-accent) 55%, var(--px-border));
+  font-weight: 600;
+}
+
+/* ── Ref chip — a node anchored to real content ── */
+
+.mm-node__ref {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 4px;
+  padding: 1px 6px;
+  gap: 4px;
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-full);
+  background: var(--px-bg-inset);
+  color: var(--px-text-muted);
+  font-size: var(--px-text-2xs);
+  cursor: pointer;
+}
+
+.mm-node__ref:hover {
+  color: var(--px-text);
+  border-color: var(--px-border-strong);
+}
+
+.mm-node__ref svg {
+  width: 11px;
+  height: 11px;
+}
+
+/* ── Edge label editor (floating, one at a time) ── */
+
+.mm-edge-editor {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  z-index: 4;
+  width: 150px;
+  padding: 3px 8px;
+  border: 1px solid var(--px-accent);
+  border-radius: var(--px-radius-full);
+  background: var(--px-bg-elevated);
+  color: var(--px-text);
+  font-family: var(--px-font-ui);
+  font-size: var(--px-text-xs);
+  outline: none;
+}
+
+/* ── Draft With AI popover ── */
+
+.mm-draft-popover {
+  position: absolute;
+  top: 44px;
+  right: var(--px-space-4);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: var(--px-space-2);
+  width: 300px;
+  padding: var(--px-space-3);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-lg);
+  background: var(--px-bg-elevated);
+  box-shadow: 0 8px 24px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.35));
+}
+
+.mm-draft-popover__input {
+  width: 100%;
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-md);
+  background: var(--px-bg-inset);
+  color: var(--px-text);
+  font-family: var(--px-font-ui);
+  font-size: var(--px-text-base);
+  padding: 6px 8px;
+  resize: none;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.mm-draft-popover__input:focus {
+  border-color: var(--px-accent);
+}
+
+.mm-draft-popover .mm-btn--primary {
+  align-self: flex-end;
+}
