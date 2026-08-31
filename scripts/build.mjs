@@ -84,7 +84,22 @@ await build({
   sourcemap: isProduction ? 'external' : true,
   minify: isProduction,
   logLevel: 'info',
-  define: { 'process.env.NODE_ENV': isProduction ? '"production"' : '"development"' },
+  // The engine registers its font faces during (hoisted) module evaluation,
+  // so the local asset path must exist BEFORE any module code — a banner is
+  // the only spot early enough. Without it fonts fall back to the esm.sh
+  // CDN, which the app CSP blocks.
+  banner: {
+    js: "window.EXCALIDRAW_ASSET_PATH = new URL('dist/renderer/excalidraw-assets/', document.baseURI).href;",
+  },
+  define: {
+    'process.env.NODE_ENV': isProduction ? '"production"' : '"development"',
+    // MathJax's version.js falls back to eval('require') when this build-time
+    // global is missing — and the app CSP has no unsafe-eval, so that eval
+    // THROWS AT MODULE SCOPE and kills the whole bundle import (found
+    // 2026-08-31: every board failed to load). Defining it makes the eval
+    // branch dead code. Keep in sync with the installed mathjax-full version.
+    PACKAGE_VERSION: '"3.2.1"',
+  },
   loader: {
     '.woff2': 'file',
     '.woff': 'file',
@@ -96,6 +111,21 @@ await build({
   },
   assetNames: 'fonts/[name]',
 });
+
+// ── Copy Excalidraw font assets to dist ────────────────────────────────────
+// The engine registers its fonts AT RUNTIME via window.EXCALIDRAW_ASSET_PATH
+// (set in boardHost.ts before mount); without a local copy it falls back to
+// the esm.sh CDN, which the app CSP blocks (font-src 'self' data: blob:).
+{
+  const src = 'node_modules/@excalidraw/excalidraw/dist/prod/fonts';
+  const dst = 'dist/renderer/excalidraw-assets/fonts';
+  if (existsSync(src)) {
+    await cp(src, dst, { recursive: true });
+    console.log('Copied Excalidraw fonts → dist/renderer/excalidraw-assets/fonts');
+  } else {
+    console.warn('⚠ Excalidraw fonts not found — board text will use fallback fonts.');
+  }
+}
 
 // ── Copy PDF.js runtime assets to dist ─────────────────────────────────────
 const workerSrc = 'node_modules/pdfjs-dist/build/pdf.worker.min.mjs';

@@ -53,10 +53,16 @@ export class MindmapDataService extends Disposable {
   constructor(private readonly _pages: ICanvasDataService) {
     super();
     this._register(this._pages.onDidChangePage((e) => {
-      if (e.kind === PageChangeKind.Deleted && this._mindmapIds.has(e.pageId)) {
+      if (e.kind !== PageChangeKind.Deleted || !this._mindmapIds.has(e.pageId)) return;
+      // ARCHIVE fires Deleted too (canvasDataService._archivePageSubtree) —
+      // the page row survives it. Self-heal the mindmaps row only when the
+      // page is truly gone, or restoring from trash would resurrect the
+      // board as an empty canvas page (its identity and drawing lost).
+      void this._pages.getPage(e.pageId).then((page) => {
+        if (page) return; // archived — identity must survive for restore
         this._mindmapIds.delete(e.pageId);
         void this._db.run('DELETE FROM mindmaps WHERE id = ?', [e.pageId]).catch(() => { /* cascade is the backstop */ });
-      }
+      }).catch(() => { /* keep the row on doubt — orphans are harmless */ });
     }));
   }
 

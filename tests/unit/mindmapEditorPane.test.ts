@@ -121,7 +121,9 @@ describe('mounting & migration', () => {
     container.remove();
   });
 
-  it('a failed engine load shows the hint instead of a broken pane', async () => {
+  it('a failed engine load shows a PERSISTENT error with the real message and a working Retry', async () => {
+    // A fading hint over a dead pane hid the 2026-08-31 MathJax CSP failure
+    // for a whole day — the error state must stay visible and be retryable.
     const changeEmitter = new Emitter<{ pageId: string; source: 'user' | 'ai' }>();
     const service: any = {
       getPage: vi.fn(async () => ({ id: 'map-1', title: 'T' })),
@@ -132,12 +134,25 @@ describe('mounting & migration', () => {
     };
     const container = document.createElement('div');
     document.body.appendChild(container);
+    let attempts = 0;
+    const { host, loadBoardHost } = makeRecorder();
     const pane = new MindmapEditorPane(container, 'map-1', {
       service,
-      loadBoardHost: async () => { throw new Error('bundle missing'); },
+      loadBoardHost: async () => {
+        attempts++;
+        if (attempts === 1) throw new EvalError('CSP violated: unsafe-eval');
+        return loadBoardHost();
+      },
     } as any);
     await settle();
-    expect(container.querySelector('.mm-editor__hint')?.textContent).toContain('board engine failed');
+    const box = container.querySelector('.mm-editor__error')!;
+    expect(box).toBeTruthy();
+    expect(box.querySelector('.mm-editor__error-detail')?.textContent).toContain('unsafe-eval');
+
+    (box.querySelector('.mm-btn--primary') as HTMLButtonElement).click();
+    await settle();
+    expect(container.querySelector('.mm-editor__error')).toBeNull();
+    expect(host.mounts).toHaveLength(1); // Retry actually mounted the engine
     pane.dispose();
     container.remove();
   });

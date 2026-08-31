@@ -356,3 +356,30 @@
   color: var(--px-text-muted);
   font-size: var(--px-text-xs);
 }
+
+/* -- Board load-error state ---------------------------------------------- */
+
+.mm-editor__error {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--px-space-3);
+  padding: var(--px-space-4);
+  text-align: center;
+}
+
+.mm-editor__error-title {
+  color: var(--px-text);
+  font-size: var(--px-text-base);
+  font-weight: 600;
+}
+
+.mm-editor__error-detail {
+  max-width: 520px;
+  color: var(--px-text-muted);
+  font-size: var(--px-text-sm);
+  font-family: var(--px-font-mono, monospace);
+  word-break: break-word;
+}

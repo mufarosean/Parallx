@@ -871,7 +871,11 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       const editors = api.editors.openEditors;
       for (const ed of editors) {
         if (ed.id !== e.pageId && !ed.id.endsWith(`:${e.pageId}`)) continue;
-        if (ed.description === 'Tool editor: canvas' || ed.description === 'Tool editor: database') {
+        if (
+          ed.description === 'Tool editor: canvas'
+          || ed.description === 'Tool editor: database'
+          || ed.description === 'Tool editor: mindmap'
+        ) {
           await api.editors.closeEditor(ed.id);
         }
       }

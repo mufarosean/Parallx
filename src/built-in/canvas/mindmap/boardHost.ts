@@ -20,6 +20,11 @@ import {
   convertToExcalidrawElements,
 } from '@excalidraw/excalidraw';
 import '@excalidraw/excalidraw/index.css';
+
+// NOTE: window.EXCALIDRAW_ASSET_PATH (the local font directory) is set by an
+// esbuild BANNER on this bundle (scripts/build.mjs) — it must exist before
+// the hoisted engine imports register font faces, which module code here
+// runs too late for. The CDN fallback (esm.sh) is blocked by the app CSP.
 import {
   MATH_SKELETON_TYPE,
   type BoardHostOptions,
@@ -72,7 +77,28 @@ export function createBoardHost(opts: BoardHostOptions): IBoardHost {
 
   let api: ExcalidrawImperativeApi | null = null;
   let destroyed = false;
-  const queued: BoardSkeleton[] = [...opts.pending];
+
+  // Headless-authored skeletons (chat tools) materialise INTO initialData —
+  // never via updateScene after mount: the engine applies initialData
+  // asynchronously and a racing update is silently wiped when it lands
+  // (found via the hidden-window probe, 2026-08-31).
+  const mountFiles: Record<string, unknown> = { ...opts.initialFiles };
+  let mountElements: readonly Record<string, unknown>[] = opts.initialElements;
+  let mountMaterialised = false;
+  if (opts.pending.length > 0) {
+    const { skeletons, files } = materialiseMath(opts.pending);
+    try {
+      const converted = convertToExcalidrawElements(skeletons as never[], { regenerateIds: false });
+      mountElements = [...opts.initialElements, ...converted as never[]];
+      for (const f of files) mountFiles[f.id] = f;
+      mountMaterialised = converted.length > 0;
+      console.info(`[Board] materialised ${converted.length} pending elements at mount (${files.length} files)`);
+    } catch (err) {
+      console.warn('[Board] pending skeleton conversion failed:', err);
+    }
+  }
+
+  const queued: BoardSkeleton[] = [];
 
   const flushQueued = (): void => {
     if (!api || queued.length === 0) return;
@@ -82,6 +108,7 @@ export function createBoardHost(opts: BoardHostOptions): IBoardHost {
       const converted = convertToExcalidrawElements(skeletons as never[], { regenerateIds: false });
       api.updateScene({ elements: [...api.getSceneElements(), ...converted] });
       api.scrollToContent(undefined, { fitToContent: true });
+      console.info(`[Board] materialised ${converted.length} elements (${files.length} files)`);
       opts.onChange();
     } catch (err) {
       console.warn('[Board] skeleton conversion failed:', err);
@@ -93,16 +120,19 @@ export function createBoardHost(opts: BoardHostOptions): IBoardHost {
     React.createElement(Excalidraw as never, {
       theme: opts.theme,
       initialData: {
-        elements: opts.initialElements as never[],
-        files: opts.initialFiles as never,
+        elements: mountElements as never[],
+        files: mountFiles as never,
         appState: { viewBackgroundColor: 'transparent' },
         scrollToContent: true,
       },
       excalidrawAPI: (a: ExcalidrawImperativeApi) => {
         if (destroyed) return;
         api = a;
-        // Headless-authored skeletons (chat tools) materialise on mount.
+        console.info('[Board] engine api ready');
         flushQueued();
+        // Materialised pending must reach storage (pending clears on save)
+        // even if the user never touches the board.
+        if (mountMaterialised) opts.onChange();
       },
       onChange: () => { if (!destroyed) opts.onChange(); },
     } as never),
@@ -135,7 +165,7 @@ export function createBoardHost(opts: BoardHostOptions): IBoardHost {
       return { svg, error };
     },
     getScene() {
-      if (!api) return { elements: opts.initialElements, files: opts.initialFiles };
+      if (!api) return { elements: mountElements, files: mountFiles };
       return {
         elements: api.getSceneElements().filter((e) => !(e as { isDeleted?: boolean }).isDeleted),
         files: api.getFiles(),

@@ -88,7 +88,11 @@ function loadBoardModule(): Promise<BoardHostModule> {
   }
   // Runtime-computed specifier so esbuild cannot inline the engine here.
   const jsUrl = new URL('dist/renderer/mindmap-board.js', document.baseURI).href;
-  _boardModule = import(/* webpackIgnore: true */ jsUrl) as Promise<BoardHostModule>;
+  _boardModule = (import(/* webpackIgnore: true */ jsUrl) as Promise<BoardHostModule>)
+    .catch((err) => {
+      _boardModule = null; // a Retry must re-import, not re-await the failure
+      throw err;
+    });
   return _boardModule;
 }
 
@@ -185,29 +189,45 @@ export class MindmapEditorPane implements IDisposable {
     const envelope = toBoardEnvelope(data);
     this._lastSavedJson = data ?? '';
 
-    let module: BoardHostModule;
+    // A load failure must be LOUD and retryable — a fading hint over a dead
+    // pane cost a day of broken boards (the 2026-08-31 MathJax CSP failure).
     try {
-      module = await (this._deps.loadBoardHost ?? loadBoardModule)();
+      const module = await (this._deps.loadBoardHost ?? loadBoardModule)();
+      if (this._disposed) return;
+      this._host = module.createBoardHost({
+        container: this._boardContainer,
+        initialElements: envelope.elements,
+        initialFiles: envelope.files,
+        pending: envelope.pending,
+        theme: document.documentElement.dataset.theme === 'light' ? 'light' : 'dark',
+        onChange: () => this._scheduleSave(),
+      });
     } catch (err) {
-      this._showHint('The board engine failed to load — restart the app and try again.');
-      console.error('[Mindmap] board bundle load failed:', err);
+      console.error('[Mindmap] board engine failed:', err);
+      if (!this._disposed) this._showLoadError(err);
       return;
     }
-    if (this._disposed) return;
-
-    this._host = module.createBoardHost({
-      container: this._boardContainer,
-      initialElements: envelope.elements,
-      initialFiles: envelope.files,
-      pending: envelope.pending,
-      theme: document.documentElement.dataset.theme === 'light' ? 'light' : 'dark',
-      onChange: () => this._scheduleSave(),
-    });
     this._loaded = true;
 
     if (envelope.elements.length === 0 && envelope.pending.length === 0) {
       this._showHint('Draw freely — or Draft With AI to map a page of your notes.');
     }
+  }
+
+  /** Persistent in-place error state with the real message and a Retry. */
+  private _showLoadError(err: unknown): void {
+    this._boardContainer.textContent = '';
+    const box = el('div', 'mm-editor__error');
+    box.appendChild(el('div', 'mm-editor__error-title', 'The board engine failed to load.'));
+    box.appendChild(el('div', 'mm-editor__error-detail',
+      err instanceof Error ? err.message : String(err)));
+    const retry = el('button', 'mm-btn mm-btn--primary', 'Retry') as HTMLButtonElement;
+    retry.addEventListener('click', () => {
+      this._boardContainer.textContent = '';
+      void this._load();
+    });
+    box.appendChild(retry);
+    this._boardContainer.appendChild(box);
   }
 
   private async _remount(): Promise<void> {

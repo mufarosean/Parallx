@@ -132,13 +132,27 @@ describe('identity and self-healing', () => {
     expect(service.isMindmap('pre-existing')).toBe(true);
   });
 
-  it('page deletion drops the mindmaps row and the id', async () => {
-    const { service, maps, firePageDeleted } = makeEnv();
+  it('TRUE page deletion (pages row gone) drops the mindmaps row and the id', async () => {
+    const { service, maps, pages, firePageDeleted } = makeEnv();
     const page = await service.createMindmap({ title: 'Doomed' });
+    pages.delete(page.id); // the pages row is really gone
     firePageDeleted(page.id);
     await new Promise((r) => setTimeout(r, 0));
     expect(service.isMindmap(page.id)).toBe(false);
     expect(maps.has(page.id)).toBe(false);
+  });
+
+  it('ARCHIVE (which also fires Deleted) keeps the row — restore must get its board back', async () => {
+    // canvasDataService._archivePageSubtree fires PageChangeKind.Deleted for
+    // archived pages while their rows survive. Before 2026-08-31 the
+    // self-heal deleted the mindmaps row on that event, so restoring from
+    // trash resurrected the board as an empty canvas page.
+    const { service, maps, firePageDeleted } = makeEnv();
+    const page = await service.createMindmap({ title: 'Trashed, Not Gone' });
+    firePageDeleted(page.id); // pages map still holds the row → archive
+    await new Promise((r) => setTimeout(r, 0));
+    expect(maps.has(page.id)).toBe(true);
+    expect(service.isMindmap(page.id)).toBe(true); // routing survives restore
   });
 
   it("a non-mindmap page's deletion touches nothing", async () => {
