@@ -28,9 +28,7 @@ export function createDatabaseTools(db: DatabaseDataService): IChatTool[] {
       name: 'canvas_create_database',
       displaySummary: 'Create a Notion-style database.',
       description:
-        'CREATE a database (a special canvas page with typed columns, table/board views, and rows that are pages). ' +
-        'Optionally nest it under an existing page via `parentId`. Provide `properties` to define columns beyond ' +
-        'the seeded Status select. Rows are added with `canvas_add_database_row`.',
+      'CREATE a database. Optionally nest via `parentId`; `properties` defines columns beyond the seeded Status select. Add rows with `canvas_add_database_row`.',
       parameters: {
         type: 'object',
         required: ['title'],
@@ -82,9 +80,7 @@ export function createDatabaseTools(db: DatabaseDataService): IChatTool[] {
       name: 'canvas_add_database_row',
       displaySummary: 'Add a row to a database.',
       description:
-        'ADD a row to an existing database (by database UUID). The row is a page; pass `values` keyed by PROPERTY ' +
-        'NAME to fill cells (select/tags values must match existing options or they are stored as-is). ' +
-        'Find databases + property names with canvas_query_database or canvas_find_pages.',
+      'ADD a row to a database (by UUID). Pass `values` keyed by property NAME; select/tags values should match existing options (stored as-is otherwise).',
       parameters: {
         type: 'object',
         required: ['databaseId', 'title'],
@@ -124,11 +120,7 @@ export function createDatabaseTools(db: DatabaseDataService): IChatTool[] {
       name: 'canvas_add_page_to_database',
       displaySummary: 'Make a database the home of an existing page.',
       description:
-        'Set an EXISTING page\'s HOME database — the page becomes a row of it and the database\'s schema ' +
-        'becomes the page\'s properties. The page keeps its place in the sidebar tree. A page has at most ' +
-        'ONE home; this fails (with the current home named) if the page already belongs to another database. ' +
-        'After this, set its cells with canvas_set_page_property. ' +
-        'Use canvas_add_database_row instead when the row page should be created fresh.',
+      'Set an EXISTING page HOME database — the page becomes a row, the schema becomes its properties, sidebar position kept. Fails (naming the current home) if it already has one. For fresh row pages use `canvas_add_database_row`.',
       parameters: {
         type: 'object',
         required: ['databaseId', 'pageId'],
@@ -158,9 +150,7 @@ export function createDatabaseTools(db: DatabaseDataService): IChatTool[] {
       name: 'canvas_query_database',
       displaySummary: 'Query a database (filter/sort rows).',
       description:
-        'READ rows from a database as a markdown table. Optional `filter` rules (by property NAME or "title") with ' +
-        'ops equals/not_equals/contains/greater_than/less_than/is_empty/is_not_empty, and `sort` {property, dir}. ' +
-        'Use this to inspect schema + rows before adding or editing.',
+      'READ database rows as a markdown table. Optional `filter` (property NAME or "title"; ops per the Canvas section) and `sort` {property, dir}.',
       parameters: {
         type: 'object',
         required: ['databaseId'],

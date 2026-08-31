@@ -55,11 +55,8 @@ export function createFindPagesTool(db: IBuiltInToolDatabase | undefined): IChat
     name: 'canvas_find_pages',
     displaySummary: 'Find or list canvas pages.',
     description:
-      'Discovers canvas pages by full-text query, property filter, or both. No args lists recent pages. ' +
-      'Use when you do NOT already know which page to read — e.g. "pages tagged X", "pages mentioning Y", ' +
-      '"all status=open pages". ' +
-      'If you already know the page title or UUID, call `canvas_read_page` directly — skip this tool. ' +
-      'For files on disk use `fs_search_files` (name) or `fs_grep_search` (contents). ' +
+      'Discover canvas pages by full-text query, property filter, or both. No args lists recent pages. ' +
+      'Only for when you do NOT know which page — for a known title/UUID call `canvas_read_page` directly. ' +
       'Filter ops: equals, not_equals, contains, is_empty, is_not_empty, greater_than, less_than.',
     parameters: {
       type: 'object',
@@ -235,13 +232,8 @@ export function createReadPageTool(
     name: 'canvas_read_page',
     displaySummary: 'Read a canvas page (body + metadata + properties).',
     description:
-      'Reads a canvas page from the workspace page database (not a file on disk). ' +
-      'Returns the page body, metadata (title, id, icon, timestamps, archived state, block count), and any custom properties. ' +
-      'Each top-level block in the body is prefixed with its `[blockId]` — pass that id to `canvas_edit_block` or `canvas_read_block` to target a specific block. ' +
-      '`pageId` accepts a page UUID, a case-insensitive page title, or the literal "current" for the page open in the editor. ' +
-      'Use this directly when you know the page title — do NOT call `canvas_find_pages` first to resolve a known title. ' +
-      'For files on disk use `fs_read_file`. ' +
-      'For workspace-wide property definitions use `canvas_list_property_definitions`.',
+      'Read a canvas page: body (blocks prefixed with their `[blockId]`), metadata, and properties. '
+      + '`pageId` accepts a UUID, a case-insensitive title, or "current" for the open page.',
     parameters: {
       type: 'object',
       required: ['pageId'],
@@ -462,11 +454,8 @@ export function createSetPagePropertyTool(
     name: 'canvas_set_page_property',
     displaySummary: 'Set a property on a canvas page.',
     description:
-      'Set a property value on a CANVAS PAGE. Creates the property definition automatically if it doesn\'t exist. ' +
-      'Operates on the canvas page DB only — this is NOT for editing filesystem files. ' +
-      'Value shape by property kind: text → string, number → number, checkbox → boolean, ' +
-      'tags / multi-select → JSON array of strings (e.g. ["Journal","Daily"]). ' +
-      'For tags pass a real JSON array, NOT a stringified array like "[\\"a\\",\\"b\\"]".',
+      'Set a property value on a canvas page; the property definition is created automatically if missing. '
+      + 'Value shapes follow the Canvas section (tags = real JSON array).',
     parameters: {
       type: 'object',
       required: ['pageId', 'propertyName', 'value'],
@@ -672,15 +661,9 @@ export function createCreatePageTool(
     name: 'canvas_create_page',
     displaySummary: 'Create a NEW canvas page (blank or from template).',
     description:
-      'CREATE a NEW canvas page in the canvas page DB. The UUID is generated automatically — do NOT pass one. ' +
-      'Use this only when the page does not yet exist. ' +
-      'The result returns the new page\'s id — for ANY follow-up edits to that page (the user asks for "more", a new section, a rewrite) REUSE that id with `canvas_edit_page`. Do NOT call `canvas_create_page` again for the same page; that creates a duplicate. ' +
-      'To edit an EXISTING page (you have its UUID), use `canvas_edit_page`. ' +
-      'For files on disk (.md, .txt, code, etc.) use `fs_write_file` instead.\n\n' +
-      'TEMPLATE GUIDANCE: Before creating a blank page, call `canvas_list_templates` to check whether an existing template matches the request. ' +
-      'If a template fits (e.g. meeting notes, daily journal, project brief), pass its `id` as `templateId` to seed the page with that structure. ' +
-      'After creating from a template, fill in specific data with `canvas_edit_page`. ' +
-      'Omit `templateId` for a blank or markdown-seeded page.',
+      'CREATE a NEW canvas page (only when it does not yet exist; edits go to `canvas_edit_page`). '
+      + 'Returns the new id — reuse it for all follow-ups. '
+      + 'Pass `templateId` (from `canvas_list_templates`) to seed structure; omit for blank/markdown-seeded.',
     parameters: {
       type: 'object',
       required: ['title'],
@@ -857,12 +840,8 @@ export function createEditPageTool(
     name: 'canvas_edit_page',
     displaySummary: 'Edit (update) an existing canvas page from markdown.',
     description:
-      'EDIT an EXISTING canvas page in the canvas page DB. Requires the page\'s UUID — this tool does NOT create new pages. ' +
-      'Use `canvas_create_page` to make a new page (which auto-assigns the UUID). ' +
-      'Use `canvas_read_page` or `canvas_find_pages` first if you only have a title and need the UUID. ' +
-      '`mode` controls how `markdown` combines with the existing body: `replace` (default) wipes and rewrites; `append` adds after; `prepend` adds before. ' +
-      'When the page is open in the editor, the change streams in live, block-by-block — you don\'t need to reopen it. ' +
-      'For files on disk use `fs_write_file` or `fs_edit_file` instead.',
+      'EDIT an EXISTING canvas page by UUID (does not create pages). '
+      + '`mode`: `replace` (default) wipes and rewrites the body; `append` adds after; `prepend` adds before.',
     parameters: {
       type: 'object',
       required: ['pageId', 'markdown'],
@@ -997,11 +976,8 @@ export function createMovePageTool(
     name: 'canvas_move_page',
     displaySummary: 'Move a canvas page under another page (or to the top level).',
     description:
-      'RE-PARENT an existing canvas page: nest it under another page (creating the parent\'s sub-page card), ' +
-      'move it back to the top level, or reorder it under its current parent. ' +
-      'Use this to turn an existing page into a sub-page of another — `canvas_create_page` only sets a parent for BRAND-NEW pages. ' +
-      'Both ids must be page UUIDs (resolve titles via `canvas_find_pages` / `canvas_read_page` first). ' +
-      'Cycle-safe: a page cannot be moved under itself or its own descendant.',
+      'RE-PARENT an existing canvas page: nest under another page, move to top level, or reorder. '
+      + 'Both ids must be UUIDs. Cycle-safe (cannot move under its own descendant).',
     parameters: {
       type: 'object',
       required: ['pageId'],
@@ -1201,14 +1177,9 @@ export function createSetPageStyleTool(
     name: 'canvas_set_page_style',
     displaySummary: 'Update a canvas page\'s style (icon, cover, font, width).',
     description:
-      'Update a CANVAS PAGE\'s display settings (icon, cover image, font family, full-width, small-text). ' +
-      'Operates on the canvas page DB. Omit unchanged fields.\n\n' +
-      'coverUrl accepts:\n' +
-      '  • An http(s):// URL (stored as-is)\n' +
-      '  • A data:image/… URL (stored as-is)\n' +
-      '  • A workspace-relative path with forward slashes, no leading "./" or "..", e.g. "Skills/CoverImages/foo.png" — read off disk into a data URL\n' +
-      '  • An empty string to clear the existing cover\n\n' +
-      'Supported image extensions: png, jpg, jpeg, gif, webp, svg, bmp, avif. Max 5 MB.',
+      'Update a canvas page display settings (icon, cover, font, full-width, small-text); omit unchanged fields. '
+      + 'coverUrl: http(s):// or data:image/… stored as-is; a workspace-relative path (forward slashes, no ./ or ..) is read off disk; "" clears. '
+      + 'Extensions png/jpg/jpeg/gif/webp/svg/bmp/avif, max 5 MB.',
     parameters: {
       type: 'object',
       required: ['pageId', 'style'],

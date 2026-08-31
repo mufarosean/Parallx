@@ -217,6 +217,12 @@ export function buildOpenclawSystemPrompt(params: IOpenclawSystemPromptParams): 
     sections.push(buildSubagentsSection());
   }
 
+  // HARNESS.md §3.6 — shared canvas teaching, once, only when canvas tools
+  // are present (mirror of the sessions_spawn gating above).
+  if (params.tools.some((t) => t.name.startsWith('canvas_'))) {
+    sections.push(buildCanvasSection());
+  }
+
   // 3b. M66 — Linking templates. Auto-generated from registered LinkContracts;
   //     adding a new extension contract surfaces its URI templates here with
   //     zero core changes.
@@ -643,6 +649,30 @@ export function buildMemorySection(): string {
  * comes back as one distilled answer instead of raw dumps in the main
  * conversation.
  */
+/**
+ * HARNESS.md §3.6 — the shared canvas teaching, stated ONCE. Rendered only
+ * when canvas tools are in the catalog. Everything here used to be repeated
+ * across 17 canvas tool descriptions (the `canvas_*` family was ~14K chars
+ * of schema prose, most of it the same five lessons); the descriptions now
+ * carry only per-tool mechanics and this section carries the model.
+ */
+export function buildCanvasSection(): string {
+  return [
+    '## Canvas',
+    'Canvas pages live in the workspace page DATABASE, not on disk — `canvas_*` tools never touch files (use `fs_*` for files on disk: .md, .txt, code).',
+    '',
+    '**IDs**: `canvas_create_page` auto-generates the UUID and returns it — never pass one, and REUSE the returned id for every follow-up edit to that page (re-creating makes duplicates). If you only have a title, `canvas_read_page` accepts titles and the literal "current" directly — do NOT call `canvas_find_pages` first for a known title. Block ids come from `canvas_read_page` (each top-level block is prefixed `[blockId]`).',
+    '',
+    '**Block content is MARKDOWN**: `## X` → heading, `- [ ] X` → to-do, `- X` → bullet, `1. X` → numbered, `> [!note] …` → callout, `> X` → quote, fenced code → code block. Multi-line content may expand into several blocks.',
+    '',
+    '**Property values by kind**: text → string, number → number, checkbox → boolean, tags/multi-select → a REAL JSON array of strings, never a stringified array.',
+    '',
+    '**Databases** are special pages: rows are pages, columns are typed properties, `values` are keyed by PROPERTY NAME. A page has at most ONE home database. Inspect schema + rows with `canvas_query_database` before adding or editing.',
+    '',
+    'Edits to a page open in the editor stream in live — no need to reopen. Before creating a blank page, check `canvas_list_templates` for a matching template.',
+  ].join('\n');
+}
+
 export function buildSubagentsSection(): string {
   return [
     '## Subagents',

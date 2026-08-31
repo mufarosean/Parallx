@@ -141,7 +141,8 @@ export function createEditBlockTool(
   return {
     name: 'canvas_edit_block',
     displaySummary: 'Replace a block on a canvas page (approval).',
-    description: 'Replace a single block inside a CANVAS PAGE. `newContent` is parsed as MARKDOWN, so the block takes the RIGHT type: `## X` → heading, `- [ ] X` → to-do, `- X` → bullet, `1. X` → numbered, `> [!note] …` → callout, `> X` → quote, fenced code → code block. It may expand into several blocks (e.g. a multi-line list); the primary block keeps its blockId. Operates on the canvas page DB — for file edits use `fs_edit_file`; for whole-page authoring use canvas_edit_page.',
+    description:
+      'Replace a single block by blockId. `newContent` is parsed as markdown (block takes the right type; may expand into several blocks — the primary keeps its blockId).',
     parameters: {
       type: 'object',
       required: ['pageId', 'blockId', 'newContent'],
@@ -212,7 +213,8 @@ export function createInsertBlockAfterTool(
   return {
     name: 'canvas_insert_block_after',
     displaySummary: 'Insert a block into a canvas page (approval).',
-    description: 'Insert one or more new blocks into a CANVAS PAGE, immediately after anchorBlockId. `content` is parsed as MARKDOWN, so blocks take the RIGHT type: headings, bullet/numbered lists, to-dos (`- [ ]`), callouts (`> [!note]`), quotes, fenced code. Returns the new blockId(s). Operates on the canvas page DB.',
+    description:
+      'Insert new block(s) immediately after `anchorBlockId`; `content` is parsed as markdown. Returns the new blockId(s).',
     parameters: {
       type: 'object',
       required: ['pageId', 'anchorBlockId', 'content'],
@@ -280,7 +282,8 @@ export function createLinkBlockTool(
   return {
     name: 'canvas_link_block',
     displaySummary: 'Cross-link two canvas blocks (approval).',
-    description: 'Insert a new paragraph BELOW `fromBlockId` (on the source page) that contains a clickable link pointing at `toBlockId` on the target page. Operates on the canvas page DB. Use this when the user asks "link the part about X to the page on Y" — two existing blocks on two existing pages.',
+    description:
+      'Insert a paragraph below `fromBlockId` containing a clickable link to `toBlockId` on the target page — for linking two existing blocks across pages.',
     parameters: {
       type: 'object',
       required: ['fromPageId', 'fromBlockId', 'toPageId', 'toBlockId'],
