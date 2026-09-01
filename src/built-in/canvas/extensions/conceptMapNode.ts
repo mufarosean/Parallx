@@ -288,15 +288,25 @@ export const ConceptMap = Node.create({
           body.addEventListener('pointermove', (e) => {
             const parts = nodeParts(e.target);
             if (!parts) {
-              if (!(e.target as HTMLElement | null)?.closest?.('.canvas-conceptmap__add')) addBtn.hidden = true;
+              // Hide only when the pointer is genuinely AWAY from the
+              // button: travelling the last few pixels toward it must
+              // never make it vanish (the disappearing-plus bug).
+              if (!addBtn.hidden && !(e.target as HTMLElement | null)?.closest?.('.canvas-conceptmap__add')) {
+                const r = addBtn.getBoundingClientRect();
+                const cx = r.left + r.width / 2;
+                const cy = r.top + r.height / 2;
+                if (Math.hypot(e.clientX - cx, e.clientY - cy) > 28) addBtn.hidden = true;
+              }
               return;
             }
             const rect = parts.rect.getBoundingClientRect();
             const host = body.getBoundingClientRect();
             addTarget = parts.label;
             addBtn.hidden = false;
-            addBtn.style.left = `${rect.right - host.left + 4}px`;
-            addBtn.style.top = `${rect.bottom - host.top - 10}px`;
+            // Seated ON the corner — overlapping the box, so the pointer
+            // never crosses dead space on its way to the button.
+            addBtn.style.left = `${rect.right - host.left - 9}px`;
+            addBtn.style.top = `${rect.bottom - host.top - 9}px`;
             (parts.g as unknown as { style: CSSStyleDeclaration }).style.cursor =
               rect.right - e.clientX <= RESIZE_EDGE_PX ? 'ew-resize' : 'grab';
           });
