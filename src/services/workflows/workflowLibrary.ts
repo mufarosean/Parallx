@@ -22,18 +22,21 @@ export interface WorkflowTemplate {
 /** The template gallery shown in the panel's empty state. */
 export const WORKFLOW_TEMPLATES: readonly WorkflowTemplate[] = [
   {
-    key: 'morning-digest',
-    name: 'Morning Digest',
-    description: 'Every morning, the agent reviews your planner and open work and posts one summary.',
+    key: 'morning-report',
+    name: 'Morning Report',
+    description: 'At 5am (or first launch of the day), the agent reads your planner and activity, then writes a report page.',
     class: 'attention',
     nodes: [
-      { id: 't', label: 'Every Morning', kind: 'trigger.schedule', spec: { kind: 'daily', time: '08:00' }, x: 40, y: 80 },
+      { id: 't', label: '5am Or First Launch', kind: 'trigger.schedule', spec: { kind: 'daily', time: '05:00' }, x: 40, y: 80 },
+      { id: 'c', label: 'Today\u2019s Facts', kind: 'context.facts', x: 280, y: 80 },
       {
-        id: 'g', label: 'Compose Digest', kind: 'action.agentTurn', x: 280, y: 80,
-        prompt: 'Review my planner for today and anything overdue. Post ONE concise digest: what is due, what is overdue, and the single most important thing to start with. No filler.',
+        id: 'g', label: 'Write The Report', kind: 'action.agentTurn', x: 520, y: 80,
+        prompt: 'Prepare my morning report from the context above. If email or news tools are available, check for anything new and important. '
+          + 'Then create ONE canvas page titled "Morning Report" (canvas_create_page with markdown) containing: what is due today, anything overdue, '
+          + 'notable new emails if you checked, and the single most important thing to start with. Concise, no filler.',
       },
     ],
-    edges: [{ from: 't', to: 'g' }],
+    edges: [{ from: 't', to: 'c' }, { from: 'c', to: 'g' }],
   },
   {
     key: 'weekly-review-nudge',

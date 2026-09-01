@@ -854,3 +854,8 @@
 .autonomy-log-empty--guide .autonomy-guide__chips {
   justify-content: center;
 }
+
+.wf-thumb__node.is-context {
+  fill: color-mix(in srgb, var(--px-success, var(--px-accent)) 22%, var(--px-bg-elevated));
+  stroke: var(--px-success, var(--px-accent));
+}

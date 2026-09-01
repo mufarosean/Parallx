@@ -55,7 +55,7 @@ import { describeTriggerNode } from '../../services/workflows/workflowGraph.js';
 import { WORKFLOW_TEMPLATES, cronJobToWorkflow } from '../../services/workflows/workflowLibrary.js';
 import { renderWorkflowThumbnail } from './workflowThumbnail.js';
 import { WorkflowEditorPane } from './workflowEditorPane.js';
-import { ISettingsRegistryService } from '../../services/serviceTypes.js';
+import { ISettingsRegistryService, ICanvasPageQueryService } from '../../services/serviceTypes.js';
 import { ILanguageModelToolsService } from '../../services/chatTypes.js';
 
 // ── Local API type ───────────────────────────────────────────────────────────
@@ -220,6 +220,19 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         }
         return new WorkflowEditorPane(container, workflowId, {
           service: workflowService,
+          listTemplates: async () => {
+            const res = await api.commands.executeCommand<{ id: string; name: string; description: string }[]>('canvas.listTemplates');
+            return Array.isArray(res) ? res : [];
+          },
+          listPages: async () => {
+            try {
+              if (!api.services.has(ICanvasPageQueryService)) return [];
+              const canvas = api.services.get<import('../../services/serviceTypes.js').ICanvasPageQueryService>(ICanvasPageQueryService);
+              return (await canvas.getRootPages())
+                .filter((p) => !p.isArchived)
+                .map((p) => ({ id: p.id, title: p.title }));
+            } catch { return []; }
+          },
           listTools: () => {
             try {
               if (!api.services.has(ILanguageModelToolsService)) return [];

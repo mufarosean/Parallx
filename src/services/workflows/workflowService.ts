@@ -235,6 +235,46 @@ export class WorkflowService implements IDisposable {
     return this._runs.filter((r) => r.workflowId === workflowId);
   }
 
+  /**
+   * The mission's compiled prompt, resolved LIVE (the editor's preview):
+   * upstream context blocks in walk order, then the mission text with a
+   * sample trigger context.
+   */
+  async compileMissionPreview(workflowId: string, nodeId: string): Promise<string> {
+    const doc = this._docs.get(workflowId);
+    const node = doc?.nodes.find((n) => n.id === nodeId);
+    if (!doc || !node || node.kind !== 'action.agentTurn') {
+      throw new Error('Pick an Agent Turn node to preview.');
+    }
+    const inbound = new Map<string, string[]>();
+    for (const e of doc.edges) {
+      const arr = inbound.get(e.to) ?? [];
+      arr.push(e.from);
+      inbound.set(e.to, arr);
+    }
+    const blocks: string[] = [];
+    const seen = new Set<string>();
+    const walk = async (id: string): Promise<void> => {
+      for (const from of inbound.get(id) ?? []) {
+        if (seen.has(from)) continue;
+        seen.add(from);
+        await walk(from);
+        const ctx = doc.nodes.find((n) => n.id === from);
+        if (!ctx) continue;
+        if (ctx.kind === 'context.facts') {
+          const text = await this._deps?.gatherFacts?.(ctx.include ?? {});
+          if (text?.trim()) blocks.push(text.trim());
+        } else if (ctx.kind === 'context.exemplar' && ctx.ref?.id) {
+          const md = await this._deps?.getExemplar?.(ctx.ref);
+          if (md?.trim()) blocks.push(`FORMAT EXEMPLAR (follow this structure for any page or report you produce):\n${md.trim()}`);
+        }
+      }
+    };
+    await walk(nodeId);
+    const mission = node.prompt;
+    return blocks.length > 0 ? `${blocks.join('\n\n')}\n\nTask: ${mission}` : mission;
+  }
+
   /** Next scheduled firing for a workflow, or null. */
   nextRunAt(workflowId: string): number | null {
     let best: number | null = null;
@@ -313,6 +353,7 @@ export class WorkflowService implements IDisposable {
   private async _checkDue(): Promise<void> {
     if (this._disposed || !this._deps) return;
     if (this._observers.isPaused?.()) return;
+    let fired = false;
     const now = Date.now();
     // Arbiter: when several workflows come due in the same beat, higher
     // priority fires first (runs execute sequentially in this loop).
@@ -340,8 +381,9 @@ export class WorkflowService implements IDisposable {
         kind: 'trigger.schedule',
         summary: describeTriggerNode(node),
       }, { automatic: true }).catch((err) => console.warn(`[Workflows] scheduled run of "${doc.name}" failed:`, err));
+      fired = true;
     }
-    void this._save();
+    if (fired) void this._save();
   }
 
   private async _onJournalEvent(e: IActivityEvent): Promise<void> {
@@ -409,7 +451,7 @@ export class WorkflowService implements IDisposable {
     if (group) this._busyGroups.add(group);
     let run: WorkflowRun;
     try {
-      run = await executeWorkflowRun(doc, trigger, ctx, this._deps, ledger);
+      run = await executeWorkflowRun(doc, trigger, ctx, this._deps, ledger, { automatic: opts.automatic });
     } finally {
       if (group) this._busyGroups.delete(group);
     }

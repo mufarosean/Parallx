@@ -85,7 +85,6 @@ import {
   createCronContextLineFetcher,
 } from '../../openclaw/openclawCronExecutor.js';
 import { SubagentSpawner } from '../../openclaw/openclawSubagentSpawn.js';
-import { extractFinalAssistantText } from '../../openclaw/openclawSubagentExecutor.js';
 import { WorkflowService, IWorkflowService } from '../../services/workflows/workflowService.js';
 import { AutonomyLogService } from '../../services/autonomyLogService.js';
 import {
@@ -1693,41 +1692,98 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
           isCancellationRequested: false,
           onCancellationRequested: () => ({ dispose: () => { /* noop */ } }),
         };
-        const chatSvcForWorkflows = chatService as unknown as import('../../services/chatService.js').ChatService;
         const workflowContextFetcher = createCronContextLineFetcher({
           getActiveSession: () => {
             const id = _activeWidget?.getSession()?.id;
             return id ? chatService.getSession(id) : undefined;
           },
         });
-        workflowService.attachExecution({
-          runAgentTurn: async ({ workflowName, prompt, contextMessages }) => {
-            const parentId = _activeWidget?.getSession()?.id;
-            if (!parentId) throw new Error('No active chat session to host the workflow turn.');
-            const contextLines = contextMessages > 0 ? await workflowContextFetcher(contextMessages) : [];
-            const systemMessage = [
-              `This is the workflow "${workflowName}" running a scheduled agent turn at ${new Date().toISOString()}.`,
-              'The user composed this workflow. Execute the task and report the result concisely.',
-            ].join(' ');
-            const parts: string[] = [];
-            if (contextLines.length > 0) {
-              parts.push('Previous chat context:', ...contextLines, '');
-            }
-            parts.push(`Task: ${prompt}`);
-            const userMessage = parts.join('\n');
-            const handle = chatSvcForWorkflows.createEphemeralSession(parentId, {
-              systemMessage,
-              firstUserMessage: userMessage,
-              archiveOrigin: 'workflow',
-            });
+        // Context deps: the deterministic facts bundle (the heartbeat's
+        // proven shape, from public DI seams, lazily resolved at fire
+        // time) and template/page format exemplars via canvas commands.
+        const gatherWorkflowFacts = async (include: {
+          planner?: boolean; activity?: boolean; sync?: boolean; pages?: boolean;
+        }): Promise<string> => {
+          const all = include.planner === undefined && include.activity === undefined
+            && include.sync === undefined && include.pages === undefined;
+          const want = (k: 'planner' | 'activity' | 'sync' | 'pages'): boolean => all || include[k] === true;
+          const blocks: string[] = [];
+          const now = new Date();
+          blocks.push(`Now: ${now.toLocaleString()}`);
+          if (want('planner') && api.services.has(IPlannerQueryService)) {
             try {
-              await chatService.sendRequest(handle.sessionId, userMessage);
-              const session = chatService.getSession(handle.sessionId);
-              const last = session?.messages[session.messages.length - 1];
-              return last ? extractFinalAssistantText(last.response.parts) : '';
-            } finally {
-              chatSvcForWorkflows.purgeEphemeralSession(handle);
+              const planner = api.services.get<import('../../services/serviceTypes.js').IPlannerQueryService>(IPlannerQueryService);
+              const [digest, tasks] = await Promise.all([
+                planner.getTodayDigest?.() ?? Promise.resolve(null),
+                planner.listOpenTasks(),
+              ]);
+              const lines: string[] = [];
+              if (digest) lines.push(`Today: ${digest.events} events, ${digest.tasksDue} tasks due.`);
+              for (const t of tasks.slice(0, 20)) {
+                lines.push(`- ${t.title}${t.dueAt ? ` (due ${new Date(t.dueAt).toLocaleDateString()})` : ''}`);
+              }
+              if (lines.length) blocks.push(`PLANNER:\n${lines.join('\n')}`);
+            } catch { /* omit the block */ }
+          }
+          if (want('sync') && api.services.has(IPlannerQueryService)) {
+            try {
+              const planner = api.services.get<import('../../services/serviceTypes.js').IPlannerQueryService>(IPlannerQueryService);
+              const health = await planner.getSyncHealth?.();
+              if (health?.failed) blocks.push(`SYNC: failing${health.detail ? ` (${health.detail})` : ''}`);
+            } catch { /* omit */ }
+          }
+          if (want('activity')) {
+            try {
+              const recent = _activityJournal?.renderRecent({ maxLines: 30, excludeActor: 'ai' }) ?? '';
+              if (recent.trim()) blocks.push(`RECENT ACTIVITY:\n${recent.trim()}`);
+            } catch { /* omit */ }
+          }
+          if (want('pages') && api.services.has(ICanvasPageQueryService)) {
+            try {
+              const canvas = api.services.get<import('../../services/serviceTypes.js').ICanvasPageQueryService>(ICanvasPageQueryService);
+              const pages = await canvas.getRootPages();
+              const lines = pages
+                .filter((p) => !p.isArchived)
+                .slice(0, 25)
+                .map((p) => `- ${p.title || 'Untitled'} (updated ${new Date(p.updatedAt).toLocaleDateString()})`);
+              if (lines.length) blocks.push(`WORKSPACE PAGES:\n${lines.join('\n')}`);
+            } catch { /* omit */ }
+          }
+          return blocks.join('\n\n');
+        };
+
+        workflowService.attachExecution({
+          runAgentTurn: async ({ workflowName, prompt, contextMessages, initiator }) => {
+            // The background prompt runner is THE headless-turn seam: it
+            // falls back widget session > any session > minted session,
+            // marks the ephemeral session by initiator (M90), applies a
+            // timeout, and inspects errorDetails. Never hand-roll this.
+            let text = prompt;
+            if (contextMessages > 0) {
+              const lines = await workflowContextFetcher(contextMessages);
+              if (lines.length) text = `Previous chat context:\n${lines.join('\n')}\n\n${prompt}`;
             }
+            const result = await api.commands.executeCommand<
+              { ok: true; resultText: string } | { ok: false; error: string }
+            >('chat.runBackgroundPrompt', {
+              text,
+              origin: 'workflow',
+              originLabel: workflowName,
+              initiator,
+              timeoutMs: 300_000,
+            });
+            if (!result || result.ok !== true) {
+              throw new Error((result && 'error' in result && result.error) || 'The agent turn failed.');
+            }
+            return result.resultText;
+          },
+          gatherFacts: gatherWorkflowFacts,
+          getExemplar: async (ref) => {
+            const command = ref.kind === 'template' ? 'canvas.getTemplateMarkdown' : 'canvas.getPageMarkdown';
+            const res = await api.commands.executeCommand<{ markdown?: string } | null>(command, ref.id);
+            const md = res?.markdown ?? null;
+            // Participant precedent: hard cap injected exemplar content.
+            return md && md.length > 6000 ? `${md.slice(0, 6000)}\n[truncated]` : md;
           },
           runCommand: async (commandId, args) => {
             const cmd = api.services.has(ICommandService)

@@ -14,8 +14,9 @@ const NODE_W = 96;
 const NODE_H = 34;
 const PAD = 14;
 
-function familyOf(kind: WorkflowNode['kind']): 'trigger' | 'control' | 'action' {
+function familyOf(kind: WorkflowNode['kind']): 'trigger' | 'context' | 'control' | 'action' {
   if (kind.startsWith('trigger.')) return 'trigger';
+  if (kind.startsWith('context.')) return 'context';
   if (kind.startsWith('control.')) return 'control';
   return 'action';
 }

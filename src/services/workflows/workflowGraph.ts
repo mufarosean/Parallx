@@ -83,6 +83,10 @@ function validateNode(n: WorkflowNode): string | null {
       return (n.actor || n.verb || n.source)
         ? null
         : 'event trigger matches everything. Give it at least one filter.';
+    case 'context.facts':
+      return null;
+    case 'context.exemplar':
+      return n.ref?.id ? null : 'no template or page picked yet.';
     case 'control.cooldown':
       // ≤0 hours runs as an OPEN gate (the runner's contract) — warn only.
       return Number.isFinite(n.hours) && n.hours > 0 ? null : 'cooldown has no duration, so the gate is always open.';

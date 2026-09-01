@@ -21,14 +21,23 @@ import { downstreamOf, executionOrder, interpolate } from './workflowGraph.js';
 // ── Injected execution surface ──────────────────────────────────────────────
 
 export interface WorkflowExecutionDeps {
-  /** Run an isolated agent turn (the cron-parity ephemeral path); resolves
-   *  the final assistant text, throws on failure. */
+  /** Run an isolated agent turn (the background-prompt-runner seam);
+   *  resolves the final assistant text, throws on failure. `initiator`
+   *  decides the consent posture: automatic firings are 'autonomous'
+   *  (the M90 dial), Run Now is 'user'. */
   readonly runAgentTurn: (req: {
     readonly workflowId: string;
     readonly workflowName: string;
     readonly prompt: string;
     readonly contextMessages: number;
+    readonly initiator: 'user' | 'autonomous';
   }) => Promise<string>;
+  /** Gather the deterministic facts bundle as one prompt block. */
+  readonly gatherFacts?: (include: {
+    planner?: boolean; activity?: boolean; sync?: boolean; pages?: boolean;
+  }) => Promise<string>;
+  /** A template's or page's content as markdown (format exemplar). */
+  readonly getExemplar?: (ref: { kind: 'template' | 'page'; id: string }) => Promise<string | null>;
   /** Execute a workbench command, origin-stamped as this workflow. */
   readonly runCommand: (commandId: string, args: readonly unknown[], origin: string) => Promise<unknown>;
   /** Execute a registered tool; the normal enablement/consent path applies. */
@@ -57,6 +66,7 @@ export async function executeWorkflowRun(
   ctx: WorkflowTriggerContext,
   deps: WorkflowExecutionDeps,
   ledger: CooldownLedger,
+  opts: { automatic: boolean } = { automatic: true },
 ): Promise<WorkflowRun> {
   const startedAt = Date.now();
   const runId = `wfrun-${startedAt}-${++_runCounter}`;
@@ -66,6 +76,30 @@ export async function executeWorkflowRun(
 
   const traces: WorkflowNodeTrace[] = [];
   const skipped = new Set<string>();
+  /** Context-node outputs: labeled blocks compiled into mission prompts. */
+  const contextBlocks = new Map<string, string>();
+  const inbound = new Map<string, string[]>();
+  for (const e of doc.edges) {
+    const arr = inbound.get(e.to) ?? [];
+    arr.push(e.from);
+    inbound.set(e.to, arr);
+  }
+  /** Every context block reachable UPSTREAM of a node, in stable order. */
+  const upstreamContext = (nodeId: string): string[] => {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    const walk = (id: string): void => {
+      for (const from of inbound.get(id) ?? []) {
+        if (seen.has(from)) continue;
+        seen.add(from);
+        walk(from);
+        const block = contextBlocks.get(from);
+        if (block) out.push(block);
+      }
+    };
+    walk(nodeId);
+    return out;
+  };
   /** Cooldown gates that let the run through — stamped only if some
    *  downstream action SUCCEEDS (heartbeat ledger semantics: a failed
    *  delivery retries on the next firing instead of burning the window). */
@@ -98,6 +132,28 @@ export async function executeWorkflowRun(
 
     try {
       switch (node.kind) {
+        case 'context.facts': {
+          const text = deps.gatherFacts
+            ? await deps.gatherFacts(node.include ?? {})
+            : '';
+          if (text.trim()) contextBlocks.set(node.id, text.trim());
+          record(node, 'ok', t0, text.trim() ? `${text.trim().split('\n').length} lines gathered` : 'nothing to gather');
+          break;
+        }
+
+        case 'context.exemplar': {
+          const md = deps.getExemplar ? await deps.getExemplar(node.ref) : null;
+          if (md?.trim()) {
+            contextBlocks.set(node.id,
+              `FORMAT EXEMPLAR (follow this structure for any page or report you produce):\n${md.trim()}`);
+            record(node, 'ok', t0, `${node.ref.name ?? node.ref.id} injected`);
+          } else {
+            record(node, 'error', t0, undefined, `could not load ${node.ref.kind} "${node.ref.name ?? node.ref.id}"`);
+            for (const d of downstreamOf(doc, id)) skipped.add(d);
+          }
+          break;
+        }
+
         case 'control.cooldown': {
           const key = `${doc.id}:${node.key ?? 'default'}`;
           const since = ledger.sinceStamp(key);
@@ -123,12 +179,18 @@ export async function executeWorkflowRun(
             gateNode(node, id);
             break;
           }
-          const prompt = interpolate(node.prompt, ctx);
+          // COMPILE the mission: upstream context blocks, then the task.
+          const blocks = upstreamContext(id);
+          const mission = interpolate(node.prompt, ctx);
+          const prompt = blocks.length > 0
+            ? `${blocks.join('\n\n')}\n\nTask: ${mission}`
+            : mission;
           const text = await deps.runAgentTurn({
             workflowId: doc.id,
             workflowName: doc.name,
             prompt,
             contextMessages: clamp(node.contextMessages ?? 0, 0, 10),
+            initiator: opts.automatic ? 'autonomous' : 'user',
           });
           record(node, 'ok', t0, oneLine(text) || 'turn completed');
           break;

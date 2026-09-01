@@ -154,6 +154,56 @@ describe('the destructive class', () => {
   });
 });
 
+describe('the prompt compiler', () => {
+  it('upstream context blocks compile into the mission, in walk order', async () => {
+    const nodes: WorkflowNode[] = [
+      trigger,
+      { id: 'f', label: 'Facts', kind: 'context.facts' },
+      { id: 'x', label: 'Format', kind: 'context.exemplar', ref: { kind: 'template', id: 'meeting-notes', name: 'Meeting Notes' } },
+      { id: 'g', label: 'Mission', kind: 'action.agentTurn', prompt: 'Write the report.' },
+    ];
+    const edges = [
+      { from: 't', to: 'f' }, { from: 'f', to: 'x' }, { from: 'x', to: 'g' },
+    ];
+    const deps = makeDeps({
+      gatherFacts: vi.fn(async () => 'PLANNER:\n- Study Meyers'),
+      getExemplar: vi.fn(async () => '# Report\n## Highlights'),
+    });
+    const run = await executeWorkflowRun(doc(nodes, edges), trigger, ctx, deps, makeLedger());
+    expect(run.status).toBe('ok');
+    const prompt = (deps.runAgentTurn as ReturnType<typeof vi.fn>).mock.calls[0][0].prompt as string;
+    expect(prompt.indexOf('PLANNER:')).toBeGreaterThanOrEqual(0);
+    expect(prompt.indexOf('FORMAT EXEMPLAR')).toBeGreaterThan(prompt.indexOf('PLANNER:'));
+    expect(prompt.endsWith('Task: Write the report.')).toBe(true);
+    expect(run.nodes.find((n) => n.nodeId === 'f')!.status).toBe('ok');
+  });
+
+  it('a failed exemplar skips its downstream instead of running formatless', async () => {
+    const nodes: WorkflowNode[] = [
+      trigger,
+      { id: 'x', label: 'Format', kind: 'context.exemplar', ref: { kind: 'template', id: 'ghost' } },
+      { id: 'g', label: 'Mission', kind: 'action.agentTurn', prompt: 'Write it.' },
+    ];
+    const edges = [{ from: 't', to: 'x' }, { from: 'x', to: 'g' }];
+    const deps = makeDeps({ getExemplar: vi.fn(async () => null) });
+    const run = await executeWorkflowRun(doc(nodes, edges), trigger, ctx, deps, makeLedger());
+    expect(run.status).toBe('error');
+    expect(deps.runAgentTurn).not.toHaveBeenCalled();
+    expect(run.nodes.find((n) => n.nodeId === 'g')!.status).toBe('skipped');
+  });
+
+  it('initiator follows the firing: automatic is autonomous, manual is user', async () => {
+    const nodes: WorkflowNode[] = [trigger, { id: 'g', label: 'M', kind: 'action.agentTurn', prompt: 'go' }];
+    const edges = [{ from: 't', to: 'g' }];
+    const auto = makeDeps();
+    await executeWorkflowRun(doc(nodes, edges), trigger, ctx, auto, makeLedger());
+    expect(auto.runAgentTurn).toHaveBeenCalledWith(expect.objectContaining({ initiator: 'autonomous' }));
+    const manual = makeDeps();
+    await executeWorkflowRun(doc(nodes, edges), trigger, ctx, manual, makeLedger(), { automatic: false });
+    expect(manual.runAgentTurn).toHaveBeenCalledWith(expect.objectContaining({ initiator: 'user' }));
+  });
+});
+
 describe('budgets and interpolation', () => {
   it('the agent-turn budget stops a runaway graph', async () => {
     const nodes: WorkflowNode[] = [trigger];

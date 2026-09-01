@@ -398,3 +398,37 @@
 .wfe__palette-dot.is-trigger { background: var(--px-accent); }
 .wfe__palette-dot.is-control { background: var(--px-warning, var(--px-border-strong)); }
 .wfe__palette-dot.is-action  { background: var(--px-border-strong); }
+
+/* ── Prompt-compiler additions ── */
+
+.wfe .is-family-context > .px-node-canvas__node-body {
+  border-left: 3px solid var(--px-success, var(--px-accent));
+}
+.wfe .is-family-context .wfe-card__ic,
+.wfe .is-family-context .wfe-card__kind { color: var(--px-success, var(--px-accent)); }
+
+.wfe__palette-dot.is-context { background: var(--px-success, var(--px-accent)); }
+
+.wfe-ins__check {
+  display: flex;
+  align-items: center;
+  gap: var(--px-space-2);
+  font-size: var(--px-text-sm);
+  color: var(--px-text);
+  margin-bottom: var(--px-space-1);
+  cursor: pointer;
+}
+
+.wfe-ins__preview {
+  white-space: pre-wrap;
+  font-size: var(--px-text-xs);
+  font-family: var(--px-font-mono, monospace);
+  color: var(--px-text-secondary);
+  background: var(--px-bg);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-md);
+  padding: var(--px-space-2);
+  max-height: 60vh;
+  overflow-y: auto;
+  margin-bottom: var(--px-space-2);
+}

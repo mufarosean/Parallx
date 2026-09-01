@@ -39,9 +39,23 @@ interface PaletteEntry {
   readonly kind: WorkflowNode['kind'];
   readonly label: string;
   readonly icon: string;
-  readonly family: 'trigger' | 'control' | 'action';
+  readonly family: 'trigger' | 'context' | 'control' | 'action';
   readonly make: (id: string, x: number, y: number) => WorkflowNode;
 }
+
+/** Kinds kept OUT of the palette (prompt-compiler thesis: tools live in
+ *  the mission text, by exact name; prescriptive nodes are power-user
+ *  compat only). Existing documents still render via HIDDEN_META. */
+const HIDDEN_META: readonly PaletteEntry[] = [
+  {
+    kind: 'action.command', label: 'Command', icon: 'terminal', family: 'action',
+    make: (id, x, y) => ({ id, x, y, label: 'Command', kind: 'action.command', commandId: '' }),
+  },
+  {
+    kind: 'action.tool', label: 'Tool', icon: 'wrench', family: 'action',
+    make: (id, x, y) => ({ id, x, y, label: 'Tool', kind: 'action.tool', toolName: '' }),
+  },
+];
 
 const PALETTE: readonly PaletteEntry[] = [
   {
@@ -57,6 +71,14 @@ const PALETTE: readonly PaletteEntry[] = [
     make: (id, x, y) => ({ id, x, y, label: 'Event', kind: 'trigger.event', source: 'tool' }),
   },
   {
+    kind: 'context.facts', label: 'App Facts', icon: 'list-checks', family: 'context',
+    make: (id, x, y) => ({ id, x, y, label: 'App Facts', kind: 'context.facts' }),
+  },
+  {
+    kind: 'context.exemplar', label: 'Format', icon: 'layout-template', family: 'context',
+    make: (id, x, y) => ({ id, x, y, label: 'Format', kind: 'context.exemplar', ref: { kind: 'template', id: '' } }),
+  },
+  {
     kind: 'control.cooldown', label: 'Cooldown', icon: 'timer', family: 'control',
     make: (id, x, y) => ({ id, x, y, label: 'Cooldown', kind: 'control.cooldown', hours: 24 }),
   },
@@ -65,20 +87,12 @@ const PALETTE: readonly PaletteEntry[] = [
     make: (id, x, y) => ({ id, x, y, label: 'Agent Turn', kind: 'action.agentTurn', prompt: 'Describe the task here.' }),
   },
   {
-    kind: 'action.command', label: 'Command', icon: 'terminal', family: 'action',
-    make: (id, x, y) => ({ id, x, y, label: 'Command', kind: 'action.command', commandId: '' }),
-  },
-  {
-    kind: 'action.tool', label: 'Tool', icon: 'wrench', family: 'action',
-    make: (id, x, y) => ({ id, x, y, label: 'Tool', kind: 'action.tool', toolName: '' }),
-  },
-  {
     kind: 'action.notify', label: 'Notify', icon: 'bell', family: 'action',
     make: (id, x, y) => ({ id, x, y, label: 'Notify', kind: 'action.notify', message: 'Something happened.' }),
   },
 ];
 
-const KIND_META = new Map(PALETTE.map((p) => [p.kind, p]));
+const KIND_META = new Map([...PALETTE, ...HIDDEN_META].map((p) => [p.kind, p]));
 
 /** One line of a node's configuration for the card face. */
 function nodeSummary(n: WorkflowNode): string {
@@ -90,6 +104,16 @@ function nodeSummary(n: WorkflowNode): string {
         .filter(Boolean);
       return parts.length ? parts.join(' · ') : 'matches everything';
     }
+    case 'context.facts': {
+      const inc = n.include ?? {};
+      const all = inc.planner === undefined && inc.activity === undefined && inc.sync === undefined && inc.pages === undefined;
+      const parts = all
+        ? ['planner', 'activity', 'sync', 'pages']
+        : Object.entries(inc).filter(([, v]) => v).map(([k]) => k);
+      return parts.length ? `injects ${parts.join(' · ')}` : 'nothing selected';
+    }
+    case 'context.exemplar':
+      return n.ref?.id ? `format: ${n.ref.name ?? n.ref.id}` : 'no format picked';
     case 'control.cooldown': return n.hours > 0 ? `${n.hours}h between deliveries` : 'always open';
     case 'action.agentTurn': return oneLine(n.prompt, 64);
     case 'action.command': return n.commandId || 'no command set';
@@ -107,6 +131,10 @@ export interface WorkflowEditorDeps {
   readonly service: WorkflowService;
   /** Available tool names for the tool-action picker (best effort). */
   readonly listTools?: () => readonly { name: string; description: string }[];
+  /** Canvas templates for the Format picker. */
+  readonly listTemplates?: () => Promise<readonly { id: string; name: string; description: string }[]>;
+  /** Workspace pages for the Format picker (title + id). */
+  readonly listPages?: () => Promise<readonly { id: string; title: string }[]>;
 }
 
 // ── The pane ────────────────────────────────────────────────────────────────
@@ -227,7 +255,9 @@ export class WorkflowEditorPane implements IDisposable {
       if (entry.family !== lastFamily) {
         lastFamily = entry.family;
         const fam = $('div.wfe__palette-family');
-        fam.textContent = entry.family === 'trigger' ? 'Triggers' : entry.family === 'control' ? 'Control' : 'Actions';
+        fam.textContent = entry.family === 'trigger' ? 'Triggers'
+          : entry.family === 'context' ? 'Context'
+          : entry.family === 'control' ? 'Control' : 'Actions';
         palette.appendChild(fam);
       }
       const btn = $('button.wfe__palette-item') as HTMLButtonElement;
@@ -318,6 +348,11 @@ export class WorkflowEditorPane implements IDisposable {
     }
     this._paintAll();
     if (first) {
+      // The mission is the workflow's centre: open with it selected so
+      // the inspector shows the prompt, not an empty state. (After
+      // _paintAll — setSelection filters against the RENDERED nodes.)
+      const mission = doc.nodes.find((n) => n.kind === 'action.agentTurn');
+      if (mission) this._canvas.setSelection([mission.id]);
       // fitToContent needs layout — defer one frame.
       requestAnimationFrame(() => { this._canvas?.fitToContent(); });
     }
@@ -661,11 +696,51 @@ export class WorkflowEditorPane implements IDisposable {
           'workflows sharing a key share the cooldown');
         break;
       }
+      case 'context.facts': {
+        const note = $('div.wfe-ins__note');
+        note.textContent = 'Injects live app facts above the mission: connect this into an Agent Turn.';
+        this._inspector.appendChild(note);
+        const inc = node.include ?? {};
+        const all = inc.planner === undefined && inc.activity === undefined && inc.sync === undefined && inc.pages === undefined;
+        const opts: Array<{ key: 'planner' | 'activity' | 'sync' | 'pages'; label: string }> = [
+          { key: 'planner', label: 'Planner: today + open tasks' },
+          { key: 'activity', label: 'Recent activity' },
+          { key: 'sync', label: 'Sync health' },
+          { key: 'pages', label: 'Workspace pages' },
+        ];
+        for (const opt of opts) {
+          const row = $('label.wfe-ins__check') as HTMLLabelElement;
+          const box = document.createElement('input');
+          box.type = 'checkbox';
+          box.checked = all || inc[opt.key] === true;
+          box.addEventListener('change', () => {
+            const current = node.include ?? { planner: true, activity: true, sync: true, pages: true };
+            this._patchNode(node.id, { include: { ...current, [opt.key]: box.checked } });
+          });
+          row.appendChild(box);
+          const t = document.createElement('span');
+          t.textContent = opt.label;
+          row.appendChild(t);
+          this._inspector.appendChild(row);
+        }
+        break;
+      }
+      case 'context.exemplar': {
+        const note = $('div.wfe-ins__note');
+        note.textContent = 'Injects a page or template as the FORMAT to follow. Connect it into an Agent Turn.';
+        this._inspector.appendChild(note);
+        this._exemplarPicker(node);
+        break;
+      }
       case 'action.agentTurn': {
-        this._textArea('Prompt', node.prompt, (v) => this._patchNode(node.id, { prompt: v }),
-          '{{trigger.summary}} and {{event.*}} fill in at run time');
+        this._textArea('Mission', node.prompt, (v) => this._patchNode(node.id, { prompt: v }),
+          'Write it in language. Name tools by their exact names when it matters; the model orchestrates.', 10);
         this._numberField('Context Messages', node.contextMessages ?? 0, 0, 10,
-          (v) => this._patchNode(node.id, { contextMessages: v }));
+          (v) => this._patchNode(node.id, { contextMessages: v }), 'recent chat lines to include');
+        const prev = $('button.wfe__btn') as HTMLButtonElement;
+        prev.textContent = 'Preview Compiled Prompt';
+        prev.addEventListener('click', () => { void this._showCompiledPreview(node.id); });
+        this._inspector.appendChild(prev);
         break;
       }
       case 'action.command': {
@@ -800,6 +875,61 @@ export class WorkflowEditorPane implements IDisposable {
     this._inspector.appendChild(back);
   }
 
+  /** Format picker: template dropdown + page dropdown, whichever loads. */
+  private _exemplarPicker(node: WorkflowNode & { kind: 'context.exemplar' }): void {
+    const wrap = $('div.wfe-ins__field');
+    wrap.appendChild(this._fieldLabel('Format Source'));
+    const dd = createDropdownHandle(wrap, {
+      items: [], placeholder: 'Loading formats\u2026', ariaLabel: 'Format source',
+    });
+    this._inspector.appendChild(wrap);
+    void (async () => {
+      const items: IDropdownItem[] = [];
+      try {
+        for (const t of (await this._deps.listTemplates?.()) ?? []) {
+          items.push({ value: `template:${t.id}`, label: `Template \u00b7 ${t.name}` });
+        }
+      } catch { /* templates unavailable */ }
+      try {
+        for (const p of ((await this._deps.listPages?.()) ?? []).slice(0, 40)) {
+          items.push({ value: `page:${p.id}`, label: `Page \u00b7 ${p.title || 'Untitled'}` });
+        }
+      } catch { /* pages unavailable */ }
+      const current = node.ref?.id ? `${node.ref.kind}:${node.ref.id}` : undefined;
+      dd.setItems(items, current);
+    })();
+    this._disposables.push(dd.onDidChange((v) => {
+      const i = v.indexOf(':');
+      if (i < 0) return;
+      const kind = v.slice(0, i) as 'template' | 'page';
+      const id = v.slice(i + 1);
+      const items: readonly IDropdownItem[] = [];
+      void items;
+      this._patchNode(node.id, { ref: { kind, id, name: undefined } });
+    }));
+  }
+
+  /** Show the mission's compiled prompt: what will actually be sent. */
+  private async _showCompiledPreview(nodeId: string): Promise<void> {
+    this._inspector.textContent = '';
+    this._inspector.appendChild(this._sectionHead('Compiled Prompt'));
+    const note = $('div.wfe-ins__note');
+    note.textContent = 'Exactly what the agent receives when this fires (context blocks resolved live).';
+    this._inspector.appendChild(note);
+    const pre = $('div.wfe-ins__preview');
+    pre.textContent = 'Compiling\u2026';
+    this._inspector.appendChild(pre);
+    const back = $('button.wfe__btn') as HTMLButtonElement;
+    back.textContent = 'Back';
+    back.addEventListener('click', () => this._paintInspector());
+    this._inspector.appendChild(back);
+    try {
+      pre.textContent = await this._deps.service.compileMissionPreview(this._workflowId, nodeId);
+    } catch (err) {
+      pre.textContent = err instanceof Error ? err.message : String(err);
+    }
+  }
+
   // ── Field helpers ─────────────────────────────────────────────────────────
 
   private _sectionHead(text: string): HTMLElement {
@@ -858,12 +988,12 @@ export class WorkflowEditorPane implements IDisposable {
     this._inspector.appendChild(wrap);
   }
 
-  private _textArea(label: string, value: string, commit: (v: string) => void, hint?: string): void {
+  private _textArea(label: string, value: string, commit: (v: string) => void, hint?: string, rows = 4): void {
     const wrap = $('div.wfe-ins__field');
     wrap.appendChild(this._fieldLabel(label));
     const ta = $('textarea.wfe-ins__textarea') as HTMLTextAreaElement;
     ta.value = value;
-    ta.rows = 4;
+    ta.rows = rows;
     ta.addEventListener('keydown', (e) => e.stopPropagation());
     ta.addEventListener('blur', () => { if (ta.value !== value) commit(ta.value); });
     wrap.appendChild(ta);

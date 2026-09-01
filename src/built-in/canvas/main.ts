@@ -1087,6 +1087,37 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
     }),
   );
 
+  // canvas.listTemplates / canvas.getTemplateMarkdown — the workflow
+  // editor's format picker and the mission compiler's exemplar fetch.
+  // Same cross-extension read-surface discipline as getPageMarkdown.
+  context.subscriptions.push(
+    api.commands.registerCommand('canvas.listTemplates', async () => {
+      try {
+        const { getAllCanvasTemplates } = await import('./canvasTemplates.js');
+        const templates = await getAllCanvasTemplates(api as never);
+        return templates.map((t) => ({ id: t.id, name: t.name, description: t.description }));
+      } catch (err) {
+        console.warn('[Canvas] listTemplates failed:', err);
+        return [];
+      }
+    }),
+  );
+  context.subscriptions.push(
+    api.commands.registerCommand('canvas.getTemplateMarkdown', async (...args: unknown[]) => {
+      const templateId = typeof args[0] === 'string' ? args[0] : null;
+      if (!templateId) return null;
+      try {
+        const { getAllCanvasTemplates } = await import('./canvasTemplates.js');
+        const t = (await getAllCanvasTemplates(api as never)).find((x) => x.id === templateId);
+        if (!t) return null;
+        return { id: t.id, name: t.name, markdown: tiptapJsonToMarkdown(t.buildDoc(), t.name) };
+      } catch (err) {
+        console.warn('[Canvas] getTemplateMarkdown failed:', err);
+        return null;
+      }
+    }),
+  );
+
   // canvas.exportPdf (M93) — open the print-style PDF export dialog for the
   // ACTIVE canvas editor. Bound to Ctrl+P scoped by when-clause, so Quick
   // Open keeps Ctrl+P everywhere else.

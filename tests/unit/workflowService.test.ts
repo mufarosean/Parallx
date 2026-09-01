@@ -56,7 +56,7 @@ describe('CRUD', () => {
 
   it('installTemplate lands disabled; migrateCronJob preserves provenance', () => {
     const { service } = makeService();
-    const t = service.installTemplate('morning-digest');
+    const t = service.installTemplate('morning-report');
     expect(t.enabled).toBe(false);
     const m = service.migrateCronJob({
       id: 'cron-3', name: 'Old Job', schedule: { every: '2h' },
@@ -291,6 +291,27 @@ describe('the arbiter', () => {
     const manual = await service.runNow(b.id);
     expect(manual.status).toBe('ok');
     expect(service.getRuns(a.id)[0].status).toBe('ok');
+  });
+});
+
+describe('compileMissionPreview', () => {
+  it('resolves context blocks live and appends the mission', async () => {
+    const deps = makeDeps();
+    (deps as { gatherFacts?: unknown }).gatherFacts = vi.fn(async () => 'PLANNER:\n- one task');
+    const { service } = makeService(deps);
+    const wf = service.addWorkflow({
+      name: 'Report', class: 'quiet', enabled: false, source: 'user',
+      nodes: [
+        { id: 't', label: 'Manual', kind: 'trigger.manual' },
+        { id: 'f', label: 'Facts', kind: 'context.facts' },
+        { id: 'g', label: 'Mission', kind: 'action.agentTurn', prompt: 'Write the report.' },
+      ],
+      edges: [{ from: 't', to: 'f' }, { from: 'f', to: 'g' }],
+    });
+    const preview = await service.compileMissionPreview(wf.id, 'g');
+    expect(preview).toContain('PLANNER:');
+    expect(preview.endsWith('Task: Write the report.')).toBe(true);
+    await expect(service.compileMissionPreview(wf.id, 't')).rejects.toThrow(/Agent Turn/);
   });
 });
 

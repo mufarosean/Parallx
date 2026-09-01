@@ -54,6 +54,29 @@ export interface EventTriggerNode extends WorkflowNodeBase {
   readonly source?: string;
 }
 
+/**
+ * Context nodes: the "information" a mission prompt is BUILT from
+ * (the prompt-compiler thesis). Each produces one labeled text block;
+ * blocks from upstream context nodes are injected above the mission
+ * text at compile time. Deterministic, consent-free reads only.
+ */
+export interface FactsContextNode extends WorkflowNodeBase {
+  readonly kind: 'context.facts';
+  /** Which fact blocks to gather (default: all). */
+  readonly include?: {
+    readonly planner?: boolean;
+    readonly activity?: boolean;
+    readonly sync?: boolean;
+    readonly pages?: boolean;
+  };
+}
+
+/** A canvas template or page injected as a FORMAT EXEMPLAR (markdown). */
+export interface ExemplarContextNode extends WorkflowNodeBase {
+  readonly kind: 'context.exemplar';
+  readonly ref: { readonly kind: 'template' | 'page'; readonly id: string; readonly name?: string };
+}
+
 export interface CooldownControlNode extends WorkflowNodeBase {
   readonly kind: 'control.cooldown';
   /** Ledger key — defaults to the workflow id when omitted. */
@@ -63,7 +86,8 @@ export interface CooldownControlNode extends WorkflowNodeBase {
 
 export interface AgentTurnActionNode extends WorkflowNodeBase {
   readonly kind: 'action.agentTurn';
-  /** May carry {{trigger.*}} placeholders — see interpolate(). */
+  /** The MISSION, in language. May name tools by their exact registered
+   *  names; the model orchestrates. {{trigger.*}} placeholders apply. */
   readonly prompt: string;
   /** Recent chat messages injected as context (0-10, cron parity). */
   readonly contextMessages?: number;
@@ -88,8 +112,9 @@ export interface NotifyActionNode extends WorkflowNodeBase {
 }
 
 export type WorkflowTriggerNode = ScheduleTriggerNode | ManualTriggerNode | EventTriggerNode;
+export type WorkflowContextNode = FactsContextNode | ExemplarContextNode;
 export type WorkflowActionNode = AgentTurnActionNode | CommandActionNode | ToolActionNode | NotifyActionNode;
-export type WorkflowNode = WorkflowTriggerNode | CooldownControlNode | WorkflowActionNode;
+export type WorkflowNode = WorkflowTriggerNode | WorkflowContextNode | CooldownControlNode | WorkflowActionNode;
 
 export function isTriggerNode(n: WorkflowNode): n is WorkflowTriggerNode {
   return n.kind.startsWith('trigger.');
@@ -97,6 +122,10 @@ export function isTriggerNode(n: WorkflowNode): n is WorkflowTriggerNode {
 
 export function isActionNode(n: WorkflowNode): n is WorkflowActionNode {
   return n.kind.startsWith('action.');
+}
+
+export function isContextNode(n: WorkflowNode): n is WorkflowContextNode {
+  return n.kind.startsWith('context.');
 }
 
 // ── Edges & the document ────────────────────────────────────────────────────
