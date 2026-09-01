@@ -112,13 +112,19 @@ export const ConceptMap = Node.create({
           });
           ta.focus();
         } else {
-          editBtn.addEventListener('click', (e) => {
+          const startEdit = (e: Event): void => {
             e.stopPropagation();
             editing = true;
             render();
-          });
+          };
+          editBtn.addEventListener('click', startEdit);
           const body = document.createElement('div');
           body.innerHTML = renderMindMapSvg(attrs.src, { dir: attrs.dir, renderMath });
+          // Clicking any node opens the outline right at the source of
+          // truth — the map invites touch, so touching it must do something.
+          body.addEventListener('click', (e) => {
+            if ((e.target as HTMLElement | null)?.closest?.('.parallx-mindmap__node')) startEdit(e);
+          });
           dom.appendChild(body);
         }
       };
@@ -133,6 +139,16 @@ export const ConceptMap = Node.create({
           render();
           return true;
         },
+        // Without these, the block is DEAD to the pointer: ProseMirror
+        // turns a mousedown on the tools into a node SELECTION, and every
+        // innerHTML rewrite triggers a reconciliation that clobbers the
+        // NodeView's DOM (the mathBlock precedent returns both).
+        stopEvent: (event: Event) => {
+          if (editing) return true;
+          const t = event.target as HTMLElement | null;
+          return !!t?.closest?.('.canvas-conceptmap__tool, .canvas-conceptmap__editor, .parallx-mindmap__node');
+        },
+        ignoreMutation: () => true,
       };
     };
   },
