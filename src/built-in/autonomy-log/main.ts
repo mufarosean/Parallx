@@ -52,7 +52,8 @@ import { IWorkflowService, type WorkflowService } from '../../services/workflows
 import type { WorkflowDoc, WorkflowRun } from '../../services/workflows/workflowTypes.js';
 import { isTriggerNode } from '../../services/workflows/workflowTypes.js';
 import { describeTriggerNode } from '../../services/workflows/workflowGraph.js';
-import { WORKFLOW_TEMPLATES } from '../../services/workflows/workflowLibrary.js';
+import { WORKFLOW_TEMPLATES, cronJobToWorkflow } from '../../services/workflows/workflowLibrary.js';
+import { renderWorkflowThumbnail } from './workflowThumbnail.js';
 import { WorkflowEditorPane } from './workflowEditorPane.js';
 import { ISettingsRegistryService } from '../../services/serviceTypes.js';
 import { ILanguageModelToolsService } from '../../services/chatTypes.js';
@@ -803,6 +804,10 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
     for (const [m, btn] of Object.entries(tabByMode)) {
       btn?.classList.toggle('autonomy-log-tab--active', m === currentMode);
     }
+    // Mark-all-read / Clear act on the LOG — dead weight on the Workflows tab.
+    const logActions = currentMode !== 'workflows';
+    markAll.style.display = logActions ? '' : 'none';
+    clearBtn.style.display = logActions ? '' : 'none';
   }
 
   function paintFilters(): void {
@@ -974,6 +979,9 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
 
     const head = $('div.wf-row__head');
     head.appendChild($(`span.as-cell__dot.is-${wf.enabled ? 'on' : 'off'}`));
+    const kindIc = $('span.wf-row__kind-ic');
+    kindIc.innerHTML = getIcon(triggerIconFor(wf));
+    head.appendChild(kindIc);
     const name = $('span.wf-row__name');
     name.textContent = wf.name;
     head.appendChild(name);
@@ -1052,50 +1060,99 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
     return row;
   }
 
-  function appendWorkflowGallery(target: HTMLElement): void {
-    const service = workflowService!;
-    const gallery = $('div.wf-gallery');
-    const head = $('div.wf-gallery__head');
-    head.textContent = 'Add a workflow';
-    gallery.appendChild(head);
-    const chips = $('div.autonomy-guide__chips');
-    const newChip = $('button.autonomy-guide__chip') as HTMLButtonElement;
-    newChip.appendChild(iconSpan('plus', 'autonomy-guide__chip-ic'));
-    const newLabel = document.createElement('span');
-    newLabel.textContent = 'New Workflow';
-    newChip.appendChild(newLabel);
-    newChip.title = 'Start from a blank graph in the editor.';
-    newChip.addEventListener('click', () => { void runCommand?.('workflows.new'); });
-    chips.appendChild(newChip);
-    for (const t of WORKFLOW_TEMPLATES) {
-      const chip = $('button.autonomy-guide__chip') as HTMLButtonElement;
-      chip.appendChild(iconSpan('git-branch', 'autonomy-guide__chip-ic'));
-      const label = document.createElement('span');
-      label.textContent = t.name;
-      chip.appendChild(label);
-      chip.title = t.description;
-      chip.addEventListener('click', () => {
-        try { service.installTemplate(t.key); } catch (err) { console.warn('[AutonomyLog] template install failed:', err); }
-      });
-      chips.appendChild(chip);
+  interface GalleryCardSpec {
+    readonly name: string;
+    readonly desc: string;
+    readonly foot?: string;
+    readonly thumb?: SVGSVGElement;
+    readonly blank?: boolean;
+    readonly onPick: () => void;
+  }
+
+  function galleryCard(spec: GalleryCardSpec): HTMLElement {
+    const card = $('button.wf-card') as HTMLButtonElement;
+    const stage = $('div.wf-card__stage');
+    if (spec.thumb) {
+      stage.appendChild(spec.thumb);
+    } else if (spec.blank) {
+      stage.classList.add('wf-card__stage--blank');
+      const plus = $('span.wf-card__plus');
+      plus.innerHTML = getIcon('plus');
+      stage.appendChild(plus);
     }
-    // Existing cron jobs not yet migrated — the two-node promise.
+    card.appendChild(stage);
+    const name = $('div.wf-card__name');
+    name.textContent = spec.name;
+    card.appendChild(name);
+    const desc = $('div.wf-card__desc');
+    desc.textContent = spec.desc;
+    card.appendChild(desc);
+    if (spec.foot) {
+      const foot = $('div.wf-card__foot');
+      foot.textContent = spec.foot;
+      card.appendChild(foot);
+    }
+    card.addEventListener('click', spec.onPick);
+    return card;
+  }
+
+  /** The card gallery: blank canvas · templates · cron migrations. Every
+   *  card previews the REAL graph it installs. */
+  function buildGalleryGrid(): HTMLElement {
+    const service = workflowService!;
+    const grid = $('div.wf-gallery-grid');
+
+    grid.appendChild(galleryCard({
+      name: 'New Workflow',
+      desc: 'Start from a blank canvas and draw your own.',
+      foot: 'Blank canvas',
+      blank: true,
+      onPick: () => { void runCommand?.('workflows.new'); },
+    }));
+
+    for (const t of WORKFLOW_TEMPLATES) {
+      const triggerNode = t.nodes.find((n) => n.kind.startsWith('trigger.'));
+      grid.appendChild(galleryCard({
+        name: t.name,
+        desc: t.description,
+        foot: triggerNode ? describeTriggerNode(triggerNode) : undefined,
+        thumb: renderWorkflowThumbnail(t.nodes, t.edges),
+        onPick: () => {
+          try {
+            const doc = service.installTemplate(t.key);
+            void runCommand?.('workflows.openEditor', doc.id);
+          } catch (err) { console.warn('[AutonomyLog] template install failed:', err); }
+        },
+      }));
+    }
+
     const migrated = new Set(service.workflows.map((w) => w.migratedFromCronId).filter(Boolean));
     for (const job of cronService?.jobs ?? []) {
       if (migrated.has(job.id)) continue;
-      const chip = $('button.autonomy-guide__chip') as HTMLButtonElement;
-      chip.appendChild(iconSpan('calendar-clock', 'autonomy-guide__chip-ic'));
-      const label = document.createElement('span');
-      label.textContent = `Migrate: ${job.name}`;
-      chip.appendChild(label);
-      chip.title = 'Recreate this cron job as a workflow (the original stays until you remove it).';
-      chip.addEventListener('click', () => {
-        try { service.migrateCronJob(job); } catch (err) { console.warn('[AutonomyLog] cron migration failed:', err); }
-      });
-      chips.appendChild(chip);
+      const preview = cronJobToWorkflow(job, 'preview');
+      const triggerNode = preview.nodes.find((n) => n.kind.startsWith('trigger.'));
+      grid.appendChild(galleryCard({
+        name: job.name,
+        desc: 'Migrate this cron job into a workflow. The original job stays until you remove it.',
+        foot: triggerNode ? `From Cron · ${describeTriggerNode(triggerNode)}` : 'From Cron',
+        thumb: renderWorkflowThumbnail(preview.nodes, preview.edges),
+        onPick: () => {
+          try {
+            const doc = service.migrateCronJob(job);
+            void runCommand?.('workflows.openEditor', doc.id);
+          } catch (err) { console.warn('[AutonomyLog] cron migration failed:', err); }
+        },
+      }));
     }
-    gallery.appendChild(chips);
-    target.appendChild(gallery);
+    return grid;
+  }
+
+  function triggerIconFor(wf: WorkflowDoc): string {
+    const t = wf.nodes.find((n) => isTriggerNode(n));
+    if (!t) return 'circle-dashed';
+    if (t.kind === 'trigger.schedule') return 'calendar-clock';
+    if (t.kind === 'trigger.event') return 'radio';
+    return 'play';
   }
 
   function paintWorkflowList(): void {
@@ -1108,25 +1165,29 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
     const flows = workflowService.workflows;
     if (flows.length === 0) {
       emptyEl.innerHTML = '';
-      emptyEl.classList.add('autonomy-log-empty--guide');
-      const head = $('div.autonomy-guide__head');
-      head.appendChild(iconSpan('px-ai-mark', 'autonomy-guide__head-ic'));
-      const title = $('div.autonomy-guide__title');
-      title.textContent = 'No workflows yet';
-      head.appendChild(title);
-      emptyEl.appendChild(head);
-      const body = $('div.autonomy-guide__body');
-      body.textContent =
-        'A workflow is the app\u2019s standing behaviour as a document you can read: a trigger, '
-        + 'the steps it takes, and every run recorded. Start from a template, or migrate an existing cron job.';
-      emptyEl.appendChild(body);
-      appendWorkflowGallery(emptyEl);
+      emptyEl.classList.add('autonomy-log-empty--guide', 'wf-empty');
+      const hero = $('div.wf-empty__hero');
+      const title = $('div.wf-empty__title');
+      title.textContent = 'Automations you can read';
+      hero.appendChild(title);
+      const sub = $('div.wf-empty__sub');
+      sub.textContent =
+        'A workflow is a small graph: a trigger, the steps it takes, and every run recorded. '
+        + 'Pick one to see how it works — nothing runs until you enable it.';
+      hero.appendChild(sub);
+      emptyEl.appendChild(hero);
+      emptyEl.appendChild(buildGalleryGrid());
       emptyEl.style.display = '';
       return;
     }
     emptyEl.style.display = 'none';
     for (const wf of flows) listEl.appendChild(renderWorkflowRow(wf));
-    appendWorkflowGallery(listEl);
+    const foot = $('div.wf-gallery');
+    const head = $('div.wf-gallery__head');
+    head.textContent = 'Add More';
+    foot.appendChild(head);
+    foot.appendChild(buildGalleryGrid());
+    listEl.appendChild(foot);
   }
 
   function renderLiveEntry(entry: IAutonomyLogEntry): HTMLElement {
