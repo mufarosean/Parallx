@@ -53,6 +53,9 @@ import type { WorkflowDoc, WorkflowRun } from '../../services/workflows/workflow
 import { isTriggerNode } from '../../services/workflows/workflowTypes.js';
 import { describeTriggerNode } from '../../services/workflows/workflowGraph.js';
 import { WORKFLOW_TEMPLATES } from '../../services/workflows/workflowLibrary.js';
+import { WorkflowEditorPane } from './workflowEditorPane.js';
+import { ISettingsRegistryService } from '../../services/serviceTypes.js';
+import { ILanguageModelToolsService } from '../../services/chatTypes.js';
 
 // ── Local API type ───────────────────────────────────────────────────────────
 
@@ -63,6 +66,13 @@ interface ParallxApi {
       provider: { createView(container: HTMLElement): IDisposable },
       options?: { name?: string; icon?: string },
     ): IDisposable;
+  };
+  editors: {
+    registerEditorProvider(
+      typeId: string,
+      provider: { createEditorPane(container: HTMLElement, input?: unknown): IDisposable },
+    ): IDisposable;
+    openEditor(options: { typeId: string; title: string; icon?: string; instanceId: string }): Promise<unknown>;
   };
   commands: {
     registerCommand(commandId: string, handler: (...args: unknown[]) => unknown): IDisposable;
@@ -187,6 +197,81 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     },
   });
   context.subscriptions.push(viewDisposable);
+
+  // ── The workflow editor (docs/WORKFLOWS_BRIEF.md — the pane surface).
+  // Same registration pattern as canvas's database editor: a typed editor
+  // behind `workflow:<workflowId>` instance ids, openable from panel rows.
+  context.subscriptions.push(
+    api.editors.registerEditorProvider('workflow', {
+      createEditorPane(container: HTMLElement, input?: unknown): IDisposable {
+        const inputObj = input as { instanceId?: string; id?: string } | undefined;
+        const workflowId = inputObj?.instanceId ?? inputObj?.id ?? '';
+        resolveServices(api);
+        if (!workflowService) {
+          const msg = document.createElement('div');
+          msg.className = 'wfe__gone';
+          msg.textContent = 'Workflows are not available in this workspace.';
+          container.appendChild(msg);
+          return { dispose: () => msg.remove() };
+        }
+        return new WorkflowEditorPane(container, workflowId, {
+          service: workflowService,
+          listTools: () => {
+            try {
+              if (!api.services.has(ILanguageModelToolsService)) return [];
+              const tools = api.services.get<import('../../services/chatTypes.js').ILanguageModelToolsService>(ILanguageModelToolsService);
+              return tools.getToolDefinitions().map((t) => ({ name: t.name, description: t.description }));
+            } catch { return []; }
+          },
+        });
+      },
+    }),
+  );
+
+  context.subscriptions.push(api.commands.registerCommand('workflows.openEditor', async (...args: unknown[]) => {
+    const id = typeof args[0] === 'string' ? args[0] : '';
+    resolveServices(api);
+    const wf = workflowService?.getWorkflow(id);
+    if (!wf) return false;
+    await api.editors.openEditor({ typeId: 'workflow', title: wf.name, icon: 'git-branch', instanceId: wf.id });
+    return true;
+  }));
+
+  context.subscriptions.push(api.commands.registerCommand('workflows.new', async () => {
+    resolveServices(api);
+    if (!workflowService) return null;
+    const wf = workflowService.addWorkflow({
+      name: 'Untitled Workflow',
+      class: 'quiet',
+      enabled: false,
+      source: 'user',
+      nodes: [{ id: 'n1', label: 'Manual', kind: 'trigger.manual', x: 60, y: 120 }],
+      edges: [],
+    });
+    await api.editors.openEditor({ typeId: 'workflow', title: wf.name, icon: 'git-branch', instanceId: wf.id });
+    return wf.id;
+  }));
+
+  // The attention budget's schema — registered here (idempotently) because
+  // the settings registry is guaranteed alive at tool activation; the
+  // service reads it lazily through its observers (autonomyBootstrap).
+  try {
+    if (api.services.has(ISettingsRegistryService)) {
+      const registry = api.services.get<import('../../services/settingsRegistryService.js').ISettingsRegistryService>(ISettingsRegistryService);
+      if (!registry.getSchema('workflows.attentionInterruptionsPerDay')) {
+        registry.register({
+          key: 'workflows.attentionInterruptionsPerDay',
+          type: 'number',
+          default: 6,
+          min: 0,
+          max: 50,
+          scope: 'workspace',
+          description: 'How many times a day attention-class workflows may interrupt you automatically. Held firings are recorded in their run history.',
+          category: 'Autonomy',
+        });
+      }
+    }
+  } catch { /* settings registry unavailable — the default budget applies */ }
 
   const markAllCmd = api.commands.registerCommand('autonomyLog.markAllRead', () => {
     logService?.markRead();
@@ -863,6 +948,7 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
       case 'error': return 'failed';
       case 'gated': return 'awaiting approval';
       case 'cooldown': return 'held (cooldown)';
+      case 'held': return 'held (arbiter)';
       case 'running': return 'running';
     }
   }
@@ -904,6 +990,14 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
     }
 
     const actions = $('div.wf-row__actions');
+    const editBtn = $('button.as-cell__action') as HTMLButtonElement;
+    editBtn.textContent = 'Edit';
+    editBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      void runCommand?.('workflows.openEditor', wf.id);
+    });
+    actions.appendChild(editBtn);
+
     const runBtn = $('button.as-cell__action.is-primary') as HTMLButtonElement;
     runBtn.textContent = 'Run Now';
     runBtn.addEventListener('click', (e) => {
@@ -965,6 +1059,14 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
     head.textContent = 'Add a workflow';
     gallery.appendChild(head);
     const chips = $('div.autonomy-guide__chips');
+    const newChip = $('button.autonomy-guide__chip') as HTMLButtonElement;
+    newChip.appendChild(iconSpan('plus', 'autonomy-guide__chip-ic'));
+    const newLabel = document.createElement('span');
+    newLabel.textContent = 'New Workflow';
+    newChip.appendChild(newLabel);
+    newChip.title = 'Start from a blank graph in the editor.';
+    newChip.addEventListener('click', () => { void runCommand?.('workflows.new'); });
+    chips.appendChild(newChip);
     for (const t of WORKFLOW_TEMPLATES) {
       const chip = $('button.autonomy-guide__chip') as HTMLButtonElement;
       chip.appendChild(iconSpan('git-branch', 'autonomy-guide__chip-ic'));

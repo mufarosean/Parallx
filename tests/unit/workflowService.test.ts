@@ -235,6 +235,65 @@ describe('persistence', () => {
   });
 });
 
+describe('the arbiter', () => {
+  it('mutex: a firing while the group is busy is HELD and recorded, never silent', async () => {
+    const gate = { release: () => { /* replaced */ } };
+    const slow = new Promise<void>((r) => { gate.release = r; });
+    const deps = makeDeps();
+    deps.runAgentTurn = vi.fn(async () => { await slow; return 'done'; });
+    const { service } = makeService(deps);
+    const mk = (name: string) => service.addWorkflow({
+      name, class: 'quiet', enabled: true, source: 'user', mutexGroup: 'planner',
+      nodes: [
+        { id: 't', label: 'Manual', kind: 'trigger.manual' },
+        { id: 'g', label: 'Turn', kind: 'action.agentTurn', prompt: 'go' },
+      ],
+      edges: [{ from: 't', to: 'g' }],
+    });
+    const a = mk('First');
+    const b = mk('Second');
+    const first = service.runNow(a.id);
+    await new Promise((r) => setTimeout(r, 10)); // let it enter the group
+    const held = await service.runNow(b.id);
+    expect(held.status).toBe('held');
+    expect(held.error).toContain('mutex');
+    gate.release();
+    expect((await first).status).toBe('ok');
+    // Group freed — the second workflow runs now.
+    gate.release();
+    const retry = service.runNow(b.id);
+    gate.release();
+    expect((await retry).status).toBe('ok');
+  });
+
+  it('attention budget: automatic attention runs beyond the budget are HELD; Run Now never is', async () => {
+    const { service, deps } = makeService();
+    service.setObservers({ attentionBudgetPerDay: () => 1 });
+    const em = new Emitter<IActivityEvent>();
+    service.attachJournalFeed(em.event);
+    const mk = (name: string, verb: string) => service.addWorkflow({
+      name, class: 'attention', enabled: true, source: 'user',
+      nodes: [
+        { id: 't', label: 'Event', kind: 'trigger.event', verb },
+        { id: 'n', label: 'Notify', kind: 'action.notify', message: name },
+      ],
+      edges: [{ from: 't', to: 'n' }],
+    });
+    const a = mk('First Interrupt', 'alpha');
+    const b = mk('Second Interrupt', 'beta');
+    em.fire({ ts: Date.now(), actor: 'ai', verb: 'alpha', object: 'x', source: 'tool', count: 1 });
+    await vi.waitFor(() => expect(deps.notifications).toEqual(['First Interrupt']));
+    em.fire({ ts: Date.now(), actor: 'ai', verb: 'beta', object: 'x', source: 'tool', count: 1 });
+    await vi.waitFor(() => expect(service.getRuns(b.id)).toHaveLength(1));
+    expect(service.getRuns(b.id)[0].status).toBe('held');
+    expect(service.getRuns(b.id)[0].error).toContain('attention budget');
+    // The user's own Run Now is not an interruption — it always passes.
+    const manual = await service.runNow(b.id);
+    expect(manual.status).toBe('ok');
+    expect(service.getRuns(a.id)[0].status).toBe('ok');
+  });
+});
+
 describe('observers', () => {
   it('onRunRecorded sees every run; its failure never breaks the run', async () => {
     const { service } = makeService();

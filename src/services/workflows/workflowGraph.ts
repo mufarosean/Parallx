@@ -14,17 +14,22 @@ import {
 
 export interface WorkflowValidation {
   readonly ok: boolean;
+  /** Structural corruption — the document must NOT be stored like this. */
   readonly errors: readonly string[];
+  /** Quality issues — storable (you are mid-edit), surfaced in the UI,
+   *  and honest at run time (an empty command simply fails its node). */
+  readonly warnings: readonly string[];
   /** A workflow with no ACTIVE trigger is a draft, not a bug (n8n lesson). */
   readonly isDraft: boolean;
 }
 
 export function validateWorkflow(doc: WorkflowDoc): WorkflowValidation {
   const errors: string[] = [];
+  const warnings: string[] = [];
   const ids = new Set<string>();
 
   if (!doc.name.trim()) errors.push('The workflow needs a name.');
-  if (doc.nodes.length === 0) errors.push('The workflow has no nodes.');
+  if (doc.nodes.length === 0) warnings.push('The workflow has no nodes.');
   if (doc.nodes.length > MAX_NODES_PER_WORKFLOW) {
     errors.push(`Too many nodes (${doc.nodes.length}; the limit is ${MAX_NODES_PER_WORKFLOW}).`);
   }
@@ -33,8 +38,8 @@ export function validateWorkflow(doc: WorkflowDoc): WorkflowValidation {
     if (!n.id) { errors.push('A node is missing its id.'); continue; }
     if (ids.has(n.id)) errors.push(`Duplicate node id "${n.id}".`);
     ids.add(n.id);
-    const nodeError = validateNode(n);
-    if (nodeError) errors.push(`${n.label || n.id}: ${nodeError}`);
+    const issue = validateNode(n);
+    if (issue) warnings.push(`${n.label || n.id}: ${issue}`);
   }
 
   for (const e of doc.edges) {
@@ -51,8 +56,8 @@ export function validateWorkflow(doc: WorkflowDoc): WorkflowValidation {
   const triggers = doc.nodes.filter(isTriggerNode);
   const isDraft = triggers.length === 0;
 
-  // Every non-trigger node must be reachable from some trigger, or it is
-  // dead weight the runner would silently ignore — surface it instead.
+  // A non-trigger node unreachable from every trigger will never run —
+  // normal mid-edit state (you add, then connect), so it WARNS.
   if (!isDraft && errors.length === 0) {
     const reachable = new Set<string>();
     for (const t of triggers) {
@@ -60,12 +65,12 @@ export function validateWorkflow(doc: WorkflowDoc): WorkflowValidation {
     }
     for (const n of doc.nodes) {
       if (!isTriggerNode(n) && !reachable.has(n.id)) {
-        errors.push(`"${n.label}" is not connected to any trigger — it will never run.`);
+        warnings.push(`"${n.label}" is not connected to any trigger — it will never run.`);
       }
     }
   }
 
-  return { ok: errors.length === 0, errors, isDraft };
+  return { ok: errors.length === 0 && warnings.length === 0, errors, warnings, isDraft };
 }
 
 function validateNode(n: WorkflowNode): string | null {
@@ -79,7 +84,8 @@ function validateNode(n: WorkflowNode): string | null {
         ? null
         : 'event trigger matches EVERYTHING — give it at least one filter.';
     case 'control.cooldown':
-      return Number.isFinite(n.hours) && n.hours > 0 ? null : 'cooldown needs a positive number of hours.';
+      // ≤0 hours runs as an OPEN gate (the runner's contract) — warn only.
+      return Number.isFinite(n.hours) && n.hours > 0 ? null : 'cooldown has no duration — the gate is always open.';
     case 'action.agentTurn':
       return n.prompt.trim() ? null : 'agent turn has an empty prompt.';
     case 'action.command':

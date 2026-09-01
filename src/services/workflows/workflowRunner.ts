@@ -101,8 +101,9 @@ export async function executeWorkflowRun(
         case 'control.cooldown': {
           const key = `${doc.id}:${node.key ?? 'default'}`;
           const since = ledger.sinceStamp(key);
-          const windowMs = node.hours * 3_600_000;
-          if (since !== null && since < windowMs) {
+          // A non-positive duration is an OPEN gate (the editor warns).
+          const windowMs = Number.isFinite(node.hours) && node.hours > 0 ? node.hours * 3_600_000 : 0;
+          if (windowMs > 0 && since !== null && since < windowMs) {
             sawCooldownHold = true;
             for (const d of downstreamOf(doc, id)) skipped.add(d);
             const remainingH = Math.ceil((windowMs - since) / 3_600_000);

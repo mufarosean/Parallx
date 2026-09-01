@@ -129,11 +129,18 @@ export interface WorkflowDoc {
   readonly updatedAt: number;
   /** For migrated-cron workflows: the cron job this replaced. */
   readonly migratedFromCronId?: string;
+  /** Arbiter: firing order when several come due together (higher first). */
+  readonly priority?: number;
+  /** Arbiter: workflows sharing a group never run concurrently — the
+   *  later firing is HELD (recorded, visible) rather than interleaved. */
+  readonly mutexGroup?: string;
 }
 
 // ── Runs (runs are documents — every run produces a trace) ──────────────────
 
-export type WorkflowRunStatus = 'running' | 'ok' | 'error' | 'gated' | 'cooldown';
+/** `held` = the ARBITER stopped the firing before any node ran (mutex
+ *  busy, or the attention budget was spent) — recorded, never silent. */
+export type WorkflowRunStatus = 'running' | 'ok' | 'error' | 'gated' | 'cooldown' | 'held';
 export type NodeRunStatus = 'ok' | 'error' | 'gated' | 'skipped';
 
 export interface WorkflowNodeTrace {
@@ -159,6 +166,10 @@ export interface WorkflowRun {
   readonly trigger: { readonly nodeId: string; readonly kind: string; readonly summary: string };
   readonly nodes: readonly WorkflowNodeTrace[];
   readonly error?: string;
+  /** True for timer/event firings; false for the user's Run Now. The
+   *  attention budget counts only automatic runs — the user acting is
+   *  never an interruption. */
+  readonly automatic?: boolean;
 }
 
 /** The fired trigger's payload, available to placeholder interpolation. */

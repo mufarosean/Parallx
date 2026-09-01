@@ -51,7 +51,9 @@ describe('validateWorkflow', () => {
     expect(v.errors.join(' ')).toContain('cycle');
   });
 
-  it('rejects duplicate ids, unknown edge endpoints, and empty payloads', () => {
+  it('duplicate ids and unknown edge endpoints are ERRORS; empty payloads WARN', () => {
+    // The split is the editing contract: structural corruption blocks the
+    // save; a half-filled node is normal mid-edit truth and must store.
     const v = validateWorkflow(doc(
       [trigger(), notify('a1', '  '), { ...notify('a1'), id: 'a1' }],
       [{ from: 't1', to: 'ghost' }],
@@ -59,27 +61,30 @@ describe('validateWorkflow', () => {
     expect(v.ok).toBe(false);
     expect(v.errors.join(' ')).toContain('Duplicate');
     expect(v.errors.join(' ')).toContain('ghost');
-    expect(v.errors.join(' ')).toContain('empty message');
+    expect(v.warnings.join(' ')).toContain('empty message');
+    expect(v.errors.join(' ')).not.toContain('empty message');
   });
 
-  it('flags nodes unreachable from any trigger', () => {
+  it('nodes unreachable from any trigger WARN (you add, then connect)', () => {
     const v = validateWorkflow(doc([trigger(), notify('a1'), notify('a2')], [{ from: 't1', to: 'a1' }]));
-    expect(v.ok).toBe(false);
-    expect(v.errors.join(' ')).toContain('never run');
+    expect(v.errors).toEqual([]);
+    expect(v.warnings.join(' ')).toContain('never run');
   });
 
-  it('an unfiltered event trigger is rejected — it would match everything', () => {
+  it('an unfiltered event trigger WARNS — it would match everything', () => {
     const v = validateWorkflow(doc(
       [{ id: 't1', label: 'Any', kind: 'trigger.event' }, notify()],
       [{ from: 't1', to: 'a1' }],
     ));
-    expect(v.errors.join(' ')).toContain('filter');
+    expect(v.errors).toEqual([]);
+    expect(v.warnings.join(' ')).toContain('filter');
   });
 
-  it('cooldown hours must be positive', () => {
+  it('a durationless cooldown WARNS and reads as an open gate', () => {
     const v = validateWorkflow(doc([trigger(), cooldown('c1', 0), notify()],
       [{ from: 't1', to: 'c1' }, { from: 'c1', to: 'a1' }]));
-    expect(v.errors.join(' ')).toContain('positive');
+    expect(v.errors).toEqual([]);
+    expect(v.warnings.join(' ')).toContain('always open');
   });
 });
 

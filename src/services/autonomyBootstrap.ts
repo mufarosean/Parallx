@@ -33,6 +33,7 @@ import {
   IAutonomyLogService,
   IAutonomyPatternMemoryService,
   IAutonomyTaskRailService,
+  ISettingsRegistryService,
   IWorkspaceStorageService,
 } from './serviceTypes.js';
 
@@ -186,6 +187,18 @@ export async function bootstrapAutonomyServices(
 
   workflows.setObservers({
     isPaused: () => flags.isEnabled(FLAG_PAUSED_GLOBAL),
+    // Lazy read: the schema registers at tool activation (autonomy-log);
+    // before that — or if it never does — the default budget applies.
+    attentionBudgetPerDay: () => {
+      try {
+        const registry = services.tryGet(ISettingsRegistryService);
+        if (registry?.getSchema('workflows.attentionInterruptionsPerDay')) {
+          const v = registry.getValue<number>('workflows.attentionInterruptionsPerDay');
+          if (typeof v === 'number' && Number.isFinite(v)) return Math.max(0, Math.round(v));
+        }
+      } catch { /* default below */ }
+      return 6;
+    },
     onRunRecorded: (run: WorkflowRun) => {
       // UX feed (the Autonomy Log panel) — one entry per run.
       try {

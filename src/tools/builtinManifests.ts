@@ -255,6 +255,9 @@ export const AUTONOMY_LOG_MANIFEST: IToolManifest = {
   activationEvents: ['onStartupFinished'],
   contributes: {
     commands: [
+      { id: 'workflows.new', title: 'Workflows: New Workflow',
+        aiInvocable: true, aiDescription: 'Create a blank workflow and open it in the editor.' },
+      { id: 'workflows.openEditor', title: 'Workflows: Open Editor' },
       { id: 'autonomyLog.markAllRead', title: 'Autonomy Log: Mark All Read',
         aiInvocable: true, aiDescription: 'Mark every autonomy log entry as read.' },
       { id: 'autonomyLog.clear',       title: 'Autonomy Log: Clear',

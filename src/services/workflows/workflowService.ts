@@ -62,7 +62,13 @@ export interface IWorkflowObservers {
   readonly onRunRecorded?: (run: WorkflowRun) => void;
   /** Global pause — FLAG_PAUSED_GLOBAL. Automatic firings hold; manual runs pass. */
   readonly isPaused?: () => boolean;
+  /** Attention budget: automatic runs of attention-class workflows allowed
+   *  per day. Undefined uses the default. */
+  readonly attentionBudgetPerDay?: () => number;
 }
+
+/** Default daily interruption budget across attention-class workflows. */
+export const DEFAULT_ATTENTION_BUDGET_PER_DAY = 6;
 
 export interface IWorkflowChangeEvent {
   readonly kind: 'added' | 'updated' | 'removed' | 'ran' | 'bulk';
@@ -78,6 +84,8 @@ export class WorkflowService implements IDisposable {
   /** `${workflowId}:${nodeId}` → schedule runtime state. */
   private readonly _schedules = new Map<string, { anchorMs: number; nextRunAt: number | null }>();
   private readonly _lastEventFire = new Map<string, number>();
+  /** Mutex groups with a run currently in flight. */
+  private readonly _busyGroups = new Set<string>();
 
   private _timer: ReturnType<typeof setInterval> | null = null;
   private _disposed = false;
@@ -213,7 +221,8 @@ export class WorkflowService implements IDisposable {
 
   private _assertValid(doc: WorkflowDoc): void {
     const v = validateWorkflow(doc);
-    // Drafts (no trigger yet) are storable; structural errors are not.
+    // Drafts and warning-bearing documents are storable (mid-edit truth);
+    // structural corruption is not.
     if (v.errors.length > 0) {
       throw new Error(`Invalid workflow: ${v.errors.join(' ')}`);
     }
@@ -250,7 +259,7 @@ export class WorkflowService implements IDisposable {
     return this._fire(doc, trigger, {
       kind: trigger.kind,
       summary: 'run manually',
-    });
+    }, { automatic: false });
   }
 
   // ── Scheduling ────────────────────────────────────────────────────────────
@@ -305,8 +314,16 @@ export class WorkflowService implements IDisposable {
     if (this._disposed || !this._deps) return;
     if (this._observers.isPaused?.()) return;
     const now = Date.now();
-    for (const [key, st] of this._schedules) {
-      if (st.nextRunAt === null || st.nextRunAt > now) continue;
+    // Arbiter: when several workflows come due in the same beat, higher
+    // priority fires first (runs execute sequentially in this loop).
+    const due = [...this._schedules.entries()]
+      .filter(([, st]) => st.nextRunAt !== null && st.nextRunAt <= now)
+      .sort(([a], [b]) => {
+        const pa = this._docs.get(splitScheduleKey(a)[0])?.priority ?? 0;
+        const pb = this._docs.get(splitScheduleKey(b)[0])?.priority ?? 0;
+        return pb - pa;
+      });
+    for (const [key, st] of due) {
       const [workflowId, nodeId] = splitScheduleKey(key);
       const doc = this._docs.get(workflowId);
       const node = doc?.nodes.find((n) => n.id === nodeId);
@@ -322,7 +339,7 @@ export class WorkflowService implements IDisposable {
       await this._fire(doc, node, {
         kind: 'trigger.schedule',
         summary: describeTriggerNode(node),
-      }).catch((err) => console.warn(`[Workflows] scheduled run of "${doc.name}" failed:`, err));
+      }, { automatic: true }).catch((err) => console.warn(`[Workflows] scheduled run of "${doc.name}" failed:`, err));
     }
     void this._save();
   }
@@ -348,14 +365,40 @@ export class WorkflowService implements IDisposable {
           kind: 'trigger.event',
           summary: `${e.actor} ${e.verb} ${e.object}`,
           event: { actor: e.actor, verb: e.verb, object: e.object, source: e.source, detail: e.detail ?? '' },
-        }).catch((err) => console.warn(`[Workflows] event run of "${doc.name}" failed:`, err));
+        }, { automatic: true }).catch((err) => console.warn(`[Workflows] event run of "${doc.name}" failed:`, err));
         break; // one firing per doc per journal event
       }
     }
   }
 
-  private async _fire(doc: WorkflowDoc, trigger: WorkflowNode, ctx: WorkflowTriggerContext): Promise<WorkflowRun> {
+  private async _fire(
+    doc: WorkflowDoc,
+    trigger: WorkflowNode,
+    ctx: WorkflowTriggerContext,
+    opts: { automatic: boolean },
+  ): Promise<WorkflowRun> {
     if (!this._deps) throw new Error('Workflow execution is not attached yet.');
+
+    // ── The arbiter, before any node runs ──
+    // Mutex: two workflows in one group never interleave — the later
+    // firing is HELD and recorded, never silently dropped.
+    const group = doc.mutexGroup?.trim();
+    if (group && this._busyGroups.has(group)) {
+      return this._recordHeldRun(doc, trigger, ctx, opts.automatic,
+        `mutex "${group}" is busy — another workflow in the group is running`);
+    }
+    // Attention budget: the app interrupts only so many times a day,
+    // across every attention-class workflow. The user's own Run Now is
+    // never an interruption.
+    if (opts.automatic && doc.class === 'attention') {
+      const budget = this._observers.attentionBudgetPerDay?.() ?? DEFAULT_ATTENTION_BUDGET_PER_DAY;
+      const spent = this._attentionRunsToday();
+      if (spent >= budget) {
+        return this._recordHeldRun(doc, trigger, ctx, opts.automatic,
+          `attention budget spent (${spent}/${budget} today)`);
+      }
+    }
+
     const ledger: CooldownLedger = {
       sinceStamp: (k) => {
         const at = this._ledger.get(k);
@@ -363,7 +406,14 @@ export class WorkflowService implements IDisposable {
       },
       stamp: (k) => { this._ledger.set(k, Date.now()); },
     };
-    const run = await executeWorkflowRun(doc, trigger, ctx, this._deps, ledger);
+    if (group) this._busyGroups.add(group);
+    let run: WorkflowRun;
+    try {
+      run = await executeWorkflowRun(doc, trigger, ctx, this._deps, ledger);
+    } finally {
+      if (group) this._busyGroups.delete(group);
+    }
+    run = { ...run, automatic: opts.automatic };
     this._runs.push(run);
     if (this._runs.length > MAX_RUNS_RETAINED) {
       this._runs.splice(0, this._runs.length - MAX_RUNS_RETAINED);
@@ -373,6 +423,53 @@ export class WorkflowService implements IDisposable {
     this._onDidRecordRun.fire(run);
     try { this._observers.onRunRecorded?.(run); } catch { /* observer failures never break runs */ }
     return run;
+  }
+
+  private _recordHeldRun(
+    doc: WorkflowDoc,
+    trigger: WorkflowNode,
+    ctx: WorkflowTriggerContext,
+    automatic: boolean,
+    note: string,
+  ): WorkflowRun {
+    const now = Date.now();
+    const run: WorkflowRun = {
+      id: `wfrun-${now}-held-${Math.floor(Math.random() * 1e6)}`,
+      workflowId: doc.id,
+      workflowName: doc.name,
+      startedAt: now,
+      finishedAt: now,
+      status: 'held',
+      trigger: { nodeId: trigger.id, kind: trigger.kind, summary: ctx.summary },
+      nodes: [],
+      error: note,
+      automatic,
+    };
+    this._runs.push(run);
+    if (this._runs.length > MAX_RUNS_RETAINED) {
+      this._runs.splice(0, this._runs.length - MAX_RUNS_RETAINED);
+    }
+    void this._save();
+    this._onDidChangeWorkflows.fire({ kind: 'ran', workflowId: doc.id });
+    this._onDidRecordRun.fire(run);
+    try { this._observers.onRunRecorded?.(run); } catch { /* never breaks */ }
+    return run;
+  }
+
+  /** Automatic attention-class runs today (held ones excluded — a held
+   *  firing did not interrupt anyone). */
+  private _attentionRunsToday(): number {
+    const today = new Date();
+    const y = today.getFullYear(); const m = today.getMonth(); const d = today.getDate();
+    let count = 0;
+    for (const run of this._runs) {
+      if (!run.automatic || run.status === 'held') continue;
+      const doc = this._docs.get(run.workflowId);
+      if (doc?.class !== 'attention') continue;
+      const t = new Date(run.startedAt);
+      if (t.getFullYear() === y && t.getMonth() === m && t.getDate() === d) count++;
+    }
+    return count;
   }
 
   private async _save(): Promise<void> {

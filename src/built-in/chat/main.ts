@@ -1754,6 +1754,15 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
               metadata: { workflowId: wf.id, notify: true },
             });
           },
+          // Destructive-class gate: a real modal, one decision per action.
+          requestApproval: async (description, workflowName) => {
+            const res = await api.window.showWarningMessage(
+              `The workflow "${workflowName}" asks approval to run: ${description}`,
+              { title: 'Approve' },
+              { title: 'Deny' },
+            );
+            return res?.title === 'Approve';
+          },
         });
         workflowService.start();
       }
