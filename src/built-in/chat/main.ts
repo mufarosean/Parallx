@@ -2758,6 +2758,8 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   (widgetServices as unknown as Record<string, unknown>).openAISettings = () => {
     api.commands.executeCommand('ai-settings.open');
   };
+  (widgetServices as unknown as Record<string, unknown>).runCommand =
+    (id: string, ...args: unknown[]) => api.commands.executeCommand(id, ...args);
 
   // M86 — user-initiated plan removal (the ✕ on the plan card). The model
   // has plan_update {clear:true}; the USER gets this. setSessionPlan fires

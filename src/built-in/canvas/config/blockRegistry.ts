@@ -27,6 +27,7 @@ import { Column, ColumnList } from '../extensions/columnNodes.js';
 import { MathBlock } from '../extensions/mathBlockNode.js';
 import { ToggleHeading, ToggleHeadingText } from '../extensions/toggleHeadingNode.js';
 import { Bookmark } from '../extensions/bookmarkNode.js';
+import { ConceptMap, DEFAULT_CONCEPT_MAP_SRC } from '../extensions/conceptMapNode.js';
 import { PageBlock } from '../extensions/pageBlockNode.js';
 import { TableOfContents } from '../extensions/tableOfContentsNode.js';
 import { Video, Audio, FileAttachment } from '../extensions/mediaNodes.js';
@@ -735,6 +736,25 @@ const definitions: BlockDefinition[] = [
     defaultContent: undefined,
     insertAction: (_editor, range, context) => context.showBookmarkInsertPopup(_editor, range),
     extension: () => Bookmark,
+  },
+  {
+    id: 'conceptMap',
+    name: 'conceptMap',
+    label: 'Concept Map',
+    icon: 'waypoints',
+    source: 'custom',
+    kind: 'atom',
+    capabilities: CUSTOM_DRAG,
+    slashMenu: { description: 'Ideas as a diagram: outline in, tree out', order: 71, category: 'advanced' },
+    turnInto: undefined,
+    defaultContent: undefined,
+    insertAction: (editor, range) => {
+      editor.chain().insertContentAt(range, {
+        type: 'conceptMap',
+        attrs: { src: DEFAULT_CONCEPT_MAP_SRC, dir: 'right' },
+      }).focus().run();
+    },
+    extension: () => ConceptMap,
   },
   {
     id: 'pageBlock',

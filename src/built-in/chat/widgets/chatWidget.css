@@ -1004,51 +1004,8 @@
   display: block;
 }
 
-.parallx-mindmap__edge {
-  fill: none;
-  stroke: var(--vscode-panel-border, #3c3c3c);
-  stroke-width: 1.25;
-}
-
-.parallx-mindmap__box {
-  fill: var(--vscode-textCodeBlock-background, #2d2d2d);
-  stroke: var(--vscode-panel-border, #3c3c3c);
-  stroke-width: 1;
-}
-
-.parallx-mindmap__text {
-  fill: var(--vscode-foreground, #cccccc);
-  font-size: 12px;
-  font-family: inherit;
-}
-
-/* Depth reads as weight, not as a second palette: the trunk is emphatic,
-   the leaves recede. */
-.parallx-mindmap__node--d0 .parallx-mindmap__box {
-  stroke: var(--vscode-textLink-foreground, #3794ff);
-}
-
-.parallx-mindmap__node--d0 .parallx-mindmap__text {
-  font-weight: 600;
-}
-
-.parallx-mindmap__node--d2 .parallx-mindmap__text {
-  fill: var(--vscode-descriptionForeground, #9d9d9d);
-}
-
-.parallx-mindmap__node {
-  cursor: pointer;
-}
-
-.parallx-mindmap__node:hover .parallx-mindmap__box,
-.parallx-mindmap__node:focus-visible .parallx-mindmap__box {
-  fill: var(--vscode-list-hoverBackground, #2a2d2e);
-  stroke: var(--vscode-focusBorder, #007fd4);
-}
-
-.parallx-mindmap__node:focus-visible {
-  outline: none;
-}
+/* Node/edge/box styling lives in ui/conceptMap.css (shared with the
+   canvas conceptMap block) - one renderer, one stylesheet. */
 
 .parallx-chat-markdown .parallx-mindmap-fallback {
   margin: 10px 0;

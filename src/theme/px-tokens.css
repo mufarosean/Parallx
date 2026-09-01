@@ -70,6 +70,15 @@
   --px-yellow-rgb: 220, 170, 90;    /* warning / review   */
   --px-blue-rgb:   110, 160, 224;   /* info               */
 
+  /* Viz hues — categorical data ink (concept-map branches, charts).
+     Desaturated to sit calmly beside the signal hues. */
+  --px-viz-1: 110, 160, 224;   /* blue   */
+  --px-viz-2: 108, 191, 143;   /* green  */
+  --px-viz-3: 220, 170, 90;    /* amber  */
+  --px-viz-4: 190, 140, 210;   /* violet */
+  --px-viz-5: 96, 190, 190;    /* teal   */
+  --px-viz-6: 224, 128, 150;   /* rose   */
+
   /* ── Tier 2 · Semantic — what components reference ─────────────────────── */
 
   /* Surfaces */

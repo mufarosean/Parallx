@@ -416,6 +416,8 @@ export interface IChatWidgetServices {
   readonly clearSessionPlan?: (sessionId: string) => void;
   readonly updateSessionModel?: (sessionId: string, modelId: string) => void;
   readonly updateSessionContextWindow?: (sessionId: string, contextWindow: number | undefined) => void;
+  /** Run a workbench command (concept-map save, and friends). */
+  readonly runCommand?: (id: string, ...args: unknown[]) => Promise<unknown>;
   /**
    * Push a context length override into the active provider so token-budget
    * computation, the token bar, and `num_ctx` on outgoing requests all see

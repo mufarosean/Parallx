@@ -282,6 +282,14 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       if (label) this.stageInput(`Tell me more about "${label}" and how it connects to the rest.`);
     }) as EventListener));
 
+    // Saving a concept map makes it a living canvas block: the outline is
+    // the payload, the block re-renders it, the user edits the outline.
+    this._register(addDisposableListener(this._messageListContainer, 'parallx:mindmap-save' as keyof HTMLElementEventMap, ((e: CustomEvent<{ src: string; dir: string }>) => {
+      const src = e.detail?.src?.trim();
+      if (!src) return;
+      void this._services.runCommand?.('canvas.saveConceptMap', src, e.detail.dir === 'down' ? 'down' : 'right');
+    }) as EventListener));
+
     this._register(addDisposableListener(this._messageListContainer, 'parallx:open-memory' as keyof HTMLElementEventMap, ((e: CustomEvent<{ sessionId: string }>) => {
       if (this._services.openMemory) {
         this._services.openMemory(e.detail.sessionId);

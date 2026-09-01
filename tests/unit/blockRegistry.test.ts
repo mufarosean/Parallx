@@ -25,13 +25,13 @@ const ORIGINAL_COLUMN_BLOCK_NODE_TYPES = [
   'paragraph', 'heading', 'bulletList', 'orderedList', 'taskList',
   'blockquote', 'codeBlock', 'horizontalRule', 'image', 'table',
   'callout', 'details', 'toggleHeading', 'mathBlock', 'pageBlock',
-  'bookmark', 'tableOfContents', 'video', 'audio', 'fileAttachment',
+  'bookmark', 'conceptMap', 'tableOfContents', 'video', 'audio', 'fileAttachment',
 ];
 
 /** From blockCapabilities.ts */
 const ORIGINAL_DRAG_HANDLE_CUSTOM_NODE_TYPES = [
   'mathBlock', 'callout', 'details', 'toggleHeading', 'pageBlock',
-  'bookmark', 'tableOfContents', 'video', 'audio', 'fileAttachment',
+  'bookmark', 'conceptMap', 'tableOfContents', 'video', 'audio', 'fileAttachment',
   'horizontalRule', 'image',
 ];
 
@@ -135,9 +135,10 @@ describe('blockRegistry', () => {
       }
     });
 
-    it('returns 28 slash menu items', () => {
-      // /mindmap retired 2026-08-31 with the mindmap program.
-      expect(getSlashMenuBlocks()).toHaveLength(28);
+    it('returns 29 slash menu items', () => {
+      // 28 after the /mindmap retirement, +1 for /concept map (the chat
+      // pattern promoted: outline in, diagram out).
+      expect(getSlashMenuBlocks()).toHaveLength(29);
     });
 
     it('includes Page as the first item (order 0)', () => {
@@ -214,11 +215,11 @@ describe('blockRegistry', () => {
       'Block Equation', 'Inline Equation',
       'Toggle Heading 1', 'Toggle Heading 2', 'Toggle Heading 3',
       '2 Columns', '3 Columns', '4 Columns',
-      'Bookmark', 'Table of Contents',
+      'Bookmark', 'Concept Map', 'Table of Contents',
     ];
 
-    it('produces 28 items', () => {
-      expect(SLASH_MENU_ITEMS).toHaveLength(28);
+    it('produces 29 items', () => {
+      expect(SLASH_MENU_ITEMS).toHaveLength(29);
     });
 
     it('preserves all original labels', () => {

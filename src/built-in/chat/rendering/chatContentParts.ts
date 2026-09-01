@@ -17,7 +17,7 @@ import katex from 'katex';
 import { $ } from '../../../ui/dom.js';
 import { chatIcons } from '../chatIcons.js';
 import { extractFilePath, renderCodeActionButtons } from './chatCodeActions.js';
-import { renderMindMapSvg } from './chatMindMap.js';
+import { parseMindMapInfo, renderMindMapSvg } from './chatMindMap.js';
 import { ChatContentPartKind } from '../../../services/chatTypes.js';
 import { getFileTypeIcon, getPageIcon } from '../../../ui/iconRegistry.js';
 import type {
@@ -141,6 +141,22 @@ function _renderMarkdown(part: IChatMarkdownContent): HTMLElement {
  * owns what actually happens and this stays a pure rendering concern.
  */
 function _wireMindMapNodes(root: HTMLElement): void {
+  // The save affordance bubbles the same way the node clicks do — the
+  // widget owns what happens, rendering stays pure.
+  const saves = root.querySelectorAll<HTMLButtonElement>('.parallx-mindmap__save[data-mindmap-src]');
+  for (const btn of Array.from(saves)) {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      btn.dispatchEvent(new CustomEvent('parallx:mindmap-save', {
+        bubbles: true,
+        detail: {
+          src: decodeURIComponent(btn.getAttribute('data-mindmap-src') ?? ''),
+          dir: btn.getAttribute('data-mindmap-dir') === 'down' ? 'down' : 'right',
+        },
+      }));
+    });
+  }
+
   const nodes = root.querySelectorAll<SVGGElement>('.parallx-mindmap__node[data-mindmap-label]');
   for (const node of Array.from(nodes)) {
     const label = node.getAttribute('data-mindmap-label') ?? '';
@@ -776,8 +792,24 @@ function _createChatMarkdownRenderer(): MarkdownIt {
     ?? ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options));
   markdown.renderer.rules.fence = (tokens, idx, options, env, self) => {
     const info = tokens[idx].info.trim().toLowerCase();
-    if (info === 'mindmap' || info === 'concept-map') {
-      return renderMindMapSvg(tokens[idx].content);
+    if (info === 'mindmap' || info === 'concept-map' || info.startsWith('mindmap ') || info.startsWith('concept-map ')) {
+      const src = tokens[idx].content;
+      const { dir } = parseMindMapInfo(info);
+      const html = renderMindMapSvg(src, {
+        dir,
+        renderMath: (tex) => katex.renderToString(tex, { throwOnError: false }),
+      });
+      // A rendered map (not the fallback) grows the save affordance: the
+      // outline is the payload, so the button carries it verbatim.
+      if (html.startsWith('<div class="parallx-mindmap"')) {
+        return html.replace(
+          /<\/div>$/,
+          `<button type="button" class="parallx-mindmap__save" `
+          + `data-mindmap-src="${encodeURIComponent(src)}" data-mindmap-dir="${dir}">`
+          + `Save To Canvas</button></div>`,
+        );
+      }
+      return html;
     }
     return defaultFence(tokens, idx, options, env, self);
   };

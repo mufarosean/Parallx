@@ -1,0 +1,171 @@
+/* conceptMap.css — the concept-map diagram (ui/conceptMap.ts).
+   One stylesheet for BOTH consumers (chat inline maps, canvas block).
+   Colour lives here, never in the emitted SVG: theme-following in light
+   and dark, branch hues cycling the viz tokens. */
+
+.parallx-mindmap__edge {
+  fill: none;
+  stroke: var(--px-border-strong, var(--vscode-panel-border, #3c3c3c));
+  stroke-width: 1.25;
+}
+
+.parallx-mindmap__box {
+  fill: var(--px-bg-elevated, var(--vscode-textCodeBlock-background, #2d2d2d));
+  stroke: var(--px-border-strong, var(--vscode-panel-border, #3c3c3c));
+  stroke-width: 1;
+}
+
+.parallx-mindmap__text {
+  fill: var(--px-text, var(--vscode-foreground, #cccccc));
+  font-size: 12px;
+  font-family: inherit;
+}
+
+/* Depth reads as weight: the trunk is emphatic, the leaves recede. */
+.parallx-mindmap__node--d0 .parallx-mindmap__box {
+  stroke: var(--px-accent, var(--vscode-textLink-foreground, #3794ff));
+}
+
+.parallx-mindmap__node--d0 .parallx-mindmap__text {
+  font-weight: 600;
+}
+
+.parallx-mindmap__node--d2 .parallx-mindmap__text {
+  fill: var(--px-text-secondary, var(--vscode-descriptionForeground, #9d9d9d));
+}
+
+/* Branch hues: each top-level branch keeps one colour down its subtree.
+   Box borders and the edges INTO a branch carry the hue; fills stay calm. */
+.parallx-mindmap__node--b0 .parallx-mindmap__box { stroke: rgb(var(--px-viz-1)); }
+.parallx-mindmap__node--b1 .parallx-mindmap__box { stroke: rgb(var(--px-viz-2)); }
+.parallx-mindmap__node--b2 .parallx-mindmap__box { stroke: rgb(var(--px-viz-3)); }
+.parallx-mindmap__node--b3 .parallx-mindmap__box { stroke: rgb(var(--px-viz-4)); }
+.parallx-mindmap__node--b4 .parallx-mindmap__box { stroke: rgb(var(--px-viz-5)); }
+.parallx-mindmap__node--b5 .parallx-mindmap__box { stroke: rgb(var(--px-viz-6)); }
+
+.parallx-mindmap__edge--b0 { stroke: rgba(var(--px-viz-1), 0.55); }
+.parallx-mindmap__edge--b1 { stroke: rgba(var(--px-viz-2), 0.55); }
+.parallx-mindmap__edge--b2 { stroke: rgba(var(--px-viz-3), 0.55); }
+.parallx-mindmap__edge--b3 { stroke: rgba(var(--px-viz-4), 0.55); }
+.parallx-mindmap__edge--b4 { stroke: rgba(var(--px-viz-5), 0.55); }
+.parallx-mindmap__edge--b5 { stroke: rgba(var(--px-viz-6), 0.55); }
+
+.parallx-mindmap__node {
+  cursor: pointer;
+}
+
+.parallx-mindmap__node:hover .parallx-mindmap__box,
+.parallx-mindmap__node:focus-visible .parallx-mindmap__box {
+  fill: var(--px-surface-hover, var(--vscode-list-hoverBackground, #2a2d2e));
+}
+
+.parallx-mindmap__node:focus-visible {
+  outline: none;
+}
+
+/* Math-bearing labels render as HTML inside a foreignObject. */
+.parallx-mindmap__flabel {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  font-size: 12px;
+  color: var(--px-text, var(--vscode-foreground, #cccccc));
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.parallx-mindmap__math .katex {
+  font-size: 12px;
+}
+
+/* The chat wrapper's save affordance: quiet until the map is hovered. */
+.parallx-mindmap__save {
+  display: block;
+  margin-top: 4px;
+  border: 1px solid var(--px-border, var(--vscode-panel-border, #3c3c3c));
+  background: transparent;
+  color: var(--px-text-secondary, var(--vscode-descriptionForeground, #9d9d9d));
+  font-size: 11px;
+  font-family: inherit;
+  padding: 2px 8px;
+  border-radius: var(--px-radius-full, 999px);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--px-dur-fast, 120ms) var(--px-ease, ease);
+}
+
+.parallx-mindmap:hover .parallx-mindmap__save,
+.parallx-mindmap__save:focus-visible {
+  opacity: 1;
+}
+
+.parallx-mindmap__save:hover {
+  color: var(--px-text, var(--vscode-foreground, #ccc));
+  background: var(--px-surface-hover, transparent);
+}
+
+/* ── The canvas block ── */
+
+.canvas-conceptmap {
+  position: relative;
+  margin: 8px 0;
+  padding: 6px;
+  border-radius: var(--px-radius-md, 6px);
+  overflow-x: auto;
+}
+
+.canvas-conceptmap:hover {
+  background: var(--px-bg-inset, transparent);
+}
+
+.canvas-conceptmap__tools {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity var(--px-dur-fast, 120ms) var(--px-ease, ease);
+  z-index: 2;
+}
+
+.canvas-conceptmap:hover .canvas-conceptmap__tools,
+.canvas-conceptmap.is-editing .canvas-conceptmap__tools {
+  opacity: 1;
+}
+
+.canvas-conceptmap__tool {
+  border: 1px solid var(--px-border, #3c3c3c);
+  background: var(--px-bg-elevated, #2d2d2d);
+  color: var(--px-text-secondary, #9d9d9d);
+  font-size: 11px;
+  font-family: inherit;
+  padding: 2px 8px;
+  border-radius: var(--px-radius-full, 999px);
+  cursor: pointer;
+}
+
+.canvas-conceptmap__tool:hover {
+  color: var(--px-text, #ccc);
+  background: var(--px-surface-hover, #2a2d2e);
+}
+
+.canvas-conceptmap__editor {
+  width: 100%;
+  min-height: 120px;
+  border: 1px solid var(--px-border, #3c3c3c);
+  border-radius: var(--px-radius-md, 6px);
+  background: var(--px-bg, #1e1e1e);
+  color: var(--px-text, #ccc);
+  font-family: var(--px-font-mono, monospace);
+  font-size: 12px;
+  padding: 8px 10px;
+  box-sizing: border-box;
+  resize: vertical;
+}
+
+.canvas-conceptmap__hint {
+  font-size: 11px;
+  color: var(--px-text-muted, #888);
+  margin-top: 4px;
+}

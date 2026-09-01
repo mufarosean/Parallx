@@ -103,6 +103,7 @@ const GATE_RULES: Record<string, string[]> = {
   'extensions/mediaNodes.ts':              ['config/blockRegistry'],
   'extensions/bookmarkNode.ts':            ['config/blockRegistry'],
   'extensions/pageBlockNode.ts':           ['config/blockRegistry'],
+  'extensions/conceptMapNode.ts':          ['config/blockRegistry'],
   // M93 — the ⋯ menu / Ctrl+P lazy-load the PDF export dialog.
   'header/pageChrome.ts':                  ['config/blockRegistry', 'canvasVersionHistoryPanel', 'export/pdfExportDialog', 'config/fontRegistry'],
   // contentSchema: the versioned-envelope decoder for the md-export action

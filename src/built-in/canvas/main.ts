@@ -673,6 +673,31 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       captureNoteToCanvas(api, (args[0] ?? {}) as CaptureDetail),
     ),
   );
+  // canvas.saveConceptMap — chat's concept map becomes a living block on
+  // a fresh page: outline in, editable diagram out (ui/conceptMap).
+  context.subscriptions.push(
+    api.commands.registerCommand('canvas.saveConceptMap', async (...args: unknown[]) => {
+      const src = typeof args[0] === 'string' ? args[0].trim() : '';
+      const dir = args[1] === 'down' ? 'down' : 'right';
+      if (!src || !_dataService) return null;
+      try {
+        const { parseMindMap } = await import('../../ui/conceptMap.js');
+        const roots = parseMindMap(src);
+        const title = roots[0]?.label || 'Concept Map';
+        const page = await _dataService.createPage(null, title);
+        await _dataService.flushContentSave(page.id, {
+          type: 'doc',
+          content: [{ type: 'conceptMap', attrs: { src, dir } }],
+        });
+        await openPageInEditor(page.id);
+        return page.id;
+      } catch (err) {
+        console.error('[Canvas] saveConceptMap failed:', err);
+        return null;
+      }
+    }),
+  );
+
   context.subscriptions.push(
     api.commands.registerCommand('canvas.openPage', async (...args: unknown[]) => {
       const pageId = typeof args[0] === 'string' ? args[0] : '';
