@@ -237,7 +237,8 @@ export interface LaidOutNode {
   readonly y: number;          // centre-line y
   readonly width: number;
   readonly height: number;
-  /** Top-level branch index (colour class), -1 for roots. */
+  /** The node's own colour index (hues cycle; Mufaro's convention:
+   *  every box has its own colour, lines take their box's colour). */
   readonly branch: number;
 }
 
@@ -347,10 +348,10 @@ export function layoutMindMap(
     }
 
     let nextLeafTop = MARGIN;
-    const place = (node: MindMapNode, depth: number, branch: number): number => {
+    const place = (node: MindMapNode, depth: number): number => {
       const size = sizes.get(node)!;
       const index = nodes.length;
-      nodes.push({ label: node.label, depth, x: colX[depth], y: 0, width: size.width, height: size.height, branch });
+      nodes.push({ label: node.label, depth, x: colX[depth], y: 0, width: size.width, height: size.height, branch: branchCounter++ % 6 });
 
       let y: number;
       if (node.children.length === 0) {
@@ -358,8 +359,7 @@ export function layoutMindMap(
         nextLeafTop += size.height + LEAF_GAP;
       } else {
         const childYs = node.children.map((child) => {
-          const childBranch = depth === 0 ? branchCounter++ : branch;
-          const childIndex = place(child, depth + 1, childBranch);
+          const childIndex = place(child, depth + 1);
           edges.push({ from: index, to: childIndex });
           return nodes[childIndex].y;
         });
@@ -371,7 +371,7 @@ export function layoutMindMap(
       nodes[index] = { ...nodes[index], y };
       return index;
     };
-    for (const root of roots) place(root, 0, -1);
+    for (const root of roots) place(root, 0);
 
     return {
       nodes,
@@ -399,10 +399,10 @@ export function layoutMindMap(
   }
 
   let nextLeafX = MARGIN;
-  const place = (node: MindMapNode, depth: number, branch: number): number => {
+  const place = (node: MindMapNode, depth: number): number => {
     const size = sizes.get(node)!;
     const index = nodes.length;
-    nodes.push({ label: node.label, depth, x: 0, y: rowCenterY[depth], width: size.width, height: size.height, branch });
+    nodes.push({ label: node.label, depth, x: 0, y: rowCenterY[depth], width: size.width, height: size.height, branch: branchCounter++ % 6 });
 
     let centerX: number;
     if (node.children.length === 0) {
@@ -410,8 +410,7 @@ export function layoutMindMap(
       nextLeafX += size.width + SIB_GAP;
     } else {
       const childCenters = node.children.map((child) => {
-        const childBranch = depth === 0 ? branchCounter++ : branch;
-        const childIndex = place(child, depth + 1, childBranch);
+        const childIndex = place(child, depth + 1);
         edges.push({ from: index, to: childIndex });
         return nodes[childIndex].x + nodes[childIndex].width / 2;
       });
@@ -422,7 +421,7 @@ export function layoutMindMap(
     nodes[index] = { ...nodes[index], x: centerX - size.width / 2 };
     return index;
   };
-  for (const root of roots) place(root, 0, -1);
+  for (const root of roots) place(root, 0);
 
   const width = Math.max(...nodes.map((n) => n.x + n.width), MARGIN) + MARGIN;
   return {
@@ -466,33 +465,6 @@ export interface EdgeBox {
 }
 
 /**
- * ORTHOGONAL elbow between two boxes: straight lines, square corners
- * (Mufaro's hand-drawn maps are the spec: the brain follows right
- * angles). Siblings share the same mid-line by construction, so a
- * parent's edges visually merge into ONE trunk that then branches —
- * never ten separate lines crawling into one box. The exit/entry side
- * still follows the boxes' actual relative positions after drags.
- */
-export function edgePathFor(a: EdgeBox, b: EdgeBox, dir: MindMapDirection): string {
-  if (dir === 'right') {
-    const forward = (b.x + b.width / 2) >= (a.x + a.width / 2);
-    const x1 = forward ? a.x + a.width : a.x;
-    const x2 = forward ? b.x : b.x + b.width;
-    const m = Math.round((x1 + x2) / 2);
-    if (a.y === b.y) return `M${x1} ${a.y} H ${x2}`;
-    return `M${x1} ${a.y} H ${m} V ${b.y} H ${x2}`;
-  }
-  const downward = b.y >= a.y;
-  const y1 = downward ? a.y + a.height / 2 : a.y - a.height / 2;
-  const y2 = downward ? b.y - b.height / 2 : b.y + b.height / 2;
-  const xa = a.x + a.width / 2;
-  const xb = b.x + b.width / 2;
-  const m = Math.round((y1 + y2) / 2);
-  if (xa === xb) return `M${xa} ${y1} V ${y2}`;
-  return `M${xa} ${y1} V ${m} H ${xb} V ${y2}`;
-}
-
-/**
  * Insert a child under `parentLabel` in the outline (first matching
  * line), indented two deeper. Pure; returns null when the parent line
  * cannot be found. The hover "+" on the canvas block rides this.
@@ -516,6 +488,84 @@ export function appendChildToOutline(src: string, parentLabel: string, childLabe
   return null;
 }
 
+/** A child of a hub: geometry plus its colour (for the arrowhead). */
+export interface HubChild extends EdgeBox {
+  readonly label: string;
+  readonly color: number;
+}
+
+export interface HubPaths {
+  /** The parent's single exit line, to the vertex. */
+  readonly stem: string;
+  /** The vertical/horizontal spine along the vertex (multi-child only). */
+  readonly spine: string | null;
+  /** One arm per child, vertex to box edge (arrowheads live here). */
+  readonly arms: readonly { readonly d: string; readonly to: string; readonly color: number }[];
+}
+
+/**
+ * The hub connector: ONE line leaves the parent, reaches a vertex,
+ * a spine runs along it, and one arm enters each child. Children on
+ * each side of the parent get their own hub (post-drag mixed sides).
+ */
+export function hubPathsFor(parent: EdgeBox, children: readonly HubChild[], dir: MindMapDirection): HubPaths[] {
+  if (children.length === 0) return [];
+  const out: HubPaths[] = [];
+  if (dir === 'right') {
+    const pc = parent.x + parent.width / 2;
+    const sides: [HubChild[], HubChild[]] = [[], []];
+    for (const c of children) (c.x + c.width / 2 >= pc ? sides[0] : sides[1]).push(c);
+    for (let side = 0; side < 2; side++) {
+      const kids = sides[side];
+      if (kids.length === 0) continue;
+      const forward = side === 0;
+      const exitX = forward ? parent.x + parent.width : parent.x;
+      const entries = kids.map((c) => (forward ? c.x : c.x + c.width));
+      const nearest = forward ? Math.min(...entries) : Math.max(...entries);
+      const m = Math.round((exitX + nearest) / 2);
+      const ys = kids.map((c) => c.y);
+      const minY = Math.min(...ys, parent.y);
+      const maxY = Math.max(...ys, parent.y);
+      out.push({
+        stem: `M${exitX} ${parent.y} H ${m}`,
+        spine: kids.length > 1 || minY !== maxY ? `M${m} ${minY} V ${maxY}` : null,
+        arms: kids.map((c) => ({
+          d: `M${m} ${c.y} H ${forward ? c.x : c.x + c.width}`,
+          to: c.label,
+          color: c.color,
+        })),
+      });
+    }
+    return out;
+  }
+  const pcy = parent.y;
+  const sides: [HubChild[], HubChild[]] = [[], []];
+  for (const c of children) (c.y >= pcy ? sides[0] : sides[1]).push(c);
+  for (let side = 0; side < 2; side++) {
+    const kids = sides[side];
+    if (kids.length === 0) continue;
+    const downward = side === 0;
+    const exitY = downward ? parent.y + parent.height / 2 : parent.y - parent.height / 2;
+    const px = parent.x + parent.width / 2;
+    const entries = kids.map((c) => (downward ? c.y - c.height / 2 : c.y + c.height / 2));
+    const nearest = downward ? Math.min(...entries) : Math.max(...entries);
+    const m = Math.round((exitY + nearest) / 2);
+    const xs = kids.map((c) => c.x + c.width / 2);
+    const minX = Math.min(...xs, px);
+    const maxX = Math.max(...xs, px);
+    out.push({
+      stem: `M${px} ${exitY} V ${m}`,
+      spine: kids.length > 1 || minX !== maxX ? `M${minX} ${m} H ${maxX}` : null,
+      arms: kids.map((c) => ({
+        d: `M${c.x + c.width / 2} ${m} V ${downward ? c.y - c.height / 2 : c.y + c.height / 2}`,
+        to: c.label,
+        color: c.color,
+      })),
+    });
+  }
+  return out;
+}
+
 let _svgUid = 0;
 
 function arrowDefs(uid: number): string {
@@ -529,11 +579,7 @@ function arrowDefs(uid: number): string {
 }
 
 function branchClass(branch: number): string {
-  return branch < 0 ? 'parallx-mindmap__node--root' : `parallx-mindmap__node--b${branch % 6}`;
-}
-
-function edgeBranchClass(branch: number): string {
-  return branch < 0 ? '' : ` parallx-mindmap__edge--b${branch % 6}`;
+  return `parallx-mindmap__node--b${branch % 6}`;
 }
 
 function segHtml(seg: LabelSegment, renderMath?: (tex: string) => string): string {
@@ -566,17 +612,35 @@ export function renderMindMapSvg(src: string, opts: RenderMindMapOptions = {}): 
     : base;
 
   const uid = ++_svgUid;
-  const paths = edges.map(({ from, to }) => {
-    const a = nodes[from];
-    const b = nodes[to];
-    const cls = `parallx-mindmap__edge${edgeBranchClass(b.branch)}`;
-    const d = edgePathFor(a, b, dir);
-    const markerKey = b.branch < 0 ? 'n' : `b${b.branch % 6}`;
-    // Endpoint labels ride the path so the canvas block can re-route
-    // edges LIVE while a box is dragged. The arrowhead shows FLOW.
-    return `<path class="${cls}" marker-end="url(#mm${uid}-arrow-${markerKey})" `
-      + `data-mm-from="${escapeXml(a.label)}" data-mm-to="${escapeXml(b.label)}" d="${d}" />`;
-  }).join('');
+  // Hub connectors: group edges by PARENT — one exit line per box, a
+  // vertex, a spine, then one arm per child. Lines take the PARENT's
+  // colour; each arm's arrowhead takes the CHILD's.
+  const kidsByParent = new Map<number, number[]>();
+  for (const { from, to } of edges) {
+    const arr = kidsByParent.get(from) ?? [];
+    arr.push(to);
+    kidsByParent.set(from, arr);
+  }
+  const pathParts: string[] = [];
+  for (const [parentIdx, childIdxs] of kidsByParent) {
+    const parent = nodes[parentIdx];
+    const cls = `parallx-mindmap__edge parallx-mindmap__edge--b${parent.branch % 6}`;
+    const kids: HubChild[] = childIdxs.map((i) => ({
+      x: nodes[i].x, y: nodes[i].y, width: nodes[i].width, height: nodes[i].height,
+      label: nodes[i].label, color: nodes[i].branch % 6,
+    }));
+    for (const hub of hubPathsFor(parent, kids, dir)) {
+      pathParts.push(`<path class="${cls}" data-mm-hub="${escapeXml(parent.label)}" d="${hub.stem}" />`);
+      if (hub.spine) {
+        pathParts.push(`<path class="${cls}" data-mm-hub="${escapeXml(parent.label)}" d="${hub.spine}" />`);
+      }
+      for (const arm of hub.arms) {
+        pathParts.push(`<path class="${cls}" marker-end="url(#mm${uid}-arrow-b${arm.color})" `
+          + `data-mm-hub="${escapeXml(parent.label)}" data-mm-to="${escapeXml(arm.to)}" d="${arm.d}" />`);
+      }
+    }
+  }
+  const paths = pathParts.join('');
 
   const boxes = nodes.map((n) => {
     const ow = opts.overrides?.[n.label]?.w;

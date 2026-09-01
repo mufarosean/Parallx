@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import {
   appendChildToOutline,
   applyOverrides,
-  edgePathFor,
+  hubPathsFor,
   layoutMindMap,
   measureLabel,
   parseMindMap,
@@ -61,25 +61,25 @@ describe('vertical layout', () => {
   });
 });
 
-describe('branch colours', () => {
-  it('each top-level branch keeps one hue down its subtree; roots stay neutral', () => {
+describe('box colours', () => {
+  it('every box wears its OWN hue, cycling in placement order', () => {
     const layout = layoutMindMap(parseMindMap(SRC), 'right');
     const root = layout.nodes.find((n) => n.label === 'Reserving')!;
     const cl = layout.nodes.find((n) => n.label === 'Chain Ladder')!;
     const mack = layout.nodes.find((n) => n.label === 'Mack')!;
     const bf = layout.nodes.find((n) => n.label === 'Bornhuetter-Ferguson')!;
-    expect(root.branch).toBe(-1);
-    expect(cl.branch).toBe(0);
-    expect(mack.branch).toBe(0); // inherits the branch, not a new hue
-    expect(bf.branch).toBe(1);
+    expect(root.branch).toBe(0);
+    expect(cl.branch).toBe(1);
+    expect(mack.branch).toBe(2); // its own colour, never the parent's
+    expect(bf.branch).toBe(3);
   });
 
-  it('branch classes reach the SVG on nodes and their inbound edges', () => {
+  it('hue classes reach the SVG; no neutral root special case', () => {
     const svg = renderMindMapSvg(SRC);
     expect(svg).toContain('parallx-mindmap__node--b0');
     expect(svg).toContain('parallx-mindmap__node--b1');
     expect(svg).toContain('parallx-mindmap__edge--b0');
-    expect(svg).toContain('parallx-mindmap__node--root');
+    expect(svg).not.toContain('parallx-mindmap__node--root');
   });
 });
 
@@ -182,42 +182,58 @@ describe('layout overrides (user moves and resizes)', () => {
   });
 });
 
-describe('edge routing and outline growth', () => {
-  it('edges are ORTHOGONAL elbows that flip sides with the geometry', () => {
-    const a = { x: 100, y: 50, width: 120, height: 22 };
-    const bRight = { x: 300, y: 80, width: 100, height: 22 };
-    const bLeft = { x: -150, y: 80, width: 100, height: 22 };
-    expect(edgePathFor(a, bRight, 'right')).toBe('M220 50 H 260 V 80 H 300');
-    expect(edgePathFor(a, bLeft, 'right').startsWith('M100 50 H ')).toBe(true);
-    expect(edgePathFor(a, bRight, 'right')).not.toContain('C'); // no curves
-    const below = { x: 100, y: 200, width: 100, height: 22 };
-    expect(edgePathFor(a, below, 'down')).toBe('M160 61 V 125 H 150 V 189'); // vertical elbow
-    const sameCol = { x: 110, y: 200, width: 100, height: 22 }; // same centre x
-    expect(edgePathFor(a, sameCol, 'down')).toBe('M160 61 V 189'); // straight drop
-  });
-
-  it('siblings share the SAME trunk segment: one line that branches', () => {
+describe('hub connectors and outline growth', () => {
+  it('ONE exit per box: stem to a vertex, spine, one arm per child', () => {
     const parent = { x: 40, y: 100, width: 120, height: 22 };
-    const kidA = { x: 300, y: 40, width: 100, height: 22 };
-    const kidB = { x: 300, y: 160, width: 100, height: 22 };
-    const dA = edgePathFor(parent, kidA, 'right');
-    const dB = edgePathFor(parent, kidB, 'right');
-    const trunkA = dA.match(/H (\d+)/)![1];
-    const trunkB = dB.match(/H (\d+)/)![1];
-    expect(trunkA).toBe(trunkB); // identical mid-line: the visual bus
+    const kids = [
+      { x: 300, y: 40, width: 100, height: 22, label: 'A', color: 1 },
+      { x: 300, y: 160, width: 100, height: 22, label: 'B', color: 2 },
+    ];
+    const hubs = hubPathsFor(parent, kids, 'right');
+    expect(hubs.length).toBe(1); // one exit, both kids on one side
+    const hub = hubs[0];
+    expect(hub.stem).toBe('M160 100 H 230'); // exit at the box edge, one line
+    expect(hub.spine).toBe('M230 40 V 160'); // the vertex line the arms leave
+    expect(hub.arms.map((a) => a.d)).toEqual(['M230 40 H 300', 'M230 160 H 300']);
+    expect(hub.arms.map((a) => a.color)).toEqual([1, 2]); // arrows = CHILD hue
+    expect(hub.stem + hub.spine).not.toContain('C'); // straight, square corners
   });
 
-  it('every edge carries a directional arrowhead marker', () => {
+  it('vertical: same law, axes swapped', () => {
+    const parent = { x: 100, y: 50, width: 120, height: 22 };
+    const kids = [
+      { x: 40, y: 200, width: 100, height: 22, label: 'A', color: 1 },
+      { x: 220, y: 200, width: 100, height: 22, label: 'B', color: 2 },
+    ];
+    const hubs = hubPathsFor(parent, kids, 'down');
+    expect(hubs.length).toBe(1);
+    expect(hubs[0].stem).toBe('M160 61 V 125');
+    expect(hubs[0].spine).toBe('M90 125 H 270');
+    expect(hubs[0].arms.map((a) => a.d)).toEqual(['M90 125 V 189', 'M270 125 V 189']);
+  });
+
+  it('a child dragged to the other side gets its own exit, not a backwards loop', () => {
+    const parent = { x: 200, y: 100, width: 120, height: 22 };
+    const kids = [
+      { x: 500, y: 100, width: 100, height: 22, label: 'R', color: 1 },
+      { x: -100, y: 100, width: 100, height: 22, label: 'L', color: 2 },
+    ];
+    const hubs = hubPathsFor(parent, kids, 'right');
+    expect(hubs.length).toBe(2); // one hub per side after the drag
+  });
+
+  it('the SVG draws lines in the PARENT hue and arrows in the CHILD hue', () => {
     const svg = renderMindMapSvg(SRC);
+    // Reserving is b0: its whole hub (stem, spine, arms) is edge--b0.
+    const hubPaths = svg.match(/data-mm-hub="Reserving"/g) ?? [];
+    expect(hubPaths.length).toBe(4); // stem + spine + 2 arms, nothing more
+    expect(svg).not.toContain('data-mm-from='); // no per-edge lines remain
+    // The arm into Chain Ladder (b1) carries the b1 arrowhead.
+    expect(svg).toMatch(/marker-end="url\(#mm\d+-arrow-b1\)" data-mm-hub="Reserving" data-mm-to="Chain Ladder"/);
+    // Chain Ladder's own hub is b1 and its arm into Mack wears Mack's b2 arrow.
+    expect(svg).toMatch(/marker-end="url\(#mm\d+-arrow-b2\)" data-mm-hub="Chain Ladder" data-mm-to="Mack"/);
     expect(svg).toContain('<defs>');
-    expect(svg).toContain('marker-end="url(#mm');
     expect(svg).toContain('parallx-mindmap__arrow');
-  });
-
-  it('every emitted edge carries its endpoint labels for live re-routing', () => {
-    const svg = renderMindMapSvg(SRC);
-    expect(svg).toContain('data-mm-from="Reserving"');
-    expect(svg).toContain('data-mm-to="Mack"');
   });
 
   it('appendChildToOutline inserts under the parent, two deeper; unknown parent is null', () => {

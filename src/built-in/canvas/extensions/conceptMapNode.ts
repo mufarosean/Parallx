@@ -15,10 +15,13 @@ import { Node, mergeAttributes } from '@tiptap/core';
 import katex from 'katex';
 import {
   appendChildToOutline,
-  edgePathFor,
+  hubPathsFor,
+  parseMindMap,
   renderMindMapSvg,
   type EdgeBox,
+  type HubChild,
   type MindMapDirection,
+  type MindMapNode,
   type MindMapOverrides,
 } from '../../../ui/conceptMap.js';
 import { beginPointerDrag } from '../../../ui/interactionMode.js';
@@ -142,26 +145,65 @@ export const ConceptMap = Node.create({
             m.el.setAttribute('y', String(m.baseY + dy));
           }
         };
-        // Edges touching the dragged box re-route LIVE: without this the
-        // lines freeze mid-air and the drag feels broken.
+        // HUBS touching the dragged box re-route LIVE: the box's own hub
+        // (it is a parent) and its parent's hub (it is a child). Without
+        // this the lines freeze mid-air and the drag feels broken.
         const svgRoot = parts.g.ownerSVGElement as unknown as HTMLElement | null;
         const geoms = svgRoot ? boxGeoms(svgRoot) : new Map<string, EdgeBox>();
         const baseGeom = geoms.get(parts.label);
-        const touching = svgRoot
-          ? (Array.from(svgRoot.querySelectorAll('path[data-mm-from], path[data-mm-to]')) as SVGPathElement[])
-              .filter((path) => path.getAttribute('data-mm-from') === parts.label
-                || path.getAttribute('data-mm-to') === parts.label)
+        // Parent/children relations come from the OUTLINE (the one truth).
+        const kidsOf = new Map<string, string[]>();
+        const parentOf = new Map<string, string>();
+        const walk = (n: MindMapNode): void => {
+          kidsOf.set(n.label, n.children.map((c) => c.label));
+          for (const c of n.children) { parentOf.set(c.label, n.label); walk(c); }
+        };
+        for (const r of parseMindMap(attrs.src)) walk(r);
+        const affectedHubs = new Set<string>();
+        if ((kidsOf.get(parts.label) ?? []).length > 0) affectedHubs.add(parts.label);
+        const myParent = parentOf.get(parts.label);
+        if (myParent) affectedHubs.add(myParent);
+        const hubPathEls = svgRoot
+          ? (Array.from(svgRoot.querySelectorAll('path[data-mm-hub]')) as SVGPathElement[])
+              .filter((path) => affectedHubs.has(path.getAttribute('data-mm-hub') ?? ''))
               .map((path) => ({ path, baseD: path.getAttribute('d') ?? '' }))
           : [];
+        const touching = hubPathEls;
+        const colorOf = (label: string): number => {
+          const g = svgRoot?.querySelector(`.parallx-mindmap__node[data-mindmap-label="${CSS.escape(label)}"]`);
+          const m = /parallx-mindmap__node--b(\d)/.exec(g?.getAttribute('class') ?? '');
+          return m ? Number(m[1]) : 0;
+        };
         const rerouteEdges = (dx: number, dy: number): void => {
-          if (!baseGeom) return;
-          const movedGeom: EdgeBox = { ...baseGeom, x: baseGeom.x + dx, y: baseGeom.y + dy };
-          for (const { path } of touching) {
-            const fromLabel = path.getAttribute('data-mm-from') ?? '';
-            const toLabel = path.getAttribute('data-mm-to') ?? '';
-            const a = fromLabel === parts.label ? movedGeom : geoms.get(fromLabel);
-            const b = toLabel === parts.label ? movedGeom : geoms.get(toLabel);
-            if (a && b) path.setAttribute('d', edgePathFor(a, b, attrs.dir));
+          if (!baseGeom || !svgRoot) return;
+          const geomOf = (label: string): EdgeBox | undefined =>
+            label === parts.label
+              ? { ...baseGeom, x: baseGeom.x + dx, y: baseGeom.y + dy }
+              : geoms.get(label);
+          for (const hubLabel of affectedHubs) {
+            const parentGeom = geomOf(hubLabel);
+            const kidLabels = kidsOf.get(hubLabel) ?? [];
+            if (!parentGeom || kidLabels.length === 0) continue;
+            const kids: HubChild[] = [];
+            for (const k of kidLabels) {
+              const g = geomOf(k);
+              if (g) kids.push({ ...g, label: k, color: colorOf(k) });
+            }
+            const hubs = hubPathsFor(parentGeom, kids, attrs.dir);
+            // Repaint this hub's path elements in emission order:
+            // stem, spine?, arms — matching the renderer's order.
+            const els = hubPathEls.filter(({ path }) => path.getAttribute('data-mm-hub') === hubLabel);
+            let i = 0;
+            for (const hub of hubs) {
+              if (els[i]) els[i++].path.setAttribute('d', hub.stem);
+              if (hub.spine && els[i]) els[i++].path.setAttribute('d', hub.spine);
+              for (const arm of hub.arms) {
+                if (els[i]) els[i++].path.setAttribute('d', arm.d);
+              }
+            }
+            // A drag can shrink the hub's shape (side flip mid-drag);
+            // blank the leftovers so no stale segment hangs in the air.
+            for (; i < els.length; i++) els[i].path.setAttribute('d', '');
           }
         };
         beginPointerDrag(e, {

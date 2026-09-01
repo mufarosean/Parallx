@@ -40,10 +40,8 @@
   font-family: inherit;
 }
 
-/* Depth reads as weight: the trunk is emphatic, the leaves recede. */
-.parallx-mindmap__node--d0 .parallx-mindmap__box {
-  stroke: var(--px-accent, var(--vscode-textLink-foreground, #3794ff));
-}
+/* Depth reads as weight: the trunk is emphatic, the leaves recede.
+   (Colour comes from the per-box hue classes below.) */
 
 .parallx-mindmap__node--d0 .parallx-mindmap__text {
   font-weight: 600;
