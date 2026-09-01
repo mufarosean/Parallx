@@ -20,6 +20,9 @@ import './conceptMap.css';
 
 export interface MindMapNode {
   readonly label: string;
+  /** Index of the source line this node came from: its IDENTITY.
+   *  Label text is display, never identity (two boxes can share one). */
+  readonly line: number;
   readonly children: MindMapNode[];
 }
 
@@ -52,6 +55,21 @@ function safeTruncate(label: string, max: number): string {
   return `${label.slice(0, cut).trimEnd()}…`;
 }
 
+/** An outline line's leading indent + list marker (kept across edits). */
+const LINE_PREFIX_RE = /^([ \t]*)((?:[-*•]\s+|\d+[.)]\s+)?)/;
+
+/**
+ * Outline line text → the label a box will show. THE one normalisation:
+ * markers stripped, whitespace collapsed, safely truncated. Anything
+ * keyed by label (layout overrides) must key this, never raw text.
+ */
+export function normalizeLabel(raw: string): string {
+  return safeTruncate(
+    String(raw ?? '').replace(LINE_PREFIX_RE, '').replace(/\s+/g, ' ').trim(),
+    MAX_LABEL_CHARS,
+  );
+}
+
 /**
  * Parse the indented-list source into a forest. Pure. Depth comes from a
  * stack comparison, so 2-space, 4-space, tab, and mixed indentation all
@@ -61,26 +79,21 @@ export function parseMindMap(src: string): MindMapNode[] {
   const roots: MindMapNode[] = [];
   const stack: { indent: number; node: MindMapNode }[] = [];
   let count = 0;
+  let lineNo = -1;
 
   for (const rawLine of String(src || '').split('\n')) {
+    lineNo++;
     if (!rawLine.trim()) continue;
     if (count >= MAX_NODES) break;
 
     const indent = indentWidth(rawLine);
-    const label = safeTruncate(
-      rawLine
-        .trim()
-        .replace(/^[-*•]\s+/, '')
-        .replace(/^\d+[.)]\s+/, '')
-        .trim(),
-      MAX_LABEL_CHARS,
-    );
+    const label = normalizeLabel(rawLine);
     if (!label) continue;
 
     while (stack.length > 0 && stack[stack.length - 1].indent >= indent) stack.pop();
     while (stack.length > MAX_DEPTH - 1) stack.pop();
 
-    const node: MindMapNode = { label, children: [] };
+    const node: MindMapNode = { label, line: lineNo, children: [] };
     if (stack.length === 0) roots.push(node);
     else stack[stack.length - 1].node.children.push(node);
     stack.push({ indent, node });
@@ -232,6 +245,8 @@ export function measureLabel(label: string, maxTextW: number = MAX_TEXT_W): Meas
 
 export interface LaidOutNode {
   readonly label: string;
+  /** The source line this box came from: its identity for editing. */
+  readonly line: number;
   readonly depth: number;
   readonly x: number;
   readonly y: number;          // centre-line y
@@ -351,7 +366,7 @@ export function layoutMindMap(
     const place = (node: MindMapNode, depth: number): number => {
       const size = sizes.get(node)!;
       const index = nodes.length;
-      nodes.push({ label: node.label, depth, x: colX[depth], y: 0, width: size.width, height: size.height, branch: branchCounter++ % 6 });
+      nodes.push({ label: node.label, line: node.line, depth, x: colX[depth], y: 0, width: size.width, height: size.height, branch: branchCounter++ % 6 });
 
       let y: number;
       if (node.children.length === 0) {
@@ -402,7 +417,7 @@ export function layoutMindMap(
   const place = (node: MindMapNode, depth: number): number => {
     const size = sizes.get(node)!;
     const index = nodes.length;
-    nodes.push({ label: node.label, depth, x: 0, y: rowCenterY[depth], width: size.width, height: size.height, branch: branchCounter++ % 6 });
+    nodes.push({ label: node.label, line: node.line, depth, x: 0, y: rowCenterY[depth], width: size.width, height: size.height, branch: branchCounter++ % 6 });
 
     let centerX: number;
     if (node.children.length === 0) {
@@ -465,27 +480,231 @@ export interface EdgeBox {
 }
 
 /**
- * Insert a child under `parentLabel` in the outline (first matching
- * line), indented two deeper. Pure; returns null when the parent line
- * cannot be found. The hover "+" on the canvas block rides this.
+ * The FULL text of one outline line, markers and indent stripped. The
+ * box editor seeds from this, never from the drawn label: a label the
+ * layout truncated would otherwise commit its own truncation back into
+ * the outline and delete the tail.
  */
-export function appendChildToOutline(src: string, parentLabel: string, childLabel: string): string | null {
+export function outlineLineText(src: string, line: number): string | null {
   const lines = String(src || '').split('\n');
-  const clean = (raw: string): string => raw
-    .trim()
-    .replace(/^[-*\u2022]\s+/, '')
-    .replace(/^\d+[.)]\s+/, '')
-    .trim();
-  for (let i = 0; i < lines.length; i++) {
-    if (!lines[i].trim()) continue;
-    const label = clean(lines[i]);
-    if (label === parentLabel || safeTruncate(label, MAX_LABEL_CHARS) === parentLabel) {
-      const indent = lines[i].length - lines[i].trimStart().length;
-      lines.splice(i + 1, 0, `${' '.repeat(indent + 2)}${childLabel}`);
-      return lines.join('\n');
+  if (line < 0 || line >= lines.length) return null;
+  return lines[line].replace(LINE_PREFIX_RE, '');
+}
+
+/**
+ * Rewrite ONE outline line by index, keeping its indent and list
+ * marker. Line-addressed, so duplicate labels never cross-edit. Pure;
+ * null when the index is out of range or the line is blank.
+ */
+export function replaceOutlineLine(src: string, line: number, text: string): string | null {
+  const lines = String(src || '').split('\n');
+  if (line < 0 || line >= lines.length || !lines[line].trim()) return null;
+  const prefix = LINE_PREFIX_RE.exec(lines[line])?.[0] ?? '';
+  lines[line] = `${prefix}${text}`;
+  return lines.join('\n');
+}
+
+/**
+ * Insert a child under the node at `line`, indented two deeper. Pure;
+ * null when the index is out of range. The hover "+" rides this.
+ */
+export function appendChildAtLine(src: string, line: number, childLabel: string): string | null {
+  const lines = String(src || '').split('\n');
+  if (line < 0 || line >= lines.length || !lines[line].trim()) return null;
+  const indent = lines[line].length - lines[line].trimStart().length;
+  lines.splice(line + 1, 0, `${' '.repeat(indent + 2)}${childLabel}`);
+  return lines.join('\n');
+}
+
+// ── In-place label editing (live preview) ───────────────────────────────
+//
+// The box editor shows the label WITH its formatting while it is being
+// typed: markdown markers stay visible but dimmed, and a $…$ span
+// renders through KaTeX the moment the caret leaves it (click the
+// rendered formula to get the TeX back). The trick that keeps this
+// simple: every SOURCE character is present in the editor DOM exactly
+// once, either as literal text or as an atomic span's data-src, so
+// serialisation is a plain walk and caret mapping is identity.
+
+/** One editor token; concatenating `text` over all tokens === source. */
+export interface EditorToken {
+  readonly kind: 'text' | 'bold' | 'italic' | 'code' | 'math';
+  /** The full source slice, markers included. */
+  readonly text: string;
+  /** The content without markers (=== text for plain text). */
+  readonly inner: string;
+}
+
+/** Tokenise for editing: the render grammar, but markers are KEPT. */
+export function editorTokens(source: string): EditorToken[] {
+  const out: EditorToken[] = [];
+  const pushInline = (text: string): void => {
+    const re = /(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|(_([^_]+)_)|(`([^`]+)`)/g;
+    let last = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      if (m.index > last) out.push({ kind: 'text', text: text.slice(last, m.index), inner: text.slice(last, m.index) });
+      if (m[2] !== undefined) out.push({ kind: 'bold', text: m[1], inner: m[2] });
+      else if (m[4] !== undefined) out.push({ kind: 'italic', text: m[3], inner: m[4] });
+      else if (m[6] !== undefined) out.push({ kind: 'italic', text: m[5], inner: m[6] });
+      else if (m[8] !== undefined) out.push({ kind: 'code', text: m[7], inner: m[8] });
+      last = m.index + m[0].length;
     }
+    if (last < text.length) out.push({ kind: 'text', text: text.slice(last), inner: text.slice(last) });
+  };
+  const re = /\$([^$]+)\$/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(source)) !== null) {
+    if (m.index > last) pushInline(source.slice(last, m.index));
+    out.push({ kind: 'math', text: m[0], inner: m[1] });
+    last = m.index + m[0].length;
   }
-  return null;
+  if (last < source.length) pushInline(source.slice(last));
+  return out;
+}
+
+/**
+ * What the live preview would look like, structurally: token kinds plus
+ * which math spans are showing raw. Equal signatures mean the browser's
+ * own edit already renders correctly, so the editor can leave the DOM
+ * (and the caret, and undo) alone. This is what keeps typing smooth.
+ */
+export function editorSignature(source: string, caret: { start: number; end: number } | null): string {
+  const parts: string[] = [];
+  let offset = 0;
+  for (const tok of editorTokens(source)) {
+    const start = offset;
+    const end = offset + tok.text.length;
+    offset = end;
+    const raw = tok.kind === 'math' && caret !== null && caret.end > start && caret.start < end;
+    parts.push(raw ? 'math-raw' : tok.kind);
+  }
+  return parts.join('|');
+}
+
+export interface EditorCaret {
+  readonly start: number;
+  readonly end: number;
+}
+
+/**
+ * The editor's innerHTML for a source string. A math span renders
+ * ATOMIC (KaTeX, contenteditable=false, its source riding data-src)
+ * unless the caret sits strictly inside it, in which case the raw TeX
+ * shows for editing. Marks stay literal with dimmed marker spans, so
+ * plain typing never fights the caret.
+ */
+export function editorHtml(source: string, caret: EditorCaret | null, renderMath?: (tex: string) => string): string {
+  let html = '';
+  let offset = 0;
+  for (const tok of editorTokens(source)) {
+    const start = offset;
+    const end = offset + tok.text.length;
+    offset = end;
+    if (tok.kind === 'math') {
+      const caretInside = caret !== null && caret.end > start && caret.start < end;
+      if (renderMath && !caretInside) {
+        html += `<span class="parallx-mindmap__edmath" contenteditable="false" data-src="${escapeXml(tok.text)}">${renderMath(tok.inner)}</span>`;
+      } else {
+        html += `<span class="parallx-mindmap__edmathsrc"><span class="parallx-mindmap__edsyn">$</span>${escapeXml(tok.inner)}<span class="parallx-mindmap__edsyn">$</span></span>`;
+      }
+      continue;
+    }
+    if (tok.kind === 'text') {
+      html += escapeXml(tok.text);
+      continue;
+    }
+    const markLen = (tok.text.length - tok.inner.length) / 2;
+    const openMark = tok.text.slice(0, markLen);
+    const closeMark = tok.text.slice(tok.text.length - markLen);
+    const tag = tok.kind === 'bold' ? 'b' : tok.kind === 'italic' ? 'i' : 'code';
+    html += `<span class="parallx-mindmap__edsyn">${escapeXml(openMark)}</span>`
+      + `<${tag}>${escapeXml(tok.inner)}</${tag}>`
+      + `<span class="parallx-mindmap__edsyn">${escapeXml(closeMark)}</span>`;
+  }
+  return html;
+}
+
+/** Editor DOM → source: text nodes as-is, atomic spans via data-src. */
+export function serializeEditorDom(root: Node): string {
+  let out = '';
+  const walk = (n: Node): void => {
+    if (n.nodeType === 3) { out += n.nodeValue ?? ''; return; }
+    if (n.nodeType !== 1) return;
+    const el = n as Element;
+    const src = el.getAttribute('data-src');
+    if (src !== null) { out += src; return; }
+    if (el.tagName === 'BR') { out += '\n'; return; }
+    for (const c of Array.from(el.childNodes)) walk(c);
+  };
+  for (const c of Array.from(root.childNodes)) walk(c);
+  return out;
+}
+
+/** DOM caret position → source offset (atomic spans count their data-src). */
+export function caretSourceOffset(root: Node, target: Node, targetOffset: number): number {
+  let count = 0;
+  let done = false;
+  const walk = (n: Node): void => {
+    if (done) return;
+    if (n === target) {
+      if (n.nodeType === 3) { count += Math.min(targetOffset, (n.nodeValue ?? '').length); done = true; return; }
+      const kids = Array.from(n.childNodes);
+      for (let i = 0; i < Math.min(targetOffset, kids.length); i++) walk(kids[i]);
+      done = true;
+      return;
+    }
+    if (n.nodeType === 3) { count += (n.nodeValue ?? '').length; return; }
+    if (n.nodeType !== 1) return;
+    const el = n as Element;
+    const src = el.getAttribute('data-src');
+    if (src !== null) { count += src.length; return; }
+    if (el.tagName === 'BR') { count += 1; return; }
+    for (const c of Array.from(el.childNodes)) { walk(c); if (done) return; }
+  };
+  walk(root);
+  return count;
+}
+
+/**
+ * Source offset → DOM caret position. An offset inside an atomic span
+ * lands just before or after it (the caret cannot enter rendered math;
+ * clicking the formula re-renders it raw first).
+ */
+export function resolveSourceOffset(root: Node, offset: number): { node: Node; offset: number } {
+  let remaining = Math.max(0, offset);
+  let last: { node: Node; offset: number } = { node: root, offset: 0 };
+  let found: { node: Node; offset: number } | null = null;
+  const walk = (n: Node): void => {
+    if (found) return;
+    if (n.nodeType === 3) {
+      const len = (n.nodeValue ?? '').length;
+      if (remaining <= len) { found = { node: n, offset: remaining }; return; }
+      remaining -= len;
+      last = { node: n, offset: len };
+      return;
+    }
+    if (n.nodeType !== 1) return;
+    const el = n as Element;
+    const src = el.getAttribute('data-src');
+    const atomicLen = src !== null ? src.length : el.tagName === 'BR' ? 1 : null;
+    if (atomicLen !== null) {
+      if (remaining <= atomicLen) {
+        const parent = n.parentNode;
+        if (parent) {
+          const idx = Array.prototype.indexOf.call(parent.childNodes, n);
+          found = { node: parent, offset: remaining === 0 ? idx : idx + 1 };
+        }
+        return;
+      }
+      remaining -= atomicLen;
+      return;
+    }
+    for (const c of Array.from(el.childNodes)) { walk(c); if (found) return; }
+  };
+  walk(root);
+  return found ?? last;
 }
 
 /** A child of a hub: geometry plus its colour (for the arrowhead). */
@@ -651,7 +870,7 @@ export function renderMindMapSvg(src: string, opts: RenderMindMapOptions = {}): 
     const top = n.y - n.height / 2;
     const attrLabel = escapeXml(n.label);
     const cls = `parallx-mindmap__node parallx-mindmap__node--d${Math.min(n.depth, 2)} ${branchClass(n.branch)}`;
-    const open = `<g class="${cls}" data-mindmap-label="${attrLabel}" role="button" tabindex="0">`
+    const open = `<g class="${cls}" data-mindmap-label="${attrLabel}" data-mm-line="${n.line}" role="button" tabindex="0">`
       + `<rect class="parallx-mindmap__box" x="${n.x}" y="${top}" width="${n.width}" height="${n.height}" rx="5" />`;
 
     const needsHtml = measured.rich && (opts.renderMath || measured.lines.length > 1

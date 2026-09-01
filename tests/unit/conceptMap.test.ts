@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
-  appendChildToOutline,
+  appendChildAtLine,
   applyOverrides,
   hubPathsFor,
   layoutMindMap,
@@ -236,14 +236,20 @@ describe('hub connectors and outline growth', () => {
     expect(svg).toContain('parallx-mindmap__arrow');
   });
 
-  it('appendChildToOutline inserts under the parent, two deeper; unknown parent is null', () => {
-    const next = appendChildToOutline(SRC, 'Chain Ladder', 'New idea')!;
+  it('appendChildAtLine inserts under that line, two deeper; a bad index is null', () => {
+    const next = appendChildAtLine(SRC, 1, 'New idea')!; // line 1 = Chain Ladder
     const lines = next.split('\n');
-    const i = lines.findIndex((l) => l.trim() === 'Chain Ladder');
-    expect(lines[i + 1]).toBe('    New idea');
+    expect(lines[2]).toBe('    New idea');
     const roots = parseMindMap(next);
     expect(roots[0].children[0].children.map((n) => n.label)).toEqual(['New idea', 'Mack']);
-    expect(appendChildToOutline(SRC, 'Ghost', 'x')).toBeNull();
+    expect(appendChildAtLine(SRC, 99, 'x')).toBeNull();
+  });
+
+  it('nodes carry their source line, and the SVG stamps it', () => {
+    const roots = parseMindMap('Root\n\n  Child');
+    expect(roots[0].line).toBe(0);
+    expect(roots[0].children[0].line).toBe(2); // blank lines still count
+    expect(renderMindMapSvg(SRC)).toContain('data-mm-line="2"');
   });
 });
 
