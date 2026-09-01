@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   layoutMindMap,
+  measureLabel,
   parseMindMap,
   parseMindMapInfo,
   renderMindMapSvg,
@@ -102,6 +103,40 @@ describe('math-aware labels', () => {
     const svg = renderMindMapSvg('Root\n  $E=mc^2$');
     expect(svg).not.toContain('foreignObject');
     expect(svg).toContain('$E=mc^2$');
+  });
+});
+
+describe('rich labels', () => {
+  it('long labels wrap: capped width, multi-line height', () => {
+    const long = 'incremental capping ratio applied to the loss cost format across every accident year in the triangle';
+    const m = measureLabel(long);
+    expect(m.lines.length).toBeGreaterThan(1);
+    expect(m.width).toBeLessThanOrEqual(242 + 20);
+    const single = measureLabel('short');
+    expect(m.height).toBeGreaterThan(single.height);
+  });
+
+  it('truncation never cuts through a math span', () => {
+    const tex = String.raw`\frac{CL_n - CL_{n-1}}{L_n - L_{n-1}} \cdot L_{ultimate}`;
+    const label = 'x'.repeat(200) + ' $' + tex + '$';
+    const roots = parseMindMap(label);
+    const dollars = (roots[0].label.match(/\$/g) ?? []).length;
+    expect(dollars % 2).toBe(0); // never an unmatched $
+  });
+
+  it('markdown tokens render as real elements in the foreignObject', () => {
+    const svg = renderMindMapSvg('Root\n  **capping** ratio times *LCF* and `TM`', {
+      renderMath: (tex) => tex,
+    });
+    expect(svg).toContain('<b>capping</b>');
+    expect(svg).toContain('<i>LCF</i>');
+    expect(svg).toContain('<code>TM</code>');
+  });
+
+  it('a wrapped multi-line label renders per-line divs', () => {
+    const svg = renderMindMapSvg('Root\n  a very long branch label that certainly exceeds the wrap width of the box by a lot', {});
+    expect(svg).toContain('parallx-mindmap__line');
+    expect((svg.match(/parallx-mindmap__line/g) ?? []).length).toBeGreaterThan(1);
   });
 });
 

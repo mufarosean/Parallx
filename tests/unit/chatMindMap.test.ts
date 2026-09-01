@@ -79,7 +79,10 @@ describe('parseMindMap', () => {
   });
 
   it('clips an over-long label rather than the box clipping it later', () => {
-    expect(parseMindMap('x'.repeat(300))[0].label).toHaveLength(64);
+    // Labels wrap since the 2026-08-31 rich-label pass, so the cap is a
+    // sanity bound (220 + the ellipsis), not a display width.
+    expect(parseMindMap('x'.repeat(300))[0].label.length).toBeLessThanOrEqual(221);
+    expect(parseMindMap('x'.repeat(300))[0].label.endsWith('…')).toBe(true);
   });
 });
 

@@ -102,7 +102,7 @@ export const ConceptMap = Node.create({
           dom.appendChild(ta);
           const hint = document.createElement('div');
           hint.classList.add('canvas-conceptmap__hint');
-          hint.textContent = 'One idea per line; indent to nest. $x^2$ renders as math.';
+          hint.textContent = 'One idea per line; indent to nest. **bold**, *italic*, `code`, and $x^2$ all render.';
           dom.appendChild(hint);
           editBtn.addEventListener('click', (e) => {
             e.stopPropagation();
