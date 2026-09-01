@@ -961,7 +961,7 @@ function _schedulesEqual(a: ICronSchedule, b: ICronSchedule): boolean {
  * `anchorMs` is ignored — those kinds derive their next-run from
  * absolute time, not from an anchor offset.
  */
-function computeNextRun(
+export function computeNextRun(
   schedule: ICronSchedule,
   fromMs: number,
   anchorMs?: number,

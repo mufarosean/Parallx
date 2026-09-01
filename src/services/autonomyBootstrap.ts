@@ -19,7 +19,11 @@
 import type { IDisposable } from '../platform/lifecycle.js';
 import type { ServiceCollection } from './serviceCollection.js';
 import { CronService, ICronService } from '../openclaw/openclawCronService.js';
-import { AutonomyFeatureFlagsService, isAutonomyTriggerAllowed, FLAG_CRON_ENABLED } from './autonomyFeatureFlags.js';
+import { AutonomyFeatureFlagsService, isAutonomyTriggerAllowed, FLAG_CRON_ENABLED, FLAG_PAUSED_GLOBAL } from './autonomyFeatureFlags.js';
+import { WorkflowService, IWorkflowService } from './workflows/workflowService.js';
+import { IActivityJournalService } from './activityJournalService.js';
+import type { AutonomyLogService } from './autonomyLogService.js';
+import type { WorkflowRun } from './workflows/workflowTypes.js';
 import { AutonomyEventLog, type IAutonomyEventLogFs } from './autonomyEventLog.js';
 import { AutonomyPatternMemoryService, type IAutonomyPatternMemoryFs } from './autonomyPatternMemoryService.js';
 import { AutonomyTaskRailService } from './autonomyTaskRailService.js';
@@ -172,5 +176,85 @@ export async function bootstrapAutonomyServices(
     await cron.loadFromPersistence();
   }
 
+  // ── Workflows (docs/WORKFLOWS_BRIEF.md) — the composition layer over
+  //    cron/journal/tools. Constructed and HYDRATED here exactly like cron:
+  //    documents visible from boot, execution late-bound by chat
+  //    (attachExecution + start). Persistence mirrors cron.json.
+  const workflows = new WorkflowService();
+  disposables.push(workflows);
+  services.registerInstance(IWorkflowService, workflows);
+
+  workflows.setObservers({
+    isPaused: () => flags.isEnabled(FLAG_PAUSED_GLOBAL),
+    onRunRecorded: (run: WorkflowRun) => {
+      // UX feed (the Autonomy Log panel) — one entry per run.
+      try {
+        (autonomyLog as AutonomyLogService | undefined)?.append({
+          origin: 'workflow',
+          requestText: `[workflow · ${run.workflowName}]`,
+          content: describeWorkflowRun(run),
+          metadata: {
+            workflowId: run.workflowId,
+            runId: run.id,
+            status: run.status,
+            ...(run.status === 'error' ? { error: true } : {}),
+          },
+        });
+      } catch { /* the feed never breaks a run */ }
+      // Audit trail (ndjson event log).
+      try {
+        eventLog?.emit({
+          trigger: { kind: 'workflow', ref: run.workflowId },
+          outcome: run.status === 'error' ? 'error' : run.status === 'gated' ? 'gated' : 'completed',
+          durationMs: (run.finishedAt ?? run.startedAt) - run.startedAt,
+          note: `${run.workflowName} · ${run.trigger.summary} · ${run.status}`,
+        });
+      } catch { /* audit never breaks a run */ }
+    },
+  });
+
+  // Event triggers ride the activity journal's live feed.
+  const journal = services.tryGet(IActivityJournalService);
+  if (journal) workflows.attachJournalFeed(journal.onDidAppend);
+
+  if (workspaceFolder && appPath && fs?.exists && fs.readFile && fs.writeFile && fs.mkdir) {
+    const wfJsonPath = `${workspaceFolder}/.parallx/workflows.json`;
+    const wfJsonDir = `${workspaceFolder}/.parallx`;
+    workflows.setPersistence({
+      load: async () => {
+        try {
+          const wsExists = await fs.exists!(wfJsonPath);
+          if (wsExists.ok && wsExists.exists) {
+            const result = await fs.readFile!(wfJsonPath, 'utf-8');
+            if (!result.ok || typeof result.data !== 'string') return null;
+            return JSON.parse(result.data);
+          }
+          return null;
+        } catch {
+          return null;
+        }
+      },
+      save: async (snapshot) => {
+        try {
+          await fs.mkdir!(wfJsonDir);
+          await fs.writeFile!(wfJsonPath, JSON.stringify(snapshot, null, 2), 'utf-8');
+        } catch {
+          /* persistence failures don't affect in-memory truth */
+        }
+      },
+    });
+    await workflows.loadFromPersistence();
+  }
+
   return disposables;
+}
+
+/** One readable line per node — the run trace as feed content. */
+function describeWorkflowRun(run: WorkflowRun): string {
+  const lines: string[] = [`Trigger: ${run.trigger.summary}`];
+  for (const n of run.nodes) {
+    const tail = n.error ? ` — ${n.error}` : n.summary ? ` — ${n.summary}` : '';
+    lines.push(`• ${n.label}: ${n.status}${tail}`);
+  }
+  return lines.join('\n');
 }

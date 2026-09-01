@@ -48,6 +48,11 @@ import {
   FLAG_CRON_ENABLED,
   type AutonomyFeatureFlagsService,
 } from '../../services/autonomyFeatureFlags.js';
+import { IWorkflowService, type WorkflowService } from '../../services/workflows/workflowService.js';
+import type { WorkflowDoc, WorkflowRun } from '../../services/workflows/workflowTypes.js';
+import { isTriggerNode } from '../../services/workflows/workflowTypes.js';
+import { describeTriggerNode } from '../../services/workflows/workflowGraph.js';
+import { WORKFLOW_TEMPLATES } from '../../services/workflows/workflowLibrary.js';
 
 // ── Local API type ───────────────────────────────────────────────────────────
 
@@ -81,9 +86,10 @@ type RailTriggerFilter =
   | 'followup'
   | 'file-change'
   | 'replay';
-type Mode = 'live' | 'history' | 'patterns';
+type Mode = 'workflows' | 'live' | 'history' | 'patterns';
 
 const ORIGIN_BADGE: Record<string, { label: string; cls: string }> = {
+  workflow:    { label: 'Workflow',    cls: 'workflow' },
   heartbeat:   { label: 'Heartbeat',   cls: 'heartbeat' },
   cron:        { label: 'Cron',        cls: 'cron' },
   subagent:    { label: 'Subagent',    cls: 'subagent' },
@@ -100,6 +106,7 @@ let railService: IRail | undefined;
 let patternMemory: IPatternMemory | undefined;
 let flagsService: AutonomyFeatureFlagsService | undefined;
 let cronService: CronService | undefined;
+let workflowService: WorkflowService | undefined;
 let configService: IUnifiedConfig | undefined;
 /** Run a workbench command (wake agent, deep-link into settings, …). */
 let runCommand: (<T = unknown>(id: string, ...args: unknown[]) => Promise<T>) | undefined;
@@ -119,11 +126,12 @@ function resolveServices(api: ParallxApi): void {
   if (api.services.has(IAutonomyPatternMemoryService)) patternMemory = api.services.get<IPatternMemory>(IAutonomyPatternMemoryService);
   if (api.services.has(IAutonomyFeatureFlagsService)) flagsService = api.services.get<AutonomyFeatureFlagsService>(IAutonomyFeatureFlagsService);
   if (api.services.has(ICronService)) cronService = api.services.get<CronService>(ICronService);
+  if (api.services.has(IWorkflowService)) workflowService = api.services.get<WorkflowService>(IWorkflowService);
   if (api.services.has(IUnifiedAIConfigService)) configService = api.services.get<IUnifiedConfig>(IUnifiedAIConfigService);
   runCommand = (id, ...args) => api.commands.executeCommand(id, ...args);
 }
 
-let currentMode: Mode = 'live';
+let currentMode: Mode = 'workflows';
 let currentLiveFilter: LiveFilter = 'all';
 let currentRailFilter: RailTriggerFilter = 'all';
 
@@ -137,6 +145,9 @@ let currentRailFilter: RailTriggerFilter = 'all';
  * by which point the suggestion is stale anyway.
  */
 const handledHeartbeat = new Set<string>();
+
+/** Workflow row whose latest run trace is expanded (persists across repaints). */
+let expandedWorkflowId: string | null = null;
 
 /** Whether a live log entry is an actionable heartbeat suggestion (test seam). */
 export function _isActionableHeartbeat(
@@ -190,6 +201,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
 
 export function deactivate(): void {
   logService = undefined;
+  workflowService = undefined;
   railService = undefined;
   patternMemory = undefined;
   flagsService = undefined;
@@ -286,12 +298,15 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
   // Mode tabs (live / history / patterns).
   const tabs = $('div.autonomy-log-tabs');
   const tabByMode: Partial<Record<Mode, HTMLButtonElement>> = {};
-  const availableModes: Mode[] = ['live'];
+  const availableModes: Mode[] = [];
+  if (workflowService) availableModes.push('workflows');
+  availableModes.push('live');
   if (railService) availableModes.push('history');
   if (patternMemory) availableModes.push('patterns');
+  if (currentMode === 'workflows' && !workflowService) currentMode = 'live';
   for (const m of availableModes) {
     const t = $('button.autonomy-log-tab') as HTMLButtonElement;
-    t.textContent = m === 'live' ? 'Live' : m === 'history' ? 'History' : 'Patterns';
+    t.textContent = m === 'workflows' ? 'Workflows' : m === 'live' ? 'Live' : m === 'history' ? 'History' : 'Patterns';
     t.addEventListener('click', () => {
       currentMode = m;
       paintTabs();
@@ -694,7 +709,7 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
   }
 
   // ── Render helpers ──
-  const liveChipKeys: readonly LiveFilter[] = ['all', 'heartbeat', 'cron', 'subagent', 'dashboard'];
+  const liveChipKeys: readonly LiveFilter[] = ['all', 'workflow', 'heartbeat', 'cron', 'subagent', 'dashboard'];
   const railChipKeys: readonly RailTriggerFilter[] = [
     'all', 'chat', 'heartbeat', 'cron', 'subagent', 'followup', 'file-change', 'replay',
   ];
@@ -707,7 +722,7 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
 
   function paintFilters(): void {
     filters.innerHTML = '';
-    if (currentMode === 'patterns') return;
+    if (currentMode === 'patterns' || currentMode === 'workflows') return;
     const keys = currentMode === 'live' ? liveChipKeys : railChipKeys;
     const active = currentMode === 'live' ? currentLiveFilter : currentRailFilter;
     for (const f of keys) {
@@ -726,6 +741,13 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
   }
 
   function paintSummary(): void {
+    if (currentMode === 'workflows') {
+      const flows = workflowService?.workflows ?? [];
+      const on = flows.filter((w) => w.enabled).length;
+      summary.textContent = flows.length === 0 ? '' : `${on} of ${flows.length} enabled`;
+      summary.classList.remove('autonomy-log-summary--unread');
+      return;
+    }
     if (currentMode === 'patterns') {
       const count = patternMemory?.list().length ?? 0;
       summary.textContent = count === 0
@@ -750,6 +772,10 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
   }
 
   function paintList(): void {
+    if (currentMode === 'workflows') {
+      paintWorkflowList();
+      return;
+    }
     if (currentMode === 'patterns') {
       paintPatternList();
       return;
@@ -821,6 +847,184 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
     for (const p of patterns) {
       listEl.appendChild(renderPatternRow(p));
     }
+  }
+
+  // ── Workflows tab (docs/WORKFLOWS_BRIEF.md — tab one of the reshape) ──
+
+  function workflowTriggerSummary(wf: WorkflowDoc): string {
+    const triggers = wf.nodes.filter(isTriggerNode);
+    if (triggers.length === 0) return 'Draft — no trigger yet';
+    return triggers.map((t) => describeTriggerNode(t)).join(' · ');
+  }
+
+  function runBadgeText(run: WorkflowRun): string {
+    switch (run.status) {
+      case 'ok': return 'ok';
+      case 'error': return 'failed';
+      case 'gated': return 'awaiting approval';
+      case 'cooldown': return 'held (cooldown)';
+      case 'running': return 'running';
+    }
+  }
+
+  function renderRunTrace(run: WorkflowRun): HTMLElement {
+    const trace = $('div.wf-row__trace');
+    const head = $('div.wf-row__trace-head');
+    head.textContent = `${formatTime(run.startedAt)} · ${run.trigger.summary}`;
+    trace.appendChild(head);
+    for (const n of run.nodes) {
+      const line = $(`div.wf-row__trace-line.is-${n.status}`);
+      const tail = n.error ? ` — ${n.error}` : n.summary ? ` — ${n.summary}` : '';
+      line.textContent = `${n.label}: ${n.status}${tail}`;
+      trace.appendChild(line);
+    }
+    return trace;
+  }
+
+  function renderWorkflowRow(wf: WorkflowDoc): HTMLElement {
+    const service = workflowService!;
+    const row = $('div.wf-row');
+    if (!wf.enabled) row.classList.add('wf-row--off');
+
+    const head = $('div.wf-row__head');
+    head.appendChild($(`span.as-cell__dot.is-${wf.enabled ? 'on' : 'off'}`));
+    const name = $('span.wf-row__name');
+    name.textContent = wf.name;
+    head.appendChild(name);
+    if (wf.source === 'migrated-cron') {
+      const chip = $('span.wf-row__chip');
+      chip.textContent = 'From Cron';
+      chip.title = 'Migrated from a cron job. The original job still exists.';
+      head.appendChild(chip);
+    }
+    if (wf.class === 'destructive') {
+      const chip = $('span.wf-row__chip.wf-row__chip--danger');
+      chip.textContent = 'Approval Required';
+      head.appendChild(chip);
+    }
+
+    const actions = $('div.wf-row__actions');
+    const runBtn = $('button.as-cell__action.is-primary') as HTMLButtonElement;
+    runBtn.textContent = 'Run Now';
+    runBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      runBtn.disabled = true;
+      service.runNow(wf.id).catch((err) => {
+        console.warn('[AutonomyLog] workflow run failed:', err);
+      }).finally(() => { runBtn.disabled = false; paintAll(); });
+    });
+    actions.appendChild(runBtn);
+
+    const toggleBtn = $('button.as-cell__action') as HTMLButtonElement;
+    toggleBtn.textContent = wf.enabled ? 'Disable' : 'Enable';
+    toggleBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      try { service.setEnabled(wf.id, !wf.enabled); } catch { /* repaint below */ }
+    });
+    actions.appendChild(toggleBtn);
+
+    const delBtn = $('button.as-cell__action') as HTMLButtonElement;
+    delBtn.textContent = 'Delete';
+    delBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (confirm(`Delete the workflow "${wf.name}"? Its run history goes with it.`)) {
+        service.removeWorkflow(wf.id);
+      }
+    });
+    actions.appendChild(delBtn);
+    head.appendChild(actions);
+    row.appendChild(head);
+
+    const det = $('div.wf-row__detail');
+    const parts: string[] = [workflowTriggerSummary(wf)];
+    const runs = service.getRuns(wf.id);
+    const last = runs[runs.length - 1];
+    if (last) parts.push(`last: ${runBadgeText(last)} ${formatAgo(last.startedAt)}`);
+    const next = service.nextRunAt(wf.id);
+    if (wf.enabled && next !== null) parts.push(`next ${formatUntil(next)}`);
+    det.textContent = parts.join(' · ');
+    if (last?.status === 'error') det.classList.add('wf-row__detail--error');
+    row.appendChild(det);
+
+    // Click the row to open the latest run's trace — runs are documents.
+    if (last) {
+      row.classList.add('wf-row--openable');
+      row.addEventListener('click', () => {
+        expandedWorkflowId = expandedWorkflowId === wf.id ? null : wf.id;
+        paintList();
+      });
+      if (expandedWorkflowId === wf.id) row.appendChild(renderRunTrace(last));
+    }
+    return row;
+  }
+
+  function appendWorkflowGallery(target: HTMLElement): void {
+    const service = workflowService!;
+    const gallery = $('div.wf-gallery');
+    const head = $('div.wf-gallery__head');
+    head.textContent = 'Add a workflow';
+    gallery.appendChild(head);
+    const chips = $('div.autonomy-guide__chips');
+    for (const t of WORKFLOW_TEMPLATES) {
+      const chip = $('button.autonomy-guide__chip') as HTMLButtonElement;
+      chip.appendChild(iconSpan('git-branch', 'autonomy-guide__chip-ic'));
+      const label = document.createElement('span');
+      label.textContent = t.name;
+      chip.appendChild(label);
+      chip.title = t.description;
+      chip.addEventListener('click', () => {
+        try { service.installTemplate(t.key); } catch (err) { console.warn('[AutonomyLog] template install failed:', err); }
+      });
+      chips.appendChild(chip);
+    }
+    // Existing cron jobs not yet migrated — the two-node promise.
+    const migrated = new Set(service.workflows.map((w) => w.migratedFromCronId).filter(Boolean));
+    for (const job of cronService?.jobs ?? []) {
+      if (migrated.has(job.id)) continue;
+      const chip = $('button.autonomy-guide__chip') as HTMLButtonElement;
+      chip.appendChild(iconSpan('calendar-clock', 'autonomy-guide__chip-ic'));
+      const label = document.createElement('span');
+      label.textContent = `Migrate: ${job.name}`;
+      chip.appendChild(label);
+      chip.title = 'Recreate this cron job as a workflow (the original stays until you remove it).';
+      chip.addEventListener('click', () => {
+        try { service.migrateCronJob(job); } catch (err) { console.warn('[AutonomyLog] cron migration failed:', err); }
+      });
+      chips.appendChild(chip);
+    }
+    gallery.appendChild(chips);
+    target.appendChild(gallery);
+  }
+
+  function paintWorkflowList(): void {
+    listEl.innerHTML = '';
+    if (!workflowService) {
+      setPlainEmpty('Workflows are not available in this workspace.');
+      emptyEl.style.display = '';
+      return;
+    }
+    const flows = workflowService.workflows;
+    if (flows.length === 0) {
+      emptyEl.innerHTML = '';
+      emptyEl.classList.add('autonomy-log-empty--guide');
+      const head = $('div.autonomy-guide__head');
+      head.appendChild(iconSpan('px-ai-mark', 'autonomy-guide__head-ic'));
+      const title = $('div.autonomy-guide__title');
+      title.textContent = 'No workflows yet';
+      head.appendChild(title);
+      emptyEl.appendChild(head);
+      const body = $('div.autonomy-guide__body');
+      body.textContent =
+        'A workflow is the app\u2019s standing behaviour as a document you can read: a trigger, '
+        + 'the steps it takes, and every run recorded. Start from a template, or migrate an existing cron job.';
+      emptyEl.appendChild(body);
+      appendWorkflowGallery(emptyEl);
+      emptyEl.style.display = '';
+      return;
+    }
+    emptyEl.style.display = 'none';
+    for (const wf of flows) listEl.appendChild(renderWorkflowRow(wf));
+    appendWorkflowGallery(listEl);
   }
 
   function renderLiveEntry(entry: IAutonomyLogEntry): HTMLElement {
@@ -1044,6 +1248,7 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
     });
   };
   let subLog = logService?.onDidChange(schedule);
+  let subWf = workflowService?.onDidChangeWorkflows(schedule);
   let subRail = railService?.onDidChange(schedule);
   let subFlags = flagsService?.onDidChange(schedule);
   let subCron = cronService?.onDidChangeJobs(schedule);
@@ -1054,8 +1259,14 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
   // strip wholesale, which would silently drop a keyboard user's focus to
   // <body> mid-Tab (the tick only refreshes relative-time text; it can wait).
   const refreshTimer = setInterval(() => {
-    if (currentMode !== 'live') return;
     const focused = document.activeElement;
+    if (currentMode === 'workflows') {
+      // Keep "next in 2h" honest; skip while the user is on a row control.
+      if (focused instanceof HTMLElement && body.contains(focused)) return;
+      paintList();
+      return;
+    }
+    if (currentMode !== 'live') return;
     if (focused instanceof HTMLElement && statusBoard.contains(focused)) return;
     paintStatus();
   }, 30_000);
@@ -1064,7 +1275,7 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
   // flags / cron services, re-resolve shortly after, wire up the now-available
   // subscriptions, and repaint — so the panel goes live without a reopen.
   let healTimer: ReturnType<typeof setTimeout> | undefined;
-  if (apiRef && (!flagsService || !cronService)) {
+  if (apiRef && (!flagsService || !cronService || !workflowService)) {
     healTimer = setTimeout(() => {
       healTimer = undefined;
       if (apiRef) resolveServices(apiRef);
@@ -1072,6 +1283,7 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
       if (!subRail && railService) subRail = railService.onDidChange(schedule);
       if (!subFlags && flagsService) subFlags = flagsService.onDidChange(schedule);
       if (!subCron && cronService) subCron = cronService.onDidChangeJobs(schedule);
+      if (!subWf && workflowService) subWf = workflowService.onDidChangeWorkflows(schedule);
       if (!subConfig && configService) subConfig = configService.onDidChangeConfig(schedule);
       paintAll();
     }, 800);
@@ -1080,6 +1292,7 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
   return {
     dispose(): void {
       subLog?.dispose();
+      subWf?.dispose();
       subRail?.dispose();
       subFlags?.dispose();
       subCron?.dispose();

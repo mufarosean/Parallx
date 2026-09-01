@@ -85,6 +85,8 @@ import {
   createCronContextLineFetcher,
 } from '../../openclaw/openclawCronExecutor.js';
 import { SubagentSpawner } from '../../openclaw/openclawSubagentSpawn.js';
+import { extractFinalAssistantText } from '../../openclaw/openclawSubagentExecutor.js';
+import { WorkflowService, IWorkflowService } from '../../services/workflows/workflowService.js';
 import { AutonomyLogService } from '../../services/autonomyLogService.js';
 import {
   AutonomyFeatureFlagsService,
@@ -1671,6 +1673,89 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         });
         cronService.attachExecution(cronExecutor, cronContextFetcher, cronHeartbeatWaker);
         cronService.start();
+      }
+    }
+
+    // ── Workflows (docs/WORKFLOWS_BRIEF.md) — attach the execution half ──
+    //
+    // Core built and hydrated the WorkflowService (autonomyBootstrap, the
+    // cron pattern); chat owns the execution because agent turns need the
+    // ephemeral-session substrate. Tool actions run under a SYNTHETIC
+    // session marked autonomous, so the M90 dial applies to workflow tool
+    // calls exactly as it does to subagents — an automatic firing is not
+    // a user gesture and must not borrow user-initiated consent.
+    {
+      const workflowService = api.services.has(IWorkflowService)
+        ? api.services.get<WorkflowService>(IWorkflowService)
+        : undefined;
+      if (workflowService) {
+        const NEVER_CANCELLED: ICancellationToken = {
+          isCancellationRequested: false,
+          onCancellationRequested: () => ({ dispose: () => { /* noop */ } }),
+        };
+        const chatSvcForWorkflows = chatService as unknown as import('../../services/chatService.js').ChatService;
+        const workflowContextFetcher = createCronContextLineFetcher({
+          getActiveSession: () => {
+            const id = _activeWidget?.getSession()?.id;
+            return id ? chatService.getSession(id) : undefined;
+          },
+        });
+        workflowService.attachExecution({
+          runAgentTurn: async ({ workflowName, prompt, contextMessages }) => {
+            const parentId = _activeWidget?.getSession()?.id;
+            if (!parentId) throw new Error('No active chat session to host the workflow turn.');
+            const contextLines = contextMessages > 0 ? await workflowContextFetcher(contextMessages) : [];
+            const systemMessage = [
+              `This is the workflow "${workflowName}" running a scheduled agent turn at ${new Date().toISOString()}.`,
+              'The user composed this workflow. Execute the task and report the result concisely.',
+            ].join(' ');
+            const parts: string[] = [];
+            if (contextLines.length > 0) {
+              parts.push('Previous chat context:', ...contextLines, '');
+            }
+            parts.push(`Task: ${prompt}`);
+            const userMessage = parts.join('\n');
+            const handle = chatSvcForWorkflows.createEphemeralSession(parentId, {
+              systemMessage,
+              firstUserMessage: userMessage,
+              archiveOrigin: 'workflow',
+            });
+            try {
+              await chatService.sendRequest(handle.sessionId, userMessage);
+              const session = chatService.getSession(handle.sessionId);
+              const last = session?.messages[session.messages.length - 1];
+              return last ? extractFinalAssistantText(last.response.parts) : '';
+            } finally {
+              chatSvcForWorkflows.purgeEphemeralSession(handle);
+            }
+          },
+          runCommand: async (commandId, args) => {
+            const cmd = api.services.has(ICommandService)
+              ? api.services.get<import('../../services/serviceTypes.js').ICommandService>(ICommandService)
+              : undefined;
+            if (cmd) return cmd.executeCommandFrom('ai', commandId, ...args);
+            return api.commands.executeCommand(commandId, ...args);
+          },
+          runTool: async (toolName, args, origin) => {
+            const sessionId = `${origin}:${Date.now()}`;
+            _permissionService?.markSubagentSession(sessionId);
+            try {
+              const result = await invokeRuntimeToolWithSkillSupport(toolName, { ...args }, NEVER_CANCELLED, undefined, sessionId);
+              return { content: result.content, isError: result.isError };
+            } finally {
+              _permissionService?.unmarkSubagentSession(sessionId);
+            }
+          },
+          notify: (message, wf) => {
+            autonomyLog.append({
+              origin: 'workflow',
+              requestText: `[workflow · ${wf.name}]`,
+              content: message,
+              metadata: { workflowId: wf.id, notify: true },
+            });
+          },
+        });
+        workflowService.start();
       }
     }
 

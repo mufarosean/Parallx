@@ -44,7 +44,8 @@ export type AutonomyTriggerKind =
   | 'heartbeat'
   | 'file-change'
   | 'subagent'
-  | 'replay';
+  | 'replay'
+  | 'workflow';
 
 export type AutonomyOutcome =
   | 'completed'
