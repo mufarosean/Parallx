@@ -6,6 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  applyOverrides,
   layoutMindMap,
   measureLabel,
   parseMindMap,
@@ -137,6 +138,45 @@ describe('rich labels', () => {
     const svg = renderMindMapSvg('Root\n  a very long branch label that certainly exceeds the wrap width of the box by a lot', {});
     expect(svg).toContain('parallx-mindmap__line');
     expect((svg.match(/parallx-mindmap__line/g) ?? []).length).toBeGreaterThan(1);
+  });
+});
+
+describe('layout overrides (user moves and resizes)', () => {
+  it('dx/dy move a box; bounds re-normalise so nothing goes negative', () => {
+    const base = layoutMindMap(parseMindMap(SRC), 'right');
+    const moved = applyOverrides(base, { 'Mack': { dx: -500, dy: -300 } });
+    const mack = moved.nodes.find((n) => n.label === 'Mack')!;
+    const baseMack = base.nodes.find((n) => n.label === 'Mack')!;
+    expect(mack.x).not.toBe(baseMack.x);
+    for (const n of moved.nodes) {
+      expect(n.x).toBeGreaterThanOrEqual(0);
+      expect(n.y - n.height / 2).toBeGreaterThanOrEqual(0);
+      expect(n.x + n.width).toBeLessThanOrEqual(moved.width);
+    }
+  });
+
+  it('an explicit width re-wraps the text: narrower box, taller box', () => {
+    const src = 'Root\n  a fairly long label that will surely need to wrap when narrowed';
+    const base = layoutMindMap(parseMindMap(src), 'right');
+    const label = 'a fairly long label that will surely need to wrap when narrowed';
+    const resized = applyOverrides(base, { [label]: { w: 120 } });
+    const before = base.nodes.find((n) => n.label === label)!;
+    const after = resized.nodes.find((n) => n.label === label)!;
+    expect(after.width).toBe(120);
+    expect(after.height).toBeGreaterThan(before.height);
+  });
+
+  it('an override for a renamed (unknown) label is ignored, not fatal', () => {
+    const base = layoutMindMap(parseMindMap(SRC), 'right');
+    const out = applyOverrides(base, { 'No Longer Exists': { dx: 999 } });
+    expect(out.nodes.map((n) => n.x)).toEqual(base.nodes.map((n) => n.x));
+  });
+
+  it('renderMindMapSvg applies overrides to the emitted geometry', () => {
+    const plain = renderMindMapSvg(SRC);
+    const shifted = renderMindMapSvg(SRC, { overrides: { 'Mack': { dy: 200 } } });
+    expect(shifted).not.toBe(plain);
+    expect(shifted).toContain('data-mindmap-label="Mack"');
   });
 });
 

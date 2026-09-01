@@ -2,14 +2,19 @@
 //
 // The chat pattern, kept and made savable: the model writes an indented
 // OUTLINE, the shared renderer (ui/conceptMap) draws it, and editing
-// means editing the outline text — never dragging boxes. The outline is
-// the source of truth; layout is deterministic and always correct.
+// CONTENT means editing the outline text. LAYOUT, though, is the
+// user's to adjust: drag a box to move it, drag its right edge to
+// resize (text re-wraps). Adjustments live as OVERRIDES keyed by label,
+// deltas over the computed layout — rename a node in the outline and
+// its override quietly evaporates back to auto layout. The outline can
+// never drift because it never carries geometry.
 //
-// Attrs: { src: string (the outline), dir: 'right' | 'down' }.
+// Attrs: { src, dir, overrides: { [label]: { dx, dy, w } } }.
 
 import { Node, mergeAttributes } from '@tiptap/core';
 import katex from 'katex';
-import { renderMindMapSvg, type MindMapDirection } from '../../../ui/conceptMap.js';
+import { renderMindMapSvg, type MindMapDirection, type MindMapOverrides } from '../../../ui/conceptMap.js';
+import { beginPointerDrag } from '../../../ui/interactionMode.js';
 
 const renderMath = (tex: string): string =>
   katex.renderToString(tex, { throwOnError: false });
@@ -20,6 +25,9 @@ export const DEFAULT_CONCEPT_MAP_SRC = [
   '    A detail',
   '  Second branch',
 ].join('\n');
+
+const CLICK_DIST = 4;
+const RESIZE_EDGE_PX = 8;
 
 export const ConceptMap = Node.create({
   name: 'conceptMap',
@@ -32,6 +40,7 @@ export const ConceptMap = Node.create({
     return {
       src: { default: DEFAULT_CONCEPT_MAP_SRC },
       dir: { default: 'right' },
+      overrides: { default: {} },
     };
   },
 
@@ -59,14 +68,88 @@ export const ConceptMap = Node.create({
       dom.contentEditable = 'false';
       dom.draggable = false;
 
-      let attrs = { src: String(node.attrs.src ?? ''), dir: (node.attrs.dir === 'down' ? 'down' : 'right') as MindMapDirection };
+      const readAttrs = (a: Record<string, unknown>) => ({
+        src: String(a.src ?? ''),
+        dir: (a.dir === 'down' ? 'down' : 'right') as MindMapDirection,
+        overrides: (a.overrides && typeof a.overrides === 'object' ? a.overrides : {}) as MindMapOverrides,
+      });
+      let attrs = readAttrs(node.attrs);
       let editing = false;
 
-      const commit = (patch: Partial<{ src: string; dir: MindMapDirection }>): void => {
+      const commit = (patch: Partial<{ src: string; dir: MindMapDirection; overrides: MindMapOverrides }>): void => {
         const pos = getPos();
         if (typeof pos !== 'number') return;
         const next = { ...attrs, ...patch };
         editor.view.dispatch(editor.view.state.tr.setNodeMarkup(pos, undefined, next));
+      };
+
+      /** One map node's <g> + box rect + label, from a pointer target. */
+      const nodeParts = (target: EventTarget | null): { g: SVGGElement; rect: SVGRectElement; label: string } | null => {
+        const g = (target as HTMLElement | null)?.closest?.('.parallx-mindmap__node') as SVGGElement | null;
+        const rect = g?.querySelector('.parallx-mindmap__box') as SVGRectElement | null;
+        const label = g?.getAttribute('data-mindmap-label') ?? '';
+        return g && rect && label ? { g, rect, label } : null;
+      };
+
+      const startEdit = (): void => {
+        editing = true;
+        render();
+      };
+
+      /** Drag = move (recorded as an override); a still click = edit. */
+      const beginBoxDrag = (e: PointerEvent | MouseEvent, parts: { g: SVGGElement; label: string }): void => {
+        const startX = e.clientX;
+        const startY = e.clientY;
+        let lastX = startX;
+        let lastY = startY;
+        let moved = false;
+        beginPointerDrag(e, {
+          id: 'conceptmap-move',
+          cursor: 'grabbing',
+          onMove: (ev) => {
+            lastX = ev.clientX;
+            lastY = ev.clientY;
+            const dx = lastX - startX;
+            const dy = lastY - startY;
+            if (!moved && Math.hypot(dx, dy) < CLICK_DIST) return;
+            moved = true;
+            parts.g.setAttribute('transform', `translate(${dx} ${dy})`);
+          },
+          onEnd: (canceled) => {
+            parts.g.removeAttribute('transform');
+            if (canceled) return;
+            if (!moved) { startEdit(); return; }
+            const dx = lastX - startX;
+            const dy = lastY - startY;
+            const prev = attrs.overrides[parts.label] ?? {};
+            commit({
+              overrides: {
+                ...attrs.overrides,
+                [parts.label]: { ...prev, dx: (prev.dx ?? 0) + dx, dy: (prev.dy ?? 0) + dy },
+              },
+            });
+          },
+        });
+      };
+
+      /** The right-edge grip resizes; text re-wraps on commit. */
+      const beginBoxResize = (e: PointerEvent | MouseEvent, parts: { rect: SVGRectElement; label: string }): void => {
+        const startX = e.clientX;
+        const startW = Number(parts.rect.getAttribute('width')) || 120;
+        let w = startW;
+        beginPointerDrag(e, {
+          id: 'conceptmap-resize',
+          cursor: 'ew-resize',
+          onMove: (ev) => {
+            w = Math.max(80, Math.min(420, Math.round(startW + (ev.clientX - startX))));
+            parts.rect.setAttribute('width', String(w));
+          },
+          onEnd: (canceled) => {
+            if (canceled || w === startW) { render(); return; }
+            const prev = attrs.overrides[parts.label] ?? {};
+            commit({ overrides: { ...attrs.overrides, [parts.label]: { ...prev, w } } });
+          },
+        });
       };
 
       const render = (): void => {
@@ -75,7 +158,6 @@ export const ConceptMap = Node.create({
 
         const tools = document.createElement('div');
         tools.classList.add('canvas-conceptmap__tools');
-        tools.setAttribute('data-nc-no-drag', '1');
 
         const dirBtn = document.createElement('button');
         dirBtn.classList.add('canvas-conceptmap__tool');
@@ -86,6 +168,19 @@ export const ConceptMap = Node.create({
           commit({ dir: attrs.dir === 'right' ? 'down' : 'right' });
         });
         tools.appendChild(dirBtn);
+
+        if (Object.keys(attrs.overrides).length > 0 && !editing) {
+          const resetBtn = document.createElement('button');
+          resetBtn.classList.add('canvas-conceptmap__tool');
+          resetBtn.type = 'button';
+          resetBtn.textContent = 'Reset Layout';
+          resetBtn.title = 'Drop every moved or resized box back to the automatic layout';
+          resetBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            commit({ overrides: {} });
+          });
+          tools.appendChild(resetBtn);
+        }
 
         const editBtn = document.createElement('button');
         editBtn.classList.add('canvas-conceptmap__tool');
@@ -102,7 +197,7 @@ export const ConceptMap = Node.create({
           dom.appendChild(ta);
           const hint = document.createElement('div');
           hint.classList.add('canvas-conceptmap__hint');
-          hint.textContent = 'One idea per line; indent to nest. **bold**, *italic*, `code`, and $x^2$ all render.';
+          hint.textContent = 'One idea per line; indent to nest. **bold**, *italic*, `code`, and $x^2$ all render. On the map: drag a box to move it, drag its right edge to resize.';
           dom.appendChild(hint);
           editBtn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -112,18 +207,35 @@ export const ConceptMap = Node.create({
           });
           ta.focus();
         } else {
-          const startEdit = (e: Event): void => {
+          editBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            editing = true;
-            render();
-          };
-          editBtn.addEventListener('click', startEdit);
+            startEdit();
+          });
           const body = document.createElement('div');
-          body.innerHTML = renderMindMapSvg(attrs.src, { dir: attrs.dir, renderMath });
-          // Clicking any node opens the outline right at the source of
-          // truth — the map invites touch, so touching it must do something.
-          body.addEventListener('click', (e) => {
-            if ((e.target as HTMLElement | null)?.closest?.('.parallx-mindmap__node')) startEdit(e);
+          body.innerHTML = renderMindMapSvg(attrs.src, {
+            dir: attrs.dir,
+            renderMath,
+            overrides: attrs.overrides,
+          });
+          // Pointer contract: press a box and drag to MOVE it; press its
+          // right edge to RESIZE; a still click opens the outline.
+          // Cursor tells the contract: grab on the body, ew-resize on the edge.
+          body.addEventListener('pointermove', (e) => {
+            const parts = nodeParts(e.target);
+            if (!parts) return;
+            const rectRight = parts.rect.getBoundingClientRect().right;
+            (parts.g as unknown as { style: CSSStyleDeclaration }).style.cursor =
+              rectRight - e.clientX <= RESIZE_EDGE_PX ? 'ew-resize' : 'grab';
+          });
+          body.addEventListener('pointerdown', (e) => {
+            if ((e as MouseEvent).button !== 0) return;
+            const parts = nodeParts(e.target);
+            if (!parts) return;
+            e.preventDefault();
+            e.stopPropagation();
+            const rectRight = parts.rect.getBoundingClientRect().right;
+            if (rectRight - e.clientX <= RESIZE_EDGE_PX) beginBoxResize(e, parts);
+            else beginBoxDrag(e, parts);
           });
           dom.appendChild(body);
         }
@@ -135,7 +247,7 @@ export const ConceptMap = Node.create({
         dom,
         update: (updated: { type: { name: string }; attrs: Record<string, unknown> }) => {
           if (updated.type.name !== 'conceptMap') return false;
-          attrs = { src: String(updated.attrs.src ?? ''), dir: (updated.attrs.dir === 'down' ? 'down' : 'right') as MindMapDirection };
+          attrs = readAttrs(updated.attrs);
           render();
           return true;
         },

@@ -188,7 +188,7 @@ export interface MeasuredLabel {
  * splits on spaces. Width is the widest resulting line (capped near
  * MAX_TEXT_W plus padding), height is the line count at each line's pitch.
  */
-export function measureLabel(label: string): MeasuredLabel {
+export function measureLabel(label: string, maxTextW: number = MAX_TEXT_W): MeasuredLabel {
   const segs = tokenizeLabel(label);
 
   // Explode text-ish segments into word atoms; opaque kinds stay whole.
@@ -212,7 +212,7 @@ export function measureLabel(label: string): MeasuredLabel {
   };
   for (const atom of atoms) {
     const w = segEstWidth(atom);
-    if (lineW > 0 && lineW + w > MAX_TEXT_W && atom.value.trim()) flush();
+    if (lineW > 0 && lineW + w > maxTextW && atom.value.trim()) flush();
     line.push(atom);
     lineW += w;
   }
@@ -220,7 +220,7 @@ export function measureLabel(label: string): MeasuredLabel {
   if (lines.length === 0) lines.push([{ kind: 'text', value: ' ' }]);
 
   const lineWidths = lines.map((l) => l.reduce((acc, s) => acc + segEstWidth(s), 0));
-  const width = Math.round(Math.min(Math.max(...lineWidths, 24), MAX_TEXT_W + 12)) + PAD_X * 2;
+  const width = Math.round(Math.min(Math.max(...lineWidths, 24), maxTextW + 12)) + PAD_X * 2;
   const height = lines.reduce(
     (acc, l) => acc + (l.some((s) => s.kind === 'math') ? MATH_LINE_H : LINE_H),
     0,
@@ -247,6 +247,63 @@ export interface MindMapLayout {
   readonly width: number;
   readonly height: number;
   readonly dir: MindMapDirection;
+}
+
+/**
+ * User layout adjustments, keyed by LABEL text: position deltas from the
+ * computed layout and an optional explicit width (text re-wraps to it).
+ * Label keying is deliberate: rename a node in the outline and its
+ * override quietly evaporates back to auto layout. Self-healing, never
+ * a second source of structural truth.
+ */
+export type MindMapOverrides = Readonly<Record<string, {
+  readonly dx?: number;
+  readonly dy?: number;
+  readonly w?: number;
+}>>;
+
+const MIN_OVERRIDE_W = 80;
+const MAX_OVERRIDE_W = 420;
+
+/** Apply overrides to a computed layout, then re-normalise the bounds. */
+export function applyOverrides(layout: MindMapLayout, overrides: MindMapOverrides): MindMapLayout {
+  const keys = Object.keys(overrides ?? {});
+  if (keys.length === 0) return layout;
+
+  const nodes = layout.nodes.map((n) => {
+    const o = overrides[n.label];
+    if (!o) return n;
+    let { width, height } = n;
+    if (typeof o.w === 'number' && Number.isFinite(o.w)) {
+      const w = Math.max(MIN_OVERRIDE_W, Math.min(MAX_OVERRIDE_W, Math.round(o.w)));
+      const remeasured = measureLabel(n.label, Math.max(24, w - 24));
+      width = w;
+      height = remeasured.height;
+    }
+    return {
+      ...n,
+      x: n.x + (Number.isFinite(o.dx) ? o.dx! : 0),
+      y: n.y + (Number.isFinite(o.dy) ? o.dy! : 0),
+      width,
+      height,
+    };
+  });
+
+  let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
+  for (const n of nodes) {
+    minX = Math.min(minX, n.x);
+    minY = Math.min(minY, n.y - n.height / 2);
+    maxX = Math.max(maxX, n.x + n.width);
+    maxY = Math.max(maxY, n.y + n.height / 2);
+  }
+  const shiftX = MARGIN - minX;
+  const shiftY = MARGIN - minY;
+  return {
+    ...layout,
+    nodes: nodes.map((n) => ({ ...n, x: n.x + shiftX, y: n.y + shiftY })),
+    width: maxX - minX + 2 * MARGIN,
+    height: maxY - minY + 2 * MARGIN,
+  };
 }
 
 /** Back-compat single-line width estimate (tests, external callers). */
@@ -396,6 +453,8 @@ export interface RenderMindMapOptions {
   readonly dir?: MindMapDirection;
   /** TeX → HTML (KaTeX). Absent: math renders as literal $…$ text. */
   readonly renderMath?: (tex: string) => string;
+  /** User layout adjustments (the canvas block's moves and resizes). */
+  readonly overrides?: MindMapOverrides;
 }
 
 function branchClass(branch: number): string {
@@ -430,7 +489,10 @@ export function renderMindMapSvg(src: string, opts: RenderMindMapOptions = {}): 
   if (roots.length === 0) return renderMindMapFallback(src);
 
   const dir = opts.dir ?? 'right';
-  const { nodes, edges, width, height } = layoutMindMap(roots, dir);
+  const base = layoutMindMap(roots, dir);
+  const { nodes, edges, width, height } = opts.overrides
+    ? applyOverrides(base, opts.overrides)
+    : base;
 
   const paths = edges.map(({ from, to }) => {
     const a = nodes[from];
@@ -451,7 +513,11 @@ export function renderMindMapSvg(src: string, opts: RenderMindMapOptions = {}): 
   }).join('');
 
   const boxes = nodes.map((n) => {
-    const measured = measureLabel(n.label);
+    const ow = opts.overrides?.[n.label]?.w;
+    const measured = measureLabel(
+      n.label,
+      typeof ow === 'number' && Number.isFinite(ow) ? Math.max(24, Math.round(ow) - 24) : undefined,
+    );
     const top = n.y - n.height / 2;
     const attrLabel = escapeXml(n.label);
     const cls = `parallx-mindmap__node parallx-mindmap__node--d${Math.min(n.depth, 2)} ${branchClass(n.branch)}`;
