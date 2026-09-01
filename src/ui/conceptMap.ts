@@ -466,27 +466,30 @@ export interface EdgeBox {
 }
 
 /**
- * Side-aware cubic between two boxes. The exit/entry side follows the
- * boxes' actual relative positions, so a child dragged to the other
- * side of its parent gets a clean curve instead of a backwards loop.
+ * ORTHOGONAL elbow between two boxes: straight lines, square corners
+ * (Mufaro's hand-drawn maps are the spec: the brain follows right
+ * angles). Siblings share the same mid-line by construction, so a
+ * parent's edges visually merge into ONE trunk that then branches —
+ * never ten separate lines crawling into one box. The exit/entry side
+ * still follows the boxes' actual relative positions after drags.
  */
 export function edgePathFor(a: EdgeBox, b: EdgeBox, dir: MindMapDirection): string {
   if (dir === 'right') {
     const forward = (b.x + b.width / 2) >= (a.x + a.width / 2);
     const x1 = forward ? a.x + a.width : a.x;
     const x2 = forward ? b.x : b.x + b.width;
-    const bend = Math.min(120, Math.max(24, Math.abs(x2 - x1) / 2 + Math.abs(b.y - a.y) / 4));
-    const s1 = forward ? 1 : -1;
-    return `M${x1} ${a.y} C${x1 + s1 * bend} ${a.y} ${x2 - s1 * bend} ${b.y} ${x2} ${b.y}`;
+    const m = Math.round((x1 + x2) / 2);
+    if (a.y === b.y) return `M${x1} ${a.y} H ${x2}`;
+    return `M${x1} ${a.y} H ${m} V ${b.y} H ${x2}`;
   }
   const downward = b.y >= a.y;
   const y1 = downward ? a.y + a.height / 2 : a.y - a.height / 2;
   const y2 = downward ? b.y - b.height / 2 : b.y + b.height / 2;
   const xa = a.x + a.width / 2;
   const xb = b.x + b.width / 2;
-  const bend = Math.min(120, Math.max(20, Math.abs(y2 - y1) / 2 + Math.abs(xb - xa) / 4));
-  const s1 = downward ? 1 : -1;
-  return `M${xa} ${y1} C${xa} ${y1 + s1 * bend} ${xb} ${y2 - s1 * bend} ${xb} ${y2}`;
+  const m = Math.round((y1 + y2) / 2);
+  if (xa === xb) return `M${xa} ${y1} V ${y2}`;
+  return `M${xa} ${y1} V ${m} H ${xb} V ${y2}`;
 }
 
 /**
@@ -511,6 +514,18 @@ export function appendChildToOutline(src: string, parentLabel: string, childLabe
     }
   }
   return null;
+}
+
+let _svgUid = 0;
+
+function arrowDefs(uid: number): string {
+  const marker = (key: string, cls: string): string =>
+    `<marker id="mm${uid}-arrow-${key}" viewBox="0 0 8 8" refX="7" refY="4" `
+    + `markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">`
+    + `<path class="parallx-mindmap__arrow ${cls}" d="M0 0 L8 4 L0 8 Z" /></marker>`;
+  let out = marker('n', '');
+  for (let i = 0; i < 6; i++) out += marker(`b${i}`, `parallx-mindmap__arrow--b${i}`);
+  return `<defs>${out}</defs>`;
 }
 
 function branchClass(branch: number): string {
@@ -550,14 +565,17 @@ export function renderMindMapSvg(src: string, opts: RenderMindMapOptions = {}): 
     ? applyOverrides(base, opts.overrides)
     : base;
 
+  const uid = ++_svgUid;
   const paths = edges.map(({ from, to }) => {
     const a = nodes[from];
     const b = nodes[to];
     const cls = `parallx-mindmap__edge${edgeBranchClass(b.branch)}`;
     const d = edgePathFor(a, b, dir);
+    const markerKey = b.branch < 0 ? 'n' : `b${b.branch % 6}`;
     // Endpoint labels ride the path so the canvas block can re-route
-    // edges LIVE while a box is dragged.
-    return `<path class="${cls}" data-mm-from="${escapeXml(a.label)}" data-mm-to="${escapeXml(b.label)}" d="${d}" />`;
+    // edges LIVE while a box is dragged. The arrowhead shows FLOW.
+    return `<path class="${cls}" marker-end="url(#mm${uid}-arrow-${markerKey})" `
+      + `data-mm-from="${escapeXml(a.label)}" data-mm-to="${escapeXml(b.label)}" d="${d}" />`;
   }).join('');
 
   const boxes = nodes.map((n) => {
@@ -590,6 +608,6 @@ export function renderMindMapSvg(src: string, opts: RenderMindMapOptions = {}): 
 
   return `<div class="parallx-mindmap" data-mindmap-dir="${dir}">`
     + `<svg viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" `
-    + `role="img" aria-label="Concept map">${paths}${boxes}</svg>`
+    + `role="img" aria-label="Concept map">${arrowDefs(uid)}${paths}${boxes}</svg>`
     + `</div>`;
 }

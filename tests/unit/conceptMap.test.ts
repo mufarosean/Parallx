@@ -183,16 +183,35 @@ describe('layout overrides (user moves and resizes)', () => {
 });
 
 describe('edge routing and outline growth', () => {
-  it('edges flip sides when a child sits on the other side of its parent', () => {
+  it('edges are ORTHOGONAL elbows that flip sides with the geometry', () => {
     const a = { x: 100, y: 50, width: 120, height: 22 };
     const bRight = { x: 300, y: 80, width: 100, height: 22 };
     const bLeft = { x: -150, y: 80, width: 100, height: 22 };
-    expect(edgePathFor(a, bRight, 'right').startsWith('M220 50')).toBe(true);  // exits right side
-    expect(edgePathFor(a, bLeft, 'right').startsWith('M100 50')).toBe(true);   // exits left side
+    expect(edgePathFor(a, bRight, 'right')).toBe('M220 50 H 260 V 80 H 300');
+    expect(edgePathFor(a, bLeft, 'right').startsWith('M100 50 H ')).toBe(true);
+    expect(edgePathFor(a, bRight, 'right')).not.toContain('C'); // no curves
     const below = { x: 100, y: 200, width: 100, height: 22 };
-    const above = { x: 100, y: -100, width: 100, height: 22 };
-    expect(edgePathFor(a, below, 'down')).toContain(`M${100 + 60} ${50 + 11}`);
-    expect(edgePathFor(a, above, 'down')).toContain(`M${100 + 60} ${50 - 11}`);
+    expect(edgePathFor(a, below, 'down')).toBe('M160 61 V 125 H 150 V 189'); // vertical elbow
+    const sameCol = { x: 110, y: 200, width: 100, height: 22 }; // same centre x
+    expect(edgePathFor(a, sameCol, 'down')).toBe('M160 61 V 189'); // straight drop
+  });
+
+  it('siblings share the SAME trunk segment: one line that branches', () => {
+    const parent = { x: 40, y: 100, width: 120, height: 22 };
+    const kidA = { x: 300, y: 40, width: 100, height: 22 };
+    const kidB = { x: 300, y: 160, width: 100, height: 22 };
+    const dA = edgePathFor(parent, kidA, 'right');
+    const dB = edgePathFor(parent, kidB, 'right');
+    const trunkA = dA.match(/H (\d+)/)![1];
+    const trunkB = dB.match(/H (\d+)/)![1];
+    expect(trunkA).toBe(trunkB); // identical mid-line: the visual bus
+  });
+
+  it('every edge carries a directional arrowhead marker', () => {
+    const svg = renderMindMapSvg(SRC);
+    expect(svg).toContain('<defs>');
+    expect(svg).toContain('marker-end="url(#mm');
+    expect(svg).toContain('parallx-mindmap__arrow');
   });
 
   it('every emitted edge carries its endpoint labels for live re-routing', () => {

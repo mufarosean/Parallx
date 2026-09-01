@@ -7,8 +7,20 @@
   fill: none;
   stroke: var(--px-border-strong, var(--vscode-panel-border, #3c3c3c));
   stroke-width: 1.4;
-  stroke-linecap: round;
+  stroke-linejoin: miter;
 }
+
+/* Arrowheads take their edge's colour. */
+.parallx-mindmap__arrow {
+  fill: var(--px-border-strong, var(--vscode-panel-border, #3c3c3c));
+}
+
+.parallx-mindmap__arrow--b0 { fill: rgba(var(--px-viz-1), 0.85); }
+.parallx-mindmap__arrow--b1 { fill: rgba(var(--px-viz-2), 0.85); }
+.parallx-mindmap__arrow--b2 { fill: rgba(var(--px-viz-3), 0.85); }
+.parallx-mindmap__arrow--b3 { fill: rgba(var(--px-viz-4), 0.85); }
+.parallx-mindmap__arrow--b4 { fill: rgba(var(--px-viz-5), 0.85); }
+.parallx-mindmap__arrow--b5 { fill: rgba(var(--px-viz-6), 0.85); }
 
 .parallx-mindmap__box {
   fill: var(--px-bg-elevated, var(--vscode-textCodeBlock-background, #2d2d2d));

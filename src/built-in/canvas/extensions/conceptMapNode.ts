@@ -126,8 +126,24 @@ export const ConceptMap = Node.create({
         let lastX = startX;
         let lastY = startY;
         let moved = false;
+        // The BOX moves by per-frame attribute updates, never a transform:
+        // Chromium can stall repaints of transformed groups that contain a
+        // foreignObject (formula boxes froze while their edges moved).
+        const movables = (Array.from(parts.g.children) as SVGGraphicsElement[])
+          .filter((el) => el.tagName === 'rect' || el.tagName === 'text' || el.tagName === 'foreignObject')
+          .map((el) => ({
+            el,
+            baseX: Number(el.getAttribute('x')) || 0,
+            baseY: Number(el.getAttribute('y')) || 0,
+          }));
+        const moveBox = (dx: number, dy: number): void => {
+          for (const m of movables) {
+            m.el.setAttribute('x', String(m.baseX + dx));
+            m.el.setAttribute('y', String(m.baseY + dy));
+          }
+        };
         // Edges touching the dragged box re-route LIVE: without this the
-        // curves freeze mid-air and the drag feels broken.
+        // lines freeze mid-air and the drag feels broken.
         const svgRoot = parts.g.ownerSVGElement as unknown as HTMLElement | null;
         const geoms = svgRoot ? boxGeoms(svgRoot) : new Map<string, EdgeBox>();
         const baseGeom = geoms.get(parts.label);
@@ -158,12 +174,12 @@ export const ConceptMap = Node.create({
             const dy = lastY - startY;
             if (!moved && Math.hypot(dx, dy) < CLICK_DIST) return;
             moved = true;
-            parts.g.setAttribute('transform', `translate(${dx} ${dy})`);
+            moveBox(dx, dy);
             rerouteEdges(dx, dy);
           },
           onEnd: (canceled) => {
-            parts.g.removeAttribute('transform');
             if (canceled || !moved) {
+              moveBox(0, 0);
               for (const { path, baseD } of touching) path.setAttribute('d', baseD);
             }
             if (canceled) return;
