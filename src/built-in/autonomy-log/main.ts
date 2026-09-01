@@ -56,7 +56,7 @@ import { WORKFLOW_TEMPLATES, cronJobToWorkflow } from '../../services/workflows/
 import { renderWorkflowThumbnail } from './workflowThumbnail.js';
 import { WorkflowEditorPane } from './workflowEditorPane.js';
 import { ISettingsRegistryService, ICanvasPageQueryService } from '../../services/serviceTypes.js';
-import { ILanguageModelToolsService } from '../../services/chatTypes.js';
+import { ILanguageModelToolsService, ILanguageModelsService } from '../../services/chatTypes.js';
 
 // ── Local API type ───────────────────────────────────────────────────────────
 
@@ -223,6 +223,13 @@ export function activate(api: ParallxApi, context: ToolContext): void {
           listTemplates: async () => {
             const res = await api.commands.executeCommand<{ id: string; name: string; description: string }[]>('canvas.listTemplates');
             return Array.isArray(res) ? res : [];
+          },
+          listModels: async () => {
+            try {
+              if (!api.services.has(ILanguageModelsService)) return [];
+              const lm = api.services.get<import('../../services/chatTypes.js').ILanguageModelsService>(ILanguageModelsService);
+              return (await lm.getModels()).map((m) => ({ id: m.id, displayName: m.displayName }));
+            } catch { return []; }
           },
           listPages: async () => {
             try {
@@ -1067,6 +1074,7 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
     if (last) parts.push(`last: ${runBadgeText(last)} ${formatAgo(last.startedAt)}`);
     const next = service.nextRunAt(wf.id);
     if (wf.enabled && next !== null) parts.push(`next ${formatUntil(next)}`);
+    if (wf.model) parts.push(wf.model);
     det.textContent = parts.join(' · ');
     if (last?.status === 'error') det.classList.add('wf-row__detail--error');
     row.appendChild(det);

@@ -135,6 +135,8 @@ export interface WorkflowEditorDeps {
   readonly listTemplates?: () => Promise<readonly { id: string; name: string; description: string }[]>;
   /** Workspace pages for the Format picker (title + id). */
   readonly listPages?: () => Promise<readonly { id: string; title: string }[]>;
+  /** Installed models for the per-workflow model picker. */
+  readonly listModels?: () => Promise<readonly { id: string; displayName: string }[]>;
 }
 
 // ── The pane ────────────────────────────────────────────────────────────────
@@ -807,6 +809,33 @@ export class WorkflowEditorPane implements IDisposable {
     this._textArea('Description', this._doc.description ?? '', (v) => {
       this._commit({ description: v.trim() || undefined });
     });
+    // Model + context window: Parallx runs local models, so which model
+    // serves a workflow, and with how much context, is a per-task choice.
+    const modelWrap = $('div.wfe-ins__field');
+    modelWrap.appendChild(this._fieldLabel('Model'));
+    const modelDd = createDropdownHandle(modelWrap, {
+      items: [{ value: '', label: 'Active Model (default)' }],
+      selected: this._doc.model ?? '',
+      ariaLabel: 'Model for this workflow',
+    });
+    this._inspector.appendChild(modelWrap);
+    void (async () => {
+      const items: IDropdownItem[] = [{ value: '', label: 'Active Model (default)' }];
+      try {
+        for (const m of (await this._deps.listModels?.()) ?? []) {
+          items.push({ value: m.id, label: m.displayName || m.id });
+        }
+      } catch { /* picker keeps the default row */ }
+      modelDd.setItems(items, this._doc?.model ?? '');
+    })();
+    this._disposables.push(modelDd.onDidChange((v) => {
+      this._commit({ model: v || undefined });
+    }));
+
+    this._numberField('Context Window', this._doc.contextWindow ?? 0, 0, 262144,
+      (v) => this._commit({ contextWindow: v > 0 ? v : undefined }),
+      'tokens (num_ctx); 0 uses the model default. Bigger costs VRAM.');
+
     this._numberField('Priority', this._doc.priority ?? 0, -9, 9, (v) => this._commit({ priority: v }),
       'higher fires first when several come due together');
     this._mutexField();

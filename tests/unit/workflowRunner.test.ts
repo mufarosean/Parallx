@@ -192,6 +192,15 @@ describe('the prompt compiler', () => {
     expect(run.nodes.find((n) => n.nodeId === 'g')!.status).toBe('skipped');
   });
 
+  it('the doc’s model and context window ride every agent turn', async () => {
+    const nodes: WorkflowNode[] = [trigger, { id: 'g', label: 'M', kind: 'action.agentTurn', prompt: 'go' }];
+    const d = { ...doc(nodes, [{ from: 't', to: 'g' }]), model: 'qwen3:14b', contextWindow: 16384 };
+    const deps = makeDeps();
+    await executeWorkflowRun(d, trigger, ctx, deps, makeLedger());
+    expect(deps.runAgentTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ model: 'qwen3:14b', contextWindow: 16384 }));
+  });
+
   it('initiator follows the firing: automatic is autonomous, manual is user', async () => {
     const nodes: WorkflowNode[] = [trigger, { id: 'g', label: 'M', kind: 'action.agentTurn', prompt: 'go' }];
     const edges = [{ from: 't', to: 'g' }];

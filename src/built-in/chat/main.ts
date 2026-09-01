@@ -1753,7 +1753,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         };
 
         workflowService.attachExecution({
-          runAgentTurn: async ({ workflowName, prompt, contextMessages, initiator }) => {
+          runAgentTurn: async ({ workflowName, prompt, contextMessages, initiator, model, contextWindow }) => {
             // The background prompt runner is THE headless-turn seam: it
             // falls back widget session > any session > minted session,
             // marks the ephemeral session by initiator (M90), applies a
@@ -1771,6 +1771,8 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
               originLabel: workflowName,
               initiator,
               timeoutMs: 300_000,
+              modelId: model,
+              contextWindow,
             });
             if (!result || result.ok !== true) {
               throw new Error((result && 'error' in result && result.error) || 'The agent turn failed.');
@@ -3162,6 +3164,8 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       sendRequest: (sid, msg, opts) => chatService.sendRequest(sid, msg, opts),
       getSession: (sid) => chatService.getSession(sid),
       cancelRequest: (sid) => chatService.cancelRequest(sid),
+      updateSessionModel: (sid, modelId) => chatService.updateSessionModel(sid, modelId),
+      updateSessionContextWindow: (sid, cw) => chatService.updateSessionContextWindow(sid, cw),
     },
     permissionService: _permissionService
       ? {

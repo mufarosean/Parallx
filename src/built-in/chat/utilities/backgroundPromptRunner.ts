@@ -32,6 +32,10 @@ import type {
 export interface IBackgroundPromptChatService {
   createEphemeralSession(parentId: string, seed?: IEphemeralSessionSeed): IEphemeralSessionHandle;
   purgeEphemeralSession(handle: IEphemeralSessionHandle): void;
+  /** Per-run model + context-window overrides (workflows pick both:
+   *  Parallx runs local models, and num_ctx is a per-task VRAM budget). */
+  updateSessionModel?(sessionId: string, modelId: string): void;
+  updateSessionContextWindow?(sessionId: string, contextWindow: number | undefined): void;
   sendRequest(sessionId: string, message: string, options?: IChatSendRequestOptions): Promise<unknown>;
   getSession(sessionId: string): { messages: readonly { response: { parts: readonly IChatContentPart[] } }[] } | undefined;
   /** Cancel an in-flight request (used by the runner's own timeout). */
@@ -107,6 +111,10 @@ export interface IBackgroundPromptRequest {
    * accounting stays truthful.
    */
   readonly timeoutMs?: number;
+  /** Run on this model instead of the active one (local-model choice). */
+  readonly modelId?: string;
+  /** num_ctx override for this run (0/undefined = the model's default). */
+  readonly contextWindow?: number;
 }
 
 export type IBackgroundPromptResult =
@@ -151,6 +159,13 @@ export function createBackgroundPromptRunner(
       // so it's reopenable from the autonomy log like a chat session.
       archiveOrigin: origin,
     });
+    if (req.modelId) {
+      deps.chatService.updateSessionModel?.(handle.sessionId, req.modelId);
+    }
+    if (typeof req.contextWindow === 'number' && req.contextWindow > 0) {
+      deps.chatService.updateSessionContextWindow?.(handle.sessionId, req.contextWindow);
+    }
+
 
     // M90 — the initiator sets the session's consent policy. 'user' runs
     // (a Refresh click) are consented: gated tools proceed, the belt

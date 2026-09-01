@@ -163,6 +163,12 @@ export interface WorkflowDoc {
   /** Arbiter: workflows sharing a group never run concurrently — the
    *  later firing is HELD (recorded, visible) rather than interleaved. */
   readonly mutexGroup?: string;
+  /** Model for this workflow's agent turns (undefined = the active model).
+   *  Parallx runs local models; the right model is a per-task choice. */
+  readonly model?: string;
+  /** num_ctx for this workflow's agent turns (undefined/0 = model default).
+   *  A per-task VRAM budget: a 5am report does not need 160k context. */
+  readonly contextWindow?: number;
 }
 
 // ── Runs (runs are documents — every run produces a trace) ──────────────────

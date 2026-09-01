@@ -157,8 +157,12 @@ describe('editing writes through the service', () => {
     const { pane, container } = mount(service, wf.id);
     (pane as unknown as { _canvas: { setSelection(n: string[], e: string[]): void } })._canvas.setSelection([], []);
     const numbers = [...container.querySelectorAll('.wfe-ins__input[type="number"]')] as HTMLInputElement[];
-    numbers[0].value = '5';
+    // Order: Context Window, then Priority.
+    numbers[0].value = '16384';
     numbers[0].dispatchEvent(new Event('change'));
+    expect(service.getWorkflow(wf.id)!.contextWindow).toBe(16384);
+    numbers[1].value = '5';
+    numbers[1].dispatchEvent(new Event('change'));
     expect(service.getWorkflow(wf.id)!.priority).toBe(5);
     const texts = [...container.querySelectorAll('.wfe-ins__input:not([type="number"])')] as HTMLInputElement[];
     const mutex = texts[texts.length - 1];

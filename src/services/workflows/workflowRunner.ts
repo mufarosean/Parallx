@@ -31,6 +31,8 @@ export interface WorkflowExecutionDeps {
     readonly prompt: string;
     readonly contextMessages: number;
     readonly initiator: 'user' | 'autonomous';
+    readonly model?: string;
+    readonly contextWindow?: number;
   }) => Promise<string>;
   /** Gather the deterministic facts bundle as one prompt block. */
   readonly gatherFacts?: (include: {
@@ -191,6 +193,8 @@ export async function executeWorkflowRun(
             prompt,
             contextMessages: clamp(node.contextMessages ?? 0, 0, 10),
             initiator: opts.automatic ? 'autonomous' : 'user',
+            model: doc.model,
+            contextWindow: doc.contextWindow,
           });
           record(node, 'ok', t0, oneLine(text) || 'turn completed');
           break;
