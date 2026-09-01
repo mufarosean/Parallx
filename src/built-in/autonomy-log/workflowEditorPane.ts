@@ -130,6 +130,7 @@ export class WorkflowEditorPane implements IDisposable {
   private _selectedNodeId: string | null = null;
   private _selectedEdgeId: string | null = null;
   private _selfSave = false;
+  private _coachDismissed = false;
   private _hintTimer: ReturnType<typeof setTimeout> | null = null;
   private _nextNodeSeq = 1;
   private readonly _disposables: IDisposable[] = [];
@@ -230,6 +231,7 @@ export class WorkflowEditorPane implements IDisposable {
         palette.appendChild(fam);
       }
       const btn = $('button.wfe__palette-item') as HTMLButtonElement;
+      btn.appendChild($(`span.wfe__palette-dot.is-${entry.family}`));
       const ic = $('span.wfe__palette-ic');
       ic.innerHTML = getIcon(entry.icon);
       btn.appendChild(ic);
@@ -325,7 +327,7 @@ export class WorkflowEditorPane implements IDisposable {
   private _commit(patch: Partial<Omit<WorkflowDoc, 'id' | 'createdAt'>>): void {
     if (!this._doc) return;
     if (this._mode !== 'edit') {
-      this._showHint('Viewing a recorded run — switch View to Editing to change the graph.');
+      this._showHint('Viewing a recorded run. Switch View to Editing to change the graph.');
       return;
     }
     this._selfSave = true;
@@ -350,7 +352,7 @@ export class WorkflowEditorPane implements IDisposable {
   private _addNode(entry: PaletteEntry): void {
     if (!this._doc || !this._canvas) return;
     if (this._mode !== 'edit') {
-      this._showHint('Viewing a recorded run — switch View to Editing to change the graph.');
+      this._showHint('Viewing a recorded run. Switch View to Editing to change the graph.');
       return;
     }
     const rect = this._canvasHost.getBoundingClientRect();
@@ -369,12 +371,12 @@ export class WorkflowEditorPane implements IDisposable {
   private _onConnect(fromId: string, toId: string): void {
     if (!this._doc) return;
     if (this._mode !== 'edit') {
-      this._showHint('Viewing a recorded run — switch View to Editing to change the graph.');
+      this._showHint('Viewing a recorded run. Switch View to Editing to change the graph.');
       return;
     }
     const target = this._doc.nodes.find((n) => n.id === toId);
     if (target && isTriggerNode(target)) {
-      this._showHint('Nothing can point into a trigger — connect FROM the trigger instead.');
+      this._showHint('Nothing can point into a trigger. Connect from the trigger instead.');
       return;
     }
     if (this._doc.edges.some((e) => e.from === fromId && e.to === toId)) return;
@@ -384,7 +386,7 @@ export class WorkflowEditorPane implements IDisposable {
   private _onMoveNodes(moves: ReadonlyArray<{ id: string; x: number; y: number }>): void {
     if (!this._doc) return;
     if (this._mode !== 'edit') {
-      this._showHint('Viewing a recorded run — switch View to Editing to change the graph.');
+      this._showHint('Viewing a recorded run. Switch View to Editing to change the graph.');
       this._paintCanvas(); // snap back
       return;
     }
@@ -399,7 +401,7 @@ export class WorkflowEditorPane implements IDisposable {
   private _deleteSelection(): void {
     if (!this._doc) return;
     if (this._mode !== 'edit') {
-      this._showHint('Viewing a recorded run — switch View to Editing to change the graph.');
+      this._showHint('Viewing a recorded run. Switch View to Editing to change the graph.');
       return;
     }
     if (this._selectedNodeId) {
@@ -466,7 +468,7 @@ export class WorkflowEditorPane implements IDisposable {
       this._statusChip.textContent = v.errors[0];
     } else if (v.isDraft) {
       this._statusChip.classList.add('is-draft');
-      this._statusChip.textContent = 'Draft — add a trigger';
+      this._statusChip.textContent = 'Draft: add a trigger';
     } else if (v.warnings.length > 0) {
       this._statusChip.classList.add('is-warn');
       this._statusChip.textContent = v.warnings.length === 1
@@ -475,7 +477,7 @@ export class WorkflowEditorPane implements IDisposable {
       this._statusChip.title = v.warnings.join('\n');
     } else {
       this._statusChip.classList.add('is-ok');
-      this._statusChip.textContent = this._doc.enabled ? 'Armed' : 'Ready — not enabled';
+      this._statusChip.textContent = this._doc.enabled ? 'Armed' : 'Ready, not enabled';
     }
   }
 
@@ -509,6 +511,43 @@ export class WorkflowEditorPane implements IDisposable {
     this._canvasHost.classList.toggle('wfe__canvas--trace', !!run);
     // Re-render every card so trace classes apply/clear.
     for (const n of this._doc.nodes) this._canvas.refreshNode(n.id);
+    this._paintCoach();
+  }
+
+  /** Three steps for a first-time builder; gone once the graph grows,
+   *  a run exists, or the user dismisses it. */
+  private _paintCoach(): void {
+    this._canvasHost.querySelector('.wfe__coach')?.remove();
+    if (!this._doc || this._coachDismissed || this._mode !== 'edit') return;
+    const runs = this._deps.service.getRuns(this._workflowId);
+    if (this._doc.nodes.length > 2 || runs.length > 0) return;
+    const coach = $('div.wfe__coach');
+    const title = $('div.wfe__coach-title');
+    title.textContent = 'Build your workflow';
+    coach.appendChild(title);
+    const steps = [
+      'Add steps from the rail on the left.',
+      'Hover a card and drag its dot onto another card to connect them.',
+      'Click a card to set it up, then Enable when it looks right.',
+    ];
+    steps.forEach((text, i) => {
+      const row = $('div.wfe__coach-step');
+      const num = $('span.wfe__coach-num');
+      num.textContent = String(i + 1);
+      row.appendChild(num);
+      const t = document.createElement('span');
+      t.textContent = text;
+      row.appendChild(t);
+      coach.appendChild(row);
+    });
+    const dismiss = $('button.wfe__coach-dismiss') as HTMLButtonElement;
+    dismiss.textContent = 'Got It';
+    dismiss.addEventListener('click', () => {
+      this._coachDismissed = true;
+      coach.remove();
+    });
+    coach.appendChild(dismiss);
+    this._canvasHost.appendChild(coach);
   }
 
   private _renderNodeCard(id: string, body: HTMLElement): void {
@@ -546,8 +585,8 @@ export class WorkflowEditorPane implements IDisposable {
       card?.classList.add(`is-run-${status === 'error' ? 'error' : status === 'gated' ? 'gated' : status === 'ok' ? 'ok' : 'skipped'}`);
       const badge = $('div.wfe-card__run');
       badge.textContent = trace
-        ? `${trace.status}${trace.summary ? ` — ${oneLine(trace.summary, 48)}` : ''}${trace.error ? ` — ${oneLine(trace.error, 48)}` : ''}`
-        : (isTriggerNode(node) && run.trigger.nodeId === id ? `fired — ${oneLine(run.trigger.summary, 48)}` : 'not reached');
+        ? `${trace.status}${trace.summary ? `: ${oneLine(trace.summary, 48)}` : ''}${trace.error ? `: ${oneLine(trace.error, 48)}` : ''}`
+        : (isTriggerNode(node) && run.trigger.nodeId === id ? `fired: ${oneLine(run.trigger.summary, 48)}` : 'not reached');
       body.appendChild(badge);
     }
   }
@@ -603,17 +642,17 @@ export class WorkflowEditorPane implements IDisposable {
       case 'trigger.schedule': this._scheduleFields(node.id, node.spec); break;
       case 'trigger.manual': {
         const note = $('div.wfe-ins__note');
-        note.textContent = 'Fires from the Run Now button — here, or on the workflow’s row in the panel.';
+        note.textContent = 'Fires from the Run Now button, here or on the workflow’s row in the panel.';
         this._inspector.appendChild(note);
         break;
       }
       case 'trigger.event': {
         this._textField('Source', node.source ?? '', (v) => this._patchNode(node.id, { source: v.trim() || undefined }),
-          'e.g. tool, editor, chat — empty matches any');
+          'e.g. tool, editor, chat. Empty matches any');
         this._textField('Verb', node.verb ?? '', (v) => this._patchNode(node.id, { verb: v.trim() || undefined }),
-          'e.g. created, saved — empty matches any');
+          'e.g. created, saved. Empty matches any');
         this._textField('Actor', node.actor ?? '', (v) => this._patchNode(node.id, { actor: v.trim() || undefined }),
-          'user, ai, system — empty matches any');
+          'user, ai, system. Empty matches any');
         break;
       }
       case 'control.cooldown': {
@@ -695,8 +734,29 @@ export class WorkflowEditorPane implements IDisposable {
     });
     this._numberField('Priority', this._doc.priority ?? 0, -9, 9, (v) => this._commit({ priority: v }),
       'higher fires first when several come due together');
-    this._textField('Mutex Group', this._doc.mutexGroup ?? '', (v) => this._commit({ mutexGroup: v.trim() || undefined }),
-      'workflows sharing a group never run at the same time');
+    this._mutexField();
+  }
+
+  /** Mutex group: short placeholder, the meaning lives in the hint. */
+  private _mutexField(): void {
+    if (!this._doc) return;
+    const wrap = $('div.wfe-ins__field');
+    wrap.appendChild(this._fieldLabel('Mutex Group'));
+    const input = $('input.wfe-ins__input') as HTMLInputElement;
+    input.value = this._doc.mutexGroup ?? '';
+    input.placeholder = 'e.g. planner';
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') input.blur();
+    });
+    input.addEventListener('blur', () => {
+      this._commit({ mutexGroup: input.value.trim() || undefined });
+    });
+    wrap.appendChild(input);
+    const h = $('div.wfe-ins__hint');
+    h.textContent = 'Workflows sharing a group never run at the same time.';
+    wrap.appendChild(h);
+    this._inspector.appendChild(wrap);
   }
 
   private _paintTraceInspector(run: WorkflowRun): void {

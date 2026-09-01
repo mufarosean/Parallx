@@ -107,7 +107,7 @@ export async function executeWorkflowRun(
             sawCooldownHold = true;
             for (const d of downstreamOf(doc, id)) skipped.add(d);
             const remainingH = Math.ceil((windowMs - since) / 3_600_000);
-            record(node, 'gated', t0, `held — ${node.hours}h cooldown, ~${remainingH}h remaining`);
+            record(node, 'gated', t0, `held: ${node.hours}h cooldown, about ${remainingH}h left`);
           } else {
             pendingStamps.push({ key, downstream: downstreamOf(doc, id) });
             record(node, 'ok', t0, 'open');
@@ -176,7 +176,7 @@ export async function executeWorkflowRun(
   }
 
   function gateNode(node: WorkflowNode, id: string): void {
-    record(node, 'gated', Date.now(), 'awaiting approval — not run');
+    record(node, 'gated', Date.now(), 'awaiting approval, not run');
     for (const d of downstreamOf(doc, id)) skipped.add(d);
   }
 

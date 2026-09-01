@@ -266,7 +266,7 @@ export async function bootstrapAutonomyServices(
 function describeWorkflowRun(run: WorkflowRun): string {
   const lines: string[] = [`Trigger: ${run.trigger.summary}`];
   for (const n of run.nodes) {
-    const tail = n.error ? ` — ${n.error}` : n.summary ? ` — ${n.summary}` : '';
+    const tail = n.error ? `: ${n.error}` : n.summary ? `: ${n.summary}` : '';
     lines.push(`• ${n.label}: ${n.status}${tail}`);
   }
   return lines.join('\n');

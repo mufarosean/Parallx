@@ -260,17 +260,22 @@
 
 /* ── Node cards on the canvas ── */
 
-.wfe-card { min-width: 150px; max-width: 260px; }
+.wfe .px-node-canvas__node-body {
+  padding: 9px 14px 10px;
+  min-width: 176px;
+  max-width: 264px;
+  box-shadow: 0 1px 4px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.2));
+}
 
 .wfe-card__head {
   display: flex;
   align-items: center;
-  gap: var(--px-space-1);
-  margin-bottom: 2px;
+  gap: 6px;
+  margin-bottom: 3px;
 }
 
 .wfe-card__ic { display: inline-flex; }
-.wfe-card__ic svg { width: 12px; height: 12px; }
+.wfe-card__ic svg { width: 13px; height: 13px; }
 
 .wfe-card__kind {
   font-size: var(--px-text-xs);
@@ -283,32 +288,113 @@
   font-size: var(--px-text-sm);
   font-weight: 600;
   color: var(--px-text);
+  line-height: 1.35;
 }
 
 .wfe-card__summary {
   font-size: var(--px-text-xs);
   color: var(--px-text-secondary);
-  margin-top: 1px;
+  margin-top: 2px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .wfe-card__run {
-  margin-top: var(--px-space-1);
-  padding-top: var(--px-space-1);
+  margin-top: 7px;
+  padding-top: 6px;
   border-top: 1px dashed var(--px-divider);
   font-size: var(--px-text-xs);
   color: var(--px-text-secondary);
+  overflow-wrap: anywhere;
 }
 
-/* Family identity: a left accent on the card. */
-.px-node-canvas__node.is-family-trigger { border-left: 3px solid var(--px-accent); }
-.px-node-canvas__node.is-family-trigger .wfe-card__ic { color: var(--px-accent); }
-.px-node-canvas__node.is-family-control { border-left: 3px solid var(--px-warning, var(--px-border-strong)); }
-.px-node-canvas__node.is-family-control .wfe-card__ic { color: var(--px-warning, var(--px-text-secondary)); }
-.px-node-canvas__node.is-family-action { border-left: 3px solid var(--px-border-strong); }
-.px-node-canvas__node.is-family-action .wfe-card__ic { color: var(--px-text-secondary); }
+/* Family identity: an accent bar INSIDE the card (a border on the wrapper
+   floats beside the body and reads as an artifact; found on camera). */
+.wfe .is-family-trigger > .px-node-canvas__node-body {
+  border-left: 3px solid var(--px-accent);
+}
+.wfe .is-family-trigger .wfe-card__ic,
+.wfe .is-family-trigger .wfe-card__kind { color: var(--px-accent); }
 
-/* Trace paint. */
-.px-node-canvas__node.is-run-ok      { outline: 1px solid var(--px-success, var(--px-accent)); }
-.px-node-canvas__node.is-run-error   { outline: 1px solid var(--px-danger, var(--px-border-strong)); }
-.px-node-canvas__node.is-run-gated   { outline: 1px dashed var(--px-warning, var(--px-border-strong)); }
-.px-node-canvas__node.is-run-skipped { opacity: 0.45; }
+.wfe .is-family-control > .px-node-canvas__node-body {
+  border-left: 3px solid var(--px-warning, var(--px-border-strong));
+}
+.wfe .is-family-control .wfe-card__ic { color: var(--px-warning, var(--px-text-secondary)); }
+
+.wfe .is-family-action > .px-node-canvas__node-body {
+  border-left: 3px solid var(--px-border-strong);
+}
+.wfe .is-family-action .wfe-card__ic { color: var(--px-text-secondary); }
+
+/* Trace paint, on the body so rings hug the card. */
+.wfe .is-run-ok > .px-node-canvas__node-body      { box-shadow: 0 0 0 1.5px var(--px-success, var(--px-accent)); }
+.wfe .is-run-error > .px-node-canvas__node-body   { box-shadow: 0 0 0 1.5px var(--px-danger, var(--px-border-strong)); }
+.wfe .is-run-gated > .px-node-canvas__node-body   { box-shadow: 0 0 0 1.5px var(--px-warning, var(--px-border-strong)); }
+.wfe .is-run-skipped { opacity: 0.45; }
+
+/* ── First-use coach: three steps, on the canvas, gone when learned ── */
+
+.wfe__coach {
+  position: absolute;
+  left: 50%;
+  bottom: clamp(16px, 8vh, 64px);
+  transform: translateX(-50%);
+  background: var(--px-bg-elevated);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-lg);
+  padding: var(--px-space-3) var(--px-space-4);
+  box-shadow: 0 8px 24px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.3));
+  z-index: 3;
+  max-width: 380px;
+}
+
+.wfe__coach-title {
+  font-size: var(--px-text-sm);
+  font-weight: 600;
+  color: var(--px-text);
+  margin-bottom: var(--px-space-2);
+}
+
+.wfe__coach-step {
+  display: flex;
+  gap: var(--px-space-2);
+  align-items: baseline;
+  font-size: var(--px-text-sm);
+  color: var(--px-text-secondary);
+  line-height: 1.6;
+}
+
+.wfe__coach-num {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--px-accent);
+  font-weight: 600;
+}
+
+.wfe__coach-dismiss {
+  margin-top: var(--px-space-2);
+  border: none;
+  background: transparent;
+  color: var(--px-accent);
+  font-size: var(--px-text-xs);
+  font-family: var(--px-font-ui);
+  cursor: pointer;
+  padding: 0;
+}
+.wfe__coach-dismiss:hover { text-decoration: underline; }
+
+/* ── Palette items get family dots and room ── */
+
+.wfe__palette { flex-basis: 148px; }
+
+.wfe__palette-item { padding: 6px 8px; }
+
+.wfe__palette-dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--px-radius-full);
+}
+.wfe__palette-dot.is-trigger { background: var(--px-accent); }
+.wfe__palette-dot.is-control { background: var(--px-warning, var(--px-border-strong)); }
+.wfe__palette-dot.is-action  { background: var(--px-border-strong); }

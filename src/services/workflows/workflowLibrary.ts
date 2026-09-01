@@ -38,7 +38,7 @@ export const WORKFLOW_TEMPLATES: readonly WorkflowTemplate[] = [
   {
     key: 'weekly-review-nudge',
     name: 'Weekly Review Nudge',
-    description: 'Sunday evening, a reminder to review the week — held by a cooldown so it never doubles up.',
+    description: 'Sunday evening, a reminder to review the week. A cooldown keeps it from doubling up.',
     class: 'attention',
     nodes: [
       { id: 't', label: 'Sunday Evening', kind: 'trigger.schedule', spec: { kind: 'weekly', day: 0, time: '18:00' }, x: 40, y: 80 },

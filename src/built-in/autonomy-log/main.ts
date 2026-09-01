@@ -83,6 +83,9 @@ interface ParallxApi {
     has(id: unknown): boolean;
     get<T>(id: unknown): T;
   };
+  window: {
+    showWarningMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
+  };
 }
 
 // ── State ────────────────────────────────────────────────────────────────────
@@ -761,6 +764,9 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
   // Rich guide shown in the live list when there's no activity yet.
   function buildLiveGuide(): void {
     emptyEl.innerHTML = '';
+    // Own the class list — the workflows tab's `wf-empty` must not leak
+    // its width overrides into this tab (the stretched-guide bug).
+    emptyEl.classList.remove('wf-empty');
     emptyEl.classList.add('autonomy-log-empty--guide');
 
     const head = $('div.autonomy-guide__head');
@@ -943,7 +949,7 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
 
   function workflowTriggerSummary(wf: WorkflowDoc): string {
     const triggers = wf.nodes.filter(isTriggerNode);
-    if (triggers.length === 0) return 'Draft — no trigger yet';
+    if (triggers.length === 0) return 'Draft, no trigger yet';
     return triggers.map((t) => describeTriggerNode(t)).join(' · ');
   }
 
@@ -965,7 +971,7 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
     trace.appendChild(head);
     for (const n of run.nodes) {
       const line = $(`div.wf-row__trace-line.is-${n.status}`);
-      const tail = n.error ? ` — ${n.error}` : n.summary ? ` — ${n.summary}` : '';
+      const tail = n.error ? `: ${n.error}` : n.summary ? `: ${n.summary}` : '';
       line.textContent = `${n.label}: ${n.status}${tail}`;
       trace.appendChild(line);
     }
@@ -1029,9 +1035,13 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
     delBtn.textContent = 'Delete';
     delBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (confirm(`Delete the workflow "${wf.name}"? Its run history goes with it.`)) {
-        service.removeWorkflow(wf.id);
-      }
+      void apiRef?.window.showWarningMessage(
+        `Delete the workflow "${wf.name}"? Its run history goes with it.`,
+        { title: 'Delete' },
+        { title: 'Cancel' },
+      ).then((res) => {
+        if (res?.title === 'Delete') service.removeWorkflow(wf.id);
+      });
     });
     actions.appendChild(delBtn);
     head.appendChild(actions);
@@ -1173,7 +1183,7 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
       const sub = $('div.wf-empty__sub');
       sub.textContent =
         'A workflow is a small graph: a trigger, the steps it takes, and every run recorded. '
-        + 'Pick one to see how it works — nothing runs until you enable it.';
+        + 'Pick one to see how it works. Nothing runs until you enable it.';
       hero.appendChild(sub);
       emptyEl.appendChild(hero);
       emptyEl.appendChild(buildGalleryGrid());
@@ -1381,7 +1391,7 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
   }
 
   function setPlainEmpty(text: string): void {
-    emptyEl.classList.remove('autonomy-log-empty--guide');
+    emptyEl.classList.remove('autonomy-log-empty--guide', 'wf-empty');
     emptyEl.textContent = text;
   }
 

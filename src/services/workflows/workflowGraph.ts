@@ -47,11 +47,11 @@ export function validateWorkflow(doc: WorkflowDoc): WorkflowValidation {
     if (!ids.has(e.to)) errors.push(`Edge to unknown node "${e.to}".`);
     const target = doc.nodes.find((n) => n.id === e.to);
     if (target && isTriggerNode(target)) {
-      errors.push(`"${target.label}" is a trigger — nothing may point INTO a trigger.`);
+      errors.push(`"${target.label}" is a trigger. Nothing may point into a trigger.`);
     }
   }
 
-  if (hasCycle(doc)) errors.push('The graph has a cycle — workflows must flow forward.');
+  if (hasCycle(doc)) errors.push('The graph has a cycle. Workflows must flow forward.');
 
   const triggers = doc.nodes.filter(isTriggerNode);
   const isDraft = triggers.length === 0;
@@ -65,7 +65,7 @@ export function validateWorkflow(doc: WorkflowDoc): WorkflowValidation {
     }
     for (const n of doc.nodes) {
       if (!isTriggerNode(n) && !reachable.has(n.id)) {
-        warnings.push(`"${n.label}" is not connected to any trigger — it will never run.`);
+        warnings.push(`"${n.label}" is not connected to any trigger, so it will never run.`);
       }
     }
   }
@@ -82,10 +82,10 @@ function validateNode(n: WorkflowNode): string | null {
     case 'trigger.event':
       return (n.actor || n.verb || n.source)
         ? null
-        : 'event trigger matches EVERYTHING — give it at least one filter.';
+        : 'event trigger matches everything. Give it at least one filter.';
     case 'control.cooldown':
       // ≤0 hours runs as an OPEN gate (the runner's contract) — warn only.
-      return Number.isFinite(n.hours) && n.hours > 0 ? null : 'cooldown has no duration — the gate is always open.';
+      return Number.isFinite(n.hours) && n.hours > 0 ? null : 'cooldown has no duration, so the gate is always open.';
     case 'action.agentTurn':
       return n.prompt.trim() ? null : 'agent turn has an empty prompt.';
     case 'action.command':

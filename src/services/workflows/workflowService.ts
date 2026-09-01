@@ -255,7 +255,7 @@ export class WorkflowService implements IDisposable {
     if (!doc) throw new Error(`Workflow not found: ${id}`);
     const triggers = doc.nodes.filter(isTriggerNode);
     const trigger = triggers.find((t) => t.kind === 'trigger.manual') ?? triggers[0];
-    if (!trigger) throw new Error(`"${doc.name}" is a draft — it has no trigger to fire.`);
+    if (!trigger) throw new Error(`"${doc.name}" is a draft. It has no trigger to fire.`);
     return this._fire(doc, trigger, {
       kind: trigger.kind,
       summary: 'run manually',
@@ -385,7 +385,7 @@ export class WorkflowService implements IDisposable {
     const group = doc.mutexGroup?.trim();
     if (group && this._busyGroups.has(group)) {
       return this._recordHeldRun(doc, trigger, ctx, opts.automatic,
-        `mutex "${group}" is busy — another workflow in the group is running`);
+        `mutex "${group}" is busy: another workflow in the group is running`);
     }
     // Attention budget: the app interrupts only so many times a day,
     // across every attention-class workflow. The user's own Run Now is
