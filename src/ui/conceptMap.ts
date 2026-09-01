@@ -457,6 +457,62 @@ export interface RenderMindMapOptions {
   readonly overrides?: MindMapOverrides;
 }
 
+/** A box for edge routing: left x, CENTRE y, size. */
+export interface EdgeBox {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+/**
+ * Side-aware cubic between two boxes. The exit/entry side follows the
+ * boxes' actual relative positions, so a child dragged to the other
+ * side of its parent gets a clean curve instead of a backwards loop.
+ */
+export function edgePathFor(a: EdgeBox, b: EdgeBox, dir: MindMapDirection): string {
+  if (dir === 'right') {
+    const forward = (b.x + b.width / 2) >= (a.x + a.width / 2);
+    const x1 = forward ? a.x + a.width : a.x;
+    const x2 = forward ? b.x : b.x + b.width;
+    const bend = Math.min(120, Math.max(24, Math.abs(x2 - x1) / 2 + Math.abs(b.y - a.y) / 4));
+    const s1 = forward ? 1 : -1;
+    return `M${x1} ${a.y} C${x1 + s1 * bend} ${a.y} ${x2 - s1 * bend} ${b.y} ${x2} ${b.y}`;
+  }
+  const downward = b.y >= a.y;
+  const y1 = downward ? a.y + a.height / 2 : a.y - a.height / 2;
+  const y2 = downward ? b.y - b.height / 2 : b.y + b.height / 2;
+  const xa = a.x + a.width / 2;
+  const xb = b.x + b.width / 2;
+  const bend = Math.min(120, Math.max(20, Math.abs(y2 - y1) / 2 + Math.abs(xb - xa) / 4));
+  const s1 = downward ? 1 : -1;
+  return `M${xa} ${y1} C${xa} ${y1 + s1 * bend} ${xb} ${y2 - s1 * bend} ${xb} ${y2}`;
+}
+
+/**
+ * Insert a child under `parentLabel` in the outline (first matching
+ * line), indented two deeper. Pure; returns null when the parent line
+ * cannot be found. The hover "+" on the canvas block rides this.
+ */
+export function appendChildToOutline(src: string, parentLabel: string, childLabel: string): string | null {
+  const lines = String(src || '').split('\n');
+  const clean = (raw: string): string => raw
+    .trim()
+    .replace(/^[-*\u2022]\s+/, '')
+    .replace(/^\d+[.)]\s+/, '')
+    .trim();
+  for (let i = 0; i < lines.length; i++) {
+    if (!lines[i].trim()) continue;
+    const label = clean(lines[i]);
+    if (label === parentLabel || safeTruncate(label, MAX_LABEL_CHARS) === parentLabel) {
+      const indent = lines[i].length - lines[i].trimStart().length;
+      lines.splice(i + 1, 0, `${' '.repeat(indent + 2)}${childLabel}`);
+      return lines.join('\n');
+    }
+  }
+  return null;
+}
+
 function branchClass(branch: number): string {
   return branch < 0 ? 'parallx-mindmap__node--root' : `parallx-mindmap__node--b${branch % 6}`;
 }
@@ -498,18 +554,10 @@ export function renderMindMapSvg(src: string, opts: RenderMindMapOptions = {}): 
     const a = nodes[from];
     const b = nodes[to];
     const cls = `parallx-mindmap__edge${edgeBranchClass(b.branch)}`;
-    if (dir === 'right') {
-      const x1 = a.x + a.width;
-      const x2 = b.x;
-      const mid = x1 + (x2 - x1) / 2;
-      return `<path class="${cls}" d="M${x1} ${a.y} C${mid} ${a.y} ${mid} ${b.y} ${x2} ${b.y}" />`;
-    }
-    const y1 = a.y + a.height / 2;
-    const y2 = b.y - b.height / 2;
-    const xa = a.x + a.width / 2;
-    const xb = b.x + b.width / 2;
-    const mid = y1 + (y2 - y1) / 2;
-    return `<path class="${cls}" d="M${xa} ${y1} C${xa} ${mid} ${xb} ${mid} ${xb} ${y2}" />`;
+    const d = edgePathFor(a, b, dir);
+    // Endpoint labels ride the path so the canvas block can re-route
+    // edges LIVE while a box is dragged.
+    return `<path class="${cls}" data-mm-from="${escapeXml(a.label)}" data-mm-to="${escapeXml(b.label)}" d="${d}" />`;
   }).join('');
 
   const boxes = nodes.map((n) => {

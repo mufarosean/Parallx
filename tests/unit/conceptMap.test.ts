@@ -6,7 +6,9 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  appendChildToOutline,
   applyOverrides,
+  edgePathFor,
   layoutMindMap,
   measureLabel,
   parseMindMap,
@@ -177,6 +179,36 @@ describe('layout overrides (user moves and resizes)', () => {
     const shifted = renderMindMapSvg(SRC, { overrides: { 'Mack': { dy: 200 } } });
     expect(shifted).not.toBe(plain);
     expect(shifted).toContain('data-mindmap-label="Mack"');
+  });
+});
+
+describe('edge routing and outline growth', () => {
+  it('edges flip sides when a child sits on the other side of its parent', () => {
+    const a = { x: 100, y: 50, width: 120, height: 22 };
+    const bRight = { x: 300, y: 80, width: 100, height: 22 };
+    const bLeft = { x: -150, y: 80, width: 100, height: 22 };
+    expect(edgePathFor(a, bRight, 'right').startsWith('M220 50')).toBe(true);  // exits right side
+    expect(edgePathFor(a, bLeft, 'right').startsWith('M100 50')).toBe(true);   // exits left side
+    const below = { x: 100, y: 200, width: 100, height: 22 };
+    const above = { x: 100, y: -100, width: 100, height: 22 };
+    expect(edgePathFor(a, below, 'down')).toContain(`M${100 + 60} ${50 + 11}`);
+    expect(edgePathFor(a, above, 'down')).toContain(`M${100 + 60} ${50 - 11}`);
+  });
+
+  it('every emitted edge carries its endpoint labels for live re-routing', () => {
+    const svg = renderMindMapSvg(SRC);
+    expect(svg).toContain('data-mm-from="Reserving"');
+    expect(svg).toContain('data-mm-to="Mack"');
+  });
+
+  it('appendChildToOutline inserts under the parent, two deeper; unknown parent is null', () => {
+    const next = appendChildToOutline(SRC, 'Chain Ladder', 'New idea')!;
+    const lines = next.split('\n');
+    const i = lines.findIndex((l) => l.trim() === 'Chain Ladder');
+    expect(lines[i + 1]).toBe('    New idea');
+    const roots = parseMindMap(next);
+    expect(roots[0].children[0].children.map((n) => n.label)).toEqual(['New idea', 'Mack']);
+    expect(appendChildToOutline(SRC, 'Ghost', 'x')).toBeNull();
   });
 });
 

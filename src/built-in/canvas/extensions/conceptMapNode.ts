@@ -13,7 +13,14 @@
 
 import { Node, mergeAttributes } from '@tiptap/core';
 import katex from 'katex';
-import { renderMindMapSvg, type MindMapDirection, type MindMapOverrides } from '../../../ui/conceptMap.js';
+import {
+  appendChildToOutline,
+  edgePathFor,
+  renderMindMapSvg,
+  type EdgeBox,
+  type MindMapDirection,
+  type MindMapOverrides,
+} from '../../../ui/conceptMap.js';
 import { beginPointerDrag } from '../../../ui/interactionMode.js';
 
 const renderMath = (tex: string): string =>
@@ -96,6 +103,22 @@ export const ConceptMap = Node.create({
         render();
       };
 
+      /** Every box's geometry by label, read from the live SVG rects. */
+      const boxGeoms = (root: HTMLElement): Map<string, EdgeBox> => {
+        const out = new Map<string, EdgeBox>();
+        for (const g of Array.from(root.querySelectorAll('.parallx-mindmap__node[data-mindmap-label]'))) {
+          const rect = g.querySelector('.parallx-mindmap__box') as SVGRectElement | null;
+          const label = g.getAttribute('data-mindmap-label');
+          if (!rect || !label) continue;
+          const x = Number(rect.getAttribute('x')) || 0;
+          const y = Number(rect.getAttribute('y')) || 0;
+          const width = Number(rect.getAttribute('width')) || 0;
+          const height = Number(rect.getAttribute('height')) || 0;
+          out.set(label, { x, y: y + height / 2, width, height });
+        }
+        return out;
+      };
+
       /** Drag = move (recorded as an override); a still click = edit. */
       const beginBoxDrag = (e: PointerEvent | MouseEvent, parts: { g: SVGGElement; label: string }): void => {
         const startX = e.clientX;
@@ -103,6 +126,28 @@ export const ConceptMap = Node.create({
         let lastX = startX;
         let lastY = startY;
         let moved = false;
+        // Edges touching the dragged box re-route LIVE: without this the
+        // curves freeze mid-air and the drag feels broken.
+        const svgRoot = parts.g.ownerSVGElement as unknown as HTMLElement | null;
+        const geoms = svgRoot ? boxGeoms(svgRoot) : new Map<string, EdgeBox>();
+        const baseGeom = geoms.get(parts.label);
+        const touching = svgRoot
+          ? (Array.from(svgRoot.querySelectorAll('path[data-mm-from], path[data-mm-to]')) as SVGPathElement[])
+              .filter((path) => path.getAttribute('data-mm-from') === parts.label
+                || path.getAttribute('data-mm-to') === parts.label)
+              .map((path) => ({ path, baseD: path.getAttribute('d') ?? '' }))
+          : [];
+        const rerouteEdges = (dx: number, dy: number): void => {
+          if (!baseGeom) return;
+          const movedGeom: EdgeBox = { ...baseGeom, x: baseGeom.x + dx, y: baseGeom.y + dy };
+          for (const { path } of touching) {
+            const fromLabel = path.getAttribute('data-mm-from') ?? '';
+            const toLabel = path.getAttribute('data-mm-to') ?? '';
+            const a = fromLabel === parts.label ? movedGeom : geoms.get(fromLabel);
+            const b = toLabel === parts.label ? movedGeom : geoms.get(toLabel);
+            if (a && b) path.setAttribute('d', edgePathFor(a, b, attrs.dir));
+          }
+        };
         beginPointerDrag(e, {
           id: 'conceptmap-move',
           cursor: 'grabbing',
@@ -114,9 +159,13 @@ export const ConceptMap = Node.create({
             if (!moved && Math.hypot(dx, dy) < CLICK_DIST) return;
             moved = true;
             parts.g.setAttribute('transform', `translate(${dx} ${dy})`);
+            rerouteEdges(dx, dy);
           },
           onEnd: (canceled) => {
             parts.g.removeAttribute('transform');
+            if (canceled || !moved) {
+              for (const { path, baseD } of touching) path.setAttribute('d', baseD);
+            }
             if (canceled) return;
             if (!moved) { startEdit(); return; }
             const dx = lastX - startX;
@@ -219,14 +268,40 @@ export const ConceptMap = Node.create({
           });
           // Pointer contract: press a box and drag to MOVE it; press its
           // right edge to RESIZE; a still click opens the outline.
-          // Cursor tells the contract: grab on the body, ew-resize on the edge.
+          // Hover affordances: the add-child "+" follows the hovered box,
+          // and the cursor tells the contract (grab body, ew-resize edge).
+          const addBtn = document.createElement('button');
+          addBtn.classList.add('canvas-conceptmap__add');
+          addBtn.type = 'button';
+          addBtn.textContent = '+';
+          addBtn.title = 'Add A Child Idea';
+          addBtn.hidden = true;
+          let addTarget = '';
+          addBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+          addBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (!addTarget) return;
+            const next = appendChildToOutline(attrs.src, addTarget, 'New idea');
+            if (next) commit({ src: next });
+          });
+          body.appendChild(addBtn);
           body.addEventListener('pointermove', (e) => {
             const parts = nodeParts(e.target);
-            if (!parts) return;
-            const rectRight = parts.rect.getBoundingClientRect().right;
+            if (!parts) {
+              if (!(e.target as HTMLElement | null)?.closest?.('.canvas-conceptmap__add')) addBtn.hidden = true;
+              return;
+            }
+            const rect = parts.rect.getBoundingClientRect();
+            const host = body.getBoundingClientRect();
+            addTarget = parts.label;
+            addBtn.hidden = false;
+            addBtn.style.left = `${rect.right - host.left + 4}px`;
+            addBtn.style.top = `${rect.bottom - host.top - 10}px`;
             (parts.g as unknown as { style: CSSStyleDeclaration }).style.cursor =
-              rectRight - e.clientX <= RESIZE_EDGE_PX ? 'ew-resize' : 'grab';
+              rect.right - e.clientX <= RESIZE_EDGE_PX ? 'ew-resize' : 'grab';
           });
+          body.addEventListener('pointerleave', () => { addBtn.hidden = true; });
+          body.style.position = 'relative';
           body.addEventListener('pointerdown', (e) => {
             if ((e as MouseEvent).button !== 0) return;
             const parts = nodeParts(e.target);
@@ -258,7 +333,7 @@ export const ConceptMap = Node.create({
         stopEvent: (event: Event) => {
           if (editing) return true;
           const t = event.target as HTMLElement | null;
-          return !!t?.closest?.('.canvas-conceptmap__tool, .canvas-conceptmap__editor, .parallx-mindmap__node');
+          return !!t?.closest?.('.canvas-conceptmap__tool, .canvas-conceptmap__editor, .canvas-conceptmap__add, .parallx-mindmap__node');
         },
         ignoreMutation: () => true,
       };
