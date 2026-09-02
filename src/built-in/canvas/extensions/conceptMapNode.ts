@@ -154,18 +154,18 @@ export const ConceptMap = Node.create({
         return out;
       };
 
-      /** Every box's geometry by label, read from the live SVG rects. */
-      const boxGeoms = (root: HTMLElement): Map<string, EdgeBox> => {
-        const out = new Map<string, EdgeBox>();
-        for (const g of Array.from(root.querySelectorAll('.parallx-mindmap__node[data-mindmap-label]'))) {
+      /** Every box's geometry by SOURCE LINE, read from the live SVG. */
+      const boxGeoms = (root: HTMLElement): Map<number, EdgeBox> => {
+        const out = new Map<number, EdgeBox>();
+        for (const g of Array.from(root.querySelectorAll('.parallx-mindmap__node[data-mm-line]'))) {
           const rect = g.querySelector('.parallx-mindmap__box') as SVGRectElement | null;
-          const label = g.getAttribute('data-mindmap-label');
-          if (!rect || !label) continue;
+          const line = Number(g.getAttribute('data-mm-line'));
+          if (!rect || !Number.isFinite(line)) continue;
           const x = Number(rect.getAttribute('x')) || 0;
           const y = Number(rect.getAttribute('y')) || 0;
           const width = Number(rect.getAttribute('width')) || 0;
           const height = Number(rect.getAttribute('height')) || 0;
-          out.set(label, { x, y: y + height / 2, width, height });
+          out.set(line, { x, y: y + height / 2, width, height });
         }
         return out;
       };
@@ -196,62 +196,87 @@ export const ConceptMap = Node.create({
         // HUBS touching the dragged box re-route LIVE: the box's own hub
         // (it is a parent) and its parent's hub (it is a child). Without
         // this the lines freeze mid-air and the drag feels broken.
+        // Everything is keyed by SOURCE LINE: two boxes sharing a label
+        // must never trade arms (the vanished-arrow bug).
         const svgRoot = parts.g.ownerSVGElement as unknown as HTMLElement | null;
-        const geoms = svgRoot ? boxGeoms(svgRoot) : new Map<string, EdgeBox>();
-        const baseGeom = geoms.get(parts.label);
+        const geoms = svgRoot ? boxGeoms(svgRoot) : new Map<number, EdgeBox>();
+        const baseGeom = geoms.get(parts.line);
         // Parent/children relations come from the OUTLINE (the one truth).
-        const kidsOf = new Map<string, string[]>();
-        const parentOf = new Map<string, string>();
+        const kidsOf = new Map<number, number[]>();
+        const parentOf = new Map<number, number>();
         const walk = (n: MindMapNode): void => {
-          kidsOf.set(n.label, n.children.map((c) => c.label));
-          for (const c of n.children) { parentOf.set(c.label, n.label); walk(c); }
+          kidsOf.set(n.line, n.children.map((c) => c.line));
+          for (const c of n.children) { parentOf.set(c.line, n.line); walk(c); }
         };
         for (const r of parseMindMap(attrs.src)) walk(r);
-        const affectedHubs = new Set<string>();
-        if ((kidsOf.get(parts.label) ?? []).length > 0) affectedHubs.add(parts.label);
-        const myParent = parentOf.get(parts.label);
-        if (myParent) affectedHubs.add(myParent);
+        const affectedHubs = new Set<number>();
+        if ((kidsOf.get(parts.line) ?? []).length > 0) affectedHubs.add(parts.line);
+        const myParent = parentOf.get(parts.line);
+        if (myParent !== undefined) affectedHubs.add(myParent);
         const hubPathEls = svgRoot
           ? (Array.from(svgRoot.querySelectorAll('path[data-mm-hub]')) as SVGPathElement[])
-              .filter((path) => affectedHubs.has(path.getAttribute('data-mm-hub') ?? ''))
+              .filter((path) => affectedHubs.has(Number(path.getAttribute('data-mm-hub'))))
               .map((path) => ({ path, baseD: path.getAttribute('d') ?? '' }))
           : [];
-        const touching = hubPathEls;
-        const colorOf = (label: string): number => {
-          const g = svgRoot?.querySelector(`.parallx-mindmap__node[data-mindmap-label="${CSS.escape(label)}"]`);
+        // Extra stem/spine paths cloned mid-drag (a side split needs
+        // more structure than the render emitted); removed on cancel.
+        const clones: SVGPathElement[] = [];
+        const colorOf = (line: number): number => {
+          const g = svgRoot?.querySelector(`.parallx-mindmap__node[data-mm-line="${line}"]`);
           const m = /parallx-mindmap__node--b(\d)/.exec(g?.getAttribute('class') ?? '');
           return m ? Number(m[1]) : 0;
         };
         const rerouteEdges = (dx: number, dy: number): void => {
           if (!baseGeom || !svgRoot) return;
-          const geomOf = (label: string): EdgeBox | undefined =>
-            label === parts.label
+          const geomOf = (line: number): EdgeBox | undefined =>
+            line === parts.line
               ? { ...baseGeom, x: baseGeom.x + dx, y: baseGeom.y + dy }
-              : geoms.get(label);
-          for (const hubLabel of affectedHubs) {
-            const parentGeom = geomOf(hubLabel);
-            const kidLabels = kidsOf.get(hubLabel) ?? [];
-            if (!parentGeom || kidLabels.length === 0) continue;
+              : geoms.get(line);
+          for (const hubLine of affectedHubs) {
+            const parentGeom = geomOf(hubLine);
+            const kidLines = kidsOf.get(hubLine) ?? [];
+            if (!parentGeom || kidLines.length === 0) continue;
             const kids: HubChild[] = [];
-            for (const k of kidLabels) {
+            for (const k of kidLines) {
               const g = geomOf(k);
-              if (g) kids.push({ ...g, label: k, color: colorOf(k) });
+              if (g) kids.push({ ...g, label: String(k), color: colorOf(k) });
             }
             const hubs = hubPathsFor(parentGeom, kids, attrs.dir);
-            // Repaint this hub's path elements in emission order:
-            // stem, spine?, arms — matching the renderer's order.
-            const els = hubPathEls.filter(({ path }) => path.getAttribute('data-mm-hub') === hubLabel);
-            let i = 0;
+            // ARMS carry the arrowheads: match each by its target line,
+            // never by position, so an arrow sticks to its box through
+            // any structural change (spine appearing, side flipping).
+            const els = hubPathEls.filter(({ path }) => Number(path.getAttribute('data-mm-hub')) === hubLine);
+            const armByTo = new Map<string, SVGPathElement>();
+            const trunkPool: SVGPathElement[] = [];
+            for (const { path } of els) {
+              const to = path.getAttribute('data-mm-to');
+              if (to !== null) armByTo.set(to, path);
+              else trunkPool.push(path);
+            }
+            let trunkNeed = 0;
+            const seatTrunk = (d: string): void => {
+              const idx = trunkNeed++;
+              if (idx < trunkPool.length) { trunkPool[idx].setAttribute('d', d); return; }
+              // More structure than the render had: clone a trunk path.
+              const donor = trunkPool[0] ?? els[0]?.path;
+              if (!donor) return;
+              const extra = donor.cloneNode(false) as SVGPathElement;
+              extra.removeAttribute('marker-end');
+              extra.removeAttribute('data-mm-to');
+              extra.setAttribute('d', d);
+              donor.parentNode?.insertBefore(extra, donor);
+              clones.push(extra);
+            };
             for (const hub of hubs) {
-              if (els[i]) els[i++].path.setAttribute('d', hub.stem);
-              if (hub.spine && els[i]) els[i++].path.setAttribute('d', hub.spine);
+              seatTrunk(hub.stem);
+              if (hub.spine) seatTrunk(hub.spine);
               for (const arm of hub.arms) {
-                if (els[i]) els[i++].path.setAttribute('d', arm.d);
+                armByTo.get(arm.to)?.setAttribute('d', arm.d);
               }
             }
-            // A drag can shrink the hub's shape (side flip mid-drag);
-            // blank the leftovers so no stale segment hangs in the air.
-            for (; i < els.length; i++) els[i].path.setAttribute('d', '');
+            // Surplus trunk paths (a side merged back) go blank, never
+            // stale; arms are never blanked, an arrow never vanishes.
+            for (let t = trunkNeed; t < trunkPool.length; t++) trunkPool[t].setAttribute('d', '');
           }
         };
         beginPointerDrag(e, {
@@ -270,7 +295,8 @@ export const ConceptMap = Node.create({
           onEnd: (canceled) => {
             if (canceled || !moved) {
               moveBox(0, 0);
-              for (const { path, baseD } of touching) path.setAttribute('d', baseD);
+              for (const { path, baseD } of hubPathEls) path.setAttribute('d', baseD);
+              for (const extra of clones) extra.remove();
             }
             if (canceled) return;
             if (!moved) { beginBoxEdit(parts); return; }

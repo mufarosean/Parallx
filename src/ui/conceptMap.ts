@@ -768,6 +768,8 @@ export function resolveSourceOffset(root: Node, offset: number): { node: Node; o
 
 /** A child of a hub: geometry plus its colour (for the arrowhead). */
 export interface HubChild extends EdgeBox {
+  /** Opaque id echoed into each arm's `to` (the renderer passes the
+   *  child's source LINE, the duplicate-proof identity). */
   readonly label: string;
   readonly color: number;
 }
@@ -899,22 +901,25 @@ export function renderMindMapSvg(src: string, opts: RenderMindMapOptions = {}): 
     arr.push(to);
     kidsByParent.set(from, arr);
   }
+  // Hub paths are addressed by SOURCE LINE (data-mm-hub = the parent's
+  // line, data-mm-to = the child's): line is identity, so live-drag
+  // rerouting stays exact even when two boxes share a label.
   const pathParts: string[] = [];
   for (const [parentIdx, childIdxs] of kidsByParent) {
     const parent = nodes[parentIdx];
     const cls = `parallx-mindmap__edge parallx-mindmap__edge--b${parent.branch % 6}`;
     const kids: HubChild[] = childIdxs.map((i) => ({
       x: nodes[i].x, y: nodes[i].y, width: nodes[i].width, height: nodes[i].height,
-      label: nodes[i].label, color: nodes[i].branch % 6,
+      label: String(nodes[i].line), color: nodes[i].branch % 6,
     }));
     for (const hub of hubPathsFor(parent, kids, dir)) {
-      pathParts.push(`<path class="${cls}" data-mm-hub="${escapeXml(parent.label)}" d="${hub.stem}" />`);
+      pathParts.push(`<path class="${cls}" data-mm-hub="${parent.line}" d="${hub.stem}" />`);
       if (hub.spine) {
-        pathParts.push(`<path class="${cls}" data-mm-hub="${escapeXml(parent.label)}" d="${hub.spine}" />`);
+        pathParts.push(`<path class="${cls}" data-mm-hub="${parent.line}" d="${hub.spine}" />`);
       }
       for (const arm of hub.arms) {
         pathParts.push(`<path class="${cls}" marker-end="url(#mm${uid}-arrow-b${arm.color})" `
-          + `data-mm-hub="${escapeXml(parent.label)}" data-mm-to="${escapeXml(arm.to)}" d="${arm.d}" />`);
+          + `data-mm-hub="${parent.line}" data-mm-to="${arm.to}" d="${arm.d}" />`);
       }
     }
   }

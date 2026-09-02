@@ -224,16 +224,34 @@ describe('hub connectors and outline growth', () => {
 
   it('the SVG draws lines in the PARENT hue and arrows in the CHILD hue', () => {
     const svg = renderMindMapSvg(SRC);
-    // Reserving is b0: its whole hub (stem, spine, arms) is edge--b0.
-    const hubPaths = svg.match(/data-mm-hub="Reserving"/g) ?? [];
+    // Reserving is b0 at line 0: its whole hub is addressed by LINE.
+    const hubPaths = svg.match(/data-mm-hub="0"/g) ?? [];
     expect(hubPaths.length).toBe(4); // stem + spine + 2 arms, nothing more
     expect(svg).not.toContain('data-mm-from='); // no per-edge lines remain
-    // The arm into Chain Ladder (b1) carries the b1 arrowhead.
-    expect(svg).toMatch(/marker-end="url\(#mm\d+-arrow-b1\)" data-mm-hub="Reserving" data-mm-to="Chain Ladder"/);
+    // The arm into Chain Ladder (line 1, b1) carries the b1 arrowhead.
+    expect(svg).toMatch(/marker-end="url\(#mm\d+-arrow-b1\)" data-mm-hub="0" data-mm-to="1"/);
     // Chain Ladder's own hub is b1 and its arm into Mack wears Mack's b2 arrow.
-    expect(svg).toMatch(/marker-end="url\(#mm\d+-arrow-b2\)" data-mm-hub="Chain Ladder" data-mm-to="Mack"/);
+    expect(svg).toMatch(/marker-end="url\(#mm\d+-arrow-b2\)" data-mm-hub="1" data-mm-to="2"/);
     expect(svg).toContain('<defs>');
     expect(svg).toContain('parallx-mindmap__arrow');
+  });
+
+  it('DUPLICATE labels each keep their own arm and arrowhead', () => {
+    // Two unrenamed "New idea" boxes: line is identity, so neither arm
+    // may collapse onto the other (the vanished-arrow bug).
+    const svg = renderMindMapSvg('Root\n  New idea\n  New idea');
+    expect(svg).toMatch(/marker-end="url\(#mm\d+-arrow-b\d\)" data-mm-hub="0" data-mm-to="1"/);
+    expect(svg).toMatch(/marker-end="url\(#mm\d+-arrow-b\d\)" data-mm-hub="0" data-mm-to="2"/);
+  });
+
+  it('a freshly added box keeps its arm after a SIBLING is moved', () => {
+    const src = 'Root\n  Premium\n  Term 1\n  New idea';
+    const svg = renderMindMapSvg(src, { overrides: { 'Premium': { dx: -160, dy: 90 } } });
+    // Every child line still has exactly one marker-carrying arm.
+    for (const line of [1, 2, 3]) {
+      const arms = svg.match(new RegExp(`marker-end="[^"]+" data-mm-hub="0" data-mm-to="${line}"`, 'g')) ?? [];
+      expect(arms.length).toBe(1);
+    }
   });
 
   it('appendChildAtLine inserts under that line, two deeper; a bad index is null', () => {
