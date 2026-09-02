@@ -43,7 +43,7 @@ export function createTranscriptGetTool(fs: IBuiltInToolFileSystem | undefined):
     category: 'transcript',
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       if (!fs) {
-        return { content: 'Transcript files are not available — no workspace folder is open.', isError: true };
+        return { content: 'Transcript files are not available: no workspace folder is open.', isError: true };
       }
 
       const sessionId = String(args['sessionId'] || '').trim();
@@ -70,8 +70,8 @@ export function createTranscriptGetTool(fs: IBuiltInToolFileSystem | undefined):
 export function createTranscriptSearchTool(transcriptSearch: IBuiltInToolTranscriptSearch | undefined): IChatTool {
   return {
     name: 'transcript_search',
-    displaySummary: 'Semantic search over prior transcripts.',
-    description: 'Semantic search over session transcripts. Disabled unless transcript indexing is on.',
+    displaySummary: 'Search prior session transcripts.',
+    description: 'Keyword search over the session transcripts in `.parallx/sessions/`; results carry the session IDs transcript_get reads.',
     parameters: {
       type: 'object',
       required: ['query'],
@@ -84,11 +84,8 @@ export function createTranscriptSearchTool(transcriptSearch: IBuiltInToolTranscr
     permissionLevel: 'always-allowed' as ToolPermissionLevel,
     category: 'transcript',
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
-      if (!transcriptSearch || !transcriptSearch.isEnabled()) {
-        return { content: 'Transcript search is disabled. Enable memory.transcriptIndexingEnabled to index `.parallx/sessions/*.jsonl` for explicit transcript recall.' };
-      }
-      if (!transcriptSearch.isReady()) {
-        return { content: 'Transcript search is not available yet — indexing is still in progress. Please try again shortly.' };
+      if (!transcriptSearch) {
+        return { content: 'Transcript search is not available: no workspace folder is open.', isError: true };
       }
 
       const query = String(args['query'] || '').trim();

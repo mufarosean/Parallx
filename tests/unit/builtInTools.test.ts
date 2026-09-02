@@ -75,8 +75,6 @@ function createMockCanonicalMemorySearch(overrides: Partial<IBuiltInToolCanonica
 
 function createMockTranscriptSearch(overrides: Partial<IBuiltInToolTranscriptSearch> = {}): IBuiltInToolTranscriptSearch {
   return {
-    isEnabled: vi.fn(() => false),
-    isReady: vi.fn(() => true),
     search: vi.fn(async () => []),
     ...overrides,
   };
@@ -527,19 +525,28 @@ describe('transcript tools', () => {
     expect(result.content).not.toContain('"type":"message"');
   });
 
-  it('transcript_search reports disabled state until transcript indexing is enabled', async () => {
+  it('transcript_search needs no setting: an enabled tool searches, an absent workspace says so', async () => {
+    // Review fix 2026-09-02: the tool used to answer "disabled" unless
+    // memory.transcriptIndexingEnabled was on, a setting that governs
+    // automatic recall and RAG indexing, not this direct file scan.
     const toolsService = createMockToolsService();
     registerToolsForTest(toolsService, createMockDb(), createMockFs(), undefined, createMockRetrieval(), createMockCanonicalMemorySearch(), createMockTranscriptSearch());
     const tool = toolsService.registeredTools.find(t => t.name === 'transcript_search')!;
-
     const result = await tool.handler({ query: 'hello' }, createToken());
-    expect(result.content).toContain('Transcript search is disabled');
+    expect(result.content).toContain('No transcript results found');
+    expect(result.content).not.toContain('disabled');
+
+    const noWorkspace = createMockToolsService();
+    registerToolsForTest(noWorkspace, createMockDb(), createMockFs(), undefined, createMockRetrieval(), createMockCanonicalMemorySearch(), undefined);
+    const absent = noWorkspace.registeredTools.find(t => t.name === 'transcript_search')!;
+    const missing = await absent.handler({ query: 'hello' }, createToken());
+    expect(missing.isError).toBe(true);
+    expect(missing.content).toContain('no workspace folder is open');
   });
 
-  it('transcript_search returns formatted transcript matches when enabled', async () => {
+  it('transcript_search returns formatted transcript matches', async () => {
     const toolsService = createMockToolsService();
     const transcriptSearch = createMockTranscriptSearch({
-      isEnabled: vi.fn(() => true),
       search: vi.fn(async () => [{
         sourceId: '.parallx/sessions/session-1.jsonl',
         contextPrefix: '[Source: ".parallx/sessions/session-1.jsonl"]',

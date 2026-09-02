@@ -686,9 +686,14 @@ export interface IBuiltInToolWorkspaceMemory {
 }
 
 /** Canonical transcript search accessor for built-in tools. */
+/**
+ * Explicit transcript recall for the transcript_search tool. A direct
+ * lexical scan of `.parallx/sessions/*.jsonl`: it needs no index and no
+ * setting. (Review fix 2026-09-02: the tool used to gate itself on
+ * memory.transcriptIndexingEnabled, which governs AUTOMATIC recall and
+ * RAG indexing, so an enabled tool still answered "disabled".)
+ */
 export interface IBuiltInToolTranscriptSearch {
-  isEnabled(): boolean;
-  isReady(): boolean;
   search(
     query: string,
     options?: { sessionId?: string },

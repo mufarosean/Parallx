@@ -1535,21 +1535,13 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         }
       : undefined;
 
-    const transcriptSearchAccessor = retrievalService && indexingPipelineService && unifiedConfigService
+    // The explicit tool scans the transcript files directly; enabling the
+    // tool IS the switch. memory.transcriptIndexingEnabled governs only
+    // automatic recall and RAG indexing (recallTranscripts, the pipeline).
+    const transcriptSearchAccessor = fsAccessor
       ? {
-          isEnabled: () => unifiedConfigService.getEffectiveConfig().memory.transcriptIndexingEnabled === true,
-          isReady: () => indexingPipelineService.isInitialIndexComplete,
-          async search(query: string, options?: { sessionId?: string }) {
-            if (unifiedConfigService.getEffectiveConfig().memory.transcriptIndexingEnabled !== true) {
-              return [];
-            }
-
-            if (!fsAccessor) {
-              return [];
-            }
-
-            return searchWorkspaceTranscripts(fsAccessor, query, options);
-          },
+          search: (query: string, options?: { sessionId?: string }) =>
+            searchWorkspaceTranscripts(fsAccessor, query, options),
         }
       : undefined;
 
