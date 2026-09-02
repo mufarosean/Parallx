@@ -4,49 +4,23 @@ import type {
   IChatMessage,
   IChatRequestResponsePair,
 } from '../../../services/chatTypes.js';
+import { flattenPairsToMessages } from '../../../openclaw/participants/openclawParticipantRuntime.js';
 
-function getHistoryResponseText(pair: IChatRequestResponsePair): string {
-  return pair.response.parts
-    .map((part) => {
-      if ('content' in part && typeof part.content === 'string') {
-        return part.content;
-      }
-      if ('code' in part && typeof part.code === 'string') {
-        return '```\n' + part.code + '\n```';
-      }
-      return '';
-    })
-    .filter(Boolean)
-    .join('\n');
-}
-
+/**
+ * Seed messages for a runtime-prompt turn: system prompt + the session's
+ * history through the ONE flattener (tool exchanges preserved, thinking
+ * parts excluded). Review fix 2026-09-02: this file carried a private copy
+ * of the retired duck-typed flattener, so every rail seeding through it
+ * still forgot its tools and replayed its reasoning.
+ */
 export function buildRuntimePromptSeedMessages(options: {
   systemPrompt: string;
   history?: readonly IChatRequestResponsePair[];
 }): IChatMessage[] {
-  const messages: IChatMessage[] = [{
-    role: 'system',
-    content: options.systemPrompt,
-  }];
-
-  for (const pair of options.history ?? []) {
-    messages.push({
-      role: 'user',
-      content: pair.request.text,
-    });
-
-    const responseText = getHistoryResponseText(pair);
-    if (!responseText) {
-      continue;
-    }
-
-    messages.push({
-      role: 'assistant',
-      content: responseText,
-    });
-  }
-
-  return messages;
+  return [
+    { role: 'system', content: options.systemPrompt },
+    ...flattenPairsToMessages(options.history ?? []),
+  ];
 }
 
 export function buildRuntimePromptEnvelopeMessages(options: {

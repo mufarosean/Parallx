@@ -11,6 +11,7 @@
 // in version control alongside everything else, and the run log points at
 // something that still exists afterwards. Inline code would give up all three.
 
+import { INTENT_PARAM_NAME, INTENT_PARAM_SCHEMA } from '../../../services/toolIntent.js';
 import type {
   IChatTool,
   IToolResult,
@@ -58,10 +59,7 @@ export function createPythonRunScriptTool(service: IPythonEnvService): IChatTool
           items: { type: 'string' },
           description: 'Command-line arguments passed to the script.',
         },
-        description: {
-          type: 'string',
-          description: 'One short sentence, active voice, saying what this action does and why. Shown to the user in the approval prompt and activity journal.',
-        },
+        [INTENT_PARAM_NAME]: INTENT_PARAM_SCHEMA,
       },
     },
     requiresConfirmation: true,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { ChatContentPartKind } from '../../src/services/chatTypes';
 import {
   buildRuntimePromptEnvelopeMessages,
   buildRuntimePromptSeedMessages,
@@ -13,8 +14,10 @@ describe('chat runtime prompt messages', () => {
         request: { text: 'User question' },
         response: {
           parts: [
-            { content: 'Assistant answer' },
-            { code: 'const value = 1;' },
+            { kind: ChatContentPartKind.Markdown, content: 'Assistant answer' },
+            { kind: ChatContentPartKind.CodeBlock, code: 'const value = 1;' },
+            // Thinking is never replayed (the one flattener's contract).
+            { kind: ChatContentPartKind.Thinking, content: 'private reasoning', isCollapsed: true },
           ],
         },
       } as any],

@@ -91,6 +91,38 @@ describe('Careful Mode (HARNESS.md 2.3)', () => {
     expect(d.reasons).toContain('user-consent');
   });
 
+  it('careful on: a persistent "always allow" override does NOT bypass it', () => {
+    const { pdp, perms } = setup();
+    perms.setPersistentOverride('canvas_edit_page', 'always-allowed');
+    expect(pdp.decide(req('canvas_edit_page', 'chat-1')).outcome).toBe('allow'); // the override, careful off
+    perms.setCarefulMode(true);
+    const d = pdp.decide(req('canvas_edit_page', 'chat-1'));
+    expect(d.outcome).toBe('require-approval');
+    expect(d.reasons).toContain('careful-mode');
+    expect(d.forceApproval).toBe(true); // the tools layer must not let the grant satisfy it
+  });
+
+  it('careful on: a session grant does not bypass it either', () => {
+    const { pdp, perms } = setup();
+    perms.grantForSession('canvas_edit_page');
+    perms.setCarefulMode(true);
+    expect(pdp.decide(req('canvas_edit_page', 'chat-1')).outcome).toBe('require-approval');
+  });
+
+  it('careful on leaves always-allowed-by-default tools alone (reads never prompt)', () => {
+    const { pdp, perms } = setup();
+    perms.setCarefulMode(true);
+    const d = pdp.decide({ ...req('fs_read_file', 'chat-1'), tool: { name: 'fs_read_file', defaultLevel: 'always-allowed' as const } });
+    expect(d.outcome).toBe('allow');
+  });
+
+  it('the destruction belt carries forceApproval on the decision', () => {
+    const { pdp } = setup();
+    const d = pdp.decide(req('terminal_run_command', 'chat-1'));
+    expect(d.outcome).toBe('require-approval');
+    expect(d.forceApproval).toBe(true);
+  });
+
   it('careful never loosens: autonomous turns still gate with careful off', () => {
     const { pdp } = setup({ id: 'hb-1', kind: 'autonomous' });
     const d = pdp.decide(req('canvas_edit_page', 'hb-1'));

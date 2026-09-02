@@ -79,6 +79,12 @@ export interface PolicyDecision {
   readonly permSource: IPermissionCheckResult['source'] | 'missing-permission-service';
   /** True when the tool, if it succeeds, should taint the session turn. */
   readonly willTaintOnSuccess: boolean;
+  /**
+   * True when a persisted "always allow" grant must NOT satisfy this
+   * approval (the destruction belt, Careful Mode). Carried on the decision
+   * so the tools layer never re-derives policy from reason strings.
+   */
+  readonly forceApproval?: boolean;
 }
 
 export interface IPolicyAuditEntry {
@@ -165,7 +171,24 @@ export class PolicyDecisionPoint {
       reasons.push('force-confirmation-override');
       return this._emit(caller, name, {
         outcome: 'require-approval', reasons, autoApproved: false,
-        permSource: permCheck.source, willTaintOnSuccess: willTaint,
+        permSource: permCheck.source, willTaintOnSuccess: willTaint, forceApproval: true,
+      });
+    }
+
+    // Rule 5 — HARNESS.md §2.3 Careful Mode. Evaluated BEFORE the override
+    // relaxation: every consequential tool (requires-approval by default or
+    // by current level) asks, and a persisted or session "always allow"
+    // grant does not exempt it. The switch is tighten-only; overrides are
+    // exactly the relaxation it suspends. (Review fix 2026-09-02: the check
+    // used to sit inside the `!autoApproved` branch, so any override
+    // silently bypassed it.)
+    const careful = this._permissionService?.isCarefulMode() === true;
+    const consequential = permCheck.level === 'requires-approval' || defaultLevel === 'requires-approval';
+    if (careful && consequential) {
+      reasons.push('careful-mode');
+      return this._emit(caller, name, {
+        outcome: 'require-approval', reasons, autoApproved: false,
+        permSource: permCheck.source, willTaintOnSuccess: willTaint, forceApproval: true,
       });
     }
 
@@ -189,16 +212,13 @@ export class PolicyDecisionPoint {
       // and NOT part of the M90 relaxation (Mufaro kept it). Downstream:
       // interactive prompts, user-task/autonomous defer to the log.
       //
-      // HARNESS.md §2.3 — Careful Mode suspends the user-consent relaxation:
-      // when the user flips it on, interactive turns prompt for every
-      // consequential tool again. This is the ONE honest gating switch that
-      // replaced the never-wired autonomy dial in the mode picker.
-      const careful = this._permissionService?.isCarefulMode() === true;
-      if (initiator === 'autonomous' || forceConfirm || careful) {
-        reasons.push(forceConfirm ? 'destruction-belt' : careful ? 'careful-mode' : `requires-approval:${permCheck.source}`);
+      // (Careful Mode is Rule 5 above — it fires before overrides can.)
+      if (initiator === 'autonomous' || forceConfirm) {
+        reasons.push(forceConfirm ? 'destruction-belt' : `requires-approval:${permCheck.source}`);
         return this._emit(caller, name, {
           outcome: 'require-approval', reasons, autoApproved: false,
           permSource: permCheck.source, willTaintOnSuccess: willTaint,
+          forceApproval: forceConfirm,
         });
       }
       // Interactive or user-task turn, ordinary write — the user's gesture

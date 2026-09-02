@@ -778,6 +778,17 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     );
   }
 
+  // HARNESS.md §2.3 (review fix 2026-09-02) — the permission service is
+  // constructed HERE, before ChatDataService and the participant services
+  // capture it. Every `_permissionService ? … : undefined` below evaluates
+  // EAGERLY; constructing it later in 3d left them all undefined, so the
+  // Careful toggle shipped dead and per-session tool filtering never
+  // applied. Its wiring (autonomy log, confirmation handler) stays in 3d.
+  if (languageModelToolsService) {
+    _permissionService = new PermissionService();
+    context.subscriptions.push(_permissionService);
+  }
+
   // ── 3. Create ChatDataService (M13 Phase 2) ──
 
   const dataService = new ChatDataService({
@@ -1100,7 +1111,10 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     // excluding the assistant's own actions (the transcript carries those).
     renderActivitySince: _activityJournal
       ? (sinceMs: number) => {
-        const text = _activityJournal.renderRecent({ sinceMs, maxLines: 12, excludeActor: 'ai' });
+        // The user's own prompt is journaled with source 'chat'; the
+        // transcript already carries it, so it is excluded here too
+        // (otherwise every turn re-lists the previous question).
+        const text = _activityJournal.renderRecent({ sinceMs, maxLines: 12, excludeActor: 'ai', excludeSource: 'chat' });
         return text.trim() ? text : undefined;
       }
       : undefined,
@@ -1361,10 +1375,9 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
 
   // ── 3d. Register built-in tools (Cap 6 Task 6.3) ──
 
-  if (languageModelToolsService) {
-    // ── Wire permission service (M11 Task 2.1) ──
-    _permissionService = new PermissionService();
-    context.subscriptions.push(_permissionService);
+  if (languageModelToolsService && _permissionService) {
+    // ── Wire permission service (M11 Task 2.1); constructed above, before
+    // its captures (see the §2.3 note by ChatDataService) ──
 
     // Wire heartbeat-aware approval queue: heartbeat-originated tool calls
     // that would otherwise stall on a UI dialog get logged to the autonomy

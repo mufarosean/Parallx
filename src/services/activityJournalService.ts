@@ -109,7 +109,7 @@ export interface IActivityJournalService {
   /** Last `n` events, oldest first. */
   tail(n: number): readonly IActivityEvent[];
   /** Human-readable narrative of recent events (for prompts/diagnostics). */
-  renderRecent(opts?: { maxLines?: number; sinceMs?: number; excludeActor?: string }): string;
+  renderRecent(opts?: { maxLines?: number; sinceMs?: number; excludeActor?: string; excludeSource?: string }): string;
   /**
    * Query persisted history (falls back to the ring when the DB is closed).
    * actor/verb/source/ref are exact-match filters over the stored columns.
@@ -268,7 +268,7 @@ export class ActivityJournalService extends Disposable implements IActivityJourn
     return this._ring.slice(Math.max(0, this._ring.length - Math.max(0, n)));
   }
 
-  renderRecent(opts?: { maxLines?: number; sinceMs?: number; excludeActor?: string }): string {
+  renderRecent(opts?: { maxLines?: number; sinceMs?: number; excludeActor?: string; excludeSource?: string }): string {
     const maxLines = opts?.maxLines ?? 30;
     const since = opts?.sinceMs;
     let events = typeof since === 'number'
@@ -277,6 +277,9 @@ export class ActivityJournalService extends Disposable implements IActivityJourn
     // HARNESS.md §3.5 — anti-self-echo: the since-last-turn context block
     // excludes the assistant's own actions (its preserved transcript already
     // carries them; repeating them here would be pure duplication).
+    if (opts?.excludeSource) {
+      events = events.filter((e) => e.source !== opts.excludeSource);
+    }
     if (opts?.excludeActor) {
       events = events.filter((e) => e.actor !== opts.excludeActor);
     }

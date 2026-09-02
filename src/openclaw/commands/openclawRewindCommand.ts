@@ -34,7 +34,7 @@ export async function tryHandleOpenclawRewindCommand(
     const lines = entries.map((e) => {
       const when = new Date(e.at).toLocaleTimeString();
       const kind = e.priorContent === null ? 'created' : e.tool === 'fs_delete_file' ? 'deleted' : 'modified';
-      const intent = e.intent ? ` — ${e.intent}` : '';
+      const intent = e.intent ? ` · ${e.intent}` : '';
       return `- **#${e.id}** ${when} · \`${e.path}\` ${kind} by ${e.tool}${intent}`;
     });
     response.markdown([
@@ -51,7 +51,7 @@ export async function tryHandleOpenclawRewindCommand(
   if (arg === 'last') {
     id = latestCheckpoint()?.id;
     if (id === undefined) {
-      response.markdown('No file checkpoints yet — nothing to restore.');
+      response.markdown('No file checkpoints yet. Nothing to restore.');
       return true;
     }
   } else {

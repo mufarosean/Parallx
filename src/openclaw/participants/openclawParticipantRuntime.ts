@@ -326,6 +326,13 @@ function trimBootstrapContent(content: string, fileName: string, maxChars: numbe
 // keep a longer preview — failure memory is what prevents repeated failures.
 
 const RECENT_FULL_FIDELITY_PAIRS = 2;
+// Pairs age in COHORTS: the aged/full boundary only moves once this many
+// pairs have accumulated behind the recent window. A boundary that slid
+// one pair per turn rewrote a mid-history message's bytes EVERY turn,
+// invalidating the provider prompt cache from that offset (the §3.4
+// stable-prefix goal) and the Anthropic signed-thinking fingerprint of
+// that turn (review fix 2026-09-02).
+const AGING_COHORT_PAIRS = 8;
 const AGED_RESULT_PREVIEW_CHARS = 200;
 const AGED_ERROR_PREVIEW_CHARS = 800;
 const AGED_ARG_VALUE_CHARS = 200;
@@ -380,7 +387,7 @@ export function flattenPairsToMessages(
   history: IChatParticipantContext['history'],
 ): IChatMessage[] {
   const messages: IChatMessage[] = [];
-  const agedBefore = history.length - RECENT_FULL_FIDELITY_PAIRS;
+  const agedBefore = Math.floor(Math.max(0, history.length - RECENT_FULL_FIDELITY_PAIRS) / AGING_COHORT_PAIRS) * AGING_COHORT_PAIRS;
 
   for (let i = 0; i < history.length; i++) {
     const pair = history[i];

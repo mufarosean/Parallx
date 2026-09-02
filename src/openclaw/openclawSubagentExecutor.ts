@@ -172,7 +172,7 @@ export interface ICreateSubagentTurnExecutorOpts {
    * dialog the user can't see.
    */
   readonly permissionService?: {
-    markSubagentSession(sessionId: string, autonomyLevel?: import('../agent/agentTypes.js').AgentAutonomyLevel): void;
+    markSubagentSession(sessionId: string, autonomyLevel?: import('../agent/agentTypes.js').AgentAutonomyLevel, parentSessionId?: string): void;
     unmarkSubagentSession(sessionId: string): void;
   };
   /** Resolves the autonomy level applied to subagent tool calls. */
@@ -225,7 +225,9 @@ export function createSubagentTurnExecutor(
     // `origin: 'subagent'` instead of awaiting a UI dialog. Cleared in
     // `finally`.
     const subagentAutonomy = opts.getAutonomyLevel?.();
-    opts.permissionService?.markSubagentSession(handle.sessionId, subagentAutonomy);
+    // The parent rides along so the child inherits its initiator (an
+    // autonomous parent's spawn stays autonomous at the gate).
+    opts.permissionService?.markSubagentSession(handle.sessionId, subagentAutonomy, parentId);
     // HARNESS.md §4 — register the spawn's typed profile / tool allowlist for
     // the ephemeral session; the default participant consults it when
     // resolving the turn's tool policy. Cleared in `finally`.

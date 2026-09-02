@@ -132,6 +132,8 @@ export class PermissionService extends Disposable {
    * called by the subagent executor around its `chatService.sendRequest`.
    */
   private readonly _subagentSessions = new Set<string>();
+  /** Subagent session → the session that spawned it (initiator inheritance). */
+  private readonly _subagentParents = new Map<string, string>();
 
   /** Per-subagent-session autonomy level, captured at mark-time. */
   private readonly _subagentAutonomy = new Map<string, AgentAutonomyLevel>();
@@ -202,9 +204,19 @@ export class PermissionService extends Disposable {
    * (user-triggered headless run), 'autonomous' (the AI gave itself work).
    */
   getSessionInitiator(sessionId: string | undefined): 'interactive' | 'user-task' | 'autonomous' {
-    if (!sessionId) return 'interactive';
-    if (this._userTaskSessions.has(sessionId)) return 'user-task';
-    if (this._heartbeatSessions.has(sessionId)) return 'autonomous';
+    // A subagent runs on its parent's consent: an autonomous turn's spawn is
+    // still autonomous (review fix 2026-09-02 — it used to fall through to
+    // 'interactive', letting an unattended run write under user-consent).
+    const seen = new Set<string>();
+    let id = sessionId;
+    while (id && !seen.has(id)) {
+      seen.add(id);
+      if (this._userTaskSessions.has(id)) return 'user-task';
+      if (this._heartbeatSessions.has(id)) return 'autonomous';
+      const parent = this._subagentSessions.has(id) ? this._subagentParents.get(id) : undefined;
+      if (!parent) return 'interactive';
+      id = parent;
+    }
     return 'interactive';
   }
 
@@ -223,10 +235,13 @@ export class PermissionService extends Disposable {
   }
 
   /** Mark an ephemeral chat session as originating from a subagent run. */
-  markSubagentSession(sessionId: string, autonomyLevel?: AgentAutonomyLevel): void {
+  markSubagentSession(sessionId: string, autonomyLevel?: AgentAutonomyLevel, parentSessionId?: string): void {
     this._subagentSessions.add(sessionId);
     if (autonomyLevel !== undefined) {
       this._subagentAutonomy.set(sessionId, autonomyLevel);
+    }
+    if (parentSessionId) {
+      this._subagentParents.set(sessionId, parentSessionId);
     }
   }
 
@@ -234,6 +249,7 @@ export class PermissionService extends Disposable {
   unmarkSubagentSession(sessionId: string): void {
     this._subagentSessions.delete(sessionId);
     this._subagentAutonomy.delete(sessionId);
+    this._subagentParents.delete(sessionId);
   }
 
   /**

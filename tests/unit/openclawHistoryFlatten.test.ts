@@ -105,11 +105,30 @@ describe('flattenPairsToMessages — the transcript is sacred (HARNESS.md §1)',
     expect(toolMessages[1].content).toBe('[Tool call rejected by user]');
   });
 
+  it('aging moves in COHORTS: nothing ages until 8 pairs sit behind the recent window', () => {
+    const bigResult = 'x'.repeat(5_000);
+    // 7 old + 2 recent = 9 pairs: the cohort is not full, every result is whole.
+    const nine = flattenPairsToMessages(history(
+      ...Array.from({ length: 7 }, (_, i) => pair(`old ${i}`, [tool('fs_read_file', { path: `${i}.ts` }, bigResult)])),
+      pair('recent turn 1', [tool('fs_read_file', { path: 'b.ts' }, bigResult)]),
+      pair('recent turn 2', [md('No tools.')]),
+    ));
+    expect(nine.filter((m) => m.role === 'tool').every((m) => m.content === bigResult)).toBe(true);
+    // A stable boundary is the point: a pair's bytes must not change every turn.
+    const ten = flattenPairsToMessages(history(
+      ...Array.from({ length: 8 }, (_, i) => pair(`old ${i}`, [tool('fs_read_file', { path: `${i}.ts` }, bigResult)])),
+      pair('recent turn 1', [tool('fs_read_file', { path: 'b.ts' }, bigResult)]),
+      pair('recent turn 2', [md('No tools.')]),
+    ));
+    expect(ten.filter((m) => m.role === 'tool' && m.content.length < 5_000)).toHaveLength(8);
+  });
+
   it('ages old pairs: results decay to previews, long string args elide, recent pairs stay whole', () => {
     const bigResult = 'x'.repeat(5_000);
     const bigArg = 'y'.repeat(1_000);
     const messages = flattenPairsToMessages(history(
       pair('old turn', [tool('fs_read_file', { path: 'a.ts', content: bigArg }, bigResult)]),
+      ...Array.from({ length: 7 }, (_, i) => pair(`filler ${i}`, [md('filler')])),
       pair('recent turn 1', [tool('fs_read_file', { path: 'b.ts' }, bigResult)]),
       pair('recent turn 2', [md('No tools.')]),
     ));

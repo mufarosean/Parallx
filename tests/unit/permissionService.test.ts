@@ -46,6 +46,17 @@ describe('M90 user-task consent', () => {
     expect(svc.getSessionInitiator('h1')).toBe('autonomous');
     expect(svc.getSessionInitiator('unknown')).toBe('interactive');
     expect(svc.getSessionInitiator(undefined)).toBe('interactive');
+    // A subagent runs on its parent's consent: an autonomous parent's spawn
+    // is autonomous at the gate; a user-task parent's is user-task; an
+    // orphan (no parent known) stays interactive.
+    svc.markSubagentSession('sub-h', undefined, 'h1');
+    svc.markSubagentSession('sub-u', undefined, 'u1');
+    svc.markSubagentSession('sub-orphan');
+    expect(svc.getSessionInitiator('sub-h')).toBe('autonomous');
+    expect(svc.getSessionInitiator('sub-u')).toBe('user-task');
+    expect(svc.getSessionInitiator('sub-orphan')).toBe('interactive');
+    svc.unmarkSubagentSession('sub-h');
+    expect(svc.getSessionInitiator('sub-h')).toBe('interactive');
   });
 
   it('a user-task session approves an ordinary gated tool WITHOUT calling the handler', async () => {

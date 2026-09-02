@@ -143,6 +143,32 @@ describe('executeOpenclawAttempt', () => {
     expect(response.markdown).toHaveBeenCalledWith('Hello world');
   });
 
+  it('refuses a tool the turn did not offer: the catalog filter is honoured at dispatch', async () => {
+    let callCount = 0;
+    const sendChatRequest = vi.fn(() => {
+      callCount++;
+      if (callCount === 1) {
+        return streamChunks([
+          toolCallChunk('Writing...', [{ function: { name: 'fs_write_file', arguments: { path: 'x.md', content: 'y' } } }]),
+        ]);
+      }
+      return streamChunks([textChunk('Done.')]);
+    });
+    const invokeToolWithRuntimeControl = vi.fn(async (): Promise<IToolResult> => ({ content: 'should not run' }));
+    const context = createContext({
+      sendChatRequest,
+      invokeToolWithRuntimeControl,
+      toolState: {
+        availableDefinitions: [{ name: 'fs_read_file', description: 'Read', parameters: {} }],
+      } as any,
+    });
+    await executeOpenclawAttempt(createRequest(), context, createAssembled(), createResponse(), createToken());
+    expect(invokeToolWithRuntimeControl).not.toHaveBeenCalled();
+    // The model is told, in the tool result, that the tool is not available.
+    const toolMessages = (sendChatRequest.mock.calls[1][0] as Array<{ role: string; content: string }>).filter((m) => m.role === 'tool');
+    expect(toolMessages[0].content).toContain('not available in this session');
+  });
+
   it('tool call loop — model returns tool call, tool executes, model returns text', async () => {
     let callCount = 0;
     const sendChatRequest = vi.fn(() => {

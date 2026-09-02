@@ -13,6 +13,7 @@
 //   Parallx folds confirmation logic into this single service.
 
 import { Disposable } from '../platform/lifecycle.js';
+import { readToolIntent } from './toolIntent.js';
 import { Emitter } from '../platform/events.js';
 import type { Event } from '../platform/events.js';
 import type { IStorage } from '../platform/storage.js';
@@ -368,9 +369,7 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
       approvalSource: decision.permSource,
       source: tool.source,
       ownerToolId: tool.ownerToolId,
-      intent: typeof args['description'] === 'string' && args['description'].trim()
-        ? args['description'].trim()
-        : undefined,
+      intent: readToolIntent(name, args),
     };
     observer?.onValidated?.(metadata);
 
@@ -406,11 +405,10 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
           isError: true,
         };
       }
-      // Pass forceApproval=true when the destruction belt or Careful Mode
-      // triggered the require-approval, so a persistent "always-allow"
-      // override cannot silently bypass either. (The M65 color-gate reason
-      // is gone with the legacy decision path — M90 removed that gate.)
-      const forced = decision.reasons.includes('destruction-belt') || decision.reasons.includes('careful-mode');
+      // The PDP says whether a persistent "always-allow" may satisfy this
+      // approval (destruction belt, Careful Mode): ONE owner, no reason-
+      // string parsing here.
+      const forced = decision.forceApproval === true;
       const approved = await this._permissionService.confirmToolInvocation(
         name,
         tool.description,

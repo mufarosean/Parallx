@@ -561,13 +561,27 @@ export async function executeOpenclawAttempt(
       );
       response.updateToolInvocation(toolCallId, { status: 'running' });
 
-      const toolResult = await context.invokeToolWithRuntimeControl(
-        toolCall.function.name,
-        toolCall.function.arguments,
-        token,
-        context.toolObserver,
-        context.sessionId,
-      );
+      // Only tools this turn OFFERED may run (the API-level rule every
+      // frontier harness enforces: an unknown tool name is an error, not a
+      // registry lookup). A 'reader' subagent, a readonly participant, or a
+      // profile allowlist filtered the catalog — dispatch must honour that
+      // filter, or a model that knows a write tool's name from training
+      // walks straight past it. (Review fix 2026-09-02.)
+      // (An empty catalog carries no filter: nothing was offered, so
+      // nothing was withheld; the PDP alone gates that path.)
+      const offered = context.toolState.availableDefinitions;
+      const toolResult = offered.length === 0 || offered.some((d) => d.name === toolCall.function.name)
+        ? await context.invokeToolWithRuntimeControl(
+          toolCall.function.name,
+          toolCall.function.arguments,
+          token,
+          context.toolObserver,
+          context.sessionId,
+        )
+        : {
+          content: `Tool "${toolCall.function.name}" is not available in this session. Use only the tools offered to you.`,
+          isError: true,
+        };
       toolCallCount++;
 
       const toolStatus = toolResult.isError
@@ -668,9 +682,18 @@ export async function executeOpenclawAttempt(
     // either provider figure, so they are always estimated.
     const completionEstimate = turnResult.completionTokens
       ?? estimateMessagesTokens([{ role: 'assistant', content: markdown, toolCalls: turnResult.toolCalls }]);
-    const loopTokenEstimate = promptTokens != null && promptTokens > 0
+    // Review fix 2026-09-02: provider prompt counts EXCLUDE cached-prefix
+    // tokens (Ollama prompt_eval_count reports only newly evaluated tokens;
+    // Anthropic input_tokens excludes cache reads, which the provider now
+    // adds back). On a warm tool loop — the normal case, and what §3.4's
+    // stable prefix maximises — the anchored figure can be a tiny per-round
+    // delta. Neither figure is a ceiling on its own, so the check takes the
+    // larger: the provider wins on cold rounds (real tokenisation), the
+    // estimate wins on warm ones (it cannot see the cache either way).
+    const anchoredEstimate = promptTokens != null && promptTokens > 0
       ? promptTokens + completionEstimate + estimateMessagesTokens(toolResultMessages)
-      : estimateMessagesTokens(currentMessages);
+      : 0;
+    const loopTokenEstimate = Math.max(anchoredEstimate, estimateMessagesTokens(currentMessages));
     if (context.tokenBudget > 0 && loopTokenEstimate > context.tokenBudget * 0.85) {
       response.progress(`Tool loop context near capacity (${loopTokenEstimate}/${context.tokenBudget} tokens), compacting...`);
       try {

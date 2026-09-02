@@ -12,6 +12,7 @@ import type {
   IBuiltInToolFileWriter,
 } from '../chatTypes.js';
 import { markResourceSeen, wasResourceSeen, fileResourceKey } from '../../../services/toolResourceRegistry.js';
+import { INTENT_PARAM_NAME, INTENT_PARAM_SCHEMA } from '../../../services/toolIntent.js';
 import { recordCheckpoint } from '../../../services/fileCheckpointService.js';
 
 /** HARNESS.md §2.2 — checkpoint prior state; a failure never blocks the write. */
@@ -28,10 +29,40 @@ function checkpointSafely(
       tool,
       intent: typeof intent === 'string' && intent.trim() ? intent.trim() : undefined,
     });
-    return ` (checkpoint #${entry.id} — /rewind restores)`;
+    return ` (checkpoint #${entry.id}, /rewind restores)`;
   } catch {
-    return ' (checkpoint could not be saved)';
+    return ' (no checkpoint: the file is larger than the checkpoint cap)';
   }
+}
+
+/**
+ * Workspace-relative path → absolute, with the separator the ROOT uses.
+ * The root is the honest platform signal (a drive letter or backslashes
+ * mean Windows); the old `globalThis.process ? '\\' : '/'` test detected
+ * Node, not Windows.
+ */
+function absoluteWorkspacePath(workspaceRoot: string, relativePath: string): string {
+  const joined = workspaceRoot.replace(/[\\/]$/, '') + '/' + relativePath.replace(/^[\\/]/, '');
+  const windows = /^[A-Za-z]:/.test(workspaceRoot) || workspaceRoot.includes('\\');
+  return windows ? joined.replace(/\//g, '\\') : joined;
+}
+
+/**
+ * The ONE way a workspace file goes to the trash: fs_delete_file calls it,
+ * and the checkpoint service is handed it (bound in registerBuiltInTools)
+ * for /rewind of a created file.
+ */
+export function makeWorkspaceFileRemover(workspaceRoot: string | undefined) {
+  return async (relativePath: string): Promise<{ error: { message: string } | null }> => {
+    const electron = (globalThis as Record<string, unknown>).parallxElectron as Record<string, unknown> | undefined;
+    const fsBridge = electron?.fs as { delete?: (path: string, options?: { useTrash?: boolean }) => Promise<{ error: { code: string; message: string } | null }> } | undefined;
+    if (!fsBridge?.delete) {
+      return { error: { message: 'no file system bridge available' } };
+    }
+    const absPath = workspaceRoot ? absoluteWorkspacePath(workspaceRoot, relativePath) : relativePath;
+    const result = await fsBridge.delete(absPath, { useTrash: 'auto' as unknown as boolean });
+    return { error: result.error ? { message: result.error.message } : null };
+  };
 }
 
 // ── Tool helpers ──
@@ -97,7 +128,7 @@ export function createWriteFileTool(
       properties: {
         path: { type: 'string', description: 'Relative path.' },
         content: { type: 'string', description: 'File content.' },
-        description: { type: 'string', description: 'One short sentence, active voice, saying what this action does and why. Shown to the user in the approval prompt and activity journal.' },
+        [INTENT_PARAM_NAME]: INTENT_PARAM_SCHEMA,
       },
     },
     requiresConfirmation: true,
@@ -116,16 +147,17 @@ export function createWriteFileTool(
       try {
         const cleanPath = sanitizeRelativePath(rawPath, writer);
 
-        // Check if file exists for informational message
-        let existed = false;
+        // Does the file exist? null = unknown (the check itself failed);
+        // unknown is never treated as "absent" (see the checkpoint below).
+        let existed: boolean | null = null;
         if (fs) {
-          try { existed = await fs.exists(cleanPath); } catch { /* ignore */ }
+          try { existed = await fs.exists(cleanPath); } catch { existed = null; }
         }
 
         // M85 Slice C — read-before-overwrite. Replacing an EXISTING file the
         // session has never read destroys content the agent has not seen.
         // Creating a new file is always allowed.
-        if (existed && invocation?.sessionId && !wasResourceSeen(invocation.sessionId, fileResourceKey(cleanPath))) {
+        if (existed !== false && invocation?.sessionId && !wasResourceSeen(invocation.sessionId, fileResourceKey(cleanPath))) {
           return {
             content: `"${cleanPath}" already exists and you have not read it this session. `
               + `Read it first with fs_read_file — overwriting unseen content is not allowed. `
@@ -134,12 +166,25 @@ export function createWriteFileTool(
           };
         }
 
-        // §2.2 — capture the prior state before it is gone.
+        // §2.2 — capture the prior state before it is gone. Three cases,
+        // kept distinct (review fix 2026-09-02): absent → checkpoint null so
+        // /rewind removes the created file; readable → checkpoint its text;
+        // existed-but-unreadable (or existence unknown) → NO checkpoint. The
+        // old code checkpointed that last case as null, and /rewind then
+        // deleted a real file while reporting a successful restore.
         let priorContent: string | null = null;
-        if (existed && fs) {
-          try { priorContent = (await fs.readFileContent(cleanPath)).content; } catch { /* binary/unreadable: checkpoint absence */ }
+        let priorKnown = existed === false;
+        if (existed === true && fs) {
+          try {
+            priorContent = (await fs.readFileContent(cleanPath)).content;
+            priorKnown = true;
+          } catch {
+            priorKnown = false;
+          }
         }
-        const checkpointNote = checkpointSafely(cleanPath, existed ? priorContent : null, 'fs_write_file', args.description);
+        const checkpointNote = priorKnown
+          ? checkpointSafely(cleanPath, priorContent, 'fs_write_file', args.description)
+          : ' (no checkpoint: the previous content could not be read)';
 
         await writer.writeFile(cleanPath, content);
 
@@ -148,7 +193,7 @@ export function createWriteFileTool(
           markResourceSeen(invocation.sessionId, fileResourceKey(cleanPath));
         }
 
-        const action = existed ? 'Overwrote' : 'Created';
+        const action = existed === false ? 'Created' : 'Overwrote';
         const lineCount = content.split('\n').length;
         return { content: `${action} "${cleanPath}" (${lineCount} lines, ${content.length} chars)${checkpointNote}` };
       } catch (err) {
@@ -174,7 +219,7 @@ export function createEditFileTool(
         path: { type: 'string', description: 'Relative path.' },
         old_content: { type: 'string', description: 'Exact text to replace.' },
         new_content: { type: 'string', description: 'Replacement text.' },
-        description: { type: 'string', description: 'One short sentence, active voice, saying what this action does and why. Shown to the user in the approval prompt and activity journal.' },
+        [INTENT_PARAM_NAME]: INTENT_PARAM_SCHEMA,
       },
     },
     requiresConfirmation: true,
@@ -282,7 +327,7 @@ export function createDeleteFileTool(
       required: ['path'],
       properties: {
         path: { type: 'string', description: 'Relative path.' },
-        description: { type: 'string', description: 'One short sentence, active voice, saying what this action does and why. Shown to the user in the approval prompt and activity journal.' },
+        [INTENT_PARAM_NAME]: INTENT_PARAM_SCHEMA,
       },
     },
     requiresConfirmation: true,
@@ -314,23 +359,12 @@ export function createDeleteFileTool(
           deleteCheckpointNote = checkpointSafely(cleanPath, prior, 'fs_delete_file', args.description);
         } catch { /* binary/unreadable — trash covers it */ }
 
-        // Resolve to absolute path and delete via Electron IPC (to use trash)
-        const electron = (globalThis as Record<string, unknown>).parallxElectron as Record<string, unknown> | undefined;
-        const fsBridge = electron?.fs as { delete?: (path: string, options?: { useTrash?: boolean }) => Promise<{ error: { code: string; message: string } | null }> } | undefined;
-
-        if (fsBridge?.delete) {
-          // Resolve absolute path: workspace root + relative path
-          const absPath = workspaceRoot
-            ? (workspaceRoot.replace(/[\\/]$/, '') + '/' + cleanPath.replace(/^[\\/]/, '')).replace(/\//g, (globalThis as Record<string, unknown>).process ? '\\' : '/')
-            : cleanPath;
-          const result = await fsBridge.delete(absPath, { useTrash: 'auto' as unknown as boolean });
-          if (result.error) {
-            return { content: `Failed to delete "${cleanPath}": ${result.error.message}`, isError: true };
-          }
-          return { content: `Deleted "${cleanPath}" (moved to trash)${deleteCheckpointNote}` };
+        // Delete to trash through the one shared remover.
+        const result = await makeWorkspaceFileRemover(workspaceRoot)(cleanPath);
+        if (result.error) {
+          return { content: `Failed to delete "${cleanPath}": ${result.error.message}`, isError: true };
         }
-
-        return { content: `Cannot delete "${cleanPath}": no file system bridge available`, isError: true };
+        return { content: `Deleted "${cleanPath}" (moved to trash)${deleteCheckpointNote}` };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         return { content: `Failed to delete file: ${msg}`, isError: true };

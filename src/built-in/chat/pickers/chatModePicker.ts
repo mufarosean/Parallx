@@ -172,11 +172,14 @@ export class ChatModePicker extends Disposable {
       const separator = $('div.parallx-chat-picker-separator');
       dropdown.appendChild(separator);
 
-      const truth = $('div.parallx-chat-picker-gating-truth',
-        'Writes run automatically and are checkpointed — /rewind restores. Shell commands and deletes always ask first.');
-      dropdown.appendChild(truth);
-
+      // The line is DERIVED from the switch (a static sentence went false
+      // the moment Careful was on) and scoped to what /rewind really covers:
+      // file writes. Canvas pages have their own revisions.
       const carefulOn = this._services.getCarefulMode();
+      const truth = $('div.parallx-chat-picker-gating-truth', carefulOn
+        ? 'Careful is on: every consequential action asks first, always-allow grants included.'
+        : 'File writes run automatically and are checkpointed; /rewind restores them. Shell commands and deletes always ask first.');
+      dropdown.appendChild(truth);
       const row = $('div.parallx-chat-picker-autonomy-row');
       if (carefulOn) {
         row.classList.add('parallx-chat-picker-autonomy-row--active');

@@ -9,6 +9,7 @@
 //   src/vs/workbench/contrib/chat/browser/chatContentParts/
 
 import 'katex/dist/katex.min.css';
+import { argsWithoutIntent, readToolIntent } from '../../../services/toolIntent.js';
 
 import MarkdownIt from 'markdown-it';
 import markdownItMark from 'markdown-it-mark';
@@ -1325,15 +1326,15 @@ function _renderToolInvocation(part: IChatToolInvocationContent): HTMLElement {
 
   // HARNESS.md §2.1 — the model's own statement of what this call does.
   // Rendered as its own line so the user reads intent, not raw arguments.
-  const intent = typeof part.args?.['description'] === 'string' ? part.args['description'].trim() : '';
+  const intent = readToolIntent(part.toolName, part.args);
   if (intent) {
     const intentLine = $('div.parallx-chat-tool-invocation-intent');
     intentLine.textContent = intent;
     root.appendChild(intentLine);
   }
 
-  // Arguments summary (collapsible); the intent line already shows `description`.
-  const argEntries = Object.entries(part.args ?? {}).filter(([k]) => k !== 'description');
+  // Arguments summary (collapsible); the intent line already shows its field.
+  const argEntries = argsWithoutIntent(part.toolName, part.args);
   if (argEntries.length > 0) {
     const argsContainer = $('div.parallx-chat-tool-invocation-args');
     const argsSummary = argEntries
@@ -1396,9 +1397,7 @@ function _renderConfirmation(part: IChatConfirmationContent): HTMLElement {
 
   // HARNESS.md §2.1 — lead the approval with the model's stated intent, so
   // the user decides on "what this does", not on a raw argument dump.
-  const confirmIntent = typeof part.toolArgs?.['description'] === 'string'
-    ? String(part.toolArgs['description']).trim()
-    : '';
+  const confirmIntent = readToolIntent(part.toolName, part.toolArgs);
   if (confirmIntent) {
     const intentLine = $('div.parallx-chat-confirmation-intent');
     intentLine.textContent = confirmIntent;
@@ -1406,17 +1405,12 @@ function _renderConfirmation(part: IChatConfirmationContent): HTMLElement {
   }
 
   // Show tool arguments summary when available (M11 Task 2.1); the intent
-  // line already shows `description`.
-  const confirmArgEntries = Object.entries(part.toolArgs ?? {}).filter(([k]) => k !== 'description');
+  // line already shows its field.
+  const confirmArgEntries = argsWithoutIntent(part.toolName, part.toolArgs);
   if (confirmArgEntries.length > 0) {
     const argsBlock = $('div.parallx-chat-confirmation-args');
     const argsSummary = confirmArgEntries
-      .map(([k, v]) => {
-        const val = typeof v === 'string'
-          ? (v.length > 80 ? v.slice(0, 80) + '…' : v)
-          : JSON.stringify(v);
-        return `${k}: ${val}`;
-      })
+      .map(([k, v]) => `${k}: ${typeof v === 'string' ? _truncate(v, 80) : JSON.stringify(v)}`)
       .join('\n');
     const pre = document.createElement('pre');
     pre.textContent = argsSummary;

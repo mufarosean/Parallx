@@ -671,7 +671,7 @@ export function buildCanvasSection(): string {
     '',
     '**Property values by kind**: text → string, number → number, checkbox → boolean, tags/multi-select → a REAL JSON array of strings, never a stringified array.',
     '',
-    '**Databases** are special pages: rows are pages, columns are typed properties, `values` are keyed by PROPERTY NAME. A page has at most ONE home database. Inspect schema + rows with `canvas_query_database` before adding or editing.',
+    '**Databases** are special pages: rows are pages, columns are typed properties, `values` are keyed by PROPERTY NAME. A page has at most ONE home database. Inspect schema + rows with `canvas_query_database` before adding or editing; its filter ops are equals, not_equals, contains, is_empty, is_not_empty, greater_than, less_than.',
     '',
     'Edits to a page open in the editor stream in live — no need to reopen. Before creating a blank page, check `canvas_list_templates` for a matching template.',
   ].join('\n');

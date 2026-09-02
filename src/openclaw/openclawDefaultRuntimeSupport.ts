@@ -22,6 +22,7 @@ import {
   serializeHistoryTranscript,
 } from './openclawContextEngine.js';
 import { OPENCLAW_BOOTSTRAP_DEFAULTS, flattenPairsToMessages } from './participants/openclawParticipantRuntime.js';
+import { estimateMessageTokens, estimateMessagesTokens } from './openclawTokenBudget.js';
 
 const OPENCLAW_COMMANDS: Record<string, IChatSlashCommand> = {
   context: {
@@ -686,7 +687,7 @@ async function tryExecuteCompactOpenclawCommand(
   // serializer give the summarizer the same tool-aware record the engine sees.
   const historyText = serializeHistoryTranscript(flattenPairsToMessages(input.history));
 
-  const beforeTokens = Math.ceil(historyText.length / 4);
+  const beforeTokens = estimateMessagesTokens(flattenPairsToMessages(input.history));
 
   // D6-1: Extract identifiers for quality auditing before summarization
   const identifiers = extractIdentifiers(historyText);
@@ -732,7 +733,7 @@ async function tryExecuteCompactOpenclawCommand(
     return true;
   }
 
-  const afterTokens = Math.ceil(summaryText.length / 4);
+  const afterTokens = estimateMessageTokens({ role: 'user', content: summaryText });
   const saved = beforeTokens - afterTokens;
   deps.compactSession?.(input.sessionId, summaryText);
   // The boundary-compaction cache covered the pre-compact history; it can
@@ -858,13 +859,10 @@ function queueOpenclawMemoryWriteBack(
     }
 
     try {
-      const transcript = options.history.map((entry) => {
-        const responseText = entry.response.parts
-          .map((part) => ('content' in part && typeof part.content === 'string') ? part.content : '')
-          .filter(Boolean)
-          .join(' ');
-        return `User: ${entry.request.text}\nAssistant: ${responseText}`;
-      }).join('\n\n');
+      // The ONE flattener + ONE transcript serializer (review fix
+      // 2026-09-02): the old duck-typed map replayed Thinking parts into the
+      // summarizer and dropped the tool record.
+      const transcript = serializeHistoryTranscript(flattenPairsToMessages(options.history));
       const fallbackSummary = deps.buildFallbackSessionSummary(options.history, options.requestText);
       if (fallbackSummary) {
         await storeMemory(sessionId, fallbackSummary, messageCount);

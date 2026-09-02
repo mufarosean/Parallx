@@ -319,7 +319,12 @@ export function createAnthropicStreamDecoder(): IAnthropicStreamDecoder {
   const handle = (evt: any): IChatResponseChunk[] => {
     switch (evt?.type) {
       case 'message_start':
-        if (typeof evt.message?.usage?.input_tokens === 'number') promptTokens = evt.message.usage.input_tokens;
+        // The TRUE prompt size: input_tokens counts only uncached input;
+        // cache creation/read tokens are the rest of the same prompt.
+        if (typeof evt.message?.usage?.input_tokens === 'number') {
+          const u = evt.message.usage as { input_tokens: number; cache_creation_input_tokens?: number; cache_read_input_tokens?: number };
+          promptTokens = u.input_tokens + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0);
+        }
         return [];
       case 'content_block_start': {
         const cb = evt.content_block;

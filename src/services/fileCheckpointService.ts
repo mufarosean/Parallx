@@ -28,12 +28,25 @@ export interface ICheckpointFileWriter {
   writeFile(relativePath: string, content: string): Promise<void>;
 }
 
+/** Move a workspace file to the trash; bound by the chat tools layer. */
+export type CheckpointFileRemover = (relativePath: string) => Promise<{ readonly error: { readonly message: string } | null }>;
+
+/** A single checkpoint never holds more than this (4 MB of text). */
+export const CHECKPOINT_MAX_ENTRY_CHARS = 4 * 1024 * 1024;
+/** The whole ring never holds more than this (24 MB of text). */
+export const CHECKPOINT_MAX_TOTAL_CHARS = 24 * 1024 * 1024;
+
 export interface IFileCheckpointEntry {
   /** Monotonic id, 1-based within this app run. */
   readonly id: number;
   /** Workspace-relative path of the mutated file. */
   readonly path: string;
-  /** Content before the mutation; null = the file did not exist. */
+  /**
+   * Content before the mutation; null = the file did NOT exist (revert
+   * removes it). A file that existed but could not be read is never
+   * checkpointed at all — that distinction is what keeps /rewind from
+   * deleting a real file (review fix 2026-09-02).
+   */
   readonly priorContent: string | null;
   /** Tool (or 'rewind') that caused the mutation. */
   readonly tool: string;
@@ -49,6 +62,8 @@ interface ICheckpointEnvironment {
   readonly fs?: ICheckpointFileReader;
   readonly writer?: ICheckpointFileWriter;
   readonly workspaceRoot?: string;
+  /** The same trash path fs_delete_file uses; bound, never re-implemented. */
+  readonly remove?: CheckpointFileRemover;
 }
 
 let _env: ICheckpointEnvironment = {};
@@ -60,13 +75,28 @@ export function bindCheckpointEnvironment(env: ICheckpointEnvironment): void {
   _env = env;
 }
 
+/**
+ * Record a checkpoint. Throws when the prior content exceeds the per-entry
+ * cap (the caller reports "no checkpoint" honestly rather than holding a
+ * multi-MB body in the renderer heap for the whole run). The ring is
+ * bounded by count AND by total text, oldest evicted first.
+ */
 export function recordCheckpoint(
   entry: Omit<IFileCheckpointEntry, 'id' | 'at'>,
 ): IFileCheckpointEntry {
+  const size = entry.priorContent?.length ?? 0;
+  if (size > CHECKPOINT_MAX_ENTRY_CHARS) {
+    throw new Error(`Checkpoint for "${entry.path}" skipped: ${size} chars exceeds the ${CHECKPOINT_MAX_ENTRY_CHARS} char cap.`);
+  }
   const full: IFileCheckpointEntry = { ...entry, id: _nextId++, at: Date.now() };
   _entries.push(full);
   if (_entries.length > CHECKPOINT_CAP) {
     _entries = _entries.slice(_entries.length - CHECKPOINT_CAP);
+  }
+  let total = _entries.reduce((sum, e) => sum + (e.priorContent?.length ?? 0), 0);
+  while (total > CHECKPOINT_MAX_TOTAL_CHARS && _entries.length > 1) {
+    total -= _entries[0].priorContent?.length ?? 0;
+    _entries = _entries.slice(1);
   }
   return full;
 }
@@ -96,11 +126,11 @@ export interface IRevertResult {
 export async function revertCheckpoint(id: number): Promise<IRevertResult> {
   const entry = getCheckpoint(id);
   if (!entry) {
-    return { ok: false, message: `No checkpoint #${id} — see the list with /rewind.` };
+    return { ok: false, message: `No checkpoint #${id}. See the list with /rewind.` };
   }
-  const { fs, writer, workspaceRoot } = _env;
+  const { fs, writer, remove } = _env;
   if (!writer) {
-    return { ok: false, message: 'File writer is not available — no workspace folder is open.' };
+    return { ok: false, message: 'File writer is not available: no workspace folder is open.' };
   }
 
   // Capture the CURRENT state as the inverse checkpoint before touching it.
@@ -127,20 +157,16 @@ export async function revertCheckpoint(id: number): Promise<IRevertResult> {
   }
 
   // priorContent === null: the checkpointed mutation CREATED the file — revert
-  // removes it (to trash, via the same bridge fs_delete_file uses).
-  const electron = (globalThis as Record<string, unknown>).parallxElectron as Record<string, unknown> | undefined;
-  const fsBridge = electron?.fs as { delete?: (path: string, options?: { useTrash?: boolean }) => Promise<{ error: { code: string; message: string } | null }> } | undefined;
-  if (!fsBridge?.delete || !workspaceRoot) {
+  // removes it (to trash, through the ONE remover fs_delete_file also uses).
+  if (!remove) {
     return { ok: false, message: `Cannot remove "${entry.path}": no file system bridge available. Delete it manually from the explorer.` };
   }
-  const absPath = (workspaceRoot.replace(/[\\/]$/, '') + '/' + entry.path.replace(/^[\\/]/, ''))
-    .replace(/\//g, (globalThis as Record<string, unknown>).process ? '\\' : '/');
-  const result = await fsBridge.delete(absPath, { useTrash: 'auto' as unknown as boolean });
+  const result = await remove(entry.path);
   if (result.error) {
     return { ok: false, message: `Failed to remove "${entry.path}": ${result.error.message}` };
   }
   recordCheckpoint({ path: entry.path, priorContent: currentContent, tool: 'rewind', intent: `Undo of checkpoint #${entry.id}` });
-  return { ok: true, message: `Removed "${entry.path}" (moved to trash) — it did not exist before checkpoint #${entry.id} (${entry.tool}).` };
+  return { ok: true, message: `Removed "${entry.path}" (moved to trash). It did not exist before checkpoint #${entry.id} (${entry.tool}).` };
 }
 
 /** Test-only: reset module state. */

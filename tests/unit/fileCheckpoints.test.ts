@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest';
 
 import {
+  CHECKPOINT_MAX_ENTRY_CHARS,
   bindCheckpointEnvironment,
   recordCheckpoint,
   listCheckpoints,
@@ -32,6 +33,32 @@ describe('fileCheckpoints — recovery over permission (HARNESS.md 2.2)', () => 
     expect(latestCheckpoint()?.path).toBe('f59.ts');
     // Cap enforced at 50 — the earliest entries are gone
     expect(listCheckpoints(100)).toHaveLength(50);
+  });
+
+  it('refuses a body above the per-entry cap, and bounds the ring by total text', () => {
+    expect(() => recordCheckpoint({ path: 'huge.json', priorContent: 'x'.repeat(CHECKPOINT_MAX_ENTRY_CHARS + 1), tool: 'fs_write_file' }))
+      .toThrow(/exceeds/);
+    // Ten 3 MB bodies exceed the 24 MB total: the oldest go first.
+    for (let i = 0; i < 10; i++) {
+      recordCheckpoint({ path: `big${i}.json`, priorContent: 'x'.repeat(3 * 1024 * 1024), tool: 'fs_write_file' });
+    }
+    const kept = listCheckpoints(100);
+    expect(kept.length).toBeLessThanOrEqual(8);
+    expect(kept[0].path).toBe('big9.json'); // newest survives
+  });
+
+  it('a CREATED file reverts through the bound remover, never a second bridge', async () => {
+    const removed: string[] = [];
+    bindCheckpointEnvironment({
+      fs: { exists: async () => true, readFileContent: async () => ({ content: 'NEW' }) },
+      writer: { writeFile: async () => {} },
+      remove: async (path) => { removed.push(path); return { error: null }; },
+    });
+    const entry = recordCheckpoint({ path: 'made.ts', priorContent: null, tool: 'fs_write_file' });
+    const result = await revertCheckpoint(entry.id);
+    expect(result.ok).toBe(true);
+    expect(removed).toEqual(['made.ts']);
+    expect(result.message).not.toContain('\u2014');
   });
 
   it('revert restores prior content through the writer and records the inverse', async () => {
