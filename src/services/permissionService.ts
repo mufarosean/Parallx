@@ -12,6 +12,7 @@
 //   VS Code's languageModelToolsService has only binary `requiresConfirmation`.
 //   We extend this to a proper permission model with grant memory.
 
+import { commandMatchesRules, commandPrefix, isReadOnlyCommand } from './commandRules.js';
 import { Disposable } from '../platform/lifecycle.js';
 import { Emitter } from '../platform/events.js';
 import type { Event } from '../platform/events.js';
@@ -55,7 +56,7 @@ export interface IPermissionCheckResult {
   /** Whether the tool can proceed without asking the user. */
   readonly autoApproved: boolean;
   /** Source of the decision: 'default' | 'session' | 'persistent' | 'autonomy-allow-policy' | 'strictness'. */
-  readonly source: 'default' | 'session' | 'persistent' | 'autonomy-allow-policy' | 'strictness' | 'user-consent';
+  readonly source: 'default' | 'session' | 'persistent' | 'autonomy-allow-policy' | 'strictness' | 'user-consent' | 'command-rule';
 }
 
 /** A single entry in the approval audit log. */
@@ -83,6 +84,10 @@ export class PermissionService extends Disposable {
 
   /** Session-level grants: tool name → 'always-allowed' for duration of session. */
   private readonly _sessionGrants = new Map<string, ToolPermissionLevel>();
+  /** Shell command families allowed for this workspace (permissions.json). */
+  private readonly _commandRules = new Set<string>();
+  /** Shell command families allowed for this session only. */
+  private readonly _sessionCommandRules = new Set<string>();
 
   /** Persistent overrides (from .parallx/permissions.json). */
   private readonly _persistentOverrides = new Map<string, ToolPermissionLevel>();
@@ -393,11 +398,45 @@ export class PermissionService extends Disposable {
           }
         }
       }
+      this._commandRules.clear();
+      if (parsed && Array.isArray(parsed.commands)) {
+        for (const family of parsed.commands) {
+          if (typeof family === 'string' && commandPrefix(family)) this._commandRules.add(commandPrefix(family));
+        }
+      }
     } catch {
       console.warn('[PermissionService] Failed to parse permissions.json');
     }
 
     this._onDidChange.fire();
+  }
+
+  // ── Shell command rules (commandRules.ts) ──
+
+  /** Allow a command family (`npm`, `git`); persistent or session-only. */
+  addCommandRule(prefix: string, scope: 'persistent' | 'session'): void {
+    const family = commandPrefix(prefix);
+    if (!family) return;
+    (scope === 'persistent' ? this._commandRules : this._sessionCommandRules).add(family);
+    this._onDidChange.fire();
+  }
+
+  removeCommandRule(prefix: string): void {
+    const family = commandPrefix(prefix);
+    this._commandRules.delete(family);
+    this._sessionCommandRules.delete(family);
+    this._onDidChange.fire();
+  }
+
+  getCommandRules(): readonly string[] {
+    return [...this._commandRules].sort();
+  }
+
+  /** Read-only, or every segment in an allowed family, and no redirection. */
+  isCommandAllowed(command: string): boolean {
+    if (isReadOnlyCommand(command)) return true;
+    const rules = new Set([...this._commandRules, ...this._sessionCommandRules]);
+    return commandMatchesRules(command, rules);
   }
 
   /** Set a persistent override for a tool (from "Always allow" button). */
@@ -435,7 +474,12 @@ export class PermissionService extends Disposable {
     for (const [name, level] of this._persistentOverrides) {
       tools[name] = level;
     }
-    return JSON.stringify({ tools }, null, 2);
+    return JSON.stringify({ tools, commands: this.getCommandRules() }, null, 2);
+  }
+
+  /** True when there is anything worth writing to permissions.json. */
+  hasPersistentRules(): boolean {
+    return this._persistentOverrides.size > 0 || this._commandRules.size > 0;
   }
 
   // ── Permission Check ──
@@ -635,13 +679,19 @@ export class PermissionService extends Disposable {
         return true;
 
       case 'allow-session':
-        this.grantForSession(toolName);
+        // A belt tool cannot be granted as a whole (the grant was dead);
+        // for the shell the grant is the command FAMILY instead.
+        if (toolName === 'terminal_run_command') this.addCommandRule(String(args['command'] ?? ''), 'session');
+        else if (!ALWAYS_REQUIRE_CONFIRMATION.has(toolName)) this.grantForSession(toolName);
         this._audit({ tool: toolName, decision: 'approved', source: 'session', timestamp: Date.now() });
         return true;
-
       case 'always-allow':
-        this.setPersistentOverride(toolName, 'always-allowed');
-        this.grantForSession(toolName); // Also grant for current session
+        if (toolName === 'terminal_run_command') {
+          this.addCommandRule(String(args['command'] ?? ''), 'persistent');
+        } else if (!ALWAYS_REQUIRE_CONFIRMATION.has(toolName)) {
+          this.setPersistentOverride(toolName, 'always-allowed');
+          this.grantForSession(toolName); // Also grant for current session
+        }
         this._audit({ tool: toolName, decision: 'approved', source: 'persistent', timestamp: Date.now() });
         return true;
 

@@ -127,10 +127,9 @@ export class PermissionsFileService extends Disposable {
   private async _save(): Promise<void> {
     if (!this._writeFs || !this._permissionService) { return; }
 
-    const overrides = this._permissionService.getPersistentOverrides();
-
-    // Don't write an empty file — delete the file instead
-    if (overrides.size === 0) { return; }
+    // Nothing to write (no tool overrides, no command families): leave the
+    // file alone rather than writing an empty one.
+    if (!this._permissionService.hasPersistentRules()) { return; }
 
     const json = this._permissionService.serializeOverrides();
 

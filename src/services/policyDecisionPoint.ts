@@ -29,6 +29,7 @@ import type { ToolPermissionLevel } from './chatTypes.js';
 import type { PermissionService, IPermissionCheckResult } from './permissionService.js';
 import { getToolColor } from '../openclaw/openclawToolPolicy.js';
 import { ALWAYS_REQUIRE_CONFIRMATION } from './permissionService.js';
+import { isReadOnlyCommand } from './commandRules.js';
 
 // ── Command blocklist ─────────────────────────────────────────────────────────
 
@@ -198,6 +199,24 @@ export class PolicyDecisionPoint {
     // Web-read-then-write no longer forces re-approval on any turn type.
     // Taint bookkeeping still runs (markTurnTainted) but gates nothing; the
     // transcript's tool cards are the visibility mechanism.
+
+    // Rule 5b — shell command rules (commandRules.ts, 2026-09-02). The belt
+    // keeps terminal_run_command on requires-approval, but a READ-ONLY
+    // command, or one whose every segment is in a family the user allowed,
+    // runs without a prompt on turns the user started. Autonomous turns
+    // still defer to the log; the blocklist (Rule 1) and Careful (Rule 5)
+    // fired before this. Without it, Agent mode prompted for every command.
+    if (name === 'terminal_run_command' && this._permissionService) {
+      const cmd = typeof args['command'] === 'string' ? args['command'] : '';
+      const initiator = this._permissionService.getSessionInitiator(sessionId);
+      if (initiator !== 'autonomous' && (isReadOnlyCommand(cmd) || this._permissionService.isCommandAllowed(cmd))) {
+        reasons.push(isReadOnlyCommand(cmd) ? 'command-readonly' : 'command-rule');
+        return this._emit(caller, name, {
+          outcome: 'allow', reasons, autoApproved: true,
+          permSource: 'command-rule', willTaintOnSuccess: willTaint,
+        });
+      }
+    }
 
     // Rule 6 — requires-approval gates ONLY autonomous sessions (M90).
     // Interactive turns and user-task runs (a widget Refresh click) were

@@ -178,7 +178,7 @@ export class ChatModePicker extends Disposable {
       const carefulOn = this._services.getCarefulMode();
       const truth = $('div.parallx-chat-picker-gating-truth', carefulOn
         ? 'Careful is on: every consequential action asks first, always-allow grants included.'
-        : 'File writes run automatically and are checkpointed; /rewind restores them. Shell commands and deletes always ask first.');
+        : 'File writes run automatically and are checkpointed; /rewind restores them. Shell commands ask until you allow a command family; read-only commands never ask. Deletes always ask.');
       dropdown.appendChild(truth);
       const row = $('div.parallx-chat-picker-autonomy-row');
       if (carefulOn) {

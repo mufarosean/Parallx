@@ -9,6 +9,8 @@
 //   3. Register the chat view in the Auxiliary Bar
 //   4. Register chat commands (toggle, new session, clear, stop, focus)
 
+import { commandPrefix } from '../../services/commandRules.js';
+import { ALWAYS_REQUIRE_CONFIRMATION } from '../../services/permissionService.js';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { Event } from '../../platform/events.js';
@@ -1439,10 +1441,24 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
           const buttonBar = document.createElement('div');
           buttonBar.className = 'parallx-chat-confirmation-buttons';
 
+          // The shell's grants are per command FAMILY (`npm`, `git`), never
+          // the whole tool; other belt tools (delete) offer no standing
+          // grant at all, because the belt would silently ignore it.
+          const family = toolName === 'terminal_run_command' ? commandPrefix(String(args?.['command'] ?? '')) : '';
+          const onBelt = ALWAYS_REQUIRE_CONFIRMATION.has(toolName);
           const decisions: Array<{ label: string; cls: string; decision: ToolGrantDecision }> = [
-            { label: 'Allow once', cls: 'parallx-chat-confirmation-btn--accept', decision: 'allow-once' },
-            { label: 'Allow for session', cls: 'parallx-chat-confirmation-btn--session', decision: 'allow-session' },
-            { label: 'Always allow', cls: 'parallx-chat-confirmation-btn--always', decision: 'always-allow' },
+            { label: 'Allow Once', cls: 'parallx-chat-confirmation-btn--accept', decision: 'allow-once' },
+            ...(family
+              ? [
+                { label: `Allow ${family} This Session`, cls: 'parallx-chat-confirmation-btn--session', decision: 'allow-session' as const },
+                { label: `Always Allow ${family}`, cls: 'parallx-chat-confirmation-btn--always', decision: 'always-allow' as const },
+              ]
+              : onBelt
+                ? []
+                : [
+                  { label: 'Allow For Session', cls: 'parallx-chat-confirmation-btn--session', decision: 'allow-session' as const },
+                  { label: 'Always Allow', cls: 'parallx-chat-confirmation-btn--always', decision: 'always-allow' as const },
+                ]),
             { label: 'Reject', cls: 'parallx-chat-confirmation-btn--reject', decision: 'reject' },
           ];
 
