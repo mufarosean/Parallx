@@ -20,12 +20,15 @@ import katex from 'katex';
 import {
   appendChildAtLine,
   caretSourceOffset,
+  deleteOutlineSubtree,
   editorHtml,
   editorSignature,
   hubPathsFor,
+  insertSiblingAfter,
   normalizeLabel,
   outlineLineText,
   parseMindMap,
+  pruneOverrides,
   renderMindMapSvg,
   replaceOutlineLine,
   resolveSourceOffset,
@@ -101,12 +104,19 @@ export const ConceptMap = Node.create({
       // The in-place box editor: teardown removes overlay + listeners
       // WITHOUT committing; finish commits (or cancels) then re-renders.
       let boxEditTeardown: (() => void) | null = null;
-      let finishBoxEdit: ((cancel: boolean) => void) | null = null;
+      type EditorDoneVia = 'enter' | 'tab' | 'blur' | 'escape';
+      let finishBoxEdit: ((via: EditorDoneVia) => void) | null = null;
+      // A queued phantom editor, opened by the NEXT render (after the
+      // insert it follows lands): how Enter/Tab chain across commits.
+      let pendingPhantom: { kind: 'child' | 'sibling'; line: number } | null = null;
 
       const commit = (patch: Partial<{ src: string; dir: MindMapDirection; overrides: MindMapOverrides }>): void => {
         const pos = getPos();
         if (typeof pos !== 'number') return;
         const next = { ...attrs, ...patch };
+        // Every src change prunes overrides whose label no longer names
+        // a box; without this an orphaned entry keeps Reset Layout lit.
+        if (patch.src !== undefined) next.overrides = pruneOverrides(next.overrides, next.src);
         editor.view.dispatch(editor.view.state.tr.setNodeMarkup(pos, undefined, next));
       };
 
@@ -127,6 +137,14 @@ export const ConceptMap = Node.create({
 
       /** The map's positioned host (overlay + hover button coordinates). */
       let mapHost: HTMLElement | null = null;
+
+      /** A box's hue index, read off its node class (b0..b5). */
+      const branchOfEl = (g: Element | null): number => {
+        const m = /parallx-mindmap__node--b(\d)/.exec(g?.getAttribute('class') ?? '');
+        return m ? Number(m[1]) : 0;
+      };
+
+      const boxCount = (outline: string): number => labelsOf(outline).length;
 
       /** Every label the outline would draw (duplicates included). */
       const labelsOf = (outline: string): string[] => {
@@ -290,46 +308,51 @@ export const ConceptMap = Node.create({
       };
 
       /**
-       * Edit ONE box in place: a contentEditable overlay seated on the
-       * box, live preview as you type (markers dim, math renders the
-       * moment the caret leaves its span, click a formula to get the
-       * TeX back). Commit rewrites that box's LINE in the outline and
-       * carries its layout override to the new label, so a rename no
-       * longer snaps the box back to auto layout.
+       * The live-preview label editor: a contentEditable overlay with
+       * markers dimmed, math rendered the moment the caret leaves its
+       * span (click a formula to get the TeX back), repainting only
+       * when the formatting changes so plain typing keeps the browser
+       * caret and undo. One engine serves two doors: editing a box
+       * that EXISTS (spec.line) and adding one that does not yet (a
+       * phantom: nothing is inserted until the commit).
        */
-      const beginBoxEdit = (parts: NodeParts): void => {
+      interface EditorSpec {
+        readonly initial: string;
+        readonly selectAll: boolean;
+        /** Host-relative seat: where the overlay sits. */
+        readonly rect: { left: number; top: number; width: number; height: number };
+        /** Hue for the border (a phantom wears its parent's). */
+        readonly branch: number;
+        readonly hint: string;
+        /** Trimmed text (null = escape). Runs AFTER teardown. */
+        readonly onDone: (text: string | null, via: EditorDoneVia) => void;
+      }
+
+      const openEditorOverlay = (spec: EditorSpec): void => {
         if (boxEditTeardown) return;
-        const svg = parts.g.ownerSVGElement;
-        // The overlay shares the hover button's positioned host, so both
-        // measure against the SAME box (mismatched hosts drift).
         const host = mapHost;
-        if (!svg || !host) return;
-        const rectB = parts.rect.getBoundingClientRect();
-        const hostB = host.getBoundingClientRect();
+        if (!host) return;
 
         const ed = document.createElement('div');
-        ed.classList.add('canvas-conceptmap__boxedit');
+        ed.classList.add('canvas-conceptmap__boxedit', `canvas-conceptmap__boxedit--b${spec.branch % 6}`);
         try {
           (ed as HTMLElement & { contentEditable: string }).contentEditable = 'plaintext-only';
         } catch {
           ed.contentEditable = 'true';
         }
-        ed.style.left = `${Math.round(rectB.left - hostB.left)}px`;
-        ed.style.top = `${Math.round(rectB.top - hostB.top)}px`;
-        ed.style.minWidth = `${Math.max(60, Math.round(rectB.width))}px`;
-        ed.style.minHeight = `${Math.round(rectB.height)}px`;
-        ed.style.maxWidth = `${Math.max(120, Math.round(hostB.width - (rectB.left - hostB.left) - 8))}px`;
+        const hostB = host.getBoundingClientRect();
+        ed.style.left = `${Math.round(spec.rect.left)}px`;
+        ed.style.top = `${Math.round(spec.rect.top)}px`;
+        ed.style.minWidth = `${Math.max(60, Math.round(spec.rect.width))}px`;
+        ed.style.minHeight = `${Math.round(spec.rect.height)}px`;
+        ed.style.maxWidth = `${Math.max(120, Math.round(hostB.width - spec.rect.left - 8))}px`;
 
-        // The overlay replaces the box's label; the box itself stays as
-        // the frame underneath.
-        const labelEls = Array.from(parts.g.querySelectorAll('text, foreignObject'));
-        for (const el of labelEls) el.setAttribute('opacity', '0');
+        const hintEl = document.createElement('div');
+        hintEl.classList.add('canvas-conceptmap__boxedit-hint');
+        hintEl.textContent = spec.hint;
+        hintEl.style.left = `${Math.round(spec.rect.left)}px`;
 
-        // Seed from the OUTLINE LINE, not the drawn label: a label the
-        // layout truncated would otherwise commit its truncation back
-        // and delete the rest of the line.
-        let src = outlineLineText(attrs.src, parts.line) ?? parts.label;
-        const startingSrc = src;
+        let src = spec.initial;
         let composing = false;
         let lastSig = editorSignature(src, { start: src.length, end: src.length });
 
@@ -354,10 +377,14 @@ export const ConceptMap = Node.create({
           sel.removeAllRanges();
           sel.addRange(range);
         };
+        const seatHint = (): void => {
+          hintEl.style.top = `${Math.round(ed.offsetTop + ed.offsetHeight + 4)}px`;
+        };
         const repaint = (caret: EditorCaret | null): void => {
           lastSig = editorSignature(src, caret);
           ed.innerHTML = editorHtml(src, caret, renderMath);
           if (caret) setSelection(caret.start, caret.end);
+          seatHint();
         };
         /**
          * Repaint ONLY when the formatting would actually change. Typing
@@ -377,6 +404,7 @@ export const ConceptMap = Node.create({
           if (composing) return;
           src = serializeEditorDom(ed);
           syncPreview();
+          seatHint();
         };
         const onSelectionChange = (): void => {
           // A math span shows raw TeX only while the caret is inside it.
@@ -403,8 +431,9 @@ export const ConceptMap = Node.create({
         };
         const onKeyDown = (e: KeyboardEvent): void => {
           e.stopPropagation();
-          if (e.key === 'Enter') { e.preventDefault(); finishBoxEdit?.(false); }
-          else if (e.key === 'Escape') { e.preventDefault(); finishBoxEdit?.(true); }
+          if (e.key === 'Enter') { e.preventDefault(); finishBoxEdit?.('enter'); }
+          else if (e.key === 'Tab') { e.preventDefault(); finishBoxEdit?.('tab'); }
+          else if (e.key === 'Escape') { e.preventDefault(); finishBoxEdit?.('escape'); }
         };
         const onPointerDown = (e: PointerEvent): void => {
           e.stopPropagation(); // never start a box drag from inside the editor
@@ -421,7 +450,7 @@ export const ConceptMap = Node.create({
           // NOTE: `Node` here is tiptap's, so type the DOM check explicitly.
           const rt = e.relatedTarget as globalThis.Node | null;
           if (rt && ed.contains(rt)) return;
-          finishBoxEdit?.(false);
+          finishBoxEdit?.('blur');
         };
         const onCompositionStart = (): void => { composing = true; };
         const onCompositionEnd = (): void => { composing = false; onInput(); };
@@ -437,43 +466,146 @@ export const ConceptMap = Node.create({
 
         boxEditTeardown = () => {
           document.removeEventListener('selectionchange', onSelectionChange);
-          for (const el of labelEls) el.removeAttribute('opacity');
+          hintEl.remove();
           ed.remove();
           finishBoxEdit = null;
         };
-        finishBoxEdit = (cancel: boolean): void => {
+        finishBoxEdit = (via: EditorDoneVia): void => {
           const teardown = boxEditTeardown;
           if (!teardown) return;
           boxEditTeardown = null;
           teardown();
           const text = src.replace(/\s+/g, ' ').trim();
-          if (cancel || !text || text === startingSrc.trim()) { render(); return; }
-          const next = replaceOutlineLine(attrs.src, parts.line, text);
-          if (!next) { render(); return; }
-          // The override follows the rename, keyed by the label the
-          // PARSER will produce (markers stripped, truncation applied) —
-          // moving a box then fixing a typo must not snap it back to
-          // auto layout. It never overwrites another box's override:
-          // when the new label collides, the old adjustment is dropped
-          // rather than transplanted onto the box that owns that name.
-          const newLabel = normalizeLabel(text);
-          const prevOv = attrs.overrides[parts.label];
-          let overrides = attrs.overrides;
-          if (prevOv && newLabel !== parts.label) {
-            const rest = { ...attrs.overrides } as Record<string, (typeof attrs.overrides)[string]>;
-            delete rest[parts.label];
-            const taken = parseMindMap(next).length > 0
-              && labelsOf(next).filter((l) => l === newLabel).length > 1;
-            overrides = taken || rest[newLabel] ? rest : { ...rest, [newLabel]: prevOv };
-          }
-          commit({ src: next, overrides });
+          spec.onDone(via === 'escape' ? null : text, via);
         };
 
         host.appendChild(ed);
+        host.appendChild(hintEl);
         const end = src.length;
         repaint({ start: end, end });
         ed.focus();
-        setSelection(end, end);
+        setSelection(spec.selectAll ? 0 : end, end);
+      };
+
+      /**
+       * Edit an EXISTING box. Seeds from its outline line (never the
+       * drawn label — a truncated label would commit its own cut back
+       * and delete the tail). Enter saves; Tab saves and adds a child;
+       * emptying the text and pressing Enter deletes the node with its
+       * subtree (a blur with empty text just cancels — leaving mid-
+       * thought must never destroy anything).
+       */
+      const beginBoxEdit = (parts: NodeParts): void => {
+        if (boxEditTeardown || !mapHost) return;
+        const rectB = parts.rect.getBoundingClientRect();
+        const hostB = mapHost.getBoundingClientRect();
+        // The overlay replaces the box's label; the box itself stays as
+        // the frame underneath.
+        const labelEls = Array.from(parts.g.querySelectorAll('text, foreignObject'));
+        for (const el of labelEls) el.setAttribute('opacity', '0');
+        const restoreLabel = (): void => {
+          for (const el of labelEls) el.removeAttribute('opacity');
+        };
+        openEditorOverlay({
+          initial: outlineLineText(attrs.src, parts.line) ?? parts.label,
+          selectAll: false,
+          rect: {
+            left: rectB.left - hostB.left,
+            top: rectB.top - hostB.top,
+            width: rectB.width,
+            height: rectB.height,
+          },
+          branch: branchOfEl(parts.g),
+          hint: 'Enter saves · Tab adds a child · Esc cancels · empty deletes',
+          onDone: (text, via) => {
+            restoreLabel();
+            if (text === null) { render(); return; }
+            if (!text) {
+              // Deliberate delete only: Enter on an emptied box removes
+              // the node AND its subtree; a blur just cancels.
+              if (via !== 'enter') { render(); return; }
+              const cutNext = deleteOutlineSubtree(attrs.src, parts.line);
+              if (!cutNext) { render(); return; }
+              commit({ src: cutNext });
+              return;
+            }
+            const changed = text !== (outlineLineText(attrs.src, parts.line) ?? parts.label).trim();
+            if (via === 'tab') pendingPhantom = { kind: 'child', line: parts.line };
+            if (!changed) {
+              // Nothing to commit; render still runs so a queued
+              // Tab-child opens against the repainted map.
+              render();
+              return;
+            }
+            const next = replaceOutlineLine(attrs.src, parts.line, text);
+            if (!next) { pendingPhantom = null; render(); return; }
+            // The override follows the rename, keyed by the label the
+            // PARSER will produce (markers stripped, truncation applied) —
+            // moving a box then fixing a typo must not snap it back to
+            // auto layout. It never overwrites another box's override:
+            // when the new label collides, the old adjustment is dropped
+            // rather than transplanted onto the box that owns that name.
+            const newLabel = normalizeLabel(text);
+            const prevOv = attrs.overrides[parts.label];
+            let overrides = attrs.overrides;
+            if (prevOv && newLabel !== parts.label) {
+              const rest = { ...attrs.overrides } as Record<string, (typeof attrs.overrides)[string]>;
+              delete rest[parts.label];
+              const taken = labelsOf(next).filter((l) => l === newLabel).length > 1;
+              overrides = taken || rest[newLabel] ? rest : { ...rest, [newLabel]: prevOv };
+            }
+            commit({ src: next, overrides });
+          },
+        });
+      };
+
+      /**
+       * Add a NEW box: a phantom editor near its future seat. Nothing
+       * touches the outline until the commit, so walking away leaves
+       * zero litter (the old flow committed a placeholder you then had
+       * to rename or clean up). Enter inserts and opens the NEXT
+       * sibling's phantom; Tab inserts and dives into a child — a
+       * whole branch in one typing flow. Esc closes the chain.
+       */
+      const beginPhantomAdd = (kind: 'child' | 'sibling', anchorLine: number): void => {
+        if (boxEditTeardown || !mapHost) return;
+        if (boxCount(attrs.src) >= 40) return; // the renderer's node cap
+        const g = mapHost.querySelector(`.parallx-mindmap__node[data-mm-line="${anchorLine}"]`);
+        const rect = g?.querySelector('.parallx-mindmap__box') as SVGRectElement | null;
+        if (!g || !rect) return;
+        const rectB = rect.getBoundingClientRect();
+        const hostB = mapHost.getBoundingClientRect();
+        // Seat the phantom where the layout will roughly put the node:
+        // childward of the anchor for a child, after it for a sibling.
+        const right = attrs.dir === 'right';
+        const childSeat = right
+          ? { left: rectB.right - hostB.left + 26, top: rectB.top - hostB.top }
+          : { left: rectB.left - hostB.left + 14, top: rectB.bottom - hostB.top + 18 };
+        const siblingSeat = right
+          ? { left: rectB.left - hostB.left, top: rectB.bottom - hostB.top + 8 }
+          : { left: rectB.right - hostB.left + 10, top: rectB.top - hostB.top };
+        const seat = kind === 'child' ? childSeat : siblingSeat;
+        openEditorOverlay({
+          initial: '',
+          selectAll: false,
+          rect: { ...seat, width: 90, height: 24 },
+          branch: branchOfEl(g),
+          hint: 'Enter adds another · Tab adds a child · Esc closes',
+          onDone: (text, via) => {
+            if (!text) { render(); return; }
+            const next = kind === 'child'
+              ? appendChildAtLine(attrs.src, anchorLine, text)
+              : insertSiblingAfter(attrs.src, anchorLine, text);
+            if (!next) { render(); return; }
+            // Both inserts land at anchorLine + 1: a child is spliced
+            // right under its parent, and a sibling chain only ever
+            // anchors on the just-inserted LEAF (its subtree is itself).
+            const newLine = anchorLine + 1;
+            if (via === 'enter') pendingPhantom = { kind: 'sibling', line: newLine };
+            else if (via === 'tab') pendingPhantom = { kind: 'child', line: newLine };
+            commit({ src: next });
+          },
+        });
       };
 
       const render = (): void => {
@@ -494,6 +626,7 @@ export const ConceptMap = Node.create({
         dirBtn.classList.add('canvas-conceptmap__tool');
         dirBtn.type = 'button';
         dirBtn.textContent = attrs.dir === 'right' ? 'Vertical' : 'Horizontal';
+        dirBtn.title = attrs.dir === 'right' ? 'Switch To A Top-Down Layout' : 'Switch To A Left-To-Right Layout';
         dirBtn.addEventListener('click', (e) => {
           e.stopPropagation();
           commit({ dir: attrs.dir === 'right' ? 'down' : 'right' });
@@ -517,6 +650,7 @@ export const ConceptMap = Node.create({
         editBtn.classList.add('canvas-conceptmap__tool');
         editBtn.type = 'button';
         editBtn.textContent = editing ? 'Done' : 'Edit Outline';
+        editBtn.title = editing ? 'Save And Show The Map' : 'Edit The Whole Map As An Indented List';
         tools.appendChild(editBtn);
         dom.appendChild(tools);
 
@@ -563,8 +697,7 @@ export const ConceptMap = Node.create({
           addBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             if (addTargetLine < 0) return;
-            const next = appendChildAtLine(attrs.src, addTargetLine, 'New idea');
-            if (next) commit({ src: next });
+            beginPhantomAdd('child', addTargetLine);
           });
           body.appendChild(addBtn);
           body.addEventListener('pointermove', (e) => {
@@ -595,6 +728,13 @@ export const ConceptMap = Node.create({
           body.addEventListener('pointerleave', () => { addBtn.hidden = true; });
           body.style.position = 'relative';
           mapHost = body;
+          if (pendingPhantom) {
+            // The chained phantom opens against the FRESH map (its
+            // anchor line just landed); consume exactly once.
+            const queued = pendingPhantom;
+            pendingPhantom = null;
+            queueMicrotask(() => beginPhantomAdd(queued.kind, queued.line));
+          }
           body.addEventListener('pointerdown', (e) => {
             if ((e as MouseEvent).button !== 0) return;
             if (boxEditTeardown) {
@@ -602,7 +742,7 @@ export const ConceptMap = Node.create({
               // repaint replaces this DOM, so never also start a drag.
               e.preventDefault();
               e.stopPropagation();
-              finishBoxEdit?.(false);
+              finishBoxEdit?.('blur');
               return;
             }
             const parts = nodeParts(e.target);

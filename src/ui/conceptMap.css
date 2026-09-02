@@ -225,6 +225,28 @@
   box-shadow: var(--px-shadow-md, 0 2px 10px rgba(0, 0, 0, 0.28));
 }
 
+/* The editor wears its box's hue (a phantom wears its parent's), so
+   the eye never loses which node is being written. */
+.canvas-conceptmap__boxedit--b0 { border-color: rgb(var(--px-viz-1)); }
+.canvas-conceptmap__boxedit--b1 { border-color: rgb(var(--px-viz-2)); }
+.canvas-conceptmap__boxedit--b2 { border-color: rgb(var(--px-viz-3)); }
+.canvas-conceptmap__boxedit--b3 { border-color: rgb(var(--px-viz-4)); }
+.canvas-conceptmap__boxedit--b4 { border-color: rgb(var(--px-viz-5)); }
+.canvas-conceptmap__boxedit--b5 { border-color: rgb(var(--px-viz-6)); }
+
+/* The quiet keys hint under an open editor. */
+.canvas-conceptmap__boxedit-hint {
+  position: absolute;
+  z-index: 4;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--px-bg-elevated, var(--vscode-textCodeBlock-background, #2d2d2d));
+  color: var(--px-text-muted, var(--vscode-descriptionForeground, #888));
+  font-size: 10px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 /* Markdown markers stay visible while editing, but recede. */
 .parallx-mindmap__edsyn {
   opacity: 0.45;

@@ -505,8 +505,9 @@ export function replaceOutlineLine(src: string, line: number, text: string): str
 }
 
 /**
- * Insert a child under the node at `line`, indented two deeper. Pure;
- * null when the index is out of range. The hover "+" rides this.
+ * Insert a child under the node at `line`, indented two deeper (it
+ * becomes the FIRST child, at line + 1). Pure; null when the index is
+ * out of range. The hover "+" and the editor's Tab ride this.
  */
 export function appendChildAtLine(src: string, line: number, childLabel: string): string | null {
   const lines = String(src || '').split('\n');
@@ -514,6 +515,64 @@ export function appendChildAtLine(src: string, line: number, childLabel: string)
   const indent = lines[line].length - lines[line].trimStart().length;
   lines.splice(line + 1, 0, `${' '.repeat(indent + 2)}${childLabel}`);
   return lines.join('\n');
+}
+
+/** Last line of the subtree rooted at `line` (deeper lines following). */
+function subtreeEndLine(lines: readonly string[], line: number): number {
+  const indent = indentWidth(lines[line]);
+  let end = line;
+  for (let i = line + 1; i < lines.length; i++) {
+    if (!lines[i].trim()) { end = i; continue; } // blanks ride with the block
+    if (indentWidth(lines[i]) <= indent) break;
+    end = i;
+  }
+  return end;
+}
+
+/**
+ * Insert a SIBLING after the node at `line` (past its whole subtree),
+ * at the same indent. Pure; null when the index is out of range. The
+ * editor's Enter-chain rides this: for a fresh leaf the new line lands
+ * at line + 1.
+ */
+export function insertSiblingAfter(src: string, line: number, label: string): string | null {
+  const lines = String(src || '').split('\n');
+  if (line < 0 || line >= lines.length || !lines[line].trim()) return null;
+  const indent = lines[line].slice(0, lines[line].length - lines[line].trimStart().length);
+  lines.splice(subtreeEndLine(lines, line) + 1, 0, `${indent}${label}`);
+  return lines.join('\n');
+}
+
+/**
+ * Delete the node at `line` WITH its subtree. Pure; null when the
+ * index is out of range or the outline would end up empty (the map
+ * must always keep at least one box — cancel instead of erasing).
+ */
+export function deleteOutlineSubtree(src: string, line: number): string | null {
+  const lines = String(src || '').split('\n');
+  if (line < 0 || line >= lines.length || !lines[line].trim()) return null;
+  const end = subtreeEndLine(lines, line);
+  const kept = [...lines.slice(0, line), ...lines.slice(end + 1)];
+  if (!kept.some((l) => l.trim())) return null;
+  return kept.join('\n');
+}
+
+/**
+ * Drop override entries whose label no longer names any box in the
+ * outline. The label keying is self-healing by design (a rename lets
+ * the box fall back to auto layout); pruning makes the healing REAL —
+ * an orphaned entry would otherwise keep Reset Layout lit forever.
+ */
+export function pruneOverrides(overrides: MindMapOverrides, src: string): MindMapOverrides {
+  const keys = Object.keys(overrides);
+  if (keys.length === 0) return overrides;
+  const live = new Set<string>();
+  const walk = (n: MindMapNode): void => { live.add(n.label); n.children.forEach(walk); };
+  for (const root of parseMindMap(src)) walk(root);
+  if (keys.every((k) => live.has(k))) return overrides;
+  const kept: Record<string, MindMapOverrides[string]> = {};
+  for (const k of keys) if (live.has(k)) kept[k] = overrides[k];
+  return kept;
 }
 
 // ── In-place label editing (live preview) ───────────────────────────────

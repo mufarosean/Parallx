@@ -11,12 +11,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   caretSourceOffset,
+  deleteOutlineSubtree,
   editorHtml,
   editorSignature,
   editorTokens,
+  insertSiblingAfter,
   normalizeLabel,
   outlineLineText,
   parseMindMap,
+  pruneOverrides,
   replaceOutlineLine,
   resolveSourceOffset,
   serializeEditorDom,
@@ -68,6 +71,43 @@ describe('line-addressed outline edits', () => {
     const next = replaceOutlineLine(src, drawn.line, `${long}y`)!;
     expect(next.split('\n')[1]).toBe(`  ${long}y`);
     expect(next).not.toContain('…');
+  });
+});
+
+describe('growing and pruning the outline', () => {
+  it('insertSiblingAfter lands past the whole subtree, same indent', () => {
+    // Sibling of Chain Ladder (line 1) must land AFTER Mack (line 2).
+    const next = insertSiblingAfter(SRC, 1, 'Cape Cod')!;
+    expect(next.split('\n')).toEqual([
+      'Reserving',
+      '  Chain Ladder',
+      '    Mack',
+      '  Cape Cod',
+      '  Bornhuetter-Ferguson',
+    ]);
+    // For a leaf, the new line is anchor + 1 (the chain contract).
+    expect(insertSiblingAfter(SRC, 2, 'Venter')!.split('\n')[3]).toBe('    Venter');
+    expect(insertSiblingAfter(SRC, 99, 'x')).toBeNull();
+  });
+
+  it('deleteOutlineSubtree removes the node AND its children', () => {
+    const next = deleteOutlineSubtree(SRC, 1)!;
+    expect(next.split('\n')).toEqual(['Reserving', '  Bornhuetter-Ferguson']);
+    expect(deleteOutlineSubtree(SRC, 2)!.split('\n').length).toBe(3); // a leaf, alone
+  });
+
+  it('refuses to delete the last box: the map never goes empty', () => {
+    expect(deleteOutlineSubtree('Only root', 0)).toBeNull();
+    expect(deleteOutlineSubtree('Root\n  Child', 0)).toBeNull(); // subtree = everything
+  });
+
+  it('pruneOverrides drops entries no box answers to, keeps the rest', () => {
+    const overrides = { 'Mack': { dx: 10 }, 'Ghost': { dy: 5 } };
+    const pruned = pruneOverrides(overrides, SRC);
+    expect(Object.keys(pruned)).toEqual(['Mack']);
+    // Nothing orphaned: the same object comes back untouched.
+    expect(pruneOverrides({ 'Mack': { dx: 1 } }, SRC)).toEqual({ 'Mack': { dx: 1 } });
+    expect(Object.keys(pruneOverrides(overrides, ''))).toEqual([]);
   });
 });
 
