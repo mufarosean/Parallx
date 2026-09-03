@@ -197,6 +197,19 @@ async function main() {
         await page.keyboard.type('Excess losses above a per-occurrence deductible or an aggregate limit.');
         await page.waitForTimeout(1_200);
         await shot(page, 'canvas');
+        // Which element paints each horizontal hairline near the tab strip.
+        const edges = await page.evaluate(() => {
+          const out = [];
+          for (const y of [70, 71, 72, 73, 74]) {
+            const els = document.elementsFromPoint(600, y).slice(0, 3).map((el) => {
+              const cs = getComputedStyle(el);
+              return `${el.tagName.toLowerCase()}.${String(el.className).split(' ').slice(0, 2).join('.')}[bb=${cs.borderBottomColor} bt=${cs.borderTopColor} bg=${cs.backgroundColor}]`;
+            });
+            out.push(`y=${y}: ${els.join(' > ')}`);
+          }
+          return out.join(' || ');
+        });
+        console.log(`[probe] canvas edges: ${edges}`);
         // The page menu (⋯) with the font section.
         const menuBtn = page.locator('.canvas-top-ribbon-menu').first();
         if (await menuBtn.count()) {

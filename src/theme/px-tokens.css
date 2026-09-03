@@ -112,6 +112,11 @@
   --px-border-strong:    var(--px-base-30);
   --px-divider:          var(--px-base-20);
   --px-chrome-line:      rgba(255, 255, 255, 0.05);
+  /* Edge of the workbench PARTS themselves (sidebar, editor, panel, chat
+     cards). Dimmer than a floating surface: the parts sit on the window tone
+     and the seam already separates them, so the line only needs to settle
+     the corner, not announce it. Translucent so it dims on any base. */
+  --px-part-border:      color-mix(in srgb, var(--px-border) 55%, transparent);
 
   /* Accent (computed from the HSL components above; --px-accent-rgb is a
      Tier-1 primitive so it re-themes with the rest). */

@@ -923,7 +923,7 @@ html, body {
   flex: 1 1 auto;
   min-height: 0;
   margin: 0 0 var(--px-seam) var(--px-seam);
-  border: 1px solid var(--px-border);
+  border: 1px solid var(--px-part-border);
   border-radius: var(--px-radius-xs);
   background: var(--px-bg);
   overflow: hidden;
@@ -1025,7 +1025,7 @@ html, body {
   flex: 1 1 auto;
   min-height: 0;
   margin: 0 0 var(--px-seam) var(--px-seam);
-  border: 1px solid var(--px-border);
+  border: 1px solid var(--px-part-border);
   border-radius: var(--px-radius-xs);
   background: var(--px-bg);
   overflow: hidden;
@@ -1126,7 +1126,7 @@ html, body {
    them when the panel actually touches those WINDOW edges. */
 .part-workbench-parts-panel .part-content {
   margin: 0 0 var(--px-seam) var(--px-seam);
-  border: 1px solid var(--px-border);
+  border: 1px solid var(--px-part-border);
   border-radius: var(--px-radius-sm);
   background: var(--px-bg);
   overflow: hidden;
@@ -1174,16 +1174,16 @@ html, body {
 }
 .part-workbench-parts-editor .editor-ribbon:not(.hidden) {
   margin: 0 0 0 var(--px-seam);
-  border-left: 1px solid var(--px-border);
-  border-right: 1px solid var(--px-border);
+  border-left: 1px solid var(--px-part-border);
+  border-right: 1px solid var(--px-part-border);
   background: var(--px-bg);
   box-sizing: border-box;
 }
 .part-workbench-parts-editor .editor-pane-container {
   margin: 0 0 var(--px-seam) var(--px-seam);
-  border-left: 1px solid var(--px-border);
-  border-right: 1px solid var(--px-border);
-  border-bottom: 1px solid var(--px-border);
+  border-left: 1px solid var(--px-part-border);
+  border-right: 1px solid var(--px-part-border);
+  border-bottom: 1px solid var(--px-part-border);
   /* Bottom corners crisp like the sidebar chrome; the tab strip above keeps
      its own rounding (the tabs ARE the editor card's top edge). */
   border-bottom-left-radius: var(--px-radius-xs);
@@ -1227,7 +1227,7 @@ html, body {
 .sidebar-header,
 .auxiliary-bar-header {
   margin: 0 0 0 var(--px-seam);
-  border: 1px solid var(--px-border);
+  border: 1px solid var(--px-part-border);
   border-bottom: 0;
   border-radius: var(--px-radius-xs) var(--px-radius-xs) 0 0;
   background: var(--px-bg);
@@ -1236,7 +1236,7 @@ html, body {
 .part-workbench-parts-sidebar .part-content,
 .part-workbench-parts-auxiliarybar .part-content {
   margin: 0 0 var(--px-seam) var(--px-seam);
-  border: 1px solid var(--px-border);
+  border: 1px solid var(--px-part-border);
   border-top: 0;
   border-radius: 0 0 var(--px-radius-xs) var(--px-radius-xs);
   background: var(--px-bg);

@@ -157,7 +157,7 @@
 .ui-tab-bar-tabs::after {
   content: '';
   flex: 1 0 0;
-  border-bottom: 1px solid var(--vscode-editorGroupHeader-tabsBorder);
+  border-bottom: 1px solid var(--px-part-border, var(--vscode-editorGroupHeader-tabsBorder));
   align-self: stretch;
 }
 
@@ -189,7 +189,7 @@
   /* Extra right room so the split-editor icon clears the floating editor card's
      inset edge instead of hugging it. */
   padding: 0 10px 0 4px;
-  border-bottom: 1px solid var(--vscode-editorGroupHeader-tabsBorder);
+  border-bottom: 1px solid var(--px-part-border, var(--vscode-editorGroupHeader-tabsBorder));
 }
 
 /* M83 — content tabs, not IDE chrome. Borderless and quiet by default; a
@@ -220,7 +220,7 @@
   /* Transparent top/side borders reserve the 1px the active tab will make
      visible — so promoting a tab to active never shifts the layout. */
   border: 1px solid transparent;
-  border-bottom: 1px solid var(--vscode-editorGroupHeader-tabsBorder);
+  border-bottom: 1px solid var(--px-part-border, var(--vscode-editorGroupHeader-tabsBorder));
   /* Square by default: adjacent chips join into ONE continuous band. Rounding
      every chip left V-shaped slivers between neighbouring corners where the
      strip background peeked through (the "notches"). Only the two ENDS of the
@@ -266,7 +266,7 @@
   color: var(--px-text);
   font-weight: 550;
   background-color: var(--px-bg);
-  border: 1px solid var(--px-border);
+  border: 1px solid var(--px-part-border, var(--px-border));
   border-bottom-color: var(--px-bg);
   border-top-left-radius: var(--px-radius-md);
   border-top-right-radius: var(--px-radius-md);
