@@ -174,6 +174,18 @@ async function main() {
     const out = path.join(OUT, 'blur.mp4');
     const r = await ff(['-i', src, '-filter_complex', g.filterComplex, '-map', g.mapV, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', out]);
     check('blur + keyed pixelate regions render', r.code === 0, r.code === 0 ? '' : r.err.slice(-400));
+    // Shapes: an oval blur and a rounded pixelate, feathered, over the same source.
+    const gs = P.moSegmentsGraph({
+      segments: [{ in: 0, out: 1 }], fps: 30, srcW: 640, srcH: 360, scalePct: 100, filter: 'none', withAudio: false,
+      blurRegions: [
+        { x: 0.1, y: 0.1, w: 0.3, h: 0.4, mode: 'blur', strength: 8, shape: 'ellipse' },
+        { x: 0.55, y: 0.5, w: 0.3, h: 0.3, mode: 'pixelate', strength: 5, shape: 'rounded', feather: 0.2 },
+      ],
+    });
+    const outS = path.join(OUT, 'blur-shapes.mp4');
+    const rs = await ff(['-i', src, '-filter_complex', gs.filterComplex, '-map', gs.mapV, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', outS]);
+    check('oval + rounded (feathered) regions render', rs.code === 0, rs.code === 0 ? '' : rs.err.slice(-400));
+    check('shaped graph carries an alpha mask', /format=yuva420p,geq=.*:a='255\*clip/.test(gs.filterComplex), gs.filterComplex.slice(0, 200));
   }
 
   // ── 4. Captions on the output timeline (all three styles), with a real font.

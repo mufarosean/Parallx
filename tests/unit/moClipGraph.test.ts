@@ -66,6 +66,16 @@ describe('blur regions graph', () => {
     expect(g.endsWith('[out]')).toBe(true);
     expect(P.moBlurRegionsGraph([], 'a', 'b', 0)).toBe('');
   });
+  it('shapes: an oval or rounded box goes back through a feathered alpha mask; a box does not', () => {
+    const oval = P.moBlurRegionsGraph([{ x: 0.1, y: 0.1, w: 0.2, h: 0.2, mode: 'blur', strength: 4, shape: 'ellipse' }], 'in', 'out', 0);
+    expect(oval).toContain("format=yuva420p,geq=lum='p(X,Y)'");
+    expect(oval).toContain('hypot((X-W/2)/(W/2),(Y-H/2)/(H/2))');
+    const rounded = P.moBlurRegionsGraph([{ x: 0.1, y: 0.1, w: 0.2, h: 0.2, mode: 'pixelate', strength: 4, shape: 'rounded', feather: 0.3 }], 'in', 'out', 0);
+    expect(rounded).toContain('0.22*min(W,H)');
+    expect(rounded).toContain('/(0.300*min(W,H)/2)');
+    const box = P.moBlurRegionsGraph([{ x: 0.1, y: 0.1, w: 0.2, h: 0.2, mode: 'blur', strength: 4, shape: 'rect' }], 'in', 'out', 0);
+    expect(box).not.toContain('geq=');
+  });
 });
 
 describe('audio finish', () => {

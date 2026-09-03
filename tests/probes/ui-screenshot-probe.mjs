@@ -292,6 +292,15 @@ async function main() {
           await page.waitForTimeout(300);
           const d = await page.evaluate(() => { const b = document.querySelector('.mo-blur-rect'); if (!b) return 'none'; const r = b.getBoundingClientRect(); return `${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)}x${Math.round(r.height)} t=${document.querySelector('.mo-clip-page video')?.currentTime}`; });
           console.log(`[probe] clip blur rect: ${d}`);
+          // Oval shape for the shot.
+          await page.evaluate(() => { const b = Array.from(document.querySelectorAll('.mo-clip-page .mo-clip-mode-toggle button')).find((x) => x.textContent === 'Oval'); if (b) b.click(); });
+          await page.waitForTimeout(300);
+          const shapeState = await page.evaluate(() => {
+            const active = Array.from(document.querySelectorAll('.mo-clip-page .mo-clip-mode-toggle button.mo-active')).map((b) => b.textContent).join('|');
+            const b = document.querySelector('.mo-blur-rect');
+            return `active=${active} radius=${b ? getComputedStyle(b).borderRadius : 'none'} mask=${b ? (getComputedStyle(b).maskImage || '').slice(0, 40) : ''}`;
+          });
+          console.log(`[probe] clip blur shape: ${shapeState}`);
           await shot(page, 'clip-blur'); await stageState('clip-blur');
           // The same frame with the box hidden, for a pixel comparison.
           await page.evaluate(() => { document.querySelector('.mo-blur-layer').style.visibility = 'hidden'; });
@@ -363,9 +372,11 @@ async function main() {
           await shot(page, 'clip-follow');
           // Pixelate must preview as a real mosaic (a canvas inside the box).
           const mosaic = await page.evaluate(() => {
-            const sel = Array.from(document.querySelectorAll('.mo-clip-page select')).find((s) => Array.from(s.options).some((o) => o.value === 'pixelate'));
-            if (!sel) return 'no mode select';
-            sel.value = 'pixelate'; sel.dispatchEvent(new Event('change', { bubbles: true }));
+            const btn = Array.from(document.querySelectorAll('.mo-clip-page .mo-clip-mode-toggle button')).find((b) => b.textContent === 'Pixelate');
+            if (!btn) return 'no Pixelate button';
+            btn.click();
+            const oval = Array.from(document.querySelectorAll('.mo-clip-page .mo-clip-mode-toggle button')).find((b) => b.textContent === 'Oval');
+            if (oval) oval.click();
             const cv = document.querySelector('.mo-blur-mosaic');
             if (!cv) return 'no mosaic canvas';
             const r = cv.getBoundingClientRect();

@@ -30,8 +30,10 @@ program that turned a trimmer into a small editor and the recorder into a camera
 - Segments: several In/Out ranges export as one clip, in list order, with reorder
   and remove. Cut Dead Air finds where the picture froze and the sound went quiet
   inside the range and keeps the rest.
-- Blur or pixelate regions, drawn on the video, limited in time. Each region has a
-  Track switch: on, the box follows what is under it through the clip (the existing
+- Blur or pixelate regions, drawn on the video, limited in time. Blur | Pixelate and
+  Box | Rounded | Oval are visible buttons on each region; rounded and oval regions
+  have a feathered edge, in the preview and in the export. Each region has a Track
+  switch: on, the box follows what is under it through the clip (the existing
   tracker); off, it stays still. The preview shows a real blur or a real mosaic.
 - Text: title cards, lower thirds and captions with a style, a time window and a
   colour, previewed on the video and burned in on export.
@@ -63,8 +65,8 @@ extracted verbatim by the unit test and by the ffmpeg probe.
 
 | Check | Command | Result |
 | --- | --- | --- |
-| Pure clip math | `npx vitest run tests/unit/moClipGraph.test.ts` | 12 pass |
-| Real ffmpeg graphs | `node tests/probes/clip-graph-probe.mjs` | 32/32 |
+| Pure clip math | `npx vitest run tests/unit/moClipGraph.test.ts` | 13 pass |
+| Real ffmpeg graphs | `node tests/probes/clip-graph-probe.mjs` | 34/34 |
 | Editor on screen | `node tests/probes/ui-screenshot-probe.mjs <out> clip` | 6 scenes captured, reviewed |
 | Whole suite | `npx vitest run` | green |
 | Recorder timing | hidden 2 s capture through the recorder's own argv + finalize | duration = wall clock within 40 ms |
@@ -83,6 +85,7 @@ confirm on this machine.
 | 2 Pipeline | assemble-then-export front door, captions and audio finish in the final pass | shipped |
 | 2 Editor | segments, blur, text, audio & finish, end card, preview render, destinations, reveal/copy | shipped |
 | 3 Recorder | countdown (opt-in), pause, hotkeys, hide cursor, mic+system, follow the box, cursor telemetry | shipped, needs one real take |
+| 6 Shapes | oval and rounded regions through a feathered alpha mask (geq on the patch), Blur/Pixelate and shape as buttons; exported pixels checked: outside the oval untouched, inside blurred | shipped |
 | 5 Fixes | real-timestamp capture (short takes played fast), app dropdowns everywhere, Track switch on blur regions, real blur and mosaic previews, look previews matched to the export | shipped |
 | 4 Probe | clip scene in the screenshot probe, open-clip-editor command | shipped |
 

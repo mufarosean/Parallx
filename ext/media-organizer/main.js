@@ -8071,6 +8071,8 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
 .mo-blur-rect--pixel { background: transparent; }
 .mo-blur-mosaic { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; pointer-events: none; }
 .mo-blur-rect--off { opacity: 0.35; }
+.mo-blur-rect--soft { outline: none; }
+.mo-blur-rect--soft .mo-blur-handle { right: 0; bottom: 0; }
 .mo-blur-rect.mo-active { border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); }
 .mo-blur-handle {
   position: absolute; right: -6px; bottom: -6px; width: 11px; height: 11px;
@@ -18102,6 +18104,19 @@ function moBlurRegionsGraph(regions, inLabel, outLabel, inPoint, dims) {
     } else {
       effect = `boxblur=luma_radius=${strength * 2}:luma_power=2:chroma_radius=${strength}:chroma_power=2`;
     }
+    // Shape: the patch goes back through a soft alpha mask drawn by geq on
+    // the patch itself (W/H are the patch's own size there), so an oval or a
+    // rounded box with a feathered edge needs no extra input. A plain box
+    // keeps the hard edge and skips the mask.
+    const shape = r.shape === 'ellipse' || r.shape === 'rounded' ? r.shape : 'rect';
+    let mask = '';
+    if (shape !== 'rect') {
+      const fe = Math.max(0.02, Math.min(0.6, Number.isFinite(r.feather) ? r.feather : 0.15));
+      const alpha = shape === 'ellipse'
+        ? `255*clip((1-hypot((X-W/2)/(W/2),(Y-H/2)/(H/2)))/${fe.toFixed(3)},0,1)`
+        : `255*clip((0.22*min(W,H)-hypot(max(abs(X-W/2)-(W/2-0.22*min(W,H)),0),max(abs(Y-H/2)-(H/2-0.22*min(W,H)),0)))/(${fe.toFixed(3)}*min(W,H)/2),0,1)`;
+      mask = `,format=yuva420p,geq=lum='p(X,Y)':cb='p(X,Y)':cr='p(X,Y)':a='${alpha}'`;
+    }
     const a = `${cur}s${i}a`, b = `${cur}s${i}b`, bl = `${cur}s${i}bl`;
     const next = i === list.length - 1 ? outLabel : `${inLabel}r${i}`;
     // Time window (absolute source seconds → rebased) via overlay's enable.
@@ -18115,7 +18130,7 @@ function moBlurRegionsGraph(regions, inLabel, outLabel, inPoint, dims) {
     // default for x/y), so a keyed region follows its subject.
     stages.push(
       `[${cur}]split[${a}][${b}];`
-      + `[${b}]crop=w=${wPx}:h=${hPx}:x='${xe}':y='${ye}',${effect}[${bl}];`
+      + `[${b}]crop=w=${wPx}:h=${hPx}:x='${xe}':y='${ye}',${effect}${mask}[${bl}];`
       + `[${a}][${bl}]overlay=x='${ox}':y='${oy}':eval=frame${enable}[${next}]`,
     );
     cur = next;
@@ -19428,24 +19443,28 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     for (const r of blurRegions) {
       const row = moEl('div', 'mo-clip-segrow');
       if (r.id === activeBlurId) row.classList.add('mo-active');
-      const modeSel = document.createElement('select');
-      modeSel.className = 'mo-clip-input mo-clip-input--sm';
-      for (const [v, l] of [['blur', 'Blur'], ['pixelate', 'Pixelate']]) {
-        const o = document.createElement('option'); o.value = v; o.textContent = l; if (r.mode === v) o.selected = true; modeSel.appendChild(o);
-      }
-      modeSel.addEventListener('change', () => { r.mode = modeSel.value; syncOverlaysToPlayhead(); });
       row.classList.add('mo-clip-segrow--stack');
-      const line1 = moEl('div', 'mo-clip-segline'); const line2 = moEl('div', 'mo-clip-segline');
-      row.append(line1, line2);
-      line1.appendChild(modeSel);
-      moBindCustomSelect(modeSel);
+      const line1 = moEl('div', 'mo-clip-segline'); const line2 = moEl('div', 'mo-clip-segline'); const line3 = moEl('div', 'mo-clip-segline');
+      row.append(line1, line2, line3);
+      // Two visible choices, not a dropdown that reads like a title.
+      const seg = (choices, current, onPick) => {
+        const wrap = moEl('div', 'mo-clip-mode-toggle');
+        for (const [v, l, tip] of choices) {
+          const btn = moEl('button', v === current ? 'mo-active' : null, { textContent: l, title: tip || '' });
+          btn.addEventListener('click', (e) => { e.stopPropagation(); onPick(v); for (const b of wrap.children) b.classList.toggle('mo-active', b === btn); syncOverlaysToPlayhead(); });
+          wrap.appendChild(btn);
+        }
+        return wrap;
+      };
+      line1.appendChild(seg([['blur', 'Blur', 'Soften what is under the box'], ['pixelate', 'Pixelate', 'Mosaic blocks over what is under the box']], r.mode === 'pixelate' ? 'pixelate' : 'blur', (v) => { r.mode = v; }));
+      line1.appendChild(seg([['rect', 'Box', 'Hard-edged rectangle'], ['rounded', 'Rounded', 'Rounded corners, soft edge'], ['ellipse', 'Oval', 'Oval, soft edge']], r.shape === 'ellipse' || r.shape === 'rounded' ? r.shape : 'rect', (v) => { r.shape = v; }));
       const str = document.createElement('input');
       str.type = 'range'; str.min = '1'; str.max = '10'; str.step = '1'; str.value = String(r.strength);
       str.className = 'mo-clip-slider mo-clip-slider--sm'; str.title = 'Strength';
       str.addEventListener('input', () => { r.strength = parseInt(str.value, 10) || 5; syncOverlaysToPlayhead(); });
       const strVal = moEl('span', 'mo-clip-slider-val', { textContent: String(r.strength) });
       str.addEventListener('input', () => { strVal.textContent = str.value; });
-      line1.append(moEl('span', 'mo-clip-keycount', { textContent: 'Strength' }), str, strVal);
+      line2.append(moEl('span', 'mo-clip-keycount', { textContent: 'Strength' }), str, strVal);
       const from = document.createElement('input'); from.type = 'number'; from.step = '0.1'; from.min = '0'; from.className = 'mo-clip-input mo-clip-input--xs';
       from.placeholder = 'from'; from.title = 'Only from this time (seconds of the source; blank = start)'; from.value = Number.isFinite(r.t0) ? r.t0.toFixed(1) : '';
       from.addEventListener('change', () => { const v = parseFloat(from.value); r.t0 = Number.isFinite(v) ? v : undefined; syncOverlaysToPlayhead(); });
@@ -19453,6 +19472,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       to.placeholder = 'to'; to.title = 'Only until this time (seconds; blank = end)'; to.value = Number.isFinite(r.t1) ? r.t1.toFixed(1) : '';
       to.addEventListener('change', () => { const v = parseFloat(to.value); r.t1 = Number.isFinite(v) ? v : undefined; syncOverlaysToPlayhead(); });
       line2.append(from, to);
+      // (time window sits with the strength; tracking and removal on their own line)
       // Track switch: on = the box follows what is under it (tracker runs
       // from the current frame across In/Out); off = a still box.
       const tracked = !!(r.keys && r.keys.length >= 2);
@@ -19478,17 +19498,17 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
           api.window.showErrorMessage('Track failed: ' + (err && err.message || err));
         });
       });
-      line2.appendChild(trackWrap);
+      line3.appendChild(trackWrap);
       const del = moEl('button', 'mo-clip-queue-del', { textContent: '✕', title: 'Remove this region' });
       del.addEventListener('click', (e) => { e.stopPropagation(); blurRegions = blurRegions.filter((x) => x !== r); if (activeBlurId === r.id) activeBlurId = null; renderBlurRegions(); syncOverlaysToPlayhead(); });
-      line2.appendChild(del);
+      line3.appendChild(del);
       row.addEventListener('click', () => { activeBlurId = r.id; renderBlurRegions(); syncOverlaysToPlayhead(); });
       blurList.appendChild(row);
     }
     try { updateAccordionSummaries(); } catch { /* pre-init */ }
   }
   addBlurBtn.addEventListener('click', () => {
-    const r = { id: ++blurSeq, x: 0.35, y: 0.35, w: 0.3, h: 0.3, mode: 'blur', strength: 5 };
+    const r = { shape: 'rect', id: ++blurSeq, x: 0.35, y: 0.35, w: 0.3, h: 0.3, mode: 'blur', strength: 5 };
     blurRegions.push(r);
     activeBlurId = r.id;
     renderBlurRegions();
@@ -19511,6 +19531,16 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       box.style.top = (rect.dy + pos.y * rect.dh) + 'px';
       box.style.width = (r.w * rect.dw) + 'px';
       box.style.height = (r.h * rect.dh) + 'px';
+      const shape = r.shape === 'ellipse' || r.shape === 'rounded' ? r.shape : 'rect';
+      const wpx = r.w * rect.dw, hpx = r.h * rect.dh;
+      const fe = Math.max(0.02, Math.min(0.6, Number.isFinite(r.feather) ? r.feather : 0.15));
+      box.style.borderRadius = shape === 'ellipse' ? '50%' : shape === 'rounded' ? Math.round(0.22 * Math.min(wpx, hpx)) + 'px' : '';
+      // The soft edge of the export, previewed with a mask on the box.
+      box.style.maskImage = shape === 'ellipse'
+        ? `radial-gradient(ellipse closest-side, #000 ${Math.round((1 - fe) * 100)}%, transparent 100%)`
+        : '';
+      box.style.webkitMaskImage = box.style.maskImage;
+      box.classList.toggle('mo-blur-rect--soft', shape !== 'rect');
       if (r.mode === 'pixelate') {
         // A real mosaic: the covered part of the frame drawn small, scaled
         // back up with no smoothing (the export's pixelize does the same).
@@ -19526,6 +19556,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
           ctx.imageSmoothingEnabled = true;
           ctx.drawImage(preview, pos.x * vw, pos.y * vh, r.w * vw, r.h * vh, 0, 0, cellsX, cellsY);
         } catch { /* frame not ready */ }
+        cv.style.borderRadius = box.style.borderRadius;
         box.appendChild(cv);
       } else {
         box.style.backdropFilter = `blur(${2 + r.strength * 1.5}px)`;
