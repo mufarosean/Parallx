@@ -146,6 +146,8 @@ function resolveServices(api: ParallxApi): void {
 }
 
 let currentMode: Mode = 'workflows';
+/** The mounted view's repaint, so a command can switch modes from outside. */
+let _viewRepaint: (() => void) | null = null;
 let currentLiveFilter: LiveFilter = 'all';
 let currentRailFilter: RailTriggerFilter = 'all';
 
@@ -258,6 +260,16 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     const wf = workflowService?.getWorkflow(id);
     if (!wf) return false;
     await api.editors.openEditor({ typeId: 'workflow', title: wf.name, icon: 'git-branch', instanceId: wf.id });
+    return true;
+  }));
+
+  // The one door other surfaces use to land on the Workflows tab (the
+  // planner's Scheduled tab, suggestions). Reveals the panel view and
+  // switches the mode; nothing else knows how this panel is built.
+  context.subscriptions.push(api.commands.registerCommand('workflows.showPanel', async () => {
+    currentMode = 'workflows';
+    _viewRepaint?.();
+    await api.commands.executeCommand('workbench.view.show', 'view.autonomyLog').catch(() => undefined);
     return true;
   }));
 
@@ -426,6 +438,7 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
     tabByMode[m] = t;
   }
   header.appendChild(tabs);
+  _viewRepaint = () => { paintTabs(); paintFilters(); paintAll(); };
 
   header.appendChild($('div.autonomy-log-divider'));
 
@@ -998,6 +1011,49 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
     return trace;
   }
 
+  function renderSuggestedRow(wf: WorkflowDoc): HTMLElement {
+    const service = workflowService!;
+    const row = $('div.wf-row.wf-row--suggested');
+    const head = $('div.wf-row__head');
+    const kindIc = $('span.wf-row__kind-ic');
+    kindIc.innerHTML = getIcon('px-ai-mark');
+    head.appendChild(kindIc);
+    const name = $('span.wf-row__name');
+    name.textContent = wf.name;
+    head.appendChild(name);
+    const actions = $('div.wf-row__actions');
+    const editBtn = $('button.as-cell__action') as HTMLButtonElement;
+    editBtn.textContent = 'Review';
+    editBtn.title = 'Open the draft in the workflow editor.';
+    editBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      void runCommand?.('workflows.openEditor', wf.id);
+    });
+    actions.appendChild(editBtn);
+    const addBtn = $('button.as-cell__action.is-primary') as HTMLButtonElement;
+    addBtn.textContent = 'Add';
+    addBtn.title = 'Keep it and turn it on. It becomes one of your workflows.';
+    addBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      try { service.updateWorkflow(wf.id, { source: 'user', enabled: true }); } catch { /* repaint below */ }
+    });
+    actions.appendChild(addBtn);
+    const dismissBtn = $('button.as-cell__action') as HTMLButtonElement;
+    dismissBtn.textContent = 'Dismiss';
+    dismissBtn.title = 'Delete the suggestion. This habit is not suggested again.';
+    dismissBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      try { service.removeWorkflow(wf.id); } catch { /* repaint below */ }
+    });
+    actions.appendChild(dismissBtn);
+    head.appendChild(actions);
+    row.appendChild(head);
+    const det = $('div.wf-row__detail');
+    det.textContent = wf.description ?? workflowTriggerSummary(wf);
+    row.appendChild(det);
+    return row;
+  }
+
   function renderWorkflowRow(wf: WorkflowDoc): HTMLElement {
     const service = workflowService!;
     const row = $('div.wf-row');
@@ -1212,7 +1268,22 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
       return;
     }
     emptyEl.style.display = 'none';
-    for (const wf of flows) listEl.appendChild(renderWorkflowRow(wf));
+    // Suggestions first: the AI noticed a habit and drafted a workflow for
+    // it. They are disabled until approved, and a dismissal deletes them.
+    const suggested = flows.filter((wf) => wf.source === 'suggested');
+    const rest = flows.filter((wf) => wf.source !== 'suggested');
+    if (suggested.length > 0) {
+      const sec = $('div.wf-suggested');
+      const head = $('div.wf-suggested__head');
+      head.textContent = 'Suggested by the AI';
+      sec.appendChild(head);
+      const sub = $('div.wf-suggested__sub');
+      sub.textContent = 'Habits it noticed in your activity, drafted as workflows. Nothing runs until you add one.';
+      sec.appendChild(sub);
+      for (const wf of suggested) sec.appendChild(renderSuggestedRow(wf));
+      listEl.appendChild(sec);
+    }
+    for (const wf of rest) listEl.appendChild(renderWorkflowRow(wf));
     const foot = $('div.wf-gallery');
     const head = $('div.wf-gallery__head');
     head.textContent = 'Add More';

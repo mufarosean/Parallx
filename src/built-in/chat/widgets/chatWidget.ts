@@ -247,6 +247,12 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     if (services.openFile) {
       this._listRenderer.setOpenAttachmentHandler(services.openFile);
     }
+    if (services.openCanvasBlock) {
+      this._listRenderer.setOpenCanvasBlockHandler(services.openCanvasBlock);
+    }
+    if (services.openImage) {
+      this._listRenderer.setOpenImageHandler(services.openImage);
+    }
     this._listRenderer.setRegenerateHandler((request) => {
       void this._handleRegenerate(request);
     });

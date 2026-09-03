@@ -3167,6 +3167,7 @@ export class Workbench extends Layout {
         focusTracker: this._focusTracker,
         themeService: this._services.has(IThemeService) ? this._services.get(IThemeService) : undefined,
         workspaceName: this._workspace?.name,
+        layout: this,
       }));
 
       // (The surface-activity narrator was retired with the unmounted

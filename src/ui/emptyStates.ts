@@ -34,11 +34,11 @@ export const EMPTY_STATES = {
     headline: 'All clear on this view',
     hint: 'No tasks match this filter. Switch views above, or click Create to capture something new.',
   },
-  'planner.automations': {
-    id: 'planner.automations',
-    icon: 'zap',
-    headline: 'Put the app to work',
-    hint: 'Click New automation and describe the job: refresh a dashboard each morning, post a daily digest. The AI runs it on schedule.',
+  'planner.scheduled': {
+    id: 'planner.scheduled',
+    icon: 'px-ai-mark',
+    headline: 'Nothing scheduled yet',
+    hint: 'Workflows with a schedule appear here, with their next and last run. Create one in the Workflows panel, or add one the AI suggests.',
   },
   'search.noResults': {
     id: 'search.noResults',

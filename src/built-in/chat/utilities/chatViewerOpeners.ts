@@ -1,5 +1,6 @@
 import type { IEditorService, IMemoryService, IWorkspaceMemoryService } from '../../../services/serviceTypes.js';
 import { ReadonlyMarkdownInput } from '../../../editor/panes/readonlyMarkdownInput.js';
+import { ImageEditorInput } from '../../../editor/panes/imageEditorInput.js';
 
 interface IWorkspaceFolderRef {
   readonly uri: { fsPath: string };
@@ -66,6 +67,32 @@ export function buildSessionMemoryMarkdown(
     '',
     memory.summary,
   ].join('\n');
+}
+
+export interface IOpenChatImageDeps {
+  readonly attachment: { readonly name: string; readonly fullPath: string; readonly mimeType: string; readonly data: string; readonly origin?: 'clipboard' | 'file' };
+  readonly workspaceFolders?: IOpenChatFileDeps['workspaceFolders'];
+  readonly openFileEditor?: IOpenChatFileDeps['openFileEditor'];
+  readonly editorService?: Pick<IEditorService, 'openEditor'>;
+}
+
+/**
+ * Open an image attachment the way VS Code opens an image: in a viewer tab.
+ * A file-backed image opens its file (the image editor resolves by
+ * extension); a pasted image has no file, so it opens from memory.
+ */
+export function openChatImage(deps: IOpenChatImageDeps): void {
+  const a = deps.attachment;
+  const isPasted = a.origin === 'clipboard' || a.fullPath.startsWith('parallx-image://') || !a.fullPath;
+  if (!isPasted && deps.openFileEditor) {
+    openChatFile({ fullPath: a.fullPath, workspaceFolders: deps.workspaceFolders, openFileEditor: deps.openFileEditor });
+    return;
+  }
+  if (!deps.editorService) return;
+  const input = ImageEditorInput.createFromData(a.name, a.mimeType, a.data);
+  void deps.editorService.openEditor(input, { pinned: true }).catch((err: unknown) => {
+    console.error('[ChatDataService] openImage failed:', err);
+  });
 }
 
 export function openChatFile(deps: IOpenChatFileDeps): void {

@@ -124,6 +124,20 @@ export class ImageEditorPane extends EditorPane {
     this._infoBar.textContent = 'Loading…';
 
     const uri = input.uri;
+
+    // In-memory image (a pasted chat attachment): nothing to read.
+    if (input.dataUrl) {
+      this._image.src = input.dataUrl;
+      this._applyZoom();
+      return;
+    }
+    if (uri.scheme === ImageEditorInput.DATA_SCHEME) {
+      hide(this._image);
+      show(this._errorMessage);
+      this._errorMessage.textContent = 'This pasted image is no longer available. Open it from the chat message again.';
+      return;
+    }
+
     const ext = this._getExtension(uri.basename);
     const mime = MIME_MAP[ext] || 'image/png';
 

@@ -27,8 +27,9 @@ import { settingsPanelRegistry } from '../../services/settingsPanelRegistry.js';
 import { PlannerSyncOrchestrator } from './sync/plannerSyncOrchestrator.js';
 import { GoogleCalendarSyncProvider, GOOGLE_PROVIDER_ID } from './sync/googleCalendarSyncProvider.js';
 import { googleSync } from './sync/googleClient.js';
-import { ICronService, type CronService } from '../../openclaw/openclawCronService.js';
-import type { CronServiceLike } from './plannerAutomations.js';
+import { IWorkflowService, type WorkflowService } from '../../services/workflows/workflowService.js';
+import { IActivityJournalService } from '../../services/activityJournalService.js';
+import type { WorkflowServiceLike } from './plannerScheduled.js';
 
 // ─── API surface ────────────────────────────────────────────────────────────
 
@@ -293,14 +294,17 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   // built-in registers it in DI during ITS activation; built-ins activate in
   // parallel, so resolve lazily on every access and return null until it
   // exists (the tab renders a "still starting" state).
-  const getCronService = (): CronServiceLike | null => {
+  const getWorkflowService = (): WorkflowServiceLike | null => {
     try {
-      if (!api.services.has(ICronService)) return null;
-      return api.services.get<CronService>(ICronService) as unknown as CronServiceLike;
+      if (!api.services.has(IWorkflowService)) return null;
+      return api.services.get<WorkflowService>(IWorkflowService) as unknown as WorkflowServiceLike;
     } catch {
       return null;
     }
   };
+  const activityJournal = api.services.has(IActivityJournalService)
+    ? api.services.get<import('../../services/activityJournalService.js').IActivityJournalService>(IActivityJournalService)
+    : null;
   const editorProvider = new PlannerEditorProvider(_data, {
     editors: api.editors,
     commands: api.commands,
@@ -311,7 +315,8 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       get: <T>(key: string, defaultValue: T): T => context.workspaceState.get<T>(key, defaultValue),
       set: (key: string, value: unknown): void => { void context.workspaceState.update(key, value); },
     },
-    cron: { get: getCronService },
+    workflows: { get: getWorkflowService },
+    activity: activityJournal ? { note: (n) => activityJournal.note(n as never) } : undefined,
     dayLoads: { get: () => [..._dayLoadProviders.values()] },
   }, _orchestrator ?? undefined);
   context.subscriptions.push(

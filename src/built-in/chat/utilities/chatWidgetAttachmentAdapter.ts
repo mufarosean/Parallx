@@ -1,5 +1,6 @@
 import type { Event } from '../../../platform/events.js';
 import type { IChatWidgetServices, IWorkspaceFileEntry } from '../chatTypes.js';
+import type { IChatImageAttachment } from '../../../services/chatTypes.js';
 
 export interface IChatWidgetAttachmentAdapterDeps {
   readonly getOpenEditorFiles?: () => Array<{ name: string; fullPath: string }>;
@@ -8,6 +9,8 @@ export interface IChatWidgetAttachmentAdapterDeps {
   readonly listWorkspaceFiles?: () => Promise<readonly IWorkspaceFileEntry[]>;
   readonly openFile?: (fullPath: string) => void;
   readonly openPage?: (pageId: string) => void;
+  readonly openCanvasBlock?: (pageId: string, blockId: string) => void;
+  readonly openImage?: (attachment: IChatImageAttachment) => void;
   readonly openMemory?: (sessionId: string) => void;
   readonly notifyWarning?: (message: string) => void;
 }
@@ -24,7 +27,7 @@ export function isAttachableFsPath(p: string): boolean {
 
 export function buildChatWidgetAttachmentServices(
   deps: IChatWidgetAttachmentAdapterDeps,
-): Pick<IChatWidgetServices, 'attachmentServices' | 'openFile' | 'openPage' | 'openMemory'> {
+): Pick<IChatWidgetServices, 'attachmentServices' | 'openFile' | 'openPage' | 'openCanvasBlock' | 'openImage' | 'openMemory'> {
   return {
     attachmentServices: (deps.getOpenEditorFiles && deps.onDidChangeOpenEditors)
       ? {
@@ -42,6 +45,12 @@ export function buildChatWidgetAttachmentServices(
       : undefined,
     openPage: deps.openPage
       ? (pageId: string) => deps.openPage!(pageId)
+      : undefined,
+    openCanvasBlock: deps.openCanvasBlock
+      ? (pageId: string, blockId: string) => deps.openCanvasBlock!(pageId, blockId)
+      : undefined,
+    openImage: deps.openImage
+      ? (attachment: IChatImageAttachment) => deps.openImage!(attachment)
       : undefined,
     openMemory: deps.openMemory
       ? (sessionId: string) => deps.openMemory!(sessionId)

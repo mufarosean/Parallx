@@ -46,6 +46,7 @@ export type ActivitySource =
   | 'session' | 'window' | 'command' | 'editor' | 'focus' | 'menu'
   | 'settings' | 'chat' | 'tool' | 'runtime' | 'storage' | 'canvas'
   | 'notebook' | 'python' | 'surface' | 'app'
+  | 'planner' | 'dashboard' | 'layout' | 'ai-config'
   | `signal:${string}` | `chat:${string}` | `ext:${string}`;
 
 /**

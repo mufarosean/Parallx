@@ -20,6 +20,8 @@ import { IActivityJournalService } from '../services/activityJournalService.js';
 import { ContextMenu } from '../ui/contextMenu.js';
 import type { FocusTracker } from '../context/focusTracker.js';
 import type { IThemeService } from '../services/serviceTypes.js';
+import { IUnifiedAIConfigService } from '../services/serviceTypes.js';
+import type { Event } from '../platform/events.js';
 import { DisposableStore } from '../platform/lifecycle.js';
 import type { IDisposable } from '../platform/lifecycle.js';
 
@@ -70,6 +72,8 @@ export interface IActivityTapDeps {
   readonly themeService?: IThemeService;
   /** Human name of the opened workspace, for the session-start line. */
   readonly workspaceName?: string;
+  /** The layout's user-resize event (sash drags, debounced). */
+  readonly layout?: { readonly onDidUserResizePart: Event<{ part: string; size: number }> };
 }
 
 /**
@@ -255,6 +259,56 @@ export function wireActivityTaps(deps: IActivityTapDeps): IDisposable {
       }));
     }
   }
+
+  // ── Sash drags: "resized the sidebar to 240px" (debounced by the layout;
+  //    programmatic layout mutations are suspended from tracking there). ──
+  if (deps.layout) {
+    store.add(deps.layout.onDidUserResizePart(({ part, size }) => {
+      journal.note({ actor: 'user', source: 'layout', verb: 'resized', object: part, detail: `${Math.round(size)}px` });
+    }));
+  }
+
+  // ── AI settings: which SECTION changed (persona, model, heartbeat…).
+  //    The service fires a whole-config snapshot, so diff per section; the
+  //    workspace-hydration fire announces itself first and is skipped. ──
+  if (services.has(IUnifiedAIConfigService)) {
+    const ai = services.get(IUnifiedAIConfigService);
+    const sectionsOf = (cfg: Record<string, unknown>): Map<string, string> => {
+      const out = new Map<string, string>();
+      for (const [key, value] of Object.entries(cfg)) {
+        if (value && typeof value === 'object') {
+          try { out.set(key, JSON.stringify(value)); } catch { /* unserializable section: skip */ }
+        }
+      }
+      return out;
+    };
+    let previous = sectionsOf(ai.getEffectiveConfig() as unknown as Record<string, unknown>);
+    let skipNext = false;
+    store.add(ai.onDidLoadWorkspaceConfig(() => { skipNext = true; }));
+    store.add(ai.onDidChangeConfig((cfg) => {
+      const next = sectionsOf(cfg as unknown as Record<string, unknown>);
+      if (skipNext) { skipNext = false; previous = next; return; }
+      const changed = [...next.keys()].filter((k) => previous.get(k) !== next.get(k));
+      previous = next;
+      for (const section of changed) {
+        journal.note({ actor: 'user', source: 'ai-config', verb: 'changed', object: `AI ${section} settings` });
+      }
+    }));
+  }
+
+  // ── Annotated clicks: any control that carries data-activity="<label>"
+  //    narrates as "clicked <label>". For buttons that route neither through
+  //    a command nor a context menu. Mirrors the parallx:// link tap. ──
+  const onActivityClick = (e: MouseEvent): void => {
+    const target = e.target as HTMLElement | null;
+    const el = target?.closest?.('[data-activity]') as HTMLElement | null;
+    if (!el) return;
+    const label = el.dataset.activity?.trim();
+    if (!label) return;
+    journal.note({ actor: 'user', source: 'app', verb: 'clicked', object: label });
+  };
+  document.addEventListener('click', onActivityClick, true);
+  store.add({ dispose: () => document.removeEventListener('click', onActivityClick, true) });
 
   // ── AI tool executions: the dormant observer seam, finally used. ──
   if (services.has(IRuntimeHookRegistry)) {

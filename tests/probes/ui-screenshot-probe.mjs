@@ -154,8 +154,16 @@ async function main() {
     }
 
     if (scenes.includes('planner')) {
-      const ok = await runCommand(page, ['planner.open']);
-      if (ok) { await page.waitForTimeout(1_200); await shot(page, 'planner'); }
+      await scene('planner', async () => {
+        const ok = await runCommand(page, ['planner.open']);
+        if (!ok) throw new Error('planner.open not available');
+        await page.waitForTimeout(1_200);
+        await shot(page, 'planner');
+        const tab = page.locator('.planner-pane__tab', { hasText: 'Scheduled' }).first();
+        await tab.click({ timeout: 5_000 });
+        await page.waitForTimeout(900);
+        await shot(page, 'planner-scheduled');
+      });
     }
 
     if (scenes.includes('settings')) {
@@ -194,6 +202,18 @@ async function main() {
           await page.waitForSelector('.canvas-page-menu', { timeout: 5_000 });
           await page.waitForTimeout(500);
           await shot(page, 'canvas-page-menu');
+          await page.keyboard.press('Escape');
+        }
+        // The sidebar's trash popup (empty in a fresh workspace, which is
+        // still a state worth seeing).
+        const trashBtn = page.locator('.canvas-sidebar-trash-btn').first();
+        if (await trashBtn.count()) {
+          await runCommand(page, [['workbench.view.show', 'view.canvas']]);
+          await page.waitForTimeout(400);
+          await trashBtn.click({ timeout: 3_000 });
+          await page.waitForSelector('.canvas-trash-panel', { timeout: 5_000 });
+          await page.waitForTimeout(400);
+          await shot(page, 'canvas-trash');
           await page.keyboard.press('Escape');
         }
       });

@@ -1792,244 +1792,92 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   Automations tab (M93) — app-run scheduled jobs the AI executes.
-   Native --px semantic tokens (M83): elevated cards with a presence dot,
-   the prompt set as a quotation, one tabular meta line, ghost actions with
-   press physics. No bridged --vscode-* here.
+   Scheduled tab — a READ of the workflow service (workflows are THE
+   automation surface). Rows: name (door to the editor), origin chip,
+   one meta line, an On/Off switch. Tokens only.
    ═══════════════════════════════════════════════════════════════════════════ */
 
-.planner-auto {
-  max-width: 680px;
-  margin: 0 auto;
-  padding: var(--px-space-5) var(--px-space-6) var(--px-space-8);
-  display: flex;
-  flex-direction: column;
-  gap: var(--px-space-3);
-}
-
-.planner-auto__pending {
-  padding: var(--px-space-8) var(--px-space-4);
-  text-align: center;
-  font-size: var(--px-text-base);
-  color: var(--px-text-muted);
-}
-
-/* ── Cards ── */
-
-.planner-auto__card {
-  background: var(--px-bg-elevated);
-  border: 1px solid var(--px-border);
-  border-radius: var(--px-radius-lg);
-  box-shadow: var(--px-edge-light);
-  padding: var(--px-space-3) var(--px-space-4);
+.planner-sched {
+  max-width: 720px;
   display: flex;
   flex-direction: column;
   gap: var(--px-space-2);
-  transition: border-color var(--px-dur-fast) var(--px-ease), opacity var(--px-dur-base) var(--px-ease);
 }
-.planner-auto__card:hover { border-color: var(--px-border-strong); }
-.planner-auto__card--paused { opacity: 0.6; }
 
-.planner-auto__card-head {
+.planner-sched__filters {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--px-radius-md);
+  background: var(--px-bg-inset);
+  margin-right: var(--px-space-2);
+}
+.planner-sched__filter {
+  height: var(--px-control-h-sm);
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--px-radius-sm);
+  background: transparent;
+  color: var(--px-text-secondary);
+  font-size: var(--px-text-sm);
+  font-weight: 500;
+  cursor: pointer;
+}
+.planner-sched__filter:hover { color: var(--px-text); }
+.planner-sched__filter--active { background: var(--px-bg-elevated); color: var(--px-text); box-shadow: var(--px-shadow-sm); }
+
+.planner-sched__row {
   display: flex;
   align-items: center;
-  gap: var(--px-space-2);
+  gap: var(--px-space-3);
+  padding: var(--px-space-3);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-md);
+  background: var(--px-bg-elevated);
 }
-
-/* Presence dot — scheduled (accent halo) / paused (faint) / failed (danger). */
-.planner-auto__dot {
-  flex: 0 0 auto;
-  width: 7px;
-  height: 7px;
-  border-radius: var(--px-radius-full);
-}
-.planner-auto__dot--on {
-  background: var(--px-accent);
-  box-shadow: 0 0 0 3px var(--px-accent-faint);
-}
-.planner-auto__dot--paused { background: var(--px-text-faint); }
-.planner-auto__dot--failed {
-  background: var(--px-danger);
-  box-shadow: 0 0 0 3px var(--px-danger-soft);
-}
-
-.planner-auto__card-name {
-  flex: 1;
-  min-width: 0;
+.planner-sched__row--off { opacity: 0.72; }
+.planner-sched__main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.planner-sched__head { display: flex; align-items: center; gap: var(--px-space-2); min-width: 0; }
+.planner-sched__name {
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: var(--px-text);
   font-size: var(--px-text-base);
   font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--px-text);
+  text-align: left;
+  cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
-/* The prompt IS the automation — set it like a quotation. */
-.planner-auto__card-prompt {
-  font-size: var(--px-text-sm);
-  line-height: var(--px-leading-base);
+.planner-sched__name:hover { color: var(--px-accent); }
+.planner-sched__origin {
+  flex-shrink: 0;
+  height: 18px;
+  padding: 0 7px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--px-radius-full);
+  font-size: var(--px-text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   color: var(--px-text-secondary);
   background: var(--px-bg-inset);
-  border-left: 2px solid color-mix(in srgb, var(--px-accent) 45%, transparent);
-  border-radius: var(--px-radius-sm);
-  padding: var(--px-space-2) var(--px-space-3);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
 }
-
-.planner-auto__card-meta {
-  font-size: var(--px-text-xs);
-  color: var(--px-text-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.planner-auto__card-error {
-  font-size: var(--px-text-xs);
-  color: var(--px-danger);
-  background: var(--px-danger-soft);
-  border-radius: var(--px-radius-sm);
-  padding: var(--px-space-1) var(--px-space-2);
-}
-
-.planner-auto__card-actions {
-  display: flex;
+.planner-sched__origin--ai { color: var(--px-accent); background: var(--px-accent-soft); }
+.planner-sched__meta { font-size: var(--px-text-sm); color: var(--px-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.planner-sched__meta--error { color: var(--px-danger); }
+.planner-sched__toggle {
+  flex-shrink: 0;
+  display: inline-flex;
   align-items: center;
-  gap: var(--px-space-1);
-}
-
-/* ── Buttons — quiet ghosts; one accent primary; press physics ── */
-
-.planner-auto__btn {
-  height: 24px;
-  padding: 0 var(--px-space-2);
-  border: 0;
-  border-radius: var(--px-radius-sm);
-  background: transparent;
-  color: var(--px-text-muted);
-  font: inherit;
+  gap: var(--px-space-2);
   font-size: var(--px-text-sm);
-  font-weight: 500;
+  color: var(--px-text-secondary);
   cursor: pointer;
-  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease), transform var(--px-dur-instant) var(--px-ease);
-}
-.planner-auto__btn:hover { background: var(--px-surface-hover); color: var(--px-text); }
-.planner-auto__btn:active { transform: var(--px-press); }
-.planner-auto__btn:disabled { opacity: 0.5; cursor: default; transform: none; }
-.planner-auto__btn:focus-visible { outline: none; box-shadow: var(--px-ring-accent); }
-.planner-auto__btn--primary {
-  height: 28px;
-  padding: 0 var(--px-space-4);
-  background: var(--px-accent);
-  color: var(--px-text-on-accent);
-  font-weight: 600;
-}
-.planner-auto__btn--primary:hover { background: var(--px-accent-hover); color: var(--px-text-on-accent); }
-.planner-auto__btn--danger:hover { background: var(--px-danger-soft); color: var(--px-danger); }
-
-/* ── Other scheduled jobs (AI / extension owned) ── */
-
-.planner-auto__others { margin-top: var(--px-space-1); }
-.planner-auto__others-summary {
-  cursor: pointer;
-  font-size: var(--px-text-sm);
-  font-weight: 500;
-  color: var(--px-text-muted);
-  padding: var(--px-space-1) 0;
   user-select: none;
-  transition: color var(--px-dur-fast) var(--px-ease);
 }
-.planner-auto__others-summary:hover { color: var(--px-text); }
-.planner-auto__others .planner-auto__card { margin-top: var(--px-space-2); }
-
-.planner-auto__footnote {
-  margin-top: var(--px-space-2);
-  text-align: center;
-  font-size: var(--px-text-xs);
-  color: var(--px-text-faint);
-}
-
-/* ── Create / edit form ── */
-
-.planner-auto__form {
-  background: var(--px-bg-elevated);
-  border: 1px solid var(--px-border);
-  border-radius: var(--px-radius-lg);
-  box-shadow: var(--px-edge-light);
-  padding: var(--px-space-4);
-  display: flex;
-  flex-direction: column;
-  gap: var(--px-space-1);
-  animation: planner-auto-form-in var(--px-dur-base) var(--px-ease-out);
-}
-@keyframes planner-auto-form-in {
-  from { transform: translateY(-4px); opacity: 0; }
-  to   { transform: translateY(0);    opacity: 1; }
-}
-.planner-auto__form-title {
-  margin: 0 0 var(--px-space-1);
-  font-size: var(--px-text-md);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--px-text);
-}
-.planner-auto__label {
-  font-size: var(--px-text-xs);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--px-text-faint);
-  margin-top: var(--px-space-2);
-}
-.planner-auto__input,
-.planner-auto__textarea {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 6px 10px;
-  border: 1px solid var(--px-border);
-  border-radius: var(--px-radius-md);
-  background: var(--px-bg-inset);
-  color: var(--px-text);
-  font: inherit;
-  font-size: var(--px-text-base);
-  transition: border-color var(--px-dur-fast) var(--px-ease), box-shadow var(--px-dur-fast) var(--px-ease);
-}
-.planner-auto__textarea { resize: vertical; min-height: 72px; line-height: var(--px-leading-base); }
-.planner-auto__input:focus,
-.planner-auto__textarea:focus {
-  outline: none;
-  border-color: var(--px-accent);
-  box-shadow: 0 0 0 3px var(--px-accent-faint);
-}
-.planner-auto__input::placeholder,
-.planner-auto__textarea::placeholder { color: var(--px-text-faint); }
-
-.planner-auto__sched {
-  display: flex;
-  align-items: center;
-  gap: var(--px-space-2);
-  flex-wrap: wrap;
-}
-.planner-auto__sched .planner-auto__input { width: auto; }
-.planner-auto__input--time { flex: 0 0 104px; }
-.planner-auto__input--interval { flex: 0 0 120px; }
-.planner-auto__input--once { flex: 0 0 200px; }
-.planner-auto__input--cron { flex: 1 1 160px; min-width: 120px; }
-.planner-auto__dropdown { min-width: 148px; }
-
-.planner-auto__error {
-  font-size: var(--px-text-sm);
-  color: var(--px-danger);
-  padding: var(--px-space-1) 0;
-}
-
-.planner-auto__form-foot {
-  display: flex;
-  align-items: center;
-  gap: var(--px-space-2);
-  margin-top: var(--px-space-3);
-}
+.planner-sched__toggle input { margin: 0; width: 14px; height: 14px; accent-color: var(--px-accent); }
+.planner-sched__note { font-size: var(--px-text-sm); color: var(--px-text-muted); padding: var(--px-space-3) 0; }

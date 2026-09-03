@@ -35,6 +35,7 @@ import { openAppearanceDrawer } from './appearanceDrawer.js';
 import { openWidgetSettingsDrawer } from './settingsDrawer.js';
 import { IDatabaseService } from '../../services/serviceTypes.js';
 import { registerBuiltInDashboardWidgets } from './widgets/builtInWidgets.js';
+import { IActivityJournalService } from '../../services/activityJournalService.js';
 
 // ─── Minimal Parallx API surface (kept narrow on purpose) ────────────────────
 
@@ -134,6 +135,9 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       commands: api.commands,
       window: api.window,
       services: api.services,
+      activity: api.services.has(IActivityJournalService)
+        ? { note: (n) => api.services.get<import('../../services/activityJournalService.js').IActivityJournalService>(IActivityJournalService).note(n as never) }
+        : undefined,
     },
   );
   context.subscriptions.push(

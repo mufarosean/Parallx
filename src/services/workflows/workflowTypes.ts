@@ -143,7 +143,7 @@ export interface WorkflowEdge {
  */
 export type WorkflowClass = 'quiet' | 'attention' | 'destructive';
 
-export type WorkflowSource = 'user' | 'stock' | 'migrated-cron';
+export type WorkflowSource = 'user' | 'stock' | 'migrated-cron' | 'suggested';
 
 export interface WorkflowDoc {
   readonly id: string;
@@ -158,6 +158,8 @@ export interface WorkflowDoc {
   readonly updatedAt: number;
   /** For migrated-cron workflows: the cron job this replaced. */
   readonly migratedFromCronId?: string;
+  /** For suggested workflows: the habit action that produced it (dedupe key). */
+  readonly suggestedFrom?: string;
   /** Arbiter: firing order when several come due together (higher first). */
   readonly priority?: number;
   /** Arbiter: workflows sharing a group never run concurrently — the

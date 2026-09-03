@@ -45,6 +45,10 @@ interface DashboardEditorInput {
 }
 
 interface DashboardApiSurface {
+  /** The activity journal: the dashboard narrates the user's own widget work. */
+  activity?: {
+    note(n: { actor?: 'user' | 'ai' | 'system'; source: string; verb: string; object: string; detail?: string; ref?: string }): void;
+  };
   editors: {
     openFileEditor?(uri: string, options?: { pinned?: boolean }): Promise<void>;
     focusEditor?(editorId: string): Promise<boolean>;
@@ -263,6 +267,7 @@ class DashboardEditorPane implements IDisposable {
 
     const addBtn = el('button', 'dashboard-btn dashboard-btn--primary');
     addBtn.type = 'button';
+    addBtn.dataset.activity = 'Add Widget';
     addBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Add widget</span>';
     addBtn.addEventListener('click', () => void this._openWidgetPicker());
     actions.appendChild(addBtn);
@@ -1028,6 +1033,9 @@ class DashboardEditorPane implements IDisposable {
   // ── Remove ─────────────────────────────────────────────────────────────
 
   private async _removeWidget(widgetId: string): Promise<void> {
+    const inst = this._instances.get(widgetId);
+    const typeName = inst ? this._registry.getWidgetType(inst.row.widgetTypeId)?.displayName : undefined;
+    this._note('removed', `widget "${typeName ?? widgetId}"`, 'from the dashboard');
     await this._data.removeWidget(widgetId);
     this._scheduler.cancel(widgetId);
   }
@@ -1185,8 +1193,16 @@ class DashboardEditorPane implements IDisposable {
 
   // ── Placement helper ───────────────────────────────────────────────────
 
+  /** The dashboard's own narration, at the gesture. */
+  private _note(verb: string, object: string, detail?: string): void {
+    try {
+      this._api.activity?.note({ actor: 'user', source: 'dashboard', verb, object, detail, ref: `dashboard:${this._pageId}` });
+    } catch { /* narration never breaks the gesture */ }
+  }
+
   private async _addWidgetOfType(reg: WidgetTypeRegistration<unknown>): Promise<void> {
     const placement = await this._nextPlacement(reg.defaultSize);
+    this._note('added', `widget "${reg.displayName}"`, 'to the dashboard');
     await this._data.createWidget({
       pageId: this._pageId,
       widgetTypeId: reg.typeId,
@@ -1297,6 +1313,7 @@ class DashboardEditorPane implements IDisposable {
           try {
             await this._data.updateWidgetPlacement(widgetId, lastTarget);
             inst.row = { ...inst.row, placement: lastTarget };
+            this._note('moved', `widget "${this._registry.getWidgetType(inst.row.widgetTypeId)?.displayName ?? widgetId}"`, `to column ${lastTarget.col + 1}, row ${lastTarget.row + 1}`);
           } catch (err) {
             console.warn('[Dashboard] commit placement failed:', err);
           }
@@ -1412,6 +1429,7 @@ class DashboardEditorPane implements IDisposable {
           try {
             await this._data.updateWidgetPlacement(widgetId, lastTarget);
             inst.row = { ...inst.row, placement: lastTarget };
+            this._note('resized', `widget "${this._registry.getWidgetType(inst.row.widgetTypeId)?.displayName ?? widgetId}"`, `to ${lastTarget.colSpan}×${lastTarget.rowSpan}`);
           } catch (err) {
             console.warn('[Dashboard] commit resize failed:', err);
             // Revert to the original placement on failure.

@@ -130,6 +130,8 @@ import { SelectionActionDispatcher } from '../../services/selectionActionDispatc
 import { createBuiltInActionHandlers } from '../../services/selectionActionHandlers.js';
 import { ChatProgrammaticAccess } from './chatProgrammaticAccess.js';
 import type { IChatSelectionAttachment, ICanvasBlockReferencePayload } from '../../services/selectionActionTypes.js';
+import type { IHabitReading } from '../../openclaw/mind/habitDetector.js';
+import { habitToWorkflow } from '../../services/workflows/workflowSuggestions.js';
 
 // ── Local API type — only the subset we use ──
 
@@ -831,6 +833,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     agentPolicyService: agentPolicyService ?? undefined,
     agentTaskStore: agentTaskStore ?? undefined,
     openFileEditor: (uri, opts) => api.editors.openFileEditor(uri, opts),
+    openLink: (uri: string) => api.links.open(uri),
     notifyWarning: (message: string) => { void api.window.showWarningMessage(message); },
   });
 
@@ -2636,11 +2639,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
             void (async () => {
               await mind.observeAction(action, Date.now());
               for (const h of await drainHabitProposalsIfViable(mind)) {
-                heartbeatRunner.pushEvent({
-                  type: 'habit-confirmed',
-                  payload: { action: h.action, typicalTime: h.typicalTime, cron: cronForMinuteOfDay(h.typicalMinuteOfDay ?? 0) },
-                  timestamp: Date.now(),
-                });
+                proposeHabit(h);
               }
             })();
           }
@@ -2660,10 +2659,37 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     // doesn't. Drain only when a heartbeat tick can actually surface it;
     // otherwise the habit stays un-proposed and the next gesture after the
     // user enables heartbeat drains it naturally.
+    const getWorkflowServiceForHabits = (): WorkflowService | null =>
+      api.services.has(IWorkflowService) ? api.services.get<WorkflowService>(IWorkflowService) : null;
     const drainHabitProposalsIfViable = async (mind: MindService) => {
-      const viable = unifiedConfigService.getEffectiveConfig().heartbeat.enabled
-        && !autonomyFlags.isEnabled(FLAG_PAUSED_GLOBAL);
+      // A workflow suggestion needs no heartbeat: it waits in the Workflows
+      // panel until the user decides. Only the chat-offer fallback does.
+      const viable = getWorkflowServiceForHabits() !== null
+        || (unifiedConfigService.getEffectiveConfig().heartbeat.enabled
+          && !autonomyFlags.isEnabled(FLAG_PAUSED_GLOBAL));
       return viable ? mind.takePendingHabitProposals(Date.now()) : [];
+    };
+    // A confirmed habit becomes a SUGGESTED WORKFLOW (disabled, source
+    // 'suggested') the user approves or dismisses in the Workflows panel —
+    // never a chat offer to deliver later, never a planner task nobody asked
+    // for. The heartbeat offer remains only as the fallback when the workflow
+    // service is absent. Same habit, one suggestion, ever (suggestedFrom).
+    const proposeHabit = (h: IHabitReading): void => {
+      const workflows = getWorkflowServiceForHabits();
+      if (workflows) {
+        if (workflows.workflows.some((w) => w.suggestedFrom === h.action)) return;
+        try {
+          workflows.addWorkflow(habitToWorkflow(h, Date.now()));
+        } catch (err) {
+          console.warn('[Chat] Could not suggest a workflow for a habit:', err);
+        }
+        return;
+      }
+      heartbeatRunner.pushEvent({
+        type: 'habit-confirmed',
+        payload: { action: h.action, typicalTime: h.typicalTime, cron: cronForMinuteOfDay(h.typicalMinuteOfDay ?? 0) },
+        timestamp: Date.now(),
+      });
     };
 
     // The activity journal is the MIND's richest sense: deliberate user
@@ -2693,11 +2719,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
             // confirms from journal observations must not wait for an
             // unrelated bus signal to surface its "Automate it?" decision.
             for (const h of await drainHabitProposalsIfViable(mind)) {
-              heartbeatRunner.pushEvent({
-                type: 'habit-confirmed',
-                payload: { action: h.action, typicalTime: h.typicalTime, cron: cronForMinuteOfDay(h.typicalMinuteOfDay ?? 0) },
-                timestamp: Date.now(),
-              });
+              proposeHabit(h);
             }
           })();
         }),

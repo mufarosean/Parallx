@@ -22,8 +22,7 @@ import type {
   IChatPendingRequest,
   ChatMode,
   IChatEditProposalContent,
-  ToolPermissionLevel,
-} from '../../services/chatTypes.js';
+  ToolPermissionLevel, IChatImageAttachment } from '../../services/chatTypes.js';
 import type {
   AgentApprovalRequest,
   AgentApprovalResolution,
@@ -434,6 +433,10 @@ export interface IChatWidgetServices {
   readonly setContextLengthOverride?: (contextWindow: number) => void;
   readonly openFile?: (fullPath: string) => void;
   readonly openPage?: (pageId: string) => void;
+  /** Open a page and reveal one block in it (a canvas-block attachment). */
+  readonly openCanvasBlock?: (pageId: string, blockId: string) => void;
+  /** Open an image attachment in the image viewer (file-backed or pasted). */
+  readonly openImage?: (attachment: IChatImageAttachment) => void;
   readonly openMemory?: (sessionId: string) => void;
   readonly getSystemPrompt?: () => Promise<string>;
   readonly readFileRelative?: (relativePath: string) => Promise<string | null>;

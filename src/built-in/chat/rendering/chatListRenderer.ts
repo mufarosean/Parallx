@@ -12,12 +12,13 @@
 //   src/vs/workbench/contrib/chat/browser/chatListRenderer.ts
 
 import { Disposable } from '../../../platform/lifecycle.js';
-import { $, attachPopupDismiss } from '../../../ui/dom.js';
+import { $ } from '../../../ui/dom.js';
 import { renderContentPart, createAgentPresence } from './chatContentParts.js';
 import type { ChatPartElement } from './chatContentParts.js';
 import { chatIcons } from '../chatIcons.js';
 import { getFileTypeIcon } from '../../../ui/iconRegistry.js';
 import { isChatImageAttachment, isChatSelectionAttachment, isChatCanvasBlockAttachment } from '../../../services/chatTypes.js';
+import type { IChatImageAttachment } from '../../../services/chatTypes.js';
 import type {
   IChatRequestResponsePair,
   IChatAssistantResponse,
@@ -29,6 +30,7 @@ import type {
 } from '../../../services/chatTypes.js';
 import { ChatContentPartKind } from '../../../services/chatTypes.js';
 import type { OpenAttachmentHandler, RegenerateMessageHandler } from '../chatTypes.js';
+import { ContextMenu } from '../../../ui/contextMenu.js';
 
 // OpenAttachmentHandler — now defined in chatTypes.ts (M13 Phase 1)
 export type { OpenAttachmentHandler } from '../chatTypes.js';
@@ -197,10 +199,12 @@ function renderUserSafeMarkdown(text: string, body: HTMLElement, pill?: HTMLElem
 export class ChatListRenderer extends Disposable {
 
   private _onOpenAttachment: OpenAttachmentHandler | undefined;
+  private _onOpenCanvasBlock: ((pageId: string, blockId: string) => void) | undefined;
+  private _onOpenImage: ((attachment: IChatImageAttachment) => void) | undefined;
   private _onRegenerateMessage: RegenerateMessageHandler | undefined;
 
-  /** Active context menu element (if any). */
-  private _contextMenu: HTMLElement | undefined;
+  /** Active context menu (if any). */
+  private _contextMenu: ContextMenu | undefined;
   private _contextMenuCleanup: (() => void) | undefined;
 
   /**
@@ -212,6 +216,16 @@ export class ChatListRenderer extends Disposable {
   /** Set callback for when user clicks an attachment chip in a message. */
   setOpenAttachmentHandler(handler: OpenAttachmentHandler): void {
     this._onOpenAttachment = handler;
+  }
+
+  /** A canvas-block chip opens its page and reveals the block. */
+  setOpenCanvasBlockHandler(handler: (pageId: string, blockId: string) => void): void {
+    this._onOpenCanvasBlock = handler;
+  }
+
+  /** An image chip opens the image in a viewer tab. */
+  setOpenImageHandler(handler: (attachment: IChatImageAttachment) => void): void {
+    this._onOpenImage = handler;
   }
 
   setRegenerateHandler(handler: RegenerateMessageHandler): void {
@@ -237,78 +251,52 @@ export class ChatListRenderer extends Disposable {
       this._dismissContextMenu();
 
       const selection = window.getSelection();
-      const selectedText = selection?.toString() ?? '';
+      const selectedText = selection?.toString().trim() ?? '';
+      const hasSelection = selectedText.length > 0;
 
-      const menu = $('div.parallx-chat-copy-menu');
-
-      // Copy — enabled only when text is selected
-      const copyItem = this._createMenuItem('Copy', chatIcons.copy, !!selectedText, () => {
-        if (selectedText) {
-          navigator.clipboard.writeText(selectedText);
-        }
+      // THE context menu (ui/contextMenu), not a bespoke one: Copy, Copy All,
+      // and the door back into the conversation. "Ask Parallx About This"
+      // attaches the selected part of a reply as context and focuses the
+      // composer, so a follow-up can point at exactly the sentence it means.
+      const menu = ContextMenu.show({
+        anchor: { x: e.clientX, y: e.clientY },
+        className: 'parallx-chat-copy-menu',
+        items: [
+          { id: 'copy', label: 'Copy', group: '1', order: 1, disabled: !hasSelection },
+          { id: 'copy-all', label: 'Copy All', group: '1', order: 2 },
+          { id: 'ask', label: 'Ask Parallx About This', group: '2', order: 1, disabled: !hasSelection,
+            renderIcon: (host) => { host.innerHTML = chatIcons.sparkle; } },
+        ],
       });
-      menu.appendChild(copyItem);
-
-      // Copy All — copies the entire message block
-      const copyAllItem = this._createMenuItem('Copy All', chatIcons.copy, true, () => {
-        navigator.clipboard.writeText(messageBody.innerText);
-      });
-      menu.appendChild(copyAllItem);
-
-      // Position near the click
-      menu.style.left = `${e.clientX}px`;
-      menu.style.top = `${e.clientY}px`;
-      document.body.appendChild(menu);
       this._contextMenu = menu;
-
-      // Adjust if overflowing viewport
-      requestAnimationFrame(() => {
-        const rect = menu.getBoundingClientRect();
-        if (rect.right > window.innerWidth) {
-          menu.style.left = `${window.innerWidth - rect.width - 4}px`;
+      menu.onDidSelect(({ item }) => {
+        if (item.id === 'copy') {
+          if (hasSelection) void navigator.clipboard.writeText(selectedText);
+        } else if (item.id === 'copy-all') {
+          void navigator.clipboard.writeText(messageBody.innerText);
+        } else if (item.id === 'ask' && hasSelection) {
+          document.dispatchEvent(new CustomEvent('parallx-selection-action', {
+            bubbles: true,
+            detail: {
+              actionId: 'add-to-chat',
+              selectedText,
+              surface: 'chat',
+              source: { fileName: 'Parallx reply', filePath: 'chat:reply' },
+            },
+          }));
         }
-        if (rect.bottom > window.innerHeight) {
-          menu.style.top = `${window.innerHeight - rect.height - 4}px`;
-        }
+        this._dismissContextMenu();
       });
-
-      // Dismissal contract (Escape, outside pointer, window blur).
-      this._contextMenuCleanup = attachPopupDismiss(menu, () => this._dismissContextMenu());
+      menu.onDidDismiss?.(() => { if (this._contextMenu === menu) this._contextMenu = undefined; });
     });
   }
 
-  /** Create a single menu item. */
-  private _createMenuItem(label: string, icon: string, enabled: boolean, action: () => void): HTMLElement {
-    const item = $('div.parallx-chat-copy-menu-item');
-    if (!enabled) {
-      item.classList.add('parallx-chat-copy-menu-item--disabled');
-    }
-
-    const iconEl = document.createElement('span');
-    iconEl.className = 'parallx-chat-copy-menu-item-icon';
-    iconEl.innerHTML = icon;
-    item.appendChild(iconEl);
-
-    const labelEl = document.createElement('span');
-    labelEl.textContent = label;
-    item.appendChild(labelEl);
-
-    if (enabled) {
-      item.addEventListener('click', () => {
-        action();
-        this._dismissContextMenu();
-      });
-    }
-
-    return item;
-  }
-
-  /** Remove the context menu from DOM. */
+  /** Dismiss the open context menu, if any. */
   private _dismissContextMenu(): void {
     this._contextMenuCleanup?.();
     this._contextMenuCleanup = undefined;
     if (this._contextMenu) {
-      this._contextMenu.remove();
+      this._contextMenu.dispose();
       this._contextMenu = undefined;
     }
   }
@@ -683,7 +671,11 @@ export class ChatListRenderer extends Disposable {
           source.textContent = attachment.pageTitle ? `· ${attachment.pageTitle}` : '· canvas block';
           chip.appendChild(source);
 
-          chip.title = `Live reference to a ${attachment.blockType ?? 'block'}${attachment.pageTitle ? ` on "${attachment.pageTitle}"` : ''}. The AI reads its current content and can edit it.`;
+          chip.title = `Live reference to a ${attachment.blockType ?? 'block'}${attachment.pageTitle ? ` on "${attachment.pageTitle}"` : ''}. Click to open the page at this block.`;
+          chip.setAttribute('role', 'button');
+          chip.addEventListener('click', () => {
+            this._onOpenCanvasBlock?.(attachment.pageId, attachment.blockId);
+          });
         } else if (isChatImageAttachment(attachment)) {
           chip.classList.add('parallx-chat-message-attachment-chip--image');
 
@@ -703,6 +695,11 @@ export class ChatListRenderer extends Disposable {
           const label = document.createElement('span');
           label.textContent = attachment.name;
           chip.appendChild(label);
+          chip.title = `${attachment.name}. Click to open.`;
+          chip.setAttribute('role', 'button');
+          chip.addEventListener('click', () => {
+            this._onOpenImage?.(attachment);
+          });
         } else {
           // File attachment — use extension-aware colored icon (matches input area)
           const icon = document.createElement('span');

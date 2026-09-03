@@ -237,6 +237,19 @@ export abstract class Layout extends Disposable {
    */
   private _suspendTracking = false;
 
+  /** Fires (debounced) after the USER drags a sash to a new size. */
+  private readonly _onDidUserResizePart = this._register(new Emitter<{ part: string; size: number }>());
+  readonly onDidUserResizePart: Event<{ part: string; size: number }> = this._onDidUserResizePart.event;
+  private _userResizeTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private _announceUserResize(part: string, size: number): void {
+    const prev = this._userResizeTimers.get(part);
+    if (prev) clearTimeout(prev);
+    this._userResizeTimers.set(part, setTimeout(() => {
+      this._userResizeTimers.delete(part);
+      this._onDidUserResizePart.fire({ part, size });
+    }, 500));
+  }
+
   /** Signature of the display the window was last laid out on. */
   private _screenSignature = '';
 
@@ -636,7 +649,10 @@ export abstract class Layout extends Disposable {
       if (this._suspendTracking) return;
       if (this._sidebar.visible) {
         const w = this._grid.getViewSize(this._sidebar.id);
-        if (w !== undefined && w > 0) this._lastSidebarWidth = w;
+        if (w !== undefined && w > 0) {
+          if (this._lastSidebarWidth !== w) this._announceUserResize('the sidebar', w);
+          this._lastSidebarWidth = w;
+        }
       }
       if (this._panel.visible) {
         if (this._panelMaximized) {
@@ -644,11 +660,17 @@ export abstract class Layout extends Disposable {
           this._onDidChangePanelMaximized.fire(false);
         }
         const h = this._grid.getViewSize(this._panel.id);
-        if (h !== undefined && h > 0) this._lastPanelHeight = h;
+        if (h !== undefined && h > 0) {
+          if (this._lastPanelHeight !== h) this._announceUserResize('the panel', h);
+          this._lastPanelHeight = h;
+        }
       }
       if (this._auxBarVisible) {
         const w = this._grid.getViewSize(this._auxiliaryBar.id);
-        if (w !== undefined && w > 0) this._lastAuxBarWidth = w;
+        if (w !== undefined && w > 0) {
+          if (this._lastAuxBarWidth !== w) this._announceUserResize('the side panel', w);
+          this._lastAuxBarWidth = w;
+        }
       }
     }));
 

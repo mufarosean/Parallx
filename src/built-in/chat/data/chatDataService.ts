@@ -45,6 +45,7 @@ import type { IAgentApprovalService, IAgentExecutionService, IAgentPolicyService
 import type { IUnifiedAIConfigService } from '../../../aiSettings/unifiedConfigTypes.js';
 import type { ILanguageModelsService, IChatService, IChatModeService, ILanguageModelToolsService } from '../../../services/chatTypes.js';
 import type { ISummarizationRequestOptions } from '../chatTypes.js';
+import type { IChatImageAttachment } from '../../../services/chatTypes.js';
 import type { ILanguageModelToolsRuntimeControl } from '../../../services/languageModelToolsService.js';
 import type { OllamaProvider } from '../providers/ollamaProvider.js';
 import type { PromptFileService } from '../../../services/promptFileService.js';
@@ -62,7 +63,7 @@ import { buildChatWidgetRequestServices } from '../utilities/chatWidgetRequestAd
 import { buildChatWidgetSessionServices } from '../utilities/chatWidgetSessionAdapter.js';
 
 import { buildChatTokenBarServices } from '../utilities/chatTokenBarAdapter.js';
-import { openChatFile, openChatMemoryViewer } from '../utilities/chatViewerOpeners.js';
+import { openChatFile, openChatImage, openChatMemoryViewer } from '../utilities/chatViewerOpeners.js';
 import { computeChatWorkspaceDigest } from '../utilities/chatWorkspaceDigest.js';
 
 function resolveMemoryRecallScope(query: string): {
@@ -159,6 +160,8 @@ export interface ChatDataServiceDeps {
   readonly agentTaskStore?: IAgentTaskStore;
   /** Open a file in the editor via the standard EditorsBridge resolver (same as explorer). */
   readonly openFileEditor?: (uri: string, options?: { pinned?: boolean }) => Promise<void>;
+  /** Open a parallx:// link (canvas block reveal rides the link contract). */
+  readonly openLink?: (uri: string) => Promise<boolean>;
   /** Surface a user-visible warning toast (attachment failures must never be silent). */
   readonly notifyWarning?: (message: string) => void;
 }
@@ -2058,6 +2061,24 @@ export class ChatDataService {
         : undefined,
       openPage: this._d.openPage
         ? (pageId: string) => { this._d.openPage!(pageId); }
+        : undefined,
+      // A canvas-block attachment reveals its exact block through the link
+      // contract (parallx://canvas/page/<id>?block=<id>) when the page still
+      // exists; the canvas scrolls to it and flashes it.
+      openCanvasBlock: this._d.openLink
+        ? (pageId: string, blockId: string) => {
+            void this._d.openLink!(`parallx://canvas/page/${encodeURIComponent(pageId)}?block=${encodeURIComponent(blockId)}`)
+              .then((ok) => { if (!ok) this._d.notifyWarning?.('That page no longer exists.'); })
+              .catch(() => this._d.notifyWarning?.('That page could not be opened.'));
+          }
+        : undefined,
+      openImage: (this._d.editorService || this._d.openFileEditor)
+        ? (attachment: IChatImageAttachment) => openChatImage({
+            attachment,
+            workspaceFolders: this._d.workspaceService?.folders,
+            openFileEditor: this._d.openFileEditor,
+            editorService: this._d.editorService ?? undefined,
+          })
         : undefined,
       openMemory: ((this._d.workspaceMemoryService && this._d.openFileEditor) || (this._d.memoryService && this._d.editorService))
         ? (sessionId: string) => {

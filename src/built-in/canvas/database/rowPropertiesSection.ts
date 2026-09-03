@@ -233,7 +233,7 @@ export async function mountRowPropertiesSection(
 
   /** Read-only created/modified rows (from the page row — no DB writes). */
   const createTimestampRow = (key: 'created' | 'modified', iso: string | undefined): HTMLElement => {
-    const { row, value } = buildRowShell(key, 'datetime', key);
+    const { row, value } = buildRowShell(key, 'datetime', key === 'created' ? 'Created' : 'Modified');
     const display = document.createElement('span');
     display.className = 'canvas-prop-date-trigger';
     display.style.pointerEvents = 'none';

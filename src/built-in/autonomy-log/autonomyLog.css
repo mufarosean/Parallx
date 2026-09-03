@@ -865,3 +865,24 @@
   fill: color-mix(in srgb, var(--px-success, var(--px-accent)) 22%, var(--px-bg-elevated));
   stroke: var(--px-success, var(--px-accent));
 }
+
+
+/* ── Suggested workflows (habits the AI drafted; approve or dismiss) ── */
+.wf-suggested {
+  margin: var(--px-space-2) 0 var(--px-space-3);
+  padding: var(--px-space-3);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-md);
+  background: var(--px-bg-elevated);
+}
+.wf-suggested__head {
+  font-size: var(--px-text-sm);
+  font-weight: 600;
+  color: var(--px-text);
+}
+.wf-suggested__sub {
+  font-size: var(--px-text-xs);
+  color: var(--px-text-muted);
+  margin: 2px 0 var(--px-space-2);
+}
+.wf-row--suggested .wf-row__kind-ic { color: var(--px-accent); }

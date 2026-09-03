@@ -13,7 +13,7 @@ import { googleSync } from './sync/googleClient.js';
 import { takePendingPlannerTab } from './plannerNavState.js';
 import { buildSimpleRRule, describeRRule, rruleToPreset } from './plannerRecurrence.js';
 import { packLanes } from './plannerLayout.js';
-import { PlannerAutomationsController, type CronServiceLike } from './plannerAutomations.js';
+import { PlannerScheduledController, type WorkflowServiceLike } from './plannerScheduled.js';
 import { Dropdown, type IDropdownItem } from '../../ui/dropdown.js';
 import { getIcon } from '../../ui/iconRegistry.js';
 
@@ -45,10 +45,14 @@ interface PlannerEditorApi {
     showWarningMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
     showErrorMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
   };
-  /** M93 — lazy handle to the workspace cron service for the Automations tab.
-   *  Null until the chat built-in has registered it (activation order). */
-  cron?: {
-    get(): CronServiceLike | null;
+  /** Lazy handle to the workflow service for the Scheduled tab. Null until
+   *  the autonomy bootstrap has registered it (activation order). */
+  workflows?: {
+    get(): WorkflowServiceLike | null;
+  };
+  /** The activity journal: the planner narrates the user's own task work. */
+  activity?: {
+    note(n: { actor?: 'user' | 'ai' | 'system'; source: string; verb: string; object: string; detail?: string; ref?: string }): void;
   };
   /** M98 — lazy snapshot of registered day-load providers (generic seam:
    *  extensions decorate calendar days with per-day workload badges).
@@ -65,7 +69,7 @@ export interface IDayLoadProviderLike {
   onDidChange?(listener: () => void): { dispose(): void };
 }
 
-type Tab = 'tasks' | 'calendar' | 'automations';
+type Tab = 'tasks' | 'calendar' | 'scheduled';
 type CalendarView = 'month' | 'week' | 'day';
 
 const PLANNER_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="m9 16 2 2 4-4"/></svg>';
@@ -239,7 +243,8 @@ class PlannerEditorPane implements IDisposable {
     const vs = this._api.viewState;
     if (vs) {
       const savedTab = vs.get<string>('planner.activeTab', 'tasks');
-      if (savedTab === 'tasks' || savedTab === 'calendar' || savedTab === 'automations') this._activeTab = savedTab;
+      if (savedTab === 'tasks' || savedTab === 'calendar' || savedTab === 'scheduled') this._activeTab = savedTab;
+      else if (savedTab === 'automations') this._activeTab = 'scheduled'; // the retired tab's saved state
       const savedView = vs.get<string>('planner.calendarView', 'month');
       if (savedView === 'month' || savedView === 'week' || savedView === 'day') {
         this._calendarView = savedView;
@@ -293,7 +298,7 @@ class PlannerEditorPane implements IDisposable {
     const onFocusTab = (e: Event) => {
       if (!this._root?.isConnected) return;
       const tab = (e as CustomEvent<{ tab?: Tab }>).detail?.tab;
-      if (tab === 'tasks' || tab === 'calendar' || tab === 'automations') this._setTab(tab);
+      if (tab === 'tasks' || tab === 'calendar' || tab === 'scheduled') this._setTab(tab);
     };
     document.addEventListener('parallx.planner.focusTab', onFocusTab);
 
@@ -423,7 +428,7 @@ class PlannerEditorPane implements IDisposable {
     const tabsConfig: { key: Tab; label: string; icon: string }[] = [
       { key: 'tasks',    label: 'Tasks',    icon: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></svg>' },
       { key: 'calendar', label: 'Calendar', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>' },
-      { key: 'automations', label: 'Automations', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>' },
+      { key: 'scheduled', label: 'Scheduled', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h5"/><circle cx="17" cy="17" r="4"/><path d="M17 15.5V17l1 1"/></svg>' },
     ];
     for (const t of tabsConfig) {
       const tab = el('button', 'planner-pane__tab');
@@ -523,8 +528,8 @@ class PlannerEditorPane implements IDisposable {
 
     if (this._activeTab === 'tasks') {
       await this._renderTasksTab(nextBody, nextActions);
-    } else if (this._activeTab === 'automations') {
-      await this._renderAutomationsTab(nextBody, nextActions);
+    } else if (this._activeTab === 'scheduled') {
+      await this._renderScheduledTab(nextBody, nextActions);
     } else {
       await this._renderCalendarTab(nextBody, nextActions);
     }
@@ -536,19 +541,19 @@ class PlannerEditorPane implements IDisposable {
 
   // ── Automations tab (M93) ────────────────────────────────────────────
 
-  private _automations: PlannerAutomationsController | null = null;
+  private _scheduled: PlannerScheduledController | null = null;
 
-  private async _renderAutomationsTab(body: HTMLElement, actions: HTMLElement): Promise<void> {
-    if (!this._automations) {
-      this._automations = new PlannerAutomationsController({
-        getCron: () => this._api.cron?.get() ?? null,
-        settings: this._data,
-        window: this._api.window,
-        isActive: () => !this._disposed && this._activeTab === 'automations',
+  private async _renderScheduledTab(body: HTMLElement, actions: HTMLElement): Promise<void> {
+    if (!this._scheduled) {
+      this._scheduled = new PlannerScheduledController({
+        getWorkflows: () => this._api.workflows?.get() ?? null,
+        commands: this._api.commands,
+        isActive: () => !this._disposed && this._activeTab === 'scheduled',
+        viewState: this._api.viewState,
       });
-      this._disposables.push(this._automations);
+      this._disposables.push(this._scheduled);
     }
-    await this._automations.render(body, actions);
+    await this._scheduled.render(body, actions);
   }
 
   // ── Tasks tab ────────────────────────────────────────────────────────
@@ -725,6 +730,7 @@ class PlannerEditorPane implements IDisposable {
         ? '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>'
         : '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg>';
       void this._data.updateTask(task.id, { status: next });
+      this._note(next === 'done' ? 'completed' : 'reopened', `task "${task.title}"`, task.id);
     });
     row.appendChild(checkbox);
 
@@ -766,7 +772,10 @@ class PlannerEditorPane implements IDisposable {
       planBtn.type = 'button';
       planBtn.title = 'Confirm date and promote to planned';
       planBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12l5 5L20 7"/></svg>';
-      planBtn.addEventListener('click', () => void this._data.updateTask(task.id, { status: 'planned' }));
+      planBtn.addEventListener('click', () => {
+        void this._data.updateTask(task.id, { status: 'planned' });
+        this._note('planned', `task "${task.title}"`, task.id);
+      });
       right.appendChild(planBtn);
     }
 
@@ -792,9 +801,13 @@ class PlannerEditorPane implements IDisposable {
 
     const items: { label: string; action: () => void; danger?: boolean }[] = [
       { label: 'Edit Task',      action: () => this._openTaskPopover({ mode: 'edit', task }, anchor) },
-      { label: task.status === 'reviewing' ? 'Move to planned' : 'Move to review', action: () => void this._data.updateTask(task.id, { status: task.status === 'reviewing' ? 'planned' : 'reviewing' }) },
-      { label: 'Cancel Task',    action: () => void this._data.updateTask(task.id, { status: 'cancelled' }), danger: true },
-      { label: 'Delete Forever', action: () => void this._data.removeTask(task.id), danger: true },
+      { label: task.status === 'reviewing' ? 'Move to Planned' : 'Move to Review', action: () => {
+        const to = task.status === 'reviewing' ? 'planned' : 'reviewing';
+        void this._data.updateTask(task.id, { status: to });
+        this._note('moved', `task "${task.title}"`, task.id, `to ${to}`);
+      } },
+      { label: 'Cancel Task',    action: () => { void this._data.updateTask(task.id, { status: 'cancelled' }); this._note('cancelled', `task "${task.title}"`, task.id); }, danger: true },
+      { label: 'Delete Forever', action: () => { void this._data.removeTask(task.id); this._note('deleted', `task "${task.title}"`, task.id); }, danger: true },
     ];
     for (const it of items) {
       const btn = el('button', 'planner-menu__item');
@@ -1224,7 +1237,15 @@ class PlannerEditorPane implements IDisposable {
    * occurrence prompts the this/following/all scope and routes accordingly.
    * A cancelled prompt re-renders so the dragged bar snaps back.
    */
+  /** The planner's own narration: the user's task gestures, at the gesture. */
+  private _note(verb: string, object: string, taskId?: string, detail?: string): void {
+    try {
+      this._api.activity?.note({ actor: 'user', source: 'planner', verb, object, detail, ref: taskId ? `task:${taskId}` : undefined });
+    } catch { /* narration never breaks the gesture */ }
+  }
+
   private async _commitEventMove(ev: PlannerEvent, patch: UpdateEventInput, anchor: DOMRect): Promise<void> {
+    this._note('moved', `event "${ev.title}"`, undefined, undefined);
     if (ev.seriesId) {
       const scope = await this._askSeriesScope('edit', anchor);
       if (!scope) { void this._renderTab(); return; }
@@ -2451,7 +2472,9 @@ class PlannerEditorPane implements IDisposable {
             tags,
             calendarId: calSelect.value || null,
           });
+          this._note('edited', `task "${title}"`, seed.taskId);
         } else {
+          this._note('created', `task "${title}"`);
           await this._data.createTask({
             title,
             description,

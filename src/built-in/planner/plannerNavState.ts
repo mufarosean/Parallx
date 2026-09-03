@@ -10,7 +10,7 @@
 // The `focusTab` event is still used for re-clicks while the editor is already
 // open.
 
-export type PlannerTab = 'tasks' | 'calendar' | 'automations';
+export type PlannerTab = 'tasks' | 'calendar' | 'scheduled';
 
 let _pendingTab: PlannerTab | null = null;
 
