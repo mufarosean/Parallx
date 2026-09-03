@@ -21,13 +21,18 @@ program that turned a trimmer into a small editor and the recorder into a camera
 - Hide the cursor (setting) for clean product clips. The cursor path is still
   tracked so Smart Zoom still works.
 - Audio: off, system, microphone, or both mixed into one track.
+- Real timestamps. The capture keeps every frame at its wall-clock instant and the
+  file carries its own start time, so a take always plays at real speed, short takes
+  included, audio lines up from the file rather than a guess, finalize is a plain
+  copy, and files are smaller (no duplicated frames).
 
 **Editing**
 - Segments: several In/Out ranges export as one clip, in list order, with reorder
   and remove. Cut Dead Air finds where the picture froze and the sound went quiet
   inside the range and keeps the rest.
-- Blur or pixelate regions, drawn on the video, limited in time, and optionally
-  following a moving subject with the existing tracker.
+- Blur or pixelate regions, drawn on the video, limited in time. Each region has a
+  Track switch: on, the box follows what is under it through the clip (the existing
+  tracker); off, it stays still. The preview shows a real blur or a real mosaic.
 - Text: title cards, lower thirds and captions with a style, a time window and a
   colour, previewed on the video and burned in on export.
 - Audio finish: fade in, fade out, loudness normalise, denoise.
@@ -62,6 +67,7 @@ extracted verbatim by the unit test and by the ffmpeg probe.
 | Real ffmpeg graphs | `node tests/probes/clip-graph-probe.mjs` | 32/32 |
 | Editor on screen | `node tests/probes/ui-screenshot-probe.mjs <out> clip` | 6 scenes captured, reviewed |
 | Whole suite | `npx vitest run` | green |
+| Recorder timing | hidden 2 s capture through the recorder's own argv + finalize | duration = wall clock within 40 ms |
 
 The recorder changes (countdown, pause, hotkeys, follow, telemetry, mixed audio)
 run in the Electron main process and the frame window, which the hidden probe cannot
@@ -76,7 +82,8 @@ confirm on this machine.
 | 1 Builders | captions, blur graph, audio finish, dead air, smart zoom, follow keys, assembly graph | shipped 98c505c5 |
 | 2 Pipeline | assemble-then-export front door, captions and audio finish in the final pass | shipped |
 | 2 Editor | segments, blur, text, audio & finish, end card, preview render, destinations, reveal/copy | shipped |
-| 3 Recorder | countdown, pause, hotkeys, hide cursor, mic+system, follow the box, cursor telemetry | shipped, needs one real take |
+| 3 Recorder | countdown (opt-in), pause, hotkeys, hide cursor, mic+system, follow the box, cursor telemetry | shipped, needs one real take |
+| 5 Fixes | real-timestamp capture (short takes played fast), app dropdowns everywhere, Track switch on blur regions, real blur and mosaic previews, look previews matched to the export | shipped |
 | 4 Probe | clip scene in the screenshot probe, open-clip-editor command | shipped |
 
 ## Known limits

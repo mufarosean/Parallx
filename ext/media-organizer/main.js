@@ -8035,6 +8035,8 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
 }
 .mo-clip-segrow--wrap { flex-wrap: wrap; }
 .mo-clip-segrow--stack { flex-direction: column; align-items: stretch; gap: 4px; }
+.mo-clip-track { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 11px; white-space: nowrap; }
+.mo-clip-note { font-size: 11px; opacity: 0.7; line-height: 1.35; margin: 0 0 6px; }
 .mo-clip-segline { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .mo-clip-segline .mo-clip-input--grow { flex: 1 1 auto; width: 100%; min-width: 0; }
 .mo-clip-segline .mo-clip-queue-del { margin-left: auto; }
@@ -8066,7 +8068,8 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
   outline: 1px solid rgba(0,0,0,0.5);
   background: rgba(255,255,255,0.04);
 }
-.mo-blur-rect--pixel { background-image: linear-gradient(rgba(255,255,255,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.08) 1px, transparent 1px); background-size: 8px 8px; }
+.mo-blur-rect--pixel { background: transparent; }
+.mo-blur-mosaic { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; pointer-events: none; }
 .mo-blur-rect--off { opacity: 0.35; }
 .mo-blur-rect.mo-active { border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); }
 .mo-blur-handle {
@@ -17964,12 +17967,12 @@ const MO_CLIP_FILTERS = [
   { id: 'dusk',      label: 'Dusk',            vf: 'colorbalance=bs=0.1:rs=-0.05,eq=contrast=1.12:saturation=0.82:brightness=-0.03', css: 'contrast(1.12) saturate(0.82) brightness(0.97) hue-rotate(6deg)' },
   { id: 'neon',      label: 'Neon',            vf: 'colorbalance=rs=0.08:bs=0.14:gh=-0.04,eq=saturation=1.45:contrast=1.1', css: 'saturate(1.5) contrast(1.1) hue-rotate(-6deg)' },
   { id: 'punch',     label: 'Punch (crisp)',   vf: 'unsharp=5:5:0.8,eq=contrast=1.1:saturation=1.12',           css: 'contrast(1.12) saturate(1.15)' },
-  { id: 'pastel',    label: 'Pastel (soft)',   vf: 'colorlevels=romin=0.06:gomin=0.06:bomin=0.06:romax=0.97:gomax=0.97:bomax=0.97,eq=saturation=0.9:gamma=1.06:contrast=0.94', css: 'brightness(1.08) contrast(0.92) saturate(0.92)' },
+  { id: 'pastel',    label: 'Pastel (soft)',   vf: 'colorlevels=romin=0.06:gomin=0.06:bomin=0.06:romax=0.97:gomax=0.97:bomax=0.97,eq=saturation=0.9:gamma=1.06:contrast=0.94', css: 'contrast(0.88) brightness(1.03) saturate(0.9)' },
   { id: 'warm',      label: 'Warm',            vf: 'eq=saturation=1.12:gamma_r=1.07:gamma_b=0.93',              css: 'sepia(0.18) saturate(1.22) hue-rotate(-8deg)' },
   { id: 'cool',      label: 'Cool',            vf: 'eq=saturation=1.08:gamma_b=1.08:gamma_r=0.94',              css: 'saturate(1.08) hue-rotate(9deg) brightness(1.01)' },
   { id: 'vivid',     label: 'Vivid',           vf: 'eq=contrast=1.13:saturation=1.38',                          css: 'contrast(1.13) saturate(1.38)' },
-  { id: 'fade',      label: 'Fade (matte)',    vf: 'colorlevels=romin=0.08:gomin=0.08:bomin=0.08:romax=0.94:gomax=0.94:bomax=0.94,eq=saturation=0.85:contrast=0.92', css: 'contrast(0.88) brightness(1.06) saturate(0.85)' },
-  { id: 'vintage',   label: 'Vintage',         vf: 'colorlevels=romin=0.07:gomin=0.07:bomin=0.07,eq=saturation=0.8:gamma_r=1.06:gamma_b=0.92,vignette', css: 'sepia(0.28) contrast(0.9) brightness(1.05) saturate(0.85)' },
+  { id: 'fade',      label: 'Fade (matte)',    vf: 'colorlevels=romin=0.08:gomin=0.08:bomin=0.08:romax=0.94:gomax=0.94:bomax=0.94,eq=saturation=0.85:contrast=0.92', css: 'contrast(0.84) saturate(0.85)' },
+  { id: 'vintage',   label: 'Vintage',         vf: 'colorlevels=romin=0.07:gomin=0.07:bomin=0.07,eq=saturation=0.8:gamma_r=1.06:gamma_b=0.92,vignette', css: 'contrast(0.86) sepia(0.28) saturate(0.8) brightness(1.02)' },
 ];
 
 /** The ffmpeg vf segment for a preset id ('' when none). */
@@ -19407,6 +19410,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   const blurCount = moEl('span', 'mo-clip-keycount', { textContent: '' });
   blurRow.append(addBlurBtn, blurCount);
   secBlur.appendChild(blurRow);
+  secBlur.appendChild(moEl('div', 'mo-clip-note', { textContent: 'Put the box over what to hide at the current frame. Turn on Track and the box follows it through the clip; leave it off for something that does not move.' }));
   const blurList = moEl('div', 'mo-clip-seglist');
   secBlur.appendChild(blurList);
   let activeBlurId = null;
@@ -19434,6 +19438,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       const line1 = moEl('div', 'mo-clip-segline'); const line2 = moEl('div', 'mo-clip-segline');
       row.append(line1, line2);
       line1.appendChild(modeSel);
+      moBindCustomSelect(modeSel);
       const str = document.createElement('input');
       str.type = 'range'; str.min = '1'; str.max = '10'; str.step = '1'; str.value = String(r.strength);
       str.className = 'mo-clip-slider mo-clip-slider--sm'; str.title = 'Strength';
@@ -19448,16 +19453,32 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       to.placeholder = 'to'; to.title = 'Only until this time (seconds; blank = end)'; to.value = Number.isFinite(r.t1) ? r.t1.toFixed(1) : '';
       to.addEventListener('change', () => { const v = parseFloat(to.value); r.t1 = Number.isFinite(v) ? v : undefined; syncOverlaysToPlayhead(); });
       line2.append(from, to);
-      const follow = moEl('button', 'mo-mark-btn', { textContent: r.keys && r.keys.length >= 2 ? 'Following' : 'Follow', title: 'Track what is under this box across In→Out so the blur moves with it. Click again to clear.' });
-      follow.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (r.keys && r.keys.length >= 2) { delete r.keys; renderBlurRegions(); syncOverlaysToPlayhead(); return; }
-        runAutoTrack({ region: r, btn: follow }).catch((err) => {
+      // Track switch: on = the box follows what is under it (tracker runs
+      // from the current frame across In/Out); off = a still box.
+      const tracked = !!(r.keys && r.keys.length >= 2);
+      const trackWrap = moEl('label', 'mo-clip-track');
+      const trackChk = document.createElement('input');
+      trackChk.type = 'checkbox'; trackChk.className = 'mo-clip-check'; trackChk.checked = tracked;
+      trackChk.title = tracked ? 'Tracking. Turn off to make the box still again.' : 'Turn on to follow what is under the box through the clip.';
+      const trackTxt = moEl('span', 'mo-clip-track-txt', { textContent: tracked ? `Track · ${r.keys.length} keys` : 'Track' });
+      trackWrap.append(trackChk, trackTxt);
+      trackChk.addEventListener('click', (e) => e.stopPropagation());
+      trackChk.addEventListener('change', () => {
+        if (!trackChk.checked) { delete r.keys; renderBlurRegions(); syncOverlaysToPlayhead(); return; }
+        trackChk.disabled = true;
+        trackTxt.textContent = 'Tracking…';
+        // runAutoTrack writes progress into its button; a hidden one keeps
+        // that contract while the switch shows the state.
+        const ghost = moEl('button');
+        runAutoTrack({ region: r, btn: ghost }).then(() => {
+          if (!(r.keys && r.keys.length >= 2)) { trackChk.checked = false; trackChk.disabled = false; trackTxt.textContent = 'Track'; }
+        }).catch((err) => {
+          trackChk.checked = false; trackChk.disabled = false; trackTxt.textContent = 'Track';
           status.textContent = '';
-          api.window.showErrorMessage('Follow failed: ' + (err && err.message || err));
+          api.window.showErrorMessage('Track failed: ' + (err && err.message || err));
         });
       });
-      line2.appendChild(follow);
+      line2.appendChild(trackWrap);
       const del = moEl('button', 'mo-clip-queue-del', { textContent: '✕', title: 'Remove this region' });
       del.addEventListener('click', (e) => { e.stopPropagation(); blurRegions = blurRegions.filter((x) => x !== r); if (activeBlurId === r.id) activeBlurId = null; renderBlurRegions(); syncOverlaysToPlayhead(); });
       line2.appendChild(del);
@@ -19490,7 +19511,25 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       box.style.top = (rect.dy + pos.y * rect.dh) + 'px';
       box.style.width = (r.w * rect.dw) + 'px';
       box.style.height = (r.h * rect.dh) + 'px';
-      box.style.backdropFilter = r.mode === 'pixelate' ? `blur(${2 + r.strength}px) contrast(1.15)` : `blur(${2 + r.strength * 1.5}px)`;
+      if (r.mode === 'pixelate') {
+        // A real mosaic: the covered part of the frame drawn small, scaled
+        // back up with no smoothing (the export's pixelize does the same).
+        box.style.backdropFilter = '';
+        const cv = document.createElement('canvas');
+        cv.className = 'mo-blur-mosaic';
+        const cellsX = Math.max(2, Math.round(24 / Math.max(1, r.strength)));
+        const cellsY = Math.max(2, Math.round(cellsX * (r.h * rect.dh) / Math.max(1, r.w * rect.dw)));
+        cv.width = cellsX; cv.height = cellsY;
+        try {
+          const ctx = cv.getContext('2d');
+          const vw = preview.videoWidth || 1, vh = preview.videoHeight || 1;
+          ctx.imageSmoothingEnabled = true;
+          ctx.drawImage(preview, pos.x * vw, pos.y * vh, r.w * vw, r.h * vh, 0, 0, cellsX, cellsY);
+        } catch { /* frame not ready */ }
+        box.appendChild(cv);
+      } else {
+        box.style.backdropFilter = `blur(${2 + r.strength * 1.5}px)`;
+      }
       box.title = (r.mode === 'pixelate' ? 'Pixelate' : 'Blur') + ' region · drag to move · corner to resize';
       const handle = moEl('div', 'mo-blur-handle');
       box.appendChild(handle);
@@ -19792,6 +19831,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       const line2 = moEl('div', 'mo-clip-segline'); line2.append(styleSel, from, to, color, del);
       row.append(line1, line2);
       capList.appendChild(row);
+      moBindCustomSelect(styleSel);
     }
     try { updateAccordionSummaries(); } catch { /* pre-init */ }
   }
@@ -19832,7 +19872,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   preview.addEventListener('loadedmetadata', syncOverlaysToPlayhead);
   let ovRaf = 0;
   function ovTick() { ovRaf = 0; if (preview.paused || preview.ended) return; syncOverlaysToPlayhead(); ovRaf = requestAnimationFrame(ovTick); }
-  preview.addEventListener('play', () => { if (!ovRaf && (captions.length || blurRegions.some((r) => r.keys))) ovRaf = requestAnimationFrame(ovTick); });
+  preview.addEventListener('play', () => { if (!ovRaf && (captions.length || blurRegions.some((r) => r.keys || r.mode === 'pixelate'))) ovRaf = requestAnimationFrame(ovTick); });
   preview.addEventListener('pause', () => { if (ovRaf) { cancelAnimationFrame(ovRaf); ovRaf = 0; } });
 
   // ── Audio & finish: fades, loudness, denoise, end card, destination ──
@@ -19897,6 +19937,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     { id: 'gif', label: 'Chat GIF', apply: () => { fmtSel.value = 'gif'; fpsSel.value = '15'; ditherSel.value = 'bayer'; autoOptChk.checked = true; autoOptThreshold.value = '8'; const vw = preview.videoWidth || 1280; sizeInput.value = String(Math.max(10, Math.min(100, Math.round((480 / vw) * 100)))); } },
   ];
   for (const d of DESTS) { const o = document.createElement('option'); o.value = d.id; o.textContent = d.label; destSel.appendChild(o); }
+  moBindCustomSelect(destSel);
   destSel.addEventListener('change', () => {
     const d = DESTS.find((x) => x.id === destSel.value);
     if (d && d.apply) {
@@ -21584,6 +21625,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
           updateQueueTotal();
         });
         row.appendChild(fmtRowSel);
+        moBindCustomSelect(fmtRowSel);
         // Duplicate
         const dup = moEl('button', 'mo-clip-queue-dup', { textContent: '\u29c9', title: 'Duplicate this clip' });
         dup.addEventListener('click', (e) => {

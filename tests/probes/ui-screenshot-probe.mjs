@@ -286,7 +286,18 @@ async function main() {
         await clickBtn('Add Segment');
         await shot(page, 'clip-segments'); await stageState('clip-segments');
         // Blur: one region on the stage.
-        if (await openSection('Blur')) { await clickBtn('Blur Region'); await shot(page, 'clip-blur'); await stageState('clip-blur'); }
+        if (await openSection('Blur')) {
+          await clickBtn('Blur Region');
+          await page.evaluate(() => { const v = document.querySelector('.mo-clip-page video'); if (v) v.pause(); });
+          await page.waitForTimeout(300);
+          const d = await page.evaluate(() => { const b = document.querySelector('.mo-blur-rect'); if (!b) return 'none'; const r = b.getBoundingClientRect(); return `${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)}x${Math.round(r.height)} t=${document.querySelector('.mo-clip-page video')?.currentTime}`; });
+          console.log(`[probe] clip blur rect: ${d}`);
+          await shot(page, 'clip-blur'); await stageState('clip-blur');
+          // The same frame with the box hidden, for a pixel comparison.
+          await page.evaluate(() => { document.querySelector('.mo-blur-layer').style.visibility = 'hidden'; });
+          await shot(page, 'clip-blur-ref');
+          await page.evaluate(() => { document.querySelector('.mo-blur-layer').style.visibility = ''; });
+        }
         // Text: one caption.
         if (await openSection('Text')) {
           await clickBtn('+ Text');
@@ -302,6 +313,68 @@ async function main() {
           });
           await page.waitForTimeout(600);
           await shot(page, 'clip-text'); await stageState('clip-text');
+        }
+        // Look: a filter must change the preview; Preview Render must produce a
+        // real rendered clip over the stage.
+        if (await openSection('Look')) {
+          const before = await page.evaluate(() => getComputedStyle(document.querySelector('.mo-clip-page video')).filter);
+          await page.evaluate(() => {
+            const sel = Array.from(document.querySelectorAll('.mo-clip-page select')).find((s) => Array.from(s.options).some((o) => o.value === 'vivid'));
+            if (sel) { sel.value = 'vivid'; sel.dispatchEvent(new Event('change', { bubbles: true })); }
+          });
+          await page.waitForTimeout(400);
+          const after = await page.evaluate(() => getComputedStyle(document.querySelector('.mo-clip-page video')).filter);
+          console.log(`[probe] clip filter preview: before="${before}" after="${after}"`);
+          await shot(page, 'clip-look');
+          if (await clickBtn('Preview Render')) {
+            const t0 = Date.now();
+            let rendered = 'timeout';
+            while (Date.now() - t0 < 40_000) {
+              const st = await page.evaluate(() => ({
+                overlay: !!document.querySelector('.mo-render-preview video'),
+                status: document.querySelector('.mo-clip-status')?.textContent || '',
+              }));
+              if (st.overlay) { rendered = 'overlay video present'; break; }
+              if (/fail|error|could not/i.test(st.status)) { rendered = 'status: ' + st.status; break; }
+              await page.waitForTimeout(500);
+            }
+            console.log(`[probe] clip preview render: ${rendered} (${Math.round((Date.now() - t0) / 1000)}s)`);
+            await shot(page, 'clip-render');
+            await page.keyboard.press('Escape');
+            await page.waitForTimeout(300);
+          }
+        }
+        // Blur: Follow must track the region across In/Out.
+        const trackOn = async () => page.evaluate(() => {
+          const chk = document.querySelector('.mo-clip-page .mo-clip-track input');
+          if (!chk) return false;
+          chk.click();
+          return true;
+        });
+        if (await openSection('Blur') && await trackOn()) {
+          const t0 = Date.now();
+          let res = 'timeout';
+          while (Date.now() - t0 < 60_000) {
+            const st = await page.evaluate(() => document.querySelector('.mo-clip-status')?.textContent || '');
+            if (/Follow done|failed|error|Low lock|tighten/i.test(st)) { res = st; break; }
+            await page.waitForTimeout(500);
+          }
+          console.log(`[probe] clip blur follow: ${res} (${Math.round((Date.now() - t0) / 1000)}s)`);
+          await shot(page, 'clip-follow');
+          // Pixelate must preview as a real mosaic (a canvas inside the box).
+          const mosaic = await page.evaluate(() => {
+            const sel = Array.from(document.querySelectorAll('.mo-clip-page select')).find((s) => Array.from(s.options).some((o) => o.value === 'pixelate'));
+            if (!sel) return 'no mode select';
+            sel.value = 'pixelate'; sel.dispatchEvent(new Event('change', { bubbles: true }));
+            const cv = document.querySelector('.mo-blur-mosaic');
+            if (!cv) return 'no mosaic canvas';
+            const r = cv.getBoundingClientRect();
+            const ctx = cv.getContext('2d'); const px = ctx.getImageData(0, 0, cv.width, cv.height).data;
+            let nonBlack = 0; for (let i = 0; i < px.length; i += 4) if (px[i] + px[i + 1] + px[i + 2] > 30) nonBlack++;
+            return `canvas ${cv.width}x${cv.height} cells, shown ${Math.round(r.width)}x${Math.round(r.height)}px, ${nonBlack}/${cv.width * cv.height} cells carry picture`;
+          });
+          console.log(`[probe] clip pixelate preview: ${mosaic}`);
+          await shot(page, 'clip-pixelate');
         }
         // Audio & Finish, then Export, so the whole program is visible.
         if (await openSection('Audio')) await shot(page, 'clip-audio'); await stageState('clip-audio');

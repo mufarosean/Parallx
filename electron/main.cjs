@@ -3457,17 +3457,27 @@ function _recorderCleanupTemps(entry) {
 // failure so the caller can fall back to wall-clock timing. Fast + size-
 // independent, unlike loading the whole file in the renderer.
 function _recorderProbeDuration(ffmpegPath, file) {
+  return _recorderProbeFormat(ffmpegPath, file).then((f) => f.duration);
+}
+// { duration, startTime } from the container header. startTime is the
+// absolute wall-clock start in seconds (epoch) when the capture kept its
+// timestamps, else 0. Both 0 on any failure.
+function _recorderProbeFormat(ffmpegPath, file) {
   return new Promise((resolve) => {
     const ffprobe = ffmpegPath.replace(/ffmpeg(\.exe)?$/i, (m, e) => 'ffprobe' + (e || ''));
     let out = '', done = false;
     const finish = (v) => { if (!done) { done = true; resolve(v); } };
     try {
-      const p = spawn(ffprobe, ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1', file], { windowsHide: true });
+      const p = spawn(ffprobe, ['-v', 'error', '-show_entries', 'format=duration,start_time', '-of', 'default=nw=1', file], { windowsHide: true });
       p.stdout.on('data', (d) => { out += d.toString(); });
-      p.on('exit', () => { const n = parseFloat(out.trim()); finish(Number.isFinite(n) && n > 0 ? n : 0); });
-      p.on('error', () => finish(0));
-      setTimeout(() => { try { p.kill(); } catch { /* ignore */ } finish(0); }, 5000);
-    } catch { finish(0); }
+      p.on('exit', () => {
+        const dur = parseFloat((/duration=([\d.]+)/.exec(out) || [])[1]);
+        const st = parseFloat((/start_time=([\d.]+)/.exec(out) || [])[1]);
+        finish({ duration: Number.isFinite(dur) && dur > 0 ? dur : 0, startTime: Number.isFinite(st) && st > 1e8 ? st : 0 });
+      });
+      p.on('error', () => finish({ duration: 0, startTime: 0 }));
+      setTimeout(() => { try { p.kill(); } catch { /* ignore */ } finish({ duration: 0, startTime: 0 }); }, 5000);
+    } catch { finish({ duration: 0, startTime: 0 }); }
   });
 }
 
@@ -3500,9 +3510,14 @@ async function _recorderFinalize(entry) {
   // 0.5–2.0 "sanity" clamp rejected precisely the worst compressions, which
   // shipped recordings that played several times too fast. Only degenerate
   // probe garbage should be rejected here.
-  const videoDur = await _recorderProbeDuration(ffmpegPath, videoPath);
+  const fmt = await _recorderProbeFormat(ffmpegPath, videoPath);
+  const videoDur = fmt.duration;
   let factor = 1;
-  if (videoDur > 0 && entry.wallDur > 0) {
+  if (fmt.startTime > 0) {
+    // Real timestamps: every frame already sits at its wall-clock instant, so
+    // the duration IS the wall duration. Nothing to retime.
+    entry.videoStartMs = fmt.startTime * 1000;
+  } else if (videoDur > 0 && entry.wallDur > 0) {
     const f = entry.wallDur / videoDur;
     if (Number.isFinite(f) && f > 0.2 && f < 8.0) factor = f;
   }
@@ -3510,8 +3525,9 @@ async function _recorderFinalize(entry) {
   // A/V start offset (same wall clock). >0 → audio started later → delay audio;
   // <0 → video started later → delay video. Sanity-bounded.
   let offset = 0;
-  if (hasAudio && entry.audioStartedAt && entry.videoFirstFrameAt) {
-    const o = (entry.audioStartedAt - entry.videoFirstFrameAt) / 1000;
+  const videoStartAt = entry.videoStartMs || entry.videoFirstFrameAt;
+  if (hasAudio && entry.audioStartedAt && videoStartAt) {
+    const o = (entry.audioStartedAt - videoStartAt) / 1000;
     if (Number.isFinite(o) && Math.abs(o) <= 10) offset = o;
   }
 
@@ -3603,6 +3619,12 @@ ipcMain.handle('recorder:start', async (_event, frameId) => {
       '-video_size', `${rect.w}x${rect.h}`,
       '-draw_mouse', String(entry.drawMouse === 0 ? 0 : 1),
       '-i', 'desktop',
+      // Real timestamps: gdigrab stamps each frame with the wall clock (epoch
+      // microseconds). passthrough keeps every frame at its real instant (no
+      // CFR duplication, no drift, smaller file); copyts keeps the ABSOLUTE
+      // start so the file itself says when the first frame was captured.
+      // The finalize remux rebases to zero.
+      '-copyts', '-fps_mode', 'passthrough',
       // Capture stage: LIGHT, GPU-DECODABLE, near-lossless. `ultrafast` keeps CPU
       // low so gdigrab holds its frame rate on long recordings (dropped frames =
       // stutter + A/V drift); `crf 18` is visually near-lossless; `yuv420p` is
@@ -3616,7 +3638,7 @@ ipcMain.handle('recorder:start', async (_event, frameId) => {
       '-pix_fmt', 'yuv420p',
       // Progress on stdout so we can timestamp the FIRST captured frame, used to
       // align audio (which starts on its own clock) against video in the mux.
-      '-progress', 'pipe:1',
+      '-progress', 'pipe:1', '-stats_period', '0.05',
       entry.videoPath,
     ];
     const proc = spawn(entry.ffmpegPath, args, { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
@@ -3733,6 +3755,17 @@ ipcMain.handle('recorder:stop', async (_event, frameId) => {
     .filter((p) => p.e > p.s + 0.05);
   let ok = false;
   try { ok = await _recorderFinalize(entry); } catch { ok = false; }
+  // The telemetry ran on the progress stamp's clock; the file knows the real
+  // first-frame instant. Shift so t=0 is the first frame of the recording.
+  if (ok && entry.videoStartMs && videoStart) {
+    const shift = (videoStart - entry.videoStartMs) / 1000;
+    if (Number.isFinite(shift) && Math.abs(shift) < 5 && shift !== 0) {
+      const rebase = (arr) => { for (const p of arr) p.t = Math.max(0, Math.round((p.t + shift) * 1000) / 1000); };
+      rebase(entry.cursorTrack || []); rebase(entry.boxTrack || []);
+      for (const p of pauses) { p.s = Math.max(0, p.s + shift); p.e = Math.max(0, p.e + shift); }
+      entry.wallDur = Math.max(0, (stopAt - entry.videoStartMs) / 1000);
+    }
+  }
   // Report the duration ourselves (exact via ffprobe, wall-clock fallback) so
   // the renderer never has to load the whole file to read it.
   let duration = 0;
