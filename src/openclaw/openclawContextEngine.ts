@@ -507,8 +507,9 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
     }
 
     // Build a transcript of history for summarization (shared serializer —
-    // the /compact command uses the same one).
-    const transcript = serializeHistoryTranscript(history);
+    // the /compact command uses the same one). Capped: the summarizer runs
+    // in the same window the conversation just outgrew.
+    const transcript = capTranscriptForSummarizer(serializeHistoryTranscript(history), params.tokenBudget);
 
     let summaryText = '';
     let qualityScore: number | undefined;
@@ -543,7 +544,7 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
 
         let candidateSummary = '';
         try {
-          for await (const chunk of this.services.sendSummarizationRequest(summaryPrompt)) {
+          for await (const chunk of this.services.sendSummarizationRequest(summaryPrompt, undefined, { numCtx: params.tokenBudget })) {
             if (chunk.content) {
               candidateSummary += chunk.content;
             }
@@ -579,7 +580,7 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
         // No actual reduction possible — report honestly (F2-R2-03)
         return { compacted: false, tokensBefore: historyTokens, tokensAfter: historyTokens };
       }
-      this._lastHistory = history.slice(history.length - keepCount);
+      this._lastHistory = history.slice(history.length - keepCount).map(shrinkForRetention);
       this._compactGeneration++;
       const afterTokens = estimateMessagesTokens([...this._lastHistory]);
       return { compacted: true, tokensBefore: historyTokens, tokensAfter: afterTokens };
@@ -588,7 +589,13 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
     // Replace internal history with a single summary message + keep the last
     // exchange. Round-boundary guard: slice(-2) can land between an assistant
     // tool-call message and its results now that history preserves them.
-    const lastExchange = dropOrphanedToolHead(history.length >= 2 ? history.slice(-2) : [...history]);
+    // The kept exchange is SHRUNK, not verbatim: a 40k-char tool result or a
+    // whole-file write argument in the last round used to ride through every
+    // compaction untouched, which is how compaction converged on a floor the
+    // window could not hold.
+    const lastExchange = dropOrphanedToolHead(
+      (history.length >= 2 ? history.slice(-2) : [...history]).map(shrinkForRetention),
+    );
     this._lastHistory = [
       { role: 'user' as const, content: `[Context summary]\n${summaryText}` },
       { role: 'assistant' as const, content: 'Understood, I have the conversation context.' },
@@ -974,5 +981,90 @@ function trimHistoryToBudget(
     usedTokens += msgTokens;
   }
 
+  if (result.length === 0 && budgetTokens > 0) {
+    // The newest message alone outgrew the lane. Returning nothing here
+    // erased the whole conversation from the model's view, a fresh
+    // [Context summary] included, with no warning to anyone. Keep the
+    // newest non-tool message cut to fit rather than nothing at all.
+    for (let i = history.length - 1; i >= 0; i--) {
+      const msg = history[i];
+      if (msg.role === 'tool') continue;
+      const keepChars = Math.max(200, Math.floor(budgetTokens * CHARS_PER_TOKEN * 0.9));
+      const { toolCalls: _dropped, ...rest } = msg;
+      const content = msg.content.length > keepChars
+        ? `${msg.content.slice(0, keepChars)}\n[… truncated to fit the context budget]`
+        : msg.content;
+      return [{ ...rest, content }];
+    }
+  }
+
   return dropOrphanedToolHead(result);
+}
+
+// ─── Retention helpers ────────────────────────────────────────────────────────
+
+/** Chars per estimated token, matching estimateTokens' chars/4 rule. */
+const CHARS_PER_TOKEN = 4;
+/** Share of the window a summarizer transcript may take; the rest is the
+ *  summarizer's own prompt and its output. */
+const SUMMARIZER_TRANSCRIPT_SHARE = 0.5;
+const SUMMARIZER_TRANSCRIPT_FLOOR_CHARS = 8_000;
+/** What a tool result keeps once it is retained across a compaction. */
+const RETAINED_TOOL_RESULT_CHARS = 1_500;
+/** What a string tool argument keeps once retained across a compaction. */
+const RETAINED_ARG_VALUE_CHARS = 400;
+
+/**
+ * Fit a transcript into the summarizer's share of the window. Keeps the head
+ * (where an earlier [Context summary] lives) and the tail (the live state),
+ * and says what was cut, so the summary never silently loses either end.
+ */
+export function capTranscriptForSummarizer(transcript: string, tokenBudget: number): string {
+  if (!(tokenBudget > 0)) return transcript;
+  const cap = Math.max(SUMMARIZER_TRANSCRIPT_FLOOR_CHARS, Math.floor(tokenBudget * SUMMARIZER_TRANSCRIPT_SHARE) * CHARS_PER_TOKEN);
+  if (transcript.length <= cap) return transcript;
+  const headChars = Math.floor(cap * 0.3);
+  const tailChars = cap - headChars;
+  const omitted = transcript.length - headChars - tailChars;
+  return transcript.slice(0, headChars)
+    + `\n\n[… ${omitted} chars from the middle of this transcript omitted so it fits the summarizer's window …]\n\n`
+    + transcript.slice(transcript.length - tailChars);
+}
+
+/**
+ * Shrink a message that compaction keeps verbatim. Long tool results keep a
+ * head and a re-run marker; long string arguments (a file body, a page's
+ * markdown) keep a preview. The model already acted on the full payload; what
+ * it needs later is what was asked and roughly what came back.
+ */
+export function shrinkForRetention(msg: IChatMessage): IChatMessage {
+  let out = msg;
+  if (msg.role === 'tool' && msg.content.length > RETAINED_TOOL_RESULT_CHARS + 500) {
+    out = {
+      ...out,
+      content: `${msg.content.slice(0, RETAINED_TOOL_RESULT_CHARS)}\n[… result truncated at compaction — ${msg.content.length} chars total; re-run ${msg.toolName ?? 'the tool'} if the full output is needed]`,
+    };
+  }
+  if (msg.toolCalls && msg.toolCalls.length > 0) {
+    let changed = false;
+    const toolCalls = msg.toolCalls.map((call) => {
+      const args = call.function?.arguments as unknown;
+      if (!args || typeof args !== 'object') return call;
+      const next: Record<string, unknown> = {};
+      let callChanged = false;
+      for (const [key, value] of Object.entries(args as Record<string, unknown>)) {
+        if (typeof value === 'string' && value.length > RETAINED_ARG_VALUE_CHARS) {
+          next[key] = `${value.slice(0, RETAINED_ARG_VALUE_CHARS)}…[+${value.length - RETAINED_ARG_VALUE_CHARS} chars elided at compaction]`;
+          callChanged = true;
+        } else {
+          next[key] = value;
+        }
+      }
+      if (!callChanged) return call;
+      changed = true;
+      return { ...call, function: { ...call.function, arguments: next as typeof call.function.arguments } };
+    });
+    if (changed) out = { ...out, toolCalls };
+  }
+  return out;
 }

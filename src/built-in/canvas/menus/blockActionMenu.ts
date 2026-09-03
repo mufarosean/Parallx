@@ -608,9 +608,10 @@ export class BlockActionMenuController implements ICanvasMenu {
       // Reuse the controller's batched, position-aware implementation.
       sel.duplicateSelected();
     } else {
-      duplicateBlockAt(editor, pos, node);
+      // Caret into the copy: the helper's focus() then scrolls to the
+      // duplicate (adjacent, already on screen) instead of a stale caret.
+      duplicateBlockAt(editor, pos, node, { setSelectionInsideDuplicate: true });
     }
-    editor.commands.focus();
   }
 
   private _deleteBlock(): void {

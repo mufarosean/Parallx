@@ -40,6 +40,10 @@ import type { SendChatRequestFn, RetrieveContextFn } from './menus/canvasMenuReg
 
 // Create lowlight instance with common language set (JS, TS, CSS, HTML, Python, etc.)
 const lowlight = createLowlight(common);
+
+/** Height of `.canvas-top-ribbon` (canvas.css). Reserved on the ribbon
+ *  container before the pane mounts so the first layout is already right. */
+const CANVAS_RIBBON_HEIGHT = 32;
 // ─── Canvas Editor Provider ─────────────────────────────────────────────────
 
 export type OpenEditorFn = (options: { typeId: string; title: string; icon?: string; iconHtml?: string; instanceId?: string }) => Promise<void>;
@@ -189,8 +193,12 @@ export class CanvasEditorProvider {
     const pageId = (input as { instanceId?: string } | undefined)?.instanceId ?? input?.id ?? '';
     this._ribbonContainers.set(pageId, container);
 
-    // Set min-height so layout calculates correctly before pane fills it
-    container.style.minHeight = '28px';
+    // Reserve the ribbon's FINAL height before the pane fills it. The group
+    // seeds its cached ribbon height from this box on the first layout; the
+    // real `.canvas-top-ribbon` is 32px (canvas.css), and a shorter placeholder
+    // laid the pane out 4px too tall so its first rows slid under the sticky
+    // ribbon until the ResizeObserver re-measured a frame later.
+    container.style.minHeight = `${CANVAS_RIBBON_HEIGHT}px`;
 
     return {
       dispose: () => {

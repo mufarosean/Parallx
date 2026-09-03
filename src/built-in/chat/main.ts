@@ -1084,7 +1084,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     maxIterations: unifiedConfigService?.getEffectiveConfig().agent.maxIterations ?? 25,
     networkTimeout: 120_000,
     getModelContextLength: () => dataService.getModelContextLength(),
-    sendSummarizationRequest: (m, s) => dataService.sendSummarizationRequest(m, s),
+    sendSummarizationRequest: (m, s, o) => dataService.sendSummarizationRequest(m, s, o),
     getFileCount: fsAccessor ? () => dataService.getFileCount() : undefined,
     isRAGAvailable: () => dataService.isRAGAvailable(),
     isIndexing: () => dataService.isIndexing(),

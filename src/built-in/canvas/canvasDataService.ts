@@ -178,6 +178,27 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
   /** Last known committed revision per page. */
   private readonly _knownRevisions = new Map<string, number>();
 
+  /**
+   * One in-flight write per page. Title (300 ms debounce), body (500 ms),
+   * icon, cover and settings writes all bump the row's revision, and two of
+   * them overlapping used to read the same revision, race, and have the
+   * loser fail its optimistic check. That surfaced as "This page was changed
+   * elsewhere" while the user was the only writer, with a Reload button that
+   * would have discarded their own keystrokes.
+   */
+  private readonly _pageWriteChain = new Map<string, Promise<unknown>>();
+
+  private _enqueuePageWrite<T>(pageId: string, write: () => Promise<T>): Promise<T> {
+    const prev = this._pageWriteChain.get(pageId) ?? Promise.resolve();
+    const next = prev.then(write, write);
+    this._pageWriteChain.set(pageId, next);
+    const settle = () => {
+      if (this._pageWriteChain.get(pageId) === next) this._pageWriteChain.delete(pageId);
+    };
+    next.then(settle, settle);
+    return next;
+  }
+
   /** Last known committed stored content per page. */
   private readonly _knownStoredContent = new Map<string, string>();
 
@@ -350,8 +371,24 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     pageId: string,
     updates: PageUpdateData,
   ): Promise<IPage> {
+    return this._enqueuePageWrite(pageId, () => this._updatePageNow(pageId, updates));
+  }
+
+  private async _updatePageNow(
+    pageId: string,
+    updates: PageUpdateData,
+  ): Promise<IPage> {
     const changedFields = this._getChangedFields(updates);
-    const expectedRevision = updates.expectedRevision;
+    // Writes to a page are serialized (see _pageWriteChain), so by the time
+    // this one runs, every earlier write from THIS service has committed and
+    // `_knownRevisions` holds the revision it produced. A caller's captured
+    // expectedRevision that trails it only trails because of our own writes;
+    // that is not a conflict. Content staleness is guarded separately, on the
+    // content axis (_pendingSaveIsStale). What remains for the row-level
+    // check is a writer this service never saw: another window or process.
+    const expectedRevision = updates.expectedRevision === undefined
+      ? undefined
+      : (this._knownRevisions.get(pageId) ?? updates.expectedRevision);
     const sets: string[] = [];
     const params: unknown[] = [];
 

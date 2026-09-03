@@ -49,7 +49,26 @@ export function isContextOverflow(error: unknown): boolean {
     msg.includes('context length') ||
     msg.includes('too many tokens') ||
     msg.includes('context window') ||
-    msg.includes('maximum context')
+    msg.includes('maximum context') ||
+    // What Ollama / llama.cpp actually send today. The four phrases above
+    // never matched them, so the compact-and-retry path below this
+    // classifier was unreachable in practice: a session that outgrew its
+    // window failed the same way on every turn until /new.
+    //   "the request exceeds the available context size, try increasing the
+    //    context size or enable context shift"
+    //   "input length exceeds context length" / "exceeds the context length"
+    //   "prompt is too long: N tokens > M maximum" (Anthropic)
+    //   "request entity too large" / HTTP 413
+    msg.includes('exceeds the available context') ||
+    msg.includes('exceeds context') ||
+    msg.includes('exceeds the context') ||
+    msg.includes('input length exceeds') ||
+    msg.includes('context size') ||
+    msg.includes('context shift') ||
+    msg.includes('prompt is too long') ||
+    msg.includes('prompt too long') ||
+    msg.includes('request entity too large') ||
+    /\bhttp 413\b/.test(msg)
   );
 }
 

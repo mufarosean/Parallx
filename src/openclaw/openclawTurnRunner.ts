@@ -180,6 +180,14 @@ export async function runOpenclawTurn(
         if (compactResult.qualityRetries) {
           totalQualityRetries += compactResult.qualityRetries;
         }
+        if (!compactResult.compacted) {
+          // Nothing left to fold (the floor is the summary plus the last
+          // exchange). Repeating the request would only spend summarizer
+          // calls on the same answer; execute and let the provider's own
+          // overflow error, if any, drive the reactive path below.
+          proactiveCompactions = MAX_OVERFLOW_COMPACTION;
+          continue;
+        }
       } catch (compactErr) {
         console.error('[OpenClaw] Auto-compact failed:', compactErr);
       }

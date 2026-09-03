@@ -79,6 +79,13 @@ import type {
   IChatAgentTaskViewModel,
 } from '../../services/chatRuntimeTypes.js';
 
+/** Per-request knobs for the compaction summarizer. */
+export interface ISummarizationRequestOptions {
+  /** The session's context window, sent as num_ctx so the summarizer sees
+   *  the same window the conversation it is folding was running in. */
+  readonly numCtx?: number;
+}
+
 export interface IDefaultParticipantServices {
   sendChatRequest(
     messages: readonly IChatMessage[],
@@ -109,6 +116,7 @@ export interface IDefaultParticipantServices {
   sendSummarizationRequest?(
     messages: readonly IChatMessage[],
     signal?: AbortSignal,
+    options?: ISummarizationRequestOptions,
   ): AsyncIterable<IChatResponseChunk>;
   getFileCount?(): Promise<number>;
   isRAGAvailable?(): boolean;

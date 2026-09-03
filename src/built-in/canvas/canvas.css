@@ -2408,6 +2408,15 @@
   z-index: 2;
 }
 
+/* prosemirror-tables signals "over a column edge" by toggling `resize-cursor`
+ * on the editor root; its own stylesheet (never loaded here) is what turns
+ * that into a cursor. Without this rule the accent bar shows but the pointer
+ * stays a text caret, so the affordance reads as decoration. */
+.canvas-tiptap-editor.resize-cursor,
+.canvas-tiptap-editor .resize-cursor {
+  cursor: col-resize;
+}
+
 .canvas-tiptap-editor .tableWrapper {
   /* `overflow-y: hidden` is LOAD-BEARING, not tidiness.
    *

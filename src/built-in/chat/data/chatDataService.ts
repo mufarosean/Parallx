@@ -44,6 +44,7 @@ import type { Event } from '../../../platform/events.js';
 import type { IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, ICanonicalMemorySearchService, IDatabaseService, IFileService, IWorkspaceService, IEditorService, IRetrievalService, IIndexingPipelineService, IMemoryService, ITextFileModelManager, ISessionManager, IWorkspaceMemoryService } from '../../../services/serviceTypes.js';
 import type { IUnifiedAIConfigService } from '../../../aiSettings/unifiedConfigTypes.js';
 import type { ILanguageModelsService, IChatService, IChatModeService, ILanguageModelToolsService } from '../../../services/chatTypes.js';
+import type { ISummarizationRequestOptions } from '../chatTypes.js';
 import type { ILanguageModelToolsRuntimeControl } from '../../../services/languageModelToolsService.js';
 import type { OllamaProvider } from '../providers/ollamaProvider.js';
 import type { PromptFileService } from '../../../services/promptFileService.js';
@@ -778,9 +779,17 @@ export class ChatDataService {
   sendSummarizationRequest(
     messages: readonly IChatMessage[],
     signal?: AbortSignal,
+    options?: ISummarizationRequestOptions,
   ): AsyncIterable<IChatResponseChunk> {
     const modelId = this._d.languageModelsService.getActiveModel() ?? '';
-    return this._d.ollamaProvider.sendChatRequest(modelId, messages, undefined, signal);
+    // The summarizer serves compaction, which runs precisely when the
+    // conversation is at the window's edge. Sent without num_ctx it fell back
+    // to the provider default and was truncated or rejected on exactly the
+    // sessions that needed it. The caller passes the session's own budget.
+    const requestOptions: IChatRequestOptions | undefined = options?.numCtx && options.numCtx > 0
+      ? { numCtx: options.numCtx }
+      : undefined;
+    return this._d.ollamaProvider.sendChatRequest(modelId, messages, requestOptions, signal);
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

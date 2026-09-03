@@ -56,6 +56,76 @@ import { validateCitations } from './openclawResponseValidation.js';
 const MAX_TOOL_RESULT_CHARS = 100_000;
 
 /**
+ * Floor for the per-result share when one ROUND of tool calls has to split the
+ * round's budget. Three parallel calls each at the single-result cap used to
+ * add up to more than the whole window in one round; nothing summed them.
+ */
+const ROUND_RESULT_FLOOR_CHARS = 2_000;
+
+/**
+ * Longest string argument replayed to the model INSIDE the running turn. The
+ * tool has already executed on the full payload (a file body, a page's
+ * markdown); what the model needs afterwards is what it asked for, not the
+ * payload again. Persisted history keeps the full record for the UI.
+ */
+const IN_TURN_ARG_VALUE_CHARS = 2_000;
+
+/**
+ * Cut a tool result to `cap` chars. Success output keeps the head (the useful
+ * surface of a file dump lives at the top); error output keeps the tail (the
+ * root cause and stack frames live at the bottom).
+ */
+export function capToolResultContent(content: string, cap: number, isError: boolean): string {
+  if (content.length <= cap) return content;
+  if (isError) {
+    return `(truncated head, ${content.length - cap} chars omitted)\n\n${content.slice(content.length - cap)}`;
+  }
+  return `${content.slice(0, cap)}\n\n... (truncated, ${content.length} chars total)`;
+}
+
+/**
+ * Fit a whole round of tool results under `roundCap` chars. Each result is
+ * first held to `perResultCap`; if the round still overflows, the budget is
+ * split evenly (never below the floor) and every result is re-cut.
+ */
+export function capToolResultRound<T extends { content: string; isError: boolean }>(
+  results: readonly T[],
+  perResultCap: number,
+  roundCap: number,
+): T[] {
+  const capped = results.map((r) => ({ ...r, content: capToolResultContent(r.content, perResultCap, r.isError) }));
+  const total = capped.reduce((sum, r) => sum + r.content.length, 0);
+  if (total <= roundCap || capped.length === 0) return capped;
+  const share = Math.max(ROUND_RESULT_FLOOR_CHARS, Math.floor(roundCap / capped.length));
+  return capped.map((r) => ({ ...r, content: capToolResultContent(r.content, share, r.isError) }));
+}
+
+/** Elide long string arguments on the tool calls replayed within this turn. */
+export function elideLongToolCallArgs<T extends { readonly function: { readonly name: string; readonly arguments: Record<string, unknown> } }>(
+  calls: readonly T[],
+): readonly T[] {
+  let changed = false;
+  const out = calls.map((call) => {
+    const args = call.function.arguments;
+    if (!args || typeof args !== 'object') return call;
+    let callChanged = false;
+    const next: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(args)) {
+      if (typeof value === 'string' && value.length > IN_TURN_ARG_VALUE_CHARS) {
+        next[key] = `${value.slice(0, IN_TURN_ARG_VALUE_CHARS)}…[+${value.length - IN_TURN_ARG_VALUE_CHARS} chars elided; the tool ran on the full value]`;
+        callChanged = true;
+      } else {
+        next[key] = value;
+      }
+    }
+    if (!callChanged) return call;
+    changed = true;
+    return { ...call, function: { ...call.function, arguments: next } };
+  });
+  return changed ? out : calls;
+}
+
+/**
  * Defensive normalizer for `IToolResult.content` that came in from an
  * extension or built-in tool. Parallx's contract is `content: string`, but
  * a few extension authors return MCP-shape `[{ type: 'text', text }, …]`
@@ -540,6 +610,7 @@ export async function executeOpenclawAttempt(
     // This avoids duplicating the assistant message for each tool result
     // when the model returns multiple tool calls in a single turn.
     const toolResultMessages: IChatMessage[] = [];
+    const roundResults: Array<{ name: string; content: string; isError: boolean }> = [];
     loopBlocked = false;
 
     for (const toolCall of turnResult.toolCalls) {
@@ -626,39 +697,39 @@ export async function executeOpenclawAttempt(
       // into Go struct field ChatRequest.messages.content of type string").
       // Normalize here so a single misbehaving extension can't break the
       // whole chat turn.
-      let resultContent = normalizeToolResultContent(toolResult.content, toolCall.function.name);
-      if (resultContent.length > toolResultCharCap) {
-        if (toolResult.isError) {
-          // Tail-keep: preserve the last toolResultCharCap chars so the
-          // error message + stack frames survive.
-          resultContent =
-            `(truncated head, ${resultContent.length - toolResultCharCap} chars omitted)\n\n`
-            + resultContent.slice(resultContent.length - toolResultCharCap);
-        } else {
-          resultContent = resultContent.slice(0, toolResultCharCap)
-            + `\n\n... (truncated, ${resultContent.length} chars total)`;
-        }
-      }
-
-      const formattedContent = toolResult.isError
-        ? `[TOOL ERROR] The "${toolCall.function.name}" tool FAILED. `
-          + `Do not claim this action succeeded. State to the user that the call failed and `
-          + `(when reasonable) what went wrong.\n\n`
-          + `Failure detail:\n${resultContent}`
-        : resultContent;
-
-      toolResultMessages.push({
-        role: 'tool',
-        content: formattedContent,
-        toolName: toolCall.function.name,
+      roundResults.push({
+        name: toolCall.function.name,
+        content: normalizeToolResultContent(toolResult.content, toolCall.function.name),
+        isError: !!toolResult.isError,
       });
     }
+
+    // Cap the round as a whole, not just each result: the per-result cap is a
+    // share of the WINDOW, and three parallel calls at that cap summed past it.
+    for (const r of capToolResultRound(roundResults, toolResultCharCap, toolResultCharCap)) {
+      const formattedContent = r.isError
+        ? `[TOOL ERROR] The "${r.name}" tool FAILED. `
+          + `Do not claim this action succeeded. State to the user that the call failed and `
+          + `(when reasonable) what went wrong.\n\n`
+          + `Failure detail:\n${r.content}`
+        : r.content;
+      toolResultMessages.push({ role: 'tool', content: formattedContent, toolName: r.name });
+    }
+
+    // The assistant message replayed within this turn carries its tool calls
+    // with long string arguments elided; the full record still reaches the
+    // UI and persisted history through the response stream.
+    const assistantToolMessage: IChatMessage = {
+      role: 'assistant',
+      content: markdown,
+      toolCalls: elideLongToolCallArgs(turnResult.toolCalls),
+    };
 
     // Batch-append: one assistant message + all tool result messages
     if (toolResultMessages.length > 0) {
       currentMessages = [
         ...currentMessages,
-        { role: 'assistant', content: markdown, toolCalls: turnResult.toolCalls },
+        assistantToolMessage,
         ...toolResultMessages,
       ];
     }
@@ -717,7 +788,7 @@ export async function executeOpenclawAttempt(
           currentMessages[0], // system prompt
           ...reAssembled.messages,
           { role: 'user', content: userContent, images: request.attachments?.filter(a => a.kind === 'image') },
-          { role: 'assistant', content: markdown, toolCalls: turnResult.toolCalls },
+          assistantToolMessage,
           ...toolResultMessages,
         ];
       } catch (compactErr) {

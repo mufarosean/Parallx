@@ -224,6 +224,11 @@ export function deleteBlockAt(editor: Editor, pos: number, node: PMNode): void {
     }
   }
 
+  // Land the caret where the block was. Without this the mapped selection is
+  // wherever the caret last sat (often far away), and focus() scrolls THERE.
+  const landing = Math.min(from, tr.doc.content.size);
+  tr.setSelection(TextSelection.near(tr.doc.resolve(landing), 1));
+
   editor.view.dispatch(tr);
   editor.commands.focus();
 }
@@ -268,5 +273,9 @@ export function applyBackgroundColorToBlock(
   const { tr } = editor.state;
   tr.setNodeMarkup(pos, undefined, { ...node.attrs, backgroundColor: color });
   editor.view.dispatch(tr);
-  editor.commands.focus();
+  // A colour change moves neither caret nor viewport. focus() defaults to
+  // scrolling the CURRENT selection into view, and the block menu never moved
+  // that selection to the block being coloured, so colouring a block at the
+  // top of a page used to scroll to wherever the caret last was.
+  editor.commands.focus(null, { scrollIntoView: false });
 }

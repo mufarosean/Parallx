@@ -237,6 +237,24 @@ export abstract class Layout extends Disposable {
    */
   private _suspendTracking = false;
 
+  /** Signature of the display the window was last laid out on. */
+  private _screenSignature = '';
+
+  /**
+   * True when the window has moved to a different display since the last
+   * layout. `window.screen` follows the display the window is on, so a
+   * change in its logical size or pixel ratio is the monitor-move signal
+   * without any main-process plumbing.
+   */
+  private _screenChanged(): boolean {
+    const w = typeof window !== 'undefined' ? window : undefined;
+    const s = w?.screen;
+    const signature = s ? `${s.width}x${s.height}@${w!.devicePixelRatio || 1}` : '';
+    const changed = this._screenSignature !== '' && signature !== this._screenSignature;
+    this._screenSignature = signature;
+    return changed;
+  }
+
   /**
    * Where each hidden part was, described re-creatably (see
    * Grid.describePosition). A part the user stacked under the sidebar and
@@ -580,10 +598,18 @@ export abstract class Layout extends Disposable {
       this._activityBarRight.layout(ACTIVITY_BAR_WIDTH, rbodyH, Orientation.Vertical);
     }
 
-    // Keep the companion strips at their sizes; the editor absorbs the
-    // window delta (VS Code parity). The distribution recurses into nested
-    // branches, so it finds the editor wherever it sits.
-    this._grid.resizeWithFixedViews(rw - this._chromeBarsWidth(), rbodyH, this._editor.id);
+    // Two resize regimes:
+    //  - Same screen (edge drag, maximize): the companion strips keep their
+    //    sizes and the editor absorbs the delta (VS Code parity).
+    //  - The window landed on a DIFFERENT screen: every part scales with the
+    //    window, so a sidebar sized for a 4K desk does not arrive on a laptop
+    //    panel at its old pixel width. The user adjusts from there.
+    const bodyW = rw - this._chromeBarsWidth();
+    if (this._screenChanged()) {
+      this._grid.resize(bodyW, rbodyH);
+    } else {
+      this._grid.resizeWithFixedViews(bodyW, rbodyH, this._editor.id);
+    }
 
     this._layoutViewContainers();
   };

@@ -20,6 +20,7 @@ import {
   extractIdentifiers,
   auditCompactionQuality,
   serializeHistoryTranscript,
+  capTranscriptForSummarizer,
 } from './openclawContextEngine.js';
 import { OPENCLAW_BOOTSTRAP_DEFAULTS, flattenPairsToMessages } from './participants/openclawParticipantRuntime.js';
 import { estimateMessageTokens, estimateMessagesTokens } from './openclawTokenBudget.js';
@@ -633,6 +634,7 @@ export async function tryHandleOpenclawCompactCommand(
     readonly slashSpecialHandler?: string;
     readonly context: IChatParticipantContext;
     readonly response: IChatResponseStream;
+    readonly contextWindow?: number;
   },
 ): Promise<boolean> {
   return tryExecuteCompactOpenclawCommand({
@@ -641,6 +643,7 @@ export async function tryHandleOpenclawCompactCommand(
     storeSessionMemory: services.storeSessionMemory,
     writeCompactionCache: services.writeCompactionCache,
   }, {
+    contextWindow: options.contextWindow,
     isCompactCommand: options.activeCommand === 'compact' || options.slashSpecialHandler === 'compact',
     sessionId: options.context.sessionId,
     history: options.context.history,
@@ -652,6 +655,7 @@ interface IOpenclawCompactCommandDeps {
   readonly sendSummarizationRequest?: (
     messages: readonly IChatMessage[],
     signal?: AbortSignal,
+    options?: { readonly numCtx?: number },
   ) => AsyncIterable<IChatResponseChunk>;
   readonly compactSession?: (sessionId: string, summaryText: string) => void;
   readonly storeSessionMemory?: (sessionId: string, summary: string, messageCount: number) => Promise<void>;
@@ -665,6 +669,8 @@ async function tryExecuteCompactOpenclawCommand(
     readonly sessionId: string;
     readonly history: readonly IChatRequestResponsePair[];
     readonly response: IChatResponseStream;
+    /** The session's context window; caps the transcript and sizes num_ctx. */
+    readonly contextWindow?: number;
   },
 ): Promise<boolean> {
   if (!input.isCompactCommand) {
@@ -685,7 +691,14 @@ async function tryExecuteCompactOpenclawCommand(
   // HARNESS.md §1.2/§1.3 — this used to be a THIRD lossy flattener (duck-typed
   // text parts only, tool record dropped). The shared flattener + transcript
   // serializer give the summarizer the same tool-aware record the engine sees.
-  const historyText = serializeHistoryTranscript(flattenPairsToMessages(input.history));
+  // Capped to the summarizer's share of the window: /compact is what the user
+  // reaches for when the session is already too big, so an uncapped transcript
+  // failed on exactly the sessions that needed it.
+  const contextWindow = input.contextWindow && input.contextWindow > 0 ? input.contextWindow : 0;
+  const historyText = capTranscriptForSummarizer(
+    serializeHistoryTranscript(flattenPairsToMessages(input.history)),
+    contextWindow,
+  );
 
   const beforeTokens = estimateMessagesTokens(flattenPairsToMessages(input.history));
 
@@ -706,7 +719,7 @@ async function tryExecuteCompactOpenclawCommand(
     ];
 
     let candidate = '';
-    for await (const chunk of deps.sendSummarizationRequest(summaryPrompt)) {
+    for await (const chunk of deps.sendSummarizationRequest(summaryPrompt, undefined, { numCtx: contextWindow || undefined })) {
       if (chunk.content) {
         candidate += chunk.content;
       }

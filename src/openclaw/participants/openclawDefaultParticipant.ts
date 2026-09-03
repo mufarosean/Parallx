@@ -26,6 +26,7 @@ import { tryHandleOpenclawContextCommand } from './openclawContextReport.js';
 import { buildOpenclawBootstrapContext, flattenPairsToMessages, loadOpenclawBootstrapEntries } from './openclawParticipantRuntime.js';
 import type { IOpenclawTurnContext } from '../openclawAttempt.js';
 import { runOpenclawTurn } from '../openclawTurnRunner.js';
+import { isContextOverflow } from '../openclawErrorClassification.js';
 import { OpenclawContextEngine } from '../openclawContextEngine.js';
 import { applyTierToProfile, resolveToolProfile } from '../openclawToolPolicy.js';
 import { resolveModelTier } from '../openclawModelTier.js';
@@ -163,13 +164,24 @@ async function runOpenclawDefaultTurn(
     return {};
   }
 
-  if (await tryHandleOpenclawCompactCommand(services, {
-    activeCommand: request.command,
-    slashSpecialHandler: request.command === 'compact' ? 'compact' : undefined,
-    context,
-    response,
-  })) {
-    return {};
+  // /compact runs BEFORE the turn context is built so it stays reachable when
+  // normal turns are already failing. It is also the one command whose own
+  // model call can fail for the same reason the session is stuck, so a throw
+  // here must land as a message, not escape the participant.
+  try {
+    if (await tryHandleOpenclawCompactCommand(services, {
+      activeCommand: request.command,
+      slashSpecialHandler: request.command === 'compact' ? 'compact' : undefined,
+      context,
+      response,
+      contextWindow: services.getModelContextLength?.(),
+    })) {
+      return {};
+    }
+  } catch (compactError) {
+    const message = compactError instanceof Error ? compactError.message : String(compactError);
+    response.warning(`Compaction failed: ${message}. Try a smaller context window from the Ctx picker, or /new to start a fresh session.`);
+    return { errorDetails: { message, responseIsIncomplete: true } };
   }
 
   // D2: New slash command dispatch
@@ -499,7 +511,12 @@ async function runOpenclawDefaultTurn(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     lifecycle.recordFailed(message);
-    response.warning(`OpenClaw turn failed: ${message}`);
+    // A raw provider string tells the user nothing they can act on. When the
+    // failure is the window itself, say what to do about it.
+    const guidance = isContextOverflow(error)
+      ? ' This conversation no longer fits the model\'s context window. Run /compact to fold it into a summary, or /new to start fresh.'
+      : '';
+    response.warning(`OpenClaw turn failed: ${message}${guidance}`);
     return {
       errorDetails: {
         message,
