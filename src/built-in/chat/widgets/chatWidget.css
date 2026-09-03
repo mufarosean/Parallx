@@ -385,7 +385,7 @@
   display: inline-block;
   padding: 1px 6px;
   border-radius: 4px;
-  background: color-mix(in srgb, var(--vscode-focusBorder, #007fd4) 25%, transparent);
+  background: var(--px-bg-inset);
   color: var(--vscode-focusBorder, #007fd4);
   font-size: var(--px-text-sm, 12px);
   font-weight: 500;

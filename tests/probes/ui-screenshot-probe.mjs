@@ -25,7 +25,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 
 const outDir = path.resolve(process.argv[2] ?? path.join(os.tmpdir(), 'parallx-probe-shots'));
 const requested = process.argv.slice(3);
-const ALL_SCENES = ['boot', 'welcome', 'watermark', 'chat', 'autonomy', 'dashboard', 'planner', 'settings', 'appearance', 'canvas'];
+const ALL_SCENES = ['boot', 'welcome', 'watermark', 'chat', 'autonomy', 'dashboard', 'planner', 'canvas', 'settings', 'appearance'];
 const scenes = requested.length ? requested : ALL_SCENES;
 
 function launchEnv(appRoot) {
@@ -72,6 +72,12 @@ async function runCommand(page, entries) {
 
 async function scene(name, fn) {
   try { await fn(); } catch (err) { console.log(`[probe] ${name}: failed (${String(err).split('\n')[0]})`); }
+}
+
+async function closeSettings(page) {
+  const close = page.locator('.settings-editor__close').first();
+  if (await close.count()) await close.click({ timeout: 3_000 }).catch(() => {});
+  await page.waitForTimeout(300);
 }
 
 async function shot(page, name) {
@@ -166,29 +172,14 @@ async function main() {
       });
     }
 
-    if (scenes.includes('settings')) {
-      const ok = await runCommand(page, ['settings.open']);
-      if (ok) { await page.waitForTimeout(1_000); await shot(page, 'settings'); await page.keyboard.press('Escape'); }
-      else console.log('[probe] settings: no command matched, skipped');
-    }
-
-    if (scenes.includes('appearance')) {
-      await scene('appearance', async () => {
-        const ok = await runCommand(page, ['settings.openAppearance']);
-        if (!ok) throw new Error('settings.openAppearance not available');
-        await page.waitForSelector('.px-appearance', { timeout: 10_000 });
-        await page.waitForTimeout(800);
-        await shot(page, 'appearance');
-        await page.keyboard.press('Escape');
-      });
-    }
-
     if (scenes.includes('canvas')) {
       await scene('canvas', async () => {
         const ok = await runCommand(page, ['canvas.newPage']);
         if (!ok) throw new Error('canvas.newPage not available');
         await page.waitForSelector('.canvas-top-ribbon', { timeout: 15_000 });
         await page.waitForTimeout(1_000);
+        // Focus the editor first: unfocused typing lands on document.body.
+        await page.locator('.canvas-tiptap-editor').first().click({ timeout: 5_000 }).catch(() => {});
         // Type a heading and a few lines so the page looks like a page.
         await page.keyboard.type('Siewert');
         await page.keyboard.press('Enter');
@@ -198,6 +189,14 @@ async function main() {
         // The page menu (⋯) with the font section.
         const menuBtn = page.locator('.canvas-top-ribbon-menu').first();
         if (await menuBtn.count()) {
+          const diag = await page.evaluate(() => {
+            const btn = document.querySelector('.canvas-top-ribbon-menu');
+            if (!btn) return 'no button';
+            const r = btn.getBoundingClientRect();
+            const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+            return `rect=${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}x${Math.round(r.height)} top=${top ? top.tagName + '.' + String(top.className).slice(0, 60) : 'none'}`;
+          });
+          console.log(`[probe] canvas menu button: ${diag}`);
           await menuBtn.click({ timeout: 3_000 });
           await page.waitForSelector('.canvas-page-menu', { timeout: 5_000 });
           await page.waitForTimeout(500);
@@ -230,6 +229,23 @@ async function main() {
         }
       });
     }
+    if (scenes.includes('settings')) {
+      const ok = await runCommand(page, ['settings.open']);
+      if (ok) { await page.waitForTimeout(1_000); await shot(page, 'settings'); await closeSettings(page); }
+      else console.log('[probe] settings: no command matched, skipped');
+    }
+
+    if (scenes.includes('appearance')) {
+      await scene('appearance', async () => {
+        const ok = await runCommand(page, ['settings.openAppearance']);
+        if (!ok) throw new Error('settings.openAppearance not available');
+        await page.waitForSelector('.px-appearance', { timeout: 10_000 });
+        await page.waitForTimeout(800);
+        await shot(page, 'appearance');
+        await closeSettings(page);
+      });
+    }
+
   } finally {
     if (errors.length) {
       console.log(`[probe] ${errors.length} uncaught renderer error(s):`);

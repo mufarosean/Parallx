@@ -1741,8 +1741,9 @@ input[type="number"].ai-settings-agent-card__field-input {
 }
 
 .ai-settings-cron-job__source--ai {
-  background: var(--px-accent-soft);
+  background: transparent;
   color: var(--px-accent);
+  border: 1px solid color-mix(in srgb, var(--px-accent) 45%, transparent);
 }
 
 .ai-settings-cron-job__toggle {

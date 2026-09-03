@@ -211,6 +211,8 @@ export class PlannerEditorProvider {
 
 class PlannerEditorPane implements IDisposable {
   private _root: HTMLElement | null = null;
+  /** True when the last pointerdown landed inside this pane (see onKey). */
+  private _pointerInside = false;
   private _bodyEl: HTMLElement | null = null;
   private _activeTab: Tab = 'tasks';
   private _calendarView: CalendarView = 'month';
@@ -327,6 +329,11 @@ class PlannerEditorPane implements IDisposable {
       // the shortcuts still work right after the calendar renders.
       const active = document.activeElement;
       if (active && active !== document.body && !this._root.contains(active)) return;
+      // Nothing focused at all: the letters belong to the planner only if the
+      // planner was the last surface the pointer touched. Without this, a
+      // canvas page open beside a planner tab handed its first keystrokes to
+      // these shortcuts ("n" opened a task popover over the page).
+      if ((!active || active === document.body) && !this._pointerInside) return;
       const target = e.target as HTMLElement | null;
       // Skip when focus is inside any input / textarea / contenteditable —
       // those characters belong to the user's typing.
@@ -402,6 +409,11 @@ class PlannerEditorPane implements IDisposable {
       }
     };
     document.addEventListener('keydown', onKey);
+    const onPointer = (e: PointerEvent) => {
+      this._pointerInside = !!this._root?.contains(e.target as Node);
+    };
+    document.addEventListener('pointerdown', onPointer, true);
+    this._disposables.push({ dispose: () => document.removeEventListener('pointerdown', onPointer, true) });
 
     this._disposables.push({
       dispose() {

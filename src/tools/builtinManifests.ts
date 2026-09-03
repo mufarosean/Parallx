@@ -463,7 +463,10 @@ export const THEME_EDITOR_MANIFEST: IToolManifest = {
   description: 'Choose a base palette and accent. Live preview, applied everywhere.',
   main: './main.js',
   engines: { parallx: '^0.1.0' },
-  // Phase D step 9: LAZY — one command is its whole surface.
+  // Phase D step 9: LAZY — one command is its whole surface. The Settings
+  // hub is the other door: it fires this tool's activation event when it
+  // opens (settings/main.ts), so the Appearance panel is listed there
+  // without anyone having run the command first.
   activationEvents: ['onCommand:theme-editor.open'],
   contributes: {
     commands: [

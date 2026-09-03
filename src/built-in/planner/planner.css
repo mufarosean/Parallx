@@ -1859,14 +1859,14 @@
   display: inline-flex;
   align-items: center;
   border-radius: var(--px-radius-full);
-  font-size: var(--px-text-2xs);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: var(--px-text-xs);
+  font-weight: 500;
   color: var(--px-text-secondary);
   background: var(--px-bg-inset);
 }
-.planner-sched__origin--ai { color: var(--px-accent); background: var(--px-accent-soft); }
+.planner-sched__origin--ai { color: var(--px-accent); background: transparent;
+  border: 1px solid color-mix(in srgb, var(--px-accent) 45%, transparent);
+}
 .planner-sched__meta { font-size: var(--px-text-sm); color: var(--px-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .planner-sched__meta--error { color: var(--px-danger); }
 .planner-sched__toggle {

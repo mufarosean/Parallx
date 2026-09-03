@@ -41,9 +41,8 @@
   margin: 14px 0 0 14px;
   padding: 2px 8px;
   border-radius: var(--px-radius-sm);
-  background: var(--px-accent-soft);
+  background: var(--px-bg-inset);
   color: var(--px-accent);
-  box-shadow: inset 0 0 0 1px var(--px-accent-faint);
   font-size: var(--px-text-base);
   font-weight: 550;
   font-family: var(--px-font-mono, monospace);
@@ -495,7 +494,8 @@
    distinct from file/selection chips. */
 .parallx-chat-context-chip--canvas-block {
   border-color: color-mix(in srgb, var(--vscode-focusBorder, #007acc) 55%, transparent);
-  background: color-mix(in srgb, var(--vscode-focusBorder, #007acc) 14%, var(--vscode-badge-background, #4d4d4d) 70%);
+  background: var(--px-bg-inset);
+  color: var(--px-accent);
 }
 .parallx-chat-context-chip--canvas-block .parallx-chat-context-chip-icon {
   color: var(--vscode-focusBorder, #007acc);
@@ -536,8 +536,6 @@
 .parallx-chat-context-chip-status {
   color: var(--vscode-descriptionForeground, #8b8b8b);
   font-size: var(--parallx-fontSize-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
 
 .parallx-chat-context-chip-close,

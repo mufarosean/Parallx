@@ -6,7 +6,7 @@
 
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
-import { ISettingsRegistryService, IKeybindingService, ICommandService, IGlobalStorageService } from '../../services/serviceTypes.js';
+import { ISettingsRegistryService, IKeybindingService, ICommandService, IGlobalStorageService, IActivationEventService } from '../../services/serviceTypes.js';
 import { settingsPanelRegistry } from '../../services/settingsPanelRegistry.js';
 import { SettingsEditor } from './settingsEditor.js';
 import { KeyboardShortcutsPanel } from './keyboardShortcutsPanel.js';
@@ -52,6 +52,15 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     } catch {
       /* schema not registered — proceed (registry must have at least defaults) */
     }
+
+    // The Appearance tool is lazy (Phase D step 9) and registers its panel
+    // on activation. Wake it now, so the hub lists Appearance on first open;
+    // the hub repaints its nav when the panel registry changes.
+    try {
+      if (api.services.has(IActivationEventService)) {
+        api.services.get<import('../../services/serviceTypes.js').IActivationEventService>(IActivationEventService).fireCommand('theme-editor.open');
+      }
+    } catch { /* activation is best-effort; the hub still opens */ }
 
     // Lazy single-instance — re-open shows the same editor again.
     if (_editor) {

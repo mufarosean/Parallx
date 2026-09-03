@@ -1051,6 +1051,18 @@ class DashboardEditorPane implements IDisposable {
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) overlay.remove();
     });
+    // Escape closes the sheet like every other popup in the app. The
+    // listener lives only while the overlay does.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      overlay.remove();
+    };
+    document.addEventListener('keydown', onKey, true);
+    const detach = new MutationObserver(() => {
+      if (!overlay.isConnected) { document.removeEventListener('keydown', onKey, true); detach.disconnect(); }
+    });
+    detach.observe(document.body, { childList: true });
 
     const sheet = el('div', 'dashboard-picker');
 

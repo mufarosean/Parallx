@@ -95,7 +95,9 @@ body > [data-radix-popper-content-wrapper] :where(input, textarea, select) {
   color: var(--px-text-muted); background: var(--px-bg-inset);
   vertical-align: 1px;
 }
-.ws-chip--open { color: var(--px-accent); background: var(--px-accent-soft); }
+.ws-chip--open { color: var(--px-accent); background: transparent;
+  border: 1px solid color-mix(in srgb, var(--px-accent) 45%, transparent);
+}
 /* Semantic tokens only (M83 rule) — hardcoded pastels broke dark mode. */
 .ws-chip--nailed { color: var(--px-success); background: color-mix(in srgb, var(--px-success) 14%, transparent); }
 .ws-chip--partial { color: var(--px-warning); background: color-mix(in srgb, var(--px-warning) 14%, transparent); }

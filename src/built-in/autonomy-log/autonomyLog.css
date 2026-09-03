@@ -378,19 +378,19 @@
   padding: 1px 7px;
   border-radius: 10px;
   font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-  color: #1a1a1a;
+  font-weight: 500;
+  color: var(--px-text-secondary);
   flex-shrink: 0;
+  background: transparent;
+  border: 1px solid var(--px-border-strong);
 }
 
-.autonomy-log-badge--workflow  { background: var(--px-accent); color: var(--px-text-on-accent); }
-.autonomy-log-badge--heartbeat { background: #e4a853; }
-.autonomy-log-badge--cron      { background: #7ec8e3; }
-.autonomy-log-badge--subagent  { background: #c586c0; color: #fff; }
-.autonomy-log-badge--agent     { background: #888; color: #fff; }
-.autonomy-log-badge--error     { background: var(--px-danger, #e06c66); color: #fff; }
+.autonomy-log-badge--workflow { color: var(--px-accent); border-color: color-mix(in srgb, var(--px-accent) 50%, transparent); }
+.autonomy-log-badge--heartbeat { color: #e4a853; border-color: color-mix(in srgb, #e4a853 50%, transparent); }
+.autonomy-log-badge--cron { color: #7ec8e3; border-color: color-mix(in srgb, #7ec8e3 50%, transparent); }
+.autonomy-log-badge--subagent { color: #c586c0; border-color: color-mix(in srgb, #c586c0 50%, transparent); }
+.autonomy-log-badge--agent { color: #888; border-color: color-mix(in srgb, #888 50%, transparent); }
+.autonomy-log-badge--error { color: var(--px-danger, #e06c66); border-color: color-mix(in srgb, var(--px-danger, #e06c66) 50%, transparent); }
 
 /* Failed background runs must not read like successes. */
 .autonomy-log-entry--error {

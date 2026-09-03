@@ -69,7 +69,7 @@
   width: 28px;
   height: 28px;
   border-radius: 8px;
-  background: color-mix(in srgb, var(--vscode-button-background, #007acc) 12%, transparent);
+  background: var(--px-bg-inset);
   color: var(--vscode-button-background, #007acc);
   margin-bottom: 6px;
 }
@@ -377,8 +377,6 @@
   flex: 1 1 auto;
   font-size: var(--px-text-sm);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
   color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent);
   white-space: nowrap;
   overflow: hidden;
@@ -788,7 +786,7 @@
   width: 36px;
   height: 36px;
   border-radius: 10px;
-  background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 12%, transparent);
+  background: var(--px-bg-inset);
   color: var(--vscode-button-background, #0e639c);
   flex: 0 0 auto;
 }
@@ -1051,8 +1049,6 @@
 .aaw__outcome {
   font-size: var(--px-text-2xs);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
   padding: 1px 6px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 12%, transparent);
@@ -1922,7 +1918,7 @@ video.vw__fill { object-fit: contain; background: #000; }
 .dtracker__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--px-text-sm); }
 .dtracker__chip {
   flex-shrink: 0; font-size: var(--px-text-2xs); padding: 2px 8px; border-radius: 10px;
-  background: var(--px-accent, #7aa2f7); color: #fff;
+  background: var(--px-bg-inset); color: var(--px-text-secondary);
 }
 .dtracker__empty, .dtable__empty { font-size: var(--px-text-sm); opacity: .75; padding: 8px; }
 .dtracker__empty strong, .dtable__empty strong { display: block; margin-bottom: 4px; }
@@ -1954,8 +1950,8 @@ video.vw__fill { object-fit: contain; background: #000; }
 .dashboard-picker__template {
   flex: 0 0 190px; display: flex; flex-direction: column; gap: 4px; text-align: left;
   padding: 10px 12px; border-radius: 10px; cursor: pointer; font: inherit; color: inherit;
-  background: color-mix(in srgb, var(--px-accent, #7aa2f7) 8%, transparent);
-  border: 1px solid color-mix(in srgb, var(--px-accent, #7aa2f7) 25%, transparent);
+  background: var(--px-bg-elevated);
+  border: 1px solid var(--px-border);
 }
 .dashboard-picker__template:hover {
   background: color-mix(in srgb, var(--px-accent, #7aa2f7) 14%, transparent);

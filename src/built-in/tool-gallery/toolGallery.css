@@ -612,13 +612,10 @@
   flex: 0 0 auto;
   font-size: var(--px-text-xs, 11px);
   font-weight: 650;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--px-accent);
+  color: var(--px-text-secondary);
   padding: 3px 9px;
   border-radius: var(--px-radius-full, 999px);
-  background: var(--px-accent-soft);
-  box-shadow: inset 0 0 0 1px var(--px-accent-faint);
+  background: var(--px-bg-inset);
 }
 .tool-editor-membership-text {
   font-size: var(--px-text-sm, 12px);
@@ -669,9 +666,9 @@
   padding: 3px 10px;
   font-size: var(--px-text-xs, 11px);
   font-weight: 550;
-  color: var(--px-accent);
-  background: var(--px-accent-soft);
-  border: 1px solid var(--px-accent-faint);
+  color: var(--px-text-secondary);
+  background: transparent;
+  border: 1px solid var(--px-border);
   border-radius: var(--px-radius-full, 999px);
   cursor: pointer;
   transition: background var(--px-dur-fast, 90ms) var(--px-ease, ease);
