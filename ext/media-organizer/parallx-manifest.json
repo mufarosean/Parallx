@@ -89,9 +89,9 @@
           },
           "mediaOrganizer.screenRecorderCountdown": {
             "type": "number",
-            "default": 3,
+            "default": 0,
             "enum": [0, 3, 5, 10],
-            "description": "Seconds counted down inside the frame before recording starts, so you can switch to the window you want to capture. 0 starts at once. Ctrl+Alt+R starts and stops a recording from any app while the frame is open; Ctrl+Alt+P pauses."
+            "description": "Off by default: recording starts the moment you press Record. Set 3, 5 or 10 to count down inside the frame first, which gives you time to switch to the window you want to capture. Ctrl+Alt+R starts and stops a recording from any app while the frame is open; Ctrl+Alt+P pauses."
           },
           "mediaOrganizer.screenRecorderShowCursor": {
             "type": "boolean",

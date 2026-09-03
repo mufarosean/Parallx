@@ -3334,7 +3334,7 @@ ipcMain.handle('recorder:openFrame', async (_event, opts) => {
     // happens in the frame renderer; the toolbar speaker button mutes it
     // locally. Main only needs the mode to pass to the frame.
     const audioMode = ['system', 'mic', 'both'].includes(opts?.audio) ? opts.audio : 'off';
-    const countdown = [0, 3, 5, 10].includes(parseInt(opts?.countdown, 10)) ? parseInt(opts.countdown, 10) : 3;
+    const countdown = [0, 3, 5, 10].includes(parseInt(opts?.countdown, 10)) ? parseInt(opts.countdown, 10) : 0;
     const drawMouse = opts?.showCursor === false ? 0 : 1;
     const followBox = opts?.followBox === true;
     // gdigrab writes video to a temp; final output is muxed (video + captured

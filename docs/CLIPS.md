@@ -8,8 +8,8 @@ program that turned a trimmer into a small editor and the recorder into a camera
 ## What a user gets
 
 **Recording**
-- A countdown (3 s by default, 0/5/10 available) inside the frame before the first
-  frame lands, so you can switch to the window you want.
+- Recording starts the instant you press Record. An optional countdown (3, 5 or 10 s)
+  inside the frame is there for anyone who wants time to switch windows first.
 - Pause and resume. A pause is a marker: the take keeps running so audio and video
   stay aligned, and the paused stretches open in the editor already cut out. Deleting
   a cut brings the footage back.

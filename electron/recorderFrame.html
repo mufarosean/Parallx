@@ -411,14 +411,25 @@
         // Audio permissions need this click's user activation, so the audio
         // stream is opened BEFORE the countdown and the recorder itself is
         // started after it; the audio start stamp keeps A/V aligned.
-        const audioReady = await startAudioCapture();
-        recBtn.disabled = true; sizeBtn.classList.add('hidden'); sizePanel.classList.remove('open');
-        const go = await runCountdown(api.countdown || 0);
-        recBtn.disabled = false;
-        if (!go) { await stopAudioCapture(false); sizeBtn.classList.remove('hidden'); showInfo('Countdown cancelled'); return; }
-        // Audio and video start together (same instant, same clock).
-        const audioStarted = audioReady && beginAudioRecording();
-        const res = await api.start();
+        let audioStarted = false, res;
+        if (api.countdown > 0) {
+          // With a countdown the stream is opened on this click (permission
+          // needs it) and the recorder starts with the video afterwards.
+          const audioReady = await startAudioCapture();
+          recBtn.disabled = true; sizeBtn.classList.add('hidden'); sizePanel.classList.remove('open');
+          const go = await runCountdown(api.countdown);
+          recBtn.disabled = false;
+          if (!go) { await stopAudioCapture(false); sizeBtn.classList.remove('hidden'); showInfo('Countdown cancelled'); return; }
+          audioStarted = audioReady && beginAudioRecording();
+          res = await api.start();
+        } else {
+          // Instant start: audio setup and the video capture run at the same
+          // time, so pressing Record costs nothing extra.
+          [audioStarted, res] = await Promise.all([
+            startAudioCapture().then((ok) => ok && beginAudioRecording()),
+            api.start(),
+          ]);
+        }
         if (res && res.error) {
           await stopAudioCapture(false);
           hintEl.textContent = 'Could not start: ' + (res.error.message || 'unknown error');

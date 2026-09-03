@@ -26289,7 +26289,7 @@ let _showCardTags = true;
 let _enableScreenRecorder = false;
 let _screenRecorderTempDir = '';   // '' = use the default in-workspace recordings dir
 let _screenRecorderAudio = 'system'; // 'off' | 'system' | 'mic' | 'both' (mirrors manifest default)
-let _screenRecorderCountdown = 3;    // seconds before the first frame (0 = none)
+let _screenRecorderCountdown = 0;    // seconds before the first frame (0 = instant, the default)
 let _screenRecorderShowCursor = true;
 let _screenRecorderFollowBox = false; // record the display; the frame's path is the camera
 let _moRecordingInFlight = false;   // guards against overlapping recordings
@@ -26427,8 +26427,8 @@ export async function activate(api, context) {
     _screenRecorderTempDir = cfg.get('screenRecorderTempDir', '') || '';
     const audio = cfg.get('screenRecorderAudio', 'system');
     _screenRecorderAudio = ['off', 'system', 'mic', 'both'].includes(audio) ? audio : 'system';
-    const cd = parseInt(cfg.get('screenRecorderCountdown', 3), 10);
-    _screenRecorderCountdown = [0, 3, 5, 10].includes(cd) ? cd : 3;
+    const cd = parseInt(cfg.get('screenRecorderCountdown', 0), 10);
+    _screenRecorderCountdown = [0, 3, 5, 10].includes(cd) ? cd : 0;
     _screenRecorderShowCursor = cfg.get('screenRecorderShowCursor', true) !== false;
     _screenRecorderFollowBox = cfg.get('screenRecorderFollowBox', false) === true;
   };
