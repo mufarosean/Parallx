@@ -1656,7 +1656,7 @@ function renderOpenEditors(): void {
   if (editors.length === 0) {
     const placeholder = $('div');
     placeholder.className = 'open-editors-placeholder';
-    placeholder.textContent = 'No open editors';
+    placeholder.textContent = 'No open editors.';
     _openEditorsContainer.appendChild(placeholder);
     _openEditorsCountKey.set(0);
     return;

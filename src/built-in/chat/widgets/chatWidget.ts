@@ -1381,11 +1381,11 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     const copyBtn = document.createElement('button');
     copyBtn.className = 'parallx-system-prompt-copy';
     copyBtn.type = 'button';
-    copyBtn.textContent = 'Copy to clipboard';
+    copyBtn.textContent = 'Copy to Clipboard';
     copyBtn.addEventListener('click', () => {
       navigator.clipboard.writeText(promptText).then(() => {
         copyBtn.textContent = 'Copied!';
-        setTimeout(() => { copyBtn.textContent = 'Copy to clipboard'; }, 1500);
+        setTimeout(() => { copyBtn.textContent = 'Copy to Clipboard'; }, 1500);
       });
     });
     footer.appendChild(copyBtn);

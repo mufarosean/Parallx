@@ -36,13 +36,13 @@ export const MODE_META: Record<ChatMode, { label: string; title: string; descrip
   [ChatMode.Edit]: {
     label: 'Edit',
     title: 'Edit mode: structured canvas changes',
-    description: 'AI proposes file changes for you to review',
+    description: 'AI proposes file changes for you to review.',
     icon: chatIcons.pencil,
   },
   [ChatMode.Agent]: {
     label: 'Agent',
     title: 'Agent mode: awake, action-capable, approval-aware',
-    description: 'AI takes multi-step actions with your approval',
+    description: 'AI takes multi-step actions with your approval.',
     icon: chatIcons.agent,
   },
 };

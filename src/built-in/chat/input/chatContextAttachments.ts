@@ -488,7 +488,7 @@ export class ChatContextAttachments extends Disposable {
         const switchLink = document.createElement('button');
         switchLink.className = 'parallx-chat-context-chip-action';
         switchLink.type = 'button';
-        switchLink.textContent = 'Switch model';
+        switchLink.textContent = 'Switch Model';
         switchLink.title = 'Switch to a vision-capable model';
         switchLink.addEventListener('click', (e) => {
           e.stopPropagation();

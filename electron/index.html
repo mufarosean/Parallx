@@ -36,10 +36,14 @@
   <link rel="stylesheet" href="dist/renderer/main.css" />
 </head>
 <body>
+  <!-- The same logo the title bar and watermark draw (src/ui/brandIcons.ts
+       px-mark), in the overlay's own muted ink. It was magenta here and
+       monochrome everywhere else, which read as two different loading
+       screens. This copy exists only because no script has loaded yet. -->
   <div id="parallx-loading-overlay">
-    <svg width="48" height="48" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect x="6" y="8" width="16" height="16" rx="1.5" transform="skewX(-8)" fill="#a21caf" opacity="0.45"/>
-      <rect x="10" y="6" width="16" height="16" rx="1.5" transform="skewX(-8)" fill="#a21caf"/>
+    <svg width="48" height="48" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <rect x="4.5" y="6" width="12" height="12" rx="1.1" transform="skewX(-8)" opacity="0.4"/>
+      <rect x="7.5" y="4.5" width="12" height="12" rx="1.1" transform="skewX(-8)"/>
     </svg>
     <span>Loading workspace…</span>
   </div>

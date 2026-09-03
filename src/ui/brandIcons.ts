@@ -33,24 +33,32 @@ function brand(inner: string): string {
 /** The upright plate most brand icons are built on. */
 const PLATE = '<rect x="4.5" y="4" width="15" height="16" rx="1.5"/>';
 
+/**
+ * THE logo: two leaning plates, filled, the back one ghosted. This is the
+ * same geometry as the app icon and the title-bar mark (the 32-unit original
+ * scaled into the 24-unit icon box), in `currentColor` so it takes whatever
+ * ink its surface uses: the muted title bar, the accent on the welcome page,
+ * the faint watermark, the AI button's pill. One drawing, one id, every
+ * surface. It used to be pasted inline in five places in two colours.
+ */
+const LOGO_SVG =
+  '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">'
+  + '<rect x="4.5" y="6" width="12" height="12" rx="1.1" transform="skewX(-8)" opacity="0.4"/>'
+  + '<rect x="7.5" y="4.5" width="12" height="12" rx="1.1" transform="skewX(-8)"/>'
+  + '</svg>';
+
 export const BRAND_ICONS: Record<string, string> = {
-  /** The logo mark — two overlapping leaning plates. */
-  'px-mark': brand(
-    '<path d="M9.5 4.3 L21 4.3 L18.9 15.5 L7.4 15.5 Z"/>'
-    + '<path d="M5.1 8.5 L16.6 8.5 L14.5 19.7 L3 19.7 Z"/>',
-  ),
+  /** The logo mark. */
+  'px-mark': LOGO_SVG,
 
   /**
-   * The AI mark — the logo, proportioned for 12–18px action buttons.
-   * Parallx does not wear the sparkle: the assistant IS the app, so "AI is
-   * acting here" is signalled by the brand mark itself (generate buttons,
-   * chat hero, AI section labels). The lean lives only in these two logo
-   * marks — every other icon stands upright.
+   * The AI mark IS the logo. Parallx does not wear the sparkle, the robot or
+   * the speech bubble: the assistant is the app, so "AI acts here" is
+   * signalled by the brand mark itself, everywhere, so a user learns once
+   * that this shape means the AI is one click away. Kept as its own id so
+   * call sites say what they mean; it resolves to the same drawing.
    */
-  'px-ai-mark': brand(
-    '<path d="M9.4 3.6 L21.5 3.6 L19.6 13.6 L7.5 13.6 Z"/>'
-    + '<path d="M4.6 10.4 L16.7 10.4 L14.8 20.4 L2.7 20.4 Z"/>',
-  ),
+  'px-ai-mark': LOGO_SVG,
 
   /** Canvas — the plate as a page; line rhythm, short last line. */
   'px-canvas': brand(
@@ -77,20 +85,9 @@ export const BRAND_ICONS: Record<string, string> = {
     + '<path d="M13.5 10 L19.5 10"/>',
   ),
 
-  /** Chat — a speech card with an angular tail. */
-  'px-chat': brand(
-    '<path d="M4.5 4 L19.5 4 L19.5 15.5 L10.8 15.5 L6.2 19.8 L7 15.5 L4.5 15.5 Z"/>',
-  ),
-
   /** Tool gallery — the plate with a puzzle notch in its top edge. */
   'px-tools': brand(
     '<path d="M4.5 4 L10 4 A2 2 0 0 0 14 4 L19.5 4 L19.5 20 L4.5 20 Z"/>',
-  ),
-
-  /** AI hub — the plate carrying a four-point spark. */
-  'px-ai': brand(
-    PLATE
-    + '<path d="M12 7 L13.1 10.4 L16.5 11.5 L13.1 12.6 L12 16 L10.9 12.6 L7.5 11.5 L10.9 10.4 Z"/>',
   ),
 
   /** Automations — the plate carrying a bolt. */

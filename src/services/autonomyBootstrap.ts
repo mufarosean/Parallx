@@ -57,8 +57,9 @@ export async function bootstrapAutonomyServices(
 ): Promise<IDisposable[]> {
   const disposables: IDisposable[] = [];
 
-  const bridge = (globalThis as { parallxElectron?: { appPath?: string; fs?: AutonomyFsBridge } }).parallxElectron;
-  const appPath = bridge?.appPath;
+  const bridge = (globalThis as { parallxElectron?: { appPath?: string; dataRoot?: string; fs?: AutonomyFsBridge } }).parallxElectron;
+  // Everything below lives under the DATA root (relocatable for probes).
+  const appPath = bridge?.dataRoot ?? bridge?.appPath;
   const fs = bridge?.fs;
 
   // ── Feature flags (M60 §3.8) — per-workspace storage, defaults apply. ──

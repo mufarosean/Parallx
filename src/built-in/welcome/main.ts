@@ -132,6 +132,9 @@ function openWelcome(api: ParallxApi): void {
   api.editors.openEditor({
     typeId: EDITOR_TYPE_ID,
     title: 'Welcome',
+    // One Welcome tab, ever: a fixed instance id dedupes a second open into a
+    // refocus instead of a duplicate tab (the bridge mints a fresh id otherwise).
+    instanceId: 'main',
   }).catch((err) => {
     console.error('[Welcome] Failed to open welcome editor:', err);
   });
@@ -151,10 +154,7 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi, recentWorksp
   // Logo / App name
   const logo = $('div');
   logo.classList.add('welcome-logo');
-  logo.innerHTML = `<svg width="96" height="96" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <rect x="6" y="8" width="16" height="16" rx="1.5" transform="skewX(-8)" fill="currentColor" opacity="0.4"/>
-    <rect x="10" y="6" width="16" height="16" rx="1.5" transform="skewX(-8)" fill="currentColor"/>
-  </svg>`;
+  logo.innerHTML = getIcon('px-mark');
   wrapper.appendChild(logo);
 
   const h1 = $('h1');
@@ -258,7 +258,7 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi, recentWorksp
   // icons. The AI rows wear the brand mark (never the sparkle cliché).
   const aiItems = [
     { icon: 'px-ai-mark', text: 'Open AI Chat', hint: 'Ctrl+Shift+I', command: 'chat.show' },
-    { icon: 'compass', text: 'Set Up Workspace AI', hint: '/init', command: 'parallx.chat.openWithInit' },
+    { icon: 'px-ai-mark', text: 'Set Up Workspace AI', hint: '/init', command: 'parallx.chat.openWithInit' },
     { icon: 'book-open', text: 'AI User Guide', hint: '', command: 'parallx.openAIUserGuide' },
     { icon: 'gear', text: 'Workspace AI Config', hint: '.parallx/', command: 'parallx.openWorkspaceAIConfig' },
   ];

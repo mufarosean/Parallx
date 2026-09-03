@@ -50,6 +50,7 @@ import type { IPythonEnvService } from '../../../services/pythonEnvService.js';
 import type { IChatMessage, IChatResponseChunk } from '../../../services/chatTypes.js';
 import { stripCodeFences } from './codeFences.js';
 import { buildGenerateMessages } from './generatePrompt.js';
+import { getIcon } from '../../../ui/iconRegistry.js';
 
 /**
  * The slice of the chat tool's inline-AI provider that Generate needs.
@@ -1128,8 +1129,7 @@ export class NotebookEditorPane extends EditorPane {
 
     const spark = $('span');
     spark.className = 'nb-generate__spark';
-    spark.innerHTML = '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">'
-      + '<path d="M8 2.5 9.3 6l3.5 1.3L9.3 8.6 8 12.1 6.7 8.6 3.2 7.3 6.7 6z" fill="currentColor"/></svg>';
+    spark.innerHTML = getIcon('px-ai-mark');
 
     const input = document.createElement('input');
     input.type = 'text';

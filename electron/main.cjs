@@ -156,9 +156,20 @@ app.setAppUserModelId('com.parallx.app');
 app.name = 'Parallx';
 
 // ── M53: Portable data root ──────────────────────────────────────────────────
-const APP_ROOT = app.isPackaged
-  ? path.resolve(process.resourcesPath, '..')
-  : path.join(__dirname, '..');
+// `PARALLX_APP_ROOT` relocates the whole data root (last workspace, global
+// storage, window state, extensions dir) for an automated launch, so a probe
+// or test never opens the developer's real workspace beside a running
+// instance. Code (renderer, built-in tools) still loads from the checkout.
+const APP_ROOT = process.env.PARALLX_APP_ROOT
+  ? path.resolve(process.env.PARALLX_APP_ROOT)
+  : app.isPackaged
+    ? path.resolve(process.resourcesPath, '..')
+    : path.join(__dirname, '..');
+
+// `PARALLX_HIDDEN_PROBE=1` keeps the window unshown for the life of the
+// process while still painting it, so a screenshot probe can run on a machine
+// someone is working at without a window ever appearing.
+const HIDDEN_PROBE = process.env.PARALLX_HIDDEN_PROBE === '1';
 
 fsSync.mkdirSync(path.join(APP_ROOT, 'data', 'chromium-cache'), { recursive: true });
 fsSync.mkdirSync(path.join(APP_ROOT, 'data', 'extensions'), { recursive: true });
@@ -612,6 +623,9 @@ async function createWindow() {
       // (embedding arbitrary video sites that block plain iframes). Every
       // webview is hardened in will-attach-webview below.
       webviewTag: true,
+      // A hidden probe window must keep painting and ticking or its
+      // screenshots come back blank.
+      ...(HIDDEN_PROBE ? { paintWhenInitiallyHidden: true, backgroundThrottling: false } : {}),
     },
   };
 
@@ -708,9 +722,11 @@ async function createWindow() {
   // a fallback timer guarantees the window can never be permanently
   // invisible if the renderer stalls.
   mainWindow.once('ready-to-show', () => {
+    if (HIDDEN_PROBE) return;
     if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) mainWindow.show();
   });
   setTimeout(() => {
+    if (HIDDEN_PROBE) return;
     if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) mainWindow.show();
   }, 10000);
 

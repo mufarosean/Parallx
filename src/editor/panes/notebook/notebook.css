@@ -237,6 +237,8 @@
   color: var(--px-accent);
 }
 
+.nb-generate__spark svg { width: 13px; height: 13px; }
+
 .nb-generate__input {
   flex: 1 1 auto;
   min-width: 0;

@@ -746,7 +746,7 @@
 
 .find-replace-option-btn {
   width: 26px;
-  height: 24px;
+  height: var(--px-control-h-sm);
   font-size: var(--parallx-fontSize-base);
   font-family: inherit;
   display: flex;
@@ -792,7 +792,7 @@
 
 .find-replace-action-btn {
   width: 26px;
-  height: 24px;
+  height: var(--px-control-h-sm);
   font-size: var(--parallx-fontSize-lg);
   display: flex;
   align-items: center;
@@ -907,7 +907,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 28px;
+  height: var(--px-control-h);
   padding: 0 var(--px-space-3);
   border: 1px solid var(--px-accent-faint);
   border-radius: var(--px-radius-full);
@@ -935,7 +935,7 @@
   flex-shrink: 0;
 }
 .px-ai-btn__icon svg { width: 100%; height: 100%; }
-.px-ai-btn--compact { height: 24px; padding: 0 var(--px-space-2); font-size: var(--px-text-xs); }
+.px-ai-btn--compact { height: var(--px-control-h-sm); padding: 0 var(--px-space-2); font-size: var(--px-text-xs); }
 .px-ai-btn--compact .px-ai-btn__icon { width: 12px; height: 12px; }
 /* Mark only — a circle, so it reads as one affordance and not a clipped pill. */
 .px-ai-btn--icon { width: 28px; padding: 0; justify-content: center; gap: 0; }

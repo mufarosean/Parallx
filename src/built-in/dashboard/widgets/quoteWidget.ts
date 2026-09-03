@@ -93,7 +93,7 @@ export const QUOTE_WIDGET: WidgetTypeRegistration<QuoteConfig> = {
 
     function render(): void {
       if (quotes.length === 0) {
-        text.textContent = 'Add a few quotes in settings';
+        text.textContent = 'Add a few quotes in settings.';
         author.textContent = '';
         return;
       }

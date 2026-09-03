@@ -35,7 +35,7 @@ export function showImageInsertPopup(
   const tabUpload = $('button.canvas-image-insert-tab');
   tabUpload.textContent = 'Upload';
   const tabLink = $('button.canvas-image-insert-tab');
-  tabLink.textContent = 'Embed link';
+  tabLink.textContent = 'Embed Link';
   tabBar.appendChild(tabUpload);
   tabBar.appendChild(tabLink);
   popup.appendChild(tabBar);
@@ -89,7 +89,7 @@ export function showImageInsertPopup(
     content.innerHTML = '';
 
     const uploadBtn = $('button.canvas-image-insert-upload-btn');
-    uploadBtn.textContent = 'Choose an image';
+    uploadBtn.textContent = 'Choose an Image';
     uploadBtn.addEventListener('click', async () => {
       try {
         const electron = (window as any).parallxElectron;

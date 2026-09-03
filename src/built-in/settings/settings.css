@@ -143,9 +143,12 @@
 }
 .settings-editor__nav-group:first-child { padding-top: 4px; }
 
-/* Members of a group sit indented under their header. */
+/* Members of a group are NOT indented: the uppercase header above them
+   carries the grouping. An extra indent only for multi-member groups left
+   single-member rows (Canvas, Planner) visibly out of line with the rest,
+   and the membership count is data-dependent, so the misalignment moved. */
 .settings-editor__nav-item--child {
-  padding-left: 20px;
+  padding-left: 12px;
 }
 
 .settings-editor__content {

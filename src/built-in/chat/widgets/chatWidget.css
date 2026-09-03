@@ -259,7 +259,7 @@
   bottom: 8px;
   right: 16px;
   width: 28px;
-  height: 28px;
+  height: var(--px-control-h);
   border-radius: 50%;
   border: 1px solid var(--vscode-widget-border, #454545);
   background: var(--vscode-sideBar-background, #1e1e1e);
@@ -575,7 +575,7 @@
   justify-content: center;
   gap: 4px;
   min-width: 28px;
-  height: 26px;
+  height: var(--px-control-h-sm);
   padding: 0 8px;
   border: 1px solid color-mix(in srgb, var(--vscode-widget-border, #454545) 74%, transparent);
   border-radius: var(--px-radius-full);
@@ -2419,7 +2419,7 @@
 }
 
 .parallx-chat-session-sidebar-item-title {
-  font-size: var(--px-text-sm);
+  font-size: var(--px-text-base);
   font-weight: 400;
   color: var(--vscode-foreground, #cccccc);
   white-space: nowrap;
@@ -2432,8 +2432,8 @@
 }
 
 .parallx-chat-session-sidebar-item-time {
-  font-size: var(--px-text-sm);
-  color: var(--vscode-descriptionForeground, #8b8b8b);
+  font-size: var(--px-text-xs);
+  color: var(--px-text-muted);
 }
 
 .parallx-chat-session-sidebar-item--active .parallx-chat-session-sidebar-item-time {

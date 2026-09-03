@@ -67,7 +67,7 @@ export class InlineMathEditorController implements ICanvasMenu {
 
     // Hint
     const hint = $('div.canvas-inline-math-hint');
-    hint.textContent = 'Enter to confirm · Escape to cancel';
+    hint.textContent = 'Enter to confirm. Escape to cancel.';
 
     this._popup.appendChild(this._input);
     this._popup.appendChild(this._preview);

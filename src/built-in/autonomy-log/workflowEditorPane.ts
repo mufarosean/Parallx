@@ -83,7 +83,7 @@ const PALETTE: readonly PaletteEntry[] = [
     make: (id, x, y) => ({ id, x, y, label: 'Cooldown', kind: 'control.cooldown', hours: 24 }),
   },
   {
-    kind: 'action.agentTurn', label: 'Agent Turn', icon: 'sparkles', family: 'action',
+    kind: 'action.agentTurn', label: 'Agent Turn', icon: 'px-ai-mark', family: 'action',
     make: (id, x, y) => ({ id, x, y, label: 'Agent Turn', kind: 'action.agentTurn', prompt: 'Describe the task here.' }),
   },
   {
@@ -102,7 +102,7 @@ function nodeSummary(n: WorkflowNode): string {
     case 'trigger.event': {
       const parts = [n.source && `source ${n.source}`, n.verb && `verb ${n.verb}`, n.actor && `actor ${n.actor}`]
         .filter(Boolean);
-      return parts.length ? parts.join(' · ') : 'matches everything';
+      return parts.length ? parts.join(' · ') : 'Matches everything.';
     }
     case 'context.facts': {
       const inc = n.include ?? {};
@@ -110,7 +110,7 @@ function nodeSummary(n: WorkflowNode): string {
       const parts = all
         ? ['planner', 'activity', 'sync', 'pages']
         : Object.entries(inc).filter(([, v]) => v).map(([k]) => k);
-      return parts.length ? `injects ${parts.join(' · ')}` : 'nothing selected';
+      return parts.length ? `injects ${parts.join(' · ')}` : 'Nothing selected.';
     }
     case 'context.exemplar':
       return n.ref?.id ? `format: ${n.ref.name ?? n.ref.id}` : 'no format picked';
@@ -706,9 +706,9 @@ export class WorkflowEditorPane implements IDisposable {
         const all = inc.planner === undefined && inc.activity === undefined && inc.sync === undefined && inc.pages === undefined;
         const opts: Array<{ key: 'planner' | 'activity' | 'sync' | 'pages'; label: string }> = [
           { key: 'planner', label: 'Planner: today + open tasks' },
-          { key: 'activity', label: 'Recent activity' },
-          { key: 'sync', label: 'Sync health' },
-          { key: 'pages', label: 'Workspace pages' },
+          { key: 'activity', label: 'Recent Activity' },
+          { key: 'sync', label: 'Sync Health' },
+          { key: 'pages', label: 'Workspace Pages' },
         ];
         for (const opt of opts) {
           const row = $('label.wfe-ins__check') as HTMLLabelElement;

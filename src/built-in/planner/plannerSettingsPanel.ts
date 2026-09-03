@@ -410,7 +410,7 @@ function renderGoogleSyncSection(
       }
     });
     const tasksName = el('span');
-    tasksName.textContent = 'Sync tasks with Google Tasks';
+    tasksName.textContent = 'Sync Tasks with Google Tasks';
     tasksRow.append(tasksCb, tasksName);
     section.appendChild(tasksRow);
 

@@ -334,7 +334,7 @@ export const CHAT_MANIFEST: IToolManifest = {
       { command: 'chat.focus', key: 'Ctrl+L' },
     ],
     viewContainers: [
-      { id: 'chat-container', title: 'Chat', icon: 'px-chat', location: 'auxiliaryBar' as const },
+      { id: 'chat-container', title: 'Chat', icon: 'px-ai-mark', location: 'auxiliaryBar' as const },
     ],
     views: [
       { id: 'view.chat', name: 'Chat', defaultContainerId: 'chat-container' },

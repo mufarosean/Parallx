@@ -42,10 +42,10 @@ const ORIGINAL_PAGE_CONTAINERS = new Set([
 
 /** From blockHandles.ts _getBlockLabel() */
 const ORIGINAL_BLOCK_LABELS: Record<string, string> = {
-  paragraph: 'Text', heading: 'Heading', bulletList: 'Bulleted list',
-  orderedList: 'Numbered list', taskList: 'To-do list', taskItem: 'To-do',
+  paragraph: 'Text', heading: 'Heading', bulletList: 'Bulleted List',
+  orderedList: 'Numbered List', taskList: 'To-do List', taskItem: 'To-do',
   listItem: 'List item', blockquote: 'Quote', codeBlock: 'Code',
-  callout: 'Callout', details: 'Toggle list', mathBlock: 'Equation',
+  callout: 'Callout', details: 'Toggle List', mathBlock: 'Equation',
   columnList: 'Columns', table: 'Table', image: 'Image',
   horizontalRule: 'Divider',
 };

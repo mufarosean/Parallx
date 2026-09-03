@@ -243,7 +243,7 @@ async function refreshEnvBar(): Promise<void> {
   const restart = document.createElement('button');
   restart.type = 'button';
   restart.className = 'parallx-terminal-env__action';
-  restart.textContent = 'Restart shell';
+  restart.textContent = 'Restart Shell';
   restart.addEventListener('click', () => { clearTerminalOutput(); void spawnShell(); });
   _envBar.appendChild(restart);
 }
@@ -378,7 +378,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       }));
       actions.appendChild(createPanelToolbarButton({
         icon: 'rotate-cw',
-        title: 'Restart shell',
+        title: 'Restart Shell',
         onClick: () => { clearTerminalOutput(); void spawnShell(); },
       }));
       root.appendChild(actions);

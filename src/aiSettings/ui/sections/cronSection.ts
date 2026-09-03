@@ -273,7 +273,7 @@ export class CronSection extends SettingsSection {
     const runBtn = document.createElement('button');
     runBtn.type = 'button';
     runBtn.className = 'ai-settings-cron-job__btn';
-    runBtn.textContent = 'Run now';
+    runBtn.textContent = 'Run Now';
     runBtn.title = 'Execute this job immediately (does not change the schedule).';
     runBtn.addEventListener('click', () => this._runNow(job));
     actions.appendChild(runBtn);
@@ -331,9 +331,9 @@ export class CronSection extends SettingsSection {
     const kindHost = $('div.ai-settings-cron-job__edit-kind');
     const kindDropdown = new Dropdown(kindHost, {
       items: [
-        { value: 'daily', label: 'Every day' },
-        { value: 'weekly', label: 'Every week' },
-        { value: 'interval', label: 'On an interval' },
+        { value: 'daily', label: 'Every Day' },
+        { value: 'weekly', label: 'Every Week' },
+        { value: 'interval', label: 'On an Interval' },
         { value: 'once', label: 'Once' },
         { value: 'cron', label: 'Custom (cron)' },
       ],

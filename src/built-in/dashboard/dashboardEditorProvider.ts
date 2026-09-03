@@ -34,6 +34,7 @@ import { openAppearanceDrawer } from './appearanceDrawer.js';
 import { openWidgetSettingsDrawer } from './settingsDrawer.js';
 import { ILinkResolverService } from '../../links/linkResolverService.js';
 import { WIDGET_TEMPLATES } from './widgetTemplates.js';
+import { getIcon } from '../../ui/iconRegistry.js';
 
 // ─── Minimal local API shape (avoids cross-tool import) ──────────────────────
 
@@ -345,7 +346,7 @@ class DashboardEditorPane implements IDisposable {
     `;
     const emptyAddBtn = el('button', 'dashboard-btn dashboard-btn--primary dashboard-empty__cta');
     emptyAddBtn.type = 'button';
-    emptyAddBtn.textContent = 'Add your first widget';
+    emptyAddBtn.textContent = 'Add Your First Widget';
     emptyAddBtn.addEventListener('click', () => void this._openWidgetPicker());
     empty.appendChild(emptyAddBtn);
     gridWrap.appendChild(empty);
@@ -402,11 +403,11 @@ class DashboardEditorPane implements IDisposable {
     const select = new Dropdown(selectHost, {
       items: [
         { value: 'off', label: 'Off' },
-        { value: 'hourly', label: 'Every hour' },
+        { value: 'hourly', label: 'Every Hour' },
         { value: 'every4h', label: 'Every 4 hours' },
-        { value: 'daily', label: 'Daily at…' },
-        { value: 'weekdays', label: 'Weekdays at…' },
-        { value: 'cron', label: 'Custom cron…' },
+        { value: 'daily', label: 'Daily At…' },
+        { value: 'weekdays', label: 'Weekdays At…' },
+        { value: 'cron', label: 'Custom Cron…' },
       ],
       selected: 'off',
       ariaLabel: 'Refresh schedule',
@@ -611,7 +612,7 @@ class DashboardEditorPane implements IDisposable {
         const chatBtn = el('button', 'dashboard-widget__btn');
         chatBtn.type = 'button';
         chatBtn.title = 'Run in chat (visible, for debugging the prompt)';
-        chatBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+        chatBtn.innerHTML = getIcon('px-ai-mark');
         chatBtn.addEventListener('click', () => void this._triggerManualRefresh(row.id, 'chat'));
         actions.appendChild(chatBtn);
       }
@@ -1115,8 +1116,8 @@ class DashboardEditorPane implements IDisposable {
         grouped.get(k)!.push(t);
       }
       const order: { key: string; label: string }[] = [
-        { key: 'static', label: 'At a glance' },
-        { key: 'query', label: 'Workspace activity' },
+        { key: 'static', label: 'At a Glance' },
+        { key: 'query', label: 'Workspace Activity' },
         { key: 'ai', label: 'AI-backed' },
       ];
       for (const { key, label } of order) {

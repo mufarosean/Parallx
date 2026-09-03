@@ -75,7 +75,7 @@ export class WebResearchSection extends SettingsSection {
     // ── Daily budget (number) ──
     {
       const budgetRow = createSettingRow({
-        label: 'Daily search budget',
+        label: 'Daily Search Budget',
         description: 'Maximum Brave Search API calls allowed per local-time day. Resets at local midnight. Default 100.',
         key: KEY_DAILY_BUDGET,
         onReset: () => {
@@ -87,7 +87,7 @@ export class WebResearchSection extends SettingsSection {
       const budgetInput = this._register(new InputBox(budgetRow.controlSlot, {
         value: String(DEFAULT_DAILY_BUDGET),
         placeholder: String(DEFAULT_DAILY_BUDGET),
-        ariaLabel: 'Daily search budget',
+        ariaLabel: 'Daily Search Budget',
         validationFn: (raw) => {
           const n = Number(raw);
           return Number.isFinite(n) && n >= 1 ? null : 'Enter a whole number greater than 0';
@@ -165,7 +165,7 @@ export class WebResearchSection extends SettingsSection {
     // ── Ambient enabled (checkbox) ──
     {
       const ambientRow = createSettingRow({
-        label: 'Allow ambient web use',
+        label: 'Allow Ambient Web Use',
         description: 'When on, the agent may autonomously invoke webSearch/webFetch without an explicit user ask. Off by default to bound free-tier query spend.',
         key: KEY_AMBIENT_ENABLED,
         onReset: () => {
@@ -175,7 +175,7 @@ export class WebResearchSection extends SettingsSection {
       });
       const ambientToggle = this._register(new Toggle(ambientRow.controlSlot, {
         checked: false,
-        ariaLabel: 'Allow ambient web use',
+        ariaLabel: 'Allow Ambient Web Use',
       }));
       this._register(ambientToggle.onDidChange((checked) => {
         void this._storage!.set(KEY_AMBIENT_ENABLED, checked ? 'true' : 'false')

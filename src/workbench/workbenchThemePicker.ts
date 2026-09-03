@@ -82,15 +82,15 @@ export function showColorThemePicker(
   // ── Rows ─────────────────────────────────────────────────────────────
   const rows: PickerRow[] = [];
   if (darkThemes.length) {
-    rows.push({ isSeparator: true, label: 'dark themes' });
+    rows.push({ isSeparator: true, label: 'Dark Themes' });
     for (const t of darkThemes) rows.push({ themeEntry: t, isSeparator: false, label: t.label });
   }
   if (lightThemes.length) {
-    rows.push({ isSeparator: true, label: 'light themes' });
+    rows.push({ isSeparator: true, label: 'Light Themes' });
     for (const t of lightThemes) rows.push({ themeEntry: t, isSeparator: false, label: t.label });
   }
   if (hcThemes.length) {
-    rows.push({ isSeparator: true, label: 'high contrast themes' });
+    rows.push({ isSeparator: true, label: 'High Contrast Themes' });
     for (const t of hcThemes) rows.push({ themeEntry: t, isSeparator: false, label: t.label });
   }
 

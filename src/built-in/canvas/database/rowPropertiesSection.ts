@@ -292,7 +292,7 @@ export async function mountRowPropertiesSection(
     addIcon.textContent = '+';
     addBtn.appendChild(addIcon);
     const addLabel = document.createElement('span');
-    addLabel.textContent = 'Add property';
+    addLabel.textContent = 'Add Property';
     addBtn.appendChild(addLabel);
     addBtn.addEventListener('click', (e) => {
       e.stopPropagation();

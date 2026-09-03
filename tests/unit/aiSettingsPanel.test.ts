@@ -159,7 +159,7 @@ describe('AISettingsPanel', () => {
     expect(Array.from(navItems).map((n) => n.textContent)).toEqual([
       'Model',
       'Agent',
-      'Scheduled jobs',
+      'Scheduled Jobs',
       'Tools',
       'MCP Servers',
       'Web Research',

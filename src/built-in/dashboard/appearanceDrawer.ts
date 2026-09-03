@@ -97,7 +97,7 @@ export function openAppearanceDrawer(host: AppearanceDrawerHost): void {
   bgColor.value = isHexColor(draft.backgroundColor) ? draft.backgroundColor : '#1e1e1e';
   bgColor.style.display = draft.background === 'custom' ? '' : 'none';
   const bgSelect = createSelect(
-    [{ value: 'default', label: 'Theme default' }, { value: 'transparent', label: 'Transparent' }, { value: 'custom', label: 'Custom color' }],
+    [{ value: 'default', label: 'Theme Default' }, { value: 'transparent', label: 'Transparent' }, { value: 'custom', label: 'Custom Color' }],
     draft.background,
     (v) => {
       draft.background = v as WidgetAppearance['background'];
@@ -123,7 +123,7 @@ export function openAppearanceDrawer(host: AppearanceDrawerHost): void {
   bdColor.value = isHexColor(draft.borderColor) ? draft.borderColor : '#3c3c3c';
   bdColor.style.display = draft.border === 'custom' ? '' : 'none';
   const bdSelect = createSelect(
-    [{ value: 'default', label: 'Theme default' }, { value: 'none', label: 'No border' }, { value: 'custom', label: 'Custom color' }],
+    [{ value: 'default', label: 'Theme Default' }, { value: 'none', label: 'No Border' }, { value: 'custom', label: 'Custom Color' }],
     draft.border,
     (v) => {
       draft.border = v as WidgetAppearance['border'];
@@ -145,8 +145,8 @@ export function openAppearanceDrawer(host: AppearanceDrawerHost): void {
   alignBlock.appendChild(alignLabel);
   const alignSelect = createSelect(
     [
-      { value: 'start', label: 'Top left' },
-      { value: 'start-padded', label: 'Top left with margin' },
+      { value: 'start', label: 'Top Left' },
+      { value: 'start-padded', label: 'Top Left with Margin' },
       { value: 'center', label: 'Centered' },
     ],
     draft.contentAlign ?? 'start',
@@ -184,7 +184,7 @@ export function openAppearanceDrawer(host: AppearanceDrawerHost): void {
   hideCheckbox.checked = draft.titleHidden;
   hideRow.appendChild(hideCheckbox);
   const hideText = document.createElement('span');
-  hideText.textContent = 'Hide title bar';
+  hideText.textContent = 'Hide Title Bar';
   hideRow.appendChild(hideText);
   hideBlock.appendChild(hideRow);
   hideCheckbox.addEventListener('change', () => { draft.titleHidden = hideCheckbox.checked; preview(); });

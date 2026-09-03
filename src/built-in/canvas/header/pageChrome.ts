@@ -18,6 +18,7 @@ import {
   listFonts, resolveFontStack, getWorkspaceDefaultFontId, setWorkspaceDefaultFontId,
   registerCustomFont, removeCustomFont, fontFormatFromExtension, type CanvasFont,
 } from '../config/fontRegistry.js';
+import { formatRelativeTime } from '../../../ui/relativeTime.js';
 
 // Default gradient presets for "Add cover" — the identity-derived gallery
 // owned by the blockRegistry gate (same list the cover picker shows).
@@ -372,9 +373,19 @@ export class PageChromeController {
     ribbonRight.appendChild(this._ribbonSaveIndicator);
     this._wireSaveIndicator();
 
-    // Edited timestamp
+    // Edited timestamp. It is also the door to Version History: the stamp
+    // says when the page last changed, so clicking it shows how.
     this._ribbonEditedLabel = $('span.canvas-top-ribbon-edited');
     this._ribbonEditedLabel.textContent = this._formatRelativeTime(this._currentPage?.updatedAt);
+    this._ribbonEditedLabel.title = 'Version History';
+    this._ribbonEditedLabel.setAttribute('role', 'button');
+    this._ribbonEditedLabel.addEventListener('click', () => {
+      this.dismissPopups();
+      void showVersionHistoryPanel({
+        dataService: this._host.dataService,
+        pageId: this._host.pageId,
+      });
+    });
     ribbonRight.appendChild(this._ribbonEditedLabel);
 
     // Favorite star toggle
@@ -433,17 +444,8 @@ export class PageChromeController {
 
   private _formatRelativeTime(isoStr?: string | null): string {
     if (!isoStr) return '';
-    const diff = Date.now() - new Date(isoStr).getTime();
-    const seconds = Math.floor(diff / 1000);
-    if (seconds < 60) return 'Edited just now';
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `Edited ${minutes}m ago`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `Edited ${hours}h ago`;
-    const days = Math.floor(hours / 24);
-    if (days < 30) return `Edited ${days}d ago`;
-    const months = Math.floor(days / 30);
-    return `Edited ${months}mo ago`;
+    const when = formatRelativeTime(isoStr, 'long');
+    return when ? `Edited ${when}` : '';
   }
 
   // ── Page Header ─────────────────────────────────────────────────────────
@@ -490,7 +492,7 @@ export class PageChromeController {
       const addIconBtn = $('button.canvas-affordance-btn');
       addIconBtn.dataset.action = 'add-icon';
       addIconBtn.appendChild(createIconElement('smile', 14));
-      const lbl = $('span'); lbl.textContent = 'Add icon';
+      const lbl = $('span'); lbl.textContent = 'Add Icon';
       addIconBtn.appendChild(lbl);
       addIconBtn.addEventListener('mousedown', (e) => { e.preventDefault(); });
       addIconBtn.addEventListener('click', (e) => {
@@ -504,7 +506,7 @@ export class PageChromeController {
       const addCoverBtn = $('button.canvas-affordance-btn');
       addCoverBtn.dataset.action = 'add-cover';
       addCoverBtn.appendChild(createIconElement('image', 14));
-      const lbl2 = $('span'); lbl2.textContent = 'Add cover';
+      const lbl2 = $('span'); lbl2.textContent = 'Add Cover';
       addCoverBtn.appendChild(lbl2);
       addCoverBtn.addEventListener('mousedown', (e) => { e.preventDefault(); });
       addCoverBtn.addEventListener('click', (e) => {
@@ -636,7 +638,7 @@ export class PageChromeController {
     });
 
     const changeBtn = $('button.canvas-cover-btn');
-    changeBtn.textContent = 'Change cover';
+    changeBtn.textContent = 'Change Cover';
     changeBtn.addEventListener('mousedown', (e) => { e.preventDefault(); });
     changeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -696,7 +698,7 @@ export class PageChromeController {
       const addIconBtn = $('button.canvas-affordance-btn');
       addIconBtn.dataset.action = 'add-icon';
       addIconBtn.appendChild(createIconElement('smile', 14));
-      const lbl = $('span'); lbl.textContent = 'Add icon';
+      const lbl = $('span'); lbl.textContent = 'Add Icon';
       addIconBtn.appendChild(lbl);
       addIconBtn.addEventListener('mousedown', (e) => { e.preventDefault(); });
       addIconBtn.addEventListener('click', (e) => {
@@ -710,7 +712,7 @@ export class PageChromeController {
       const addCoverBtn = $('button.canvas-affordance-btn');
       addCoverBtn.dataset.action = 'add-cover';
       addCoverBtn.appendChild(createIconElement('image', 14));
-      const lbl2 = $('span'); lbl2.textContent = 'Add cover';
+      const lbl2 = $('span'); lbl2.textContent = 'Add Cover';
       addCoverBtn.appendChild(lbl2);
       addCoverBtn.addEventListener('mousedown', (e) => { e.preventDefault(); });
       addCoverBtn.addEventListener('click', (e) => {
@@ -828,7 +830,7 @@ export class PageChromeController {
     actionBar.appendChild(cancelBtn);
 
     const saveBtn = $('button.canvas-cover-btn.canvas-cover-btn--primary');
-    saveBtn.textContent = 'Save position';
+    saveBtn.textContent = 'Save Position';
     saveBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       document.removeEventListener('mousemove', onMouseMove);
@@ -952,9 +954,9 @@ export class PageChromeController {
 
     // ── Toggles ──
     const toggles: { label: string; key: 'fullWidth' | 'smallText' | 'isLocked'; iconId: string }[] = [
-      { label: 'Full width', key: 'fullWidth', iconId: 'expand-width' },
-      { label: 'Small text', key: 'smallText', iconId: 'text-size' },
-      { label: 'Lock page', key: 'isLocked', iconId: 'lock' },
+      { label: 'Full Width', key: 'fullWidth', iconId: 'expand-width' },
+      { label: 'Small Text', key: 'smallText', iconId: 'text-size' },
+      { label: 'Lock Page', key: 'isLocked', iconId: 'lock' },
     ];
 
     for (const toggle of toggles) {
@@ -1038,7 +1040,7 @@ export class PageChromeController {
         },
       },
       {
-        label: 'Save as template',
+        label: 'Save as Template',
         iconId: 'layout-template',
         action: async () => {
           this.dismissPopups();
@@ -1051,17 +1053,6 @@ export class PageChromeController {
           } catch (err) {
             console.error('[Canvas] Save as template failed:', err);
           }
-        },
-      },
-      {
-        label: 'Version history',
-        iconId: 'clock',
-        action: () => {
-          this.dismissPopups();
-          void showVersionHistoryPanel({
-            dataService: this._host.dataService,
-            pageId: this._host.pageId,
-          });
         },
       },
       {
@@ -1235,8 +1226,8 @@ export class PageChromeController {
     this._pageMenuDropdown.appendChild(label);
 
     const toggles: { label: string; key: 'fullWidth' | 'smallText'; iconId: string }[] = [
-      { label: 'Full width', key: 'fullWidth', iconId: 'expand-width' },
-      { label: 'Small text', key: 'smallText', iconId: 'text-size' },
+      { label: 'Full Width', key: 'fullWidth', iconId: 'expand-width' },
+      { label: 'Small Text', key: 'smallText', iconId: 'text-size' },
     ];
 
     for (const toggle of toggles) {
@@ -1264,7 +1255,7 @@ export class PageChromeController {
 
     const actions: { label: string; iconId: string; action: () => void; danger?: boolean }[] = [
       {
-        label: 'Open as page',
+        label: 'Open as Page',
         iconId: 'page',
         action: () => {
           this._host.openEditor?.({

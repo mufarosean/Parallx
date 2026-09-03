@@ -316,7 +316,7 @@ export class ChatTokenStatusBar extends Disposable {
     // Workspace digest = projectContext minus bootstrap file content
     const digestChars = Math.max(0, report.systemPrompt.projectContextChars - bootstrapCharsTotal);
     if (digestChars > 0) {
-      fileSubs.push({ label: 'Workspace digest', tokens: Math.round(Math.ceil(digestChars / 4) * scale) });
+      fileSubs.push({ label: 'Workspace Digest', tokens: Math.round(Math.ceil(digestChars / 4) * scale) });
     }
 
     return {

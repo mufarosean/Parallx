@@ -82,7 +82,7 @@ export function showVersionHistoryPanel(deps: VersionHistoryDeps): Promise<void>
       const actions = $('div.canvas-vh-preview-actions');
       const restoreBtn = $('button.canvas-vh-restore') as HTMLButtonElement;
       restoreBtn.type = 'button';
-      restoreBtn.textContent = 'Restore this version';
+      restoreBtn.textContent = 'Restore This Version';
       const status = $('span.canvas-vh-status');
       restoreBtn.addEventListener('click', async () => {
         restoreBtn.disabled = true;

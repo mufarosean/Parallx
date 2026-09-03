@@ -164,7 +164,7 @@ export class IconPicker extends Disposable {
       const removeBtn = document.createElement('button');
       removeBtn.type = 'button';
       removeBtn.classList.add('ui-icon-picker-remove');
-      removeBtn.textContent = 'Remove icon';
+      removeBtn.textContent = 'Remove Icon';
       removeBtn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -232,7 +232,7 @@ export class IconPicker extends Disposable {
         if (matches.length === 0) {
           const empty = document.createElement('div');
           empty.classList.add('ui-icon-picker-empty');
-          empty.textContent = 'No matching icons';
+          empty.textContent = 'No matching icons.';
           contentArea.appendChild(empty);
           return;
         }

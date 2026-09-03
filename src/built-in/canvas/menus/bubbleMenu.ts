@@ -96,7 +96,7 @@ export class BubbleMenuController implements ICanvasMenu {
         active: (e) => e.isActive('strike'),
       },
       {
-        label: '<code>&lt;/&gt;</code>', title: 'Inline code',
+        label: '<code>&lt;/&gt;</code>', title: 'Inline Code',
         command: (e) => e.chain().focus().toggleCode().run(),
         active: (e) => e.isActive('code'),
       },
@@ -123,7 +123,7 @@ export class BubbleMenuController implements ICanvasMenu {
         // "Add Selection to Chat" affordance the text/markdown/pdf editors
         // already expose. Routes through the unified M48 selection-action
         // dispatcher (the same CustomEvent the inline AI's "Send to Chat" uses).
-        label: svgIcon('comment'), title: 'Add to Chat',
+        label: svgIcon('px-ai-mark'), title: 'Add to Chat',
         command: (e) => this._dispatchSelectionAction(e, 'add-to-chat'),
         active: () => false,
       },
@@ -136,7 +136,7 @@ export class BubbleMenuController implements ICanvasMenu {
         active: () => false,
       },
       {
-        label: svgIcon('math'), title: 'Inline equation',
+        label: svgIcon('math'), title: 'Inline Equation',
         command: (e) => {
           const { from, to } = e.state.selection;
           const selectedText = e.state.doc.textBetween(from, to);

@@ -10,6 +10,16 @@ contextBridge.exposeInMainWorld('parallxElectron', {
   /** Absolute path to the application root directory. */
   appPath: process.cwd(),
 
+  /**
+   * The DATA root: where last-workspace.json, global storage, window state
+   * and the extensions dir live. Normally the install folder (same as
+   * appPath); main relocates it under PARALLX_APP_ROOT for probes and tests,
+   * and the storage bridge validates every path against that same root, so
+   * data readers must use THIS, not appPath, or every read fails as
+   * out-of-bounds. Code assets (migrations, katex, tools) stay on appPath.
+   */
+  dataRoot: process.env.PARALLX_APP_ROOT ? require('path').resolve(process.env.PARALLX_APP_ROOT) : process.cwd(),
+
   // ── Workspace switch teardown ──
   prepareWorkspaceSwitch: () => ipcRenderer.invoke('workspace:prepareSwitch'),
 

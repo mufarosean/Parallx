@@ -23,8 +23,7 @@ import {
   deletePreset,
   type PxAppearanceState,
   type PxBaseTheme,
-  type PxMode,
-} from '../../theme/pxAppearance.js';
+  type PxMode, PX_FONTS, DEFAULT_FONT_ID } from '../../theme/pxAppearance.js';
 import { applyThemeById } from '../../theme/themeApply.js';
 
 import './pxAppearance.css';
@@ -99,6 +98,7 @@ export class PxAppearancePanel implements IDisposable {
     body.className = 'px-appearance-body';
 
     body.appendChild(this._renderModeSection());
+    body.appendChild(this._renderFontSection());
     body.appendChild(this._renderBaseSection());
     body.appendChild(this._renderAccentSection());
     body.appendChild(this._renderPreviewSection());
@@ -106,6 +106,45 @@ export class PxAppearancePanel implements IDisposable {
 
     root.appendChild(body);
     this._container.appendChild(root);
+  }
+
+  // ── Font ─────────────────────────────────────────────────────────────
+  private _renderFontSection(): HTMLElement {
+    const section = document.createElement('section');
+    section.className = 'px-appearance-section';
+    section.appendChild(this._sectionHeading('Font', 'The type every surface uses. Each choice previews itself.'));
+
+    const row = document.createElement('div');
+    row.className = 'px-font-row';
+    row.setAttribute('role', 'group');
+    row.setAttribute('aria-label', 'App font');
+    const chips = new Map<string, HTMLButtonElement>();
+    const current = this._state.font ?? DEFAULT_FONT_ID;
+    for (const font of PX_FONTS) {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'px-font-chip';
+      chip.style.fontFamily = font.stack;
+      chip.setAttribute('aria-label', `Font: ${font.label}`);
+      if (font.id === current) chip.classList.add('is-selected');
+      const sample = document.createElement('span');
+      sample.className = 'px-font-chip-sample';
+      sample.textContent = 'Aa';
+      const label = document.createElement('span');
+      label.className = 'px-font-chip-label';
+      label.textContent = font.label;
+      chip.appendChild(sample);
+      chip.appendChild(label);
+      chip.addEventListener('click', () => {
+        this._state.font = font.id === DEFAULT_FONT_ID ? undefined : font.id;
+        this._commit();
+        for (const [id, c] of chips) c.classList.toggle('is-selected', id === font.id);
+      });
+      chips.set(font.id, chip);
+      row.appendChild(chip);
+    }
+    section.appendChild(row);
+    return section;
   }
 
   // ── Mode (light / dark) ───────────────────────────────────────────────
@@ -362,7 +401,7 @@ export class PxAppearancePanel implements IDisposable {
     const saveBtn = document.createElement('button');
     saveBtn.type = 'button';
     saveBtn.className = 'px-appearance-save-btn';
-    saveBtn.textContent = 'Save current';
+    saveBtn.textContent = 'Save Current';
     const doSave = () => {
       const name = nameInput.value.trim();
       if (!name) { nameInput.focus(); return; }

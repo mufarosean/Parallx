@@ -479,14 +479,14 @@ export class CanvasSidebar {
       const actions = $('div.canvas-empty-actions');
 
       const blankBtn = $('button.canvas-empty-action.canvas-empty-action--primary');
-      blankBtn.textContent = '+ Blank page';
+      blankBtn.textContent = '+ Blank Page';
       blankBtn.addEventListener('click', () => this._createPage());
       actions.appendChild(blankBtn);
 
       // M77 Phase 11.4 ties templates in; the button is wired up here
       // and the modal opens via a command exposed by canvas main.ts.
       const templateBtn = $('button.canvas-empty-action');
-      templateBtn.textContent = 'Use a template…';
+      templateBtn.textContent = 'Use a Template…';
       templateBtn.addEventListener('click', () => {
         void this._api.commands.executeCommand('canvas.showTemplatePicker');
       });
@@ -922,7 +922,7 @@ export class CanvasSidebar {
     });
     addAction({
       id: 'new-subpage',
-      label: 'New subpage',
+      label: 'New Subpage',
       iconId: 'new-page',
       action: () => this._createPage(page.id),
     });
@@ -983,7 +983,7 @@ export class CanvasSidebar {
     });
     addAction({
       id: 'save-as-template',
-      label: 'Save as template',
+      label: 'Save as Template',
       iconId: 'layout-template',
       action: async () => {
         try {
@@ -1306,7 +1306,7 @@ export class CanvasSidebar {
     const pop = $('div.canvas-sidebar-add-popover');
     const items: { label: string; icon: string; onClick: () => void }[] = [
       {
-        label: 'Blank page',
+        label: 'Blank Page',
         icon: 'file',
         onClick: () => { void this._createPage(); },
       },
@@ -1318,14 +1318,14 @@ export class CanvasSidebar {
         },
       },
       {
-        label: 'From template…',
+        label: 'From Template…',
         icon: 'layout-template',
         onClick: () => {
           void this._api.commands.executeCommand('canvas.showTemplatePicker');
         },
       },
       {
-        label: 'Manage templates…',
+        label: 'Manage Templates…',
         icon: 'settings',
         onClick: () => {
           void this._api.commands.executeCommand('canvas.manageTemplates');

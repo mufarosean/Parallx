@@ -1569,7 +1569,7 @@
   cursor: pointer;
   font-size: var(--parallx-fontSize-md);
   min-width: 30px;
-  height: 30px;
+  height: var(--px-control-h);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2725,17 +2725,27 @@
 }
 
 .canvas-top-ribbon-edited {
-  font-size: var(--parallx-fontSize-base);
-  color: rgba(255, 255, 255, 0.55);
+  font-size: var(--px-text-sm);
+  color: var(--px-text-muted);
   white-space: nowrap;
-  padding: 0 4px;
+  padding: 0 6px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--px-radius-sm);
   user-select: none;
+  /* The stamp is the door to Version History (click). */
+  cursor: pointer;
+}
+.canvas-top-ribbon-edited:hover {
+  color: var(--px-text);
+  background: var(--px-surface-hover);
 }
 
 /* M77 Phase 11.1 — save-state indicator (subtle, ribbon-right). */
 .canvas-top-ribbon-save {
-  font-size: var(--parallx-fontSize-base);
-  color: rgba(255, 255, 255, 0.55);
+  font-size: var(--px-text-sm);
+  color: var(--px-text-muted);
   white-space: nowrap;
   padding: 0 6px;
   user-select: none;
@@ -4018,7 +4028,7 @@
   border: none;
   background: none;
   color: rgba(255, 255, 255, 0.82);
-  min-height: 30px;
+  min-height: var(--px-control-h);
   border-radius: var(--parallx-radius-lg);
   display: flex;
   align-items: center;

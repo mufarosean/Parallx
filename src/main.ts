@@ -19,6 +19,8 @@ declare global {
       platform: string;
       testMode?: boolean;
       appPath: string;
+      /** Data root (last workspace, global storage); equals appPath except under PARALLX_APP_ROOT. */
+      dataRoot: string;
       minimize: () => void;
       maximize: () => void;
       close: () => void;

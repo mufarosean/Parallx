@@ -36,13 +36,12 @@ export const chatIcons = {
   // ── Empty state / welcome ──
   // The AI wears the brand mark, never the sparkle (see brandIcons.ts).
   sparkle:          g('px-ai-mark'),
-  chatBubble:       g('chat-bubble'),
   pencil:           g('pencil'),
-  agent:            g('agent'),
+  // Agent mode is the AI acting; it wears the mark, not a robot.
+  agent:            g('px-ai-mark'),
   atSign:           g('at-sign'),
   canvas:           g('page'),
   keyboard:         g('keyboard'),
-  wand:             g('compass'),
   lightbulb:        g('lightbulb'),
 
   // ── Sidebar ──

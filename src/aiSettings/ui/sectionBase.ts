@@ -187,7 +187,7 @@ export abstract class SettingsSection extends Disposable {
   protected _addResetSectionLink(sectionKey: string): void {
     const link = $('button.ai-settings-section__reset-link');
     link.setAttribute('type', 'button');
-    link.textContent = 'Reset section to defaults';
+    link.textContent = 'Reset Section to Defaults';
     link.addEventListener('click', () => {
       this._service.resetSection(sectionKey as 'persona' | 'chat' | 'model' | 'suggestions');
     });

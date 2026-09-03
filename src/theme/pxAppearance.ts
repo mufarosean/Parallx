@@ -30,6 +30,31 @@ export interface PxAppearanceState {
   base: PxBaseTheme;     // the "mood": slate / warm / ember (applies in both modes)
   accent: string;        // accent id, or 'custom'
   customHue?: number;    // 0-360 when accent === 'custom'
+  /** UI font id from PX_FONTS; 'inter' (the default stack) when absent. */
+  font?: string;
+}
+
+/** The app-wide UI font. One choice, every surface: the workbench root
+ *  reads `--parallx-fontFamily-ui`, and every surface token aliases it. */
+export interface PxFont {
+  readonly id: string;
+  readonly label: string;
+  readonly stack: string;
+}
+
+export const PX_FONTS: readonly PxFont[] = [
+  { id: 'inter',   label: 'Inter',    stack: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif" },
+  { id: 'system',  label: 'System',   stack: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI', sans-serif" },
+  { id: 'segoe',   label: 'Segoe UI', stack: "'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif" },
+  { id: 'verdana', label: 'Verdana',  stack: "Verdana, Geneva, 'DejaVu Sans', sans-serif" },
+  { id: 'georgia', label: 'Georgia',  stack: "Georgia, 'Times New Roman', Times, serif" },
+  { id: 'mono',    label: 'Mono',     stack: "'JetBrains Mono', 'Cascadia Code', Consolas, 'Courier New', monospace" },
+];
+
+export const DEFAULT_FONT_ID = 'inter';
+
+export function resolveFontStack(id: string | undefined): string {
+  return (PX_FONTS.find(f => f.id === id) ?? PX_FONTS[0]).stack;
 }
 
 export const PX_BASE_THEMES: { id: PxBaseTheme; label: string; desc: string; swatch: string }[] = [
@@ -58,6 +83,7 @@ function normalizeAppearance(parsed: Partial<PxAppearanceState> | null | undefin
     base: (parsed.base === 'warm' || parsed.base === 'ember') ? parsed.base : 'slate',
     accent: typeof parsed.accent === 'string' ? parsed.accent : 'steel',
     customHue: typeof parsed.customHue === 'number' ? parsed.customHue : undefined,
+    font: PX_FONTS.some(f => f.id === parsed.font) ? parsed.font : undefined,
   };
 }
 
@@ -86,12 +112,12 @@ type StorageBridgeShape = {
 
 function durableTarget(): { bridge: StorageBridgeShape; file: string } | null {
   const w = window as unknown as {
-    parallxElectron?: { storage?: StorageBridgeShape; appPath?: string };
+    parallxElectron?: { storage?: StorageBridgeShape; dataRoot?: string; appPath?: string };
   };
   const bridge = w.parallxElectron?.storage;
-  const appPath = w.parallxElectron?.appPath;
-  if (!bridge || !appPath) return null;
-  return { bridge, file: `${appPath}/data/appearance.json` };
+  const dataRoot = w.parallxElectron?.dataRoot ?? w.parallxElectron?.appPath;
+  if (!bridge || !dataRoot) return null;
+  return { bridge, file: `${dataRoot}/data/appearance.json` };
 }
 
 export function writeAppearance(state: PxAppearanceState): void {
@@ -286,6 +312,15 @@ export function applyAppearance(state: PxAppearanceState): void {
       root.style.setProperty('--px-accent-l', `${a.l}%`);
       root.style.setProperty('--px-accent-rgb', a.rgb);
     }
+  }
+
+  // UI font — inline on :root beats the theme bridge's stylesheet rule, so
+  // every surface that reads --parallx-fontFamily-ui (or its --px-font-ui
+  // alias) follows. The default clears the override rather than restating it.
+  if (state.font && state.font !== DEFAULT_FONT_ID) {
+    root.style.setProperty('--parallx-fontFamily-ui', resolveFontStack(state.font));
+  } else {
+    root.style.removeProperty('--parallx-fontFamily-ui');
   }
 }
 

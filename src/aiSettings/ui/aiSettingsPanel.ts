@@ -129,7 +129,7 @@ export class AISettingsPanel extends Disposable {
     const navSections = [
       { id: 'model', label: 'Model' },
       { id: 'agent', label: 'Agent' },
-      { id: 'cron', label: 'Scheduled jobs' },
+      { id: 'cron', label: 'Scheduled Jobs' },
       { id: 'tools', label: 'Tools' },
       { id: 'mcp', label: 'MCP Servers' },
       { id: 'web-research', label: 'Web Research' },

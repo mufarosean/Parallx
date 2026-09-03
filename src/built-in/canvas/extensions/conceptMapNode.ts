@@ -542,7 +542,7 @@ export const ConceptMap = Node.create({
             height: rectB.height,
           },
           branch: branchOfEl(parts.g),
-          hint: 'Enter saves · Tab adds a child · Esc cancels · empty deletes',
+          hint: 'Enter saves. Tab adds a child. Esc cancels. Empty deletes.',
           onDone: (text, via) => {
             restoreLabel();
             if (text === null) { render(); return; }
@@ -616,7 +616,7 @@ export const ConceptMap = Node.create({
           selectAll: false,
           rect: { ...seat, width: 90, height: 24 },
           branch: branchOfEl(g),
-          hint: 'Enter adds another · Tab adds a child · Esc closes',
+          hint: 'Enter adds another. Tab adds a child. Esc closes.',
           onDone: (text, via) => {
             if (!text) { render(); return; }
             const next = kind === 'child'

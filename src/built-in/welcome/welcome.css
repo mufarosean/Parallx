@@ -9,7 +9,10 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  /* `safe`: when the page is taller than the pane, centering would push the
+     logo above the scrollable top and clip it. Safe centering falls back to
+     start alignment in that case. */
+  justify-content: safe center;
   height: 100%;
   padding: var(--px-space-8, 32px) var(--px-space-6, 24px);
   overflow-y: auto;
@@ -31,6 +34,11 @@
   display: flex;
   justify-content: center;
   color: var(--px-accent);
+}
+
+.welcome-logo svg {
+  width: 96px;
+  height: 96px;
 }
 
 .welcome-title {

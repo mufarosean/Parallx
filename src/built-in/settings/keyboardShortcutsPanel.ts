@@ -118,7 +118,7 @@ export class KeyboardShortcutsPanel extends Disposable {
       this._renderKeycaps(keyBtn, current);
     } else {
       keyBtn.classList.add('kbs__keybtn--unset');
-      keyBtn.textContent = 'Add shortcut';
+      keyBtn.textContent = 'Add Shortcut';
     }
     this._register(addDisposableListener(keyBtn, 'click', () => this._beginCapture(id)));
     keyCol.appendChild(keyBtn);

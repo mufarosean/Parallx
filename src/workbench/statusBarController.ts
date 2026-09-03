@@ -280,7 +280,7 @@ export class StatusBarController extends Disposable {
       if (history.length > 0) {
         const clearBtn = $('button');
         clearBtn.className = 'parallx-notification-center-clear';
-        clearBtn.textContent = 'Clear all';
+        clearBtn.textContent = 'Clear All';
         clearBtn.title = 'Clear all notifications';
         clearBtn.addEventListener('click', () => {
           notifService.dismissAll();
@@ -308,7 +308,7 @@ export class StatusBarController extends Disposable {
         empty.appendChild(emptyText);
         const emptySub = $('span');
         emptySub.className = 'parallx-notification-center-empty-sub';
-        emptySub.textContent = 'No notifications right now';
+        emptySub.textContent = 'No notifications right now.';
         empty.appendChild(emptySub);
         list.appendChild(empty);
       } else {

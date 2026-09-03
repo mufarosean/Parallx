@@ -396,7 +396,7 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
     });
     pauseLabel.appendChild(pauseCheckbox);
     const pauseText = document.createElement('span');
-    pauseText.textContent = ' Pause autonomy';
+    pauseText.textContent = 'Pause Autonomy';
     pauseLabel.appendChild(pauseText);
     header.appendChild(pauseLabel);
   }
@@ -437,7 +437,7 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
 
   // Actions
   const markAll = $('button.autonomy-log-action') as HTMLButtonElement;
-  markAll.textContent = 'Mark all read';
+  markAll.textContent = 'Mark All Read';
   markAll.title = 'Mark every entry as read';
   markAll.addEventListener('click', () => { logService?.markRead(); });
   header.appendChild(markAll);
@@ -572,7 +572,7 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
         // view silently show less than it claims.
         if (habits.length > 6) {
           const more = $('div.autonomy-mind-habit.autonomy-mind-habit--more');
-          more.textContent = `and ${habits.length - 6} more, strongest shown first`;
+          more.textContent = `And ${habits.length - 6} more, strongest first.`;
           panel.appendChild(more);
         }
       }
@@ -670,7 +670,7 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
     } else if (hbOn) {
       const iv = hbCfg ? formatInterval(hbCfg.intervalMs) : '30m';
       const hbCell = statusCell('on', 'Heartbeat', `reviews every ${iv}`,
-        { label: 'Wake now', primary: true, run: () => { void runCommand?.('parallx.wakeAgent'); } });
+        { label: 'Wake Now', primary: true, run: () => { void runCommand?.('parallx.wakeAgent'); } });
       strip.appendChild(hbCell);
       // One-shot enrichment: last review / next due / watcher outcome, from
       // the live runner state. Updates on the next board repaint.
@@ -739,19 +739,19 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
       const det = mindCell.querySelector('.as-cell__detail');
       if (!det || !dot) return;
       if (!s || s.available === false) {
-        det.textContent = 'not available here';
+        det.textContent = 'Not available here.';
         return;
       }
       if (s.audit && !s.audit.ok) {
         dot.className = 'as-cell__dot is-alert';
-        det.textContent = 'records damaged: open for details';
+        det.textContent = 'Records damaged. Open for details.';
         return;
       }
       const beliefs = s.beliefs?.length ?? 0;
       const open = (s.predictions ?? []).filter(p => !p.resolved).length;
       const habits = s.habits?.length ?? 0;
       if (beliefs === 0 && open === 0 && habits === 0) {
-        det.textContent = 'nothing learned yet';
+        det.textContent = 'Nothing learned yet.';
         return;
       }
       dot.className = 'as-cell__dot is-on';
@@ -804,9 +804,9 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
 
     const chips = $('div.autonomy-guide__chips');
     const examples: { label: string; icon: string; run: () => void }[] = [
-      { label: 'Wake the agent now', icon: 'zap', run: () => { void runCommand?.('parallx.wakeAgent'); } },
-      { label: 'Schedule a job', icon: 'calendar-clock', run: () => { void runCommand?.('aiSettings.manageCron'); } },
-      { label: 'Ask in chat', icon: 'message-circle', run: () => { void runCommand?.('chat.show'); } },
+      { label: 'Wake the Agent Now', icon: 'px-ai-mark', run: () => { void runCommand?.('parallx.wakeAgent'); } },
+      { label: 'Schedule a Job', icon: 'calendar-clock', run: () => { void runCommand?.('aiSettings.manageCron'); } },
+      { label: 'Ask in Chat', icon: 'px-ai-mark', run: () => { void runCommand?.('chat.show'); } },
     ];
     for (const e of examples) {
       const chip = $('button.autonomy-guide__chip') as HTMLButtonElement;
@@ -1266,7 +1266,7 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
     if (entry.sessionId && String(entry.sessionId).startsWith('ephemeral-')) {
       const view = $('button.autonomy-log-entry__viewrun') as HTMLButtonElement;
       view.type = 'button';
-      view.textContent = 'View full run →';
+      view.textContent = 'View Full Run';
       view.addEventListener('click', (e) => {
         e.stopPropagation();
         void runCommand?.('chat.openArchivedRun', {
@@ -1314,7 +1314,7 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
     const seed = (instruction: string): string => _heartbeatSeedPrompt(entry.content, instruction);
 
     const doIt = $('button.autonomy-log-action.autonomy-log-action--primary') as HTMLButtonElement;
-    doIt.textContent = 'Do it';
+    doIt.textContent = 'Do It';
     doIt.title = 'Open the chat and have the agent act on this';
     doIt.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -1322,7 +1322,7 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
     });
 
     const more = $('button.autonomy-log-action') as HTMLButtonElement;
-    more.textContent = 'Tell me more';
+    more.textContent = 'Tell Me More';
     more.title = 'Open the chat and ask the agent to explain before deciding';
     more.addEventListener('click', (e) => {
       e.stopPropagation();

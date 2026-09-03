@@ -12,7 +12,7 @@ export function showBookmarkInsertPopup(
   const popup = $('div.canvas-bookmark-insert-popup');
 
   const title = $('div.canvas-bookmark-insert-title');
-  title.textContent = 'Create bookmark';
+  title.textContent = 'Create Bookmark';
   popup.appendChild(title);
 
   const row = $('div.canvas-bookmark-insert-row');
@@ -21,7 +21,7 @@ export function showBookmarkInsertPopup(
   input.placeholder = 'Paste link to bookmark…';
 
   const createBtn = $('button.canvas-bookmark-insert-create');
-  createBtn.textContent = 'Create bookmark';
+  createBtn.textContent = 'Create Bookmark';
 
   row.appendChild(input);
   row.appendChild(createBtn);

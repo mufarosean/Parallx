@@ -152,16 +152,16 @@ export interface ColorSwatch {
 
 /** Text-colour swatches — applied to the `Color` mark or block text colour. */
 export const TEXT_COLORS: readonly ColorSwatch[] = [
-  { label: 'Default text', value: null,                   display: 'rgba(255,255,255,0.81)' },
-  { label: 'Gray text',    value: 'rgb(155,155,155)',     display: 'rgb(155,155,155)' },
-  { label: 'Brown text',   value: 'rgb(186,133,83)',      display: 'rgb(186,133,83)' },
-  { label: 'Orange text',  value: 'rgb(230,150,60)',      display: 'rgb(230,150,60)' },
-  { label: 'Yellow text',  value: 'rgb(223,196,75)',      display: 'rgb(223,196,75)' },
-  { label: 'Green text',   value: 'rgb(80,185,120)',      display: 'rgb(80,185,120)' },
-  { label: 'Blue text',    value: 'rgb(70,160,230)',      display: 'rgb(70,160,230)' },
-  { label: 'Purple text',  value: 'rgb(170,120,210)',     display: 'rgb(170,120,210)' },
-  { label: 'Pink text',    value: 'rgb(220,120,170)',     display: 'rgb(220,120,170)' },
-  { label: 'Red text',     value: 'rgb(220,80,80)',       display: 'rgb(220,80,80)' },
+  { label: 'Default Text', value: null,                   display: 'rgba(255,255,255,0.81)' },
+  { label: 'Gray Text',    value: 'rgb(155,155,155)',     display: 'rgb(155,155,155)' },
+  { label: 'Brown Text',   value: 'rgb(186,133,83)',      display: 'rgb(186,133,83)' },
+  { label: 'Orange Text',  value: 'rgb(230,150,60)',      display: 'rgb(230,150,60)' },
+  { label: 'Yellow Text',  value: 'rgb(223,196,75)',      display: 'rgb(223,196,75)' },
+  { label: 'Green Text',   value: 'rgb(80,185,120)',      display: 'rgb(80,185,120)' },
+  { label: 'Blue Text',    value: 'rgb(70,160,230)',      display: 'rgb(70,160,230)' },
+  { label: 'Purple Text',  value: 'rgb(170,120,210)',     display: 'rgb(170,120,210)' },
+  { label: 'Pink Text',    value: 'rgb(220,120,170)',     display: 'rgb(220,120,170)' },
+  { label: 'Red Text',     value: 'rgb(220,80,80)',       display: 'rgb(220,80,80)' },
 ];
 
 /**
@@ -171,16 +171,16 @@ export const TEXT_COLORS: readonly ColorSwatch[] = [
  * a slightly stronger preview shown in the picker swatch.
  */
 export const BG_COLORS: readonly ColorSwatch[] = [
-  { label: 'Default background', value: null,                          display: 'transparent' },
-  { label: 'Gray background',    value: 'rgba(155,155,155,0.2)',       display: 'rgba(155,155,155,0.35)' },
-  { label: 'Brown background',   value: 'rgba(186,133,83,0.2)',        display: 'rgba(186,133,83,0.35)' },
-  { label: 'Orange background',  value: 'rgba(230,150,60,0.2)',        display: 'rgba(230,150,60,0.35)' },
-  { label: 'Yellow background',  value: 'rgba(223,196,75,0.2)',        display: 'rgba(223,196,75,0.35)' },
-  { label: 'Green background',   value: 'rgba(80,185,120,0.2)',        display: 'rgba(80,185,120,0.35)' },
-  { label: 'Blue background',    value: 'rgba(70,160,230,0.2)',        display: 'rgba(70,160,230,0.35)' },
-  { label: 'Purple background',  value: 'rgba(170,120,210,0.2)',       display: 'rgba(170,120,210,0.35)' },
-  { label: 'Pink background',    value: 'rgba(220,120,170,0.2)',       display: 'rgba(220,120,170,0.35)' },
-  { label: 'Red background',     value: 'rgba(220,80,80,0.2)',         display: 'rgba(220,80,80,0.35)' },
+  { label: 'Default Background', value: null,                          display: 'transparent' },
+  { label: 'Gray Background',    value: 'rgba(155,155,155,0.2)',       display: 'rgba(155,155,155,0.35)' },
+  { label: 'Brown Background',   value: 'rgba(186,133,83,0.2)',        display: 'rgba(186,133,83,0.35)' },
+  { label: 'Orange Background',  value: 'rgba(230,150,60,0.2)',        display: 'rgba(230,150,60,0.35)' },
+  { label: 'Yellow Background',  value: 'rgba(223,196,75,0.2)',        display: 'rgba(223,196,75,0.35)' },
+  { label: 'Green Background',   value: 'rgba(80,185,120,0.2)',        display: 'rgba(80,185,120,0.35)' },
+  { label: 'Blue Background',    value: 'rgba(70,160,230,0.2)',        display: 'rgba(70,160,230,0.35)' },
+  { label: 'Purple Background',  value: 'rgba(170,120,210,0.2)',       display: 'rgba(170,120,210,0.35)' },
+  { label: 'Pink Background',    value: 'rgba(220,120,170,0.2)',       display: 'rgba(220,120,170,0.35)' },
+  { label: 'Red Background',     value: 'rgba(220,80,80,0.2)',         display: 'rgba(220,80,80,0.35)' },
 ];
 
 // ── Recent-list helper (Notion parity) ─────────────────────────────────────

@@ -17,6 +17,7 @@ import { EMPTY_STATES } from '../../../ui/emptyStates.js';
 import type { IChatSession } from '../../../services/chatTypes.js';
 import { chatIcons } from '../chatIcons.js';
 import type { ISessionSidebarServices } from '../chatTypes.js';
+import { formatRelativeTime } from '../../../ui/relativeTime.js';
 
 // ISessionSidebarServices — now defined in chatTypes.ts (M13 Phase 1)
 export type { ISessionSidebarServices } from '../chatTypes.js';
@@ -63,22 +64,8 @@ const GROUP_ORDER: readonly DateGroup[] = [
 // ── Relative time formatting ──
 
 function _formatRelativeTime(timestamp: number): string {
-  const diff = Date.now() - timestamp;
-  const minutes = Math.floor(diff / 60_000);
-  const hours = Math.floor(diff / 3_600_000);
-  const days = Math.floor(diff / 86_400_000);
-
-  if (minutes < 1) { return 'just now'; }
-  if (minutes < 60) { return `${minutes}m ago`; }
-  if (hours < 24) { return `${hours}h ago`; }
-  if (days === 1) { return 'yesterday'; }
-  if (days < 7) { return `${days}d ago`; }
-  if (days < 30) { return `${Math.floor(days / 7)}w ago`; }
-
-  return new Date(timestamp).toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-  });
+  // The shared clock (ui/relativeTime), short style for narrow rows.
+  return formatRelativeTime(timestamp, 'short');
 }
 
 // ── Smart session display title ──
@@ -321,7 +308,7 @@ export class ChatSessionSidebar extends Disposable {
     // If we have full-text search results (Task 4.5), render them as a flat list
     if (this._searchResults !== undefined) {
       if (this._searchResults.length === 0) {
-        this._emptyEl.textContent = 'No matching sessions';
+        this._emptyEl.textContent = 'No matching sessions.';
         this._emptyEl.style.display = '';
         return;
       }

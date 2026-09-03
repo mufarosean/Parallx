@@ -45,7 +45,7 @@ export function showMediaInsertPopup(
   const tabUpload = $('button.canvas-media-insert-tab');
   tabUpload.textContent = 'Upload';
   const tabLink = $('button.canvas-media-insert-tab');
-  tabLink.textContent = 'Embed link';
+  tabLink.textContent = 'Embed Link';
   tabBar.appendChild(tabUpload);
   tabBar.appendChild(tabLink);
   popup.appendChild(tabBar);

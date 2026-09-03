@@ -172,7 +172,7 @@ describe('CronSection', () => {
       makeJob({ id: 'cron-1', name: 'test' }),
     ]);
     const buttons = Array.from(section.element.querySelectorAll('button'));
-    const runBtn = buttons.find(b => b.textContent === 'Run now') as HTMLButtonElement;
+    const runBtn = buttons.find(b => b.textContent === 'Run Now') as HTMLButtonElement;
     runBtn.click();
     expect(cronService.runJob).toHaveBeenCalledWith('cron-1');
     section.dispose();

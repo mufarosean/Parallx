@@ -14,17 +14,17 @@ import { chatIcons } from '../chatIcons.js';
 
 /** Preset values offered in the dropdown. 0 = "Model default" (clear override). */
 const CONTEXT_WINDOW_PRESETS: readonly { label: string; description: string; value: number }[] = [
-  { label: 'Model default', description: 'Model\u2019s reported context',        value: 0 },
-  { label: '4K',   description: 'Tiny, lowest VRAM',                             value: 4_096 },
-  { label: '8K',   description: 'Light chat',                                    value: 8_192 },
-  { label: '16K',  description: 'Medium context',                                value: 16_384 },
-  { label: '32K',  description: 'Long chat',                                     value: 32_768 },
-  { label: '64K',  description: 'Stays in VRAM on most GPUs',                    value: 65_536 },
-  { label: '128K', description: 'May spill to CPU',                              value: 131_072 },
-  { label: '160K', description: 'Large, needs GPU headroom',                     value: 163_840 },
-  { label: '192K', description: 'Very large, likely spills',                     value: 196_608 },
-  { label: '224K', description: 'Near-max on 256K models',                       value: 229_376 },
-  { label: '256K', description: 'Full window on 262K models',                    value: 262_144 },
+  { label: 'Model Default', description: '',        value: 0 },
+  { label: '4K',   description: '',                             value: 4_096 },
+  { label: '8K',   description: '',                                    value: 8_192 },
+  { label: '16K',  description: '',                                value: 16_384 },
+  { label: '32K',  description: '',                                     value: 32_768 },
+  { label: '64K',  description: '',                    value: 65_536 },
+  { label: '128K', description: '',                              value: 131_072 },
+  { label: '160K', description: '',                     value: 163_840 },
+  { label: '192K', description: '',                     value: 196_608 },
+  { label: '224K', description: '',                       value: 229_376 },
+  { label: '256K', description: '',                    value: 262_144 },
 ];
 
 export interface IContextWindowPickerCallbacks {
@@ -95,7 +95,7 @@ export class ChatContextWindowPicker extends Disposable {
   private _renderLabel(): void {
     this._label.textContent = this._activeValue > 0
       ? `Ctx: ${this._formatTokens(this._activeValue)}`
-      : 'Ctx: auto';
+      : 'Ctx: Default';
   }
 
   private _openDropdown(): void {
@@ -122,11 +122,14 @@ export class ChatContextWindowPicker extends Disposable {
       icon.innerHTML = isActive ? chatIcons.check : '';
       item.appendChild(icon);
 
+      // Sizes only. Each row used to carry a line of commentary ("May spill
+      // to CPU", "Light chat") that made a one-glance picker a wall of text.
       const textCol = $('div.parallx-chat-picker-item-text');
       const name = $('span.parallx-chat-picker-item-name', preset.label);
       textCol.appendChild(name);
-      const description = $('span.parallx-chat-picker-item-description', preset.description);
-      textCol.appendChild(description);
+      if (preset.description) {
+        textCol.appendChild($('span.parallx-chat-picker-item-description', preset.description));
+      }
       item.appendChild(textCol);
 
       item.addEventListener('click', () => {

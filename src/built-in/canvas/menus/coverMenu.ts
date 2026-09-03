@@ -143,7 +143,7 @@ export class CoverMenuController implements ICanvasMenu {
     const renderUpload = () => {
       content.innerHTML = '';
       const uploadBtn = $('button.canvas-cover-upload-btn');
-      uploadBtn.textContent = 'Choose an image';
+      uploadBtn.textContent = 'Choose an Image';
       const errEl = $('div.canvas-cover-upload-error');
       errEl.style.display = 'none';
       const showError = (msg: string) => {

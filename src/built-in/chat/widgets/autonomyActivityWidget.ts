@@ -26,6 +26,7 @@ import type {
   WidgetRefreshContext,
   WidgetTypeRegistration,
 } from '../../../api/bridges/dashboardBridge.js';
+import { getIcon } from '../../../ui/iconRegistry.js';
 
 interface AutonomyActivityConfig {
   readonly maxItems: number;
@@ -34,7 +35,8 @@ interface AutonomyActivityConfig {
 
 const DEFAULT_CONFIG: AutonomyActivityConfig = { maxItems: 12, windowDays: 7 };
 
-const ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="M12 18v4"/><path d="m4.93 4.93 2.83 2.83"/><path d="m16.24 16.24 2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="m4.93 19.07 2.83-2.83"/><path d="m16.24 7.76 2.83-2.83"/></svg>';
+// The autonomy feed is the AI's own receipts; it wears the mark.
+const ICON_SVG = getIcon('px-ai-mark');
 
 // ─── Event shape returned by chat.getRecentAutonomyEvents ────────────────────
 

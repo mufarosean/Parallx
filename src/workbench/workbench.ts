@@ -558,8 +558,8 @@ export class Workbench extends Layout {
 
     // 3. Point the reload at the target.
     const bridge = window.parallxElectron!.storage;
-    const appPath = window.parallxElectron!.appPath;
-    await bridge.writeJson(`${appPath}/data/last-workspace.json`, { path: targetPath });
+    const dataRoot = window.parallxElectron!.dataRoot;
+    await bridge.writeJson(`${dataRoot}/data/last-workspace.json`, { path: targetPath });
 
     // 4. Deactivate tools so they flush pending data (canvas open-page
     //    commit + auto-save) while the DB is still open.
@@ -895,13 +895,14 @@ export class Workbench extends Layout {
   private async _initializeServices(): Promise<void> {
     // ── M53: File-backed storage ──
     const storageBridge = window.parallxElectron!.storage;
-    const appPath = window.parallxElectron!.appPath;
+    // The DATA root (relocatable for probes and tests), not the code root.
+    const dataRoot = window.parallxElectron!.dataRoot;
 
     // Global storage (settings, models, etc.) — app-level, persists across workspaces
-    this._globalStorage = new FileBackedStorage(storageBridge, `${appPath}/data/global-storage.json`, { label: 'global' });
+    this._globalStorage = new FileBackedStorage(storageBridge, `${dataRoot}/data/global-storage.json`, { label: 'global' });
 
     // Read last workspace path (may not exist on first launch)
-    const lastWsResult = await storageBridge.readJson(`${appPath}/data/last-workspace.json`);
+    const lastWsResult = await storageBridge.readJson(`${dataRoot}/data/last-workspace.json`);
     const wsPath = (lastWsResult.data as any)?.path as string | undefined;
     this._workspaceFolderPath = wsPath;
 

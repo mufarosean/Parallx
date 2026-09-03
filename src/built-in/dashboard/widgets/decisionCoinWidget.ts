@@ -83,7 +83,7 @@ export const DECISION_COIN_WIDGET: WidgetTypeRegistration<DecisionConfig> = {
     function idle(): void {
       question.textContent = config.question || 'Should I?';
       face.textContent = '?';
-      hint.textContent = 'Tap the coin';
+      hint.textContent = 'Tap the coin.';
       coin.classList.remove('dcw__coin--spin', 'dcw__coin--landed');
     }
 

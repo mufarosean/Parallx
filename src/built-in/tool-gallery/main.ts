@@ -124,7 +124,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     createEditorPane(container: HTMLElement, input?: { id: string; name: string; instanceId?: string }): IDisposable {
       const toolId = input?.instanceId ?? input?.id;
       if (!toolId) {
-        container.textContent = 'No tool selected';
+        container.textContent = 'No tool selected.';
         return { dispose() {} };
       }
       return renderToolEditor(container, api, toolId);
@@ -287,7 +287,7 @@ function renderToolSidebar(container: HTMLElement, api: ParallxApi): IDisposable
     if (tool.isBuiltin) {
       const badge = $('span');
       badge.classList.add('tool-gallery-row-badge');
-      badge.textContent = 'built-in';
+      badge.textContent = 'Built-in';
       nameRow.appendChild(badge);
     }
     if (!enabled) {
@@ -863,7 +863,7 @@ function renderContributionsTab(container: HTMLElement, tool: ToolInfo, api: Par
         ['Command', 'Key', 'When'],
         contrib.keybindings!.map(k => [k.command, k.key, k.when ?? '']),
       );
-    }, { label: 'Manage shortcuts', onClick: () => run('settings.openKeyboardShortcuts') });
+    }, { label: 'Manage Shortcuts', onClick: () => run('settings.openKeyboardShortcuts') });
   }
 
   // Menus

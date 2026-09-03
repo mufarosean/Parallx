@@ -201,7 +201,7 @@ export async function resolveMentions(
             contextBlocks.push(`[Terminal output]\n\`\`\`\n${output}\n\`\`\``);
             pills.push({
               id: 'mention-terminal',
-              label: 'Terminal output',
+              label: 'Terminal Output',
               type: 'attachment',
               tokens,
               removable: true,

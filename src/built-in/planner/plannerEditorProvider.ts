@@ -583,11 +583,11 @@ class PlannerEditorPane implements IDisposable {
 
     type Filter = { key: string; label: string; pinned?: boolean; match: (t: typeof all[number]) => boolean };
     const filters: Filter[] = [
-      { key: 'review',  label: 'Review queue', pinned: true, match: t => t.status === 'reviewing' },
+      { key: 'review',  label: 'Review Queue', pinned: true, match: t => t.status === 'reviewing' },
       { key: 'today',   label: 'Today',     match: t => (t.status === 'planned' || t.status === 'reviewing') && t.dueAt != null && sameDay(new Date(t.dueAt), new Date()) },
-      { key: 'week',    label: 'This week', match: t => (t.status === 'planned' || t.status === 'reviewing') && t.dueAt != null && t.dueAt >= startOfDayMs() && t.dueAt <= startOfDayMs() + 7 * 86_400_000 },
+      { key: 'week',    label: 'This Week', match: t => (t.status === 'planned' || t.status === 'reviewing') && t.dueAt != null && t.dueAt >= startOfDayMs() && t.dueAt <= startOfDayMs() + 7 * 86_400_000 },
       { key: 'overdue', label: 'Overdue',   match: t => (t.status === 'planned' || t.status === 'reviewing') && t.dueAt != null && t.dueAt < Date.now() },
-      { key: 'all',     label: 'All tasks', match: t => t.status !== 'cancelled' },
+      { key: 'all',     label: 'All Tasks', match: t => t.status !== 'cancelled' },
       { key: 'completed', label: 'Completed', match: t => t.status === 'done' },
     ];
 
@@ -607,7 +607,7 @@ class PlannerEditorPane implements IDisposable {
         const upcoming  = matching.filter(t => t.status === 'planned' && t.dueAt != null && t.dueAt > endOfDay(new Date()).getTime());
         const noDate    = matching.filter(t => t.status === 'planned' && !t.dueAt);
         const completed = matching.filter(t => t.status === 'done').slice(0, 12);
-        if (reviewing.length > 0) content.appendChild(this._renderTaskSection('Review queue', reviewing, { accent: 'review', hint: 'Captured fast. Pick a real due date or mark cancelled.' }));
+        if (reviewing.length > 0) content.appendChild(this._renderTaskSection('Review Queue', reviewing, { accent: 'review', hint: 'Captured fast. Pick a real due date or mark cancelled.' }));
         if (overdue.length > 0)   content.appendChild(this._renderTaskSection('Overdue', overdue, { accent: 'overdue' }));
         if (today.length > 0)     content.appendChild(this._renderTaskSection('Today', today, { accent: 'today' }));
         if (upcoming.length > 0)  content.appendChild(this._renderTaskSection('Upcoming', upcoming));
@@ -756,7 +756,7 @@ class PlannerEditorPane implements IDisposable {
       const setDue = el('button', 'planner-task__due planner-task__due--empty');
       setDue.type = 'button';
       setDue.title = 'Click to edit task';
-      setDue.textContent = 'Set date';
+      setDue.textContent = 'Set Date';
       setDue.addEventListener('click', () => this._openTaskPopover({ mode: 'edit', task }, setDue.getBoundingClientRect()));
       right.appendChild(setDue);
     }
@@ -791,10 +791,10 @@ class PlannerEditorPane implements IDisposable {
     menu.style.position = 'fixed';
 
     const items: { label: string; action: () => void; danger?: boolean }[] = [
-      { label: 'Edit task',      action: () => this._openTaskPopover({ mode: 'edit', task }, anchor) },
+      { label: 'Edit Task',      action: () => this._openTaskPopover({ mode: 'edit', task }, anchor) },
       { label: task.status === 'reviewing' ? 'Move to planned' : 'Move to review', action: () => void this._data.updateTask(task.id, { status: task.status === 'reviewing' ? 'planned' : 'reviewing' }) },
-      { label: 'Cancel task',    action: () => void this._data.updateTask(task.id, { status: 'cancelled' }), danger: true },
-      { label: 'Delete forever', action: () => void this._data.removeTask(task.id), danger: true },
+      { label: 'Cancel Task',    action: () => void this._data.updateTask(task.id, { status: 'cancelled' }), danger: true },
+      { label: 'Delete Forever', action: () => void this._data.removeTask(task.id), danger: true },
     ];
     for (const it of items) {
       const btn = el('button', 'planner-menu__item');
@@ -1181,9 +1181,9 @@ class PlannerEditorPane implements IDisposable {
 
       const bodyEl = el('div', 'planner-scope-body');
       const opts: { scope: SeriesEditScope; label: string }[] = [
-        { scope: 'this', label: 'This event' },
-        { scope: 'following', label: 'This and following events' },
-        { scope: 'all', label: 'All events' },
+        { scope: 'this', label: 'This Event' },
+        { scope: 'following', label: 'This and Following Events' },
+        { scope: 'all', label: 'All Events' },
       ];
       for (const o of opts) {
         const btn = el('button', 'planner-scope-opt');
@@ -2247,7 +2247,7 @@ class PlannerEditorPane implements IDisposable {
     // Header
     const head = el('div', 'planner-popover__head');
     const heading = el('h3', 'planner-popover__title');
-    heading.textContent = isEdit ? 'Edit task' : 'New task';
+    heading.textContent = isEdit ? 'Edit Task' : 'New task';
     head.appendChild(heading);
     const closeBtn = el('button', 'planner-popover__close');
     closeBtn.type = 'button';
@@ -2306,8 +2306,8 @@ class PlannerEditorPane implements IDisposable {
     remindRow.appendChild(remindLabel);
     const remindHost = el('div', 'planner-popover__field planner-popover__field--select');
     const REMINDER_PRESETS: { label: string; offsetMin: number | null }[] = [
-      { label: 'No reminder',         offsetMin: null },
-      { label: 'At time of due',      offsetMin: 0 },
+      { label: 'No Reminder',         offsetMin: null },
+      { label: 'When Due',      offsetMin: 0 },
       { label: '5 minutes before',    offsetMin: 5 },
       { label: '15 minutes before',   offsetMin: 15 },
       { label: '30 minutes before',   offsetMin: 30 },
@@ -2607,7 +2607,7 @@ class PlannerEditorPane implements IDisposable {
     allDayInput.type = 'checkbox';
     allDayInput.checked = seed.allDay;
     const allDayText = el('span');
-    allDayText.textContent = 'All day';
+    allDayText.textContent = 'All Day';
     allDayRow.appendChild(allDayInput);
     allDayRow.appendChild(allDayText);
     body.appendChild(allDayRow);
@@ -2992,7 +2992,7 @@ function formatTimeShort(ms: number): string {
 
 function formatTimeRange(ev: PlannerEvent): string {
   const fmt = (ts: number) => new Date(ts).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-  if (ev.allDay) return 'All day';
+  if (ev.allDay) return 'All Day';
   return `${fmt(ev.startAt)} – ${fmt(ev.endAt)}`;
 }
 

@@ -440,7 +440,7 @@ export class SettingsEditor extends Disposable {
           .filter((s) => (s.category ?? 'General') === entry.absorbedCategory && this._matches(s));
         if (rows.length) {
           const sub = $('h4.settings-editor__category-title');
-          sub.textContent = 'All settings';
+          sub.textContent = 'All Settings';
           this._contentEl.appendChild(sub);
           for (const schema of rows) this._contentEl.appendChild(this._renderRow(schema));
         }

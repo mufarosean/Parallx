@@ -22,6 +22,7 @@ import type {
   WidgetTypeRegistration,
 } from '../dashboardTypes.js';
 import { collectThemeVars, createSandboxFrame, buildSandboxDocument } from './sandboxedHtml.js';
+import { getIcon } from '../../../ui/iconRegistry.js';
 
 interface LiveWidgetConfig {
   readonly prompt: string;
@@ -38,7 +39,8 @@ const DEFAULT_CONFIG: LiveWidgetConfig = {
   skill: '',
 };
 
-const ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/><path d="m13 13 2 2 3-3"/></svg>';
+// AI widgets wear the mark (brandIcons px-ai-mark), like every AI surface.
+const ICON_SVG = getIcon('px-ai-mark');
 
 export const LIVE_WIDGET: WidgetTypeRegistration<LiveWidgetConfig> = {
   typeId: 'parallx.dashboard.ai-live',

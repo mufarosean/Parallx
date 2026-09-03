@@ -161,7 +161,7 @@ html, body {
   align-items: center;
   justify-content: center;
   width: 28px;
-  height: 28px;
+  height: var(--px-control-h);
   padding: 0;
   border: none;
   background: none;
@@ -200,6 +200,8 @@ html, body {
 
 .titlebar-app-icon svg {
   display: block;
+  width: 20px;
+  height: 20px;
 }
 
 .titlebar-menu-item {
@@ -731,6 +733,10 @@ html, body {
   justify-content: center;
   pointer-events: none;
   color: var(--vscode-descriptionForeground);
+  /* Above the (empty) group's pane container, which is appended after the
+     watermark and otherwise paints over it. The probe found the watermark
+     present, sized, and fully covered; the empty editor read as a black hole. */
+  z-index: 1;
 }
 
 .editor-watermark-content {
@@ -738,11 +744,18 @@ html, body {
 }
 
 .editor-watermark-icon {
-  font-size: 48px;
   margin-bottom: 16px;
   display: flex;
   justify-content: center;
   align-items: center;
+  /* Fainter than the shortcut hints: the boot overlay's logo has just faded
+     out at this spot, and a second bright logo read as a second screen. */
+  color: var(--px-text-faint);
+}
+
+.editor-watermark-icon svg {
+  width: 64px;
+  height: 64px;
 }
 
 .editor-watermark-title {
@@ -2174,7 +2187,7 @@ html, body {
   align-items: center;
   justify-content: center;
   width: 26px;
-  height: 26px;
+  height: var(--px-control-h-sm);
   border: 1px solid transparent;
   border-radius: var(--parallx-radius-sm);
   background: transparent;

@@ -152,7 +152,7 @@
   opacity: 1;
 }
 .dashboard-btn--small {
-  height: 28px;
+  height: var(--px-control-h-sm);
   padding: 0 10px;
   font-size: var(--px-text-sm);
 }
@@ -172,7 +172,7 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  height: 32px;
+  height: var(--px-control-h);
   padding: 0 14px;
   border: 1px solid transparent;
   border-radius: 8px;
@@ -416,12 +416,14 @@
   opacity: 1;
 }
 
+.dashboard-widget__btn svg { width: 13px; height: 13px; }
+
 .dashboard-widget__btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 24px;
-  height: 24px;
+  height: var(--px-control-h-sm);
   padding: 0;
   border: 0;
   border-radius: 6px;
@@ -1412,7 +1414,7 @@ video.vw__fill { object-fit: contain; background: #000; }
   align-items: center;
   gap: 6px;
   width: 100%;
-  height: 28px;
+  height: var(--px-control-h);
   padding: 0 10px;
   border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 14%, transparent);
   border-radius: 6px;
@@ -1761,7 +1763,7 @@ video.vw__fill { object-fit: contain; background: #000; }
   align-items: center;
   justify-content: center;
   width: 30px;
-  height: 30px;
+  height: var(--px-control-h);
   flex: 0 0 auto;
   padding: 0;
   border: 0;
@@ -1894,7 +1896,9 @@ video.vw__fill { object-fit: contain; background: #000; }
 .dtimer__face--done { color: var(--px-accent, #7aa2f7); }
 .dtimer__controls { display: flex; gap: 8px; }
 .dtimer__btn {
-  font: inherit; font-size: var(--px-text-sm); padding: 5px 12px; border-radius: 6px; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  height: var(--px-control-h-sm); box-sizing: border-box;
+  font: inherit; font-size: var(--px-text-sm); padding: 0 12px; border-radius: var(--px-radius-md); cursor: pointer;
   background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
   border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 16%, transparent);
   color: var(--vscode-editor-foreground, #d4d4d4);

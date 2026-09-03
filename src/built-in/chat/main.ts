@@ -2895,7 +2895,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
             const session = chatService.getSession(sessionId);
             if (!session) return null;
             const title = (session as { title?: string }).title || 'Chat session';
-            return { title, icon: 'message-circle' };
+            return { title, icon: 'px-ai-mark' };
           },
         },
       },

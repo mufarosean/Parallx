@@ -130,7 +130,7 @@ export interface BlockDefinition {
   readonly id: string;
   /** ProseMirror node type name — must match the Tiptap extension's name. */
   readonly name: string;
-  /** Human-readable label (e.g. 'Bulleted list', 'Heading 1'). */
+  /** Human-readable label (e.g. 'Bulleted List', 'Heading 1'). */
   readonly label: string;
   /** Icon key consumed by svgIcon(), or a text glyph (e.g. 'H₁'). */
   readonly icon: string;
@@ -341,7 +341,7 @@ const definitions: BlockDefinition[] = [
   {
     id: 'bulletList',
     name: 'bulletList',
-    label: 'Bulleted list',
+    label: 'Bulleted List',
     icon: 'bullet-list',
     source: 'starterkit',
     kind: 'leaf',
@@ -356,7 +356,7 @@ const definitions: BlockDefinition[] = [
   {
     id: 'orderedList',
     name: 'orderedList',
-    label: 'Numbered list',
+    label: 'Numbered List',
     icon: 'numbered-list',
     source: 'starterkit',
     kind: 'leaf',
@@ -401,7 +401,7 @@ const definitions: BlockDefinition[] = [
   {
     id: 'taskList',
     name: 'taskList',
-    label: 'To-do list',
+    label: 'To-do List',
     icon: 'checklist',
     source: 'tiptap-package',
     kind: 'leaf',
@@ -452,7 +452,7 @@ const definitions: BlockDefinition[] = [
   {
     id: 'details',
     name: 'details',
-    label: 'Toggle list',
+    label: 'Toggle List',
     icon: 'chevron-right',
     source: 'tiptap-package',
     kind: 'container',

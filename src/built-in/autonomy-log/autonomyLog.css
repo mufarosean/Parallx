@@ -10,23 +10,25 @@
   height: 100%;
   background: var(--vscode-panel-background);
   overflow: hidden;
-  font-size: var(--parallx-fontSize-sm);
+  /* Inherits the workbench base size. This panel used to step down to 12px
+     and its tabs to 11px: the smallest chrome in the app, for no reason. */
 }
 
 /* ── Header ── */
 .autonomy-log-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 8px;
+  gap: var(--px-space-3, 12px);
+  height: 34px;
+  padding: 0 var(--px-space-3, 12px);
   background: var(--vscode-panel-background);
-  border-bottom: 1px solid var(--vscode-panel-border, #333);
+  border-bottom: 1px solid var(--px-border);
   flex-shrink: 0;
 }
 
 .autonomy-log-summary {
-  color: var(--vscode-descriptionForeground, #999);
-  font-size: var(--parallx-fontSize-sm);
+  color: var(--px-text-secondary);
+  font-size: var(--px-text-sm);
 }
 
 .autonomy-log-summary--unread {
@@ -419,12 +421,13 @@
 .autonomy-log-tab {
   background: transparent;
   border: none;
-  color: var(--vscode-descriptionForeground, #999);
-  font-size: var(--parallx-fontSize-xs);
-  padding: 2px 8px;
-  border-radius: var(--parallx-radius-sm, 3px);
+  color: var(--px-text-secondary);
+  font-size: var(--px-text-sm);
+  height: 24px;
+  padding: 0 10px;
+  border-radius: var(--px-radius-sm);
   cursor: pointer;
-  line-height: 1.4;
+  line-height: 1;
   font-weight: 500;
 }
 
@@ -441,15 +444,18 @@
 .autonomy-log-pause {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  color: var(--vscode-descriptionForeground, #999);
-  font-size: var(--parallx-fontSize-xs);
+  gap: var(--px-space-2, 8px);
+  color: var(--px-text-secondary);
+  font-size: var(--px-text-sm);
   user-select: none;
   cursor: pointer;
 }
 
 .autonomy-log-pause input[type="checkbox"] {
   margin: 0;
+  width: 14px;
+  height: 14px;
+  accent-color: var(--px-accent);
 }
 
 .autonomy-log-entry__actions {

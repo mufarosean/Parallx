@@ -326,7 +326,7 @@ function createSidebarView(container: HTMLElement) {
       return;
     }
 
-    root.appendChild(el('div', 'ws-sidebar__label', `Items · ${items.length}`));
+    root.appendChild(el('div', 'ws-sidebar__label', `Items (${items.length})`));
     const list = el('div', 'ws-sidebar__list');
     for (const item of items) {
       const row = el('div', 'ws-sidebar__item');

@@ -124,7 +124,7 @@ export class FindReplaceWidget extends Disposable {
 
     // Match count
     this._matchCountEl = $('span.find-replace-match-count');
-    this._matchCountEl.textContent = 'No results';
+    this._matchCountEl.textContent = 'No results.';
     findRow.appendChild(this._matchCountEl);
 
     // Navigation buttons
@@ -341,7 +341,7 @@ export class FindReplaceWidget extends Disposable {
 
     const regex = this._buildRegex(query);
     if (!regex) {
-      this._matchCountEl.textContent = 'Invalid regex';
+      this._matchCountEl.textContent = 'Invalid regex.';
       this._matchCountEl.classList.add('find-replace-match-count--no-results');
       return;
     }
@@ -434,7 +434,7 @@ export class FindReplaceWidget extends Disposable {
   private _updateMatchCount(): void {
     if (this._matches.length === 0) {
       const hasQuery = this._findInput.value.length > 0;
-      this._matchCountEl.textContent = hasQuery ? 'No results' : '';
+      this._matchCountEl.textContent = hasQuery ? 'No results.' : '';
       this._matchCountEl.classList.toggle('find-replace-match-count--no-results', hasQuery);
     } else {
       this._matchCountEl.textContent = `${this._currentMatchIndex + 1} of ${this._matches.length}`;

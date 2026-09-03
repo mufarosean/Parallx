@@ -65,19 +65,19 @@ export const EMPTY_STATES = {
   },
   'autonomyLog.empty': {
     id: 'autonomyLog.empty',
-    icon: 'heart-pulse',
+    icon: 'px-ai-mark',
     headline: 'All quiet so far',
     hint: 'When the assistant acts on its own (heartbeat findings, scheduled runs), the receipts appear here.',
   },
   'mind.noBeliefs': {
     id: 'mind.noBeliefs',
-    icon: 'brain',
+    icon: 'px-ai-mark',
     headline: 'No beliefs yet',
     hint: 'The agent forms them as it reviews your work. Check back after a few sessions.',
   },
   'chat.sessions': {
     id: 'chat.sessions',
-    icon: 'message-circle',
+    icon: 'px-ai-mark',
     headline: 'Your chats live here',
     hint: 'Start a conversation below. Saved sessions appear here.',
   },

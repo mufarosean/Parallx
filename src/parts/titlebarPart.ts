@@ -15,6 +15,7 @@ import { IDisposable, toDisposable } from '../platform/lifecycle.js';
 import { IWindowService } from '../services/serviceTypes.js';
 import { ContextMenu, type IContextMenuItem } from '../ui/contextMenu.js';
 import { $ } from '../ui/dom.js';
+import { getIcon } from '../ui/iconRegistry.js';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -644,13 +645,10 @@ export class TitlebarPart extends Part {
     this._leftSlot.setAttribute('role', 'menubar');
     rootContainer.appendChild(this._leftSlot);
 
-    // App icon — Layered Planes logo
+    // App icon — the one logo (brandIcons px-mark); sized by CSS.
     const appIcon = $('span');
     appIcon.classList.add('titlebar-app-icon');
-    appIcon.innerHTML = `<svg width="20" height="20" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect x="6" y="8" width="16" height="16" rx="1.5" transform="skewX(-8)" fill="currentColor" opacity="0.4"/>
-      <rect x="10" y="6" width="16" height="16" rx="1.5" transform="skewX(-8)" fill="currentColor"/>
-    </svg>`;
+    appIcon.innerHTML = getIcon('px-mark');
     this._leftSlot.appendChild(appIcon);
 
     this._menuBarContainer = this._leftSlot;

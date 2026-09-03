@@ -72,7 +72,7 @@ export class ChatModelPicker extends Disposable {
     if (activeId) {
       label.textContent = activeId.length > 20 ? activeId.slice(0, 17) + '\u2026' : activeId;
     } else {
-      label.textContent = 'No model';
+      label.textContent = 'No Model';
     }
     this._button.appendChild(label);
 

@@ -302,7 +302,7 @@ export class BlockActionMenuController implements ICanvasMenu {
     // Send to Chat — attach a LIVE reference to the targeted block(s) so the AI
     // can read their current content and edit them in place.
     const chatItem = this._createActionItem(
-      isBatch ? 'Send blocks to Chat' : 'Send to Chat', svgIcon('comment'), false,
+      isBatch ? 'Send blocks to Chat' : 'Send to Chat', svgIcon('px-ai-mark'), false,
     );
     chatItem.addEventListener('mousedown', (e) => { e.preventDefault(); this._sendBlocksToChat(); });
     this._blockActionMenu.appendChild(chatItem);

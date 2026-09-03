@@ -369,7 +369,7 @@
 .px-appearance-name-input::placeholder { color: var(--px-text-faint); }
 .px-appearance-save-btn {
   flex: 0 0 auto;
-  height: 32px;
+  height: var(--px-control-h);
   padding: 0 14px;
   background: var(--px-surface-hover);
   color: var(--px-text);
@@ -437,3 +437,29 @@
               background var(--px-dur-fast, 90ms) var(--px-ease, ease);
 }
 .px-preset-chip-del:hover { color: var(--px-danger); background: var(--px-surface-hover); }
+
+
+/* ── Font chips ─────────────────────────────────────────────────────────── */
+.px-font-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--px-space-2, 8px);
+}
+.px-font-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--px-space-2, 8px);
+  height: var(--px-control-h-lg, 32px);
+  padding: 0 var(--px-space-3, 12px);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-md, 6px);
+  background: var(--px-bg-elevated);
+  color: var(--px-text-secondary);
+  cursor: pointer;
+  transition: border-color var(--px-dur-fast, 90ms) var(--px-ease, ease), color var(--px-dur-fast, 90ms) var(--px-ease, ease);
+}
+.px-font-chip:hover { color: var(--px-text); border-color: var(--px-border-strong); }
+.px-font-chip.is-selected { color: var(--px-text); border-color: var(--px-accent); box-shadow: var(--px-ring-accent); }
+.px-font-chip:active { transform: var(--px-press, translateY(0.5px)); }
+.px-font-chip-sample { font-size: var(--px-text-md, 15px); font-weight: 600; }
+.px-font-chip-label { font-size: var(--px-text-sm, 12px); }

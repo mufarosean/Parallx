@@ -247,7 +247,8 @@
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  padding: 4px 10px;
+  height: var(--px-control-h-sm);
+  padding: 0 10px;
   border: none;
   border-radius: var(--parallx-radius-md);
   background: transparent;
@@ -270,7 +271,7 @@
 .parallx-chat-picker-btn--mode {
   justify-content: center;
   min-width: 66px;
-  height: 26px;
+  height: var(--px-control-h-sm);
   padding: 0 8px;
   gap: 4px;
   border: none;

@@ -187,6 +187,17 @@
   --px-leading-tight: 1.25;
   --px-leading-base:  1.5;
 
+  /* Control heights — four steps, no more. Every button, chip, picker and
+     input in the app sits on one of these; a surface never invents a fifth.
+       xs  icon buttons in dense chrome (ribbons, panel toolbars)
+       sm  secondary controls, chips, pickers, toolbar buttons
+       h   the standard button
+       lg  hero / primary call-to-action */
+  --px-control-h-xs: 22px;
+  --px-control-h-sm: 24px;
+  --px-control-h:    28px;
+  --px-control-h-lg: 32px;
+
   /* Elevation — borders carry structure; shadows only for true float.
      Each step pairs a shadow with a 1px top inset highlight so raised
      surfaces read as physical layers catching light (the "material" feel),
