@@ -6170,7 +6170,7 @@ async function renderDecks(body, setRoute) {
       const daysLeft = Math.max(1, Math.ceil((deck.examDate - now) / DAY));
       const chip = el('button', 'fc-exam-chip', `${daysLeft}d to exam`);
       chip.type = 'button';
-      chip.title = `Exam ${new Date(deck.examDate).toLocaleDateString()} — intervals capped so every card gets a final review in time. Click to change.`;
+      chip.title = `Exam ${new Date(deck.examDate).toLocaleDateString()}. Intervals are capped so every card gets a final review in time. Click to change.`;
       chip.addEventListener('click', (e) => { e.stopPropagation(); void _setExamDateFlow(deck); });
       nameRow.appendChild(chip);
     }
@@ -6376,7 +6376,7 @@ function fcCardEditorEl(card, { onSave, onCancel }) {
   rubricWrap.appendChild(el('div', 'fc-label', 'Rubric'));
   const rubricIn = el('textarea', 'fc-textarea');
   rubricIn.rows = 4;
-  rubricIn.placeholder = 'One point per line — the claims a correct answer must make.\nEnd a line with "(optional)" for supporting detail a complete answer could omit.';
+  rubricIn.placeholder = 'One point per line: the claims a correct answer must make.\nEnd a line with "(optional)" for supporting detail a complete answer could omit.';
   // One point per line, not JSON: the stored shape is JSON, but hand-editing
   // JSON in a textarea invites a syntax error that silently empties the
   // rubric and drops the card back to a self-grade.
@@ -7914,7 +7914,7 @@ async function renderCustomStudy(body, route, setRoute) {
         ? `No ${d.noun} match ${narrowed.join(' and ')}.`
         : `No ${d.noun} available.`) + hint;
     } else {
-      avail.textContent = `${matched} ${d.noun} available — this session will serve ${serving}.`;
+      avail.textContent = `${matched} ${d.noun} available. This session will serve ${serving}.`;
     }
     avail.classList.toggle('fc-cs__avail--empty', matched === 0);
     startBtn.disabled = matched === 0;
@@ -8116,7 +8116,7 @@ function fcVerdictEl(verdict, rubric, rating, { onDiscuss = null, aiRating = nul
     // rather than the passage it came from. Weaker evidence, shown as such
     // instead of hidden.
     const tag = el('span', 'fc-verdict__unsourced', 'No source');
-    tag.title = 'Marked against this card\'s answer only — no source passage is stored for it.';
+    tag.title = 'Marked against this card\'s answer only. No source passage is stored for it.';
     head.appendChild(tag);
   }
   root.appendChild(head);
@@ -8281,7 +8281,7 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
     if (cards.length > 0) {
       const customBtn = el('button', 'fc-btn');
       customBtn.textContent = 'Custom Study';
-      customBtn.title = 'Review ahead, add new cards, or cram — without waiting for the schedule.';
+      customBtn.title = 'Review ahead, add new cards, or cram, without waiting for the schedule.';
       customBtn.addEventListener('click', () => setRoute({ view: 'custom', ...(route.deckId != null ? { deckId: route.deckId } : {}) }));
       done.appendChild(customBtn);
     }
@@ -8473,7 +8473,7 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
       done.appendChild(statsBtn);
       const customBtn = el('button', 'fc-btn');
       customBtn.textContent = 'Custom Study';
-      customBtn.title = 'Review ahead, add new cards, or cram — without waiting for the schedule.';
+      customBtn.title = 'Review ahead, add new cards, or cram, without waiting for the schedule.';
       customBtn.addEventListener('click', () => setRoute({ view: 'custom', ...(route.deckId != null ? { deckId: route.deckId } : {}) }));
       done.appendChild(customBtn);
       main.appendChild(done);
@@ -8772,7 +8772,7 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
           label: 'Discuss with AI',
           iconOnly: true,
           compact: true,
-          title: 'Stage a grounded question in the chat — card and source attached. Edit it, then send.',
+          title: 'Stage a grounded question in the chat, card and source attached. Edit it, then send.',
         })
         : el('button', 'fc-btn fc-btn--small');
       if (!discussBtn.parentElement) {
@@ -9822,7 +9822,7 @@ async function renderImport(body, route, setRoute, viewDisposables = []) {
             const rebuilt = await fcAiTranscribePairs(pdfCards, {
               onProgress: (done, totalCards) => {
                 if (aiStatus && gen === pdfState.gen) {
-                  aiStatus.textContent = `Rebuilding cards with AI — ${done} / ${totalCards}…`;
+                  aiStatus.textContent = `Rebuilding cards with AI: ${done} / ${totalCards}…`;
                 }
               },
             });
