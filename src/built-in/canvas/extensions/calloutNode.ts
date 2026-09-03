@@ -83,6 +83,8 @@ export const Callout = Node.create<CalloutOptions>({
       dom.setAttribute('data-type', 'callout');
 
       const iconSpan = document.createElement('span');
+
+      iconSpan.title = 'Change icon';
       iconSpan.classList.add('canvas-callout-emoji');
       iconSpan.contentEditable = 'false';
       iconSpan.title = 'Change icon';

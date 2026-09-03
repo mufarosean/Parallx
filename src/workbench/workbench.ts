@@ -2397,26 +2397,56 @@ export class Workbench extends Layout {
       this._menuContribution.renderViewTitleActions(viewId, actionsSlot);
     }));
 
-    // Handle right-click context menu on section headers
+    // Handle right-click context menu on section headers: the view's own
+    // contributed actions, then Hide Section, then a way back for anything
+    // hidden (every remaining header offers "Show Hidden Sections").
     this._register(container.onDidContextMenuSection(({ viewId, x, y }) => {
       const actions = this._menuContribution.getViewTitleActions(viewId);
-      if (actions.length === 0) return;
-
-      // Build menu items from contributed actions
       const cmdService = this._services.get(ICommandService) as CommandService;
       const items: import('../ui/contextMenu.js').IContextMenuItem[] = [];
       for (const action of actions) {
         const cmd = cmdService.getCommand(action.commandId);
         if (!cmd) continue;
-        items.push({ id: action.commandId, label: cmd.title, keybinding: this._keybindingHint(action.commandId) });
+        items.push({ id: action.commandId, label: cmd.title, keybinding: this._keybindingHint(action.commandId), group: '1' });
       }
-      if (items.length === 0) return;
+
+      const HIDE = '__section.hide';
+      const SHOW = '__section.show:';
+      const visible = container.visibleViewIds;
+      const viewName = container.getView(viewId)?.name ?? 'Section';
+      items.push({
+        id: HIDE,
+        label: `Hide ${viewName}`,
+        group: '2',
+        order: 1,
+        // The last visible section stays: a sidebar with nothing in it is a
+        // trap with no header left to right-click.
+        disabled: visible.length <= 1,
+      });
+      const hidden = [...container.hiddenTabs];
+      if (hidden.length > 0) {
+        items.push({
+          id: '__section.showAll',
+          label: 'Show Hidden Sections',
+          group: '2',
+          order: 2,
+          submenu: hidden.map((id) => ({ id: SHOW + id, label: container.getView(id)?.name ?? id })),
+        });
+      }
 
       const ctxMenu = ContextMenu.show({
         items,
         anchor: { x, y },
       });
       ctxMenu.onDidSelect(({ item }) => {
+        if (item.id === HIDE) {
+          container.setTabHidden(viewId, true);
+          return;
+        }
+        if (item.id.startsWith(SHOW)) {
+          container.setTabHidden(item.id.slice(SHOW.length), false);
+          return;
+        }
         cmdService.executeCommandFrom('menu', item.id).catch(err => {
           console.error(`[Workbench] Context menu action error:`, err);
         });

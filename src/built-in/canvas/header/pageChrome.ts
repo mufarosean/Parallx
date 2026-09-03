@@ -16,8 +16,7 @@ import { createIconElement, resolvePageIcon, svgIcon, renderPageIconHtml, COVER_
 import { showVersionHistoryPanel } from '../canvasVersionHistoryPanel.js';
 import {
   listFonts, resolveFontStack, getWorkspaceDefaultFontId, setWorkspaceDefaultFontId,
-  registerCustomFont, removeCustomFont, fontFormatFromExtension, type CanvasFont,
-} from '../config/fontRegistry.js';
+  registerCustomFont, removeCustomFont, fontFormatFromExtension, type CanvasFont, getFont } from '../config/fontRegistry.js';
 import { formatRelativeTime } from '../../../ui/relativeTime.js';
 
 // Default gradient presets for "Add cover" — the identity-derived gallery
@@ -1098,7 +1097,30 @@ export class PageChromeController {
     dd.appendChild(fontLabel);
 
     const currentId = page?.fontFamily || 'default';
+
+    // One row shows the current font (in its own face). Clicking it opens the
+    // list below; picking a font closes it again. The menu used to spend half
+    // its height on every font at once.
+    const current = $('button.canvas-page-menu-font-current');
+    const currentName = $('span.canvas-page-menu-font-current-name');
+    const paintCurrent = (): void => {
+      const font = getFont(this._currentPage?.fontFamily || 'default') ?? getFont('default');
+      currentName.textContent = font?.label ?? 'Default';
+      currentName.style.fontFamily = font?.stack ?? '';
+    };
+    current.appendChild(currentName);
+    current.appendChild(createIconElement('chevron-down', 12));
+    current.title = 'Choose the font for this page.';
+    current.setAttribute('aria-haspopup', 'listbox');
+    dd.appendChild(current);
+
     const list = $('div.canvas-page-menu-font-list');
+    list.hidden = true;
+    current.addEventListener('click', (e) => {
+      e.stopPropagation();
+      list.hidden = !list.hidden;
+      current.classList.toggle('canvas-page-menu-font-current--open', !list.hidden);
+    });
 
     const refreshDefaultBadges = (): void => {
       const defId = getWorkspaceDefaultFontId();
@@ -1126,6 +1148,10 @@ export class PageChromeController {
         this._host.dataService.updatePage(this._host.pageId, { fontFamily: font.id });
         list.querySelectorAll('.canvas-page-menu-font-row').forEach((r) => r.classList.remove('canvas-page-menu-font-row--active'));
         row.classList.add('canvas-page-menu-font-row--active');
+        currentName.textContent = font.label;
+        currentName.style.fontFamily = font.stack;
+        list.hidden = true;
+        current.classList.remove('canvas-page-menu-font-current--open');
       });
       row.appendChild(pick);
 
@@ -1163,6 +1189,7 @@ export class PageChromeController {
     for (const font of listFonts()) renderRow(font);
     dd.appendChild(list);
     refreshDefaultBadges();
+    paintCurrent();
 
     const upload = $('button.canvas-page-menu-font-upload');
     upload.appendChild(createIconElement('upload', 13));
@@ -1173,7 +1200,7 @@ export class PageChromeController {
       e.stopPropagation();
       void this._uploadCustomFont(list, renderRow);
     });
-    dd.appendChild(upload);
+    list.appendChild(upload);
   }
 
   /**

@@ -328,6 +328,9 @@ export class ViewContainer extends Disposable implements IGridView {
       // Stacked mode: create section wrapper and show view immediately
       this._createSection(view);
       view.setVisible(true);
+      // A section the user hid stays hidden across sessions (persisted with
+      // the container state) — same set the tabbed mode reads.
+      if (isHidden) this._applySectionHidden(view.id, true);
       this._rebuildSectionSashes();
       this._updateStackedHeaders();
       this._layoutStacked();
@@ -995,6 +998,15 @@ export class ViewContainer extends Disposable implements IGridView {
       this._hiddenTabs.delete(viewId);
     }
 
+    if (this._mode === 'stacked') {
+      // Stacked mode: the section collapses out of the stack entirely.
+      this._applySectionHidden(viewId, hidden);
+      this._rebuildSectionSashes();
+      this._updateStackedHeaders();
+      this._layoutStacked();
+      return;
+    }
+
     this._rebuildTabBar();
 
     // If the active view was hidden, switch to the first visible tab
@@ -1015,6 +1027,19 @@ export class ViewContainer extends Disposable implements IGridView {
    * Get the set of hidden tab IDs (for state persistence).
    */
   get hiddenTabs(): ReadonlySet<string> { return this._hiddenTabs; }
+
+  /** Views this container can still show (not hidden), in order. */
+  get visibleViewIds(): readonly string[] {
+    return this._tabOrder.filter((id) => !this._hiddenTabs.has(id));
+  }
+
+  private _applySectionHidden(viewId: string, hidden: boolean): void {
+    const section = this._sectionElements.get(viewId);
+    if (!section) return;
+    section.wrapper.hidden = hidden;
+    section.wrapper.classList.toggle('view-section--hidden', hidden);
+    this._views.get(viewId)?.setVisible(!hidden);
+  }
 
   private _showTabVisibilityMenu(x: number, y: number): void {
     // Build items: one row per registered view with a checkmark for visible ones

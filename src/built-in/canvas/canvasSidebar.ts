@@ -23,6 +23,7 @@ import { IconPicker } from '../../ui/iconPicker.js';
 import { ContextMenu } from '../../ui/contextMenu.js';
 import { createIconElement, ALL_PAGE_SELECTABLE_ICONS, PAGE_ICON_RECENT_STORAGE_KEY, resolvePageIcon, svgIcon, renderPageIconHtml } from './config/blockRegistry.js';
 import { CanvasSidebarDragState } from './canvasSidebarDragState.js';
+import { formatRelativeTime } from '../../ui/relativeTime.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -657,31 +658,31 @@ export class CanvasSidebar {
     iconArea.appendChild(iconEl);
     row.appendChild(iconArea);
 
-    // Label + date
+    // Title over a caption: when it was deleted, in the app's one clock.
     const textCol = $('div.canvas-trash-panel-text');
     const label = $('span.canvas-node-label');
-    label.textContent = page.title;
+    label.textContent = page.title || 'Untitled';
     textCol.appendChild(label);
     const date = $('span.canvas-trash-panel-date');
-    const d = new Date(page.updatedAt);
-    date.textContent = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    date.textContent = `Deleted ${formatRelativeTime(page.updatedAt, 'long')}`;
     textCol.appendChild(date);
     row.appendChild(textCol);
 
-    // Restore button (SVG)
+    // Restore: the row's primary action, a word not a glyph.
     const restoreBtn = $('button.canvas-trash-restore-btn');
-    restoreBtn.appendChild(createIconElement('restore', 14));
-    restoreBtn.title = 'Restore';
+    restoreBtn.textContent = 'Restore';
+    restoreBtn.title = 'Put this page back where it was.';
     restoreBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       this._dataService.restorePage(page.id);
     });
     row.appendChild(restoreBtn);
 
-    // Permanent delete button (SVG)
+    // Permanent delete (icon, danger on hover)
     const deleteBtn = $('button.canvas-trash-delete-btn');
-    deleteBtn.appendChild(createIconElement('close', 14));
-    deleteBtn.title = 'Delete permanently';
+    deleteBtn.appendChild(createIconElement('trash', 13));
+    deleteBtn.title = 'Delete permanently.';
+    deleteBtn.setAttribute('aria-label', 'Delete permanently');
     deleteBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
       const result = await this._api.window.showWarningMessage(
@@ -1143,31 +1144,20 @@ export class CanvasSidebar {
 
     this._trashPanel = $('div.canvas-trash-panel');
 
-    // Header
+    // Header: title, count, close. Destructive action lives in the footer.
     const header = $('div.canvas-trash-panel-header');
     const title = $('span.canvas-trash-panel-title');
     title.textContent = 'Trash';
     header.appendChild(title);
-
-    if (this._archivedPages.length > 0) {
-      const emptyBtn = $('button.canvas-trash-panel-empty-btn');
-      emptyBtn.textContent = 'Empty Trash';
-      emptyBtn.addEventListener('click', async () => {
-        const result = await this._api.window.showWarningMessage(
-          `Permanently delete ${this._archivedPages.length} page(s) from trash? This cannot be undone.`,
-          { title: 'Delete All' },
-          { title: 'Cancel' },
-        );
-        if (result?.title === 'Delete All') {
-          for (const p of this._archivedPages) {
-            await this._dataService.permanentlyDeletePage(p.id);
-          }
-        }
-      });
-      header.appendChild(emptyBtn);
+    const count = this._archivedPages.length;
+    if (count > 0) {
+      const countChip = $('span.canvas-trash-panel-count');
+      countChip.textContent = String(count);
+      header.appendChild(countChip);
     }
-
     const closeBtn = $('button.canvas-trash-panel-close');
+    closeBtn.title = 'Close';
+    closeBtn.setAttribute('aria-label', 'Close');
     closeBtn.appendChild(createIconElement('close', 14));
     closeBtn.addEventListener('click', () => this._dismissTrashPanel());
     header.appendChild(closeBtn);
@@ -1196,7 +1186,12 @@ export class CanvasSidebar {
       );
       if (filtered.length === 0) {
         const empty = $('div.canvas-trash-panel-empty');
-        empty.textContent = q ? 'No matching pages in trash.' : 'Trash is empty.';
+        const headline = $('div.canvas-trash-panel-empty-headline');
+        headline.textContent = q ? 'No matching pages' : 'Trash is empty';
+        empty.appendChild(headline);
+        const hint = $('div.canvas-trash-panel-empty-hint');
+        hint.textContent = q ? 'Try a different word.' : 'Pages you delete wait here until you empty the trash.';
+        empty.appendChild(hint);
         list.appendChild(empty);
       } else {
         for (const page of filtered) {
@@ -1211,6 +1206,32 @@ export class CanvasSidebar {
       this._trashSearchQuery = value.trim();
       renderList(this._trashSearchQuery);
     });
+
+    // Footer: the one destructive action, away from the rows.
+    if (count > 0) {
+      const footer = $('div.canvas-trash-panel-footer');
+      const note = $('span.canvas-trash-panel-footer-note');
+      note.textContent = count === 1 ? '1 page in trash.' : `${count} pages in trash.`;
+      footer.appendChild(note);
+      const emptyBtn = $('button.canvas-trash-panel-empty-btn');
+      emptyBtn.textContent = 'Empty Trash';
+      emptyBtn.addEventListener('click', async () => {
+        const result = await this._api.window.showWarningMessage(
+          count === 1
+            ? 'Permanently delete the page in the trash? This cannot be undone.'
+            : `Permanently delete all ${count} pages in the trash? This cannot be undone.`,
+          { title: 'Delete All' },
+          { title: 'Cancel' },
+        );
+        if (result?.title === 'Delete All') {
+          for (const p of this._archivedPages) {
+            await this._dataService.permanentlyDeletePage(p.id);
+          }
+        }
+      });
+      footer.appendChild(emptyBtn);
+      this._trashPanel.appendChild(footer);
+    }
 
     // Position above the trash button
     const trashBtn = this._treeList?.parentElement?.querySelector('.canvas-sidebar-trash-btn');

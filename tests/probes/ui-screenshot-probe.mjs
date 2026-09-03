@@ -202,6 +202,18 @@ async function main() {
           await page.waitForSelector('.canvas-page-menu', { timeout: 5_000 });
           await page.waitForTimeout(500);
           await shot(page, 'canvas-page-menu');
+          const fontListState = await page.evaluate(() => {
+            const list = document.querySelector('.canvas-page-menu-font-list');
+            return list ? `hidden=${list.hidden} display=${getComputedStyle(list).display}` : 'no list';
+          });
+          console.log(`[probe] font list (collapsed): ${fontListState}`);
+          // The font row opens the font list inside the menu.
+          const fontRow = page.locator('.canvas-page-menu-font-current').first();
+          if (await fontRow.count()) {
+            await fontRow.click({ timeout: 3_000 });
+            await page.waitForTimeout(400);
+            await shot(page, 'canvas-page-menu-fonts');
+          }
           await page.keyboard.press('Escape');
         }
         // The sidebar's trash popup (empty in a fresh workspace, which is

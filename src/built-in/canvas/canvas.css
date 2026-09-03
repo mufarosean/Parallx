@@ -1735,14 +1735,18 @@
  * Tier 2 — Callout Block (Notion-style)
  * ───────────────────────────────────────────────────────────────────────────── */
 
+/* Notion-shaped: an icon you can change, text beside it, a quiet tinted
+   ground. The block Color menu paints a callout's background (BLOCK_BG_TYPES
+   includes 'callout'); this is the un-coloured default. */
 .canvas-callout {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  padding: 16px 18px;
+  gap: var(--px-space-3);
+  padding: var(--px-space-4) var(--px-space-4);
   margin: 6px 0;
-  border-radius: var(--parallx-radius-md);
-  background-color: rgba(255, 255, 255, 0.04);
+  border-radius: var(--px-radius-md);
+  background-color: var(--px-bg-inset);
+  border: 1px solid var(--px-divider);
 }
 
 .canvas-callout-emoji {
@@ -1750,16 +1754,19 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
+  margin-top: -1px;
   user-select: none;
   cursor: pointer;
   color: inherit;
-  border-radius: 4px;
+  border-radius: var(--px-radius-sm);
+  transition: background-color var(--px-dur-fast) var(--px-ease), box-shadow var(--px-dur-fast) var(--px-ease);
 }
 
 .canvas-callout-emoji:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--px-surface-hover);
+  box-shadow: var(--px-ring);
 }
 
 .canvas-callout-content {
@@ -3122,6 +3129,31 @@
 }
 
 /* ── Font picker (open-ended list, self-previewing) ── */
+.canvas-page-menu-font-current {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--px-space-2);
+  width: 100%;
+  height: var(--px-control-h);
+  padding: 0 var(--px-space-3);
+  margin: 2px 0 4px;
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-md);
+  background: var(--px-bg-inset);
+  color: var(--px-text);
+  font-size: var(--px-text-base);
+  text-align: left;
+  cursor: pointer;
+}
+.canvas-page-menu-font-current:hover { border-color: var(--px-border-strong); }
+.canvas-page-menu-font-current--open { border-color: var(--px-accent); }
+.canvas-page-menu-font-current-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.canvas-page-menu-font-current svg { flex-shrink: 0; color: var(--px-text-muted); transition: transform var(--px-dur-fast) var(--px-ease); }
+.canvas-page-menu-font-current--open svg { transform: rotate(180deg); }
+/* The list starts collapsed; its own display rule must not outrank [hidden]. */
+.canvas-page-menu-font-list[hidden] { display: none; }
+
 .canvas-page-menu-font-list {
   display: flex;
   flex-direction: column;
@@ -4057,185 +4089,191 @@
 /* (position + padding-right moved to main .canvas-node rule) */
 
 /* ─────────────────────────────────────────────────────────────────────────────
- * Trash Panel Popup (replaces inline trash section)
+ * Trash Panel Popup — one surface, tokens only: header (title, count, close),
+ * search, rows (title over a "Deleted …" caption, Restore + delete on hover),
+ * a footer that holds the one destructive action.
  * ───────────────────────────────────────────────────────────────────────────── */
-
 .canvas-trash-panel {
   position: fixed;
   z-index: 1005;
-  width: 300px;
-  max-height: 400px;
-  background: var(--vscode-menu-background);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.15);
+  width: 320px;
+  max-height: 440px;
+  background: var(--px-bg-elevated);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-lg);
+  box-shadow: var(--px-shadow-lg), var(--px-edge-light);
   padding: 0;
   display: flex;
   flex-direction: column;
   animation: slashMenuFadeIn 0.12s ease-out;
   overflow: hidden;
+  color: var(--px-text);
 }
-
 .canvas-trash-panel-header {
   display: flex;
   align-items: center;
-  padding: 10px 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  gap: var(--px-space-2);
+  height: 40px;
+  padding: 0 var(--px-space-2) 0 var(--px-space-4);
+  border-bottom: 1px solid var(--px-divider);
   flex-shrink: 0;
 }
-
 .canvas-trash-panel-title {
-  flex: 1;
-  font-size: var(--parallx-fontSize-md);
+  font-size: var(--px-text-base);
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--px-text);
 }
-
-.canvas-trash-panel-empty-btn {
-  background: none;
-  border: none;
-  color: rgba(255, 255, 255, 0.35);
-  font-size: var(--parallx-fontSize-sm);
-  cursor: pointer;
-  padding: 2px 8px;
-  border-radius: var(--parallx-radius-sm);
-  font-family: inherit;
-  transition: background-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
-}
-
-.canvas-trash-panel-empty-btn:hover {
-  background: rgba(224, 108, 117, 0.12);
-  color: var(--vscode-errorForeground);
-}
-
-.canvas-trash-panel-close {
-  background: none;
-  border: none;
-  color: rgba(255, 255, 255, 0.4);
-  cursor: pointer;
-  padding: 2px;
-  margin-left: 4px;
-  border-radius: var(--parallx-radius-sm);
-  display: flex;
+.canvas-trash-panel-count {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: background-color var(--px-dur-fast) var(--px-ease);
+  border-radius: var(--px-radius-full);
+  background: var(--px-bg-inset);
+  color: var(--px-text-secondary);
+  font-size: var(--px-text-2xs);
+  font-weight: 600;
 }
-
-.canvas-trash-panel-close:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.8);
+.canvas-trash-panel-close {
+  margin-left: auto;
+  width: var(--px-control-h-xs);
+  height: var(--px-control-h-xs);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--px-radius-sm);
+  background: transparent;
+  color: var(--px-text-muted);
+  cursor: pointer;
 }
-
+.canvas-trash-panel-close:hover { background: var(--px-surface-hover); color: var(--px-text); }
 .canvas-trash-panel-search {
-  padding: 6px 12px;
+  display: flex;
+  align-items: center;
+  gap: var(--px-space-2);
+  padding: var(--px-space-2) var(--px-space-3);
+  color: var(--px-text-muted);
   flex-shrink: 0;
 }
-
 .canvas-trash-panel-search-input {
+  flex: 1;
   width: 100%;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.9);
-  font-size: var(--parallx-fontSize-base);
-  padding: 5px 8px;
-  border-radius: 5px;
+  height: var(--px-control-h);
+  border: 1px solid var(--px-border);
+  background: var(--px-bg-inset);
+  color: var(--px-text);
+  font-size: var(--px-text-base);
+  padding: 0 var(--px-space-2);
+  border-radius: var(--px-radius-md);
   outline: none;
   box-sizing: border-box;
   font-family: inherit;
 }
-
-.canvas-trash-panel-search-input:focus {
-  border-color: var(--vscode-focusBorder);
-}
-
+.canvas-trash-panel-search-input:focus { border-color: var(--px-accent); box-shadow: var(--px-ring-accent); }
 .canvas-trash-panel-list {
   flex: 1;
   overflow-y: auto;
-  padding: 4px 0;
+  padding: 2px var(--px-space-2) var(--px-space-2);
 }
-
 .canvas-trash-panel-node {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
+  gap: var(--px-space-2);
+  padding: 6px var(--px-space-2);
+  border-radius: var(--px-radius-md);
   cursor: default;
   position: relative;
   transition: background-color var(--px-dur-instant) var(--px-ease);
 }
-
-.canvas-trash-panel-node:hover {
-  background: rgba(255, 255, 255, 0.04);
-}
-
+.canvas-trash-panel-node:hover { background: var(--px-surface-hover); }
 .canvas-trash-panel-text {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.canvas-trash-panel-text .canvas-node-label {
+  font-size: var(--px-text-base);
+  color: var(--px-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--parallx-fontSize-md);
-  color: rgba(255, 255, 255, 0.7);
 }
-
 .canvas-trash-panel-date {
-  font-size: var(--parallx-fontSize-sm);
-  color: rgba(255, 255, 255, 0.25);
-  flex-shrink: 0;
-  margin-right: 4px;
+  font-size: var(--px-text-xs);
+  color: var(--px-text-muted);
+  white-space: nowrap;
 }
-
-.canvas-trash-panel-node .canvas-trash-restore-btn,
-.canvas-trash-panel-node .canvas-trash-delete-btn {
-  position: static;
-  transform: none;
+.canvas-trash-panel-node .canvas-trash-restore-btn {
   opacity: 0;
-  background: none;
-  border: none;
+  height: var(--px-control-h-xs);
+  padding: 0 var(--px-space-2);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-sm);
+  background: transparent;
+  color: var(--px-text-secondary);
+  font-size: var(--px-text-xs);
+  font-weight: 500;
   cursor: pointer;
-  padding: 2px;
-  border-radius: var(--parallx-radius-sm);
-  color: rgba(255, 255, 255, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
   flex-shrink: 0;
   transition: opacity var(--px-dur-fast) var(--px-ease), background-color var(--px-dur-fast) var(--px-ease);
 }
-
-.canvas-trash-panel-node:hover .canvas-trash-restore-btn,
-.canvas-trash-panel-node:hover .canvas-trash-delete-btn {
-  opacity: 1;
-}
-
-.canvas-trash-panel-node .canvas-trash-restore-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.9);
-}
-
 .canvas-trash-panel-node .canvas-trash-delete-btn {
-  color: rgba(224, 108, 117, 0.6);
-}
-
-.canvas-trash-panel-node .canvas-trash-delete-btn:hover {
-  background: rgba(224, 108, 117, 0.15);
-  color: var(--vscode-errorForeground);
-}
-
-.canvas-trash-panel-empty {
-  text-align: center;
-  color: rgba(255, 255, 255, 0.25);
-  font-size: var(--parallx-fontSize-md);
-  padding: 24px 12px;
-}
-
-.canvas-trash-panel-list::-webkit-scrollbar {
-  width: 5px;
-}
-
-.canvas-trash-panel-list::-webkit-scrollbar-track {
+  opacity: 0;
+  width: var(--px-control-h-xs);
+  height: var(--px-control-h-xs);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--px-radius-sm);
   background: transparent;
+  color: var(--px-text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity var(--px-dur-fast) var(--px-ease), background-color var(--px-dur-fast) var(--px-ease);
 }
+.canvas-trash-panel-node:hover .canvas-trash-restore-btn,
+.canvas-trash-panel-node:hover .canvas-trash-delete-btn,
+.canvas-trash-panel-node:focus-within .canvas-trash-restore-btn,
+.canvas-trash-panel-node:focus-within .canvas-trash-delete-btn { opacity: 1; }
+.canvas-trash-panel-node .canvas-trash-restore-btn:hover { background: var(--px-surface-hover); color: var(--px-text); border-color: var(--px-border-strong); }
+.canvas-trash-panel-node .canvas-trash-delete-btn:hover { background: color-mix(in srgb, var(--px-danger) 14%, transparent); color: var(--px-danger); }
+.canvas-trash-panel-empty {
+  padding: var(--px-space-6) var(--px-space-4);
+  text-align: center;
+}
+.canvas-trash-panel-empty-headline { font-size: var(--px-text-base); font-weight: 600; color: var(--px-text-secondary); }
+.canvas-trash-panel-empty-hint { margin-top: 4px; font-size: var(--px-text-sm); color: var(--px-text-muted); }
+.canvas-trash-panel-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--px-space-2);
+  padding: var(--px-space-2) var(--px-space-3);
+  border-top: 1px solid var(--px-divider);
+  flex-shrink: 0;
+}
+.canvas-trash-panel-footer-note { flex: 1; font-size: var(--px-text-xs); color: var(--px-text-muted); }
+.canvas-trash-panel-empty-btn {
+  height: var(--px-control-h-sm);
+  padding: 0 var(--px-space-3);
+  border: 1px solid color-mix(in srgb, var(--px-danger) 40%, transparent);
+  border-radius: var(--px-radius-md);
+  background: transparent;
+  color: var(--px-danger);
+  font-size: var(--px-text-sm);
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background-color var(--px-dur-fast) var(--px-ease);
+}
+.canvas-trash-panel-empty-btn:hover { background: color-mix(in srgb, var(--px-danger) 12%, transparent); }
+.canvas-trash-panel-list::-webkit-scrollbar { width: 5px; }
+.canvas-trash-panel-list::-webkit-scrollbar-track { background: transparent; }
 
 /* ── Context menu with icon + label pattern ── */
 
