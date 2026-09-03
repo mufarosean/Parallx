@@ -17831,6 +17831,7 @@ async function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut,
   }
 }
 
+// @mo-pure-begin — pure clip math (extracted verbatim by tests and the ffmpeg probe)
 // ── Clip filter presets ─────────────────────────────────────────────────────
 // Each preset is one ffmpeg video-filter chain segment (`vf`) injected into
 // the shared filter pipeline (so MP4 / WebM / GIF / GIF-frame-edits all get
@@ -17838,6 +17839,10 @@ async function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut,
 // instant visual feedback. CSS previews are close, not bit-exact — the
 // export is the source of truth. Chains avoid quotes/spaces so they survive
 // shellQuote on every platform.
+// Levels note (2026-09-03): Pastel, Fade and Vintage used colorlevels INPUT
+// minimums (rimin…), which map dark source values to black — the opposite of
+// a soft look. The CSS preview lifted blacks while the file crushed them:
+// "pastel does nothing". Soft looks lift the OUTPUT floor (romin…).
 // Lineup note (2026-07-19, per Mufaro): B&W (Mono/Noir) and Sepia removed;
 // the roster leans into graded, filmic color looks — Cinematic (the
 // favorite) plus five siblings in the same family. Saved clips referencing
@@ -17852,18 +17857,443 @@ const MO_CLIP_FILTERS = [
   { id: 'dusk',      label: 'Dusk',            vf: 'colorbalance=bs=0.1:rs=-0.05,eq=contrast=1.12:saturation=0.82:brightness=-0.03', css: 'contrast(1.12) saturate(0.82) brightness(0.97) hue-rotate(6deg)' },
   { id: 'neon',      label: 'Neon',            vf: 'colorbalance=rs=0.08:bs=0.14:gh=-0.04,eq=saturation=1.45:contrast=1.1', css: 'saturate(1.5) contrast(1.1) hue-rotate(-6deg)' },
   { id: 'punch',     label: 'Punch (crisp)',   vf: 'unsharp=5:5:0.8,eq=contrast=1.1:saturation=1.12',           css: 'contrast(1.12) saturate(1.15)' },
-  { id: 'pastel',    label: 'Pastel (soft)',   vf: 'colorlevels=rimin=0.04:gimin=0.04:bimin=0.04,eq=saturation=0.92:gamma=1.06', css: 'brightness(1.08) contrast(0.92) saturate(0.92)' },
+  { id: 'pastel',    label: 'Pastel (soft)',   vf: 'colorlevels=romin=0.06:gomin=0.06:bomin=0.06:romax=0.97:gomax=0.97:bomax=0.97,eq=saturation=0.9:gamma=1.06:contrast=0.94', css: 'brightness(1.08) contrast(0.92) saturate(0.92)' },
   { id: 'warm',      label: 'Warm',            vf: 'eq=saturation=1.12:gamma_r=1.07:gamma_b=0.93',              css: 'sepia(0.18) saturate(1.22) hue-rotate(-8deg)' },
   { id: 'cool',      label: 'Cool',            vf: 'eq=saturation=1.08:gamma_b=1.08:gamma_r=0.94',              css: 'saturate(1.08) hue-rotate(9deg) brightness(1.01)' },
   { id: 'vivid',     label: 'Vivid',           vf: 'eq=contrast=1.13:saturation=1.38',                          css: 'contrast(1.13) saturate(1.38)' },
-  { id: 'fade',      label: 'Fade (matte)',    vf: 'colorlevels=rimin=0.05:gimin=0.05:bimin=0.05:rimax=0.96:gimax=0.96:bimax=0.96,eq=saturation=0.85', css: 'contrast(0.88) brightness(1.06) saturate(0.85)' },
-  { id: 'vintage',   label: 'Vintage',         vf: 'colorlevels=rimin=0.06:gimin=0.06:bimin=0.06,eq=saturation=0.8:gamma_r=1.06:gamma_b=0.92,vignette', css: 'sepia(0.28) contrast(0.9) brightness(1.05) saturate(0.85)' },
+  { id: 'fade',      label: 'Fade (matte)',    vf: 'colorlevels=romin=0.08:gomin=0.08:bomin=0.08:romax=0.94:gomax=0.94:bomax=0.94,eq=saturation=0.85:contrast=0.92', css: 'contrast(0.88) brightness(1.06) saturate(0.85)' },
+  { id: 'vintage',   label: 'Vintage',         vf: 'colorlevels=romin=0.07:gomin=0.07:bomin=0.07,eq=saturation=0.8:gamma_r=1.06:gamma_b=0.92,vignette', css: 'sepia(0.28) contrast(0.9) brightness(1.05) saturate(0.85)' },
 ];
 
 /** The ffmpeg vf segment for a preset id ('' when none). */
 function moClipFilterVf(id) {
   const f = MO_CLIP_FILTERS.find((x) => x.id === id);
   return f && f.vf ? f.vf : '';
+}
+
+// ── Clip post-processing builders (pure) ───────────────────────────────────
+// Everything between the @mo-pure markers is plain JavaScript with no DOM,
+// no window, no fs: the unit tests and the ffmpeg probe extract this region
+// and run it verbatim, so the graphs the app sends are the graphs that were
+// tested. Impure concerns (finding a font file, temp dirs, spawning) stay in
+// the editor/export code that CALLS these.
+
+/** Escape text for drawtext's `text=` option (inside single quotes). */
+function moFfEscapeText(s) {
+  return String(s == null ? '' : s)
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\u2019")      // a typographic apostrophe survives every layer
+    .replace(/:/g, '\\:')
+    .replace(/%/g, '%%')
+    .replace(/\r?\n/g, '\u2028'); // drawtext has no newline in-arg; folded to one line
+}
+
+/** A filesystem path inside a filter option: C\:/Windows/Fonts/x.ttf. */
+function moFfEscapePath(p) {
+  return String(p || '').replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'");
+}
+
+// Caption styles: three looks, no free-form design tool. Sizes are relative
+// to the frame height so a 480p GIF and a 1080p mp4 read the same.
+//   title  — large, centered, on a translucent plate; a title card
+//   lower  — bottom-left lower-third label
+//   caption— bottom-center subtitle line
+const MO_CAPTION_STYLES = {
+  title:   { size: 0.075, x: '(w-text_w)/2', y: '(h-text_h)/2', box: 1, boxBorder: 0.02, alpha: 0.55 },
+  lower:   { size: 0.045, x: 'w*0.05',       y: 'h*0.86-text_h', box: 1, boxBorder: 0.012, alpha: 0.6 },
+  caption: { size: 0.05,  x: '(w-text_w)/2', y: 'h*0.9-text_h',  box: 1, boxBorder: 0.012, alpha: 0.6 },
+};
+
+/**
+ * One drawtext segment for a caption {text, style, t0, t1, color?}. Times are
+ * OUTPUT-timeline seconds (after cuts and speed), so callers place these after
+ * setpts/reverse in the chain. `fontFile` may be '' (ffmpeg's fontconfig
+ * default, when the build has it).
+ */
+function moCaptionVf(cap, fontFile) {
+  const st = MO_CAPTION_STYLES[cap.style] || MO_CAPTION_STYLES.caption;
+  const t0 = Math.max(0, +cap.t0 || 0);
+  const t1 = Math.max(t0 + 0.05, +cap.t1 || t0 + 3);
+  const color = /^[a-zA-Z]+$|^#?[0-9a-fA-F]{6}$/.test(String(cap.color || '')) ? String(cap.color).replace(/^#/, '0x') : 'white';
+  const parts = [
+    fontFile ? `fontfile='${moFfEscapePath(fontFile)}'` : '',
+    `text='${moFfEscapeText(cap.text)}'`,
+    `fontsize=h*${st.size.toFixed(3)}`,
+    `fontcolor=${color}`,
+    `x=${st.x}`,
+    `y=${st.y}`,
+    `box=${st.box}`,
+    `boxcolor=black@${st.alpha}`,
+    `boxborderw=h*${st.boxBorder.toFixed(3)}`,
+    `enable='between(t,${t0.toFixed(3)},${t1.toFixed(3)})'`,
+  ].filter(Boolean);
+  return 'drawtext=' + parts.join(':');
+}
+
+/** Every caption as vf segments (empty array when none). */
+function moCaptionsVf(captions, fontFile) {
+  if (!Array.isArray(captions)) return [];
+  return captions
+    .filter((c) => c && String(c.text || '').trim())
+    .map((c) => moCaptionVf(c, fontFile));
+}
+
+/**
+ * Blur / pixelate regions as a filter_complex fragment. Regions are in
+ * NORMALIZED SOURCE coordinates (before the camera crop), optionally keyed
+ * ({t,x,y} in absolute source seconds; rebased to `inPoint`), optionally
+ * time-limited (t0/t1 in absolute source seconds). Returns the graph text that
+ * turns `inLabel` into `outLabel`, or '' when there is nothing to do.
+ *
+ *   [in]split[a][b];[b]crop=W:H:X:Y,boxblur=...[bl];[a][bl]overlay=X:Y[out]
+ *
+ * Each region is one such stage; stages chain. Coordinates use iw/ih (the
+ * stream's own size), so the fragment is valid before scaling.
+ */
+function moBlurRegionsGraph(regions, inLabel, outLabel, inPoint, dims) {
+  const list = Array.isArray(regions) ? regions.filter((r) => r && r.w > 0.005 && r.h > 0.005) : [];
+  if (list.length === 0) return '';
+  const ip = inPoint || 0;
+  // pixelize takes INTEGER block sizes (no expressions): derive them from the
+  // region's pixel size when the source dims are known, else a safe default.
+  const srcW = dims && dims.srcW > 0 ? dims.srcW : 0;
+  const srcH = dims && dims.srcH > 0 ? dims.srcH : 0;
+  let cur = inLabel;
+  const stages = [];
+  list.forEach((r, i) => {
+    const w = Math.max(0.005, Math.min(1, r.w));
+    const h = Math.max(0.005, Math.min(1, r.h));
+    const keys = Array.isArray(r.keys) && r.keys.length >= 2
+      ? r.keys
+          .filter((k) => Number.isFinite(k.t) && Number.isFinite(k.x) && Number.isFinite(k.y))
+          .map((k) => ({ t: Math.max(0, k.t - ip), x: Math.max(0, Math.min(1 - w, k.x)), y: Math.max(0, Math.min(1 - h, k.y)) }))
+          .sort((p, q) => p.t - q.t)
+      : null;
+    const x0 = Math.max(0, Math.min(1 - w, +r.x || 0));
+    const y0 = Math.max(0, Math.min(1 - h, +r.y || 0));
+    // crop names the frame size iw/ih; overlay names its MAIN input W/H.
+    // Same curve, two vocabularies.
+    const xk = keys ? `(${moCropKeyExpr(keys, 'x')})` : x0.toFixed(4);
+    const yk = keys ? `(${moCropKeyExpr(keys, 'y')})` : y0.toFixed(4);
+    const xe = `iw*${xk}`, ye = `ih*${yk}`;
+    const ox = `W*${xk}`, oy = `H*${yk}`;
+    // Even, ≥2 px region so every codec-friendly stage stays happy. Quoted:
+    // the comma inside max() would otherwise split the filter's options.
+    const wPx = `'max(2,trunc(iw*${w.toFixed(4)}/2)*2)'`;
+    const hPx = `'max(2,trunc(ih*${h.toFixed(4)}/2)*2)'`;
+    const strength = Math.max(1, Math.min(10, Math.round(+r.strength || 5)));
+    let effect;
+    if (r.mode === 'pixelate') {
+      // block size grows with strength; 1/(40-3s) of the frame width, ≥4 px
+      const div = 40 - strength * 3;
+      const bw = srcW ? Math.max(4, Math.round(srcW / div)) : 16;
+      const bh = srcH ? Math.max(4, Math.round(srcH / div)) : 16;
+      effect = `pixelize=width=${bw}:height=${bh}`;
+    } else {
+      effect = `boxblur=luma_radius=${strength * 2}:luma_power=2:chroma_radius=${strength}:chroma_power=2`;
+    }
+    const a = `${cur}s${i}a`, b = `${cur}s${i}b`, bl = `${cur}s${i}bl`;
+    const next = i === list.length - 1 ? outLabel : `${inLabel}r${i}`;
+    // Time window (absolute source seconds → rebased) via overlay's enable.
+    let enable = '';
+    if (Number.isFinite(r.t0) || Number.isFinite(r.t1)) {
+      const t0 = Number.isFinite(r.t0) ? Math.max(0, r.t0 - ip) : 0;
+      const t1 = Number.isFinite(r.t1) ? Math.max(t0, r.t1 - ip) : 1e6;
+      enable = `:enable='between(t,${t0.toFixed(3)},${t1.toFixed(3)})'`;
+    }
+    // crop's x/y expressions are evaluated per frame (eval=frame is the
+    // default for x/y), so a keyed region follows its subject.
+    stages.push(
+      `[${cur}]split[${a}][${b}];`
+      + `[${b}]crop=w=${wPx}:h=${hPx}:x='${xe}':y='${ye}',${effect}[${bl}];`
+      + `[${a}][${bl}]overlay=x='${ox}':y='${oy}':eval=frame${enable}[${next}]`,
+    );
+    cur = next;
+  });
+  return stages.join(';');
+}
+
+/** The -af chain for the audio finish (fades, denoise, loudness). '' when none. */
+function moAudioFxAf(fx, durationSec) {
+  if (!fx) return '';
+  const parts = [];
+  const dur = Math.max(0.1, +durationSec || 0);
+  const fin = Math.max(0, +fx.fadeIn || 0);
+  const fout = Math.max(0, +fx.fadeOut || 0);
+  if (fx.denoise) parts.push('afftdn=nf=-25');
+  if (fin > 0) parts.push(`afade=t=in:st=0:d=${Math.min(fin, dur / 2).toFixed(3)}`);
+  if (fout > 0) parts.push(`afade=t=out:st=${Math.max(0, dur - Math.min(fout, dur / 2)).toFixed(3)}:d=${Math.min(fout, dur / 2).toFixed(3)}`);
+  if (fx.normalize) parts.push('loudnorm=I=-16:TP=-1.5:LRA=11');
+  return parts.join(',');
+}
+
+/**
+ * Parse ffmpeg's stderr from a detection pass (silencedetect + freezedetect
+ * with metadata=print) into absolute-time ranges. `offset` is the -ss the
+ * pass ran with (its timestamps restart at 0).
+ */
+function moParseDetectLog(stderr, offset) {
+  const off = +offset || 0;
+  const silences = [], freezes = [];
+  let sStart = null, fStart = null;
+  const lines = String(stderr || '').split(/\r?\n/);
+  for (const line of lines) {
+    let m;
+    if ((m = /silence_start:\s*(-?[\d.]+)/.exec(line))) { sStart = parseFloat(m[1]); continue; }
+    if ((m = /silence_end:\s*(-?[\d.]+)/.exec(line))) {
+      const e = parseFloat(m[1]);
+      if (sStart != null && Number.isFinite(e)) silences.push({ s: Math.max(0, sStart) + off, e: e + off });
+      sStart = null; continue;
+    }
+    if ((m = /freezedetect\.freeze_start=(-?[\d.]+)/.exec(line))) { fStart = parseFloat(m[1]); continue; }
+    if ((m = /freezedetect\.freeze_end=(-?[\d.]+)/.exec(line))) {
+      const e = parseFloat(m[1]);
+      if (fStart != null && Number.isFinite(e)) freezes.push({ s: Math.max(0, fStart) + off, e: e + off });
+      fStart = null; continue;
+    }
+  }
+  return { silences, freezes, openSilence: sStart != null ? sStart + off : null, openFreeze: fStart != null ? fStart + off : null };
+}
+
+/**
+ * Turn detected dead air into the segments to KEEP inside [a, b].
+ *   mode 'both'   — cut only where the picture froze AND the sound was silent
+ *   mode 'silence'— cut on silence alone (no picture check)
+ *   mode 'freeze' — cut on frozen picture alone (no audio)
+ * Cuts shorter than `minCut` are ignored; `pad` seconds of dead air are kept
+ * on each side of a cut so edits do not clip a word; kept pieces shorter
+ * than `minKeep` are dropped.
+ */
+function moDeadAirSegments(detect, a, b, opts) {
+  const o = Object.assign({ mode: 'both', minCut: 0.7, pad: 0.15, minKeep: 0.4 }, opts || {});
+  const clampR = (r) => ({ s: Math.max(a, r.s), e: Math.min(b, r.e) });
+  const sil = (detect.silences || []).map(clampR).filter((r) => r.e > r.s);
+  const frz = (detect.freezes || []).map(clampR).filter((r) => r.e > r.s);
+  // An open-ended detection (still silent/frozen at the end) runs to b.
+  if (detect.openSilence != null && detect.openSilence < b) sil.push({ s: Math.max(a, detect.openSilence), e: b });
+  if (detect.openFreeze != null && detect.openFreeze < b) frz.push({ s: Math.max(a, detect.openFreeze), e: b });
+  let cuts;
+  if (o.mode === 'silence') cuts = sil;
+  else if (o.mode === 'freeze') cuts = frz;
+  else {
+    // intersection of the two range sets
+    cuts = [];
+    for (const s of sil) for (const f of frz) {
+      const lo = Math.max(s.s, f.s), hi = Math.min(s.e, f.e);
+      if (hi > lo) cuts.push({ s: lo, e: hi });
+    }
+  }
+  cuts = cuts
+    .map((c) => ({ s: c.s + o.pad, e: c.e - o.pad }))
+    .filter((c) => c.e - c.s >= o.minCut)
+    .sort((p, q) => p.s - q.s);
+  // merge overlaps
+  const merged = [];
+  for (const c of cuts) {
+    const last = merged[merged.length - 1];
+    if (last && c.s <= last.e) last.e = Math.max(last.e, c.e);
+    else merged.push({ ...c });
+  }
+  const keep = [];
+  let cursor = a;
+  for (const c of merged) {
+    if (c.s - cursor >= o.minKeep) keep.push({ in: cursor, out: c.s });
+    cursor = Math.max(cursor, c.e);
+  }
+  if (b - cursor >= o.minKeep) keep.push({ in: cursor, out: b });
+  return { keep, cuts: merged };
+}
+
+/**
+ * Smart camera: cursor telemetry → zoom keyframes. The base window is the
+ * full frame (w=1); dwell points (cursor resting inside a small radius for a
+ * while) zoom to `zoomW` around the cursor with an ease-in, hold, and ease
+ * back out; dwells close together pan instead of zooming out in between; a
+ * dead zone keeps small cursor drift from shaking the frame.
+ *   track: [{t, x, y}] normalized to the source frame, seconds.
+ */
+function moSmartZoomKeys(track, opts) {
+  const o = Object.assign({ zoomW: 0.55, dwellRadius: 0.035, dwellMin: 0.55, hold: 0.9, ease: 0.45, gap: 1.6, deadzone: 0.3, aspect: 1, cap: 60 }, opts || {});
+  const pts = (Array.isArray(track) ? track : [])
+    .filter((p) => Number.isFinite(p.t) && Number.isFinite(p.x) && Number.isFinite(p.y))
+    .sort((p, q) => p.t - q.t);
+  if (pts.length < 2) return [];
+  // 1. dwell events
+  const events = [];
+  let i = 0;
+  while (i < pts.length) {
+    let cx = pts[i].x, cy = pts[i].y, n = 1, j = i + 1;
+    while (j < pts.length) {
+      const p = pts[j];
+      const mx = cx, my = cy;
+      if (Math.hypot(p.x - mx, p.y - my) > o.dwellRadius) break;
+      cx = (cx * n + p.x) / (n + 1); cy = (cy * n + p.y) / (n + 1); n++; j++;
+    }
+    const t0 = pts[i].t, t1 = pts[Math.max(i, j - 1)].t;
+    if (t1 - t0 >= o.dwellMin) events.push({ t0, t1: t1 + o.hold, cx, cy });
+    i = Math.max(i + 1, j);
+  }
+  if (events.length === 0) return [];
+  // 2. keys
+  const w = Math.max(0.15, Math.min(0.95, o.zoomW));
+  const h = w * o.aspect;
+  const at = (cx, cy) => ({ x: Math.max(0, Math.min(1 - w, cx - w / 2)), y: Math.max(0, Math.min(1 - h, cy - h / 2)) });
+  const full = { x: 0, y: 0, w: 1 };
+  const keys = [];
+  const push = (t, k) => { keys.push({ t: Math.max(0, t), x: k.x, y: k.y, w: k.w }); };
+  let prev = null;
+  for (const ev of events) {
+    const target = at(ev.cx, ev.cy);
+    if (prev && ev.t0 - prev.t1 <= o.gap) {
+      // stay zoomed; pan only if the new center left the dead zone
+      const dx = Math.abs(target.x - prev.pos.x), dy = Math.abs(target.y - prev.pos.y);
+      if (dx > w * o.deadzone || dy > h * o.deadzone) {
+        push(ev.t0, { ...prev.pos, w });                     // hold until the move starts
+        push(ev.t0 + o.ease, { ...target, w });              // glide to the new subject
+        prev = { t1: ev.t1, pos: target };
+      } else {
+        prev = { t1: ev.t1, pos: prev.pos };
+      }
+      continue;
+    }
+    if (prev) {
+      // zoom out from the previous subject before this one
+      push(prev.t1, { ...prev.pos, w });
+      push(prev.t1 + o.ease, full);
+    } else if (ev.t0 - o.ease > 0) {
+      push(0, full);
+    }
+    push(Math.max(0, ev.t0 - o.ease), full);
+    push(ev.t0, { ...target, w });
+    prev = { t1: ev.t1, pos: target };
+  }
+  if (prev) { push(prev.t1, { ...prev.pos, w }); push(prev.t1 + o.ease, full); }
+  // de-dupe times (keep the later write), sort, cap
+  const byT = new Map();
+  for (const k of keys) byT.set(k.t.toFixed(3), k);
+  const out = [...byT.values()].sort((p, q) => p.t - q.t);
+  return out.length > o.cap ? moSimplifyTrackKeys(out, 0.004, o.cap) : out;
+}
+
+/**
+ * Follow-the-box: the recorder's frame path (normalized to the full-display
+ * capture, {t,x,y,w,h}) becomes a crop base + keyframes. The frame keeps its
+ * aspect while recording, so only `w` animates (height follows the base).
+ * A frame that never moved is a static crop.
+ */
+function moBoxTrackToKeys(boxTrack, opts) {
+  const o = Object.assign({ tol: 0.004, cap: 80, minMove: 0.002 }, opts || {});
+  const pts = (Array.isArray(boxTrack) ? boxTrack : [])
+    .filter((p) => Number.isFinite(p.t) && Number.isFinite(p.x) && Number.isFinite(p.y) && p.w > 0 && p.h > 0)
+    .sort((p, q) => p.t - q.t);
+  if (pts.length === 0) return null;
+  const first = pts[0];
+  const cropBase = { w: Math.max(0.02, Math.min(1, first.w)), h: Math.max(0.02, Math.min(1, first.h)) };
+  const moved = pts.some((p) => Math.abs(p.x - first.x) > o.minMove || Math.abs(p.y - first.y) > o.minMove || Math.abs(p.w - first.w) > o.minMove);
+  if (!moved) return { cropBase, cropNorm: { x: first.x, y: first.y, w: cropBase.w, h: cropBase.h }, cropKeys: [] };
+  let keys = pts.map((p) => ({ t: p.t, x: p.x, y: p.y, w: Math.max(0.02, Math.min(1, p.w)) }));
+  keys = moSimplifyTrackKeys(keys, o.tol, o.cap);
+  return { cropBase, cropNorm: { x: first.x, y: first.y, w: cropBase.w, h: cropBase.h }, cropKeys: keys };
+}
+
+/** Output pixel size of the per-segment chain (crop base → scale), even dims. */
+function moStageOutputDims(o) {
+  const srcW = Math.max(2, Math.round(o.srcW || 0)), srcH = Math.max(2, Math.round(o.srcH || 0));
+  let w = srcW, h = srcH;
+  if (o.crop && o.crop.w > 0 && o.crop.h > 0) {
+    const zoomKeys = Array.isArray(o.cropKeys) && o.cropKeys.length >= 2 && o.cropKeys.some((k) => Number.isFinite(k.w) && Math.abs(k.w - o.crop.w) > 0.003);
+    if (zoomKeys) {
+      const d = moZoomPadDims(srcW, srcH, o.crop.w, o.crop.h);
+      w = d.outW; h = d.outH;
+    } else {
+      w = Math.max(2, Math.trunc(srcW * o.crop.w / 2) * 2);
+      h = Math.max(2, Math.trunc(srcH * o.crop.h / 2) * 2);
+    }
+  }
+  const s = (o.scalePct || 100) / 100;
+  if (s !== 1) { w = Math.max(2, Math.trunc(w * s / 2) * 2); h = Math.max(2, Math.trunc(h * s / 2) * 2); }
+  return { w, h };
+}
+
+/**
+ * The end card as ffmpeg inputs + a chain. `index` is the input index the
+ * caller will give the colour source (and index+1 the silence, when audio).
+ */
+function moEndCardInputs(card, dims, fps, fontFile, withAudio) {
+  const secs = Math.max(0.5, Math.min(15, +card.seconds || 3));
+  const bg = /^#?[0-9a-fA-F]{6}$/.test(String(card.bg || '')) ? '0x' + String(card.bg).replace(/^#/, '') : 'black';
+  const inputs = ['-f', 'lavfi', '-i', `color=c=${bg}:s=${dims.w}x${dims.h}:r=${+fps || 30}:d=${secs.toFixed(2)}`];
+  if (withAudio) inputs.push('-f', 'lavfi', '-i', `anullsrc=r=48000:cl=stereo:d=${secs.toFixed(2)}`);
+  const chain = [];
+  if (String(card.title || '').trim()) {
+    chain.push(moCaptionVf({ text: card.title, style: 'title', t0: 0, t1: secs + 1 }, fontFile).replace(/:enable='[^']*'/, ''));
+  }
+  if (String(card.subtitle || '').trim()) {
+    const sub = moCaptionVf({ text: card.subtitle, style: 'caption', t0: 0, t1: secs + 1 }, fontFile).replace(/:enable='[^']*'/, '');
+    chain.push(sub);
+  }
+  chain.push('fade=t=in:st=0:d=0.35', 'format=yuv420p');
+  return { inputs, chain: chain.join(','), secs };
+}
+
+/**
+ * Stage A: the assembly graph. Every kept segment is trimmed, given the
+ * per-segment look (fps, blur regions, camera crop with its keys rebased to
+ * the segment start, scale, colour preset), normalized to one exact size,
+ * then all segments (and the optional end card) are concatenated.
+ *
+ *   o = { segments:[{in,out}], fps, crop, cropKeys, srcW, srcH, scalePct,
+ *         filter, blurRegions, withAudio, endCard? , fontFile? }
+ * Returns { filterComplex, mapV: '[vout]', mapA: '[aout]'|null,
+ *           extraInputs: [...ffmpeg args], durationSec }.
+ */
+function moSegmentsGraph(o) {
+  const segs = (o.segments || []).filter((s) => s && s.out > s.in).map((s) => ({ in: +s.in, out: +s.out }));
+  if (segs.length === 0) throw new Error('No segments to assemble');
+  const dims = moStageOutputDims(o);
+  const fps = +o.fps || 30;
+  const withAudio = !!o.withAudio;
+  const lines = [];
+  const vlabels = [], alabels = [];
+  segs.forEach((s, i) => {
+    const chain = [`trim=start=${s.in.toFixed(3)}:end=${s.out.toFixed(3)}`, 'setpts=PTS-STARTPTS', `fps=${fps}`];
+    // Blur regions live in source coordinates: before the camera crop.
+    const blur = moBlurRegionsGraph(o.blurRegions, `t${i}`, `u${i}`, s.in, { srcW: o.srcW, srcH: o.srcH });
+    let head = `[0:v]${chain.join(',')}[t${i}]`;
+    let src = `t${i}`;
+    if (blur) { lines.push(head); lines.push(blur); src = `u${i}`; head = null; }
+    const tail = [];
+    if (o.crop && o.crop.w > 0 && o.crop.h > 0) {
+      tail.push(moCropVfSegment(o.crop, o.cropKeys, s.in, { fps, srcW: o.srcW || 0, srcH: o.srcH || 0 }));
+    }
+    tail.push(`scale=${dims.w}:${dims.h}`, 'setsar=1');
+    const presetVf = moClipFilterVf(o.filter);
+    if (presetVf) tail.push(presetVf);
+    tail.push('format=yuv420p');
+    if (head) lines.push(`${head.replace(`[t${i}]`, '')},${tail.join(',')}[v${i}]`);
+    else lines.push(`[${src}]${tail.join(',')}[v${i}]`);
+    vlabels.push(`[v${i}]`);
+    if (withAudio) {
+      lines.push(`[0:a]atrim=start=${s.in.toFixed(3)}:end=${s.out.toFixed(3)},asetpts=PTS-STARTPTS,aresample=48000[a${i}]`);
+      alabels.push(`[a${i}]`);
+    }
+  });
+  let extraInputs = [];
+  let durationSec = segs.reduce((sum, s) => sum + (s.out - s.in), 0);
+  let n = segs.length;
+  if (o.endCard && o.endCard.enabled) {
+    const card = moEndCardInputs(o.endCard, dims, fps, o.fontFile || '', withAudio);
+    extraInputs = card.inputs;
+    const vi = 1, ai = 2; // input indices after the source (0)
+    lines.push(`[${vi}:v]${card.chain}[vcard]`);
+    vlabels.push('[vcard]');
+    if (withAudio) { lines.push(`[${ai}:a]aresample=48000[acard]`); alabels.push('[acard]'); }
+    durationSec += card.secs;
+    n += 1;
+  }
+  const inputs = vlabels.map((v, i) => withAudio ? `${v}${alabels[i]}` : v).join('');
+  lines.push(`${inputs}concat=n=${n}:v=1:a=${withAudio ? 1 : 0}${withAudio ? '[vout][aout]' : '[vout]'}`);
+  return { filterComplex: lines.join(';'), mapV: '[vout]', mapA: withAudio ? '[aout]' : null, extraInputs, durationSec, dims };
 }
 
 // ── Animated crop (camera-in-camera) helpers ────────────────────────────────
@@ -18114,6 +18544,8 @@ function moSimplifyTrackKeys(keys, tol, cap) {
   while (out.length > cap) { eps *= 1.5; out = rdp(eps); }
   return out;
 }
+
+// @mo-pure-end
 
 // ── Tracker core: ZNCC matching + variance-guided template selection ──
 // v1 used raw SAD on the blind center of the crop window and locked onto the
