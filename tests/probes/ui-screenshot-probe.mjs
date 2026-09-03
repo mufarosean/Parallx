@@ -19,13 +19,14 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 
 const outDir = path.resolve(process.argv[2] ?? path.join(os.tmpdir(), 'parallx-probe-shots'));
 const requested = process.argv.slice(3);
-const ALL_SCENES = ['boot', 'welcome', 'watermark', 'chat', 'autonomy', 'dashboard', 'planner', 'canvas', 'settings', 'appearance'];
+const ALL_SCENES = ['boot', 'welcome', 'watermark', 'chat', 'autonomy', 'dashboard', 'planner', 'canvas', 'clip', 'settings', 'appearance'];
 const scenes = requested.length ? requested : ALL_SCENES;
 
 function launchEnv(appRoot) {
@@ -50,7 +51,17 @@ async function makeTempRoots() {
   await fs.writeFile(path.join(workspace, 'README.md'), '# Probe workspace\n\nA throwaway folder the screenshot probe made.\n');
   await fs.writeFile(path.join(workspace, 'notes', 'siewert.md'), '# Siewert\n\nExcess loss development notes.\n');
   await fs.writeFile(path.join(appRoot, 'data', 'last-workspace.json'), JSON.stringify({ path: workspace }));
-  return { appRoot, workspace };
+  // Development extensions load from <app root>/ext, so the throwaway root
+  // gets a junction to the repo's ext/ (a junction needs no privilege).
+  try { await fs.symlink(path.join(PROJECT_ROOT, 'ext'), path.join(appRoot, 'ext'), 'junction'); }
+  catch (err) { console.log(`[probe] ext junction failed: ${String(err).split('\n')[0]}`); }
+  // A six-second synthetic video with a tone, for the clip editor scene.
+  const clip = path.join(workspace, 'probe-clip.mp4');
+  const ff = spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y',
+    '-f', 'lavfi', '-i', 'testsrc2=size=640x360:rate=30', '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000',
+    '-t', '6', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', clip], { windowsHide: true });
+  if (ff.status !== 0) console.log(`[probe] synthetic clip failed: ${String(ff.stderr || '').slice(0, 200)}`);
+  return { appRoot, workspace, clip };
 }
 
 // Commands run through the workbench's own command service (main.ts exposes
@@ -89,7 +100,7 @@ async function shot(page, name) {
 
 async function main() {
   await fs.mkdir(outDir, { recursive: true });
-  const { appRoot, workspace } = await makeTempRoots();
+  const { appRoot, workspace, clip } = await makeTempRoots();
   console.log(`[probe] app root ${appRoot}\n[probe] workspace ${workspace}`);
 
   const app = await electron.launch({ args: ['.'], cwd: PROJECT_ROOT, env: launchEnv(appRoot) });
@@ -227,6 +238,96 @@ async function main() {
           await shot(page, 'canvas-trash');
           await page.keyboard.press('Escape');
         }
+      });
+    }
+    if (scenes.includes('clip')) {
+      await scene('clip', async () => {
+        const ok = await runCommand(page, [['media-organizer.openClipEditor', clip]]);
+        if (!ok) throw new Error('media-organizer.openClipEditor not available (extension not loaded?)');
+        await page.waitForSelector('.mo-clip-page', { timeout: 20_000 });
+        await page.waitForTimeout(1_500);
+        await shot(page, 'clip');
+        // Where the stage sits at each shot: it must stay on screen while the
+        // controls scroll (blur boxes and text live on the video).
+        const stageState = async (label) => {
+          const d = await page.evaluate(() => {
+            const st = document.querySelector('.mo-clip-stage');
+            if (!st) return 'no stage';
+            const r = st.getBoundingClientRect();
+            return `top=${Math.round(r.top)} bottom=${Math.round(r.bottom)} visible=${r.bottom > 80 && r.top < window.innerHeight - 80}`;
+          });
+          console.log(`[probe] clip stage @${label}: ${d}`);
+        };
+        const openSection = async (title) => {
+          const head = page.locator('.mo-clip-acc-head', { has: page.locator('.mo-clip-acc-title', { hasText: title }) }).first();
+          if (!(await head.count())) { console.log(`[probe] clip: no section ${title}`); return false; }
+          const open = await head.evaluate((el) => el.parentElement.classList.contains('mo-open'));
+          if (!open) await head.evaluate((el) => { el.scrollIntoView({ block: 'center' }); el.click(); });
+          await page.waitForTimeout(300);
+          return true;
+        };
+        const clickBtn = async (text) => {
+          const btn = page.locator('.mo-clip-page button', { hasText: text }).first();
+          if (!(await btn.count())) { console.log(`[probe] clip: no button ${text}`); return false; }
+          await btn.evaluate((el) => { el.scrollIntoView({ block: 'center' }); el.click(); });
+          await page.waitForTimeout(400);
+          return true;
+        };
+        // Trim: two segments from the one range.
+        await openSection('Trim');
+        await clickBtn('Add Segment');
+        // Second range via the I/O hotkeys at a later playhead.
+        await page.locator('.mo-clip-page').first().focus().catch(() => {});
+        await page.evaluate(() => { const v = document.querySelector('.mo-clip-page video'); if (v) v.currentTime = 3; });
+        await page.waitForTimeout(300); await page.keyboard.press('i');
+        await page.evaluate(() => { const v = document.querySelector('.mo-clip-page video'); if (v) v.currentTime = 5; });
+        await page.waitForTimeout(300); await page.keyboard.press('o');
+        await page.waitForTimeout(300);
+        await clickBtn('Add Segment');
+        await shot(page, 'clip-segments'); await stageState('clip-segments');
+        // Blur: one region on the stage.
+        if (await openSection('Blur')) { await clickBtn('Blur Region'); await shot(page, 'clip-blur'); await stageState('clip-blur'); }
+        // Text: one caption.
+        if (await openSection('Text')) {
+          await clickBtn('+ Text');
+          const capInput = page.locator('.mo-clip-page .mo-clip-input--grow').first();
+          if (await capInput.count()) { await capInput.fill('Excess of loss, explained'); await capInput.dispatchEvent('input'); await page.waitForTimeout(400); }
+          // Pause and park the playhead inside the caption's window so the
+          // preview on the stage is in the shot.
+          await page.evaluate(() => {
+            const v = document.querySelector('.mo-clip-page video');
+            const sec = Array.from(document.querySelectorAll('.mo-clip-acc')).find((a) => (a.querySelector('.mo-clip-acc-title')?.textContent || '') === 'Text');
+            const from = sec?.querySelector('input[type="number"]');
+            if (v) { v.pause(); if (from) v.currentTime = parseFloat(from.value) + 0.3; }
+          });
+          await page.waitForTimeout(600);
+          await shot(page, 'clip-text'); await stageState('clip-text');
+        }
+        // Audio & Finish, then Export, so the whole program is visible.
+        if (await openSection('Audio')) await shot(page, 'clip-audio'); await stageState('clip-audio');
+        if (await openSection('Export')) await shot(page, 'clip-export'); await stageState('clip-export');
+        const summary = await page.evaluate(() => {
+          const rows = Array.from(document.querySelectorAll('.mo-clip-acc')).map((a) => {
+            const t = a.querySelector('.mo-clip-acc-title')?.textContent || '';
+            const s = a.querySelector('.mo-clip-acc-sum')?.textContent || '';
+            return `${t}${s ? ' [' + s + ']' : ''}`;
+          });
+          const segs = document.querySelectorAll('.mo-clip-segrow').length;
+          const blurs = document.querySelectorAll('.mo-blur-rect').length;
+          const caps = document.querySelectorAll('.mo-caption').length;
+          const status = document.querySelector('.mo-clip-status')?.textContent || '';
+          const layer = document.querySelector('.mo-caption-layer');
+          const capRow = Array.from(document.querySelectorAll('.mo-clip-acc')).find((a) => (a.querySelector('.mo-clip-acc-title')?.textContent || '') === 'Text')?.querySelector('.mo-clip-segrow--stack');
+          const nums = capRow ? Array.from(capRow.querySelectorAll('input[type="number"]')).map((i) => i.value).join('..') : 'none';
+          const txt = capRow ? (capRow.querySelector('input[type="text"]')?.value || '') : '';
+          const vt = document.querySelector('.mo-clip-page video')?.currentTime;
+          const capDiag = `layer=${layer ? getComputedStyle(layer).display + '/' + layer.children.length : 'none'} window=${nums} text="${txt}" vt=${vt}`;
+          return `sections=${rows.join(' | ')} segrows=${segs} blurrects=${blurs} captions=${caps} ${capDiag} status="${status}"`;
+        });
+        console.log(`[probe] clip: ${summary}`);
+        // Close the editor tab so later scenes start clean.
+        await page.locator('.mo-clip-page .mo-modal-close').first().evaluate((el) => el.click()).catch(() => {});
+        await page.waitForTimeout(300);
       });
     }
     if (scenes.includes('settings')) {

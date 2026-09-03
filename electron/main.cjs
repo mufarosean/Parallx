@@ -13,7 +13,7 @@ if (!process.env.UV_THREADPOOL_SIZE) {
   process.env.UV_THREADPOOL_SIZE = String(Math.min(32, Math.max(8, require('os').cpus().length)));
 }
 
-const { app, BrowserWindow, ipcMain, dialog, shell, screen, safeStorage, nativeImage, session, desktopCapturer, protocol } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, screen, safeStorage, nativeImage, session, desktopCapturer, protocol, globalShortcut } = require('electron');
 const http = require('http');
 const path = require('path');
 const fs = require('fs/promises');
@@ -3111,8 +3111,88 @@ ipcMain.handle('terminal:getOutput', async (_event, lineCount) => {
 // path is handed back to the renderer via the 'recorder:complete' event.
 const RECORDER_BORDER = 2;    // px — MUST match recorderFrame.html (border around the capture area only)
 const RECORDER_TOOLBAR = 44;  // px — MUST match recorderFrame.html
-const _recorderFrames = new Map(); // frameId -> { win, proc, outputPath, ffmpegPath, fps, recording }
+const _recorderFrames = new Map(); // frameId -> { win, proc, outputPath, ffmpegPath, fps, recording, ... }
 let _recorderIdCounter = 0;
+
+// Fixed, app-wide hotkeys while a recorder frame is open: the user is usually
+// in ANOTHER app when they want to stop, so these work without focus. They are
+// registered on openFrame and released with the frame. A failed register (the
+// combo is taken by another program) is silent: the toolbar still works.
+const RECORDER_HOTKEY_STOP = 'CommandOrControl+Alt+R';
+const RECORDER_HOTKEY_PAUSE = 'CommandOrControl+Alt+P';
+let _recorderHotkeyOwner = null; // frameId that currently owns the shortcuts
+function _recorderClaimHotkeys(frameId) {
+  if (_recorderHotkeyOwner) return;
+  const send = (action) => {
+    const e = _recorderFrames.get(_recorderHotkeyOwner);
+    if (e && e.win && !e.win.isDestroyed()) e.win.webContents.send('recorder:hotkey', { action });
+  };
+  try {
+    const okStop = globalShortcut.register(RECORDER_HOTKEY_STOP, () => send('stop'));
+    const okPause = globalShortcut.register(RECORDER_HOTKEY_PAUSE, () => send('pause'));
+    if (okStop || okPause) _recorderHotkeyOwner = frameId;
+  } catch { /* leave unregistered */ }
+}
+function _recorderReleaseHotkeys(frameId) {
+  if (_recorderHotkeyOwner !== frameId) return;
+  _recorderHotkeyOwner = null;
+  try { globalShortcut.unregister(RECORDER_HOTKEY_STOP); } catch { /* ignore */ }
+  try { globalShortcut.unregister(RECORDER_HOTKEY_PAUSE); } catch { /* ignore */ }
+}
+
+// The telemetry timer: while recording, sample the cursor (Smart Zoom in the
+// editor) and, in follow-the-box mode, where the frame is (the camera path).
+// Both are normalized to the capture rect, timestamped from the first frame.
+function _recorderStopTelemetry(entry) {
+  if (entry && entry.telemetryTimer) { clearInterval(entry.telemetryTimer); entry.telemetryTimer = null; }
+}
+function _recorderStartTelemetry(entry) {
+  _recorderStopTelemetry(entry);
+  entry.cursorTrack = [];
+  entry.boxTrack = [];
+  let lastBox = null;
+  entry.telemetryTimer = setInterval(() => {
+    if (!entry.recording || !entry.videoFirstFrameAt || !entry.captureRect) return;
+    const cap = entry.captureRect;
+    const t = Math.round(((Date.now() - entry.videoFirstFrameAt) / 1000) * 1000) / 1000;
+    try {
+      const dip = screen.getCursorScreenPoint();
+      const p = screen.dipToScreenPoint(dip);
+      const x = (p.x - cap.x) / cap.w, y = (p.y - cap.y) / cap.h;
+      if (x >= -0.02 && x <= 1.02 && y >= -0.02 && y <= 1.02 && entry.cursorTrack.length < 60000) {
+        entry.cursorTrack.push({ t, x: Math.round(Math.max(0, Math.min(1, x)) * 1e4) / 1e4, y: Math.round(Math.max(0, Math.min(1, y)) * 1e4) / 1e4 });
+      }
+    } catch { /* display went away mid-sample */ }
+    if (entry.followBox && entry.win && !entry.win.isDestroyed()) {
+      try {
+        const r = _recorderCaptureRect(entry.win);
+        const box = {
+          t,
+          x: Math.round(((r.x - cap.x) / cap.w) * 1e4) / 1e4, y: Math.round(((r.y - cap.y) / cap.h) * 1e4) / 1e4,
+          w: Math.round((r.w / cap.w) * 1e4) / 1e4, h: Math.round((r.h / cap.h) * 1e4) / 1e4,
+        };
+        if (!lastBox || lastBox.x !== box.x || lastBox.y !== box.y || lastBox.w !== box.w || lastBox.h !== box.h || entry.boxTrack.length === 0) {
+          if (entry.boxTrack.length < 60000) entry.boxTrack.push(box);
+          lastBox = box;
+        }
+      } catch { /* ignore */ }
+    }
+  }, 33);
+}
+
+// Physical-pixel rect of the whole display the frame sits on (follow-the-box
+// records the display and the editor crops to the frame's path).
+function _recorderDisplayRect(win) {
+  const b = win.getBounds();
+  const disp = screen.getDisplayNearestPoint({ x: b.x + Math.round(b.width / 2), y: b.y + Math.round(b.height / 2) });
+  const db = disp.bounds;
+  const sf = disp.scaleFactor || 1;
+  const tl = screen.dipToScreenPoint({ x: db.x, y: db.y });
+  let pw = Math.round(db.width * sf), ph = Math.round(db.height * sf);
+  if (pw % 2 !== 0) pw -= 1;
+  if (ph % 2 !== 0) ph -= 1;
+  return { rect: { x: Math.round(tl.x), y: Math.round(tl.y), w: Math.max(2, pw), h: Math.max(2, ph) }, dip: { x: db.x, y: db.y, width: db.width, height: db.height } };
+}
 
 // Persist the frame's size + position app-wide (like the main window), so it
 // reopens where the user last left it — ScreenToGif-style. Saved on move/resize
@@ -3253,24 +3333,34 @@ ipcMain.handle('recorder:openFrame', async (_event, opts) => {
     // Audio capture mode: 'off' | 'system' (loopback) | 'mic'. Capture itself
     // happens in the frame renderer; the toolbar speaker button mutes it
     // locally. Main only needs the mode to pass to the frame.
-    const audioMode = ['system', 'mic'].includes(opts?.audio) ? opts.audio : 'off';
+    const audioMode = ['system', 'mic', 'both'].includes(opts?.audio) ? opts.audio : 'off';
+    const countdown = [0, 3, 5, 10].includes(parseInt(opts?.countdown, 10)) ? parseInt(opts.countdown, 10) : 3;
+    const drawMouse = opts?.showCursor === false ? 0 : 1;
+    const followBox = opts?.followBox === true;
     // gdigrab writes video to a temp; final output is muxed (video + captured
     // audio) into outputPath on stop. videoPath is a sibling temp file.
     const videoPath = outputPath.replace(/\.mp4$/i, '') + '.video.mp4';
     const entry = {
       win, proc: null, outputPath, videoPath, audioPath: null, ffmpegPath, fps,
-      recording: false, audioMode,
+      recording: false, audioMode, countdown, drawMouse, followBox,
+      paused: false, pauses: [], cursorTrack: [], boxTrack: [], captureRect: null, displayDip: null, telemetryTimer: null,
     };
     _recorderFrames.set(frameId, entry);
-    if (audioMode === 'system') _ensureLoopbackAudioHandler();
-    const search = new URLSearchParams({ frameId, fps: String(fps), audio: audioMode }).toString();
+    if (audioMode === 'system' || audioMode === 'both') _ensureLoopbackAudioHandler();
+    _recorderClaimHotkeys(frameId);
+    const search = new URLSearchParams({
+      frameId, fps: String(fps), audio: audioMode, countdown: String(countdown), follow: followBox ? '1' : '0',
+      hotkeyStop: RECORDER_HOTKEY_STOP, hotkeyPause: RECORDER_HOTKEY_PAUSE,
+    }).toString();
     win.loadFile(path.join(__dirname, 'recorderFrame.html'), { search });
     // Unexpected close (OS, app quit) that didn't go through stop/cancel: tear
     // down the recording and tell the renderer it was cancelled so it doesn't
     // wait forever. stop/cancel delete from the map first, so they no-op here.
     win.on('closed', () => {
+      _recorderReleaseHotkeys(frameId);
       const e = _recorderFrames.get(frameId);
       if (!e) return;
+      _recorderStopTelemetry(e);
       if (e.proc) { try { e.proc.kill('SIGKILL'); } catch { /* ignore */ } }
       _recorderFrames.delete(frameId);
       _recorderCleanupTemps(e);
@@ -3290,7 +3380,21 @@ ipcMain.handle('recorder:openFrame', async (_event, opts) => {
 // get no native resize). The renderer computes the new DIP bounds and sends them.
 ipcMain.handle('recorder:setBounds', (_event, frameId, bounds) => {
   const entry = _recorderFrames.get(frameId);
-  if (!entry || !entry.win || entry.win.isDestroyed() || entry.recording || !bounds) return { error: null };
+  if (!entry || !entry.win || entry.win.isDestroyed() || !bounds) return { error: null };
+  if (entry.recording) {
+    // Follow-the-box: the frame may MOVE while recording (its size is fixed,
+    // and it stays on the display being captured); the path becomes the
+    // camera in the editor. Any other recording refuses bounds changes.
+    if (!entry.followBox || !entry.displayDip) return { error: null };
+    try {
+      const cur = entry.win.getBounds();
+      const d = entry.displayDip;
+      const x = Math.max(d.x, Math.min(d.x + d.width - cur.width, Math.round(bounds.x)));
+      const y = Math.max(d.y, Math.min(d.y + d.height - cur.height, Math.round(bounds.y)));
+      entry.win.setBounds({ x, y, width: cur.width, height: cur.height });
+    } catch { /* ignore */ }
+    return { error: null };
+  }
   try {
     entry.win.setBounds({
       x: Math.round(bounds.x), y: Math.round(bounds.y),
@@ -3300,6 +3404,34 @@ ipcMain.handle('recorder:setBounds', (_event, frameId, bounds) => {
     saveRecorderFrameState(entry.win.getBounds()); // persist last position/size (debounced)
   } catch { /* ignore */ }
   return { error: null };
+});
+
+// Pause is a MARKER, not a stop: video and audio keep running (so they stay
+// aligned) and the paused spans open in the editor already cut out as
+// segments. That is what lets a pause be undone by simply deleting a cut.
+// Pause spans are kept as wall-clock instants and converted at stop against
+// the same origin as the wall duration, so cuts line up with the telemetry.
+// The reply carries the CONFIRMED state; the frame paints from it.
+ipcMain.handle('recorder:pause', (_event, frameId) => {
+  const entry = _recorderFrames.get(frameId);
+  if (!entry || !entry.recording) return { error: null, paused: false };
+  if (!entry.paused) {
+    entry.paused = true;
+    entry.pauses.push({ sAt: Date.now(), eAt: null });
+    _recorderSendState(frameId, { recording: true, paused: true });
+  }
+  return { error: null, paused: true };
+});
+ipcMain.handle('recorder:resume', (_event, frameId) => {
+  const entry = _recorderFrames.get(frameId);
+  if (!entry || !entry.recording) return { error: null, paused: false };
+  if (entry.paused) {
+    entry.paused = false;
+    const last = entry.pauses[entry.pauses.length - 1];
+    if (last && last.eAt === null) last.eAt = Date.now();
+    _recorderSendState(frameId, { recording: true, paused: false });
+  }
+  return { error: null, paused: false };
 });
 
 // Toggle window-wide click-through. The renderer flips this on every region
@@ -3446,7 +3578,19 @@ ipcMain.handle('recorder:start', async (_event, frameId) => {
   if (!entry || !entry.win || entry.win.isDestroyed()) return { error: { code: 'NO_FRAME', message: 'No frame' } };
   if (entry.recording) return { error: null };
   try {
-    const rect = _recorderCaptureRect(entry.win);
+    let rect;
+    if (entry.followBox) {
+      // Record the WHOLE display the frame is on; the frame's path is captured
+      // as telemetry and the editor crops to it (a moving camera).
+      const d = _recorderDisplayRect(entry.win);
+      rect = d.rect;
+      entry.displayDip = d.dip;
+    } else {
+      rect = _recorderCaptureRect(entry.win);
+    }
+    entry.captureRect = rect;
+    entry.paused = false;
+    entry.pauses = [];
     // Video only — gdigrab to a temp file. Audio is captured by the frame
     // renderer (loopback / mic) and muxed in on stop.
     const args = [
@@ -3457,6 +3601,7 @@ ipcMain.handle('recorder:start', async (_event, frameId) => {
       '-offset_x', String(rect.x),
       '-offset_y', String(rect.y),
       '-video_size', `${rect.w}x${rect.h}`,
+      '-draw_mouse', String(entry.drawMouse === 0 ? 0 : 1),
       '-i', 'desktop',
       // Capture stage: LIGHT, GPU-DECODABLE, near-lossless. `ultrafast` keeps CPU
       // low so gdigrab holds its frame rate on long recordings (dropped frames =
@@ -3479,6 +3624,7 @@ ipcMain.handle('recorder:start', async (_event, frameId) => {
     entry.recording = true;
     entry.startedAt = Date.now();
     entry.videoFirstFrameAt = 0;
+    _recorderStartTelemetry(entry);
     // Keep the tail of ffmpeg's stderr — when capture dies, this is the ONLY
     // place the real reason lives (gdigrab/encoder/disk errors). Previously
     // stderr was 'ignore'd and failures surfaced as a bare exit code.
@@ -3504,6 +3650,7 @@ ipcMain.handle('recorder:start', async (_event, frameId) => {
     }
     proc.on('error', (err) => {
       entry.recording = false; entry.proc = null;
+      _recorderStopTelemetry(entry);
       console.error('[recorder] ffmpeg failed to start:', err.message);
       _recorderSendState(frameId, { recording: false, error: 'ffmpeg failed to start: ' + err.message });
     });
@@ -3513,6 +3660,7 @@ ipcMain.handle('recorder:start', async (_event, frameId) => {
       const e = _recorderFrames.get(frameId);
       if (e && e.recording && e.proc === proc) {
         e.recording = false; e.proc = null;
+        _recorderStopTelemetry(e);
         const tail = (e.lastStderr || '').trim().split(/\r?\n/).filter(Boolean).slice(-3).join(' | ');
         console.error('[recorder] capture died (code ' + code + '):', e.lastStderr || '(no stderr)');
         _recorderSendState(frameId, {
@@ -3553,6 +3701,8 @@ ipcMain.handle('recorder:stop', async (_event, frameId) => {
   if (!entry) return { error: { code: 'NO_FRAME', message: 'No frame' }, ok: false };
   const proc = entry.proc;
   _recorderFrames.delete(frameId); // claim it so win.on('closed') no-ops
+  _recorderReleaseHotkeys(frameId);
+  _recorderStopTelemetry(entry);
   if (!proc || !entry.recording) {
     if (entry.win && !entry.win.isDestroyed()) entry.win.close();
     _recorderCleanupTemps(entry);
@@ -3576,6 +3726,11 @@ ipcMain.handle('recorder:stop', async (_event, frameId) => {
   // first-frame stamp; fall back to spawn time.
   const videoStart = entry.videoFirstFrameAt || entry.startedAt || 0;
   entry.wallDur = videoStart ? Math.max(0, (stopAt - videoStart) / 1000) : 0;
+  entry.recording = false;
+  // An open pause runs to the end of the take.
+  const pauses = (entry.pauses || [])
+    .map((p) => ({ s: Math.max(0, (p.sAt - videoStart) / 1000), e: p.eAt === null ? entry.wallDur : Math.max(0, (p.eAt - videoStart) / 1000) }))
+    .filter((p) => p.e > p.s + 0.05);
   let ok = false;
   try { ok = await _recorderFinalize(entry); } catch { ok = false; }
   // Report the duration ourselves (exact via ffprobe, wall-clock fallback) so
@@ -3587,7 +3742,16 @@ ipcMain.handle('recorder:stop', async (_event, frameId) => {
   }
   if (entry.win && !entry.win.isDestroyed()) entry.win.close();
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('recorder:complete', { frameId, path: ok ? entry.outputPath : null, ok, duration });
+    mainWindow.webContents.send('recorder:complete', {
+      frameId, path: ok ? entry.outputPath : null, ok, duration,
+      // What the editor opens with: where the cursor went (Smart Zoom), the
+      // frame's path when following (the camera), and the pauses (cut).
+      cursorTrack: ok ? entry.cursorTrack : [],
+      boxTrack: ok && entry.followBox ? entry.boxTrack : [],
+      followBox: !!entry.followBox,
+      pauses: ok ? pauses : [],
+      captureRect: entry.captureRect,
+    });
   }
   return { error: null, path: ok ? entry.outputPath : null, ok };
 });
@@ -3596,6 +3760,8 @@ ipcMain.handle('recorder:cancel', async (_event, frameId) => {
   const entry = _recorderFrames.get(frameId);
   if (!entry) return { error: null };
   _recorderFrames.delete(frameId); // claim it so win.on('closed') no-ops
+  _recorderReleaseHotkeys(frameId);
+  _recorderStopTelemetry(entry);
   if (entry.proc) { try { entry.proc.kill('SIGKILL'); } catch { /* ignore */ } }
   if (entry.win && !entry.win.isDestroyed()) entry.win.close();
   _recorderCleanupTemps(entry);

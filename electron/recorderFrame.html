@@ -12,6 +12,21 @@
   #capture { flex: 1; box-sizing: border-box; background: transparent;
     border: 2px solid #3b82f6; box-shadow: 0 0 0 1px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(0,0,0,0.35); }
   #capture.recording { border-color: #ef4444; }
+  #capture.paused { border-color: #f59e0b; }
+  #capture.follow.recording { cursor: move; }
+  /* Countdown: a big number in the middle of the capture area, never
+     captured (recording starts after it ends). */
+  #countdown { position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+    pointer-events: none; font-size: 96px; font-weight: 700; color: #fff;
+    text-shadow: 0 2px 12px rgba(0,0,0,0.8), 0 0 2px rgba(0,0,0,0.9); }
+  #countdown.on { display: flex; }
+  #pauseBtn { display: none; }
+  #pauseBtn.on { display: inline-flex; }
+  #pauseBtn, #pauseBtn { background: none; border: none; color: #c6c6ca; cursor: pointer; border-radius: 6px; padding: 5px; line-height: 0; align-items: center; }
+  #pauseBtn:hover { background: rgba(255,255,255,0.09); color: #fff; }
+  #pauseBtn.paused { color: #f59e0b; }
+  #pauseBtn svg { display: block; }
+  #hint.info { opacity: 0.7; color: #a9a9ad; }
   /* 44px toolbar MUST match RECORDER_TOOLBAR. */
   #toolbar { flex: 0 0 44px; height: 44px; box-sizing: border-box;
     background: #212124; border-top: 1px solid rgba(0,0,0,0.6); color: #d6d6d9; font-size: 12px;
@@ -63,9 +78,10 @@
 </head>
 <body>
   <div id="frame">
-    <div id="capture"></div>
+    <div id="capture"><div id="countdown"></div></div>
     <div id="toolbar">
       <button id="recBtn" title="Record"><span id="recShape"></span><span id="recSpinner"></span></button>
+      <button id="pauseBtn" title="Pause"></button>
       <span id="sep"></span>
       <button id="audioBtn" title="Audio"></button>
       <button id="sizeBtn" title="Preset sizes">Size<span class="caret">&#9662;</span></button>
@@ -95,6 +111,50 @@
     const sizePanel = document.getElementById('sizePanel');
     const fpsEl = document.getElementById('fps');
     fpsEl.textContent = (api.fps || 30) + ' fps';
+    const pauseBtn = document.getElementById('pauseBtn');
+    const countdownEl = document.getElementById('countdown');
+    const FOLLOW = !!api.follow;
+    if (FOLLOW) capEl.classList.add('follow');
+    const HK_STOP = (api.hotkeyStop || '').replace('CommandOrControl', 'Ctrl');
+    const HK_PAUSE = (api.hotkeyPause || '').replace('CommandOrControl', 'Ctrl');
+    const PAUSE_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>';
+    const PLAY_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>';
+    pauseBtn.innerHTML = PAUSE_ICON;
+    pauseBtn.title = 'Pause (the paused part is cut in the editor)' + (HK_PAUSE ? ' · ' + HK_PAUSE : '');
+    let paused = false, countingDown = false;
+    function showInfo(text) { hintEl.textContent = text || ''; hintEl.classList.remove('warn'); hintEl.classList.toggle('info', !!text); }
+    function showWarn(text) { hintEl.textContent = text || ''; hintEl.classList.remove('info'); hintEl.classList.add('warn'); }
+    function setPaused(v) {
+      paused = v;
+      pauseBtn.classList.toggle('paused', v);
+      pauseBtn.innerHTML = v ? PLAY_ICON : PAUSE_ICON;
+      capEl.classList.toggle('paused', v);
+      pauseBtn.title = (v ? 'Resume' : 'Pause (the paused part is cut in the editor)') + (HK_PAUSE ? ' · ' + HK_PAUSE : '');
+      showInfo(v ? 'Paused · this part is cut' : (HK_STOP ? HK_STOP + ' stops' + (FOLLOW ? ' · drag the edge to move the camera' : '') : ''));
+    }
+    async function togglePause() {
+      if (!recording) return;
+      const r = await (paused ? api.resume() : api.pause());
+      setPaused(!!(r && r.paused));
+    }
+    pauseBtn.addEventListener('click', togglePause);
+    // 3-2-1 before the first frame; Escape or Close aborts it.
+    function runCountdown(seconds) {
+      return new Promise((resolve) => {
+        if (!seconds) { resolve(true); return; }
+        countingDown = true;
+        let n = seconds;
+        countdownEl.textContent = String(n);
+        countdownEl.classList.add('on');
+        const tick = setInterval(() => {
+          if (!countingDown) { clearInterval(tick); countdownEl.classList.remove('on'); resolve(false); return; }
+          n -= 1;
+          if (n <= 0) { clearInterval(tick); countdownEl.classList.remove('on'); countingDown = false; resolve(true); return; }
+          countdownEl.textContent = String(n);
+        }, 1000);
+      });
+    }
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && countingDown) countingDown = false; });
 
     // Crisp monochrome speaker glyphs (no colour emoji).
     const SPK_ON  = '<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 9v6h4l5 4V5L8 9H4z"/><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" d="M16.4 8.6a5 5 0 010 6.8"/></svg>';
@@ -105,7 +165,7 @@
     if (!audioOn && api.audio === 'off') {
       audioBtn.style.display = 'none';
     } else {
-      const label = api.audio === 'mic' ? 'Microphone' : 'System audio';
+      const label = api.audio === 'mic' ? 'Microphone' : api.audio === 'both' ? 'System audio + microphone' : 'System audio';
       audioBtn.innerHTML = SPK_ON;
       audioBtn.title = label + ': on. Click to mute';
       audioBtn.addEventListener('click', () => {
@@ -176,6 +236,7 @@
     // only the audio track. 'mic' → getUserMedia. The encoded webm is sent to
     // main on stop and muxed with the gdigrab video.
     let audioStream = null, mediaRecorder = null, audioChunks = [];
+    let audioMixCtx = null, audioMixParts = [];
     // Wall-clock instant the audio actually began recording (MediaRecorder.onstart).
     // Sent to main so the mux can align the two independently-started streams
     // (audio here vs. gdigrab video) instead of naively pinning both to t=0.
@@ -190,6 +251,26 @@
         const rawAudio = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
         if (api.audio === 'mic') {
           stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        } else if (api.audio === 'both') {
+          // System loopback + microphone, mixed in the renderer into ONE
+          // track, so the mux stays a single audio input. Either side may be
+          // missing (no mic, loopback refused): the other still records.
+          const parts = [];
+          try {
+            const ds = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: rawAudio });
+            ds.getVideoTracks().forEach((t) => t.stop());
+            if (ds.getAudioTracks().length) parts.push(new MediaStream(ds.getAudioTracks()));
+          } catch { /* no loopback */ }
+          try {
+            const ms = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+            if (ms.getAudioTracks().length) parts.push(ms);
+          } catch { /* no mic */ }
+          if (!parts.length) return false;
+          const ctx = new AudioContext();
+          const dest = ctx.createMediaStreamDestination();
+          for (const p of parts) ctx.createMediaStreamSource(p).connect(dest);
+          audioMixCtx = ctx; audioMixParts = parts;
+          stream = dest.stream;
         } else {
           const ds = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: rawAudio });
           ds.getVideoTracks().forEach((t) => t.stop()); // we only want the loopback audio
@@ -206,17 +287,26 @@
         // Stamp the true audio start so main can compute the A/V start offset.
         audioStartedAt = 0;
         mediaRecorder.onstart = () => { audioStartedAt = Date.now(); };
-        mediaRecorder.start();
+        // Not started yet: the stream needs this click's activation, but the
+        // recorder starts together with the video, after any countdown, so
+        // the audio start stamp lines up with the first captured frame.
         return true;
       } catch (err) {
         audioStream = null; mediaRecorder = null;
         return false;
       }
     }
+    function beginAudioRecording() {
+      if (!mediaRecorder || mediaRecorder.state !== 'inactive') return false;
+      try { mediaRecorder.start(); return true; } catch { return false; }
+    }
     async function stopAudioCapture(send = true) {
       if (!mediaRecorder) return;
       await new Promise((resolve) => { mediaRecorder.onstop = resolve; try { mediaRecorder.stop(); } catch { resolve(); } });
       try { audioStream && audioStream.getTracks().forEach((t) => t.stop()); } catch { /* ignore */ }
+      try { for (const p of audioMixParts) p.getTracks().forEach((t) => t.stop()); } catch { /* ignore */ }
+      try { if (audioMixCtx) audioMixCtx.close(); } catch { /* ignore */ }
+      audioMixCtx = null; audioMixParts = [];
       const blob = new Blob(audioChunks, { type: 'audio/webm' });
       audioChunks = []; mediaRecorder = null; audioStream = null;
       // send=false on aborts (failed video start / error) so we don't write an
@@ -263,6 +353,9 @@
       if (e.target.closest && (e.target.closest('button') || e.target.closest('#sizePanel'))) { setIgnore(false); document.body.style.cursor = 'default'; return; }
       if (recording) {
         // Only the toolbar stays interactive (Stop); the rest is click-through.
+        // Follow-the-box: the border is a MOVE handle too (the camera path).
+        const r = regionAt(e.clientX, e.clientY);
+        if (FOLLOW && r !== 'center' && r !== 'toolbar') { setIgnore(false); document.body.style.cursor = 'move'; return; }
         setIgnore(e.clientY < window.innerHeight - TOOLBAR);
         document.body.style.cursor = 'default';
         return;
@@ -303,22 +396,29 @@
     }
 
     document.addEventListener('mousedown', (e) => {
-      if (e.button !== 0 || recording) return;
+      if (e.button !== 0) return;
       if (e.target.closest && e.target.closest('button')) return; // buttons win
       const r = regionAt(e.clientX, e.clientY);
       if (r === 'center') return;
+      if (recording) { if (FOLLOW) beginDrag(e, null); return; } // move only
       if (r === 'nw' || r === 'ne' || r === 'sw' || r === 'se') beginDrag(e, r); // resize
       else beginDrag(e, null);                                                   // move
     });
 
-    recBtn.addEventListener('click', async () => {
-      if (!recording) {
-        hintEl.textContent = ''; hintEl.classList.remove('warn'); // clear any stale audio warning
-        // Kick off audio + video together. startAudioCapture() is listed first
-        // so getDisplayMedia/getUserMedia is invoked within this click's user-
-        // activation; running them concurrently keeps the two streams tightly
-        // aligned (video no longer waits for audio setup).
-        const [audioStarted, res] = await Promise.all([startAudioCapture(), api.start()]);
+    async function startFlow() {
+      if (recording || countingDown) return;
+        hintEl.textContent = ''; hintEl.classList.remove('warn', 'info'); // clear any stale audio warning
+        // Audio permissions need this click's user activation, so the audio
+        // stream is opened BEFORE the countdown and the recorder itself is
+        // started after it; the audio start stamp keeps A/V aligned.
+        const audioReady = await startAudioCapture();
+        recBtn.disabled = true; sizeBtn.classList.add('hidden'); sizePanel.classList.remove('open');
+        const go = await runCountdown(api.countdown || 0);
+        recBtn.disabled = false;
+        if (!go) { await stopAudioCapture(false); sizeBtn.classList.remove('hidden'); showInfo('Countdown cancelled'); return; }
+        // Audio and video start together (same instant, same clock).
+        const audioStarted = audioReady && beginAudioRecording();
+        const res = await api.start();
         if (res && res.error) {
           await stopAudioCapture(false);
           hintEl.textContent = 'Could not start: ' + (res.error.message || 'unknown error');
@@ -328,36 +428,59 @@
         recording = true;
         capEl.classList.add('recording');
         setRecState('recording');
+        pauseBtn.classList.add('on');
+        setPaused(false);
         // Can't change the frame size mid-recording — hide the preset picker.
         sizePanel.classList.remove('open');
         sizeBtn.classList.add('hidden');
         if (audioOn && api.audio !== 'off' && !audioStarted) {
           hintEl.textContent = 'Audio unavailable; video only';
+          hintEl.classList.remove('info');
           hintEl.classList.add('warn');
         }
-      } else {
-        setRecState('saving');
-        await stopAudioCapture(); // finalize + send audio before stopping video
-        await api.stop();
+    }
+    let stopping = false;
+    async function stopFlow() {
+      if (!recording || stopping) return;
+      stopping = true;
+      setRecState('saving');
+      pauseBtn.classList.remove('on');
+      await stopAudioCapture(); // finalize + send audio before stopping video
+      await api.stop();
+    }
+    recBtn.addEventListener('click', () => { if (recording) stopFlow(); else startFlow(); });
+    // App-wide hotkeys (registered by main while this frame is open).
+    if (api.onHotkey) api.onHotkey((action) => {
+      if (action === 'stop') {
+        if (recording) stopFlow();
+        else if (countingDown) countingDown = false;
+        // Opening the microphone or system audio needs a real click on this
+        // window; a hotkey start would silently record video only.
+        else if (audioOn && api.audio && api.audio !== 'off') showWarn('Audio needs a click: press Record in the toolbar');
+        else startFlow();
       }
+      else if (action === 'pause') togglePause();
     });
+    if (!recording && HK_STOP) showInfo(HK_STOP + ' starts and stops' + (HK_PAUSE ? ' · ' + HK_PAUSE + ' pauses' : ''));
 
     document.getElementById('closeBtn').addEventListener('click', async () => {
+      if (countingDown) { countingDown = false; return; }
       if (recording) {
         // Finish the recording (don't lose it). Must send the captured audio
         // before stopping the video, same as the Stop button.
-        setRecState('saving');
-        await stopAudioCapture();
-        api.stop();
+        stopFlow();
       } else {
         api.cancel();
       }
     });
 
     if (api.onState) api.onState((s) => {
+      if (s && !s.error && recording && typeof s.paused === 'boolean' && s.paused !== paused) setPaused(s.paused);
       if (s && s.error) {
-        recording = false;
-        capEl.classList.remove('recording');
+        recording = false; stopping = false;
+        capEl.classList.remove('recording', 'paused');
+        pauseBtn.classList.remove('on');
+        hintEl.classList.remove('info');
         setRecState('idle');
         sizeBtn.classList.remove('hidden');
         stopAudioCapture(false);

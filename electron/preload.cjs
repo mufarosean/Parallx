@@ -163,11 +163,11 @@ contextBridge.exposeInMainWorld('parallxElectron', {
   // Opens a transparent always-on-top framing window; ffmpeg (in main) records
   // the hollow inner rect to the caller-provided, in-workspace output path.
   recorder: {
-    /** Open the framing window. opts: { ffmpegPath, outputPath, fps, width, height, audio }. Returns { frameId } or { error }. */
+    /** Open the framing window. opts: { ffmpegPath, outputPath, fps, width, height, audio, countdown, showCursor, followBox }. Returns { frameId } or { error }. */
     openFrame: (opts) => ipcRenderer.invoke('recorder:openFrame', opts),
     /** Whether any recorder frame is currently open ({ active }). Used to self-heal a stale in-progress flag. */
     anyActive: () => ipcRenderer.invoke('recorder:anyActive'),
-    /** Fires when a recording finishes/cancels: { frameId, path, ok, cancelled? }. Returns an unsubscribe fn. */
+    /** Fires when a recording finishes/cancels: { frameId, path, ok, cancelled?, duration, cursorTrack, boxTrack, followBox, pauses }. Returns an unsubscribe fn. */
     onComplete: (callback) => {
       const handler = (_event, payload) => { try { callback(payload); } catch { /* ignore */ } };
       ipcRenderer.on('recorder:complete', handler);

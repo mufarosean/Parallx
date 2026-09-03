@@ -2858,7 +2858,7 @@ async function runScan(rootPath, api) {
       if (stats.cancelled) {
         _statusBarItem.text = '$(warning) Scan cancelled';
       } else {
-        _statusBarItem.text = `$(check) Scan done \u2014 ${stats.total} files (${durationSec}s)`;
+        _statusBarItem.text = `$(check) Scan done: ${stats.total} files (${durationSec}s)`;
       }
       setTimeout(() => { if (_statusBarItem) _statusBarItem.hide(); }, 5000);
     }
@@ -7533,6 +7533,10 @@ kbd.mo-key {
   width: 100%; max-width: calc(70vh * 16 / 9); margin-left: auto; margin-right: auto;
 }
 .mo-clip-dialog--page .mo-clip-stage { max-height: 70vh; }
+/* The preview stays in view while the controls scroll: blur boxes and text
+   are dragged and read on the video, so it must never scroll away. */
+.mo-clip-dialog--page .mo-clip-grid > :first-child { position: sticky; top: 0; align-self: start; }
+.mo-clip-dialog--page, .mo-clip-dialog--page .mo-clip-body { overflow: visible; }
 /* Footer pinned to the bottom of the scroll area. */
 .mo-clip-dialog--page .mo-modal-footer {
   position: sticky; bottom: 0;
@@ -8021,6 +8025,80 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
 .mo-clip-check { margin: 0 6px 0 0; }
 
 /* Clip queue (batch export) */
+/* ── Program controls: segments, blur regions, text, finish, render preview ── */
+.mo-clip-seglist { display: flex; flex-direction: column; gap: 3px; margin: 2px 0 6px; }
+.mo-clip-segrow {
+  display: flex; align-items: center; gap: 6px; min-width: 0;
+  padding: 4px 6px; border-radius: 3px;
+  background: var(--vscode-list-inactiveSelectionBackground, rgba(255,255,255,0.04));
+  font-size: 11px; font-variant-numeric: tabular-nums;
+}
+.mo-clip-segrow--wrap { flex-wrap: wrap; }
+.mo-clip-segrow--stack { flex-direction: column; align-items: stretch; gap: 4px; }
+.mo-clip-segline { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.mo-clip-segline .mo-clip-input--grow { flex: 1 1 auto; width: 100%; min-width: 0; }
+.mo-clip-segline .mo-clip-queue-del { margin-left: auto; }
+.mo-clip-segrow.mo-active {
+  outline: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
+}
+.mo-clip-segrow .mo-clip-queue-del { flex: 0 0 auto; }
+.mo-clip-segrow .mo-clip-queue-del:disabled { opacity: 0.3; cursor: default; }
+.mo-clip-input--sm { width: 92px; flex: 0 0 auto; }
+.mo-clip-input--xs { width: 58px; flex: 0 0 auto; }
+.mo-clip-input--grow { flex: 1 1 120px; min-width: 100px; }
+.mo-clip-slider--sm { width: 84px; min-width: 84px; flex: 0 0 auto; background: color-mix(in srgb, var(--vscode-foreground, var(--px-text, #ddd)) 28%, transparent); }
+.mo-clip-slider-val { min-width: 14px; text-align: right; font-variant-numeric: tabular-nums; opacity: 0.8; }
+.mo-clip-color { width: 26px; height: 22px; padding: 0; border: 1px solid var(--vscode-panel-border, #444); border-radius: 3px; background: transparent; cursor: pointer; flex: 0 0 auto; }
+.mo-clip-cardbody { display: flex; flex-direction: column; gap: 6px; margin: 0 0 6px; }
+/* Segment bars under the in/out range on the scrubber. */
+.mo-scrub-segs { position: absolute; inset: 0; pointer-events: none; }
+.mo-scrub-seg {
+  position: absolute; top: 2px; bottom: 2px;
+  background: color-mix(in srgb, var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))) 32%, transparent);
+  border-left: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
+  border-right: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
+}
+/* Blur regions on the stage. */
+.mo-blur-layer { position: absolute; inset: 0; pointer-events: none; }
+.mo-blur-rect {
+  position: absolute; box-sizing: border-box; pointer-events: auto; cursor: move;
+  border: 1.5px solid rgba(255,255,255,0.75);
+  outline: 1px solid rgba(0,0,0,0.5);
+  background: rgba(255,255,255,0.04);
+}
+.mo-blur-rect--pixel { background-image: linear-gradient(rgba(255,255,255,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.08) 1px, transparent 1px); background-size: 8px 8px; }
+.mo-blur-rect--off { opacity: 0.35; }
+.mo-blur-rect.mo-active { border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); }
+.mo-blur-handle {
+  position: absolute; right: -6px; bottom: -6px; width: 11px; height: 11px;
+  background: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
+  border: 1px solid #fff; border-radius: 2px; cursor: nwse-resize;
+}
+/* Caption preview on the stage. */
+.mo-caption-layer { position: absolute; inset: 0; pointer-events: none; }
+.mo-caption {
+  position: absolute; display: flex; box-sizing: border-box;
+  font-family: 'Segoe UI', system-ui, sans-serif; font-weight: 600; line-height: 1.25;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+}
+.mo-caption::after { content: none; }
+.mo-caption > * { pointer-events: none; }
+.mo-caption--title { align-items: center; justify-content: center; text-align: center; padding: 6%; }
+.mo-caption--lower { align-items: flex-end; justify-content: flex-start; padding: 0 5% 14%; }
+.mo-caption--caption { align-items: flex-end; justify-content: center; text-align: center; padding: 0 8% 10%; }
+.mo-caption--title::before, .mo-caption--lower::before, .mo-caption--caption::before { content: none; }
+.mo-caption { background: transparent; }
+/* Real render preview over the stage. */
+.mo-render-preview {
+  position: absolute; inset: 0; background: #000; z-index: 5;
+  display: flex; flex-direction: column;
+}
+.mo-render-preview video { flex: 1 1 auto; width: 100%; min-height: 0; object-fit: contain; background: #000; }
+.mo-render-preview-bar {
+  flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 5px 8px; font-size: 11px; color: #ddd; background: rgba(20,20,22,0.92);
+}
+
 .mo-clip-queue {
   /* Lives inside an accordion body now — the section supplies the border. */
   display: flex; flex-direction: column; gap: 6px;
@@ -11225,7 +11303,7 @@ function renderGridBrowser(container, api, input) {
       const mode = inc.has(tag.id) ? 'inc' : (exc.has(tag.id) ? 'exc' : 'off');
       const chip = moEl('button', 'mo-tagpick-chip' + (mode === 'inc' ? ' is-inc' : mode === 'exc' ? ' is-exc' : ''), { type: 'button' });
       chip.textContent = tag.name;
-      chip.title = `${tag.name} \u2014 click to include, right-click to exclude`;
+      chip.title = `${tag.name}. Click to include, right-click to exclude`;
       chip.setAttribute('aria-label', `${tag.name}, ${mode === 'inc' ? 'included' : mode === 'exc' ? 'excluded' : 'not filtered'}`);
       chip.addEventListener('click', () => toggleTagFilter(tag.id, 'inc'));
       chip.addEventListener('contextmenu', (e) => { e.preventDefault(); toggleTagFilter(tag.id, 'exc'); });
@@ -13060,7 +13138,7 @@ function renderGridBrowser(container, api, input) {
         }
         if (api.statusBar) {
           const msg = overflow > 0
-            ? `Attached ${ok} to chat (${overflow} skipped \u2014 cap is ${MAX})`
+            ? `Attached ${ok} to chat (${overflow} skipped, cap is ${MAX})`
             : `Attached ${ok} to chat`;
           api.statusBar.setMessage(msg, 2500);
         }
@@ -17684,6 +17762,9 @@ async function moStartScreenRecording(api) {
       // FPS dropdown can still downsample per-clip.
       ffmpegPath: _toolPaths.ffmpeg, outputPath, fps: 60, width: 640, height: 400,
       audio: _screenRecorderAudio,
+      countdown: _screenRecorderCountdown,
+      showCursor: _screenRecorderShowCursor,
+      followBox: _screenRecorderFollowBox,
     });
     if (!res || res.error) {
       _moRecordingInFlight = false;
@@ -17726,9 +17807,35 @@ async function moOnRecordingComplete(api, payload) {
     moSecureEraseRecording(api, recPath);
     return;
   }
+  // What the recorder learned while recording becomes the editor's starting
+  // point: the frame's path (follow-the-box) is the camera, the pauses are
+  // already cut, and the cursor path offers Smart Zoom.
+  const editorOpts = {};
+  if (Array.isArray(payload.cursorTrack) && payload.cursorTrack.length >= 2) editorOpts.cursorTrack = payload.cursorTrack;
+  if (payload.followBox && Array.isArray(payload.boxTrack) && payload.boxTrack.length) {
+    try { const fb = moBoxTrackToKeys(payload.boxTrack); if (fb) editorOpts.initialCrop = fb; } catch { /* plain open */ }
+  }
+  const pauses = (Array.isArray(payload.pauses) ? payload.pauses : [])
+    .filter((p) => p && Number.isFinite(p.s) && Number.isFinite(p.e) && p.e > p.s)
+    .sort((a, b) => a.s - b.s);
+  if (pauses.length) {
+    const keep = [];
+    let cursor = 0;
+    for (const p of pauses) {
+      const s = Math.max(0, Math.min(duration, p.s)), e = Math.max(0, Math.min(duration, p.e));
+      if (s - cursor >= 0.2) keep.push({ in: cursor, out: s });
+      cursor = Math.max(cursor, e);
+    }
+    if (duration - cursor >= 0.2) keep.push({ in: cursor, out: duration });
+    if (keep.length) editorOpts.initialSegments = keep;
+  }
+  // A paused or followed take opens whole; a plain take opens on its first
+  // six seconds as before.
+  const openOut = (editorOpts.initialSegments || editorOpts.initialCrop) ? duration : Math.min(duration, 6);
   // Open the existing clip/GIF exporter; erase the temp source when it closes.
   let erased = false;
-  await moOpenClipDialog(api, recPath, duration, 0, Math.min(duration, 6), {
+  await moOpenClipDialog(api, recPath, duration, 0, openOut, {
+    ...editorOpts,
     onClose: () => { if (!erased) { erased = true; moSecureEraseRecording(api, recPath); } },
   });
 }
@@ -18196,6 +18303,22 @@ function moBoxTrackToKeys(boxTrack, opts) {
   return { cropBase, cropNorm: { x: first.x, y: first.y, w: cropBase.w, h: cropBase.h }, cropKeys: keys };
 }
 
+/**
+ * Where a SOURCE time lands on the OUTPUT timeline once segments are cut
+ * together (captions and the caption preview live on the output timeline).
+ * Returns null when t falls outside every segment.
+ */
+function moClipOutputTime(segments, t) {
+  const segs = Array.isArray(segments) && segments.length ? segments : null;
+  if (!segs) return t;
+  let acc = 0;
+  for (const sg of segs) {
+    if (t >= sg.in && t <= sg.out) return acc + (t - sg.in);
+    acc += Math.max(0, sg.out - sg.in);
+  }
+  return null;
+}
+
 /** Output pixel size of the per-segment chain (crop base → scale), even dims. */
 function moStageOutputDims(o) {
   const srcW = Math.max(2, Math.round(o.srcW || 0)), srcH = Math.max(2, Math.round(o.srcH || 0));
@@ -18661,6 +18784,124 @@ function moTrackMatch(gray, fw, fh, prep, predCx, predCy, radius) {
 // chain can carry animated-crop expressions: their quotes/commas don't
 // survive shell-string quoting, and argv also lifts the shell command-length
 // ceiling for long keyframe chains.
+// Like moExecFFArgs but keeps the WHOLE stderr (capped): detection passes
+// (silencedetect / freezedetect) report through stderr, and the tail alone
+// would drop the early ranges.
+async function moExecFFArgsFull(args, timeoutMs) {
+  let stderrAll = '';
+  const r = await window.parallxElectron.terminal.execStream(
+    { command: _toolPaths.ffmpeg, args, timeout: timeoutMs || 600000 },
+    { onStdout: () => {}, onStderr: (c) => { if (stderrAll.length < 512 * 1024) stderrAll += c; } },
+  );
+  if (r.error && r.error.message) stderrAll += '\n' + r.error.message;
+  return { exitCode: r.exitCode, stderr: stderrAll };
+}
+
+// A font for drawtext (captions, end cards). Windows ships these; the first
+// that exists wins. '' lets ffmpeg fall back to fontconfig, when built in.
+let _moFontFileCache = null;
+async function moFindFontFile() {
+  if (_moFontFileCache !== null) return _moFontFileCache;
+  const candidates = _isWindows
+    ? ['C:\\Windows\\Fonts\\segoeuib.ttf', 'C:\\Windows\\Fonts\\seguisb.ttf', 'C:\\Windows\\Fonts\\segoeui.ttf', 'C:\\Windows\\Fonts\\arial.ttf']
+    : ['/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', '/System/Library/Fonts/Supplemental/Arial Bold.ttf', '/System/Library/Fonts/Helvetica.ttc'];
+  for (const c of candidates) {
+    try { if (await window.parallxElectron.fs.exists(c)) { _moFontFileCache = c; return c; } } catch { /* next */ }
+  }
+  _moFontFileCache = '';
+  return '';
+}
+
+// The export front door. A plain single range with no regions, captions on
+// the output timeline only, and no end card goes straight to moExportClip
+// (unchanged behaviour). Anything else is ASSEMBLED first: the kept
+// segments, each with its own camera-crop keys, blur regions and look, are
+// cut together (plus the end card) into one near-lossless temp, and THAT is
+// exported through the same moExportClip path — so mp4/webm/gif, target
+// size, GIF frame edits and hardware encoders all keep working unchanged.
+async function moExportClipPipeline(api, opts) {
+  const segs = (Array.isArray(opts.segments) ? opts.segments : [])
+    .filter((x) => x && Number.isFinite(x.in) && Number.isFinite(x.out) && x.out > x.in)
+    .map((x) => ({ in: x.in, out: x.out }));
+  const hasBlur = Array.isArray(opts.blurRegions) && opts.blurRegions.some((r) => r && r.w > 0.005 && r.h > 0.005);
+  const hasCard = !!(opts.endCard && opts.endCard.enabled);
+  if (segs.length < 2 && !hasBlur && !hasCard) {
+    const single = segs.length === 1 ? segs[0] : { in: opts.inPoint, out: opts.outPoint };
+    return moExportClip(api, { ...opts, inPoint: single.in, outPoint: single.out, segments: null });
+  }
+  const sep = _isWindows ? '\\' : '/';
+  const base = getThumbDir(api);
+  if (!base) throw new Error('No workspace open');
+  const workDir = base + sep + '.clipasm-' + Date.now();
+  await window.parallxElectron.fs.mkdir(workDir);
+  const temp = workDir + sep + 'assembled.mp4';
+  const segList = segs.length ? segs : [{ in: opts.inPoint, out: opts.outPoint }];
+  // Audio rides through the assembly unless the FINAL export would strip it
+  // anyway (GIF, mute, reverse, speed) — then the temp is video-only.
+  const finalStripsAudio = opts.format === 'gif' || opts.mute === true || opts.reverse || (opts.speed && opts.speed !== 1);
+  const progressA = (pct) => { if (opts.onProgress) opts.onProgress({ pct: pct * 0.5, encodedSec: 0, totalSec: 0, etaMs: null }); };
+  const run = async (withAudio) => {
+    const g = moSegmentsGraph({
+      segments: segList,
+      fps: opts.fps, srcW: opts.srcW || 0, srcH: opts.srcH || 0, scalePct: opts.scalePct || 100,
+      filter: opts.filter, blurRegions: opts.blurRegions, withAudio,
+      crop: opts.crop, cropKeys: opts.cropKeys, endCard: opts.endCard, fontFile: opts.fontFile || '',
+    });
+    const argv = [
+      '-hide_banner', '-loglevel', 'error', '-y',
+      '-i', opts.videoPath, ...g.extraInputs,
+      '-filter_complex', g.filterComplex,
+      '-map', g.mapV, ...(g.mapA ? ['-map', g.mapA] : []),
+      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '12', '-pix_fmt', 'yuv420p',
+      ...(g.mapA ? ['-c:a', 'aac', '-b:a', '192k'] : ['-an']),
+      '-movflags', '+faststart', '-progress', 'pipe:1', '-nostats',
+      temp,
+    ];
+    let buf = '', stderrTail = '';
+    const r = await window.parallxElectron.terminal.execStream(
+      { command: _toolPaths.ffmpeg, args: argv, timeout: 1800000 },
+      {
+        onStdout: (chunk) => {
+          buf += chunk;
+          let nl;
+          while ((nl = buf.indexOf('\n')) !== -1) {
+            const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
+            if (line.startsWith('out_time_us=')) {
+              const us = parseInt(line.slice(12), 10);
+              if (Number.isFinite(us)) progressA(Math.max(0, Math.min(1, (us / 1e6) / Math.max(0.05, g.durationSec))));
+            }
+          }
+        },
+        onStderr: (c) => { stderrTail = (stderrTail + c).slice(-4000); },
+      },
+    );
+    return { r, g, stderrTail };
+  };
+  try {
+    let { r, g, stderrTail } = await run(!finalStripsAudio);
+    if (r.exitCode !== 0 && !finalStripsAudio && /matches no streams|Stream specifier|does not contain any stream/i.test(stderrTail)) {
+      // The source has no audio track — assemble video-only.
+      ({ r, g, stderrTail } = await run(false));
+    }
+    if (r.exitCode !== 0) throw new Error('assemble: ' + (stderrTail || `exit ${r.exitCode}`));
+    const result = await moExportClip(api, {
+      ...opts,
+      videoPath: temp, inPoint: 0, outPoint: g.durationSec,
+      // Geometry and look are baked into the temp; the final pass must not
+      // apply them twice. Captions stay: they live on the output timeline.
+      crop: null, cropKeys: null, filter: 'none', scalePct: 100, blurRegions: null, endCard: null, segments: null,
+      srcW: g.dims.w, srcH: g.dims.h,
+      frameEdits: opts.frameEdits || null,
+      onProgress: opts.onProgress
+        ? (p) => opts.onProgress({ ...p, pct: 0.5 + 0.5 * Math.max(0, Math.min(1, p.pct)) })
+        : undefined,
+    });
+    return result;
+  } finally {
+    await window.parallxElectron.fs.delete(workDir, { useTrash: false }).catch(() => {});
+  }
+}
+
 async function moExecFFArgs(args, timeoutMs) {
   let stderrTail = '';
   const r = await window.parallxElectron.terminal.execStream(
@@ -18735,6 +18976,22 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   // A crop drag that ends over the stage synthesizes a click on the common
   // ancestor — this stamp lets the click-to-pause handler ignore it.
   let lastCropDragEnd = 0;
+
+  // ── The program beyond one range: segments, regions, text, audio, card ──
+  /** Kept ranges in export order. ≥2 → the export is ASSEMBLED (one file). */
+  /** @type {Array<{in:number,out:number}>} */
+  let segments = [];
+  /** @type {Array<{id:number,x:number,y:number,w:number,h:number,mode:string,strength:number,t0?:number,t1?:number,keys?:Array<{t:number,x:number,y:number}>}>} */
+  let blurRegions = [];
+  let blurSeq = 0;
+  /** @type {Array<{id:number,text:string,style:string,t0:number,t1:number,color:string}>} */
+  let captions = [];
+  let captionSeq = 0;
+  let audioFx = { fadeIn: 0, fadeOut: 0, normalize: false, denoise: false };
+  let endCard = { enabled: false, title: '', subtitle: '', seconds: 3, bg: '#101418' };
+  // Telemetry the screen recorder hands in (cursor path in source coords).
+  const cursorTrack = Array.isArray(opts.cursorTrack) && opts.cursorTrack.length ? opts.cursorTrack : null;
+  let lastExportPath = '';
 
   // Preview video (lives inside the stage). Audio plays during preview
   // regardless of export format — the user can audition the soundtrack
@@ -18844,6 +19101,12 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     if (e.target !== stage && e.target !== preview && e.target !== cropOverlay && e.target !== camMask) return;
     togglePlayback();
   });
+  // Blur regions (draggable boxes) and the caption preview sit above the
+  // video; captions never take the pointer.
+  const blurLayer = moEl('div', 'mo-blur-layer');
+  const captionLayer = moEl('div', 'mo-caption-layer');
+  stage.appendChild(blurLayer);
+  stage.appendChild(captionLayer);
   stageWrap.appendChild(stage);
 
   // Scrubber timeline (full-duration with in/out markers + playhead)
@@ -18862,7 +19125,9 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   // Crop-keyframe markers (diamonds) live in their own layer so re-rendering
   // them never disturbs the in/out handles.
   const keysLayer = moEl('div', 'mo-scrub-keys');
-  scrub.append(scrubRange, keysLayer, scrubInH, scrubOutH, scrubPlayhead);
+  // Kept segments paint as bars under the in/out range.
+  const segLayer = moEl('div', 'mo-scrub-segs');
+  scrub.append(segLayer, scrubRange, keysLayer, scrubInH, scrubOutH, scrubPlayhead);
   stageWrap.appendChild(scrub);
 
   grid.appendChild(stageWrap);
@@ -18879,7 +19144,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   // open section. Open/closed state persists per user in mo_settings.
   /** @type {Record<string, {body:HTMLElement, sum:HTMLElement, apply:() => void}>} */
   const accSections = {};
-  let accOpenState = { trim: 1, output: 0, crop: 1, look: 0, export: 0, queue: 0 };
+  let accOpenState = { trim: 1, output: 0, crop: 1, look: 0, blur: 0, text: 0, audio: 0, export: 0, queue: 0 };
   const accSaveState = () => { moSetSetting('clipAccordionOpen_v1', JSON.stringify(accOpenState)).catch(() => {}); };
   const addSection = (id, title, headerBtn) => {
     const wrap = moEl('div', 'mo-clip-acc');
@@ -18915,6 +19180,9 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   const secOutput = addSection('output', 'Output');
   const secCrop = addSection('crop', 'Crop & motion');
   const secLook = addSection('look', 'Look');
+  const secBlur = addSection('blur', 'Blur');
+  const secText = addSection('text', 'Text');
+  const secAudio = addSection('audio', 'Audio & Finish');
   const secExport = addSection('export', 'Export');
   // (the queue section is created further down, once its Add button exists)
   // Restore the user's remembered open/closed layout (async; every section
@@ -19056,6 +19324,213 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   };
   filterSel.addEventListener('change', applyFilterPreview);
 
+  // The <video> preview approximates a look with CSS; this renders three real
+  // seconds from the playhead with every current setting and plays them back
+  // over the stage. What you see here is what the file will be.
+  const renderRow = moEl('div', 'mo-clip-row mo-clip-keyrow');
+  const renderBtn = moEl('button', 'mo-mark-btn', { textContent: 'Preview Render', title: 'Render three real seconds from the playhead with the current settings (look, crop, blur, text) and play them over the stage.' });
+  const renderHint = moEl('span', 'mo-clip-keycount', { textContent: 'The live preview approximates looks. This shows the truth.' });
+  renderRow.append(renderBtn, renderHint);
+  secLook.appendChild(renderRow);
+  let renderOverlay = null;
+  let renderTempPath = '';
+  async function closeRenderPreview() {
+    if (renderOverlay) { renderOverlay.remove(); renderOverlay = null; }
+    if (renderTempPath) {
+      const p = renderTempPath; renderTempPath = '';
+      try { _revokeCachedBlobUrlsFor([p]); } catch { /* ignore */ }
+      await window.parallxElectron.fs.delete(p, { useTrash: false }).catch(() => {});
+    }
+  }
+  renderBtn.addEventListener('click', async () => {
+    if (renderBtn.disabled) return;
+    if (!_toolPaths.ffmpeg) { api.window.showErrorMessage('ffmpeg not available.'); return; }
+    const base = getThumbDir(api);
+    if (!base) { api.window.showErrorMessage('Open a workspace folder first.'); return; }
+    await closeRenderPreview();
+    const t0 = Math.max(0, Math.min(duration - 0.2, preview.currentTime));
+    const t1 = Math.min(duration, t0 + 3);
+    renderBtn.disabled = true;
+    const prevLabel = renderBtn.textContent;
+    renderBtn.textContent = 'Rendering…';
+    status.textContent = 'Preview render…';
+    const sepCh2 = _isWindows ? '\\' : '/';
+    const outPath = base + sepCh2 + '.cliprender-' + Date.now() + '.mp4';
+    try {
+      preview.pause();
+      const vw = preview.videoWidth || 1280;
+      const scalePct = Math.max(10, parseInt(sizeInput.value, 10) || 100);
+      // Cap the preview at ~640 px wide so it renders in seconds.
+      const cropW = cropEnabled ? cropBase.w : 1;
+      const previewScale = Math.min(scalePct, Math.max(10, Math.round((640 / Math.max(1, vw * cropW)) * 100)));
+      const fontFile = await moFindFontFile();
+      await moExportClipPipeline(api, {
+        videoPath, inPoint: t0, outPoint: t1, outPath,
+        format: 'mp4', fps: Math.min(30, parseInt(fpsSel.value, 10) || 30),
+        scalePct: previewScale, speed: parseFloat(speedSel.value) || 1,
+        reverse: revChk.checked, mute: true, crf: 26, encodeMode: 'crf', hwAccel: 'off',
+        filter: filterSel.value,
+        crop: cropEnabled ? { x: cropNorm.x, y: cropNorm.y, w: cropBase.w, h: cropBase.h } : null,
+        cropKeys: cropEnabled && cropKeys.length >= 1 ? cropKeys.map((k) => ({ ...k })) : null,
+        srcW: preview.videoWidth || 0, srcH: preview.videoHeight || 0,
+        blurRegions: blurRegions.map((r) => ({ ...r, keys: r.keys ? r.keys.map((k) => ({ ...k })) : undefined })),
+        captions: captions.filter((c) => c.text.trim()).map((c) => ({ ...c, t0: c.t0 - (segments.length >= 2 ? (moClipOutputTime(segments, t0) ?? t0) : (t0 - getInOut()[0])), t1: c.t1 - (segments.length >= 2 ? (moClipOutputTime(segments, t0) ?? t0) : (t0 - getInOut()[0])) })),
+        fontFile,
+        onProgress: ({ pct }) => { renderBtn.textContent = `Rendering… ${Math.round(pct * 100)}%`; },
+      });
+      renderTempPath = outPath;
+      const url = await localFileToUrl(outPath);
+      renderOverlay = moEl('div', 'mo-render-preview');
+      const v = document.createElement('video');
+      v.src = url; v.loop = true; v.muted = true; v.autoplay = true; v.controls = false;
+      const bar = moEl('div', 'mo-render-preview-bar');
+      bar.appendChild(moEl('span', null, { textContent: `Real render · ${moTimeStr(t0)} → ${moTimeStr(t1)} · ${previewScale}%` }));
+      const close = moEl('button', 'mo-mark-btn', { textContent: 'Close', title: 'Back to the live preview' });
+      close.addEventListener('click', (e) => { e.stopPropagation(); void closeRenderPreview(); });
+      bar.appendChild(close);
+      renderOverlay.append(v, bar);
+      renderOverlay.addEventListener('click', (e) => e.stopPropagation());
+      stage.appendChild(renderOverlay);
+      status.textContent = 'Preview render ready. Close it to return to the live preview.';
+    } catch (err) {
+      status.textContent = '';
+      api.window.showErrorMessage('Preview render failed: ' + (err && err.message || err));
+    } finally {
+      renderBtn.disabled = false;
+      renderBtn.textContent = prevLabel;
+    }
+  });
+
+  // ── Blur regions: hide something, still or moving ──
+  const blurRow = moEl('div', 'mo-clip-row mo-clip-keyrow');
+  const addBlurBtn = moEl('button', 'mo-mark-btn', { textContent: '+ Blur Region', title: 'A box over the video that blurs or pixelates what is under it. Drag it on the video; use From/To to limit it in time; Follow makes it track a moving subject.' });
+  const blurCount = moEl('span', 'mo-clip-keycount', { textContent: '' });
+  blurRow.append(addBlurBtn, blurCount);
+  secBlur.appendChild(blurRow);
+  const blurList = moEl('div', 'mo-clip-seglist');
+  secBlur.appendChild(blurList);
+  let activeBlurId = null;
+
+  function blurRegionAt(r, t) {
+    if (Array.isArray(r.keys) && r.keys.length >= 2) {
+      const p = moCropKeysAt(r.keys.map((k) => ({ t: k.t, x: k.x, y: k.y })), t, r.w, r.h);
+      return { x: p.x, y: p.y };
+    }
+    return { x: r.x, y: r.y };
+  }
+  function renderBlurRegions() {
+    blurList.innerHTML = '';
+    blurCount.textContent = '';
+    for (const r of blurRegions) {
+      const row = moEl('div', 'mo-clip-segrow');
+      if (r.id === activeBlurId) row.classList.add('mo-active');
+      const modeSel = document.createElement('select');
+      modeSel.className = 'mo-clip-input mo-clip-input--sm';
+      for (const [v, l] of [['blur', 'Blur'], ['pixelate', 'Pixelate']]) {
+        const o = document.createElement('option'); o.value = v; o.textContent = l; if (r.mode === v) o.selected = true; modeSel.appendChild(o);
+      }
+      modeSel.addEventListener('change', () => { r.mode = modeSel.value; syncOverlaysToPlayhead(); });
+      row.classList.add('mo-clip-segrow--stack');
+      const line1 = moEl('div', 'mo-clip-segline'); const line2 = moEl('div', 'mo-clip-segline');
+      row.append(line1, line2);
+      line1.appendChild(modeSel);
+      const str = document.createElement('input');
+      str.type = 'range'; str.min = '1'; str.max = '10'; str.step = '1'; str.value = String(r.strength);
+      str.className = 'mo-clip-slider mo-clip-slider--sm'; str.title = 'Strength';
+      str.addEventListener('input', () => { r.strength = parseInt(str.value, 10) || 5; syncOverlaysToPlayhead(); });
+      const strVal = moEl('span', 'mo-clip-slider-val', { textContent: String(r.strength) });
+      str.addEventListener('input', () => { strVal.textContent = str.value; });
+      line1.append(moEl('span', 'mo-clip-keycount', { textContent: 'Strength' }), str, strVal);
+      const from = document.createElement('input'); from.type = 'number'; from.step = '0.1'; from.min = '0'; from.className = 'mo-clip-input mo-clip-input--xs';
+      from.placeholder = 'from'; from.title = 'Only from this time (seconds of the source; blank = start)'; from.value = Number.isFinite(r.t0) ? r.t0.toFixed(1) : '';
+      from.addEventListener('change', () => { const v = parseFloat(from.value); r.t0 = Number.isFinite(v) ? v : undefined; syncOverlaysToPlayhead(); });
+      const to = document.createElement('input'); to.type = 'number'; to.step = '0.1'; to.min = '0'; to.className = 'mo-clip-input mo-clip-input--xs';
+      to.placeholder = 'to'; to.title = 'Only until this time (seconds; blank = end)'; to.value = Number.isFinite(r.t1) ? r.t1.toFixed(1) : '';
+      to.addEventListener('change', () => { const v = parseFloat(to.value); r.t1 = Number.isFinite(v) ? v : undefined; syncOverlaysToPlayhead(); });
+      line2.append(from, to);
+      const follow = moEl('button', 'mo-mark-btn', { textContent: r.keys && r.keys.length >= 2 ? 'Following' : 'Follow', title: 'Track what is under this box across In→Out so the blur moves with it. Click again to clear.' });
+      follow.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (r.keys && r.keys.length >= 2) { delete r.keys; renderBlurRegions(); syncOverlaysToPlayhead(); return; }
+        runAutoTrack({ region: r, btn: follow }).catch((err) => {
+          status.textContent = '';
+          api.window.showErrorMessage('Follow failed: ' + (err && err.message || err));
+        });
+      });
+      line2.appendChild(follow);
+      const del = moEl('button', 'mo-clip-queue-del', { textContent: '✕', title: 'Remove this region' });
+      del.addEventListener('click', (e) => { e.stopPropagation(); blurRegions = blurRegions.filter((x) => x !== r); if (activeBlurId === r.id) activeBlurId = null; renderBlurRegions(); syncOverlaysToPlayhead(); });
+      line2.appendChild(del);
+      row.addEventListener('click', () => { activeBlurId = r.id; renderBlurRegions(); syncOverlaysToPlayhead(); });
+      blurList.appendChild(row);
+    }
+    try { updateAccordionSummaries(); } catch { /* pre-init */ }
+  }
+  addBlurBtn.addEventListener('click', () => {
+    const r = { id: ++blurSeq, x: 0.35, y: 0.35, w: 0.3, h: 0.3, mode: 'blur', strength: 5 };
+    blurRegions.push(r);
+    activeBlurId = r.id;
+    renderBlurRegions();
+    syncOverlaysToPlayhead();
+    status.textContent = 'Blur region added. Drag it over what to hide; drag its corner to resize.';
+  });
+
+  // Stage boxes for the regions: move by dragging, resize from the corner.
+  function paintBlurLayer() {
+    blurLayer.innerHTML = '';
+    if (camActive || blurRegions.length === 0) { blurLayer.style.display = 'none'; return; }
+    blurLayer.style.display = '';
+    const rect = getVideoDisplayRect();
+    const t = preview.currentTime;
+    for (const r of blurRegions) {
+      const pos = blurRegionAt(r, t);
+      const inTime = (!Number.isFinite(r.t0) || t >= r.t0) && (!Number.isFinite(r.t1) || t <= r.t1);
+      const box = moEl('div', 'mo-blur-rect' + (r.id === activeBlurId ? ' mo-active' : '') + (inTime ? '' : ' mo-blur-rect--off') + (r.mode === 'pixelate' ? ' mo-blur-rect--pixel' : ''));
+      box.style.left = (rect.dx + pos.x * rect.dw) + 'px';
+      box.style.top = (rect.dy + pos.y * rect.dh) + 'px';
+      box.style.width = (r.w * rect.dw) + 'px';
+      box.style.height = (r.h * rect.dh) + 'px';
+      box.style.backdropFilter = r.mode === 'pixelate' ? `blur(${2 + r.strength}px) contrast(1.15)` : `blur(${2 + r.strength * 1.5}px)`;
+      box.title = (r.mode === 'pixelate' ? 'Pixelate' : 'Blur') + ' region · drag to move · corner to resize';
+      const handle = moEl('div', 'mo-blur-handle');
+      box.appendChild(handle);
+      const begin = (e0, resize) => {
+        e0.preventDefault(); e0.stopPropagation();
+        activeBlurId = r.id;
+        const startX = e0.clientX, startY = e0.clientY;
+        const o = { x: pos.x, y: pos.y, w: r.w, h: r.h };
+        const move = (ev) => {
+          const dx = (ev.clientX - startX) / rect.dw, dy = (ev.clientY - startY) / rect.dh;
+          if (resize) {
+            r.w = Math.max(0.02, Math.min(1 - o.x, o.w + dx));
+            r.h = Math.max(0.02, Math.min(1 - o.y, o.h + dy));
+          } else {
+            const nx = Math.max(0, Math.min(1 - r.w, o.x + dx));
+            const ny = Math.max(0, Math.min(1 - r.h, o.y + dy));
+            if (r.keys && r.keys.length >= 2) {
+              // Dragging a followed region nudges its whole path.
+              const cur = blurRegionAt(r, t);
+              for (const k of r.keys) { k.x = Math.max(0, Math.min(1 - r.w, k.x + (nx - cur.x))); k.y = Math.max(0, Math.min(1 - r.h, k.y + (ny - cur.y))); }
+              o.x = nx; o.y = ny;
+            } else { r.x = nx; r.y = ny; }
+          }
+          paintBlurLayer();
+        };
+        const up = () => {
+          window.removeEventListener('mousemove', move);
+          window.removeEventListener('mouseup', up);
+          lastCropDragEnd = Date.now();
+          renderBlurRegions();
+        };
+        window.addEventListener('mousemove', move);
+        window.addEventListener('mouseup', up);
+      };
+      box.addEventListener('mousedown', (e) => { if (e.target === handle) begin(e, true); else begin(e, false); });
+      handle.addEventListener('mousedown', (e) => begin(e, true));
+      blurLayer.appendChild(box);
+    }
+  }
+
   // Crop toggle
   const cropRow = moEl('div', 'mo-clip-row');
   const cropChk = document.createElement('input');
@@ -19085,7 +19560,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   /** @type {{label:string, ratio:number|null}} */
   let activeAspect = aspects[0];
   const aspectBtns = aspects.map(a => {
-    const b = moEl('button', 'mo-clip-aspect-btn', { textContent: a.label, title: a.ratio == null ? 'Free crop \u2014 no aspect-ratio constraint' : `Constrain crop to ${a.label}` });
+    const b = moEl('button', 'mo-clip-aspect-btn', { textContent: a.label, title: a.ratio == null ? 'Free crop, no aspect-ratio constraint' : `Constrain crop to ${a.label}` });
     b.addEventListener('click', () => {
       activeAspect = a;
       aspectBtns.forEach((bb, i) => bb.classList.toggle('mo-active', aspects[i] === activeAspect));
@@ -19121,6 +19596,32 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   const keyCount = moEl('span', 'mo-clip-keycount', { textContent: '' });
   keyRow.append(addKeyBtn, trackBtn, pointBtn, clearKeysBtn, keyCount);
   secCrop.appendChild(keyRow);
+  // Smart zoom: the recorder's cursor path → zoom keys around where the
+  // pointer rested. Only offered when that path exists (screen recordings).
+  const smartRow = moEl('div', 'mo-clip-row mo-clip-keyrow');
+  const smartZoomBtn = moEl('button', 'mo-mark-btn', { textContent: 'Smart Zoom', title: 'Zoom in around the places the mouse rested while recording, glide between them, and zoom back out. Uses the cursor path the recorder captured. You can edit the keys after.' });
+  smartZoomBtn.style.display = 'none';
+  const smartHint = moEl('span', 'mo-clip-keycount', { textContent: 'From the recorded cursor path.' });
+  smartRow.append(smartZoomBtn, smartHint);
+  secCrop.appendChild(smartRow);
+  smartZoomBtn.addEventListener('click', () => {
+    if (!cursorTrack) return;
+    const ratio = (preview.videoHeight || 9) / (preview.videoWidth || 16);
+    // Base = the full frame; keys zoom into it. Pixel aspect is preserved by
+    // the window's normalized aspect matching the source (ratio applied in
+    // moCropKeysAt via hN/wN = 1 → same pixel aspect as the frame).
+    cropEnabled = true; cropChk.checked = true;
+    cropBase = { w: 1, h: 1 };
+    cropNorm = { x: 0, y: 0, w: 1, h: 1 };
+    const keys = moSmartZoomKeys(cursorTrack, { aspect: 1 });
+    void ratio;
+    if (keys.length < 2) { api.window.showInformationMessage('The mouse never rested long enough to zoom on. Try Auto-track instead.'); return; }
+    cropKeys = keys;
+    cropChk.dispatchEvent(new Event('change', { bubbles: true }));
+    clampKeysToWindow();
+    renderCropKeys(); syncCropToPlayhead();
+    status.textContent = `Smart zoom: ${keys.length} keys. Scrub to review; drag keys on the scrubber to retime, or the window to correct.`;
+  });
   addKeyBtn.addEventListener('click', () => {
     if (!cropEnabled) return;
     upsertKeyAtPlayhead();
@@ -19250,6 +19751,165 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     if (cropKeys.length) { clampKeysToWindow(); upsertKeyAtPlayhead(); }
     try { applyCropRect(); } catch { /* ignore */ }
   }
+
+  // ── Text: title cards, lower thirds, captions ──
+  const capRow = moEl('div', 'mo-clip-row mo-clip-keyrow');
+  const addCapBtn = moEl('button', 'mo-mark-btn', { textContent: '+ Text', title: 'A title card, a lower-third label, or a caption line, shown between the From and To seconds of the exported clip.' });
+  const capCount = moEl('span', 'mo-clip-keycount', { textContent: '' });
+  capRow.append(addCapBtn, capCount);
+  secText.appendChild(capRow);
+  const capList = moEl('div', 'mo-clip-seglist');
+  secText.appendChild(capList);
+  function outputTimeNow() {
+    const segs = segments.length >= 2 ? segments : null;
+    const [a] = getInOut();
+    const t = preview.currentTime;
+    if (segs) return moClipOutputTime(segs, t);
+    return t - a;
+  }
+  function renderCaptions() {
+    capList.innerHTML = '';
+    capCount.textContent = '';
+    for (const c of captions) {
+      const row = moEl('div', 'mo-clip-segrow mo-clip-segrow--stack');
+      const styleSel = document.createElement('select');
+      styleSel.className = 'mo-clip-input mo-clip-input--sm';
+      for (const [v, l] of [['title', 'Title Card'], ['lower', 'Lower Third'], ['caption', 'Caption']]) {
+        const o = document.createElement('option'); o.value = v; o.textContent = l; if (c.style === v) o.selected = true; styleSel.appendChild(o);
+      }
+      styleSel.addEventListener('change', () => { c.style = styleSel.value; syncOverlaysToPlayhead(); });
+      const text = document.createElement('input'); text.type = 'text'; text.className = 'mo-clip-input mo-clip-input--grow'; text.placeholder = 'Text'; text.value = c.text;
+      text.addEventListener('input', () => { c.text = text.value; syncOverlaysToPlayhead(); try { updateAccordionSummaries(); } catch { /* pre-init */ } });
+      const from = document.createElement('input'); from.type = 'number'; from.step = '0.1'; from.min = '0'; from.className = 'mo-clip-input mo-clip-input--xs'; from.title = 'From (seconds into the clip)'; from.placeholder = 'from'; from.value = c.t0.toFixed(1);
+      from.addEventListener('change', () => { c.t0 = Math.max(0, parseFloat(from.value) || 0); if (c.t1 <= c.t0) { c.t1 = c.t0 + 2; to.value = c.t1.toFixed(1); } syncOverlaysToPlayhead(); });
+      const to = document.createElement('input'); to.type = 'number'; to.step = '0.1'; to.min = '0'; to.className = 'mo-clip-input mo-clip-input--xs'; to.title = 'To (seconds into the clip)'; to.placeholder = 'to'; to.value = c.t1.toFixed(1);
+      to.addEventListener('change', () => { c.t1 = Math.max(c.t0 + 0.1, parseFloat(to.value) || (c.t0 + 2)); to.value = c.t1.toFixed(1); syncOverlaysToPlayhead(); });
+      const color = document.createElement('input'); color.type = 'color'; color.className = 'mo-clip-color'; color.title = 'Text color'; color.value = /^#[0-9a-fA-F]{6}$/.test(c.color) ? c.color : '#ffffff';
+      color.addEventListener('input', () => { c.color = color.value; syncOverlaysToPlayhead(); });
+      const del = moEl('button', 'mo-clip-queue-del', { textContent: '✕', title: 'Remove' });
+      del.addEventListener('click', () => { captions = captions.filter((x) => x !== c); renderCaptions(); syncOverlaysToPlayhead(); });
+      const line1 = moEl('div', 'mo-clip-segline'); line1.append(text);
+      const line2 = moEl('div', 'mo-clip-segline'); line2.append(styleSel, from, to, color, del);
+      row.append(line1, line2);
+      capList.appendChild(row);
+    }
+    try { updateAccordionSummaries(); } catch { /* pre-init */ }
+  }
+  addCapBtn.addEventListener('click', () => {
+    const now = outputTimeNow();
+    const t0 = Number.isFinite(now) && now !== null ? Math.max(0, now) : 0;
+    captions.push({ id: ++captionSeq, text: '', style: captions.length === 0 ? 'title' : 'caption', t0, t1: t0 + 3, color: '#ffffff' });
+    renderCaptions();
+    syncOverlaysToPlayhead();
+    status.textContent = 'Text added. Type it; From and To are seconds into the exported clip.';
+    const last = capList.querySelector('.mo-clip-segrow:last-child input[type="text"]');
+    if (last) last.focus();
+  });
+  function paintCaptionLayer() {
+    captionLayer.innerHTML = '';
+    if (captions.length === 0) { captionLayer.style.display = 'none'; return; }
+    captionLayer.style.display = '';
+    const rect = getVideoDisplayRect();
+    const ot = outputTimeNow();
+    if (ot === null || !Number.isFinite(ot)) return;
+    for (const c of captions) {
+      if (!c.text.trim() || ot < c.t0 || ot > c.t1) continue;
+      const el = moEl('div', `mo-caption mo-caption--${c.style}`, { textContent: c.text });
+      el.style.color = c.color || '#fff';
+      el.style.fontSize = `${Math.max(9, rect.dh * (MO_CAPTION_STYLES[c.style] || MO_CAPTION_STYLES.caption).size)}px`;
+      el.style.left = rect.dx + 'px'; el.style.top = rect.dy + 'px'; el.style.width = rect.dw + 'px'; el.style.height = rect.dh + 'px';
+      captionLayer.appendChild(el);
+    }
+  }
+
+  // Overlays follow the playhead (blur boxes with keys, caption windows).
+  function syncOverlaysToPlayhead() {
+    try { paintBlurLayer(); } catch { /* layer may not be ready */ }
+    try { paintCaptionLayer(); } catch { /* layer may not be ready */ }
+  }
+  preview.addEventListener('timeupdate', syncOverlaysToPlayhead);
+  preview.addEventListener('seeked', syncOverlaysToPlayhead);
+  preview.addEventListener('loadedmetadata', syncOverlaysToPlayhead);
+  let ovRaf = 0;
+  function ovTick() { ovRaf = 0; if (preview.paused || preview.ended) return; syncOverlaysToPlayhead(); ovRaf = requestAnimationFrame(ovTick); }
+  preview.addEventListener('play', () => { if (!ovRaf && (captions.length || blurRegions.some((r) => r.keys))) ovRaf = requestAnimationFrame(ovTick); });
+  preview.addEventListener('pause', () => { if (ovRaf) { cancelAnimationFrame(ovRaf); ovRaf = 0; } });
+
+  // ── Audio & finish: fades, loudness, denoise, end card, destination ──
+  const fadeRow = moEl('div', 'mo-clip-row');
+  fadeRow.appendChild(lbl('Fade in / out (s)'));
+  const fadeInInput = document.createElement('input'); fadeInInput.type = 'number'; fadeInInput.min = '0'; fadeInInput.max = '10'; fadeInInput.step = '0.1'; fadeInInput.value = '0'; fadeInInput.className = 'mo-clip-input mo-clip-input--xs';
+  const fadeOutInput = document.createElement('input'); fadeOutInput.type = 'number'; fadeOutInput.min = '0'; fadeOutInput.max = '10'; fadeOutInput.step = '0.1'; fadeOutInput.value = '0'; fadeOutInput.className = 'mo-clip-input mo-clip-input--xs';
+  fadeInInput.addEventListener('input', () => { audioFx.fadeIn = Math.max(0, parseFloat(fadeInInput.value) || 0); updateAccordionSummaries(); });
+  fadeOutInput.addEventListener('input', () => { audioFx.fadeOut = Math.max(0, parseFloat(fadeOutInput.value) || 0); updateAccordionSummaries(); });
+  fadeRow.append(fadeInInput, fadeOutInput);
+  secAudio.appendChild(fadeRow);
+  const normRow = moEl('div', 'mo-clip-row');
+  const normChk = document.createElement('input'); normChk.type = 'checkbox'; normChk.id = 'mo-clip-norm'; normChk.className = 'mo-clip-check';
+  const normLbl = lbl('Normalize loudness'); normLbl.htmlFor = 'mo-clip-norm'; normLbl.title = 'Even out the volume to a broadcast-standard level.';
+  normChk.addEventListener('change', () => { audioFx.normalize = normChk.checked; updateAccordionSummaries(); });
+  normRow.append(normChk, normLbl);
+  secAudio.appendChild(normRow);
+  const dnRow = moEl('div', 'mo-clip-row');
+  const dnChk = document.createElement('input'); dnChk.type = 'checkbox'; dnChk.id = 'mo-clip-denoise'; dnChk.className = 'mo-clip-check';
+  const dnLbl = lbl('Reduce noise'); dnLbl.htmlFor = 'mo-clip-denoise'; dnLbl.title = 'Take the hiss and hum out of a microphone recording.';
+  dnChk.addEventListener('change', () => { audioFx.denoise = dnChk.checked; updateAccordionSummaries(); });
+  dnRow.append(dnChk, dnLbl);
+  secAudio.appendChild(dnRow);
+  const audioNote = moEl('div', 'mo-clip-keycount', { textContent: 'Audio settings apply to MP4 and WebM. GIFs have no sound.' });
+  audioNote.style.padding = '0 0 6px';
+  secAudio.appendChild(audioNote);
+
+  const cardRow = moEl('div', 'mo-clip-row');
+  const cardChk = document.createElement('input'); cardChk.type = 'checkbox'; cardChk.id = 'mo-clip-card'; cardChk.className = 'mo-clip-check';
+  const cardLbl = lbl('End card'); cardLbl.htmlFor = 'mo-clip-card'; cardLbl.title = 'A closing card with a title and a line under it, appended after the last segment.';
+  cardRow.append(cardChk, cardLbl);
+  secAudio.appendChild(cardRow);
+  const cardBody = moEl('div', 'mo-clip-cardbody');
+  cardBody.style.display = 'none';
+  const cardTitle = document.createElement('input'); cardTitle.type = 'text'; cardTitle.className = 'mo-clip-input mo-clip-input--grow'; cardTitle.placeholder = 'Title';
+  const cardSub = document.createElement('input'); cardSub.type = 'text'; cardSub.className = 'mo-clip-input mo-clip-input--grow'; cardSub.placeholder = 'Line under the title (optional)';
+  const cardSecs = document.createElement('input'); cardSecs.type = 'number'; cardSecs.min = '0.5'; cardSecs.max = '15'; cardSecs.step = '0.5'; cardSecs.value = '3'; cardSecs.className = 'mo-clip-input mo-clip-input--xs'; cardSecs.title = 'Seconds';
+  const cardBg = document.createElement('input'); cardBg.type = 'color'; cardBg.className = 'mo-clip-color'; cardBg.value = '#101418'; cardBg.title = 'Background';
+  const cardRow2 = moEl('div', 'mo-clip-row');
+  cardRow2.append(lbl('Seconds / color'), cardSecs, cardBg);
+  cardBody.append(cardTitle, cardSub, cardRow2);
+  secAudio.appendChild(cardBody);
+  const syncCard = () => {
+    endCard = { enabled: cardChk.checked, title: cardTitle.value, subtitle: cardSub.value, seconds: Math.max(0.5, parseFloat(cardSecs.value) || 3), bg: cardBg.value };
+    cardBody.style.display = cardChk.checked ? '' : 'none';
+    updateAccordionSummaries();
+    try { updateEstimate(); } catch { /* pre-init */ }
+  };
+  for (const el of [cardChk, cardTitle, cardSub, cardSecs, cardBg]) { el.addEventListener('input', syncCard); el.addEventListener('change', syncCard); }
+
+  // Destination presets: one click sets format, size and quality for where
+  // the clip is going. "Custom" leaves everything as it is.
+  const destRow = moEl('div', 'mo-clip-row');
+  destRow.appendChild(lbl('Preset for'));
+  const destSel = document.createElement('select');
+  destSel.className = 'mo-clip-input';
+  const DESTS = [
+    { id: 'custom', label: 'Custom' },
+    { id: 'x', label: 'X / Twitter', apply: () => { fmtSel.value = 'mp4'; fpsSel.value = '30'; encModeSel.value = 'size'; sizeInputMB.value = '25'; gpuSel.value = 'off'; } },
+    { id: 'slack', label: 'Slack / Teams', apply: () => { fmtSel.value = 'mp4'; fpsSel.value = '30'; encModeSel.value = 'crf'; crfInput.value = '24'; } },
+    { id: 'imessage', label: 'iMessage / WhatsApp', apply: () => { fmtSel.value = 'mp4'; fpsSel.value = '30'; encModeSel.value = 'size'; sizeInputMB.value = '12'; } },
+    { id: 'gif', label: 'Chat GIF', apply: () => { fmtSel.value = 'gif'; fpsSel.value = '15'; ditherSel.value = 'bayer'; autoOptChk.checked = true; autoOptThreshold.value = '8'; const vw = preview.videoWidth || 1280; sizeInput.value = String(Math.max(10, Math.min(100, Math.round((480 / vw) * 100)))); } },
+  ];
+  for (const d of DESTS) { const o = document.createElement('option'); o.value = d.id; o.textContent = d.label; destSel.appendChild(o); }
+  destSel.addEventListener('change', () => {
+    const d = DESTS.find((x) => x.id === destSel.value);
+    if (d && d.apply) {
+      d.apply();
+      for (const el of [fmtSel, fpsSel, encModeSel, sizeInputMB, crfInput, gpuSel, ditherSel, autoOptChk, autoOptThreshold, sizeInput]) {
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      status.textContent = `Preset applied: ${d.label}.`;
+    }
+  });
+  destRow.appendChild(destSel);
+  secExport.appendChild(destRow);
 
   // Mute audio toggle (video formats only \u2014 GIF has no audio anyway).
   // Drives both the preview audio and the export-time -an decision so
@@ -19409,8 +20069,8 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   const gpuSel = document.createElement('select');
   gpuSel.className = 'mo-clip-input';
   // Populated after detection (see _moDetectHwEncoders below).
-  gpuSel.innerHTML = '<option value="off">Off (CPU \u2014 libx264)</option>';
-  gpuSel.title = 'Use GPU hardware encoder \u2014 5\u201320\u00d7 faster, slightly lower quality at the same bitrate. MP4 only.';
+  gpuSel.innerHTML = '<option value="off">Off (CPU, libx264)</option>';
+  gpuSel.title = 'Use GPU hardware encoder: 5 to 20x faster, slightly lower quality at the same bitrate. MP4 only.';
   gpuBox.appendChild(gpuSel);
   secExport.appendChild(gpuBox);
   // Populate GPU dropdown asynchronously \u2014 detection runs ffmpeg, so we
@@ -19493,6 +20153,105 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   modeOutBtn.addEventListener('click', () => setMode('out'));
   modeDurBtn.addEventListener('click', () => setMode('duration'));
 
+  // ── Segments: several In→Out ranges become ONE clip ──
+  const segRow = moEl('div', 'mo-clip-row mo-clip-keyrow');
+  const addSegBtn = moEl('button', 'mo-mark-btn', {
+    textContent: '+ Add Segment',
+    title: 'Keep the current In→Out range as a segment. Two or more segments export as one clip, in list order.',
+  });
+  const deadAirBtn = moEl('button', 'mo-mark-btn', {
+    textContent: 'Cut Dead Air',
+    title: 'Inside In→Out, find where the picture froze and the sound went quiet, and keep only the rest as segments.',
+  });
+  const clearSegBtn = moEl('button', 'mo-mark-btn', { textContent: 'Clear', title: 'Remove every segment (back to one In→Out range).' });
+  clearSegBtn.style.display = 'none';
+  const segCount = moEl('span', 'mo-clip-keycount', { textContent: '' });
+  segRow.append(addSegBtn, deadAirBtn, clearSegBtn, segCount);
+  secTrim.appendChild(segRow);
+  const segList = moEl('div', 'mo-clip-seglist');
+  secTrim.appendChild(segList);
+
+  function segmentsTotal() { return segments.reduce((sum, sg) => sum + Math.max(0, sg.out - sg.in), 0); }
+  function renderSegments() {
+    segList.innerHTML = '';
+    segLayer.innerHTML = '';
+    const many = segments.length > 0;
+    clearSegBtn.style.display = many ? '' : 'none';
+    segCount.textContent = segments.length === 1 ? 'Add one more to join them' : '';
+    segments.forEach((sg, i) => {
+      const row = moEl('div', 'mo-clip-segrow');
+      row.appendChild(moEl('span', 'mo-clip-queue-num', { textContent: String(i + 1) }));
+      const meta = moEl('span', 'mo-clip-queue-meta', { textContent: `${moTimeStr(sg.in)} → ${moTimeStr(sg.out)} · ${(sg.out - sg.in).toFixed(2)}s` });
+      meta.title = 'Click to jump to this segment. The In/Out fields load it for editing.';
+      meta.addEventListener('click', () => {
+        inInput.value = sg.in.toFixed(2);
+        outInput.value = (outMode === 'duration' ? (sg.out - sg.in) : sg.out).toFixed(2);
+        updateAll();
+        try { preview.currentTime = sg.in; } catch { /* ignore */ }
+      });
+      row.appendChild(meta);
+      const up = moEl('button', 'mo-clip-queue-del', { textContent: '▲', title: 'Move earlier' });
+      up.disabled = i === 0;
+      up.addEventListener('click', (e) => { e.stopPropagation(); if (i > 0) { [segments[i - 1], segments[i]] = [segments[i], segments[i - 1]]; renderSegments(); } });
+      const down = moEl('button', 'mo-clip-queue-del', { textContent: '▼', title: 'Move later' });
+      down.disabled = i === segments.length - 1;
+      down.addEventListener('click', (e) => { e.stopPropagation(); if (i < segments.length - 1) { [segments[i + 1], segments[i]] = [segments[i], segments[i + 1]]; renderSegments(); } });
+      const del = moEl('button', 'mo-clip-queue-del', { textContent: '✕', title: 'Remove this segment' });
+      del.addEventListener('click', (e) => { e.stopPropagation(); segments.splice(i, 1); renderSegments(); });
+      row.append(up, down, del);
+      segList.appendChild(row);
+      const bar = moEl('div', 'mo-scrub-seg');
+      bar.style.left = (duration > 0 ? (sg.in / duration) * 100 : 0) + '%';
+      bar.style.width = (duration > 0 ? ((sg.out - sg.in) / duration) * 100 : 0) + '%';
+      bar.title = `Segment ${i + 1}`;
+      segLayer.appendChild(bar);
+    });
+    try { updateExportLabel(); } catch { /* pre-init */ }
+    try { updateAccordionSummaries(); } catch { /* pre-init */ }
+    try { updateEstimate(); } catch { /* pre-init */ }
+    try { syncOverlaysToPlayhead(); } catch { /* pre-init */ }
+  }
+  addSegBtn.addEventListener('click', () => {
+    const [a, b] = getInOut();
+    if (b - a < 0.05) { api.window.showWarningMessage('Set an In and Out point first.'); return; }
+    segments.push({ in: a, out: b });
+    renderSegments();
+    status.textContent = `Segment ${segments.length} added: ${moTimeStr(a)} → ${moTimeStr(b)}.`;
+  });
+  clearSegBtn.addEventListener('click', () => { segments = []; renderSegments(); status.textContent = 'Segments cleared.'; });
+  deadAirBtn.addEventListener('click', async () => {
+    if (!_toolPaths.ffmpeg) { api.window.showErrorMessage('ffmpeg not available.'); return; }
+    const [a, b] = getInOut();
+    if (b - a < 1) { api.window.showWarningMessage('Widen In→Out to at least one second first.'); return; }
+    deadAirBtn.disabled = true;
+    status.textContent = 'Finding dead air…';
+    try {
+      const meta = await extractVideoMeta(videoPath).catch(() => null);
+      const hasAudio = !!(meta && meta.audioCodec);
+      const args = ['-hide_banner', '-nostats', '-y', '-ss', String(a), '-t', String(b - a), '-i', videoPath];
+      if (hasAudio) args.push('-af', 'silencedetect=n=-38dB:d=0.6');
+      args.push('-vf', 'freezedetect=n=0.003:d=0.6,metadata=print', '-f', 'null', '-');
+      const r = await moExecFFArgsFull(args, 600000);
+      const det = moParseDetectLog(r.stderr, a);
+      const { keep, cuts } = moDeadAirSegments(det, a, b, { mode: hasAudio ? 'both' : 'freeze' });
+      if (cuts.length === 0) {
+        status.textContent = hasAudio
+          ? 'No dead air found (no stretch was both frozen and silent).'
+          : 'No frozen stretches found.';
+        return;
+      }
+      segments = keep;
+      renderSegments();
+      const removed = cuts.reduce((sum, c) => sum + (c.e - c.s), 0);
+      status.textContent = `Cut ${cuts.length} stretch${cuts.length === 1 ? '' : 'es'} of dead air (${removed.toFixed(1)}s): ${keep.length} segment${keep.length === 1 ? '' : 's'} kept.`;
+    } catch (err) {
+      api.window.showErrorMessage('Dead-air detection failed: ' + (err && err.message || err));
+      status.textContent = '';
+    } finally {
+      deadAirBtn.disabled = false;
+    }
+  });
+
   // ── In/Out resolution ──
   function getInOut() {
     const a = Math.max(0, Math.min(duration, parseFloat(inInput.value) || 0));
@@ -19537,7 +20296,23 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       try { preview.currentTime = a; preview.play().catch(() => {}); } catch {}
     }
     previewTimer = setInterval(() => {
-      if (!preview.paused && preview.currentTime >= b - 0.02) {
+      if (preview.paused) return;
+      if (segments.length >= 2) {
+        // Play the segments in order, skipping what is cut, wrapping at the end.
+        const t = preview.currentTime;
+        const cur = segments.find((sg) => t >= sg.in - 0.02 && t < sg.out);
+        if (cur) {
+          if (t >= cur.out - 0.02) {
+            const next = segments[(segments.indexOf(cur) + 1) % segments.length];
+            try { preview.currentTime = next.in; } catch { /* ignore */ }
+          }
+        } else {
+          const next = segments.find((sg) => sg.in > t) || segments[0];
+          try { preview.currentTime = next.in; } catch { /* ignore */ }
+        }
+        return;
+      }
+      if (preview.currentTime >= b - 0.02) {
         try { preview.currentTime = a; preview.play().catch(() => {}); } catch {}
       }
     }, 200);
@@ -19999,9 +20774,12 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
 
   async function runAutoTrack(runOpts = {}) {
     const point = runOpts.point || null;
-    const btn = point ? pointBtn : trackBtn;
+    // A blur region can be followed too: the region's own box is the window
+    // and its path becomes the region's keys (the crop window is untouched).
+    const region = runOpts.region || null;
+    const btn = region ? (runOpts.btn || trackBtn) : (point ? pointBtn : trackBtn);
     if (tracking) { trackGen++; btn.textContent = 'Cancelling…'; return; }
-    if (!cropEnabled) return;
+    if (!cropEnabled && !region) return;
     if (!_toolPaths.ffmpeg) { api.window.showErrorMessage('ffmpeg not available. Cannot auto-track.'); return; }
     const [a, b] = getInOut();
     if (b - a < 0.3) { api.window.showWarningMessage('Clip is too short to track. Set In/Out first.'); return; }
@@ -20019,9 +20797,11 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     tracking = true;
     btn.classList.add('mo-active');
     btn.textContent = 'Extracting…';
-    status.textContent = point
-      ? 'Point track: following the picked subject…'
-      : 'Auto-track: position the crop window over the subject, then wait…';
+    status.textContent = region
+      ? 'Follow: tracking what is under the blur box…'
+      : point
+        ? 'Point track: following the picked subject…'
+        : 'Auto-track: position the crop window over the subject, then wait…';
     try {
       const len = Math.max(0.05, b - a);
       // Tracking cadence: fine enough to follow motion, cheap enough to stay
@@ -20104,12 +20884,12 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       // Window state over time. Pre-existing keys (including zoom) define the
       // window's size curve; the track rewrites positions but PRESERVES the
       // zoom curve by re-sampling it per keyframe below.
-      const prevKeys = cropKeys.length ? cropKeys.slice() : null;
+      const prevKeys = (!region && cropKeys.length) ? cropKeys.slice() : null;
       const zoomActive = !!(prevKeys && prevKeys.some((k) => Number.isFinite(k.w) && Math.abs(k.w - cropBase.w) > 0.003));
       const winAt = (t) => prevKeys
         ? moCropKeysAt(prevKeys, t, cropBase.w, cropBase.h)
         : { x: cropNorm.x, y: cropNorm.y, w: cropBase.w, h: cropBase.h };
-      const pos0 = winAt(frameT(anchor));
+      const pos0 = region ? { x: region.x, y: region.y, w: region.w, h: region.h } : winAt(frameT(anchor));
       const clampI = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
       const winX = pos0.x * fw, winY = pos0.y * fh;
       const winW = Math.max(4, pos0.w * fw), winH = Math.max(4, pos0.h * fh);
@@ -20200,8 +20980,8 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
         // Window size per sample: preserve a pre-existing zoom curve; the
         // track only rewrites positions.
         const wi = zoomActive ? winAt(frameT(i)) : null;
-        const wN = wi ? wi.w : cropBase.w;
-        const hN = wi ? wi.h : cropBase.h;
+        const wN = wi ? wi.w : (region ? region.w : cropBase.w);
+        const hN = wi ? wi.h : (region ? region.h : cropBase.h);
         const k = {
           t: frameT(i),
           x: clampI((c.x - offX) / fw - wN / 2, 0, 1 - wN),
@@ -20212,6 +20992,14 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       });
       const keys = moSimplifyTrackKeys(dense, 0.005, 48);
       if (myGen !== trackGen) return;
+      if (region) {
+        region.keys = keys.map((k) => ({ t: k.t, x: k.x, y: k.y }));
+        renderBlurRegions();
+        syncOverlaysToPlayhead();
+        const lockedPctR = Math.round((lockedCount / total) * 100);
+        status.textContent = `Follow done: ${keys.length} keys, locked ${lockedPctR}% of frames.` + (lockedPctR < 60 ? ' Low lock rate: put the box on something with more detail and re-run.' : '');
+        return;
+      }
       cropKeys = keys;
       renderCropKeys();
       syncCropToPlayhead();
@@ -20226,6 +21014,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       tracking = false;
       btn.classList.remove('mo-active');
       trackBtn.textContent = 'Auto-track';
+      if (region) { try { renderBlurRegions(); } catch { /* ignore */ } }
       updateTrackPointUi();
       cleanupTrackDir().catch(() => {});
     }
@@ -20447,6 +21236,12 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       srcH: preview.videoHeight || 0,
       name: '',
       thumb: null,
+      // The program beyond one range (assembled exports).
+      segments: segments.map((sg) => ({ in: sg.in, out: sg.out })),
+      blurRegions: blurRegions.map((r) => ({ ...r, keys: r.keys ? r.keys.map((k) => ({ ...k })) : undefined })),
+      captions: captions.map((c) => ({ ...c })),
+      audioFx: { ...audioFx },
+      endCard: { ...endCard },
     };
   }
 
@@ -20542,6 +21337,17 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     }
     // Jump preview playhead to the clip's in-point so the user can audition it
     try { if (Number.isFinite(c.inT)) preview.currentTime = c.inT; } catch { /* ignore */ }
+    // The program state (snapshots predating these fields restore to empty).
+    segments = Array.isArray(c.segments) ? c.segments.filter((sg) => sg && sg.out > sg.in).map((sg) => ({ in: Math.max(0, sg.in), out: Math.min(duration, sg.out) })) : [];
+    blurRegions = Array.isArray(c.blurRegions) ? c.blurRegions.map((r) => ({ ...r, id: ++blurSeq })) : [];
+    captions = Array.isArray(c.captions) ? c.captions.map((x) => ({ ...x, id: ++captionSeq })) : [];
+    audioFx = c.audioFx ? { fadeIn: 0, fadeOut: 0, normalize: false, denoise: false, ...c.audioFx } : { fadeIn: 0, fadeOut: 0, normalize: false, denoise: false };
+    endCard = c.endCard ? { enabled: false, title: '', subtitle: '', seconds: 3, bg: '#101418', ...c.endCard } : { enabled: false, title: '', subtitle: '', seconds: 3, bg: '#101418' };
+    fadeInInput.value = String(audioFx.fadeIn); fadeOutInput.value = String(audioFx.fadeOut);
+    normChk.checked = !!audioFx.normalize; dnChk.checked = !!audioFx.denoise;
+    cardChk.checked = !!endCard.enabled; cardTitle.value = endCard.title || ''; cardSub.value = endCard.subtitle || ''; cardSecs.value = String(endCard.seconds || 3); cardBg.value = /^#[0-9a-fA-F]{6}$/.test(endCard.bg || '') ? endCard.bg : '#101418';
+    cardBody.style.display = endCard.enabled ? '' : 'none';
+    try { renderSegments(); renderBlurRegions(); renderCaptions(); syncOverlaysToPlayhead(); } catch { /* not built yet */ }
   }
 
   // Queue body: the "Batch queue" title and size total now live on the
@@ -20564,7 +21370,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     renderQueue();
     updateAddBtnLabel();
   });
-  const addBtn = moEl('button', 'mo-mark-btn', { textContent: '+ Add to queue', title: 'Snapshot current settings as a clip in the batch (Q)' });
+  const addBtn = moEl('button', 'mo-mark-btn', { textContent: '+ Add to Queue', title: 'Snapshot current settings as a clip in the batch (Q)' });
   // addBtn is hosted on the queue section's accordion header (see below) so
   // adding stays one click away even while the section is collapsed.
   queueHeadActions.append(stopEditBtn);
@@ -20611,7 +21417,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       return;
     }
     for (const p of presets) {
-      const chip = moEl('button', 'mo-clip-preset-chip', { title: `Apply preset "${p.name}" \u2014 ${p.clips.length} clip${p.clips.length === 1 ? '' : 's'}` });
+      const chip = moEl('button', 'mo-clip-preset-chip', { title: `Apply preset "${p.name}": ${p.clips.length} clip${p.clips.length === 1 ? '' : 's'}` });
       chip.appendChild(document.createTextNode(p.name + ' '));
       const sub = moEl('span', null, { textContent: `\u00b7 ${p.clips.length}` });
       sub.style.opacity = '0.6';
@@ -20726,7 +21532,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     queueHead.style.display = editingId != null ? '' : 'none';
     if (clipQueue.length === 0) {
       queueList.appendChild(moEl('div', 'mo-clip-queue-empty', {
-        textContent: 'No clips queued. Configure a clip and click "+ Add to queue" to batch-export multiple clips at once.',
+        textContent: 'No clips queued. Configure a clip and click "+ Add to Queue" to batch-export multiple clips at once.',
       }));
     } else {
       clipQueue.forEach((c, idx) => {
@@ -20757,7 +21563,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
         nameInput.type = 'text';
         nameInput.placeholder = 'name\u2026';
         nameInput.value = c.name || '';
-        nameInput.title = 'Optional name \u2014 used as the filename in place of the random name';
+        nameInput.title = 'Optional name, used as the filename in place of the random name';
         nameInput.addEventListener('click', (e) => e.stopPropagation());
         nameInput.addEventListener('input', () => { c.name = nameInput.value; });
         row.appendChild(nameInput);
@@ -20815,7 +21621,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
           loadSnapshot(c);
           renderQueue();
           updateAddBtnLabel();
-          status.textContent = `Editing clip ${idx + 1} \u2014 click "Update" when done.`;
+          status.textContent = `Editing clip ${idx + 1}. Click "Update" when done.`;
         });
         // Drag-to-reorder
         row.addEventListener('dragstart', (e) => {
@@ -20870,11 +21676,11 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
 
   function updateAddBtnLabel() {
     if (editingId == null) {
-      addBtn.textContent = '+ Add to queue';
+      addBtn.textContent = '+ Add to Queue';
       addBtn.title = 'Snapshot current settings as a clip in the batch (Q)';
     } else {
       const idx = clipQueue.findIndex(x => x.id === editingId);
-      addBtn.textContent = idx >= 0 ? `Update clip ${idx + 1}` : '+ Add to queue';
+      addBtn.textContent = idx >= 0 ? `Update clip ${idx + 1}` : '+ Add to Queue';
       addBtn.title = 'Replace the queued clip with the current settings';
     }
   }
@@ -20940,7 +21746,22 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   cancelBtn.addEventListener('click', () => { if (previewTimer) clearInterval(previewTimer); cleanupStripDir(); overlay.remove(); });
   const exportBtn = moEl('button', 'mo-btn-primary', { textContent: 'Export…' });
   const status = moEl('div', 'mo-clip-status');
-  footer.append(status, estimateEl, cancelBtn, exportBtn);
+  const revealBtn = moEl('button', 'mo-mark-btn', { textContent: 'Reveal', title: 'Show the exported file in your file manager.' });
+  const copyPathBtn = moEl('button', 'mo-mark-btn', { textContent: 'Copy Path', title: 'Copy the exported file\u2019s path.' });
+  revealBtn.style.display = 'none'; copyPathBtn.style.display = 'none';
+  revealBtn.addEventListener('click', async () => {
+    if (!lastExportPath) return;
+    const sh = window.parallxElectron.shell || {};
+    try {
+      if (typeof sh.showItemInFolder === 'function') await sh.showItemInFolder(lastExportPath);
+      else if (typeof sh.openPath === 'function') await sh.openPath(lastExportPath.slice(0, lastExportPath.lastIndexOf(_isWindows ? '\\' : '/')));
+    } catch { /* ignore */ }
+  });
+  copyPathBtn.addEventListener('click', async () => {
+    if (!lastExportPath) return;
+    try { await navigator.clipboard.writeText(lastExportPath); status.textContent = 'Path copied.'; } catch { /* ignore */ }
+  });
+  footer.append(status, revealBtn, copyPathBtn, estimateEl, cancelBtn, exportBtn);
   dialog.appendChild(footer);
 
   // ── Size estimate (heuristic — actual size depends on content entropy) ──
@@ -20952,7 +21773,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   function estimateBytes() {
     const [aa, bb] = getInOut();
     const speed = Math.max(0.1, parseFloat(speedSel.value) || 1);
-    const dur = Math.max(0.05, (bb - aa) / speed);
+    const dur = Math.max(0.05, ((segments.length >= 2 ? segmentsTotal() : (bb - aa)) + (endCard.enabled ? endCard.seconds : 0)) / speed);
     const fps = Math.max(1, parseInt(fpsSel.value, 10) || 12);
     const scale = Math.max(0.1, (parseInt(sizeInput.value, 10) || 100) / 100);
     const vw = preview.videoWidth || 1280;
@@ -20993,7 +21814,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   }
   function updateEstimate() {
     const [aa, bb] = getInOut();
-    const dur = Math.max(0, bb - aa);
+    const dur = Math.max(0, (segments.length >= 2 ? segmentsTotal() : (bb - aa)) + (endCard.enabled ? endCard.seconds : 0));
     estimateEl.textContent = `~${fmtBytes(estimateBytes())} · ${dur.toFixed(2)}s @ ${fpsSel.value}fps (est.)`;
   }
   inInput.addEventListener('input', updateEstimate);
@@ -21037,7 +21858,19 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   function updateAccordionSummaries() {
     if (!accSections.trim) return;
     const [aa, bb] = getInOut();
-    accSections.trim.sum.textContent = `${moTimeStr(aa)} → ${moTimeStr(bb)} · ${(bb - aa).toFixed(2)}s`;
+    accSections.trim.sum.textContent = segments.length >= 2
+      ? `${segments.length} segments · ${segmentsTotal().toFixed(2)}s`
+      : `${moTimeStr(aa)} → ${moTimeStr(bb)} · ${(bb - aa).toFixed(2)}s`;
+    if (accSections.blur) accSections.blur.sum.textContent = blurRegions.length ? `${blurRegions.length} region${blurRegions.length === 1 ? '' : 's'}` + (blurRegions.some((r) => r.keys) ? ' · following' : '') : 'Off';
+    if (accSections.text) accSections.text.sum.textContent = captions.filter((x) => x.text.trim()).length ? `${captions.filter((x) => x.text.trim()).length} item${captions.length === 1 ? '' : 's'}` : 'Off';
+    if (accSections.audio) {
+      const bits = [];
+      if (audioFx.fadeIn > 0 || audioFx.fadeOut > 0) bits.push('fades');
+      if (audioFx.normalize) bits.push('normalize');
+      if (audioFx.denoise) bits.push('denoise');
+      if (endCard.enabled) bits.push('end card');
+      accSections.audio.sum.textContent = bits.length ? bits.join(' · ') : 'Off';
+    }
     const scalePct = parseInt(sizeInput.value, 10) || 100;
     accSections.output.sum.textContent =
       `${fmtSel.value.toUpperCase()} · ${fpsSel.value} fps` +
@@ -21109,6 +21942,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
 
       let okCount = 0, failCount = 0;
       const exportedIds = new Set();
+      const fontFile = await moFindFontFile();
       try {
         for (let i = 0; i < clipQueue.length; i++) {
           if (batchCancelled) break;
@@ -21133,8 +21967,14 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
           }
           status.textContent = `Exporting ${i + 1} / ${clipQueue.length}\u2026`;
           try {
-            await moExportClip(api, {
+            await moExportClipPipeline(api, {
               videoPath, inPoint: c.inT, outPoint: c.outT,
+              segments: Array.isArray(c.segments) && c.segments.length >= 2 ? c.segments : null,
+              blurRegions: c.blurRegions || null,
+              captions: c.captions || null,
+              audioFx: c.audioFx || null,
+              endCard: c.endCard || null,
+              fontFile,
               outPath: candidate,
               format: c.format,
               fps: c.fps,
@@ -21232,7 +22072,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
 
     // ── Single-clip path (queue empty) \u2014 unchanged behaviour ──────────────
     const [a, b] = getInOut();
-    if (b <= a) { api.window.showWarningMessage('Out point must be after in point.'); return; }
+    if (b <= a && segments.length < 2) { api.window.showWarningMessage('Out point must be after in point.'); return; }
 
     // Prompt user to choose save location (default: alongside source video)
     const sep = _isWindows ? '\\' : '/';
@@ -21255,11 +22095,19 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
 
     // Detect frame edits — only honored when format=gif
     const hasFrameEdits = frames.some(f => f.deleted || f.delayMs != null) || revFrames;
-    const useFrameEdits = (fmtSel.value === 'gif') && hasFrameEdits && frames.length > 0;
+    const useFrameEdits = (fmtSel.value === 'gif') && hasFrameEdits && frames.length > 0 && segments.length < 2;
+    if (fmtSel.value === 'gif' && hasFrameEdits && segments.length >= 2) status.textContent = 'Per-frame edits are skipped when segments are joined.';
 
     try {
-      const result = await moExportClip(api, {
+      const fontFile = await moFindFontFile();
+      const result = await moExportClipPipeline(api, {
         videoPath, inPoint: a, outPoint: b,
+        segments: segments.length >= 2 ? segments.map((sg) => ({ ...sg })) : null,
+        blurRegions: blurRegions.map((r) => ({ ...r, keys: r.keys ? r.keys.map((k) => ({ ...k })) : undefined })),
+        captions: captions.filter((x) => x.text.trim()).map((x) => ({ ...x })),
+        audioFx: { ...audioFx },
+        endCard: { ...endCard },
+        fontFile,
         outPath: chosen,
         format: fmtSel.value,
         fps: parseInt(fpsSel.value, 10),
@@ -21378,6 +22226,8 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       await moIndexExportedFile(result.outPath);
 
       status.textContent = 'Exported \u2713 ' + result.outPath + actual;
+      lastExportPath = result.outPath;
+      revealBtn.style.display = ''; copyPathBtn.style.display = '';
       api.window.showInformationMessage('Exported: ' + result.outPath);
     } catch (err) {
       status.textContent = '';
@@ -21387,6 +22237,30 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     }
   });
 
+  // A screen recording arrives with its frame path (follow-the-box) and any
+  // pauses already cut: the editor opens showing exactly what was framed.
+  if (opts.initialCrop && opts.initialCrop.cropBase) {
+    try {
+      cropEnabled = true; cropChk.checked = true;
+      cropBase = { ...opts.initialCrop.cropBase };
+      cropNorm = { ...opts.initialCrop.cropNorm };
+      cropKeys = Array.isArray(opts.initialCrop.cropKeys) ? opts.initialCrop.cropKeys.map((k) => ({ ...k })) : [];
+      cropChk.dispatchEvent(new Event('change', { bubbles: true }));
+      renderCropKeys(); applyCropRect();
+      status.textContent = cropKeys.length >= 2
+        ? 'The frame you moved while recording is the camera path. Scrub to review; drag the window to correct.'
+        : 'Framed as recorded. Drag the window to adjust.';
+    } catch (err) { console.warn('[media-organizer] initial crop failed', err); }
+  }
+  if (Array.isArray(opts.initialSegments) && opts.initialSegments.length) {
+    segments = opts.initialSegments.filter((sg) => sg && sg.out > sg.in).map((sg) => ({ in: sg.in, out: sg.out }));
+    try { renderSegments(); } catch { /* ignore */ }
+    if (segments.length >= 2) status.textContent = `Pauses cut: ${segments.length} segments will export as one clip.`;
+  }
+  if (cursorTrack && cropEnabled === false) {
+    // Smart zoom is offered when the recorder captured the cursor.
+    smartZoomBtn.style.display = '';
+  }
   container.appendChild(overlay);
   // Focus the page so the I/O/Space hotkeys work without a click first.
   try { overlay.focus(); } catch { /* ignore */ }
@@ -21498,6 +22372,9 @@ async function moExportClip(api, opts) {
     filters.push(`setpts=PTS/${opts.speed}`);
   }
   if (opts.reverse) filters.push('reverse');
+  // Captions live on the OUTPUT timeline: after speed and reversal, `t` is
+  // the time the viewer sees, which is what the caption's from/to mean.
+  for (const vf of moCaptionsVf(opts.captions, opts.fontFile || '')) filters.push(vf);
 
   if (opts.format === 'gif') {
     // M59 P2: per-frame edits (delete/delay/reverse-frame-order) → concat path
@@ -21638,7 +22515,12 @@ async function moExportClip(api, opts) {
         argv.push('-an', '-f', 'null', _isWindows ? 'NUL' : '/dev/null');
       } else {
         if (stripAudio) argv.push('-an');
-        else argv.push('-c:a', audioCodec, '-b:a', `${audioKbps}k`);
+        else {
+          argv.push('-c:a', audioCodec, '-b:a', `${audioKbps}k`);
+          // The audio finish (fades, denoise, loudness) rides the same encode.
+          const af = moAudioFxAf(opts.audioFx, dur);
+          if (af) argv.push('-af', af);
+        }
         argv.push(output);
       }
       return argv;
@@ -21773,6 +22655,8 @@ async function moExportGifWithFrameEdits(api, opts, outPath) {
       const presetVf = moClipFilterVf(opts.filter);
       if (presetVf) extractParts.push(presetVf);
     }
+    // Frames are extracted from t=0 of the clip, so caption times line up.
+    for (const vf of moCaptionsVf(opts.captions, opts.fontFile || '')) extractParts.push(vf);
     const vfExtract = extractParts.join(',');
     const pattern = workDir + sep + 'f_%04d.png';
     const rEx = await moExecFFArgs([
@@ -25404,7 +26288,10 @@ let _showCardTags = true;
 // showCardTags), so the authoritative writes go through cfg.update() here.
 let _enableScreenRecorder = false;
 let _screenRecorderTempDir = '';   // '' = use the default in-workspace recordings dir
-let _screenRecorderAudio = 'system'; // 'off' | 'system' | 'mic' (mirrors manifest default)
+let _screenRecorderAudio = 'system'; // 'off' | 'system' | 'mic' | 'both' (mirrors manifest default)
+let _screenRecorderCountdown = 3;    // seconds before the first frame (0 = none)
+let _screenRecorderShowCursor = true;
+let _screenRecorderFollowBox = false; // record the display; the frame's path is the camera
 let _moRecordingInFlight = false;   // guards against overlapping recordings
 
 async function ensureDatabase(api) {
@@ -25539,14 +26426,21 @@ export async function activate(api, context) {
     _enableScreenRecorder = cfg.get('enableScreenRecorder', false) === true;
     _screenRecorderTempDir = cfg.get('screenRecorderTempDir', '') || '';
     const audio = cfg.get('screenRecorderAudio', 'system');
-    _screenRecorderAudio = ['off', 'system', 'mic'].includes(audio) ? audio : 'system';
+    _screenRecorderAudio = ['off', 'system', 'mic', 'both'].includes(audio) ? audio : 'system';
+    const cd = parseInt(cfg.get('screenRecorderCountdown', 3), 10);
+    _screenRecorderCountdown = [0, 3, 5, 10].includes(cd) ? cd : 3;
+    _screenRecorderShowCursor = cfg.get('screenRecorderShowCursor', true) !== false;
+    _screenRecorderFollowBox = cfg.get('screenRecorderFollowBox', false) === true;
   };
   try { _readRecorderCfg(); } catch { /* keep defaults */ }
   if (api.workspace.onDidChangeConfiguration) {
     const sub2 = api.workspace.onDidChangeConfiguration((e) => {
       if (!e.affectsConfiguration('mediaOrganizer.enableScreenRecorder') &&
           !e.affectsConfiguration('mediaOrganizer.screenRecorderTempDir') &&
-          !e.affectsConfiguration('mediaOrganizer.screenRecorderAudio')) return;
+          !e.affectsConfiguration('mediaOrganizer.screenRecorderAudio') &&
+          !e.affectsConfiguration('mediaOrganizer.screenRecorderCountdown') &&
+          !e.affectsConfiguration('mediaOrganizer.screenRecorderShowCursor') &&
+          !e.affectsConfiguration('mediaOrganizer.screenRecorderFollowBox')) return;
       try { _readRecorderCfg(); } catch { /* ignore */ }
       document.dispatchEvent(new CustomEvent('mo:screen-recorder-config-changed'));
     });
@@ -25791,6 +26685,28 @@ export async function activate(api, context) {
         return;
       }
       moStartScreenRecording(api);
+    })
+  );
+
+  // Open any video straight in the clip editor. With a path argument it opens
+  // that file (used by the screenshot probe and by other extensions); without
+  // one it explains where the editor is reached from.
+  _commandDisposables.push(
+    api.commands.registerCommand('media-organizer.openClipEditor', async (videoPath) => {
+      if (!videoPath || typeof videoPath !== 'string') {
+        api.window.showInformationMessage('Open a video in the Media Organizer and choose Trim / Export Clip, or record the screen.');
+        return;
+      }
+      if (!(await moPathInWorkspace(videoPath))) {
+        api.window.showWarningMessage('The video must be inside the open workspace.');
+        return;
+      }
+      const duration = await moProbeDuration(videoPath);
+      if (!duration || duration <= 0) {
+        api.window.showWarningMessage('Could not read the video duration.');
+        return;
+      }
+      await moOpenClipDialog(api, videoPath, duration, 0, Math.min(duration, 6), {});
     })
   );
 

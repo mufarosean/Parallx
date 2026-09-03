@@ -21,7 +21,7 @@ function loadPure(): Record<string, any> {
   expect(b).toBeGreaterThan(a);
   const names = ['MO_CLIP_FILTERS', 'moClipFilterVf', 'moCropKeysAt', 'moCropVfSegment', 'moSimplifyTrackKeys', 'moFfEscapeText', 'moFfEscapePath',
     'moCaptionVf', 'moCaptionsVf', 'moBlurRegionsGraph', 'moAudioFxAf', 'moParseDetectLog', 'moDeadAirSegments', 'moSmartZoomKeys',
-    'moBoxTrackToKeys', 'moStageOutputDims', 'moEndCardInputs', 'moSegmentsGraph'];
+    'moBoxTrackToKeys', 'moStageOutputDims', 'moEndCardInputs', 'moSegmentsGraph', 'moClipOutputTime'];
   // eslint-disable-next-line @typescript-eslint/no-implied-eval
   return new Function(src.slice(a, b) + `\nreturn { ${names.join(', ')} };`)();
 }
@@ -159,5 +159,15 @@ describe('assembly', () => {
     expect(g.durationSec).toBeCloseTo(4.5, 5);
     expect(g.mapA).toBe('[aout]');
     expect(() => P.moSegmentsGraph({ segments: [] })).toThrow();
+  });
+});
+
+describe('output timeline', () => {
+  it('maps a source time onto the joined timeline, null between segments', () => {
+    const segs = [{ in: 1, out: 2 }, { in: 4, out: 6 }];
+    expect(P.moClipOutputTime(segs, 1.5)).toBeCloseTo(0.5, 6);
+    expect(P.moClipOutputTime(segs, 5)).toBeCloseTo(2, 6);
+    expect(P.moClipOutputTime(segs, 3)).toBeNull();
+    expect(P.moClipOutputTime(null, 3)).toBe(3);
   });
 });

@@ -9,8 +9,19 @@ const frameId = params.get('frameId');
 contextBridge.exposeInMainWorld('recorderFrame', {
   frameId,
   fps: parseInt(params.get('fps'), 10) || 30,
-  audio: params.get('audio') || 'off', // 'off' | 'system' | 'mic'
+  audio: params.get('audio') || 'off', // 'off' | 'system' | 'mic' | 'both'
+  countdown: parseInt(params.get('countdown'), 10) || 0,
+  follow: params.get('follow') === '1',
+  hotkeyStop: params.get('hotkeyStop') || '',
+  hotkeyPause: params.get('hotkeyPause') || '',
   start: () => ipcRenderer.invoke('recorder:start', frameId),
+  pause: () => ipcRenderer.invoke('recorder:pause', frameId),
+  resume: () => ipcRenderer.invoke('recorder:resume', frameId),
+  onHotkey: (cb) => {
+    const h = (_e, p) => { try { cb(p && p.action); } catch { /* ignore */ } };
+    ipcRenderer.on('recorder:hotkey', h);
+    return () => ipcRenderer.removeListener('recorder:hotkey', h);
+  },
   stop: () => ipcRenderer.invoke('recorder:stop', frameId),
   cancel: () => ipcRenderer.invoke('recorder:cancel', frameId),
   setBounds: (bounds) => ipcRenderer.invoke('recorder:setBounds', frameId, bounds),

@@ -34,7 +34,8 @@
       { "id": "media-organizer.revealInMO", "title": "Reveal in Media Organizer", "category": "Media Organizer" },
       { "id": "media-organizer.showShortcuts", "title": "Keyboard Shortcuts", "category": "Media Organizer" },
       { "id": "media-organizer.toggleScreenRecorder", "title": "Toggle Screen Recorder", "category": "Media Organizer" },
-      { "id": "media-organizer.recordGif", "title": "Record GIF (Screen)", "category": "Media Organizer" }
+      { "id": "media-organizer.recordGif", "title": "Record GIF (Screen)", "category": "Media Organizer" },
+      { "id": "media-organizer.openClipEditor", "title": "Open Clip Editor", "category": "Media Organizer" }
     ],
     "viewContainers": [
       {
@@ -83,8 +84,24 @@
           "mediaOrganizer.screenRecorderAudio": {
             "type": "string",
             "default": "system",
-            "enum": ["off", "system", "mic"],
-            "description": "Record audio into screen recordings. The sound is saved in the temp video, so MP4/WebM clip exports keep it (GIFs have no audio). 'system' captures whatever is playing on any output device (speakers, Bluetooth, USB, HDMI) via Windows loopback; 'mic' captures the default microphone; 'off' disables audio."
+            "enum": ["off", "system", "mic", "both"],
+            "description": "Record audio into screen recordings. The sound is saved in the temp video, so MP4/WebM clip exports keep it (GIFs have no audio). 'system' captures whatever is playing on any output device (speakers, Bluetooth, USB, HDMI) via Windows loopback; 'mic' captures the default microphone; 'both' mixes the two into one track (narrate over what plays); 'off' disables audio."
+          },
+          "mediaOrganizer.screenRecorderCountdown": {
+            "type": "number",
+            "default": 3,
+            "enum": [0, 3, 5, 10],
+            "description": "Seconds counted down inside the frame before recording starts, so you can switch to the window you want to capture. 0 starts at once. Ctrl+Alt+R starts and stops a recording from any app while the frame is open; Ctrl+Alt+P pauses."
+          },
+          "mediaOrganizer.screenRecorderShowCursor": {
+            "type": "boolean",
+            "default": true,
+            "description": "Include the mouse pointer in the recording. Turn off for clean product clips; the cursor path is still tracked for Smart Zoom in the clip editor."
+          },
+          "mediaOrganizer.screenRecorderFollowBox": {
+            "type": "boolean",
+            "default": false,
+            "description": "Follow the box: while recording you can drag the frame around and the recording follows it, like a camera. The whole display is captured and the clip editor opens already cropped to the path you made, ready to fine-tune."
           }
         }
       }
