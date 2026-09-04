@@ -310,8 +310,11 @@ async function main() {
           await page.waitForTimeout(300);
           const shapeState = await page.evaluate(() => {
             const active = Array.from(document.querySelectorAll('.mo-clip-page .mo-clip-mode-toggle button.mo-active')).map((b) => b.textContent).join('|');
-            const b = document.querySelector('.mo-blur-rect');
-            return `active=${active} radius=${b ? getComputedStyle(b).borderRadius : 'none'} mask=${b ? (getComputedStyle(b).maskImage || '').slice(0, 40) : ''}`;
+            // The shape lives on the inner fill; the box stays rectangular so
+            // its outline and handles are never masked away.
+            const b = document.querySelector('.mo-blur-rect .mo-blur-fill');
+            const handles = document.querySelectorAll('.mo-blur-rect.mo-active .mo-blur-handle').length;
+            return `active=${active} radius=${b ? getComputedStyle(b).borderRadius : 'none'} mask=${b ? (getComputedStyle(b).maskImage || '').slice(0, 40) : ''} handles=${handles}`;
           });
           console.log(`[probe] clip blur shape: ${shapeState}`);
           await shot(page, 'clip-blur'); await stageState('clip-blur');

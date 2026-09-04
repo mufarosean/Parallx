@@ -35,6 +35,9 @@ program that turned a trimmer into a small editor and the recorder into a camera
   have a feathered edge, in the preview and in the export. Each region has a Track
   switch: on, the box follows what is under it through the clip (the existing
   tracker); off, it stays still. The preview shows a real blur or a real mosaic.
+  The active region carries a selection frame with eight handles (corners and
+  edges) on its bounding box, the shape drawn inside it; any region moves by
+  dragging its box.
 - Text: title cards, lower thirds and captions with a style, a time window and a
   colour, previewed on the video and burned in on export.
 - Audio finish: fade in, fade out, loudness normalise, denoise.
@@ -88,6 +91,7 @@ confirm on this machine.
 | 6 Shapes | oval and rounded regions through a feathered alpha mask (geq on the patch), Blur/Pixelate and shape as buttons; exported pixels checked: outside the oval untouched, inside blurred | shipped |
 | 5 Fixes | real-timestamp capture (short takes played fast), app dropdowns everywhere, Track switch on blur regions, real blur and mosaic previews, look previews matched to the export | shipped |
 | 4 Probe | clip scene in the screenshot probe, open-clip-editor command | shipped |
+| 7 Handles | oval and rounded regions could not be resized (the soft-edge mask hid the one corner handle and the outline); shape moved to an inner fill, active region gets an eight-handle frame; move + 4 resize directions measured on all three shapes with real mouse input | shipped |
 
 ## Known limits
 

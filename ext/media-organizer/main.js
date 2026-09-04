@@ -8062,23 +8062,40 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
 }
 /* Blur regions on the stage. */
 .mo-blur-layer { position: absolute; inset: 0; pointer-events: none; }
-.mo-blur-rect {
-  position: absolute; box-sizing: border-box; pointer-events: auto; cursor: move;
-  border: 1.5px solid rgba(255,255,255,0.75);
-  outline: 1px solid rgba(0,0,0,0.5);
-  background: rgba(255,255,255,0.04);
-}
-.mo-blur-rect--pixel { background: transparent; }
+/* The box is the region's bounding rectangle and takes the pointer. The
+   SHAPE (oval, rounded) lives on the inner fill and outline only, so the soft
+   edge mask never swallows the outline or the handles: an oval's corner is
+   exactly where a masked box is fully transparent. */
+.mo-blur-rect { position: absolute; box-sizing: border-box; pointer-events: auto; cursor: move; }
+.mo-blur-fill { position: absolute; inset: 0; overflow: hidden; pointer-events: none; background: rgba(255,255,255,0.04); }
+.mo-blur-rect--pixel .mo-blur-fill { background: transparent; }
 .mo-blur-mosaic { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; pointer-events: none; }
-.mo-blur-rect--off { opacity: 0.35; }
-.mo-blur-rect--soft { outline: none; }
-.mo-blur-rect--soft .mo-blur-handle { right: 0; bottom: 0; }
-.mo-blur-rect.mo-active { border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); }
-.mo-blur-handle {
-  position: absolute; right: -6px; bottom: -6px; width: 11px; height: 11px;
-  background: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
-  border: 1px solid #fff; border-radius: 2px; cursor: nwse-resize;
+.mo-blur-outline {
+  position: absolute; inset: 0; pointer-events: none;
+  border: 1.5px solid rgba(255,255,255,0.75);
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.5);
 }
+.mo-blur-rect.mo-active .mo-blur-outline { border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); }
+.mo-blur-rect--off { opacity: 0.35; }
+/* Selection frame on the active region: the bounding box with eight handles.
+   For an oval or a rounded box it sits just outside the shape, the way a
+   selection frame does in any editor; for a plain box it coincides with the
+   outline and stays invisible. */
+.mo-blur-frame { position: absolute; inset: 0; pointer-events: none; border: 1px dashed rgba(255,255,255,0.55); }
+.mo-blur-rect--rect .mo-blur-frame { border-color: transparent; }
+.mo-blur-handle {
+  position: absolute; width: 11px; height: 11px; margin: -6px 0 0 -6px;
+  background: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
+  border: 1px solid #fff; border-radius: 2px; pointer-events: auto;
+}
+.mo-blur-handle--nw { left: 0;    top: 0;    cursor: nwse-resize; }
+.mo-blur-handle--n  { left: 50%;  top: 0;    cursor: ns-resize; }
+.mo-blur-handle--ne { left: 100%; top: 0;    cursor: nesw-resize; }
+.mo-blur-handle--e  { left: 100%; top: 50%;  cursor: ew-resize; }
+.mo-blur-handle--se { left: 100%; top: 100%; cursor: nwse-resize; }
+.mo-blur-handle--s  { left: 50%;  top: 100%; cursor: ns-resize; }
+.mo-blur-handle--sw { left: 0;    top: 100%; cursor: nesw-resize; }
+.mo-blur-handle--w  { left: 0;    top: 50%;  cursor: ew-resize; }
 /* Caption preview on the stage. */
 .mo-caption-layer { position: absolute; inset: 0; pointer-events: none; }
 .mo-caption {
@@ -19513,7 +19530,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     activeBlurId = r.id;
     renderBlurRegions();
     syncOverlaysToPlayhead();
-    status.textContent = 'Blur region added. Drag it over what to hide; drag its corner to resize.';
+    status.textContent = 'Blur region added. Drag it over what to hide; drag a handle to resize.';
   });
 
   // Stage boxes for the regions: move by dragging, resize from the corner.
@@ -19526,25 +19543,28 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     for (const r of blurRegions) {
       const pos = blurRegionAt(r, t);
       const inTime = (!Number.isFinite(r.t0) || t >= r.t0) && (!Number.isFinite(r.t1) || t <= r.t1);
-      const box = moEl('div', 'mo-blur-rect' + (r.id === activeBlurId ? ' mo-active' : '') + (inTime ? '' : ' mo-blur-rect--off') + (r.mode === 'pixelate' ? ' mo-blur-rect--pixel' : ''));
+      const shape = r.shape === 'ellipse' || r.shape === 'rounded' ? r.shape : 'rect';
+      const active = r.id === activeBlurId;
+      const box = moEl('div', 'mo-blur-rect mo-blur-rect--' + shape + (active ? ' mo-active' : '') + (inTime ? '' : ' mo-blur-rect--off') + (r.mode === 'pixelate' ? ' mo-blur-rect--pixel' : ''));
       box.style.left = (rect.dx + pos.x * rect.dw) + 'px';
       box.style.top = (rect.dy + pos.y * rect.dh) + 'px';
       box.style.width = (r.w * rect.dw) + 'px';
       box.style.height = (r.h * rect.dh) + 'px';
-      const shape = r.shape === 'ellipse' || r.shape === 'rounded' ? r.shape : 'rect';
       const wpx = r.w * rect.dw, hpx = r.h * rect.dh;
       const fe = Math.max(0.02, Math.min(0.6, Number.isFinite(r.feather) ? r.feather : 0.15));
-      box.style.borderRadius = shape === 'ellipse' ? '50%' : shape === 'rounded' ? Math.round(0.22 * Math.min(wpx, hpx)) + 'px' : '';
-      // The soft edge of the export, previewed with a mask on the box.
-      box.style.maskImage = shape === 'ellipse'
+      const radius = shape === 'ellipse' ? '50%' : shape === 'rounded' ? Math.round(0.22 * Math.min(wpx, hpx)) + 'px' : '';
+      // The box stays a plain rectangle (it takes the pointer and carries the
+      // frame). The shape and the export's soft edge are previewed on an inner
+      // fill, so masking an oval never hides the outline or the handles.
+      const fill = moEl('div', 'mo-blur-fill');
+      fill.style.borderRadius = radius;
+      fill.style.maskImage = shape === 'ellipse'
         ? `radial-gradient(ellipse closest-side, #000 ${Math.round((1 - fe) * 100)}%, transparent 100%)`
         : '';
-      box.style.webkitMaskImage = box.style.maskImage;
-      box.classList.toggle('mo-blur-rect--soft', shape !== 'rect');
+      fill.style.webkitMaskImage = fill.style.maskImage;
       if (r.mode === 'pixelate') {
         // A real mosaic: the covered part of the frame drawn small, scaled
         // back up with no smoothing (the export's pixelize does the same).
-        box.style.backdropFilter = '';
         const cv = document.createElement('canvas');
         cv.className = 'mo-blur-mosaic';
         const cellsX = Math.max(2, Math.round(24 / Math.max(1, r.strength)));
@@ -19556,33 +19576,44 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
           ctx.imageSmoothingEnabled = true;
           ctx.drawImage(preview, pos.x * vw, pos.y * vh, r.w * vw, r.h * vh, 0, 0, cellsX, cellsY);
         } catch { /* frame not ready */ }
-        cv.style.borderRadius = box.style.borderRadius;
-        box.appendChild(cv);
+        fill.appendChild(cv);
       } else {
-        box.style.backdropFilter = `blur(${2 + r.strength * 1.5}px)`;
+        fill.style.backdropFilter = `blur(${2 + r.strength * 1.5}px)`;
       }
-      box.title = (r.mode === 'pixelate' ? 'Pixelate' : 'Blur') + ' region · drag to move · corner to resize';
-      const handle = moEl('div', 'mo-blur-handle');
-      box.appendChild(handle);
-      const begin = (e0, resize) => {
+      box.appendChild(fill);
+      const outline = moEl('div', 'mo-blur-outline');
+      outline.style.borderRadius = radius;
+      box.appendChild(outline);
+      box.title = (r.mode === 'pixelate' ? 'Pixelate' : 'Blur') + ' region · drag to move · handles to resize';
+      // Moving and resizing both go through place(): a followed region's whole
+      // path shifts by the same delta its box did, measured against where the
+      // path currently puts it (never against the drag origin, which would
+      // compound across moves).
+      const MIN = 0.02;
+      const place = (nx, ny) => {
+        nx = Math.max(0, Math.min(1 - r.w, nx)); ny = Math.max(0, Math.min(1 - r.h, ny));
+        if (r.keys && r.keys.length >= 2) {
+          const cur = blurRegionAt(r, t);
+          for (const k of r.keys) { k.x = Math.max(0, Math.min(1 - r.w, k.x + (nx - cur.x))); k.y = Math.max(0, Math.min(1 - r.h, k.y + (ny - cur.y))); }
+        } else { r.x = nx; r.y = ny; }
+      };
+      const begin = (e0, dir) => {
         e0.preventDefault(); e0.stopPropagation();
-        activeBlurId = r.id;
         const startX = e0.clientX, startY = e0.clientY;
         const o = { x: pos.x, y: pos.y, w: r.w, h: r.h };
+        if (activeBlurId !== r.id) { activeBlurId = r.id; paintBlurLayer(); }
         const move = (ev) => {
           const dx = (ev.clientX - startX) / rect.dw, dy = (ev.clientY - startY) / rect.dh;
-          if (resize) {
-            r.w = Math.max(0.02, Math.min(1 - o.x, o.w + dx));
-            r.h = Math.max(0.02, Math.min(1 - o.y, o.h + dy));
+          if (dir) {
+            let x = o.x, y = o.y, w = o.w, h = o.h;
+            if (dir.includes('e')) w = Math.max(MIN, Math.min(1 - o.x, o.w + dx));
+            if (dir.includes('s')) h = Math.max(MIN, Math.min(1 - o.y, o.h + dy));
+            if (dir.includes('w')) { x = Math.max(0, Math.min(o.x + o.w - MIN, o.x + dx)); w = o.x + o.w - x; }
+            if (dir.includes('n')) { y = Math.max(0, Math.min(o.y + o.h - MIN, o.y + dy)); h = o.y + o.h - y; }
+            r.w = w; r.h = h;
+            place(x, y);
           } else {
-            const nx = Math.max(0, Math.min(1 - r.w, o.x + dx));
-            const ny = Math.max(0, Math.min(1 - r.h, o.y + dy));
-            if (r.keys && r.keys.length >= 2) {
-              // Dragging a followed region nudges its whole path.
-              const cur = blurRegionAt(r, t);
-              for (const k of r.keys) { k.x = Math.max(0, Math.min(1 - r.w, k.x + (nx - cur.x))); k.y = Math.max(0, Math.min(1 - r.h, k.y + (ny - cur.y))); }
-              o.x = nx; o.y = ny;
-            } else { r.x = nx; r.y = ny; }
+            place(o.x + dx, o.y + dy);
           }
           paintBlurLayer();
         };
@@ -19595,8 +19626,17 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
         window.addEventListener('mousemove', move);
         window.addEventListener('mouseup', up);
       };
-      box.addEventListener('mousedown', (e) => { if (e.target === handle) begin(e, true); else begin(e, false); });
-      handle.addEventListener('mousedown', (e) => begin(e, true));
+      // The active region carries the selection frame and its eight handles;
+      // pressing any region makes it the active one.
+      if (active) {
+        box.appendChild(moEl('div', 'mo-blur-frame'));
+        for (const dir of ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']) {
+          const h = moEl('div', 'mo-blur-handle mo-blur-handle--' + dir);
+          h.addEventListener('mousedown', (e) => begin(e, dir));
+          box.appendChild(h);
+        }
+      }
+      box.addEventListener('mousedown', (e) => { if (e.target && e.target.classList && e.target.classList.contains('mo-blur-handle')) return; begin(e, null); });
       blurLayer.appendChild(box);
     }
   }
