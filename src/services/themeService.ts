@@ -196,6 +196,11 @@ const THEME_VSCODE_BRIDGE: ReadonlyArray<readonly [string, string]> = [
   // back to stale VS Code grays/blues on surfaces across the app. ──
   ['--vscode-titleBar-activeForeground', 'var(--px-text-secondary)'],
   ['--vscode-titleBar-inactiveForeground', 'var(--px-text-muted)'],
+  // The titlebar↔workbench seam. Every sibling part border is bridged to a
+  // neutral token; this one was not, so the default theme's old purple-tinted
+  // titleBar.border (#2a2535) was the only line still drawn in the old identity,
+  // and it read as "the top border is purple" (2026-09-04).
+  ['--vscode-titleBar-border', 'var(--px-divider)'],
   ['--vscode-menu-border', 'var(--px-border)'],
   ['--vscode-editorWidget-border', 'var(--px-border)'],
   ['--vscode-editorWidget-foreground', 'var(--px-text)'],
