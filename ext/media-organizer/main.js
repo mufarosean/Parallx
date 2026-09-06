@@ -2187,7 +2187,10 @@ function shellInvoke(exePath) {
 async function detectTool(name) {
   try {
     const cmd = _isWindows ? `where.exe ${name}` : `which ${name}`;
-    const result = await window.parallxElectron.terminal.exec(cmd, { timeout: 5000 });
+    // 15 s, not 5: a busy machine (a scan, an upscale, antivirus over a
+    // freshly unpacked binary) can make a trivial `where` late, and a
+    // false miss here used to strand every ffmpeg feature for the session.
+    const result = await window.parallxElectron.terminal.exec(cmd, { timeout: 15000 });
     if (result.exitCode === 0 && result.stdout.trim()) {
       return result.stdout.trim().split(/\r?\n/)[0];
     }
@@ -2195,15 +2198,36 @@ async function detectTool(name) {
   } catch { return null; }
 }
 
+let _toolsInflight = null;
+let _toolsRetryAfter = 0;
 async function detectAllTools() {
   if (_toolsDetected) return _toolPaths;
-  const [ffprobe, exiftool, node, ffmpeg, vips] = await Promise.all([
+  if (_toolsInflight) return _toolsInflight;
+  // A miss is never cached as truth. Detection is settled only when the
+  // tools the core features need were found; an incomplete result is
+  // retried by a later caller, at most every 30 seconds, and a tool found
+  // earlier is never replaced by a miss. Concurrent callers share one run
+  // instead of each spawning their own set of `where.exe` processes.
+  if (Date.now() < _toolsRetryAfter) return _toolPaths;
+  _toolsInflight = (async () => {
+    try { return await moDetectAllToolsNow(); } finally { _toolsInflight = null; }
+  })();
+  return _toolsInflight;
+}
+async function moDetectAllToolsNow() {
+  const prev = _toolPaths || {};
+  const fresh = await Promise.all([
     detectTool('ffprobe'),
     detectTool('exiftool'),
     detectTool('node'),
     detectTool('ffmpeg'),
     detectTool('vips'),
   ]);
+  const ffprobe = fresh[0] || prev.ffprobe || null;
+  const exiftool = fresh[1] || prev.exiftool || null;
+  const node = fresh[2] || prev.node || null;
+  const ffmpeg = fresh[3] || prev.ffmpeg || null;
+  const vips = fresh[4] || prev.vips || null;
 
   // Bundled magick.exe — shipped inside the extension at <toolPath>/bin/magick.exe.
   // No PATH lookup. Used exclusively for the WebP gate (animated -> gif, static -> jpg).
@@ -2228,8 +2252,9 @@ async function detectAllTools() {
     const m = await window.parallxElectron.fs.stat(_toolPath + sep + 'bin' + sep + 'models');
     if (s && !s.error && s.size > 0 && m && !m.error) realesrgan = candidate;
   }
-  _toolPaths = { ffprobe, exiftool, node, ffmpeg, vips, magick, realesrgan };
-  _toolsDetected = true;
+  _toolPaths = { ffprobe, exiftool, node, ffmpeg, vips, magick: magick || prev.magick || null, realesrgan: realesrgan || prev.realesrgan || null };
+  if (ffmpeg && ffprobe) _toolsDetected = true;
+  else _toolsRetryAfter = Date.now() + 30_000;
   if (!ffprobe) console.warn('[MediaOrganizer] ffprobe not found — video metadata will be unavailable');
   if (!exiftool) console.warn('[MediaOrganizer] exiftool not found — EXIF data will be unavailable');
   if (!node) console.warn('[MediaOrganizer] node not found — oshash unavailable, using MD5 only');
@@ -24749,6 +24774,7 @@ function showUpscaleSetupDialog(api) {
   const checkBtn = moEl('button', null, { textContent: 'Check Again' });
   checkBtn.addEventListener('click', async () => {
     _toolsDetected = false;
+    _toolsRetryAfter = 0;
     const ready = await moUpscaleReady();
     if (ready) { overlay.remove(); api.window.showInformationMessage('The upscaler is ready. Choose Upscale on a photo.'); }
     else status.textContent = `Not found yet at ${p.exe}.`;
@@ -28517,6 +28543,8 @@ export function deactivate() {
   if (_statusBarItem) _statusBarItem.dispose();
   _statusBarItem = null;
   _toolsDetected = false;
+  _toolsRetryAfter = 0;
+  _toolsInflight = null;
   _toolPaths = { ffprobe: null, exiftool: null, node: null, ffmpeg: null, vips: null, magick: null, realesrgan: null };
   _thumbDir = null;
   _thumbInflight.clear();
