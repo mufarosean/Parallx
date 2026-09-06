@@ -1,5 +1,5 @@
 // Media Organizer — Parallx Extension
-// Organize photos and videos with tags, albums, and EXIF metadata.
+// Organize photos, GIFs and videos with tags, albums, and EXIF metadata.
 // All data lives in a per-extension isolated SQLite database at
 // <workspace>/.parallx/extensions/media-organizer/data.db.
 //
@@ -36,9 +36,11 @@
 //   24. KEYBOARD SHORTCUTS CHEAT SHEET
 //   25. SIDEBAR VIEW
 //   26. GRID BROWSER EDITOR
+//   26B. HOME FEED, ADD TO CHAT, DROP TO IMPORT
 //   27. DETAIL EDITOR — CORE LAYOUT
 //   28. DETAIL EDITOR — MEDIA PREVIEW
 //   29. DETAIL EDITOR — DETAILS TAB
+//   29B. SIMILAR PHOTOS
 //   30. DETAIL EDITOR — FILE INFO TAB
 //   31. AUTO-ALBUM FROM DIRECTORY STRUCTURE (F31)
 //   32. ALBUM EDITOR VIEW (F32)
@@ -8285,6 +8287,55 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
 .mo-dup-meta { font-size: 11px; opacity: 0.6; }
 .mo-dup-actions { margin-top: 8px; display: flex; justify-content: flex-end; }
 .mo-dup-empty { padding: 24px; text-align: center; opacity: 0.65; }
+
+/* ═══ Home feed (Section 26B) ═══ */
+.mo-home { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--vscode-editor-background, var(--px-bg)); color: var(--vscode-foreground, var(--px-text)); }
+.mo-home-head { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--vscode-panel-border, var(--px-border)); flex-wrap: wrap; }
+.mo-home-title-wrap { display: flex; flex-direction: column; min-width: 0; margin-right: auto; }
+.mo-home-title { font-size: 15px; font-weight: 600; }
+.mo-home-sub { font-size: 11px; opacity: 0.7; }
+.mo-home-chips { display: flex; gap: 4px; }
+.mo-home-chip { border: 1px solid var(--vscode-panel-border, var(--px-border)); background: transparent; color: inherit; border-radius: 999px; padding: 3px 10px; font-size: 11px; cursor: pointer; }
+.mo-home-chip:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
+.mo-home-chip.active { background: var(--vscode-badge-background, var(--px-accent)); color: var(--vscode-badge-foreground, #fff); border-color: transparent; }
+.mo-home-shuffle { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--vscode-panel-border, var(--px-border)); background: transparent; color: inherit; border-radius: var(--parallx-radius-md, 6px); padding: 4px 10px; font-size: 12px; cursor: pointer; }
+.mo-home-shuffle:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
+.mo-home-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+.mo-home-feed { display: flex; gap: 10px; padding: 10px 14px; align-items: flex-start; }
+.mo-home-col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.mo-home-card { position: relative; width: 100%; border-radius: var(--parallx-radius-md, 6px); overflow: hidden; background: var(--vscode-input-background, var(--px-bg-inset)); cursor: pointer; }
+.mo-home-card img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform var(--px-dur-slow, 260ms) var(--px-ease, ease); }
+.mo-home-card:hover img { transform: scale(1.02); }
+.mo-home-card--loading { background: linear-gradient(100deg, var(--px-bg-inset, rgba(128,128,128,0.10)) 30%, var(--px-bg, rgba(128,128,128,0.20)) 50%, var(--px-bg-inset, rgba(128,128,128,0.10)) 70%); background-size: 200% 100%; animation: mo-skeleton-shimmer 1.3s ease-in-out infinite; }
+.mo-home-card--missing { display: flex; align-items: center; justify-content: center; opacity: 0.6; }
+.mo-home-badge { position: absolute; top: 6px; right: 6px; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; letter-spacing: 0.3px; background: rgba(0,0,0,0.6); color: #fff; pointer-events: none; }
+.mo-home-cap { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px 10px 8px; background: linear-gradient(to top, rgba(0,0,0,0.65), rgba(0,0,0,0)); color: #fff; opacity: 0; transition: opacity var(--px-dur-fast, 120ms) var(--px-ease, ease); pointer-events: none; }
+.mo-home-card:hover .mo-home-cap { opacity: 1; }
+.mo-home-cap-title { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mo-home-cap-sub { font-size: 11px; opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mo-home-sentinel { height: 1px; }
+.mo-home-sentinel.is-loading { height: 40px; }
+.mo-home-empty { padding: 40px; text-align: center; opacity: 0.7; font-size: 13px; }
+.mo-drop-import { outline: 2px dashed var(--vscode-focusBorder, var(--px-accent)); outline-offset: -6px; }
+@media (prefers-reduced-motion: reduce) {
+  .mo-home-card img, .mo-home-cap { transition: none; }
+  .mo-home-card:hover img { transform: none; }
+}
+
+/* ═══ Similar photos strip (Section 29B) ═══ */
+.mo-detail-main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.mo-detail-main > .mo-detail-preview { min-height: 0; }
+.mo-similar { flex: 0 0 auto; border-top: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-sideBar-background, var(--px-bg)); padding: 8px 12px 10px; }
+.mo-similar-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+.mo-similar-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; opacity: 0.8; }
+.mo-similar-hint { font-size: 11px; opacity: 0.7; margin-left: auto; }
+.mo-similar-link { background: none; border: none; color: var(--vscode-textLink-foreground, var(--px-accent)); cursor: pointer; font-size: 11px; padding: 0; }
+.mo-similar-link:hover { text-decoration: underline; }
+.mo-similar-row { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+.mo-similar-card { flex: 0 0 auto; width: 128px; height: 96px; border-radius: var(--parallx-radius-sm, 4px); overflow: hidden; background: var(--vscode-input-background, var(--px-bg-inset)); cursor: pointer; border: 1px solid transparent; }
+.mo-similar-card:hover { border-color: var(--vscode-focusBorder, var(--px-accent)); }
+.mo-similar-card img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mo-similar-status { font-size: 11px; opacity: 0.7; }
 `;
 
 function moInjectStyles() {
@@ -9679,8 +9730,10 @@ function renderBrowserSidebar(container, api) {
 
   // Quick Filters
   const { section: qfSection, body: qfBody } = sidebarSection('Quick Filters', 'filter', false);
+  qfBody.appendChild(sidebarItem('home', 'Home', null, () => openGrid('home', 'Home', 'home')));
   qfBody.appendChild(sidebarItem('grid', 'All Media', null, () => openGrid('all', 'All Media')));
   qfBody.appendChild(sidebarItem('image', 'Photos', null, () => openGrid('photos', 'Photos')));
+  qfBody.appendChild(sidebarItem('images', 'GIFs', null, () => openGrid('gifs', 'GIFs', 'images')));
   qfBody.appendChild(sidebarItem('film', 'Videos', null, () => openGrid('videos', 'Videos')));
   qfBody.appendChild(sidebarItem('circle-help', 'Untagged', null, () => openGrid('untagged', 'Untagged')));
   qfBody.appendChild(sidebarItem('star', 'Favorites', null, () => openGrid('favorites', 'Favorites')));
@@ -10851,7 +10904,9 @@ function renderGridBrowser(container, api, input) {
     sortBy: cached?.sortBy ?? 'created_at',
     sortDir: cached?.sortDir ?? 'DESC',
     groupBy: cached?.groupBy ?? _sessionGroupBy,
-    mediaType: cached?.mediaType ?? ((filterType === 'photos' || filterType === 'videos') ? filterType : 'all'),
+    // GIFs are photos whose file is a .gif: the grid runs the photos query
+    // narrowed by kind (see kindFilter in loadPage), so mediaType stays 'photos'.
+    mediaType: cached?.mediaType ?? ((filterType === 'photos' || filterType === 'gifs') ? 'photos' : (filterType === 'videos' ? 'videos' : 'all')),
     displayMode: cached?.displayMode ?? 'grid',
     totalCount: 0,
     items: [],
@@ -11141,6 +11196,7 @@ function renderGridBrowser(container, api, input) {
     if (filterType && filterType !== 'all') {
       let instanceLabel = null;
       if (filterType === 'photos') instanceLabel = 'Photos';
+      else if (filterType === 'gifs') instanceLabel = 'GIFs';
       else if (filterType === 'videos') instanceLabel = 'Videos';
       else if (filterType === 'favorites') instanceLabel = 'Favorites';
       else if (filterType === 'untagged') instanceLabel = 'Untagged';
@@ -11475,7 +11531,7 @@ function renderGridBrowser(container, api, input) {
     const f = state.filters;
     const hasPanelFilters = (f.tagIds && f.tagIds.length) || (f.excludeTagIds && f.excludeTagIds.length)
       || f.ratingMin != null || f.dateFrom || f.dateTo;
-    const baseView = !filterType || filterType === 'all' || filterType === 'photos' || filterType === 'videos';
+    const baseView = !filterType || filterType === 'all' || filterType === 'photos' || filterType === 'gifs' || filterType === 'videos';
 
     // Empty library, or just an empty filtered view?
     let libraryEmpty = false;
@@ -11616,6 +11672,13 @@ function renderGridBrowser(container, api, input) {
   function applyFilterCriteria(alias, where, params, joinParts, filters) {
     const tagTable = alias === 'p' ? 'mo_photos_tags' : 'mo_videos_tags';
     const tagFk = alias === 'p' ? 'photo_id' : 'video_id';
+    // Photos versus GIFs. A GIF is a photo whose primary file is a .gif
+    // (animated WebPs are converted to .gif on scan, so the extension is the
+    // marker). Videos have no kind; the clause only applies to photos.
+    if (filters.kind && alias === 'p') {
+      const gifExists = `EXISTS (SELECT 1 FROM mo_photos_files kpf JOIN mo_files kf ON kf.id = kpf.file_id WHERE kpf.photo_id = p.id AND kpf.is_primary = 1 AND LOWER(kf.basename) LIKE '%.gif')`;
+      where.push(filters.kind === 'gif' ? gifExists : `NOT ${gifExists}`);
+    }
 
     // Tag include via subquery. AND (default): media must have ALL included
     // tags (HAVING COUNT = N). OR: media with ANY included tag (drop the count).
@@ -11953,7 +12016,13 @@ function renderGridBrowser(container, api, input) {
     const parsed = moParseSearchQuery(rawSearch);
 
     // type:photo / type:video temporarily overrides mediaType for this query
-    const effectiveMediaType = parsed.type || state.mediaType;
+    // type:gif is "photos of the GIF kind": the single-type query stays
+    // 'photos' and the kind filter narrows it. The Photos grid shows stills
+    // only; All Media shows everything.
+    const requestedMediaType = parsed.type || state.mediaType;
+    const effectiveMediaType = requestedMediaType === 'gifs' ? 'photos' : requestedMediaType;
+    const kindFilter = requestedMediaType === 'gifs' ? 'gif'
+      : (filterType === 'gifs' ? 'gif' : (filterType === 'photos' ? 'still' : null));
 
     // Search text fed into the legacy LIKE path is only the leftover free text
     // when FTS is NOT used (we'll prefer FTS for free text). Pass empty when FTS is used.
@@ -11969,6 +12038,7 @@ function renderGridBrowser(container, api, input) {
       dateFrom: parsed.dateFrom || state.filters.dateFrom,
       dateTo: parsed.dateTo || state.filters.dateTo,
       tagMatch: state.filters.tagMatch || 'and', // AND (has all) vs OR (has any) for included tags
+      kind: kindFilter, // 'gif' | 'still' | null (photos only; see applyFilterCriteria)
     };
 
     // Merge UI tag filters with parsed tag: operators
@@ -12297,6 +12367,8 @@ function renderGridBrowser(container, api, input) {
 
   // Initialize grid
   cardGrid = renderCardGrid(gridArea, [], refreshOpts());
+  // Files dropped from the OS are imported into the library (Section 26B).
+  moEnableDropImport(gridArea, api);
 
   // M59 P3: respond to smart album save/open commands
   const _smartAlbumReplyHandler = () => {
@@ -12972,9 +13044,10 @@ function renderGridBrowser(container, api, input) {
       if (!primary) return false;
       const fullPath = await moResolveFilePath(primary);
       if (!fullPath) return false;
-      await api.commands.executeCommand('chat.addFileAttachment', {
-        file: { name: primary.basename, fullPath },
-      });
+      // Top-level { name, fullPath } is the shape the command reads (the
+      // explorer and flashcards send the same). The earlier nested
+      // { file: {...} } payload attached nothing.
+      await api.commands.executeCommand('chat.addFileAttachment', { name: primary.basename, fullPath });
       // Mirror moToolViewImage so a follow-up "tag this" via AI resolves to
       // whatever the user attached most recently, regardless of whether the
       // image was attached by AI or by right-click.
@@ -13483,6 +13556,582 @@ function renderGridBrowser(container, api, input) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 26B: HOME FEED, ADD TO CHAT, DROP TO IMPORT
+// ═══════════════════════════════════════════════════════════════════════════════
+// Home is the library as a feed: every photo, GIF and video in one shuffled
+// masonry, tall images tall and wide images wide, in a seeded random order
+// that stays put while you scroll and changes only when you press Shuffle.
+// Click opens the lightbox, double-click opens the editor. It is the
+// Unsplash front page for your own library; the grids stay the place for
+// sorting, filtering and selecting.
+//
+// The same section owns the two doors in and out of the library that every
+// surface shares: Add To Chat (the chat's own attachment pipeline, which
+// turns image files into vision attachments) and drop-to-import (OS files
+// dropped on a grid or on Home are copied into the library and scanned).
+
+/** Session-scoped so returning to Home keeps the order you were scrolling. */
+const _sessionHomeState = { seed: null, kind: 'all' };
+
+/** Absolute path of an item's primary file, or null. Module-level so the
+ *  home feed, the lightbox, the detail editor and chat share one resolver. */
+async function moResolveItemPath(item) {
+  if (!item || (item.type !== 'photo' && item.type !== 'video')) return null;
+  try {
+    const row = item.type === 'photo'
+      ? await db.get(`SELECT f.basename, fo.path AS folder_path FROM mo_photos_files pf JOIN mo_files f ON f.id = pf.file_id JOIN mo_folders fo ON fo.id = f.folder_id WHERE pf.photo_id = ? AND pf.is_primary = 1`, [item.id])
+      : await db.get(`SELECT f.basename, fo.path AS folder_path FROM mo_videos_files vf JOIN mo_files f ON f.id = vf.file_id JOIN mo_folders fo ON fo.id = f.folder_id WHERE vf.video_id = ? AND vf.is_primary = 1`, [item.id]);
+    if (!row) return null;
+    const sep = row.folder_path.includes('\\') ? '\\' : '/';
+    return row.folder_path.replace(/[\\/]+$/, '') + sep + row.basename;
+  } catch { return null; }
+}
+
+/**
+ * Put a file in the chat composer. The chat's own attachment pipeline decides
+ * what it is: image files become vision attachments, everything else a file
+ * attachment. The command reads `{ name, fullPath }` at the top level, the
+ * same shape the explorer and flashcards send.
+ */
+async function moAttachFileToChat(name, fullPath) {
+  if (!_api || !fullPath) return false;
+  try {
+    await _api.commands.executeCommand('chat.addFileAttachment', { name: name || fullPath.split(/[\\/]/).pop(), fullPath });
+    return true;
+  } catch (err) {
+    console.warn('[MediaOrganizer] Add To Chat failed:', err);
+    return false;
+  }
+}
+
+/** Attach one library item. True when something reached the composer. */
+async function moAttachItemToChat(item) {
+  const fullPath = await moResolveItemPath(item);
+  if (!fullPath) return false;
+  const basename = fullPath.split(/[\\/]/).pop();
+  const ok = await moAttachFileToChat(basename, fullPath);
+  if (ok) {
+    // A follow-up "tag this" in chat resolves to whatever was attached last.
+    try { _lastViewedMedia = { type: item.type, id: item.id, basename, viewedAt: Date.now() }; } catch { /* module state optional */ }
+  }
+  return ok;
+}
+
+/** One gesture never floods the composer. */
+const MO_CHAT_ATTACH_MAX = 8;
+
+/** Attach several items, capped, and say what happened. Returns the count. */
+async function moAttachItemsToChat(items) {
+  const all = items || [];
+  const list = all.slice(0, MO_CHAT_ATTACH_MAX);
+  let n = 0;
+  for (const it of list) { if (await moAttachItemToChat(it)) n++; }
+  if (_api) {
+    try {
+      if (n === 0) _api.window.showInformationMessage('Nothing was attached: no file on disk for that selection.');
+      else if (all.length > MO_CHAT_ATTACH_MAX) _api.window.showInformationMessage(`Attached the first ${n} of ${all.length}. Chat takes ${MO_CHAT_ATTACH_MAX} at a time.`);
+      else if (_api.statusBar && _api.statusBar.setMessage) _api.statusBar.setMessage(n === 1 ? 'Attached to chat' : `Attached ${n} to chat`, 2000);
+    } catch { /* messaging is best-effort */ }
+  }
+  return n;
+}
+
+// ── Drop to import ──
+// Dropping files from the OS onto a grid or onto Home copies them into the
+// library's import folder and scans it, so a screenshot or a download is in
+// the library in one gesture. The import folder is "Imports" under the first
+// scan root; with no scan root yet, the user picks a folder once.
+const MO_IMPORT_EXTS = /\.(jpe?g|png|gif|bmp|webp|tiff?|heic|avif|mp4|mov|mkv|webm|avi|m4v|mpe?g)$/i;
+
+async function moPickImportFolder() {
+  const roots = await getScanRoots();
+  const sep = _isWindows ? '\\' : '/';
+  let base = roots.length ? roots[0].path : null;
+  if (!base) {
+    const picked = await window.parallxElectron.dialog.openFolder({ title: 'Choose a folder for imported media' });
+    if (!picked || picked.length === 0) return null;
+    base = picked[0];
+  }
+  const dir = base.replace(/[\\/]+$/, '') + sep + 'Imports';
+  try { await window.parallxElectron.fs.mkdir(dir); } catch { /* already there */ }
+  return dir;
+}
+
+/** Copy dropped OS files into the import folder and scan it. Returns the count copied. */
+async function moImportDroppedFiles(api, fileList) {
+  const files = Array.from(fileList || []).filter((f) => f && f.path && MO_IMPORT_EXTS.test(f.name || f.path));
+  if (files.length === 0) {
+    try { api.window.showInformationMessage('Nothing to import: drop image or video files.'); } catch { /* ignore */ }
+    return 0;
+  }
+  const dir = await moPickImportFolder();
+  if (!dir) return 0;
+  const sep = _isWindows ? '\\' : '/';
+  let copied = 0;
+  for (const f of files) {
+    const base = f.name || f.path.split(/[\\/]/).pop();
+    let dest = dir + sep + base;
+    try {
+      if (await window.parallxElectron.fs.exists(dest)) {
+        const dot = base.lastIndexOf('.');
+        const stem = dot > 0 ? base.slice(0, dot) : base;
+        const ext = dot > 0 ? base.slice(dot) : '';
+        dest = `${dir}${sep}${stem} (${Date.now().toString(36)})${ext}`;
+      }
+      const r = await window.parallxElectron.fs.copy(f.path, dest);
+      if (r && r.error) throw new Error(r.error.message || String(r.error));
+      copied++;
+    } catch (err) {
+      console.warn('[MediaOrganizer] import copy failed:', err);
+    }
+  }
+  if (copied > 0) {
+    try { api.window.showInformationMessage(`Imported ${copied} file${copied === 1 ? '' : 's'} into ${dir}`); } catch { /* ignore */ }
+    try { await runScan(dir, api); } catch (err) { console.warn('[MediaOrganizer] import scan failed:', err); }
+  } else {
+    try { api.window.showWarningMessage('The files could not be copied into the library.'); } catch { /* ignore */ }
+  }
+  return copied;
+}
+
+/** Let an element take OS file drops as imports. Library-internal drags
+ *  (cards, tags) carry their own types and keep their own handlers. */
+function moEnableDropImport(el, api) {
+  const isExternal = (dt) => {
+    if (!dt) return false;
+    const types = Array.from(dt.types || []);
+    return types.includes('Files') && !types.includes('application/x-mo-items') && !types.includes('application/x-mo-tag');
+  };
+  el.addEventListener('dragover', (e) => {
+    if (!isExternal(e.dataTransfer)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    el.classList.add('mo-drop-import');
+  });
+  el.addEventListener('dragleave', (e) => {
+    if (e.relatedTarget && el.contains(e.relatedTarget)) return;
+    el.classList.remove('mo-drop-import');
+  });
+  el.addEventListener('drop', (e) => {
+    el.classList.remove('mo-drop-import');
+    if (!isExternal(e.dataTransfer)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    void moImportDroppedFiles(api, e.dataTransfer.files);
+  });
+}
+
+// ── Home feed ──
+
+function moHomeDuration(sec) {
+  const s = Math.max(0, Math.round(Number(sec) || 0));
+  const m = Math.floor(s / 60);
+  const h = Math.floor(m / 60);
+  const mm = m % 60;
+  const ss = s % 60;
+  return h > 0 ? `${h}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}` : `${mm}:${String(ss).padStart(2, '0')}`;
+}
+
+/**
+ * The feed order. SQL lists every non-trashed primary item of the kind (ids
+ * only, cheap even for a large library); JavaScript sorts them by a seeded
+ * 32-bit hash of the id, so the order is random, fixed for a seed (pages
+ * never overlap, and an import slots new items in without reshuffling the
+ * rest), and genuinely different for another seed (Shuffle shuffles).
+ * SQLite cannot do this itself: it has no XOR, and additive seeds inside a
+ * modulus only rotate one fixed order. Details are fetched per page.
+ */
+function moMix32(x) {
+  x ^= x >>> 16;
+  x = Math.imul(x, 0x85ebca6b);
+  x ^= x >>> 13;
+  x = Math.imul(x, 0xc2b2ae35);
+  x ^= x >>> 16;
+  return x >>> 0;
+}
+function moHomeOrderKey(type, id, seed) {
+  const base = ((type === 'video' ? 0x40000000 : 0) + (id >>> 0)) >>> 0;
+  return moMix32((Math.imul(base, 0x9E3779B1) ^ (seed >>> 0)) >>> 0);
+}
+/** [{ media_type, id }] -> [{ type, id }] in feed order for the seed. */
+function moHomeOrderedKeys(rows, seed) {
+  return (rows || [])
+    .map((r) => ({ type: r.media_type, id: r.id, k: moHomeOrderKey(r.media_type, r.id, seed) }))
+    .sort((a, b) => a.k - b.k || a.id - b.id)
+    .map((x) => ({ type: x.type, id: x.id }));
+}
+/** SQL (no params): the ids of everything the feed may show for a kind. */
+function buildHomeIdsQuery(kind) {
+  const gifExists = `EXISTS (SELECT 1 FROM mo_photos_files kpf JOIN mo_files kf ON kf.id = kpf.file_id WHERE kpf.photo_id = p.id AND kpf.is_primary = 1 AND LOWER(kf.basename) LIKE '%.gif')`;
+  const photoWhere = [
+    'p.deleted_at IS NULL',
+    `NOT EXISTS (SELECT 1 FROM mo_stack_members sm WHERE sm.member_type = 'photo' AND sm.member_id = p.id AND sm.role <> 'primary')`,
+  ];
+  if (kind === 'photos') photoWhere.push(`NOT ${gifExists}`);
+  if (kind === 'gifs') photoWhere.push(gifExists);
+  const videoWhere = [
+    'v.deleted_at IS NULL',
+    `NOT EXISTS (SELECT 1 FROM mo_stack_members sm WHERE sm.member_type = 'video' AND sm.member_id = v.id AND sm.role <> 'primary')`,
+  ];
+  const photos = `SELECT 'photo' AS media_type, p.id AS id FROM mo_photos p WHERE ${photoWhere.join(' AND ')}`;
+  const videos = `SELECT 'video' AS media_type, v.id AS id FROM mo_videos v WHERE ${videoWhere.join(' AND ')}`;
+  if (kind === 'videos') return videos;
+  if (kind === 'photos' || kind === 'gifs') return photos;
+  return `${photos} UNION ALL ${videos}`;
+}
+/** SQL + params: the feed's row shape (dimensions, kind flag, photographer) for ids of one type. */
+function buildHomeDetailsQuery(type, ids) {
+  const ph = ids.map(() => '?').join(',');
+  if (type === 'video') {
+    const w = `(SELECT vf2.width FROM mo_videos_files dvf JOIN mo_video_files vf2 ON vf2.file_id = dvf.file_id WHERE dvf.video_id = v.id AND dvf.is_primary = 1 LIMIT 1)`;
+    const h = `(SELECT vf2.height FROM mo_videos_files dvf JOIN mo_video_files vf2 ON vf2.file_id = dvf.file_id WHERE dvf.video_id = v.id AND dvf.is_primary = 1 LIMIT 1)`;
+    return {
+      sql: `SELECT 'video' AS media_type, v.id, v.title, v.rating, v.color_label, v.created_at, NULL AS taken_at, v.duration, NULL AS photographer, ${w} AS width, ${h} AS height, 0 AS is_gif FROM mo_videos v WHERE v.id IN (${ph})`,
+      params: ids,
+    };
+  }
+  const gifExists = `EXISTS (SELECT 1 FROM mo_photos_files kpf JOIN mo_files kf ON kf.id = kpf.file_id WHERE kpf.photo_id = p.id AND kpf.is_primary = 1 AND LOWER(kf.basename) LIKE '%.gif')`;
+  const w = `(SELECT i.width FROM mo_photos_files dpf JOIN mo_image_files i ON i.file_id = dpf.file_id WHERE dpf.photo_id = p.id AND dpf.is_primary = 1 LIMIT 1)`;
+  const h = `(SELECT i.height FROM mo_photos_files dpf JOIN mo_image_files i ON i.file_id = dpf.file_id WHERE dpf.photo_id = p.id AND dpf.is_primary = 1 LIMIT 1)`;
+  return {
+    sql: `SELECT 'photo' AS media_type, p.id, p.title, p.rating, p.color_label, p.created_at, p.taken_at, NULL AS duration, p.photographer, ${w} AS width, ${h} AS height, CASE WHEN ${gifExists} THEN 1 ELSE 0 END AS is_gif FROM mo_photos p WHERE p.id IN (${ph})`,
+    params: ids,
+  };
+}
+/** Fetch one page's rows and return them in page order (missing ids are skipped). */
+async function moHomeDetails(page) {
+  const photoIds = page.filter((k) => k.type === 'photo').map((k) => k.id);
+  const videoIds = page.filter((k) => k.type === 'video').map((k) => k.id);
+  const byKey = new Map();
+  if (photoIds.length) {
+    const q = buildHomeDetailsQuery('photo', photoIds);
+    for (const r of await db.all(q.sql, q.params)) byKey.set(`photo:${r.id}`, r);
+  }
+  if (videoIds.length) {
+    const q = buildHomeDetailsQuery('video', videoIds);
+    for (const r of await db.all(q.sql, q.params)) byKey.set(`video:${r.id}`, r);
+  }
+  const out = [];
+  for (const k of page) { const r = byKey.get(`${k.type}:${k.id}`); if (r) out.push(r); }
+  return out;
+}
+
+function renderHomeFeed(container, api, input) {
+  moInjectStyles();
+  const root = moEl('div', 'mo-home');
+  container.appendChild(root);
+  if (_sessionHomeState.seed == null) _sessionHomeState.seed = Math.floor(Math.random() * 2147483647);
+
+  const PAGE = 48;
+  const COL_MIN = 260;
+  const GAP = 10;
+  let kind = _sessionHomeState.kind || 'all';
+  let seed = _sessionHomeState.seed;
+  let offset = 0;
+  let loading = false;
+  let exhausted = false;
+  let disposed = false;
+  let items = [];
+  let order = null; // [{ type, id }] in feed order for this seed and kind
+
+  // Header: title, kind chips, Shuffle.
+  const head = moEl('div', 'mo-home-head');
+  const titleWrap = moEl('div', 'mo-home-title-wrap');
+  titleWrap.appendChild(moEl('div', 'mo-home-title', { textContent: 'Home' }));
+  titleWrap.appendChild(moEl('div', 'mo-home-sub', { textContent: 'Everything in your library, shuffled. Click to view, double-click to edit, drop files to import.' }));
+  head.appendChild(titleWrap);
+  const chips = moEl('div', 'mo-home-chips');
+  const chipEls = new Map();
+  for (const [k, label] of [['all', 'All'], ['photos', 'Photos'], ['gifs', 'GIFs'], ['videos', 'Videos']]) {
+    const b = moEl('button', `mo-home-chip${k === kind ? ' active' : ''}`, { textContent: label, type: 'button' });
+    b.addEventListener('click', () => {
+      if (kind === k) return;
+      kind = k;
+      _sessionHomeState.kind = k;
+      for (const [kk, el] of chipEls) el.classList.toggle('active', kk === k);
+      restart();
+    });
+    chips.appendChild(b);
+    chipEls.set(k, b);
+  }
+  head.appendChild(chips);
+  const shuffleBtn = moEl('button', 'mo-home-shuffle', { type: 'button', title: 'Shuffle the feed into a new order' });
+  shuffleBtn.innerHTML = moIcon('shuffle', 14) + '<span>Shuffle</span>';
+  shuffleBtn.addEventListener('click', () => {
+    seed = Math.floor(Math.random() * 2147483647);
+    _sessionHomeState.seed = seed;
+    restart();
+  });
+  head.appendChild(shuffleBtn);
+  root.appendChild(head);
+
+  // Feed: JS masonry. N columns; each new card goes to the shortest column,
+  // so appending a page never reflows what is already on screen. Column
+  // count follows the pane width; when it changes, everything is re-placed.
+  const scroller = moEl('div', 'mo-home-scroll');
+  root.appendChild(scroller);
+  const feed = moEl('div', 'mo-home-feed');
+  scroller.appendChild(feed);
+  const empty = moEl('div', 'mo-home-empty');
+  empty.style.display = 'none';
+  scroller.appendChild(empty);
+  const sentinel = moEl('div', 'mo-home-sentinel');
+  scroller.appendChild(sentinel);
+
+  let columns = [];
+  let colCount = 0;
+  function desiredColumns() {
+    const w = feed.clientWidth || scroller.clientWidth || 900;
+    return Math.max(1, Math.min(6, Math.floor((w + GAP) / (COL_MIN + GAP))));
+  }
+  function buildColumns(n) {
+    feed.innerHTML = '';
+    columns = [];
+    colCount = n;
+    for (let i = 0; i < n; i++) {
+      const col = moEl('div', 'mo-home-col');
+      feed.appendChild(col);
+      columns.push({ el: col, height: 0 });
+    }
+  }
+  function ratioOf(item) {
+    const w = Number(item.width);
+    const h = Number(item.height);
+    if (w > 0 && h > 0) return Math.max(0.4, Math.min(3, w / h));
+    return item.type === 'video' ? 16 / 9 : 4 / 3;
+  }
+  function place(card, item) {
+    let best = columns[0];
+    for (const c of columns) if (c.height < best.height) best = c;
+    best.el.appendChild(card);
+    best.height += 1 / ratioOf(item) + 0.04; // height per unit of column width
+  }
+  function relayout() {
+    if (disposed) return;
+    const n = desiredColumns();
+    if (n === colCount) return;
+    buildColumns(n);
+    for (const it of items) if (it._card) place(it._card, it);
+  }
+
+  const thumbObserver = ('IntersectionObserver' in window) ? new IntersectionObserver((entries, obs) => {
+    for (const en of entries) {
+      if (!en.isIntersecting) continue;
+      obs.unobserve(en.target);
+      void loadThumb(en.target, en.target._moItem);
+    }
+  }, { root: scroller, rootMargin: '600px 0px', threshold: 0.01 }) : null;
+
+  async function loadThumb(card, item) {
+    try {
+      const cached = _moRecallThumb(item.type, item.id);
+      let display = cached ? (cached.sourcePath || cached.thumbnailPath) : null;
+      if (cached && (cached.originalPath || cached.sourcePath)) card._filePath = cached.originalPath || cached.sourcePath;
+      if (!display) {
+        const r = await resolveThumbnail(item.type, item.id, api);
+        if (r && (r.path || r.sourcePath)) {
+          _moRememberThumb(item.type, item.id, { thumbnailPath: r.path || null, sourcePath: r.sourcePath || null, originalPath: r.originalPath || null });
+          display = r.sourcePath || r.path;
+          card._filePath = r.originalPath || r.sourcePath || null;
+        }
+      }
+      if (disposed) return;
+      if (display) {
+        setThumbImgSrc(card._img, display, { onPlaceholderRemove: () => card.classList.remove('mo-home-card--loading') });
+      } else {
+        card.classList.remove('mo-home-card--loading');
+        card.classList.add('mo-home-card--missing');
+        card._img.style.display = 'none';
+        card.appendChild(moEl('div', 'mo-thumb-placeholder', { innerHTML: moIcon(item.type === 'video' ? 'film' : 'image', 28) }));
+      }
+    } catch {
+      card.classList.remove('mo-home-card--loading');
+    }
+  }
+
+  function openDetail(item) {
+    api.editors.openEditor({
+      typeId: 'media-organizer-grid',
+      title: item.title || `${item.type} #${item.id}`,
+      icon: item.type === 'video' ? 'file-media' : 'image',
+      instanceId: `detail:${item.type}:${item.id}`,
+    });
+  }
+  function viewItem(item) {
+    const idx = items.indexOf(item);
+    openLightbox(items, idx >= 0 ? idx : 0, moResolveItemPath);
+  }
+
+  function buildCard(item) {
+    const card = moEl('div', 'mo-home-card mo-home-card--loading');
+    card.style.aspectRatio = String(ratioOf(item));
+    card.dataset.key = `${item.type}:${item.id}`;
+    card.setAttribute('draggable', 'true');
+    const img = moEl('img');
+    img.alt = item.title || '';
+    img.draggable = false;
+    img.loading = 'lazy';
+    img.addEventListener('load', () => card.classList.remove('mo-home-card--loading'));
+    img.addEventListener('error', () => { card.classList.remove('mo-home-card--loading'); });
+    card.appendChild(img);
+    card._img = img;
+    card._moItem = item;
+    item._card = card;
+    if (item.type === 'video') {
+      card.appendChild(moEl('span', 'mo-home-badge', { textContent: moHomeDuration(item.duration) }));
+    } else if (item.isGif) {
+      card.appendChild(moEl('span', 'mo-home-badge', { textContent: 'GIF' }));
+    }
+    const title = item.title || '';
+    const who = item.photographer || '';
+    if (title || who) {
+      const cap = moEl('div', 'mo-home-cap');
+      if (title) cap.appendChild(moEl('div', 'mo-home-cap-title', { textContent: title }));
+      if (who) cap.appendChild(moEl('div', 'mo-home-cap-sub', { textContent: who }));
+      card.appendChild(cap);
+    }
+    // Click views, double-click edits. The click waits so a double-click does
+    // not also open the lightbox underneath the editor.
+    let clickTimer = null;
+    card.addEventListener('click', () => {
+      if (clickTimer) return;
+      clickTimer = setTimeout(() => { clickTimer = null; viewItem(item); }, 220);
+    });
+    card.addEventListener('dblclick', () => {
+      if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
+      openDetail(item);
+    });
+    card.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      showContextMenu(e.clientX, e.clientY, [
+        { label: 'View Full Size', handler: () => viewItem(item) },
+        { label: 'Edit Details', handler: () => openDetail(item) },
+        { label: 'Add To Chat', handler: () => { void moAttachItemsToChat([item]); } },
+        { separator: true },
+        { label: 'Open File Location', handler: async () => {
+          const fp = await moResolveItemPath(item);
+          if (fp && window.parallxElectron?.shell?.showItemInFolder) window.parallxElectron.shell.showItemInFolder(fp);
+        } },
+      ]);
+    });
+    // Drag out with the same payload the grid cards carry, so the chat
+    // composer and canvas pages accept a card from Home too.
+    card.addEventListener('dragstart', (e) => {
+      if (!e.dataTransfer) return;
+      e.dataTransfer.effectAllowed = 'copy';
+      e.dataTransfer.setData('application/x-mo-items', JSON.stringify([`${item.type}:${item.id}`]));
+      const fp = card._filePath;
+      if (fp) {
+        try { e.dataTransfer.setData('text/uri-list', 'file:///' + encodeURI(fp.replace(/\\/g, '/'))); } catch { /* ignore */ }
+        try { e.dataTransfer.setData('text/plain', fp); } catch { /* ignore */ }
+      }
+    });
+    if (thumbObserver) thumbObserver.observe(card);
+    else void loadThumb(card, item);
+    return card;
+  }
+
+  function rowToItem(r) {
+    return {
+      type: r.media_type,
+      id: r.id,
+      title: r.title,
+      rating: r.rating,
+      colorLabel: r.color_label || null,
+      createdAt: r.created_at,
+      takenAt: r.taken_at || null,
+      duration: r.duration || null,
+      photographer: r.photographer || null,
+      width: r.width || null,
+      height: r.height || null,
+      isGif: !!r.is_gif,
+      thumbnailPath: null,
+      thumbnailStatus: 'pending',
+    };
+  }
+
+  async function loadMore() {
+    if (loading || exhausted || disposed) return;
+    loading = true;
+    sentinel.classList.add('is-loading');
+    try {
+      if (!order) {
+        const ids = await db.all(buildHomeIdsQuery(kind));
+        if (disposed) return;
+        order = moHomeOrderedKeys(ids, seed);
+      }
+      const page = order.slice(offset, offset + PAGE);
+      const rows = page.length ? await moHomeDetails(page) : [];
+      if (disposed) return;
+      if (!rows || rows.length === 0) {
+        exhausted = true;
+        if (items.length === 0) {
+          empty.textContent = kind === 'all'
+            ? 'Your library is empty. Drop files here or scan a folder to begin.'
+            : 'Nothing of that kind in the library yet.';
+          empty.style.display = '';
+        }
+        return;
+      }
+      offset += page.length;
+      if (offset >= order.length) exhausted = true;
+      if (colCount === 0) buildColumns(desiredColumns());
+      for (const r of rows) {
+        const it = rowToItem(r);
+        items.push(it);
+        place(buildCard(it), it);
+      }
+    } catch (err) {
+      console.error('[MO-Home] load failed:', err);
+      exhausted = true;
+    } finally {
+      loading = false;
+      sentinel.classList.remove('is-loading');
+    }
+    // Tall panes: keep loading until the sentinel is below the fold.
+    if (!exhausted && scroller.scrollHeight <= scroller.clientHeight + 200) void loadMore();
+  }
+  function restart() {
+    items = [];
+    order = null;
+    offset = 0;
+    exhausted = false;
+    empty.style.display = 'none';
+    buildColumns(desiredColumns());
+    scroller.scrollTop = 0;
+    void loadMore();
+  }
+
+  const moreObserver = ('IntersectionObserver' in window)
+    ? new IntersectionObserver((entries) => { for (const en of entries) if (en.isIntersecting) void loadMore(); }, { root: scroller, rootMargin: '900px 0px' })
+    : null;
+  if (moreObserver) moreObserver.observe(sentinel);
+  const resizeObs = ('ResizeObserver' in window) ? new ResizeObserver(() => relayout()) : null;
+  if (resizeObs) resizeObs.observe(feed);
+  moEnableDropImport(root, api);
+  // A scan or an import finished: same order, fresh contents.
+  const onRefresh = () => { if (!disposed) restart(); };
+  document.addEventListener('mo:refresh-grid', onRefresh);
+  restart();
+
+  return {
+    dispose() {
+      disposed = true;
+      if (moreObserver) moreObserver.disconnect();
+      if (thumbObserver) thumbObserver.disconnect();
+      if (resizeObs) resizeObs.disconnect();
+      document.removeEventListener('mo:refresh-grid', onRefresh);
+      container.innerHTML = '';
+    },
+    saveViewState() { return { scrollTop: scroller.scrollTop }; },
+    restoreViewState(state) {
+      const t = state && typeof state.scrollTop === 'number' ? state.scrollTop : 0;
+      if (t > 0) requestAnimationFrame(() => { if (!disposed) scroller.scrollTop = t; });
+    },
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 27: DETAIL EDITOR — CORE LAYOUT
 // ═══════════════════════════════════════════════════════════════════════════════
 // Adapted from stash: ui/v2.5/src/components/Scenes/SceneDetails — detail view layout
@@ -13606,6 +14255,14 @@ function buildDetailHeader(ctx, api, headerEl, callbacks) {
     nextBtn.addEventListener('click', callbacks.onNext);
     actions.appendChild(nextBtn);
   }
+  // Add To Chat: the primary file goes to the chat composer as an attachment
+  // (an image becomes a vision attachment there, a video a file).
+  if (ctx.fullPath) {
+    const chatBtn = moEl('button', 'mo-detail-nav-btn', { title: 'Add To Chat' });
+    chatBtn.innerHTML = moIcon('message-square', 12);
+    chatBtn.addEventListener('click', () => { void moAttachItemsToChat([{ type: ctx.type, id: ctx.entity.id }]); });
+    actions.appendChild(chatBtn);
+  }
   // Toggle sidebar button
   const toggleBtn = moEl('button', 'mo-detail-nav-btn', { title: 'Toggle details panel' });
   toggleBtn.innerHTML = moIcon('panel-right', 12);
@@ -13619,9 +14276,15 @@ function buildDetailHeader(ctx, api, headerEl, callbacks) {
 }
 
 function buildDetailLayout(ctx, api, bodyEl, onRefresh) {
-  // Left: media preview
+  // Left: media preview, with the similar-photos strip beneath it for still
+  // photos. Not for GIFs (no single frame to compare) and not for videos.
+  const main = moEl('div', 'mo-detail-main');
   const preview = buildMediaPreview(ctx);
-  bodyEl.appendChild(preview);
+  main.appendChild(preview);
+  if (ctx.type === 'photo' && !moIsGifPath(ctx.primaryFile && ctx.primaryFile.basename)) {
+    main.appendChild(buildSimilarStrip(ctx, api));
+  }
+  bodyEl.appendChild(main);
 
   // Right: tabbed panel
   const panel = moEl('div', 'mo-detail-panel');
@@ -14711,6 +15374,188 @@ function buildTagAutocomplete(container, getExistingTags, onAdd) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 29B: SIMILAR PHOTOS (the strip under the detail preview)
+// ═══════════════════════════════════════════════════════════════════════════════
+// Under a photo's preview, a row of photos that resemble it: visually (the
+// dHash index from Section 40, ranked by Hamming distance), by shared tags
+// (Jaccard over the two tag sets), and by photographer. Photos only: a GIF
+// or a video has no single frame to compare, so the strip is not built for
+// them, and GIFs never appear as candidates either.
+
+const MO_SIMILAR_LIMIT = 12;
+/** Beyond this Hamming distance a dHash says nothing about resemblance. */
+const MO_SIMILAR_VISUAL_MAX = 20;
+
+function moIsGifPath(p) { return !!p && /\.gif$/i.test(p); }
+
+/** SQL: the photo aliased `alias` has a .gif primary file. */
+function moGifExistsSql(alias) {
+  return `EXISTS (SELECT 1 FROM mo_photos_files gpf JOIN mo_files gf ON gf.id = gpf.file_id WHERE gpf.photo_id = ${alias}.id AND gpf.is_primary = 1 AND LOWER(gf.basename) LIKE '%.gif')`;
+}
+
+/**
+ * Rank the library's photos by resemblance to one photo.
+ * Returns { items, hashed, seedHashed }: the ranked items (photo-shaped, with
+ * a `why`), how many library photos carry a hash, and whether this photo's
+ * own hash could be resolved (computed on demand when ffmpeg is available).
+ */
+async function moFindSimilarPhotos(photoId, limit = MO_SIMILAR_LIMIT) {
+  const scores = new Map();
+  const bump = (id, key, value) => {
+    if (id === photoId) return;
+    const s = scores.get(id) || { visual: 0, tags: 0, photographer: 0 };
+    s[key] = Math.max(s[key], value);
+    scores.set(id, s);
+  };
+  const notGif = `NOT ${moGifExistsSql('p')}`;
+
+  // 1. Visual: dHash distance against every hashed, non-trashed, non-GIF photo.
+  let seed = null;
+  try { seed = await moGetOrComputePhotoPhash(photoId); } catch { seed = null; }
+  let hashedCount = 0;
+  if (seed != null) {
+    const rows = await db.all(`
+      SELECT p.id AS id, imf.phash AS phash
+        FROM mo_photos p
+        JOIN mo_photos_files pf ON pf.photo_id = p.id AND pf.is_primary = 1
+        JOIN mo_image_files imf ON imf.file_id = pf.file_id
+       WHERE imf.phash IS NOT NULL AND p.deleted_at IS NULL AND p.id <> ? AND ${notGif}`, [photoId]);
+    hashedCount = rows.length;
+    for (const r of rows) {
+      const d = moHammingDistance(seed, moSqliteToBigInt(r.phash));
+      if (d <= MO_SIMILAR_VISUAL_MAX) bump(r.id, 'visual', 1 - d / (MO_SIMILAR_VISUAL_MAX + 2));
+    }
+  }
+
+  // 2. Tags: shared count, normalised as Jaccard so a photo with two tags
+  //    that both match outranks one with twelve tags where two match.
+  const mine = await db.get(`SELECT COUNT(*) AS n FROM mo_photos_tags WHERE photo_id = ?`, [photoId]);
+  const myTags = mine ? (mine.n || 0) : 0;
+  if (myTags > 0) {
+    const rows = await db.all(`
+      SELECT pt2.photo_id AS id, COUNT(*) AS shared,
+             (SELECT COUNT(*) FROM mo_photos_tags c WHERE c.photo_id = pt2.photo_id) AS total
+        FROM mo_photos_tags pt1
+        JOIN mo_photos_tags pt2 ON pt2.tag_id = pt1.tag_id AND pt2.photo_id <> pt1.photo_id
+        JOIN mo_photos p ON p.id = pt2.photo_id AND p.deleted_at IS NULL
+       WHERE pt1.photo_id = ? AND ${notGif}
+       GROUP BY pt2.photo_id
+       ORDER BY shared DESC
+       LIMIT 200`, [photoId]);
+    for (const r of rows) {
+      const union = myTags + (r.total || 0) - (r.shared || 0);
+      if (union > 0) bump(r.id, 'tags', (r.shared || 0) / union);
+    }
+  }
+
+  // 3. Photographer.
+  const me = await db.get(`SELECT photographer FROM mo_photos WHERE id = ?`, [photoId]);
+  if (me && me.photographer && me.photographer.trim()) {
+    const rows = await db.all(
+      `SELECT p.id AS id FROM mo_photos p WHERE p.photographer = ? AND p.id <> ? AND p.deleted_at IS NULL AND ${notGif} LIMIT 200`,
+      [me.photographer, photoId],
+    );
+    for (const r of rows) bump(r.id, 'photographer', 1);
+  }
+
+  const ranked = [...scores.entries()]
+    .map(([id, s]) => ({ id, score: 0.6 * s.visual + 0.3 * s.tags + 0.1 * s.photographer, ...s }))
+    .filter((x) => x.score > 0.05)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+  if (ranked.length === 0) return { items: [], hashed: hashedCount, seedHashed: seed != null };
+
+  const ph = ranked.map(() => '?').join(',');
+  const rows = await db.all(`SELECT id, title, photographer FROM mo_photos WHERE id IN (${ph})`, ranked.map((r) => r.id));
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const items = ranked.map((r) => {
+    const row = byId.get(r.id) || {};
+    const why = [];
+    if (r.visual > 0) why.push('looks alike');
+    if (r.tags > 0) why.push('shared tags');
+    if (r.photographer > 0) why.push('same photographer');
+    return {
+      type: 'photo', id: r.id, title: row.title || '', photographer: row.photographer || null,
+      score: r.score, why: why.join(', '), thumbnailPath: null, thumbnailStatus: 'pending',
+    };
+  });
+  return { items, hashed: hashedCount, seedHashed: seed != null };
+}
+
+/** The strip itself. Renders immediately, fills in when the ranking lands. */
+function buildSimilarStrip(ctx, api) {
+  const wrap = moEl('div', 'mo-similar');
+  const head = moEl('div', 'mo-similar-head');
+  head.appendChild(moEl('span', 'mo-similar-title', { textContent: 'Similar Photos' }));
+  const hint = moEl('span', 'mo-similar-hint');
+  head.appendChild(hint);
+  wrap.appendChild(head);
+  const row = moEl('div', 'mo-similar-row');
+  wrap.appendChild(row);
+  const status = moEl('div', 'mo-similar-status', { textContent: 'Looking for similar photos…' });
+  wrap.appendChild(status);
+
+  const openDetail = (it) => api.editors.openEditor({
+    typeId: 'media-organizer-grid',
+    title: it.title || `photo #${it.id}`,
+    icon: 'image',
+    instanceId: `detail:photo:${it.id}`,
+  });
+
+  (async () => {
+    let result;
+    try {
+      result = await moFindSimilarPhotos(ctx.entity.id);
+    } catch (err) {
+      console.warn('[MO-Similar] failed:', err);
+      if (wrap.isConnected) status.textContent = 'Could not look for similar photos.';
+      return;
+    }
+    if (!wrap.isConnected) return;
+    // Coverage hint: visual matching only sees hashed photos.
+    try {
+      const cov = await db.get(`SELECT (SELECT COUNT(*) FROM mo_image_files WHERE phash IS NOT NULL) AS hashed, (SELECT COUNT(*) FROM mo_image_files) AS total`);
+      if (wrap.isConnected && cov && cov.total > 0 && cov.hashed < cov.total) {
+        const link = moEl('button', 'mo-similar-link', { type: 'button', textContent: `Build Hashes (${cov.hashed} of ${cov.total} indexed)` });
+        link.title = 'Compute perceptual hashes so visual matches cover the whole library.';
+        link.addEventListener('click', () => api.commands.executeCommand('media-organizer.buildPHashes'));
+        hint.appendChild(link);
+      }
+    } catch { /* the hint is optional */ }
+    if (!wrap.isConnected) return;
+    if (!result.items.length) {
+      status.textContent = result.seedHashed
+        ? 'No similar photos yet. Tags and a photographer help the match.'
+        : 'Visual matching needs ffmpeg for the perceptual hash; tags and photographer still count.';
+      return;
+    }
+    status.remove();
+    for (const it of result.items) {
+      const card = moEl('div', 'mo-similar-card');
+      card.title = (it.title ? `${it.title} · ` : '') + it.why;
+      const img = moEl('img');
+      img.alt = it.title || '';
+      img.draggable = false;
+      img.loading = 'lazy';
+      card.appendChild(img);
+      card._imgEl = img;
+      card.addEventListener('click', () => openDetail(it));
+      card.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        showContextMenu(e.clientX, e.clientY, [
+          { label: 'View Full Size', handler: () => openLightbox(result.items, result.items.indexOf(it), moResolveItemPath) },
+          { label: 'Edit Details', handler: () => openDetail(it) },
+          { label: 'Add To Chat', handler: () => { void moAttachItemsToChat([it]); } },
+        ]);
+      });
+      row.appendChild(card);
+      resolveThumbnailForMiniCard(card, it);
+    }
+  })();
+  return wrap;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 30: DETAIL EDITOR — FILE INFO TAB
 // ═══════════════════════════════════════════════════════════════════════════════
 // Adapted from stash: ui/v2.5/src/components/Shared/DetailItem (definition list pattern)
@@ -15376,6 +16221,10 @@ function openLightbox(items, startIndex, resolveFilePath) {
     }
   });
   bar.append(playBtn, speedDropdown.el);
+  // Add To Chat: the item on screen goes to the chat composer.
+  const chatBtn = moEl('button', null, { textContent: 'Add To Chat', title: 'Attach this file to the chat composer' });
+  chatBtn.addEventListener('click', () => { const it = items[currentIdx]; if (it) void moAttachItemsToChat([it]); });
+  bar.append(chatBtn);
   overlay.appendChild(bar);
 
   // Zoom helpers
@@ -16160,6 +17009,13 @@ function buildSelectionToolbar(container, state, api, refreshFn, applySelectionF
   bar.appendChild(addToAlbumBtn);
 
   // M59 P10 / F15 — Compare button (visible when 2-4 items are selected)
+  const chatBtn = moEl('button', null, { textContent: 'Add To Chat', title: `Attach the selected files to the chat composer (${MO_CHAT_ATTACH_MAX} at a time)` });
+  chatBtn.addEventListener('click', () => {
+    const items = [...state.selectedIds].map((k) => { const i = k.indexOf(':'); return { type: k.slice(0, i), id: parseInt(k.slice(i + 1), 10) }; });
+    void moAttachItemsToChat(items);
+  });
+  bar.appendChild(chatBtn);
+
   const compareBtn = moEl('button', null, { textContent: 'Compare' });
   compareBtn.addEventListener('click', () => {
     const keys = Array.from(state.selectedIds);
@@ -23528,6 +24384,7 @@ function moParseSearchQuery(input) {
       }
       case 'type':
         if (val === 'photo' || val === 'photos') result.type = 'photos';
+        else if (val === 'gif' || val === 'gifs') result.type = 'gifs';
         else if (val === 'video' || val === 'videos') result.type = 'videos';
         break;
       default:
@@ -25561,9 +26418,9 @@ async function moToolViewImage(args) {
   const fullPath = await moResolveFilePath(primary);
   if (!fullPath) return moToolError(`No primary file path for ${type} ${id}`);
   try {
-    await _api.commands.executeCommand('chat.addFileAttachment', {
-      file: { name: primary.basename, fullPath },
-    });
+    // Top-level { name, fullPath }: the shape the command reads. The earlier
+    // nested { file: {...} } payload attached nothing.
+    await _api.commands.executeCommand('chat.addFileAttachment', { name: primary.basename, fullPath });
   } catch (err) {
     return moToolError(`Failed to attach image: ${err && err.message ? err.message : String(err)}`);
   }
@@ -26642,6 +27499,9 @@ export async function activate(api, context) {
 
   // Register scan command
   _commandDisposables.push(
+    api.commands.registerCommand('media-organizer.openHome', () => {
+      api.editors.openEditor({ typeId: 'media-organizer-grid', title: 'Home', icon: 'home', instanceId: 'grid:home' });
+    }),
     api.commands.registerCommand('media-organizer.scan', async () => {
       const result = await window.parallxElectron.dialog.openFolder({
         title: 'Select folder to scan',
@@ -26718,6 +27578,9 @@ export async function activate(api, context) {
     api.editors.registerEditorProvider('media-organizer-grid', {
       createEditorPane(container, input) {
         const inputId = (input && (input.instanceId || input.id)) || '';
+        if (inputId === 'grid:home') {
+          return renderHomeFeed(container, api, input);
+        }
         if (inputId.startsWith('detail:')) {
           return renderDetailEditor(container, api, input);
         }
