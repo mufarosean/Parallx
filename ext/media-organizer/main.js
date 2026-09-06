@@ -50,6 +50,7 @@
 //   36. BULK OPERATIONS (F33, F34)
 //   37. M59 PHASE 1 — CLIP/GIF EXPORT, FRAME CAPTURE, WEBP CONVERSION
 //   38. GIF OPTIMIZER — target-size re-encode for existing GIFs
+//   38B. UPSCALE (Real-ESRGAN ncnn-vulkan)
 //   39. SEARCH (FTS5) + QUERY PARSER + SMART ALBUMS — M59 P3
 //   40. PERCEPTUAL HASH (dHash 64-bit) — M59 P3
 //   41. STACKS + TRASH — M59 P5
@@ -2110,7 +2111,7 @@ const SCAN_DEFAULTS = {
 // ═══════════════════════════════════════════════════════════════════════════════
 // Adapted from stash: pkg/manager/manager.go — external binary detection
 
-let _toolPaths = { ffprobe: null, exiftool: null, node: null, ffmpeg: null, vips: null, magick: null };
+let _toolPaths = { ffprobe: null, exiftool: null, node: null, ffmpeg: null, vips: null, magick: null, realesrgan: null };
 let _toolsDetected = false;
 
 const _isWindows = window.parallxElectron.platform === 'win32';
@@ -2215,7 +2216,19 @@ async function detectAllTools() {
     if (s && !s.error && s.size > 0) magick = candidate;
   }
 
-  _toolPaths = { ffprobe, exiftool, node, ffmpeg, vips, magick };
+  // Bundled Real-ESRGAN (ncnn-vulkan), the upscaler (Section 38B). Same rule
+  // as magick: <toolPath>/bin/realesrgan-ncnn-vulkan.exe with a models folder
+  // beside it, fetched once by bin/get-realesrgan.ps1. Never a PATH lookup.
+  let realesrgan = null;
+  if (_toolPath) {
+    const sep = _isWindows ? '\\' : '/';
+    const exe = _isWindows ? '.exe' : '';
+    const candidate = _toolPath + sep + 'bin' + sep + 'realesrgan-ncnn-vulkan' + exe;
+    const s = await window.parallxElectron.fs.stat(candidate);
+    const m = await window.parallxElectron.fs.stat(_toolPath + sep + 'bin' + sep + 'models');
+    if (s && !s.error && s.size > 0 && m && !m.error) realesrgan = candidate;
+  }
+  _toolPaths = { ffprobe, exiftool, node, ffmpeg, vips, magick, realesrgan };
   _toolsDetected = true;
   if (!ffprobe) console.warn('[MediaOrganizer] ffprobe not found — video metadata will be unavailable');
   if (!exiftool) console.warn('[MediaOrganizer] exiftool not found — EXIF data will be unavailable');
@@ -13170,6 +13183,8 @@ function renderGridBrowser(container, api, input) {
           }
           showOptimizeGifDialog([{ path: fp, item }], api, () => loadPage());
         }});
+        // Upscale (Section 38B): still photos only; the dialog says why a GIF is left out.
+        actions.push({ label: 'Upscale…', handler: () => { void moUpscaleItems([item], api, () => loadPage()); } });
       }
       actions.push({ separator: true });
       actions.push({ label: 'Open File Location', handler: async () => {
@@ -13237,6 +13252,10 @@ function renderGridBrowser(container, api, input) {
             : `Attached ${ok} to chat`;
           api.statusBar.setMessage(msg, 2500);
         }
+      }});
+      actions.push({ label: 'Upscale…', handler: () => {
+        const selectedItems = state.items.filter((it) => state.selectedIds.has(`${it.type}:${it.id}`));
+        void moUpscaleItems(selectedItems, api, () => loadPage());
       }});
       // Optimize GIF — resolves selected items, filters to .gif files only
       actions.push({ label: 'Optimize GIFs\u2026', handler: async () => {
@@ -14007,6 +14026,7 @@ function renderHomeFeed(container, api, input) {
         { label: 'View Full Size', handler: () => viewItem(item) },
         { label: 'Edit Details', handler: () => openDetail(item) },
         { label: 'Add To Chat', handler: () => { void moAttachItemsToChat([item]); } },
+        ...(item.type === 'photo' && !item.isGif ? [{ label: 'Upscale…', handler: () => { void moUpscaleItems([item], api, null); } }] : []),
         { separator: true },
         { label: 'Open File Location', handler: async () => {
           const fp = await moResolveItemPath(item);
@@ -14262,6 +14282,13 @@ function buildDetailHeader(ctx, api, headerEl, callbacks) {
     chatBtn.innerHTML = moIcon('message-square', 12);
     chatBtn.addEventListener('click', () => { void moAttachItemsToChat([{ type: ctx.type, id: ctx.entity.id }]); });
     actions.appendChild(chatBtn);
+  }
+  // Upscale (Section 38B): still photos only.
+  if (ctx.type === 'photo' && ctx.fullPath && !moIsGifPath(ctx.primaryFile && ctx.primaryFile.basename)) {
+    const upBtn = moEl('button', 'mo-detail-nav-btn', { title: 'Upscale' });
+    upBtn.innerHTML = moIcon('wand-sparkles', 12);
+    upBtn.addEventListener('click', () => { void moUpscaleItems([{ type: 'photo', id: ctx.entity.id }], api, null); });
+    actions.appendChild(upBtn);
   }
   // Toggle sidebar button
   const toggleBtn = moEl('button', 'mo-detail-nav-btn', { title: 'Toggle details panel' });
@@ -16224,7 +16251,9 @@ function openLightbox(items, startIndex, resolveFilePath) {
   // Add To Chat: the item on screen goes to the chat composer.
   const chatBtn = moEl('button', null, { textContent: 'Add To Chat', title: 'Attach this file to the chat composer' });
   chatBtn.addEventListener('click', () => { const it = items[currentIdx]; if (it) void moAttachItemsToChat([it]); });
-  bar.append(chatBtn);
+  const upscaleBtn = moEl('button', null, { textContent: 'Upscale…', title: 'Upscale this photo with Real-ESRGAN. The original is never changed.' });
+  upscaleBtn.addEventListener('click', () => { const it = items[currentIdx]; if (it && _api) void moUpscaleItems([it], _api, null); });
+  bar.append(chatBtn, upscaleBtn);
   overlay.appendChild(bar);
 
   // Zoom helpers
@@ -17015,6 +17044,13 @@ function buildSelectionToolbar(container, state, api, refreshFn, applySelectionF
     void moAttachItemsToChat(items);
   });
   bar.appendChild(chatBtn);
+
+  const upscaleBtn = moEl('button', null, { textContent: 'Upscale…', title: 'Upscale the selected photos with Real-ESRGAN. Originals are never changed.' });
+  upscaleBtn.addEventListener('click', () => {
+    const items = [...state.selectedIds].map((k) => { const i = k.indexOf(':'); return { type: k.slice(0, i), id: parseInt(k.slice(i + 1), 10) }; });
+    void moUpscaleItems(items, api, () => { if (typeof refreshFn === 'function') refreshFn(); });
+  });
+  bar.appendChild(upscaleBtn);
 
   const compareBtn = moEl('button', null, { textContent: 'Compare' });
   compareBtn.addEventListener('click', () => {
@@ -24213,6 +24249,372 @@ async function moSetSetting(key, value) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 38B: UPSCALE (Real-ESRGAN ncnn-vulkan)
+// ═══════════════════════════════════════════════════════════════════════════════
+// One action, Upscale, on still photos. The bundled realesrgan-ncnn-vulkan
+// binary (bin/realesrgan-ncnn-vulkan.exe with its models folder, fetched
+// once by bin/get-realesrgan.ps1 because the app never downloads programs
+// itself) writes a 2x or 4x PNG beside the original. The new file is
+// ingested through the same processFile path a scan uses and stacked under
+// the original so the grid keeps one card. GIFs and videos are never
+// upscaled. Originals are never touched.
+
+const MO_UPSCALE_EXE = 'realesrgan-ncnn-vulkan';
+const MO_UPSCALE_MODELS = {
+  photo: { name: 'realesrgan-x4plus', label: 'Photo' },
+  art: { name: 'realesrgan-x4plus-anime', label: 'Art And Anime' },
+};
+/** Output pixels above this are refused: a 4x of a 25 MP photo is 400 MP. */
+const MO_UPSCALE_MAX_OUTPUT_PIXELS = 120e6;
+/** Per file. A 5090 needs seconds; a laptop GPU can need minutes. */
+const MO_UPSCALE_TIMEOUT_MS = 10 * 60 * 1000;
+
+function moUpscaleToolPaths() {
+  const sep = _isWindows ? '\\' : '/';
+  const bin = (_toolPath || '') + sep + 'bin';
+  return {
+    bin,
+    exe: bin + sep + MO_UPSCALE_EXE + (_isWindows ? '.exe' : ''),
+    modelsDir: bin + sep + 'models',
+    script: bin + sep + 'get-realesrgan.ps1',
+  };
+}
+
+/** Is the upscaler installed? Detected with the other tools (detectAllTools). */
+async function moUpscaleReady() {
+  await detectAllTools();
+  return !!_toolPaths.realesrgan;
+}
+
+/** "photo.jpg" -> "photo-2x.png"; n > 1 adds " (n)" before the extension. */
+function moUpscaleOutputName(basename, scale, n = 1) {
+  const dot = basename.lastIndexOf('.');
+  const stem = dot > 0 ? basename.slice(0, dot) : basename;
+  return `${stem}-${scale}x${n > 1 ? ` (${n})` : ''}.png`;
+}
+
+/** Refuse a job that would produce an absurd file. Unknown dimensions pass. */
+function moUpscaleGuard(width, height, scale) {
+  const w = Number(width);
+  const h = Number(height);
+  if (!(w > 0 && h > 0)) return { ok: true, outputPixels: null };
+  const outputPixels = w * scale * h * scale;
+  return { ok: outputPixels <= MO_UPSCALE_MAX_OUTPUT_PIXELS, outputPixels };
+}
+
+/** The shell line. Paths go through the same quoting as every other tool here. */
+function moBuildUpscaleCommand(exe, modelsDir, input, output, modelName, scale) {
+  const s = scale === 4 ? 4 : 2;
+  const known = Object.values(MO_UPSCALE_MODELS).some((m) => m.name === modelName);
+  const model = known ? modelName : MO_UPSCALE_MODELS.photo.name;
+  return `${shellInvoke(exe)} -i ${shellQuote(input)} -o ${shellQuote(output)} -n ${model} -s ${s} -m ${shellQuote(modelsDir)} -f png`;
+}
+
+async function moUpscaleUniqueOutputPath(srcPath, scale) {
+  const sep = srcPath.includes('\\') ? '\\' : '/';
+  const dir = srcPath.slice(0, srcPath.lastIndexOf(sep));
+  const base = srcPath.slice(srcPath.lastIndexOf(sep) + 1);
+  for (let n = 1; n < 100; n++) {
+    const candidate = dir + sep + moUpscaleOutputName(base, scale, n);
+    if (!(await window.parallxElectron.fs.exists(candidate))) return candidate;
+  }
+  return null;
+}
+
+/** Ingest a freshly written file exactly as a scan would (file row,
+ *  fingerprints, metadata, photo entity, thumbnail). Returns the photo or null. */
+async function moIngestNewImage(fullPath) {
+  const sep = fullPath.includes('\\') ? '\\' : '/';
+  const dir = fullPath.slice(0, fullPath.lastIndexOf(sep));
+  const name = fullPath.slice(fullPath.lastIndexOf(sep) + 1);
+  const st = await window.parallxElectron.fs.stat(fullPath);
+  if (!st || st.error) return null;
+  const folder = await FolderQueries.findOrCreate(dir);
+  const result = await processFile({ path: fullPath, name, size: st.size, mtime: st.mtime, fileType: 'image', folderId: folder.id });
+  if (!result || !result.fileId) return null;
+  return await PhotoQueries.findByFileId(result.fileId);
+}
+
+/** Put `member` under `primary` in a stack, creating the stack if needed. */
+async function moStackUnder(primary, member) {
+  await db.run(
+    `INSERT INTO mo_stacks (primary_type, primary_id) VALUES (?, ?)
+     ON CONFLICT(primary_type, primary_id) DO UPDATE SET updated_at = datetime('now')`,
+    [primary.type, primary.id],
+  );
+  const stack = await db.get('SELECT id FROM mo_stacks WHERE primary_type = ? AND primary_id = ?', [primary.type, primary.id]);
+  if (!stack) throw new Error('Could not create the stack');
+  await db.run(
+    `INSERT OR IGNORE INTO mo_stack_members (stack_id, member_type, member_id, role, position) VALUES (?, ?, ?, 'primary', 0)`,
+    [stack.id, primary.type, primary.id],
+  );
+  const pos = await db.get('SELECT COALESCE(MAX(position), 0) + 1 AS next FROM mo_stack_members WHERE stack_id = ?', [stack.id]);
+  await db.run(
+    `INSERT OR IGNORE INTO mo_stack_members (stack_id, member_type, member_id, role, position) VALUES (?, ?, ?, 'member', ?)`,
+    [stack.id, member.type, member.id, pos ? pos.next : 1],
+  );
+}
+
+/** Items -> targets: still photos with a file on disk, plus their dimensions. */
+async function moUpscaleTargets(items) {
+  const targets = [];
+  const skipped = { notPhoto: 0, gif: 0, noFile: 0 };
+  for (const it of items || []) {
+    if (!it || it.type !== 'photo') { skipped.notPhoto++; continue; }
+    const files = await PhotoQueries.loadFiles(it.id);
+    const primary = (files || []).find((f) => f.isPrimary) || (files || [])[0];
+    if (!primary) { skipped.noFile++; continue; }
+    const fullPath = await moResolveFilePath(primary);
+    if (!fullPath) { skipped.noFile++; continue; }
+    if (moIsGifPath(fullPath)) { skipped.gif++; continue; }
+    let dims = null;
+    try { dims = await ImageFileQueries.findByFileId(primary.id); } catch { dims = null; }
+    targets.push({ item: it, path: fullPath, basename: primary.basename, width: dims ? dims.width : null, height: dims ? dims.height : null });
+  }
+  return { targets, skipped };
+}
+
+/** The entry point every surface calls. */
+async function moUpscaleItems(items, api, onComplete) {
+  if (!(await moUpscaleReady())) { showUpscaleSetupDialog(api); return; }
+  const { targets, skipped } = await moUpscaleTargets(items);
+  if (targets.length === 0) {
+    const why = skipped.gif ? 'GIFs are not upscaled.' : (skipped.notPhoto ? 'Only photos can be upscaled.' : 'No file on disk for that selection.');
+    api.window.showInformationMessage(`Nothing to upscale. ${why}`);
+    return;
+  }
+  showUpscaleDialog(targets, skipped, api, onComplete);
+}
+
+function showUpscaleDialog(targets, skipped, api, onComplete) {
+  const overlay = moEl('div', 'mo-bulk-dialog-overlay');
+  const dialog = moEl('div', 'mo-bulk-dialog');
+  dialog.setAttribute('role', 'dialog');
+  dialog.setAttribute('aria-modal', 'true');
+  dialog.setAttribute('aria-label', 'Upscale');
+  overlay.appendChild(dialog);
+  const count = targets.length;
+  dialog.appendChild(moEl('h3', null, { textContent: `Upscale ${count} Photo${count === 1 ? '' : 's'}` }));
+
+  // Scale
+  let scale = 2;
+  const scaleSection = moEl('div', 'mo-bulk-dialog-section');
+  scaleSection.appendChild(moEl('label', null, { textContent: 'Scale' }));
+  const scaleRow = moEl('div');
+  scaleRow.style.cssText = 'display:flex;gap:6px;margin-top:4px;';
+  const scaleBtns = new Map();
+  for (const s of [2, 4]) {
+    const b = moEl('button', null, { type: 'button', textContent: `${s}x` });
+    b.addEventListener('click', () => { if (running) return; scale = s; refreshChoice(); });
+    scaleRow.appendChild(b);
+    scaleBtns.set(s, b);
+  }
+  scaleSection.appendChild(scaleRow);
+  dialog.appendChild(scaleSection);
+
+  // Model
+  const modelSection = moEl('div', 'mo-bulk-dialog-section');
+  modelSection.appendChild(moEl('label', null, { textContent: 'Model' }));
+  const modelDropdown = moDropdown({
+    items: Object.entries(MO_UPSCALE_MODELS).map(([value, m]) => ({ value, label: m.label })),
+    selected: 'photo',
+    ariaLabel: 'Model',
+  });
+  modelSection.appendChild(modelDropdown.el);
+  dialog.appendChild(modelSection);
+
+  // Stack under the original
+  const stackRow = moEl('label', 'mo-bulk-dialog-opt');
+  const stackCheckbox = moEl('input');
+  stackCheckbox.type = 'checkbox';
+  stackCheckbox.checked = true;
+  stackRow.appendChild(stackCheckbox);
+  stackRow.appendChild(moEl('span', null, { textContent: ' Stack the result under the original, so the grid keeps one card' }));
+  dialog.appendChild(stackRow);
+
+  // What will happen
+  const estimateEl = moEl('div', 'mo-bulk-dialog-section');
+  estimateEl.style.cssText = 'font-size:12px;opacity:0.8;margin-top:8px;min-height:40px;';
+  dialog.appendChild(estimateEl);
+
+  // Progress (hidden until the run starts)
+  const progressWrap = moEl('div', 'mo-bulk-dialog-section');
+  progressWrap.style.display = 'none';
+  const progressLabel = moEl('div');
+  progressLabel.style.cssText = 'font-size:12px;margin-bottom:4px;';
+  const progressBar = moEl('div');
+  progressBar.style.cssText = 'height:6px;background:var(--vscode-input-background,#333);border-radius:3px;overflow:hidden;';
+  const progressFill = moEl('div');
+  progressFill.style.cssText = 'height:100%;width:0%;background:var(--vscode-button-background,#0e639c);transition:width 0.2s;';
+  progressBar.appendChild(progressFill);
+  progressWrap.append(progressLabel, progressBar);
+  dialog.appendChild(progressWrap);
+
+  // Footer
+  const footer = moEl('div', 'mo-bulk-dialog-footer');
+  const cancelBtn = moEl('button', null, { textContent: 'Cancel' });
+  const runBtn = moEl('button', 'primary', { textContent: 'Upscale' });
+  footer.append(cancelBtn, runBtn);
+  dialog.appendChild(footer);
+
+  let running = false;
+  let cancelled = false;
+
+  function refreshChoice() {
+    for (const [s, b] of scaleBtns) {
+      b.classList.toggle('primary', s === scale);
+      b.setAttribute('aria-pressed', String(s === scale));
+    }
+    let ok = 0;
+    let tooBig = 0;
+    let unknown = 0;
+    for (const t of targets) {
+      const g = moUpscaleGuard(t.width, t.height, scale);
+      t._guard = g;
+      if (!g.ok) tooBig++;
+      else { ok++; if (g.outputPixels == null) unknown++; }
+    }
+    const parts = [];
+    if (count === 1 && targets[0].width && targets[0].height && targets[0]._guard.ok) {
+      parts.push(`${targets[0].width} × ${targets[0].height} becomes ${targets[0].width * scale} × ${targets[0].height * scale}.`);
+    } else {
+      parts.push(`${ok} photo${ok === 1 ? '' : 's'} will be upscaled.`);
+    }
+    if (tooBig) parts.push(`${tooBig} skipped: the result would be over ${Math.round(MO_UPSCALE_MAX_OUTPUT_PIXELS / 1e6)} megapixels.`);
+    if (unknown) parts.push(`${unknown} without known dimensions.`);
+    if (skipped.gif) parts.push(`${skipped.gif} GIF${skipped.gif === 1 ? '' : 's'} left out.`);
+    if (skipped.notPhoto) parts.push(`${skipped.notPhoto} video${skipped.notPhoto === 1 ? '' : 's'} left out.`);
+    parts.push('Originals are never changed. Each result is a new PNG beside its original.');
+    estimateEl.textContent = parts.join(' ');
+    runBtn.disabled = ok === 0;
+  }
+
+  cancelBtn.addEventListener('click', () => {
+    if (running) {
+      cancelled = true;
+      cancelBtn.disabled = true;
+      progressLabel.textContent = 'Stopping after this photo…';
+      return;
+    }
+    overlay.remove();
+  });
+
+  runBtn.addEventListener('click', async () => {
+    if (running) return;
+    running = true;
+    runBtn.disabled = true;
+    modelDropdown.el.style.pointerEvents = 'none';
+    stackCheckbox.disabled = true;
+    progressWrap.style.display = '';
+    const modelKey = modelDropdown.getValue() === 'art' ? 'art' : 'photo';
+    const paths = moUpscaleToolPaths();
+    const exe = _toolPaths.realesrgan || paths.exe;
+    let done = 0;
+    let failed = 0;
+    let skippedBig = 0;
+    const failures = [];
+    for (let i = 0; i < targets.length; i++) {
+      if (cancelled) break;
+      const t = targets[i];
+      if (!t._guard || !t._guard.ok) { skippedBig++; continue; }
+      progressLabel.textContent = `Upscaling ${i + 1} of ${count}: ${t.basename}`;
+      progressFill.style.width = `${Math.round((i / count) * 100)}%`;
+      if (_statusBarItem) { _statusBarItem.text = `$(sync~spin) Upscale ${i + 1} / ${count}`; _statusBarItem.show(); }
+      const out = await moUpscaleUniqueOutputPath(t.path, scale);
+      if (!out) { failed++; failures.push(`${t.basename}: no free output name`); continue; }
+      const cmd = moBuildUpscaleCommand(exe, paths.modelsDir, t.path, out, MO_UPSCALE_MODELS[modelKey].name, scale);
+      let r;
+      try {
+        r = await window.parallxElectron.terminal.exec(cmd, { timeout: MO_UPSCALE_TIMEOUT_MS });
+      } catch (err) {
+        r = { exitCode: -1, stderr: err && err.message ? err.message : String(err) };
+      }
+      const written = r && r.exitCode === 0 && await window.parallxElectron.fs.exists(out);
+      if (!written) {
+        failed++;
+        failures.push(`${t.basename}: ${(r && (r.stderr || r.stdout) || 'the upscaler did not write a file').toString().trim().split(/\r?\n/).pop()}`);
+        console.warn('[MediaOrganizer] upscale failed:', t.path, r);
+        continue;
+      }
+      let photo = null;
+      try { photo = await moIngestNewImage(out); } catch (err) { console.warn('[MediaOrganizer] upscale ingest failed:', err); }
+      if (photo && stackCheckbox.checked) {
+        try { await moStackUnder({ type: 'photo', id: t.item.id }, { type: 'photo', id: photo.id }); } catch (err) { console.warn('[MediaOrganizer] upscale stack failed:', err); }
+      }
+      done++;
+    }
+    progressFill.style.width = '100%';
+    if (_statusBarItem) { _statusBarItem.hide(); }
+    const bits = [`Upscaled ${done} of ${count}.`];
+    if (skippedBig) bits.push(`${skippedBig} skipped for size.`);
+    if (failed) bits.push(`${failed} failed: ${failures.slice(0, 2).join('; ')}${failures.length > 2 ? '; …' : ''}`);
+    if (cancelled) bits.push('Stopped early.');
+    try {
+      if (failed && !done) api.window.showErrorMessage(bits.join(' '));
+      else api.window.showInformationMessage(bits.join(' '));
+    } catch { /* ignore */ }
+    _notifySidebarRefresh();
+    try { document.dispatchEvent(new CustomEvent('mo:refresh-grid')); } catch { /* ignore */ }
+    overlay.remove();
+    if (typeof onComplete === 'function') onComplete();
+  });
+
+  // While a run is in progress, the backdrop and Escape do nothing.
+  overlay.addEventListener('click', (e) => { if (e.target === overlay && !running) overlay.remove(); });
+  overlay.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !running) overlay.remove(); });
+  document.body.appendChild(overlay);
+  refreshChoice();
+  runBtn.focus();
+}
+
+/** Shown when the binary is missing: the one-time fetch, with the command ready to copy. */
+function showUpscaleSetupDialog(api) {
+  const p = moUpscaleToolPaths();
+  const overlay = moEl('div', 'mo-bulk-dialog-overlay');
+  const dialog = moEl('div', 'mo-bulk-dialog');
+  dialog.setAttribute('role', 'dialog');
+  dialog.setAttribute('aria-modal', 'true');
+  dialog.setAttribute('aria-label', 'Set Up The Upscaler');
+  overlay.appendChild(dialog);
+  dialog.appendChild(moEl('h3', null, { textContent: 'Set Up The Upscaler' }));
+  const intro = moEl('div', 'mo-bulk-dialog-section', {
+    textContent: 'Upscaling uses Real-ESRGAN (ncnn-vulkan), a small MIT-licensed program that runs on your GPU. Parallx never downloads programs itself, so a one-time script fetches it into the extension\'s bin folder. Run this in PowerShell:',
+  });
+  intro.style.cssText = 'font-size:12px;line-height:1.5;';
+  dialog.appendChild(intro);
+  const command = `powershell -ExecutionPolicy Bypass -File "${p.script}"`;
+  const code = moEl('pre', 'mo-bulk-dialog-section', { textContent: command });
+  code.style.cssText = 'font-size:11px;white-space:pre-wrap;word-break:break-all;padding:8px;border-radius:4px;background:var(--vscode-input-background,#222);user-select:text;';
+  dialog.appendChild(code);
+  const status = moEl('div', 'mo-bulk-dialog-section', { textContent: `Looks for ${p.exe} and a models folder beside it.` });
+  status.style.cssText = 'font-size:12px;opacity:0.8;';
+  dialog.appendChild(status);
+  const footer = moEl('div', 'mo-bulk-dialog-footer');
+  const copyBtn = moEl('button', null, { textContent: 'Copy Command' });
+  copyBtn.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(command); status.textContent = 'Command copied. Run it, then press Check Again.'; } catch { status.textContent = 'Could not copy. Select the command above and copy it.'; }
+  });
+  const openBtn = moEl('button', null, { textContent: 'Open Bin Folder' });
+  openBtn.addEventListener('click', () => {
+    if (window.parallxElectron?.shell?.showItemInFolder) window.parallxElectron.shell.showItemInFolder(p.script);
+  });
+  const checkBtn = moEl('button', null, { textContent: 'Check Again' });
+  checkBtn.addEventListener('click', async () => {
+    _toolsDetected = false;
+    const ready = await moUpscaleReady();
+    if (ready) { overlay.remove(); api.window.showInformationMessage('The upscaler is ready. Choose Upscale on a photo.'); }
+    else status.textContent = `Not found yet at ${p.exe}.`;
+  });
+  const closeBtn = moEl('button', 'primary', { textContent: 'Close' });
+  closeBtn.addEventListener('click', () => overlay.remove());
+  footer.append(copyBtn, openBtn, checkBtn, closeBtn);
+  dialog.appendChild(footer);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', (e) => { if (e.key === 'Escape') overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 39: SEARCH (FTS5) + QUERY PARSER + SMART ALBUMS — M59 P3
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -27499,6 +27901,7 @@ export async function activate(api, context) {
 
   // Register scan command
   _commandDisposables.push(
+    api.commands.registerCommand('media-organizer.upscaleSetup', () => showUpscaleSetupDialog(api)),
     api.commands.registerCommand('media-organizer.openHome', () => {
       api.editors.openEditor({ typeId: 'media-organizer-grid', title: 'Home', icon: 'home', instanceId: 'grid:home' });
     }),
@@ -27957,7 +28360,7 @@ export function deactivate() {
   if (_statusBarItem) _statusBarItem.dispose();
   _statusBarItem = null;
   _toolsDetected = false;
-  _toolPaths = { ffprobe: null, exiftool: null, node: null, ffmpeg: null, vips: null };
+  _toolPaths = { ffprobe: null, exiftool: null, node: null, ffmpeg: null, vips: null, magick: null, realesrgan: null };
   _thumbDir = null;
   _thumbInflight.clear();
   _folderAlbumCache.clear();

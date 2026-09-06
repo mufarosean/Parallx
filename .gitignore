@@ -33,3 +33,8 @@ __pycache__/
 venv/
 .pytest_cache/
 .ruff_cache/
+
+# Media Organizer upscaler: fetched by ext/media-organizer/bin/get-realesrgan.ps1 (40MB exe + models), never committed
+ext/media-organizer/bin/realesrgan-ncnn-vulkan*
+ext/media-organizer/bin/models/
+ext/media-organizer/bin/vcomp140*.dll
