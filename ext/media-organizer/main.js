@@ -8335,6 +8335,10 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
   .mo-home-card:hover img { transform: none; }
 }
 
+.mo-home-zoom { display: flex; align-items: center; gap: 8px; }
+.mo-home-zoom-label { font-size: 11px; opacity: 0.7; }
+.mo-home-zoom .mo-zoom-slider { width: 120px; }
+
 /* ═══ Similar photos strip (Section 29B) ═══ */
 .mo-detail-main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .mo-detail-main > .mo-detail-preview { min-height: 0; }
@@ -13590,7 +13594,7 @@ function renderGridBrowser(container, api, input) {
 // dropped on a grid or on Home are copied into the library and scanned).
 
 /** Session-scoped so returning to Home keeps the order you were scrolling. */
-const _sessionHomeState = { seed: null, kind: 'all' };
+const _sessionHomeState = { seed: null, kind: 'all', colWidth: 260 };
 
 /** Absolute path of an item's primary file, or null. Module-level so the
  *  home feed, the lightbox, the detail editor and chat share one resolver. */
@@ -13842,8 +13846,9 @@ function renderHomeFeed(container, api, input) {
   if (_sessionHomeState.seed == null) _sessionHomeState.seed = Math.floor(Math.random() * 2147483647);
 
   const PAGE = 48;
-  const COL_MIN = 260;
   const GAP = 10;
+  // Zoom = the column width the masonry aims for, the same range as the grids' zoom.
+  let colWidth = Math.max(MO_ZOOM_MIN, Math.min(MO_ZOOM_MAX, Number(_sessionHomeState.colWidth) || 260));
   let kind = _sessionHomeState.kind || 'all';
   let seed = _sessionHomeState.seed;
   let offset = 0;
@@ -13874,6 +13879,26 @@ function renderHomeFeed(container, api, input) {
     chipEls.set(k, b);
   }
   head.appendChild(chips);
+  // Zoom: the grids' slider, driving the masonry column width.
+  const zoomGroup = moEl('div', 'mo-home-zoom');
+  zoomGroup.appendChild(moEl('span', 'mo-home-zoom-label', { textContent: 'Zoom' }));
+  const zoomSlider = moEl('input', 'mo-zoom-slider', { type: 'range', min: String(MO_ZOOM_MIN), max: String(MO_ZOOM_MAX), step: '10', value: String(colWidth) });
+  zoomSlider.setAttribute('aria-label', 'Zoom');
+  const updateZoomFill = () => { zoomSlider.style.setProperty('--slider-fill', (((colWidth - MO_ZOOM_MIN) / (MO_ZOOM_MAX - MO_ZOOM_MIN)) * 100) + '%'); };
+  updateZoomFill();
+  function setZoom(next) {
+    colWidth = Math.max(MO_ZOOM_MIN, Math.min(MO_ZOOM_MAX, Math.round(next / 10) * 10));
+    _sessionHomeState.colWidth = colWidth;
+    zoomSlider.value = String(colWidth);
+    updateZoomFill();
+    relayout();
+    // Persist (debounced) so the workspace remembers the feed zoom across sessions.
+    clearTimeout(zoomSlider._persistTimer);
+    zoomSlider._persistTimer = setTimeout(() => { moSetSetting('home_zoom_width', String(colWidth)).catch(() => {}); }, 250);
+  }
+  zoomSlider.addEventListener('input', () => setZoom(parseInt(zoomSlider.value, 10)));
+  zoomGroup.appendChild(zoomSlider);
+  head.appendChild(zoomGroup);
   const shuffleBtn = moEl('button', 'mo-home-shuffle', { type: 'button', title: 'Shuffle the feed into a new order' });
   shuffleBtn.innerHTML = moIcon('shuffle', 14) + '<span>Shuffle</span>';
   shuffleBtn.addEventListener('click', () => {
@@ -13901,7 +13926,7 @@ function renderHomeFeed(container, api, input) {
   let colCount = 0;
   function desiredColumns() {
     const w = feed.clientWidth || scroller.clientWidth || 900;
-    return Math.max(1, Math.min(6, Math.floor((w + GAP) / (COL_MIN + GAP))));
+    return Math.max(1, Math.min(8, Math.floor((w + GAP) / (colWidth + GAP))));
   }
   function buildColumns(n) {
     feed.innerHTML = '';
@@ -14128,6 +14153,12 @@ function renderHomeFeed(container, api, input) {
   if (moreObserver) moreObserver.observe(sentinel);
   const resizeObs = ('ResizeObserver' in window) ? new ResizeObserver(() => relayout()) : null;
   if (resizeObs) resizeObs.observe(feed);
+  // Ctrl + wheel zooms the feed, as it does in image viewers.
+  scroller.addEventListener('wheel', (e) => {
+    if (!e.ctrlKey) return;
+    e.preventDefault();
+    setZoom(colWidth + (e.deltaY < 0 ? 20 : -20));
+  }, { passive: false });
   moEnableDropImport(root, api);
   // A scan or an import finished: same order, fresh contents.
   const onRefresh = () => { if (!disposed) restart(); };
@@ -14140,6 +14171,7 @@ function renderHomeFeed(container, api, input) {
       if (moreObserver) moreObserver.disconnect();
       if (thumbObserver) thumbObserver.disconnect();
       if (resizeObs) resizeObs.disconnect();
+      if (zoomSlider._persistTimer) { clearTimeout(zoomSlider._persistTimer); moSetSetting('home_zoom_width', String(colWidth)).catch(() => {}); }
       document.removeEventListener('mo:refresh-grid', onRefresh);
       container.innerHTML = '';
     },
@@ -27879,6 +27911,15 @@ export async function activate(api, context) {
     const zNum = z != null ? parseInt(z, 10) : NaN;
     if (Number.isFinite(zNum) && zNum >= MO_ZOOM_MIN && zNum <= MO_ZOOM_MAX) {
       _sessionZoomWidth = zNum;
+    }
+  } catch { /* fall back to default */ }
+
+  // Hydrate the Home feed zoom the same way.
+  try {
+    const hz = await moGetSetting('home_zoom_width', null);
+    const hzNum = hz != null ? parseInt(hz, 10) : NaN;
+    if (Number.isFinite(hzNum) && hzNum >= MO_ZOOM_MIN && hzNum <= MO_ZOOM_MAX) {
+      _sessionHomeState.colWidth = hzNum;
     }
   } catch { /* fall back to default */ }
 
