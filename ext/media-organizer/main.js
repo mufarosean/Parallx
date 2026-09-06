@@ -24355,6 +24355,30 @@ async function moStackUnder(primary, member) {
   );
 }
 
+/**
+ * The upscaled copy takes the original's place: title (unless the title was
+ * just the file name), details, rating, label, photographer, capture data,
+ * tags and album memberships. Plain UPDATEs, the same as PhotoQueries.update;
+ * the search index is rebuilt by its own command, not by triggers.
+ */
+async function moTransferPhotoMetadata(fromId, toId, fromBasename) {
+  const src = await db.get('SELECT * FROM mo_photos WHERE id = ?', [fromId]);
+  const dst = await db.get('SELECT title FROM mo_photos WHERE id = ?', [toId]);
+  if (!src || !dst) return;
+  const title = (src.title && src.title !== fromBasename) ? src.title : dst.title;
+  await db.run(
+    `UPDATE mo_photos SET title = ?, details = ?, rating = ?, color_label = ?, curated = ?, photographer = ?, taken_at = ?,
+       camera_make = ?, camera_model = ?, lens = ?, iso = ?, aperture = ?, shutter_speed = ?, focal_length = ?,
+       gps_latitude = ?, gps_longitude = ?, updated_at = datetime('now')
+     WHERE id = ?`,
+    [title, src.details, src.rating, src.color_label, src.curated, src.photographer, src.taken_at,
+      src.camera_make, src.camera_model, src.lens, src.iso, src.aperture, src.shutter_speed, src.focal_length,
+      src.gps_latitude, src.gps_longitude, toId],
+  );
+  await db.run('INSERT OR IGNORE INTO mo_photos_tags (photo_id, tag_id) SELECT ?, tag_id FROM mo_photos_tags WHERE photo_id = ?', [toId, fromId]);
+  await db.run('INSERT OR IGNORE INTO mo_albums_photos (album_id, photo_id, position) SELECT album_id, ?, position FROM mo_albums_photos WHERE photo_id = ?', [toId, fromId]);
+}
+
 /** Items -> targets: still photos with a file on disk, plus their dimensions. */
 async function moUpscaleTargets(items) {
   const targets = [];
@@ -24432,6 +24456,24 @@ function showUpscaleDialog(targets, skipped, api, onComplete) {
   stackRow.appendChild(moEl('span', null, { textContent: ' Stack the result under the original, so the grid keeps one card' }));
   dialog.appendChild(stackRow);
 
+  // Delete the original. Delete in this app means Trash (recoverable until
+  // Empty Trash), and it happens only after the copy is safely in the
+  // library. The copy inherits the original's title, details, rating, label,
+  // photographer, capture data, tags and albums, so it takes its place.
+  const deleteRow = moEl('label', 'mo-bulk-dialog-opt');
+  const deleteCheckbox = moEl('input');
+  deleteCheckbox.type = 'checkbox';
+  deleteCheckbox.checked = false;
+  deleteRow.appendChild(deleteCheckbox);
+  deleteRow.appendChild(moEl('span', null, { textContent: ' Delete the original after upscaling (moves it to Trash; the copy keeps its tags, rating, albums and details)' }));
+  dialog.appendChild(deleteRow);
+  deleteCheckbox.addEventListener('change', () => {
+    // Nothing to stack under once the original is gone.
+    stackCheckbox.disabled = deleteCheckbox.checked;
+    if (deleteCheckbox.checked) stackCheckbox.checked = false;
+    refreshChoice();
+  });
+
   // What will happen
   const estimateEl = moEl('div', 'mo-bulk-dialog-section');
   estimateEl.style.cssText = 'font-size:12px;opacity:0.8;margin-top:8px;min-height:40px;';
@@ -24484,7 +24526,9 @@ function showUpscaleDialog(targets, skipped, api, onComplete) {
     if (unknown) parts.push(`${unknown} without known dimensions.`);
     if (skipped.gif) parts.push(`${skipped.gif} GIF${skipped.gif === 1 ? '' : 's'} left out.`);
     if (skipped.notPhoto) parts.push(`${skipped.notPhoto} video${skipped.notPhoto === 1 ? '' : 's'} left out.`);
-    parts.push('Originals are never changed. Each result is a new PNG beside its original.');
+    parts.push(deleteCheckbox.checked
+      ? 'Each result is a new PNG beside its original; the original then moves to Trash, recoverable until you empty it.'
+      : 'Originals are never changed. Each result is a new PNG beside its original.');
     estimateEl.textContent = parts.join(' ');
     runBtn.disabled = ok === 0;
   }
@@ -24505,6 +24549,7 @@ function showUpscaleDialog(targets, skipped, api, onComplete) {
     runBtn.disabled = true;
     modelDropdown.el.style.pointerEvents = 'none';
     stackCheckbox.disabled = true;
+    deleteCheckbox.disabled = true;
     progressWrap.style.display = '';
     const modelKey = modelDropdown.getValue() === 'art' ? 'art' : 'photo';
     const paths = moUpscaleToolPaths();
@@ -24512,6 +24557,7 @@ function showUpscaleDialog(targets, skipped, api, onComplete) {
     let done = 0;
     let failed = 0;
     let skippedBig = 0;
+    let trashed = 0;
     const failures = [];
     for (let i = 0; i < targets.length; i++) {
       if (cancelled) break;
@@ -24541,11 +24587,24 @@ function showUpscaleDialog(targets, skipped, api, onComplete) {
       if (photo && stackCheckbox.checked) {
         try { await moStackUnder({ type: 'photo', id: t.item.id }, { type: 'photo', id: photo.id }); } catch (err) { console.warn('[MediaOrganizer] upscale stack failed:', err); }
       }
+      if (photo && deleteCheckbox.checked) {
+        // Only once the copy is in the library: hand the metadata over, then
+        // move the original to Trash. An ingest failure leaves the original alone.
+        try {
+          await moTransferPhotoMetadata(t.item.id, photo.id, t.basename);
+          await moMoveToTrash(api, [{ type: 'photo', id: t.item.id }]);
+          trashed++;
+        } catch (err) {
+          console.warn('[MediaOrganizer] upscale delete-original failed:', err);
+          failures.push(`${t.basename}: upscaled, but the original could not be moved to Trash`);
+        }
+      }
       done++;
     }
     progressFill.style.width = '100%';
     if (_statusBarItem) { _statusBarItem.hide(); }
     const bits = [`Upscaled ${done} of ${count}.`];
+    if (trashed) bits.push(`${trashed} original${trashed === 1 ? '' : 's'} moved to Trash.`);
     if (skippedBig) bits.push(`${skippedBig} skipped for size.`);
     if (failed) bits.push(`${failed} failed: ${failures.slice(0, 2).join('; ')}${failures.length > 2 ? '; …' : ''}`);
     if (cancelled) bits.push('Stopped early.');
