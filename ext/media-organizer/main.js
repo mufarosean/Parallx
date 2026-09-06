@@ -23815,7 +23815,24 @@ async function moExportGifWithFrameEdits(api, opts, outPath) {
 // We loop over (width, fps) — for each width we pick the highest fps the
 // predictor says will fit. After encode we measure the real bytes; if we
 // missed by >15% we recalibrate the per-pixel-bit factor from observed
-// output and try once more. One retry max.
+// output and try again, up to three times.
+//
+// Where the time goes (measured): decoding and scaling are cheap; the
+// palette stages are the cost, and they get slow exactly because scaling
+// blends thousands of new colours into every frame. So the way to be
+// faster is to encode FEWER TIMES, never to encode differently:
+//   - A PROBE first. For GIFs of four seconds and up, a short slice is
+//     encoded with the predicted plan (about 15% of one encode), its size
+//     is extrapolated, and the plan is re-picked from the measured bits per
+//     pixel before the full encode. That replaces the retry encodes that
+//     used to follow a miss, and it can pick a BETTER rung when the file
+//     turns out easy.
+//   - ONE PASS. palettegen and paletteuse run in one filter graph; the
+//     output is byte-identical to the two-pass encode and the source is
+//     decoded and scaled once. Very large plans fall back to two passes
+//     because ffmpeg buffers the scaled frames until the palette is ready.
+//   - KEEP THE BEST. When a smaller retry produces a worse file, the
+//     previous output is restored by a rename, not by a fresh encode.
 //
 // The predictor is also exported so the existing clip dialog can use it
 // (its old single-constant estimator was the root cause of this whole mess).
@@ -23837,6 +23854,10 @@ const MO_GIF_BPP_DITHER = {
 const MO_GIF_FPS_LADDER = [24, 20, 18, 15, 12, 10];
 const MO_GIF_WIDTH_LADDER = [1280, 960, 720, 540, 480, 360, 320, 240];
 const MO_GIF_TRIM_LADDER = [0.8, 0.6, 0.4]; // fraction of original duration
+/** Probe a slice first when the GIF is at least this long (seconds). */
+const MO_GIF_PROBE_MIN_DURATION = 4;
+/** Single-pass buffers every scaled frame until the palette exists; beyond this many bytes, use two passes. */
+const MO_GIF_SINGLE_PASS_MAX_BYTES = 1.5e9;
 
 // Module-level calibration cache. Populated by moLoadGifBppCalibration() and
 // updated by moRecordGifBppObservation(). Held in memory so the *sync*
@@ -24078,9 +24099,29 @@ async function moEncodeOptimizedGif(srcPath, outPath, plan, dither) {
   filters.push(`fps=${plan.fps}`);
   // -t (duration) handles trim at input level; no filter needed.
   filters.push(`scale=${plan.width}:${plan.height}:flags=lanczos`);
+  const trimArgs = plan.trimmed ? ['-t', String(plan.duration)] : [];
+
+  // One pass: palettegen and paletteuse in a single graph. Byte-identical
+  // to the two-pass encode below (measured), and the source is decoded and
+  // scaled once. ffmpeg holds the scaled frames until the palette is ready,
+  // so a plan that would buffer more than the cap takes the two-pass road.
+  const bufferBytes = plan.width * plan.height * 4 * Math.ceil(Math.max(1, plan.fps) * Math.max(0.05, plan.duration));
+  if (bufferBytes <= MO_GIF_SINGLE_PASS_MAX_BYTES) {
+    const graph = filters.join(',') + `,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=${dither}`;
+    const cmd = [
+      ff, '-hide_banner', '-loglevel', 'error', '-y',
+      ...trimArgs,
+      '-i', shellQuote(srcPath),
+      '-filter_complex', shellQuote(graph),
+      '-loop', '0',
+      shellQuote(outPath),
+    ].join(' ');
+    const r = await window.parallxElectron.terminal.exec(cmd, { timeout: 600000 });
+    if (r.exitCode !== 0) throw new Error('palette encode: ' + (r.stderr || 'unknown'));
+    return;
+  }
 
   const vfA = filters.concat(['palettegen=stats_mode=diff']).join(',');
-  const trimArgs = plan.trimmed ? ['-t', String(plan.duration)] : [];
 
   try {
     const cmd1 = [
@@ -24153,6 +24194,29 @@ async function moOptimizeGifFile(srcPath, opts) {
   let plan = moPickGifOptimizePlan(probe, targetBytes, dither, allowTrim);
   let actualBytes = 0;
   let replaced = false;
+  const keepPath = tmpPath.replace(/\.gif$/i, '_keep.gif');
+
+  // Probe: a short slice at the predicted plan, extrapolated, then the plan
+  // is re-picked from the measured bits per pixel. The first frames of a
+  // GIF are the fullest, so the extrapolation leans high, which is the safe
+  // side of the target.
+  if (probe.duration >= MO_GIF_PROBE_MIN_DURATION) {
+    const probeSec = Math.min(3, Math.max(1, probe.duration * 0.15));
+    const probePath = `${dir}${sep}.mo_opt_probe_${base}_${Date.now()}_${Math.floor(Math.random() * 1e6)}.gif`;
+    try {
+      await moEncodeOptimizedGif(srcPath, probePath, { ...plan, duration: probeSec, trimmed: true }, dither);
+      const ps = await window.parallxElectron.fs.stat(probePath);
+      const probeBytes = ps ? (ps.size || 0) : 0;
+      if (probeBytes > 0) {
+        const measuredBpp = probeBytes / Math.max(1, plan.width * plan.height * plan.fps * probeSec);
+        plan = moPickGifOptimizePlan(probe, targetBytes, dither, allowTrim, { bppOverride: measuredBpp });
+      }
+    } catch (err) {
+      console.warn('[MediaOrganizer] gif probe failed; using the predicted plan:', err && err.message);
+    } finally {
+      await window.parallxElectron.fs.delete(probePath, { useTrash: false }).catch(() => {});
+    }
+  }
 
   try {
     await moEncodeOptimizedGif(srcPath, tmpPath, plan, dither);
@@ -24184,7 +24248,11 @@ async function moOptimizeGifFile(srcPath, opts) {
         && Math.abs((planNext.duration || 0) - (plan.duration || 0)) < 0.01;
       if (sameAsCurrent) break; // Picker can't get any smaller.
 
-      await window.parallxElectron.fs.delete(tmpPath, { useTrash: false }).catch(() => {});
+      // Keep the current output aside: if the smaller plan turns out worse,
+      // it comes back by a rename instead of a fresh encode.
+      await window.parallxElectron.fs.delete(keepPath, { useTrash: false }).catch(() => {});
+      const aside = await window.parallxElectron.fs.rename(tmpPath, keepPath);
+      if (aside && aside.error) throw new Error('rename failed: ' + (aside.error.message || aside.error));
       await moEncodeOptimizedGif(srcPath, tmpPath, planNext, dither);
       const statN = await window.parallxElectron.fs.stat(tmpPath);
       const actualN = statN ? (statN.size || 0) : 0;
@@ -24193,9 +24261,11 @@ async function moOptimizeGifFile(srcPath, opts) {
         // Smaller plan made things worse (rare, sparse content). Restore the
         // previous plan's output so tmp is in a known-good state.
         await window.parallxElectron.fs.delete(tmpPath, { useTrash: false }).catch(() => {});
-        await moEncodeOptimizedGif(srcPath, tmpPath, plan, dither);
+        const back = await window.parallxElectron.fs.rename(keepPath, tmpPath);
+        if (back && back.error) throw new Error('rename failed: ' + (back.error.message || back.error));
         break;
       }
+      await window.parallxElectron.fs.delete(keepPath, { useTrash: false }).catch(() => {});
 
       plan = planNext;
       actualBytes = actualN;
@@ -24247,6 +24317,7 @@ async function moOptimizeGifFile(srcPath, opts) {
     if (!replaced) {
       await window.parallxElectron.fs.delete(tmpPath, { useTrash: false }).catch(() => {});
     }
+    await window.parallxElectron.fs.delete(keepPath, { useTrash: false }).catch(() => {});
   }
 }
 
