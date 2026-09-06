@@ -24302,12 +24302,41 @@ function moUpscaleGuard(width, height, scale) {
   return { ok: outputPixels <= MO_UPSCALE_MAX_OUTPUT_PIXELS, outputPixels };
 }
 
-/** The shell line. Paths go through the same quoting as every other tool here. */
-function moBuildUpscaleCommand(exe, modelsDir, input, output, modelName, scale) {
-  const s = scale === 4 ? 4 : 2;
+/** The Photo and Art models exist only as 4x weights. The ncnn tool sizes its
+ *  output canvas from -s and composes tiles into it, so "-s 2" with a 4x model
+ *  writes 4x tiles into a 2x canvas: a scrambled puzzle on any image big
+ *  enough to tile (Real-ESRGAN issue 355). The model therefore ALWAYS runs at
+ *  4x; a 2x request downsizes that result by half afterwards. */
+const MO_UPSCALE_MODEL_SCALE = 4;
+
+/** The upscaler's shell line. Paths go through the same quoting as every other tool here. */
+function moBuildUpscaleCommand(exe, modelsDir, input, output, modelName, format) {
   const known = Object.values(MO_UPSCALE_MODELS).some((m) => m.name === modelName);
   const model = known ? modelName : MO_UPSCALE_MODELS.photo.name;
-  return `${shellInvoke(exe)} -i ${shellQuote(input)} -o ${shellQuote(output)} -n ${model} -s ${s} -m ${shellQuote(modelsDir)} -f png`;
+  const f = format === 'jpg' ? 'jpg' : 'png';
+  return `${shellInvoke(exe)} -i ${shellQuote(input)} -o ${shellQuote(output)} -n ${model} -s ${MO_UPSCALE_MODEL_SCALE} -m ${shellQuote(modelsDir)} -f ${f}`;
+}
+
+/** Halve an image with Lanczos: the bundled magick first, ffmpeg as the fallback. */
+function moBuildDownscaleCommand(kind, tool, input, output) {
+  if (kind === 'ffmpeg') {
+    return `${shellInvoke(tool)} -hide_banner -loglevel error -y -i ${shellQuote(input)} -vf ${shellQuote('scale=trunc(iw/2):trunc(ih/2):flags=lanczos')} ${shellQuote(output)}`;
+  }
+  return `${shellInvoke(tool)} ${shellQuote(input)} -filter Lanczos -resize 50% ${shellQuote(output)}`;
+}
+
+/** Which downsizer is available, if any. */
+function moDownscaleTool() {
+  if (_toolPaths.magick) return { kind: 'magick', path: _toolPaths.magick };
+  if (_toolPaths.ffmpeg) return { kind: 'ffmpeg', path: _toolPaths.ffmpeg };
+  return null;
+}
+
+/** "photo.jpg" -> "photo.upscale-k3x9.png": the 4x intermediate of a 2x request, deleted afterwards. */
+function moUpscaleTempName(basename, format) {
+  const dot = basename.lastIndexOf('.');
+  const stem = dot > 0 ? basename.slice(0, dot) : basename;
+  return `${stem}.upscale-${Math.random().toString(36).slice(2, 8)}.${format === 'jpg' ? 'jpg' : 'png'}`;
 }
 
 async function moUpscaleUniqueOutputPath(srcPath, scale) {
@@ -24522,6 +24551,7 @@ function showUpscaleDialog(targets, skipped, api, onComplete) {
     } else {
       parts.push(`${ok} photo${ok === 1 ? '' : 's'} will be upscaled.`);
     }
+    if (scale !== MO_UPSCALE_MODEL_SCALE) parts.push('2x is computed at 4x and halved, so it takes as long as 4x.');
     if (tooBig) parts.push(`${tooBig} skipped: the result would be over ${Math.round(MO_UPSCALE_MAX_OUTPUT_PIXELS / 1e6)} megapixels.`);
     if (unknown) parts.push(`${unknown} without known dimensions.`);
     if (skipped.gif) parts.push(`${skipped.gif} GIF${skipped.gif === 1 ? '' : 's'} left out.`);
@@ -24568,14 +24598,41 @@ function showUpscaleDialog(targets, skipped, api, onComplete) {
       if (_statusBarItem) { _statusBarItem.text = `$(sync~spin) Upscale ${i + 1} / ${count}`; _statusBarItem.show(); }
       const out = await moUpscaleUniqueOutputPath(t.path, scale);
       if (!out) { failed++; failures.push(`${t.basename}: no free output name`); continue; }
-      const cmd = moBuildUpscaleCommand(exe, paths.modelsDir, t.path, out, MO_UPSCALE_MODELS[modelKey].name, scale);
+      // Always 4x from the model (see MO_UPSCALE_MODEL_SCALE). A 2x request
+      // goes to a temporary 4x file first, then is halved into `out`. The
+      // intermediate is PNG unless it would be enormous, then JPEG at the
+      // tool's fixed quality of 100, which the halving averages out.
+      const wantsDownsize = scale !== MO_UPSCALE_MODEL_SCALE;
+      const interPixels = (t.width > 0 && t.height > 0) ? t.width * t.height * MO_UPSCALE_MODEL_SCALE * MO_UPSCALE_MODEL_SCALE : 0;
+      const interFormat = wantsDownsize && interPixels > MO_UPSCALE_MAX_OUTPUT_PIXELS ? 'jpg' : 'png';
+      const sep = t.path.includes('\\') ? '\\' : '/';
+      const modelOut = wantsDownsize ? t.path.slice(0, t.path.lastIndexOf(sep) + 1) + moUpscaleTempName(t.basename, interFormat) : out;
+      const cmd = moBuildUpscaleCommand(exe, paths.modelsDir, t.path, modelOut, MO_UPSCALE_MODELS[modelKey].name, wantsDownsize ? interFormat : 'png');
       let r;
       try {
         r = await window.parallxElectron.terminal.exec(cmd, { timeout: MO_UPSCALE_TIMEOUT_MS });
       } catch (err) {
         r = { exitCode: -1, stderr: err && err.message ? err.message : String(err) };
       }
-      const written = r && r.exitCode === 0 && await window.parallxElectron.fs.exists(out);
+      let written = r && r.exitCode === 0 && await window.parallxElectron.fs.exists(modelOut);
+      if (written && wantsDownsize) {
+        const down = moDownscaleTool();
+        if (!down) {
+          written = false;
+          r = { stderr: '2x needs the bundled magick or ffmpeg to halve the 4x result; 4x works without either' };
+        } else {
+          progressLabel.textContent = `Downsizing ${i + 1} of ${count}: ${t.basename}`;
+          let d;
+          try {
+            d = await window.parallxElectron.terminal.exec(moBuildDownscaleCommand(down.kind, down.path, modelOut, out), { timeout: MO_UPSCALE_TIMEOUT_MS });
+          } catch (err) {
+            d = { exitCode: -1, stderr: err && err.message ? err.message : String(err) };
+          }
+          written = d && d.exitCode === 0 && await window.parallxElectron.fs.exists(out);
+          if (!written) r = d;
+        }
+        try { await window.parallxElectron.fs.delete(modelOut); } catch { /* temp file; best effort */ }
+      }
       if (!written) {
         failed++;
         failures.push(`${t.basename}: ${(r && (r.stderr || r.stdout) || 'the upscaler did not write a file').toString().trim().split(/\r?\n/).pop()}`);
