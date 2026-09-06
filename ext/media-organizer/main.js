@@ -24366,12 +24366,56 @@ function moUpscaleGuard(width, height, scale) {
  *  4x; a 2x request downsizes that result by half afterwards. */
 const MO_UPSCALE_MODEL_SCALE = 4;
 
+/**
+ * Tile size is the speed lever. The tool's own automatic choice never
+ * exceeds 200 px whatever the card (its heap thresholds stop at 1.9 GB),
+ * so a 24 MP photo becomes hundreds of padded tiles and the GPU idles
+ * between them. Bigger tiles mean fewer tiles, less padding overhead and
+ * fewer seams, with identical pixels. The size comes from the setting, or
+ * from the card's memory; if a size fails (usually memory) the next
+ * smaller one is tried, ending with the tool's own choice.
+ */
+const MO_UPSCALE_TILE_LADDER = [1024, 768, 512, 400, 256, 0];
+function moUpscaleAutoTile(vramMiB) {
+  const v = Number(vramMiB);
+  if (!(v > 0)) return 400;
+  if (v >= 20000) return 1024;
+  if (v >= 10000) return 768;
+  if (v >= 6000) return 512;
+  if (v >= 3000) return 256;
+  return 0;
+}
+/** The sizes to try, largest first: the chosen one, then the ladder below it, then the tool's own. */
+function moUpscaleTilePlan(setting, vramMiB) {
+  const s = Number(setting);
+  const first = s > 0 ? Math.max(32, Math.round(s)) : moUpscaleAutoTile(vramMiB);
+  const plan = [first];
+  for (const t of MO_UPSCALE_TILE_LADDER) if (t < first && !plan.includes(t)) plan.push(t);
+  if (!plan.includes(0)) plan.push(0);
+  return plan;
+}
+
+let _upscaleVramMiB;
+/** Total memory of the first NVIDIA GPU in MiB, or null. Probed once per session. */
+async function moUpscaleVramMiB() {
+  if (_upscaleVramMiB !== undefined) return _upscaleVramMiB;
+  _upscaleVramMiB = null;
+  try {
+    const r = await window.parallxElectron.terminal.exec('nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits', { timeout: 8000 });
+    const first = (r && r.exitCode === 0 && r.stdout ? r.stdout : '').trim().split(/\r?\n/)[0];
+    const n = parseInt(first, 10);
+    if (Number.isFinite(n) && n > 0) _upscaleVramMiB = n;
+  } catch { /* no nvidia-smi: stay null */ }
+  return _upscaleVramMiB;
+}
+
 /** The upscaler's shell line. Paths go through the same quoting as every other tool here. */
-function moBuildUpscaleCommand(exe, modelsDir, input, output, modelName, format) {
+function moBuildUpscaleCommand(exe, modelsDir, input, output, modelName, format, tile) {
   const known = Object.values(MO_UPSCALE_MODELS).some((m) => m.name === modelName);
   const model = known ? modelName : MO_UPSCALE_MODELS.photo.name;
   const f = format === 'jpg' ? 'jpg' : 'png';
-  return `${shellInvoke(exe)} -i ${shellQuote(input)} -o ${shellQuote(output)} -n ${model} -s ${MO_UPSCALE_MODEL_SCALE} -m ${shellQuote(modelsDir)} -f ${f}`;
+  const t = Number(tile) > 0 ? ` -t ${Math.round(Number(tile))}` : '';
+  return `${shellInvoke(exe)} -i ${shellQuote(input)} -o ${shellQuote(output)} -n ${model} -s ${MO_UPSCALE_MODEL_SCALE}${t} -m ${shellQuote(modelsDir)} -f ${f}`;
 }
 
 /** Halve an image with Lanczos: the bundled magick first, ffmpeg as the fallback. */
@@ -24587,6 +24631,15 @@ function showUpscaleDialog(targets, skipped, api, onComplete) {
 
   let running = false;
   let cancelled = false;
+  let tilePlan = null;
+  let vramMiB = null;
+  let tileSetting = 0;
+  try { tileSetting = Number(api.workspace.getConfiguration('mediaOrganizer').get('upscaleTileSize', 0)) || 0; } catch { tileSetting = 0; }
+  moUpscaleVramMiB().then((v) => {
+    vramMiB = v;
+    tilePlan = moUpscaleTilePlan(tileSetting, v);
+    if (!running && overlay.isConnected) refreshChoice();
+  });
 
   function refreshChoice() {
     for (const [s, b] of scaleBtns) {
@@ -24616,6 +24669,12 @@ function showUpscaleDialog(targets, skipped, api, onComplete) {
     parts.push(deleteCheckbox.checked
       ? 'Each result is a new PNG beside its original; the original then moves to Trash, recoverable until you empty it.'
       : 'Originals are never changed. Each result is a new PNG beside its original.');
+    if (tilePlan) {
+      const tile = tilePlan[0];
+      parts.push(tile > 0
+        ? `Tiles of ${tile} px${vramMiB ? ` for a ${Math.round(vramMiB / 1024)} GB GPU` : ''}.`
+        : 'The upscaler picks its own tile size.');
+    }
     estimateEl.textContent = parts.join(' ');
     runBtn.disabled = ok === 0;
   }
@@ -24641,6 +24700,8 @@ function showUpscaleDialog(targets, skipped, api, onComplete) {
     const modelKey = modelDropdown.getValue() === 'art' ? 'art' : 'photo';
     const paths = moUpscaleToolPaths();
     const exe = _toolPaths.realesrgan || paths.exe;
+    if (!tilePlan) tilePlan = moUpscaleTilePlan(tileSetting, await moUpscaleVramMiB());
+    const startedAt = Date.now();
     let done = 0;
     let failed = 0;
     let skippedBig = 0;
@@ -24664,14 +24725,23 @@ function showUpscaleDialog(targets, skipped, api, onComplete) {
       const interFormat = wantsDownsize && interPixels > MO_UPSCALE_MAX_OUTPUT_PIXELS ? 'jpg' : 'png';
       const sep = t.path.includes('\\') ? '\\' : '/';
       const modelOut = wantsDownsize ? t.path.slice(0, t.path.lastIndexOf(sep) + 1) + moUpscaleTempName(t.basename, interFormat) : out;
-      const cmd = moBuildUpscaleCommand(exe, paths.modelsDir, t.path, modelOut, MO_UPSCALE_MODELS[modelKey].name, wantsDownsize ? interFormat : 'png');
-      let r;
-      try {
-        r = await window.parallxElectron.terminal.exec(cmd, { timeout: MO_UPSCALE_TIMEOUT_MS });
-      } catch (err) {
-        r = { exitCode: -1, stderr: err && err.message ? err.message : String(err) };
+      // Largest tile first; a failure (usually memory) drops to the next size.
+      let r = null;
+      let usedTile = null;
+      for (const tile of tilePlan) {
+        if (cancelled) break;
+        progressLabel.textContent = `Upscaling ${i + 1} of ${count}: ${t.basename}${tile > 0 ? ` (tiles of ${tile} px)` : ''}`;
+        const cmd = moBuildUpscaleCommand(exe, paths.modelsDir, t.path, modelOut, MO_UPSCALE_MODELS[modelKey].name, wantsDownsize ? interFormat : 'png', tile);
+        try {
+          r = await window.parallxElectron.terminal.exec(cmd, { timeout: MO_UPSCALE_TIMEOUT_MS });
+        } catch (err) {
+          r = { exitCode: -1, stderr: err && err.message ? err.message : String(err) };
+        }
+        if (r && r.exitCode === 0 && await window.parallxElectron.fs.exists(modelOut)) { usedTile = tile; break; }
+        try { await window.parallxElectron.fs.delete(modelOut); } catch { /* nothing written */ }
+        console.warn(`[MediaOrganizer] upscale at tile ${tile} failed for ${t.basename}; trying smaller`, r && (r.stderr || r.stdout));
       }
-      let written = r && r.exitCode === 0 && await window.parallxElectron.fs.exists(modelOut);
+      let written = usedTile !== null;
       if (written && wantsDownsize) {
         const down = moDownscaleTool();
         if (!down) {
@@ -24717,7 +24787,8 @@ function showUpscaleDialog(targets, skipped, api, onComplete) {
     }
     progressFill.style.width = '100%';
     if (_statusBarItem) { _statusBarItem.hide(); }
-    const bits = [`Upscaled ${done} of ${count}.`];
+    const secs = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
+    const bits = [`Upscaled ${done} of ${count} in ${secs} s.`];
     if (trashed) bits.push(`${trashed} original${trashed === 1 ? '' : 's'} moved to Trash.`);
     if (skippedBig) bits.push(`${skippedBig} skipped for size.`);
     if (failed) bits.push(`${failed} failed: ${failures.slice(0, 2).join('; ')}${failures.length > 2 ? '; …' : ''}`);

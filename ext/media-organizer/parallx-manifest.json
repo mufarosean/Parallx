@@ -104,6 +104,11 @@
             "type": "boolean",
             "default": false,
             "description": "Follow the box: while recording you can drag the frame around and the recording follows it, like a camera. The whole display is captured and the clip editor opens already cropped to the path you made, ready to fine-tune."
+          },
+          "mediaOrganizer.upscaleTileSize": {
+            "type": "number",
+            "default": 0,
+            "description": "Tile size, in pixels, for the upscaler. 0 picks it from your GPU's memory (a 24 GB or larger card gets 1024). The tool's own automatic choice never exceeds 200 pixels, which leaves a big card mostly idle. Larger tiles are faster with identical output; if a size fails, the next smaller one is tried automatically."
           }
         }
       }
