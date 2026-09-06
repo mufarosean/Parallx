@@ -96,6 +96,7 @@ const FOLDER_RULES: Record<string, string[]> = {
   'tools/autonomyLogTool.ts': [],              // M58-real post-ship UX reshape — autonomy_log
   'tools/activityLogTool.ts': [],              // activity journal — the read-only activity_log tool
   'tools/heartbeatWatchTool.ts': [],           // M87 S2 — heartbeat_watch (standing watches in HEARTBEAT.md)
+  'tools/workflowTools.ts': [],                // workflows S2 — workflow_suggest (a disabled draft for the Workflows panel)
   'tools/blockApi.ts':      [],                // M60 Phase δ — pure helpers for property query + block walking
   'tools/blockTools.ts':    ['tools/'],        // M60 Phase δ — query_pages_by_property + read/edit/insert/link block
   'tools/parallxLinkTool.ts': [],              // M66 §4a — link_create URI minter

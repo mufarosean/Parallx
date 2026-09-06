@@ -119,6 +119,9 @@ const TOOL_PROFILES: Record<OpenclawToolProfile, {
       'canvas_edit_block', 'canvas_insert_block_after', 'canvas_link_block', 'canvas_relate_pages',
       'canvas_query_database', 'canvas_create_database', 'canvas_add_database_row',
       'canvas_add_page_to_database',
+      // A suggested workflow is a disabled draft the user approves in the
+      // Workflows panel; the tool cannot enable or run anything.
+      'workflow_suggest',
     ],
     deny: [],
   },

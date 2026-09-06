@@ -4,13 +4,19 @@
 // CLOCK. It cannot represent "you refresh AI News around 8am every day." This
 // detects exactly that: per action (a stable label like "refresh:AI News"), it
 // finds whether the action recurs on most days AT A CONSISTENT TIME OF DAY — a
-// daily habit. That's the signal that lets the agent offer: "you do this every
-// morning — want me to automate it?" (which it can fulfil with cron_create).
+// daily habit. That is the signal that becomes a suggested workflow the user
+// approves in the Workflows panel (workflowSuggestions.ts).
+//
+// A day has SESSIONS. Someone who works at 5am and again at 8pm opens the
+// planner twice a day at two consistent times; measured as one spread that
+// looks like scatter and never confirms. So occurrences are first grouped by
+// time of day, and each group is judged on its own. One action can carry two
+// habits, each with its own key ("opened planner@05:10"), proposal and dismissal.
 //
 // Deliberately cheap and explainable (no ML): bucket occurrences by day, measure
-// the spread of time-of-day. A tight spread over enough days = a habit. Pure +
-// deterministic (clock injected); persisted by MindService. The output is a
-// suggestion for the human, never an automatic action.
+// the spread of time-of-day within a session. A tight spread over enough days =
+// a habit. Pure + deterministic (clock injected); persisted by MindService. The
+// output is a suggestion for the human, never an automatic action.
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MIN_PER_DAY = 24 * 60;
@@ -26,6 +32,19 @@ export interface IHabitDetectorOptions {
   readonly maxPerAction?: number;
   /** Cap of distinct actions tracked (evicts least-recently-seen). Default 300. */
   readonly maxActions?: number;
+  /**
+   * Minute of day for a timestamp. Default UTC (pure, deterministic for tests).
+   * Production passes `localMinuteOfDay`: the suggested schedule ("Daily At
+   * 05:14") is read by the cron grid in LOCAL time, so the habit's time must
+   * be measured in local time too, or a 5am habit is filed as 10:14.
+   */
+  readonly minuteOfDay?: (ms: number) => number;
+}
+
+/** Minute of day in the machine's local time zone (what the cron grid uses). */
+export function localMinuteOfDay(ms: number): number {
+  const d = new Date(ms);
+  return d.getHours() * 60 + d.getMinutes();
 }
 
 /**
@@ -59,6 +78,9 @@ export function habitActionForActivity(ev: {
 }
 
 export interface IHabitReading {
+  /** Dedupe key: the action plus the session's typical time ("opened planner@08:05"),
+   *  or the bare action when no session qualified. */
+  readonly key: string;
   readonly action: string;
   readonly isDailyHabit: boolean;
   /** Typical time of day (minutes since midnight), or null. */
@@ -72,6 +94,8 @@ export interface IHabitReading {
 
 export interface IHabitState {
   readonly events: [string, number[]][];
+  /** Propose-once markers: bare actions (from before sessions existed) or
+   *  "action@HH:MM" keys, one per session of the day. */
   readonly proposed?: string[];
 }
 
@@ -81,6 +105,31 @@ export function cronForMinuteOfDay(minute: number): string {
   return `${m % 60} ${Math.floor(m / 60)} * * *`;
 }
 
+/** The key a habit is proposed, suggested and dismissed under: the action
+ *  plus the session's typical time. Two sessions of one action are two keys. */
+export function habitKey(action: string, minuteOfDay: number): string {
+  return `${action}@${formatTime(minuteOfDay)}`;
+}
+
+/** Split a key back into its action and minute. A bare action has no minute. */
+export function parseHabitKey(key: string): { action: string; minuteOfDay: number | null } {
+  const m = /^(.*)@(\d{2}):(\d{2})$/.exec(key);
+  if (!m) return { action: key, minuteOfDay: null };
+  return { action: m[1], minuteOfDay: parseInt(m[2], 10) * 60 + parseInt(m[3], 10) };
+}
+
+/**
+ * Does a stored key cover this habit? A bare action covers every session of
+ * that action. A timed key covers the session within `mergeMin` minutes of it
+ * around the clock, so a habit drifting from 08:05 to 08:40 stays one habit.
+ */
+export function isSameHabitKey(stored: string, action: string, minuteOfDay: number | null, mergeMin = 150): boolean {
+  const parsed = parseHabitKey(stored);
+  if (parsed.action !== action) return false;
+  if (parsed.minuteOfDay === null || minuteOfDay === null) return true;
+  const raw = Math.abs(parsed.minuteOfDay - minuteOfDay) % MIN_PER_DAY;
+  return Math.min(raw, MIN_PER_DAY - raw) <= mergeMin;
+}
 export class HabitDetector {
   private _events = new Map<string, number[]>();
   private _proposed = new Set<string>();
@@ -89,8 +138,10 @@ export class HabitDetector {
   private readonly _toleranceMin: number;
   private readonly _maxPerAction: number;
   private readonly _maxActions: number;
+  private readonly _minuteOfDay: (ms: number) => number;
 
   constructor(opts: IHabitDetectorOptions = {}) {
+    this._minuteOfDay = opts.minuteOfDay ?? utcMinuteOfDay;
     this._windowDays = Math.max(2, opts.windowDays ?? 14);
     this._minDays = Math.max(2, opts.minDays ?? 3);
     this._toleranceMin = Math.max(1, opts.toleranceMin ?? 75);
@@ -131,62 +182,133 @@ export class HabitDetector {
   }
 
   /** Habit reading for one action. Pure given current state. */
-  reading(action: string, nowMs: number): IHabitReading {
+  /**
+   * One reading per SESSION of the day. The occurrences inside the window are
+   * grouped by time of day (a gap wider than twice the tolerance starts a new
+   * group, and midnight is no gap at all), and each group is judged on its
+   * own: enough distinct days, and a tight enough spread. A person who opens
+   * the planner at 5am and again at 8pm has two habits, not a scattered one,
+   * and each gets its own key, its own proposal, and its own dismissal.
+   */
+  readings(action: string, nowMs: number): IHabitReading[] {
     const cutoff = nowMs - this._windowDays * DAY_MS;
     const ts = (this._events.get(action) ?? []).filter(t => t >= cutoff);
+    if (ts.length === 0) return [];
+    return clusterByTimeOfDay(ts, this._toleranceMin * 2, this._minuteOfDay).map(group => this._judge(action, group));
+  }
+
+  /** The strongest session for an action. When no session qualifies, the
+   *  reading is "not a habit" over every day the action was seen. */
+  reading(action: string, nowMs: number): IHabitReading {
+    const best = this.readings(action, nowMs)
+      .filter(r => r.isDailyHabit)
+      .sort((a, b) => b.confidence - a.confidence)[0];
+    if (best) return best;
+    const cutoff = nowMs - this._windowDays * DAY_MS;
+    const ts = (this._events.get(action) ?? []).filter(t => t >= cutoff);
+    const daysObserved = new Set(ts.map(t => Math.floor(t / DAY_MS))).size;
+    return { key: action, action, isDailyHabit: false, typicalMinuteOfDay: null, typicalTime: null, daysObserved, confidence: 0 };
+  }
+
+  private _judge(action: string, ts: readonly number[]): IHabitReading {
     const days = new Set(ts.map(t => Math.floor(t / DAY_MS)));
     const daysObserved = days.size;
 
     if (ts.length < this._minDays || daysObserved < this._minDays) {
-      return { action, isDailyHabit: false, typicalMinuteOfDay: null, typicalTime: null, daysObserved, confidence: 0 };
+      return { key: action, action, isDailyHabit: false, typicalMinuteOfDay: null, typicalTime: null, daysObserved, confidence: 0 };
     }
 
-    const minutes = ts.map(t => minuteOfDay(t));
-    const { mean, std } = circularStats(minutes);
+    const { mean, std } = circularStats(ts.map(t => this._minuteOfDay(t)));
     const consistent = std <= this._toleranceMin;
     const isDailyHabit = consistent && daysObserved >= this._minDays;
 
-    // Confidence: more days + tighter clustering = higher.
     const dayScore = Math.min(1, daysObserved / this._windowDays);
     const tightScore = Math.max(0, 1 - std / this._toleranceMin);
     const confidence = isDailyHabit ? Math.min(1, 0.5 * dayScore + 0.5 * tightScore) : 0;
+    const minute = Math.round(mean);
 
     return {
+      key: habitKey(action, minute),
       action,
       isDailyHabit,
-      typicalMinuteOfDay: Math.round(mean),
+      typicalMinuteOfDay: minute,
       typicalTime: formatTime(mean),
       daysObserved,
       confidence,
     };
   }
 
-  /** All actions that are currently confident daily habits, strongest first. */
+  /** Every confirmed habit across every action and every session, strongest first. */
   habits(nowMs: number, minConfidence = 0.4): IHabitReading[] {
     return [...this._events.keys()]
-      .map(a => this.reading(a, nowMs))
+      .flatMap(a => this.readings(a, nowMs))
       .filter(r => r.isDailyHabit && r.confidence >= minConfidence)
       .sort((a, b) => b.confidence - a.confidence);
   }
 
-  /** Whether this habit has already been proposed for automation (propose once). */
-  wasProposed(action: string): boolean { return this._proposed.has(action); }
-  markProposed(action: string): void { this._proposed.add(action); }
+  /**
+   * Propose-once, per session of the day. A marker made before sessions
+   * existed is a bare action and covers every session of that action. A timed
+   * marker covers the session it names, with drift tolerance, so a habit that
+   * slides from 08:05 to 08:40 is still the same proposal.
+   */
+  wasProposed(action: string, minuteOfDay?: number | null): boolean {
+    if (this._proposed.has(action)) return true;
+    if (minuteOfDay === undefined || minuteOfDay === null) return false;
+    for (const p of this._proposed) {
+      if (isSameHabitKey(p, action, minuteOfDay, this._toleranceMin * 2)) return true;
+    }
+    return false;
+  }
+  markProposed(action: string, minuteOfDay?: number | null): void {
+    this._proposed.add(minuteOfDay === undefined || minuteOfDay === null ? action : habitKey(action, minuteOfDay));
+  }
 
   toState(): IHabitState { return { events: [...this._events.entries()], proposed: [...this._proposed] }; }
   restore(state: IHabitState | undefined): void {
     if (state && Array.isArray(state.events)) {
       this._events = new Map(state.events.filter(e => Array.isArray(e) && typeof e[0] === 'string' && Array.isArray(e[1])));
-      // Enforce the cap on restore too — a legacy blob persisted before the
-      // cap existed (or from a larger-cap version) must converge immediately,
-      // not one key per fresh observation.
       this._evictToCap();
     }
     if (state && Array.isArray(state.proposed)) this._proposed = new Set(state.proposed.filter(x => typeof x === 'string'));
   }
 }
 
-function minuteOfDay(ms: number): number {
+/**
+ * Group timestamps into sessions of the day. Sorted by minute of day, the
+ * widest gap around the clock is where the day "starts" (so 23:55 and 00:05
+ * sit together), and any further gap wider than `gapMin` opens a new group.
+ */
+function clusterByTimeOfDay(ts: readonly number[], gapMin: number, minuteOfDay: (ms: number) => number): number[][] {
+  const pts = ts.map(t => ({ t, m: minuteOfDay(t) })).sort((a, b) => a.m - b.m);
+  const n = pts.length;
+  if (n === 1) return [[pts[0].t]];
+  let start = 0;
+  let widest = -1;
+  for (let i = 0; i < n; i++) {
+    const next = pts[(i + 1) % n].m + (i === n - 1 ? MIN_PER_DAY : 0);
+    const gap = next - pts[i].m;
+    if (gap > widest) { widest = gap; start = (i + 1) % n; }
+  }
+  const groups: number[][] = [];
+  let cur: number[] = [];
+  let prev = -1;
+  let wrapped = false;
+  for (let k = 0; k < n; k++) {
+    const idx = (start + k) % n;
+    // The walk crosses midnight exactly when it wraps from the last sorted
+    // point back to the first; from then on minutes count past the day.
+    if (k > 0 && idx === 0) wrapped = true;
+    const m = pts[idx].m + (wrapped ? MIN_PER_DAY : 0);
+    if (cur.length > 0 && m - prev > gapMin) { groups.push(cur); cur = []; }
+    cur.push(pts[idx].t);
+    prev = m;
+  }
+  groups.push(cur);
+  return groups;
+}
+
+function utcMinuteOfDay(ms: number): number {
   return Math.floor((ms % DAY_MS) / 60000);
 }
 
@@ -197,10 +319,6 @@ function formatTime(minute: number): string {
   return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
 }
 
-/**
- * Mean + std-dev of times-of-day on a 24h CIRCLE (so 23:50 and 00:10 are close,
- * not 23h40m apart). Uses the mean-of-angles trick.
- */
 function circularStats(minutes: number[]): { mean: number; std: number } {
   if (minutes.length === 0) return { mean: 0, std: 0 };
   let sx = 0, sy = 0;
@@ -210,7 +328,6 @@ function circularStats(minutes: number[]): { mean: number; std: number } {
   }
   const meanAngle = Math.atan2(sy / minutes.length, sx / minutes.length);
   const meanMin = ((meanAngle / (2 * Math.PI)) * MIN_PER_DAY + MIN_PER_DAY) % MIN_PER_DAY;
-  // Circular std-dev via R (mean resultant length).
   const R = Math.sqrt((sx / minutes.length) ** 2 + (sy / minutes.length) ** 2);
   const circStdRad = Math.sqrt(Math.max(0, -2 * Math.log(Math.max(1e-9, R))));
   const std = (circStdRad / (2 * Math.PI)) * MIN_PER_DAY;

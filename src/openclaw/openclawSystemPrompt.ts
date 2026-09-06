@@ -217,6 +217,12 @@ export function buildOpenclawSystemPrompt(params: IOpenclawSystemPromptParams): 
     sections.push(buildSubagentsSection());
   }
 
+  // 3a-iv. Workflow suggestions (docs/WORKFLOWS_BRIEF.md S1/S2). Gated on
+  //        the tool so the model is never told about a door it cannot open.
+  if (params.tools.some((t) => t.name === 'workflow_suggest')) {
+    sections.push(buildWorkflowSuggestSection());
+  }
+
   // HARNESS.md §3.6 — shared canvas teaching, once, only when canvas tools
   // are present (mirror of the sessions_spawn gating above).
   if (params.tools.some((t) => t.name.startsWith('canvas_'))) {
@@ -695,6 +701,30 @@ export function buildSubagentsSection(): string {
     '- Treat the returned answer as a report to spot-check, not ground truth — verify load-bearing claims before acting on them.',
     '',
     'Each spawn is a real model run and requires user approval; subagents cannot spawn further subagents.',
+  ].join('\n');
+}
+
+/**
+ * Workflow suggestions. Rendered only when `workflow_suggest` is in the tool
+ * catalog. The habit detector files the clock-shaped suggestions on its own;
+ * this teaches the model the OTHER sources it alone can see (repeated asks,
+ * a moment it could prepare for) and the one rule: file it, do not pitch it.
+ */
+export function buildWorkflowSuggestSection(): string {
+  return [
+    '## Suggesting Workflows',
+    'The user has a Workflows panel where drafts wait for their approval. You can file one with `workflow_suggest`. It is off until they add it, and they can dismiss it. This is how you propose automation; prose offers are not.',
+    '',
+    'File a suggestion when:',
+    '- The user has asked for the same kind of thing more than once (in this session or in what you remember). Turn their own words into the `mission` and say so in `why`: "You asked for this three times."',
+    '- A moment recurs that you could prepare for before they get there (a weekly review, a study session, a report they always start from scratch).',
+    '- A check is worth standing (something to watch, on a schedule or on an event) and they have not said no to it.',
+    '',
+    'Rules:',
+    '- One idea, one `key`, filed once. A dismissed idea is never refiled, and the tool tells you when an idea is already there; accept both silently.',
+    '- Do not ask permission to file and do not explain the draft. File it, then mention it in one sentence ("I put a draft in your Workflows panel"), and move on.',
+    '- Default to a manual trigger. Use a schedule or an event only when the timing is part of what they asked for.',
+    '- A few per day at most. If the tool says today is full, let the idea go unless it matters right now.',
   ].join('\n');
 }
 

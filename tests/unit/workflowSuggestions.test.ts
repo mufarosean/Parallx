@@ -30,7 +30,7 @@ describe('habitToWorkflow', () => {
     const wf = habitToWorkflow(habit, 0);
     expect(wf.enabled).toBe(false);
     expect(wf.source).toBe('suggested');
-    expect(wf.suggestedFrom).toBe(habit.action);
+    expect(wf.suggestedFrom).toBe('focused view.planner view@08:05');
     expect(wf.name).toBe('Around 08:05: Open The Planner View');
     expect(wf.description).toContain('6 days');
   });
@@ -42,6 +42,11 @@ describe('habitToWorkflow', () => {
     const trigger = wf.nodes[0] as { spec: { kind: string; time: string } };
     expect(trigger.spec).toEqual({ kind: 'daily', time: '08:05' });
     expect(wf.edges).toEqual([{ from: 't', to: 'c' }, { from: 'c', to: 'g' }]);
+  });
+
+  it('keeps the detector key when one is given, and stamps the bare action when there is no time', () => {
+    expect(habitToWorkflow({ ...habit, key: 'focused view.planner view@08:07' }, 0).suggestedFrom).toBe('focused view.planner view@08:07');
+    expect(habitToWorkflow({ action: 'opened planner', typicalTime: null, typicalMinuteOfDay: null }, 0).suggestedFrom).toBe('opened planner');
   });
 
   it('falls back to the minute-of-day clock when no label exists', () => {

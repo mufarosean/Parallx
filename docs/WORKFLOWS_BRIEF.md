@@ -269,3 +269,96 @@ hard to learn.
 - **Do not let the graph become the only way in.** Spec first, UI second.
 - **Eyes-on.** Anything that changes what the app does while you are not
   looking needs a session with the app open before it ships enabled.
+
+---
+
+## Suggestions audit (added 2026-09-05) — what exists, and what OpenHuman adds
+
+Prompted by the GitHub landscape review
+(docs/research/GitHub_Landscape_2026-09.md). OpenHuman (GPL-3.0, pattern
+only) shows agents proposing automations on a canvas for human approval.
+The first draft of the review called this unbuilt in Parallx. It is
+built. Recorded here so the mistake is not repeated.
+
+### What exists (verified in code 2026-09-05)
+
+| Step | Where |
+| --- | --- |
+| Habit detection: an action recurring on 3+ of the last 14 days within a 75-minute spread. Habit material is opening an editor or focusing a view; commands are excluded until command execution carries an initiator (self-echo guard) | src/openclaw/mind/habitDetector.ts |
+| Propose once: Mind hands over newly confirmed habits and persists the "proposed" marker | mindService.takePendingHabitProposals |
+| Drain only when a suggestion can actually land (workflow service present, or heartbeat enabled for the chat-offer fallback) | src/built-in/chat/main.ts, drainHabitProposalsIfViable / proposeHabit |
+| The suggestion is a disabled WorkflowDoc, `source: 'suggested'`, `suggestedFrom` as the dedupe key: daily schedule at the typical time, today's facts, one agent turn whose mission is "prepare the moment" and leave a "Ready: ..." canvas page | src/services/workflows/workflowSuggestions.ts |
+| The panel shows a "Suggested by the AI" section with Review (opens the editor), Add (source becomes user, enabled), Dismiss (deleted, never suggested again) | src/built-in/autonomy-log/main.ts, renderSuggestedRow |
+
+Shipped in commit 24c8cd2f ("habits you approve").
+
+### What changed 2026-09-06 (sessions, and the agent's door)
+
+Run against the Personal Workspace, the detector had tracked 47 actions
+since June and proposed nothing. The cause was structural: the user
+works around 5am and again from 6pm to 9pm, so every action's time-of-day
+spread was 210 to 366 minutes against a 75-minute tolerance. One spread
+over a two-session day looks like scatter. Two things shipped:
+
+| Change | Where |
+| --- | --- |
+| Sessions: occurrences are grouped by time of day (a gap wider than twice the tolerance opens a new group; midnight is no gap), each group judged on its own. One action can carry a 05:10 habit and a 20:00 habit, each with its own key `action@HH:MM`, proposal and dismissal. Legacy bare markers still cover every session of their action | src/openclaw/mind/habitDetector.ts (`readings`, `habitKey`, `isSameHabitKey`) |
+| `workflow_suggest`: the agent files a disabled suggested doc (`suggestedFrom: agent:<key>`), never enables it, dedupes on the key, refuses dismissed keys, three per day. Taught in the chat system prompt (gated on the tool) and the heartbeat review seed | src/built-in/chat/tools/workflowTools.ts, openclawSystemPrompt.ts `buildWorkflowSuggestSection`, openclawHeartbeatExecutor.ts |
+| Dismiss is remembered: deleting a suggested doc records its key in workflows.json (`dismissedSuggestions`); the service refuses to file that key again, from a habit or from the agent | src/services/workflows/workflowService.ts |
+| Panel copy: "Habits the app noticed, and ideas the assistant drafted from what you asked for." | src/built-in/autonomy-log/main.ts |
+| Local time: the detector measured minutes in UTC while the cron grid reads "Daily At HH:MM" in local time, so a 5am habit would have been filed as 10:14. The detector takes a minute-of-day clock; the mind passes `localMinuteOfDay` | habitDetector.ts, mindService.ts |
+
+Not done: sequence-derived and condition-derived suggestions (no
+detector, the agent's judgment through the tool covers repeated asks),
+and command habits (still waiting on the initiator plumbing, S3).
+
+### The delta
+
+OpenHuman's loop differs in three places, and each is a bounded addition
+to what stands, not a new program.
+
+1. **More sources of suggestion.** Today there is one detector (daily
+   time-of-day) and it only sees editor-open and view-focus gestures.
+   Candidates, cheapest first:
+   - *Repeated asks in chat.* The prompt compiler already treats a
+     mission as prose. When the same kind of ask recurs (memory_search
+     over session summaries finds two earlier turns with the same
+     mission), the agent drafts a manual-trigger workflow from the
+     mission text and files it as suggested. The user sees "you have
+     asked for this three times; here it is as a button".
+   - *Sequences.* mind/sequencePredictor learns order ("after A you
+     touch B"), not clock. A confirmed sequence becomes an event-trigger
+     suggestion: journal event A, then an agent turn that prepares B.
+   - *Workspace conditions.* The heartbeat's seven checks are the
+     obvious stock rows (still owed from slice 4); once they are
+     workflows, the arbiter can suggest enabling one when its condition
+     first fires.
+   - *Command habits* unlock the moment command execution carries an
+     initiator (docs/WORKBENCH_DRIVER_BRIEF.md needs the same plumbing).
+2. **An agent-side door.** A `workflow_suggest` tool that writes a
+   disabled suggested doc instead of talking about it in chat. Dedupe on
+   a key the agent supplies, counted against the attention budget, never
+   enabled by the tool. The panel already knows how to show it.
+3. **Drafted, not templated, missions.** habitToWorkflow writes template
+   prose. For chat- and sequence-derived suggestions the mission comes
+   from what was observed, so the draft reads like the user's own words.
+   Show the graph thumbnail (workflowThumbnail.ts) in the suggested row
+   so a suggestion is legible as a graph before Review.
+
+Skip from OpenHuman: 20-minute polling of connected accounts (Parallx has
+the journal), tool-output compression (harness wave 1 owns compaction).
+
+### Decisions
+
+**S1 — Which new source first?** Recommendation: repeated asks in chat.
+No new detector, the most visible payoff, and it teaches users what a
+workflow is by turning their own sentence into one.
+
+**S2 — Does the agent get `workflow_suggest`?** Recommendation: yes, with
+the dedupe key and budget above. It is the same gate the panel already
+enforces. SHIPPED 2026-09-06 (see "What changed" above). S1's first
+source, repeated asks in chat, rides on it: no detector, the model files
+the draft when it notices the repeat.
+
+**S3 — Command initiator plumbing.** Recommendation: do it once, for
+habits and for the workbench driver together.

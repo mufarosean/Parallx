@@ -48,6 +48,8 @@ export interface IWorkflowPersistedSnapshot {
   readonly ledger: Readonly<Record<string, number>>;
   /** `${workflowId}:${nodeId}` → schedule runtime state. */
   readonly schedules: Readonly<Record<string, { anchorMs: number; nextRunAt: number | null }>>;
+  /** Suggestion keys the user dismissed. A dismissed idea is never filed again. */
+  readonly dismissedSuggestions?: readonly string[];
 }
 
 export interface IWorkflowPersistence {
@@ -86,6 +88,8 @@ export class WorkflowService implements IDisposable {
   private readonly _lastEventFire = new Map<string, number>();
   /** Mutex groups with a run currently in flight. */
   private readonly _busyGroups = new Set<string>();
+  /** Suggestion keys (suggestedFrom) the user dismissed: never offered again. */
+  private readonly _dismissedSuggestions = new Set<string>();
 
   private _timer: ReturnType<typeof setInterval> | null = null;
   private _disposed = false;
@@ -144,6 +148,10 @@ export class WorkflowService implements IDisposable {
           nextRunAt: v.nextRunAt !== null && v.nextRunAt <= now ? now : v.nextRunAt,
         });
       }
+      this._dismissedSuggestions.clear();
+      for (const k of Array.isArray(snap.dismissedSuggestions) ? snap.dismissedSuggestions : []) {
+        if (typeof k === 'string' && k) this._dismissedSuggestions.add(k);
+      }
       this._syncScheduleStates();
       this._onDidChangeWorkflows.fire({ kind: 'bulk' });
     } catch { /* corrupt persistence — start empty */ }
@@ -158,6 +166,9 @@ export class WorkflowService implements IDisposable {
     if (this._disposed) throw new Error('WorkflowService is disposed');
     if (this._docs.size >= MAX_WORKFLOWS) {
       throw new Error(`Workflow limit reached (${MAX_WORKFLOWS}).`);
+    }
+    if (doc.source === 'suggested' && doc.suggestedFrom && this._dismissedSuggestions.has(doc.suggestedFrom)) {
+      throw new Error('That suggestion was dismissed. It is not offered again.');
     }
     const now = Date.now();
     const full: WorkflowDoc = { ...doc, id: `wf-${this._nextId++}`, createdAt: now, updatedAt: now };
@@ -181,9 +192,16 @@ export class WorkflowService implements IDisposable {
     return updated;
   }
 
+  /** Has the user dismissed a suggestion filed under this key? */
+  isSuggestionDismissed(key: string): boolean { return this._dismissedSuggestions.has(key); }
+
   removeWorkflow(id: string): boolean {
+    const doc = this._docs.get(id);
     const removed = this._docs.delete(id);
     if (removed) {
+      // Deleting a suggestion IS dismissing it: the key is remembered so the
+      // same idea, from a habit or from the agent, is never filed again.
+      if (doc?.source === 'suggested' && doc.suggestedFrom) this._dismissedSuggestions.add(doc.suggestedFrom);
       this._syncScheduleStates();
       void this._save();
       this._onDidChangeWorkflows.fire({ kind: 'removed', workflowId: id });
@@ -523,6 +541,7 @@ export class WorkflowService implements IDisposable {
         runs: [...this._runs],
         ledger: Object.fromEntries(this._ledger),
         schedules: Object.fromEntries(this._schedules),
+        dismissedSuggestions: [...this._dismissedSuggestions],
       });
     } catch { /* persistence failures never break the runtime */ }
   }

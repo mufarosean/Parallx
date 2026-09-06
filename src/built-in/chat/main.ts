@@ -76,7 +76,7 @@ import { ActionLedger } from '../../openclaw/mind/actionLedger.js';
 import { PredictionLoop } from '../../openclaw/mind/predictionLoop.js';
 import { SequencePredictor } from '../../openclaw/mind/sequencePredictor.js';
 import { SurpriseAccumulator } from '../../openclaw/mind/surpriseAccumulator.js';
-import { cronForMinuteOfDay, habitActionForActivity } from '../../openclaw/mind/habitDetector.js';
+import { cronForMinuteOfDay, habitActionForActivity, isSameHabitKey } from '../../openclaw/mind/habitDetector.js';
 import { createMindRememberTool } from './tools/mindTools.js';
 import { signalToSystemEvent } from '../../openclaw/openclawAutonomySignal.js';
 import { IAutonomySignalService } from '../../services/autonomySignalService.js';
@@ -132,6 +132,7 @@ import { ChatProgrammaticAccess } from './chatProgrammaticAccess.js';
 import type { IChatSelectionAttachment, ICanvasBlockReferencePayload } from '../../services/selectionActionTypes.js';
 import type { IHabitReading } from '../../openclaw/mind/habitDetector.js';
 import { habitToWorkflow } from '../../services/workflows/workflowSuggestions.js';
+import { createWorkflowSuggestTool } from './tools/workflowTools.js';
 
 // ── Local API type — only the subset we use ──
 
@@ -2677,7 +2678,9 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     const proposeHabit = (h: IHabitReading): void => {
       const workflows = getWorkflowServiceForHabits();
       if (workflows) {
-        if (workflows.workflows.some((w) => w.suggestedFrom === h.action)) return;
+        // Same action, same session of the day (with drift) = same suggestion.
+        // A second session of the same action is a second suggestion.
+        if (workflows.workflows.some((w) => w.suggestedFrom !== undefined && isSameHabitKey(w.suggestedFrom, h.action, h.typicalMinuteOfDay))) return;
         try {
           workflows.addWorkflow(habitToWorkflow(h, Date.now()));
         } catch (err) {
@@ -2691,6 +2694,17 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         timestamp: Date.now(),
       });
     };
+
+    // The agent's own door (docs/WORKFLOWS_BRIEF.md, S2): `workflow_suggest`
+    // files a disabled suggested document instead of offering an automation
+    // in prose. Same panel, same Review/Add/Dismiss, same dedupe and the
+    // service's dismissed-key memory. It never enables anything, so it is
+    // always-allowed; the panel is the gate.
+    if (languageModelToolsService) {
+      context.subscriptions.push(languageModelToolsService.registerTool(
+        createWorkflowSuggestTool(() => getWorkflowServiceForHabits()),
+      ));
+    }
 
     // The activity journal is the MIND's richest sense: deliberate user
     // gestures the signal bus never carries become MIND observations —

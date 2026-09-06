@@ -328,3 +328,49 @@ describe('observers', () => {
     expect(seen).toEqual(['ok']);
   });
 });
+
+describe('suggestions', () => {
+  const suggested = {
+    ...notifyFlow, name: 'Draft', enabled: false, source: 'suggested' as const,
+    suggestedFrom: 'agent:weekly budget summary',
+  };
+
+  it('dismissing a suggestion remembers its key and refuses the same idea again', () => {
+    const { service } = makeService();
+    const wf = service.addWorkflow(suggested);
+    expect(service.isSuggestionDismissed(suggested.suggestedFrom)).toBe(false);
+    expect(service.removeWorkflow(wf.id)).toBe(true);
+    expect(service.isSuggestionDismissed(suggested.suggestedFrom)).toBe(true);
+    expect(() => service.addWorkflow(suggested)).toThrow(/dismissed/);
+    // A user workflow with the same key is not a suggestion and is not refused.
+    expect(() => service.addWorkflow({ ...suggested, source: 'user' })).not.toThrow();
+  });
+
+  it('adding a suggestion (source becomes user) and later deleting it is not a dismissal', () => {
+    const { service } = makeService();
+    const wf = service.addWorkflow(suggested);
+    service.updateWorkflow(wf.id, { source: 'user', enabled: true });
+    service.removeWorkflow(wf.id);
+    expect(service.isSuggestionDismissed(suggested.suggestedFrom)).toBe(false);
+  });
+
+  it('dismissed keys survive a persistence round-trip', async () => {
+    let stored: IWorkflowPersistedSnapshot | null = null;
+    const persistence = {
+      load: async () => stored,
+      save: async (s: IWorkflowPersistedSnapshot) => { stored = s; },
+    };
+    const a = makeService();
+    a.service.setPersistence(persistence);
+    const wf = a.service.addWorkflow(suggested);
+    a.service.removeWorkflow(wf.id);
+    await new Promise((r) => setTimeout(r, 5));
+    expect(stored?.dismissedSuggestions).toEqual([suggested.suggestedFrom]);
+
+    const b = makeService();
+    b.service.setPersistence(persistence);
+    await b.service.loadFromPersistence();
+    expect(b.service.isSuggestionDismissed(suggested.suggestedFrom)).toBe(true);
+    expect(() => b.service.addWorkflow(suggested)).toThrow(/dismissed/);
+  });
+});

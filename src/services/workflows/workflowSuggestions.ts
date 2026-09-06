@@ -10,9 +10,12 @@
 // Pure: no services, no clock of its own.
 
 import type { WorkflowDoc } from './workflowTypes.js';
+import { habitKey } from '../../openclaw/mind/habitDetector.js';
 
 /** The slice of a habit reading this builder needs (see mind/habitDetector). */
 export interface HabitLike {
+  /** The habit's dedupe key ("action@HH:MM"); derived from the time when absent. */
+  readonly key?: string;
   /** The observed action, e.g. "opened planner" or "focused view.planner view". */
   readonly action: string;
   /** "08:05"-style typical time, or null. */
@@ -52,8 +55,9 @@ function titleCase(s: string): string {
 /**
  * The suggested workflow for a habit: a daily schedule at the typical time,
  * the day's facts, and one agent turn whose mission is to prepare that
- * moment. Disabled, source 'suggested', and stamped with the habit's action
- * so the same habit is never suggested twice.
+ * moment. Disabled, source 'suggested', and stamped with the habit's key
+ * (action plus session time) so the same habit is never suggested twice
+ * while a second session of the same action still can be.
  */
 export function habitToWorkflow(
   habit: HabitLike,
@@ -69,7 +73,10 @@ export function habitToWorkflow(
     class: 'quiet',
     enabled: false,
     source: 'suggested',
-    suggestedFrom: habit.action,
+    suggestedFrom: habit.key
+      ?? (habit.typicalMinuteOfDay !== null && habit.typicalMinuteOfDay !== undefined
+        ? habitKey(habit.action, habit.typicalMinuteOfDay)
+        : habit.action),
     nodes: [
       { id: 't', label: `Daily At ${time}`, kind: 'trigger.schedule', spec: { kind: 'daily', time }, x: 40, y: 80 },
       { id: 'c', label: 'Today’s Facts', kind: 'context.facts', x: 280, y: 80 },

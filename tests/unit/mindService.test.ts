@@ -139,10 +139,10 @@ describe('MindService — the loop seam', () => {
     await svc.observeAction('dashboard:refresh AI News', HM(3, 8, 5));
 
     expect(svc.habits(t).some(h => h.action === 'dashboard:refresh AI News' && h.isDailyHabit)).toBe(true);
-    // the agent SEES it in its review seed, told it may offer to automate via cron
+    // the agent SEES it in its review seed, told it already waits in the Workflows panel
     const seed = svc.seedBlock();
     expect(seed).toContain('refresh AI News');
-    expect(seed).toContain('cron_create');
+    expect(seed).toContain('Workflows panel');
     // and it surfaces in the snapshot
     expect((await svc.snapshot()).habits.length).toBeGreaterThan(0);
 

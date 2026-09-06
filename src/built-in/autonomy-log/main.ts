@@ -1278,7 +1278,7 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
       head.textContent = 'Suggested by the AI';
       sec.appendChild(head);
       const sub = $('div.wf-suggested__sub');
-      sub.textContent = 'Habits it noticed in your activity, drafted as workflows. Nothing runs until you add one.';
+      sub.textContent = 'Habits the app noticed, and ideas the assistant drafted from what you asked for. Nothing runs until you add one.';
       sec.appendChild(sub);
       for (const wf of suggested) sec.appendChild(renderSuggestedRow(wf));
       listEl.appendChild(sec);

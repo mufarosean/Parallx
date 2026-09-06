@@ -275,6 +275,7 @@ function buildSeedSystemMessage(reason: HeartbeatReason, events: readonly IHeart
   lines.push('  2. NOTE — the event is mildly noteworthy but does not warrant action. Respond with one line beginning with `NOTE: ` followed by a single short sentence. Do not call tools. Do not elaborate. The user will see this in the autonomy log only.');
   lines.push('  3. ACT — the event clearly warrants investigation or action. Use your tools, then summarize what you did concisely. Reserve this for events with unambiguous signals (errors, broken files, requested follow-ups).');
   lines.push('Independently of the three modes: if this review gave you a durable insight about the user or their work, record it with the `mind_remember` tool so future reviews build on it — this is separate from your response mode (you may answer NOOP and still remember). Record understanding worth carrying forward, never raw content or secrets.');
+  lines.push('Likewise, if this review shows a moment worth preparing for, a check worth standing, or something the user keeps asking for, do not offer it in prose: file it with the `workflow_suggest` tool when you have it, once per idea, and let the user decide in the Workflows panel. That too is separate from your response mode.');
   lines.push('When in doubt, choose IGNORE. Background chatter erodes user trust faster than missed minor events.');
   return lines.join(' ');
 }

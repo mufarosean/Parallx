@@ -22,7 +22,7 @@ import {
   type IMindPredictionOption,
 } from './agentMindModel.js';
 import { ReflectionScheduler, type IReflectionState } from './reflectionScheduler.js';
-import { HabitDetector, type IHabitState, type IHabitReading } from './habitDetector.js';
+import { HabitDetector, localMinuteOfDay, type IHabitState, type IHabitReading } from './habitDetector.js';
 import type { IMindStore } from './mindStore.js';
 import { ActionLedger, type AgentActionKind, type IAgentActionRecord } from './actionLedger.js';
 import { CapabilityMeter, type ICapabilityReading } from './capabilityMeter.js';
@@ -80,7 +80,9 @@ export class MindService {
   private readonly _probe = new SkillProbe();
   private readonly _nag = new NagGovernor();
   private readonly _reflection = new ReflectionScheduler();
-  private readonly _habits = new HabitDetector();
+  // Local minutes: the suggested schedule is read by the cron grid in local
+  // time, so a 5am habit must be measured, keyed and filed as 05:xx.
+  private readonly _habits = new HabitDetector({ minuteOfDay: localMinuteOfDay });
   private readonly _capStorage?: IStorage;
   private _habitsSaveTimer: ReturnType<typeof setTimeout> | undefined;
   private static readonly HABITS_SAVE_DELAY_MS = 3_000;
@@ -158,8 +160,8 @@ export class MindService {
    * moment a habit confirms — it never depends on the model choosing to mention it.
    */
   async takePendingHabitProposals(nowMs = this._now()): Promise<IHabitReading[]> {
-    const pending = this._habits.habits(nowMs).filter(h => !this._habits.wasProposed(h.action));
-    for (const h of pending) this._habits.markProposed(h.action);
+    const pending = this._habits.habits(nowMs).filter(h => !this._habits.wasProposed(h.action, h.typicalMinuteOfDay));
+    for (const h of pending) this._habits.markProposed(h.action, h.typicalMinuteOfDay);
     if (pending.length > 0) await this._saveHabits();
     return pending;
   }
@@ -302,7 +304,7 @@ export class MindService {
     const habits = this._habits.habits(this._now());
     if (habits.length === 0) return base;
     const lines = habits.slice(0, 5).map(h => `- "${h.action}" — most days around ${h.typicalTime} (${h.daysObserved} days seen)`);
-    return `${base}\n\nDaily habits I've noticed — you may OFFER to automate one with cron_create (propose via NOTE/ACT; never schedule without the user's yes):\n${lines.join('\n')}`;
+    return `${base}\n\nDaily habits I've noticed. Each one already waits as a suggested workflow in the Workflows panel, so do not offer it again in prose; if you see a better automation than a straight repeat, file it with workflow_suggest. Never schedule anything without the user's yes:\n${lines.join('\n')}`;
   }
 
   /**
