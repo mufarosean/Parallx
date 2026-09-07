@@ -30,6 +30,7 @@ const doclingBridge = require('./doclingBridge.cjs');
 const { setupMcpBridge, killAllMcpProcesses } = require('./mcpBridge.cjs');
 const { setupStorageHandlers } = require('./storageHandlers.cjs');
 const { setupWebFetchBridge } = require('./webFetchBridge.cjs');
+const { setupBrowserBridge } = require('./browserBridge.cjs');
 const { setupGoogleSyncBridge } = require('./googleSyncBridge.cjs');
 const pythonBridge = require('./pythonBridge.cjs');
 const ankiBridge = require('./ankiBridge.cjs');
@@ -822,6 +823,13 @@ app.whenReady().then(async () => {
   } catch { /* old dir doesn't exist — nothing to migrate */ }
 
   await createWindow();
+  // Private browser sessions (docs/BROWSER.md): configured once the window
+  // exists so popup routing and blocked counts can reach the renderer.
+  try {
+    setupBrowserBridge(ipcMain, { getMainWindow: () => mainWindow, userData: app.getPath('userData'), getWorkspaceRoot: () => _fsWorkspaceRoot });
+  } catch (err) {
+    console.error('[browser] bridge setup failed:', err && err.message);
+  }
 });
 
 app.on('before-quit', () => {

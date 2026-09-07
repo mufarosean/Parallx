@@ -41,6 +41,7 @@
     "@codemirror/lang-markdown": "^6.5.1",
     "@codemirror/lang-python": "^6.2.1",
     "@codemirror/lang-sql": "^6.10.0",
+    "@ghostery/adblocker-electron": "^2.18.2",
     "@tiptap/core": "^3.19.0",
     "@tiptap/extension-character-count": "^3.19.0",
     "@tiptap/extension-code-block-lowlight": "^3.19.0",

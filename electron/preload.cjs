@@ -376,6 +376,40 @@ contextBridge.exposeInMainWorld('parallxElectron', {
     request: (opts) => ipcRenderer.invoke('webSearch:request', opts),
   },
 
+  // ── Private browser (docs/BROWSER.md) ──
+  // The renderer side of electron/browserBridge.cjs: per-site shields,
+  // permission prompts, HTTPS fallback, downloads, and the event stream the
+  // browser extension listens to. The sessions themselves are configured in
+  // the main process; nothing here can weaken them.
+  browser: {
+    getState: () => ipcRenderer.invoke('browser:getState'),
+    getSite: (url) => ipcRenderer.invoke('browser:getSite', url),
+    setSite: (url, patch) => ipcRenderer.invoke('browser:setSite', url, patch),
+    listSites: () => ipcRenderer.invoke('browser:listSites'),
+    resetSite: (url) => ipcRenderer.invoke('browser:resetSite', url),
+    clearSiteData: (url) => ipcRenderer.invoke('browser:clearSiteData', url),
+    listPermissions: () => ipcRenderer.invoke('browser:listPermissions'),
+    revokePermission: (site, permission) => ipcRenderer.invoke('browser:revokePermission', site, permission),
+    permissionReply: (requestId, allow, remember) => ipcRenderer.invoke('browser:permissionReply', requestId, allow, remember),
+    allowHttpOnce: (url) => ipcRenderer.invoke('browser:allowHttpOnce', url),
+    clearData: (kind) => ipcRenderer.invoke('browser:clearData', kind),
+    refreshLists: () => ipcRenderer.invoke('browser:refreshLists'),
+    blockedFor: (webContentsId) => ipcRenderer.invoke('browser:blockedFor', webContentsId),
+    listDownloads: () => ipcRenderer.invoke('browser:listDownloads'),
+    openDownload: (p) => ipcRenderer.invoke('browser:openDownload', p),
+    showDownload: (p) => ipcRenderer.invoke('browser:showDownload', p),
+    /** Events: { type: 'blocked' | 'open-url' | 'permission-request' | 'download' | 'lists', payload }. Returns an unsubscribe fn. */
+    onEvent: (callback) => {
+      const channels = ['browser:blocked', 'browser:open-url', 'browser:permission-request', 'browser:download', 'browser:lists'];
+      const handlers = channels.map((ch) => {
+        const h = (_event, payload) => { try { callback({ type: ch.slice('browser:'.length), payload }); } catch { /* ignore */ } };
+        ipcRenderer.on(ch, h);
+        return [ch, h];
+      });
+      return () => { for (const [ch, h] of handlers) ipcRenderer.removeListener(ch, h); };
+    },
+  },
+
   // ── PDF export (M93 — canvas print-to-PDF) ──
   pdfExport: {
     /**

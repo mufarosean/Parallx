@@ -1,0 +1,77 @@
+{
+  "manifestVersion": 1,
+  "id": "parallx.browser",
+  "name": "Browser",
+  "version": "0.1.0",
+  "publisher": "parallx",
+  "description": "A private browser inside Parallx: ads and trackers blocked, third-party cookies stripped, HTTPS only, permissions asked, storage sealed off from the app and the AI. See docs/BROWSER.md.",
+  "main": "main.js",
+  "activationEvents": ["*"],
+  "engines": {
+    "parallx": "^0.1.0"
+  },
+  "contributes": {
+    "commands": [
+      { "id": "browser.newTab", "title": "New Tab", "category": "Browser" },
+      { "id": "browser.openUrl", "title": "Open Address", "category": "Browser" },
+      { "id": "browser.focusAddress", "title": "Focus Address Bar", "category": "Browser" },
+      { "id": "browser.find", "title": "Find In Page", "category": "Browser" },
+      { "id": "browser.reload", "title": "Reload", "category": "Browser" },
+      { "id": "browser.back", "title": "Back", "category": "Browser" },
+      { "id": "browser.forward", "title": "Forward", "category": "Browser" },
+      { "id": "browser.bookmark", "title": "Bookmark This Page", "category": "Browser" },
+      { "id": "browser.zoomIn", "title": "Zoom In", "category": "Browser" },
+      { "id": "browser.zoomOut", "title": "Zoom Out", "category": "Browser" },
+      { "id": "browser.zoomReset", "title": "Reset Zoom", "category": "Browser" },
+      { "id": "browser.toggleReader", "title": "Reader Mode", "category": "Browser" },
+      { "id": "browser.sendToChat", "title": "Send Page To Chat", "category": "Browser" },
+      { "id": "browser.clearData", "title": "Clear Browsing Data", "category": "Browser" },
+      { "id": "browser.refreshLists", "title": "Refresh Filter Lists", "category": "Browser" }
+    ],
+    "keybindings": [
+      { "command": "browser.focusAddress", "key": "Ctrl+L", "when": "activeEditor == 'browser.page'" },
+      { "command": "browser.find", "key": "Ctrl+F", "when": "activeEditor == 'browser.page'" },
+      { "command": "browser.reload", "key": "Ctrl+R", "when": "activeEditor == 'browser.page'" },
+      { "command": "browser.reload", "key": "F5", "when": "activeEditor == 'browser.page'" },
+      { "command": "browser.back", "key": "Alt+ArrowLeft", "when": "activeEditor == 'browser.page'" },
+      { "command": "browser.forward", "key": "Alt+ArrowRight", "when": "activeEditor == 'browser.page'" },
+      { "command": "browser.bookmark", "key": "Ctrl+D", "when": "activeEditor == 'browser.page'" },
+      { "command": "browser.zoomIn", "key": "Ctrl+=", "when": "activeEditor == 'browser.page'" },
+      { "command": "browser.zoomOut", "key": "Ctrl+-", "when": "activeEditor == 'browser.page'" },
+      { "command": "browser.zoomReset", "key": "Ctrl+0", "when": "activeEditor == 'browser.page'" },
+      { "command": "browser.newTab", "key": "Ctrl+T", "when": "activeEditor == 'browser.page'" }
+    ],
+    "viewContainers": [
+      { "id": "browser-container", "title": "Browser", "icon": "globe", "location": "sidebar" }
+    ],
+    "views": [
+      { "id": "browser.sidebar", "name": "Browser", "defaultContainerId": "browser-container" }
+    ],
+    "editors": [
+      { "typeId": "browser.page", "displayName": "Web Page" }
+    ],
+    "configuration": [
+      {
+        "title": "Browser",
+        "properties": {
+          "browser.searchEngine": {
+            "type": "string",
+            "default": "duckduckgo",
+            "enum": ["duckduckgo", "brave", "startpage", "google"],
+            "description": "Where typed searches go. DuckDuckGo by default."
+          },
+          "browser.homepage": {
+            "type": "string",
+            "default": "about:newtab",
+            "description": "What a new tab shows. about:newtab is the built-in page with your bookmarks and recent history; any https address works too."
+          },
+          "browser.clearOnExit": {
+            "type": "boolean",
+            "default": false,
+            "description": "Clear the browser's cookies, cache and site storage when Parallx closes. History and bookmarks stay."
+          }
+        }
+      }
+    ]
+  }
+}
