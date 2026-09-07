@@ -220,6 +220,8 @@ function setupBrowserBridge(ipcMain, opts) {
   // ── Guests: popups, navigation resets, lifecycle ──
   function attachGuestHooks(guest) {
     if (!guest || guest.isDestroyed() || !isOurs(guest.session)) return;
+    // A page's sound is the page's business: never start a browser tab muted.
+    try { if (guest.isAudioMuted()) guest.setAudioMuted(false); } catch { /* ignore */ }
     guest.setWindowOpenHandler(({ url, disposition }) => {
       send('browser:open-url', { url, disposition, openerId: guest.id });
       return { action: 'deny' };
@@ -229,6 +231,13 @@ function setupBrowserBridge(ipcMain, opts) {
   }
   function watchWindow(win) {
     if (!win || win.isDestroyed()) return;
+    // Runs alongside the app's own hardening listener (no Node, isolated,
+    // sandboxed, no preload). For the browser's partitions only, playback
+    // does not wait for a gesture: a video the user opened plays with sound
+    // instead of Chromium starting it muted.
+    win.webContents.on('will-attach-webview', (_event, webPreferences, params) => {
+      if (params && Object.values(PARTITIONS).includes(params.partition)) webPreferences.autoplayPolicy = 'no-user-gesture-required';
+    });
     win.webContents.on('did-attach-webview', (_event, guest) => attachGuestHooks(guest));
   }
   watchWindow(getMainWindow());
