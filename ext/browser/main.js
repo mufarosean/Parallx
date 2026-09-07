@@ -216,10 +216,11 @@ function fmtTime(iso) {
   return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 }
 
-/** A small anchored menu. Items: { label, handler, danger?, separator? }. */
-function showMenu(anchor, items) {
+/** A small anchored menu. Items: { label, handler, danger?, separator? }. onClose runs once when it goes away. */
+function showMenu(anchor, items, onClose) {
   dismissMenu();
   const menu = el('div', 'br-menu');
+  menu._onClose = typeof onClose === 'function' ? onClose : null;
   menu.setAttribute('role', 'menu');
   for (const it of items) {
     if (it.separator) { menu.appendChild(el('div', 'br-menu-sep')); continue; }
@@ -241,7 +242,14 @@ function showMenu(anchor, items) {
   menu._cleanup = cleanup;
 }
 let _openMenu = null;
-function dismissMenu() { if (_openMenu) { try { _openMenu._cleanup && _openMenu._cleanup(); } catch { /* ignore */ } _openMenu.remove(); _openMenu = null; } }
+function dismissMenu() {
+  if (!_openMenu) return;
+  const m = _openMenu;
+  _openMenu = null;
+  try { m._cleanup && m._cleanup(); } catch { /* ignore */ }
+  m.remove();
+  try { m._onClose && m._onClose(); } catch { /* ignore */ }
+}
 
 const CSS = `
 .br-pane { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--vscode-editor-background, var(--px-bg)); color: var(--vscode-foreground, var(--px-text)); outline: none; position: relative; overflow: hidden; box-sizing: border-box; }
@@ -299,7 +307,7 @@ const CSS = `
 /* The hidden attribute must win over every display rule below, or the New Tab
    page, the web page and the error panel all show at once. */
 .br-pane [hidden] { display: none !important; }
-.br-content webview { display: flex; }
+.br-content { background-size: 100% 100%; background-repeat: no-repeat; background-position: 0 0; }
 .br-status { position: absolute; left: 0; bottom: 0; max-width: 70%; padding: 2px 8px; font-size: 11px; background: var(--vscode-editorWidget-background, var(--px-surface)); border: 1px solid var(--vscode-panel-border, var(--px-border)); border-left: none; border-bottom: none; border-radius: 0 4px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; z-index: 3; }
 .br-panel { position: absolute; top: 40px; right: 8px; width: 320px; z-index: 6; background: var(--vscode-editorWidget-background, var(--px-surface)); border: 1px solid var(--vscode-panel-border, var(--px-border)); border-radius: var(--parallx-radius-md, 6px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); padding: 12px; font-size: 12px; }
 .br-panel h3 { margin: 0 0 2px; font-size: 13px; font-weight: 600; }
@@ -390,16 +398,52 @@ async function openTab(url, opts = {}) {
   await _api.editors.openEditor({ typeId: EDITOR_TYPE, title: opts.private ? `Private: ${base}` : base, icon: opts.private ? 'eye-closed' : 'globe', instanceId });
 }
 
+// ── Page views ──
+// Pages are not in the document. Each tab's page is a WebContentsView owned by
+// the main process (electron/browserBridge.cjs) and positioned over this
+// pane's content area; the pane reports the rectangle whenever it changes.
+// Moving a tab to another group, splitting, or evicting the pane only moves
+// or hides the rectangle: the page keeps playing, scrolled where it was.
+// Anything the pane draws over the page area (shield panel, menus, address
+// suggestions) would sit under the native view, so while one is open the view
+// is hidden behind a snapshot of itself.
+async function V(method, tabId, ...args) {
+  const b = bridge();
+  if (!b || typeof b.view !== 'function') throw new Error('The browser bridge is not available.');
+  const r = await b.view(method, tabId, ...args);
+  if (r && typeof r === 'object' && r.__error) throw new Error(r.__error);
+  return r;
+}
+let _linkStatus = null;
+/** Link preview in the status bar, where the page cannot cover it. */
+function linkStatus(text) {
+  try {
+    if (!_linkStatus) _linkStatus = _api.window.createStatusBarItem(1, 50);
+    if (text) { _linkStatus.text = text.length > 120 ? `${text.slice(0, 117)}…` : text; _linkStatus.show(); }
+    else _linkStatus.hide();
+  } catch { /* the status bar is optional */ }
+}
+const SHORTCUT_COMMANDS = {
+  'Ctrl+L': 'browser.focusAddress', 'Ctrl+F': 'browser.find', 'Ctrl+T': 'browser.newTab', 'Ctrl+R': 'browser.reload', 'F5': 'browser.reload',
+  'Ctrl+D': 'browser.bookmark', 'Ctrl+H': 'browser.openHistory', 'Ctrl+Shift+N': 'browser.newPrivateTab', 'Ctrl+Shift+O': 'browser.openBookmarks',
+  'Alt+ArrowLeft': 'browser.back', 'Alt+ArrowRight': 'browser.forward', 'Ctrl+=': 'browser.zoomIn', 'Ctrl+-': 'browser.zoomOut', 'Ctrl+0': 'browser.zoomReset',
+};
+function editorStillOpen(instanceId) {
+  try { return (_api.editors.openEditors || []).some((e) => typeof e.id === 'string' && e.id.endsWith(instanceId)); } catch { return true; }
+}
+function privateEditorsOpen() {
+  try { return (_api.editors.openEditors || []).some((e) => typeof e.id === 'string' && e.id.includes(':private:')); } catch { return true; }
+}
+
 function createPagePane(container, input, opts = {}) {
   injectStyles();
   const instanceId = (input && (input.instanceId || input.id)) || newTabId();
   const editorId = input && input.id;
-  const partition = opts.partition || PARTITION;
+  const partitionKind = opts.agent ? 'agent' : (opts.private ? 'private' : 'user');
   const isPrivate = !!opts.private;
   const root = el('div', `br-pane${isPrivate ? ' br-pane--private' : ''}`);
   root.tabIndex = -1;
   container.appendChild(root);
-  // The assistant's tab says whose it is, and what it is doing, at all times.
   let agentBanner = null;
   if (opts.agent) {
     agentBanner = el('div', 'br-bar br-agent-bar');
@@ -411,9 +455,9 @@ function createPagePane(container, input, opts = {}) {
   }
 
   const pane = {
-    instanceId, root, webview: null, wcId: null, url: NEWTAB, title: 'New Tab', loading: false,
-    bookmarked: false, blocked: { count: 0, hosts: [] }, zoom: 1, readerOn: false, disposed: false,
-    lastHttpAttempt: null, isPrivate,
+    instanceId, tabId: instanceId, root, hasView: false, wcId: null, url: NEWTAB, title: 'New Tab', loading: false,
+    canGoBack: false, canGoForward: false, bookmarked: false, blocked: { count: 0, hosts: [] }, zoom: 1, readerOn: false,
+    disposed: false, isPrivate, viewVisible: false, overlays: 0, _creating: null, _loadWaiters: [],
   };
   _panes.set(instanceId, pane);
   const setActive = () => { _activePane = pane; };
@@ -477,12 +521,10 @@ function createPagePane(container, input, opts = {}) {
   progress.appendChild(progressFill);
   root.appendChild(progress);
 
-  // Permission prompt bar (hidden until a site asks)
   const permBar = el('div', 'br-bar');
   permBar.hidden = true;
   root.appendChild(permBar);
 
-  // Find bar
   const findBar = el('div', 'br-bar');
   findBar.hidden = true;
   const findInput = el('input', null, { type: 'text', placeholder: 'Find in page', 'aria-label': 'Find in page' });
@@ -493,13 +535,10 @@ function createPagePane(container, input, opts = {}) {
   findBar.append(el('span', null, { text: 'Find' }), findInput, findCount, findPrev, findNextBtn, findClose);
   root.appendChild(findBar);
 
-  // Content
+  // The page area. The native view is positioned over it; DOM views (New Tab,
+  // about: pages, errors, reader) live inside it and show when the view hides.
   const content = el('div', 'br-content');
   root.appendChild(content);
-  // The link preview lives inside the page area so it can never hang below it.
-  const status = el('div', 'br-status');
-  status.hidden = true;
-  content.appendChild(status);
 
   let newtabView = null;
   let internalView = null;
@@ -508,10 +547,13 @@ function createPagePane(container, input, opts = {}) {
   let shieldPanel = null;
   let suggestIndex = -1;
   let suggestions = [];
+  let suggestOverlay = false;
 
-  // ── Views ──
+  // ── Which surface shows ──
   function showOnly(which) {
-    for (const child of [pane.webview, newtabView, internalView, errorView, readerView]) if (child) child.hidden = child !== which;
+    for (const child of [newtabView, internalView, errorView, readerView]) if (child) child.hidden = child !== which;
+    pane.viewVisible = which === 'view';
+    if (!pane.viewVisible) content.style.backgroundImage = '';
   }
   function showNewTab() {
     if (!newtabView) { newtabView = buildNewTabView(pane, (u) => navigate(u)); content.appendChild(newtabView); }
@@ -545,11 +587,7 @@ function createPagePane(container, input, opts = {}) {
     row.appendChild(retry);
     if (allowHttpOnce) {
       const http = el('button', null, { type: 'button', text: 'Load Over HTTP Once', title: 'This site did not answer over HTTPS. Load the unencrypted page this one time.' });
-      http.addEventListener('click', async () => {
-        const b = bridge();
-        if (b) await b.allowHttpOnce(allowHttpOnce);
-        loadInWebview(allowHttpOnce);
-      });
+      http.addEventListener('click', async () => { const b = bridge(); if (b) await b.allowHttpOnce(allowHttpOnce); loadInView(allowHttpOnce); });
       row.appendChild(http);
     }
     const back = el('button', null, { type: 'button', text: 'Back' });
@@ -560,102 +598,82 @@ function createPagePane(container, input, opts = {}) {
     showOnly(errorView);
   }
 
-  // ── Webview ──
-  function ensureWebview() {
-    if (pane.webview) return pane.webview;
-    const wv = document.createElement('webview');
-    wv.setAttribute('partition', partition);
-    // Popups are consulted so target=_blank links reach the main-process
-    // handler, which always denies the window and hands us the URL as a tab.
-    wv.setAttribute('allowpopups', 'true');
-    content.appendChild(wv);
-    pane.webview = wv;
-    // Until dom-ready, the element accepts navigation only through its src
-    // attribute; loadURL and friends throw. The first page therefore goes in
-    // as src, and everything after uses the methods.
-    pane.wvReady = false;
-    wv.addEventListener('dom-ready', () => {
-      pane.wvReady = true;
+  // ── The page view ──
+  function ensureView() {
+    if (pane.hasView) return Promise.resolve(true);
+    if (pane._creating) return pane._creating;
+    pane._creating = (async () => {
       try {
-        const id = wv.getWebContentsId();
-        if (id !== pane.wcId) { if (pane.wcId != null) _panesByWc.delete(pane.wcId); pane.wcId = id; _panesByWc.set(id, pane); }
-      } catch { /* not ready */ }
-      if (pane.zoom !== 1) { try { wv.setZoomFactor(pane.zoom); } catch { /* ignore */ } }
-      applyPageTheme(pane);
-    });
-    wv.addEventListener('did-start-loading', () => { pane.loading = true; progressFill.style.opacity = '1'; progressFill.style.width = '30%'; updateChrome(); });
-    wv.addEventListener('did-stop-loading', () => { pane.loading = false; progressFill.style.width = '100%'; setTimeout(() => { progressFill.style.opacity = '0'; progressFill.style.width = '0'; }, 200); updateChrome(); });
-    wv.addEventListener('did-navigate', (e) => onNavigated(e.url, false));
-    wv.addEventListener('did-navigate-in-page', (e) => { if (e.isMainFrame) onNavigated(e.url, true); });
-    wv.addEventListener('page-title-updated', (e) => {
-      pane.title = e.title || pane.title;
-      setTitle(pane.title);
-      if (isWebUrl(pane.url) && !isPrivate) { History.setTitle(pane.url, pane.title).catch(() => {}); Tabs.remember(instanceId, pane.url, pane.title).catch(() => {}); }
-    });
-    wv.addEventListener('did-fail-load', (e) => {
-      if (!e.isMainFrame || e.errorCode === -3) return; // -3: aborted (a new navigation)
-      const failed = e.validatedURL || pane.url;
-      let httpOnce = null;
-      try { const u = new URL(failed); if (u.protocol === 'https:' && !isLocalHost(u.hostname) && /CERT|SSL|CONNECTION_REFUSED|CONNECTION_RESET|NAME_NOT_RESOLVED|TIMED_OUT/.test(e.errorDescription || '')) { u.protocol = 'http:'; httpOnce = u.toString(); } } catch { httpOnce = null; }
-      const isCert = /CERT/.test(e.errorDescription || '');
-      showError(isCert ? 'This connection is not private' : 'This page could not be loaded', `${e.errorDescription || 'Unknown error'} (${e.errorCode})`, failed, isCert ? null : httpOnce);
-    });
-    wv.addEventListener('update-target-url', (e) => { if (e.url) { status.textContent = e.url; status.hidden = false; } else status.hidden = true; });
-    wv.addEventListener('found-in-page', (e) => { const r = e.result; if (r) findCount.textContent = r.matches ? `${r.activeMatchOrdinal} of ${r.matches}` : 'No matches'; });
-    wv.addEventListener('enter-html-full-screen', () => root.classList.add('is-fullscreen'));
-    wv.addEventListener('leave-html-full-screen', () => root.classList.remove('is-fullscreen'));
-    wv.addEventListener('context-menu', (e) => {
-      const p = e.params || {};
-      const items = [];
-      if (p.linkURL) {
-        items.push({ label: 'Open Link In New Tab', handler: () => openTab(p.linkURL) });
-        items.push({ label: 'Copy Link Address', handler: () => navigator.clipboard.writeText(p.linkURL).catch(() => {}) });
-        items.push({ separator: true });
-      }
-      if (p.srcURL && p.mediaType === 'image') {
-        items.push({ label: 'Open Image In New Tab', handler: () => openTab(p.srcURL) });
-        items.push({ label: 'Copy Image Address', handler: () => navigator.clipboard.writeText(p.srcURL).catch(() => {}) });
-        items.push({ separator: true });
-      }
-      if (p.selectionText) {
-        items.push({ label: 'Copy', handler: () => wv.copy() });
-        items.push({ label: `Search For "${p.selectionText.slice(0, 40)}${p.selectionText.length > 40 ? '…' : ''}"`, handler: () => openTab(parseOmnibox(p.selectionText, cfg('searchEngine', 'duckduckgo')).url) });
-        items.push({ separator: true });
-      }
-      if (p.isEditable) {
-        items.push({ label: 'Cut', handler: () => wv.cut() });
-        items.push({ label: 'Copy', handler: () => wv.copy() });
-        items.push({ label: 'Paste', handler: () => wv.paste() });
-        items.push({ separator: true });
-      }
-      items.push({ label: 'Back', handler: () => goBack() });
-      items.push({ label: 'Forward', handler: () => goForward() });
-      items.push({ label: 'Reload', handler: () => reload() });
-      items.push({ separator: true });
-      items.push({ label: 'Send Page To Chat', handler: () => sendToChat() });
-      const anchor = { getBoundingClientRect: () => { const r = wv.getBoundingClientRect(); return { left: r.left + (p.x || 0), right: r.left + (p.x || 0), top: r.top + (p.y || 0), bottom: r.top + (p.y || 0), width: 0, height: 0 }; } };
-      showMenu(anchor, items);
-    });
-    return wv;
+        const r = await V('create', pane.tabId, partitionKind);
+        if (pane.disposed) return false;
+        pane.hasView = true;
+        pane.wcId = r.webContentsId;
+        _panesByWc.set(pane.wcId, pane);
+        applyPageTheme(pane);
+        if (pane.zoom !== 1) V('zoom', pane.tabId, pane.zoom).catch(() => {});
+        return true;
+      } catch (err) {
+        showError('The page view could not be created', String(err && err.message || err), null, null);
+        return false;
+      } finally { pane._creating = null; }
+    })();
+    return pane._creating;
   }
-  function loadInWebview(url) {
-    const wv = ensureWebview();
-    showOnly(wv);
+  // Bounds: read every frame, sent only when they change.
+  let lastBounds = '';
+  let rafId = 0;
+  function tick() {
+    if (pane.disposed) return;
+    rafId = requestAnimationFrame(tick);
+    if (!pane.hasView) return;
+    const r = content.getBoundingClientRect();
+    const displayed = root.isConnected && root.offsetParent !== null && r.width > 0 && r.height > 0;
+    const visible = displayed && pane.viewVisible && pane.overlays === 0 && !document.hidden;
+    const b = { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height), visible };
+    const key = `${b.x},${b.y},${b.width},${b.height},${b.visible}`;
+    if (key === lastBounds) return;
+    lastBounds = key;
+    V('bounds', pane.tabId, b).catch(() => {});
+  }
+  rafId = requestAnimationFrame(tick);
+  // Overlays over the page area: freeze the page into a snapshot, hide the view.
+  async function overlayOpen() {
+    if (pane.hasView && pane.viewVisible && pane.overlays === 0) {
+      try { const data = await V('snapshot', pane.tabId); if (data && !pane.disposed) content.style.backgroundImage = `url("${data}")`; } catch { /* no snapshot, the area is plain */ }
+    }
+    pane.overlays++;
+  }
+  function overlayClose() {
+    pane.overlays = Math.max(0, pane.overlays - 1);
+    if (pane.overlays === 0) setTimeout(() => { if (pane.overlays === 0) content.style.backgroundImage = ''; }, 150);
+  }
+  function waitLoad(timeoutMs) {
+    return new Promise((resolve) => {
+      const done = (ok) => { pane._loadWaiters = pane._loadWaiters.filter((w) => w !== done); resolve(ok); };
+      pane._loadWaiters.push(done);
+      setTimeout(() => done(true), timeoutMs);
+    });
+  }
+  function settleLoad(ok) { for (const w of [...pane._loadWaiters]) w(ok); }
+
+  async function loadInView(url) {
     pane.url = url;
+    pane.readerOn = false;
     address.value = displayUrl(url);
     updateChrome();
-    if (!pane.wvReady) { wv.setAttribute('src', url); return; }
-    try { wv.loadURL(url); } catch (err) { showError('This address could not be opened', String(err && err.message || err), url, null); }
+    if (!(await ensureView()) || pane.disposed) return;
+    showOnly('view');
+    try { await V('navigate', pane.tabId, url); }
+    catch (err) { /* did-fail-load paints the page; anything else lands here */ if (!/ERR_/.test(String(err && err.message))) showError('This address could not be opened', String(err && err.message || err), url, null); }
   }
-  function onNavigated(url, inPage) {
+  function onNavigated(url, inPage, nav) {
     if (!url || url === 'about:blank') return;
     pane.url = url;
     pane.readerOn = false;
-    if (readerView) readerView.hidden = true;
-    if (errorView) errorView.hidden = true;
-    if (pane.webview) pane.webview.hidden = false;
+    if (nav) { pane.canGoBack = !!nav.canGoBack; pane.canGoForward = !!nav.canGoForward; }
+    if (!pane.viewVisible) showOnly('view');
     if (document.activeElement !== address) address.value = displayUrl(url);
-    if (!inPage) { pane.blocked = { count: 0, hosts: [] }; }
+    if (!inPage) pane.blocked = { count: 0, hosts: [] };
     updateChrome();
     if (isWebUrl(url)) {
       if (!isPrivate) {
@@ -672,7 +690,7 @@ function createPagePane(container, input, opts = {}) {
     const parsed = parseOmnibox(text, cfg('searchEngine', 'duckduckgo'));
     if (parsed.url === NEWTAB) { showNewTab(); return; }
     if (INTERNAL_PAGES.has(parsed.url)) { showInternal(parsed.url.slice('about:'.length)); return; }
-    loadInWebview(parsed.url);
+    loadInView(parsed.url);
   }
   function setTitle(t) {
     if (!editorId) return;
@@ -680,9 +698,8 @@ function createPagePane(container, input, opts = {}) {
     try { _api.editors.setEditorTitle(editorId, label); } catch { /* ignore */ }
   }
   function updateChrome() {
-    const wv = pane.webview;
-    backBtn.disabled = !(wv && !wv.hidden && safe(() => wv.canGoBack()));
-    fwdBtn.disabled = !(wv && !wv.hidden && safe(() => wv.canGoForward()));
+    backBtn.disabled = !(pane.hasView && (pane.canGoBack || pane.url !== NEWTAB));
+    fwdBtn.disabled = !(pane.hasView && pane.canGoForward);
     reloadBtn.innerHTML = icon(pane.loading ? 'x' : 'rotate-cw', 14);
     reloadBtn.title = pane.loading ? 'Stop' : 'Reload';
     const isHttps = /^https:/i.test(pane.url);
@@ -698,16 +715,47 @@ function createPagePane(container, input, opts = {}) {
     shieldBadge.hidden = !(pane.blocked.count > 0);
     shieldBadge.textContent = pane.blocked.count > 99 ? '99+' : String(pane.blocked.count);
   }
-  function safe(fn) { try { return fn(); } catch { return false; } }
-  function goBack() { const wv = pane.webview; if (wv && safe(() => wv.canGoBack())) { wv.goBack(); } else if (pane.url !== NEWTAB) showNewTab(); }
-  function goForward() { const wv = pane.webview; if (wv && safe(() => wv.canGoForward())) wv.goForward(); }
+  function goBack() { if (pane.hasView && pane.canGoBack) { V('back', pane.tabId).catch(() => {}); if (!pane.viewVisible) showOnly('view'); } else if (pane.url !== NEWTAB) showNewTab(); }
+  function goForward() { if (pane.hasView && pane.canGoForward) { V('forward', pane.tabId).catch(() => {}); if (!pane.viewVisible) showOnly('view'); } }
   function reload() {
     if (pane.url === NEWTAB) { showNewTab(); return; }
-    if (!pane.webview) return;
-    if (!pane.wvReady) { pane.webview.setAttribute('src', pane.url); return; }
-    try { pane.webview.reload(); } catch { pane.webview.setAttribute('src', pane.url); }
+    if (INTERNAL_PAGES.has(pane.url)) { showInternal(pane.url.slice('about:'.length)); return; }
+    if (pane.hasView) { showOnly('view'); V('reload', pane.tabId).catch(() => {}); } else loadInView(pane.url);
   }
-  function stop() { if (pane.webview) { try { pane.webview.stop(); } catch { /* ignore */ } } }
+  function stop() { if (pane.hasView) V('stop', pane.tabId).catch(() => {}); }
+
+  // ── Events from the main process ──
+  pane.onViewEvent = (ev) => {
+    switch (ev.type) {
+      case 'did-start-loading': pane.loading = true; progressFill.style.opacity = '1'; progressFill.style.width = '30%'; updateChrome(); break;
+      case 'did-stop-loading':
+        pane.loading = false; progressFill.style.width = '100%';
+        setTimeout(() => { progressFill.style.opacity = '0'; progressFill.style.width = '0'; }, 200);
+        pane.canGoBack = !!ev.canGoBack; pane.canGoForward = !!ev.canGoForward; updateChrome(); settleLoad(true); break;
+      case 'did-navigate': onNavigated(ev.url, false, ev); break;
+      case 'did-navigate-in-page': onNavigated(ev.url, true, ev); break;
+      case 'page-title-updated':
+        pane.title = ev.title || pane.title; setTitle(pane.title);
+        if (isWebUrl(pane.url) && !isPrivate) { History.setTitle(pane.url, pane.title).catch(() => {}); Tabs.remember(instanceId, pane.url, pane.title).catch(() => {}); }
+        break;
+      case 'did-fail-load': {
+        if (!ev.isMainFrame || ev.errorCode === -3) break;
+        settleLoad(false);
+        const failed = ev.validatedURL || pane.url;
+        let httpOnce = null;
+        try { const u = new URL(failed); if (u.protocol === 'https:' && !isLocalHost(u.hostname) && /CERT|SSL|CONNECTION_REFUSED|CONNECTION_RESET|NAME_NOT_RESOLVED|TIMED_OUT/.test(ev.errorDescription || '')) { u.protocol = 'http:'; httpOnce = u.toString(); } } catch { httpOnce = null; }
+        const isCert = /CERT/.test(ev.errorDescription || '');
+        showError(isCert ? 'This connection is not private' : 'This page could not be loaded', `${ev.errorDescription || 'Unknown error'} (${ev.errorCode})`, failed, isCert ? null : httpOnce);
+        break;
+      }
+      case 'update-target-url': linkStatus(ev.url || ''); break;
+      case 'found-in-page': { const r = ev.result; if (r) findCount.textContent = r.matches ? `${r.activeMatchOrdinal} of ${r.matches}` : 'No matches'; break; }
+      case 'context-menu': showPageContextMenu(ev.params || {}); break;
+      case 'shortcut': { _activePane = pane; const cmd = SHORTCUT_COMMANDS[ev.chord]; if (cmd) _api.commands.executeCommand(cmd).catch(() => {}); break; }
+      case 'focus': _activePane = pane; break;
+      default: break;
+    }
+  };
 
   // ── Address bar ──
   address.addEventListener('keydown', (e) => {
@@ -731,7 +779,7 @@ function createPagePane(container, input, opts = {}) {
   }
   function renderSuggest() {
     suggestBox.innerHTML = '';
-    if (!suggestions.length) { suggestBox.hidden = true; return; }
+    if (!suggestions.length) { dismissSuggest(); return; }
     suggestions.forEach((s, i) => {
       const row = el('div', `br-suggest-item${i === suggestIndex ? ' is-selected' : ''}`);
       row.innerHTML = icon(s.kind ? 'star' : 'clock', 12);
@@ -741,8 +789,9 @@ function createPagePane(container, input, opts = {}) {
       suggestBox.appendChild(row);
     });
     suggestBox.hidden = false;
+    if (!suggestOverlay) { suggestOverlay = true; void overlayOpen(); }
   }
-  function dismissSuggest() { suggestions = []; suggestIndex = -1; suggestBox.hidden = true; suggestBox.innerHTML = ''; }
+  function dismissSuggest() { suggestions = []; suggestIndex = -1; suggestBox.hidden = true; suggestBox.innerHTML = ''; if (suggestOverlay) { suggestOverlay = false; overlayClose(); } }
 
   // ── Bookmark ──
   async function toggleBookmark() {
@@ -756,11 +805,10 @@ function createPagePane(container, input, opts = {}) {
   }
 
   // ── Find ──
-  let findOpen = false;
-  function openFind() { if (!pane.webview) return; findBar.hidden = false; findOpen = true; findInput.focus(); findInput.select(); }
-  function closeFind() { findBar.hidden = true; findOpen = false; findCount.textContent = ''; try { pane.webview && pane.webview.stopFindInPage('clearSelection'); } catch { /* ignore */ } root.focus(); }
-  function findNext(forward) { const q = findInput.value; if (!q || !pane.webview) return; try { pane.webview.findInPage(q, { forward, findNext: true }); } catch { /* ignore */ } }
-  findInput.addEventListener('input', () => { const q = findInput.value; if (!pane.webview) return; if (!q) { findCount.textContent = ''; pane.webview.stopFindInPage('clearSelection'); return; } try { pane.webview.findInPage(q); } catch { /* ignore */ } });
+  function openFind() { if (!pane.hasView) return; findBar.hidden = false; findInput.focus(); findInput.select(); }
+  function closeFind() { findBar.hidden = true; findCount.textContent = ''; if (pane.hasView) V('stopFind', pane.tabId, 'clearSelection').catch(() => {}); root.focus(); }
+  function findNext(forward) { const q = findInput.value; if (!q || !pane.hasView) return; V('find', pane.tabId, q, { forward, findNext: true }).catch(() => {}); }
+  findInput.addEventListener('input', () => { const q = findInput.value; if (!pane.hasView) return; if (!q) { findCount.textContent = ''; V('stopFind', pane.tabId, 'clearSelection').catch(() => {}); return; } V('find', pane.tabId, q).catch(() => {}); });
   findInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); findNext(!e.shiftKey); } else if (e.key === 'Escape') { e.preventDefault(); closeFind(); } });
 
   // ── Zoom ──
@@ -768,15 +816,15 @@ function createPagePane(container, input, opts = {}) {
     const i = ZOOM_STEPS.indexOf(pane.zoom);
     const next = dir === 0 ? 1 : ZOOM_STEPS[Math.max(0, Math.min(ZOOM_STEPS.length - 1, (i < 0 ? ZOOM_STEPS.indexOf(1) : i) + dir))];
     pane.zoom = next;
-    if (pane.webview) { try { pane.webview.setZoomFactor(next); } catch { /* ignore */ } }
-    status.textContent = `Zoom ${Math.round(next * 100)}%`; status.hidden = false;
-    clearTimeout(status._t); status._t = setTimeout(() => { status.hidden = true; }, 1200);
+    if (pane.hasView) V('zoom', pane.tabId, next).catch(() => {});
+    linkStatus(`Zoom ${Math.round(next * 100)}%`);
+    clearTimeout(pane._zoomTimer); pane._zoomTimer = setTimeout(() => linkStatus(''), 1200);
   }
 
   // ── Shield panel ──
-  function toggleShieldPanel() { if (shieldPanel) { closeShieldPanel(); return; } if (!isWebUrl(pane.url)) return; shieldPanel = el('div', 'br-panel'); root.appendChild(shieldPanel); refreshShieldPanel(); setTimeout(() => { document.addEventListener('pointerdown', onShieldOutside, true); }, 0); }
-  function onShieldOutside(e) { if (shieldPanel && !shieldPanel.contains(e.target) && !shieldBtn.contains(e.target)) closeShieldPanel(); }
-  function closeShieldPanel() { document.removeEventListener('pointerdown', onShieldOutside, true); if (shieldPanel) shieldPanel.remove(); shieldPanel = null; }
+  function toggleShieldPanel() { if (shieldPanel) { closeShieldPanel(); return; } if (!isWebUrl(pane.url)) return; shieldPanel = el('div', 'br-panel'); root.appendChild(shieldPanel); void overlayOpen(); refreshShieldPanel(); setTimeout(() => { document.addEventListener('pointerdown', onShieldOutside, true); }, 0); }
+  function onShieldOutside(e) { if (shieldPanel && !shieldPanel.contains(e.target) && !shieldBtn.contains(e.target) && !e.target.closest('.ui-dropdown, .ui-dropdown-list')) closeShieldPanel(); }
+  function closeShieldPanel() { document.removeEventListener('pointerdown', onShieldOutside, true); if (shieldPanel) { shieldPanel.remove(); shieldPanel = null; overlayClose(); } }
   async function refreshShieldPanel() {
     if (!shieldPanel) return;
     const b = bridge();
@@ -833,14 +881,10 @@ function createPagePane(container, input, opts = {}) {
 
   // ── Permission bar ──
   const pendingPrompts = [];
-  function showPermission(req) {
-    pendingPrompts.push(req);
-    if (pendingPrompts.length === 1) renderPermission();
-  }
+  function showPermission(req) { pendingPrompts.push(req); if (pendingPrompts.length === 1) renderPermission(); }
   function renderPermission() {
     const req = pendingPrompts[0];
     if (!req) { permBar.hidden = true; permBar.innerHTML = ''; return; }
-    permBar.innerHTML = '';
     permBar.innerHTML = icon('lock', 12);
     const what = PERMISSION_LABELS[req.permission] || `use ${req.permission}`;
     permBar.appendChild(el('span', null, { text: `${hostOf(req.origin) || 'This site'} wants to ${what}.` }));
@@ -860,10 +904,10 @@ function createPagePane(container, input, opts = {}) {
 
   // ── Reader ──
   async function toggleReader() {
-    if (pane.readerOn) { pane.readerOn = false; if (readerView) readerView.hidden = true; if (pane.webview) pane.webview.hidden = false; updateChrome(); return; }
-    if (!pane.webview || !isWebUrl(pane.url)) return;
+    if (pane.readerOn) { pane.readerOn = false; showOnly('view'); updateChrome(); return; }
+    if (!pane.hasView || !isWebUrl(pane.url)) return;
     try {
-      const html = await pane.webview.executeJavaScript('document.documentElement.outerHTML', true);
+      const html = await V('exec', pane.tabId, 'document.documentElement.outerHTML');
       const article = readerArticle(html, pane.url);
       if (!article) { _api.window.showInformationMessage('Reader mode could not find an article on this page.'); return; }
       if (readerView) readerView.remove();
@@ -875,9 +919,10 @@ function createPagePane(container, input, opts = {}) {
     } catch (err) { _api.window.showErrorMessage('Reader mode failed: ' + (err && err.message || err)); }
   }
 
-  // ── Page menu ──
+  // ── Menus ──
   function showPageMenu(anchor) {
     const web = isWebUrl(pane.url);
+    void overlayOpen();
     showMenu(anchor, [
       { label: 'New Tab', handler: () => openTab() },
       { label: 'New Private Tab', handler: () => openTab(undefined, { private: true }) },
@@ -891,7 +936,6 @@ function createPagePane(container, input, opts = {}) {
       { label: showBookmarksBar() ? 'Hide Bookmarks Bar' : 'Show Bookmarks Bar', handler: () => setBookmarksBar(!showBookmarksBar()) },
       { separator: true },
       { label: 'Find In Page', handler: () => openFind(), disabled: !web },
-      { separator: true },
       { label: 'Zoom In', handler: () => zoomBy(1), disabled: !web },
       { label: 'Zoom Out', handler: () => zoomBy(-1), disabled: !web },
       { label: 'Reset Zoom', handler: () => zoomBy(0), disabled: !web },
@@ -899,10 +943,43 @@ function createPagePane(container, input, opts = {}) {
       { label: 'Send Page To Chat', handler: () => sendToChat(), disabled: !web },
       { label: 'Copy Address', handler: () => navigator.clipboard.writeText(pane.url).catch(() => {}), disabled: !web },
       { label: 'Open In System Browser', handler: () => { const sh = window.parallxElectron && window.parallxElectron.shell; if (sh && sh.openExternal) sh.openExternal(pane.url); }, disabled: !web },
-      { label: 'Print', handler: () => { try { pane.webview && pane.webview.print(); } catch { /* ignore */ } }, disabled: !web },
+      { label: 'Print', handler: () => { if (pane.hasView) V('print', pane.tabId).catch(() => {}); }, disabled: !web },
       { separator: true },
       { label: 'Clear Browsing Data', danger: true, handler: () => clearBrowsingData() },
-    ]);
+    ], overlayClose);
+  }
+  function showPageContextMenu(p) {
+    const items = [];
+    if (p.linkURL) {
+      items.push({ label: 'Open Link In New Tab', handler: () => openTab(p.linkURL) });
+      items.push({ label: 'Copy Link Address', handler: () => navigator.clipboard.writeText(p.linkURL).catch(() => {}) });
+      items.push({ separator: true });
+    }
+    if (p.srcURL && p.mediaType === 'image') {
+      items.push({ label: 'Open Image In New Tab', handler: () => openTab(p.srcURL) });
+      items.push({ label: 'Copy Image Address', handler: () => navigator.clipboard.writeText(p.srcURL).catch(() => {}) });
+      items.push({ separator: true });
+    }
+    if (p.selectionText) {
+      items.push({ label: 'Copy', handler: () => V('edit', pane.tabId, 'copy').catch(() => {}) });
+      items.push({ label: `Search For "${p.selectionText.slice(0, 40)}${p.selectionText.length > 40 ? '…' : ''}"`, handler: () => openTab(parseOmnibox(p.selectionText, cfg('searchEngine', 'duckduckgo')).url) });
+      items.push({ separator: true });
+    }
+    if (p.isEditable) {
+      items.push({ label: 'Cut', handler: () => V('edit', pane.tabId, 'cut').catch(() => {}) });
+      items.push({ label: 'Copy', handler: () => V('edit', pane.tabId, 'copy').catch(() => {}) });
+      items.push({ label: 'Paste', handler: () => V('edit', pane.tabId, 'paste').catch(() => {}) });
+      items.push({ separator: true });
+    }
+    items.push({ label: 'Back', handler: () => goBack() });
+    items.push({ label: 'Forward', handler: () => goForward() });
+    items.push({ label: 'Reload', handler: () => reload() });
+    items.push({ separator: true });
+    items.push({ label: 'Send Page To Chat', handler: () => sendToChat() });
+    const r = content.getBoundingClientRect();
+    const anchor = { getBoundingClientRect: () => ({ left: r.left + (p.x || 0), right: r.left + (p.x || 0), top: r.top + (p.y || 0), bottom: r.top + (p.y || 0), width: 0, height: 0 }) };
+    void overlayOpen();
+    showMenu(anchor, items, overlayClose);
   }
   function sendToChat() {
     if (!isWebUrl(pane.url)) return;
@@ -915,7 +992,7 @@ function createPagePane(container, input, opts = {}) {
       .catch((err) => _api.window.showErrorMessage('Could not send to chat: ' + (err && err.message || err)));
   }
 
-  // ── Pane API for commands and bridge events ──
+  // ── Pane API for commands, tools and bridge events ──
   pane.navigate = navigate;
   pane.focusAddress = () => { address.focus(); address.select(); };
   pane.openFind = openFind;
@@ -926,13 +1003,36 @@ function createPagePane(container, input, opts = {}) {
   pane.zoomBy = zoomBy;
   pane.toggleReader = toggleReader;
   pane.sendToChat = sendToChat;
+  pane.waitLoad = waitLoad;
+  pane.exec = (code) => V('exec', pane.tabId, code);
   pane.onBlocked = (summary) => { pane.blocked = { count: summary.count || 0, hosts: summary.hosts || [] }; updateChrome(); if (shieldPanel) refreshShieldPanel(); };
   pane.onPermission = showPermission;
   pane.onLists = () => { if (shieldPanel) refreshShieldPanel(); };
   pane.setAgentNote = (text) => { const n = agentBanner && agentBanner.querySelector('.br-agent-note'); if (n) n.textContent = text || ''; };
 
-  // ── First load ──
+  // ── First load: adopt a live page if this tab already has one (moved or
+  // evicted pane), otherwise open the pending, remembered or home address. ──
   (async () => {
+    let adopted = null;
+    try { adopted = await V('adopt', pane.tabId); } catch { adopted = null; }
+    if (pane.disposed) return;
+    if (adopted && adopted.webContentsId) {
+      pane.hasView = true;
+      pane.wcId = adopted.webContentsId;
+      _panesByWc.set(pane.wcId, pane);
+      if (adopted.url && adopted.url !== 'about:blank') {
+        pane.url = adopted.url;
+        pane.title = adopted.title || hostOf(adopted.url) || 'Web Page';
+        pane.canGoBack = !!adopted.canGoBack;
+        pane.canGoForward = !!adopted.canGoForward;
+        address.value = displayUrl(pane.url);
+        setTitle(pane.title);
+        Bookmarks.has(pane.url).then((b) => { pane.bookmarked = b; updateChrome(); }).catch(() => {});
+        updateChrome();
+        showOnly('view');
+        return;
+      }
+    }
     let initial = _pendingUrls.get(instanceId);
     _pendingUrls.delete(instanceId);
     if (!initial) { try { const row = await Tabs.recall(instanceId); if (row && row.url) initial = row.url; } catch { /* fresh */ } }
@@ -944,17 +1044,26 @@ function createPagePane(container, input, opts = {}) {
   return {
     dispose() {
       pane.disposed = true;
+      cancelAnimationFrame(rafId);
       closeShieldPanel();
+      dismissSuggest();
       _sidebarListeners.delete(refreshBookmarksBar);
+      linkStatus('');
       if (pane.wcId != null) _panesByWc.delete(pane.wcId);
       _panes.delete(instanceId);
       if (_activePane === pane) _activePane = null;
-      // The last private tab takes the private session with it.
-      if (isPrivate && ![..._panes.values()].some((p) => p.isPrivate)) { const b = bridge(); if (b) b.clearData('private').catch(() => {}); }
+      if (pane.hasView) V('bounds', pane.tabId, { x: 0, y: 0, width: 0, height: 0, visible: false }).catch(() => {});
+      // Closed, or only moved? Moved tabs come back within a moment and adopt
+      // the same page; a closed tab is gone from the editor list.
+      setTimeout(() => {
+        if (_panes.has(instanceId) || editorStillOpen(instanceId)) return;
+        V('destroy', pane.tabId).catch(() => {});
+        if (isPrivate && !privateEditorsOpen()) { const b = bridge(); if (b) b.clearData('private').catch(() => {}); }
+      }, 800);
       container.innerHTML = '';
     },
-    saveViewState() { return { url: pane.url, zoom: pane.zoom }; },
-    restoreViewState(state) { if (state && typeof state.zoom === 'number') { pane.zoom = state.zoom; if (pane.webview) { try { pane.webview.setZoomFactor(pane.zoom); } catch { /* ignore */ } } } },
+    saveViewState() { return { zoom: pane.zoom }; },
+    restoreViewState(state) { if (state && typeof state.zoom === 'number') { pane.zoom = state.zoom; if (pane.hasView) V('zoom', pane.tabId, pane.zoom).catch(() => {}); } },
   };
 }
 
@@ -1002,7 +1111,7 @@ async function clearBrowsingData() {
   try {
     if (b) await b.clearData('user');
     await History.clear();
-    for (const p of _panes.values()) { if (p.webview && isWebUrl(p.url)) { try { p.webview.reload(); } catch { /* ignore */ } } }
+    for (const p of _panes.values()) { if (p.hasView && isWebUrl(p.url)) { try { p.reload(); } catch { /* ignore */ } } }
     notifySidebar();
     _api.window.showInformationMessage('Browsing data cleared.');
   } catch (err) { _api.window.showErrorMessage('Could not clear browsing data: ' + (err && err.message || err)); }
@@ -1476,7 +1585,8 @@ function subscribeBridge() {
   if (!b) return;
   b.getState().then((s) => { if (s && s.lists) { _lists = s.lists; notifySidebar(); } }).catch(() => {});
   _unsubscribeBridge = b.onEvent(({ type, payload }) => {
-    if (type === 'blocked') { const p = _panesByWc.get(payload.webContentsId); if (p) p.onBlocked(payload); }
+    if (type === 'view:event') { const p = _panes.get(payload.tabId); if (p && !p.disposed) p.onViewEvent(payload); }
+    else if (type === 'blocked') { const p = _panesByWc.get(payload.webContentsId); if (p) p.onBlocked(payload); }
     else if (type === 'open-url') { if (payload && payload.url && /^(https?|about):/i.test(payload.url)) openTab(payload.url); }
     else if (type === 'permission-request') { const p = _panesByWc.get(payload.webContentsId) || _activePane; if (p) p.onPermission(payload); else b.permissionReply(payload.requestId, false, false); }
     else if (type === 'download') {
@@ -1517,6 +1627,20 @@ export async function activate(api, context) {
   registerCommands(api, context);
   registerAgentTools(api, context);
   subscribeBridge();
+  // Page views outlive panes; a view whose editor is gone is destroyed here,
+  // whether the pane was mounted when the tab closed or not.
+  const reconcileViews = async () => {
+    let list = [];
+    try { list = await V('list', null); } catch { return; }
+    const open = (api.editors.openEditors || []).map((e) => String(e.id || ''));
+    for (const v of list) {
+      if (_panes.has(v.tabId)) continue;
+      if (!open.some((id) => id.endsWith(v.tabId))) V('destroy', v.tabId).catch(() => {});
+    }
+    if (!privateEditorsOpen() && list.some((v) => v.kind === 'private')) { const b = bridge(); if (b) b.clearData('private').catch(() => {}); }
+  };
+  if (api.editors.onDidChangeOpenEditors) context.subscriptions.push(api.editors.onDidChangeOpenEditors(() => { setTimeout(reconcileViews, 900); }));
+  setTimeout(reconcileViews, 1500);
   if (api.workspace.onDidChangeConfiguration) {
     context.subscriptions.push(api.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('browser.pageTheme')) for (const p of _panes.values()) applyPageTheme(p);
@@ -1576,20 +1700,15 @@ function agentNote(text) {
   const p = agentPane();
   if (p && p.setAgentNote) p.setAgentNote(text);
 }
-/** Resolve when the webview finishes loading, or after the timeout. */
-function waitForLoad(pane, timeoutMs) {
-  return new Promise((resolve) => {
-    const wv = pane.webview;
-    if (!wv) return resolve(false);
-    let done = false;
-    const finish = (ok) => { if (done) return; done = true; wv.removeEventListener('did-stop-loading', onStop); wv.removeEventListener('did-fail-load', onFail); resolve(ok); };
-    const onStop = () => setTimeout(() => finish(true), 150);
-    const onFail = (e) => { if (e.isMainFrame && e.errorCode !== -3) finish(false); };
-    wv.addEventListener('did-stop-loading', onStop);
-    wv.addEventListener('did-fail-load', onFail);
-    setTimeout(() => finish(true), timeoutMs);
-  });
+/** Resolve when the page finishes loading, or after the timeout. */
+async function waitForLoad(pane, timeoutMs) {
+  if (!pane || !pane.hasView) return false;
+  const ok = await pane.waitLoad(timeoutMs);
+  await new Promise((r) => setTimeout(r, 150));
+  return ok;
 }
+/** Run code in the agent page; the page sees only the code, we see only the result. */
+function viewExec(pane, code) { return pane.exec(code); }
 function cleanText(s, max) {
   // Control characters out, runs of blank lines collapsed, length capped.
   const ctrl = new RegExp('[\\u0000-\\u0008\\u000e-\\u001f]', 'g');
@@ -1609,9 +1728,9 @@ const AGENT_EXTRACT_JS = `(() => {
 /** Read the agent page: article text when Readability finds one, else the body text, plus the interactive map. */
 async function agentRead() {
   const pane = agentPane();
-  if (!pane || !pane.webview || !isWebUrl(pane.url)) return { content: 'The Assistant Browser has no page open. Use browserOpen first.', isError: true };
+  if (!pane || !pane.hasView || !isWebUrl(pane.url)) return { content: 'The Assistant Browser has no page open. Use browserOpen first.', isError: true };
   let data;
-  try { data = await pane.webview.executeJavaScript(AGENT_EXTRACT_JS, true); } catch (err) { return { content: `Could not read the page: ${err && err.message || err}`, isError: true }; }
+  try { data = await viewExec(pane, AGENT_EXTRACT_JS, true); } catch (err) { return { content: `Could not read the page: ${err && err.message || err}`, isError: true }; }
   if (!data || typeof data !== 'object') return { content: 'Could not read the page.', isError: true };
   let body = '';
   const article = readerArticle(data.html, data.url);
@@ -1639,19 +1758,20 @@ async function agentOpen(url) {
   const pane = await ensureAgentPane();
   agentNote(`Opening ${hostOf(target)}`);
   pane.navigate(target);
-  await new Promise((r) => setTimeout(r, 50));
+  // The page view is created on the first navigation; wait for it before waiting for the load.
+  for (let i = 0; i < 40 && !pane.hasView && !pane.disposed; i++) await new Promise((r) => setTimeout(r, 50));
   await waitForLoad(pane, AGENT_LOAD_TIMEOUT_MS);
   agentNote(`Reading ${hostOf(pane.url)}`);
   return agentRead();
 }
 async function agentClick(index) {
   const pane = agentPane();
-  if (!pane || !pane.webview) return { content: 'The Assistant Browser has no page open.', isError: true };
+  if (!pane || !pane.hasView) return { content: 'The Assistant Browser has no page open.', isError: true };
   const i = Number(index);
   if (!Number.isInteger(i) || i < 0) return { content: 'browserClick needs the index of a link or button from browserRead.', isError: true };
   let clicked;
   try {
-    clicked = await pane.webview.executeJavaScript(`(() => { const el = document.querySelector('[data-px-i="${i}"]'); if (!el) return null; const t = (el.innerText || el.value || el.getAttribute('aria-label') || '').trim().slice(0, 80); el.scrollIntoView({ block: 'center' }); el.click(); return t; })()`, true);
+    clicked = await viewExec(pane, `(() => { const el = document.querySelector('[data-px-i="${i}"]'); if (!el) return null; const t = (el.innerText || el.value || el.getAttribute('aria-label') || '').trim().slice(0, 80); el.scrollIntoView({ block: 'center' }); el.click(); return t; })()`, true);
   } catch (err) { return { content: `Click failed: ${err && err.message || err}`, isError: true }; }
   if (clicked == null) return { content: `No element with index ${i} on the current page. Call browserRead again.`, isError: true };
   agentNote(`Clicked "${clicked}"`);
@@ -1660,13 +1780,13 @@ async function agentClick(index) {
 }
 async function agentType(index, text, submit) {
   const pane = agentPane();
-  if (!pane || !pane.webview) return { content: 'The Assistant Browser has no page open.', isError: true };
+  if (!pane || !pane.hasView) return { content: 'The Assistant Browser has no page open.', isError: true };
   const i = Number(index);
   if (!Number.isInteger(i) || i < 0) return { content: 'browserType needs the index of an input from browserRead.', isError: true };
   const value = JSON.stringify(String(text ?? ''));
   let label;
   try {
-    label = await pane.webview.executeJavaScript(`(() => {
+    label = await viewExec(pane, `(() => {
       const el = document.querySelector('[data-px-i="${i}"]'); if (!el) return null;
       const lab = (el.labels && el.labels[0] && el.labels[0].innerText) || el.getAttribute('aria-label') || el.placeholder || el.name || el.id || el.tagName;
       el.focus();
@@ -1684,7 +1804,7 @@ async function agentType(index, text, submit) {
 }
 async function agentBack() {
   const pane = agentPane();
-  if (!pane || !pane.webview) return { content: 'The Assistant Browser has no page open.', isError: true };
+  if (!pane || !pane.hasView) return { content: 'The Assistant Browser has no page open.', isError: true };
   agentNote('Going back');
   pane.goBack();
   await waitForLoad(pane, 10000);

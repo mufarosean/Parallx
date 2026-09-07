@@ -19,7 +19,7 @@
 const path = require('path');
 const fs = require('fs');
 const fsp = fs.promises;
-const { session, app, shell, webContents } = require('electron');
+const { session, app, shell, webContents, WebContentsView } = require('electron');
 const policy = require('./browserPolicy.cjs');
 
 let ElectronBlocker = null;
@@ -239,6 +239,7 @@ function setupBrowserBridge(ipcMain, opts) {
       if (params && Object.values(PARTITIONS).includes(params.partition)) webPreferences.autoplayPolicy = 'no-user-gesture-required';
     });
     win.webContents.on('did-attach-webview', (_event, guest) => attachGuestHooks(guest));
+    win.on('closed', () => { for (const rec of [...views.values()]) { try { rec.wc.close(); } catch { /* ignore */ } } views.clear(); });
   }
   watchWindow(getMainWindow());
 
@@ -269,6 +270,130 @@ function setupBrowserBridge(ipcMain, opts) {
       send('browser:download', { ...info });
     });
   }
+
+  // ── Page views ──
+  // A tab's page is a WebContentsView owned here and positioned over the
+  // pane's content area from the rectangle the renderer reports. It outlives
+  // the pane: moving a tab to another group, splitting, or evicting the pane
+  // only moves or hides the rectangle, and the page never reloads. The
+  // renderer destroys a view only once the editor is really closed.
+  const views = new Map(); // tabId -> { tabId, kind, view, wc, bounds, visible, attached, fullscreen }
+  const FORWARDED_KEYS = new Set(['Ctrl+L', 'Ctrl+F', 'Ctrl+T', 'Ctrl+R', 'F5', 'Ctrl+D', 'Ctrl+H', 'Ctrl+Shift+N', 'Ctrl+Shift+O', 'Alt+ArrowLeft', 'Alt+ArrowRight', 'Ctrl+=', 'Ctrl+-', 'Ctrl+0']);
+  const chordOf = (input) => {
+    const mods = [];
+    if (input.control) mods.push('Ctrl');
+    if (input.shift) mods.push('Shift');
+    if (input.alt) mods.push('Alt');
+    let k = String(input.key || '');
+    if (k.length === 1) k = k.toUpperCase();
+    if (k === '+') k = '=';
+    return [...mods, k].join('+');
+  };
+  const navState = (wc) => {
+    const h = wc.navigationHistory;
+    return {
+      url: wc.getURL(), title: wc.getTitle(),
+      canGoBack: h ? h.canGoBack() : wc.canGoBack(),
+      canGoForward: h ? h.canGoForward() : wc.canGoForward(),
+    };
+  };
+  const describeView = (rec) => ({ tabId: rec.tabId, webContentsId: rec.wc.id, kind: rec.kind, ...navState(rec.wc) });
+  const emitView = (rec, type, payload) => send('browser:view:event', { tabId: rec.tabId, type, ...(payload || {}) });
+  function applyBounds(rec) {
+    const win = getMainWindow();
+    if (!win || win.isDestroyed() || rec.wc.isDestroyed()) return;
+    let bounds = null;
+    if (rec.fullscreen) { const [w, h] = win.getContentSize(); bounds = { x: 0, y: 0, width: w, height: h }; }
+    else if (rec.visible && rec.bounds && rec.bounds.width > 0 && rec.bounds.height > 0) bounds = rec.bounds;
+    if (bounds) {
+      if (!rec.attached) { win.contentView.addChildView(rec.view); rec.attached = true; }
+      rec.view.setBounds(bounds);
+    } else if (rec.attached) {
+      try { win.contentView.removeChildView(rec.view); } catch { /* already gone */ }
+      rec.attached = false;
+    }
+  }
+  function viewCreate(tabId, kind) {
+    const existing = views.get(tabId);
+    if (existing && !existing.wc.isDestroyed()) return describeView(existing);
+    const partitionKind = PARTITIONS[kind] ? kind : 'user';
+    const view = new WebContentsView({
+      webPreferences: {
+        partition: PARTITIONS[partitionKind],
+        sandbox: true, contextIsolation: true, nodeIntegration: false, nodeIntegrationInSubFrames: false,
+        webviewTag: false, autoplayPolicy: 'no-user-gesture-required', spellcheck: false,
+      },
+    });
+    const wc = view.webContents;
+    const rec = { tabId, kind: partitionKind, view, wc, bounds: null, visible: false, attached: false, fullscreen: false };
+    views.set(tabId, rec);
+    attachGuestHooks(wc);
+    wc.on('did-start-loading', () => emitView(rec, 'did-start-loading'));
+    wc.on('did-stop-loading', () => emitView(rec, 'did-stop-loading', navState(wc)));
+    wc.on('did-navigate', (_e, url) => emitView(rec, 'did-navigate', { ...navState(wc), url }));
+    wc.on('did-navigate-in-page', (_e, url, isMainFrame) => { if (isMainFrame) emitView(rec, 'did-navigate-in-page', { ...navState(wc), url }); });
+    wc.on('page-title-updated', (_e, title) => emitView(rec, 'page-title-updated', { title }));
+    wc.on('did-fail-load', (_e, errorCode, errorDescription, validatedURL, isMainFrame) => emitView(rec, 'did-fail-load', { errorCode, errorDescription, validatedURL, isMainFrame }));
+    wc.on('update-target-url', (_e, url) => emitView(rec, 'update-target-url', { url }));
+    wc.on('found-in-page', (_e, result) => emitView(rec, 'found-in-page', { result }));
+    wc.on('enter-html-full-screen', () => { rec.fullscreen = true; applyBounds(rec); emitView(rec, 'fullscreen', { on: true }); });
+    wc.on('leave-html-full-screen', () => { rec.fullscreen = false; applyBounds(rec); emitView(rec, 'fullscreen', { on: false }); });
+    wc.on('context-menu', (_e, p) => emitView(rec, 'context-menu', { params: { x: p.x, y: p.y, linkURL: p.linkURL, srcURL: p.srcURL, mediaType: p.mediaType, selectionText: p.selectionText, isEditable: p.isEditable, pageURL: p.pageURL } }));
+    // The page has keyboard focus when the user is in it; the browser's own
+    // chords still have to reach the workbench dispatcher.
+    wc.on('before-input-event', (e, input) => {
+      if (input.type !== 'keyDown') return;
+      const chord = chordOf(input);
+      if (FORWARDED_KEYS.has(chord)) { e.preventDefault(); emitView(rec, 'shortcut', { chord }); }
+    });
+    wc.on('focus', () => emitView(rec, 'focus'));
+    wc.on('destroyed', () => { if (views.get(tabId) === rec) views.delete(tabId); });
+    return describeView(rec);
+  }
+  function viewDestroy(tabId) {
+    const rec = views.get(tabId);
+    if (!rec) return;
+    views.delete(tabId);
+    try { rec.visible = false; rec.fullscreen = false; applyBounds(rec); } catch { /* ignore */ }
+    try { if (!rec.wc.isDestroyed()) rec.wc.close(); } catch { /* ignore */ }
+  }
+  function liveView(tabId) {
+    const rec = views.get(tabId);
+    if (!rec || rec.wc.isDestroyed()) throw new Error('This tab has no page view.');
+    return rec;
+  }
+  const VIEW_METHODS = {
+    create: (tabId, kind) => viewCreate(tabId, kind),
+    adopt: (tabId) => { const rec = views.get(tabId); return rec && !rec.wc.isDestroyed() ? describeView(rec) : null; },
+    list: () => [...views.values()].filter((r) => !r.wc.isDestroyed()).map(describeView),
+    state: (tabId) => describeView(liveView(tabId)),
+    bounds: (tabId, b) => {
+      const rec = views.get(tabId);
+      if (!rec || rec.wc.isDestroyed()) return false;
+      rec.bounds = b && b.width > 0 && b.height > 0 ? { x: Math.round(b.x), y: Math.round(b.y), width: Math.round(b.width), height: Math.round(b.height) } : null;
+      rec.visible = !!(b && b.visible);
+      applyBounds(rec);
+      return true;
+    },
+    navigate: async (tabId, url) => { await liveView(tabId).wc.loadURL(String(url)); return true; },
+    back: (tabId) => { const wc = liveView(tabId).wc; const h = wc.navigationHistory; if (h ? h.canGoBack() : wc.canGoBack()) { if (h) h.goBack(); else wc.goBack(); } return true; },
+    forward: (tabId) => { const wc = liveView(tabId).wc; const h = wc.navigationHistory; if (h ? h.canGoForward() : wc.canGoForward()) { if (h) h.goForward(); else wc.goForward(); } return true; },
+    reload: (tabId) => { liveView(tabId).wc.reload(); return true; },
+    stop: (tabId) => { liveView(tabId).wc.stop(); return true; },
+    find: (tabId, text, opts) => liveView(tabId).wc.findInPage(String(text), opts || {}),
+    stopFind: (tabId, action) => { liveView(tabId).wc.stopFindInPage(action || 'clearSelection'); return true; },
+    zoom: (tabId, factor) => { liveView(tabId).wc.setZoomFactor(Number(factor) || 1); return true; },
+    exec: (tabId, code) => liveView(tabId).wc.executeJavaScript(String(code), true),
+    print: (tabId) => { liveView(tabId).wc.print(); return true; },
+    edit: (tabId, cmd) => { const wc = liveView(tabId).wc; if (['copy', 'cut', 'paste', 'selectAll'].includes(cmd)) wc[cmd](); return true; },
+    snapshot: async (tabId) => { const rec = liveView(tabId); if (!rec.attached) return null; const img = await rec.wc.capturePage(); return img.isEmpty() ? null : img.toDataURL(); },
+    destroy: (tabId) => { viewDestroy(tabId); return true; },
+  };
+  ipcMain.handle('browser:view', async (_e, method, tabId, ...args) => {
+    const fn = VIEW_METHODS[method];
+    if (!fn) return { __error: `Unknown view method: ${method}` };
+    try { return await fn(tabId, ...args); } catch (err) { return { __error: err && err.message ? err.message : String(err) }; }
+  });
 
   // ── Persistence ──
   function readJson(p, fallback) { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return fallback; } }

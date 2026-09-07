@@ -31,7 +31,7 @@ encryption, not the app's job, and said so).
 | Storage isolated | Own persistent partition, separate from the app's session and from the agent's partition; one button clears it | bridge |
 | Downloads contained | Only into the workspace `Downloads` folder (or the OS Downloads folder when no workspace is open), with progress in the sidebar | bridge |
 | Nothing phones home | No telemetry, no sync, no accounts; filter lists refresh weekly from one fixed source, visible in the shield | bridge |
-| Webview hardened | No Node, context isolated, sandboxed, no inherited preload (the existing `will-attach-webview` rule) | `electron/main.cjs` |
+| Page views hardened and durable | Each page is a main-process `WebContentsView`: no Node, context isolated, sandboxed, no preload of ours. It is positioned over the pane from bounds the renderer reports, so moving a tab, splitting, or evicting the pane never reloads the page; a view is destroyed only when its editor really closes | `electron/browserBridge.cjs` |
 
 Not claimed: fingerprint defeat (Brave's farbling), script blocking per site,
 IP anonymity.
@@ -56,7 +56,10 @@ and title so the model fetches through the sanitized chokepoint.
 - **Extension** (`ext/browser`): activity-bar container Browser with one
   sidebar (New Tab, Bookmarks, History, Downloads, Site Settings); one editor
   pane per page (each page is a workbench tab, so tabs, splits and drag are the
-  workbench's own); the New Tab page rendered in-pane (no webview); toolbar
+  workbench's own; the page itself is a main-process view over the pane, so a
+  move never reloads it); overlays that would sit under the native view (shield
+  panel, menus, address suggestions) hide it behind a snapshot; the link
+  preview lives in the status bar; the New Tab page rendered in-pane; toolbar
   with Back, Forward, Reload, address bar (URL or search, suggestions from
   history and bookmarks), shield with count and per-site panel, bookmark star,
   reader mode (vendored Mozilla Readability), find in page, zoom, page menu.

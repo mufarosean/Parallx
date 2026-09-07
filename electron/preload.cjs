@@ -403,9 +403,11 @@ contextBridge.exposeInMainWorld('parallxElectron', {
     blockedLog: () => ipcRenderer.invoke('browser:blockedLog'),
     clearBlockedLog: () => ipcRenderer.invoke('browser:clearBlockedLog'),
     setPageTheme: (webContentsId, theme) => ipcRenderer.invoke('browser:setPageTheme', webContentsId, theme),
+    /** Page views owned by the main process: create, adopt, bounds, navigate, back, forward, reload, stop, find, stopFind, zoom, exec, print, edit, snapshot, destroy, list, state. */
+    view: (method, tabId, ...args) => ipcRenderer.invoke('browser:view', method, tabId, ...args),
     /** Events: { type: 'blocked' | 'open-url' | 'permission-request' | 'download' | 'lists', payload }. Returns an unsubscribe fn. */
     onEvent: (callback) => {
-      const channels = ['browser:blocked', 'browser:open-url', 'browser:permission-request', 'browser:download', 'browser:lists'];
+      const channels = ['browser:blocked', 'browser:open-url', 'browser:permission-request', 'browser:download', 'browser:lists', 'browser:view:event'];
       const handlers = channels.map((ch) => {
         const h = (_event, payload) => { try { callback({ type: ch.slice('browser:'.length), payload }); } catch { /* ignore */ } };
         ipcRenderer.on(ch, h);
