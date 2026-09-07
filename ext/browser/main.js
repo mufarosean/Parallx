@@ -1410,6 +1410,12 @@ function createSidebar(container) {
   privateTab.setAttribute('aria-label', 'New Private Tab');
   privateTab.addEventListener('click', () => openTab(undefined, { private: true }));
   top.appendChild(privateTab);
+  // History is a page, not a sidebar list: no browser puts it in the sidebar.
+  const historyBtn = el('button', 'br-action', { type: 'button', title: 'History (Ctrl+H in a page)' });
+  historyBtn.innerHTML = icon('clock', 14);
+  historyBtn.setAttribute('aria-label', 'History');
+  historyBtn.addEventListener('click', () => openTab('about:history'));
+  top.appendChild(historyBtn);
   root.appendChild(top);
   const scroll = el('div', 'br-sidebar-scroll');
   root.appendChild(scroll);
@@ -1452,32 +1458,6 @@ function createSidebar(container) {
     if (!rows.length) { body.appendChild(el('div', 'br-empty', { text: bookmarkQuery ? 'No bookmarks match.' : 'No bookmarks yet.' })); return; }
     const list = el('div', 'br-list');
     for (const bm of rows) list.appendChild(item(bm.title || bm.url, hostOf(bm.url), () => openTab(bm.url), 'star', [{ icon: 'trash-2', title: 'Remove Bookmark', handler: async () => { await Bookmarks.remove(bm.url); for (const p of _panes.values()) if (p.url === bm.url) { p.bookmarked = false; } notifySidebar(); } }]));
-    body.appendChild(list);
-    if (q.value) setTimeout(() => { q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 0);
-  });
-
-  // History
-  let historyQuery = '';
-  const history = section('History', 'clock', async (body) => {
-    body.innerHTML = '';
-    const tools = el('div', 'br-section-tools');
-    const q = el('input', null, { type: 'text', placeholder: 'Search history', 'aria-label': 'Search history' });
-    q.value = historyQuery;
-    q.addEventListener('input', () => { historyQuery = q.value.trim(); history.refresh(); });
-    const clear = el('button', 'br-action', { type: 'button', text: 'Clear', title: 'Clear History' });
-    clear.addEventListener('click', async () => { const pick = await _api.window.showWarningMessage('Clear all browsing history?', { title: 'Clear History' }, { title: 'Cancel' }); if (pick && pick.title === 'Clear History') { await History.clear(); notifySidebar(); } });
-    tools.append(q, clear);
-    body.appendChild(tools);
-    let rows = [];
-    try { rows = historyQuery ? await History.search(historyQuery, 200) : await History.recent(200); } catch { rows = []; }
-    if (!rows.length) { body.appendChild(el('div', 'br-empty', { text: historyQuery ? 'Nothing matches.' : 'No history yet.' })); return; }
-    let day = null;
-    const list = el('div', 'br-list');
-    for (const h of rows) {
-      const d = fmtDay(h.last_visit_at);
-      if (d !== day) { day = d; list.appendChild(el('div', 'br-day', { text: d })); }
-      list.appendChild(item(h.title || h.url, fmtTime(h.last_visit_at), () => openTab(h.url), 'globe', [{ icon: 'x', title: 'Remove From History', handler: async () => { await History.removeUrl(h.url); notifySidebar(); } }]));
-    }
     body.appendChild(list);
     if (q.value) setTimeout(() => { q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 0);
   });
@@ -1541,7 +1521,7 @@ function createSidebar(container) {
   root.appendChild(foot);
 
   function refreshAll() {
-    bookmarks.refresh(); history.refresh(); downloads.refresh(); sitesSec.refresh();
+    bookmarks.refresh(); downloads.refresh(); sitesSec.refresh();
     listsText.textContent = listsLine();
     const b = bridge();
     if (b) b.blockedLog().then((r) => { totalBtn.textContent = `${Number(r.total || 0).toLocaleString()} trackers and ads blocked${r.since ? ` since ${new Date(r.since).toLocaleDateString()}` : ''}`; }).catch(() => {});
