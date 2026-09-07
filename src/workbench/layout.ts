@@ -460,10 +460,10 @@ export abstract class Layout extends Disposable {
 
   /**
    * Stamp each part with which WINDOW edges its cell touches, straight from
-   * the tree. The card CSS keys its top/right seams on these — per-part
-   * margin assumptions ("the aux bar is rightmost") stopped being true the
-   * moment parts became movable, and a card that guesses wrong loses its
-   * box on the edge it guessed about.
+   * the tree, as data-edge-top / data-edge-right. Parts sit flush today and
+   * no CSS keys on them; they stay for probes and for any chrome that must
+   * know it touches the window (per-part position assumptions stopped being
+   * true the moment parts became movable).
    */
   protected _updateEdgeAttributes(): void {
     const stamp = (id: string, element: HTMLElement | undefined): void => {

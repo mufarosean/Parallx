@@ -194,8 +194,8 @@ export class GridBranchNode extends Disposable {
     if (this.orientation === Orientation.Horizontal) {
       sash.classList.add('grid-sash-vertical');
       sash.style.cursor = 'col-resize';
-      // Size comes from CSS (--px-seam): the sash covers the card seam
-      // exactly, and the hover line paints centered inside it (workbench.css).
+      // Size comes from CSS (--px-sash): the hit area straddles the boundary
+      // and paints the 1px dividing line on it at rest (workbench.css).
     } else {
       sash.classList.add('grid-sash-horizontal');
       sash.style.cursor = 'row-resize';

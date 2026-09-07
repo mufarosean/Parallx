@@ -33,19 +33,9 @@ import { setupTooltip } from '../ui/tooltip.js';
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const TAB_HEIGHT = 35;
-/** Gap above the tab strip so the editor floats the same distance below the
- *  title bar as the sidebar / aux cards. MUST match --px-seam (the editor
- *  `.editor-tab-bar` margin-top) in workbench.css — the pane-height calc
- *  subtracts it so the JS layout stays in step with that CSS margin (no
- *  bottom clip). */
-const TAB_STRIP_TOP_GAP = 8;
-/** Horizontal chrome of the `.editor-pane-container` floating card: --px-seam
- *  margin + 1px border on each side. MUST match workbench.css
- *  (`.part-workbench-parts-editor .editor-pane-container`). The pane inside is
- *  sized with explicit pixels, so JS must subtract this — otherwise every pane
- *  is 12px wider than the card and its right edge is clipped (flush-right
- *  toolbar buttons touch/vanish at the pane border). */
-const PANE_CONTAINER_CHROME_X = 18;
+/** Parts sit flush (workbench.css): the pane fills the group width and the
+ *  height left under the tab bar and ribbon; there is no card chrome to
+ *  subtract. */
 const MIN_GROUP_WIDTH = 200;
 const MIN_GROUP_HEIGHT = 120;
 /** How many panes a group keeps ALIVE (hidden) for instant, stateful tab
@@ -202,13 +192,13 @@ export class EditorGroupView extends Disposable implements IGridView {
       this._element.style.height = `${height}px`;
     }
 
-    // Layout pane: subtract the tab strip's top gap, tab bar height, and ribbon
+    // Layout pane: subtract the tab bar height and the ribbon
     const ribbonH = this._getRibbonHeight();
-    const paneH = Math.max(0, height - TAB_STRIP_TOP_GAP - TAB_HEIGHT - ribbonH);
+    const paneH = Math.max(0, height - TAB_HEIGHT - ribbonH);
     if (this._paneContainer) {
       this._paneContainer.style.height = `${paneH}px`;
     }
-    this._activePane?.layout(Math.max(0, width - PANE_CONTAINER_CHROME_X), paneH);
+    this._activePane?.layout(width, paneH);
   }
 
   /**
@@ -812,8 +802,8 @@ export class EditorGroupView extends Disposable implements IGridView {
       // Re-layout on reveal — the group may have been resized while this
       // pane sat hidden (hidden panes receive no layout calls).
       const ribbonH = this._getRibbonHeight();
-      const paneH = Math.max(0, this._height - TAB_STRIP_TOP_GAP - TAB_HEIGHT - ribbonH);
-      retained.layout(Math.max(0, this._width - PANE_CONTAINER_CHROME_X), paneH);
+      const paneH = Math.max(0, this._height - TAB_HEIGHT - ribbonH);
+      retained.layout(this._width, paneH);
       this._activePane = retained;
       this._onDidActivePaneChange.fire(retained);
       return;
@@ -854,8 +844,8 @@ export class EditorGroupView extends Disposable implements IGridView {
     // Layout BEFORE restore so the scroll container has its final size
     // (otherwise scrollTop = N clamps against an empty viewport).
     const ribbonH = this._getRibbonHeight();
-    const paneH = Math.max(0, this._height - TAB_STRIP_TOP_GAP - TAB_HEIGHT - ribbonH);
-    pane.layout(Math.max(0, this._width - PANE_CONTAINER_CHROME_X), paneH);
+    const paneH = Math.max(0, this._height - TAB_HEIGHT - ribbonH);
+    pane.layout(this._width, paneH);
 
     // Restore cached view state for this input, if any. setInput has already
     // populated the pane's DOM by this point, and layout has been applied,

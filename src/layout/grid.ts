@@ -618,10 +618,8 @@ export class Grid extends Disposable {
   /**
    * Which OUTER edges of the grid a view's cell touches.
    *
-   * Chrome seams need this: a card owns its left and bottom seam always,
-   * but top and right gaps exist only against the window itself — a
-   * neighbour on those sides brings the seam instead. Position used to be
-   * assumed per part ("the aux bar is rightmost"); now that anything can
+   * Edge-aware chrome needs this (the part stamps in layout.ts). Position
+   * used to be assumed per part ("the aux bar is rightmost"); now that anything can
    * sit anywhere, the tree is the only honest source.
    */
   edgeTouches(viewId: string): { top: boolean; right: boolean; bottom: boolean; left: boolean } | undefined {
