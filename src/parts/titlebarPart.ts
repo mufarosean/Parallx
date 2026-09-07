@@ -150,6 +150,28 @@ export class TitlebarPart extends Part {
     this._updateDocumentTitle();
   }
 
+  // ── Sealed workspace (docs/BROWSER.md phase 2) ──
+  private _sealChip: HTMLElement | undefined;
+  /**
+   * Show or hide the seal next to the command center. A sealed workspace
+   * keeps its documents on the machine: no cloud models, no web tools, no
+   * extension egress. The chip exists so that state is never silent.
+   */
+  setSealed(sealed: boolean): void {
+    if (!this._centerSlot) return;
+    if (!sealed) { this._sealChip?.remove(); this._sealChip = undefined; return; }
+    if (!this._sealChip) {
+      const chip = $('span');
+      chip.classList.add('titlebar-seal');
+      chip.setAttribute('role', 'status');
+      chip.title = 'Sealed workspace: no cloud models, no web tools, no network egress from extensions. Change it in Settings under Security.';
+      chip.innerHTML = getIcon('lock');
+      chip.appendChild(document.createTextNode('Sealed'));
+      this._sealChip = chip;
+    }
+    if (!this._sealChip.isConnected) this._centerSlot.appendChild(this._sealChip);
+  }
+
   /** Update `document.title` to `{workspaceName} — Parallx` format. */
   private _updateDocumentTitle(editorTitle?: string): void {
     if (editorTitle) {

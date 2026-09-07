@@ -1,7 +1,8 @@
 // workbenchServices.ts — service registration and initialization
 
 import { ServiceCollection } from '../services/serviceCollection.js';
-import { IAgentApprovalService, IAgentTaskStore, ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IConfigurationService, ICommandContributionService, IKeybindingContributionService, IMenuContributionService, IViewContributionService, IKeybindingService, IFileService, ITextFileModelManager, IDatabaseService, IWorkspaceService, ISessionManager } from '../services/serviceTypes.js';
+import { IAgentApprovalService, IAgentTaskStore, ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IConfigurationService, ICommandContributionService, IKeybindingContributionService, IMenuContributionService, IViewContributionService, IKeybindingService, IFileService, ITextFileModelManager, IDatabaseService, IWorkspaceService, ISessionManager, ISettingsRegistryService } from '../services/serviceTypes.js';
+import { isWorkspaceSealed } from '../services/sealedWorkspace.js';
 import { ILanguageModelsService, IChatService, IChatAgentService, IChatModeService, IChatWidgetService, ILanguageModelToolsService } from '../services/chatTypes.js';
 import { IEmbeddingService, IChunkingService, IVectorStoreService, IIndexingPipelineService, IRetrievalService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, IAISettingsService, IUnifiedAIConfigService, IDocumentExtractionService, IDiagnosticsService, IObservabilityService, IRuntimeHookRegistry, IMcpClientService, IAutonomyLogService, ISemanticGraphService, IMindMapRefreshOrchestrator } from '../services/serviceTypes.js';
 import { LifecycleService } from './lifecycle.js';
@@ -242,6 +243,11 @@ export function registerChatServices(
   const chatModeService = new ChatModeService();
   const chatWidgetService = new ChatWidgetService();
   const languageModelToolsService = new LanguageModelToolsService();
+  // Sealed workspace (docs/BROWSER.md phase 2): the tools service asks on
+  // every enablement check, so the flag applies the moment it flips.
+  languageModelToolsService.setSealedProvider(() => {
+    try { return isWorkspaceSealed(services.get(ISettingsRegistryService)); } catch { return false; }
+  });
   const chatService = new ChatService(
     chatAgentService,
     chatModeService,

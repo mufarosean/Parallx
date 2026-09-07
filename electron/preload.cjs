@@ -369,6 +369,8 @@ contextBridge.exposeInMainWorld('parallxElectron', {
     request: (opts) => ipcRenderer.invoke('webFetch:request', opts),
     /** Reset the per-turn fetch backstop counter for the given turnId. */
     resetTurn: (turnId) => ipcRenderer.invoke('webFetch:resetTurn', turnId),
+    /** Sealed workspace: refuse every egress request until told otherwise. */
+    setSealed: (sealed) => ipcRenderer.invoke('webFetch:setSealed', sealed),
   },
 
   webSearch: {

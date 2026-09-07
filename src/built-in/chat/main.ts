@@ -132,6 +132,7 @@ import { ChatProgrammaticAccess } from './chatProgrammaticAccess.js';
 import type { IChatSelectionAttachment, ICanvasBlockReferencePayload } from '../../services/selectionActionTypes.js';
 import type { IHabitReading } from '../../openclaw/mind/habitDetector.js';
 import { habitToWorkflow } from '../../services/workflows/workflowSuggestions.js';
+import { isWorkspaceSealed, SEALED_WORKSPACE_SETTING } from '../../services/sealedWorkspace.js';
 import { createWorkflowSuggestTool } from './tools/workflowTools.js';
 
 // ── Local API type — only the subset we use ──
@@ -737,7 +738,10 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       if (ollamaOn && ollama && !ollamaReg) { ollamaReg = languageModelsService.registerProvider(ollama); }
       else if (!ollamaOn && ollamaReg) { ollamaReg.dispose(); ollamaReg = undefined; }
 
-      const anthropicOn = isEnabled('ai.providers.anthropic.enabled', false);
+      // A sealed workspace never registers a cloud provider, whatever the
+      // per-workspace opt-in says (docs/BROWSER.md phase 2).
+      const sealed = settingsReg ? isWorkspaceSealed(settingsReg) : false;
+      const anthropicOn = !sealed && isEnabled('ai.providers.anthropic.enabled', false);
       if (anthropicOn && anthropicBridge && !anthropicReg) {
         anthropicProvider = new AnthropicProvider(anthropicBridge);
         anthropicReg = languageModelsService.registerProvider(anthropicProvider);
@@ -750,7 +754,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     syncProviders();
     if (settingsReg) {
       context.subscriptions.push(settingsReg.onDidChange((c) => {
-        if (c.key === 'ai.providers.ollama.enabled' || c.key === 'ai.providers.anthropic.enabled') syncProviders();
+        if (c.key === 'ai.providers.ollama.enabled' || c.key === 'ai.providers.anthropic.enabled' || c.key === SEALED_WORKSPACE_SETTING) syncProviders();
       }));
     }
     context.subscriptions.push({

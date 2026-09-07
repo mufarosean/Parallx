@@ -27,6 +27,7 @@ import type {
 } from './chatTypes.js';
 import type { PermissionService } from './permissionService.js';
 import { PolicyDecisionPoint } from './policyDecisionPoint.js';
+import { isSealedOutOwner } from './sealedWorkspace.js';
 import {
   markTurnTainted,
 } from '../openclaw/openclawToolPolicy.js';
@@ -213,6 +214,12 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
     canChangeEnablement?(toolId: string): boolean;
     setEnablement?(toolId: string, enabled: boolean): Promise<void>;
   };
+  /** Sealed workspace (docs/BROWSER.md phase 2): asked on every enablement check. */
+  private _sealedProvider: (() => boolean) | undefined;
+  setSealedProvider(provider: () => boolean): void {
+    this._sealedProvider = provider;
+    this._onDidChangeTools.fire();
+  }
 
   /**
    * True iff the tool comes from an extension bridge whose owner
@@ -221,6 +228,9 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
    * extension), and tools without an enablement service bound.
    */
   private _isOwnerExtensionDisabled(tool: IChatTool): boolean {
+    // A sealed workspace hides the network-reaching extensions' tools
+    // outright; this is a hard gate, not a toggle the user set.
+    if (this._sealedProvider && isSealedOutOwner(tool.ownerToolId) && this._sealedProvider()) return true;
     if (!this._toolEnablement) return false;
     if (tool.source !== 'bridge') return false;
     if (!tool.ownerToolId) return false;

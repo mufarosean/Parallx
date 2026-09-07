@@ -546,8 +546,16 @@ function setupWebFetchBridge(ipcMain, _appRoot, readSecret) {
   if (typeof readSecret !== 'function') {
     throw new Error('[WebFetchBridge] setupWebFetchBridge: readSecret(key) function is required');
   }
+  // Sealed workspace (docs/BROWSER.md phase 2): the renderer tells us when the
+  // open workspace is sealed and every egress request is refused until it is
+  // not. Defaults to open; a failure to hear from the renderer therefore
+  // fails safe only once the renderer has said "sealed".
+  let _sealed = false;
+  ipcMain.handle('webFetch:setSealed', (_event, sealed) => { _sealed = !!sealed; return { ok: true, sealed: _sealed }; });
+  const SEALED_ERROR = { ok: false, error: { code: 'SEALED', message: 'This workspace is sealed: nothing leaves the machine.' } };
 
   ipcMain.handle('webFetch:request', async (_event, opts) => {
+    if (_sealed) return SEALED_ERROR;
     try {
       const safe = opts && typeof opts === 'object' ? opts : {};
       const result = await doWebFetch({
@@ -568,6 +576,7 @@ function setupWebFetchBridge(ipcMain, _appRoot, readSecret) {
   });
 
   ipcMain.handle('webSearch:request', async (_event, opts) => {
+    if (_sealed) return SEALED_ERROR;
     try {
       const safe = opts && typeof opts === 'object' ? opts : {};
       // SECURITY: API key is read from safeStorage HERE (main process). The
