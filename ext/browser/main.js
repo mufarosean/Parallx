@@ -273,7 +273,7 @@ function dismissMenu() {
 const CSS = `
 .br-pane { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--vscode-editor-background, var(--px-bg)); color: var(--vscode-foreground, var(--px-text)); outline: none; position: relative; overflow: hidden; box-sizing: border-box; }
 .br-pane--private .br-toolbar { background: color-mix(in srgb, var(--vscode-sideBar-background, var(--px-bg)) 86%, var(--vscode-textLink-foreground, var(--px-accent))); }
-.br-private-chip { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; padding: 1px 7px; border-radius: 999px; font-size: 10px; font-weight: 600; letter-spacing: 0.2px; background: var(--vscode-badge-background, var(--px-accent)); color: var(--vscode-badge-foreground, #fff); }
+.br-private-chip { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; padding: 1px 7px; border-radius: var(--px-radius-sm, 4px); font-size: 10px; font-weight: 600; letter-spacing: 0.2px; background: var(--vscode-badge-background, var(--px-accent)); color: var(--vscode-badge-foreground, #fff); }
 .br-bookmarks-bar { display: flex; align-items: center; gap: 2px; padding: 3px 8px; border-bottom: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-sideBar-background, var(--px-bg)); overflow: hidden; flex: 0 0 auto; }
 .br-bm-chip { display: inline-flex; align-items: center; gap: 5px; max-width: 180px; padding: 2px 8px; border: none; border-radius: 4px; background: transparent; color: inherit; font: inherit; font-size: 11px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 0 auto; }
 .br-bm-chip:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
@@ -301,7 +301,7 @@ const CSS = `
 .br-btn.is-active { color: var(--vscode-textLink-foreground, var(--px-accent)); }
 .br-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent)); outline-offset: -1px; }
 .br-badge { position: absolute; top: -2px; right: -2px; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px; font-size: 9px; line-height: 14px; font-weight: 600; background: var(--vscode-badge-background, var(--px-accent)); color: var(--vscode-badge-foreground, #fff); text-align: center; pointer-events: none; }
-.br-address-wrap { flex: 1; display: flex; align-items: center; gap: 6px; min-width: 0; height: 28px; padding: 0 8px; border-radius: 14px; background: var(--vscode-input-background, var(--px-bg-inset)); border: 1px solid transparent; position: relative; }
+.br-address-wrap { flex: 1; display: flex; align-items: center; gap: 6px; min-width: 0; height: 28px; padding: 0 8px; border-radius: var(--px-radius-md, 6px); background: var(--vscode-input-background, var(--px-bg-inset)); border: 1px solid transparent; position: relative; }
 .br-address-wrap:focus-within { border-color: var(--vscode-focusBorder, var(--px-accent)); }
 .br-lock { display: inline-flex; opacity: 0.7; flex: 0 0 auto; }
 .br-lock.is-insecure { color: var(--vscode-errorForeground, var(--px-danger)); opacity: 1; }
@@ -353,7 +353,7 @@ const CSS = `
 .br-error p { margin: 0; opacity: 0.75; font-size: 12px; max-width: 520px; word-break: break-all; }
 .br-error .br-row { display: flex; gap: 8px; margin-top: 6px; }
 .br-newtab { display: flex; flex-direction: column; align-items: center; padding: 48px 24px 24px; overflow-y: auto; gap: 28px; }
-.br-newtab-search { width: min(640px, 100%); display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border-radius: 20px; background: var(--vscode-input-background, var(--px-bg-inset)); border: 1px solid var(--vscode-panel-border, var(--px-border)); }
+.br-newtab-search { width: min(640px, 100%); display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border-radius: var(--px-radius-md, 6px); background: var(--vscode-input-background, var(--px-bg-inset)); border: 1px solid var(--vscode-panel-border, var(--px-border)); }
 .br-newtab-search:focus-within { border-color: var(--vscode-focusBorder, var(--px-accent)); }
 .br-newtab-search input { flex: 1; border: none; background: transparent; color: inherit; font: inherit; font-size: 14px; outline: none; }
 .br-newtab-section { width: min(760px, 100%); }
