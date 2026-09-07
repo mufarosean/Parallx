@@ -75,9 +75,27 @@ and a switch.
 
 ## Phases
 
-1. Core bridge + policy + tests. Extension: pages, address bar, shields,
-   history, bookmarks, downloads, permissions prompts, HTTPS fallback, New Tab.
-2. Sealed workspace mode: a workspace flag that hard-blocks cloud models, web
-   tools and extension egress, with a visible seal. Local model only.
-3. Agent browsing tools on the agent partition.
-4. Optional Tor proxy toggle, labelled.
+1. **Built.** Core bridge + policy + tests. Extension: pages, address bar,
+   shields, history, bookmarks, downloads, permission prompts, HTTPS fallback,
+   New Tab, reader mode, find, zoom.
+2. **Built.** Sealed workspace mode (`workspace.sealed`, Security): no cloud
+   providers, network tools hidden and refused, egress chokepoint refuses,
+   a Sealed chip in the title bar. `src/services/sealedWorkspace.ts`.
+3. **Built.** Agent browsing on the agent partition: the Assistant Browser
+   tab (banner says whose it is and what it is doing) and five chat tools:
+   `browserOpen`, `browserRead`, `browserBack` (free), `browserClick`,
+   `browserType` (each confirmed by the user). Pages come back as
+   `<untrusted_web_content>` with numbered links, buttons and inputs; the
+   session has no logins; the tools vanish in a sealed workspace.
+4. **Not built, by decision.** A Tor proxy toggle would hide the IP address
+   from sites and nothing more; it is a day's work on top of this if ever
+   wanted, and it must be labelled for exactly that.
+
+## Verified so far
+
+Unit tests: `browserPolicy` (8), `sealedWorkspace` (4); the full suite
+passes; `tsc` is clean; the extension parses as an ES module. Not yet run
+in the app. First run: open the Browser container, open a tab, load a site
+with trackers, check the shield count, try a permission prompt, download a
+file, seal a workspace and confirm the cloud model and web tools disappear,
+then ask the assistant to open a page and watch the Assistant Browser tab.
