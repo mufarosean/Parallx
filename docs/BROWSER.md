@@ -60,6 +60,12 @@ and title so the model fetches through the sanitized chokepoint.
   with Back, Forward, Reload, address bar (URL or search, suggestions from
   history and bookmarks), shield with count and per-site panel, bookmark star,
   reader mode (vendored Mozilla Readability), find in page, zoom, page menu.
+  Private tabs (Ctrl+Shift+N) run on an in-memory partition that is cleared when
+  the last one closes and never write history. Internal pages: about:newtab,
+  about:bookmarks, about:history, about:shields (the blocked-tracker log with
+  lifetime totals, kept by the bridge). A plus button and a bookmarks bar in
+  the toolbar; page theme (prefers-color-scheme per tab through the devtools
+  protocol) as a setting.
   Bookmarks, history and downloads in the extension's SQLite. Settings through
   the manifest: search engine, homepage, HTTPS only, shields default, cookie
   policy, clear on exit.

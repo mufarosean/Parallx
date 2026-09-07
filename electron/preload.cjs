@@ -400,6 +400,9 @@ contextBridge.exposeInMainWorld('parallxElectron', {
     listDownloads: () => ipcRenderer.invoke('browser:listDownloads'),
     openDownload: (p) => ipcRenderer.invoke('browser:openDownload', p),
     showDownload: (p) => ipcRenderer.invoke('browser:showDownload', p),
+    blockedLog: () => ipcRenderer.invoke('browser:blockedLog'),
+    clearBlockedLog: () => ipcRenderer.invoke('browser:clearBlockedLog'),
+    setPageTheme: (webContentsId, theme) => ipcRenderer.invoke('browser:setPageTheme', webContentsId, theme),
     /** Events: { type: 'blocked' | 'open-url' | 'permission-request' | 'download' | 'lists', payload }. Returns an unsubscribe fn. */
     onEvent: (callback) => {
       const channels = ['browser:blocked', 'browser:open-url', 'browser:permission-request', 'browser:download', 'browser:lists'];

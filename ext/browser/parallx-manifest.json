@@ -13,6 +13,10 @@
   "contributes": {
     "commands": [
       { "id": "browser.newTab", "title": "New Tab", "category": "Browser" },
+      { "id": "browser.newPrivateTab", "title": "New Private Tab", "category": "Browser" },
+      { "id": "browser.openBookmarks", "title": "Bookmarks", "category": "Browser" },
+      { "id": "browser.openHistory", "title": "History", "category": "Browser" },
+      { "id": "browser.openShields", "title": "Blocked Trackers", "category": "Browser" },
       { "id": "browser.openUrl", "title": "Open Address", "category": "Browser" },
       { "id": "browser.focusAddress", "title": "Focus Address Bar", "category": "Browser" },
       { "id": "browser.find", "title": "Find In Page", "category": "Browser" },
@@ -39,7 +43,10 @@
       { "command": "browser.zoomIn", "key": "Ctrl+=", "when": "activeEditor == 'browser.page'" },
       { "command": "browser.zoomOut", "key": "Ctrl+-", "when": "activeEditor == 'browser.page'" },
       { "command": "browser.zoomReset", "key": "Ctrl+0", "when": "activeEditor == 'browser.page'" },
-      { "command": "browser.newTab", "key": "Ctrl+T", "when": "activeEditor == 'browser.page'" }
+      { "command": "browser.newTab", "key": "Ctrl+T", "when": "activeEditor == 'browser.page'" },
+      { "command": "browser.newPrivateTab", "key": "Ctrl+Shift+N", "when": "activeEditor == 'browser.page'" },
+      { "command": "browser.openHistory", "key": "Ctrl+H", "when": "activeEditor == 'browser.page'" },
+      { "command": "browser.openBookmarks", "key": "Ctrl+Shift+O", "when": "activeEditor == 'browser.page'" }
     ],
     "viewContainers": [
       { "id": "browser-container", "title": "Browser", "icon": "globe", "location": "sidebar" }
@@ -69,6 +76,17 @@
             "type": "boolean",
             "default": false,
             "description": "Clear the browser's cookies, cache and site storage when Parallx closes. History and bookmarks stay."
+          },
+          "browser.pageTheme": {
+            "type": "string",
+            "default": "system",
+            "enum": ["system", "dark", "light"],
+            "description": "What web pages are told you prefer. Sites that offer a dark theme follow it; sites without one are not changed. System uses your Windows setting."
+          },
+          "browser.showBookmarksBar": {
+            "type": "boolean",
+            "default": true,
+            "description": "Show your starred pages as a row of chips under the address bar."
           }
         }
       }

@@ -19,13 +19,15 @@
 const path = require('path');
 const fs = require('fs');
 const fsp = fs.promises;
-const { session, app, shell } = require('electron');
+const { session, app, shell, webContents } = require('electron');
 const policy = require('./browserPolicy.cjs');
 
 let ElectronBlocker = null;
 try { ({ ElectronBlocker } = require('@ghostery/adblocker-electron')); } catch { ElectronBlocker = null; }
 
-const PARTITIONS = { user: 'persist:parallx-browser', agent: 'persist:parallx-browser-agent' };
+// The private partition has no `persist:` prefix: it lives in memory only and
+// the extension clears it when the last private tab closes.
+const PARTITIONS = { user: 'persist:parallx-browser', agent: 'persist:parallx-browser-agent', private: 'parallx-browser-private' };
 const LIST_REFRESH_MS = 7 * 24 * 60 * 60 * 1000;
 const LIST_RETRY_MS = 10 * 60 * 1000;
 const PERMISSION_TIMEOUT_MS = 60 * 1000;
@@ -47,6 +49,11 @@ function setupBrowserBridge(ipcMain, opts) {
   const pendingPermissions = new Map();            // requestId -> { callback, timer }
   const downloads = new Map();                     // id -> info
   const sessions = new Map();                      // kind -> Session
+  const sessionPermissions = {};                   // private tabs: remembered for this run only
+  const blockedLog = [];                           // last 500 blocked requests: { t, page, host }
+  const blockedStatsPath = path.join(dir, 'blocked-stats.json');
+  const blockedStats = readJson(blockedStatsPath, { total: 0, since: Date.now(), byHost: {} });
+  let statsTimer = null;
   let blocker = null;
   let lists = { status: ElectronBlocker ? 'loading' : 'unavailable', count: 0, updatedAt: null, error: null };
   let permissionSeq = 0;
@@ -78,18 +85,19 @@ function setupBrowserBridge(ipcMain, opts) {
       if (pol === 'deny' || kind === 'agent') return callback(false);
       const origin = (details && details.requestingUrl) || (wc && !wc.isDestroyed() ? wc.getURL() : '');
       const key = `${policy.siteKey(origin) || 'unknown'}|${permission}`;
-      if (permissions[key] === 'allow') return callback(true);
-      if (permissions[key] === 'deny') return callback(false);
+      const store = kind === 'private' ? sessionPermissions : permissions;
+      if (store[key] === 'allow') return callback(true);
+      if (store[key] === 'deny') return callback(false);
       const requestId = `perm-${++permissionSeq}`;
       const timer = setTimeout(() => { pendingPermissions.delete(requestId); try { callback(false); } catch { /* ignore */ } }, PERMISSION_TIMEOUT_MS);
-      pendingPermissions.set(requestId, { callback, timer, key });
+      pendingPermissions.set(requestId, { callback, timer, key, kind });
       send('browser:permission-request', { requestId, origin, permission, webContentsId: wc ? wc.id : null });
     });
     ses.setPermissionCheckHandler((_wc, permission, requestingOrigin) => {
       const pol = policy.permissionPolicy(permission);
       if (pol === 'allow') return true;
       if (pol === 'deny' || kind === 'agent') return false;
-      return permissions[`${policy.siteKey(requestingOrigin) || 'unknown'}|${permission}`] === 'allow';
+      return (kind === 'private' ? sessionPermissions : permissions)[`${policy.siteKey(requestingOrigin) || 'unknown'}|${permission}`] === 'allow';
     });
     ses.setDevicePermissionHandler(() => false);
     ses.on('will-download', (_event, item, wc) => handleDownload(item, wc, kind));
@@ -184,6 +192,13 @@ function setupBrowserBridge(ipcMain, opts) {
     const host = req.hostname || policy.siteKey(req.url) || '?';
     entry.hosts.set(host, (entry.hosts.get(host) || 0) + 1);
     blocked.set(id, entry);
+    // The log the user can read: what tried to track, from which page, when.
+    const page = req.sourceHostname || req.sourceDomain || '';
+    blockedLog.push({ t: Date.now(), page, host });
+    if (blockedLog.length > 500) blockedLog.splice(0, blockedLog.length - 500);
+    blockedStats.total = (blockedStats.total || 0) + 1;
+    blockedStats.byHost[host] = (blockedStats.byHost[host] || 0) + 1;
+    if (!statsTimer) statsTimer = setTimeout(() => { statsTimer = null; writeJson(blockedStatsPath, blockedStats); }, 5000);
     if (!entry._timer) {
       entry._timer = setTimeout(() => { entry._timer = null; send('browser:blocked', blockedSummary(id)); }, 150);
     }
@@ -277,7 +292,10 @@ function setupBrowserBridge(ipcMain, opts) {
     if (!pending) return { ok: false };
     pendingPermissions.delete(requestId);
     clearTimeout(pending.timer);
-    if (remember) { permissions[pending.key] = allow ? 'allow' : 'deny'; writeJson(permissionsPath, permissions); }
+    if (remember) {
+      if (pending.kind === 'private') sessionPermissions[pending.key] = allow ? 'allow' : 'deny';
+      else { permissions[pending.key] = allow ? 'allow' : 'deny'; writeJson(permissionsPath, permissions); }
+    }
     try { pending.callback(!!allow); } catch { /* ignore */ }
     return { ok: true };
   });
@@ -296,6 +314,35 @@ function setupBrowserBridge(ipcMain, opts) {
   ipcMain.handle('browser:listDownloads', () => [...downloads.values()].map((d) => ({ ...d })));
   ipcMain.handle('browser:openDownload', async (_e, p) => { const d = [...downloads.values()].find((x) => x.path === p); if (!d) return { ok: false }; const err = await shell.openPath(p); return { ok: !err, error: err || null }; });
   ipcMain.handle('browser:showDownload', (_e, p) => { const d = [...downloads.values()].find((x) => x.path === p); if (!d) return { ok: false }; shell.showItemInFolder(p); return { ok: true }; });
+
+  ipcMain.handle('browser:blockedLog', () => ({
+    recent: blockedLog.slice(-200).reverse(),
+    total: blockedStats.total || 0,
+    since: blockedStats.since || null,
+    top: Object.entries(blockedStats.byHost || {}).sort((a, b) => b[1] - a[1]).slice(0, 50).map(([host, n]) => ({ host, n })),
+  }));
+  ipcMain.handle('browser:clearBlockedLog', () => {
+    blockedLog.length = 0;
+    blockedStats.total = 0; blockedStats.since = Date.now(); blockedStats.byHost = {};
+    writeJson(blockedStatsPath, blockedStats);
+    return { ok: true };
+  });
+  // Page theme: prefers-color-scheme emulated per tab through the devtools
+  // protocol, so sites that offer a dark theme use it. It does not invert
+  // sites that have none; the setting says so.
+  ipcMain.handle('browser:setPageTheme', async (_e, webContentsId, theme) => {
+    const guest = webContents.fromId(Number(webContentsId));
+    if (!guest || guest.isDestroyed() || !isOurs(guest.session)) return { ok: false };
+    const features = theme === 'dark' || theme === 'light' ? [{ name: 'prefers-color-scheme', value: theme }] : [];
+    try {
+      if (!guest.debugger.isAttached()) guest.debugger.attach('1.3');
+      await guest.debugger.sendCommand('Emulation.setEmulatedMedia', { features });
+      if (features.length === 0) { try { guest.debugger.detach(); } catch { /* already gone */ } }
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err && err.message ? err.message : String(err) };
+    }
+  });
 
   return { PARTITIONS, watchWindow };
 }

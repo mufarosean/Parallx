@@ -32,6 +32,9 @@
 const PARTITION = 'persist:parallx-browser';
 const EDITOR_TYPE = 'browser.page';
 const NEWTAB = 'about:newtab';
+/** In-memory session for Private tabs (no persist: prefix); cleared when the last one closes. */
+const PRIVATE_PARTITION = 'parallx-browser-private';
+const INTERNAL_PAGES = new Set(['about:newtab', 'about:bookmarks', 'about:history', 'about:shields']);
 const SEARCH_ENGINES = {
   duckduckgo: { label: 'DuckDuckGo', url: 'https://duckduckgo.com/?q=%s' },
   brave: { label: 'Brave Search', url: 'https://search.brave.com/search?q=%s' },
@@ -146,7 +149,7 @@ function parseOmnibox(text, engineKey) {
   const raw = String(text || '').trim();
   const engine = SEARCH_ENGINES[engineKey] || SEARCH_ENGINES.duckduckgo;
   if (!raw) return { kind: 'url', url: NEWTAB };
-  if (raw === NEWTAB || raw === 'about:blank') return { kind: 'url', url: raw };
+  if (INTERNAL_PAGES.has(raw) || raw === 'about:blank') return { kind: 'url', url: raw };
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) {
     try { return { kind: 'url', url: new URL(raw).toString() }; } catch { /* search */ }
   }
@@ -241,7 +244,28 @@ let _openMenu = null;
 function dismissMenu() { if (_openMenu) { try { _openMenu._cleanup && _openMenu._cleanup(); } catch { /* ignore */ } _openMenu.remove(); _openMenu = null; } }
 
 const CSS = `
-.br-pane { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--vscode-editor-background, var(--px-bg)); color: var(--vscode-foreground, var(--px-text)); outline: none; position: relative; }
+.br-pane { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--vscode-editor-background, var(--px-bg)); color: var(--vscode-foreground, var(--px-text)); outline: none; position: relative; overflow: hidden; box-sizing: border-box; }
+.br-pane--private .br-toolbar { background: color-mix(in srgb, var(--vscode-sideBar-background, var(--px-bg)) 86%, var(--vscode-textLink-foreground, var(--px-accent))); }
+.br-private-chip { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; padding: 1px 7px; border-radius: 999px; font-size: 10px; font-weight: 600; letter-spacing: 0.2px; background: var(--vscode-badge-background, var(--px-accent)); color: var(--vscode-badge-foreground, #fff); }
+.br-bookmarks-bar { display: flex; align-items: center; gap: 2px; padding: 3px 8px; border-bottom: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-sideBar-background, var(--px-bg)); overflow: hidden; flex: 0 0 auto; }
+.br-bm-chip { display: inline-flex; align-items: center; gap: 5px; max-width: 180px; padding: 2px 8px; border: none; border-radius: 4px; background: transparent; color: inherit; font: inherit; font-size: 11px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 0 auto; }
+.br-bm-chip:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
+.br-bm-hint { font-size: 11px; padding: 2px 4px; }
+.br-link { border: none; background: transparent; color: var(--vscode-textLink-foreground, var(--px-accent)); font: inherit; font-size: inherit; cursor: pointer; padding: 0; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.br-link:hover { text-decoration: underline; }
+.br-page { padding: 28px 36px 48px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; font-size: 12px; }
+.br-page-head h2 { margin: 0 0 4px; font-size: 18px; font-weight: 600; }
+.br-page-tools { display: flex; gap: 8px; align-items: center; }
+.br-page-tools input { flex: 1; max-width: 420px; border: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-input-background, var(--px-bg-inset)); color: inherit; font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 4px; outline: none; }
+.br-page-tools input:focus { border-color: var(--vscode-focusBorder, var(--px-accent)); }
+.br-page-day { margin: 14px 0 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; opacity: 0.7; }
+.br-page-headline strong { font-size: 28px; font-weight: 600; margin-right: 6px; }
+.br-page-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 24px; align-items: start; }
+.br-table { width: 100%; border-collapse: collapse; }
+.br-table th { text-align: left; font-weight: 600; opacity: 0.7; padding: 4px 8px; border-bottom: 1px solid var(--vscode-panel-border, var(--px-border)); font-size: 11px; }
+.br-table td { padding: 5px 8px; border-bottom: 1px solid var(--vscode-panel-border, var(--px-border)); max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.br-table .num { text-align: right; font-variant-numeric: tabular-nums; width: 1%; white-space: nowrap; }
+.br-table td .br-btn { width: 22px; height: 22px; }
 .br-toolbar { display: flex; align-items: center; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-sideBar-background, var(--px-bg)); flex: 0 0 auto; }
 .br-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: none; border-radius: var(--parallx-radius-md, 6px); background: transparent; color: inherit; cursor: pointer; padding: 0; position: relative; }
 .br-btn:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
@@ -358,11 +382,12 @@ function injectStyles() {
 function newTabId() { return `tab:${Date.now().toString(36)}-${++_tabSeq}`; }
 
 /** Open a new page tab. `url` may be omitted for the New Tab page. */
-async function openTab(url) {
-  const instanceId = newTabId();
+async function openTab(url, opts = {}) {
+  const instanceId = opts.private ? newTabId().replace(/^tab:/, 'private:') : newTabId();
   const target = url || cfg('homepage', NEWTAB) || NEWTAB;
   _pendingUrls.set(instanceId, target);
-  await _api.editors.openEditor({ typeId: EDITOR_TYPE, title: target === NEWTAB ? 'New Tab' : (hostOf(target) || 'Web Page'), icon: 'globe', instanceId });
+  const base = INTERNAL_TITLES[target] || hostOf(target) || 'Web Page';
+  await _api.editors.openEditor({ typeId: EDITOR_TYPE, title: opts.private ? `Private: ${base}` : base, icon: opts.private ? 'eye-closed' : 'globe', instanceId });
 }
 
 function createPagePane(container, input, opts = {}) {
@@ -370,7 +395,8 @@ function createPagePane(container, input, opts = {}) {
   const instanceId = (input && (input.instanceId || input.id)) || newTabId();
   const editorId = input && input.id;
   const partition = opts.partition || PARTITION;
-  const root = el('div', 'br-pane');
+  const isPrivate = !!opts.private;
+  const root = el('div', `br-pane${isPrivate ? ' br-pane--private' : ''}`);
   root.tabIndex = -1;
   container.appendChild(root);
   // The assistant's tab says whose it is, and what it is doing, at all times.
@@ -387,7 +413,7 @@ function createPagePane(container, input, opts = {}) {
   const pane = {
     instanceId, root, webview: null, wcId: null, url: NEWTAB, title: 'New Tab', loading: false,
     bookmarked: false, blocked: { count: 0, hosts: [] }, zoom: 1, readerOn: false, disposed: false,
-    lastHttpAttempt: null,
+    lastHttpAttempt: null, isPrivate,
   };
   _panes.set(instanceId, pane);
   const setActive = () => { _activePane = pane; };
@@ -400,7 +426,13 @@ function createPagePane(container, input, opts = {}) {
   const backBtn = iconBtn('arrow-left', 'Back', () => goBack());
   const fwdBtn = iconBtn('arrow-right', 'Forward', () => goForward());
   const reloadBtn = iconBtn('rotate-cw', 'Reload', () => { if (pane.loading) stop(); else reload(); });
+  const newTabBtn = iconBtn('plus', 'New Tab', () => openTab());
   const addressWrap = el('div', 'br-address-wrap');
+  const privateChip = el('span', 'br-private-chip', { title: 'Private tab: nothing is kept after the last private tab closes, and nothing goes into history.' });
+  privateChip.innerHTML = icon('eye-closed', 11);
+  privateChip.appendChild(document.createTextNode('Private'));
+  privateChip.hidden = !isPrivate;
+  addressWrap.appendChild(privateChip);
   const lock = el('span', 'br-lock');
   const address = el('input', 'br-address', { type: 'text', spellcheck: 'false', autocomplete: 'off', placeholder: 'Search or enter an address', 'aria-label': 'Address' });
   const suggestBox = el('div', 'br-suggest');
@@ -413,8 +445,31 @@ function createPagePane(container, input, opts = {}) {
   const starBtn = iconBtn('star', 'Bookmark This Page', () => toggleBookmark());
   const readerBtn = iconBtn('book-open', 'Reader Mode', () => toggleReader());
   const menuBtn = iconBtn('ellipsis', 'Page Menu', () => showPageMenu(menuBtn));
-  toolbar.append(backBtn, fwdBtn, reloadBtn, addressWrap, shieldBtn, starBtn, readerBtn, menuBtn);
+  toolbar.append(backBtn, fwdBtn, reloadBtn, newTabBtn, addressWrap, shieldBtn, starBtn, readerBtn, menuBtn);
   root.appendChild(toolbar);
+
+  // Bookmarks bar: the starred pages as chips, one click away, toggled from the page menu.
+  const bookmarksBar = el('div', 'br-bookmarks-bar');
+  root.appendChild(bookmarksBar);
+  async function refreshBookmarksBar() {
+    if (!showBookmarksBar()) { bookmarksBar.hidden = true; return; }
+    let rows = [];
+    try { rows = await Bookmarks.list(''); } catch { rows = []; }
+    if (pane.disposed) return;
+    bookmarksBar.innerHTML = '';
+    bookmarksBar.hidden = false;
+    if (!rows.length) { bookmarksBar.appendChild(el('span', 'br-muted br-bm-hint', { text: 'Star a page and it appears here.' })); return; }
+    for (const bm of rows.slice(0, 30)) {
+      const chip = el('button', 'br-bm-chip', { type: 'button', title: bm.url });
+      chip.innerHTML = icon('star', 10);
+      chip.appendChild(document.createTextNode(bm.title || hostOf(bm.url) || bm.url));
+      chip.addEventListener('click', () => navigate(bm.url));
+      chip.addEventListener('auxclick', (e) => { if (e.button === 1) { e.preventDefault(); openTab(bm.url); } });
+      bookmarksBar.appendChild(chip);
+    }
+  }
+  _sidebarListeners.add(refreshBookmarksBar);
+  refreshBookmarksBar();
 
   const progress = el('div', 'br-progress');
   const progressFill = el('div');
@@ -440,11 +495,13 @@ function createPagePane(container, input, opts = {}) {
   // Content
   const content = el('div', 'br-content');
   root.appendChild(content);
+  // The link preview lives inside the page area so it can never hang below it.
   const status = el('div', 'br-status');
   status.hidden = true;
-  root.appendChild(status);
+  content.appendChild(status);
 
   let newtabView = null;
+  let internalView = null;
   let errorView = null;
   let readerView = null;
   let shieldPanel = null;
@@ -453,7 +510,7 @@ function createPagePane(container, input, opts = {}) {
 
   // ── Views ──
   function showOnly(which) {
-    for (const child of [pane.webview, newtabView, errorView, readerView]) if (child) child.hidden = child !== which;
+    for (const child of [pane.webview, newtabView, internalView, errorView, readerView]) if (child) child.hidden = child !== which;
   }
   function showNewTab() {
     if (!newtabView) { newtabView = buildNewTabView(pane, (u) => navigate(u)); content.appendChild(newtabView); }
@@ -463,6 +520,17 @@ function createPagePane(container, input, opts = {}) {
     updateChrome();
     setTitle('New Tab');
     showOnly(newtabView);
+  }
+  function showInternal(kind) {
+    if (internalView) internalView.remove();
+    internalView = buildInternalPage(kind, { navigate, openTab });
+    content.appendChild(internalView);
+    pane.url = `about:${kind}`;
+    pane.title = INTERNAL_TITLES[pane.url] || kind;
+    address.value = pane.url;
+    updateChrome();
+    setTitle(pane.title);
+    showOnly(internalView);
   }
   function showError(title, description, failedUrl, allowHttpOnce) {
     if (errorView) errorView.remove();
@@ -512,6 +580,7 @@ function createPagePane(container, input, opts = {}) {
         if (id !== pane.wcId) { if (pane.wcId != null) _panesByWc.delete(pane.wcId); pane.wcId = id; _panesByWc.set(id, pane); }
       } catch { /* not ready */ }
       if (pane.zoom !== 1) { try { wv.setZoomFactor(pane.zoom); } catch { /* ignore */ } }
+      applyPageTheme(pane);
     });
     wv.addEventListener('did-start-loading', () => { pane.loading = true; progressFill.style.opacity = '1'; progressFill.style.width = '30%'; updateChrome(); });
     wv.addEventListener('did-stop-loading', () => { pane.loading = false; progressFill.style.width = '100%'; setTimeout(() => { progressFill.style.opacity = '0'; progressFill.style.width = '0'; }, 200); updateChrome(); });
@@ -520,7 +589,7 @@ function createPagePane(container, input, opts = {}) {
     wv.addEventListener('page-title-updated', (e) => {
       pane.title = e.title || pane.title;
       setTitle(pane.title);
-      if (isWebUrl(pane.url)) { History.setTitle(pane.url, pane.title).catch(() => {}); Tabs.remember(instanceId, pane.url, pane.title).catch(() => {}); }
+      if (isWebUrl(pane.url) && !isPrivate) { History.setTitle(pane.url, pane.title).catch(() => {}); Tabs.remember(instanceId, pane.url, pane.title).catch(() => {}); }
     });
     wv.addEventListener('did-fail-load', (e) => {
       if (!e.isMainFrame || e.errorCode === -3) return; // -3: aborted (a new navigation)
@@ -588,8 +657,10 @@ function createPagePane(container, input, opts = {}) {
     if (!inPage) { pane.blocked = { count: 0, hosts: [] }; }
     updateChrome();
     if (isWebUrl(url)) {
-      History.record(url, pane.title && pane.title !== 'New Tab' ? pane.title : '').then(notifySidebar).catch(() => {});
-      Tabs.remember(instanceId, url, pane.title).catch(() => {});
+      if (!isPrivate) {
+        History.record(url, pane.title && pane.title !== 'New Tab' ? pane.title : '').then(notifySidebar).catch(() => {});
+        Tabs.remember(instanceId, url, pane.title).catch(() => {});
+      }
       Bookmarks.has(url).then((b) => { pane.bookmarked = b; updateChrome(); }).catch(() => {});
     }
     setTitle(pane.title && pane.title !== 'New Tab' ? pane.title : (hostOf(url) || 'Web Page'));
@@ -599,9 +670,14 @@ function createPagePane(container, input, opts = {}) {
     dismissSuggest();
     const parsed = parseOmnibox(text, cfg('searchEngine', 'duckduckgo'));
     if (parsed.url === NEWTAB) { showNewTab(); return; }
+    if (INTERNAL_PAGES.has(parsed.url)) { showInternal(parsed.url.slice('about:'.length)); return; }
     loadInWebview(parsed.url);
   }
-  function setTitle(t) { if (editorId) { try { _api.editors.setEditorTitle(editorId, t || 'Web Page'); } catch { /* ignore */ } } }
+  function setTitle(t) {
+    if (!editorId) return;
+    const label = isPrivate ? `Private: ${t || 'Web Page'}` : (t || 'Web Page');
+    try { _api.editors.setEditorTitle(editorId, label); } catch { /* ignore */ }
+  }
   function updateChrome() {
     const wv = pane.webview;
     backBtn.disabled = !(wv && !wv.hidden && safe(() => wv.canGoBack()));
@@ -803,6 +879,13 @@ function createPagePane(container, input, opts = {}) {
     const web = isWebUrl(pane.url);
     showMenu(anchor, [
       { label: 'New Tab', handler: () => openTab() },
+      { label: 'New Private Tab', handler: () => openTab(undefined, { private: true }) },
+      { separator: true },
+      { label: 'Bookmarks', handler: () => navigate('about:bookmarks') },
+      { label: 'History', handler: () => navigate('about:history') },
+      { label: 'Blocked Trackers', handler: () => navigate('about:shields') },
+      { label: showBookmarksBar() ? 'Hide Bookmarks Bar' : 'Show Bookmarks Bar', handler: () => setBookmarksBar(!showBookmarksBar()) },
+      { separator: true },
       { label: 'Find In Page', handler: () => openFind(), disabled: !web },
       { separator: true },
       { label: 'Zoom In', handler: () => zoomBy(1), disabled: !web },
@@ -858,14 +941,35 @@ function createPagePane(container, input, opts = {}) {
     dispose() {
       pane.disposed = true;
       closeShieldPanel();
+      _sidebarListeners.delete(refreshBookmarksBar);
       if (pane.wcId != null) _panesByWc.delete(pane.wcId);
       _panes.delete(instanceId);
       if (_activePane === pane) _activePane = null;
+      // The last private tab takes the private session with it.
+      if (isPrivate && ![..._panes.values()].some((p) => p.isPrivate)) { const b = bridge(); if (b) b.clearData('private').catch(() => {}); }
       container.innerHTML = '';
     },
     saveViewState() { return { url: pane.url, zoom: pane.zoom }; },
     restoreViewState(state) { if (state && typeof state.zoom === 'number') { pane.zoom = state.zoom; if (pane.webview) { try { pane.webview.setZoomFactor(pane.zoom); } catch { /* ignore */ } } } },
   };
+}
+
+let _bookmarksBarOverride = null;
+function showBookmarksBar() { return _bookmarksBarOverride != null ? _bookmarksBarOverride : cfg('showBookmarksBar', true) !== false; }
+function setBookmarksBar(on) {
+  _bookmarksBarOverride = !!on;
+  try {
+    const c = _api.workspace.getConfiguration('browser');
+    if (c && typeof c.update === 'function') { Promise.resolve(c.update('showBookmarksBar', !!on)).then(() => { _bookmarksBarOverride = null; }).catch(() => {}); }
+  } catch { /* keep the override */ }
+  notifySidebar();
+}
+/** prefers-color-scheme for this pane's page, from the browser.pageTheme setting. */
+function applyPageTheme(pane) {
+  const b = bridge();
+  if (!b || pane.wcId == null) return;
+  const theme = cfg('pageTheme', 'system');
+  b.setPageTheme(pane.wcId, theme === 'dark' || theme === 'light' ? theme : 'system').catch(() => {});
 }
 
 function listsLine() {
@@ -940,6 +1044,173 @@ function buildNewTabView(pane, onNavigate) {
 function refreshNewTabView(view) { if (view && view._fill) view._fill(); const input = view && view.querySelector('input'); if (input) setTimeout(() => input.focus(), 0); }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 6B: INTERNAL PAGES (about:bookmarks, about:history, about:shields)
+// ═══════════════════════════════════════════════════════════════════════════════
+// Full-page views rendered in the pane, no webview: the browser's own
+// bookmarks, history and the tracker log, the way chrome://history and
+// brave://adblock work. They read from the extension's SQLite and from the
+// bridge, and refresh when the data changes.
+
+const INTERNAL_TITLES = { 'about:newtab': 'New Tab', 'about:bookmarks': 'Bookmarks', 'about:history': 'History', 'about:shields': 'Blocked Trackers' };
+
+function pageShell(title, subtitle) {
+  const view = el('div', 'br-page');
+  const head = el('div', 'br-page-head');
+  head.appendChild(el('h2', null, { text: title }));
+  if (subtitle) head.appendChild(el('div', 'br-muted', { text: subtitle }));
+  view.appendChild(head);
+  return view;
+}
+function pageTools(view) { const t = el('div', 'br-page-tools'); view.appendChild(t); return t; }
+function table(headers) {
+  const t = el('table', 'br-table');
+  const tr = el('tr');
+  for (const h of headers) tr.appendChild(el('th', h.num ? 'num' : null, { text: h.label }));
+  t.appendChild(tr);
+  return t;
+}
+function cell(text, cls) { return el('td', cls || null, { text }); }
+function linkCell(text, onClick, title) {
+  const td = el('td');
+  const a = el('button', 'br-link', { type: 'button', text, title: title || text });
+  a.addEventListener('click', onClick);
+  td.appendChild(a);
+  return td;
+}
+function fmtWhen(iso) {
+  const d = new Date(String(iso).replace(' ', 'T') + (String(iso).endsWith('Z') ? '' : 'Z'));
+  return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+/** kind: 'bookmarks' | 'history' | 'shields'. ctx: { navigate, openTab }. */
+function buildInternalPage(kind, ctx) {
+  if (kind === 'bookmarks') return buildBookmarksPage(ctx);
+  if (kind === 'history') return buildHistoryPage(ctx);
+  return buildShieldsPage(ctx);
+}
+
+function watchData(view, refresh) {
+  const fn = () => { if (!view.isConnected) { _sidebarListeners.delete(fn); return; } refresh(); };
+  _sidebarListeners.add(fn);
+}
+
+function buildBookmarksPage(ctx) {
+  const view = pageShell('Bookmarks', 'Everything you starred. Click a title to open it here.');
+  const tools = pageTools(view);
+  const q = el('input', null, { type: 'text', placeholder: 'Filter bookmarks', 'aria-label': 'Filter bookmarks' });
+  tools.appendChild(q);
+  const body = el('div');
+  view.appendChild(body);
+  const refresh = async () => {
+    let rows = [];
+    try { rows = await Bookmarks.list(q.value.trim()); } catch { rows = []; }
+    body.innerHTML = '';
+    if (!rows.length) { body.appendChild(el('div', 'br-empty', { text: q.value ? 'No bookmarks match.' : 'No bookmarks yet. Press the star on a page to keep it.' })); return; }
+    const t = table([{ label: 'Title' }, { label: 'Site' }, { label: 'Added' }, { label: '' }]);
+    for (const bm of rows) {
+      const tr = el('tr');
+      tr.appendChild(linkCell(bm.title || bm.url, () => ctx.navigate(bm.url), bm.url));
+      tr.appendChild(cell(hostOf(bm.url)));
+      tr.appendChild(cell(fmtWhen(bm.created_at)));
+      const act = el('td', 'num');
+      act.appendChild(iconBtn('trash-2', 'Remove Bookmark', async () => { await Bookmarks.remove(bm.url); for (const p of _panes.values()) if (p.url === bm.url) p.bookmarked = false; notifySidebar(); }));
+      tr.appendChild(act);
+      t.appendChild(tr);
+    }
+    body.appendChild(t);
+  };
+  q.addEventListener('input', refresh);
+  watchData(view, refresh);
+  refresh();
+  return view;
+}
+
+function buildHistoryPage(ctx) {
+  const view = pageShell('History', 'Pages you visited in normal tabs. Private tabs leave nothing here.');
+  const tools = pageTools(view);
+  const q = el('input', null, { type: 'text', placeholder: 'Search history', 'aria-label': 'Search history' });
+  const clear = el('button', 'br-action', { type: 'button', text: 'Clear History' });
+  clear.addEventListener('click', async () => {
+    const pick = await _api.window.showWarningMessage('Clear all browsing history?', { title: 'Clear History' }, { title: 'Cancel' });
+    if (pick && pick.title === 'Clear History') { await History.clear(); notifySidebar(); }
+  });
+  tools.append(q, clear);
+  const body = el('div');
+  view.appendChild(body);
+  const refresh = async () => {
+    let rows = [];
+    try { rows = q.value.trim() ? await History.search(q.value.trim(), 500) : await History.recent(500); } catch { rows = []; }
+    body.innerHTML = '';
+    if (!rows.length) { body.appendChild(el('div', 'br-empty', { text: q.value ? 'Nothing matches.' : 'No history yet.' })); return; }
+    let day = null;
+    let t = null;
+    for (const h of rows) {
+      const d = fmtDay(h.last_visit_at);
+      if (d !== day) { day = d; body.appendChild(el('h3', 'br-page-day', { text: d })); t = table([{ label: 'Time' }, { label: 'Page' }, { label: 'Site' }, { label: 'Visits', num: true }, { label: '' }]); body.appendChild(t); }
+      const tr = el('tr');
+      tr.appendChild(cell(fmtTime(h.last_visit_at)));
+      tr.appendChild(linkCell(h.title || h.url, () => ctx.navigate(h.url), h.url));
+      tr.appendChild(cell(hostOf(h.url)));
+      tr.appendChild(cell(String(h.visits), 'num'));
+      const act = el('td', 'num');
+      act.appendChild(iconBtn('x', 'Remove From History', async () => { await History.removeUrl(h.url); notifySidebar(); }));
+      tr.appendChild(act);
+      t.appendChild(tr);
+    }
+  };
+  q.addEventListener('input', refresh);
+  watchData(view, refresh);
+  refresh();
+  return view;
+}
+
+function buildShieldsPage() {
+  const view = pageShell('Blocked Trackers', 'Every request the shields refused, from which page, and the lifetime totals. Nothing here ever reached the network.');
+  const tools = pageTools(view);
+  const refreshBtn = el('button', 'br-action', { type: 'button', text: 'Refresh' });
+  const clearBtn = el('button', 'br-action', { type: 'button', text: 'Clear Log' });
+  tools.append(refreshBtn, clearBtn);
+  const headline = el('div', 'br-page-headline');
+  view.appendChild(headline);
+  const cols = el('div', 'br-page-cols');
+  view.appendChild(cols);
+  const left = el('div'); const right = el('div');
+  cols.append(left, right);
+  const refresh = async () => {
+    const b = bridge();
+    if (!b) { headline.textContent = 'Browser bridge unavailable.'; return; }
+    let r;
+    try { r = await b.blockedLog(); } catch { headline.textContent = 'Could not read the log.'; return; }
+    headline.innerHTML = '';
+    headline.appendChild(el('strong', null, { text: Number(r.total || 0).toLocaleString() }));
+    headline.appendChild(el('span', 'br-muted', { text: ` trackers and ads blocked${r.since ? ` since ${new Date(r.since).toLocaleDateString()}` : ''}. ${listsLine()}` }));
+    left.innerHTML = '';
+    left.appendChild(el('h3', 'br-page-day', { text: 'Most Blocked' }));
+    if (!r.top || !r.top.length) left.appendChild(el('div', 'br-empty', { text: 'Nothing blocked yet.' }));
+    else {
+      const t = table([{ label: 'Tracker' }, { label: 'Blocked', num: true }]);
+      for (const row of r.top) { const tr = el('tr'); tr.appendChild(cell(row.host)); tr.appendChild(cell(Number(row.n).toLocaleString(), 'num')); t.appendChild(tr); }
+      left.appendChild(t);
+    }
+    right.innerHTML = '';
+    right.appendChild(el('h3', 'br-page-day', { text: 'Recent' }));
+    if (!r.recent || !r.recent.length) right.appendChild(el('div', 'br-empty', { text: 'Nothing in this session yet.' }));
+    else {
+      const t = table([{ label: 'Time' }, { label: 'On Page' }, { label: 'Blocked' }]);
+      for (const e of r.recent) { const tr = el('tr'); tr.appendChild(cell(new Date(e.t).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' }))); tr.appendChild(cell(e.page || '')); tr.appendChild(cell(e.host)); t.appendChild(tr); }
+      right.appendChild(t);
+    }
+  };
+  refreshBtn.addEventListener('click', refresh);
+  clearBtn.addEventListener('click', async () => {
+    const pick = await _api.window.showWarningMessage('Clear the blocked-tracker log and totals?', { title: 'Clear Log' }, { title: 'Cancel' });
+    if (pick && pick.title === 'Clear Log') { const b = bridge(); if (b) await b.clearBlockedLog(); refresh(); notifySidebar(); }
+  });
+  refresh();
+  return view;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 7: READER MODE
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -1008,6 +1279,11 @@ function createSidebar(container) {
   newTab.innerHTML = icon('plus', 14) + '<span>New Tab</span>';
   newTab.addEventListener('click', () => openTab());
   top.appendChild(newTab);
+  const privateTab = el('button', 'br-action', { type: 'button', title: 'Open a private tab: no history, and its cookies vanish when the last private tab closes' });
+  privateTab.innerHTML = icon('eye-closed', 14);
+  privateTab.setAttribute('aria-label', 'New Private Tab');
+  privateTab.addEventListener('click', () => openTab(undefined, { private: true }));
+  top.appendChild(privateTab);
   root.appendChild(top);
   const scroll = el('div', 'br-sidebar-scroll');
   root.appendChild(scroll);
@@ -1126,6 +1402,8 @@ function createSidebar(container) {
 
   // Footer: lists status and clear
   const foot = el('div', 'br-sidebar-foot');
+  const totalBtn = el('button', 'br-link', { type: 'button', text: 'Blocked Trackers', title: 'Open the blocked-tracker log' });
+  totalBtn.addEventListener('click', () => openTab('about:shields'));
   const listsText = el('div');
   const footRow = el('div', 'br-row');
   const refreshBtn = el('button', 'br-action', { type: 'button', text: 'Refresh Lists', title: 'Fetch the latest filter lists now.' });
@@ -1133,12 +1411,14 @@ function createSidebar(container) {
   const clearBtn = el('button', 'br-action', { type: 'button', text: 'Clear Browsing Data' });
   clearBtn.addEventListener('click', () => clearBrowsingData());
   footRow.append(refreshBtn, clearBtn);
-  foot.append(listsText, footRow);
+  foot.append(totalBtn, listsText, footRow);
   root.appendChild(foot);
 
   function refreshAll() {
     bookmarks.refresh(); history.refresh(); downloads.refresh(); sitesSec.refresh();
     listsText.textContent = listsLine();
+    const b = bridge();
+    if (b) b.blockedLog().then((r) => { totalBtn.textContent = `${Number(r.total || 0).toLocaleString()} trackers and ads blocked${r.since ? ` since ${new Date(r.since).toLocaleDateString()}` : ''}`; }).catch(() => {});
   }
   refreshAll();
   _sidebarListeners.add(refreshAll);
@@ -1154,6 +1434,10 @@ function withActive(fn) { if (_activePane && !_activePane.disposed) fn(_activePa
 function registerCommands(api, context) {
   const reg = (id, handler) => context.subscriptions.push(api.commands.registerCommand(id, handler));
   reg('browser.newTab', () => openTab());
+  reg('browser.newPrivateTab', () => openTab(undefined, { private: true }));
+  reg('browser.openBookmarks', () => withActive((p) => p.navigate('about:bookmarks')));
+  reg('browser.openHistory', () => withActive((p) => p.navigate('about:history')));
+  reg('browser.openShields', () => withActive((p) => p.navigate('about:shields')));
   reg('browser.openUrl', (...args) => { const u = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url); return openTab(u || undefined); });
   reg('browser.focusAddress', () => withActive((p) => p.focusAddress()));
   reg('browser.find', () => withActive((p) => p.openFind()));
@@ -1206,7 +1490,8 @@ export async function activate(api, context) {
   context.subscriptions.push(api.editors.registerEditorProvider(EDITOR_TYPE, {
     createEditorPane(container, input) {
       const id = (input && (input.instanceId || input.id)) || '';
-      return createPagePane(container, input, id.startsWith('agent:') ? { partition: AGENT_PARTITION, agent: true } : {});
+      const opts = id.startsWith('agent:') ? { partition: AGENT_PARTITION, agent: true } : (id.startsWith('private:') ? { partition: PRIVATE_PARTITION, private: true } : {});
+      return createPagePane(container, input, opts);
     },
   }));
   context.subscriptions.push(api.views.registerViewProvider('browser.sidebar', {
@@ -1215,6 +1500,12 @@ export async function activate(api, context) {
   registerCommands(api, context);
   registerAgentTools(api, context);
   subscribeBridge();
+  if (api.workspace.onDidChangeConfiguration) {
+    context.subscriptions.push(api.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('browser.pageTheme')) for (const p of _panes.values()) applyPageTheme(p);
+      if (e.affectsConfiguration('browser.showBookmarksBar')) { _bookmarksBarOverride = null; notifySidebar(); }
+    }));
+  }
   if (!bridge()) console.warn('[browser] the browser bridge is missing; pages will load but shields, permissions and downloads are inactive');
 }
 
