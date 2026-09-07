@@ -22,7 +22,7 @@ encryption, not the app's job, and said so).
 
 | Claim | Mechanism | Where |
 | --- | --- | --- |
-| Ads and trackers blocked | EasyList, EasyPrivacy, Peter Lowe and uBlock lists through the Ghostery adblocker engine (MPL-2.0), network filters in `webRequest`, cosmetic filters and scriptlets through the engine's own frame preload. Counted per tab, shown in the shield | `electron/browserBridge.cjs` |
+| Ads and trackers blocked | EasyList, EasyPrivacy, Peter Lowe and uBlock lists through the Ghostery adblocker engine (MPL-2.0), network filters in `webRequest`; cosmetic CSS through the engine's frame preload; scriptlets (the YouTube-class defence) injected at document start in the main world through the devtools protocol, before any page script and immune to page CSP, chosen per destination when a navigation starts. Counted per tab, shown in the shield | `electron/browserBridge.cjs` |
 | Third-party cookies blocked | `Cookie` stripped from third-party requests, `Set-Cookie` stripped from third-party responses; third-party = different registrable domain (tldts) from the tab's document | bridge, `browserPolicy.cjs` |
 | HTTPS only | `http:` top-level navigations redirected to `https:` before any connection; local hosts and IP literals exempt; a site with no HTTPS gets an in-pane choice to load over HTTP once | bridge, policy |
 | Generic fingerprint | Session user agent is a plain Chrome UA for the platform (no Electron, no app name), `Accept-Language` fixed, `Sec-GPC: 1` sent (Global Privacy Control, as Brave does) | bridge, policy |
@@ -30,7 +30,7 @@ encryption, not the app's job, and said so).
 | Permissions denied by default | Camera, microphone, location, notifications, clipboard read prompt through Parallx, remembered per site; device APIs (USB, HID, serial, MIDI, screen capture) denied outright | bridge |
 | Storage isolated | Own persistent partition, separate from the app's session and from the agent's partition; one button clears it | bridge |
 | Downloads contained | Only into the workspace `Downloads` folder (or the OS Downloads folder when no workspace is open), with progress in the sidebar | bridge |
-| Nothing phones home | No telemetry, no sync, no accounts; filter lists refresh weekly from one fixed source, visible in the shield | bridge |
+| Nothing phones home | No telemetry, no sync, no accounts; filter lists (EasyList, EasyPrivacy, Peter Lowe, the uBlock filters including quick-fixes and unbreak) refresh every 12 hours from one fixed source, visible in the shield | bridge |
 | Page views hardened and durable | Each page is a main-process `WebContentsView`: no Node, context isolated, sandboxed, no preload of ours. It is positioned over the pane from bounds the renderer reports, so moving a tab, splitting, or evicting the pane never reloads the page; a view is destroyed only when its editor really closes | `electron/browserBridge.cjs` |
 
 Not claimed: fingerprint defeat (Brave's farbling), script blocking per site,

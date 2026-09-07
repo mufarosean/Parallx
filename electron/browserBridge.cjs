@@ -21,14 +21,23 @@ const fs = require('fs');
 const fsp = fs.promises;
 const { session, app, shell, webContents, WebContentsView } = require('electron');
 const policy = require('./browserPolicy.cjs');
+const { parse: parseTld } = require('tldts');
 
 let ElectronBlocker = null;
 try { ({ ElectronBlocker } = require('@ghostery/adblocker-electron')); } catch { ElectronBlocker = null; }
+// The engine's frame preload handles cosmetic CSS and DOM-driven rules; we
+// register it ourselves (once per session) instead of enableBlockingInSession,
+// which registers one IPC handler per session and throws on the second.
+let ADBLOCK_PRELOAD = null;
+try { ADBLOCK_PRELOAD = require.resolve('@ghostery/adblocker-electron-preload'); } catch { ADBLOCK_PRELOAD = null; }
 
 // The private partition has no `persist:` prefix: it lives in memory only and
 // the extension clears it when the last private tab closes.
 const PARTITIONS = { user: 'persist:parallx-browser', agent: 'persist:parallx-browser-agent', private: 'parallx-browser-private' };
-const LIST_REFRESH_MS = 7 * 24 * 60 * 60 * 1000;
+// Twelve hours, not a week: uBlock's quick-fixes list moves daily against
+// YouTube's anti-adblock changes, and stale rules are how ads get through.
+const LIST_REFRESH_MS = 12 * 60 * 60 * 1000;
+const LIST_CHECK_MS = 60 * 60 * 1000;
 const LIST_RETRY_MS = 10 * 60 * 1000;
 const PERMISSION_TIMEOUT_MS = 60 * 1000;
 
@@ -163,14 +172,12 @@ function setupBrowserBridge(ipcMain, opts) {
         read: (p) => fsp.readFile(p),
         write: (p, data) => fsp.writeFile(p, data),
       });
-      if (blocker) { for (const ses of sessions.values()) { try { blocker.disableBlockingInSession(ses); } catch { /* ignore */ } } }
       blocker = next;
       blocker.on('request-blocked', (req) => countBlocked(req));
       blocker.on('request-redirected', (req) => countBlocked(req));
-      for (const ses of sessions.values()) {
-        blocker.enableBlockingInSession(ses);
-        installWebRequest(ses); // ours wrap the engine's (one listener per event)
-      }
+      ensureCosmetics();
+      for (const ses of sessions.values()) installWebRequest(ses);
+      for (const rec of views.values()) { try { refreshScriptlets(rec, rec.wc.getURL()); } catch { /* view gone */ } }
       let updatedAt = Date.now();
       try { updatedAt = fs.statSync(enginePath).mtimeMs; } catch { /* keep now */ }
       lists = { status: 'ready', count: countFilters(blocker), updatedAt, error: null };
@@ -215,7 +222,67 @@ function setupBrowserBridge(ipcMain, opts) {
     return { webContentsId: id, count: e.count, hosts: [...e.hosts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 30).map(([host, n]) => ({ host, n })) };
   }
   void loadLists(false);
-  setInterval(() => { void loadLists(false); }, LIST_REFRESH_MS).unref?.();
+  setInterval(() => { void loadLists(false); }, LIST_CHECK_MS).unref?.();
+
+  // ── Cosmetic filters and scriptlets ──
+  // Cosmetic CSS: the engine's frame preload asks for rules at document start
+  // and again as the DOM grows; we answer with styles only (user-origin CSS).
+  // Scriptlets, which defeat YouTube-style ads by hooking the player before it
+  // reads the page's ad data, are injected at DOCUMENT START in the main world
+  // through the devtools protocol, before any page script and immune to the
+  // page's CSP, the way uBlock's content scripts run. The engine's own path
+  // would run them asynchronously, after the page had started.
+  let cosmeticsWired = false;
+  function ensureCosmetics() {
+    if (cosmeticsWired) return;
+    cosmeticsWired = true;
+    if (ADBLOCK_PRELOAD) {
+      for (const ses of sessions.values()) {
+        try { ses.registerPreloadScript({ type: 'frame', filePath: ADBLOCK_PRELOAD }); } catch (err) { console.warn('[browser] cosmetic preload:', err && err.message); }
+      }
+    }
+    ipcMain.handle('@ghostery/adblocker/is-mutation-observer-enabled', async () => true);
+    ipcMain.handle('@ghostery/adblocker/inject-cosmetic-filters', async (event, url, msg) => {
+      if (!blocker || lists.status !== 'ready' || !siteFor(url).shields) return;
+      const parsed = parseTld(String(url || ''));
+      const first = msg === undefined;
+      let result;
+      try {
+        result = blocker.getCosmeticsFilters({
+          url, hostname: parsed.hostname || '', domain: parsed.domain || '',
+          classes: msg && msg.classes, hrefs: msg && msg.hrefs, ids: msg && msg.ids,
+          getBaseRules: first, getInjectionRules: false, getExtendedRules: false, getRulesFromHostname: first, getRulesFromDOM: !first,
+          callerContext: { frameId: event.frameId, processId: event.processId, lifecycle: msg && msg.lifecycle },
+        });
+      } catch { return; }
+      if (!result || result.active === false) return;
+      if (result.styles && result.styles.length) { try { event.sender.insertCSS(result.styles, { cssOrigin: 'user' }); } catch { /* frame gone */ } }
+    });
+  }
+  function scriptletsFor(url) {
+    if (!blocker || lists.status !== 'ready' || !/^https?:/i.test(url || '') || !siteFor(url).shields) return '';
+    try {
+      const parsed = parseTld(url);
+      const r = blocker.getCosmeticsFilters({
+        url, hostname: parsed.hostname || '', domain: parsed.domain || '',
+        getBaseRules: false, getInjectionRules: true, getExtendedRules: false, getRulesFromDOM: false, getRulesFromHostname: true,
+        callerContext: { lifecycle: 'start' },
+      });
+      if (!r || r.active === false || !r.scripts || !r.scripts.length) return '';
+      return r.scripts.join('\n;\n');
+    } catch { return ''; }
+  }
+  async function refreshScriptlets(rec, url) {
+    if (!rec || rec.wc.isDestroyed()) return;
+    const source = scriptletsFor(url);
+    if (source === rec.scriptSource) return;
+    rec.scriptSource = source;
+    try {
+      if (!rec.wc.debugger.isAttached()) { rec.wc.debugger.attach('1.3'); await rec.wc.debugger.sendCommand('Page.enable'); }
+      if (rec.scriptId) { await rec.wc.debugger.sendCommand('Page.removeScriptToEvaluateOnNewDocument', { identifier: rec.scriptId }); rec.scriptId = null; }
+      if (source) { const r = await rec.wc.debugger.sendCommand('Page.addScriptToEvaluateOnNewDocument', { source }); rec.scriptId = r && r.identifier; }
+    } catch (err) { console.warn('[browser] scriptlet injection:', err && err.message); }
+  }
 
   // ── Guests: popups, navigation resets, lifecycle ──
   function attachGuestHooks(guest) {
@@ -328,6 +395,18 @@ function setupBrowserBridge(ipcMain, opts) {
     const rec = { tabId, kind: partitionKind, view, wc, bounds: null, visible: false, attached: false, fullscreen: false };
     views.set(tabId, rec);
     attachGuestHooks(wc);
+    // Scriptlets are chosen per destination as soon as a navigation starts,
+    // so they are registered before the new document exists.
+    rec.scriptId = null; rec.scriptSource = undefined;
+    const onNav = (e, url, isInPlace, isMainFrame) => {
+      const u = (e && e.url) || url;
+      const main = e && typeof e.isMainFrame === 'boolean' ? e.isMainFrame : isMainFrame;
+      const same = e && typeof e.isSameDocument === 'boolean' ? e.isSameDocument : isInPlace;
+      if (main && !same) void refreshScriptlets(rec, u);
+    };
+    wc.on('did-start-navigation', onNav);
+    wc.on('did-redirect-navigation', onNav);
+    try { wc.debugger.attach('1.3'); wc.debugger.sendCommand('Page.enable').catch(() => {}); } catch (err) { console.warn('[browser] debugger attach:', err && err.message); }
     wc.on('did-start-loading', () => emitView(rec, 'did-start-loading'));
     wc.on('did-stop-loading', () => emitView(rec, 'did-stop-loading', navState(wc)));
     wc.on('did-navigate', (_e, url) => emitView(rec, 'did-navigate', { ...navState(wc), url }));
@@ -477,7 +556,6 @@ function setupBrowserBridge(ipcMain, opts) {
     try {
       if (!guest.debugger.isAttached()) guest.debugger.attach('1.3');
       await guest.debugger.sendCommand('Emulation.setEmulatedMedia', { features });
-      if (features.length === 0) { try { guest.debugger.detach(); } catch { /* already gone */ } }
       return { ok: true };
     } catch (err) {
       return { ok: false, error: err && err.message ? err.message : String(err) };
