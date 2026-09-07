@@ -193,11 +193,17 @@ function setupBrowserBridge(ipcMain, opts) {
     entry.hosts.set(host, (entry.hosts.get(host) || 0) + 1);
     blocked.set(id, entry);
     // The log the user can read: what tried to track, from which page, when.
-    const page = req.sourceHostname || req.sourceDomain || '';
-    blockedLog.push({ t: Date.now(), page, host });
-    if (blockedLog.length > 500) blockedLog.splice(0, blockedLog.length - 500);
+    // Private tabs leave nothing readable behind: they raise the lifetime total
+    // and nothing else. (The per-tab count in the shield is in memory only.)
+    let isPrivate = false;
+    try { const g = webContents.fromId(Number(id)); isPrivate = !!g && !g.isDestroyed() && g.session === sessions.get('private'); } catch { isPrivate = false; }
+    if (!isPrivate) {
+      const page = req.sourceHostname || req.sourceDomain || '';
+      blockedLog.push({ t: Date.now(), page, host });
+      if (blockedLog.length > 500) blockedLog.splice(0, blockedLog.length - 500);
+      blockedStats.byHost[host] = (blockedStats.byHost[host] || 0) + 1;
+    }
     blockedStats.total = (blockedStats.total || 0) + 1;
-    blockedStats.byHost[host] = (blockedStats.byHost[host] || 0) + 1;
     if (!statsTimer) statsTimer = setTimeout(() => { statsTimer = null; writeJson(blockedStatsPath, blockedStats); }, 5000);
     if (!entry._timer) {
       entry._timer = setTimeout(() => { entry._timer = null; send('browser:blocked', blockedSummary(id)); }, 150);
