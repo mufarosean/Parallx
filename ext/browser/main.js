@@ -78,13 +78,31 @@ const db = {
   async all(sql, params = []) { const r = await _dbBridge.all(sql, params); if (r.error) throw new Error(r.error.message); return r.rows ?? []; },
 };
 
+// Deleting means gone. History, bookmarks and the download list are rows in
+// the extension database, a file that stays open while Parallx runs, so no
+// file eraser can touch it; the database does the overwriting itself.
+// secure_delete zeroes a row's bytes the moment it is deleted, the checkpoint
+// folds the write-ahead log back into the file and truncates the log to
+// nothing, and VACUUM after a bulk clear rebuilds the file from live rows
+// only. Downloaded files are real files: they go through the core secure
+// delete, Eraser first when it is installed, a permanent delete otherwise.
+async function hardenDb() {
+  try { await db.all('PRAGMA secure_delete = ON'); } catch (err) { console.warn('[browser] secure_delete:', err && err.message); }
+}
+async function scrubDb(vacuum) {
+  try { await db.all('PRAGMA wal_checkpoint(TRUNCATE)'); } catch { /* best effort */ }
+  if (vacuum) { try { await db.run('VACUUM'); await db.all('PRAGMA wal_checkpoint(TRUNCATE)'); } catch { /* best effort */ } }
+}
+/** Delete rows, then scrub the file so nothing of them remains in it. */
+async function forget(sql, params, vacuum) { const r = await db.run(sql, params); await scrubDb(vacuum); return r; }
+
 const Bookmarks = {
   list: (q) => q
     ? db.all(`SELECT * FROM br_bookmarks WHERE url LIKE ? OR title LIKE ? ORDER BY created_at DESC LIMIT 200`, [`%${q}%`, `%${q}%`])
     : db.all(`SELECT * FROM br_bookmarks ORDER BY created_at DESC LIMIT 200`),
   has: async (url) => !!(await db.get(`SELECT id FROM br_bookmarks WHERE url = ?`, [url])),
   add: (url, title) => db.run(`INSERT OR IGNORE INTO br_bookmarks (url, title) VALUES (?, ?)`, [url, title || '']),
-  remove: (url) => db.run(`DELETE FROM br_bookmarks WHERE url = ?`, [url]),
+  remove: (url) => forget(`DELETE FROM br_bookmarks WHERE url = ?`, [url], false),
 };
 const History = {
   record: (url, title) => db.run(
@@ -95,8 +113,8 @@ const History = {
   setTitle: (url, title) => db.run(`UPDATE br_history SET title = ? WHERE url = ? AND ? <> ''`, [title, url, title]),
   recent: (limit) => db.all(`SELECT * FROM br_history ORDER BY last_visit_at DESC LIMIT ?`, [limit]),
   search: (q, limit) => db.all(`SELECT * FROM br_history WHERE url LIKE ? OR title LIKE ? ORDER BY last_visit_at DESC LIMIT ?`, [`%${q}%`, `%${q}%`, limit]),
-  clear: () => db.run(`DELETE FROM br_history`),
-  removeUrl: (url) => db.run(`DELETE FROM br_history WHERE url = ?`, [url]),
+  clear: () => forget(`DELETE FROM br_history`, [], true),
+  removeUrl: (url) => forget(`DELETE FROM br_history WHERE url = ?`, [url], false),
 };
 const Downloads = {
   upsert: (d) => db.run(
@@ -105,7 +123,8 @@ const Downloads = {
     [d.id, d.url, d.filename, d.path, d.total ?? null, d.received ?? 0, d.state, new Date(d.startedAt || Date.now()).toISOString(), d.finishedAt ? new Date(d.finishedAt).toISOString() : null],
   ),
   list: () => db.all(`SELECT * FROM br_downloads ORDER BY started_at DESC LIMIT 100`),
-  clear: () => db.run(`DELETE FROM br_downloads WHERE state <> 'progressing'`),
+  clear: () => forget(`DELETE FROM br_downloads WHERE state <> 'progressing'`, [], true),
+  remove: (id) => forget(`DELETE FROM br_downloads WHERE id = ?`, [id], false),
 };
 const Tabs = {
   remember: (instanceId, url, title) => db.run(
@@ -1105,16 +1124,36 @@ function listsLine() {
 }
 
 async function clearBrowsingData() {
-  const pick = await _api.window.showWarningMessage('Clear browsing data? Cookies, cache, site storage and history are removed. Bookmarks stay.', { title: 'Clear' }, { title: 'Cancel' });
+  const pick = await _api.window.showWarningMessage('Clear browsing data? Cookies, cache, site storage, history and the download list are removed. Bookmarks and downloaded files stay.', { title: 'Clear' }, { title: 'Cancel' });
   if (!pick || pick.title !== 'Clear') return;
   const b = bridge();
   try {
     if (b) await b.clearData('user');
-    await History.clear();
+    await db.run(`DELETE FROM br_history`);
+    await db.run(`DELETE FROM br_downloads WHERE state <> 'progressing'`);
+    await scrubDb(true);
     for (const p of _panes.values()) { if (p.hasView && isWebUrl(p.url)) { try { p.reload(); } catch { /* ignore */ } } }
     notifySidebar();
     _api.window.showInformationMessage('Browsing data cleared.');
   } catch (err) { _api.window.showErrorMessage('Could not clear browsing data: ' + (err && err.message || err)); }
+}
+
+/** Remove a downloaded file for good: Eraser overwrites it when installed, a permanent delete otherwise. Never the Recycle Bin. */
+async function deleteDownload(d) {
+  const pick = await _api.window.showWarningMessage(`Delete ${d.filename}? The file is erased from disk, not moved to the Recycle Bin.`, { title: 'Delete' }, { title: 'Cancel' });
+  if (!pick || pick.title !== 'Delete') return;
+  const fsb = typeof window !== 'undefined' && window.parallxElectron ? window.parallxElectron.fs : null;
+  let how = 'none';
+  if (fsb && d.path) {
+    try {
+      const r = await fsb.delete(d.path, { useTrash: false, secure: true });
+      if (r && r.error && r.error.code !== 'ENOENT') throw new Error(r.error.message || r.error.code);
+      how = r && r.secure === 'eraser' ? 'eraser' : 'permanent';
+    } catch (err) { _api.window.showErrorMessage('Could not delete the file: ' + (err && err.message || err)); return; }
+  }
+  await Downloads.remove(d.id);
+  notifySidebar();
+  _api.window.showInformationMessage(how === 'eraser' ? 'Eraser is overwriting the file; it disappears when Eraser finishes.' : 'File deleted.');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1477,9 +1516,9 @@ function createSidebar(container) {
     const list = el('div', 'br-list');
     for (const d of rows) {
       const stateText = d.state === 'completed' ? fmtBytes(d.received) : (d.state === 'progressing' ? `${fmtBytes(d.received)}${d.total ? ` of ${fmtBytes(d.total)}` : ''}` : d.state);
-      const row = item(d.filename, stateText, () => { if (b && d.state === 'completed') b.openDownload(d.path); }, 'download', [
-        { icon: 'external-link', title: 'Show In Folder', handler: () => { if (b) b.showDownload(d.path); } },
-      ]);
+      const actions = [{ icon: 'external-link', title: 'Show In Folder', handler: () => { if (b) b.showDownload(d.path); } }];
+      if (d.state !== 'progressing' && d.path) actions.push({ icon: 'trash-2', title: 'Delete File', handler: () => deleteDownload(d) });
+      const row = item(d.filename, stateText, () => { if (b && d.state === 'completed') b.openDownload(d.path); }, 'download', actions);
       if (d.state === 'progressing' && d.total > 0) { const bar = el('div', 'br-dlbar'); const fill = el('div'); fill.style.width = `${Math.round((d.received / d.total) * 100)}%`; bar.appendChild(fill); row.appendChild(bar); }
       list.appendChild(row);
     }
@@ -1592,6 +1631,7 @@ export async function activate(api, context) {
   const mig = await api.database.migrate(`${toolPath}${sep}db${sep}migrations`);
   if (mig.error) { console.error('[browser] migration failed:', mig.error.message); return; }
   _dbBridge = api.database;
+  await hardenDb();
   Tabs.prune().catch(() => {});
 
   context.subscriptions.push(api.editors.registerEditorProvider(EDITOR_TYPE, {

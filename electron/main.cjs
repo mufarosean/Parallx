@@ -1731,15 +1731,51 @@ ipcMain.handle('fs:rename', async (_event, oldPath, newPath) => {
 //                      for callers that may operate on external/encrypted
 //                      drives).
 //   false            — permanent delete (no recycle bin).
+// options.secure:
+//   true             — overwrite before removal. Eraser (Windows, path from the
+//                      delete policy) gets the path as one `addtask
+//                      /schedule=now` and owns the overwrite and the unlink,
+//                      so the file stays on disk until Eraser is done with it.
+//                      Without Eraser the delete is permanent. Never the
+//                      recycle bin. The result says which: `secure: 'eraser'`
+//                      or `secure: 'none'`.
+// The delete policy (src/services/deletePolicy.ts, pushed from the workspace's
+// settings): `recycleBin: false` makes every deletion permanent whatever the
+// caller asked, so an experimental or sensitive workspace never leaves its
+// leftovers in the system recycle bin; `eraserPath` is the Eraser executable.
+let _deletePolicy = { recycleBin: true, eraserPath: '' };
+ipcMain.handle('fs:setDeletePolicy', (_event, policy) => {
+  _deletePolicy = {
+    recycleBin: !policy || policy.recycleBin !== false,
+    eraserPath: policy && typeof policy.eraserPath === 'string' ? policy.eraserPath.trim() : '',
+  };
+  return { ok: true, policy: { ..._deletePolicy } };
+});
+/** Hand a path to Eraser. Resolves true once Eraser.exe has started; false when it is not there or would not start. */
+function queueEraser(targetPath, isDirectory) {
+  return new Promise((resolve) => {
+    const exe = _deletePolicy.eraserPath;
+    if (process.platform !== 'win32' || !exe) return resolve(false);
+    try { if (!fsSync.statSync(exe).isFile()) return resolve(false); } catch { return resolve(false); }
+    let child;
+    try {
+      child = require('child_process').spawn(exe, ['addtask', '/quiet', '/schedule=now', `${isDirectory ? 'dir' : 'file'}=${path.resolve(targetPath)}`], { windowsHide: true, detached: true, stdio: 'ignore' });
+    } catch { return resolve(false); }
+    let settled = false;
+    child.once('spawn', () => { if (settled) return; settled = true; try { child.unref(); } catch { /* ignore */ } resolve(true); });
+    child.once('error', () => { if (settled) return; settled = true; resolve(false); });
+  });
+}
 ipcMain.handle('fs:delete', async (_event, filePath, options) => {
   if (!_isAllowedWritePath(filePath)) {
     return { error: { code: 'EACCES', message: 'Delete path is outside the workspace root', path: filePath } };
   }
   try {
     const opt = options?.useTrash === undefined ? 'auto' : options.useTrash;
-    let useTrash = opt !== false; // default: true (then refined below)
+    const secure = options?.secure === true;
+    let useTrash = opt !== false && !secure && _deletePolicy.recycleBin; // then refined below
     let crossVolume = false;
-    if (opt === 'auto') {
+    if (useTrash && opt === 'auto') {
       try {
         const sf = await fs.stat(filePath);
         const sh = await fs.stat(os.homedir());
@@ -1752,7 +1788,14 @@ ipcMain.handle('fs:delete', async (_event, filePath, options) => {
         crossVolume = true;
       }
     }
-    if (useTrash) {
+    let secureVia = 'none';
+    if (secure) {
+      const stat = await fs.stat(filePath);
+      if (await queueEraser(filePath, stat.isDirectory())) secureVia = 'eraser';
+    }
+    if (secureVia === 'eraser') {
+      // Eraser owns the overwrite and the removal from here.
+    } else if (useTrash) {
       // shell.trashItem uses Windows Shell COM APIs (IFileOperation) which
       // require native backslash paths. path.resolve normalises slashes.
       await shell.trashItem(path.resolve(filePath));
@@ -1764,7 +1807,7 @@ ipcMain.handle('fs:delete', async (_event, filePath, options) => {
         await fs.unlink(filePath);
       }
     }
-    return { error: null, deletedPermanently: !useTrash, crossVolume };
+    return { error: null, deletedPermanently: !useTrash, crossVolume, secure: secureVia, policyPermanent: !_deletePolicy.recycleBin };
   } catch (err) {
     return { error: normalizeError(err, filePath) };
   }

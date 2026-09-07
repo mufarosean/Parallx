@@ -519,11 +519,19 @@ function setupBrowserBridge(ipcMain, opts) {
     return { ok: true };
   });
   ipcMain.handle('browser:allowHttpOnce', (_e, url) => { if (typeof url === 'string' && /^http:\/\//i.test(url)) httpOnce.add(url); return { ok: true }; });
+  // Chromium removes its own files (cookies, HTTP cache, site storage, code
+  // caches, shared dictionaries, the bounce-tracking and interest-group
+  // databases). clearData is the thorough call; the rest cover what it does
+  // not reach. These are ordinary deletes inside the partition folder; the
+  // extension database's rows are zeroed separately (ext/browser/main.js).
   ipcMain.handle('browser:clearData', async (_e, kind) => {
-    const ses = sessions.get(kind === 'agent' ? 'agent' : 'user');
+    const ses = sessions.get(Object.prototype.hasOwnProperty.call(PARTITIONS, kind) ? kind : 'user');
     if (!ses) return { ok: false };
+    try { await ses.clearData(); } catch { /* older runtime */ }
     await ses.clearStorageData();
     await ses.clearCache();
+    try { await ses.clearCodeCaches({}); } catch { /* ignore */ }
+    try { await ses.clearSharedDictionaryCache(); } catch { /* ignore */ }
     await ses.clearAuthCache();
     await ses.clearHostResolverCache();
     return { ok: true };

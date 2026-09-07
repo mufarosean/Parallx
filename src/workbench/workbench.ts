@@ -63,6 +63,7 @@ import { createWorkbenchDiagnosticChecks } from '../services/workbenchDiagnostic
 import { bootstrapSettingsRegistry } from '../services/settingsRegistryBootstrap.js';
 import { ISettingsRegistryService } from '../services/serviceTypes.js';
 import { registerSealedSetting, applyWorkspaceSeal, SEALED_WORKSPACE_SETTING } from '../services/sealedWorkspace.js';
+import { registerDeletePolicySettings, applyDeletePolicy, isDeletePolicySetting } from '../services/deletePolicy.js';
 import { bootstrapAutonomyServices } from '../services/autonomyBootstrap.js';
 import { CONTAINER_DRAG_TYPE } from '../platform/dragTypes.js';
 import { registerBuiltinEditorDeserializers, deserializeEditorInput, hasEditorInputDeserializer } from '../editor/editorInputDeserializer.js';
@@ -965,8 +966,11 @@ export class Workbench extends Layout {
     {
       const reg = this._services.get(ISettingsRegistryService);
       registerSealedSetting(reg);
+      // Delete policy (Recycle Bin or not, Eraser path): same push, to fs:delete.
+      registerDeletePolicySettings(reg);
       this._register(reg.onDidChange((c) => {
         if (c.key === SEALED_WORKSPACE_SETTING) applyWorkspaceSeal(reg, { titlebar: this._titlebar, egress: (globalThis as { parallxElectron?: { webFetch?: { setSealed?(s: boolean): Promise<unknown> } } }).parallxElectron?.webFetch });
+        if (isDeletePolicySetting(c.key)) applyDeletePolicy(reg);
       }));
     }
 
@@ -1401,7 +1405,7 @@ export class Workbench extends Layout {
     // lifecycle catches & swallows errors, which would silently skip the
     // title update if it were at the end of this method).
     this._titlebar.setWorkspaceName(this._workspace.displayName);
-    applyWorkspaceSeal(this._services.get(ISettingsRegistryService), { titlebar: this._titlebar, egress: (globalThis as { parallxElectron?: { webFetch?: { setSealed?(s: boolean): Promise<unknown> } } }).parallxElectron?.webFetch });
+    applyWorkspaceSeal(this._services.get(ISettingsRegistryService), { titlebar: this._titlebar, egress: (globalThis as { parallxElectron?: { webFetch?: { setSealed?(s: boolean): Promise<unknown> } } }).parallxElectron?.webFetch }); applyDeletePolicy(this._services.get(ISettingsRegistryService));
 
     // Configure the saver with live sources so subsequent saves capture real state
     this._configureSaver();
@@ -1474,7 +1478,7 @@ export class Workbench extends Layout {
     // handlers or folder changes altered the display name since the
     // early update above (after restoreFolders).
     this._titlebar.setWorkspaceName(this._workspace.displayName);
-    applyWorkspaceSeal(this._services.get(ISettingsRegistryService), { titlebar: this._titlebar, egress: (globalThis as { parallxElectron?: { webFetch?: { setSealed?(s: boolean): Promise<unknown> } } }).parallxElectron?.webFetch });
+    applyWorkspaceSeal(this._services.get(ISettingsRegistryService), { titlebar: this._titlebar, egress: (globalThis as { parallxElectron?: { webFetch?: { setSealed?(s: boolean): Promise<unknown> } } }).parallxElectron?.webFetch }); applyDeletePolicy(this._services.get(ISettingsRegistryService));
 
     // Begin the workspace session (M14).
     // Services can now read sessionManager.activeContext for identity,
@@ -1997,7 +2001,7 @@ export class Workbench extends Layout {
   private _setupTitlebar(): void {
     // Task 1.1: Wire workspace name reactively (VS Code style: folder name for single-root)
     this._titlebar.setWorkspaceName(this._workspace.displayName);
-    applyWorkspaceSeal(this._services.get(ISettingsRegistryService), { titlebar: this._titlebar, egress: (globalThis as { parallxElectron?: { webFetch?: { setSealed?(s: boolean): Promise<unknown> } } }).parallxElectron?.webFetch });
+    applyWorkspaceSeal(this._services.get(ISettingsRegistryService), { titlebar: this._titlebar, egress: (globalThis as { parallxElectron?: { webFetch?: { setSealed?(s: boolean): Promise<unknown> } } }).parallxElectron?.webFetch }); applyDeletePolicy(this._services.get(ISettingsRegistryService));
 
     // Track per-workspace subscriptions so they can be rebound when the
     // workspace object is replaced (Phase 4 replaces this._workspace).
@@ -2012,13 +2016,13 @@ export class Workbench extends Layout {
       // Update when folders change (add/remove folder changes the display name)
       wsFolderSub = ws.onDidChangeFolders(() => {
         this._titlebar.setWorkspaceName(this._workspace.displayName);
-    applyWorkspaceSeal(this._services.get(ISettingsRegistryService), { titlebar: this._titlebar, egress: (globalThis as { parallxElectron?: { webFetch?: { setSealed?(s: boolean): Promise<unknown> } } }).parallxElectron?.webFetch });
+    applyWorkspaceSeal(this._services.get(ISettingsRegistryService), { titlebar: this._titlebar, egress: (globalThis as { parallxElectron?: { webFetch?: { setSealed?(s: boolean): Promise<unknown> } } }).parallxElectron?.webFetch }); applyDeletePolicy(this._services.get(ISettingsRegistryService));
       });
 
       // A9: Update titlebar and window title when workspace is renamed
       wsRenameSub = ws.onDidRename(() => {
         this._titlebar.setWorkspaceName(this._workspace.displayName);
-    applyWorkspaceSeal(this._services.get(ISettingsRegistryService), { titlebar: this._titlebar, egress: (globalThis as { parallxElectron?: { webFetch?: { setSealed?(s: boolean): Promise<unknown> } } }).parallxElectron?.webFetch });
+    applyWorkspaceSeal(this._services.get(ISettingsRegistryService), { titlebar: this._titlebar, egress: (globalThis as { parallxElectron?: { webFetch?: { setSealed?(s: boolean): Promise<unknown> } } }).parallxElectron?.webFetch }); applyDeletePolicy(this._services.get(ISettingsRegistryService));
         this._statusBarController.updateWindowTitle();
       });
     };

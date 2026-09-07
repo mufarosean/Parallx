@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "parallx.browser",
   "name": "Browser",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "parallx",
   "description": "A private browser inside Parallx: ads and trackers blocked, third-party cookies stripped, HTTPS only, permissions asked, storage sealed off from the app and the AI. See docs/BROWSER.md.",
   "main": "main.js",

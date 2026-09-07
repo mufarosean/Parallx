@@ -105,8 +105,11 @@ contextBridge.exposeInMainWorld('parallxElectron', {
     /** Rename/move a file or directory. Returns { error: null } on success or { error }. */
     rename: (oldPath, newPath) => ipcRenderer.invoke('fs:rename', oldPath, newPath),
 
-    /** Delete a file or directory. Options: { useTrash?: boolean, recursive?: boolean }. */
+    /** Delete a file or directory. Options: { useTrash?: boolean | 'auto', recursive?: boolean, secure?: boolean }. `secure` overwrites before removal (Eraser when installed, permanent delete otherwise); the result's `secure` field says which happened. */
     delete: (filePath, options) => ipcRenderer.invoke('fs:delete', filePath, options),
+
+    /** Push the workspace's delete policy: { recycleBin: boolean, eraserPath: string }. Off means every deletion is permanent. */
+    setDeletePolicy: (policy) => ipcRenderer.invoke('fs:setDeletePolicy', policy),
 
     /** Create directory (recursive). Returns { error: null } on success or { error }. */
     mkdir: (dirPath) => ipcRenderer.invoke('fs:mkdir', dirPath),

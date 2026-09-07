@@ -32,6 +32,7 @@ encryption, not the app's job, and said so).
 | Downloads contained | Only into the workspace `Downloads` folder (or the OS Downloads folder when no workspace is open), with progress in the sidebar | bridge |
 | Nothing phones home | No telemetry, no sync, no accounts; filter lists (EasyList, EasyPrivacy, Peter Lowe, the uBlock filters including quick-fixes and unbreak) refresh every 12 hours from one fixed source, visible in the shield | bridge |
 | Page views hardened and durable | Each page is a main-process `WebContentsView`: no Node, context isolated, sandboxed, no preload of ours. It is positioned over the pane from bounds the renderer reports, so moving a tab, splitting, or evicting the pane never reloads the page; a view is destroyed only when its editor really closes | `electron/browserBridge.cjs` |
+| Deleted means gone | History, bookmarks and the download list are rows in the extension database, a file that stays open, so the database overwrites them itself: secure_delete zeroes a deleted row at once, the write-ahead log is checkpointed and truncated after every deletion, and a bulk clear ends in VACUUM. Downloaded files deleted from the sidebar go to Eraser first (core secure delete, path in Settings under Security) and are deleted permanently when Eraser is missing. Clear Browsing Data uses Chromium's thorough clearData plus cache, code cache, shared dictionary, auth and DNS caches. Nothing the browser deletes touches the Recycle Bin | `ext/browser/main.js`, `electron/main.cjs` |
 
 Not claimed: fingerprint defeat (Brave's farbling), script blocking per site,
 IP anonymity.
@@ -74,6 +75,38 @@ and title so the model fetches through the sanitized chokepoint.
   policy, clear on exit.
 - **Keys** through the manifest keybindings with `activeEditor == 'browser.page'`,
   never a document keydown listener.
+
+## Deleting data
+
+Deleting in the browser is a security act, not housekeeping.
+
+- **Rows.** History, bookmarks and the download list live in the extension
+  database at `<workspace>/.parallx/extensions/parallx.browser/data.db`. The
+  file stays open while Parallx runs, so no file eraser can be pointed at it;
+  the database overwrites instead. `PRAGMA secure_delete = ON` is set on the
+  connection at activation, every deletion is followed by
+  `PRAGMA wal_checkpoint(TRUNCATE)` (the log is folded back and cut to zero
+  bytes), and Clear History and Clear Browsing Data end in `VACUUM`. Verified
+  with a fixture: a deleted URL is no longer anywhere in the file.
+- **Files.** Delete File on a download asks the core delete for
+  `secure: true`. Main hands the path to Eraser (`addtask /quiet
+  /schedule=now file=...`), which overwrites and removes it; the file is on
+  disk until Eraser finishes. Without Eraser the delete is permanent. The
+  Recycle Bin is never used for a secure delete.
+- **Chromium's files.** Cookies, HTTP cache, site storage, code caches and
+  the bounce-tracking and interest-group databases are Chromium's own; Clear
+  Browsing Data asks Chromium to remove them (`clearData` and the specific
+  clears). Those are ordinary deletes inside the partition folder, the same as
+  Brave's. Private tabs write nothing to disk in the first place.
+- **Recycle Bin policy.** `files.deleteToRecycleBin` (Settings, Security,
+  per workspace) off makes every deletion Parallx performs in that workspace
+  permanent, whatever the caller asked. Files on a different drive than the
+  user profile never reach the Recycle Bin either way. `files.eraserPath` is
+  where the secure delete looks for Eraser.
+
+What remains: the disk clusters a truncated log or a vacuumed file gave back
+still hold their old bytes until something overwrites them. Eraser's Erase
+Unused Space on the drive is the mop-up for that, run by hand now and then.
 
 ## Design rules
 
