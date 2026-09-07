@@ -384,7 +384,7 @@ function newTabId() { return `tab:${Date.now().toString(36)}-${++_tabSeq}`; }
 /** Open a new page tab. `url` may be omitted for the New Tab page. */
 async function openTab(url, opts = {}) {
   const instanceId = opts.private ? newTabId().replace(/^tab:/, 'private:') : newTabId();
-  const target = url || cfg('homepage', NEWTAB) || NEWTAB;
+  const target = url || homepage();
   _pendingUrls.set(instanceId, target);
   const base = INTERNAL_TITLES[target] || hostOf(target) || 'Web Page';
   await _api.editors.openEditor({ typeId: EDITOR_TYPE, title: opts.private ? `Private: ${base}` : base, icon: opts.private ? 'eye-closed' : 'globe', instanceId });
@@ -426,6 +426,7 @@ function createPagePane(container, input, opts = {}) {
   const backBtn = iconBtn('arrow-left', 'Back', () => goBack());
   const fwdBtn = iconBtn('arrow-right', 'Forward', () => goForward());
   const reloadBtn = iconBtn('rotate-cw', 'Reload', () => { if (pane.loading) stop(); else reload(); });
+  const homeBtn = iconBtn('home', 'Home', () => navigate(homepage()));
   const newTabBtn = iconBtn('plus', 'New Tab', () => openTab());
   const addressWrap = el('div', 'br-address-wrap');
   const privateChip = el('span', 'br-private-chip', { title: 'Private tab: nothing is kept after the last private tab closes, and nothing goes into history.' });
@@ -445,7 +446,7 @@ function createPagePane(container, input, opts = {}) {
   const starBtn = iconBtn('star', 'Bookmark This Page', () => toggleBookmark());
   const readerBtn = iconBtn('book-open', 'Reader Mode', () => toggleReader());
   const menuBtn = iconBtn('ellipsis', 'Page Menu', () => showPageMenu(menuBtn));
-  toolbar.append(backBtn, fwdBtn, reloadBtn, newTabBtn, addressWrap, shieldBtn, starBtn, readerBtn, menuBtn);
+  toolbar.append(backBtn, fwdBtn, reloadBtn, homeBtn, newTabBtn, addressWrap, shieldBtn, starBtn, readerBtn, menuBtn);
   root.appendChild(toolbar);
 
   // Bookmarks bar: the starred pages as chips, one click away, toggled from the page menu.
@@ -881,6 +882,9 @@ function createPagePane(container, input, opts = {}) {
       { label: 'New Tab', handler: () => openTab() },
       { label: 'New Private Tab', handler: () => openTab(undefined, { private: true }) },
       { separator: true },
+      { label: 'Set Current Page As Home', handler: () => setHomepage(pane.url), disabled: !(web || INTERNAL_PAGES.has(pane.url)) },
+      ...(homepage() !== NEWTAB ? [{ label: 'Use New Tab Page As Home', handler: () => setHomepage(NEWTAB) }] : []),
+      { separator: true },
       { label: 'Bookmarks', handler: () => navigate('about:bookmarks') },
       { label: 'History', handler: () => navigate('about:history') },
       { label: 'Blocked Trackers', handler: () => navigate('about:shields') },
@@ -932,7 +936,7 @@ function createPagePane(container, input, opts = {}) {
     let initial = _pendingUrls.get(instanceId);
     _pendingUrls.delete(instanceId);
     if (!initial) { try { const row = await Tabs.recall(instanceId); if (row && row.url) initial = row.url; } catch { /* fresh */ } }
-    if (!initial) initial = cfg('homepage', NEWTAB) || NEWTAB;
+    if (!initial) initial = homepage();
     if (pane.disposed) return;
     if (initial === NEWTAB) showNewTab(); else navigate(initial);
   })();
@@ -954,6 +958,19 @@ function createPagePane(container, input, opts = {}) {
   };
 }
 
+// Home: the browser.homepage setting (about:newtab by default), changed from
+// the page menu; the override covers the moment before the setting write lands.
+let _homepageOverride = null;
+function homepage() { return _homepageOverride != null ? _homepageOverride : (cfg('homepage', NEWTAB) || NEWTAB); }
+function setHomepage(url) {
+  const target = url && (isWebUrl(url) || INTERNAL_PAGES.has(url)) ? url : NEWTAB;
+  _homepageOverride = target;
+  try {
+    const c = _api.workspace.getConfiguration('browser');
+    if (c && typeof c.update === 'function') Promise.resolve(c.update('homepage', target)).then(() => { _homepageOverride = null; }).catch(() => {});
+  } catch { /* keep the override */ }
+  try { _api.window.showInformationMessage(target === NEWTAB ? 'Home is the New Tab page.' : `Home is now ${hostOf(target) || target}.`); } catch { /* ignore */ }
+}
 let _bookmarksBarOverride = null;
 function showBookmarksBar() { return _bookmarksBarOverride != null ? _bookmarksBarOverride : cfg('showBookmarksBar', true) !== false; }
 function setBookmarksBar(on) {
@@ -1504,6 +1521,7 @@ export async function activate(api, context) {
     context.subscriptions.push(api.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('browser.pageTheme')) for (const p of _panes.values()) applyPageTheme(p);
       if (e.affectsConfiguration('browser.showBookmarksBar')) { _bookmarksBarOverride = null; notifySidebar(); }
+      if (e.affectsConfiguration('browser.homepage')) _homepageOverride = null;
     }));
   }
   if (!bridge()) console.warn('[browser] the browser bridge is missing; pages will load but shields, permissions and downloads are inactive');
