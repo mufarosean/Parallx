@@ -272,6 +272,9 @@ const CSS = `
 .br-bar label { display: inline-flex; align-items: center; gap: 4px; opacity: 0.85; }
 .br-content { flex: 1; min-height: 0; position: relative; display: flex; }
 .br-content > * { flex: 1; min-width: 0; min-height: 0; }
+/* The hidden attribute must win over every display rule below, or the New Tab
+   page, the web page and the error panel all show at once. */
+.br-pane [hidden] { display: none !important; }
 .br-content webview { display: flex; }
 .br-status { position: absolute; left: 0; bottom: 0; max-width: 70%; padding: 2px 8px; font-size: 11px; background: var(--vscode-editorWidget-background, var(--px-surface)); border: 1px solid var(--vscode-panel-border, var(--px-border)); border-left: none; border-bottom: none; border-radius: 0 4px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; z-index: 3; }
 .br-panel { position: absolute; top: 40px; right: 8px; width: 320px; z-index: 6; background: var(--vscode-editorWidget-background, var(--px-surface)); border: 1px solid var(--vscode-panel-border, var(--px-border)); border-radius: var(--parallx-radius-md, 6px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); padding: 12px; font-size: 12px; }
@@ -496,10 +499,14 @@ function createPagePane(container, input, opts = {}) {
     // Popups are consulted so target=_blank links reach the main-process
     // handler, which always denies the window and hands us the URL as a tab.
     wv.setAttribute('allowpopups', 'true');
-    wv.setAttribute('src', 'about:blank');
     content.appendChild(wv);
     pane.webview = wv;
+    // Until dom-ready, the element accepts navigation only through its src
+    // attribute; loadURL and friends throw. The first page therefore goes in
+    // as src, and everything after uses the methods.
+    pane.wvReady = false;
     wv.addEventListener('dom-ready', () => {
+      pane.wvReady = true;
       try {
         const id = wv.getWebContentsId();
         if (id !== pane.wcId) { if (pane.wcId != null) _panesByWc.delete(pane.wcId); pane.wcId = id; _panesByWc.set(id, pane); }
@@ -567,6 +574,7 @@ function createPagePane(container, input, opts = {}) {
     pane.url = url;
     address.value = displayUrl(url);
     updateChrome();
+    if (!pane.wvReady) { wv.setAttribute('src', url); return; }
     try { wv.loadURL(url); } catch (err) { showError('This address could not be opened', String(err && err.message || err), url, null); }
   }
   function onNavigated(url, inPage) {
@@ -616,7 +624,12 @@ function createPagePane(container, input, opts = {}) {
   function safe(fn) { try { return fn(); } catch { return false; } }
   function goBack() { const wv = pane.webview; if (wv && safe(() => wv.canGoBack())) { wv.goBack(); } else if (pane.url !== NEWTAB) showNewTab(); }
   function goForward() { const wv = pane.webview; if (wv && safe(() => wv.canGoForward())) wv.goForward(); }
-  function reload() { if (pane.url === NEWTAB) { showNewTab(); return; } if (pane.webview) pane.webview.reload(); }
+  function reload() {
+    if (pane.url === NEWTAB) { showNewTab(); return; }
+    if (!pane.webview) return;
+    if (!pane.wvReady) { pane.webview.setAttribute('src', pane.url); return; }
+    try { pane.webview.reload(); } catch { pane.webview.setAttribute('src', pane.url); }
+  }
   function stop() { if (pane.webview) { try { pane.webview.stop(); } catch { /* ignore */ } } }
 
   // ── Address bar ──
