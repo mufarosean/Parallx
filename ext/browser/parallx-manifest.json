@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "parallx.browser",
   "name": "Browser",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "parallx",
   "description": "A private browser inside Parallx: ads and trackers blocked, third-party cookies stripped, HTTPS only, permissions asked, storage sealed off from the app and the AI. See docs/BROWSER.md.",
   "main": "main.js",
@@ -87,6 +87,11 @@
             "type": "boolean",
             "default": true,
             "description": "Show your starred pages as a row of chips under the address bar."
+          },
+          "browser.blockAnnoyances": {
+            "type": "boolean",
+            "default": true,
+            "description": "Also hide cookie consent banners, newsletter and social overlays and other annoyances (EasyList Cookie and the uBlock annoyance lists). Off: ads and trackers only, which is what Brave ships by default."
           }
         }
       }

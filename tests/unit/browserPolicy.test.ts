@@ -88,3 +88,18 @@ describe('downloads', () => {
     expect(policy.downloadTarget('/home/u/Downloads/', 'a.zip', () => false)).toBe('/home/u/Downloads/a.zip');
   });
 });
+
+describe('popups', () => {
+  it('allows one window per fresh gesture and nothing without one', () => {
+    expect(policy.popupDecision({ url: 'https://a.com/', gestureAgeMs: 200, popupsSinceGesture: 0, listed: false })).toBe('allow');
+    expect(policy.popupDecision({ url: 'https://a.com/', gestureAgeMs: 200, popupsSinceGesture: 1, listed: false })).toBe('block');
+    expect(policy.popupDecision({ url: 'https://a.com/', gestureAgeMs: policy.POPUP_GESTURE_MS + 1, popupsSinceGesture: 0, listed: false })).toBe('block');
+    expect(policy.popupDecision({ url: 'https://a.com/', gestureAgeMs: Infinity, popupsSinceGesture: 0, listed: false })).toBe('block');
+  });
+  it('never opens a listed destination or a non-web scheme', () => {
+    expect(policy.popupDecision({ url: 'https://ads.example/x', gestureAgeMs: 10, popupsSinceGesture: 0, listed: true })).toBe('block');
+    expect(policy.popupDecision({ url: 'about:blank', gestureAgeMs: 10, popupsSinceGesture: 0, listed: false })).toBe('drop');
+    expect(policy.popupDecision({ url: 'javascript:alert(1)', gestureAgeMs: 10, popupsSinceGesture: 0, listed: false })).toBe('drop');
+    expect(policy.popupDecision({ url: undefined, gestureAgeMs: 10, popupsSinceGesture: 0, listed: false })).toBe('drop');
+  });
+});

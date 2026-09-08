@@ -24,7 +24,8 @@ const policy = require('./browserPolicy.cjs');
 const { parse: parseTld } = require('tldts');
 
 let ElectronBlocker = null;
-try { ({ ElectronBlocker } = require('@ghostery/adblocker-electron')); } catch { ElectronBlocker = null; }
+let AdblockRequest = null;
+try { ({ ElectronBlocker, Request: AdblockRequest } = require('@ghostery/adblocker-electron')); } catch { ElectronBlocker = null; AdblockRequest = null; }
 // The engine's frame preload handles cosmetic CSS and DOM-driven rules; we
 // register it ourselves (once per session) instead of enableBlockingInSession,
 // which registers one IPC handler per session and throws on the second.
@@ -48,7 +49,14 @@ function setupBrowserBridge(ipcMain, opts) {
   try { fs.mkdirSync(dir, { recursive: true }); } catch { /* best effort */ }
   const sitesPath = path.join(dir, 'sites.json');
   const permissionsPath = path.join(dir, 'permissions.json');
-  const enginePath = path.join(dir, 'engine.bin');
+  const prefsPath = path.join(dir, 'prefs.json');
+  // Two list sets, one engine cache each: ads and trackers, or that plus the
+  // annoyance lists (cookie banners, newsletter and social overlays). The
+  // set in use is remembered here so the engine is right from the first load.
+  const ENGINE_FILES = { ads: 'engine.bin', full: 'engine-full.bin' };
+  const prefs = { annoyances: true, ...readJson(prefsPath, {}) };
+  const enginePathFor = () => path.join(dir, prefs.annoyances ? ENGINE_FILES.full : ENGINE_FILES.ads);
+  try { fs.unlinkSync(path.join(dir, prefs.annoyances ? ENGINE_FILES.ads : ENGINE_FILES.full)); } catch { /* none */ }
 
   // ── State ──
   const sites = readJson(sitesPath, {});           // siteKey -> { shields, cookies, https }
@@ -160,6 +168,7 @@ function setupBrowserBridge(ipcMain, opts) {
     if (!ElectronBlocker) { lists = { status: 'unavailable', count: 0, updatedAt: null, error: 'engine not installed' }; send('browser:lists', lists); return; }
     lists = { ...lists, status: 'loading', error: null };
     send('browser:lists', lists);
+    const enginePath = enginePathFor();
     try {
       let stale = force;
       try {
@@ -167,7 +176,7 @@ function setupBrowserBridge(ipcMain, opts) {
         if (Date.now() - st.mtimeMs > LIST_REFRESH_MS) stale = true;
       } catch { stale = false; }
       if (stale) { try { fs.unlinkSync(enginePath); } catch { /* none */ } }
-      const next = await ElectronBlocker.fromPrebuiltAdsAndTracking(fetch, {
+      const next = await ElectronBlocker[prefs.annoyances ? 'fromPrebuiltFull' : 'fromPrebuiltAdsAndTracking'](fetch, {
         path: enginePath,
         read: (p) => fsp.readFile(p),
         write: (p, data) => fsp.writeFile(p, data),
@@ -180,9 +189,9 @@ function setupBrowserBridge(ipcMain, opts) {
       for (const rec of views.values()) { try { refreshScriptlets(rec, rec.wc.getURL()); } catch { /* view gone */ } }
       let updatedAt = Date.now();
       try { updatedAt = fs.statSync(enginePath).mtimeMs; } catch { /* keep now */ }
-      lists = { status: 'ready', count: countFilters(blocker), updatedAt, error: null };
+      lists = { status: 'ready', count: countFilters(blocker), updatedAt, error: null, annoyances: prefs.annoyances };
     } catch (err) {
-      lists = { status: blocker ? 'ready' : 'unavailable', count: blocker ? lists.count : 0, updatedAt: lists.updatedAt, error: err && err.message ? err.message : String(err) };
+      lists = { status: blocker ? 'ready' : 'unavailable', count: blocker ? lists.count : 0, updatedAt: lists.updatedAt, error: err && err.message ? err.message : String(err), annoyances: prefs.annoyances };
       setTimeout(() => { void loadLists(false); }, LIST_RETRY_MS).unref?.();
     }
     send('browser:lists', lists);
@@ -206,7 +215,7 @@ function setupBrowserBridge(ipcMain, opts) {
     try { const g = webContents.fromId(Number(id)); isPrivate = !!g && !g.isDestroyed() && g.session === sessions.get('private'); } catch { isPrivate = false; }
     if (!isPrivate) {
       const page = req.sourceHostname || req.sourceDomain || '';
-      blockedLog.push({ t: Date.now(), page, host });
+      blockedLog.push({ t: Date.now(), page, host, popup: !!req.popup });
       if (blockedLog.length > 500) blockedLog.splice(0, blockedLog.length - 500);
       blockedStats.byHost[host] = (blockedStats.byHost[host] || 0) + 1;
     }
@@ -286,13 +295,40 @@ function setupBrowserBridge(ipcMain, opts) {
 
   const PAGE_COLOR_EXPR = '(function(){try{var d=document.documentElement,b=document.body;var t=function(c){return !c||c==="transparent"||c==="rgba(0, 0, 0, 0)"};var c=b?getComputedStyle(b).backgroundColor:"";if(t(c))c=getComputedStyle(d).backgroundColor;return t(c)?"rgb(255, 255, 255)":String(c)}catch(e){return ""}})()';
 
+  const hostnameOf = (u) => { try { return new URL(u).hostname; } catch { return ''; } };
+  /** Would the lists stop the opener from embedding this URL? Then it may not open it as a window either. */
+  function popupListed(url, openerUrl) {
+    if (!blocker || !AdblockRequest || lists.status !== 'ready' || !siteFor(openerUrl).shields) return false;
+    try {
+      const r = blocker.match(AdblockRequest.fromRawDetails({ url, sourceUrl: openerUrl || '', type: 'sub_frame' }));
+      return !!(r && r.match && !r.exception);
+    } catch { return false; }
+  }
+
   // ── Guests: popups, navigation resets, lifecycle ──
   function attachGuestHooks(guest) {
     if (!guest || guest.isDestroyed() || !isOurs(guest.session)) return;
     // A page's sound is the page's business: never start a browser tab muted.
     try { if (guest.isAudioMuted()) guest.setAudioMuted(false); } catch { /* ignore */ }
+    // Popups (policy.popupDecision): one new window per user gesture in this
+    // page, within seconds of it, never to a destination the lists name. A
+    // blocked one counts in the shield like any other blocked request.
+    const gesture = { at: 0, used: 0 };
+    guest.on('input-event', (_e, input) => {
+      const t = input && input.type;
+      if (t === 'mouseDown' || t === 'mouseUp' || t === 'keyDown' || t === 'rawKeyDown' || t === 'char') { gesture.at = Date.now(); gesture.used = 0; }
+    });
     guest.setWindowOpenHandler(({ url, disposition }) => {
-      send('browser:open-url', { url, disposition, openerId: guest.id });
+      let openerUrl = '';
+      try { openerUrl = guest.getURL(); } catch { openerUrl = ''; }
+      const decision = policy.popupDecision({
+        url,
+        gestureAgeMs: gesture.at ? Date.now() - gesture.at : Infinity,
+        popupsSinceGesture: gesture.used,
+        listed: popupListed(url, openerUrl),
+      });
+      if (decision === 'allow') { gesture.used++; send('browser:open-url', { url, disposition, openerId: guest.id }); }
+      else if (decision === 'block') countBlocked({ tabId: guest.id, url, hostname: hostnameOf(url), sourceHostname: hostnameOf(openerUrl), popup: true });
       return { action: 'deny' };
     });
     guest.on('did-navigate', () => { blocked.set(guest.id, { count: 0, hosts: new Map() }); send('browser:blocked', blockedSummary(guest.id)); });
@@ -547,6 +583,15 @@ function setupBrowserBridge(ipcMain, opts) {
     return { ok: true };
   });
   ipcMain.handle('browser:refreshLists', async () => { await loadLists(true); return lists; });
+  ipcMain.handle('browser:setAnnoyances', async (_e, on) => {
+    const next = on !== false;
+    if (next === prefs.annoyances) return lists;
+    prefs.annoyances = next;
+    writeJson(prefsPath, prefs);
+    try { fs.unlinkSync(path.join(dir, next ? ENGINE_FILES.ads : ENGINE_FILES.full)); } catch { /* none */ }
+    await loadLists(false);
+    return lists;
+  });
   ipcMain.handle('browser:blockedFor', (_e, webContentsId) => blockedSummary(webContentsId));
   ipcMain.handle('browser:listDownloads', () => [...downloads.values()].map((d) => ({ ...d })));
   ipcMain.handle('browser:openDownload', async (_e, p) => { const d = [...downloads.values()].find((x) => x.path === p); if (!d) return { ok: false }; const err = await shell.openPath(p); return { ok: !err, error: err || null }; });

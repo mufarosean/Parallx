@@ -356,6 +356,7 @@ const CSS = `
 .br-newtab-search { width: min(640px, 100%); display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border-radius: var(--px-radius-md, 6px); background: var(--vscode-input-background, var(--px-bg-inset)); border: 1px solid var(--vscode-panel-border, var(--px-border)); }
 .br-newtab-search:focus-within { border-color: var(--vscode-focusBorder, var(--px-accent)); }
 .br-newtab-search input { flex: 1; border: none; background: transparent; color: inherit; font: inherit; font-size: 14px; outline: none; }
+.br-newtab-private { width: min(640px, 100%); margin: 0; font-size: 12px; line-height: 1.5; opacity: 0.7; text-align: center; }
 .br-newtab-section { width: min(760px, 100%); }
 .br-newtab-section h3 { margin: 0 0 8px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; opacity: 0.7; }
 .br-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
@@ -1167,6 +1168,15 @@ function applyPageTheme(pane) {
   b.setPageTheme(pane.wcId, theme === 'dark' || theme === 'light' ? theme : 'system').catch(() => {});
 }
 
+/** Tell main which list set to run: ads and trackers, or that plus the annoyance lists. */
+function pushAnnoyances() {
+  const b = bridge();
+  if (!b || !b.setAnnoyances) return;
+  b.setAnnoyances(cfg('blockAnnoyances', true) !== false)
+    .then((l) => { if (l && l.status) { _lists = l; notifySidebar(); for (const p of _panes.values()) p.onLists(); } })
+    .catch(() => {});
+}
+
 function listsLine() {
   if (_lists.status === 'ready') return `Filter lists updated ${_lists.updatedAt ? new Date(_lists.updatedAt).toLocaleDateString() : 'recently'}${_lists.count ? `, ${_lists.count.toLocaleString()} rules` : ''}.`;
   if (_lists.status === 'loading') return 'Filter lists loading…';
@@ -1218,6 +1228,12 @@ function buildNewTabView(pane, onNavigate) {
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); onNavigate(input.value); } });
   search.appendChild(input);
   view.appendChild(search);
+  if (pane.isPrivate) {
+    // A private tab shows nothing of yours: no bookmarks, no recent pages.
+    view.appendChild(el('p', 'br-newtab-private', { text: 'Private tab. Pages you visit here are not kept in history or suggested later, and their cookies and site data vanish when the last private tab closes.' }));
+    view._fill = async () => {};
+    return view;
+  }
   const bookmarks = el('div', 'br-newtab-section');
   bookmarks.appendChild(el('h3', null, { text: 'Bookmarks' }));
   const bookmarkTiles = el('div', 'br-tiles');
@@ -1412,7 +1428,7 @@ function buildShieldsPage() {
     if (!r.recent || !r.recent.length) right.appendChild(el('div', 'br-empty', { text: 'Nothing in this session yet.' }));
     else {
       const t = table([{ label: 'Time' }, { label: 'On Page' }, { label: 'Blocked' }]);
-      for (const e of r.recent) { const tr = el('tr'); tr.appendChild(cell(new Date(e.t).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' }))); tr.appendChild(cell(e.page || '')); tr.appendChild(cell(e.host)); t.appendChild(tr); }
+      for (const e of r.recent) { const tr = el('tr'); tr.appendChild(cell(new Date(e.t).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' }))); tr.appendChild(cell(e.page || '')); tr.appendChild(cell(e.popup ? e.host + ' (popup)' : e.host)); t.appendChild(tr); }
       right.appendChild(t);
     }
   };
@@ -1728,6 +1744,7 @@ export async function activate(api, context) {
   registerAgentTools(api, context);
   subscribeBridge();
   context.subscriptions.push({ dispose: installDragHooks() });
+  pushAnnoyances();
   // Page views outlive panes; a view whose editor is gone is destroyed here,
   // whether the pane was mounted when the tab closed or not.
   const reconcileViews = async () => {
@@ -1745,6 +1762,7 @@ export async function activate(api, context) {
   if (api.workspace.onDidChangeConfiguration) {
     context.subscriptions.push(api.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('browser.pageTheme')) for (const p of _panes.values()) applyPageTheme(p);
+      if (e.affectsConfiguration('browser.blockAnnoyances')) pushAnnoyances();
       if (e.affectsConfiguration('browser.showBookmarksBar')) { _bookmarksBarOverride = null; notifySidebar(); }
       if (e.affectsConfiguration('browser.homepage')) _homepageOverride = null;
     }));

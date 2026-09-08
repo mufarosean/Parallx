@@ -171,9 +171,27 @@ function downloadTarget(dir, filename, exists, sep) {
   return candidate;
 }
 
+// ── Popups ──
+// Chromium's popup blocker is not part of Electron, so the rule lives here:
+// a page may open one new window per user gesture (a click or a key in that
+// page), only within a few seconds of it, and never to a destination the
+// filter lists would not let the page embed (the popunder ad networks).
+// 'drop' is for schemes a popup may never carry (javascript:, data:, blob:,
+// about:blank that the opener could only fill by scripting it).
+const POPUP_GESTURE_MS = 5000;
+function popupDecision({ url, gestureAgeMs, popupsSinceGesture, listed }) {
+  if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return 'drop';
+  if (listed) return 'block';
+  if (!Number.isFinite(gestureAgeMs) || gestureAgeMs < 0 || gestureAgeMs > POPUP_GESTURE_MS) return 'block';
+  if ((popupsSinceGesture || 0) >= 1) return 'block';
+  return 'allow';
+}
+
 module.exports = {
   SEARCH_ENGINES,
   DEFAULT_ENGINE,
+  POPUP_GESTURE_MS,
+  popupDecision,
   PERMISSION_POLICY,
   COOKIE_MODES,
   siteKey,

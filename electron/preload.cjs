@@ -399,6 +399,8 @@ contextBridge.exposeInMainWorld('parallxElectron', {
     allowHttpOnce: (url) => ipcRenderer.invoke('browser:allowHttpOnce', url),
     clearData: (kind) => ipcRenderer.invoke('browser:clearData', kind),
     refreshLists: () => ipcRenderer.invoke('browser:refreshLists'),
+    /** Run the annoyance lists too (cookie banners, overlays) or ads and trackers only. Returns the list state. */
+    setAnnoyances: (on) => ipcRenderer.invoke('browser:setAnnoyances', on !== false),
     blockedFor: (webContentsId) => ipcRenderer.invoke('browser:blockedFor', webContentsId),
     listDownloads: () => ipcRenderer.invoke('browser:listDownloads'),
     openDownload: (p) => ipcRenderer.invoke('browser:openDownload', p),

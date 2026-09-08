@@ -26,12 +26,13 @@ encryption, not the app's job, and said so).
 | Third-party cookies blocked | `Cookie` stripped from third-party requests, `Set-Cookie` stripped from third-party responses; third-party = different registrable domain (tldts) from the tab's document | bridge, `browserPolicy.cjs` |
 | HTTPS only | `http:` top-level navigations redirected to `https:` before any connection; local hosts and IP literals exempt; a site with no HTTPS gets an in-pane choice to load over HTTP once | bridge, policy |
 | Generic fingerprint | Session user agent is a plain Chrome UA for the platform (no Electron, no app name), `Accept-Language` fixed, `Sec-GPC: 1` sent (Global Privacy Control, as Brave does) | bridge, policy |
-| Popups contained | `setWindowOpenHandler` on every guest denies the window and hands the URL to the extension, which opens a tab or drops it | bridge |
+| Popups blocked | Chromium's popup blocker is not in Electron, so `popupDecision` (policy) is the rule: a page may open one new window per user gesture in it (click or key, tracked from `input-event`), only within 5 seconds of the gesture, and never to a destination the lists would stop it embedding (the popunder networks). An allowed one becomes a tab; a blocked one counts in the shield and the tracker log as a popup; non-web schemes are dropped | bridge, policy |
 | Permissions denied by default | Camera, microphone, location, notifications, clipboard read prompt through Parallx, remembered per site; device APIs (USB, HID, serial, MIDI, screen capture) denied outright | bridge |
 | Storage isolated | Own persistent partition, separate from the app's session and from the agent's partition; one button clears it | bridge |
 | Downloads contained | Only into the workspace `Downloads` folder (or the OS Downloads folder when no workspace is open), with progress in the sidebar | bridge |
-| Nothing phones home | No telemetry, no sync, no accounts; filter lists (EasyList, EasyPrivacy, Peter Lowe, the uBlock filters including quick-fixes and unbreak) refresh every 12 hours from one fixed source, visible in the shield | bridge |
+| Nothing phones home | No telemetry, no sync, no accounts; filter lists (EasyList, EasyPrivacy, Peter Lowe, the uBlock filters including quick-fixes and unbreak, and by default the annoyance lists: EasyList Cookie and uBlock annoyances, `browser.blockAnnoyances`) refresh every 12 hours from one fixed source, visible in the shield. One engine cache per list set (`engine.bin`, `engine-full.bin`) | bridge |
 | Page views hardened and durable | Each page is a main-process `WebContentsView`: no Node, context isolated, sandboxed, no preload of ours. It is positioned over the pane from bounds the renderer reports, so moving a tab, splitting, or evicting the pane never reloads the page; a view is destroyed only when its editor really closes | `electron/browserBridge.cjs` |
+| Page views yield to the workbench | A native view sits above the whole DOM, so each frame the pane hit-tests a grid inside the page area: a foreign element there (dialog, menu, palette, tab-drop indicator) makes the view yield to a snapshot of itself until the way is clear; every drag (tab, file, sash) freezes all pages the same way so the document sees the mouse; the view stops short of the half-sash strip on each boundary and paints it in the page's own colour | `ext/browser/main.js` |
 | Deleted means gone | History, bookmarks and the download list are rows in the extension database, a file that stays open, so the database overwrites them itself: secure_delete zeroes a deleted row at once, the write-ahead log is checkpointed and truncated after every deletion, and a bulk clear ends in VACUUM. Downloaded files deleted from the sidebar go to Eraser first (core secure delete, path in Settings under Security) and are deleted permanently when Eraser is missing. Clear Browsing Data uses Chromium's thorough clearData plus cache, code cache, shared dictionary, auth and DNS caches. Nothing the browser deletes touches the Recycle Bin | `ext/browser/main.js`, `electron/main.cjs` |
 
 Not claimed: fingerprint defeat (Brave's farbling), script blocking per site,
@@ -134,6 +135,8 @@ and a switch.
    wanted, and it must be labelled for exactly that.
 
 ## Verified so far
+
+- Cosmetic filtering end to end in a sandboxed page: tests/probes/browser-cosmetics-probe.cjs (hidden window, local page, real engine cache).
 
 Unit tests: `browserPolicy` (8), `sealedWorkspace` (4); the full suite
 passes; `tsc` is clean; the extension parses as an ES module. Not yet run
