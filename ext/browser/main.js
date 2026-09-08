@@ -274,7 +274,6 @@ function dismissMenu() {
 
 const CSS = `
 .br-pane { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--vscode-editor-background, var(--px-bg)); color: var(--vscode-foreground, var(--px-text)); outline: none; position: relative; overflow: hidden; box-sizing: border-box; }
-.br-pane--private .br-toolbar { background: color-mix(in srgb, var(--vscode-sideBar-background, var(--px-bg)) 86%, var(--vscode-textLink-foreground, var(--px-accent))); }
 .br-private-chip { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; padding: 1px 7px; border-radius: var(--px-radius-sm, 4px); font-size: 10px; font-weight: 600; letter-spacing: 0.2px; background: var(--vscode-badge-background, var(--px-accent)); color: var(--vscode-badge-foreground, #fff); }
 .br-bookmarks-bar { display: flex; align-items: center; gap: 2px; padding: 3px 8px; border-bottom: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-sideBar-background, var(--px-bg)); overflow: hidden; flex: 0 0 auto; }
 .br-bm-chip { display: inline-flex; align-items: center; gap: 5px; max-width: 180px; padding: 2px 8px; border: none; border-radius: 4px; background: transparent; color: inherit; font: inherit; font-size: 11px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 0 auto; }
