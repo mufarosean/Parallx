@@ -256,6 +256,9 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       editors: api.editors,
       commands: api.commands,
       window: api.window,
+      // Same surface as the dashboard editor hands its widgets: the Timer's
+      // task menu works in a sidebar seat exactly as it does on a page.
+      ui: api.ui,
       services: api.services,
     },
     applyAppearance: applyWidgetAppearance,
