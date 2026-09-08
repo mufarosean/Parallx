@@ -7,7 +7,7 @@
 // Requires dist/renderer/worksheet-univer.js (npm run build). Without
 // --reveal the solution columns (right of the "Solution" marker) stay
 // hidden, as they will in the problem tab. No window ever appears.
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, nativeTheme } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -25,6 +25,9 @@ const bundle = path.join(ROOT, 'dist', 'renderer', 'worksheet-univer.js');
 if (!fs.existsSync(bundle)) { console.error('dist/renderer/worksheet-univer.js is missing; run npm run build first'); app.exit(2); }
 
 app.whenReady().then(async () => {
+  // --dark-os: the machine's dark appearance, as Parallx runs on it (prefers-color-scheme: dark, dark body text).
+  const darkOs = process.argv.includes('--dark-os');
+  if (darkOs) nativeTheme.themeSource = 'dark';
   const esbuild = require('esbuild');
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'plx-render-'));
   const readerFile = path.join(tmp, 'ooxml.mjs');
@@ -33,10 +36,8 @@ app.whenReady().then(async () => {
   const book = await openXlsx(fs.readFileSync(file));
   const sheet = await book.readSheet(sheetName);
   const solution = findCell(sheet, (t, r) => r <= 2 && /^solutions?\b/i.test(t.trim()));
-  const rating = findCell(sheet, (t, r) => r <= 2 && /^self-rating/i.test(t.trim()));
-  const drop = new Set();
-  if (rating) { drop.add(`${rating.row}:${rating.col}`); drop.add(`${rating.row}:${rating.col + 1}`); }
-  const { workbook, stats } = sheetToSnapshot(sheet, book, { dropCells: drop, hideFromColumn: !reveal && solution ? solution.col : undefined, unitId: 'probe', sheetId: 'probe-sheet' });
+  // The rating cell stays, as in the problem tab (which writes the current rating into it).
+  const { workbook, stats } = sheetToSnapshot(sheet, book, { hideFromColumn: !reveal && solution ? solution.col : undefined, hideToColumn: sheet.maxCol, unitId: 'probe', sheetId: 'probe-sheet' });
   console.log('snapshot:', JSON.stringify(stats));
   // PLX_STRIP=rowData,columnData,mergeData,styles,resources drops parts of the snapshot, to isolate what the engine dislikes.
   for (const key of String(process.env.PLX_STRIP || '').split(',').map((s) => s.trim()).filter(Boolean)) {
@@ -49,7 +50,7 @@ app.whenReady().then(async () => {
   // The page: the engine bundle + CSS from dist, the snapshot inlined.
   const json = JSON.stringify(workbook).replace(/<\/script/gi, '<\\/script');
   const html = `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="${pathToFileURL(path.join(ROOT, 'dist', 'renderer', 'worksheet-univer.css')).href}">
-<style>html,body{margin:0;height:100%;background:#fff}#host{position:absolute;inset:0}</style></head>
+<style>html,body{margin:0;height:100%;background:${darkOs ? '#1b1c1f' : '#fff'};color:${darkOs ? '#e6e6e6' : '#111'}}#host{position:absolute;inset:0}</style></head>
 <body><div id="host"></div>
 <script>window.__SNAPSHOT__ = ${json};</script>
 <script type="module">
@@ -82,6 +83,27 @@ app.whenReady().then(async () => {
   if (error) { console.error('mount failed:', error); app.exit(1); return; }
   if (!ready) { console.error('mount timed out'); app.exit(1); return; }
   await new Promise((r) => setTimeout(r, 2500));
+  // --contextmenu: right-click a cell and capture the menu, then report what its items say and look like.
+  if (process.argv.includes('--contextmenu')) {
+    // The host opens the engine's own menu through its service (synthetic DOM clicks never reach it in an offscreen window).
+    await win.webContents.executeJavaScript('window.__HOST__.openContextMenu(420, 360); true');
+    await new Promise((r) => setTimeout(r, 900));
+    const menu = await win.webContents.executeJavaScript(`(() => {
+      const items = [...document.querySelectorAll('[role=menuitem], [role=menu] > *, [class*=menu-item], [class*=MenuItem]')].slice(0, 16);
+      const popupRoot = document.getElementById('worksheet-univer-popup-root') || document.querySelector('[id*=popup]');
+      const comps = [...document.querySelectorAll('[data-u-comp]')].map((e) => e.getAttribute('data-u-comp'));
+      const html = popupRoot ? popupRoot.innerHTML.slice(0, 700) : '(no popup root)';
+      const bodyLast = [...document.body.children].slice(-3).map((e) => e.tagName + '#' + e.id + '.' + String(e.className).slice(0, 40) + ' len=' + e.innerHTML.length);
+      if (items.length === 0) {
+        const big = [...document.body.children].filter((e) => e !== document.getElementById('host')).sort((a, b) => b.innerHTML.length - a.innerHTML.length)[0];
+        const leaves = big ? [...big.querySelectorAll('*')].filter((e) => e.children.length === 0 && (e.textContent || '').trim()).slice(0, 14).map((e) => { const cs = getComputedStyle(e); return { tag: e.tagName, text: e.textContent.trim().slice(0, 30), color: cs.color, vis: cs.visibility, disp: cs.display, cls: String(e.className).slice(0, 60) }; }) : [];
+        const containers = big ? [...big.querySelectorAll('[data-u-comp]')].map((e) => e.getAttribute('data-u-comp')).slice(0, 12) : [];
+        return { bigLen: big ? big.innerHTML.length : 0, bigHead: big ? big.innerHTML.slice(0, 500) : '', containers, leaves, bodyLast };
+      }
+      return items.map((el) => { const cs = getComputedStyle(el); return { tag: el.tagName, text: (el.textContent || '').trim().slice(0, 40), color: cs.color, bg: cs.backgroundColor, cls: el.className.toString().slice(0, 80) }; });
+    })()`);
+    console.log('context menu items:', JSON.stringify(menu));
+  }
   let image = await win.webContents.capturePage();
   if (image.isEmpty() && lastFrame) image = lastFrame;
   fs.writeFileSync(outPng, image.toPNG());
@@ -89,9 +111,12 @@ app.whenReady().then(async () => {
     const canvases = [...document.querySelectorAll('canvas')].map((c) => c.width + 'x' + c.height);
     let cells = -1, sheets = -1, err = '';
     try { const snap = window.__HOST__ && window.__HOST__.getSnapshot(); if (snap) { sheets = Object.keys(snap.sheets).length; const s = snap.sheets[snap.sheetOrder[0]]; cells = Object.values(s.cellData || {}).reduce((n, r) => n + Object.keys(r).length, 0); } } catch (e) { err = String(e); }
-    return { canvases, cells, sheets, err, hostChildren: document.getElementById('host').children.length };
+    const v = (el) => el ? getComputedStyle(el).getPropertyValue('--univer-gray-900').trim() || '(none)' : '(no el)';
+    const popup = document.querySelector('[id*=popup], [class*=popup-root]');
+    const vars = { body: v(document.body), host: v(document.getElementById('host')), univerRoot: v(document.querySelector('.univer-app-container, [class*=univer-app]')), popupRoot: v(popup) };
+    return { canvases, cells, sheets, err, hostChildren: document.getElementById('host').children.length, vars };
   })()`);
-  console.log(`rendered ${sheetName} -> ${outPng} (${image.getSize().width}x${image.getSize().height}); engine sees ${diag.cells} cells in ${diag.sheets} sheet(s); canvases ${diag.canvases.join(', ')}; host children ${diag.hostChildren}${diag.err ? '; snapshot error ' + diag.err : ''}`);
+  console.log(`rendered ${sheetName} -> ${outPng} (${image.getSize().width}x${image.getSize().height}); engine sees ${diag.cells} cells in ${diag.sheets} sheet(s); canvases ${diag.canvases.join(', ')}; host children ${diag.hostChildren}; --univer-gray-900 on ${JSON.stringify(diag.vars)}${diag.err ? '; snapshot error ' + diag.err : ''}`);
   if (consoleLines.length) { console.log(`renderer console (${consoleLines.length}):`); for (const l of consoleLines.slice(0, 12)) console.log('  ' + l); }
   app.exit(0);
 }).catch((err) => { console.error('probe error:', err && err.stack || err); app.exit(2); });

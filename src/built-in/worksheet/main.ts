@@ -1660,20 +1660,57 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
   // are hidden; Reveal unhides them beside the work, Hide puts them away;
   // neither touches the student's cells. Rating is Easy, Medium or Hard,
   // any time; time on the attempt runs while the tab is on screen.
+  type SheetShape = { columnCount?: number; columnData?: Record<number, { hd?: number; w?: number }>; cellData?: Record<number, Record<number, Record<string, unknown>>>; mergeData?: { endColumn: number }[] };
+  const firstSheet = (snap: IWorkbookData): SheetShape | null => (snap.sheets[snap.sheetOrder[0]] as unknown as SheetShape) ?? null;
+  /** The pristine sheet's last used column: the solution ends there, and the
+   *  student works in the columns after it, side by side with the answer. */
+  let solutionEnd = -1;
+  let ratingCell: { row: number; col: number } | null = null;
+  const readPristine = (problem: WorksheetItem): void => {
+    const snap = parseWorkbook(problem.sheetJson) as IWorkbookData | null;
+    const sheet = snap ? firstSheet(snap) : null;
+    if (!sheet) return;
+    let max = -1;
+    for (const [r, row] of Object.entries(sheet.cellData ?? {})) {
+      for (const [c, cell] of Object.entries(row)) {
+        const col = Number(c);
+        if (col > max) max = col;
+        // The workbook's own rating cell: "Self-Rating:" with the value beside it.
+        if (Number(r) <= 2 && typeof cell.v === 'string' && /^self-rating/i.test(cell.v.trim())) ratingCell = { row: Number(r), col: col + 1 };
+      }
+    }
+    for (const m of sheet.mergeData ?? []) if (m.endColumn > max) max = m.endColumn;
+    solutionEnd = max;
+  };
   const applySolutionVisibility = (snap: IWorkbookData, show: boolean): IWorkbookData => {
     if (!item || item.solutionCol < 0) return snap;
-    const sheet = snap.sheets[snap.sheetOrder[0]] as unknown as { columnCount?: number; columnData?: Record<number, { hd?: number; w?: number }> };
+    const sheet = firstSheet(snap);
     if (!sheet) return snap;
     const columnData = (sheet.columnData ??= {});
-    const last = Math.max(sheet.columnCount ?? 0, ...Object.keys(columnData).map(Number)) - 1;
+    const last = solutionEnd >= item.solutionCol ? solutionEnd : Math.max(sheet.columnCount ?? 0, ...Object.keys(columnData).map(Number)) - 1;
     for (let c = item.solutionCol; c <= last; c++) {
       if (show) { if (columnData[c]) delete columnData[c].hd; }
       else (columnData[c] ??= {}).hd = 1;
     }
+    // Room to work past the solution, revealed or not.
+    sheet.columnCount = Math.max(sheet.columnCount ?? 0, last + 27);
+    return snap;
+  };
+  /** Show the current rating in the workbook's own rating cell. */
+  const applyRatingCell = (snap: IWorkbookData, rating: string): IWorkbookData => {
+    if (!ratingCell) return snap;
+    const sheet = firstSheet(snap);
+    if (!sheet) return snap;
+    const row = ((sheet.cellData ??= {})[ratingCell.row] ??= {});
+    const cell = (row[ratingCell.col] ??= {});
+    cell.v = ratingLabel(rating) || 'Unrated';
+    cell.t = 1;
+    delete cell.p;
     return snap;
   };
   const initProblem = async (problem: WorksheetItem, open: Awaited<ReturnType<typeof getOpenAttempt>>): Promise<void> => {
     problemSeconds = open?.seconds ?? 0;
+    readPristine(problem);
     let latestRating = '';
     const refreshRating = async () => {
       const summary = (await listItems().catch(() => [])).find((s) => s.id === problem.id);
@@ -1707,6 +1744,7 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
             await completeAttempt(problem.id, grade, lastSavedCells, { seconds: problemSeconds });
             _api?.activity?.note('practiced', `problem "${problem.title}"`, `rated ${ratingLabel(grade)}`);
             latestRating = grade;
+            if (ratingCell) host?.setCellText(ratingCell.row, ratingCell.col, ratingLabel(grade));
             paintHeader();
           })();
         });
@@ -1738,7 +1776,7 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
           problemSeconds = 0;
           timerEl.textContent = fmtSeconds(0);
           await discardOpenAttempt(problem.id);
-          await mountSheet(applySolutionVisibility(parseWorkbook(problem.sheetJson) as IWorkbookData, revealed));
+          await mountSheet(applyRatingCell(applySolutionVisibility(parseWorkbook(problem.sheetJson) as IWorkbookData, revealed), latestRating));
           const mounted = host as IWorksheetHost | null;
           lastSavedCells = JSON.stringify(mounted?.getSnapshot() ?? null);
         })();
@@ -1796,7 +1834,7 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
     headerHost.replaceChildren(header);
     paintHeader();
     const base = open ? (parseWorkbook(open.cellsJson) as IWorkbookData | null) : null;
-    await mountSheet(applySolutionVisibility((base ?? parseWorkbook(problem.sheetJson)) as IWorkbookData, revealed));
+    await mountSheet(applyRatingCell(applySolutionVisibility((base ?? parseWorkbook(problem.sheetJson)) as IWorkbookData, revealed), latestRating));
     const mounted = host as IWorksheetHost | null;
     lastSavedCells = open?.cellsJson ?? JSON.stringify(mounted?.getSnapshot() ?? null);
     autosaveTimer = setInterval(() => { void persistWorking(); }, AUTOSAVE_MS);

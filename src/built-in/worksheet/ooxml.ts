@@ -324,11 +324,26 @@ function styleFromXf(xf: XNode, tables: StyleTables): IStyleData | null {
 
 // ── Workbook ────────────────────────────────────────────────────────────────
 
+/** One formatted run of a rich string (a cell with mixed formatting, e.g. a subscript). */
+export interface RichRun {
+  readonly text: string;
+  readonly bold?: boolean;
+  readonly italic?: boolean;
+  readonly underline?: boolean;
+  /** Points. */
+  readonly size?: number;
+  readonly font?: string;
+  /** '#RRGGBB' */
+  readonly color?: string;
+  readonly vertAlign?: 'superscript' | 'subscript';
+}
 export interface XlsxCell {
   readonly row: number;
   readonly col: number;
   /** Number, string, or boolean value; undefined for formula-only cells with no cache. */
   readonly value?: number | string | boolean;
+  /** Formatted runs when the string carries its own formatting (subscripts, a bold word); absent for plain text. */
+  readonly rich?: readonly RichRun[];
   /** Formula text WITHOUT the leading '='. */
   readonly formula?: string;
   /** Array-formula range (A1 range) when this cell is the master of one. */
@@ -351,7 +366,20 @@ export interface XlsxImage {
   readonly base64: string;
   readonly name: string;
 }
-export interface XlsxTextBox { readonly from: XlsxAnchor; readonly text: string }
+/** A paragraph of a text box: runs plus alignment. */
+export interface DrawParagraph { readonly runs: readonly RichRun[]; readonly align: 'l' | 'ctr' | 'r' }
+export interface XlsxTextBox {
+  readonly from: XlsxAnchor;
+  readonly to?: XlsxAnchor;
+  readonly extPx?: { width: number; height: number };
+  /** Plain text, paragraphs joined by newlines. */
+  readonly text: string;
+  readonly paragraphs: readonly DrawParagraph[];
+  /** '#RRGGBB' background, or null for no fill. */
+  readonly fill: string | null;
+  /** Inner padding in px (DrawingML insets), left/top. */
+  readonly insetPx: { left: number; top: number };
+}
 export interface XlsxSheet {
   readonly name: string;
   readonly state: 'visible' | 'hidden' | 'veryHidden';
@@ -402,14 +430,7 @@ export async function openXlsx(bytes: Uint8Array | ArrayBuffer): Promise<XlsxWor
     entries.push({ name: s.attrs.name, path, state });
   }
 
-  // Shared strings: rich runs concatenate to plain text.
-  const sharedStrings: string[] = [];
-  const ssXml = await text('xl/sharedStrings.xml');
-  if (ssXml) {
-    for (const si of children(child(parseXml(ssXml), 'sst'), 'si')) sharedStrings.push(deepText(si, 't'));
-  }
-
-  // Theme colours, then styles.
+  // Theme colours first: rich-string runs and styles both name them.
   const theme: string[] = [];
   const themeXml = await text('xl/theme/theme1.xml');
   if (themeXml) {
@@ -433,6 +454,18 @@ export async function openXlsx(bytes: Uint8Array | ArrayBuffer): Promise<XlsxWor
     cellXfs: children(child(st, 'cellXfs'), 'xf'),
     theme,
   };
+  // Shared strings: plain text always, plus the runs when a string carries
+  // its own formatting (a subscript year, a bold word, a maths font).
+  const sharedStrings: string[] = [];
+  const sharedRuns = new Map<number, RichRun[]>();
+  const ssXml = await text('xl/sharedStrings.xml');
+  if (ssXml) {
+    for (const si of children(child(parseXml(ssXml), 'sst'), 'si')) {
+      sharedStrings.push(deepText(si, 't'));
+      const runs = richRunsOf(si, tables);
+      if (runs) sharedRuns.set(sharedStrings.length - 1, runs);
+    }
+  }
   const styleCache = new Map<number, IStyleData | null>();
   const styleFor = (idx: number): IStyleData | null => {
     if (styleCache.has(idx)) return styleCache.get(idx) ?? null;
@@ -478,8 +511,9 @@ export async function openXlsx(bytes: Uint8Array | ArrayBuffer): Promise<XlsxWor
         const fNode = child(c, 'f');
         let value: number | string | boolean | undefined;
         let kind: 'error' | undefined;
-        if (type === 's') value = sharedStrings[Number(vNode?.text ?? -1)] ?? '';
-        else if (type === 'inlineStr') value = deepText(child(c, 'is'), 't');
+        let rich: RichRun[] | undefined;
+        if (type === 's') { const idx = Number(vNode?.text ?? -1); value = sharedStrings[idx] ?? ''; rich = sharedRuns.get(idx); }
+        else if (type === 'inlineStr') { const is = child(c, 'is'); value = deepText(is, 't'); rich = is ? richRunsOf(is, tables) ?? undefined : undefined; }
         else if (type === 'str' || type === 'd') value = vNode?.text ?? '';
         else if (type === 'b') value = vNode?.text === '1';
         else if (type === 'e') { value = vNode?.text ?? '#VALUE!'; kind = 'error'; }
@@ -502,7 +536,7 @@ export async function openXlsx(bytes: Uint8Array | ArrayBuffer): Promise<XlsxWor
         }
         const styleIndex = c.attrs.s !== undefined ? Number(c.attrs.s) : undefined;
         if (value === undefined && !formula && styleIndex === undefined) continue;
-        cells.push({ row: pos.row, col: pos.col, value, formula, arrayRef, styleIndex, kind });
+        cells.push({ row: pos.row, col: pos.col, value, formula, arrayRef, styleIndex, kind, rich });
         if (pos.row > maxRow) maxRow = pos.row;
         if (pos.col > maxCol) maxCol = pos.col;
       }
@@ -551,8 +585,19 @@ export async function openXlsx(bytes: Uint8Array | ArrayBuffer): Promise<XlsxWor
               images.push({ from, to: to ?? undefined, extPx, mime, base64: await file.async('base64'), name: child(child(pic, 'nvPicPr'), 'cNvPr')?.attrs.name ?? 'Picture' });
               continue;
             }
-            const paragraphs = children(child(item, 'txBody'), 'p').map((p) => deepText(p, 't').replace(/\s+/g, ' ').trim()).filter(Boolean);
-            if (paragraphs.length) textBoxes.push({ from, text: paragraphs.join('\n') });
+            const paragraphs = textBoxParagraphs(item);
+            if (paragraphs.length) {
+              const spPr = child(item, 'spPr');
+              const fill = spPr ? drawingFill(spPr, theme) : null;
+              const bodyPr = child(child(item, 'txBody'), 'bodyPr');
+              const inset = (name: string, dflt: number): number => (bodyPr?.attrs[name] !== undefined ? Math.round(Number(bodyPr.attrs[name]) / EMU_PER_PX) : dflt);
+              textBoxes.push({
+                from, to: to ?? undefined, extPx,
+                text: paragraphs.map((p) => p.runs.map((r) => r.text).join('')).join('\n'),
+                paragraphs, fill,
+                insetPx: { left: inset('lIns', 10), top: inset('tIns', 5) },
+              });
+            }
             }
           }
         }
@@ -594,6 +639,86 @@ function collectDrawables(node: XNode, out: XNode[]): void {
     } else if (c.name === 'grpSp') collectDrawables(c, out);
   }
 }
+/** Runs of a shared/inline string, or null when it has no formatting of its own. */
+function richRunsOf(si: XNode, tables: StyleTables): RichRun[] | null {
+  const rs = children(si, 'r');
+  if (rs.length === 0) return null;
+  const runs: RichRun[] = [];
+  let styled = false;
+  for (const r of rs) {
+    const t = deepText(r, 't');
+    if (!t) continue;
+    const pr = child(r, 'rPr');
+    const run: { -readonly [K in keyof RichRun]: RichRun[K] } = { text: t };
+    if (pr) {
+      if (child(pr, 'b')) run.bold = true;
+      if (child(pr, 'i')) run.italic = true;
+      if (child(pr, 'u')) run.underline = true;
+      const sz = child(pr, 'sz')?.attrs.val;
+      if (sz) run.size = Number(sz);
+      const font = child(pr, 'rFont')?.attrs.val;
+      if (font) run.font = font;
+      const cl = colorOf(child(pr, 'color'), tables);
+      if (cl) run.color = cl;
+      const va = child(pr, 'vertAlign')?.attrs.val;
+      if (va === 'superscript' || va === 'subscript') run.vertAlign = va;
+      if (run.bold || run.italic || run.underline || run.vertAlign || run.size !== undefined || run.font || run.color) styled = true;
+    }
+    runs.push(run);
+  }
+  return styled ? runs : null;
+}
+/** Paragraphs of a DrawingML text body as runs; OMML maths inside a paragraph reads as its text. */
+function textBoxParagraphs(sp: XNode): DrawParagraph[] {
+  const out: DrawParagraph[] = [];
+  for (const p of children(child(sp, 'txBody'), 'p')) {
+    const algn = child(p, 'pPr')?.attrs.algn;
+    const runs: RichRun[] = [];
+    const walk = (n: XNode): void => {
+      for (const c of n.children) {
+        if (c.name === 'r' || c.name === 'fld') {
+          const t = deepText(c, 't');
+          if (!t) continue;
+          const pr = child(c, 'rPr');
+          const run: { -readonly [K in keyof RichRun]: RichRun[K] } = { text: t };
+          if (pr) {
+            if (pr.attrs.b === '1' || pr.attrs.b === 'true') run.bold = true;
+            if (pr.attrs.i === '1' || pr.attrs.i === 'true') run.italic = true;
+            if (pr.attrs.u && pr.attrs.u !== 'none') run.underline = true;
+            if (pr.attrs.sz) run.size = Number(pr.attrs.sz) / 100;
+            const baseline = Number(pr.attrs.baseline ?? 0);
+            if (baseline > 0) run.vertAlign = 'superscript';
+            else if (baseline < 0) run.vertAlign = 'subscript';
+            const face = child(pr, 'latin')?.attrs.typeface;
+            if (face) run.font = face;
+            const rgb = child(child(pr, 'solidFill'), 'srgbClr')?.attrs.val;
+            if (rgb) run.color = `#${rgb.toUpperCase()}`;
+          }
+          runs.push(run);
+        } else if (c.name === 'br') {
+          runs.push({ text: '\n' });
+        } else if (c.name === 'm' || c.name === 'oMathPara' || c.name === 'oMath' || c.name === 'AlternateContent' || c.name === 'Choice' || c.name === 'Fallback') {
+          walk(c);
+        }
+      }
+    };
+    walk(p);
+    if (runs.some((r) => r.text.trim())) out.push({ runs, align: algn === 'ctr' ? 'ctr' : algn === 'r' ? 'r' : 'l' });
+  }
+  return out;
+}
+/** Solid fill of a shape, resolved through the theme; null for no fill. */
+function drawingFill(spPr: XNode, theme: readonly string[]): string | null {
+  const solid = child(spPr, 'solidFill');
+  if (!solid) return null;
+  const srgb = child(solid, 'srgbClr')?.attrs.val;
+  if (srgb) return `#${srgb.toUpperCase()}`;
+  const scheme = child(solid, 'schemeClr')?.attrs.val;
+  if (!scheme) return null;
+  const slot = scheme === 'bg1' ? 'lt1' : scheme === 'tx1' ? 'dk1' : scheme === 'bg2' ? 'lt2' : scheme === 'tx2' ? 'dk2' : scheme;
+  const idx = THEME_SLOTS.indexOf(slot);
+  return idx >= 0 && theme[idx] ? `#${theme[idx]}` : null;
+}
 function anchorOf(node: XNode | undefined): XlsxAnchor | null {
   if (!node) return null;
   const num = (name: string): number => Number(child(node, name)?.text ?? 0);
@@ -607,6 +732,8 @@ export interface SnapshotOptions {
   readonly dropCells?: ReadonlySet<string>;
   /** Columns from this index on are hidden in the snapshot (the solution, until revealed). */
   readonly hideFromColumn?: number;
+  /** Last column to hide (inclusive); defaults to the sheet's used range, so columns past the solution stay usable. */
+  readonly hideToColumn?: number;
   /** Snapshot ids; defaults are unique per call. */
   readonly unitId?: string;
   readonly sheetId?: string;
@@ -648,7 +775,10 @@ export function sheetToSnapshot(sheet: XlsxSheet, book: XlsxWorkbook, opts: Snap
   // little past the used range so hiding "the solution and everything
   // right of it" does not hide sixteen thousand columns.
   const usedCol = Math.max(sheet.maxCol, 0, ...sheet.merges.map((m) => m.c1));
+  // Room to work past the solution: the student compares side by side in
+  // the columns after it, so the grid runs well beyond the used range.
   const lastCol = usedCol + 4;
+  const hideTo = opts.hideToColumn ?? usedCol;
   for (const c of sheet.cells) {
     // A dropped cell (workbook machinery such as the Self-Rating dropdown)
     // loses its content but keeps its fill, so no white hole opens.
@@ -663,6 +793,12 @@ export function sheetToSnapshot(sheet: XlsxSheet, book: XlsxWorkbook, opts: Snap
       if (typeof c.value === 'boolean') { data.v = c.value ? 1 : 0; data.t = 3; }
       else if (typeof c.value === 'number') { data.v = c.value; data.t = 2; }
       else { data.v = c.value; data.t = 1; }
+      // Mixed formatting inside one cell (a subscript year, a bold word)
+      // needs the rich-text document form; the plain value stays for formulas.
+      if (c.rich && typeof c.value === 'string') {
+        const base = c.styleIndex !== undefined ? book.styleFor(c.styleIndex) : null;
+        data.p = richDocument(`p${c.row}_${c.col}`, c.rich, base);
+      }
     }
     if (c.styleIndex !== undefined) {
       const k = styleKey(c.styleIndex);
@@ -678,31 +814,9 @@ export function sheetToSnapshot(sheet: XlsxSheet, book: XlsxWorkbook, opts: Snap
     stats.cells++;
   }
   // Text boxes → cells.
-  // The cell under the box's top-left corner, else the nearest free cell to
-  // the right or in the two rows below; a text-only anchor cell takes the
-  // box as an extra line rather than losing it.
-  for (const tb of sheet.textBoxes) {
-    let placed = false;
-    for (let dr = 0; dr <= 2 && !placed; dr++) {
-      for (let dc = 0; dc <= 4 && !placed; dc++) {
-        const row = tb.from.row + dr;
-        const col = tb.from.col + dc;
-        const existing = cellData[row]?.[col];
-        if (!existing || (existing.v === undefined && existing.f === undefined)) {
-          const data = existing ?? {};
-          data.v = tb.text; data.t = 1;
-          (cellData[row] ??= {})[col] = data;
-          placed = true;
-          if (!existing) stats.cells++;
-        }
-      }
-    }
-    if (!placed) {
-      const anchor = cellData[tb.from.row]?.[tb.from.col];
-      if (anchor && typeof anchor.v === 'string' && anchor.f === undefined) { anchor.v = `${anchor.v}\n${tb.text}`; placed = true; }
-    }
-    if (placed) stats.textBoxes++; else stats.textBoxesDropped++;
-  }
+  // Text boxes stay floating: each becomes an SVG image at its own anchor,
+  // its runs kept (superscripts, italics, the maths font), drawn over the
+  // cells the way Excel draws it. Nothing is written into a cell.
   // Columns and rows.
   const columnData: Record<number, { w?: number; hd?: number }> = {};
   for (const col of sheet.columns) {
@@ -714,7 +828,7 @@ export function sheetToSnapshot(sheet: XlsxSheet, book: XlsxWorkbook, opts: Snap
     }
   }
   if (opts.hideFromColumn !== undefined) {
-    for (let i = opts.hideFromColumn; i <= lastCol; i++) { (columnData[i] ??= {}).hd = 1; }
+    for (let i = opts.hideFromColumn; i <= hideTo; i++) { (columnData[i] ??= {}).hd = 1; }
   }
   const rowData: Record<number, { h?: number; hd?: number }> = {};
   for (const row of sheet.rows) {
@@ -726,7 +840,7 @@ export function sheetToSnapshot(sheet: XlsxSheet, book: XlsxWorkbook, opts: Snap
   const mergeData = sheet.merges.map((m) => ({ startRow: m.r0, startColumn: m.c0, endRow: m.r1, endColumn: m.c1 }));
   stats.merges = mergeData.length;
   const rowCount = Math.max(ATHENA_ROWS, sheet.maxRow + 20, ...sheet.merges.map((m) => m.r1 + 1));
-  const columnCount = Math.max(ATHENA_COLUMNS, lastCol + 1);
+  const columnCount = Math.max(ATHENA_COLUMNS, usedCol + 27);
 
   // Pictures → floating images. Pixel positions come from the grid geometry.
   const widthOf = (c: number): number => (columnData[c]?.hd ? 0 : columnData[c]?.w ?? sheet.defaultColumnWidthPx);
@@ -760,6 +874,32 @@ export function sheetToSnapshot(sheet: XlsxSheet, book: XlsxWorkbook, opts: Snap
     order.push(drawingId);
     stats.images++;
   });
+  sheet.textBoxes.forEach((tb, i) => {
+    const left = xOf(tb.from);
+    const top = yOf(tb.from);
+    let width: number;
+    let height: number;
+    let to = tb.to;
+    if (to) { width = Math.max(8, xOf(to) - left); height = Math.max(8, yOf(to) - top); }
+    else {
+      width = Math.max(8, tb.extPx?.width ?? 120); height = Math.max(8, tb.extPx?.height ?? 24);
+      to = anchorAt(left + width, top + height, widthOf, heightOf);
+    }
+    const svg = textBoxSvg(tb, width, height);
+    const drawingId = `tb${i}`;
+    const from = { row: tb.from.row, column: tb.from.col, rowOffset: tb.from.rowOffsetPx, columnOffset: tb.from.colOffsetPx };
+    const toPos = { row: to.row, column: to.col, rowOffset: to.rowOffsetPx, columnOffset: to.colOffsetPx };
+    drawings[drawingId] = {
+      unitId, subUnitId: sheetId, drawingId, drawingType: 0, imageSourceType: 'BASE64',
+      source: `data:image/svg+xml;base64,${toBase64Utf8(svg)}`,
+      transform: { left, top, width, height, angle: 0, skewX: 0, skewY: 0, flipX: false, flipY: false },
+      sheetTransform: { from, to: toPos },
+      axisAlignSheetTransform: { from, to: toPos },
+      anchorType: '1',
+    };
+    order.push(drawingId);
+    stats.textBoxes++;
+  });
 
   const workbook = {
     id: unitId,
@@ -786,6 +926,120 @@ export function sheetToSnapshot(sheet: XlsxSheet, book: XlsxWorkbook, opts: Snap
   } as unknown as IWorkbookData;
   return { workbook, stats };
 }
+// ── Rich text and text boxes ────────────────────────────────────────────────
+
+const pt2pxf = (pt: number): number => (pt * 96) / 72;
+
+/** A Univer rich-text document for one cell: the runs over the cell's own font. */
+function richDocument(id: string, runs: readonly RichRun[], base: IStyleData | null): Record<string, unknown> {
+  const baseTs: Record<string, unknown> = {};
+  const b = (base ?? {}) as Record<string, unknown>;
+  for (const key of ['ff', 'fs', 'bl', 'it', 'ul', 'cl'] as const) if (b[key] !== undefined) baseTs[key] = b[key];
+  const textRuns: { st: number; ed: number; ts: Record<string, unknown> }[] = [];
+  let at = 0;
+  for (const run of runs) {
+    const ts: Record<string, unknown> = { ...baseTs };
+    if (run.bold) ts.bl = 1;
+    if (run.italic) ts.it = 1;
+    if (run.underline) ts.ul = { s: 1 };
+    if (run.size !== undefined) ts.fs = run.size;
+    if (run.font) ts.ff = run.font;
+    if (run.color) ts.cl = { rgb: run.color };
+    if (run.vertAlign === 'superscript') ts.va = 3;
+    else if (run.vertAlign === 'subscript') ts.va = 2;
+    const len = run.text.length;
+    if (len > 0) textRuns.push({ st: at, ed: at + len, ts });
+    at += len;
+  }
+  const stream = runs.map((r) => r.text).join('');
+  return {
+    id,
+    documentStyle: {},
+    body: {
+      dataStream: `${stream}\r\n`,
+      textRuns,
+      paragraphs: [{ startIndex: stream.length }],
+    },
+  };
+}
+
+function escapeXml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+/** UTF-8 safe base64 in both the renderer and Node. */
+export function toBase64Utf8(s: string): string {
+  const g = globalThis as { Buffer?: { from(s: string, enc: string): { toString(enc: string): string } } };
+  if (g.Buffer) return g.Buffer.from(s, 'utf8').toString('base64');
+  const bytes = new TextEncoder().encode(s);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+/**
+ * A text box as SVG: one <text> per line, runs as <tspan> with weight,
+ * style, size, font and a baseline shift for super- and subscripts. Long
+ * paragraphs wrap on an estimated glyph width; Excel's own layout is not
+ * available, so the box is set generously.
+ */
+export function textBoxSvg(tb: XlsxTextBox, width: number, height: number): string {
+  const defaultSize = 11;
+  const lines: { runs: RichRun[]; align: 'l' | 'ctr' | 'r'; size: number }[] = [];
+  const innerWidth = Math.max(8, width - tb.insetPx.left * 2);
+  for (const p of tb.paragraphs) {
+    const size = Math.max(...p.runs.map((r) => r.size ?? defaultSize), defaultSize);
+    const words: RichRun[] = [];
+    for (const r of p.runs) {
+      const parts = r.text.split(/(\s+|\n)/);
+      for (const part of parts) if (part) words.push({ ...r, text: part });
+    }
+    let current: RichRun[] = [];
+    let used = 0;
+    const flush = () => { lines.push({ runs: current, align: p.align, size }); current = []; used = 0; };
+    for (const w of words) {
+      if (w.text === '\n') { flush(); continue; }
+      const px = w.text.length * pt2pxf(w.size ?? size) * 0.52;
+      if (used + px > innerWidth && current.length > 0 && !/^\s+$/.test(w.text)) flush();
+      current.push(w);
+      used += px;
+    }
+    if (current.length) flush();
+  }
+  const parts: string[] = [];
+  parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`);
+  if (tb.fill) parts.push(`<rect x="0" y="0" width="${width}" height="${height}" fill="${escapeXml(tb.fill)}"/>`);
+  let y = tb.insetPx.top;
+  for (const line of lines) {
+    const lineHeight = pt2pxf(line.size) * 1.25;
+    y += pt2pxf(line.size);
+    const x = line.align === 'ctr' ? width / 2 : line.align === 'r' ? width - tb.insetPx.left : tb.insetPx.left;
+    const anchor = line.align === 'ctr' ? 'middle' : line.align === 'r' ? 'end' : 'start';
+    // Words that share a format become one span; the wrap split them apart.
+    const merged: RichRun[] = [];
+    for (const r of line.runs) {
+      const last = merged[merged.length - 1];
+      const same = last && last.bold === r.bold && last.italic === r.italic && last.underline === r.underline && last.size === r.size && last.font === r.font && last.color === r.color && last.vertAlign === r.vertAlign;
+      if (same) merged[merged.length - 1] = { ...last, text: last.text + r.text };
+      else merged.push({ ...r });
+    }
+    const spans = merged.map((r) => {
+      const attrs: string[] = [];
+      if (r.font) attrs.push(`font-family="${escapeXml(r.font)}, Calibri, sans-serif"`);
+      const size = pt2pxf(r.size ?? line.size);
+      if (r.vertAlign) attrs.push(`font-size="${(size * 0.7).toFixed(1)}" baseline-shift="${r.vertAlign === 'superscript' ? 'super' : 'sub'}"`);
+      else if (r.size !== undefined) attrs.push(`font-size="${size.toFixed(1)}"`);
+      if (r.bold) attrs.push('font-weight="bold"');
+      if (r.italic) attrs.push('font-style="italic"');
+      if (r.underline) attrs.push('text-decoration="underline"');
+      if (r.color) attrs.push(`fill="${escapeXml(r.color)}"`);
+      return `<tspan xml:space="preserve"${attrs.length ? ' ' + attrs.join(' ') : ''}>${escapeXml(r.text)}</tspan>`;
+    }).join('');
+    parts.push(`<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="${anchor}" font-family="Calibri, 'Aptos Narrow', sans-serif" font-size="${pt2pxf(line.size).toFixed(1)}" fill="#000000">${spans}</text>`);
+    y += lineHeight - pt2pxf(line.size);
+  }
+  parts.push('</svg>');
+  return parts.join('');
+}
+
 function anchorAt(x: number, y: number, widthOf: (c: number) => number, heightOf: (r: number) => number): XlsxAnchor {
   let col = 0; let acc = 0;
   while (col < 16383 && acc + widthOf(col) <= x) { acc += widthOf(col); col++; }

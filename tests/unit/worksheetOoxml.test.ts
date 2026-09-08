@@ -50,7 +50,7 @@ async function buildWorkbook(): Promise<Uint8Array> {
   zip.file('xl/drawings/drawing1.xml', `<xdr:wsDr xmlns:xdr="x" xmlns:a="a" xmlns:r="r">
     <xdr:twoCellAnchor><xdr:from><xdr:col>1</xdr:col><xdr:colOff>9525</xdr:colOff><xdr:row>14</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:to><xdr:col>3</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>16</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>
       <xdr:pic><xdr:nvPicPr><xdr:cNvPr id="2" name="Picture 1"/></xdr:nvPicPr><xdr:blipFill><a:blip r:embed="rId1"/></xdr:blipFill></xdr:pic></xdr:twoCellAnchor>
-    <xdr:twoCellAnchor><xdr:from><xdr:col>1</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>3</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:to><xdr:col>2</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>4</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>
+    <xdr:twoCellAnchor><xdr:from><xdr:col>1</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>3</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:to><xdr:col>4</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>4</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>
       <xdr:sp><xdr:txBody><a:p><a:r><a:t>y&#770; = a + b</a:t></a:r><a:r><a:t>x</a:t></a:r></a:p></xdr:txBody></xdr:sp></xdr:twoCellAnchor>
     <xdr:twoCellAnchor><xdr:from><xdr:col>1</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>1</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:to><xdr:col>2</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>2</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>
       <mc:AlternateContent xmlns:mc="mc"><mc:Choice Requires="a14"><xdr:sp><xdr:txBody><a:p><a14:m><m:oMathPara><m:oMath><m:r><m:t>OMML</m:t></m:r></m:oMath></m:oMathPara></a14:m></a:p></xdr:txBody></xdr:sp></mc:Choice><mc:Fallback xmlns=""><xdr:sp><xdr:txBody><a:p><a:r><a:t>Link Ratio:</a:t></a:r></a:p><a:p><a:r><a:t>y = LDF x</a:t></a:r></a:p></xdr:txBody></xdr:sp></mc:Fallback></mc:AlternateContent></xdr:twoCellAnchor>
@@ -111,10 +111,11 @@ describe('openXlsx + sheetToSnapshot', () => {
     expect(sheet.images).toHaveLength(1);
     expect(sheet.imagesSkipped).toBe(1);                              // the emf
     expect(sheet.images[0].mime).toBe('image/png');
-    expect(sheet.textBoxes).toEqual([
-      { from: { row: 3, col: 1, rowOffsetPx: 0, colOffsetPx: 0 }, text: 'y\u0302 = a + bx' },
-      { from: { row: 1, col: 1, rowOffsetPx: 0, colOffsetPx: 0 }, text: 'Link Ratio:\ny = LDF x' }, // the Fallback's plain text, not the OMML
+    expect(sheet.textBoxes.map((t) => [t.from.row, t.from.col, t.text])).toEqual([
+      [3, 1, 'y\u0302 = a + bx'],
+      [1, 1, 'Link Ratio:\ny = LDF x'], // the Fallback's plain text, not the OMML
     ]);
+    expect(sheet.textBoxes[1].paragraphs).toHaveLength(2);
 
     const { workbook, stats } = sheetToSnapshot(sheet, book, { unitId: 'u', sheetId: 's', dropCells: new Set(['0:3', '0:4']), hideFromColumn: 10 });
     const ws = workbook.sheets.s as unknown as { cellData: Record<number, Record<number, Record<string, unknown>>>; columnData: Record<number, { w?: number; hd?: number }>; rowData: Record<number, { h?: number; hd?: number }>; mergeData: unknown[]; defaultColumnWidth: number; defaultRowHeight: number };
@@ -128,10 +129,16 @@ describe('openXlsx + sheetToSnapshot', () => {
     expect(ws.cellData[2][1]).toMatchObject({ f: '=B2*2', v: 2501 });
     expect(ws.cellData[7][13].f).toBe('=CONCAT("a","b")');
     expect(ws.cellData[11][11]).toMatchObject({ f: '=SEQUENCE(2,1,1,1)', ref: 'L12:L13' });
-    // Text boxes: the free anchor (B4) takes its text; the taken anchor (B2, row full) falls to the first free cell below (C3).
-    expect(ws.cellData[3][1]).toMatchObject({ v: 'y\u0302 = a + bx', t: 1 });
+    // Text boxes float as SVG images at their anchors; no cell is written.
+    expect(ws.cellData[3]?.[1]).toBeUndefined();
     expect(ws.cellData[1][1].v).toBe(1250.5);
-    expect(ws.cellData[2][2]).toMatchObject({ v: 'Link Ratio:\ny = LDF x', t: 1 });
+    expect(stats.textBoxes).toBe(2);
+    const drawingsAll = JSON.parse((workbook as unknown as { resources: { data: string }[] }).resources[0].data).s;
+    expect(drawingsAll.order).toEqual(['img0', 'tb0', 'tb1']);
+    expect(drawingsAll.data.tb0.source.startsWith('data:image/svg+xml;base64,')).toBe(true);
+    const svg = Buffer.from(drawingsAll.data.tb0.source.split(',')[1], 'base64').toString('utf8');
+    expect(svg).toContain('<tspan');
+    expect(svg).toContain('>ŷ = a + bx<');
     expect(stats.textBoxes).toBe(2);
     expect(stats.textBoxesDropped).toBe(0);
     expect(stats.images).toBe(1);

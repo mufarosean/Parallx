@@ -151,14 +151,11 @@ export async function detectProblems(book: XlsxWorkbook, onProgress?: (done: num
     try { sheet = await book.readSheet(name); } catch (err) { skipped.push({ name, reason: `could not read: ${(err as Error).message}` }); continue; }
     const solution = findCell(sheet, (t, r) => r <= 2 && /^solutions?\b/i.test(t.trim()));
     const work = findCell(sheet, (t) => /^show all work/i.test(t.trim()));
+    // The rating cell stays as it is, thick border and all: the problem tab
+    // writes the current rating into it, the way the workbook showed it.
     const ratingCell = findCell(sheet, (t, r) => r <= 2 && /^self-rating/i.test(t.trim()));
     const drop = new Set<string>();
-    let rating: Rating = '';
-    if (ratingCell) {
-      drop.add(`${ratingCell.row}:${ratingCell.col}`);
-      drop.add(`${ratingCell.row}:${ratingCell.col + 1}`);
-      rating = normalizeRating(cellText(sheet, ratingCell.row, ratingCell.col + 1));
-    }
+    const rating: Rating = ratingCell ? normalizeRating(cellText(sheet, ratingCell.row, ratingCell.col + 1)) : '';
     const paper = paperKey(name.split('.')[0]);
     const source = sourceOf(name);
     const indexed = index.get(name);

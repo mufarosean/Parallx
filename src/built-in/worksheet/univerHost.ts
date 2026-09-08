@@ -15,12 +15,18 @@
 import { createUniver, LocaleType, mergeLocales } from '@univerjs/presets';
 import { UniverSheetsCorePreset } from '@univerjs/presets/preset-sheets-core';
 import UniverPresetSheetsCoreEnUS from '@univerjs/presets/preset-sheets-core/locales/en-US';
+// Pictures and text boxes from imported workbooks are floating images
+// (Problem Bank, docs/PROBLEM_BANK.md); the drawing preset renders them.
+import { UniverSheetsDrawingPreset } from '@univerjs/presets/preset-sheets-drawing';
+import UniverPresetSheetsDrawingEnUS from '@univerjs/presets/preset-sheets-drawing/locales/en-US';
 import { IFunctionService } from '@univerjs/engine-formula';
+import { IContextMenuService, ContextMenuPosition } from '@univerjs/ui';
 import * as XLSX from 'xlsx';
 import type { IWorkbookData, Univer } from '@univerjs/core';
 import type { FUniver } from '@univerjs/core/lib/facade';
 import { ATHENA_FUNCTIONS } from './athenaFunctions.js';
 import '@univerjs/presets/lib/styles/preset-sheets-core.css';
+import '@univerjs/presets/lib/styles/preset-sheets-drawing.css';
 
 import { ATHENA_ROWS, ATHENA_COLUMNS } from './worksheetConstants.js';
 
@@ -55,6 +61,10 @@ export interface IWorksheetHost {
    * nothing to export.
    */
   exportToXlsx(filename: string): boolean;
+  /** Write plain text into one cell of the active sheet (zero-based row and column). */
+  setCellText(row: number, col: number, text: string): void;
+  /** Open the sheet's own right-click menu at a viewport point (probes; the app never needs it). */
+  openContextMenu(clientX: number, clientY: number): void;
   /** Tear down the engine and all DOM it created. */
   dispose(): void;
 }
@@ -196,13 +206,14 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
   const created: { univer: Univer; univerAPI: FUniver } = createUniver({
     locale: LocaleType.EN_US,
     locales: {
-      [LocaleType.EN_US]: mergeLocales(UniverPresetSheetsCoreEnUS as Record<string, unknown>),
+      [LocaleType.EN_US]: mergeLocales(UniverPresetSheetsCoreEnUS as Record<string, unknown>, UniverPresetSheetsDrawingEnUS as Record<string, unknown>),
     },
     // Default LIGHT: the real Athena sheet is always white, so exam fidelity
     // wins unless the pane's sheet-appearance setting says otherwise.
     darkMode: opts.darkMode ?? false,
     presets: [
       UniverSheetsCorePreset(sheetsPresetConfig as unknown as Parameters<typeof UniverSheetsCorePreset>[0]),
+      UniverSheetsDrawingPreset(),
     ],
   });
 
@@ -251,6 +262,24 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
   univerAPI.createWorkbook(opts.snapshot ?? blankWorkbookData());
 
   let disposed = false;
+  const setCellText = (row: number, col: number, text: string): void => {
+    if (disposed) return;
+    try {
+      univerAPI.getActiveWorkbook()?.getActiveSheet()?.getRange(row, col)?.setValue(text);
+    } catch (err) {
+      console.warn('[Worksheet] setCellText failed:', err);
+    }
+  };
+  const openContextMenu = (clientX: number, clientY: number): void => {
+    if (disposed) return;
+    try {
+      const injector = (univer as unknown as { __getInjector(): { get<T>(id: unknown): T } }).__getInjector();
+      const service = injector.get<{ triggerContextMenu(event: unknown, position: unknown): void }>(IContextMenuService);
+      service.triggerContextMenu({ clientX, clientY, preventDefault() { /* synthetic */ }, stopPropagation() { /* synthetic */ } }, ContextMenuPosition.MAIN_AREA);
+    } catch (err) {
+      console.warn('[Worksheet] openContextMenu failed:', err);
+    }
+  };
   const getSnapshot = (): IWorkbookData | null => {
     if (disposed) return null;
     try {
@@ -261,6 +290,8 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
   };
   return {
     getSnapshot,
+    setCellText,
+    openContextMenu,
     setDarkMode: (dark: boolean) => {
       if (disposed) return;
       try { univerAPI.toggleDarkMode(dark); } catch { /* engine disposed */ }

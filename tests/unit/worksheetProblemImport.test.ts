@@ -85,12 +85,12 @@ describe('detectProblems', () => {
     expect(cas).toMatchObject({ title: 'Source:', paper: 'clark', source: 'cas', kind: 'qual', quadrant: 1, rating: '', solutionCol: 11, workRow: 22 });
     expect(essay).toMatchObject({ paper: 'venter', source: 'rf', kind: 'essay', quadrant: 0, rating: 'hard', solutionCol: -1, workRow: -1 });
 
-    // The snapshot keeps the whole sheet (solution included, nothing hidden here) minus the rating dropdown's content, fill kept.
+    // The snapshot keeps the whole sheet, the rating cell included with its thick border; the tab rewrites its text.
     const snap = JSON.parse(rf.sheetJson);
     const ws = snap.sheets[snap.sheetOrder[0]];
-    expect(ws.cellData[0][3].v).toBeUndefined();
-    expect(ws.cellData[0][4].v).toBeUndefined();
-    expect(snap.styles[ws.cellData[0][4].s]).toEqual({ bg: { rgb: '#F2F2F2' } });
+    expect(ws.cellData[0][3].v).toBe('Self-Rating:');
+    expect(ws.cellData[0][4].v).toBe('Medium');
+    expect(snap.styles[ws.cellData[0][4].s].bd.t.s).toBe(13);
     expect(ws.cellData[7][12].f).toBe('=C8/2');
     expect(ws.columnData[10]?.hd).toBeUndefined();
     expect(rf.stats.cells).toBeGreaterThan(5);
