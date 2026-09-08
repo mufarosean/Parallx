@@ -8,10 +8,13 @@
 
 export interface PracticeFilters {
   /** Selected tags — an item qualifies when it carries ANY of them.
-   *  Empty = all items. */
+   *  Empty = all items. The Problem Bank tags every problem with its paper,
+   *  source (rf, cas, custom) and kind (quant, qual, essay), so those are
+   *  tag filters too. */
   readonly tags: readonly string[];
-  /** 'all' | 'unseen' (never attempted) | 'struggling' (last grade missed
-   *  or partial, or open) */
+  /** 'all' | 'unseen' (never attempted) | 'struggling' (last rating Hard or
+   *  Medium, or open) | 'easy' | 'medium' | 'hard' (last rating exactly that)
+   *  | 'incomplete' (never attempted or open, the workbook's "Incomplete"). */
   readonly state: string;
   readonly count: number;
   readonly shuffle: boolean;
@@ -51,10 +54,18 @@ export function buildPracticeSet(
     const wanted = new Set(filters.tags);
     pool = pool.filter((i) => itemTags(i.tags).some((t) => wanted.has(t)));
   }
+  const rating = (i: ItemLike): string => {
+    const s = i.attemptState;
+    return s === 'nailed' ? 'easy' : s === 'partial' ? 'medium' : s === 'missed' ? 'hard' : s;
+  };
   if (filters.state === 'unseen') {
     pool = pool.filter((i) => i.attemptCount === 0 && i.attemptState !== 'open');
   } else if (filters.state === 'struggling') {
-    pool = pool.filter((i) => i.attemptState === 'missed' || i.attemptState === 'partial' || i.attemptState === 'open');
+    pool = pool.filter((i) => { const r = rating(i); return r === 'hard' || r === 'medium' || r === 'open'; });
+  } else if (filters.state === 'incomplete') {
+    pool = pool.filter((i) => i.attemptCount === 0 || i.attemptState === 'open');
+  } else if (filters.state === 'easy' || filters.state === 'medium' || filters.state === 'hard') {
+    pool = pool.filter((i) => rating(i) === filters.state);
   }
   const ids = pool.map((i) => i.id);
   if (filters.shuffle) {

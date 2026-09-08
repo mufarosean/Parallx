@@ -102,6 +102,11 @@ body > [data-radix-popper-content-wrapper] :where(input, textarea, select) {
 .ws-chip--nailed { color: var(--px-success); background: color-mix(in srgb, var(--px-success) 14%, transparent); }
 .ws-chip--partial { color: var(--px-warning); background: color-mix(in srgb, var(--px-warning) 14%, transparent); }
 .ws-chip--missed { color: var(--px-danger); background: color-mix(in srgb, var(--px-danger) 12%, transparent); }
+/* Problem Bank ratings: the workbook's Easy, Medium, Hard on the app's status tokens. */
+.ws-chip--easy { color: var(--px-success); background: color-mix(in srgb, var(--px-success) 14%, transparent); }
+.ws-chip--medium { color: var(--px-warning); background: color-mix(in srgb, var(--px-warning) 14%, transparent); }
+.ws-chip--hard { color: var(--px-danger); background: color-mix(in srgb, var(--px-danger) 12%, transparent); }
+.ws-chip--muted { color: var(--px-text-muted); background: color-mix(in srgb, var(--px-text-muted) 12%, transparent); }
 
 .ws-empty { padding: var(--px-space-8) var(--px-space-6); text-align: center; }
 .ws-empty__headline { font-size: var(--px-text-md); font-weight: 600; color: var(--px-text); }
@@ -139,6 +144,44 @@ body > [data-radix-popper-content-wrapper] :where(input, textarea, select) {
 .ws-btn--grade-nailed:hover { color: var(--px-success); border-color: var(--px-success); }
 .ws-btn--grade-partial:hover { color: var(--px-warning); border-color: var(--px-warning); }
 .ws-btn--grade-missed:hover { color: var(--px-danger); border-color: var(--px-danger); }
+.ws-btn--grade-easy:hover, .ws-btn--grade-easy[aria-pressed="true"] { color: var(--px-success); border-color: var(--px-success); }
+.ws-btn--grade-medium:hover, .ws-btn--grade-medium[aria-pressed="true"] { color: var(--px-warning); border-color: var(--px-warning); }
+.ws-btn--grade-hard:hover, .ws-btn--grade-hard[aria-pressed="true"] { color: var(--px-danger); border-color: var(--px-danger); }
+/* The problem tab: a compact header row with the paper, the timer and the rating. */
+.ws-problem__meta { display: flex; align-items: center; gap: var(--px-space-2); flex-wrap: wrap; font-size: var(--px-text-sm); color: var(--px-text-muted); }
+.ws-problem__timer { font-variant-numeric: tabular-nums; min-width: 4.5em; text-align: right; color: var(--px-text-muted); font-size: var(--px-text-sm); }
+.ws-problem__rate { display: flex; align-items: center; gap: var(--px-space-1); margin-left: var(--px-space-2); }
+.ws-problem__rate .ws-btn { padding: 2px 10px; }
+.ws-problem__ratelabel { font-size: var(--px-text-xs); color: var(--px-text-muted); margin-right: var(--px-space-1); }
+/* The bank in the sidebar: papers with counts, rating dots, filters. */
+.ws-bank__search { width: 100%; box-sizing: border-box; margin-bottom: var(--px-space-2); }
+.ws-bank__filters { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: var(--px-space-2); }
+.ws-bank__filter { border: 1px solid var(--px-border); background: transparent; color: var(--px-text-muted); border-radius: var(--px-radius-sm); padding: 1px 8px; font-size: var(--px-text-xs); cursor: pointer; font: inherit; }
+.ws-bank__filter[aria-pressed="true"] { color: var(--px-accent); border-color: var(--px-accent); }
+.ws-bank__paper { display: flex; align-items: center; gap: var(--px-space-2); padding: 4px 6px; cursor: pointer; border-radius: var(--px-radius-sm); user-select: none; }
+.ws-bank__paper:hover { background: var(--px-bg-raised); }
+.ws-bank__papername { flex: 1; font-weight: 600; font-size: var(--px-text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-bank__count { font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
+.ws-bank__bar { display: flex; height: 4px; width: 56px; border-radius: var(--px-radius-full); overflow: hidden; background: var(--px-divider); flex: 0 0 auto; }
+.ws-bank__bar > span { display: block; height: 100%; }
+.ws-bank__bar .easy { background: var(--px-success); }
+.ws-bank__bar .medium { background: var(--px-warning); }
+.ws-bank__bar .hard { background: var(--px-danger); }
+.ws-bank__items { padding-left: var(--px-space-3); }
+.ws-bank__item { display: flex; align-items: center; gap: var(--px-space-2); padding: 3px 6px; cursor: pointer; border-radius: var(--px-radius-sm); font-size: var(--px-text-sm); }
+.ws-bank__item:hover { background: var(--px-bg-raised); }
+.ws-bank__itemtitle { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-bank__dot { width: 8px; height: 8px; border-radius: var(--px-radius-full); flex: 0 0 auto; background: var(--px-divider); }
+.ws-bank__dot.easy { background: var(--px-success); }
+.ws-bank__dot.medium { background: var(--px-warning); }
+.ws-bank__dot.hard { background: var(--px-danger); }
+.ws-bank__dot.open { background: var(--px-accent); }
+.ws-bank__summary { font-size: var(--px-text-xs); color: var(--px-text-muted); margin: var(--px-space-1) 0 var(--px-space-2); }
+/* Import: problems grouped by paper with a checkbox each. */
+.ws-import__group { margin-top: var(--px-space-3); }
+.ws-import__grouphead { display: flex; align-items: center; gap: var(--px-space-2); font-weight: 600; font-size: var(--px-text-sm); }
+.ws-import__row { display: flex; align-items: center; gap: var(--px-space-2); padding: 2px 0 2px var(--px-space-4); font-size: var(--px-text-sm); }
+.ws-import__row .ws-chip { margin-left: 0; }
 
 .ws-item__solutionnotes {
   margin-top: var(--px-space-3);
