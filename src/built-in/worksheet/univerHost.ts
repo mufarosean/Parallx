@@ -63,6 +63,14 @@ export interface IWorksheetHost {
   exportToXlsx(filename: string): boolean;
   /** Write plain text into one cell of the active sheet (zero-based row and column). */
   setCellText(row: number, col: number, text: string): void;
+  /**
+   * Hide or show a run of columns on the active sheet IN PLACE, through the
+   * engine's own command (Reveal Solution). Remounting on an edited snapshot
+   * redrew the whole sheet, the flash Mufaro saw; this keeps the canvas, the
+   * scroll and the selection. False when the engine refused (caller falls
+   * back to a remount).
+   */
+  setColumnsHidden(startCol: number, count: number, hidden: boolean): boolean;
   /** Open the sheet's own right-click menu at a viewport point (probes; the app never needs it). */
   openContextMenu(clientX: number, clientY: number): void;
   /** Tear down the engine and all DOM it created. */
@@ -270,6 +278,18 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
       console.warn('[Worksheet] setCellText failed:', err);
     }
   };
+  const setColumnsHidden = (startCol: number, count: number, hidden: boolean): boolean => {
+    if (disposed || count <= 0 || startCol < 0) return false;
+    try {
+      const sheet = univerAPI.getActiveWorkbook()?.getActiveSheet();
+      if (!sheet) return false;
+      if (hidden) sheet.hideColumns(startCol, count); else sheet.showColumns(startCol, count);
+      return true;
+    } catch (err) {
+      console.warn('[Worksheet] setColumnsHidden failed:', err);
+      return false;
+    }
+  };
   const openContextMenu = (clientX: number, clientY: number): void => {
     if (disposed) return;
     try {
@@ -291,6 +311,7 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
   return {
     getSnapshot,
     setCellText,
+    setColumnsHidden,
     openContextMenu,
     setDarkMode: (dark: boolean) => {
       if (disposed) return;

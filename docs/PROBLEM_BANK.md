@@ -138,7 +138,10 @@ adopts the one-sheet model.
    pane); the sidebar is the bank (papers, rating bars, filters, search);
    the problem tab keeps the solution hidden until Reveal, rates Easy,
    Medium, Hard, times the attempt, resets work. Quiz filters gained
-   rating bands and Incomplete. Review in Chat (2026-09-08, was a one-shot
+   rating bands and Incomplete. Reveal and Hide flip the solution columns
+   on the live engine (Univer facade hideColumns/showColumns, 2026-09-08);
+   the earlier remount on an edited snapshot redrew the whole sheet, the
+   flash, and stays only as the fallback. Review in Chat (2026-09-08, was a one-shot
    panel): the cells and the solution go to the chat as an attached context
    chip with the review brief as the message, so follow-up questions have
    the work in front of them; the panel remains only as the fallback when

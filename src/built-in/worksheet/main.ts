@@ -1670,6 +1670,8 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
     host?.dispose();
     sheetHost.replaceChildren();
     host = mod.createWorksheetHost({ container: sheetHost, snapshot, darkMode: resolveSheetDark() });
+    // Probe hook (tests/probes): the live host, reachable from the DOM.
+    (sheetHost as unknown as { __wsHost?: unknown }).__wsHost = host;
   };
 
   // Sheet appearance: re-skin the live engine when the setting changes
@@ -1886,6 +1888,15 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
     for (const m of sheet.mergeData ?? []) if (m.endColumn > max) max = m.endColumn;
     solutionEnd = max;
   };
+  /** The solution's columns: from the marker to the pristine sheet's last used column. */
+  const solutionColumnSpan = (snap: IWorkbookData): { start: number; last: number } | null => {
+    if (!item || item.solutionCol < 0) return null;
+    const sheet = firstSheet(snap);
+    if (!sheet) return null;
+    const columnData = (sheet.columnData ??= {});
+    const last = solutionEnd >= item.solutionCol ? solutionEnd : Math.max(sheet.columnCount ?? 0, ...Object.keys(columnData).map(Number)) - 1;
+    return last >= item.solutionCol ? { start: item.solutionCol, last } : null;
+  };
   const applySolutionVisibility = (snap: IWorkbookData, show: boolean): IWorkbookData => {
     if (!item || item.solutionCol < 0) return snap;
     const sheet = firstSheet(snap);
@@ -1996,9 +2007,15 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
         revealBtn.addEventListener('click', () => {
           void (async () => {
             const live = host?.getSnapshot();
-            if (!live) return;
+            if (!live || !host) return;
             revealed = !revealed;
-            await mountSheet(applySolutionVisibility(live, revealed));
+            // In place: the engine hides or shows the solution columns itself,
+            // so the canvas, scroll and selection stay. Remounting on an
+            // edited snapshot redrew the whole sheet (the flash). The remount
+            // remains only as the fallback when the engine refuses.
+            const span = solutionColumnSpan(live);
+            const inPlace = span ? host.setColumnsHidden(span.start, span.last - span.start + 1, !revealed) : false;
+            if (!inPlace) await mountSheet(applySolutionVisibility(live, revealed));
             lastSavedCells = '';
             await persistWorking();
             paintHeader();
