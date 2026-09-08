@@ -4508,7 +4508,7 @@ function injectStyles() {
 .fc-btn--danger:hover { background: var(--px-danger-soft); color: var(--px-danger); border-color: transparent; }
 
 /* ── Pane shell — an editorial page: wide margins, an underline tab strip ── */
-.fc-pane { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+.fc-pane { display: flex; flex-direction: column; height: 100%; overflow: hidden; container-type: inline-size; }
 .fc-pane__header {
   display: flex; align-items: stretch; gap: var(--px-space-2);
   height: 46px; padding: 0 var(--px-space-4); flex: 0 0 auto;
@@ -4538,16 +4538,13 @@ function injectStyles() {
    between defined margins instead of squeezing into a fixed column. Wide
    panes grow the gutters, like canvas, so lines stay readable. */
 .fc-view, .fc-study {
-  --fc-gutter: clamp(28px, 4vw, 72px);
+  --fc-gutter: clamp(20px, 4cqw, 56px);
   /* The study stage is wider than a lone card was (920px) because it now
      carries a rail beside it; the card itself keeps its own max-width. */
   --fc-stage-w: 1240px;
   --fc-rail-w: 268px;
 }
 .fc-view { max-width: none; margin: 0; padding: var(--px-space-6) var(--fc-gutter) var(--px-space-8); }
-@media (min-width: 1441px) {
-  .fc-view, .fc-study { --fc-gutter: clamp(72px, 8vw, 160px); }
-}
 .fc-empty { padding: var(--px-space-8) var(--px-space-4); text-align: center; font-size: var(--px-text-base); color: var(--px-text-muted); }
 
 /* ── Decks home — the landing surface. A masthead, today's ask, the actions
@@ -4559,6 +4556,7 @@ function injectStyles() {
 }
 .fc-home__head-text { flex: 1; min-width: 0; }
 .fc-home__title {
+  margin: 0;
   font-size: var(--px-text-xl); font-weight: 700; letter-spacing: -0.02em;
   line-height: 1.15; color: var(--px-text);
 }
@@ -4571,9 +4569,9 @@ function injectStyles() {
   padding: var(--px-space-4) 0; border-bottom: 1px solid var(--px-divider);
 }
 .fc-home__stats { display: flex; align-items: stretch; gap: var(--px-space-5); }
-.fc-home__stat { display: flex; flex-direction: column; gap: 2px; min-width: 54px; }
+.fc-home__stat { display: flex; flex-direction: row; align-items: baseline; gap: 6px; }
 .fc-home__num {
-  font-size: var(--px-text-xl); font-weight: 680; line-height: 1;
+  font-size: var(--px-text-lg); font-weight: 650; line-height: 1;
   letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--px-text);
 }
 .fc-home__num--zero { color: var(--px-text-disabled); }
@@ -4581,36 +4579,45 @@ function injectStyles() {
 .fc-home__num--learn { color: var(--px-warning); }
 .fc-home__num--due { color: var(--px-success); }
 .fc-home__stat-lbl {
-  font-size: var(--px-text-2xs); text-transform: uppercase; letter-spacing: 0.07em;
+  font-size: var(--px-text-sm);
   color: var(--px-text-muted);
 }
 .fc-home__cta { display: flex; align-items: center; gap: var(--px-space-2); flex-wrap: wrap; }
 .fc-home__cta .fc-btn { height: 32px; }
 .fc-home__behind { font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
-.fc-home__actions { margin-top: var(--px-space-4); }
+.fc-home__actions { margin-block: var(--px-space-5) var(--px-space-4); gap: var(--px-space-2); }
+.fc-home__search { display: flex; align-items: center; gap: var(--px-space-2); flex: 1 1 180px; min-width: 140px; color: var(--px-text-muted); }
+.fc-home__search svg { width: 14px; height: 14px; flex: 0 0 auto; }
+.fc-home__search input { width: 100%; min-width: 0; height: 28px; color: var(--px-text); }
+.fc-home__search:focus-within { color: var(--px-accent); }
+.fc-home__columns { display: grid; grid-template-columns: minmax(0, 1fr) 156px 178px; gap: var(--px-space-4); padding: var(--px-space-2) var(--px-space-1); border-block: 1px solid var(--px-divider); color: var(--px-text-muted); font-size: var(--px-text-xs); }
+.fc-home__columns-counts { display: grid; grid-template-columns: repeat(3, 1fr); text-align: right; gap: var(--px-space-3); }
+.fc-home__no-match { padding: var(--px-space-6) 0; color: var(--px-text-muted); font-size: var(--px-text-base); }
+.fc-home__no-match[hidden], .fc-deck-card[hidden] { display: none; }
 .fc-home__decks { display: flex; flex-direction: column; }
 
 /* Deck rows on the home page: identity and counts on the left, the actions
    that operate on that deck on the right — visible, not hover-revealed. A
    home page whose actions only appear on hover is not a home page. */
-.fc-deck-card__counts { display: flex; align-items: baseline; gap: var(--px-space-4); margin-top: var(--px-space-2); }
-.fc-deck-count { display: inline-flex; align-items: baseline; gap: 5px; }
+.fc-deck-card__counts { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--px-space-3); }
+.fc-deck-count { display: inline-flex; align-items: baseline; justify-content: flex-end; gap: 5px; }
 .fc-deck-count__n { font-size: var(--px-text-md); font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
 .fc-deck-count__n--zero { color: var(--px-text-disabled); }
 .fc-deck-count__n--new { color: var(--px-accent); }
 .fc-deck-count__n--due { color: var(--px-success); }
 .fc-deck-count__n--total { color: var(--px-text); }
-.fc-deck-count__l { font-size: var(--px-text-2xs); text-transform: uppercase; letter-spacing: 0.07em; color: var(--px-text-muted); }
+.fc-deck-count__l { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 .fc-deck-card {
-  display: flex; align-items: center; gap: var(--px-space-3);
-  padding: var(--px-space-4) var(--px-space-1);
+  display: grid; grid-template-columns: minmax(0, 1fr) 156px 178px; align-items: center; gap: var(--px-space-4);
+  min-height: 64px; padding: var(--px-space-3) var(--px-space-1); box-sizing: border-box;
   border-bottom: 1px solid var(--px-divider);
 }
 .fc-deck-card:last-child { border-bottom: 0; }
+.fc-deck-card:hover { background: var(--px-surface-hover); }
 .fc-deck-card__info { flex: 1; min-width: 0; cursor: pointer; border-radius: var(--px-radius-sm); }
 .fc-deck-card__info:focus-visible { outline: none; box-shadow: var(--px-ring-accent); }
-.fc-deck-card__name { font-size: var(--px-text-md); font-weight: 600; letter-spacing: -0.01em; color: var(--px-text); }
+.fc-deck-card__name { font-size: var(--px-text-base); font-weight: 600; color: var(--px-text); overflow-wrap: anywhere; }
 .fc-deck-card__meta { font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; margin-top: 3px; }
 .fc-exam-chip {
   display: inline-block; margin-left: var(--px-space-2); padding: 1px 7px;
@@ -4684,7 +4691,21 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
 .fc-cal__day--selected:hover:not(:disabled) { background: var(--px-accent-faint); }
 
 .fc-input--importance { width: 88px; flex: 0 0 auto; }
-.fc-deck-card__actions { display: flex; align-items: center; gap: var(--px-space-1); flex: 0 0 auto; }
+.fc-deck-card__actions { display: flex; justify-content: flex-end; align-items: center; gap: var(--px-space-1); }
+.fc-deck-card__actions .fc-btn { border-color: transparent; }
+.fc-deck-card__actions .fc-btn:first-child { border-color: var(--px-border); }
+@container (max-width: 760px) {
+  .fc-home__columns { grid-template-columns: minmax(0, 1fr) 156px; }
+  .fc-deck-card { grid-template-columns: minmax(0, 1fr) 156px; row-gap: var(--px-space-2); }
+  .fc-deck-card__actions { grid-column: 1 / -1; }
+}
+@container (max-width: 460px) {
+  .fc-home__columns { display: none; }
+  .fc-deck-card { grid-template-columns: minmax(0, 1fr); }
+  .fc-deck-card__counts { display: flex; gap: var(--px-space-4); }
+  .fc-deck-count__l { position: static; width: auto; height: auto; clip-path: none; font-size: var(--px-text-xs); color: var(--px-text-muted); }
+  .fc-home__today { gap: var(--px-space-3); }
+}
 .fc-view__title { font-size: var(--px-text-lg); font-weight: 650; letter-spacing: -0.01em; color: var(--px-text); }
 
 /* ── Forms — sentence-case labels (no shouting), quiet inset inputs ── */
@@ -4836,8 +4857,8 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
 /* Sized against the PANE, not the viewport — this surface can be a narrow
    split, where a viewport media query would report the wrong width. */
 .fc-study { display: flex; height: 100%; container-type: inline-size; }
-.fc-study__main { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; padding: var(--px-space-8) var(--fc-gutter); overflow-y: auto; outline: none; background: var(--px-window); }
-.fc-study__toolbar { width: 100%; max-width: min(100%, var(--fc-stage-w)); display: flex; align-items: center; gap: var(--px-space-3); margin-bottom: var(--px-space-6); }
+.fc-study__main { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; padding: var(--px-space-4) var(--fc-gutter); overflow-y: auto; outline: none; background: var(--px-window); }
+.fc-study__toolbar { width: 100%; max-width: min(100%, var(--fc-stage-w)); display: flex; align-items: center; flex-wrap: wrap; gap: var(--px-space-3); margin-bottom: var(--px-space-4); }
 
 /* ── Stage: the cards column + the reference rail ──
    The rail carries what you REFER to (notes, key legend); the column carries
@@ -4852,7 +4873,7 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
 .fc-study__rail { flex: 0 1 var(--fc-rail-w); min-width: 0; display: flex; flex-direction: column; gap: var(--px-space-5); }
 /* Narrow pane: the rail drops below the cards at full width rather than
    squeezing the card into a column too thin to read. */
-@container (max-width: 860px) {
+@container (max-width: 1100px) {
   .fc-study__rail { flex-basis: 100%; }
 }
 .fc-study__progress { flex: 1; height: 2px; border-radius: var(--px-radius-full); background: var(--px-divider); overflow: hidden; }
@@ -4876,12 +4897,16 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
   background: #ffffff;
   border: 1px solid #e2e2e2;
   border-radius: 0;
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
-  padding: var(--px-space-6) var(--px-space-6);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
+  box-sizing: border-box;
+  padding: var(--px-space-5) var(--px-space-6);
   display: flex; flex-direction: column;
 }
-.fc-card--q { min-height: 340px; animation: fc-card-in var(--px-dur-base) var(--px-ease-out); }
-.fc-card--a { min-height: 240px; margin-top: var(--px-space-3); animation: fc-reveal-in var(--px-dur-base) var(--px-ease-spring); }
+.fc-card--q { min-height: 260px; animation: fc-card-in var(--px-dur-base) var(--px-ease-out); }
+.fc-card--a { min-height: 0; margin-top: 0; border-top: 0; animation: fc-reveal-in var(--px-dur-base) var(--px-ease); }
+.fc-study__col.is-revealed .fc-card--q { min-height: 0; box-shadow: none; }
+.fc-study__col.is-revealed .fc-card--q .fc-card__body { font-size: var(--px-text-lg); font-weight: 600; }
+.fc-study__col.is-revealed .fc-card--a { box-shadow: none; }
 /* The AI mark sits in the answer card's head row, surfacing on hover — and on
    focus-within, because a hover-only control does not exist for the keyboard.
    Hidden with opacity rather than display so it holds its space and revealing
@@ -4944,13 +4969,14 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
 .fc-card .px-markdown a { color: #1d4ed8; }
 .fc-study__answer-host { width: 100%; max-width: min(100%, 920px); }
 
-.fc-study__controls { display: flex; gap: var(--px-space-1); margin-top: var(--px-space-6); justify-content: center; width: 100%; max-width: min(100%, 920px); }
+.fc-study__controls { display: flex; gap: var(--px-space-2); margin-top: var(--px-space-3); justify-content: center; width: 100%; max-width: min(100%, 920px); position: sticky; bottom: calc(var(--px-space-4) * -1); z-index: 2; background: var(--px-window); padding-block: var(--px-space-2); }
 
 /* Grade buttons — borderless columns with a signal dot; the colour fills on hover. */
 .fc-grade {
+  position: relative;
   flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
-  padding: var(--px-space-3) 0 var(--px-space-2);
-  border: 0; border-radius: var(--px-radius-md);
+  padding: var(--px-space-2) 0;
+  border: 1px solid var(--px-border); border-radius: var(--px-radius-sm);
   background: transparent; color: var(--px-text-secondary);
   font: inherit; font-size: var(--px-text-sm); font-weight: 650; cursor: pointer;
   transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease), transform var(--px-dur-instant) var(--px-ease);
@@ -4958,7 +4984,9 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
 .fc-grade:hover { background: var(--px-surface-hover); color: var(--px-text); }
 .fc-grade:active { transform: var(--px-press); }
 .fc-grade__dot { width: 6px; height: 6px; border-radius: var(--px-radius-full); margin-bottom: 1px; }
-.fc-grade__ivl { font-size: var(--px-text-2xs); font-weight: 500; color: var(--px-text-faint); font-variant-numeric: tabular-nums; }
+.fc-grade__ivl { font-size: var(--px-text-xs); font-weight: 500; color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
+.fc-grade:focus-visible { outline: 2px solid var(--px-accent); outline-offset: 2px; }
+.fc-grade__key { position: absolute; top: 6px; right: 8px; color: var(--px-text-faint); font-size: var(--px-text-xs); font-weight: 400; }
 .fc-grade--again .fc-grade__dot { background: var(--px-danger); }
 .fc-grade--hard  .fc-grade__dot { background: var(--px-warning); }
 .fc-grade--good  .fc-grade__dot { background: var(--px-success); }
@@ -4967,9 +4995,9 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
 .fc-grade--hard:hover  { background: var(--px-warning-soft); color: var(--px-warning); }
 .fc-grade--good:hover  { background: rgba(var(--px-green-rgb), 0.15); color: var(--px-success); }
 .fc-grade--easy:hover  { background: rgba(var(--px-blue-rgb), 0.15); color: var(--px-info); }
-.fc-study__reveal { margin-top: var(--px-space-6); height: 32px; padding: 0 var(--px-space-6); }
+.fc-study__reveal { height: 32px; padding: 0 var(--px-space-6); }
 /* Sits beside the primary action on the same baseline, quieter by weight. */
-.fc-study__skip { margin-top: var(--px-space-6); height: 32px; padding: 0 var(--px-space-4); flex: none; }
+.fc-study__skip { height: 32px; padding: 0 var(--px-space-4); flex: none; }
 
 /* ── Production recall (M102) ──────────────────────────────────────────────
    The answer box sits where the answer card will land, so submitting reads
@@ -6085,7 +6113,7 @@ async function renderDecks(body, setRoute) {
   const head = el('div', 'fc-home__head');
   const headText = el('div', 'fc-home__head-text');
   head.appendChild(headText);
-  headText.appendChild(el('div', 'fc-home__title', 'Decks'));
+  headText.appendChild(el('h1', 'fc-home__title', 'Decks'));
   const totals = decks.reduce((acc, d) => {
     acc.cards += d.total;
     if (d.examDate > now && (acc.exam === 0 || d.examDate < acc.exam)) acc.exam = d.examDate;
@@ -6155,6 +6183,17 @@ async function renderDecks(body, setRoute) {
 
   // ── Actions ──
   const actions = el('div', 'fc-row fc-home__actions');
+  let filterInput = null;
+  if (decks.length) {
+    const search = el('label', 'fc-home__search');
+    search.innerHTML = icon('search', 14);
+    filterInput = el('input', 'px-input-bare');
+    filterInput.type = 'search';
+    filterInput.placeholder = 'Find a deck';
+    filterInput.setAttribute('aria-label', 'Find a deck');
+    search.appendChild(filterInput);
+    actions.appendChild(search);
+  }
   const newDeckBtn = el('button', decks.length === 0 ? 'fc-btn fc-btn--primary' : 'fc-btn');
   newDeckBtn.innerHTML = `${icon('plus', 12)}<span>New Deck</span>`;
   newDeckBtn.addEventListener('click', () => void _cmdNewDeck());
@@ -6188,7 +6227,13 @@ async function renderDecks(body, setRoute) {
     return;
   }
 
-  view.appendChild(el('div', 'fc-label', 'All Decks'));
+  const columns = el('div', 'fc-home__columns');
+  columns.appendChild(el('span', '', 'Deck'));
+  const columnCounts = el('div', 'fc-home__columns-counts');
+  for (const label of ['New', 'Due', 'Cards']) columnCounts.appendChild(el('span', '', label));
+  columns.appendChild(columnCounts);
+  columns.setAttribute('aria-hidden', 'true');
+  view.appendChild(columns);
   const list = el('div', 'fc-home__decks');
   view.appendChild(list);
 
@@ -6222,7 +6267,6 @@ async function renderDecks(body, setRoute) {
     counts.appendChild(count(deck.newCount, 'new', 'new'));
     counts.appendChild(count(deck.dueCount, 'due', 'due'));
     counts.appendChild(count(deck.total, 'total', 'total'));
-    info.appendChild(counts);
 
     // The pace line (M101): what the deadline math actually plans for this
     // deck, so the new-card backlog reads as a schedule instead of a dread
@@ -6253,6 +6297,7 @@ async function renderDecks(body, setRoute) {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDeck(); }
     });
     card.appendChild(info);
+    card.appendChild(counts);
 
     const btns = el('div', 'fc-deck-card__actions');
     const studyBtn = el('button', 'fc-btn');
@@ -6290,6 +6335,20 @@ async function renderDecks(body, setRoute) {
     });
     list.appendChild(card);
   }
+
+  const noMatch = el('div', 'fc-home__no-match', 'No decks match your search.');
+  noMatch.hidden = true;
+  noMatch.setAttribute('role', 'status');
+  view.appendChild(noMatch);
+  filterInput?.addEventListener('input', () => {
+    const query = filterInput.value.trim().toLocaleLowerCase();
+    let visible = 0;
+    [...list.children].forEach((row, index) => {
+      row.hidden = !decks[index].name.toLocaleLowerCase().includes(query);
+      if (!row.hidden) visible++;
+    });
+    noMatch.hidden = visible > 0;
+  });
 
   body.appendChild(view);
 }
@@ -8776,6 +8835,7 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
     const reveal = () => {
       if (session.revealed) return;
       session.revealed = true;
+      col.classList.add('is-revealed');
 
       // ── The ANSWER card: its own physical card, sliding in below ──
       const aCard = el('div', 'fc-card fc-card--a');
@@ -8874,6 +8934,10 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
       ];
       for (const g of grades) {
         const btn = el('button', `fc-grade fc-grade--${g.cls}`);
+        btn.setAttribute('aria-keyshortcuts', String(g.r));
+        const shortcut = el('span', 'fc-grade__key', String(g.r));
+        shortcut.setAttribute('aria-hidden', 'true');
+        btn.appendChild(shortcut);
         btn.appendChild(el('span', 'fc-grade__dot'));
         btn.appendChild(el('span', 'fc-grade__label', g.label));
         // Preview passes do not reschedule, so printing an interval here
