@@ -141,7 +141,9 @@ export async function listItems(): Promise<WorksheetItemSummary[]> {
   return rows.map((row) => {
     const base = rowToItem(row);
     const doneCount = Number(row.done_count ?? 0);
-    const attemptState = row.has_open ? 'open' : String(row.last_grade ?? '');
+    // The rating outlives later edits: a rated problem being worked on again stays rated in the bank.
+    const lastGrade = String(row.last_grade ?? '');
+    const attemptState = lastGrade || (row.has_open ? 'open' : '');
     return {
       id: base.id, title: base.title, questionMd: base.questionMd,
       solutionNotesMd: base.solutionNotesMd, sourceUri: base.sourceUri,
@@ -272,6 +274,20 @@ function rowToAttempt(row: Record<string, unknown>): WorksheetAttempt {
 export async function getOpenAttempt(itemId: number): Promise<WorksheetAttempt | null> {
   const row = await getRow(
     'SELECT * FROM ws_attempts WHERE item_id = ? AND completed = 0 ORDER BY started_at DESC LIMIT 1',
+    [itemId],
+  );
+  return row ? rowToAttempt(row) : null;
+}
+
+/**
+ * The newest attempt that holds work, open or completed. A rating completes
+ * the attempt but the sheet is still his work; the problem tab reopens on it
+ * rather than on the pristine sheet. Imported ratings carry no cells and are
+ * never returned.
+ */
+export async function getLatestWork(itemId: number): Promise<WorksheetAttempt | null> {
+  const row = await getRow(
+    "SELECT * FROM ws_attempts WHERE item_id = ? AND imported = 0 AND cells_json != '' ORDER BY updated_at DESC LIMIT 1",
     [itemId],
   );
   return row ? rowToAttempt(row) : null;

@@ -21,9 +21,9 @@ import type { IWorkbookData } from '@univerjs/core';
 import type { IWorksheetHost } from './univerHost.js';
 import { renderMarkdown } from '../../ui/renderMarkdown.js';
 import {
-  listItems, getItem, createItem, deleteItem, getOpenAttempt, saveAttemptCells,
+  listItems, getItem, createItem, deleteItem, getOpenAttempt, getLatestWork, saveAttemptCells,
   discardOpenAttempt, completeAttempt, saveAttemptReview, onWorksheetDataChanged,
-  getSessionGrades, attachWorksheetDatabase, findItemBySheet, recordImportedRating, upsertProgressSnapshot,
+  getSessionGrades, attachWorksheetDatabase, recordImportedRating, upsertProgressSnapshot,
   type WorksheetItem, type WorksheetItemSummary,
 } from './worksheetData.js';
 import { openXlsx } from './ooxml.js';
@@ -1274,10 +1274,11 @@ function createExcelImportPane(container: HTMLElement) {
   const renderProblems = async (problems: ProblemImport[], filePath: string, fileLabel: string, timeline: WorkbookSnapshot[]) => {
     listHost.replaceChildren();
     err.style.display = 'none';
+    // One pass over the bank, not a query per problem: 331 round trips left
+    // the pane blank for seconds with nothing to say.
     const existing = new Map<string, number>();
-    for (const p of problems) {
-      const id = await findItemBySheet(fileLabel, p.sheetName).catch(() => null);
-      if (id != null) existing.set(p.sheetName, id);
+    for (const it of await listItems().catch(() => [] as WorksheetItemSummary[])) {
+      if (it.sourceLabel === fileLabel && it.sheetName) existing.set(it.sheetName, it.id);
     }
     if (disposed) return;
     const rows: { problem: ProblemImport; box: HTMLInputElement }[] = [];
@@ -1408,7 +1409,14 @@ function createExcelImportPane(container: HTMLElement) {
             if (problems.length > 0) {
               const timeline = await readWorkbookTimeline(book).catch(() => [] as WorkbookSnapshot[]);
               status.textContent = `${fileLabel}: ${problems.length} problems found${timeline.length ? `, ${timeline.length} days of history` : ''}.`;
-              await renderProblems(problems, filePath, fileLabel, timeline);
+              // A failure listing the problems is shown, never swallowed into the legacy path.
+              try {
+                await renderProblems(problems, filePath, fileLabel, timeline);
+              } catch (e) {
+                status.textContent = '';
+                err.textContent = `Could not list the problems: ${(e as Error).message}`;
+                err.style.display = '';
+              }
               return;
             }
           }
@@ -1487,6 +1495,23 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
     await saveAttemptCells(itemId, json, problemSeconds >= 0 ? problemSeconds : undefined).catch((err) => {
       console.error('[Worksheet] attempt autosave failed:', err);
     });
+  };
+
+  // The engine keeps normalising a freshly mounted sheet for a moment (rich
+  // text cells gain document margins and render config), so a snapshot taken
+  // right after mount differs from one taken a second later with no edit at
+  // all. The autosave baseline is the snapshot once it has stopped moving;
+  // otherwise merely opening a problem wrote an "attempt".
+  const settledSnapshotJson = async (): Promise<string> => {
+    let prev = JSON.stringify(host?.getSnapshot() ?? null);
+    for (let i = 0; i < 10; i++) {
+      await new Promise((r) => setTimeout(r, 300));
+      if (disposed) return prev;
+      const next = JSON.stringify(host?.getSnapshot() ?? null);
+      if (next === prev) return next;
+      prev = next;
+    }
+    return prev;
   };
 
   const mountSheet = async (snapshot: IWorkbookData | null): Promise<void> => {
@@ -1677,7 +1702,8 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
     mode = 'working';
     renderItemHeader();
     const open = await getOpenAttempt(item.id);
-    const snap = open ? parseWorkbook(open.cellsJson) : null;
+    const prior = open ? null : await getLatestWork(item.id);
+    const snap = (open ?? prior) ? parseWorkbook((open ?? prior)!.cellsJson) : null;
     await mountSheet(snap ?? parseWorkbook(item.givensJson));
   };
 
@@ -1734,7 +1760,11 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
     delete cell.p;
     return snap;
   };
-  const initProblem = async (problem: WorksheetItem, open: Awaited<ReturnType<typeof getOpenAttempt>>): Promise<void> => {
+  // `open` is the attempt in progress; `prior` is the last rated attempt's
+  // sheet when nothing is in progress. Rating never takes the work away: the
+  // sheet comes back as he left it, and the next edit starts a fresh attempt
+  // (its own timer) from that sheet.
+  const initProblem = async (problem: WorksheetItem, open: Awaited<ReturnType<typeof getOpenAttempt>>, prior: Awaited<ReturnType<typeof getLatestWork>> = null): Promise<void> => {
     problemSeconds = open?.seconds ?? 0;
     readPristine(problem);
     let latestRating = '';
@@ -1803,8 +1833,7 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
           timerEl.textContent = fmtSeconds(0);
           await discardOpenAttempt(problem.id);
           await mountSheet(applyRatingCell(applySolutionVisibility(parseWorkbook(problem.sheetJson) as IWorkbookData, revealed), latestRating));
-          const mounted = host as IWorksheetHost | null;
-          lastSavedCells = JSON.stringify(mounted?.getSnapshot() ?? null);
+          lastSavedCells = await settledSnapshotJson();
         })();
       });
       titleRow.appendChild(resetBtn);
@@ -1859,10 +1888,13 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
     };
     headerHost.replaceChildren(header);
     paintHeader();
-    const base = open ? (parseWorkbook(open.cellsJson) as IWorkbookData | null) : null;
+    const carried = open ?? prior;
+    const base = carried ? (parseWorkbook(carried.cellsJson) as IWorkbookData | null) : null;
     await mountSheet(applyRatingCell(applySolutionVisibility((base ?? parseWorkbook(problem.sheetJson)) as IWorkbookData, revealed), latestRating));
-    const mounted = host as IWorksheetHost | null;
-    lastSavedCells = open?.cellsJson ?? JSON.stringify(mounted?.getSnapshot() ?? null);
+    // Baseline = what the sheet holds once the engine has settled after the
+    // mount, so merely reopening a problem (rated or not) starts no new attempt.
+    lastSavedCells = await settledSnapshotJson();
+    if (disposed) return;
     autosaveTimer = setInterval(() => { void persistWorking(); }, AUTOSAVE_MS);
     problemTimer = setInterval(() => {
       if (disposed || document.hidden || !root.isConnected || root.offsetParent === null) return;
@@ -1880,21 +1912,21 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
           return;
         }
         if (item.sheetJson) {
-          await initProblem(item, await getOpenAttempt(itemId));
+          const open = await getOpenAttempt(itemId);
+          await initProblem(item, open, open ? null : await getLatestWork(itemId));
           return;
         }
         renderItemHeader();
         const open = await getOpenAttempt(itemId);
-        const snap = open ? parseWorkbook(open.cellsJson) : null;
+        const prior = open ? null : await getLatestWork(itemId);
+        const snap = (open ?? prior) ? parseWorkbook((open ?? prior)!.cellsJson) : null;
         await mountSheet(snap ?? parseWorkbook(item.givensJson));
         // Baseline = what the sheet holds RIGHT AFTER mount. Autosave only
         // writes when the snapshot moves off this baseline — without it,
         // merely opening an item wrote the givens as an "attempt" and
         // flagged it In Progress forever (M99 review).
-        // TS narrows `host` to null here (it is assigned inside mountSheet,
-        // which control-flow analysis does not see through) — cast resets it.
-        const mounted = host as IWorksheetHost | null;
-        lastSavedCells = open?.cellsJson ?? JSON.stringify(mounted?.getSnapshot() ?? null);
+        lastSavedCells = await settledSnapshotJson();
+        if (disposed) return;
         autosaveTimer = setInterval(() => { void persistWorking(); }, AUTOSAVE_MS);
       } else {
         // Scratch sheet: a slim bar so export is reachable without an item.

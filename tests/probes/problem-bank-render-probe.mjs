@@ -82,7 +82,31 @@ app.whenReady().then(async () => {
   }
   if (error) { console.error('mount failed:', error); app.exit(1); return; }
   if (!ready) { console.error('mount timed out'); app.exit(1); return; }
+  // --snapdiff: does getSnapshot() drift without any edit? (autosave compares
+  // the serialized snapshot against the one taken right after mount).
+  const snapAt = () => win.webContents.executeJavaScript('JSON.stringify(window.__HOST__.getSnapshot())');
+  const snapA = process.argv.includes('--snapdiff') ? await snapAt() : null;
   await new Promise((r) => setTimeout(r, 2500));
+  if (snapA !== null) {
+    const snapB = await snapAt();
+    await win.webContents.executeJavaScript(`(() => { const c = document.querySelector('canvas'); if (!c) return; for (let i = 0; i < 5; i++) c.dispatchEvent(new WheelEvent('wheel', { deltaY: 120, bubbles: true, cancelable: true, clientX: 400, clientY: 300 })); })()`);
+    await new Promise((r) => setTimeout(r, 800));
+    const snapC = await snapAt();
+    const diff = (a, b, label) => {
+      if (a === b) { console.log(`snapdiff ${label}: identical (${a.length} chars)`); return; }
+      const A = JSON.parse(a); const B = JSON.parse(b);
+      const paths = [];
+      const walk = (x, y, p) => {
+        if (paths.length > 12) return;
+        if (typeof x !== 'object' || x === null || typeof y !== 'object' || y === null) { if (JSON.stringify(x) !== JSON.stringify(y)) paths.push(`${p}: ${JSON.stringify(x)?.slice(0, 60)} -> ${JSON.stringify(y)?.slice(0, 60)}`); return; }
+        for (const k of new Set([...Object.keys(x), ...Object.keys(y)])) walk(x[k], y[k], `${p}.${k}`);
+      };
+      walk(A, B, '$');
+      console.log(`snapdiff ${label}: DIFFERENT (${a.length} -> ${b.length} chars)`); for (const p of paths) console.log('  ' + p);
+    };
+    diff(snapA, snapB, 'mount vs +2.5s');
+    diff(snapB, snapC, '+2.5s vs after scroll');
+  }
   // --contextmenu: right-click a cell and capture the menu, then report what its items say and look like.
   if (process.argv.includes('--contextmenu')) {
     // The host opens the engine's own menu through its service (synthetic DOM clicks never reach it in an offscreen window).
