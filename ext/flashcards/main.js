@@ -4346,7 +4346,7 @@ function injectStyles() {
 
 /* ── Sidebar — a quiet navigator: header, Today, sectioned deck list.
    Colour is absent here by design; weight and space do the work. ── */
-.fc-sidebar { display: flex; flex-direction: column; height: 100%; font-size: var(--px-text-base); }
+.fc-sidebar { display: flex; flex-direction: column; height: 100%; min-width: 0; font-size: var(--px-text-base); container-type: inline-size; }
 
 .fc-sb__header {
   display: flex; align-items: center; height: 38px; flex: 0 0 auto;
@@ -4369,88 +4369,89 @@ function injectStyles() {
 .fc-sb__icon-btn:hover { background: var(--px-surface-hover); color: var(--px-text); }
 .fc-sb__icon-btn:active { transform: var(--px-press); }
 
-/* Navigation rail — the tool's destinations, pinned above the scroller.
-   Reads as sidebar navigation (row, glyph, selected slab), not as buttons:
-   the app's other navigators use the same left-accent selected state. */
+/* Compact section tabs stay pinned above the scrolling deck list. */
 .fc-sb__nav {
-  display: flex; flex-direction: column; flex: 0 0 auto;
-  padding: var(--px-space-2) var(--px-space-1) var(--px-space-2);
+  display: flex; flex-direction: row; flex: 0 0 auto; gap: 2px;
+  padding: 0 var(--px-space-2);
   border-bottom: 1px solid var(--px-divider);
 }
 .fc-sb__nav-item {
   position: relative;
-  display: flex; align-items: center; gap: var(--px-space-2); width: 100%;
-  height: 28px; padding: 0 var(--px-space-2); border: 0; border-radius: var(--px-radius-sm);
+  display: flex; align-items: center; flex: 0 1 auto; min-width: 0;
+  height: 36px; padding: 0 5px; border: 0; border-radius: 0;
   background: transparent; color: var(--px-text-secondary);
-  font: inherit; font-size: var(--px-text-base); font-weight: 550;
+  font: inherit; font-size: var(--px-text-sm); font-weight: 500;
   text-align: left; cursor: pointer;
   transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 .fc-sb__nav-item:hover { background: var(--px-surface-hover); color: var(--px-text); }
 .fc-sb__nav-item:focus-visible { outline: none; box-shadow: var(--px-ring-accent); }
-.fc-sb__nav-item--active { background: var(--px-surface-selected); color: var(--px-text); font-weight: 650; }
+.fc-sb__nav-item--active { color: var(--px-text); font-weight: 650; }
 .fc-sb__nav-item--active::before {
-  content: ''; position: absolute; left: 0; top: 5px; bottom: 5px; width: 2px;
-  border-radius: 0 2px 2px 0; background: var(--px-accent);
+  content: ''; position: absolute; left: 5px; right: 5px; bottom: 0; height: 2px;
+  background: var(--px-accent);
 }
-.fc-sb__nav-icon { flex: 0 0 auto; display: inline-flex; width: 14px; height: 14px; color: var(--px-text-faint); }
+.fc-sb__nav-icon { display: none; }
 .fc-sb__nav-item--active .fc-sb__nav-icon { color: var(--px-accent); }
 .fc-sb__nav-icon svg { width: 100%; height: 100%; }
 .fc-sb__nav-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@container (max-width: 280px) {
+  .fc-sb__nav { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; }
+  .fc-sb__nav-item { height: 28px; }
+}
 
-.fc-sb__scroll { flex: 1; overflow-y: auto; padding-bottom: var(--px-space-3); }
+.fc-sb__scroll { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: var(--px-space-3); }
 
 .fc-sb__section { display: flex; flex-direction: column; }
 .fc-sb__section-head {
   display: flex; align-items: center; gap: var(--px-space-1);
   height: 24px; padding: 0 var(--px-space-2) 0 var(--px-sidebar-inset);
   margin-top: var(--px-space-3);
-  font-size: var(--px-text-2xs); font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase;
-  color: var(--px-text-faint); user-select: none;
+  font-size: var(--px-text-sm); font-weight: 600;
+  color: var(--px-text-secondary); user-select: none;
 }
-.fc-sb__section-title { flex: 1; min-width: 0; }
-.fc-sb__section-count { font-weight: 600; color: var(--px-text-faint); font-variant-numeric: tabular-nums; }
+.fc-sb__section-title { min-width: 0; }
+.fc-sb__section-count { flex: 1; margin-left: 4px; font-size: var(--px-text-xs); font-weight: 400; color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
 .fc-sb__section-add {
   display: inline-flex; align-items: center; justify-content: center;
   width: 18px; height: 18px; border: 0; border-radius: var(--px-radius-sm);
-  background: transparent; color: var(--px-text-faint); cursor: pointer; opacity: 0;
+  background: transparent; color: var(--px-text-muted); cursor: pointer;
   transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease), opacity var(--px-dur-fast) var(--px-ease);
 }
 .fc-sb__section:hover .fc-sb__section-add { opacity: 1; }
 .fc-sb__section-add:hover { background: var(--px-surface-hover); color: var(--px-text); }
 
-/* Today — no box. Three big neutral numerals over faint eyebrows, then the
-   one earned accent in the whole sidebar: the Study call to action. */
+/* Group queue totals with a compact study action. */
 .fc-today {
   margin: var(--px-space-2) var(--px-sidebar-inset) 0;
   padding-bottom: var(--px-space-3);
   border-bottom: 1px solid var(--px-divider);
 }
-.fc-today__stats { display: flex; align-items: stretch; gap: var(--px-space-3); margin-bottom: var(--px-space-3); }
-.fc-today__stat { flex: 1; display: flex; flex-direction: column; gap: 2px; }
-.fc-today__num { font-size: var(--px-text-xl); font-weight: 680; font-variant-numeric: tabular-nums; line-height: 1; letter-spacing: -0.02em; color: var(--px-text); }
+.fc-today__stats { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--px-space-3); margin-bottom: var(--px-space-3); }
+.fc-today__stat { display: flex; flex-direction: row; align-items: baseline; gap: 4px; }
+.fc-today__num { font-size: var(--px-text-base); font-weight: 650; font-variant-numeric: tabular-nums; color: var(--px-text); }
 .fc-today__num--zero { color: var(--px-text-disabled); }
 .fc-today__num--new { color: var(--px-accent); }
 .fc-today__num--learn { color: var(--px-warning); }
 .fc-today__num--due { color: var(--px-success); }
-.fc-today__lbl { font-size: var(--px-text-2xs); text-transform: uppercase; letter-spacing: 0.07em; color: var(--px-text-muted); }
+.fc-today__lbl { font-size: var(--px-text-xs); color: var(--px-text-muted); }
 .fc-today__study {
-  display: flex; align-items: center; justify-content: center; gap: 6px;
-  width: 100%; height: 34px; border: 0; border-radius: var(--px-radius-md);
-  background: var(--px-accent); color: var(--px-text-on-accent);
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 28px; padding: 0 10px; border: 1px solid var(--px-border); border-radius: var(--px-radius-sm);
+  background: var(--px-accent-soft); color: var(--px-accent);
   font: inherit; font-size: var(--px-text-sm); font-weight: 600; cursor: pointer;
   transition: background var(--px-dur-fast) var(--px-ease), transform var(--px-dur-instant) var(--px-ease);
 }
-.fc-today__study:hover { background: var(--px-accent-hover); }
+.fc-today__study:hover { background: var(--px-accent); color: var(--px-text-on-accent); border-color: transparent; }
 .fc-today__study:active { transform: var(--px-press); }
 .fc-today__study:disabled { opacity: 0.45; cursor: default; transform: none; }
 .fc-today__study svg { width: 13px; height: 13px; }
 /* The overflow line: what the daily batch is holding back, one click from
    Custom Study. A quiet link, never a second primary button. */
 .fc-today__more {
-  display: block; width: 100%; margin-top: var(--px-space-2); padding: 0;
+  display: block; margin-top: var(--px-space-2); padding: 0;
   border: 0; background: transparent; color: var(--px-text-muted);
-  font: inherit; font-size: var(--px-text-xs); text-align: center; cursor: pointer;
+  font: inherit; font-size: var(--px-text-xs); text-align: left; cursor: pointer;
   transition: color var(--px-dur-fast) var(--px-ease);
 }
 .fc-today__more:hover { color: var(--px-accent); text-decoration: underline; }
@@ -4462,6 +4463,14 @@ function injectStyles() {
 
 /* Deck rows — glyph, name, neutral counts. The row is the object, no chrome. */
 .fc-sb__decks { display: flex; flex-direction: column; padding: var(--px-space-1) var(--px-space-1) 0; }
+.fc-sb__filter { display: flex; align-items: center; gap: 6px; margin: 6px var(--px-sidebar-inset); border-bottom: 1px solid var(--px-divider); color: var(--px-text-muted); }
+.fc-sb__filter svg { width: 13px; height: 13px; flex-shrink: 0; }
+.fc-sb__filter input { width: 100%; min-width: 0; height: 28px; color: var(--px-text); }
+.fc-sb__filter:focus-within { color: var(--px-accent); border-color: var(--px-accent); }
+.fc-sb__columns { display: grid; grid-template-columns: minmax(0, 1fr) 76px 20px; gap: 8px; padding: 4px 8px 0 12px; font-size: var(--px-text-xs); color: var(--px-text-muted); }
+.fc-sb__columns-counts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; text-align: right; }
+.fc-sb__no-match { margin: 8px 12px; font-size: var(--px-text-sm); color: var(--px-text-muted); }
+.fc-sb__filter[hidden], .fc-sb__columns[hidden], .fc-sb__no-match[hidden], .fc-deck-row[hidden] { display: none; }
 .fc-deck-row {
   display: flex; align-items: center; gap: var(--px-space-2); width: 100%;
   height: 30px; padding: 0 var(--px-space-1) 0 var(--px-space-2); border: 0; border-radius: var(--px-radius-sm);
@@ -4470,24 +4479,37 @@ function injectStyles() {
   transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 .fc-deck-row:hover { background: var(--px-surface-hover); color: var(--px-text); }
-.fc-deck-row--active { background: var(--px-surface-selected); color: var(--px-text); }
+.fc-deck-row--active { background: var(--px-surface-selected); color: var(--px-text); box-shadow: inset 2px 0 var(--px-accent); }
+.fc-deck-row:focus-visible { outline: 1px solid var(--px-accent); outline-offset: -1px; }
 .fc-deck-row__icon { flex: 0 0 auto; display: inline-flex; width: 13px; height: 13px; color: var(--px-text-faint); }
 .fc-deck-row__icon svg { width: 100%; height: 100%; }
 .fc-deck-row__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fc-deck-row__counts { flex: 0 0 auto; display: flex; align-items: center; gap: var(--px-space-2); font-size: var(--px-text-xs); font-weight: 600; font-variant-numeric: tabular-nums; }
+.fc-deck-row__counts { flex: 0 0 76px; display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 8px; text-align: right; font-size: var(--px-text-xs); font-weight: 500; font-variant-numeric: tabular-nums; }
 /* Anki color language: new = accent, due = success — readable at a glance
    instead of two indistinguishable grey numbers (user report). */
 .fc-deck-row__ct--new { color: var(--px-accent); }
 .fc-deck-row__ct--due { color: var(--px-success); }
+.fc-deck-row__ct--zero { color: var(--px-text-disabled); }
 .fc-deck-row__more {
   flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
   width: 20px; height: 20px; border: 0; border-radius: var(--px-radius-sm);
-  background: transparent; color: var(--px-text-faint); cursor: pointer; opacity: 0;
+  background: transparent; color: var(--px-text-faint); cursor: pointer; opacity: 0.5;
   transition: background var(--px-dur-fast) var(--px-ease), opacity var(--px-dur-fast) var(--px-ease);
 }
-.fc-deck-row:hover .fc-deck-row__more { opacity: 1; }
-.fc-deck-row:hover .fc-deck-row__counts { display: none; }
+.fc-deck-row:hover .fc-deck-row__more, .fc-deck-row:focus-within .fc-deck-row__more { opacity: 1; }
+.fc-deck-row__more:focus-visible, .fc-sb__section-add:focus-visible { outline: 1px solid var(--px-accent); outline-offset: 1px; }
 .fc-deck-row__more:hover { background: var(--px-surface-active); color: var(--px-text); }
+@container (max-width: 300px) {
+  .fc-today__stat { flex-direction: column; gap: 2px; }
+  .fc-sb__columns { display: none; }
+  .fc-deck-row { display: grid; grid-template-columns: minmax(0, 1fr) 20px; grid-template-rows: auto auto; column-gap: 6px; row-gap: 2px; height: 48px; padding-top: 6px; padding-bottom: 6px; }
+  .fc-deck-row__icon { display: none; }
+  .fc-deck-row__name { grid-column: 1; font-size: var(--px-text-sm); }
+  .fc-deck-row__counts { grid-column: 1; grid-row: 2; display: flex; gap: 12px; text-align: left; }
+  .fc-deck-row__counts > :first-child::before { content: 'New '; color: var(--px-text-muted); font-weight: 400; }
+  .fc-deck-row__counts > :last-child::before { content: 'Due '; color: var(--px-text-muted); font-weight: 400; }
+  .fc-deck-row__more { grid-column: 2; grid-row: 1 / 3; }
+}
 .fc-sb__empty { padding: var(--px-space-3) var(--px-sidebar-inset); font-size: var(--px-text-sm); line-height: var(--px-leading-base); color: var(--px-text-muted); }
 
 /* ── Buttons — text-forward; ghost default, one accent primary ── */
@@ -4695,11 +4717,15 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
 .fc-deck-card__actions .fc-btn { border-color: transparent; }
 .fc-deck-card__actions .fc-btn:first-child { border-color: var(--px-border); }
 @container (max-width: 760px) {
+  .fc-home .fc-home__actions { display: grid; grid-template-columns: repeat(4, max-content); }
+  .fc-home__search { grid-column: 1 / -1; }
   .fc-home__columns { grid-template-columns: minmax(0, 1fr) 156px; }
   .fc-deck-card { grid-template-columns: minmax(0, 1fr) 156px; row-gap: var(--px-space-2); }
   .fc-deck-card__actions { grid-column: 1 / -1; }
 }
 @container (max-width: 460px) {
+  .fc-home .fc-home__actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fc-home__actions > button { justify-content: center; }
   .fc-home__columns { display: none; }
   .fc-deck-card { grid-template-columns: minmax(0, 1fr); }
   .fc-deck-card__counts { display: flex; gap: var(--px-space-4); }
@@ -4888,10 +4914,8 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
 .fc-btn--icon svg { width: 15px; height: 15px; }
 .fc-study__edit { width: 100%; max-width: min(100%, 920px); }
 
-/* The card is a REAL flashcard: white stock, black ink, square corners,
-   index-card proportions — deliberately independent of the app theme, the
-   way a physical card sits on any desk. Content-surface hardcodes are the
-   point here, not a token violation. */
+/* Preserve the existing white paper / serif card surface in both themes.
+   On reveal, question and answer form one sheet with a dividing rule. */
 .fc-card {
   width: 100%; max-width: min(100%, 920px);
   background: #ffffff;
@@ -5393,6 +5417,17 @@ function createSidebarView(container) {
     item.appendChild(glyph);
     item.appendChild(el('span', 'fc-sb__nav-label', def.label));
     item.addEventListener('click', () => void openFlashcards({ view: def.view }));
+    item.addEventListener('keydown', (event) => {
+      const buttons = [...navItems.values()];
+      const index = buttons.indexOf(item);
+      const next = event.key === 'ArrowRight' ? (index + 1) % buttons.length
+        : event.key === 'ArrowLeft' ? (index + buttons.length - 1) % buttons.length
+        : event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : -1;
+      if (next < 0) return;
+      event.preventDefault();
+      buttons[next].focus();
+      buttons[next].click();
+    });
     navItems.set(def.view, item);
     nav.appendChild(item);
   }
@@ -5416,13 +5451,6 @@ function createSidebarView(container) {
   decksHead.appendChild(el('span', 'fc-sb__section-title', 'Decks'));
   const deckCount = el('span', 'fc-sb__section-count');
   decksHead.appendChild(deckCount);
-  const sectionGen = el('button', 'fc-sb__section-add');
-  sectionGen.type = 'button';
-  sectionGen.title = 'Generate cards with AI';
-  sectionGen.setAttribute('aria-label', 'Generate cards with AI');
-  sectionGen.innerHTML = icon('px-ai-mark', 14);
-  sectionGen.addEventListener('click', () => void openFlashcards({ view: 'create' }));
-  decksHead.appendChild(sectionGen);
   const sectionAdd = el('button', 'fc-sb__section-add');
   sectionAdd.type = 'button';
   sectionAdd.title = 'New Deck';
@@ -5431,8 +5459,38 @@ function createSidebarView(container) {
   sectionAdd.addEventListener('click', () => void _cmdNewDeck());
   decksHead.appendChild(sectionAdd);
   decksSection.appendChild(decksHead);
+  const filter = el('label', 'fc-sb__filter');
+  filter.innerHTML = icon('search', 13);
+  const search = el('input', 'px-input-bare');
+  search.type = 'search';
+  search.placeholder = 'Find a deck';
+  search.setAttribute('aria-label', 'Find a sidebar deck');
+  filter.appendChild(search);
+  decksSection.appendChild(filter);
+  const columns = el('div', 'fc-sb__columns');
+  columns.setAttribute('aria-hidden', 'true');
+  columns.appendChild(el('span', '', 'Deck'));
+  const countLabels = el('div', 'fc-sb__columns-counts');
+  countLabels.appendChild(el('span', '', 'New'));
+  countLabels.appendChild(el('span', '', 'Due'));
+  columns.appendChild(countLabels);
+  decksSection.appendChild(columns);
   const deckList = el('div', 'fc-sb__decks');
   decksSection.appendChild(deckList);
+  const noMatch = el('div', 'fc-sb__no-match', 'No matching decks.');
+  noMatch.setAttribute('role', 'status');
+  noMatch.hidden = true;
+  decksSection.appendChild(noMatch);
+  const applyFilter = () => {
+    const query = search.value.trim().toLocaleLowerCase();
+    let visible = 0;
+    for (const row of deckList.querySelectorAll('.fc-deck-row')) {
+      row.hidden = !row.dataset.searchName.includes(query);
+      if (!row.hidden) visible++;
+    }
+    noMatch.hidden = !query || visible > 0;
+  };
+  search.addEventListener('input', applyFilter);
   scroll.appendChild(decksSection);
 
   const openDeckMenu = (deck, x, y) => {
@@ -5451,6 +5509,7 @@ function createSidebarView(container) {
       const on = view === active;
       item.classList.toggle('fc-sb__nav-item--active', on);
       item.setAttribute('aria-selected', on ? 'true' : 'false');
+      item.tabIndex = on || (!active && view === 'decks') ? 0 : -1;
     }
     activeDeckId = typeof route?.deckId === 'number' ? route.deckId : null;
     for (const row of deckList.children) {
@@ -5502,7 +5561,7 @@ function createSidebarView(container) {
       if (served < today.dueTotal) {
         const overflow = el('button', 'fc-today__more');
         overflow.type = 'button';
-        overflow.textContent = `${today.dueTotal - served} more behind the batch`;
+        overflow.textContent = `Custom study · ${today.dueTotal - served} more available`;
         overflow.title = 'Open Custom Study to work ahead of the daily batch.';
         overflow.addEventListener('click', () => void openFlashcards({ view: 'custom' }));
         panel.appendChild(overflow);
@@ -5523,10 +5582,12 @@ function createSidebarView(container) {
 
     // Decks list.
     deckCount.textContent = decks.length ? String(decks.length) : '';
+    filter.hidden = decks.length === 0;
+    columns.hidden = decks.length === 0;
     deckList.innerHTML = '';
     if (decks.length === 0) {
       deckList.appendChild(el('div', 'fc-sb__empty',
-        'Your decks live here. Use + to create one, or Generate to turn a page or PDF into cards.'));
+        'Your decks live here. Use + for a new deck, or Create to turn a page or PDF into cards.'));
     } else {
       for (const deck of decks) {
         const row = el('div', 'fc-deck-row');
@@ -5535,12 +5596,16 @@ function createSidebarView(container) {
         const ic = el('span', 'fc-deck-row__icon');
         ic.innerHTML = icon('px-flashcards', 14);
         row.appendChild(ic);
-        row.appendChild(el('span', 'fc-deck-row__name', deck.name));
+        const deckName = el('span', 'fc-deck-row__name', deck.name);
+        deckName.title = deck.name;
+        row.appendChild(deckName);
+        row.dataset.searchName = deck.name.toLocaleLowerCase();
 
         const counts = el('span', 'fc-deck-row__counts');
         counts.title = `${deck.newCount} new · ${deck.dueCount} due · ${deck.total} total`;
-        if (deck.newCount > 0) counts.appendChild(el('span', 'fc-deck-row__ct--new', String(deck.newCount)));
-        if (deck.dueCount > 0) counts.appendChild(el('span', 'fc-deck-row__ct--due', String(deck.dueCount)));
+        counts.setAttribute('aria-label', counts.title);
+        counts.appendChild(el('span', deck.newCount > 0 ? 'fc-deck-row__ct--new' : 'fc-deck-row__ct--zero', deck.newCount > 0 ? String(deck.newCount) : '—'));
+        counts.appendChild(el('span', deck.dueCount > 0 ? 'fc-deck-row__ct--due' : 'fc-deck-row__ct--zero', deck.dueCount > 0 ? String(deck.dueCount) : '—'));
         row.appendChild(counts);
 
         const more = el('button', 'fc-deck-row__more');
@@ -5559,6 +5624,7 @@ function createSidebarView(container) {
         row.classList.toggle('fc-deck-row--active', activeDeckId === deck.id);
         row.addEventListener('click', () => void openFlashcards({ view: 'browse', deckId: deck.id }));
         row.addEventListener('keydown', (e) => {
+          if (e.target !== row) return;
           if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); void openFlashcards({ view: 'browse', deckId: deck.id }); }
         });
         row.addEventListener('contextmenu', (e) => {
@@ -5568,6 +5634,7 @@ function createSidebarView(container) {
         deckList.appendChild(row);
       }
     }
+    applyFilter();
   };
   void refresh();
   const onData = () => void refresh();
@@ -8837,7 +8904,7 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
       session.revealed = true;
       col.classList.add('is-revealed');
 
-      // ── The ANSWER card: its own physical card, sliding in below ──
+      // The answer continues the question sheet below its dividing rule.
       const aCard = el('div', 'fc-card fc-card--a');
       const aHead = el('div', 'fc-card__head');
       aHead.appendChild(el('span', 'fc-card__tag', 'Answer'));

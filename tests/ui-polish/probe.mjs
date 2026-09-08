@@ -13,8 +13,8 @@ await fs.writeFile(path.join(run.workspace, 'README.md'), '# Interface study\nSy
 await prepareCode();
 const instance = await launch(run);
 const { app, page } = instance;
-const command = id => page.evaluate(id => window.__parallx_workbench__._services.get({ id: 'ICommandService' }).executeCommand(id), id);
-async function shot(name) {
+const command = (id, ...args) => page.evaluate(({id,args}) => window.__parallx_workbench__._services.get({ id: 'ICommandService' }).executeCommand(id,...args), {id,args});
+async function shot(name, selector) {
   await page.evaluate(() => document.fonts.ready);
   // A hidden window can return its previous compositor frame. Wake capture,
   // let the renderer paint, then retain the next frame.
@@ -25,15 +25,23 @@ async function shot(name) {
   });
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   await page.evaluate(() => Promise.all(document.getAnimations().filter(a => Number.isFinite(a.effect?.getComputedTiming().endTime)).map(a => a.finished.catch(() => {}))));
-  const base64 = await app.evaluate(async ({ BrowserWindow }) => {
+  const box = selector ? await page.locator(selector).boundingBox() : undefined;
+  const rect = box ? Object.fromEntries(Object.entries(box).map(([key,value]) => [key, Math.round(value)])) : undefined;
+  const base64 = await app.evaluate(async ({ BrowserWindow }, rect) => {
     const win = BrowserWindow.getAllWindows()[0];
     win.webContents.setBackgroundThrottling(false);
-    return (await win.webContents.capturePage(undefined, { stayHidden: true, stayAwake: true })).toPNG().toString('base64');
-  });
+    return (await win.webContents.capturePage(rect, { stayHidden: true, stayAwake: true })).toPNG().toString('base64');
+  }, rect);
   await fs.writeFile(path.join(run.evidence, `${name}.png`), Buffer.from(base64, 'base64'));
 }
 try {
   await page.waitForFunction(() => window.__parallx_workbench__._services.get({ id: 'ICommandService' }).getCommand('flashcards.open'), undefined, { timeout: 30000 });
+  await page.evaluate(() => window.__parallx_workbench__._services.get({id:'IToolEnablementService'}).setEnablement('parallx-community.flashcards', true));
+  // Fresh profiles default external extensions to disabled. Reload after the
+  // persisted enablement so contributions exist before provider activation.
+  await page.reload();
+  await page.locator('.parallx-ready').waitFor({state:'attached'});
+  await page.waitForFunction(() => window.__parallx_workbench__?._services.get({id:'ICommandService'}).getCommand('flashcards.open'));
   await command('flashcards.open');
   await page.locator('.fc-home').waitFor();
   await page.evaluate(async () => {
@@ -53,10 +61,53 @@ try {
       }
     }
   });
+  // Direct database seeding bypasses the extension's in-memory data events.
+  // Reopen the profile so both cached sidebar and editor read the fixture.
+  await page.reload();
+  await page.waitForFunction(() => window.__parallx_workbench__?._services.get({id:'ICommandService'}).getCommand('flashcards.open'));
+  await command('flashcards.open');
   await command('flashcards.stats');
   await page.locator('.fc-crumb--link').first().click();
   await page.locator('.fc-deck-card').first().waitFor();
   await shot('decks-dark');
+  await command('workbench.view.show', 'flashcards.decks');
+  await page.locator('.fc-sidebar .fc-deck-row').first().waitFor();
+  await shot('sidebar-compact', '.fc-sidebar');
+  const sidebarSearch = page.getByRole('searchbox', {name:'Find a sidebar deck'});
+  await sidebarSearch.fill('LINEAR');
+  assert.equal(await page.locator('.fc-sidebar .fc-deck-row:visible').count(),1);
+  await sidebarSearch.fill('not present');
+  await page.locator('.fc-sb__no-match').waitFor({state:'visible'});
+  await sidebarSearch.fill('');
+  const sidebarTabs = page.locator('.fc-sb__nav-item');
+  await sidebarTabs.first().focus();
+  await page.keyboard.press('End');
+  await page.waitForFunction(() => document.querySelector('.fc-sb__nav-item[data-view="stats"]').getAttribute('aria-selected') === 'true');
+  await sidebarTabs.first().click();
+  await page.locator('.fc-home').waitFor();
+  await page.locator('.fc-deck-row').first().hover();
+  assert.notEqual(await page.locator('.fc-deck-row').first().locator('.fc-deck-row__counts').evaluate(e => getComputedStyle(e).display), 'none');
+  assert(await page.locator('.fc-sidebar').evaluate(e => e.scrollWidth <= e.clientWidth), 'Narrow sidebar overflows');
+  await page.locator('.fc-sidebar').getByRole('button',{name:'Actions for Linear algebra',exact:true}).focus();
+  await page.keyboard.press('Enter');
+  await page.getByRole('menu').waitFor();
+  assert.equal(await page.locator('.fc-home').count(), 1, 'Deck menu keyboard action unexpectedly navigated');
+  await page.keyboard.press('Escape');
+  const sidebarEdge = await page.locator('.part-workbench-parts-sidebar').boundingBox();
+  await page.mouse.move(sidebarEdge.x + sidebarEdge.width, sidebarEdge.y + 250);
+  await page.mouse.down();
+  await page.mouse.move(840, sidebarEdge.y + 250, {steps:15});
+  await page.mouse.up();
+  await shot('sidebar-wide', '.fc-sidebar');
+  await page.evaluate(() => document.documentElement.setAttribute('data-px-mode','light'));
+  await shot('sidebar-light', '.fc-sidebar');
+  await page.evaluate(() => document.documentElement.removeAttribute('data-px-mode'));
+  const wideEdge = await page.locator('.part-workbench-parts-sidebar').boundingBox();
+  assert(wideEdge.width > 700, 'Wide sidebar resize did not take effect');
+  await page.mouse.move(wideEdge.x+wideEdge.width, wideEdge.y+250);
+  await page.mouse.down();
+  await page.mouse.move(sidebarEdge.x+sidebarEdge.width,wideEdge.y+250,{steps:15});
+  await page.mouse.up();
   const search = page.getByRole('searchbox', { name: 'Find a deck' });
   await search.fill('LINEAR');
   assert.equal(await page.locator('.fc-deck-card:visible').count(), 1);
@@ -70,6 +121,7 @@ try {
   await page.evaluate(() => document.documentElement.removeAttribute('data-px-mode'));
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(900, 720));
   await shot('decks-narrow');
+  assert.equal(await page.locator('.fc-home__actions').evaluate(e => getComputedStyle(e).display), 'grid', 'Narrow library controls should form deliberate rows');
   assert(await page.locator('.fc-pane').evaluate(e => e.scrollWidth <= e.clientWidth + 1), 'Flashcards pane overflows horizontally');
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1280, 800));
   await page.locator('.view-tab').filter({ hasText: /^Output$/ }).click();
@@ -99,9 +151,16 @@ try {
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(900, 720));
   await shot('study-narrow');
   assert(await page.locator('.fc-study').evaluate(e => e.scrollWidth <= e.clientWidth + 1), 'Study overflows horizontally');
+  await page.locator('.fc-study__main').evaluate(e => { e.scrollTop = 180; });
+  await shot('study-narrow-scrolled');
+  const answerBounds = await page.locator('.fc-study__back').evaluate(e => ({ bottom: e.getBoundingClientRect().bottom, top: e.getBoundingClientRect().top }));
+  const gradesBounds = await page.locator('.fc-study__controls').boundingBox();
+  assert(answerBounds.bottom <= gradesBounds.y, 'End of answer cannot be read above ratings after scrolling');
   await page.getByRole('button',{name:'Clear output',exact:true}).click();
   await shot('panel-empty');
-  console.log(JSON.stringify({ root: run.root, pass: true }));
+  const result = { root: run.root, pass: true, checks: ['sidebar search and empty result', 'sidebar keyboard tabs and deck menu', 'sidebar counts remain visible on hover', 'compact and wide sidebar', 'deck search and empty result', 'responsive library', 'timestamp toggle', 'reveal and visible grades', 'keyboard grading and undo', 'light and dark themes', 'narrow answer scrolling', 'empty output'], codeRoot: prepared.codeRoot };
+  await fs.writeFile(path.join(run.evidence,'result.json'), JSON.stringify(result,null,2));
+  console.log(JSON.stringify(result));
 } catch(error) {
   await fs.writeFile(path.join(run.evidence,'failure.txt'),String(error.stack));
   await shot('failure').catch(()=>{});
