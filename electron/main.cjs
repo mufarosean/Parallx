@@ -800,6 +800,14 @@ ipcMain.handle('editableMenu:addToDictionary', (event, word) => {
   return event.sender.session.addWordToSpellCheckerDictionary(value);
 });
 
+// Web pages in browser tabs get Chromium's overlay scrollbars: no gutter, no
+// arrows, a thin bar that fades (Windows 11 style), instead of the classic
+// 15px bar with arrows that Chromium draws on Windows by default. The app's own
+// surfaces are unaffected: workbench.css styles ::-webkit-scrollbar, and a
+// styled scrollbar is never an overlay one. Must be set before app is ready.
+// Verified by tests/probes/browser-scrollbar-probe.mjs.
+app.commandLine.appendSwitch('enable-features', 'OverlayScrollbar,FluentOverlayScrollbar');
+
 app.whenReady().then(async () => {
   if (!HAS_SINGLE_INSTANCE_LOCK) return;
 
