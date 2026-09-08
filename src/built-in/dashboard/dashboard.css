@@ -1936,7 +1936,7 @@ video.vw__fill { object-fit: contain; background: #000; }
 .dtimer__check { width: 16px; height: 16px; flex: 0 0 auto; border-radius: 50%; border: 1.5px solid color-mix(in srgb, var(--px-text) 35%, transparent); background: transparent; cursor: pointer; padding: 0; }
 .dtimer__check[aria-pressed="true"] { background: var(--dtimer-accent); border-color: var(--dtimer-accent); }
 .dtimer__tasktitle { flex: 1; min-width: 0; text-align: left; font: inherit; font-size: var(--px-text-sm); color: var(--px-text); background: transparent; border: 0; padding: 0; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dtimer__taskcount { font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; flex: 0 0 auto; }
+.dtimer__taskcount { font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; flex: 0 0 auto; margin-left: auto; min-width: 2.6em; text-align: right; }
 .dtimer__tasksmall { width: 20px; height: 20px; flex: 0 0 auto; font: inherit; font-size: var(--px-text-sm); line-height: 1; color: var(--px-text-muted); background: transparent; border: 0; border-radius: var(--px-radius-sm); cursor: pointer; opacity: 0; }
 .dtimer__task:hover .dtimer__tasksmall, .dtimer__task:focus-within .dtimer__tasksmall { opacity: 1; }
 .dtimer__tasksmall:hover { color: var(--px-text); background: color-mix(in srgb, var(--px-text) 10%, transparent); }

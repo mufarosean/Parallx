@@ -411,6 +411,22 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
       }
     };
 
+    // Rename in place: Enter keeps, Escape drops, leaving keeps.
+    const startRename = (row: HTMLElement, title: HTMLElement, t: TimerTask): void => {
+      const input = h('input', 'dtimer__input dtimer__taskedit') as HTMLInputElement;
+      input.type = 'text'; input.value = t.title; input.maxLength = 120;
+      const finish = (keep: boolean) => { if (keep && input.value.trim()) t.title = input.value.trim(); persist(); renderTasks(); };
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); finish(true); } else if (e.key === 'Escape') { e.preventDefault(); finish(false); } });
+      input.addEventListener('blur', () => finish(true));
+      row.replaceChild(input, title); input.focus(); input.select();
+    };
+    // The workbench's own context menu, through the API; a page without it (a probe) shows nothing.
+    type MenuItem = { label?: string; danger?: boolean; disabled?: boolean; separator?: boolean; onSelect?: () => void };
+    const showMenu = (x: number, y: number, items: MenuItem[]): void => {
+      const win = (ctx.api as { window?: { showContextMenu?: (anchor: { x: number; y: number }, items: MenuItem[]) => unknown } } | null)?.window;
+      if (win?.showContextMenu) win.showContextMenu({ x, y }, items);
+    };
+
     const renderTasks = (): void => {
       if (!cfg.showTasks) return;
       taskList.replaceChildren();
@@ -423,32 +439,33 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
         const check = button('', 'dtimer__check', () => { t.done = !t.done; if (t.done && state.activeTaskId === t.id) state.activeTaskId = state.tasks.find((x) => !x.done)?.id ?? null; writeBackDone(t); persist(); render(); }, t.done ? 'Mark not done' : 'Mark done');
         check.setAttribute('aria-pressed', t.done ? 'true' : 'false');
         row.appendChild(check);
-        const title = button(t.title, 'dtimer__tasktitle', () => { if (!t.done) { state.activeTaskId = t.id; persist(); render(); } }, t.sourceId ? `From the planner (${t.sourceKind}). Click to make active, double-click to rename.` : 'Click to make active, double-click to rename');
-        // Double-click renames in place: Enter keeps, Escape drops.
-        title.addEventListener('dblclick', () => {
-          const input = h('input', 'dtimer__input dtimer__taskedit') as HTMLInputElement;
-          input.type = 'text'; input.value = t.title; input.maxLength = 120;
-          const finish = (keep: boolean) => { if (keep && input.value.trim()) t.title = input.value.trim(); persist(); renderTasks(); };
-          input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); finish(true); } else if (e.key === 'Escape') { e.preventDefault(); finish(false); } });
-          input.addEventListener('blur', () => finish(true));
-          row.replaceChild(input, title); input.focus(); input.select();
-        });
+        const title = button(t.title, 'dtimer__tasktitle', () => { if (!t.done) { state.activeTaskId = t.id; persist(); render(); } }, t.sourceId ? `From the planner (${t.sourceKind}). Click to make active; right-click for more.` : 'Click to make active; right-click for more.');
+        title.addEventListener('dblclick', () => startRename(row, title, t));
         row.appendChild(title);
+        // The count closes the row at the far right; everything else about a task is a right-click away.
         const count = h('span', 'dtimer__taskcount', `${t.act}/${t.est}`);
-        count.title = t.sourceKind === 'event' ? `Finished intervals / the planned block at ${cfg.focusMinutes} minutes a round` : 'Finished intervals / estimated';
+        count.title = t.sourceKind === 'event' ? `Finished rounds / the planned block at ${cfg.focusMinutes} minutes a round` : 'Finished rounds / estimated';
         row.appendChild(count);
-        const less = button('−', 'dtimer__tasksmall', () => { t.est = Math.max(1, t.est - 1); t.estEdited = true; persist(); renderTasks(); }, 'One interval fewer');
-        row.appendChild(less);
-        const more = button('+', 'dtimer__tasksmall', () => { t.est = Math.min(99, t.est + 1); t.estEdited = true; persist(); renderTasks(); }, 'One more interval');
-        row.appendChild(more);
-        const del = button('×', 'dtimer__tasksmall', () => {
-          state.tasks = state.tasks.filter((x) => x.id !== t.id);
-          // A removed planner item stays out for the rest of the day.
-          if (t.sourceId) { const today = dayKeyLocal(Date.now()); if (state.syncDay !== today) { state.ignoredSourceIds = []; state.syncDay = today; } if (!state.ignoredSourceIds.includes(t.sourceId)) state.ignoredSourceIds = [...state.ignoredSourceIds, t.sourceId]; }
-          if (state.activeTaskId === t.id) state.activeTaskId = state.tasks.find((x) => !x.done)?.id ?? null;
-          persist(); render();
-        }, t.sourceId ? 'Remove from the list for today. The planner keeps it.' : 'Remove task');
-        row.appendChild(del);
+        row.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          const remove = () => {
+            state.tasks = state.tasks.filter((x) => x.id !== t.id);
+            // A removed planner item stays out for the rest of the day.
+            if (t.sourceId) { const today = dayKeyLocal(Date.now()); if (state.syncDay !== today) { state.ignoredSourceIds = []; state.syncDay = today; } if (!state.ignoredSourceIds.includes(t.sourceId)) state.ignoredSourceIds = [...state.ignoredSourceIds, t.sourceId]; }
+            if (state.activeTaskId === t.id) state.activeTaskId = state.tasks.find((x) => !x.done)?.id ?? null;
+            persist(); render();
+          };
+          showMenu(e.clientX, e.clientY, [
+            { label: 'Make Active', disabled: t.done || state.activeTaskId === t.id, onSelect: () => { state.activeTaskId = t.id; persist(); render(); } },
+            { label: 'Rename', onSelect: () => startRename(row, title, t) },
+            { separator: true },
+            { label: 'One More Round', onSelect: () => { t.est = Math.min(99, t.est + 1); t.estEdited = true; persist(); renderTasks(); } },
+            { label: 'One Round Fewer', disabled: t.est <= 1, onSelect: () => { t.est = Math.max(1, t.est - 1); t.estEdited = true; persist(); renderTasks(); } },
+            { separator: true },
+            { label: t.done ? 'Mark Not Done' : 'Mark Done', onSelect: () => { t.done = !t.done; if (t.done && state.activeTaskId === t.id) state.activeTaskId = state.tasks.find((x) => !x.done)?.id ?? null; writeBackDone(t); persist(); render(); } },
+            { label: t.sourceId ? 'Remove For Today' : 'Remove', danger: true, onSelect: remove },
+          ]);
+        });
         taskList.appendChild(row);
       }
       const act = state.tasks.reduce((s, t) => s + t.act, 0);

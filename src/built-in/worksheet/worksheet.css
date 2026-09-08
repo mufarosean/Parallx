@@ -463,3 +463,6 @@ body > [data-radix-popper-content-wrapper] button { color: inherit; }
 .ws-launch__rowtext { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .ws-launch__rowtitle { font-size: var(--px-text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ws-launch__rowmeta { font-size: var(--px-text-xs); color: var(--px-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* Scrolling pages keep a scrollbar gutter on BOTH edges, so the content sits centred: without it the right
+   padding reads wider than the left by the width of the scrollbar. */
+.ws-dash, .ws-launch, .ws-settings, .ws-home, .ws-create, .ws-pane--scroll { scrollbar-gutter: stable both-edges; }
