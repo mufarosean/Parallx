@@ -89,13 +89,19 @@ describe('the planner link', () => {
     const third = mergePlannerItems(first, renamed, 25, [], NOW);
     expect(third.find((t) => t.sourceId === 'ev1')!.est).toBe(5); // not hand-edited: follows the new length
   });
-  it('leaves removed items out for the day, finishes planner tasks that are no longer open, and never touches hand-made tasks', () => {
+  it('finishes a linked task only when the planner no longer lists it open; one outside today stays; hand-made tasks are never touched', () => {
     const mine = { id: 'm1', title: 'My own', est: 2, act: 1, done: false, createdAt: 0 };
     const linked = mergePlannerItems([mine], items, 25, ['ev1'], NOW);
     expect(linked.map((t) => t.id)).toEqual(['m1', 'p-tk1']);
-    const later = mergePlannerItems(linked, [items[0]], 25, ['ev1'], NOW);
-    expect(later.find((t) => t.id === 'p-tk1')!.done).toBe(true);
-    expect(later.find((t) => t.id === 'm1')).toEqual(mine);
+    // tk1 is gone from today's items but the planner still lists it open (moved to tomorrow): untouched.
+    const moved = mergePlannerItems(linked, [items[0]], 25, ['ev1'], NOW, new Set(['tk1']));
+    expect(moved.find((t) => t.id === 'p-tk1')!.done).toBe(false);
+    // The planner no longer has it open: finished here too.
+    const finished = mergePlannerItems(linked, [items[0]], 25, ['ev1'], NOW, new Set<string>());
+    expect(finished.find((t) => t.id === 'p-tk1')!.done).toBe(true);
+    // No answer from the planner: nothing is assumed.
+    expect(mergePlannerItems(linked, [items[0]], 25, ['ev1'], NOW, null).find((t) => t.id === 'p-tk1')!.done).toBe(false);
+    expect(finished.find((t) => t.id === 'm1')).toEqual(mine);
   });
 });
 

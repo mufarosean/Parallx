@@ -13,7 +13,7 @@
 import type { WidgetContext, WidgetHandle, WidgetTypeRegistration } from '../dashboardTypes.js';
 import {
   readConfig, parseState, minutesFor, nextMode, finishEstimate, dayStreak, todaySummary, lastDays,
-  fmtClock, fmtTimeOfDay, fmtHours, MAX_LOG, MAX_TASKS, dayKeyLocal, mergePlannerItems, estFromMinutes,
+  fmtClock, fmtTimeOfDay, fmtHours, MAX_LOG, MAX_TASKS, mergePlannerItems, estFromMinutes,
   type TimerConfig, type TimerMode, type TimerState, type TimerTask, type PlannerLinkItem,
 } from './timerLogic.js';
 
@@ -22,7 +22,7 @@ import {
 interface PlannerTaskLike { readonly id: string; readonly title: string; readonly status: string; readonly dueAt: number | null }
 interface PlannerEventLike { readonly id: string; readonly title: string; readonly startAt: number; readonly endAt: number; readonly allDay: boolean }
 interface PlannerDataLike {
-  listTasks(query: { status?: readonly string[]; dueFrom?: number; dueTo?: number }): Promise<PlannerTaskLike[]>;
+  listTasks(query: { status?: readonly string[]; dueFrom?: number; dueTo?: number; includeUndated?: boolean }): Promise<PlannerTaskLike[]>;
   listEvents(query: { from: number; to: number }): Promise<PlannerEventLike[]>;
   updateTask(id: string, patch: { status?: string; completedAt?: number | null }): Promise<unknown>;
 }
@@ -219,7 +219,11 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
     top.appendChild(report);
 
     // ── State helpers ──
-    const persist = (): void => { ctx.setCachedOutput(JSON.stringify(state)); };
+    // What we last wrote. The host echoes every cache write back through
+    // refreshFromCache; replacing the state with a re-parse of our own write
+    // would orphan the task objects a rename or an open menu is holding.
+    let lastPersisted: string | null = null;
+    const persist = (): void => { lastPersisted = JSON.stringify(state); ctx.setCachedOutput(lastPersisted); };
     const fullMs = (): number => minutesFor(state.mode, cfg) * 60_000;
     const remainingMs = (): number => {
       if (state.endsAt !== null) return state.endsAt - Date.now();
@@ -260,18 +264,23 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
         if (!already) choices.push({ item: it, input });
       }
       const foot = h('div', 'dtimer__pickfoot');
-      foot.appendChild(button('Add Selected', 'dtimer__btn dtimer__btn--primary', () => {
+      const addSelected = async (): Promise<void> => {
         const chosen = new Set(choices.filter((c) => c.input.checked).map((c) => c.item.id));
         if (chosen.size > 0) {
           // Linked tasks stay linked; only the ticked ones are new. A linked
-          // planner task that is no longer open today is finished here too.
+          // planner task is finished here only when the planner no longer
+          // lists it open anywhere, never because it fell outside today's
+          // window; with no answer from the planner, nothing is assumed.
           const keep = items.filter((i) => linked.has(i.id) || chosen.has(i.id));
-          state.tasks = mergePlannerItems(state.tasks, keep, cfg.focusMinutes, [], Date.now());
+          const open = await data.listTasks({ status: ['planned', 'reviewing'], includeUndated: true })
+            .then((ts) => new Set(ts.map((t) => t.id))).catch(() => null);
+          state.tasks = mergePlannerItems(state.tasks, keep, cfg.focusMinutes, [], Date.now(), open);
           if (!state.activeTaskId || !state.tasks.some((t) => t.id === state.activeTaskId && !t.done)) state.activeTaskId = state.tasks.find((t) => !t.done)?.id ?? null;
           persist();
         }
         closePicker(); render();
-      }));
+      };
+      foot.appendChild(button('Add Selected', 'dtimer__btn dtimer__btn--primary', () => { void addSelected(); }));
       foot.appendChild(button('Cancel', 'dtimer__btn dtimer__btn--quiet', () => closePicker()));
       box.appendChild(foot);
       taskList.hidden = true; addRow.hidden = true; addGhost.hidden = true;
@@ -295,7 +304,9 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
           const sec = Math.floor((state.endsAt - Date.now()) / 1000);
           if (sec !== lastTickSecond) { lastTickSecond = sec; chime.tick(cfg.alarmVolume); }
         }
-        render();
+        // The clock only. A full render here rebuilt the task list four times
+        // a second, which wiped a rename in progress while the timer ran.
+        renderClock();
       }, 250);
     };
 
@@ -369,18 +380,24 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
     };
 
     // ── Rendering ──
+    // The parts that move with the clock: the face, the buttons, the finish
+    // time in the task summary. The tick calls this alone.
+    const renderClock = (): void => {
+      container.dataset.running = running() ? 'true' : 'false';
+      face.textContent = fmtClock(remainingMs());
+      startBtn.textContent = running() ? 'Pause' : (state.pausedRemaining !== null ? 'Resume' : 'Start');
+      skipBtn.hidden = !running() && state.pausedRemaining === null;
+      resetBtn.hidden = !running() && state.pausedRemaining === null;
+      renderSummary();
+    };
     const render = (): void => {
       container.dataset.mode = state.mode;
-      container.dataset.running = running() ? 'true' : 'false';
       for (const [m, b] of modeBtns) {
         b.textContent = m === 'focus' ? cfg.label : MODE_LABEL[m];
         b.setAttribute('aria-selected', m === state.mode ? 'true' : 'false');
         b.classList.toggle('is-active', m === state.mode);
       }
-      face.textContent = fmtClock(remainingMs());
-      startBtn.textContent = running() ? 'Pause' : (state.pausedRemaining !== null ? 'Resume' : 'Start');
-      skipBtn.hidden = !running() && state.pausedRemaining === null;
-      resetBtn.hidden = !running() && state.pausedRemaining === null;
+      renderClock();
       const today = todaySummary(state.log, Date.now());
       const n = today.sessions + (state.mode === 'focus' ? 1 : 0);
       const task = activeTask();
@@ -415,7 +432,16 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
     const startRename = (row: HTMLElement, title: HTMLElement, t: TimerTask): void => {
       const input = h('input', 'dtimer__input dtimer__taskedit') as HTMLInputElement;
       input.type = 'text'; input.value = t.title; input.maxLength = 120;
-      const finish = (keep: boolean) => { if (keep && input.value.trim()) t.title = input.value.trim(); persist(); renderTasks(); };
+      // Settles once: Enter and Escape both remove the input, and a browser
+      // that fires blur on removal must not turn an Escape into a keep. The
+      // task is looked up again in case the state was replaced meanwhile.
+      let settled = false;
+      const finish = (keep: boolean) => {
+        if (settled) return; settled = true;
+        const cur = state.tasks.find((x) => x.id === t.id) ?? t;
+        if (keep && input.value.trim()) cur.title = input.value.trim();
+        persist(); renderTasks();
+      };
       input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); finish(true); } else if (e.key === 'Escape') { e.preventDefault(); finish(false); } });
       input.addEventListener('blur', () => finish(true));
       row.replaceChild(input, title); input.focus(); input.select();
@@ -432,7 +458,6 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
     const renderTasks = (): void => {
       if (!cfg.showTasks) return;
       taskList.replaceChildren();
-      const now = Date.now();
       for (const t of state.tasks) {
         const row = h('div', 'dtimer__task');
         row.dataset.active = t.id === state.activeTaskId ? 'true' : 'false';
@@ -450,10 +475,11 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
         row.appendChild(count);
         row.addEventListener('contextmenu', (e) => {
           e.preventDefault();
+          // Nothing arrives unasked, so a removed planner item simply leaves;
+          // Sync offers it again, unticked. (The old "ignored for today" list
+          // is no longer written; it was never read once the picker arrived.)
           const remove = () => {
             state.tasks = state.tasks.filter((x) => x.id !== t.id);
-            // A removed planner item stays out for the rest of the day.
-            if (t.sourceId) { const today = dayKeyLocal(Date.now()); if (state.syncDay !== today) { state.ignoredSourceIds = []; state.syncDay = today; } if (!state.ignoredSourceIds.includes(t.sourceId)) state.ignoredSourceIds = [...state.ignoredSourceIds, t.sourceId]; }
             if (state.activeTaskId === t.id) state.activeTaskId = state.tasks.find((x) => !x.done)?.id ?? null;
             persist(); render();
           };
@@ -465,11 +491,16 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
             { label: 'One Round Fewer', disabled: t.est <= 1, onSelect: () => { t.est = Math.max(1, t.est - 1); t.estEdited = true; persist(); renderTasks(); } },
             { separator: true },
             { label: t.done ? 'Mark Not Done' : 'Mark Done', onSelect: () => { t.done = !t.done; if (t.done && state.activeTaskId === t.id) state.activeTaskId = state.tasks.find((x) => !x.done)?.id ?? null; writeBackDone(t); persist(); render(); } },
-            { label: t.sourceId ? 'Remove For Today' : 'Remove', danger: true, onSelect: remove },
+            { label: 'Remove', danger: true, onSelect: remove },
           ]);
         });
         taskList.appendChild(row);
       }
+      renderSummary();
+    };
+    const renderSummary = (): void => {
+      if (!cfg.showTasks) return;
+      const now = Date.now();
       const act = state.tasks.reduce((s, t) => s + t.act, 0);
       const est = state.tasks.reduce((s, t) => s + t.est, 0);
       const fin = finishEstimate(state.tasks, cfg, state.mode, state.cycle, remainingMs(), now);
@@ -499,6 +530,7 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
 
     return {
       refreshFromCache(cached: string | null) {
+        if (cached !== null && cached === lastPersisted) return; // our own write, echoed back
         const next = parseState(cached);
         // Keep the live clock if this instance is the one running it.
         if (state.endsAt !== null && next.endsAt === state.endsAt) next.endsAt = state.endsAt;

@@ -1930,8 +1930,9 @@ video.vw__fill { object-fit: contain; background: #000; }
 .dtimer__taskssummary { font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dtimer__tasklist { display: flex; flex-direction: column; gap: 2px; }
 .dtimer__tasklist[hidden], .dtimer__add[hidden] { display: none; }
-.dtimer__task { display: flex; align-items: center; gap: 6px; padding: 3px 6px; border-radius: var(--px-radius-sm); border-left: 2px solid transparent; }
-.dtimer__task[data-active="true"] { border-left-color: var(--dtimer-accent); background: color-mix(in srgb, var(--dtimer-accent) 10%, transparent); }
+.dtimer__task { display: flex; align-items: center; gap: 6px; padding: 3px 6px; border-radius: var(--px-radius-sm); }
+/* The active row is the tinted one; no accent bar on its left edge. */
+.dtimer__task[data-active="true"] { background: color-mix(in srgb, var(--dtimer-accent) 10%, transparent); }
 .dtimer__task[data-done="true"] .dtimer__tasktitle { text-decoration: line-through; color: var(--px-text-muted); }
 .dtimer__check { width: 16px; height: 16px; flex: 0 0 auto; border-radius: 50%; border: 1.5px solid color-mix(in srgb, var(--px-text) 35%, transparent); background: transparent; cursor: pointer; padding: 0; }
 .dtimer__check[aria-pressed="true"] { background: var(--dtimer-accent); border-color: var(--dtimer-accent); }

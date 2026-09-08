@@ -169,16 +169,22 @@ export function estFromMinutes(minutes: number | null, focusMinutes: number): nu
  * Today's planner items folded into the task list. Linked tasks keep their
  * progress and take the planner's title; their estimate follows the planned
  * length unless the user edited it. New items are appended unless they were
- * removed from the list today. A linked planner task no longer among the open
- * ones was finished in the planner, so it is done here too. Hand-made tasks
- * are never touched.
+ * removed from the list today. A linked planner task that is absent from
+ * today's items is finished here only when `openTaskIds` (every task the
+ * planner still lists as open, any day) says the planner no longer has it
+ * open; one that merely fell outside today's window (overdue, rescheduled)
+ * is left alone, and so is everything when the planner gave no answer
+ * (null). Hand-made tasks are never touched.
  */
-export function mergePlannerItems(tasks: readonly TimerTask[], items: readonly PlannerLinkItem[], focusMinutes: number, ignored: readonly string[], now: number): TimerTask[] {
+export function mergePlannerItems(tasks: readonly TimerTask[], items: readonly PlannerLinkItem[], focusMinutes: number, ignored: readonly string[], now: number, openTaskIds: ReadonlySet<string> | null = null): TimerTask[] {
   const byId = new Map(items.map((i) => [i.id, i]));
   const out: TimerTask[] = tasks.map((t) => {
     if (!t.sourceId) return t;
     const item = byId.get(t.sourceId);
-    if (!item) return t.sourceKind === 'task' && !t.done ? { ...t, done: true } : t;
+    if (!item) {
+      const finishedInPlanner = t.sourceKind === 'task' && !t.done && openTaskIds !== null && !openTaskIds.has(t.sourceId);
+      return finishedInPlanner ? { ...t, done: true } : t;
+    }
     return { ...t, title: item.title, est: t.estEdited ? t.est : estFromMinutes(item.minutes, focusMinutes) };
   });
   const have = new Set(tasks.map((t) => t.sourceId).filter((s): s is string => !!s));
