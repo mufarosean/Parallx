@@ -60,51 +60,91 @@ to the right of a `Solution ->` marker in row 1.
 - Single file on OneDrive: a `data-DESKTOP-...` copy already shows a sync
   conflict in this workspace.
 
-## What Parallx already has (M99 Worksheets)
+## What Parallx has today, and why it went unused
 
-- An exam-faithful sheet engine with the Pearson function allowlist; every
-  function seen in the solutions (SLOPE, INTERCEPT, LINEST, NORMSINV,
-  GAMMALN, MMULT, SUMPRODUCT) is available.
-- An Excel importer written against this very workbook. Run over the copy
-  today: **316 of 331 problem sheets import cleanly** as question-plus-
-  solution items (the `Solution ->` split), with the paper as the tag. The
-  15 that do not are the 14 essay sheets and one sheet without a work
-  marker. 66 solutions are text-only (qualitative answers), which is
-  correct, not a defect. One sheet carries prior work below the marker.
-- Attempts with autosave, self-grade (Nailed It, Partially, Missed It,
-  which is the same three-level scale as Easy, Medium, Hard), AI review of
-  the student's cells, practice sessions with tag, state, count and
-  shuffle filters, and chat tools over the bank.
-- The workspace holds 19 items today (cookbook and PDF generated); nothing
-  from this workbook has been imported yet.
+M99 Worksheets (src/built-in/worksheet) has the right engine and the wrong
+shape. Mufaro's verdict, 2026-09-08: disjointed, formatting lost on import,
+multiple sheets do not work, and he has not been using it.
 
-## The build, in order of value before the exam (2026-10-27)
+- **The engine is right.** Univer carries the full Excel style model
+  (fonts, fills, borders, number formats, alignment, wrap, merges, hidden
+  columns, row heights) and the Pearson function allowlist covers every
+  function the solutions use. Presets for floating images, conditional
+  formatting and data validation are installed.
+- **The import is the gap.** It reads through SheetJS community edition,
+  which drops every style. The problem sheets are ALL style: 2,899 cell
+  styles, 115 fonts, 62 borders, 57 number formats, every one of the 7,000
+  cells on a typical sheet styled, 2,144 merges, 2,079 custom row heights,
+  527 hidden columns. It also drops the 383 text boxes (208 carry the
+  problem's equations, set in Unicode maths) and the 45 pictures on 30
+  sheets. Run today it detects 316 of 331 problems, then flattens them.
+- **The item model fights the material.** Import splits each sheet into a
+  givens workbook and a solution workbook; Reveal Solution REPLACES the
+  mounted sheet with the solution snapshot, so the student's own work
+  vanishes at the moment it should sit beside the answer. Generated items
+  put question text in a merged block and cells on separate tabs; imported
+  ones do not. Two models, one surface, neither the workbook's.
+- **Navigation is a home page with buttons** (Practice Items, Generate,
+  Import, Start Practice Session), not the bank.
 
-1. **Import that keeps his progress.** Tags carry paper, source (rf, cas,
-   custom) and type (quant, qual, essay) so every filter ProblemTrack had
-   exists as a chip. His 62 ratings (13 Easy, 26 Medium, 23 Hard) become
-   completed attempts with the matching grade, dated from the workbook.
-   Work below `SHOW ALL WORK.` is dropped at import. The 14 essay sheets
-   and the `Flashcards` sheet go to the flashcards extension as a deck
-   (Front, Back, Tags is already its import shape).
-2. **Dashboard that never needs a button.** Per paper: attempted %, the
-   same weighted score so his numbers stay comparable, time spent, and a
-   timeline drawn from every attempt. Missed and partial problems come
-   back on a short schedule (3 and 7 days) so "due" exists.
-3. **Quiz mode.** A practice session with the ProblemTrack filters plus a
-   timer per problem, results landing on the same items. Nothing is
-   exported; the existing per-sheet export to .xlsx stays for when he
-   wants real Excel.
+## The redesign: Problem Bank
 
-Not built: the reset feature (attempts are history, not state to wipe),
-the custom-problem template (Generate Items and the scratch sheet cover
-it), Mac shims.
+One rule: a problem in Parallx is the sheet from the workbook, pixel for
+pixel, worked the way the workbook is worked. Everything else hangs off
+that.
+
+1. **One sheet per problem, as it is.** The problem's own sheet, with its
+   styles, merges, widths, heights, hidden columns, pictures, and its text
+   boxes written into their anchor cells (Univer has no text boxes). The
+   solution columns to the right of the "Solution" marker are hidden until
+   Reveal, which unhides them next to the student's work, exactly like the
+   workbook. The work area is the region under the "Show All Work" row. No
+   givens-versus-solution split, no tabs. The Self-Rating cells and their
+   validation and conditional format are the only things stripped.
+2. **Our own OOXML reader.** SheetJS cannot carry styles, so the importer
+   reads the xlsm parts directly (the app already ships jszip): styles.xml
+   (cellXfs, fonts, fills, borders, numFmts) into Univer style objects,
+   sheet XML into cells, merges, column and row data, drawings into images
+   and anchored text. Pure, unit-tested against the copied workbook.
+3. **ProblemTrack's vocabulary, kept.** Ratings are Easy, Medium, Hard.
+   Filters are paper, source (Rising Fellow, CAS, custom), type
+   (quantitative, qualitative, essay), rating, and incomplete. Quadrant
+   (the vendor's Easy/Difficult x Likely/Unlikely priority) is imported
+   from the index and is a filter too. His 62 existing ratings come over.
+4. **Quizzes are sessions, and they feed the dashboard.** A quiz is N
+   problems drawn by those filters, worked in order with a timer, each
+   rated at the end; ratings and times land on the problems, so the
+   dashboard moves without a refresh button. Export to .xlsx stays
+   available for the day he wants real Excel.
+5. **Dashboard as an editor tab.** Per paper: attempted %, the workbook's
+   weighted score (Easy 1, Medium 0.5, Hard 0) so his numbers stay
+   comparable, time spent, a timeline drawn from every rating, and a due
+   list (Hard back in 3 days, Medium in 7).
+6. **Sidebar is the bank.** Papers with counts and rating colours (the
+   workbook's tab colours), search across problem text, and a custom
+   problem is a copy of the workbook's Template sheet.
+
+Generation from PDFs stays as a way to add problems to the same bank; it
+adopts the one-sheet model.
+
+## Build order
+
+1. OOXML reader and the one-sheet model, verified against the copy: every
+   one of the 331 sheets round-trips (cell count, style count, merges,
+   hidden columns, images) and a screenshot probe compares three problems
+   against Excel renders.
+2. Import with tags, quadrant, ratings carried over; the sidebar bank; the
+   problem tab with hidden-solution reveal, work-area attempts, Easy,
+   Medium, Hard.
+3. Quiz sessions with timer, dashboard tab, due list, timeline.
+4. Essay sheets and the Flashcards sheet into a flashcards deck.
 
 ## Verified
 
 - VBA extracted with olevba from the copy; every procedure read.
 - Sheet inventory, formulas of the index, dashboard data, quiz template and
-  a problem sheet read with openpyxl.
-- Importer run: `detectExcelItems` over the copy through the same grid
-  builder as `electron/documentExtractor.cjs` (316 split items, 24
+  a problem sheet read with openpyxl; styles.xml, drawings and sheet XML
+  measured directly.
+- Importer run: detectExcelItems over the copy through the same grid
+  builder as electron/documentExtractor.cjs (316 split items, 24
   leftovers).
