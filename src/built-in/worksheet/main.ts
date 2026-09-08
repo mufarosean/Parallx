@@ -512,6 +512,7 @@ function createSidebarView(container: HTMLElement) {
       nav.appendChild(b);
     };
     navItem('Home', 'home', 'Worksheets', 'Quiz, dashboard, bank, import, generate, scratch sheet');
+    navItem('Dashboard', 'dashboard', 'Dashboard', 'Progress, pace, the campaign, what to work on next');
     navItem('Settings', 'settings', 'Worksheets Settings', 'The campaign and the sheet appearance');
     root.appendChild(nav);
     if (items.length === 0) return;
@@ -564,6 +565,35 @@ function createLauncherPane(container: HTMLElement) {
     tile('Scratch Sheet', 'The exam grid, blank.', 'scratch', 'Practice Sheet');
     tile('Settings', campaign ? 'Campaign running · sheet appearance' : 'Campaign · sheet appearance', 'settings', 'Worksheets Settings');
     root.appendChild(grid);
+
+    // What you touched last, and what arrived last: two short lists, each row opens the item.
+    const lists = el('div', 'ws-launch__lists');
+    const listOf = (title: string, rows: WorksheetItemSummary[], meta: (it: WorksheetItemSummary) => string) => {
+      if (rows.length === 0) return;
+      const box = el('div', 'ws-launch__list');
+      box.appendChild(el('div', 'ws-launch__listtitle', title));
+      for (const it of rows) {
+        const row = el('button', 'ws-launch__row') as HTMLButtonElement;
+        row.type = 'button';
+        row.appendChild(el('span', `ws-bank__dot ${stateClass(it.attemptState) || 'rest'}`));
+        const text = el('span', 'ws-launch__rowtext');
+        text.appendChild(el('span', 'ws-launch__rowtitle', it.title));
+        text.appendChild(el('span', 'ws-launch__rowmeta', meta(it)));
+        row.appendChild(text);
+        row.addEventListener('click', () => void openWorksheet(`item:${it.id}`, it.title));
+        box.appendChild(row);
+      }
+      lists.appendChild(box);
+    };
+    const when = (ms: number) => {
+      const days = Math.floor((Date.now() - ms) / 86400000);
+      return days <= 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`;
+    };
+    const recent = items.filter((it) => it.lastAttemptAt > 0).sort((a, b) => b.lastAttemptAt - a.lastAttemptAt).slice(0, 8);
+    listOf('Recent', recent, (it) => [it.paper ? paperLabel(it.paper) : it.sourceLabel, it.attemptState === 'open' ? 'in progress' : gradeLabel(it.attemptState), when(it.lastAttemptAt)].filter(Boolean).join(' · '));
+    const added = [...items].sort((a, b) => b.createdAt - a.createdAt).slice(0, 8);
+    listOf('Newly Added', added, (it) => [it.paper ? paperLabel(it.paper) : it.sourceLabel, `added ${when(it.createdAt)}`].filter(Boolean).join(' · '));
+    root.appendChild(lists);
   };
 
   void render();

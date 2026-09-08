@@ -453,3 +453,13 @@ body > [data-radix-popper-content-wrapper] button { color: inherit; }
 .ws-home__filters .ws-bank__search { width: 220px; margin: 0; }
 .ws-home__filters .ws-bank__filters { margin: 0; }
 .ws-home__summary { font-size: var(--px-text-xs); color: var(--px-text-muted); margin-left: auto; font-variant-numeric: tabular-nums; }
+
+/* Home lists: recent and newly added, rows that open the item. */
+.ws-launch__lists { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--px-space-4); margin-top: var(--px-space-5); }
+.ws-launch__list { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ws-launch__listtitle { font-size: var(--px-text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--px-text-muted); padding: 0 var(--px-space-2); margin-bottom: var(--px-space-1); }
+.ws-launch__row { display: flex; align-items: center; gap: var(--px-space-2); width: 100%; padding: 5px var(--px-space-2); border: 0; border-radius: var(--px-radius-sm); background: transparent; color: var(--px-text); font: inherit; text-align: left; cursor: pointer; min-width: 0; }
+.ws-launch__row:hover, .ws-launch__row:focus-visible { background: var(--px-surface-hover); outline: none; }
+.ws-launch__rowtext { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.ws-launch__rowtitle { font-size: var(--px-text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-launch__rowmeta { font-size: var(--px-text-xs); color: var(--px-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
