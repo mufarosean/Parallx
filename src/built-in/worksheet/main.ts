@@ -24,11 +24,14 @@ import {
   listItems, getItem, createItem, deleteItem, getOpenAttempt, getLatestWork, saveAttemptCells,
   discardOpenAttempt, completeAttempt, saveAttemptReview, onWorksheetDataChanged,
   getSessionGrades, attachWorksheetDatabase, recordImportedRating, upsertProgressSnapshot,
+  getCampaign, startCampaign, endCampaign, listCompletedAttempts,
   type WorksheetItem, type WorksheetItemSummary,
 } from './worksheetData.js';
 import { openXlsx } from './ooxml.js';
 import { detectProblems, readWorkbookTimeline, normalizeRating, ratingLabel, paperLabel, SOURCE_LABELS, KIND_LABELS, QUADRANT_LABELS, type ProblemImport, type WorkbookSnapshot } from './problemImport.js';
 import { createDashboardPane } from './dashboardPane.js';
+import { planCampaign, campaignProgress, addDays } from './campaign.js';
+import { dayKey } from './progressInsights.js';
 import { IDatabaseService } from '../../services/serviceTypes.js';
 import { buildPracticeSet, itemTags } from './practiceSession.js';
 import { itemToWorkbooks, workbookHasOnSheetQuestion, type GeneratedItem } from './itemFormat.js';
@@ -184,6 +187,12 @@ function parseWorkbook(json: string): IWorkbookData | null {
   try { return JSON.parse(json) as IWorkbookData; } catch { return null; }
 }
 
+/** A page title whose explanation lives in its tooltip, so the page stays quiet. */
+function titled(text: string, hint: string): HTMLElement {
+  const t = el('div', 'ws-home__title', text);
+  t.title = hint;
+  return t;
+}
 function el(tag: string, className?: string, text?: string): HTMLElement {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -196,7 +205,7 @@ function el(tag: string, className?: string, text?: string): HTMLElement {
 /** Papers opened in the Problem Bank page; survives re-renders. */
 const _homeOpen = new Set<string>();
 
-function createHomePane(container: HTMLElement) {
+function createBankPane(container: HTMLElement) {
   const root = el('div', 'ws-pane ws-home');
   container.appendChild(root);
   let disposed = false;
@@ -208,26 +217,7 @@ function createHomePane(container: HTMLElement) {
     root.replaceChildren();
 
     const head = el('div', 'ws-home__head');
-    head.appendChild(el('div', 'ws-home__title', 'Problem Bank'));
-    const spacer = el('div'); spacer.style.flex = '1';
-    head.appendChild(spacer);
-    const scratchBtn = el('button', 'ws-btn') as HTMLButtonElement;
-    scratchBtn.textContent = 'Open Scratch Sheet';
-    scratchBtn.addEventListener('click', () => void openWorksheet('scratch', 'Practice Sheet'));
-    head.appendChild(scratchBtn);
-    const importBtn = el('button', 'ws-btn') as HTMLButtonElement;
-    importBtn.textContent = 'Import Workbook';
-    importBtn.addEventListener('click', () => void openWorksheet('excel-import', 'Import Workbook'));
-    head.appendChild(importBtn);
-    const genBtn = el('button', 'ws-btn') as HTMLButtonElement;
-    genBtn.textContent = 'Generate Items';
-    genBtn.addEventListener('click', () => void openWorksheet('create', 'Generate Items'));
-    head.appendChild(genBtn);
-    // Practicing is the daily act — it takes the primary slot.
-    const practiceBtn = el('button', 'ws-btn ws-btn--primary') as HTMLButtonElement;
-    practiceBtn.textContent = 'Start Quiz';
-    practiceBtn.addEventListener('click', () => void openWorksheet('practice', 'Quiz'));
-    head.appendChild(practiceBtn);
+    head.appendChild(titled('Problem Bank', 'Every problem by paper. Open a paper for its problems; click one to practice it.'));
     root.appendChild(head);
 
     if (items.length === 0) {
@@ -283,7 +273,10 @@ function createHomePane(container: HTMLElement) {
       return row;
     };
 
-    const problems = items.filter((it) => it.paper);
+    // Search and filters live here now; the sidebar only navigates.
+    root.appendChild(bankFilterBar(items, () => void render()));
+    const filtering = _bankFilter !== 'all' || !!_bankQuery;
+    const problems = items.filter((it) => it.paper && bankMatches(it, _bankFilter, _bankQuery));
     const generated = items.filter((it) => !it.paper);
     const byPaper = new Map<string, WorksheetItemSummary[]>();
     for (const it of problems) { if (!byPaper.has(it.paper)) byPaper.set(it.paper, []); byPaper.get(it.paper)!.push(it); }
@@ -306,7 +299,7 @@ function createHomePane(container: HTMLElement) {
       head.appendChild(el('span', 'ws-home__papermeta', `${rated} of ${group.length} rated${secs > 0 ? ` · ${fmtSeconds(secs)}` : ''}`));
       head.addEventListener('click', () => { if (_homeOpen.has(key)) _homeOpen.delete(key); else _homeOpen.add(key); void render(); });
       list.appendChild(head);
-      if (_homeOpen.has(key)) {
+      if (filtering || _homeOpen.has(key)) {
         const rows = el('div', 'ws-home__paperitems');
         for (const it of group) rows.appendChild(itemRow(it, false));
         list.appendChild(rows);
@@ -397,14 +390,20 @@ async function deleteGeneratedItems(generated: WorksheetItemSummary[]): Promise<
   _api?.activity?.note('deleted', `${generated.length} generated worksheet items`);
 }
 
-function renderBank(root: HTMLElement, items: WorksheetItemSummary[]): void {
+/** Search and filter chips for the Problem Bank page; the sidebar only navigates. */
+function bankFilterBar(items: WorksheetItemSummary[], onChange: () => void): HTMLElement {
+  const bar = el('div', 'ws-home__filters');
   const search = el('input', 'ws-input ws-bank__search') as HTMLInputElement;
   search.type = 'search';
   search.placeholder = 'Search problems';
   search.value = _bankQuery;
   search.setAttribute('aria-label', 'Search problems');
-  root.appendChild(search);
-
+  let searchTimer: ReturnType<typeof setTimeout> | null = null;
+  search.addEventListener('input', () => {
+    if (searchTimer) clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => { _bankQuery = search.value.trim(); onChange(); }, 120);
+  });
+  bar.appendChild(search);
   const filters = el('div', 'ws-bank__filters');
   const FILTERS: [string, string][] = [['all', 'All'], ['incomplete', 'Incomplete'], ['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard'], ['rf', 'RF'], ['cas', 'CAS'], ['quant', 'Quant'], ['qual', 'Qual'], ['essay', 'Essay']];
   const present = new Set<string>();
@@ -415,40 +414,41 @@ function renderBank(root: HTMLElement, items: WorksheetItemSummary[]): void {
     b.type = 'button';
     b.textContent = label;
     b.setAttribute('aria-pressed', _bankFilter === value ? 'true' : 'false');
-    b.addEventListener('click', () => { _bankFilter = value; paint(); });
+    b.addEventListener('click', () => { _bankFilter = value; onChange(); });
     filters.appendChild(b);
   }
-  root.appendChild(filters);
+  bar.appendChild(filters);
+  const problems = items.filter((it) => it.paper);
+  const shown = problems.filter((it) => bankMatches(it, _bankFilter, _bankQuery));
+  const rated = problems.filter((it) => normalizeRating(it.attemptState)).length;
+  bar.appendChild(el('span', 'ws-home__summary', `${shown.length} of ${problems.length} · ${rated} rated`));
+  return bar;
+}
 
-  const summary = el('div', 'ws-bank__summary');
-  root.appendChild(summary);
+/** The bank in the sidebar: papers with their rating bars and counts, open to the problems, nothing else. */
+function renderBankSnapshot(root: HTMLElement, items: WorksheetItemSummary[]): void {
+  const problems = items.filter((it) => it.paper);
+  const generated = items.filter((it) => !it.paper);
+  const section = el('div', 'ws-side__section');
+  const title = el('button', 'ws-side__sectiontitle', 'Problem Bank') as HTMLButtonElement;
+  title.type = 'button';
+  title.title = 'Open the Problem Bank as a tab';
+  title.addEventListener('click', () => void openWorksheet('bank', 'Problem Bank'));
+  section.appendChild(title);
+  const ratedAll = problems.filter((it) => normalizeRating(it.attemptState)).length;
+  section.appendChild(el('span', 'ws-side__sectioncount', `${ratedAll}/${problems.length}`));
+  root.appendChild(section);
   const listHost = el('div', 'ws-bank__list');
   root.appendChild(listHost);
 
   const paint = () => {
-    for (const b of filters.querySelectorAll('button')) b.setAttribute('aria-pressed', b.textContent === (FILTERS.find(([v]) => v === _bankFilter)?.[1] ?? 'All') ? 'true' : 'false');
     listHost.replaceChildren();
-    // The bank is the workbook's problems. Anything without a paper (items
-    // generated from PDFs, experiments) lives in its own section below and
-    // never mixes with the papers.
-    const problems = items.filter((it) => it.paper);
-    const generated = items.filter((it) => !it.paper);
-    const shown = problems.filter((it) => bankMatches(it, _bankFilter, _bankQuery));
-    const rated = problems.filter((it) => normalizeRating(it.attemptState)).length;
-    summary.textContent = problems.length ? `${shown.length} of ${problems.length} problems · ${rated} rated` : 'No workbook problems yet. Import Workbook fills the bank.';
     const groups = new Map<string, WorksheetItemSummary[]>();
-    for (const it of shown) {
-      const key = it.paper || '';
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(it);
-    }
-    const keys = [...groups.keys()].sort((a, b) => (a === '' ? 1 : b === '' ? -1 : paperLabel(a).localeCompare(paperLabel(b))));
-    const filtering = _bankFilter !== 'all' || !!_bankQuery;
-    for (const key of keys) {
+    for (const it of problems) { if (!groups.has(it.paper)) groups.set(it.paper, []); groups.get(it.paper)!.push(it); }
+    for (const key of [...groups.keys()].sort((a, b) => paperLabel(a).localeCompare(paperLabel(b)))) {
       const list = groups.get(key)!;
       const head = el('div', 'ws-bank__paper');
       head.setAttribute('role', 'button');
-      const open = filtering || _bankOpen.has(key);
       head.appendChild(el('span', 'ws-bank__papername', paperLabel(key)));
       const easy = list.filter((it) => stateClass(it.attemptState) === 'easy').length;
       const medium = list.filter((it) => stateClass(it.attemptState) === 'medium').length;
@@ -463,12 +463,9 @@ function renderBank(root: HTMLElement, items: WorksheetItemSummary[]): void {
       }
       head.appendChild(bar);
       head.appendChild(el('span', 'ws-bank__count', `${easy + medium + hard}/${list.length}`));
-      head.addEventListener('click', () => {
-        if (_bankOpen.has(key)) _bankOpen.delete(key); else _bankOpen.add(key);
-        paint();
-      });
+      head.addEventListener('click', () => { if (_bankOpen.has(key)) _bankOpen.delete(key); else _bankOpen.add(key); paint(); });
       listHost.appendChild(head);
-      if (!open) continue;
+      if (!_bankOpen.has(key)) continue;
       const rows = el('div', 'ws-bank__items');
       for (const it of list) {
         const row = el('div', 'ws-bank__item');
@@ -481,43 +478,20 @@ function renderBank(root: HTMLElement, items: WorksheetItemSummary[]): void {
       }
       listHost.appendChild(rows);
     }
-    if (shown.length === 0 && problems.length > 0) listHost.appendChild(el('div', 'ws-sidebar__empty', 'Nothing matches.'));
     if (generated.length > 0) {
       const head = el('div', 'ws-bank__paper ws-bank__paper--generated');
       head.setAttribute('role', 'button');
       head.appendChild(el('span', 'ws-bank__papername', 'Generated Items'));
       head.appendChild(el('span', 'ws-bank__count', String(generated.length)));
-      head.title = 'Items generated from PDFs or pasted material. Not part of the workbook bank; quizzes leave them out unless you ask.';
-      head.addEventListener('click', () => { if (_bankOpen.has('__generated')) _bankOpen.delete('__generated'); else _bankOpen.add('__generated'); paint(); });
+      head.title = 'Items generated from PDFs or pasted material, kept apart from the workbook. Opens the Problem Bank.';
+      head.addEventListener('click', () => void openWorksheet('bank', 'Problem Bank'));
       listHost.appendChild(head);
-      if (_bankOpen.has('__generated')) {
-        const rows = el('div', 'ws-bank__items');
-        for (const it of generated) {
-          const row = el('div', 'ws-bank__item');
-          row.appendChild(el('span', `ws-bank__dot ${stateClass(it.attemptState)}`));
-          row.appendChild(el('span', 'ws-bank__itemtitle', it.title));
-          row.title = it.title;
-          row.addEventListener('click', () => void openWorksheet(`item:${it.id}`, it.title));
-          rows.appendChild(row);
-        }
-        const clear = el('button', 'ws-btn ws-btn--danger ws-btn--block') as HTMLButtonElement;
-        clear.textContent = 'Delete All Generated Items';
-        clear.style.marginTop = 'var(--px-space-1)';
-        clear.addEventListener('click', () => { void deleteGeneratedItems(generated); });
-        rows.appendChild(clear);
-        listHost.appendChild(rows);
-      }
     }
   };
-  let searchTimer: ReturnType<typeof setTimeout> | null = null;
-  search.addEventListener('input', () => {
-    if (searchTimer) clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => { _bankQuery = search.value.trim(); paint(); }, 120);
-  });
   paint();
 }
 
-// ── Sidebar view (activity bar → Worksheets) ────────────────────────────────
+// ── Sidebar view (activity bar → Worksheets): navigation, then the bank snapshot ──
 
 function createSidebarView(container: HTMLElement) {
   const root = el('div', 'ws-sidebar');
@@ -529,38 +503,157 @@ function createSidebarView(container: HTMLElement) {
     const items = await listItems().catch(() => []);
     if (disposed) return;
     root.replaceChildren();
-
-    const actions = el('div', 'ws-sidebar__actions');
-    const mk = (label: string, primary: boolean, onClick: () => void) => {
-      const b = el('button', primary ? 'ws-btn ws-btn--primary ws-btn--block' : 'ws-btn ws-btn--block') as HTMLButtonElement;
-      b.textContent = label;
-      b.addEventListener('click', onClick);
-      actions.appendChild(b);
+    const nav = el('div', 'ws-nav');
+    const navItem = (label: string, instanceId: string, tabTitle: string, tip: string) => {
+      const b = el('button', 'ws-nav__item', label) as HTMLButtonElement;
+      b.type = 'button';
+      b.title = tip;
+      b.addEventListener('click', () => void openWorksheet(instanceId, tabTitle));
+      nav.appendChild(b);
     };
-    mk('Start Quiz', true, () => void openWorksheet('practice', 'Quiz'));
-    mk('Dashboard', false, () => void openWorksheet('dashboard', 'Dashboard'));
-    mk('Import Workbook', false, () => void openWorksheet('excel-import', 'Import Workbook'));
-    mk('Generate Items', false, () => void openWorksheet('create', 'Generate Items'));
-    mk('Scratch Sheet', false, () => void openWorksheet('scratch', 'Practice Sheet'));
-    root.appendChild(actions);
-
-    if (items.length === 0) {
-      root.appendChild(el('div', 'ws-sidebar__empty', 'The bank is empty. Import your practice workbook, or generate items from study material.'));
-      return;
-    }
-    renderBank(root, items);
+    navItem('Home', 'home', 'Worksheets', 'Quiz, dashboard, bank, import, generate, scratch sheet');
+    navItem('Settings', 'settings', 'Worksheets Settings', 'The campaign and the sheet appearance');
+    root.appendChild(nav);
+    if (items.length === 0) return;
+    renderBankSnapshot(root, items);
   };
 
   void render();
   const sub = onWorksheetDataChanged(() => void render());
+  return { dispose: () => { disposed = true; sub.dispose(); root.remove(); } };
+}
 
-  return {
-    dispose: () => {
-      disposed = true;
-      sub.dispose();
-      root.remove();
-    },
+// ── Home (instanceId 'home'): the launcher ──────────────────────────────────
+
+function createLauncherPane(container: HTMLElement) {
+  const root = el('div', 'ws-pane ws-launch');
+  container.appendChild(root);
+  let disposed = false;
+
+  const render = async () => {
+    if (disposed) return;
+    const [items, campaign, attempts] = await Promise.all([
+      listItems().catch(() => []),
+      getCampaign().catch(() => null),
+      listCompletedAttempts().catch(() => []),
+    ]);
+    if (disposed) return;
+    root.replaceChildren();
+    root.appendChild(el('div', 'ws-home__title', 'Worksheets'));
+    const grid = el('div', 'ws-launch__grid');
+    const tile = (title: string, desc: string, instanceId: string, tabTitle: string, primary = false) => {
+      const b = el('button', primary ? 'ws-launch__tile ws-launch__tile--primary' : 'ws-launch__tile') as HTMLButtonElement;
+      b.type = 'button';
+      b.appendChild(el('span', 'ws-launch__tiletitle', title));
+      b.appendChild(el('span', 'ws-launch__tiledesc', desc));
+      b.addEventListener('click', () => void openWorksheet(instanceId, tabTitle));
+      grid.appendChild(b);
+    };
+    const problems = items.filter((it) => it.paper);
+    const rated = problems.filter((it) => normalizeRating(it.attemptState)).length;
+    let dashDesc = 'Progress, pace, what to work on next.';
+    if (campaign) {
+      const p = campaignProgress(campaign, items, attempts);
+      dashDesc = p.finished ? 'Campaign complete.' : `Day ${p.dayIndex} of ${campaign.days} · ${p.doneToday} of ${p.target} today`;
+    }
+    tile('Start Quiz', 'Draw problems from the bank and work them in order.', 'practice', 'Quiz', true);
+    tile('Dashboard', dashDesc, 'dashboard', 'Dashboard');
+    tile('Problem Bank', problems.length ? `${problems.length} problems · ${rated} rated` : 'Empty until you import a workbook.', 'bank', 'Problem Bank');
+    tile('Import Workbook', 'A ProblemTrack workbook, every sheet as it is.', 'excel-import', 'Import Workbook');
+    tile('Generate Items', 'Practice items from a PDF or pasted material.', 'create', 'Generate Items');
+    tile('Scratch Sheet', 'The exam grid, blank.', 'scratch', 'Practice Sheet');
+    tile('Settings', campaign ? 'Campaign running · sheet appearance' : 'Campaign · sheet appearance', 'settings', 'Worksheets Settings');
+    root.appendChild(grid);
   };
+
+  void render();
+  const sub = onWorksheetDataChanged(() => void render());
+  return { dispose: () => { disposed = true; sub.dispose(); root.remove(); } };
+}
+
+// ── Settings (instanceId 'settings') ────────────────────────────────────────
+
+function fmtShortDay(day: string): string {
+  const [y, m, d] = day.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function createSettingsPane(container: HTMLElement) {
+  const root = el('div', 'ws-pane ws-settings');
+  container.appendChild(root);
+  let disposed = false;
+
+  const render = async () => {
+    if (disposed) return;
+    const [items, campaign, attempts] = await Promise.all([
+      listItems().catch(() => []),
+      getCampaign().catch(() => null),
+      listCompletedAttempts().catch(() => []),
+    ]);
+    if (disposed) return;
+    root.replaceChildren();
+    root.appendChild(titled('Worksheets Settings', 'The campaign and how the practice sheet looks.'));
+
+    // The campaign: every problem in the bank in N days.
+    const camp = el('section', 'ws-settings__section');
+    const campTitle = el('div', 'ws-settings__sectiontitle', 'Campaign');
+    campTitle.title = 'Every problem in the bank in a set number of days, drawn across all papers. Each day gets its own draw, every rating earns XP, a full day keeps the streak, a paper is cleared when nothing in it is left.';
+    camp.appendChild(campTitle);
+    const problems = items.filter((it) => it.paper);
+    if (!campaign) {
+      const row = el('div', 'ws-settings__row');
+      const daysIn = el('input', 'ws-input ws-input--count') as HTMLInputElement;
+      daysIn.type = 'number'; daysIn.min = '1'; daysIn.max = '365'; daysIn.value = '18';
+      daysIn.setAttribute('aria-label', 'Days');
+      const perDay = el('span', 'ws-settings__status');
+      const readDays = () => Math.max(1, Math.min(365, parseInt(daysIn.value, 10) || 18));
+      const sync = () => { const d = readDays(); perDay.textContent = `${Math.ceil(problems.length / d)} a day, the last one on ${fmtShortDay(addDays(dayKey(Date.now()), d - 1))}`; };
+      daysIn.addEventListener('input', sync);
+      sync();
+      row.append(el('span', 'ws-hint', 'Days'), daysIn, perDay);
+      camp.appendChild(row);
+      const start = el('button', 'ws-btn ws-btn--primary') as HTMLButtonElement;
+      start.textContent = 'Start Campaign';
+      start.disabled = problems.length === 0;
+      start.title = problems.length === 0 ? 'Import a workbook first.' : `${problems.length} problems, all of them, from today.`;
+      start.addEventListener('click', () => { void startCampaign(planCampaign(problems.length, readDays())); });
+      camp.appendChild(start);
+    } else {
+      const p = campaignProgress(campaign, items, attempts);
+      camp.appendChild(el('div', 'ws-settings__status', `Day ${p.dayIndex} of ${campaign.days} · ${p.done} of ${p.total} done · ${campaign.dailyTarget} a day · ends ${fmtShortDay(addDays(campaign.startDay, campaign.days - 1))}`));
+      const end = el('button', 'ws-btn ws-btn--danger') as HTMLButtonElement;
+      end.textContent = 'End Campaign';
+      end.title = 'Stops the campaign. Ratings and attempts stay; the streak, XP and draws are dropped.';
+      end.addEventListener('click', () => {
+        if (end.dataset.armed !== '1') { end.dataset.armed = '1'; end.textContent = 'End It, Really'; setTimeout(() => { end.dataset.armed = ''; end.textContent = 'End Campaign'; }, 4000); return; }
+        void endCampaign();
+      });
+      camp.appendChild(end);
+    }
+    root.appendChild(camp);
+
+    // The sheet's look, independent of the app theme.
+    const look = el('section', 'ws-settings__section');
+    const lookTitle = el('div', 'ws-settings__sectiontitle', 'Sheet Appearance');
+    lookTitle.title = 'The practice sheet keeps its own theme. Light matches the real exam tool; App follows the workbench.';
+    look.appendChild(lookTitle);
+    const row = el('div', 'ws-settings__row');
+    const current = getSheetAppearance();
+    for (const [value, label] of [['light', 'Light'], ['dark', 'Dark'], ['app', 'Follow App']] as [SheetAppearance, string][]) {
+      const b = el('button', 'ws-chip ws-practicechip', label) as HTMLButtonElement;
+      b.type = 'button';
+      b.classList.toggle('ws-practicechip--active', current === value);
+      b.setAttribute('aria-pressed', current === value ? 'true' : 'false');
+      b.addEventListener('click', () => { void setSheetAppearance(value).then(() => render()); });
+      row.appendChild(b);
+    }
+    look.appendChild(row);
+    root.appendChild(look);
+  };
+
+  void render();
+  const sub = onWorksheetDataChanged(() => void render());
+  return { dispose: () => { disposed = true; sub.dispose(); root.remove(); } };
 }
 
 // ── Generate pane (instanceId 'create') ─────────────────────────────────────
@@ -570,9 +663,7 @@ function createGeneratePane(container: HTMLElement) {
   container.appendChild(root);
   let disposed = false;
 
-  root.appendChild(el('div', 'ws-home__title', 'Generate Practice Items'));
-  root.appendChild(el('div', 'ws-hint',
-    'Drop a PDF (past exams, study cookbooks) or paste material. Items are generated with givens and a worked model solution, then reviewed by you before anything is saved.'));
+  root.appendChild(titled('Generate Practice Items', 'Drop a PDF (past exams, study cookbooks) or paste material. Items are generated with givens and a worked model solution, then reviewed by you before anything is saved.'));
 
   const source = { text: '', label: '', uri: '', pageTexts: null as string[] | null };
   const status = el('div', 'ws-hint ws-create__status', 'No source loaded yet.');
@@ -870,9 +961,7 @@ function createPracticeConfigPane(container: HTMLElement) {
   container.appendChild(root);
   let disposed = false;
 
-  root.appendChild(el('div', 'ws-home__title', 'Start a Quiz'));
-  root.appendChild(el('div', 'ws-hint',
-    'Draw problems from the bank the way the workbook did: choose papers, sources and kinds, a rating band, a length, shuffle. Every rating you give lands on the problem and moves the dashboard.'));
+  root.appendChild(titled('Start a Quiz', 'Choose papers, sources and kinds, a rating band, a length, shuffle. Every rating you give lands on the problem and moves the dashboard.'));
 
   // The workbook's Quiz Generator, as chips: which papers, which sources,
   // which kinds, which rating band, how many. Generated items stay out
@@ -1162,11 +1251,7 @@ function createExcelImportPane(container: HTMLElement) {
   container.appendChild(root);
   let disposed = false;
 
-  root.appendChild(el('div', 'ws-home__title', 'Import a Practice Workbook'));
-  root.appendChild(el('div', 'ws-hint',
-    'A ProblemTrack-style workbook (one problem per sheet, named Paper.Source_NN, with a Solution marker) comes in as it is: every sheet with its formatting, the solution hidden until you reveal it, your Easy, Medium and Hard ratings carried over. Other spreadsheets fall back to Item/Answer pair and side-by-side detection.'));
-  root.appendChild(el('div', 'ws-hint',
-    'Bring existing spreadsheet practice problems in as native items. Item/Answer sheet pairs and question-left, solution-right sheets are detected automatically; anything else can be imported whole. Values, formulas and layout carry over.'));
+  root.appendChild(titled('Import a Practice Workbook', 'A ProblemTrack-style workbook (one problem per sheet, named Paper.Source_NN, with a Solution marker) comes in as it is: every sheet with its formatting, the solution hidden until you reveal it, your ratings carried over. Other spreadsheets: Item/Answer sheet pairs and question-left, solution-right sheets are detected; anything else can be imported whole.'));
 
   const pickRow = el('div', 'ws-create__controls');
   const pickBtn = el('button', 'ws-btn ws-btn--primary') as HTMLButtonElement;
@@ -1360,7 +1445,7 @@ function createExcelImportPane(container: HTMLElement) {
             done === 0 && history ? `Nothing new to import. Added ${history}.`
               : `Imported ${done} ${done === 1 ? 'problem' : 'problems'}${carried ? `, ${carried} with your rating` : ''}${history ? `, ${history}` : ''}.`,
           );
-          await openWorksheet('home', 'Problem Bank');
+          await openWorksheet('bank', 'Problem Bank');
         } catch (e) {
           err.textContent = (e as Error).message;
           err.style.display = '';
@@ -2031,7 +2116,9 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
         // Provenance contract (M98 lesson): key on instanceId, never parse
         // the namespaced input.id.
         const instanceId = input?.instanceId ?? input?.id ?? 'home';
-        if (instanceId === 'home') return createHomePane(container);
+        if (instanceId === 'home') return createLauncherPane(container);
+        if (instanceId === 'bank') return createBankPane(container);
+        if (instanceId === 'settings') return createSettingsPane(container);
         if (instanceId === 'create') return createGeneratePane(container);
         if (instanceId === 'excel-import') return createExcelImportPane(container);
         if (instanceId === 'practice') return createPracticeConfigPane(container);
@@ -2042,6 +2129,7 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
             startQuiz: (ids) => startQuizWith(ids),
             configureQuiz: (preset) => { _quizPreset = preset; void openWorksheet('practice', 'Quiz'); },
             importWorkbook: () => void openWorksheet('excel-import', 'Import Workbook'),
+            openSettings: () => void openWorksheet('settings', 'Worksheets Settings'),
             studyFlashcards: () => {
               const cmds = (_api as unknown as { commands?: { executeCommand?: (id: string) => Promise<unknown> } } | null)?.commands;
               if (cmds?.executeCommand) void cmds.executeCommand('flashcards.study').catch(() => void _api?.window?.showInformationMessage?.('Flashcards is not available in this workspace.'));
@@ -2076,6 +2164,12 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
   );
   context.subscriptions.push(
     api.commands.registerCommand('worksheet.dashboard', () => openWorksheet('dashboard', 'Dashboard')),
+  );
+  context.subscriptions.push(
+    api.commands.registerCommand('worksheet.bank', () => openWorksheet('bank', 'Problem Bank')),
+  );
+  context.subscriptions.push(
+    api.commands.registerCommand('worksheet.settings', () => openWorksheet('settings', 'Worksheets Settings')),
   );
 
   // The AI's read surface: bank/progress + the user's actual sheet work.

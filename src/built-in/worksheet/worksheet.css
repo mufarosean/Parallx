@@ -421,3 +421,35 @@ body > [data-radix-popper-content-wrapper] button { color: inherit; }
 .ws-camp__paper { margin-left: 0; }
 .ws-camp__foot { display: flex; justify-content: flex-end; }
 .ws-camp--idle > .ws-btn { align-self: flex-start; }
+
+/* ── Sidebar as navigation: Home, Settings, then the bank snapshot that opens as a tab ── */
+.ws-nav { display: flex; flex-direction: column; gap: 2px; }
+.ws-nav__item { display: flex; align-items: center; gap: var(--px-space-2); width: 100%; padding: 5px var(--px-space-2); border: 0; border-radius: var(--px-radius-sm); background: transparent; color: var(--px-text); font: inherit; font-size: var(--px-text-sm); text-align: left; cursor: pointer; }
+.ws-nav__item:hover, .ws-nav__item:focus-visible { background: var(--px-surface-hover); outline: none; }
+.ws-nav__item svg { width: 14px; height: 14px; flex: 0 0 auto; color: var(--px-text-muted); }
+.ws-side__section { display: flex; align-items: center; justify-content: space-between; gap: var(--px-space-2); margin-top: var(--px-space-3); padding: 0 var(--px-space-2); }
+.ws-side__sectiontitle { border: 0; background: transparent; padding: 2px 0; font: inherit; font-size: var(--px-text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--px-text-muted); cursor: pointer; }
+.ws-side__sectiontitle:hover { color: var(--px-text); }
+.ws-side__sectioncount { font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
+/* Home: a launcher of tiles, one per thing you can do here. */
+.ws-launch { padding: var(--px-space-6); overflow-y: auto; }
+.ws-launch__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--px-space-3); margin-top: var(--px-space-4); }
+.ws-launch__tile { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: var(--px-space-4); border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-elevated); color: var(--px-text); font: inherit; text-align: left; cursor: pointer; min-height: 84px; }
+.ws-launch__tile:hover, .ws-launch__tile:focus-visible { border-color: var(--px-border-strong); background: var(--px-surface-hover); outline: none; }
+.ws-launch__tile--primary { border-color: var(--px-accent); }
+.ws-launch__tiletitle { font-size: var(--px-text-md); font-weight: 600; }
+.ws-launch__tiledesc { font-size: var(--px-text-sm); color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
+/* Settings: sections with a heading and its controls, nothing else. */
+.ws-settings { padding: var(--px-space-6); overflow-y: auto; display: flex; flex-direction: column; gap: var(--px-space-5); }
+.ws-settings__section { display: flex; flex-direction: column; gap: var(--px-space-2); padding-top: var(--px-space-4); border-top: 1px solid var(--px-border); }
+.ws-settings__sectiontitle { font-size: var(--px-text-base); font-weight: 600; color: var(--px-text); }
+.ws-settings__row { display: flex; align-items: center; gap: var(--px-space-2); flex-wrap: wrap; }
+.ws-settings__status { font-size: var(--px-text-sm); color: var(--px-text-secondary); font-variant-numeric: tabular-nums; }
+/* The dashboard without a campaign: one quiet line. */
+.ws-camp--idle { flex-direction: row; align-items: center; justify-content: space-between; gap: var(--px-space-3); padding: var(--px-space-2) var(--px-space-4); }
+.ws-camp--idle .ws-hint { margin: 0; }
+/* The bank page's filter row, moved here from the sidebar. */
+.ws-home__filters { display: flex; align-items: center; gap: var(--px-space-2); flex-wrap: wrap; margin-bottom: var(--px-space-3); }
+.ws-home__filters .ws-bank__search { width: 220px; margin: 0; }
+.ws-home__filters .ws-bank__filters { margin: 0; }
+.ws-home__summary { font-size: var(--px-text-xs); color: var(--px-text-muted); margin-left: auto; font-variant-numeric: tabular-nums; }

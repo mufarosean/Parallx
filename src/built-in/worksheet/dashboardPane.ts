@@ -7,9 +7,9 @@
 // is due again, what keeps going wrong, the weakest papers, and the vendor's
 // easy-and-likely problems never tried. Every row opens the problem or
 // starts a quiz; the arithmetic lives in progressInsights.ts.
-import { listItems, listCompletedAttempts, listProgressSnapshots, onWorksheetDataChanged, getCampaign, startCampaign, endCampaign, getDailyDraw, saveDailyDraw } from './worksheetData.js';
+import { listItems, listCompletedAttempts, listProgressSnapshots, onWorksheetDataChanged, getCampaign, getDailyDraw, saveDailyDraw } from './worksheetData.js';
 import { computeInsights, dayKey, type Insights, type PaperProgress, type InsightItem, type InsightAttempt, type TimelinePoint } from './progressInsights.js';
-import { planCampaign, campaignProgress, campaignDone, drawToday, addDays, LEVEL_TITLES, type Campaign } from './campaign.js';
+import { campaignProgress, campaignDone, drawToday, addDays, LEVEL_TITLES, type Campaign } from './campaign.js';
 import { paperLabel, ratingLabel, QUADRANT_LABELS } from './problemImport.js';
 
 export interface DashboardActions {
@@ -21,6 +21,8 @@ export interface DashboardActions {
   importWorkbook(): void;
   /** The day's other quest: the flashcards extension's due cards. */
   studyFlashcards(): void;
+  /** Worksheets Settings: where a campaign is set up and ended. */
+  openSettings(): void;
 }
 
 function el(tag: string, className?: string, text?: string): HTMLElement {
@@ -68,11 +70,13 @@ function tile(label: string, value: string, sub: string): HTMLElement {
   return t;
 }
 
+/** A card: its title carries the explanation as a tooltip, the body carries the content. */
 function card(title: string, hint: string): { root: HTMLElement; body: HTMLElement; foot: HTMLElement } {
   const root = el('section', 'ws-dash__card');
   const head = el('div', 'ws-dash__cardhead');
-  head.appendChild(el('div', 'ws-dash__cardtitle', title));
-  head.appendChild(el('div', 'ws-dash__cardhint', hint));
+  const t = el('div', 'ws-dash__cardtitle', title);
+  t.title = hint;
+  head.appendChild(t);
   root.appendChild(head);
   const body = el('div', 'ws-dash__cardbody');
   root.appendChild(body);
@@ -272,24 +276,12 @@ async function campaignSection(root: HTMLElement, items: InsightItem[], attempts
   root.appendChild(sec);
 
   if (!campaign) {
+    // No campaign: one quiet line. Setting one up is a Settings matter.
     sec.classList.add('ws-camp--idle');
-    sec.appendChild(el('div', 'ws-camp__title', 'Start A Campaign'));
-    sec.appendChild(el('div', 'ws-hint', `Every problem in the bank, a fixed number a day, drawn across all papers. Each day gets its own draw, every rating earns XP, a full day keeps the streak, and a paper is cleared when nothing in it is left. ${problems.length} problems are waiting.`));
-    const form = el('div', 'ws-camp__form');
-    const daysIn = el('input', 'ws-input ws-input--count') as HTMLInputElement;
-    daysIn.type = 'number'; daysIn.min = '1'; daysIn.max = '365'; daysIn.value = '18';
-    daysIn.setAttribute('aria-label', 'Days');
-    const perDay = el('span', 'ws-hint');
-    const readDays = () => Math.max(1, Math.min(365, parseInt(daysIn.value, 10) || 18));
-    const sync = () => {
-      const d = readDays();
-      perDay.textContent = `${Math.ceil(problems.length / d)} problems a day, the last one on ${fmtDay(addDays(dayKey(Date.now()), d - 1), true)}.`;
-    };
-    daysIn.addEventListener('input', sync);
-    sync();
-    form.append(el('span', 'ws-hint', 'Days'), daysIn, perDay);
-    sec.appendChild(form);
-    sec.appendChild(btn('Start Campaign', 'ws-btn ws-btn--primary', () => { void startCampaign(planCampaign(problems.length, readDays())); }));
+    sec.appendChild(el('span', 'ws-hint', `No campaign running. ${problems.length} problems in the bank.`));
+    const setup = btn('Set Up Campaign', 'ws-btn ws-btn--small', () => actions.openSettings());
+    setup.title = 'Every problem in the bank in a set number of days, drawn across all papers';
+    sec.appendChild(setup);
     return false;
   }
 
@@ -378,13 +370,6 @@ async function campaignSection(root: HTMLElement, items: InsightItem[], attempts
   }
   sec.appendChild(papers);
 
-  const foot = el('div', 'ws-camp__foot');
-  const end = btn('End Campaign', 'ws-btn ws-btn--small', () => {
-    if (end.dataset.armed !== '1') { end.dataset.armed = '1'; end.textContent = 'End It, Really'; setTimeout(() => { end.dataset.armed = ''; end.textContent = 'End Campaign'; }, 4000); return; }
-    void endCampaign();
-  });
-  foot.appendChild(end);
-  sec.appendChild(foot);
   return true;
 }
 
@@ -416,8 +401,9 @@ export function createDashboardPane(container: HTMLElement, actions: DashboardAc
     const ins: Insights = computeInsights(items, attempts, snapshots);
 
     const head = el('div', 'ws-dash__head');
-    head.appendChild(el('div', 'ws-home__title', 'Dashboard'));
-    head.appendChild(el('div', 'ws-hint', 'Every rating you give moves these numbers. The score counts Easy in full, Medium half, Hard nothing.'));
+    const title = el('div', 'ws-home__title', 'Dashboard');
+    title.title = 'Every rating you give moves these numbers. The score counts Easy in full, Medium half, Hard nothing.';
+    head.appendChild(title);
     root.appendChild(head);
 
     if (ins.totalProblems === 0) {
