@@ -27,6 +27,14 @@ source-of-truth.
 
 ## Forward-looking
 - [Future_Improvements.md](./Future_Improvements.md)
+- [MEMORY_BRIEF.md](./MEMORY_BRIEF.md) — memory as an editable artifact (2026-09-05)
+- [SKILL_AUTHORING_BRIEF.md](./SKILL_AUTHORING_BRIEF.md) — skills that write themselves (2026-09-05)
+- [LESSON_BUILDER_BRIEF.md](./LESSON_BUILDER_BRIEF.md) — exam material into forms you can study (2026-09-05)
+- [WORKBENCH_DRIVER_BRIEF.md](./WORKBENCH_DRIVER_BRIEF.md) — the AI runs Parallx like a human would (2026-09-05)
+- [WORKFLOWS_BRIEF.md](./WORKFLOWS_BRIEF.md) — autonomy as a graph; suggestions audit added 2026-09-05
+- [research/GitHub_Landscape_2026-09.md](./research/GitHub_Landscape_2026-09.md) — repos to learn from, ranked against what exists
+- [research/Fun_Extensions_Ideation_2026-09.md](./research/Fun_Extensions_Ideation_2026-09.md) — fun extensions: shortlist, the Studio direction for art study, Maggiori notes (2026-09-05)
+- [research/Fun_Extensions_Catalogue_2026-09.md](./research/Fun_Extensions_Catalogue_2026-09.md) — the raw 42-idea catalogue behind the shortlist
 - [research/INTERACTION_LAYER_ARCHITECTURE.md](./research/INTERACTION_LAYER_ARCHITECTURE.md)
 - [research/Living_UI_Ideas.md](./research/Living_UI_Ideas.md)
 - [research/Living_UI_Research.md](./research/Living_UI_Research.md)
