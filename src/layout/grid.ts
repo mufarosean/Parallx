@@ -119,6 +119,18 @@ export class Grid extends Disposable {
   /**
    * Add a view as a child of the root node.
    */
+  /**
+   * A view's real width AND height from the model, whichever way its
+   * branch runs. getViewSize is the size along the parent's axis only: for
+   * a sidebar stacked over a widget that is its HEIGHT, and a toggle that
+   * remembered it as a width brought the sidebar back a thousand pixels wide.
+   */
+  getViewRect(viewId: string): { width: number; height: number } | undefined {
+    const leaf = this._views.get(viewId);
+    if (!leaf) return undefined;
+    return this._nodeDims(leaf);
+  }
+
   addView(view: IGridView, size: number, index?: number): void {
     const leaf = new GridLeafNode(view, SizingMode.Pixel);
     leaf.cachedSize = size;

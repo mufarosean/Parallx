@@ -210,6 +210,8 @@ export abstract class Layout extends Disposable {
 
   /** Last known sidebar width — restored on toggle / persisted across sessions. */
   protected _lastSidebarWidth: number = DEFAULT_SIDEBAR_WIDTH;
+  /** Its height when it last sat in a vertical stack; 0 until it has. */
+  protected _lastSidebarHeight = 0;
   /** Last known panel height — restored on toggle / persisted across sessions. */
   protected _lastPanelHeight: number = DEFAULT_PANEL_HEIGHT;
   /** Last known auxiliary bar width — restored on toggle / persisted across sessions. */
@@ -289,7 +291,7 @@ export abstract class Layout extends Disposable {
   private readonly _areaMemory = new Map<BodyArea, string[]>();
 
   /** Sizes of floating views hidden by an area toggle, for their return. */
-  private readonly _hiddenFloatingSizes = new Map<string, number>();
+  private readonly _hiddenFloatingSizes = new Map<string, { width: number; height: number }>();
 
   private _partDrag: PartDragController | undefined;
 
@@ -530,6 +532,15 @@ export abstract class Layout extends Disposable {
    * placement when the recall no longer resolves (the neighbour is gone).
    * Caller suspends tracking.
    */
+  /**
+   * The size a recall replays with: along the recalled axis. A part that
+   * sat in a vertical stack gets its height back, not its width as a height.
+   */
+  private _recalledSize(viewId: string, width: number, height: number): number {
+    const recall = this._placementRecall.get(viewId);
+    return recall?.orientation === Orientation.Vertical && height > 0 ? height : width;
+  }
+
   private _placePart(part: IGridView, size: number, fallback: () => void): void {
     const recall = this._placementRecall.get(part.id);
     if (recall?.kind === 'beside' && this._grid.hasView(recall.siblingId)) {
@@ -648,25 +659,27 @@ export abstract class Layout extends Disposable {
       // mutations suspend this — see _suspendTracking.
       if (this._suspendTracking) return;
       if (this._sidebar.visible) {
-        const w = this._grid.getViewSize(this._sidebar.id);
-        if (w !== undefined && w > 0) {
-          if (this._lastSidebarWidth !== w) this._announceUserResize('the sidebar', w);
-          this._lastSidebarWidth = w;
+        // Real width and height, whichever way its branch runs.
+        const r = this._grid.getViewRect(this._sidebar.id);
+        if (r && r.width > 0) {
+          if (this._lastSidebarWidth !== r.width) this._announceUserResize('the sidebar', r.width);
+          this._lastSidebarWidth = r.width;
         }
+        if (r && r.height > 0) this._lastSidebarHeight = r.height;
       }
       if (this._panel.visible) {
         if (this._panelMaximized) {
           this._panelMaximized = false;
           this._onDidChangePanelMaximized.fire(false);
         }
-        const h = this._grid.getViewSize(this._panel.id);
+        const h = this._grid.getViewRect(this._panel.id)?.height;
         if (h !== undefined && h > 0) {
           if (this._lastPanelHeight !== h) this._announceUserResize('the panel', h);
           this._lastPanelHeight = h;
         }
       }
       if (this._auxBarVisible) {
-        const w = this._grid.getViewSize(this._auxiliaryBar.id);
+        const w = this._grid.getViewRect(this._auxiliaryBar.id)?.width;
         if (w !== undefined && w > 0) {
           if (this._lastAuxBarWidth !== w) this._announceUserResize('the side panel', w);
           this._lastAuxBarWidth = w;
@@ -843,7 +856,7 @@ export abstract class Layout extends Disposable {
   toggleAuxiliaryBar(): void {
     this._withTrackingSuspended(() => {
       if (this._auxBarVisible) {
-        const currentWidth = this._grid.getViewSize(this._auxiliaryBar.id);
+        const currentWidth = this._grid.getViewRect(this._auxiliaryBar.id)?.width;
         if (currentWidth !== undefined && currentWidth > 0) {
           this._lastAuxBarWidth = currentWidth;
         }
@@ -882,11 +895,15 @@ export abstract class Layout extends Disposable {
     const el = this._sidebar.element;
 
     if (this._sidebar.visible) {
-      // Save current width before collapsing so we can restore later
-      const currentWidth = this._grid.getViewSize(this._sidebar.id);
-      if (currentWidth !== undefined && currentWidth > 0) {
-        this._lastSidebarWidth = currentWidth;
-      }
+      // Its real width and height, whichever way its branch runs, and its
+      // place, recorded NOW: the removal below waits for the animation, and
+      // an area hide removes the neighbours in the meantime. Recording in
+      // the callback described a column the widget had already left, so
+      // the sidebar came back beside the editor at its height for a width.
+      const rect = this._grid.getViewRect(this._sidebar.id);
+      if (rect && rect.width > 0) this._lastSidebarWidth = rect.width;
+      if (rect && rect.height > 0) this._lastSidebarHeight = rect.height;
+      this._recordPlacement(this._sidebar.id);
 
       // Animate out, then remove from grid
       el.classList.add('sidebar-animating', 'sidebar-collapsed');
@@ -897,7 +914,6 @@ export abstract class Layout extends Disposable {
         el.removeEventListener('transitionend', finish);
         el.classList.remove('sidebar-animating', 'sidebar-collapsed');
         this._withTrackingSuspended(() => {
-          this._recordPlacement(this._sidebar.id);
           this._grid.removeView(this._sidebar.id);
           this._sidebar.setVisible(false);
           this._relayoutBody();
@@ -913,7 +929,7 @@ export abstract class Layout extends Disposable {
       this._sidebar.setVisible(true);
       el.classList.add('sidebar-animating', 'sidebar-collapsed');
       this._withTrackingSuspended(() => {
-        this._placePart(this._sidebar, this._lastSidebarWidth, () => {
+        this._placePart(this._sidebar, this._recalledSize(this._sidebar.id, this._lastSidebarWidth, this._lastSidebarHeight), () => {
           this._grid.addView(this._sidebar, this._lastSidebarWidth);
           this._grid.moveViewToEdge(
             this._sidebar.id, Orientation.Horizontal, true, this._lastSidebarWidth,
@@ -943,7 +959,7 @@ export abstract class Layout extends Disposable {
   togglePanel(): void {
     this._withTrackingSuspended(() => {
       if (this._panel.visible) {
-        const currentHeight = this._grid.getViewSize(this._panel.id);
+        const currentHeight = this._grid.getViewRect(this._panel.id)?.height;
         if (currentHeight !== undefined && currentHeight > 0) {
           this._lastPanelHeight = currentHeight;
         }
@@ -1145,8 +1161,8 @@ export abstract class Layout extends Disposable {
     // object itself stays registered so its leaf can come back.
     if (!this._grid.hasView(viewId)) return;
     this._withTrackingSuspended(() => {
-      const size = this._grid.getViewSize(viewId);
-      if (size !== undefined && size > 0) this._hiddenFloatingSizes.set(viewId, size);
+      const rect = this._grid.getViewRect(viewId);
+      if (rect && rect.width > 0 && rect.height > 0) this._hiddenFloatingSizes.set(viewId, rect);
       this._recordPlacement(viewId);
       this._grid.removeView(viewId);
       this._relayoutBody();
@@ -1170,12 +1186,14 @@ export abstract class Layout extends Disposable {
     }
     const view = this._floatingViews.get(viewId);
     if (!view || this._grid.hasView(viewId)) return;
-    const size = this._hiddenFloatingSizes.get(viewId) ?? DEFAULT_PANEL_HEIGHT;
+    const rect = this._hiddenFloatingSizes.get(viewId) ?? { width: DEFAULT_PANEL_HEIGHT, height: DEFAULT_PANEL_HEIGHT };
+    const edge = AREA_EDGES[area];
+    // Along the recalled axis when the place resolves; along the edge's axis as the home.
+    const edgeSize = edge.orientation === Orientation.Vertical ? rect.height : rect.width;
     this._withTrackingSuspended(() => {
-      this._placePart(view, size, () => {
-        this._grid.addView(view, size);
-        const edge = AREA_EDGES[area];
-        this._grid.moveViewToEdge(viewId, edge.orientation, edge.before, size);
+      this._placePart(view, this._recalledSize(viewId, rect.width, rect.height), () => {
+        this._grid.addView(view, edgeSize);
+        this._grid.moveViewToEdge(viewId, edge.orientation, edge.before, edgeSize);
       });
       this._relayoutBody();
     });
@@ -1232,7 +1250,7 @@ export abstract class Layout extends Disposable {
         this._withTrackingSuspended(() => {
           if (s.sidebar && !this._sidebar.visible) {
             this._sidebar.setVisible(true);
-            this._placePart(this._sidebar, this._lastSidebarWidth, () => {
+            this._placePart(this._sidebar, this._recalledSize(this._sidebar.id, this._lastSidebarWidth, this._lastSidebarHeight), () => {
               this._grid.addView(this._sidebar, this._lastSidebarWidth);
               this._grid.moveViewToEdge(
                 this._sidebar.id, Orientation.Horizontal, true, this._lastSidebarWidth,

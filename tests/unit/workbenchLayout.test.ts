@@ -476,6 +476,65 @@ describe('stacking and placement recall', () => {
     ]);
   });
 
+  it('a sidebar stacked over a widget comes back over the widget, at its width and height', () => {
+    // Field bug 2026-09-08: Explorer over a Focus widget in one column; hide
+    // the sidebar, show it again, and the widget sat in its own column with
+    // the sidebar beside it at a wild width.
+    layout.togglePanel(); // the editor column is a single leaf for this shape
+    const widget = fakePart('widget:focus');
+    layout.addFloatingView(widget as never);
+    layout.movePartBeside('widget:focus', 'workbench.parts.sidebar', Orientation.Vertical, false);
+    expect(rootShape(layout)).toEqual([
+      'vertical[workbench.parts.sidebar, widget:focus]',
+      'workbench.parts.editor',
+    ]);
+    const columnWidthBefore = (layout.grid.serialize().root.children[0] as { size: number }).size;
+    const sidebarHeightBefore = layout.grid.getViewSize('workbench.parts.sidebar')!;
+    const widgetHeightBefore = layout.grid.getViewSize('widget:focus')!;
+
+    layout.toggleSidebar(); // hide
+    parts.sidebar.element.dispatchEvent(new Event('transitionend'));
+    expect(rootShape(layout)).toEqual(['widget:focus', 'workbench.parts.editor']);
+
+    layout.toggleSidebar(); // show
+    expect(rootShape(layout)).toEqual([
+      'vertical[workbench.parts.sidebar, widget:focus]',
+      'workbench.parts.editor',
+    ]);
+    const columnWidthAfter = (layout.grid.serialize().root.children[0] as { size: number }).size;
+    expect(columnWidthAfter).toBe(columnWidthBefore);
+    expect(layout.grid.getViewSize('workbench.parts.sidebar')).toBe(sidebarHeightBefore);
+    expect(layout.grid.getViewSize('widget:focus')).toBe(widgetHeightBefore);
+  });
+
+  it('hiding and showing the left AREA brings a sidebar-over-widget stack back as it was', () => {
+    // The View menu's Toggle Sidebar hides the whole left area. The sidebar
+    // leaves after an animation, the widget at once; the sidebar's place was
+    // recorded only after the widget had gone, and its "width" was its
+    // height in the stack. Shown again: the widget in its own column, the
+    // sidebar beside it a thousand pixels wide.
+    layout.togglePanel();
+    const widget = fakePart('widget:focus');
+    layout.addFloatingView(widget as never);
+    layout.movePartBeside('widget:focus', 'workbench.parts.sidebar', Orientation.Vertical, false);
+    const columnWidthBefore = (layout.grid.serialize().root.children[0] as { size: number }).size;
+    const sidebarHeightBefore = layout.grid.getViewSize('workbench.parts.sidebar')!;
+    const sidebarRect = layout.grid.getViewRect('workbench.parts.sidebar')!;
+    expect(sidebarRect).toEqual({ width: columnWidthBefore, height: sidebarHeightBefore });
+
+    layout.toggleArea('left'); // hide both
+    parts.sidebar.element.dispatchEvent(new Event('transitionend'));
+    expect(rootShape(layout)).toEqual(['workbench.parts.editor']);
+
+    layout.toggleArea('left'); // show both
+    expect(rootShape(layout)).toEqual([
+      'vertical[workbench.parts.sidebar, widget:focus]',
+      'workbench.parts.editor',
+    ]);
+    expect((layout.grid.serialize().root.children[0] as { size: number }).size).toBe(columnWidthBefore);
+    expect(layout.grid.getViewSize('workbench.parts.sidebar')).toBe(sidebarHeightBefore);
+  });
+
   it('falls back to the default spot when the recalled neighbour is gone', () => {
     layout.movePartBeside(
       'workbench.parts.panel', 'workbench.parts.sidebar', Orientation.Vertical, false,
