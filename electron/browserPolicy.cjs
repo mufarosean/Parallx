@@ -187,11 +187,22 @@ function popupDecision({ url, gestureAgeMs, popupsSinceGesture, listed }) {
   return 'allow';
 }
 
+/**
+ * A colour the page view may be painted with between documents: a hex
+ * colour or an rgb()/rgba() triple, nothing that could carry CSS or script.
+ */
+function isViewColor(value) {
+  if (typeof value !== 'string') return false;
+  const v = value.trim();
+  return /^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(v) || /^#[0-9a-f]{3,4}$/i.test(v) || /^rgba?\(\s*[\d.]+%?(\s*,\s*[\d.]+%?){2}(\s*,\s*[\d.]+%?)?\s*\)$/i.test(v);
+}
+
 module.exports = {
   SEARCH_ENGINES,
   DEFAULT_ENGINE,
   POPUP_GESTURE_MS,
   popupDecision,
+  isViewColor,
   PERMISSION_POLICY,
   COOKIE_MODES,
   siteKey,

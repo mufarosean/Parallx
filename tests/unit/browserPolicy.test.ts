@@ -7,6 +7,20 @@ import { describe, it, expect } from 'vitest';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const policy = require('../../electron/browserPolicy.cjs');
 
+describe('isViewColor', () => {
+  it('accepts hex and rgb colours for the page view background, nothing else', () => {
+    expect(policy.isViewColor('#16171a')).toBe(true);
+    expect(policy.isViewColor('#fff')).toBe(true);
+    expect(policy.isViewColor('rgb(255, 255, 255)')).toBe(true);
+    expect(policy.isViewColor('rgba(0, 0, 0, 0.5)')).toBe(true);
+    expect(policy.isViewColor('rgb(22 23 26)')).toBe(false);
+    expect(policy.isViewColor('url(x)')).toBe(false);
+    expect(policy.isViewColor('#16171a; background: url(x)')).toBe(false);
+    expect(policy.isViewColor('')).toBe(false);
+    expect(policy.isViewColor(undefined)).toBe(false);
+  });
+});
+
 describe('siteKey and isThirdParty', () => {
   it('reduces a host to its registrable domain', () => {
     expect(policy.siteKey('https://a.b.example.co.uk/x?y')).toBe('example.co.uk');

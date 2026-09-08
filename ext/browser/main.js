@@ -625,7 +625,8 @@ function createPagePane(container, input, opts = {}) {
     if (pane._creating) return pane._creating;
     pane._creating = (async () => {
       try {
-        const r = await V('create', pane.tabId, partitionKind);
+        // The gap between documents is painted in the page's colour when known, else the app surface: no white flash.
+        const r = await V('create', pane.tabId, partitionKind, { background: pane.pageColor || surfaceColor() });
         if (pane.disposed) return false;
         pane.hasView = true;
         pane.wcId = r.webContentsId;
@@ -796,7 +797,10 @@ function createPagePane(container, input, opts = {}) {
   // ── Events from the main process ──
   pane.onViewEvent = (ev) => {
     switch (ev.type) {
-      case 'page-color': pane.pageColor = ev.color || ''; content.style.backgroundColor = pane.pageColor; break;
+      case 'page-color':
+        pane.pageColor = ev.color || ''; content.style.backgroundColor = pane.pageColor;
+        if (pane.pageColor) V('background', pane.tabId, pane.pageColor).catch(() => {});
+        break;
       case 'did-start-loading': pane.loading = true; progressFill.style.opacity = '1'; progressFill.style.width = '30%'; updateChrome(); break;
       case 'did-stop-loading':
         pane.loading = false; progressFill.style.width = '100%';
@@ -1690,6 +1694,21 @@ function subscribeBridge() {
 let _frozen = false;
 function freezePages() { if (_frozen) return; _frozen = true; for (const p of _panes.values()) { if (!p.disposed && p.freeze) p.freeze(); } }
 function thawPages() { if (!_frozen) return; _frozen = false; for (const p of _panes.values()) { if (!p.disposed && p.thaw) p.thaw(); } }
+/** The app surface colour: what a tab shows between two documents until it knows its page's colour. */
+function surfaceColor() {
+  const token = getComputedStyle(document.documentElement).getPropertyValue('--px-bg').trim();
+  if (/^(#[0-9a-f]{3,8}|rgba?\()/i.test(token)) return token;
+  // Last resorts only: the body's painted colour, then the default dark surface.
+  return getComputedStyle(document.body).backgroundColor || 'rgb(22, 23, 26)';
+}
+/** When the app theme changes, tabs still on the app surface follow it. */
+function installThemeHook() {
+  const obs = new MutationObserver(() => {
+    for (const p of _panes.values()) if (!p.disposed && p.hasView && !p.pageColor) V('background', p.tabId, surfaceColor()).catch(() => {});
+  });
+  obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-px-mode', 'data-px-theme', 'class'] });
+  return () => obs.disconnect();
+}
 function installDragHooks() {
   const onDragStart = () => freezePages();
   const onDragDone = () => thawPages();
@@ -1744,6 +1763,7 @@ export async function activate(api, context) {
   registerAgentTools(api, context);
   subscribeBridge();
   context.subscriptions.push({ dispose: installDragHooks() });
+  context.subscriptions.push({ dispose: installThemeHook() });
   pushAnnoyances();
   // Page views outlive panes; a view whose editor is gone is destroyed here,
   // whether the pane was mounted when the tab closed or not.

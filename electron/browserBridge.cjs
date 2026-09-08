@@ -418,7 +418,12 @@ function setupBrowserBridge(ipcMain, opts) {
       rec.attached = false;
     }
   }
-  function viewCreate(tabId, kind) {
+  // Between two documents the compositor shows the view's own background
+  // until the new page first paints. Chromium's default is white, which in a
+  // dark app reads as a flash on every navigation. The pane sets the app
+  // surface at creation and the current page's colour once known, so the gap
+  // matches what was on screen.
+  function viewCreate(tabId, kind, opts) {
     const existing = views.get(tabId);
     if (existing && !existing.wc.isDestroyed()) return describeView(existing);
     const partitionKind = PARTITIONS[kind] ? kind : 'user';
@@ -429,8 +434,10 @@ function setupBrowserBridge(ipcMain, opts) {
         webviewTag: false, autoplayPolicy: 'no-user-gesture-required', spellcheck: false,
       },
     });
+    const background = opts && policy.isViewColor(opts.background) ? String(opts.background) : null;
+    if (background) view.setBackgroundColor(background);
     const wc = view.webContents;
-    const rec = { tabId, kind: partitionKind, view, wc, bounds: null, visible: false, attached: false, fullscreen: false };
+    const rec = { tabId, kind: partitionKind, view, wc, bounds: null, visible: false, attached: false, fullscreen: false, background };
     views.set(tabId, rec);
     attachGuestHooks(wc);
     // Scriptlets are chosen per destination as soon as a navigation starts,
@@ -488,7 +495,14 @@ function setupBrowserBridge(ipcMain, opts) {
     return rec;
   }
   const VIEW_METHODS = {
-    create: (tabId, kind) => viewCreate(tabId, kind),
+    create: (tabId, kind, opts) => viewCreate(tabId, kind, opts),
+    background: (tabId, color) => {
+      const rec = liveView(tabId);
+      if (!policy.isViewColor(color)) return false;
+      rec.background = String(color);
+      rec.view.setBackgroundColor(rec.background);
+      return true;
+    },
     adopt: (tabId) => { const rec = views.get(tabId); return rec && !rec.wc.isDestroyed() ? describeView(rec) : null; },
     list: () => [...views.values()].filter((r) => !r.wc.isDestroyed()).map(describeView),
     state: (tabId) => describeView(liveView(tabId)),
