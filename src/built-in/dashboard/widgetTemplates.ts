@@ -20,9 +20,9 @@ export interface WidgetTemplate {
 export const WIDGET_TEMPLATES: readonly WidgetTemplate[] = [
   {
     name: 'Pomodoro timer',
-    description: '25-minute focus sessions, logged automatically.',
+    description: '25-minute focus, 5-minute breaks, a long one every fourth round; tasks with estimates and a finish time; every session logged.',
     typeId: 'parallx.dashboard.timer',
-    config: { minutes: 25, label: 'Focus' },
+    config: { focusMinutes: 25, shortBreakMinutes: 5, longBreakMinutes: 15, longBreakInterval: 4, label: 'Focus' },
   },
   {
     name: 'Study coverage board',

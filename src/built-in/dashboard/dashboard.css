@@ -1886,22 +1886,68 @@ video.vw__fill { object-fit: contain; background: #000; }
   justify-content: flex-end;
 }
 
-/* ── Timer widget (M86 C3) ── */
-.dtimer { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; height: 100%; }
-.dtimer__face { font-size: 40px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
-.dtimer__face--done { color: var(--px-accent, #7aa2f7); }
-.dtimer__controls { display: flex; gap: 8px; }
+/* ── Timer widget (M86 C3): focus and break intervals, tasks, a report ── */
+.dtimer {
+  --dtimer-accent: var(--px-accent);
+  display: flex; flex-direction: column; align-items: stretch; gap: 10px; height: 100%; min-height: 0;
+  padding: 10px 12px 8px; box-sizing: border-box; border-radius: var(--px-radius-md);
+  background: color-mix(in srgb, var(--dtimer-accent) 7%, transparent);
+  outline: none;
+}
+.dtimer:focus-visible { box-shadow: inset 0 0 0 1px var(--dtimer-accent); }
+.dtimer[data-mode="short"] { --dtimer-accent: var(--px-success); }
+.dtimer[data-mode="long"] { --dtimer-accent: var(--px-info); }
+.dtimer__modes { display: flex; justify-content: center; gap: 2px; flex: 0 0 auto; }
+.dtimer__mode {
+  font: inherit; font-size: var(--px-text-xs); font-weight: 600; color: var(--px-text-muted);
+  background: transparent; border: 0; border-radius: var(--px-radius-sm); padding: 3px 9px; cursor: pointer;
+}
+.dtimer__mode:hover { color: var(--px-text); }
+.dtimer__mode.is-active { color: var(--px-text); background: color-mix(in srgb, var(--dtimer-accent) 22%, transparent); }
+.dtimer__face { font-size: 52px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.03em; line-height: 1; text-align: center; color: var(--px-text); flex: 0 0 auto; }
+.dtimer__controls { display: flex; justify-content: center; align-items: center; gap: 6px; flex: 0 0 auto; }
 .dtimer__btn {
   display: inline-flex; align-items: center; justify-content: center;
   height: var(--px-control-h-sm); box-sizing: border-box;
-  font: inherit; font-size: var(--px-text-sm); padding: 0 12px; border-radius: var(--px-radius-md); cursor: pointer;
-  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
-  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 16%, transparent);
-  color: var(--vscode-editor-foreground, #d4d4d4);
+  font: inherit; font-size: var(--px-text-sm); font-weight: 600; padding: 0 12px; border-radius: var(--px-radius-md); cursor: pointer;
+  background: color-mix(in srgb, var(--px-text) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--px-text) 16%, transparent);
+  color: var(--px-text);
 }
-.dtimer__btn--primary { background: var(--px-accent, #7aa2f7); border-color: transparent; color: #fff; }
-.dtimer__stats { font-size: var(--px-text-xs); opacity: .7; }
-
+.dtimer__btn:hover { background: color-mix(in srgb, var(--px-text) 14%, transparent); }
+.dtimer__btn--primary { min-width: 96px; padding: 0 22px; background: var(--dtimer-accent); border-color: transparent; color: var(--px-text-on-accent); letter-spacing: 0.02em; }
+.dtimer__btn--primary:hover { filter: brightness(1.08); background: var(--dtimer-accent); }
+.dtimer__btn--quiet { background: transparent; border-color: transparent; color: var(--px-text-muted); }
+.dtimer__btn--quiet:hover { color: var(--px-text); background: color-mix(in srgb, var(--px-text) 8%, transparent); }
+.dtimer__btn[hidden] { display: none; }
+.dtimer__caption { text-align: center; font-size: var(--px-text-sm); color: var(--px-text-secondary); flex: 0 0 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Tasks: the list scrolls, the rest of the widget stays put. */
+.dtimer__tasks { display: flex; flex-direction: column; gap: 4px; flex: 1 1 auto; min-height: 0; border-top: 1px solid color-mix(in srgb, var(--px-text) 12%, transparent); padding-top: 8px; }
+.dtimer__tasks[hidden] { display: none; }
+.dtimer__taskshead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: var(--px-text-xs); color: var(--px-text-muted); }
+.dtimer__taskstitle { font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+.dtimer__taskssummary { font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dtimer__tasklist { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; min-height: 0; }
+.dtimer__task { display: flex; align-items: center; gap: 6px; padding: 3px 6px; border-radius: var(--px-radius-sm); border-left: 2px solid transparent; }
+.dtimer__task[data-active="true"] { border-left-color: var(--dtimer-accent); background: color-mix(in srgb, var(--dtimer-accent) 10%, transparent); }
+.dtimer__task[data-done="true"] .dtimer__tasktitle { text-decoration: line-through; color: var(--px-text-muted); }
+.dtimer__check { width: 16px; height: 16px; flex: 0 0 auto; border-radius: 50%; border: 1.5px solid color-mix(in srgb, var(--px-text) 35%, transparent); background: transparent; cursor: pointer; padding: 0; }
+.dtimer__check[aria-pressed="true"] { background: var(--dtimer-accent); border-color: var(--dtimer-accent); }
+.dtimer__tasktitle { flex: 1; min-width: 0; text-align: left; font: inherit; font-size: var(--px-text-sm); color: var(--px-text); background: transparent; border: 0; padding: 0; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dtimer__taskcount { font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; flex: 0 0 auto; }
+.dtimer__tasksmall { width: 20px; height: 20px; flex: 0 0 auto; font: inherit; font-size: var(--px-text-sm); line-height: 1; color: var(--px-text-muted); background: transparent; border: 0; border-radius: var(--px-radius-sm); cursor: pointer; opacity: 0; }
+.dtimer__task:hover .dtimer__tasksmall, .dtimer__task:focus-within .dtimer__tasksmall { opacity: 1; }
+.dtimer__tasksmall:hover { color: var(--px-text); background: color-mix(in srgb, var(--px-text) 10%, transparent); }
+.dtimer__add { display: flex; gap: 4px; flex: 0 0 auto; }
+.dtimer__input { flex: 1; min-width: 0; height: var(--px-control-h-sm); box-sizing: border-box; font: inherit; font-size: var(--px-text-sm); padding: 0 8px; border-radius: var(--px-radius-sm); border: 1px solid color-mix(in srgb, var(--px-text) 16%, transparent); background: color-mix(in srgb, var(--px-text) 5%, transparent); color: var(--px-text); }
+.dtimer__input:focus { outline: none; border-color: var(--dtimer-accent); }
+.dtimer__input--est { flex: 0 0 52px; text-align: center; }
+/* The report: today in words, the week as seven small bars. */
+.dtimer__report { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; flex: 0 0 auto; border-top: 1px solid color-mix(in srgb, var(--px-text) 12%, transparent); padding-top: 6px; }
+.dtimer__stats { font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
+.dtimer__week { display: flex; align-items: flex-end; gap: 3px; height: 18px; flex: 0 0 auto; }
+.dtimer__daybar { display: flex; align-items: flex-end; width: 7px; height: 100%; border-radius: 2px; background: color-mix(in srgb, var(--px-text) 8%, transparent); overflow: hidden; }
+.dtimer__daybar > span { display: block; width: 100%; background: var(--dtimer-accent); border-radius: 2px; }
 /* ── Tracker board widget (M86 C3) ── */
 .dtracker { display: flex; flex-direction: column; gap: 8px; height: 100%; }
 .dtracker__summary { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
