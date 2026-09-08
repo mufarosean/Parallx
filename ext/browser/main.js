@@ -1408,7 +1408,18 @@ function buildShieldsPage() {
   const tools = pageTools(view);
   const refreshBtn = el('button', 'br-action', { type: 'button', text: 'Refresh' });
   const clearBtn = el('button', 'br-action', { type: 'button', text: 'Clear Log' });
-  tools.append(refreshBtn, clearBtn);
+  // The filter lists live here with the totals they produce, not in the sidebar.
+  const listsBtn = el('button', 'br-action', { type: 'button', text: 'Refresh Lists', title: 'Fetch the latest filter lists now.' });
+  listsBtn.addEventListener('click', async () => {
+    const b = bridge();
+    if (!b) return;
+    listsBtn.disabled = true;
+    try { _lists = await b.refreshLists(); } finally { listsBtn.disabled = false; }
+    notifySidebar();
+    for (const p of _panes.values()) p.onLists();
+    refresh();
+  });
+  tools.append(refreshBtn, listsBtn, clearBtn);
   const headline = el('div', 'br-page-headline');
   view.appendChild(headline);
   const cols = el('div', 'br-page-cols');
@@ -1639,25 +1650,8 @@ function createSidebar(container) {
     body.appendChild(list);
   });
 
-  // Footer: lists status and clear
-  const foot = el('div', 'br-sidebar-foot');
-  const totalBtn = el('button', 'br-link', { type: 'button', text: 'Blocked Trackers', title: 'Open the blocked-tracker log' });
-  totalBtn.addEventListener('click', () => openTab('about:shields'));
-  const listsText = el('div');
-  const footRow = el('div', 'br-row');
-  const refreshBtn = el('button', 'br-action', { type: 'button', text: 'Refresh Lists', title: 'Fetch the latest filter lists now.' });
-  refreshBtn.addEventListener('click', async () => { const b = bridge(); if (b) { refreshBtn.disabled = true; try { _lists = await b.refreshLists(); } finally { refreshBtn.disabled = false; } refreshAll(); } });
-  const clearBtn = el('button', 'br-action', { type: 'button', text: 'Clear Browsing Data' });
-  clearBtn.addEventListener('click', () => clearBrowsingData());
-  footRow.append(refreshBtn, clearBtn);
-  foot.append(totalBtn, listsText, footRow);
-  root.appendChild(foot);
-
   function refreshAll() {
     bookmarks.refresh(); downloads.refresh(); sitesSec.refresh();
-    listsText.textContent = listsLine();
-    const b = bridge();
-    if (b) b.blockedLog().then((r) => { totalBtn.textContent = `${Number(r.total || 0).toLocaleString()} trackers and ads blocked${r.since ? ` since ${new Date(r.since).toLocaleDateString()}` : ''}`; }).catch(() => {});
   }
   refreshAll();
   _sidebarListeners.add(refreshAll);
