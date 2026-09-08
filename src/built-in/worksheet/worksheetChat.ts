@@ -23,12 +23,13 @@ interface ChatApiLike {
   };
 }
 
+/** The rating as the student says it: easy, medium, hard (legacy grades map to the same three). */
 function gradeWord(grade: string): string {
   switch (grade) {
-    case 'nailed': return 'nailed';
-    case 'partial': return 'partial';
-    case 'missed': return 'missed';
-    default: return grade || 'ungraded';
+    case 'nailed': case 'easy': return 'easy';
+    case 'partial': case 'medium': return 'medium';
+    case 'missed': case 'hard': return 'hard';
+    default: return grade || 'unrated';
   }
 }
 

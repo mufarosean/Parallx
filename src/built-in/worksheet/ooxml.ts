@@ -644,20 +644,35 @@ export function sheetToSnapshot(sheet: XlsxSheet, book: XlsxWorkbook, opts: Snap
     styleKeys.set(idx, key);
     return key || null;
   };
+  // Excel's trailing <col> span reaches column XFD; the snapshot stops a
+  // little past the used range so hiding "the solution and everything
+  // right of it" does not hide sixteen thousand columns.
+  const usedCol = Math.max(sheet.maxCol, 0, ...sheet.merges.map((m) => m.c1));
+  const lastCol = usedCol + 4;
   for (const c of sheet.cells) {
-    if (opts.dropCells?.has(`${c.row}:${c.col}`)) continue;
+    // A dropped cell (workbook machinery such as the Self-Rating dropdown)
+    // loses its content but keeps its fill, so no white hole opens.
+    const dropped = opts.dropCells?.has(`${c.row}:${c.col}`) === true;
     const data: Record<string, unknown> = {};
-    if (c.formula) {
+    if (c.formula && !dropped) {
       data.f = `=${c.formula.replace(/_xl(fn|ws|pm)\./g, '')}`;
       if (c.arrayRef) data.ref = c.arrayRef;
       stats.formulas++;
     }
-    if (c.value !== undefined) {
+    if (c.value !== undefined && !dropped) {
       if (typeof c.value === 'boolean') { data.v = c.value ? 1 : 0; data.t = 3; }
       else if (typeof c.value === 'number') { data.v = c.value; data.t = 2; }
       else { data.v = c.value; data.t = 1; }
     }
-    if (c.styleIndex !== undefined) { const k = styleKey(c.styleIndex); if (k) { data.s = k; stats.styledCells++; } }
+    if (c.styleIndex !== undefined) {
+      const k = styleKey(c.styleIndex);
+      if (k && !dropped) { data.s = k; stats.styledCells++; }
+      else if (k && dropped) {
+        // Fill only: the dropdown's thick border would otherwise draw an empty box.
+        const bg = (styles[k] as { bg?: unknown }).bg;
+        if (bg) { const fillKey = `${k}-fill`; if (!styles[fillKey]) { styles[fillKey] = { bg } as IStyleData; stats.styles++; } data.s = fillKey; stats.styledCells++; }
+      }
+    }
     if (Object.keys(data).length === 0) continue;
     (cellData[c.row] ??= {})[c.col] = data;
     stats.cells++;
@@ -691,14 +706,13 @@ export function sheetToSnapshot(sheet: XlsxSheet, book: XlsxWorkbook, opts: Snap
   // Columns and rows.
   const columnData: Record<number, { w?: number; hd?: number }> = {};
   for (const col of sheet.columns) {
-    for (let i = col.min; i <= Math.min(col.max, 16383); i++) {
+    for (let i = col.min; i <= Math.min(col.max, lastCol); i++) {
       const d: { w?: number; hd?: number } = {};
       if (col.custom || col.widthPx !== sheet.defaultColumnWidthPx) d.w = col.widthPx;
       if (col.hidden) { d.hd = 1; stats.hiddenColumns++; }
       if (Object.keys(d).length) columnData[i] = d;
     }
   }
-  const lastCol = Math.max(sheet.maxCol, ...sheet.merges.map((m) => m.c1), ...sheet.columns.map((c) => c.max));
   if (opts.hideFromColumn !== undefined) {
     for (let i = opts.hideFromColumn; i <= lastCol; i++) { (columnData[i] ??= {}).hd = 1; }
   }
@@ -712,7 +726,7 @@ export function sheetToSnapshot(sheet: XlsxSheet, book: XlsxWorkbook, opts: Snap
   const mergeData = sheet.merges.map((m) => ({ startRow: m.r0, startColumn: m.c0, endRow: m.r1, endColumn: m.c1 }));
   stats.merges = mergeData.length;
   const rowCount = Math.max(ATHENA_ROWS, sheet.maxRow + 20, ...sheet.merges.map((m) => m.r1 + 1));
-  const columnCount = Math.max(ATHENA_COLUMNS, lastCol + 4);
+  const columnCount = Math.max(ATHENA_COLUMNS, lastCol + 1);
 
   // Pictures → floating images. Pixel positions come from the grid geometry.
   const widthOf = (c: number): number => (columnData[c]?.hd ? 0 : columnData[c]?.w ?? sheet.defaultColumnWidthPx);

@@ -42,11 +42,11 @@ describe('buildProgressReport', () => {
       summary({ id: 4, title: 'Mid-attempt', tags: 'reserves', attemptState: 'open' }),
     ]);
     expect(out).toContain('Practice bank: 4 items, 3 attempted.');
-    expect(out).toContain('- #brosius: 2 items, 2 attempted (1 nailed, 1 missed)');
-    expect(out).toContain('- #reserves: 2 items, 2 attempted (1 nailed)');
+    expect(out).toContain('- #brosius: 2 items, 2 attempted (1 easy, 1 hard)');
+    expect(out).toContain('- #reserves: 2 items, 2 attempted (1 easy)');
     expect(out).toContain('- (untagged): 1 items, 0 attempted');
     expect(out).toContain('[id 2] "Brosius B"');
-    expect(out).toContain('latest: missed');
+    expect(out).toContain('latest: hard');
     expect(out).toContain('IN PROGRESS');
     expect(out).toContain('never attempted');
   });
@@ -71,7 +71,7 @@ describe('buildUserWorkReport', () => {
       sourceLabel: 'RF Cookbook', sourcePage: 12,
     }), attempt);
     expect(out).toContain('Item [id 4] "Loss Ratio" (source: RF Cookbook p.12)');
-    expect(out).toContain('completed, self-graded "partial"');
+    expect(out).toContain('completed, self-graded "medium"');
     expect(out).toContain('A1: Premium');
     expect(out).toContain('B4: 12 (=A1*2)');
     expect(out).toContain('MODEL SOLUTION CELLS:');

@@ -23,8 +23,11 @@ import { renderMarkdown } from '../../ui/renderMarkdown.js';
 import {
   listItems, getItem, createItem, deleteItem, getOpenAttempt, saveAttemptCells,
   discardOpenAttempt, completeAttempt, saveAttemptReview, onWorksheetDataChanged,
-  getSessionGrades, attachWorksheetDatabase, type WorksheetItem, type WorksheetItemSummary,
+  getSessionGrades, attachWorksheetDatabase, findItemBySheet, recordImportedRating,
+  type WorksheetItem, type WorksheetItemSummary,
 } from './worksheetData.js';
+import { openXlsx } from './ooxml.js';
+import { detectProblems, normalizeRating, ratingLabel, paperLabel, SOURCE_LABELS, KIND_LABELS, QUADRANT_LABELS, type ProblemImport } from './problemImport.js';
 import { IDatabaseService } from '../../services/serviceTypes.js';
 import { buildPracticeSet, tagCounts, itemTags } from './practiceSession.js';
 import { itemToWorkbooks, workbookHasOnSheetQuestion, type GeneratedItem } from './itemFormat.js';
@@ -201,7 +204,7 @@ function createHomePane(container: HTMLElement) {
     root.replaceChildren();
 
     const head = el('div', 'ws-home__head');
-    head.appendChild(el('div', 'ws-home__title', 'Practice Items'));
+    head.appendChild(el('div', 'ws-home__title', 'Problem Bank'));
     const spacer = el('div'); spacer.style.flex = '1';
     head.appendChild(spacer);
     const scratchBtn = el('button', 'ws-btn') as HTMLButtonElement;
@@ -209,8 +212,8 @@ function createHomePane(container: HTMLElement) {
     scratchBtn.addEventListener('click', () => void openWorksheet('scratch', 'Practice Sheet'));
     head.appendChild(scratchBtn);
     const importBtn = el('button', 'ws-btn') as HTMLButtonElement;
-    importBtn.textContent = 'Import from Excel';
-    importBtn.addEventListener('click', () => void openWorksheet('excel-import', 'Import from Excel'));
+    importBtn.textContent = 'Import Workbook';
+    importBtn.addEventListener('click', () => void openWorksheet('excel-import', 'Import Workbook'));
     head.appendChild(importBtn);
     const genBtn = el('button', 'ws-btn') as HTMLButtonElement;
     genBtn.textContent = 'Generate Items';
@@ -218,8 +221,8 @@ function createHomePane(container: HTMLElement) {
     head.appendChild(genBtn);
     // Practicing is the daily act — it takes the primary slot.
     const practiceBtn = el('button', 'ws-btn ws-btn--primary') as HTMLButtonElement;
-    practiceBtn.textContent = 'Start Practice Session';
-    practiceBtn.addEventListener('click', () => void openWorksheet('practice', 'Practice Session'));
+    practiceBtn.textContent = 'Start Quiz';
+    practiceBtn.addEventListener('click', () => void openWorksheet('practice', 'Quiz'));
     head.appendChild(practiceBtn);
     root.appendChild(head);
 
@@ -238,10 +241,11 @@ function createHomePane(container: HTMLElement) {
       const info = el('div', 'ws-itemrow__info');
       const titleRow = el('div', 'ws-itemrow__title', item.title);
       if (item.attemptState === 'open') titleRow.appendChild(el('span', 'ws-chip ws-chip--open', 'In Progress'));
-      else if (item.attemptState) titleRow.appendChild(el('span', `ws-chip ws-chip--${item.attemptState}`, gradeLabel(item.attemptState)));
+      else if (item.attemptState) titleRow.appendChild(el('span', `ws-chip ws-chip--${stateClass(item.attemptState)}`, gradeLabel(item.attemptState)));
       info.appendChild(titleRow);
       const meta: string[] = [];
-      if (item.sourceLabel) meta.push(item.sourcePage > 0 ? `${item.sourceLabel} · p.${item.sourcePage}` : item.sourceLabel);
+      if (item.paper) meta.push([paperLabel(item.paper), SOURCE_LABELS[item.source] ?? '', KIND_LABELS[item.kind] ?? ''].filter(Boolean).join(' · '));
+      else if (item.sourceLabel) meta.push(item.sourcePage > 0 ? `${item.sourceLabel} · p.${item.sourcePage}` : item.sourceLabel);
       if (item.tags) meta.push(item.tags.split(',').filter(Boolean).map((t) => `#${t.trim()}`).join(' '));
       if (item.attemptCount > 0) meta.push(`${item.attemptCount} ${item.attemptCount === 1 ? 'attempt' : 'attempts'}`);
       meta.push(new Date(item.createdAt).toLocaleDateString());
@@ -286,13 +290,133 @@ function createHomePane(container: HTMLElement) {
   };
 }
 
+/** Easy, Medium, Hard: the workbook's words, for new and legacy grades alike. */
 function gradeLabel(grade: string): string {
-  switch (grade) {
-    case 'nailed': return 'Nailed It';
-    case 'partial': return 'Partial';
-    case 'missed': return 'Missed';
-    default: return grade;
+  return ratingLabel(grade) || grade;
+}
+/** The chip/dot class for an attempt state: easy | medium | hard | open. */
+function stateClass(state: string): string {
+  return state === 'open' ? 'open' : normalizeRating(state) || state;
+}
+function fmtSeconds(total: number): string {
+  const s = Math.max(0, Math.round(total));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`;
+}
+
+// ── The bank (sidebar): papers with counts and rating colours, filters, search ──
+//
+// The workbook's sidebar was 331 hidden tabs and three unhide buttons; this
+// is the same bank laid out as a list. Groups open and close, and the
+// choice survives a re-render (module state, like the scratch cache).
+
+const _bankOpen = new Set<string>();
+let _bankFilter = 'all';
+let _bankQuery = '';
+
+function bankMatches(item: WorksheetItemSummary, filter: string, query: string): boolean {
+  const state = stateClass(item.attemptState);
+  if (filter === 'incomplete' && !(item.attemptCount === 0 || item.attemptState === 'open')) return false;
+  if ((filter === 'easy' || filter === 'medium' || filter === 'hard') && state !== filter) return false;
+  if ((filter === 'rf' || filter === 'cas') && item.source !== filter) return false;
+  if ((filter === 'quant' || filter === 'qual' || filter === 'essay') && item.kind !== filter) return false;
+  if (query) {
+    const q = query.toLowerCase();
+    const hay = `${item.title} ${item.sheetName} ${item.questionMd} ${paperLabel(item.paper)}`.toLowerCase();
+    if (!hay.includes(q)) return false;
   }
+  return true;
+}
+
+function renderBank(root: HTMLElement, items: WorksheetItemSummary[]): void {
+  const search = el('input', 'ws-input ws-bank__search') as HTMLInputElement;
+  search.type = 'search';
+  search.placeholder = 'Search problems';
+  search.value = _bankQuery;
+  search.setAttribute('aria-label', 'Search problems');
+  root.appendChild(search);
+
+  const filters = el('div', 'ws-bank__filters');
+  const FILTERS: [string, string][] = [['all', 'All'], ['incomplete', 'Incomplete'], ['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard'], ['rf', 'RF'], ['cas', 'CAS'], ['quant', 'Quant'], ['qual', 'Qual'], ['essay', 'Essay']];
+  const present = new Set<string>();
+  for (const it of items) { present.add(it.source); present.add(it.kind); }
+  for (const [value, label] of FILTERS) {
+    if ((value === 'rf' || value === 'cas' || value === 'quant' || value === 'qual' || value === 'essay') && !present.has(value)) continue;
+    const b = el('button', 'ws-bank__filter') as HTMLButtonElement;
+    b.type = 'button';
+    b.textContent = label;
+    b.setAttribute('aria-pressed', _bankFilter === value ? 'true' : 'false');
+    b.addEventListener('click', () => { _bankFilter = value; paint(); });
+    filters.appendChild(b);
+  }
+  root.appendChild(filters);
+
+  const summary = el('div', 'ws-bank__summary');
+  root.appendChild(summary);
+  const listHost = el('div', 'ws-bank__list');
+  root.appendChild(listHost);
+
+  const paint = () => {
+    for (const b of filters.querySelectorAll('button')) b.setAttribute('aria-pressed', b.textContent === (FILTERS.find(([v]) => v === _bankFilter)?.[1] ?? 'All') ? 'true' : 'false');
+    listHost.replaceChildren();
+    const shown = items.filter((it) => bankMatches(it, _bankFilter, _bankQuery));
+    const rated = items.filter((it) => normalizeRating(it.attemptState)).length;
+    summary.textContent = `${shown.length} of ${items.length} problems · ${rated} rated`;
+    const groups = new Map<string, WorksheetItemSummary[]>();
+    for (const it of shown) {
+      const key = it.paper || '';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(it);
+    }
+    const keys = [...groups.keys()].sort((a, b) => (a === '' ? 1 : b === '' ? -1 : paperLabel(a).localeCompare(paperLabel(b))));
+    const filtering = _bankFilter !== 'all' || !!_bankQuery;
+    for (const key of keys) {
+      const list = groups.get(key)!;
+      const head = el('div', 'ws-bank__paper');
+      head.setAttribute('role', 'button');
+      const open = filtering || _bankOpen.has(key);
+      head.appendChild(el('span', 'ws-bank__papername', key ? paperLabel(key) : 'Other Items'));
+      const easy = list.filter((it) => stateClass(it.attemptState) === 'easy').length;
+      const medium = list.filter((it) => stateClass(it.attemptState) === 'medium').length;
+      const hard = list.filter((it) => stateClass(it.attemptState) === 'hard').length;
+      const bar = el('div', 'ws-bank__bar');
+      bar.title = `${easy} Easy · ${medium} Medium · ${hard} Hard · ${list.length - easy - medium - hard} not rated`;
+      for (const [cls, n] of [['easy', easy], ['medium', medium], ['hard', hard]] as const) {
+        if (n === 0) continue;
+        const seg = el('span', cls);
+        seg.style.width = `${(n / list.length) * 100}%`;
+        bar.appendChild(seg);
+      }
+      head.appendChild(bar);
+      head.appendChild(el('span', 'ws-bank__count', `${easy + medium + hard}/${list.length}`));
+      head.addEventListener('click', () => {
+        if (_bankOpen.has(key)) _bankOpen.delete(key); else _bankOpen.add(key);
+        paint();
+      });
+      listHost.appendChild(head);
+      if (!open) continue;
+      const rows = el('div', 'ws-bank__items');
+      for (const it of list) {
+        const row = el('div', 'ws-bank__item');
+        row.appendChild(el('span', `ws-bank__dot ${stateClass(it.attemptState)}`));
+        row.appendChild(el('span', 'ws-bank__itemtitle', it.title));
+        const secs = it.seconds > 0 ? ` · ${fmtSeconds(it.seconds)}` : '';
+        row.title = `${it.title}${it.attemptState ? ` · ${it.attemptState === 'open' ? 'In Progress' : gradeLabel(it.attemptState)}` : ''}${secs}`;
+        row.addEventListener('click', () => void openWorksheet(`item:${it.id}`, it.title));
+        rows.appendChild(row);
+      }
+      listHost.appendChild(rows);
+    }
+    if (shown.length === 0) listHost.appendChild(el('div', 'ws-sidebar__empty', 'Nothing matches.'));
+  };
+  let searchTimer: ReturnType<typeof setTimeout> | null = null;
+  search.addEventListener('input', () => {
+    if (searchTimer) clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => { _bankQuery = search.value.trim(); paint(); }, 120);
+  });
+  paint();
 }
 
 // ── Sidebar view (activity bar → Worksheets) ────────────────────────────────
@@ -315,35 +439,17 @@ function createSidebarView(container: HTMLElement) {
       b.addEventListener('click', onClick);
       actions.appendChild(b);
     };
-    mk('Start Practice Session', true, () => void openWorksheet('practice', 'Practice Session'));
+    mk('Start Quiz', true, () => void openWorksheet('practice', 'Quiz'));
+    mk('Import Workbook', false, () => void openWorksheet('excel-import', 'Import Workbook'));
     mk('Generate Items', false, () => void openWorksheet('create', 'Generate Items'));
-    mk('Import from Excel', false, () => void openWorksheet('excel-import', 'Import from Excel'));
     mk('Scratch Sheet', false, () => void openWorksheet('scratch', 'Practice Sheet'));
     root.appendChild(actions);
 
     if (items.length === 0) {
-      root.appendChild(el('div', 'ws-sidebar__empty', 'No practice items yet. Generate some from a PDF or pasted material.'));
+      root.appendChild(el('div', 'ws-sidebar__empty', 'The bank is empty. Import your practice workbook, or generate items from study material.'));
       return;
     }
-
-    root.appendChild(el('div', 'ws-sidebar__label', `Items (${items.length})`));
-    const list = el('div', 'ws-sidebar__list');
-    for (const item of items) {
-      const row = el('div', 'ws-sidebar__item');
-      row.appendChild(el('span', 'ws-sidebar__itemtitle', item.title));
-      if (item.attemptState === 'open') row.appendChild(el('span', 'ws-chip ws-chip--open', 'Open'));
-      else if (item.attemptState) row.appendChild(el('span', `ws-chip ws-chip--${item.attemptState}`, gradeLabel(item.attemptState)));
-      row.title = item.title;
-      row.addEventListener('click', () => void openWorksheet(`item:${item.id}`, item.title));
-      list.appendChild(row);
-    }
-    root.appendChild(list);
-
-    const all = el('button', 'ws-btn ws-btn--block') as HTMLButtonElement;
-    all.textContent = 'Browse All Items';
-    all.style.marginTop = 'var(--px-space-2)';
-    all.addEventListener('click', () => void openWorksheet('home', 'Worksheets'));
-    root.appendChild(all);
+    renderBank(root, items);
   };
 
   void render();
@@ -655,9 +761,9 @@ function createPracticeConfigPane(container: HTMLElement) {
   container.appendChild(root);
   let disposed = false;
 
-  root.appendChild(el('div', 'ws-home__title', 'Start a Practice Session'));
+  root.appendChild(el('div', 'ws-home__title', 'Start a Quiz'));
   root.appendChild(el('div', 'ws-hint',
-    'Build a quiz from the item bank: narrow by topic and history, set a length, shuffle. Grades you earn land on the items and roll into the summary.'));
+    'Draw problems from the bank the way the workbook did: choose papers, sources and kinds, a rating band, a length, shuffle. Every rating you give lands on the problem and moves the dashboard.'));
 
   const filters = { tags: new Set<string>(), state: 'all', count: 10, shuffle: true };
   let bank: WorksheetItemSummary[] = [];
@@ -726,7 +832,7 @@ function createPracticeConfigPane(container: HTMLElement) {
       }));
     }
     stateHost.replaceChildren();
-    for (const [value, label] of [['all', 'All Items'], ['unseen', 'Never Tried'], ['struggling', 'Missed or Partial']] as const) {
+    for (const [value, label] of [['all', 'All Problems'], ['incomplete', 'Incomplete'], ['unseen', 'Never Tried'], ['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard'], ['struggling', 'Medium or Hard']] as const) {
       stateHost.appendChild(chip(label, filters.state === value, () => {
         filters.state = value;
         renderFilters();
@@ -746,8 +852,8 @@ function createPracticeConfigPane(container: HTMLElement) {
       return;
     }
     _practice = { ids, index: 0, startedAt: Date.now(), skipped: new Set() };
-    _api?.activity?.note('started', `a practice session of ${ids.length} worksheet ${ids.length === 1 ? 'item' : 'items'}`);
-    void openWorksheet('practice-run', 'Practice Run');
+    _api?.activity?.note('started', `a quiz of ${ids.length} ${ids.length === 1 ? 'problem' : 'problems'}`);
+    void openWorksheet('practice-run', 'Quiz');
   });
 
   void (async () => {
@@ -785,8 +891,7 @@ function createPracticeRunPane(container: HTMLElement) {
   }
 
   const session = _practice;
-  const gradeLabelFor = (g: string | undefined) =>
-    g === 'nailed' ? 'Nailed It' : g === 'partial' ? 'Partially' : g === 'missed' ? 'Missed It' : '';
+  const gradeLabelFor = (g: string | undefined) => (g ? gradeLabel(g) : '');
 
   const renderSummary = async () => {
     player?.dispose();
@@ -803,14 +908,15 @@ function createPracticeRunPane(container: HTMLElement) {
     session.ids.forEach((id, i) => {
       const item = byId.get(id);
       const grade = grades.get(id);
-      if (grade === 'nailed') counts.nailed++;
-      else if (grade === 'partial') counts.partial++;
-      else if (grade === 'missed') counts.missed++;
+      const r = grade ? normalizeRating(grade) : '';
+      if (r === 'easy') counts.nailed++;
+      else if (r === 'medium') counts.partial++;
+      else if (r === 'hard') counts.missed++;
       else counts.ungraded++;
       const row = el('div', 'ws-itemrow');
       const info = el('div', 'ws-itemrow__info');
       const title = el('div', 'ws-itemrow__title', `${i + 1}. ${item?.title ?? `Item ${id}`}`);
-      if (grade) title.appendChild(el('span', `ws-chip ws-chip--${grade}`, gradeLabelFor(grade)));
+      if (grade) title.appendChild(el('span', `ws-chip ws-chip--${stateClass(grade)}`, gradeLabelFor(grade)));
       else title.appendChild(el('span', 'ws-chip', session.skipped.has(id) ? 'Skipped' : 'Not Graded'));
       info.appendChild(title);
       info.addEventListener('click', () => void openWorksheet(`item:${id}`, item?.title ?? 'Practice Item'));
@@ -824,20 +930,20 @@ function createPracticeRunPane(container: HTMLElement) {
       for (const t of itemTags(item.tags)) {
         const entry = tagRoll.get(t) ?? { n: 0, nailed: 0 };
         entry.n++;
-        if (grades.get(id) === 'nailed') entry.nailed++;
+        if (normalizeRating(grades.get(id)) === 'easy') entry.nailed++;
         tagRoll.set(t, entry);
       }
     }
     const line = [
-      `${counts.nailed} Nailed`, `${counts.partial} Partial`, `${counts.missed} Missed`,
-      counts.ungraded ? `${counts.ungraded} Not Graded` : '',
+      `${counts.nailed} Easy`, `${counts.partial} Medium`, `${counts.missed} Hard`,
+      counts.ungraded ? `${counts.ungraded} Not Rated` : '',
     ].filter(Boolean).join(' · ');
     wrap.appendChild(el('div', 'ws-hint', line));
     if (tagRoll.size > 0) {
       const tags = [...tagRoll.entries()]
         .map(([t, e]) => `#${t} ${e.nailed}/${e.n}`)
         .join(' · ');
-      wrap.appendChild(el('div', 'ws-hint', `By topic (nailed / seen): ${tags}`));
+      wrap.appendChild(el('div', 'ws-hint', `By tag (easy / seen): ${tags}`));
     }
     wrap.appendChild(list);
     const actions = el('div', 'ws-create__controls');
@@ -917,7 +1023,9 @@ function createExcelImportPane(container: HTMLElement) {
   container.appendChild(root);
   let disposed = false;
 
-  root.appendChild(el('div', 'ws-home__title', 'Import Practice Items from Excel'));
+  root.appendChild(el('div', 'ws-home__title', 'Import a Practice Workbook'));
+  root.appendChild(el('div', 'ws-hint',
+    'A ProblemTrack-style workbook (one problem per sheet, named Paper.Source_NN, with a Solution marker) comes in as it is: every sheet with its formatting, the solution hidden until you reveal it, your Easy, Medium and Hard ratings carried over. Other spreadsheets fall back to Item/Answer pair and side-by-side detection.'));
   root.appendChild(el('div', 'ws-hint',
     'Bring existing spreadsheet practice problems in as native items. Item/Answer sheet pairs and question-left, solution-right sheets are detected automatically; anything else can be imported whole. Values, formulas and layout carry over.'));
 
@@ -1023,12 +1131,105 @@ function createExcelImportPane(container: HTMLElement) {
     listHost.appendChild(importBtn);
   };
 
+  /** Problem Bank import: problems grouped by paper, already-imported ones marked. */
+  const renderProblems = async (problems: ProblemImport[], filePath: string, fileLabel: string) => {
+    listHost.replaceChildren();
+    err.style.display = 'none';
+    const existing = new Map<string, number>();
+    for (const p of problems) {
+      const id = await findItemBySheet(fileLabel, p.sheetName).catch(() => null);
+      if (id != null) existing.set(p.sheetName, id);
+    }
+    if (disposed) return;
+    const rows: { problem: ProblemImport; box: HTMLInputElement }[] = [];
+    const rated = problems.filter((p) => p.rating).length;
+    const fresh = problems.length - existing.size;
+    listHost.appendChild(el('div', 'ws-home__title', `${problems.length} problems in ${fileLabel}`));
+    listHost.appendChild(el('div', 'ws-hint', `${fresh} new, ${existing.size} already in the bank, ${rated} with a rating to carry over.`));
+    const toggles = el('div', 'ws-create__controls');
+    const allBtn = el('button', 'ws-btn') as HTMLButtonElement;
+    allBtn.textContent = 'Select New';
+    allBtn.addEventListener('click', () => { for (const r of rows) r.box.checked = !existing.has(r.problem.sheetName); });
+    const noneBtn = el('button', 'ws-btn') as HTMLButtonElement;
+    noneBtn.textContent = 'Select None';
+    noneBtn.addEventListener('click', () => { for (const r of rows) r.box.checked = false; });
+    toggles.append(allBtn, noneBtn);
+    listHost.appendChild(toggles);
+    const byPaper = new Map<string, ProblemImport[]>();
+    for (const p of problems) { if (!byPaper.has(p.paper)) byPaper.set(p.paper, []); byPaper.get(p.paper)!.push(p); }
+    for (const [paper, list] of [...byPaper.entries()].sort((a, b) => paperLabel(a[0]).localeCompare(paperLabel(b[0])))) {
+      const group = el('div', 'ws-import__group');
+      const head = el('div', 'ws-import__grouphead');
+      const groupBox = el('input') as HTMLInputElement;
+      groupBox.type = 'checkbox';
+      groupBox.checked = list.some((p) => !existing.has(p.sheetName));
+      head.appendChild(groupBox);
+      head.appendChild(el('span', undefined, `${paperLabel(paper)} (${list.length})`));
+      group.appendChild(head);
+      const groupRows: HTMLInputElement[] = [];
+      for (const p of list) {
+        const row = el('label', 'ws-import__row');
+        const box = el('input') as HTMLInputElement;
+        box.type = 'checkbox';
+        box.checked = !existing.has(p.sheetName);
+        row.appendChild(box);
+        row.appendChild(el('span', 'ws-xlrow__title', p.title));
+        const meta = [SOURCE_LABELS[p.source] ?? p.source, KIND_LABELS[p.kind] ?? p.kind, p.quadrant ? QUADRANT_LABELS[p.quadrant] : ''].filter(Boolean).join(' · ');
+        row.appendChild(el('span', 'ws-itemrow__meta', meta));
+        if (p.rating) row.appendChild(el('span', `ws-chip ws-chip--${p.rating}`, ratingLabel(p.rating)));
+        if (existing.has(p.sheetName)) row.appendChild(el('span', 'ws-chip ws-chip--muted', 'In Bank'));
+        if (p.stats.imagesSkipped > 0) row.appendChild(el('span', 'ws-chip ws-chip--muted', `${p.stats.imagesSkipped} picture${p.stats.imagesSkipped === 1 ? '' : 's'} not shown`));
+        group.appendChild(row);
+        rows.push({ problem: p, box });
+        groupRows.push(box);
+      }
+      groupBox.addEventListener('change', () => { for (const b of groupRows) b.checked = groupBox.checked; });
+      listHost.appendChild(group);
+    }
+    const importBtn = el('button', 'ws-btn ws-btn--primary') as HTMLButtonElement;
+    importBtn.textContent = 'Import Selected Problems';
+    importBtn.style.marginTop = 'var(--px-space-3)';
+    importBtn.addEventListener('click', () => {
+      void (async () => {
+        const keep = rows.filter((r) => r.box.checked);
+        if (keep.length === 0) { err.textContent = 'Nothing selected to import.'; err.style.display = ''; return; }
+        importBtn.disabled = true;
+        let done = 0;
+        let carried = 0;
+        try {
+          for (const r of keep) {
+            const p = r.problem;
+            if (existing.has(p.sheetName)) { done++; continue; }
+            const id = await createItem({
+              title: p.title, questionMd: p.questionMd, sourceUri: filePath, sourceLabel: fileLabel, tags: p.tags,
+              sheetJson: p.sheetJson, solutionCol: p.solutionCol, workRow: p.workRow,
+              paper: p.paper, source: p.source, kind: p.kind, quadrant: p.quadrant, sheetName: p.sheetName,
+            });
+            if (id != null && p.rating) { await recordImportedRating(id, p.rating, Date.now()); carried++; }
+            done++;
+            if (done % 10 === 0) status.textContent = `Importing ${done} / ${keep.length}…`;
+          }
+          status.textContent = '';
+          _api?.activity?.note('imported', `${done} problems from ${fileLabel}`, carried ? `${carried} ratings carried over` : undefined);
+          await _api?.window?.showInformationMessage?.(`Imported ${done} ${done === 1 ? 'problem' : 'problems'}${carried ? `, ${carried} with your rating` : ''}.`);
+          await openWorksheet('home', 'Problem Bank');
+        } catch (e) {
+          err.textContent = (e as Error).message;
+          err.style.display = '';
+          importBtn.disabled = false;
+        }
+      })();
+    });
+    listHost.appendChild(importBtn);
+  };
+
   pickBtn.addEventListener('click', () => {
     void (async () => {
       const electron = (window as {
         parallxElectron?: {
           dialog?: { openFile?(opts: unknown): Promise<string[] | null> };
           document?: { extractWorkbookGrid?(p: string): Promise<{ error?: { message: string }; sheets?: GridSheet[] }> };
+          fs?: { readFile?(p: string): Promise<{ error?: { message: string }; content?: string; encoding?: string }> };
         };
       }).parallxElectron;
       if (!electron?.dialog?.openFile || !electron?.document?.extractWorkbookGrid) {
@@ -1045,6 +1246,28 @@ function createExcelImportPane(container: HTMLElement) {
       const fileLabel = filePath.split(/[\\/]/).pop() || 'Workbook';
       status.textContent = `Reading ${fileLabel}…`;
       err.style.display = 'none';
+      // The Problem Bank path first: our own reader keeps the formatting.
+      if (electron.fs?.readFile && /\.(xlsx|xlsm)$/i.test(filePath)) {
+        try {
+          const read = await electron.fs.readFile(filePath);
+          if (read?.error) throw new Error(read.error.message);
+          if (read?.encoding === 'base64' && read.content) {
+            const bin = atob(read.content);
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            const book = await openXlsx(bytes);
+            const { problems } = await detectProblems(book, (done, total) => { status.textContent = `Reading ${fileLabel}: ${done} / ${total} problems…`; });
+            if (disposed) return;
+            if (problems.length > 0) {
+              status.textContent = `${fileLabel}: ${problems.length} problems found.`;
+              await renderProblems(problems, filePath, fileLabel);
+              return;
+            }
+          }
+        } catch (e) {
+          console.warn('[Worksheet] problem-bank import fell back to sheet detection:', e);
+        }
+      }
       try {
         const grid = await electron.document.extractWorkbookGrid(filePath);
         if (grid?.error) throw new Error(grid.error.message);
@@ -1093,6 +1316,9 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
   let revealed = false;
   let autosaveTimer: ReturnType<typeof setInterval> | null = null;
   let lastSavedCells = '';
+  /** Problem Bank items: time on the open attempt (-1 = not a problem item). */
+  let problemSeconds = -1;
+  let problemTimer: ReturnType<typeof setInterval> | null = null;
 
   const captureWorking = (): IWorkbookData | null => {
     if (mode !== 'working') return null;
@@ -1110,7 +1336,7 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
     const json = JSON.stringify(snap);
     if (json === lastSavedCells) return;
     lastSavedCells = json;
-    await saveAttemptCells(itemId, json).catch((err) => {
+    await saveAttemptCells(itemId, json, problemSeconds >= 0 ? problemSeconds : undefined).catch((err) => {
       console.error('[Worksheet] attempt autosave failed:', err);
     });
   };
@@ -1208,7 +1434,7 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
         // First reveal this session: ask for the self grade.
         const gradeWrap = el('span', 'ws-item__grades');
         gradeWrap.appendChild(el('span', 'ws-item__gradeprompt', 'How did it go?'));
-        for (const [grade, label] of [['nailed', 'Nailed It'], ['partial', 'Partially'], ['missed', 'Missed It']] as const) {
+        for (const [grade, label] of [['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard']] as const) {
           const b = el('button', `ws-btn ws-btn--grade ws-btn--grade-${grade}`) as HTMLButtonElement;
           b.textContent = label;
           b.addEventListener('click', () => {
@@ -1307,12 +1533,168 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
     await mountSheet(snap ?? parseWorkbook(item.givensJson));
   };
 
+  // ── Problem Bank item: one sheet, the solution hidden until revealed ──
+  // The sheet is the workbook's sheet. Columns from the solution marker on
+  // are hidden; Reveal unhides them beside the work, Hide puts them away;
+  // neither touches the student's cells. Rating is Easy, Medium or Hard,
+  // any time; time on the attempt runs while the tab is on screen.
+  const applySolutionVisibility = (snap: IWorkbookData, show: boolean): IWorkbookData => {
+    if (!item || item.solutionCol < 0) return snap;
+    const sheet = snap.sheets[snap.sheetOrder[0]] as unknown as { columnCount?: number; columnData?: Record<number, { hd?: number; w?: number }> };
+    if (!sheet) return snap;
+    const columnData = (sheet.columnData ??= {});
+    const last = Math.max(sheet.columnCount ?? 0, ...Object.keys(columnData).map(Number)) - 1;
+    for (let c = item.solutionCol; c <= last; c++) {
+      if (show) { if (columnData[c]) delete columnData[c].hd; }
+      else (columnData[c] ??= {}).hd = 1;
+    }
+    return snap;
+  };
+  const initProblem = async (problem: WorksheetItem, open: Awaited<ReturnType<typeof getOpenAttempt>>): Promise<void> => {
+    problemSeconds = open?.seconds ?? 0;
+    let latestRating = '';
+    const refreshRating = async () => {
+      const summary = (await listItems().catch(() => [])).find((s) => s.id === problem.id);
+      latestRating = summary ? normalizeRating(summary.attemptState) : '';
+    };
+    await refreshRating();
+    const timerEl = el('span', 'ws-problem__timer', fmtSeconds(problemSeconds));
+    timerEl.title = 'Time on this attempt. Runs while the problem is on screen.';
+    const header = el('div', 'ws-item__header');
+    const titleRow = el('div', 'ws-item__titlerow');
+    const paintHeader = () => {
+      titleRow.replaceChildren();
+      titleRow.appendChild(el('div', 'ws-item__title', problem.title));
+      const meta = el('div', 'ws-problem__meta');
+      const bits = [paperLabel(problem.paper), SOURCE_LABELS[problem.source] ?? '', KIND_LABELS[problem.kind] ?? '', problem.quadrant ? QUADRANT_LABELS[problem.quadrant] : ''].filter(Boolean);
+      if (bits.length) meta.appendChild(el('span', undefined, bits.join(' · ')));
+      titleRow.appendChild(meta);
+      const spacer = el('div'); spacer.style.flex = '1';
+      titleRow.appendChild(spacer);
+      titleRow.appendChild(timerEl);
+      const rate = el('div', 'ws-problem__rate');
+      rate.appendChild(el('span', 'ws-problem__ratelabel', 'Rate'));
+      for (const grade of ['easy', 'medium', 'hard'] as const) {
+        const b = el('button', `ws-btn ws-btn--grade ws-btn--grade-${grade}`) as HTMLButtonElement;
+        b.textContent = ratingLabel(grade);
+        b.setAttribute('aria-pressed', latestRating === grade ? 'true' : 'false');
+        b.title = `Rate this problem ${ratingLabel(grade)}. Your rating feeds the dashboard and the quiz filters.`;
+        b.addEventListener('click', () => {
+          void (async () => {
+            await persistWorking();
+            await completeAttempt(problem.id, grade, lastSavedCells, { seconds: problemSeconds });
+            _api?.activity?.note('practiced', `problem "${problem.title}"`, `rated ${ratingLabel(grade)}`);
+            latestRating = grade;
+            paintHeader();
+          })();
+        });
+        rate.appendChild(b);
+      }
+      titleRow.appendChild(rate);
+      titleRow.appendChild(makeSheetThemeButton());
+      const exportBtn = el('button', 'ws-btn') as HTMLButtonElement;
+      exportBtn.textContent = 'Export to Excel';
+      exportBtn.title = 'Save this sheet as a real .xlsx (values and formulas) in your Downloads folder.';
+      exportBtn.addEventListener('click', () => {
+        const name = (problem.sheetName || problem.title || 'problem').replace(/[^\w\- .]+/g, '').trim() || 'problem';
+        if (!host?.exportToXlsx(name)) void _api?.window?.showInformationMessage?.('Nothing on the sheet to export yet.');
+      });
+      titleRow.appendChild(exportBtn);
+      const resetBtn = el('button', 'ws-btn') as HTMLButtonElement;
+      resetBtn.textContent = 'Reset Work';
+      resetBtn.title = 'Clear your work and the timer; the problem returns to the sheet as imported. Ratings stay.';
+      resetBtn.addEventListener('click', () => {
+        void (async () => {
+          const ok = await _api?.window?.showConfirmModal?.({
+            message: 'Reset your work on this problem?',
+            detail: 'Everything you typed on this sheet is discarded and the timer restarts. Your ratings are kept. This cannot be undone.',
+            confirmLabel: 'Reset Work',
+            danger: true,
+          }) ?? false;
+          if (!ok || disposed) return;
+          lastSavedCells = '';
+          problemSeconds = 0;
+          timerEl.textContent = fmtSeconds(0);
+          await discardOpenAttempt(problem.id);
+          await mountSheet(applySolutionVisibility(parseWorkbook(problem.sheetJson) as IWorkbookData, revealed));
+          const mounted = host as IWorksheetHost | null;
+          lastSavedCells = JSON.stringify(mounted?.getSnapshot() ?? null);
+        })();
+      });
+      titleRow.appendChild(resetBtn);
+      if (problem.solutionCol >= 0) {
+        const revealBtn = el('button', revealed ? 'ws-btn' : 'ws-btn ws-btn--primary') as HTMLButtonElement;
+        revealBtn.textContent = revealed ? 'Hide Solution' : 'Reveal Solution';
+        revealBtn.title = revealed ? 'Hide the worked solution again. Your work stays.' : 'Show the worked solution beside your work, as in the workbook.';
+        revealBtn.addEventListener('click', () => {
+          void (async () => {
+            const live = host?.getSnapshot();
+            if (!live) return;
+            revealed = !revealed;
+            await mountSheet(applySolutionVisibility(live, revealed));
+            lastSavedCells = '';
+            await persistWorking();
+            paintHeader();
+          })();
+        });
+        titleRow.appendChild(revealBtn);
+      }
+      header.replaceChildren(titleRow);
+      if (revealed && _api?.lm) {
+        const reviewWrap = el('div', 'ws-item__review');
+        const reviewBtn = el('button', 'ws-btn') as HTMLButtonElement;
+        reviewBtn.textContent = 'AI Review My Work';
+        reviewBtn.title = 'Compare your cells against the worked solution and get method-level feedback.';
+        const reviewOut = el('div', 'ws-item__reviewout');
+        reviewOut.style.display = 'none';
+        reviewBtn.addEventListener('click', () => {
+          void (async () => {
+            if (!_api?.lm) return;
+            await persistWorking();
+            reviewBtn.disabled = true;
+            reviewBtn.textContent = 'Reviewing…';
+            reviewOut.style.display = '';
+            reviewOut.textContent = 'Reading your work…';
+            try {
+              const review = await reviewAttempt(_api.lm, { ...problem, solutionJson: problem.sheetJson }, lastSavedCells, (partial) => { reviewOut.textContent = partial; });
+              reviewOut.replaceChildren(renderMarkdown(review));
+              await saveAttemptReview(problem.id, review);
+            } catch (e) {
+              reviewOut.textContent = `Review failed: ${(e as Error).message}`;
+            } finally {
+              reviewBtn.disabled = false;
+              reviewBtn.textContent = 'AI Review My Work';
+            }
+          })();
+        });
+        reviewWrap.append(reviewBtn, reviewOut);
+        header.appendChild(reviewWrap);
+      }
+    };
+    headerHost.replaceChildren(header);
+    paintHeader();
+    const base = open ? (parseWorkbook(open.cellsJson) as IWorkbookData | null) : null;
+    await mountSheet(applySolutionVisibility((base ?? parseWorkbook(problem.sheetJson)) as IWorkbookData, revealed));
+    const mounted = host as IWorksheetHost | null;
+    lastSavedCells = open?.cellsJson ?? JSON.stringify(mounted?.getSnapshot() ?? null);
+    autosaveTimer = setInterval(() => { void persistWorking(); }, AUTOSAVE_MS);
+    problemTimer = setInterval(() => {
+      if (disposed || document.hidden || !root.isConnected || root.offsetParent === null) return;
+      problemSeconds++;
+      timerEl.textContent = fmtSeconds(problemSeconds);
+    }, 1000);
+  };
+
   void (async () => {
     try {
       if (itemId != null) {
         item = await getItem(itemId);
         if (!item) {
           loading.textContent = 'This practice item no longer exists.';
+          return;
+        }
+        if (item.sheetJson) {
+          await initProblem(item, await getOpenAttempt(itemId));
           return;
         }
         renderItemHeader();
@@ -1366,6 +1748,7 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
     },
     dispose: () => {
       if (autosaveTimer) clearInterval(autosaveTimer);
+      if (problemTimer) clearInterval(problemTimer);
       // Capture-before-teardown so close-without-save cannot drop work.
       void persistWorking();
       disposed = true;
@@ -1456,10 +1839,10 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
     api.commands.registerCommand('worksheet.generate', () => openWorksheet('create', 'Generate Items')),
   );
   context.subscriptions.push(
-    api.commands.registerCommand('worksheet.importExcel', () => openWorksheet('excel-import', 'Import from Excel')),
+    api.commands.registerCommand('worksheet.importExcel', () => openWorksheet('excel-import', 'Import Workbook')),
   );
   context.subscriptions.push(
-    api.commands.registerCommand('worksheet.practice', () => openWorksheet('practice', 'Practice Session')),
+    api.commands.registerCommand('worksheet.practice', () => openWorksheet('practice', 'Quiz')),
   );
 
   // The AI's read surface: bank/progress + the user's actual sheet work.

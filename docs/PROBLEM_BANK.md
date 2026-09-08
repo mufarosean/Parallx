@@ -129,15 +129,21 @@ adopts the one-sheet model.
 
 ## Build order
 
-1. OOXML reader and the one-sheet model, verified against the copy: every
-   one of the 331 sheets round-trips (cell count, style count, merges,
-   hidden columns, images) and a screenshot probe compares three problems
-   against Excel renders.
-2. Import with tags, quadrant, ratings carried over; the sidebar bank; the
-   problem tab with hidden-solution reveal, work-area attempts, Easy,
-   Medium, Hard.
-3. Quiz sessions with timer, dashboard tab, due list, timeline.
-4. Essay sheets and the Flashcards sheet into a flashcards deck.
+1. DONE 2026-09-08: OOXML reader and the one-sheet model
+   (src/built-in/worksheet/ooxml.ts), verified on all 331 sheets by
+   tests/probes/problem-bank-reader-probe.mjs and rendered through the real
+   engine by tests/probes/problem-bank-render-probe.mjs (hidden, offscreen).
+2. DONE 2026-09-08: import with paper, source, kind, quadrant and the
+   student's ratings carried over (problemImport.ts, the Import Workbook
+   pane); the sidebar is the bank (papers, rating bars, filters, search);
+   the problem tab keeps the solution hidden until Reveal, rates Easy,
+   Medium, Hard, times the attempt, resets work. Quiz filters gained
+   rating bands and Incomplete.
+3. Quiz sessions with a timer per problem and a session id, the dashboard
+   tab (attempted %, weighted score, time, timeline, due list).
+4. Essay sheets and the Flashcards sheet into a flashcards deck. Pictures
+   need the engine's drawing preset in the host; EMF/WMF pictures (16 of
+   45) cannot be shown at all and are counted at import.
 
 ## Verified
 
