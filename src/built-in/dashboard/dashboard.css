@@ -1889,7 +1889,7 @@ video.vw__fill { object-fit: contain; background: #000; }
 /* ── Timer widget (M86 C3): focus and break intervals, tasks, a report ── */
 .dtimer {
   --dtimer-accent: var(--px-accent);
-  display: flex; flex-direction: column; align-items: stretch; gap: 10px; height: 100%; min-height: 0;
+  display: flex; flex-direction: column; align-items: stretch; gap: 10px; height: 100%; min-height: 0; overflow-y: auto;
   padding: 10px 12px 8px; box-sizing: border-box; border-radius: var(--px-radius-md);
   background: color-mix(in srgb, var(--dtimer-accent) 7%, transparent);
   outline: none;
@@ -1897,7 +1897,8 @@ video.vw__fill { object-fit: contain; background: #000; }
 .dtimer:focus-visible { box-shadow: inset 0 0 0 1px var(--dtimer-accent); }
 .dtimer[data-mode="short"] { --dtimer-accent: var(--px-success); }
 .dtimer[data-mode="long"] { --dtimer-accent: var(--px-info); }
-.dtimer__modes { display: flex; justify-content: center; gap: 2px; flex: 0 0 auto; }
+.dtimer__top { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex: 0 0 auto; flex-wrap: wrap; }
+.dtimer__modes { display: flex; justify-content: flex-start; gap: 2px; flex: 1 1 auto; min-width: 0; }
 .dtimer__mode {
   font: inherit; font-size: var(--px-text-xs); font-weight: 600; color: var(--px-text-muted);
   background: transparent; border: 0; border-radius: var(--px-radius-sm); padding: 3px 9px; cursor: pointer;
@@ -1922,12 +1923,13 @@ video.vw__fill { object-fit: contain; background: #000; }
 .dtimer__btn[hidden] { display: none; }
 .dtimer__caption { text-align: center; font-size: var(--px-text-sm); color: var(--px-text-secondary); flex: 0 0 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Tasks: the list scrolls, the rest of the widget stays put. */
-.dtimer__tasks { display: flex; flex-direction: column; gap: 4px; flex: 1 1 auto; min-height: 0; border-top: 1px solid color-mix(in srgb, var(--px-text) 12%, transparent); padding-top: 8px; }
+.dtimer__tasks { display: flex; flex-direction: column; gap: 4px; flex: 0 0 auto; border-top: 1px solid color-mix(in srgb, var(--px-text) 12%, transparent); padding-top: 8px; }
 .dtimer__tasks[hidden] { display: none; }
 .dtimer__taskshead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: var(--px-text-xs); color: var(--px-text-muted); }
 .dtimer__taskstitle { font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
 .dtimer__taskssummary { font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dtimer__tasklist { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; min-height: 0; }
+.dtimer__tasklist { display: flex; flex-direction: column; gap: 2px; }
+.dtimer__tasklist[hidden], .dtimer__add[hidden] { display: none; }
 .dtimer__task { display: flex; align-items: center; gap: 6px; padding: 3px 6px; border-radius: var(--px-radius-sm); border-left: 2px solid transparent; }
 .dtimer__task[data-active="true"] { border-left-color: var(--dtimer-accent); background: color-mix(in srgb, var(--dtimer-accent) 10%, transparent); }
 .dtimer__task[data-done="true"] .dtimer__tasktitle { text-decoration: line-through; color: var(--px-text-muted); }
@@ -1943,15 +1945,24 @@ video.vw__fill { object-fit: contain; background: #000; }
 .dtimer__input:focus { outline: none; border-color: var(--dtimer-accent); }
 .dtimer__input--est { flex: 0 0 52px; text-align: center; }
 /* The report: today in words, the week as seven small bars. */
-.dtimer__report { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; flex: 0 0 auto; border-top: 1px solid color-mix(in srgb, var(--px-text) 12%, transparent); padding-top: 6px; }
+.dtimer__report { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
 .dtimer__stats { font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
-.dtimer__week { display: flex; align-items: flex-end; gap: 3px; height: 18px; flex: 0 0 auto; }
-.dtimer__daybar { display: flex; align-items: flex-end; width: 7px; height: 100%; border-radius: 2px; background: color-mix(in srgb, var(--px-text) 8%, transparent); overflow: hidden; }
+.dtimer__week { display: flex; align-items: flex-end; gap: 2px; height: 14px; flex: 0 0 auto; }
+.dtimer__daybar { display: flex; align-items: flex-end; width: 6px; height: 100%; border-radius: 2px; background: color-mix(in srgb, var(--px-text) 8%, transparent); overflow: hidden; }
 .dtimer__daybar > span { display: block; width: 100%; background: var(--dtimer-accent); border-radius: 2px; }
 .dtimer__report[hidden] { display: none; }
 .dtimer__sync { width: auto; padding: 0 6px; opacity: 1; font-size: var(--px-text-xs); font-weight: 600; }
 .dtimer__task[data-linked="true"] .dtimer__tasktitle::before { content: ''; display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--dtimer-accent); margin-right: 6px; vertical-align: middle; opacity: 0.7; }
 .dtimer__taskedit { flex: 1; min-width: 0; height: 22px; }
+.dtimer__addbtn { opacity: 1; width: 22px; font-size: var(--px-text-md); line-height: 1; }
+/* The planner picker: today's items with a checkbox each, in place of the list until decided. */
+.dtimer__picker { display: flex; flex-direction: column; gap: 2px; padding: 2px 0; }
+.dtimer__pickrow { display: flex; align-items: center; gap: 8px; padding: 3px 6px; border-radius: var(--px-radius-sm); font-size: var(--px-text-sm); color: var(--px-text); cursor: pointer; }
+.dtimer__pickrow:hover { background: color-mix(in srgb, var(--px-text) 6%, transparent); }
+.dtimer__pickname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dtimer__pickmeta { font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dtimer__pickfoot { display: flex; justify-content: flex-end; gap: 6px; margin-top: 4px; }
+.dtimer__pickerempty { font-size: var(--px-text-sm); color: var(--px-text-muted); padding: 4px 6px; }
 /* ── Tracker board widget (M86 C3) ── */
 .dtracker { display: flex; flex-direction: column; gap: 8px; height: 100%; }
 .dtracker__summary { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }

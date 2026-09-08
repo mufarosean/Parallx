@@ -13,7 +13,7 @@
 import type { WidgetContext, WidgetHandle, WidgetTypeRegistration } from '../dashboardTypes.js';
 import {
   readConfig, parseState, minutesFor, nextMode, finishEstimate, dayStreak, todaySummary, lastDays,
-  fmtClock, fmtTimeOfDay, fmtHours, MAX_LOG, MAX_TASKS, dayKeyLocal, mergePlannerItems,
+  fmtClock, fmtTimeOfDay, fmtHours, MAX_LOG, MAX_TASKS, dayKeyLocal, mergePlannerItems, estFromMinutes,
   type TimerConfig, type TimerMode, type TimerState, type TimerTask, type PlannerLinkItem,
 } from './timerLogic.js';
 
@@ -127,7 +127,7 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
       alarmVolume: { type: 'number', label: 'Volume', description: '0 to 100.' },
       ticking: { type: 'boolean', label: 'Ticking while running' },
       showTasks: { type: 'boolean', label: 'Show tasks' },
-      plannerSync: { type: 'boolean', label: 'Pull today from the planner', description: "Today's open tasks and timed events join the list; a planned block becomes as many intervals as it holds." },
+      plannerSync: { type: 'boolean', label: 'Planner button', description: "Sync offers today's planner tasks and events to pick from; a planned block becomes as many intervals as it holds." },
       showReport: { type: 'boolean', label: 'Show the report row', description: "Today's minutes, the streak and seven small bars." },
       label: { type: 'string', label: 'Focus label', description: 'Logged with each completed focus interval.', placeholder: 'Focus' },
     },
@@ -151,7 +151,10 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
       modeBtns.set(m, b);
       modes.appendChild(b);
     }
-    container.appendChild(modes);
+    // The top row: the interval tabs on the left, the small report on the right.
+    const top = h('div', 'dtimer__top');
+    top.appendChild(modes);
+    container.appendChild(top);
 
     const face = h('div', 'dtimer__face');
     face.setAttribute('aria-live', 'off');
@@ -172,8 +175,10 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
     tasksHead.appendChild(h('span', 'dtimer__taskstitle', 'Tasks'));
     const tasksSummary = h('span', 'dtimer__taskssummary');
     tasksHead.appendChild(tasksSummary);
-    const syncBtn = button('Sync', 'dtimer__tasksmall dtimer__sync', () => { void syncPlanner(true); }, "Pull today's planner tasks and events into the list");
+    const syncBtn = button('Sync', 'dtimer__tasksmall dtimer__sync', () => { void openPlannerPicker(); }, "Pick from today's planner tasks and events");
     tasksHead.appendChild(syncBtn);
+    const addToggle = button('+', 'dtimer__tasksmall dtimer__addbtn', () => { addRow.hidden = !addRow.hidden; if (!addRow.hidden) addInput.focus(); }, 'Add a task');
+    tasksHead.appendChild(addToggle);
     tasksBox.appendChild(tasksHead);
     const taskList = h('div', 'dtimer__tasklist');
     tasksBox.appendChild(taskList);
@@ -195,8 +200,12 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
       state.tasks = [...state.tasks, task];
       if (!state.activeTaskId) state.activeTaskId = task.id;
       addInput.value = ''; estInput.value = '1';
-      persist(); renderTasks(); addInput.focus();
+      addRow.hidden = true;
+      persist(); renderTasks();
     });
+    // The add row waits behind the + until asked for; Escape puts it away again.
+    addRow.hidden = true;
+    addInput.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); addRow.hidden = true; addToggle.focus(); } });
     tasksBox.appendChild(addRow);
     container.appendChild(tasksBox);
 
@@ -204,8 +213,8 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
     const stats = h('div', 'dtimer__stats');
     const week = h('div', 'dtimer__week');
     week.setAttribute('role', 'img');
-    report.append(stats, week);
-    container.appendChild(report);
+    report.append(week, stats);
+    top.appendChild(report);
 
     // ── State helpers ──
     const persist = (): void => { ctx.setCachedOutput(JSON.stringify(state)); };
@@ -218,21 +227,54 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
     const running = (): boolean => state.endsAt !== null;
     const activeTask = (): TimerTask | undefined => state.tasks.find((t) => t.id === state.activeTaskId && !t.done);
 
-    // ── Planner link ──
-    let syncing = false;
-    const syncPlanner = async (byHand: boolean): Promise<void> => {
-      if (syncing || !cfg.showTasks) return;
-      const today = dayKeyLocal(Date.now());
-      if (state.syncDay !== today) { state.ignoredSourceIds = []; state.syncDay = today; }
+    // ── Planner link: nothing arrives unasked. Sync shows today's planner
+    // items with a checkbox each; only the ones you tick join the list. ──
+    let picker: HTMLElement | null = null;
+    const closePicker = (): void => {
+      if (picker) { picker.remove(); picker = null; }
+      taskList.hidden = false;
+    };
+    const openPlannerPicker = async (): Promise<void> => {
+      if (!cfg.showTasks) return;
+      if (picker) { closePicker(); return; }
       const data = await plannerData(ctx.api);
-      if (!data) { if (byHand) { syncBtn.textContent = 'No Planner'; setTimeout(() => { syncBtn.textContent = 'Sync'; }, 1500); } return; }
-      syncing = true; syncBtn.disabled = true;
-      try {
-        const items = await plannerItemsForToday(data, Date.now());
-        state.tasks = mergePlannerItems(state.tasks, items, cfg.focusMinutes, state.ignoredSourceIds, Date.now());
-        if (!state.activeTaskId || !state.tasks.some((t) => t.id === state.activeTaskId && !t.done)) state.activeTaskId = state.tasks.find((t) => !t.done)?.id ?? null;
-        persist(); render();
-      } finally { syncing = false; syncBtn.disabled = false; }
+      if (!data) { syncBtn.textContent = 'No Planner'; setTimeout(() => { syncBtn.textContent = 'Sync'; }, 1500); return; }
+      const items = await plannerItemsForToday(data, Date.now());
+      const linked = new Set(state.tasks.map((t) => t.sourceId).filter((s): s is string => !!s));
+      const box = h('div', 'dtimer__picker');
+      if (items.length === 0) box.appendChild(h('div', 'dtimer__pickerempty', 'Nothing in the planner for today.'));
+      const choices: { item: PlannerLinkItem; input: HTMLInputElement }[] = [];
+      for (const it of items) {
+        const row = h('label', 'dtimer__pickrow');
+        const input = h('input') as HTMLInputElement;
+        input.type = 'checkbox';
+        const already = linked.has(it.id);
+        input.checked = already; input.disabled = already;
+        row.appendChild(input);
+        row.appendChild(h('span', 'dtimer__pickname', it.title));
+        const rounds = estFromMinutes(it.minutes, cfg.focusMinutes);
+        row.appendChild(h('span', 'dtimer__pickmeta', already ? 'in the list' : it.minutes ? `${rounds} ${rounds === 1 ? 'round' : 'rounds'}` : '1 round'));
+        box.appendChild(row);
+        if (!already) choices.push({ item: it, input });
+      }
+      const foot = h('div', 'dtimer__pickfoot');
+      foot.appendChild(button('Add Selected', 'dtimer__btn dtimer__btn--primary', () => {
+        const chosen = new Set(choices.filter((c) => c.input.checked).map((c) => c.item.id));
+        if (chosen.size > 0) {
+          // Linked tasks stay linked; only the ticked ones are new. A linked
+          // planner task that is no longer open today is finished here too.
+          const keep = items.filter((i) => linked.has(i.id) || chosen.has(i.id));
+          state.tasks = mergePlannerItems(state.tasks, keep, cfg.focusMinutes, [], Date.now());
+          if (!state.activeTaskId || !state.tasks.some((t) => t.id === state.activeTaskId && !t.done)) state.activeTaskId = state.tasks.find((t) => !t.done)?.id ?? null;
+          persist();
+        }
+        closePicker(); render();
+      }));
+      foot.appendChild(button('Cancel', 'dtimer__btn dtimer__btn--quiet', () => closePicker()));
+      box.appendChild(foot);
+      taskList.hidden = true; addRow.hidden = true;
+      tasksBox.insertBefore(box, addRow);
+      picker = box;
     };
     /** Finishing a linked planner task here finishes it there too; events are only read. */
     const writeBackDone = (t: TimerTask): void => {
@@ -344,6 +386,7 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
         ? `#${n} · ${task ? task.title : `Time to ${cfg.label.toLowerCase()}`}`
         : `#${today.sessions} · Time for a break`;
       tasksBox.hidden = !cfg.showTasks;
+      syncBtn.hidden = !cfg.plannerSync;
       renderTasks();
       // The report stays short: a figure or two, the sentence in the tooltip.
       report.hidden = !cfg.showReport;
@@ -427,13 +470,9 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
       else startTick();
     }
     render();
-    // Once a day, the planner's day joins the list on its own; Sync does it again on demand.
-    if (cfg.plannerSync && cfg.showTasks && state.syncDay !== dayKeyLocal(Date.now())) void syncPlanner(false);
 
     const sub = ctx.onDidChangeConfig((next) => {
-      const before = cfg;
       cfg = readConfig(next);
-      if (cfg.plannerSync && cfg.showTasks && (!before.plannerSync || !before.showTasks)) void syncPlanner(false);
       render();
     });
 
