@@ -22,8 +22,8 @@ import UniverPresetSheetsDrawingEnUS from '@univerjs/presets/preset-sheets-drawi
 import { IFunctionService } from '@univerjs/engine-formula';
 import { IContextMenuService, ContextMenuPosition, IShortcutService, KeyCode, MetaKeys } from '@univerjs/ui';
 import { ICommandService, IContextService, CommandType, Direction, EDITOR_ACTIVATED, FOCUSING_SHEET, FOCUSING_UNIVER_EDITOR } from '@univerjs/core';
-import { IEditorBridgeService, MoveSelectionCommand, SetCellEditVisibleOperation } from '@univerjs/sheets-ui';
-import { DeviceInputEventType } from '@univerjs/engine-render';
+import { IEditorBridgeService, MoveSelectionCommand, SetCellEditVisibleOperation, SheetScrollManagerService } from '@univerjs/sheets-ui';
+import { DeviceInputEventType, IRenderManagerService, type IRender } from '@univerjs/engine-render';
 import * as XLSX from 'xlsx';
 import type { IWorkbookData, Univer } from '@univerjs/core';
 import type { FUniver } from '@univerjs/core/lib/facade';
@@ -78,6 +78,10 @@ export interface IWorksheetHost {
   getActiveCell(): string | null;
   /** Engine state for probes: active cell, selection, editor open, focus flags. */
   probeState(): Record<string, unknown>;
+  /** Scroll the active sheet so the given cell is at the top-left (probes). */
+  scrollToCell(row: number, col: number): boolean;
+  /** Probe knob: switch the editor's follow-scroll off ('dom' is the shipped default). */
+  setEditorFollowMode(mode: 'off' | 'dom'): void;
   /** Open the sheet's own right-click menu at a viewport point (probes; the app never needs it). */
   openContextMenu(clientX: number, clientY: number): void;
   /** Tear down the engine and all DOM it created. */
@@ -335,6 +339,124 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
   } catch (err) {
     console.warn('[Worksheet] reverse-move shortcuts not registered:', err);
   }
+
+  // The floating cell editor follows the sheet when it scrolls. Univer 0.25
+  // fixes the editor's screen position once, when editing starts, and every
+  // keystroke re-places it there, so while a formula is being typed the box
+  // stays put on screen as the grid moves under it; scroll back to any other
+  // offset and it sits over the wrong cell (Mufaro, 2026-09-08: picking a
+  // reference far to the left). On each scroll of the sheet's main viewport
+  // while the editor is open, recompute the editor's layout from the current
+  // scroll (position only; the typed text is untouched) and let the engine's
+  // own resize service re-place the box. Coalesced to one refresh per frame.
+  type FollowMode = 'off' | 'dom';
+  const follow = { attached: false, signals: 0, refreshes: 0, error: '', mode: 'dom' as FollowMode, last: null as Record<string, unknown> | null };
+  /** The floating cell editor's positioned wrapper (the engine's EditorContainer root). */
+  const editorWrapper = (): HTMLElement | null => {
+    for (const el of opts.container.querySelectorAll<HTMLElement>('.univer-absolute.univer-z-10')) {
+      if (el.style.left && Number.parseFloat(el.style.left) > -500 && el.querySelector('canvas')) return el;
+    }
+    return null;
+  };
+  // Probe diagnostics: the last engine commands executed.
+  const recentCommands: string[] = [];
+  try {
+    const cmdSub = univer.__getInjector().get(ICommandService).onCommandExecuted((c) => { recentCommands.push(c.id); if (recentCommands.length > 40) recentCommands.shift(); });
+    engineRegistrations.push({ dispose: () => cmdSub.dispose() });
+  } catch { /* diagnostics only */ }
+  const attachEditorFollow = (render: IRender, attempt = 0): void => {
+    if (disposed) return;
+    // Two scroll signals: the main viewport's after-scroll event (wheel, bar)
+    // and the sheet scroll manager's raw feed (commands, scroll-to-cell). Both
+    // come into being a moment after the render unit itself, so this retries
+    // briefly until both resolve.
+    const viewportMain = render.scene?.getViewport('viewMain');
+    let scrollManager: SheetScrollManagerService | null = null;
+    try { scrollManager = render.with(SheetScrollManagerService); } catch { scrollManager = null; }
+    if (!viewportMain || !scrollManager) {
+      if (attempt < 40) setTimeout(() => attachEditorFollow(render, attempt + 1), 250);
+      else follow.error = `follow not attached: viewport=${!!viewportMain} scrollManager=${!!scrollManager}`;
+      return;
+    }
+    try {
+      const injector = univer.__getInjector();
+      const bridge = injector.get(IEditorBridgeService);
+      let frame = 0;
+      let trailing: ReturnType<typeof setTimeout> | null = null;
+      // Recompute where the cell is and translate the box by the difference.
+      // Idempotent: with nothing moved the delta is zero, so it is safe to run
+      // again a little later, which covers a signal that arrives before the
+      // viewport has actually moved (scroll-to-cell fires its raw signal
+      // first, and a short animated scroll settles over a few frames).
+      const refresh = (): void => {
+        if (disposed || bridge.isVisible().visible !== true) return;
+        try {
+            // Refresh the engine's idea of where the cell is (so its own next
+            // re-place, on the next keystroke, lands right), then translate
+            // the box itself by exactly what the cell moved. No engine state
+            // is written: pushing the editor manager's state re-ran the editor
+            // container's effects and left the editor deaf to Enter, Escape
+            // and reference clicks; the engine's resize routine did the same
+            // (probe, 2026-09-08). Pixels = cell coordinates * (canvas client
+            // width / canvas CSS width), the engine's own placement formula.
+            const before = bridge.getEditCellState()?.position;
+            bridge.refreshEditCellPosition(false);
+            const after = bridge.getEditCellState()?.position;
+            const el = editorWrapper();
+            const diag: Record<string, unknown> = { found: !!el, before: before ? [before.startX, before.startY] : null, after: after ? [after.startX, after.startY] : null };
+            if (before && after && el) {
+              const canvasEl = render.engine.getCanvasElement();
+              const cssWidth = Number.parseInt(canvasEl.style.width, 10);
+              const k = cssWidth > 0 ? canvasEl.getBoundingClientRect().width / cssWidth : 1;
+              const dx = (after.startX - before.startX) * k;
+              const dy = (after.startY - before.startY) * k;
+              diag.dx = dx; diag.dy = dy;
+              if (dx !== 0) el.style.left = `${Number.parseFloat(el.style.left) + dx}px`;
+              if (dy !== 0) el.style.top = `${Number.parseFloat(el.style.top) + dy}px`;
+            }
+            follow.last = diag;
+            follow.refreshes++;
+          } catch (err) { follow.error = String(err); }
+      };
+      const onScroll = (): void => {
+        follow.signals++;
+        if (disposed || follow.mode === 'off' || bridge.isVisible().visible !== true) return;
+        if (!frame) {
+          frame = requestAnimationFrame(() => {
+            frame = 0;
+            refresh();
+            requestAnimationFrame(refresh);
+          });
+        }
+        if (trailing) clearTimeout(trailing);
+        trailing = setTimeout(() => { trailing = null; refresh(); }, 160);
+      };
+      const vsub = viewportMain.onScrollAfter$.subscribeEvent(onScroll);
+      const msub = scrollManager.rawScrollInfo$.subscribe(onScroll);
+      engineRegistrations.push({ dispose: () => { vsub.unsubscribe(); msub.unsubscribe(); if (frame) cancelAnimationFrame(frame); if (trailing) clearTimeout(trailing); } });
+      follow.attached = true;
+    } catch (err) {
+      follow.error = String(err);
+      console.warn('[Worksheet] editor follow-scroll not attached:', err);
+    }
+  };
+  try {
+    const renderManager = univer.__getInjector().get(IRenderManagerService);
+    const unitId = univerAPI.getActiveWorkbook()?.getId();
+    const existing = unitId ? renderManager.getRenderById(unitId) : null;
+    if (existing) attachEditorFollow(existing);
+    else {
+      // The render unit is created a tick after the workbook.
+      const created = renderManager.created$.subscribe((render) => {
+        if (unitId && render.unitId !== unitId) return;
+        created.unsubscribe();
+        attachEditorFollow(render);
+      });
+      engineRegistrations.push({ dispose: () => created.unsubscribe() });
+    }
+  } catch (err) {
+    console.warn('[Worksheet] editor follow-scroll setup failed:', err);
+  }
   const setCellText = (row: number, col: number, text: string): void => {
     if (disposed) return;
     try {
@@ -379,9 +501,24 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
         focusingSheet: ctx.getContextValue('FOCUSING_SHEET'),
         focusingUniverEditor: ctx.getContextValue('FOCUSING_UNIVER_EDITOR'),
         activeElement: document.activeElement ? `${document.activeElement.tagName}.${String(document.activeElement.className).slice(0, 50)}` : 'none',
+        follow: { ...follow },
+        recentCommands: recentCommands.splice(0, recentCommands.length),
+        scroll: (() => { try { const s = sheet?.getScrollState(); return s ? { startCol: s.sheetViewStartColumn, startRow: s.sheetViewStartRow, offsetX: s.offsetX, offsetY: s.offsetY } : null; } catch { return null; } })(),
       };
     } catch (err) {
       return { error: String(err) };
+    }
+  };
+  const scrollToCell = (row: number, col: number): boolean => {
+    if (disposed) return false;
+    try {
+      const sheet = univerAPI.getActiveWorkbook()?.getActiveSheet();
+      if (!sheet) return false;
+      sheet.scrollToCell(row, col);
+      return true;
+    } catch (err) {
+      console.warn('[Worksheet] scrollToCell failed:', err);
+      return false;
     }
   };
   const openContextMenu = (clientX: number, clientY: number): void => {
@@ -408,6 +545,8 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
     setColumnsHidden,
     getActiveCell,
     probeState,
+    scrollToCell,
+    setEditorFollowMode: (mode) => { follow.mode = mode; },
     openContextMenu,
     setDarkMode: (dark: boolean) => {
       if (disposed) return;

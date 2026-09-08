@@ -146,7 +146,14 @@ adopts the one-sheet model.
    edit commits first). Univer 0.25 itself dropped the selection on idle
    Shift+Tab and ignored Shift while editing; the host registers a
    higher-priority reverse-move shortcut and catches the editing case on the
-   container (univerHost.ts). Review in Chat (2026-09-08, was a one-shot
+   container (univerHost.ts). The floating cell editor follows the sheet
+   while a formula is typed (2026-09-08): Univer 0.25 fixed the box on
+   screen when editing began, so scrolling away to pick a reference and
+   coming back to any other offset left it over the wrong cell; on every
+   scroll the host refreshes the engine's cell position and translates the
+   box by the same delta, DOM only (writing the engine's editor state, or
+   calling its resize routine, left Enter, Escape and reference clicks dead;
+   probe-verified). Review in Chat (2026-09-08, was a one-shot
    panel): the cells and the solution go to the chat as an attached context
    chip with the review brief as the message, so follow-up questions have
    the work in front of them; the panel remains only as the fallback when
