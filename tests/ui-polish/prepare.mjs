@@ -1,0 +1,14 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { repo, artifactRoot } from '../agent-reliability/isolation.mjs';
+const revision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8', windowsHide: true }).trim();
+const codeRoot = await fs.mkdtemp(path.join(artifactRoot, 'ui-code-'));
+execFileSync('git', ['archive', '--format=tar', `--output=${path.join(codeRoot, 'source.tar')}`, revision], { cwd: repo, windowsHide: true });
+execFileSync('tar', ['-xf', path.join(codeRoot, 'source.tar'), '-C', codeRoot], { windowsHide: true });
+await fs.symlink(path.join(repo, 'node_modules'), path.join(codeRoot, 'node_modules'), 'junction');
+const overlay = ['src/built-in/chat/data/chatDataService.ts', 'src/ui/panelSurface.css', 'src/built-in/output/main.ts', 'src/built-in/terminal/main.ts', 'src/workbench.css', 'ext/flashcards/main.js'];
+for (const file of overlay) await fs.copyFile(path.join(repo, file), path.join(codeRoot, file));
+execFileSync(process.execPath, ['scripts/build.mjs', '--production'], { cwd: codeRoot, windowsHide: true, stdio: 'inherit' });
+await fs.writeFile(path.join(artifactRoot, 'ui-prepared.json'), JSON.stringify({ codeRoot, revision, overlay }, null, 2));
+console.log(codeRoot);

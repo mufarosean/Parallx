@@ -10,7 +10,7 @@
  */
 
 .px-panel {
-  position: relative; /* anchors .px-panel-actions */
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -21,26 +21,15 @@
   font-size: var(--px-text-base);
 }
 
-/* ── Floating action cluster ─────────────────────────────────────────────── */
-/* For panels whose toolbar would only repeat the tab's name: no header row at
-   all — the actions float in the top-right corner over the content, quiet
-   until hovered. The tab strip above already names the panel. */
+/* Actions have their own compact row so they never cover log text. */
 .px-panel-actions {
-  position: absolute;
-  top: var(--px-space-1);
-  right: var(--px-space-2);
-  z-index: 5;
   display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 0 0 30px;
   gap: var(--px-space-1);
-  padding: 2px;
-  border-radius: var(--px-radius-sm);
-  background: color-mix(in srgb, var(--px-bg) 82%, transparent);
-  opacity: 0.65;
-  transition: opacity var(--px-dur-fast) var(--px-ease);
-}
-.px-panel:hover .px-panel-actions,
-.px-panel-actions:focus-within {
-  opacity: 1;
+  padding: 0 var(--px-space-3);
+  border-bottom: 1px solid var(--px-divider);
 }
 
 /* ── Toolbar ─────────────────────────────────────────────────────────────── */
@@ -98,6 +87,8 @@
 .px-panel-toolbar-btn:hover { background: var(--px-surface-hover); color: var(--px-text); }
 .px-panel-toolbar-btn.is-active { background: var(--px-accent-soft); color: var(--px-accent); }
 .px-panel-toolbar-btn svg { width: 15px; height: 15px; }
+.px-panel-toolbar-btn:focus-visible { outline: 1px solid var(--px-accent); outline-offset: 2px; }
+.px-panel-toolbar-btn-icon { display: inline-flex; align-items: center; }
 
 /* ── Body / scroll region ────────────────────────────────────────────────── */
 
@@ -111,10 +102,10 @@
 
 /* ── Log rows (monospace stream) ─────────────────────────────────────────── */
 
-.px-panel-log { padding: var(--px-space-1) 0; }
+.px-panel-log { padding: var(--px-space-2) 0; }
 
 .px-panel-log-row {
-  padding: 1px var(--px-space-2);
+  padding: 2px var(--px-space-3);
   font-family: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: var(--px-text-sm);
   line-height: 1.5;
@@ -124,6 +115,8 @@
 }
 .px-panel-log-row.is-warn { color: var(--px-warning); }
 .px-panel-log-row.is-error { color: var(--px-danger); }
+.px-panel-log-time { color: var(--px-text-faint); font-variant-numeric: tabular-nums; margin-right: var(--px-space-3); }
+.px-panel-log-row.is-warn, .px-panel-log-row.is-error { border-left: 2px solid currentColor; padding-left: calc(var(--px-space-3) - 2px); }
 
 /* ── Empty state ─────────────────────────────────────────────────────────── */
 
@@ -136,11 +129,11 @@
   inset: 0;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   gap: var(--px-space-2);
   padding: var(--px-space-6);
-  text-align: center;
+  text-align: left;
   user-select: none;
   pointer-events: none;
 }
@@ -149,16 +142,17 @@
   display: flex;
   color: var(--px-text-faint);
 }
-.px-panel-empty-icon svg { width: 30px; height: 30px; stroke-width: 1.5; }
+.px-panel-empty-icon svg { width: 18px; height: 18px; stroke-width: 1.5; }
 
 .px-panel-empty-title {
   font-size: var(--px-text-sm);
-  color: var(--px-text-muted);
+  color: var(--px-text-secondary);
+  font-weight: 600;
 }
 
 .px-panel-empty-hint {
-  font-size: var(--px-text-xs);
-  color: var(--px-text-faint);
-  max-width: 34ch;
+  font-size: var(--px-text-sm);
+  color: var(--px-text-muted);
+  max-width: 56ch;
   line-height: 1.5;
 }

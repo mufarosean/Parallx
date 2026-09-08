@@ -367,18 +367,19 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       const root = $('div.parallx-terminal');
       root.classList.add('px-panel');
 
-      // ── Actions — floating, no header row. The tab strip above already
-      // says "Terminal"; a toolbar here just repeated it and cost a row. ──
+      // Shared action row keeps controls clear of the terminal output.
       const actions = $('div');
       actions.className = 'px-panel-actions';
       actions.appendChild(createPanelToolbarButton({
         icon: 'eraser',
         title: 'Clear',
+        label: 'Clear',
         onClick: () => clearTerminalOutput(),
       }));
       actions.appendChild(createPanelToolbarButton({
         icon: 'rotate-cw',
         title: 'Restart Shell',
+        label: 'Restart',
         onClick: () => { clearTerminalOutput(); void spawnShell(); },
       }));
       root.appendChild(actions);

@@ -134,15 +134,16 @@ function refreshList(): void {
     if (entry.source === 'warn') row.classList.add('is-warn');
     else if (entry.source === 'error') row.classList.add('is-error');
 
-    let text = '';
     if (showTimestamps) {
       const d = new Date(entry.timestamp);
       const ts = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}.${String(d.getMilliseconds()).padStart(3, '0')}`;
-      text = `[${ts}] `;
+      const time = $('span.px-panel-log-time');
+      time.textContent = ts;
+      row.appendChild(time);
     }
-    text += entry.message;
-
-    row.textContent = text;
+    const message = $('span');
+    message.textContent = entry.message;
+    row.appendChild(message);
     listEl.appendChild(row);
   }
 
@@ -155,14 +156,14 @@ function refreshList(): void {
 function renderOutputView(container: HTMLElement): IDisposable {
   container.classList.add('px-panel');
 
-  // ── Actions — floating, no header row. The tab strip above already says
-  // "Output"; a toolbar here just repeated it and cost a row. ──
+  // Actions occupy a compact row above the log, never obscuring its text.
   const toolbar = $('div');
   toolbar.className = 'px-panel-actions';
 
   const tsBtn = createPanelToolbarButton({
     icon: 'clock',
     title: 'Toggle timestamps',
+    label: 'Timestamps',
     onClick: () => {
       showTimestamps = !showTimestamps;
       tsBtn.classList.toggle('is-active', showTimestamps);
@@ -175,6 +176,7 @@ function renderOutputView(container: HTMLElement): IDisposable {
   toolbar.appendChild(createPanelToolbarButton({
     icon: 'eraser',
     title: 'Clear output',
+    label: 'Clear',
     onClick: () => {
       logEntries.length = 0;
       refreshList();
