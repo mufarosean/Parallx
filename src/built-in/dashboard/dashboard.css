@@ -1954,7 +1954,9 @@ video.vw__fill { object-fit: contain; background: #000; }
 .dtimer__sync { width: auto; padding: 0 6px; opacity: 1; font-size: var(--px-text-xs); font-weight: 600; }
 .dtimer__task[data-linked="true"] .dtimer__tasktitle::before { content: ''; display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--dtimer-accent); margin-right: 6px; vertical-align: middle; opacity: 0.7; }
 .dtimer__taskedit { flex: 1; min-width: 0; height: 22px; }
-.dtimer__addbtn { opacity: 1; width: 22px; font-size: var(--px-text-md); line-height: 1; }
+.dtimer__addghost { display: flex; align-items: center; width: 100%; padding: 4px 6px 4px 30px; border: 0; border-radius: var(--px-radius-sm); background: transparent; color: var(--px-text-muted); font: inherit; font-size: var(--px-text-sm); text-align: left; cursor: pointer; }
+.dtimer__addghost:hover, .dtimer__addghost:focus-visible { color: var(--px-text); background: color-mix(in srgb, var(--px-text) 6%, transparent); outline: none; }
+.dtimer__addghost[hidden] { display: none; }
 /* The planner picker: today's items with a checkbox each, in place of the list until decided. */
 .dtimer__picker { display: flex; flex-direction: column; gap: 2px; padding: 2px 0; }
 .dtimer__pickrow { display: flex; align-items: center; gap: 8px; padding: 3px 6px; border-radius: var(--px-radius-sm); font-size: var(--px-text-sm); color: var(--px-text); cursor: pointer; }

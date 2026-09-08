@@ -177,8 +177,6 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
     tasksHead.appendChild(tasksSummary);
     const syncBtn = button('Sync', 'dtimer__tasksmall dtimer__sync', () => { void openPlannerPicker(); }, "Pick from today's planner tasks and events");
     tasksHead.appendChild(syncBtn);
-    const addToggle = button('+', 'dtimer__tasksmall dtimer__addbtn', () => { addRow.hidden = !addRow.hidden; if (!addRow.hidden) addInput.focus(); }, 'Add a task');
-    tasksHead.appendChild(addToggle);
     tasksBox.appendChild(tasksHead);
     const taskList = h('div', 'dtimer__tasklist');
     tasksBox.appendChild(taskList);
@@ -200,13 +198,17 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
       state.tasks = [...state.tasks, task];
       if (!state.activeTaskId) state.activeTaskId = task.id;
       addInput.value = ''; estInput.value = '1';
-      addRow.hidden = true;
+      addRow.hidden = true; addGhost.hidden = false;
       persist(); renderTasks();
     });
-    // The add row waits behind the + until asked for; Escape puts it away again.
+    // The add control sits where a new task will appear: a quiet row at the
+    // foot of the list. It becomes the input row when clicked; Escape or a
+    // finished entry turns it back.
     addRow.hidden = true;
-    addInput.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); addRow.hidden = true; addToggle.focus(); } });
+    addInput.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); addRow.hidden = true; addGhost.hidden = false; addGhost.focus(); } });
     tasksBox.appendChild(addRow);
+    const addGhost = button('+ Add Task', 'dtimer__addghost', () => { addGhost.hidden = true; addRow.hidden = false; addInput.focus(); });
+    tasksBox.appendChild(addGhost);
     container.appendChild(tasksBox);
 
     const report = h('div', 'dtimer__report');
@@ -232,7 +234,7 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
     let picker: HTMLElement | null = null;
     const closePicker = (): void => {
       if (picker) { picker.remove(); picker = null; }
-      taskList.hidden = false;
+      taskList.hidden = false; addGhost.hidden = false;
     };
     const openPlannerPicker = async (): Promise<void> => {
       if (!cfg.showTasks) return;
@@ -272,7 +274,7 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
       }));
       foot.appendChild(button('Cancel', 'dtimer__btn dtimer__btn--quiet', () => closePicker()));
       box.appendChild(foot);
-      taskList.hidden = true; addRow.hidden = true;
+      taskList.hidden = true; addRow.hidden = true; addGhost.hidden = true;
       tasksBox.insertBefore(box, addRow);
       picker = box;
     };
