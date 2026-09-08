@@ -61,6 +61,8 @@ const _panes = new Map();          // instanceId -> pane
 const _panesByWc = new Map();      // webContentsId -> pane
 const _pendingUrls = new Map();    // instanceId -> url to load when the pane mounts
 const _sidebarListeners = new Set();
+/** Sidebar sections the user has opened; everything starts collapsed. */
+const _sideOpen = new Set();
 
 const bridge = () => (typeof window !== 'undefined' && window.parallxElectron && window.parallxElectron.browser) || null;
 const cfg = (key, fallback) => {
@@ -1531,7 +1533,11 @@ function createSidebar(container) {
   const scroll = el('div', 'br-sidebar-scroll');
   root.appendChild(scroll);
 
-  const collapsed = new Set();
+  // Sections start collapsed; one the user opens stays open for the session
+  // (module memory outlives the view being rebuilt). Rebuilds are serialised
+  // and coalesced: the burst of startup notifications used to run several
+  // builds at once, each clearing the body and each appending its own empty
+  // state, so "No bookmarks yet." showed twice.
   function section(title, iconName, buildBody) {
     const head = el('div', 'br-section-head');
     head.innerHTML = icon(iconName, 12);
@@ -1539,10 +1545,26 @@ function createSidebar(container) {
     const chev = el('span', 'br-chevron');
     chev.innerHTML = icon('chevron-down', 10);
     head.appendChild(chev);
+    head.setAttribute('role', 'button');
     const body = el('div', 'br-section-body');
-    head.addEventListener('click', () => { const c = !collapsed.has(title); if (c) collapsed.add(title); else collapsed.delete(title); head.classList.toggle('is-collapsed', c); body.classList.toggle('is-collapsed', c); });
+    const apply = () => {
+      const c = !_sideOpen.has(title);
+      head.classList.toggle('is-collapsed', c);
+      body.classList.toggle('is-collapsed', c);
+      head.setAttribute('aria-expanded', c ? 'false' : 'true');
+    };
+    head.addEventListener('click', () => { if (_sideOpen.has(title)) _sideOpen.delete(title); else _sideOpen.add(title); apply(); });
+    apply();
     scroll.append(head, body);
-    return { body, refresh: () => buildBody(body) };
+    let chain = Promise.resolve();
+    let queued = false;
+    const refresh = () => {
+      if (queued) return chain;
+      queued = true;
+      chain = chain.then(() => { queued = false; return buildBody(body); }).catch(() => {});
+      return chain;
+    };
+    return { body, refresh };
   }
   const item = (title, meta, onOpen, iconName, actions) => {
     const row = el('div', 'br-item');
