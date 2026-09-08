@@ -158,6 +158,14 @@ adopts the one-sheet model.
    Import Workbook, also when nothing new is selected). Rendered hidden
    in both themes by tests/probes/worksheet-dashboard-probe.mjs.
 3b. Quiz sessions with a timer per problem and a session id.
+3c. DONE 2026-09-08: the Campaign (campaign.ts, pure, unit-tested; tables
+   ws_campaign and ws_daily_draw, migration 004). Every problem in the bank
+   in N days: a daily quota, a draw fixed per day across all papers
+   (never-attempted first, round robin), Start Today's Quiz over what the
+   quota still needs, pace against the plan, a streak of full days, XP
+   (10 a problem, 5 more for Easy, 50 for a full day) with ten level titles,
+   one square per day, papers cleared, and Review Due Flashcards as the
+   day's other quest. Sits at the top of the Dashboard tab.
 4. Essay sheets and the Flashcards sheet into a flashcards deck. Pictures
    need the engine's drawing preset in the host; EMF/WMF pictures (16 of
    45) cannot be shown at all and are counted at import.

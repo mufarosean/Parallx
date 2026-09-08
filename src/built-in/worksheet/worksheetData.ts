@@ -375,6 +375,37 @@ export async function upsertProgressSnapshot(day: string, attempted: number, sco
   );
 }
 
+// ── Campaign (every problem in the bank in N days) ───────────────────────────
+
+export interface CampaignRow { readonly startDay: string; readonly days: number; readonly dailyTarget: number; readonly startedAt: number }
+export async function getCampaign(): Promise<CampaignRow | null> {
+  const row = await getRow('SELECT start_day, days, daily_target, started_at FROM ws_campaign WHERE id = 1');
+  return row ? { startDay: String(row.start_day), days: Number(row.days), dailyTarget: Number(row.daily_target), startedAt: Number(row.started_at) } : null;
+}
+/** One campaign at a time; starting a new one forgets the old draws. */
+export async function startCampaign(c: CampaignRow): Promise<void> {
+  await run(
+    `INSERT INTO ws_campaign (id, start_day, days, daily_target, started_at) VALUES (1, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET start_day = excluded.start_day, days = excluded.days, daily_target = excluded.daily_target, started_at = excluded.started_at`,
+    [c.startDay, c.days, c.dailyTarget, c.startedAt],
+  );
+  await run('DELETE FROM ws_daily_draw');
+  emitChange();
+}
+export async function endCampaign(): Promise<void> {
+  await run('DELETE FROM ws_campaign');
+  await run('DELETE FROM ws_daily_draw');
+  emitChange();
+}
+export async function getDailyDraw(day: string): Promise<number[] | null> {
+  const row = await getRow('SELECT item_ids FROM ws_daily_draw WHERE day = ?', [day]);
+  if (!row) return null;
+  try { const ids = JSON.parse(String(row.item_ids)); return Array.isArray(ids) ? ids.map(Number) : null; } catch { return null; }
+}
+export async function saveDailyDraw(day: string, ids: number[]): Promise<void> {
+  await run('INSERT INTO ws_daily_draw (day, item_ids) VALUES (?, ?) ON CONFLICT(day) DO UPDATE SET item_ids = excluded.item_ids', [day, JSON.stringify(ids)]);
+}
+
 /** Every completed attempt, newest first, for the dashboard's timeline and score. */
 export async function listCompletedAttempts(): Promise<{ itemId: number; selfGrade: string; at: number; seconds: number; sessionId: string; imported: boolean }[]> {
   const rows = await allRows('SELECT item_id, self_grade, updated_at, seconds, session_id, imported FROM ws_attempts WHERE completed = 1 ORDER BY updated_at DESC');

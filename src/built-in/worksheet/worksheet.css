@@ -388,3 +388,34 @@ body > [data-radix-popper-content-wrapper] button { color: inherit; }
 .ws-dash__tip { position: absolute; z-index: 5; pointer-events: none; background: var(--px-bg-elevated); border: 1px solid var(--px-border-strong); border-radius: var(--px-radius-sm); padding: 6px 8px; font-size: var(--px-text-xs); color: var(--px-text); box-shadow: var(--px-shadow-md); max-width: 280px; }
 .ws-dash__tiphead { font-weight: 600; margin-bottom: 2px; }
 .ws-dash__tipline { color: var(--px-text-secondary); font-variant-numeric: tabular-nums; }
+
+/* ── Campaign: every problem in the bank in N days ── */
+.ws-camp { border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-elevated); padding: var(--px-space-4) var(--px-space-5); display: flex; flex-direction: column; gap: var(--px-space-3); }
+.ws-camp--idle { gap: var(--px-space-2); }
+.ws-camp__head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--px-space-4); flex-wrap: wrap; }
+.ws-camp__headtext { min-width: 0; }
+.ws-camp__title { font-size: var(--px-text-lg); font-weight: 650; letter-spacing: -0.01em; color: var(--px-text); }
+.ws-camp__sub { font-size: var(--px-text-sm); color: var(--px-text-muted); margin-top: 2px; }
+.ws-camp__level { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; min-width: 180px; }
+.ws-camp__lvl { font-size: var(--px-text-xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--px-text-muted); }
+.ws-camp__lvlname { font-size: var(--px-text-md); font-weight: 650; color: var(--px-text); }
+.ws-camp__xpbar { width: 180px; height: 6px; border-radius: var(--px-radius-full); background: color-mix(in srgb, var(--px-text-muted) 18%, transparent); overflow: hidden; margin-top: 4px; }
+.ws-camp__xpbar > span { display: block; height: 100%; background: var(--px-accent); border-radius: var(--px-radius-full); }
+.ws-camp__xp { font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
+.ws-camp__form { display: flex; align-items: center; gap: var(--px-space-2); flex-wrap: wrap; }
+.ws-camp__today { display: flex; align-items: center; gap: var(--px-space-5); flex-wrap: wrap; padding: var(--px-space-3) 0; border-top: 1px solid var(--px-divider, var(--px-border)); border-bottom: 1px solid var(--px-divider, var(--px-border)); }
+.ws-camp__big { font-size: 40px; font-weight: 700; letter-spacing: -0.03em; line-height: 1; color: var(--px-text); font-variant-numeric: tabular-nums; flex: 0 0 auto; }
+.ws-camp__of { font-size: var(--px-text-lg); font-weight: 500; color: var(--px-text-muted); letter-spacing: 0; }
+.ws-camp__todaytext { flex: 1 1 220px; min-width: 0; }
+.ws-camp__todayline { font-size: var(--px-text-md); font-weight: 600; color: var(--px-text); }
+.ws-camp__meta { font-size: var(--px-text-sm); color: var(--px-text-muted); margin-top: 2px; font-variant-numeric: tabular-nums; }
+.ws-camp__actions { display: flex; gap: var(--px-space-2); flex-wrap: wrap; flex: 0 0 auto; }
+.ws-camp__strip { display: flex; flex-wrap: wrap; gap: 4px; }
+.ws-camp__day { width: 16px; height: 16px; border-radius: 3px; background: color-mix(in srgb, var(--px-text-muted) 14%, transparent); }
+.ws-camp__day--full { background: var(--px-success); }
+.ws-camp__day--partial { background: color-mix(in srgb, var(--px-warning) 75%, transparent); }
+.ws-camp__day--missed { background: color-mix(in srgb, var(--px-danger) 45%, transparent); }
+.ws-camp__day--today { box-shadow: inset 0 0 0 2px var(--px-accent); }
+.ws-camp__papers { display: flex; flex-wrap: wrap; gap: 4px; }
+.ws-camp__paper { margin-left: 0; }
+.ws-camp__foot { display: flex; justify-content: flex-end; }

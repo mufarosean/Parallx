@@ -2042,6 +2042,10 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
             startQuiz: (ids) => startQuizWith(ids),
             configureQuiz: (preset) => { _quizPreset = preset; void openWorksheet('practice', 'Quiz'); },
             importWorkbook: () => void openWorksheet('excel-import', 'Import Workbook'),
+            studyFlashcards: () => {
+              const cmds = (_api as unknown as { commands?: { executeCommand?: (id: string) => Promise<unknown> } } | null)?.commands;
+              if (cmds?.executeCommand) void cmds.executeCommand('flashcards.study').catch(() => void _api?.window?.showInformationMessage?.('Flashcards is not available in this workspace.'));
+            },
           });
         }
         return createSheetPane(container, instanceId);

@@ -63,6 +63,22 @@ export async function listItems() { return ${empty ? '[]' : 'items'}; }
 export async function listCompletedAttempts() { return ${empty ? '[]' : 'attempts'}; }
 export async function listProgressSnapshots() { return ${empty ? '[]' : 'snapshots'}; }
 export function onWorksheetDataChanged() { return { dispose() {} }; }
+// A campaign three days in: 18 days, the bank's size over that, today half done.
+const campaignStart = NOW - 3 * DAY - 3 * 3600000;
+const sd = new Date(campaignStart);
+const startDay = sd.getFullYear() + '-' + String(sd.getMonth() + 1).padStart(2, '0') + '-' + String(sd.getDate()).padStart(2, '0');
+export async function getCampaign() { return ${empty || process.argv.includes('--no-campaign') ? 'null' : '{ startDay, days: 18, dailyTarget: Math.ceil(items.length / 18), startedAt: campaignStart }'}; }
+export async function startCampaign() {}
+export async function endCampaign() {}
+export async function getDailyDraw() { return null; }
+export async function saveDailyDraw() {}
+// Ratings inside the campaign window so the strip and the streak have something to show.
+for (const it of items.filter((x) => x.attemptState && x.lastAttemptAt >= campaignStart)) { /* already counted through attempts */ }
+for (let d = 0; d < 3; d++) {
+  const pick = items.filter((x) => !x.attemptState).slice(d * 9, d * 9 + (d === 1 ? 5 : 9));
+  for (const it of pick) { it.attemptState = 'easy'; it.attemptCount = 1; it.lastAttemptAt = campaignStart + d * DAY + 3600000; attempts.push({ itemId: it.id, selfGrade: d % 2 ? 'medium' : 'easy', at: it.lastAttemptAt, seconds: 300, sessionId: '', imported: false }); }
+}
+for (const it of items.filter((x) => !x.attemptState).slice(0, 4)) { it.attemptState = 'hard'; it.attemptCount = 1; it.lastAttemptAt = NOW - 3600000; attempts.push({ itemId: it.id, selfGrade: 'hard', at: it.lastAttemptAt, seconds: 300, sessionId: '', imported: false }); }
 `;
 
 app.whenReady().then(async () => {

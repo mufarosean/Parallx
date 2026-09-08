@@ -7,8 +7,9 @@
 // is due again, what keeps going wrong, the weakest papers, and the vendor's
 // easy-and-likely problems never tried. Every row opens the problem or
 // starts a quiz; the arithmetic lives in progressInsights.ts.
-import { listItems, listCompletedAttempts, listProgressSnapshots, onWorksheetDataChanged } from './worksheetData.js';
-import { computeInsights, type Insights, type PaperProgress, type InsightItem, type TimelinePoint } from './progressInsights.js';
+import { listItems, listCompletedAttempts, listProgressSnapshots, onWorksheetDataChanged, getCampaign, startCampaign, endCampaign, getDailyDraw, saveDailyDraw } from './worksheetData.js';
+import { computeInsights, dayKey, type Insights, type PaperProgress, type InsightItem, type InsightAttempt, type TimelinePoint } from './progressInsights.js';
+import { planCampaign, campaignProgress, campaignDone, drawToday, addDays, LEVEL_TITLES, type Campaign } from './campaign.js';
 import { paperLabel, ratingLabel, QUADRANT_LABELS } from './problemImport.js';
 
 export interface DashboardActions {
@@ -18,6 +19,8 @@ export interface DashboardActions {
   /** Open the quiz builder with these filters already chosen. */
   configureQuiz(preset: { papers?: string[]; state?: string }): void;
   importWorkbook(): void;
+  /** The day's other quest: the flashcards extension's due cards. */
+  studyFlashcards(): void;
 }
 
 function el(tag: string, className?: string, text?: string): HTMLElement {
@@ -259,6 +262,132 @@ function lineChart(host: HTMLElement, title: string, points: ChartPoint[], targe
   return () => ro.disconnect();
 }
 
+// ── The campaign: every problem in the bank in N days ───────────────────────
+
+type Tip = ReturnType<typeof makeTooltip>;
+
+async function campaignSection(root: HTMLElement, items: InsightItem[], attempts: InsightAttempt[], campaign: Campaign | null, actions: DashboardActions, tip: Tip): Promise<boolean> {
+  const problems = items.filter((i) => i.paper);
+  const sec = el('section', 'ws-camp');
+  root.appendChild(sec);
+
+  if (!campaign) {
+    sec.classList.add('ws-camp--idle');
+    sec.appendChild(el('div', 'ws-camp__title', 'Start A Campaign'));
+    sec.appendChild(el('div', 'ws-hint', `Every problem in the bank, a fixed number a day, drawn across all papers. Each day gets its own draw, every rating earns XP, a full day keeps the streak, and a paper is cleared when nothing in it is left. ${problems.length} problems are waiting.`));
+    const form = el('div', 'ws-camp__form');
+    const daysIn = el('input', 'ws-input ws-input--count') as HTMLInputElement;
+    daysIn.type = 'number'; daysIn.min = '1'; daysIn.max = '365'; daysIn.value = '18';
+    daysIn.setAttribute('aria-label', 'Days');
+    const perDay = el('span', 'ws-hint');
+    const readDays = () => Math.max(1, Math.min(365, parseInt(daysIn.value, 10) || 18));
+    const sync = () => {
+      const d = readDays();
+      perDay.textContent = `${Math.ceil(problems.length / d)} problems a day, the last one on ${fmtDay(addDays(dayKey(Date.now()), d - 1), true)}.`;
+    };
+    daysIn.addEventListener('input', sync);
+    sync();
+    form.append(el('span', 'ws-hint', 'Days'), daysIn, perDay);
+    sec.appendChild(form);
+    sec.appendChild(btn('Start Campaign', 'ws-btn ws-btn--primary', () => { void startCampaign(planCampaign(problems.length, readDays())); }));
+    return false;
+  }
+
+  const now = Date.now();
+  const today = dayKey(now);
+  const p = campaignProgress(campaign, items, attempts, now);
+  let draw = await getDailyDraw(today).catch(() => null);
+  if (!draw) {
+    draw = drawToday(campaign, items, attempts, campaign.dailyTarget, today);
+    void saveDailyDraw(today, draw).catch(() => {});
+  }
+  const done = campaignDone(campaign, items, attempts);
+  const drawLeft = draw.filter((id) => !done.has(id));
+  const byId = new Map(items.map((i) => [i.id, i]));
+  const drawPapers = new Set(drawLeft.map((id) => byId.get(id)?.paper).filter(Boolean)).size;
+  const endDay = addDays(campaign.startDay, campaign.days - 1);
+
+  const head = el('div', 'ws-camp__head');
+  const left = el('div', 'ws-camp__headtext');
+  left.appendChild(el('div', 'ws-camp__title', p.finished ? 'Campaign Complete' : p.dayIndex > campaign.days ? `Day ${p.dayIndex}, ${p.dayIndex - campaign.days} past the plan` : `Day ${p.dayIndex} of ${campaign.days}`));
+  left.appendChild(el('div', 'ws-camp__sub', p.finished
+    ? `Every one of the ${p.total} problems, rated in this campaign.`
+    : `${p.total} problems by ${fmtDay(endDay, true)}, ${campaign.dailyTarget} a day across every paper.`));
+  head.appendChild(left);
+  const lvl = el('div', 'ws-camp__level');
+  lvl.appendChild(el('div', 'ws-camp__lvl', `Level ${p.level.level}`));
+  lvl.appendChild(el('div', 'ws-camp__lvlname', p.level.title));
+  const xpbar = el('div', 'ws-camp__xpbar');
+  const fill = el('span');
+  const span = Math.max(1, p.level.nextAt - p.level.floor);
+  fill.style.width = `${Math.min(100, Math.round(((p.xp - p.level.floor) / span) * 100))}%`;
+  xpbar.appendChild(fill);
+  lvl.appendChild(xpbar);
+  lvl.appendChild(el('div', 'ws-camp__xp', p.level.level >= LEVEL_TITLES.length ? `${p.xp} XP` : `${p.xp} XP, ${p.level.nextAt - p.xp} to Level ${p.level.level + 1}`));
+  head.appendChild(lvl);
+  sec.appendChild(head);
+
+  const todayRow = el('div', 'ws-camp__today');
+  const big = el('div', 'ws-camp__big');
+  big.appendChild(document.createTextNode(String(p.doneToday)));
+  big.appendChild(el('span', 'ws-camp__of', ` / ${p.target}`));
+  todayRow.appendChild(big);
+  const text = el('div', 'ws-camp__todaytext');
+  const line = p.finished ? 'Nothing left to draw. The bank is yours.'
+    : p.leftToday === 0 ? 'Quota met. Anything more today is a lead you keep.'
+      : p.doneToday === 0 ? `${p.leftToday} problems today, drawn across ${drawPapers} ${drawPapers === 1 ? 'paper' : 'papers'}.`
+        : `${p.leftToday} to go today.`;
+  text.appendChild(el('div', 'ws-camp__todayline', line));
+  const pace = p.delta === 0 ? 'exactly on pace' : p.delta > 0 ? `${p.delta} ahead of pace` : `${-p.delta} behind pace`;
+  const bits = [`${p.done} of ${p.total} done`, pace, p.streak > 0 ? `${p.streak} day streak` : 'no streak yet', `${p.clearedPapers.length} of ${p.papers.length} papers cleared`];
+  text.appendChild(el('div', 'ws-camp__meta', bits.join(' · ')));
+  todayRow.appendChild(text);
+  const acts = el('div', 'ws-camp__actions');
+  // The quiz offers what the quota still needs from today's draw; once the
+  // quota is met the rest of the draw stays available as a lead.
+  if (drawLeft.length > 0) {
+    const ids = p.leftToday > 0 ? drawLeft.slice(0, p.leftToday) : drawLeft;
+    acts.appendChild(btn(p.leftToday > 0 ? `Start Today's Quiz (${ids.length})` : `Keep Going (${ids.length})`, 'ws-btn ws-btn--primary', () => actions.startQuiz(ids)));
+  } else if (!p.finished && p.remaining > 0) acts.appendChild(btn('Draw More For Today', 'ws-btn ws-btn--primary', () => {
+    const extra = drawToday(campaign, items, attempts, campaign.dailyTarget, `${today}+`);
+    if (extra.length) actions.startQuiz(extra);
+  }));
+  acts.appendChild(btn('Review Due Flashcards', 'ws-btn', () => actions.studyFlashcards()));
+  todayRow.appendChild(acts);
+  sec.appendChild(todayRow);
+
+  // One square per planned day.
+  const strip = el('div', 'ws-camp__strip');
+  strip.setAttribute('role', 'img');
+  strip.setAttribute('aria-label', `${p.fullDays} full days of ${campaign.days}`);
+  for (const d of p.days) {
+    const sq = el('span', `ws-camp__day ws-camp__day--${d.state}`);
+    const lines = [fmtDay(d.day, true), d.state === 'future' ? `Day ${d.index}` : `${d.done} of ${d.target}`];
+    sq.addEventListener('mousemove', (e) => tip.show(e.clientX, e.clientY, lines));
+    sq.addEventListener('mouseleave', () => tip.hide());
+    strip.appendChild(sq);
+  }
+  sec.appendChild(strip);
+
+  // Papers: cleared ones lit, the rest with what is left.
+  const papers = el('div', 'ws-camp__papers');
+  for (const pp of p.papers) {
+    const cleared = pp.done >= pp.total;
+    const chip = el('span', `ws-chip ${cleared ? 'ws-chip--easy' : 'ws-chip--muted'} ws-camp__paper`, cleared ? `${paperLabel(pp.paper)} cleared` : `${paperLabel(pp.paper)} ${pp.total - pp.done} left`);
+    papers.appendChild(chip);
+  }
+  sec.appendChild(papers);
+
+  const foot = el('div', 'ws-camp__foot');
+  const end = btn('End Campaign', 'ws-btn ws-btn--small', () => {
+    if (end.dataset.armed !== '1') { end.dataset.armed = '1'; end.textContent = 'End It, Really'; setTimeout(() => { end.dataset.armed = ''; end.textContent = 'End Campaign'; }, 4000); return; }
+    void endCampaign();
+  });
+  foot.appendChild(end);
+  sec.appendChild(foot);
+  return true;
+}
+
 // ── The pane ────────────────────────────────────────────────────────────────
 
 export function createDashboardPane(container: HTMLElement, actions: DashboardActions): { dispose(): void } {
@@ -272,10 +401,11 @@ export function createDashboardPane(container: HTMLElement, actions: DashboardAc
 
   const render = async () => {
     if (disposed) return;
-    const [items, attempts, snapshots] = await Promise.all([
+    const [items, attempts, snapshots, campaign] = await Promise.all([
       listItems().catch(() => []),
       listCompletedAttempts().catch(() => []),
       listProgressSnapshots().catch(() => []),
+      getCampaign().catch(() => null),
     ]);
     if (disposed) return;
     for (const c of cleanups) c();
@@ -300,6 +430,10 @@ export function createDashboardPane(container: HTMLElement, actions: DashboardAc
       root.appendChild(empty);
       return;
     }
+
+    // The campaign first: what today asks for, before the numbers.
+    await campaignSection(root, items, attempts, campaign, actions, tip);
+    if (disposed) return;
 
     // Headline numbers.
     const tiles = el('div', 'ws-dash__tiles');
