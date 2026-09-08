@@ -138,7 +138,11 @@ adopts the one-sheet model.
    pane); the sidebar is the bank (papers, rating bars, filters, search);
    the problem tab keeps the solution hidden until Reveal, rates Easy,
    Medium, Hard, times the attempt, resets work. Quiz filters gained
-   rating bands and Incomplete.
+   rating bands and Incomplete. Review in Chat (2026-09-08, was a one-shot
+   panel): the cells and the solution go to the chat as an attached context
+   chip with the review brief as the message, so follow-up questions have
+   the work in front of them; the panel remains only as the fallback when
+   the chat surface is absent.
 2b. DONE 2026-09-08 (after his first import): rich text inside cells,
    equation text boxes as floating images with their runs, pictures
    rendered (drawing preset), the solution hidden only to its last column

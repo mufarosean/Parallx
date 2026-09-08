@@ -157,17 +157,13 @@ const WS_REVIEW_SYSTEM = [
   '- Be concise and concrete. Markdown; KaTeX ($...$) for formulas. Never use em dashes.',
 ].join('\n');
 
-export async function reviewAttempt(
-  lm: LmApiLike,
-  item: Pick<WorksheetItem, 'title' | 'questionMd' | 'solutionJson' | 'solutionNotesMd'>,
-  attemptCellsJson: string,
-  onChunk: (text: string) => void,
-): Promise<string> {
-  const modelId = await pickModel(lm);
-  if (!modelId) throw new Error('No language model available. Configure a model in AI settings.');
+type ReviewItem = Pick<WorksheetItem, 'title' | 'questionMd' | 'solutionJson' | 'solutionNotesMd'>;
+
+/** The item, the model solution and the learner's cells as one block of context. Throws when the sheet is empty. */
+export function buildReviewContext(item: ReviewItem, attemptCellsJson: string): string {
   const attempt = serializeWorkbookCells(attemptCellsJson);
   if (!attempt.trim()) throw new Error('There is no work on the sheet to review yet.');
-  const user = [
+  return [
     `ITEM: ${item.title}`,
     `QUESTION:\n${item.questionMd}`,
     '',
@@ -175,11 +171,39 @@ export async function reviewAttempt(
     serializeWorkbookCells(item.solutionJson) || '(none)',
     item.solutionNotesMd ? `\nMODEL SOLUTION NOTES:\n${item.solutionNotesMd}` : '',
     '',
-    'LEARNER\'S WORK (cells):',
+    'LEARNER\'S WORK (cells, "REF: value (formula)"):',
     attempt,
-    '',
-    'Review the learner\'s work.',
   ].filter(Boolean).join('\n');
+}
+
+/**
+ * The review as a CHAT turn: the brief is the message the user sends, the
+ * work travels as an attached context chip, and the feedback streams in the
+ * conversation where follow-up questions can be asked. Same rules as the
+ * one-shot system prompt, spoken in the learner's voice.
+ */
+export function buildReviewRequest(item: ReviewItem, attemptCellsJson: string): { prompt: string; context: string } {
+  const context = buildReviewContext(item, attemptCellsJson);
+  const prompt = [
+    `Review my work on "${item.title}" against the model solution in the attached context.`,
+    'This exam grades method as well as the final answer, so give feedback, never a score:',
+    'what I got right (method steps, correct intermediate values);',
+    'each divergence, naming the cell, what I did, what the solution does, and why it matters;',
+    'and whether a different method of mine is also valid.',
+    'Be concise and concrete. KaTeX ($...$) for formulas.',
+  ].join(' ');
+  return { prompt, context };
+}
+
+export async function reviewAttempt(
+  lm: LmApiLike,
+  item: ReviewItem,
+  attemptCellsJson: string,
+  onChunk: (text: string) => void,
+): Promise<string> {
+  const modelId = await pickModel(lm);
+  if (!modelId) throw new Error('No language model available. Configure a model in AI settings.');
+  const user = `${buildReviewContext(item, attemptCellsJson)}\n\nReview the learner's work.`;
 
   let output = '';
   const stream = lm.sendChatRequest(modelId, [

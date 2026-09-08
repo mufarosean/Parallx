@@ -35,12 +35,45 @@ import { dayKey } from './progressInsights.js';
 import { IDatabaseService } from '../../services/serviceTypes.js';
 import { buildPracticeSet, itemTags } from './practiceSession.js';
 import { itemToWorkbooks, workbookHasOnSheetQuestion, type GeneratedItem } from './itemFormat.js';
-import { generateItems, reviewAttempt, type LmApiLike } from './worksheetAi.js';
+import { generateItems, reviewAttempt, buildReviewRequest, type LmApiLike } from './worksheetAi.js';
 import { registerWorksheetChatTools } from './worksheetChat.js';
 import { detectExcelItems, wholeSheetItem, type GridSheet, type ExcelItem } from './excelImport.js';
 import './worksheet.css';
 
 // ── API typings (structural — the tool API surface) ─────────────────────────
+
+// ── Review in Chat ──────────────────────────────────────────────────────────
+// The learner's cells and the model solution go to the chat as an attached
+// context chip, with the review brief as the message, so the feedback streams
+// in the conversation and follow-up questions have the work in front of them
+// (Mufaro, 2026-09-08: the one-shot panel left nowhere to ask further). Returns
+// 'inline' when the chat surface is not there, so the caller can fall back to
+// the one-shot review. An empty sheet throws before anything is sent.
+async function reviewInChat(
+  item: { title: string; questionMd: string; solutionJson: string; solutionNotesMd: string },
+  itemId: number,
+  cellsJson: string,
+): Promise<'chat' | 'inline'> {
+  const req = buildReviewRequest(item, cellsJson);
+  const cmds = _api?.commands;
+  if (!cmds?.executeCommand) return 'inline';
+  try {
+    await cmds.executeCommand('chat.addSelectionContext', {
+      kind: 'selection',
+      id: `worksheet:item/${itemId}/work/${Date.now()}`,
+      name: `${item.title}: my work`,
+      fullPath: `worksheet:item/${itemId}`,
+      isImplicit: false,
+      selectedText: req.context,
+      surface: 'worksheet',
+    });
+    await cmds.executeCommand('chat.submitPrompt', { text: req.prompt });
+  } catch {
+    return 'inline';
+  }
+  _api?.activity?.note('reviewed', `worksheet attempt on "${item.title}"`, 'sent to chat for method feedback');
+  return 'chat';
+}
 
 interface ParallxApiLike {
   views: {
@@ -54,6 +87,7 @@ interface ParallxApiLike {
   };
   commands: {
     registerCommand(id: string, handler: (...args: unknown[]) => unknown): { dispose(): void };
+    executeCommand?<T = unknown>(id: string, ...args: unknown[]): Promise<T>;
   };
   services?: {
     get<T>(id: { readonly id: string }): T;
@@ -1766,8 +1800,8 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
       // never a score: CAS grades method, and false precision misleads.
       const reviewWrap = el('div', 'ws-item__review');
       const reviewBtn = el('button', 'ws-btn') as HTMLButtonElement;
-      reviewBtn.textContent = 'AI Review My Work';
-      reviewBtn.title = 'Compare your cells against the model solution and get method-level feedback.';
+      reviewBtn.textContent = 'Review in Chat';
+      reviewBtn.title = 'Sends your cells and the model solution to the chat for method-level feedback. Ask follow-up questions there.';
       const reviewOut = el('div', 'ws-item__reviewout');
       reviewOut.style.display = 'none';
       reviewBtn.addEventListener('click', () => {
@@ -1779,10 +1813,12 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
             return;
           }
           reviewBtn.disabled = true;
-          reviewBtn.textContent = 'Reviewing…';
-          reviewOut.style.display = '';
-          reviewOut.textContent = 'Reading your work…';
           try {
+            if (await reviewInChat(item, item.id, lastSavedCells) === 'chat') { reviewOut.style.display = 'none'; return; }
+            // No chat surface: the one-shot review, in place.
+            reviewBtn.textContent = 'Reviewing…';
+            reviewOut.style.display = '';
+            reviewOut.textContent = 'Reading your work…';
             const review = await reviewAttempt(_api.lm, item, lastSavedCells, (partial) => {
               reviewOut.textContent = partial;
             });
@@ -1790,10 +1826,11 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
             await saveAttemptReview(item.id, review);
             _api?.activity?.note('reviewed', `worksheet attempt on "${item.title}"`, 'AI method feedback saved');
           } catch (err) {
+            reviewOut.style.display = '';
             reviewOut.textContent = `Review failed: ${(err as Error).message}`;
           } finally {
             reviewBtn.disabled = false;
-            reviewBtn.textContent = 'AI Review My Work';
+            reviewBtn.textContent = 'Review in Chat';
           }
         })();
       });
@@ -1973,8 +2010,8 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
       if (revealed && _api?.lm) {
         const reviewWrap = el('div', 'ws-item__review');
         const reviewBtn = el('button', 'ws-btn') as HTMLButtonElement;
-        reviewBtn.textContent = 'AI Review My Work';
-        reviewBtn.title = 'Compare your cells against the worked solution and get method-level feedback.';
+        reviewBtn.textContent = 'Review in Chat';
+        reviewBtn.title = 'Sends your cells and the worked solution to the chat for method-level feedback. Ask follow-up questions there.';
         const reviewOut = el('div', 'ws-item__reviewout');
         reviewOut.style.display = 'none';
         reviewBtn.addEventListener('click', () => {
@@ -1982,18 +2019,22 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
             if (!_api?.lm) return;
             await persistWorking();
             reviewBtn.disabled = true;
-            reviewBtn.textContent = 'Reviewing…';
-            reviewOut.style.display = '';
-            reviewOut.textContent = 'Reading your work…';
             try {
-              const review = await reviewAttempt(_api.lm, { ...problem, solutionJson: problem.sheetJson }, lastSavedCells, (partial) => { reviewOut.textContent = partial; });
+              const reviewItem = { ...problem, solutionJson: problem.sheetJson };
+              if (await reviewInChat(reviewItem, problem.id, lastSavedCells) === 'chat') { reviewOut.style.display = 'none'; return; }
+              // No chat surface: the one-shot review, in place.
+              reviewBtn.textContent = 'Reviewing…';
+              reviewOut.style.display = '';
+              reviewOut.textContent = 'Reading your work…';
+              const review = await reviewAttempt(_api.lm, reviewItem, lastSavedCells, (partial) => { reviewOut.textContent = partial; });
               reviewOut.replaceChildren(renderMarkdown(review));
               await saveAttemptReview(problem.id, review);
             } catch (e) {
+              reviewOut.style.display = '';
               reviewOut.textContent = `Review failed: ${(e as Error).message}`;
             } finally {
               reviewBtn.disabled = false;
-              reviewBtn.textContent = 'AI Review My Work';
+              reviewBtn.textContent = 'Review in Chat';
             }
           })();
         });
