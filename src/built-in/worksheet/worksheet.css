@@ -177,6 +177,14 @@ body > [data-radix-popper-content-wrapper] :where(input, textarea, select) {
 .ws-bank__dot.hard { background: var(--px-danger); }
 .ws-bank__dot.open { background: var(--px-accent); }
 .ws-bank__summary { font-size: var(--px-text-xs); color: var(--px-text-muted); margin: var(--px-space-1) 0 var(--px-space-2); }
+/* The Problem Bank page: papers as openable rows, problems inside. */
+.ws-home__paper { display: flex; align-items: center; gap: var(--px-space-3); padding: var(--px-space-2) var(--px-space-3); margin-top: var(--px-space-1); border: 1px solid var(--px-border); border-radius: var(--px-radius-sm); cursor: pointer; user-select: none; background: var(--px-bg-raised); }
+.ws-home__paper:hover { border-color: var(--px-border-strong); }
+.ws-home__paper--generated { margin-top: var(--px-space-5); background: transparent; }
+.ws-home__papername { flex: 1; font-weight: 600; font-size: var(--px-text-base); }
+.ws-home__papermeta { font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
+.ws-home__paperitems { padding: var(--px-space-1) 0 var(--px-space-2) var(--px-space-4); display: flex; flex-direction: column; gap: var(--px-space-1); }
+.ws-bank__paper--generated { margin-top: var(--px-space-3); color: var(--px-text-muted); }
 /* Import: problems grouped by paper with a checkbox each. */
 .ws-import__group { margin-top: var(--px-space-3); }
 .ws-import__grouphead { display: flex; align-items: center; gap: var(--px-space-2); font-weight: 600; font-size: var(--px-text-sm); }

@@ -29,7 +29,7 @@ import {
 import { openXlsx } from './ooxml.js';
 import { detectProblems, normalizeRating, ratingLabel, paperLabel, SOURCE_LABELS, KIND_LABELS, QUADRANT_LABELS, type ProblemImport } from './problemImport.js';
 import { IDatabaseService } from '../../services/serviceTypes.js';
-import { buildPracticeSet, tagCounts, itemTags } from './practiceSession.js';
+import { buildPracticeSet, itemTags } from './practiceSession.js';
 import { itemToWorkbooks, workbookHasOnSheetQuestion, type GeneratedItem } from './itemFormat.js';
 import { generateItems, reviewAttempt, type LmApiLike } from './worksheetAi.js';
 import { registerWorksheetChatTools } from './worksheetChat.js';
@@ -192,6 +192,9 @@ function el(tag: string, className?: string, text?: string): HTMLElement {
 
 // ── Item browser (instanceId 'home') ────────────────────────────────────────
 
+/** Papers opened in the Problem Bank page; survives re-renders. */
+const _homeOpen = new Set<string>();
+
 function createHomePane(container: HTMLElement) {
   const root = el('div', 'ws-pane ws-home');
   container.appendChild(root);
@@ -235,8 +238,9 @@ function createHomePane(container: HTMLElement) {
       return;
     }
 
-    const list = el('div', 'ws-home__list');
-    for (const item of items) {
+    // One row per problem, but only inside the paper you open: 331 rows in
+    // a flat list is the workbook's 331 tabs all over again.
+    const itemRow = (item: WorksheetItemSummary, withDelete: boolean): HTMLElement => {
       const row = el('div', 'ws-itemrow');
       const info = el('div', 'ws-itemrow__info');
       const titleRow = el('div', 'ws-itemrow__title', item.title);
@@ -244,36 +248,85 @@ function createHomePane(container: HTMLElement) {
       else if (item.attemptState) titleRow.appendChild(el('span', `ws-chip ws-chip--${stateClass(item.attemptState)}`, gradeLabel(item.attemptState)));
       info.appendChild(titleRow);
       const meta: string[] = [];
-      if (item.paper) meta.push([paperLabel(item.paper), SOURCE_LABELS[item.source] ?? '', KIND_LABELS[item.kind] ?? ''].filter(Boolean).join(' · '));
+      if (item.paper) meta.push([SOURCE_LABELS[item.source] ?? '', KIND_LABELS[item.kind] ?? '', item.quadrant ? QUADRANT_LABELS[item.quadrant] : ''].filter(Boolean).join(' · '));
       else if (item.sourceLabel) meta.push(item.sourcePage > 0 ? `${item.sourceLabel} · p.${item.sourcePage}` : item.sourceLabel);
-      if (item.tags) meta.push(item.tags.split(',').filter(Boolean).map((t) => `#${t.trim()}`).join(' '));
+      if (!item.paper && item.tags) meta.push(item.tags.split(',').filter(Boolean).map((t) => `#${t.trim()}`).join(' '));
       if (item.attemptCount > 0) meta.push(`${item.attemptCount} ${item.attemptCount === 1 ? 'attempt' : 'attempts'}`);
-      meta.push(new Date(item.createdAt).toLocaleDateString());
+      if (item.seconds > 0) meta.push(fmtSeconds(item.seconds));
+      if (item.lastAttemptAt > 0) meta.push(`last ${new Date(item.lastAttemptAt).toLocaleDateString()}`);
       info.appendChild(el('div', 'ws-itemrow__meta', meta.join(' · ')));
       info.addEventListener('click', () => void openWorksheet(`item:${item.id}`, item.title));
       row.appendChild(info);
-
       const actions = el('div', 'ws-itemrow__actions');
       const openBtn = el('button', 'ws-btn') as HTMLButtonElement;
       openBtn.textContent = 'Practice';
       openBtn.addEventListener('click', () => void openWorksheet(`item:${item.id}`, item.title));
       actions.appendChild(openBtn);
-      const delBtn = el('button', 'ws-btn ws-btn--danger') as HTMLButtonElement;
-      delBtn.textContent = 'Delete';
-      delBtn.addEventListener('click', () => {
-        void (async () => {
-          const ok = await _api?.window?.showConfirmModal?.({
-            message: `Delete "${item.title}"?`,
-            detail: 'This permanently deletes the item, its solution, and every attempt. This cannot be undone.',
-            confirmLabel: 'Delete Item',
-            danger: true,
-          }) ?? false;
-          if (ok) await deleteItem(item.id);
-        })();
-      });
-      actions.appendChild(delBtn);
+      if (withDelete) {
+        const delBtn = el('button', 'ws-btn ws-btn--danger') as HTMLButtonElement;
+        delBtn.textContent = 'Delete';
+        delBtn.addEventListener('click', () => {
+          void (async () => {
+            const ok = await _api?.window?.showConfirmModal?.({
+              message: `Delete "${item.title}"?`,
+              detail: 'This permanently deletes the item, its solution, and every attempt. This cannot be undone.',
+              confirmLabel: 'Delete Item',
+              danger: true,
+            }) ?? false;
+            if (ok) await deleteItem(item.id);
+          })();
+        });
+        actions.appendChild(delBtn);
+      }
       row.appendChild(actions);
-      list.appendChild(row);
+      return row;
+    };
+
+    const problems = items.filter((it) => it.paper);
+    const generated = items.filter((it) => !it.paper);
+    const byPaper = new Map<string, WorksheetItemSummary[]>();
+    for (const it of problems) { if (!byPaper.has(it.paper)) byPaper.set(it.paper, []); byPaper.get(it.paper)!.push(it); }
+    const list = el('div', 'ws-home__list');
+    for (const [key, group] of [...byPaper.entries()].sort((a, b) => paperLabel(a[0]).localeCompare(paperLabel(b[0])))) {
+      const rated = group.filter((it) => normalizeRating(it.attemptState)).length;
+      const secs = group.reduce((n, it) => n + it.seconds, 0);
+      const head = el('div', 'ws-home__paper');
+      head.setAttribute('role', 'button');
+      head.appendChild(el('span', 'ws-home__papername', paperLabel(key)));
+      const bar = el('div', 'ws-bank__bar');
+      for (const cls of ['easy', 'medium', 'hard'] as const) {
+        const n = group.filter((it) => stateClass(it.attemptState) === cls).length;
+        if (n === 0) continue;
+        const seg = el('span', cls);
+        seg.style.width = `${(n / group.length) * 100}%`;
+        bar.appendChild(seg);
+      }
+      head.appendChild(bar);
+      head.appendChild(el('span', 'ws-home__papermeta', `${rated} of ${group.length} rated${secs > 0 ? ` · ${fmtSeconds(secs)}` : ''}`));
+      head.addEventListener('click', () => { if (_homeOpen.has(key)) _homeOpen.delete(key); else _homeOpen.add(key); void render(); });
+      list.appendChild(head);
+      if (_homeOpen.has(key)) {
+        const rows = el('div', 'ws-home__paperitems');
+        for (const it of group) rows.appendChild(itemRow(it, false));
+        list.appendChild(rows);
+      }
+    }
+    if (generated.length > 0) {
+      const head = el('div', 'ws-home__paper ws-home__paper--generated');
+      head.setAttribute('role', 'button');
+      head.appendChild(el('span', 'ws-home__papername', 'Generated Items'));
+      head.appendChild(el('span', 'ws-home__papermeta', `${generated.length} · not part of the workbook bank`));
+      head.addEventListener('click', () => { if (_homeOpen.has('__generated')) _homeOpen.delete('__generated'); else _homeOpen.add('__generated'); void render(); });
+      list.appendChild(head);
+      if (_homeOpen.has('__generated')) {
+        const rows = el('div', 'ws-home__paperitems');
+        const clear = el('button', 'ws-btn ws-btn--danger') as HTMLButtonElement;
+        clear.textContent = 'Delete All Generated Items';
+        clear.addEventListener('click', () => { void deleteGeneratedItems(generated); });
+        rows.appendChild(clear);
+        for (const it of generated) rows.appendChild(itemRow(it, true));
+        list.appendChild(rows);
+      }
     }
     root.appendChild(list);
   };
@@ -330,6 +383,19 @@ function bankMatches(item: WorksheetItemSummary, filter: string, query: string):
   return true;
 }
 
+/** Remove every generated item (never a workbook problem), after one confirmation. */
+async function deleteGeneratedItems(generated: WorksheetItemSummary[]): Promise<void> {
+  const ok = await _api?.window?.showConfirmModal?.({
+    message: `Delete all ${generated.length} generated ${generated.length === 1 ? 'item' : 'items'}?`,
+    detail: 'Items generated from PDFs or pasted material, with their attempts, are permanently deleted. Workbook problems are untouched. This cannot be undone.',
+    confirmLabel: 'Delete Generated Items',
+    danger: true,
+  }) ?? false;
+  if (!ok) return;
+  for (const it of generated) await deleteItem(it.id);
+  _api?.activity?.note('deleted', `${generated.length} generated worksheet items`);
+}
+
 function renderBank(root: HTMLElement, items: WorksheetItemSummary[]): void {
   const search = el('input', 'ws-input ws-bank__search') as HTMLInputElement;
   search.type = 'search';
@@ -361,9 +427,14 @@ function renderBank(root: HTMLElement, items: WorksheetItemSummary[]): void {
   const paint = () => {
     for (const b of filters.querySelectorAll('button')) b.setAttribute('aria-pressed', b.textContent === (FILTERS.find(([v]) => v === _bankFilter)?.[1] ?? 'All') ? 'true' : 'false');
     listHost.replaceChildren();
-    const shown = items.filter((it) => bankMatches(it, _bankFilter, _bankQuery));
-    const rated = items.filter((it) => normalizeRating(it.attemptState)).length;
-    summary.textContent = `${shown.length} of ${items.length} problems · ${rated} rated`;
+    // The bank is the workbook's problems. Anything without a paper (items
+    // generated from PDFs, experiments) lives in its own section below and
+    // never mixes with the papers.
+    const problems = items.filter((it) => it.paper);
+    const generated = items.filter((it) => !it.paper);
+    const shown = problems.filter((it) => bankMatches(it, _bankFilter, _bankQuery));
+    const rated = problems.filter((it) => normalizeRating(it.attemptState)).length;
+    summary.textContent = problems.length ? `${shown.length} of ${problems.length} problems · ${rated} rated` : 'No workbook problems yet. Import Workbook fills the bank.';
     const groups = new Map<string, WorksheetItemSummary[]>();
     for (const it of shown) {
       const key = it.paper || '';
@@ -377,7 +448,7 @@ function renderBank(root: HTMLElement, items: WorksheetItemSummary[]): void {
       const head = el('div', 'ws-bank__paper');
       head.setAttribute('role', 'button');
       const open = filtering || _bankOpen.has(key);
-      head.appendChild(el('span', 'ws-bank__papername', key ? paperLabel(key) : 'Other Items'));
+      head.appendChild(el('span', 'ws-bank__papername', paperLabel(key)));
       const easy = list.filter((it) => stateClass(it.attemptState) === 'easy').length;
       const medium = list.filter((it) => stateClass(it.attemptState) === 'medium').length;
       const hard = list.filter((it) => stateClass(it.attemptState) === 'hard').length;
@@ -409,7 +480,33 @@ function renderBank(root: HTMLElement, items: WorksheetItemSummary[]): void {
       }
       listHost.appendChild(rows);
     }
-    if (shown.length === 0) listHost.appendChild(el('div', 'ws-sidebar__empty', 'Nothing matches.'));
+    if (shown.length === 0 && problems.length > 0) listHost.appendChild(el('div', 'ws-sidebar__empty', 'Nothing matches.'));
+    if (generated.length > 0) {
+      const head = el('div', 'ws-bank__paper ws-bank__paper--generated');
+      head.setAttribute('role', 'button');
+      head.appendChild(el('span', 'ws-bank__papername', 'Generated Items'));
+      head.appendChild(el('span', 'ws-bank__count', String(generated.length)));
+      head.title = 'Items generated from PDFs or pasted material. Not part of the workbook bank; quizzes leave them out unless you ask.';
+      head.addEventListener('click', () => { if (_bankOpen.has('__generated')) _bankOpen.delete('__generated'); else _bankOpen.add('__generated'); paint(); });
+      listHost.appendChild(head);
+      if (_bankOpen.has('__generated')) {
+        const rows = el('div', 'ws-bank__items');
+        for (const it of generated) {
+          const row = el('div', 'ws-bank__item');
+          row.appendChild(el('span', `ws-bank__dot ${stateClass(it.attemptState)}`));
+          row.appendChild(el('span', 'ws-bank__itemtitle', it.title));
+          row.title = it.title;
+          row.addEventListener('click', () => void openWorksheet(`item:${it.id}`, it.title));
+          rows.appendChild(row);
+        }
+        const clear = el('button', 'ws-btn ws-btn--danger ws-btn--block') as HTMLButtonElement;
+        clear.textContent = 'Delete All Generated Items';
+        clear.style.marginTop = 'var(--px-space-1)';
+        clear.addEventListener('click', () => { void deleteGeneratedItems(generated); });
+        rows.appendChild(clear);
+        listHost.appendChild(rows);
+      }
+    }
   };
   let searchTimer: ReturnType<typeof setTimeout> | null = null;
   search.addEventListener('input', () => {
@@ -765,19 +862,28 @@ function createPracticeConfigPane(container: HTMLElement) {
   root.appendChild(el('div', 'ws-hint',
     'Draw problems from the bank the way the workbook did: choose papers, sources and kinds, a rating band, a length, shuffle. Every rating you give lands on the problem and moves the dashboard.'));
 
-  const filters = { tags: new Set<string>(), state: 'all', count: 10, shuffle: true };
+  // The workbook's Quiz Generator, as chips: which papers, which sources,
+  // which kinds, which rating band, how many. Generated items stay out
+  // unless their source chip is on.
+  const filters = { papers: new Set<string>(), sources: new Set<string>(), kinds: new Set<string>(), state: 'all', count: 10, shuffle: true };
   let bank: WorksheetItemSummary[] = [];
 
-  const tagHost = el('div', 'ws-create__controls ws-practice__chips');
+  const paperHost = el('div', 'ws-create__controls ws-practice__chips');
+  const sourceHost = el('div', 'ws-create__controls ws-practice__chips');
+  const kindHost = el('div', 'ws-create__controls ws-practice__chips');
   const stateHost = el('div', 'ws-create__controls');
   const optRow = el('div', 'ws-create__controls');
   const matchLine = el('div', 'ws-hint');
   const err = el('div', 'ws-error');
   err.style.display = 'none';
 
-  root.appendChild(el('div', 'ws-sidebar__label', 'Topics'));
-  root.appendChild(tagHost);
-  root.appendChild(el('div', 'ws-sidebar__label', 'Focus'));
+  root.appendChild(el('div', 'ws-sidebar__label', 'Papers'));
+  root.appendChild(paperHost);
+  root.appendChild(el('div', 'ws-sidebar__label', 'Sources'));
+  root.appendChild(sourceHost);
+  root.appendChild(el('div', 'ws-sidebar__label', 'Kinds'));
+  root.appendChild(kindHost);
+  root.appendChild(el('div', 'ws-sidebar__label', 'Rating'));
   root.appendChild(stateHost);
   root.appendChild(el('div', 'ws-sidebar__label', 'Length'));
   root.appendChild(optRow);
@@ -787,7 +893,7 @@ function createPracticeConfigPane(container: HTMLElement) {
   const countIn = el('input', 'ws-input ws-input--count') as HTMLInputElement;
   countIn.type = 'number'; countIn.min = '1'; countIn.max = '100'; countIn.value = '10';
   optRow.appendChild(countIn);
-  optRow.appendChild(el('span', 'ws-hint', 'items'));
+  optRow.appendChild(el('span', 'ws-hint', 'problems'));
   const shuffleWrap = el('label', 'ws-hint') as HTMLLabelElement;
   const shuffleIn = el('input') as HTMLInputElement;
   shuffleIn.type = 'checkbox'; shuffleIn.checked = true;
@@ -795,11 +901,14 @@ function createPracticeConfigPane(container: HTMLElement) {
   optRow.appendChild(shuffleWrap);
 
   const startBtn = el('button', 'ws-btn ws-btn--primary') as HTMLButtonElement;
-  startBtn.textContent = 'Start Session';
+  startBtn.textContent = 'Start Quiz';
   root.appendChild(startBtn);
 
   const currentFilters = () => ({
-    tags: [...filters.tags],
+    tags: [] as string[],
+    papers: [...filters.papers],
+    sources: [...filters.sources],
+    kinds: [...filters.kinds],
     state: filters.state,
     count: Math.max(1, parseInt(countIn.value, 10) || 10),
     shuffle: shuffleIn.checked,
@@ -807,7 +916,7 @@ function createPracticeConfigPane(container: HTMLElement) {
 
   const syncMatchLine = () => {
     const matching = buildPracticeSet(bank, { ...currentFilters(), count: 10_000, shuffle: false });
-    matchLine.textContent = `${matching.length} ${matching.length === 1 ? 'item matches' : 'items match'} the filters.`;
+    matchLine.textContent = `${matching.length} ${matching.length === 1 ? 'problem matches' : 'problems match'} the filters.`;
   };
 
   const chip = (label: string, active: boolean, onClick: () => void) => {
@@ -819,18 +928,28 @@ function createPracticeConfigPane(container: HTMLElement) {
     return b;
   };
 
-  const renderFilters = () => {
-    tagHost.replaceChildren();
-    const counts = tagCounts(bank);
-    if (counts.size === 0) {
-      tagHost.appendChild(el('span', 'ws-hint', 'No tags in the bank yet - every item is included.'));
-    }
-    for (const [tag, n] of [...counts.entries()].sort((a, b) => b[1] - a[1])) {
-      tagHost.appendChild(chip(`#${tag} ${n}`, filters.tags.has(tag), () => {
-        if (filters.tags.has(tag)) filters.tags.delete(tag); else filters.tags.add(tag);
+  const groupChips = (host: HTMLElement, values: [string, string, number][], selected: Set<string>, allLabel: string) => {
+    host.replaceChildren();
+    host.appendChild(chip(allLabel, selected.size === 0, () => { selected.clear(); renderFilters(); }));
+    for (const [value, label, n] of values) {
+      host.appendChild(chip(`${label} ${n}`, selected.has(value), () => {
+        if (selected.has(value)) selected.delete(value); else selected.add(value);
         renderFilters();
       }));
     }
+  };
+  const renderFilters = () => {
+    const count = (pick: (it: WorksheetItemSummary) => string) => {
+      const m = new Map<string, number>();
+      for (const it of bank) { const k = pick(it); if (k) m.set(k, (m.get(k) ?? 0) + 1); }
+      return m;
+    };
+    const papers = count((it) => it.paper);
+    groupChips(paperHost, [...papers.entries()].sort((a, b) => paperLabel(a[0]).localeCompare(paperLabel(b[0]))).map(([k, n]) => [k, paperLabel(k), n]), filters.papers, 'All Papers');
+    const sources = count((it) => it.source || 'generated');
+    groupChips(sourceHost, [...sources.entries()].map(([k, n]) => [k, SOURCE_LABELS[k] ?? k, n] as [string, string, number]), filters.sources, 'All Sources');
+    const kinds = count((it) => it.kind);
+    groupChips(kindHost, [...kinds.entries()].map(([k, n]) => [k, KIND_LABELS[k] ?? k, n] as [string, string, number]), filters.kinds, 'All Kinds');
     stateHost.replaceChildren();
     for (const [value, label] of [['all', 'All Problems'], ['incomplete', 'Incomplete'], ['unseen', 'Never Tried'], ['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard'], ['struggling', 'Medium or Hard']] as const) {
       stateHost.appendChild(chip(label, filters.state === value, () => {
@@ -852,7 +971,7 @@ function createPracticeConfigPane(container: HTMLElement) {
       return;
     }
     _practice = { ids, index: 0, startedAt: Date.now(), skipped: new Set() };
-    _api?.activity?.note('started', `a quiz of ${ids.length} ${ids.length === 1 ? 'problem' : 'problems'}`);
+    if (_api?.activity) _api.activity.note('started', `a quiz of ${ids.length} ${ids.length === 1 ? 'problem' : 'problems'}`);
     void openWorksheet('practice-run', 'Quiz');
   });
 
@@ -861,9 +980,12 @@ function createPracticeConfigPane(container: HTMLElement) {
     if (disposed) return;
     if (bank.length === 0) {
       root.replaceChildren(el('div', 'ws-hint',
-        'The item bank is empty. Generate items from study material or import an Excel workbook first.'));
+        'The bank is empty. Import your practice workbook first.'));
       return;
     }
+    // Generated items are left out until asked for, so a quiz is the workbook's problems by default.
+    const realSources = new Set(bank.map((it) => it.source).filter(Boolean));
+    if (realSources.size > 0 && bank.some((it) => !it.source)) for (const s of realSources) filters.sources.add(s);
     renderFilters();
   })();
 

@@ -18,6 +18,12 @@ export interface PracticeFilters {
   readonly state: string;
   readonly count: number;
   readonly shuffle: boolean;
+  /** Problem Bank groups, ANY within a group and ALL groups must pass.
+   *  Empty or absent = no restriction on that axis. An item with no source
+   *  counts as 'generated'. */
+  readonly papers?: readonly string[];
+  readonly sources?: readonly string[];
+  readonly kinds?: readonly string[];
 }
 
 interface ItemLike {
@@ -25,6 +31,9 @@ interface ItemLike {
   readonly tags: string;
   readonly attemptState: string;
   readonly attemptCount: number;
+  readonly paper?: string;
+  readonly source?: string;
+  readonly kind?: string;
 }
 
 export function itemTags(tags: string): string[] {
@@ -53,6 +62,18 @@ export function buildPracticeSet(
   if (filters.tags.length > 0) {
     const wanted = new Set(filters.tags);
     pool = pool.filter((i) => itemTags(i.tags).some((t) => wanted.has(t)));
+  }
+  if (filters.papers && filters.papers.length > 0) {
+    const wanted = new Set(filters.papers);
+    pool = pool.filter((i) => wanted.has(i.paper ?? ''));
+  }
+  if (filters.sources && filters.sources.length > 0) {
+    const wanted = new Set(filters.sources);
+    pool = pool.filter((i) => wanted.has(i.source || 'generated'));
+  }
+  if (filters.kinds && filters.kinds.length > 0) {
+    const wanted = new Set(filters.kinds);
+    pool = pool.filter((i) => wanted.has(i.kind ?? ''));
   }
   const rating = (i: ItemLike): string => {
     const s = i.attemptState;

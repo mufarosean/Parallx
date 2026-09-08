@@ -62,3 +62,30 @@ describe('tagCounts / itemTags', () => {
     expect(itemTags(' a , b ,, ')).toEqual(['a', 'b']);
   });
 });
+
+describe('Problem Bank groups: papers, sources, kinds', () => {
+  const p = (id: number, paper: string, source: string, kind: string, attemptState = '') =>
+    ({ id, tags: [paper, source, kind].filter(Boolean).join(','), attemptState, attemptCount: attemptState ? 1 : 0, paper, source, kind });
+  const problems = [
+    p(1, 'brosius', 'rf', 'quant', 'easy'),
+    p(2, 'brosius', 'cas', 'qual'),
+    p(3, 'clark', 'rf', 'quant', 'hard'),
+    p(4, 'clark', 'rf', 'essay'),
+    p(5, '', '', '', 'medium'), // a generated item: no paper, no source
+  ];
+  const base = { tags: [], state: 'all', count: 100, shuffle: false };
+  it('ANY within a group, ALL groups', () => {
+    expect(buildPracticeSet(problems, { ...base, papers: ['brosius'] })).toEqual([1, 2]);
+    expect(buildPracticeSet(problems, { ...base, papers: ['brosius', 'clark'], sources: ['rf'] })).toEqual([1, 3, 4]);
+    expect(buildPracticeSet(problems, { ...base, sources: ['rf'], kinds: ['quant'] })).toEqual([1, 3]);
+  });
+  it('generated items only come when asked for', () => {
+    expect(buildPracticeSet(problems, { ...base, sources: ['rf', 'cas', 'custom'] })).toEqual([1, 2, 3, 4]);
+    expect(buildPracticeSet(problems, { ...base, sources: ['generated'] })).toEqual([5]);
+  });
+  it('rating bands read the new vocabulary', () => {
+    expect(buildPracticeSet(problems, { ...base, state: 'hard' })).toEqual([3]);
+    expect(buildPracticeSet(problems, { ...base, state: 'incomplete' })).toEqual([2, 4]);
+    expect(buildPracticeSet(problems, { ...base, state: 'struggling' })).toEqual([3, 5]);
+  });
+});
