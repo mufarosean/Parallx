@@ -784,7 +784,6 @@ export class ChatDataService {
     signal?: AbortSignal,
     options?: ISummarizationRequestOptions,
   ): AsyncIterable<IChatResponseChunk> {
-    const modelId = this._d.languageModelsService.getActiveModel() ?? '';
     // The summarizer serves compaction, which runs precisely when the
     // conversation is at the window's edge. Sent without num_ctx it fell back
     // to the provider default and was truncated or rejected on exactly the
@@ -792,7 +791,10 @@ export class ChatDataService {
     const requestOptions: IChatRequestOptions | undefined = options?.numCtx && options.numCtx > 0
       ? { numCtx: options.numCtx }
       : undefined;
-    return this._d.ollamaProvider.sendChatRequest(modelId, messages, requestOptions, signal);
+    // Compaction uses the selected model's registered provider just like a
+    // normal turn. Posting a non-Ollama model ID directly to Ollama loses
+    // the continuation precisely when the session needs it most.
+    return this._d.languageModelsService.sendChatRequest(messages, requestOptions, signal);
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1789,6 +1791,7 @@ export class ChatDataService {
     const session = this._d.chatService.getSession(sessionId);
     if (!session) return;
     const messages = session.messages as IChatRequestResponsePair[];
+    const timestamp = Date.now();
     // Replacing the whole history makes the in-memory array the truth —
     // clear any deferred-hydration marker so persistence writes it through.
     session.messagesPendingLoad = false;
@@ -1797,13 +1800,15 @@ export class ChatDataService {
         text: '[Compacted conversation history]',
         requestId: 'compacted-history',
         attempt: 0,
-        timestamp: Date.now(),
+        timestamp,
       },
       response: {
         parts: [{ kind: ChatContentPartKind.Markdown, content: summaryText }],
         isComplete: true,
+        modelId: session.modelId,
+        timestamp,
       },
-    } as IChatRequestResponsePair);
+    });
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

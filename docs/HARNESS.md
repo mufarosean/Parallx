@@ -153,3 +153,15 @@ failed, build green. In-app eyes-on owed at next session: a long tool-heavy
 turn should show (a) the model referencing earlier tool results without
 re-reading, (b) /compact reporting meaningfully larger savings, (c) the
 context gauge dropping further after compaction than before.
+
+## Reliability verification follow-up (2026-09-08)
+
+The [agent reliability execution plan](archive/ai-plans/AGENT_RELIABILITY_EXECUTION_PLAN.md)
+defines a synthetic task tested through failure, compaction, cancellation,
+and restart, with separate app data and a new workspace for every scenario.
+The [results report](archive/ai-plans/AGENT_RELIABILITY_RESULTS.md) records two
+compaction repairs, 5,966 passing unit tests, 20/20 deterministic runtime
+passes, and 45/50 live Ollama passes. The combined live gate remains failed:
+the model replays a cancelled wait after restart. Existing user workspaces
+and Problem Bank/Worksheets were excluded from changes and fixtures.
+See [reproduction commands](../tests/agent-reliability/README.md).
