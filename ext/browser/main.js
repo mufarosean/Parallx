@@ -492,7 +492,9 @@ function createPagePane(container, input, opts = {}) {
   const fwdBtn = iconBtn('arrow-right', 'Forward', () => goForward());
   const reloadBtn = iconBtn('rotate-cw', 'Reload', () => { if (pane.loading) stop(); else reload(); });
   const homeBtn = iconBtn('home', 'Home', () => navigate(homepage()));
-  const newTabBtn = iconBtn('plus', 'New Tab', () => openTab());
+  // Everything opened from inside a private tab is private: the plus button,
+  // links and images in new tabs, searches, popups the page opens, Ctrl+T.
+  const newTabBtn = iconBtn('plus', 'New Tab', () => openTab(undefined, { private: isPrivate }));
   const addressWrap = el('div', 'br-address-wrap');
   const privateChip = el('span', 'br-private-chip', { title: 'Private tab: nothing is kept after the last private tab closes, and nothing goes into history.' });
   privateChip.innerHTML = icon('eye-closed', 11);
@@ -530,7 +532,7 @@ function createPagePane(container, input, opts = {}) {
       chip.innerHTML = icon('star', 10);
       chip.appendChild(document.createTextNode(bm.title || hostOf(bm.url) || bm.url));
       chip.addEventListener('click', () => navigate(bm.url));
-      chip.addEventListener('auxclick', (e) => { if (e.button === 1) { e.preventDefault(); openTab(bm.url); } });
+      chip.addEventListener('auxclick', (e) => { if (e.button === 1) { e.preventDefault(); openTab(bm.url, { private: isPrivate }); } });
       bookmarksBar.appendChild(chip);
     }
   }
@@ -998,8 +1000,8 @@ function createPagePane(container, input, opts = {}) {
     const web = isWebUrl(pane.url);
     void overlayOpen();
     showMenu(anchor, [
-      { label: 'New Tab', handler: () => openTab() },
-      { label: 'New Private Tab', handler: () => openTab(undefined, { private: true }) },
+      { label: 'New Tab', handler: () => openTab(undefined, { private: isPrivate }) },
+      ...(isPrivate ? [{ label: 'New Regular Tab', handler: () => openTab() }] : [{ label: 'New Private Tab', handler: () => openTab(undefined, { private: true }) }]),
       { separator: true },
       { label: 'Set Current Page As Home', handler: () => setHomepage(pane.url), disabled: !(web || INTERNAL_PAGES.has(pane.url)) },
       ...(homepage() !== NEWTAB ? [{ label: 'Use New Tab Page As Home', handler: () => setHomepage(NEWTAB) }] : []),
@@ -1025,18 +1027,18 @@ function createPagePane(container, input, opts = {}) {
   function showPageContextMenu(p) {
     const items = [];
     if (p.linkURL) {
-      items.push({ label: 'Open Link In New Tab', handler: () => openTab(p.linkURL) });
+      items.push({ label: 'Open Link In New Tab', handler: () => openTab(p.linkURL, { private: isPrivate }) });
       items.push({ label: 'Copy Link Address', handler: () => navigator.clipboard.writeText(p.linkURL).catch(() => {}) });
       items.push({ separator: true });
     }
     if (p.srcURL && p.mediaType === 'image') {
-      items.push({ label: 'Open Image In New Tab', handler: () => openTab(p.srcURL) });
+      items.push({ label: 'Open Image In New Tab', handler: () => openTab(p.srcURL, { private: isPrivate }) });
       items.push({ label: 'Copy Image Address', handler: () => navigator.clipboard.writeText(p.srcURL).catch(() => {}) });
       items.push({ separator: true });
     }
     if (p.selectionText) {
       items.push({ label: 'Copy', handler: () => V('edit', pane.tabId, 'copy').catch(() => {}) });
-      items.push({ label: `Search For "${p.selectionText.slice(0, 40)}${p.selectionText.length > 40 ? '…' : ''}"`, handler: () => openTab(parseOmnibox(p.selectionText, cfg('searchEngine', 'duckduckgo')).url) });
+      items.push({ label: `Search For "${p.selectionText.slice(0, 40)}${p.selectionText.length > 40 ? '…' : ''}"`, handler: () => openTab(parseOmnibox(p.selectionText, cfg('searchEngine', 'duckduckgo')).url, { private: isPrivate }) });
       items.push({ separator: true });
     }
     if (p.isEditable) {
@@ -1648,7 +1650,8 @@ function withActive(fn) { if (_activePane && !_activePane.disposed) fn(_activePa
 
 function registerCommands(api, context) {
   const reg = (id, handler) => context.subscriptions.push(api.commands.registerCommand(id, handler));
-  reg('browser.newTab', () => openTab());
+  // Ctrl+T from a private tab opens a private tab; the sidebar's New Tab button stays regular.
+  reg('browser.newTab', () => openTab(undefined, { private: !!(_activePane && !_activePane.disposed && _activePane.isPrivate) }));
   reg('browser.newPrivateTab', () => openTab(undefined, { private: true }));
   reg('browser.openBookmarks', () => withActive((p) => p.navigate('about:bookmarks')));
   reg('browser.openHistory', () => withActive((p) => p.navigate('about:history')));
@@ -1676,7 +1679,13 @@ function subscribeBridge() {
   _unsubscribeBridge = b.onEvent(({ type, payload }) => {
     if (type === 'view:event') { const p = _panes.get(payload.tabId); if (p && !p.disposed) p.onViewEvent(payload); }
     else if (type === 'blocked') { const p = _panesByWc.get(payload.webContentsId); if (p) p.onBlocked(payload); }
-    else if (type === 'open-url') { if (payload && payload.url && /^(https?|about):/i.test(payload.url)) openTab(payload.url); }
+    else if (type === 'open-url') {
+      // A popup or target=_blank link inherits the privacy of the tab that opened it.
+      if (payload && payload.url && /^(https?|about):/i.test(payload.url)) {
+        const opener = payload.openerId != null ? _panesByWc.get(payload.openerId) : null;
+        openTab(payload.url, { private: !!(opener && !opener.disposed && opener.isPrivate) });
+      }
+    }
     else if (type === 'permission-request') { const p = _panesByWc.get(payload.webContentsId) || _activePane; if (p) p.onPermission(payload); else b.permissionReply(payload.requestId, false, false); }
     else if (type === 'download') {
       Downloads.upsert(payload).then(notifySidebar).catch(() => {});
