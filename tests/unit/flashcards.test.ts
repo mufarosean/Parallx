@@ -1393,3 +1393,41 @@ describe('navigation model', () => {
     expect(fcNavViewFor(null)).toBe('decks');
   });
 });
+
+describe('shuffle: the study order the schedule would not give you', () => {
+  const { fcShuffleQueue, fcScheduleOrder, fcBuildQueue: build, fcBuildCustomQueue: buildCustom } = __testables as any;
+  const D = 24 * 60 * 60 * 1000;
+  const M = 60 * 1000;
+  const seq = (...vals: number[]) => { let i = 0; return () => vals[i++ % vals.length]; };
+  const cards = [
+    { id: 1, state: 'new', dueAt: 0, createdAt: 100, suspended: false },
+    { id: 2, state: 'new', dueAt: 0, createdAt: 50, suspended: false },
+    { id: 3, state: 'review', dueAt: NOW - 2 * D, suspended: false },
+    { id: 4, state: 'review', dueAt: NOW - D, suspended: false },
+    { id: 6, state: 'learning', dueAt: NOW - M, suspended: false },
+    { id: 7, state: 'relearning', dueAt: NOW - 2 * M, suspended: false },
+  ];
+  const ids = (q: { id: number }[]) => q.map((c) => c.id);
+
+  it('keeps learning cards first and mixes reviews with new cards', () => {
+    const q = build(cards, NOW, { shuffle: true, rng: seq(0.99, 0.01, 0.5, 0.2) });
+    expect(ids(q).slice(0, 2)).toEqual([7, 6]);
+    expect(new Set(ids(q).slice(2))).toEqual(new Set([3, 4, 2, 1]));
+    expect(ids(q).slice(2)).not.toEqual([3, 4, 2, 1]);
+  });
+
+  it('is off by default and leaves the schedule order alone', () => {
+    expect(ids(build(cards, NOW))).toEqual([7, 6, 3, 4, 2, 1]);
+  });
+
+  it('schedule order puts a shuffled remainder back', () => {
+    const shuffled = fcShuffleQueue(build(cards, NOW), seq(0.99, 0.01, 0.5, 0.2));
+    expect(ids(fcScheduleOrder(shuffled))).toEqual([7, 6, 3, 4, 2, 1]);
+  });
+
+  it('custom study shuffles after the pick, never a single card', () => {
+    const extra = buildCustom(cards, NOW, { mode: 'extra', shuffle: true, rng: seq(0.01) });
+    expect(new Set(ids(extra))).toEqual(new Set([1, 2]));
+    expect(ids(buildCustom(cards, NOW, { mode: 'single', cardId: 3, shuffle: true }))).toEqual([3]);
+  });
+});

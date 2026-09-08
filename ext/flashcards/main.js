@@ -484,7 +484,36 @@ function fcCapProductionCards(review, limit) {
   });
 }
 
-function fcBuildQueue(cards, now, { newLimit = 20, reviewLimit = 200, newAllowanceByDeck = null, productionLimit = 0 } = {}) {
+/**
+ * Shuffle (Fisher-Yates): the study order the schedule would not give you.
+ * Learning cards keep the front of the queue, they are due within minutes
+ * and "Again 1m" only means something if they come back soon. Everything
+ * else, due reviews and the new batch together, goes into one random order,
+ * so a session over several decks stops serving one chapter at a time.
+ * Pure; `rng` is injectable for tests.
+ */
+function fcShuffle(list, rng = Math.random) {
+  const out = list.slice();
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    const t = out[i]; out[i] = out[j]; out[j] = t;
+  }
+  return out;
+}
+const fcIsLearning = (c) => c.state === 'learning' || c.state === 'relearning';
+function fcShuffleQueue(queue, rng = Math.random) {
+  return [...queue.filter(fcIsLearning), ...fcShuffle(queue.filter((c) => !fcIsLearning(c)), rng)];
+}
+/** The schedule's own order for cards already picked: what turning shuffle off restores. */
+function fcScheduleOrder(queue) {
+  const learning = queue.filter(fcIsLearning).sort((a, b) => a.dueAt - b.dueAt);
+  const review = queue.filter((c) => c.state === 'review').sort(fcFlagFirst((a, b) => a.dueAt - b.dueAt));
+  const fresh = queue.filter((c) => c.state === 'new').sort(fcFlagFirst(fcNewOrder));
+  const other = queue.filter((c) => !fcIsLearning(c) && c.state !== 'review' && c.state !== 'new');
+  return [...learning, ...review, ...fresh, ...other];
+}
+
+function fcBuildQueue(cards, now, { newLimit = 20, reviewLimit = 200, newAllowanceByDeck = null, productionLimit = 0, shuffle = false, rng = Math.random } = {}) {
   const active = cards.filter((c) => !c.suspended);
   const learning = active
     .filter((c) => (c.state === 'learning' || c.state === 'relearning') && c.dueAt <= now)
@@ -512,7 +541,8 @@ function fcBuildQueue(cards, now, { newLimit = 20, reviewLimit = 200, newAllowan
   const fresh = freshPool
     .sort(fcFlagFirst(fcNewOrder))
     .slice(0, Math.max(0, newLimit));
-  return [...learning, ...fcCapProductionCards(review, productionLimit), ...fresh];
+  const queue = [...learning, ...fcCapProductionCards(review, productionLimit), ...fresh];
+  return shuffle ? fcShuffleQueue(queue, rng) : queue;
 }
 
 /**
@@ -669,7 +699,10 @@ function fcBuildCustomQueue(cards, now, opts = {}) {
   } else {
     picked = inScope.slice().sort((a, b) => a.dueAt - b.dueAt);
   }
-  return picked.slice(0, limit);
+  // Shuffle after the pick, so "the 20 hardest" stays the 20 hardest, in a
+  // random order. One named card has nothing to shuffle.
+  const chosen = picked.slice(0, limit);
+  return opts.shuffle && mode !== 'single' ? fcShuffle(chosen, opts.rng || Math.random) : chosen;
 }
 
 /**
@@ -4827,6 +4860,7 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
 .fc-study__cardactions { display: flex; gap: var(--px-space-1); flex: 0 0 auto; }
 .fc-btn--ghost { background: transparent; border-color: transparent; color: var(--px-text-muted); }
 .fc-btn--ghost:hover { color: var(--px-text); border-color: var(--px-border-strong); background: transparent; }
+.fc-btn--icon[aria-pressed="true"], .fc-btn--icon[aria-pressed="true"]:hover { color: var(--px-accent); border-color: var(--px-accent); }
 /* Square icon button — the toolbar actions are glyphs, so the label lives in
    aria-label/title rather than on screen. */
 .fc-btn--icon { width: 28px; padding: 0; justify-content: center; gap: 0; }
@@ -8170,6 +8204,9 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
     && (cachedSession.index < cachedSession.queue.length || cachedSession.pending.length > 0);
 
   const cards = await fcListAllCards(route.deckId ?? null);
+  // Shuffle is a remembered choice (flashcards.shuffle), toggled from the
+  // study toolbar; a resumed session keeps the order it already had.
+  const shuffleOn = cfg('shuffle', false) === true;
   // Deadline-aware pacing (M101): each deck's new band is sliced to its
   // paced allowance. Custom study deliberately bypasses pacing — "extra"
   // exists precisely to work past the paced batch.
@@ -8177,8 +8214,9 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
   // aheadMs: learn-ahead (Study Now on the countdown screen) — build the
   // queue as of a moment slightly past the next learning card's dueAt.
   const queue = resuming ? []
-    : custom ? fcBuildCustomQueue(cards, Date.now(), custom)
+    : custom ? fcBuildCustomQueue(cards, Date.now(), { ...custom, shuffle: shuffleOn })
       : fcBuildQueue(cards, Date.now() + aheadMs, {
+        shuffle: shuffleOn,
         // The paced allowance has to be able to EXCEED the batch setting,
         // and this global slice runs after the per-deck one — leaving it at
         // the raw setting would trim a raised pace straight back down and
@@ -8320,6 +8358,8 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
      *  no-scheduling contract even if the route were rebuilt. */
     custom,
     previewOnly,
+    /** Study order: shuffled or the schedule's. Toggled from the toolbar. */
+    shuffled: shuffleOn,
   };
   if (resuming) {
     // The old pane died mid-flight: clear transient flags; its wait timer
@@ -8619,6 +8659,31 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
         void fcUpdateCard(card.id, { flag: next });
       },
     });
+    // Shuffle: the rest of this session in random order (learning cards still
+    // first), or back to schedule order. The card on screen stays put. The
+    // choice is remembered so the next session starts the way this one ran.
+    const shuffleBtn = fcIconBtn(cardActions, {
+      iconName: 'shuffle',
+      label: 'Shuffle',
+      title: '',
+      onClick: () => {
+        session.shuffled = !session.shuffled;
+        try {
+          Promise.resolve(_api.workspace.getConfiguration('flashcards').update('shuffle', session.shuffled))
+            .catch(() => { /* setting write is best-effort */ });
+        } catch { /* setting write is best-effort */ }
+        const rest = session.queue.splice(session.index + 1);
+        session.queue.push(...(session.shuffled ? fcShuffleQueue(rest) : fcScheduleOrder(rest)));
+        paintShuffle();
+      },
+    });
+    const paintShuffle = () => {
+      shuffleBtn.setAttribute('aria-pressed', session.shuffled ? 'true' : 'false');
+      shuffleBtn.title = session.shuffled
+        ? 'Shuffled: cards from every deck and chapter mix. Click to put the rest of this session back in schedule order.'
+        : 'Shuffle the rest of this session so cards from different decks and chapters mix. Learning cards still come first.';
+    };
+    paintShuffle();
     const undoBtn = fcIconBtn(cardActions, {
       iconName: 'undo-2',
       label: 'Undo',
@@ -10719,6 +10784,9 @@ export const __testables = {
   fcIntervalPreview,
   fcBuildQueue,
   fcBuildCustomQueue,
+  fcShuffle,
+  fcShuffleQueue,
+  fcScheduleOrder,
   fcCustomIsPreview,
   fcCapProductionCards,
   fcCountServedToday,

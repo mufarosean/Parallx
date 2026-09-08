@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "parallx-community.flashcards",
   "name": "Flashcards",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "parallx-community",
   "description": "Spaced-repetition flashcards: create from canvas pages, PDFs, and photos; study with SM-2 scheduling; discuss cards with the AI; track progress.",
   "main": "main.js",
@@ -54,6 +54,11 @@
             "type": "number",
             "default": 200,
             "description": "How many due review cards one study session serves. A batch size, not a daily ceiling."
+          },
+          "flashcards.shuffle": {
+            "type": "boolean",
+            "default": false,
+            "description": "Shuffle each study session so cards from different decks and chapters mix instead of coming in schedule order. Learning cards still come first. The Shuffle button in the study toolbar toggles this and reorders the rest of the current session."
           },
           "flashcards.paceNewCards": {
             "type": "boolean",
