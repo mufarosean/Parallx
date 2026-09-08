@@ -1020,7 +1020,7 @@ function createPagePane(container, input, opts = {}) {
       { separator: true },
       { label: 'Send Page To Chat', handler: () => sendToChat(), disabled: !web },
       { label: 'Copy Address', handler: () => navigator.clipboard.writeText(pane.url).catch(() => {}), disabled: !web },
-      { label: 'Open In System Browser', handler: () => { const sh = window.parallxElectron && window.parallxElectron.shell; if (sh && sh.openExternal) sh.openExternal(pane.url); }, disabled: !web },
+      { label: 'Open In System Browser', handler: () => { const sh = window.parallxElectron && window.parallxElectron.shell; if (sh && sh.openExternal) sh.openExternal(pane.url, { system: true }); }, disabled: !web },
       { label: 'Print', handler: () => { if (pane.hasView) V('print', pane.tabId).catch(() => {}); }, disabled: !web },
       { separator: true },
       { label: 'Clear Browsing Data', danger: true, handler: () => clearBrowsingData() },
@@ -1174,6 +1174,19 @@ function applyPageTheme(pane) {
   if (!b || pane.wcId == null) return;
   const theme = cfg('pageTheme', 'system');
   b.setPageTheme(pane.wcId, theme === 'dark' || theme === 'light' ? theme : 'system').catch(() => {});
+}
+
+/**
+ * Claim http(s) links clicked anywhere in the app (pages, notes, chat,
+ * PDFs) so they open as tabs here, or hand them back to the system browser.
+ * The claim follows the setting while the extension is enabled and is
+ * withdrawn on deactivate, so a disabled extension means the plain path.
+ */
+function pushInAppLinks(on) {
+  const b = bridge();
+  if (!b || !b.setInAppLinks) return;
+  const claim = on == null ? cfg('openLinksInApp', true) !== false : !!on;
+  Promise.resolve(b.setInAppLinks(claim)).catch(() => {});
 }
 
 /** Tell main which list set to run: ads and trackers, or that plus the annoyance lists. */
@@ -1790,6 +1803,7 @@ export async function activate(api, context) {
   context.subscriptions.push({ dispose: installDragHooks() });
   context.subscriptions.push({ dispose: installThemeHook() });
   pushAnnoyances();
+  pushInAppLinks();
   // Page views outlive panes; a view whose editor is gone is destroyed here,
   // whether the pane was mounted when the tab closed or not.
   const reconcileViews = async () => {
@@ -1808,6 +1822,7 @@ export async function activate(api, context) {
     context.subscriptions.push(api.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('browser.pageTheme')) for (const p of _panes.values()) applyPageTheme(p);
       if (e.affectsConfiguration('browser.blockAnnoyances')) pushAnnoyances();
+      if (e.affectsConfiguration('browser.openLinksInApp')) pushInAppLinks();
       if (e.affectsConfiguration('browser.showBookmarksBar')) { _bookmarksBarOverride = null; notifySidebar(); }
       if (e.affectsConfiguration('browser.homepage')) _homepageOverride = null;
     }));
@@ -1816,6 +1831,7 @@ export async function activate(api, context) {
 }
 
 export function deactivate() {
+  pushInAppLinks(false);
   try { if (_unsubscribeBridge) _unsubscribeBridge(); } catch { /* ignore */ }
   _unsubscribeBridge = null;
   const b = bridge();

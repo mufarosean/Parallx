@@ -194,7 +194,8 @@ contextBridge.exposeInMainWorld('parallxElectron', {
      * Returns { ok: true } on success or { ok: false, error } on rejection.
      * (M60 §T6.F2 — Gmail OAuth desktop flow.)
      */
-    openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
+    /** Open a web link. Goes to the browser extension when it has claimed links; { system: true } forces the OS browser. */
+    openExternal: (url, opts) => ipcRenderer.invoke('shell:openExternal', url, opts && opts.system ? { system: true } : undefined),
   },
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -401,6 +402,8 @@ contextBridge.exposeInMainWorld('parallxElectron', {
     refreshLists: () => ipcRenderer.invoke('browser:refreshLists'),
     /** Run the annoyance lists too (cookie banners, overlays) or ads and trackers only. Returns the list state. */
     setAnnoyances: (on) => ipcRenderer.invoke('browser:setAnnoyances', on !== false),
+    /** Claim http(s) links clicked anywhere in the app (true) or hand them back to the system browser (false). */
+    setInAppLinks: (on) => ipcRenderer.invoke('browser:setInAppLinks', on !== false),
     blockedFor: (webContentsId) => ipcRenderer.invoke('browser:blockedFor', webContentsId),
     listDownloads: () => ipcRenderer.invoke('browser:listDownloads'),
     openDownload: (p) => ipcRenderer.invoke('browser:openDownload', p),

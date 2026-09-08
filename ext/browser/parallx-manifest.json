@@ -88,6 +88,11 @@
             "default": true,
             "description": "Show your starred pages as a row of chips under the address bar."
           },
+          "browser.openLinksInApp": {
+            "type": "boolean",
+            "default": true,
+            "description": "Open web links clicked anywhere in Parallx (pages, notes, chat, PDFs) in a browser tab here. Off: links open in your system browser. Open In System Browser in the page menu always does."
+          },
           "browser.blockAnnoyances": {
             "type": "boolean",
             "default": true,

@@ -21,6 +21,19 @@ describe('isViewColor', () => {
   });
 });
 
+describe('inAppLinkDecision', () => {
+  it('sends plain http(s) links to the browser extension only while it has claimed them', () => {
+    expect(policy.inAppLinkDecision('https://example.com/a?b=1', true, false)).toBe(true);
+    expect(policy.inAppLinkDecision('http://example.com', true, false)).toBe(true);
+    expect(policy.inAppLinkDecision('https://example.com', false, false)).toBe(false);   // extension disabled or setting off
+    expect(policy.inAppLinkDecision('https://example.com', true, true)).toBe(false);     // Open In System Browser
+    expect(policy.inAppLinkDecision('mailto:a@b.c', true, false)).toBe(false);
+    expect(policy.inAppLinkDecision('file:///C:/x', true, false)).toBe(false);
+    expect(policy.inAppLinkDecision('https://exa mple.com', true, false)).toBe(false);
+    expect(policy.inAppLinkDecision(undefined, true, false)).toBe(false);
+  });
+});
+
 describe('siteKey and isThirdParty', () => {
   it('reduces a host to its registrable domain', () => {
     expect(policy.siteKey('https://a.b.example.co.uk/x?y')).toBe('example.co.uk');

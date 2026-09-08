@@ -197,12 +197,26 @@ function isViewColor(value) {
   return /^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(v) || /^#[0-9a-f]{3,4}$/i.test(v) || /^rgba?\(\s*[\d.]+%?(\s*,\s*[\d.]+%?){2}(\s*,\s*[\d.]+%?)?\s*\)$/i.test(v);
 }
 
+/**
+ * Does a link clicked in the app open in a browser tab here? Only when the
+ * extension has claimed links, the caller did not ask for the system browser
+ * outright, and the URL is a plain http(s) address. mailto and the rest
+ * always go to the system.
+ */
+function inAppLinkDecision(url, enabled, system) {
+  if (!enabled || system) return false;
+  if (typeof url !== 'string') return false;
+  const u = url.trim();
+  return /^https?:\/\/[^\s/?#]+/i.test(u) && !/\s/.test(u);
+}
+
 module.exports = {
   SEARCH_ENGINES,
   DEFAULT_ENGINE,
   POPUP_GESTURE_MS,
   popupDecision,
   isViewColor,
+  inAppLinkDecision,
   PERMISSION_POLICY,
   COOKIE_MODES,
   siteKey,

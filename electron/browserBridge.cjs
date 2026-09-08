@@ -75,6 +75,7 @@ function setupBrowserBridge(ipcMain, opts) {
   let lists = { status: ElectronBlocker ? 'loading' : 'unavailable', count: 0, updatedAt: null, error: null };
   let permissionSeq = 0;
   let downloadSeq = 0;
+  let inAppLinks = false;                          // the extension claimed links clicked anywhere in the app
 
   const send = (channel, payload) => {
     const w = getMainWindow();
@@ -639,7 +640,19 @@ function setupBrowserBridge(ipcMain, opts) {
     }
   });
 
-  return { PARTITIONS, watchWindow };
+  // Links clicked anywhere in the app: while the browser extension is
+  // enabled and its setting says so, an http(s) URL becomes a tab here
+  // instead of a system-browser launch. main.cjs asks before every
+  // shell.openExternal and every window.open the renderer attempts; the
+  // extension clears the claim when it deactivates, so a disabled extension
+  // means the plain path again.
+  ipcMain.handle('browser:setInAppLinks', (_e, on) => { inAppLinks = !!on; return inAppLinks; });
+  const openInApp = (url, system) => {
+    if (!policy.inAppLinkDecision(url, inAppLinks, !!system)) return false;
+    send('browser:open-url', { url: String(url).trim(), disposition: 'app-link', openerId: null });
+    return true;
+  };
+  return { PARTITIONS, watchWindow, openInApp };
 }
 
 module.exports = { setupBrowserBridge, PARTITIONS };

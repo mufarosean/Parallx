@@ -31,6 +31,8 @@ const { setupMcpBridge, killAllMcpProcesses } = require('./mcpBridge.cjs');
 const { setupStorageHandlers } = require('./storageHandlers.cjs');
 const { setupWebFetchBridge } = require('./webFetchBridge.cjs');
 const { setupBrowserBridge } = require('./browserBridge.cjs');
+/** The browser bridge once the window exists; asked before any link leaves for the system browser. */
+let _browserBridge = null;
 const { setupGoogleSyncBridge } = require('./googleSyncBridge.cjs');
 const pythonBridge = require('./pythonBridge.cjs');
 const ankiBridge = require('./ankiBridge.cjs');
@@ -682,6 +684,8 @@ async function createWindow() {
   // are silently swallowed.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (typeof url === 'string' && /^(https?:|mailto:)/i.test(url)) {
+      // The browser extension first, when it has claimed links; else the OS browser.
+      if (_browserBridge && _browserBridge.openInApp(url, false)) return { action: 'deny' };
       shell.openExternal(url).catch((err) => {
         console.warn('[main] openExternal failed for', url, err?.message);
       });
@@ -834,7 +838,7 @@ app.whenReady().then(async () => {
   // Private browser sessions (docs/BROWSER.md): configured once the window
   // exists so popup routing and blocked counts can reach the renderer.
   try {
-    setupBrowserBridge(ipcMain, { getMainWindow: () => mainWindow, userData: app.getPath('userData'), getWorkspaceRoot: () => _fsWorkspaceRoot });
+    _browserBridge = setupBrowserBridge(ipcMain, { getMainWindow: () => mainWindow, userData: app.getPath('userData'), getWorkspaceRoot: () => _fsWorkspaceRoot });
   } catch (err) {
     console.error('[browser] bridge setup failed:', err && err.message);
   }
@@ -1842,7 +1846,7 @@ ipcMain.handle('shell:openPath', async (_event, filePath) => {
 // Any other scheme (`file://`, `javascript:`, `data:`, custom protocols) is
 // rejected. This keeps renderer-triggered shell launches scoped to browser
 // navigation while allowing regular links from editor content.
-ipcMain.handle('shell:openExternal', async (_event, url) => {
+ipcMain.handle('shell:openExternal', async (_event, url, opts) => {
   let parsedUrl;
   try {
     parsedUrl = new URL(url);
@@ -1852,6 +1856,10 @@ ipcMain.handle('shell:openExternal', async (_event, url) => {
   if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
     return { ok: false, error: 'invalid-url-scheme: only http:// and https:// are allowed' };
   }
+  // The browser extension first, when it has claimed links and the caller
+  // did not ask for the system browser outright ({ system: true }).
+  const wantsSystem = !!(opts && typeof opts === 'object' && opts.system);
+  if (_browserBridge && _browserBridge.openInApp(parsedUrl.toString(), wantsSystem)) return { ok: true, inApp: true };
   try {
     await shell.openExternal(parsedUrl.toString());
     return { ok: true };
