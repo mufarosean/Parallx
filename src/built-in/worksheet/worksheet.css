@@ -160,9 +160,10 @@ body > [data-radix-popper-content-wrapper] :where(input, textarea, select) {
 .ws-bank__filter[aria-pressed="true"] { color: var(--px-accent); border-color: var(--px-accent); }
 .ws-bank__paper { display: flex; align-items: center; gap: var(--px-space-2); padding: 4px 6px; cursor: pointer; border-radius: var(--px-radius-sm); user-select: none; }
 .ws-bank__paper:hover { background: var(--px-surface-hover); }
-.ws-bank__papername { flex: 1; font-weight: 600; font-size: var(--px-text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ws-bank__count { font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
-.ws-bank__bar { display: flex; height: 4px; width: 56px; border-radius: var(--px-radius-full); overflow: hidden; background: var(--px-divider); flex: 0 0 auto; }
+.ws-bank__papername { flex: 1; min-width: 0; font-weight: 600; font-size: var(--px-text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-bank__count { flex: 0 0 3.8em; text-align: right; font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
+/* Bars and counts line up: the count owns a fixed column, the bar a fixed width, the name gives. */
+.ws-bank__bar { display: flex; height: 4px; width: 56px; flex: 0 0 56px; border-radius: var(--px-radius-full); overflow: hidden; background: var(--px-divider); }
 .ws-bank__bar > span { display: block; height: 100%; }
 .ws-bank__bar .easy { background: var(--px-success); }
 .ws-bank__bar .medium { background: var(--px-warning); }
@@ -181,8 +182,8 @@ body > [data-radix-popper-content-wrapper] :where(input, textarea, select) {
 .ws-home__paper { display: flex; align-items: center; gap: var(--px-space-3); padding: var(--px-space-2) var(--px-space-3); margin-top: var(--px-space-1); border: 1px solid var(--px-border); border-radius: var(--px-radius-sm); cursor: pointer; user-select: none; background: var(--px-bg-elevated); }
 .ws-home__paper:hover { border-color: var(--px-border-strong); }
 .ws-home__paper--generated { margin-top: var(--px-space-5); background: transparent; }
-.ws-home__papername { flex: 1; font-weight: 600; font-size: var(--px-text-base); }
-.ws-home__papermeta { font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
+.ws-home__papername { flex: 1; min-width: 0; font-weight: 600; font-size: var(--px-text-base); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-home__papermeta { flex: 0 0 15em; text-align: right; font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
 .ws-home__paperitems { padding: var(--px-space-1) 0 var(--px-space-2) var(--px-space-4); display: flex; flex-direction: column; gap: var(--px-space-1); }
 .ws-bank__paper--generated { margin-top: var(--px-space-3); color: var(--px-text-muted); }
 /* Import: problems grouped by paper with a checkbox each. */
