@@ -284,6 +284,8 @@ function setupBrowserBridge(ipcMain, opts) {
     } catch (err) { console.warn('[browser] scriptlet injection:', err && err.message); }
   }
 
+  const PAGE_COLOR_EXPR = '(function(){try{var d=document.documentElement,b=document.body;var t=function(c){return !c||c==="transparent"||c==="rgba(0, 0, 0, 0)"};var c=b?getComputedStyle(b).backgroundColor:"";if(t(c))c=getComputedStyle(d).backgroundColor;return t(c)?"rgb(255, 255, 255)":String(c)}catch(e){return ""}})()';
+
   // ── Guests: popups, navigation resets, lifecycle ──
   function attachGuestHooks(guest) {
     if (!guest || guest.isDestroyed() || !isOurs(guest.session)) return;
@@ -409,6 +411,14 @@ function setupBrowserBridge(ipcMain, opts) {
     try { wc.debugger.attach('1.3'); wc.debugger.sendCommand('Page.enable').catch(() => {}); } catch (err) { console.warn('[browser] debugger attach:', err && err.message); }
     wc.on('did-start-loading', () => emitView(rec, 'did-start-loading'));
     wc.on('did-stop-loading', () => emitView(rec, 'did-stop-loading', navState(wc)));
+    // The pane paints the few pixels it leaves beside each resize sash in the
+    // page's own colour, so that strip reads as page, not as a gap. A read of
+    // the document's background; the result is validated as a colour.
+    wc.on('did-finish-load', () => {
+      wc.executeJavaScript(PAGE_COLOR_EXPR, false)
+        .then((c) => { if (typeof c === 'string' && /^rgba?\([\d.,\s%]+\)$/.test(c) && !rec.wc.isDestroyed()) emitView(rec, 'page-color', { color: c }); })
+        .catch(() => { /* page gone or refused */ });
+    });
     wc.on('did-navigate', (_e, url) => emitView(rec, 'did-navigate', { ...navState(wc), url }));
     wc.on('did-navigate-in-page', (_e, url, isMainFrame) => { if (isMainFrame) emitView(rec, 'did-navigate-in-page', { ...navState(wc), url }); });
     wc.on('page-title-updated', (_e, title) => emitView(rec, 'page-title-updated', { title }));

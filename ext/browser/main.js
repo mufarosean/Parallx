@@ -476,7 +476,8 @@ function createPagePane(container, input, opts = {}) {
   const pane = {
     instanceId, tabId: instanceId, root, hasView: false, wcId: null, url: NEWTAB, title: 'New Tab', loading: false,
     canGoBack: false, canGoForward: false, bookmarked: false, blocked: { count: 0, hosts: [] }, zoom: 1, readerOn: false,
-    disposed: false, isPrivate, viewVisible: false, overlays: 0, _creating: null, _loadWaiters: [],
+    disposed: false, isPrivate, viewVisible: false, overlays: 0, covered: false, pageColor: '', _creating: null, _loadWaiters: [],
+    freeze() { void overlayOpen(); }, thaw() { overlayClose(); },
   };
   _panes.set(instanceId, pane);
   const setActive = () => { _activePane = pane; };
@@ -641,14 +642,62 @@ function createPagePane(container, input, opts = {}) {
   // Bounds: read every frame, sent only when they change.
   let lastBounds = '';
   let rafId = 0;
+  // The page is a native view above the whole DOM. Each frame the pane reports
+  // where the view belongs and whether it may show at all:
+  //  - anything the workbench draws over the page area (a dialog, a menu, the
+  //    command palette, a tab-drop indicator) would sit BEHIND the view, so a
+  //    grid of hit tests inside the page area looks for foreign elements; when
+  //    one is there the view yields to a snapshot of itself until the way is
+  //    clear;
+  //  - the resize sashes straddle each boundary by half their width, and the
+  //    half over the page area must stay in the DOM's hands or the sash could
+  //    never be grabbed, so the view stops short of it and the pane paints the
+  //    strip in the page's own colour.
+  function coveredBy(r) {
+    const inset = 5;
+    if (r.width <= 2 * inset || r.height <= 2 * inset) return false;
+    for (let i = 0; i < 4; i++) {
+      for (let j = 0; j < 4; j++) {
+        const x = r.left + inset + ((r.width - 2 * inset) * i) / 3;
+        const y = r.top + inset + ((r.height - 2 * inset) * j) / 3;
+        const hit = document.elementFromPoint(x, y);
+        if (hit && hit !== content && !content.contains(hit)) return true;
+      }
+    }
+    return false;
+  }
+  function sashInsets(r) {
+    const ins = { left: 0, top: 0, right: 0, bottom: 0 };
+    for (const s of document.querySelectorAll('.grid-sash')) {
+      const q = s.getBoundingClientRect();
+      if (!q.width || !q.height) continue;
+      if (s.classList.contains('grid-sash-vertical')) {
+        if (Math.min(q.bottom, r.bottom) - Math.max(q.top, r.top) <= 0) continue;
+        if (q.left <= r.left && q.right > r.left) ins.left = Math.max(ins.left, Math.min(8, Math.ceil(q.right - r.left)));
+        if (q.right >= r.right && q.left < r.right) ins.right = Math.max(ins.right, Math.min(8, Math.ceil(r.right - q.left)));
+      } else {
+        if (Math.min(q.right, r.right) - Math.max(q.left, r.left) <= 0) continue;
+        if (q.top <= r.top && q.bottom > r.top) ins.top = Math.max(ins.top, Math.min(8, Math.ceil(q.bottom - r.top)));
+        if (q.bottom >= r.bottom && q.top < r.bottom) ins.bottom = Math.max(ins.bottom, Math.min(8, Math.ceil(r.bottom - q.top)));
+      }
+    }
+    return ins;
+  }
+  let lastRectKey = '';
+  let insets = { left: 0, top: 0, right: 0, bottom: 0 };
   function tick() {
     if (pane.disposed) return;
     rafId = requestAnimationFrame(tick);
     if (!pane.hasView) return;
     const r = content.getBoundingClientRect();
     const displayed = root.isConnected && root.offsetParent !== null && r.width > 0 && r.height > 0;
-    const visible = displayed && pane.viewVisible && pane.overlays === 0 && !document.hidden;
-    const b = { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height), visible };
+    const rectKey = `${r.left},${r.top},${r.width},${r.height}`;
+    if (displayed && rectKey !== lastRectKey) { lastRectKey = rectKey; insets = sashInsets(r); }
+    const wantsView = displayed && pane.viewVisible && !document.hidden;
+    if (wantsView && pane.overlays === 0 && !pane.covered && coveredBy(r)) { pane.covered = true; void overlayOpen(); }
+    else if (pane.covered && pane.overlays > 0 && (!wantsView || !coveredBy(r))) { pane.covered = false; overlayClose(); }
+    const visible = wantsView && pane.overlays === 0;
+    const b = { x: Math.round(r.left + insets.left), y: Math.round(r.top + insets.top), width: Math.round(r.width - insets.left - insets.right), height: Math.round(r.height - insets.top - insets.bottom), visible };
     const key = `${b.x},${b.y},${b.width},${b.height},${b.visible}`;
     if (key === lastBounds) return;
     lastBounds = key;
@@ -746,6 +795,7 @@ function createPagePane(container, input, opts = {}) {
   // ── Events from the main process ──
   pane.onViewEvent = (ev) => {
     switch (ev.type) {
+      case 'page-color': pane.pageColor = ev.color || ''; content.style.backgroundColor = pane.pageColor; break;
       case 'did-start-loading': pane.loading = true; progressFill.style.opacity = '1'; progressFill.style.width = '30%'; updateChrome(); break;
       case 'did-stop-loading':
         pane.loading = false; progressFill.style.width = '100%';
@@ -1617,6 +1667,36 @@ function subscribeBridge() {
   });
 }
 
+// Native page views sit above the whole DOM. While anything is being dragged
+// (a tab, a file, a resize sash) the document must receive every mouse event
+// and every drop indicator must be visible, so all pages freeze into their
+// snapshots for the duration and come back on release.
+let _frozen = false;
+function freezePages() { if (_frozen) return; _frozen = true; for (const p of _panes.values()) { if (!p.disposed && p.freeze) p.freeze(); } }
+function thawPages() { if (!_frozen) return; _frozen = false; for (const p of _panes.values()) { if (!p.disposed && p.thaw) p.thaw(); } }
+function installDragHooks() {
+  const onDragStart = () => freezePages();
+  const onDragDone = () => thawPages();
+  const onMouseDown = (e) => {
+    const t = e.target;
+    if (!(t instanceof Element) || !t.closest('.grid-sash')) return;
+    freezePages();
+    const up = () => { window.removeEventListener('mouseup', up, true); thawPages(); };
+    window.addEventListener('mouseup', up, true);
+  };
+  document.addEventListener('dragstart', onDragStart, true);
+  document.addEventListener('dragend', onDragDone, true);
+  document.addEventListener('drop', onDragDone, true);
+  document.addEventListener('mousedown', onMouseDown, true);
+  return () => {
+    document.removeEventListener('dragstart', onDragStart, true);
+    document.removeEventListener('dragend', onDragDone, true);
+    document.removeEventListener('drop', onDragDone, true);
+    document.removeEventListener('mousedown', onMouseDown, true);
+    thawPages();
+  };
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 10: ACTIVATION
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1647,6 +1727,7 @@ export async function activate(api, context) {
   registerCommands(api, context);
   registerAgentTools(api, context);
   subscribeBridge();
+  context.subscriptions.push({ dispose: installDragHooks() });
   // Page views outlive panes; a view whose editor is gone is destroyed here,
   // whether the pane was mounted when the tab closed or not.
   const reconcileViews = async () => {
