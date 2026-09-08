@@ -23,11 +23,12 @@ import { renderMarkdown } from '../../ui/renderMarkdown.js';
 import {
   listItems, getItem, createItem, deleteItem, getOpenAttempt, saveAttemptCells,
   discardOpenAttempt, completeAttempt, saveAttemptReview, onWorksheetDataChanged,
-  getSessionGrades, attachWorksheetDatabase, findItemBySheet, recordImportedRating,
+  getSessionGrades, attachWorksheetDatabase, findItemBySheet, recordImportedRating, upsertProgressSnapshot,
   type WorksheetItem, type WorksheetItemSummary,
 } from './worksheetData.js';
 import { openXlsx } from './ooxml.js';
-import { detectProblems, normalizeRating, ratingLabel, paperLabel, SOURCE_LABELS, KIND_LABELS, QUADRANT_LABELS, type ProblemImport } from './problemImport.js';
+import { detectProblems, readWorkbookTimeline, normalizeRating, ratingLabel, paperLabel, SOURCE_LABELS, KIND_LABELS, QUADRANT_LABELS, type ProblemImport, type WorkbookSnapshot } from './problemImport.js';
+import { createDashboardPane } from './dashboardPane.js';
 import { IDatabaseService } from '../../services/serviceTypes.js';
 import { buildPracticeSet, itemTags } from './practiceSession.js';
 import { itemToWorkbooks, workbookHasOnSheetQuestion, type GeneratedItem } from './itemFormat.js';
@@ -537,6 +538,7 @@ function createSidebarView(container: HTMLElement) {
       actions.appendChild(b);
     };
     mk('Start Quiz', true, () => void openWorksheet('practice', 'Quiz'));
+    mk('Dashboard', false, () => void openWorksheet('dashboard', 'Dashboard'));
     mk('Import Workbook', false, () => void openWorksheet('excel-import', 'Import Workbook'));
     mk('Generate Items', false, () => void openWorksheet('create', 'Generate Items'));
     mk('Scratch Sheet', false, () => void openWorksheet('scratch', 'Practice Sheet'));
@@ -852,6 +854,16 @@ interface RunningPractice {
   skipped: Set<number>;
 }
 let _practice: RunningPractice | null = null;
+/** Filters chosen elsewhere (the dashboard's Quiz buttons), taken by the next quiz builder. */
+let _quizPreset: { papers?: string[]; state?: string } | null = null;
+
+/** A quiz over exactly these problems, in this order. */
+function startQuizWith(ids: number[]): void {
+  if (ids.length === 0) return;
+  _practice = { ids: [...ids], index: 0, startedAt: Date.now(), skipped: new Set() };
+  if (_api?.activity) _api.activity.note('started', `a quiz of ${ids.length} ${ids.length === 1 ? 'problem' : 'problems'}`);
+  void openWorksheet('practice-run', 'Quiz');
+}
 
 function createPracticeConfigPane(container: HTMLElement) {
   const root = el('div', 'ws-pane ws-create');
@@ -986,6 +998,11 @@ function createPracticeConfigPane(container: HTMLElement) {
     // Generated items are left out until asked for, so a quiz is the workbook's problems by default.
     const realSources = new Set(bank.map((it) => it.source).filter(Boolean));
     if (realSources.size > 0 && bank.some((it) => !it.source)) for (const s of realSources) filters.sources.add(s);
+    if (_quizPreset) {
+      for (const p of _quizPreset.papers ?? []) filters.papers.add(p);
+      if (_quizPreset.state) filters.state = _quizPreset.state;
+      _quizPreset = null;
+    }
     renderFilters();
   })();
 
@@ -1254,7 +1271,7 @@ function createExcelImportPane(container: HTMLElement) {
   };
 
   /** Problem Bank import: problems grouped by paper, already-imported ones marked. */
-  const renderProblems = async (problems: ProblemImport[], filePath: string, fileLabel: string) => {
+  const renderProblems = async (problems: ProblemImport[], filePath: string, fileLabel: string, timeline: WorkbookSnapshot[]) => {
     listHost.replaceChildren();
     err.style.display = 'none';
     const existing = new Map<string, number>();
@@ -1314,7 +1331,8 @@ function createExcelImportPane(container: HTMLElement) {
     importBtn.addEventListener('click', () => {
       void (async () => {
         const keep = rows.filter((r) => r.box.checked);
-        if (keep.length === 0) { err.textContent = 'Nothing selected to import.'; err.style.display = ''; return; }
+        // A bank that already holds every problem can still take the workbook's history.
+        if (keep.length === 0 && timeline.length === 0) { err.textContent = 'Nothing selected to import.'; err.style.display = ''; return; }
         importBtn.disabled = true;
         let done = 0;
         let carried = 0;
@@ -1331,9 +1349,15 @@ function createExcelImportPane(container: HTMLElement) {
             done++;
             if (done % 10 === 0) status.textContent = `Importing ${done} / ${keep.length}…`;
           }
+          // The workbook's own dashboard history, so the timeline starts where his did.
+          for (const s of timeline) await upsertProgressSnapshot(s.day, s.attempted, s.score, 'workbook');
           status.textContent = '';
           _api?.activity?.note('imported', `${done} problems from ${fileLabel}`, carried ? `${carried} ratings carried over` : undefined);
-          await _api?.window?.showInformationMessage?.(`Imported ${done} ${done === 1 ? 'problem' : 'problems'}${carried ? `, ${carried} with your rating` : ''}.`);
+          const history = timeline.length ? `${timeline.length} ${timeline.length === 1 ? 'day' : 'days'} of dashboard history` : '';
+          await _api?.window?.showInformationMessage?.(
+            done === 0 && history ? `Nothing new to import. Added ${history}.`
+              : `Imported ${done} ${done === 1 ? 'problem' : 'problems'}${carried ? `, ${carried} with your rating` : ''}${history ? `, ${history}` : ''}.`,
+          );
           await openWorksheet('home', 'Problem Bank');
         } catch (e) {
           err.textContent = (e as Error).message;
@@ -1381,8 +1405,9 @@ function createExcelImportPane(container: HTMLElement) {
             const { problems } = await detectProblems(book, (done, total) => { status.textContent = `Reading ${fileLabel}: ${done} / ${total} problems…`; });
             if (disposed) return;
             if (problems.length > 0) {
-              status.textContent = `${fileLabel}: ${problems.length} problems found.`;
-              await renderProblems(problems, filePath, fileLabel);
+              const timeline = await readWorkbookTimeline(book).catch(() => [] as WorkbookSnapshot[]);
+              status.textContent = `${fileLabel}: ${problems.length} problems found${timeline.length ? `, ${timeline.length} days of history` : ''}.`;
+              await renderProblems(problems, filePath, fileLabel, timeline);
               return;
             }
           }
@@ -1978,6 +2003,14 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
         if (instanceId === 'excel-import') return createExcelImportPane(container);
         if (instanceId === 'practice') return createPracticeConfigPane(container);
         if (instanceId === 'practice-run') return createPracticeRunPane(container);
+        if (instanceId === 'dashboard') {
+          return createDashboardPane(container, {
+            openItem: (id, title) => void openWorksheet(`item:${id}`, title),
+            startQuiz: (ids) => startQuizWith(ids),
+            configureQuiz: (preset) => { _quizPreset = preset; void openWorksheet('practice', 'Quiz'); },
+            importWorkbook: () => void openWorksheet('excel-import', 'Import Workbook'),
+          });
+        }
         return createSheetPane(container, instanceId);
       },
     }),
@@ -2003,6 +2036,9 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
   );
   context.subscriptions.push(
     api.commands.registerCommand('worksheet.practice', () => openWorksheet('practice', 'Quiz')),
+  );
+  context.subscriptions.push(
+    api.commands.registerCommand('worksheet.dashboard', () => openWorksheet('dashboard', 'Dashboard')),
   );
 
   // The AI's read surface: bank/progress + the user's actual sheet work.

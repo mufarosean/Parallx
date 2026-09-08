@@ -187,3 +187,44 @@ export async function detectProblems(book: XlsxWorkbook, onProgress?: (done: num
   }
   return { problems, skipped };
 }
+
+// ── The workbook's own progress history ─────────────────────────────────────
+
+export interface WorkbookSnapshot { readonly day: string; readonly attempted: number; readonly score: number }
+
+/** Excel serial date → local calendar day, yyyy-mm-dd. */
+export function serialToDay(serial: number): string {
+  const ms = Math.round((serial - 25569) * 86400000);
+  const d = new Date(ms);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+}
+
+/**
+ * The Dashboard_Data timeline (Date, % Attempted, Score), written by the
+ * workbook's refresh macro one row per day it was pressed. Only rows that
+ * hold a value are history; the rest of the table is empty future dates.
+ */
+export async function readWorkbookTimeline(book: XlsxWorkbook): Promise<WorkbookSnapshot[]> {
+  if (!book.sheetNames.includes('Dashboard_Data')) return [];
+  let sheet: XlsxSheet;
+  try { sheet = await book.readSheet('Dashboard_Data'); } catch { return []; }
+  const rows = new Map<number, { day?: string; attempted?: number; score?: number }>();
+  for (const c of sheet.cells) {
+    if (c.row === 0) continue;
+    if (c.col < 10 || c.col > 12) continue;
+    const entry = rows.get(c.row) ?? {};
+    if (c.col === 10) {
+      if (typeof c.value === 'number') entry.day = serialToDay(c.value);
+      else if (typeof c.value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(c.value)) entry.day = c.value.slice(0, 10);
+    }
+    if (c.col === 11 && typeof c.value === 'number') entry.attempted = c.value;
+    if (c.col === 12 && typeof c.value === 'number') entry.score = c.value;
+    rows.set(c.row, entry);
+  }
+  const out: WorkbookSnapshot[] = [];
+  for (const e of rows.values()) {
+    if (!e.day || (e.attempted === undefined && e.score === undefined)) continue;
+    out.push({ day: e.day, attempted: e.attempted ?? 0, score: e.score ?? 0 });
+  }
+  return out.sort((a, b) => a.day.localeCompare(b.day));
+}

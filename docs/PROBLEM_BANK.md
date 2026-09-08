@@ -139,8 +139,25 @@ adopts the one-sheet model.
    the problem tab keeps the solution hidden until Reveal, rates Easy,
    Medium, Hard, times the attempt, resets work. Quiz filters gained
    rating bands and Incomplete.
-3. Quiz sessions with a timer per problem and a session id, the dashboard
-   tab (attempted %, weighted score, time, timeline, due list).
+2b. DONE 2026-09-08 (after his first import): rich text inside cells,
+   equation text boxes as floating images with their runs, pictures
+   rendered (drawing preset), the solution hidden only to its last column
+   so he can work beside it, the rating cell kept and rewritten with the
+   current rating, the sheet menu readable (color-scheme pinned; see
+   tests/probes/worksheet-menu-probe.mjs).
+3. DONE 2026-09-08: the Dashboard tab (dashboardPane.ts, arithmetic in
+   progressInsights.ts, unit-tested): attempted %, the weighted score,
+   time studied, ratings this week; Work On Next as four lists that open
+   the problem or start a quiz (Due Now: Hard back after 3 days, Medium
+   after 7; Keeps Going Wrong: rated Hard twice and not Easy; Weakest
+   Papers with a Quiz button that presets the quiz builder; Quick Wins:
+   the vendor's Easy & Likely never tried); Progress By Paper as stacked
+   bars weakest first; Progress Over Time as two small multiples
+   (Attempted, Score) with the workbook's own Dashboard_Data history
+   dashed ahead of every rating given here (ws_progress, imported by
+   Import Workbook, also when nothing new is selected). Rendered hidden
+   in both themes by tests/probes/worksheet-dashboard-probe.mjs.
+3b. Quiz sessions with a timer per problem and a session id.
 4. Essay sheets and the Flashcards sheet into a flashcards deck. Pictures
    need the engine's drawing preset in the host; EMF/WMF pictures (16 of
    45) cannot be shown at all and are counted at import.

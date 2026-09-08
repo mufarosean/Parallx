@@ -52,7 +52,7 @@ body > [data-radix-popper-content-wrapper] :where(input, textarea, select) {
   padding: 4px 12px;
   font-size: var(--px-text-sm);
   color: var(--px-text);
-  background: var(--px-bg-raised);
+  background: var(--px-bg-elevated);
   border: 1px solid var(--px-border-strong);
   border-radius: var(--px-radius-sm);
   cursor: pointer;
@@ -77,7 +77,7 @@ body > [data-radix-popper-content-wrapper] :where(input, textarea, select) {
 .ws-itemrow {
   display: flex; align-items: center; gap: var(--px-space-3);
   padding: var(--px-space-3) var(--px-space-4);
-  background: var(--px-bg-raised);
+  background: var(--px-bg-elevated);
   border: 1px solid var(--px-border);
   border-radius: var(--px-radius-md);
 }
@@ -159,7 +159,7 @@ body > [data-radix-popper-content-wrapper] :where(input, textarea, select) {
 .ws-bank__filter { border: 1px solid var(--px-border); background: transparent; color: var(--px-text-muted); border-radius: var(--px-radius-sm); padding: 1px 8px; font-size: var(--px-text-xs); cursor: pointer; font: inherit; }
 .ws-bank__filter[aria-pressed="true"] { color: var(--px-accent); border-color: var(--px-accent); }
 .ws-bank__paper { display: flex; align-items: center; gap: var(--px-space-2); padding: 4px 6px; cursor: pointer; border-radius: var(--px-radius-sm); user-select: none; }
-.ws-bank__paper:hover { background: var(--px-bg-raised); }
+.ws-bank__paper:hover { background: var(--px-surface-hover); }
 .ws-bank__papername { flex: 1; font-weight: 600; font-size: var(--px-text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ws-bank__count { font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
 .ws-bank__bar { display: flex; height: 4px; width: 56px; border-radius: var(--px-radius-full); overflow: hidden; background: var(--px-divider); flex: 0 0 auto; }
@@ -169,7 +169,7 @@ body > [data-radix-popper-content-wrapper] :where(input, textarea, select) {
 .ws-bank__bar .hard { background: var(--px-danger); }
 .ws-bank__items { padding-left: var(--px-space-3); }
 .ws-bank__item { display: flex; align-items: center; gap: var(--px-space-2); padding: 3px 6px; cursor: pointer; border-radius: var(--px-radius-sm); font-size: var(--px-text-sm); }
-.ws-bank__item:hover { background: var(--px-bg-raised); }
+.ws-bank__item:hover { background: var(--px-surface-hover); }
 .ws-bank__itemtitle { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ws-bank__dot { width: 8px; height: 8px; border-radius: var(--px-radius-full); flex: 0 0 auto; background: var(--px-divider); }
 .ws-bank__dot.easy { background: var(--px-success); }
@@ -178,7 +178,7 @@ body > [data-radix-popper-content-wrapper] :where(input, textarea, select) {
 .ws-bank__dot.open { background: var(--px-accent); }
 .ws-bank__summary { font-size: var(--px-text-xs); color: var(--px-text-muted); margin: var(--px-space-1) 0 var(--px-space-2); }
 /* The Problem Bank page: papers as openable rows, problems inside. */
-.ws-home__paper { display: flex; align-items: center; gap: var(--px-space-3); padding: var(--px-space-2) var(--px-space-3); margin-top: var(--px-space-1); border: 1px solid var(--px-border); border-radius: var(--px-radius-sm); cursor: pointer; user-select: none; background: var(--px-bg-raised); }
+.ws-home__paper { display: flex; align-items: center; gap: var(--px-space-3); padding: var(--px-space-2) var(--px-space-3); margin-top: var(--px-space-1); border: 1px solid var(--px-border); border-radius: var(--px-radius-sm); cursor: pointer; user-select: none; background: var(--px-bg-elevated); }
 .ws-home__paper:hover { border-color: var(--px-border-strong); }
 .ws-home__paper--generated { margin-top: var(--px-space-5); background: transparent; }
 .ws-home__papername { flex: 1; font-weight: 600; font-size: var(--px-text-base); }
@@ -245,7 +245,7 @@ body > [data-radix-popper-content-wrapper] :where(input, textarea, select) {
 .ws-genitem {
   display: flex; flex-direction: column; gap: var(--px-space-2);
   padding: var(--px-space-3);
-  background: var(--px-bg-raised);
+  background: var(--px-bg-elevated);
   border: 1px solid var(--px-border);
   border-radius: var(--px-radius-md);
 }
@@ -276,7 +276,7 @@ body > [data-radix-popper-content-wrapper] :where(input, textarea, select) {
   font-size: var(--px-text-sm); color: var(--px-text);
   cursor: pointer;
 }
-.ws-sidebar__item:hover { background: var(--px-bg-raised); }
+.ws-sidebar__item:hover { background: var(--px-surface-hover); }
 .ws-sidebar__itemtitle { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ws-sidebar__item .ws-chip { margin-left: 0; flex: 0 0 auto; }
 .ws-sidebar__empty { font-size: var(--px-text-sm); color: var(--px-text-muted); padding: var(--px-space-2) var(--px-space-1); }
@@ -322,3 +322,69 @@ body > [data-radix-popper-content-wrapper] :where(input, textarea, select) {
 :root.univer-dark .ws-pane__sheet { color-scheme: dark; }
 .univer-popup button,
 body > [data-radix-popper-content-wrapper] button { color: inherit; }
+
+/* ── Dashboard ── */
+.ws-dash { position: relative; overflow-y: auto; }
+.ws-dash__content { padding: var(--px-space-6); display: flex; flex-direction: column; gap: var(--px-space-4); }
+.ws-dash__head { display: flex; flex-direction: column; gap: var(--px-space-1); }
+.ws-dash__sectiontitle { font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text-secondary); text-transform: uppercase; letter-spacing: 0.06em; margin-top: var(--px-space-2); }
+/* Headline numbers: one stat per tile, the number wearing text ink. */
+.ws-dash__tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--px-space-3); }
+.ws-dash__tile { border: 1px solid var(--px-border); border-radius: var(--px-radius-md); padding: var(--px-space-3) var(--px-space-4); background: var(--px-bg-elevated); min-width: 0; }
+.ws-dash__tilelabel { font-size: var(--px-text-xs); color: var(--px-text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.ws-dash__tilevalue { font-size: var(--px-text-xl); font-weight: 600; letter-spacing: -0.01em; margin-top: 2px; font-variant-numeric: tabular-nums; color: var(--px-text); }
+.ws-dash__tilesub { font-size: var(--px-text-xs); color: var(--px-text-muted); margin-top: 2px; }
+/* Work On Next: four cards, each a list of problems that open on click. */
+.ws-dash__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--px-space-3); }
+.ws-dash__card { border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-elevated); display: flex; flex-direction: column; min-width: 0; }
+.ws-dash__cardhead { padding: var(--px-space-3) var(--px-space-4) var(--px-space-2); }
+.ws-dash__cardtitle { font-size: var(--px-text-base); font-weight: 600; color: var(--px-text); }
+.ws-dash__cardhint { font-size: var(--px-text-xs); color: var(--px-text-muted); margin-top: 1px; }
+.ws-dash__cardbody { display: flex; flex-direction: column; padding: 0 var(--px-space-2); flex: 1; }
+.ws-dash__cardfoot { padding: var(--px-space-2) var(--px-space-4) var(--px-space-3); display: flex; gap: var(--px-space-2); }
+.ws-dash__cardfoot:empty { padding: 0 0 var(--px-space-2); }
+.ws-dash__cardempty { font-size: var(--px-text-sm); color: var(--px-text-muted); padding: var(--px-space-2) var(--px-space-2) var(--px-space-3); }
+.ws-dash__more { font-size: var(--px-text-xs); color: var(--px-text-muted); padding: 2px var(--px-space-2) var(--px-space-1); }
+.ws-dash__row { display: flex; align-items: center; gap: var(--px-space-2); width: 100%; padding: 5px var(--px-space-2); border: 0; border-radius: var(--px-radius-sm); background: transparent; color: var(--px-text); font: inherit; text-align: left; cursor: pointer; min-width: 0; }
+.ws-dash__row:hover, .ws-dash__row:focus-visible { background: var(--px-surface-hover); outline: none; }
+.ws-dash__rowtext { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.ws-dash__rowtitle { font-size: var(--px-text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-dash__rowmeta { font-size: var(--px-text-xs); color: var(--px-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ws-dash__paperline { display: flex; align-items: center; gap: var(--px-space-2); padding: 5px var(--px-space-2); }
+.ws-btn--small { padding: 2px 10px; font-size: var(--px-text-xs); }
+.ws-bank__dot.rest { background: color-mix(in srgb, var(--px-text-muted) 35%, transparent); }
+/* Progress By Paper: horizontal stacked bars, the three status inks, a surface gap between segments. */
+.ws-dash__papers { border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-elevated); padding: var(--px-space-3) var(--px-space-4); display: flex; flex-direction: column; gap: 6px; }
+.ws-dash__legend { display: flex; flex-wrap: wrap; gap: var(--px-space-3); font-size: var(--px-text-xs); color: var(--px-text-muted); margin-bottom: var(--px-space-1); }
+.ws-dash__legenditem { display: inline-flex; align-items: center; gap: 5px; }
+.ws-dash__swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.ws-dash__swatch.easy, .ws-dash__bar .easy { background: var(--px-success); }
+.ws-dash__swatch.medium, .ws-dash__bar .medium { background: var(--px-warning); }
+.ws-dash__swatch.hard, .ws-dash__bar .hard { background: var(--px-danger); }
+.ws-dash__swatch.rest, .ws-dash__bar .rest { background: color-mix(in srgb, var(--px-text-muted) 18%, transparent); }
+.ws-dash__paperrow { display: flex; align-items: center; gap: var(--px-space-3); min-height: 22px; }
+.ws-dash__papername { flex: 0 0 150px; text-align: left; border: 0; background: transparent; color: var(--px-text); font: inherit; font-size: var(--px-text-sm); padding: 2px 4px; margin-left: -4px; border-radius: var(--px-radius-sm); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-dash__papername:hover, .ws-dash__papername:focus-visible { background: var(--px-surface-hover); color: var(--px-accent); outline: none; }
+.ws-dash__bar { flex: 1; display: flex; gap: 2px; height: 10px; border-radius: var(--px-radius-sm); overflow: hidden; }
+.ws-dash__bar > span { display: block; flex: 0 0 auto; flex-basis: 0; min-width: 2px; }
+.ws-dash__barlabel { flex: 0 0 96px; text-align: right; font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
+/* Progress Over Time: two small multiples on one scale, one series each, the target dashed. */
+.ws-dash__charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--px-space-3); }
+.ws-dash__chart { border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-elevated); padding: var(--px-space-3) var(--px-space-3) var(--px-space-2); min-width: 0; }
+.ws-dash__charttitle { font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text); margin-bottom: var(--px-space-1); padding-left: 2px; }
+.ws-dash__svghost { width: 100%; min-height: 190px; }
+.ws-dash__svghost svg { display: block; max-width: 100%; overflow: visible; }
+.ws-dash__chartempty { font-size: var(--px-text-sm); color: var(--px-text-muted); padding: var(--px-space-6) var(--px-space-2); }
+.ws-dash__gridline { stroke: var(--px-border); stroke-width: 1; }
+.ws-dash__axis { fill: var(--px-text-muted); font-size: 10px; font-family: inherit; }
+.ws-dash__value { fill: var(--px-text); font-size: 11px; font-weight: 600; font-family: inherit; }
+.ws-dash__target { stroke: var(--px-text-muted); stroke-width: 1; stroke-dasharray: 4 4; opacity: 0.7; }
+.ws-dash__series { fill: none; stroke: var(--px-accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.ws-dash__series--history { stroke-dasharray: 3 4; opacity: 0.8; }
+.ws-dash__marker { fill: var(--px-accent); stroke: var(--px-bg-elevated); stroke-width: 2; }
+.ws-dash__cross { stroke: var(--px-text-muted); stroke-width: 1; opacity: 0.6; pointer-events: none; }
+.ws-dash__ring { fill: none; stroke: var(--px-accent); stroke-width: 2; pointer-events: none; }
+/* The hover tooltip, one for the whole pane. */
+.ws-dash__tip { position: absolute; z-index: 5; pointer-events: none; background: var(--px-bg-elevated); border: 1px solid var(--px-border-strong); border-radius: var(--px-radius-sm); padding: 6px 8px; font-size: var(--px-text-xs); color: var(--px-text); box-shadow: var(--px-shadow-md); max-width: 280px; }
+.ws-dash__tiphead { font-weight: 600; margin-bottom: 2px; }
+.ws-dash__tipline { color: var(--px-text-secondary); font-variant-numeric: tabular-nums; }

@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import JSZip from 'jszip';
 import { openXlsx } from '../../src/built-in/worksheet/ooxml.js';
-import { detectProblems, normalizeRating, ratingLabel, RATING_SCORE, paperLabel, isProblemSheetName, problemTags, questionText } from '../../src/built-in/worksheet/problemImport.js';
+import { detectProblems, normalizeRating, ratingLabel, RATING_SCORE, paperLabel, isProblemSheetName, problemTags, questionText, readWorkbookTimeline, serialToDay } from '../../src/built-in/worksheet/problemImport.js';
 
 async function buildWorkbook(): Promise<Uint8Array> {
   const zip = new JSZip();
@@ -16,8 +16,9 @@ async function buildWorkbook(): Promise<Uint8Array> {
     <sheet name="Problems" sheetId="2" state="hidden" r:id="rId2"/>
     <sheet name="Brosius.RF_01" sheetId="3" state="hidden" r:id="rId3"/>
     <sheet name="Clark.CAS_SP16_04" sheetId="4" state="hidden" r:id="rId4"/>
-    <sheet name="Venter.RF_Essay" sheetId="5" state="hidden" r:id="rId5"/></sheets></workbook>`);
-  zip.file('xl/_rels/workbook.xml.rels', `<Relationships>${[1, 2, 3, 4, 5].map((i) => `<Relationship Id="rId${i}" Target="${sheet(i)}"/>`).join('')}</Relationships>`);
+    <sheet name="Venter.RF_Essay" sheetId="5" state="hidden" r:id="rId5"/>
+    <sheet name="Dashboard_Data" sheetId="6" state="hidden" r:id="rId6"/></sheets></workbook>`);
+  zip.file('xl/_rels/workbook.xml.rels', `<Relationships>${[1, 2, 3, 4, 5, 6].map((i) => `<Relationship Id="rId${i}" Target="${sheet(i)}"/>`).join('')}</Relationships>`);
   zip.file('xl/styles.xml', `<styleSheet><fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>
     <fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF2F2F2"/></patternFill></fill></fills>
     <borders count="2"><border/><border><left style="thick"/><right style="thick"/><top style="thick"/><bottom style="thick"/></border></borders>
@@ -45,8 +46,31 @@ async function buildWorkbook(): Promise<Uint8Array> {
     <row r="1"><c r="A1" t="str"><v>Venter Essay Problems</v></c><c r="D1" t="str"><v>Self-Rating:</v></c><c r="E1" t="str"><v>Hard</v></c></row>
     <row r="3"><c r="A3" t="str"><v>Question 1: Describe the tests.</v></c></row>
   </sheetData></worksheet>`);
+  // The dashboard's timeline: a date per row, values only on the days the macro ran.
+  zip.file('xl/worksheets/sheet6.xml', `<worksheet><sheetData>
+    <row r="1"><c r="A1" t="str"><v>Section</v></c><c r="K1" t="str"><v>Date</v></c><c r="L1" t="str"><v>% Attempted</v></c><c r="M1" t="str"><v>Score</v></c></row>
+    <row r="2"><c r="K2"><v>46210</v></c><c r="L2"><v>0.1</v></c><c r="M2"><v>0.5</v></c></row>
+    <row r="3"><c r="K3"><v>46204</v></c><c r="L3"><v>0.0302</v></c><c r="M3"><v>0.7</v></c></row>
+    <row r="4"><c r="K4"><v>46205</v></c></row>
+    <row r="5"><c r="K5"><v>46206</v></c><c r="L5" t="str"><v></v></c></row>
+  </sheetData></worksheet>`);
   return zip.generateAsync({ type: 'uint8array' });
 }
+
+describe('the workbook timeline', () => {
+  it('turns Excel serial dates into calendar days', () => {
+    expect(serialToDay(46204)).toBe('2026-07-01');
+    expect(serialToDay(45658)).toBe('2025-01-01');
+  });
+  it('reads only the days that hold values, oldest first', async () => {
+    const book = await openXlsx(await buildWorkbook());
+    const tl = await readWorkbookTimeline(book);
+    expect(tl).toEqual([
+      { day: '2026-07-01', attempted: 0.0302, score: 0.7 },
+      { day: '2026-07-07', attempted: 0.1, score: 0.5 },
+    ]);
+  });
+});
 
 describe('ratings and labels', () => {
   it('reads both vocabularies as the same three levels', () => {
@@ -75,7 +99,7 @@ describe('detectProblems', () => {
     const book = await openXlsx(await buildWorkbook());
     const progress: number[] = [];
     const { problems, skipped } = await detectProblems(book, (done) => progress.push(done));
-    expect(skipped.map((s) => s.name)).toEqual(['Dashboard', 'Problems']);
+    expect(skipped.map((s) => s.name)).toEqual(['Dashboard', 'Problems', 'Dashboard_Data']);
     expect(progress).toEqual([1, 2, 3]);
     expect(problems.map((p) => p.sheetName)).toEqual(['Brosius.RF_01', 'Clark.CAS_SP16_04', 'Venter.RF_Essay']);
 

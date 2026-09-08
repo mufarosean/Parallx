@@ -342,6 +342,23 @@ export async function recordImportedRating(itemId: number, selfGrade: string, at
   emitChange();
 }
 
+// ── Progress snapshots (dashboard timeline) ──────────────────────────────────
+
+export interface ProgressRow { readonly day: string; readonly attempted: number; readonly score: number; readonly source: string }
+export async function listProgressSnapshots(): Promise<ProgressRow[]> {
+  const rows = await allRows('SELECT day, attempted, score, source FROM ws_progress ORDER BY day ASC');
+  return rows.map((r) => ({ day: String(r.day), attempted: Number(r.attempted ?? 0), score: Number(r.score ?? 0), source: String(r.source ?? 'attempts') }));
+}
+/** Keep one row per day; the workbook's own history is never overwritten by a derived row. */
+export async function upsertProgressSnapshot(day: string, attempted: number, score: number, source: 'workbook' | 'attempts'): Promise<void> {
+  await run(
+    `INSERT INTO ws_progress (day, attempted, score, source) VALUES (?, ?, ?, ?)
+     ON CONFLICT(day) DO UPDATE SET attempted = excluded.attempted, score = excluded.score, source = excluded.source
+     WHERE ws_progress.source != 'workbook' OR excluded.source = 'workbook'`,
+    [day, attempted, score, source],
+  );
+}
+
 /** Every completed attempt, newest first, for the dashboard's timeline and score. */
 export async function listCompletedAttempts(): Promise<{ itemId: number; selfGrade: string; at: number; seconds: number; sessionId: string; imported: boolean }[]> {
   const rows = await allRows('SELECT item_id, self_grade, updated_at, seconds, session_id, imported FROM ws_attempts WHERE completed = 1 ORDER BY updated_at DESC');
