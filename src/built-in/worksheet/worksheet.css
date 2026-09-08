@@ -420,3 +420,4 @@ body > [data-radix-popper-content-wrapper] button { color: inherit; }
 .ws-camp__papers { display: flex; flex-wrap: wrap; gap: 4px; }
 .ws-camp__paper { margin-left: 0; }
 .ws-camp__foot { display: flex; justify-content: flex-end; }
+.ws-camp--idle > .ws-btn { align-self: flex-start; }
