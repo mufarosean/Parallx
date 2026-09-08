@@ -420,11 +420,13 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
       input.addEventListener('blur', () => finish(true));
       row.replaceChild(input, title); input.focus(); input.select();
     };
-    // The workbench's own context menu, through the API; a page without it (a probe) shows nothing.
+    // The workbench's own context menu, through api.ui (not api.window, where
+    // this first looked and found nothing, so right-click did nothing at all).
+    // A host without it (a probe) shows nothing.
     type MenuItem = { label?: string; danger?: boolean; disabled?: boolean; separator?: boolean; onSelect?: () => void };
     const showMenu = (x: number, y: number, items: MenuItem[]): void => {
-      const win = (ctx.api as { window?: { showContextMenu?: (anchor: { x: number; y: number }, items: MenuItem[]) => unknown } } | null)?.window;
-      if (win?.showContextMenu) win.showContextMenu({ x, y }, items);
+      const ui = (ctx.api as { ui?: { showContextMenu?: (anchor: { x: number; y: number }, items: MenuItem[]) => unknown } } | null)?.ui;
+      if (ui?.showContextMenu) ui.showContextMenu({ x, y }, items);
     };
 
     const renderTasks = (): void => {

@@ -62,6 +62,15 @@ interface DashboardApiSurface {
     showWarningMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
     showErrorMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
   };
+  /** The workbench's own context menu (api.ui.showContextMenu). Widgets with
+   *  right-click actions (the Timer's task rows) need it; a host that omits it
+   *  (a probe) simply shows nothing. */
+  ui?: {
+    showContextMenu(
+      anchor: { readonly x: number; readonly y: number },
+      items: ReadonlyArray<{ readonly label?: string; readonly icon?: string; readonly danger?: boolean; readonly disabled?: boolean; readonly separator?: boolean; readonly onSelect?: () => void }>,
+    ): { dispose(): void };
+  };
   // DI access, so widgets can resolve cross-tool services (e.g. the notes
   // widget hosting a canvas page via ICanvasDataService).
   services?: {

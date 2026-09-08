@@ -68,6 +68,13 @@ interface ParallxApi {
     showWarningMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
     showErrorMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
   };
+  /** The workbench's context menu; handed through to widgets (the Timer's task rows). */
+  ui: {
+    showContextMenu(
+      anchor: { readonly x: number; readonly y: number },
+      items: ReadonlyArray<{ readonly label?: string; readonly icon?: string; readonly danger?: boolean; readonly disabled?: boolean; readonly separator?: boolean; readonly onSelect?: () => void }>,
+    ): { dispose(): void };
+  };
   services: {
     get<T>(id: { readonly id: string }): T;
     has(id: { readonly id: string }): boolean;
@@ -134,6 +141,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       editors: api.editors,
       commands: api.commands,
       window: api.window,
+      ui: api.ui,
       services: api.services,
       activity: api.services.has(IActivityJournalService)
         ? { note: (n) => api.services.get<import('../../services/activityJournalService.js').IActivityJournalService>(IActivityJournalService).note(n as never) }
