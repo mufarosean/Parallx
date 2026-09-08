@@ -141,7 +141,12 @@ adopts the one-sheet model.
    rating bands and Incomplete. Reveal and Hide flip the solution columns
    on the live engine (Univer facade hideColumns/showColumns, 2026-09-08);
    the earlier remount on an edited snapshot redrew the whole sheet, the
-   flash, and stays only as the fallback. Review in Chat (2026-09-08, was a one-shot
+   flash, and stays only as the fallback. Keyboard as Excel (2026-09-08):
+   Shift+Tab and Shift+Enter move left and up whether idle or mid-edit (an
+   edit commits first). Univer 0.25 itself dropped the selection on idle
+   Shift+Tab and ignored Shift while editing; the host registers a
+   higher-priority reverse-move shortcut and catches the editing case on the
+   container (univerHost.ts). Review in Chat (2026-09-08, was a one-shot
    panel): the cells and the solution go to the chat as an attached context
    chip with the review brief as the message, so follow-up questions have
    the work in front of them; the panel remains only as the fallback when

@@ -20,7 +20,10 @@ import UniverPresetSheetsCoreEnUS from '@univerjs/presets/preset-sheets-core/loc
 import { UniverSheetsDrawingPreset } from '@univerjs/presets/preset-sheets-drawing';
 import UniverPresetSheetsDrawingEnUS from '@univerjs/presets/preset-sheets-drawing/locales/en-US';
 import { IFunctionService } from '@univerjs/engine-formula';
-import { IContextMenuService, ContextMenuPosition } from '@univerjs/ui';
+import { IContextMenuService, ContextMenuPosition, IShortcutService, KeyCode, MetaKeys } from '@univerjs/ui';
+import { ICommandService, IContextService, CommandType, Direction, EDITOR_ACTIVATED, FOCUSING_SHEET, FOCUSING_UNIVER_EDITOR } from '@univerjs/core';
+import { IEditorBridgeService, MoveSelectionCommand, SetCellEditVisibleOperation } from '@univerjs/sheets-ui';
+import { DeviceInputEventType } from '@univerjs/engine-render';
 import * as XLSX from 'xlsx';
 import type { IWorkbookData, Univer } from '@univerjs/core';
 import type { FUniver } from '@univerjs/core/lib/facade';
@@ -71,6 +74,10 @@ export interface IWorksheetHost {
    * back to a remount).
    */
   setColumnsHidden(startCol: number, count: number, hidden: boolean): boolean;
+  /** A1 name of the active cell (probes, diagnostics); null when there is none. */
+  getActiveCell(): string | null;
+  /** Engine state for probes: active cell, selection, editor open, focus flags. */
+  probeState(): Record<string, unknown>;
   /** Open the sheet's own right-click menu at a viewport point (probes; the app never needs it). */
   openContextMenu(clientX: number, clientY: number): void;
   /** Tear down the engine and all DOM it created. */
@@ -270,6 +277,64 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
   univerAPI.createWorkbook(opts.snapshot ?? blankWorkbookData());
 
   let disposed = false;
+
+  // Excel's Shift+Tab and Shift+Enter WHILE EDITING a cell: commit and move
+  // left, or up. Univer ends the edit on Tab and Enter but reads no modifier
+  // (its _moveSelection maps TAB to RIGHT and ENTER to DOWN outright), so
+  // Shift+Tab committed and jumped right (Mufaro, 2026-09-08). Caught on the
+  // container in the capture phase, ahead of the editor's own key handler,
+  // and only while the editor is open: with nothing being edited, Univer's
+  // own shortcuts already move the selection left and up. The commit goes
+  // through the engine's end-of-edit operation with an arrow keycode, the
+  // same path its editor takes, so formulas and formats settle as usual.
+  const onEditKeydown = (e: KeyboardEvent): void => {
+    if (disposed || !e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
+    if (e.key !== 'Tab' && e.key !== 'Enter') return;
+    try {
+      const injector = univer.__getInjector();
+      const bridge = injector.get(IEditorBridgeService);
+      // The cell editor is open (not merely the sheet focused).
+      if (bridge.isVisible().visible !== true) return;
+      const unitId = univerAPI.getActiveWorkbook()?.getId();
+      if (!unitId) return;
+      e.preventDefault();
+      e.stopPropagation();
+      bridge.disableForceKeepVisible();
+      injector.get(ICommandService).syncExecuteCommand(SetCellEditVisibleOperation.id, {
+        visible: false,
+        eventType: DeviceInputEventType.Keyboard,
+        keycode: e.key === 'Tab' ? KeyCode.ARROW_LEFT : KeyCode.ARROW_UP,
+        unitId,
+      });
+    } catch (err) {
+      console.warn('[Worksheet] Shift+Tab/Enter commit failed:', err);
+    }
+  };
+  opts.container.addEventListener('keydown', onEditKeydown, true);
+
+  // Idle Shift+Tab and Shift+Enter (nothing being edited): Univer 0.25's own
+  // reverse move, MoveSelectionEnterAndTabCommand with LEFT or UP, drops the
+  // selection outright, and no key does anything until the next click
+  // (probe, 2026-09-08). The shortcut service runs the highest-priority match
+  // for a binding, so a plain move steps in front of it.
+  const REVERSE_MOVE_ID = 'parallx.sheet.move-selection-reverse';
+  const engineRegistrations: { dispose(): void }[] = [];
+  try {
+    const injector = univer.__getInjector();
+    engineRegistrations.push(injector.get(ICommandService).registerCommand({
+      id: REVERSE_MOVE_ID,
+      type: CommandType.COMMAND,
+      handler: (accessor, params?: { direction?: Direction }) =>
+        accessor.get(ICommandService).syncExecuteCommand(MoveSelectionCommand.id, { direction: params?.direction ?? Direction.LEFT }),
+    }));
+    const idleSheet = (ctx: { getContextValue(key: string): boolean }) =>
+      ctx.getContextValue(FOCUSING_SHEET) && ctx.getContextValue(FOCUSING_UNIVER_EDITOR) && !ctx.getContextValue(EDITOR_ACTIVATED);
+    const shortcuts = injector.get(IShortcutService);
+    engineRegistrations.push(shortcuts.registerShortcut({ id: REVERSE_MOVE_ID, description: 'Select the cell to the left', group: '3_sheet-view', binding: KeyCode.TAB | MetaKeys.SHIFT, priority: 1000, preconditions: idleSheet, staticParameters: { direction: Direction.LEFT } }));
+    engineRegistrations.push(shortcuts.registerShortcut({ id: REVERSE_MOVE_ID, description: 'Select the cell above', group: '3_sheet-view', binding: KeyCode.ENTER | MetaKeys.SHIFT, priority: 1000, preconditions: idleSheet, staticParameters: { direction: Direction.UP } }));
+  } catch (err) {
+    console.warn('[Worksheet] reverse-move shortcuts not registered:', err);
+  }
   const setCellText = (row: number, col: number, text: string): void => {
     if (disposed) return;
     try {
@@ -288,6 +353,35 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
     } catch (err) {
       console.warn('[Worksheet] setColumnsHidden failed:', err);
       return false;
+    }
+  };
+  const getActiveCell = (): string | null => {
+    if (disposed) return null;
+    try {
+      return univerAPI.getActiveWorkbook()?.getActiveSheet()?.getActiveCell()?.getA1Notation() ?? null;
+    } catch {
+      return null;
+    }
+  };
+  const probeState = (): Record<string, unknown> => {
+    if (disposed) return { disposed: true };
+    try {
+      const injector = univer.__getInjector();
+      const ctx = injector.get(IContextService);
+      const sheet = univerAPI.getActiveWorkbook()?.getActiveSheet();
+      const sel = sheet?.getSelection();
+      return {
+        activeCell: getActiveCell(),
+        activeRange: sel?.getActiveRange()?.getA1Notation() ?? null,
+        currentCell: (() => { const c = sel?.getCurrentCell(); return c ? `r${c.actualRow}c${c.actualColumn}` : null; })(),
+        editorVisible: injector.get(IEditorBridgeService).isVisible().visible,
+        editorActivated: ctx.getContextValue(EDITOR_ACTIVATED),
+        focusingSheet: ctx.getContextValue('FOCUSING_SHEET'),
+        focusingUniverEditor: ctx.getContextValue('FOCUSING_UNIVER_EDITOR'),
+        activeElement: document.activeElement ? `${document.activeElement.tagName}.${String(document.activeElement.className).slice(0, 50)}` : 'none',
+      };
+    } catch (err) {
+      return { error: String(err) };
     }
   };
   const openContextMenu = (clientX: number, clientY: number): void => {
@@ -312,6 +406,8 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
     getSnapshot,
     setCellText,
     setColumnsHidden,
+    getActiveCell,
+    probeState,
     openContextMenu,
     setDarkMode: (dark: boolean) => {
       if (disposed) return;
@@ -338,6 +434,8 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
       disposed = true;
       clearInterval(sweepInterval);
       document.removeEventListener('pointermove', trackPointer);
+      opts.container.removeEventListener('keydown', onEditKeydown, true);
+      for (const d of engineRegistrations) { try { d.dispose(); } catch { /* engine already gone */ } }
       try {
         univer.dispose();
       } catch {
