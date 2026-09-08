@@ -527,7 +527,8 @@ function createPagePane(container, input, opts = {}) {
     if (pane.disposed) return;
     bookmarksBar.innerHTML = '';
     bookmarksBar.hidden = false;
-    if (!rows.length) { bookmarksBar.appendChild(el('span', 'br-muted br-bm-hint', { text: 'Star a page and it appears here.' })); return; }
+    // No bookmarks, no bar: the strip appears with the first star. No helper text on the default page.
+    if (!rows.length) { bookmarksBar.hidden = true; return; }
     for (const bm of rows.slice(0, 30)) {
       const chip = el('button', 'br-bm-chip', { type: 'button', title: bm.url });
       chip.innerHTML = icon('star', 10);
