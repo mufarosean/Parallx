@@ -307,3 +307,18 @@ body > [data-radix-popper-content-wrapper] :where(input, textarea, select) {
   flex: 0 0 auto;
 }
 .ws-scratchbar__label { font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text); }
+
+/* Univer portals its menus and pickers to <body>. Parallx runs with
+   color-scheme: dark, and Chromium's own control colours (ButtonText,
+   ButtonFace) follow the scheme, so the engine's white menu panels came
+   out with white labels on every plain <button> item. Pin the scheme of
+   those portals, and of the sheet itself, to the engine's own mode, and
+   let menu buttons take their colour from the panel. */
+:root:not(.univer-dark) .univer-popup,
+:root:not(.univer-dark) body > [data-radix-popper-content-wrapper],
+:root:not(.univer-dark) .ws-pane__sheet { color-scheme: light; }
+:root.univer-dark .univer-popup,
+:root.univer-dark body > [data-radix-popper-content-wrapper],
+:root.univer-dark .ws-pane__sheet { color-scheme: dark; }
+.univer-popup button,
+body > [data-radix-popper-content-wrapper] button { color: inherit; }
