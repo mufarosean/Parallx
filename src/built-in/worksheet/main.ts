@@ -1284,7 +1284,7 @@ function createExcelImportPane(container: HTMLElement) {
     const rated = problems.filter((p) => p.rating).length;
     const fresh = problems.length - existing.size;
     listHost.appendChild(el('div', 'ws-home__title', `${problems.length} problems in ${fileLabel}`));
-    listHost.appendChild(el('div', 'ws-hint', `${fresh} new, ${existing.size} already in the bank, ${rated} with a rating to carry over.`));
+    listHost.appendChild(el('div', 'ws-hint', `${fresh} new, ${existing.size} already in the bank, ${rated} with a rating to carry over${timeline.length ? `, ${timeline.length} ${timeline.length === 1 ? 'day' : 'days'} of dashboard history` : ''}.`));
     const toggles = el('div', 'ws-create__controls');
     const allBtn = el('button', 'ws-btn') as HTMLButtonElement;
     allBtn.textContent = 'Select New';
@@ -1326,7 +1326,8 @@ function createExcelImportPane(container: HTMLElement) {
       listHost.appendChild(group);
     }
     const importBtn = el('button', 'ws-btn ws-btn--primary') as HTMLButtonElement;
-    importBtn.textContent = 'Import Selected Problems';
+    // With nothing new to bring in, the button says what it will actually do.
+    importBtn.textContent = fresh === 0 && timeline.length > 0 ? 'Import Dashboard History' : 'Import Selected Problems';
     importBtn.style.marginTop = 'var(--px-space-3)';
     importBtn.addEventListener('click', () => {
       void (async () => {
