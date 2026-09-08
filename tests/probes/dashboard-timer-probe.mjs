@@ -55,7 +55,13 @@ app.whenReady().then(async () => {
   try {
     const listeners = [];
     window.__HANDLE__ = TIMER_WIDGET.createWidget(document.getElementById('host'), {
-      instanceId: 'probe', pageId: 'probe', config: TIMER_WIDGET.defaultConfig, api: null,
+      instanceId: 'probe', pageId: 'probe', config: TIMER_WIDGET.defaultConfig,
+      // A stand-in planner: one five-hour quiz block and one task due today.
+      api: { commands: { executeCommand: async (id) => id === 'planner.getRegistry' ? { data: {
+        listTasks: async () => [{ id: 'tk1', title: 'Review Verrall flashcards', status: 'planned', dueAt: Date.now() }],
+        listEvents: async () => [{ id: 'ev1', title: 'Quiz: Brosius and Clark', startAt: Date.now(), endAt: Date.now() + 5 * 3600000, allDay: false }],
+        updateTask: async () => ({}),
+      } } : null } },
       cachedOutput: JSON.stringify(window.__STATE__), errorMessage: null,
       onDidChangeConfig: (fn) => { listeners.push(fn); return { dispose() {} }; },
       requestRefresh() {}, setCachedOutput(s) { window.__SAVED__ = s; }, setError() {}, clearError() {},

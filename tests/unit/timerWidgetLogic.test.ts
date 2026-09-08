@@ -4,7 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   readConfig, DEFAULT_TIMER_CONFIG, parseState, nextMode, minutesFor, finishEstimate,
-  dayStreak, todaySummary, lastDays, fmtClock, fmtHours,
+  dayStreak, todaySummary, lastDays, fmtClock, fmtHours, estFromMinutes, mergePlannerItems,
 } from '../../src/built-in/dashboard/widgets/timerLogic.js';
 
 const DAY = 86400000;
@@ -65,6 +65,37 @@ describe('finishEstimate', () => {
   });
   it('is null with nothing estimated', () => {
     expect(finishEstimate([tasks[2]], cfg, 'focus', 0, 0, NOW)).toBeNull();
+  });
+});
+
+describe('the planner link', () => {
+  const items = [
+    { id: 'ev1', title: 'Quiz: Brosius', minutes: 300, kind: 'event' as const },
+    { id: 'tk1', title: 'Read Clark', minutes: null, kind: 'task' as const },
+  ];
+  it('turns a planned block into rounds and an unsized task into one', () => {
+    expect(estFromMinutes(300, 25)).toBe(12);
+    expect(estFromMinutes(50, 25)).toBe(2);
+    expect(estFromMinutes(1, 25)).toBe(1);
+    expect(estFromMinutes(null, 25)).toBe(1);
+  });
+  it('adds new items, keeps progress on linked ones, follows the planner title, respects a hand-edited estimate', () => {
+    const first = mergePlannerItems([], items, 25, [], NOW);
+    expect(first.map((t) => [t.sourceId, t.est])).toEqual([['ev1', 12], ['tk1', 1]]);
+    const worked = first.map((t) => t.sourceId === 'ev1' ? { ...t, act: 3, est: 10, estEdited: true } : t);
+    const renamed = [{ ...items[0], title: 'Quiz: Brosius (moved)', minutes: 120 }, items[1]];
+    const second = mergePlannerItems(worked, renamed, 25, [], NOW);
+    expect(second.find((t) => t.sourceId === 'ev1')).toMatchObject({ title: 'Quiz: Brosius (moved)', act: 3, est: 10 });
+    const third = mergePlannerItems(first, renamed, 25, [], NOW);
+    expect(third.find((t) => t.sourceId === 'ev1')!.est).toBe(5); // not hand-edited: follows the new length
+  });
+  it('leaves removed items out for the day, finishes planner tasks that are no longer open, and never touches hand-made tasks', () => {
+    const mine = { id: 'm1', title: 'My own', est: 2, act: 1, done: false, createdAt: 0 };
+    const linked = mergePlannerItems([mine], items, 25, ['ev1'], NOW);
+    expect(linked.map((t) => t.id)).toEqual(['m1', 'p-tk1']);
+    const later = mergePlannerItems(linked, [items[0]], 25, ['ev1'], NOW);
+    expect(later.find((t) => t.id === 'p-tk1')!.done).toBe(true);
+    expect(later.find((t) => t.id === 'm1')).toEqual(mine);
   });
 });
 

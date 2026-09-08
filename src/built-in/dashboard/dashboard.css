@@ -1948,6 +1948,10 @@ video.vw__fill { object-fit: contain; background: #000; }
 .dtimer__week { display: flex; align-items: flex-end; gap: 3px; height: 18px; flex: 0 0 auto; }
 .dtimer__daybar { display: flex; align-items: flex-end; width: 7px; height: 100%; border-radius: 2px; background: color-mix(in srgb, var(--px-text) 8%, transparent); overflow: hidden; }
 .dtimer__daybar > span { display: block; width: 100%; background: var(--dtimer-accent); border-radius: 2px; }
+.dtimer__report[hidden] { display: none; }
+.dtimer__sync { width: auto; padding: 0 6px; opacity: 1; font-size: var(--px-text-xs); font-weight: 600; }
+.dtimer__task[data-linked="true"] .dtimer__tasktitle::before { content: ''; display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--dtimer-accent); margin-right: 6px; vertical-align: middle; opacity: 0.7; }
+.dtimer__taskedit { flex: 1; min-width: 0; height: 22px; }
 /* ── Tracker board widget (M86 C3) ── */
 .dtracker { display: flex; flex-direction: column; gap: 8px; height: 100%; }
 .dtracker__summary { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }

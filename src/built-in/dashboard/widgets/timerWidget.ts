@@ -13,9 +13,44 @@
 import type { WidgetContext, WidgetHandle, WidgetTypeRegistration } from '../dashboardTypes.js';
 import {
   readConfig, parseState, minutesFor, nextMode, finishEstimate, dayStreak, todaySummary, lastDays,
-  fmtClock, fmtTimeOfDay, fmtHours, MAX_LOG, MAX_TASKS,
-  type TimerConfig, type TimerMode, type TimerState, type TimerTask,
+  fmtClock, fmtTimeOfDay, fmtHours, MAX_LOG, MAX_TASKS, dayKeyLocal, mergePlannerItems,
+  type TimerConfig, type TimerMode, type TimerState, type TimerTask, type PlannerLinkItem,
 } from './timerLogic.js';
+
+// The planner's public registry, reached through its command so the two
+// tools stay independent: the timer works without the planner installed.
+interface PlannerTaskLike { readonly id: string; readonly title: string; readonly status: string; readonly dueAt: number | null }
+interface PlannerEventLike { readonly id: string; readonly title: string; readonly startAt: number; readonly endAt: number; readonly allDay: boolean }
+interface PlannerDataLike {
+  listTasks(query: { status?: readonly string[]; dueFrom?: number; dueTo?: number }): Promise<PlannerTaskLike[]>;
+  listEvents(query: { from: number; to: number }): Promise<PlannerEventLike[]>;
+  updateTask(id: string, patch: { status?: string; completedAt?: number | null }): Promise<unknown>;
+}
+async function plannerData(api: unknown): Promise<PlannerDataLike | null> {
+  try {
+    const cmds = (api as { commands?: { executeCommand<T>(id: string): Promise<T> } } | null)?.commands;
+    if (!cmds?.executeCommand) return null;
+    const reg = await cmds.executeCommand<{ data?: PlannerDataLike } | null>('planner.getRegistry');
+    return reg?.data && typeof reg.data.listTasks === 'function' ? reg.data : null;
+  } catch { return null; }
+}
+/** Today's open planner tasks and timed events, as things to work on. */
+async function plannerItemsForToday(data: PlannerDataLike, now: number): Promise<PlannerLinkItem[]> {
+  const start = new Date(now); start.setHours(0, 0, 0, 0);
+  const end = new Date(start.getTime()); end.setDate(end.getDate() + 1);
+  const [tasks, events] = await Promise.all([
+    data.listTasks({ status: ['planned', 'reviewing'], dueFrom: start.getTime(), dueTo: end.getTime() - 1 }).catch(() => [] as PlannerTaskLike[]),
+    data.listEvents({ from: start.getTime(), to: end.getTime() - 1 }).catch(() => [] as PlannerEventLike[]),
+  ]);
+  // Timed blocks first, in the order of the day; loose tasks after them.
+  const out: PlannerLinkItem[] = [];
+  for (const e of [...events].sort((a, b) => a.startAt - b.startAt)) {
+    if (e.allDay) continue;
+    out.push({ id: e.id, title: e.title, minutes: Math.round((e.endAt - e.startAt) / 60_000), kind: 'event' });
+  }
+  for (const t of tasks) out.push({ id: t.id, title: t.title, minutes: null, kind: 'task' });
+  return out;
+}
 
 const ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M9 2h6"/><path d="M12 2v3"/></svg>';
 
@@ -92,6 +127,8 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
       alarmVolume: { type: 'number', label: 'Volume', description: '0 to 100.' },
       ticking: { type: 'boolean', label: 'Ticking while running' },
       showTasks: { type: 'boolean', label: 'Show tasks' },
+      plannerSync: { type: 'boolean', label: 'Pull today from the planner', description: "Today's open tasks and timed events join the list; a planned block becomes as many intervals as it holds." },
+      showReport: { type: 'boolean', label: 'Show the report row', description: "Today's minutes, the streak and seven small bars." },
       label: { type: 'string', label: 'Focus label', description: 'Logged with each completed focus interval.', placeholder: 'Focus' },
     },
   },
@@ -135,6 +172,8 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
     tasksHead.appendChild(h('span', 'dtimer__taskstitle', 'Tasks'));
     const tasksSummary = h('span', 'dtimer__taskssummary');
     tasksHead.appendChild(tasksSummary);
+    const syncBtn = button('Sync', 'dtimer__tasksmall dtimer__sync', () => { void syncPlanner(true); }, "Pull today's planner tasks and events into the list");
+    tasksHead.appendChild(syncBtn);
     tasksBox.appendChild(tasksHead);
     const taskList = h('div', 'dtimer__tasklist');
     tasksBox.appendChild(taskList);
@@ -178,6 +217,28 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
     };
     const running = (): boolean => state.endsAt !== null;
     const activeTask = (): TimerTask | undefined => state.tasks.find((t) => t.id === state.activeTaskId && !t.done);
+
+    // ── Planner link ──
+    let syncing = false;
+    const syncPlanner = async (byHand: boolean): Promise<void> => {
+      if (syncing || !cfg.showTasks) return;
+      const today = dayKeyLocal(Date.now());
+      if (state.syncDay !== today) { state.ignoredSourceIds = []; state.syncDay = today; }
+      const data = await plannerData(ctx.api);
+      if (!data) { if (byHand) { syncBtn.textContent = 'No Planner'; setTimeout(() => { syncBtn.textContent = 'Sync'; }, 1500); } return; }
+      syncing = true; syncBtn.disabled = true;
+      try {
+        const items = await plannerItemsForToday(data, Date.now());
+        state.tasks = mergePlannerItems(state.tasks, items, cfg.focusMinutes, state.ignoredSourceIds, Date.now());
+        if (!state.activeTaskId || !state.tasks.some((t) => t.id === state.activeTaskId && !t.done)) state.activeTaskId = state.tasks.find((t) => !t.done)?.id ?? null;
+        persist(); render();
+      } finally { syncing = false; syncBtn.disabled = false; }
+    };
+    /** Finishing a linked planner task here finishes it there too; events are only read. */
+    const writeBackDone = (t: TimerTask): void => {
+      if (!t.sourceId || t.sourceKind !== 'task') return;
+      void plannerData(ctx.api).then((data) => data?.updateTask(t.sourceId!, t.done ? { status: 'done', completedAt: Date.now() } : { status: 'planned', completedAt: null })).catch(() => {});
+    };
 
     let tick: ReturnType<typeof setInterval> | null = null;
     let lastTickSecond = -1;
@@ -284,10 +345,13 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
         : `#${today.sessions} · Time for a break`;
       tasksBox.hidden = !cfg.showTasks;
       renderTasks();
+      // The report stays short: a figure or two, the sentence in the tooltip.
+      report.hidden = !cfg.showReport;
       const streak = dayStreak(state.log, Date.now());
-      stats.textContent = today.sessions === 0
-        ? (streak > 0 ? `No ${cfg.label.toLowerCase()} yet today · ${streak} day streak` : `No ${cfg.label.toLowerCase()} yet today`)
-        : `${today.sessions} ${today.sessions === 1 ? 'session' : 'sessions'} · ${fmtHours(today.minutes)} today${streak > 1 ? ` · ${streak} day streak` : ''}`;
+      stats.textContent = today.sessions === 0 ? (streak > 0 ? `${streak}d` : '') : `${fmtHours(today.minutes)}${streak > 1 ? ` · ${streak}d` : ''}`;
+      report.title = today.sessions === 0
+        ? (streak > 0 ? `Nothing yet today. ${streak} day streak.` : 'Nothing yet today.')
+        : `${today.sessions} ${today.sessions === 1 ? 'session' : 'sessions'}, ${today.minutes} minutes today${streak > 1 ? `, ${streak} day streak` : ''}.`;
       week.replaceChildren();
       const days = lastDays(state.log, Date.now(), 7);
       const max = Math.max(1, ...days.map((d) => d.minutes));
@@ -310,17 +374,35 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
         const row = h('div', 'dtimer__task');
         row.dataset.active = t.id === state.activeTaskId ? 'true' : 'false';
         row.dataset.done = t.done ? 'true' : 'false';
-        const check = button('', 'dtimer__check', () => { t.done = !t.done; if (t.done && state.activeTaskId === t.id) state.activeTaskId = state.tasks.find((x) => !x.done)?.id ?? null; persist(); render(); }, t.done ? 'Mark not done' : 'Mark done');
+        row.dataset.linked = t.sourceId ? 'true' : 'false';
+        const check = button('', 'dtimer__check', () => { t.done = !t.done; if (t.done && state.activeTaskId === t.id) state.activeTaskId = state.tasks.find((x) => !x.done)?.id ?? null; writeBackDone(t); persist(); render(); }, t.done ? 'Mark not done' : 'Mark done');
         check.setAttribute('aria-pressed', t.done ? 'true' : 'false');
         row.appendChild(check);
-        const title = button(t.title, 'dtimer__tasktitle', () => { if (!t.done) { state.activeTaskId = t.id; persist(); render(); } }, 'Make this the active task');
+        const title = button(t.title, 'dtimer__tasktitle', () => { if (!t.done) { state.activeTaskId = t.id; persist(); render(); } }, t.sourceId ? `From the planner (${t.sourceKind}). Click to make active, double-click to rename.` : 'Click to make active, double-click to rename');
+        // Double-click renames in place: Enter keeps, Escape drops.
+        title.addEventListener('dblclick', () => {
+          const input = h('input', 'dtimer__input dtimer__taskedit') as HTMLInputElement;
+          input.type = 'text'; input.value = t.title; input.maxLength = 120;
+          const finish = (keep: boolean) => { if (keep && input.value.trim()) t.title = input.value.trim(); persist(); renderTasks(); };
+          input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); finish(true); } else if (e.key === 'Escape') { e.preventDefault(); finish(false); } });
+          input.addEventListener('blur', () => finish(true));
+          row.replaceChild(input, title); input.focus(); input.select();
+        });
         row.appendChild(title);
         const count = h('span', 'dtimer__taskcount', `${t.act}/${t.est}`);
-        count.title = 'Finished intervals / estimated';
+        count.title = t.sourceKind === 'event' ? `Finished intervals / the planned block at ${cfg.focusMinutes} minutes a round` : 'Finished intervals / estimated';
         row.appendChild(count);
-        const more = button('+', 'dtimer__tasksmall', () => { t.est = Math.min(99, t.est + 1); persist(); renderTasks(); }, 'One more interval');
+        const less = button('−', 'dtimer__tasksmall', () => { t.est = Math.max(1, t.est - 1); t.estEdited = true; persist(); renderTasks(); }, 'One interval fewer');
+        row.appendChild(less);
+        const more = button('+', 'dtimer__tasksmall', () => { t.est = Math.min(99, t.est + 1); t.estEdited = true; persist(); renderTasks(); }, 'One more interval');
         row.appendChild(more);
-        const del = button('×', 'dtimer__tasksmall', () => { state.tasks = state.tasks.filter((x) => x.id !== t.id); if (state.activeTaskId === t.id) state.activeTaskId = state.tasks.find((x) => !x.done)?.id ?? null; persist(); render(); }, 'Remove task');
+        const del = button('×', 'dtimer__tasksmall', () => {
+          state.tasks = state.tasks.filter((x) => x.id !== t.id);
+          // A removed planner item stays out for the rest of the day.
+          if (t.sourceId) { const today = dayKeyLocal(Date.now()); if (state.syncDay !== today) { state.ignoredSourceIds = []; state.syncDay = today; } if (!state.ignoredSourceIds.includes(t.sourceId)) state.ignoredSourceIds = [...state.ignoredSourceIds, t.sourceId]; }
+          if (state.activeTaskId === t.id) state.activeTaskId = state.tasks.find((x) => !x.done)?.id ?? null;
+          persist(); render();
+        }, t.sourceId ? 'Remove from the list for today. The planner keeps it.' : 'Remove task');
         row.appendChild(del);
         taskList.appendChild(row);
       }
@@ -345,10 +427,13 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
       else startTick();
     }
     render();
+    // Once a day, the planner's day joins the list on its own; Sync does it again on demand.
+    if (cfg.plannerSync && cfg.showTasks && state.syncDay !== dayKeyLocal(Date.now())) void syncPlanner(false);
 
     const sub = ctx.onDidChangeConfig((next) => {
+      const before = cfg;
       cfg = readConfig(next);
-      if (!running() && state.pausedRemaining === null) { /* idle: the face shows the new length */ }
+      if (cfg.plannerSync && cfg.showTasks && (!before.plannerSync || !before.showTasks)) void syncPlanner(false);
       render();
     });
 

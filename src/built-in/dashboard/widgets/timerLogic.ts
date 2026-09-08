@@ -24,13 +24,17 @@ export interface TimerConfig {
   readonly ticking: boolean;
   readonly label: string;
   readonly showTasks: boolean;
+  /** Pull today's planner tasks and events into the task list. */
+  readonly plannerSync: boolean;
+  /** The report row: today's minutes, the streak, seven small bars. */
+  readonly showReport: boolean;
 }
 
 export const DEFAULT_TIMER_CONFIG: TimerConfig = {
   focusMinutes: 25, shortBreakMinutes: 5, longBreakMinutes: 15, longBreakInterval: 4,
   autoStartBreaks: false, autoStartFocus: false,
   alarm: 'bell', alarmRepeat: 1, alarmVolume: 50, ticking: false,
-  label: 'Focus', showTasks: true,
+  label: 'Focus', showTasks: true, plannerSync: true, showReport: true,
 };
 
 function num(v: unknown, fallback: number, min: number, max: number, integer = true): number {
@@ -64,6 +68,8 @@ export function readConfig(raw: unknown): TimerConfig {
     ticking: bool(r.ticking, d.ticking),
     label: (typeof r.label === 'string' && r.label.trim()) || d.label,
     showTasks: bool(r.showTasks, d.showTasks),
+    plannerSync: bool(r.plannerSync, d.plannerSync),
+    showReport: bool(r.showReport, d.showReport),
   };
 }
 
@@ -76,6 +82,11 @@ export interface TimerTask {
   act: number;
   done: boolean;
   readonly createdAt: number;
+  /** Set when the task came from the planner: its id there, and what it was. */
+  readonly sourceId?: string;
+  readonly sourceKind?: 'task' | 'event';
+  /** The user changed the estimate by hand; a sync leaves it alone. */
+  estEdited?: boolean;
 }
 export interface TimerSession {
   readonly startedAt: number;
@@ -96,13 +107,17 @@ export interface TimerState {
   cycle: number;
   tasks: TimerTask[];
   activeTaskId: string | null;
+  /** Planner items removed from the list today; a sync does not bring them back. */
+  ignoredSourceIds: string[];
+  /** The day (yyyy-mm-dd) the ignore list and the last automatic sync belong to. */
+  syncDay: string | null;
 }
 
 export const MAX_LOG = 500;
 export const MAX_TASKS = 50;
 
 export function parseState(cached: string | null): TimerState {
-  const fresh: TimerState = { log: [], mode: 'focus', endsAt: null, pausedRemaining: null, cycle: 0, tasks: [], activeTaskId: null };
+  const fresh: TimerState = { log: [], mode: 'focus', endsAt: null, pausedRemaining: null, cycle: 0, tasks: [], activeTaskId: null, ignoredSourceIds: [], syncDay: null };
   if (!cached) return fresh;
   try {
     const p = JSON.parse(cached) as Partial<TimerState>;
@@ -113,7 +128,11 @@ export function parseState(cached: string | null): TimerState {
       : [];
     const tasks = Array.isArray(p.tasks)
       ? p.tasks.filter((t) => t && typeof t.id === 'string' && typeof t.title === 'string')
-        .map((t) => ({ id: t.id, title: t.title, est: num(t.est, 1, 0, 99), act: num(t.act, 0, 0, 999), done: !!t.done, createdAt: typeof t.createdAt === 'number' ? t.createdAt : 0 }))
+        .map((t) => ({
+          id: t.id, title: t.title, est: num(t.est, 1, 0, 99), act: num(t.act, 0, 0, 999), done: !!t.done, createdAt: typeof t.createdAt === 'number' ? t.createdAt : 0,
+          ...(typeof t.sourceId === 'string' ? { sourceId: t.sourceId, sourceKind: (t.sourceKind === 'event' ? 'event' : 'task') as 'task' | 'event' } : {}),
+          ...(t.estEdited ? { estEdited: true } : {}),
+        }))
         .slice(0, MAX_TASKS)
       : [];
     return {
@@ -124,8 +143,52 @@ export function parseState(cached: string | null): TimerState {
       cycle: num(p.cycle, 0, 0, 99),
       tasks,
       activeTaskId: typeof p.activeTaskId === 'string' && tasks.some((t) => t.id === p.activeTaskId) ? p.activeTaskId : null,
+      ignoredSourceIds: Array.isArray(p.ignoredSourceIds) ? p.ignoredSourceIds.filter((s): s is string => typeof s === 'string').slice(0, 200) : [],
+      syncDay: typeof p.syncDay === 'string' ? p.syncDay : null,
     };
   } catch { return fresh; }
+}
+
+// ── Planner link ──────────────────────────────────────────────────────────
+
+export interface PlannerLinkItem {
+  readonly id: string;
+  readonly title: string;
+  /** Planned length in minutes; null when the planner item has none (a task with a due date). */
+  readonly minutes: number | null;
+  readonly kind: 'task' | 'event';
+}
+
+/** A planned five-hour block at 25 minutes a round is twelve rounds; an unsized task is one. */
+export function estFromMinutes(minutes: number | null, focusMinutes: number): number {
+  if (minutes === null || !Number.isFinite(minutes) || minutes <= 0) return 1;
+  return Math.max(1, Math.min(99, Math.ceil(minutes / Math.max(1, focusMinutes))));
+}
+
+/**
+ * Today's planner items folded into the task list. Linked tasks keep their
+ * progress and take the planner's title; their estimate follows the planned
+ * length unless the user edited it. New items are appended unless they were
+ * removed from the list today. A linked planner task no longer among the open
+ * ones was finished in the planner, so it is done here too. Hand-made tasks
+ * are never touched.
+ */
+export function mergePlannerItems(tasks: readonly TimerTask[], items: readonly PlannerLinkItem[], focusMinutes: number, ignored: readonly string[], now: number): TimerTask[] {
+  const byId = new Map(items.map((i) => [i.id, i]));
+  const out: TimerTask[] = tasks.map((t) => {
+    if (!t.sourceId) return t;
+    const item = byId.get(t.sourceId);
+    if (!item) return t.sourceKind === 'task' && !t.done ? { ...t, done: true } : t;
+    return { ...t, title: item.title, est: t.estEdited ? t.est : estFromMinutes(item.minutes, focusMinutes) };
+  });
+  const have = new Set(tasks.map((t) => t.sourceId).filter((s): s is string => !!s));
+  const skip = new Set(ignored);
+  for (const item of items) {
+    if (have.has(item.id) || skip.has(item.id)) continue;
+    if (out.length >= MAX_TASKS) break;
+    out.push({ id: `p-${item.id}`, title: item.title, est: estFromMinutes(item.minutes, focusMinutes), act: 0, done: false, createdAt: now, sourceId: item.id, sourceKind: item.kind });
+  }
+  return out;
 }
 
 export function minutesFor(mode: TimerMode, cfg: TimerConfig): number {
