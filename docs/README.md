@@ -41,6 +41,7 @@ source-of-truth.
 
 ## Active milestone
 - [Parallx_Milestone_64.md](./Parallx_Milestone_64.md)
+- [Parallx_Milestone_104.md](./Parallx_Milestone_104.md) — reference practice and painting planning in Media Organizer (design, 2026-09-10)
 
 ## Archive
 - [archive/milestones/](./archive/milestones/) — closed milestones M01–M63
