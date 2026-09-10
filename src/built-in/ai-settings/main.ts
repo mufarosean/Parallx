@@ -5,7 +5,7 @@
 
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
-import { IAISettingsService, IUnifiedAIConfigService, INotificationService, IWorkspaceMemoryService, IMcpClientService, IAutonomyFeatureFlagsService, IGlobalStorageService } from '../../services/serviceTypes.js';
+import { IAISettingsService, IUnifiedAIConfigService, INotificationService, IWorkspaceMemoryService, IMcpClientService, IAutonomyFeatureFlagsService, IGlobalStorageService, IToolRegistryService } from '../../services/serviceTypes.js';
 import { ILanguageModelsService, ILanguageModelToolsService } from '../../services/chatTypes.js';
 import type { IToolPickerServices } from '../../services/chatTypes.js';
 import { AISettingsPanel } from '../../aiSettings/ui/aiSettingsPanel.js';
@@ -83,6 +83,13 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     : undefined;
 
   // Build IToolPickerServices adapter (same shape as chatDataService.ts)
+  // Extension names for the Tools section's group headers: "Media Organizer",
+  // not "parallx-community.media-organizer".
+  const toolRegistry = api.services.has(IToolRegistryService)
+    ? api.services.get<import('../../services/serviceTypes.js').IToolRegistryService>(IToolRegistryService)
+    : undefined;
+  const extensionNameOf = (id: string | undefined): string | undefined =>
+    id ? toolRegistry?.getById(id)?.description.manifest.name : undefined;
   const toolPickerServices: IToolPickerServices | undefined = languageModelToolsService
     ? {
         getTools: () => languageModelToolsService.getTools().map((t) => ({
@@ -90,6 +97,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
           description: t.description,
           enabled: languageModelToolsService.isToolEnabled(t.name),
           extensionId: t.ownerToolId, // M66 — used to group by extension in the UI
+          extensionName: extensionNameOf(t.ownerToolId),
           category: t.category, // M81 P10 — sub-group within Built-In
         })),
         setToolEnabled: (name: string, enabled: boolean) =>

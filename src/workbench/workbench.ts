@@ -1794,7 +1794,9 @@ export class Workbench extends Layout {
             ? (editorSnap.data.ownerToolId as string)
             : undefined)
           ?? editorTypeOwners.get(editorSnap.typeId);
-        if (ownerToolId && this._toolActivator && !this._toolActivator.isActivated(ownerToolId)) {
+        // A tab owned by a disabled extension does not bring it back to life.
+        if (ownerToolId && this._toolActivator && !this._toolActivator.isActivated(ownerToolId)
+            && (this._toolEnablementService?.isEnabled(ownerToolId) ?? true)) {
           toolsToActivate.add(ownerToolId);
         }
       }
@@ -3383,6 +3385,15 @@ export class Workbench extends Layout {
     // which is what lets a built-in be LAZY (Phase D step 9): a sleeping
     // one wakes here when its view mounts or its command proxy fires.
     this._register(activationEvents.onDidRequestActivation(async (request) => {
+      // A disabled extension never runs. Its activation events stay
+      // registered (so enabling needs no re-scan), but a `*` or
+      // onStartupFinished request for it used to activate it anyway: its
+      // code ran and its chat tools registered while the user had it off.
+      // Enabling activates it directly (onDidChangeEnablement below).
+      if (!this._toolEnablementService.isEnabled(request.toolId)) {
+        console.log(`[Workbench] Activation of disabled tool "${request.toolId}" skipped (event: ${request.event.raw})`);
+        return;
+      }
       console.log(`[Workbench] Activation requested for tool "${request.toolId}" (event: ${request.event.raw})`);
       const builtinModule = this._builtinModules.get(request.toolId);
       if (builtinModule) {

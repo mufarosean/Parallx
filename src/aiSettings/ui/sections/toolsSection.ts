@@ -178,12 +178,14 @@ export class ToolsSection extends SettingsSection {
     const allTools = services.getTools();
     const q = query.toLowerCase().trim();
 
-    type ToolEntry = { name: string; description: string; enabled: boolean; extensionId?: string; category?: ToolCategoryKind };
+    type ToolEntry = { name: string; description: string; enabled: boolean; extensionId?: string; extensionName?: string; category?: ToolCategoryKind };
 
-    // Filter by search
+    // Filter by search: a tool's name and description, and the name of the
+    // extension that contributes it ("media" finds the Media Organizer's tool).
     const filtered: ToolEntry[] = q
       ? allTools.filter(
-          (t: ToolEntry) => t.name.toLowerCase().includes(q) || t.description.toLowerCase().includes(q),
+          (t: ToolEntry) => t.name.toLowerCase().includes(q) || t.description.toLowerCase().includes(q)
+            || (t.extensionName ?? '').toLowerCase().includes(q),
         )
       : [...allTools];
 
@@ -195,8 +197,9 @@ export class ToolsSection extends SettingsSection {
 
     // ── M66: Group tools by extension ──
     // Built-in tools (no extensionId) appear under "Built-In"; tools contributed
-    // by an extension are grouped under that extension's id. Order: built-ins
-    // first, then extension groups alphabetically.
+    // by an extension are grouped under that extension's name ("Media
+    // Organizer"), or its id when the registry has no name. Order: built-ins
+    // first, then extension groups alphabetically by that label.
     const extGroups = new Map<string, ToolEntry[]>();
     for (const t of filtered) {
       const key = t.extensionId ?? 'built-in';
@@ -204,15 +207,17 @@ export class ToolsSection extends SettingsSection {
       if (!bucket) { bucket = []; extGroups.set(key, bucket); }
       bucket.push(t);
     }
+    const labelOf = (key: string): string =>
+      key === 'built-in' ? 'Built-In' : (extGroups.get(key)?.[0]?.extensionName || key);
     const orderedKeys = Array.from(extGroups.keys()).sort((a, b) => {
       if (a === 'built-in') return -1;
       if (b === 'built-in') return 1;
-      return a.localeCompare(b);
+      return labelOf(a).localeCompare(labelOf(b));
     });
 
     for (const groupKey of orderedKeys) {
       const groupTools = extGroups.get(groupKey)!;
-      const groupLabel = groupKey === 'built-in' ? 'Built-In' : groupKey;
+      const groupLabel = labelOf(groupKey);
       const groupCollapsed = this._collapsedState.get(groupLabel) ?? false;
 
       const groupHeader = $('div.ai-settings-tools-group-header');
