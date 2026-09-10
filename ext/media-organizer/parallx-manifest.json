@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "parallx-community.media-organizer",
   "name": "Media Organizer",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "publisher": "parallx-community",
   "description": "Organize photos, GIFs and videos with tags, albums, and EXIF metadata.",
   "main": "main.js",
@@ -37,7 +37,8 @@
       { "id": "media-organizer.showShortcuts", "title": "Keyboard Shortcuts", "category": "Media Organizer" },
       { "id": "media-organizer.toggleScreenRecorder", "title": "Toggle Screen Recorder", "category": "Media Organizer" },
       { "id": "media-organizer.recordGif", "title": "Record GIF (Screen)", "category": "Media Organizer" },
-      { "id": "media-organizer.openClipEditor", "title": "Open Clip Editor", "category": "Media Organizer" }
+      { "id": "media-organizer.openClipEditor", "title": "Open Clip Editor", "category": "Media Organizer" },
+      { "id": "media-organizer.openTagReview", "title": "Open Tag Review", "category": "Media Organizer" }
     ],
     "viewContainers": [
       {

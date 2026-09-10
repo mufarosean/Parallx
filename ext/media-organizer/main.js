@@ -55,7 +55,7 @@
 //   40. PERCEPTUAL HASH (dHash 64-bit) — M59 P3
 //   41. STACKS + TRASH — M59 P5
 //   42. TIMELINE + MAP — M59 P6
-//   43. AI CHAT TOOLS
+//   43. AI TAGGING (one tool, Tag Review)
 //   44. ACTIVATION
 //
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -623,19 +623,23 @@ const TagQueries = {
     };
   },
 
+  // Tag names are stored upper case and are unique whatever the case, so
+  // "Beach" and "BEACH" can never both exist (docs/AI_TAGGING.md).
   async create(input) {
-    ensureNameNotEmpty(input.name);
-    await ensureUnique('mo_tags', 'name', input.name);
+    const name = moNormalizeTagName(input.name);
+    ensureNameNotEmpty(name);
+    const clash = await db.get(`SELECT id FROM mo_tags WHERE name = ? COLLATE NOCASE`, [name]);
+    if (clash) throw new DuplicateError('mo_tags', 'name', name);
     // Cross-check: name must not collide with existing aliases
     // Adapted from stash: pkg/tag/validate.go — EnsureTagNameUnique
     const aliasConflict = await db.get(
-      `SELECT tag_id FROM mo_tag_aliases WHERE alias = ?`, [input.name]
+      `SELECT tag_id FROM mo_tag_aliases WHERE alias = ? COLLATE NOCASE`, [name]
     );
-    if (aliasConflict) throw new DuplicateError('mo_tag_aliases', 'alias', input.name);
+    if (aliasConflict) throw new DuplicateError('mo_tag_aliases', 'alias', name);
     const res = await db.run(
       `INSERT INTO mo_tags (name, description, image_path, sort_name, favorite, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-      [input.name, input.description ?? '', input.imagePath ?? null, input.sortName ?? '', input.favorite ?? 0]
+      [name, input.description ?? '', input.imagePath ?? null, input.sortName ?? '', input.favorite ?? 0]
     );
     return this.findById(res.lastInsertRowid);
   },
@@ -710,20 +714,25 @@ const TagQueries = {
   async update(id, partial) {
     await ensureExists('mo_tags', id);
     if ('name' in partial && partial.name !== undefined) {
+      partial = { ...partial, name: moNormalizeTagName(partial.name) };
       ensureNameNotEmpty(partial.name);
-      await ensureUnique('mo_tags', 'name', partial.name, id);
+      const clash = await db.get(`SELECT id FROM mo_tags WHERE name = ? COLLATE NOCASE AND id != ?`, [partial.name, id]);
+      if (clash) throw new DuplicateError('mo_tags', 'name', partial.name);
       // Cross-check: name must not collide with existing aliases
       const aliasConflict = await db.get(
-        `SELECT tag_id FROM mo_tag_aliases WHERE alias = ? AND tag_id != ?`,
+        `SELECT tag_id FROM mo_tag_aliases WHERE alias = ? COLLATE NOCASE AND tag_id != ?`,
         [partial.name, id]
       );
       if (aliasConflict) throw new DuplicateError('mo_tag_aliases', 'alias', partial.name);
     }
     await buildPartialUpdate('mo_tags', id, partial, TAG_COL_MAP);
 
-    // Handle parentIds reassignment with cycle validation
+    // A tag has at most one parent: parentIds sets it, so it takes zero or one id.
     if (partial.parentIds) {
       const uniqueParentIds = [...new Set(partial.parentIds)];
+      if (uniqueParentIds.length > 1) {
+        throw new ValidationError('A tag can only have one parent');
+      }
       for (const pid of uniqueParentIds) {
         await ensureExists('mo_tags', pid);
         if (await this.wouldCreateCycle(pid, id)) {
@@ -761,6 +770,8 @@ const TagQueries = {
         { type: 'run', sql: `DELETE FROM mo_tags_relations WHERE parent_id = ?`, params: [id] },
       ];
       for (const cid of uniqueChildIds) {
+        // One parent per tag: a child moves here from wherever it was.
+        childOps.push({ type: 'run', sql: `DELETE FROM mo_tags_relations WHERE child_id = ?`, params: [cid] });
         childOps.push({
           type: 'run',
           sql: `INSERT INTO mo_tags_relations (parent_id, child_id) VALUES (?, ?)`,
@@ -828,23 +839,23 @@ const TagQueries = {
       sql: `DELETE FROM mo_videos_tags WHERE tag_id IN (${placeholders})`,
       params: [...uniqueSources],
     });
-    // 3. Reassign parent relations (skip self-references + dupes)
+    // 3. The sources' children move under the destination (each still has one
+    //    parent). A child that is an ancestor of the destination would close a
+    //    loop, so it goes to the top level instead.
+    const loopIds = [destinationId, ...(await this.getAncestors(destinationId)).map((t) => t.id)];
+    const loopPh = loopIds.map(() => '?').join(', ');
     ops.push({
       type: 'run',
-      sql: `UPDATE OR IGNORE mo_tags_relations SET parent_id = ? WHERE parent_id IN (${placeholders}) AND child_id != ?`,
-      params: [destinationId, ...uniqueSources, destinationId],
+      sql: `UPDATE OR IGNORE mo_tags_relations SET parent_id = ? WHERE parent_id IN (${placeholders}) AND child_id NOT IN (${loopPh})`,
+      params: [destinationId, ...uniqueSources, ...loopIds],
     });
     ops.push({
       type: 'run',
       sql: `DELETE FROM mo_tags_relations WHERE parent_id IN (${placeholders})`,
       params: [...uniqueSources],
     });
-    // 4. Reassign child relations
-    ops.push({
-      type: 'run',
-      sql: `UPDATE OR IGNORE mo_tags_relations SET child_id = ? WHERE child_id IN (${placeholders}) AND parent_id != ?`,
-      params: [destinationId, ...uniqueSources, destinationId],
-    });
+    // 4. The destination keeps its own place in the tree. The sources' parent
+    //    links are dropped, not stacked onto it (one parent per tag).
     ops.push({
       type: 'run',
       sql: `DELETE FROM mo_tags_relations WHERE child_id IN (${placeholders})`,
@@ -904,6 +915,9 @@ const TagQueries = {
       if (input.parentIds) {
         const { mode, values = [] } = input.parentIds;
         if (values.length > 0) {
+          if ((mode === 'set' || mode === 'add') && new Set(values).size > 1) {
+            throw new ValidationError('A tag can only have one parent');
+          }
           if (mode === 'set') {
             await this.update(id, { parentIds: values });
           } else if (mode === 'add') {
@@ -971,6 +985,8 @@ const TagQueries = {
   // Adapted from stash: pkg/models/tag.go — alias management
   async updateAliases(tagId, aliases) {
     await ensureExists('mo_tags', tagId);
+    // Aliases are other names for a tag, so they follow the same capitals rule.
+    aliases = (aliases || []).map((a) => (typeof a === 'string' ? moNormalizeTagName(a) : a));
     await ensureAliasesUnique(tagId, aliases);
     const ops = [
       { type: 'run', sql: `DELETE FROM mo_tag_aliases WHERE tag_id = ?`, params: [tagId] },
@@ -1082,6 +1098,8 @@ const TagQueries = {
     return descendants.some((d) => d.id === parentId);
   },
 
+  // One parent per tag (docs/AI_TAGGING.md): nesting a tag under a parent
+  // MOVES it there, replacing any parent it had. Loops are refused.
   async addParent(tagId, parentId) {
     await ensureExists('mo_tags', tagId);
     await ensureExists('mo_tags', parentId);
@@ -1090,10 +1108,10 @@ const TagQueries = {
         `Adding parent ${parentId} to tag ${tagId} would create a cycle`
       );
     }
-    await db.run(
-      `INSERT OR IGNORE INTO mo_tags_relations (parent_id, child_id) VALUES (?, ?)`,
-      [parentId, tagId]
-    );
+    await db.transaction([
+      { type: 'run', sql: `DELETE FROM mo_tags_relations WHERE child_id = ?`, params: [tagId] },
+      { type: 'run', sql: `INSERT INTO mo_tags_relations (parent_id, child_id) VALUES (?, ?)`, params: [parentId, tagId] },
+    ]);
   },
 
   async removeParent(tagId, parentId) {
@@ -1112,10 +1130,11 @@ const TagQueries = {
         `Adding child ${childId} to tag ${tagId} would create a cycle`
       );
     }
-    await db.run(
-      `INSERT OR IGNORE INTO mo_tags_relations (parent_id, child_id) VALUES (?, ?)`,
-      [tagId, childId]
-    );
+    // The child moves here from wherever it was (one parent per tag).
+    await db.transaction([
+      { type: 'run', sql: `DELETE FROM mo_tags_relations WHERE child_id = ?`, params: [childId] },
+      { type: 'run', sql: `INSERT INTO mo_tags_relations (parent_id, child_id) VALUES (?, ?)`, params: [tagId, childId] },
+    ]);
   },
 
   async removeChild(tagId, childId) {
@@ -1141,6 +1160,8 @@ const TagQueries = {
       { type: 'run', sql: `DELETE FROM mo_tags_relations WHERE parent_id = ?`, params: [tagId] },
     ];
     for (const cid of uniqueChildIds) {
+      // One parent per tag: each child moves here from wherever it was.
+      ops.push({ type: 'run', sql: `DELETE FROM mo_tags_relations WHERE child_id = ?`, params: [cid] });
       ops.push({
         type: 'run',
         sql: `INSERT INTO mo_tags_relations (parent_id, child_id) VALUES (?, ?)`,
@@ -8378,6 +8399,53 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
 .mo-similar-card:hover { border-color: var(--vscode-focusBorder, var(--px-accent)); }
 .mo-similar-card img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .mo-similar-status { font-size: 11px; opacity: 0.7; }
+/* Tag names are stored in capitals (docs/AI_TAGGING.md); inputs that name a
+   tag show them that way while typing. Placeholders stay as written. */
+.mo-tag-name-input { text-transform: uppercase; }
+.mo-tag-name-input::placeholder { text-transform: none; }
+.mo-sidebar-item-count:empty { display: none; }
+/* SECTION 43: Tag Review */
+.mo-tr-page { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--vscode-editor-background, var(--px-bg)); color: var(--vscode-foreground, var(--px-text)); }
+.mo-tr-head { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--vscode-panel-border, var(--px-border)); flex-wrap: wrap; }
+.mo-tr-title-wrap { display: flex; flex-direction: column; min-width: 0; margin-right: auto; }
+.mo-tr-title { font-size: 15px; font-weight: 600; }
+.mo-tr-sub { font-size: 11px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
+.mo-tr-sub.is-error { color: var(--vscode-errorForeground, var(--px-text)); }
+.mo-tr-actions-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.mo-tr-opt { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; margin-right: 4px; }
+.mo-tr-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid var(--vscode-panel-border, var(--px-border)); background: transparent; color: inherit; border-radius: var(--parallx-radius-md, 6px); padding: 4px 12px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.mo-tr-btn:hover:not(:disabled) { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
+.mo-tr-btn:disabled { opacity: 0.5; cursor: default; }
+.mo-tr-btn.primary { background: var(--vscode-button-background, var(--px-accent)); color: var(--vscode-button-foreground, var(--px-text)); border-color: transparent; }
+.mo-tr-btn.primary:hover:not(:disabled) { background: var(--vscode-button-hoverBackground, var(--vscode-button-background, var(--px-accent))); }
+.mo-tr-progress { flex-basis: 100%; height: 3px; border-radius: 2px; overflow: hidden; background: var(--vscode-input-background, var(--px-bg-inset)); }
+.mo-tr-progress-fill { height: 100%; width: 0; background: var(--vscode-button-background, var(--px-accent)); transition: width var(--px-dur-slow, 260ms) var(--px-ease, ease); }
+.mo-tr-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+.mo-tr-list { display: flex; flex-direction: column; }
+.mo-tr-row { display: grid; grid-template-columns: 132px minmax(0, 1fr) auto; gap: 14px; align-items: start; padding: 12px 14px; border-bottom: 1px solid var(--vscode-panel-border, var(--px-border)); }
+.mo-tr-row.is-queued, .mo-tr-row.is-running { opacity: 0.75; }
+.mo-tr-thumb { width: 132px; height: 99px; border-radius: var(--parallx-radius-sm, 3px); overflow: hidden; background: var(--vscode-input-background, var(--px-bg-inset)); cursor: zoom-in; }
+.mo-tr-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mo-tr-body { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.mo-tr-name-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.mo-tr-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mo-tr-status { flex-shrink: 0; font-size: 10px; font-weight: 600; letter-spacing: 0.3px; padding: 1px 6px; border-radius: 3px; background: var(--vscode-badge-background, var(--px-surface)); color: var(--vscode-badge-foreground, var(--px-text)); }
+.mo-tr-status.is-failed { background: transparent; color: var(--vscode-errorForeground, var(--px-text)); border: 1px solid var(--vscode-errorForeground, var(--px-border)); }
+.mo-tr-note { font-size: 11px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
+.mo-tr-error { font-size: 11px; color: var(--vscode-errorForeground, var(--px-text)); }
+.mo-tr-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.mo-tr-chip { display: inline-flex; align-items: center; max-width: 100%; padding: 2px 4px 2px 8px; border-radius: var(--parallx-radius-sm, 3px); border: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-input-background, var(--px-bg-inset)); font-size: 11px; line-height: 16px; }
+.mo-tr-chip-path { color: var(--vscode-descriptionForeground, var(--px-text-secondary)); white-space: pre; }
+.mo-tr-chip-leaf { font-weight: 600; }
+.mo-tr-chip button { border: none; background: transparent; color: inherit; cursor: pointer; padding: 0 4px; margin-left: 2px; font-size: 13px; line-height: 1; opacity: 0.6; }
+.mo-tr-chip button:hover { opacity: 1; }
+.mo-tr-add-input { width: 170px; box-sizing: border-box; background: var(--vscode-input-background, var(--px-bg)); color: var(--vscode-input-foreground, var(--vscode-foreground, var(--px-text))); border: 1px solid var(--vscode-input-border, var(--px-surface)); border-radius: var(--parallx-radius-sm, 3px); padding: 3px 6px; font-size: 11px; }
+.mo-tr-add-input:focus { border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); outline: none; }
+.mo-tr-row-actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; min-width: 88px; }
+.mo-tr-empty { padding: 48px 14px; text-align: center; font-size: 12px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
+.mo-tr-suggest { position: fixed; z-index: 10005; min-width: 220px; max-width: 380px; max-height: 240px; overflow-y: auto; padding: 2px 0; background: var(--vscode-editorWidget-background, var(--px-bg-elevated)); border: 1px solid var(--vscode-editorWidget-border, var(--px-border-strong)); border-radius: var(--parallx-radius-sm, 3px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); }
+.mo-tr-suggest-item { padding: 4px 10px; font-size: 12px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mo-tr-suggest-item:hover, .mo-tr-suggest-item.is-active { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
 `;
 
 function moInjectStyles() {
@@ -9778,6 +9846,19 @@ function renderBrowserSidebar(container, api) {
   qfBody.appendChild(sidebarItem('images', 'GIFs', null, () => openGrid('gifs', 'GIFs', 'images')));
   qfBody.appendChild(sidebarItem('film', 'Videos', null, () => openGrid('videos', 'Videos')));
   qfBody.appendChild(sidebarItem('circle-help', 'Untagged', null, () => openGrid('untagged', 'Untagged')));
+  // AI tagging (Section 43): the review list, counting photos waiting or to review.
+  const tagReviewItem = sidebarItem('sparkles', 'Tag Review', null, () => moOpenTagReview(api));
+  const tagReviewCount = moEl('span', 'mo-sidebar-item-count');
+  tagReviewItem.appendChild(tagReviewCount);
+  qfBody.appendChild(tagReviewItem);
+  const refreshTagReviewCount = () => {
+    moTagCounts().then((c) => {
+      const n = c.queued + c.running + c.pending + c.nomatch + c.failed;
+      tagReviewCount.textContent = n ? String(n) : '';
+    }).catch(() => {});
+  };
+  document.addEventListener('mo:ai-tag-changed', refreshTagReviewCount);
+  refreshTagReviewCount();
   qfBody.appendChild(sidebarItem('star', 'Favorites', null, () => openGrid('favorites', 'Favorites')));
   qfBody.appendChild(sidebarItem('clock', 'Recent', null, () => openGrid('recent', 'Recent')));
   qfBody.appendChild(sidebarItem('copy', 'Duplicates', null, () => openGrid('duplicates', 'Duplicates')));
@@ -10118,8 +10199,8 @@ function renderBrowserSidebar(container, api) {
     });
     return arr;
   }
-  // Re-parent: make the dragged tag a child of `parentId` (additive — keeps any
-  // existing parents). Cycles / duplicates are guarded by the backend.
+  // Re-parent: move the dragged tag under `parentId`. A tag has one parent,
+  // so this replaces wherever it was; loops are refused by the backend.
   async function reparentTag(childId, parentId) {
     if (childId === parentId) return;
     try {
@@ -10127,7 +10208,7 @@ function renderBrowserSidebar(container, api) {
       // Auto-expand the new parent so the moved child is visible.
       _tagExpanded.add(parentId);
       persistTagExpanded();
-      api.statusBar?.setMessage?.('Tag nested', 1500);
+      api.statusBar?.setMessage?.('Tag moved', 1500);
       _notifySidebarRefresh();
     } catch (err) {
       api.window.showWarningMessage('Could not nest tag: ' + (err && err.message ? err.message : String(err)));
@@ -10191,7 +10272,7 @@ function renderBrowserSidebar(container, api) {
     // Multi-home indicator (tag filed under more than one parent).
     if (multiHome) {
       const mh = moEl('span', 'mo-tag-multihome', { innerHTML: moIcon('git-branch', 11) });
-      mh.title = 'Filed under multiple parents';
+      mh.title = 'Under more than one parent (from before tags had one parent). Drag it onto the parent to keep.';
       row.appendChild(mh);
     }
 
@@ -10293,7 +10374,7 @@ function renderBrowserSidebar(container, api) {
   // cancel on Escape.
   function startInlineRename(row, label, tag) {
     if (row.querySelector('.mo-tag-rename-input')) return;
-    const input = moEl('input', 'mo-tag-rename-input', { type: 'text', value: tag.name || '' });
+    const input = moEl('input', 'mo-tag-rename-input mo-tag-name-input', { type: 'text', value: tag.name || '' });
     input.style.cssText = 'flex:1;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-focusBorder,var(--px-accent,#9333ea));border-radius:3px;padding:1px 4px;font-size:inherit;min-width:0;';
     label.style.display = 'none';
     label.parentNode.insertBefore(input, label.nextSibling);
@@ -10315,7 +10396,7 @@ function renderBrowserSidebar(container, api) {
       row.draggable = wasDraggable;
     };
     const commit = async () => {
-      const next = String(input.value || '').trim();
+      const next = moNormalizeTagName(input.value);
       cleanup();
       if (!next || next === tag.name) return;
       try {
@@ -10507,19 +10588,11 @@ function renderBrowserSidebar(container, api) {
         api.window.showErrorMessage('Favorite toggle failed: ' + (err && err.message ? err.message : String(err)));
       }
     }});
-    // Hierarchy ops \u2014 only in tree mode, where we know this instance's parent.
+    // Hierarchy ops, only in tree mode, where we know this instance's parent.
+    // A tag has one parent, so taking it out of its parent moves it to the top.
     if (ctx.parentId != null) {
       actions.push({ separator: true });
-      actions.push({ label: `Remove from "${ctx.parentName || 'parent'}"`, handler: async () => {
-        try {
-          await TagQueries.removeParent(tag.id, ctx.parentId);
-          api.statusBar?.setMessage?.(`Removed "${tag.name}" from "${ctx.parentName || 'parent'}"`, 2500);
-          _notifySidebarRefresh();
-        } catch (err) {
-          api.window.showErrorMessage('Failed: ' + (err && err.message ? err.message : String(err)));
-        }
-      }});
-      actions.push({ label: 'Move to top level', handler: async () => {
+      actions.push({ label: 'Move To Top Level', handler: async () => {
         try {
           await db.run('DELETE FROM mo_tags_relations WHERE child_id = ?', [tag.id]);
           api.statusBar?.setMessage?.(`"${tag.name}" moved to top level`, 2500);
@@ -10538,7 +10611,7 @@ function renderBrowserSidebar(container, api) {
           placeHolder: 'New tag name',
         });
         if (next == null) return;
-        const trimmed = String(next).trim();
+        const trimmed = moNormalizeTagName(next);
         if (!trimmed || trimmed === tag.name) return;
         try {
           await TagQueries.update(tag.id, { name: trimmed });
@@ -10906,7 +10979,7 @@ function renderBrowserSidebar(container, api) {
   const refreshAll = () => { loadFolders(); loadTags(); loadAlbums(); };
   _sidebarRefreshCallbacks.push(refreshAll);
 
-  return { dispose() { container.innerHTML = ''; const idx = _sidebarRefreshCallbacks.indexOf(refreshAll); if (idx >= 0) _sidebarRefreshCallbacks.splice(idx, 1); } };
+  return { dispose() { container.innerHTML = ''; document.removeEventListener('mo:ai-tag-changed', refreshTagReviewCount); const idx = _sidebarRefreshCallbacks.indexOf(refreshAll); if (idx >= 0) _sidebarRefreshCallbacks.splice(idx, 1); } };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -13072,10 +13145,8 @@ function renderGridBrowser(container, api, input) {
     return null;
   }
 
-  // Attach a media item to the chat input as a file attachment. Mirrors what
-  // moToolViewImage does for AI-driven views — same command, same payload
-  // shape — so right-click and AI-attached items show up identically in the
-  // chat composer.
+  // Attach a media item to the chat input as a file attachment: the same
+  // command and payload as Add To Chat everywhere else.
   async function attachItemToChat(item) {
     const type = item && item.type;
     if (type !== 'photo' && type !== 'video') return false;
@@ -13090,17 +13161,6 @@ function renderGridBrowser(container, api, input) {
       // explorer and flashcards send the same). The earlier nested
       // { file: {...} } payload attached nothing.
       await api.commands.executeCommand('chat.addFileAttachment', { name: primary.basename, fullPath });
-      // Mirror moToolViewImage so a follow-up "tag this" via AI resolves to
-      // whatever the user attached most recently, regardless of whether the
-      // image was attached by AI or by right-click.
-      try {
-        _lastViewedMedia = {
-          type,
-          id: item.id,
-          basename: primary.basename,
-          viewedAt: Date.now(),
-        };
-      } catch { /* _lastViewedMedia is module-scoped; ignore if unavailable */ }
       return true;
     } catch (err) {
       console.warn('[mo] attachItemToChat failed', err);
@@ -13177,6 +13237,9 @@ function renderGridBrowser(container, api, input) {
           // No grid refresh — dialog dispatches mo:tags-bulk-changed.
         });
       }});
+      if (item.type === 'photo') {
+        actions.push({ label: 'Tag With AI', handler: () => { void moTagWithAIFromUI([item], api); } });
+      }
       actions.push({ label: 'Rate', submenu: [
         { label: '\u2606 Clear', handler: () => rateItemsByKey(0) },
         { label: '\u2605', handler: () => rateItemsByKey(1) },
@@ -13242,6 +13305,10 @@ function renderGridBrowser(container, api, input) {
           if (selectionBar) selectionBar.update();
           // No grid refresh — dialog dispatches mo:tags-bulk-changed.
         });
+      }});
+      actions.push({ label: 'Tag With AI', handler: () => {
+        const items = [...state.selectedIds].map((k) => { const i = k.indexOf(':'); return { type: k.slice(0, i), id: parseInt(k.slice(i + 1), 10) }; });
+        void moTagWithAIFromUI(items, api);
       }});
       actions.push({ label: 'Rate', submenu: [
         { label: '\u2606 Clear', handler: () => rateItemsByKey(0) },
@@ -13657,12 +13724,7 @@ async function moAttachItemToChat(item) {
   const fullPath = await moResolveItemPath(item);
   if (!fullPath) return false;
   const basename = fullPath.split(/[\\/]/).pop();
-  const ok = await moAttachFileToChat(basename, fullPath);
-  if (ok) {
-    // A follow-up "tag this" in chat resolves to whatever was attached last.
-    try { _lastViewedMedia = { type: item.type, id: item.id, basename, viewedAt: Date.now() }; } catch { /* module state optional */ }
-  }
-  return ok;
+  return moAttachFileToChat(basename, fullPath);
 }
 
 /** One gesture never floods the composer. */
@@ -14076,6 +14138,7 @@ function renderHomeFeed(container, api, input) {
         { label: 'View Full Size', handler: () => viewItem(item) },
         { label: 'Edit Details', handler: () => openDetail(item) },
         { label: 'Add To Chat', handler: () => { void moAttachItemsToChat([item]); } },
+        ...(item.type === 'photo' && !item.isGif ? [{ label: 'Tag With AI', handler: () => { void moTagWithAIFromUI([item], api); } }] : []),
         ...(item.type === 'photo' && !item.isGif ? [{ label: 'Upscale…', handler: () => { void moUpscaleItems([item], api, null); } }] : []),
         { separator: true },
         { label: 'Open File Location', handler: async () => {
@@ -15338,7 +15401,7 @@ function buildTagEditor(container, tags, entityType, entityId, api, onRefresh) {
 
 function buildTagAutocomplete(container, getExistingTags, onAdd) {
   const autocomplete = moEl('div', 'mo-detail-autocomplete');
-  const input = moEl('input', null, { type: 'text', placeholder: 'Add tag...' });
+  const input = moEl('input', 'mo-tag-name-input', { type: 'text', placeholder: 'Add tag...' });
   input.setAttribute('aria-label', 'Search tags to add');
   autocomplete.appendChild(input);
   container.appendChild(autocomplete);
@@ -15383,7 +15446,7 @@ function buildTagAutocomplete(container, getExistingTags, onAdd) {
 
     // "Create new tag" option
     if (createName) {
-      const createRow = moEl('div', 'mo-detail-autocomplete-item mo-detail-autocomplete-create', { textContent: `Create "${createName}"` });
+      const createRow = moEl('div', 'mo-detail-autocomplete-item mo-detail-autocomplete-create', { textContent: `Create "${moNormalizeTagName(createName)}"` });
       createRow.addEventListener('click', () => createAndAddTag(createName));
       createRow.addEventListener('mouseenter', () => highlightIndex(items.length));
       dropdown.appendChild(createRow);
@@ -17080,6 +17143,14 @@ function buildSelectionToolbar(container, state, api, refreshFn, applySelectionF
   });
   bar.appendChild(bulkTagBtn);
 
+  // AI tagging (Section 43): suggestions for the selected photos, reviewed in Tag Review.
+  const aiTagBtn = moEl('button', null, { textContent: 'Tag With AI', title: 'Suggest tags from your tag list for the selected photos. Nothing is applied until you approve it in Tag Review.' });
+  aiTagBtn.addEventListener('click', () => {
+    const items = [...state.selectedIds].map((k) => { const i = k.indexOf(':'); return { type: k.slice(0, i), id: parseInt(k.slice(i + 1), 10) }; });
+    void moTagWithAIFromUI(items, api);
+  });
+  bar.appendChild(aiTagBtn);
+
   // Bulk Rating button
   const bulkRatingBtn = moEl('button', null, { textContent: 'Rate...' });
   bulkRatingBtn.addEventListener('click', () => {
@@ -17304,7 +17375,7 @@ function showBulkTagDialog(state, api, onComplete) {
   // ── Search / create ──
   const searchSection = moEl('div', 'mo-bulk-dialog-section');
   searchSection.appendChild(moEl('label', null, { textContent: 'Search or create' }));
-  const searchInput = moEl('input', 'mo-bulk-tag-search', { type: 'text', placeholder: 'Type to filter tags or create a new one…' });
+  const searchInput = moEl('input', 'mo-bulk-tag-search mo-tag-name-input', { type: 'text', placeholder: 'Type to filter tags or create a new one…' });
   searchInput.setAttribute('aria-label', 'Search or create tag');
   searchSection.appendChild(searchInput);
   dialog.appendChild(searchSection);
@@ -17425,7 +17496,7 @@ function showBulkTagDialog(state, api, onComplete) {
       const createRow = moEl('div', 'mo-bulk-tag-row mo-bulk-tag-row-create');
       createRow.setAttribute('role', 'option');
       createRow.appendChild(moEl('span', 'mo-bulk-tag-row-icon', { textContent: '+' }));
-      createRow.appendChild(moEl('span', null, { textContent: `Create "${query.trim()}"` }));
+      createRow.appendChild(moEl('span', null, { textContent: `Create "${moNormalizeTagName(query)}"` }));
       createRow.addEventListener('click', () => createAndPick(query.trim()));
       browseList.appendChild(createRow);
     }
@@ -17480,7 +17551,7 @@ function showBulkTagDialog(state, api, onComplete) {
   }
 
   async function createAndPick(name) {
-    const trimmed = name.trim();
+    const trimmed = moNormalizeTagName(name);
     if (!trimmed) return;
     if (mode === 'REMOVE') {
       api.window.showWarningMessage('Cannot create a new tag in Remove mode.');
@@ -17930,14 +18001,14 @@ function showCreateTagDialog(api, onComplete) {
   const dialog = moEl('div', 'mo-bulk-dialog');
   dialog.setAttribute('role', 'dialog');
   dialog.setAttribute('aria-modal', 'true');
-  dialog.setAttribute('aria-label', 'New tags');
+  dialog.setAttribute('aria-label', 'New Tags');
   overlay.appendChild(dialog);
 
-  dialog.appendChild(moEl('h3', null, { textContent: 'New tag(s)' }));
+  dialog.appendChild(moEl('h3', null, { textContent: 'New Tags' }));
 
   const section = moEl('div', 'mo-bulk-dialog-section');
   section.appendChild(moEl('label', null, { textContent: 'Names' }));
-  const input = moEl('textarea', 'mo-bulk-tag-search', {
+  const input = moEl('textarea', 'mo-bulk-tag-search mo-tag-name-input', {
     rows: 4,
     placeholder: 'One tag per line, or comma-separated.\nUse Parent/Child/Grandchild to nest\u2026',
   });
@@ -17948,7 +18019,7 @@ function showCreateTagDialog(api, onComplete) {
   section.appendChild(input);
 
   const hint = moEl('div', 'mo-bulk-mode-hint', {
-    textContent: 'Enter to create \u00b7 Shift+Enter for a new line \u00b7 "Italy/2024/Building" nests under Italy \u203a 2024.',
+    textContent: 'Enter to create \u00b7 Shift+Enter for a new line \u00b7 "Italy/2024" nests 2024 under Italy \u00b7 names are saved in capitals, and a tag has one parent.',
   });
   section.appendChild(hint);
 
@@ -17969,9 +18040,9 @@ function showCreateTagDialog(api, onComplete) {
     const out = [];
     const seen = new Set();
     for (const part of raw.split(/[\n,]/)) {
-      const t = part.trim();
+      const t = moNormalizeTagName(part);
       if (!t) continue;
-      const key = t.toLowerCase();
+      const key = t;
       if (seen.has(key)) continue;
       seen.add(key);
       out.push(t);
@@ -17995,10 +18066,11 @@ function showCreateTagDialog(api, onComplete) {
     let reused = 0;
     const failed = [];
     // Each entry may be a "Parent/Child/Grandchild" path. Walk it, reusing
-    // existing tags by name and linking parent \u2192 child (globally-unique tags,
-    // multi-parent hierarchy). Cycle/duplicate links are ignored.
+    // existing tags by name and linking parent \u2192 child. A tag has one
+    // parent: an existing tag already filed under another parent is not moved
+    // by a path; the entry fails and says where the tag lives.
     for (const entry of entries) {
-      const segments = entry.split('/').map((s) => s.trim()).filter(Boolean);
+      const segments = entry.split('/').map((s) => moNormalizeTagName(s)).filter(Boolean);
       if (segments.length === 0) continue;
       let parentId = null;
       try {
@@ -18013,7 +18085,11 @@ function showCreateTagDialog(api, onComplete) {
             created++;
           }
           if (parentId != null && parentId !== tag.id) {
-            try { await TagQueries.addParent(tag.id, parentId); } catch { /* cycle / already linked */ }
+            const current = await TagQueries.getParents(tag.id);
+            if (current.length && !current.some((p) => p.id === parentId)) {
+              throw new Error(`${tag.name} is already under ${current.map((p) => p.name).join(', ')}`);
+            }
+            if (!current.length) await TagQueries.addParent(tag.id, parentId);
           }
           parentId = tag.id;
         }
@@ -18035,7 +18111,7 @@ function showCreateTagDialog(api, onComplete) {
     cancelBtn.disabled = false;
     const lines = [];
     if (created > 0) lines.push(`Created ${created}.`);
-    lines.push(`Failed: ${failed.map((f) => `"${f.name}"`).join(', ')}`);
+    lines.push(`Failed: ${failed.map((f) => `"${f.name}" (${f.msg})`).join('; ')}`);
     statusLine.textContent = lines.join(' ');
     statusLine.style.color = 'var(--vscode-errorForeground, #f48771)';
     statusLine.style.fontStyle = 'normal';
@@ -26963,150 +27039,282 @@ async function moOpenMap(api) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 43: AI CHAT TOOLS
+// SECTION 43: AI TAGGING (one tool, Tag Review)
 // ═══════════════════════════════════════════════════════════════════════════════
 //
-// Tools registered via `api.chat.registerTool(name, def)` so the AI agent
-// (and users via /tool invocation) can both query AND mutate the library.
+// docs/AI_TAGGING.md. One chat tool (mediaOrganizer.tagPhotos) and one menu
+// action (Tag With AI) queue photos; a background runner sends each photo to
+// the chat model together with the user's tag tree; the suggestions wait in
+// the Tag Review tab until the user approves them.
 //
-// Design:
-//   • Reads return rich, deterministic JSON (no hallucination room).
-//   • Writes accept arrays of {type:"photo"|"video", id} so batches feel natural.
-//   • A `describeSchema` tool gives the agent a structured reference of tables,
-//     columns, and conventions so it never has to guess.
-//   • Write tools set requiresConfirmation:true — Parallx prompts the user
-//     before any mutation is applied.
+// This replaced twenty chat tools that made the chat model look at a photo on
+// one turn and tag it on the next. The pixels carried no id, so in a loop the
+// model had to remember which picture was which, and it tagged the wrong ones.
+// Here the photo and its id never separate: the runner holds both.
 //
-// Vision-based tools (auto-tag, describe, auto-rate) are not registered yet —
-// the current `parallx.lm` API only accepts text. They will land when LM gains
-// multimodal support.
+// The rules are code, not prompt: only existing tags (a JSON schema whose only
+// allowed values are the tag paths, then validation against the tree), parents
+// added on Approve, photos only (no GIFs, no videos), tags only ever added,
+// nothing applied without Approve.
 
-// ─── Helpers ───────────────────────────────────────────────────────────────
+// @mo-tag-pure-begin (pure AI-tagging logic, extracted verbatim by tests/unit/moAiTagging.test.ts)
 
-function moToolOk(obj)    { return { content: JSON.stringify(obj, null, 2) }; }
-function moToolError(msg) { return { content: String(msg), isError: true }; }
+/** Nesting separator in tag paths, for the model and for Tag Review. */
+const MO_TAG_PATH_SEP = ' › ';
+/** Long edge of the whole-photo image the model sees. */
+const MO_TAG_OVERVIEW_EDGE = 1536;
+/** Long edge of each detail crop. */
+const MO_TAG_CROP_EDGE = 1024;
+/** Detail crops are made only for photos larger than this on the long edge. */
+const MO_TAG_CROP_MIN_EDGE = 3072;
+/** Longest tag description passed to the model. */
+const MO_TAG_DESC_MAX = 160;
 
-function moNormalizeItems(items) {
-  if (!Array.isArray(items) || items.length === 0) {
-    throw new Error('items must be a non-empty array of {type,id}');
+const MO_TAG_SYSTEM =
+  'You label photos for a personal photo library. You only answer with tags from the list you are given, ' +
+  'written exactly as they appear in the list, and only tags that clearly apply to what is visible.';
+
+/**
+ * A tag name as stored: inner whitespace collapsed to one space, trimmed,
+ * upper case. Every create and rename goes through this.
+ */
+function moNormalizeTagName(name) {
+  return String(name == null ? '' : name).replace(/\s+/g, ' ').trim().toUpperCase();
+}
+
+/** child id -> [parent ids], from mo_tags_relations rows. */
+function moTagParentsOf(rels) {
+  const parentsOf = new Map();
+  for (const r of rels || []) {
+    const child = Number(r.child_id);
+    const parent = Number(r.parent_id);
+    if (!parentsOf.has(child)) parentsOf.set(child, []);
+    parentsOf.get(child).push(parent);
   }
-  const out = [];
-  for (const it of items) {
-    if (!it || (it.type !== 'photo' && it.type !== 'video')) {
-      throw new Error(`Invalid item: ${JSON.stringify(it)} - type must be "photo" or "video"`);
-    }
-    const id = parseInt(it.id, 10);
-    if (!id || isNaN(id)) throw new Error(`Invalid id: ${it.id}`);
-    out.push({ type: it.type, id });
+  return parentsOf;
+}
+
+/**
+ * Every ancestor of a tag. With one parent per tag this is the chain to the
+ * root; tags filed under several parents before that rule get every path.
+ * Cycle-safe.
+ */
+function moTagAncestorIds(tagId, parentsOf) {
+  const self = Number(tagId);
+  const out = new Set();
+  const stack = [...(parentsOf.get(self) || [])];
+  while (stack.length) {
+    const p = stack.pop();
+    if (p === self || out.has(p)) continue;
+    out.add(p);
+    for (const pp of parentsOf.get(p) || []) stack.push(pp);
   }
   return out;
 }
 
-async function moResolveTagIds({ tagIds, tagNames, createMissing }) {
-  const ids = new Set();
-  const created = [];
-  const notFound = [];
-  if (Array.isArray(tagIds)) {
-    for (const raw of tagIds) {
-      const tid = parseInt(raw, 10);
-      if (!tid) continue;
-      const t = await TagQueries.findById(tid);
-      if (t) ids.add(t.id); else notFound.push(`#${tid}`);
+/** The ids plus all their ancestors, deduped, the given ids first. */
+function moExpandWithAncestors(ids, parentsOf) {
+  const out = [];
+  const seen = new Set();
+  for (const id of ids || []) {
+    const n = Number(id);
+    if (Number.isFinite(n) && !seen.has(n)) { seen.add(n); out.push(n); }
+  }
+  for (const id of [...out]) {
+    for (const a of moTagAncestorIds(id, parentsOf)) {
+      if (!seen.has(a)) { seen.add(a); out.push(a); }
     }
   }
-  if (Array.isArray(tagNames)) {
-    for (const raw of tagNames) {
-      const name = String(raw || '').trim();
-      if (!name) continue;
-      let t = await TagQueries.findByName(name);
-      if (!t && createMissing) {
-        t = await TagQueries.create({ name });
-        created.push({ id: t.id, name: t.name });
-      }
-      if (t) ids.add(t.id); else notFound.push(name);
+  return out;
+}
+
+/**
+ * tag id -> every root-to-tag path ('ANIMALS › DOG › CORGI'). One path per
+ * tag under the one-parent rule; older data may give a tag several.
+ */
+function moTagPaths(tags, rels) {
+  const byId = new Map();
+  for (const t of tags || []) byId.set(Number(t.id), t);
+  const parentsOf = moTagParentsOf(rels);
+  const memo = new Map();
+  const walk = (id, trail) => {
+    if (memo.has(id)) return memo.get(id);
+    const t = byId.get(id);
+    if (!t) return [];
+    const parents = (parentsOf.get(id) || []).filter((p) => byId.has(p) && !trail.has(p));
+    const out = [];
+    const next = new Set(trail).add(id);
+    for (const p of parents) {
+      for (const pp of walk(p, next)) out.push(pp + MO_TAG_PATH_SEP + t.name);
     }
-  }
-  return { ids: [...ids], created, notFound };
+    if (out.length === 0) out.push(String(t.name));
+    memo.set(id, out);
+    return out;
+  };
+  const result = new Map();
+  for (const id of byId.keys()) result.set(id, walk(id, new Set([id])));
+  return result;
 }
 
-// ─── READ TOOLS ────────────────────────────────────────────────────────────
+/**
+ * The list the model chooses from: one entry per path, sorted, minus the tags
+ * the photo already has. Each entry: { id, path, description }.
+ */
+function moTagEntries(tags, rels, excludeIds) {
+  const skip = excludeIds instanceof Set ? excludeIds : new Set(excludeIds || []);
+  const desc = new Map();
+  for (const t of tags || []) {
+    desc.set(Number(t.id), String(t.description || '').replace(/\s+/g, ' ').trim().slice(0, MO_TAG_DESC_MAX));
+  }
+  const out = [];
+  for (const [id, list] of moTagPaths(tags, rels)) {
+    if (skip.has(id)) continue;
+    for (const path of list) out.push({ id, path, description: desc.get(id) || '' });
+  }
+  out.sort((a, b) => a.path.localeCompare(b.path));
+  return out;
+}
 
-async function moToolDescribeSchema() {
-  return moToolOk({
-    overview: 'Media-Organizer is a SQLite-backed photo/video library. Items are referenced as {type:"photo"|"video", id}. Photos and videos are separate domains that share folders, tags, and albums.',
-    primaryEntities: {
-      mo_photos: 'Photo records. Columns: id, title, rating(0-5), color_label, curated(0|1), details, camera_make, camera_model, lens, iso, aperture, shutter_speed, focal_length, gps_latitude, gps_longitude, taken_at, deleted_at(NULL=live, set=in trash), created_at, updated_at.',
-      mo_videos: 'Video records. Columns: id, title, rating(0-5), color_label, curated, details, duration, deleted_at, created_at, updated_at.',
-      mo_files: 'Filesystem rows. Columns: id, basename, size, mod_time, folder_id.',
-      mo_folders: 'Folder tree. Columns: id, path, parent_folder_id.',
-      mo_image_files: 'Per-image metadata. Columns: file_id, width, height, format, phash(integer or NULL).',
-      mo_video_files: 'Per-video metadata. Columns: file_id, duration, width, height, codec, bit_rate, frame_rate.',
-      mo_tags: 'Tag dictionary. Columns: id, name(unique), description, image_path, sort_name, favorite, created_at, updated_at.',
-      mo_tags_relations: 'Tag hierarchy. Columns: parent_id, child_id (acyclic).',
-      mo_albums: 'Albums (manual collections). Columns: id, title, description, rating, folder_id, parent_album_id.',
-      mo_smart_albums: 'Saved searches. Columns: id, name, query_json.',
-      mo_stacks: 'Stacked items. Columns: id, primary_type("photo"|"video"), primary_id, name.',
-      mo_stack_members: 'Stack membership. Columns: stack_id, member_type, member_id, role, position.',
+/** Structured-output schema: an object whose tags are only the listed paths. */
+function moTagReplySchema(paths) {
+  return {
+    type: 'object',
+    properties: {
+      tags: { type: 'array', items: { type: 'string', enum: [...new Set(paths || [])] } },
     },
-    junctionTables: {
-      mo_photos_files:  '(photo_id, file_id, is_primary) - photo->files',
-      mo_videos_files:  '(video_id, file_id, is_primary) - video->files',
-      mo_photos_tags:   '(photo_id, tag_id) - photo->tags',
-      mo_videos_tags:   '(video_id, tag_id) - video->tags',
-      mo_albums_photos: '(album_id, photo_id, position)',
-      mo_albums_videos: '(album_id, video_id, position)',
-      mo_albums_tags:   '(album_id, tag_id)',
-    },
-    importantNotes: [
-      'A photo/video is "in trash" when deleted_at IS NOT NULL. Use trashItems action:"trash"|"restore", never DELETE rows.',
-      'Tag membership is plural-plural: mo_photos_tags and mo_videos_tags. There is NO mo_photo_tags table.',
-      'Color labels are free-form strings (e.g. "red","green","yellow"). NULL = unset.',
-      'curated is the "favorite" flag (0|1).',
-      'rating is 0-5 inclusive; 0 means unrated.',
-      'List/search tools default to live items only (exclude trash) unless includeTrashed:true.',
-      'To find items needing tags, call search with untagged:true. To exclude items already tagged, use excludeTagNames:[...]. getStats also returns untagged counts.',
-      'You CANNOT see image content from tool results directly (results are text only). To visually inspect a photo or video, call viewImage(type,id) — it attaches the file to chat the same way the user right-clicks "Add to Chat". The image arrives on your NEXT turn, so after calling viewImage end your turn briefly. Then on the following turn you can describe the image and generate accurate content tags. The viewImage tool result also returns ANCHOR_ID=type:id — that is the canonical id for the image in front of you. When the user says "tag this one" / "this image", that anchor is the item to tag. If you are unsure (multiple images attached, or the user attached one manually), call getCurrentMediaItem or ASK the user to confirm — NEVER pick the first untagged item from a search result as a stand-in for "this one".',
-    ],
-    availableTools: [
-      'describeSchema, getStats, getItem, viewImage, getCurrentMediaItem, search, findSimilar, suggestStacks',
-      'listTags, listAlbums, listFolders, listSmartAlbums',
-      'tagItems, updateTag, updateItems, trashItems',
-      'updateAlbum, albumMembers, updateSmartAlbum',
-    ],
-  });
+    required: ['tags'],
+  };
 }
 
-async function moToolGetItem(args) {
-  const type = args.type;
-  const id = parseInt(args.id, 10);
-  if ((type !== 'photo' && type !== 'video') || !id) {
-    return moToolError('type ("photo"|"video") and id are required');
+/** The user turn that goes with the image(s). */
+function moTagPrompt({ entries, existing, crops }) {
+  const lines = [
+    'Tag this photo using ONLY tags from the list below.',
+    crops
+      ? 'Image 1 is the whole photo. Images 2 to 5 are its four quarters at higher detail (top left, top right, bottom left, bottom right), all of the same photo.'
+      : 'The image is the photo.',
+    'Pick every tag that clearly applies to what you can see; do not guess. "›" shows nesting: pick the most specific tag that fits. Its parents are added automatically, so you do not need to pick them too.',
+    'If no tag fits, reply with an empty list.',
+  ];
+  if (existing && existing.length) {
+    lines.push(`The photo already has these tags, so do not pick them: ${existing.join(', ')}.`);
   }
-  if (type === 'photo') {
-    const photo = await PhotoQueries.findById(id);
-    if (!photo) return moToolError(`Photo ${id} not found`);
-    const [tags, files, albums] = await Promise.all([
-      PhotoQueries.loadTags(id),
-      PhotoQueries.loadFiles(id),
-      db.all(`SELECT a.id, a.title FROM mo_albums a JOIN mo_albums_photos ap ON ap.album_id = a.id WHERE ap.photo_id = ?`, [id]),
-    ]);
-    const primary = (files || []).find(f => f.isPrimary) || (files || [])[0] || null;
-    const imagePath = await moResolveFilePath(primary);
-    return moToolOk({ type: 'photo', ...photo, tags, files, albums, imagePath });
-  }
-  const video = await VideoQueries.findById(id);
-  if (!video) return moToolError(`Video ${id} not found`);
-  const [tags, files, albums] = await Promise.all([
-    VideoQueries.loadTags(id),
-    VideoQueries.loadFiles(id),
-    db.all(`SELECT a.id, a.title FROM mo_albums a JOIN mo_albums_videos av ON av.album_id = a.id WHERE av.video_id = ?`, [id]),
-  ]);
-  const primary = (files || []).find(f => f.isPrimary) || (files || [])[0] || null;
-  const videoPath = await moResolveFilePath(primary);
-  return moToolOk({ type: 'video', ...video, tags, files, albums, videoPath });
+  lines.push('', 'Tags (text after " : " describes a tag):');
+  for (const e of entries || []) lines.push(e.description ? `${e.path} : ${e.description}` : e.path);
+  lines.push('', 'Reply with JSON only, in this form: {"tags": ["<a tag exactly as listed>"]}');
+  return lines.join('\n');
 }
 
-// Compose absolute file path from a loaded file row { folderId, basename }.
+/**
+ * The model's reply -> { ok, tags }. Accepts the schema's object, a bare
+ * array, fenced JSON, or JSON inside prose; a stray think block is dropped.
+ */
+function moParseTagReply(text) {
+  let s = String(text || '').replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  s = s.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+  const tryParse = (v) => { try { return JSON.parse(v); } catch { return undefined; } };
+  let obj = tryParse(s);
+  if (obj === undefined) {
+    const a = s.indexOf('{');
+    const b = s.lastIndexOf('}');
+    if (a >= 0 && b > a) obj = tryParse(s.slice(a, b + 1));
+  }
+  if (obj === undefined) {
+    const a = s.indexOf('[');
+    const b = s.lastIndexOf(']');
+    if (a >= 0 && b > a) obj = tryParse(s.slice(a, b + 1));
+  }
+  const list = Array.isArray(obj) ? obj : (obj && Array.isArray(obj.tags) ? obj.tags : null);
+  if (!list) return { ok: false, tags: [] };
+  return { ok: true, tags: list.filter((x) => typeof x === 'string') };
+}
+
+/**
+ * Picks -> tag ids from the entries only. Exact path first, then the path in
+ * any case or with another separator, then the leaf name (tag names are
+ * unique). Anything else is reported as unknown and never applied.
+ */
+function moResolveTagPicks(picks, entries) {
+  const byPath = new Map();
+  const byPathCi = new Map();
+  const byLeaf = new Map();
+  for (const e of entries || []) {
+    byPath.set(e.path, e.id);
+    byPathCi.set(moNormalizeTagName(e.path), e.id);
+    byLeaf.set(moNormalizeTagName(e.path.split(MO_TAG_PATH_SEP).pop()), e.id);
+  }
+  const ids = [];
+  const unknown = [];
+  const seen = new Set();
+  for (const raw of picks || []) {
+    const p = String(raw).trim();
+    if (!p) continue;
+    let id = byPath.get(p);
+    if (id === undefined) id = byPathCi.get(moNormalizeTagName(p));
+    if (id === undefined) {
+      const alt = moNormalizeTagName(p.replace(/\s*(?:>|\/|»|›)\s*/g, MO_TAG_PATH_SEP));
+      id = byPathCi.get(alt);
+      if (id === undefined) id = byLeaf.get(alt.split(MO_TAG_PATH_SEP).pop());
+    }
+    if (id === undefined) { unknown.push(p); continue; }
+    if (!seen.has(id)) { seen.add(id); ids.push(id); }
+  }
+  return { ids, unknown };
+}
+
+/** Fit (w, h) inside maxEdge on the long side; never enlarges. */
+function moFitEdge(w, h, maxEdge) {
+  const s = Math.min(1, maxEdge / Math.max(w, h));
+  return { w: Math.max(1, Math.round(w * s)), h: Math.max(1, Math.round(h * s)) };
+}
+
+/** The four quarters of a w x h image, each overlapping its neighbours a little. */
+function moQuarterRects(w, h, overlap = 0.1) {
+  const cw = Math.min(w, Math.round(w * (0.5 + overlap / 2)));
+  const ch = Math.min(h, Math.round(h * (0.5 + overlap / 2)));
+  return [
+    { x: 0, y: 0, w: cw, h: ch },
+    { x: w - cw, y: 0, w: cw, h: ch },
+    { x: 0, y: h - ch, w: cw, h: ch },
+    { x: w - cw, y: h - ch, w: cw, h: ch },
+  ];
+}
+
+// @mo-tag-pure-end
+
+// ─── State and shared queries ──────────────────────────────────────────────
+
+/** The one background run. Module-level, so it outlives the Tag Review tab. */
+const _moTagRun = { running: false, stop: false, photoId: null, done: 0, model: null, error: null };
+
+/** The Detail Crops switch on Tag Review (mo_settings, per workspace). */
+const MO_TAG_CROPS_KEY = 'ai_tag_detail_crops';
+
+/** File types the renderer can decode; anything else uses the library thumbnail. */
+const MO_TAG_DECODE_MIME = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.bmp': 'image/bmp', '.avif': 'image/avif' };
+
+/**
+ * Untagged photos as the grid shows them: live, not a GIF, not a stacked
+ * copy, and not already in Tag Review. `p` is the photo.
+ */
+const MO_TAG_UNTAGGED_FROM = `FROM mo_photos p
+  JOIN mo_photos_files pf ON pf.photo_id = p.id AND pf.is_primary = 1
+  JOIN mo_files f ON f.id = pf.file_id
+  WHERE p.deleted_at IS NULL
+    AND LOWER(f.basename) NOT LIKE '%.gif'
+    AND NOT EXISTS (SELECT 1 FROM mo_photos_tags t WHERE t.photo_id = p.id)
+    AND NOT EXISTS (SELECT 1 FROM mo_stack_members sm WHERE sm.member_type = 'photo' AND sm.member_id = p.id AND sm.role <> 'primary')
+    AND NOT EXISTS (SELECT 1 FROM mo_ai_tag_reviews r WHERE r.photo_id = p.id)`;
+
+function moTagErr(err) { return err && err.message ? err.message : String(err); }
+
+/** Tag Review, the sidebar count and the runner all listen for this. */
+function moTagNotify() {
+  try { document.dispatchEvent(new CustomEvent('mo:ai-tag-changed')); } catch { /* no document */ }
+}
+
+/** Absolute path of a file row { folderId, basename }. Shared by the grid's
+ *  Add to Chat, Upscale and AI tagging. */
 async function moResolveFilePath(fileRow) {
   if (!fileRow || !fileRow.folderId || !fileRow.basename) return null;
   const folder = await FolderQueries.findById(fileRow.folderId);
@@ -27115,843 +27323,758 @@ async function moResolveFilePath(fileRow) {
   return folder.path.replace(/[\\/]+$/, '') + sep + fileRow.basename;
 }
 
-// Tracks the most recent viewImage call so the AI can disambiguate "this one"
-// references on the next turn. Reset on extension activate.
-let _lastViewedMedia = null;
+async function moTagTree() {
+  const tags = await db.all('SELECT id, name, description FROM mo_tags');
+  const rels = await db.all('SELECT parent_id, child_id FROM mo_tags_relations');
+  return { tags, rels, parentsOf: moTagParentsOf(rels) };
+}
 
-// Attach a photo/video file to the chat input as an image attachment so the
-// model can actually see it on the next turn. Mirrors the explorer's
-// "Add to Chat" right-click flow (chat.addFileAttachment command).
-async function moToolViewImage(args) {
-  const type = args && args.type;
-  const id = parseInt(args && args.id, 10);
-  if ((type !== 'photo' && type !== 'video') || !id) {
-    return moToolError('type ("photo"|"video") and id are required');
-  }
-  const Q = type === 'photo' ? PhotoQueries : VideoQueries;
-  const item = await Q.findById(id);
-  if (!item) return moToolError(`${type} ${id} not found`);
-  const files = await Q.loadFiles(id);
-  const primary = (files || []).find(f => f.isPrimary) || (files || [])[0] || null;
-  const fullPath = await moResolveFilePath(primary);
-  if (!fullPath) return moToolError(`No primary file path for ${type} ${id}`);
+async function moTagCounts() {
+  const c = { queued: 0, running: 0, pending: 0, nomatch: 0, failed: 0 };
+  const rows = await db.all('SELECT status, COUNT(*) AS n FROM mo_ai_tag_reviews GROUP BY status');
+  for (const r of rows) if (r.status in c) c[r.status] = r.n || 0;
+  return c;
+}
+
+function moTagIdsOf(row) {
   try {
-    // Top-level { name, fullPath }: the shape the command reads. The earlier
-    // nested { file: {...} } payload attached nothing.
-    await _api.commands.executeCommand('chat.addFileAttachment', { name: primary.basename, fullPath });
+    const a = JSON.parse((row && row.tag_ids) || '[]');
+    return Array.isArray(a) ? a.map(Number).filter(Number.isFinite) : [];
+  } catch { return []; }
+}
+
+/** The chat model, when it can see images; otherwise an error to show. */
+async function moTagModel() {
+  const lm = _api && _api.lm;
+  if (!lm || typeof lm.sendChatRequest !== 'function') return { error: 'The AI is not available in this window.' };
+  const id = typeof lm.getActiveModel === 'function' ? lm.getActiveModel() : undefined;
+  if (!id) return { error: 'No chat model is selected. Pick one in the chat panel first.' };
+  let info = null;
+  try { info = await lm.getModelInfo(id); } catch { info = null; }
+  const name = (info && info.displayName) || id;
+  const caps = (info && Array.isArray(info.capabilities)) ? info.capabilities : [];
+  if (!caps.includes('vision')) return { error: `The chat model (${name}) cannot see images. Pick a model with vision in the chat panel.` };
+  return { id, name };
+}
+
+// ─── Queue and runner ──────────────────────────────────────────────────────
+
+/** Items -> photo ids that can be tagged, and what was left out. */
+async function moTagEligible(items) {
+  const skipped = { gif: 0, notPhoto: 0, missing: 0 };
+  const ids = [];
+  const seen = new Set();
+  for (const it of items || []) {
+    if (!it || it.type !== 'photo') { skipped.notPhoto++; continue; }
+    const id = Number(it.id);
+    if (!Number.isFinite(id) || seen.has(id)) continue;
+    seen.add(id);
+    const row = await db.get(
+      `SELECT p.deleted_at, f.basename FROM mo_photos p
+       LEFT JOIN mo_photos_files pf ON pf.photo_id = p.id AND pf.is_primary = 1
+       LEFT JOIN mo_files f ON f.id = pf.file_id
+       WHERE p.id = ?`,
+      [id],
+    );
+    if (!row || row.deleted_at || !row.basename) { skipped.missing++; continue; }
+    if (moIsGifPath(row.basename)) { skipped.gif++; continue; }
+    ids.push(id);
+  }
+  return { ids, skipped };
+}
+
+/** Queue photos (a photo already in the list starts over; one mid-run is left alone). */
+async function moTagQueue(photoIds) {
+  if (!photoIds.length) return 0;
+  await db.transaction(photoIds.map((id) => ({
+    type: 'run',
+    sql: `INSERT INTO mo_ai_tag_reviews (photo_id, status, tag_ids, error, model, updated_at)
+          VALUES (?, 'queued', '[]', NULL, NULL, datetime('now'))
+          ON CONFLICT(photo_id) DO UPDATE SET status = 'queued', tag_ids = '[]', error = NULL, updated_at = datetime('now')
+          WHERE mo_ai_tag_reviews.status <> 'running'`,
+    params: [id],
+  })));
+  return photoIds.length;
+}
+
+/**
+ * The one entry point for every surface (menus, selection bar, chat tool):
+ * queue what can be tagged and start the runner. Returns a report.
+ */
+async function moTagWithAI(items) {
+  const { ids, skipped } = await moTagEligible(items);
+  const report = { queued: 0, skipped, model: null, error: null };
+  if (ids.length === 0) {
+    report.error = (skipped.gif || skipped.notPhoto)
+      ? 'Only photos are tagged with AI. GIFs and videos are left out.'
+      : 'Those photos are not in the library any more.';
+    return report;
+  }
+  const tagCount = await db.get('SELECT COUNT(*) AS n FROM mo_tags');
+  if (!tagCount || !tagCount.n) {
+    report.error = 'There are no tags yet. Create your tags first: the AI only uses tags that exist.';
+    return report;
+  }
+  const model = await moTagModel();
+  if (model.error) { report.error = model.error; return report; }
+  report.model = model.name;
+  report.queued = await moTagQueue(ids);
+  moTagNotify();
+  void moTagRunnerStart();
+  return report;
+}
+
+/** Menus and the selection bar: queue, report in the status bar, show Tag Review. */
+async function moTagWithAIFromUI(items, api) {
+  try {
+    const r = await moTagWithAI(items);
+    if (r.error) { api.window.showWarningMessage(r.error); return; }
+    const n = r.queued;
+    const left = r.skipped.gif + r.skipped.notPhoto;
+    api.statusBar?.setMessage?.(
+      `Tagging ${n} photo${n === 1 ? '' : 's'} with AI` + (left ? ` (${left} left out: only photos are tagged)` : ''),
+      4000,
+    );
+    moOpenTagReview(api);
   } catch (err) {
-    return moToolError(`Failed to attach image: ${err && err.message ? err.message : String(err)}`);
+    api.window.showErrorMessage('Tag With AI failed: ' + moTagErr(err));
   }
-  // Record what we attached so a follow-up "tag this one" can be resolved
-  // unambiguously via getCurrentMediaItem.
-  _lastViewedMedia = {
-    type,
-    id,
-    basename: primary.basename,
-    viewedAt: Date.now(),
-  };
-  return moToolOk({
-    attached: true,
-    type,
-    id,
-    basename: primary.basename,
-    path: fullPath,
-    // The anchor line is the source of truth on the AI's NEXT turn. The image
-    // pixels alone carry no id; the AI MUST cite this anchor when the user
-    // says "this one" / "tag this".
-    anchor: `${type}:${id}`,
-    note:
-      `Image attached. ANCHOR_ID=${type}:${id} (${primary.basename}). ` +
-      'End your current turn now. On the next turn the image will be in your context. ' +
-      `When the user says "tag this" / "this one", the item is ${type}:${id} — ` +
-      'do NOT pick a different id from a prior search result. If you are unsure ' +
-      '(e.g. multiple images attached, or the user attached one via right-click), ' +
-      'call mediaOrganizer.getCurrentMediaItem or ask the user to confirm the id before tagging.',
+}
+
+function moOpenTagReview(api) {
+  (api || _api).editors.openEditor({
+    typeId: 'media-organizer-grid',
+    title: 'Tag Review',
+    icon: 'sparkles',
+    instanceId: 'tag-review',
   });
 }
 
-async function moToolListTags(args) {
-  const limit = Math.min(500, parseInt((args && args.limit), 10) || 200);
-  const filter = String((args && args.nameContains) || '').trim();
-  const onlyFavorites = !!(args && args.onlyFavorites);
-  const where = []; const params = [];
-  if (filter) { where.push(`t.name LIKE ?`); params.push(`%${filter.replace(/[%_]/g, '\\$&')}%`); }
-  if (onlyFavorites) where.push(`t.favorite = 1`);
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-  const rows = await db.all(
-    `SELECT t.id, t.name, t.favorite,
-            (SELECT COUNT(*) FROM mo_photos_tags pt WHERE pt.tag_id = t.id) AS photo_count,
-            (SELECT COUNT(*) FROM mo_videos_tags vt WHERE vt.tag_id = t.id) AS video_count
-       FROM mo_tags t ${whereSql}
-       ORDER BY (photo_count + video_count) DESC, t.name COLLATE NOCASE
-       LIMIT ?`,
-    [...params, limit]
-  );
-  return moToolOk({
-    count: rows.length,
-    tags: rows.map(r => ({
-      id: r.id, name: r.name, favorite: !!r.favorite,
-      photoCount: r.photo_count, videoCount: r.video_count, total: r.photo_count + r.video_count,
-    })),
-  });
-}
-
-async function moToolListAlbums(args) {
-  const limit = Math.min(500, parseInt((args && args.limit), 10) || 200);
-  const filter = String((args && args.titleContains) || '').trim();
-  const where = []; const params = [];
-  if (filter) { where.push(`a.title LIKE ?`); params.push(`%${filter.replace(/[%_]/g, '\\$&')}%`); }
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-  const rows = await db.all(
-    `SELECT a.id, a.title, a.parent_album_id,
-            (SELECT COUNT(*) FROM mo_albums_photos ap WHERE ap.album_id = a.id) AS photo_count,
-            (SELECT COUNT(*) FROM mo_albums_videos av WHERE av.album_id = a.id) AS video_count
-       FROM mo_albums a ${whereSql}
-       ORDER BY a.title COLLATE NOCASE
-       LIMIT ?`,
-    [...params, limit]
-  );
-  return moToolOk({
-    count: rows.length,
-    albums: rows.map(r => ({
-      id: r.id, title: r.title, parentAlbumId: r.parent_album_id,
-      photoCount: r.photo_count, videoCount: r.video_count, total: r.photo_count + r.video_count,
-    })),
-  });
-}
-
-async function moToolListFolders(args) {
-  const limit = Math.min(500, parseInt((args && args.limit), 10) || 200);
-  const filter = String((args && args.pathContains) || '').trim();
-  const where = []; const params = [];
-  if (filter) { where.push(`fl.path LIKE ?`); params.push(`%${filter.replace(/[%_]/g, '\\$&')}%`); }
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-  const rows = await db.all(
-    `SELECT fl.id, fl.path, fl.parent_folder_id,
-            (SELECT COUNT(*) FROM mo_files f WHERE f.folder_id = fl.id) AS file_count
-       FROM mo_folders fl ${whereSql}
-       ORDER BY fl.path
-       LIMIT ?`,
-    [...params, limit]
-  );
-  return moToolOk({
-    count: rows.length,
-    folders: rows.map(r => ({ id: r.id, path: r.path, parentFolderId: r.parent_folder_id, fileCount: r.file_count })),
-  });
-}
-
-async function moToolListSmartAlbums() {
-  const rows = await db.all(`SELECT id, name, query_json, created_at, updated_at FROM mo_smart_albums ORDER BY name COLLATE NOCASE`);
-  return moToolOk({
-    count: rows.length,
-    smartAlbums: rows.map(r => {
-      let query = null;
-      try { query = JSON.parse(r.query_json); } catch { query = r.query_json; }
-      return { id: r.id, name: r.name, query, createdAt: r.created_at, updatedAt: r.updated_at };
-    }),
-  });
-}
-
-async function moToolFindSimilar(args) {
-  const photoId = parseInt(args.photoId, 10);
-  const limit = Math.min(100, parseInt(args.limit, 10) || 20);
-  const maxDistance = args.maxDistance != null ? parseInt(args.maxDistance, 10) : 16;
-  if (!photoId) {
-    return { content: 'Error: photoId is required (integer).', isError: true };
+/** Work through the queue one photo at a time until it is empty or stopped. */
+async function moTagRunnerStart() {
+  if (_moTagRun.running) return;
+  // Claimed before any await, so two starts can never run side by side.
+  _moTagRun.running = true;
+  _moTagRun.stop = false;
+  _moTagRun.error = null;
+  _moTagRun.done = 0;
+  moTagNotify();
+  let failStreak = 0;
+  try {
+    const model = await moTagModel();
+    if (model.error) { _moTagRun.error = model.error; return; }
+    _moTagRun.model = model.name;
+    while (!_moTagRun.stop && !_moClosing) {
+      const row = await db.get(`SELECT id, photo_id FROM mo_ai_tag_reviews WHERE status = 'queued' ORDER BY id LIMIT 1`);
+      if (!row) break;
+      await db.run(`UPDATE mo_ai_tag_reviews SET status = 'running', updated_at = datetime('now') WHERE id = ?`, [row.id]);
+      _moTagRun.photoId = row.photo_id;
+      moTagNotify();
+      let result;
+      try {
+        result = await moTagOnePhoto(row.photo_id, model);
+      } catch (err) {
+        result = { status: 'failed', tagIds: [], error: moTagErr(err) };
+      }
+      await db.run(
+        `UPDATE mo_ai_tag_reviews SET status = ?, tag_ids = ?, error = ?, model = ?, updated_at = datetime('now')
+         WHERE id = ? AND status = 'running'`,
+        [result.status, JSON.stringify(result.tagIds || []), result.error || null, model.id, row.id],
+      );
+      _moTagRun.done++;
+      _moTagRun.photoId = null;
+      moTagNotify();
+      failStreak = result.status === 'failed' ? failStreak + 1 : 0;
+      if (failStreak >= 3) {
+        _moTagRun.error = `Stopped after three failures in a row. The last one: ${result.error}`;
+        break;
+      }
+    }
+  } catch (err) {
+    _moTagRun.error = moTagErr(err);
+  } finally {
+    _moTagRun.running = false;
+    _moTagRun.photoId = null;
+    moTagNotify();
   }
-  const seedRow = await db.get(
-    `SELECT i.phash AS phash
-       FROM mo_photos_files pf
-       JOIN mo_image_files i ON i.file_id = pf.file_id
-      WHERE pf.photo_id = ? AND i.phash IS NOT NULL
-      LIMIT 1`,
-    [photoId]
-  );
-  if (!seedRow || seedRow.phash == null) {
-    return { content: `Photo ${photoId} has no perceptual hash. Run "Index Perceptual Hashes" first.`, isError: true };
-  }
-  const seedBig = moSqliteToBigInt(seedRow.phash);
-  const all = await db.all(
-    `SELECT pf.photo_id AS photo_id, i.phash AS phash, p.title AS title
-       FROM mo_image_files i
-       JOIN mo_photos_files pf ON pf.file_id = i.file_id
-       JOIN mo_photos p ON p.id = pf.photo_id
-      WHERE i.phash IS NOT NULL AND p.deleted_at IS NULL AND p.id <> ?`,
-    [photoId]
-  );
-  const scored = [];
-  for (const r of all) {
-    const d = moHammingDistance(seedBig, moSqliteToBigInt(r.phash));
-    if (d <= maxDistance) scored.push({ photoId: r.photo_id, title: r.title || '', distance: d });
-  }
-  scored.sort((a, b) => a.distance - b.distance);
-  return moToolOk({ seed: photoId, maxDistance, results: scored.slice(0, limit) });
 }
 
-async function moToolSuggestStacks(args) {
-  const limit = Math.min(50, parseInt(args.limit, 10) || 20);
-  // Re-use the basename heuristic without applying — return proposed groups.
-  const rows = await db.all(
-    `SELECT 'photo' AS type, p.id AS id, f.basename AS basename, fl.path AS folder_path
-       FROM mo_photos p
-       JOIN mo_photos_files pf ON pf.photo_id = p.id
-       JOIN mo_files f ON f.id = pf.file_id
-       JOIN mo_folders fl ON fl.id = f.folder_id
-      WHERE p.deleted_at IS NULL
-        AND NOT EXISTS (SELECT 1 FROM mo_stack_members sm WHERE sm.member_type='photo' AND sm.member_id=p.id)`
-  );
-  const groups = new Map();
-  const stripExt = (s) => s.replace(/\.[^.]+$/, '');
-  const stripSuffix = (s) => s.replace(/[-_\s]?(edited|edit|v\d+|copy|final|hdr)$/i, '');
-  for (const r of rows) {
-    const key = `${r.folder_path}::${stripSuffix(stripExt(r.basename || '')).toLowerCase()}`;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push({ type: r.type, id: r.id, basename: r.basename });
-  }
-  const candidates = [];
-  for (const [k, items] of groups) {
-    if (items.length >= 2) candidates.push({ key: k, items });
-  }
-  return {
-    content: JSON.stringify({
-      proposed: candidates.slice(0, limit),
-      total: candidates.length,
-      note: 'Proposed only. Run "Auto-Stack by Filename" command to apply.',
-    }, null, 2),
-  };
-}
-
-async function moToolGetStats() {
-  const q = (sql, p = []) => db.get(sql, p).then(r => (r && r.n) || 0);
-  const [
-    photos, videos, trashedPhotos, trashedVideos,
-    untaggedPhotos, untaggedVideos, geotagged, phashed,
-    totalFiles, totalFolders, totalTags, totalAlbums, totalSmartAlbums, totalStacks,
-  ] = await Promise.all([
-    q(`SELECT COUNT(*) AS n FROM mo_photos WHERE deleted_at IS NULL`),
-    q(`SELECT COUNT(*) AS n FROM mo_videos WHERE deleted_at IS NULL`),
-    q(`SELECT COUNT(*) AS n FROM mo_photos WHERE deleted_at IS NOT NULL`),
-    q(`SELECT COUNT(*) AS n FROM mo_videos WHERE deleted_at IS NOT NULL`),
-    q(`SELECT COUNT(*) AS n FROM mo_photos p
-        WHERE p.deleted_at IS NULL
-          AND NOT EXISTS (SELECT 1 FROM mo_photos_tags pt WHERE pt.photo_id = p.id)`),
-    q(`SELECT COUNT(*) AS n FROM mo_videos v
-        WHERE v.deleted_at IS NULL
-          AND NOT EXISTS (SELECT 1 FROM mo_videos_tags vt WHERE vt.video_id = v.id)`),
-    q(`SELECT COUNT(*) AS n FROM mo_photos
-        WHERE deleted_at IS NULL
-          AND gps_latitude IS NOT NULL AND gps_longitude IS NOT NULL`),
-    q(`SELECT COUNT(*) AS n FROM mo_image_files WHERE phash IS NOT NULL`),
-    q(`SELECT COUNT(*) AS n FROM mo_files`),
-    q(`SELECT COUNT(*) AS n FROM mo_folders`),
-    q(`SELECT COUNT(*) AS n FROM mo_tags`),
-    q(`SELECT COUNT(*) AS n FROM mo_albums`),
-    q(`SELECT COUNT(*) AS n FROM mo_smart_albums`),
-    q(`SELECT COUNT(*) AS n FROM mo_stacks`),
-  ]);
-  const topTags = await db.all(
-    `SELECT t.id, t.name,
-            (SELECT COUNT(*) FROM mo_photos_tags pt WHERE pt.tag_id = t.id) AS photo_count,
-            (SELECT COUNT(*) FROM mo_videos_tags vt WHERE vt.tag_id = t.id) AS video_count
-       FROM mo_tags t
-       ORDER BY (photo_count + video_count) DESC
-       LIMIT 10`
-  );
-  return moToolOk({
-    photos, videos,
-    trashed: { photos: trashedPhotos, videos: trashedVideos },
-    untagged: { photos: untaggedPhotos, videos: untaggedVideos },
-    geotaggedPhotos: geotagged,
-    perceptualHashIndexed: phashed,
-    totals: {
-      files: totalFiles,
-      folders: totalFolders,
-      tags: totalTags,
-      albums: totalAlbums,
-      smartAlbums: totalSmartAlbums,
-      stacks: totalStacks,
+/** One photo: image(s) + tag list to the model, reply checked against the tree. */
+async function moTagOnePhoto(photoId, model) {
+  const path = await moResolveItemPath({ type: 'photo', id: photoId });
+  if (!path) return { status: 'failed', tagIds: [], error: 'The file is not in the library any more.' };
+  if (moIsGifPath(path)) return { status: 'failed', tagIds: [], error: 'GIFs are not tagged with AI.' };
+  const tree = await moTagTree();
+  const has = new Set((await db.all('SELECT tag_id FROM mo_photos_tags WHERE photo_id = ?', [photoId])).map((r) => Number(r.tag_id)));
+  const entries = moTagEntries(tree.tags, tree.rels, has);
+  if (entries.length === 0) return { status: 'nomatch', tagIds: [], error: null };
+  const crops = (await moGetSetting(MO_TAG_CROPS_KEY, '0')) === '1';
+  const images = await moTagImages(photoId, path, crops);
+  if (!images) return { status: 'failed', tagIds: [], error: 'This file could not be read as an image.' };
+  const existing = tree.tags.filter((t) => has.has(Number(t.id))).map((t) => t.name);
+  const name = path.split(/[\\/]/).pop();
+  const messages = [
+    { role: 'system', content: MO_TAG_SYSTEM },
+    {
+      role: 'user',
+      content: moTagPrompt({ entries, existing, crops: images.length > 1 }),
+      images: images.map((im, i) => ({ kind: 'image', id: `mo-ai-tag-${photoId}-${i}`, name, mimeType: im.mimeType, data: im.data })),
     },
-    topTags: topTags.map(t => ({
-      id: t.id, name: t.name,
-      photoCount: t.photo_count, videoCount: t.video_count,
-      total: t.photo_count + t.video_count,
-    })),
+  ];
+  // Temperature 0 and no thinking: this is classification. The context size
+  // is left to the provider, because changing it makes Ollama reload the model.
+  const options = { temperature: 0, think: false, format: moTagReplySchema(entries.map((e) => e.path)) };
+  let text = '';
+  for await (const chunk of _api.lm.sendChatRequest(model.id, messages, options)) {
+    if (chunk && typeof chunk.content === 'string') text += chunk.content;
+  }
+  const reply = moParseTagReply(text);
+  if (!reply.ok) return { status: 'failed', tagIds: [], error: 'The model did not reply with a tag list.' };
+  const fresh = moResolveTagPicks(reply.tags, entries).ids.filter((id) => !has.has(id));
+  return fresh.length
+    ? { status: 'pending', tagIds: fresh, error: null }
+    : { status: 'nomatch', tagIds: [], error: null };
+}
+
+// ─── The image the model sees (in memory only) ─────────────────────────────
+
+function moTagBase64ToBlob(b64, mime) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
+
+function moTagBlobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => { const s = String(r.result || ''); resolve(s.slice(s.indexOf(',') + 1)); };
+    r.onerror = () => reject(r.error || new Error('Could not encode the image'));
+    r.readAsDataURL(blob);
   });
 }
 
-async function moToolSearch(args) {
-  const query = String(args.query || '').trim();
-  const limit = Math.min(200, parseInt(args.limit, 10) || 50);
-  const ratingMin = args.ratingMin != null ? Math.max(0, Math.min(5, parseInt(args.ratingMin, 10) || 0)) : null;
-  const dateFrom = args.dateFrom || null;
-  const dateTo   = args.dateTo   || null;
-  const tagNames = Array.isArray(args.tagNames) ? args.tagNames : null;
-  const excludeTagNames = Array.isArray(args.excludeTagNames) ? args.excludeTagNames : null;
-  const untagged = !!args.untagged;
-  const includeTrashed = !!args.includeTrashed;
-
-  let tagIds = null;
-  if (tagNames && tagNames.length > 0) {
-    const resolved = await moResolveTagIds({ tagNames });
-    tagIds = resolved.ids;
-    if (tagIds.length === 0) {
-      return moToolOk({ query, photos: [], videos: [], note: `No tags matched: ${resolved.notFound.join(', ')}` });
-    }
-  }
-  let excludeTagIds = null;
-  if (excludeTagNames && excludeTagNames.length > 0) {
-    const resolved = await moResolveTagIds({ tagNames: excludeTagNames });
-    excludeTagIds = resolved.ids;
-  }
-
-  const buildWhere = (titleCol, detailsCol, tableAlias, dateExpr, tagsJunction, tagsEntityCol) => {
-    const where = [];
-    const params = [];
-    if (!includeTrashed) where.push(`${tableAlias}.deleted_at IS NULL`);
-    if (query) {
-      const like = `%${query.replace(/[%_]/g, '\\$&')}%`;
-      where.push(`(${tableAlias}.${titleCol} LIKE ? ESCAPE '\\' OR ${tableAlias}.${detailsCol} LIKE ? ESCAPE '\\' OR f.basename LIKE ? ESCAPE '\\')`);
-      params.push(like, like, like);
-    }
-    if (ratingMin != null) { where.push(`${tableAlias}.rating >= ?`); params.push(ratingMin); }
-    if (dateFrom) { where.push(`${dateExpr} >= ?`); params.push(dateFrom); }
-    if (dateTo)   { where.push(`${dateExpr} <= ?`); params.push(dateTo); }
-    if (tagIds && tagIds.length > 0) {
-      const ph = tagIds.map(() => '?').join(',');
-      where.push(`${tableAlias}.id IN (SELECT ${tagsEntityCol} FROM ${tagsJunction} WHERE tag_id IN (${ph}) GROUP BY ${tagsEntityCol} HAVING COUNT(DISTINCT tag_id) = ?)`);
-      params.push(...tagIds, tagIds.length);
-    }
-    if (excludeTagIds && excludeTagIds.length > 0) {
-      const ph = excludeTagIds.map(() => '?').join(',');
-      where.push(`${tableAlias}.id NOT IN (SELECT ${tagsEntityCol} FROM ${tagsJunction} WHERE tag_id IN (${ph}))`);
-      params.push(...excludeTagIds);
-    }
-    if (untagged) {
-      where.push(`NOT EXISTS (SELECT 1 FROM ${tagsJunction} jx WHERE jx.${tagsEntityCol} = ${tableAlias}.id)`);
-    }
-    return { where: where.length ? `WHERE ${where.join(' AND ')}` : '', params };
-  };
-
-  const photoSql = buildWhere('title', 'details', 'p', 'COALESCE(p.taken_at, p.created_at)', 'mo_photos_tags', 'photo_id');
-  const videoSql = buildWhere('title', 'details', 'v', 'v.created_at', 'mo_videos_tags', 'video_id');
-
-  const photos = await db.all(
-    `SELECT DISTINCT p.id, p.title, p.rating, p.color_label, p.taken_at, p.created_at, p.deleted_at
-       FROM mo_photos p
-       JOIN mo_photos_files pf ON pf.photo_id = p.id
-       JOIN mo_files f ON f.id = pf.file_id
-       ${photoSql.where}
-       ORDER BY COALESCE(p.taken_at, p.created_at) DESC
-       LIMIT ?`,
-    [...photoSql.params, limit]
-  );
-  const videos = await db.all(
-    `SELECT DISTINCT v.id, v.title, v.rating, v.color_label, v.created_at, v.deleted_at
-       FROM mo_videos v
-       JOIN mo_videos_files vf ON vf.video_id = v.id
-       JOIN mo_files f ON f.id = vf.file_id
-       ${videoSql.where}
-       ORDER BY v.created_at DESC
-       LIMIT ?`,
-    [...videoSql.params, limit]
-  );
-  return moToolOk({
-    query, ratingMin, dateFrom, dateTo, tagNames, excludeTagNames, untagged, includeTrashed,
-    counts: { photos: photos.length, videos: videos.length },
-    photos: photos.map(p => ({
-      id: p.id, title: p.title, rating: p.rating, colorLabel: p.color_label,
-      takenAt: p.taken_at, createdAt: p.created_at, trashed: p.deleted_at != null,
-    })),
-    videos: videos.map(v => ({
-      id: v.id, title: v.title, rating: v.rating, colorLabel: v.color_label,
-      createdAt: v.created_at, trashed: v.deleted_at != null,
-    })),
-  });
+async function moTagReadBlob(filePath, mime) {
+  const res = await window.parallxElectron.fs.readFile(filePath);
+  if (!res || res.error || !res.content) return null;
+  const b64 = res.encoding === 'base64' ? res.content : btoa(res.content);
+  return moTagBase64ToBlob(b64, mime);
 }
 
-// ─── WRITE TOOLS ───────────────────────────────────────────────────────────
-
-async function moToolTagItems(args) {
-  const mode = args.mode === 'remove' ? 'REMOVE' : 'ADD';
-  const items = moNormalizeItems(args.items);
-  const resolved = await moResolveTagIds({
-    tagIds: args.tagIds,
-    tagNames: args.tagNames,
-    createMissing: !!args.createMissing && mode === 'ADD',
-  });
-  if (resolved.ids.length === 0) {
-    return moToolError(`No tags resolved. Not found: ${resolved.notFound.join(', ') || '(none provided)'}`);
-  }
-  let touched = 0;
-  for (const it of items) {
-    if (it.type === 'photo') await PhotoQueries.updateTags(it.id, { mode, ids: resolved.ids });
-    else                     await VideoQueries.updateTags(it.id, { mode, ids: resolved.ids });
-    touched++;
-  }
-  _notifySidebarRefresh();
-  return moToolOk({
-    mode: mode.toLowerCase(),
-    itemsTouched: touched,
-    tagIds: resolved.ids,
-    tagsCreated: resolved.created,
-    tagsNotFound: resolved.notFound,
-  });
+/** A region of the bitmap, fitted to maxEdge, as a base64 JPEG. */
+async function moTagEncode(bmp, sx, sy, sw, sh, maxEdge) {
+  const { w, h } = moFitEdge(sw, sh, maxEdge);
+  const canvas = new OffscreenCanvas(w, h);
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.fillStyle = '#ffffff';   // JPEG has no alpha: transparency flattens onto white
+  ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(bmp, sx, sy, sw, sh, 0, 0, w, h);
+  const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.9 });
+  return { mimeType: 'image/jpeg', data: await moTagBlobToBase64(blob) };
 }
 
-// Deictic-anchor tagger. The single biggest source of AI hallucination in
-// the media-organizer chat is the model picking some unrelated id from a
-// prior search result and tagging THAT when the user said "tag this one".
-// Defensive prompts on tagItems don't eliminate it. The structural fix is
-// to expose a tool that does not accept an id at all — the target is locked
-// to whatever was last attached (viewImage or right-click → Add to Chat).
-async function moToolTagCurrentImage(args) {
-  const anchor = _lastViewedMedia;
-  if (!anchor || !anchor.type || !anchor.id) {
-    return moToolError(
-      'No current image. Call mediaOrganizer.viewImage first, or ask the user to right-click the item and choose "Add to Chat". This tool deliberately does not accept an id to prevent tagging the wrong item.'
-    );
+/**
+ * The whole photo at up to MO_TAG_OVERVIEW_EDGE, plus four quarters when
+ * Detail Crops is on and the photo is large. Decoded and re-encoded in
+ * memory: the original is never touched and nothing is written to disk.
+ * Formats the renderer cannot decode (or files over the read limit) use the
+ * library's own thumbnail instead.
+ */
+async function moTagImages(photoId, filePath, crops) {
+  let blob = null;
+  const ext = filePath.slice(filePath.lastIndexOf('.')).toLowerCase();
+  if (MO_TAG_DECODE_MIME[ext]) {
+    try { blob = await moTagReadBlob(filePath, MO_TAG_DECODE_MIME[ext]); } catch { blob = null; }
   }
-  // Stale guard: if the user attached an image more than 15 minutes ago and
-  // hasn't done it again, treat the anchor as expired. They've probably moved
-  // on to a different conversation thread.
-  const ageMs = Date.now() - (anchor.viewedAt || 0);
-  if (ageMs > 15 * 60 * 1000) {
-    return moToolError(
-      `The last-attached image is ${Math.round(ageMs / 60000)} minutes old — too stale to use as "this one". Ask the user to re-attach the image or call mediaOrganizer.tagItems with explicit ids.`
-    );
+  let fromThumb = false;
+  if (!blob) {
+    const t = await resolveThumbnail('photo', photoId, _api).catch(() => null);
+    if (!t || !t.path) return null;
+    try { blob = await moTagReadBlob(t.path, 'image/jpeg'); } catch { blob = null; }
+    if (!blob) return null;
+    fromThumb = true;
   }
-  const mode = args && args.mode === 'remove' ? 'REMOVE' : 'ADD';
-  const resolved = await moResolveTagIds({
-    tagIds: args && args.tagIds,
-    tagNames: args && args.tagNames,
-    createMissing: !!(args && args.createMissing) && mode === 'ADD',
-  });
-  if (resolved.ids.length === 0) {
-    return moToolError(`No tags resolved. Not found: ${resolved.notFound.join(', ') || '(none provided)'}`);
-  }
-  const Q = anchor.type === 'photo' ? PhotoQueries : VideoQueries;
-  await Q.updateTags(anchor.id, { mode, ids: resolved.ids });
-  _notifySidebarRefresh();
-  return moToolOk({
-    mode: mode.toLowerCase(),
-    target: { type: anchor.type, id: anchor.id, basename: anchor.basename || null },
-    tagIds: resolved.ids,
-    tagsCreated: resolved.created,
-    tagsNotFound: resolved.notFound,
-  });
-}
-
-async function moToolUpdateTag(args) {
-  const action = String(args.action || '').toLowerCase();
-  if (action === 'create') {
-    const name = String(args.name || '').trim();
-    if (!name) return moToolError('name is required for action "create"');
-    const tag = await TagQueries.create({
-      name,
-      description: args.description || '',
-      favorite: args.favorite ? 1 : 0,
-    });
-    _notifySidebarRefresh();
-    return moToolOk({ action: 'create', tag });
-  }
-  const tagId = parseInt(args.id, 10);
-  if (!tagId) return moToolError('id is required for actions "rename"|"delete"|"favorite"');
-  if (action === 'rename') {
-    const name = String(args.name || '').trim();
-    if (!name) return moToolError('name is required for action "rename"');
-    const tag = await TagQueries.update(tagId, { name });
-    _notifySidebarRefresh();
-    return moToolOk({ action: 'rename', tag });
-  }
-  if (action === 'delete') {
-    await TagQueries.destroy(tagId);
-    _notifySidebarRefresh();
-    return moToolOk({ action: 'delete', id: tagId, deleted: true });
-  }
-  if (action === 'favorite') {
-    const tag = await TagQueries.update(tagId, { favorite: args.favorite ? 1 : 0 });
-    _notifySidebarRefresh();
-    return moToolOk({ action: 'favorite', tag });
-  }
-  return moToolError(`Unknown action "${args.action}". Use: create | rename | delete | favorite`);
-}
-
-async function moToolUpdateItems(args) {
-  const items = moNormalizeItems(args.items);
-  const partial = {};
-  if (args.rating != null) {
-    const r = parseInt(args.rating, 10);
-    if (r < 0 || r > 5) return moToolError('rating must be 0-5');
-    partial.rating = r;
-  }
-  if (args.colorLabel !== undefined) partial.colorLabel = args.colorLabel; // null clears
-  if (args.curated != null)          partial.curated = args.curated ? 1 : 0;
-  if (args.title !== undefined)      partial.title = String(args.title);
-  if (args.details !== undefined)    partial.details = String(args.details);
-  if (Object.keys(partial).length === 0) {
-    return moToolError('Provide at least one field: rating, colorLabel, curated, title, details');
-  }
-  let touched = 0;
-  for (const it of items) {
-    if (it.type === 'photo') await PhotoQueries.update(it.id, partial);
-    else                     await VideoQueries.update(it.id, partial);
-    touched++;
-  }
-  _notifySidebarRefresh();
-  return moToolOk({ itemsTouched: touched, fieldsSet: Object.keys(partial) });
-}
-
-async function moToolTrashItems(args) {
-  const items = moNormalizeItems(args.items);
-  const action = args.action === 'restore' ? 'restore' : 'trash';
-  const stamp = action === 'trash' ? `datetime('now')` : `NULL`;
-  let n = 0;
-  for (const it of items) {
-    const table = it.type === 'photo' ? 'mo_photos' : 'mo_videos';
-    await db.run(`UPDATE ${table} SET deleted_at = ${stamp} WHERE id = ?`, [it.id]);
-    n++;
-  }
-  _notifySidebarRefresh();
-  return moToolOk({ action, itemsTouched: n });
-}
-
-async function moToolUpdateAlbum(args) {
-  const action = String(args.action || '').toLowerCase();
-  if (action === 'create') {
-    const title = String(args.title || '').trim();
-    if (!title) return moToolError('title is required for action "create"');
-    const album = await AlbumQueries.create({
-      title,
-      description: args.description || '',
-      parentAlbumId: args.parentAlbumId ?? null,
-    });
-    _notifySidebarRefresh();
-    return moToolOk({ action: 'create', album });
-  }
-  const id = parseInt(args.id, 10);
-  if (!id) return moToolError('id is required for actions "rename"|"delete"');
-  if (action === 'rename') {
-    const album = await AlbumQueries.update(id, { title: args.title, description: args.description });
-    _notifySidebarRefresh();
-    return moToolOk({ action: 'rename', album });
-  }
-  if (action === 'delete') {
-    await db.run(`DELETE FROM mo_albums WHERE id = ?`, [id]);
-    _notifySidebarRefresh();
-    return moToolOk({ action: 'delete', id, deleted: true });
-  }
-  return moToolError(`Unknown action "${args.action}". Use: create | rename | delete`);
-}
-
-async function moToolAlbumMembers(args) {
-  const albumId = parseInt(args.albumId, 10);
-  if (!albumId) return moToolError('albumId is required');
-  const items = moNormalizeItems(args.items);
-  const mode = args.action === 'remove' ? 'REMOVE' : 'ADD';
-  const photoIds = items.filter(i => i.type === 'photo').map(i => i.id);
-  const videoIds = items.filter(i => i.type === 'video').map(i => i.id);
-  if (photoIds.length > 0) await AlbumQueries.updatePhotos(albumId, { mode, ids: photoIds });
-  if (videoIds.length > 0) await AlbumQueries.updateVideos(albumId, { mode, ids: videoIds });
-  _notifySidebarRefresh();
-  return moToolOk({
-    albumId, action: mode.toLowerCase(),
-    photosTouched: photoIds.length,
-    videosTouched: videoIds.length,
-  });
-}
-
-async function moToolUpdateSmartAlbum(args) {
-  const action = String(args.action || '').toLowerCase();
-  if (action === 'create' || action === 'save') {
-    const name = String(args.name || '').trim();
-    if (!name) return moToolError('name is required');
-    const queryJson = JSON.stringify(args.query || {});
-    const existing = await db.get(`SELECT id FROM mo_smart_albums WHERE name = ?`, [name]);
-    if (existing) {
-      await db.run(`UPDATE mo_smart_albums SET query_json = ?, updated_at = datetime('now') WHERE id = ?`, [queryJson, existing.id]);
-      _notifySidebarRefresh();
-      return moToolOk({ action: 'update', id: existing.id, name });
-    }
-    const res = await db.run(`INSERT INTO mo_smart_albums (name, query_json) VALUES (?, ?)`, [name, queryJson]);
-    _notifySidebarRefresh();
-    return moToolOk({ action: 'create', id: res.lastInsertRowid, name });
-  }
-  if (action === 'delete') {
-    const id = parseInt(args.id, 10);
-    if (!id) return moToolError('id is required for action "delete"');
-    await db.run(`DELETE FROM mo_smart_albums WHERE id = ?`, [id]);
-    _notifySidebarRefresh();
-    return moToolOk({ action: 'delete', id, deleted: true });
-  }
-  return moToolError(`Unknown action "${args.action}". Use: create | save | delete`);
-}
-
-function moRegisterAITools(api) {
-  if (!api.chat || typeof api.chat.registerTool !== 'function') {
-    console.warn('[MediaOrganizer] api.chat.registerTool not available — AI tools skipped');
-    return;
-  }
+  let bmp;
+  try { bmp = await createImageBitmap(blob, { imageOrientation: 'from-image' }); } catch { return null; }
   try {
-    const reg = (name, def) => _commandDisposables.push(api.chat.registerTool(name, def));
+    const W = bmp.width;
+    const H = bmp.height;
+    const out = [await moTagEncode(bmp, 0, 0, W, H, MO_TAG_OVERVIEW_EDGE)];
+    if (crops && !fromThumb && Math.max(W, H) > MO_TAG_CROP_MIN_EDGE) {
+      for (const r of moQuarterRects(W, H)) out.push(await moTagEncode(bmp, r.x, r.y, r.w, r.h, MO_TAG_CROP_EDGE));
+    }
+    return out;
+  } finally {
+    bmp.close();
+  }
+}
 
-    // ── READ TOOLS ──
-    reg('mediaOrganizer.describeSchema', {
-      description: 'Return a structured reference of the media-organizer database schema (tables, columns, junctions, conventions). Call this FIRST before constructing other queries to avoid hallucinating table or column names.',
-      parameters: { type: 'object', properties: {} },
-      handler: async () => moToolDescribeSchema(),
-      requiresConfirmation: false,
-    });
-    reg('mediaOrganizer.getStats', {
-      description: 'Return summary statistics: photo/video counts, trash counts, untagged counts, geotag/phash coverage, totals, and top 10 tags.',
-      parameters: { type: 'object', properties: {} },
-      handler: async () => moToolGetStats(),
-      requiresConfirmation: false,
-    });
-    reg('mediaOrganizer.getItem', {
-      description: 'Fetch full details for a single photo or video including tags, files, album memberships, and the absolute imagePath/videoPath of the primary file. To actually SEE the image content, call viewImage afterwards — getItem alone returns metadata only.',
-      parameters: {
-        type: 'object',
-        properties: {
-          type: { type: 'string', enum: ['photo', 'video'] },
-          id:   { type: 'integer' },
-        },
-        required: ['type', 'id'],
-      },
-      handler: async (args) => moToolGetItem(args),
-      requiresConfirmation: false,
-    });
-    reg('mediaOrganizer.viewImage', {
-      description: 'Attach a photo or video file to the chat as an image so you can visually inspect it. Use this before generating descriptive/content tags. IMPORTANT: the image arrives on your NEXT turn, not this one — after calling this tool, end your turn (briefly tell the user you have queued the image). On the next turn the image will be in your context AND the previous tool result will show ANCHOR_ID=type:id — use that id, not a guess from search results. Same flow as the user right-clicking "Add to Chat" in the file explorer.',
-      parameters: {
-        type: 'object',
-        properties: {
-          type: { type: 'string', enum: ['photo', 'video'] },
-          id:   { type: 'integer' },
-        },
-        required: ['type', 'id'],
-      },
-      handler: async (args) => moToolViewImage(args),
-      requiresConfirmation: false,
-    });
-    reg('mediaOrganizer.getCurrentMediaItem', {
-      description: 'Return {type, id, basename, viewedAt} of the most recently attached image (the LAST mediaOrganizer.viewImage call this session), or null if none. Call this BEFORE tagging when the user uses deictic language ("this one", "that image", "the one you\'re looking at") to confirm which item to tag. Returns null if the user attached an image via right-click "Add to Chat" instead — in that case ASK the user to confirm the id before tagging.',
-      parameters: { type: 'object', properties: {} },
-      handler: async () => moToolOk(_lastViewedMedia ? { ..._lastViewedMedia, ageMs: Date.now() - _lastViewedMedia.viewedAt } : null),
-      requiresConfirmation: false,
-    });
-    reg('mediaOrganizer.search', {
-      description: 'Search the library with optional filters: free-text query (matches title/details/filename), minimum rating, date range, required tag names (ALL must match), excluded tag names, or untagged-only. Defaults to live items only.',
-      parameters: {
-        type: 'object',
-        properties: {
-          query:           { type: 'string',  description: 'Free-text search (optional).' },
-          ratingMin:       { type: 'integer', description: '0-5; minimum rating.' },
-          dateFrom:        { type: 'string',  description: 'ISO date/time lower bound (compares to taken_at for photos, created_at for videos).' },
-          dateTo:          { type: 'string',  description: 'ISO date/time upper bound.' },
-          tagNames:        { type: 'array', items: { type: 'string' }, description: 'Items must have ALL of these tags (AND).' },
-          excludeTagNames: { type: 'array', items: { type: 'string' }, description: 'Items must NOT have any of these tags.' },
-          untagged:        { type: 'boolean', description: 'If true, return only items with zero tags. Use this to find items that need tagging.' },
-          includeTrashed:  { type: 'boolean', description: 'Include items in trash (default false).' },
-          limit:           { type: 'integer', description: 'Max results per type (default 50, max 200).' },
-        },
-      },
-      handler: async (args) => moToolSearch(args),
-      requiresConfirmation: false,
-    });
-    reg('mediaOrganizer.findSimilar', {
-      description: 'Find photos visually similar to a given photo using perceptual hash (Hamming distance). Requires pHash indexing to have run first.',
-      parameters: {
-        type: 'object',
-        properties: {
-          photoId:     { type: 'integer' },
-          limit:       { type: 'integer', description: 'Max results (default 20, max 100).' },
-          maxDistance: { type: 'integer', description: 'Max Hamming distance (default 16; lower = more similar).' },
-        },
-        required: ['photoId'],
-      },
-      handler: async (args) => moToolFindSimilar(args),
-      requiresConfirmation: false,
-    });
-    reg('mediaOrganizer.suggestStacks', {
-      description: 'Propose photo stacks (versions/variants) by grouping unstacked photos with similar basenames in the same folder. Returns proposed groups; does not apply them.',
-      parameters: {
-        type: 'object',
-        properties: { limit: { type: 'integer', description: 'Max proposed groups (default 20, max 50).' } },
-      },
-      handler: async (args) => moToolSuggestStacks(args),
-      requiresConfirmation: false,
-    });
-    reg('mediaOrganizer.listTags', {
-      description: 'List tags with usage counts. Optionally filter by name substring or favorites only.',
-      parameters: {
-        type: 'object',
-        properties: {
-          nameContains:  { type: 'string' },
-          onlyFavorites: { type: 'boolean' },
-          limit:         { type: 'integer', description: 'Max results (default 200, max 500).' },
-        },
-      },
-      handler: async (args) => moToolListTags(args),
-      requiresConfirmation: false,
-    });
-    reg('mediaOrganizer.listAlbums', {
-      description: 'List albums with photo/video counts. Optionally filter by title substring.',
-      parameters: {
-        type: 'object',
-        properties: {
-          titleContains: { type: 'string' },
-          limit:         { type: 'integer', description: 'Max results (default 200, max 500).' },
-        },
-      },
-      handler: async (args) => moToolListAlbums(args),
-      requiresConfirmation: false,
-    });
-    reg('mediaOrganizer.listFolders', {
-      description: 'List folders with file counts. Optionally filter by path substring.',
-      parameters: {
-        type: 'object',
-        properties: {
-          pathContains: { type: 'string' },
-          limit:        { type: 'integer', description: 'Max results (default 200, max 500).' },
-        },
-      },
-      handler: async (args) => moToolListFolders(args),
-      requiresConfirmation: false,
-    });
-    reg('mediaOrganizer.listSmartAlbums', {
-      description: 'List all saved smart albums (saved searches).',
-      parameters: { type: 'object', properties: {} },
-      handler: async () => moToolListSmartAlbums(),
-      requiresConfirmation: false,
-    });
+// ─── Review actions ────────────────────────────────────────────────────────
 
-    // ── WRITE TOOLS (require user confirmation) ──
-    reg('mediaOrganizer.tagItems', {
-      description: 'Add or remove tags on a batch of photos/videos. Provide tagNames and/or tagIds. Set createMissing:true to auto-create missing tag names (ADD mode only). For descriptive/content tags ("sunset", "dog", "portrait"), DO NOT guess from filenames — first call viewImage on each item, end your turn, then on the next turn describe what you actually see and propose tags. Organizational tags (folder name, year, camera) can be inferred from getItem metadata alone. CRITICAL: if the user refers to an image with deictic language ("this one", "that image", "the one shown"), you MUST resolve the item id first — call getCurrentMediaItem to get the last-attached id, or ask the user to confirm. NEVER pick the first untagged item from a prior search result as a proxy for "this one".',
-      parameters: {
-        type: 'object',
-        properties: {
-          mode:          { type: 'string', enum: ['add', 'remove'], description: 'add (default) | remove' },
-          items:         { type: 'array', description: 'Array of {type:"photo"|"video", id:integer}.', items: { type: 'object' } },
-          tagNames:      { type: 'array', items: { type: 'string' } },
-          tagIds:        { type: 'array', items: { type: 'integer' } },
-          createMissing: { type: 'boolean', description: 'If true and mode=add, create tags that do not exist.' },
-        },
-        required: ['items'],
-      },
-      handler: async (args) => moToolTagItems(args),
-      requiresConfirmation: true,
+async function moTagReviewRow(id) {
+  return db.get('SELECT * FROM mo_ai_tag_reviews WHERE id = ?', [id]);
+}
+
+/** Approve one row: its tags and their parents go on the photo, the row goes. */
+async function moTagApprove(id, { quiet = false } = {}) {
+  const row = await moTagReviewRow(id);
+  if (!row || row.status !== 'pending') return 0;
+  const tree = await moTagTree();
+  const live = new Set(tree.tags.map((t) => Number(t.id)));
+  const ids = moExpandWithAncestors(moTagIdsOf(row).filter((t) => live.has(t)), tree.parentsOf);
+  if (ids.length === 0) return 0;
+  const ops = ids.map((tagId) => ({
+    type: 'run',
+    sql: 'INSERT OR IGNORE INTO mo_photos_tags (photo_id, tag_id) VALUES (?, ?)',
+    params: [row.photo_id, tagId],
+  }));
+  ops.push({ type: 'run', sql: 'DELETE FROM mo_ai_tag_reviews WHERE id = ?', params: [id] });
+  await db.transaction(ops);
+  // Same event the Tag dialog sends: open grids patch the one card in place.
+  document.dispatchEvent(new CustomEvent('mo:tags-bulk-changed', {
+    detail: { op: 'ADD', tagIds: ids, keys: [`photo:${row.photo_id}`] },
+  }));
+  if (!quiet) { _notifySidebarRefresh(); moTagNotify(); }
+  return 1;
+}
+
+async function moTagSkip(id) {
+  await db.run(`DELETE FROM mo_ai_tag_reviews WHERE id = ? AND status <> 'running'`, [id]);
+  moTagNotify();
+}
+
+async function moTagRetry(id) {
+  await db.run(
+    `UPDATE mo_ai_tag_reviews SET status = 'queued', tag_ids = '[]', error = NULL, updated_at = datetime('now')
+     WHERE id = ? AND status IN ('failed', 'nomatch')`,
+    [id],
+  );
+  moTagNotify();
+  void moTagRunnerStart();
+}
+
+/** The reviewer's edit of a row's picks. A pick on a No Match or Failed row makes it reviewable. */
+async function moTagSetPicks(id, ids) {
+  const row = await moTagReviewRow(id);
+  if (!row || row.status === 'queued' || row.status === 'running') return;
+  const status = ids.length ? 'pending' : row.status;
+  await db.run(
+    `UPDATE mo_ai_tag_reviews SET tag_ids = ?, status = ?, error = CASE WHEN ? = 'pending' THEN NULL ELSE error END, updated_at = datetime('now') WHERE id = ?`,
+    [JSON.stringify(ids), status, status, id],
+  );
+  moTagNotify();
+}
+
+// ─── Tag Review tab ────────────────────────────────────────────────────────
+
+function renderTagReview(container, api) {
+  const page = moEl('div', 'mo-tr-page');
+  container.appendChild(page);
+
+  const head = moEl('div', 'mo-tr-head');
+  const titleWrap = moEl('div', 'mo-tr-title-wrap');
+  titleWrap.appendChild(moEl('div', 'mo-tr-title', { textContent: 'Tag Review' }));
+  const sub = moEl('div', 'mo-tr-sub');
+  titleWrap.appendChild(sub);
+  head.appendChild(titleWrap);
+
+  const cropsLabel = moEl('label', 'mo-tr-opt', {
+    title: `For photos over ${MO_TAG_CROP_MIN_EDGE} px, also send the four quarters at higher detail so small subjects are visible. Slower.`,
+  });
+  const cropsBox = moEl('input', null, { type: 'checkbox' });
+  cropsLabel.append(cropsBox, moEl('span', null, { textContent: 'Detail Crops' }));
+  moGetSetting(MO_TAG_CROPS_KEY, '0').then((v) => { cropsBox.checked = v === '1'; }).catch(() => {});
+  cropsBox.addEventListener('change', () => { moSetSetting(MO_TAG_CROPS_KEY, cropsBox.checked ? '1' : '0').catch(() => {}); });
+
+  const resumeBtn = moEl('button', 'mo-tr-btn', { type: 'button', textContent: 'Resume', title: 'Tag the photos that are waiting' });
+  const stopBtn = moEl('button', 'mo-tr-btn', { type: 'button', textContent: 'Stop', title: 'Finish the photo in progress, then stop. The rest wait for Resume.' });
+  const approveAllBtn = moEl('button', 'mo-tr-btn primary', { type: 'button', textContent: 'Approve All', title: 'Approve every photo that has suggestions' });
+  const bar = moEl('div', 'mo-tr-actions-bar');
+  bar.append(cropsLabel, resumeBtn, stopBtn, approveAllBtn);
+  head.appendChild(bar);
+
+  const progress = moEl('div', 'mo-tr-progress');
+  const progressFill = moEl('div', 'mo-tr-progress-fill');
+  progress.appendChild(progressFill);
+  head.appendChild(progress);
+  page.appendChild(head);
+
+  const scroll = moEl('div', 'mo-tr-scroll');
+  const list = moEl('div', 'mo-tr-list');
+  const empty = moEl('div', 'mo-tr-empty', {
+    textContent: 'Nothing to review. Select photos and choose Tag With AI, or ask the chat to tag your untagged photos.',
+  });
+  scroll.append(list, empty);
+  page.appendChild(scroll);
+
+  let disposed = false;
+  let renderSeq = 0;
+  const rowEls = new Map();      // review id -> { el, sig }
+  let pathOf = new Map();        // tag id -> first path (for chips)
+  let tagName = new Map();       // tag id -> name
+  let suggest = null;            // { pop, input } while an add-tag list is open
+
+  function closeSuggest() {
+    if (suggest) { suggest.pop.remove(); suggest = null; }
+  }
+  scroll.addEventListener('scroll', closeSuggest);
+
+  resumeBtn.addEventListener('click', () => { void moTagRunnerStart(); });
+  stopBtn.addEventListener('click', () => { _moTagRun.stop = true; moTagNotify(); });
+  approveAllBtn.addEventListener('click', async () => {
+    const rows = await db.all(`SELECT id, tag_ids FROM mo_ai_tag_reviews WHERE status = 'pending' ORDER BY id`);
+    const ready = rows.filter((row) => moTagIdsOf(row).length > 0);
+    if (!ready.length) return;
+    const n = ready.length;
+    const ok = await api.window.showWarningMessage(
+      `Approve ${n} photo${n === 1 ? '' : 's'}? Each gets its suggested tags and their parents.`,
+      { title: 'Approve All' }, { title: 'Cancel' },
+    );
+    if (!ok || ok.title !== 'Approve All') return;
+    approveAllBtn.disabled = true;
+    let done = 0;
+    try {
+      for (const row of ready) done += await moTagApprove(row.id, { quiet: true });
+    } catch (err) {
+      api.window.showErrorMessage('Approve All stopped: ' + moTagErr(err));
+    } finally {
+      _notifySidebarRefresh();
+      moTagNotify();
+      api.statusBar?.setMessage?.(`Approved ${done} photo${done === 1 ? '' : 's'}`, 3000);
+    }
+  });
+
+  function buildChip(r, ids, tagId, editable) {
+    const path = pathOf.get(tagId) || tagName.get(tagId) || '';
+    const parts = path.split(MO_TAG_PATH_SEP);
+    const leaf = parts.pop();
+    const chip = moEl('span', 'mo-tr-chip', { title: path });
+    if (parts.length) chip.appendChild(moEl('span', 'mo-tr-chip-path', { textContent: parts.join(MO_TAG_PATH_SEP) + MO_TAG_PATH_SEP }));
+    chip.appendChild(moEl('span', 'mo-tr-chip-leaf', { textContent: leaf }));
+    if (editable) {
+      const x = moEl('button', null, { type: 'button', textContent: '×', title: `Remove ${leaf}` });
+      x.setAttribute('aria-label', `Remove ${leaf}`);
+      x.addEventListener('click', () => { void moTagSetPicks(r.id, ids.filter((v) => v !== tagId)); });
+      chip.appendChild(x);
+    }
+    return chip;
+  }
+
+  function buildAddInput(r, ids, hasIds) {
+    const input = moEl('input', 'mo-tr-add-input mo-tag-name-input', { type: 'text', placeholder: 'Add a tag' });
+    input.setAttribute('aria-label', 'Add one of your tags');
+    let items = [];
+    let active = 0;
+    const matches = () => {
+      const q = moNormalizeTagName(input.value);
+      const out = [];
+      for (const [id, path] of pathOf) {
+        if (ids.includes(id) || hasIds.has(id)) continue;
+        if (q && !path.includes(q)) continue;
+        out.push({ id, path });
+      }
+      out.sort((a, b) => a.path.localeCompare(b.path));
+      return out.slice(0, 50);
+    };
+    const pick = (id) => {
+      closeSuggest();
+      input.value = '';
+      void moTagSetPicks(r.id, [...ids, id]);
+    };
+    const open = () => {
+      closeSuggest();
+      items = matches();
+      active = 0;
+      if (!items.length || disposed) return;
+      const pop = moEl('div', 'mo-tr-suggest');
+      pop.setAttribute('role', 'listbox');
+      items.forEach((it, i) => {
+        const el = moEl('div', `mo-tr-suggest-item${i === 0 ? ' is-active' : ''}`, { textContent: it.path });
+        el.setAttribute('role', 'option');
+        // mousedown, not click: the input's blur would close the list first.
+        el.addEventListener('mousedown', (e) => { e.preventDefault(); pick(it.id); });
+        pop.appendChild(el);
+      });
+      const rect = input.getBoundingClientRect();
+      pop.style.left = `${Math.round(rect.left)}px`;
+      pop.style.top = `${Math.round(rect.bottom + 2)}px`;
+      document.body.appendChild(pop);
+      const pr = pop.getBoundingClientRect();
+      if (pr.bottom > window.innerHeight - 4) pop.style.top = `${Math.max(4, Math.round(rect.top - pr.height - 2))}px`;
+      suggest = { pop, input };
+    };
+    input.addEventListener('focus', open);
+    input.addEventListener('input', open);
+    input.addEventListener('blur', () => { setTimeout(() => { if (suggest && suggest.input === input) closeSuggest(); }, 0); });
+    input.addEventListener('keydown', (e) => {
+      if (!suggest || suggest.input !== input) {
+        if (e.key === 'ArrowDown') { e.preventDefault(); open(); }
+        return;
+      }
+      const els = suggest.pop.children;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (els[active]) els[active].classList.remove('is-active');
+        active = (active + (e.key === 'ArrowDown' ? 1 : -1) + els.length) % els.length;
+        if (els[active]) { els[active].classList.add('is-active'); els[active].scrollIntoView({ block: 'nearest' }); }
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (items[active]) pick(items[active].id);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        closeSuggest();
+      }
     });
-    reg('mediaOrganizer.tagCurrentImage', {
+    return input;
+  }
+
+  function buildRow(r, ids, hasIds, hasNames) {
+    const row = moEl('div', `mo-tr-row is-${r.status}`);
+    row.dataset.reviewId = String(r.id);
+
+    const thumb = moEl('div', 'mo-tr-thumb', { title: 'View full size' });
+    const img = moEl('img', null, { alt: '' });
+    thumb.appendChild(img);
+    thumb.addEventListener('click', () => { openLightbox([{ type: 'photo', id: r.photo_id }], 0, moResolveItemPath); });
+    // A photo smaller than a thumbnail has none: show the original, as the grid does.
+    resolveThumbnail('photo', r.photo_id, api)
+      .then((res) => { const p = res && (res.path || res.originalPath); if (p && !disposed) setThumbImgSrc(img, p); })
+      .catch(() => {});
+    row.appendChild(thumb);
+
+    const body = moEl('div', 'mo-tr-body');
+    const nameLine = moEl('div', 'mo-tr-name-line');
+    nameLine.appendChild(moEl('span', 'mo-tr-name', { textContent: r.basename || `Photo ${r.photo_id}`, title: r.basename || '' }));
+    const badge = { queued: 'Waiting', running: 'Tagging', nomatch: 'No Match', failed: 'Failed' }[r.status];
+    if (badge) nameLine.appendChild(moEl('span', `mo-tr-status is-${r.status}`, { textContent: badge }));
+    body.appendChild(nameLine);
+    if (hasNames.length) body.appendChild(moEl('div', 'mo-tr-note', { textContent: 'Has ' + hasNames.join(', ') }));
+    if (r.status === 'failed' && r.error) body.appendChild(moEl('div', 'mo-tr-error', { textContent: r.error }));
+    if (r.status === 'nomatch' && !ids.length) {
+      body.appendChild(moEl('div', 'mo-tr-note', { textContent: 'None of your tags fit this photo. Add one yourself, retry, or skip it.' }));
+    }
+
+    const editable = r.status === 'pending' || r.status === 'nomatch' || r.status === 'failed';
+    if (editable || ids.length) {
+      const chips = moEl('div', 'mo-tr-chips');
+      for (const tagId of ids) chips.appendChild(buildChip(r, ids, tagId, editable));
+      if (editable) chips.appendChild(buildAddInput(r, ids, hasIds));
+      body.appendChild(chips);
+    }
+    row.appendChild(body);
+
+    const actions = moEl('div', 'mo-tr-row-actions');
+    if (r.status === 'pending') {
+      const approve = moEl('button', 'mo-tr-btn primary', { type: 'button', textContent: 'Approve', title: 'Add these tags and their parents to the photo' });
+      approve.disabled = ids.length === 0;
+      approve.addEventListener('click', async () => {
+        approve.disabled = true;
+        try { await moTagApprove(r.id); } catch (err) {
+          approve.disabled = false;
+          api.window.showErrorMessage('Approve failed: ' + moTagErr(err));
+        }
+      });
+      actions.appendChild(approve);
+    }
+    if (r.status === 'failed' || r.status === 'nomatch') {
+      const retry = moEl('button', 'mo-tr-btn', { type: 'button', textContent: 'Retry', title: 'Ask the model again' });
+      retry.addEventListener('click', () => { void moTagRetry(r.id); });
+      actions.appendChild(retry);
+    }
+    if (r.status !== 'running') {
+      const skip = moEl('button', 'mo-tr-btn', { type: 'button', textContent: 'Skip', title: 'Leave the photo as it is and take it off the list' });
+      skip.addEventListener('click', () => { void moTagSkip(r.id); });
+      actions.appendChild(skip);
+    }
+    row.appendChild(actions);
+    return row;
+  }
+
+  async function render() {
+    const seq = ++renderSeq;
+    let rows;
+    let counts;
+    let tree;
+    let hasRows;
+    try {
+      [rows, counts, tree, hasRows] = await Promise.all([
+        db.all(`SELECT r.*, f.basename FROM mo_ai_tag_reviews r
+                LEFT JOIN mo_photos_files pf ON pf.photo_id = r.photo_id AND pf.is_primary = 1
+                LEFT JOIN mo_files f ON f.id = pf.file_id
+                ORDER BY r.id`),
+        moTagCounts(),
+        moTagTree(),
+        db.all(`SELECT pt.photo_id, t.id, t.name FROM mo_photos_tags pt JOIN mo_tags t ON t.id = pt.tag_id
+                WHERE pt.photo_id IN (SELECT photo_id FROM mo_ai_tag_reviews) ORDER BY t.name`),
+      ]);
+    } catch (err) {
+      if (!disposed && seq === renderSeq) { sub.textContent = 'Could not load Tag Review: ' + moTagErr(err); sub.classList.add('is-error'); }
+      return;
+    }
+    if (disposed || seq !== renderSeq) return;
+
+    const paths = moTagPaths(tree.tags, tree.rels);
+    pathOf = new Map([...paths].map(([id, list]) => [id, list[0]]));
+    tagName = new Map(tree.tags.map((t) => [Number(t.id), t.name]));
+    // A rename or a move changes the chips' paths: fold the tree into each row's signature.
+    let treeSig = 0;
+    const treeText = tree.tags.map((t) => `${t.id}:${t.name}`).join('|') + '#' + tree.rels.map((r) => `${r.parent_id}>${r.child_id}`).join('|');
+    for (let i = 0; i < treeText.length; i++) treeSig = (treeSig * 31 + treeText.charCodeAt(i)) | 0;
+    const hasBy = new Map();
+    for (const h of hasRows) {
+      if (!hasBy.has(h.photo_id)) hasBy.set(h.photo_id, []);
+      hasBy.get(h.photo_id).push(h);
+    }
+
+    // Head: what the run is doing and what is left.
+    const waiting = counts.queued + counts.running;
+    const parts = [];
+    if (_moTagRun.error && !_moTagRun.running) parts.push(_moTagRun.error);
+    if (_moTagRun.running) {
+      const total = _moTagRun.done + waiting;
+      parts.push(`Tagging ${Math.min(total, _moTagRun.done + 1)} of ${total}` + (_moTagRun.model ? ` with ${_moTagRun.model}` : ''));
+    } else if (waiting) {
+      parts.push(`${waiting} waiting`);
+    }
+    if (counts.pending) parts.push(`${counts.pending} ready to review`);
+    if (counts.nomatch) parts.push(`${counts.nomatch} no match`);
+    if (counts.failed) parts.push(`${counts.failed} failed`);
+    sub.textContent = parts.join(' · ') || 'Nothing waiting';
+    sub.classList.toggle('is-error', !!_moTagRun.error && !_moTagRun.running);
+    progress.style.display = _moTagRun.running ? '' : 'none';
+    const total = _moTagRun.done + waiting;
+    progressFill.style.width = total ? `${Math.round((_moTagRun.done / total) * 100)}%` : '0%';
+    resumeBtn.style.display = (!_moTagRun.running && counts.queued > 0) ? '' : 'none';
+    stopBtn.style.display = _moTagRun.running ? '' : 'none';
+    stopBtn.disabled = _moTagRun.stop;
+    stopBtn.textContent = _moTagRun.stop ? 'Stopping…' : 'Stop';
+    const approvable = rows.some((r) => r.status === 'pending' && moTagIdsOf(r).some((id) => tagName.has(id)));
+    approveAllBtn.style.display = counts.pending ? '' : 'none';
+    approveAllBtn.disabled = !approvable;
+
+    // Rows, keyed by review id: only rows whose data changed are rebuilt, so
+    // an open add-tag field keeps its focus while the run moves on.
+    const seen = new Set();
+    let prev = null;
+    for (const r of rows) {
+      const ids = moTagIdsOf(r).filter((id) => tagName.has(id));
+      const has = hasBy.get(r.photo_id) || [];
+      const sig = [r.status, JSON.stringify(ids), r.error || '', r.basename || '', has.map((h) => h.id).join(','), treeSig].join('|');
+      seen.add(r.id);
+      let rec = rowEls.get(r.id);
+      if (!rec || rec.sig !== sig) {
+        const el = buildRow(r, ids, new Set(has.map((h) => Number(h.id))), has.map((h) => h.name));
+        if (rec) {
+          if (suggest && rec.el.contains(suggest.input)) closeSuggest();
+          rec.el.replaceWith(el);
+        }
+        rec = { el, sig };
+        rowEls.set(r.id, rec);
+      }
+      const want = prev ? prev.nextSibling : list.firstChild;
+      if (rec.el !== want) list.insertBefore(rec.el, want);
+      prev = rec.el;
+    }
+    for (const [id, rec] of rowEls) {
+      if (!seen.has(id)) {
+        if (suggest && rec.el.contains(suggest.input)) closeSuggest();
+        rec.el.remove();
+        rowEls.delete(id);
+      }
+    }
+    empty.style.display = rows.length ? 'none' : '';
+  }
+
+  const onChange = () => { if (!disposed) void render(); };
+  // A renamed or moved tag changes the paths on chips: rebuild every row.
+  const onTagMeta = () => { if (!disposed) { rowEls.clear(); list.innerHTML = ''; void render(); } };
+  document.addEventListener('mo:ai-tag-changed', onChange);
+  document.addEventListener('mo:tag-meta-changed', onTagMeta);
+  void render();
+
+  return {
+    dispose() {
+      disposed = true;
+      closeSuggest();
+      document.removeEventListener('mo:ai-tag-changed', onChange);
+      document.removeEventListener('mo:tag-meta-changed', onTagMeta);
+      page.remove();
+    },
+  };
+}
+
+// ─── The chat tool ─────────────────────────────────────────────────────────
+
+async function moToolTagPhotos(args) {
+  const scope = args.scope === 'photos' ? 'photos' : 'untagged';
+  const c = await moTagCounts();
+  const inReview = c.pending + c.nomatch + c.failed;
+  const waiting = c.queued + c.running;
+  const reviewLine = `Tag Review holds ${inReview} photo${inReview === 1 ? '' : 's'} to review and ${waiting} waiting to be tagged.`;
+  let items;
+  let untaggedTotal = 0;
+  let limit = 0;
+  if (scope === 'untagged') {
+    const row = await db.get(`SELECT COUNT(*) AS n ${MO_TAG_UNTAGGED_FROM}`);
+    untaggedTotal = row ? row.n || 0 : 0;
+    if (args.countOnly) {
+      return { content: `${untaggedTotal} untagged photo${untaggedTotal === 1 ? '' : 's'} (GIFs, videos and photos already in Tag Review are not counted). ${reviewLine}` };
+    }
+    if (untaggedTotal === 0) return { content: `There are no untagged photos to queue. ${reviewLine}` };
+    limit = Math.min(1000, Math.max(1, parseInt(args.limit, 10) || 50));
+    const rows = await db.all(`SELECT p.id ${MO_TAG_UNTAGGED_FROM} ORDER BY p.id LIMIT ?`, [limit]);
+    items = rows.map((r) => ({ type: 'photo', id: r.id }));
+  } else {
+    const ids = Array.isArray(args.photoIds) ? args.photoIds.map((v) => parseInt(v, 10)).filter(Number.isFinite) : [];
+    if (!ids.length) return { content: 'photoIds is required when scope is "photos".', isError: true };
+    items = ids.map((id) => ({ type: 'photo', id }));
+    if (args.countOnly) {
+      const { ids: ok, skipped } = await moTagEligible(items);
+      return { content: `${ok.length} of those can be tagged (${skipped.gif} GIF${skipped.gif === 1 ? '' : 's'} and ${skipped.missing} missing left out). ${reviewLine}` };
+    }
+  }
+  const r = await moTagWithAI(items);
+  if (r.error) return { content: r.error, isError: true };
+  const more = scope === 'untagged' ? Math.max(0, untaggedTotal - r.queued) : 0;
+  const lines = [
+    `Started: ${r.queued} photo${r.queued === 1 ? '' : 's'} queued for tagging with ${r.model}. It runs in the background, one photo at a time.`,
+    'Suggestions appear in Media Organizer > Tag Review (Quick Filters in the sidebar), where the user approves or skips each photo. Nothing is applied until they approve.',
+  ];
+  if (r.skipped.gif) lines.push(`${r.skipped.gif} GIF${r.skipped.gif === 1 ? ' was' : 's were'} left out (only photos are tagged).`);
+  if (more) lines.push(`${more} more untagged photo${more === 1 ? ' was' : 's were'} not queued (limit ${limit}).`);
+  return { content: lines.join(' ') };
+}
+
+function moRegisterTagTool(api) {
+  if (!api.chat || typeof api.chat.registerTool !== 'function') return;
+  try {
+    // Registered under its canonical tool name (snake_case, no dots).
+    _commandDisposables.push(api.chat.registerTool('mediaOrganizer_tagPhotos', {
       description:
-        'Tag the image the user is currently looking at (the last item attached to chat via viewImage or right-click → Add to Chat). Use this ONLY when the user employs deictic language: "this one", "that image", "this photo", "the one shown". This tool does NOT accept an item id — the target is locked to the last-attached anchor, which eliminates the hallucination risk of picking an unrelated id from a prior search result. Prefer this over tagItems whenever the user did not name an explicit subject.',
+        'Tag photos in the Media Organizer library with the user\'s existing tags. Use it when the user asks how many photos are untagged, ' +
+        'or asks to tag photos. It works in the background: it looks at each photo itself with the chat model and puts suggested tags in ' +
+        'the Tag Review list, where the user approves them. Nothing is applied without approval. Only existing tags are used and only ' +
+        'photos are tagged (not GIFs or videos). Do not try to view the images yourself. Use countOnly to answer "how many" without starting.',
       parameters: {
         type: 'object',
         properties: {
-          mode:          { type: 'string', enum: ['add', 'remove'], description: 'add (default) | remove' },
-          tagNames:      { type: 'array', items: { type: 'string' } },
-          tagIds:        { type: 'array', items: { type: 'integer' } },
-          createMissing: { type: 'boolean', description: 'If true and mode=add, create tags that do not exist.' },
+          scope: { type: 'string', enum: ['untagged', 'photos'], description: '"untagged" (default): photos with no tags yet. "photos": the ids in photoIds.' },
+          photoIds: { type: 'array', items: { type: 'integer' }, description: 'Photo ids, when scope is "photos".' },
+          limit: { type: 'integer', description: 'Most untagged photos to queue (default 50, max 1000).' },
+          countOnly: { type: 'boolean', description: 'Only count; do not start tagging.' },
         },
       },
-      handler: async (args) => moToolTagCurrentImage(args),
-      requiresConfirmation: true,
-    });
-    reg('mediaOrganizer.updateTag', {
-      description: 'Create, rename, delete, or toggle-favorite a single tag.',
-      parameters: {
-        type: 'object',
-        properties: {
-          action:      { type: 'string', enum: ['create', 'rename', 'delete', 'favorite'] },
-          id:          { type: 'integer', description: 'Required for rename/delete/favorite.' },
-          name:        { type: 'string',  description: 'Required for create/rename.' },
-          description: { type: 'string' },
-          favorite:    { type: 'boolean' },
-        },
-        required: ['action'],
+      handler: async (args) => {
+        try { return await moToolTagPhotos(args || {}); } catch (err) {
+          return { content: 'Tagging could not start: ' + moTagErr(err), isError: true };
+        }
       },
-      handler: async (args) => moToolUpdateTag(args),
-      requiresConfirmation: true,
-    });
-    reg('mediaOrganizer.updateItems', {
-      description: 'Update fields (rating, colorLabel, curated/favorite, title, details) on a batch of photos/videos. Pass colorLabel:null to clear.',
-      parameters: {
-        type: 'object',
-        properties: {
-          items:      { type: 'array', items: { type: 'object' }, description: 'Array of {type,id}.' },
-          rating:     { type: 'integer', description: '0-5.' },
-          colorLabel: { type: ['string', 'null'] },
-          curated:    { type: 'boolean' },
-          title:      { type: 'string' },
-          details:    { type: 'string' },
-        },
-        required: ['items'],
-      },
-      handler: async (args) => moToolUpdateItems(args),
-      requiresConfirmation: true,
-    });
-    reg('mediaOrganizer.trashItems', {
-      description: 'Move items to trash or restore from trash. Sets/clears deleted_at; does NOT permanently delete.',
-      parameters: {
-        type: 'object',
-        properties: {
-          items:  { type: 'array', items: { type: 'object' } },
-          action: { type: 'string', enum: ['trash', 'restore'] },
-        },
-        required: ['items', 'action'],
-      },
-      handler: async (args) => moToolTrashItems(args),
-      requiresConfirmation: true,
-    });
-    reg('mediaOrganizer.updateAlbum', {
-      description: 'Create, rename, or delete an album.',
-      parameters: {
-        type: 'object',
-        properties: {
-          action:        { type: 'string', enum: ['create', 'rename', 'delete'] },
-          id:            { type: 'integer' },
-          title:         { type: 'string' },
-          description:   { type: 'string' },
-          parentAlbumId: { type: 'integer' },
-        },
-        required: ['action'],
-      },
-      handler: async (args) => moToolUpdateAlbum(args),
-      requiresConfirmation: true,
-    });
-    reg('mediaOrganizer.albumMembers', {
-      description: 'Add or remove photos/videos in an album.',
-      parameters: {
-        type: 'object',
-        properties: {
-          albumId: { type: 'integer' },
-          items:   { type: 'array', items: { type: 'object' } },
-          action:  { type: 'string', enum: ['add', 'remove'] },
-        },
-        required: ['albumId', 'items', 'action'],
-      },
-      handler: async (args) => moToolAlbumMembers(args),
-      requiresConfirmation: true,
-    });
-    reg('mediaOrganizer.updateSmartAlbum', {
-      description: 'Create, save (upsert by name), or delete a smart album. The "query" field is an arbitrary JSON object describing the saved search.',
-      parameters: {
-        type: 'object',
-        properties: {
-          action: { type: 'string', enum: ['create', 'save', 'delete'] },
-          id:     { type: 'integer' },
-          name:   { type: 'string' },
-          query:  { type: 'object' },
-        },
-        required: ['action'],
-      },
-      handler: async (args) => moToolUpdateSmartAlbum(args),
-      requiresConfirmation: true,
-    });
-
-    console.log('[MediaOrganizer] Registered 18 AI chat tools');
+      requiresConfirmation: false,
+    }));
   } catch (err) {
-    console.warn('[MediaOrganizer] AI tool registration failed:', err);
+    console.warn('[MediaOrganizer] tagPhotos tool registration failed:', err);
   }
 }
 
@@ -28020,6 +28143,7 @@ export async function activate(api, context) {
   // the app take seconds to close.
   _moWillCloseListener = () => {
     _moClosing = true;
+    _moTagRun.stop = true;
     try { cancelScan(); } catch { /* ignore */ }
     try { stopAllWatchers(); } catch { /* ignore */ }
     if (_pendingEraserCommits.timer) {
@@ -28047,6 +28171,8 @@ export async function activate(api, context) {
     try { console.error('[MediaOrganizer] Activation failed — database not ready'); } catch (e) {}
     return;
   }
+  // AI tagging: a photo left mid-run by a closed app goes back in the queue.
+  db.run(`UPDATE mo_ai_tag_reviews SET status = 'queued' WHERE status = 'running'`).catch(() => {});
   try {
     console.log('[MediaOrganizer] activate() completed core init, registering views...');
   } catch (e) {}
@@ -28309,6 +28435,9 @@ export async function activate(api, context) {
         if (inputId === 'grid:home') {
           return renderHomeFeed(container, api, input);
         }
+        if (inputId === 'tag-review') {
+          return renderTagReview(container, api);
+        }
         if (inputId.startsWith('detail:')) {
           return renderDetailEditor(container, api, input);
         }
@@ -28344,6 +28473,10 @@ export async function activate(api, context) {
         return moBuildClipEditor(api, container, instanceId, params.videoPath, params.duration, params.inT, params.outT, params.opts);
       },
     })
+  );
+
+  _commandDisposables.push(
+    api.commands.registerCommand('media-organizer.openTagReview', () => moOpenTagReview(api))
   );
 
   _commandDisposables.push(
@@ -28553,13 +28686,9 @@ export async function activate(api, context) {
     .catch(() => {});
   // One-shot sweep for phantom folder-backed albums left over from earlier sessions.
   moPruneOrphanFolderAlbums().catch(() => {});
-  // M59 P8: register AI chat tools — INTENTIONALLY DISABLED (2026-06).
-  // The 19 mediaOrganizer.* chat tools were a large, low-value slice of the
-  // model's tool schema and are removed pending a rethink of how media
-  // management should be exposed to the AI. moRegisterAITools + its handlers
-  // are left intact below for that future rework — they are simply not
-  // registered. Re-enable by uncommenting the call.
-  // moRegisterAITools(api);
+  // AI tagging (Section 43): the one chat tool. It replaced the nineteen
+  // mediaOrganizer.* tools, which were switched off in 2026-06 and then deleted.
+  moRegisterTagTool(api);
 
   // M66 — register the media-organizer link contract. Iter A: open the grid;
   // Iter B will deepen to per-item focus (photo lightbox, video clip).
@@ -28678,6 +28807,7 @@ export function deactivate() {
   }
   cancelScan();
   stopAllWatchers();
+  _moTagRun.stop = true;
   for (const d of _commandDisposables) {
     if (d && typeof d.dispose === 'function') d.dispose();
   }
