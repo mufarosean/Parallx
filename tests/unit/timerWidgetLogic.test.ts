@@ -5,12 +5,50 @@ import { describe, it, expect } from 'vitest';
 import {
   readConfig, DEFAULT_TIMER_CONFIG, parseState, nextMode, minutesFor, finishEstimate,
   dayStreak, todaySummary, lastDays, fmtClock, fmtHours, estFromMinutes, mergePlannerItems,
+  planTimeBudget, budgetRemaining, isTimerTask,
 } from '../../src/built-in/dashboard/widgets/timerLogic.js';
 
 const DAY = 86400000;
 const NOW = Date.parse('2026-09-08T14:00:00');
 const cfg = DEFAULT_TIMER_CONFIG;
 const focus = (startedAt: number, minutes = 25) => ({ startedAt, minutes, label: 'Focus', mode: 'focus' as const });
+
+describe('task time budgets', () => {
+  it('fits focus and both types of break inside the total, shortening the last interval', () => {
+    expect(planTimeBudget(120, cfg).map(s => [s.mode, s.minutes])).toEqual([
+      ['focus',25], ['short',5], ['focus',25], ['short',5],
+      ['focus',25], ['short',5], ['focus',25], ['long',5],
+    ]);
+    expect(planTimeBudget(10, cfg)).toEqual([{mode:'focus',minutes:10}]);
+    expect(planTimeBudget(27, cfg)).toEqual([{mode:'focus',minutes:25},{mode:'short',minutes:2}]);
+  });
+  it('never exceeds a budget across custom settings and starting phases', () => {
+    for (const total of [0,1,12,60,120,360,1440]) {
+      for (const mode of ['focus','short','long'] as const) {
+        const plan = planTimeBudget(total, readConfig({focusMinutes:40,shortBreakMinutes:7,longBreakMinutes:20}),mode,3);
+        expect(plan.reduce((sum,s) => sum+s.minutes,0)).toBe(total);
+        expect(plan.every(s => s.minutes > 0)).toBe(true);
+      }
+    }
+    expect(planTimeBudget(NaN,cfg)).toEqual([]);
+  });
+  it('restores partial progress and frozen interval length without losing old calendar imports', () => {
+    const state = parseState(JSON.stringify({intervalDurationMs:600000, tasks:[
+      {id:'a',title:'Study',budgetMinutes:60,spentMinutes:25.5},
+      {id:'b',title:'Calendar',sourceId:'e',sourceKind:'event'},
+    ]}));
+    expect(budgetRemaining(state.tasks[0])).toBe(34.5);
+    expect(state.intervalDurationMs).toBe(600000);
+    expect(state.tasks.filter(isTimerTask).map(t=>t.id)).toEqual(['a']);
+    expect(state.tasks).toHaveLength(2);
+  });
+  it('does not let retained calendar entries consume the task queue capacity',()=>{
+    const old = Array.from({length:50},(_,i)=>({id:`e${i}`,title:'Calendar',est:1,act:0,done:false,createdAt:0,sourceId:`e${i}`,sourceKind:'event' as const}));
+    const merged = mergePlannerItems(old,[{id:'study',title:'Study',minutes:null,kind:'task'}],25,[],NOW);
+    expect(parseState(JSON.stringify({tasks:merged})).tasks.filter(isTimerTask)).toHaveLength(1);
+    expect(parseState(JSON.stringify({tasks:merged})).tasks).toHaveLength(51);
+  });
+});
 
 describe('readConfig', () => {
   it('clamps, defaults, and still reads the old minutes field as the focus length', () => {

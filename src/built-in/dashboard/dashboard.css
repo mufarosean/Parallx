@@ -1966,6 +1966,16 @@ video.vw__fill { object-fit: contain; background: #000; }
 .dtimer__pickmeta { font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .dtimer__pickfoot { display: flex; justify-content: flex-end; gap: 6px; margin-top: 4px; }
 .dtimer__pickerempty { font-size: var(--px-text-sm); color: var(--px-text-muted); padding: 4px 6px; }
+.dtimer__budget { display: flex; flex-direction: column; gap: 5px; padding: 8px 0; border-top: 1px solid var(--px-divider); }
+.dtimer__budgetrow, .dtimer__budgetlabel { display: flex; align-items: center; gap: 8px; font-size: var(--px-text-sm); }
+.dtimer__budgetrow { flex-wrap: wrap; gap: 6px; }
+.dtimer__input--budget { flex: 0 0 64px; width: 64px; }
+.dtimer__budgetpreview { font-size: var(--px-text-sm); color: var(--px-text-secondary); }
+.dtimer__budgetnote { font-size: var(--px-text-xs); color: var(--px-text-muted); }
+.dtimer__taskcount { background: transparent; border: 0; cursor: pointer; padding: 2px; }
+.dtimer__taskcount:hover { color: var(--px-text); }
+.dtimer__btn:disabled { opacity: .5; cursor: default; }
+.dtimer__budget[hidden], .dtimer__pickrow[hidden], .dtimer__pickerempty[hidden] { display: none; }
 /* ── Tracker board widget (M86 C3) ── */
 .dtracker { display: flex; flex-direction: column; gap: 8px; height: 100%; }
 .dtracker__summary { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }

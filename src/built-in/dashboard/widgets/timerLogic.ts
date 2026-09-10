@@ -24,7 +24,7 @@ export interface TimerConfig {
   readonly ticking: boolean;
   readonly label: string;
   readonly showTasks: boolean;
-  /** Pull today's planner tasks and events into the task list. */
+  /** Offer open planner tasks in a picker. */
   readonly plannerSync: boolean;
   /** The report row: today's minutes, the streak, seven small bars. */
   readonly showReport: boolean;
@@ -87,6 +87,10 @@ export interface TimerTask {
   readonly sourceKind?: 'task' | 'event';
   /** The user changed the estimate by hand; a sync leaves it alone. */
   estEdited?: boolean;
+  /** Total timer minutes, including breaks. Undefined for legacy round estimates. */
+  budgetMinutes?: number;
+  /** Completed timer time, including partial intervals and breaks. */
+  spentMinutes?: number;
 }
 export interface TimerSession {
   readonly startedAt: number;
@@ -111,6 +115,8 @@ export interface TimerState {
   ignoredSourceIds: string[];
   /** The day (yyyy-mm-dd) the ignore list and the last automatic sync belong to. */
   syncDay: string | null;
+  /** Freeze the duration when starting, so settings changes cannot rewrite elapsed time. */
+  intervalDurationMs?: number;
 }
 
 export const MAX_LOG = 500;
@@ -126,14 +132,17 @@ export function parseState(cached: string | null): TimerState {
         .map((s) => ({ startedAt: s.startedAt, minutes: s.minutes, label: String(s.label ?? ''), mode: (s.mode === 'short' || s.mode === 'long' ? s.mode : 'focus') as TimerMode, taskId: typeof s.taskId === 'string' ? s.taskId : undefined }))
         .slice(-MAX_LOG)
       : [];
+    let taskCount = 0; let calendarCount = 0;
     const tasks = Array.isArray(p.tasks)
       ? p.tasks.filter((t) => t && typeof t.id === 'string' && typeof t.title === 'string')
         .map((t) => ({
           id: t.id, title: t.title, est: num(t.est, 1, 0, 99), act: num(t.act, 0, 0, 999), done: !!t.done, createdAt: typeof t.createdAt === 'number' ? t.createdAt : 0,
           ...(typeof t.sourceId === 'string' ? { sourceId: t.sourceId, sourceKind: (t.sourceKind === 'event' ? 'event' : 'task') as 'task' | 'event' } : {}),
           ...(t.estEdited ? { estEdited: true } : {}),
+          ...(typeof t.budgetMinutes === 'number' && Number.isFinite(t.budgetMinutes) ? { budgetMinutes: num(t.budgetMinutes, 60, 1, 1440), spentMinutes: num(t.spentMinutes, 0, 0, 100000, false) } : {}),
         }))
-        .slice(0, MAX_TASKS)
+        // Keep prior calendar imports alongside up to MAX_TASKS actual tasks.
+        .filter((t) => isTimerTask(t) ? ++taskCount <= MAX_TASKS : ++calendarCount <= MAX_TASKS)
       : [];
     return {
       log,
@@ -145,6 +154,7 @@ export function parseState(cached: string | null): TimerState {
       activeTaskId: typeof p.activeTaskId === 'string' && tasks.some((t) => t.id === p.activeTaskId) ? p.activeTaskId : null,
       ignoredSourceIds: Array.isArray(p.ignoredSourceIds) ? p.ignoredSourceIds.filter((s): s is string => typeof s === 'string').slice(0, 200) : [],
       syncDay: typeof p.syncDay === 'string' ? p.syncDay : null,
+      ...(typeof p.intervalDurationMs === 'number' && Number.isFinite(p.intervalDurationMs) && p.intervalDurationMs > 0 ? { intervalDurationMs: p.intervalDurationMs } : {}),
     };
   } catch { return fresh; }
 }
@@ -191,7 +201,7 @@ export function mergePlannerItems(tasks: readonly TimerTask[], items: readonly P
   const skip = new Set(ignored);
   for (const item of items) {
     if (have.has(item.id) || skip.has(item.id)) continue;
-    if (out.length >= MAX_TASKS) break;
+    if (out.filter((t) => isTimerTask(t) === (item.kind === 'task')).length >= MAX_TASKS) continue;
     out.push({ id: `p-${item.id}`, title: item.title, est: estFromMinutes(item.minutes, focusMinutes), act: 0, done: false, createdAt: now, sourceId: item.id, sourceKind: item.kind });
   }
   return out;
@@ -200,6 +210,27 @@ export function mergePlannerItems(tasks: readonly TimerTask[], items: readonly P
 export function minutesFor(mode: TimerMode, cfg: TimerConfig): number {
   return mode === 'focus' ? cfg.focusMinutes : mode === 'short' ? cfg.shortBreakMinutes : cfg.longBreakMinutes;
 }
+
+/** A bounded sequence: the last focus or break is shortened to fit the budget. */
+export function planTimeBudget(minutes: number, cfg: TimerConfig, mode: TimerMode = 'focus', cycle = 0): { mode: TimerMode; minutes: number }[] {
+  let left = Number.isFinite(minutes) ? Math.max(0, Math.min(1440, minutes)) : 0;
+  const plan: { mode: TimerMode; minutes: number }[] = [];
+  while (left > 0.000001) {
+    const length = Math.min(left, minutesFor(mode, cfg));
+    plan.push({ mode, minutes: length });
+    left -= length;
+    const next = nextMode(mode, cycle, cfg.longBreakInterval);
+    mode = next.mode; cycle = next.cycle;
+  }
+  return plan;
+}
+
+export function budgetRemaining(task: TimerTask): number | null {
+  return task.budgetMinutes === undefined ? null : Math.max(0, task.budgetMinutes - (task.spentMinutes ?? 0));
+}
+
+/** Calendar imports from older versions stay stored, but no longer join the study queue. */
+export function isTimerTask(task: TimerTask): boolean { return task.sourceKind !== 'event'; }
 
 /**
  * What follows a finished interval. After a focus the cycle advances and
@@ -286,7 +317,7 @@ export function fmtTimeOfDay(ms: number): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 export function fmtHours(minutes: number): string {
-  if (minutes < 60) return `${minutes}m`;
+  if (minutes < 60) return `${Math.round(minutes)}m`;
   const h = minutes / 60;
   return `${h.toFixed(h >= 10 ? 0 : 1)}h`;
 }
