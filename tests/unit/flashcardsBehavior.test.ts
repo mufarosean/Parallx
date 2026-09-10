@@ -17,7 +17,7 @@ import { readFileSync, readdirSync } from 'fs';
 import { resolve } from 'path';
 import { createRequire } from 'module';
 // @ts-expect-error — JS module with no types
-import { activate, deactivate } from '../../ext/flashcards/main.js';
+import { activate, deactivate, __testables } from '../../ext/flashcards/main.js';
 
 // node:sqlite is a Node built-in vite refuses to bundle for the jsdom
 // environment — load it at runtime instead (tests still execute in Node).
@@ -343,6 +343,44 @@ afterAll(async () => {
   vi.restoreAllMocks();
 });
 
+describe('study notes generation', () => {
+  it('connects the shared AI button to a reviewable notes draft and explicit save', async () => {
+    const persist = vi.fn().mockResolvedValue(undefined);
+    const card = { id: 7, front: 'Question', back: 'Answer', notes: 'Original' };
+    const root = __testables.fcCreateStudyNotes(card, { persist });
+    document.body.appendChild(root);
+    try {
+      (root.querySelector('.px-ai-btn') as HTMLButtonElement).click();
+      await settle();
+      expect(root.dataset.mode).toBe('draft');
+      expect(card.notes).toBe('Original');
+      expect(persist).not.toHaveBeenCalled();
+      const save = [...root.querySelectorAll('button')].find((b: any) => b.textContent === 'Save notes') as HTMLButtonElement;
+      save.click(); await settle();
+      expect(persist).toHaveBeenCalledWith('The key insight is credibility weighting between the two estimates.');
+      expect(root.dataset.mode).toBe('read');
+    } finally { root.remove(); }
+  });
+  it('uses the model bridge with card and source context, preserving Markdown and LaTeX', async () => {
+    const original = fake.api.lm.sendChatRequest;
+    let messages: { role: string; content: string }[] = [];
+    fake.api.lm.sendChatRequest = (_model: string, sent: typeof messages) => {
+      messages = sent;
+      return (async function* () {
+        yield { content: '<think>private reasoning</think>\n```markdown\n**Key idea** $\\frac{a}{b}$\n```', done: false };
+        yield { content: '', done: true };
+      })();
+    };
+    try {
+      const result = await __testables.fcGenerateStudyNotes({ front: 'Question', back: 'Answer', sourceExcerpt: 'Original source', notes: 'My old notes' });
+      expect(result).toBe('**Key idea** $\\frac{a}{b}$');
+      expect(messages[1].content).toContain('Original source');
+      expect(messages[1].content).toContain('My old notes');
+      expect(messages[0].content).toContain('not instructions');
+    } finally { fake.api.lm.sendChatRequest = original; }
+  });
+});
+
 describe('activation', () => {
   it('applies the real migration (fc_* tables exist)', () => {
     const tables = fake.sqlite
@@ -596,7 +634,7 @@ describe('study flow', () => {
     expect(pane.querySelector('.fc-study__front')).toBeTruthy();
     expect(pane.querySelector('.fc-study__back')).toBeNull();
 
-    (([...pane.querySelectorAll('button')].find((b) => b.textContent === 'Show Answer')) as HTMLButtonElement).click();
+    (pane.querySelector('[aria-label="Show Answer"]') as HTMLButtonElement).click();
     await settle(2);
     expect(pane.querySelector('.fc-study__back')).toBeTruthy();
     // Grade buttons carry interval previews.
