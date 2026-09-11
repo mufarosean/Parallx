@@ -1409,8 +1409,9 @@ const _toolImageBridge = (): ToolImageBridge | undefined =>
 // Thumbnails by id. A finished card renders again when streaming ends and on
 // every session switch, and each read ships up to 1 MB over IPC, so the newest
 // TOOL_IMAGE_CACHE_MAX stay. A failed read is not kept (a later render tries
-// again). Clearing the Assistant Browser's data empties the cache (the
-// broker's 'artifacts-cleared' event); a workspace switch reloads the window.
+// again). Erasing captures (their tab closed, their chat deleted, or the
+// Assistant Browser's data cleared) empties the cache: the broker's
+// 'artifacts-cleared' event. A workspace switch reloads the window.
 const TOOL_IMAGE_CACHE_MAX = 50;
 const _toolImageCache = new Map<string, Promise<string | null>>();
 let _toolImageCacheWatched = false;
@@ -1442,7 +1443,17 @@ function _watchToolImageCache(): void {
   if (!b?.onEvent) return;
   _toolImageCacheWatched = true;
   b.onEvent((e) => {
-    if (e.type !== 'automation:event' || (e.payload as { type?: string } | null)?.type !== 'artifacts-cleared') return;
+    const p = e.payload as { type?: string; artifactIds?: unknown; partial?: boolean } | null;
+    if (e.type !== 'automation:event' || p?.type !== 'artifacts-cleared') return;
+    // A closed tab's captures (partial): those are erased, nothing to ask.
+    const only = p.partial && Array.isArray(p.artifactIds) ? new Set(p.artifactIds.filter((x): x is string => typeof x === 'string')) : null;
+    if (only) {
+      for (const id of only) _toolImageCache.delete(id);
+      for (const img of document.querySelectorAll<HTMLImageElement>('img.parallx-chat-tool-image[data-artifact-id]')) {
+        if (only.has(img.dataset.artifactId ?? '')) _markToolImageExpired(img);
+      }
+      return;
+    }
     _toolImageCache.clear();
     // Thumbnails already on screen ask again; the ones whose files are gone say so.
     for (const img of document.querySelectorAll<HTMLImageElement>('img.parallx-chat-tool-image[data-artifact-id]')) {
@@ -1455,7 +1466,7 @@ function _watchToolImageCache(): void {
 /** In place of a capture that is gone: a small note, not an empty box. */
 function _markToolImageExpired(img: HTMLImageElement): void {
   if (!img.isConnected) return;
-  const note = $('span.parallx-chat-tool-image-missing', 'Capture expired');
+  const note = $('span.parallx-chat-tool-image-missing', 'Capture erased');
   img.replaceWith(note);
 }
 

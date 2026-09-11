@@ -18,6 +18,7 @@ import { Disposable, toDisposable, type IDisposable } from '../platform/lifecycl
 import type { Event } from '../platform/events.js';
 import type { IChatTool, IToolResult, ICancellationToken, IChatToolInvocationCallContext, IToolResultArtifact, IChatImageAttachment } from './chatTypes.js';
 import { isWorkspaceSealed, SEALED_WORKSPACE_SETTING } from './sealedWorkspace.js';
+import { isToolImageGone, markToolImagesGone } from './toolImageLifetime.js';
 import type {
   IBrowserAutomationHost,
   IBrowserAutomationHostRegistration,
@@ -67,9 +68,17 @@ const target = (args: Record<string, unknown>) => ({
 export const BROWSER_TOOL_SPECS: readonly ToolSpec[] = [
   {
     name: 'browserOpen', op: 'open', requiresConfirmation: false,
-    description: 'Open a web page in the Assistant Browser: a tab the user can watch, using the assistant\'s own browser profile (its own cookies and sign-ins, separate from the user\'s). Returns JSON with the page text and its targets (links, buttons, fields), each with a ref such as "e12" for browserClick, browserType and browserAct. Only http(s) addresses. One chat uses the Assistant Browser at a time. Prefer webSearch or webFetch for plain reading; use the browser when a page needs interaction.',
-    parameters: { type: 'object', properties: { url: { type: 'string', description: 'An http(s) address.' }, newTab: { type: 'boolean', description: 'Open in a new assistant tab instead of the current one.' } }, required: ['url'] },
-    toAction: (a) => pick(a, 'url', 'newTab'),
+    description: 'Open a web page in the Assistant Browser: a tab the user can watch, using the assistant\'s own browser profile (its own cookies and sign-ins, separate from the user\'s). Returns JSON with the page text and its targets (links, buttons, fields), each with a ref such as "e12" for browserClick, browserType and browserAct. Only http(s) addresses. One chat uses the Assistant Browser at a time. Prefer webSearch or webFetch for plain reading; use the browser when a page needs interaction. When the user asks for private browsing, pass private: true.',
+    parameters: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'An http(s) address.' },
+        newTab: { type: 'boolean', description: 'Open in a new assistant tab instead of the current one.' },
+        private: { type: 'boolean', description: 'true: open in a private session, a tab with its own throwaway profile that shares nothing with the assistant\'s usual one and keeps nothing (cookies, sign-ins, site data) once its private tabs close. Pages it opens stay private, and later browserOpen calls without private stay in it. false: leave the private session for the usual profile.' },
+      },
+      required: ['url'],
+    },
+    toAction: (a) => pick(a, 'url', 'newTab', 'private'),
   },
   {
     name: 'browserRead', op: 'read', requiresConfirmation: false,
@@ -105,20 +114,21 @@ export const BROWSER_TOOL_SPECS: readonly ToolSpec[] = [
   },
   {
     name: 'browserAct', op: 'act', requiresConfirmation: true,
-    description: 'Other actions: check (a checkbox, radio or switch to checked true or false), select (a dropdown option by value or label), press (a key, optionally on a ref), hover, scroll (a ref into view, or the page up or down without one), dialog (accept or dismiss an open alert, confirm or prompt; text answers a prompt), click_at (x, y in a browserCapture image, with its captureId, for something that has no ref).',
+    description: 'Other actions: check (a checkbox, radio or switch to checked true or false), select (a dropdown option by value or label), press (a key, optionally on a ref), hover, scroll (a ref into view, or the page up or down without one), dialog (accept or dismiss an open alert, confirm or prompt; text answers a prompt), click_at (x, y in a browserCapture image, with its captureId, for something that has no ref), download (a link\'s file or a picture, by ref, into the assistant\'s run folder; pictures the page names are image targets; browserWait for "download" says when it finishes), save_download (give a finished download to the user: a copy in their Downloads, by its file name). To get a picture or file for the user, use download then save_download, never a screenshot.',
     parameters: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['check', 'select', 'press', 'hover', 'scroll', 'dialog', 'click_at'] },
+        action: { type: 'string', enum: ['check', 'select', 'press', 'hover', 'scroll', 'dialog', 'click_at', 'download', 'save_download'] },
         ref: REF, index: INDEX,
         checked: { type: 'boolean' }, value: { type: 'string' }, label: { type: 'string' },
         key: { type: 'string', enum: KEYS }, direction: { type: 'string', enum: ['up', 'down'] },
         accept: { type: 'boolean' }, text: { type: 'string' },
         captureId: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' },
+        file: { type: 'string', description: 'save_download: the file name of a finished download (from its download evidence).' },
       },
       required: ['action'],
     },
-    toAction: (a) => ({ ...target(a), ...pick(a, 'action', 'checked', 'value', 'label', 'key', 'direction', 'accept', 'text', 'captureId', 'x', 'y') }),
+    toAction: (a) => ({ ...target(a), ...pick(a, 'action', 'checked', 'value', 'label', 'key', 'direction', 'accept', 'text', 'captureId', 'x', 'y', 'file') }),
   },
   {
     name: 'browserTabs', op: 'tabs', requiresConfirmation: false,
@@ -237,11 +247,17 @@ export class BrowserAutomationService extends Disposable implements IBrowserAuto
   }
 
   private _onEvent(e: { type: string; payload: unknown }): void {
-    if (e.type !== 'automation:event' || !this._host) return;
-    const p = e.payload as { type?: string; tabId?: string; chatSessionId?: string; openerTabId?: string | null; reveal?: boolean } & Partial<IBrowserRunState>;
+    if (e.type !== 'automation:event') return;
+    // Erased captures leave any turn still running before its next model call.
+    const cleared = e.payload as { type?: string; artifactIds?: unknown } | null;
+    if (cleared?.type === 'artifacts-cleared' && Array.isArray(cleared.artifactIds)) {
+      markToolImagesGone(cleared.artifactIds.filter((x): x is string => typeof x === 'string'));
+    }
+    if (!this._host) return;
+    const p = e.payload as { type?: string; tabId?: string; chatSessionId?: string; openerTabId?: string | null; reveal?: boolean; private?: boolean } & Partial<IBrowserRunState>;
     const host = this._host;
     try {
-      if (p.type === 'tab-open' && p.tabId && p.chatSessionId) void host.openTab({ tabId: p.tabId, chatSessionId: p.chatSessionId, openerTabId: p.openerTabId ?? null, reveal: p.reveal !== false });
+      if (p.type === 'tab-open' && p.tabId && p.chatSessionId) void host.openTab({ tabId: p.tabId, chatSessionId: p.chatSessionId, openerTabId: p.openerTabId ?? null, reveal: p.reveal !== false, private: p.private === true });
       else if (p.type === 'tab-closed' && p.tabId) void host.closeTab(p.tabId);
       else if (p.type === 'reveal' && p.tabId) void host.revealTab(p.tabId);
       else if (p.type === 'run-state' && p.chatSessionId) {
@@ -293,7 +309,7 @@ export class BrowserAutomationService extends Disposable implements IBrowserAuto
       if (spec.op === 'capture') {
         for (const a of artifacts) {
           const r = await transport.call('readArtifact', { id: a.id }).catch(() => null) as { mimeType?: string; data?: string } | null;
-          if (r && typeof r.data === 'string' && typeof r.mimeType === 'string') {
+          if (r && typeof r.data === 'string' && typeof r.mimeType === 'string' && !isToolImageGone(a.id)) {
             images.push({ kind: 'image', id: a.id, name: 'Page capture', fullPath: '', isImplicit: false, mimeType: r.mimeType, data: r.data });
           }
         }

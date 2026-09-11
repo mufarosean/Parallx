@@ -14,6 +14,7 @@ import { BrowserAutomationService, BROWSER_TOOL_SPECS } from '../../src/services
 import { BrowserAutomationBridge } from '../../src/api/bridges/browserAutomationBridge';
 import type { IChatTool, ICancellationToken, IToolResult } from '../../src/services/chatTypes';
 import { BROWSER_TOOL_NAMES, BROWSER_TOOLS_NEED_A_CHAT, isBrowserToolName, type IBrowserAutomationHost } from '../../src/services/browserAutomationTypes';
+import { isToolImageGone } from '../../src/services/toolImageLifetime';
 
 type Call = { method: string; payload: any; budget: number | undefined };
 
@@ -143,6 +144,9 @@ describe('BrowserAutomationService', () => {
     const run = s.transport.of('run')[0];
     expect(run.payload.identity).toEqual({ chatSessionId: 'chat-1', turnId: 'turn-1', workspaceSessionId: 'wss-1' });
     expect(run.payload.action).toEqual({ op: 'click', ref: 'e3' });
+    // browserOpen passes private through, and nothing it was not given.
+    await s.tool('browserOpen').handler({ url: 'https://example.com', private: true, chatSessionId: 'x' }, token('turn-1'), { sessionId: 'chat-1' });
+    expect(s.transport.of('run')[1].payload.action).toEqual({ op: 'open', url: 'https://example.com', private: true });
   });
 
   it('refuses without a chat session, a turn or a workspace, and never reaches the broker', async () => {
@@ -281,7 +285,10 @@ describe('BrowserAutomationService', () => {
     s.transport.emit({ type: 'tab-open', tabId: 'agent:a:1', chatSessionId: 'chat-1', openerTabId: null, reveal: true });
     s.transport.emit({ type: 'run-state', chatSessionId: 'chat-1', tabId: 'agent:a:1', tabs: ['agent:a:1'], state: 'paused', note: 'You took over', by: 'user' });
     s.transport.emit({ type: 'tab-closed', tabId: 'agent:a:1' });
-    expect(host.openTab).toHaveBeenCalledWith({ tabId: 'agent:a:1', chatSessionId: 'chat-1', openerTabId: null, reveal: true });
+    expect(host.openTab).toHaveBeenCalledWith({ tabId: 'agent:a:1', chatSessionId: 'chat-1', openerTabId: null, reveal: true, private: false });
+    // A private session's tab reaches the host marked, so it can say so.
+    s.transport.emit({ type: 'tab-open', tabId: 'agent:a:2', chatSessionId: 'chat-1', openerTabId: null, reveal: true, private: true });
+    expect(host.openTab).toHaveBeenCalledWith({ tabId: 'agent:a:2', chatSessionId: 'chat-1', openerTabId: null, reveal: true, private: true });
     expect(host.setRunState).toHaveBeenCalledWith({ chatSessionId: 'chat-1', tabId: 'agent:a:1', tabs: ['agent:a:1'], state: 'paused', note: 'You took over', by: 'user' });
     expect(host.closeTab).toHaveBeenCalledWith('agent:a:1');
     expect(await reg.control('pause')).toBe(true);
@@ -299,6 +306,20 @@ describe('BrowserAutomationService', () => {
     expect(s.transport.of('readArtifact')[0].payload).toEqual({ id: 'browser:w:r:c1' });
     expect(r.images).toEqual([expect.objectContaining({ kind: 'image', id: 'browser:w:r:c1', mimeType: 'image/jpeg', data: '/9j/abc' })]);
     expect(r.artifacts).toEqual([{ kind: 'image', id: 'browser:w:r:c1', mimeType: 'image/jpeg', width: undefined, height: undefined }]);
+  });
+
+  it('an erased capture leaves any running turn, and a capture erased before it was read is not handed on', async () => {
+    const s = setup({
+      reply: (c) => (c.method === 'readArtifact'
+        ? { mimeType: 'image/jpeg', data: '/9j/abc', width: 10, height: 10 }
+        : JSON.stringify({ version: 1, status: 'ok', summary: 'Captured.', artifacts: [{ kind: 'image', id: 'browser:w:r:c9', mimeType: 'image/jpeg' }] })),
+    });
+    s.service.registerHost(fakeHost(), 'parallx.browser');
+    expect(isToolImageGone('browser:w:r:c9')).toBe(false);
+    s.transport.emit({ type: 'artifacts-cleared', chatSessionIds: ['chat-1'], artifactIds: ['browser:w:r:c9'], partial: true });
+    expect(isToolImageGone('browser:w:r:c9')).toBe(true);
+    const r = await s.tool('browserCapture').handler({}, token(), { sessionId: 'chat-1', acceptsImages: true });
+    expect(r.images).toBeUndefined();
   });
 
   it('a workflow tool step gets a plain refusal naming the Agent Turn step', () => {

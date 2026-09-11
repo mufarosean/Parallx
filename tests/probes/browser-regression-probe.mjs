@@ -117,6 +117,10 @@ async function findFiles(dir, test, out = [], depth = 0) {
 const fixture = (crossUrl) => `<!doctype html><title>Probe fixture</title>
 <style>body{font:12px sans-serif;margin:6px} .col{width:400px} div,label,p{margin:3px 0;display:block} iframe{border:1px solid #888}</style>
 <button id="spot" style="position:absolute;left:430px;top:12px;width:120px;height:36px;background:#ff00ff;color:#ff00ff;border:0" onclick="window.spotClicked=(window.spotClicked||0)+1">Spot target</button>
+<div id="anim" style="position:absolute;left:430px;top:70px;width:60px;height:30px;background:#ff0000" onclick="window.animClicked=(window.animClicked||0)+1"></div>
+<script>window.__animTimer = setInterval(() => { const a = document.getElementById('anim'); if (!a) return; a.dataset.f = a.dataset.f === '1' ? '0' : '1'; a.style.background = a.dataset.f === '1' ? '#0000ff' : '#ff0000'; }, 80);</script>
+<button id="nearAnim" style="position:absolute;left:500px;top:70px;width:110px;height:30px" onclick="window.nearAnimClicked=(window.nearAnimClicked||0)+1">Near animation</button>
+<img id="confettiImg" alt="Confetti animation" src="/confetti.gif" style="position:absolute;left:430px;top:110px;width:16px;height:16px">
 <button id="spotRight" aria-label="Edge target" style="position:absolute;right:4px;top:12px;width:16px;height:36px;background:#00ff00;border:0;padding:0" onclick="window.spotRightClicked=(window.spotRightClicked||0)+1"></button>
 <div class="col">
 <h1 style="font-size:14px;margin:2px 0">Probe fixture</h1>
@@ -195,6 +199,7 @@ async function main() {
   const site = await serve({
     '/': fixture(crossUrl),
     '/popup': '<!doctype html><title>Popup</title><p>Popup page</p><button>Popup action</button>',
+    '/confetti.gif': { body: Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64'), headers: { 'content-type': 'image/gif' } },
     '/start': '<!doctype html><title>Start</title><h1>Sign up</h1><a href="/form">Start the form</a>',
     '/form': '<!doctype html><title>Form</title><form action="/done" method="get"><label>Full name <input name="who"></label> <button>Send</button></form>',
     '/done': '<!doctype html><title>Done</title><p id="msg"></p><script>document.getElementById("msg").textContent = "Thanks, " + new URLSearchParams(location.search).get("who") + ".";</script>',
@@ -393,6 +398,11 @@ async function main() {
     await installHelpers();
     S.documentHidden = await page.evaluate(() => document.hidden);
     ctx = await readCtx();
+    // The broker erases the probe's captures itself: the Eraser installed on this machine never gets them.
+    await page.evaluate(async () => {
+      try { await window.__parallx_workbench__._services.get({ id: 'ISettingsRegistryService' }).setValue('files.eraserPath', '', 'workspace'); } catch { /* the push below still holds */ }
+      await window.parallxElectron.fs.setDeletePolicy({ recycleBin: true, eraserPath: '' });
+    });
 
     // ── open, sized to the chat's budget ──
     const open = await run('openWithBudget', () => call('browserOpen', { url: baseUrl }, { budget: 3000 }));
@@ -788,6 +798,56 @@ async function main() {
     });
 
     // ── coordinates: capture, find the targets in the image itself, click_at there, at 100% and 150% page zoom ──
+    // ── an animation beside the target does not make a capture stale; a real change still does ──
+    await run('animatedClickAt', async () => {
+      await focusTab(tabA);
+      await js(tabA, 'scrollTo(0, 0); window.nearAnimClicked = 0; window.animClicked = 0; document.getElementById("nearAnim").textContent = "Near animation"; true');
+      await sleep(300);
+      const capture = async () => JSON.parse(await broker('run', { identity: identity('turn-anim'), action: { op: 'capture' } }));
+      const clickAt = async (cap, p) => JSON.parse(await broker('run', { identity: identity('turn-anim'), action: { op: 'act', action: 'click_at', captureId: cap.capture && cap.capture.captureId, x: p.x * cap.capture.width / cap.capture.cssWidth, y: p.y * cap.capture.height / cap.capture.cssHeight } }));
+      const centre = async (id) => JSON.parse(await js(tabA, `JSON.stringify((() => { const b = document.getElementById("${id}").getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })())`));
+      const near = await centre('nearAnim');
+      const anim = await centre('anim');
+      const capA = await capture();
+      await sleep(250); // the animation moves on between the capture and the click
+      const nearClick = await clickAt(capA, near);
+      const capB = await capture();
+      await sleep(250);
+      const animClick = await clickAt(capB, anim);
+      // A real change beside the target (the button's own label): stale.
+      const capC = await capture();
+      await js(tabA, 'document.getElementById("nearAnim").textContent = "Something else"; true');
+      await sleep(150);
+      const staleClick = await clickAt(capC, near);
+      await js(tabA, 'document.getElementById("nearAnim").textContent = "Near animation"; true');
+      // Stop the flashing box: the zoom gate below measures pixels near it.
+      await js(tabA, 'clearInterval(window.__animTimer); true');
+      await broker('release', { chatSessionId: 'chat-A', turnId: 'turn-anim' });
+      return {
+        capture: capA.status, moving: capA.capture ? capA.capture.moving : null,
+        nearClick: nearClick.status, nearCode: nearClick.error && nearClick.error.code,
+        animClick: animClick.status, animCode: animClick.error && animClick.error.code,
+        staleCode: staleClick.error && staleClick.error.code, clicked: await js(tabA, '[window.nearAnimClicked || 0, window.animClicked || 0]'),
+      };
+    }, 60_000);
+
+    // ── a picture downloaded by its ref, then handed to the user ──
+    await run('imageDownload', async () => {
+      await focusTab(tabA);
+      const r = await call('browserRead', { find: 'Confetti' }, { turn: 'turn-dl' });
+      const img = ((r.out && r.out.targets) || []).find((t) => t.role === 'image' || t.role === 'img') || null;
+      const d = await call('browserAct', { action: 'download', ref: img && img.ref }, { turn: 'turn-dl' });
+      const w = await call('browserWait', { for: 'download', timeoutMs: 10_000 }, { turn: 'turn-dl' });
+      const s = await call('browserAct', { action: 'save_download', file: 'confetti.gif' }, { turn: 'turn-dl' });
+      const saved = await fs.stat(path.join(workspace, 'Downloads', 'confetti.gif')).then(() => true, () => false);
+      const savedEvents = (await events((e) => e.type === 'download' && e.payload && e.payload.savedByAssistant)).length;
+      await broker('release', { chatSessionId: 'chat-A', turnId: 'turn-dl' });
+      return { image: img, download: status(d), downloadCode: code(d), downloadEvidence: d.out && d.out.evidence, wait: status(w), save: status(s), saveCode: code(s), saveSummary: s.out && s.out.summary, saved, savedEvents };
+    }, 60_000);
+
+    // The clicks just above showed the page's overlay scrollbar; the zoom captures
+    // measure a target against the right edge, so let it fade first.
+    await sleep(1_500);
     await run('clickAtZoom', async () => {
       const out = {};
       await focusTab(tabA);
@@ -837,6 +897,26 @@ async function main() {
       return out;
     }, 60_000);
     await broker('release', { chatSessionId: 'chat-A', turnId: 'turn-4' });
+
+    // ── a capture is erased when the tab it came from closes ──
+    await run('captureErasedOnClose', async () => {
+      const T = { turn: 'turn-erase' };
+      const opened = await call('browserOpen', { url: `${baseUrl}review`, newTab: true }, T);
+      const tab = opened.out.tabId;
+      const cap = JSON.parse(await broker('run', { identity: identity(T.turn), action: { op: 'capture' } }));
+      const artId = cap.artifacts && cap.artifacts[0] ? cap.artifacts[0].id : '';
+      const [, ws, runId, cid] = /^browser:([^:]+):([^:]+):(c\d+)$/.exec(artId) || [];
+      const dir = ws ? path.join(artifactsRoot, ws, runId) : '';
+      const named = async () => (dir ? (await fs.readdir(dir).catch(() => [])).filter((n) => n.startsWith(`capture-${cid}.jpg`)) : []);
+      const before = artId ? await broker('readArtifact', { id: artId }) : null;
+      const fileBefore = (await named()).includes(`capture-${cid}.jpg`);
+      await call('browserTabs', { action: 'close', tab }, T);
+      await sleep(500);
+      const after = artId ? await broker('readArtifact', { id: artId }) : null;
+      const left = await named();
+      await broker('release', { chatSessionId: 'chat-A', turnId: T.turn });
+      return { captured: cap.status, readBefore: !!(before && before.data), fileBefore, fileAfter: left.includes(`capture-${cid}.jpg`), leftovers: left.length, readAfter: after && (after.error || (after.data ? 'data' : null)) };
+    });
 
     await run('reviewFixes', async () => {
       const T = { turn: 'turn-review' };
@@ -1118,6 +1198,30 @@ async function main() {
       return { historyRows: hist.rows, tabRows: tabs.rows, errors: [hist.error, tabs.error, control && control.error].filter(Boolean), controlRows: control && control.rows, userTabs };
     });
 
+    // ── a private session: its own profile, shares nothing, keeps nothing once its tabs close ──
+    await run('privateSession', async () => {
+      const usual = await call('browserOpen', { url: baseUrl, newTab: true, private: false }, { turn: 'turn-priv' });
+      const usualTab = usual.out && usual.out.tabId;
+      await js(usualTab, 'document.cookie = "ordinary=1; path=/"; true');
+      const p1 = await call('browserOpen', { url: baseUrl, private: true }, { turn: 'turn-priv' });
+      const privTab = p1.out && p1.out.tabId;
+      const seesOrdinary = await js(privTab, 'document.cookie.includes("ordinary=1")');
+      await js(privTab, 'document.cookie = "secret=1; path=/"; true');
+      const listed = await call('browserTabs', { action: 'list' }, { turn: 'turn-priv' });
+      const privateView = (await views()).find((v) => v.tabId === privTab) || null;
+      await call('browserTabs', { action: 'close', tab: privTab }, { turn: 'turn-priv' });
+      await sleep(800);
+      const p2 = await call('browserOpen', { url: baseUrl, private: true }, { turn: 'turn-priv' });
+      const secretKept = await js(p2.out && p2.out.tabId, 'document.cookie.includes("secret=1")');
+      const ordinaryKept = await js(usualTab, 'document.cookie.includes("ordinary=1")');
+      await broker('release', { chatSessionId: 'chat-A', turnId: 'turn-priv' });
+      return {
+        opened: status(p1), outcomePrivate: !!(p1.out && p1.out.private), summary: p1.out && p1.out.summary, privTab, secondTab: p2.out && p2.out.tabId,
+        seesOrdinary, secretKept, ordinaryKept, privateView: privateView && { kind: privateView.kind, private: privateView.private },
+        listedPrivate: ((listed.out && listed.out.tabs) || []).filter((t) => t.private).map((t) => t.tab),
+      };
+    }, 60_000);
+
     // ── sealing ends the run, closes its tabs, stops its downloads and refuses more ──
     await run('sealed', async () => {
       const T = { turn: 'turn-5a' };
@@ -1252,6 +1356,11 @@ async function main() {
       }
       await installHelpers();
       ctx = await readCtx();
+      // The broker erases the probe's captures itself: the Eraser installed on this machine never gets them.
+      await page.evaluate(async () => {
+        try { await window.__parallx_workbench__._services.get({ id: 'ISettingsRegistryService' }).setValue('files.eraserPath', '', 'workspace'); } catch { /* the push below still holds */ }
+        await window.parallxElectron.fs.setDeletePolicy({ recycleBin: true, eraserPath: '' });
+      });
       const fresh = await call('browserOpen', { url: baseUrl }, { turn: 'turn-9' });
       return { opened: status(o), pending: pendingResult, staleRunCode: staleRun && staleRun.error ? staleRun.error.code : staleRun, agentContents, toolsBackMs, fresh: status(fresh), freshCode: code(fresh) };
     }, 180_000);
@@ -1382,6 +1491,15 @@ async function main() {
       && (ca.messages || []).some((x) => x.message === 'Assistant Browser data cleared.') && !(ca.messages || []).some((x) => /^Could not clear/.test(x.message)));
     const rr = st.rendererReload;
     g.rendererReload = !!(rr && rr.opened === 'ok' && rr.pending && rr.pending.status !== 'ok' && rr.staleRunCode === 'UNAVAILABLE' && rr.agentContents === 0 && rr.toolsBackMs != null && rr.fresh === 'ok');
+    const an = st.animatedClickAt;
+    g.animatedClickAt = !!(an && an.moving > 0 && an.nearClick === 'ok' && an.animClick === 'ok' && an.staleCode === 'STALE_TARGET' && Array.isArray(an.clicked) && an.clicked[0] === 1 && an.clicked[1] === 1);
+    const dl = st.imageDownload;
+    g.imageDownload = !!(dl && dl.image && dl.download === 'ok' && (dl.downloadEvidence || []).some((e) => e.kind === 'download') && dl.wait === 'ok' && dl.save === 'ok' && dl.saved && dl.savedEvents >= 1);
+    const erased = st.captureErasedOnClose;
+    g.captureErasedOnClose = !!(erased && erased.captured === 'ok' && erased.readBefore && erased.fileBefore && !erased.fileAfter && erased.leftovers === 0 && erased.readAfter === 'ARTIFACT_EXPIRED');
+    g.privateSession = !!(st.privateSession && st.privateSession.opened === 'ok' && st.privateSession.outcomePrivate && st.privateSession.seesOrdinary === false
+      && st.privateSession.secretKept === false && st.privateSession.ordinaryKept === true && st.privateSession.privateView && st.privateSession.privateView.kind === 'agent'
+      && st.privateSession.privateView.private === true && st.privateSession.listedPrivate.includes(st.privateSession.privTab) && st.privateSession.secondTab !== st.privateSession.privTab);
     g.disableClosesTabs = !!(st.disable && st.disable.agentViewsBefore >= 1 && st.disable.agentViewsAfter === 0);
     g.reviewNonCheckable = S.reviewFixes?.checkCode === 'NOT_CHECKABLE' && S.reviewFixes.afterCheck === 0;
     g.reviewStaleScreenshot = S.reviewFixes?.staleCode === 'STALE_TARGET' && S.reviewFixes.afterStale === 0;

@@ -836,9 +836,11 @@ app.whenReady().then(async () => {
 
   await createWindow();
   // Private browser sessions (docs/BROWSER.md): configured once the window
-  // exists so popup routing and blocked counts can reach the renderer.
+  // exists so popup routing and blocked counts can reach the renderer. A test
+  // launch without its own data folder shares a running app's (no single-
+  // instance lock in test mode): it leaves that app's captures alone.
   try {
-    _browserBridge = setupBrowserBridge(ipcMain, { getMainWindow: () => mainWindow, userData: app.getPath('userData'), getWorkspaceRoot: () => _fsWorkspaceRoot });
+    _browserBridge = setupBrowserBridge(ipcMain, { getMainWindow: () => mainWindow, userData: app.getPath('userData'), getWorkspaceRoot: () => _fsWorkspaceRoot, eraseSecurely: (p, isDir) => queueEraser(p, isDir), eraseLeftoversAtStart: !(IS_TEST_MODE && !process.env.PARALLX_USER_DATA) });
   } catch (err) {
     console.error('[browser] bridge setup failed:', err && err.message);
   }

@@ -114,13 +114,37 @@ function setupBrowserBridge(ipcMain, opts) {
     try { const wc = details.webContents; if (wc && !wc.isDestroyed()) return wc.getURL(); } catch { /* ignore */ }
     return details.referrer || '';
   };
-  const isOurs = (ses) => [...sessions.values()].includes(ses);
+  const isOurs = (ses) => [...sessions.values()].includes(ses) || [...agentPrivateSessions.values()].includes(ses);
 
   // ── Sessions ──
   for (const [kind, partition] of Object.entries(PARTITIONS)) {
     const ses = session.fromPartition(partition);
     sessions.set(kind, ses);
     configureSession(ses, kind);
+  }
+  // Private assistant sessions (browserOpen private: true): one partition per
+  // chat's private session, in memory only (no "persist:"), with every rule of
+  // the assistant's profile. Made on first use; wiped when its last tab closes.
+  const AGENT_PRIVATE_PREFIX = 'parallx-browser-agent-private-';
+  const agentPrivateSessions = new Map(); // partition -> session
+  function agentPrivateSession(partition) {
+    let ses = agentPrivateSessions.get(partition);
+    if (ses) return ses;
+    ses = session.fromPartition(partition);
+    agentPrivateSessions.set(partition, ses);
+    configureSession(ses, 'agent');
+    if (cosmeticsWired && ADBLOCK_PRELOAD) { try { ses.registerPreloadScript({ type: 'frame', filePath: ADBLOCK_PRELOAD }); } catch (err) { console.warn('[browser] cosmetic preload:', err && err.message); } }
+    return ses;
+  }
+  /** Everything a session keeps: storage, caches, sign-ins. */
+  async function clearSession(ses) {
+    try { await ses.clearData(); } catch { /* older runtime */ }
+    await ses.clearStorageData();
+    await ses.clearCache();
+    try { await ses.clearCodeCaches({}); } catch { /* ignore */ }
+    try { await ses.clearSharedDictionaryCache(); } catch { /* ignore */ }
+    await ses.clearAuthCache();
+    await ses.clearHostResolverCache();
   }
 
   function configureSession(ses, kind) {
@@ -227,6 +251,7 @@ function setupBrowserBridge(ipcMain, opts) {
       blocker.on('request-redirected', (req) => countBlocked(req));
       ensureCosmetics();
       for (const [kind, ses] of sessions) installWebRequest(ses, kind);
+      for (const ses of agentPrivateSessions.values()) installWebRequest(ses, 'agent');
       for (const rec of views.values()) { try { refreshScriptlets(rec, rec.wc.getURL()); } catch { /* view gone */ } }
       let updatedAt = Date.now();
       try { updatedAt = fs.statSync(enginePath).mtimeMs; } catch { /* keep now */ }
@@ -253,7 +278,8 @@ function setupBrowserBridge(ipcMain, opts) {
     // Private tabs leave nothing readable behind: they raise the lifetime total
     // and nothing else. (The per-tab count in the shield is in memory only.)
     let isPrivate = false;
-    try { const g = webContents.fromId(Number(id)); isPrivate = !!g && !g.isDestroyed() && g.session === sessions.get('private'); } catch { isPrivate = false; }
+    // The user's private tabs and the assistant's private sessions alike.
+    try { const g = webContents.fromId(Number(id)); isPrivate = !!g && !g.isDestroyed() && (g.session === sessions.get('private') || [...agentPrivateSessions.values()].includes(g.session)); } catch { isPrivate = false; }
     if (!isPrivate) {
       const page = req.sourceHostname || req.sourceDomain || '';
       blockedLog.push({ t: Date.now(), page, host, popup: !!req.popup });
@@ -287,7 +313,7 @@ function setupBrowserBridge(ipcMain, opts) {
     if (cosmeticsWired) return;
     cosmeticsWired = true;
     if (ADBLOCK_PRELOAD) {
-      for (const ses of sessions.values()) {
+      for (const ses of [...sessions.values(), ...agentPrivateSessions.values()]) {
         try { ses.registerPreloadScript({ type: 'frame', filePath: ADBLOCK_PRELOAD }); } catch (err) { console.warn('[browser] cosmetic preload:', err && err.message); }
       }
     }
@@ -512,7 +538,7 @@ function setupBrowserBridge(ipcMain, opts) {
       canGoForward: h ? h.canGoForward() : wc.canGoForward(),
     };
   };
-  const describeView = (rec) => ({ tabId: rec.tabId, webContentsId: rec.wc.id, kind: rec.kind, owned: !!rec.owned, crashed: rec.crashed || null, ...navState(rec.wc) });
+  const describeView = (rec) => ({ tabId: rec.tabId, webContentsId: rec.wc.id, kind: rec.kind, private: !!rec.private, owned: !!rec.owned, crashed: rec.crashed || null, ...navState(rec.wc) });
   const emitView = (rec, type, payload) => send('browser:view:event', { tabId: rec.tabId, type, ...(payload || {}) });
   function applyBounds(rec) {
     const win = getMainWindow();
@@ -537,9 +563,12 @@ function setupBrowserBridge(ipcMain, opts) {
     const existing = views.get(tabId);
     if (existing && !existing.wc.isDestroyed()) return describeView(existing);
     const partitionKind = PARTITIONS[kind] ? kind : 'user';
+    // A private assistant session: the assistant's rules, the chat's own in-memory partition.
+    const privatePartition = partitionKind === 'agent' && opts && typeof opts.privatePartition === 'string' && opts.privatePartition.startsWith(AGENT_PRIVATE_PREFIX) ? opts.privatePartition : null;
+    if (privatePartition) agentPrivateSession(privatePartition);
     const view = new WebContentsView({
       webPreferences: {
-        partition: PARTITIONS[partitionKind],
+        partition: privatePartition || PARTITIONS[partitionKind],
         sandbox: true, contextIsolation: true, nodeIntegration: false, nodeIntegrationInSubFrames: false,
         webviewTag: false, autoplayPolicy: 'no-user-gesture-required', spellcheck: false,
       },
@@ -547,7 +576,7 @@ function setupBrowserBridge(ipcMain, opts) {
     const background = opts && policy.isViewColor(opts.background) ? String(opts.background) : null;
     if (background) view.setBackgroundColor(background);
     const wc = view.webContents;
-    const rec = { tabId, kind: partitionKind, view, wc, bounds: null, visible: false, attached: false, fullscreen: false, background };
+    const rec = { tabId, kind: partitionKind, private: !!privatePartition, view, wc, bounds: null, visible: false, attached: false, fullscreen: false, background };
     // One debugger controller per view: scriptlets, page theme and the
     // assistant's automation all go through it (browserDebugger.cjs).
     rec.dc = createDebuggerController(wc);
@@ -721,9 +750,32 @@ function setupBrowserBridge(ipcMain, opts) {
     ipcMain,
     getMainWindow,
     userData: opts.userData || app.getPath('userData'),
+    // Kept captures and downloads are erased, never binned: Eraser when the delete policy names it.
+    eraseSecurely: typeof opts.eraseSecurely === 'function' ? opts.eraseSecurely : undefined,
+    // A test launch sharing a running app's folder leaves that app's captures alone.
+    eraseLeftoversAtStart: opts.eraseLeftoversAtStart !== false,
+    // browserAct save_download: a copy of a finished assistant download in the
+    // user's Downloads, listed like their own. Only files under the artifacts folder.
+    saveDownload: async (src, name) => {
+      try {
+        const artifactsDir = path.resolve(opts.userData || app.getPath('userData'), 'browser', 'artifacts');
+        const from = path.resolve(String(src || ''));
+        if (!from.startsWith(artifactsDir + path.sep)) return { error: 'not an assistant download' };
+        const target = policy.downloadTarget(downloadDir(), String(name || path.basename(from)), (p) => fs.existsSync(p), path.sep);
+        await fsp.copyFile(from, target, fs.constants.COPYFILE_EXCL);
+        const size = fs.statSync(target).size;
+        const now = Date.now();
+        const info = { id: `saved-${++downloadSeq}`, kind: 'user', assistant: false, savedByAssistant: true, url: '', filename: path.basename(target), path: target, total: size, received: size, state: 'completed', webContentsId: null, startedAt: now, finishedAt: now };
+        downloads.set(info.id, info);
+        send('browser:download', { ...info });
+        return { path: target };
+      } catch (err) { return { error: err && err.message ? err.message : String(err) }; }
+    },
     views: {
       get: (tabId) => { const r = views.get(tabId); return r && !r.wc.isDestroyed() ? r : null; },
-      create: (tabId, kind) => { viewCreate(tabId, kind, {}); return views.get(tabId); },
+      create: (tabId, kind, opts) => { viewCreate(tabId, kind, opts || {}); return views.get(tabId); },
+      // A private session ended: its partition keeps nothing.
+      clearPrivate: (partition) => { const ses = agentPrivateSessions.get(partition); return ses ? clearSession(ses) : Promise.resolve(); },
       destroy: (tabId) => viewDestroy(tabId),
       byWebContentsId: (id) => recByWc.get(id) || null,
     },
@@ -782,13 +834,9 @@ function setupBrowserBridge(ipcMain, opts) {
   ipcMain.handle('browser:clearData', async (_e, kind) => {
     const ses = sessions.get(Object.prototype.hasOwnProperty.call(PARTITIONS, kind) ? kind : 'user');
     if (!ses) return { ok: false };
-    try { await ses.clearData(); } catch { /* older runtime */ }
-    await ses.clearStorageData();
-    await ses.clearCache();
-    try { await ses.clearCodeCaches({}); } catch { /* ignore */ }
-    try { await ses.clearSharedDictionaryCache(); } catch { /* ignore */ }
-    await ses.clearAuthCache();
-    await ses.clearHostResolverCache();
+    await clearSession(ses);
+    // Clearing the assistant's data takes any private session's with it.
+    if (kind === 'agent') for (const s of agentPrivateSessions.values()) await clearSession(s).catch(() => {});
     return { ok: true };
   });
   ipcMain.handle('browser:refreshLists', async () => { await loadLists(true); return lists; });

@@ -534,6 +534,16 @@ async function runOpenclawDefaultTurn(
 const OPENCLAW_MAX_ITERATIONS_CEILING = 50;
 const OPENCLAW_MAX_READONLY_ITERATIONS = 10;
 
+/**
+ * Whether the active model can see images, from its provider's own answer. A
+ * model restored at startup is asked first, so a turn never takes "text only"
+ * from an unprobed default (browserCapture is offered only when this is true).
+ */
+async function activeModelSeesImages(services: IDefaultParticipantServices): Promise<boolean> {
+  try { await services.ensureActiveModelInfo?.(); } catch { /* keep what is known */ }
+  return services.getActiveModelCapabilities?.().includes('vision') ?? false;
+}
+
 async function buildOpenclawTurnContext(
   services: IDefaultParticipantServices,
   request: IChatParticipantRequest,
@@ -687,7 +697,7 @@ async function buildOpenclawTurnContext(
       : undefined,
     toolObserver: services.runtimeHookRegistry?.getCompositeToolObserver(),
     messageObserver: services.runtimeHookRegistry?.getCompositeMessageObserver(),
-    supportsVision: services.getActiveModelCapabilities?.().includes('vision') ?? false,
+    supportsVision: await activeModelSeesImages(services),
   };
 }
 

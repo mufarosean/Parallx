@@ -62,7 +62,7 @@ interface Hook { match: (method: string, params: Any, sid: string | null, rec: A
  * has its own address and history. The debugger's commands land in `log`;
  * `hooks` can answer, hold or fail one before the page model does.
  */
-function makeHarness(o: { userData?: string; allowLocal?: string; resolvesPrivate?: (host: string) => Promise<boolean> } = {}) {
+function makeHarness(o: { userData?: string; allowLocal?: string; resolvesPrivate?: (host: string) => Promise<boolean>; eraseSecurely?: (p: string, isDir: boolean) => Promise<boolean>; eraseLeftoversAtStart?: boolean; saveDownload?: (src: string, name: string) => Promise<{ path?: string; error?: string }> } = {}) {
   const userData = o.userData ?? tempDir();
   const handlers = new Map<string, Any>();
   const events: Any[] = [];
@@ -202,7 +202,9 @@ function makeHarness(o: { userData?: string; allowLocal?: string; resolvesPrivat
   }
   const views = {
     get: (tabId: string) => recs.get(tabId) || null,
-    create: (tabId: string, kind: string) => makeRec(tabId, kind),
+    // The options a tab was made with (a private session's partition).
+    create: (tabId: string, kind: string, opts?: Any) => { const r = makeRec(tabId, kind); r.createOpts = opts || null; return r; },
+    clearPrivate: (partition: string) => { (h.clearedPrivate ||= []).push(partition); },
     // The bridge's order: the view is destroyed, leaves the map, then the broker hears.
     destroy: (tabId: string) => { const r = recs.get(tabId); if (!r) return; r.wc.destroyed = true; recs.delete(tabId); h.broker.onViewGone(tabId); },
     byWebContentsId: (wcId: number) => [...recs.values()].find((r) => r.wc.id === wcId) || null,
@@ -211,6 +213,9 @@ function makeHarness(o: { userData?: string; allowLocal?: string; resolvesPrivat
   h.broker = B.createAutomationBroker({
     ipcMain, getMainWindow: () => mw, views, userData,
     allowLocal: o.allowLocal ?? '',
+    eraseSecurely: o.eraseSecurely,
+    eraseLeftoversAtStart: o.eraseLeftoversAtStart,
+    saveDownload: o.saveDownload,
     // No real DNS in tests: every name resolves public unless a test says otherwise.
     resolvesPrivate: o.resolvesPrivate ?? (async () => false),
   });
@@ -1036,6 +1041,248 @@ describe('popups', () => {
 
 // ─── Downloads ──────────────────────────────────────────────────────────────
 
+describe('giving the user a download', () => {
+  it('save_download copies a finished download for the user, by name, and says where', async () => {
+    const saved: Any[] = [];
+    const h = await opened({ saveDownload: async (src: string, name: string) => { saved.push({ src, name }); return { path: `C:/Users/u/Downloads/${name}` }; } });
+    expect((await h.run({ op: 'act', action: 'save_download' })).error.code).toBe('NO_DOWNLOAD');
+    const d = h.broker.downloadPathFor(h.recOf('s1').wc, 'confetti.gif');
+    fs.mkdirSync(path.dirname(d.path), { recursive: true });
+    fs.writeFileSync(d.path, 'GIF89a');
+    d.entry.state = 'completed';
+    expect((await h.run({ op: 'act', action: 'save_download', file: 'nope.gif' })).error.code).toBe('UNKNOWN_DOWNLOAD');
+    const r = await h.run({ op: 'act', action: 'save_download', file: 'CONFETTI.gif' });
+    expect(r.status).toBe('ok');
+    expect(saved).toEqual([{ src: d.path, name: 'confetti.gif' }]);
+    expect(r.evidence[0]).toMatchObject({ kind: 'saved', detail: 'C:/Users/u/Downloads/confetti.gif' });
+  });
+});
+
+describe('erasing what the assistant kept', () => {
+  const capturesUnder = (dir: string): string[] => {
+    const out: string[] = [];
+    const walk = (d: string) => { let names: string[] = []; try { names = fs.readdirSync(d); } catch { return; } for (const n of names) { const p = path.join(d, n); if (fs.statSync(p).isDirectory()) walk(p); else if (/^capture-/.test(n)) out.push(p); } };
+    walk(dir);
+    return out;
+  };
+
+  it('overwrites a kept capture before it is deleted, never binned', async () => {
+    const userData = tempDir();
+    const root = path.join(userData, 'browser', 'artifacts');
+    const h = await opened({ userData });
+    await h.run({ op: 'capture' });
+    const [file] = capturesUnder(root);
+    expect(file).toBeTruthy();
+    // A second name for the same file data: the overwrite shows through it after the delete.
+    const link = path.join(tempDir(), 'kept.jpg');
+    fs.linkSync(file, link);
+    const before = fs.readFileSync(link);
+    expect((await h.call('clearArtifacts', {})).ok).toBe(true);
+    const after = fs.readFileSync(link);
+    expect(after.length).toBe(before.length);
+    expect(after.equals(before)).toBe(false);
+    expect(fs.existsSync(path.join(root, 'ws1'))).toBe(false);
+    expect(capturesUnder(root)).toHaveLength(0);
+  });
+
+  it('hands the folder to Eraser when it is set up, out of reach first', async () => {
+    const userData = tempDir();
+    const root = path.join(userData, 'browser', 'artifacts');
+    const erase = vi.fn(async () => true);
+    const h = await opened({ userData, eraseSecurely: erase });
+    const cap = await h.run({ op: 'capture' });
+    const id = cap.artifacts[0].id;
+    expect((await h.call('clearArtifacts', {})).ok).toBe(true);
+    expect(erase).toHaveBeenCalledWith(expect.stringMatching(/ws1\.erase-/), true);
+    expect(fs.existsSync(path.join(root, 'ws1'))).toBe(false);
+    expect((await h.call('readArtifact', { id })).error).toBeTruthy();
+  });
+
+  it('keeps a private session\'s captures in memory only, gone when its last tab closes', async () => {
+    const userData = tempDir();
+    const root = path.join(userData, 'browser', 'artifacts');
+    const h = await opened({ userData });
+    await h.run({ op: 'open', url: 'https://private.example/', private: true });
+    const priv = h.recOf('s1');
+    const cap = await h.run({ op: 'capture' });
+    const id = cap.artifacts[0].id;
+    expect(capturesUnder(root)).toHaveLength(0);
+    expect((await h.call('readArtifact', { id })).data).toBeTruthy();
+    await h.run({ op: 'tabs', action: 'close', tab: priv.tabId });
+    expect((await h.call('readArtifact', { id })).error).toBeTruthy();
+  });
+
+  it('erases a tab\'s captures when that tab closes, and tells the chat', async () => {
+    const userData = tempDir();
+    const root = path.join(userData, 'browser', 'artifacts');
+    const h = await opened({ userData });
+    const first = h.recOf('s1');
+    const idA = (await h.run({ op: 'capture' })).artifacts[0].id;
+    const [file] = capturesUnder(root);
+    const link = path.join(tempDir(), 'kept.jpg');
+    fs.linkSync(file, link);
+    await h.run({ op: 'open', url: 'https://shop.example/other', newTab: true });
+    expect(h.recOf('s1')).not.toBe(first);
+    const idB = (await h.run({ op: 'capture' })).artifacts[0].id;
+    expect(capturesUnder(root)).toHaveLength(2);
+    await h.run({ op: 'tabs', action: 'close', tab: first.tabId });
+    // Overwritten at once, then gone; the other tab's capture stays.
+    expect(fs.readFileSync(link).equals(Buffer.from('fake-jpeg'))).toBe(false);
+    for (let i = 0; i < 50 && capturesUnder(root).length > 1; i++) await new Promise((r) => setTimeout(r, 20));
+    expect(capturesUnder(root)).toHaveLength(1);
+    expect(await h.call('readArtifact', { id: idA })).toEqual({ error: 'ARTIFACT_EXPIRED' });
+    expect((await h.call('readArtifact', { id: idB })).data).toBeTruthy();
+    expect(h.events.filter((e: Any) => e.type === 'artifacts-cleared')).toEqual([{ type: 'artifacts-cleared', chatSessionIds: ['s1'], artifactIds: [idA], partial: true }]);
+  });
+
+  it('hands a closed tab\'s capture to Eraser as a file, out of reach first', async () => {
+    const erase = vi.fn(async () => true);
+    const h = await opened({ eraseSecurely: erase });
+    const rec = h.recOf('s1');
+    const idA = (await h.run({ op: 'capture' })).artifacts[0].id;
+    await h.run({ op: 'tabs', action: 'close', tab: rec.tabId });
+    expect(erase).toHaveBeenCalledWith(expect.stringMatching(/capture-c1\.jpg\.erase-/), false);
+    expect(await h.call('readArtifact', { id: idA })).toEqual({ error: 'ARTIFACT_EXPIRED' });
+  });
+
+  it('a private capture goes with its own tab while the session goes on', async () => {
+    const h = await opened();
+    await h.run({ op: 'open', url: 'https://private.example/', private: true });
+    const a = h.recOf('s1');
+    const id = (await h.run({ op: 'capture' })).artifacts[0].id;
+    await h.run({ op: 'open', url: 'https://private.example/b', private: true, newTab: true });
+    expect(h.recOf('s1')).not.toBe(a);
+    await h.run({ op: 'tabs', action: 'close', tab: a.tabId });
+    expect(h.clearedPrivate || []).toEqual([]);
+    expect((await h.call('readArtifact', { id })).error).toBeTruthy();
+    expect(h.events.some((e: Any) => e.type === 'artifacts-cleared')).toBe(true);
+  });
+
+  it('a restart erases every capture left on disk and finishes erases left half done; downloads stay', async () => {
+    const userData = tempDir();
+    const ws = path.join(userData, 'browser', 'artifacts', 'ws1');
+    fs.mkdirSync(path.join(ws, 'r1', 'downloads'), { recursive: true });
+    fs.writeFileSync(path.join(ws, 'r1', 'capture-c1.jpg'), 'left');
+    fs.writeFileSync(path.join(ws, 'r1', 'capture-c2.jpg.erase-x1'), 'half');
+    fs.writeFileSync(path.join(ws, 'r1', 'downloads', 'report.pdf'), 'kept');
+    fs.mkdirSync(path.join(ws, 'r0.erase-x2'), { recursive: true });
+    fs.writeFileSync(path.join(ws, 'r0.erase-x2', 'capture-c1.jpg'), 'old');
+    const r = makeHarness({ userData });
+    await r.call('setContext', WS);
+    expect(await r.call('readArtifact', { id: 'browser:ws1:r1:c1' })).toEqual({ error: 'ARTIFACT_EXPIRED' });
+    for (let i = 0; i < 50 && capturesUnder(ws).length; i++) await new Promise((res) => setTimeout(res, 20));
+    expect(capturesUnder(ws)).toHaveLength(0);
+    expect(fs.existsSync(path.join(ws, 'r0.erase-x2'))).toBe(false);
+    expect(fs.readFileSync(path.join(ws, 'r1', 'downloads', 'report.pdf'), 'utf8')).toBe('kept');
+  });
+
+  it('a closed tab\'s capture stays expired even when a lock kept its file on disk', async () => {
+    const userData = tempDir();
+    // Eraser takes the file and has not run yet.
+    const h = await opened({ userData, eraseSecurely: vi.fn(async () => true) });
+    const rec = h.recOf('s1');
+    const id = (await h.run({ op: 'capture' })).artifacts[0].id;
+    const [, ws, run, c] = /^browser:([^:]+):([^:]+):(c\d+)$/.exec(id)!;
+    await h.run({ op: 'tabs', action: 'close', tab: rec.tabId });
+    // As if the rename had failed: the file is still under its own name.
+    fs.writeFileSync(path.join(userData, 'browser', 'artifacts', ws, run, `capture-${c}.jpg`), 'still here');
+    expect(await h.call('readArtifact', { id })).toEqual({ error: 'ARTIFACT_EXPIRED' });
+  });
+
+  it('erases a private session\'s downloads when it ends, and keeps a regular tab\'s', async () => {
+    const h = await opened();
+    const regular = h.broker.downloadPathFor(h.recOf('s1').wc, 'plain.pdf');
+    fs.writeFileSync(regular.path, 'plain');
+    regular.entry.state = 'completed';
+    await h.run({ op: 'open', url: 'https://private.example/', private: true });
+    const priv = h.recOf('s1');
+    const d = h.broker.downloadPathFor(priv.wc, 'statement.pdf');
+    expect(path.basename(path.dirname(d.path))).toBe('private-downloads');
+    expect(d.entry.private).toBe(true);
+    fs.writeFileSync(d.path, 'secret');
+    d.entry.state = 'completed';
+    await h.run({ op: 'tabs', action: 'close', tab: priv.tabId });
+    const left = () => fs.readdirSync(path.dirname(d.path)).filter((n) => n.startsWith('statement'));
+    for (let i = 0; i < 50 && left().length; i++) await new Promise((r) => setTimeout(r, 20));
+    expect(left()).toEqual([]);
+    expect(fs.readFileSync(regular.path, 'utf8')).toBe('plain');
+    expect(h.state().chats.get('s1').downloads.map((x: Any) => x.filename)).toEqual(['plain.pdf']);
+  });
+
+  it('a restart erases a private session\'s downloads left behind', async () => {
+    const userData = tempDir();
+    const run = path.join(userData, 'browser', 'artifacts', 'ws1', 'r1');
+    fs.mkdirSync(path.join(run, 'private-downloads'), { recursive: true });
+    fs.writeFileSync(path.join(run, 'private-downloads', 'statement.pdf'), 'secret');
+    fs.mkdirSync(path.join(run, 'downloads'), { recursive: true });
+    fs.writeFileSync(path.join(run, 'downloads', 'plain.pdf'), 'plain');
+    makeHarness({ userData });
+    const left = () => fs.readdirSync(run).filter((n) => n.startsWith('private-downloads'));
+    for (let i = 0; i < 50 && left().length; i++) await new Promise((r) => setTimeout(r, 20));
+    expect(left()).toEqual([]);
+    expect(fs.readFileSync(path.join(run, 'downloads', 'plain.pdf'), 'utf8')).toBe('plain');
+  });
+
+  it('leaves captures alone at start when the folder is shared with a running app', () => {
+    const userData = tempDir();
+    const run = path.join(userData, 'browser', 'artifacts', 'ws1', 'r1');
+    fs.mkdirSync(run, { recursive: true });
+    fs.writeFileSync(path.join(run, 'capture-c1.jpg'), 'an open tab');
+    makeHarness({ userData, eraseLeftoversAtStart: false });
+    expect(fs.readFileSync(path.join(run, 'capture-c1.jpg'), 'utf8')).toBe('an open tab');
+  });
+
+  it('save_download says plainly when a download was erased since, with no retry', async () => {
+    const saveDownload = vi.fn(async () => ({ path: 'x' }));
+    const h = await opened({ saveDownload });
+    const d = h.broker.downloadPathFor(h.recOf('s1').wc, 'gone.gif');
+    d.entry.state = 'completed'; // never on disk: as if erased since
+    const r = await h.run({ op: 'act', action: 'save_download', file: 'gone.gif' });
+    expect(r.error).toMatchObject({ code: 'UNKNOWN_DOWNLOAD', retryable: false });
+    expect(saveDownload).not.toHaveBeenCalled();
+  });
+});
+
+describe('private sessions', () => {
+  it('open in the chat\'s own partition, keep popups in it, and are wiped with their last tab', async () => {
+    const h = await opened();
+    const usual = h.recOf('s1');
+    expect(usual.createOpts).toBeNull();
+    const r = await h.run({ op: 'open', url: 'https://private.example/', private: true });
+    expect(r.status).toBe('ok');
+    expect(r.private).toBe(true);
+    const priv = h.recOf('s1');
+    expect(priv).not.toBe(usual);
+    expect(priv.private).toBe(true);
+    const partition = priv.createOpts.privatePartition;
+    expect(partition).toMatch(/^parallx-browser-agent-private-/);
+    // Left out, the next open stays in the private session.
+    await h.run({ op: 'open', url: 'https://private.example/next' });
+    expect(h.recOf('s1')).toBe(priv);
+    // A popup from the private page is private, in the same partition.
+    h.broker.onPopup(priv, 'https://popup.example/');
+    for (let i = 0; i < 100 && h.recOf('s1') === priv; i++) await new Promise((res) => setTimeout(res, 20));
+    const popup = h.recOf('s1');
+    expect(popup).not.toBe(priv);
+    expect(popup.private).toBe(true);
+    expect(popup.createOpts.privatePartition).toBe(partition);
+    // The listing says which tabs are private.
+    const listed = (await h.run({ op: 'tabs', action: 'list' })).tabs;
+    expect(listed.filter((t: Any) => t.private).map((t: Any) => t.tab).sort()).toEqual([priv.tabId, popup.tabId].sort());
+    // One private tab closing keeps the session; the last one wipes it.
+    await h.run({ op: 'tabs', action: 'close', tab: popup.tabId });
+    expect(h.clearedPrivate || []).toEqual([]);
+    await h.run({ op: 'tabs', action: 'close', tab: priv.tabId });
+    expect(h.clearedPrivate).toEqual([partition]);
+    // The next private session is a new partition; private: false returns to the usual profile.
+    await h.run({ op: 'open', url: 'https://private.example/', private: true });
+    expect(h.recOf('s1').createOpts.privatePartition).not.toBe(partition);
+    await h.run({ op: 'open', url: 'https://shop.example/', private: false });
+    expect(h.recOf('s1').private).toBeFalsy();
+    expect(h.recOf('s1').createOpts).toBeNull();
+  });
+});
+
 describe('downloads', () => {
   it('stage every assistant-profile download under the artifacts folder, never for other views', async () => {
     const h = await opened();
@@ -1148,7 +1395,7 @@ describe('downloads', () => {
 // ─── Artifacts ──────────────────────────────────────────────────────────────
 
 describe('artifacts', () => {
-  it('a capture resolves after a restart, for its own workspace only, until it is cleared', async () => {
+  it('a capture resolves for its own workspace only, until it is cleared; a restart erases what is left', async () => {
     const userData = tempDir();
     const root = path.join(userData, 'browser', 'artifacts');
     const h = await opened({ userData });
@@ -1166,25 +1413,30 @@ describe('artifacts', () => {
     const index = JSON.parse(fs.readFileSync(path.join(root, 'ws1', 'runs.json'), 'utf8'));
     expect(index.runs[run1].chatSessionId).toBe('s1');
 
-    // A restart: a new broker over the same folder.
+    // Clearing: nothing for an empty list, then one chat's runs.
+    expect(await h.call('clearArtifacts', { chatSessionIds: [] })).toEqual({ ok: true, removed: 0 });
+    expect(await h.call('clearArtifacts', { chatSessionIds: ['s1'] })).toEqual({ ok: true, removed: 1 });
+    expect(await h.call('readArtifact', { id: id1 })).toEqual({ error: 'ARTIFACT_EXPIRED' });
+    expect((await h.call('readArtifact', { id: id2 })).data).toBeTruthy();
+    const after = JSON.parse(fs.readFileSync(path.join(root, 'ws1', 'runs.json'), 'utf8'));
+    expect(Object.values(after.runs).map((v: Any) => v.chatSessionId)).toEqual(['s2']);
+
+    // A restart: a new broker over the same folder. No tab a capture came from
+    // is open any more, so every capture left is erased; the run folders stay.
     const r = makeHarness({ userData });
-    expect(await r.call('readArtifact', { id: id1 })).toEqual({ error: 'UNKNOWN_ARTIFACT' });
+    expect(await r.call('readArtifact', { id: id2 })).toEqual({ error: 'UNKNOWN_ARTIFACT' });
     expect((await r.call('clearArtifacts', {})).ok).toBe(false);
-    expect(fs.existsSync(path.join(root, 'ws1'))).toBe(true);
     await r.call('setContext', { ...WS, workspaceSessionId: 'wss-restarted' });
-    expect(await r.call('readArtifact', { id: id1 })).toMatchObject({ mimeType: 'image/jpeg', data: Buffer.from('fake-jpeg').toString('base64') });
-    for (const forged of ['browser:other:run:c1', 'browser:ws1:..:c1', `browser:ws1:${run1}/..:c1`, `browser:ws1:${run1}:../x`, 'c1', '']) {
+    expect(await r.call('readArtifact', { id: id2 })).toEqual({ error: 'ARTIFACT_EXPIRED' });
+    expect(fs.existsSync(path.join(root, 'ws1', 'runs.json'))).toBe(true);
+    // An id from saved chat history resolves on disk while its file is there, for its own workspace only.
+    fs.mkdirSync(path.join(root, 'ws1', 'r9'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'ws1', 'r9', 'capture-c1.jpg'), 'later');
+    expect((await r.call('readArtifact', { id: 'browser:ws1:r9:c1' })).data).toBe(Buffer.from('later').toString('base64'));
+    for (const forged of ['browser:other:run:c1', 'browser:ws1:..:c1', 'browser:ws1:r9/..:c1', 'browser:ws1:r9:../x', 'c1', '']) {
       expect(await r.call('readArtifact', { id: forged })).toEqual({ error: 'UNKNOWN_ARTIFACT' });
     }
     expect(await r.call('readArtifact', { id: 'browser:ws1:nope:c9' })).toEqual({ error: 'ARTIFACT_EXPIRED' });
-
-    // Clearing: nothing for an empty list, one chat's runs, then the whole workspace.
-    expect(await r.call('clearArtifacts', { chatSessionIds: [] })).toEqual({ ok: true, removed: 0 });
-    expect(await r.call('clearArtifacts', { chatSessionIds: ['s1'] })).toEqual({ ok: true, removed: 1 });
-    expect(await r.call('readArtifact', { id: id1 })).toEqual({ error: 'ARTIFACT_EXPIRED' });
-    expect((await r.call('readArtifact', { id: id2 })).data).toBeTruthy();
-    const after = JSON.parse(fs.readFileSync(path.join(root, 'ws1', 'runs.json'), 'utf8'));
-    expect(Object.values(after.runs).map((v: Any) => v.chatSessionId)).toEqual(['s2']);
     // Another workspace's files are not this one's to read or clear.
     fs.mkdirSync(path.join(root, 'ws2', 'r5'), { recursive: true });
     fs.writeFileSync(path.join(root, 'ws2', 'r5', 'capture-c1.jpg'), 'other');
@@ -1192,10 +1444,9 @@ describe('artifacts', () => {
     expect((await r.call('clearArtifacts', {})).ok).toBe(true);
     expect(fs.existsSync(path.join(root, 'ws1'))).toBe(false);
     expect(fs.existsSync(path.join(root, 'ws2', 'r5', 'capture-c1.jpg'))).toBe(true);
-    expect(await r.call('readArtifact', { id: id2 })).toEqual({ error: 'ARTIFACT_EXPIRED' });
     await r.call('setContext', { workspaceId: 'ws2', workspaceSessionId: 'wss-2' });
     expect((await r.call('readArtifact', { id: 'browser:ws2:r5:c1' })).data).toBe(Buffer.from('other').toString('base64'));
-    expect(await r.call('readArtifact', { id: id2 })).toEqual({ error: 'UNKNOWN_ARTIFACT' });
+    expect(await r.call('readArtifact', { id: 'browser:ws1:r9:c1' })).toEqual({ error: 'UNKNOWN_ARTIFACT' });
   });
 
   it('clearing a chat ends its run and stops its downloads first', async () => {
@@ -1351,10 +1602,20 @@ describe('review regressions', () => {
     const h = await opened();
     const rec = h.recOf('s1');
     const original = rec.wc.capturePage;
-    rec.wc.capturePage = async () => { const img = await original(); rec.wc.getZoomFactor = () => 1.5; return img; };
+    // A view that keeps changing while it is captured: every attempt is refused.
+    let z = 1;
+    rec.wc.getZoomFactor = () => z;
+    rec.wc.capturePage = async () => { const img = await original(); z += 0.25; return img; };
     expect((await h.run({ op: 'capture' })).error.code).toBe('STALE_TARGET');
     expect(h.state().lease.captures.size).toBe(0);
     expect(fs.existsSync(path.join(h.userData, 'browser', 'artifacts', 'ws1'))).toBe(false);
+    // A view that changed once (a zoom settling): the retry captures the page as it is now.
+    z = 1;
+    let changed = false;
+    rec.wc.capturePage = async () => { const img = await original(); if (!changed) { changed = true; z = 1.5; } return img; };
+    const again = await h.run({ op: 'capture' });
+    expect(again.status).toBe('ok');
+    expect(again.capture.zoom).toBe(1.5);
   });
 
   it('sends no input if cancelled during visual revalidation', async () => {

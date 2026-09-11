@@ -475,8 +475,10 @@ function createPagePane(container, input, opts = {}) {
   if (opts.agent) {
     agentBanner = el('div', 'br-bar br-agent-bar');
     agentBanner.innerHTML = icon('shield', 12);
-    agentBanner.appendChild(el('span', 'br-agent-state', { text: 'Assistant Browser' }));
-    agentBanner.appendChild(el('span', 'br-agent-note', { text: AGENT_BANNER_IDLE }));
+    const agentPriv = _agentPrivate.has(instanceId);
+    if (agentPriv) agentBanner.dataset.private = '1';
+    agentBanner.appendChild(el('span', 'br-agent-state', { text: agentPriv ? 'Private Assistant Browser' : 'Assistant Browser' }));
+    agentBanner.appendChild(el('span', 'br-agent-note', { text: agentPriv ? AGENT_BANNER_PRIVATE : AGENT_BANNER_IDLE }));
     agentBanner.appendChild(el('span', 'br-spacer'));
     agentBanner.appendChild(el('span', 'br-agent-actions'));
     root.appendChild(agentBanner);
@@ -510,7 +512,7 @@ function createPagePane(container, input, opts = {}) {
   const privateChip = el('span', 'br-private-chip', { title: 'Private tab: nothing is kept after the last private tab closes, and nothing goes into history.' });
   privateChip.innerHTML = icon('eye-closed', 11);
   privateChip.appendChild(document.createTextNode('Private'));
-  privateChip.hidden = !isPrivate;
+  privateChip.hidden = !(isPrivate || (opts.agent && _agentPrivate.has(instanceId)));
   addressWrap.appendChild(privateChip);
   const lock = el('span', 'br-lock');
   const address = el('input', 'br-address', { type: 'text', spellcheck: 'false', autocomplete: 'off', placeholder: 'Search or enter an address', 'aria-label': 'Address' });
@@ -833,7 +835,7 @@ function createPagePane(container, input, opts = {}) {
   }
   function setTitle(t) {
     if (!editorId) return;
-    const label = isPrivate ? `Private: ${t || 'Web Page'}` : (pane.isAgent ? `Assistant: ${t || 'Web Page'}` : (t || 'Web Page'));
+    const label = isPrivate ? `Private: ${t || 'Web Page'}` : (pane.isAgent ? `${_agentPrivate.has(instanceId) ? 'Private Assistant' : 'Assistant'}: ${t || 'Web Page'}` : (t || 'Web Page'));
     try { _api.editors.setEditorTitle(editorId, label); } catch { /* ignore */ }
   }
   function updateChrome() {
@@ -1124,11 +1126,13 @@ function createPagePane(container, input, opts = {}) {
   }
 
   // ── Menus ──
+  // Links from a private assistant session stay private (a private tab of the user's).
+  const keepsPrivate = () => isPrivate || (!!pane.isAgent && _agentPrivate.has(instanceId));
   function showPageMenu(anchor) {
     const web = isWebUrl(pane.url);
     void overlayOpen();
     showMenu(anchor, [
-      { label: 'New Tab', handler: () => openTab(undefined, { private: isPrivate }) },
+      { label: 'New Tab', handler: () => openTab(undefined, { private: keepsPrivate() }) },
       ...(isPrivate ? [{ label: 'New Regular Tab', handler: () => openTab() }] : [{ label: 'New Private Tab', handler: () => openTab(undefined, { private: true }) }]),
       { separator: true },
       { label: 'Set Current Page As Home', handler: () => setHomepage(pane.url), disabled: !(web || INTERNAL_PAGES.has(pane.url)) },
@@ -1155,18 +1159,18 @@ function createPagePane(container, input, opts = {}) {
   function showPageContextMenu(p) {
     const items = [];
     if (p.linkURL) {
-      items.push({ label: 'Open Link In New Tab', handler: () => openTab(p.linkURL, { private: isPrivate }) });
+      items.push({ label: 'Open Link In New Tab', handler: () => openTab(p.linkURL, { private: keepsPrivate() }) });
       items.push({ label: 'Copy Link Address', handler: () => navigator.clipboard.writeText(p.linkURL).catch(() => {}) });
       items.push({ separator: true });
     }
     if (p.srcURL && p.mediaType === 'image') {
-      items.push({ label: 'Open Image In New Tab', handler: () => openTab(p.srcURL, { private: isPrivate }) });
+      items.push({ label: 'Open Image In New Tab', handler: () => openTab(p.srcURL, { private: keepsPrivate() }) });
       items.push({ label: 'Copy Image Address', handler: () => navigator.clipboard.writeText(p.srcURL).catch(() => {}) });
       items.push({ separator: true });
     }
     if (p.selectionText) {
       items.push({ label: 'Copy', handler: () => V('edit', pane.tabId, 'copy').catch(() => {}) });
-      items.push({ label: `Search For "${p.selectionText.slice(0, 40)}${p.selectionText.length > 40 ? '…' : ''}"`, handler: () => openTab(parseOmnibox(p.selectionText, cfg('searchEngine', 'duckduckgo')).url, { private: isPrivate }) });
+      items.push({ label: `Search For "${p.selectionText.slice(0, 40)}${p.selectionText.length > 40 ? '…' : ''}"`, handler: () => openTab(parseOmnibox(p.selectionText, cfg('searchEngine', 'duckduckgo')).url, { private: keepsPrivate() }) });
       items.push({ separator: true });
     }
     if (p.isEditable) {
@@ -2056,12 +2060,14 @@ export function deactivate() {
 // start a run or act on a page. While it is registered the tools exist;
 // disabling the Browser removes them and ends any run.
 
+const AGENT_BANNER_PRIVATE = 'A private session: it shares nothing with your logins or the assistant\'s usual profile, and nothing it keeps survives its last private tab closing. Clicks and typing follow your chat\'s approval settings.';
 const AGENT_BANNER_IDLE = 'The assistant\'s own profile: none of your logins or cookies. Clicks and typing follow your chat\'s approval settings.';
 
 let _automation = null;             // the host registration
 const _agentRunByTab = new Map();   // tabId -> the latest run state
 const _agentRunByChat = new Map();  // chatSessionId -> the latest run state
 const _agentShown = new Set();      // tabIds whose editor this host opened
+const _agentPrivate = new Set();    // assistant tabs in a private session (browserOpen private: true)
 
 function agentEditorId(tabId) {
   try {
@@ -2069,9 +2075,11 @@ function agentEditorId(tabId) {
     return d ? d.id : null;
   } catch { return null; }
 }
-async function openAgentTab(tabId) {
+async function openAgentTab(tabId, priv) {
   _agentShown.add(tabId);
-  await _api.editors.openEditor({ typeId: EDITOR_TYPE, title: 'Assistant Browser', icon: 'globe', instanceId: tabId });
+  if (priv) _agentPrivate.add(tabId);
+  const isPriv = _agentPrivate.has(tabId);
+  await _api.editors.openEditor({ typeId: EDITOR_TYPE, title: isPriv ? 'Private Assistant Browser' : 'Assistant Browser', icon: isPriv ? 'eye-closed' : 'globe', instanceId: tabId });
 }
 function agentControl(action) {
   if (_automation) _automation.control(action).catch(() => {});
@@ -2114,8 +2122,9 @@ function renderAgentBanner(banner, s) {
     button(byUser ? 'Hand Back' : 'Resume', byUser ? 'Let the assistant continue from the page as it is now.' : 'Let the assistant continue.', 'resume', true);
     button('Stop', 'End the assistant\'s run in the browser.', 'stop');
   } else {
-    stateEl.textContent = 'Assistant Browser';
-    note.textContent = AGENT_BANNER_IDLE;
+    const priv = banner.dataset.private === '1';
+    stateEl.textContent = priv ? 'Private Assistant Browser' : 'Assistant Browser';
+    note.textContent = priv ? AGENT_BANNER_PRIVATE : AGENT_BANNER_IDLE;
   }
 }
 
@@ -2131,7 +2140,7 @@ function registerAutomationHost(api, context) {
     openTab: (tab) => {
       const s = tab.chatSessionId ? _agentRunByChat.get(tab.chatSessionId) : null;
       if (s && s.state !== 'idle' && !_agentRunByTab.has(tab.tabId)) _agentRunByTab.set(tab.tabId, s);
-      return openAgentTab(tab.tabId);
+      return openAgentTab(tab.tabId, tab.private === true);
     },
     // Show the tab where it already is: never a second copy in the active
     // group, and never again once the user closed it (the broker pauses the

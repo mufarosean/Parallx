@@ -226,6 +226,7 @@ export class LanguageModelsService extends Disposable implements ILanguageModels
     if (modelId && this._modelToProvider.has(modelId) && this._activeModelId !== modelId) {
       this._activeModelId = modelId;
       this._persistActiveModel();
+      this._probeActiveModel(modelId);
       this._onDidChangeModels.fire();
     }
   }
@@ -306,6 +307,22 @@ export class LanguageModelsService extends Disposable implements ILanguageModels
   getActiveModelCapabilities(): readonly ModelCapability[] {
     if (!this._activeModelId) { return ['completion']; }
     return this._modelCapabilities.get(this._activeModelId) ?? ['completion'];
+  }
+
+  /**
+   * The active model's capabilities and context length from its provider, not
+   * the defaults: a turn about to decide whether the model can see images
+   * waits for this (the probe is fire-and-forget, and a message sent right
+   * after launch can beat it). Asks only while nothing is known; gives up
+   * after a few seconds and keeps the defaults if the provider is away.
+   */
+  async ensureActiveModelInfo(): Promise<void> {
+    const id = this._activeModelId;
+    if (!id || this._modelCapabilities.has(id)) { return; }
+    const ask = this.getModelInfo(id).then(() => undefined, () => undefined);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([ask, new Promise<void>((r) => { timer = setTimeout(r, 3000); })]);
+    clearTimeout(timer);
   }
 
   /**
@@ -447,7 +464,10 @@ export class LanguageModelsService extends Disposable implements ILanguageModels
     // ── Active model fallback chain ──
     // 1. Keep current active model if it's still available
     if (this._activeModelId && this._modelToProvider.has(this._activeModelId)) {
-      // Model still valid — nothing to do
+      // Still valid. A model restored from storage was never probed (only
+      // setActiveModel probes), so its capabilities and context length would
+      // stay at the defaults ('completion', 4096): ask it now.
+      this._probeActiveModel(this._activeModelId);
       this._onDidChangeModels.fire();
       return;
     }
@@ -456,6 +476,7 @@ export class LanguageModelsService extends Disposable implements ILanguageModels
     if (this._defaultModelId && this._modelToProvider.has(this._defaultModelId)) {
       this._activeModelId = this._defaultModelId;
       this._persistActiveModel();
+      this._probeActiveModel(this._activeModelId);
       this._onDidChangeModels.fire();
       return;
     }
@@ -465,6 +486,7 @@ export class LanguageModelsService extends Disposable implements ILanguageModels
       const chatModel = allModels.find(m => !this._isEmbeddingModel(m));
       this._activeModelId = chatModel?.id ?? allModels[0].id;
       this._persistActiveModel();
+      this._probeActiveModel(this._activeModelId);
     } else {
       // No models available — clear
       this._activeModelId = undefined;

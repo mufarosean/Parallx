@@ -1225,6 +1225,8 @@ export interface ILanguageModelsService extends IDisposable {
   getActiveModel(): string | undefined;
   /** Set the user's active model. */
   setActiveModel(modelId: string): void;
+  /** Resolve the active model's capabilities from its provider when not known yet (a model restored at startup). */
+  ensureActiveModelInfo?(): Promise<void>;
   /** Late-bind persistent storage (called after Phase 1 creates IStorage). */
   setStorage(storage: IStorage): Promise<void>;
   /** Set the AI Settings default model (used as fallback in the selection chain). */

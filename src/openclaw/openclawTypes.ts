@@ -418,6 +418,8 @@ export interface IDefaultParticipantServices {
   runtimeHookRegistry?: import('../services/serviceTypes.js').IRuntimeHookRegistry;
   /** D5: Get active model capabilities (cached from Ollama probe). */
   getActiveModelCapabilities?(): readonly import('../services/chatTypes.js').ModelCapability[];
+  /** Resolve the active model's capabilities first when they are not known yet (see ILanguageModelsService). */
+  ensureActiveModelInfo?(): Promise<void>;
 }
 
 export interface IWorkspaceParticipantServices {

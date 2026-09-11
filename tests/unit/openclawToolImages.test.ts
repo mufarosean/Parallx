@@ -18,6 +18,7 @@ import type {
 } from '../../src/services/chatTypes';
 import type { IOpenclawTurnContext } from '../../src/openclaw/openclawAttempt';
 import { executeOpenclawAttempt, withoutToolImages } from '../../src/openclaw/openclawAttempt';
+import { markToolImagesGone } from '../../src/services/toolImageLifetime';
 import { runOpenclawReadOnlyTurn } from '../../src/openclaw/openclawReadOnlyTurnRunner';
 
 vi.mock('../../src/openclaw/openclawPromptArtifacts', () => ({
@@ -50,11 +51,12 @@ const captured = (): IToolResult => ({
   images: [IMAGE],
 });
 
-async function run(supportsVision: boolean, rounds = 1, tokenBudget = 16384) {
+async function run(supportsVision: boolean, rounds = 1, tokenBudget = 16384, invoke?: (n: number) => IToolResult) {
   let calls = 0;
   // Snapshot each request: the loop rebuilds its message list between rounds.
   const sendChatRequest = vi.fn((_messages: readonly IChatMessage[]) => { calls++; return stream([calls <= rounds ? toolCall(calls) : text('It shows a login form.')]); });
-  const invokeToolWithRuntimeControl = vi.fn(async (..._args: unknown[]): Promise<IToolResult> => captured());
+  let invoked = 0;
+  const invokeToolWithRuntimeControl = vi.fn(async (..._args: unknown[]): Promise<IToolResult> => { invoked++; return invoke ? invoke(invoked) : captured(); });
   const afterTurn = vi.fn(async (_x: { sessionId: string; messages: IChatMessage[] }) => {});
   const compact = vi.fn(async () => ({ compacted: true, tokensBefore: 1000, tokensAfter: 500 }));
   const context = {
@@ -136,6 +138,30 @@ describe('tool images in the turn', () => {
     const { afterTurn } = await run(true, 1, 100);
     const saved = afterTurn.mock.calls[0][0].messages;
     expect(saved.some((m) => m.images?.length)).toBe(false);
+  });
+
+  it('leave the turn once their source erased them (the browser tab closed)', async () => {
+    const img = { ...IMAGE, id: 'browser:ws:run:c77' };
+    const { sendChatRequest } = await run(true, 2, 16384, (n) => {
+      if (n === 2) {
+        markToolImagesGone([img.id]);
+        return { content: '{"version":1,"status":"error","summary":"The tab was closed."}', isError: true };
+      }
+      return { content: '{"version":1,"status":"ok","summary":"Captured."}', images: [img] };
+    });
+    expect(sendChatRequest.mock.calls[1][0].some((m) => m.images?.some((i) => i.id === img.id))).toBe(true);
+    const third = sendChatRequest.mock.calls[2][0];
+    expect(third.some((m) => m.images?.length)).toBe(false);
+    expect(third.some((m) => m.role === 'user' && m.content.includes('image erased'))).toBe(true);
+  });
+
+  it('never enter the turn when erased before the model saw them', async () => {
+    const img = { ...IMAGE, id: 'browser:ws:run:c78' };
+    const { sendChatRequest } = await run(true, 1, 16384, () => {
+      markToolImagesGone([img.id]);
+      return { content: '{"version":1,"status":"ok","summary":"Captured."}', images: [img] };
+    });
+    expect(sendChatRequest.mock.calls[1][0].some((m) => m.images?.length)).toBe(false);
   });
 
   it('withoutToolImages leaves a result without images untouched', () => {

@@ -59,10 +59,32 @@ const LIMITS = {
   captureMaxBytes: 1_000_000,
   // Compare the pictured click region, including canvas pixels. Activity elsewhere
   // (a video, clock or advert) should not invalidate an otherwise unchanged target.
-  captureRegionCssRadius: 96,
+  // 40, not 96: a replaced button, a dialog or a canvas change at the click point
+  // shows within 40 CSS px of it; beyond that, a neighbour's own hover or focus
+  // after the assistant's previous click refused valid clicks.
+  captureRegionCssRadius: 40,
+  // The band along the right and bottom edges where overlay scrollbars draw
+  // (they fade in on any mouse move, the assistant's own included). It is the
+  // browser's, not the page's, so the pictured-region check leaves it out.
+  scrollbarBandDip: 18,
+  // After a capture, a few more looks at uneven intervals find what moves on
+  // its own (a GIF, a video, an animation); click_at leaves those blocks out.
+  // Uneven, and each look compared with the one before too, so a steady frame
+  // rate cannot land every look on the same frame.
+  motionSampleMs: [70, 90, 110, 140],
+  // When the pictured region looks changed at click time: more looks this far
+  // apart; what differs between them moves on its own too.
+  clickLooksMs: [90, 110],
+  // More of the view than this changing between a capture's looks is not an
+  // animation: the first frame was stale (a zoom or scroll still being drawn).
+  motionMaxShare: 0.3,
+  // Run folders (downloads, and which chat made them) are kept this long.
+  // Captures go sooner: with the tab they came from.
   artifactRetentionMs: 7 * 24 * 60 * 60_000,
-  // How often artifacts past their retention are swept while the app runs.
+  // How often run folders past their retention are swept while the app runs.
   artifactSweepMs: 6 * 60 * 60_000,
+  // A kept file an erase could not finish (Windows had it locked) is tried again this often.
+  eraseRetryMs: 30_000,
   // How long browserOpen waits on DNS to learn whether a name is a private address.
   dnsCheckMs: 3_000,
   // How long an input event the assistant sent is expected on the view's input-event.
@@ -75,6 +97,22 @@ const INTERACTIVE_ROLES = new Set([
   'button', 'link', 'textbox', 'searchbox', 'combobox', 'listbox', 'checkbox', 'radio', 'switch',
   'menuitem', 'menuitemcheckbox', 'menuitemradio', 'tab', 'option', 'slider', 'spinbutton', 'treeitem',
 ]);
+// Pictures the page names (alt text) are targets too, so the assistant can
+// download one by its ref (browserAct download) instead of clicking pixels.
+// A few per page: they must not crowd out the controls.
+const IMAGE_ROLES = new Set(['image', 'img']);
+const MAX_IMAGE_TARGETS = 20;
+// A target's own address to download: a picture's (the frame it shows), a link's, or the link around it.
+const DOWNLOAD_URL_FN = `function () {
+  const el = this;
+  const own = el.currentSrc || (typeof el.src === 'string' ? el.src : '') || '';
+  if (own) return String(own);
+  const link = el.closest ? el.closest('a[href]') : null;
+  if (link) return String(link.href);
+  return typeof el.href === 'string' ? el.href : '';
+}`;
+// Image pixels per side of a block in a capture's motion map.
+const MOTION_BLOCK = 8;
 const TEXT_ROLES = new Set(['textbox', 'searchbox', 'combobox', 'spinbutton']);
 const CHECK_ROLES = new Set(['checkbox', 'radio', 'switch', 'menuitemcheckbox', 'menuitemradio']);
 
@@ -373,13 +411,24 @@ function createAutomationBroker(opts) {
   const allowLocal = policy.parseHostList(opts.allowLocal !== undefined ? opts.allowLocal : process.env.PARALLX_BROWSER_AGENT_ALLOW_LOCAL);
   const privateRefused = (url) => isPrivateDestination(url, allowLocal, opts.resolvesPrivate);
   const artifactsRoot = path.join(userData, 'browser', 'artifacts');
+  // Hands a path to Eraser (main.cjs queueEraser); resolves false when Eraser is not set up.
+  const eraseSecurely = typeof opts.eraseSecurely === 'function' ? opts.eraseSecurely : null;
+  // Copies a finished download into the user's Downloads (the bridge's folder, listed like their own).
+  const saveDownload = typeof opts.saveDownload === 'function' ? opts.saveDownload : null;
+  let retireSeq = 0;
   const send = (payload) => { const w = getMainWindow(); if (w && !w.isDestroyed()) w.webContents.send('browser:automation:event', payload); };
 
   let ctx = null;          // { workspaceId, workspaceSessionId, sealed }
   let lease = null;        // the one active run
   const chats = new Map(); // chatSessionId -> { chatSessionId, tabs: string[], activeTab, seq, downloads }
   const artifacts = new Map(); // artifactId -> { path, mimeType, workspaceId, width, height, meta }
+  // Captures erased this session: expired, whatever a lock left on disk.
+  const erasedIds = new Set();
+  // Kept files an erase could not finish yet: tried again (eraseRetryMs, and each sweep).
+  const pendingErase = new Set();
+  let pendingEraseTimer = null;
   let leaseSeq = 0;
+  let privateSeq = 0; // each private session gets a partition of its own
   let ownershipEpoch = 0; // invalidates deferred work even across host removal/re-registration
   // Requests whose browsing the user stopped, or whose chat request was
   // cancelled: `${chatSessionId}|${turnId}` -> 'stopped' | 'cancelled'. A later
@@ -394,6 +443,9 @@ function createAutomationBroker(opts) {
   const closing = new Set(); // tabs the broker itself is closing: not the user's doing
   const indexed = new Set(); // `${workspace}/${run}` folders already in their workspace's runs.json
 
+  // No tab outlives the app: captures an earlier run left are erased now.
+  // Not by a test launch sharing a running app's folder: that app's tabs are open.
+  if (opts.eraseLeftoversAtStart !== false) eraseLeftovers();
   cleanupArtifacts();
   // Retention holds while the app runs, not only at start.
   const sweep = setInterval(cleanupArtifacts, LIMITS.artifactSweepMs);
@@ -446,9 +498,31 @@ function createAutomationBroker(opts) {
       for (const c of chats.values()) {
         for (const tabId of c.tabs) { closing.add(tabId); views.destroy(tabId); send({ type: 'tab-closed', tabId, reason }); }
         c.tabs = []; c.activeTab = null;
+        endPrivateIfDone(c);
       }
     }
     return { ok: true };
+  }
+
+  /** A private session ends with its last tab: its profile is wiped, and the next private tab starts a new one. */
+  function endPrivateIfDone(c) {
+    if (!c || !c.privatePartition) return;
+    if (c.tabs.some((t) => { const r = views.get(t); return !!(r && r.private); })) return;
+    const partition = c.privatePartition;
+    c.privatePartition = null;
+    // Its captures lived in memory only: gone with it.
+    dropPrivateArtifacts(new Set([c.chatSessionId]));
+    // Its downloads too, one by one: the run folder can hold a regular tab's downloads.
+    const doomed = c.downloads.filter((d) => d.private);
+    if (doomed.length) {
+      c.downloads = c.downloads.filter((d) => !d.private);
+      for (const d of doomed) {
+        if (!FINAL_DOWNLOAD.has(d.state)) { try { if (typeof d.cancel === 'function') d.cancel(); } catch { /* already over */ } d.state = 'cancelled'; }
+        downloadEntries.delete(d);
+        for (const p of [d.path, `${d.path}.crdownload`]) if (fs.existsSync(p)) eraseKept(p);
+      }
+    }
+    if (typeof views.clearPrivate === 'function') Promise.resolve(views.clearPrivate(partition)).catch(() => { /* already gone */ });
   }
 
   function authorize(identity) {
@@ -628,16 +702,24 @@ function createAutomationBroker(opts) {
     return c.activeTab ? views.get(c.activeTab) : null;
   }
 
-  async function createTab(chatSessionId, openerTabId) {
+  /**
+   * A new assistant tab for the chat. `opts.private`: in the chat's private
+   * session, its own in-memory profile (a new one once the last session ended),
+   * sharing nothing with the assistant's usual profile.
+   */
+  async function createTab(chatSessionId, openerTabId, opts) {
     const c = chatRecord(chatSessionId);
+    const priv = !!(opts && opts.private);
+    if (priv && !c.privatePartition) c.privatePartition = `parallx-browser-agent-private-${safeSegment(chatSessionId).slice(-12)}-${++privateSeq}`;
     const tabId = `agent:${safeSegment(chatSessionId).slice(-8)}${Date.now().toString(36).slice(-4)}:${++c.seq}`;
-    const rec = views.create(tabId, 'agent');
+    const rec = views.create(tabId, 'agent', priv ? { privatePartition: c.privatePartition } : undefined);
     rec.owned = true;
     rec.chatSessionId = chatSessionId;
+    rec.private = priv;
     wireRec(rec);
     c.tabs.push(tabId);
     c.activeTab = tabId;
-    send({ type: 'tab-open', tabId, chatSessionId, openerTabId: openerTabId || null, reveal: true });
+    send({ type: 'tab-open', tabId, chatSessionId, openerTabId: openerTabId || null, reveal: true, private: priv });
     // The new tab (a popup too) shows the run's live state and controls from the start.
     if (lease && lease.chatSessionId === chatSessionId && live(lease)) emitRunState(chatSessionId, lease.paused ? 'paused' : 'running', lease.note);
     return rec;
@@ -808,6 +890,7 @@ function createAutomationBroker(opts) {
     const vp = metrics.cssVisualViewport || metrics.cssLayoutViewport || { clientWidth: 0, clientHeight: 0 };
     const seen = new Set();
     const raw = [];
+    let images = 0;
     for (const frame of all) {
       // A session's root document is its default; every other frame (same-process
       // frames nested in an out-of-process one too) is asked for by id.
@@ -817,13 +900,15 @@ function createAutomationBroker(opts) {
       for (const n of tree.nodes || []) {
         if (n.ignored || n.backendDOMNodeId == null) continue;
         const role = n.role && n.role.value;
-        if (!INTERACTIVE_ROLES.has(role)) continue;
+        const isImage = IMAGE_ROLES.has(role);
+        if (!INTERACTIVE_ROLES.has(role) && !(isImage && images < MAX_IMAGE_TARGETS && String((n.name && n.name.value) || '').trim())) continue;
         const key = `${frame.sessionId || ''}|${n.backendDOMNodeId}`;
         if (seen.has(key)) continue;   // one node, one reference (the duplicate-role fix)
         seen.add(key);
         const props = {};
         for (const p of n.properties || []) props[p.name] = p.value ? p.value.value : undefined;
         if (props.hidden === true) continue;
+        if (isImage) images++;
         raw.push({ frame, backendNodeId: n.backendDOMNodeId, role, name: clip(n.name && n.name.value, 100), value: n.value ? n.value.value : undefined, props });
       }
     }
@@ -1424,8 +1509,13 @@ function createAutomationBroker(opts) {
     if (await privateRefused(url)) return fail('PRIVATE_ADDRESS', 'The Assistant Browser does not open addresses on this computer or the local network. Ask the user to open it themselves.', false);
     // The lookup can take a moment: a Stop or a pause in it opens no tab.
     guard(L);
-    let rec = a.newTab ? null : currentTab(L);
-    if (!rec) rec = await createTab(L.chatSessionId);
+    // private: true opens (or stays in) the chat's private session; false leaves
+    // it for the usual profile; left out, a new tab follows the current one.
+    const current = currentTab(L);
+    const wantPrivate = a.private === true ? true : (a.private === false ? false : null);
+    let rec = a.newTab ? null : current;
+    if (rec && wantPrivate !== null && !!rec.private !== wantPrivate) rec = null;
+    if (!rec) rec = await createTab(L.chatSessionId, null, { private: wantPrivate === null ? !!(current && current.private) : wantPrivate });
     note(L, `Opening ${hostOf(url)}`);
     // Load first: a tab that has never navigated has no renderer yet, and
     // every protocol command to it waits for one. observe() prepares after.
@@ -1445,7 +1535,8 @@ function createAutomationBroker(opts) {
     // Stopped before anything committed, in a tab that never had a page: there is nothing to read.
     if (s.aborted && !urlOf(rec)) return fail('NOTHING_LOADED', 'The address did not load a page (the site sent nothing to show, or the load was stopped). Nothing is open in this tab.', false, { tabId: rec.tabId, evidence: s.evidence });
     const obs = await observe(L, rec, {});
-    obs.summary = s.aborted ? `The load of ${hostOf(url)} stopped before a page arrived; the tab still shows ${hostOf(urlOf(rec))}.` : `Opened ${hostOf(rec.wc.getURL())}.`;
+    obs.summary = s.aborted ? `The load of ${hostOf(url)} stopped before a page arrived; the tab still shows ${hostOf(urlOf(rec))}.` : `Opened ${hostOf(rec.wc.getURL())}${rec.private ? ' in a private session: nothing it keeps survives its private tabs closing' : ''}.`;
+    if (rec.private) obs.private = true;
     obs.evidence = s.evidence;
     note(L, `Reading ${hostOf(rec.wc.getURL())}`);
     return obs;
@@ -1545,6 +1636,7 @@ function createAutomationBroker(opts) {
       return actWatched(L, rec, before, `Pressed ${a.key}.`, () => pressKey(L, rec, a.key));
     }
     if (action === 'click_at') return actClickAt(L, a);
+    if (action === 'save_download') return actSaveDownload(L, a);
     const t = await resolveTarget(L, a);
     const sid = t.frame.sessionId || undefined;
     if ((action === 'check' || action === 'press') && isFileInput(t)) return needsUser('FILE_CHOOSER_NEEDS_USER', FILE_CHOOSER_SUMMARY, { tabId: t.rec.tabId }, false);
@@ -1601,7 +1693,20 @@ function createAutomationBroker(opts) {
         obs.summary = `Scrolled "${clip(t.refRec.name, 60)}" into view.`;
         return obs;
       }
-      default: return fail('BAD_ARGUMENT', `Unknown action "${action}". Use check, select, press, hover, scroll, dialog or click_at.`, false);
+      case 'download': {
+        // A link's file or a picture, by its ref: into the run's folder, with no screenshot and no click.
+        let url = '';
+        try { url = String((await callOn(t.rec, sid, t.objectId, DOWNLOAD_URL_FN, [], 2_000)) || ''); } catch { url = ''; }
+        if (!isWebUrl(url)) return fail('NOTHING_TO_DOWNLOAD', 'That target has no http(s) address to download. Use a link, or a picture that has its own address.', false, { tabId: t.rec.tabId });
+        if (await privateRefused(url)) return fail('PRIVATE_ADDRESS', 'The Assistant Browser does not download from addresses on this computer or the local network.', false);
+        guard(L); usable(t.rec);
+        let name = '';
+        try { name = decodeURIComponent(path.basename(new URL(url).pathname)); } catch { name = ''; }
+        const shown = clip(name || hostOf(url), 80);
+        note(L, `Downloading ${clip(shown, 40)}`);
+        return actWatched(L, t.rec, null, `Started downloading ${shown} into the assistant's run folder. browserWait for "download" says when it finishes; browserAct save_download gives it to the user.`, () => { guard(L); t.rec.wc.downloadURL(url); });
+      }
+      default: return fail('BAD_ARGUMENT', `Unknown action "${action}". Use check, select, press, hover, scroll, dialog, click_at, download or save_download.`, false);
     }
   }
   async function rec_scrollIntoView(t) {
@@ -1644,6 +1749,32 @@ function createAutomationBroker(opts) {
     // No baseline signature: page scripts wait while a dialog is open, so none could be taken before the answer.
     return afterAction(L, rec, ev, null, `${accept ? 'Accepted' : 'Dismissed'} the ${d.type} dialog (its text is in page.dialog).`, { page: dialogPage(d), noBaseline: true });
   }
+  /**
+   * Give the user a file the assistant downloaded: a copy in the user's
+   * Downloads, listed like their own. The run's copy stays with the run and
+   * is erased with it; the user's copy is theirs.
+   */
+  async function actSaveDownload(L, a) {
+    const c = chatRecord(L.chatSessionId);
+    const done = c.downloads.filter((d) => d.state === 'completed');
+    if (!done.length) return fail('NO_DOWNLOAD', 'No finished download in this chat to save. Download it first (browserAct download), then wait for it (browserWait for "download").', false);
+    const wanted = String(a.file || '').trim().toLowerCase();
+    const d = wanted ? done.find((x) => x.filename.toLowerCase() === wanted) : (done.length === 1 ? done[0] : null);
+    if (!d) return fail('UNKNOWN_DOWNLOAD', `Name the file to save (file). Finished downloads: ${done.map((x) => x.filename).join(', ')}.`, false);
+    if (!saveDownload) return fail('UNAVAILABLE', 'Saving downloads is not available here.', false);
+    if (!fs.existsSync(d.path)) {
+      // Erased since (its private session ended, or the run was cleared): not coming back.
+      c.downloads = c.downloads.filter((x) => x !== d);
+      return fail('UNKNOWN_DOWNLOAD', `${d.filename} is no longer kept. Download it again first.`, false);
+    }
+    guard(L);
+    note(L, `Saving ${clip(d.filename, 40)}`);
+    let r = null;
+    try { r = await saveDownload(d.path, d.filename); } catch (err) { r = { error: err && err.message ? err.message : String(err) }; }
+    if (!r || !r.path) return fail('SAVE_FAILED', `The file could not be saved: ${(r && r.error) || 'unknown error'}.`, true);
+    return { version: 1, status: 'ok', summary: `Saved ${d.filename} to the user's Downloads as ${path.basename(r.path)}.`, evidence: [{ kind: 'saved', detail: r.path }] };
+  }
+
   async function actClickAt(L, a) {
     const cap = L.captures.get(String(a.captureId || ''));
     if (!cap) return fail('UNKNOWN_CAPTURE', 'click_at needs captureId from a browserCapture in this run.', false);
@@ -1679,9 +1810,104 @@ function createAutomationBroker(opts) {
       const oldSize = cap.image.getSize();
       if (size.width !== oldSize.width || size.height !== oldSize.height) throw codeError('STALE_TARGET', 'The captured viewport changed. Capture again.');
       const region = captureRegion(cap, pt);
-      if (!cap.image.crop(region).toBitmap().equals(current.crop(region).toBitmap())) throw codeError('STALE_TARGET', 'The pictured click region changed since the capture. Capture again.');
+      let same = regionUnchanged(cap, current, region);
+      if (!same) {
+        // More looks: what changes between looks right before the click moves
+        // on its own (a GIF frame the capture's own looks missed). A real
+        // change, a replaced button, is the same in every look and still refuses.
+        let moving = null;
+        let last = current;
+        for (const wait of LIMITS.clickLooksMs) {
+          await sleep(wait);
+          guard(L); usable(rec);
+          const next = await rec.wc.capturePage();
+          guard(L); usable(rec);
+          if (!rec.attached || rec.navSeq !== cap.navSeq || rec.wc.getURL() !== cap.url || zoomOf(rec) !== cap.zoom || next.isEmpty()) throw codeError('STALE_TARGET', 'The page changed since the capture. Capture again.');
+          const changed = changedBlocks(last, next);
+          if (changed) {
+            if (!moving) moving = changed;
+            else for (let i = 0; i < moving.length; i++) if (changed[i]) moving[i] = 1;
+          }
+          last = next;
+        }
+        // These looks may leave out small moving parts (a GIF frame the capture
+        // missed), never the target: when the click point's own block, or more
+        // than motionMaxShare of the region, moves only now, something is still
+        // coming in over the target (a slide, a dialog fading in).
+        if (moving && targetMovesOnlyNow(moving, cap.motion ? cap.motion.mask : null, Math.ceil(cap.image.getSize().width / MOTION_BLOCK), region, pointPixel(cap, pt), MOTION_BLOCK, LIMITS.motionMaxShare)) moving = null;
+        same = !!moving && regionUnchanged(cap, last, region, moving);
+      }
+      if (!same) throw codeError('STALE_TARGET', 'The pictured click region changed since the capture (moving parts aside). Capture again.');
       await mouseClick(L, rec, pt);
     });
+  }
+
+  /** The blocks of a capture that change on their own over a moment (see opCapture), or null. */
+  async function motionMask(L, rec, first) {
+    const size = first.getSize();
+    let base;
+    try { base = first.toBitmap(); } catch { return null; }
+    if (!base || base.length !== size.width * size.height * 4) return null;
+    const cols = Math.ceil(size.width / MOTION_BLOCK);
+    const rows = Math.ceil(size.height / MOTION_BLOCK);
+    const mask = new Uint8Array(cols * rows);
+    let looked = 0;
+    let prev = base;
+    for (const wait of LIMITS.motionSampleMs) {
+      await sleep(wait);
+      guard(L); usable(rec);
+      let next;
+      try { next = await rec.wc.capturePage(); } catch { continue; }
+      guard(L); usable(rec);
+      const s = next.getSize();
+      if (s.width !== size.width || s.height !== size.height) continue;
+      let bm;
+      try { bm = next.toBitmap(); } catch { continue; }
+      if (!bm || bm.length !== base.length) continue;
+      markChangedBlocks(base, bm, size.width, size.height, MOTION_BLOCK, cols, mask);
+      if (prev !== base) markChangedBlocks(prev, bm, size.width, size.height, MOTION_BLOCK, cols, mask);
+      prev = bm;
+      looked++;
+    }
+    return looked ? { block: MOTION_BLOCK, cols, rows, mask, bitmap: base } : null;
+  }
+  /**
+   * Is the pictured region as it was, moving blocks aside (the capture's
+   * motion map, plus `also`: blocks seen moving at click time)? Without
+   * comparable bitmaps the whole region must match.
+   */
+  function regionUnchanged(cap, current, region, also) {
+    const size = cap.image.getSize();
+    let base = cap.motion ? cap.motion.bitmap : null;
+    if (!base) { try { base = cap.image.toBitmap(); } catch { base = null; } }
+    let now = null;
+    try { now = current.toBitmap(); } catch { now = null; }
+    if (base && now && base.length === now.length && base.length === size.width * size.height * 4) {
+      const cols = Math.ceil(size.width / MOTION_BLOCK);
+      const rows = Math.ceil(size.height / MOTION_BLOCK);
+      const mask = new Uint8Array(cols * rows);
+      if (cap.motion) mask.set(cap.motion.mask);
+      if (also) for (let i = 0; i < mask.length && i < also.length; i++) if (also[i]) mask[i] = 1;
+      return staticPixelsMatch(base, now, size.width, region, { block: MOTION_BLOCK, cols, mask });
+    }
+    return cap.image.crop(region).toBitmap().equals(current.crop(region).toBitmap());
+  }
+  /** Blocks that differ between two captures of the same size, or null. */
+  function changedBlocks(a, b) {
+    const size = a.getSize();
+    const s = b.getSize();
+    if (s.width !== size.width || s.height !== size.height) return null;
+    let x = null; let y = null;
+    try { x = a.toBitmap(); y = b.toBitmap(); } catch { return null; }
+    if (!x || !y || x.length !== y.length || x.length !== size.width * size.height * 4) return null;
+    const cols = Math.ceil(size.width / MOTION_BLOCK);
+    return markChangedBlocks(x, y, size.width, size.height, MOTION_BLOCK, cols, new Uint8Array(cols * Math.ceil(size.height / MOTION_BLOCK)));
+  }
+
+  /** The click point in the capture's full-size pixels (the ones the checks compare). */
+  function pointPixel(cap, pt) {
+    const size = cap.image.getSize();
+    return { x: Math.min(size.width - 1, Math.floor((pt.x * size.width) / cap.cssWidth)), y: Math.min(size.height - 1, Math.floor((pt.y * size.height) / cap.cssHeight)) };
   }
 
   function captureRegion(cap, pt) {
@@ -1691,8 +1917,13 @@ function createAutomationBroker(opts) {
     const radius = LIMITS.captureRegionCssRadius;
     const x = Math.max(0, Math.floor((pt.x - radius) * sx));
     const y = Math.max(0, Math.floor((pt.y - radius) * sy));
-    const right = Math.min(size.width, Math.ceil((pt.x + radius) * sx));
-    const bottom = Math.min(size.height, Math.ceil((pt.y + radius) * sy));
+    // Image pixels per device-independent pixel (the scrollbar's own scale).
+    const perDip = size.width / (cap.cssWidth * (cap.zoom || 1));
+    const band = Math.ceil(LIMITS.scrollbarBandDip * perDip);
+    // Only along an edge where the page scrolls: the vertical bar at the right,
+    // the horizontal one at the bottom. Elsewhere the edge is page content.
+    const right = Math.min(size.width - (cap.scrollsY === false ? 0 : band), Math.ceil((pt.x + radius) * sx));
+    const bottom = Math.min(size.height - (cap.scrollsX === false ? 0 : band), Math.ceil((pt.y + radius) * sy));
     return { x, y, width: Math.max(1, right - x), height: Math.max(1, bottom - y) };
   }
 
@@ -1708,7 +1939,7 @@ function createAutomationBroker(opts) {
 
   async function opTabs(L, a) {
     const c = chatRecord(L.chatSessionId);
-    const list = () => c.tabs.map((id) => { const r = views.get(id); return { tab: id, url: r ? r.wc.getURL() : '', title: r ? clip(r.wc.getTitle(), 80) : '', active: id === c.activeTab }; });
+    const list = () => c.tabs.map((id) => { const r = views.get(id); return { tab: id, url: r ? r.wc.getURL() : '', title: r ? clip(r.wc.getTitle(), 80) : '', active: id === c.activeTab, ...(r && r.private ? { private: true } : {}) }; });
     const act = a.action || 'list';
     if (act === 'list') return { version: 1, status: 'ok', summary: `${c.tabs.length} assistant tab${c.tabs.length === 1 ? '' : 's'}.`, tabs: list() };
     const tab = String(a.tab || '');
@@ -1809,7 +2040,22 @@ function createAutomationBroker(opts) {
       { tabId: rec.tabId, url: urlOf(rec), evidence: [{ kind: 'timeout', detail: `waited ${limit} ms for ${kind}` }] });
   }
 
+  /**
+   * A capture only reads the page. When the view moved while it was taken (a
+   * zoom or a scroll still settling), take it again, a couple of times, before
+   * saying the page kept changing.
+   */
   async function opCapture(L, a) {
+    let out = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt) { await sleep(200); guard(L); }
+      out = await opCaptureOnce(L, a, attempt === 2);
+      if (!(out && out.error && out.error.code === 'STALE_TARGET')) return out;
+    }
+    return out;
+  }
+
+  async function opCaptureOnce(L, a, lastTry) {
     const rec = currentTab(L);
     if (!rec) return fail('NO_PAGE', 'The Assistant Browser has no page open.', false);
     await ensureShown(L, rec);
@@ -1823,8 +2069,27 @@ function createAutomationBroker(opts) {
     const img = await rec.wc.capturePage();
     guard(L); usable(rec);
     if (img.isEmpty()) return fail('CAPTURE_FAILED', 'The page could not be captured. Make sure its tab is on screen.', true);
+    // What moves on its own (a GIF, a video, an animation): a few more looks
+    // over half a second. click_at leaves those blocks out of its pixel check, so an
+    // animation cannot make every capture stale; everything static still counts.
+    let motion = await motionMask(L, rec, img);
+    // Most of the view changing between the looks is a stale first frame (a
+    // zoom or scroll still being drawn: opCapture takes it again) or a page
+    // that is mostly moving (a video, a game). A map marking everything would
+    // switch the click check off, so on the last try the capture comes back
+    // without one: click_at then compares the whole region.
+    let mostlyMoving = false;
+    if (motion && motion.mask.reduce((s, v) => s + v, 0) > motion.mask.length * LIMITS.motionMaxShare) {
+      if (!lastTry) return fail('STALE_TARGET', 'Most of the page kept changing on screen while it was captured. Capture again, or use browserRead references.', true);
+      motion = null;
+      mostlyMoving = true;
+    }
     const metrics = await rec.dc.send('Page.getLayoutMetrics');
     const vp = metrics.cssVisualViewport || metrics.cssLayoutViewport;
+    // Where an overlay scrollbar can show: only along an edge the page scrolls past.
+    const content = metrics.cssContentSize || null;
+    const scrollsX = !content || content.width > vp.clientWidth + 1;
+    const scrollsY = !content || content.height > vp.clientHeight + 1;
     // The image is the whole view, a scrollbar gutter included: its pixels map
     // through the window's inner size in CSS pixels, which the client area can be short of.
     let inner = null;
@@ -1854,22 +2119,28 @@ function createAutomationBroker(opts) {
       || Math.round(v.clientWidth) !== Math.round(vp.clientWidth) || Math.round(v.clientHeight) !== Math.round(vp.clientHeight));
     if (!rec.attached || navSeq !== rec.navSeq || url !== rec.wc.getURL() || zoom !== zoomOf(rec) || viewChanged) return fail('STALE_TARGET', 'The page changed while capturing it. Capture again.', true);
     const id = `c${++L.captureSeq}`;
-    const dir = runDir(L);
-    const file = path.join(dir, `capture-${id}.jpg`);
-    fs.writeFileSync(file, bytes);
     const artifactId = `browser:${safeSegment(L.workspaceId)}:${L.runId}:${id}`;
+    // A private session's captures never reach the disk: held in memory, wiped with the session.
+    let file = null;
+    if (!rec.private) {
+      file = path.join(runDir(L), `capture-${id}.jpg`);
+      fs.writeFileSync(file, bytes);
+    }
     // What the pixels belong to (click_at checks each): this document, this scroll position and viewport, this zoom.
     const cap = {
-      id, tabId: rec.tabId, url, navSeq, image: img, width: size.width, height: size.height, cssWidth, cssHeight, zoom,
+      id, tabId: rec.tabId, url, navSeq, image: img, motion, width: size.width, height: size.height, cssWidth, cssHeight, zoom, scrollsX, scrollsY,
       view: { pageX: vp.pageX || 0, pageY: vp.pageY || 0, clientWidth: vp.clientWidth, clientHeight: vp.clientHeight },
     };
     L.captures.clear(); // only the newest image stays in the model's turn; bound native pixel memory too
     L.captures.set(id, cap);
-    artifacts.set(artifactId, { path: file, mimeType: 'image/jpeg', workspaceId: L.workspaceId, width: size.width, height: size.height });
+    // Each capture remembers its tab: it is erased when that tab closes.
+    artifacts.set(artifactId, rec.private
+      ? { data: bytes, private: true, chatSessionId: L.chatSessionId, tabId: rec.tabId, mimeType: 'image/jpeg', workspaceId: L.workspaceId, width: size.width, height: size.height }
+      : { path: file, chatSessionId: L.chatSessionId, tabId: rec.tabId, mimeType: 'image/jpeg', workspaceId: L.workspaceId, width: size.width, height: size.height });
     return {
       version: 1, status: 'ok', tabId: rec.tabId, url: cap.url,
-      summary: `Captured the visible page as ${size.width}x${size.height}. To click something that has no reference, use browserAct with action "click_at", captureId "${id}", and x, y in this image's pixels.`,
-      capture: { captureId: id, width: size.width, height: size.height, cssWidth: cap.cssWidth, cssHeight: cap.cssHeight, zoom: cap.zoom },
+      summary: `Captured the visible page as ${size.width}x${size.height}. To click something that has no reference, use browserAct with action "click_at", captureId "${id}", and x, y in this image's pixels.${mostlyMoving ? ' Much of the page is moving (a video or an animation), so click_at may refuse near it: prefer browserRead references there.' : ''}`,
+      capture: { captureId: id, width: size.width, height: size.height, cssWidth: cap.cssWidth, cssHeight: cap.cssHeight, zoom: cap.zoom, moving: motion ? motion.mask.reduce((s, v) => s + v, 0) : 0 },
       artifacts: [{ kind: 'image', id: artifactId, mimeType: 'image/jpeg', width: size.width, height: size.height }],
     };
   }
@@ -1904,15 +2175,19 @@ function createAutomationBroker(opts) {
     try { fs.writeFileSync(path.join(wsDir, RUNS_INDEX), JSON.stringify({ version: 1, runs })); } catch { /* the folder is gone */ }
   }
   /**
-   * An artifact's data by id, for the current workspace only. An id from an
-   * earlier session (saved chat history) resolves on disk: it names its
-   * workspace, run and capture. A file past its retention, or cleared, is
-   * ARTIFACT_EXPIRED.
+   * An artifact's data by id, for the current workspace only. An id not held
+   * in memory (saved chat history) resolves on disk while its file is there:
+   * it names its workspace, run and capture. A capture whose tab closed, or
+   * that was cleared, is ARTIFACT_EXPIRED.
    */
   function readArtifact(id) {
     const s = String(id || '');
     let a = artifacts.get(s);
+    // A private session's capture: in memory only.
+    if (a && a.data) return ctx && a.workspaceId === ctx.workspaceId ? { mimeType: a.mimeType, data: a.data.toString('base64'), width: a.width, height: a.height } : { error: 'UNKNOWN_ARTIFACT' };
     if (!a) {
+      // Erased this session: expired, whatever a lock left on disk.
+      if (erasedIds.has(s)) return { error: 'ARTIFACT_EXPIRED' };
       const m = /^browser:([A-Za-z0-9_-]{1,64}):([A-Za-z0-9_-]{1,64}):(c\d{1,9})$/.exec(s);
       if (!m || !ctx || m[1] !== safeSegment(ctx.workspaceId)) return { error: 'UNKNOWN_ARTIFACT' };
       a = { path: path.join(artifactsRoot, m[1], m[2], `capture-${m[3]}.jpg`), mimeType: 'image/jpeg', workspaceId: ctx.workspaceId };
@@ -1921,21 +2196,164 @@ function createAutomationBroker(opts) {
     try { return { mimeType: a.mimeType, data: fs.readFileSync(a.path).toString('base64'), width: a.width, height: a.height }; }
     catch { return { error: 'ARTIFACT_EXPIRED' }; }
   }
+  /** Wipe a private chat's in-memory captures (the session ended, or its data was cleared). */
+  function dropPrivateArtifacts(chatIds) {
+    const ids = [];
+    for (const [id, a] of artifacts) {
+      if (!a.private || (chatIds && !chatIds.has(a.chatSessionId))) continue;
+      try { a.data.fill(0); } catch { /* already gone */ }
+      artifacts.delete(id);
+      erasedIds.add(id);
+      ids.push(id);
+    }
+    return ids;
+  }
+  /**
+   * A tab's captures go with the tab (the user's rule, 2026-09-11): each file
+   * is erased, a private capture's bytes are zeroed, the run's own copy for
+   * click_at is dropped, and thumbnails already on screen in the chat show the
+   * capture is gone. Downloads stay with their run: save_download still works.
+   */
+  function eraseTabCaptures(tabId) {
+    const chatIds = new Set();
+    const ids = [];
+    for (const [id, a] of artifacts) {
+      if (a.tabId !== tabId) continue;
+      artifacts.delete(id);
+      erasedIds.add(id);
+      ids.push(id);
+      if (a.chatSessionId) chatIds.add(a.chatSessionId);
+      if (a.data) { try { a.data.fill(0); } catch { /* already gone */ } continue; }
+      if (a.path) eraseKept(a.path);
+    }
+    if (lease) for (const [cid, cap] of lease.captures) if (cap.tabId === tabId) lease.captures.delete(cid);
+    // artifactIds: a turn still running drops these images before its next
+    // model call (toolImageLifetime.ts). partial: only these thumbnails change.
+    if (ids.length) send({ type: 'artifacts-cleared', chatSessionIds: [...chatIds], artifactIds: ids, partial: true });
+  }
+  /**
+   * Erase one kept file: out of reach first, then Eraser or an overwrite here.
+   * Whatever is still on disk afterwards (a lock, an Eraser task that has not
+   * run) is tried again here, locally (retryPendingErase).
+   */
+  function eraseKept(p, local) {
+    const target = path.basename(p).includes('.erase-') ? p : (retire(p) || p);
+    const check = () => { if (fs.existsSync(target)) { pendingErase.add(target); schedulePendingErase(); } };
+    void eraseTree(target, local).then(check, check);
+  }
+  function schedulePendingErase() {
+    if (pendingEraseTimer) return;
+    pendingEraseTimer = setTimeout(() => { pendingEraseTimer = null; retryPendingErase(); }, LIMITS.eraseRetryMs);
+    if (typeof pendingEraseTimer.unref === 'function') pendingEraseTimer.unref();
+  }
+  function retryPendingErase() {
+    for (const p of [...pendingErase]) {
+      pendingErase.delete(p);
+      if (fs.existsSync(p)) eraseKept(p, true);
+    }
+  }
+  /** Take a folder out of reach before it is erased: no capture id resolves inside it again. */
+  function retire(p) {
+    if (!fs.existsSync(p)) return null;
+    const doomed = `${p}.erase-${Date.now().toString(36)}${(++retireSeq).toString(36)}`;
+    try { fs.renameSync(p, doomed); return doomed; } catch { return null; }
+  }
+  /** Overwrite every file under `target` with random bytes, in place. */
+  function overwriteTree(target) {
+    let st;
+    try { st = fs.statSync(target); } catch { return; }
+    if (st.isDirectory()) {
+      let names = [];
+      try { names = fs.readdirSync(target); } catch { names = []; }
+      for (const n of names) overwriteTree(path.join(target, n));
+      return;
+    }
+    let fd = null;
+    try {
+      fd = fs.openSync(target, 'r+');
+      const chunk = Buffer.alloc(Math.max(1, Math.min(st.size, 1 << 20)));
+      for (let off = 0; off < st.size;) {
+        crypto.randomFillSync(chunk);
+        const n = Math.min(chunk.length, st.size - off);
+        fs.writeSync(fd, chunk, 0, n, off);
+        off += n;
+      }
+      fs.fsyncSync(fd);
+    } catch { /* in use: it is still removed below */ } finally { if (fd !== null) { try { fs.closeSync(fd); } catch { /* closed */ } } }
+  }
+  /**
+   * Remove kept captures and downloads (a folder, or one file) for good, never to the Recycle Bin.
+   * Eraser (when the delete policy names it) overwrites and removes them;
+   * without it each file is overwritten here first, then deleted. An SSD can
+   * still hold old copies in cells it has remapped: that is what Eraser's
+   * Erase Unused Space is for (docs/BROWSER.md "Deleting data").
+   */
+  async function eraseTree(target, local) {
+    let isDir;
+    try { isDir = fs.statSync(target).isDirectory(); } catch { return; }
+    // local: overwrite here (a retry: Eraser already had its chance).
+    if (eraseSecurely && !local) {
+      let queued = false;
+      try { queued = await eraseSecurely(target, isDir); } catch { queued = false; }
+      if (queued) return;
+    }
+    overwriteTree(target);
+    await fs.promises.rm(target, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+
+  /**
+   * At start no tab a capture came from is open (tabs do not outlive the app):
+   * every capture still on disk is erased, and whatever an earlier erase left
+   * half done (a quit or a crash mid-way) is finished. Downloads stay.
+   */
+  function eraseLeftovers() {
+    let workspaces = [];
+    try { workspaces = fs.readdirSync(artifactsRoot); } catch { return; }
+    const finish = (p) => { void eraseTree(p).catch(() => { /* in use: the next start */ }); };
+    for (const w of workspaces) {
+      const wsDir = path.join(artifactsRoot, w);
+      if (w.includes('.erase-')) { finish(wsDir); continue; }
+      let runs = [];
+      try { runs = fs.readdirSync(wsDir); } catch { continue; }
+      for (const r of runs) {
+        const p = path.join(wsDir, r);
+        if (r.includes('.erase-')) { finish(p); continue; }
+        let names = [];
+        try { if (!fs.statSync(p).isDirectory()) continue; names = fs.readdirSync(p); } catch { continue; }
+        for (const n of names) {
+          const f = path.join(p, n);
+          if (/^capture-c\d+\.jpg$/.test(n)) finish(retire(f) || f);
+          else if (n === 'private-downloads') finish(retire(f) || f); // a private session's files outlive nothing
+          else if (n.includes('.erase-')) finish(f);
+        }
+      }
+    }
+  }
+
   function cleanupArtifacts() {
+    retryPendingErase();
     let workspaces = [];
     try { workspaces = fs.readdirSync(artifactsRoot); } catch { return; }
     const cutoff = Date.now() - LIMITS.artifactRetentionMs;
     for (const w of workspaces) {
+      if (w.includes('.erase-')) continue; // a cleared workspace being erased
       const wsDir = path.join(artifactsRoot, w);
       let runs = [];
       try { runs = fs.readdirSync(wsDir); } catch { continue; }
       const removed = [];
       for (const r of runs) {
-        if (r === RUNS_INDEX) continue;
+        // A half-done erase is eraseLeftovers' to finish.
+        if (r === RUNS_INDEX || r.includes('.erase-')) continue;
         // The live run's folder is in use, however old it is.
         if (lease && live(lease) && w === safeSegment(lease.workspaceId) && r === safeSegment(lease.runId)) continue;
         const p = path.join(wsDir, r);
-        try { if (fs.statSync(p).mtimeMs < cutoff) { fs.rmSync(p, { recursive: true, force: true }); removed.push(p); } } catch { /* in use */ }
+        try {
+          if (fs.statSync(p).mtimeMs < cutoff) {
+            const doomed = retire(p) || p;
+            void eraseTree(doomed).catch(() => { /* in use: the next sweep erases it */ });
+            removed.push(p);
+          }
+        } catch { /* in use */ }
       }
       if (!removed.length) continue;
       const index = readRunIndex(wsDir);
@@ -1946,7 +2364,7 @@ function createAutomationBroker(opts) {
         indexed.delete(`${w}/${r}`);
       }
       if (changed) writeRunIndex(wsDir, index);
-      for (const [id, a] of artifacts) if (removed.some((p) => isInside(a.path, p))) artifacts.delete(id);
+      for (const [id, a] of artifacts) if (a.path && removed.some((p) => isInside(a.path, p))) artifacts.delete(id);
     }
   }
 
@@ -1993,14 +2411,18 @@ function createAutomationBroker(opts) {
     }
     // A cancelled transfer lets go of its file a moment later.
     if (stopped) await sleep(200);
-    for (const [id, a] of artifacts) if (dirs.some((dir) => isInside(a.path, dir))) artifacts.delete(id);
+    const clearedIds = [];
+    for (const [id, a] of artifacts) if (a.path && dirs.some((dir) => isInside(a.path, dir))) { artifacts.delete(id); erasedIds.add(id); clearedIds.push(id); }
+    // Private captures were never on disk; clearing takes them too.
+    clearedIds.push(...dropPrivateArtifacts(ids));
     for (const key of [...indexed]) if (dirs.some((dir) => isInside(path.join(artifactsRoot, key), dir))) indexed.delete(key);
     let kept = 0;
     for (const dir of dirs) {
-      try { await fs.promises.rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); } catch { kept++; }
+      // Erased, never binned: out of reach first, then Eraser or an overwrite here.
+      try { await eraseTree(retire(dir) || dir); } catch { kept++; }
     }
     // Thumbnails already on screen re-check (chatContentParts).
-    send({ type: 'artifacts-cleared', ...(ids ? { chatSessionIds: [...ids] } : {}) });
+    send({ type: 'artifacts-cleared', ...(ids ? { chatSessionIds: [...ids] } : {}), artifactIds: clearedIds });
     if (kept) return { ok: false, removed: dirs.length - kept, error: 'Some captures or downloads are in use and were not removed. Try again in a moment.' };
     return { ok: true, removed: dirs.length };
   }
@@ -2028,7 +2450,8 @@ function createAutomationBroker(opts) {
         const refused = await privateRefused(url);
         if (!stillOwned()) return;
         if (refused) { toWatchers({ tabId: null, url, refused: true }); return; }
-        const rec = await createTab(chatSessionId, openerRec.tabId);
+        // A page in a private session opens its popups in that session too.
+        const rec = await createTab(chatSessionId, openerRec.tabId, { private: !!openerRec.private });
         if (!stillOwned()) {
           if (!gone(rec)) { closing.add(rec.tabId); views.destroy(rec.tabId); send({ type: 'tab-closed', tabId: rec.tabId, reason: 'stale-popup' }); }
           return;
@@ -2053,14 +2476,16 @@ function createAutomationBroker(opts) {
     const L = lease && lease.chatSessionId === owner && live(lease) ? lease : null;
     const c = owner ? chatRecord(owner) : null;
     const where = L || (c && c.lastRun) || { workspaceId: (ctx && ctx.workspaceId) || 'none', runId: 'unowned' };
-    const dir = path.join(runDir(where), 'downloads');
+    // A private session's downloads keep to their own folder: erased when the
+    // session ends (endPrivateIfDone), or at the next start.
+    const dir = path.join(runDir(where), rec.private ? 'private-downloads' : 'downloads');
     fs.mkdirSync(dir, { recursive: true });
     // Chromium writes to <name>.crdownload until it finishes: a name an
     // unfinished download holds is taken, or two same-named files would share it.
     const held = (p) => [...downloadEntries].some((d) => !FINAL_DOWNLOAD.has(d.state) && d.path === p);
     const target = uniquePath(dir, safeFileName(filename), (p) => fs.existsSync(p) || fs.existsSync(`${p}.crdownload`) || held(p));
     // runId: the run it belongs to; reported: a browserWait has told the model how it ended (opWait).
-    const entry = { filename: path.basename(target), path: target, state: 'progressing', runId: where.runId, reported: false };
+    const entry = { filename: path.basename(target), path: target, state: 'progressing', runId: where.runId, reported: false, private: !!rec.private };
     for (const d of downloadEntries) if (FINAL_DOWNLOAD.has(d.state)) downloadEntries.delete(d);
     downloadEntries.add(entry);
     if (c) c.downloads.push(entry);
@@ -2100,11 +2525,14 @@ function createAutomationBroker(opts) {
   function onViewGone(tabId) {
     const byAssistant = closing.delete(tabId);
     const busy = tabSignals.has(tabId); // an action or wait is on it right now
+    // Its captures go with it (first: a private session ending drops them silently).
+    eraseTabCaptures(tabId);
     for (const c of chats.values()) {
       if (!c.tabs.includes(tabId)) continue;
       const wasActive = c.activeTab === tabId;
       c.tabs = c.tabs.filter((t) => t !== tabId);
       if (c.activeTab === tabId) c.activeTab = c.tabs[c.tabs.length - 1] || null;
+      endPrivateIfDone(c);
       // The user closed the tab the run is working in: that is the user taking
       // over, not an invitation to open another. The next call gets needs_user.
       const L = lease;
@@ -2256,4 +2684,52 @@ function createAutomationBroker(opts) {
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 function hostOf(u) { try { return new URL(u).hostname || u; } catch { return String(u || ''); } }
 
-module.exports = { createAutomationBroker, LIMITS, KEYS, PAGE_NOTICE, fitOutcome, withNotice, targetView, isSecretField, safeFileName, uniquePath, isWebUrl, isPrivateDestination };
+/**
+ * Does the click target itself move only at click time? `moving` holds the
+ * blocks seen changing in the looks just before the click, `had` the
+ * capture's own motion map. True when the click point's block, or more than
+ * maxShare of the region's blocks, changed only now: a slide or a dialog is
+ * still coming in over the target, not a small animation beside it.
+ */
+function targetMovesOnlyNow(moving, had, cols, region, point, block, maxShare) {
+  const fresh = (i) => !!moving[i] && !(had && had[i]);
+  if (fresh(Math.floor(point.y / block) * cols + Math.floor(point.x / block))) return true;
+  let total = 0;
+  let only = 0;
+  const bx0 = Math.floor(region.x / block);
+  const bx1 = Math.floor((region.x + region.width - 1) / block);
+  const by0 = Math.floor(region.y / block);
+  const by1 = Math.floor((region.y + region.height - 1) / block);
+  for (let by = by0; by <= by1; by++) for (let bx = bx0; bx <= bx1; bx++) { total++; if (fresh(by * cols + bx)) only++; }
+  return only > total * maxShare;
+}
+
+/** Mark each block (block x block pixels) where bitmaps a and b differ in any pixel's colour. */
+function markChangedBlocks(a, b, width, height, block, cols, mask) {
+  for (let y = 0; y < height; y++) {
+    const row = Math.floor(y / block) * cols;
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      if (a[i] !== b[i] || a[i + 1] !== b[i + 1] || a[i + 2] !== b[i + 2]) {
+        const col = Math.floor(x / block);
+        mask[row + col] = 1;
+        x = (col + 1) * block - 1; // the rest of this block's row is decided
+      }
+    }
+  }
+  return mask;
+}
+/** Do bitmaps a and b match in `region`, except in the blocks motion marks as moving? */
+function staticPixelsMatch(a, b, width, region, motion) {
+  for (let y = region.y; y < region.y + region.height; y++) {
+    const row = Math.floor(y / motion.block) * motion.cols;
+    for (let x = region.x; x < region.x + region.width; x++) {
+      if (motion.mask[row + Math.floor(x / motion.block)]) continue;
+      const i = (y * width + x) * 4;
+      if (a[i] !== b[i] || a[i + 1] !== b[i + 1] || a[i + 2] !== b[i + 2]) return false;
+    }
+  }
+  return true;
+}
+
+module.exports = { createAutomationBroker, LIMITS, KEYS, PAGE_NOTICE, fitOutcome, withNotice, targetView, isSecretField, safeFileName, uniquePath, isWebUrl, isPrivateDestination, markChangedBlocks, staticPixelsMatch, targetMovesOnlyNow };

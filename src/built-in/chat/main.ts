@@ -1300,6 +1300,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       : undefined,
     // D5: Vision model capability detection
     getActiveModelCapabilities: () => (languageModelsService as any).getActiveModelCapabilities?.() ?? ['completion'],
+    ensureActiveModelInfo: () => (languageModelsService as any).ensureActiveModelInfo?.() ?? Promise.resolve(),
   });
 
   // D3 R1: Supplement diagnostics deps now that OllamaProvider + dataService are available

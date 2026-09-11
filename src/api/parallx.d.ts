@@ -1516,6 +1516,8 @@ export interface BrowserAutomationTabRequest {
   readonly chatSessionId: string;
   readonly openerTabId: string | null;
   readonly reveal: boolean;
+  /** A tab in a private session (browserOpen private: true): marked as private. */
+  readonly private?: boolean;
 }
 
 /** What the Browser provides as the host. It shows tabs and state; it cannot dispatch page actions. */

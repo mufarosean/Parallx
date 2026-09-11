@@ -86,6 +86,8 @@ export interface IBrowserAutomationTabRequest {
   readonly chatSessionId: string;
   readonly openerTabId: string | null;
   readonly reveal: boolean;
+  /** A tab in a private session (browserOpen private: true): the host marks it. */
+  readonly private?: boolean;
 }
 
 /**

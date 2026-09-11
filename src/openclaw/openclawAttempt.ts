@@ -28,6 +28,7 @@ import type { IBootstrapFile, IOpenclawRuntimeInfo, IOpenclawLinkContractDescrip
 import type { IChatRuntimeToolInvocationObserver } from './openclawTypes.js';
 import type { IOpenclawBootstrapDebugReport, IOpenclawSystemPromptReport } from '../services/chatRuntimeTypes.js';
 import { ChatToolLoopSafety } from '../services/chatToolLoopSafety.js';
+import { isToolImageGone } from '../services/toolImageLifetime.js';
 import { estimateMessagesTokens, estimateTokens } from './openclawTokenBudget.js';
 import type { IOpenclawRuntimeSkillState } from './openclawSkillState.js';
 import { buildOpenclawPromptArtifacts } from './openclawPromptArtifacts.js';
@@ -483,6 +484,20 @@ export async function executeOpenclawAttempt(
   const dropToolImages = (m: IChatMessage): IChatMessage => (
     toolImageMessages.has(m) ? { role: m.role, content: `${m.content} (image no longer attached)` } : m
   );
+  // A tool image its source erased since (a browser capture whose tab closed)
+  // leaves the turn before the next model call, seen by the model or not.
+  const withoutErasedToolImages = (msgs: IChatMessage[]): IChatMessage[] => {
+    const erased = (m: IChatMessage) => toolImageMessages.has(m) && !!m.images?.some((i) => isToolImageGone(i.id));
+    if (!msgs.some(erased)) return msgs;
+    return msgs.map((m) => {
+      if (!erased(m)) return m;
+      const kept = (m.images ?? []).filter((i) => !isToolImageGone(i.id));
+      if (!kept.length) return { role: m.role, content: `${m.content} (image erased: its browser tab was closed)` };
+      const next: IChatMessage = { ...m, images: kept };
+      toolImageMessages.add(next);
+      return next;
+    });
+  };
   let iterations = 0;
   let lastHadToolCalls = false;
   let loopBlocked = false;
@@ -509,6 +524,7 @@ export async function executeOpenclawAttempt(
       try { context.messageObserver.onBeforeModelCall(hookMessages, context.runtimeInfo.model); } catch (e) { console.warn('[D4] Message hook error:', e); }
     }
     const modelCallStart = Date.now();
+    currentMessages = withoutErasedToolImages(currentMessages);
     // Execute model call
     const turnResult = await executeModelStream(
       context.sendChatRequest,
@@ -754,7 +770,7 @@ export async function executeOpenclawAttempt(
     // Images a tool returned go to a model that can see them as one user
     // message after the results: not every backend lets a tool message carry
     // images. Earlier tool images leave the turn when newer ones arrive.
-    const roundImages = roundResults.flatMap((r) => r.images ?? []);
+    const roundImages = roundResults.flatMap((r) => r.images ?? []).filter((i) => !isToolImageGone(i.id));
     let imageMessage: IChatMessage | undefined;
     if (roundImages.length > 0) {
       const from = [...new Set(roundResults.filter((r) => r.images?.length).map((r) => r.name))].join(', ');
