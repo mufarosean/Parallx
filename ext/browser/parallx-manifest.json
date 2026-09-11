@@ -30,6 +30,7 @@
       { "id": "browser.toggleReader", "title": "Reader Mode", "category": "Browser" },
       { "id": "browser.sendToChat", "title": "Send Page To Chat", "category": "Browser" },
       { "id": "browser.clearData", "title": "Clear Browsing Data", "category": "Browser" },
+      { "id": "browser.clearAgentData", "title": "Clear Assistant Browser Data", "category": "Browser" },
       { "id": "browser.refreshLists", "title": "Refresh Filter Lists", "category": "Browser" }
     ],
     "keybindings": [

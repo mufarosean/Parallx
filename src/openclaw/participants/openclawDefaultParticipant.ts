@@ -683,7 +683,7 @@ async function buildOpenclawTurnContext(
     fallbackModels: fallbackModels?.length ? fallbackModels : undefined,
     rebuildSendChatRequest: services.sendChatRequestForModel ?? undefined,
     invokeToolWithRuntimeControl: services.invokeToolWithRuntimeControl
-      ? (name, args, token, observer, sessionId) => services.invokeToolWithRuntimeControl!(name, args, token, observer, sessionId ?? context.sessionId)
+      ? (name, args, token, observer, sessionId, opts) => services.invokeToolWithRuntimeControl!(name, args, token, observer, sessionId ?? context.sessionId, opts)
       : undefined,
     toolObserver: services.runtimeHookRegistry?.getCompositeToolObserver(),
     messageObserver: services.runtimeHookRegistry?.getCompositeMessageObserver(),

@@ -1,7 +1,9 @@
 /**
  * The private browser's pure rules (electron/browserPolicy.cjs): what counts as
  * third-party, what gets an HTTPS upgrade, what the address bar does with typed
- * text, which permissions prompt, and how downloads are named.
+ * text, which permissions prompt (and what the assistant's profile never gets),
+ * which addresses the assistant's pages may not reach, and how downloads are
+ * named.
  */
 import { describe, it, expect } from 'vitest';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -96,6 +98,16 @@ describe('permissions and cookies', () => {
     expect(policy.permissionPolicy('display-capture')).toBe('deny');
     expect(policy.permissionPolicy('made-up')).toBe('deny');
   });
+  it('gives the assistant profile nothing that reaches past its pane, while the user keeps fullscreen and clipboard writes', () => {
+    expect(policy.agentPermission('fullscreen')).toBe(false);
+    expect(policy.agentPermission('clipboard-sanitized-write')).toBe(false);
+    expect(policy.agentPermission('media')).toBe(false);        // 'ask' for the user; the assistant asks nobody
+    expect(policy.agentPermission('geolocation')).toBe(false);
+    expect(policy.agentPermission('usb')).toBe(false);
+    expect(policy.agentPermission('made-up')).toBe(false);
+    expect(policy.permissionPolicy('fullscreen')).toBe('allow');
+    expect(policy.permissionPolicy('clipboard-sanitized-write')).toBe('allow');
+  });
   it('strips third-party cookies by default, all when asked, none when allowed', () => {
     const site = policy.defaultSite();
     expect(policy.cookieDecision(site, 'https://ads.net/x', 'https://shop.com/')).toBe('strip');
@@ -113,6 +125,44 @@ describe('downloads', () => {
     const taken = new Set(['D:\\W\\Downloads\\report.pdf', 'D:\\W\\Downloads\\report (2).pdf']);
     expect(policy.downloadTarget('D:\\W\\Downloads', 'report.pdf', (p: string) => taken.has(p))).toBe('D:\\W\\Downloads\\report (3).pdf');
     expect(policy.downloadTarget('/home/u/Downloads/', 'a.zip', () => false)).toBe('/home/u/Downloads/a.zip');
+  });
+});
+
+describe('private addresses', () => {
+  it('knows loopback, private, link-local and reserved literals and the local-use names', () => {
+    for (const h of ['127.0.0.1', '127.8.9.10', '10.1.2.3', '172.16.0.1', '172.31.255.255', '192.168.1.1', '169.254.169.254', '100.64.0.1', '0.0.0.0', '255.255.255.255',
+      '::1', '[::1]', '::', 'fe80::1', 'fd12:3456::1', '[::ffff:127.0.0.1]', '::ffff:7f00:1', '64:ff9b::10.0.0.1',
+      'localhost', 'LOCALHOST', 'localhost.', 'app.localhost', 'printer.local', 'router.home.arpa', 'build.internal']) {
+      expect(policy.isPrivateHostLiteral(h), h).toBe(true);
+    }
+  });
+  it('reads IPv4 the way Chromium does, so a number in another spelling is still loopback', () => {
+    expect(policy.isPrivateHostLiteral('2130706433')).toBe(true);
+    expect(policy.isPrivateHostLiteral('0x7f.1')).toBe(true);
+  });
+  it('leaves public addresses and ordinary names alone', () => {
+    for (const h of ['8.8.8.8', '172.32.0.1', '172.15.255.255', '192.169.0.1', 'example.com', 'localhost.example.com', 'mylocalhost',
+      '2606:4700::1111', '[::ffff:8.8.8.8]', '1.2.3.4.5', '']) {
+      expect(policy.isPrivateHostLiteral(h), h).toBe(false);
+    }
+    expect(policy.isPrivateHostLiteral(undefined)).toBe(false);
+  });
+  it('refuses private URLs unless the host is on the allow list, whatever its spelling', () => {
+    const none = policy.parseHostList(undefined);
+    expect(none.size).toBe(0);
+    const allowed = policy.parseHostList(' 127.0.0.1 ,,LOCALHOST,[::1] ');
+    expect([...allowed].sort()).toEqual(['127.0.0.1', '::1', 'localhost']);
+    expect(policy.privateAddressRefused('http://127.0.0.1:8080/x', none)).toBe(true);
+    expect(policy.privateAddressRefused('http://127.0.0.1:8080/x', allowed)).toBe(false);
+    expect(policy.privateAddressRefused('http://2130706433/', allowed)).toBe(false);
+    expect(policy.privateAddressRefused('http://2130706433/', none)).toBe(true);
+    expect(policy.privateAddressRefused('http://[::1]:9/', allowed)).toBe(false);
+    expect(policy.privateAddressRefused('http://192.168.1.1/admin', allowed)).toBe(true);
+    expect(policy.privateAddressRefused('http://localhost:3000/', policy.parseHostList('127.0.0.1'))).toBe(true);
+    expect(policy.privateAddressRefused('ws://localhost:1/', none)).toBe(true);
+    expect(policy.privateAddressRefused('https://example.com/', none)).toBe(false);
+    expect(policy.privateAddressRefused('data:text/html,x', none)).toBe(false);
+    expect(policy.privateAddressRefused('garbage', none)).toBe(false);
   });
 });
 

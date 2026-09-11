@@ -11,7 +11,11 @@
 //   - permissions denied by default, the human ones asked through the
 //     renderer and remembered per site,
 //   - popups denied and handed to the renderer as "open this URL",
-//   - downloads only into the workspace Downloads folder.
+//   - downloads only into the workspace Downloads folder (the assistant's
+//     only into its run's folder, never the workspace),
+//   - the assistant's pages kept off loopback, LAN and link-local addresses,
+//   - HTTP sign-ins and "leave this page?" answered by the user, never
+//     silently.
 // Per-site settings and permission decisions live in JSON under
 // userData/browser/. The pure rules are in browserPolicy.cjs.
 'use strict';
@@ -19,9 +23,11 @@
 const path = require('path');
 const fs = require('fs');
 const fsp = fs.promises;
-const { session, app, shell, webContents, WebContentsView } = require('electron');
+const { session, app, shell, webContents, WebContentsView, dialog } = require('electron');
 const policy = require('./browserPolicy.cjs');
 const { parse: parseTld } = require('tldts');
+const { createDebuggerController } = require('./browserDebugger.cjs');
+const { createAutomationBroker } = require('./browserAutomationBroker.cjs');
 
 let ElectronBlocker = null;
 let AdblockRequest = null;
@@ -41,6 +47,11 @@ const LIST_REFRESH_MS = 12 * 60 * 60 * 1000;
 const LIST_CHECK_MS = 60 * 60 * 1000;
 const LIST_RETRY_MS = 10 * 60 * 1000;
 const PERMISSION_TIMEOUT_MS = 60 * 1000;
+// An HTTP sign-in nobody answers is cancelled, so the page stops waiting.
+const AUTH_TIMEOUT_MS = 5 * 60 * 1000;
+// The Electron world the bridge runs its own page script in (0 is the page,
+// 999 Electron's preload world): nothing a page script patches reaches it.
+const BRIDGE_WORLD_ID = 1017;
 
 function setupBrowserBridge(ipcMain, opts) {
   const getMainWindow = opts.getMainWindow;
@@ -64,6 +75,11 @@ function setupBrowserBridge(ipcMain, opts) {
   const httpOnce = new Set();                      // http URLs the user chose to load once
   const blocked = new Map();                       // webContentsId -> { count, hosts: Map }
   const pendingPermissions = new Map();            // requestId -> { callback, timer }
+  const pendingAuth = new Map();                   // requestId -> { rec, tabId, key, callbacks, timer }: HTTP sign-ins
+  // Hostnames the assistant's pages may reach although they are private
+  // (loopback, LAN, link-local). Empty unless set; the probes list their
+  // loopback fixtures here, e.g. "127.0.0.1,localhost".
+  const agentAllowLocal = policy.parseHostList(process.env.PARALLX_BROWSER_AGENT_ALLOW_LOCAL);
   const downloads = new Map();                     // id -> info
   const sessions = new Map();                      // kind -> Session
   const sessionPermissions = {};                   // private tabs: remembered for this run only
@@ -75,7 +91,19 @@ function setupBrowserBridge(ipcMain, opts) {
   let lists = { status: ElectronBlocker ? 'loading' : 'unavailable', count: 0, updatedAt: null, error: null };
   let permissionSeq = 0;
   let downloadSeq = 0;
+  let authSeq = 0;
   let inAppLinks = false;                          // the extension claimed links clicked anywhere in the app
+  let broker = null;                               // the assistant's automation (browserAutomationBroker.cjs), created below
+  const recByWc = new Map();                       // webContentsId -> page view record
+  // A broker hook called only when the broker has it, and never allowed to
+  // break the view event that called it (an exception here would surface as
+  // an uncaught error in the main process). Undefined when absent or thrown.
+  const brokerHook = (name, ...args) => {
+    if (!broker || typeof broker[name] !== 'function') return undefined;
+    try { return broker[name](...args); } catch (err) { console.warn(`[browser] ${name}:`, err && err.message); return undefined; }
+  };
+  // The privileged view API answers the app window only.
+  const isMainSender = (event) => { const w = getMainWindow(); return !!(w && !w.isDestroyed() && event && event.sender === w.webContents); };
 
   const send = (channel, payload) => {
     const w = getMainWindow();
@@ -97,10 +125,14 @@ function setupBrowserBridge(ipcMain, opts) {
 
   function configureSession(ses, kind) {
     ses.setUserAgent(policy.genericUserAgent(process.versions.chrome, process.platform), 'en-US,en;q=0.9');
+    // The assistant's profile is decided first: it asks nobody, and even what
+    // the user's tabs get silently (fullscreen over the app, clipboard
+    // writes) is refused there, since the model's clicks count as gestures.
     ses.setPermissionRequestHandler((wc, permission, callback, details) => {
+      if (kind === 'agent') return callback(policy.agentPermission(permission));
       const pol = policy.permissionPolicy(permission);
       if (pol === 'allow') return callback(true);
-      if (pol === 'deny' || kind === 'agent') return callback(false);
+      if (pol === 'deny') return callback(false);
       const origin = (details && details.requestingUrl) || (wc && !wc.isDestroyed() ? wc.getURL() : '');
       const key = `${policy.siteKey(origin) || 'unknown'}|${permission}`;
       const store = kind === 'private' ? sessionPermissions : permissions;
@@ -112,20 +144,28 @@ function setupBrowserBridge(ipcMain, opts) {
       send('browser:permission-request', { requestId, origin, permission, webContentsId: wc ? wc.id : null });
     });
     ses.setPermissionCheckHandler((_wc, permission, requestingOrigin) => {
+      if (kind === 'agent') return policy.agentPermission(permission);
       const pol = policy.permissionPolicy(permission);
       if (pol === 'allow') return true;
-      if (pol === 'deny' || kind === 'agent') return false;
+      if (pol === 'deny') return false;
       return (kind === 'private' ? sessionPermissions : permissions)[`${policy.siteKey(requestingOrigin) || 'unknown'}|${permission}`] === 'allow';
     });
     ses.setDevicePermissionHandler(() => false);
     ses.on('will-download', (_event, item, wc) => handleDownload(item, wc, kind));
-    installWebRequest(ses);
+    installWebRequest(ses, kind);
   }
 
   // Registered after the engine enables its own hooks: Electron keeps one
   // listener per event per session, so ours wrap the engine's.
-  function installWebRequest(ses) {
+  function installWebRequest(ses, kind) {
     ses.webRequest.onBeforeRequest({ urls: ['<all_urls>'] }, (details, callback) => {
+      // A sealed workspace: the assistant's pages reach nothing. The user's own browsing is unaffected.
+      if (kind === 'agent' && broker && broker.isAgentSealed()) return callback({ cancel: true });
+      // The assistant's pages never reach this machine or the local network,
+      // whatever a link, redirect, frame or subresource asks for. browserOpen
+      // refuses these up front (and resolves names); this filter cannot wait
+      // on DNS, so it knows private addresses by their form alone.
+      if (kind === 'agent' && policy.privateAddressRefused(details.url, agentAllowLocal)) return callback({ cancel: true });
       if (details.resourceType === 'mainFrame') {
         const site = siteFor(details.url);
         if (site.https) {
@@ -186,7 +226,7 @@ function setupBrowserBridge(ipcMain, opts) {
       blocker.on('request-blocked', (req) => countBlocked(req));
       blocker.on('request-redirected', (req) => countBlocked(req));
       ensureCosmetics();
-      for (const ses of sessions.values()) installWebRequest(ses);
+      for (const [kind, ses] of sessions) installWebRequest(ses, kind);
       for (const rec of views.values()) { try { refreshScriptlets(rec, rec.wc.getURL()); } catch { /* view gone */ } }
       let updatedAt = Date.now();
       try { updatedAt = fs.statSync(enginePath).mtimeMs; } catch { /* keep now */ }
@@ -282,16 +322,11 @@ function setupBrowserBridge(ipcMain, opts) {
       return r.scripts.join('\n;\n');
     } catch { return ''; }
   }
+  // Through the view's shared debugger controller, which puts the scriptlet
+  // back if the link drops (DevTools) and is reattached.
   async function refreshScriptlets(rec, url) {
-    if (!rec || rec.wc.isDestroyed()) return;
-    const source = scriptletsFor(url);
-    if (source === rec.scriptSource) return;
-    rec.scriptSource = source;
-    try {
-      if (!rec.wc.debugger.isAttached()) { rec.wc.debugger.attach('1.3'); await rec.wc.debugger.sendCommand('Page.enable'); }
-      if (rec.scriptId) { await rec.wc.debugger.sendCommand('Page.removeScriptToEvaluateOnNewDocument', { identifier: rec.scriptId }); rec.scriptId = null; }
-      if (source) { const r = await rec.wc.debugger.sendCommand('Page.addScriptToEvaluateOnNewDocument', { source }); rec.scriptId = r && r.identifier; }
-    } catch (err) { console.warn('[browser] scriptlet injection:', err && err.message); }
+    if (!rec || rec.wc.isDestroyed() || !rec.dc) return;
+    try { await rec.dc.setScriptlet(scriptletsFor(url)); } catch (err) { console.warn('[browser] scriptlet injection:', err && err.message); }
   }
 
   const PAGE_COLOR_EXPR = '(function(){try{var d=document.documentElement,b=document.body;var t=function(c){return !c||c==="transparent"||c==="rgba(0, 0, 0, 0)"};var c=b?getComputedStyle(b).backgroundColor:"";if(t(c))c=getComputedStyle(d).backgroundColor;return t(c)?"rgb(255, 255, 255)":String(c)}catch(e){return ""}})()';
@@ -318,6 +353,8 @@ function setupBrowserBridge(ipcMain, opts) {
     guest.on('input-event', (_e, input) => {
       const t = input && input.type;
       if (t === 'mouseDown' || t === 'mouseUp' || t === 'keyDown' || t === 'rawKeyDown' || t === 'char') { gesture.at = Date.now(); gesture.used = 0; }
+      // On an assistant page, input that is not the assistant's own is the user taking over.
+      if (broker) broker.onInput(recByWc.get(guest.id), input);
     });
     guest.setWindowOpenHandler(({ url, disposition }) => {
       let openerUrl = '';
@@ -328,7 +365,13 @@ function setupBrowserBridge(ipcMain, opts) {
         popupsSinceGesture: gesture.used,
         listed: popupListed(url, openerUrl),
       });
-      if (decision === 'allow') { gesture.used++; send('browser:open-url', { url, disposition, openerId: guest.id }); }
+      if (decision === 'allow') {
+        gesture.used++;
+        // An assistant page's popup stays in the assistant profile, owned by the same chat.
+        const opener = recByWc.get(guest.id);
+        if (broker && opener && opener.kind === 'agent' && broker.onPopup(opener, url)) return { action: 'deny' };
+        send('browser:open-url', { url, disposition, openerId: guest.id });
+      }
       else if (decision === 'block') countBlocked({ tabId: guest.id, url, hostname: hostnameOf(url), sourceHostname: hostnameOf(openerUrl), popup: true });
       return { action: 'deny' };
     });
@@ -345,6 +388,11 @@ function setupBrowserBridge(ipcMain, opts) {
       if (params && Object.values(PARTITIONS).includes(params.partition)) webPreferences.autoplayPolicy = 'no-user-gesture-required';
     });
     win.webContents.on('did-attach-webview', (_event, guest) => attachGuestHooks(guest));
+    // The app renderer reloading or crashing orphans the assistant's leases:
+    // revoke them in this process before anything asynchronous can use them.
+    // Sign-in prompts lived in that renderer: cancelled, so no page waits on one nobody can see.
+    win.webContents.on('did-start-navigation', (e) => { if (e && e.isMainFrame && !e.isSameDocument) { cancelAuthFor(null); if (broker) broker.onRendererReset(); } });
+    win.webContents.on('render-process-gone', () => { cancelAuthFor(null); if (broker) broker.onRendererReset(); });
     win.on('closed', () => { for (const rec of [...views.values()]) { try { rec.wc.close(); } catch { /* ignore */ } } views.clear(); });
   }
   watchWindow(getMainWindow());
@@ -358,23 +406,84 @@ function setupBrowserBridge(ipcMain, opts) {
   }
   function handleDownload(item, wc, kind) {
     const id = `dl-${++downloadSeq}`;
-    const target = policy.downloadTarget(downloadDir(), item.getFilename(), (p) => fs.existsSync(p), path.sep);
+    // Anything the assistant's profile downloads belongs to the assistant: it
+    // lands in the run's own folder under userData/browser/artifacts (the
+    // chat's last run, or an unowned folder there, once no run is live),
+    // never in whatever workspace happens to be open. With no such folder it
+    // is refused, not saved as the user's.
+    const owned = kind === 'agent' ? brokerHook('downloadPathFor', wc, item.getFilename()) : null;
+    if (kind === 'agent' && !(owned && owned.path)) { try { item.cancel(); } catch { /* already over */ } return; }
+    const entry = owned && owned.entry ? owned.entry : null;
+    const target = owned ? owned.path : policy.downloadTarget(downloadDir(), item.getFilename(), (p) => fs.existsSync(p), path.sep);
     item.setSavePath(target);
-    const info = { id, kind, url: item.getURL(), filename: path.basename(target), path: target, total: item.getTotalBytes(), received: 0, state: 'progressing', webContentsId: wc ? wc.id : null, startedAt: Date.now() };
+    // While it runs, the broker can stop it (sealing, a workspace change, a
+    // renderer reset). A function, not the item, so the entry stays plain data.
+    if (entry) entry.cancel = () => { try { const s = item.getState(); if (s === 'progressing' || s === 'interrupted') item.cancel(); } catch { /* already over */ } };
+    const info = { id, kind, assistant: !!owned, url: item.getURL(), filename: path.basename(target), path: target, total: item.getTotalBytes(), received: 0, state: 'progressing', webContentsId: wc ? wc.id : null, startedAt: Date.now() };
     downloads.set(id, info);
     send('browser:download', { ...info });
     item.on('updated', (_e, state) => {
       info.received = item.getReceivedBytes();
       info.total = item.getTotalBytes();
       info.state = state === 'interrupted' ? 'interrupted' : (item.isPaused() ? 'paused' : 'progressing');
+      if (entry) entry.state = info.state;
       send('browser:download', { ...info });
     });
     item.once('done', (_e, state) => {
       info.received = item.getReceivedBytes();
       info.state = state === 'completed' ? 'completed' : (state === 'cancelled' ? 'cancelled' : 'failed');
       info.finishedAt = Date.now();
+      if (entry) {
+        entry.state = info.state;
+        delete entry.cancel;
+      }
+      // An assistant download that did not finish leaves nothing half-written
+      // in the run's folder (Chromium removes most partial files itself).
+      if (owned && state !== 'completed') for (const p of [target, `${target}.crdownload`]) { try { fs.unlinkSync(p); } catch { /* none */ } }
       send('browser:download', { ...info });
     });
+  }
+
+  // ── HTTP sign-ins ──
+  // Basic, digest and proxy authentication. Electron cancels these unless
+  // someone answers, so the pane asks the user with a sign-in bar. The
+  // assistant never sees or supplies credentials: on its tabs the broker
+  // hands the step to the user (AUTH_NEEDS_USER). Requests waiting on the
+  // same challenge in the same tab share one prompt and one answer, the way
+  // Chrome signs every request waiting on a realm in with one sign-in.
+  const authKey = (info) => `${info.isProxy ? 'proxy' : 'server'}|${info.scheme || ''}|${info.host || ''}:${info.port || 0}|${info.realm || ''}`;
+  /** Answer one pending sign-in: credentials, or none to cancel it. */
+  function settleAuth(id, username, password) {
+    const e = pendingAuth.get(id);
+    if (!e) return false;
+    pendingAuth.delete(id);
+    clearTimeout(e.timer);
+    for (const cb of e.callbacks) {
+      try { if (username == null) cb(); else cb(String(username), String(password == null ? '' : password)); } catch { /* request gone */ }
+    }
+    return true;
+  }
+  /** Cancel the pending sign-ins of one view, or of every view when rec is null. */
+  function cancelAuthFor(rec) {
+    for (const [id, e] of [...pendingAuth]) if (!rec || e.rec === rec) settleAuth(id);
+  }
+  function onLogin(rec, event, details, authInfo, callback) {
+    event.preventDefault();
+    const info = authInfo || {};
+    const key = authKey(info);
+    let id = null;
+    for (const [k, e] of pendingAuth) if (e.rec === rec && e.key === key) { e.callbacks.push(callback); id = k; break; }
+    if (!id) {
+      const fresh = `auth-${++authSeq}`;
+      const timer = setTimeout(() => settleAuth(fresh), AUTH_TIMEOUT_MS);
+      timer.unref?.();
+      pendingAuth.set(fresh, { rec, tabId: rec.tabId, key, callbacks: [callback], timer });
+      id = fresh;
+    }
+    // Sent again for a request that joins a pending prompt, so a pane that
+    // dropped its bar shows it again; the id says it is the same one.
+    emitView(rec, 'auth-request', { id, host: info.host || '', port: info.port || 0, realm: info.realm || '', scheme: info.scheme || '', isProxy: !!info.isProxy, url: (details && details.url) || '' });
+    brokerHook('onAuthRequired', rec, { host: info.host || '', realm: info.realm || '', scheme: info.scheme || '', isProxy: !!info.isProxy });
   }
 
   // ── Page views ──
@@ -403,7 +512,7 @@ function setupBrowserBridge(ipcMain, opts) {
       canGoForward: h ? h.canGoForward() : wc.canGoForward(),
     };
   };
-  const describeView = (rec) => ({ tabId: rec.tabId, webContentsId: rec.wc.id, kind: rec.kind, ...navState(rec.wc) });
+  const describeView = (rec) => ({ tabId: rec.tabId, webContentsId: rec.wc.id, kind: rec.kind, owned: !!rec.owned, crashed: rec.crashed || null, ...navState(rec.wc) });
   const emitView = (rec, type, payload) => send('browser:view:event', { tabId: rec.tabId, type, ...(payload || {}) });
   function applyBounds(rec) {
     const win = getMainWindow();
@@ -439,11 +548,14 @@ function setupBrowserBridge(ipcMain, opts) {
     if (background) view.setBackgroundColor(background);
     const wc = view.webContents;
     const rec = { tabId, kind: partitionKind, view, wc, bounds: null, visible: false, attached: false, fullscreen: false, background };
+    // One debugger controller per view: scriptlets, page theme and the
+    // assistant's automation all go through it (browserDebugger.cjs).
+    rec.dc = createDebuggerController(wc);
     views.set(tabId, rec);
+    recByWc.set(wc.id, rec);
     attachGuestHooks(wc);
     // Scriptlets are chosen per destination as soon as a navigation starts,
     // so they are registered before the new document exists.
-    rec.scriptId = null; rec.scriptSource = undefined;
     const onNav = (e, url, isInPlace, isMainFrame) => {
       const u = (e && e.url) || url;
       const main = e && typeof e.isMainFrame === 'boolean' ? e.isMainFrame : isMainFrame;
@@ -452,7 +564,16 @@ function setupBrowserBridge(ipcMain, opts) {
     };
     wc.on('did-start-navigation', onNav);
     wc.on('did-redirect-navigation', onNav);
-    try { wc.debugger.attach('1.3'); wc.debugger.sendCommand('Page.enable').catch(() => {}); } catch (err) { console.warn('[browser] debugger attach:', err && err.message); }
+    // A new document: a crashed page is live again (a reload starts a new
+    // renderer), and a sign-in the old one was waiting on is moot.
+    wc.on('did-start-navigation', (e, _url, isInPlace, isMainFrame) => {
+      const main = e && typeof e.isMainFrame === 'boolean' ? e.isMainFrame : isMainFrame;
+      const same = e && typeof e.isSameDocument === 'boolean' ? e.isSameDocument : isInPlace;
+      if (!main || same) return;
+      rec.crashed = null;
+      cancelAuthFor(rec);
+    });
+    rec.dc.ensure().catch((err) => console.warn('[browser] debugger attach:', err && err.message));
     wc.on('did-start-loading', () => emitView(rec, 'did-start-loading'));
     wc.on('did-stop-loading', () => emitView(rec, 'did-stop-loading', navState(wc)));
     // The pane paints the few pixels it leaves beside each resize sash in the
@@ -469,24 +590,70 @@ function setupBrowserBridge(ipcMain, opts) {
     wc.on('did-fail-load', (_e, errorCode, errorDescription, validatedURL, isMainFrame) => emitView(rec, 'did-fail-load', { errorCode, errorDescription, validatedURL, isMainFrame }));
     wc.on('update-target-url', (_e, url) => emitView(rec, 'update-target-url', { url }));
     wc.on('found-in-page', (_e, result) => emitView(rec, 'found-in-page', { result }));
-    wc.on('enter-html-full-screen', () => { rec.fullscreen = true; applyBounds(rec); emitView(rec, 'fullscreen', { on: true }); });
-    wc.on('leave-html-full-screen', () => { rec.fullscreen = false; applyBounds(rec); emitView(rec, 'fullscreen', { on: false }); });
+    // The assistant's pages never cover the app: the permission is refused
+    // (policy.agentPermission) and this is the second lock. The view keeps
+    // its pane rectangle and the page is told, from a world its scripts
+    // cannot patch, to leave fullscreen.
+    wc.on('enter-html-full-screen', () => {
+      if (rec.kind === 'agent') {
+        wc.executeJavaScriptInIsolatedWorld(BRIDGE_WORLD_ID, [{ code: 'document.fullscreenElement ? document.exitFullscreen().catch(() => {}) : null' }], false).catch(() => { /* page gone */ });
+        return;
+      }
+      rec.fullscreen = true; applyBounds(rec); emitView(rec, 'fullscreen', { on: true });
+    });
+    wc.on('leave-html-full-screen', () => {
+      if (rec.kind === 'agent' && !rec.fullscreen) return;
+      rec.fullscreen = false; applyBounds(rec); emitView(rec, 'fullscreen', { on: false });
+    });
     wc.on('context-menu', (_e, p) => emitView(rec, 'context-menu', { params: { x: p.x, y: p.y, linkURL: p.linkURL, srcURL: p.srcURL, mediaType: p.mediaType, selectionText: p.selectionText, isEditable: p.isEditable, pageURL: p.pageURL } }));
     // The page has keyboard focus when the user is in it; the browser's own
     // chords still have to reach the workbench dispatcher.
     wc.on('before-input-event', (e, input) => {
       if (input.type !== 'keyDown') return;
       const chord = chordOf(input);
-      if (FORWARDED_KEYS.has(chord)) { e.preventDefault(); emitView(rec, 'shortcut', { chord }); }
+      // The assistant's key presses go to the page, never to the app's shortcuts.
+      if (FORWARDED_KEYS.has(chord) && !(broker && broker.isAutomationInput(rec, input))) { e.preventDefault(); emitView(rec, 'shortcut', { chord }); }
     });
     wc.on('focus', () => emitView(rec, 'focus'));
-    wc.on('destroyed', () => { if (views.get(tabId) === rec) views.delete(tabId); });
+    // A page asking to confirm before it is left (unsaved changes). Electron
+    // answers synchronously and, unanswered, keeps the page with no word to
+    // anyone. During an assistant action on this tab the veto stands and the
+    // broker tells the model (LEAVE_BLOCKED); otherwise the user is leaving,
+    // so the user is asked.
+    wc.on('will-prevent-unload', (event) => {
+      if (brokerHook('onLeaveBlocked', rec)) return;
+      const win = getMainWindow();
+      const box = { type: 'question', buttons: ['Leave', 'Stay'], defaultId: 0, cancelId: 1, noLink: true, title: 'Leave This Site?', message: 'Changes you made may not be saved.' };
+      const choice = win && !win.isDestroyed() ? dialog.showMessageBoxSync(win, box) : dialog.showMessageBoxSync(box);
+      if (choice === 0) event.preventDefault();
+    });
+    // A crashed page keeps its tab: the pane shows the failure with Reload,
+    // the broker ends any assistant action on it (PAGE_CRASHED), and a
+    // fullscreen page gives the window back. A clean exit is teardown, not a
+    // crash (Chrome shows no sad tab for it either).
+    wc.on('render-process-gone', (_e, details) => {
+      const reason = (details && details.reason) || 'crashed';
+      if (reason === 'clean-exit' || wc.isDestroyed()) return;
+      rec.crashed = reason;
+      if (rec.fullscreen) { rec.fullscreen = false; applyBounds(rec); emitView(rec, 'fullscreen', { on: false }); }
+      cancelAuthFor(rec);
+      brokerHook('onViewCrashed', rec, { ...(details || {}), reason });
+      emitView(rec, 'crashed', { reason });
+    });
+    wc.on('login', (event, details, authInfo, callback) => onLogin(rec, event, details, authInfo, callback));
+    wc.on('destroyed', () => {
+      cancelAuthFor(rec);
+      recByWc.delete(rec.wc.id);
+      if (views.get(tabId) === rec) { views.delete(tabId); if (broker) broker.onViewGone(tabId); }
+      try { rec.dc.dispose(); } catch { /* gone */ }
+    });
     return describeView(rec);
   }
   function viewDestroy(tabId) {
     const rec = views.get(tabId);
     if (!rec) return;
     views.delete(tabId);
+    if (broker) broker.onViewGone(tabId);
     try { rec.visible = false; rec.fullscreen = false; applyBounds(rec); } catch { /* ignore */ }
     try { if (!rec.wc.isDestroyed()) rec.wc.close(); } catch { /* ignore */ }
   }
@@ -528,11 +695,38 @@ function setupBrowserBridge(ipcMain, opts) {
     edit: (tabId, cmd) => { const wc = liveView(tabId).wc; if (['copy', 'cut', 'paste', 'selectAll'].includes(cmd)) wc[cmd](); return true; },
     snapshot: async (tabId) => { const rec = liveView(tabId); if (!rec.attached) return null; const img = await rec.wc.capturePage(); return img.isEmpty() ? null : img.toDataURL(); },
     destroy: (tabId) => { viewDestroy(tabId); return true; },
+    // The pane's sign-in bar: answers only a request that belongs to this tab's page.
+    authReply: (tabId, id, username, password) => {
+      const e = pendingAuth.get(id);
+      if (!e || e.tabId !== tabId || views.get(tabId) !== e.rec) return false;
+      return settleAuth(id, username == null ? '' : username, password);
+    },
+    authCancel: (tabId, id) => {
+      const e = pendingAuth.get(id);
+      if (!e || e.tabId !== tabId || views.get(tabId) !== e.rec) return false;
+      return settleAuth(id);
+    },
   };
-  ipcMain.handle('browser:view', async (_e, method, tabId, ...args) => {
+  ipcMain.handle('browser:view', async (e, method, tabId, ...args) => {
+    if (!isMainSender(e)) return { __error: 'The page view API answers the app window only.' };
     const fn = VIEW_METHODS[method];
     if (!fn) return { __error: `Unknown view method: ${method}` };
     try { return await fn(tabId, ...args); } catch (err) { return { __error: err && err.message ? err.message : String(err) }; }
+  });
+
+  // ── The assistant's automation ──
+  // The broker drives these same views; it gets a narrow accessor, not a
+  // second view registry.
+  broker = createAutomationBroker({
+    ipcMain,
+    getMainWindow,
+    userData: opts.userData || app.getPath('userData'),
+    views: {
+      get: (tabId) => { const r = views.get(tabId); return r && !r.wc.isDestroyed() ? r : null; },
+      create: (tabId, kind) => { viewCreate(tabId, kind, {}); return views.get(tabId); },
+      destroy: (tabId) => viewDestroy(tabId),
+      byWebContentsId: (id) => recByWc.get(id) || null,
+    },
   });
 
   // ── Persistence ──
@@ -632,8 +826,12 @@ function setupBrowserBridge(ipcMain, opts) {
     if (!guest || guest.isDestroyed() || !isOurs(guest.session)) return { ok: false };
     const features = theme === 'dark' || theme === 'light' ? [{ name: 'prefers-color-scheme', value: theme }] : [];
     try {
-      if (!guest.debugger.isAttached()) guest.debugger.attach('1.3');
-      await guest.debugger.sendCommand('Emulation.setEmulatedMedia', { features });
+      const rec = recByWc.get(guest.id);
+      if (rec) await rec.dc.setEmulatedMedia(features);
+      else {
+        if (!guest.debugger.isAttached()) guest.debugger.attach('1.3');
+        await guest.debugger.sendCommand('Emulation.setEmulatedMedia', { features });
+      }
       return { ok: true };
     } catch (err) {
       return { ok: false, error: err && err.message ? err.message : String(err) };

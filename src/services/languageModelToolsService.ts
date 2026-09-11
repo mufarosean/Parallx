@@ -89,6 +89,7 @@ export interface ILanguageModelToolsRuntimeControl {
     token: ICancellationToken,
     observer?: ILanguageModelToolsRuntimeObserver,
     sessionId?: string,
+    callOptions?: { readonly resultCharBudget?: number; readonly acceptsImages?: boolean },
   ): Promise<IToolResult>;
 }
 
@@ -345,6 +346,7 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
     token: ICancellationToken,
     observer?: ILanguageModelToolsRuntimeObserver,
     sessionId?: string,
+    callOptions?: { readonly resultCharBudget?: number; readonly acceptsImages?: boolean },
   ): Promise<IToolResult> {
     const tool = this._tools.get(name);
     if (!tool) {
@@ -443,7 +445,13 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
     try {
       // Session-scoped tools (plan, read-registry) receive the session the
       // turn runs in via the invocation context — the ONLY place it's known.
-      const result = await tool.handler(args, token, { sessionId });
+      // The loop's size budget rides along for tools that fit their own output,
+      // and so does whether the loop hands tool images to the model.
+      const result = await tool.handler(args, token, {
+        sessionId,
+        ...(callOptions?.resultCharBudget !== undefined ? { resultCharBudget: callOptions.resultCharBudget } : {}),
+        ...(callOptions?.acceptsImages ? { acceptsImages: true } : {}),
+      });
       // Taint the session turn if a red tool succeeded (M65 Layer 5).
       // Taint is set ONLY here, ONLY on success, ONLY when sessionId is in scope.
       if (!result.isError && sessionId && decision.willTaintOnSuccess) {

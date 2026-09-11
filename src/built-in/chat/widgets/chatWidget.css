@@ -1741,6 +1741,11 @@
 }
 .parallx-chat-tool-result--error .parallx-chat-tool-result-body { color: var(--px-danger, #e06c66); }
 
+/* A tool's images (a page capture), fetched by id. */
+.parallx-chat-tool-images { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.parallx-chat-tool-image { display: block; max-width: 240px; max-height: 160px; border: 1px solid var(--vscode-panel-border, var(--px-border)); border-radius: var(--parallx-radius-md, 6px); }
+.parallx-chat-tool-image-missing { display: inline-block; padding: 2px 8px; font-size: 11px; color: var(--vscode-descriptionForeground, var(--px-text-muted)); border: 1px dashed var(--vscode-panel-border, var(--px-border)); border-radius: var(--parallx-radius-md, 6px); }
+
 /* ── Status Badge ── */
 
 .parallx-chat-tool-status-badge {

@@ -49,6 +49,8 @@ import { LanguageModelBridge } from './bridges/languageModelBridge.js';
 import { ChatBridge } from './bridges/chatBridge.js';
 import { IconsBridge } from './bridges/iconsBridge.js';
 import { McpBridge, type IMcpInvokeToken, type IMcpInvokeResult, type IMcpToolInfo } from './bridges/mcpBridge.js';
+import { BrowserAutomationBridge } from './bridges/browserAutomationBridge.js';
+import { IBrowserAutomationService, type IBrowserAutomationHost, type IBrowserAutomationHostRegistration } from '../services/browserAutomationTypes.js';
 import { CronBridge, type IExtensionCronJob } from './bridges/cronBridge.js';
 import { ICronService } from '../openclaw/openclawCronService.js';
 import { LinksBridge, type LinkContractInput } from './bridges/linksBridge.js';
@@ -349,6 +351,10 @@ export interface ParallxApiObject {
     invokeTool(toolName: string, args: Record<string, unknown>, token?: IMcpInvokeToken): Promise<IMcpInvokeResult>;
     listTools(): readonly IMcpToolInfo[];
   } | undefined;
+  /** Browser automation host (docs/BROWSER_AGENT_IMPLEMENTATION_CONTRACT.md). The Browser extension only. */
+  readonly browser: {
+    registerAutomationHost(host: IBrowserAutomationHost): IBrowserAutomationHostRegistration;
+  } | undefined;
   /**
    * Cron scheduling surface (M63 P0).
    * Idempotent upsert by stable extension-owned id. Undefined when
@@ -515,6 +521,11 @@ export function createToolApi(
   // M63 P0 — MCP & Cron bridges. Undefined when underlying services absent.
   const mcpBridge = languageModelToolsService
     ? new McpBridge(toolId, languageModelToolsService)
+    : undefined;
+
+  // Browser automation host: parallx.browser only; tied to its subscriptions.
+  const browserAutomationBridge = BrowserAutomationBridge.isHostTool(toolId) && deps.services.has(IBrowserAutomationService)
+    ? new BrowserAutomationBridge(toolId, deps.services.get<import('../services/browserAutomationTypes.js').IBrowserAutomationService>(IBrowserAutomationService), subscriptions)
     : undefined;
 
   const cronBridge = deps.services.has(ICronService)
@@ -1075,6 +1086,12 @@ export function createToolApi(
           invokeTool: (toolName: string, args: Record<string, unknown>, token?: IMcpInvokeToken) =>
             mcpBridge.invokeTool(toolName, args, token),
           listTools: () => mcpBridge.listTools(),
+        })
+      : undefined,
+
+    browser: browserAutomationBridge
+      ? Object.freeze({
+          registerAutomationHost: (host: IBrowserAutomationHost) => browserAutomationBridge.registerAutomationHost(host),
         })
       : undefined,
 

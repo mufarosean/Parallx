@@ -284,7 +284,7 @@ async function runCanvasPromptTurn(
       maxIterations: OPENCLAW_MAX_READONLY_ITERATIONS,
       sessionId: context.sessionId,
       invokeToolWithRuntimeControl: services.invokeToolWithRuntimeControl
-        ? (name, args, tok, observer, sid) => services.invokeToolWithRuntimeControl!(name, args, tok, observer, sid ?? context.sessionId)
+        ? (name, args, tok, observer, sid, opts) => services.invokeToolWithRuntimeControl!(name, args, tok, observer, sid ?? context.sessionId, opts)
         : undefined,
       toolObserver: services.runtimeHookRegistry?.getCompositeToolObserver(),
       messageObserver: services.runtimeHookRegistry?.getCompositeMessageObserver(),

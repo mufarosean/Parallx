@@ -1497,6 +1497,50 @@ export namespace chat {
   export function registerTool(name: string, tool: ChatToolDefinition): IDisposable;
 }
 
+// --- Browser automation host (docs/BROWSER_AGENT_IMPLEMENTATION_CONTRACT.md) ---
+
+/** The state of the assistant's run in the Assistant Browser, for the tab's status strip. */
+export interface BrowserRunState {
+  readonly chatSessionId: string;
+  readonly tabId: string | null;
+  readonly tabs: readonly string[];
+  readonly state: 'running' | 'paused' | 'idle';
+  readonly note: string;
+  /** Why it is paused: the user took over, or Pause was pressed. */
+  readonly by: 'user' | 'handoff' | null;
+}
+
+/** A tab the broker created that the host should show as an editor pane (the page view already exists). */
+export interface BrowserAutomationTabRequest {
+  readonly tabId: string;
+  readonly chatSessionId: string;
+  readonly openerTabId: string | null;
+  readonly reveal: boolean;
+}
+
+/** What the Browser provides as the host. It shows tabs and state; it cannot dispatch page actions. */
+export interface BrowserAutomationHost {
+  openTab(tab: BrowserAutomationTabRequest): void | Promise<void>;
+  closeTab(tabId: string): void | Promise<void>;
+  revealTab(tabId: string): void | Promise<void>;
+  setRunState(state: BrowserRunState): void;
+}
+
+export interface BrowserAutomationHostRegistration extends IDisposable {
+  /** The user's controls from the Assistant Browser tab. Resolves true when applied. */
+  control(action: 'pause' | 'resume' | 'takeover' | 'stop'): Promise<boolean>;
+}
+
+/**
+ * The `parallx.browser` API namespace: defined for the Browser extension
+ * (parallx.browser) only. While a host is registered the assistant's browser
+ * tools exist; disposing the registration (or the extension deactivating)
+ * removes them and ends any run.
+ */
+export namespace browser {
+  export function registerAutomationHost(host: BrowserAutomationHost): BrowserAutomationHostRegistration;
+}
+
 
 // --- M63 P0 � MCP & Cron namespaces ----------------------------------------
 

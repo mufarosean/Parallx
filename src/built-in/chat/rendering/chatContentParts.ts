@@ -1378,8 +1378,96 @@ function _renderToolInvocation(part: IChatToolInvocationContent): HTMLElement {
     }
   }
 
+  // A captured page: thumbnails fetched by id. A capture that expired (kept 7
+  // days) or was cleared says so.
+  const shots = part.isComplete && part.result?.artifacts ? part.result.artifacts.filter((a) => a.kind === 'image') : [];
+  if (shots.length > 0) {
+    const strip = $('div.parallx-chat-tool-images');
+    for (const a of shots.slice(0, 4)) {
+      const img = document.createElement('img');
+      img.className = 'parallx-chat-tool-image';
+      img.alt = 'Page capture';
+      img.dataset.artifactId = a.id;
+      img.hidden = true;
+      strip.appendChild(img);
+      void _loadToolImage(a.id).then((src) => { if (src) { img.src = src; img.hidden = false; } else _markToolImageExpired(img); });
+    }
+    root.appendChild(strip);
+  }
+
   // (No spinner — the breathing node marker carries the running state.)
   return root;
+}
+
+type ToolImageBridge = {
+  automation?: (m: string, p?: unknown) => Promise<unknown>;
+  onEvent?: (cb: (e: { type: string; payload: unknown }) => void) => () => void;
+};
+const _toolImageBridge = (): ToolImageBridge | undefined =>
+  (globalThis as { parallxElectron?: { browser?: ToolImageBridge } }).parallxElectron?.browser;
+
+// Thumbnails by id. A finished card renders again when streaming ends and on
+// every session switch, and each read ships up to 1 MB over IPC, so the newest
+// TOOL_IMAGE_CACHE_MAX stay. A failed read is not kept (a later render tries
+// again). Clearing the Assistant Browser's data empties the cache (the
+// broker's 'artifacts-cleared' event); a workspace switch reloads the window.
+const TOOL_IMAGE_CACHE_MAX = 50;
+const _toolImageCache = new Map<string, Promise<string | null>>();
+let _toolImageCacheWatched = false;
+
+function _loadToolImage(id: string): Promise<string | null> {
+  const hit = _toolImageCache.get(id);
+  if (hit) {
+    _toolImageCache.delete(id);
+    _toolImageCache.set(id, hit);
+    return hit;
+  }
+  _watchToolImageCache();
+  const pending: Promise<string | null> = _loadToolImageUncached(id).then((src) => {
+    if (!src && _toolImageCache.get(id) === pending) _toolImageCache.delete(id);
+    return src;
+  });
+  _toolImageCache.set(id, pending);
+  while (_toolImageCache.size > TOOL_IMAGE_CACHE_MAX) {
+    const oldest = _toolImageCache.keys().next().value;
+    if (oldest === undefined) break;
+    _toolImageCache.delete(oldest);
+  }
+  return pending;
+}
+
+function _watchToolImageCache(): void {
+  if (_toolImageCacheWatched) return;
+  const b = _toolImageBridge();
+  if (!b?.onEvent) return;
+  _toolImageCacheWatched = true;
+  b.onEvent((e) => {
+    if (e.type !== 'automation:event' || (e.payload as { type?: string } | null)?.type !== 'artifacts-cleared') return;
+    _toolImageCache.clear();
+    // Thumbnails already on screen ask again; the ones whose files are gone say so.
+    for (const img of document.querySelectorAll<HTMLImageElement>('img.parallx-chat-tool-image[data-artifact-id]')) {
+      const id = img.dataset.artifactId;
+      if (id) void _loadToolImageUncached(id).then((src) => { if (!src) _markToolImageExpired(img); });
+    }
+  });
+}
+
+/** In place of a capture that is gone: a small note, not an empty box. */
+function _markToolImageExpired(img: HTMLImageElement): void {
+  if (!img.isConnected) return;
+  const note = $('span.parallx-chat-tool-image-missing', 'Capture expired');
+  img.replaceWith(note);
+}
+
+/** Tool images are held by their owner; only the Browser's captures exist today. */
+async function _loadToolImageUncached(id: string): Promise<string | null> {
+  if (!id.startsWith('browser:')) return null;
+  const b = _toolImageBridge();
+  if (!b?.automation) return null;
+  try {
+    const r = await b.automation('readArtifact', { id }) as { mimeType?: string; data?: string } | null;
+    return r && typeof r.data === 'string' && typeof r.mimeType === 'string' ? `data:${r.mimeType};base64,${r.data}` : null;
+  } catch { return null; }
 }
 
 function _truncate(text: string, max: number): string {

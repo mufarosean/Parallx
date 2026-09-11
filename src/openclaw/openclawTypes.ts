@@ -246,6 +246,7 @@ export interface IDefaultParticipantServices {
     token: ICancellationToken,
     observer?: IChatRuntimeToolInvocationObserver,
     sessionId?: string,
+    callOptions?: { readonly resultCharBudget?: number; readonly acceptsImages?: boolean },
   ): Promise<IToolResult>;
   maxIterations?: number;
   networkTimeout?: number;
@@ -436,6 +437,7 @@ export interface IWorkspaceParticipantServices {
     token: ICancellationToken,
     observer?: IChatRuntimeToolInvocationObserver,
     sessionId?: string,
+    callOptions?: { readonly resultCharBudget?: number; readonly acceptsImages?: boolean },
   ): Promise<IToolResult>;
   listFiles?(relativePath: string): Promise<readonly { name: string; type: 'file' | 'directory'; size: number }[]>;
   readFileContent?(relativePath: string): Promise<string>;
@@ -481,6 +483,7 @@ export interface ICanvasParticipantServices {
     token: ICancellationToken,
     observer?: IChatRuntimeToolInvocationObserver,
     sessionId?: string,
+    callOptions?: { readonly resultCharBudget?: number; readonly acceptsImages?: boolean },
   ): Promise<IToolResult>;
   readFileContent?(relativePath: string): Promise<string>;
   reportParticipantDebug?(debug: {

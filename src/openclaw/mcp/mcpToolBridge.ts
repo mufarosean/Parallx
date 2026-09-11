@@ -89,7 +89,13 @@ export class McpToolBridge implements IDisposable {
           .filter((c) => c.type === 'text' && c.text)
           .map((c) => c.text!)
           .join('\n');
-        return { content: text || '(no output)', isError: result.isError };
+        // Image blocks go to the running turn (a model that can see them gets
+        // them); they used to be dropped here.
+        const images = result.content
+          .filter((c) => c.type === 'image' && c.data && c.mimeType)
+          .map((c, i) => ({ kind: 'image' as const, id: `mcp:${serverId}:${schema.name}:${i}`, name: `${schema.name} image`, fullPath: '', isImplicit: false, mimeType: c.mimeType!, data: c.data! }));
+        const fallback = images.length ? `(${images.length} image${images.length === 1 ? '' : 's'})` : '(no output)';
+        return { content: text || fallback, isError: result.isError, ...(images.length ? { images } : {}) };
       },
       requiresConfirmation: false,
       permissionLevel: 'requires-approval',

@@ -844,13 +844,14 @@ export class ChatDataService {
     token: ICancellationToken,
     observer?: import('../chatTypes.js').IChatRuntimeToolInvocationObserver,
     sessionId?: string,
+    callOptions?: { readonly resultCharBudget?: number; readonly acceptsImages?: boolean },
   ): Promise<IToolResult> {
     const toolsService = this._d.languageModelToolsService as (ILanguageModelToolsService & Partial<ILanguageModelToolsRuntimeControl>) | undefined;
     if (!toolsService?.invokeToolWithRuntimeControl) {
       return { content: 'Tool service not available', isError: true };
     }
 
-    return toolsService.invokeToolWithRuntimeControl(name, args, token, observer, sessionId);
+    return toolsService.invokeToolWithRuntimeControl(name, args, token, observer, sessionId, callOptions);
   }
 
   async getFileCount(): Promise<number> {

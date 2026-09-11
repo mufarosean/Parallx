@@ -710,6 +710,13 @@ export class ChatService extends Disposable implements IChatService {
   private readonly _onDidSendUserRequest = this._register(new Emitter<{ sessionId: string; text: string; origin?: string }>());
   readonly onDidSendUserRequest: Event<{ sessionId: string; text: string; origin?: string }> = this._onDidSendUserRequest.event;
 
+  // Fires once per request that reached its participant, on every ending
+  // (done, error, cancelled), so holders scoped to one turn (the Assistant
+  // Browser's lease) end with it. turnId is the request id the turn's
+  // cancellation token carries.
+  private readonly _onDidCompleteRequest = this._register(new Emitter<{ readonly sessionId: string; readonly turnId: string }>());
+  readonly onDidCompleteRequest: Event<{ readonly sessionId: string; readonly turnId: string }> = this._onDidCompleteRequest.event;
+
   constructor(
     agentService: IChatAgentService,
     modeService: IChatModeService,
@@ -1306,6 +1313,9 @@ export class ChatService extends Disposable implements IChatService {
     const cts = new CancellationTokenSource(requestId);
     this._activeCancellations.set(sessionId, cts);
 
+    // Everything from here on ends in onDidCompleteRequest, however it ends.
+    try {
+
     // 7. Create response stream
     const stream = new ChatResponseStream(assistantResponse, () => {
       this._onDidChangeSession.fire(sessionId);
@@ -1493,6 +1503,9 @@ export class ChatService extends Disposable implements IChatService {
     this._processNextPending(sessionId);
 
     return result;
+    } finally {
+      this._onDidCompleteRequest.fire({ sessionId, turnId: requestId });
+    }
   }
 
   /** Cancel the in-progress request for a session. */

@@ -209,6 +209,7 @@ describe('executeOpenclawAttempt', () => {
       expect.anything(),
       undefined,
       expect.anything(),
+      { resultCharBudget: expect.any(Number) },
     );
   });
 

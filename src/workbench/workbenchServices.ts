@@ -17,6 +17,8 @@ import { ChatAgentService } from '../services/chatAgentService.js';
 import { ChatModeService } from '../services/chatModeService.js';
 import { ChatWidgetService } from '../services/chatWidgetService.js';
 import { LanguageModelToolsService } from '../services/languageModelToolsService.js';
+import { BrowserAutomationService } from '../services/browserAutomationService.js';
+import { IBrowserAutomationService } from '../services/browserAutomationTypes.js';
 import { ToolErrorService } from '../tools/toolErrorIsolation.js';
 import { SessionManager } from '../workspace/sessionManager.js';
 import { ConfigurationRegistry } from '../configuration/configurationRegistry.js';
@@ -261,6 +263,15 @@ export function registerChatServices(
   services.registerInstance(IChatModeService, chatModeService);
   services.registerInstance(IChatWidgetService, chatWidgetService);
   services.registerInstance(ILanguageModelToolsService, languageModelToolsService);
+
+  // The assistant's browser tools (docs/BROWSER_AGENT_IMPLEMENTATION_CONTRACT.md).
+  // They exist only while the Browser extension hosts them.
+  services.registerInstance(IBrowserAutomationService, new BrowserAutomationService({
+    tools: languageModelToolsService,
+    chat: chatService,
+    sessions: () => (services.has(ISessionManager) ? services.get(ISessionManager) : undefined),
+    settings: () => (services.has(ISettingsRegistryService) ? services.get(ISettingsRegistryService) : undefined),
+  }));
 
   return { languageModelsService, chatService, chatAgentService, chatModeService, chatWidgetService, languageModelToolsService };
 }

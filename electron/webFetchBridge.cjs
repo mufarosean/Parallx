@@ -212,6 +212,16 @@ function _resolveAndGuard(host) {
 }
 
 /**
+ * Does `host` resolve to a private/reserved address? true when ANY address
+ * does (the rule _resolveAndGuard enforces), false when none does or the
+ * lookup itself fails. For callers that need the answer, not the addresses:
+ * the assistant browser's browserOpen (electron/browserAutomationBroker.cjs).
+ */
+function hostResolvesPrivate(host) {
+  return _resolveAndGuard(host).then(() => false, (err) => !!(err && err.code === 'PRIVATE_IP'));
+}
+
+/**
  * Build a `lookup`-compatible callback that returns ONLY addresses we have
  * already vetted in `_resolveAndGuard`. Closes the TOCTOU window between
  * the preflight `dns.lookup` and Node's own `dns.lookup` at connect time
@@ -620,6 +630,9 @@ function setupWebFetchBridge(ipcMain, _appRoot, readSecret) {
 
 module.exports = {
   setupWebFetchBridge,
+  // The same private-address rule, for the assistant browser (browserAutomationBroker.cjs).
+  isPrivateIp,
+  hostResolvesPrivate,
   // Exported for tests only:
   _internals: {
     isPrivateIp,

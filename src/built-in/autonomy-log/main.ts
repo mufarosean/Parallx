@@ -57,6 +57,7 @@ import { renderWorkflowThumbnail } from './workflowThumbnail.js';
 import { WorkflowEditorPane } from './workflowEditorPane.js';
 import { ISettingsRegistryService, ICanvasPageQueryService } from '../../services/serviceTypes.js';
 import { ILanguageModelToolsService, ILanguageModelsService } from '../../services/chatTypes.js';
+import { isBrowserToolName } from '../../services/browserAutomationTypes.js';
 
 // ── Local API type ───────────────────────────────────────────────────────────
 
@@ -246,7 +247,10 @@ export function activate(api: ParallxApi, context: ToolContext): void {
             try {
               if (!api.services.has(ILanguageModelToolsService)) return [];
               const tools = api.services.get<import('../../services/chatTypes.js').ILanguageModelToolsService>(ILanguageModelToolsService);
-              return tools.getToolDefinitions().map((t) => ({ name: t.name, description: t.description }));
+              // Browser tools run only in a chat turn; a Tool step refuses them.
+              return tools.getToolDefinitions()
+                .filter((t) => !isBrowserToolName(t.name))
+                .map((t) => ({ name: t.name, description: t.description }));
             } catch { return []; }
           },
         });

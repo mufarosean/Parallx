@@ -1015,11 +1015,31 @@ export interface IToolCall {
 /**
  * Result returned by a tool execution.
  */
+/**
+ * A binary result a tool produced (a page capture). The owner holds the bytes
+ * and hands them out by id; they never travel inside `content`.
+ */
+export interface IToolResultArtifact {
+  readonly kind: 'image';
+  readonly id: string;
+  readonly mimeType: string;
+  readonly width?: number;
+  readonly height?: number;
+}
+
 export interface IToolResult {
   /** Tool output content (text). */
   readonly content: string;
   /** Whether the tool execution failed. */
   readonly isError?: boolean;
+  /** Images the tool produced, fetched by id from their owner (browserCapture). */
+  readonly artifacts?: readonly IToolResultArtifact[];
+  /**
+   * The images themselves, for the running turn only: the loop shows them to
+   * a model that can see images, and nothing persists them (the tool card and
+   * history keep `artifacts`).
+   */
+  readonly images?: readonly IChatImageAttachment[];
 }
 
 // ── Permission Model (M11 Task 2.1) ──
@@ -1089,6 +1109,18 @@ export type ToolCategory =
  */
 export interface IChatToolInvocationCallContext {
   readonly sessionId?: string;
+  /**
+   * Characters this result may use in the model's context, when the turn loop
+   * knows it. A tool that returns structured content (JSON) fits itself to it;
+   * past it the loop cuts the text blindly.
+   */
+  readonly resultCharBudget?: number;
+  /**
+   * True only when the turn loop hands images a tool returns to the model:
+   * the default chat loop with a model that can see. A tool whose result is
+   * an image for the model to look at (browserCapture) refuses without it.
+   */
+  readonly acceptsImages?: boolean;
 }
 
 export interface IChatTool {
@@ -1234,6 +1266,12 @@ export interface IChatService extends IDisposable {
   readonly onDidDeleteSession: Event<string>;
   /** Fires when a session's data changes (new message, response update). */
   readonly onDidChangeSession: Event<string>;
+  /**
+   * Fires once per request that reached its participant, on every ending
+   * (done, error, cancelled). turnId is the request id the turn's
+   * cancellation token carries.
+   */
+  readonly onDidCompleteRequest?: Event<{ readonly sessionId: string; readonly turnId: string }>;
   /** Create a new chat session. */
   createSession(mode?: ChatMode, modelId?: string): IChatSession;
   /** Delete a session by ID. */

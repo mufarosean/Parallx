@@ -47,6 +47,7 @@ import type {
   IChatMessage,
   IChatResponseChunk,
 } from '../../services/chatTypes.js';
+import { isBrowserToolName, BROWSER_TOOLS_NEED_A_CHAT } from '../../services/browserAutomationTypes.js';
 import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService, IDiagnosticsService, IDocumentExtractionService, IObservabilityService, IRuntimeHookRegistry, ILayoutService, IEmbeddingService, IWorkspaceStorageService, ISurfaceRouterService, IAutonomyLogService, IAutonomyEventLog, ISettingsRegistryService, IAutonomyTaskRailService, IAutonomyPatternMemoryService, IAutonomyFeatureFlagsService, ISemanticGraphService, IMindMapRefreshOrchestrator, ICanvasPageQueryService, IPlannerQueryService } from '../../services/serviceTypes.js';
 import { IActivityJournalService } from '../../services/activityJournalService.js';
 import { IPythonEnvService } from '../../services/pythonEnvService.js';
@@ -1012,15 +1013,16 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     token: ICancellationToken,
     observer?: import('./chatTypes.js').IChatRuntimeToolInvocationObserver,
     sessionId?: string,
+    callOptions?: { readonly resultCharBudget?: number; readonly acceptsImages?: boolean },
   ) => {
     const platformTools = dataService.getToolDefinitions();
     if (platformTools.some((tool) => tool.name === name)) {
-      return dataService.invokeToolWithRuntimeControl(name, args, token, observer, sessionId);
+      return dataService.invokeToolWithRuntimeControl(name, args, token, observer, sessionId, callOptions);
     }
 
     const skill = getRuntimeSkillCatalog().find((entry) => entry.kind === 'tool' && entry.name === name);
     if (!skill) {
-      return dataService.invokeToolWithRuntimeControl(name, args, token, observer, sessionId);
+      return dataService.invokeToolWithRuntimeControl(name, args, token, observer, sessionId, callOptions);
     }
 
     const permission = resolveRuntimeSkillPermission(name, skill.permissionLevel);
@@ -1088,7 +1090,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     filterToolsForSession: _permissionService
       ? (tools, sid) => _permissionService!.filterToolsForSession(tools, sid)
       : undefined,
-    invokeToolWithRuntimeControl: (n, a, t, o, s) => invokeRuntimeToolWithSkillSupport(n, a, t, o, s),
+    invokeToolWithRuntimeControl: (n, a, t, o, s, c) => invokeRuntimeToolWithSkillSupport(n, a, t, o, s, c),
     maxIterations: unifiedConfigService?.getEffectiveConfig().agent.maxIterations ?? 25,
     networkTimeout: 120_000,
     getModelContextLength: () => dataService.getModelContextLength(),
@@ -1335,7 +1337,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     filterToolsForSession: _permissionService
       ? (tools, sid) => _permissionService!.filterToolsForSession(tools, sid)
       : undefined,
-    invokeToolWithRuntimeControl: (n, a, t, o, s) => invokeRuntimeToolWithSkillSupport(n, a, t, o, s),
+    invokeToolWithRuntimeControl: (n, a, t, o, s, c) => invokeRuntimeToolWithSkillSupport(n, a, t, o, s, c),
     listFiles: fsAccessor ? (r) => fsAccessor.readdir(r) : undefined,
     readFileContent: fsAccessor ? async (r) => { const res = await fsAccessor.readFileContent(r); return res.content; } : undefined,
     reportParticipantDebug: (debug) => dataService.reportParticipantDebug(debug),
@@ -1360,7 +1362,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     filterToolsForSession: _permissionService
       ? (tools, sid) => _permissionService!.filterToolsForSession(tools, sid)
       : undefined,
-    invokeToolWithRuntimeControl: (n, a, t, o, s) => invokeRuntimeToolWithSkillSupport(n, a, t, o, s),
+    invokeToolWithRuntimeControl: (n, a, t, o, s, c) => invokeRuntimeToolWithSkillSupport(n, a, t, o, s, c),
     readFileContent: fsAccessor ? async (r) => { const res = await fsAccessor.readFileContent(r); return res.content; } : undefined,
     reportParticipantDebug: (debug) => dataService.reportParticipantDebug(debug),
     reportRetrievalDebug: (debug) => dataService.reportRetrievalDebug(debug),
@@ -1824,6 +1826,10 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
             return api.commands.executeCommand(commandId, ...args);
           },
           runTool: async (toolName, args, origin) => {
+            // A browser action needs a chat turn: the broker's lease is keyed to
+            // it and released when the chat request completes, which a tool
+            // step never does. Browsing belongs in an Agent Turn step.
+            if (isBrowserToolName(toolName)) return { content: BROWSER_TOOLS_NEED_A_CHAT, isError: true };
             const sessionId = `${origin}:${Date.now()}`;
             _permissionService?.markSubagentSession(sessionId);
             try {

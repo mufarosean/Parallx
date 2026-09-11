@@ -122,6 +122,128 @@ function permissionPolicy(name) {
   return PERMISSION_POLICY[name] || 'deny';
 }
 
+/** What the assistant's profile never gets, even where the user's tabs are
+ *  allowed silently: a page going fullscreen over the app, or writing the
+ *  user's clipboard, on a click the model made. */
+const AGENT_DENIED_PERMISSIONS = new Set(['fullscreen', 'clipboard-sanitized-write']);
+/** The assistant's profile asks nobody: a permission is granted only when it
+ *  is silent for everyone and not one of AGENT_DENIED_PERMISSIONS. */
+function agentPermission(name) {
+  return permissionPolicy(name) === 'allow' && !AGENT_DENIED_PERMISSIONS.has(name);
+}
+
+// ── Private addresses ──
+// The assistant's pages never reach this machine or the local network. These
+// rules know a private destination by its form alone: the loopback, private,
+// link-local and other reserved ranges webFetch refuses (webFetchBridge.cjs),
+// and the names reserved for local use. A public-looking name that resolves
+// to a private address is the broker's check at browserOpen: a request
+// filter cannot wait on DNS.
+const PRIVATE_V4_RANGES = [
+  ['0.0.0.0', 8],        // "this host on this network"
+  ['10.0.0.0', 8],       // private
+  ['100.64.0.0', 10],    // carrier-grade NAT
+  ['127.0.0.0', 8],      // loopback
+  ['169.254.0.0', 16],   // link-local, cloud metadata
+  ['172.16.0.0', 12],    // private
+  ['192.0.0.0', 24],     // IETF protocol assignments
+  ['192.0.2.0', 24],     // TEST-NET-1
+  ['192.168.0.0', 16],   // private
+  ['198.18.0.0', 15],    // benchmarking
+  ['198.51.100.0', 24],  // TEST-NET-2
+  ['203.0.113.0', 24],   // TEST-NET-3
+  ['224.0.0.0', 4],      // multicast
+  ['240.0.0.0', 4],      // reserved, broadcast
+];
+/** Names reserved for local use, alone or as a suffix: never a public site. */
+const PRIVATE_NAME_SUFFIXES = ['localhost', 'local', 'home.arpa', 'internal'];
+
+function ipv4Number(text) {
+  const parts = String(text).split('.');
+  if (parts.length !== 4) return null;
+  let n = 0;
+  for (const p of parts) {
+    if (!/^\d{1,3}$/.test(p) || Number(p) > 255) return null;
+    n = n * 256 + Number(p);
+  }
+  return n;
+}
+function isPrivateV4(n) {
+  return PRIVATE_V4_RANGES.some(([base, prefix]) => {
+    const size = 2 ** (32 - prefix);
+    return Math.floor(n / size) === Math.floor(ipv4Number(base) / size);
+  });
+}
+/** The eight 16-bit words of an IPv6 literal (an IPv4 tail allowed), or null. */
+function ipv6Words(text) {
+  let s = String(text).split('%')[0];
+  const tail = /(^|:)(\d{1,3}(?:\.\d{1,3}){3})$/.exec(s);
+  if (tail) {
+    const n = ipv4Number(tail[2]);
+    if (n === null) return null;
+    s = `${s.slice(0, s.length - tail[2].length)}${Math.floor(n / 65536).toString(16)}:${(n % 65536).toString(16)}`;
+  }
+  const halves = s.split('::');
+  if (halves.length > 2) return null;
+  const split = (h) => (h ? h.split(':') : []);
+  const head = split(halves[0]);
+  const rest = halves.length === 2 ? split(halves[1]) : [];
+  const gap = 8 - head.length - rest.length;
+  if (halves.length === 2 ? gap < 1 : gap !== 0) return null;
+  const all = [...head, ...new Array(halves.length === 2 ? gap : 0).fill('0'), ...rest];
+  if (!all.every((w) => /^[0-9a-f]{1,4}$/i.test(w))) return null;
+  return all.map((w) => parseInt(w, 16));
+}
+function isPrivateV6(w) {
+  const zeros = (from, to) => w.slice(from, to).every((x) => x === 0);
+  if (zeros(0, 8)) return true;                     // :: unspecified
+  if (zeros(0, 7) && w[7] === 1) return true;       // ::1 loopback
+  if ((w[0] & 0xff80) === 0xfe80) return true;      // fe80::/10 link-local, fec0::/10 site-local
+  if ((w[0] & 0xfe00) === 0xfc00) return true;      // fc00::/7 unique local
+  if ((w[0] & 0xff00) === 0xff00) return true;      // ff00::/8 multicast
+  // An IPv4 address carried in IPv6: mapped (::ffff:a.b.c.d), compatible (::a.b.c.d), NAT64 (64:ff9b::a.b.c.d).
+  const carried = (zeros(0, 5) && (w[5] === 0xffff || w[5] === 0)) || (w[0] === 0x64 && w[1] === 0xff9b && zeros(2, 6));
+  return carried ? isPrivateV4(w[6] * 65536 + w[7]) : false;
+}
+/** A hostname the way Chromium writes it: lower case, IPv4 in dotted
+ *  decimal (so 2130706433 and 0x7f.1 are 127.0.0.1), IPv6 without brackets,
+ *  no trailing dot. */
+function canonicalHost(hostname) {
+  let h = String(hostname || '').trim().toLowerCase();
+  if (!h) return '';
+  if (h.includes(':') && !h.startsWith('[')) h = `[${h}]`;
+  try { h = new URL(`http://${h}/`).hostname; } catch { /* leave it as written */ }
+  return h.replace(/^\[|\]$/g, '').replace(/\.$/, '');
+}
+/** Is this hostname private by its form alone: a loopback, private,
+ *  link-local or reserved IP literal, or a name reserved for local use
+ *  (localhost, *.localhost, *.local, *.home.arpa, *.internal)? */
+function isPrivateHostLiteral(hostname) {
+  const h = canonicalHost(hostname);
+  if (!h) return false;
+  if (PRIVATE_NAME_SUFFIXES.some((s) => h === s || h.endsWith(`.${s}`))) return true;
+  if (h.includes(':')) { const w = ipv6Words(h); return !!w && isPrivateV6(w); }
+  const n = ipv4Number(h);
+  return n !== null && isPrivateV4(n);
+}
+/** The hostnames in a comma-separated list, canonical, as a Set
+ *  (PARALLX_BROWSER_AGENT_ALLOW_LOCAL: "127.0.0.1,localhost"). */
+function parseHostList(value) {
+  const out = new Set();
+  for (const part of String(value || '').split(',')) { const h = canonicalHost(part); if (h) out.add(h); }
+  return out;
+}
+/** Does the assistant's profile refuse this URL? Yes when its host is a
+ *  private literal (isPrivateHostLiteral) not named in `allowed`, a Set from
+ *  parseHostList. A URL with no host (data:, about:) is not an address. */
+function privateAddressRefused(url, allowed) {
+  let host = '';
+  try { host = new URL(String(url)).hostname; } catch { return false; }
+  const h = canonicalHost(host);
+  if (!h || !isPrivateHostLiteral(h)) return false;
+  return !(allowed && typeof allowed.has === 'function' && allowed.has(h));
+}
+
 /** Per-site settings, the shield's three switches. */
 const COOKIE_MODES = ['block-third-party', 'block-all', 'allow'];
 function defaultSite() {
@@ -226,6 +348,11 @@ module.exports = {
   genericUserAgent,
   parseOmnibox,
   permissionPolicy,
+  AGENT_DENIED_PERMISSIONS,
+  agentPermission,
+  isPrivateHostLiteral,
+  parseHostList,
+  privateAddressRefused,
   defaultSite,
   normalizeSite,
   cookieDecision,

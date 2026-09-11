@@ -84,6 +84,7 @@ export interface IReadOnlyTurnOptions {
     token: ICancellationToken,
     observer?: import('../services/chatRuntimeTypes.js').IChatRuntimeToolInvocationObserver,
     sessionId?: string,
+    callOptions?: { readonly resultCharBudget?: number; readonly acceptsImages?: boolean },
   ) => Promise<IToolResult>;
   /** D4: Optional tool invocation observer for runtime hooks. */
   readonly toolObserver?: import('../services/chatRuntimeTypes.js').IChatRuntimeToolInvocationObserver;
@@ -265,6 +266,8 @@ export async function runOpenclawReadOnlyTurn(
       if (options.toolObserver?.onValidated) {
         try { options.toolObserver.onValidated(hookMetadata); } catch (e) { console.warn('[D4] Readonly tool hook error:', e); }
       }
+      // No acceptsImages: this loop sends tool results as text only, so a tool
+      // that makes an image for the model (browserCapture) refuses here.
       const toolResult = await options.invokeToolWithRuntimeControl(toolName, toolCall.function.arguments, token, undefined, options.sessionId);
       // D4: Fire after-tool hook (approval hooks skipped — readonly tools have no approval flow)
       if (options.toolObserver?.onExecuted) {
