@@ -57,6 +57,9 @@ const LIMITS = {
   leaseIdleMs: 10 * 60_000,
   revealMs: 3_000,
   captureMaxBytes: 1_000_000,
+  // Compare the pictured click region, including canvas pixels. Activity elsewhere
+  // (a video, clock or advert) should not invalidate an otherwise unchanged target.
+  captureRegionCssRadius: 96,
   artifactRetentionMs: 7 * 24 * 60 * 60_000,
   // How often artifacts past their retention are swept while the app runs.
   artifactSweepMs: 6 * 60 * 60_000,
@@ -377,6 +380,7 @@ function createAutomationBroker(opts) {
   const chats = new Map(); // chatSessionId -> { chatSessionId, tabs: string[], activeTab, seq, downloads }
   const artifacts = new Map(); // artifactId -> { path, mimeType, workspaceId, width, height, meta }
   let leaseSeq = 0;
+  let ownershipEpoch = 0; // invalidates deferred work even across host removal/re-registration
   // Requests whose browsing the user stopped, or whose chat request was
   // cancelled: `${chatSessionId}|${turnId}` -> 'stopped' | 'cancelled'. A later
   // call in that request is refused; the entry goes when the request completes.
@@ -418,6 +422,7 @@ function createAutomationBroker(opts) {
   function endLease(L, reason) {
     if (!L || !L.active) return;
     L.active = false;
+    L.captures.clear();
     L.endedBy = reason;
     for (const w of [...L.wakers]) { try { w(); } catch { /* ignore */ } }
     L.wakers.clear();
@@ -428,6 +433,7 @@ function createAutomationBroker(opts) {
   }
 
   function revokeAll(reason, closeViews) {
+    ownershipEpoch++;
     if (lease) { lease.cancelled = true; endLease(lease, reason); }
     if (closeViews) {
       // A download outlives the tab that started it: stop the transfers too.
@@ -564,7 +570,7 @@ function createAutomationBroker(opts) {
     if (code === 'INTERNAL' && /Object has been destroyed/i.test(message)) return fail('PAGE_GONE', 'That tab is closed.', false);
     if (code === 'CANCELLED') return cancelled();
     if (NEEDS_USER_CODES.has(code)) return userOutcome(code, message, extra);
-    const retryable = ['CDP_TIMEOUT', 'DEBUGGER_BUSY', 'PAGE_NOT_ACTIONABLE'].includes(code);
+    const retryable = ['CDP_TIMEOUT', 'DEBUGGER_BUSY', 'PAGE_NOT_ACTIONABLE', 'STALE_TARGET'].includes(code);
     return fail(code, message, retryable, extra);
   }
   // A page dialog, as data: its message is the page's words, never the tool's.
@@ -1545,8 +1551,11 @@ function createAutomationBroker(opts) {
     switch (action) {
       case 'check': {
         const want = a.checked !== false;
+        const nativeCheck = t.info.tag === 'INPUT' && ['checkbox', 'radio'].includes(t.info.type);
+        if (!nativeCheck && !CHECK_ROLES.has(t.refRec.role)) return fail('NOT_CHECKABLE', 'That target is not a checkbox, radio, switch or checkable menu item.', false, { tabId: t.rec.tabId });
         if (t.info.disabled) return fail('NOT_ACTIONABLE', 'That control is disabled.', false);
         if (t.info.checked === want) return { version: 1, status: 'ok', tabId: t.rec.tabId, summary: `Already ${want ? 'checked' : 'unchecked'}.`, evidence: [{ kind: 'state', detail: want ? 'checked' : 'unchecked' }] };
+        if (!want && (t.info.type === 'radio' || ['radio', 'menuitemradio'].includes(t.refRec.role))) return fail('RADIO_UNCHECK_UNSUPPORTED', 'A selected radio option cannot be unchecked by clicking it. Select another option in its group.', false, { tabId: t.rec.tabId });
         await ensureShown(L, t.rec);
         note(L, `${want ? 'Checking' : 'Unchecking'} "${clip(t.refRec.name, 40)}"`);
         const pt = await actionPoint(L, t);
@@ -1642,7 +1651,7 @@ function createAutomationBroker(opts) {
     if (gone(rec)) return fail('PAGE_GONE', 'That tab is closed.', false);
     if (rec.wc.getURL() !== cap.url || rec.navSeq !== cap.navSeq) return fail('STALE_TARGET', 'The page changed or reloaded since the capture. Capture again.', true);
     const x = Number(a.x); const y = Number(a.y);
-    if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x > cap.width || y > cap.height) return fail('BAD_ARGUMENT', `x and y must be inside the capture (0..${cap.width}, 0..${cap.height}).`, false);
+    if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x >= cap.width || y >= cap.height) return fail('BAD_ARGUMENT', `x and y must be inside the capture (x < ${cap.width}, y < ${cap.height}).`, false);
     await ensureShown(L, rec);
     // The capture's pixels are where things were then: a scroll, a resize or a zoom since moves them.
     const m = await rec.dc.send('Page.getLayoutMetrics');
@@ -1654,7 +1663,37 @@ function createAutomationBroker(opts) {
     const pt = { x: (x * cap.cssWidth) / cap.width, y: (y * cap.cssHeight) / cap.height };
     note(L, 'Clicking at a point in the capture');
     const before = await signature(rec);
-    return actWatched(L, rec, before, `Clicked at (${Math.round(x)}, ${Math.round(y)}) in capture ${cap.id}.`, () => mouseClick(L, rec, pt));
+    return actWatched(L, rec, before, `Clicked at (${Math.round(x)}, ${Math.round(y)}) in capture ${cap.id}.`, async () => {
+      // Compare lossless original pixels, not the compressed/downscaled image
+      // sent to the model. URL/viewport identity alone misses SPA and canvas edits.
+      const current = await rec.wc.capturePage();
+      guard(L); usable(rec);
+      if (!rec.attached || rec.navSeq !== cap.navSeq || rec.wc.getURL() !== cap.url || zoomOf(rec) !== cap.zoom || current.isEmpty()) throw codeError('STALE_TARGET', 'The page changed since the capture. Capture again.');
+      const latestMetrics = await rec.dc.send('Page.getLayoutMetrics');
+      guard(L); usable(rec);
+      if (!rec.attached || rec.navSeq !== cap.navSeq || rec.wc.getURL() !== cap.url || zoomOf(rec) !== cap.zoom) throw codeError('STALE_TARGET', 'The page changed while checking the capture. Capture again.');
+      const latestView = latestMetrics.cssVisualViewport || latestMetrics.cssLayoutViewport || {};
+      if (Math.abs((latestView.pageX || 0) - was.pageX) > 1 || Math.abs((latestView.pageY || 0) - was.pageY) > 1
+        || Math.round(latestView.clientWidth) !== Math.round(was.clientWidth) || Math.round(latestView.clientHeight) !== Math.round(was.clientHeight)) throw codeError('STALE_TARGET', 'The viewport changed while checking the capture. Capture again.');
+      const size = current.getSize();
+      const oldSize = cap.image.getSize();
+      if (size.width !== oldSize.width || size.height !== oldSize.height) throw codeError('STALE_TARGET', 'The captured viewport changed. Capture again.');
+      const region = captureRegion(cap, pt);
+      if (!cap.image.crop(region).toBitmap().equals(current.crop(region).toBitmap())) throw codeError('STALE_TARGET', 'The pictured click region changed since the capture. Capture again.');
+      await mouseClick(L, rec, pt);
+    });
+  }
+
+  function captureRegion(cap, pt) {
+    const size = cap.image.getSize();
+    const sx = size.width / cap.cssWidth;
+    const sy = size.height / cap.cssHeight;
+    const radius = LIMITS.captureRegionCssRadius;
+    const x = Math.max(0, Math.floor((pt.x - radius) * sx));
+    const y = Math.max(0, Math.floor((pt.y - radius) * sy));
+    const right = Math.min(size.width, Math.ceil((pt.x + radius) * sx));
+    const bottom = Math.min(size.height, Math.ceil((pt.y + radius) * sy));
+    return { x, y, width: Math.max(1, right - x), height: Math.max(1, bottom - y) };
   }
 
   async function opBack(L) {
@@ -1775,7 +1814,14 @@ function createAutomationBroker(opts) {
     if (!rec) return fail('NO_PAGE', 'The Assistant Browser has no page open.', false);
     await ensureShown(L, rec);
     note(L, 'Capturing the page');
+    const navSeq = rec.navSeq;
+    const url = rec.wc.getURL();
+    const zoom = zoomOf(rec);
+    const beforeMetrics = await rec.dc.send('Page.getLayoutMetrics');
+    const beforeView = beforeMetrics.cssVisualViewport || beforeMetrics.cssLayoutViewport;
+    guard(L); usable(rec);
     const img = await rec.wc.capturePage();
+    guard(L); usable(rec);
     if (img.isEmpty()) return fail('CAPTURE_FAILED', 'The page could not be captured. Make sure its tab is on screen.', true);
     const metrics = await rec.dc.send('Page.getLayoutMetrics');
     const vp = metrics.cssVisualViewport || metrics.cssLayoutViewport;
@@ -1800,6 +1846,13 @@ function createAutomationBroker(opts) {
       bytes = image.toJPEG(75);
     }
     if (bytes.length > LIMITS.captureMaxBytes) return fail('CAPTURE_TOO_LARGE', 'The capture is too large even scaled down.', false);
+    guard(L); usable(rec);
+    const afterMetrics = await rec.dc.send('Page.getLayoutMetrics');
+    const afterView = afterMetrics.cssVisualViewport || afterMetrics.cssLayoutViewport;
+    guard(L); usable(rec);
+    const viewChanged = [beforeView, afterView].some((v) => Math.abs((v.pageX || 0) - (vp.pageX || 0)) > 1 || Math.abs((v.pageY || 0) - (vp.pageY || 0)) > 1
+      || Math.round(v.clientWidth) !== Math.round(vp.clientWidth) || Math.round(v.clientHeight) !== Math.round(vp.clientHeight));
+    if (!rec.attached || navSeq !== rec.navSeq || url !== rec.wc.getURL() || zoom !== zoomOf(rec) || viewChanged) return fail('STALE_TARGET', 'The page changed while capturing it. Capture again.', true);
     const id = `c${++L.captureSeq}`;
     const dir = runDir(L);
     const file = path.join(dir, `capture-${id}.jpg`);
@@ -1807,9 +1860,10 @@ function createAutomationBroker(opts) {
     const artifactId = `browser:${safeSegment(L.workspaceId)}:${L.runId}:${id}`;
     // What the pixels belong to (click_at checks each): this document, this scroll position and viewport, this zoom.
     const cap = {
-      id, tabId: rec.tabId, url: rec.wc.getURL(), navSeq: rec.navSeq, width: size.width, height: size.height, cssWidth, cssHeight, zoom: zoomOf(rec),
+      id, tabId: rec.tabId, url, navSeq, image: img, width: size.width, height: size.height, cssWidth, cssHeight, zoom,
       view: { pageX: vp.pageX || 0, pageY: vp.pageY || 0, clientWidth: vp.clientWidth, clientHeight: vp.clientHeight },
     };
+    L.captures.clear(); // only the newest image stays in the model's turn; bound native pixel memory too
     L.captures.set(id, cap);
     artifacts.set(artifactId, { path: file, mimeType: 'image/jpeg', workspaceId: L.workspaceId, width: size.width, height: size.height });
     return {
@@ -1959,12 +2013,26 @@ function createAutomationBroker(opts) {
   function onPopup(openerRec, url) {
     if (!openerRec || openerRec.kind !== 'agent') return false;
     const chatSessionId = ownerOf(openerRec) || `orphan-${openerRec.tabId}`;
-    const toWatchers = (entry) => { if (lease && lease.chatSessionId === chatSessionId) for (const w of lease.watchers || []) if (w.rec === openerRec) w.ev.popups.push(entry); };
+    const epoch = ownershipEpoch;
+    const workspace = ctx && ctx.workspaceSessionId;
+    const originRun = lease && live(lease) && !lease.paused && lease.chatSessionId === chatSessionId ? lease : null;
+    // A paused/idle page still belongs to the human. Only a popup originating
+    // in an active AI run depends on that run; all popups depend on their view/epoch.
+    const stillOwned = () => epoch === ownershipEpoch && ctx && !ctx.sealed && ctx.workspaceSessionId === workspace
+      && !gone(openerRec) && (!originRun || (live(originRun) && !originRun.paused));
+    const toWatchers = (entry) => { if (originRun && live(originRun)) for (const w of originRun.watchers || []) if (w.rec === openerRec) w.ev.popups.push(entry); };
     void (async () => {
       try {
+        if (!stillOwned()) return;
         // A popup is a load the assistant's page asked for: browserOpen's rule, before a tab opens for it.
-        if (await privateRefused(url)) { toWatchers({ tabId: null, url, refused: true }); return; }
+        const refused = await privateRefused(url);
+        if (!stillOwned()) return;
+        if (refused) { toWatchers({ tabId: null, url, refused: true }); return; }
         const rec = await createTab(chatSessionId, openerRec.tabId);
+        if (!stillOwned()) {
+          if (!gone(rec)) { closing.add(rec.tabId); views.destroy(rec.tabId); send({ type: 'tab-closed', tabId: rec.tabId, reason: 'stale-popup' }); }
+          return;
+        }
         toWatchers({ tabId: rec.tabId, url });
         rec.wc.loadURL(url).catch(() => { /* reported on the tab */ });
       } catch (err) { console.warn('[browser-automation] popup tab:', err && err.message); }

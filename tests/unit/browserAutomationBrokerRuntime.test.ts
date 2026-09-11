@@ -167,7 +167,9 @@ function makeHarness(o: { userData?: string; allowLocal?: string; resolvesPrivat
       getZoomFactor: () => 1,
       loadURL: (u: string) => { loads.push(u); h.loader(wc, u); return Promise.resolve(); },
       capturePage: async () => {
-        const img: Any = { isEmpty: () => false, getSize: () => ({ width: 800, height: 600 }), toJPEG: () => Buffer.from('fake-jpeg'), resize: () => img };
+        // A capture is immutable; changing the fake page produces different pixels.
+        const pixels = Buffer.from(JSON.stringify({ text: page.text, version: page.version, nodes: page.nodes }));
+        const img: Any = { isEmpty: () => false, getSize: () => ({ width: 800, height: 600 }), toJPEG: () => Buffer.from('fake-jpeg'), resize: () => img, crop: () => img, toBitmap: () => pixels };
         return img;
       },
     });
@@ -1225,5 +1227,149 @@ describe('artifacts', () => {
     expect(fs.existsSync(path.join(ws, 'old'))).toBe(false);
     expect(fs.existsSync(path.join(ws, 'fresh'))).toBe(true);
     expect(Object.keys(JSON.parse(fs.readFileSync(path.join(ws, 'runs.json'), 'utf8')).runs)).toEqual(['fresh']);
+  });
+});
+
+// Independent review regressions (2026-09-11). These assert required behavior,
+// not the known defects. Preserve these assertions when changing the broker.
+describe('review regressions', () => {
+  it.each(['workspace', 'sealed', 'renderer'] as const)(
+    'does not create a deferred popup after %s revokes its owner', async (reason) => {
+      let finishLookup: ((value: boolean) => void) | undefined;
+      const h = await opened({ resolvesPrivate: async (host) => {
+        if (host === 'popup.example') return new Promise<boolean>((resolve) => { finishLookup = resolve; });
+        return false;
+      } });
+      const opener = h.recOf('s1');
+      h.broker.onPopup(opener, 'https://popup.example/late');
+      await until(() => !!finishLookup);
+      if (reason === 'renderer') h.broker.onRendererReset();
+      else await h.call('setContext', reason === 'sealed'
+        ? { ...WS, sealed: true }
+        : { workspaceId: 'ws2', workspaceSessionId: 'wss2', sealed: false });
+      expect(h.recs.size).toBe(0);
+      finishLookup!(false);
+      await sleep(50);
+      expect(h.loads).not.toContain('https://popup.example/late');
+      expect(h.recs.size).toBe(0);
+    },
+  );
+
+  it('refuses capture coordinates after same-document content replaces the target', async () => {
+    const h = await opened();
+    const capture = await h.run({ op: 'capture' });
+    expect(capture.status).toBe('ok');
+    // A SPA replaces the pictured content while URL, viewport, and scroll stay fixed.
+    h.page.nodes = [ax(90, 'button', 'Delete account')];
+    h.page.text = 'A different page state';
+    h.page.version++;
+    const before = h.log.length;
+    const result = await h.run({ op: 'act', action: 'click_at', captureId: capture.capture.captureId, x: 20, y: 49 });
+    expect(h.inputs(before)).toHaveLength(0);
+    expect(result).toMatchObject({ status: 'error', error: { code: 'STALE_TARGET', retryable: true } });
+  });
+
+  it('rejects check on an ordinary button before sending a click', async () => {
+    const h = await opened();
+    const read = await h.run({ op: 'read' });
+    const before = h.log.length;
+    const result = await h.run({ op: 'act', action: 'check', ref: refOf(read, 'Send').ref, checked: true });
+    expect(h.inputs(before)).toHaveLength(0);
+    expect(result.status).toBe('error');
+  });
+
+  it.each(['cancel', 'pause', 'stop', 'host-gone'] as const)('drops an agent popup pending %s', async (reason) => {
+    let finishLookup: ((value: boolean) => void) | undefined;
+    const h = await opened({ resolvesPrivate: async (host) => host === 'popup.example'
+      ? new Promise<boolean>((resolve) => { finishLookup = resolve; }) : false });
+    h.broker.onPopup(h.recOf('s1'), 'https://popup.example/late');
+    await until(() => !!finishLookup);
+    if (reason === 'cancel') await h.call('cancel', id('s1', 't1'));
+    else if (reason === 'host-gone') await h.call('revokeAll', { reason, closeViews: true });
+    else await h.call('control', { action: reason });
+    finishLookup!(false);
+    await sleep(50);
+    expect(h.loads).not.toContain('https://popup.example/late');
+  });
+
+  it('lets the user open a popup after the request completes', async () => {
+    const h = await opened();
+    const opener = h.recOf('s1');
+    await h.call('release', id('s1', 't1'));
+    h.broker.onPopup(opener, 'https://shop.example/human');
+    await until(() => h.loads.includes('https://shop.example/human'));
+    expect(h.recs.size).toBe(2);
+  });
+
+  it('does not call a non-checkable target unchecked, or click a selected radio to uncheck it', async () => {
+    const h = await opened();
+    let read = await h.run({ op: 'read' });
+    let before = h.log.length;
+    expect((await h.run({ op: 'act', action: 'check', ref: refOf(read, 'Send').ref, checked: false })).error.code).toBe('NOT_CHECKABLE');
+    expect(h.inputs(before)).toHaveLength(0);
+    h.page.nodes = [ax(3, 'radio', 'Choice')];
+    h.page.info[3] = { tag: 'INPUT', type: 'radio', checked: true };
+    read = await h.run({ op: 'read' });
+    before = h.log.length;
+    expect((await h.run({ op: 'act', action: 'check', ref: refOf(read, 'Choice').ref, checked: false })).error.code).toBe('RADIO_UNCHECK_UNSUPPORTED');
+    expect(h.inputs(before)).toHaveLength(0);
+  });
+
+  it('allows an unchanged capture and releases its pixel memory at request completion', async () => {
+    const h = await opened();
+    const cap = await h.run({ op: 'capture' });
+    const L = h.state().lease;
+    const result = await h.run({ op: 'act', action: 'click_at', captureId: cap.capture.captureId, x: 20, y: 49 });
+    expect(result.status).toBe('ok');
+    await h.call('release', id('s1', 't1'));
+    expect(L.captures.size).toBe(0);
+  });
+
+  it('rejects an old capture when a newer capture replaces it', async () => {
+    const h = await opened();
+    const old = await h.run({ op: 'capture' });
+    await h.run({ op: 'capture' });
+    expect(h.state().lease.captures.size).toBe(1);
+    expect((await h.run({ op: 'act', action: 'click_at', captureId: old.capture.captureId, x: 20, y: 49 })).error.code).toBe('UNKNOWN_CAPTURE');
+  });
+
+  it('does not write a capture after cancellation while capturePage is pending', async () => {
+    const h = await opened();
+    const rec = h.recOf('s1');
+    const original = rec.wc.capturePage;
+    let finish: (() => void) | undefined;
+    rec.wc.capturePage = async () => { await new Promise<void>((resolve) => { finish = resolve; }); return original(); };
+    const pending = h.run({ op: 'capture' });
+    await until(() => !!finish);
+    await h.call('cancel', id('s1', 't1'));
+    finish!();
+    expect((await pending).status).toBe('cancelled');
+    expect(fs.existsSync(path.join(h.userData, 'browser', 'artifacts', 'ws1'))).toBe(false);
+  });
+
+  it('refuses a capture if zoom changes while its pixels are being collected', async () => {
+    const h = await opened();
+    const rec = h.recOf('s1');
+    const original = rec.wc.capturePage;
+    rec.wc.capturePage = async () => { const img = await original(); rec.wc.getZoomFactor = () => 1.5; return img; };
+    expect((await h.run({ op: 'capture' })).error.code).toBe('STALE_TARGET');
+    expect(h.state().lease.captures.size).toBe(0);
+    expect(fs.existsSync(path.join(h.userData, 'browser', 'artifacts', 'ws1'))).toBe(false);
+  });
+
+  it('sends no input if cancelled during visual revalidation', async () => {
+    const h = await opened();
+    const cap = await h.run({ op: 'capture' });
+    const rec = h.recOf('s1');
+    const original = rec.wc.capturePage;
+    let finish: (() => void) | undefined;
+    rec.wc.capturePage = async () => { await new Promise<void>((resolve) => { finish = resolve; }); return original(); };
+    const before = h.log.length;
+    const pending = h.run({ op: 'act', action: 'click_at', captureId: cap.capture.captureId, x: 20, y: 49 });
+    await until(() => !!finish);
+    await h.call('cancel', id('s1', 't1'));
+    finish!();
+    expect((await pending).status).toBe('cancelled');
+    expect(h.inputs(before)).toHaveLength(0);
   });
 });
