@@ -1,7 +1,13 @@
 # Parallx Milestone 104 — Reference Practice and Painting Planning (Media Organizer)
 
-> **Status: DESIGN COMPLETE** (discussed 2026-09-10, decisions settled
-> 2026-09-12). Nothing built, no branch. This file records what is decided, what is proposed, and what is
+> **Status: BUILT** (design 2026-09-10, decisions settled 2026-09-12, slices
+> 1 to 7 shipped 2026-09-12 on branch `browser`: commits 080283d6 practice,
+> b83ab275 plans, and the slice-7 commit after it). Slice 8 (combining photos)
+> is not built. Practice pools offer Everything, a tag with its children, an
+> album, or a search; a saved smart album is not yet a pool. Verified by the
+> hidden probe tests/probes/practice-probe.mjs and the vitest suites
+> tests/unit/moPractice.test.ts and tests/unit/moPlan.test.ts; Mufaro's own
+> verdict in the app is still owed. This file records what is decided, what is proposed, and what is
 > still open, so the build can start from it without re-deriving anything.
 > Source of truth for this work; the memory note points here.
 
