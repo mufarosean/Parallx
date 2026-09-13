@@ -3079,6 +3079,7 @@ export class Workbench extends Layout {
 
     // Process contributions from already-registered tools
     for (const entry of registry.getAll()) {
+      if (this._toolEnablementService && !this._toolEnablementService.isEnabled(entry.description.manifest.id)) continue;
       commandContribution.processContributions(entry.description);
       keybindingContribution.processContributions(entry.description);
       menuContribution.processContributions(entry.description);
@@ -3086,12 +3087,17 @@ export class Workbench extends Layout {
     }
 
     // Process contributions for future tool registrations.
-    // External tools that are disabled skip contribution processing —
-    // no commands, views, or keybindings are wired until the user enables them.
+    // A disabled tool, built-in or external, contributes nothing until the
+    // user enables it: no commands, keybindings, menus or sidebar views.
+    // Built-ins used to be exempt here while their activation was skipped,
+    // which left a disabled built-in's sidebar icon in place over a view
+    // that waited forever for a provider its never-run activation could not
+    // register. Enabling re-processes contributions and activates
+    // (onDidChangeEnablement below); required built-ins are always enabled.
     this._register(registry.onDidRegisterTool((event) => {
       const desc = event.description;
-      if (!desc.isBuiltin && !this._toolEnablementService.isEnabled(desc.manifest.id)) {
-        return; // skip contribution processing for disabled external tools
+      if (!this._toolEnablementService.isEnabled(desc.manifest.id)) {
+        return; // a disabled tool has no surface until the user enables it
       }
       commandContribution.processContributions(desc);
       keybindingContribution.processContributions(desc);
