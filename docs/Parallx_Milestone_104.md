@@ -1,7 +1,7 @@
 # Parallx Milestone 104 — Reference Practice and Painting Planning (Media Organizer)
 
-> **Status: DESIGN** (discussed with Mufaro 2026-09-10). Nothing built, no
-> branch. This file records what is decided, what is proposed, and what is
+> **Status: DESIGN COMPLETE** (discussed 2026-09-10, decisions settled
+> 2026-09-12). Nothing built, no branch. This file records what is decided, what is proposed, and what is
 > still open, so the build can start from it without re-deriving anything.
 > Source of truth for this work; the memory note points here.
 
@@ -67,6 +67,13 @@ Nothing in this milestone depends on that.
   out of the way.
 - **D6 — Clips reuse the existing clip editor** (docs/CLIPS.md) for drawing
   and painting videos.
+- **D7 — Everything art-specific sits behind one Media Organizer setting**
+  (Mufaro, 2026-09-12). One boolean, default off, workspace scope, declared
+  in the manifest the way `mediaOrganizer.enableScreenRecorder` is. Off hides
+  practice, Daily Study, plans and their commands, Home cards and automation;
+  it never deletes data, and migrations still run. The Part C clip-editor
+  fixes (timelapse speeds, HEVC preview, HEIC import, missing files marked
+  offline) are general library improvements and are not gated.
 
 ## Research base (verified 2026-09-10)
 
@@ -146,12 +153,13 @@ with different settings.
 |---|---|
 | **Pool** | Where pictures come from: the whole reference library, a tag, an album, a smart album or a search. Stored as the question, not a list, so new photos join automatically. |
 | **Picker** | Draws a random sample of a given size from the pool, with no repeats inside one run. |
-| **Clock** | Time per picture. A chime moves to the next. Pause, skip and previous. |
-| **Log** | One row per picture shown: which picture, when, the time planned and spent, finished or skipped, and optionally a photo of the drawing. |
+| **Clock** | Time per picture. When it runs out the player says so and moves on. Pause, skip and previous; the user can return to any picture at any time. |
+| **Log** | One row per picture shown: which picture, when, the time planned and spent, finished or skipped. |
 
 ### Daily Study (decided: one picture per day, anything, user-set time)
 
-- Pool: the reference library (see open decision O1).
+- Pool: everything in the workspace. The workspace is the reference
+  library (O1); nothing is marked as a reference.
 - One picture per day, chosen on the first open of the day and stored, so it
   is the same picture however often the app is reopened that day.
 - Duration: the user's daily time setting.
@@ -182,11 +190,11 @@ with different settings.
   Never-drawn pictures count as the oldest. Result: the whole library is
   worked through before anything repeats, and practising a picture in a
   session also pushes it back in the daily queue.
-- **The log is the single record.** Streak, time totals, "not drawn in
-  months" and per-picture history are all read from it; nothing keeps a
-  second tally.
-- **Per-picture history.** A photo's detail view shows every drawing made
-  from it, oldest to newest.
+- **The log is the single record.** Time totals, "not drawn in months" and
+  per-picture history are all read from it; nothing keeps a second tally.
+  There is no streak (O2).
+- **Per-picture history.** A photo's detail view shows when it was drawn,
+  oldest to newest.
 - **Pools reuse smart-album criteria** so any saved smart album can serve as
   a pool (to verify against `mo_smart_albums` before building).
 - **Settings go through the Settings registry** under `mediaOrganizer.*`:
@@ -196,8 +204,10 @@ with different settings.
 
 - The picture fills the tab. A small timer sits in a corner.
 - Controls: pause, skip, previous, stop. Options per run: mirror, greyscale.
-- The end screen shows the pictures drawn as a strip, with Add My Drawings
-  to attach photos of the sheets to their log entries.
+- When a picture's time is up the player says so, nothing more (O3). The
+  user can go back to any picture in the run at any time.
+- The end screen shows the pictures drawn as a strip. No photos of drawings
+  are attached (O4).
 
 ### Data (proposed, new migrations in Media Organizer)
 
@@ -206,7 +216,7 @@ with different settings.
 - `mo_practice_sessions`: kind (daily or practice), preset, pool criteria,
   started and ended, planned and spent seconds.
 - `mo_practice_draws`: session, photo, position, planned and spent seconds,
-  outcome (done, skipped, overtime), time, optional drawing photo.
+  outcome (done, skipped, overtime), time.
 - `mo_practice_daily`: day, chosen photo, session once started.
 
 Picker state is derived from `mo_practice_draws` (last drawn, times drawn);
@@ -270,18 +280,18 @@ The Maggiori step: work the design out on the photo before the canvas.
   tabs; actions live on those tabs, hints are tooltips.
 - **Never touch the original file.** Plans and practice read photos; outputs
   are new files.
-- **Pure logic is unit-tested:** picker, sizing arithmetic, daily pick,
-  streak and history live in the pure region with vitest coverage.
+- **Pure logic is unit-tested:** picker, sizing arithmetic, daily pick and
+  history live in the pure region with vitest coverage.
 - **Verified before claimed:** hidden probe runs against the real app for
   every UI slice.
 
 ## Proposed slices (order only; not scheduled)
 
-1. **Engine:** pool criteria, picker, sizing arithmetic, daily pick, streak
-   and history as pure functions with unit tests.
+1. **Engine:** pool criteria, picker, sizing arithmetic, daily pick and
+   history as pure functions with unit tests.
 2. **Practice Session:** setup tab with both sizing modes, presets, the
    session player, log writes, settings.
-3. **Daily Study:** Home card, stored daily pick, streak, settings.
+3. **Daily Study:** Home card, stored daily pick, settings.
 4. **History:** per-picture drawings in the detail view, a neglected list.
 5. **Plans, version one:** the planning tab with the tools and overlays,
    variations.
@@ -291,17 +301,17 @@ The Maggiori step: work the design out on the photo before the canvas.
    HEIC import conversion; missing files marked instead of deleted.
 8. **Plans, version two:** combining photos.
 
-## Open decisions
+## Open decisions (all settled by Mufaro 2026-09-12)
 
-| # | Question | Proposal |
+| # | Question | Decision |
 |---|---|---|
-| O1 | What counts as the reference library, given Media Organizer also holds everyday photos? | A References album the user chooses |
-| O2 | What happens to a missed day's picture? | It expires back into the queue; the streak breaks |
-| O3 | What happens when the daily timer ends? | Chime, keep going, extra time logged |
-| O4 | Are photos of drawings attached to sessions? | Optional, from the end screen |
-| O5 | Pool smaller than the requested number of pictures? | Say so and offer to shorten |
-| O6 | Plans: one photo first, combining photos second? | Yes |
-| O7 | Where are plan outputs written on disk? | Beside the original, as Upscale does |
+| O1 | What counts as the reference library? | The whole workspace. The user keeps a dedicated art workspace; anything added to it is a reference. No album, no marking. |
+| O2 | What happens to a missed day's picture? | It goes back into the queue. No streak, nothing tracked. |
+| O3 | What happens when the timer ends? | Tell the user time is up, nothing fancy. The user can still go back to any picture. |
+| O4 | Are photos of drawings attached to sessions? | No. |
+| O5 | Pool smaller than the requested number of pictures? | A notification; the run uses the pictures there are. |
+| O6 | Plans: one photo first, combining photos second? | Yes. Single-photo plans are version one; combining photos is version two. |
+| O7 | Where are plan outputs written on disk? | Beside the original, stacked under it, as Upscale does. |
 
 ## Sources
 
