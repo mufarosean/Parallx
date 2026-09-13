@@ -8446,6 +8446,69 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
 .mo-tr-suggest { position: fixed; z-index: 10005; min-width: 220px; max-width: 380px; max-height: 240px; overflow-y: auto; padding: 2px 0; background: var(--vscode-editorWidget-background, var(--px-bg-elevated)); border: 1px solid var(--vscode-editorWidget-border, var(--px-border-strong)); border-radius: var(--parallx-radius-sm, 3px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); }
 .mo-tr-suggest-item { padding: 4px 10px; font-size: 12px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mo-tr-suggest-item:hover, .mo-tr-suggest-item.is-active { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
+
+/* ── Practice (M104) ── */
+.mo-practice { position: absolute; inset: 0; background: var(--vscode-editor-background, var(--px-bg)); color: var(--vscode-foreground, var(--px-text)); overflow: hidden; outline: none; user-select: none; }
+.mo-practice-stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.mo-practice-img { max-width: 100%; max-height: 100%; object-fit: contain; transition: filter 120ms ease; }
+.mo-practice-img.is-mirror { transform: scaleX(-1); }
+.mo-practice-img.is-grey { filter: grayscale(1); }
+.mo-practice-hud { position: absolute; top: 12px; right: 14px; display: flex; align-items: baseline; gap: 10px; padding: 4px 10px; border-radius: var(--parallx-radius-sm, 3px); background: var(--vscode-editorWidget-background, var(--px-bg-elevated)); border: 1px solid var(--vscode-editorWidget-border, var(--px-border)); font-variant-numeric: tabular-nums; }
+.mo-practice-clock { font-size: 18px; font-weight: 600; }
+.mo-practice-hud.is-low .mo-practice-clock { color: var(--vscode-errorForeground, var(--px-danger)); }
+.mo-practice-counter { font-size: 11px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
+.mo-practice-controls { position: absolute; left: 50%; bottom: 72px; transform: translateX(-50%); display: flex; gap: 4px; padding: 4px; border-radius: var(--parallx-radius-sm, 3px); background: var(--vscode-editorWidget-background, var(--px-bg-elevated)); border: 1px solid var(--vscode-editorWidget-border, var(--px-border)); transition: opacity 160ms ease; }
+.mo-practice-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 0; border-radius: var(--parallx-radius-sm, 3px); background: transparent; color: var(--vscode-foreground, var(--px-text)); cursor: pointer; }
+.mo-practice-btn:hover { background: var(--vscode-toolbar-hoverBackground, var(--px-surface-hover)); }
+.mo-practice-btn.is-on { background: var(--vscode-button-background, var(--px-accent)); color: var(--vscode-button-foreground, var(--px-text-on-accent)); }
+.mo-practice-sep { width: 1px; align-self: stretch; margin: 4px 2px; background: var(--vscode-editorWidget-border, var(--px-border)); }
+.mo-practice-strip { position: absolute; left: 0; right: 0; bottom: 0; display: flex; gap: 4px; justify-content: center; padding: 8px 12px; overflow-x: auto; transition: opacity 160ms ease; }
+.mo-practice-strip-item { flex: 0 0 auto; width: 44px; height: 44px; border-radius: var(--parallx-radius-sm, 3px); overflow: hidden; border: 2px solid transparent; opacity: 0.7; cursor: pointer; background: var(--px-bg-inset, rgba(128, 128, 128, 0.1)); }
+.mo-practice-strip-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mo-practice-strip-item.is-done { opacity: 0.45; }
+.mo-practice-strip-item.is-current { opacity: 1; border-color: var(--vscode-focusBorder, var(--px-accent)); }
+.mo-practice.is-idle .mo-practice-controls, .mo-practice.is-idle .mo-practice-strip { opacity: 0; pointer-events: none; }
+.mo-practice-notice { position: absolute; left: 50%; top: 18%; transform: translateX(-50%); padding: 8px 16px; border-radius: var(--parallx-radius-sm, 3px); background: var(--vscode-editorWidget-background, var(--px-bg-elevated)); border: 1px solid var(--vscode-editorWidget-border, var(--px-border)); font-size: 14px; font-weight: 600; opacity: 0; transition: opacity 200ms ease; pointer-events: none; }
+.mo-practice-notice.is-on { opacity: 1; }
+.mo-practice-end { position: absolute; inset: 0; overflow-y: auto; padding: 40px 32px; display: flex; flex-direction: column; align-items: center; gap: 18px; background: var(--vscode-editor-background, var(--px-bg)); }
+.mo-practice-end-title { font-size: 20px; font-weight: 600; }
+.mo-practice-end-sub { font-size: 13px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
+.mo-practice-end-strip { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; max-width: 900px; }
+.mo-practice-end-item { width: 120px; cursor: pointer; }
+.mo-practice-end-item img { width: 120px; height: 120px; object-fit: cover; display: block; border-radius: var(--parallx-radius-sm, 3px); background: var(--px-bg-inset, rgba(128, 128, 128, 0.1)); }
+.mo-practice-end-item span { display: block; margin-top: 4px; font-size: 11px; text-align: center; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
+.mo-practice-end-actions { display: flex; gap: 8px; }
+.mo-practice-empty { padding: 40px; text-align: center; font-size: 12px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
+.mo-practice-setup { position: absolute; inset: 0; overflow-y: auto; padding: 20px 24px 32px; background: var(--vscode-editor-background, var(--px-bg)); color: var(--vscode-foreground, var(--px-text)); }
+.mo-practice-form { display: flex; flex-direction: column; gap: 12px; max-width: 680px; margin-top: 16px; }
+.mo-practice-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.mo-practice-label { flex: 0 0 120px; font-size: 12px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
+.mo-practice-pooldetail { display: inline-flex; flex: 1 1 160px; min-width: 0; }
+.mo-practice-pooldetail:empty { display: none; }
+.mo-practice-pooldetail .mo-dropdown { flex: 1 1 auto; }
+.mo-practice-summary { font-size: 12px; margin-left: 128px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
+.mo-practice-poolcount { font-size: 12px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
+.mo-practice-start { padding: 6px 16px; border: 0; border-radius: var(--parallx-radius-sm, 3px); background: var(--vscode-button-background, var(--px-accent)); color: var(--vscode-button-foreground, var(--px-text-on-accent)); font-size: 12px; font-weight: 600; cursor: pointer; }
+.mo-practice-start:hover { background: var(--vscode-button-hoverBackground, var(--px-accent)); }
+.mo-practice-start:disabled { opacity: 0.5; cursor: default; }
+.mo-practice-check { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
+.mo-practice-section { margin-top: 28px; max-width: 900px; }
+.mo-practice-section-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; opacity: 0.8; margin-bottom: 8px; }
+.mo-practice-thumbs { display: flex; flex-wrap: wrap; gap: 8px; }
+.mo-practice-thumb { width: 96px; cursor: pointer; }
+.mo-practice-thumb img { width: 96px; height: 96px; object-fit: cover; display: block; border-radius: var(--parallx-radius-sm, 3px); background: var(--px-bg-inset, rgba(128, 128, 128, 0.1)); }
+.mo-practice-thumb span { display: block; margin-top: 3px; font-size: 11px; text-align: center; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mo-practice-list { display: flex; flex-direction: column; }
+.mo-practice-list-row { display: flex; gap: 10px; align-items: center; padding: 6px 8px; font-size: 12px; border-radius: var(--parallx-radius-sm, 3px); cursor: pointer; }
+.mo-practice-list-row:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
+.mo-practice-dim { color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
+.mo-daily { display: flex; align-items: center; gap: 14px; margin: 0 16px 10px; padding: 10px 12px; border: 1px solid var(--vscode-panel-border, var(--px-border)); border-radius: var(--parallx-radius-sm, 3px); background: var(--vscode-sideBar-background, var(--px-bg-elevated)); }
+.mo-daily img { width: 72px; height: 72px; object-fit: cover; border-radius: var(--parallx-radius-sm, 3px); background: var(--px-bg-inset, rgba(128, 128, 128, 0.1)); cursor: pointer; display: block; }
+.mo-daily-text { flex: 1 1 auto; min-width: 0; }
+.mo-daily-title { font-size: 13px; font-weight: 600; }
+.mo-daily-sub { font-size: 12px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); margin-top: 2px; }
+.mo-practice-history-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.mo-practice-history-row { display: flex; justify-content: space-between; font-size: 12px; padding: 3px 0; }
 `;
 
 function moInjectStyles() {
@@ -9867,6 +9930,16 @@ function renderBrowserSidebar(container, api) {
   qfBody.appendChild(sidebarItem('globe', 'Map', null, () => moOpenMap(_api)));
   sections.appendChild(qfSection);
 
+  // Practice (M104): Daily Study and Practice Sessions. Shown only while
+  // Drawing And Painting Tools is on (decision D7).
+  const { section: prSection, body: prBody } = sidebarSection('Practice', 'timer', false);
+  prBody.appendChild(sidebarItem('sun', 'Daily Study', null, () => void moStartDailyStudy(api)));
+  prBody.appendChild(sidebarItem('timer', 'Practice Session', null, () => moOpenPracticeSetup(api)));
+  const syncPractice = () => { prSection.style.display = _artToolsEnabled ? '' : 'none'; };
+  syncPractice();
+  document.addEventListener('mo:art-tools-changed', syncPractice);
+  sections.appendChild(prSection);
+
   // Folders section
   const { section: folderSection, body: folderBody } = sidebarSection('Folders', 'folder', false);
   sections.appendChild(folderSection);
@@ -10979,7 +11052,7 @@ function renderBrowserSidebar(container, api) {
   const refreshAll = () => { loadFolders(); loadTags(); loadAlbums(); };
   _sidebarRefreshCallbacks.push(refreshAll);
 
-  return { dispose() { container.innerHTML = ''; document.removeEventListener('mo:ai-tag-changed', refreshTagReviewCount); const idx = _sidebarRefreshCallbacks.indexOf(refreshAll); if (idx >= 0) _sidebarRefreshCallbacks.splice(idx, 1); } };
+  return { dispose() { container.innerHTML = ''; document.removeEventListener('mo:ai-tag-changed', refreshTagReviewCount); document.removeEventListener('mo:art-tools-changed', syncPractice); const idx = _sidebarRefreshCallbacks.indexOf(refreshAll); if (idx >= 0) _sidebarRefreshCallbacks.splice(idx, 1); } };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -13996,6 +14069,10 @@ function renderHomeFeed(container, api, input) {
   head.appendChild(shuffleBtn);
   root.appendChild(head);
 
+  // Daily Study (M104): a quiet card above the feed; hidden while the tools are off.
+  const dailyCard = moBuildDailyCard(api);
+  root.appendChild(dailyCard.el);
+
   // Feed: JS masonry. N columns; each new card goes to the shortest column,
   // so appending a page never reflows what is already on screen. Column
   // count follows the pane width; when it changes, everything is re-placed.
@@ -14256,6 +14333,7 @@ function renderHomeFeed(container, api, input) {
   return {
     dispose() {
       disposed = true;
+      dailyCard.dispose();
       if (moreObserver) moreObserver.disconnect();
       if (thumbObserver) thumbObserver.disconnect();
       if (resizeObs) resizeObs.disconnect();
@@ -14430,6 +14508,7 @@ function buildDetailLayout(ctx, api, bodyEl, onRefresh) {
   main.appendChild(preview);
   if (ctx.type === 'photo' && !moIsGifPath(ctx.primaryFile && ctx.primaryFile.basename)) {
     main.appendChild(buildSimilarStrip(ctx, api));
+    if (_artToolsEnabled) main.appendChild(buildPracticeHistoryStrip(ctx, api));
   }
   bodyEl.appendChild(main);
 
@@ -28085,6 +28164,1081 @@ function moRegisterTagTool(api) {
 let _toolPath = '';
 let _activated = false;
 const _sidebarRefreshCallbacks = [];
+// ═══════════════════════════════════════════════════════════════════════════
+// Section 44: Practice (M104, docs/Parallx_Milestone_104.md)
+//
+// Timed drawing from the library. Daily Study and Practice Sessions are one
+// engine with four parts: a pool (where pictures come from), a picker (random,
+// favouring what has not been drawn for the longest time), a clock and a log.
+// Everything here sits behind mediaOrganizer.enableArtTools (decision D7):
+// off hides the surfaces and silences Daily Study; nothing is deleted.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// @mo-practice-pure-begin — pure practice math (extracted verbatim by tests/unit/moPractice.test.ts)
+
+// Small seeded generator (mulberry32) so picks are reproducible in tests.
+function moPracticeRng(seed) {
+  let a = (Number(seed) >>> 0) || 1;
+  return function () {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Sizing arithmetic (decision D3). mode 'count': pictures × seconds each.
+// mode 'total': total seconds ÷ seconds each, rounded down; the rest is spare.
+function moPracticeSizing(input) {
+  const secondsPer = Math.max(1, Math.floor(Number(input && input.secondsPer) || 0));
+  const mode = input && input.mode === 'total' ? 'total' : 'count';
+  if (mode === 'total') {
+    const total = Math.max(0, Math.floor(Number(input.totalSeconds) || 0));
+    const count = Math.floor(total / secondsPer);
+    return { mode, secondsPer, count, totalSeconds: count * secondsPer, spareSeconds: total - count * secondsPer };
+  }
+  const count = Math.max(0, Math.floor(Number(input.count) || 0));
+  return { mode, secondsPer, count, totalSeconds: count * secondsPer, spareSeconds: 0 };
+}
+
+// "45 s", "2 min", "2 min 30 s", "1 h 30 min"
+function moPracticeFormatDuration(seconds) {
+  const s = Math.max(0, Math.round(Number(seconds) || 0));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const r = s % 60;
+  const parts = [];
+  if (h) parts.push(h + ' h');
+  if (m) parts.push(m + ' min');
+  if (r && !h) parts.push(r + ' s');
+  return parts.length ? parts.join(' ') : '0 s';
+}
+
+// "45 min at 2 min each = 22 pictures, 1 min to spare"
+function moPracticeSizingText(sizing) {
+  const z = moPracticeSizing(sizing);
+  const pics = z.count === 1 ? '1 picture' : z.count + ' pictures';
+  if (z.mode === 'total') {
+    const total = z.totalSeconds + z.spareSeconds;
+    const spare = z.spareSeconds ? ', ' + moPracticeFormatDuration(z.spareSeconds) + ' to spare' : '';
+    return moPracticeFormatDuration(total) + ' at ' + moPracticeFormatDuration(z.secondsPer) + ' each = ' + pics + spare;
+  }
+  return pics + ' at ' + moPracticeFormatDuration(z.secondsPer) + ' each = ' + moPracticeFormatDuration(z.totalSeconds);
+}
+
+// The clock's face: m:ss, never negative.
+function moPracticeClock(seconds) {
+  const s = Math.max(0, Math.ceil(Number(seconds) || 0));
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+
+// Oldest-first order. candidates: [{ id, lastDrawnAt }] where lastDrawnAt is
+// epoch ms or null. Never-drawn pictures count as the oldest; ties are broken
+// at random so equals do not always come out in id order.
+function moPracticeOrder(candidates, rng) {
+  const rand = typeof rng === 'function' ? rng : Math.random;
+  const rows = (candidates || []).map((c) => ({ c, never: c.lastDrawnAt == null, at: Number(c.lastDrawnAt) || 0, r: rand() }));
+  rows.sort((a, b) => {
+    if (a.never !== b.never) return a.never ? -1 : 1;
+    if (!a.never && a.at !== b.at) return a.at - b.at;
+    return a.r - b.r;
+  });
+  return rows.map((x) => x.c);
+}
+
+// The picker: the n least-recently-drawn pictures, then shuffled so a run is
+// not in history order. No repeats; fewer than n when the pool is small.
+function moPracticePick(candidates, n, rng) {
+  const rand = typeof rng === 'function' ? rng : Math.random;
+  const want = Math.max(0, Math.floor(Number(n) || 0));
+  const picked = moPracticeOrder(candidates, rand).slice(0, want);
+  for (let i = picked.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    const t = picked[i]; picked[i] = picked[j]; picked[j] = t;
+  }
+  return picked;
+}
+
+// The neglected list: oldest first, in order, for the setup tab.
+function moPracticeNeglected(candidates, limit, rng) {
+  return moPracticeOrder(candidates, rng).slice(0, Math.max(0, Math.floor(Number(limit) || 0)));
+}
+
+// Local calendar day, YYYY-MM-DD. Daily Study keys on this.
+function moPracticeDayKey(date) {
+  const d = date instanceof Date ? date : new Date(date == null ? Date.now() : date);
+  const p = (n) => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+}
+
+// Totals for an end screen or a history row. draws: [{ outcome, planned_seconds, spent_seconds }]
+function moPracticeSummary(draws) {
+  const out = { shown: 0, done: 0, skipped: 0, plannedSeconds: 0, spentSeconds: 0 };
+  for (const d of draws || []) {
+    if (!d || d.outcome === 'pending') continue;
+    out.shown++;
+    if (d.outcome === 'done') out.done++;
+    else if (d.outcome === 'skipped') out.skipped++;
+    out.plannedSeconds += Math.max(0, Number(d.planned_seconds) || 0);
+    out.spentSeconds += Math.max(0, Number(d.spent_seconds) || 0);
+  }
+  return out;
+}
+// @mo-practice-pure-end
+
+let _artToolsEnabled = false;
+let _practiceCfg = { dailyMinutes: 10, chime: true, mirror: false, greyscale: false };
+const MO_ART_CFG_KEYS = ['enableArtTools', 'practiceDailyMinutes', 'practiceChime', 'practiceMirror', 'practiceGreyscale'];
+const MO_PRACTICE_PER_OPTIONS = [30, 60, 120, 180, 300, 600, 900, 1200, 1800, 2700, 3600];
+const MO_PRACTICE_TOTAL_OPTIONS = [10, 15, 20, 30, 45, 60, 90, 120];
+
+function moReadArtCfg(api) {
+  const cfg = api.workspace.getConfiguration('mediaOrganizer');
+  _artToolsEnabled = cfg.get('enableArtTools', false) === true;
+  const mins = parseInt(cfg.get('practiceDailyMinutes', 10), 10);
+  _practiceCfg = {
+    dailyMinutes: Number.isFinite(mins) && mins > 0 ? Math.min(180, mins) : 10,
+    chime: cfg.get('practiceChime', true) !== false,
+    mirror: cfg.get('practiceMirror', false) === true,
+    greyscale: cfg.get('practiceGreyscale', false) === true,
+  };
+}
+
+function moArtGate(api) {
+  if (_artToolsEnabled) return true;
+  (api || _api).window.showInformationMessage('Turn on Drawing And Painting Tools in Media Organizer settings first.');
+  return false;
+}
+
+function moPracticeDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+// ── Pools ──────────────────────────────────────────────────────────────────
+// pool: { kind: 'all' | 'tag' | 'album' | 'search' | 'photos', id?, label?, query?, ids? }
+// Stored as the question, not a list, so new photos join automatically.
+
+function moPoolLabel(pool) {
+  if (!pool || !pool.kind || pool.kind === 'all') return 'Everything';
+  if (pool.kind === 'search') return 'Search: ' + (pool.query || '');
+  if (pool.kind === 'photos') return pool.label || ((pool.ids || []).length === 1 ? '1 picture' : (pool.ids || []).length + ' pictures');
+  return (pool.kind === 'tag' ? 'Tag: ' : 'Album: ') + (pool.label || '#' + pool.id);
+}
+
+async function moPoolPhotoIds(pool) {
+  const kind = (pool && pool.kind) || 'all';
+  let rows = [];
+  if (kind === 'tag') {
+    const ids = [Number(pool.id)];
+    try { for (const t of (await TagQueries.getDescendants(Number(pool.id))) || []) ids.push(Number(t.id)); } catch { /* direct tag only */ }
+    rows = await db.all(
+      `SELECT DISTINCT pt.photo_id AS id FROM mo_photos_tags pt JOIN mo_photos p ON p.id = pt.photo_id
+       WHERE p.deleted_at IS NULL AND pt.tag_id IN (${ids.map(() => '?').join(',')})`, ids);
+  } else if (kind === 'album') {
+    rows = await db.all(
+      `SELECT DISTINCT ap.photo_id AS id FROM mo_albums_photos ap JOIN mo_photos p ON p.id = ap.photo_id
+       WHERE p.deleted_at IS NULL AND ap.album_id = ?`, [Number(pool.id)]);
+  } else if (kind === 'search') {
+    const expr = moBuildFtsMatch(String(pool.query || '').trim());
+    if (!expr) return [];
+    const fts = await moFtsLookup(expr, 50000);
+    const ids = (fts && fts.photoIds) || [];
+    if (!ids.length) return [];
+    const out = [];
+    for (let i = 0; i < ids.length; i += 500) {
+      const part = ids.slice(i, i + 500);
+      const r = await db.all(`SELECT id FROM mo_photos WHERE deleted_at IS NULL AND id IN (${part.map(() => '?').join(',')})`, part);
+      out.push(...r);
+    }
+    rows = out;
+  } else if (kind === 'photos') {
+    const ids = (pool.ids || []).map(Number).filter((x) => x > 0);
+    if (!ids.length) return [];
+    rows = await db.all(`SELECT id FROM mo_photos WHERE deleted_at IS NULL AND id IN (${ids.map(() => '?').join(',')})`, ids);
+  } else {
+    rows = await db.all('SELECT id FROM mo_photos WHERE deleted_at IS NULL');
+  }
+  return rows.map((r) => Number(r.id)).filter((x) => x > 0);
+}
+
+// photo id → epoch ms of the last time it was drawn, for the whole library.
+async function moPracticeLastDrawnMap() {
+  const map = new Map();
+  const rows = await db.all(`SELECT photo_id, MAX(drawn_at) AS last FROM mo_practice_draws WHERE outcome != 'pending' AND drawn_at IS NOT NULL GROUP BY photo_id`);
+  for (const r of rows) {
+    const t = Date.parse(r.last);
+    if (Number.isFinite(t)) map.set(Number(r.photo_id), t);
+  }
+  return map;
+}
+
+async function moPracticeCandidates(pool) {
+  const [ids, last] = await Promise.all([moPoolPhotoIds(pool), moPracticeLastDrawnMap()]);
+  return ids.map((id) => ({ id, lastDrawnAt: last.has(id) ? last.get(id) : null }));
+}
+
+// ── Sessions and the log ───────────────────────────────────────────────────
+
+async function moPracticeCreateSession(spec) {
+  const kind = spec.kind === 'daily' ? 'daily' : 'practice';
+  const secondsPer = Math.max(1, Math.floor(Number(spec.secondsPer) || 0));
+  const want = Math.max(1, Math.floor(Number(spec.count) || 0));
+  const candidates = await moPracticeCandidates(spec.pool);
+  if (!candidates.length) throw new Error('No pictures in this pool.');
+  const picked = moPracticePick(candidates, want);
+  const now = new Date().toISOString();
+  const options = Object.assign({}, spec.options || {}, { count: want });
+  const res = await db.run(
+    `INSERT INTO mo_practice_sessions (kind, preset_id, pool_json, seconds_per, options_json, started_at, planned_seconds)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [kind, spec.presetId || null, JSON.stringify(spec.pool || { kind: 'all' }), secondsPer, JSON.stringify(options), now, picked.length * secondsPer]);
+  const sessionId = res.lastInsertRowid;
+  const ops = picked.map((c, i) => ({
+    type: 'run',
+    sql: 'INSERT INTO mo_practice_draws (session_id, photo_id, position, planned_seconds) VALUES (?, ?, ?, ?)',
+    params: [sessionId, c.id, i, secondsPer],
+  }));
+  if (ops.length) await db.transaction(ops);
+  document.dispatchEvent(new CustomEvent('mo:practice-changed'));
+  return { id: sessionId, count: picked.length, shortfall: want - picked.length };
+}
+
+async function moPracticeLoadSession(id) {
+  const session = await db.get('SELECT * FROM mo_practice_sessions WHERE id = ?', [id]);
+  if (!session) return null;
+  const draws = await db.all('SELECT * FROM mo_practice_draws WHERE session_id = ? ORDER BY position ASC', [id]);
+  let pool = { kind: 'all' }; let options = {};
+  try { pool = JSON.parse(session.pool_json) || pool; } catch { /* default */ }
+  try { options = JSON.parse(session.options_json) || {}; } catch { /* default */ }
+  return { session: Object.assign(session, { pool, options }), draws };
+}
+
+async function moPracticeUpdateDraw(id, d) {
+  await db.run('UPDATE mo_practice_draws SET spent_seconds = ?, outcome = ?, drawn_at = ? WHERE id = ?',
+    [Math.max(0, Math.round(Number(d.spent_seconds) || 0)), d.outcome || 'pending', d.drawn_at || null, id]);
+}
+
+async function moPracticeEndSession(id) {
+  await db.transaction([
+    { type: 'run', sql: "DELETE FROM mo_practice_draws WHERE session_id = ? AND outcome = 'pending'", params: [id] },
+    { type: 'run', sql: `UPDATE mo_practice_sessions SET ended_at = ?, spent_seconds = (SELECT COALESCE(SUM(spent_seconds), 0) FROM mo_practice_draws WHERE session_id = ?) WHERE id = ?`, params: [new Date().toISOString(), id, id] },
+  ]);
+  document.dispatchEvent(new CustomEvent('mo:practice-changed'));
+}
+
+function moPracticeOpenRun(api, sessionId, kind) {
+  (api || _api).editors.openEditor({
+    typeId: 'media-organizer-grid',
+    title: kind === 'daily' ? 'Daily Study' : 'Practice',
+    icon: 'timer',
+    instanceId: `practice:run:${sessionId}`,
+  });
+}
+
+function moOpenPracticeSetup(api) {
+  (api || _api).editors.openEditor({ typeId: 'media-organizer-grid', title: 'Practice Session', icon: 'timer', instanceId: 'practice:setup' });
+}
+
+// ── Daily Study ────────────────────────────────────────────────────────────
+// One picture per local day, chosen on first open and stored. A day that is
+// never started leaves no draw row, so the picture simply stays in the queue.
+
+async function moDailyToday() {
+  const day = moPracticeDayKey(new Date());
+  let row = await db.get('SELECT * FROM mo_practice_daily WHERE day = ?', [day]);
+  if (!row) {
+    const cands = await moPracticeCandidates({ kind: 'all' });
+    if (!cands.length) return null;
+    const pick = moPracticePick(cands, 1)[0];
+    await db.run('INSERT OR IGNORE INTO mo_practice_daily (day, photo_id) VALUES (?, ?)', [day, pick.id]);
+    row = await db.get('SELECT * FROM mo_practice_daily WHERE day = ?', [day]);
+    if (!row) return null;
+  }
+  const session = row.session_id ? await db.get('SELECT * FROM mo_practice_sessions WHERE id = ?', [row.session_id]) : null;
+  return { day, photoId: Number(row.photo_id), session };
+}
+
+async function moStartDailyStudy(api, opts) {
+  api = api || _api;
+  if (!moArtGate(api)) return;
+  try {
+    const today = await moDailyToday();
+    if (!today) { api.window.showInformationMessage('Add some pictures to the library first.'); return; }
+    const fresh = !!(opts && opts.fresh);
+    if (today.session && !fresh) { moPracticeOpenRun(api, today.session.id, 'daily'); return; }
+    const created = await moPracticeCreateSession({
+      kind: 'daily',
+      pool: { kind: 'photos', ids: [today.photoId], label: 'Daily Study' },
+      secondsPer: _practiceCfg.dailyMinutes * 60,
+      count: 1,
+      options: { mirror: _practiceCfg.mirror, grey: _practiceCfg.greyscale },
+    });
+    await db.run('UPDATE mo_practice_daily SET session_id = ? WHERE day = ?', [created.id, today.day]);
+    moPracticeOpenRun(api, created.id, 'daily');
+  } catch (err) {
+    api.window.showErrorMessage('Daily Study could not start: ' + (err && err.message));
+  }
+}
+
+// The Home card. Hidden while the tools are off; refreshes when a run ends.
+function moBuildDailyCard(api) {
+  const el = moEl('div', 'mo-daily');
+  const img = moEl('img', null, { alt: '' });
+  const text = moEl('div', 'mo-daily-text');
+  const title = moEl('div', 'mo-daily-title', { textContent: 'Daily Study' });
+  const sub = moEl('div', 'mo-daily-sub');
+  text.appendChild(title); text.appendChild(sub);
+  const btn = moEl('button', 'mo-practice-start', { type: 'button', textContent: 'Start' });
+  el.appendChild(img); el.appendChild(text); el.appendChild(btn);
+  let disposed = false;
+  let photoId = 0;
+  let done = false;
+  img.addEventListener('click', () => { if (photoId) moOpenPhotoDetail(api, photoId); });
+  btn.addEventListener('click', () => void moStartDailyStudy(api, { fresh: done }));
+  async function refresh() {
+    if (disposed) return;
+    if (!_artToolsEnabled) { el.style.display = 'none'; return; }
+    el.style.display = '';
+    try {
+      const today = await moDailyToday();
+      if (disposed) return;
+      if (!today) { sub.textContent = 'Add some pictures to the library first.'; btn.style.display = 'none'; img.style.visibility = 'hidden'; return; }
+      btn.style.display = '';
+      img.style.visibility = '';
+      if (photoId !== today.photoId) { photoId = today.photoId; void moPracticeThumb(img, photoId, api); }
+      const s = today.session;
+      done = !!(s && s.ended_at);
+      if (!s) { sub.textContent = _practiceCfg.dailyMinutes + ' min with one picture, every day'; btn.textContent = 'Start'; }
+      else if (!s.ended_at) { sub.textContent = 'In progress'; btn.textContent = 'Continue'; }
+      else { sub.textContent = 'Drawn today, ' + moPracticeFormatDuration(s.spent_seconds); btn.textContent = 'Draw Again'; }
+    } catch { sub.textContent = ''; }
+  }
+  document.addEventListener('mo:art-tools-changed', refresh);
+  document.addEventListener('mo:practice-changed', refresh);
+  void refresh();
+  return { el, dispose() { disposed = true; document.removeEventListener('mo:art-tools-changed', refresh); document.removeEventListener('mo:practice-changed', refresh); } };
+}
+
+// ── Helpers shared by the practice surfaces ────────────────────────────────
+
+function moPracticeChime() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const t0 = ctx.currentTime;
+    for (const [freq, dt] of [[880, 0], [1320, 0.18]]) {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = 'sine';
+      o.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, t0 + dt);
+      g.gain.exponentialRampToValueAtTime(0.22, t0 + dt + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dt + 0.6);
+      o.connect(g).connect(ctx.destination);
+      o.start(t0 + dt);
+      o.stop(t0 + dt + 0.65);
+    }
+    setTimeout(() => { try { ctx.close(); } catch { /* closed */ } }, 1200);
+  } catch { /* no audio */ }
+}
+
+async function moPracticeThumb(img, photoId, api) {
+  try {
+    const cached = _moRecallThumb('photo', photoId);
+    let display = cached ? (cached.sourcePath || cached.thumbnailPath) : null;
+    if (!display) {
+      const r = await resolveThumbnail('photo', photoId, api || _api);
+      if (r && (r.path || r.sourcePath)) {
+        _moRememberThumb('photo', photoId, { thumbnailPath: r.path || null, sourcePath: r.sourcePath || null, originalPath: r.originalPath || null });
+        display = r.sourcePath || r.path;
+      }
+    }
+    if (display) setThumbImgSrc(img, display, {});
+  } catch { /* leave the placeholder */ }
+}
+
+function moPracticeThumbTile(photoId, caption, api, onClick) {
+  const tile = moEl('div', 'mo-practice-thumb');
+  const img = moEl('img', null, { alt: '' });
+  tile.appendChild(img);
+  if (caption != null) tile.appendChild(moEl('span', null, { textContent: caption }));
+  void moPracticeThumb(img, photoId, api);
+  if (onClick) tile.addEventListener('click', onClick);
+  return tile;
+}
+
+function moOpenPhotoDetail(api, photoId) {
+  (api || _api).editors.openEditor({ typeId: 'media-organizer-grid', title: `photo #${photoId}`, icon: 'image', instanceId: `detail:photo:${photoId}` });
+}
+
+// ── Tabs ───────────────────────────────────────────────────────────────────
+
+function renderPracticeTab(container, api, input) {
+  const inputId = (input && (input.instanceId || input.id)) || '';
+  if (!_artToolsEnabled) {
+    moInjectStyles();
+    container.appendChild(moEl('div', 'mo-practice-empty', { textContent: 'Turn on Drawing And Painting Tools in Media Organizer settings to use practice.' }));
+    return { dispose() { container.innerHTML = ''; } };
+  }
+  if (inputId.startsWith('practice:run:')) return renderPracticePlayer(container, api, parseInt(inputId.slice('practice:run:'.length), 10) || 0);
+  return renderPracticeSetup(container, api);
+}
+
+function renderPracticeSetup(container, api) {
+  moInjectStyles();
+  const root = moEl('div', 'mo-practice-setup');
+  container.appendChild(root);
+  let disposed = false;
+  const disposers = [];
+
+  root.appendChild(moEl('div', 'mo-home-title', { textContent: 'Practice Session' }));
+  root.appendChild(moEl('div', 'mo-home-sub', { textContent: 'Timed drawing from a set you choose. Random pictures, a clock, a chime when time is up.' }));
+
+  const s = { pool: { kind: 'all' }, mode: 'count', secondsPer: 120, count: 10, totalMinutes: 30, mirror: _practiceCfg.mirror, grey: _practiceCfg.greyscale, presetId: null };
+  const form = moEl('div', 'mo-practice-form');
+  root.appendChild(form);
+  const row = (label) => {
+    const r = moEl('div', 'mo-practice-row');
+    r.appendChild(moEl('span', 'mo-practice-label', { textContent: label }));
+    form.appendChild(r);
+    return r;
+  };
+  const smallBtn = (label, onClick) => { const b = moEl('button', 'mo-toolbar-btn', { type: 'button', textContent: label }); b.addEventListener('click', onClick); return b; };
+
+  // Preset
+  const presetRow = row('Preset');
+  const presetDrop = moDropdown({ items: [{ value: '', label: 'No Preset' }], selected: '', ariaLabel: 'Preset' });
+  disposers.push(() => presetDrop.dispose());
+  presetRow.appendChild(presetDrop.el);
+  const savePresetBtn = smallBtn('Save Preset', () => void savePreset());
+  const deletePresetBtn = smallBtn('Delete Preset', () => void deletePreset());
+  presetRow.appendChild(savePresetBtn);
+  presetRow.appendChild(deletePresetBtn);
+  let presets = [];
+  async function loadPresets(selectId) {
+    presets = await db.all('SELECT * FROM mo_practice_presets ORDER BY name COLLATE NOCASE ASC');
+    if (disposed) return;
+    presetDrop.setItems([{ value: '', label: 'No Preset' }, ...presets.map((p) => ({ value: String(p.id), label: p.name }))]);
+    presetDrop.setValue(selectId ? String(selectId) : '');
+    s.presetId = selectId || null;
+    deletePresetBtn.style.display = s.presetId ? '' : 'none';
+  }
+  presetDrop.onChange = (v) => {
+    const p = presets.find((x) => String(x.id) === v);
+    s.presetId = p ? p.id : null;
+    deletePresetBtn.style.display = p ? '' : 'none';
+    if (!p) return;
+    try { s.pool = JSON.parse(p.pool_json) || { kind: 'all' }; } catch { s.pool = { kind: 'all' }; }
+    s.mode = p.sizing === 'total' ? 'total' : 'count';
+    s.secondsPer = p.seconds_per;
+    s.count = p.count;
+    s.totalMinutes = Math.max(1, Math.round(p.total_seconds / 60));
+    try { const o = JSON.parse(p.options_json) || {}; s.mirror = !!o.mirror; s.grey = !!o.grey; } catch { /* keep */ }
+    syncControls();
+  };
+  async function savePreset() {
+    if (s.pool.kind === 'photos') { api.window.showInformationMessage('Choose Everything, a tag, an album or a search to save a preset.'); return; }
+    const current = presets.find((x) => x.id === s.presetId);
+    const name = await api.window.showInputBox({ prompt: 'Preset name', placeHolder: 'Warm-up', value: current ? current.name : '' });
+    if (!name || !name.trim() || disposed) return;
+    const z = moPracticeSizing(currentSizing());
+    await db.run(
+      `INSERT INTO mo_practice_presets (name, pool_json, sizing, seconds_per, count, total_seconds, options_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(name) DO UPDATE SET pool_json = excluded.pool_json, sizing = excluded.sizing, seconds_per = excluded.seconds_per,
+         count = excluded.count, total_seconds = excluded.total_seconds, options_json = excluded.options_json, updated_at = datetime('now')`,
+      [name.trim(), JSON.stringify(s.pool), s.mode, z.secondsPer, s.count, s.totalMinutes * 60, JSON.stringify({ mirror: s.mirror, grey: s.grey })]);
+    const saved = await db.get('SELECT id FROM mo_practice_presets WHERE name = ?', [name.trim()]);
+    await loadPresets(saved ? saved.id : null);
+  }
+  async function deletePreset() {
+    if (!s.presetId) return;
+    await db.run('DELETE FROM mo_practice_presets WHERE id = ?', [s.presetId]);
+    await loadPresets(null);
+  }
+
+  // Pool
+  const poolRow = row('Pictures From');
+  const kindDrop = moDropdown({ items: [{ value: 'all', label: 'Everything' }, { value: 'tag', label: 'Tag' }, { value: 'album', label: 'Album' }, { value: 'search', label: 'Search' }], selected: 'all', ariaLabel: 'Pool' });
+  disposers.push(() => kindDrop.dispose());
+  poolRow.appendChild(kindDrop.el);
+  const poolDetail = moEl('span', 'mo-practice-pooldetail');
+  poolRow.appendChild(poolDetail);
+  const poolCount = moEl('span', 'mo-practice-poolcount');
+  poolRow.appendChild(poolCount);
+  let tags = null; let albums = null; let albumDrop = null;
+  let countTimer = null; let countSeq = 0;
+  function refreshPoolCount() {
+    clearTimeout(countTimer);
+    countTimer = setTimeout(async () => {
+      const seq = ++countSeq;
+      poolCount.textContent = '';
+      try {
+        const ids = await moPoolPhotoIds(s.pool);
+        if (disposed || seq !== countSeq) return;
+        poolCount.textContent = ids.length === 1 ? '1 picture' : ids.length + ' pictures';
+        startBtn.disabled = ids.length === 0;
+      } catch { poolCount.textContent = ''; }
+    }, 250);
+  }
+  function closeSuggest() { const old = document.querySelector('.mo-practice-suggest'); if (old) old.remove(); }
+  async function renderPoolDetail() {
+    poolDetail.innerHTML = '';
+    if (albumDrop) { albumDrop.dispose(); albumDrop = null; }
+    const kind = s.pool.kind || 'all';
+    if (kind === 'tag') {
+      if (!tags) tags = await db.all('SELECT id, name FROM mo_tags ORDER BY name COLLATE NOCASE ASC');
+      if (disposed) return;
+      const input = moEl('input', 'mo-clip-input mo-clip-input--grow', { type: 'text', placeholder: 'Type a tag', 'aria-label': 'Tag' });
+      input.value = s.pool.label || '';
+      let items = []; let active = 0;
+      const pick = (t) => { closeSuggest(); s.pool = { kind: 'tag', id: t.id, label: t.name }; input.value = t.name; refreshPoolCount(); };
+      const open = () => {
+        closeSuggest();
+        const q = input.value.trim().toLowerCase();
+        items = tags.filter((t) => !q || String(t.name).toLowerCase().includes(q)).slice(0, 50);
+        if (!items.length) return;
+        active = 0;
+        const pop = moEl('div', 'mo-tr-suggest mo-practice-suggest');
+        pop.setAttribute('role', 'listbox');
+        items.forEach((t, i) => {
+          const it = moEl('div', `mo-tr-suggest-item${i === active ? ' is-active' : ''}`, { textContent: t.name });
+          it.addEventListener('mousedown', (e) => { e.preventDefault(); pick(t); });
+          pop.appendChild(it);
+        });
+        const r = input.getBoundingClientRect();
+        pop.style.left = r.left + 'px'; pop.style.top = (r.bottom + 2) + 'px'; pop.style.minWidth = r.width + 'px';
+        document.body.appendChild(pop);
+      };
+      input.addEventListener('input', open);
+      input.addEventListener('focus', open);
+      input.addEventListener('blur', () => setTimeout(closeSuggest, 120));
+      input.addEventListener('keydown', (e) => {
+        const pop = document.querySelector('.mo-practice-suggest');
+        if (!pop) return;
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          e.preventDefault();
+          active = (active + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length;
+          [...pop.children].forEach((c, i) => c.classList.toggle('is-active', i === active));
+        } else if (e.key === 'Enter') { e.preventDefault(); if (items[active]) pick(items[active]); }
+        else if (e.key === 'Escape') { closeSuggest(); }
+      });
+      poolDetail.appendChild(input);
+    } else if (kind === 'album') {
+      if (!albums) albums = await db.all('SELECT id, title FROM mo_albums ORDER BY title COLLATE NOCASE ASC');
+      if (disposed) return;
+      if (!albums.length) { poolDetail.appendChild(moEl('span', 'mo-practice-poolcount', { textContent: 'No albums yet' })); return; }
+      if (!albums.some((a) => a.id === s.pool.id)) s.pool = { kind: 'album', id: albums[0].id, label: albums[0].title };
+      albumDrop = moDropdown({ items: albums.map((a) => ({ value: String(a.id), label: a.title })), selected: String(s.pool.id), ariaLabel: 'Album' });
+      albumDrop.onChange = (v) => { const a = albums.find((x) => String(x.id) === v); if (a) { s.pool = { kind: 'album', id: a.id, label: a.title }; refreshPoolCount(); } };
+      poolDetail.appendChild(albumDrop.el);
+    } else if (kind === 'search') {
+      const input = moEl('input', 'mo-clip-input mo-clip-input--grow', { type: 'text', placeholder: 'Search the library', 'aria-label': 'Search' });
+      input.value = s.pool.query || '';
+      input.addEventListener('input', () => { s.pool = { kind: 'search', query: input.value }; refreshPoolCount(); });
+      poolDetail.appendChild(input);
+    }
+  }
+  kindDrop.onChange = (v) => {
+    if (v === (s.pool.kind || 'all')) return;
+    s.pool = v === 'all' ? { kind: 'all' } : { kind: v };
+    void renderPoolDetail();
+    refreshPoolCount();
+  };
+
+  // Sizing
+  const sizingRow = row('Size By');
+  const chips = moEl('div', 'mo-home-chips');
+  const chipEls = {};
+  for (const [k, label] of [['count', 'Pictures And Time'], ['total', 'Total Time']]) {
+    const b = moEl('button', 'mo-home-chip', { type: 'button', textContent: label });
+    b.addEventListener('click', () => { s.mode = k; syncControls(); });
+    chipEls[k] = b;
+    chips.appendChild(b);
+  }
+  sizingRow.appendChild(chips);
+  const perItems = MO_PRACTICE_PER_OPTIONS.map((v) => ({ value: String(v), label: moPracticeFormatDuration(v) }));
+  const totalItems = MO_PRACTICE_TOTAL_OPTIONS.map((v) => ({ value: String(v), label: moPracticeFormatDuration(v * 60) }));
+  const countRow = row('Pictures');
+  const countInput = moEl('input', 'mo-clip-input mo-clip-input--num', { type: 'number', min: '1', max: '500', step: '1', 'aria-label': 'Pictures' });
+  countInput.addEventListener('input', () => { s.count = Math.max(1, Math.min(500, parseInt(countInput.value, 10) || 1)); syncSummary(); });
+  countRow.appendChild(countInput);
+  const totalRow = row('Total Time');
+  const totalDrop = moDropdown({ items: totalItems, selected: String(s.totalMinutes), ariaLabel: 'Total Time' });
+  disposers.push(() => totalDrop.dispose());
+  totalDrop.onChange = (v) => { s.totalMinutes = parseInt(v, 10) || 30; syncSummary(); };
+  totalRow.appendChild(totalDrop.el);
+  const perRow = row('Time Per Picture');
+  const perDrop = moDropdown({ items: perItems, selected: String(s.secondsPer), ariaLabel: 'Time Per Picture' });
+  disposers.push(() => perDrop.dispose());
+  perDrop.onChange = (v) => { s.secondsPer = parseInt(v, 10) || 120; syncSummary(); };
+  perRow.appendChild(perDrop.el);
+  const summary = moEl('div', 'mo-practice-summary');
+  form.appendChild(summary);
+
+  // Options
+  const optRow = row('Options');
+  const check = (label, get, set) => {
+    const wrap = moEl('label', 'mo-practice-check');
+    const input = moEl('input', 'mo-clip-check', { type: 'checkbox' });
+    input.checked = get();
+    input.addEventListener('change', () => set(input.checked));
+    wrap.appendChild(input);
+    wrap.appendChild(moEl('span', null, { textContent: label }));
+    wrap._input = input;
+    return wrap;
+  };
+  const mirrorCheck = check('Mirror', () => s.mirror, (v) => { s.mirror = v; });
+  const greyCheck = check('Greyscale', () => s.grey, (v) => { s.grey = v; });
+  optRow.appendChild(mirrorCheck);
+  optRow.appendChild(greyCheck);
+
+  // Start
+  const startRow = moEl('div', 'mo-practice-row');
+  startRow.appendChild(moEl('span', 'mo-practice-label'));
+  const startBtn = moEl('button', 'mo-practice-start', { type: 'button', textContent: 'Start' });
+  startBtn.addEventListener('click', () => void start());
+  startRow.appendChild(startBtn);
+  form.appendChild(startRow);
+
+  function currentSizing() {
+    return s.mode === 'total'
+      ? { mode: 'total', secondsPer: s.secondsPer, totalSeconds: s.totalMinutes * 60 }
+      : { mode: 'count', secondsPer: s.secondsPer, count: s.count };
+  }
+  function syncSummary() {
+    summary.textContent = moPracticeSizingText(currentSizing());
+  }
+  function syncControls() {
+    for (const k of Object.keys(chipEls)) chipEls[k].classList.toggle('active', s.mode === k);
+    countRow.style.display = s.mode === 'count' ? '' : 'none';
+    totalRow.style.display = s.mode === 'total' ? '' : 'none';
+    countInput.value = String(s.count);
+    totalDrop.setValue(String(MO_PRACTICE_TOTAL_OPTIONS.includes(s.totalMinutes) ? s.totalMinutes : 30));
+    perDrop.setValue(String(MO_PRACTICE_PER_OPTIONS.includes(s.secondsPer) ? s.secondsPer : 120));
+    mirrorCheck._input.checked = s.mirror;
+    greyCheck._input.checked = s.grey;
+    kindDrop.setValue(s.pool.kind === 'photos' ? 'all' : (s.pool.kind || 'all'));
+    void renderPoolDetail();
+    refreshPoolCount();
+    syncSummary();
+  }
+  async function start() {
+    const z = moPracticeSizing(currentSizing());
+    if (z.count < 1) { api.window.showInformationMessage('Choose at least one picture.'); return; }
+    startBtn.disabled = true;
+    try {
+      const created = await moPracticeCreateSession({
+        kind: 'practice', presetId: s.presetId, pool: s.pool, secondsPer: z.secondsPer, count: z.count,
+        options: { mirror: s.mirror, grey: s.grey, mode: s.mode, totalSeconds: s.totalMinutes * 60 },
+      });
+      await moSetSetting('practice_setup', JSON.stringify({ pool: s.pool, mode: s.mode, secondsPer: s.secondsPer, count: s.count, totalMinutes: s.totalMinutes, mirror: s.mirror, grey: s.grey, presetId: s.presetId }));
+      if (created.shortfall > 0) {
+        api.window.showInformationMessage(`Only ${created.count === 1 ? '1 picture' : created.count + ' pictures'} in this pool. The run uses all of them.`);
+      }
+      moPracticeOpenRun(api, created.id, 'practice');
+    } catch (err) {
+      api.window.showInformationMessage((err && err.message) || 'The run could not start.');
+    } finally {
+      if (!disposed) startBtn.disabled = false;
+    }
+  }
+
+  // Below the form: what has waited longest, and recent runs.
+  const neglectedSec = moEl('div', 'mo-practice-section');
+  neglectedSec.appendChild(moEl('div', 'mo-practice-section-title', { textContent: 'Not Drawn Lately' }));
+  const neglectedBody = moEl('div', 'mo-practice-thumbs');
+  neglectedSec.appendChild(neglectedBody);
+  root.appendChild(neglectedSec);
+  const recentSec = moEl('div', 'mo-practice-section');
+  recentSec.appendChild(moEl('div', 'mo-practice-section-title', { textContent: 'Recent Sessions' }));
+  const recentBody = moEl('div', 'mo-practice-list');
+  recentSec.appendChild(recentBody);
+  root.appendChild(recentSec);
+  async function loadBelow() {
+    try {
+      const cands = await moPracticeCandidates({ kind: 'all' });
+      if (disposed) return;
+      neglectedBody.innerHTML = '';
+      const list = moPracticeNeglected(cands, 12);
+      if (!list.length) neglectedBody.appendChild(moEl('div', 'mo-practice-poolcount', { textContent: 'No pictures in the library yet.' }));
+      for (const c of list) {
+        neglectedBody.appendChild(moPracticeThumbTile(c.id, c.lastDrawnAt == null ? 'Not drawn yet' : moPracticeDate(new Date(c.lastDrawnAt).toISOString()), api, () => moOpenPhotoDetail(api, c.id)));
+      }
+      const sessions = await db.all(
+        `SELECT s.*, (SELECT COUNT(*) FROM mo_practice_draws d WHERE d.session_id = s.id AND d.outcome != 'pending') AS shown
+         FROM mo_practice_sessions s ORDER BY s.started_at DESC LIMIT 8`);
+      if (disposed) return;
+      recentBody.innerHTML = '';
+      if (!sessions.length) recentBody.appendChild(moEl('div', 'mo-practice-poolcount', { textContent: 'No sessions yet.' }));
+      for (const sess of sessions) {
+        let pool = { kind: 'all' };
+        try { pool = JSON.parse(sess.pool_json) || pool; } catch { /* default */ }
+        const r = moEl('div', 'mo-practice-list-row');
+        r.appendChild(moEl('span', null, { textContent: moPracticeDate(sess.started_at) }));
+        r.appendChild(moEl('span', 'mo-practice-dim', { textContent: sess.kind === 'daily' ? 'Daily Study' : moPoolLabel(pool) }));
+        r.appendChild(moEl('span', 'mo-practice-dim', { textContent: (sess.shown === 1 ? '1 picture' : sess.shown + ' pictures') + (sess.ended_at ? ', ' + moPracticeFormatDuration(sess.spent_seconds) : ', in progress') }));
+        r.addEventListener('click', () => moPracticeOpenRun(api, sess.id, sess.kind));
+        recentBody.appendChild(r);
+      }
+    } catch { /* leave empty */ }
+  }
+  document.addEventListener('mo:practice-changed', loadBelow);
+
+  (async () => {
+    try {
+      const saved = JSON.parse((await moGetSetting('practice_setup', '')) || 'null');
+      if (saved && typeof saved === 'object') {
+        if (saved.pool && saved.pool.kind !== 'photos') s.pool = saved.pool;
+        if (saved.mode === 'total' || saved.mode === 'count') s.mode = saved.mode;
+        if (Number(saved.secondsPer) > 0) s.secondsPer = Number(saved.secondsPer);
+        if (Number(saved.count) > 0) s.count = Number(saved.count);
+        if (Number(saved.totalMinutes) > 0) s.totalMinutes = Number(saved.totalMinutes);
+        s.mirror = !!saved.mirror; s.grey = !!saved.grey;
+        s.presetId = saved.presetId || null;
+      }
+    } catch { /* defaults */ }
+    if (disposed) return;
+    await loadPresets(s.presetId);
+    syncControls();
+    void loadBelow();
+  })();
+
+  return {
+    dispose() {
+      disposed = true;
+      closeSuggest();
+      clearTimeout(countTimer);
+      document.removeEventListener('mo:practice-changed', loadBelow);
+      for (const d of disposers) { try { d(); } catch { /* gone */ } }
+      if (albumDrop) albumDrop.dispose();
+      container.innerHTML = '';
+    },
+  };
+}
+
+function renderPracticePlayer(container, api, sessionId) {
+  moInjectStyles();
+  const root = moEl('div', 'mo-practice');
+  root.tabIndex = 0;
+  container.appendChild(root);
+  let disposed = false;
+  let timer = null;
+  let idleTimer = null;
+  let noticeTimer = null;
+  const state = { session: null, draws: [], idx: -1, running: false, remainingMs: 0, lastTick: 0, mirror: _practiceCfg.mirror, grey: _practiceCfg.greyscale };
+
+  const stage = moEl('div', 'mo-practice-stage');
+  const img = moEl('img', 'mo-practice-img', { alt: '' });
+  stage.appendChild(img);
+  const missing = moEl('div', 'mo-practice-empty mo-hidden', { textContent: 'This picture is not on disk right now.' });
+  stage.appendChild(missing);
+  root.appendChild(stage);
+  const hud = moEl('div', 'mo-practice-hud');
+  const clock = moEl('div', 'mo-practice-clock', { textContent: '0:00' });
+  const counter = moEl('div', 'mo-practice-counter');
+  hud.appendChild(clock); hud.appendChild(counter);
+  root.appendChild(hud);
+  const notice = moEl('div', 'mo-practice-notice', { textContent: 'Time Is Up' });
+  root.appendChild(notice);
+  const controls = moEl('div', 'mo-practice-controls');
+  const btn = (icon, title, fn) => {
+    const b = moEl('button', 'mo-practice-btn', { type: 'button', title, 'aria-label': title, innerHTML: moIcon(icon, 16) });
+    b.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
+    return b;
+  };
+  const prevBtn = btn('skip-back', 'Previous', () => void goTo(state.idx - 1));
+  const pauseBtn = btn('pause', 'Pause', () => togglePause());
+  const nextBtn = btn('skip-forward', 'Skip', () => void skip());
+  const stopBtn = btn('square', 'Stop', () => void finish());
+  const mirrorBtn = btn('flip-horizontal', 'Mirror', () => { state.mirror = !state.mirror; applyLook(); });
+  const greyBtn = btn('contrast', 'Greyscale', () => { state.grey = !state.grey; applyLook(); });
+  for (const b of [prevBtn, pauseBtn, nextBtn, stopBtn]) controls.appendChild(b);
+  controls.appendChild(moEl('span', 'mo-practice-sep'));
+  controls.appendChild(mirrorBtn);
+  controls.appendChild(greyBtn);
+  root.appendChild(controls);
+  const strip = moEl('div', 'mo-practice-strip');
+  root.appendChild(strip);
+  const end = moEl('div', 'mo-practice-end mo-hidden');
+  root.appendChild(end);
+
+  function applyLook() {
+    img.classList.toggle('is-mirror', state.mirror);
+    img.classList.toggle('is-grey', state.grey);
+    mirrorBtn.classList.toggle('is-on', state.mirror);
+    greyBtn.classList.toggle('is-on', state.grey);
+  }
+  function wake() {
+    root.classList.remove('is-idle');
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => { if (!disposed && state.running) root.classList.add('is-idle'); }, 2500);
+  }
+  root.addEventListener('mousemove', wake);
+  root.addEventListener('click', wake);
+  root.addEventListener('keydown', (e) => {
+    if (state.idx < 0 || !end.classList.contains('mo-hidden')) return;
+    if (e.key === ' ') { e.preventDefault(); togglePause(); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); void skip(); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); void goTo(state.idx - 1); }
+    else if (e.key === 'm' || e.key === 'M') { state.mirror = !state.mirror; applyLook(); }
+    else if (e.key === 'g' || e.key === 'G') { state.grey = !state.grey; applyLook(); }
+    wake();
+  });
+
+  function snapshot(d) { return { spent_seconds: Math.round((d._spentMs || 0) / 1000), outcome: d.outcome, drawn_at: d.drawn_at }; }
+  function flushSpent() {
+    if (!state.running) return;
+    const now = performance.now();
+    const dt = Math.max(0, now - state.lastTick);
+    state.lastTick = now;
+    const d = state.draws[state.idx];
+    if (!d) return;
+    d._spentMs = (d._spentMs || 0) + dt;
+    state.remainingMs -= dt;
+  }
+  function renderClock() {
+    clock.textContent = moPracticeClock(state.remainingMs / 1000);
+    hud.classList.toggle('is-low', state.remainingMs > 0 && state.remainingMs <= 10000);
+  }
+  function renderCounter() { counter.textContent = (state.idx + 1) + ' / ' + state.draws.length; }
+  function markStrip() {
+    [...strip.children].forEach((c, i) => {
+      c.classList.toggle('is-current', i === state.idx);
+      c.classList.toggle('is-done', i !== state.idx && state.draws[i] && state.draws[i].outcome !== 'pending');
+    });
+  }
+  function buildStrip() {
+    strip.innerHTML = '';
+    state.draws.forEach((d, i) => {
+      const it = moEl('div', 'mo-practice-strip-item');
+      const t = moEl('img', null, { alt: '' });
+      it.appendChild(t);
+      void moPracticeThumb(t, d.photo_id, api);
+      it.addEventListener('click', (e) => { e.stopPropagation(); void goTo(i); });
+      strip.appendChild(it);
+    });
+  }
+  function showNotice() {
+    notice.classList.add('is-on');
+    clearTimeout(noticeTimer);
+    noticeTimer = setTimeout(() => notice.classList.remove('is-on'), 2500);
+  }
+  let showSeq = 0;
+  async function showPhoto(photoId) {
+    const seq = ++showSeq;
+    const path = await moResolveItemPath({ type: 'photo', id: photoId });
+    const url = path ? await localFileToUrl(path) : null;
+    if (disposed || seq !== showSeq) return;
+    missing.classList.toggle('mo-hidden', !!url);
+    img.style.visibility = url ? '' : 'hidden';
+    if (url) img.src = url;
+  }
+  function preload(i) {
+    const d = state.draws[i];
+    if (!d) return;
+    moResolveItemPath({ type: 'photo', id: d.photo_id }).then((p) => (p ? localFileToUrl(p) : null)).catch(() => {});
+  }
+  async function leaveCurrent() {
+    const cur = state.draws[state.idx];
+    if (!cur) return;
+    flushSpent();
+    if (cur.outcome === 'pending') cur.outcome = (cur._spentMs || 0) >= cur.planned_seconds * 1000 ? 'done' : 'skipped';
+    await moPracticeUpdateDraw(cur.id, snapshot(cur));
+  }
+  async function goTo(i) {
+    if (i < 0 || i >= state.draws.length || disposed) return;
+    if (state.idx >= 0) await leaveCurrent();
+    if (disposed) return;
+    state.idx = i;
+    const d = state.draws[i];
+    if (!d.drawn_at) d.drawn_at = new Date().toISOString();
+    if (d._spentMs == null) d._spentMs = (Number(d.spent_seconds) || 0) * 1000;
+    state.remainingMs = d.planned_seconds * 1000;
+    state.running = true;
+    state.lastTick = performance.now();
+    pauseBtn.innerHTML = moIcon('pause', 16); pauseBtn.title = 'Pause'; pauseBtn.setAttribute('aria-label', 'Pause');
+    renderClock(); renderCounter(); markStrip(); wake();
+    await showPhoto(d.photo_id);
+    preload(i + 1);
+    await moPracticeUpdateDraw(d.id, snapshot(d));
+  }
+  function togglePause() {
+    if (state.idx < 0) return;
+    flushSpent();
+    state.running = !state.running;
+    state.lastTick = performance.now();
+    const label = state.running ? 'Pause' : 'Resume';
+    pauseBtn.innerHTML = moIcon(state.running ? 'pause' : 'play', 16);
+    pauseBtn.title = label; pauseBtn.setAttribute('aria-label', label);
+    wake();
+  }
+  async function skip() {
+    if (state.idx < state.draws.length - 1) await goTo(state.idx + 1);
+    else await finish();
+  }
+  async function timeUp() {
+    state.running = false;
+    const d = state.draws[state.idx];
+    if (d) d.outcome = 'done';
+    if (_practiceCfg.chime) moPracticeChime();
+    showNotice();
+    if (state.idx < state.draws.length - 1) await goTo(state.idx + 1);
+    else await finish();
+  }
+  function tick() {
+    if (disposed || !state.running) return;
+    flushSpent();
+    renderClock();
+    if (state.remainingMs <= 0) void timeUp();
+  }
+  let finishing = false;
+  async function finish() {
+    if (finishing || disposed) return;
+    finishing = true;
+    try {
+      if (state.idx >= 0) await leaveCurrent();
+      state.running = false;
+      clearInterval(timer); timer = null;
+      await moPracticeEndSession(sessionId);
+      const data = await moPracticeLoadSession(sessionId);
+      if (disposed || !data) return;
+      state.session = data.session; state.draws = data.draws;
+      showEnd();
+    } finally { finishing = false; }
+  }
+  function showEnd() {
+    state.running = false;
+    root.classList.remove('is-idle');
+    for (const el of [stage, hud, controls, strip, notice]) el.classList.add('mo-hidden');
+    end.classList.remove('mo-hidden');
+    end.innerHTML = '';
+    const daily = state.session.kind === 'daily';
+    const sum = moPracticeSummary(state.draws);
+    end.appendChild(moEl('div', 'mo-practice-end-title', { textContent: daily ? 'Daily Study Complete' : 'Session Complete' }));
+    const parts = [sum.shown === 1 ? '1 picture' : sum.shown + ' pictures', moPracticeFormatDuration(sum.spentSeconds)];
+    if (!daily) parts.push(moPoolLabel(state.session.pool));
+    parts.push(moPracticeDate(state.session.started_at));
+    end.appendChild(moEl('div', 'mo-practice-end-sub', { textContent: parts.join(' · ') }));
+    const items = state.draws.map((d) => ({ type: 'photo', id: d.photo_id }));
+    const endStrip = moEl('div', 'mo-practice-end-strip');
+    state.draws.forEach((d, i) => {
+      const it = moEl('div', 'mo-practice-end-item');
+      const t = moEl('img', null, { alt: '' });
+      it.appendChild(t);
+      void moPracticeThumb(t, d.photo_id, api);
+      it.appendChild(moEl('span', null, { textContent: moPracticeFormatDuration(d.spent_seconds) + (d.outcome === 'skipped' ? ', skipped' : '') }));
+      it.addEventListener('click', () => openLightbox(items, i, moResolveItemPath));
+      endStrip.appendChild(it);
+    });
+    end.appendChild(endStrip);
+    const actions = moEl('div', 'mo-practice-end-actions');
+    const again = moEl('button', 'mo-practice-start', { type: 'button', textContent: daily ? 'Draw Again' : 'Practice Again' });
+    again.addEventListener('click', async () => {
+      again.disabled = true;
+      try {
+        if (daily) { await moStartDailyStudy(api, { fresh: true }); return; }
+        const o = state.session.options || {};
+        const created = await moPracticeCreateSession({
+          kind: 'practice', presetId: state.session.preset_id, pool: state.session.pool, secondsPer: state.session.seconds_per,
+          count: o.count || state.draws.length || 1, options: o,
+        });
+        moPracticeOpenRun(api, created.id, 'practice');
+      } catch (err) {
+        api.window.showInformationMessage((err && err.message) || 'The run could not start.');
+      } finally { again.disabled = false; }
+    });
+    actions.appendChild(again);
+    if (!daily) {
+      const setup = moEl('button', 'mo-toolbar-btn', { type: 'button', textContent: 'Open Practice Setup' });
+      setup.addEventListener('click', () => moOpenPracticeSetup(api));
+      actions.appendChild(setup);
+    }
+    end.appendChild(actions);
+  }
+
+  (async () => {
+    try {
+      const data = await moPracticeLoadSession(sessionId);
+      if (disposed) return;
+      if (!data || !data.draws.length) {
+        root.appendChild(moEl('div', 'mo-practice-empty', { textContent: 'This practice run is no longer available.' }));
+        for (const el of [stage, hud, controls, strip]) el.classList.add('mo-hidden');
+        return;
+      }
+      state.session = data.session; state.draws = data.draws;
+      const o = data.session.options || {};
+      if (typeof o.mirror === 'boolean') state.mirror = o.mirror;
+      if (typeof o.grey === 'boolean') state.grey = o.grey;
+      applyLook();
+      if (data.session.ended_at) { showEnd(); return; }
+      buildStrip();
+      timer = setInterval(tick, 250);
+      const first = state.draws.findIndex((d) => d.outcome === 'pending');
+      await goTo(first >= 0 ? first : 0);
+      root.focus();
+    } catch (err) {
+      if (!disposed) root.appendChild(moEl('div', 'mo-practice-empty', { textContent: 'The practice run could not load: ' + (err && err.message) }));
+    }
+  })();
+
+  return {
+    dispose() {
+      disposed = true;
+      clearInterval(timer); clearTimeout(idleTimer); clearTimeout(noticeTimer);
+      const cur = state.draws[state.idx];
+      if (cur && state.session && !state.session.ended_at) {
+        flushSpent();
+        state.running = false;
+        moPracticeUpdateDraw(cur.id, snapshot(cur)).catch(() => {});
+      }
+      container.innerHTML = '';
+    },
+  };
+}
+
+// Detail view: when this picture was drawn, oldest to newest (slice 4).
+function buildPracticeHistoryStrip(ctx, api) {
+  const wrap = moEl('div', 'mo-similar');
+  const head = moEl('div', 'mo-practice-history-head');
+  head.appendChild(moEl('div', 'mo-similar-title', { textContent: 'Practice' }));
+  const drawBtn = moEl('button', 'mo-toolbar-btn', { type: 'button', textContent: 'Draw This' });
+  drawBtn.addEventListener('click', async () => {
+    drawBtn.disabled = true;
+    try {
+      const created = await moPracticeCreateSession({
+        kind: 'practice', pool: { kind: 'photos', ids: [ctx.id], label: '1 picture' }, secondsPer: _practiceCfg.dailyMinutes * 60, count: 1,
+        options: { mirror: _practiceCfg.mirror, grey: _practiceCfg.greyscale },
+      });
+      moPracticeOpenRun(api, created.id, 'practice');
+    } catch (err) {
+      api.window.showInformationMessage((err && err.message) || 'The run could not start.');
+    } finally { drawBtn.disabled = false; }
+  });
+  head.appendChild(drawBtn);
+  wrap.appendChild(head);
+  const body = moEl('div', 'mo-practice-history');
+  wrap.appendChild(body);
+  (async () => {
+    try {
+      const rows = await db.all(`SELECT drawn_at, spent_seconds, outcome FROM mo_practice_draws WHERE photo_id = ? AND outcome != 'pending' AND drawn_at IS NOT NULL ORDER BY drawn_at ASC`, [ctx.id]);
+      if (!rows.length) { body.appendChild(moEl('div', 'mo-practice-history-row mo-practice-dim', { textContent: 'Not drawn yet' })); return; }
+      for (const r of rows) {
+        const row = moEl('div', 'mo-practice-history-row');
+        row.appendChild(moEl('span', null, { textContent: moPracticeDate(r.drawn_at) }));
+        row.appendChild(moEl('span', 'mo-practice-dim', { textContent: moPracticeFormatDuration(r.spent_seconds) + (r.outcome === 'skipped' ? ', skipped' : '') }));
+        body.appendChild(row);
+      }
+    } catch { /* leave empty */ }
+  })();
+  return wrap;
+}
+
 function _notifySidebarRefresh() { for (const cb of _sidebarRefreshCallbacks) { try { cb(); } catch {} } }
 let _commandDisposables = [];
 let _api = null;
@@ -28270,6 +29424,17 @@ export async function activate(api, context) {
     if (sub2 && typeof sub2.dispose === 'function') _commandDisposables.push(sub2);
   }
 
+  // Drawing And Painting Tools (M104, decision D7) and the practice settings.
+  try { moReadArtCfg(api); } catch { /* keep defaults */ }
+  if (api.workspace.onDidChangeConfiguration) {
+    const sub3 = api.workspace.onDidChangeConfiguration((e) => {
+      if (!MO_ART_CFG_KEYS.some((k) => e.affectsConfiguration('mediaOrganizer.' + k))) return;
+      try { moReadArtCfg(api); } catch { /* ignore */ }
+      document.dispatchEvent(new CustomEvent('mo:art-tools-changed'));
+    });
+    if (sub3 && typeof sub3.dispose === 'function') _commandDisposables.push(sub3);
+  }
+
   // Screen-recorder: handle a finished recording, and sweep orphaned temp clips
   // left by a crash/quit mid-record (see moPurgeOrphanRecordings).
   if (window.parallxElectron?.recorder?.onComplete) {
@@ -28353,6 +29518,8 @@ export async function activate(api, context) {
   // Register scan command
   _commandDisposables.push(
     api.commands.registerCommand('media-organizer.upscaleSetup', () => showUpscaleSetupDialog(api)),
+    api.commands.registerCommand('media-organizer.practiceSession', () => { if (moArtGate(api)) moOpenPracticeSetup(api); }),
+    api.commands.registerCommand('media-organizer.dailyStudy', () => void moStartDailyStudy(api)),
     api.commands.registerCommand('media-organizer.openHome', () => {
       api.editors.openEditor({ typeId: 'media-organizer-grid', title: 'Home', icon: 'home', instanceId: 'grid:home' });
     }),
@@ -28434,6 +29601,9 @@ export async function activate(api, context) {
         const inputId = (input && (input.instanceId || input.id)) || '';
         if (inputId === 'grid:home') {
           return renderHomeFeed(container, api, input);
+        }
+        if (inputId.startsWith('practice:')) {
+          return renderPracticeTab(container, api, input);
         }
         if (inputId === 'tag-review') {
           return renderTagReview(container, api);

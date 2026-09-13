@@ -20,6 +20,8 @@
       { "id": "media-organizer.cacheStats", "title": "Show Thumbnail Cache Stats", "category": "Media Organizer" },
       { "id": "media-organizer.openGrid", "title": "Open Media Grid", "category": "Media Organizer" },
       { "id": "media-organizer.openHome", "title": "Open Home Feed", "category": "Media Organizer" },
+      { "id": "media-organizer.practiceSession", "title": "Practice Session", "category": "Media Organizer" },
+      { "id": "media-organizer.dailyStudy", "title": "Daily Study", "category": "Media Organizer" },
       { "id": "media-organizer.upscaleSetup", "title": "Set Up The Upscaler", "category": "Media Organizer" },
       { "id": "media-organizer.createAlbum", "title": "Create Album", "category": "Media Organizer" },
       { "id": "media-organizer.rebuildSearchIndex", "title": "Rebuild Search Index", "category": "Media Organizer" },
@@ -73,6 +75,33 @@
             "type": "boolean",
             "default": true,
             "description": "Show each item's tags on the grid card next to the date. Turn off to declutter the grid; tags remain visible in the detail view and sidebar."
+          },
+          "mediaOrganizer.enableArtTools": {
+            "type": "boolean",
+            "default": false,
+            "description": "Drawing And Painting Tools. Shows Daily Study, Practice Sessions and practice history in Media Organizer, for a workspace that holds reference photos. Off hides them; nothing is deleted."
+          },
+          "mediaOrganizer.practiceDailyMinutes": {
+            "type": "number",
+            "default": 10,
+            "minimum": 1,
+            "maximum": 180,
+            "description": "Daily Study: minutes to draw the picture of the day."
+          },
+          "mediaOrganizer.practiceChime": {
+            "type": "boolean",
+            "default": true,
+            "description": "Play a short chime when a practice picture's time is up."
+          },
+          "mediaOrganizer.practiceMirror": {
+            "type": "boolean",
+            "default": false,
+            "description": "Start practice runs with the picture mirrored. Can be changed during a run."
+          },
+          "mediaOrganizer.practiceGreyscale": {
+            "type": "boolean",
+            "default": false,
+            "description": "Start practice runs with the picture in greyscale. Can be changed during a run."
           },
           "mediaOrganizer.enableScreenRecorder": {
             "type": "boolean",
