@@ -99,7 +99,7 @@ const log = (label, value) => console.log(`[probe] ${label}: ${typeof value === 
 
 async function practiceSidebar(page) {
   return page.evaluate(() => {
-    const sec = document.querySelector('[data-mo-section="practice"]');
+    const sec = document.querySelector('[data-mo-section="drawing-and-painting"]');
     if (!sec) return 'no section';
     const items = Array.from(sec.querySelectorAll('.mo-sidebar-item-label')).map((l) => l.textContent);
     return `display=${getComputedStyle(sec).display} items=${items.join(' | ')}`;
@@ -288,24 +288,78 @@ async function main() {
     log('daily card after', await dailyCard(page));
     await shot(page, 'practice-home-after');
 
-    // Detail: the Practice history strip on a drawn picture.
-    const drawnId = await page.evaluate(() => {
-      const end = Array.from(document.querySelectorAll('.mo-practice-end-item'))[0];
-      return end ? 'via-end' : 'none';
-    });
-    log('detail via', drawnId);
-    log('openGrid', await runCommand(page, 'media-organizer.openGrid'));
-    await page.waitForSelector('.mo-card', { timeout: 15_000 });
-    await page.locator('.mo-card').first().dblclick();
+    // Detail of the daily picture (it has been drawn): the history strip and its buttons.
+    await page.locator('.mo-daily img').click();
     await page.waitForSelector('.mo-detail-main', { timeout: 10_000 });
-    await page.waitForTimeout(1_500);
-    log('detail practice strip', await page.evaluate(() => {
+    await page.waitForSelector('.mo-practice-history-row', { timeout: 10_000 }).catch(() => {});
+    await page.waitForTimeout(800);
+    log('detail strip', await page.evaluate(() => {
       const titles = Array.from(document.querySelectorAll('.mo-detail-main .mo-similar-title')).map((t) => t.textContent);
       const rows = Array.from(document.querySelectorAll('.mo-practice-history-row')).map((r) => r.textContent);
-      const btn = document.querySelector('.mo-practice-history-head button')?.textContent;
-      return `titles=${titles.join(' | ')} rows=${rows.join(' | ') || '(none)'} button=${btn}`;
+      const btns = Array.from(document.querySelectorAll('.mo-practice-history-actions button')).map((b) => b.textContent);
+      return `titles=${titles.join(' | ')} rows=${rows.join(' | ') || '(none)'} buttons=${btns.join('/')}`;
     }));
     await shot(page, 'practice-detail');
+
+    // Plan Painting from the strip: the editor renders the recipe on the GPU.
+    await page.locator('.mo-practice-history-actions button', { hasText: 'Plan Painting' }).click();
+    await page.waitForSelector('.mo-plan-canvas', { timeout: 15_000 });
+    await page.waitForFunction(() => (document.querySelector('.mo-plan-canvas')?.width || 0) > 10, null, { timeout: 15_000 }).catch(() => {});
+    await page.waitForTimeout(1_000);
+    const planState = () => page.evaluate(() => {
+      const root = document.querySelector('.mo-plan');
+      const cv = root.querySelector('.mo-plan-canvas');
+      const ov = root.querySelector('.mo-plan-overlay');
+      let overlayPixels = 0;
+      try { const d = ov.getContext('2d').getImageData(0, 0, ov.width, ov.height).data; for (let i = 3; i < d.length; i += 4) if (d[i] > 0) overlayPixels++; } catch { /* none */ }
+      let sum = 0; let total = 0;
+      try { const c = document.createElement('canvas'); c.width = 16; c.height = 16; const x = c.getContext('2d'); x.drawImage(cv, 0, 0, 16, 16); const d = x.getImageData(0, 0, 16, 16).data; for (let i = 0; i < d.length; i += 4) { total++; sum += d[i] + d[i + 1] + d[i + 2]; } } catch { /* none */ }
+      return {
+        title: root.querySelector('.mo-plan-title')?.textContent, size: root.querySelector('.mo-plan-topbar-left .mo-practice-dim')?.textContent,
+        tools: root.querySelectorAll('.mo-plan-tool').length, activeTool: root.querySelector('.mo-plan-tool.is-on')?.getAttribute('aria-label'),
+        canvas: `${cv.width}x${cv.height} css=${cv.style.width}`, brightness: total ? Math.round(sum / total / 3) : 'n/a',
+        sliders: root.querySelectorAll('.mo-plan-panel input[type="range"]').length,
+        cropbox: root.querySelector('.mo-plan-cropbox')?.classList.contains('mo-hidden') ? 'hidden' : 'shown',
+        overlayPixels, variants: root.querySelectorAll('.mo-plan-variant').length, swatches: root.querySelectorAll('.mo-plan-swatch').length,
+        nativeSelects: root.querySelectorAll('select').length,
+      };
+    });
+    log('plan open', await planState());
+    await shot(page, 'plan-light');
+    const before = await planState();
+    await page.locator('.mo-plan-panel input[type="range"]').first().evaluate((el) => { el.value = '1.5'; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); });
+    await page.waitForFunction((b) => { const cv = document.querySelector('.mo-plan-canvas'); const c = document.createElement('canvas'); c.width = 16; c.height = 16; const x = c.getContext('2d'); x.drawImage(cv, 0, 0, 16, 16); const d = x.getImageData(0, 0, 16, 16).data; let sum = 0; for (let i = 0; i < d.length; i += 4) sum += d[i] + d[i + 1] + d[i + 2]; return Math.round(sum / 256 / 3) > b; }, before.brightness, { timeout: 10_000 }).catch(() => {});
+    log('plan exposure', `brightness ${before.brightness} -> ${(await planState()).brightness}`);
+    await page.locator('.mo-plan-tool[aria-label="Crop"]').click();
+    await page.waitForFunction(() => !document.querySelector('.mo-plan-cropbox').classList.contains('mo-hidden'), null, { timeout: 10_000 }).catch(() => {});
+    await page.waitForTimeout(300);
+    log('plan crop', await planState());
+    await shot(page, 'plan-crop');
+    await page.locator('.mo-plan-tool[aria-label="Composition"]').click();
+    await page.waitForTimeout(300);
+    await page.locator('.mo-plan-panel .mo-practice-check', { hasText: 'Grid In Inches' }).locator('input').check();
+    await page.waitForFunction(() => { const ov = document.querySelector('.mo-plan-overlay'); const d = ov.getContext('2d').getImageData(0, 0, ov.width, ov.height).data; for (let i = 3; i < d.length; i += 4) if (d[i] > 0) return true; return false; }, null, { timeout: 10_000 }).catch(() => {});
+    await page.waitForTimeout(300);
+    log('plan grid', await planState());
+    await shot(page, 'plan-grid');
+    await page.locator('.mo-plan-tool[aria-label="Palette"]').click();
+    await page.waitForTimeout(300);
+    await page.locator('.mo-plan-panel button', { hasText: 'Pull From Picture' }).click();
+    await page.waitForTimeout(800);
+    log('plan palette', await planState());
+    await page.locator('.mo-plan-variant-actions button', { hasText: 'Add Variation' }).click();
+    await page.waitForTimeout(800);
+    log('plan variants', await planState());
+    await page.locator('.mo-plan-topbar-right button', { hasText: 'Export Plan' }).click();
+    await page.waitForTimeout(7_000);
+    await page.locator('.mo-plan-tool[aria-label="Process"]').click();
+    await page.waitForTimeout(800);
+    log('plan shelf', await page.evaluate(() => Array.from(document.querySelectorAll('.mo-plan-shelf-item span')).map((s) => s.textContent).join(' | ') || '(empty)'));
+    await shot(page, 'plan-export');
+    log('paintingPlans', await runCommand(page, 'media-organizer.paintingPlans'));
+    await page.waitForSelector('.mo-plans-card', { timeout: 10_000 }).catch(() => {});
+    await page.waitForTimeout(800);
+    log('plans list', await page.evaluate(() => Array.from(document.querySelectorAll('.mo-plans-card')).map((c) => c.textContent).join(' | ') || '(none)'));
 
     // Gate off again: everything hides without a reload.
     await page.evaluate(async () => {

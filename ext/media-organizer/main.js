@@ -8509,6 +8509,54 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
 .mo-daily-sub { font-size: 12px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); margin-top: 2px; }
 .mo-practice-history-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
 .mo-practice-history-row { display: flex; justify-content: space-between; font-size: 12px; padding: 3px 0; }
+
+/* ── Painting plans (M104) ── */
+.mo-plan { position: absolute; inset: 0; display: flex; background: var(--vscode-editor-background, var(--px-bg)); color: var(--vscode-foreground, var(--px-text)); outline: none; }
+.mo-plan-tools { flex: 0 0 40px; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 0; border-right: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-sideBar-background, var(--px-bg-elevated)); }
+.mo-plan-tool { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: 0; border-radius: var(--parallx-radius-sm, 3px); background: transparent; color: var(--vscode-foreground, var(--px-text)); cursor: pointer; opacity: 0.75; }
+.mo-plan-tool:hover { background: var(--vscode-toolbar-hoverBackground, var(--px-surface-hover)); opacity: 1; }
+.mo-plan-tool.is-on { background: var(--vscode-button-background, var(--px-accent)); color: var(--vscode-button-foreground, var(--px-text-on-accent)); opacity: 1; }
+.mo-plan-panel { flex: 0 0 232px; overflow-y: auto; padding: 10px 12px; border-right: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-sideBar-background, var(--px-bg-elevated)); display: flex; flex-direction: column; gap: 14px; }
+.mo-plan-section { display: flex; flex-direction: column; gap: 8px; }
+.mo-plan-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.mo-plan-hint { font-size: 11px; line-height: 1.4; }
+.mo-plan-slider { display: flex; flex-direction: column; gap: 2px; }
+.mo-plan-slider-head { display: flex; justify-content: space-between; font-size: 12px; }
+.mo-plan-slider input[type="range"] { width: 100%; margin: 0; accent-color: var(--vscode-focusBorder, var(--px-accent)); }
+.mo-plan-notes { min-height: 120px; resize: vertical; font: inherit; font-size: 12px; line-height: 1.4; }
+.mo-plan-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.mo-plan-topbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--vscode-panel-border, var(--px-border)); }
+.mo-plan-topbar-left { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.mo-plan-topbar-right { display: flex; align-items: center; gap: 6px; }
+.mo-plan-title { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mo-plan-stage { flex: 1 1 auto; min-height: 0; position: relative; display: flex; align-items: center; justify-content: center; padding: 12px; background: var(--px-bg-inset, var(--vscode-editor-background)); }
+.mo-plan-frame { position: relative; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35); }
+.mo-plan-canvas { display: block; }
+.mo-plan-overlay { position: absolute; inset: 0; pointer-events: none; }
+.mo-plan-cropbox { position: absolute; border: 1px solid var(--vscode-focusBorder, var(--px-accent)); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5); cursor: move; touch-action: none; }
+.mo-plan-crophandle { position: absolute; width: 12px; height: 12px; background: var(--vscode-focusBorder, var(--px-accent)); border: 1px solid rgba(0, 0, 0, 0.5); }
+.mo-plan-crophandle--nw { left: -6px; top: -6px; cursor: nwse-resize; }
+.mo-plan-crophandle--ne { right: -6px; top: -6px; cursor: nesw-resize; }
+.mo-plan-crophandle--sw { left: -6px; bottom: -6px; cursor: nesw-resize; }
+.mo-plan-crophandle--se { right: -6px; bottom: -6px; cursor: nwse-resize; }
+.mo-plan-variants { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 8px 12px; overflow-x: auto; border-top: 1px solid var(--vscode-panel-border, var(--px-border)); }
+.mo-plan-variant { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 4px; border-radius: var(--parallx-radius-sm, 3px); border: 1px solid transparent; cursor: pointer; font-size: 11px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
+.mo-plan-variant img { height: 56px; min-width: 24px; display: block; border-radius: 2px; background: var(--px-bg-inset, rgba(128, 128, 128, 0.1)); }
+.mo-plan-variant:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
+.mo-plan-variant.is-current { border-color: var(--vscode-focusBorder, var(--px-accent)); color: var(--vscode-foreground, var(--px-text)); }
+.mo-plan-variant-actions { display: flex; gap: 6px; margin-left: auto; flex: 0 0 auto; }
+.mo-plan-swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+.mo-plan-swatch { width: 28px; height: 28px; border-radius: var(--parallx-radius-sm, 3px); border: 1px solid rgba(0, 0, 0, 0.35); cursor: pointer; }
+.mo-plan-shelf { display: flex; flex-direction: column; gap: 8px; }
+.mo-plan-shelf-item { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+.mo-plan-shelf-item img { width: 48px; height: 48px; object-fit: cover; border-radius: var(--parallx-radius-sm, 3px); background: var(--px-bg-inset, rgba(128, 128, 128, 0.1)); cursor: pointer; }
+.mo-plan-shelf-item span { flex: 1 1 auto; }
+.mo-plans-grid { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
+.mo-plans-card { width: 160px; cursor: pointer; padding: 8px; border-radius: var(--parallx-radius-sm, 3px); border: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-sideBar-background, var(--px-bg-elevated)); font-size: 12px; }
+.mo-plans-card:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
+.mo-plans-card img { width: 144px; height: 144px; object-fit: cover; display: block; border-radius: 2px; background: var(--px-bg-inset, rgba(128, 128, 128, 0.1)); margin-bottom: 6px; }
+.mo-plans-card-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mo-practice-history-actions { display: flex; gap: 6px; }
 `;
 
 function moInjectStyles() {
@@ -9930,11 +9978,12 @@ function renderBrowserSidebar(container, api) {
   qfBody.appendChild(sidebarItem('globe', 'Map', null, () => moOpenMap(_api)));
   sections.appendChild(qfSection);
 
-  // Practice (M104): Daily Study and Practice Sessions. Shown only while
+  // Drawing And Painting (M104): practice and painting plans. Shown only while
   // Drawing And Painting Tools is on (decision D7).
-  const { section: prSection, body: prBody } = sidebarSection('Practice', 'timer', false);
+  const { section: prSection, body: prBody } = sidebarSection('Drawing And Painting', 'paintbrush', false);
   prBody.appendChild(sidebarItem('sun', 'Daily Study', null, () => void moStartDailyStudy(api)));
   prBody.appendChild(sidebarItem('timer', 'Practice Session', null, () => moOpenPracticeSetup(api)));
+  prBody.appendChild(sidebarItem('palette', 'Painting Plans', null, () => moOpenPlansList(api)));
   const syncPractice = () => { prSection.style.display = _artToolsEnabled ? '' : 'none'; };
   syncPractice();
   document.addEventListener('mo:art-tools-changed', syncPractice);
@@ -13300,6 +13349,7 @@ function renderGridBrowser(container, api, input) {
       // Single-item actions
       actions.push({ label: 'View Full Size', handler: () => handleCardViewFullSize(item) });
       actions.push({ label: 'Edit Details', handler: () => handleCardOpen(item) });
+      if (item.type === 'photo' && _artToolsEnabled) actions.push({ label: 'Plan Painting', handler: () => void moPlanCreate(_api, item.id) });
       if (item.type === 'photo') {
         actions.push({ label: 'Select Similar Photos', handler: () => selectSimilarPhotos(item) });
       }
@@ -14509,6 +14559,8 @@ function buildDetailLayout(ctx, api, bodyEl, onRefresh) {
   if (ctx.type === 'photo' && !moIsGifPath(ctx.primaryFile && ctx.primaryFile.basename)) {
     main.appendChild(buildSimilarStrip(ctx, api));
     if (_artToolsEnabled) main.appendChild(buildPracticeHistoryStrip(ctx, api));
+  } else if (_artToolsEnabled) {
+    main.appendChild(buildPracticeHistoryStrip(ctx, api));
   }
   bodyEl.appendChild(main);
 
@@ -29204,15 +29256,25 @@ function renderPracticePlayer(container, api, sessionId) {
 
 // Detail view: when this picture was drawn, oldest to newest (slice 4).
 function buildPracticeHistoryStrip(ctx, api) {
+  const id = ctx.entity ? ctx.entity.id : ctx.id;
   const wrap = moEl('div', 'mo-similar');
   const head = moEl('div', 'mo-practice-history-head');
-  head.appendChild(moEl('div', 'mo-similar-title', { textContent: 'Practice' }));
+  head.appendChild(moEl('div', 'mo-similar-title', { textContent: 'Drawing And Painting' }));
+  const actions = moEl('div', 'mo-practice-history-actions');
+  const addBtn = moEl('button', 'mo-toolbar-btn', { type: 'button', textContent: 'Add To Plan' });
+  addBtn.addEventListener('click', () => void moPlanPickAndAdd(api, ctx.type === 'video' ? 'video' : 'photo', id));
+  if (ctx.type === 'video') {
+    actions.appendChild(addBtn); head.appendChild(actions); wrap.appendChild(head);
+    return wrap;
+  }
+  const planBtn = moEl('button', 'mo-toolbar-btn', { type: 'button', textContent: 'Plan Painting' });
+  planBtn.addEventListener('click', () => void moPlanCreate(api, id));
   const drawBtn = moEl('button', 'mo-toolbar-btn', { type: 'button', textContent: 'Draw This' });
   drawBtn.addEventListener('click', async () => {
     drawBtn.disabled = true;
     try {
       const created = await moPracticeCreateSession({
-        kind: 'practice', pool: { kind: 'photos', ids: [ctx.id], label: '1 picture' }, secondsPer: _practiceCfg.dailyMinutes * 60, count: 1,
+        kind: 'practice', pool: { kind: 'photos', ids: [id], label: '1 picture' }, secondsPer: _practiceCfg.dailyMinutes * 60, count: 1,
         options: { mirror: _practiceCfg.mirror, grey: _practiceCfg.greyscale },
       });
       moPracticeOpenRun(api, created.id, 'practice');
@@ -29220,13 +29282,14 @@ function buildPracticeHistoryStrip(ctx, api) {
       api.window.showInformationMessage((err && err.message) || 'The run could not start.');
     } finally { drawBtn.disabled = false; }
   });
-  head.appendChild(drawBtn);
+  actions.appendChild(drawBtn); actions.appendChild(planBtn); actions.appendChild(addBtn);
+  head.appendChild(actions);
   wrap.appendChild(head);
   const body = moEl('div', 'mo-practice-history');
   wrap.appendChild(body);
   (async () => {
     try {
-      const rows = await db.all(`SELECT drawn_at, spent_seconds, outcome FROM mo_practice_draws WHERE photo_id = ? AND outcome != 'pending' AND drawn_at IS NOT NULL ORDER BY drawn_at ASC`, [ctx.id]);
+      const rows = await db.all(`SELECT drawn_at, spent_seconds, outcome FROM mo_practice_draws WHERE photo_id = ? AND outcome != 'pending' AND drawn_at IS NOT NULL ORDER BY drawn_at ASC`, [id]);
       if (!rows.length) { body.appendChild(moEl('div', 'mo-practice-history-row mo-practice-dim', { textContent: 'Not drawn yet' })); return; }
       for (const r of rows) {
         const row = moEl('div', 'mo-practice-history-row');
@@ -29237,6 +29300,969 @@ function buildPracticeHistoryStrip(ctx, api) {
     } catch { /* leave empty */ }
   })();
   return wrap;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Section 45: Painting plans (M104 Part B, docs/Parallx_Milestone_104.md)
+//
+// The step before the canvas. A plan is one painting: a source photo, the
+// canvas size in inches, and variations, each a recipe of non-destructive
+// adjustments (crop locked to the canvas, light, colour, values, overlays,
+// palette). The original file is never touched; the recipe renders live on
+// the GPU and the export renders the same recipe beside the original, stacked
+// under it the way Upscale does. Behind mediaOrganizer.enableArtTools (D7).
+// ═══════════════════════════════════════════════════════════════════════════
+
+// @mo-plan-pure-begin — pure plan math (extracted verbatim by tests/unit/moPlan.test.ts)
+
+const MO_PLAN_CANVAS_PRESETS = [[8, 10], [9, 12], [11, 14], [12, 16], [16, 20], [18, 24], [24, 30], [24, 36], [30, 40]];
+
+function moPlanDefaultRecipe() {
+  return {
+    crop: { x: 0, y: 0, w: 1, h: 1 }, rotate: 0, flipH: false, flipV: false,
+    exposure: 0, contrast: 0, highlights: 0, shadows: 0, warmth: 0, tint: 0, hue: 0, saturation: 0,
+    grey: false, levels: 0, notan: 0, blur: 0,
+    overlays: { thirds: false, golden: false, diagonals: false, grid: false, gridInches: 1 },
+    palette: { count: 8, swatches: [], apply: false },
+  };
+}
+
+// Fill in anything a stored recipe lacks, so old rows keep working.
+function moPlanNormalizeRecipe(r) {
+  const d = moPlanDefaultRecipe();
+  const o = r && typeof r === 'object' ? r : {};
+  const out = Object.assign({}, d, o);
+  out.crop = Object.assign({}, d.crop, o.crop || {});
+  out.overlays = Object.assign({}, d.overlays, o.overlays || {});
+  out.palette = Object.assign({}, d.palette, o.palette || {});
+  out.palette.swatches = Array.isArray(out.palette.swatches) ? out.palette.swatches.slice(0, 16) : [];
+  out.rotate = ((Math.round(Number(out.rotate) || 0) % 4) + 4) % 4;
+  return out;
+}
+
+// Image size after rotation (quarter turns swap the sides).
+function moPlanRotatedSize(w, h, rotate) {
+  const r = ((Math.round(Number(rotate) || 0) % 4) + 4) % 4;
+  return r % 2 === 1 ? { w: h, h: w } : { w, h };
+}
+
+// The largest centred crop of an image (rotated size w×h) with the canvas
+// proportions, in normalized units of that rotated image.
+function moPlanFitCrop(w, h, aspect) {
+  const a = Number(aspect) > 0 ? Number(aspect) : 1;
+  if (!(w > 0) || !(h > 0)) return { x: 0, y: 0, w: 1, h: 1 };
+  const imgAspect = w / h;
+  if (imgAspect > a) {
+    const cw = (a * h) / w;
+    return { x: (1 - cw) / 2, y: 0, w: cw, h: 1 };
+  }
+  const ch = (w / a) / h;
+  return { x: 0, y: (1 - ch) / 2, w: 1, h: ch };
+}
+
+// Keep a crop inside the image at the canvas proportions. Shrinks first,
+// then slides. w,h are the rotated image pixel size.
+function moPlanClampCrop(crop, w, h, aspect) {
+  const a = Number(aspect) > 0 ? Number(aspect) : 1;
+  const fit = moPlanFitCrop(w, h, a);
+  let cw = Math.min(Math.max(Number(crop.w) || fit.w, 0.02), fit.w);
+  let ch = (cw * w) / (a * h);
+  if (ch > 1) { ch = 1; cw = (a * h) / w; }
+  let x = Number(crop.x) || 0;
+  let y = Number(crop.y) || 0;
+  x = Math.min(Math.max(x, 0), 1 - cw);
+  y = Math.min(Math.max(y, 0), 1 - ch);
+  return { x, y, w: cw, h: ch };
+}
+
+// The transfer grid: line positions (0..1) across a crop that stands for a
+// canvas of canvasW×canvasH inches, one line every `inches`. Also the
+// labels so the sheet can be read at the easel.
+function moPlanGridLines(canvasW, canvasH, inches) {
+  const step = Number(inches) > 0 ? Number(inches) : 1;
+  const cw = Number(canvasW) > 0 ? Number(canvasW) : 1;
+  const ch = Number(canvasH) > 0 ? Number(canvasH) : 1;
+  const xs = []; const ys = [];
+  for (let v = step; v < cw - 1e-9; v += step) xs.push(v / cw);
+  for (let v = step; v < ch - 1e-9; v += step) ys.push(v / ch);
+  return { xs, ys, cols: Math.ceil(cw / step), rows: Math.ceil(ch / step) };
+}
+
+// k-means over [r,g,b] samples (0..255). Deterministic for a given rng.
+function moPlanKMeans(samples, k, iterations, rng) {
+  const rand = typeof rng === 'function' ? rng : Math.random;
+  const n = samples.length;
+  const kk = Math.max(1, Math.min(16, Math.floor(Number(k) || 1)));
+  if (!n) return [];
+  const centres = [];
+  const used = new Set();
+  while (centres.length < Math.min(kk, n)) {
+    const i = Math.floor(rand() * n);
+    if (used.has(i)) continue;
+    used.add(i);
+    centres.push(samples[i].slice(0, 3));
+  }
+  const assign = new Int32Array(n);
+  for (let it = 0; it < Math.max(1, iterations || 8); it++) {
+    for (let i = 0; i < n; i++) {
+      const s = samples[i];
+      let best = 0; let bd = Infinity;
+      for (let c = 0; c < centres.length; c++) {
+        const d = (s[0] - centres[c][0]) ** 2 + (s[1] - centres[c][1]) ** 2 + (s[2] - centres[c][2]) ** 2;
+        if (d < bd) { bd = d; best = c; }
+      }
+      assign[i] = best;
+    }
+    const sums = centres.map(() => [0, 0, 0, 0]);
+    for (let i = 0; i < n; i++) { const a = sums[assign[i]]; const s = samples[i]; a[0] += s[0]; a[1] += s[1]; a[2] += s[2]; a[3]++; }
+    for (let c = 0; c < centres.length; c++) if (sums[c][3]) centres[c] = [sums[c][0] / sums[c][3], sums[c][1] / sums[c][3], sums[c][2] / sums[c][3]];
+  }
+  const counts = centres.map(() => 0);
+  for (let i = 0; i < n; i++) counts[assign[i]]++;
+  return centres.map((c, i) => ({ rgb: c.map((v) => Math.round(v)), share: counts[i] / n }))
+    .sort((a, b) => b.share - a.share);
+}
+
+function moPlanHex(rgb) {
+  return '#' + rgb.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
+}
+
+// "<name>_plan_1.jpg" beside the original.
+function moPlanOutputName(basename, n) {
+  const dot = basename.lastIndexOf('.');
+  const stem = dot > 0 ? basename.slice(0, dot) : basename;
+  return `${stem}_plan_${n}.jpg`;
+}
+// @mo-plan-pure-end
+
+// ── Data ───────────────────────────────────────────────────────────────────
+
+async function moPlanLoad(planId) {
+  const plan = await db.get('SELECT * FROM mo_plans WHERE id = ?', [planId]);
+  if (!plan) return null;
+  const variants = await db.all('SELECT * FROM mo_plan_variants WHERE plan_id = ? ORDER BY position ASC, id ASC', [planId]);
+  for (const v of variants) { try { v.recipe = moPlanNormalizeRecipe(JSON.parse(v.recipe_json)); } catch { v.recipe = moPlanDefaultRecipe(); } }
+  const media = await db.all('SELECT * FROM mo_plan_media WHERE plan_id = ? ORDER BY position ASC, id ASC', [planId]);
+  return { plan, variants, media };
+}
+
+async function moPlanCreate(api, photoId) {
+  api = api || _api;
+  if (!moArtGate(api)) return null;
+  const photo = await PhotoQueries.findById(photoId);
+  if (!photo) { api.window.showInformationMessage('That picture is no longer in the library.'); return null; }
+  const files = await PhotoQueries.loadFiles(photoId);
+  const primary = files.find((f) => f.isPrimary) || files[0];
+  const title = (photo.title && String(photo.title).trim()) || (primary ? String(primary.basename).replace(/\.[^.]+$/, '') : 'Painting');
+  const now = new Date().toISOString();
+  const res = await db.run('INSERT INTO mo_plans (title, photo_id, canvas_w, canvas_h, created_at, updated_at) VALUES (?, ?, 16, 20, ?, ?)', [title, photoId, now, now]);
+  const planId = res.lastInsertRowid;
+  const v = await db.run('INSERT INTO mo_plan_variants (plan_id, name, recipe_json, position) VALUES (?, ?, ?, 0)', [planId, 'Variation 1', JSON.stringify(moPlanDefaultRecipe())]);
+  await db.run('UPDATE mo_plans SET variant_id = ? WHERE id = ?', [v.lastInsertRowid, planId]);
+  document.dispatchEvent(new CustomEvent('mo:plans-changed'));
+  moOpenPlan(api, planId);
+  return planId;
+}
+
+async function moPlanAddMedia(api, planId, kind, itemId) {
+  const exists = await db.get('SELECT id FROM mo_plan_media WHERE plan_id = ? AND kind = ? AND item_id = ?', [planId, kind, itemId]);
+  if (exists) return;
+  const pos = await db.get('SELECT COALESCE(MAX(position), -1) + 1 AS p FROM mo_plan_media WHERE plan_id = ?', [planId]);
+  await db.run('INSERT INTO mo_plan_media (plan_id, kind, item_id, role, position, created_at) VALUES (?, ?, ?, ?, ?, ?)', [planId, kind, itemId, 'process', pos ? pos.p : 0, new Date().toISOString()]);
+  await db.run("UPDATE mo_plans SET updated_at = ? WHERE id = ?", [new Date().toISOString(), planId]);
+  document.dispatchEvent(new CustomEvent('mo:plans-changed'));
+}
+
+// "Add To Plan" from a photo or clip: pick the plan, attach to its process shelf.
+async function moPlanPickAndAdd(api, kind, itemId) {
+  api = api || _api;
+  if (!moArtGate(api)) return;
+  const plans = await db.all('SELECT id, title FROM mo_plans ORDER BY updated_at DESC');
+  if (!plans.length) { api.window.showInformationMessage('No painting plans yet. Open a photo and choose Plan Painting.'); return; }
+  const picked = await api.window.showQuickPick(plans.map((p) => ({ label: p.title, id: p.id })), { placeHolder: 'Add to which plan?' });
+  const chosen = picked && (picked.id != null ? picked : plans.find((p) => p.title === picked.label || p.title === picked));
+  if (!chosen) return;
+  await moPlanAddMedia(api, chosen.id, kind, itemId);
+  api.window.showInformationMessage(`Added to "${chosen.title}".`);
+}
+
+function moOpenPlansList(api) {
+  (api || _api).editors.openEditor({ typeId: 'media-organizer-grid', title: 'Painting Plans', icon: 'palette', instanceId: 'plans:list' });
+}
+function moOpenPlan(api, planId) {
+  (api || _api).editors.openEditor({ typeId: 'media-organizer-grid', title: 'Plan', icon: 'palette', instanceId: `plans:edit:${planId}` });
+}
+
+function renderPlansTab(container, api, input) {
+  const inputId = (input && (input.instanceId || input.id)) || '';
+  if (!_artToolsEnabled) {
+    moInjectStyles();
+    container.appendChild(moEl('div', 'mo-practice-empty', { textContent: 'Turn on Drawing And Painting Tools in Media Organizer settings to use painting plans.' }));
+    return { dispose() { container.innerHTML = ''; } };
+  }
+  if (inputId.startsWith('plans:edit:')) return renderPlanEditor(container, api, parseInt(inputId.slice('plans:edit:'.length), 10) || 0);
+  return renderPlansList(container, api);
+}
+
+// ── The list ───────────────────────────────────────────────────────────────
+
+function renderPlansList(container, api) {
+  moInjectStyles();
+  const root = moEl('div', 'mo-practice-setup');
+  container.appendChild(root);
+  let disposed = false;
+  root.appendChild(moEl('div', 'mo-home-title', { textContent: 'Painting Plans' }));
+  root.appendChild(moEl('div', 'mo-home-sub', { textContent: 'Work the design out on the photo before the canvas. Open a photo and choose Plan Painting to start one.' }));
+  const grid = moEl('div', 'mo-plans-grid');
+  root.appendChild(grid);
+  async function load() {
+    try {
+      const plans = await db.all('SELECT * FROM mo_plans ORDER BY updated_at DESC');
+      if (disposed) return;
+      grid.innerHTML = '';
+      if (!plans.length) { grid.appendChild(moEl('div', 'mo-practice-poolcount', { textContent: 'No plans yet.' })); return; }
+      for (const p of plans) {
+        const card = moEl('div', 'mo-plans-card');
+        const img = moEl('img', null, { alt: '' });
+        card.appendChild(img);
+        void moPracticeThumb(img, p.photo_id, api);
+        card.appendChild(moEl('div', 'mo-plans-card-title', { textContent: p.title }));
+        card.appendChild(moEl('div', 'mo-practice-dim', { textContent: `${p.canvas_w} × ${p.canvas_h} in · ${moPracticeDate(p.updated_at)}` }));
+        card.addEventListener('click', () => moOpenPlan(api, p.id));
+        grid.appendChild(card);
+      }
+    } catch { /* leave empty */ }
+  }
+  document.addEventListener('mo:plans-changed', load);
+  void load();
+  return { dispose() { disposed = true; document.removeEventListener('mo:plans-changed', load); container.innerHTML = ''; } };
+}
+
+// ── The renderer ───────────────────────────────────────────────────────────
+// One WebGL program applies the whole recipe. Blur ("squint") is baked into
+// the source texture through a 2D canvas filter, so one pass does the rest.
+
+const MO_PLAN_VS = `
+attribute vec2 a_pos; varying vec2 v_uv;
+void main() { v_uv = vec2(a_pos.x * 0.5 + 0.5, 0.5 - a_pos.y * 0.5); gl_Position = vec4(a_pos, 0.0, 1.0); }`;
+const MO_PLAN_FS = `
+precision highp float;
+varying vec2 v_uv;
+uniform sampler2D u_img;
+uniform vec4 u_crop; uniform int u_rotate; uniform vec2 u_flip;
+uniform float u_exposure, u_contrast, u_highlights, u_shadows, u_warmth, u_tint, u_hue, u_sat;
+uniform float u_grey, u_levels, u_notan, u_split, u_paletteN;
+uniform vec3 u_palette[16];
+vec3 rgb2hsv(vec3 c) {
+  vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+  vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+  vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+  float d = q.x - min(q.w, q.y); float e = 1.0e-10;
+  return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
+}
+vec3 hsv2rgb(vec3 c) {
+  vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+  vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+  return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+}
+void main() {
+  vec2 p = u_crop.xy + v_uv * u_crop.zw;
+  if (u_flip.x > 0.5) p.x = 1.0 - p.x;
+  if (u_flip.y > 0.5) p.y = 1.0 - p.y;
+  vec2 s = p;
+  if (u_rotate == 1) s = vec2(p.y, 1.0 - p.x);
+  else if (u_rotate == 2) s = vec2(1.0 - p.x, 1.0 - p.y);
+  else if (u_rotate == 3) s = vec2(1.0 - p.y, p.x);
+  vec3 c = texture2D(u_img, s).rgb;
+  vec3 orig = c;
+  c *= pow(2.0, u_exposure);
+  float l = dot(c, vec3(0.299, 0.587, 0.114));
+  float sw = 1.0 - smoothstep(0.0, 0.6, l);
+  float hw = smoothstep(0.4, 1.0, l);
+  c += u_shadows * sw * 0.5 * (1.0 - c);
+  c += u_highlights * hw * 0.5 * c;
+  c = (c - 0.5) * (1.0 + u_contrast) + 0.5;
+  c.r += u_warmth * 0.12; c.b -= u_warmth * 0.12; c.g -= u_tint * 0.1;
+  c = clamp(c, 0.0, 1.0);
+  if (abs(u_hue) > 0.0005 || abs(u_sat) > 0.0005) {
+    vec3 h = rgb2hsv(c); h.x = fract(h.x + u_hue); h.y = clamp(h.y * (1.0 + u_sat), 0.0, 1.0); c = hsv2rgb(h);
+  }
+  float lum = dot(c, vec3(0.299, 0.587, 0.114));
+  if (u_grey > 0.5) c = vec3(lum);
+  if (u_notan > 0.0) c = vec3(step(u_notan, lum));
+  else if (u_levels >= 2.0) c = clamp(floor(c * u_levels) / (u_levels - 1.0), 0.0, 1.0);
+  if (u_paletteN > 0.5) {
+    vec3 best = u_palette[0]; float bd = 1.0e9;
+    for (int i = 0; i < 16; i++) {
+      if (float(i) >= u_paletteN) break;
+      vec3 d = c - u_palette[i]; float dd = dot(d, d);
+      if (dd < bd) { bd = dd; best = u_palette[i]; }
+    }
+    c = best;
+  }
+  if (u_split >= 0.0 && v_uv.x < u_split) c = orig;
+  gl_FragColor = vec4(c, 1.0);
+}`;
+
+function moPlanRenderer(canvas) {
+  const gl = canvas.getContext('webgl', { preserveDrawingBuffer: true, premultipliedAlpha: false, antialias: false });
+  if (!gl) return null;
+  const compile = (type, src) => { const sh = gl.createShader(type); gl.shaderSource(sh, src); gl.compileShader(sh); if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh) || 'shader'); return sh; };
+  const prog = gl.createProgram();
+  gl.attachShader(prog, compile(gl.VERTEX_SHADER, MO_PLAN_VS));
+  gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, MO_PLAN_FS));
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog) || 'program');
+  gl.useProgram(prog);
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+  const aPos = gl.getAttribLocation(prog, 'a_pos');
+  gl.enableVertexAttribArray(aPos);
+  gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+  const U = {};
+  for (const n of ['u_img', 'u_crop', 'u_rotate', 'u_flip', 'u_exposure', 'u_contrast', 'u_highlights', 'u_shadows', 'u_warmth', 'u_tint', 'u_hue', 'u_sat', 'u_grey', 'u_levels', 'u_notan', 'u_split', 'u_paletteN', 'u_palette']) U[n] = gl.getUniformLocation(prog, n);
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  const maxTex = gl.getParameter(gl.MAX_TEXTURE_SIZE) || 4096;
+  let srcW = 0, srcH = 0;
+  return {
+    maxTexture: maxTex,
+    // source: an Image or canvas. blurPx bakes a squint blur into the texture.
+    setSource(source, blurPx) {
+      let w = source.naturalWidth || source.width; let h = source.naturalHeight || source.height;
+      const scale = Math.min(1, maxTex / Math.max(w, h));
+      let up = source;
+      if (scale < 1 || blurPx > 0) {
+        const cv = document.createElement('canvas');
+        cv.width = Math.max(1, Math.round(w * scale)); cv.height = Math.max(1, Math.round(h * scale));
+        const ctx = cv.getContext('2d');
+        if (blurPx > 0) ctx.filter = `blur(${blurPx * scale}px)`;
+        ctx.drawImage(source, 0, 0, cv.width, cv.height);
+        up = cv; w = cv.width; h = cv.height;
+      }
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, up);
+      srcW = w; srcH = h;
+    },
+    get size() { return { w: srcW, h: srcH }; },
+    // opts: { width, height, full (ignore the crop), split (-1 or 0..1) }
+    render(recipe, opts) {
+      const r = recipe;
+      const W = Math.max(1, Math.round(opts.width)); const H = Math.max(1, Math.round(opts.height));
+      if (canvas.width !== W) canvas.width = W;
+      if (canvas.height !== H) canvas.height = H;
+      gl.viewport(0, 0, W, H);
+      gl.useProgram(prog);
+      const c = opts.full ? { x: 0, y: 0, w: 1, h: 1 } : r.crop;
+      gl.uniform4f(U.u_crop, c.x, c.y, c.w, c.h);
+      gl.uniform1i(U.u_rotate, r.rotate);
+      gl.uniform2f(U.u_flip, r.flipH ? 1 : 0, r.flipV ? 1 : 0);
+      gl.uniform1f(U.u_exposure, r.exposure); gl.uniform1f(U.u_contrast, r.contrast);
+      gl.uniform1f(U.u_highlights, r.highlights); gl.uniform1f(U.u_shadows, r.shadows);
+      gl.uniform1f(U.u_warmth, r.warmth); gl.uniform1f(U.u_tint, r.tint);
+      gl.uniform1f(U.u_hue, r.hue); gl.uniform1f(U.u_sat, r.saturation);
+      gl.uniform1f(U.u_grey, r.grey ? 1 : 0); gl.uniform1f(U.u_levels, r.levels || 0); gl.uniform1f(U.u_notan, r.notan || 0);
+      gl.uniform1f(U.u_split, typeof opts.split === 'number' ? opts.split : -1);
+      const sw = r.palette.apply ? r.palette.swatches : [];
+      const arr = new Float32Array(48);
+      sw.slice(0, 16).forEach((s, i) => { arr[i * 3] = s[0] / 255; arr[i * 3 + 1] = s[1] / 255; arr[i * 3 + 2] = s[2] / 255; });
+      gl.uniform3fv(U.u_palette, arr);
+      gl.uniform1f(U.u_paletteN, Math.min(16, sw.length));
+      gl.uniform1i(U.u_img, 0);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    },
+    dispose() { try { gl.deleteTexture(tex); gl.deleteBuffer(buf); gl.deleteProgram(prog); const ext = gl.getExtension('WEBGL_lose_context'); if (ext) ext.loseContext(); } catch { /* gone */ } },
+  };
+}
+
+// Draw the composition overlays onto a 2D context the size of the crop.
+function moPlanDrawOverlays(ctx, W, H, recipe, canvasW, canvasH, scale) {
+  const o = recipe.overlays;
+  ctx.clearRect(0, 0, W, H);
+  const line = (x1, y1, x2, y2, color, width) => { ctx.strokeStyle = color; ctx.lineWidth = width; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); };
+  const k = scale || 1;
+  const white = 'rgba(255,255,255,0.85)'; const dark = 'rgba(0,0,0,0.45)';
+  const dual = (x1, y1, x2, y2, w) => { line(x1, y1, x2, y2, dark, (w + 1.5) * k); line(x1, y1, x2, y2, white, w * k); };
+  if (o.thirds) { for (const f of [1 / 3, 2 / 3]) { dual(W * f, 0, W * f, H, 1); dual(0, H * f, W, H * f, 1); } }
+  if (o.golden) { for (const f of [0.382, 0.618]) { dual(W * f, 0, W * f, H, 1); dual(0, H * f, W, H * f, 1); } }
+  if (o.diagonals) { dual(0, 0, W, H, 1); dual(W, 0, 0, H, 1); }
+  if (o.grid) {
+    const g = moPlanGridLines(canvasW, canvasH, o.gridInches);
+    for (const x of g.xs) dual(W * x, 0, W * x, H, 0.8);
+    for (const y of g.ys) dual(0, H * y, W, H * y, 0.8);
+    ctx.font = `${Math.max(9, Math.round(11 * k))}px sans-serif`;
+    ctx.textBaseline = 'top';
+    const label = (t, x, y) => { ctx.fillStyle = dark; ctx.fillRect(x - 1, y - 1, ctx.measureText(t).width + 4, 12 * k + 2); ctx.fillStyle = white; ctx.fillText(t, x + 1, y); };
+    const step = o.gridInches > 0 ? o.gridInches : 1;
+    for (let i = 0; i < g.cols; i++) label(String(i + 1), (W * i * step) / canvasW + 3 * k, 2 * k);
+    for (let j = 0; j < g.rows; j++) label(String.fromCharCode(65 + (j % 26)), 3 * k, (H * j * step) / canvasH + 14 * k);
+  }
+}
+
+// ── The editor ─────────────────────────────────────────────────────────────
+
+function renderPlanEditor(container, api, planId) {
+  moInjectStyles();
+  const root = moEl('div', 'mo-plan');
+  root.tabIndex = 0;
+  container.appendChild(root);
+  let disposed = false;
+  const state = { plan: null, variants: [], media: [], variant: null, recipe: null, tool: 'light', image: null, imgW: 0, imgH: 0, srcPath: null, split: -1, mirror: false, blurBaked: 0 };
+  const history = []; let histIdx = -1;
+  let renderer = null; let saveTimer = null; let raf = 0;
+
+  // Layout: tools strip | panel | stage (+ variations below)
+  const tools = moEl('div', 'mo-plan-tools');
+  const panel = moEl('div', 'mo-plan-panel');
+  const main = moEl('div', 'mo-plan-main');
+  const stage = moEl('div', 'mo-plan-stage');
+  const glCanvas = moEl('canvas', 'mo-plan-canvas');
+  const ovCanvas = moEl('canvas', 'mo-plan-overlay');
+  const cropBox = moEl('div', 'mo-plan-cropbox mo-hidden');
+  for (const c of ['nw', 'ne', 'sw', 'se']) cropBox.appendChild(moEl('div', `mo-plan-crophandle mo-plan-crophandle--${c}`, { 'data-corner': c }));
+  const frame = moEl('div', 'mo-plan-frame');
+  frame.appendChild(glCanvas); frame.appendChild(ovCanvas); frame.appendChild(cropBox);
+  stage.appendChild(frame);
+  const variantsBar = moEl('div', 'mo-plan-variants');
+  const topbar = moEl('div', 'mo-plan-topbar');
+  main.appendChild(topbar); main.appendChild(stage); main.appendChild(variantsBar);
+  root.appendChild(tools); root.appendChild(panel); root.appendChild(main);
+
+  const TOOLS = [['crop', 'crop', 'Crop'], ['light', 'sun', 'Light'], ['colour', 'droplet', 'Colour'], ['values', 'contrast', 'Values'], ['grids', 'grid-3x3', 'Composition'], ['palette', 'palette', 'Palette'], ['compare', 'columns', 'Compare'], ['process', 'layers', 'Process'], ['info', 'pencil', 'Plan']];
+  const toolBtns = {};
+  for (const [id, icon, label] of TOOLS) {
+    const b = moEl('button', 'mo-plan-tool', { type: 'button', title: label, 'aria-label': label, innerHTML: moIcon(icon, 16) });
+    b.addEventListener('click', () => setTool(id));
+    toolBtns[id] = b;
+    tools.appendChild(b);
+  }
+
+  // Top bar: title, undo/redo, export.
+  const titleEl = moEl('div', 'mo-plan-title');
+  const sizeEl = moEl('div', 'mo-practice-dim');
+  const undoBtn = moEl('button', 'mo-practice-btn', { type: 'button', title: 'Undo', 'aria-label': 'Undo', innerHTML: moIcon('rotate-cw', 14) });
+  undoBtn.style.transform = 'scaleX(-1)';
+  const redoBtn = moEl('button', 'mo-practice-btn', { type: 'button', title: 'Redo', 'aria-label': 'Redo', innerHTML: moIcon('rotate-cw', 14) });
+  undoBtn.addEventListener('click', () => undo()); redoBtn.addEventListener('click', () => redo());
+  const exportBtn = moEl('button', 'mo-practice-start', { type: 'button', textContent: 'Export Plan' });
+  const exportGridBtn = moEl('button', 'mo-toolbar-btn', { type: 'button', textContent: 'Export With Grid' });
+  const printBtn = moEl('button', 'mo-toolbar-btn', { type: 'button', textContent: 'Print With Grid' });
+  exportBtn.addEventListener('click', () => void exportPlan(false));
+  exportGridBtn.addEventListener('click', () => void exportPlan(true));
+  printBtn.addEventListener('click', () => void printPlan());
+  const left = moEl('div', 'mo-plan-topbar-left'); left.appendChild(titleEl); left.appendChild(sizeEl);
+  const right = moEl('div', 'mo-plan-topbar-right');
+  for (const b of [undoBtn, redoBtn, exportGridBtn, printBtn, exportBtn]) right.appendChild(b);
+  topbar.appendChild(left); topbar.appendChild(right);
+
+  // ── helpers ──
+  const aspect = () => (state.plan.canvas_w > 0 && state.plan.canvas_h > 0) ? state.plan.canvas_w / state.plan.canvas_h : 0.8;
+  const rotated = () => moPlanRotatedSize(state.imgW, state.imgH, state.recipe.rotate);
+  function pushHistory() {
+    const snap = JSON.stringify(state.recipe);
+    if (history[histIdx] === snap) return;
+    history.splice(histIdx + 1);
+    history.push(snap);
+    if (history.length > 60) history.shift();
+    histIdx = history.length - 1;
+    syncUndo();
+  }
+  function syncUndo() { undoBtn.disabled = histIdx <= 0; redoBtn.disabled = histIdx >= history.length - 1; }
+  function undo() { if (histIdx > 0) { histIdx--; state.recipe = moPlanNormalizeRecipe(JSON.parse(history[histIdx])); state.variant.recipe = state.recipe; afterRecipeChange(false); } }
+  function redo() { if (histIdx < history.length - 1) { histIdx++; state.recipe = moPlanNormalizeRecipe(JSON.parse(history[histIdx])); state.variant.recipe = state.recipe; afterRecipeChange(false); } }
+  function scheduleSave() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(async () => {
+      if (disposed || !state.variant) return;
+      try {
+        await db.run('UPDATE mo_plan_variants SET recipe_json = ?, updated_at = ? WHERE id = ?', [JSON.stringify(state.recipe), new Date().toISOString(), state.variant.id]);
+        await db.run('UPDATE mo_plans SET title = ?, notes = ?, canvas_w = ?, canvas_h = ?, updated_at = ? WHERE id = ?', [state.plan.title, state.plan.notes || '', state.plan.canvas_w, state.plan.canvas_h, new Date().toISOString(), planId]);
+        document.dispatchEvent(new CustomEvent('mo:plans-changed'));
+      } catch (err) { console.warn('[media-organizer] plan save failed:', err && err.message); }
+    }, 400);
+  }
+  // record: true when the change is a user edit worth an undo step
+  function afterRecipeChange(record) {
+    if (record !== false) pushHistory();
+    if (state.recipe.blur !== state.blurBaked) bakeSource();
+    requestRender();
+    scheduleSave();
+    renderPanel();
+    refreshVariantThumb(state.variant);
+  }
+  function bakeSource() {
+    if (!renderer || !state.image) return;
+    const px = state.recipe.blur > 0 ? (state.recipe.blur * Math.max(state.imgW, state.imgH)) / 100 : 0;
+    renderer.setSource(state.image, px);
+    state.blurBaked = state.recipe.blur;
+  }
+  function requestRender() { if (raf) return; raf = requestAnimationFrame(() => { raf = 0; draw(); }); }
+
+  function stageBox() {
+    const sw = stage.clientWidth - 24; const sh = stage.clientHeight - 24;
+    return { w: Math.max(50, sw), h: Math.max(50, sh) };
+  }
+  // The frame holds the full rotated image in the crop tool, the crop elsewhere.
+  function draw() {
+    if (disposed || !renderer || !state.recipe) return;
+    const r = state.recipe;
+    const rs = rotated();
+    const full = state.tool === 'crop';
+    const contentW = full ? rs.w : rs.w * r.crop.w;
+    const contentH = full ? rs.h : rs.h * r.crop.h;
+    const box = stageBox();
+    const k = Math.min(box.w / contentW, box.h / contentH);
+    const cssW = Math.max(1, Math.round(contentW * k)); const cssH = Math.max(1, Math.round(contentH * k));
+    const dpr = window.devicePixelRatio || 1;
+    frame.style.width = cssW + 'px'; frame.style.height = cssH + 'px';
+    frame.style.transform = state.mirror ? 'scaleX(-1)' : '';
+    glCanvas.style.width = cssW + 'px'; glCanvas.style.height = cssH + 'px';
+    renderer.render(r, { width: Math.round(cssW * dpr), height: Math.round(cssH * dpr), full, split: state.tool === 'compare' ? state.split : -1 });
+    ovCanvas.width = Math.round(cssW * dpr); ovCanvas.height = Math.round(cssH * dpr);
+    ovCanvas.style.width = cssW + 'px'; ovCanvas.style.height = cssH + 'px';
+    const octx = ovCanvas.getContext('2d');
+    if (full) {
+      octx.clearRect(0, 0, ovCanvas.width, ovCanvas.height);
+      octx.fillStyle = 'rgba(0,0,0,0.55)';
+      const cx = r.crop.x * ovCanvas.width, cy = r.crop.y * ovCanvas.height, cw = r.crop.w * ovCanvas.width, ch = r.crop.h * ovCanvas.height;
+      octx.fillRect(0, 0, ovCanvas.width, cy); octx.fillRect(0, cy + ch, ovCanvas.width, ovCanvas.height - cy - ch);
+      octx.fillRect(0, cy, cx, ch); octx.fillRect(cx + cw, cy, ovCanvas.width - cx - cw, ch);
+      cropBox.classList.remove('mo-hidden');
+      cropBox.style.left = (r.crop.x * cssW) + 'px'; cropBox.style.top = (r.crop.y * cssH) + 'px';
+      cropBox.style.width = (r.crop.w * cssW) + 'px'; cropBox.style.height = (r.crop.h * cssH) + 'px';
+    } else {
+      cropBox.classList.add('mo-hidden');
+      moPlanDrawOverlays(octx, ovCanvas.width, ovCanvas.height, r, state.plan.canvas_w, state.plan.canvas_h, dpr);
+    }
+  }
+  const resizeObs = ('ResizeObserver' in window) ? new ResizeObserver(() => requestRender()) : null;
+  if (resizeObs) resizeObs.observe(stage);
+
+  // ── crop dragging ──
+  let drag = null;
+  cropBox.addEventListener('pointerdown', (e) => {
+    if (state.tool !== 'crop') return;
+    e.preventDefault();
+    const corner = e.target && e.target.dataset ? e.target.dataset.corner : null;
+    drag = { corner: corner || null, x0: e.clientX, y0: e.clientY, crop: Object.assign({}, state.recipe.crop), fw: frame.clientWidth, fh: frame.clientHeight };
+    cropBox.setPointerCapture(e.pointerId);
+  });
+  cropBox.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const rs = rotated();
+    const dx = (e.clientX - drag.x0) / drag.fw; const dy = (e.clientY - drag.y0) / drag.fh;
+    const c = drag.crop;
+    let next;
+    if (!drag.corner) next = { x: c.x + dx, y: c.y + dy, w: c.w, h: c.h };
+    else {
+      const signX = drag.corner.includes('e') ? 1 : -1;
+      const grow = signX * dx;
+      const w = Math.max(0.02, c.w + grow);
+      const h = (w * rs.w) / (aspect() * rs.h);
+      next = { w, h, x: drag.corner.includes('w') ? c.x + (c.w - w) : c.x, y: drag.corner.includes('n') ? c.y + (c.h - h) : c.y };
+    }
+    state.recipe.crop = moPlanClampCrop(next, rs.w, rs.h, aspect());
+    requestRender();
+  });
+  const endDrag = () => { if (drag) { drag = null; afterRecipeChange(true); } };
+  cropBox.addEventListener('pointerup', endDrag);
+  cropBox.addEventListener('pointercancel', endDrag);
+
+  // ── panel ──
+  function setTool(id) {
+    state.tool = id;
+    for (const k of Object.keys(toolBtns)) toolBtns[k].classList.toggle('is-on', k === id);
+    renderPanel();
+    requestRender();
+  }
+  const slider = (label, key, min, max, step, fmt) => {
+    const row = moEl('div', 'mo-plan-slider');
+    const head = moEl('div', 'mo-plan-slider-head');
+    head.appendChild(moEl('span', null, { textContent: label }));
+    const val = moEl('span', 'mo-practice-dim');
+    head.appendChild(val);
+    row.appendChild(head);
+    const input = moEl('input', null, { type: 'range', min: String(min), max: String(max), step: String(step), 'aria-label': label });
+    input.value = String(state.recipe[key]);
+    const show = () => { val.textContent = fmt ? fmt(Number(input.value)) : Number(input.value).toFixed(2); };
+    show();
+    input.addEventListener('input', () => { state.recipe[key] = Number(input.value); show(); if (key !== 'blur') requestRender(); else afterRecipeChange(false); });
+    input.addEventListener('change', () => { state.recipe[key] = Number(input.value); afterRecipeChange(true); });
+    input.addEventListener('dblclick', () => { input.value = '0'; state.recipe[key] = 0; show(); afterRecipeChange(true); });
+    row.appendChild(input);
+    return row;
+  };
+  const toggle = (label, get, set) => {
+    const wrap = moEl('label', 'mo-practice-check');
+    const input = moEl('input', 'mo-clip-check', { type: 'checkbox' });
+    input.checked = !!get();
+    input.addEventListener('change', () => set(input.checked));
+    wrap.appendChild(input); wrap.appendChild(moEl('span', null, { textContent: label }));
+    return wrap;
+  };
+  const button = (label, fn, primary) => { const b = moEl('button', primary ? 'mo-practice-start' : 'mo-toolbar-btn', { type: 'button', textContent: label }); b.addEventListener('click', fn); return b; };
+  const section = (title) => { const s = moEl('div', 'mo-plan-section'); if (title) s.appendChild(moEl('div', 'mo-practice-section-title', { textContent: title })); panel.appendChild(s); return s; };
+  const panelDisposers = [];
+  function renderPanel() {
+    for (const d of panelDisposers.splice(0)) { try { d(); } catch { /* gone */ } }
+    panel.innerHTML = '';
+    if (!state.recipe) return;
+    const r = state.recipe;
+    const t = state.tool;
+    if (t === 'crop') {
+      const s = section('Canvas');
+      const row = moEl('div', 'mo-plan-row');
+      const wIn = moEl('input', 'mo-clip-input mo-clip-input--xs', { type: 'number', min: '1', max: '120', step: '0.5', 'aria-label': 'Canvas Width' });
+      const hIn = moEl('input', 'mo-clip-input mo-clip-input--xs', { type: 'number', min: '1', max: '120', step: '0.5', 'aria-label': 'Canvas Height' });
+      wIn.value = String(state.plan.canvas_w); hIn.value = String(state.plan.canvas_h);
+      const applySize = () => {
+        const w = Math.max(1, Number(wIn.value) || 1); const h = Math.max(1, Number(hIn.value) || 1);
+        state.plan.canvas_w = w; state.plan.canvas_h = h;
+        const rs = rotated();
+        r.crop = moPlanClampCrop(r.crop, rs.w, rs.h, aspect());
+        sizeEl.textContent = `${w} × ${h} in`;
+        afterRecipeChange(true);
+      };
+      wIn.addEventListener('change', applySize); hIn.addEventListener('change', applySize);
+      row.appendChild(wIn); row.appendChild(moEl('span', 'mo-practice-dim', { textContent: '×' })); row.appendChild(hIn); row.appendChild(moEl('span', 'mo-practice-dim', { textContent: 'in' }));
+      s.appendChild(row);
+      const presets = moDropdown({ items: [{ value: '', label: 'Common Sizes' }, ...MO_PLAN_CANVAS_PRESETS.map(([w, h]) => ({ value: `${w}x${h}`, label: `${w} × ${h}` }))], selected: '', ariaLabel: 'Common Sizes' });
+      presets.onChange = (v) => { if (!v) return; const [w, h] = v.split('x').map(Number); wIn.value = String(w); hIn.value = String(h); applySize(); presets.setValue(''); };
+      panelDisposers.push(() => presets.dispose());
+      s.appendChild(presets.el);
+      const swap = button('Swap Orientation', () => { const w = state.plan.canvas_w; wIn.value = String(state.plan.canvas_h); hIn.value = String(w); applySize(); });
+      s.appendChild(swap);
+      const s2 = section('Picture');
+      const rowR = moEl('div', 'mo-plan-row');
+      rowR.appendChild(button('Rotate Left', () => { r.rotate = (r.rotate + 3) % 4; const rs = rotated(); r.crop = moPlanFitCrop(rs.w, rs.h, aspect()); afterRecipeChange(true); }));
+      rowR.appendChild(button('Rotate Right', () => { r.rotate = (r.rotate + 1) % 4; const rs = rotated(); r.crop = moPlanFitCrop(rs.w, rs.h, aspect()); afterRecipeChange(true); }));
+      s2.appendChild(rowR);
+      const rowF = moEl('div', 'mo-plan-row');
+      rowF.appendChild(button('Flip Horizontal', () => { r.flipH = !r.flipH; afterRecipeChange(true); }));
+      rowF.appendChild(button('Flip Vertical', () => { r.flipV = !r.flipV; afterRecipeChange(true); }));
+      s2.appendChild(rowF);
+      s2.appendChild(button('Reset Crop', () => { const rs = rotated(); r.crop = moPlanFitCrop(rs.w, rs.h, aspect()); afterRecipeChange(true); }));
+      s2.appendChild(moEl('div', 'mo-practice-dim mo-plan-hint', { textContent: 'Drag the box to move it, a corner to resize. The crop keeps the canvas proportions.' }));
+    } else if (t === 'light') {
+      const s = section('Light');
+      s.appendChild(slider('Exposure', 'exposure', -2, 2, 0.01, (v) => (v > 0 ? '+' : '') + v.toFixed(2)));
+      s.appendChild(slider('Contrast', 'contrast', -1, 1, 0.01));
+      s.appendChild(slider('Highlights', 'highlights', -1, 1, 0.01));
+      s.appendChild(slider('Shadows', 'shadows', -1, 1, 0.01));
+      s.appendChild(slider('Warmth', 'warmth', -1, 1, 0.01));
+      s.appendChild(slider('Tint', 'tint', -1, 1, 0.01));
+      s.appendChild(button('Reset Light', () => { Object.assign(r, { exposure: 0, contrast: 0, highlights: 0, shadows: 0, warmth: 0, tint: 0 }); afterRecipeChange(true); }));
+    } else if (t === 'colour') {
+      const s = section('Colour');
+      s.appendChild(slider('Hue', 'hue', -0.5, 0.5, 0.005, (v) => Math.round(v * 360) + '°'));
+      s.appendChild(slider('Saturation', 'saturation', -1, 1, 0.01));
+      s.appendChild(button('Reset Colour', () => { r.hue = 0; r.saturation = 0; afterRecipeChange(true); }));
+    } else if (t === 'values') {
+      const s = section('Values');
+      s.appendChild(toggle('Greyscale', () => r.grey, (v) => { r.grey = v; afterRecipeChange(true); }));
+      const lv = moDropdown({ items: [{ value: '0', label: 'All Values' }, { value: '2', label: '2 Values' }, { value: '3', label: '3 Values' }, { value: '5', label: '5 Values' }], selected: String(r.levels || 0), ariaLabel: 'Values' });
+      lv.onChange = (v) => { r.levels = Number(v) || 0; if (r.levels) r.notan = 0; afterRecipeChange(true); };
+      panelDisposers.push(() => lv.dispose());
+      s.appendChild(lv.el);
+      s.appendChild(toggle('Notan', () => r.notan > 0, (v) => { r.notan = v ? 0.5 : 0; if (v) r.levels = 0; afterRecipeChange(true); }));
+      if (r.notan > 0) s.appendChild(slider('Threshold', 'notan', 0.05, 0.95, 0.01));
+      s.appendChild(slider('Squint', 'blur', 0, 1, 0.02, (v) => Math.round(v * 100) + '%'));
+    } else if (t === 'grids') {
+      const s = section('Composition');
+      s.appendChild(toggle('Thirds', () => r.overlays.thirds, (v) => { r.overlays.thirds = v; afterRecipeChange(true); }));
+      s.appendChild(toggle('Golden Section', () => r.overlays.golden, (v) => { r.overlays.golden = v; afterRecipeChange(true); }));
+      s.appendChild(toggle('Diagonals', () => r.overlays.diagonals, (v) => { r.overlays.diagonals = v; afterRecipeChange(true); }));
+      const s2 = section('Transfer Grid');
+      s2.appendChild(toggle('Grid In Inches', () => r.overlays.grid, (v) => { r.overlays.grid = v; afterRecipeChange(true); }));
+      const gd = moDropdown({ items: [{ value: '0.5', label: 'Every ½ in' }, { value: '1', label: 'Every 1 in' }, { value: '2', label: 'Every 2 in' }], selected: String(r.overlays.gridInches || 1), ariaLabel: 'Grid Spacing' });
+      gd.onChange = (v) => { r.overlays.gridInches = Number(v) || 1; afterRecipeChange(true); };
+      panelDisposers.push(() => gd.dispose());
+      s2.appendChild(gd.el);
+      s2.appendChild(moEl('div', 'mo-practice-dim mo-plan-hint', { textContent: `Rows are lettered, columns numbered, for a ${state.plan.canvas_w} × ${state.plan.canvas_h} in canvas.` }));
+    } else if (t === 'palette') {
+      const s = section('Palette');
+      const cd = moDropdown({ items: [4, 6, 8, 12, 16].map((n) => ({ value: String(n), label: n + ' Colours' })), selected: String(r.palette.count || 8), ariaLabel: 'Colours' });
+      cd.onChange = (v) => { r.palette.count = Number(v) || 8; scheduleSave(); };
+      panelDisposers.push(() => cd.dispose());
+      s.appendChild(cd.el);
+      s.appendChild(button('Pull From Picture', () => { extractPalette(); }, true));
+      const sw = moEl('div', 'mo-plan-swatches');
+      for (const c of r.palette.swatches) {
+        const chip = moEl('div', 'mo-plan-swatch', { title: moPlanHex(c) + ' (click to copy)' });
+        chip.style.background = moPlanHex(c);
+        chip.addEventListener('click', () => { try { navigator.clipboard.writeText(moPlanHex(c)); } catch { /* no clipboard */ } });
+        sw.appendChild(chip);
+      }
+      if (!r.palette.swatches.length) sw.appendChild(moEl('div', 'mo-practice-dim', { textContent: 'No swatches yet.' }));
+      s.appendChild(sw);
+      s.appendChild(toggle('Limited Palette Preview', () => r.palette.apply, (v) => { r.palette.apply = v; afterRecipeChange(true); }));
+    } else if (t === 'compare') {
+      const s = section('Compare');
+      s.appendChild(toggle('Before And After', () => state.split >= 0, (v) => { state.split = v ? 0.5 : -1; requestRender(); renderPanel(); }));
+      if (state.split >= 0) {
+        const row = moEl('div', 'mo-plan-slider');
+        const input = moEl('input', null, { type: 'range', min: '0', max: '1', step: '0.01', 'aria-label': 'Split' });
+        input.value = String(state.split);
+        input.addEventListener('input', () => { state.split = Number(input.value); requestRender(); });
+        row.appendChild(input);
+        s.appendChild(row);
+      }
+      s.appendChild(toggle('Mirror Check', () => state.mirror, (v) => { state.mirror = v; requestRender(); }));
+    } else if (t === 'process') {
+      const s = section('Process Shelf');
+      if (!state.media.length) s.appendChild(moEl('div', 'mo-practice-dim mo-plan-hint', { textContent: 'Progress photos and clips of this painting. Open one in the library and choose Add To Plan.' }));
+      const list = moEl('div', 'mo-plan-shelf');
+      for (const m of state.media) {
+        const it = moEl('div', 'mo-plan-shelf-item');
+        const img = moEl('img', null, { alt: '' });
+        it.appendChild(img);
+        if (m.kind === 'photo') void moPracticeThumb(img, m.item_id, api);
+        else resolveThumbnail('video', m.item_id, api).then((rr) => { if (rr && (rr.path || rr.sourcePath)) setThumbImgSrc(img, rr.sourcePath || rr.path, {}); }).catch(() => {});
+        it.appendChild(moEl('span', 'mo-practice-dim', { textContent: m.role === 'output' ? 'Plan output' : (m.kind === 'video' ? 'Clip' : 'Photo') }));
+        const open = () => api.editors.openEditor({ typeId: 'media-organizer-grid', title: m.kind === 'video' ? 'Clip' : 'Photo', icon: m.kind === 'video' ? 'file-media' : 'image', instanceId: `detail:${m.kind}:${m.item_id}` });
+        img.addEventListener('click', open);
+        const rm = moEl('button', 'mo-toolbar-btn', { type: 'button', textContent: 'Remove' });
+        rm.addEventListener('click', async () => { await db.run('DELETE FROM mo_plan_media WHERE id = ?', [m.id]); state.media = state.media.filter((x) => x.id !== m.id); renderPanel(); });
+        it.appendChild(rm);
+        list.appendChild(it);
+      }
+      s.appendChild(list);
+    } else if (t === 'info') {
+      const s = section('Plan');
+      const tIn = moEl('input', 'mo-clip-input mo-clip-input--grow', { type: 'text', 'aria-label': 'Title', placeholder: 'Title' });
+      tIn.value = state.plan.title || '';
+      tIn.addEventListener('change', () => { state.plan.title = tIn.value.trim() || 'Painting'; titleEl.textContent = state.plan.title; scheduleSave(); });
+      s.appendChild(tIn);
+      const notes = moEl('textarea', 'mo-clip-input mo-plan-notes', { 'aria-label': 'Notes', placeholder: 'Notes: what the painting is about, the light, the mood, what to keep and what to leave out.' });
+      notes.value = state.plan.notes || '';
+      notes.addEventListener('change', () => { state.plan.notes = notes.value; scheduleSave(); });
+      s.appendChild(notes);
+      s.appendChild(button('Open Source Photo', () => moOpenPhotoDetail(api, state.plan.photo_id)));
+      s.appendChild(button('Delete Plan', async () => {
+        await db.run('DELETE FROM mo_plans WHERE id = ?', [planId]);
+        document.dispatchEvent(new CustomEvent('mo:plans-changed'));
+        root.innerHTML = '';
+        root.appendChild(moEl('div', 'mo-practice-empty', { textContent: 'This plan was deleted. The photo is untouched.' }));
+        disposed = true;
+      }));
+    }
+  }
+
+  // ── palette ──
+  let thumbRenderer = null; let thumbCanvas = null;
+  function extractPalette() {
+    if (!renderer) return;
+    const small = document.createElement('canvas');
+    small.width = 64; small.height = 64;
+    const sctx = small.getContext('2d');
+    // Off screen, through the variation-thumbnail renderer, so the stage never flashes.
+    if (!thumbRenderer) { thumbCanvas = document.createElement('canvas'); thumbRenderer = moPlanRenderer(thumbCanvas); if (!thumbRenderer) return; thumbRenderer.setSource(state.image, 0); }
+    const keepApply = state.recipe.palette.apply;
+    state.recipe.palette.apply = false;
+    thumbRenderer.render(state.recipe, { width: 128, height: 128, full: false, split: -1 });
+    sctx.drawImage(thumbCanvas, 0, 0, 64, 64);
+    state.recipe.palette.apply = keepApply;
+    const data = sctx.getImageData(0, 0, 64, 64).data;
+    const samples = [];
+    for (let i = 0; i < data.length; i += 4) samples.push([data[i], data[i + 1], data[i + 2]]);
+    const sw = moPlanKMeans(samples, state.recipe.palette.count || 8, 10, moPracticeRng(7));
+    state.recipe.palette.swatches = sw.map((s) => s.rgb);
+    afterRecipeChange(true);
+  }
+
+  // ── variations ──
+  const variantThumbs = new Map();
+  function renderVariants() {
+    variantsBar.innerHTML = '';
+    variantThumbs.clear();
+    for (const v of state.variants) {
+      const it = moEl('div', `mo-plan-variant${state.variant && v.id === state.variant.id ? ' is-current' : ''}${state.plan.variant_id === v.id ? ' is-kept' : ''}`);
+      const img = moEl('img', null, { alt: '' });
+      it.appendChild(img);
+      variantThumbs.set(v.id, img);
+      const name = moEl('span', null, { textContent: v.name + (state.plan.variant_id === v.id ? ' ✓' : '') });
+      it.appendChild(name);
+      it.addEventListener('click', () => selectVariant(v));
+      variantsBar.appendChild(it);
+      refreshVariantThumb(v);
+    }
+    const actions = moEl('div', 'mo-plan-variant-actions');
+    actions.appendChild(button('Add Variation', () => void addVariant()));
+    actions.appendChild(button('Keep This One', () => void keepVariant()));
+    if (state.variants.length > 1) actions.appendChild(button('Remove', () => void removeVariant()));
+    variantsBar.appendChild(actions);
+  }
+  function refreshVariantThumb(v) {
+    if (!v || !state.image) return;
+    const img = variantThumbs.get(v.id);
+    if (!img) return;
+    try {
+      if (!thumbRenderer) { thumbCanvas = document.createElement('canvas'); thumbRenderer = moPlanRenderer(thumbCanvas); if (!thumbRenderer) return; thumbRenderer.setSource(state.image, 0); }
+      const rs = moPlanRotatedSize(state.imgW, state.imgH, v.recipe.rotate);
+      const a = (rs.w * v.recipe.crop.w) / (rs.h * v.recipe.crop.h);
+      thumbRenderer.render(v.recipe, { width: Math.round(56 * Math.max(a, 0.3)), height: 56, full: false, split: -1 });
+      img.src = thumbCanvas.toDataURL('image/jpeg', 0.7);
+    } catch { /* no thumb */ }
+  }
+  function selectVariant(v) {
+    state.variant = v; state.recipe = v.recipe;
+    history.length = 0; histIdx = -1; pushHistory();
+    if (state.recipe.blur !== state.blurBaked) bakeSource();
+    renderVariants(); renderPanel(); requestRender();
+  }
+  async function addVariant() {
+    const pos = state.variants.length;
+    const name = `Variation ${pos + 1}`;
+    const res = await db.run('INSERT INTO mo_plan_variants (plan_id, name, recipe_json, position) VALUES (?, ?, ?, ?)', [planId, name, JSON.stringify(state.recipe), pos]);
+    const v = { id: res.lastInsertRowid, plan_id: planId, name, position: pos, recipe: moPlanNormalizeRecipe(JSON.parse(JSON.stringify(state.recipe))) };
+    state.variants.push(v);
+    selectVariant(v);
+  }
+  async function keepVariant() {
+    if (!state.variant) return;
+    state.plan.variant_id = state.variant.id;
+    await db.run('UPDATE mo_plans SET variant_id = ?, updated_at = ? WHERE id = ?', [state.variant.id, new Date().toISOString(), planId]);
+    renderVariants();
+  }
+  async function removeVariant() {
+    if (!state.variant || state.variants.length <= 1) return;
+    const gone = state.variant;
+    await db.run('DELETE FROM mo_plan_variants WHERE id = ?', [gone.id]);
+    state.variants = state.variants.filter((v) => v.id !== gone.id);
+    if (state.plan.variant_id === gone.id) { state.plan.variant_id = state.variants[0].id; await db.run('UPDATE mo_plans SET variant_id = ? WHERE id = ?', [state.plan.variant_id, planId]); }
+    selectVariant(state.variants[0]);
+  }
+
+  // ── export ──
+  // Renders the recipe at full resolution into a JPEG beside the original,
+  // ingests it like a scan and stacks it under the original (as Upscale does).
+  async function renderFull(withGrid) {
+    const rs = rotated();
+    const r = state.recipe;
+    let W = Math.round(rs.w * r.crop.w); let H = Math.round(rs.h * r.crop.h);
+    const cap = Math.min(8192, renderer.maxTexture);
+    const k = Math.min(1, cap / Math.max(W, H));
+    W = Math.max(1, Math.round(W * k)); H = Math.max(1, Math.round(H * k));
+    const cv = document.createElement('canvas');
+    const rr = moPlanRenderer(cv);
+    if (!rr) throw new Error('No WebGL for the export.');
+    try {
+      rr.setSource(state.image, r.blur > 0 ? (r.blur * Math.max(state.imgW, state.imgH)) / 100 : 0);
+      rr.render(r, { width: W, height: H, full: false, split: -1 });
+      const out = document.createElement('canvas');
+      out.width = W; out.height = H;
+      const ctx = out.getContext('2d');
+      ctx.drawImage(cv, 0, 0);
+      if (withGrid) moPlanDrawOverlays(ctx, W, H, Object.assign({}, r, { overlays: Object.assign({}, r.overlays, { grid: true }) }), state.plan.canvas_w, state.plan.canvas_h, Math.max(1, W / 900));
+      return out.toDataURL('image/jpeg', 0.92);
+    } finally { rr.dispose(); }
+  }
+  async function exportPlan(withGrid) {
+    if (!renderer || !state.image || !state.srcPath) return;
+    exportBtn.disabled = true; exportGridBtn.disabled = true;
+    try {
+      const dataUrl = await renderFull(withGrid);
+      const sep = state.srcPath.includes('\\') ? '\\' : '/';
+      const dir = state.srcPath.slice(0, state.srcPath.lastIndexOf(sep));
+      const base = state.srcPath.slice(state.srcPath.lastIndexOf(sep) + 1);
+      let outPath = null;
+      for (let n = 1; n < 100; n++) {
+        const candidate = dir + sep + moPlanOutputName(base, n);
+        if (!(await window.parallxElectron.fs.exists(candidate))) { outPath = candidate; break; }
+      }
+      if (!outPath) throw new Error('No free file name beside the original.');
+      const res = await window.parallxElectron.fs.writeFile(outPath, dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64');
+      if (res && res.error) throw new Error(res.error.message || String(res.error));
+      const photo = await moIngestNewImage(outPath);
+      if (photo) {
+        await moStackUnder({ type: 'photo', id: state.plan.photo_id }, { type: 'photo', id: photo.id });
+        const pos = await db.get('SELECT COALESCE(MAX(position), -1) + 1 AS p FROM mo_plan_media WHERE plan_id = ?', [planId]);
+        await db.run('INSERT INTO mo_plan_media (plan_id, kind, item_id, role, position, created_at) VALUES (?, ?, ?, ?, ?, ?)', [planId, 'photo', photo.id, 'output', pos ? pos.p : 0, new Date().toISOString()]);
+        state.media = (await moPlanLoad(planId)).media;
+        _notifySidebarRefresh();
+      }
+      api.window.showInformationMessage(`Plan written beside the original: ${outPath.slice(outPath.lastIndexOf(sep) + 1)}`);
+    } catch (err) {
+      api.window.showErrorMessage('The plan could not be exported: ' + (err && err.message));
+    } finally { exportBtn.disabled = false; exportGridBtn.disabled = false; }
+  }
+  async function printPlan() {
+    if (!renderer || !state.image) return;
+    try {
+      const dataUrl = await renderFull(true);
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'fixed'; iframe.style.right = '0'; iframe.style.bottom = '0'; iframe.style.width = '0'; iframe.style.height = '0'; iframe.style.border = '0';
+      document.body.appendChild(iframe);
+      const doc = iframe.contentDocument;
+      doc.open();
+      doc.write(`<!doctype html><title>${state.plan.title}</title><style>@page{margin:0.4in}html,body{margin:0;height:100%}body{display:flex;align-items:center;justify-content:center}img{max-width:100%;max-height:100%}</style><img src="${dataUrl}">`);
+      doc.close();
+      const img = doc.querySelector('img');
+      const go = () => { try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch { /* blocked */ } setTimeout(() => iframe.remove(), 60_000); };
+      if (img.complete) go(); else img.onload = go;
+    } catch (err) {
+      api.window.showErrorMessage('The plan could not be printed: ' + (err && err.message));
+    }
+  }
+
+  // ── keys ──
+  root.addEventListener('keydown', (e) => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }
+    else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) { e.preventDefault(); redo(); }
+  });
+
+  // ── load ──
+  (async () => {
+    try {
+      const data = await moPlanLoad(planId);
+      if (disposed) return;
+      if (!data) { root.innerHTML = ''; root.appendChild(moEl('div', 'mo-practice-empty', { textContent: 'This plan is no longer available.' })); return; }
+      state.plan = data.plan; state.variants = data.variants; state.media = data.media;
+      titleEl.textContent = state.plan.title; sizeEl.textContent = `${state.plan.canvas_w} × ${state.plan.canvas_h} in`;
+      state.srcPath = await moResolveItemPath({ type: 'photo', id: state.plan.photo_id });
+      const url = state.srcPath ? await localFileToUrl(state.srcPath) : null;
+      if (!url) { stage.appendChild(moEl('div', 'mo-practice-empty', { textContent: 'The source photo is not on disk right now.' })); return; }
+      const image = await new Promise((resolve, reject) => { const im = new Image(); im.onload = () => resolve(im); im.onerror = () => reject(new Error('The photo could not be decoded.')); im.src = url; });
+      if (disposed) return;
+      state.image = image; state.imgW = image.naturalWidth; state.imgH = image.naturalHeight;
+      renderer = moPlanRenderer(glCanvas);
+      if (!renderer) { stage.appendChild(moEl('div', 'mo-practice-empty', { textContent: 'WebGL is not available, so the plan cannot be shown.' })); return; }
+      const v = state.variants.find((x) => x.id === state.plan.variant_id) || state.variants[0];
+      if (!v) { stage.appendChild(moEl('div', 'mo-practice-empty', { textContent: 'This plan has no variation.' })); return; }
+      // A fresh plan starts with the largest crop at the canvas proportions.
+      if (v.recipe.crop.w === 1 && v.recipe.crop.h === 1) { const rs = moPlanRotatedSize(state.imgW, state.imgH, v.recipe.rotate); v.recipe.crop = moPlanFitCrop(rs.w, rs.h, aspect()); }
+      state.variant = v; state.recipe = v.recipe;
+      bakeSource();
+      pushHistory();
+      renderVariants();
+      setTool('light');
+      root.focus();
+    } catch (err) {
+      if (!disposed) stage.appendChild(moEl('div', 'mo-practice-empty', { textContent: 'The plan could not load: ' + (err && err.message) }));
+    }
+  })();
+
+  return {
+    dispose() {
+      disposed = true;
+      clearTimeout(saveTimer);
+      if (raf) cancelAnimationFrame(raf);
+      if (resizeObs) resizeObs.disconnect();
+      for (const d of panelDisposers.splice(0)) { try { d(); } catch { /* gone */ } }
+      if (renderer) renderer.dispose();
+      if (thumbRenderer) thumbRenderer.dispose();
+      container.innerHTML = '';
+    },
+  };
 }
 
 function _notifySidebarRefresh() { for (const cb of _sidebarRefreshCallbacks) { try { cb(); } catch {} } }
@@ -29520,6 +30546,7 @@ export async function activate(api, context) {
     api.commands.registerCommand('media-organizer.upscaleSetup', () => showUpscaleSetupDialog(api)),
     api.commands.registerCommand('media-organizer.practiceSession', () => { if (moArtGate(api)) moOpenPracticeSetup(api); }),
     api.commands.registerCommand('media-organizer.dailyStudy', () => void moStartDailyStudy(api)),
+    api.commands.registerCommand('media-organizer.paintingPlans', () => { if (moArtGate(api)) moOpenPlansList(api); }),
     api.commands.registerCommand('media-organizer.openHome', () => {
       api.editors.openEditor({ typeId: 'media-organizer-grid', title: 'Home', icon: 'home', instanceId: 'grid:home' });
     }),
@@ -29604,6 +30631,9 @@ export async function activate(api, context) {
         }
         if (inputId.startsWith('practice:')) {
           return renderPracticeTab(container, api, input);
+        }
+        if (inputId.startsWith('plans:')) {
+          return renderPlansTab(container, api, input);
         }
         if (inputId === 'tag-review') {
           return renderTagReview(container, api);

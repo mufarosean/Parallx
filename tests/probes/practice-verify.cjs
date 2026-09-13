@@ -21,5 +21,14 @@ for (const s of db.prepare('SELECT * FROM mo_practice_sessions ORDER BY id').all
 }
 out.push(`daily rows=${db.prepare('SELECT day, photo_id, session_id FROM mo_practice_daily').all().map((r) => `${r.day}:photo${r.photo_id}:session${r.session_id}`).join(' ') || '(none)'}`);
 out.push(`presets=${db.prepare('SELECT COUNT(*) AS n FROM mo_practice_presets').get().n}`);
+if (has('mo_plans')) {
+  for (const p of db.prepare('SELECT * FROM mo_plans ORDER BY id').all()) {
+    const vs = db.prepare('SELECT id, name, recipe_json FROM mo_plan_variants WHERE plan_id = ? ORDER BY position').all(p.id);
+    const media = db.prepare('SELECT kind, item_id, role FROM mo_plan_media WHERE plan_id = ? ORDER BY position').all(p.id);
+    const desc = (v) => { let r = {}; try { r = JSON.parse(v.recipe_json); } catch { /* bad json */ } return `${v.name}: exposure=${r.exposure} grid=${r.overlays && r.overlays.grid} swatches=${((r.palette && r.palette.swatches) || []).length} crop=${r.crop ? r.crop.w.toFixed(3) + 'x' + r.crop.h.toFixed(3) : '?'}`; };
+    out.push(`plan #${p.id} "${p.title}" photo=${p.photo_id} canvas=${p.canvas_w}x${p.canvas_h} kept=${p.variant_id} variants=[${vs.map(desc).join('; ')}] media=[${media.map((m) => `${m.kind}${m.item_id}:${m.role}`).join(' ')}]`);
+  }
+  out.push(`photos=${db.prepare('SELECT COUNT(*) AS n FROM mo_photos').get().n} stack members=${db.prepare('SELECT COUNT(*) AS n FROM mo_stack_members').get().n} plan files=${db.prepare("SELECT GROUP_CONCAT(basename) AS b FROM mo_files WHERE basename LIKE '%_plan_%'").get().b || '(none)'}`);
+}
 out.push(`pending draws left=${db.prepare("SELECT COUNT(*) AS n FROM mo_practice_draws WHERE outcome = 'pending'").get().n}`);
 console.log(out.join('\n  '));

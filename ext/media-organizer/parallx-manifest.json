@@ -22,6 +22,7 @@
       { "id": "media-organizer.openHome", "title": "Open Home Feed", "category": "Media Organizer" },
       { "id": "media-organizer.practiceSession", "title": "Practice Session", "category": "Media Organizer" },
       { "id": "media-organizer.dailyStudy", "title": "Daily Study", "category": "Media Organizer" },
+      { "id": "media-organizer.paintingPlans", "title": "Painting Plans", "category": "Media Organizer" },
       { "id": "media-organizer.upscaleSetup", "title": "Set Up The Upscaler", "category": "Media Organizer" },
       { "id": "media-organizer.createAlbum", "title": "Create Album", "category": "Media Organizer" },
       { "id": "media-organizer.rebuildSearchIndex", "title": "Rebuild Search Index", "category": "Media Organizer" },
