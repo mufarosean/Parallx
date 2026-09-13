@@ -216,6 +216,8 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
   private _compactGeneration = 0;
   /** The generation seen by the last assemble() call. */
   private _lastAssembleGeneration = 0;
+  /** maintain() ran this turn: assemble() applies the clean-up after the saved summary. */
+  private _maintainThisTurn = false;
   /** Service readiness state set by bootstrap(). */
   private _ragReady = true;
   private _memoryReady = true;
@@ -271,6 +273,14 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
         ];
         compactionApplied = true;
       }
+    }
+
+    // The pre-turn clean-up (maintain): applied after the saved summary is
+    // substituted, so the summary is matched against the untrimmed history it
+    // was fingerprinted on, and long tool results are still trimmed in what
+    // is sent. A compaction earlier in this turn already shrank its history.
+    if (!usedMidTurnState && this._maintainThisTurn) {
+      effectiveHistory = maintainHistory(effectiveHistory).history;
     }
 
     // Cache for compact() — always the history we're actually using
@@ -645,77 +655,23 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
    *   3. Collapse duplicate [Context summary] messages — keep only the latest
    */
   async maintain(params: IOpenclawMaintainParams): Promise<IOpenclawMaintainResult> {
-    // Use incoming history (from turn context) — _lastHistory may be empty before first assemble()
-    const history = [...params.history] as IChatMessage[];
-    const tokensBefore = estimateMessagesTokens(history);
-    let rewrites = 0;
-
-    // Rule 1: Trim verbose tool results (role 'tool' or content containing tool markers)
-    for (let i = 0; i < history.length; i++) {
-      const msg = history[i];
-      const isToolResult = msg.role === 'tool' || msg.content.includes('```tool-result') || msg.content.includes('[tool-result]');
-      if (isToolResult && msg.content.length > 2000) {
-        history[i] = { ...msg, content: msg.content.slice(0, 1500) + '\n[... truncated]' };
-        rewrites++;
-      }
-    }
-
-    // Rule 2: Remove redundant acknowledgment pairs
-    const ackPattern = /^(understood|got it|sure|ok|okay|alright|noted|yes|right)\.?$/i;
-    const toRemove = new Set<number>();
-    for (let i = 0; i < history.length; i++) {
-      const msg = history[i];
-      if (msg.role === 'assistant' && msg.content.length < 20 && ackPattern.test(msg.content.trim())) {
-        toRemove.add(i);
-        rewrites++;
-      }
-    }
-    if (toRemove.size > 0) {
-      const filtered: IChatMessage[] = [];
-      for (let i = 0; i < history.length; i++) {
-        if (!toRemove.has(i)) {
-          filtered.push(history[i]);
-        }
-      }
-      history.length = 0;
-      history.push(...filtered);
-    }
-
-    // Rule 3: Collapse duplicate [Context summary] messages — keep only the latest
-    let lastSummaryIdx = -1;
-    for (let i = 0; i < history.length; i++) {
-      if (history[i].content.startsWith('[Context summary]')) {
-        lastSummaryIdx = i;
-      }
-    }
-    if (lastSummaryIdx > 0) {
-      const summaryIndicesToRemove = new Set<number>();
-      for (let i = 0; i < lastSummaryIdx; i++) {
-        if (history[i].content.startsWith('[Context summary]')) {
-          summaryIndicesToRemove.add(i);
-          rewrites++;
-        }
-      }
-      if (summaryIndicesToRemove.size > 0) {
-        const filtered: IChatMessage[] = [];
-        for (let i = 0; i < history.length; i++) {
-          if (!summaryIndicesToRemove.has(i)) {
-            filtered.push(history[i]);
-          }
-        }
-        history.length = 0;
-        history.push(...filtered);
-      }
-    }
-
+    // Reports the pre-turn clean-up and asks assemble() to apply it, after the
+    // saved summary is substituted. It must NOT bump _compactGeneration: that
+    // counter means "a compaction ran this turn", and assemble() skips the
+    // saved summary (neither reads nor writes it) when it moved. Bumping it
+    // here whenever a tool result was trimmed (almost every turn once tool
+    // results joined the history, 2026-08-30) made every message re-summarize
+    // the whole conversation once a chat passed its history share: 2-5 minutes
+    // of GPU work per message on a 160K chat (2026-09-11).
+    const { history, rewrites } = maintainHistory(params.history);
+    this._maintainThisTurn = true;
+    // For a compact() before any assemble(); assemble() replaces it.
     this._lastHistory = history;
-    // Bump generation so assemble() uses the maintained history
-    if (rewrites > 0) {
-      this._compactGeneration++;
-    }
-    const tokensAfter = estimateMessagesTokens(history);
-
-    return { rewrites, tokensBefore, tokensAfter };
+    return {
+      rewrites,
+      tokensBefore: estimateMessagesTokens([...params.history]),
+      tokensAfter: estimateMessagesTokens(history),
+    };
   }
 
   /**
@@ -894,6 +850,49 @@ export function auditCompactionQuality(
  * This matches the upstream pattern where context overflow triggers
  * compaction of older turns.
  */
+/**
+ * The pre-turn clean-up as a pure function (maintain() reports it; assemble()
+ * applies it after substituting the saved summary):
+ * 1. tool results over 2000 chars keep their first 1500 and a marker;
+ * 2. bare acknowledgements ("ok.", "got it") are dropped, except in the last
+ *    two messages, which compaction keeps as its verbatim tail (dropping one
+ *    there would misalign the saved summary's covered prefix);
+ * 3. only the latest [Context summary] survives.
+ */
+export function maintainHistory(input: readonly IChatMessage[]): { history: IChatMessage[]; rewrites: number } {
+  let history = [...input] as IChatMessage[];
+  let rewrites = 0;
+
+  for (let i = 0; i < history.length; i++) {
+    const msg = history[i];
+    const isToolResult = msg.role === 'tool' || msg.content.includes('```tool-result') || msg.content.includes('[tool-result]');
+    if (isToolResult && msg.content.length > 2000) {
+      history[i] = { ...msg, content: msg.content.slice(0, 1500) + '\n[... truncated]' };
+      rewrites++;
+    }
+  }
+
+  const ackPattern = /^(understood|got it|sure|ok|okay|alright|noted|yes|right)\.?$/i;
+  const protectedFrom = history.length - 2;
+  const beforeAcks = history.length;
+  history = history.filter((msg, i) => !(i < protectedFrom && msg.role === 'assistant' && msg.content.length < 20 && ackPattern.test(msg.content.trim())));
+  rewrites += beforeAcks - history.length;
+
+  let lastSummaryIdx = -1;
+  for (let i = 0; i < history.length; i++) {
+    if (history[i].content.startsWith('[Context summary]')) {
+      lastSummaryIdx = i;
+    }
+  }
+  if (lastSummaryIdx > 0) {
+    const beforeSummaries = history.length;
+    history = history.filter((msg, i) => i >= lastSummaryIdx || !msg.content.startsWith('[Context summary]'));
+    rewrites += beforeSummaries - history.length;
+  }
+
+  return { history, rewrites };
+}
+
 /**
  * M85 Slice B — cheap shape check of the first `count` history messages, used
  * to validate the boundary compaction cache. Replay/regenerate splices change

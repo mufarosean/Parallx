@@ -706,6 +706,25 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   _ollamaProvider = new OllamaProvider(ollamaBaseUrl);
   context.subscriptions.push(_ollamaProvider);
 
+  // Launch warm-up (docs/ai/CHAT_CONTEXT_WINDOW.md): load the model and
+  // context the chat last ran with, never a guess. Remembered across
+  // restarts; a request for the chat's own model that names a size updates it.
+  {
+    const LAST_CHAT_LOAD_KEY = 'chat.lastModelLoad';
+    type LastChatLoad = { modelId?: unknown; numCtx?: unknown };
+    const provider = _ollamaProvider;
+    const remembered = context.globalState.get<LastChatLoad>(LAST_CHAT_LOAD_KEY);
+    if (remembered && typeof remembered.modelId === 'string' && typeof remembered.numCtx === 'number') {
+      provider.setWarmupTarget({ modelId: remembered.modelId, numCtx: remembered.numCtx });
+    }
+    context.subscriptions.push(provider.onDidSendChatRequest(({ modelId, numCtx }) => {
+      if (modelId !== languageModelsService.getActiveModel()) return;
+      const prev = context.globalState.get<LastChatLoad>(LAST_CHAT_LOAD_KEY);
+      if (prev && prev.modelId === modelId && prev.numCtx === numCtx) return;
+      void context.globalState.update(LAST_CHAT_LOAD_KEY, { modelId, numCtx }).catch(() => { /* the next request tries again */ });
+    }));
+  }
+
   // Apply user-configured context length override (0 = let Ollama decide)
   if (configuredContextLength > 0) {
     _ollamaProvider.setContextLengthOverride(configuredContextLength);

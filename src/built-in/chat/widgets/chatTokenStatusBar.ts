@@ -7,11 +7,12 @@
 // a breakdown of context window consumption by category.
 //
 // Token data sources (in priority order):
-//   1. Real token counts from Ollama (prompt_eval_count + eval_count on
-//      the final streaming chunk) — stored on IChatAssistantResponse as
-//      promptTokens / completionTokens.
-//   2. Fallback: chars / 4 estimation (M9 spec) when real counts aren't
-//      available yet (e.g. before the first response).
+//   1. The latest model-reported count: that response's promptTokens (what
+//      the model was sent, compacted history included) plus its
+//      completionTokens, with a chars / 4 estimate for anything newer (the
+//      request just sent, its answer streaming in).
+//   2. Fallback: chars / 4 estimation (M9 spec) when no response has
+//      reported yet (a new chat, or right after /compact).
 //
 // Context window size comes from OllamaProvider.getActiveModelContextLengthAsync()
 // which calls Ollama's /api/show endpoint to read the model's native context_length.
@@ -40,8 +41,10 @@ interface ITokenBreakdown {
   contextLength: number;
   /** Percentage of context used (0–100). */
   percentage: number;
-  /** Whether token counts are real (from Ollama) or estimated (chars/4). */
+  /** Whether the total is exactly the model-reported count, nothing estimated on top. */
   isReal: boolean;
+  /** Whether a model-reported count is the base (with an estimate on top when isReal is false). */
+  hasReported: boolean;
   /** Per-category breakdown. */
   categories: {
     systemInstructions: number;
@@ -62,6 +65,11 @@ interface ITokenBreakdown {
 
 const RING_SIZE = 16;
 const RING_STROKE = 2;
+
+// The most of the window the context engine sends as history: older turns are
+// summarized or dropped (src/openclaw/openclawTokenBudget.ts,
+// computeElasticBudget). Chat widgets may not import the runtime.
+const HISTORY_LANE_SHARE = 0.30;
 
 // ── ChatTokenStatusBar ──
 
@@ -124,7 +132,7 @@ export class ChatTokenStatusBar extends Disposable {
 
     // Tooltip
     const approx = breakdown.isReal ? '' : '~';
-    const source = breakdown.isReal ? 'Ollama-reported' : 'Estimated';
+    const source = breakdown.isReal ? 'Model-reported' : breakdown.hasReported ? 'Model-reported plus estimated' : 'Estimated';
     this._root.title = breakdown.contextLength > 0
       ? `${source} token usage: ${approx}${this._formatTokens(breakdown.total)} / ${this._formatTokens(breakdown.contextLength)} (${breakdown.percentage.toFixed(1)}%). Click for details.`
       : `${source} tokens: ${approx}${this._formatTokens(breakdown.total)}. Click for details.`;
@@ -146,29 +154,24 @@ export class ChatTokenStatusBar extends Disposable {
   private async _computeBreakdown(): Promise<ITokenBreakdown> {
     const session = this._services.getActiveSession();
     const contextLength = await this._services.getContextLength();
-    // ── Check for real Ollama-reported token counts ──
-    // The last response in the session has promptTokens (= total input tokens
-    // for that request, including system prompt + all messages). This is the
-    // most accurate number because it comes from the model's tokenizer.
-    let realPromptTokens = 0;
-    let realCompletionTokens = 0;
-    let hasRealCounts = false;
-
-    if (session && session.messages.length > 0) {
-      // Walk all responses to accumulate completion tokens
-      for (const pair of session.messages) {
-        if (pair.response.completionTokens) {
-          realCompletionTokens += pair.response.completionTokens;
-        }
-      }
-      // Use the LAST response's promptTokens as the current input size
-      // (it includes the full conversation history as sent via Ollama)
-      const lastPair = session.messages[session.messages.length - 1];
-      if (lastPair.response.promptTokens && lastPair.response.promptTokens > 0) {
-        realPromptTokens = lastPair.response.promptTokens;
-        hasRealCounts = true;
+    // ── The latest model-reported count ──
+    // A response's promptTokens is what the model was actually sent for it:
+    // after a compaction, the compacted history, not the chat's visible record
+    // (compaction never rewrites that). The latest reported count is the base,
+    // and that response's own answer (completionTokens) joins the next prompt.
+    // Anything newer (the request just sent, its answer streaming in) has no
+    // count yet and is estimated on top. Estimating the whole visible history
+    // instead pinned the meter at 100% the moment a message was sent after a
+    // compaction; adding up every earlier answer counted each one twice (they
+    // are already inside the reported prompt).
+    let base = -1;
+    if (session) {
+      for (let i = session.messages.length - 1; i >= 0; i--) {
+        const reported = session.messages[i].response.promptTokens;
+        if (reported && reported > 0) { base = i; break; }
       }
     }
+    const hasRealCounts = base >= 0;
 
     // ── System prompt category breakdown (chars/4 estimation) ──
     // Even when we have real counts, we still compute the category ratios
@@ -193,35 +196,51 @@ export class ChatTokenStatusBar extends Disposable {
       // Best-effort
     }
 
-    // ── Message / tool result estimation (chars/4 fallback) ──
+    // ── Message / tool result estimation (chars/4) ──
+    // The whole visible record, for the popup's categories; `tail` is the part
+    // newer than the latest reported count.
+    let tail = 0;
     if (session) {
-      for (const pair of session.messages) {
-        messagesEst += Math.ceil(pair.request.text.length / 4);
+      session.messages.forEach((pair, i) => {
+        let pairEst = Math.ceil(pair.request.text.length / 4);
+        messagesEst += pairEst;
         for (const part of pair.response.parts) {
           const p = part as unknown as Record<string, unknown>;
+          let n = 0;
           if (p['kind'] === 'toolInvocation') {
             if (typeof p['result'] === 'object' && p['result'] && 'content' in (p['result'] as Record<string, unknown>)) {
-              toolResultsEst += Math.ceil(String((p['result'] as Record<string, unknown>)['content']).length / 4);
+              n = Math.ceil(String((p['result'] as Record<string, unknown>)['content']).length / 4);
+              toolResultsEst += n;
             }
           } else {
-            if (typeof p['content'] === 'string') messagesEst += Math.ceil(p['content'].length / 4);
-            if (typeof p['code'] === 'string') messagesEst += Math.ceil((p['code'] as string).length / 4);
+            if (typeof p['content'] === 'string') n += Math.ceil(p['content'].length / 4);
+            if (typeof p['code'] === 'string') n += Math.ceil((p['code'] as string).length / 4);
+            messagesEst += n;
           }
+          pairEst += n;
         }
-      }
+        if (hasRealCounts && i > base) tail += pairEst;
+      });
     }
 
     // ── Choose real vs estimated totals ──
     let total: number;
     let isReal: boolean;
+    let historyScale = 1;
 
-    if (hasRealCounts) {
-      // Real total = last prompt tokens (all input for the last turn) + cumulative completions
-      total = realPromptTokens + realCompletionTokens;
-      isReal = true;
+    if (hasRealCounts && session) {
+      const reported = session.messages[base].response;
+      total = (reported.promptTokens ?? 0) + (reported.completionTokens ?? 0) + tail;
+      isReal = tail === 0;
     } else {
-      // Fall back to chars/4 estimation
-      total = systemInstructionsEst + toolDefinitionsEst + filesEst + messagesEst + toolResultsEst;
+      // Nothing reported yet (a new chat, or one saved before its answers kept
+      // their counts): estimate what the model is sent. History counts only up
+      // to its lane, since the engine summarizes or drops the rest: the chat's
+      // whole visible record is not what the model gets.
+      const history = messagesEst + toolResultsEst;
+      const sent = contextLength > 0 ? Math.min(history, Math.floor(contextLength * HISTORY_LANE_SHARE)) : history;
+      if (history > 0) historyScale = sent / history;
+      total = systemInstructionsEst + toolDefinitionsEst + filesEst + sent;
       isReal = false;
     }
 
@@ -257,8 +276,8 @@ export class ChatTokenStatusBar extends Disposable {
       cats = {
         systemInstructions: systemInstructionsEst,
         toolDefinitions: toolDefinitionsEst,
-        messages: messagesEst,
-        toolResults: toolResultsEst,
+        messages: Math.round(messagesEst * historyScale),
+        toolResults: Math.round(toolResultsEst * historyScale),
         files: filesEst,
       };
     }
@@ -270,7 +289,7 @@ export class ChatTokenStatusBar extends Disposable {
         : 1)
       : 1;
 
-    return { total, contextLength, percentage, isReal, categories: cats, subBreakdowns: this._computeSubBreakdowns(scale) };
+    return { total, contextLength, percentage, isReal, hasReported: hasRealCounts, categories: cats, subBreakdowns: this._computeSubBreakdowns(scale) };
   }
 
   // ── Sub-breakdown computation ──
@@ -361,7 +380,7 @@ export class ChatTokenStatusBar extends Disposable {
     if (this._popupElement) return;
 
     const breakdown = this._lastBreakdown ?? {
-      total: 0, contextLength: 0, percentage: 0, isReal: false,
+      total: 0, contextLength: 0, percentage: 0, isReal: false, hasReported: false,
       categories: { systemInstructions: 0, toolDefinitions: 0, messages: 0, toolResults: 0, files: 0 },
     };
 
@@ -433,7 +452,9 @@ export class ChatTokenStatusBar extends Disposable {
     // Source indicator
     if (!breakdown.isReal && breakdown.total > 0) {
       const note = $('div.parallx-token-popup-note');
-      note.textContent = 'Estimated (chars ÷ 4). Real counts appear after first response.';
+      note.textContent = breakdown.hasReported
+        ? 'The model\'s last reported count, plus an estimate (chars ÷ 4) for the newest message until its reply reports.'
+        : 'Estimated (chars ÷ 4). Real counts appear after first response.';
       note.style.cssText = 'font-size:10px;color:#888;padding:2px 0 4px;';
       popup.appendChild(note);
     }

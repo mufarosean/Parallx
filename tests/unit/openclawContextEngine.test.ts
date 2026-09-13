@@ -385,6 +385,70 @@ describe('OpenclawContextEngine', () => {
       expect(summaryMsg?.content).toContain('Fresh summary.');
     });
 
+    // Regression (2026-09-11). Since tool results joined the history
+    // (2026-08-30), the pre-turn clean-up trimmed one on almost every turn and
+    // flagged the history as compacted, which skipped the saved summary: every
+    // message re-summarized the whole conversation (2-5 minutes of GPU work
+    // per message on a 160K chat).
+    it('M85 — a long tool result in history does not switch off the saved summary: two turns, one compaction', async () => {
+      const filler = 'The Mack chain ladder discussion continues with detail. '.repeat(20);
+      const turn1: IChatMessage[] = [
+        { role: 'user', content: `Q1 ${filler}` },
+        { role: 'assistant', content: `A1 ${filler}` },
+        { role: 'user', content: `Q2 ${filler}` },
+        { role: 'tool', toolName: 'canvas_read_page', content: 'page text '.repeat(400) },
+        { role: 'assistant', content: `A2 ${filler}` },
+        { role: 'user', content: 'Q3 final question' },
+        { role: 'assistant', content: 'A3 final answer' },
+      ];
+      const turn2: IChatMessage[] = [...turn1, { role: 'user', content: 'Q4 next question' }, { role: 'assistant', content: 'A4 next answer' }];
+      async function* mockSummarize(): AsyncIterable<IChatResponseChunk> {
+        yield { content: 'Mission: continue the Mack analysis.' } as IChatResponseChunk;
+      }
+      const cacheStore = new Map<string, IOpenclawCompactionCacheEntry>();
+      const summarizer = vi.fn(() => mockSummarize());
+      const services = createMockServices({
+        sendSummarizationRequest: summarizer,
+        readCompactionCache: (sid: string) => cacheStore.get(sid),
+        writeCompactionCache: (sid: string, e?: IOpenclawCompactionCacheEntry) => { if (e) { cacheStore.set(sid, e); } else { cacheStore.delete(sid); } },
+      });
+      // One engine per turn, run the way the turn runner runs it: maintain, then assemble.
+      const runTurn = async (history: IChatMessage[]) => {
+        const engine = new OpenclawContextEngine(services);
+        await engine.bootstrap({ sessionId: 's1', tokenBudget: 2048 });
+        const maintained = await engine.maintain({ sessionId: 's1', tokenBudget: 2048, history });
+        const result = await engine.assemble({ sessionId: 's1', history, tokenBudget: 2048, prompt: 'continue' });
+        return { maintained, result };
+      };
+
+      const first = await runTurn(turn1);
+      expect(first.maintained.rewrites).toBeGreaterThan(0); // the long tool result was trimmed
+      const callsAfterFirst = summarizer.mock.calls.length;
+      expect(callsAfterFirst).toBeGreaterThan(0);
+      expect(cacheStore.get('s1')).toBeDefined(); // saved for the next message
+
+      const second = await runTurn(turn2);
+      expect(summarizer.mock.calls.length).toBe(callsAfterFirst); // reused, not re-summarized
+      const summaryMsg = second.result.messages.find((m) => m.content.startsWith('[Context summary]'));
+      expect(summaryMsg?.content).toContain('Mission: continue the Mack analysis.');
+      expect(second.result.messages.some((m) => m.content === 'A4 next answer')).toBe(true);
+    });
+
+    it('the pre-turn clean-up still trims long tool results in what is sent', async () => {
+      const engine = new OpenclawContextEngine(createMockServices());
+      await engine.bootstrap({ sessionId: 's1', tokenBudget: 32768 });
+      const history: IChatMessage[] = [
+        { role: 'user', content: 'Read the page' },
+        { role: 'tool', toolName: 'canvas_read_page', content: 'y'.repeat(5000) },
+        { role: 'assistant', content: 'It says y.' },
+      ];
+      await engine.maintain({ sessionId: 's1', tokenBudget: 32768, history });
+      const result = await engine.assemble({ sessionId: 's1', history, tokenBudget: 32768, prompt: 'next' });
+      const tool = result.messages.find((m) => m.role === 'tool');
+      expect(tool?.content.length).toBeLessThan(1600);
+      expect(tool?.content).toContain('[... truncated]');
+    });
+
     it('M85 — the compaction prompt is a continuation contract', () => {
       expect(COMPACTION_SUMMARIZATION_PROMPT).toContain('## Mission');
       expect(COMPACTION_SUMMARIZATION_PROMPT).toContain('## State');

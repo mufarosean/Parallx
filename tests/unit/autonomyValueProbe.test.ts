@@ -6,14 +6,19 @@
  * This isolates the only open question — "given real workspace context, does the
  * model produce something useful?" — from all the e2e UI-automation noise.
  *
- * Run: npx vitest run tests/integration/autonomyValueProbe.test.ts
- * Skips automatically if Ollama isn't reachable.
+ * Run: PROBE_MODEL=<model> npx vitest run tests/unit/autonomyValueProbe.test.ts
+ * Skips unless PROBE_MODEL names a model, and if Ollama isn't reachable.
+ *
+ * Opt-in only (2026-09-11). With a default model it ran on every full unit
+ * run: two unbounded requests to qwen3.6:latest with no context size, so
+ * Ollama loaded it at its full default context, evicted the user's chat model,
+ * and chat turns waited up to 2.5 minutes behind the 110-second timeout.
  */
 import { describe, it, expect } from 'vitest';
 import { buildWorkspaceContext, buildTasksContext } from '../../src/openclaw/openclawHeartbeatContext';
 
 const OLLAMA = 'http://localhost:11434';
-const MODEL = process.env.PROBE_MODEL || 'qwen3.6:latest';
+const MODEL = process.env.PROBE_MODEL || '';
 
 async function ollamaUp(): Promise<boolean> {
   try {
@@ -35,7 +40,7 @@ const SYSTEM = [
   '  3. ACT — the event clearly warrants investigation or action. Use your tools, then summarize what you did concisely.',
 ].join('\n');
 
-describe('Autonomy live value probe (real model, real context)', () => {
+describe.skipIf(!MODEL)('Autonomy live value probe (real model, real context)', () => {
   it('shows what the agent actually does when a real page is created in a real workspace', async () => {
     if (!(await ollamaUp())) {
       console.log('\n[probe] Ollama not reachable — skipping live probe.\n');

@@ -137,11 +137,22 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
   /** True once we've already sent a pre-load request (avoids duplicates). */
   private _preloadRequested = false;
 
+  /**
+   * What to warm at launch: the model and context the chat last ran with,
+   * remembered by the chat across restarts (setWarmupTarget). With nothing
+   * remembered, nothing is warmed: the first request loads its own model.
+   */
+  private _warmupTarget: { modelId: string; numCtx: number } | undefined;
+
   private readonly _onDidChangeStatus = this._register(new Emitter<IProviderStatus>());
   readonly onDidChangeStatus: Event<IProviderStatus> = this._onDidChangeStatus.event;
 
   private readonly _onDidChangeLoadedModels = this._register(new Emitter<readonly string[]>());
   readonly onDidChangeLoadedModels: Event<readonly string[]> = this._onDidChangeLoadedModels.event;
+
+  private readonly _onDidSendChatRequest = this._register(new Emitter<{ readonly modelId: string; readonly numCtx: number }>());
+  /** A request named its context size: the chat remembers it for the next launch's warm-up. */
+  readonly onDidSendChatRequest: Event<{ readonly modelId: string; readonly numCtx: number }> = this._onDidSendChatRequest.event;
 
   constructor(baseUrl = 'http://localhost:11434') {
     super();
@@ -175,10 +186,18 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
 
   /**
    * User-configured context length override. When > 0, this value is sent
-   * as num_ctx to Ollama and used for token bar display. When 0, no num_ctx
-   * is sent — Ollama uses its own setting (desktop slider / OLLAMA_NUM_CTX).
+   * as num_ctx to Ollama and used for token bar display. When 0, a request
+   * that names no size reuses the last size named (_lastNumCtx).
    */
   private _contextLengthOverride = 0;
+
+  /**
+   * The last context size a request named. A request that names none reuses
+   * it. Otherwise Ollama loads the model at its own default, the model's full
+   * length (262,144 for qwen3.x): that spills past the graphics card, and the
+   * next request naming the chat's size makes Ollama load the model again.
+   */
+  private _lastNumCtx = 0;
 
   /** Tracks whether we're inside a `<think>` tag across stream chunks. */
   private _inThinkTag = false;
@@ -209,6 +228,14 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
   /** Set context length override (0 = let Ollama decide). */
   setContextLengthOverride(value: number): void {
     this._contextLengthOverride = Math.max(0, Math.floor(value));
+  }
+
+  /** What the launch warm-up loads (see _warmupTarget); also the size a sizeless request reuses. */
+  setWarmupTarget(target: { modelId: string; numCtx: number } | undefined): void {
+    this._warmupTarget = target && target.modelId && target.numCtx > 0
+      ? { modelId: target.modelId, numCtx: Math.floor(target.numCtx) }
+      : undefined;
+    if (this._warmupTarget && this._lastNumCtx === 0) this._lastNumCtx = this._warmupTarget.numCtx;
   }
 
   /** Reset streaming parser state (called on model switch to avoid stale artifacts). */
@@ -291,9 +318,11 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
    *
    * Sends a zero-token `/api/chat` request with `keep_alive: '30m'` and
    * a single-token `/api/embed` request to warm both models in parallel.
+   * `numCtx` is the size the chat will ask for: loaded at any other size,
+   * the chat's first request makes Ollama load the model again.
    * Fire-and-forget — failures are silently logged.
    */
-  async preloadModel(modelId: string): Promise<void> {
+  async preloadModel(modelId: string, numCtx = 0): Promise<void> {
     if (!modelId) { return; }
 
     const warmChat = fetch(`${this._baseUrl}/api/chat`, {
@@ -303,6 +332,7 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
         model: modelId,
         messages: [],
         keep_alive: '30m',
+        ...(numCtx > 0 ? { options: { num_ctx: Math.floor(numCtx) } } : {}),
       }),
     }).then(r => { if (!r.ok) { console.warn(`[OllamaProvider] preload chat model failed: HTTP ${r.status}`); } })
       .catch(err => { console.warn('[OllamaProvider] preload chat model error:', err); });
@@ -447,19 +477,23 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
       stream: true,
     };
 
-    // Only send num_ctx when the user has explicitly configured an override.
-    // Otherwise let Ollama use its own setting (Modelfile, desktop slider,
-    // or OLLAMA_NUM_CTX env var).  This matches native Ollama behavior —
-    // Ollama allocates KV-cache based on ITS configured num_ctx, not the
-    // model's theoretical maximum.  Sending the theoretical max (e.g. 262K
-    // for qwen3) forces Ollama to allocate a massive KV-cache that cripples
-    // inference speed even for tiny prompts.
+    // Every request names its context size. Ollama keeps a loaded model at
+    // one size: a request at another size makes it load the model again, and
+    // with no size it uses the model's full length (262K for qwen3.x), whose
+    // context cache spills past the graphics card. Priority: the request's
+    // own numCtx > the provider-wide override > the last size a request
+    // named (capped at the model's own length when known).
     const ollamaOptions: Record<string, unknown> = {};
-    // num_ctx priority: per-request numCtx > provider-level override > Ollama default
-    if (options?.numCtx && options.numCtx > 0) {
-      ollamaOptions['num_ctx'] = options.numCtx;
-    } else if (this._contextLengthOverride > 0) {
-      ollamaOptions['num_ctx'] = this._contextLengthOverride;
+    const named = options?.numCtx && options.numCtx > 0
+      ? options.numCtx
+      : this._contextLengthOverride > 0 ? this._contextLengthOverride : 0;
+    if (named > 0) {
+      ollamaOptions['num_ctx'] = named;
+      this._lastNumCtx = named;
+      this._onDidSendChatRequest.fire({ modelId, numCtx: named });
+    } else if (this._lastNumCtx > 0) {
+      const max = this._contextLengthCache.get(modelId);
+      ollamaOptions['num_ctx'] = max && max > 0 ? Math.min(this._lastNumCtx, max) : this._lastNumCtx;
     }
     if (options) {
       if (options.temperature !== undefined) ollamaOptions['temperature'] = Math.max(0, Math.min(2, options.temperature));
@@ -839,25 +873,22 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
   }
 
   /**
-   * Trigger model pre-loading. Attempts to find the configured/active model
-   * from the loaded models list or falls back to listing available models
-   * and picking the first one.
+   * Trigger the launch warm-up: the model and context the chat last ran
+   * with (setWarmupTarget), when Ollama is first seen with nothing loaded.
+   * Nothing remembered, or the model no longer installed: nothing is warmed.
+   * (Guessing the first model Ollama lists, at Ollama's full default size,
+   * loaded a model the chat did not use and pushed the chat's own model off
+   * the graphics card.)
    */
   private _triggerPreload(): void {
+    const target = this._warmupTarget;
+    if (!target) return;
     // Use setTimeout to avoid blocking the poll cycle
     setTimeout(async () => {
       try {
-        // Try to detect the user's model — check loaded first, then list all
-        let modelId = this._loadedModels[0] ?? '';
-        if (!modelId) {
-          const models = await this.listModels();
-          if (models.length > 0) {
-            modelId = models[0].id;
-          }
-        }
-        if (modelId) {
-          await this.preloadModel(modelId);
-        }
+        const models = await this.listModels();
+        if (!models.some((m) => m.id === target.modelId)) return;
+        await this.preloadModel(target.modelId, target.numCtx);
       } catch (err) {
         console.warn('[OllamaProvider] _triggerPreload failed:', err);
       }

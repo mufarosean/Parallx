@@ -229,4 +229,68 @@ describe('OllamaProvider', () => {
       }
     });
   });
+
+  // Seen live (Ollama's log, 2026-09-10/11): the warm-up loaded the first
+  // model Ollama listed at its full 262K default, and requests with no size
+  // made Ollama reload the chat's model at 262K, spilling past the graphics
+  // card, then again at the chat's 160K.
+  describe('launch warm-up and context size', () => {
+    const tag = (name: string) => ({
+      name, model: name, modified_at: '2026-09-11T00:00:00Z', size: 1, digest: name,
+      details: { format: 'gguf', family: 'qwen3', families: ['qwen3'], parameter_size: '27B', quantization_level: 'Q4_K_M' },
+    });
+    function recordingFetch(tags: string[]) {
+      const chats: Record<string, unknown>[] = [];
+      const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        if (url.includes('/api/version')) return jsonResponse({ version: '0.12.0' });
+        if (url.includes('/api/ps')) return jsonResponse({ models: [] });
+        if (url.includes('/api/tags')) return jsonResponse({ models: tags.map(tag) });
+        if (url.includes('/api/embed')) return jsonResponse({ embeddings: [[0]] });
+        if (url.includes('/api/chat')) {
+          chats.push(JSON.parse(String(init?.body ?? '{}')));
+          return streamResponse([JSON.stringify({ model: 'm', message: { role: 'assistant', content: '' }, done: true })]);
+        }
+        throw new Error(`Unexpected fetch to: ${url}`);
+      });
+      return { fetchMock, chats };
+    }
+    const drain = async (it: AsyncIterable<unknown>) => { for await (const _chunk of it) { /* drain */ } };
+
+    it('warms the model and context the chat last ran with, not the first model Ollama lists', async () => {
+      const { fetchMock, chats } = recordingFetch(['qwen3.6:latest', 'qwen3.8:27b']);
+      vi.stubGlobal('fetch', fetchMock);
+      const p = new OllamaProvider();
+      p.setWarmupTarget({ modelId: 'qwen3.8:27b', numCtx: 163840 });
+      await new Promise((r) => setTimeout(r, 400));
+      expect(chats).toEqual([expect.objectContaining({ model: 'qwen3.8:27b', messages: [], options: { num_ctx: 163840 } })]);
+      p.dispose();
+    });
+
+    it('warms nothing when nothing is remembered, or the remembered model is gone', async () => {
+      const { fetchMock, chats } = recordingFetch(['qwen3.6:latest']);
+      vi.stubGlobal('fetch', fetchMock);
+      const none = new OllamaProvider();
+      const gone = new OllamaProvider();
+      gone.setWarmupTarget({ modelId: 'qwen3.8:27b', numCtx: 163840 });
+      await new Promise((r) => setTimeout(r, 400));
+      expect(chats).toEqual([]);
+      none.dispose();
+      gone.dispose();
+    });
+
+    it('names a context size on every request: one without a size reuses the last size named', async () => {
+      const { fetchMock, chats } = recordingFetch([]);
+      vi.stubGlobal('fetch', fetchMock);
+      const p = new OllamaProvider();
+      const sent = vi.fn();
+      p.onDidSendChatRequest(sent);
+      await drain(p.sendChatRequest('qwen3.8:27b', [{ role: 'user', content: 'Hi' }], { numCtx: 163840 }));
+      await drain(p.sendChatRequest('qwen3.8:27b', [{ role: 'user', content: 'Summarize this' }]));
+      expect(sent).toHaveBeenCalledTimes(1);
+      expect(sent).toHaveBeenCalledWith({ modelId: 'qwen3.8:27b', numCtx: 163840 });
+      expect(chats.map((c) => (c.options as { num_ctx?: number } | undefined)?.num_ctx)).toEqual([163840, 163840]);
+      p.dispose();
+    });
+  });
 });

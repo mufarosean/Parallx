@@ -94,12 +94,21 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   model_id    TEXT NOT NULL DEFAULT '',
   is_complete INTEGER NOT NULL DEFAULT 0,
   timestamp   INTEGER NOT NULL,
-  sort_order  INTEGER NOT NULL DEFAULT 0
+  sort_order  INTEGER NOT NULL DEFAULT 0,
+  prompt_tokens     INTEGER,
+  completion_tokens INTEGER
 )`;
 
 const CREATE_MESSAGES_INDEX = `
 CREATE INDEX IF NOT EXISTS idx_chat_messages_session
 ON chat_messages(session_id, sort_order)`;
+
+/**
+ * Whether a database's chat_messages has the token columns (ensureChatTables
+ * learns it). Unknown counts as yes: every database is created or upgraded
+ * with them before its first save.
+ */
+const _tokenColumns = new WeakMap<IChatPersistenceDatabase, boolean>();
 
 // ── Ephemeral session substrate (M58 W5-A) ──
 //
@@ -173,6 +182,19 @@ export async function ensureChatTables(db: IChatPersistenceDatabase): Promise<vo
     // Migration failure is non-fatal — new tables already have the column
     console.warn('[ChatPersistence] workspace_id migration check failed:', e);
   }
+
+  // The model's reported prompt and answer sizes, kept with each answer: the
+  // chat's context meter reads them back after a restart. Its own try, so a
+  // failure above cannot skip it; saves name these columns only once they exist.
+  try {
+    const mc = await db.all<{ name: string }>(`PRAGMA table_info(chat_messages)`);
+    if (!mc.some((c) => c.name === 'prompt_tokens')) await db.run(`ALTER TABLE chat_messages ADD COLUMN prompt_tokens INTEGER`);
+    if (!mc.some((c) => c.name === 'completion_tokens')) await db.run(`ALTER TABLE chat_messages ADD COLUMN completion_tokens INTEGER`);
+    _tokenColumns.set(db, true);
+  } catch (e) {
+    _tokenColumns.set(db, false);
+    console.warn('[ChatPersistence] chat_messages token columns migration failed:', e);
+  }
 }
 
 /**
@@ -224,7 +246,7 @@ export async function saveSession(db: IChatPersistenceDatabase, session: IChatSe
     Date.now(),
   ];
   const deleteMessagesSql = `DELETE FROM chat_messages WHERE session_id = ?`;
-  const buildMessageOps = (): IChatPersistenceTxnOp[] => _buildMessageInsertOps(session);
+  const buildMessageOps = (): IChatPersistenceTxnOp[] => _buildMessageInsertOps(session, db);
 
   // Fast path — one IPC round-trip. The main-process handler wraps every
   // op in a single IMMEDIATE transaction. This avoids issuing 2N+3 awaited
@@ -259,23 +281,29 @@ export async function saveSession(db: IChatPersistenceDatabase, session: IChatSe
 
 const MESSAGE_INSERT_SQL = `INSERT INTO chat_messages (session_id, role, content, parts_json, model_id, is_complete, timestamp, sort_order)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
+const MESSAGE_INSERT_WITH_TOKENS_SQL = `INSERT INTO chat_messages (session_id, role, content, parts_json, model_id, is_complete, timestamp, sort_order, prompt_tokens, completion_tokens)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
 /** Build the ordered user/assistant INSERT ops for a session's messages. */
-function _buildMessageInsertOps(session: IChatSession): IChatPersistenceTxnOp[] {
+function _buildMessageInsertOps(session: IChatSession, db?: IChatPersistenceDatabase): IChatPersistenceTxnOp[] {
   const ops: IChatPersistenceTxnOp[] = [];
+  // The answer's reported sizes ride along once the columns exist (ensureChatTables).
+  const withTokens = !db || _tokenColumns.get(db) !== false;
+  const sql = withTokens ? MESSAGE_INSERT_WITH_TOKENS_SQL : MESSAGE_INSERT_SQL;
   for (let i = 0; i < session.messages.length; i++) {
     const pair = session.messages[i];
     ops.push({
-      type: 'run', sql: MESSAGE_INSERT_SQL,
+      type: 'run', sql,
       params: [session.id, 'user', pair.request.text,
         JSON.stringify(_serializeUserMessageMetadata(pair.request)), '', 1,
-        pair.request.timestamp, i * 2],
+        pair.request.timestamp, i * 2, ...(withTokens ? [null, null] : [])],
     });
     ops.push({
-      type: 'run', sql: MESSAGE_INSERT_SQL,
+      type: 'run', sql,
       params: [session.id, 'assistant', _extractTextContent(pair.response.parts),
         JSON.stringify(pair.response.parts), pair.response.modelId,
-        pair.response.isComplete ? 1 : 0, pair.response.timestamp, i * 2 + 1],
+        pair.response.isComplete ? 1 : 0, pair.response.timestamp, i * 2 + 1,
+        ...(withTokens ? [pair.response.promptTokens ?? null, pair.response.completionTokens ?? null] : [])],
     });
   }
   return ops;
@@ -330,7 +358,7 @@ export async function archiveSession(
   const ops: IChatPersistenceTxnOp[] = [
     { type: 'run', sql: sessionSql, params: sessionParams },
     { type: 'run', sql: deleteSql, params: [session.id] },
-    ..._buildMessageInsertOps(session),
+    ..._buildMessageInsertOps(session, db),
   ];
   if (typeof db.runTransaction === 'function') {
     await db.runTransaction(ops);
@@ -381,7 +409,7 @@ export async function loadArchivedRun(
   );
   if (!row) return null;
   const messageRows = await db.all<IPersistedMessageRow>(
-    `SELECT role, content, parts_json, model_id, is_complete, timestamp, sort_order
+    `SELECT *
        FROM chat_messages WHERE session_id = ? ORDER BY sort_order`, [sessionId]);
   const { messages } = _normalizeReplayChains(_reconstructPairs(messageRows));
   return _buildSessionFromRow(row, messages);
@@ -407,6 +435,10 @@ export async function pruneArchivedRuns(
   return stale.length;
 }
 
+/**
+ * A chat_messages row. Rows are read with SELECT *, so a database that missed
+ * the token-column upgrade still loads.
+ */
 interface IPersistedMessageRow {
   role: string;
   content: string;
@@ -415,6 +447,9 @@ interface IPersistedMessageRow {
   is_complete: number;
   timestamp: number;
   sort_order: number;
+  /** The model's reported sizes for an answer; absent on rows saved before they were kept. */
+  prompt_tokens?: number | null;
+  completion_tokens?: number | null;
 }
 
 /** Rebuild request/response pairs from ordered chat_messages rows. */
@@ -444,11 +479,14 @@ function _reconstructPairs(messageRows: readonly IPersistedMessageRow[]): IChatR
         // Corrupted parts — fallback to empty
       }
 
+      const reported = typeof msg.prompt_tokens === 'number' && msg.prompt_tokens > 0;
       const response: IChatAssistantResponse = {
         parts,
         isComplete: msg.is_complete === 1,
         modelId: msg.model_id,
         timestamp: msg.timestamp,
+        // What the model reported for this answer: the context meter's base after a restart.
+        ...(reported ? { promptTokens: msg.prompt_tokens as number, completionTokens: typeof msg.completion_tokens === 'number' ? msg.completion_tokens : 0 } : {}),
       };
 
       messages.push({
@@ -483,7 +521,7 @@ export async function loadSessions(db: IChatPersistenceDatabase, workspaceId: st
 
   for (const row of rows) {
     const messageRows = await db.all<IPersistedMessageRow>(
-      `SELECT role, content, parts_json, model_id, is_complete, timestamp, sort_order
+      `SELECT *
         FROM chat_messages WHERE session_id = ? ORDER BY sort_order`, [row.id]);
 
     const { messages: normalizedMessages, changed } = _normalizeReplayChains(_reconstructPairs(messageRows));
@@ -609,7 +647,7 @@ export async function loadSessionMessages(
   if (!db.isOpen) { return { messages: [], changed: false }; }
 
   const messageRows = await db.all<IPersistedMessageRow>(
-    `SELECT role, content, parts_json, model_id, is_complete, timestamp, sort_order
+    `SELECT *
         FROM chat_messages WHERE session_id = ? ORDER BY sort_order`, [sessionId]);
 
   return _normalizeReplayChains(_reconstructPairs(messageRows));

@@ -18,6 +18,7 @@ source-of-truth.
 - [SETTINGS_REGISTRY.md](./SETTINGS_REGISTRY.md)
 - [ai/AUTONOMY_RUNTIME_CONTRACTS.md](./ai/AUTONOMY_RUNTIME_CONTRACTS.md)
 - [ai/AUTONOMY_TASK_RAIL.md](./ai/AUTONOMY_TASK_RAIL.md)
+- [ai/CHAT_CONTEXT_WINDOW.md](./ai/CHAT_CONTEXT_WINDOW.md) — how a chat's context size is chosen, the context meter, and open issues (2026-09-11)
 - [ai/CANVAS_BLOCK_API.md](./ai/CANVAS_BLOCK_API.md)
 - [ai/GMAIL_MCP_INTEGRATION.md](./ai/GMAIL_MCP_INTEGRATION.md)
 - [canvas/BLOCK_REGISTRY.md](./canvas/BLOCK_REGISTRY.md)
