@@ -4111,6 +4111,11 @@ async function generateImageThumbnail(checksum, filePath, width, height, api, ov
   const parentDir = thumbPath.slice(0, thumbPath.lastIndexOf(sep));
   await window.parallxElectron.fs.mkdir(parentDir);
 
+  // HEIC (phone photos): no decoder in Chromium, so the thumbnail and every
+  // display come from a JPEG copy made once by the bundled magick (M104 Part C).
+  const heicCopy = MO_HEIC_RE.test(filePath) ? await moHeicDisplayCopy(filePath, api) : null;
+  const input = heicCopy || filePath;
+
   // Animated images go straight to canvas (renders first frame only)
   if (animated) {
     const ok = await generateThumbCanvas(filePath, thumbPath, THUMB_MAX_SIZE);
@@ -4120,19 +4125,19 @@ async function generateImageThumbnail(checksum, filePath, width, height, api, ov
 
   // Adapted from stash: pkg/image/thumbnail.go — GetThumbnail encoder priority
   if (_toolPaths.vips) {
-    const ok = await generateThumbVips(filePath, thumbPath, THUMB_MAX_SIZE);
+    const ok = await generateThumbVips(input, thumbPath, THUMB_MAX_SIZE);
     if (ok) return { generated: true, path: thumbPath, encoder: 'vips' };
     console.warn(`[MediaOrganizer] vips thumbnail failed for ${filePath}, trying ffmpeg`);
   }
 
   if (_toolPaths.ffmpeg) {
-    const ok = await generateThumbFfmpeg(filePath, thumbPath, THUMB_MAX_SIZE);
+    const ok = await generateThumbFfmpeg(input, thumbPath, THUMB_MAX_SIZE);
     if (ok) return { generated: true, path: thumbPath, encoder: 'ffmpeg' };
     console.warn(`[MediaOrganizer] ffmpeg thumbnail failed for ${filePath}, trying canvas`);
   }
 
   // Canvas fallback — no external tools needed
-  const ok = await generateThumbCanvas(filePath, thumbPath, THUMB_MAX_SIZE);
+  const ok = await generateThumbCanvas(input, thumbPath, THUMB_MAX_SIZE);
   if (ok) return { generated: true, path: thumbPath, encoder: 'canvas' };
 
   console.warn(`[MediaOrganizer] All thumbnail encoders failed for ${filePath}`);
@@ -8447,6 +8452,12 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
 .mo-tr-suggest-item { padding: 4px 10px; font-size: 12px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mo-tr-suggest-item:hover, .mo-tr-suggest-item.is-active { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
 
+/* ── Preview copies and offline folders (M104) ── */
+.mo-player-preview-note { position: absolute; top: 12px; left: 12px; z-index: 5; padding: 4px 10px; font-size: 11px; border-radius: var(--parallx-radius-sm, 3px); background: var(--vscode-editorWidget-background, var(--px-bg-elevated)); border: 1px solid var(--vscode-editorWidget-border, var(--px-border)); color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
+.mo-sidebar-item.is-offline { opacity: 0.6; }
+.mo-sidebar-item.is-offline .mo-sidebar-item-count { font-style: italic; }
+.mo-clip-hint { font-size: 11px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
+
 /* ── Practice (M104) ── */
 .mo-practice { position: absolute; inset: 0; background: var(--vscode-editor-background, var(--px-bg)); color: var(--vscode-foreground, var(--px-text)); overflow: hidden; outline: none; user-select: none; }
 .mo-practice-stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
@@ -8755,6 +8766,7 @@ const _MIME_FROM_EXT = {
 
 async function localFileToUrl(filePath) {
   if (!filePath) return null;
+  if (MO_HEIC_RE.test(filePath)) { const copy = await moHeicDisplayCopy(filePath, _api); if (copy) filePath = copy; }
   const cached = _blobUrlCache.get(filePath);
   if (cached) return cached;
   try {
@@ -10116,8 +10128,11 @@ function renderBrowserSidebar(container, api) {
         const relPath = commonPrefix ? row.path.slice(commonPrefix.length) : row.path;
         const displayName = relPath.replace(/\\/g, '/') || row.path.split(/[/\\]/).pop() || `Folder ${row.id}`;
         if (folderFilterText && !displayName.toLowerCase().includes(folderFilterText) && !row.path.toLowerCase().includes(folderFilterText)) continue;
-        const badge = String(row.file_count);
-        folderBody.appendChild(sidebarItem('folder', displayName, badge, () => openGrid(`folder:${row.id}`, displayName, 'folder')));
+        const offline = moFolderIsOffline(row.path);
+        const badge = offline ? 'Offline' : String(row.file_count);
+        const item = sidebarItem('folder', displayName, badge, () => openGrid(`folder:${row.id}`, displayName, 'folder'));
+        if (offline) { item.classList.add('is-offline'); item.title = 'Offline: the drive or folder is not available right now. Its photos are kept.'; }
+        folderBody.appendChild(item);
       }
     } catch {
       folderBody.appendChild(moEl('div', 'mo-empty', { textContent: 'Could not load folders' }));
@@ -14842,7 +14857,7 @@ function buildVideoPlayer(container, fullPath, ctx) {
   const speedWrap = moEl('div', 'mo-player-speed');
   const speedBtn = moEl('button', 'mo-player-btn mo-player-speed-btn', { title: 'Playback speed', textContent: '1×' });
   const speedMenu = moEl('div', 'mo-player-speed-menu mo-hidden');
-  const speeds = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4];
+  const speeds = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4, 8, 16];
   speeds.forEach(s => {
     const item = moEl('button', 'mo-player-speed-item', { textContent: s + '×' });
     item.addEventListener('click', (e) => {
@@ -15076,9 +15091,11 @@ function buildVideoPlayer(container, fullPath, ctx) {
   let loopActive = false;
   let nominalFps = 30; // updated from ffprobe later if available
 
-  // Load video src
-  localFileToUrl(fullPath).then(url => {
-    if (!url) { _showPlayerError('Failed to read video file', 'The file could not be read from disk. It may be locked, deleted, or larger than 512 MB.'); return; }
+  // Load video src (the preview copy when the codec needs one). The codec
+  // pre-flight below runs first; the load waits one microtask for it.
+  let _previewCopy = null;
+  Promise.resolve().then(() => (_previewCopy ? _previewCopy.then((p) => (p ? localFileToUrl(p) : null)) : localFileToUrl(fullPath))).then(url => {
+    if (!url) { if (!_previewCopy) _showPlayerError('Failed to read video file', 'The file could not be read from disk. It may be locked, deleted, or larger than 512 MB.'); return; }
     video.src = url;
     previewVid.src = url;
     video.load();
@@ -15109,13 +15126,21 @@ function buildVideoPlayer(container, fullPath, ctx) {
   // just no pixels. We have the codec from ffprobe at scan time, so
   // pre-flight against a known-bad list before even loading the blob.
   const _CODEC_UNSUPPORTED = new Set(['hevc', 'h265', 'vp8', 'mpeg4', 'mpeg2video', 'wmv3', 'vc1', 'prores']);
-  const codec = String((ctx && ctx.entity && ctx.entity.codec) || '').toLowerCase();
-  if (codec && _CODEC_UNSUPPORTED.has(codec)) {
-    _showPlayerError(
-      `Codec "${codec}" is not supported by the in-app player`,
-      'Chromium\u2019s built-in video element cannot decode this codec. Open it in your system player or transcode it to H.264 (mp4) to play it inline.'
-    );
-    return;
+  const codec = String((ctx && ((ctx.videoFile && ctx.videoFile.codec) || (ctx.entity && ctx.entity.codec))) || '').toLowerCase();
+  // A codec Chromium cannot decode (HEVC from a phone, most often) plays
+  // from a preview copy made by ffmpeg in the cache; the original file is
+  // untouched and exports still read it (M104 Part C).
+  if (codec && _CODEC_UNSUPPORTED.has(codec) && !moCanPlayCodec(codec)) {
+    if (!_toolPaths.ffmpeg) {
+      _showPlayerError(
+        `Codec "${codec}" is not supported by the in-app player`,
+        'Chromium\u2019s built-in video element cannot decode this codec. Install ffmpeg for a preview copy, or open it in your system player.'
+      );
+      return;
+    }
+    const note = moEl('div', 'mo-player-preview-note', { textContent: 'Making a preview copy for playback. The original file is untouched.' });
+    container.appendChild(note);
+    _previewCopy = moVideoPreviewCopy(fullPath, _api).then((p) => { note.remove(); if (!p) _showPlayerError(`Codec "${codec}" is not supported by the in-app player`, 'The preview copy could not be made. Open it in your system player.'); return p; });
   }
 
   video.addEventListener('error', () => {
@@ -20195,7 +20220,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   preview.volume = 1;
   preview.loop = false;
   preview.controls = false;
-  localFileToUrl(videoPath).then(u => { if (u) preview.src = u; });
+  moClipPreviewSource(videoPath, api).then((p) => localFileToUrl(p)).then(u => { if (u) preview.src = u; });
 
   const body = moEl('div', 'mo-clip-body');
   dialog.appendChild(body);
@@ -20488,13 +20513,43 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   speedRow.appendChild(lbl('Speed'));
   const speedSel = document.createElement('select');
   speedSel.className = 'mo-clip-input';
-  for (const s of [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4]) {
+  for (const s of [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4, 8, 16, 32, 64]) {
     const o = document.createElement('option'); o.value = String(s); o.textContent = s + '×';
     if (s === 1) o.selected = true;
     speedSel.appendChild(o);
   }
   speedRow.appendChild(speedSel);
   secOutput.appendChild(speedRow);
+
+  // Fit To Length (M104): a painting session becomes a timelapse of a chosen
+  // length; the speed follows from the clip's length and is applied at export.
+  const fitRow = moEl('div', 'mo-clip-row');
+  fitRow.appendChild(lbl('Fit To Length'));
+  const fitSel = document.createElement('select');
+  fitSel.className = 'mo-clip-input';
+  for (const [v, label] of [[0, 'Off'], [15, '15 s'], [30, '30 s'], [60, '1 min'], [120, '2 min'], [300, '5 min']]) {
+    const o = document.createElement('option'); o.value = String(v); o.textContent = label;
+    fitSel.appendChild(o);
+  }
+  fitRow.appendChild(fitSel);
+  const fitNote = moEl('span', 'mo-clip-hint');
+  fitRow.appendChild(fitNote);
+  secOutput.appendChild(fitRow);
+  // The speed the export really uses: the chosen one, or the one that fits the length.
+  function effectiveSpeed() {
+    const fit = parseFloat(fitSel.value) || 0;
+    if (fit > 0) {
+      const [aa, bb] = getInOut();
+      const len = Math.max(0.05, (segments.length >= 2 ? segmentsTotal() : (bb - aa)));
+      return Math.max(0.1, Math.min(1000, len / fit));
+    }
+    return Math.max(0.1, parseFloat(speedSel.value) || 1);
+  }
+  function syncFit() {
+    const fit = parseFloat(fitSel.value) || 0;
+    speedSel.disabled = fit > 0;
+    fitNote.textContent = fit > 0 ? `= ${effectiveSpeed().toFixed(effectiveSpeed() >= 10 ? 0 : 1)}×` : '';
+  }
 
   // Filter preset — applied at export via ffmpeg; previewed live via a CSS
   // approximation on the <video> element.
@@ -20558,7 +20613,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       await moExportClipPipeline(api, {
         videoPath, inPoint: t0, outPoint: t1, outPath,
         format: 'mp4', fps: Math.min(30, parseInt(fpsSel.value, 10) || 30),
-        scalePct: previewScale, speed: parseFloat(speedSel.value) || 1,
+        scalePct: previewScale, speed: effectiveSpeed(),
         reverse: revChk.checked, mute: true, crf: 26, encodeMode: 'crf', hwAccel: 'off',
         filter: filterSel.value,
         crop: cropEnabled ? { x: cropNorm.x, y: cropNorm.y, w: cropBase.w, h: cropBase.h } : null,
@@ -21394,6 +21449,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   moBindCustomSelect(fmtSel);
   moBindCustomSelect(fpsSel);
   moBindCustomSelect(speedSel);
+  moBindCustomSelect(fitSel);
   moBindCustomSelect(filterSel);
   moBindCustomSelect(ditherSel);
   moBindCustomSelect(encModeSel);
@@ -22469,7 +22525,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       format: fmtSel.value,
       fps: parseInt(fpsSel.value, 10) || 30,
       scale: Math.max(10, parseInt(sizeInput.value, 10) || 100),
-      speed: parseFloat(speedSel.value) || 1,
+      speed: effectiveSpeed(),
       reverse: revChk.checked,
       mute: muteChk.checked,
       crf: parseInt(crfInput.value, 10) || 23,
@@ -23041,7 +23097,8 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   // H.264 / VP9: bitsPerPixel scales as 2^((23-CRF)/6) from a baseline at CRF 23
   function estimateBytes() {
     const [aa, bb] = getInOut();
-    const speed = Math.max(0.1, parseFloat(speedSel.value) || 1);
+    const speed = effectiveSpeed();
+    syncFit();
     const dur = Math.max(0.05, ((segments.length >= 2 ? segmentsTotal() : (bb - aa)) + (endCard.enabled ? endCard.seconds : 0)) / speed);
     const fps = Math.max(1, parseInt(fpsSel.value, 10) || 12);
     const scale = Math.max(0.1, (parseInt(sizeInput.value, 10) || 100) / 100);
@@ -23109,10 +23166,12 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   // their choice before committing. Browsers clamp playbackRate (~0.0625\u201316)
   // and our menu only offers 0.25\u20134, well inside the safe range.
   function applyPreviewSpeed() {
-    const s = parseFloat(speedSel.value);
-    if (Number.isFinite(s) && s > 0) preview.playbackRate = s;
+    // The <video> element auditions up to 16×; faster exports are shown at 16×.
+    const s = effectiveSpeed();
+    if (Number.isFinite(s) && s > 0) preview.playbackRate = Math.min(16, s);
   }
   speedSel.addEventListener('change', applyPreviewSpeed);
+  fitSel.addEventListener('change', () => { syncFit(); updateEstimate(); applyPreviewSpeed(); });
   preview.addEventListener('loadedmetadata', applyPreviewSpeed);
   // The HTMLMediaElement resets playbackRate to defaultPlaybackRate on some
   // src/seek transitions \u2014 reapply on play to keep the audition consistent.
@@ -26730,10 +26789,34 @@ async function moPurgeMedia(api, items, opts = {}) {
 // disk is purged, and any photo/video that has no surviving backing file is
 // purged with it. Guards against historical bugs where deletion left orphan
 // rows behind, and against folders that drift out of scan roots.
+// Offline roots (M104 Part C): scan roots that are not on disk right now.
+const _moOfflineRoots = new Set();
+let _moFolderTree = null; // id -> { path, parent }
+function moRootPathOf(folderId) {
+  const t = _moFolderTree;
+  if (!t) return '';
+  let cur = t.get(folderId);
+  let guard = 0;
+  while (cur && cur.parent != null && t.has(cur.parent) && guard++ < 64) cur = t.get(cur.parent);
+  return cur ? cur.path : '';
+}
+async function moOfflineRootsFor(goneFiles) {
+  const rows = await db.all('SELECT id, path, parent_folder_id AS parent FROM mo_folders');
+  _moFolderTree = new Map(rows.map((r) => [r.id, { path: r.path, parent: r.parent }]));
+  const roots = [...new Set(goneFiles.map((f) => moRootPathOf(f.folder_id)).filter(Boolean))];
+  const present = await _mapBounded(roots, 8, (p) => window.parallxElectron.fs.exists(p).catch(() => false));
+  return new Set(roots.filter((_, i) => !present[i]));
+}
+function moFolderIsOffline(folderPath) {
+  const sep = _isWindows ? '\\' : '/';
+  for (const r of _moOfflineRoots) if (folderPath === r || folderPath.startsWith(r.replace(/[\\/]+$/, '') + sep)) return true;
+  return false;
+}
+
 async function moPurgeMissingFiles() {
   try {
     const files = await db.all(
-      `SELECT f.id AS id, fl.path AS folder_path, f.basename AS basename,
+      `SELECT f.id AS id, fl.id AS folder_id, fl.path AS folder_path, f.basename AS basename,
               (SELECT value FROM mo_fingerprints WHERE file_id = f.id AND type = 'md5' LIMIT 1) AS checksum
          FROM mo_files f
          JOIN mo_folders fl ON fl.id = f.folder_id`
@@ -26747,9 +26830,17 @@ async function moPurgeMissingFiles() {
     const present = await _mapBounded(candidates, 32, (f) =>
       window.parallxElectron.fs.exists((f.folder_path || '') + sep + f.basename).catch(() => false)
     );
-    const missing = candidates.filter((_, i) => !present[i]);
-    if (missing.length === 0) return;
-
+    const gone = candidates.filter((_, i) => !present[i]);
+    // A file whose scan root is not there at all (an unplugged drive, a moved
+    // folder) is offline, not deleted: its rows, tags and albums are kept and
+    // the sidebar says so. Only files missing from a root that is present are purged.
+    const offlineRoots = await moOfflineRootsFor(gone);
+    const missing = gone.filter((f) => !offlineRoots.has(moRootPathOf(f.folder_id)));
+    _moOfflineRoots.clear();
+    for (const r of offlineRoots) _moOfflineRoots.add(r);
+    if (gone.length) console.log(`[media-organizer] startup sweep: ${gone.length} missing, ${missing.length} purged, offline roots: ${[...offlineRoots].join(', ') || 'none'}`);
+    if (offlineRoots.size && _api) _api.window.showWarningMessage(`${offlineRoots.size === 1 ? '1 folder is' : offlineRoots.size + ' folders are'} offline (drive not connected or folder moved). Its photos, tags and albums are kept.`);
+    if (missing.length === 0) { if (offlineRoots.size) _notifySidebarRefresh(); return; }
     const fileEntries = missing.map((f) => ({ id: f.id, checksum: f.checksum || null }));
     const res = await _purgeFileRowsSetBased(fileEntries);
     // Sweep orphan thumbnails for checksums that no surviving file row still
@@ -28217,6 +28308,88 @@ let _toolPath = '';
 let _activated = false;
 const _sidebarRefreshCallbacks = [];
 // ═══════════════════════════════════════════════════════════════════════════
+// ── Preview and display copies (M104 Part C) ─────────────────────────────
+// Phone footage and photos the renderer cannot decode play from copies made
+// once into the thumbnail cache. Originals are never touched.
+const MO_HEIC_RE = /\.(heic|heif)$/i;
+const MO_PREVIEW_CODECS = new Set(['hevc', 'h265', 'vp8', 'mpeg4', 'mpeg2video', 'wmv3', 'vc1', 'prores']);
+const _moCopyInflight = new Map();
+function moPathKey(filePath, st) {
+  const str = `${filePath}|${st && st.size}|${st && (st.mtime || st.mtimeMs || '')}`;
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) >>> 0;
+  return h.toString(16).padStart(8, '0') + '-' + (Number(st && st.size) || 0).toString(36);
+}
+async function moCopyOnce(srcPath, subdir, ext, make, api) {
+  const thumbDir = getThumbDir(api || _api);
+  if (!thumbDir) return null;
+  const st = await window.parallxElectron.fs.stat(srcPath).catch(() => null);
+  if (!st || st.error) return null;
+  const sep = _isWindows ? '\\' : '/';
+  const dir = thumbDir + sep + subdir;
+  const outPath = dir + sep + moPathKey(srcPath, st) + ext;
+  if (await window.parallxElectron.fs.exists(outPath)) return outPath;
+  if (_moCopyInflight.has(outPath)) return _moCopyInflight.get(outPath);
+  const p = (async () => {
+    try {
+      await window.parallxElectron.fs.mkdir(dir);
+      const ok = await make(outPath);
+      if (ok) return outPath;
+      await window.parallxElectron.fs.delete(outPath, { useTrash: false }).catch(() => {});
+      return null;
+    } catch (err) {
+      console.warn('[media-organizer] copy failed:', srcPath, err && err.message);
+      return null;
+    } finally { _moCopyInflight.delete(outPath); }
+  })();
+  _moCopyInflight.set(outPath, p);
+  return p;
+}
+// JPEG copy of a HEIC photo, through the bundled magick.
+async function moHeicDisplayCopy(filePath, api) {
+  if (!MO_HEIC_RE.test(filePath) || !_toolPaths.magick) return null;
+  return moCopyOnce(filePath, 'converted', '.jpg', async (outPath) => {
+    const m = shellInvoke(_toolPaths.magick);
+    const r = await window.parallxElectron.terminal.exec(`${m} ${shellQuote(filePath)} -auto-orient -quality 92 ${shellQuote(outPath)}`, { timeout: 600000 });
+    if (r.exitCode !== 0) console.warn(`[media-organizer] magick could not convert ${filePath}: ${r.stderr || r.stdout || ''}`);
+    return r.exitCode === 0;
+  }, api);
+}
+// H.264 preview copy of a video Chromium cannot decode, through ffmpeg.
+async function moVideoPreviewCopy(videoPath, api) {
+  if (!_toolPaths.ffmpeg) return null;
+  return moCopyOnce(videoPath, 'previews', '.mp4', async (outPath) => {
+    const r = await moExecFFArgs(['-y', '-hide_banner', '-loglevel', 'error', '-i', videoPath, '-vf', "scale='min(1280,iw)':-2", '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '26', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', outPath], 30 * 60 * 1000);
+    return !!r && r.exitCode === 0;
+  }, api);
+}
+// Some machines decode HEVC in hardware; then the file plays as it is.
+function moCanPlayCodec(codec) {
+  if (window.__moForcePreviewCopy) return false;
+  const types = { hevc: 'video/mp4; codecs="hvc1.1.6.L93.B0"', h265: 'video/mp4; codecs="hvc1.1.6.L93.B0"' };
+  const t = types[codec];
+  if (!t) return false;
+  try { return !!document.createElement('video').canPlayType(t); } catch { return false; }
+}
+async function moVideoCodecForPath(videoPath) {
+  try {
+    const sep = videoPath.includes('\\') ? '\\' : '/';
+    const dir = videoPath.slice(0, videoPath.lastIndexOf(sep));
+    const base = videoPath.slice(videoPath.lastIndexOf(sep) + 1);
+    const row = await db.get(
+      `SELECT vfi.codec FROM mo_files f JOIN mo_folders fo ON fo.id = f.folder_id
+       JOIN mo_video_files vfi ON vfi.file_id = f.id
+       WHERE f.basename = ? AND (fo.path = ? OR fo.path = ?)`, [base, dir, dir + sep]);
+    return row && row.codec ? String(row.codec).toLowerCase() : null;
+  } catch { return null; }
+}
+// What the clip editor auditions: the preview copy when the codec needs one, else the file itself.
+async function moClipPreviewSource(videoPath, api) {
+  const codec = await moVideoCodecForPath(videoPath);
+  if (codec && MO_PREVIEW_CODECS.has(codec) && !moCanPlayCodec(codec)) { const p = await moVideoPreviewCopy(videoPath, api); if (p) return p; }
+  return videoPath;
+}
+
 // Section 44: Practice (M104, docs/Parallx_Milestone_104.md)
 //
 // Timed drawing from the library. Daily Study and Practice Sessions are one
@@ -28414,7 +28587,25 @@ async function moPoolPhotoIds(pool) {
   } else {
     rows = await db.all('SELECT id FROM mo_photos WHERE deleted_at IS NULL');
   }
-  return rows.map((r) => Number(r.id)).filter((x) => x > 0);
+  const ids = rows.map((r) => Number(r.id)).filter((x) => x > 0);
+  return moDropOfflinePhotos(ids);
+}
+
+// Pictures on a drive that is not connected cannot be drawn: leave them out
+// of every pool until the drive is back.
+async function moDropOfflinePhotos(ids) {
+  if (!_moOfflineRoots.size || !ids.length) return ids;
+  const keep = [];
+  for (let i = 0; i < ids.length; i += 500) {
+    const part = ids.slice(i, i + 500);
+    const rows = await db.all(
+      `SELECT pf.photo_id AS id, fo.path AS folder_path FROM mo_photos_files pf
+       JOIN mo_files f ON f.id = pf.file_id JOIN mo_folders fo ON fo.id = f.folder_id
+       WHERE pf.is_primary = 1 AND pf.photo_id IN (${part.map(() => '?').join(',')})`, part);
+    const offline = new Set(rows.filter((r) => moFolderIsOffline(r.folder_path || '')).map((r) => Number(r.id)));
+    for (const id of part) if (!offline.has(id)) keep.push(id);
+  }
+  return keep;
 }
 
 // photo id → epoch ms of the last time it was drawn, for the whole library.

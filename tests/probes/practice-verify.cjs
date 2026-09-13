@@ -30,5 +30,11 @@ if (has('mo_plans')) {
   }
   out.push(`photos=${db.prepare('SELECT COUNT(*) AS n FROM mo_photos').get().n} stack members=${db.prepare('SELECT COUNT(*) AS n FROM mo_stack_members').get().n} plan files=${db.prepare("SELECT GROUP_CONCAT(basename) AS b FROM mo_files WHERE basename LIKE '%_plan_%'").get().b || '(none)'}`);
 }
+out.push(`offline root kept=${!!db.prepare("SELECT 1 FROM mo_files WHERE basename = 'gone.jpg'").get()} photo kept=${!!db.prepare("SELECT 1 FROM mo_photos WHERE title = 'gone'").get()} videos=${db.prepare('SELECT COUNT(*) AS n FROM mo_videos').get().n} codec=${(db.prepare('SELECT codec FROM mo_video_files LIMIT 1').get() || {}).codec || '-'}`);
+try {
+  const ws = require('path').resolve(require('path').dirname(dbPath), '..', '..', '..');
+  const prev = require('path').join(ws, '.parallx', 'extensions', 'media-organizer', 'thumbnails', 'previews');
+  out.push(`preview copies=${fs.existsSync(prev) ? fs.readdirSync(prev).join(',') || '(none)' : '(no dir)'}`);
+} catch { /* no preview dir */ }
 out.push(`pending draws left=${db.prepare("SELECT COUNT(*) AS n FROM mo_practice_draws WHERE outcome = 'pending'").get().n}`);
 console.log(out.join('\n  '));

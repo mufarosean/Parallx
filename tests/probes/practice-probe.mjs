@@ -27,6 +27,7 @@ const outDir = path.resolve(process.argv[2] ?? path.join(os.tmpdir(), 'parallx-p
 const ELECTRON = path.join(PROJECT_ROOT, 'node_modules', 'electron', 'dist', process.platform === 'win32' ? 'electron.exe' : 'electron');
 const SEED = path.join(__dirname, 'tag-review-seed.cjs');
 const VERIFY = path.join(__dirname, 'practice-verify.cjs');
+const OFFLINE_SEED = path.join(__dirname, 'practice-offline-seed.cjs');
 const BOXING = path.join(PROJECT_ROOT, 'data', 'dashboard-assets', 'aa21bc3e-d260-41ac-8bcf-ab5efe10d0cb.jpg');
 let APP = null;
 
@@ -65,8 +66,18 @@ async function makeRoots() {
   for (const db of dbPaths(workspace)) {
     const r = spawnSync(ELECTRON, [SEED, 'seed', db, photos, specPath], { env: nodeEnv(), encoding: 'utf8', windowsHide: true });
     if (r.status !== 0) throw new Error(`seed failed: ${r.stderr || r.stdout}`);
+    const o = spawnSync(ELECTRON, [OFFLINE_SEED, db], { env: nodeEnv(), encoding: 'utf8', windowsHide: true });
+    if (o.status !== 0) throw new Error(`offline seed failed: ${o.stderr || o.stdout}`);
   }
-  return { appRoot, workspace };
+  // A 30 s painting-session stand-in, HEVC when the encoder is there (the phone case).
+  const enc = spawnSync('ffmpeg', ['-hide_banner', '-encoders'], { encoding: 'utf8', windowsHide: true });
+  const hevc = /libx265/.test(String(enc.stdout));
+  const videoPath = path.join(photos, 'session.mp4');
+  const v = spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=640x360:rate=24', '-t', '30',
+    '-c:v', hevc ? 'libx265' : 'libx264', '-preset', 'ultrafast', '-tag:v', hevc ? 'hvc1' : 'avc1', '-pix_fmt', 'yuv420p', videoPath], { windowsHide: true });
+  if (v.status !== 0) throw new Error(`ffmpeg video: ${String(v.stderr).slice(0, 200)}`);
+  console.log(`[probe] test video ${hevc ? 'HEVC' : 'H.264 (no libx265)'} at ${videoPath}`);
+  return { appRoot, workspace, videoPath, hevc };
 }
 
 async function runCommand(page, id, ...args) {
@@ -139,7 +150,7 @@ async function playerState(page) {
 
 async function main() {
   await fs.mkdir(outDir, { recursive: true });
-  const { appRoot, workspace } = await makeRoots();
+  const { appRoot, workspace, videoPath, hevc } = await makeRoots();
   console.log(`[probe] app root ${appRoot}\n[probe] workspace ${workspace}`);
   const app = await electron.launch({ args: ['.'], cwd: PROJECT_ROOT, env: launchEnv(appRoot) });
   APP = app;
@@ -148,6 +159,7 @@ async function main() {
     const page = await app.firstWindow();
     page.on('pageerror', (e) => errors.push(String(e).slice(0, 300)));
     page.on('console', (m) => { if (m.type() === 'error') errors.push(`console: ${m.text().slice(0, 300)}`); });
+    page.on('console', (m) => { if (m.text().includes('startup sweep')) console.log(`[probe] ${m.text()}`); });
     await page.setViewportSize({ width: 1400, height: 900 }).catch(() => {});
     await page.waitForSelector('[data-part-id="workbench.parts.titlebar"]', { state: 'attached', timeout: 90_000 });
     await page.waitForTimeout(3_000);
@@ -164,6 +176,7 @@ async function main() {
     await page.waitForSelector('.mo-sidebar-item', { timeout: 10_000 });
     await page.waitForTimeout(800);
     log('sidebar gate off', await practiceSidebar(page));
+    log('folders', await page.evaluate(() => Array.from(document.querySelectorAll('[data-mo-section="folders"] .mo-sidebar-item')).map((i) => `${i.querySelector('.mo-sidebar-item-label')?.textContent}:${i.querySelector('.mo-sidebar-item-count')?.textContent || ''}${i.classList.contains('is-offline') ? '(offline)' : ''}`).join(' | ')));
     log('openHome', await runCommand(page, 'media-organizer.openHome'));
     await page.waitForSelector('.mo-home', { timeout: 15_000 });
     await page.waitForTimeout(1_500);
@@ -183,6 +196,8 @@ async function main() {
     log('gate on', turnedOn);
     await page.waitForTimeout(1_200);
     log('sidebar gate on', await practiceSidebar(page));
+    log('exists checks', await page.evaluate(async () => `root=${await window.parallxElectron.fs.exists('Q:\parallx-offline-root')} file=${await window.parallxElectron.fs.exists('Q:\parallx-offline-root\gone.jpg')}`));
+    log('folders after gate on', await page.evaluate(() => Array.from(document.querySelectorAll('[data-mo-section="folders"] .mo-sidebar-item')).map((i) => `${i.querySelector('.mo-sidebar-item-label')?.textContent}:${i.querySelector('.mo-sidebar-item-count')?.textContent || ''}${i.classList.contains('is-offline') ? '(offline)' : ''}`).join(' | ')));
     await page.waitForFunction(() => document.querySelector('.mo-daily') && getComputedStyle(document.querySelector('.mo-daily')).display !== 'none', null, { timeout: 8_000 }).catch(() => {});
     await page.waitForTimeout(1_500);
     log('daily card gate on', await dailyCard(page));
@@ -361,6 +376,38 @@ async function main() {
     await page.waitForTimeout(800);
     log('plans list', await page.evaluate(() => Array.from(document.querySelectorAll('.mo-plans-card')).map((c) => c.textContent).join(' | ') || '(none)'));
 
+    // Part C: the video comes in through a rescan, plays from a preview copy
+    // when it is HEVC, and the clip editor offers timelapse speeds and Fit To Length.
+    log('rescan', await runCommand(page, 'media-organizer.rescan'));
+    await page.waitForTimeout(10_000);
+    await runCommand(page, 'media-organizer.openHome');
+    await page.waitForTimeout(1_200);
+    await page.locator('.mo-home-chip', { hasText: 'Videos' }).first().click();
+    await page.waitForSelector('.mo-home-card', { timeout: 20_000 }).catch(() => {});
+    await page.waitForTimeout(1_000);
+    log('video cards', await page.locator('.mo-home-card').count());
+    // This machine may decode HEVC itself; force the preview-copy path so it is exercised.
+    await page.evaluate(() => { window.__moForcePreviewCopy = true; });
+    await page.locator('.mo-home-card').first().dblclick();
+    await page.waitForSelector('.mo-detail-main video', { timeout: 15_000 }).catch(() => {});
+    await page.waitForFunction(() => { const v = document.querySelector('.mo-detail-main video'); return v && v.videoWidth > 0; }, null, { timeout: 120_000 }).catch(() => {});
+    log(`player (${hevc ? 'HEVC' : 'H.264'})`, await page.evaluate(() => {
+      const v = document.querySelector('.mo-detail-main video');
+      const err = document.querySelector('.mo-player-error');
+      return `video=${v ? v.videoWidth + 'x' + v.videoHeight : 'none'} src=${v && v.src ? 'set' : 'none'} error=${err ? err.textContent.slice(0, 80) : 'none'} note=${document.querySelector('.mo-player-preview-note') ? 'shown' : 'gone'} speeds=${Array.from(document.querySelectorAll('.mo-player-speed-item')).map((b) => b.textContent).join('/')}`;
+    }));
+    await shot(page, 'video-player');
+    log('openClipEditor', await runCommand(page, 'media-organizer.openClipEditor', videoPath));
+    await page.waitForSelector('.mo-clip-preview', { timeout: 20_000 });
+    await page.waitForFunction(() => { const v = document.querySelector('.mo-clip-preview'); return v && v.videoWidth > 0; }, null, { timeout: 120_000 }).catch(() => {});
+    await page.waitForTimeout(800);
+    const findSel = `(text) => Array.from(document.querySelectorAll('select')).find((s) => Array.from(s.options).some((o) => o.textContent === text))`;
+    log('clip speeds', await page.evaluate(`(() => { const f = ${findSel}; const speed = f('64×'); const fit = f('5 min'); const v = document.querySelector('.mo-clip-preview'); return 'speed=' + (speed ? Array.from(speed.options).map((o) => o.textContent).join('/') : 'none') + ' fit=' + (fit ? Array.from(fit.options).map((o) => o.textContent).join('/') : 'none') + ' preview=' + (v ? v.videoWidth + 'x' + v.videoHeight : 'none'); })()`));
+    await page.evaluate(`(() => { const f = ${findSel}; const fit = f('5 min'); fit.value = '15'; fit.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+    await page.waitForTimeout(600);
+    log('clip fit', await page.evaluate(`(() => { const f = ${findSel}; const fit = f('5 min'); const speed = f('64×'); const v = document.querySelector('.mo-clip-preview'); return 'note="' + (fit.closest('.mo-clip-row').querySelector('.mo-clip-hint')?.textContent || '') + '" speedDisabled=' + speed.disabled + ' previewRate=' + v.playbackRate; })()`));
+    await shot(page, 'clip-fit');
+
     // Gate off again: everything hides without a reload.
     await page.evaluate(async () => {
       await window.__parallx_workbench__._services.get({ id: 'IConfigurationService' }).getConfiguration('mediaOrganizer').update('enableArtTools', false);
@@ -370,6 +417,7 @@ async function main() {
     await runCommand(page, 'media-organizer.openHome');
     await page.waitForTimeout(1_000);
     log('daily card gate off again', await dailyCard(page));
+    log('folders at end', await page.evaluate(() => Array.from(document.querySelectorAll('[data-mo-section="folders"] .mo-sidebar-item')).map((i) => `${i.querySelector('.mo-sidebar-item-label')?.textContent}:${i.querySelector('.mo-sidebar-item-count')?.textContent || ''}${i.classList.contains('is-offline') ? '(offline)' : ''}`).join(' | ')));
   } finally {
     if (errors.length) {
       console.log(`[probe] ${errors.length} renderer error(s):`);
