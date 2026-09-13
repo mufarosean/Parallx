@@ -6,6 +6,7 @@
 import type { IPropertyDefinition, ISelectOption } from './propertyTypes.js';
 import { createIconElement } from '../../../ui/iconRegistry.js';
 import { attachPopupDismiss } from '../../../ui/dom.js';
+import { parseStoredTime } from '../../../platform/storedTime.js';
 
 // ─── Type Icon Map ───────────────────────────────────────────────────────────
 
@@ -523,8 +524,10 @@ function _formatDate(iso: string): string {
 
 function _parseDatetime(value: string | null): Date | null {
   if (!value) return null;
-  const d = new Date(value.replace(' ', 'T'));
-  return Number.isNaN(d.getTime()) ? null : d;
+  // A picked time ('YYYY-MM-DDTHH:mm') is local; a database time
+  // ('YYYY-MM-DD HH:MM:SS') is UTC.
+  const ms = parseStoredTime(value);
+  return Number.isFinite(ms) ? new Date(ms) : null;
 }
 
 function _formatDatetime(d: Date): string {

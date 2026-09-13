@@ -27,6 +27,7 @@ import type {
 } from '../../../services/chatTypes.js';
 import type { IBuiltInToolDatabase, PageMutationNotifier } from '../../chat/chatTypes.js';
 import { markResourceSeen, wasResourceSeen, pageResourceKey } from '../../../services/toolResourceRegistry.js';
+import { sqliteUtcNow } from '../../../platform/storedTime.js';
 import {
   decodeDocContent,
   encodeDocContent,
@@ -73,7 +74,8 @@ async function persistDoc(
   notifyPageMutated?: PageMutationNotifier,
 ): Promise<void> {
   const stored = encodeDocContent(doc);
-  const now = new Date().toISOString();
+  // SQLite's own form (datetime('now')): one format for every page timestamp.
+  const now = sqliteUtcNow();
   await db.run(
     'UPDATE pages SET content = ?, updated_at = ?, revision = revision + 1 WHERE id = ?',
     [stored, now, pageId],

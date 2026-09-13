@@ -10,6 +10,7 @@ import type {
   IChatToolInvocationCallContext,
 } from '../../../services/chatTypes.js';
 import { markResourceSeen, wasResourceSeen, pageResourceKey } from '../../../services/toolResourceRegistry.js';
+import { sqliteUtcNow, formatStoredTimeForModel } from '../../../platform/storedTime.js';
 import type {
   IBuiltInToolDatabase,
   CurrentPageIdGetter,
@@ -196,7 +197,7 @@ export function createFindPagesTool(db: IBuiltInToolDatabase | undefined): IChat
       const lines = rows.map((p) => {
         const icon = p.icon ? `${p.icon} ` : '';
         const snippet = query ? extractSnippet(p.content, query, 150) : '';
-        return `- ${icon}**${p.title}** (id: ${p.id}, updated: ${p.updated_at})${snippet ? `\n  ${snippet}` : ''}`;
+        return `- ${icon}**${p.title}** (id: ${p.id}, updated: ${formatStoredTimeForModel(p.updated_at)})${snippet ? `\n  ${snippet}` : ''}`;
       });
 
       const header =
@@ -334,8 +335,8 @@ export function createReadPageTool(
       const lines: (string | null)[] = [
         `**${page.title}** (id: ${page.id})${isCurrent ? ' — currently open' : ''}`,
         page.icon ? `**Icon:** ${page.icon}` : null,
-        `**Created:** ${page.created_at}`,
-        `**Updated:** ${page.updated_at}`,
+        `**Created:** ${formatStoredTimeForModel(page.created_at)}`,
+        `**Updated:** ${formatStoredTimeForModel(page.updated_at)}`,
         page.is_archived ? '**Archived:** Yes' : null,
         `**Blocks:** ${blockCount?.cnt ?? 0}`,
       ];
@@ -695,7 +696,7 @@ export function createCreatePageTool(
       }
       const icon = args['icon'] ? String(args['icon']) : null;
       const templateId = args['templateId'] ? String(args['templateId']) : '';
-      const now = new Date().toISOString();
+      const now = sqliteUtcNow();
 
       // Layout defaults for AI-created pages (registry-backed; default ON in
       // production, off when unwired e.g. in tests).
@@ -787,7 +788,7 @@ export function createCreatePageTool(
         if (!streamed) {
           await db!.run(
             'UPDATE pages SET content = ?, content_schema_version = ?, updated_at = ?, revision = revision + 1 WHERE id = ?',
-            [encoded.storedContent, encoded.schemaVersion, new Date().toISOString(), id],
+            [encoded.storedContent, encoded.schemaVersion, sqliteUtcNow(), id],
           );
           try { notifyPageMutated?.(id, 'updated'); } catch { /* non-fatal */ }
         }
@@ -913,7 +914,7 @@ export function createEditPageTool(
       }
 
       const encoded = encodeCanvasContentFromDoc(finalDoc);
-      const now = new Date().toISOString();
+      const now = sqliteUtcNow();
 
       // Capture the pre-edit content as a version-history revision BEFORE we
       // overwrite it. A `replace` that wipes more than intended (the classic
@@ -1271,7 +1272,7 @@ export function createSetPageStyleTool(
         return { content: 'No style fields provided. Specify at least one of: icon, coverUrl, fontFamily, fullWidth, smallText.', isError: true };
       }
 
-      const now = new Date().toISOString();
+      const now = sqliteUtcNow();
       sets.push('updated_at = ?');
       // M77 Phase 10.1 — bump `revision` so the canvas data service's
       // optimistic-concurrency tracking treats this as a real write and

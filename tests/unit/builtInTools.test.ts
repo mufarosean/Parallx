@@ -409,7 +409,7 @@ describe('read_page tool (M81 Phase 9: merged body + metadata + properties)', ()
     (db.get as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce({
         id: 'abc', title: 'My Page', content: 'Hello world',
-        icon: null, is_archived: 0, created_at: '2025-01-01', updated_at: '2025-01-02',
+        icon: null, is_archived: 0, created_at: '2026-09-11T17:47:56.668Z', updated_at: '2026-09-11 18:05:02',
       })
       .mockResolvedValueOnce({ cnt: 1 });
     (db.all as ReturnType<typeof vi.fn>).mockResolvedValueOnce([]); // no properties
@@ -418,8 +418,13 @@ describe('read_page tool (M81 Phase 9: merged body + metadata + properties)', ()
     expect(result.content).toContain('My Page');
     expect(result.content).toContain('Hello world');
     expect(result.content).toContain('Blocks:** 1');
-    expect(result.content).toContain('Created:** 2025-01-01');
-    expect(result.content).toContain('Updated:** 2025-01-02');
+    // Both times reach the model as local clock time with the UTC offset,
+    // whichever form they were stored in (an ISO string from the AI's tools,
+    // SQLite's UTC form from the editor). Seen live: the raw pair read as two
+    // time zones and out of order.
+    const local = (ms: number) => { const d = new Date(ms); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+    expect(result.content).toMatch(new RegExp(`Created:\\*\\* \\d{4}-\\d{2}-\\d{2} ${local(Date.UTC(2026, 8, 11, 17, 47))} \\(UTC[+-]\\d{2}:\\d{2}\\)`));
+    expect(result.content).toMatch(new RegExp(`Updated:\\*\\* \\d{4}-\\d{2}-\\d{2} ${local(Date.UTC(2026, 8, 11, 18, 5))} \\(UTC[+-]\\d{2}:\\d{2}\\)`));
     expect(result.content).not.toContain('Archived:** Yes'); // not archived
   });
 

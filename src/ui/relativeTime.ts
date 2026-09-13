@@ -11,6 +11,8 @@
 //
 // Dependency rules: src/ui/ depends only on src/platform/.
 
+import { parseStoredTime } from '../platform/storedTime.js';
+
 export type RelativeTimeStyle = 'long' | 'short';
 
 const MINUTE = 60_000;
@@ -31,7 +33,8 @@ function calendarDate(then: Date, now: Date): string {
 /**
  * Format `when` relative to `now`.
  *
- * @param when  A timestamp in ms, an ISO string, or a Date.
+ * @param when  A timestamp in ms, an ISO string, a database timestamp
+ *              ('YYYY-MM-DD HH:MM:SS', UTC), or a Date.
  * @param style 'long' for stamps read on their own; 'short' for captions in
  *              narrow rows. Default 'long'.
  * @param now   Injectable clock for tests.
@@ -41,7 +44,7 @@ export function formatRelativeTime(
   style: RelativeTimeStyle = 'long',
   now: number = Date.now(),
 ): string {
-  const thenMs = when instanceof Date ? when.getTime() : typeof when === 'string' ? Date.parse(when) : when;
+  const thenMs = parseStoredTime(when);
   if (!Number.isFinite(thenMs)) return '';
   const diff = Math.max(0, now - thenMs);
   const short = style === 'short';

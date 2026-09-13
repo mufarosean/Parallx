@@ -46,6 +46,12 @@ describe('formatRelativeTime — long', () => {
     expect(formatRelativeTime('not a date', 'long', NOW)).toBe('');
     expect(formatRelativeTime(NOW + 5 * MIN, 'long', NOW)).toBe('just now'); // clock skew
   });
+
+  it('reads a database timestamp (SQLite, UTC, no zone mark) as UTC, not local time', () => {
+    // Read as local, a page saved two hours ago in Chicago said "just now" for five hours.
+    const sqlite = new Date(ago(2 * HOUR)).toISOString().slice(0, 19).replace('T', ' ');
+    expect(formatRelativeTime(sqlite, 'long', NOW)).toBe('2 hours ago');
+  });
 });
 
 describe('formatRelativeTime — short', () => {
