@@ -106,6 +106,31 @@ interface SerializedViewAssignment {
   readonly active: boolean;
 }
 
+// ─── Hidden Areas ───────────────────────────────────────────────────────────
+
+/** Where a hidden view sat, so it can go back there: beside a sibling, or at an edge. */
+export type SerializedPlacementRecall =
+  | { readonly kind: 'beside'; readonly siblingId: string; readonly orientation: Orientation; readonly before: boolean }
+  | { readonly kind: 'edge'; readonly orientation: Orientation; readonly before: boolean };
+
+/**
+ * One occupant an area toggle hid. Parts remember their own sizes; a
+ * floating seat (a widget box, a detached container) carries the size and
+ * place it left, because nothing else does.
+ */
+export interface SerializedHiddenOccupant {
+  readonly id: string;
+  readonly width?: number;
+  readonly height?: number;
+  readonly recall?: SerializedPlacementRecall;
+}
+
+/** What a body area held when its toggle hid it, in hide order. */
+export interface SerializedHiddenArea {
+  readonly area: 'left' | 'right' | 'bottom';
+  readonly occupants: readonly SerializedHiddenOccupant[];
+}
+
 // ─── Full Layout State ──────────────────────────────────────────────────────
 
 /**
@@ -127,6 +152,12 @@ export interface SerializedLayoutState {
   readonly focusedView?: string;
   /** Nested grid for editor groups (independent from main grid). */
   readonly editorGrid?: SerializedGrid;
+  /**
+   * What each body area held when its toggle hid it. A seat hidden with
+   * its area is out of the grid, so the tree alone forgets it; this is
+   * what brings it back after a restart. Absent in old saves.
+   */
+  readonly hiddenAreas?: readonly SerializedHiddenArea[];
 }
 
 // ─── Default Layout ─────────────────────────────────────────────────────────

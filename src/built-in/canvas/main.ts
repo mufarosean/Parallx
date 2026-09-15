@@ -928,25 +928,12 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     }),
   );
 
-  // 6. Track last-opened page for persistence (Task 6.3)
-  context.subscriptions.push(
-    api.editors.onDidChangeOpenEditors(() => {
-      const editors = api.editors.openEditors;
-      const active = editors.find((e: any) => e.isActive);
-      if (!active) return;
-      // Extract page ID from editor ID (format: "parallx.canvas:<typeId>:<pageId>")
-      const parts = active.id.split(':');
-      if (parts.length >= 3 && (parts[1] === 'canvas' || parts[1] === 'database')) {
-        const pageId = parts.slice(2).join(':');
-        context.workspaceState.update('canvas.lastOpenedPage', pageId);
-      }
-    }),
-  );
+  // 6. Open pages come back with the workbench's editor restore, in the
+  //    group they were in. The tool's own "reopen the last page" (Task 6.3)
+  //    is gone: it opened that page into the ACTIVE group a second time
+  //    whenever the workbench had restored it into another one.
 
-  // 7. Restore last-opened page (Task 6.3)
-  await _restoreLastOpenedPage(api, context, _dataService);
-
-  // 8. Listen for workspace folder changes — the workbench opens the database
+  // 7. Listen for workspace folder changes — the workbench opens the database
   //    and applies the core migration chain; canvas only refreshes its sidebar
   //    once that has had a moment to land.
   context.subscriptions.push(
@@ -979,32 +966,6 @@ export async function deactivate(): Promise<void> {
   _api = undefined!;
 
   if (isDevMode) console.log('[Canvas] Tool deactivated');
-}
-
-// â”€â”€â”€ Restore Last-Opened Page (Task 6.3) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-async function _restoreLastOpenedPage(api: ParallxApi, context: ToolContext, dataService: ICanvasDataService): Promise<void> {
-  const lastPageId = context.workspaceState.get<string>('canvas.lastOpenedPage');
-  if (!lastPageId) return;
-
-  try {
-    const page = await dataService.getPage(lastPageId);
-    if (!page) {
-      // Page was deleted â€” clear stored value
-      await context.workspaceState.update('canvas.lastOpenedPage', undefined);
-      return;
-    }
-    await api.editors.openEditor({
-      typeId: 'canvas',
-      title: page.title,
-      icon: page.icon ?? undefined,
-      iconHtml: renderPageIconHtml(page.icon),
-      instanceId: page.id,
-    });
-  } catch (err) {
-    console.warn('[Canvas] Failed to restore last-opened page:', err);
-    await context.workspaceState.update('canvas.lastOpenedPage', undefined);
-  }
 }
 
 // â”€â”€â”€ Commands â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

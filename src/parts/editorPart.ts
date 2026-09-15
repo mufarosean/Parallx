@@ -11,6 +11,8 @@ import { SizeConstraints, Orientation } from '../layout/layoutTypes.js';
 import { Emitter, Event } from '../platform/events.js';
 import { DisposableStore } from '../platform/lifecycle.js';
 import { Grid } from '../layout/grid.js';
+import { SerializedNodeType } from '../layout/layoutModel.js';
+import type { SerializedGrid, SerializedGridNode } from '../layout/layoutModel.js';
 import { EditorGroupView } from '../editor/editorGroupView.js';
 import { GroupDirection, EditorOpenOptions, EditorActivation, EditorGroupChangeKind } from '../editor/editorTypes.js';
 import type { IEditorInput } from '../editor/editorInput.js';
@@ -608,6 +610,72 @@ export class EditorPart extends Part {
     if (this._containerWidth && this._containerHeight) {
       this._grid?.resize(this._containerWidth, this._containerHeight);
     }
+  }
+
+  // ── Group layout persistence ──
+
+  /** The group grid as saved state: leaves are group ids, sizes are pixels. */
+  serializeGroupLayout(): SerializedGrid | undefined {
+    return this._grid?.serialize();
+  }
+
+  /**
+   * Rebuild the group grid from saved state: the splits' shape and sizes,
+   * which the editor snapshot alone never carried — every relaunch re-split
+   * at the middle, in creation order, so a group the user kept on the left
+   * came back on the right. The live groups are fresh objects; the returned
+   * map says which stands where each saved leaf stood, so the snapshot's
+   * tabs find their group by the id they were saved with. Meant for before
+   * any editor opens: the current groups are replaced, editors and all.
+   * A tree with no leaves, a repeated leaf, or a shape this grid cannot
+   * take is refused (undefined) and nothing changes.
+   */
+  restoreGroupLayout(saved: SerializedGrid): Map<string, EditorGroupView> | undefined {
+    if (!this._grid || !saved || typeof saved !== 'object' || !saved.root) return undefined;
+    if (saved.orientation !== Orientation.Horizontal && saved.orientation !== Orientation.Vertical) return undefined;
+    const leaves: string[] = [];
+    let wellFormed = true;
+    const walk = (node: SerializedGridNode): void => {
+      if (!node || typeof node !== 'object') { wellFormed = false; return; }
+      if (node.type === SerializedNodeType.Leaf) {
+        if (typeof node.viewId === 'string' && node.viewId.length > 0) leaves.push(node.viewId);
+        else wellFormed = false;
+        return;
+      }
+      if (!Array.isArray(node.children)) { wellFormed = false; return; }
+      for (const child of node.children) walk(child);
+    };
+    walk(saved.root);
+    if (!wellFormed || leaves.length === 0 || new Set(leaves).size !== leaves.length) return undefined;
+
+    const spare = [...this._groups.values()];
+    const mapping = new Map<string, EditorGroupView>();
+    this._grid.restoreFrom(saved, (savedId) => {
+      // The groups that exist are reused in tree order (the initial empty
+      // one first); the rest are created. Either way the registry ends up
+      // in screen order.
+      const group = spare.shift() ?? this._createGroupView();
+      mapping.set(savedId, group);
+      return group;
+    });
+    // Groups the saved shape has no leaf for are gone (restoreFrom already
+    // took them out of the grid).
+    for (const extra of spare) {
+      this._groups.delete(extra.id);
+      this._groupDisposables.get(extra.id)?.dispose();
+      this._groupDisposables.delete(extra.id);
+      extra.dispose();
+    }
+    for (const group of mapping.values()) {
+      group.create(group.element.parentElement ?? this._grid.element);
+    }
+    if (!this._activeGroupId || !this._groups.has(this._activeGroupId)) {
+      this._setActiveGroup(mapping.values().next().value as EditorGroupView);
+    }
+    this._onDidGroupCountChange.fire(this._groups.size);
+    this._relayout();
+    this._updateWatermark();
+    return mapping;
   }
 
   // ── Serialization ──

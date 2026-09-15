@@ -29,6 +29,7 @@ import { DashboardRefreshScheduler, validateRefreshPolicy } from './dashboardRef
 import { DashboardEditorProvider } from './dashboardEditorProvider.js';
 import { DashboardSidebar } from './dashboardSidebar.js';
 import type { DashboardRegistry, WidgetTypeRegistration, WorkbenchWidgetHost } from './dashboardTypes.js';
+import { WORKBENCH_PAGE_ID } from './dashboardTypes.js';
 import { applyWidgetAppearance } from './widgetAppearance.js';
 import { renderMarkdownToDom } from './widgets/markdownRenderer.js';
 import { openAppearanceDrawer } from './appearanceDrawer.js';
@@ -214,6 +215,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       });
     },
     getInstance: (id) => _dataService!.getWidget(id),
+    listInstances: () => _dataService!.listWidgets(WORKBENCH_PAGE_ID),
     removeInstance: async (id) => {
       _scheduler?.cancel(id);
       await _dataService!.removeWidget(id);

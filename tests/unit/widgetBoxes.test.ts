@@ -77,6 +77,7 @@ function fakeSystem() {
       return row;
     },
     getInstance: async (id: string) => rows.get(id) ?? null,
+    listInstances: async () => [...rows.values()].filter((r) => r.pageId === 'page-workbench-seats'),
     removeInstance: async (id: string) => { rows.delete(id); calls.push(`removeInstance:${id}`); },
     adoptInstance: async (id: string) => {
       const row = rows.get(id);
@@ -237,6 +238,36 @@ describe('WidgetBoxManager', () => {
     expect(manager.has('w1')).toBe(false);
     expect(system.rows.get('w1')).toBeDefined();
     expect(system.calls).not.toContain('removeInstance:w1');
+  });
+
+  it('seats orphan instances once the system is connected AND the tree is settled', async () => {
+    system.addRow({ id: 'w2', widgetTypeId: 'parallx.dashboard.clock-and-links' });
+    manager.connectSystem(system);
+    await flush();
+    // Connected, tree not settled: nothing is seated yet — a restore may
+    // still bring the real seats.
+    expect(manager.has('w1')).toBe(false);
+    manager.settleTree();
+    await flush();
+    expect(manager.has('w1')).toBe(true);
+    expect(manager.has('w2')).toBe(true);
+    // One column at the right edge: the first seat takes the edge, the
+    // next stacks under it.
+    expect(calls).toContain('add:widget:w1:default');
+    expect(calls).toContain(`edge:widget:w1:${Orientation.Horizontal}:false`);
+    expect(calls).toContain('move:widget:w2:beside');
+    expect(calls.filter((c) => c.startsWith('edge:'))).toHaveLength(1);
+    expect(calls).toContain('save');
+  });
+
+  it('a seat the restored tree kept is not seated a second time', async () => {
+    manager.resolveShell('widget:w1'); // the tree's shell, born waiting
+    manager.settleTree();
+    manager.connectSystem(system);
+    await flush();
+    expect(manager.has('w1')).toBe(true);
+    expect(calls.filter((c) => c.startsWith('add:widget:w1'))).toHaveLength(0);
+    expect(calls).not.toContain('save');
   });
 
   it('Return To Dashboard drops the SEAT and keeps the INSTANCE', async () => {

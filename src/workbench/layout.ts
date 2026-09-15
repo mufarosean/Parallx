@@ -29,7 +29,10 @@ import { GridNodeType } from '../layout/gridNode.js';
 import type { GridBranchNode } from '../layout/gridNode.js';
 import { Orientation, SizingMode } from '../layout/layoutTypes.js';
 import { SerializedNodeType } from '../layout/layoutModel.js';
-import type { SerializedGrid, SerializedGridNode, SerializedLeafNode } from '../layout/layoutModel.js';
+import type {
+  SerializedGrid, SerializedGridNode, SerializedLeafNode,
+  SerializedHiddenArea, SerializedHiddenOccupant, SerializedPlacementRecall,
+} from '../layout/layoutModel.js';
 import type { IGridView } from '../layout/gridView.js';
 import { PartDragController } from './partDrag.js';
 import type { PartDropZone } from './partDrag.js';
@@ -73,6 +76,20 @@ const AREA_EDGES: Record<BodyArea, { orientation: Orientation; before: boolean }
   right: { orientation: Orientation.Horizontal, before: false },
   bottom: { orientation: Orientation.Vertical, before: false },
 };
+
+function isBodyArea(value: unknown): value is BodyArea {
+  return value === 'left' || value === 'right' || value === 'bottom';
+}
+
+/** A saved placement recall, shape-checked: saves are data, not trust. */
+function isPlacementRecall(value: unknown): value is SerializedPlacementRecall {
+  if (!value || typeof value !== 'object') return false;
+  const r = value as Record<string, unknown>;
+  const orientationOk = r.orientation === Orientation.Horizontal || r.orientation === Orientation.Vertical;
+  if (!orientationOk || typeof r.before !== 'boolean') return false;
+  if (r.kind === 'edge') return true;
+  return r.kind === 'beside' && typeof r.siblingId === 'string' && r.siblingId.length > 0;
+}
 
 // ── Zen Mode Exit Info ──
 
@@ -1123,7 +1140,15 @@ export abstract class Layout extends Disposable {
   toggleArea(area: BodyArea): void {
     const occupants = this._areaOccupants(area);
     if (occupants.length > 0) {
-      this._areaMemory.set(area, occupants);
+      // A floating seat this area hid earlier and that is still out of the
+      // grid (the sidebar came back alone, through its own toggle) stays
+      // remembered, ahead of today's occupants so the reverse-order show
+      // seats it after the sibling its recall names. Hiding the area again
+      // must not strand it.
+      const stillHidden = (this._areaMemory.get(area) ?? []).filter(
+        (id) => this._floatingViews.has(id) && !this._grid.hasView(id) && !occupants.includes(id),
+      );
+      this._areaMemory.set(area, [...stillHidden, ...occupants]);
       for (const id of occupants) this._hideBodyView(id);
       return;
     }
@@ -1484,6 +1509,75 @@ export abstract class Layout extends Disposable {
     }
     this._layoutViewContainers();
     return true;
+  }
+
+  /**
+   * The hidden-area memory as saved state: what each area's next toggle
+   * brings back, each with the place it left (a sidebar stacked over a
+   * widget recalls "above the widget", and needs to after a restart too).
+   * Only floating seats carry a size — parts remember their own. A seat
+   * out of the grid is invisible to the tree, so without this a widget
+   * hidden with its area at shutdown did not survive the restart: the
+   * instance did, reachable from nowhere.
+   */
+  serializeHiddenAreas(): SerializedHiddenArea[] {
+    const partIds = new Set([this._sidebar, this._panel, this._auxiliaryBar].map((p) => p.id));
+    const out: SerializedHiddenArea[] = [];
+    for (const [area, ids] of this._areaMemory) {
+      const occupants: SerializedHiddenOccupant[] = [];
+      for (const id of ids) {
+        if (partIds.has(id)) {
+          occupants.push({ id, recall: this._placementRecall.get(id) });
+        } else if (this._floatingViews.has(id) && !this._grid.hasView(id)) {
+          // A seat back in the tree by other means (a drag, a re-seat) is
+          // the tree's to remember from here.
+          const size = this._hiddenFloatingSizes.get(id);
+          occupants.push({ id, width: size?.width, height: size?.height, recall: this._placementRecall.get(id) });
+        }
+      }
+      if (occupants.length > 0) out.push({ area, occupants });
+    }
+    return out;
+  }
+
+  /**
+   * Rebuild the hidden-area memory from saved state. Every hidden seat gets
+   * a shell through the floating-view factory, so it is REGISTERED (its box
+   * fills when the widget system connects) without being in the grid.
+   * Runs after restoreBodyTree, which starts the registry over; a seat the
+   * restored tree already holds needs no memory. Malformed entries and ids
+   * this build cannot back are skipped, never trusted.
+   */
+  restoreHiddenAreas(saved: readonly SerializedHiddenArea[] | undefined): void {
+    if (!Array.isArray(saved)) return;
+    const partIds = new Set([this._sidebar, this._panel, this._auxiliaryBar].map((p) => p.id));
+    for (const entry of saved) {
+      if (!entry || typeof entry !== 'object' || !isBodyArea(entry.area)) continue;
+      if (!Array.isArray(entry.occupants)) continue;
+      const ids: string[] = [];
+      for (const occupant of entry.occupants) {
+        if (!occupant || typeof occupant !== 'object' || typeof occupant.id !== 'string') continue;
+        const id = occupant.id;
+        if (ids.includes(id)) continue;
+        if (partIds.has(id)) {
+          if (isPlacementRecall(occupant.recall)) this._placementRecall.set(id, occupant.recall);
+          ids.push(id);
+          continue;
+        }
+        if (!id.startsWith('container:') && !id.startsWith('widget:')) continue;
+        if (this._grid.hasView(id)) continue;
+        const view = this._floatingViews.get(id) ?? this._floatingViewFactory?.(id);
+        if (!view) continue;
+        this._adoptFloatingView(view);
+        const { width, height } = occupant;
+        if (typeof width === 'number' && width > 0 && typeof height === 'number' && height > 0) {
+          this._hiddenFloatingSizes.set(id, { width, height });
+        }
+        if (isPlacementRecall(occupant.recall)) this._placementRecall.set(id, occupant.recall);
+        ids.push(id);
+      }
+      if (ids.length > 0) this._areaMemory.set(entry.area, ids);
+    }
   }
 
   /**

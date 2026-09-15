@@ -254,7 +254,10 @@ exception window tonight).
    wired to the LIVE body tree (which now includes container boxes and
    rails, not just surfaces) and a Settings surface to manage them.
    Design questions to settle when work starts: what an arrangement
-   captures today (body tree + rails + hidden-area memory?), collision
+   captures today (body tree + rails; hidden-area memory travels with the
+   workspace's own save as SerializedLayoutState.hiddenAreas since
+   2026-09-15, and a preset that omits a widget's seat re-seats it at
+   the right edge rather than losing it), collision
    with the workspace's own layout persistence, and whether switching is
    also offered outside Settings (the palette carries commands anyway,
    but Settings is the required home).

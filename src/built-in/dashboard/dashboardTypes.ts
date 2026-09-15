@@ -63,6 +63,8 @@ export interface WorkbenchWidgetHost {
   /** Create a widget instance seated in the workbench (the reserved page). */
   createInstance(widgetTypeId: string): Promise<DashboardWidgetRow>;
   getInstance(id: string): Promise<DashboardWidgetRow | null>;
+  /** Every instance seated in the workbench: the rows on the reserved page. */
+  listInstances(): Promise<DashboardWidgetRow[]>;
   removeInstance(id: string): Promise<void>;
   /** Adopt an existing dashboard widget into the workbench (pageId flip). */
   adoptInstance(id: string): Promise<DashboardWidgetRow | null>;

@@ -535,6 +535,26 @@ describe('stacking and placement recall', () => {
     expect(layout.grid.getViewSize('workbench.parts.sidebar')).toBe(sidebarHeightBefore);
   });
 
+  it('a seat still hidden when the area hides again is not stranded', () => {
+    layout.togglePanel();
+    const widget = fakePart('widget:focus');
+    layout.addFloatingView(widget as never);
+    layout.movePartBeside('widget:focus', 'workbench.parts.sidebar', Orientation.Vertical, false);
+    layout.toggleArea('left'); // hide both
+    parts.sidebar.element.dispatchEvent(new Event('transitionend'));
+    layout.toggleSidebar(); // the sidebar alone, through its own toggle
+    expect(rootShape(layout)).toEqual(['workbench.parts.sidebar', 'workbench.parts.editor']);
+
+    layout.toggleArea('left'); // the area hides again: only the sidebar occupies it
+    parts.sidebar.element.dispatchEvent(new Event('transitionend'));
+    expect(rootShape(layout)).toEqual(['workbench.parts.editor']);
+    layout.toggleArea('left'); // both come back, the widget under the sidebar
+    expect(rootShape(layout)).toEqual([
+      'vertical[workbench.parts.sidebar, widget:focus]',
+      'workbench.parts.editor',
+    ]);
+  });
+
   it('falls back to the default spot when the recalled neighbour is gone', () => {
     layout.movePartBeside(
       'workbench.parts.panel', 'workbench.parts.sidebar', Orientation.Vertical, false,
@@ -703,6 +723,81 @@ describe('floating leaves in the saved tree', () => {
     expect((layout as FloatingTestLayout).resolved).toContain('container:chat-container');
     expect(layout.grid.hasView('container:chat-container')).toBe(true);
     expect((layout as FloatingTestLayout).floatingIds).toContain('container:chat-container');
+  });
+
+  it('a seat hidden with its area survives a restart and returns on the next toggle', () => {
+    const source = new FloatingTestLayout(container, parts);
+    source.togglePanel();
+    source.addFloatingView(fakePart('widget:clock') as never);
+    source.movePartBeside('widget:clock', 'workbench.parts.sidebar', Orientation.Vertical, false);
+    source.toggleArea('left');
+    parts.sidebar.element.dispatchEvent(new Event('transitionend'));
+    expect(rootShape(source)).toEqual(['workbench.parts.editor']);
+
+    const tree = source.serializeBodyTree();
+    // Through JSON, as a save is.
+    const hidden = JSON.parse(JSON.stringify(source.serializeHiddenAreas()));
+    source.dispose();
+    expect(hidden).toEqual([{
+      area: 'left',
+      occupants: [
+        {
+          id: 'workbench.parts.sidebar',
+          recall: { kind: 'beside', siblingId: 'widget:clock', orientation: Orientation.Vertical, before: true },
+        },
+        {
+          id: 'widget:clock',
+          width: expect.any(Number),
+          height: expect.any(Number),
+          recall: { kind: 'beside', siblingId: 'workbench.parts.sidebar', orientation: Orientation.Vertical, before: false },
+        },
+      ],
+    }]);
+
+    const c2 = document.createElement('div');
+    Object.defineProperty(c2, 'clientWidth', { value: WIDTH, configurable: true });
+    Object.defineProperty(c2, 'clientHeight', { value: HEIGHT, configurable: true });
+    document.body.appendChild(c2);
+    const parts2 = {
+      titlebar: fakePart('workbench.parts.titlebar'),
+      activityBar: fakePart('workbench.parts.activitybar'),
+      sidebar: fakePart('workbench.parts.sidebar'),
+      editor: fakePart('workbench.parts.editor'),
+      panel: fakePart('workbench.parts.panel'),
+      auxiliaryBar: fakePart('workbench.parts.auxiliarybar', false),
+      statusBar: fakePart('workbench.parts.statusbar'),
+    };
+    layout = new FloatingTestLayout(c2, parts2);
+    container.remove();
+    container = c2;
+
+    expect(layout.restoreBodyTree(tree)).toBe(true);
+    layout.restoreHiddenAreas(hidden);
+    // Registered (the prune keeps it), not in the grid (it is hidden).
+    expect((layout as FloatingTestLayout).floatingIds).toContain('widget:clock');
+    expect(layout.grid.hasView('widget:clock')).toBe(false);
+    expect(rootShape(layout)).toEqual(['workbench.parts.editor']);
+
+    layout.toggleArea('left');
+    expect(rootShape(layout)).toEqual([
+      'vertical[workbench.parts.sidebar, widget:clock]',
+      'workbench.parts.editor',
+    ]);
+  });
+
+  it('ignores hidden-area entries this build cannot back', () => {
+    layout = new FloatingTestLayout(container, parts);
+    layout.togglePanel();
+    layout.restoreHiddenAreas([
+      { area: 'left', occupants: [{ id: 'surface:gone' }, { id: 'nonsense' }] },
+      { area: 'nowhere' as never, occupants: [{ id: 'widget:x' }] },
+      null as never,
+    ]);
+    expect((layout as FloatingTestLayout).floatingIds).toEqual([]);
+    layout.toggleArea('left'); // hide the sidebar
+    parts.sidebar.element.dispatchEvent(new Event('transitionend'));
+    layout.toggleArea('left'); // nothing remembered beyond the default part
+    expect(rootShape(layout)).toEqual(['workbench.parts.sidebar', 'workbench.parts.editor']);
   });
 
   it('rejects container leaves when no factory is wired', () => {

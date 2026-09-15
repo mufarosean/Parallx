@@ -1379,6 +1379,11 @@ export class Workbench extends Layout {
     // Apply restored state to live parts, views, and containers
     this._applyRestoredState();
 
+    // The tree is settled. A widget instance with no seat in it (a save
+    // from before hidden seats persisted, a preset that lacked it) gets one
+    // back at the right edge instead of sitting unreachable in the database.
+    this._widgetBoxes.settleTree();
+
     // Restore workspace folders from saved state
     if (this._restoredState?.folders) {
       this._workspace.restoreFolders(this._restoredState.folders);
@@ -1543,6 +1548,11 @@ export class Workbench extends Layout {
     // Saves from the old three-grid model fail its validation (their grid
     // carries titlebar/statusbar leaves) and take the legacy path instead.
     const treeRestored = this.restoreBodyTree(state.layout?.grid);
+
+    // 0a1. Seats hidden with their area at save time are out of that tree.
+    // Register their shells, and the memory that brings them back, BEFORE
+    // the prune below reads them as dropped.
+    if (treeRestored) this.restoreHiddenAreas(state.layout?.hiddenAreas);
 
     // 0a2. The restored tree may have replaced boxes wholesale; any box
     // whose leaf did not survive re-docks its container instead of losing
@@ -1741,12 +1751,13 @@ export class Workbench extends Layout {
             state,
           };
         });
-        return { editors, activeEditorIndex: serialized.activeEditorIndex };
+        return { id: group.id, editors, activeEditorIndex: serialized.activeEditorIndex };
       });
 
       return {
         groups: serializedGroups,
         activeGroupIndex: activeGroup ? groups.indexOf(activeGroup) : 0,
+        activeGroupId: activeGroup?.id,
       };
     } catch (err) {
       console.error('[Workbench] Failed to build editor snapshot:', err);
@@ -1818,15 +1829,34 @@ export class Workbench extends Layout {
     // active pane once per background tab — N sequential pane setInput()s
     // of which only the last survived. Only the visible editor of each
     // group needs a pane; groups restore concurrently.
+    // ── Phase 1b: the group grid — the splits' shape and sizes ──
+    // Saved with the layout since 2026-09-15, keyed by the group ids the
+    // snapshot carries. Earlier saves have neither and take the old route:
+    // one more group to the right per snapshot group, split at the middle.
+    const savedGrid = this._restoredState?.layout?.editorGrid;
+    const leafGroups = savedGrid && nonEmptyGroups.every((g) => typeof g.id === 'string')
+      ? editorPart.restoreGroupLayout(savedGrid)
+      : undefined;
+
     const groupOpens: Promise<void>[] = [];
 
     for (let gi = 0; gi < nonEmptyGroups.length; gi++) {
       const groupSnap = nonEmptyGroups[gi];
 
-      // Get or create the editor group
-      let group = editorPart.groups[gi];
-      if (!group && gi > 0) {
-        group = editorPart.addGroup(editorPart.groups[gi - 1].id, GroupDirection.Right)!;
+      // The group this snapshot group's tabs belong in: the leaf saved under
+      // its id, or (old saves) the gi-th group, created to the right.
+      let group: ReturnType<EditorPart['getGroup']>;
+      if (leafGroups) {
+        group = groupSnap.id ? leafGroups.get(groupSnap.id) : undefined;
+        if (!group) {
+          const last = editorPart.groups[editorPart.groups.length - 1];
+          group = last ? editorPart.addGroup(last.id, GroupDirection.Right) : undefined;
+        }
+      } else {
+        group = editorPart.groups[gi];
+        if (!group && gi > 0) {
+          group = editorPart.addGroup(editorPart.groups[gi - 1].id, GroupDirection.Right);
+        }
       }
       if (!group) continue;
 
@@ -1884,10 +1914,25 @@ export class Workbench extends Layout {
 
     await Promise.allSettled(groupOpens);
 
-    // Activate the correct group
-    const targetGroupIdx = Math.min(snapshot.activeGroupIndex, editorPart.groups.length - 1);
-    if (targetGroupIdx >= 0 && editorPart.groups[targetGroupIdx]) {
-      editorPart.activateGroup(editorPart.groups[targetGroupIdx].id);
+    // A restored leaf whose tabs did not come back (a group empty at save
+    // time, or whose every editor failed to deserialize) is not kept as an
+    // empty pane.
+    if (leafGroups) {
+      for (const group of editorPart.groups) {
+        if (group.isEmpty && editorPart.groupCount > 1) editorPart.removeGroup(group.id);
+      }
+    }
+
+    // Activate the correct group: by id when the save carries one, by
+    // index otherwise.
+    const activeById = snapshot.activeGroupId ? leafGroups?.get(snapshot.activeGroupId) : undefined;
+    if (activeById && editorPart.getGroup(activeById.id)) {
+      editorPart.activateGroup(activeById.id);
+    } else {
+      const targetGroupIdx = Math.min(snapshot.activeGroupIndex, editorPart.groups.length - 1);
+      if (targetGroupIdx >= 0 && editorPart.groups[targetGroupIdx]) {
+        editorPart.activateGroup(editorPart.groups[targetGroupIdx].id);
+      }
     }
 
     console.log('[Workbench] Restored %d editor group(s)', nonEmptyGroups.length);
@@ -1957,6 +2002,10 @@ export class Workbench extends Layout {
         return {
           version: LAYOUT_SCHEMA_VERSION,
           grid: this.serializeBodyTree(),
+          hiddenAreas: this.serializeHiddenAreas(),
+          // The editor group grid: the splits' shape and sizes, keyed by the
+          // group ids the editor snapshot carries.
+          editorGrid: (this._editor as EditorPart).serializeGroupLayout(),
           parts: [],
           views: [],
         };
@@ -1981,6 +2030,12 @@ export class Workbench extends Layout {
     // Wire auto-save on structural changes (dispose old listeners first)
     this._saverListeners.clear();
     this._saverListeners.add(this._grid.onDidChange(() => this._workspaceSaver.requestSave()));
+    // The editor group grid too: a sash drag between groups is a layout
+    // change like any other.
+    const editorGrid = (this._editor as EditorPart).grid;
+    if (editorGrid) {
+      this._saverListeners.add(editorGrid.onDidChange(() => this._workspaceSaver.requestSave()));
+    }
     this._saverListeners.add(this._activityBarPart.onDidChangeIconOrder(() => this._workspaceSaver.requestSave()));
 
     // Wire auto-save on editor changes (open, close, activate)
@@ -2662,6 +2717,9 @@ export class Workbench extends Layout {
 
     this._containerBoxes.pruneAbsent(new Set(this.floatingViewIds()));
     this._widgetBoxes.pruneAbsent(new Set(this.floatingViewIds()));
+    // A preset is a whole shape, but a widget it predates is not lost to
+    // it: the seat comes back at the right edge.
+    void this._widgetBoxes.seatOrphans();
     const docked = saved.rails.filter(
       (e): e is { id: string; rail: 'left' | 'right' } => e.rail !== 'floating',
     );

@@ -157,9 +157,17 @@ export interface SerializedEditorSnapshot {
   readonly groups: SerializedEditorGroupSnapshot[];
   /** Index of the active editor group. */
   readonly activeGroupIndex: number;
+  /** The active group's id; the index above is the fallback for saves without ids. */
+  readonly activeGroupId?: string;
 }
 
 export interface SerializedEditorGroupSnapshot {
+  /**
+   * The group's id at save time — the key its leaf carries in the saved
+   * editor grid (SerializedLayoutState.editorGrid), which is how the tabs
+   * find the group that stands where theirs stood. Absent in old saves.
+   */
+  readonly id?: string;
   /** Open editor input IDs, in tab order. */
   readonly editors: SerializedEditorInputSnapshot[];
   /** Index of the active editor in this group. */

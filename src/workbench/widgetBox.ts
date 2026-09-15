@@ -197,6 +197,8 @@ export class WidgetBoxManager extends Disposable {
   private readonly _listeners = this._register(new DisposableStore());
   private readonly _systemListeners = this._register(new DisposableStore());
   private _system: WorkbenchWidgetHost | undefined;
+  /** True once the workbench has restored its tree: orphans may be seated. */
+  private _treeSettled = false;
 
   constructor(private readonly _host: WidgetBoxHost) {
     super();
@@ -228,6 +230,51 @@ export class WidgetBoxManager extends Disposable {
       }
     }));
     this.rerenderPending();
+    void this.seatOrphans();
+  }
+
+  /** The restored tree is final; from here an instance without a seat is an orphan. */
+  settleTree(): void {
+    this._treeSettled = true;
+    void this.seatOrphans();
+  }
+
+  /**
+   * Seat every workbench instance that has no seat: one column at the
+   * right edge, stacked in the order they come. Instances persist and
+   * seats are tree-bound — right for a tree that drops a seat on purpose,
+   * but an instance with no seat is reachable from nowhere (the reserved
+   * page is on no dashboard). A seat lost to a save from before hidden
+   * seats persisted, or to a preset that predates the widget, comes back
+   * instead of leaking. Needs the system connected AND the tree settled;
+   * either arrival calls in.
+   */
+  async seatOrphans(): Promise<void> {
+    const system = this._system;
+    if (!system || !this._treeSettled) return;
+    let rows: DashboardWidgetRow[];
+    try {
+      rows = await system.listInstances();
+    } catch (err) {
+      console.error('[WidgetBox] listInstances failed:', err);
+      return;
+    }
+    if (this.isDisposed) return;
+    let previous: string | undefined;
+    for (const row of rows) {
+      if (this._boxes.has(row.id)) continue;
+      const box = this._createBox(row.id);
+      this._host.addFloatingView(box);
+      if (previous) {
+        this._host.moveFloating(box.id, {
+          kind: 'beside', targetId: previous, orientation: Orientation.Vertical, before: false,
+        });
+      } else {
+        this._host.moveFloatingToEdge(box.id, Orientation.Horizontal, false);
+      }
+      previous = box.id;
+    }
+    if (previous) this._host.requestSave();
   }
 
   /**
