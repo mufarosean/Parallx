@@ -1065,8 +1065,53 @@ function _takePendingRoute() {
   _pendingRoute = null;
   return r;
 }
+// Data-change events are coalesced to one per tick and can be held during a
+// batch of writes. Before this, every card update or delete fired every
+// listener synchronously (the sidebar refresh, the Decks/Stats render, the
+// planner's day-load forecast over every card), so a bulk edit of a hundred
+// cards meant hundreds of re-renders and query bursts while the writes were
+// still running: the freezes Mufaro saw on bulk edits (2026-09-14).
+let _dataChangeDepth = 0;
+let _dataChangePending = false;
+let _dataChangeScheduled = false;
+/** Card ids whose text changed inside the current batch; embedded once at the end. */
+let _embedDeferred = null;
 function _emitDataChanged() {
-  for (const fn of _dataListeners) { try { fn(); } catch { /* noop */ } }
+  if (_dataChangeDepth > 0) { _dataChangePending = true; return; }
+  if (_dataChangeScheduled) return;
+  _dataChangeScheduled = true;
+  setTimeout(() => {
+    _dataChangeScheduled = false;
+    for (const fn of _dataListeners) { try { fn(); } catch { /* noop */ } }
+  }, 0);
+}
+/**
+ * Run many writes as one change: listeners hear once, when it is done, and
+ * every card whose text changed is re-embedded in one call afterwards.
+ * Nests safely; the outermost batch releases.
+ */
+async function fcBatchWrites(fn) {
+  _dataChangeDepth++;
+  if (_dataChangeDepth === 1) _embedDeferred = new Set();
+  try {
+    return await fn();
+  } finally {
+    _dataChangeDepth--;
+    if (_dataChangeDepth === 0) {
+      const ids = _embedDeferred ? [..._embedDeferred] : [];
+      _embedDeferred = null;
+      if (_dataChangePending) { _dataChangePending = false; _emitDataChanged(); }
+      if (ids.length) {
+        void (async () => {
+          try {
+            const ph = ids.map(() => '?').join(',');
+            const rows = await db.all(`SELECT id, front, back FROM fc_cards WHERE id IN (${ph})`, ids);
+            if (rows.length) await fcEmbedCards(rows);
+          } catch { /* best-effort */ }
+        })();
+      }
+    }
+  }
 }
 
 /** The pacing knobs (M101), normalized. */
@@ -2759,8 +2804,10 @@ async function fcUpdateCard(id, patch) {
     );
   }
   _emitDataChanged();
-  // Text changed → the stored vector is stale; re-embed best-effort.
+  // Text changed → the stored vector is stale; re-embed best-effort (once, at
+  // the end, when inside a batch of writes).
   if (patch.front !== undefined || patch.back !== undefined) {
+    if (_embedDeferred) { _embedDeferred.add(id); return; }
     void (async () => {
       try {
         const row = await db.get('SELECT id, front, back FROM fc_cards WHERE id = ?', [id]);
@@ -7478,10 +7525,12 @@ async function renderDedup(body, route, setRoute) {
           editHost.appendChild(fcCardEditorEl({ ...survivor, front: cluster.mergedCard.front, back: cluster.mergedCard.back }, {
             onSave: async (patch) => {
               try {
-                await fcUpdateCard(cluster.keepId, patch);
-                for (const id of cluster.cardIds) {
-                  if (id !== cluster.keepId) { await fcDeleteCard(id); staged.delete(id); }
-                }
+                await fcBatchWrites(async () => {
+                  await fcUpdateCard(cluster.keepId, patch);
+                  for (const id of cluster.cardIds) {
+                    if (id !== cluster.keepId) { await fcDeleteCard(id); staged.delete(id); }
+                  }
+                });
                 group.classList.add('fc-dupgroup--resolved');
                 group.replaceChildren(el('div', 'fc-hint', 'Merged. The survivor keeps its scheduling history.'));
                 syncFooter();
@@ -7539,7 +7588,7 @@ async function renderDedup(body, route, setRoute) {
         if (!ok) return;
         applyBtn.disabled = true;
         try {
-          for (const id of staged) await fcDeleteCard(id);
+          await fcBatchWrites(async () => { for (const id of staged) await fcDeleteCard(id); });
           // Toast fire-and-forget: awaiting it holds the route switch until
           // the notification dismisses.
           void _api.window.showInformationMessage(`Deleted ${staged.size} duplicate ${staged.size === 1 ? 'card' : 'cards'}.`);
@@ -10817,7 +10866,7 @@ function registerChatTools(context) {
   const runDelete = async (targets, dryRun) => {
     const ids = await wholeNotes(targets.map((c) => c.id));
     if (dryRun) return ids;
-    for (const id of ids) await fcDeleteCard(id);
+    await fcBatchWrites(async () => { for (const id of ids) await fcDeleteCard(id); });
     return ids;
   };
   /** Keep one card, fold the others' tags into it, rewrite it if asked, delete the others. */
@@ -10888,7 +10937,7 @@ function registerChatTools(context) {
       required: ['action'],
     },
     requiresConfirmation: true,
-    handler: async (args) => {
+    handler: async (args) => fcBatchWrites(async () => {
       try {
         const action = String(args?.action || '');
         const decks = await fcListDecks();
@@ -10979,7 +11028,7 @@ function registerChatTools(context) {
       } catch (err) {
         return { content: `Failed: ${err.message}`, isError: true };
       }
-    },
+    }),
   }));
 }
 
