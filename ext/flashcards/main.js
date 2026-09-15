@@ -1238,6 +1238,28 @@ async function openFlashcards(route) {
 // SECTION 4: DATA LAYER
 // ═══════════════════════════════════════════════════════════════════════════════
 
+/** A card id as the user or the AI may write it: 123, "123", "#123", "card #123". */
+function fcParseCardId(value) {
+  if (typeof value === 'number' && Number.isInteger(value) && value > 0) return value;
+  const m = String(value ?? '').match(/(\d+)\s*$/);
+  const n = m ? parseInt(m[1], 10) : NaN;
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+/** The visible id: every card wears its number, and a click copies "#id".
+ *  The chat tools find and edit cards by that id (Mufaro, 2026-09-14). */
+function fcIdChip(id, className = 'fc-card__id') {
+  const chip = el('span', className, `#${id}`);
+  chip.title = `Card #${id}. Click to copy the id; the AI finds and edits cards by it.`;
+  chip.addEventListener('click', (e) => {
+    e.stopPropagation();
+    try { void navigator.clipboard?.writeText(`#${id}`); } catch { /* clipboard unavailable */ }
+    chip.classList.add('fc-card__id--copied');
+    setTimeout(() => chip.classList.remove('fc-card__id--copied'), 900);
+  });
+  return chip;
+}
+
 function rowToCard(row) {
   return {
     id: row.id,
@@ -4844,6 +4866,16 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
   display: flex; flex-direction: column; align-items: center;
   padding-top: 2px;
 }
+/* The card's id, wherever the card is: copy on click, the chat edits by it. */
+.fc-card__id, .fc-cardrow__id, .fc-edit__id {
+  font-size: var(--px-text-xs); color: var(--px-text-faint); font-variant-numeric: tabular-nums;
+  cursor: pointer; user-select: none;
+}
+.fc-card__id:hover, .fc-cardrow__id:hover, .fc-edit__id:hover { color: var(--px-text); }
+.fc-card__id--copied, .fc-card__id--copied:hover { color: var(--px-success); }
+.fc-card__id { margin-left: auto; }
+.fc-cardrow__id { margin-left: auto; }
+.fc-edit__id { display: inline-block; margin-bottom: var(--px-space-2); }
 .fc-cardrow__num {
   font-size: var(--px-text-xs); font-weight: 600; color: var(--px-text-faint);
   font-variant-numeric: tabular-nums;
@@ -6585,6 +6617,7 @@ function fcCreateStudyNotes(card, {
 
 function fcCardEditorEl(card, { onSave, onCancel }) {
   const form = el('div', 'fc-edit');
+  if (card.id != null) form.appendChild(fcIdChip(card.id, 'fc-edit__id'));
 
   const err = el('div', 'fc-error');
   err.style.display = 'none';
@@ -7186,6 +7219,7 @@ async function renderBrowse(body, route, setRoute) {
       meta.appendChild(el('span', 'fc-chip', `#${t}`));
     }
     if (card.sourceLabel) meta.appendChild(el('span', '', card.sourceLabel));
+    meta.appendChild(fcIdChip(card.id, 'fc-cardrow__id'));
     content.appendChild(meta);
 
     // M102 answer history. Written answers accumulate on the append-only
@@ -7411,7 +7445,7 @@ async function renderDedup(body, route, setRoute) {
         const backEl = el('div', 'fc-duprow__back');
         try { backEl.appendChild(_api.ui.renderMarkdown(card.back)); } catch { backEl.textContent = card.back; }
         const meta = el('div', 'fc-duprow__meta');
-        const bits = [card.state, `${card.reps || 0} reps`];
+        const bits = [`#${card.id}`, card.state, `${card.reps || 0} reps`];
         if (card.sourceLabel) bits.push(card.sourceLabel);
         if (cluster.keepId === id && cluster.verdict) bits.push('AI keeps this one');
         meta.textContent = bits.join(' · ');
@@ -8984,6 +9018,7 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
     const qCard = el('div', 'fc-card fc-card--q');
     const qHead = el('div', 'fc-card__head');
     qHead.appendChild(el('span', 'fc-card__tag', deckNames.get(card.deckId) || 'Question'));
+    qHead.appendChild(fcIdChip(card.id));
     qCard.appendChild(qHead);
     const qBody = el('div', 'fc-card__body fc-study__front');
     // M98 cloze: the front blanks THIS sibling's ordinal, reveals the rest.
@@ -10459,90 +10494,488 @@ function registerDashboardWidget(context) {
 function registerChatTools(context) {
   if (!_api.chat?.registerTool) return;
 
-  context.subscriptions.push(_api.chat.registerTool('flashcards.createCards', {
+  // Two tools (Mufaro, 2026-09-14). flashcards.query answers questions about
+  // the collection: find, count, coverage, what is due, decks, stats, read a
+  // card, scan a deck for duplicates. flashcards.edit changes it: create,
+  // update one card or many with every field the card editor has, delete.
+  // Cards are identified by #id, shown on every card.
+
+  const deckNameMap = async () => new Map((await fcListDecks()).map((d) => [d.id, d.name]));
+  const deckByName = (decks, name) => {
+    const n = String(name || '').trim().toLowerCase();
+    return decks.find((d) => String(d.name).toLowerCase() === n) || null;
+  };
+  const tagsOf = (c) => String(c.tags || '').split(',').map((t) => t.trim()).filter(Boolean);
+  const parseIds = (v) => (Array.isArray(v) ? v : v == null || v === '' ? [] : [v]).map(fcParseCardId).filter(Boolean);
+  const parseFlag = (v) => {
+    if (v == null || v === '') return undefined;
+    const s = String(v).trim().toLowerCase();
+    if (s === 'none' || s === '0' || s === 'off') return 0;
+    const byName = FC_FLAGS.find((f) => f.name.toLowerCase() === s || f.cls === s);
+    return byName ? byName.value : fcNormalizeFlag(v);
+  };
+  const endOfToday = () => { const d = new Date(); d.setHours(23, 59, 59, 999); return d.getTime(); };
+  const cardLine = (c, names) => [
+    `#${c.id}`, names.get(c.deckId) || `deck ${c.deckId}`,
+    `Q: ${fcTruncate(c.front, 110)}`, `A: ${fcTruncate(c.back, 80)}`,
+    c.state, c.reps ? `reps ${c.reps}` : '', c.suspended ? 'suspended' : '', c.tags ? `tags: ${c.tags}` : '',
+    c.importance ? `importance ${c.importance}` : '', c.flag ? `flag ${fcFlagDef(c.flag)?.name || c.flag}` : '',
+    c.recallMode && c.recallMode !== 'recognition' ? `mode ${c.recallMode}` : '',
+  ].filter(Boolean).join(' · ');
+  const cardFull = (c, names) => [
+    `Card #${c.id} · deck: ${names.get(c.deckId) || c.deckId} · type: ${c.cardType}${c.suspended ? ' · suspended' : ''}`,
+    `Front:\n${c.front}`, `Back:\n${c.back}`,
+    c.notes ? `Notes:\n${c.notes}` : '', c.tags ? `Tags: ${c.tags}` : '',
+    c.importance ? `Importance: ${c.importance}${c.importanceReason ? ` (${c.importanceReason})` : ''}` : '',
+    c.flag ? `Flag: ${fcFlagDef(c.flag)?.name || c.flag}` : '',
+    `Recall mode: ${c.recallMode}${c.rubric?.length ? `\nRubric:\n${c.rubric.map((pt) => `- ${pt.text}${pt.required ? '' : ' (optional)'}`).join('\n')}` : ''}`,
+    `State: ${c.state} · reps ${c.reps || 0} · lapses ${c.lapses || 0}${c.dueAt ? ` · due ${new Date(c.dueAt).toLocaleDateString()}` : ''}`,
+  ].filter(Boolean).join('\n');
+
+  /** The cards a selector names, over every deck. Filters combine with AND. */
+  const selectCards = async (where, decks) => {
+    const w = where && typeof where === 'object' ? where : {};
+    const deckNames = new Map(decks.map((d) => [d.id, String(d.name)]));
+    let cards = await fcListAllCards();
+    if (w.deckName) {
+      const d = deckByName(decks, w.deckName);
+      if (!d) return { cards: [], error: `No deck named "${w.deckName}". Decks: ${decks.map((x) => x.name).join(', ') || 'none'}.` };
+      cards = cards.filter((c) => c.deckId === d.id);
+    }
+    const ids = parseIds(w.ids);
+    if (ids.length) cards = cards.filter((c) => ids.includes(c.id));
+    if (w.tag) { const t = String(w.tag).replace(/^#/, '').trim().toLowerCase(); cards = cards.filter((c) => tagsOf(c).some((x) => x.toLowerCase() === t)); }
+    if (w.query) {
+      const terms = String(w.query).toLowerCase().split(/\s+/).filter(Boolean);
+      const any = w.matchAny === true;
+      cards = cards.filter((c) => { const hay = [c.front, c.back, c.notes, c.tags, deckNames.get(c.deckId)].map((t) => String(t || '').toLowerCase()).join('\n'); return any ? terms.some((term) => hay.includes(term)) : terms.every((term) => hay.includes(term)); });
+    }
+    if (w.state) cards = cards.filter((c) => c.state === String(w.state));
+    if (typeof w.suspended === 'boolean') cards = cards.filter((c) => c.suspended === w.suspended);
+    const flag = parseFlag(w.flag);
+    if (flag !== undefined) cards = cards.filter((c) => (c.flag || 0) === flag);
+    if (w.minImportance !== undefined && w.minImportance !== null) cards = cards.filter((c) => (c.importance || 0) >= Number(w.minImportance));
+    if (w.recallMode) cards = cards.filter((c) => c.recallMode === fcNormalizeRecallMode(w.recallMode));
+    if (w.due) {
+      const now = Date.now();
+      if (w.due === 'new') cards = cards.filter((c) => !c.suspended && c.state === 'new');
+      else {
+        const end = w.due === 'today' ? endOfToday() : w.due === 'week' ? now + 7 * DAY : now;
+        cards = cards.filter((c) => !c.suspended && c.state !== 'new' && c.dueAt > 0 && c.dueAt <= end);
+      }
+    }
+    return { cards, ids };
+  };
+  const hasFilter = (w) => !!w && typeof w === 'object' && ['deckName', 'ids', 'tag', 'query', 'state', 'suspended', 'flag', 'minImportance', 'recallMode', 'due'].some((k) => w[k] !== undefined && w[k] !== null && w[k] !== '' && !(Array.isArray(w[k]) && w[k].length === 0));
+  const breakdown = (cards, names) => {
+    const by = (key) => { const m = new Map(); for (const c of cards) for (const k of key(c)) m.set(k, (m.get(k) || 0) + 1); return [...m.entries()].sort((x, y) => y[1] - x[1]); };
+    const decks = by((c) => [names.get(c.deckId) || `deck ${c.deckId}`]);
+    const tags = by((c) => tagsOf(c)).slice(0, 12);
+    const states = by((c) => [c.state]);
+    return [
+      `By deck: ${decks.map(([k, n]) => `${k} ${n}`).join(', ') || 'none'}`,
+      `By state: ${states.map(([k, n]) => `${k} ${n}`).join(', ') || 'none'}`,
+      tags.length ? `Top tags: ${tags.map(([k, n]) => `${k} ${n}`).join(', ')}` : '',
+      `Suspended: ${cards.filter((c) => c.suspended).length}`,
+    ].filter(Boolean).join('\n');
+  };
+  const whereSchema = {
+    type: 'object',
+    description: 'Which cards, all conditions combined. Omit everything to mean every card (query only).',
+    properties: {
+      deckName: { type: 'string' },
+      ids: { type: 'array', items: { type: 'string' }, description: 'Card ids like "#123".' },
+      tag: { type: 'string' },
+      query: { type: 'string', description: 'Words that must all appear in the front, back, notes, tags or deck name, case-insensitive. For "do I have cards on X", pass the key terms of X, or use action similar for meaning.' },
+      matchAny: { type: 'boolean', description: 'query: match cards containing ANY of the words instead of all.' },
+      state: { type: 'string', enum: ['new', 'learning', 'review', 'relearning'] },
+      suspended: { type: 'boolean' },
+      flag: { type: 'string', description: 'none, red, amber, green or blue' },
+      minImportance: { type: 'number', description: '0 to 100' },
+      recallMode: { type: 'string', enum: FC_RECALL_MODES },
+      due: { type: 'string', enum: ['now', 'today', 'week', 'new'] },
+    },
+  };
+
+  context.subscriptions.push(_api.chat.registerTool('flashcards.query', {
     description:
-      'Create spaced-repetition flashcards in the user\'s Flashcards extension. '
-      + 'Provide a deck name (created if missing) and an array of cards, each with '
-      + '"front" (question) and "back" (answer). Use for "make flashcards from this" requests. '
-      + 'Card text is Markdown plus $LaTeX$ for math. Use real newlines for line '
-      + 'breaks, NEVER HTML tags like <br> (raw HTML is escaped, not rendered).',
+      'Read the user\'s flashcards. Actions: find (list matching cards), count (how many, by deck/state/tag; use it for '
+      + '"do I have cards on X" and "how many cards about X"), due (what is due now/today/this week, with per-deck '
+      + 'totals), decks (list decks), stats (reviews, retention, counts), card (read cards in full by id), '
+      + 'duplicates (scan a deck, or every deck, for near-duplicate pairs; you then judge which are true duplicates '
+      + 'and use flashcards.edit to delete or merge), similar (the cards closest in MEANING to a text, for coverage '
+      + 'questions and for thinning a chapter). Every card is identified by #id. Read-only.',
     parameters: {
       type: 'object',
       properties: {
-        deckName: { type: 'string', description: 'Target deck name.' },
+        action: { type: 'string', enum: ['find', 'count', 'due', 'decks', 'stats', 'card', 'duplicates', 'similar'] },
+        text: { type: 'string', description: 'similar: the topic or question to compare against.' },
+        full: { type: 'boolean', description: 'find: return every card\'s complete front, back and notes instead of one line each (limit then defaults to 30, max 100).' },
+        sort: { type: 'string', enum: ['newest', 'oldest', 'importance', 'due', 'reps'], description: 'find: order of the list (default newest).' },
+        where: whereSchema,
+        ids: { type: 'array', items: { type: 'string' }, description: 'card: the ids to read in full.' },
+        deckName: { type: 'string', description: 'duplicates: the deck to scan (omit to scan every deck). Also accepted as a shortcut for where.deckName.' },
+        query: { type: 'string', description: 'Shortcut for where.query.' },
+        due: { type: 'string', enum: ['now', 'today', 'week', 'new'], description: 'due: the window (default now).' },
+        limit: { type: 'number', description: 'Cards or pairs to list (default 30, max 200).' },
+        minSimilarity: { type: 'number', description: 'duplicates: only pairs at least this similar, 0 to 1 (default the app threshold).' },
+      },
+      required: ['action'],
+    },
+    requiresConfirmation: false,
+    handler: async (args) => {
+      try {
+        const action = String(args?.action || 'find');
+        const decks = await fcListDecks();
+        const names = new Map(decks.map((d) => [d.id, d.name]));
+        const limit = Math.max(1, Math.min(200, Number(args?.limit) || 30));
+        const where = { ...(args?.where || {}) };
+        if (args?.deckName && !where.deckName) where.deckName = args.deckName;
+        if (args?.query && !where.query) where.query = args.query;
+        if (action === 'decks') {
+          if (decks.length === 0) return { content: 'No decks yet.' };
+          return { content: decks.map((d) => `- ${d.name}: ${d.total} cards, ${d.dueCount} due, ${d.newCount} new`).join('\n') };
+        }
+        if (action === 'stats') {
+          const st = await fcLoadStats();
+          return { content: [
+            `Reviews today: ${st.today.reviews}${st.today.correctPct !== null ? ` (${st.today.correctPct}% correct)` : ''}`,
+            `30-day retention: ${st.retention30 !== null ? `${st.retention30}%` : 'n/a'}`,
+            `Cards: new ${st.counts.new}, learning ${st.counts.learning + st.counts.relearning}, reviewing ${st.counts.review}, suspended ${st.counts.suspended}, total ${st.counts.total}`,
+            st.streak != null ? `Study streak: ${st.streak} days` : '',
+          ].filter(Boolean).join('\n') };
+        }
+        if (action === 'card') {
+          const ids = parseIds(args?.ids?.length ? args.ids : where.ids);
+          if (ids.length === 0) return { content: 'Give the card ids to read, like ["#123"].', isError: true };
+          const found = [];
+          for (const id of ids.slice(0, 20)) { const c = await fcGetCard(id); if (c) found.push(cardFull(c, names)); }
+          return found.length ? { content: found.join('\n\n') } : { content: `No card ${ids.map((i) => `#${i}`).join(', ')}.`, isError: true };
+        }
+        if (action === 'similar') {
+          const text = String(args?.text || where.query || '').trim();
+          if (!text) return { content: 'similar needs text: the topic or question to compare against.', isError: true };
+          const deck = where.deckName ? deckByName(decks, where.deckName) : null;
+          if (where.deckName && !deck) return { content: `No deck named "${where.deckName}".`, isError: true };
+          const all = await fcListAllCards(deck ? deck.id : null);
+          const byId = new Map(all.map((c) => [c.id, c]));
+          let hits = [];
+          let method = 'trigram';
+          try {
+            if (await fcEmbeddingsAvailable()) {
+              const vec = await fcEmbeddingService().embedQuery(text);
+              if (Array.isArray(vec) && vec.length === FC_EMB_DIMS) {
+                const k = Math.max(limit * 3, 60);
+                const rows = await db.all(
+                  `SELECT v.card_id, v.distance FROM (SELECT card_id, distance FROM fc_card_embeddings WHERE embedding MATCH ? AND k = ${k} ORDER BY distance) v
+                   JOIN fc_cards c ON c.id = CAST(v.card_id AS INTEGER)${deck ? ' WHERE c.deck_id = ?' : ''} ORDER BY v.distance`,
+                  deck ? [fcVecBlob(vec), deck.id] : [fcVecBlob(vec)],
+                );
+                hits = rows.map((r) => ({ id: Number(r.card_id), similarity: 1 - Number(r.distance) })).filter((h) => byId.has(h.id));
+                method = 'meaning';
+              }
+            }
+          } catch (e) { console.warn('[Flashcards] similar: embedding search skipped:', e?.message); }
+          if (method === 'trigram') {
+            const probe = text.toLowerCase();
+            hits = all.map((c) => ({ id: c.id, similarity: fcTrigramSimilarity(probe, fcCardEmbedText(c.front, c.back).toLowerCase()) })).filter((h) => h.similarity > 0).sort((x, y) => y.similarity - x.similarity);
+          }
+          const list = hits.slice(0, limit).map((h) => `${Math.round(h.similarity * 100)}% · ${cardLine(byId.get(h.id), names)}`);
+          const top = hits[0]?.similarity ?? 0;
+          const verdict = method === 'meaning'
+            ? `Top match ${Math.round(top * 100)}%: above about 75% is usually the same topic, 60 to 75% a neighbouring one, below 60% usually not covered; read the cards to decide.`
+            : `Top match ${Math.round(top * 100)}% by word overlap (embeddings unavailable): above about 50% is usually the same topic.`;
+          return { content: `Closest cards to "${text}"${deck ? ` in "${deck.name}"` : ''} (by ${method}). ${verdict}\n${list.join('\n') || '(none)'}` };
+        }
+        if (action === 'duplicates') {
+          const targetDecks = where.deckName ? [deckByName(decks, where.deckName)].filter(Boolean) : decks;
+          if (where.deckName && targetDecks.length === 0) return { content: `No deck named "${where.deckName}". Decks: ${decks.map((d) => d.name).join(', ') || 'none'}.`, isError: true };
+          const minSim = Number(args?.minSimilarity);
+          const groups = [];
+          const methods = new Set();
+          for (const deck of targetDecks) {
+            const { pairs, method } = await fcSweepDeckPairs(deck.id);
+            methods.add(method);
+            const kept = Number.isFinite(minSim) ? pairs.filter((pr) => pr.similarity >= minSim) : pairs;
+            if (kept.length === 0) continue;
+            const cards = await fcListAllCards(deck.id);
+            const byId = new Map(cards.map((c) => [c.id, c]));
+            for (const cl of fcClusterPairs(kept)) groups.push({ deck, cl, byId, top: Math.max(...cl.pairs.map((pr) => pr.similarity)) });
+          }
+          if (groups.length === 0) return { content: `No likely duplicates${targetDecks.length === 1 ? ` in "${targetDecks[0].name}"` : ' in any deck'}.` };
+          groups.sort((x, y) => y.top - x.top);
+          const shown = groups.slice(0, limit);
+          const lines = shown.map((g, i) => {
+            const members = g.cl.cardIds.map((id) => {
+              const c = g.byId.get(id);
+              if (!c) return `  #${id}`;
+              const facts = [c.state, c.reps ? `${c.reps} reviews` : 'never reviewed', c.importance ? `importance ${c.importance}` : '', c.tags ? `tags: ${c.tags}` : '', c.suspended ? 'suspended' : ''].filter(Boolean).join(', ');
+              return `  #${c.id} Q: ${fcTruncate(c.front, 100)} · A: ${fcTruncate(c.back, 70)} [${facts}]`;
+            });
+            const sims = g.cl.pairs.map((pr) => `#${pr.a}~#${pr.b} ${Math.round(pr.similarity * 100)}%`).join(', ');
+            return `Group ${i + 1}${targetDecks.length > 1 ? ` · ${g.deck.name}` : ''} (${sims}):\n${members.join('\n')}`;
+          });
+          return { content: `${groups.length} candidate group${groups.length === 1 ? '' : 's'}${targetDecks.length === 1 ? ` in "${targetDecks[0].name}"` : ' across every deck'} (${[...methods].join('/')} scan)${groups.length > shown.length ? `, first ${shown.length}` : ''}. Judge each: keep the card with the review history, merge what the others add with flashcards.edit apply/merge, or delete; near-misses that test different things stay.\n\n${lines.join('\n\n')}` };
+        }
+        if (action === 'due' && !where.due) where.due = args?.due || 'now';
+        const sel = await selectCards(where, decks);
+        if (sel.error) return { content: sel.error, isError: true };
+        const cards = sel.cards;
+        if (action === 'count') {
+          const what = [where.query ? `about "${where.query}"` : '', where.deckName ? `in "${where.deckName}"` : '', where.tag ? `tagged ${where.tag}` : ''].filter(Boolean).join(' ');
+          if (cards.length === 0) return { content: `0 cards ${what}`.trim() + '. Nothing covers that yet.' };
+          const sample = cards.slice(0, Math.min(limit, 10)).map((c) => `  #${c.id} ${fcTruncate(c.front, 90)}`).join('\n');
+          return { content: `${cards.length} card${cards.length === 1 ? '' : 's'} ${what}`.trim() + `.\n${breakdown(cards, names)}\nExamples:\n${sample}` };
+        }
+        if (action === 'due') {
+          const summary = await fcDueSummary();
+          const head = [
+            `Due now: ${summary.due} · New waiting: ${summary.fresh} · Total: ${summary.total}`,
+            ...decks.map((d) => `- ${d.name}: ${d.dueCount} due, ${d.newCount} new (${d.total} cards)`),
+          ];
+          const list = cards.slice(0, limit).map((c) => cardLine(c, names));
+          return { content: `${head.join('\n')}\n\n${cards.length} card${cards.length === 1 ? '' : 's'} due ${where.due}${cards.length > limit ? `, first ${limit}` : ''}:\n${list.join('\n') || '(none)'}` };
+        }
+        // find
+        if (cards.length === 0) return { content: 'No cards match.' };
+        const sort = String(args?.sort || 'newest');
+        const sorted = [...cards].sort((x, y) => sort === 'oldest' ? x.createdAt - y.createdAt
+          : sort === 'importance' ? (y.importance || 0) - (x.importance || 0) || y.createdAt - x.createdAt
+          : sort === 'due' ? (x.dueAt || Infinity) - (y.dueAt || Infinity)
+          : sort === 'reps' ? (y.reps || 0) - (x.reps || 0)
+          : y.createdAt - x.createdAt);
+        if (args?.full) {
+          const cap = Math.min(limit, 100);
+          const blocks = sorted.slice(0, cap).map((c) => cardFull(c, names));
+          return { content: `${cards.length} match${cards.length === 1 ? '' : 'es'}${cards.length > cap ? `, first ${cap} in full` : ', in full'}:\n\n${blocks.join('\n\n')}` };
+        }
+        return { content: `${cards.length} match${cards.length === 1 ? '' : 'es'}${cards.length > limit ? `, first ${limit}` : ''}:\n${sorted.slice(0, limit).map((c) => cardLine(c, names)).join('\n')}` };
+      } catch (err) {
+        return { content: `Failed: ${err.message}`, isError: true };
+      }
+    },
+  }));
+
+  const rubricPoints = (v) => Array.isArray(v) ? fcParseRubricLines(v.map(String).join('\n')) : typeof v === 'string' ? fcParseRubricLines(v) : undefined;
+  const setSchema = {
+    type: 'object',
+    description: 'update: the fields to change on every selected card. Omitted fields stay.',
+    properties: {
+      front: { type: 'string', description: 'Single card only.' },
+      back: { type: 'string', description: 'Single card only.' },
+      notes: { type: 'string' },
+      tags: { type: 'array', items: { type: 'string' }, description: 'Replaces the tags.' },
+      addTags: { type: 'array', items: { type: 'string' } },
+      removeTags: { type: 'array', items: { type: 'string' } },
+      deckName: { type: 'string', description: 'Moves the cards; the deck is created if missing.' },
+      suspended: { type: 'boolean' },
+      flag: { type: 'string', description: 'none, red, amber, green or blue' },
+      importance: { type: 'number', description: '0 to 100; 0 clears it' },
+      importanceReason: { type: 'string' },
+      recallMode: { type: 'string', enum: FC_RECALL_MODES, description: 'recognition (flip and self-grade) or a production mode: conceptual, list, formula (typed answer graded against the rubric)' },
+      rubric: { type: 'array', items: { type: 'string' }, description: 'One point per item; append " (optional)" for supporting detail. Empty array clears.' },
+    },
+  };
+  /** Ids with their cloze/reverse siblings, so a delete never orphans a note. */
+  const wholeNotes = async (ids) => { try { const x = await fcExpandNoteGroups(ids); return Array.isArray(x) && x.length ? x.map(Number) : ids; } catch { return ids; } };
+  const listing = (targets) => targets.slice(0, 15).map((c) => `  #${c.id} ${fcTruncate(c.front, 80)}`).join('\n') + (targets.length > 15 ? `\n  … and ${targets.length - 15} more` : '');
+  /** Apply `set` to the target cards. Returns the change words, or throws with a message. */
+  const runUpdate = async (targets, set, dryRun) => {
+    if ((typeof set.front === 'string' || typeof set.back === 'string') && targets.length > 1) throw new Error('front and back can only be set on a single card; select one id.');
+    const changed = [];
+    const patchBase = {};
+    if (typeof set.front === 'string' && set.front.trim()) { patchBase.front = set.front.trim(); changed.push('front'); }
+    if (typeof set.back === 'string' && set.back.trim()) { patchBase.back = set.back.trim(); changed.push('back'); }
+    if (typeof set.notes === 'string') { patchBase.notes = set.notes; changed.push('notes'); }
+    if (typeof set.suspended === 'boolean') { patchBase.suspended = set.suspended; changed.push(set.suspended ? 'suspended' : 'unsuspended'); }
+    const flag = parseFlag(set.flag);
+    if (flag !== undefined) { patchBase.flag = flag; changed.push(`flag ${fcFlagDef(flag)?.name || 'none'}`); }
+    if (set.importance !== undefined && set.importance !== null) { patchBase.importance = Number(set.importance); changed.push(`importance ${fcNormalizeImportance(set.importance)}`); }
+    if (typeof set.importanceReason === 'string') { patchBase.importanceReason = set.importanceReason; changed.push('importance reason'); }
+    if (set.recallMode) { patchBase.recallMode = fcNormalizeRecallMode(set.recallMode); changed.push(`recall mode ${patchBase.recallMode}`); }
+    const rubric = rubricPoints(set.rubric);
+    if (rubric !== undefined) { patchBase.rubric = rubric; changed.push(rubric.length ? `rubric (${rubric.length} points)` : 'rubric cleared'); }
+    const tagOps = Array.isArray(set.tags) || Array.isArray(set.addTags) || Array.isArray(set.removeTags);
+    if (tagOps) changed.push('tags');
+    let moveTo = null;
+    if (typeof set.deckName === 'string' && set.deckName.trim()) { moveTo = set.deckName.trim(); changed.push(`deck "${moveTo}"`); }
+    if (changed.length === 0) throw new Error('nothing in set: front, back, notes, tags, addTags, removeTags, deckName, suspended, flag, importance, importanceReason, recallMode, rubric.');
+    if (dryRun) return changed;
+    for (const c of targets) {
+      const patch = { ...patchBase };
+      if (tagOps) {
+        let tags = Array.isArray(set.tags) ? set.tags.map((t) => String(t).trim()).filter(Boolean) : tagsOf(c);
+        if (Array.isArray(set.addTags)) for (const t of set.addTags.map((x) => String(x).trim()).filter(Boolean)) if (!tags.some((x) => x.toLowerCase() === t.toLowerCase())) tags.push(t);
+        if (Array.isArray(set.removeTags)) { const drop = new Set(set.removeTags.map((x) => String(x).trim().toLowerCase())); tags = tags.filter((t) => !drop.has(t.toLowerCase())); }
+        patch.tags = tags.join(',');
+      }
+      if (Object.keys(patch).length) await fcUpdateCard(c.id, patch);
+    }
+    if (moveTo) await fcMoveCards(targets.map((c) => c.id), await fcGetOrCreateDeckByName(moveTo));
+    return changed;
+  };
+  const runDelete = async (targets, dryRun) => {
+    const ids = await wholeNotes(targets.map((c) => c.id));
+    if (dryRun) return ids;
+    for (const id of ids) await fcDeleteCard(id);
+    return ids;
+  };
+  /** Keep one card, fold the others' tags into it, rewrite it if asked, delete the others. */
+  const runMerge = async (keepId, mergeIds, set, dryRun) => {
+    const keep = await fcGetCard(keepId);
+    if (!keep) throw new Error(`No card #${keepId} to keep.`);
+    const others = [];
+    for (const id of mergeIds) { if (id === keepId) continue; const c = await fcGetCard(id); if (c) others.push(c); }
+    if (others.length === 0) throw new Error(`merge: no other cards found (${mergeIds.map((i) => `#${i}`).join(', ')}).`);
+    const merged = { ...(set || {}) };
+    const union = tagsOf(keep);
+    for (const o of others) for (const t of tagsOf(o)) if (!union.some((x) => x.toLowerCase() === t.toLowerCase())) union.push(t);
+    if (!Array.isArray(merged.tags)) merged.tags = union;
+    if (dryRun) return { keep, others };
+    await runUpdate([keep], merged, false);
+    await runDelete(others, false);
+    return { keep, others };
+  };
+  const changeSchema = {
+    type: 'object',
+    description: 'One change in an apply batch.',
+    properties: {
+      op: { type: 'string', enum: ['update', 'delete', 'merge'] },
+      ids: { type: 'array', items: { type: 'string' }, description: 'update/delete: the cards.' },
+      set: setSchema,
+      keepId: { type: 'string', description: 'merge: the card that stays.' },
+      mergeIds: { type: 'array', items: { type: 'string' }, description: 'merge: the cards folded into it and deleted; their tags move to the kept card.' },
+    },
+    required: ['op'],
+  };
+  context.subscriptions.push(_api.chat.registerTool('flashcards.edit', {
+    description:
+      'Change the user\'s flashcards. Actions: create (cards into a deck, created if missing), update (one card or '
+      + 'many: every field the card editor has), delete, merge (keep one card, fold the others into it), apply (a batch '
+      + 'of update/delete/merge changes in ONE call and one confirmation: the way to thin a chapter after reviewing it). '
+      + 'Targets are ids or a where-selector; a where-selector '
+      + 'applies to EVERY card it matches, so run flashcards.query count/find first and mirror its selector. '
+      + 'Set dryRun to preview what would change. Card text is Markdown plus $LaTeX$ with real newlines, never HTML. '
+      + 'The user confirms every call.',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['create', 'update', 'delete', 'merge', 'apply'] },
+        keepId: { type: 'string', description: 'merge: the card that stays.' },
+        mergeIds: { type: 'array', items: { type: 'string' }, description: 'merge: the cards folded into it and deleted.' },
+        changes: { type: 'array', items: changeSchema, description: 'apply: the changes, in order.' },
+        deckName: { type: 'string', description: 'create: the target deck.' },
         cards: {
           type: 'array',
+          description: 'create: the cards.',
           items: {
             type: 'object',
             properties: {
-              front: { type: 'string' },
-              back: { type: 'string' },
+              front: { type: 'string' }, back: { type: 'string' }, notes: { type: 'string' },
               tags: { type: 'array', items: { type: 'string' } },
+              importance: { type: 'number' }, importanceReason: { type: 'string' },
+              recallMode: { type: 'string', enum: FC_RECALL_MODES },
+              rubric: { type: 'array', items: { type: 'string' } },
             },
             required: ['front', 'back'],
           },
         },
+        ids: { type: 'array', items: { type: 'string' }, description: 'update/delete: the cards, like ["#12", "#13"].' },
+        where: whereSchema,
+        set: setSchema,
+        dryRun: { type: 'boolean', description: 'Report what would change, change nothing.' },
       },
-      required: ['deckName', 'cards'],
+      required: ['action'],
     },
     requiresConfirmation: true,
     handler: async (args) => {
       try {
-        const deckName = String(args.deckName || '').trim();
-        const cards = Array.isArray(args.cards) ? args.cards : [];
-        if (!deckName || cards.length === 0) {
-          return { content: 'deckName and a non-empty cards array are required.', isError: true };
-        }
-        const deckId = await fcGetOrCreateDeckByName(deckName);
-        let created = 0;
-        for (const c of cards.slice(0, 100)) {
-          const front = String(c?.front || '').trim();
-          const back = String(c?.back || '').trim();
-          if (!front || !back) continue;
-          const tags = Array.isArray(c.tags) ? c.tags.map(String).join(',') : '';
-          await fcCreateCard({ deckId, front, back, tags, sourceLabel: 'Created from chat' });
-          created++;
-        }
-        return { content: `Created ${created} cards in deck "${deckName}".` };
-      } catch (err) {
-        return { content: `Failed: ${err.message}`, isError: true };
-      }
-    },
-  }));
-
-  context.subscriptions.push(_api.chat.registerTool('flashcards.getDue', {
-    description: 'Get the user\'s flashcard workload: due count, new-card count, total cards, per-deck breakdown.',
-    parameters: { type: 'object', properties: {} },
-    requiresConfirmation: false,
-    handler: async () => {
-      try {
-        const summary = await fcDueSummary();
+        const action = String(args?.action || '');
         const decks = await fcListDecks();
-        const lines = [
-          `Due now: ${summary.due} · New waiting: ${summary.fresh} · Total: ${summary.total}`,
-          ...decks.map((d) => `- ${d.name}: ${d.dueCount} due, ${d.newCount} new (${d.total} cards)`),
-        ];
-        return { content: lines.join('\n') };
-      } catch (err) {
-        return { content: `Failed: ${err.message}`, isError: true };
-      }
-    },
-  }));
-
-  context.subscriptions.push(_api.chat.registerTool('flashcards.getStats', {
-    description: 'Get the user\'s flashcard study statistics: reviews today, 30-day retention, card counts by stage.',
-    parameters: { type: 'object', properties: {} },
-    requiresConfirmation: false,
-    handler: async () => {
-      try {
-        const s = await fcLoadStats();
-        return {
-          content: [
-            `Reviews today: ${s.today.reviews}${s.today.correctPct !== null ? ` (${s.today.correctPct}% correct)` : ''}`,
-            `30-day retention: ${s.retention30 !== null ? `${s.retention30}%` : 'n/a'}`,
-            `Cards: new: ${s.counts.new}, learning: ${s.counts.learning + s.counts.relearning}, reviewing: ${s.counts.review}, suspended: ${s.counts.suspended}, total: ${s.counts.total}`,
-          ].join('\n'),
-        };
+        const names = new Map(decks.map((d) => [d.id, d.name]));
+        if (action === 'create') {
+          const deckName = String(args?.deckName || '').trim();
+          const cards = Array.isArray(args?.cards) ? args.cards : [];
+          if (!deckName || cards.length === 0) return { content: 'create needs deckName and a non-empty cards array.', isError: true };
+          if (args?.dryRun) return { content: `Would create ${cards.length} cards in "${deckName}".` };
+          const deckId = await fcGetOrCreateDeckByName(deckName);
+          const createdIds = [];
+          let created = 0;
+          for (const c of cards.slice(0, 100)) {
+            const front = String(c?.front || '').trim();
+            const back = String(c?.back || '').trim();
+            if (!front || !back) continue;
+            const id = await fcCreateCard({
+              deckId, front, back, sourceLabel: 'Created from chat',
+              notes: typeof c.notes === 'string' ? c.notes : '',
+              tags: Array.isArray(c.tags) ? c.tags.map(String).join(',') : '',
+              importance: c.importance, importanceReason: c.importanceReason,
+              recallMode: c.recallMode, rubric: rubricPoints(c.rubric),
+            });
+            if (id != null) createdIds.push(id);
+            created++;
+          }
+          return { content: `Created ${created} cards in deck "${deckName}"${createdIds.length ? `: ${createdIds.map((i) => `#${i}`).join(', ')}` : ''}.` };
+        }
+        const dryRun = args?.dryRun === true;
+        if (action === 'merge') {
+          const keepId = fcParseCardId(args?.keepId);
+          const mergeIds = parseIds(args?.mergeIds);
+          if (!keepId || mergeIds.length === 0) return { content: 'merge needs keepId and mergeIds.', isError: true };
+          const { keep, others } = await runMerge(keepId, mergeIds, args?.set, dryRun);
+          return { content: `${dryRun ? 'Would merge' : 'Merged'} ${others.map((c) => `#${c.id}`).join(', ')} into #${keep.id} "${fcTruncate(keep.front, 70)}"${dryRun ? '' : ' and deleted them'}.` };
+        }
+        if (action === 'apply') {
+          const changes = Array.isArray(args?.changes) ? args.changes : [];
+          if (changes.length === 0) return { content: 'apply needs a changes array.', isError: true };
+          if (changes.length > 200) return { content: 'apply takes at most 200 changes per call.', isError: true };
+          const out = [];
+          let n = 0;
+          for (const ch of changes) {
+            n++;
+            try {
+              const op = String(ch?.op || '');
+              if (op === 'merge') {
+                const keepId = fcParseCardId(ch.keepId);
+                const mergeIds = parseIds(ch.mergeIds);
+                if (!keepId || mergeIds.length === 0) throw new Error('merge needs keepId and mergeIds');
+                const { keep, others } = await runMerge(keepId, mergeIds, ch.set, dryRun);
+                out.push(`${n}. merge ${others.map((c) => `#${c.id}`).join(', ')} into #${keep.id}`);
+                continue;
+              }
+              const ids = parseIds(ch?.ids);
+              if (ids.length === 0) throw new Error(`${op || 'change'} needs ids`);
+              const targets = [];
+              for (const id of ids) { const c = await fcGetCard(id); if (c) targets.push(c); }
+              if (targets.length === 0) throw new Error(`no such cards ${ids.map((i) => `#${i}`).join(', ')}`);
+              if (op === 'delete') { const done = await runDelete(targets, dryRun); out.push(`${n}. delete ${done.map((i) => `#${i}`).join(', ')}`); }
+              else if (op === 'update') { const changed = await runUpdate(targets, ch?.set || {}, dryRun); out.push(`${n}. update ${targets.map((c) => `#${c.id}`).join(', ')}: ${changed.join(', ')}`); }
+              else throw new Error(`unknown op "${op}"`);
+            } catch (e) {
+              out.push(`${n}. FAILED: ${e.message}`);
+              if (!dryRun) return { content: `Stopped at change ${n}; changes before it were applied.\n${out.join('\n')}`, isError: true };
+            }
+          }
+          return { content: `${dryRun ? 'Would apply' : 'Applied'} ${changes.length} change${changes.length === 1 ? '' : 's'}:\n${out.join('\n')}` };
+        }
+        if (action !== 'update' && action !== 'delete') return { content: 'action must be create, update, delete, merge or apply.', isError: true };
+        const ids = parseIds(args?.ids);
+        const where = args?.where && typeof args.where === 'object' ? { ...args.where } : null;
+        if (ids.length === 0 && !hasFilter(where)) return { content: `${action} needs ids or a where-selector; nothing was changed.`, isError: true };
+        const sel = await selectCards(ids.length ? { ...(where || {}), ids } : where, decks);
+        if (sel.error) return { content: sel.error, isError: true };
+        const targets = sel.cards;
+        if (targets.length === 0) return { content: 'No cards match; nothing changed.' };
+        if (targets.length > 500) return { content: `${targets.length} cards match; narrow the selector below 500.`, isError: true };
+        if (action === 'delete') {
+          const done = await runDelete(targets, dryRun);
+          const extra = done.length - targets.length;
+          return { content: `${dryRun ? 'Would delete' : 'Deleted'} ${done.length} card${done.length === 1 ? '' : 's'}${extra > 0 ? ` (${extra} cloze or reverse sibling${extra === 1 ? '' : 's'} included)` : ''}:\n${listing(targets)}` };
+        }
+        let changed;
+        try { changed = await runUpdate(targets, args?.set && typeof args.set === 'object' ? args.set : {}, dryRun); }
+        catch (e) { return { content: `update: ${e.message}`, isError: true }; }
+        return { content: `${dryRun ? 'Would change' : 'Updated'} ${targets.length} card${targets.length === 1 ? '' : 's'} (${changed.join(', ')}):\n${listing(targets)}` };
       } catch (err) {
         return { content: `Failed: ${err.message}`, isError: true };
       }
@@ -10550,9 +10983,7 @@ function registerChatTools(context) {
   }));
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 12: LINKS CONTRACT
-// ═══════════════════════════════════════════════════════════════════════════════
+// ── SECTION 12: LINKS CONTRACT ─────────────────────────────────────────────
 
 function registerLinks(context) {
   if (!_api.links?.register) return;
@@ -10574,6 +11005,22 @@ function registerLinks(context) {
             const deckId = parseInt(parsed.pathSegments[1] || '', 10);
             const row = await db.get('SELECT name FROM fc_decks WHERE id = ?', [deckId]).catch(() => null);
             return row ? { title: `Deck: ${row.name}`, icon: 'layers' } : null;
+          },
+        },
+        card: {
+          uriTemplate: 'parallx://flashcards/card/<cardId>',
+          description: 'Open the deck holding one flashcard, by the card\'s #id.',
+          open: async (parsed) => {
+            const id = parseInt(parsed.pathSegments[1] || '', 10);
+            const card = Number.isFinite(id) ? await fcGetCard(id).catch(() => null) : null;
+            if (!card) return false;
+            await openFlashcards({ view: 'browse', deckId: card.deckId });
+            return true;
+          },
+          resolveMetadata: async (parsed) => {
+            const id = parseInt(parsed.pathSegments[1] || '', 10);
+            const card = Number.isFinite(id) ? await fcGetCard(id).catch(() => null) : null;
+            return card ? { title: `Card #${id}: ${fcTruncate(card.front, 60)}`, icon: 'layers' } : null;
           },
         },
         study: {
@@ -10611,7 +11058,7 @@ function syncReminderJob() {
       schedule: { cron: cronExpr },
       payload: {
         agentTurn:
-          'Check the user\'s flashcards workload with the flashcards.getDue tool. '
+          'Check the user\'s flashcards workload with the flashcards.query tool (action "due"). '
           + 'If cards are due, post ONE short encouraging nudge naming the busiest '
           + 'deck and link parallx://flashcards/study. If nothing is due, say nothing beyond a one-line all-clear.',
       },

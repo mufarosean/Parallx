@@ -391,9 +391,7 @@ describe('activation', () => {
   });
 
   it('registers chat tools, dashboard widget, and links contract', () => {
-    expect([...fake.chatTools.keys()].sort()).toEqual([
-      'flashcards.createCards', 'flashcards.getDue', 'flashcards.getStats',
-    ]);
+    expect([...fake.chatTools.keys()].sort()).toEqual(['flashcards.edit', 'flashcards.query']);
     expect(fake.widgets.has('parallx-community.flashcards.due')).toBe(true);
     expect(fake.linkContracts).toHaveLength(1);
     expect((fake.linkContracts[0] as { segment: string }).segment).toBe('flashcards');
@@ -404,10 +402,11 @@ describe('activation', () => {
   });
 });
 
-describe('chat tool: createCards', () => {
+describe('chat tool: edit (create)', () => {
   it('creates the deck and cards, and the sidebar shows them', async () => {
-    const tool = fake.chatTools.get('flashcards.createCards')!;
+    const tool = fake.chatTools.get('flashcards.edit')!;
     const result = await tool.handler({
+      action: 'create',
       deckName: 'Reserving',
       cards: [
         { front: 'Chain ladder assumes?', back: 'Development patterns persist.' },
@@ -802,9 +801,9 @@ describe('AI generation flow', () => {
 });
 
 describe('workload surfaces', () => {
-  it('flashcards.getDue reports totals and per-deck lines', async () => {
-    const tool = fake.chatTools.get('flashcards.getDue')!;
-    const result = await tool.handler({});
+  it('flashcards.query due reports totals and per-deck lines', async () => {
+    const tool = fake.chatTools.get('flashcards.query')!;
+    const result = await tool.handler({ action: 'due' });
     expect(result.content).toContain('Total: 5');
     expect(result.content).toContain('Reserving');
   });
@@ -832,7 +831,7 @@ describe('daily reminder', () => {
     };
     expect(job).toBeTruthy();
     expect(job.schedule.cron).toBe('30 7 * * *');
-    expect(job.payload.agentTurn).toContain('flashcards.getDue');
+    expect(job.payload.agentTurn).toContain('flashcards.query');
   });
 
   it('turning it off removes the job', async () => {
