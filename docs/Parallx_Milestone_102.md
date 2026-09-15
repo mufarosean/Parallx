@@ -383,3 +383,44 @@ across deck sizes 500-5,000 and horizons of 20-90 days, and the full chain
   object, the refusal contract, and page-anchored citations.
 - **Audio / TTS** — after M103.
 - **`ext/workspace-graph`** — retire or leave; awaiting Mufaro's call.
+
+## Paper cards: the concept-map redesign (2026-09-14)
+
+Mufaro's verdict on the M102 maps was that the system was right and the
+paint was wrong: outlined 12px boxes, hairline connectors, a root the same
+size as its leaves, every box a different hue. Designed with him first
+(four iterations on a live mockup), then built. The engine is untouched:
+the outline is the map, the app draws it, editing means editing the text.
+
+- **Three kinds of card, one per level.** Level 0 is a cream index card
+  (16px bold, centred, square). Level 1 is a canary sticky note (13px
+  medium, adhesive strip, folded corner, a fixed tilt up to 1.3 degrees
+  hashed from its label). Level 2 and deeper are sky slips (12.5px, softer
+  ink, tilt up to 0.7). Levels 4 and 5 wear pink and mint. Colour is BY
+  LEVEL: this replaces the per-box hue cycling of the 1 September spec,
+  at his call. Ink is always dark; paper is paper in both modes.
+- **Paper tokens** `--px-paper-0..4`, `--px-paper-ink`, `--px-paper-ink-soft`,
+  `--px-paper-shadow`, `--px-paper-line-base`, `--px-paper-line-mix` live in
+  px-tokens.css; the light block softens the shadow and mixes connectors
+  toward ink. Grain and shadow are an SVG filter on the paper shape only.
+- **Radial layout** is the default for a bare ```mindmap fence and for
+  maps saved from chat: the root in the middle, branches split left and
+  right so both sides carry about half the leaves (first branches right,
+  reading order). `mindmap tree` and `mindmap vertical` keep the two
+  trees; existing blocks keep their stored direction. A radial request
+  over several roots draws as the tree.
+- **Connectors** are 2px in the parent level's paper with 8px rounded
+  elbows; the hub law (one exit per card, spine, one arm per child,
+  arrowhead in the child's colour) is unchanged.
+- **Measured text.** `textWidth` measures with the UI font on a canvas
+  (estimate under jsdom); the 6.7px-per-character constant is gone.
+- **The block** sits on a dotted board, scales down to fit its column
+  (never below 80%, then scrolls), and its toolbar is Radial / Tree /
+  Top-Down, Reset Layout, Edit Outline. Drag and resize divide pointer
+  deltas by the fit scale and rotate them into a tilted card's frame; a
+  note's corner paths move by translate (the group itself is never
+  transformed during a drag, the foreignObject repaint stall).
+- **Intraword underscores** (`C_ik`, `f_k`) are subscripts, never italics.
+
+Not built yet: **Expand**, the map as its own tab with pan, zoom and fit
+over the same page and outline (phase two of the proposal).

@@ -1,6 +1,6 @@
 // conceptMap.test.ts — the shared concept-map core (ui/conceptMap): the
 // chat mind map's proven semantics plus the promoted powers. Pins:
-// vertical layout geometry, branch colour classes, math-aware labels
+// vertical + radial layout geometry, colour-by-level classes, math-aware labels
 // (foreignObject only when a renderer is injected), fence-info parsing,
 // and the fallback that never dies.
 
@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import {
   appendChildAtLine,
   applyOverrides,
+  cardTilt,
   hubPathsFor,
   layoutMindMap,
   measureLabel,
@@ -15,6 +16,7 @@ import {
   parseMindMapInfo,
   renderMindMapSvg,
   splitLabel,
+  tokenizeLabel,
 } from '../../src/ui/conceptMap';
 
 const SRC = [
@@ -26,7 +28,8 @@ const SRC = [
 
 describe('parseMindMapInfo', () => {
   it('reads the direction from the fence info', () => {
-    expect(parseMindMapInfo('mindmap').dir).toBe('right');
+    expect(parseMindMapInfo('mindmap').dir).toBe('radial'); // bare = radial
+    expect(parseMindMapInfo('mindmap tree').dir).toBe('right');
     expect(parseMindMapInfo('mindmap vertical').dir).toBe('down');
     expect(parseMindMapInfo('concept-map down').dir).toBe('down');
   });
@@ -61,8 +64,8 @@ describe('vertical layout', () => {
   });
 });
 
-describe('box colours', () => {
-  it('every box wears its OWN hue, cycling in placement order', () => {
+describe('card colours: one paper per level', () => {
+  it('a card wears its LEVEL: index card, note, slip', () => {
     const layout = layoutMindMap(parseMindMap(SRC), 'right');
     const root = layout.nodes.find((n) => n.label === 'Reserving')!;
     const cl = layout.nodes.find((n) => n.label === 'Chain Ladder')!;
@@ -70,16 +73,80 @@ describe('box colours', () => {
     const bf = layout.nodes.find((n) => n.label === 'Bornhuetter-Ferguson')!;
     expect(root.branch).toBe(0);
     expect(cl.branch).toBe(1);
-    expect(mack.branch).toBe(2); // its own colour, never the parent's
-    expect(bf.branch).toBe(3);
+    expect(mack.branch).toBe(2);
+    expect(bf.branch).toBe(1); // same level as Chain Ladder, same paper
   });
 
-  it('hue classes reach the SVG; no neutral root special case', () => {
+  it('level and kind classes reach the SVG; the note carries its fold', () => {
     const svg = renderMindMapSvg(SRC);
-    expect(svg).toContain('parallx-mindmap__node--b0');
-    expect(svg).toContain('parallx-mindmap__node--b1');
-    expect(svg).toContain('parallx-mindmap__edge--b0');
-    expect(svg).not.toContain('parallx-mindmap__node--root');
+    expect(svg).toContain('parallx-mindmap__node--d0 parallx-mindmap__node--card');
+    expect(svg).toContain('parallx-mindmap__node--d1 parallx-mindmap__node--note');
+    expect(svg).toContain('parallx-mindmap__node--d2 parallx-mindmap__node--slip');
+    expect(svg).toContain('parallx-mindmap__edge--d0');
+    expect(svg).toContain('parallx-mindmap__fold');
+    expect(svg).toContain('parallx-mindmap__strip');
+    expect(svg).not.toContain('parallx-mindmap__node--b');
+  });
+
+  it('the index card never tilts; notes and slips keep a stable, small tilt', () => {
+    expect(cardTilt('Reserving', 0)).toBe(0);
+    const t1 = cardTilt('Chain Ladder', 1);
+    expect(Math.abs(t1)).toBeLessThanOrEqual(1.3);
+    expect(cardTilt('Chain Ladder', 1)).toBe(t1); // hashed from the label
+    expect(Math.abs(cardTilt('Mack', 2))).toBeLessThanOrEqual(0.7);
+    const svg = renderMindMapSvg(SRC);
+    expect(svg).toMatch(/data-mm-line="1"[^>]*data-mm-tilt="-?[\d.]+" transform="rotate\(/);
+    expect(svg).not.toMatch(/data-mm-line="0"[^>]*transform=/);
+  });
+});
+
+describe('radial layout', () => {
+  const RADIAL = ['Centre', '  One', '  Two', '  Three', '    Three a', '  Four'].join('\n');
+
+  it('a single branching root sits between its branches, both sides used', () => {
+    const layout = layoutMindMap(parseMindMap(RADIAL), 'radial');
+    expect(layout.dir).toBe('radial');
+    const root = layout.nodes.find((n) => n.label === 'Centre')!;
+    const kids = layout.nodes.filter((n) => n.depth === 1);
+    expect(kids.length).toBe(4);
+    const right = kids.filter((n) => n.x >= root.x + root.width);
+    const left = kids.filter((n) => n.x + n.width <= root.x);
+    expect(right.length + left.length).toBe(4);
+    expect(right.length).toBeGreaterThan(0);
+    expect(left.length).toBeGreaterThan(0);
+    // The first branches read on the right, in order.
+    expect(right.map((n) => n.label)).toEqual(['One', 'Two']); // right fills to half the leaves
+    // A slip sits outboard of its note on the same side.
+    const three = layout.nodes.find((n) => n.label === 'Three')!;
+    const threeA = layout.nodes.find((n) => n.label === 'Three a')!;
+    if (three.x >= root.x + root.width) expect(threeA.x).toBeGreaterThanOrEqual(three.x + three.width);
+    else expect(threeA.x + threeA.width).toBeLessThanOrEqual(three.x); // left side grows leftward
+    for (const n of layout.nodes) {
+      expect(n.x).toBeGreaterThanOrEqual(0);
+      expect(n.x + n.width).toBeLessThanOrEqual(layout.width);
+      expect(n.y - n.height / 2).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('several roots, or a root with one child, draw as the tree', () => {
+    const forest = layoutMindMap(parseMindMap(SRC + '\nPricing\n  Rate'), 'radial');
+    const roots = forest.nodes.filter((n) => n.depth === 0);
+    expect(roots.length).toBe(2);
+    for (const n of forest.nodes) expect(n.x).toBeGreaterThanOrEqual(roots[0].x);
+    const chain = layoutMindMap(parseMindMap('A\n  B\n    C'), 'radial');
+    const a = chain.nodes.find((n) => n.label === 'A')!;
+    const b = chain.nodes.find((n) => n.label === 'B')!;
+    expect(b.x).toBeGreaterThan(a.x);
+  });
+
+  it('left-side cards get a backward hub from the centre, still one exit per side', () => {
+    const svg = renderMindMapSvg(RADIAL, { dir: 'radial' });
+    const stems = svg.match(/data-mm-hub="0" d="M[^"]*"/g) ?? [];
+    // A stem and a spine per side (two sides), plus one arm per branch.
+    const arms = svg.match(/marker-end="[^"]+" data-mm-hub="0" data-mm-to="\d+"/g) ?? [];
+    expect(arms.length).toBe(4);
+    expect(stems.length).toBe(4);
+    expect(svg).toContain('data-mindmap-dir="radial"');
   });
 });
 
@@ -110,11 +177,19 @@ describe('math-aware labels', () => {
 });
 
 describe('rich labels', () => {
+  it('intraword underscores are subscripts, never italics', () => {
+    const segs = tokenizeLabel('q=1: ÷√C_ik, C_ik-weighted and E[C_i,k+1 | C_ik] = C_ik · f_k');
+    expect(segs.every((seg) => seg.kind === 'text')).toBe(true);
+    expect(segs.map((seg) => seg.value).join('')).toContain('C_ik, C_ik-weighted');
+    const italic = tokenizeLabel('a _real_ emphasis');
+    expect(italic.some((seg) => seg.kind === 'italic' && seg.value === 'real')).toBe(true);
+  });
+
   it('long labels wrap: capped width, multi-line height', () => {
     const long = 'incremental capping ratio applied to the loss cost format across every accident year in the triangle';
     const m = measureLabel(long);
     expect(m.lines.length).toBeGreaterThan(1);
-    expect(m.width).toBeLessThanOrEqual(242 + 20);
+    expect(m.width).toBeLessThanOrEqual(200 + 12 + 28); // note wrap width + padding
     const single = measureLabel('short');
     expect(m.height).toBeGreaterThan(single.height);
   });
@@ -193,10 +268,15 @@ describe('hub connectors and outline growth', () => {
     expect(hubs.length).toBe(1); // one exit, both kids on one side
     const hub = hubs[0];
     expect(hub.stem).toBe('M160 100 H 230'); // exit at the box edge, one line
-    expect(hub.spine).toBe('M230 40 V 160'); // the vertex line the arms leave
-    expect(hub.arms.map((a) => a.d)).toEqual(['M230 40 H 300', 'M230 160 H 300']);
-    expect(hub.arms.map((a) => a.color)).toEqual([1, 2]); // arrows = CHILD hue
-    expect(hub.stem + hub.spine).not.toContain('C'); // straight, square corners
+    // The spine stops where the elbows begin (radius 8 each end).
+    expect(hub.spine).toBe('M230 48 V 152');
+    // Each arm leaves the spine through a rounded elbow, then runs straight in.
+    expect(hub.arms.map((a) => a.d)).toEqual([
+      'M230 48 Q 230 40 238 40 H 300',
+      'M230 152 Q 230 160 238 160 H 300',
+    ]);
+    expect(hub.arms.map((a) => a.color)).toEqual([1, 2]); // arrows = CHILD level
+    expect(hub.stem).not.toContain('Q'); // the stem itself is straight
   });
 
   it('vertical: same law, axes swapped', () => {
@@ -208,8 +288,19 @@ describe('hub connectors and outline growth', () => {
     const hubs = hubPathsFor(parent, kids, 'down');
     expect(hubs.length).toBe(1);
     expect(hubs[0].stem).toBe('M160 61 V 125');
-    expect(hubs[0].spine).toBe('M90 125 H 270');
-    expect(hubs[0].arms.map((a) => a.d)).toEqual(['M90 125 V 189', 'M270 125 V 189']);
+    expect(hubs[0].spine).toBe('M98 125 H 262');
+    expect(hubs[0].arms.map((a) => a.d)).toEqual([
+      'M98 125 Q 90 125 90 133 V 189',
+      'M262 125 Q 270 125 270 133 V 189',
+    ]);
+  });
+
+  it('an arm level with its parent stays straight: no elbow to draw', () => {
+    const parent = { x: 40, y: 100, width: 120, height: 22 };
+    const kids = [{ x: 300, y: 100, width: 100, height: 22, label: 'A', color: 1 }];
+    const hubs = hubPathsFor(parent, kids, 'right');
+    expect(hubs[0].spine).toBeNull();
+    expect(hubs[0].arms[0].d).toBe('M230 100 H 300');
   });
 
   it('a child dragged to the other side gets its own exit, not a backwards loop', () => {
@@ -224,14 +315,14 @@ describe('hub connectors and outline growth', () => {
 
   it('the SVG draws lines in the PARENT hue and arrows in the CHILD hue', () => {
     const svg = renderMindMapSvg(SRC);
-    // Reserving is b0 at line 0: its whole hub is addressed by LINE.
+    // Reserving is d0 at line 0: its whole hub is addressed by LINE.
     const hubPaths = svg.match(/data-mm-hub="0"/g) ?? [];
     expect(hubPaths.length).toBe(4); // stem + spine + 2 arms, nothing more
     expect(svg).not.toContain('data-mm-from='); // no per-edge lines remain
-    // The arm into Chain Ladder (line 1, b1) carries the b1 arrowhead.
-    expect(svg).toMatch(/marker-end="url\(#mm\d+-arrow-b1\)" data-mm-hub="0" data-mm-to="1"/);
-    // Chain Ladder's own hub is b1 and its arm into Mack wears Mack's b2 arrow.
-    expect(svg).toMatch(/marker-end="url\(#mm\d+-arrow-b2\)" data-mm-hub="1" data-mm-to="2"/);
+    // The arm into Chain Ladder (line 1, level 1) carries the d1 arrowhead.
+    expect(svg).toMatch(/marker-end="url\(#mm\d+-arrow-d1\)" data-mm-hub="0" data-mm-to="1"/);
+    // Chain Ladder's own hub is d1 and its arm into Mack wears Mack's d2 arrow.
+    expect(svg).toMatch(/marker-end="url\(#mm\d+-arrow-d2\)" data-mm-hub="1" data-mm-to="2"/);
     expect(svg).toContain('<defs>');
     expect(svg).toContain('parallx-mindmap__arrow');
   });
@@ -240,8 +331,8 @@ describe('hub connectors and outline growth', () => {
     // Two unrenamed "New idea" boxes: line is identity, so neither arm
     // may collapse onto the other (the vanished-arrow bug).
     const svg = renderMindMapSvg('Root\n  New idea\n  New idea');
-    expect(svg).toMatch(/marker-end="url\(#mm\d+-arrow-b\d\)" data-mm-hub="0" data-mm-to="1"/);
-    expect(svg).toMatch(/marker-end="url\(#mm\d+-arrow-b\d\)" data-mm-hub="0" data-mm-to="2"/);
+    expect(svg).toMatch(/marker-end="url\(#mm\d+-arrow-d\d\)" data-mm-hub="0" data-mm-to="1"/);
+    expect(svg).toMatch(/marker-end="url\(#mm\d+-arrow-d\d\)" data-mm-hub="0" data-mm-to="2"/);
   });
 
   it('a freshly added box keeps its arm after a SIBLING is moved', () => {

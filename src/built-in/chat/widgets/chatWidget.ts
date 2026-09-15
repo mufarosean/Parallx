@@ -293,7 +293,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     this._register(addDisposableListener(this._messageListContainer, 'parallx:mindmap-save' as keyof HTMLElementEventMap, ((e: CustomEvent<{ src: string; dir: string }>) => {
       const src = e.detail?.src?.trim();
       if (!src) return;
-      void this._services.runCommand?.('canvas.saveConceptMap', src, e.detail.dir === 'down' ? 'down' : 'right');
+      void this._services.runCommand?.('canvas.saveConceptMap', src, e.detail.dir);
     }) as EventListener));
 
     this._register(addDisposableListener(this._messageListContainer, 'parallx:open-memory' as keyof HTMLElementEventMap, ((e: CustomEvent<{ sessionId: string }>) => {

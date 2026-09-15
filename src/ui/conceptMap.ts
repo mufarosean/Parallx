@@ -103,13 +103,26 @@ export function parseMindMap(src: string): MindMapNode[] {
   return roots;
 }
 
-/** The fence info string after the language: `mindmap vertical` → down. */
-export type MindMapDirection = 'right' | 'down';
+/**
+ * Layout direction. 'radial' grows out of a single root on both sides
+ * (the default for a fresh map); 'right' is the left-to-right tree,
+ * 'down' the top-down tree. A radial request over several roots, or a
+ * root with fewer than two children, draws as the tree instead.
+ */
+export type MindMapDirection = 'right' | 'down' | 'radial';
 
+/** The fence info string after the language: bare → radial,
+ *  \`mindmap tree\` → right, \`mindmap vertical\` → down. */
 export function parseMindMapInfo(info: string): { dir: MindMapDirection } {
   const words = String(info || '').toLowerCase().split(/\s+/);
-  const down = words.includes('vertical') || words.includes('down') || words.includes('v');
-  return { dir: down ? 'down' : 'right' };
+  if (words.includes('vertical') || words.includes('down') || words.includes('v')) return { dir: 'down' };
+  if (words.includes('tree') || words.includes('right') || words.includes('horizontal')) return { dir: 'right' };
+  return { dir: 'radial' };
+}
+
+/** Any stored/received direction value → a valid one ('right' for the unknown). */
+export function coerceMindMapDirection(value: unknown): MindMapDirection {
+  return value === 'down' || value === 'radial' ? value : 'right';
 }
 
 // ── Rich labels: math + inline markdown, tokenised then wrapped ─────────────
@@ -137,7 +150,9 @@ export function splitLabel(label: string): LabelSegment[] {
 /** Inline markdown inside the non-math stretches: **bold**, *italic*, `code`. */
 function splitInline(text: string): LabelSegment[] {
   const out: LabelSegment[] = [];
-  const re = /(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|(_([^_]+)_)|(`([^`]+)`)/g;
+  // An underscore run is emphasis only at word boundaries: C_ik, f_k and
+  // E[C_i,k+1] are subscripts, never italics (CommonMark's intraword rule).
+  const re = /(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|((?<!\w)_([^_]+)_(?!\w))|(`([^`]+)`)/g;
   let last = 0;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
@@ -166,26 +181,116 @@ function labelIsRich(segs: readonly LabelSegment[]): boolean {
   return segs.some((s) => s.kind !== 'text');
 }
 
-// ── Geometry constants ──────────────────────────────────────────────────────
+// ── Geometry: three kinds of card, one per level ───────────────────────────
+//
+// Level 0 is the index card, level 1 the sticky note, level 2 and deeper
+// the slip. Each has its own type size, padding and shape. The stylesheet
+// (conceptMap.css) mirrors the type sizes for the HTML label path; the two
+// tables must move together.
 
-const LINE_H = 16;         // text line pitch inside a box
-const MATH_LINE_H = 22;    // lines carrying math need fraction headroom
-const BOX_PAD_Y = 4;
-const PAD_X = 10;
-const CHAR_W = 6.7;        // average advance for the 12px UI font
-const MAX_TEXT_W = 230;    // wrap target: content width before wrapping
-const LEAF_GAP = 8;        // breathing room between stacked boxes (right)
-const COL_GAP = 34;        // gap between a parent box and its children (right)
-const LEVEL_GAP = 26;      // gap between depth rows (down)
-const SIB_GAP = 14;        // gap between sibling boxes (down)
-const MARGIN = 8;
+export interface CardMetrics {
+  readonly fontSize: number;
+  readonly fontWeight: number;
+  readonly lineH: number;
+  readonly mathLineH: number;
+  readonly padX: number;
+  readonly padY: number;
+  readonly maxTextW: number;
+  readonly minHeight: number;
+  readonly radius: number;
+}
 
-function segEstWidth(seg: LabelSegment): number {
+const CARD_METRICS: readonly CardMetrics[] = [
+  { fontSize: 16, fontWeight: 700, lineH: 21, mathLineH: 27, padX: 22, padY: 15, maxTextW: 240, minHeight: 0, radius: 3 },
+  { fontSize: 13, fontWeight: 500, lineH: 18, mathLineH: 23, padX: 14, padY: 10, maxTextW: 200, minHeight: 54, radius: 2 },
+  { fontSize: 12.5, fontWeight: 400, lineH: 17, mathLineH: 22, padX: 11, padY: 7, maxTextW: 190, minHeight: 0, radius: 2 },
+];
+
+/** The card metrics for a depth: 0 = index card, 1 = note, 2+ = slip. */
+export function cardMetrics(depth: number): CardMetrics {
+  return CARD_METRICS[Math.min(Math.max(0, depth), CARD_METRICS.length - 1)];
+}
+
+/** The colour index a depth wears (five paper tokens; deeper repeats the last). */
+export function colourIndex(depth: number): number {
+  return Math.min(Math.max(0, depth), 4);
+}
+
+export type CardKind = 'card' | 'note' | 'slip';
+export function cardKind(depth: number): CardKind {
+  return depth === 0 ? 'card' : depth === 1 ? 'note' : 'slip';
+}
+
+const NOTE_FOLD = 13;      // the sticky note's folded corner
+const NOTE_STRIP = 7;      // its adhesive strip along the top
+const LEAF_GAP = 14;       // breathing room between stacked cards (right)
+const COL_GAP = 64;        // gap between a parent card and its children (right)
+const LEVEL_GAP = 48;      // gap between depth rows (down)
+const SIB_GAP = 18;        // gap between sibling cards (down)
+const ROOT_GAP = 76;       // radial: the index card to the first notes
+const MARGIN = 24;
+const ELBOW = 8;           // connector corner radius
+const NOTE_TILT = 1.3;     // degrees, notes
+const SLIP_TILT = 0.7;     // degrees, slips
+
+// ── Text measurement: real glyph advances when a canvas exists ─────────────
+//
+// The app measures with the UI font it actually draws; headless (jsdom,
+// tests) falls back to a per-size estimate. Widths are cached: the same
+// labels are measured on every repaint.
+
+const UI_FONT_FALLBACK = "'Inter', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif";
+const MONO_FONT = "'Cascadia Code', 'Fira Code', Consolas, ui-monospace, monospace";
+let _measureCtx: CanvasRenderingContext2D | null | undefined;
+let _uiFont: string | null = null;
+const _widthCache = new Map<string, number>();
+
+function measureContext(): CanvasRenderingContext2D | null {
+  if (_measureCtx !== undefined) return _measureCtx;
+  _measureCtx = null;
+  try {
+    if (typeof document !== 'undefined'
+      && !(typeof navigator !== 'undefined' && /jsdom/i.test(navigator.userAgent))) {
+      _measureCtx = document.createElement('canvas').getContext('2d');
+    }
+  } catch { _measureCtx = null; }
+  return _measureCtx;
+}
+
+function uiFont(): string {
+  if (_uiFont) return _uiFont;
+  try {
+    const fam = typeof getComputedStyle === 'function' && document.body
+      ? getComputedStyle(document.body).fontFamily : '';
+    _uiFont = fam || UI_FONT_FALLBACK;
+  } catch { _uiFont = UI_FONT_FALLBACK; }
+  return _uiFont;
+}
+
+/** Width of a run of text at a size and weight, in CSS px. */
+export function textWidth(text: string, fontSize: number, fontWeight: number, mono = false): number {
+  const key = (mono ? 'm' : 'u') + fontWeight + '|' + fontSize + '|' + text;
+  const hit = _widthCache.get(key);
+  if (hit !== undefined) return hit;
+  const ctx = measureContext();
+  let w: number;
+  if (ctx) {
+    ctx.font = fontWeight + ' ' + fontSize + 'px ' + (mono ? MONO_FONT : uiFont());
+    w = ctx.measureText(text).width;
+  } else {
+    w = text.length * fontSize * (mono ? 0.6 : 0.56) * (fontWeight >= 600 ? 1.06 : 1);
+  }
+  if (_widthCache.size > 4000) _widthCache.clear();
+  _widthCache.set(key, w);
+  return w;
+}
+
+function segWidth(seg: LabelSegment, m: CardMetrics): number {
   switch (seg.kind) {
-    case 'bold': return seg.value.length * CHAR_W * 1.06;
-    case 'code': return seg.value.length * CHAR_W * 1.1 + 6;
-    case 'math': return Math.max(3, seg.value.replace(/\\[a-zA-Z]+/g, 'xx').length) * CHAR_W * 0.95 + 6;
-    default: return seg.value.length * CHAR_W;
+    case 'bold': return textWidth(seg.value, m.fontSize, 700);
+    case 'code': return textWidth(seg.value, m.fontSize - 1, 400, true) + 6;
+    case 'math': return Math.max(3, seg.value.replace(/\\[a-zA-Z]+/g, 'xx').length) * m.fontSize * 0.53 + 6;
+    default: return textWidth(seg.value, m.fontSize, m.fontWeight);
   }
 }
 
@@ -197,11 +302,15 @@ export interface MeasuredLabel {
 }
 
 /**
- * Greedy word-wrap over the token stream. Math spans never break; text
- * splits on spaces. Width is the widest resulting line (capped near
- * MAX_TEXT_W plus padding), height is the line count at each line's pitch.
+ * Greedy word-wrap over the token stream for a card at DEPTH. Math spans
+ * never break; text splits on spaces. Width is the widest resulting line
+ * (capped near the level's wrap width plus padding); height is the line
+ * count at each line's pitch, never under the level's minimum (a sticky
+ * note is a note, not a strip).
  */
-export function measureLabel(label: string, maxTextW: number = MAX_TEXT_W): MeasuredLabel {
+export function measureLabel(label: string, maxTextW?: number, depth = 1): MeasuredLabel {
+  const m = cardMetrics(depth);
+  const wrapW = maxTextW ?? m.maxTextW;
   const segs = tokenizeLabel(label);
 
   // Explode text-ish segments into word atoms; opaque kinds stay whole.
@@ -224,20 +333,21 @@ export function measureLabel(label: string, maxTextW: number = MAX_TEXT_W): Meas
     lineW = 0;
   };
   for (const atom of atoms) {
-    const w = segEstWidth(atom);
-    if (lineW > 0 && lineW + w > maxTextW && atom.value.trim()) flush();
+    const w = segWidth(atom, m);
+    if (lineW > 0 && lineW + w > wrapW && atom.value.trim()) flush();
     line.push(atom);
     lineW += w;
   }
   flush();
   if (lines.length === 0) lines.push([{ kind: 'text', value: ' ' }]);
 
-  const lineWidths = lines.map((l) => l.reduce((acc, s) => acc + segEstWidth(s), 0));
-  const width = Math.round(Math.min(Math.max(...lineWidths, 24), maxTextW + 12)) + PAD_X * 2;
-  const height = lines.reduce(
-    (acc, l) => acc + (l.some((s) => s.kind === 'math') ? MATH_LINE_H : LINE_H),
+  const lineWidths = lines.map((l) => l.reduce((acc, seg) => acc + segWidth(seg, m), 0));
+  const width = Math.round(Math.min(Math.max(...lineWidths, 24), wrapW + 12)) + m.padX * 2;
+  const natural = lines.reduce(
+    (acc, l) => acc + (l.some((seg) => seg.kind === 'math') ? m.mathLineH : m.lineH),
     0,
-  ) + BOX_PAD_Y * 2;
+  ) + m.padY * 2;
+  const height = Math.max(natural, m.minHeight);
   return { lines, width, height, rich: labelIsRich(segs) || lines.length > 1 };
 }
 
@@ -252,8 +362,8 @@ export interface LaidOutNode {
   readonly y: number;          // centre-line y
   readonly width: number;
   readonly height: number;
-  /** The node's own colour index (hues cycle; Mufaro's convention:
-   *  every box has its own colour, lines take their box's colour). */
+  /** The colour index the card wears: its LEVEL (0 index card, 1 note,
+   *  2+ slip). Lines take their card's colour; arrowheads the child's. */
   readonly branch: number;
 }
 
@@ -292,7 +402,7 @@ export function applyOverrides(layout: MindMapLayout, overrides: MindMapOverride
     let { width, height } = n;
     if (typeof o.w === 'number' && Number.isFinite(o.w)) {
       const w = Math.max(MIN_OVERRIDE_W, Math.min(MAX_OVERRIDE_W, Math.round(o.w)));
-      const remeasured = measureLabel(n.label, Math.max(24, w - 24));
+      const remeasured = measureLabel(n.label, Math.max(24, w - cardMetrics(n.depth).padX * 2), n.depth);
       width = w;
       height = remeasured.height;
     }
@@ -327,78 +437,168 @@ export function boxWidth(label: string): number {
   return measureLabel(label).width;
 }
 
+interface PlacedTree {
+  readonly nodes: LaidOutNode[];
+  readonly edges: { from: number; to: number }[];
+  /** Indices of the forest's roots, in order. */
+  readonly tops: number[];
+  readonly width: number;
+  readonly height: number;
+}
+
+/**
+ * The classic tidy tree read left-to-right, from (0, 0): depth picks the
+ * column, leaves stack down, a parent centres on its children. DEPTH0 is
+ * the depth the forest's roots sit at (1 for a radial side).
+ */
+function placeTree(
+  forest: readonly MindMapNode[],
+  sizes: ReadonlyMap<MindMapNode, MeasuredLabel>,
+  depth0: number,
+): PlacedTree {
+  const nodes: LaidOutNode[] = [];
+  const edges: { from: number; to: number }[] = [];
+  const tops: number[] = [];
+  const widestByDepth: number[] = [];
+  const measure = (node: MindMapNode, depth: number): void => {
+    widestByDepth[depth] = Math.max(widestByDepth[depth] ?? 0, sizes.get(node)!.width);
+    for (const child of node.children) measure(child, depth + 1);
+  };
+  for (const root of forest) measure(root, depth0);
+
+  const colX: number[] = [];
+  let runningX = 0;
+  for (let d = depth0; d < widestByDepth.length; d++) {
+    colX[d] = runningX;
+    runningX += (widestByDepth[d] ?? 0) + COL_GAP;
+  }
+
+  let nextLeafTop = 0;
+  const place = (node: MindMapNode, depth: number): number => {
+    const size = sizes.get(node)!;
+    const index = nodes.length;
+    nodes.push({ label: node.label, line: node.line, depth, x: colX[depth], y: 0, width: size.width, height: size.height, branch: colourIndex(depth) });
+
+    let y: number;
+    if (node.children.length === 0) {
+      y = nextLeafTop + size.height / 2;
+      nextLeafTop += size.height + LEAF_GAP;
+    } else {
+      const childYs = node.children.map((child) => {
+        const childIndex = place(child, depth + 1);
+        edges.push({ from: index, to: childIndex });
+        return nodes[childIndex].y;
+      });
+      y = (childYs[0] + childYs[childYs.length - 1]) / 2;
+      // A tall parent must still claim vertical room past its children.
+      nextLeafTop = Math.max(nextLeafTop, y + size.height / 2 + LEAF_GAP);
+    }
+
+    nodes[index] = { ...nodes[index], y };
+    return index;
+  };
+  for (const root of forest) tops.push(place(root, depth0));
+
+  return {
+    nodes,
+    edges,
+    tops,
+    width: Math.max(0, runningX - COL_GAP),
+    height: Math.max(0, nextLeafTop - LEAF_GAP),
+  };
+}
+
+function shifted(nodes: readonly LaidOutNode[], dx: number, dy: number): LaidOutNode[] {
+  return nodes.map((n) => ({ ...n, x: n.x + dx, y: n.y + dy }));
+}
+
+/**
+ * Radial: the index card in the middle, its branches split left and right
+ * so the two sides carry about the same number of leaves (the first
+ * branches go right, reading order), each side its own tidy tree.
+ */
+function layoutRadial(root: MindMapNode, sizes: ReadonlyMap<MindMapNode, MeasuredLabel>): MindMapLayout {
+  const leaves = (n: MindMapNode): number =>
+    n.children.length === 0 ? 1 : n.children.reduce((acc, c) => acc + leaves(c), 0);
+  const total = root.children.reduce((acc, k) => acc + leaves(k), 0);
+  const rightKids: MindMapNode[] = [];
+  const leftKids: MindMapNode[] = [];
+  let acc = 0;
+  for (const kid of root.children) {
+    if (acc < total / 2 || rightKids.length === 0) { rightKids.push(kid); acc += leaves(kid); }
+    else leftKids.push(kid);
+  }
+
+  const rootSize = sizes.get(root)!;
+  const right = placeTree(rightKids, sizes, 1);
+  const left = placeTree(leftKids, sizes, 1);
+  const sideH = Math.max(right.height, left.height, rootSize.height);
+  const rootY = sideH / 2;
+  const rootX = left.nodes.length ? left.width + ROOT_GAP : 0;
+
+  const nodes: LaidOutNode[] = [{
+    label: root.label, line: root.line, depth: 0,
+    x: rootX, y: rootY, width: rootSize.width, height: rootSize.height, branch: 0,
+  }];
+  const edges: { from: number; to: number }[] = [];
+  const addSide = (side: PlacedTree, placed: LaidOutNode[]): void => {
+    const offset = nodes.length;
+    nodes.push(...placed);
+    for (const e of side.edges) edges.push({ from: e.from + offset, to: e.to + offset });
+    for (const t of side.tops) edges.push({ from: 0, to: t + offset });
+  };
+  addSide(right, shifted(right.nodes, rootX + rootSize.width + ROOT_GAP, rootY - right.height / 2));
+  // The left side is the same tree mirrored: x' = width - (x + w).
+  addSide(left, left.nodes.map((n) => ({ ...n, x: left.width - (n.x + n.width), y: n.y + rootY - left.height / 2 })));
+
+  const width = rootX + rootSize.width + (right.nodes.length ? ROOT_GAP + right.width : 0);
+  return {
+    nodes: shifted(nodes, MARGIN, MARGIN),
+    edges,
+    width: width + MARGIN * 2,
+    height: sideH + MARGIN * 2,
+    dir: 'radial',
+  };
+}
+
 /**
  * Lay the forest out. 'right' is the classic tidy tree read left-to-right
  * (depth picks the column, leaves stack down); 'down' is the same tree
- * read top-to-bottom (depth picks the row, leaves spread across). Pure.
+ * read top-to-bottom (depth picks the row, leaves spread across);
+ * 'radial' puts a single root in the middle with branches on both sides
+ * (and draws as 'right' when the outline has no single branching root).
+ * Pure.
  */
 export function layoutMindMap(
   roots: readonly MindMapNode[],
   dir: MindMapDirection = 'right',
 ): MindMapLayout {
-  const nodes: LaidOutNode[] = [];
-  const edges: { from: number; to: number }[] = [];
   const sizes = new Map<MindMapNode, MeasuredLabel>();
-  const walkMeasure = (n: MindMapNode): void => {
-    sizes.set(n, measureLabel(n.label));
-    n.children.forEach(walkMeasure);
+  const walkMeasure = (n: MindMapNode, depth: number): void => {
+    sizes.set(n, measureLabel(n.label, undefined, depth));
+    n.children.forEach((c) => walkMeasure(c, depth + 1));
   };
-  roots.forEach(walkMeasure);
+  roots.forEach((r) => walkMeasure(r, 0));
 
-  let branchCounter = 0;
+  if (dir === 'radial' && roots.length === 1 && roots[0].children.length >= 2) {
+    return layoutRadial(roots[0], sizes);
+  }
 
-  if (dir === 'right') {
-    const widestByDepth: number[] = [];
-    const measure = (node: MindMapNode, depth: number): void => {
-      widestByDepth[depth] = Math.max(widestByDepth[depth] ?? 0, sizes.get(node)!.width);
-      for (const child of node.children) measure(child, depth + 1);
-    };
-    for (const root of roots) measure(root, 0);
-
-    const colX: number[] = [];
-    let runningX = MARGIN;
-    for (let d = 0; d < widestByDepth.length; d++) {
-      colX[d] = runningX;
-      runningX += (widestByDepth[d] ?? 0) + COL_GAP;
-    }
-
-    let nextLeafTop = MARGIN;
-    const place = (node: MindMapNode, depth: number): number => {
-      const size = sizes.get(node)!;
-      const index = nodes.length;
-      nodes.push({ label: node.label, line: node.line, depth, x: colX[depth], y: 0, width: size.width, height: size.height, branch: branchCounter++ % 6 });
-
-      let y: number;
-      if (node.children.length === 0) {
-        y = nextLeafTop + size.height / 2;
-        nextLeafTop += size.height + LEAF_GAP;
-      } else {
-        const childYs = node.children.map((child) => {
-          const childIndex = place(child, depth + 1);
-          edges.push({ from: index, to: childIndex });
-          return nodes[childIndex].y;
-        });
-        y = (childYs[0] + childYs[childYs.length - 1]) / 2;
-        // A tall parent must still claim vertical room past its children.
-        nextLeafTop = Math.max(nextLeafTop, y + size.height / 2 + LEAF_GAP);
-      }
-
-      nodes[index] = { ...nodes[index], y };
-      return index;
-    };
-    for (const root of roots) place(root, 0);
-
+  if (dir !== 'down') {
+    const tree = placeTree(roots, sizes, 0);
     return {
-      nodes,
-      edges,
-      width: Math.max(runningX - COL_GAP + MARGIN, MARGIN * 2),
-      height: Math.max(nextLeafTop - LEAF_GAP + MARGIN, MARGIN * 2 + LINE_H),
+      nodes: shifted(tree.nodes, MARGIN, MARGIN),
+      edges: tree.edges,
+      width: Math.max(tree.width, 0) + MARGIN * 2,
+      height: Math.max(tree.height, cardMetrics(0).lineH) + MARGIN * 2,
       dir,
     };
   }
 
-  // dir === 'down' — rows by depth (sized to the tallest box in the row),
+  // dir === 'down' — rows by depth (sized to the tallest card in the row),
   // leaves spread across.
+  const nodes: LaidOutNode[] = [];
+  const edges: { from: number; to: number }[] = [];
   const tallestByDepth: number[] = [];
   const findRows = (n: MindMapNode, d: number): void => {
     tallestByDepth[d] = Math.max(tallestByDepth[d] ?? 0, sizes.get(n)!.height);
@@ -417,7 +617,7 @@ export function layoutMindMap(
   const place = (node: MindMapNode, depth: number): number => {
     const size = sizes.get(node)!;
     const index = nodes.length;
-    nodes.push({ label: node.label, line: node.line, depth, x: 0, y: rowCenterY[depth], width: size.width, height: size.height, branch: branchCounter++ % 6 });
+    nodes.push({ label: node.label, line: node.line, depth, x: 0, y: rowCenterY[depth], width: size.width, height: size.height, branch: colourIndex(depth) });
 
     let centerX: number;
     if (node.children.length === 0) {
@@ -784,14 +984,17 @@ export interface HubPaths {
 }
 
 /**
- * The hub connector: ONE line leaves the parent, reaches a vertex,
- * a spine runs along it, and one arm enters each child. Children on
- * each side of the parent get their own hub (post-drag mixed sides).
+ * The hub connector: ONE line leaves the parent, reaches a vertex, a
+ * spine runs along it, and one arm enters each child. Each arm leaves the
+ * spine through a rounded elbow (radius ELBOW, shrunk when the geometry
+ * is tight); an arm level with its parent stays a straight line.
+ * Children on each side of the parent get their own hub (post-drag mixed
+ * sides). 'radial' routes exactly like 'right'.
  */
 export function hubPathsFor(parent: EdgeBox, children: readonly HubChild[], dir: MindMapDirection): HubPaths[] {
   if (children.length === 0) return [];
   const out: HubPaths[] = [];
-  if (dir === 'right') {
+  if (dir !== 'down') {
     const pc = parent.x + parent.width / 2;
     const sides: [HubChild[], HubChild[]] = [[], []];
     for (const c of children) (c.x + c.width / 2 >= pc ? sides[0] : sides[1]).push(c);
@@ -799,21 +1002,35 @@ export function hubPathsFor(parent: EdgeBox, children: readonly HubChild[], dir:
       const kids = sides[side];
       if (kids.length === 0) continue;
       const forward = side === 0;
+      const s = forward ? 1 : -1;
       const exitX = forward ? parent.x + parent.width : parent.x;
       const entries = kids.map((c) => (forward ? c.x : c.x + c.width));
       const nearest = forward ? Math.min(...entries) : Math.max(...entries);
       const m = Math.round((exitX + nearest) / 2);
-      const ys = kids.map((c) => c.y);
-      const minY = Math.min(...ys, parent.y);
-      const maxY = Math.max(...ys, parent.y);
-      out.push({
-        stem: `M${exitX} ${parent.y} H ${m}`,
-        spine: kids.length > 1 || minY !== maxY ? `M${m} ${minY} V ${maxY}` : null,
-        arms: kids.map((c) => ({
-          d: `M${m} ${c.y} H ${forward ? c.x : c.x + c.width}`,
+      const spineEnds: number[] = [parent.y];
+      const arms = kids.map((c) => {
+        const entry = forward ? c.x : c.x + c.width;
+        const dy = c.y - parent.y;
+        const r = Math.min(ELBOW, Math.abs(dy) / 2, Math.abs(entry - m) / 2);
+        if (Math.abs(dy) < 0.5 || r < 0.5) {
+          spineEnds.push(c.y);
+          return { d: 'M' + m + ' ' + c.y + ' H ' + entry, to: c.label, color: c.color };
+        }
+        const sg = Math.sign(dy);
+        const from = c.y - sg * r;
+        spineEnds.push(from);
+        return {
+          d: 'M' + m + ' ' + from + ' Q ' + m + ' ' + c.y + ' ' + (m + s * r) + ' ' + c.y + ' H ' + entry,
           to: c.label,
           color: c.color,
-        })),
+        };
+      });
+      const minY = Math.min(...spineEnds);
+      const maxY = Math.max(...spineEnds);
+      out.push({
+        stem: 'M' + exitX + ' ' + parent.y + ' H ' + m,
+        spine: minY !== maxY ? 'M' + m + ' ' + minY + ' V ' + maxY : null,
+        arms,
       });
     }
     return out;
@@ -825,22 +1042,37 @@ export function hubPathsFor(parent: EdgeBox, children: readonly HubChild[], dir:
     const kids = sides[side];
     if (kids.length === 0) continue;
     const downward = side === 0;
+    const s = downward ? 1 : -1;
     const exitY = downward ? parent.y + parent.height / 2 : parent.y - parent.height / 2;
     const px = parent.x + parent.width / 2;
     const entries = kids.map((c) => (downward ? c.y - c.height / 2 : c.y + c.height / 2));
     const nearest = downward ? Math.min(...entries) : Math.max(...entries);
     const m = Math.round((exitY + nearest) / 2);
-    const xs = kids.map((c) => c.x + c.width / 2);
-    const minX = Math.min(...xs, px);
-    const maxX = Math.max(...xs, px);
-    out.push({
-      stem: `M${px} ${exitY} V ${m}`,
-      spine: kids.length > 1 || minX !== maxX ? `M${minX} ${m} H ${maxX}` : null,
-      arms: kids.map((c) => ({
-        d: `M${c.x + c.width / 2} ${m} V ${downward ? c.y - c.height / 2 : c.y + c.height / 2}`,
+    const spineEnds: number[] = [px];
+    const arms = kids.map((c) => {
+      const cx = c.x + c.width / 2;
+      const entry = downward ? c.y - c.height / 2 : c.y + c.height / 2;
+      const dx = cx - px;
+      const r = Math.min(ELBOW, Math.abs(dx) / 2, Math.abs(entry - m) / 2);
+      if (Math.abs(dx) < 0.5 || r < 0.5) {
+        spineEnds.push(cx);
+        return { d: 'M' + cx + ' ' + m + ' V ' + entry, to: c.label, color: c.color };
+      }
+      const sg = Math.sign(dx);
+      const from = cx - sg * r;
+      spineEnds.push(from);
+      return {
+        d: 'M' + from + ' ' + m + ' Q ' + cx + ' ' + m + ' ' + cx + ' ' + (m + s * r) + ' V ' + entry,
         to: c.label,
         color: c.color,
-      })),
+      };
+    });
+    const minX = Math.min(...spineEnds);
+    const maxX = Math.max(...spineEnds);
+    out.push({
+      stem: 'M' + px + ' ' + exitY + ' V ' + m,
+      spine: minX !== maxX ? 'M' + minX + ' ' + m + ' H ' + maxX : null,
+      arms,
     });
   }
   return out;
@@ -848,38 +1080,72 @@ export function hubPathsFor(parent: EdgeBox, children: readonly HubChild[], dir:
 
 let _svgUid = 0;
 
-function arrowDefs(uid: number): string {
-  const marker = (key: string, cls: string): string =>
-    `<marker id="mm${uid}-arrow-${key}" viewBox="0 0 8 8" refX="7" refY="4" `
-    + `markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">`
-    + `<path class="parallx-mindmap__arrow ${cls}" d="M0 0 L8 4 L0 8 Z" /></marker>`;
-  let out = marker('n', '');
-  for (let i = 0; i < 6; i++) out += marker(`b${i}`, `parallx-mindmap__arrow--b${i}`);
-  return `<defs>${out}</defs>`;
+
+/**
+ * Per-map defs: one arrowhead marker per level (the arrow wears the CHILD
+ * level's colour, from CSS) and the paper filter: fine grain multiplied
+ * into the card's fill, then a soft shadow lifting it off the board. The
+ * shadow's colour and opacity live in the stylesheet (flood-color).
+ */
+function mapDefs(uid: number): string {
+  let out = '';
+  for (let i = 0; i <= 4; i++) {
+    out += '<marker id="mm' + uid + '-arrow-d' + i + '" viewBox="0 0 8 8" refX="7" refY="4" '
+      + 'markerWidth="7" markerHeight="7" orient="auto-start-reverse">'
+      + '<path class="parallx-mindmap__arrow parallx-mindmap__arrow--d' + i + '" d="M0 0 L8 4 L0 8 Z" /></marker>';
+  }
+  out += '<filter id="mm' + uid + '-paper" x="-8%" y="-8%" width="116%" height="124%" color-interpolation-filters="sRGB">'
+    + '<feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="7" result="noise" />'
+    + '<feColorMatrix in="noise" type="saturate" values="0" result="grey" />'
+    + '<feComponentTransfer in="grey" result="grain"><feFuncA type="table" tableValues="0 0.18" /></feComponentTransfer>'
+    + '<feComposite in="grain" in2="SourceGraphic" operator="in" result="clip" />'
+    + '<feBlend in="SourceGraphic" in2="clip" mode="multiply" result="paper" />'
+    + '<feDropShadow class="parallx-mindmap__shadow" in="paper" dx="0" dy="2" stdDeviation="2.4" />'
+    + '</filter>';
+  return '<defs>' + out + '</defs>';
 }
 
-function branchClass(branch: number): string {
-  return `parallx-mindmap__node--b${branch % 6}`;
+/**
+ * A card's tilt in degrees: notes and slips sit slightly askew, the
+ * index card stays square. Hashed from the LABEL so a card keeps its
+ * tilt across repaints and outline edits elsewhere.
+ */
+export function cardTilt(label: string, depth: number): number {
+  const amplitude = depth === 0 ? 0 : depth === 1 ? NOTE_TILT : SLIP_TILT;
+  if (amplitude === 0) return 0;
+  let h = 2166136261;
+  for (let i = 0; i < label.length; i++) {
+    h ^= label.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  const unit = ((h >>> 0) % 2000) / 1000 - 1;
+  return Math.round(unit * amplitude * 100) / 100;
 }
 
 function segHtml(seg: LabelSegment, renderMath?: (tex: string) => string): string {
   switch (seg.kind) {
-    case 'bold': return `<b>${escapeXml(seg.value)}</b>`;
-    case 'italic': return `<i>${escapeXml(seg.value)}</i>`;
-    case 'code': return `<code>${escapeXml(seg.value)}</code>`;
+    case 'bold': return '<b>' + escapeXml(seg.value) + '</b>';
+    case 'italic': return '<i>' + escapeXml(seg.value) + '</i>';
+    case 'code': return '<code>' + escapeXml(seg.value) + '</code>';
     case 'math':
       return renderMath
-        ? `<span class="parallx-mindmap__math">${renderMath(seg.value)}</span>`
-        : escapeXml(`$${seg.value}$`);
+        ? '<span class="parallx-mindmap__math">' + renderMath(seg.value) + '</span>'
+        : escapeXml('$' + seg.value + '$');
     default: return escapeXml(seg.value);
   }
 }
 
 /**
  * Render the map to an SVG string. Colour and weight come entirely from
- * CSS classes; branch hues cycle six viz tokens. Rich labels (markdown,
+ * CSS classes; every card wears its LEVEL's paper. Rich labels (markdown,
  * math, wrapped lines) render as HTML in a foreignObject; short plain
  * labels keep the cheap SVG <text> path.
+ *
+ * Card anatomy (the block's pointer code depends on it): the box is the
+ * FIRST rect, class parallx-mindmap__box; a note adds its strip rect and
+ * two corner paths; the label is a text or a foreignObject. Everything
+ * positioned carries x/y attributes except the corner paths, which the
+ * drag moves with a translate.
  */
 export function renderMindMapSvg(src: string, opts: RenderMindMapOptions = {}): string {
   const roots = parseMindMap(src);
@@ -892,9 +1158,9 @@ export function renderMindMapSvg(src: string, opts: RenderMindMapOptions = {}): 
     : base;
 
   const uid = ++_svgUid;
-  // Hub connectors: group edges by PARENT — one exit line per box, a
+  // Hub connectors: group edges by PARENT — one exit line per card, a
   // vertex, a spine, then one arm per child. Lines take the PARENT's
-  // colour; each arm's arrowhead takes the CHILD's.
+  // level colour; each arm's arrowhead takes the CHILD's.
   const kidsByParent = new Map<number, number[]>();
   for (const { from, to } of edges) {
     const arr = kidsByParent.get(from) ?? [];
@@ -903,58 +1169,84 @@ export function renderMindMapSvg(src: string, opts: RenderMindMapOptions = {}): 
   }
   // Hub paths are addressed by SOURCE LINE (data-mm-hub = the parent's
   // line, data-mm-to = the child's): line is identity, so live-drag
-  // rerouting stays exact even when two boxes share a label.
+  // rerouting stays exact even when two cards share a label.
   const pathParts: string[] = [];
   for (const [parentIdx, childIdxs] of kidsByParent) {
     const parent = nodes[parentIdx];
-    const cls = `parallx-mindmap__edge parallx-mindmap__edge--b${parent.branch % 6}`;
+    const cls = 'parallx-mindmap__edge parallx-mindmap__edge--d' + parent.branch;
     const kids: HubChild[] = childIdxs.map((i) => ({
       x: nodes[i].x, y: nodes[i].y, width: nodes[i].width, height: nodes[i].height,
-      label: String(nodes[i].line), color: nodes[i].branch % 6,
+      label: String(nodes[i].line), color: nodes[i].branch,
     }));
     for (const hub of hubPathsFor(parent, kids, dir)) {
-      pathParts.push(`<path class="${cls}" data-mm-hub="${parent.line}" d="${hub.stem}" />`);
+      pathParts.push('<path class="' + cls + '" data-mm-hub="' + parent.line + '" d="' + hub.stem + '" />');
       if (hub.spine) {
-        pathParts.push(`<path class="${cls}" data-mm-hub="${parent.line}" d="${hub.spine}" />`);
+        pathParts.push('<path class="' + cls + '" data-mm-hub="' + parent.line + '" d="' + hub.spine + '" />');
       }
       for (const arm of hub.arms) {
-        pathParts.push(`<path class="${cls}" marker-end="url(#mm${uid}-arrow-b${arm.color})" `
-          + `data-mm-hub="${parent.line}" data-mm-to="${arm.to}" d="${arm.d}" />`);
+        pathParts.push('<path class="' + cls + '" marker-end="url(#mm' + uid + '-arrow-d' + arm.color + ')" '
+          + 'data-mm-hub="' + parent.line + '" data-mm-to="' + arm.to + '" d="' + arm.d + '" />');
       }
     }
   }
   const paths = pathParts.join('');
 
   const boxes = nodes.map((n) => {
+    const m = cardMetrics(n.depth);
+    const kind = cardKind(n.depth);
     const ow = opts.overrides?.[n.label]?.w;
     const measured = measureLabel(
       n.label,
-      typeof ow === 'number' && Number.isFinite(ow) ? Math.max(24, Math.round(ow) - 24) : undefined,
+      typeof ow === 'number' && Number.isFinite(ow) ? Math.max(24, Math.round(ow) - m.padX * 2) : undefined,
+      n.depth,
     );
     const top = n.y - n.height / 2;
+    const right = n.x + n.width;
+    const bottom = top + n.height;
+    const cx = n.x + n.width / 2;
     const attrLabel = escapeXml(n.label);
-    const cls = `parallx-mindmap__node parallx-mindmap__node--d${Math.min(n.depth, 2)} ${branchClass(n.branch)}`;
-    const open = `<g class="${cls}" data-mindmap-label="${attrLabel}" data-mm-line="${n.line}" role="button" tabindex="0">`
-      + `<rect class="parallx-mindmap__box" x="${n.x}" y="${top}" width="${n.width}" height="${n.height}" rx="5" />`;
+    const tilt = cardTilt(n.label, n.depth);
+    const cls = 'parallx-mindmap__node parallx-mindmap__node--d' + n.branch + ' parallx-mindmap__node--' + kind;
+    const tiltAttrs = tilt
+      ? ' data-mm-tilt="' + tilt + '" transform="rotate(' + tilt + ' ' + cx + ' ' + n.y + ')"'
+      : '';
+    let open = '<g class="' + cls + '" data-mindmap-label="' + attrLabel + '" data-mm-line="' + n.line + '"'
+      + tiltAttrs + ' role="button" tabindex="0">'
+      + '<rect class="parallx-mindmap__box" x="' + n.x + '" y="' + top + '" width="' + n.width + '" height="' + n.height
+      + '" rx="' + m.radius + '" filter="url(#mm' + uid + '-paper)" />';
+    if (kind === 'note') {
+      const f = NOTE_FOLD;
+      open += '<rect class="parallx-mindmap__strip" x="' + n.x + '" y="' + top + '" width="' + n.width + '" height="' + NOTE_STRIP + '" />'
+        + '<path class="parallx-mindmap__cut" d="M' + (right - f) + ' ' + bottom + ' L' + right + ' ' + (bottom - f) + ' L' + right + ' ' + bottom + ' Z" />'
+        + '<path class="parallx-mindmap__fold" d="M' + (right - f) + ' ' + bottom + ' L' + (right - f) + ' ' + (bottom - f) + ' L' + right + ' ' + (bottom - f) + ' Z" />';
+    }
 
     const needsHtml = measured.rich && (opts.renderMath || measured.lines.length > 1
-      || measured.lines.some((l) => l.some((s) => s.kind !== 'text' && s.kind !== 'math')));
+      || measured.lines.some((l) => l.some((seg) => seg.kind !== 'text' && seg.kind !== 'math')));
     if (needsHtml) {
       const linesHtml = measured.lines.map((line) => {
-        const mathLine = line.some((s) => s.kind === 'math');
-        const inner = line.map((s) => segHtml(s, opts.renderMath)).join('');
-        return `<div class="parallx-mindmap__line${mathLine ? ' parallx-mindmap__line--math' : ''}">${inner}</div>`;
+        const mathLine = line.some((seg) => seg.kind === 'math');
+        const inner = line.map((seg) => segHtml(seg, opts.renderMath)).join('');
+        return '<div class="parallx-mindmap__line' + (mathLine ? ' parallx-mindmap__line--math' : '') + '">' + inner + '</div>';
       }).join('');
-      return `${open}<foreignObject x="${n.x + PAD_X}" y="${top + BOX_PAD_Y}" `
-        + `width="${Math.max(4, n.width - PAD_X * 2)}" height="${Math.max(4, n.height - BOX_PAD_Y * 2)}">`
-        + `<div class="parallx-mindmap__flabel" xmlns="http://www.w3.org/1999/xhtml">${linesHtml}</div>`
-        + `</foreignObject></g>`;
+      return open + '<foreignObject x="' + (n.x + m.padX) + '" y="' + (top + m.padY) + '" '
+        + 'width="' + Math.max(4, n.width - m.padX * 2) + '" height="' + Math.max(4, n.height - m.padY * 2) + '">'
+        + '<div class="parallx-mindmap__flabel" xmlns="http://www.w3.org/1999/xhtml">' + linesHtml + '</div>'
+        + '</foreignObject></g>';
     }
-    return `${open}<text class="parallx-mindmap__text" x="${n.x + PAD_X}" y="${n.y}" dominant-baseline="central">${attrLabel}</text></g>`;
+    const textX = kind === 'card' ? cx : n.x + m.padX;
+    const anchor = kind === 'card' ? ' text-anchor="middle"' : '';
+    return open + '<text class="parallx-mindmap__text" x="' + textX + '" y="' + n.y + '"' + anchor
+      + ' dominant-baseline="central">' + attrLabel + '</text></g>';
   }).join('');
 
-  return `<div class="parallx-mindmap" data-mindmap-dir="${dir}">`
-    + `<svg viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" `
-    + `role="img" aria-label="Concept map">${arrowDefs(uid)}${paths}${boxes}</svg>`
-    + `</div>`;
+  // The map scales down to fit a narrow column, never below 80%; past
+  // that the host scrolls it. Width/height attributes keep the natural
+  // size for hosts without the stylesheet.
+  const minWidth = Math.round(width * 0.8);
+  return '<div class="parallx-mindmap" data-mindmap-dir="' + dir + '">'
+    + '<svg viewBox="0 0 ' + width + ' ' + height + '" width="' + width + '" height="' + height + '" '
+    + 'style="min-width:' + minWidth + 'px" role="img" aria-label="Concept map">'
+    + mapDefs(uid) + paths + boxes + '</svg>'
+    + '</div>';
 }

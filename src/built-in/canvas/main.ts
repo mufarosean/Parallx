@@ -678,10 +678,10 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   context.subscriptions.push(
     api.commands.registerCommand('canvas.saveConceptMap', async (...args: unknown[]) => {
       const src = typeof args[0] === 'string' ? args[0].trim() : '';
-      const dir = args[1] === 'down' ? 'down' : 'right';
       if (!src || !_dataService) return null;
       try {
-        const { parseMindMap } = await import('../../ui/conceptMap.js');
+        const { parseMindMap, coerceMindMapDirection } = await import('../../ui/conceptMap.js');
+        const dir = coerceMindMapDirection(args[1]);
         const roots = parseMindMap(src);
         const title = roots[0]?.label || 'Concept Map';
         const page = await _dataService.createPage(null, title);

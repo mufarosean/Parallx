@@ -14,5 +14,5 @@ export {
   type MindMapNode,
   type MindMapDirection,
   type MindMapLayout,
-  type LaidOutNode,
+  type LaidOutNode, coerceMindMapDirection,
 } from '../../../ui/conceptMap.js';

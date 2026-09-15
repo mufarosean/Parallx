@@ -79,6 +79,20 @@
   --px-viz-5: 96, 190, 190;    /* teal   */
   --px-viz-6: 224, 128, 150;   /* rose   */
 
+  /* Paper (concept maps, ui/conceptMap.css): one stock per level. Paper
+     is paper in every theme and ink is always dark; only the shadow and
+     the connector mix follow the mode (overridden in the light block). */
+  --px-paper-0: #efe7d0;        /* index card: cream   */
+  --px-paper-1: #f5e27a;        /* sticky note: canary */
+  --px-paper-2: #bfd9f2;        /* slip: sky           */
+  --px-paper-3: #f3c1cf;        /* fourth level: pink  */
+  --px-paper-4: #c6e8cd;        /* fifth level: mint   */
+  --px-paper-ink: #2a2620;
+  --px-paper-ink-soft: #423d34;
+  --px-paper-shadow: 0.55;                 /* flood-opacity under a card */
+  --px-paper-line-base: var(--px-bg);      /* connectors mix toward this */
+  --px-paper-line-mix: 82%;
+
   /* ── Tier 2 · Semantic — what components reference ─────────────────────── */
 
   /* Surfaces */
@@ -299,6 +313,11 @@
    mood wins cleanly while inheriting the shared overrides from here.
    ========================================================================== */
 :root[data-px-mode="light"] {
+  /* Paper on a light board: a softer shadow, connectors mixed toward ink
+     so they still read against the board. */
+  --px-paper-shadow: 0.22;
+  --px-paper-line-base: var(--px-paper-ink);
+  --px-paper-line-mix: 60%;
   /* Tier 1 — Light Slate primitives (00 lightest surface → 100 ink). */
   --px-base-00: #f4f5f7;   /* app background (paper)               */
   --px-base-05: #eceef1;   /* raised surface / tab strip           */

@@ -1,116 +1,166 @@
 /* conceptMap.css — the concept-map diagram (ui/conceptMap.ts).
    One stylesheet for BOTH consumers (chat inline maps, canvas block).
-   Colour lives here, never in the emitted SVG: theme-following in light
-   and dark, branch hues cycling the viz tokens. */
+   Colour lives here, never in the emitted SVG. Every card wears its
+   LEVEL's paper (--px-paper-0..4 in px-tokens.css): the index card at
+   the centre, sticky notes for the branches, slips for the details. Ink
+   is always dark: paper is paper in every theme; only the board, the
+   shadow and the connector mix follow the mode.
 
+   Type sizes here mirror CARD_METRICS in conceptMap.ts (the renderer
+   measures with them); the two tables move together. */
+
+/* ── Sizing: the map scales down to fit its column. The renderer sets a
+   min-width at 80% of the natural size; past that the host scrolls. ── */
+.parallx-mindmap svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+/* ── Connectors: 2px, rounded elbows, in the PARENT level's paper mixed
+   toward the board (dark) or toward ink (light). Arrowheads wear the
+   CHILD level's paper. ── */
 .parallx-mindmap__edge {
   fill: none;
-  stroke: var(--px-border-strong, var(--vscode-panel-border, #3c3c3c));
-  stroke-width: 1.4;
-  stroke-linejoin: miter;
+  stroke-width: 2;
+  stroke-linecap: butt;
+  stroke-linejoin: round;
+  stroke: color-mix(in srgb, var(--px-paper-0) var(--px-paper-line-mix, 82%), var(--px-paper-line-base, var(--px-bg)));
 }
 
-/* Arrowheads take their edge's colour. */
-.parallx-mindmap__arrow {
-  fill: var(--px-border-strong, var(--vscode-panel-border, #3c3c3c));
-}
+.parallx-mindmap__edge--d1 { stroke: color-mix(in srgb, var(--px-paper-1) var(--px-paper-line-mix, 82%), var(--px-paper-line-base, var(--px-bg))); }
+.parallx-mindmap__edge--d2 { stroke: color-mix(in srgb, var(--px-paper-2) var(--px-paper-line-mix, 82%), var(--px-paper-line-base, var(--px-bg))); }
+.parallx-mindmap__edge--d3 { stroke: color-mix(in srgb, var(--px-paper-3) var(--px-paper-line-mix, 82%), var(--px-paper-line-base, var(--px-bg))); }
+.parallx-mindmap__edge--d4 { stroke: color-mix(in srgb, var(--px-paper-4) var(--px-paper-line-mix, 82%), var(--px-paper-line-base, var(--px-bg))); }
 
-.parallx-mindmap__arrow--b0 { fill: rgba(var(--px-viz-1), 0.85); }
-.parallx-mindmap__arrow--b1 { fill: rgba(var(--px-viz-2), 0.85); }
-.parallx-mindmap__arrow--b2 { fill: rgba(var(--px-viz-3), 0.85); }
-.parallx-mindmap__arrow--b3 { fill: rgba(var(--px-viz-4), 0.85); }
-.parallx-mindmap__arrow--b4 { fill: rgba(var(--px-viz-5), 0.85); }
-.parallx-mindmap__arrow--b5 { fill: rgba(var(--px-viz-6), 0.85); }
+.parallx-mindmap__arrow { fill: color-mix(in srgb, var(--px-paper-0) 95%, var(--px-paper-line-base, var(--px-bg))); }
+.parallx-mindmap__arrow--d1 { fill: color-mix(in srgb, var(--px-paper-1) 95%, var(--px-paper-line-base, var(--px-bg))); }
+.parallx-mindmap__arrow--d2 { fill: color-mix(in srgb, var(--px-paper-2) 95%, var(--px-paper-line-base, var(--px-bg))); }
+.parallx-mindmap__arrow--d3 { fill: color-mix(in srgb, var(--px-paper-3) 95%, var(--px-paper-line-base, var(--px-bg))); }
+.parallx-mindmap__arrow--d4 { fill: color-mix(in srgb, var(--px-paper-4) 95%, var(--px-paper-line-base, var(--px-bg))); }
 
+/* ── Paper ── */
 .parallx-mindmap__box {
-  fill: var(--px-bg-elevated, var(--vscode-textCodeBlock-background, #2d2d2d));
-  stroke: var(--px-border-strong, var(--vscode-panel-border, #3c3c3c));
+  fill: var(--px-paper-0);
+  stroke: transparent;
   stroke-width: 1;
-  transition: fill var(--px-dur-fast, 120ms) var(--px-ease, ease),
-    stroke-width var(--px-dur-fast, 120ms) var(--px-ease, ease);
+  transition: stroke var(--px-dur-fast, 120ms) var(--px-ease, ease);
 }
 
-.parallx-mindmap__node:hover .parallx-mindmap__box {
-  stroke-width: 1.6;
+.parallx-mindmap__node--d1 .parallx-mindmap__box { fill: var(--px-paper-1); }
+.parallx-mindmap__node--d2 .parallx-mindmap__box { fill: var(--px-paper-2); }
+.parallx-mindmap__node--d3 .parallx-mindmap__box { fill: var(--px-paper-3); }
+.parallx-mindmap__node--d4 .parallx-mindmap__box { fill: var(--px-paper-4); }
+
+/* Hover and focus draw a thin ink line around the card. */
+.parallx-mindmap__node:hover .parallx-mindmap__box,
+.parallx-mindmap__node:focus-visible .parallx-mindmap__box {
+  stroke: color-mix(in srgb, var(--px-paper-ink) 50%, transparent);
 }
 
-.parallx-mindmap__text {
-  fill: var(--px-text, var(--vscode-foreground, #cccccc));
-  font-size: 12px;
-  font-family: inherit;
+/* The shadow lifting a card off the board (flood-color is CSS, so the
+   markup stays colour-free). */
+.parallx-mindmap__shadow {
+  flood-color: #000;
+  flood-opacity: var(--px-paper-shadow, 0.5);
 }
 
-/* Depth reads as weight: the trunk is emphatic, the leaves recede.
-   (Colour comes from the per-box hue classes below.) */
-
-.parallx-mindmap__node--d0 .parallx-mindmap__text {
-  font-weight: 600;
+/* The sticky note's adhesive strip and folded corner. The cut shows the
+   board through the missing corner; the fold is the paper's underside. */
+.parallx-mindmap__strip {
+  fill: var(--px-paper-ink);
+  fill-opacity: 0.07;
+  pointer-events: none;
 }
 
-.parallx-mindmap__node--d2 .parallx-mindmap__text {
-  fill: var(--px-text-secondary, var(--vscode-descriptionForeground, #9d9d9d));
+.parallx-mindmap__cut {
+  fill: var(--px-bg);
+  pointer-events: none;
 }
 
-/* Branch hues: each top-level branch keeps one colour down its subtree.
-   Box borders and the edges INTO a branch carry the hue; fills stay calm. */
-.parallx-mindmap__node--b0 .parallx-mindmap__box { stroke: rgb(var(--px-viz-1)); }
-.parallx-mindmap__node--b1 .parallx-mindmap__box { stroke: rgb(var(--px-viz-2)); }
-.parallx-mindmap__node--b2 .parallx-mindmap__box { stroke: rgb(var(--px-viz-3)); }
-.parallx-mindmap__node--b3 .parallx-mindmap__box { stroke: rgb(var(--px-viz-4)); }
-.parallx-mindmap__node--b4 .parallx-mindmap__box { stroke: rgb(var(--px-viz-5)); }
-.parallx-mindmap__node--b5 .parallx-mindmap__box { stroke: rgb(var(--px-viz-6)); }
-
-.parallx-mindmap__edge--b0 { stroke: rgba(var(--px-viz-1), 0.55); }
-.parallx-mindmap__edge--b1 { stroke: rgba(var(--px-viz-2), 0.55); }
-.parallx-mindmap__edge--b2 { stroke: rgba(var(--px-viz-3), 0.55); }
-.parallx-mindmap__edge--b3 { stroke: rgba(var(--px-viz-4), 0.55); }
-.parallx-mindmap__edge--b4 { stroke: rgba(var(--px-viz-5), 0.55); }
-.parallx-mindmap__edge--b5 { stroke: rgba(var(--px-viz-6), 0.55); }
+.parallx-mindmap__fold {
+  fill: color-mix(in srgb, var(--px-paper-1) 80%, var(--px-paper-ink));
+  pointer-events: none;
+}
 
 .parallx-mindmap__node {
   cursor: pointer;
-}
-
-.parallx-mindmap__node:hover .parallx-mindmap__box,
-.parallx-mindmap__node:focus-visible .parallx-mindmap__box {
-  fill: var(--px-surface-hover, var(--vscode-list-hoverBackground, #2a2d2e));
 }
 
 .parallx-mindmap__node:focus-visible {
   outline: none;
 }
 
-/* Rich labels (wrapped lines, markdown, math) render as HTML inside a
-   foreignObject: pre-wrapped lines, centred vertically. */
+/* ── Type: one size per level (mirrors CARD_METRICS). ── */
+.parallx-mindmap__text {
+  fill: var(--px-paper-ink);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+}
+
 .parallx-mindmap__flabel {
   display: flex;
   flex-direction: column;
   justify-content: center;
   height: 100%;
-  font-size: 12px;
-  color: var(--px-text, var(--vscode-foreground, #cccccc));
+  color: var(--px-paper-ink);
+  font-size: 13px;
+  font-weight: 500;
   overflow: hidden;
 }
 
 .parallx-mindmap__line {
-  line-height: 16px;
+  line-height: 18px;
   white-space: nowrap;
 }
 
 .parallx-mindmap__line--math {
-  line-height: 22px;
+  line-height: 23px;
 }
+
+/* The index card: the title, bold and centred. */
+.parallx-mindmap__node--card .parallx-mindmap__text {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.parallx-mindmap__node--card .parallx-mindmap__flabel {
+  font-size: 16px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.parallx-mindmap__node--card .parallx-mindmap__line { line-height: 21px; }
+.parallx-mindmap__node--card .parallx-mindmap__line--math { line-height: 27px; }
+
+/* Slips: smaller, softer ink. */
+.parallx-mindmap__node--slip .parallx-mindmap__text {
+  font-size: 12.5px;
+  font-weight: 400;
+  fill: var(--px-paper-ink-soft, var(--px-paper-ink));
+}
+
+.parallx-mindmap__node--slip .parallx-mindmap__flabel {
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--px-paper-ink-soft, var(--px-paper-ink));
+}
+
+.parallx-mindmap__node--slip .parallx-mindmap__line { line-height: 17px; }
+.parallx-mindmap__node--slip .parallx-mindmap__line--math { line-height: 22px; }
 
 .parallx-mindmap__line code {
   font-family: var(--px-font-mono, monospace);
-  font-size: 11px;
-  background: var(--px-bg-inset, rgba(127, 127, 127, 0.12));
+  font-size: 0.92em;
+  background: color-mix(in srgb, var(--px-paper-ink) 10%, transparent);
   border-radius: 3px;
   padding: 0 3px;
 }
 
 .parallx-mindmap__math .katex {
-  font-size: 12px;
+  font-size: 1.05em;
 }
 
 /* The chat wrapper's save affordance: quiet until the map is hovered. */
@@ -139,18 +189,17 @@
   background: var(--px-surface-hover, transparent);
 }
 
-/* ── The canvas block ── */
+/* ── The canvas block: the map on a dotted board ── */
 
 .canvas-conceptmap {
   position: relative;
   margin: 8px 0;
-  padding: 6px;
+  padding: 14px 12px 12px;
   border-radius: var(--px-radius-md, 6px);
   overflow-x: auto;
-}
-
-.canvas-conceptmap:hover {
-  background: var(--px-bg-inset, transparent);
+  background-color: var(--px-bg, #16171a);
+  background-image: radial-gradient(color-mix(in srgb, var(--px-text, #e8eaee) 9%, transparent) 1px, transparent 1.3px);
+  background-size: 18px 18px;
 }
 
 .canvas-conceptmap__tools {
@@ -158,13 +207,15 @@
   top: 6px;
   right: 8px;
   display: flex;
-  gap: 4px;
+  align-items: center;
+  gap: 6px;
   opacity: 0;
   transition: opacity var(--px-dur-fast, 120ms) var(--px-ease, ease);
   z-index: 2;
 }
 
 .canvas-conceptmap:hover .canvas-conceptmap__tools,
+.canvas-conceptmap:focus-within .canvas-conceptmap__tools,
 .canvas-conceptmap.is-editing .canvas-conceptmap__tools {
   opacity: 1;
 }
@@ -183,6 +234,36 @@
 .canvas-conceptmap__tool:hover {
   color: var(--px-text, #ccc);
   background: var(--px-surface-hover, #2a2d2e);
+}
+
+/* The layout switch: Radial, Tree, Top-Down. */
+.canvas-conceptmap__seg {
+  display: inline-flex;
+  border: 1px solid var(--px-border, #3c3c3c);
+  border-radius: var(--px-radius-full, 999px);
+  background: var(--px-bg-elevated, #2d2d2d);
+  padding: 2px;
+  gap: 1px;
+}
+
+.canvas-conceptmap__seg button {
+  border: 0;
+  background: transparent;
+  color: var(--px-text-secondary, #9d9d9d);
+  font-family: inherit;
+  font-size: 11px;
+  padding: 1px 9px;
+  border-radius: var(--px-radius-full, 999px);
+  cursor: pointer;
+}
+
+.canvas-conceptmap__seg button:hover {
+  color: var(--px-text, #ccc);
+}
+
+.canvas-conceptmap__seg button[aria-pressed="true"] {
+  background: var(--px-surface-active, var(--px-border, #3c3c3c));
+  color: var(--px-text, #ccc);
 }
 
 .canvas-conceptmap__editor {
@@ -205,19 +286,20 @@
   margin-top: 4px;
 }
 
-/* ── In-place box editing: type in the box, formatting renders live ── */
+/* ── In-place card editing: type on the paper, formatting renders live ── */
 
 .canvas-conceptmap__boxedit {
   position: absolute;
   z-index: 4;
   box-sizing: border-box;
-  padding: 3px 9px;
-  border: 1px solid var(--px-accent, var(--vscode-focusBorder, #569cd6));
-  border-radius: 5px;
-  background: var(--px-bg-elevated, var(--vscode-textCodeBlock-background, #2d2d2d));
-  color: var(--px-text, var(--vscode-foreground, #ccc));
-  font-size: 12px;
-  line-height: 16px;
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, var(--px-paper-ink) 55%, transparent);
+  border-radius: 2px;
+  background: var(--px-paper-1);
+  color: var(--px-paper-ink);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
   white-space: pre-wrap;
   overflow-wrap: break-word;
   outline: none;
@@ -225,14 +307,13 @@
   box-shadow: var(--px-shadow-md, 0 2px 10px rgba(0, 0, 0, 0.28));
 }
 
-/* The editor wears its box's hue (a phantom wears its parent's), so
-   the eye never loses which node is being written. */
-.canvas-conceptmap__boxedit--b0 { border-color: rgb(var(--px-viz-1)); }
-.canvas-conceptmap__boxedit--b1 { border-color: rgb(var(--px-viz-2)); }
-.canvas-conceptmap__boxedit--b2 { border-color: rgb(var(--px-viz-3)); }
-.canvas-conceptmap__boxedit--b3 { border-color: rgb(var(--px-viz-4)); }
-.canvas-conceptmap__boxedit--b4 { border-color: rgb(var(--px-viz-5)); }
-.canvas-conceptmap__boxedit--b5 { border-color: rgb(var(--px-viz-6)); }
+/* The editor wears its card's paper (a phantom wears its level's), so
+   the eye never loses which card is being written. */
+.canvas-conceptmap__boxedit--d0 { background: var(--px-paper-0); font-size: 16px; font-weight: 700; line-height: 21px; border-radius: 3px; }
+.canvas-conceptmap__boxedit--d1 { background: var(--px-paper-1); }
+.canvas-conceptmap__boxedit--d2 { background: var(--px-paper-2); font-size: 12.5px; font-weight: 400; line-height: 17px; }
+.canvas-conceptmap__boxedit--d3 { background: var(--px-paper-3); font-size: 12.5px; font-weight: 400; line-height: 17px; }
+.canvas-conceptmap__boxedit--d4 { background: var(--px-paper-4); font-size: 12.5px; font-weight: 400; line-height: 17px; }
 
 /* The quiet keys hint under an open editor. */
 .canvas-conceptmap__boxedit-hint {
@@ -255,8 +336,8 @@
 /* Raw TeX, shown while the caret is inside the span. */
 .parallx-mindmap__edmathsrc {
   font-family: var(--px-font-mono, monospace);
-  font-size: 11px;
-  background: var(--px-bg-inset, rgba(127, 127, 127, 0.12));
+  font-size: 0.92em;
+  background: color-mix(in srgb, var(--px-paper-ink) 10%, transparent);
   border-radius: 3px;
   padding: 0 2px;
 }
@@ -268,17 +349,17 @@
 }
 
 .parallx-mindmap__edmath:hover {
-  background: var(--px-surface-hover, var(--vscode-list-hoverBackground, #2a2d2e));
+  background: color-mix(in srgb, var(--px-paper-ink) 10%, transparent);
 }
 
 .parallx-mindmap__edmath .katex {
-  font-size: 12px;
+  font-size: 1.05em;
 }
 
 .canvas-conceptmap__boxedit code {
   font-family: var(--px-font-mono, monospace);
-  font-size: 11px;
-  background: var(--px-bg-inset, rgba(127, 127, 127, 0.12));
+  font-size: 0.92em;
+  background: color-mix(in srgb, var(--px-paper-ink) 10%, transparent);
   border-radius: 3px;
   padding: 0 3px;
 }

@@ -38,7 +38,7 @@ import {
   type HubChild,
   type MindMapDirection,
   type MindMapNode,
-  type MindMapOverrides,
+  type MindMapOverrides, coerceMindMapDirection,
 } from '../../../ui/conceptMap.js';
 import { beginPointerDrag } from '../../../ui/interactionMode.js';
 
@@ -96,7 +96,7 @@ export const ConceptMap = Node.create({
 
       const readAttrs = (a: Record<string, unknown>) => ({
         src: String(a.src ?? ''),
-        dir: (a.dir === 'down' ? 'down' : 'right') as MindMapDirection,
+        dir: coerceMindMapDirection(a.dir),
         overrides: (a.overrides && typeof a.overrides === 'object' ? a.overrides : {}) as MindMapOverrides,
       });
       let attrs = readAttrs(node.attrs);
@@ -138,10 +138,18 @@ export const ConceptMap = Node.create({
       /** The map's positioned host (overlay + hover button coordinates). */
       let mapHost: HTMLElement | null = null;
 
-      /** A box's hue index, read off its node class (b0..b5). */
+      /** A card's colour index (its LEVEL), read off its node class (d0..d4). */
       const branchOfEl = (g: Element | null): number => {
-        const m = /parallx-mindmap__node--b(\d)/.exec(g?.getAttribute('class') ?? '');
+        const m = /parallx-mindmap__node--d(\d)/.exec(g?.getAttribute('class') ?? '');
         return m ? Number(m[1]) : 0;
+      };
+
+      /** Screen px per map unit: the SVG scales down to fit its column. */
+      const svgScale = (svg: SVGSVGElement | null | undefined): number => {
+        if (!svg) return 1;
+        const vb = svg.viewBox?.baseVal?.width || 0;
+        const w = svg.getBoundingClientRect().width;
+        return vb > 0 && w > 0 ? w / vb : 1;
       };
 
       const boxCount = (outline: string): number => labelsOf(outline).length;
@@ -177,9 +185,11 @@ export const ConceptMap = Node.create({
         let lastX = startX;
         let lastY = startY;
         let moved = false;
-        // The BOX moves by per-frame attribute updates, never a transform:
-        // Chromium can stall repaints of transformed groups that contain a
-        // foreignObject (formula boxes froze while their edges moved).
+        // The BOX moves by per-frame attribute updates, never a transform
+        // on the group: Chromium can stall repaints of transformed groups
+        // that contain a foreignObject (formula boxes froze while their
+        // edges moved). A note's corner paths have no x/y, so they take a
+        // translate of their own (a bare path has no foreignObject inside).
         const movables = (Array.from(parts.g.children) as SVGGraphicsElement[])
           .filter((el) => el.tagName === 'rect' || el.tagName === 'text' || el.tagName === 'foreignObject')
           .map((el) => ({
@@ -187,10 +197,29 @@ export const ConceptMap = Node.create({
             baseX: Number(el.getAttribute('x')) || 0,
             baseY: Number(el.getAttribute('y')) || 0,
           }));
+        const cornerPaths = (Array.from(parts.g.children) as SVGGraphicsElement[])
+          .filter((el) => el.tagName === 'path');
+        // Pointer deltas are screen px; the map may be scaled to fit its
+        // column, and a tilted card's attribute axes are rotated by its tilt.
+        const scale = svgScale(parts.g.ownerSVGElement);
+        const tiltRad = (Number(parts.g.getAttribute('data-mm-tilt')) || 0) * Math.PI / 180;
+        const toMapDelta = (dx: number, dy: number): [number, number] => {
+          const sx = dx / scale;
+          const sy = dy / scale;
+          if (!tiltRad) return [sx, sy];
+          const c = Math.cos(tiltRad);
+          const sn = Math.sin(tiltRad);
+          return [sx * c + sy * sn, -sx * sn + sy * c];
+        };
         const moveBox = (dx: number, dy: number): void => {
+          const [mx, my] = toMapDelta(dx, dy);
           for (const m of movables) {
-            m.el.setAttribute('x', String(m.baseX + dx));
-            m.el.setAttribute('y', String(m.baseY + dy));
+            m.el.setAttribute('x', String(m.baseX + mx));
+            m.el.setAttribute('y', String(m.baseY + my));
+          }
+          for (const p of cornerPaths) {
+            if (mx || my) p.setAttribute('transform', `translate(${mx} ${my})`);
+            else p.removeAttribute('transform');
           }
         };
         // HUBS touching the dragged box re-route LIVE: the box's own hub
@@ -221,11 +250,8 @@ export const ConceptMap = Node.create({
         // Extra stem/spine paths cloned mid-drag (a side split needs
         // more structure than the render emitted); removed on cancel.
         const clones: SVGPathElement[] = [];
-        const colorOf = (line: number): number => {
-          const g = svgRoot?.querySelector(`.parallx-mindmap__node[data-mm-line="${line}"]`);
-          const m = /parallx-mindmap__node--b(\d)/.exec(g?.getAttribute('class') ?? '');
-          return m ? Number(m[1]) : 0;
-        };
+        const colorOf = (line: number): number =>
+          branchOfEl(svgRoot?.querySelector(`.parallx-mindmap__node[data-mm-line="${line}"]`) ?? null);
         const rerouteEdges = (dx: number, dy: number): void => {
           if (!baseGeom || !svgRoot) return;
           const geomOf = (line: number): EdgeBox | undefined =>
@@ -290,7 +316,7 @@ export const ConceptMap = Node.create({
             if (!moved && Math.hypot(dx, dy) < CLICK_DIST) return;
             moved = true;
             moveBox(dx, dy);
-            rerouteEdges(dx, dy);
+            rerouteEdges(dx / scale, dy / scale);
           },
           onEnd: (canceled) => {
             if (canceled || !moved) {
@@ -300,8 +326,10 @@ export const ConceptMap = Node.create({
             }
             if (canceled) return;
             if (!moved) { beginBoxEdit(parts); return; }
-            const dx = lastX - startX;
-            const dy = lastY - startY;
+            // The override lives in map units; the tilt does not enter
+            // (the card's centre travels exactly the pointer's path).
+            const dx = Math.round((lastX - startX) / scale);
+            const dy = Math.round((lastY - startY) / scale);
             const prev = attrs.overrides[parts.label] ?? {};
             commit({
               overrides: {
@@ -317,12 +345,13 @@ export const ConceptMap = Node.create({
       const beginBoxResize = (e: PointerEvent | MouseEvent, parts: { rect: SVGRectElement; label: string }): void => {
         const startX = e.clientX;
         const startW = Number(parts.rect.getAttribute('width')) || 120;
+        const scale = svgScale(parts.rect.ownerSVGElement);
         let w = startW;
         beginPointerDrag(e, {
           id: 'conceptmap-resize',
           cursor: 'ew-resize',
           onMove: (ev) => {
-            w = Math.max(80, Math.min(420, Math.round(startW + (ev.clientX - startX))));
+            w = Math.max(80, Math.min(420, Math.round(startW + (ev.clientX - startX) / scale)));
             parts.rect.setAttribute('width', String(w));
           },
           onEnd: (canceled) => {
@@ -360,7 +389,7 @@ export const ConceptMap = Node.create({
         if (!host) return;
 
         const ed = document.createElement('div');
-        ed.classList.add('canvas-conceptmap__boxedit', `canvas-conceptmap__boxedit--b${spec.branch % 6}`);
+        ed.classList.add('canvas-conceptmap__boxedit', `canvas-conceptmap__boxedit--d${Math.min(Math.max(0, spec.branch), 4)}`);
         try {
           (ed as HTMLElement & { contentEditable: string }).contentEditable = 'plaintext-only';
         } catch {
@@ -603,19 +632,27 @@ export const ConceptMap = Node.create({
         const hostB = mapHost.getBoundingClientRect();
         // Seat the phantom where the layout will roughly put the node:
         // childward of the anchor for a child, after it for a sibling.
-        const right = attrs.dir === 'right';
-        const childSeat = right
+        // Childward is right for a tree, below for top-down, and AWAY
+        // from the centre on a radial map (a left-side card grows left).
+        let childward: 'right' | 'left' | 'down' = attrs.dir === 'down' ? 'down' : 'right';
+        if (attrs.dir === 'radial') {
+          const svgB = (g as SVGGElement).ownerSVGElement?.getBoundingClientRect();
+          if (svgB && rectB.left + rectB.width / 2 < svgB.left + svgB.width / 2 - 1) childward = 'left';
+        }
+        const childSeat = childward === 'right'
           ? { left: rectB.right - hostB.left + 26, top: rectB.top - hostB.top }
-          : { left: rectB.left - hostB.left + 14, top: rectB.bottom - hostB.top + 18 };
-        const siblingSeat = right
-          ? { left: rectB.left - hostB.left, top: rectB.bottom - hostB.top + 8 }
-          : { left: rectB.right - hostB.left + 10, top: rectB.top - hostB.top };
+          : childward === 'left'
+            ? { left: rectB.left - hostB.left - 26 - 90, top: rectB.top - hostB.top }
+            : { left: rectB.left - hostB.left + 14, top: rectB.bottom - hostB.top + 18 };
+        const siblingSeat = childward === 'down'
+          ? { left: rectB.right - hostB.left + 10, top: rectB.top - hostB.top }
+          : { left: rectB.left - hostB.left, top: rectB.bottom - hostB.top + 8 };
         const seat = kind === 'child' ? childSeat : siblingSeat;
         openEditorOverlay({
           initial: '',
           selectAll: false,
           rect: { ...seat, width: 90, height: 24 },
-          branch: branchOfEl(g),
+          branch: branchOfEl(g) + (kind === 'child' ? 1 : 0),
           hint: 'Enter adds another. Tab adds a child. Esc closes.',
           onDone: (text, via) => {
             if (!text) { render(); return; }
@@ -648,16 +685,31 @@ export const ConceptMap = Node.create({
         const tools = document.createElement('div');
         tools.classList.add('canvas-conceptmap__tools');
 
-        const dirBtn = document.createElement('button');
-        dirBtn.classList.add('canvas-conceptmap__tool');
-        dirBtn.type = 'button';
-        dirBtn.textContent = attrs.dir === 'right' ? 'Vertical' : 'Horizontal';
-        dirBtn.title = attrs.dir === 'right' ? 'Switch To A Top-Down Layout' : 'Switch To A Left-To-Right Layout';
-        dirBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          commit({ dir: attrs.dir === 'right' ? 'down' : 'right' });
-        });
-        tools.appendChild(dirBtn);
+        // The layout switch. Radial draws as the tree when the outline
+        // has several roots or a single-child root; the choice still
+        // sticks, so adding a second branch grows the map from the centre.
+        const seg = document.createElement('div');
+        seg.classList.add('canvas-conceptmap__seg');
+        seg.setAttribute('role', 'group');
+        seg.setAttribute('aria-label', 'Layout');
+        const layouts: readonly [MindMapDirection, string, string][] = [
+          ['radial', 'Radial', 'Grow The Map Out From The Centre'],
+          ['right', 'Tree', 'Read The Map Left To Right'],
+          ['down', 'Top-Down', 'Read The Map Top To Bottom'],
+        ];
+        for (const [value, label, title] of layouts) {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.textContent = label;
+          b.title = title;
+          b.setAttribute('aria-pressed', String(attrs.dir === value));
+          b.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (attrs.dir !== value) commit({ dir: value });
+          });
+          seg.appendChild(b);
+        }
+        tools.appendChild(seg);
 
         if (Object.keys(attrs.overrides).length > 0 && !editing) {
           const resetBtn = document.createElement('button');

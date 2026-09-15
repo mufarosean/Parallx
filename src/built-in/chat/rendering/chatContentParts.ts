@@ -18,7 +18,7 @@ import katex from 'katex';
 import { $ } from '../../../ui/dom.js';
 import { chatIcons } from '../chatIcons.js';
 import { extractFilePath, renderCodeActionButtons } from './chatCodeActions.js';
-import { parseMindMapInfo, renderMindMapSvg } from './chatMindMap.js';
+import { parseMindMapInfo, renderMindMapSvg, coerceMindMapDirection } from './chatMindMap.js';
 import { ChatContentPartKind } from '../../../services/chatTypes.js';
 import { getFileTypeIcon, getPageIcon } from '../../../ui/iconRegistry.js';
 import type {
@@ -152,7 +152,7 @@ function _wireMindMapNodes(root: HTMLElement): void {
         bubbles: true,
         detail: {
           src: decodeURIComponent(btn.getAttribute('data-mindmap-src') ?? ''),
-          dir: btn.getAttribute('data-mindmap-dir') === 'down' ? 'down' : 'right',
+          dir: coerceMindMapDirection(btn.getAttribute('data-mindmap-dir')),
         },
       }));
     });
