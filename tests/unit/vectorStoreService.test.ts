@@ -765,3 +765,23 @@ describe('VectorStoreService', () => {
     });
   });
 });
+
+import { isTranscriptSource, searchIncludesTranscripts } from '../../src/services/vectorStoreService.js';
+
+describe('session transcripts stay out of searches that did not ask for them', () => {
+  it('recognises a transcript source by the sessions root', () => {
+    expect(isTranscriptSource('.parallx/sessions/47bf995b.jsonl')).toBe(true);
+    expect(isTranscriptSource('.parallx/memory/2026-09-15.md')).toBe(false);
+    expect(isTranscriptSource('notes/sessions.md')).toBe(false);
+  });
+  it('drops transcripts from an unscoped search, memory recall and a file-scoped search', () => {
+    expect(searchIncludesTranscripts({})).toBe(false);
+    expect(searchIncludesTranscripts({ pathPrefixes: ['.parallx/memory/'] })).toBe(false);
+    expect(searchIncludesTranscripts({ sourceIds: ['src/app.ts'] })).toBe(false);
+  });
+  it('keeps them when the search scopes into the sessions root or asks explicitly', () => {
+    expect(searchIncludesTranscripts({ sourceIds: ['.parallx/sessions/47bf995b.jsonl'] })).toBe(true);
+    expect(searchIncludesTranscripts({ pathPrefixes: ['.parallx/sessions'] })).toBe(true);
+    expect(searchIncludesTranscripts({ includeTranscripts: true })).toBe(true);
+  });
+});
