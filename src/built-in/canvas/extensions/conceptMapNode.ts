@@ -38,7 +38,7 @@ import {
   type HubChild,
   type MindMapDirection,
   type MindMapNode,
-  type MindMapOverrides, coerceMindMapDirection,
+  type MindMapOverrides, coerceMindMapDirection, MAP_GRID,
 } from '../../../ui/conceptMap.js';
 import { beginPointerDrag } from '../../../ui/interactionMode.js';
 
@@ -53,8 +53,6 @@ export const DEFAULT_CONCEPT_MAP_SRC = [
 ].join('\n');
 
 const CLICK_DIST = 4;
-/** The board's dot pitch (conceptMap.css background-size); moves snap to it. */
-const GRID_PX = 18;
 const RESIZE_EDGE_PX = 8;
 
 export const ConceptMap = Node.create({
@@ -213,22 +211,14 @@ export const ConceptMap = Node.create({
           const sn = Math.sin(tiltRad);
           return [sx * c + sy * sn, -sx * sn + sy * c];
         };
-        // Moves snap to the board's dot grid (hold Alt to move freely):
-        // the card's top-left lands on a dot. Computed in SCREEN space so
-        // it holds at any fit scale and any horizontal scroll of the block.
-        const board = parts.g.closest('.canvas-conceptmap') as HTMLElement | null;
-        const boardRect = board?.getBoundingClientRect();
-        const svgRect = parts.g.ownerSVGElement?.getBoundingClientRect();
+        // Moves snap to the map's grid (hold Alt to move freely): the
+        // card's top-left lands on a lattice point, in MAP units, the same
+        // lattice the layout and the drawn dots use, at any fit scale.
         const box0 = { x: Number(parts.rect.getAttribute('x')) || 0, y: Number(parts.rect.getAttribute('y')) || 0 };
         const snapToGrid = (dx: number, dy: number): [number, number] => {
-          if (!board || !boardRect || !svgRect || boardRect.width === 0) return [dx, dy];
-          const originX = boardRect.left - board.scrollLeft;
-          const originY = boardRect.top - board.scrollTop;
-          const sx = svgRect.left + box0.x * scale + dx;
-          const sy = svgRect.top + box0.y * scale + dy;
-          const gx = originX + Math.round((sx - originX) / GRID_PX) * GRID_PX;
-          const gy = originY + Math.round((sy - originY) / GRID_PX) * GRID_PX;
-          return [dx + (gx - sx), dy + (gy - sy)];
+          const gx = Math.round((box0.x + dx / scale) / MAP_GRID) * MAP_GRID - box0.x;
+          const gy = Math.round((box0.y + dy / scale) / MAP_GRID) * MAP_GRID - box0.y;
+          return [gx * scale, gy * scale];
         };
         let snappedDx = 0;
         let snappedDy = 0;
@@ -374,7 +364,7 @@ export const ConceptMap = Node.create({
           id: 'conceptmap-resize',
           cursor: 'ew-resize',
           onMove: (ev) => {
-            w = Math.max(80, Math.min(420, Math.round(startW + (ev.clientX - startX) / scale)));
+            w = Math.round(Math.max(80, Math.min(420, startW + (ev.clientX - startX) / scale)) / MAP_GRID) * MAP_GRID;
             parts.rect.setAttribute('width', String(w));
           },
           onEnd: (canceled) => {
@@ -763,7 +753,7 @@ export const ConceptMap = Node.create({
           dom.appendChild(ta);
           const hint = document.createElement('div');
           hint.classList.add('canvas-conceptmap__hint');
-          hint.textContent = 'One idea per line; indent to nest. **bold**, *italic*, `code`, and $x^2$ all render. On the map: click a box to edit it in place, drag to move it (it snaps to the dots; hold Alt to move freely), drag its right edge to resize.';
+          hint.textContent = 'One idea per line; indent to nest. **bold**, *italic*, `code`, and $x^2$ all render. On the map: click a box to edit it in place, drag to move it (it snaps to the grid; hold Alt to move freely), drag its right edge to resize.';
           dom.appendChild(hint);
           editBtn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -780,6 +770,7 @@ export const ConceptMap = Node.create({
           const body = document.createElement('div');
           body.innerHTML = renderMindMapSvg(attrs.src, {
             dir: attrs.dir,
+            board: true,
             renderMath,
             overrides: attrs.overrides,
           });

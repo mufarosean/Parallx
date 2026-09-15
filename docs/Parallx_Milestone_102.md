@@ -418,10 +418,16 @@ the outline is the map, the app draws it, editing means editing the text.
   (never below 80%, then scrolls), and its toolbar is Radial / Tree /
   Top-Down, Reset Layout, Edit Outline. Drag and resize divide pointer
   deltas by the fit scale and rotate them into a tilted card's frame; a
-  move snaps the card's top-left to the board's 18px dots (Alt = free); a
+  move snaps the card's top-left to the map's 18px grid (Alt = free); a
   note's corner paths move by translate (the group itself is never
   transformed during a drag, the foreignObject repaint stall).
 - **Intraword underscores** (`C_ik`, `f_k`) are subscripts, never italics.
+- **The grid is the law** (`MAP_GRID`, 18px): card sizes round up to it,
+  the layout puts every top and left on it (gaps are multiples), resized
+  widths and moves snap to it, and the board's dots are drawn INSIDE the
+  SVG on the same lattice so they scale and scroll with the map. Tilt is
+  set to zero: Mufaro saw the misalignment in the app and chose alignment
+  over the hand-placed look (constants kept at 0 to restore).
 
 Not built yet: **Expand**, the map as its own tab with pan, zoom and fit
 over the same page and outline (phase two of the proposal).

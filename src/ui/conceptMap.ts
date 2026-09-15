@@ -221,16 +221,30 @@ export function cardKind(depth: number): CardKind {
   return depth === 0 ? 'card' : depth === 1 ? 'note' : 'slip';
 }
 
+/**
+ * THE GRID. Every card edge sits on an 18px lattice: sizes round up to
+ * it, the layout places tops and lefts on it, the block snaps moves to
+ * it, and the board's dots are drawn INSIDE the map on the same lattice
+ * (so they scale and scroll with it and can never drift). Gaps are
+ * multiples of it so columns and rows stay on it too.
+ */
+export const MAP_GRID = 18;
+const snapGrid = (v: number): number => Math.round(v / MAP_GRID) * MAP_GRID;
+const ceilGrid = (v: number): number => Math.ceil(v / MAP_GRID) * MAP_GRID;
+
 const NOTE_FOLD = 13;      // the sticky note's folded corner
 const NOTE_STRIP = 7;      // its adhesive strip along the top
-const LEAF_GAP = 14;       // breathing room between stacked cards (right)
-const COL_GAP = 64;        // gap between a parent card and its children (right)
-const LEVEL_GAP = 48;      // gap between depth rows (down)
-const SIB_GAP = 18;        // gap between sibling cards (down)
-const ROOT_GAP = 76;       // radial: the index card to the first notes
-const MARGIN = 24;
-const NOTE_TILT = 1.3;     // degrees, notes
-const SLIP_TILT = 0.7;     // degrees, slips
+const LEAF_GAP = MAP_GRID;          // between stacked cards (right)
+const COL_GAP = MAP_GRID * 4;       // parent card to its children (right)
+const LEVEL_GAP = MAP_GRID * 3;     // between depth rows (down)
+const SIB_GAP = MAP_GRID;           // between sibling cards (down)
+const ROOT_GAP = MAP_GRID * 4;      // radial: the index card to the first notes
+const MARGIN = MAP_GRID;
+// Tilt is OFF: a tilted card cannot sit on the grid, and Mufaro chose
+// alignment (2026-09-14). One constant each to bring the hand-placed
+// look back.
+const NOTE_TILT = 0;       // degrees, notes
+const SLIP_TILT = 0;       // degrees, slips
 
 // ── Text measurement: real glyph advances when a canvas exists ─────────────
 //
@@ -341,12 +355,13 @@ export function measureLabel(label: string, maxTextW?: number, depth = 1): Measu
   if (lines.length === 0) lines.push([{ kind: 'text', value: ' ' }]);
 
   const lineWidths = lines.map((l) => l.reduce((acc, seg) => acc + segWidth(seg, m), 0));
-  const width = Math.round(Math.min(Math.max(...lineWidths, 24), wrapW + 12)) + m.padX * 2;
+  // Sizes round UP to the grid so every edge can sit on a dot.
+  const width = ceilGrid(Math.round(Math.min(Math.max(...lineWidths, 24), wrapW + 12)) + m.padX * 2);
   const natural = lines.reduce(
     (acc, l) => acc + (l.some((seg) => seg.kind === 'math') ? m.mathLineH : m.lineH),
     0,
   ) + m.padY * 2;
-  const height = Math.max(natural, m.minHeight);
+  const height = ceilGrid(Math.max(natural, m.minHeight));
   return { lines, width, height, rich: labelIsRich(segs) || lines.length > 1 };
 }
 
@@ -400,7 +415,7 @@ export function applyOverrides(layout: MindMapLayout, overrides: MindMapOverride
     if (!o) return n;
     let { width, height } = n;
     if (typeof o.w === 'number' && Number.isFinite(o.w)) {
-      const w = Math.max(MIN_OVERRIDE_W, Math.min(MAX_OVERRIDE_W, Math.round(o.w)));
+      const w = snapGrid(Math.max(MIN_OVERRIDE_W, Math.min(MAX_OVERRIDE_W, Math.round(o.w))));
       const remeasured = measureLabel(n.label, Math.max(24, w - cardMetrics(n.depth).padX * 2), n.depth);
       width = w;
       height = remeasured.height;
@@ -488,7 +503,8 @@ function placeTree(
         edges.push({ from: index, to: childIndex });
         return nodes[childIndex].y;
       });
-      y = (childYs[0] + childYs[childYs.length - 1]) / 2;
+      // Centred on its children, then its TOP snapped to the grid.
+      y = snapGrid((childYs[0] + childYs[childYs.length - 1]) / 2 - size.height / 2) + size.height / 2;
       // A tall parent must still claim vertical room past its children.
       nextLeafTop = Math.max(nextLeafTop, y + size.height / 2 + LEAF_GAP);
     }
@@ -532,8 +548,10 @@ function layoutRadial(root: MindMapNode, sizes: ReadonlyMap<MindMapNode, Measure
   const right = placeTree(rightKids, sizes, 1);
   const left = placeTree(leftKids, sizes, 1);
   const sideH = Math.max(right.height, left.height, rootSize.height);
-  const rootY = sideH / 2;
+  const rootY = snapGrid((sideH - rootSize.height) / 2) + rootSize.height / 2;
   const rootX = left.nodes.length ? left.width + ROOT_GAP : 0;
+  const rightShift = snapGrid((sideH - right.height) / 2);
+  const leftShift = snapGrid((sideH - left.height) / 2);
 
   const nodes: LaidOutNode[] = [{
     label: root.label, line: root.line, depth: 0,
@@ -546,16 +564,17 @@ function layoutRadial(root: MindMapNode, sizes: ReadonlyMap<MindMapNode, Measure
     for (const e of side.edges) edges.push({ from: e.from + offset, to: e.to + offset });
     for (const t of side.tops) edges.push({ from: 0, to: t + offset });
   };
-  addSide(right, shifted(right.nodes, rootX + rootSize.width + ROOT_GAP, rootY - right.height / 2));
+  addSide(right, shifted(right.nodes, rootX + rootSize.width + ROOT_GAP, rightShift));
   // The left side is the same tree mirrored: x' = width - (x + w).
-  addSide(left, left.nodes.map((n) => ({ ...n, x: left.width - (n.x + n.width), y: n.y + rootY - left.height / 2 })));
+  addSide(left, left.nodes.map((n) => ({ ...n, x: left.width - (n.x + n.width), y: n.y + leftShift })));
 
   const width = rootX + rootSize.width + (right.nodes.length ? ROOT_GAP + right.width : 0);
+  const height = Math.max(sideH, rootY + rootSize.height / 2);
   return {
     nodes: shifted(nodes, MARGIN, MARGIN),
     edges,
     width: width + MARGIN * 2,
-    height: sideH + MARGIN * 2,
+    height: height + MARGIN * 2,
     dir: 'radial',
   };
 }
@@ -628,7 +647,7 @@ export function layoutMindMap(
         edges.push({ from: index, to: childIndex });
         return nodes[childIndex].x + nodes[childIndex].width / 2;
       });
-      centerX = (childCenters[0] + childCenters[childCenters.length - 1]) / 2;
+      centerX = snapGrid((childCenters[0] + childCenters[childCenters.length - 1]) / 2 - size.width / 2) + size.width / 2;
       nextLeafX = Math.max(nextLeafX, centerX + size.width / 2 + SIB_GAP);
     }
 
@@ -664,6 +683,8 @@ export function renderMindMapFallback(src: string): string {
 
 export interface RenderMindMapOptions {
   readonly dir?: MindMapDirection;
+  /** Draw the dotted board behind the map (the canvas block; chat has none). */
+  readonly board?: boolean;
   /** TeX → HTML (KaTeX). Absent: math renders as literal $…$ text. */
   readonly renderMath?: (tex: string) => string;
   /** User layout adjustments (the canvas block's moves and resizes). */
@@ -1073,6 +1094,10 @@ function mapDefs(uid: number): string {
     + '<feBlend in="SourceGraphic" in2="clip" mode="multiply" result="paper" />'
     + '<feDropShadow class="parallx-mindmap__shadow" in="paper" dx="0" dy="2" stdDeviation="2.4" />'
     + '</filter>';
+  // The board's dots, one per lattice point (cell origin at -9 so the dot
+  // sits ON the grid line, where card edges land).
+  out += '<pattern id="mm' + uid + '-dots" x="-' + (MAP_GRID / 2) + '" y="-' + (MAP_GRID / 2) + '" width="' + MAP_GRID + '" height="' + MAP_GRID + '" patternUnits="userSpaceOnUse">'
+    + '<circle class="parallx-mindmap__dot" cx="' + (MAP_GRID / 2) + '" cy="' + (MAP_GRID / 2) + '" r="1" /></pattern>';
   return '<defs>' + out + '</defs>';
 }
 
@@ -1218,6 +1243,10 @@ export function renderMindMapSvg(src: string, opts: RenderMindMapOptions = {}): 
   return '<div class="parallx-mindmap" data-mindmap-dir="' + dir + '">'
     + '<svg viewBox="0 0 ' + width + ' ' + height + '" width="' + width + '" height="' + height + '" '
     + 'style="min-width:' + minWidth + 'px" role="img" aria-label="Concept map">'
-    + mapDefs(uid) + paths + boxes + '</svg>'
+    + mapDefs(uid)
+    // The board is a pattern reference, not a colour: the dot's colour is
+    // the stylesheet's.
+    + (opts.board ? '<rect class="parallx-mindmap__board" x="0" y="0" width="' + width + '" height="' + height + '" style="fill:url(#mm' + uid + '-dots)" />' : '')
+    + paths + boxes + '</svg>'
     + '</div>';
 }

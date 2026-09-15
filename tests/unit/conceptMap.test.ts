@@ -10,6 +10,7 @@ import {
   applyOverrides,
   cardTilt,
   hubPathsFor,
+  MAP_GRID,
   layoutMindMap,
   measureLabel,
   parseMindMap,
@@ -88,15 +89,32 @@ describe('card colours: one paper per level', () => {
     expect(svg).not.toContain('parallx-mindmap__node--b');
   });
 
-  it('the index card never tilts; notes and slips keep a stable, small tilt', () => {
+  it('cards sit square: no tilt on any level (alignment beat the hand-placed look)', () => {
     expect(cardTilt('Reserving', 0)).toBe(0);
-    const t1 = cardTilt('Chain Ladder', 1);
-    expect(Math.abs(t1)).toBeLessThanOrEqual(1.3);
-    expect(cardTilt('Chain Ladder', 1)).toBe(t1); // hashed from the label
-    expect(Math.abs(cardTilt('Mack', 2))).toBeLessThanOrEqual(0.7);
-    const svg = renderMindMapSvg(SRC);
-    expect(svg).toMatch(/data-mm-line="1"[^>]*data-mm-tilt="-?[\d.]+" transform="rotate\(/);
-    expect(svg).not.toMatch(/data-mm-line="0"[^>]*transform=/);
+    expect(cardTilt('Chain Ladder', 1)).toBe(0);
+    expect(cardTilt('Mack', 2)).toBe(0);
+    expect(renderMindMapSvg(SRC)).not.toContain('transform="rotate(');
+  });
+
+  it('every card edge sits on the 18px grid, in every layout', () => {
+    const onGrid = (v: number): boolean => Math.abs(v / MAP_GRID - Math.round(v / MAP_GRID)) < 1e-9;
+    const RADIAL = ['Centre', '  One', '  Two', '  Three', '    Three a', '  Four'].join('\n');
+    for (const [src, dir] of [[SRC, 'right'], [SRC, 'down'], [RADIAL, 'radial'], [SRC, 'radial']] as const) {
+      const layout = layoutMindMap(parseMindMap(src), dir);
+      for (const n of layout.nodes) {
+        expect(onGrid(n.x), dir + ' left ' + n.label).toBe(true);
+        expect(onGrid(n.y - n.height / 2), dir + ' top ' + n.label).toBe(true);
+        expect(onGrid(n.width), dir + ' width ' + n.label).toBe(true);
+        expect(onGrid(n.height), dir + ' height ' + n.label).toBe(true);
+      }
+    }
+  });
+
+  it('the board is drawn inside the map only when asked, dots on the lattice', () => {
+    expect(renderMindMapSvg(SRC)).not.toContain('parallx-mindmap__board');
+    const withBoard = renderMindMapSvg(SRC, { board: true });
+    expect(withBoard).toContain('parallx-mindmap__board');
+    expect(withBoard).toMatch(/<pattern id="mm\d+-dots" x="-9" y="-9" width="18" height="18"/);
   });
 });
 
@@ -189,7 +207,7 @@ describe('rich labels', () => {
     const long = 'incremental capping ratio applied to the loss cost format across every accident year in the triangle';
     const m = measureLabel(long);
     expect(m.lines.length).toBeGreaterThan(1);
-    expect(m.width).toBeLessThanOrEqual(200 + 12 + 28); // note wrap width + padding
+    expect(m.width).toBeLessThanOrEqual(252); // note wrap width + padding, rounded up to the grid
     const single = measureLabel('short');
     expect(m.height).toBeGreaterThan(single.height);
   });
@@ -239,7 +257,7 @@ describe('layout overrides (user moves and resizes)', () => {
     const resized = applyOverrides(base, { [label]: { w: 120 } });
     const before = base.nodes.find((n) => n.label === label)!;
     const after = resized.nodes.find((n) => n.label === label)!;
-    expect(after.width).toBe(120);
+    expect(after.width).toBe(126); // 120 snapped to the grid
     expect(after.height).toBeGreaterThan(before.height);
   });
 

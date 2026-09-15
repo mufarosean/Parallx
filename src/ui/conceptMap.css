@@ -189,7 +189,18 @@
   background: var(--px-surface-hover, transparent);
 }
 
-/* ── The canvas block: the map on a dotted board ── */
+/* ── The board: dots drawn INSIDE the map (renderer option `board`), one
+   per lattice point of the 18px grid every card edge sits on, so they
+   scale and scroll with the map and can never drift from it. ── */
+.parallx-mindmap__board {
+  pointer-events: none;
+}
+
+.parallx-mindmap__dot {
+  fill: color-mix(in srgb, var(--px-text, #e8eaee) 10%, transparent);
+}
+
+/* ── The canvas block ── */
 
 .canvas-conceptmap {
   position: relative;
@@ -198,9 +209,6 @@
   border-radius: var(--px-radius-md, 6px);
   overflow-x: auto;
   background-color: var(--px-bg, #16171a);
-  background-image: radial-gradient(color-mix(in srgb, var(--px-text, #e8eaee) 9%, transparent) 1px, transparent 1.3px);
-  background-size: 18px 18px;          /* GRID_PX in conceptMapNode.ts: moves snap to the dots */
-  background-attachment: local;        /* the dots scroll with a wide map */
 }
 
 .canvas-conceptmap__tools {
