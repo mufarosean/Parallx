@@ -65,7 +65,10 @@ describe('formatEventLine', () => {
     expect(line).toContain('habit just confirmed');
     expect(line).toContain('refresh AI News');
     expect(line).toContain('08:00');
-    expect(line).toContain('cron_create');
+    // The tool is never named: the model finds the scheduler in its schema, and
+    // a disabled one must leave no trace in the seed.
+    expect(line).toContain('scheduling tool');
+    expect(line).not.toContain('cron_create');
     expect(line).toContain('0 8 * * *');
     expect(line).toContain('NOOP'); // it can decline — judgment is the model's
   });

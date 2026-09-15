@@ -63,7 +63,7 @@ export function createAppFindCommandsTool(
       properties: {
         query: {
           type: 'string',
-          description: 'Natural-language description of the desired action (e.g. "switch to dark theme", "open workspace graph").',
+          description: 'Natural-language description of the desired action (e.g. "switch to dark theme", "toggle the sidebar").',
         },
         limit: {
           type: 'number',

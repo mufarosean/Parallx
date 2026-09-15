@@ -241,7 +241,7 @@ export function buildOpenclawSystemPrompt(params: IOpenclawSystemPromptParams): 
   //     adding a new extension contract surfaces its URI templates here with
   //     zero core changes.
   if (params.linkContracts && params.linkContracts.length > 0) {
-    sections.push(buildLinkingSection(params.linkContracts));
+    sections.push(buildLinkingSection(params.linkContracts, params.tools.some((t) => t.name === 'link_create')));
   }
 
   // 3c. M102 — Concept maps. Unconditional: this is a rendering capability of
@@ -505,16 +505,19 @@ export function buildToolSummariesSection(tools: readonly IToolSummary[]): strin
  */
 export function buildLinkingSection(
   contracts: readonly IOpenclawLinkContractDescriptor[],
+  hasLinkCreate = true,
 ): string {
+  // The resource kinds are the templates below (one per contract present), so
+  // the intro names none of them: a disabled extension's kind is never listed.
+  // The minting tool is named only when it is offered this turn.
   const lines: string[] = [
     '## Linking',
-    'Every cite-able Parallx resource (canvas pages, files, PDFs, media,',
-    'budget items, graph nodes, web research results, past chat sessions)',
-    'has a stable `parallx://` URI. When you reference one of these in your',
-    'reply, emit a markdown link with the `parallx://` URI so the user can',
-    'click through. Prefer the `link_create` tool to mint URIs — it',
-    'validates the target against the templates below before returning a',
-    'link.',
+    'Every cite-able Parallx resource has a stable `parallx://` URI. When you',
+    'reference one of these in your reply, emit a markdown link with the',
+    '`parallx://` URI so the user can click through.',
+    ...(hasLinkCreate
+      ? ['Prefer the `link_create` tool to mint URIs — it validates the target', 'against the templates below before returning a link.']
+      : ['Mint URIs only from the templates below.']),
     '',
     'URI templates available in this workspace:',
   ];

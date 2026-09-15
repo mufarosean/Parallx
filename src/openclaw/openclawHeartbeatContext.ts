@@ -106,7 +106,7 @@ export function formatEventLine(ev: IHeartbeatSystemEvent): string {
       const action = typeof p.action === 'string' ? p.action : 'a recurring action';
       const when = typeof p.typicalTime === 'string' ? ` around ${p.typicalTime}` : '';
       const cron = typeof p.cron === 'string' ? p.cron : '';
-      return `A daily habit just confirmed: "${action}"${when}. Decide, with judgment, whether to OFFER to automate it for the user — and if so, what automation actually helps (a straight repeat? a digest? a reminder?). If it's worth it, propose it in one clear sentence and, on their approval, schedule it with cron_create (a sensible daily schedule is "${cron}"). If automating it would be unhelpful, intrusive, or premature, just respond NOOP. Your call.`;
+      return `A daily habit just confirmed: "${action}"${when}. Decide, with judgment, whether to OFFER to automate it for the user — and if so, what automation actually helps (a straight repeat? a digest? a reminder?). If it's worth it, propose it in one clear sentence and, on their approval, schedule it with the scheduling tool if one is offered to you (a sensible daily schedule is "${cron}"). If automating it would be unhelpful, intrusive, or premature, just respond NOOP. Your call.`;
     }
     case 'file-change':
       return `file changed: ${typeof p.path === 'string' ? p.path : '(unknown)'}`;

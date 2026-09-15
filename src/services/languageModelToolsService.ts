@@ -386,7 +386,8 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
     observer?.onValidated?.(metadata);
 
     if (!metadata.enabled) {
-      return { content: `Tool "${name}" is disabled`, isError: true };
+      // Same wording as an unknown tool: a disabled one must not be confirmed to exist.
+      return { content: `Tool "${name}" not found`, isError: true };
     }
 
     // ── Handle deny outcomes ─────────────────────────────────────────────────
