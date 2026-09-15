@@ -18118,7 +18118,7 @@ function showBulkDeleteDialog(state, api, onComplete) {
       }
       let fileMsg = '';
       if (fileCheckbox.checked) {
-        fileMsg = `. Recycle-bin fallback: ${result.filesTrashed} file${result.filesTrashed === 1 ? '' : 's'} removed${result.filesPermanent ? `, ${result.filesPermanent} on external drive permanently deleted` : ''}${result.filesFailed ? `, ${result.filesFailed} failed` : ''}`;
+        fileMsg = `. Recycle-bin fallback: ${result.filesTrashed} file${result.filesTrashed === 1 ? '' : 's'} removed${result.filesPermanent ? `, ${result.filesPermanent} on external drive permanently deleted` : ''}${result.filesFailed ? `, ${result.filesFailed} failed` : ''}${result.filesGone ? `, ${result.filesGone} already gone` : ''}`;
       }
       api.window.showInformationMessage(`${result.purged} item${result.purged === 1 ? '' : 's'} deleted${fileMsg}.`);
       overlay.remove();
@@ -26026,6 +26026,60 @@ async function moAutoStackByBasename(api) {
 // rely on the spawn itself to report ENOENT — which it does cleanly via
 // result.error / non-zero exit — and surface that as the toast instead.
 // `missingNotified` is kept to dedupe toasts across consecutive failures.
+// Two ways Eraser ends up reporting "The file … could not be found":
+//   1. It was handed a path that was already gone. Library rows outlive their
+//      files on purpose (offline drives keep their photos; a file removed in
+//      Explorer stays until the startup sweep), so a Delete can carry paths
+//      with nothing behind them.
+//   2. It was handed the same path twice while still working on it. Eraser's
+//      task list persists across app and OS restarts, so the orphan-recording
+//      sweep at the next startup (or a second Delete after the in-session
+//      guard let go) queued a second task that fails once the first finishes.
+// _eraserPathsToQueue drops both: a path must exist on disk, and a path handed
+// to Eraser in the last ERASER_REQUEUE_WINDOW_MS is left with Eraser. The
+// registry lives in mo_settings so it survives restarts with the task list.
+const ERASER_REQUEUE_WINDOW_MS = 24 * 60 * 60 * 1000;
+const ERASER_REGISTRY_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const ERASER_REGISTRY_KEY = 'eraser_queued_paths';
+let _eraserQueued = null; // Map<normalised path, queuedAtMs>
+async function _loadEraserQueued() {
+  if (_eraserQueued) return _eraserQueued;
+  _eraserQueued = new Map();
+  try {
+    const row = await db.get(`SELECT value FROM mo_settings WHERE key = '${ERASER_REGISTRY_KEY}'`);
+    const obj = row && row.value ? JSON.parse(row.value) : {};
+    const cutoff = Date.now() - ERASER_REGISTRY_TTL_MS;
+    for (const [k, v] of Object.entries(obj)) if (Number.isFinite(v) && v > cutoff) _eraserQueued.set(k, v);
+  } catch { /* an unreadable registry only costs the dedupe */ }
+  return _eraserQueued;
+}
+async function _saveEraserQueued() {
+  if (!_eraserQueued) return;
+  try { await moSetSetting(ERASER_REGISTRY_KEY, JSON.stringify(Object.fromEntries(_eraserQueued))); } catch { /* best effort */ }
+}
+/** Split the paths into what Eraser should get now and what it must not. */
+async function _eraserPathsToQueue(filePaths) {
+  const reg = await _loadEraserQueued();
+  const exists = new Array(filePaths.length).fill(true);
+  for (let i = 0; i < filePaths.length; i += 8) {
+    const slice = filePaths.slice(i, i + 8);
+    const flags = await Promise.all(slice.map((p) => window.parallxElectron.fs.exists(p).catch(() => true)));
+    for (let j = 0; j < flags.length; j++) exists[i + j] = flags[j] !== false;
+  }
+  const now = Date.now();
+  const toQueue = [];
+  const skipped = { missing: 0, queued: 0 };
+  for (let i = 0; i < filePaths.length; i++) {
+    const p = filePaths[i];
+    const norm = _normErasePath(p);
+    if (!exists[i]) { skipped.missing++; reg.delete(norm); continue; }
+    const at = reg.get(norm);
+    if (at && now - at < ERASER_REQUEUE_WINDOW_MS) { skipped.queued++; continue; }
+    toQueue.push(p);
+  }
+  return { toQueue, skipped };
+}
+
 const _eraserAvail = { lastFailedPath: null, missingNotified: false };
 
 async function _tryEraseWithEraser(api, filePaths) {
@@ -26038,6 +26092,13 @@ async function _tryEraseWithEraser(api, filePaths) {
   // Reset dedupe gate when the user reconfigures the path.
   if (_eraserAvail.lastFailedPath !== cfgPath) {
     _eraserAvail.missingNotified = false;
+  }
+
+  const { toQueue, skipped } = await _eraserPathsToQueue(filePaths);
+  if (toQueue.length === 0) {
+    // Nothing for Eraser: every path is already gone, or already with Eraser.
+    _lastEraserSpawn = { paths: filePaths.slice(), promise: Promise.resolve(true), queued: 0, skipped };
+    return skipped.queued > 0;
   }
 
   // Eraser CLI: `Eraser.exe addtask /quiet /schedule=now file=<path1> ...`
@@ -26055,7 +26116,7 @@ async function _tryEraseWithEraser(api, filePaths) {
   const chunks = [];
   let cur = [];
   let curLen = fixedLen;
-  for (const p of filePaths) {
+  for (const p of toQueue) {
     const argLen = p.length + 10; // 'file=' + quoting/separator slack
     if (cur.length > 0 && curLen + argLen > ERASER_CMDLINE_BUDGET) {
       chunks.push(cur);
@@ -26085,11 +26146,20 @@ async function _tryEraseWithEraser(api, filePaths) {
         return false;
       });
   });
-  _lastEraserSpawn = {
-    paths: filePaths.slice(),
-    promise: Promise.all(chunkPromises).then((oks) => oks.every(Boolean)),
-  };
-
+  const queuedAt = Date.now();
+  const registry = await _loadEraserQueued();
+  for (const p of toQueue) registry.set(_normErasePath(p), queuedAt);
+  _saveEraserQueued().catch(() => {});
+  const spawnPromise = Promise.all(chunkPromises).then((oks) => {
+    const ok = oks.every(Boolean);
+    if (!ok) {
+      // Eraser refused: forget these so the next attempt can hand them over again.
+      for (const p of toQueue) registry.delete(_normErasePath(p));
+      _saveEraserQueued().catch(() => {});
+    }
+    return ok;
+  });
+  _lastEraserSpawn = { paths: filePaths.slice(), promise: spawnPromise, queued: toQueue.length, skipped };
   return true;
 }
 
@@ -26661,7 +26731,7 @@ async function _commitMediaPurge(api, photoIds, videoIds, fileRows) {
 }
 
 async function moPurgeMedia(api, items, opts = {}) {
-  if (!items || items.length === 0) return { purged: 0, filesTrashed: 0, filesFailed: 0, filesPermanent: 0, filesErased: 0 };
+  if (!items || items.length === 0) return { purged: 0, filesTrashed: 0, filesFailed: 0, filesPermanent: 0, filesErased: 0, filesGone: 0 };
   const deleteFiles = opts.deleteFiles !== false;
   const sep = _isWindows ? '\\' : '/';
 
@@ -26727,6 +26797,7 @@ async function moPurgeMedia(api, items, opts = {}) {
   let filesFailed = 0;
   let filesPermanent = 0;
   let filesErased = 0;
+  let filesGone = 0;
 
   if (deleteFiles && uniquePaths.length > 0) {
     let erasedHere = false;
@@ -26743,7 +26814,7 @@ async function moPurgeMedia(api, items, opts = {}) {
         // Queue at capacity — the schedule call already showed a toast.
         // Eraser is still working in the background; reconcile on next
         // startup via moPurgeMissingFiles. Nothing else to do here.
-        return { purged: 0, filesTrashed: 0, filesFailed: 0, filesPermanent: 0, filesErased: 0 };
+        return { purged: 0, filesTrashed: 0, filesFailed: 0, filesPermanent: 0, filesErased: 0, filesGone: 0 };
       }
       // Hook the late-firing spawn result: if Eraser actually refused the
       // task, the polling loop in _scheduleEraserCommit would otherwise wait
@@ -26756,10 +26827,13 @@ async function moPurgeMedia(api, items, opts = {}) {
           if (!ok) _unwindPendingEraseBatch(api, photoIds, videoIds, fileRows);
         }).catch(() => { /* unwind handled inline above */ });
       }
+      const queuedN = spawn && Number.isFinite(spawn.queued) ? spawn.queued : uniquePaths.length;
+      const goneN = spawn && spawn.skipped ? spawn.skipped.missing : 0;
+      const heldN = spawn && spawn.skipped ? spawn.skipped.queued : 0;
       api.window.showInformationMessage(
-        `Eraser is securely erasing ${uniquePaths.length} file(s). They'll be removed from your library once erasure completes.`
+        `Eraser is securely erasing ${queuedN} file(s)${heldN ? `, ${heldN} already with Eraser` : ''}${goneN ? `, ${goneN} already gone` : ''}. They'll be removed from your library once erasure completes.`
       );
-      return { purged: 0, filesTrashed: 0, filesFailed: 0, filesPermanent: 0, filesErased };
+      return { purged: 0, filesTrashed: 0, filesFailed: 0, filesPermanent: 0, filesErased, filesGone: goneN };
     }
 
     // Recycle-bin fallback (Eraser unavailable or refused). The OS unlink
@@ -26773,6 +26847,7 @@ async function moPurgeMedia(api, items, opts = {}) {
         filesTrashed++;
         if (r.deletedPermanently) filesPermanent++;
       }
+      else if (r && r.error && r.error.code === 'ENOENT') filesGone++; // nothing left to remove
       else filesFailed++;
     }
   }
@@ -26782,7 +26857,7 @@ async function moPurgeMedia(api, items, opts = {}) {
   // landed. Either way, disk now matches the cleanup we're about to do.
   await _commitMediaPurge(api, photoIds, videoIds, fileRows);
 
-  return { purged: photoIds.length + videoIds.length, filesTrashed, filesFailed, filesPermanent, filesErased };
+  return { purged: photoIds.length + videoIds.length, filesTrashed, filesFailed, filesPermanent, filesErased, filesGone };
 }
 
 // One-shot startup sweep: any mo_files row whose backing file is missing on
