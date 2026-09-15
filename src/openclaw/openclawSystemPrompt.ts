@@ -493,9 +493,14 @@ export function buildLinkingSection(
  * Memory and Delegation sections, which went unused until something taught
  * WHEN to use them.
  *
- * The "when NOT to" half carries most of the weight. Left to itself a model
- * will decorate every answer with a diagram, and a map of things that were
- * already a list is noise that costs the reader more than it gives.
+ * Two halves carry the weight. The "when NOT to" half: left to itself a
+ * model will decorate every answer with a diagram, and a map of things that
+ * were already a list is noise that costs the reader more than it gives.
+ * The "one question per level" half: left to itself a model ASSOCIATES (an
+ * assumption, an example and a related method all under one node), which
+ * draws a web, not a hierarchy. Making it name the question each sibling
+ * set answers is what turns association into decomposition; unverified on
+ * the local models as of 2026-09-14, so judge it on real maps.
  */
 export function buildConceptMapSection(): string {
   return [
@@ -505,12 +510,13 @@ export function buildConceptMapSection(): string {
     'matters, and a child is any line indented further than the line above:',
     '',
     '```mindmap',
-    'Parameter risk',
-    '  does not diversify across years',
-    '    every year shares the same estimated parameters',
-    '  widens the predictive distribution',
-    'Process risk',
-    '  averages out across years',
+    'Reserve risk',
+    '  Parameter risk',
+    '    every year shares the same estimated factors',
+    '    does not diversify across years',
+    '  Process risk',
+    '    randomness left in future development',
+    '    averages out across years',
     '```',
     '',
     'A bare ```mindmap draws radially: the first line is the centre card',
@@ -531,9 +537,24 @@ export function buildConceptMapSection(): string {
     'all of those, and a diagram of something that was already a list makes',
     'the reply longer without making it clearer. Most answers need no map.',
     '',
-    'Keep it under about 15 nodes and 3 levels deep. Label nodes with short',
-    'claims or names, not sentences. The reader can click any node to ask a',
-    'follow-up about it.',
+    'Build it top-down, ONE QUESTION PER LEVEL. The first line is the topic.',
+    'Decide what single question its branches answer (what are its parts,',
+    'its kinds, its steps, its assumptions, its consequences) and every',
+    'branch answers that question and nothing else. Under each branch,',
+    'again one question. Siblings are parallel: the same kind of thing, the',
+    'same grammar, no overlap, and together they cover the parent. A child',
+    'sits under its parent because the parent CONTAINS it, never because it',
+    'reminds you of it; a node that would fit under another parent is in the',
+    'wrong place. Order siblings by the logic (sequence, importance, the',
+    'source\'s order), never by the order they occurred to you. A branch with',
+    'one child is not a branch: merge it up. Before writing the nodes, name',
+    'the question for each level to yourself; if you cannot name it, what',
+    'you have is a list of associations, and prose will serve better.',
+    '',
+    'Shape: three to seven branches, two to five leaves under each, three',
+    'levels at most, under about 20 nodes. Branches are named dimensions;',
+    'leaves are short claims, not sentences. The reader can click any node',
+    'to ask a follow-up about it.',
   ].join('\n');
 }
 
