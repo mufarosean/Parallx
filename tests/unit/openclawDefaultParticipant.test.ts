@@ -174,8 +174,9 @@ describe('openclaw default participant', () => {
       getWorkspaceName: () => 'Demo Workspace',
       getPageCount: vi.fn(async () => 0),
       getCurrentPageTitle: () => undefined,
-      getToolDefinitions: () => [],
-      getReadOnlyToolDefinitions: () => [],
+      // The skills section renders only when the read tool is offered (a skill is read with it).
+      getToolDefinitions: () => [{ name: 'fs_read_file', description: 'Read file', parameters: { type: 'object', properties: { path: { type: 'string' } } } }],
+      getReadOnlyToolDefinitions: () => [{ name: 'fs_read_file', description: 'Read file', parameters: { type: 'object', properties: { path: { type: 'string' } } } }],
       getSkillCatalog: () => [
         {
           name: 'claims-playbook',
@@ -237,8 +238,8 @@ describe('openclaw default participant', () => {
         hiddenCount: 2,
       }),
       tools: expect.objectContaining({
-        totalCount: 1,
-        availableCount: 1,
+        totalCount: 2,
+        availableCount: 2,
         filteredCount: 0,
         skillDerivedCount: 1,
       }),
