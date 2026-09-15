@@ -409,8 +409,8 @@ the outline is the map, the app draws it, editing means editing the text.
   reading order). `mindmap tree` and `mindmap vertical` keep the two
   trees; existing blocks keep their stored direction. A radial request
   over several roots draws as the tree.
-- **Connectors** are 2px in the parent level's paper with 8px rounded
-  elbows; the hub law (one exit per card, spine, one arm per child,
+- **Connectors** are 2px in the parent level's paper, straight with square
+  corners (rounded elbows were tried and rejected); the hub law (one exit per card, spine, one arm per child,
   arrowhead in the child's colour) is unchanged.
 - **Measured text.** `textWidth` measures with the UI font on a canvas
   (estimate under jsdom); the 6.7px-per-character constant is gone.

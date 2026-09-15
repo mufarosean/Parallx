@@ -268,15 +268,11 @@ describe('hub connectors and outline growth', () => {
     expect(hubs.length).toBe(1); // one exit, both kids on one side
     const hub = hubs[0];
     expect(hub.stem).toBe('M160 100 H 230'); // exit at the box edge, one line
-    // The spine stops where the elbows begin (radius 8 each end).
-    expect(hub.spine).toBe('M230 48 V 152');
-    // Each arm leaves the spine through a rounded elbow, then runs straight in.
-    expect(hub.arms.map((a) => a.d)).toEqual([
-      'M230 48 Q 230 40 238 40 H 300',
-      'M230 152 Q 230 160 238 160 H 300',
-    ]);
+    expect(hub.spine).toBe('M230 40 V 160'); // the vertex line the arms leave
+    expect(hub.arms.map((a) => a.d)).toEqual(['M230 40 H 300', 'M230 160 H 300']);
     expect(hub.arms.map((a) => a.color)).toEqual([1, 2]); // arrows = CHILD level
-    expect(hub.stem).not.toContain('Q'); // the stem itself is straight
+    // Straight lines, square corners: no curve commands anywhere.
+    expect(hub.stem + hub.spine + hub.arms.map((a) => a.d).join('')).not.toMatch(/[QC]/);
   });
 
   it('vertical: same law, axes swapped', () => {
@@ -288,14 +284,11 @@ describe('hub connectors and outline growth', () => {
     const hubs = hubPathsFor(parent, kids, 'down');
     expect(hubs.length).toBe(1);
     expect(hubs[0].stem).toBe('M160 61 V 125');
-    expect(hubs[0].spine).toBe('M98 125 H 262');
-    expect(hubs[0].arms.map((a) => a.d)).toEqual([
-      'M98 125 Q 90 125 90 133 V 189',
-      'M262 125 Q 270 125 270 133 V 189',
-    ]);
+    expect(hubs[0].spine).toBe('M90 125 H 270');
+    expect(hubs[0].arms.map((a) => a.d)).toEqual(['M90 125 V 189', 'M270 125 V 189']);
   });
 
-  it('an arm level with its parent stays straight: no elbow to draw', () => {
+  it('an arm level with its parent needs no spine at all', () => {
     const parent = { x: 40, y: 100, width: 120, height: 22 };
     const kids = [{ x: 300, y: 100, width: 100, height: 22, label: 'A', color: 1 }];
     const hubs = hubPathsFor(parent, kids, 'right');

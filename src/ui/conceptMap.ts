@@ -229,7 +229,6 @@ const LEVEL_GAP = 48;      // gap between depth rows (down)
 const SIB_GAP = 18;        // gap between sibling cards (down)
 const ROOT_GAP = 76;       // radial: the index card to the first notes
 const MARGIN = 24;
-const ELBOW = 8;           // connector corner radius
 const NOTE_TILT = 1.3;     // degrees, notes
 const SLIP_TILT = 0.7;     // degrees, slips
 
@@ -985,9 +984,8 @@ export interface HubPaths {
 
 /**
  * The hub connector: ONE line leaves the parent, reaches a vertex, a
- * spine runs along it, and one arm enters each child. Each arm leaves the
- * spine through a rounded elbow (radius ELBOW, shrunk when the geometry
- * is tight); an arm level with its parent stays a straight line.
+ * spine runs along it, and one arm enters each child. Straight lines,
+ * square corners (Mufaro's call, 2026-09-14: no rounded elbows).
  * Children on each side of the parent get their own hub (post-drag mixed
  * sides). 'radial' routes exactly like 'right'.
  */
@@ -1002,31 +1000,18 @@ export function hubPathsFor(parent: EdgeBox, children: readonly HubChild[], dir:
       const kids = sides[side];
       if (kids.length === 0) continue;
       const forward = side === 0;
-      const s = forward ? 1 : -1;
       const exitX = forward ? parent.x + parent.width : parent.x;
       const entries = kids.map((c) => (forward ? c.x : c.x + c.width));
       const nearest = forward ? Math.min(...entries) : Math.max(...entries);
       const m = Math.round((exitX + nearest) / 2);
-      const spineEnds: number[] = [parent.y];
-      const arms = kids.map((c) => {
-        const entry = forward ? c.x : c.x + c.width;
-        const dy = c.y - parent.y;
-        const r = Math.min(ELBOW, Math.abs(dy) / 2, Math.abs(entry - m) / 2);
-        if (Math.abs(dy) < 0.5 || r < 0.5) {
-          spineEnds.push(c.y);
-          return { d: 'M' + m + ' ' + c.y + ' H ' + entry, to: c.label, color: c.color };
-        }
-        const sg = Math.sign(dy);
-        const from = c.y - sg * r;
-        spineEnds.push(from);
-        return {
-          d: 'M' + m + ' ' + from + ' Q ' + m + ' ' + c.y + ' ' + (m + s * r) + ' ' + c.y + ' H ' + entry,
-          to: c.label,
-          color: c.color,
-        };
-      });
-      const minY = Math.min(...spineEnds);
-      const maxY = Math.max(...spineEnds);
+      const ys = kids.map((c) => c.y);
+      const minY = Math.min(...ys, parent.y);
+      const maxY = Math.max(...ys, parent.y);
+      const arms = kids.map((c) => ({
+        d: 'M' + m + ' ' + c.y + ' H ' + (forward ? c.x : c.x + c.width),
+        to: c.label,
+        color: c.color,
+      }));
       out.push({
         stem: 'M' + exitX + ' ' + parent.y + ' H ' + m,
         spine: minY !== maxY ? 'M' + m + ' ' + minY + ' V ' + maxY : null,
@@ -1042,33 +1027,19 @@ export function hubPathsFor(parent: EdgeBox, children: readonly HubChild[], dir:
     const kids = sides[side];
     if (kids.length === 0) continue;
     const downward = side === 0;
-    const s = downward ? 1 : -1;
     const exitY = downward ? parent.y + parent.height / 2 : parent.y - parent.height / 2;
     const px = parent.x + parent.width / 2;
     const entries = kids.map((c) => (downward ? c.y - c.height / 2 : c.y + c.height / 2));
     const nearest = downward ? Math.min(...entries) : Math.max(...entries);
     const m = Math.round((exitY + nearest) / 2);
-    const spineEnds: number[] = [px];
-    const arms = kids.map((c) => {
-      const cx = c.x + c.width / 2;
-      const entry = downward ? c.y - c.height / 2 : c.y + c.height / 2;
-      const dx = cx - px;
-      const r = Math.min(ELBOW, Math.abs(dx) / 2, Math.abs(entry - m) / 2);
-      if (Math.abs(dx) < 0.5 || r < 0.5) {
-        spineEnds.push(cx);
-        return { d: 'M' + cx + ' ' + m + ' V ' + entry, to: c.label, color: c.color };
-      }
-      const sg = Math.sign(dx);
-      const from = cx - sg * r;
-      spineEnds.push(from);
-      return {
-        d: 'M' + from + ' ' + m + ' Q ' + cx + ' ' + m + ' ' + cx + ' ' + (m + s * r) + ' V ' + entry,
-        to: c.label,
-        color: c.color,
-      };
-    });
-    const minX = Math.min(...spineEnds);
-    const maxX = Math.max(...spineEnds);
+    const xs = kids.map((c) => c.x + c.width / 2);
+    const minX = Math.min(...xs, px);
+    const maxX = Math.max(...xs, px);
+    const arms = kids.map((c) => ({
+      d: 'M' + (c.x + c.width / 2) + ' ' + m + ' V ' + (downward ? c.y - c.height / 2 : c.y + c.height / 2),
+      to: c.label,
+      color: c.color,
+    }));
     out.push({
       stem: 'M' + px + ' ' + exitY + ' V ' + m,
       spine: minX !== maxX ? 'M' + minX + ' ' + m + ' H ' + maxX : null,

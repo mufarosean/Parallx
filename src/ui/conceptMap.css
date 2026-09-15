@@ -18,7 +18,7 @@
   overflow: visible;
 }
 
-/* ── Connectors: 2px, rounded elbows, in the PARENT level's paper mixed
+/* ── Connectors: 2px, straight, square corners, in the PARENT level's paper mixed
    toward the board (dark) or toward ink (light). Arrowheads wear the
    CHILD level's paper. ── */
 .parallx-mindmap__edge {
