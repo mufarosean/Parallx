@@ -26964,68 +26964,50 @@ async function moRestoreFromTrash(api, items) {
   return n;
 }
 
+// Empty Trash removes files the same way Delete does: through moPurgeMedia,
+// so Eraser gets every file first when it is configured and the library rows
+// wait until it has finished. It used to unlink files itself, which deleted a
+// file Eraser had already been handed (Delete on a trashed item, then Empty
+// Trash) before Eraser got to it; Eraser then reported it could not be found.
 async function moEmptyTrash(api) {
-  const photos = await db.all(
-    `SELECT 'photo' AS type, p.id AS id, fl.path AS folder_path, f.basename
-       FROM mo_photos p
-       JOIN mo_photos_files pf ON pf.photo_id = p.id
-       JOIN mo_files f ON f.id = pf.file_id
-       JOIN mo_folders fl ON fl.id = f.folder_id
-      WHERE p.deleted_at IS NOT NULL`
-  );
-  const videos = await db.all(
-    `SELECT 'video' AS type, v.id AS id, fl.path AS folder_path, f.basename
-       FROM mo_videos v
-       JOIN mo_videos_files vf ON vf.video_id = v.id
-       JOIN mo_files f ON f.id = vf.file_id
-       JOIN mo_folders fl ON fl.id = f.folder_id
-      WHERE v.deleted_at IS NOT NULL`
-  );
-  const total = photos.length + videos.length;
+  const photos = await db.all(`SELECT id FROM mo_photos WHERE deleted_at IS NOT NULL`);
+  const videos = await db.all(`SELECT id FROM mo_videos WHERE deleted_at IS NOT NULL`);
+  const items = [
+    ...photos.map((p) => ({ type: 'photo', id: Number(p.id) })),
+    ...videos.map((v) => ({ type: 'video', id: Number(v.id) })),
+  ].filter((it) => Number.isFinite(it.id));
+  const total = items.length;
   if (total === 0) {
     api.window.showInformationMessage('Trash is empty.');
     return;
   }
   const ok = await api.window.showWarningMessage(
-    `Permanently delete ${total} trashed item${total === 1 ? '' : 's'}? Files on your home drive go to the OS recycle bin; files on external/removable drives are permanently deleted in place (no internal recycle bin leakage).`,
+    `Permanently delete ${total} trashed item${total === 1 ? '' : 's'}? Files go to Eraser for secure erasure when it is configured. Without Eraser, files on your home drive go to the OS recycle bin and files on external/removable drives are permanently deleted in place.`,
     'Empty Trash', 'Cancel'
   );
   if (ok !== 'Empty Trash') return;
-  const sep = _isWindows ? '\\' : '/';
-  let trashed = 0, failed = 0, perm = 0;
-  // Capture ids up-front for incremental FTS cleanup after the cascade
-  // wipes the join rows we'd otherwise need.
-  const trashedPhotoIds = photos.map(p => Number(p.id)).filter(Number.isFinite);
-  const trashedVideoIds = videos.map(v => Number(v.id)).filter(Number.isFinite);
-  // Delete OS files first
-  const allItems = [...photos, ...videos];
-  const seenFiles = new Set();
-  for (const it of allItems) {
-    const fpath = (it.folder_path || '') + sep + it.basename;
-    if (seenFiles.has(fpath)) continue;
-    seenFiles.add(fpath);
-    const r = await window.parallxElectron.fs.delete(fpath, { useTrash: 'auto' }).catch(() => ({ error: 'fail' }));
-    if (r && !r.error) { trashed++; if (r.deletedPermanently) perm++; }
-    else failed++;
+  // Anything already handed to Eraser is Eraser's to remove. Leaving it out is
+  // what keeps Empty Trash from deleting a file before Eraser gets to it.
+  const held = items.filter((it) => _isAnyIdPendingErase([it]));
+  const ready = items.filter((it) => !_isAnyIdPendingErase([it]));
+  if (ready.length === 0) {
+    api.window.showInformationMessage(`All ${total} trashed item${total === 1 ? ' is' : 's are'} already being erased by Eraser. They leave the library when it finishes.`);
+    return;
   }
-  // Hard-delete DB rows (cascades take care of joins via FK if defined)
-  await db.run(`DELETE FROM mo_photos WHERE deleted_at IS NOT NULL`);
-  await db.run(`DELETE FROM mo_videos WHERE deleted_at IS NOT NULL`);
-  // Orphan files (no remaining photo/video links) get deleted too
-  await db.run(`
-    DELETE FROM mo_files
-     WHERE id NOT IN (SELECT file_id FROM mo_photos_files)
-       AND id NOT IN (SELECT file_id FROM mo_videos_files)
-  `);
-  let emsg = `Trash emptied: ${trashed} file${trashed === 1 ? '' : 's'} removed`;
-  if (perm) emsg += ` (${perm} on external drive permanently deleted)`;
-  if (failed) emsg += `, ${failed} failed`;
-  api.window.showInformationMessage(emsg + '.');
+  const result = await moPurgeMedia(api, ready, { deleteFiles: true });
+  const heldNote = held.length ? ` ${held.length} more ${held.length === 1 ? 'is' : 'are'} still with Eraser.` : '';
+  if (result.filesErased > 0) {
+    // moPurgeMedia showed the Eraser toast; the rows go when the disk confirms.
+    if (heldNote) api.window.showInformationMessage(heldNote.trim());
+    _notifySidebarRefresh();
+    return;
+  }
+  let emsg = `Trash emptied: ${result.purged} item${result.purged === 1 ? '' : 's'} removed`;
+  if (result.filesPermanent) emsg += ` (${result.filesPermanent} on external drive permanently deleted)`;
+  if (result.filesGone) emsg += `, ${result.filesGone} already gone`;
+  if (result.filesFailed) emsg += `, ${result.filesFailed} failed`;
+  api.window.showInformationMessage(emsg + '.' + heldNote);
   _notifySidebarRefresh();
-  // Incremental FTS — delete just the rowids we know are gone. The full
-  // rebuild pattern was the culprit behind the bulk-delete freeze; same
-  // anti-pattern applies here on a large trash.
-  _refreshFtsForIds(trashedPhotoIds, trashedVideoIds).catch(() => {});
 }
 
 // Auto-empty trash older than N days (default 30). Setting key: trash_auto_purge_days.
