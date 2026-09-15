@@ -303,6 +303,13 @@ count, so the other chips can narrow it further).
    Pure rounding in displayNumbers.ts (tests/unit/worksheetDisplayDecimals
    .test.ts); a change repaints open sheets via SheetSkeletonManagerService
    .reCalculate(). Verified with a hidden engine render (scratch probe).
+3h. DONE 2026-09-15: the day's story on the campaign card (dayStory in
+   campaign.ts, tests/unit/worksheetCampaignStory.test.ts). Under the quota
+   line: today's Easy/Medium/Hard split, minutes, papers and XP while the
+   day is on; yesterday's tally first thing in the morning; the week's
+   (Monday through today) on a rest day. Quota met reads "Day N done", and
+   "Your best day yet" when today beats every day before it. A problem
+   counts on its first campaign day only; time counts on the day worked.
 4. Essay sheets and the Flashcards sheet into a flashcards deck. Pictures
    need the engine's drawing preset in the host; EMF/WMF pictures (16 of
    45) cannot be shown at all and are counted at import.
