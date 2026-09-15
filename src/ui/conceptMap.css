@@ -199,7 +199,8 @@
   overflow-x: auto;
   background-color: var(--px-bg, #16171a);
   background-image: radial-gradient(color-mix(in srgb, var(--px-text, #e8eaee) 9%, transparent) 1px, transparent 1.3px);
-  background-size: 18px 18px;
+  background-size: 18px 18px;          /* GRID_PX in conceptMapNode.ts: moves snap to the dots */
+  background-attachment: local;        /* the dots scroll with a wide map */
 }
 
 .canvas-conceptmap__tools {

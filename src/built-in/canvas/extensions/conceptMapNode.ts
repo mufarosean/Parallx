@@ -53,6 +53,8 @@ export const DEFAULT_CONCEPT_MAP_SRC = [
 ].join('\n');
 
 const CLICK_DIST = 4;
+/** The board's dot pitch (conceptMap.css background-size); moves snap to it. */
+const GRID_PX = 18;
 const RESIZE_EDGE_PX = 8;
 
 export const ConceptMap = Node.create({
@@ -211,6 +213,25 @@ export const ConceptMap = Node.create({
           const sn = Math.sin(tiltRad);
           return [sx * c + sy * sn, -sx * sn + sy * c];
         };
+        // Moves snap to the board's dot grid (hold Alt to move freely):
+        // the card's top-left lands on a dot. Computed in SCREEN space so
+        // it holds at any fit scale and any horizontal scroll of the block.
+        const board = parts.g.closest('.canvas-conceptmap') as HTMLElement | null;
+        const boardRect = board?.getBoundingClientRect();
+        const svgRect = parts.g.ownerSVGElement?.getBoundingClientRect();
+        const box0 = { x: Number(parts.rect.getAttribute('x')) || 0, y: Number(parts.rect.getAttribute('y')) || 0 };
+        const snapToGrid = (dx: number, dy: number): [number, number] => {
+          if (!board || !boardRect || !svgRect || boardRect.width === 0) return [dx, dy];
+          const originX = boardRect.left - board.scrollLeft;
+          const originY = boardRect.top - board.scrollTop;
+          const sx = svgRect.left + box0.x * scale + dx;
+          const sy = svgRect.top + box0.y * scale + dy;
+          const gx = originX + Math.round((sx - originX) / GRID_PX) * GRID_PX;
+          const gy = originY + Math.round((sy - originY) / GRID_PX) * GRID_PX;
+          return [dx + (gx - sx), dy + (gy - sy)];
+        };
+        let snappedDx = 0;
+        let snappedDy = 0;
         const moveBox = (dx: number, dy: number): void => {
           const [mx, my] = toMapDelta(dx, dy);
           for (const m of movables) {
@@ -315,8 +336,10 @@ export const ConceptMap = Node.create({
             const dy = lastY - startY;
             if (!moved && Math.hypot(dx, dy) < CLICK_DIST) return;
             moved = true;
-            moveBox(dx, dy);
-            rerouteEdges(dx / scale, dy / scale);
+            const free = 'altKey' in ev && Boolean((ev as MouseEvent).altKey);
+            [snappedDx, snappedDy] = free ? [dx, dy] : snapToGrid(dx, dy);
+            moveBox(snappedDx, snappedDy);
+            rerouteEdges(snappedDx / scale, snappedDy / scale);
           },
           onEnd: (canceled) => {
             if (canceled || !moved) {
@@ -328,8 +351,8 @@ export const ConceptMap = Node.create({
             if (!moved) { beginBoxEdit(parts); return; }
             // The override lives in map units; the tilt does not enter
             // (the card's centre travels exactly the pointer's path).
-            const dx = Math.round((lastX - startX) / scale);
-            const dy = Math.round((lastY - startY) / scale);
+            const dx = Math.round(snappedDx / scale);
+            const dy = Math.round(snappedDy / scale);
             const prev = attrs.overrides[parts.label] ?? {};
             commit({
               overrides: {
@@ -740,7 +763,7 @@ export const ConceptMap = Node.create({
           dom.appendChild(ta);
           const hint = document.createElement('div');
           hint.classList.add('canvas-conceptmap__hint');
-          hint.textContent = 'One idea per line; indent to nest. **bold**, *italic*, `code`, and $x^2$ all render. On the map: click a box to edit it in place, drag to move it, drag its right edge to resize.';
+          hint.textContent = 'One idea per line; indent to nest. **bold**, *italic*, `code`, and $x^2$ all render. On the map: click a box to edit it in place, drag to move it (it snaps to the dots; hold Alt to move freely), drag its right edge to resize.';
           dom.appendChild(hint);
           editBtn.addEventListener('click', (e) => {
             e.stopPropagation();
