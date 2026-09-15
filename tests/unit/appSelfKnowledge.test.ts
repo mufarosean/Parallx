@@ -44,10 +44,14 @@ describe('app__describe — the system diagnosing itself', () => {
 
     expect(parsed.ok).toBe(true);
     expect(parsed.topic).toBe('summary');
-    expect(parsed.summary.tools.total).toBe(2);
+    // The disabled budget tool is invisible: not counted, not listed as
+    // disabled, not even reported for its errors. The model must not learn
+    // that a disabled tool exists.
+    expect(parsed.summary.tools.total).toBe(1);
     expect(parsed.summary.tools.activated).toBe(1);
-    expect(parsed.summary.tools.disabled).toEqual(['community.budget']);
-    expect(parsed.summary.tools.withErrors[0]).toMatchObject({ id: 'community.budget', errorCount: 2 });
+    expect(parsed.summary.tools).not.toHaveProperty('disabled');
+    expect(parsed.summary.tools.withErrors).toEqual([]);
+    expect(result.content).not.toContain('community.budget');
     expect(parsed.summary.layout).toContain('Left of the editor');
     expect(parsed.summary.editors).toEqual(['notes.md']);
   });
@@ -58,8 +62,10 @@ describe('app__describe — the system diagnosing itself', () => {
     const parsed = JSON.parse(result.content);
 
     expect(parsed.topic).toBe('tools');
-    expect(parsed.tools).toHaveLength(2);
+    expect(parsed.tools).toHaveLength(1);
     expect(parsed.tools[0].activationDurationMs).toBe(12);
+    expect(parsed.tools[0]).not.toHaveProperty('enabled');
+    expect(result.content).not.toContain('community.budget');
   });
 
   it('an unknown topic falls back to summary; a missing service degrades to an error result', async () => {

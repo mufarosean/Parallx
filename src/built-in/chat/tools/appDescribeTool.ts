@@ -53,9 +53,17 @@ export function createAppDescribeTool(
       }
       const topic: Topic = TOPICS.includes(args.topic as Topic) ? args.topic as Topic : 'summary';
 
+      // Only tools the user has enabled are described. A disabled tool is
+      // invisible to the model everywhere: not in its callable schema, and not
+      // here either, so it cannot learn that the tool exists and is off. The
+      // enablement fields are dropped for the same reason: on a list that only
+      // ever holds enabled tools they would only hint at the others.
+      const describeEnabledTools = () => introspection.describeTools()
+        .filter((t) => t.enabled)
+        .map(({ enabled: _enabled, canChangeEnablement: _canChange, ...rest }) => rest);
       const body = ((): unknown => {
         switch (topic) {
-          case 'tools': return introspection.describeTools();
+          case 'tools': return describeEnabledTools();
           case 'commands': return introspection.describeCommands();
           case 'keybindings': return introspection.describeKeybindings();
           case 'key-conflicts': return introspection.findKeyConflicts();
@@ -65,13 +73,12 @@ export function createAppDescribeTool(
           case 'context': return introspection.describeContext();
           case 'services': return introspection.describeServices();
           case 'summary': {
-            const tools = introspection.describeTools();
+            const tools = describeEnabledTools();
             const failing = tools.filter((t) => t.errorCount > 0);
             return {
               tools: {
                 total: tools.length,
                 activated: tools.filter((t) => t.state === 'activated').length,
-                disabled: tools.filter((t) => !t.enabled).map((t) => t.id),
                 withErrors: failing.map((t) => ({ id: t.id, errorCount: t.errorCount, lastError: t.lastError?.message })),
               },
               commands: introspection.describeCommands().length,
