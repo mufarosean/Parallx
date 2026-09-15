@@ -136,7 +136,7 @@ export const PageBlock = Node.create<PageBlockOptions>({
   },
 
   addNodeView() {
-    return ({ node, editor, updateAttributes }: any) => {
+    return ({ node, editor, getPos }: any) => {
       let attrs = node.attrs as { pageId?: string; title?: string; icon?: string | null };
       let resolvedTitle = attrs.title || 'Untitled';
       let resolvedIcon: string | null = attrs.icon ?? null;
@@ -146,6 +146,29 @@ export const PageBlock = Node.create<PageBlockOptions>({
       let loadingPreview = 0;
       let suppressOpenUntil = 0;
       const dataService = this.options.dataService;
+      let destroyed = false;
+
+      // Tiptap core hands a raw node view { node, view, getPos, editor, ... };
+      // `updateAttributes` is a MARK-view prop and is undefined here. Calling
+      // it threw inside the sync's try, so every card whose child had been
+      // renamed after embedding rendered "(unavailable)" while hover and click
+      // still resolved the page. Commit attrs the way conceptMapNode does:
+      // setNodeMarkup at getPos(). Never an undo step: a title resync is
+      // housekeeping, not something the user did.
+      const commitAttributes = (patch: { title?: string; icon?: string | null }): void => {
+        if (destroyed || editor.isDestroyed) return;
+        const pos = typeof getPos === 'function' ? getPos() : undefined;
+        if (typeof pos !== 'number') return;
+        const current = editor.view.state.doc.nodeAt(pos);
+        if (!current || current.type.name !== 'pageBlock' || current.attrs.pageId !== attrs.pageId) return;
+        const unchanged = Object.entries(patch).every(([k, v]) => (current.attrs[k] ?? null) === (v ?? null));
+        if (unchanged) return;
+        editor.view.dispatch(
+          editor.view.state.tr
+            .setNodeMarkup(pos, undefined, { ...current.attrs, ...patch })
+            .setMeta('addToHistory', false),
+        );
+      };
 
       const dom = document.createElement('div');
       dom.classList.add('canvas-page-block');
@@ -182,41 +205,45 @@ export const PageBlock = Node.create<PageBlockOptions>({
       const syncLinkedPageMeta = async () => {
         const pageId = attrs.pageId;
         if (!dataService || !pageId) return;
+        // Only the LOOKUP is guarded. The commit below must never be able
+        // to masquerade as a failed lookup again.
+        let linked: IPageBlockPage | null;
         try {
-          const linked = await dataService.getPage(pageId);
-          if (!linked) {
-            // Linked page no longer exists \u2014 surface it visibly so users
-            // can clean up dead cards instead of staring at "Untitled" forever.
-            dom.classList.add('canvas-page-block--broken');
-            dom.setAttribute('title', 'Linked page no longer exists');
-            resolvedTitle = '(deleted page)';
-            resolvedIcon = null;
-            render();
-            return;
-          }
-
-          dom.classList.remove('canvas-page-block--broken');
-          dom.removeAttribute('title');
-
-          const nextTitle = linked.title || 'Untitled';
-          const nextIcon = linked.icon ?? null;
-
-          resolvedTitle = nextTitle;
-          resolvedIcon = nextIcon;
-          render();
-
-          if (nextTitle !== attrs.title || nextIcon !== (attrs.icon ?? null)) {
-            updateAttributes({ title: nextTitle, icon: nextIcon });
-          }
+          linked = await dataService.getPage(pageId);
         } catch {
-          // Treat a thrown lookup the same as a null result \u2014 the card is
-          // unusable so surface the broken state instead of silently leaving
-          // the previous title rendered.
+          // A thrown lookup: the card is unusable, so surface the broken
+          // state instead of silently leaving the previous title rendered.
           dom.classList.add('canvas-page-block--broken');
           dom.setAttribute('title', 'Linked page could not be loaded');
           resolvedTitle = '(unavailable)';
           resolvedIcon = null;
           render();
+          return;
+        }
+        if (destroyed) return;
+        if (!linked) {
+          // Linked page no longer exists: surface it visibly so users can
+          // clean up dead cards instead of staring at "Untitled" forever.
+          dom.classList.add('canvas-page-block--broken');
+          dom.setAttribute('title', 'Linked page no longer exists');
+          resolvedTitle = '(deleted page)';
+          resolvedIcon = null;
+          render();
+          return;
+        }
+
+        dom.classList.remove('canvas-page-block--broken');
+        dom.removeAttribute('title');
+
+        const nextTitle = linked.title || 'Untitled';
+        const nextIcon = linked.icon ?? null;
+
+        resolvedTitle = nextTitle;
+        resolvedIcon = nextIcon;
+        render();
+
+        if (nextTitle !== attrs.title || nextIcon !== (attrs.icon ?? null)) {
+          commitAttributes({ title: nextTitle, icon: nextIcon });
         }
       };
 
@@ -262,7 +289,7 @@ export const PageBlock = Node.create<PageBlockOptions>({
                 await dataService.updatePage(pageId, { icon: iconId });
                 resolvedIcon = iconId;
                 render();
-                updateAttributes({ icon: iconId });
+                commitAttributes({ icon: iconId });
               })();
             }
           },
@@ -273,7 +300,7 @@ export const PageBlock = Node.create<PageBlockOptions>({
                 await dataService.updatePage(pageId, { icon: null });
                 resolvedIcon = null;
                 render();
-                updateAttributes({ icon: null });
+                commitAttributes({ icon: null });
               })();
             }
           },
@@ -461,9 +488,7 @@ export const PageBlock = Node.create<PageBlockOptions>({
         render();
 
         if (nextTitle !== attrs.title || nextIcon !== (attrs.icon ?? null)) {
-          if (typeof updateAttributes === 'function') {
-            updateAttributes({ title: nextTitle, icon: nextIcon });
-          }
+          commitAttributes({ title: nextTitle, icon: nextIcon });
         }
       });
 
@@ -482,6 +507,7 @@ export const PageBlock = Node.create<PageBlockOptions>({
           return true;
         },
         destroy() {
+          destroyed = true;
           if (previewTimer) clearTimeout(previewTimer);
           if (hidePreviewTimer) clearTimeout(hidePreviewTimer);
           closePreview();
