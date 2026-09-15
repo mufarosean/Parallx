@@ -229,15 +229,19 @@ export function cardKind(depth: number): CardKind {
  * multiples of it so columns and rows stay on it too.
  */
 export const MAP_GRID = 18;
+/** Card sizes are multiples of TWO cells: a connector leaves a card from
+ *  its centre, and only an even size puts that centre on a dot too. */
+export const MAP_CELL2 = MAP_GRID * 2;
 const snapGrid = (v: number): number => Math.round(v / MAP_GRID) * MAP_GRID;
-const ceilGrid = (v: number): number => Math.ceil(v / MAP_GRID) * MAP_GRID;
+const ceilSize = (v: number): number => Math.ceil(v / MAP_CELL2) * MAP_CELL2;
+const snapSize = (v: number): number => Math.max(MAP_CELL2, Math.round(v / MAP_CELL2) * MAP_CELL2);
 
 const NOTE_FOLD = 13;      // the sticky note's folded corner
 const NOTE_STRIP = 7;      // its adhesive strip along the top
-const LEAF_GAP = MAP_GRID;          // between stacked cards (right)
+const LEAF_GAP = MAP_CELL2;         // between stacked cards (right): even, so a parent centred on its children stays on the grid
 const COL_GAP = MAP_GRID * 4;       // parent card to its children (right)
-const LEVEL_GAP = MAP_GRID * 3;     // between depth rows (down)
-const SIB_GAP = MAP_GRID;           // between sibling cards (down)
+const LEVEL_GAP = MAP_GRID * 4;     // between depth rows (down): even, so the spine at its midpoint is on the grid
+const SIB_GAP = MAP_CELL2;          // between sibling cards (down): even, same reason
 const ROOT_GAP = MAP_GRID * 4;      // radial: the index card to the first notes
 const MARGIN = MAP_GRID;
 // Tilt is OFF: a tilted card cannot sit on the grid, and Mufaro chose
@@ -355,13 +359,13 @@ export function measureLabel(label: string, maxTextW?: number, depth = 1): Measu
   if (lines.length === 0) lines.push([{ kind: 'text', value: ' ' }]);
 
   const lineWidths = lines.map((l) => l.reduce((acc, seg) => acc + segWidth(seg, m), 0));
-  // Sizes round UP to the grid so every edge can sit on a dot.
-  const width = ceilGrid(Math.round(Math.min(Math.max(...lineWidths, 24), wrapW + 12)) + m.padX * 2);
+  // Sizes round UP to two cells so every edge AND every centre sits on a dot.
+  const width = ceilSize(Math.round(Math.min(Math.max(...lineWidths, 24), wrapW + 12)) + m.padX * 2);
   const natural = lines.reduce(
     (acc, l) => acc + (l.some((seg) => seg.kind === 'math') ? m.mathLineH : m.lineH),
     0,
   ) + m.padY * 2;
-  const height = ceilGrid(Math.max(natural, m.minHeight));
+  const height = ceilSize(Math.max(natural, m.minHeight));
   return { lines, width, height, rich: labelIsRich(segs) || lines.length > 1 };
 }
 
@@ -415,7 +419,7 @@ export function applyOverrides(layout: MindMapLayout, overrides: MindMapOverride
     if (!o) return n;
     let { width, height } = n;
     if (typeof o.w === 'number' && Number.isFinite(o.w)) {
-      const w = snapGrid(Math.max(MIN_OVERRIDE_W, Math.min(MAX_OVERRIDE_W, Math.round(o.w))));
+      const w = snapSize(Math.max(MIN_OVERRIDE_W, Math.min(MAX_OVERRIDE_W, Math.round(o.w))));
       const remeasured = measureLabel(n.label, Math.max(24, w - cardMetrics(n.depth).padX * 2), n.depth);
       width = w;
       height = remeasured.height;

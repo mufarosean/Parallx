@@ -422,7 +422,9 @@ the outline is the map, the app draws it, editing means editing the text.
   note's corner paths move by translate (the group itself is never
   transformed during a drag, the foreignObject repaint stall).
 - **Intraword underscores** (`C_ik`, `f_k`) are subscripts, never italics.
-- **The grid is the law** (`MAP_GRID`, 18px): card sizes round up to it,
+- **The grid is the law** (`MAP_GRID`, 18px): card sizes round up to TWO
+  cells (so the centre a connector leaves from is on a dot too; the row
+  gap is four cells so a spine's midpoint is as well),
   the layout puts every top and left on it (gaps are multiples), resized
   widths and moves snap to it, and the board's dots are drawn INSIDE the
   SVG on the same lattice so they scale and scroll with the map. Tilt is

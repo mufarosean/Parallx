@@ -38,7 +38,7 @@ import {
   type HubChild,
   type MindMapDirection,
   type MindMapNode,
-  type MindMapOverrides, coerceMindMapDirection, MAP_GRID,
+  type MindMapOverrides, coerceMindMapDirection, MAP_GRID, MAP_CELL2,
 } from '../../../ui/conceptMap.js';
 import { beginPointerDrag } from '../../../ui/interactionMode.js';
 
@@ -364,7 +364,7 @@ export const ConceptMap = Node.create({
           id: 'conceptmap-resize',
           cursor: 'ew-resize',
           onMove: (ev) => {
-            w = Math.round(Math.max(80, Math.min(420, startW + (ev.clientX - startX) / scale)) / MAP_GRID) * MAP_GRID;
+            w = Math.max(MAP_CELL2, Math.round(Math.max(80, Math.min(420, startW + (ev.clientX - startX) / scale)) / MAP_CELL2) * MAP_CELL2);
             parts.rect.setAttribute('width', String(w));
           },
           onEnd: (canceled) => {

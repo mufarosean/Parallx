@@ -96,7 +96,7 @@ describe('card colours: one paper per level', () => {
     expect(renderMindMapSvg(SRC)).not.toContain('transform="rotate(');
   });
 
-  it('every card edge sits on the 18px grid, in every layout', () => {
+  it('every card edge, every card centre and every connector point sits on the 18px grid', () => {
     const onGrid = (v: number): boolean => Math.abs(v / MAP_GRID - Math.round(v / MAP_GRID)) < 1e-9;
     const RADIAL = ['Centre', '  One', '  Two', '  Three', '    Three a', '  Four'].join('\n');
     for (const [src, dir] of [[SRC, 'right'], [SRC, 'down'], [RADIAL, 'radial'], [SRC, 'radial']] as const) {
@@ -106,6 +106,15 @@ describe('card colours: one paper per level', () => {
         expect(onGrid(n.y - n.height / 2), dir + ' top ' + n.label).toBe(true);
         expect(onGrid(n.width), dir + ' width ' + n.label).toBe(true);
         expect(onGrid(n.height), dir + ' height ' + n.label).toBe(true);
+        expect(onGrid(n.x + n.width / 2), dir + ' centre x ' + n.label).toBe(true);
+        expect(onGrid(n.y), dir + ' centre y ' + n.label).toBe(true);
+      }
+      // Lines leave centres and turn at midpoints of even gaps: also on the grid.
+      const svg = renderMindMapSvg(src, { dir });
+      for (const m of svg.matchAll(/data-mm-hub="\d+"[^>]*? d="([^"]+)"/g)) {
+        for (const num of m[1].match(/-?\d+(?:\.\d+)?/g) ?? []) {
+          expect(onGrid(Number(num)), dir + ' line ' + m[1]).toBe(true);
+        }
       }
     }
   });
@@ -257,7 +266,7 @@ describe('layout overrides (user moves and resizes)', () => {
     const resized = applyOverrides(base, { [label]: { w: 120 } });
     const before = base.nodes.find((n) => n.label === label)!;
     const after = resized.nodes.find((n) => n.label === label)!;
-    expect(after.width).toBe(126); // 120 snapped to the grid
+    expect(after.width).toBe(108); // 120 snapped to two cells
     expect(after.height).toBeGreaterThan(before.height);
   });
 
