@@ -183,8 +183,12 @@ export function buildOpenclawSystemPrompt(params: IOpenclawSystemPromptParams): 
   //    cache prefix.
   sections.push(buildWorkspaceSection(workspaceBootstrapFiles, params.workspaceDigest));
 
-  // 2. Skills (upstream: agents/system-prompt.ts buildSkillsSection)
-  if (params.skills.length > 0) {
+  // 2. Skills (upstream: agents/system-prompt.ts buildSkillsSection).
+  //    The scan instruction tells the model to read a SKILL.md with the read
+  //    tool; without that tool offered this turn a skill cannot be followed,
+  //    and naming the tool would leak a disabled family. So: no read tool, no
+  //    skills section.
+  if (params.skills.length > 0 && params.tools.some((t) => t.name === 'fs_read_file')) {
     sections.push(buildSkillsSection(params.skills, {
       compact: params.skillsCompact,
       truncationNote: params.skillsTruncationNote,
@@ -202,7 +206,11 @@ export function buildOpenclawSystemPrompt(params: IOpenclawSystemPromptParams): 
   //     model never calls memory tools unless the user explicitly says
   //     "search memory". Self-contained — no SOUL.md or workspace file
   //     dependency.
-  sections.push(buildMemorySection());
+  //     Gated on a memory tool being offered, and the lines name only the
+  //     tools offered: a disabled family leaves no trace in the prompt.
+  if (params.tools.some((t) => t.name.startsWith('memory_'))) {
+    sections.push(buildMemorySection(params.tools));
+  }
 
   // 3a-ii. M85 — Planning discipline. Gated on plan_update availability so
   //        the guidance never references a tool the model can't call.
@@ -226,7 +234,7 @@ export function buildOpenclawSystemPrompt(params: IOpenclawSystemPromptParams): 
   // HARNESS.md §3.6 — shared canvas teaching, once, only when canvas tools
   // are present (mirror of the sessions_spawn gating above).
   if (params.tools.some((t) => t.name.startsWith('canvas_'))) {
-    sections.push(buildCanvasSection());
+    sections.push(buildCanvasSection(params.tools.some((t) => t.name.startsWith('fs_'))));
   }
 
   // 3b. M66 — Linking templates. Auto-generated from registered LinkContracts;
@@ -398,43 +406,89 @@ ${entries}
  * is that tool descriptions are the selection signal and shouldn't be
  * duplicated in prose. We don't duplicate; we add orthogonal surface routing.
  */
-export function buildToolSummariesSection(_tools: readonly IToolSummary[]): string {
+export function buildToolSummariesSection(tools: readonly IToolSummary[]): string {
   // The function-calling schema already carries every tool's name, description,
-  // and parameters, so this section does NOT re-list tools. Each tool name now
-  // carries a surface PREFIX (fs_, canvas_, memory_, …), so a one-line legend +
-  // routing rubric is enough to keep the model from cross-routing (e.g. calling
-  // `fs_read_file` on a canvas page UUID). `_tools` is unused by design.
-  return [
+  // and parameters, so this section does NOT re-list tools. It teaches the
+  // surface prefixes and the routing between them, and ONLY for the tools
+  // offered this turn: a family the user has disabled is never named here, so
+  // the model cannot learn that it exists, ask for it, or route toward it.
+  const names = new Set(tools.map((t) => t.name));
+  const has = (prefix: string): boolean => { for (const n of names) { if (n.startsWith(prefix)) { return true; } } return false; };
+  const all = (...ns: string[]): boolean => ns.every((n) => names.has(n));
+  const code = (n: string): string => `\`${n}\``;
+  const present = (...ns: string[]): string[] => ns.filter((n) => names.has(n)).map(code);
+  const examples = (prefix: string): string => [...names].filter((n) => n.startsWith(prefix)).slice(0, 4).map(code).join(', ');
+
+  const fs = has('fs_');
+  const canvas = has('canvas_');
+  const memory = has('memory_');
+  const transcript = has('transcript_');
+  const terminal = names.has('terminal_run_command');
+  const python = has('python_');
+  const notebook = has('notebook_');
+  const app = has('app__');
+  const families = ['budget_', 'planner_', 'cron_', 'dashboard_'].filter(has).map((p) => `\`${p}*\``);
+  const web = present('webSearch', 'webFetch');
+
+  const legend: string[] = [];
+  if (canvas) { legend.push('- `canvas_*` — canvas pages (titles, UUIDs, blocks, properties). Pages are NOT files on disk.'); }
+  if (fs) { legend.push(`- \`fs_*\` — workspace files on disk, e.g. ${examples('fs_')} (paths like \`src/foo.ts\`).`); }
+  if (memory) { legend.push('- `memory_*` — workspace memory (`.parallx/memory/`).'); }
+  if (transcript) { legend.push('- `transcript_*` — past chat sessions.'); }
+  if (terminal) { legend.push('- `terminal_run_command` — shell commands on the host.'); }
+  if (python) { legend.push('- `python_*` — the workspace\'s own Python environment: run a `.py` file, install packages, list what is installed.'); }
+  if (notebook) { legend.push('- `notebook_*` — `.ipynb` notebooks: create, read, edit a cell, run cells against the workspace kernel.'); }
+  if (names.has('link_create')) { legend.push('- `link_create` — mint a `parallx://` citation URI.'); }
+  if (names.has('sessions_spawn')) { legend.push('- `sessions_spawn` — delegate a self-contained bulk task to an isolated subagent (see the Subagents section).'); }
+  if (app) { legend.push('- `app__*` — Parallx workbench commands (open views, change settings).'); }
+  if (families.length > 0 || web.length > 0) { legend.push(`- extension families — ${[...families, ...web].join(', ')}. Read each description.`); }
+
+  const routing: string[] = [];
+  if (fs) { routing.push('- A filesystem path (`src/foo.ts`, `docs/README.md`) → `fs_*` tools.'); }
+  if (canvas) {
+    const never = present('fs_read_file', 'fs_write_file');
+    routing.push(`- "page", "this page", a page title, or a UUID → \`canvas_*\` tools.${never.length > 0 ? ` Never call ${never.join(' / ')} on a canvas page UUID — UUIDs are not file paths.` : ''}`);
+  }
+  if (memory) { routing.push('- Memory, lessons, USER.md, MEMORY.md, "what did we decide" → `memory_*` tools.'); }
+  if (transcript) { routing.push('- "what did I say earlier in another session" → `transcript_*` tools.'); }
+  if (names.has('canvas_find_pages')) { routing.push('- Ambiguous ("open my notes") → `canvas_find_pages` first; it matches title and body.'); }
+  const runners = present('python_run_script', 'notebook_run');
+  if (runners.length > 0) {
+    routing.push(terminal
+      ? `- Running Python → ${runners.join(' or ')}, NOT \`terminal_run_command\`. The dedicated tools use the workspace's own environment, stream output live, and allow far longer runs; the shell tool buffers and times out at 30s.`
+      : `- Running Python → ${runners.join(' or ')}. They use the workspace's own environment and stream output live.`);
+  }
+  if (notebook) {
+    const parts = ['- A `.ipynb` path → `notebook_*` tools.'];
+    const never = present('fs_read_file', 'fs_write_file');
+    if (never.length > 0) { parts.push(`Never ${never.join(' / ')} on a notebook — you would be reading and rewriting raw nbformat JSON by hand.`); }
+    if (names.has('notebook_read')) { parts.push('`notebook_read` gives you cells and outputs.'); }
+    if (names.has('notebook_create')) { parts.push('`notebook_create` writes a valid file.'); }
+    routing.push(parts.join(' '));
+  }
+  if (python && notebook) { routing.push('- Notebook vs script: a notebook when the user wants to keep the results (outputs are saved in the file, and cells share one kernel so state carries between them); a script when they want a repeatable command-line job.'); }
+
+  const specific: string[] = [];
+  if (all('canvas_read_page', 'canvas_find_pages')) { specific.push('`canvas_read_page` over `canvas_find_pages` when you know the title'); }
+  if (all('fs_grep_search', 'fs_search_knowledge')) { specific.push('`fs_grep_search` over `fs_search_knowledge` for exact-text matches'); }
+  const prefer = `When two tools could apply, prefer the more specific one${specific.length > 0 ? ` (${specific.join('; ')})` : ''}.`;
+
+  const readBefore: string[] = [];
+  if (all('fs_edit_file', 'fs_read_file')) { readBefore.push('`fs_edit_file` (and overwriting an existing file) requires a prior `fs_read_file` this session'); }
+  const canvasEdits = present('canvas_edit_page', 'canvas_edit_block', 'canvas_insert_block_after');
+  const canvasReads = present('canvas_read_page', 'canvas_read_block');
+  if (canvasEdits.length > 0 && canvasReads.length > 0) { readBefore.push(`${canvasEdits.join(' / ')} require a prior ${canvasReads.join(' or ')}`); }
+
+  const lines = [
     '## Tooling',
     'Tool definitions (name, description, parameters) are provided in the function-calling schema for this turn. Each tool\'s description states what it does and when to use it — read it before calling. Tool names are case-sensitive snake_case; copy each name exactly as written in the schema.',
-    '',
-    'Every tool name carries a **surface prefix** so you always know which resource it acts on:',
-    '- `canvas_*` — canvas pages (titles, UUIDs, blocks, properties). Pages are NOT files on disk.',
-    '- `fs_*` — workspace files on disk, e.g. `fs_read_file`, `fs_write_file`, `fs_grep_search`, `fs_search_knowledge` (paths like `src/foo.ts`).',
-    '- `memory_*` — workspace memory (`.parallx/memory/`).',
-    '- `transcript_*` — past chat sessions.',
-    '- `terminal_run_command` — shell commands on the host.',
-    '- `python_*` — the workspace\'s own Python environment: run a `.py` file, install packages, list what is installed.',
-    '- `notebook_*` — `.ipynb` notebooks: create, read, edit a cell, run cells against the workspace kernel.',
-    '- `link_create` — mint a `parallx://` citation URI.',
-    '- `sessions_spawn` — delegate a self-contained bulk task to an isolated subagent (see the Subagents section).',
-    '- `app__*` — Parallx workbench commands (open views, change settings).',
-    '- extension families — `budget_*`, `planner_*`, `cron_*`, `dashboard_*`, plus `webSearch` / `webFetch`. Read each description.',
-    '',
-    'Routing rules:',
-    '- A filesystem path (`src/foo.ts`, `docs/README.md`) → `fs_*` tools.',
-    '- "page", "this page", a page title, or a UUID → `canvas_*` tools. Never call `fs_read_file` / `fs_write_file` on a canvas page UUID — UUIDs are not file paths.',
-    '- Memory, lessons, USER.md, MEMORY.md, "what did we decide" → `memory_*` tools.',
-    '- "what did I say earlier in another session" → `transcript_*` tools.',
-    '- Ambiguous ("open my notes") → `canvas_find_pages` first; it matches title and body.',
-    '- Running Python → `python_run_script` or `notebook_run`, NOT `terminal_run_command`. The dedicated tools use the workspace\'s own environment, stream output live, and allow far longer runs; the shell tool buffers and times out at 30s. Only fall back to the shell when neither is offered this turn (they appear only where the workspace has enabled Python).',
-    '- A `.ipynb` path → `notebook_*` tools. Never `fs_read_file` / `fs_write_file` on a notebook — you would be reading and rewriting raw nbformat JSON by hand. `notebook_read` gives you cells and outputs; `notebook_create` writes a valid file.',
-    '- Notebook vs script: a notebook when the user wants to keep the results (outputs are saved in the file, and cells share one kernel so state carries between them); a script when they want a repeatable command-line job.',
-    'When two tools could apply, prefer the more specific one (`canvas_read_page` over `canvas_find_pages` when you know the title; `fs_grep_search` over `fs_search_knowledge` for exact-text matches).',
-    '- **Read before you edit** — enforced by the tools: `fs_edit_file` (and overwriting an existing file) requires a prior `fs_read_file` this session; `canvas_edit_page` / `canvas_edit_block` / `canvas_insert_block_after` require a prior `canvas_read_page` (or `canvas_read_block`). Edit against the CURRENT content you just read, never from memory of an earlier state.',
-    '',
-    'TOOLS.md (in the workspace, when present) carries workspace-specific usage guidance, not tool availability.',
-  ].join('\n');
+  ];
+  if (legend.length > 0) { lines.push('', 'Every tool name carries a **surface prefix** so you always know which resource it acts on:', ...legend); }
+  if (routing.length > 0) { lines.push('', 'Routing rules:', ...routing, prefer); }
+  else { lines.push('', prefer); }
+  if (readBefore.length > 0) { lines.push(`- **Read before you edit** — enforced by the tools: ${readBefore.join('; ')}. Edit against the CURRENT content you just read, never from memory of an earlier state.`); }
+  lines.push('', 'TOOLS.md (in the workspace, when present) carries workspace-specific usage guidance, not tool availability.');
+  return lines.join('\n');
 }
 
 /**
@@ -641,10 +695,24 @@ export function buildRuntimeSection(runtimeInfo: IOpenclawRuntimeInfo): string {
  * fail to use them unless the system prompt explicitly names the surface
  * and the write triggers. This block does both.
  */
-export function buildMemorySection(): string {
-  return [
+export function buildMemorySection(tools?: readonly IToolSummary[]): string {
+  // `tools` = the tools offered this turn; the lines name only those, so a
+  // disabled memory tool (or a disabled `fs_read_file` fallback) is never
+  // mentioned. Undefined = every memory tool offered (the full text).
+  const names = tools ? new Set(tools.map((t) => t.name)) : undefined;
+  const on = (n: string): boolean => !names || names.has(n);
+  const read = on('memory_read');
+  const search = on('memory_search');
+  const write = on('memory_write');
+  const fsRead = on('fs_read_file');
+
+  const bodyReaders = [
+    read ? '`memory_read name=<slug>` (preferred)' : '',
+    fsRead ? '`fs_read_file lessons/<slug>.md`' : '',
+  ].filter(Boolean);
+  const lines = [
     '## Memory',
-    'You have a single workspace memory surface, split across identity files (auto-loaded every turn) and a curated memory store you read and write yourself.',
+    `You have a single workspace memory surface, split across identity files (auto-loaded every turn) and a curated memory store you ${write ? 'read and write' : 'read'} yourself.`,
     '',
     '**Identity files** — already in your context, no tool call needed:',
     '- `.parallx/SOUL.md` — your personality and constraints.',
@@ -653,29 +721,40 @@ export function buildMemorySection(): string {
     '',
     '**Curated memory store** — at `.parallx/memory/`:',
     '- `MEMORY.md` is an **INDEX**, bounded ~2,500 chars. Each line is `- [Title](lessons/<slug>.md) — one-line description` pointing at a lesson file. The index is in your context every turn; lesson bodies are NOT.',
-    '- `lessons/<slug>.md` — durable lessons (tool-use gotchas, workarounds, project conventions, things to remember across sessions). Read a body on demand with `memory_read name=<slug>` (preferred) or `fs_read_file lessons/<slug>.md`.',
+    `- \`lessons/<slug>.md\` — durable lessons (tool-use gotchas, workarounds, project conventions, things to remember across sessions).${bodyReaders.length > 0 ? ` Read a body on demand with ${bodyReaders.join(' or ')}.` : ''}`,
     '- `YYYY-MM-DD.md` — date-stamped daily logs. Unbounded; append-only narrative of what happened today.',
-    '',
-    '**Three tools, one family**:',
-    '- `memory_read` — read USER.md, MEMORY.md (the index), a daily log by date, OR a specific lesson body via `name=<slug>`.',
-    '- `memory_search` — semantic search across all of `.parallx/memory/` (index + lesson bodies + dailies).',
-    '- `memory_write` — add / replace / remove on USER.md, MEMORY.md sections, daily logs, AND lessons (via `file=lesson` with `slug` + `description` + `entry`).',
-    '',
-    '**Read memory before answering** when the user references prior context ("you said earlier…", "what did we decide…"), asks what you know about a person/project/topic, or you\'re about to make a recommendation that hinges on a past decision. Scan the index in MEMORY.md for matching descriptions — if one fits, open the lesson body. Prefer `memory_search` for topic recall, `memory_read` when you know the exact file or slug.',
-    '',
-    '**Write memory** when you\'ve learned something durable. Call `memory_write` proactively in these cases:',
-    '- The user states a preference about how you should behave ("I prefer X", "always do Y", "use Z") → `file=USER`.',
-    '- The user reveals a stable fact about themselves (role, project, environment, constraints) → `file=USER`.',
-    '- **The user corrects you** ("don\'t do X", "that\'s wrong, it\'s Y", "use Z instead of W", "you got that backwards") → `memory_write file=lesson action=add` with a slug like `correction-<topic>`. A correction is not a passing preference — record the exact thing you got wrong and the right answer so you don\'t repeat the mistake. Cite the cue explicitly in the body.',
-    '- You notice a tool-use pattern that should not be repeated (you called the wrong tool, missed an argument, hit a known failure mode) → `file=lesson`.',
-    '- A workaround or gotcha emerges that future sessions will need (a known bug, an upstream limitation, a non-obvious fix) → `file=lesson`.',
-    '- A project-level decision is made or a non-obvious fact about the project surfaces ("we\'re going with Postgres", "this repo uses 2-space indent") → `file=lesson` (MEMORY.md is the index that surfaces it).',
-    '- Something noteworthy happened today and the user will want to look it up later → `file=daily`.',
-    '',
-    '**Cap discipline** — USER.md and the MEMORY.md index are bounded. When `memory_write add` would exceed the cap, the tool returns the current entries and an error. Pick the least-relevant existing lesson and `memory_write file=lesson action=remove slug=<old>` before retrying the add. The cap is a curation forcing function: only the most durable, generally-applicable lessons stay in the index.',
-    '',
-    'If memory contains a claim that names a specific file, function, or value, verify it against the current workspace before acting on it — memory can go stale.',
-  ].join('\n');
+  ];
+  const toolLines = [
+    read ? '- `memory_read` — read USER.md, MEMORY.md (the index), a daily log by date, OR a specific lesson body via `name=<slug>`.' : '',
+    search ? '- `memory_search` — semantic search across all of `.parallx/memory/` (index + lesson bodies + dailies).' : '',
+    write ? '- `memory_write` — add / replace / remove on USER.md, MEMORY.md sections, daily logs, AND lessons (via `file=lesson` with `slug` + `description` + `entry`).' : '',
+  ].filter(Boolean);
+  if (toolLines.length > 0) {
+    lines.push('', toolLines.length === 3 ? '**Three tools, one family**:' : '**Memory tools**:', ...toolLines);
+  }
+  if (read || search) {
+    const how = search && read
+      ? 'Prefer `memory_search` for topic recall, `memory_read` when you know the exact file or slug.'
+      : search ? 'Use `memory_search` for topic recall.' : 'Use `memory_read` when you know the file or slug.';
+    lines.push('', `**Read memory before answering** when the user references prior context ("you said earlier…", "what did we decide…"), asks what you know about a person/project/topic, or you're about to make a recommendation that hinges on a past decision. Scan the index in MEMORY.md for matching descriptions — if one fits, open the lesson body. ${how}`);
+  }
+  if (write) {
+    lines.push(
+      '',
+      '**Write memory** when you\'ve learned something durable. Call `memory_write` proactively in these cases:',
+      '- The user states a preference about how you should behave ("I prefer X", "always do Y", "use Z") → `file=USER`.',
+      '- The user reveals a stable fact about themselves (role, project, environment, constraints) → `file=USER`.',
+      '- **The user corrects you** ("don\'t do X", "that\'s wrong, it\'s Y", "use Z instead of W", "you got that backwards") → `memory_write file=lesson action=add` with a slug like `correction-<topic>`. A correction is not a passing preference — record the exact thing you got wrong and the right answer so you don\'t repeat the mistake. Cite the cue explicitly in the body.',
+      '- You notice a tool-use pattern that should not be repeated (you called the wrong tool, missed an argument, hit a known failure mode) → `file=lesson`.',
+      '- A workaround or gotcha emerges that future sessions will need (a known bug, an upstream limitation, a non-obvious fix) → `file=lesson`.',
+      '- A project-level decision is made or a non-obvious fact about the project surfaces ("we\'re going with Postgres", "this repo uses 2-space indent") → `file=lesson` (MEMORY.md is the index that surfaces it).',
+      '- Something noteworthy happened today and the user will want to look it up later → `file=daily`.',
+      '',
+      '**Cap discipline** — USER.md and the MEMORY.md index are bounded. When `memory_write add` would exceed the cap, the tool returns the current entries and an error. Pick the least-relevant existing lesson and `memory_write file=lesson action=remove slug=<old>` before retrying the add. The cap is a curation forcing function: only the most durable, generally-applicable lessons stay in the index.',
+    );
+  }
+  lines.push('', 'If memory contains a claim that names a specific file, function, or value, verify it against the current workspace before acting on it — memory can go stale.');
+  return lines.join('\n');
 }
 
 /**
@@ -691,10 +770,10 @@ export function buildMemorySection(): string {
  * of schema prose, most of it the same five lessons); the descriptions now
  * carry only per-tool mechanics and this section carries the model.
  */
-export function buildCanvasSection(): string {
+export function buildCanvasSection(hasFsTools = true): string {
   return [
     '## Canvas',
-    'Canvas pages live in the workspace page DATABASE, not on disk — `canvas_*` tools never touch files (use `fs_*` for files on disk: .md, .txt, code).',
+    `Canvas pages live in the workspace page DATABASE, not on disk — \`canvas_*\` tools never touch files${hasFsTools ? ' (use `fs_*` for files on disk: .md, .txt, code)' : ''}.`,
     '',
     '**IDs**: `canvas_create_page` auto-generates the UUID and returns it — never pass one, and REUSE the returned id for every follow-up edit to that page (re-creating makes duplicates). If you only have a title, `canvas_read_page` accepts titles and the literal "current" directly — do NOT call `canvas_find_pages` first for a known title. Block ids come from `canvas_read_page` (each top-level block is prefixed `[blockId]`).',
     '',

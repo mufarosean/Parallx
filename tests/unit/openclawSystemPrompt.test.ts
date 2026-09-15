@@ -50,8 +50,8 @@ function createSkills(): ISkillEntry[] {
 
 function createTools(): IToolSummary[] {
   return [
-    { name: 'readFile', description: 'Read a file from disk' },
-    { name: 'searchFiles', description: 'Search files by content' },
+    { name: 'fs_read_file', description: 'Read a file from disk' },
+    { name: 'fs_search_knowledge', description: 'Search files by content' },
   ];
 }
 
@@ -906,5 +906,44 @@ describe('buildOpenclawRuntimeToolState', () => {
       e => e.source === 'skill' && e.filteredReason === 'name-collision',
     );
     expect(collision).toBeDefined();
+  });
+});
+
+describe('disabled tools leave no trace in the prompt', () => {
+  it('names only the tool families offered this turn', () => {
+    const prompt = buildOpenclawSystemPrompt(createBaseParams({
+      tools: [
+        { name: 'canvas_read_page', description: 'Read a canvas page' },
+        { name: 'canvas_find_pages', description: 'Find pages' },
+      ],
+    }));
+    expect(prompt).toContain('`canvas_*`');
+    expect(prompt).toContain('## Canvas');
+    for (const leak of ['fs_', 'memory_', '## Memory', 'transcript_', 'terminal_run_command', 'python_', 'notebook_', 'sessions_spawn', 'link_create', 'app__', 'budget_', 'planner_', 'cron_', 'dashboard_', 'webSearch', 'webFetch']) {
+      expect(prompt, leak).not.toContain(leak);
+    }
+  });
+
+  it('the tooling section names only the tools it was given', () => {
+    const section = buildToolSummariesSection([
+      { name: 'fs_read_file', description: 'Read' },
+      { name: 'fs_grep_search', description: 'Grep' },
+      { name: 'python_run_script', description: 'Run' },
+    ]);
+    expect(section).toContain('`fs_*`');
+    expect(section).toContain('`fs_read_file`');
+    expect(section).toContain('python_run_script');
+    for (const leak of ['fs_write_file', 'fs_search_knowledge', 'canvas_', 'memory_', 'terminal_run_command', 'notebook_', 'Read before you edit']) {
+      expect(section, leak).not.toContain(leak);
+    }
+  });
+
+  it('the memory section names only the memory tools offered', () => {
+    const section = buildMemorySection([{ name: 'memory_read', description: 'Read memory' }]);
+    expect(section).toContain('## Memory');
+    expect(section).toContain('memory_read name=<slug>');
+    for (const leak of ['memory_write', 'memory_search', 'fs_read_file', 'Write memory', 'Cap discipline']) {
+      expect(section, leak).not.toContain(leak);
+    }
   });
 });
