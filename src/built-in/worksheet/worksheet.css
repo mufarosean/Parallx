@@ -438,6 +438,9 @@ body > [data-radix-popper-content-wrapper] button { color: inherit; }
 .ws-camp__day--today.ws-camp__day--rest { box-shadow: inset 0 0 0 2px var(--px-accent); }
 .ws-camp__papers { display: flex; flex-wrap: wrap; gap: 4px; }
 .ws-camp__paper { margin-left: 0; }
+.ws-camp__tally { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin-top: var(--px-space-2); }
+.ws-camp__tallylabel { font-size: var(--px-text-xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--px-text-muted); margin-right: 2px; }
+.ws-camp__tally .ws-chip { margin-left: 0; }
 .ws-camp__foot { display: flex; justify-content: flex-end; }
 .ws-camp--idle > .ws-btn { align-self: flex-start; }
 

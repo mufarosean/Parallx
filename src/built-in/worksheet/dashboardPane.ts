@@ -9,7 +9,7 @@
 // starts a quiz; the arithmetic lives in progressInsights.ts.
 import { listItems, listCompletedAttempts, listProgressSnapshots, onWorksheetDataChanged, getCampaign, getDailyDraw, saveDailyDraw, getOpenQuizSession } from './worksheetData.js';
 import { computeInsights, dayKey, type Insights, type PaperProgress, type InsightItem, type InsightAttempt, type TimelinePoint } from './progressInsights.js';
-import { campaignProgress, campaignDone, drawToday, addDays, restDaysLabel, isCampaignProblem, LEVEL_TITLES, type Campaign } from './campaign.js';
+import { campaignProgress, campaignDone, drawToday, dayStory, addDays, restDaysLabel, isCampaignProblem, LEVEL_TITLES, XP_PER_PROBLEM, XP_EASY_BONUS, XP_FULL_DAY, type Campaign, type CampaignProgress, type DayStory } from './campaign.js';
 import { syncRewards, type RewardState } from './rewardsSync.js';
 import { REWARDS } from './rewards.js';
 import { paperLabel, ratingLabel, normalizeRating, QUADRANT_LABELS } from './problemImport.js';
@@ -280,6 +280,54 @@ type Tip = ReturnType<typeof makeTooltip>;
 
 type QuizResume = { position: number; total: number } | null;
 
+/**
+ * The day's story under the quota line: today's tally while the day is on,
+ * the last working day's tally first thing in the morning, the week's on a
+ * rest day. Nothing at all when there is nothing to tell.
+ */
+function storyRow(story: DayStory, p: CampaignProgress): HTMLElement | null {
+  const row = el('div', 'ws-camp__tally');
+  const chip = (cls: string, text: string, title?: string) => {
+    const c = el('span', `ws-chip ${cls}`, text);
+    if (title) c.title = title;
+    row.appendChild(c);
+  };
+  const split = (t: { easy: number; medium: number; hard: number }) => {
+    if (t.easy) chip('ws-chip--easy', `${t.easy} Easy`);
+    if (t.medium) chip('ws-chip--medium', `${t.medium} Medium`);
+    if (t.hard) chip('ws-chip--hard', `${t.hard} Hard`);
+  };
+  const xpTip = `${XP_PER_PROBLEM} a problem, ${XP_EASY_BONUS} more for Easy, ${XP_FULL_DAY} for a full day`;
+  if (p.restToday) {
+    const w = story.week;
+    if (w.done === 0) return null;
+    row.appendChild(el('span', 'ws-camp__tallylabel', 'This Week'));
+    chip('ws-chip--muted', `${w.done} Done`);
+    split(w);
+    if (w.seconds >= 60) chip('ws-chip--muted', fmtStudyTime(w.seconds));
+    if (w.fullDays) chip('ws-chip--muted', `${w.fullDays} Full ${w.fullDays === 1 ? 'Day' : 'Days'}`);
+    if (w.papers > 1) chip('ws-chip--muted', `${w.papers} Papers`);
+    return row;
+  }
+  const t = story.today;
+  if (t.done > 0) {
+    row.appendChild(el('span', 'ws-camp__tallylabel', 'Today'));
+    split(t);
+    if (t.seconds >= 60) chip('ws-chip--muted', fmtStudyTime(t.seconds));
+    if (t.papers > 1) chip('ws-chip--muted', `${t.papers} Papers`);
+    chip('ws-chip--muted', `+${t.xp} XP`, xpTip);
+    return row;
+  }
+  const last = story.last;
+  if (!last) return null;
+  row.appendChild(el('span', 'ws-camp__tallylabel', story.lastAgo === 1 ? 'Yesterday' : fmtDay(last.day)));
+  chip('ws-chip--muted', `${last.done} Done`);
+  split(last);
+  if (last.seconds >= 60) chip('ws-chip--muted', fmtStudyTime(last.seconds));
+  chip('ws-chip--muted', `+${last.xp} XP`, xpTip);
+  return row;
+}
+
 async function campaignSection(root: HTMLElement, items: InsightItem[], attempts: InsightAttempt[], campaign: Campaign | null, due: number[], resume: QuizResume, bonusXp: number, actions: DashboardActions, tip: Tip): Promise<boolean> {
   const problems = items.filter(isCampaignProblem);
   const sec = el('section', 'ws-camp');
@@ -355,15 +403,18 @@ async function campaignSection(root: HTMLElement, items: InsightItem[], attempts
   }
   todayRow.appendChild(big);
   const text = el('div', 'ws-camp__todaytext');
+  const story = dayStory(campaign, items, attempts, now);
   const line = p.finished ? 'Nothing left to draw. The bank is yours.'
     : p.restToday ? (due.length > 0 ? `Rest day. ${due.length} ${due.length === 1 ? 'problem is' : 'problems are'} due for a repeat.` : 'Rest day. Nothing is due for a repeat.')
-    : p.leftToday === 0 ? 'Quota met. Anything more today is a lead you keep.'
+    : p.leftToday === 0 ? (story.bestToday ? `Day ${p.dayIndex} done. Your best day yet.` : `Day ${p.dayIndex} done. Anything more is a lead you keep.`)
       : p.doneToday === 0 ? `${p.leftToday} problems today, drawn across ${drawPapers} ${drawPapers === 1 ? 'paper' : 'papers'}.`
         : `${p.leftToday} to go today.`;
   text.appendChild(el('div', 'ws-camp__todayline', line));
   const pace = p.delta === 0 ? 'exactly on pace' : p.delta > 0 ? `${p.delta} ahead of pace` : `${-p.delta} behind pace`;
   const bits = [`${p.done} of ${p.total} done`, pace, p.streak > 0 ? `${p.streak} day streak` : 'no streak yet', `${p.clearedPapers.length} of ${p.papers.length} papers cleared`];
   text.appendChild(el('div', 'ws-camp__meta', bits.join(' · ')));
+  const tally = storyRow(story, p);
+  if (tally) text.appendChild(tally);
   todayRow.appendChild(text);
   const acts = el('div', 'ws-camp__actions');
   if (resume) acts.appendChild(resumeBtn());

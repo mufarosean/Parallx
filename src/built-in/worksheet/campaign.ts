@@ -224,6 +224,121 @@ export function campaignProgress(campaign: Campaign, items: readonly InsightItem
   };
 }
 
+// ── The day's story ─────────────────────────────────────────────────────────
+// How a day went, for the campaign card: the problems that first counted on
+// it, split by the rating given that day, the time spent (repeats included),
+// the papers touched and the XP the day earned. From that, the card tells the
+// morning what yesterday was, the day whether it is the best one yet, and a
+// rest day what the week added up to.
+
+export interface DayTally {
+  readonly day: string;
+  /** Campaign problems that first counted on this day. */
+  readonly done: number;
+  /** Their ratings as given that day (the last one of the day per problem). */
+  readonly easy: number;
+  readonly medium: number;
+  readonly hard: number;
+  /** Time on every rated attempt of the day, repeats included. */
+  readonly seconds: number;
+  /** Distinct papers among the problems done. */
+  readonly papers: number;
+  /** XP the day earned: problems, Easy bonuses and the full-day bonus. */
+  readonly xp: number;
+  readonly full: boolean;
+  readonly rest: boolean;
+}
+export interface WeekTally {
+  readonly done: number;
+  readonly easy: number;
+  readonly medium: number;
+  readonly hard: number;
+  readonly seconds: number;
+  readonly fullDays: number;
+  /** Days with something done. */
+  readonly days: number;
+  readonly papers: number;
+}
+export interface DayStory {
+  readonly today: DayTally;
+  /** The last day before today with something done, and how many days back it lies. */
+  readonly last: DayTally | null;
+  readonly lastAgo: number;
+  /** The most done in one day before today. */
+  readonly best: DayTally | null;
+  /** Today has more done than any day before it (needs a day before with work). */
+  readonly bestToday: boolean;
+  /** Monday through today. */
+  readonly week: WeekTally;
+}
+
+export function dayStory(campaign: Campaign, items: readonly InsightItem[], attempts: readonly InsightAttempt[], now: number = Date.now()): DayStory {
+  const problems = items.filter(isCampaignProblem);
+  const paperOf = new Map(problems.map((i) => [i.id, i.paper]));
+  const ratings = campaignRatings(campaign, items, attempts);
+  const rest = (day: string) => isRestDay(campaign.restDays ?? [], day);
+  const working = Math.max(1, workingDays(campaign.startDay, campaign.days, campaign.restDays ?? []));
+  const target = Math.max(1, Math.ceil(problems.length / working));
+  const today = dayKey(now);
+
+  // Per day: the rating each problem was given (the last of the day) and the time spent.
+  const byDay = new Map<string, { rated: Map<number, { rating: string; at: number }>; seconds: number }>();
+  for (const a of attempts) {
+    if (a.imported || a.at < campaign.startedAt || !paperOf.has(a.itemId)) continue;
+    const rating = normalizeRating(a.selfGrade);
+    if (!rating) continue;
+    const day = dayKey(a.at);
+    let d = byDay.get(day);
+    if (!d) { d = { rated: new Map(), seconds: 0 }; byDay.set(day, d); }
+    d.seconds += Math.max(0, a.seconds || 0);
+    const cur = d.rated.get(a.itemId);
+    if (!cur || a.at >= cur.at) d.rated.set(a.itemId, { rating, at: a.at });
+  }
+  const tallyOf = (day: string): { t: DayTally; papers: Set<string> } => {
+    const d = byDay.get(day);
+    let done = 0, easy = 0, medium = 0, hard = 0;
+    const papers = new Set<string>();
+    if (d) {
+      for (const [id, r] of d.rated) {
+        if (ratings.get(id)?.day !== day) continue; // a repeat: it counted on its first day
+        done++;
+        if (r.rating === 'easy') easy++;
+        else if (r.rating === 'medium') medium++;
+        else if (r.rating === 'hard') hard++;
+        papers.add(paperOf.get(id) ?? '');
+      }
+    }
+    const r = rest(day);
+    const full = !r && done >= target;
+    const xp = done * XP_PER_PROBLEM + easy * XP_EASY_BONUS + (full ? XP_FULL_DAY : 0);
+    return { t: { day, done, easy, medium, hard, seconds: d?.seconds ?? 0, papers: papers.size, xp, full, rest: r }, papers };
+  };
+
+  const todayT = tallyOf(today).t;
+  let last: DayTally | null = null;
+  let best: DayTally | null = null;
+  for (const day of [...byDay.keys()].filter((d) => d < today).sort()) {
+    const { t } = tallyOf(day);
+    if (t.done === 0) continue;
+    last = t;
+    if (!best || t.done > best.done) best = t;
+  }
+
+  const monday = addDays(today, -((weekdayOf(today) + 6) % 7));
+  const week = { done: 0, easy: 0, medium: 0, hard: 0, seconds: 0, fullDays: 0, days: 0, papers: 0 };
+  const weekPapers = new Set<string>();
+  for (let day = monday; day <= today; day = addDays(day, 1)) {
+    const { t, papers } = tallyOf(day);
+    week.done += t.done; week.easy += t.easy; week.medium += t.medium; week.hard += t.hard; week.seconds += t.seconds;
+    if (t.full) week.fullDays++;
+    if (t.done > 0) week.days++;
+    for (const p of papers) weekPapers.add(p);
+  }
+  week.papers = weekPapers.size;
+
+  return { today: todayT, last, lastAgo: last ? daysBetween(last.day, today) : 0, best, bestToday: !!best && todayT.done > best.done, week };
+}
+
 function hash(s: string): number {
   let h = 5381;
   for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
