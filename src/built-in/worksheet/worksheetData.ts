@@ -377,17 +377,23 @@ export async function upsertProgressSnapshot(day: string, attempted: number, sco
 
 // ── Campaign (every problem in the bank in N days) ───────────────────────────
 
-export interface CampaignRow { readonly startDay: string; readonly days: number; readonly dailyTarget: number; readonly startedAt: number }
+export interface CampaignRow { readonly startDay: string; readonly days: number; readonly dailyTarget: number; readonly startedAt: number; readonly restDays: readonly number[] }
+function parseRestDays(raw: unknown): number[] {
+  try {
+    const parsed = JSON.parse(String(raw ?? '[]'));
+    return Array.isArray(parsed) ? parsed.map(Number).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6) : [];
+  } catch { return []; }
+}
 export async function getCampaign(): Promise<CampaignRow | null> {
-  const row = await getRow('SELECT start_day, days, daily_target, started_at FROM ws_campaign WHERE id = 1');
-  return row ? { startDay: String(row.start_day), days: Number(row.days), dailyTarget: Number(row.daily_target), startedAt: Number(row.started_at) } : null;
+  const row = await getRow('SELECT start_day, days, daily_target, started_at, rest_days FROM ws_campaign WHERE id = 1');
+  return row ? { startDay: String(row.start_day), days: Number(row.days), dailyTarget: Number(row.daily_target), startedAt: Number(row.started_at), restDays: parseRestDays(row.rest_days) } : null;
 }
 /** One campaign at a time; starting a new one forgets the old draws. */
 export async function startCampaign(c: CampaignRow): Promise<void> {
   await run(
-    `INSERT INTO ws_campaign (id, start_day, days, daily_target, started_at) VALUES (1, ?, ?, ?, ?)
-     ON CONFLICT(id) DO UPDATE SET start_day = excluded.start_day, days = excluded.days, daily_target = excluded.daily_target, started_at = excluded.started_at`,
-    [c.startDay, c.days, c.dailyTarget, c.startedAt],
+    `INSERT INTO ws_campaign (id, start_day, days, daily_target, started_at, rest_days) VALUES (1, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET start_day = excluded.start_day, days = excluded.days, daily_target = excluded.daily_target, started_at = excluded.started_at, rest_days = excluded.rest_days`,
+    [c.startDay, c.days, c.dailyTarget, c.startedAt, JSON.stringify([...c.restDays])],
   );
   await run('DELETE FROM ws_daily_draw');
   emitChange();
@@ -406,6 +412,51 @@ export async function saveDailyDraw(day: string, ids: number[]): Promise<void> {
   await run('INSERT INTO ws_daily_draw (day, item_ids) VALUES (?, ?) ON CONFLICT(day) DO UPDATE SET item_ids = excluded.item_ids', [day, JSON.stringify(ids)]);
 }
 
+// ── Quiz sessions (the running quiz, stored so a restart resumes it) ────────
+
+export interface QuizSessionRow { readonly id: string; readonly itemIds: number[]; readonly position: number; readonly skipped: number[]; readonly startedAt: number; readonly finishedAt: number | null }
+function parseIdList(raw: unknown): number[] {
+  try { const v = JSON.parse(String(raw ?? '[]')); return Array.isArray(v) ? v.map(Number).filter((n) => Number.isFinite(n)) : []; } catch { return []; }
+}
+function rowToSession(row: Record<string, unknown>): QuizSessionRow {
+  return { id: String(row.id), itemIds: parseIdList(row.item_ids), position: Number(row.position ?? 0), skipped: parseIdList(row.skipped), startedAt: Number(row.started_at), finishedAt: row.finished_at == null ? null : Number(row.finished_at) };
+}
+const SESSION_COLS = 'id, item_ids, position, skipped, started_at, finished_at';
+export async function getOpenQuizSession(): Promise<QuizSessionRow | null> {
+  const row = await getRow(`SELECT ${SESSION_COLS} FROM ws_quiz_session WHERE finished_at IS NULL ORDER BY started_at DESC LIMIT 1`);
+  return row ? rowToSession(row) : null;
+}
+export async function getQuizSession(id: string): Promise<QuizSessionRow | null> {
+  const row = await getRow(`SELECT ${SESSION_COLS} FROM ws_quiz_session WHERE id = ?`, [id]);
+  return row ? rowToSession(row) : null;
+}
+/** Every quiz, newest first: the open one and the finished ones to review. */
+export async function listQuizSessions(limit = 12): Promise<QuizSessionRow[]> {
+  const rows = await allRows(`SELECT ${SESSION_COLS} FROM ws_quiz_session ORDER BY started_at DESC LIMIT ?`, [limit]);
+  return rows.map(rowToSession).filter((s) => s.itemIds.length > 0);
+}
+export async function countFinishedQuizSessions(): Promise<number> {
+  const row = await getRow('SELECT count(*) AS n FROM ws_quiz_session WHERE finished_at IS NOT NULL');
+  return Number(row?.n ?? 0);
+}
+/** Upsert; `announce` tells open panes (the Dashboard's Resume Quiz) when a quiz begins. */
+export async function saveQuizSession(s: QuizSessionRow, announce = false): Promise<void> {
+  await run(
+    `INSERT INTO ws_quiz_session (id, item_ids, position, skipped, started_at, finished_at) VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET item_ids = excluded.item_ids, position = excluded.position, skipped = excluded.skipped, finished_at = excluded.finished_at`,
+    [s.id, JSON.stringify(s.itemIds), s.position, JSON.stringify(s.skipped), s.startedAt, s.finishedAt],
+  );
+  if (announce) emitChange();
+}
+export async function finishQuizSession(id: string): Promise<void> {
+  await run('UPDATE ws_quiz_session SET finished_at = ? WHERE id = ? AND finished_at IS NULL', [Date.now(), id]);
+  emitChange();
+}
+/** One quiz at a time: starting another closes whatever was left open. */
+export async function finishOpenQuizSessions(): Promise<void> {
+  await run('UPDATE ws_quiz_session SET finished_at = ? WHERE finished_at IS NULL', [Date.now()]);
+}
+
 /** Every completed attempt, newest first, for the dashboard's timeline and score. */
 export async function listCompletedAttempts(): Promise<{ itemId: number; selfGrade: string; at: number; seconds: number; sessionId: string; imported: boolean }[]> {
   const rows = await allRows('SELECT item_id, self_grade, updated_at, seconds, session_id, imported FROM ws_attempts WHERE completed = 1 ORDER BY updated_at DESC');
@@ -414,6 +465,50 @@ export async function listCompletedAttempts(): Promise<{ itemId: number; selfGra
 
 /** Grades earned on the given items since a timestamp (practice-session
  *  summaries). Later grades on the same item win. */
+/** What happened to each problem since a quiz began: the latest rating, whether any work was saved, time spent. */
+export interface SessionItemState { readonly itemId: number; readonly grade: string; readonly attempted: boolean; readonly seconds: number }
+export async function getSessionItemStates(itemIds: number[], sinceMs: number): Promise<Map<number, SessionItemState>> {
+  const map = new Map<number, SessionItemState>();
+  if (itemIds.length === 0) return map;
+  const ph = itemIds.map(() => '?').join(',');
+  const rows = await allRows(
+    `SELECT item_id, self_grade, completed, seconds, length(cells_json) AS len FROM ws_attempts
+     WHERE updated_at >= ? AND item_id IN (${ph}) ORDER BY updated_at ASC`,
+    [sinceMs, ...itemIds],
+  );
+  for (const r of rows) {
+    const id = Number(r.item_id);
+    const prev = map.get(id) ?? { itemId: id, grade: '', attempted: false, seconds: 0 };
+    const grade = Number(r.completed) === 1 && String(r.self_grade ?? '') !== '' ? String(r.self_grade) : prev.grade;
+    map.set(id, { itemId: id, grade, attempted: prev.attempted || Number(r.len ?? 0) > 2 || Number(r.completed) === 1, seconds: prev.seconds + Number(r.seconds ?? 0) });
+  }
+  return map;
+}
+
+/** Notes: one per problem, kept across quizzes. */
+export async function getProblemNotes(itemIds: number[]): Promise<Map<number, string>> {
+  const map = new Map<number, string>();
+  if (itemIds.length === 0) return map;
+  const ph = itemIds.map(() => '?').join(',');
+  const rows = await allRows(`SELECT item_id, note FROM ws_problem_note WHERE item_id IN (${ph})`, itemIds);
+  for (const r of rows) map.set(Number(r.item_id), String(r.note ?? ''));
+  return map;
+}
+export async function setProblemNote(itemId: number, note: string): Promise<void> {
+  if (note.trim() === '') await run('DELETE FROM ws_problem_note WHERE item_id = ?', [itemId]);
+  else await run('INSERT INTO ws_problem_note (item_id, note, updated_at) VALUES (?, ?, ?) ON CONFLICT(item_id) DO UPDATE SET note = excluded.note, updated_at = excluded.updated_at', [itemId, note, Date.now()]);
+}
+
+/** Rewards: id to the time first earned. */
+export async function listRewardUnlocks(): Promise<Map<string, number>> {
+  const rows = await allRows('SELECT id, unlocked_at FROM ws_reward');
+  return new Map(rows.map((r) => [String(r.id), Number(r.unlocked_at)]));
+}
+export async function unlockRewards(ids: string[], at: number = Date.now()): Promise<void> {
+  for (const id of ids) await run('INSERT OR IGNORE INTO ws_reward (id, unlocked_at) VALUES (?, ?)', [id, at]);
+  if (ids.length) emitChange();
+}
+
 export async function getSessionGrades(itemIds: number[], sinceMs: number): Promise<Map<number, string>> {
   if (itemIds.length === 0) return new Map();
   const ph = itemIds.map(() => '?').join(',');

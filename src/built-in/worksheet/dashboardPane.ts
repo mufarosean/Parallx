@@ -7,15 +7,23 @@
 // is due again, what keeps going wrong, the weakest papers, and the vendor's
 // easy-and-likely problems never tried. Every row opens the problem or
 // starts a quiz; the arithmetic lives in progressInsights.ts.
-import { listItems, listCompletedAttempts, listProgressSnapshots, onWorksheetDataChanged, getCampaign, getDailyDraw, saveDailyDraw } from './worksheetData.js';
+import { listItems, listCompletedAttempts, listProgressSnapshots, onWorksheetDataChanged, getCampaign, getDailyDraw, saveDailyDraw, getOpenQuizSession } from './worksheetData.js';
 import { computeInsights, dayKey, type Insights, type PaperProgress, type InsightItem, type InsightAttempt, type TimelinePoint } from './progressInsights.js';
-import { campaignProgress, campaignDone, drawToday, addDays, LEVEL_TITLES, type Campaign } from './campaign.js';
+import { campaignProgress, campaignDone, drawToday, addDays, restDaysLabel, isCampaignProblem, LEVEL_TITLES, type Campaign } from './campaign.js';
+import { syncRewards, type RewardState } from './rewardsSync.js';
+import { REWARDS } from './rewards.js';
 import { paperLabel, ratingLabel, QUADRANT_LABELS } from './problemImport.js';
 
 export interface DashboardActions {
   openItem(id: number, title: string): void;
-  /** Start a quiz over exactly these problems, in this order. */
-  startQuiz(ids: number[]): void;
+  /** Start a quiz over exactly these problems, in this order, at `startAt`. */
+  startQuiz(ids: number[], startAt?: number): void;
+  /** Reopen the quiz left unfinished, where it was. */
+  resumeQuiz(): void;
+  /** Reopen a past quiz to review it. */
+  openQuiz(id: string): void;
+  /** Icon markup from the registry, for the rewards. */
+  renderIcon?(id: string, size: number): string;
   /** Open the quiz builder with these filters already chosen. */
   configureQuiz(preset: { papers?: string[]; state?: string }): void;
   importWorkbook(): void;
@@ -270,10 +278,15 @@ function lineChart(host: HTMLElement, title: string, points: ChartPoint[], targe
 
 type Tip = ReturnType<typeof makeTooltip>;
 
-async function campaignSection(root: HTMLElement, items: InsightItem[], attempts: InsightAttempt[], campaign: Campaign | null, actions: DashboardActions, tip: Tip): Promise<boolean> {
-  const problems = items.filter((i) => i.paper);
+type QuizResume = { position: number; total: number } | null;
+
+async function campaignSection(root: HTMLElement, items: InsightItem[], attempts: InsightAttempt[], campaign: Campaign | null, due: number[], resume: QuizResume, bonusXp: number, actions: DashboardActions, tip: Tip): Promise<boolean> {
+  const problems = items.filter(isCampaignProblem);
   const sec = el('section', 'ws-camp');
   root.appendChild(sec);
+  // A quiz left unfinished comes first, wherever it came from: resuming
+  // keeps its order and lets you go back to what you rated.
+  const resumeBtn = () => btn(`Resume Quiz (${resume!.position + 1} of ${resume!.total})`, 'ws-btn ws-btn--primary', () => actions.resumeQuiz());
 
   if (!campaign) {
     // No campaign: one quiet line. Setting one up is a Settings matter.
@@ -282,29 +295,43 @@ async function campaignSection(root: HTMLElement, items: InsightItem[], attempts
     const setup = btn('Set Up Campaign', 'ws-btn ws-btn--small', () => actions.openSettings());
     setup.title = 'Every problem in the bank in a set number of days, drawn across all papers';
     sec.appendChild(setup);
+    if (resume) sec.appendChild(resumeBtn());
     return false;
   }
 
   const now = Date.now();
   const today = dayKey(now);
-  const p = campaignProgress(campaign, items, attempts, now);
-  let draw = await getDailyDraw(today).catch(() => null);
-  if (!draw) {
-    draw = drawToday(campaign, items, attempts, campaign.dailyTarget, today);
-    void saveDailyDraw(today, draw).catch(() => {});
-  }
-  const done = campaignDone(campaign, items, attempts);
-  const drawLeft = draw.filter((id) => !done.has(id));
+  const p = campaignProgress(campaign, items, attempts, now, bonusXp);
   const byId = new Map(items.map((i) => [i.id, i]));
+  const done = campaignDone(campaign, items, attempts);
+  // A rest day draws nothing; the day belongs to repeats. Otherwise today's
+  // saved draw is kept, minus anything no longer in the campaign (an essay
+  // sheet, a deleted item), and topped up to the target.
+  let draw: number[] = [];
+  if (!p.restToday) {
+    const saved = await getDailyDraw(today).catch(() => null);
+    draw = (saved ?? []).filter((id) => { const it = byId.get(id); return !!it && isCampaignProblem(it); });
+    if (draw.length < p.target) {
+      const inDraw = new Set(draw);
+      for (const id of drawToday(campaign, items, attempts, p.target + draw.length, today)) {
+        if (draw.length >= p.target) break;
+        if (!inDraw.has(id) && !done.has(id)) { draw.push(id); inDraw.add(id); }
+      }
+    }
+    const changed = !saved || saved.length !== draw.length || saved.some((id, i) => id !== draw[i]);
+    if (changed) void saveDailyDraw(today, draw).catch(() => {});
+  }
+  const drawLeft = draw.filter((id) => !done.has(id));
   const drawPapers = new Set(drawLeft.map((id) => byId.get(id)?.paper).filter(Boolean)).size;
   const endDay = addDays(campaign.startDay, campaign.days - 1);
+  const off = restDaysLabel(campaign.restDays);
 
   const head = el('div', 'ws-camp__head');
   const left = el('div', 'ws-camp__headtext');
   left.appendChild(el('div', 'ws-camp__title', p.finished ? 'Campaign Complete' : p.dayIndex > campaign.days ? `Day ${p.dayIndex}, ${p.dayIndex - campaign.days} past the plan` : `Day ${p.dayIndex} of ${campaign.days}`));
   left.appendChild(el('div', 'ws-camp__sub', p.finished
     ? `Every one of the ${p.total} problems, rated in this campaign.`
-    : `${p.total} problems by ${fmtDay(endDay, true)}, ${campaign.dailyTarget} a day across every paper.`));
+    : `${p.total} problems by ${fmtDay(endDay, true)}, ${p.target} a day across every paper${off ? `, ${off}` : ''}.`));
   head.appendChild(left);
   const lvl = el('div', 'ws-camp__level');
   lvl.appendChild(el('div', 'ws-camp__lvl', `Level ${p.level.level}`));
@@ -321,11 +348,15 @@ async function campaignSection(root: HTMLElement, items: InsightItem[], attempts
 
   const todayRow = el('div', 'ws-camp__today');
   const big = el('div', 'ws-camp__big');
-  big.appendChild(document.createTextNode(String(p.doneToday)));
-  big.appendChild(el('span', 'ws-camp__of', ` / ${p.target}`));
+  if (p.restToday && !p.finished) big.appendChild(document.createTextNode('Rest'));
+  else {
+    big.appendChild(document.createTextNode(String(p.doneToday)));
+    big.appendChild(el('span', 'ws-camp__of', ` / ${p.target}`));
+  }
   todayRow.appendChild(big);
   const text = el('div', 'ws-camp__todaytext');
   const line = p.finished ? 'Nothing left to draw. The bank is yours.'
+    : p.restToday ? (due.length > 0 ? `Rest day. ${due.length} ${due.length === 1 ? 'problem is' : 'problems are'} due for a repeat.` : 'Rest day. Nothing is due for a repeat.')
     : p.leftToday === 0 ? 'Quota met. Anything more today is a lead you keep.'
       : p.doneToday === 0 ? `${p.leftToday} problems today, drawn across ${drawPapers} ${drawPapers === 1 ? 'paper' : 'papers'}.`
         : `${p.leftToday} to go today.`;
@@ -335,13 +366,25 @@ async function campaignSection(root: HTMLElement, items: InsightItem[], attempts
   text.appendChild(el('div', 'ws-camp__meta', bits.join(' · ')));
   todayRow.appendChild(text);
   const acts = el('div', 'ws-camp__actions');
-  // The quiz offers what the quota still needs from today's draw; once the
-  // quota is met the rest of the draw stays available as a lead.
-  if (drawLeft.length > 0) {
-    const ids = p.leftToday > 0 ? drawLeft.slice(0, p.leftToday) : drawLeft;
-    acts.appendChild(btn(p.leftToday > 0 ? `Start Today's Quiz (${ids.length})` : `Keep Going (${ids.length})`, 'ws-btn ws-btn--primary', () => actions.startQuiz(ids)));
-  } else if (!p.finished && p.remaining > 0) acts.appendChild(btn('Draw More For Today', 'ws-btn ws-btn--primary', () => {
-    const extra = drawToday(campaign, items, attempts, campaign.dailyTarget, `${today}+`);
+  if (resume) acts.appendChild(resumeBtn());
+  const primary = resume ? 'ws-btn' : 'ws-btn ws-btn--primary';
+  // Today's quiz is the whole draw, rated problems included, opened at the
+  // first one not yet rated; once the quota is met the rest stays as a lead.
+  if (p.restToday && !p.finished) {
+    if (due.length > 0) acts.appendChild(btn(`Quiz Due Problems (${due.length})`, primary, () => actions.startQuiz(due)));
+    if (p.remaining > 0) {
+      const anyway = btn('Draw Anyway', 'ws-btn', () => {
+        const ids = drawToday(campaign, items, attempts, p.target, today);
+        if (ids.length) actions.startQuiz(ids);
+      });
+      anyway.title = 'New problems on a rest day. They count toward the campaign, not toward a quota.';
+      acts.appendChild(anyway);
+    }
+  } else if (drawLeft.length > 0) {
+    const startAt = Math.max(0, draw.findIndex((id) => !done.has(id)));
+    acts.appendChild(btn(p.leftToday > 0 ? `Start Today's Quiz (${drawLeft.length} left)` : `Keep Going (${drawLeft.length})`, primary, () => actions.startQuiz(draw, startAt)));
+  } else if (!p.finished && p.remaining > 0) acts.appendChild(btn('Draw More For Today', primary, () => {
+    const extra = drawToday(campaign, items, attempts, p.target, `${today}+`);
     if (extra.length) actions.startQuiz(extra);
   }));
   acts.appendChild(btn('Review Due Flashcards', 'ws-btn', () => actions.studyFlashcards()));
@@ -351,10 +394,10 @@ async function campaignSection(root: HTMLElement, items: InsightItem[], attempts
   // One square per planned day.
   const strip = el('div', 'ws-camp__strip');
   strip.setAttribute('role', 'img');
-  strip.setAttribute('aria-label', `${p.fullDays} full days of ${campaign.days}`);
+  strip.setAttribute('aria-label', `${p.fullDays} full days of ${p.workingDays}`);
   for (const d of p.days) {
-    const sq = el('span', `ws-camp__day ws-camp__day--${d.state}`);
-    const lines = [fmtDay(d.day, true), d.state === 'future' ? `Day ${d.index}` : `${d.done} of ${d.target}`];
+    const sq = el('span', `ws-camp__day ws-camp__day--${d.state}${d.rest && d.state !== 'rest' ? ' ws-camp__day--rest' : ''}`);
+    const lines = [fmtDay(d.day, true), d.rest ? (d.done > 0 ? `Rest day, ${d.done} done` : 'Rest day') : d.state === 'future' ? `Day ${d.index}` : `${d.done} of ${d.target}`];
     sq.addEventListener('mousemove', (e) => tip.show(e.clientX, e.clientY, lines));
     sq.addEventListener('mouseleave', () => tip.hide());
     strip.appendChild(sq);
@@ -375,6 +418,32 @@ async function campaignSection(root: HTMLElement, items: InsightItem[], attempts
 
 // ── The pane ────────────────────────────────────────────────────────────────
 
+function rewardsSection(root: HTMLElement, state: RewardState, icon: (id: string, size: number) => string): void {
+  const title = el('div', 'ws-dash__sectiontitle', 'Rewards');
+  title.title = 'Milestones of the campaign. Each one earned adds its XP to yours, so rewards move the level.';
+  root.appendChild(title);
+  const grid = el('div', 'ws-rewards');
+  const now = Date.now();
+  const sorted = [...REWARDS].sort((a, b) => Number(state.unlocks.has(b.id)) - Number(state.unlocks.has(a.id)));
+  for (const r of sorted) {
+    const at = state.unlocks.get(r.id);
+    const card = el('div', `ws-reward${at ? '' : ' ws-reward--locked'}`);
+    const ic = el('span', 'ws-reward__icon');
+    ic.innerHTML = icon(r.icon, 20);
+    if (!ic.innerHTML) ic.textContent = at ? '★' : '☆';
+    card.appendChild(ic);
+    const text = el('div', 'ws-reward__text');
+    const name = el('div', 'ws-reward__title', r.title);
+    if (at && now - at < 10 * 60000) name.appendChild(el('span', 'ws-chip ws-chip--easy ws-reward__new', 'New'));
+    text.appendChild(name);
+    text.appendChild(el('div', 'ws-reward__meta', at ? `+${r.xp} XP · ${fmtDay(dayKey(at), true)}` : `${r.hint} +${r.xp} XP`));
+    card.appendChild(text);
+    card.title = r.hint;
+    grid.appendChild(card);
+  }
+  root.appendChild(grid);
+}
+
 export function createDashboardPane(container: HTMLElement, actions: DashboardActions): { dispose(): void } {
   const pane = el('div', 'ws-pane ws-dash');
   container.appendChild(pane);
@@ -384,15 +453,19 @@ export function createDashboardPane(container: HTMLElement, actions: DashboardAc
   let cleanups: (() => void)[] = [];
   const tip = makeTooltip(pane);
 
+  // Renders overlap: unlocking a reward mid-render announces a data change
+  // that starts another. Only the newest render may touch the DOM.
+  let renderSeq = 0;
   const render = async () => {
     if (disposed) return;
+    const seq = ++renderSeq;
     const [items, attempts, snapshots, campaign] = await Promise.all([
       listItems().catch(() => []),
       listCompletedAttempts().catch(() => []),
       listProgressSnapshots().catch(() => []),
       getCampaign().catch(() => null),
     ]);
-    if (disposed) return;
+    if (disposed || seq !== renderSeq) return;
     for (const c of cleanups) c();
     cleanups = [];
     tip.hide();
@@ -418,7 +491,12 @@ export function createDashboardPane(container: HTMLElement, actions: DashboardAc
     }
 
     // The campaign first: what today asks for, before the numbers.
-    await campaignSection(root, items, attempts, campaign, actions, tip);
+    const quiz = await getOpenQuizSession().catch(() => null);
+    const resume: QuizResume = quiz && quiz.position < quiz.itemIds.length ? { position: quiz.position, total: quiz.itemIds.length } : null;
+    const rewards = await syncRewards(items, attempts, campaign).catch(() => null);
+    if (disposed || seq !== renderSeq) return;
+    await campaignSection(root, items, attempts, campaign, ins.due.filter((d) => isCampaignProblem(d.item)).map((d) => d.item.id), resume, rewards?.bonusXp ?? 0, actions, tip);
+    if (disposed || seq !== renderSeq) return;
     if (disposed) return;
 
     // Headline numbers.
@@ -429,6 +507,9 @@ export function createDashboardPane(container: HTMLElement, actions: DashboardAc
     tiles.appendChild(tile('Time Studied', fmtStudyTime(ins.seconds), ownAttempts > 0 ? `across ${ownAttempts} ${ownAttempts === 1 ? 'attempt' : 'attempts'} here` : 'timed from the first attempt here'));
     tiles.appendChild(tile('Rated This Week', String(ins.ratedThisWeek), 'ratings in the last 7 days'));
     root.appendChild(tiles);
+
+    // Rewards: earned first, then what is still out there.
+    if (rewards) rewardsSection(root, rewards, (id, size) => actions.renderIcon?.(id, size) ?? '');
 
     // What next.
     root.appendChild(el('div', 'ws-dash__sectiontitle', 'Work On Next'));

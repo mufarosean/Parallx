@@ -565,6 +565,12 @@ export const WORKSHEET_MANIFEST: IToolManifest = {
             default: 'light',
             description: 'Theme for the practice-sheet surface, independent of the app theme. "light" matches the real exam tool (always-white sheet), "dark" pins the sheet dark, "app" follows the workbench light/dark mode. The Sheet Theme button on any open sheet flips between light and dark.',
           },
+          'worksheet.displayDecimals': {
+            type: 'string',
+            enum: ['2', '4', '6', '8', 'full'],
+            default: '4',
+            description: 'How many decimals a cell without a number format shows. The stored value and the cell editor keep full precision, and a number format set on a cell always wins. "full" shows everything the engine keeps.',
+          },
         },
       },
     ],

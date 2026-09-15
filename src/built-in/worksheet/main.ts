@@ -25,12 +25,17 @@ import {
   discardOpenAttempt, completeAttempt, saveAttemptReview, onWorksheetDataChanged,
   getSessionGrades, attachWorksheetDatabase, recordImportedRating, upsertProgressSnapshot,
   getCampaign, startCampaign, endCampaign, listCompletedAttempts,
+  getOpenQuizSession, saveQuizSession, finishQuizSession, finishOpenQuizSessions,
+  getQuizSession, listQuizSessions, getSessionItemStates, getProblemNotes, setProblemNote,
   type WorksheetItem, type WorksheetItemSummary,
 } from './worksheetData.js';
 import { openXlsx } from './ooxml.js';
 import { detectProblems, readWorkbookTimeline, normalizeRating, ratingLabel, paperLabel, SOURCE_LABELS, KIND_LABELS, QUADRANT_LABELS, type ProblemImport, type WorkbookSnapshot } from './problemImport.js';
 import { createDashboardPane } from './dashboardPane.js';
-import { planCampaign, campaignProgress, addDays } from './campaign.js';
+import { planCampaign, campaignProgress, addDays, spanDays, workingDays, restDaysLabel, isCampaignProblem, WEEKDAY_LABELS } from './campaign.js';
+import { parseDisplayDecimals, DISPLAY_DECIMALS_CHOICES, DEFAULT_DISPLAY_DECIMALS } from './displayNumbers.js';
+import { indexPristine, solutionSegments as pureSolutionSegments, applySolutionVisibility as pureApplySolutionVisibility, type PristineIndex } from './solutionVisibility.js';
+import { syncRewards } from './rewardsSync.js';
 import { dayKey } from './progressInsights.js';
 import { IDatabaseService } from '../../services/serviceTypes.js';
 import { buildPracticeSet, itemTags } from './practiceSession.js';
@@ -93,6 +98,7 @@ interface ParallxApiLike {
     get<T>(id: { readonly id: string }): T;
     has(id: { readonly id: string }): boolean;
   };
+  icons?: { createIconHtml?(id: string, size?: number): string };
   window?: {
     showConfirmModal?(options: { message: string; detail?: string; confirmLabel?: string; danger?: boolean }): Promise<boolean>;
     showWarningMessage?(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
@@ -166,21 +172,67 @@ async function setSheetAppearance(value: SheetAppearance): Promise<void> {
   for (const fn of _appearanceListeners) { try { fn(value); } catch { /* pane torn down */ } }
 }
 
-function sheetThemeLabel(): string {
-  const appearance = getSheetAppearance();
-  if (appearance === 'app') return 'Sheet Theme: App';
-  return resolveSheetDark(appearance) ? 'Sheet Theme: Dark' : 'Sheet Theme: Light';
+// ── Decimals shown (worksheet.displayDecimals) ──────────────────────────────
+//
+// A cell without a number format paints at most this many decimals; the
+// stored value and the cell editor keep full precision. Open sheet panes
+// listen so a change on the Settings tab repaints every sheet at once.
+
+const _decimalsListeners = new Set<(decimals: number | null) => void>();
+
+function getDisplayDecimalsSetting(): string {
+  try {
+    const v = String(_api?.workspace?.getConfiguration('worksheet').get<string>('displayDecimals', DEFAULT_DISPLAY_DECIMALS) ?? DEFAULT_DISPLAY_DECIMALS);
+    return (DISPLAY_DECIMALS_CHOICES as readonly string[]).includes(v) ? v : DEFAULT_DISPLAY_DECIMALS;
+  } catch {
+    return DEFAULT_DISPLAY_DECIMALS;
+  }
 }
+
+function getDisplayDecimals(): number | null {
+  return parseDisplayDecimals(getDisplayDecimalsSetting());
+}
+
+async function setDisplayDecimalsSetting(value: string): Promise<void> {
+  try {
+    await _api?.workspace?.getConfiguration('worksheet').update('displayDecimals', value);
+  } catch (err) {
+    console.warn('[Worksheet] displayDecimals persist failed (applied for this session):', err);
+  }
+  const decimals = parseDisplayDecimals(value);
+  for (const fn of _decimalsListeners) { try { fn(decimals); } catch { /* pane torn down */ } }
+}
+
 
 /** The scratch-bar / item-header toggle: flips the sheet light↔dark (a
  *  pinned choice — 'app' is reachable in Settings). */
+/** An icon button for the sheet bars: the icon is the label and the word is
+ *  the tooltip's first line (Mufaro, 2026-09-14: no more rows of word
+ *  buttons; same pattern as the flashcards study toolbar). Falls back to the
+ *  word when the registry lacks the icon. */
+function iconBtn(iconId: string, label: string, opts: { hint?: string; primary?: boolean; danger?: boolean; onClick?: () => void } = {}): HTMLButtonElement {
+  const b = el('button', `ws-btn ws-btn--icon${opts.primary ? ' ws-btn--primary' : ''}${opts.danger ? ' ws-btn--danger' : ''}`) as HTMLButtonElement;
+  b.type = 'button';
+  paintIconBtn(b, iconId, label, opts.hint);
+  if (opts.onClick) b.addEventListener('click', opts.onClick);
+  return b;
+}
+function paintIconBtn(b: HTMLButtonElement, iconId: string, label: string, hint?: string): void {
+  let svg = '';
+  try { svg = _api?.icons?.createIconHtml?.(iconId, 16) ?? ''; } catch { svg = ''; }
+  if (svg) b.innerHTML = svg; else b.textContent = label;
+  // The app's tooltip collapses line breaks, so the word and the hint read as two sentences.
+  b.title = hint ? `${label}. ${hint}` : label;
+  b.setAttribute('aria-label', label);
+}
+/** Sun when the sheet is dark (click for light), moon when light. */
+function paintSheetThemeButton(btn: HTMLButtonElement): void {
+  const dark = resolveSheetDark();
+  paintIconBtn(btn, dark ? 'sun' : 'moon', dark ? 'Light Sheet' : 'Dark Sheet', 'Flips this practice sheet only. Light matches the real exam surface; Settings has a follow-the-app option.');
+}
 function makeSheetThemeButton(): HTMLButtonElement {
-  const btn = el('button', 'ws-btn') as HTMLButtonElement;
-  btn.textContent = sheetThemeLabel();
-  btn.title = 'Flip this practice sheet between light and dark. The app theme is unaffected; light matches the real exam surface. Settings has a follow-the-app option.';
-  btn.addEventListener('click', () => {
-    void setSheetAppearance(resolveSheetDark() ? 'light' : 'dark');
-  });
+  const btn = iconBtn('moon', 'Dark Sheet', { onClick: () => { void setSheetAppearance(resolveSheetDark() ? 'light' : 'dark'); } });
+  paintSheetThemeButton(btn);
   return btn;
 }
 
@@ -191,7 +243,7 @@ const AUTOSAVE_MS = 5000;
 // ── Univer bundle loader ────────────────────────────────────────────────────
 
 type UniverHostModule = {
-  createWorksheetHost(opts: { container: HTMLElement; snapshot?: IWorkbookData | null; darkMode?: boolean }): IWorksheetHost;
+  createWorksheetHost(opts: { container: HTMLElement; snapshot?: IWorkbookData | null; darkMode?: boolean; displayDecimals?: number | null; onFormulaError?: (summary: string, detail: string) => void }): IWorksheetHost;
 };
 
 let _univerModule: Promise<UniverHostModule> | null = null;
@@ -565,14 +617,18 @@ function createLauncherPane(container: HTMLElement) {
   container.appendChild(root);
   let disposed = false;
 
+  // Only the newest render may touch the DOM (a reward unlock announces a
+  // data change mid-render and starts another).
+  let renderSeq = 0;
   const render = async () => {
     if (disposed) return;
+    const seq = ++renderSeq;
     const [items, campaign, attempts] = await Promise.all([
       listItems().catch(() => []),
       getCampaign().catch(() => null),
       listCompletedAttempts().catch(() => []),
     ]);
-    if (disposed) return;
+    if (disposed || seq !== renderSeq) return;
     root.replaceChildren();
     root.appendChild(el('div', 'ws-home__title', 'Worksheets'));
     const grid = el('div', 'ws-launch__grid');
@@ -587,9 +643,11 @@ function createLauncherPane(container: HTMLElement) {
     const problems = items.filter((it) => it.paper);
     const rated = problems.filter((it) => normalizeRating(it.attemptState)).length;
     let dashDesc = 'Progress, pace, what to work on next.';
+    const rewards = await syncRewards(items, attempts, campaign).catch(() => null);
+    if (disposed || seq !== renderSeq) return;
     if (campaign) {
-      const p = campaignProgress(campaign, items, attempts);
-      dashDesc = p.finished ? 'Campaign complete.' : `Day ${p.dayIndex} of ${campaign.days} · ${p.doneToday} of ${p.target} today`;
+      const p = campaignProgress(campaign, items, attempts, Date.now(), rewards?.bonusXp ?? 0);
+      dashDesc = p.finished ? 'Campaign complete.' : p.restToday ? `Day ${p.dayIndex} of ${campaign.days} · rest day` : `Day ${p.dayIndex} of ${campaign.days} · ${p.doneToday} of ${p.target} today`;
     }
     tile('Start Quiz', 'Draw problems from the bank and work them in order.', 'practice', 'Quiz', true);
     tile('Dashboard', dashDesc, 'dashboard', 'Dashboard');
@@ -627,6 +685,31 @@ function createLauncherPane(container: HTMLElement) {
     listOf('Recent', recent, (it) => [it.paper ? paperLabel(it.paper) : it.sourceLabel, it.attemptState === 'open' ? 'in progress' : gradeLabel(it.attemptState), when(it.lastAttemptAt)].filter(Boolean).join(' · '));
     const added = [...items].sort((a, b) => b.createdAt - a.createdAt).slice(0, 8);
     listOf('Newly Added', added, (it) => [it.paper ? paperLabel(it.paper) : it.sourceLabel, `added ${when(it.createdAt)}`].filter(Boolean).join(' · '));
+    // Quizzes: every one you ran, open to review the work and learn from the misses.
+    const sessions = await listQuizSessions(8).catch(() => []);
+    if (disposed || seq !== renderSeq) return;
+    if (sessions.length > 0) {
+      const box = el('div', 'ws-launch__list');
+      box.appendChild(el('div', 'ws-launch__listtitle', 'Quizzes'));
+      for (const q of sessions) {
+        const grades = await getSessionGrades(q.itemIds, q.startedAt).catch(() => new Map<number, string>());
+        if (disposed || seq !== renderSeq) return;
+        const counts = { easy: 0, medium: 0, hard: 0 };
+        for (const g of grades.values()) { const r = normalizeRating(g); if (r === 'easy' || r === 'medium' || r === 'hard') counts[r]++; }
+        const row = el('button', 'ws-launch__row') as HTMLButtonElement;
+        row.type = 'button';
+        row.appendChild(el('span', `ws-bank__dot ${q.finishedAt ? 'rest' : 'open'}`));
+        const text = el('span', 'ws-launch__rowtext');
+        const started = new Date(q.startedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+        text.appendChild(el('span', 'ws-launch__rowtitle', `${started} · ${q.itemIds.length} ${q.itemIds.length === 1 ? 'problem' : 'problems'}${q.finishedAt ? '' : ' · in progress'}`));
+        text.appendChild(el('span', 'ws-launch__rowmeta', `${counts.easy} Easy · ${counts.medium} Medium · ${counts.hard} Hard · ${q.itemIds.length - grades.size} not rated`));
+        row.appendChild(text);
+        row.title = q.finishedAt ? 'Reopen this quiz to review the work and the ratings.' : 'Resume this quiz where it was.';
+        row.addEventListener('click', () => void openPastQuiz(q.id));
+        box.appendChild(row);
+      }
+      lists.appendChild(box);
+    }
     root.appendChild(lists);
   };
 
@@ -663,28 +746,71 @@ function createSettingsPane(container: HTMLElement) {
     const campTitle = el('div', 'ws-settings__sectiontitle', 'Campaign');
     campTitle.title = 'Every problem in the bank in a set number of days, drawn across all papers. Each day gets its own draw, every rating earns XP, a full day keeps the streak, a paper is cleared when nothing in it is left.';
     camp.appendChild(campTitle);
-    const problems = items.filter((it) => it.paper);
+    // Essay sheets stay out: they are flashcards now.
+    const problems = items.filter(isCampaignProblem);
     if (!campaign) {
+      // Length as days or as a last day (either edits the other), and the
+      // weekdays that carry no quota.
+      const today = dayKey(Date.now());
+      const rest = new Set<number>();
       const row = el('div', 'ws-settings__row');
       const daysIn = el('input', 'ws-input ws-input--count') as HTMLInputElement;
       daysIn.type = 'number'; daysIn.min = '1'; daysIn.max = '365'; daysIn.value = '18';
       daysIn.setAttribute('aria-label', 'Days');
-      const perDay = el('span', 'ws-settings__status');
+      const endIn = el('input', 'ws-input ws-input--date') as HTMLInputElement;
+      endIn.type = 'date'; endIn.min = today;
+      endIn.setAttribute('aria-label', 'Last Day');
+      const perDay = el('div', 'ws-settings__status');
       const readDays = () => Math.max(1, Math.min(365, parseInt(daysIn.value, 10) || 18));
-      const sync = () => { const d = readDays(); perDay.textContent = `${Math.ceil(problems.length / d)} a day, the last one on ${fmtShortDay(addDays(dayKey(Date.now()), d - 1))}`; };
+      const sync = () => {
+        const d = readDays();
+        const endDay = addDays(today, d - 1);
+        endIn.value = endDay;
+        const plan = planCampaign(problems.length, d, Date.now(), [...rest]);
+        const working = workingDays(today, d, plan.restDays);
+        const off = restDaysLabel(plan.restDays);
+        perDay.textContent = working === 0
+          ? 'Every day in that span is a rest day.'
+          : `${plan.dailyTarget} a day over ${working} working ${working === 1 ? 'day' : 'days'}, ending ${fmtShortDay(endDay)}${off ? `, ${off}` : ''}`;
+      };
       daysIn.addEventListener('input', sync);
-      sync();
-      row.append(el('span', 'ws-hint', 'Days'), daysIn, perDay);
+      endIn.addEventListener('change', () => {
+        if (/^\d{4}-\d{2}-\d{2}$/.test(endIn.value)) daysIn.value = String(Math.max(1, Math.min(365, spanDays(today, endIn.value))));
+        sync();
+      });
+      row.append(el('span', 'ws-hint', 'Days'), daysIn, el('span', 'ws-hint', 'Last Day'), endIn);
       camp.appendChild(row);
+      const restRow = el('div', 'ws-settings__row');
+      restRow.appendChild(el('span', 'ws-hint', 'Rest Days'));
+      const weekdays = el('div', 'ws-settings__weekdays');
+      for (const wd of [1, 2, 3, 4, 5, 6, 0]) {
+        const b = el('button', 'ws-chip ws-practicechip') as HTMLButtonElement;
+        b.type = 'button';
+        b.textContent = WEEKDAY_LABELS[wd].slice(0, 3);
+        b.title = `${WEEKDAY_LABELS[wd]}s carry no quota; the streak and the pace step over them`;
+        b.setAttribute('aria-pressed', 'false');
+        b.addEventListener('click', () => {
+          if (rest.has(wd)) rest.delete(wd); else if (rest.size < 6) rest.add(wd);
+          b.classList.toggle('ws-practicechip--active', rest.has(wd));
+          b.setAttribute('aria-pressed', String(rest.has(wd)));
+          sync();
+        });
+        weekdays.appendChild(b);
+      }
+      restRow.appendChild(weekdays);
+      camp.appendChild(restRow);
+      camp.appendChild(perDay);
+      sync();
       const start = el('button', 'ws-btn ws-btn--primary') as HTMLButtonElement;
       start.textContent = 'Start Campaign';
       start.disabled = problems.length === 0;
-      start.title = problems.length === 0 ? 'Import a workbook first.' : `${problems.length} problems, all of them, from today.`;
-      start.addEventListener('click', () => { void startCampaign(planCampaign(problems.length, readDays())); });
+      start.title = problems.length === 0 ? 'Import a workbook first.' : `${problems.length} problems, every one but the essay sheets, from today.`;
+      start.addEventListener('click', () => { void startCampaign(planCampaign(problems.length, readDays(), Date.now(), [...rest])); });
       camp.appendChild(start);
     } else {
       const p = campaignProgress(campaign, items, attempts);
-      camp.appendChild(el('div', 'ws-settings__status', `Day ${p.dayIndex} of ${campaign.days} · ${p.done} of ${p.total} done · ${campaign.dailyTarget} a day · ends ${fmtShortDay(addDays(campaign.startDay, campaign.days - 1))}`));
+      const off = restDaysLabel(campaign.restDays);
+      camp.appendChild(el('div', 'ws-settings__status', `Day ${p.dayIndex} of ${campaign.days} · ${p.done} of ${p.total} done · ${p.target} a day${off ? ` · ${off}` : ''} · ends ${fmtShortDay(addDays(campaign.startDay, campaign.days - 1))}`));
       const end = el('button', 'ws-btn ws-btn--danger') as HTMLButtonElement;
       end.textContent = 'End Campaign';
       end.title = 'Stops the campaign. Ratings and attempts stay; the streak, XP and draws are dropped.';
@@ -713,6 +839,24 @@ function createSettingsPane(container: HTMLElement) {
     }
     look.appendChild(row);
     root.appendChild(look);
+
+    // Decimals: what a cell without a number format paints.
+    const nums = el('section', 'ws-settings__section');
+    const numsTitle = el('div', 'ws-settings__sectiontitle', 'Decimals Shown');
+    numsTitle.title = 'A cell without a number format shows at most this many decimals. The value itself and the cell editor keep full precision, and a number format set on a cell always wins.';
+    nums.appendChild(numsTitle);
+    const numsRow = el('div', 'ws-settings__row');
+    const currentDecimals = getDisplayDecimalsSetting();
+    for (const value of DISPLAY_DECIMALS_CHOICES) {
+      const b = el('button', 'ws-chip ws-practicechip', value === 'full' ? 'Full' : value) as HTMLButtonElement;
+      b.type = 'button';
+      b.classList.toggle('ws-practicechip--active', currentDecimals === value);
+      b.setAttribute('aria-pressed', currentDecimals === value ? 'true' : 'false');
+      b.addEventListener('click', () => { void setDisplayDecimalsSetting(value).then(() => render()); });
+      numsRow.appendChild(b);
+    }
+    nums.appendChild(numsRow);
+    root.appendChild(nums);
   };
 
   void render();
@@ -1003,21 +1147,72 @@ function createGeneratePane(container: HTMLElement) {
 // The running session lives module-level so pane rebuilds cannot eat it.
 
 interface RunningPractice {
+  /** The stored session (ws_quiz_session); attempts rated inside carry it. */
+  id: string;
   ids: number[];
   index: number;
   startedAt: number;
   skipped: Set<number>;
+  /** Set when the quiz is finished and reopened to review the work. */
+  finishedAt: number | null;
 }
 let _practice: RunningPractice | null = null;
+/** Open Quiz tabs, told when a different quiz begins so they show it. */
+const _practiceListeners = new Set<() => void>();
+
+function newQuizId(): string {
+  const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+  return c?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+/** The running quiz as stored: a restart or a tool reload resumes it. */
+async function persistPractice(announce = false): Promise<void> {
+  const s = _practice;
+  if (!s) return;
+  await saveQuizSession({ id: s.id, itemIds: s.ids, position: s.index, skipped: [...s.skipped], startedAt: s.startedAt, finishedAt: s.finishedAt }, announce)
+    .catch((err) => console.warn('[Worksheet] quiz session save failed:', err));
+}
+/** A new quiz over these problems, starting at `startAt`; any open quiz closes. */
+async function beginPractice(ids: number[], startAt = 0): Promise<void> {
+  await finishOpenQuizSessions().catch(() => {});
+  _practice = { id: newQuizId(), ids: [...ids], index: Math.max(0, Math.min(startAt, ids.length - 1)), startedAt: Date.now(), skipped: new Set(), finishedAt: null };
+  await persistPractice(true);
+  for (const fn of _practiceListeners) { try { fn(); } catch { /* pane torn down */ } }
+}
+/** The quiz in memory, else the stored open one (app restart, tool reload). */
+async function restorePractice(): Promise<RunningPractice | null> {
+  if (_practice) return _practice;
+  const row = await getOpenQuizSession().catch(() => null);
+  if (!row || row.itemIds.length === 0) return null;
+  _practice = { id: row.id, ids: row.itemIds, index: Math.max(0, Math.min(row.position, row.itemIds.length)), startedAt: row.startedAt, skipped: new Set(row.skipped), finishedAt: null };
+  return _practice;
+}
+/** A past quiz reopened: the same player over the same problems, with the
+ *  work and ratings as they are now. Finished ones review; an open one resumes. */
+async function openPastQuiz(id: string): Promise<void> {
+  const row = await getQuizSession(id).catch(() => null);
+  if (!row || row.itemIds.length === 0) return;
+  _practice = {
+    id: row.id, ids: row.itemIds, startedAt: row.startedAt, skipped: new Set(row.skipped), finishedAt: row.finishedAt,
+    index: row.finishedAt ? 0 : Math.max(0, Math.min(row.position, row.itemIds.length)),
+  };
+  for (const fn of _practiceListeners) { try { fn(); } catch { /* pane torn down */ } }
+  await openWorksheet('practice-run', 'Quiz');
+}
+/** The quiz an attempt rated now belongs to, when its problem is in the running quiz. */
+function quizSessionIdFor(itemId: number): string | undefined {
+  return _practice && _practice.ids.includes(itemId) ? _practice.id : undefined;
+}
 /** Filters chosen elsewhere (the dashboard's Quiz buttons), taken by the next quiz builder. */
 let _quizPreset: { papers?: string[]; state?: string } | null = null;
 
 /** A quiz over exactly these problems, in this order. */
-function startQuizWith(ids: number[]): void {
+function startQuizWith(ids: number[], startAt = 0): void {
   if (ids.length === 0) return;
-  _practice = { ids: [...ids], index: 0, startedAt: Date.now(), skipped: new Set() };
-  if (_api?.activity) _api.activity.note('started', `a quiz of ${ids.length} ${ids.length === 1 ? 'problem' : 'problems'}`);
-  void openWorksheet('practice-run', 'Quiz');
+  void (async () => {
+    await beginPractice(ids, startAt);
+    if (_api?.activity) _api.activity.note('started', `a quiz of ${ids.length} ${ids.length === 1 ? 'problem' : 'problems'}`);
+    await openWorksheet('practice-run', 'Quiz');
+  })();
 }
 
 function createPracticeConfigPane(container: HTMLElement) {
@@ -1135,9 +1330,7 @@ function createPracticeConfigPane(container: HTMLElement) {
       err.style.display = '';
       return;
     }
-    _practice = { ids, index: 0, startedAt: Date.now(), skipped: new Set() };
-    if (_api?.activity) _api.activity.note('started', `a quiz of ${ids.length} ${ids.length === 1 ? 'problem' : 'problems'}`);
-    void openWorksheet('practice-run', 'Quiz');
+    startQuizWith(ids);
   });
 
   void (async () => {
@@ -1167,135 +1360,267 @@ function createPracticeRunPane(container: HTMLElement) {
   container.appendChild(root);
   let disposed = false;
   let player: { dispose(): void } | null = null;
+  let changeSub: { dispose(): void } | null = null;
   const bar = el('div', 'ws-sessionbar');
   const playerHost = el('div', 'ws-session__player');
   root.append(bar, playerHost);
-
-  if (!_practice) {
-    bar.remove();
-    playerHost.appendChild(el('div', 'ws-hint',
-      'No practice session is running.'));
-    const cfg = el('button', 'ws-btn ws-btn--primary') as HTMLButtonElement;
-    cfg.textContent = 'Configure a Session';
-    cfg.addEventListener('click', () => void openWorksheet('practice', 'Practice Session'));
-    playerHost.appendChild(cfg);
-    return { dispose: () => { disposed = true; root.remove(); } };
-  }
-
-  const session = _practice;
   const gradeLabelFor = (g: string | undefined) => (g ? gradeLabel(g) : '');
 
-  const renderSummary = async () => {
+  // No quiz: the tab came back with nothing to resume, or a quiz ended.
+  const renderIdle = () => {
+    bar.style.display = 'none';
+    bar.replaceChildren();
+    playerHost.replaceChildren();
+    playerHost.appendChild(el('div', 'ws-hint', 'No quiz is running.'));
+    const row = el('div', 'ws-create__controls');
+    const dash = el('button', 'ws-btn ws-btn--primary') as HTMLButtonElement;
+    dash.textContent = 'Dashboard';
+    dash.addEventListener('click', () => void openWorksheet('dashboard', 'Dashboard'));
+    const cfg = el('button', 'ws-btn') as HTMLButtonElement;
+    cfg.textContent = 'Start A Quiz';
+    cfg.addEventListener('click', () => void openWorksheet('practice', 'Quiz'));
+    row.append(dash, cfg);
+    playerHost.appendChild(row);
+  };
+
+  const run = (session: RunningPractice) => {
+    bar.style.display = '';
+    let view: 'sheet' | 'overview' = 'sheet';
+
+    const renderSummary = async () => {
+      player?.dispose();
+      player = null;
+      bar.style.display = 'none';
+      bar.replaceChildren();
+      playerHost.replaceChildren();
+      // The quiz is over: the stored session closes, so the Dashboard stops
+      // offering to resume it. Ratings stay on the problems.
+      await finishQuizSession(session.id).catch(() => {});
+      session.finishedAt ??= Date.now();
+      if (_practice === session) _practice = null;
+      if (disposed) return;
+      const wrap = el('div', 'ws-home');
+      wrap.appendChild(el('div', 'ws-home__title', 'Quiz Summary'));
+      const grades = await getSessionGrades(session.ids, session.startedAt);
+      const bank = await listItems().catch(() => []);
+      const byId = new Map(bank.map((i) => [i.id, i]));
+      const counts = { nailed: 0, partial: 0, missed: 0, ungraded: 0 };
+      const list = el('div', 'ws-home__list');
+      session.ids.forEach((id, i) => {
+        const item = byId.get(id);
+        const grade = grades.get(id);
+        const r = grade ? normalizeRating(grade) : '';
+        if (r === 'easy') counts.nailed++;
+        else if (r === 'medium') counts.partial++;
+        else if (r === 'hard') counts.missed++;
+        else counts.ungraded++;
+        const row = el('div', 'ws-itemrow');
+        const info = el('div', 'ws-itemrow__info');
+        const title = el('div', 'ws-itemrow__title', `${i + 1}. ${item?.title ?? `Item ${id}`}`);
+        if (grade) title.appendChild(el('span', `ws-chip ws-chip--${stateClass(grade)}`, gradeLabelFor(grade)));
+        else title.appendChild(el('span', 'ws-chip', session.skipped.has(id) ? 'Skipped' : 'Not Rated'));
+        info.appendChild(title);
+        info.addEventListener('click', () => { _practice = session; view = 'sheet'; goTo(i); });
+        row.appendChild(info);
+        list.appendChild(row);
+      });
+      const tagRoll = new Map<string, { n: number; nailed: number }>();
+      for (const id of session.ids) {
+        const item = byId.get(id);
+        if (!item) continue;
+        for (const t of itemTags(item.tags)) {
+          const entry = tagRoll.get(t) ?? { n: 0, nailed: 0 };
+          entry.n++;
+          if (normalizeRating(grades.get(id)) === 'easy') entry.nailed++;
+          tagRoll.set(t, entry);
+        }
+      }
+      const line = [
+        `${counts.nailed} Easy`, `${counts.partial} Medium`, `${counts.missed} Hard`,
+        counts.ungraded ? `${counts.ungraded} Not Rated` : '',
+      ].filter(Boolean).join(' · ');
+      wrap.appendChild(el('div', 'ws-hint', line));
+      if (tagRoll.size > 0) {
+        const tags = [...tagRoll.entries()]
+          .map(([t, e]) => `#${t} ${e.nailed}/${e.n}`)
+          .join(' · ');
+        wrap.appendChild(el('div', 'ws-hint', `By tag (easy / seen): ${tags}`));
+      }
+      wrap.appendChild(list);
+      const actions = el('div', 'ws-create__controls');
+      const dash = el('button', 'ws-btn ws-btn--primary') as HTMLButtonElement;
+      dash.textContent = 'Dashboard';
+      dash.addEventListener('click', () => void openWorksheet('dashboard', 'Dashboard'));
+      const over = el('button', 'ws-btn') as HTMLButtonElement;
+      over.textContent = 'Quiz Overview';
+      over.title = 'Every problem in this quiz, with your ratings and notes; click one to reopen it.';
+      over.addEventListener('click', () => { _practice = session; session.index = Math.min(session.index, session.ids.length - 1); view = 'overview'; serve(); });
+      const again = el('button', 'ws-btn') as HTMLButtonElement;
+      again.textContent = 'New Quiz';
+      again.addEventListener('click', () => void openWorksheet('practice', 'Quiz'));
+      const home = el('button', 'ws-btn') as HTMLButtonElement;
+      home.textContent = 'Home';
+      home.addEventListener('click', () => void openWorksheet('home', 'Worksheets'));
+      actions.append(dash, over, again, home);
+      wrap.appendChild(actions);
+      playerHost.appendChild(wrap);
+      _api?.activity?.note('finished', `a quiz (${line})`);
+    };
+
+    const gradeNote = el('span', 'ws-sessionbar__grade');
+    const refreshGradeNote = async () => {
+      if (disposed || session.index >= session.ids.length) return;
+      const grades = await getSessionGrades([session.ids[session.index]], session.startedAt);
+      if (disposed) return;
+      const g = grades.get(session.ids[session.index]);
+      gradeNote.textContent = g ? `Rated ${gradeLabelFor(g)}` : '';
+    };
+    changeSub?.dispose();
+    changeSub = onWorksheetDataChanged(() => void refreshGradeNote());
+
+    // Every move is stored, so a restart lands on the same item.
+    const goTo = (index: number) => {
+      session.index = Math.max(0, Math.min(session.ids.length, index));
+      void persistPractice();
+      view = 'sheet';
+      serve();
+    };
+
+    // The overview: every problem in the quiz with what happened to it, a
+    // note per problem, and a click to jump. Skipping problem 1 no longer
+    // means clicking through the rest to get back to it.
+    const renderOverview = async () => {
+      player?.dispose();
+      player = null;
+      playerHost.replaceChildren();
+      const wrap = el('div', 'ws-quiz__overview');
+      playerHost.appendChild(wrap);
+      const [states, notes, bank] = await Promise.all([
+        getSessionItemStates(session.ids, session.startedAt).catch(() => new Map<number, { grade: string; attempted: boolean; seconds: number }>()),
+        getProblemNotes(session.ids).catch(() => new Map<number, string>()),
+        listItems().catch(() => []),
+      ]);
+      if (disposed || view !== 'overview') return;
+      const byId = new Map(bank.map((i) => [i.id, i]));
+      const counts = { rated: 0, attempted: 0, skipped: 0, untouched: 0 };
+      const rows: HTMLElement[] = [];
+      session.ids.forEach((id, i) => {
+        const item = byId.get(id);
+        const st = states.get(id);
+        const sessionGrade = st?.grade ? normalizeRating(st.grade) : '';
+        // Rated before this quiz began: the rating still shows, marked as earlier.
+        const earlierGrade = !sessionGrade && item ? normalizeRating(item.attemptState) : '';
+        const gradeText = sessionGrade ? st!.grade : (item?.attemptState ?? '');
+        const rated = sessionGrade || earlierGrade;
+        const skipped = session.skipped.has(id);
+        const status = sessionGrade ? gradeLabel(st!.grade) : earlierGrade ? `${gradeLabel(item!.attemptState)} earlier` : st?.attempted ? 'Attempted' : skipped ? 'Skipped' : 'Not Started';
+        if (sessionGrade) counts.rated++; else if (st?.attempted) counts.attempted++; else if (skipped) counts.skipped++; else counts.untouched++;
+        const row = el('div', `ws-quiz__row${i === session.index ? ' ws-quiz__row--current' : ''}`);
+        row.setAttribute('role', 'button');
+        row.tabIndex = 0;
+        row.appendChild(el('span', 'ws-quiz__num', String(i + 1)));
+        const text = el('div', 'ws-quiz__rowtext');
+        text.appendChild(el('div', 'ws-quiz__rowtitle', item?.title ?? `Item ${id}`));
+        text.appendChild(el('div', 'ws-quiz__rowmeta', item?.paper ? paperLabel(item.paper) : (item?.sourceLabel ?? '')));
+        const note = notes.get(id) ?? '';
+        const preview = el('div', 'ws-quiz__notepreview', note);
+        if (!note) preview.style.display = 'none';
+        text.appendChild(preview);
+        row.appendChild(text);
+        row.appendChild(el('span', `ws-chip ${rated ? `ws-chip--${stateClass(gradeText)}` : st?.attempted ? 'ws-chip--open' : 'ws-chip--muted'}`, status));
+        row.appendChild(el('span', 'ws-quiz__time', st?.seconds ? fmtSeconds(st.seconds) : ''));
+        const noteBtn = iconBtn('notebook-pen', note ? 'Edit Note' : 'Add Note', { hint: 'A note on this problem, kept with it across quizzes.' });
+        row.appendChild(noteBtn);
+        const editor = el('div', 'ws-quiz__note');
+        editor.style.display = 'none';
+        const ta = el('textarea', 'ws-quiz__notetext') as HTMLTextAreaElement;
+        ta.value = note;
+        ta.placeholder = 'What to remember about this problem.';
+        ta.addEventListener('click', (e) => e.stopPropagation());
+        ta.addEventListener('keydown', (e) => e.stopPropagation());
+        ta.addEventListener('blur', () => {
+          const v = ta.value.trim();
+          void setProblemNote(id, v).catch(() => {});
+          preview.textContent = v;
+          preview.style.display = v ? '' : 'none';
+          paintIconBtn(noteBtn, 'notebook-pen', v ? 'Edit Note' : 'Add Note', 'A note on this problem, kept with it across quizzes.');
+        });
+        editor.appendChild(ta);
+        row.appendChild(editor);
+        noteBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const open = editor.style.display === 'none';
+          editor.style.display = open ? '' : 'none';
+          if (open) ta.focus();
+        });
+        row.addEventListener('click', () => goTo(i));
+        row.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === row) goTo(i); });
+        rows.push(row);
+      });
+      const head = el('div', 'ws-quiz__overviewhead');
+      head.appendChild(el('div', 'ws-home__title', session.finishedAt ? `Quiz from ${new Date(session.startedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : 'Quiz Overview'));
+      head.appendChild(el('span', 'ws-hint', [`${counts.rated} rated`, `${counts.attempted} attempted`, `${counts.skipped} skipped`, `${counts.untouched} not started`].join(' · ')));
+      wrap.appendChild(head);
+      for (const r of rows) wrap.appendChild(r);
+    };
+
+    const paintBar = () => {
+      bar.replaceChildren();
+      const prev = iconBtn('chevron-left', 'Previous Item', { onClick: () => goTo(session.index - 1) });
+      prev.disabled = session.index === 0;
+      bar.appendChild(prev);
+      bar.appendChild(el('span', 'ws-sessionbar__pos', `Item ${session.index + 1} of ${session.ids.length}`));
+      if (session.finishedAt) {
+        const chip = el('span', 'ws-chip ws-chip--muted', 'Reviewing');
+        chip.title = 'A finished quiz, reopened. Ratings you give still count on the problems.';
+        bar.appendChild(chip);
+      }
+      gradeNote.textContent = '';
+      bar.appendChild(gradeNote);
+      const spacer = el('div'); spacer.style.flex = '1';
+      bar.appendChild(spacer);
+      bar.appendChild(iconBtn(view === 'overview' ? 'eye' : 'list', view === 'overview' ? 'Back To Sheet' : 'Quiz Overview', {
+        hint: view === 'overview' ? 'Back to the problem you were on.' : 'Every problem in this quiz, with status, rating, time and notes; click one to jump to it.',
+        onClick: () => { view = view === 'overview' ? 'sheet' : 'overview'; serve(); },
+      }));
+      if (!session.finishedAt) bar.appendChild(iconBtn('octagon-x', 'End Quiz', { danger: true, hint: 'Stops here and shows the summary. Ratings stay on the problems.', onClick: () => { void renderSummary(); } }));
+      bar.appendChild(iconBtn('skip-forward', 'Skip Item', { hint: 'Leaves this one for another day.', onClick: () => { session.skipped.add(session.ids[session.index]); goTo(session.index + 1); } }));
+      const last = session.index === session.ids.length - 1;
+      bar.appendChild(iconBtn(last ? 'check' : 'chevron-right', last ? 'Finish Quiz' : 'Next Item', { primary: true, onClick: () => goTo(session.index + 1) }));
+    };
+
+    const serve = () => {
+      if (disposed) return;
+      if (session.index >= session.ids.length) { void renderSummary(); return; }
+      player?.dispose();
+      player = null;
+      playerHost.replaceChildren();
+      bar.style.display = '';
+      paintBar();
+      if (view === 'overview') { void renderOverview(); return; }
+      player = createSheetPane(playerHost, `item:${session.ids[session.index]}`);
+      void refreshGradeNote();
+    };
+    serve();
+  };
+
+  // The quiz in memory, or the stored one after a restart or a tool reload.
+  const init = async () => {
     player?.dispose();
     player = null;
-    bar.remove();
-    playerHost.replaceChildren();
-    const wrap = el('div', 'ws-home');
-    wrap.appendChild(el('div', 'ws-home__title', 'Session Summary'));
-    const grades = await getSessionGrades(session.ids, session.startedAt);
-    const bank = await listItems().catch(() => []);
-    const byId = new Map(bank.map((i) => [i.id, i]));
-    const counts = { nailed: 0, partial: 0, missed: 0, ungraded: 0 };
-    const list = el('div', 'ws-home__list');
-    session.ids.forEach((id, i) => {
-      const item = byId.get(id);
-      const grade = grades.get(id);
-      const r = grade ? normalizeRating(grade) : '';
-      if (r === 'easy') counts.nailed++;
-      else if (r === 'medium') counts.partial++;
-      else if (r === 'hard') counts.missed++;
-      else counts.ungraded++;
-      const row = el('div', 'ws-itemrow');
-      const info = el('div', 'ws-itemrow__info');
-      const title = el('div', 'ws-itemrow__title', `${i + 1}. ${item?.title ?? `Item ${id}`}`);
-      if (grade) title.appendChild(el('span', `ws-chip ws-chip--${stateClass(grade)}`, gradeLabelFor(grade)));
-      else title.appendChild(el('span', 'ws-chip', session.skipped.has(id) ? 'Skipped' : 'Not Graded'));
-      info.appendChild(title);
-      info.addEventListener('click', () => void openWorksheet(`item:${id}`, item?.title ?? 'Practice Item'));
-      row.appendChild(info);
-      list.appendChild(row);
-    });
-    const tagRoll = new Map<string, { n: number; nailed: number }>();
-    for (const id of session.ids) {
-      const item = byId.get(id);
-      if (!item) continue;
-      for (const t of itemTags(item.tags)) {
-        const entry = tagRoll.get(t) ?? { n: 0, nailed: 0 };
-        entry.n++;
-        if (normalizeRating(grades.get(id)) === 'easy') entry.nailed++;
-        tagRoll.set(t, entry);
-      }
-    }
-    const line = [
-      `${counts.nailed} Easy`, `${counts.partial} Medium`, `${counts.missed} Hard`,
-      counts.ungraded ? `${counts.ungraded} Not Rated` : '',
-    ].filter(Boolean).join(' · ');
-    wrap.appendChild(el('div', 'ws-hint', line));
-    if (tagRoll.size > 0) {
-      const tags = [...tagRoll.entries()]
-        .map(([t, e]) => `#${t} ${e.nailed}/${e.n}`)
-        .join(' · ');
-      wrap.appendChild(el('div', 'ws-hint', `By tag (easy / seen): ${tags}`));
-    }
-    wrap.appendChild(list);
-    const actions = el('div', 'ws-create__controls');
-    const again = el('button', 'ws-btn ws-btn--primary') as HTMLButtonElement;
-    again.textContent = 'New Session';
-    again.addEventListener('click', () => { _practice = null; void openWorksheet('practice', 'Practice Session'); });
-    const home = el('button', 'ws-btn') as HTMLButtonElement;
-    home.textContent = 'Back to Items';
-    home.addEventListener('click', () => { _practice = null; void openWorksheet('home', 'Worksheets'); });
-    actions.append(again, home);
-    wrap.appendChild(actions);
-    playerHost.appendChild(wrap);
-    _api?.activity?.note('finished', `a practice session (${line})`);
-  };
-
-  const gradeNote = el('span', 'ws-sessionbar__grade');
-  const refreshGradeNote = async () => {
-    if (disposed || session.index >= session.ids.length) return;
-    const grades = await getSessionGrades([session.ids[session.index]], session.startedAt);
+    const session = await restorePractice();
     if (disposed) return;
-    const g = grades.get(session.ids[session.index]);
-    gradeNote.textContent = g ? `Graded: ${gradeLabelFor(g)}` : '';
+    if (session) run(session); else renderIdle();
   };
-  const changeSub = onWorksheetDataChanged(() => void refreshGradeNote());
-
-  const serve = () => {
-    if (disposed) return;
-    if (session.index >= session.ids.length) { void renderSummary(); return; }
-    player?.dispose();
-    playerHost.replaceChildren();
-    bar.replaceChildren();
-    bar.appendChild(el('span', 'ws-sessionbar__pos', `Item ${session.index + 1} of ${session.ids.length}`));
-    gradeNote.textContent = '';
-    bar.appendChild(gradeNote);
-    const spacer = el('div'); spacer.style.flex = '1';
-    bar.appendChild(spacer);
-    const skip = el('button', 'ws-btn') as HTMLButtonElement;
-    skip.textContent = 'Skip Item';
-    skip.addEventListener('click', () => {
-      session.skipped.add(session.ids[session.index]);
-      session.index++;
-      serve();
-    });
-    bar.appendChild(skip);
-    const next = el('button', 'ws-btn ws-btn--primary') as HTMLButtonElement;
-    next.textContent = session.index === session.ids.length - 1 ? 'Finish Session' : 'Next Item';
-    next.addEventListener('click', () => {
-      session.index++;
-      serve();
-    });
-    bar.appendChild(next);
-    player = createSheetPane(playerHost, `item:${session.ids[session.index]}`);
-    void refreshGradeNote();
-  };
-  serve();
+  const onPractice = () => void init();
+  _practiceListeners.add(onPractice);
+  void init();
 
   return {
     dispose: () => {
       disposed = true;
-      changeSub.dispose();
+      _practiceListeners.delete(onPractice);
+      changeSub?.dispose();
       player?.dispose();
       root.remove();
     },
@@ -1619,6 +1944,9 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
   /** 'working' = user's attempt on screen; 'solution' = model solution. */
   let mode: 'working' | 'solution' = 'working';
   let revealed = false;
+  /** Set by the problem tab: re-reads the solution's visibility from the live sheet. */
+  let syncRevealFromSheet: (() => void) | null = null;
+  let visibilitySub: { dispose(): void } | null = null;
   let autosaveTimer: ReturnType<typeof setInterval> | null = null;
   let lastSavedCells = '';
   /** Problem Bank items: time on the open attempt (-1 = not a problem item). */
@@ -1669,9 +1997,17 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
     loading.remove();
     host?.dispose();
     sheetHost.replaceChildren();
-    host = mod.createWorksheetHost({ container: sheetHost, snapshot, darkMode: resolveSheetDark() });
+    host = mod.createWorksheetHost({
+      container: sheetHost, snapshot, darkMode: resolveSheetDark(), displayDecimals: getDisplayDecimals(),
+      // Evidence for the intermittent formula failures: the journal keeps it.
+      onFormulaError: (summary, detail) => { try { _api?.activity?.note('formula error', `${item?.title ?? instanceId}: ${summary}`, detail); } catch { /* no journal */ } },
+    });
     // Probe hook (tests/probes): the live host, reachable from the DOM.
     (sheetHost as unknown as { __wsHost?: unknown }).__wsHost = host;
+    // Unhiding the solution columns by hand is the same act as Reveal
+    // Solution: the button follows the sheet, whichever way the columns moved.
+    visibilitySub?.dispose();
+    visibilitySub = host.onColumnsVisibilityChanged(() => syncRevealFromSheet?.());
   };
 
   // Sheet appearance: re-skin the live engine when the setting changes
@@ -1680,9 +2016,11 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
   const applyAppearance = (appearance: SheetAppearance) => {
     host?.setDarkMode(resolveSheetDark(appearance));
     if (item) renderItemHeader();
-    else if (scratchThemeBtn) scratchThemeBtn.textContent = sheetThemeLabel();
+    else if (scratchThemeBtn) paintSheetThemeButton(scratchThemeBtn);
   };
   _appearanceListeners.add(applyAppearance);
+  const applyDecimals = (decimals: number | null) => host?.setDisplayDecimals(decimals);
+  _decimalsListeners.add(applyDecimals);
   const modeObserver = new MutationObserver(() => {
     if (getSheetAppearance() === 'app') host?.setDarkMode(appIsDark());
   });
@@ -1700,20 +2038,17 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
     titleRow.appendChild(makeSheetThemeButton());
 
     if (mode === 'working') {
-      const exportBtn = el('button', 'ws-btn') as HTMLButtonElement;
-      exportBtn.textContent = 'Export to Excel';
-      exportBtn.title = 'Save this sheet as a real .xlsx (values and formulas) in your Downloads folder.';
-      exportBtn.addEventListener('click', () => {
-        const name = (item?.title || 'practice-sheet').replace(/[^\w\- ]+/g, '').trim() || 'practice-sheet';
-        if (!host?.exportToXlsx(name)) {
-          void _api?.window?.showInformationMessage?.('Nothing on the sheet to export yet.');
-        }
-      });
-      titleRow.appendChild(exportBtn);
+      titleRow.appendChild(iconBtn('file-spreadsheet', 'Export to Excel', {
+        hint: 'Saves this sheet as a real .xlsx, values and formulas, in your Downloads folder.',
+        onClick: () => {
+          const name = (item?.title || 'practice-sheet').replace(/[^\w\- ]+/g, '').trim() || 'practice-sheet';
+          if (!host?.exportToXlsx(name)) {
+            void _api?.window?.showInformationMessage?.('Nothing on the sheet to export yet.');
+          }
+        },
+      }));
 
-      const resetBtn = el('button', 'ws-btn') as HTMLButtonElement;
-      resetBtn.textContent = 'Reset Sheet';
-      resetBtn.title = 'Restore the item to its original state. Cannot be undone.';
+      const resetBtn = iconBtn('rotate-ccw', 'Reset Sheet', { danger: true, hint: 'Restores the item to its original state. Cannot be undone.' });
       resetBtn.addEventListener('click', () => {
         void (async () => {
           const ok = await _api?.window?.showConfirmModal?.({
@@ -1730,15 +2065,9 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
       });
       titleRow.appendChild(resetBtn);
 
-      const revealBtn = el('button', 'ws-btn ws-btn--primary') as HTMLButtonElement;
-      revealBtn.textContent = 'Reveal Solution';
-      revealBtn.addEventListener('click', () => void revealSolution());
-      titleRow.appendChild(revealBtn);
+      titleRow.appendChild(iconBtn('eye', 'Reveal Solution', { primary: true, hint: 'Shows the worked solution.', onClick: () => void revealSolution() }));
     } else {
-      const backBtn = el('button', 'ws-btn') as HTMLButtonElement;
-      backBtn.textContent = 'Show My Work';
-      backBtn.addEventListener('click', () => void showWorking());
-      titleRow.appendChild(backBtn);
+      titleRow.appendChild(iconBtn('eye-off', 'Show My Work', { hint: 'Back to your own sheet.', onClick: () => void showWorking() }));
     }
     header.appendChild(titleRow);
 
@@ -1866,49 +2195,39 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
   // are hidden; Reveal unhides them beside the work, Hide puts them away;
   // neither touches the student's cells. Rating is Easy, Medium or Hard,
   // any time; time on the attempt runs while the tab is on screen.
-  type SheetShape = { columnCount?: number; columnData?: Record<number, { hd?: number; w?: number }>; cellData?: Record<number, Record<number, Record<string, unknown>>>; mergeData?: { endColumn: number }[] };
+  type SheetShape = { columnCount?: number; columnData?: Record<number, { hd?: number; w?: number }>; cellData?: Record<number, Record<number, Record<string, unknown>>>; mergeData?: { startColumn: number; endColumn: number }[] };
   const firstSheet = (snap: IWorkbookData): SheetShape | null => (snap.sheets[snap.sheetOrder[0]] as unknown as SheetShape) ?? null;
-  /** The pristine sheet's last used column: the solution ends there, and the
-   *  student works in the columns after it, side by side with the answer. */
-  let solutionEnd = -1;
+  /** The pristine sheet: where its CONTENT ends (the solution ends there and
+   *  the student works after it; a styled empty cell does not count, the
+   *  banner rows run to BL) and which cells are its own, so the student's
+   *  columns are known and never hidden (solutionVisibility.ts). */
+  let pristine: PristineIndex = { content: new Set(), lastContentCol: -1 };
   let ratingCell: { row: number; col: number } | null = null;
   const readPristine = (problem: WorksheetItem): void => {
     const snap = parseWorkbook(problem.sheetJson) as IWorkbookData | null;
     const sheet = snap ? firstSheet(snap) : null;
     if (!sheet) return;
-    let max = -1;
+    pristine = indexPristine(sheet, problem.solutionCol);
     for (const [r, row] of Object.entries(sheet.cellData ?? {})) {
+      if (Number(r) > 2) continue;
       for (const [c, cell] of Object.entries(row)) {
-        const col = Number(c);
-        if (col > max) max = col;
         // The workbook's own rating cell: "Self-Rating:" with the value beside it.
-        if (Number(r) <= 2 && typeof cell.v === 'string' && /^self-rating/i.test(cell.v.trim())) ratingCell = { row: Number(r), col: col + 1 };
+        if (typeof cell.v === 'string' && /^self-rating/i.test(cell.v.trim())) ratingCell = { row: Number(r), col: Number(c) + 1 };
       }
     }
-    for (const m of sheet.mergeData ?? []) if (m.endColumn > max) max = m.endColumn;
-    solutionEnd = max;
   };
-  /** The solution's columns: from the marker to the pristine sheet's last used column. */
-  const solutionColumnSpan = (snap: IWorkbookData): { start: number; last: number } | null => {
-    if (!item || item.solutionCol < 0) return null;
+  /** The solution's columns to hide, as runs; the student's own columns are left out. */
+  const solutionSegments = (snap: IWorkbookData): { start: number; last: number }[] => {
+    if (!item || item.solutionCol < 0) return [];
     const sheet = firstSheet(snap);
-    if (!sheet) return null;
-    const columnData = (sheet.columnData ??= {});
-    const last = solutionEnd >= item.solutionCol ? solutionEnd : Math.max(sheet.columnCount ?? 0, ...Object.keys(columnData).map(Number)) - 1;
-    return last >= item.solutionCol ? { start: item.solutionCol, last } : null;
+    return sheet ? pureSolutionSegments(sheet, item.solutionCol, pristine) : [];
   };
+  /** Rebuild visibility from the marker on: only the solution hides, never the
+   *  student's columns, whatever an earlier snapshot had flagged. */
   const applySolutionVisibility = (snap: IWorkbookData, show: boolean): IWorkbookData => {
     if (!item || item.solutionCol < 0) return snap;
     const sheet = firstSheet(snap);
-    if (!sheet) return snap;
-    const columnData = (sheet.columnData ??= {});
-    const last = solutionEnd >= item.solutionCol ? solutionEnd : Math.max(sheet.columnCount ?? 0, ...Object.keys(columnData).map(Number)) - 1;
-    for (let c = item.solutionCol; c <= last; c++) {
-      if (show) { if (columnData[c]) delete columnData[c].hd; }
-      else (columnData[c] ??= {}).hd = 1;
-    }
-    // Room to work past the solution, revealed or not.
-    sheet.columnCount = Math.max(sheet.columnCount ?? 0, last + 27);
+    if (sheet) pureApplySolutionVisibility(sheet, item.solutionCol, pristine, show);
     return snap;
   };
   /** Show the current rating in the workbook's own rating cell. */
@@ -1960,7 +2279,7 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
         b.addEventListener('click', () => {
           void (async () => {
             await persistWorking();
-            await completeAttempt(problem.id, grade, lastSavedCells, { seconds: problemSeconds });
+            await completeAttempt(problem.id, grade, lastSavedCells, { seconds: problemSeconds, sessionId: quizSessionIdFor(problem.id) });
             _api?.activity?.note('practiced', `problem "${problem.title}"`, `rated ${ratingLabel(grade)}`);
             latestRating = grade;
             if (ratingCell) host?.setCellText(ratingCell.row, ratingCell.col, ratingLabel(grade));
@@ -1971,17 +2290,14 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
       }
       titleRow.appendChild(rate);
       titleRow.appendChild(makeSheetThemeButton());
-      const exportBtn = el('button', 'ws-btn') as HTMLButtonElement;
-      exportBtn.textContent = 'Export to Excel';
-      exportBtn.title = 'Save this sheet as a real .xlsx (values and formulas) in your Downloads folder.';
-      exportBtn.addEventListener('click', () => {
-        const name = (problem.sheetName || problem.title || 'problem').replace(/[^\w\- .]+/g, '').trim() || 'problem';
-        if (!host?.exportToXlsx(name)) void _api?.window?.showInformationMessage?.('Nothing on the sheet to export yet.');
-      });
-      titleRow.appendChild(exportBtn);
-      const resetBtn = el('button', 'ws-btn') as HTMLButtonElement;
-      resetBtn.textContent = 'Reset Work';
-      resetBtn.title = 'Clear your work and the timer; the problem returns to the sheet as imported. Ratings stay.';
+      titleRow.appendChild(iconBtn('file-spreadsheet', 'Export to Excel', {
+        hint: 'Saves this sheet as a real .xlsx, values and formulas, in your Downloads folder.',
+        onClick: () => {
+          const name = (problem.sheetName || problem.title || 'problem').replace(/[^\w\- .]+/g, '').trim() || 'problem';
+          if (!host?.exportToXlsx(name)) void _api?.window?.showInformationMessage?.('Nothing on the sheet to export yet.');
+        },
+      }));
+      const resetBtn = iconBtn('rotate-ccw', 'Reset Work', { danger: true, hint: 'Clears your work and the timer; the problem returns to the sheet as imported. Ratings stay.' });
       resetBtn.addEventListener('click', () => {
         void (async () => {
           const ok = await _api?.window?.showConfirmModal?.({
@@ -2001,9 +2317,9 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
       });
       titleRow.appendChild(resetBtn);
       if (problem.solutionCol >= 0) {
-        const revealBtn = el('button', revealed ? 'ws-btn' : 'ws-btn ws-btn--primary') as HTMLButtonElement;
-        revealBtn.textContent = revealed ? 'Hide Solution' : 'Reveal Solution';
-        revealBtn.title = revealed ? 'Hide the worked solution again. Your work stays.' : 'Show the worked solution beside your work, as in the workbook.';
+        const revealBtn = revealed
+          ? iconBtn('eye-off', 'Hide Solution', { hint: 'Hides the worked solution again. Your work stays.' })
+          : iconBtn('eye', 'Reveal Solution', { primary: true, hint: 'Shows the worked solution beside your work, as in the workbook.' });
         revealBtn.addEventListener('click', () => {
           void (async () => {
             const live = host?.getSnapshot();
@@ -2013,8 +2329,9 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
             // so the canvas, scroll and selection stay. Remounting on an
             // edited snapshot redrew the whole sheet (the flash). The remount
             // remains only as the fallback when the engine refuses.
-            const span = solutionColumnSpan(live);
-            const inPlace = span ? host.setColumnsHidden(span.start, span.last - span.start + 1, !revealed) : false;
+            const segs = solutionSegments(live);
+            const h = host;
+            const inPlace = segs.length > 0 && segs.every((seg) => h.setColumnsHidden(seg.start, seg.last - seg.start + 1, !revealed));
             if (!inPlace) await mountSheet(applySolutionVisibility(live, revealed));
             lastSavedCells = '';
             await persistWorking();
@@ -2060,6 +2377,22 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
       }
     };
     headerHost.replaceChildren(header);
+    syncRevealFromSheet = () => {
+      if (disposed || !host) return;
+      const live = host.getSnapshot();
+      if (!live) return;
+      const segs = solutionSegments(live);
+      if (segs.length === 0) return;
+      const columnData = firstSheet(live)?.columnData ?? {};
+      let hidden = 0;
+      for (const seg of segs) for (let c = seg.start; c <= seg.last; c++) if (columnData[c]?.hd) hidden++;
+      const nowRevealed = hidden === 0;
+      if (nowRevealed === revealed) return;
+      revealed = nowRevealed;
+      paintHeader();
+      lastSavedCells = '';
+      void persistWorking();
+    };
     paintHeader();
     const carried = open ?? prior;
     const base = carried ? (parseWorkbook(carried.cellsJson) as IWorkbookData | null) : null;
@@ -2109,15 +2442,14 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
         bar.appendChild(spacer);
         scratchThemeBtn = makeSheetThemeButton();
         bar.appendChild(scratchThemeBtn);
-        const exportBtn = el('button', 'ws-btn') as HTMLButtonElement;
-        exportBtn.textContent = 'Export to Excel';
-        exportBtn.title = 'Save this sheet as a real .xlsx (values and formulas) in your Downloads folder.';
-        exportBtn.addEventListener('click', () => {
-          if (!host?.exportToXlsx('scratch-sheet')) {
-            void _api?.window?.showInformationMessage?.('Nothing on the sheet to export yet.');
-          }
-        });
-        bar.appendChild(exportBtn);
+        bar.appendChild(iconBtn('file-spreadsheet', 'Export to Excel', {
+          hint: 'Saves this sheet as a real .xlsx, values and formulas, in your Downloads folder.',
+          onClick: () => {
+            if (!host?.exportToXlsx('scratch-sheet')) {
+              void _api?.window?.showInformationMessage?.('Nothing on the sheet to export yet.');
+            }
+          },
+        }));
         headerHost.appendChild(bar);
         await mountSheet(_scratchCache.get(instanceId) ?? null);
       }
@@ -2144,6 +2476,8 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
       void persistWorking();
       disposed = true;
       _appearanceListeners.delete(applyAppearance);
+      _decimalsListeners.delete(applyDecimals);
+      visibilitySub?.dispose();
       modeObserver.disconnect();
       host?.dispose();
       host = null;
@@ -2214,7 +2548,10 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
         if (instanceId === 'dashboard') {
           return createDashboardPane(container, {
             openItem: (id, title) => void openWorksheet(`item:${id}`, title),
-            startQuiz: (ids) => startQuizWith(ids),
+            startQuiz: (ids, startAt) => startQuizWith(ids, startAt),
+            resumeQuiz: () => void openWorksheet('practice-run', 'Quiz'),
+            openQuiz: (id) => void openPastQuiz(id),
+            renderIcon: (id, size) => { try { return _api?.icons?.createIconHtml?.(id, size) ?? ''; } catch { return ''; } },
             configureQuiz: (preset) => { _quizPreset = preset; void openWorksheet('practice', 'Quiz'); },
             importWorkbook: () => void openWorksheet('excel-import', 'Import Workbook'),
             openSettings: () => void openWorksheet('settings', 'Worksheets Settings'),

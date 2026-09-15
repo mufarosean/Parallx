@@ -176,7 +176,84 @@ adopts the one-sheet model.
    dashed ahead of every rating given here (ws_progress, imported by
    Import Workbook, also when nothing new is selected). Rendered hidden
    in both themes by tests/probes/worksheet-dashboard-probe.mjs.
-3b. Quiz sessions with a timer per problem and a session id.
+3b. DONE 2026-09-14 (after a bad first live morning): the quiz is a stored
+   session (ws_quiz_session, migration 006: item_ids, position, skipped,
+   started_at, finished_at; one open at a time). The Quiz tab restores it
+   after an app restart or tool reload at the same item; Previous Item /
+   Next Item / Skip Item / End Quiz; rated problems stay in the list so you
+   can go back; attempts rated inside carry session_id. Today's campaign
+   quiz is the WHOLE draw (rated included) opened at the first unrated one,
+   and the Dashboard shows Resume Quiz (i of n) while one is open. Lesson:
+   a study session must never be held only in memory, and never rebuild the
+   list under the user.
+3h. DONE 2026-09-14: the solution span is measured by CONTENT. readPristine
+   counted every cell in cellData, styled empties included, and the
+   workbook's banner rows are styled out to BL, so the solution span became
+   K..BL and the only work room was BM onward. Mufaro revealed the solution,
+   worked beside it (W..AC), rated, reopened: hidden again with his work
+   inside ("my work is not persisted"). solutionVisibility.ts (pure, tested):
+   span = marker..last cell with a value/formula/rich text (merges only when
+   they start in the span); a column the student wrote in is never hidden;
+   visibility is rebuilt from the marker on at every mount, so stale hd flags
+   in a snapshot cannot hide work; the in-place Reveal/Hide toggles the same
+   segments. Verified over his real attempts 93-104: no work column hidden.
+3i. DONE 2026-09-14: Enter after a Tab run. Univer 0.25 records the run's
+   start cell on the first Tab (ShortcutExperienceService, not exported) and
+   forgets it only when Enter consumes it, so a click or arrow move followed
+   by typing and Enter jumped back to the old column. univerHost finds the
+   service in the injector by shape (remove/getCurrentBySearch/addOrUpdate)
+   and clears the TAB memory on every SetSelectionsOperation that is not
+   inside a Tab step (MoveSelectionEnterAndTabCommand with TAB, or our
+   Shift+Tab reverse move). probeState().tabRunMemory reports the lookup.
+   OPEN: dragging a reference highlight in the formula editor can rewrite
+   every reference from the drawn selections (sheets-formula-ui rebuild
+   branch), dropping $ on references that did not move; engine bug, needs a
+   keyboard/pointer harness to reproduce and a host-side restore of the
+   untouched tokens.
+3j. DONE 2026-09-14 (morning, after his go-ahead): the quiz as a study
+   surface. Quiz Overview (list icon in the quiz bar): every problem of the
+   quiz with Not Started / Attempted / Skipped / the rating, time spent, a
+   note per problem (ws_problem_note, migration 007, kept across quizzes),
+   click to jump. Home lists Quizzes (ws_quiz_session, newest first, rating
+   counts); a finished one reopens in review (Reviewing chip, no End Quiz),
+   an open one resumes. Rewards (rewards.ts pure + rewardsSync.ts; table
+   ws_reward): 17 milestones with XP bonuses added to the campaign's XP
+   (campaignProgress bonusXp) so they move the level; Dashboard Rewards
+   section, earned first with dates and a New badge for the last 10 min.
+   Formula failures: NOT reproduced by the engine in Node, the facade, typed
+   input (webContents.insertText + Return; sendInputEvent keys never reach
+   Univer), nine mount/dispose cycles, or three live hosts. Instrumented:
+   univerHost reports every error value with formula text and engine health
+   (executors, MULTIPLY/SUM present, hosts alive, seconds since mount) via
+   opts.onFormulaError -> activity journal verb 'formula error'.
+3k. DONE 2026-09-14 (late morning): dollar signs survive a reference drag.
+   Reproduced in a hidden host probe (scratch drag-probe: probeStartEditing
+   + webContents.insertText, then a mouse drag on the highlighted box's top
+   edge = move, bottom edge = resize): the editor rewrites every reference
+   from the drawn boxes and $A$1 became A1. Fix in univerHost: around each
+   ReplaceTextRunsCommand on the cell/formula-bar editor, read the text
+   before and after; formulaRefs.ts (pure) restores markers on references
+   that lost them when a reference moved, when every reference lost them,
+   or when the pointer was pressed while editing (a drag dropped in place);
+   the corrected body is written back with getBodySlice. F4 and typing are
+   left alone. Quiz flows re-verified in the real app hidden over a copy of
+   his DB (tests/probes/worksheet-quiz-flow-probe.mjs): zero renderer
+   errors. Render races fixed with a render sequence guard (Home,
+   Dashboard); the overview shows ratings given before the quiz as
+   "<grade> earlier".
+3l. DONE 2026-09-14: spills survive a reopen. An array formula such as
+   =B7:B9 keeps its spilled cells in the engine's array-formula data, which
+   the saved snapshot does not carry (no formula resource in getSnapshot),
+   so every remount showed only the first cell with its cached value. The
+   host now runs a full recalculation once the engine reaches the Rendered
+   lifecycle stage (a 0 ms call did nothing; a 1500 ms timer is the
+   fallback). Probe: scratch spill-probe3 (type, snapshot, remount, read).
+3m. DONE 2026-09-14: Reveal Solution follows the sheet. The button kept its
+   own flag, so unhiding the solution columns by hand and then clicking
+   Reveal redid the work. univerHost.onColumnsVisibilityChanged (the
+   engine's hide/show column mutations) drives syncRevealFromSheet in the
+   problem tab: revealed = no solution-segment column hidden; the header
+   repaints and the attempt is saved. Verified in worksheet-quiz-flow-probe.
 3c. DONE 2026-09-08: the Campaign (campaign.ts, pure, unit-tested; tables
    ws_campaign and ws_daily_draw, migration 004). Every problem in the bank
    in N days: a daily quota, a draw fixed per day across all papers
@@ -185,6 +262,36 @@ adopts the one-sheet model.
    (10 a problem, 5 more for Easy, 50 for a full day) with ten level titles,
    one square per day, papers cleared, and Review Due Flashcards as the
    day's other quest. Sits at the top of the Dashboard tab.
+3d. DONE 2026-09-14: rest days (migration 005, ws_campaign.rest_days as a
+   JSON weekday array). Chosen as weekday chips on the Settings tab, with a
+   Last Day date field that edits the day count. The daily target is set
+   over working days; rest squares are hollow, never full or missed; the
+   streak and the pace step over them. On a rest day the card reads Rest,
+   draws nothing, and offers Quiz Due Problems (the repeats) plus Draw
+   Anyway. Unit tests: tests/unit/worksheetCampaignRestDays.test.ts.
+3e. DONE 2026-09-14: essay sheets (kind 'essay', the X.RF_Essay sheets, one
+   per paper) are not campaign problems: isCampaignProblem in campaign.ts
+   keeps them out of the total, the draw, XP and paper clearing. They stay
+   in the bank and the custom quiz's Essay chip; their questions are
+   flashcards already.
+3f. DONE 2026-09-14: the quota follows the bank. campaignProgress derives the
+   target from the campaign's problems over the planned working days (the
+   stored daily_target is the plan as it was started); a saved daily draw is
+   filtered to current campaign problems and topped up to the target on the
+   next Dashboard open. Both came from the first live run: the campaign was
+   started before the essay exclusion shipped, so its stored 18 a day and
+   saved draw carried three essay sheets.
+3g. DONE 2026-09-14: decimals shown. Univer paints an unformatted number
+   with ~12 significant digits (0.333333333333), and Mufaro was reformatting
+   cells by hand. Setting worksheet.displayDecimals ('2' | '4' | '6' | '8' |
+   'full', default '4', chips on the Settings tab under Decimals Shown). The
+   engine host registers a CELL_CONTENT interceptor (priority 20) that
+   rounds the painted value of a number whose style has no number format
+   (or the 'General' pattern); the stored value, formulas, the editor, the
+   snapshot and exports keep full precision; an explicit format always wins.
+   Pure rounding in displayNumbers.ts (tests/unit/worksheetDisplayDecimals
+   .test.ts); a change repaints open sheets via SheetSkeletonManagerService
+   .reCalculate(). Verified with a hidden engine render (scratch probe).
 4. Essay sheets and the Flashcards sheet into a flashcards deck. Pictures
    need the engine's drawing preset in the host; EMF/WMF pictures (16 of
    45) cannot be shown at all and are counted at import.

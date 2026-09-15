@@ -66,6 +66,13 @@ body > [data-radix-popper-content-wrapper] :where(input, textarea, select) {
 }
 .ws-btn--primary:hover { background: var(--px-accent-hover); border-color: transparent; }
 .ws-btn--danger:hover { color: var(--px-danger); border-color: var(--px-danger); }
+/* Icon buttons: the bar's actions as glyphs, the word in the tooltip. */
+.ws-btn--icon { width: 30px; height: 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; color: var(--px-text-secondary); }
+.ws-btn--icon svg { width: 16px; height: 16px; }
+.ws-btn--icon:hover { color: var(--px-text); }
+.ws-btn--icon.ws-btn--primary { color: var(--px-text-on-accent); }
+.ws-btn--icon:disabled { opacity: 0.4; cursor: default; }
+.ws-btn--icon:disabled:hover { border-color: var(--px-border-strong); color: var(--px-text-secondary); }
 
 /* ── Item browser ── */
 
@@ -224,6 +231,7 @@ body > [data-radix-popper-content-wrapper] :where(input, textarea, select) {
   border-radius: var(--px-radius-sm);
 }
 .ws-input--count { flex: 0 0 64px; }
+.ws-input--date { flex: 0 0 auto; font-family: inherit; }
 .ws-textarea {
   width: 100%; padding: 6px 9px; font-size: var(--px-text-sm); color: var(--px-text);
   background: var(--px-bg-inset); border: 1px solid var(--px-border-strong);
@@ -417,6 +425,8 @@ body > [data-radix-popper-content-wrapper] button { color: inherit; }
 .ws-camp__day--partial { background: color-mix(in srgb, var(--px-warning) 75%, transparent); }
 .ws-camp__day--missed { background: color-mix(in srgb, var(--px-danger) 45%, transparent); }
 .ws-camp__day--today { box-shadow: inset 0 0 0 2px var(--px-accent); }
+.ws-camp__day--rest { background: transparent; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--px-text-muted) 45%, transparent); }
+.ws-camp__day--today.ws-camp__day--rest { box-shadow: inset 0 0 0 2px var(--px-accent); }
 .ws-camp__papers { display: flex; flex-wrap: wrap; gap: 4px; }
 .ws-camp__paper { margin-left: 0; }
 .ws-camp__foot { display: flex; justify-content: flex-end; }
@@ -444,6 +454,34 @@ body > [data-radix-popper-content-wrapper] button { color: inherit; }
 .ws-settings__section { display: flex; flex-direction: column; gap: var(--px-space-2); padding-top: var(--px-space-4); border-top: 1px solid var(--px-border); }
 .ws-settings__sectiontitle { font-size: var(--px-text-base); font-weight: 600; color: var(--px-text); }
 .ws-settings__row { display: flex; align-items: center; gap: var(--px-space-2); flex-wrap: wrap; }
+.ws-settings__weekdays { display: flex; gap: 4px; flex-wrap: wrap; }
+
+/* ── Quiz overview: every problem, its status, its note, a click to jump ── */
+.ws-quiz__overview { display: flex; flex-direction: column; gap: var(--px-space-2); padding: var(--px-space-4) var(--px-space-5); overflow-y: auto; }
+.ws-quiz__overviewhead { display: flex; align-items: baseline; gap: var(--px-space-3); flex-wrap: wrap; margin-bottom: var(--px-space-2); }
+.ws-quiz__row { display: grid; grid-template-columns: 2.2em minmax(0, 1fr) auto auto auto; align-items: center; gap: var(--px-space-3); padding: var(--px-space-2) var(--px-space-3); border: 1px solid var(--px-border); border-radius: var(--px-radius-sm); background: var(--px-bg-elevated); cursor: pointer; color: var(--px-text); }
+.ws-quiz__row:hover { border-color: var(--px-base-35); }
+.ws-quiz__row:focus-visible { outline: 2px solid var(--px-accent); outline-offset: 1px; }
+.ws-quiz__row--current { border-color: var(--px-accent); }
+.ws-quiz__num { color: var(--px-text-muted); font-variant-numeric: tabular-nums; text-align: right; }
+.ws-quiz__rowtext { min-width: 0; }
+.ws-quiz__rowtitle { font-weight: 600; font-size: var(--px-text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-quiz__rowmeta { font-size: var(--px-text-xs); color: var(--px-text-muted); }
+.ws-quiz__time { font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; min-width: 3.5em; text-align: right; }
+.ws-quiz__note { grid-column: 1 / -1; }
+.ws-quiz__notetext { width: 100%; box-sizing: border-box; min-height: 64px; resize: vertical; font: inherit; font-size: var(--px-text-sm); color: var(--px-text); background: var(--px-bg-inset); border: 1px solid var(--px-border-strong); border-radius: var(--px-radius-sm); padding: 6px 9px; }
+.ws-quiz__notepreview { font-size: var(--px-text-xs); color: var(--px-text-secondary); white-space: pre-wrap; margin-top: 2px; }
+
+/* ── Rewards ── */
+.ws-rewards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--px-space-2); margin-bottom: var(--px-space-5); }
+.ws-reward { display: flex; gap: var(--px-space-3); align-items: center; padding: var(--px-space-3); border: 1px solid var(--px-border); border-radius: var(--px-radius-sm); background: var(--px-bg-elevated); min-width: 0; }
+.ws-reward--locked { opacity: 0.55; }
+.ws-reward__icon { flex: 0 0 auto; width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; color: var(--px-accent); }
+.ws-reward--locked .ws-reward__icon { color: var(--px-text-muted); }
+.ws-reward__icon svg { width: 20px; height: 20px; }
+.ws-reward__text { min-width: 0; }
+.ws-reward__title { font-weight: 600; font-size: var(--px-text-sm); display: flex; align-items: center; gap: var(--px-space-1); }
+.ws-reward__meta { font-size: var(--px-text-xs); color: var(--px-text-muted); }
 .ws-settings__status { font-size: var(--px-text-sm); color: var(--px-text-secondary); font-variant-numeric: tabular-nums; }
 /* The dashboard without a campaign: one quiet line. */
 .ws-camp--idle { flex-direction: row; align-items: center; justify-content: space-between; gap: var(--px-space-3); padding: var(--px-space-2) var(--px-space-4); }

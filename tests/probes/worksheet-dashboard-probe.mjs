@@ -67,11 +67,18 @@ export function onWorksheetDataChanged() { return { dispose() {} }; }
 const campaignStart = NOW - 3 * DAY - 3 * 3600000;
 const sd = new Date(campaignStart);
 const startDay = sd.getFullYear() + '-' + String(sd.getMonth() + 1).padStart(2, '0') + '-' + String(sd.getDate()).padStart(2, '0');
-export async function getCampaign() { return ${empty || process.argv.includes('--no-campaign') ? 'null' : '{ startDay, days: 18, dailyTarget: Math.ceil(items.length / 18), startedAt: campaignStart }'}; }
+export async function getCampaign() { return ${empty || process.argv.includes('--no-campaign') ? 'null' : '{ startDay, days: 18, dailyTarget: Math.ceil(items.length / 18), startedAt: campaignStart, restDays: [5] }'}; }
 export async function startCampaign() {}
 export async function endCampaign() {}
 export async function getDailyDraw() { return null; }
 export async function saveDailyDraw() {}
+export async function listRewardUnlocks() { return new Map([['first-step', NOW - 2 * DAY], ['full-day', NOW - 60000]]); }
+export async function unlockRewards() {}
+export async function countFinishedQuizSessions() { return 3; }
+export async function getQuizSession() { return null; }
+export async function listQuizSessions() { return []; }
+// --resume: a quiz left open at its third item, so the card leads with Resume Quiz.
+export async function getOpenQuizSession() { return ${process.argv.includes('--resume') ? "{ id: 'q1', itemIds: items.slice(0, 9).map((i) => i.id), position: 2, skipped: [], startedAt: NOW - 3600000, finishedAt: null }" : 'null'}; }
 // Ratings inside the campaign window so the strip and the streak have something to show.
 for (const it of items.filter((x) => x.attemptState && x.lastAttemptAt >= campaignStart)) { /* already counted through attempts */ }
 for (let d = 0; d < 3; d++) {

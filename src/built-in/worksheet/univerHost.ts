@@ -21,13 +21,18 @@ import { UniverSheetsDrawingPreset } from '@univerjs/presets/preset-sheets-drawi
 import UniverPresetSheetsDrawingEnUS from '@univerjs/presets/preset-sheets-drawing/locales/en-US';
 import { IFunctionService } from '@univerjs/engine-formula';
 import { IContextMenuService, ContextMenuPosition, IShortcutService, KeyCode, MetaKeys } from '@univerjs/ui';
-import { ICommandService, IContextService, CommandType, Direction, EDITOR_ACTIVATED, FOCUSING_SHEET, FOCUSING_UNIVER_EDITOR } from '@univerjs/core';
-import { IEditorBridgeService, MoveSelectionCommand, SetCellEditVisibleOperation, SheetScrollManagerService } from '@univerjs/sheets-ui';
+import { ICommandService, IContextService, IUniverInstanceService, UniverInstanceType, LifecycleService, LifecycleStages, CommandType, Direction, EDITOR_ACTIVATED, FOCUSING_SHEET, FOCUSING_UNIVER_EDITOR, DOCS_NORMAL_EDITOR_UNIT_ID_KEY, DOCS_FORMULA_BAR_EDITOR_UNIT_ID_KEY, getBodySlice, type DocumentDataModel } from '@univerjs/core';
+import { ReplaceTextRunsCommand } from '@univerjs/docs-ui';
+import { sequenceNodeType } from '@univerjs/engine-formula';
+import { IEditorBridgeService, MoveSelectionCommand, MoveSelectionEnterAndTabCommand, SetCellEditVisibleOperation, SheetScrollManagerService, SheetSkeletonManagerService } from '@univerjs/sheets-ui';
+import { SheetInterceptorService, INTERCEPTOR_POINT, SetSelectionsOperation, SetColHiddenMutation, SetColVisibleMutation } from '@univerjs/sheets';
 import { DeviceInputEventType, IRenderManagerService, type IRender } from '@univerjs/engine-render';
 import * as XLSX from 'xlsx';
 import type { IWorkbookData, Univer } from '@univerjs/core';
 import type { FUniver } from '@univerjs/core/lib/facade';
 import { ATHENA_FUNCTIONS } from './athenaFunctions.js';
+import { roundForDisplay } from './displayNumbers.js';
+import { restoreAbsoluteMarkers } from './formulaRefs.js';
 import '@univerjs/presets/lib/styles/preset-sheets-core.css';
 import '@univerjs/presets/lib/styles/preset-sheets-drawing.css';
 
@@ -50,13 +55,30 @@ export interface IWorksheetHostOptions {
    * never watches the app theme.
    */
   readonly darkMode?: boolean;
+  /**
+   * Decimals an unformatted number paints (worksheet.displayDecimals);
+   * null shows what the engine keeps. The stored value and the cell editor
+   * keep full precision, and a number format set on a cell always wins.
+   */
+  readonly displayDecimals?: number | null;
+  /**
+   * Called when a formula in this sheet evaluates to an error value, with a
+   * one-line diagnosis (formula, error, engine health). The pane records it
+   * in the activity journal so an intermittent failure leaves evidence.
+   */
+  readonly onFormulaError?: (summary: string, detail: string) => void;
 }
+
+/** Live hosts on the page (the quiz mounts and disposes one per problem). */
+let _hostsAlive = 0;
 
 export interface IWorksheetHost {
   /** Serializable full-workbook state (cells, formats, formulas). */
   getSnapshot(): IWorkbookData | null;
   /** Flip the engine chrome between light and dark at runtime. */
   setDarkMode(dark: boolean): void;
+  /** Change how many decimals unformatted numbers paint, and repaint. */
+  setDisplayDecimals(decimals: number | null): void;
   /**
    * Export the current sheet to a real .xlsx (values + formulas; styling is
    * not carried — SheetJS community edition). Downloads via the browser
@@ -84,6 +106,17 @@ export interface IWorksheetHost {
   setEditorFollowMode(mode: 'off' | 'dom'): void;
   /** Open the sheet's own right-click menu at a viewport point (probes; the app never needs it). */
   openContextMenu(clientX: number, clientY: number): void;
+  /** Probes: write a formula through the facade and read a computed value back. */
+  probeSetFormula(row: number, col: number, formula: string): boolean;
+  probeReadValue(row: number, col: number): unknown;
+  /** Probes: make a cell the active selection, as a click would. */
+  probeActivate(row: number, col: number): boolean;
+  /** Probes: open the cell editor on the active cell, as a double-click would. */
+  probeStartEditing(): boolean;
+  /** Probes: force a full recalculation. */
+  probeRecalculate(): boolean;
+  /** Fires after the engine hides or shows columns by any means: the sheet's own menu, our button, an undo. */
+  onColumnsVisibilityChanged(listener: () => void): { dispose(): void };
   /** Tear down the engine and all DOM it created. */
   dispose(): void;
 }
@@ -282,6 +315,28 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
 
   let disposed = false;
 
+  // Array formulas keep their spilled cells in the engine, not in the saved
+  // snapshot, so a sheet reopened from a snapshot showed only the first cell
+  // of every spill (Mufaro, 2026-09-14: "formula spillage does not work
+  // consistently"). A full recalculation on mount brings them back; the
+  // snapshot itself does not change, so the autosave baseline holds.
+  // The engine registers the workbook's formulas a moment after creation
+  // (a recalculation at 0 ms did nothing in the probe); it runs once the
+  // engine reports itself rendered, with a timer as the fallback.
+  {
+    let recalculated = false;
+    const recalculate = () => {
+      if (disposed || recalculated) return;
+      recalculated = true;
+      try { univerAPI.getFormula().executeCalculation(); } catch (err) { console.warn('[Worksheet] recalculation on mount failed:', err); }
+    };
+    try {
+      const lifecycle = univer.__getInjector().get(LifecycleService);
+      const sub = lifecycle.lifecycle$.subscribe((stage) => { if (stage >= LifecycleStages.Rendered) { sub.unsubscribe(); setTimeout(recalculate, 150); } });
+    } catch { /* fallback timer below */ }
+    setTimeout(recalculate, 1500);
+  }
+
   // Excel's Shift+Tab and Shift+Enter WHILE EDITING a cell: commit and move
   // left, or up. Univer ends the edit on Tab and Enter but reads no modifier
   // (its _moveSelection maps TAB to RIGHT and ENTER to DOWN outright), so
@@ -321,8 +376,210 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
   // selection outright, and no key does anything until the next click
   // (probe, 2026-09-08). The shortcut service runs the highest-priority match
   // for a binding, so a plain move steps in front of it.
-  const REVERSE_MOVE_ID = 'parallx.sheet.move-selection-reverse';
   const engineRegistrations: { dispose(): void }[] = [];
+  // Formula errors leave evidence (Mufaro, 2026-09-14: formulas failing
+  // intermittently in a long session, cleared by a restart, never reproduced
+  // outside the app). Every calculation result is scanned for error values;
+  // each one is reported once per cell with the formula text and the state
+  // of the engine at that moment.
+  _hostsAlive++;
+  const mountedAt = Date.now();
+  const reportedErrors = new Set<string>();
+  const ERROR_VALUE = /^#(NAME\?|VALUE!|REF!|DIV\/0!|N\/A|NUM!|NULL!|SPILL!|CALC!)$/;
+  try {
+    const injector = univer.__getInjector();
+    const fnService = injector.get(IFunctionService);
+    engineRegistrations.push(injector.get(ICommandService).onCommandExecuted((c) => {
+      if (c.id !== 'formula.mutation.set-formula-calculation-result') return;
+      const unitData = (c.params as { unitData?: Record<string, Record<string, Record<string, Record<string, { v?: unknown }>>>> } | undefined)?.unitData;
+      if (!unitData) return;
+      const sheet = univerAPI.getActiveWorkbook()?.getActiveSheet();
+      for (const sheets of Object.values(unitData)) for (const rows of Object.values(sheets)) for (const [r, cols] of Object.entries(rows)) for (const [col, cell] of Object.entries(cols)) {
+        const v = cell?.v;
+        if (typeof v !== 'string' || !ERROR_VALUE.test(v)) continue;
+        const row = Number(r), column = Number(col);
+        let formula = '';
+        try { formula = String(sheet?.getRange(row, column)?.getFormula() ?? ''); } catch { formula = '?'; }
+        const key = `${row}:${column}:${formula}:${v}`;
+        if (reportedErrors.has(key)) continue;
+        reportedErrors.add(key);
+        const executors = fnService.getExecutors().size;
+        const health = { executors, multiply: fnService.hasExecutor('MULTIPLY'), sum: fnService.hasExecutor('SUM'), hostsAlive: _hostsAlive, sinceMountS: Math.round((Date.now() - mountedAt) / 1000), decimals: displayDecimals };
+        const cellName = `${(() => { let n = column + 1, s = ''; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; })()}${row + 1}`;
+        const summary = `${cellName} ${formula || '(no formula)'} -> ${v}`;
+        console.warn('[WorksheetHost] formula error', summary, health);
+        try { opts.onFormulaError?.(summary, JSON.stringify(health)); } catch { /* journal unavailable */ }
+      }
+    }));
+  } catch (err) {
+    console.warn('[Worksheet] formula error watch not attached:', err);
+  }
+
+  const REVERSE_MOVE_ID = 'parallx.sheet.move-selection-reverse';
+  // Unformatted numbers paint with a bounded number of decimals (Mufaro,
+  // 2026-09-14: every computed cell showed twelve). A cell-content
+  // interceptor rounds the painted value of a number that carries no number
+  // format; the stored value, formulas and the cell editor keep full
+  // precision, as they do under an Excel number format.
+  let displayDecimals: number | null = opts.displayDecimals ?? null;
+  try {
+    const interceptors = univer.__getInjector().get(SheetInterceptorService);
+    engineRegistrations.push(interceptors.intercept(INTERCEPTOR_POINT.CELL_CONTENT, {
+      id: 'parallx.sheet.display-decimals',
+      priority: 20,
+      handler: (cell, location, next) => {
+        if (!cell || typeof cell.v !== 'number' || displayDecimals === null) return next(cell);
+        const pattern = location.workbook.getStyles().get(cell.s)?.n?.pattern;
+        if (pattern && pattern !== 'General') return next(cell);
+        const v = roundForDisplay(cell.v, displayDecimals);
+        return v === cell.v ? next(cell) : next({ ...cell, v });
+      },
+    }));
+  } catch (err) {
+    console.warn('[Worksheet] display decimals not applied:', err);
+  }
+  // Enter after a Tab run. Excel returns to the column where the run began,
+  // and forgets the run the moment you navigate any other way (a click, an
+  // arrow key). Univer 0.25 records the run's start on the first Tab and
+  // forgets it only when Enter uses it, so a click elsewhere followed by
+  // typing and Enter jumps back to that old column (Mufaro, 2026-09-14:
+  // "Enter sends you to an unpredictable cell"). The service holding that
+  // memory is not exported; it is found in the injector by its shape and
+  // cleared on every selection change that is not part of a Tab run.
+  type TabRunMemory = { remove(search: { unitId: string; sheetId: string; keycode: number }): unknown; getCurrentBySearch: unknown; addOrUpdate: unknown };
+  type InjectorShape = {
+    dependencyCollection?: { dependencyMap?: Map<unknown, unknown> };
+    resolvedDependencyCollection?: { resolvedDependencies?: Map<unknown, unknown[]> };
+    children?: InjectorShape[];
+    get(id: unknown): unknown;
+  };
+  const looksLikeTabRunMemory = (o: unknown): o is TabRunMemory =>
+    !!o && typeof o === 'object' && typeof (o as TabRunMemory).remove === 'function'
+    && typeof (o as TabRunMemory).getCurrentBySearch === 'function' && typeof (o as TabRunMemory).addOrUpdate === 'function';
+  let tabRunMemory: TabRunMemory | null = null;
+  const findTabRunMemory = (): TabRunMemory | null => {
+    if (tabRunMemory) return tabRunMemory;
+    const queue: InjectorShape[] = [univer.__getInjector() as unknown as InjectorShape];
+    while (queue.length) {
+      const inj = queue.shift()!;
+      for (const items of inj.resolvedDependencyCollection?.resolvedDependencies?.values() ?? []) {
+        const inst = Array.isArray(items) ? items[0] : items;
+        if (looksLikeTabRunMemory(inst)) return (tabRunMemory = inst);
+      }
+      for (const id of inj.dependencyCollection?.dependencyMap?.keys() ?? []) {
+        const proto = typeof id === 'function' ? (id as { prototype?: unknown }).prototype : null;
+        if (proto && looksLikeTabRunMemory(proto)) {
+          try { const inst = inj.get(id); if (looksLikeTabRunMemory(inst)) return (tabRunMemory = inst); } catch { /* not constructible from here */ }
+        }
+      }
+      queue.push(...(inj.children ?? []));
+    }
+    return null;
+  };
+  try {
+    const commands = univer.__getInjector().get(ICommandService);
+    let tabRunStepAt = 0;
+    const isTabStep = (c: { id: string; params?: unknown }): boolean =>
+      (c.id === MoveSelectionEnterAndTabCommand.id && (c.params as { keycode?: number } | undefined)?.keycode === KeyCode.TAB)
+      || (c.id === REVERSE_MOVE_ID && (c.params as { direction?: Direction } | undefined)?.direction === Direction.LEFT);
+    engineRegistrations.push(commands.beforeCommandExecuted((c) => { if (isTabStep(c)) tabRunStepAt = Date.now(); }));
+    engineRegistrations.push(commands.onCommandExecuted((c) => {
+      if (c.id !== SetSelectionsOperation.id || Date.now() - tabRunStepAt < 50) return;
+      const unitId = univerAPI.getActiveWorkbook()?.getId();
+      const sheetId = univerAPI.getActiveWorkbook()?.getActiveSheet()?.getSheetId();
+      if (!unitId || !sheetId) return;
+      try { findTabRunMemory()?.remove({ unitId, sheetId, keycode: KeyCode.TAB }); } catch { /* engine default stays */ }
+    }));
+  } catch (err) {
+    console.warn('[Worksheet] Tab-run memory guard not attached:', err);
+  }
+  // Dollar signs survive a reference drag (Mufaro, 2026-09-14; reproduced
+  // by a probe). Dragging or resizing a highlighted reference box makes the
+  // formula editor rewrite every reference from the drawn boxes, which carry
+  // no absolute markers, so $A$1 elsewhere in the formula came back as A1.
+  // The rewrite is one ReplaceTextRunsCommand on the cell editor: the text
+  // before it is read just ahead of the command, compared with the text
+  // after, and when the markers were dropped by such a rewrite (a reference
+  // moved, or every reference lost them) the editor gets the corrected text
+  // back. F4 toggles and typing never match that shape (formulaRefs.ts).
+  try {
+    const injector = univer.__getInjector();
+    const commands = injector.get(ICommandService);
+    const instances = injector.get(IUniverInstanceService);
+    const EDITORS = new Set<string>([DOCS_NORMAL_EDITOR_UNIT_ID_KEY, DOCS_FORMULA_BAR_EDITOR_UNIT_ID_KEY]);
+    const editorText = (unitId: string): string | null => {
+      const doc = instances.getUnit<DocumentDataModel>(unitId, UniverInstanceType.UNIVER_DOC);
+      const stream = doc?.getBody()?.dataStream;
+      return typeof stream === 'string' ? stream.replace(/\r\n$/, '') : null;
+    };
+    let before: { unitId: string; text: string } | null = null;
+    let restoring = false;
+    // A reference box is dragged with the pointer while the editor is open;
+    // the rewrite lands during the drag or right after the release.
+    let pointerDownAt = 0;
+    let pointerUpAt = 0;
+    const bridge = injector.get(IEditorBridgeService);
+    const onPointerDown = () => { try { if (bridge.isVisible().visible === true) pointerDownAt = Date.now(); } catch { /* engine gone */ } };
+    const onPointerUp = () => { if (pointerDownAt) pointerUpAt = Date.now(); };
+    opts.container.addEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('pointerup', onPointerUp, true);
+    engineRegistrations.push({ dispose: () => { opts.container.removeEventListener('pointerdown', onPointerDown, true); document.removeEventListener('pointerup', onPointerUp, true); } });
+    const duringDrag = (): boolean => {
+      if (!pointerDownAt) return false;
+      const now = Date.now();
+      if (now - pointerDownAt > 60000) return false;
+      return pointerUpAt < pointerDownAt || now - pointerUpAt < 1500;
+    };
+    engineRegistrations.push(commands.beforeCommandExecuted((c) => {
+      if (restoring || c.id !== ReplaceTextRunsCommand.id) return;
+      const unitId = (c.params as { unitId?: string } | undefined)?.unitId ?? '';
+      if (!EDITORS.has(unitId)) { before = null; return; }
+      const text = editorText(unitId);
+      before = text && text.startsWith('=') ? { unitId, text } : null;
+    }));
+    engineRegistrations.push(commands.onCommandExecuted((c) => {
+      if (restoring || c.id !== ReplaceTextRunsCommand.id || !before) return;
+      const { unitId, text: oldText } = before;
+      before = null;
+      if ((c.params as { unitId?: string } | undefined)?.unitId !== unitId) return;
+      const newText = editorText(unitId);
+      if (!newText || newText === oldText || !newText.startsWith('=')) return;
+      const parse = (t: string) => { try { return univerAPI.getFormula().sequenceNodesBuilder(t) ?? null; } catch { return null; } };
+      const oldNodes = parse(oldText);
+      const newNodes = parse(newText);
+      if (!oldNodes || !newNodes) return;
+      const restored = restoreAbsoluteMarkers(oldNodes, newNodes, sequenceNodeType.REFERENCE, duringDrag());
+      if (!restored) return;
+      const fixed = restored.startsWith('=') ? restored : `=${restored}`;
+      if (fixed === newText) return;
+      const doc = instances.getUnit<DocumentDataModel>(unitId, UniverInstanceType.UNIVER_DOC);
+      const body = doc?.getBody();
+      if (!body) return;
+      restoring = true;
+      try {
+        // The same body shape the editor itself writes: the text without its
+        // trailing paragraph mark, no runs (the editor recolours references).
+        const slice = getBodySlice({ ...body, dataStream: `${fixed}\r\n`, textRuns: [] }, 0, fixed.length);
+        commands.syncExecuteCommand(ReplaceTextRunsCommand.id, { unitId, body: slice, textRanges: [{ startOffset: fixed.length, endOffset: fixed.length }] });
+      } catch (err) {
+        console.warn('[Worksheet] dollar-sign restore failed:', err);
+      } finally {
+        restoring = false;
+      }
+    }));
+  } catch (err) {
+    console.warn('[Worksheet] dollar-sign guard not attached:', err);
+  }
+  const repaint = () => {
+    try {
+      const unitId = univerAPI.getActiveWorkbook()?.getId();
+      const render = unitId ? univer.__getInjector().get(IRenderManagerService).getRenderById(unitId) : null;
+      render?.with(SheetSkeletonManagerService).reCalculate();
+      render?.mainComponent?.makeDirty(true);
+    } catch (err) {
+      console.warn('[Worksheet] display decimals repaint failed:', err);
+    }
+  };
   try {
     const injector = univer.__getInjector();
     engineRegistrations.push(injector.get(ICommandService).registerCommand({
@@ -465,6 +722,35 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
       console.warn('[Worksheet] setCellText failed:', err);
     }
   };
+  const probeSetFormula = (row: number, col: number, formula: string): boolean => {
+    if (disposed) return false;
+    try { univerAPI.getActiveWorkbook()?.getActiveSheet()?.getRange(row, col)?.setFormula(formula); return true; } catch (err) { console.warn('[Worksheet] probeSetFormula failed:', err); return false; }
+  };
+  const probeReadValue = (row: number, col: number): unknown => {
+    if (disposed) return null;
+    try { return univerAPI.getActiveWorkbook()?.getActiveSheet()?.getRange(row, col)?.getValue() ?? null; } catch { return null; }
+  };
+  const probeActivate = (row: number, col: number): boolean => {
+    if (disposed) return false;
+    try { univerAPI.getActiveWorkbook()?.getActiveSheet()?.getRange(row, col)?.activate(); return true; } catch { return false; }
+  };
+  const probeStartEditing = (): boolean => {
+    if (disposed) return false;
+    try {
+      const unitId = univerAPI.getActiveWorkbook()?.getId();
+      if (!unitId) return false;
+      return univer.__getInjector().get(ICommandService).syncExecuteCommand(SetCellEditVisibleOperation.id, { visible: true, eventType: DeviceInputEventType.Dblclick, unitId });
+    } catch (err) { console.warn('[Worksheet] probeStartEditing failed:', err); return false; }
+  };
+  const onColumnsVisibilityChanged = (listener: () => void): { dispose(): void } => {
+    if (disposed) return { dispose: () => {} };
+    try {
+      return univer.__getInjector().get(ICommandService).onCommandExecuted((c) => {
+        if (c.id === SetColHiddenMutation.id || c.id === SetColVisibleMutation.id) { try { listener(); } catch { /* pane torn down */ } }
+      });
+    } catch { return { dispose: () => {} }; }
+  };
+  const probeRecalculate = (): boolean => { if (disposed) return false; try { univerAPI.getFormula().executeCalculation(); return true; } catch { return false; } };
   const setColumnsHidden = (startCol: number, count: number, hidden: boolean): boolean => {
     if (disposed || count <= 0 || startCol < 0) return false;
     try {
@@ -497,6 +783,9 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
         activeRange: sel?.getActiveRange()?.getA1Notation() ?? null,
         currentCell: (() => { const c = sel?.getCurrentCell(); return c ? `r${c.actualRow}c${c.actualColumn}` : null; })(),
         editorVisible: injector.get(IEditorBridgeService).isVisible().visible,
+        tabRunMemory: !!findTabRunMemory(),
+        hostsAlive: _hostsAlive,
+        executors: injector.get(IFunctionService).getExecutors().size,
         editorActivated: ctx.getContextValue(EDITOR_ACTIVATED),
         focusingSheet: ctx.getContextValue('FOCUSING_SHEET'),
         focusingUniverEditor: ctx.getContextValue('FOCUSING_UNIVER_EDITOR'),
@@ -548,9 +837,20 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
     scrollToCell,
     setEditorFollowMode: (mode) => { follow.mode = mode; },
     openContextMenu,
+    probeSetFormula,
+    probeReadValue,
+    probeActivate,
+    probeStartEditing,
+    probeRecalculate,
+    onColumnsVisibilityChanged,
     setDarkMode: (dark: boolean) => {
       if (disposed) return;
       try { univerAPI.toggleDarkMode(dark); } catch { /* engine disposed */ }
+    },
+    setDisplayDecimals: (decimals: number | null) => {
+      if (disposed || decimals === displayDecimals) return;
+      displayDecimals = decimals;
+      repaint();
     },
     exportToXlsx: (filename: string) => {
       const snapshot = getSnapshot();
@@ -571,6 +871,7 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
     dispose: () => {
       if (disposed) return;
       disposed = true;
+      _hostsAlive = Math.max(0, _hostsAlive - 1);
       clearInterval(sweepInterval);
       document.removeEventListener('pointermove', trackPointer);
       opts.container.removeEventListener('keydown', onEditKeydown, true);
