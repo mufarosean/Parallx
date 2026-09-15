@@ -24,6 +24,8 @@ export interface PracticeFilters {
   readonly papers?: readonly string[];
   readonly sources?: readonly string[];
   readonly kinds?: readonly string[];
+  /** 'starred' = only the student's bookmarks, 'unstarred' = everything but them, 'any' or absent = no restriction. The other filters still apply. */
+  readonly starred?: 'any' | 'starred' | 'unstarred';
 }
 
 interface ItemLike {
@@ -34,6 +36,7 @@ interface ItemLike {
   readonly paper?: string;
   readonly source?: string;
   readonly kind?: string;
+  readonly starred?: boolean;
 }
 
 export function itemTags(tags: string): string[] {
@@ -75,6 +78,8 @@ export function buildPracticeSet(
     const wanted = new Set(filters.kinds);
     pool = pool.filter((i) => wanted.has(i.kind ?? ''));
   }
+  if (filters.starred === 'starred') pool = pool.filter((i) => !!i.starred);
+  else if (filters.starred === 'unstarred') pool = pool.filter((i) => !i.starred);
   const rating = (i: ItemLike): string => {
     const s = i.attemptState;
     return s === 'nailed' ? 'easy' : s === 'partial' ? 'medium' : s === 'missed' ? 'hard' : s;

@@ -26,7 +26,7 @@ import { ReplaceTextRunsCommand } from '@univerjs/docs-ui';
 import { sequenceNodeType } from '@univerjs/engine-formula';
 import { IEditorBridgeService, MoveSelectionCommand, MoveSelectionEnterAndTabCommand, SetCellEditVisibleOperation, SheetScrollManagerService, SheetSkeletonManagerService } from '@univerjs/sheets-ui';
 import { SheetInterceptorService, INTERCEPTOR_POINT, SetSelectionsOperation, SetColHiddenMutation, SetColVisibleMutation } from '@univerjs/sheets';
-import { DeviceInputEventType, IRenderManagerService, type IRender } from '@univerjs/engine-render';
+import { DeviceInputEventType, Engine, IRenderManagerService, type IRender } from '@univerjs/engine-render';
 import * as XLSX from 'xlsx';
 import type { IWorkbookData, Univer } from '@univerjs/core';
 import type { FUniver } from '@univerjs/core/lib/facade';
@@ -117,8 +117,29 @@ export interface IWorksheetHost {
   probeRecalculate(): boolean;
   /** Fires after the engine hides or shows columns by any means: the sheet's own menu, our button, an undo. */
   onColumnsVisibilityChanged(listener: () => void): { dispose(): void };
+  /** Resolves once the engine reports itself rendered (or after a short fallback), so a pane can be swapped in already painted. */
+  whenRendered(): Promise<void>;
   /** Tear down the engine and all DOM it created. */
   dispose(): void;
+}
+
+// A pane hidden with display:none (the editor keeps tabs alive that way)
+// measures 0x0, and the engine's resize observer then resized every canvas
+// to 0x0, which wipes its bitmap; the tab came back blank until the
+// idle-time redraw (Mufaro, 2026-09-15: "navigating to a different tab and
+// back causes flashes"). With the resize skipped while hidden, the canvas
+// keeps its last picture, and a reveal at the same size repaints nothing.
+let _hiddenResizeGuarded = false;
+function guardHiddenResize(): void {
+  if (_hiddenResizeGuarded) return;
+  _hiddenResizeGuarded = true;
+  const proto = Engine.prototype as unknown as { resize(): void };
+  const original = proto.resize;
+  proto.resize = function (this: { _container?: HTMLElement }) {
+    const c = this._container;
+    if (c && c.isConnected && c.getClientRects().length === 0) return;
+    original.call(this);
+  };
 }
 
 interface SnapshotSheet {
@@ -236,6 +257,7 @@ function ensurePopupRoot(): void {
 
 export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost {
   ensurePopupRoot();
+  guardHiddenResize();
   const sheetsPresetConfig = {
     container: opts.container,
     // Workbook model (Mufaro): items carry parts on separate tabs, so the
@@ -314,6 +336,8 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
   univerAPI.createWorkbook(opts.snapshot ?? blankWorkbookData());
 
   let disposed = false;
+  let renderedResolve: () => void = () => {};
+  const rendered = new Promise<void>((resolve) => { renderedResolve = resolve; });
 
   // Array formulas keep their spilled cells in the engine, not in the saved
   // snapshot, so a sheet reopened from a snapshot showed only the first cell
@@ -332,9 +356,9 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
     };
     try {
       const lifecycle = univer.__getInjector().get(LifecycleService);
-      const sub = lifecycle.lifecycle$.subscribe((stage) => { if (stage >= LifecycleStages.Rendered) { sub.unsubscribe(); setTimeout(recalculate, 150); } });
+      const sub = lifecycle.lifecycle$.subscribe((stage) => { if (stage >= LifecycleStages.Rendered) { sub.unsubscribe(); renderedResolve(); setTimeout(recalculate, 150); } });
     } catch { /* fallback timer below */ }
-    setTimeout(recalculate, 1500);
+    setTimeout(() => { renderedResolve(); recalculate(); }, 1500);
   }
 
   // Excel's Shift+Tab and Shift+Enter WHILE EDITING a cell: commit and move
@@ -377,6 +401,38 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
   // (probe, 2026-09-08). The shortcut service runs the highest-priority match
   // for a binding, so a plain move steps in front of it.
   const engineRegistrations: { dispose(): void }[] = [];
+
+  // A formula that points at another cell (=B7) came back wearing that
+  // cell's number format: the engine tags each result with the referenced
+  // pattern (objectValueToCellValue) and the apply step keeps it when the
+  // formula cell has none (Excel's General-cell inheritance). Mufaro,
+  // 2026-09-15: a reference pulls the value, never the formatting. The tag is
+  // dropped from the result mutations before they land; explicit formats on
+  // the formula cell are untouched.
+  {
+    const RESULT_MUTATIONS = new Set(['formula.mutation.set-formula-calculation-result', 'formula.mutation.set-array-formula-data']);
+    const stripResultStyles = (units: unknown): void => {
+      if (!units || typeof units !== 'object') return;
+      for (const sheets of Object.values(units as Record<string, unknown>)) {
+        if (!sheets || typeof sheets !== 'object') continue;
+        for (const rows of Object.values(sheets as Record<string, unknown>)) {
+          if (!rows || typeof rows !== 'object') continue;
+          for (const cols of Object.values(rows as Record<string, unknown>)) {
+            if (!cols || typeof cols !== 'object') continue;
+            for (const cell of Object.values(cols as Record<string, { s?: unknown } | null>)) {
+              if (cell && typeof cell === 'object' && 's' in cell) delete cell.s;
+            }
+          }
+        }
+      }
+    };
+    engineRegistrations.push(univer.__getInjector().get(ICommandService).beforeCommandExecuted((c) => {
+      if (!RESULT_MUTATIONS.has(c.id)) return;
+      const params = c.params as { unitData?: unknown; arrayFormulaCellData?: unknown } | undefined;
+      stripResultStyles(params?.unitData);
+      stripResultStyles(params?.arrayFormulaCellData);
+    }));
+  }
   // Formula errors leave evidence (Mufaro, 2026-09-14: formulas failing
   // intermittently in a long session, cleared by a restart, never reproduced
   // outside the app). Every calculation result is scanned for error values;
@@ -868,9 +924,11 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
       XLSX.writeFile(wb, filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`);
       return true;
     },
+    whenRendered: () => rendered,
     dispose: () => {
       if (disposed) return;
       disposed = true;
+      renderedResolve();
       _hostsAlive = Math.max(0, _hostsAlive - 1);
       clearInterval(sweepInterval);
       document.removeEventListener('pointermove', trackPointer);

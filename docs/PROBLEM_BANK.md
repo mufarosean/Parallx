@@ -127,6 +127,17 @@ that.
 Generation from PDFs stays as a way to add problems to the same bank; it
 adopts the one-sheet model.
 
+## Stars (2026-09-15)
+
+A star is the student's own bookmark on a problem. It is stored on the
+problem (`ws_star`, migration 008), not on a quiz, so it survives the quiz
+it was set in. Set or cleared from the sheet header, the quiz overview
+rows and the Problem Bank rows (Starred filter chip). Spent from three
+places: the Quiz Starred tile on Home (every starred problem, bank order),
+the Starred card under Work On Next on the Dashboard, and the Starred and
+Not Starred chips in the quiz builder (Starred also sets the length to the
+count, so the other chips can narrow it further).
+
 ## Build order
 
 1. DONE 2026-09-08: OOXML reader and the one-sheet model
@@ -180,7 +191,7 @@ adopts the one-sheet model.
    session (ws_quiz_session, migration 006: item_ids, position, skipped,
    started_at, finished_at; one open at a time). The Quiz tab restores it
    after an app restart or tool reload at the same item; Previous Item /
-   Next Item / Skip Item / End Quiz; rated problems stay in the list so you
+   Previous / Item n of N / Next together on the left, Quiz Overview / End Quiz / Skip Item on the right; a skip is forgotten the moment the problem is rated or worked, and skipping a problem already done marks nothing; rated problems stay in the list so you
    can go back; attempts rated inside carry session_id. Today's campaign
    quiz is the WHOLE draw (rated included) opened at the first unrated one,
    and the Dashboard shows Resume Quiz (i of n) while one is open. Lesson:

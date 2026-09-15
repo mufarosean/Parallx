@@ -97,6 +97,9 @@ export interface WorksheetItemSummary extends Omit<WorksheetItem, 'givensJson' |
   readonly lastAttemptAt: number;
   /** True when the item carries a real sheet (Problem Bank model). */
   readonly hasSheet: boolean;
+  /** Starred: the student's bookmark on the problem, kept across quizzes. */
+  readonly starred: boolean;
+  readonly starredAt: number;
 }
 
 function rowToItem(row: Record<string, unknown>): WorksheetItem {
@@ -135,7 +138,8 @@ export async function listItems(): Promise<WorksheetItemSummary[]> {
            (SELECT MAX(a.updated_at) FROM ws_attempts a WHERE a.item_id = i.id AND a.completed = 1) AS last_at,
            (SELECT COALESCE(SUM(a.seconds), 0) FROM ws_attempts a WHERE a.item_id = i.id AND a.completed = 1) AS seconds,
            EXISTS(SELECT 1 FROM ws_attempts a WHERE a.item_id = i.id AND a.completed = 0
-             AND a.cells_json != '') AS has_open
+             AND a.cells_json != '') AS has_open,
+           (SELECT s.starred_at FROM ws_star s WHERE s.item_id = i.id) AS starred_at
     FROM ws_items i ORDER BY i.paper, i.sheet_name, i.created_at DESC
   `);
   return rows.map((row) => {
@@ -155,6 +159,8 @@ export async function listItems(): Promise<WorksheetItemSummary[]> {
       seconds: Number(row.seconds ?? 0),
       lastAttemptAt: Number(row.last_at ?? 0),
       hasSheet: !!row.has_sheet,
+      starred: Number(row.starred_at ?? 0) > 0,
+      starredAt: Number(row.starred_at ?? 0),
     };
   });
 }
@@ -233,6 +239,7 @@ export async function createItem(input: CreateItemInput): Promise<number | null>
 
 export async function deleteItem(id: number): Promise<void> {
   await run('DELETE FROM ws_attempts WHERE item_id = ?', [id]);
+  await run('DELETE FROM ws_star WHERE item_id = ?', [id]);
   await run('DELETE FROM ws_items WHERE id = ?', [id]);
   emitChange();
 }
@@ -497,6 +504,21 @@ export async function getProblemNotes(itemIds: number[]): Promise<Map<number, st
 export async function setProblemNote(itemId: number, note: string): Promise<void> {
   if (note.trim() === '') await run('DELETE FROM ws_problem_note WHERE item_id = ?', [itemId]);
   else await run('INSERT INTO ws_problem_note (item_id, note, updated_at) VALUES (?, ?, ?) ON CONFLICT(item_id) DO UPDATE SET note = excluded.note, updated_at = excluded.updated_at', [itemId, note, Date.now()]);
+}
+
+/** Stars: the student's bookmark on a problem, set from its sheet, the quiz
+ *  overview or the bank, and kept across quizzes. Every pane listens, so a
+ *  star set on the sheet shows in the bank and on the Dashboard at once. */
+export async function setItemStarred(itemId: number, starred: boolean): Promise<void> {
+  if (starred) await run('INSERT OR IGNORE INTO ws_star (item_id, starred_at) VALUES (?, ?)', [itemId, Date.now()]);
+  else await run('DELETE FROM ws_star WHERE item_id = ?', [itemId]);
+  emitChange();
+}
+export async function getStarred(itemIds: number[]): Promise<Set<number>> {
+  if (itemIds.length === 0) return new Set();
+  const ph = itemIds.map(() => '?').join(',');
+  const rows = await allRows(`SELECT item_id FROM ws_star WHERE item_id IN (${ph})`, itemIds);
+  return new Set(rows.map((r) => Number(r.item_id)));
 }
 
 /** Rewards: id to the time first earned. */

@@ -88,4 +88,13 @@ describe('Problem Bank groups: papers, sources, kinds', () => {
     expect(buildPracticeSet(problems, { ...base, state: 'incomplete' })).toEqual([2, 4]);
     expect(buildPracticeSet(problems, { ...base, state: 'struggling' })).toEqual([3, 5]);
   });
+  it('starred, not starred, or any; the other filters still apply', () => {
+    const starredBank = problems.map((p) => (p.id === 1 || p.id === 3 || p.id === 5 ? { ...p, starred: true } : p));
+    expect(buildPracticeSet(starredBank, { ...base, starred: 'starred' })).toEqual([1, 3, 5]);
+    expect(buildPracticeSet(starredBank, { ...base, starred: 'starred', sources: ['rf', 'cas', 'custom'] })).toEqual([1, 3]);
+    expect(buildPracticeSet(starredBank, { ...base, starred: 'starred', state: 'hard' })).toEqual([3]);
+    expect(buildPracticeSet(starredBank, { ...base, starred: 'unstarred' })).toEqual([2, 4]);
+    expect(buildPracticeSet(starredBank, { ...base, starred: 'any' })).toEqual([1, 2, 3, 4, 5]);
+    expect(buildPracticeSet(starredBank, base)).toEqual([1, 2, 3, 4, 5]);
+  });
 });

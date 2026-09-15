@@ -12,7 +12,7 @@ import { computeInsights, dayKey, type Insights, type PaperProgress, type Insigh
 import { campaignProgress, campaignDone, drawToday, addDays, restDaysLabel, isCampaignProblem, LEVEL_TITLES, type Campaign } from './campaign.js';
 import { syncRewards, type RewardState } from './rewardsSync.js';
 import { REWARDS } from './rewards.js';
-import { paperLabel, ratingLabel, QUADRANT_LABELS } from './problemImport.js';
+import { paperLabel, ratingLabel, normalizeRating, QUADRANT_LABELS } from './problemImport.js';
 
 export interface DashboardActions {
   openItem(id: number, title: string): void;
@@ -557,6 +557,19 @@ export function createDashboardPane(container: HTMLElement, actions: DashboardAc
     if (ins.quickWins.length > LIMIT) wins.body.appendChild(el('div', 'ws-dash__more', `and ${ins.quickWins.length - LIMIT} more`));
     if (ins.quickWins.length > 0) wins.foot.appendChild(btn(`Quiz Quick Wins (${Math.min(10, ins.quickWins.length)})`, 'ws-btn', () => actions.startQuiz(ins.quickWins.slice(0, 10).map((q) => q.id))));
     grid.appendChild(wins.root);
+
+    // Starred: the student's own set, kept on the problems across quizzes.
+    const starred = items.filter((it) => it.starred);
+    const star = card('Starred', 'Problems you starred from their sheet, the quiz overview or the bank');
+    if (starred.length === 0) star.body.appendChild(el('div', 'ws-dash__cardempty', 'Nothing starred. Star a problem from its sheet and it collects here.'));
+    for (const s of starred.slice(0, LIMIT)) {
+      const r = normalizeRating(s.attemptState);
+      const open = s.attemptState === 'open';
+      star.body.appendChild(problemRow(s, open ? 'In progress' : r ? ratingLabel(r) : 'Never tried', open ? 'open' : r || 'rest', () => actions.openItem(s.id, s.title)));
+    }
+    if (starred.length > LIMIT) star.body.appendChild(el('div', 'ws-dash__more', `and ${starred.length - LIMIT} more`));
+    if (starred.length > 0) star.foot.appendChild(btn(`Quiz Starred (${starred.length})`, 'ws-btn', () => actions.startQuiz(starred.map((s) => s.id))));
+    grid.appendChild(star.root);
 
     // Papers, weakest first.
     root.appendChild(el('div', 'ws-dash__sectiontitle', 'Progress By Paper'));

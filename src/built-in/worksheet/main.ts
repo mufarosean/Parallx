@@ -26,7 +26,7 @@ import {
   getSessionGrades, attachWorksheetDatabase, recordImportedRating, upsertProgressSnapshot,
   getCampaign, startCampaign, endCampaign, listCompletedAttempts,
   getOpenQuizSession, saveQuizSession, finishQuizSession, finishOpenQuizSessions,
-  getQuizSession, listQuizSessions, getSessionItemStates, getProblemNotes, setProblemNote,
+  getQuizSession, listQuizSessions, getSessionItemStates, getProblemNotes, setProblemNote, setItemStarred, getStarred,
   type WorksheetItem, type WorksheetItemSummary,
 } from './worksheetData.js';
 import { openXlsx } from './ooxml.js';
@@ -225,6 +225,29 @@ function paintIconBtn(b: HTMLButtonElement, iconId: string, label: string, hint?
   b.title = hint ? `${label}. ${hint}` : label;
   b.setAttribute('aria-label', label);
 }
+/** The star: the student's bookmark on a problem, one look everywhere it
+ *  appears (sheet header, bank row, quiz overview). Stored on the problem,
+ *  so it outlives the quiz it was set in. */
+const STAR_HINT = 'Kept on the problem across quizzes. Quiz Starred on Home, the Dashboard or the quiz builder runs every starred problem.';
+function paintStarBtn(b: HTMLButtonElement, on: boolean): void {
+  paintIconBtn(b, 'star', on ? 'Unstar Problem' : 'Star Problem', on ? 'Takes the star off this problem.' : STAR_HINT);
+  b.classList.toggle('ws-star--on', on);
+  b.setAttribute('aria-pressed', on ? 'true' : 'false');
+}
+function starBtn(itemId: number, starred: boolean, onChange?: (on: boolean) => void): HTMLButtonElement {
+  const b = iconBtn('star', 'Star Problem');
+  b.classList.add('ws-star');
+  let on = starred;
+  paintStarBtn(b, on);
+  b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    on = !on;
+    paintStarBtn(b, on);
+    onChange?.(on);
+    void setItemStarred(itemId, on).catch(() => { on = !on; paintStarBtn(b, on); onChange?.(on); });
+  });
+  return b;
+}
 /** Sun when the sheet is dark (click for light), moon when light. */
 function paintSheetThemeButton(btn: HTMLButtonElement): void {
   const dark = resolveSheetDark();
@@ -333,6 +356,7 @@ function createBankPane(container: HTMLElement) {
       if (item.lastAttemptAt > 0) meta.push(`last ${new Date(item.lastAttemptAt).toLocaleDateString()}`);
       info.appendChild(el('div', 'ws-itemrow__meta', meta.join(' · ')));
       info.addEventListener('click', () => void openWorksheet(`item:${item.id}`, item.title));
+      row.appendChild(starBtn(item.id, item.starred));
       row.appendChild(info);
       const actions = el('div', 'ws-itemrow__actions');
       const openBtn = el('button', 'ws-btn') as HTMLButtonElement;
@@ -451,6 +475,7 @@ let _bankQuery = '';
 
 function bankMatches(item: WorksheetItemSummary, filter: string, query: string): boolean {
   const state = stateClass(item.attemptState);
+  if (filter === 'starred' && !item.starred) return false;
   if (filter === 'incomplete' && !(item.attemptCount === 0 || item.attemptState === 'open')) return false;
   if ((filter === 'easy' || filter === 'medium' || filter === 'hard') && state !== filter) return false;
   if ((filter === 'rf' || filter === 'cas') && item.source !== filter) return false;
@@ -491,7 +516,7 @@ function bankFilterBar(items: WorksheetItemSummary[], onChange: () => void): HTM
   });
   bar.appendChild(search);
   const filters = el('div', 'ws-bank__filters');
-  const FILTERS: [string, string][] = [['all', 'All'], ['incomplete', 'Incomplete'], ['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard'], ['rf', 'RF'], ['cas', 'CAS'], ['quant', 'Quant'], ['qual', 'Qual'], ['essay', 'Essay']];
+  const FILTERS: [string, string][] = [['all', 'All'], ['starred', 'Starred'], ['incomplete', 'Incomplete'], ['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard'], ['rf', 'RF'], ['cas', 'CAS'], ['quant', 'Quant'], ['qual', 'Qual'], ['essay', 'Essay']];
   const present = new Set<string>();
   for (const it of items) { present.add(it.source); present.add(it.kind); }
   for (const [value, label] of FILTERS) {
@@ -632,12 +657,12 @@ function createLauncherPane(container: HTMLElement) {
     root.replaceChildren();
     root.appendChild(el('div', 'ws-home__title', 'Worksheets'));
     const grid = el('div', 'ws-launch__grid');
-    const tile = (title: string, desc: string, instanceId: string, tabTitle: string, primary = false) => {
+    const tile = (title: string, desc: string, instanceId: string, tabTitle: string, primary = false, onClick?: () => void) => {
       const b = el('button', primary ? 'ws-launch__tile ws-launch__tile--primary' : 'ws-launch__tile') as HTMLButtonElement;
       b.type = 'button';
       b.appendChild(el('span', 'ws-launch__tiletitle', title));
       b.appendChild(el('span', 'ws-launch__tiledesc', desc));
-      b.addEventListener('click', () => void openWorksheet(instanceId, tabTitle));
+      b.addEventListener('click', onClick ?? (() => void openWorksheet(instanceId, tabTitle)));
       grid.appendChild(b);
     };
     const problems = items.filter((it) => it.paper);
@@ -650,6 +675,10 @@ function createLauncherPane(container: HTMLElement) {
       dashDesc = p.finished ? 'Campaign complete.' : p.restToday ? `Day ${p.dayIndex} of ${campaign.days} · rest day` : `Day ${p.dayIndex} of ${campaign.days} · ${p.doneToday} of ${p.target} today`;
     }
     tile('Start Quiz', 'Draw problems from the bank and work them in order.', 'practice', 'Quiz', true);
+    // Starred: the student's own set, every one of them, in bank order.
+    const starred = items.filter((it) => it.starred);
+    tile('Quiz Starred', starred.length ? `${starred.length} starred · every one of them, in order.` : 'Star problems from their sheet; they collect here.', 'bank', 'Problem Bank', false,
+      () => { if (starred.length) startQuizWith(starred.map((it) => it.id)); else void openWorksheet('bank', 'Problem Bank'); });
     tile('Dashboard', dashDesc, 'dashboard', 'Dashboard');
     tile('Problem Bank', problems.length ? `${problems.length} problems · ${rated} rated` : 'Empty until you import a workbook.', 'bank', 'Problem Bank');
     tile('Import Workbook', 'A ProblemTrack workbook, every sheet as it is.', 'excel-import', 'Import Workbook');
@@ -683,6 +712,7 @@ function createLauncherPane(container: HTMLElement) {
     };
     const recent = items.filter((it) => it.lastAttemptAt > 0).sort((a, b) => b.lastAttemptAt - a.lastAttemptAt).slice(0, 8);
     listOf('Recent', recent, (it) => [it.paper ? paperLabel(it.paper) : it.sourceLabel, it.attemptState === 'open' ? 'in progress' : gradeLabel(it.attemptState), when(it.lastAttemptAt)].filter(Boolean).join(' · '));
+    listOf('Starred', starred.slice(0, 8), (it) => [it.paper ? paperLabel(it.paper) : it.sourceLabel, it.attemptState === 'open' ? 'in progress' : gradeLabel(it.attemptState) || 'never tried'].filter(Boolean).join(' · '));
     const added = [...items].sort((a, b) => b.createdAt - a.createdAt).slice(0, 8);
     listOf('Newly Added', added, (it) => [it.paper ? paperLabel(it.paper) : it.sourceLabel, `added ${when(it.createdAt)}`].filter(Boolean).join(' · '));
     // Quizzes: every one you ran, open to review the work and learn from the misses.
@@ -1220,18 +1250,19 @@ function createPracticeConfigPane(container: HTMLElement) {
   container.appendChild(root);
   let disposed = false;
 
-  root.appendChild(titled('Start a Quiz', 'Choose papers, sources and kinds, a rating band, a length, shuffle. Every rating you give lands on the problem and moves the dashboard.'));
+  root.appendChild(titled('Start a Quiz', 'Choose papers, sources and kinds, a rating band, starred or not, a length, shuffle. Every rating you give lands on the problem and moves the dashboard.'));
 
   // The workbook's Quiz Generator, as chips: which papers, which sources,
   // which kinds, which rating band, how many. Generated items stay out
   // unless their source chip is on.
-  const filters = { papers: new Set<string>(), sources: new Set<string>(), kinds: new Set<string>(), state: 'all', count: 10, shuffle: true };
+  const filters = { papers: new Set<string>(), sources: new Set<string>(), kinds: new Set<string>(), state: 'all', starred: 'any' as 'any' | 'starred' | 'unstarred', count: 10, shuffle: true };
   let bank: WorksheetItemSummary[] = [];
 
   const paperHost = el('div', 'ws-create__controls ws-practice__chips');
   const sourceHost = el('div', 'ws-create__controls ws-practice__chips');
   const kindHost = el('div', 'ws-create__controls ws-practice__chips');
   const stateHost = el('div', 'ws-create__controls');
+  const starHost = el('div', 'ws-create__controls');
   const optRow = el('div', 'ws-create__controls');
   const matchLine = el('div', 'ws-hint');
   const err = el('div', 'ws-error');
@@ -1245,6 +1276,8 @@ function createPracticeConfigPane(container: HTMLElement) {
   root.appendChild(kindHost);
   root.appendChild(el('div', 'ws-sidebar__label', 'Rating'));
   root.appendChild(stateHost);
+  root.appendChild(el('div', 'ws-sidebar__label', 'Starred'));
+  root.appendChild(starHost);
   root.appendChild(el('div', 'ws-sidebar__label', 'Length'));
   root.appendChild(optRow);
   root.appendChild(matchLine);
@@ -1270,6 +1303,7 @@ function createPracticeConfigPane(container: HTMLElement) {
     sources: [...filters.sources],
     kinds: [...filters.kinds],
     state: filters.state,
+    starred: filters.starred,
     count: Math.max(1, parseInt(countIn.value, 10) || 10),
     shuffle: shuffleIn.checked,
   });
@@ -1317,6 +1351,18 @@ function createPracticeConfigPane(container: HTMLElement) {
         renderFilters();
       }));
     }
+    // Starred means all of them unless the length is lowered by hand.
+    const nStarred = bank.filter((it) => it.starred).length;
+    starHost.replaceChildren();
+    starHost.appendChild(chip('Any Problem', filters.starred === 'any', () => { filters.starred = 'any'; renderFilters(); }));
+    const starredChip = chip(`Starred ${nStarred}`, filters.starred === 'starred', () => {
+      filters.starred = 'starred';
+      if (nStarred > 0) countIn.value = String(Math.min(100, nStarred));
+      renderFilters();
+    });
+    starredChip.title = STAR_HINT;
+    starHost.appendChild(starredChip);
+    starHost.appendChild(chip(`Not Starred ${bank.length - nStarred}`, filters.starred === 'unstarred', () => { filters.starred = 'unstarred'; renderFilters(); }));
     syncMatchLine();
   };
 
@@ -1361,6 +1407,8 @@ function createPracticeRunPane(container: HTMLElement) {
   let disposed = false;
   let player: { dispose(): void } | null = null;
   let changeSub: { dispose(): void } | null = null;
+  /** Bumped by every change of what the player shows; a sheet still being staged for an older step is thrown away. */
+  let serveSeq = 0;
   const bar = el('div', 'ws-sessionbar');
   const playerHost = el('div', 'ws-session__player');
   root.append(bar, playerHost);
@@ -1368,6 +1416,7 @@ function createPracticeRunPane(container: HTMLElement) {
 
   // No quiz: the tab came back with nothing to resume, or a quiz ended.
   const renderIdle = () => {
+    serveSeq++;
     bar.style.display = 'none';
     bar.replaceChildren();
     playerHost.replaceChildren();
@@ -1388,6 +1437,7 @@ function createPracticeRunPane(container: HTMLElement) {
     let view: 'sheet' | 'overview' = 'sheet';
 
     const renderSummary = async () => {
+      serveSeq++;
       player?.dispose();
       player = null;
       bar.style.display = 'none';
@@ -1468,12 +1518,23 @@ function createPracticeRunPane(container: HTMLElement) {
     };
 
     const gradeNote = el('span', 'ws-sessionbar__grade');
+    /** What this quiz knows about the item on screen: its rating and whether it was worked. */
+    let currentState: { grade: string; attempted: boolean } | undefined;
     const refreshGradeNote = async () => {
       if (disposed || session.index >= session.ids.length) return;
-      const grades = await getSessionGrades([session.ids[session.index]], session.startedAt);
-      if (disposed) return;
-      const g = grades.get(session.ids[session.index]);
+      const id = session.ids[session.index];
+      const [grades, states] = await Promise.all([
+        getSessionGrades([id], session.startedAt),
+        getSessionItemStates([id], session.startedAt).catch(() => new Map<number, { grade: string; attempted: boolean; seconds: number }>()),
+      ]);
+      if (disposed || id !== session.ids[session.index]) return;
+      const g = grades.get(id);
+      const st = states.get(id);
+      currentState = { grade: g ?? st?.grade ?? '', attempted: !!st?.attempted };
       gradeNote.textContent = g ? `Rated ${gradeLabelFor(g)}` : '';
+      // Work on a problem cancels an earlier skip: a rated or attempted item
+      // never reads as one left undone.
+      if ((currentState.grade || currentState.attempted) && session.skipped.delete(id)) void persistPractice();
     };
     changeSub?.dispose();
     changeSub = onWorksheetDataChanged(() => void refreshGradeNote());
@@ -1512,6 +1573,7 @@ function createPracticeRunPane(container: HTMLElement) {
         const earlierGrade = !sessionGrade && item ? normalizeRating(item.attemptState) : '';
         const gradeText = sessionGrade ? st!.grade : (item?.attemptState ?? '');
         const rated = sessionGrade || earlierGrade;
+        if ((sessionGrade || st?.attempted) && session.skipped.delete(id)) void persistPractice();
         const skipped = session.skipped.has(id);
         const status = sessionGrade ? gradeLabel(st!.grade) : earlierGrade ? `${gradeLabel(item!.attemptState)} earlier` : st?.attempted ? 'Attempted' : skipped ? 'Skipped' : 'Not Started';
         if (sessionGrade) counts.rated++; else if (st?.attempted) counts.attempted++; else if (skipped) counts.skipped++; else counts.untouched++;
@@ -1553,6 +1615,7 @@ function createPracticeRunPane(container: HTMLElement) {
           editor.style.display = open ? '' : 'none';
           if (open) ta.focus();
         });
+        row.appendChild(starBtn(id, item?.starred ?? false));
         row.addEventListener('click', () => goTo(i));
         row.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === row) goTo(i); });
         rows.push(row);
@@ -1570,6 +1633,10 @@ function createPracticeRunPane(container: HTMLElement) {
       prev.disabled = session.index === 0;
       bar.appendChild(prev);
       bar.appendChild(el('span', 'ws-sessionbar__pos', `Item ${session.index + 1} of ${session.ids.length}`));
+      // Next sits with Previous, either side of the position: the pair reads
+      // as one control, and Skip keeps the far end to itself.
+      const last = session.index === session.ids.length - 1;
+      bar.appendChild(iconBtn(last ? 'check' : 'chevron-right', last ? 'Finish Quiz' : 'Next Item', { primary: true, onClick: () => goTo(session.index + 1) }));
       if (session.finishedAt) {
         const chip = el('span', 'ws-chip ws-chip--muted', 'Reviewing');
         chip.title = 'A finished quiz, reopened. Ratings you give still count on the problems.';
@@ -1584,21 +1651,44 @@ function createPracticeRunPane(container: HTMLElement) {
         onClick: () => { view = view === 'overview' ? 'sheet' : 'overview'; serve(); },
       }));
       if (!session.finishedAt) bar.appendChild(iconBtn('octagon-x', 'End Quiz', { danger: true, hint: 'Stops here and shows the summary. Ratings stay on the problems.', onClick: () => { void renderSummary(); } }));
-      bar.appendChild(iconBtn('skip-forward', 'Skip Item', { hint: 'Leaves this one for another day.', onClick: () => { session.skipped.add(session.ids[session.index]); goTo(session.index + 1); } }));
-      const last = session.index === session.ids.length - 1;
-      bar.appendChild(iconBtn(last ? 'check' : 'chevron-right', last ? 'Finish Quiz' : 'Next Item', { primary: true, onClick: () => goTo(session.index + 1) }));
+      // Skipping an item already rated or worked moves on without marking anything.
+      bar.appendChild(iconBtn('skip-forward', 'Skip Item', {
+        hint: 'Moves on without a rating. Rating or working the problem later clears the skip.',
+        onClick: () => {
+          if (!(currentState?.grade || currentState?.attempted)) session.skipped.add(session.ids[session.index]);
+          goTo(session.index + 1);
+        },
+      }));
     };
 
     const serve = () => {
       if (disposed) return;
+      const seq = ++serveSeq;
       if (session.index >= session.ids.length) { void renderSummary(); return; }
-      player?.dispose();
-      player = null;
-      playerHost.replaceChildren();
       bar.style.display = '';
       paintBar();
-      if (view === 'overview') { void renderOverview(); return; }
-      player = createSheetPane(playerHost, `item:${session.ids[session.index]}`);
+      if (view === 'overview') {
+        player?.dispose();
+        player = null;
+        playerHost.replaceChildren();
+        void renderOverview();
+        return;
+      }
+      // The next sheet is built behind the one on screen and swapped in once
+      // its engine has painted. Tearing the old one down first showed the
+      // empty pane, the loading line and the first paint one after another
+      // on every Next and Previous (the flash).
+      const stage = el('div', 'ws-session__stage ws-session__stage--staging');
+      playerHost.appendChild(stage);
+      const next = createSheetPane(stage, `item:${session.ids[session.index]}`);
+      void next.ready.then(() => requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (disposed || seq !== serveSeq) { next.dispose(); stage.remove(); return; }
+        player?.dispose();
+        player = null;
+        for (const old of [...playerHost.children]) if (old !== stage) old.remove();
+        stage.classList.remove('ws-session__stage--staging');
+        player = next;
+      })));
       void refreshGradeNote();
     };
     serve();
@@ -1941,6 +2031,10 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
   let host: IWorksheetHost | null = null;
   let disposed = false;
   let item: WorksheetItem | null = null;
+  let itemStarred = false;
+  /** Resolves once the first sheet has painted (or the pane gave up), so the quiz can swap it in whole. */
+  let readyResolve: () => void = () => {};
+  const ready = new Promise<void>((resolve) => { readyResolve = resolve; });
   /** 'working' = user's attempt on screen; 'solution' = model solution. */
   let mode: 'working' | 'solution' = 'working';
   let revealed = false;
@@ -2004,6 +2098,7 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
     });
     // Probe hook (tests/probes): the live host, reachable from the DOM.
     (sheetHost as unknown as { __wsHost?: unknown }).__wsHost = host;
+    void host.whenRendered().then(() => readyResolve());
     // Unhiding the solution columns by hand is the same act as Reveal
     // Solution: the button follows the sheet, whichever way the columns moved.
     visibilitySub?.dispose();
@@ -2035,6 +2130,7 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
     const spacer = el('div'); spacer.style.flex = '1';
     titleRow.appendChild(spacer);
 
+    titleRow.appendChild(starBtn(item.id, itemStarred, (on) => { itemStarred = on; }));
     titleRow.appendChild(makeSheetThemeButton());
 
     if (mode === 'working') {
@@ -2250,9 +2346,11 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
     problemSeconds = open?.seconds ?? 0;
     readPristine(problem);
     let latestRating = '';
+    let starred = false;
     const refreshRating = async () => {
       const summary = (await listItems().catch(() => [])).find((s) => s.id === problem.id);
       latestRating = summary ? normalizeRating(summary.attemptState) : '';
+      starred = summary?.starred ?? false;
     };
     await refreshRating();
     const timerEl = el('span', 'ws-problem__timer', fmtSeconds(problemSeconds));
@@ -2289,6 +2387,7 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
         rate.appendChild(b);
       }
       titleRow.appendChild(rate);
+      titleRow.appendChild(starBtn(problem.id, starred, (on) => { starred = on; }));
       titleRow.appendChild(makeSheetThemeButton());
       titleRow.appendChild(iconBtn('file-spreadsheet', 'Export to Excel', {
         hint: 'Saves this sheet as a real .xlsx, values and formulas, in your Downloads folder.',
@@ -2415,6 +2514,7 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
         item = await getItem(itemId);
         if (!item) {
           loading.textContent = 'This practice item no longer exists.';
+          readyResolve();
           return;
         }
         if (item.sheetJson) {
@@ -2422,6 +2522,7 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
           await initProblem(item, open, open ? null : await getLatestWork(itemId));
           return;
         }
+        itemStarred = (await getStarred([itemId]).catch(() => new Set<number>())).has(itemId);
         renderItemHeader();
         const open = await getOpenAttempt(itemId);
         const prior = open ? null : await getLatestWork(itemId);
@@ -2456,6 +2557,7 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       loading.textContent = `The sheet engine failed to load: ${message}`;
+      readyResolve();
       console.error('[Worksheet] engine load failed:', err);
     }
   })();
@@ -2465,11 +2567,13 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
       void persistWorking();
       return { instanceId };
     },
+    ready,
     restoreViewState: (_state: unknown) => {
       // State rides SQLite (items) / the scratch cache (scratch), applied in
       // the async init above. Nothing positional to restore yet.
     },
     dispose: () => {
+      readyResolve();
       if (autosaveTimer) clearInterval(autosaveTimer);
       if (problemTimer) clearInterval(problemTimer);
       // Capture-before-teardown so close-without-save cannot drop work.
