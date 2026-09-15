@@ -184,14 +184,15 @@ export function buildOpenclawSystemPrompt(params: IOpenclawSystemPromptParams): 
   sections.push(buildWorkspaceSection(workspaceBootstrapFiles, params.workspaceDigest));
 
   // 2. Skills (upstream: agents/system-prompt.ts buildSkillsSection).
-  //    The scan instruction tells the model to read a SKILL.md with the read
-  //    tool; without that tool offered this turn a skill cannot be followed,
-  //    and naming the tool would leak a disabled family. So: no read tool, no
-  //    skills section.
-  if (params.skills.length > 0 && params.tools.some((t) => t.name === 'fs_read_file')) {
+  //    The catalog is the workspace's own `.parallx/skills/` and nothing else,
+  //    so every skill listed is one the user put there: the same rule as
+  //    tools. The read tool is named in the scan instruction only when it is
+  //    offered this turn, so a disabled family is never named here either.
+  if (params.skills.length > 0) {
     sections.push(buildSkillsSection(params.skills, {
       compact: params.skillsCompact,
       truncationNote: params.skillsTruncationNote,
+      readToolName: params.tools.some((t) => t.name === 'fs_read_file') ? 'fs_read_file' : null,
     }));
   }
 
@@ -350,15 +351,15 @@ export function buildOpenclawSystemPrompt(params: IOpenclawSystemPromptParams): 
 export function buildSkillsSection(
   skills: readonly ISkillEntry[],
   opts?: {
-    /** Tool name embedded in the scan instruction. Defaults to `fs_read_file`. */
-    readonly readToolName?: string;
+    /** Tool name embedded in the scan instruction. Defaults to `fs_read_file`; `null` names no tool. */
+    readonly readToolName?: string | null;
     /** When true, emit name+location only (mirrors upstream `formatSkillsCompact`). */
     readonly compact?: boolean;
     /** Optional warning line prepended to the section (truncation notice). */
     readonly truncationNote?: string;
   },
 ): string {
-  const readToolName = opts?.readToolName ?? 'fs_read_file';
+  const readWith = opts?.readToolName === null ? '' : ` with \`${opts?.readToolName ?? 'fs_read_file'}\``;
   const compact = opts?.compact === true;
 
   const entries = skills
@@ -381,7 +382,7 @@ export function buildSkillsSection(
   const truncationLine = opts?.truncationNote ? `${opts.truncationNote}\n` : '';
 
   return `## Skills
-${truncationLine}Scan <available_skills>. If one clearly applies, read its SKILL.md at exact <location> with \`${readToolName}\`, then follow it.
+${truncationLine}Scan <available_skills>. If one clearly applies, read its SKILL.md at exact <location>${readWith}, then follow it.
 If several apply, choose the most specific. If none clearly apply, read none.
 One skill up front max. Never guess/fabricate skill paths.
 External API writes: batch when safe, avoid tight loops, respect 429/Retry-After.

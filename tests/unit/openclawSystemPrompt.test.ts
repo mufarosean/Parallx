@@ -924,6 +924,16 @@ describe('disabled tools leave no trace in the prompt', () => {
     }
   });
 
+  it('lists the workspace skills even without the read tool, naming no tool', () => {
+    const prompt = buildOpenclawSystemPrompt(createBaseParams({
+      tools: [{ name: 'canvas_read_page', description: 'Read a canvas page' }],
+    }));
+    expect(prompt).toContain('## Skills');
+    expect(prompt).toContain('<available_skills>');
+    expect(prompt).toContain('read its SKILL.md at exact <location>, then follow it.');
+    expect(prompt).not.toContain('fs_read_file');
+  });
+
   it('the tooling section names only the tools it was given', () => {
     const section = buildToolSummariesSection([
       { name: 'fs_read_file', description: 'Read' },

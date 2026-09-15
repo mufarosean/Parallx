@@ -80,6 +80,9 @@ export interface IActivityTapDeps {
  * Subscribe the journal to every narratable seam. Returns a disposable that
  * detaches all taps.
  */
+/** How long after the taps go live that system/binding settings writes count as startup hydration. */
+const SETTINGS_STARTUP_WINDOW_MS = 15_000;
+
 export function wireActivityTaps(deps: IActivityTapDeps): IDisposable {
   const store = new DisposableStore();
   const { services } = deps;
@@ -199,13 +202,15 @@ export function wireActivityTaps(deps: IActivityTapDeps): IDisposable {
   //    extension, or machine (binding echoes and system writes → 'system'). ──
   if (services.has(ISettingsRegistryService)) {
     const settings = services.get(ISettingsRegistryService);
+    // Load-time hydration and binding echoes arrive as system/binding-origin
+    // writes in the first seconds of a session. Journaling them narrated every
+    // stored setting (and its value) to the model at session start. After the
+    // startup window every origin is journaled again, so a migration or a
+    // restore that changes a setting later still leaves its line.
+    const tapInstalledAt = Date.now();
     store.add(settings.onDidChange((c) => {
-      // Only a person, the model or an extension changing a setting is
-      // activity. Load-time hydration and binding echoes arrive with a system
-      // origin: journaling them narrated every stored setting (and its value)
-      // to the model at session start, noise that also names settings of
-      // features the workspace does not use.
-      if (c.origin !== 'ai' && c.origin !== 'user' && !isExtId(c.origin)) { return; }
+      const inStartupWindow = Date.now() - tapInstalledAt < SETTINGS_STARTUP_WINDOW_MS;
+      if (inStartupWindow && c.origin !== 'ai' && c.origin !== 'user' && !isExtId(c.origin)) { return; }
       // Values can be secrets-adjacent; log key + compact value only.
       const v = typeof c.value === 'string' || typeof c.value === 'number' || typeof c.value === 'boolean'
         ? String(c.value).slice(0, 60)
