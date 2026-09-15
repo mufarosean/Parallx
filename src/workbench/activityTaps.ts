@@ -200,6 +200,12 @@ export function wireActivityTaps(deps: IActivityTapDeps): IDisposable {
   if (services.has(ISettingsRegistryService)) {
     const settings = services.get(ISettingsRegistryService);
     store.add(settings.onDidChange((c) => {
+      // Only a person, the model or an extension changing a setting is
+      // activity. Load-time hydration and binding echoes arrive with a system
+      // origin: journaling them narrated every stored setting (and its value)
+      // to the model at session start, noise that also names settings of
+      // features the workspace does not use.
+      if (c.origin !== 'ai' && c.origin !== 'user' && !isExtId(c.origin)) { return; }
       // Values can be secrets-adjacent; log key + compact value only.
       const v = typeof c.value === 'string' || typeof c.value === 'number' || typeof c.value === 'boolean'
         ? String(c.value).slice(0, 60)

@@ -443,7 +443,7 @@ export function createMemoryEditTool(
         file: {
           type: 'string',
           enum: ['USER', 'MEMORY', 'daily', 'lesson'],
-          description: 'Which memory file to edit. USER = user identity, MEMORY = durable workspace memory (index of lessons), daily = date-stamped log, lesson = a topic file under .parallx/memory/lessons/.',
+          description: 'Which memory file to edit. USER = user identity, MEMORY = durable workspace memory (index of lessons), daily = date-stamped log, lesson = a topic file under .parallx/memory/lessons/. Never write, to any file, a fact the user asked you not to record, nor the fact that they asked.',
         },
         action: {
           type: 'string',

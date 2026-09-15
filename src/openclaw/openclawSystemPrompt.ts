@@ -753,6 +753,8 @@ export function buildMemorySection(tools?: readonly IToolSummary[]): string {
       '- A project-level decision is made or a non-obvious fact about the project surfaces ("we\'re going with Postgres", "this repo uses 2-space indent") → `file=lesson` (MEMORY.md is the index that surfaces it).',
       '- Something noteworthy happened today and the user will want to look it up later → `file=daily`.',
       '',
+      '**Never record what the user asked you not to.** When the user says a fact is off the record, not for this workspace, or not something to remember, write nothing about it anywhere: not USER.md, not a lesson, not the daily log, not a summary of the conversation that carries it. Do not record the request itself either ("asked me not to note X" is X). If you already wrote it this session, remove it.',
+      '',
       '**Cap discipline** — USER.md and the MEMORY.md index are bounded. When `memory_write add` would exceed the cap, the tool returns the current entries and an error. Pick the least-relevant existing lesson and `memory_write file=lesson action=remove slug=<old>` before retrying the add. The cap is a curation forcing function: only the most durable, generally-applicable lessons stay in the index.',
     );
   }

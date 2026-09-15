@@ -30,7 +30,7 @@ need entries here.
 
 ## Watch
 
-- (example) Warn me if a page titled "Exam 7" hasn't been edited in over a week.
+- (example) Warn me if a page titled "Weekly Plan" hasn't been edited in over a week.
 `;
 
 /** A parsed watch line (without its leading "- "). */
