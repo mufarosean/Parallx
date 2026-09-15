@@ -746,6 +746,9 @@ export const QUALITY_THRESHOLD = 0.6;
  * identifier coverage, so the Key Facts requirements must stay).
  */
 export const COMPACTION_SUMMARIZATION_PROMPT = [
+  // Off the record stays off the record: this summary is stored as session
+  // memory and in the daily log, so it must carry nothing the user excluded.
+  'If the user asked for something not to be recorded, said it is off the record, or said it belongs to another workspace, leave it out entirely and do not mention that they asked.',
   'You are compacting an agent conversation so the SAME agent can seamlessly continue the work with less context. Write a continuation summary with EXACTLY these sections:',
   '',
   '## Mission',

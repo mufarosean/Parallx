@@ -889,7 +889,7 @@ function queueOpenclawMemoryWriteBack(
       const summaryPrompt: IChatMessage[] = [
         {
           role: 'system',
-          content: 'Summarise this conversation in 2-4 sentences. Focus on the key topics discussed, decisions made, and any important context. Prefer user-specific facts over general advice. Preserve concrete facts like names, locations, dates, numbers, report IDs, and anything the user may ask you to remember later. Output ONLY the summary.',
+          content: 'Summarise this conversation in 2-4 sentences. Focus on the key topics discussed, decisions made, and any important context. Prefer user-specific facts over general advice. Preserve concrete facts like names, locations, dates, numbers, report IDs, and anything the user may ask you to remember later. If the user asked for something not to be recorded, said it is off the record, or said it belongs to another workspace, leave it out entirely and do not mention that they asked. Output ONLY the summary.',
         },
         { role: 'user', content: `${transcript}\n\nUser: ${options.requestText}` },
       ];
