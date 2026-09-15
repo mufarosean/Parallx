@@ -100,32 +100,6 @@ export interface SearchOptions {
   minScore?: number;
   /** Whether to include keyword (FTS5 BM25) search. */
   includeKeyword?: boolean;
-  /**
-   * Session transcripts (`.parallx/sessions/*.jsonl`) are indexed for the
-   * transcript tools only. Every search drops them unless it scopes into them
-   * (sourceIds or pathPrefixes under the sessions root) or sets this.
-   */
-  includeTranscripts?: boolean;
-}
-
-/** Where the indexer files session transcripts (indexingPipeline TRANSCRIPT_ROOT). */
-export const TRANSCRIPT_SOURCE_PREFIX = '.parallx/sessions/';
-
-export function isTranscriptSource(sourceId: string): boolean {
-  return sourceId.startsWith(TRANSCRIPT_SOURCE_PREFIX);
-}
-
-/**
- * A search sees transcript chunks only when it asked for them. The turn's
- * retrieved context, fs_search_knowledge and memory recall never do, so a past
- * conversation cannot resurface in a turn that never asked about it; the
- * transcript tools scope by session file and keep working.
- */
-export function searchIncludesTranscripts(options: Pick<SearchOptions, 'includeTranscripts' | 'sourceIds' | 'pathPrefixes'>): boolean {
-  if (options.includeTranscripts) { return true; }
-  if (options.sourceIds?.some(isTranscriptSource)) { return true; }
-  if (options.pathPrefixes?.some((p) => p.startsWith('.parallx/sessions'))) { return true; }
-  return false;
 }
 
 export interface KeywordSearchTrace {
@@ -510,19 +484,15 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
     const minScore = options.minScore ?? DEFAULT_MIN_SCORE;
     const candidateK = DEFAULT_CANDIDATE_K;
 
-    // Session transcripts belong to the transcript tools (see searchIncludesTranscripts).
-    const keepTranscripts = searchIncludesTranscripts(options);
-    const withoutTranscripts = (rows: VectorRow[]): VectorRow[] => keepTranscripts ? rows : rows.filter((r) => !isTranscriptSource(r.source_id));
-
     // 1. Vector similarity search
-    const vectorResults = withoutTranscripts(await this._vectorSearch(queryEmbedding, candidateK, options.sourceFilter, options.sourceIds, options.pathPrefixes));
+    const vectorResults = await this._vectorSearch(queryEmbedding, candidateK, options.sourceFilter, options.sourceIds, options.pathPrefixes);
 
     // 2. Keyword search (FTS5 BM25)
     let keywordResults: VectorRow[] = [];
     let keywordTrace: KeywordSearchTrace | undefined;
     if (includeKeyword && queryText.trim()) {
       const keywordSearch = await this._keywordSearch(queryText, candidateK, options.sourceFilter, options.sourceIds, options.pathPrefixes);
-      keywordResults = withoutTranscripts(keywordSearch.results);
+      keywordResults = keywordSearch.results;
       keywordTrace = keywordSearch.trace;
     }
 
