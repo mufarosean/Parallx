@@ -8443,6 +8443,8 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
 .mo-tr-status { flex-shrink: 0; font-size: 10px; font-weight: 600; letter-spacing: 0.3px; padding: 1px 6px; border-radius: 3px; background: var(--vscode-badge-background, var(--px-surface)); color: var(--vscode-badge-foreground, var(--px-text)); }
 .mo-tr-status.is-failed { background: transparent; color: var(--vscode-errorForeground, var(--px-text)); border: 1px solid var(--vscode-errorForeground, var(--px-border)); }
 .mo-tr-note { font-size: 11px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
+.mo-tr-replaced { text-decoration: line-through; }
+.mo-tr-status.is-retag { background: transparent; color: var(--vscode-focusBorder, var(--px-accent)); border: 1px solid var(--vscode-focusBorder, var(--px-accent)); }
 .mo-tr-error { font-size: 11px; color: var(--vscode-errorForeground, var(--px-text)); }
 .mo-tr-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .mo-tr-chip { display: inline-flex; align-items: center; max-width: 100%; padding: 2px 4px 2px 8px; border-radius: var(--parallx-radius-sm, 3px); border: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-input-background, var(--px-bg-inset)); font-size: 11px; line-height: 16px; }
@@ -13383,6 +13385,7 @@ function renderGridBrowser(container, api, input) {
       }});
       if (item.type === 'photo') {
         actions.push({ label: 'Tag With AI', handler: () => { void moTagWithAIFromUI([item], api); } });
+        actions.push({ label: 'Retag With AI', handler: () => { void moTagWithAIFromUI([item], api, 'retag'); } });
       }
       actions.push({ label: 'Rate', submenu: [
         { label: '\u2606 Clear', handler: () => rateItemsByKey(0) },
@@ -13453,6 +13456,10 @@ function renderGridBrowser(container, api, input) {
       actions.push({ label: 'Tag With AI', handler: () => {
         const items = [...state.selectedIds].map((k) => { const i = k.indexOf(':'); return { type: k.slice(0, i), id: parseInt(k.slice(i + 1), 10) }; });
         void moTagWithAIFromUI(items, api);
+      }});
+      actions.push({ label: 'Retag With AI', handler: () => {
+        const items = [...state.selectedIds].map((k) => { const i = k.indexOf(':'); return { type: k.slice(0, i), id: parseInt(k.slice(i + 1), 10) }; });
+        void moTagWithAIFromUI(items, api, 'retag');
       }});
       actions.push({ label: 'Rate', submenu: [
         { label: '\u2606 Clear', handler: () => rateItemsByKey(0) },
@@ -14286,7 +14293,10 @@ function renderHomeFeed(container, api, input) {
         { label: 'View Full Size', handler: () => viewItem(item) },
         { label: 'Edit Details', handler: () => openDetail(item) },
         { label: 'Add To Chat', handler: () => { void moAttachItemsToChat([item]); } },
-        ...(item.type === 'photo' && !item.isGif ? [{ label: 'Tag With AI', handler: () => { void moTagWithAIFromUI([item], api); } }] : []),
+        ...(item.type === 'photo' && !item.isGif ? [
+          { label: 'Tag With AI', handler: () => { void moTagWithAIFromUI([item], api); } },
+          { label: 'Retag With AI', handler: () => { void moTagWithAIFromUI([item], api, 'retag'); } },
+        ] : []),
         ...(item.type === 'photo' && !item.isGif ? [{ label: 'Upscale…', handler: () => { void moUpscaleItems([item], api, null); } }] : []),
         { separator: true },
         { label: 'Open File Location', handler: async () => {
@@ -17312,6 +17322,12 @@ function buildSelectionToolbar(container, state, api, refreshFn, applySelectionF
     void moTagWithAIFromUI(items, api);
   });
   bar.appendChild(aiTagBtn);
+  const aiRetagBtn = moEl('button', null, { textContent: 'Retag With AI', title: 'Suggest a fresh set of tags to replace what the selected photos have. Nothing changes until you approve it in Tag Review.' });
+  aiRetagBtn.addEventListener('click', () => {
+    const items = [...state.selectedIds].map((k) => { const i = k.indexOf(':'); return { type: k.slice(0, i), id: parseInt(k.slice(i + 1), 10) }; });
+    void moTagWithAIFromUI(items, api, 'retag');
+  });
+  bar.appendChild(aiRetagBtn);
 
   // Bulk Rating button
   const bulkRatingBtn = moEl('button', null, { textContent: 'Rate...' });
@@ -27591,6 +27607,26 @@ function moQuarterRects(w, h, overlap = 0.1) {
   ];
 }
 
+/**
+ * What Approve writes for a review row. The live picks with their ancestors
+ * are the target. 'add' writes what the photo lacks and removes nothing.
+ * 'retag' makes the target the photo's whole tag set: what it has and the
+ * target lacks is removed. Nothing is ever removed on 'add'.
+ */
+function moTagApprovePlan({ mode, currentIds, pickIds, parentsOf, liveIds }) {
+  const live = liveIds instanceof Set ? liveIds : new Set((liveIds || []).map(Number));
+  const picks = (pickIds || []).map(Number).filter((id) => live.has(id));
+  const target = moExpandWithAncestors(picks, parentsOf);
+  const targetSet = new Set(target);
+  const current = new Set((currentIds || []).map(Number));
+  return {
+    picks,
+    target,
+    add: target.filter((id) => !current.has(id)),
+    remove: mode === 'retag' ? [...current].filter((id) => !targetSet.has(id)) : [],
+  };
+}
+
 // @mo-tag-pure-end
 
 // ─── State and shared queries ──────────────────────────────────────────────
@@ -27617,6 +27653,14 @@ const MO_TAG_UNTAGGED_FROM = `FROM mo_photos p
     AND LOWER(f.basename) NOT LIKE '%.gif'
     AND NOT EXISTS (SELECT 1 FROM mo_photos_tags t WHERE t.photo_id = p.id)
     AND NOT EXISTS (SELECT 1 FROM mo_stack_members sm WHERE sm.member_type = 'photo' AND sm.member_id = p.id AND sm.role <> 'primary')
+    AND NOT EXISTS (SELECT 1 FROM mo_ai_tag_reviews r WHERE r.photo_id = p.id)`;
+/** Photos with at least one tag and not already in Tag Review: the retag scope. */
+const MO_TAG_TAGGED_FROM = `FROM mo_photos p
+  JOIN mo_photos_files pf ON pf.photo_id = p.id AND pf.is_primary = 1
+  JOIN mo_files f ON f.id = pf.file_id
+  WHERE p.deleted_at IS NULL
+    AND LOWER(f.basename) NOT LIKE '%.gif'
+    AND EXISTS (SELECT 1 FROM mo_photos_tags t WHERE t.photo_id = p.id)
     AND NOT EXISTS (SELECT 1 FROM mo_ai_tag_reviews r WHERE r.photo_id = p.id)`;
 
 function moTagErr(err) { return err && err.message ? err.message : String(err); }
@@ -27697,15 +27741,16 @@ async function moTagEligible(items) {
 }
 
 /** Queue photos (a photo already in the list starts over; one mid-run is left alone). */
-async function moTagQueue(photoIds) {
+async function moTagQueue(photoIds, mode = 'add') {
   if (!photoIds.length) return 0;
+  const m = mode === 'retag' ? 'retag' : 'add';
   await db.transaction(photoIds.map((id) => ({
     type: 'run',
-    sql: `INSERT INTO mo_ai_tag_reviews (photo_id, status, tag_ids, error, model, updated_at)
-          VALUES (?, 'queued', '[]', NULL, NULL, datetime('now'))
-          ON CONFLICT(photo_id) DO UPDATE SET status = 'queued', tag_ids = '[]', error = NULL, updated_at = datetime('now')
+    sql: `INSERT INTO mo_ai_tag_reviews (photo_id, status, tag_ids, error, model, mode, updated_at)
+          VALUES (?, 'queued', '[]', NULL, NULL, ?, datetime('now'))
+          ON CONFLICT(photo_id) DO UPDATE SET status = 'queued', tag_ids = '[]', error = NULL, mode = excluded.mode, updated_at = datetime('now')
           WHERE mo_ai_tag_reviews.status <> 'running'`,
-    params: [id],
+    params: [id, m],
   })));
   return photoIds.length;
 }
@@ -27714,9 +27759,9 @@ async function moTagQueue(photoIds) {
  * The one entry point for every surface (menus, selection bar, chat tool):
  * queue what can be tagged and start the runner. Returns a report.
  */
-async function moTagWithAI(items) {
+async function moTagWithAI(items, mode = 'add') {
   const { ids, skipped } = await moTagEligible(items);
-  const report = { queued: 0, skipped, model: null, error: null };
+  const report = { queued: 0, skipped, model: null, error: null, mode: mode === 'retag' ? 'retag' : 'add' };
   if (ids.length === 0) {
     report.error = (skipped.gif || skipped.notPhoto)
       ? 'Only photos are tagged with AI. GIFs and videos are left out.'
@@ -27731,21 +27776,21 @@ async function moTagWithAI(items) {
   const model = await moTagModel();
   if (model.error) { report.error = model.error; return report; }
   report.model = model.name;
-  report.queued = await moTagQueue(ids);
+  report.queued = await moTagQueue(ids, report.mode);
   moTagNotify();
   void moTagRunnerStart();
   return report;
 }
 
 /** Menus and the selection bar: queue, report in the status bar, show Tag Review. */
-async function moTagWithAIFromUI(items, api) {
+async function moTagWithAIFromUI(items, api, mode = 'add') {
   try {
-    const r = await moTagWithAI(items);
+    const r = await moTagWithAI(items, mode);
     if (r.error) { api.window.showWarningMessage(r.error); return; }
     const n = r.queued;
     const left = r.skipped.gif + r.skipped.notPhoto;
     api.statusBar?.setMessage?.(
-      `Tagging ${n} photo${n === 1 ? '' : 's'} with AI` + (left ? ` (${left} left out: only photos are tagged)` : ''),
+      `${r.mode === 'retag' ? 'Retagging' : 'Tagging'} ${n} photo${n === 1 ? '' : 's'} with AI` + (left ? ` (${left} left out: only photos are tagged)` : ''),
       4000,
     );
     moOpenTagReview(api);
@@ -27778,14 +27823,14 @@ async function moTagRunnerStart() {
     if (model.error) { _moTagRun.error = model.error; return; }
     _moTagRun.model = model.name;
     while (!_moTagRun.stop && !_moClosing) {
-      const row = await db.get(`SELECT id, photo_id FROM mo_ai_tag_reviews WHERE status = 'queued' ORDER BY id LIMIT 1`);
+      const row = await db.get(`SELECT id, photo_id, mode FROM mo_ai_tag_reviews WHERE status = 'queued' ORDER BY id LIMIT 1`);
       if (!row) break;
       await db.run(`UPDATE mo_ai_tag_reviews SET status = 'running', updated_at = datetime('now') WHERE id = ?`, [row.id]);
       _moTagRun.photoId = row.photo_id;
       moTagNotify();
       let result;
       try {
-        result = await moTagOnePhoto(row.photo_id, model);
+        result = await moTagOnePhoto(row.photo_id, model, row.mode);
       } catch (err) {
         result = { status: 'failed', tagIds: [], error: moTagErr(err) };
       }
@@ -27812,21 +27857,27 @@ async function moTagRunnerStart() {
   }
 }
 
-/** One photo: image(s) + tag list to the model, reply checked against the tree. */
-async function moTagOnePhoto(photoId, model) {
+/**
+ * One photo: image(s) + tag list to the model, reply checked against the
+ * tree. On 'add' the model is shown the photo's tags and offered the rest;
+ * on 'retag' it is shown nothing and offered every tag, and every pick is
+ * kept, so the review row holds the whole proposed set.
+ */
+async function moTagOnePhoto(photoId, model, mode = 'add') {
+  const retag = mode === 'retag';
   const path = await moResolveItemPath({ type: 'photo', id: photoId });
   if (!path) return { status: 'failed', tagIds: [], error: 'The file is not in the library any more.' };
   if (moIsGifPath(path)) return { status: 'failed', tagIds: [], error: 'GIFs are not tagged with AI.' };
   const tree = await moTagTree();
   const has = new Set((await db.all('SELECT tag_id FROM mo_photos_tags WHERE photo_id = ?', [photoId])).map((r) => Number(r.tag_id)));
-  const entries = moTagEntries(tree.tags, tree.rels, has);
+  const entries = moTagEntries(tree.tags, tree.rels, retag ? new Set() : has);
   if (entries.length === 0) return { status: 'nomatch', tagIds: [], error: null };
   const crops = (await moGetSetting(MO_TAG_CROPS_KEY, '0')) === '1';
   // Read per photo, so an edit in Tag Review applies from the next photo on.
   const rules = await moGetSetting(MO_TAG_RULES_KEY, '');
   const images = await moTagImages(photoId, path, crops);
   if (!images) return { status: 'failed', tagIds: [], error: 'This file could not be read as an image.' };
-  const existing = tree.tags.filter((t) => has.has(Number(t.id))).map((t) => t.name);
+  const existing = retag ? [] : tree.tags.filter((t) => has.has(Number(t.id))).map((t) => t.name);
   const name = path.split(/[\\/]/).pop();
   const messages = [
     { role: 'system', content: MO_TAG_SYSTEM },
@@ -27845,7 +27896,7 @@ async function moTagOnePhoto(photoId, model) {
   }
   const reply = moParseTagReply(text);
   if (!reply.ok) return { status: 'failed', tagIds: [], error: 'The model did not reply with a tag list.' };
-  const fresh = moResolveTagPicks(reply.tags, entries).ids.filter((id) => !has.has(id));
+  const fresh = moResolveTagPicks(reply.tags, entries).ids.filter((id) => retag || !has.has(id));
   return fresh.length
     ? { status: 'pending', tagIds: fresh, error: null }
     : { status: 'nomatch', tagIds: [], error: null };
@@ -27938,18 +27989,19 @@ async function moTagApprove(id, { quiet = false } = {}) {
   if (!row || row.status !== 'pending') return 0;
   const tree = await moTagTree();
   const live = new Set(tree.tags.map((t) => Number(t.id)));
-  const ids = moExpandWithAncestors(moTagIdsOf(row).filter((t) => live.has(t)), tree.parentsOf);
-  if (ids.length === 0) return 0;
-  const ops = ids.map((tagId) => ({
-    type: 'run',
-    sql: 'INSERT OR IGNORE INTO mo_photos_tags (photo_id, tag_id) VALUES (?, ?)',
-    params: [row.photo_id, tagId],
-  }));
+  const current = (await db.all('SELECT tag_id FROM mo_photos_tags WHERE photo_id = ?', [row.photo_id])).map((r) => Number(r.tag_id));
+  const plan = moTagApprovePlan({ mode: row.mode, currentIds: current, pickIds: moTagIdsOf(row), parentsOf: tree.parentsOf, liveIds: live });
+  if (plan.picks.length === 0) return 0;
+  // A retag removes first, then adds; an add only adds. One transaction with the row's deletion.
+  const ops = [];
+  for (const tagId of plan.remove) ops.push({ type: 'run', sql: 'DELETE FROM mo_photos_tags WHERE photo_id = ? AND tag_id = ?', params: [row.photo_id, tagId] });
+  for (const tagId of plan.add) ops.push({ type: 'run', sql: 'INSERT OR IGNORE INTO mo_photos_tags (photo_id, tag_id) VALUES (?, ?)', params: [row.photo_id, tagId] });
   ops.push({ type: 'run', sql: 'DELETE FROM mo_ai_tag_reviews WHERE id = ?', params: [id] });
   await db.transaction(ops);
   // Same event the Tag dialog sends: open grids patch the one card in place.
+  // A retag replaces the card's tags outright; an add only adds to them.
   document.dispatchEvent(new CustomEvent('mo:tags-bulk-changed', {
-    detail: { op: 'ADD', tagIds: ids, keys: [`photo:${row.photo_id}`] },
+    detail: { op: row.mode === 'retag' ? 'REPLACE' : 'ADD', tagIds: plan.target, keys: [`photo:${row.photo_id}`] },
   }));
   if (!quiet) { _notifySidebarRefresh(); moTagNotify(); }
   return 1;
@@ -28072,12 +28124,14 @@ function renderTagReview(container, api) {
   resumeBtn.addEventListener('click', () => { void moTagRunnerStart(); });
   stopBtn.addEventListener('click', () => { _moTagRun.stop = true; moTagNotify(); });
   approveAllBtn.addEventListener('click', async () => {
-    const rows = await db.all(`SELECT id, tag_ids FROM mo_ai_tag_reviews WHERE status = 'pending' ORDER BY id`);
+    const rows = await db.all(`SELECT id, tag_ids, mode FROM mo_ai_tag_reviews WHERE status = 'pending' ORDER BY id`);
     const ready = rows.filter((row) => moTagIdsOf(row).length > 0);
     if (!ready.length) return;
     const n = ready.length;
+    const retags = ready.filter((row) => row.mode === 'retag').length;
     const ok = await api.window.showWarningMessage(
-      `Approve ${n} photo${n === 1 ? '' : 's'}? Each gets its suggested tags and their parents.`,
+      `Approve ${n} photo${n === 1 ? '' : 's'}? Each gets its suggested tags and their parents.`
+        + (retags ? ` ${retags === n ? (n === 1 ? 'It is a retag: its' : 'All are retags: their') : `${retags} of them ${retags === 1 ? 'is a retag: its' : 'are retags: their'}`} current tags are replaced.` : ''),
       { title: 'Approve All' }, { title: 'Cancel' },
     );
     if (!ok || ok.title !== 'Approve All') return;
@@ -28197,8 +28251,15 @@ function renderTagReview(container, api) {
     nameLine.appendChild(moEl('span', 'mo-tr-name', { textContent: r.basename || `Photo ${r.photo_id}`, title: r.basename || '' }));
     const badge = { queued: 'Waiting', running: 'Tagging', nomatch: 'No Match', failed: 'Failed' }[r.status];
     if (badge) nameLine.appendChild(moEl('span', `mo-tr-status is-${r.status}`, { textContent: badge }));
+    const retag = r.mode === 'retag';
+    if (retag) nameLine.appendChild(moEl('span', 'mo-tr-status is-retag', { textContent: 'Retag', title: 'Approve replaces the photo\'s current tags with the picks and their parents. Skip leaves it as it is.' }));
     body.appendChild(nameLine);
-    if (hasNames.length) body.appendChild(moEl('div', 'mo-tr-note', { textContent: 'Has ' + hasNames.join(', ') }));
+    if (hasNames.length) {
+      // What the photo has: kept on an add, struck through on a retag.
+      const note = moEl('div', 'mo-tr-note');
+      note.append(retag ? 'Replaces ' : 'Has ', moEl('span', retag ? 'mo-tr-replaced' : null, { textContent: hasNames.join(', ') }));
+      body.appendChild(note);
+    }
     if (r.status === 'failed' && r.error) body.appendChild(moEl('div', 'mo-tr-error', { textContent: r.error }));
     if (r.status === 'nomatch' && !ids.length) {
       body.appendChild(moEl('div', 'mo-tr-note', { textContent: 'None of your tags fit this photo. Add one yourself, retry, or skip it.' }));
@@ -28208,14 +28269,14 @@ function renderTagReview(container, api) {
     if (editable || ids.length) {
       const chips = moEl('div', 'mo-tr-chips');
       for (const tagId of ids) chips.appendChild(buildChip(r, ids, tagId, editable));
-      if (editable) chips.appendChild(buildAddInput(r, ids, hasIds));
+      if (editable) chips.appendChild(buildAddInput(r, ids, retag ? new Set() : hasIds));
       body.appendChild(chips);
     }
     row.appendChild(body);
 
     const actions = moEl('div', 'mo-tr-row-actions');
     if (r.status === 'pending') {
-      const approve = moEl('button', 'mo-tr-btn primary', { type: 'button', textContent: 'Approve', title: 'Add these tags and their parents to the photo' });
+      const approve = moEl('button', 'mo-tr-btn primary', { type: 'button', textContent: 'Approve', title: retag ? 'Replace the photo\'s tags with these and their parents' : 'Add these tags and their parents to the photo' });
       approve.disabled = ids.length === 0;
       approve.addEventListener('click', async () => {
         approve.disabled = true;
@@ -28309,7 +28370,7 @@ function renderTagReview(container, api) {
     for (const r of rows) {
       const ids = moTagIdsOf(r).filter((id) => tagName.has(id));
       const has = hasBy.get(r.photo_id) || [];
-      const sig = [r.status, JSON.stringify(ids), r.error || '', r.basename || '', has.map((h) => h.id).join(','), treeSig].join('|');
+      const sig = [r.status, r.mode || 'add', JSON.stringify(ids), r.error || '', r.basename || '', has.map((h) => h.id).join(','), treeSig].join('|');
       seen.add(r.id);
       let rec = rowEls.get(r.id);
       if (!rec || rec.sig !== sig) {
@@ -28356,7 +28417,8 @@ function renderTagReview(container, api) {
 // ─── The chat tool ─────────────────────────────────────────────────────────
 
 async function moToolTagPhotos(args) {
-  const scope = args.scope === 'photos' ? 'photos' : 'untagged';
+  const scope = args.scope === 'photos' ? 'photos' : (args.scope === 'tagged' ? 'tagged' : 'untagged');
+  const mode = args.mode === 'retag' ? 'retag' : 'add';
   const c = await moTagCounts();
   const inReview = c.pending + c.nomatch + c.failed;
   const waiting = c.queued + c.running;
@@ -28364,15 +28426,16 @@ async function moToolTagPhotos(args) {
   let items;
   let untaggedTotal = 0;
   let limit = 0;
-  if (scope === 'untagged') {
-    const row = await db.get(`SELECT COUNT(*) AS n ${MO_TAG_UNTAGGED_FROM}`);
+  if (scope === 'untagged' || scope === 'tagged') {
+    const from = scope === 'tagged' ? MO_TAG_TAGGED_FROM : MO_TAG_UNTAGGED_FROM;
+    const row = await db.get(`SELECT COUNT(*) AS n ${from}`);
     untaggedTotal = row ? row.n || 0 : 0;
     if (args.countOnly) {
-      return { content: `${untaggedTotal} untagged photo${untaggedTotal === 1 ? '' : 's'} (GIFs, videos and photos already in Tag Review are not counted). ${reviewLine}` };
+      return { content: `${untaggedTotal} ${scope} photo${untaggedTotal === 1 ? '' : 's'} (GIFs, videos and photos already in Tag Review are not counted). ${reviewLine}` };
     }
-    if (untaggedTotal === 0) return { content: `There are no untagged photos to queue. ${reviewLine}` };
+    if (untaggedTotal === 0) return { content: `There are no ${scope} photos to queue. ${reviewLine}` };
     limit = Math.min(1000, Math.max(1, parseInt(args.limit, 10) || 50));
-    const rows = await db.all(`SELECT p.id ${MO_TAG_UNTAGGED_FROM} ORDER BY p.id LIMIT ?`, [limit]);
+    const rows = await db.all(`SELECT p.id ${from} ORDER BY p.id LIMIT ?`, [limit]);
     items = rows.map((r) => ({ type: 'photo', id: r.id }));
   } else {
     const ids = Array.isArray(args.photoIds) ? args.photoIds.map((v) => parseInt(v, 10)).filter(Number.isFinite) : [];
@@ -28383,15 +28446,16 @@ async function moToolTagPhotos(args) {
       return { content: `${ok.length} of those can be tagged (${skipped.gif} GIF${skipped.gif === 1 ? '' : 's'} and ${skipped.missing} missing left out). ${reviewLine}` };
     }
   }
-  const r = await moTagWithAI(items);
+  const r = await moTagWithAI(items, mode);
   if (r.error) return { content: r.error, isError: true };
-  const more = scope === 'untagged' ? Math.max(0, untaggedTotal - r.queued) : 0;
+  const more = scope === 'photos' ? 0 : Math.max(0, untaggedTotal - r.queued);
   const lines = [
-    `Started: ${r.queued} photo${r.queued === 1 ? '' : 's'} queued for tagging with ${r.model}. It runs in the background, one photo at a time.`,
+    `Started: ${r.queued} photo${r.queued === 1 ? '' : 's'} queued for ${mode === 'retag' ? 'retagging' : 'tagging'} with ${r.model}. It runs in the background, one photo at a time.`,
     'Suggestions appear in Media Organizer > Tag Review (Quick Filters in the sidebar), where the user approves or skips each photo. Nothing is applied until they approve.',
   ];
+  if (mode === 'retag') lines.push('Each photo\'s current tags are shown beside the new picks; Approve replaces them, Skip keeps them.');
   if (r.skipped.gif) lines.push(`${r.skipped.gif} GIF${r.skipped.gif === 1 ? ' was' : 's were'} left out (only photos are tagged).`);
-  if (more) lines.push(`${more} more untagged photo${more === 1 ? ' was' : 's were'} not queued (limit ${limit}).`);
+  if (more) lines.push(`${more} more ${scope} photo${more === 1 ? ' was' : 's were'} not queued (limit ${limit}).`);
   return { content: lines.join(' ') };
 }
 
@@ -28409,9 +28473,10 @@ function moRegisterTagTool(api) {
       parameters: {
         type: 'object',
         properties: {
-          scope: { type: 'string', enum: ['untagged', 'photos'], description: '"untagged" (default): photos with no tags yet. "photos": the ids in photoIds.' },
+          scope: { type: 'string', enum: ['untagged', 'tagged', 'photos'], description: '"untagged" (default): photos with no tags yet. "tagged": photos that have tags (for a retag). "photos": the ids in photoIds.' },
+          mode: { type: 'string', enum: ['add', 'retag'], description: '"add" (default): suggest tags on top of what a photo has. "retag": look at the photo afresh and propose its whole tag set; the user sees the current tags beside the picks in Tag Review, and Approve replaces them. Nothing changes until they approve.' },
           photoIds: { type: 'array', items: { type: 'integer' }, description: 'Photo ids, when scope is "photos".' },
-          limit: { type: 'integer', description: 'Most untagged photos to queue (default 50, max 1000).' },
+          limit: { type: 'integer', description: 'Most photos to queue for the "untagged" and "tagged" scopes (default 50, max 1000).' },
           countOnly: { type: 'boolean', description: 'Only count; do not start tagging.' },
         },
       },

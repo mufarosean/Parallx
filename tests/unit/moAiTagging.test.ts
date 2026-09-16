@@ -24,7 +24,8 @@ function loadRegion(): string {
 const REGION = loadRegion();
 const NAMES = ['MO_TAG_PATH_SEP', 'MO_TAG_OVERVIEW_EDGE', 'MO_TAG_CROP_EDGE', 'MO_TAG_CROP_MIN_EDGE', 'moNormalizeTagName',
   'moTagParentsOf', 'moTagAncestorIds', 'moExpandWithAncestors', 'moTagPaths', 'moTagEntries', 'moTagReplySchema',
-  'moTagPrompt', 'moTagRulesText', 'MO_TAG_RULES_MAX', 'moParseTagReply', 'moResolveTagPicks', 'moFitEdge', 'moQuarterRects'];
+  'moTagPrompt', 'moTagRulesText', 'MO_TAG_RULES_MAX', 'moParseTagReply', 'moResolveTagPicks', 'moFitEdge', 'moQuarterRects',
+  'moTagApprovePlan'];
 // eslint-disable-next-line @typescript-eslint/no-implied-eval
 const P: Record<string, any> = new Function(REGION + `\nreturn { ${NAMES.join(', ')} };`)();
 
@@ -217,5 +218,34 @@ describe('the image sizes', () => {
       expect(r.x + r.w).toBeLessThanOrEqual(6000);
       expect(r.y + r.h).toBeLessThanOrEqual(4000);
     }
+  });
+});
+describe('moTagApprovePlan', () => {
+  const parentsOf = () => P.moTagParentsOf(rels);
+  const live = new Set([1, 2, 3, 4, 5, 6]);
+  it('on an add, writes the picks and their ancestors the photo lacks and removes nothing', () => {
+    // The photo has ANIMALS and CAT; the pick is CORGI.
+    const plan = P.moTagApprovePlan({ mode: 'add', currentIds: [1, 4], pickIds: [3], parentsOf: parentsOf(), liveIds: live });
+    expect(plan.picks).toEqual([3]);
+    expect([...plan.target].sort()).toEqual([1, 2, 3]);
+    expect([...plan.add].sort()).toEqual([2, 3]);
+    expect(plan.remove).toEqual([]);
+  });
+  it('on a retag, makes the picks and their ancestors the whole set: the rest goes, shared ancestors stay', () => {
+    // The photo has ANIMALS, CAT and BEACH (with PLACES); the fresh pick is CORGI.
+    const plan = P.moTagApprovePlan({ mode: 'retag', currentIds: [1, 4, 5, 6], pickIds: [3], parentsOf: parentsOf(), liveIds: live });
+    expect([...plan.target].sort()).toEqual([1, 2, 3]);
+    expect([...plan.add].sort()).toEqual([2, 3]);
+    expect([...plan.remove].sort()).toEqual([4, 5, 6]);
+  });
+  it('a retag whose picks match what the photo has changes nothing, and a pick that is no longer live is dropped', () => {
+    const same = P.moTagApprovePlan({ mode: 'retag', currentIds: [1, 2, 3], pickIds: [3], parentsOf: parentsOf(), liveIds: live });
+    expect(same.add).toEqual([]);
+    expect(same.remove).toEqual([]);
+    const gone = P.moTagApprovePlan({ mode: 'retag', currentIds: [1, 4], pickIds: [99], parentsOf: parentsOf(), liveIds: live });
+    expect(gone.picks).toEqual([]);
+    expect(gone.target).toEqual([]);
+    // No live pick: the caller returns before writing, so the photo keeps its tags.
+    expect(gone.remove).toEqual([1, 4]);
   });
 });

@@ -11,10 +11,14 @@ This program replaces all of them with one tool and a review list.
 ## What a user gets
 
 - **Tag With AI** on a photo's right-click menu (grid and Home), on a
-  multi-selection's right-click menu, and on the selection bar.
+  multi-selection's right-click menu, and on the selection bar. **Retag With
+  AI** sits beside it everywhere: a fresh look at the photo, its current tags
+  replaced on Approve.
 - **One chat tool**, `mediaOrganizer_tagPhotos`: "how many photos are
-  untagged?", "tag my untagged photos", or specific photo ids. The chat AI
-  never handles images; it starts a run and reports where the results are.
+  untagged?", "tag my untagged photos", "retag these", or specific photo ids
+  (`mode: "retag"`, and a `tagged` scope for the photos that have tags). The
+  chat AI never handles images; it starts a run and reports where the
+  results are.
 - **Tag Review**, a tab (sidebar: Quick Filters > Tag Review, with a count).
   Every photo from a run appears with its suggested tags shown as full paths
   (`ANIMALS › DOG › CORGI`). Per photo: remove a suggestion, add one of your
@@ -47,8 +51,13 @@ This program replaces all of them with one tool and a review list.
    created or renamed. Uniqueness is case-insensitive, so `Beach` and `BEACH`
    can no longer both exist.
 5. **Photos only.** GIFs and videos are left out and counted in the report.
-6. **Tags are only added.** A photo keeps the tags it has; the model is told
-   which ones it already has and does not suggest them again.
+6. **Tags are only added, unless you ask for a retag.** On Tag With AI a
+   photo keeps the tags it has; the model is told which ones it already has
+   and does not suggest them again. On **Retag With AI** the model sees the
+   photo with no tags and proposes its whole set; the review row shows the
+   current tags struck through beside the picks, and Approve replaces them
+   (their parents included). Skip keeps the photo as it is. Nothing is
+   removed until Approve, and never on an ordinary tagging run.
 7. **Nothing reaches a photo without Approve.**
 
 ## When the tool exists
@@ -93,9 +102,12 @@ Ollama reload the model).
 ## How it fits together
 
 - `mo_ai_tag_reviews` (migration 021): one row per photo, status queued,
-  running, pending, nomatch or failed, the picked tag ids, the model.
-  Approve and Skip delete the row. A row left `running` by a closed app goes
-  back to `queued` on the next start.
+  running, pending, nomatch or failed, the picked tag ids, the model, and
+  (migration 024) the `mode`, `add` or `retag`. Approve and Skip delete the
+  row. A row left `running` by a closed app goes back to `queued` on the next
+  start. `moTagApprovePlan` (pure) turns a row into what Approve writes: the
+  live picks with their ancestors, what to add, and on a retag what to
+  remove; the grid is told `REPLACE` for a retag and `ADD` otherwise.
 - The runner is a module singleton: one photo at a time, `mo:ai-tag-changed`
   after each so the tab and the sidebar count update.
 - Tagging rules live in `mo_settings` under `ai_tag_rules` (per workspace,
