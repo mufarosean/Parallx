@@ -29,6 +29,7 @@ import { createServiceIdentifier } from '../platform/types.js';
 import { Disposable, toDisposable } from '../platform/lifecycle.js';
 import { Emitter, type Event } from '../platform/events.js';
 import type { IDatabaseService } from './serviceTypes.js';
+import { formatLocalTime } from './localTime.js';
 
 /**
  * WHO did it. A closed union (SYSTEM_INTEGRITY.md Phase B) — the old
@@ -160,10 +161,8 @@ function actorLabel(actor: string): string {
  *  distinguishable and actionable (canvas_read_page the exact id, not a
  *  title search that may hit the wrong twin). */
 export function renderActivityLine(ev: IActivityEvent): string {
-  const d = new Date(ev.ts);
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  let line = `${hh}:${mm} ${actorLabel(ev.actor)} ${ev.verb} ${ev.object}`;
+  // The assistant's zone (chat.timeZone), the same clock the prompt states.
+  let line = `${formatLocalTime(ev.ts)} ${actorLabel(ev.actor)} ${ev.verb} ${ev.object}`;
   if (ev.ref) line += ` [${ev.ref}]`;
   if (ev.count > 1) line += ` ×${ev.count}`;
   if (ev.detail) line += ` — ${ev.detail}`;

@@ -592,6 +592,13 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   const unifiedConfigService = api.services.has(IUnifiedAIConfigService)
     ? api.services.get<import('../../aiSettings/unifiedConfigTypes.js').IUnifiedAIConfigService>(IUnifiedAIConfigService)
     : undefined;
+  // The one clock (services/localTime): the assistant's zone from chat.timeZone,
+  // this computer's when unset, kept current as the setting changes.
+  if (unifiedConfigService) {
+    const { setAssistantTimeZone } = await import('../../services/localTime.js');
+    setAssistantTimeZone(unifiedConfigService.getEffectiveConfig().chat?.timeZone ?? '');
+    context.subscriptions.push(unifiedConfigService.onDidChangeConfig((c) => setAssistantTimeZone(c.chat?.timeZone ?? '')));
+  }
   const agentSessionService = api.services.has(IAgentSessionService)
     ? api.services.get<import('../../services/serviceTypes.js').IAgentSessionService>(IAgentSessionService)
     : undefined;

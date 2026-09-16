@@ -488,6 +488,33 @@ describe('buildRuntimeSection', () => {
     expect(section).toContain('local timezone');
   });
 
+  it('states ONE clock: no UTC form beside the local time, and the stamp names its zone', () => {
+    // Two clocks made the model copy the machine-shaped one and answer in UTC.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-16T12:31:02.000Z'));
+    try {
+      const section = buildRuntimeSection(createRuntimeInfo({ timeZone: 'America/Chicago' }));
+      expect(section).toContain('Current date/time: 2026-09-16 07:31:02 CDT');
+      expect(section).toContain('Timezone: America/Chicago');
+      expect(section).not.toMatch(/UTC:|\d{2}:\d{2}:\d{2}\.\d{3}Z/);
+      expect(section).toContain('Never convert to UTC');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('writes the clock in a configured zone, and falls back to the machine when the zone is bad', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-16T12:31:02.000Z'));
+    try {
+      expect(buildRuntimeSection(createRuntimeInfo({ timeZone: 'Europe/London' }))).toContain('2026-09-16 13:31:02 GMT+1');
+      const machineTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      expect(buildRuntimeSection(createRuntimeInfo({ timeZone: 'Mars/Olympus' }))).toContain(`Timezone: ${machineTz}`);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('includes optional OS/arch/shell when present', () => {
     const section = buildRuntimeSection(createRuntimeInfo({
       os: 'win32',

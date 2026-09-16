@@ -46,6 +46,13 @@ export interface IUnifiedChatConfig {
   readonly systemPromptIsCustom: boolean;
   /** @deprecated F11: No OpenClaw consumer. Vestigial field preserved for stored data compatibility. */
   readonly responseLength: AIResponseLength;
+  /**
+   * The one zone every time the assistant reads or writes is in (an IANA
+   * name such as America/Chicago). Empty: this computer's zone. Resolved by
+   * services/localTime.ts; the prompt, the journal and tool results all
+   * stamp in it, and never in UTC.
+   */
+  readonly timeZone: string;
 }
 
 // ─── Model (merged from M15 + config.json) ──────────────────────────────────
@@ -509,6 +516,7 @@ export const DEFAULT_UNIFIED_CONFIG: IUnifiedAIConfig = {
     systemPrompt: '', // generated at runtime from tone/focus/length
     systemPromptIsCustom: false,
     responseLength: 'adaptive',
+    timeZone: '',                // this computer's zone
   },
   model: {
     chatModel: '',               // auto-select
@@ -640,6 +648,7 @@ export function fromLegacyProfile(profile: AISettingsProfile): IUnifiedPreset {
         systemPrompt: profile.chat.systemPrompt,
         systemPromptIsCustom: profile.chat.systemPromptIsCustom,
         responseLength: profile.chat.responseLength,
+        timeZone: profile.chat.timeZone ?? '',
       },
       model: {
         chatModel: profile.model.defaultModel,

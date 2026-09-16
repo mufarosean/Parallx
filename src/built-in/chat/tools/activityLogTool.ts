@@ -15,6 +15,7 @@ import type {
   IToolResult,
 } from '../../../services/chatTypes.js';
 import type { IActivityJournalService } from '../../../services/activityJournalService.js';
+import { formatLocalDateTime } from '../../../services/localTime.js';
 
 function optStr(v: unknown): string | undefined {
   return typeof v === 'string' && v.trim() ? v.trim() : undefined;
@@ -65,7 +66,8 @@ export function createActivityLogTool(journal: IActivityJournalService | undefin
           ok: true,
           returned: events.length,
           events: events.map((e) => ({
-            time: new Date(e.ts).toISOString(),
+            // The user's zone, named, never ISO-UTC: the model repeats what it is shown.
+            time: formatLocalDateTime(e.ts),
             actor: e.actor,
             verb: e.verb,
             object: e.object,

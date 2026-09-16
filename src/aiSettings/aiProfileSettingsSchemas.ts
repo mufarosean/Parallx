@@ -100,6 +100,18 @@ const SCHEMAS: readonly IBoundSchema[] = ([
     read: (c) => c.chat.responseLength,
     write: (v) => ({ chat: { responseLength: v as 'short' | 'medium' | 'long' | 'adaptive' } }),
   } as IBoundSchema<string>,
+  {
+    schema: {
+      key: 'chat.timeZone',
+      type: 'string',
+      default: '',
+      scope: 'workspace',
+      description: 'The time zone the assistant reads and writes every time in, as an IANA name such as America/Chicago or Europe/London. Empty uses this computer\'s zone. There is no UTC clock in the prompt either way.',
+      category: 'Chat',
+    },
+    read: (c) => c.chat.timeZone ?? '',
+    write: (v) => ({ chat: { timeZone: String(v ?? '').trim() } }),
+  } as IBoundSchema<string>,
 
   // ── Model ──
   {

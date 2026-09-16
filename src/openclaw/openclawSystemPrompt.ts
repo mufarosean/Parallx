@@ -17,6 +17,7 @@
 import { estimateTokens, trimTextToBudget } from './openclawTokenBudget.js';
 import type { IAgentIdentityConfig } from './agents/openclawAgentConfig.js';
 import type { ToolCategory } from '../services/chatTypes.js';
+import { assistantTimeZone, formatLocalDateTime, isValidTimeZone } from '../services/localTime.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -94,6 +95,8 @@ export interface IOpenclawRuntimeInfo {
   readonly os?: string;
   readonly arch?: string;
   readonly shell?: string;
+  /** The zone the clock is written in; the assistant's configured zone when absent. */
+  readonly timeZone?: string;
 }
 
 export interface IOpenclawSystemPromptParams {
@@ -649,25 +652,19 @@ export function buildRuntimeSection(runtimeInfo: IOpenclawRuntimeInfo): string {
   // for the wall clock; without this, asking "what's today's date?" returns
   // a stale or fabricated answer. Cost is ~2 lines (~30 tokens).
   const now = new Date();
-  // The MACHINE's timezone — never a hardcoded one. Every downstream date
-  // consumer (planner tools, Date.parse of zone-less ISO strings, local
-  // formatting) works in machine-local time; anchoring the model's clock to
-  // any other zone makes it compute "tomorrow 3pm" against the wrong wall
-  // clock and every scheduled task lands hours off.
-  let tz = 'local';
-  try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'local'; } catch { /* keep 'local' */ }
+  // ONE clock. The user's zone (chat.timeZone, this computer's when unset;
+  // never a hardcoded one), written once with its name. The UTC form that
+  // used to sit beside it in parentheses is gone: given a readable local
+  // time and a machine-shaped one ending in Z, models copy the machine one,
+  // and the user hears UTC. Every stamp the model reads (journal lines, tool
+  // results, cron seeds) is written in this same zone by services/localTime.
+  const tz = runtimeInfo.timeZone && isValidTimeZone(runtimeInfo.timeZone) ? runtimeInfo.timeZone : assistantTimeZone();
   let localStr: string;
-  try {
-    localStr = new Intl.DateTimeFormat('en-US', {
-      year: 'numeric', month: 'short', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', second: '2-digit',
-      hour12: false, timeZoneName: 'short',
-    }).format(now);
-  } catch { localStr = now.toISOString(); }
+  try { localStr = formatLocalDateTime(now, { seconds: true, timeZone: tz }); } catch { localStr = now.toLocaleString(); }
   const lines = [
     '## Runtime',
-    `- Current date/time: ${localStr} (UTC: ${now.toISOString()})`,
-    `- Timezone: ${tz} — the user's local timezone. Times you pass to tools or say to the user are LOCAL; only add a Z/offset suffix when you explicitly mean UTC.`,
+    `- Current date/time: ${localStr}`,
+    `- Timezone: ${tz} — the user's local timezone, and the only clock here. Every time you read (the journal, tool results, schedules) and every time you write is in it. Never convert to UTC; add a Z or an offset only when the user explicitly asks for UTC.`,
     `- Model: ${runtimeInfo.model}`,
     `- Provider: ${runtimeInfo.provider}`,
     `- Host: ${runtimeInfo.host}`,

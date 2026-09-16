@@ -22,6 +22,7 @@ function makeDefaultProfile(): AISettingsProfile {
       systemPrompt: '',
       systemPromptIsCustom: false,
       responseLength: 'adaptive',
+      timeZone: '',               // this computer's zone
     },
     model: {
       defaultModel: '', // auto-select

@@ -42,6 +42,8 @@ export interface AIChatSettings {
   systemPromptIsCustom: boolean;
   /** Controls response length preference */
   responseLength: AIResponseLength;
+  /** IANA zone every time the assistant reads or writes is in; '' = this computer's zone */
+  timeZone?: string;
 }
 
 export interface AIModelSettings {

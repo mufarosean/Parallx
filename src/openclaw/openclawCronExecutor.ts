@@ -89,6 +89,7 @@ import type {
   IChatContentPart,
   IChatSendRequestOptions,
 } from '../services/chatTypes.js';
+import { formatLocalDateTime } from '../services/localTime.js';
 
 // ---------------------------------------------------------------------------
 // Status / notification text helpers
@@ -126,9 +127,10 @@ export interface ICronRealTurnDeps {
 }
 
 function buildSeedSystemMessage(job: ICronJob, firedAt: number): string {
-  const iso = new Date(firedAt).toISOString();
+  // The user's zone, named: a job that fires at 07:00 is told 07:00, not 12:00Z.
+  const when = formatLocalDateTime(firedAt, { seconds: true });
   return [
-    `This is a scheduled cron job "${job.name}" firing at ${iso}.`,
+    `This is a scheduled cron job "${job.name}" firing at ${when}.`,
     'The user defined this turn at scheduling time.',
     'Execute it and report the result concisely.',
   ].join(' ');
