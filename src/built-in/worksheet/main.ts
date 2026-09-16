@@ -721,18 +721,25 @@ function createLauncherPane(container: HTMLElement) {
     if (sessions.length > 0) {
       const box = el('div', 'ws-launch__list');
       box.appendChild(el('div', 'ws-launch__listtitle', 'Quizzes'));
+      const bankById = new Map(items.map((i) => [i.id, i]));
       for (const q of sessions) {
-        const grades = await getSessionGrades(q.itemIds, q.startedAt).catch(() => new Map<number, string>());
+        const grades = await getSessionGrades(q.itemIds, q.startedAt, q.id, q.finishedAt ?? null).catch(() => new Map<number, string>());
         if (disposed || seq !== renderSeq) return;
+        // Rated before the quiz opened still counts as rated, the way the
+        // review pane already reads it; only never-rated is "not rated".
         const counts = { easy: 0, medium: 0, hard: 0 };
-        for (const g of grades.values()) { const r = normalizeRating(g); if (r === 'easy' || r === 'medium' || r === 'hard') counts[r]++; }
+        let unrated = 0;
+        for (const id of q.itemIds) {
+          const r = normalizeRating(grades.get(id) ?? bankById.get(id)?.attemptState ?? '');
+          if (r === 'easy' || r === 'medium' || r === 'hard') counts[r]++; else unrated++;
+        }
         const row = el('button', 'ws-launch__row') as HTMLButtonElement;
         row.type = 'button';
         row.appendChild(el('span', `ws-bank__dot ${q.finishedAt ? 'rest' : 'open'}`));
         const text = el('span', 'ws-launch__rowtext');
         const started = new Date(q.startedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
         text.appendChild(el('span', 'ws-launch__rowtitle', `${started} · ${q.itemIds.length} ${q.itemIds.length === 1 ? 'problem' : 'problems'}${q.finishedAt ? '' : ' · in progress'}`));
-        text.appendChild(el('span', 'ws-launch__rowmeta', `${counts.easy} Easy · ${counts.medium} Medium · ${counts.hard} Hard · ${q.itemIds.length - grades.size} not rated`));
+        text.appendChild(el('span', 'ws-launch__rowmeta', `${counts.easy} Easy · ${counts.medium} Medium · ${counts.hard} Hard · ${unrated} not rated`));
         row.appendChild(text);
         row.title = q.finishedAt ? 'Reopen this quiz to review the work and the ratings.' : 'Resume this quiz where it was.';
         row.addEventListener('click', () => void openPastQuiz(q.id));
@@ -1451,14 +1458,23 @@ function createPracticeRunPane(container: HTMLElement) {
       if (disposed) return;
       const wrap = el('div', 'ws-home');
       wrap.appendChild(el('div', 'ws-home__title', 'Quiz Summary'));
-      const grades = await getSessionGrades(session.ids, session.startedAt);
+      const grades = await getSessionGrades(session.ids, session.startedAt, session.id, session.finishedAt ?? null);
       const bank = await listItems().catch(() => []);
       const byId = new Map(bank.map((i) => [i.id, i]));
+      // What this quiz rated, then what the problem already carried.
+      const resolved = new Map<number, { grade: string; own: boolean }>();
+      for (const id of session.ids) {
+        const own = grades.get(id);
+        if (own) { resolved.set(id, { grade: own, own: true }); continue; }
+        const prev = byId.get(id)?.attemptState ?? '';
+        if (normalizeRating(prev)) resolved.set(id, { grade: prev, own: false });
+      }
       const counts = { nailed: 0, partial: 0, missed: 0, ungraded: 0 };
       const list = el('div', 'ws-home__list');
       session.ids.forEach((id, i) => {
         const item = byId.get(id);
-        const grade = grades.get(id);
+        const hit = resolved.get(id);
+        const grade = hit?.grade;
         const r = grade ? normalizeRating(grade) : '';
         if (r === 'easy') counts.nailed++;
         else if (r === 'medium') counts.partial++;
@@ -1467,7 +1483,7 @@ function createPracticeRunPane(container: HTMLElement) {
         const row = el('div', 'ws-itemrow');
         const info = el('div', 'ws-itemrow__info');
         const title = el('div', 'ws-itemrow__title', `${i + 1}. ${item?.title ?? `Item ${id}`}`);
-        if (grade) title.appendChild(el('span', `ws-chip ws-chip--${stateClass(grade)}`, gradeLabelFor(grade)));
+        if (grade) title.appendChild(el('span', `ws-chip ws-chip--${stateClass(grade)}`, hit!.own ? gradeLabelFor(grade) : `${gradeLabelFor(grade)} earlier`));
         else title.appendChild(el('span', 'ws-chip', session.skipped.has(id) ? 'Skipped' : 'Not Rated'));
         info.appendChild(title);
         info.addEventListener('click', () => { _practice = session; view = 'sheet'; goTo(i); });
@@ -1481,7 +1497,7 @@ function createPracticeRunPane(container: HTMLElement) {
         for (const t of itemTags(item.tags)) {
           const entry = tagRoll.get(t) ?? { n: 0, nailed: 0 };
           entry.n++;
-          if (normalizeRating(grades.get(id)) === 'easy') entry.nailed++;
+          if (normalizeRating(resolved.get(id)?.grade) === 'easy') entry.nailed++;
           tagRoll.set(t, entry);
         }
       }
@@ -1524,7 +1540,7 @@ function createPracticeRunPane(container: HTMLElement) {
       if (disposed || session.index >= session.ids.length) return;
       const id = session.ids[session.index];
       const [grades, states] = await Promise.all([
-        getSessionGrades([id], session.startedAt),
+        getSessionGrades([id], session.startedAt, session.id, session.finishedAt ?? null),
         getSessionItemStates([id], session.startedAt).catch(() => new Map<number, { grade: string; attempted: boolean; seconds: number }>()),
       ]);
       if (disposed || id !== session.ids[session.index]) return;

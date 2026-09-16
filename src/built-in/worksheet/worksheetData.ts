@@ -531,14 +531,39 @@ export async function unlockRewards(ids: string[], at: number = Date.now()): Pro
   if (ids.length) emitChange();
 }
 
-export async function getSessionGrades(itemIds: number[], sinceMs: number): Promise<Map<number, string>> {
+export async function getSessionGrades(
+  itemIds: number[],
+  sinceMs: number,
+  sessionId = '',
+  untilMs: number | null = null,
+): Promise<Map<number, string>> {
   if (itemIds.length === 0) return new Map();
   const ph = itemIds.map(() => '?').join(',');
+  // A rating belongs to this quiz when it carries the quiz id, or when it was
+  // made outside any quiz while this one was open. The start time alone used to
+  // decide it, with no end: a later quiz's ratings then counted for every
+  // earlier quiz, and a rating made minutes before a quiz opened counted for
+  // none. Imported workbook ratings are never a quiz's own work.
+  const scoped: string[] = [];
+  const params: (string | number)[] = [];
+  if (sessionId) {
+    scoped.push('session_id = ?');
+    params.push(sessionId);
+    const win = ["session_id = ''", 'imported = 0', 'updated_at >= ?'];
+    params.push(sinceMs);
+    if (untilMs) { win.push('updated_at <= ?'); params.push(untilMs); }
+    scoped.push(`(${win.join(' AND ')})`);
+  } else {
+    const win = ['updated_at >= ?'];
+    params.push(sinceMs);
+    if (untilMs) { win.push('updated_at <= ?'); params.push(untilMs); }
+    scoped.push(`(${win.join(' AND ')})`);
+  }
   const rows = await allRows(
     `SELECT item_id, self_grade FROM ws_attempts
-     WHERE completed = 1 AND self_grade != '' AND updated_at >= ? AND item_id IN (${ph})
+     WHERE completed = 1 AND self_grade != '' AND (${scoped.join(' OR ')}) AND item_id IN (${ph})
      ORDER BY updated_at ASC`,
-    [sinceMs, ...itemIds],
+    [...params, ...itemIds],
   );
   const map = new Map<number, string>();
   for (const r of rows) map.set(Number(r.item_id), String(r.self_grade));
