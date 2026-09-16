@@ -11363,7 +11363,8 @@ function renderGridBrowser(container, api, input) {
   searchHelpBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleSearchHelp(); });
 
   // Media type is a filter of the view, in every scope (it used to be three
-  // sidebar entries, and a row of chips the Home tab alone had).
+  // sidebar entries, and a row of chips the Home tab alone had). It lives in
+  // the filter panel with the other filters; an active one shows as a chip.
   const typeGroup = moEl('div', 'mo-segment');
   typeGroup.setAttribute('role', 'group');
   typeGroup.setAttribute('aria-label', 'Media type');
@@ -11377,7 +11378,6 @@ function renderGridBrowser(container, api, input) {
   }
   function syncTypeChips() { for (const [k, el] of typeChips) el.classList.toggle('active', state.mediaType === k); }
   syncTypeChips();
-  toolbar.appendChild(typeGroup);
   toolbar.appendChild(moEl('span', 'mo-toolbar-spacer'));
 
   // How it's sorted: one menu. The field, the direction, Group By Date, and
@@ -11553,6 +11553,7 @@ function renderGridBrowser(container, api, input) {
     if (state.filters.ratingMin != null) count++;
     if (state.filters.dateFrom) count++;
     if (state.filters.dateTo) count++;
+    if (state.mediaType && state.mediaType !== 'all') count++;
     filterBadge.textContent = count > 0 ? String(count) : '';
     filterBadge.style.display = count > 0 ? '' : 'none';
     renderFilterChips();
@@ -11581,6 +11582,12 @@ function renderGridBrowser(container, api, input) {
       }
       chipBar.appendChild(chip);
     };
+
+    // The media-type filter, clearable like the rest.
+    if (state.mediaType && state.mediaType !== 'all') {
+      const typeLabel = { photos: 'Photos', gifs: 'GIFs', videos: 'Videos' }[state.mediaType] || state.mediaType;
+      mkChip(typeLabel, () => { state.mediaType = 'all'; syncTypeChips(); state.currentPage = 1; loadPage(); });
+    }
 
     // Instance-filter chip (read-only). Derived from filterType / filterId.
     if (filterType && filterType !== 'all') {
@@ -11698,6 +11705,12 @@ function renderGridBrowser(container, api, input) {
   const tagChipList = moEl('div', 'mo-tagpick-list');
   tagSection.appendChild(tagChipList);
   filterPanel.appendChild(tagSection);
+
+  // -- Media type section: the segmented control built with the toolbar --
+  const typeSection = moEl('div', 'mo-filter-section');
+  typeSection.appendChild(moEl('div', 'mo-filter-section-label', { textContent: 'Media Type' }));
+  typeSection.appendChild(typeGroup);
+  filterPanel.insertBefore(typeSection, tagSection);
 
   // -- Rating filter section --
   const ratingSection = moEl('div', 'mo-filter-section');
@@ -11871,6 +11884,8 @@ function renderGridBrowser(container, api, input) {
   });
 
   clearFiltersBtn.addEventListener('click', () => {
+    state.mediaType = 'all';
+    syncTypeChips();
     state.filters = { tagIds: [], excludeTagIds: [], tagDepth: 0, tagMatch: 'and', ratingMin: null, dateFrom: null, dateTo: null };
     tagDepthCb.checked = false;
     dateFrom.value = '';
