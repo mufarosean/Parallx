@@ -19,7 +19,7 @@ This program replaces all of them with one tool and a review list.
   (`mode: "retag"`, and a `tagged` scope for the photos that have tags). The
   chat AI never handles images; it starts a run and reports where the
   results are.
-- **Tag Review**, a tab (sidebar: Quick Filters > Tag Review, with a count).
+- **Tag Review**, a tab (sidebar: Library > Tag Review, with a count).
   Every photo from a run appears with its suggested tags shown as full paths
   (`ANIMALS › DOG › CORGI`). Per photo: remove a suggestion, add one of your
   tags, then Approve or Skip. Approve All is a shortcut, never a requirement.

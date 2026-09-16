@@ -205,7 +205,7 @@ async function main() {
     await reviewState(page, 'after-resume');
     await shot(page, 'tag-review-after');
 
-    // Sidebar: Quick Filters > Tag Review with its count. The Media Organizer
+    // Sidebar: Library > Tag Review with its count. The Media Organizer
     // opens from its activity bar button (labelled with the container title).
     // A fresh app root treats a newly found external extension as disabled:
     // it still activates, but its manifest contributions (the sidebar

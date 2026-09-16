@@ -5337,40 +5337,6 @@ const MO_CSS = `
   pointer-events: none;
   box-shadow: 0 1px 3px rgba(0,0,0,0.3);
 }
-/* M59 P6: timeline + map */
-.mo-timeline-dialog { width: 96vw; height: 92vh; max-width: 1400px; max-height: none; }
-.mo-timeline-body {
-  flex: 1; overflow-y: auto; padding: 0 16px 16px 16px;
-  scroll-behavior: smooth;
-}
-.mo-timeline-section-header {
-  position: sticky; top: 0;
-  background: var(--vscode-editor-background, var(--px-bg, #1f1f1f));
-  font-weight: 600; font-size: 13px; padding: 10px 4px; margin-top: 8px;
-  border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, #444));
-  z-index: 1;
-}
-.mo-timeline-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 6px; padding: 8px 0;
-}
-.mo-timeline-tile {
-  position: relative; aspect-ratio: 1 / 1;
-  background: var(--vscode-input-background, var(--px-bg-inset));
-  border-radius: 4px; cursor: pointer; overflow: hidden;
-  display: flex; align-items: center; justify-content: center;
-  border: 1px solid transparent;
-}
-.mo-timeline-tile:hover { border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); }
-.mo-timeline-tile img { width: 100%; height: 100%; object-fit: cover; }
-.mo-timeline-tile-ph { opacity: 0.5; }
-.mo-map-dialog { width: 940px; max-width: 96vw; }
-.mo-map-canvas {
-  display: block; width: 100%; height: auto;
-  background: var(--px-bg); cursor: grab;
-}
-.mo-map-canvas:active { cursor: grabbing; }
 .mo-card-rating {
   position: absolute;
   bottom: 4px;
@@ -8353,42 +8319,42 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
 .mo-dup-empty { padding: 24px; text-align: center; opacity: 0.65; }
 
 /* ═══ Home feed (Section 26B) ═══ */
-.mo-home { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--vscode-editor-background, var(--px-bg)); color: var(--vscode-foreground, var(--px-text)); }
-.mo-home-head { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--vscode-panel-border, var(--px-border)); flex-wrap: wrap; }
-.mo-home-title-wrap { display: flex; flex-direction: column; min-width: 0; margin-right: auto; }
 .mo-home-title { font-size: 15px; font-weight: 600; }
 .mo-home-sub { font-size: 11px; opacity: 0.7; }
 .mo-home-chips { display: flex; gap: 4px; }
 .mo-home-chip { border: 1px solid var(--vscode-panel-border, var(--px-border)); background: transparent; color: inherit; border-radius: 999px; padding: 3px 10px; font-size: 11px; cursor: pointer; }
 .mo-home-chip:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
 .mo-home-chip.active { background: var(--vscode-badge-background, var(--px-accent)); color: var(--vscode-badge-foreground, #fff); border-color: transparent; }
-.mo-home-shuffle { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--vscode-panel-border, var(--px-border)); background: transparent; color: inherit; border-radius: var(--parallx-radius-md, 6px); padding: 4px 10px; font-size: 12px; cursor: pointer; }
-.mo-home-shuffle:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
-.mo-home-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
-.mo-home-feed { display: flex; gap: 10px; padding: 10px 14px; align-items: flex-start; }
-.mo-home-col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
-.mo-home-card { position: relative; width: 100%; border-radius: var(--parallx-radius-md, 6px); overflow: hidden; background: var(--vscode-input-background, var(--px-bg-inset)); cursor: pointer; }
-.mo-home-card img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform var(--px-dur-slow, 260ms) var(--px-ease, ease); }
-.mo-home-card:hover img { transform: scale(1.02); }
-.mo-home-card--loading { background: linear-gradient(100deg, var(--px-bg-inset, rgba(128,128,128,0.10)) 30%, var(--px-bg, rgba(128,128,128,0.20)) 50%, var(--px-bg-inset, rgba(128,128,128,0.10)) 70%); background-size: 200% 100%; animation: mo-skeleton-shimmer 1.3s ease-in-out infinite; }
-.mo-home-card--missing { display: flex; align-items: center; justify-content: center; opacity: 0.6; }
-.mo-home-badge { position: absolute; top: 6px; right: 6px; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; letter-spacing: 0.3px; background: rgba(0,0,0,0.6); color: #fff; pointer-events: none; }
-.mo-home-cap { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px 10px 8px; background: linear-gradient(to top, rgba(0,0,0,0.65), rgba(0,0,0,0)); color: #fff; opacity: 0; transition: opacity var(--px-dur-fast, 120ms) var(--px-ease, ease); pointer-events: none; }
-.mo-home-card:hover .mo-home-cap { opacity: 1; }
-.mo-home-cap-title { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mo-home-cap-sub { font-size: 11px; opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mo-home-sentinel { height: 1px; }
-.mo-home-sentinel.is-loading { height: 40px; }
-.mo-home-empty { padding: 40px; text-align: center; opacity: 0.7; font-size: 13px; }
+.mo-feed { display: flex; gap: 10px; padding: 10px 14px; align-items: flex-start; }
+.mo-feed-col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.mo-feed-card { position: relative; width: 100%; border-radius: var(--parallx-radius-md, 6px); overflow: hidden; background: var(--vscode-input-background, var(--px-bg-inset)); cursor: pointer; }
+.mo-feed-card img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform var(--px-dur-slow, 260ms) var(--px-ease, ease); }
+.mo-feed-card:hover img { transform: scale(1.02); }
+.mo-feed-card--loading { background: linear-gradient(100deg, var(--px-bg-inset, rgba(128,128,128,0.10)) 30%, var(--px-bg, rgba(128,128,128,0.20)) 50%, var(--px-bg-inset, rgba(128,128,128,0.10)) 70%); background-size: 200% 100%; animation: mo-skeleton-shimmer 1.3s ease-in-out infinite; }
+.mo-feed-card--missing { display: flex; align-items: center; justify-content: center; opacity: 0.6; }
+.mo-feed-badge { position: absolute; top: 6px; right: 6px; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; letter-spacing: 0.3px; background: rgba(0,0,0,0.6); color: #fff; pointer-events: none; }
+.mo-feed-cap { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px 10px 8px; background: linear-gradient(to top, rgba(0,0,0,0.65), rgba(0,0,0,0)); color: #fff; opacity: 0; transition: opacity var(--px-dur-fast, 120ms) var(--px-ease, ease); pointer-events: none; }
+.mo-feed-card:hover .mo-feed-cap { opacity: 1; }
+.mo-feed-cap-title { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mo-feed-cap-sub { font-size: 11px; opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mo-feed-sentinel { height: 1px; }
+.mo-feed-sentinel.is-loading { height: 40px; }
+.mo-feed-empty { padding: 40px; text-align: center; opacity: 0.7; font-size: 13px; }
+/* Selection in the feed: a circle on hover, every circle while selecting; a picked tile shrinks in its cell with the accent around it, so nothing reflows. */
+.mo-feed-card { transition: transform 120ms ease, box-shadow 120ms ease; }
+.mo-feed-pick { position: absolute; top: 8px; left: 8px; width: 22px; height: 22px; padding: 0; border-radius: 50%; border: 2px solid var(--vscode-editor-background, var(--px-bg)); background: color-mix(in srgb, var(--vscode-editor-background, var(--px-bg)) 55%, transparent); color: transparent; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; opacity: 0; transition: opacity 120ms ease; z-index: 2; }
+.mo-feed-card:hover .mo-feed-pick, .mo-feed.is-selecting .mo-feed-pick { opacity: 1; }
+.mo-feed-pick:hover { border-color: var(--vscode-focusBorder, var(--px-accent)); }
+.mo-feed-card.is-selected .mo-feed-pick { opacity: 1; background: var(--vscode-focusBorder, var(--px-accent)); border-color: var(--vscode-focusBorder, var(--px-accent)); color: var(--vscode-button-foreground, #fff); }
+.mo-feed-card.is-selected { transform: scale(0.94); box-shadow: 0 0 0 3px var(--vscode-focusBorder, var(--px-accent)); }
+.mo-feed-card.is-selected:hover img { transform: none; }
+.mo-type-chips { display: flex; gap: 4px; }
 .mo-drop-import { outline: 2px dashed var(--vscode-focusBorder, var(--px-accent)); outline-offset: -6px; }
 @media (prefers-reduced-motion: reduce) {
-  .mo-home-card img, .mo-home-cap { transition: none; }
-  .mo-home-card:hover img { transform: none; }
+  .mo-feed-card img, .mo-feed-cap, .mo-feed-card { transition: none; }
+  .mo-feed-card:hover img { transform: none; }
 }
 
-.mo-home-zoom { display: flex; align-items: center; gap: 8px; }
-.mo-home-zoom-label { font-size: 11px; opacity: 0.7; }
-.mo-home-zoom .mo-zoom-slider { width: 120px; }
 
 /* ═══ Similar photos strip (Section 29B) ═══ */
 .mo-detail-main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
@@ -9925,7 +9891,7 @@ function renderBrowserSidebar(container, api) {
   function openGrid(filterKey, title, icon) {
     api.editors.openEditor({
       typeId: 'media-organizer-grid',
-      title: title || 'Media Library',
+      title: title || 'Library',
       icon: icon || 'image',
       instanceId: `grid:${filterKey}`,
     });
@@ -9969,13 +9935,11 @@ function renderBrowserSidebar(container, api) {
     return item;
   }
 
-  // Quick Filters
-  const { section: qfSection, body: qfBody } = sidebarSection('Quick Filters', 'filter', false);
-  qfBody.appendChild(sidebarItem('home', 'Home', null, () => openGrid('home', 'Home', 'home')));
-  qfBody.appendChild(sidebarItem('grid', 'All Media', null, () => openGrid('all', 'All Media')));
-  qfBody.appendChild(sidebarItem('image', 'Photos', null, () => openGrid('photos', 'Photos')));
-  qfBody.appendChild(sidebarItem('images', 'GIFs', null, () => openGrid('gifs', 'GIFs', 'images')));
-  qfBody.appendChild(sidebarItem('film', 'Videos', null, () => openGrid('videos', 'Videos')));
+  // Library
+  // What to see is the sidebar's: the library and its cuts. How to see it
+  // (feed, grid or list; all, photos, GIFs or videos) is the view's own toolbar.
+  const { section: qfSection, body: qfBody } = sidebarSection('Library', 'library', false);
+  qfBody.appendChild(sidebarItem('library', 'Library', null, () => openGrid('all', 'Library', 'library')));
   qfBody.appendChild(sidebarItem('circle-help', 'Untagged', null, () => openGrid('untagged', 'Untagged')));
   // AI tagging (Section 43): the review list, counting photos waiting or to review.
   const tagReviewItem = sidebarItem('sparkles', 'Tag Review', null, () => moOpenTagReview(api));
@@ -9994,8 +9958,6 @@ function renderBrowserSidebar(container, api) {
   qfBody.appendChild(sidebarItem('clock', 'Recent', null, () => openGrid('recent', 'Recent')));
   qfBody.appendChild(sidebarItem('copy', 'Duplicates', null, () => openGrid('duplicates', 'Duplicates')));
   qfBody.appendChild(sidebarItem('trash', 'Trash', null, () => openGrid('trash', 'Trash')));
-  qfBody.appendChild(sidebarItem('calendar', 'Timeline', null, () => moOpenTimeline(_api)));
-  qfBody.appendChild(sidebarItem('globe', 'Map', null, () => moOpenMap(_api)));
   sections.appendChild(qfSection);
 
   // Drawing And Painting (M104): practice and painting plans. Shown only while
@@ -11133,7 +11095,51 @@ function renderBrowserSidebar(container, api) {
 // Adapted from stash: ui/v2.5/src/components/List/ItemList — grid browser with toolbar + pagination
 
 // Allowlist for SQL ORDER BY columns — prevents injection via sort field
-const MO_SAFE_SORT_COLUMNS = { created_at: 'created_at', title: 'title', rating: 'rating', taken_at: 'taken_at', file_mod_time: 'file_mod_time' };
+const MO_SAFE_SORT_COLUMNS = { created_at: 'created_at', title: 'title', rating: 'rating', taken_at: 'taken_at', file_mod_time: 'file_mod_time', shuffle: 'shuffle' };
+
+// @mo-grid-pure-begin (pure grid-view logic, extracted verbatim by tests/unit/moGridView.test.ts)
+/**
+ * A grid tab's instance id read into scope, media filter and layout. The
+ * scope is the set (Library, a tag, an album, Untagged...); media type and
+ * layout are view state. They used to be baked into separate instances
+ * (grid:photos, grid:gifs, grid:videos, grid:home); those ids still open,
+ * as Library with the matching filter or layout, so a tab saved before the
+ * change restores.
+ */
+function moGridInstance(instanceId) {
+  const raw = String(instanceId || 'grid:all').replace(/^grid:/, '');
+  const parts = raw.split(':');
+  let filterType = parts[0] || 'all';
+  let mediaType = null;
+  let displayMode = null;
+  if (filterType === 'home') { filterType = 'all'; displayMode = 'feed'; }
+  else if (filterType === 'photos' || filterType === 'gifs' || filterType === 'videos') { mediaType = filterType; filterType = 'all'; }
+  let filterTagPath = null;
+  let filterId = parts[1] ? parseInt(parts[1], 10) : null;
+  if (filterType === 'tag' && parts[1]) {
+    // A dash-joined branch path ("5-12" = Face › Portrait): the leaf is the id for labels, the path drives Branch filtering.
+    filterTagPath = parts[1].split('-').map((x) => parseInt(x, 10)).filter(Number.isFinite);
+    if (filterTagPath.length) filterId = filterTagPath[filterTagPath.length - 1];
+  }
+  if (filterId != null && !Number.isFinite(filterId)) filterId = null;
+  return { filterType, filterId, filterTagPath, mediaType, displayMode };
+}
+/** The kind a media-type filter narrows the photos query to: stills, GIFs, or nothing. */
+function moKindForMediaType(mediaType) {
+  return mediaType === 'gifs' ? 'gif' : (mediaType === 'photos' ? 'still' : null);
+}
+/**
+ * ORDER BY for the Shuffled sort: a seeded scramble of the id. Two
+ * multiply rounds reduced by two different primes: one modulus alone (or a
+ * mask, which is a modulus) stays linear in the id, and a new seed would
+ * only rotate the old order. The seed is a number this code drew, never input.
+ */
+function moShuffleOrderExpr(seed, idExpr) {
+  const n = Math.abs(Math.floor(Number(seed) || 0)) % 2147483647;
+  return `((((${idExpr || 'id'} + ${n}) * 1103515245) % 1000003) * 22695477) % 2147483647`;
+}
+// @mo-grid-pure-end
+try { globalThis.__moGridInstance = moGridInstance; } catch { /* not a browser */ }
 
 function renderGridBrowser(container, api, input) {
   moInjectStyles();
@@ -11141,19 +11147,15 @@ function renderGridBrowser(container, api, input) {
   root.setAttribute('tabindex', '-1');
   container.appendChild(root);
 
-  // Parse filter context from input.id
+  // The instance id names the scope; media type and layout are view state
+  // (moGridInstance also maps the retired grid:photos, grid:gifs,
+  // grid:videos and grid:home ids onto Library with the matching filter or
+  // layout).
   const instanceId = (input && (input.instanceId || input.id)) || 'grid:all';
-  const parts = instanceId.replace(/^grid:/, '').split(':');
-  const filterType = parts[0] || 'all';
-  // For tags, parts[1] may be a dash-joined branch path (e.g. "5-12" = Face ›
-  // Portrait). The leaf (last id) is the filterId used for labels; the full
-  // path drives Branch-view filtering.
-  let filterTagPath = null;
-  let filterId = parts[1] ? parseInt(parts[1], 10) : null;
-  if (filterType === 'tag' && parts[1]) {
-    filterTagPath = parts[1].split('-').map((s) => parseInt(s, 10)).filter(Number.isFinite);
-    if (filterTagPath.length) filterId = filterTagPath[filterTagPath.length - 1];
-  }
+  const inst = moGridInstance(instanceId);
+  const filterType = inst.filterType;
+  let filterTagPath = inst.filterTagPath;
+  let filterId = inst.filterId;
 
   // Restore session state if available for this grid instance
   const cached = _sessionGridState.get(instanceId);
@@ -11164,10 +11166,12 @@ function renderGridBrowser(container, api, input) {
     sortBy: cached?.sortBy ?? 'created_at',
     sortDir: cached?.sortDir ?? 'DESC',
     groupBy: cached?.groupBy ?? _sessionGroupBy,
-    // GIFs are photos whose file is a .gif: the grid runs the photos query
-    // narrowed by kind (see kindFilter in loadPage), so mediaType stays 'photos'.
-    mediaType: cached?.mediaType ?? ((filterType === 'photos' || filterType === 'gifs') ? 'photos' : (filterType === 'videos' ? 'videos' : 'all')),
-    displayMode: cached?.displayMode ?? 'grid',
+    // The media-type filter: all, photos (stills), gifs, videos. GIFs are
+    // photos whose file is a .gif, so the photos query narrowed by kind.
+    mediaType: cached?.mediaType ?? (inst.mediaType || 'all'),
+    // Library opens as the feed (what the Home tab was); every other scope as a grid.
+    displayMode: cached?.displayMode ?? (inst.displayMode || (filterType === 'all' ? 'feed' : 'grid')),
+    shuffleSeed: cached?.shuffleSeed ?? Math.floor(Math.random() * 2147483647),
     totalCount: 0,
     items: [],
     selectedIds: new Set(),
@@ -11199,6 +11203,7 @@ function renderGridBrowser(container, api, input) {
       groupBy: state.groupBy,
       mediaType: state.mediaType,
       displayMode: state.displayMode,
+      shuffleSeed: state.shuffleSeed,
       scrollTop: _lastScrollTop,
       filters: {
         tagIds: [...state.filters.tagIds],
@@ -11300,6 +11305,21 @@ function renderGridBrowser(container, api, input) {
   }
   searchHelpBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleSearchHelp(); });
 
+  // Media type is a filter of the view, in every scope (it used to be three
+  // sidebar entries, and a row of chips the Home tab alone had).
+  const typeGroup = moEl('div', 'mo-toolbar-group mo-type-chips');
+  const typeChips = new Map();
+  const TYPE_TITLES = { all: 'Everything in this view', photos: 'Photos only, no GIFs or videos', gifs: 'GIFs only', videos: 'Videos only' };
+  for (const [k, label] of [['all', 'All'], ['photos', 'Photos'], ['gifs', 'GIFs'], ['videos', 'Videos']]) {
+    const b = moEl('button', 'mo-home-chip', { type: 'button', textContent: label, title: TYPE_TITLES[k] });
+    b.addEventListener('click', () => { if (state.mediaType === k) return; state.mediaType = k; syncTypeChips(); state.currentPage = 1; loadPage(); });
+    typeGroup.appendChild(b);
+    typeChips.set(k, b);
+  }
+  function syncTypeChips() { for (const [k, el] of typeChips) el.classList.toggle('active', state.mediaType === k); }
+  syncTypeChips();
+  toolbar.appendChild(typeGroup);
+
   // Sort controls
   const sortGroup = moEl('div', 'mo-toolbar-group');
   const sortDropdown = moDropdown({
@@ -11309,6 +11329,7 @@ function renderGridBrowser(container, api, input) {
       { value: 'rating', label: 'Rating' },
       { value: 'taken_at', label: 'Date Taken' },
       { value: 'file_mod_time', label: 'File Modified' },
+      { value: 'shuffle', label: 'Shuffled' },
     ],
     selected: state.sortBy,
     ariaLabel: 'Sort by',
@@ -11318,6 +11339,18 @@ function renderGridBrowser(container, api, input) {
   const sortDirBtn = moEl('button', 'mo-toolbar-btn', { innerHTML: moIcon('arrow-down', 12), title: 'Sort direction' });
   sortDirBtn.setAttribute('aria-label', 'Sort direction');
   sortGroup.appendChild(sortDirBtn);
+  // Shuffled is an order like any other, with a seed; this draws a new one.
+  const shuffleBtn = moEl('button', 'mo-toolbar-btn', { title: 'Shuffle into a new order' });
+  shuffleBtn.innerHTML = moIcon('shuffle', 12);
+  shuffleBtn.setAttribute('aria-label', 'Shuffle');
+  shuffleBtn.addEventListener('click', () => { state.shuffleSeed = Math.floor(Math.random() * 2147483647); state.currentPage = 1; loadPage(); });
+  sortGroup.appendChild(shuffleBtn);
+  function updateSortUi() {
+    const shuffled = state.sortBy === 'shuffle';
+    sortDirBtn.style.display = shuffled ? 'none' : '';
+    shuffleBtn.style.display = shuffled ? '' : 'none';
+  }
+  updateSortUi();
   toolbar.appendChild(sortGroup);
 
   // #1 Group control — None / Date. When grouping by date, the grid shows
@@ -11348,15 +11381,18 @@ function renderGridBrowser(container, api, input) {
   zoomGroup.appendChild(zoomSlider);
   toolbar.appendChild(zoomGroup);
 
-  // Display mode toggle (Grid / List)
+  // Layout (Feed / Grid / List): how the same view is shown.
   const modeGroup = moEl('div', 'mo-toolbar-group');
-  const gridModeBtn = moEl('button', 'mo-toolbar-btn active', { title: 'Grid view' });
+  const feedModeBtn = moEl('button', 'mo-toolbar-btn', { title: 'Feed view' });
+  feedModeBtn.innerHTML = moIcon('layout-dashboard', 12);
+  feedModeBtn.setAttribute('aria-label', 'Feed view');
+  const gridModeBtn = moEl('button', 'mo-toolbar-btn', { title: 'Grid view' });
   gridModeBtn.innerHTML = moIcon('grid', 12);
   gridModeBtn.setAttribute('aria-label', 'Grid view');
   const listModeBtn = moEl('button', 'mo-toolbar-btn', { title: 'List view' });
   listModeBtn.innerHTML = moIcon('list-unordered', 12);
   listModeBtn.setAttribute('aria-label', 'List view');
-  modeGroup.append(gridModeBtn, listModeBtn);
+  modeGroup.append(feedModeBtn, gridModeBtn, listModeBtn);
   toolbar.appendChild(modeGroup);
 
   // Filter toggle button + count badge
@@ -12077,9 +12113,11 @@ function renderGridBrowser(container, api, input) {
     // When grouping by date, order by the same key the grid groups on
     // (COALESCE(taken_at, created_at)) so day-groups are contiguous regardless
     // of the sort column. Both columns exist in the unified result.
-    const effectiveSort = state.groupBy === 'date'
-      ? 'COALESCE(taken_at, created_at)'
-      : (safeColumn === 'file_mod_time' ? 'file_mod_time' : safeColumn);
+    const effectiveSort = safeColumn === 'shuffle'
+      ? moShuffleOrderExpr(state.shuffleSeed, 'id')
+      : (state.groupBy === 'date'
+        ? 'COALESCE(taken_at, created_at)'
+        : (safeColumn === 'file_mod_time' ? 'file_mod_time' : safeColumn));
 
     // Correlated size subquery — pulls the primary file's bytes WITHOUT a
     // JOIN (a LEFT JOIN here would risk row multiplication when the WHERE
@@ -12175,7 +12213,9 @@ function renderGridBrowser(container, api, input) {
     let effectiveColumn = (safeColumn === 'taken_at' && type === 'video') ? 'created_at' : safeColumn;
     // file_mod_time → reference the files table column
     let orderExpr;
-    if (effectiveColumn === 'file_mod_time') {
+    if (safeColumn === 'shuffle') {
+      orderExpr = moShuffleOrderExpr(state.shuffleSeed, `${alias}.id`);
+    } else if (effectiveColumn === 'file_mod_time') {
       const fAlias = hasFileJoin ? 'f' : 'fsort';
       orderExpr = `${fAlias}.mod_time`;
     } else {
@@ -12248,6 +12288,11 @@ function renderGridBrowser(container, api, input) {
   // ── Data loading ──
   let _pageRecursionGuard = false;
   async function loadPage() {
+    if (state.displayMode === 'feed') return feedRestart();
+    return loadGridPage();
+  }
+  /** The grid's page load. With opts.fetchOnly it runs the query for the feed and returns the rows instead of rendering. */
+  async function loadGridPage(opts) {
     // Snapshot scroll position FIRST. The later cardGrid.refresh() wipes
     // grid.innerHTML which dispatches a scroll event resetting _lastScrollTop
     // to 0 — if we read _lastScrollTop after the refresh, the restore is a
@@ -12269,20 +12314,18 @@ function renderGridBrowser(container, api, input) {
     const rawSearch = searchInput.value.trim();
     const safeColumn = MO_SAFE_SORT_COLUMNS[state.sortBy] || 'created_at';
     const safeDir = state.sortDir === 'ASC' ? 'ASC' : 'DESC';
-    const limit = state.perPage;
-    const offset = (state.currentPage - 1) * state.perPage;
+    const limit = opts && opts.limit ? opts.limit : state.perPage;
+    const offset = opts && typeof opts.offset === 'number' ? opts.offset : (state.currentPage - 1) * state.perPage;
 
     // M59 P3: parse search syntax (tag:, rating:, folder:, taken:, type:, free text → FTS)
     const parsed = moParseSearchQuery(rawSearch);
 
-    // type:photo / type:video temporarily overrides mediaType for this query
-    // type:gif is "photos of the GIF kind": the single-type query stays
-    // 'photos' and the kind filter narrows it. The Photos grid shows stills
-    // only; All Media shows everything.
+    // The media-type filter, or a type: operator for this query: Photos is
+    // stills and GIFs the GIF kind, both the photos query narrowed by kind
+    // (applyFilterCriteria); Videos the videos query; All both.
     const requestedMediaType = parsed.type || state.mediaType;
     const effectiveMediaType = requestedMediaType === 'gifs' ? 'photos' : requestedMediaType;
-    const kindFilter = requestedMediaType === 'gifs' ? 'gif'
-      : (filterType === 'gifs' ? 'gif' : (filterType === 'photos' ? 'still' : null));
+    const kindFilter = moKindForMediaType(requestedMediaType);
 
     // Search text fed into the legacy LIKE path is only the leftover free text
     // when FTS is NOT used (we'll prefer FTS for free text). Pass empty when FTS is used.
@@ -12408,6 +12451,8 @@ function renderGridBrowser(container, api, input) {
 
     // Hide spinner
     loadingOverlay.style.display = 'none';
+    // The feed asked for rows only; it lays them out itself.
+    if (opts && opts.fetchOnly) return { items, totalCount };
 
     // ensureValidPage — auto-correct if past last page
     state.totalCount = totalCount;
@@ -12627,6 +12672,251 @@ function renderGridBrowser(container, api, input) {
 
   // Initialize grid
   cardGrid = renderCardGrid(gridArea, [], refreshOpts());
+
+  // ── Feed layout ──
+  // The masonry that was the Home tab, as a layout of this view: the same
+  // scope, filters and sort, laid out in columns of edge-to-edge tiles and
+  // loaded as the user scrolls. Tiles select the way a photo feed should:
+  // a circle shows on hover; clicking it (or Ctrl-clicking the tile) selects
+  // without opening; once anything is selected the feed is in selection
+  // mode, every circle shows, a plain click toggles, Shift-click runs a
+  // range in feed order, Escape clears. The selection is the grid's own
+  // (state.selectedIds through handleSelect), so the selection bar and every
+  // bulk action work unchanged. No drag-box: geometry lies in a masonry.
+  const FEED_PAGE = 48;
+  const FEED_GAP = 10;
+  const feedEl = moEl('div', 'mo-feed');
+  const feedEmpty = moEl('div', 'mo-feed-empty');
+  feedEmpty.style.display = 'none';
+  const feedSentinel = moEl('div', 'mo-feed-sentinel');
+  let feedCols = [];
+  let feedLoading = false;
+  let feedExhausted = false;
+  let feedGen = 0;          // bumped by every restart and unmount: a late page for an old run is dropped
+  let dailyCard = null;     // Daily Study above the Library feed (M104), while the art tools are on
+  const feedKey = (item) => `${item.type}:${item.id}`;
+  const feedMounted = () => feedEl.parentNode === gridArea;
+  function feedColumnsWanted() {
+    const w = feedEl.clientWidth || gridArea.clientWidth || 900;
+    return Math.max(1, Math.min(8, Math.floor((w + FEED_GAP) / (state.zoomWidth + FEED_GAP))));
+  }
+  function feedBuildColumns(n) {
+    feedEl.innerHTML = '';
+    feedCols = [];
+    for (let i = 0; i < n; i++) { const col = moEl('div', 'mo-feed-col'); feedEl.appendChild(col); feedCols.push({ el: col, height: 0 }); }
+  }
+  function feedRatio(item) {
+    const w = Number(item.width);
+    const h = Number(item.height);
+    if (w > 0 && h > 0) return Math.max(0.4, Math.min(3, w / h));
+    return item.type === 'video' ? 16 / 9 : 4 / 3;
+  }
+  // Each tile goes to the shortest column, so a new page never moves what is on screen.
+  function feedPlace(tile, item) {
+    let best = feedCols[0];
+    for (const c of feedCols) if (c.height < best.height) best = c;
+    best.el.appendChild(tile);
+    best.height += 1 / feedRatio(item) + 0.04;
+  }
+  function feedRelayout(force) {
+    if (!feedMounted()) return;
+    const n = feedColumnsWanted();
+    if (!force && n === feedCols.length) return;
+    feedBuildColumns(n);
+    for (const it of state.items) if (it._tile) feedPlace(it._tile, it);
+  }
+  const feedThumbObserver = ('IntersectionObserver' in window) ? new IntersectionObserver((entries, obs) => {
+    for (const en of entries) { if (!en.isIntersecting) continue; obs.unobserve(en.target); void feedLoadThumb(en.target, en.target._moItem); }
+  }, { root: gridArea, rootMargin: '600px 0px', threshold: 0.01 }) : null;
+  async function feedLoadThumb(tile, item) {
+    try {
+      const cached = _moRecallThumb(item.type, item.id);
+      let display = cached ? (cached.sourcePath || cached.thumbnailPath) : null;
+      if (!display) {
+        const r = await resolveThumbnail(item.type, item.id, api);
+        if (r && (r.path || r.sourcePath)) {
+          _moRememberThumb(item.type, item.id, { thumbnailPath: r.path || null, sourcePath: r.sourcePath || null, originalPath: r.originalPath || null });
+          display = r.sourcePath || r.path;
+        }
+      }
+      if (_disposing) return;
+      if (display) {
+        setThumbImgSrc(tile._img, display, { onPlaceholderRemove: () => tile.classList.remove('mo-feed-card--loading') });
+      } else {
+        tile.classList.remove('mo-feed-card--loading');
+        tile.classList.add('mo-feed-card--missing');
+        tile._img.style.display = 'none';
+        tile.appendChild(moEl('div', 'mo-thumb-placeholder', { innerHTML: moIcon(item.type === 'video' ? 'film' : 'image', 28) }));
+      }
+    } catch { tile.classList.remove('mo-feed-card--loading'); }
+  }
+  function feedSyncTile(item) {
+    const t = item._tile;
+    if (t) t.classList.toggle('is-selected', state.selectedIds.has(feedKey(item)));
+  }
+  function feedSyncSelection() {
+    feedEl.classList.toggle('is-selecting', state.selectedIds.size > 0);
+    for (const it of state.items) feedSyncTile(it);
+  }
+  function feedToggle(item, shiftKey) {
+    // The grid's own rule (computeNextSelection): Shift runs a range from the last pick, in view order.
+    handleSelect(item, shiftKey ? true : !state.selectedIds.has(feedKey(item)), shiftKey);
+    state.focusedIndex = state.items.indexOf(item);
+    feedSyncSelection();
+  }
+  function feedBuildTile(item) {
+    const tile = moEl('div', 'mo-feed-card mo-feed-card--loading');
+    tile.style.aspectRatio = String(feedRatio(item));
+    const img = moEl('img');
+    img.alt = item.title || '';
+    img.draggable = false;
+    img.loading = 'lazy';
+    img.addEventListener('load', () => tile.classList.remove('mo-feed-card--loading'));
+    img.addEventListener('error', () => tile.classList.remove('mo-feed-card--loading'));
+    tile.appendChild(img);
+    tile._img = img;
+    tile._moItem = item;
+    item._tile = tile;
+    if (item.type === 'video') tile.appendChild(moEl('span', 'mo-feed-badge', { textContent: moHomeDuration(item.duration) }));
+    else if (item.isGif) tile.appendChild(moEl('span', 'mo-feed-badge', { textContent: 'GIF' }));
+    const title = item.title || '';
+    const who = item.photographer || '';
+    if (title || who) {
+      const cap = moEl('div', 'mo-feed-cap');
+      if (title) cap.appendChild(moEl('div', 'mo-feed-cap-title', { textContent: title }));
+      if (who) cap.appendChild(moEl('div', 'mo-feed-cap-sub', { textContent: who }));
+      tile.appendChild(cap);
+    }
+    const pick = moEl('button', 'mo-feed-pick', { type: 'button', title: 'Select', 'aria-label': 'Select' });
+    pick.innerHTML = moIcon('check', 12);
+    pick.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); feedToggle(item, e.shiftKey); });
+    pick.addEventListener('dblclick', (e) => e.stopPropagation());
+    tile.appendChild(pick);
+    // Click views, double-click edits, as the feed always did. The click
+    // waits so a double-click does not also open the lightbox underneath.
+    let clickTimer = null;
+    tile.addEventListener('click', (e) => {
+      if (e.ctrlKey || e.metaKey || e.shiftKey || state.selectedIds.size > 0) { e.preventDefault(); feedToggle(item, e.shiftKey); return; }
+      if (clickTimer) return;
+      clickTimer = setTimeout(() => {
+        clickTimer = null;
+        state.focusedIndex = state.items.indexOf(item);
+        state.lastClickedKey = feedKey(item);
+        handleCardViewFullSize(item);
+      }, 220);
+    });
+    tile.addEventListener('dblclick', () => {
+      if (state.selectedIds.size > 0) return;
+      if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
+      handleCardOpen(item);
+    });
+    tile.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const isMulti = state.selectedIds.size > 1 && state.selectedIds.has(feedKey(item));
+      showContextMenu(e.clientX, e.clientY, buildContextMenuActions(item, isMulti));
+    });
+    feedSyncTile(item);
+    if (feedThumbObserver) feedThumbObserver.observe(tile); else void feedLoadThumb(tile, item);
+    return tile;
+  }
+  const feedMoreObserver = ('IntersectionObserver' in window)
+    ? new IntersectionObserver((entries) => { for (const en of entries) if (en.isIntersecting) void feedLoadMore(); }, { root: gridArea, rootMargin: '900px 0px' })
+    : null;
+  const feedResizeObs = ('ResizeObserver' in window) ? new ResizeObserver(() => feedRelayout(false)) : null;
+  async function feedLoadMore() {
+    if (feedLoading || feedExhausted || _disposing || !feedMounted()) return;
+    feedLoading = true;
+    feedSentinel.classList.add('is-loading');
+    const gen = feedGen;
+    try {
+      const page = await loadGridPage({ fetchOnly: true, limit: FEED_PAGE, offset: state.items.length });
+      if (gen !== feedGen || _disposing) return;
+      const items = page ? page.items : [];
+      state.totalCount = page ? page.totalCount : 0;
+      countLabel.textContent = `${state.totalCount} items`;
+      if (!items.length) {
+        feedExhausted = true;
+        if (state.items.length === 0) {
+          feedEmpty.textContent = filterType === 'all' && state.mediaType === 'all'
+            ? 'Your library is empty. Drop files here or scan a folder to begin.'
+            : 'Nothing here matches.';
+          feedEmpty.style.display = '';
+        }
+        return;
+      }
+      for (const it of items) { it.tags = []; state.items.push(it); feedPlace(feedBuildTile(it), it); }
+      if (state.items.length >= state.totalCount) feedExhausted = true;
+    } catch (err) {
+      console.error('[MO-Grid] feed load failed:', err);
+      feedExhausted = true;
+    } finally {
+      feedLoading = false;
+      feedSentinel.classList.remove('is-loading');
+    }
+    // A tall pane: keep loading until the sentinel is below the fold.
+    if (!feedExhausted && gridArea.scrollHeight <= gridArea.clientHeight + 200) void feedLoadMore();
+  }
+  /** Mount the feed if needed and load it from the top for the current scope, filters and sort. The selection stays. */
+  async function feedRestart() {
+    feedGen++;
+    const gridEl = gridArea.querySelector('.mo-grid');
+    if (gridEl) gridEl.style.display = 'none';
+    if (!feedMounted()) {
+      gridArea.append(feedEl, feedEmpty, feedSentinel);
+      if (feedMoreObserver) feedMoreObserver.observe(feedSentinel);
+      if (feedResizeObs) feedResizeObs.observe(feedEl);
+    }
+    if (filterType === 'all' && !dailyCard) {
+      dailyCard = moBuildDailyCard(api);
+      gridArea.insertBefore(dailyCard.el, feedEl);
+    }
+    for (const it of state.items) it._tile = null;
+    state.items = [];
+    state.focusedIndex = null;
+    feedExhausted = false;
+    feedLoading = false;
+    feedEmpty.style.display = 'none';
+    feedBuildColumns(feedColumnsWanted());
+    feedEl.classList.toggle('is-selecting', state.selectedIds.size > 0);
+    gridArea.scrollTop = 0;
+    _lastScrollTop = 0;
+    updateFilterBadge();
+    await feedLoadMore();
+    saveSessionState();
+  }
+  /** Take the feed down and give the grid its area back; the selection stays. */
+  function feedUnmount() {
+    feedGen++;
+    if (feedMoreObserver) feedMoreObserver.disconnect();
+    if (feedResizeObs) feedResizeObs.disconnect();
+    feedEl.remove();
+    feedEmpty.remove();
+    feedSentinel.remove();
+    if (dailyCard) { dailyCard.dispose(); dailyCard.el.remove(); dailyCard = null; }
+    for (const it of state.items) it._tile = null;
+    const gridEl = gridArea.querySelector('.mo-grid');
+    if (gridEl) gridEl.style.display = '';
+  }
+  function feedDispose() {
+    feedGen++;
+    if (feedMoreObserver) feedMoreObserver.disconnect();
+    if (feedThumbObserver) feedThumbObserver.disconnect();
+    if (feedResizeObs) feedResizeObs.disconnect();
+    if (dailyCard) { dailyCard.dispose(); dailyCard = null; }
+  }
+  // Every existing call into the card grid (refresh, per-card refresh,
+  // selection, focus) keeps working while the feed is up: the grid holds no
+  // cards then, and the feed answers the selection and per-card calls itself.
+  {
+    const grid = cardGrid;
+    cardGrid = {
+      refresh(items, opts) { if (state.displayMode === 'feed') { feedSyncSelection(); return; } grid.refresh(items, opts); },
+      refreshCard(item) { if (state.displayMode === 'feed') { feedSyncTile(item); return; } grid.refreshCard(item); },
+      setSelection(ids, selecting) { if (state.displayMode === 'feed') { feedSyncSelection(); return; } grid.setSelection(ids, selecting); },
+      setFocus(idx) { if (state.displayMode === 'feed') return; grid.setFocus(idx); },
+      dispose() { grid.dispose(); },
+    };
+  }
   // Files dropped from the OS are imported into the library (Section 26B).
   moEnableDropImport(gridArea, api);
 
@@ -12858,6 +13148,7 @@ function renderGridBrowser(container, api, input) {
 
   sortDropdown.onChange = (value) => {
     state.sortBy = value;
+    updateSortUi();
     state.currentPage = 1;
     loadPage();
   };
@@ -12881,6 +13172,7 @@ function renderGridBrowser(container, api, input) {
     state.zoomWidth = parseInt(zoomSlider.value, 10);
     _sessionZoomWidth = state.zoomWidth;
     updateSliderFill();
+    if (state.displayMode === 'feed') feedRelayout(true);
     if (cardGrid) {
       cardGrid.refresh(state.items, refreshOpts());
     }
@@ -12892,20 +13184,29 @@ function renderGridBrowser(container, api, input) {
   });
 
   // Display mode toggle handlers
-  gridModeBtn.addEventListener('click', () => {
-    state.displayMode = 'grid';
-    gridModeBtn.classList.add('active');
-    listModeBtn.classList.remove('active');
-    zoomGroup.style.display = '';
-    if (cardGrid) cardGrid.refresh(state.items, refreshOpts());
-  });
-  listModeBtn.addEventListener('click', () => {
-    state.displayMode = 'list';
-    listModeBtn.classList.add('active');
-    gridModeBtn.classList.remove('active');
-    zoomGroup.style.display = 'none';
-    if (cardGrid) cardGrid.refresh(state.items, refreshOpts());
-  });
+  function applyDisplayModeUi() {
+    const mode = state.displayMode;
+    feedModeBtn.classList.toggle('active', mode === 'feed');
+    gridModeBtn.classList.toggle('active', mode === 'grid');
+    listModeBtn.classList.toggle('active', mode === 'list');
+    zoomGroup.style.display = mode === 'list' ? 'none' : '';
+    // A feed has no day headers and no pages: it scrolls.
+    groupGroup.style.display = mode === 'feed' ? 'none' : '';
+    paginationBar.style.display = mode === 'feed' ? 'none' : '';
+  }
+  function setDisplayMode(mode) {
+    if (state.displayMode === mode) return;
+    const wasFeed = state.displayMode === 'feed';
+    state.displayMode = mode;
+    applyDisplayModeUi();
+    if (mode === 'feed') { state.currentPage = 1; loadPage(); }
+    else if (wasFeed) { feedUnmount(); state.currentPage = 1; loadPage(); }
+    else if (cardGrid) cardGrid.refresh(state.items, refreshOpts());
+    saveSessionState();
+  }
+  feedModeBtn.addEventListener('click', () => setDisplayMode('feed'));
+  gridModeBtn.addEventListener('click', () => setDisplayMode('grid'));
+  listModeBtn.addEventListener('click', () => setDisplayMode('list'));
 
   pageFirst.addEventListener('click', () => { state.currentPage = 1; loadPage(); });
   pagePrev.addEventListener('click', () => { if (state.currentPage > 1) { state.currentPage--; loadPage(); } });
@@ -12933,6 +13234,7 @@ function renderGridBrowser(container, api, input) {
   }
 
   // Initial load
+  applyDisplayModeUi();
   loadPage();
 
   // Helper: detect column count from CSS Grid auto-fill
@@ -13667,6 +13969,8 @@ function renderGridBrowser(container, api, input) {
   }
 
   gridArea.addEventListener('pointerdown', (e) => {
+    // No drag-box in the feed: a rubber band over a masonry selects by geometry, and geometry lies there.
+    if (state.displayMode === 'feed') return;
     // Only left button, only on grid background (not on a card/row/checkbox)
     if (e.button !== 0) return;
     const target = e.target;
@@ -13799,6 +14103,7 @@ function renderGridBrowser(container, api, input) {
       document.removeEventListener('mo:tag-meta-changed', _tagMetaChangedHandler);
       document.removeEventListener('mo:tags-bulk-changed', _tagsBulkChangedHandler);
       _marqueeFrame.dispose();
+      feedDispose();
       if (cardGrid) cardGrid.dispose();
       container.innerHTML = '';
     },
@@ -13822,22 +14127,15 @@ function renderGridBrowser(container, api, input) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 26B: HOME FEED, ADD TO CHAT, DROP TO IMPORT
+// SECTION 26B: FEED TILE HELPERS, ADD TO CHAT, DROP TO IMPORT
 // ═══════════════════════════════════════════════════════════════════════════════
-// Home is the library as a feed: every photo, GIF and video in one shuffled
-// masonry, tall images tall and wide images wide, in a seeded random order
-// that stays put while you scroll and changes only when you press Shuffle.
-// Click opens the lightbox, double-click opens the editor. It is the
-// Unsplash front page for your own library; the grids stay the place for
-// sorting, filtering and selecting.
-//
-// The same section owns the two doors in and out of the library that every
-// surface shares: Add To Chat (the chat's own attachment pipeline, which
-// turns image files into vision attachments) and drop-to-import (OS files
-// dropped on a grid or on Home are copied into the library and scanned).
-
-/** Session-scoped so returning to Home keeps the order you were scrolling. */
-const _sessionHomeState = { seed: null, kind: 'all', colWidth: 260 };
+// The feed (the masonry that was the Home tab) is a layout of the grid
+// browser now (renderGridBrowser, "Feed layout"), so the Library, a tag, an
+// album or any filter can be seen as a feed. What is left here is shared by
+// every surface: the duration badge, Add To Chat (the chat's own attachment
+// pipeline, which turns image files into vision attachments) and
+// drop-to-import (OS files dropped on a grid are copied into the library
+// and scanned).
 
 /** Absolute path of an item's primary file, or null. Module-level so the
  *  home feed, the lightbox, the detail editor and chat share one resolver. */
@@ -14002,434 +14300,6 @@ function moHomeDuration(sec) {
  * SQLite cannot do this itself: it has no XOR, and additive seeds inside a
  * modulus only rotate one fixed order. Details are fetched per page.
  */
-function moMix32(x) {
-  x ^= x >>> 16;
-  x = Math.imul(x, 0x85ebca6b);
-  x ^= x >>> 13;
-  x = Math.imul(x, 0xc2b2ae35);
-  x ^= x >>> 16;
-  return x >>> 0;
-}
-function moHomeOrderKey(type, id, seed) {
-  const base = ((type === 'video' ? 0x40000000 : 0) + (id >>> 0)) >>> 0;
-  return moMix32((Math.imul(base, 0x9E3779B1) ^ (seed >>> 0)) >>> 0);
-}
-/** [{ media_type, id }] -> [{ type, id }] in feed order for the seed. */
-function moHomeOrderedKeys(rows, seed) {
-  return (rows || [])
-    .map((r) => ({ type: r.media_type, id: r.id, k: moHomeOrderKey(r.media_type, r.id, seed) }))
-    .sort((a, b) => a.k - b.k || a.id - b.id)
-    .map((x) => ({ type: x.type, id: x.id }));
-}
-/** SQL (no params): the ids of everything the feed may show for a kind. */
-function buildHomeIdsQuery(kind) {
-  const gifExists = `EXISTS (SELECT 1 FROM mo_photos_files kpf JOIN mo_files kf ON kf.id = kpf.file_id WHERE kpf.photo_id = p.id AND kpf.is_primary = 1 AND LOWER(kf.basename) LIKE '%.gif')`;
-  const photoWhere = [
-    'p.deleted_at IS NULL',
-    `NOT EXISTS (SELECT 1 FROM mo_stack_members sm WHERE sm.member_type = 'photo' AND sm.member_id = p.id AND sm.role <> 'primary')`,
-  ];
-  if (kind === 'photos') photoWhere.push(`NOT ${gifExists}`);
-  if (kind === 'gifs') photoWhere.push(gifExists);
-  const videoWhere = [
-    'v.deleted_at IS NULL',
-    `NOT EXISTS (SELECT 1 FROM mo_stack_members sm WHERE sm.member_type = 'video' AND sm.member_id = v.id AND sm.role <> 'primary')`,
-  ];
-  const photos = `SELECT 'photo' AS media_type, p.id AS id FROM mo_photos p WHERE ${photoWhere.join(' AND ')}`;
-  const videos = `SELECT 'video' AS media_type, v.id AS id FROM mo_videos v WHERE ${videoWhere.join(' AND ')}`;
-  if (kind === 'videos') return videos;
-  if (kind === 'photos' || kind === 'gifs') return photos;
-  return `${photos} UNION ALL ${videos}`;
-}
-/** SQL + params: the feed's row shape (dimensions, kind flag, photographer) for ids of one type. */
-function buildHomeDetailsQuery(type, ids) {
-  const ph = ids.map(() => '?').join(',');
-  if (type === 'video') {
-    const w = `(SELECT vf2.width FROM mo_videos_files dvf JOIN mo_video_files vf2 ON vf2.file_id = dvf.file_id WHERE dvf.video_id = v.id AND dvf.is_primary = 1 LIMIT 1)`;
-    const h = `(SELECT vf2.height FROM mo_videos_files dvf JOIN mo_video_files vf2 ON vf2.file_id = dvf.file_id WHERE dvf.video_id = v.id AND dvf.is_primary = 1 LIMIT 1)`;
-    return {
-      sql: `SELECT 'video' AS media_type, v.id, v.title, v.rating, v.color_label, v.created_at, NULL AS taken_at, v.duration, NULL AS photographer, ${w} AS width, ${h} AS height, 0 AS is_gif FROM mo_videos v WHERE v.id IN (${ph})`,
-      params: ids,
-    };
-  }
-  const gifExists = `EXISTS (SELECT 1 FROM mo_photos_files kpf JOIN mo_files kf ON kf.id = kpf.file_id WHERE kpf.photo_id = p.id AND kpf.is_primary = 1 AND LOWER(kf.basename) LIKE '%.gif')`;
-  const w = `(SELECT i.width FROM mo_photos_files dpf JOIN mo_image_files i ON i.file_id = dpf.file_id WHERE dpf.photo_id = p.id AND dpf.is_primary = 1 LIMIT 1)`;
-  const h = `(SELECT i.height FROM mo_photos_files dpf JOIN mo_image_files i ON i.file_id = dpf.file_id WHERE dpf.photo_id = p.id AND dpf.is_primary = 1 LIMIT 1)`;
-  return {
-    sql: `SELECT 'photo' AS media_type, p.id, p.title, p.rating, p.color_label, p.created_at, p.taken_at, NULL AS duration, p.photographer, ${w} AS width, ${h} AS height, CASE WHEN ${gifExists} THEN 1 ELSE 0 END AS is_gif FROM mo_photos p WHERE p.id IN (${ph})`,
-    params: ids,
-  };
-}
-/** Fetch one page's rows and return them in page order (missing ids are skipped). */
-async function moHomeDetails(page) {
-  const photoIds = page.filter((k) => k.type === 'photo').map((k) => k.id);
-  const videoIds = page.filter((k) => k.type === 'video').map((k) => k.id);
-  const byKey = new Map();
-  if (photoIds.length) {
-    const q = buildHomeDetailsQuery('photo', photoIds);
-    for (const r of await db.all(q.sql, q.params)) byKey.set(`photo:${r.id}`, r);
-  }
-  if (videoIds.length) {
-    const q = buildHomeDetailsQuery('video', videoIds);
-    for (const r of await db.all(q.sql, q.params)) byKey.set(`video:${r.id}`, r);
-  }
-  const out = [];
-  for (const k of page) { const r = byKey.get(`${k.type}:${k.id}`); if (r) out.push(r); }
-  return out;
-}
-
-function renderHomeFeed(container, api, input) {
-  moInjectStyles();
-  const root = moEl('div', 'mo-home');
-  container.appendChild(root);
-  if (_sessionHomeState.seed == null) _sessionHomeState.seed = Math.floor(Math.random() * 2147483647);
-
-  const PAGE = 48;
-  const GAP = 10;
-  // Zoom = the column width the masonry aims for, the same range as the grids' zoom.
-  let colWidth = Math.max(MO_ZOOM_MIN, Math.min(MO_ZOOM_MAX, Number(_sessionHomeState.colWidth) || 260));
-  let kind = _sessionHomeState.kind || 'all';
-  let seed = _sessionHomeState.seed;
-  let offset = 0;
-  let loading = false;
-  let exhausted = false;
-  let disposed = false;
-  let items = [];
-  let order = null; // [{ type, id }] in feed order for this seed and kind
-
-  // Header: title, kind chips, Shuffle.
-  const head = moEl('div', 'mo-home-head');
-  const titleWrap = moEl('div', 'mo-home-title-wrap');
-  titleWrap.appendChild(moEl('div', 'mo-home-title', { textContent: 'Home' }));
-  titleWrap.appendChild(moEl('div', 'mo-home-sub', { textContent: 'Everything in your library, shuffled. Click to view, double-click to edit, drop files to import.' }));
-  head.appendChild(titleWrap);
-  const chips = moEl('div', 'mo-home-chips');
-  const chipEls = new Map();
-  for (const [k, label] of [['all', 'All'], ['photos', 'Photos'], ['gifs', 'GIFs'], ['videos', 'Videos']]) {
-    const b = moEl('button', `mo-home-chip${k === kind ? ' active' : ''}`, { textContent: label, type: 'button' });
-    b.addEventListener('click', () => {
-      if (kind === k) return;
-      kind = k;
-      _sessionHomeState.kind = k;
-      for (const [kk, el] of chipEls) el.classList.toggle('active', kk === k);
-      restart();
-    });
-    chips.appendChild(b);
-    chipEls.set(k, b);
-  }
-  head.appendChild(chips);
-  // Zoom: the grids' slider, driving the masonry column width.
-  const zoomGroup = moEl('div', 'mo-home-zoom');
-  zoomGroup.appendChild(moEl('span', 'mo-home-zoom-label', { textContent: 'Zoom' }));
-  const zoomSlider = moEl('input', 'mo-zoom-slider', { type: 'range', min: String(MO_ZOOM_MIN), max: String(MO_ZOOM_MAX), step: '10', value: String(colWidth) });
-  zoomSlider.setAttribute('aria-label', 'Zoom');
-  const updateZoomFill = () => { zoomSlider.style.setProperty('--slider-fill', (((colWidth - MO_ZOOM_MIN) / (MO_ZOOM_MAX - MO_ZOOM_MIN)) * 100) + '%'); };
-  updateZoomFill();
-  function setZoom(next) {
-    colWidth = Math.max(MO_ZOOM_MIN, Math.min(MO_ZOOM_MAX, Math.round(next / 10) * 10));
-    _sessionHomeState.colWidth = colWidth;
-    zoomSlider.value = String(colWidth);
-    updateZoomFill();
-    relayout();
-    // Persist (debounced) so the workspace remembers the feed zoom across sessions.
-    clearTimeout(zoomSlider._persistTimer);
-    zoomSlider._persistTimer = setTimeout(() => { moSetSetting('home_zoom_width', String(colWidth)).catch(() => {}); }, 250);
-  }
-  zoomSlider.addEventListener('input', () => setZoom(parseInt(zoomSlider.value, 10)));
-  zoomGroup.appendChild(zoomSlider);
-  head.appendChild(zoomGroup);
-  const shuffleBtn = moEl('button', 'mo-home-shuffle', { type: 'button', title: 'Shuffle the feed into a new order' });
-  shuffleBtn.innerHTML = moIcon('shuffle', 14) + '<span>Shuffle</span>';
-  shuffleBtn.addEventListener('click', () => {
-    seed = Math.floor(Math.random() * 2147483647);
-    _sessionHomeState.seed = seed;
-    restart();
-  });
-  head.appendChild(shuffleBtn);
-  root.appendChild(head);
-
-  // Daily Study (M104): a quiet card above the feed; hidden while the tools are off.
-  const dailyCard = moBuildDailyCard(api);
-  root.appendChild(dailyCard.el);
-
-  // Feed: JS masonry. N columns; each new card goes to the shortest column,
-  // so appending a page never reflows what is already on screen. Column
-  // count follows the pane width; when it changes, everything is re-placed.
-  const scroller = moEl('div', 'mo-home-scroll');
-  root.appendChild(scroller);
-  const feed = moEl('div', 'mo-home-feed');
-  scroller.appendChild(feed);
-  const empty = moEl('div', 'mo-home-empty');
-  empty.style.display = 'none';
-  scroller.appendChild(empty);
-  const sentinel = moEl('div', 'mo-home-sentinel');
-  scroller.appendChild(sentinel);
-
-  let columns = [];
-  let colCount = 0;
-  function desiredColumns() {
-    const w = feed.clientWidth || scroller.clientWidth || 900;
-    return Math.max(1, Math.min(8, Math.floor((w + GAP) / (colWidth + GAP))));
-  }
-  function buildColumns(n) {
-    feed.innerHTML = '';
-    columns = [];
-    colCount = n;
-    for (let i = 0; i < n; i++) {
-      const col = moEl('div', 'mo-home-col');
-      feed.appendChild(col);
-      columns.push({ el: col, height: 0 });
-    }
-  }
-  function ratioOf(item) {
-    const w = Number(item.width);
-    const h = Number(item.height);
-    if (w > 0 && h > 0) return Math.max(0.4, Math.min(3, w / h));
-    return item.type === 'video' ? 16 / 9 : 4 / 3;
-  }
-  function place(card, item) {
-    let best = columns[0];
-    for (const c of columns) if (c.height < best.height) best = c;
-    best.el.appendChild(card);
-    best.height += 1 / ratioOf(item) + 0.04; // height per unit of column width
-  }
-  function relayout() {
-    if (disposed) return;
-    const n = desiredColumns();
-    if (n === colCount) return;
-    buildColumns(n);
-    for (const it of items) if (it._card) place(it._card, it);
-  }
-
-  const thumbObserver = ('IntersectionObserver' in window) ? new IntersectionObserver((entries, obs) => {
-    for (const en of entries) {
-      if (!en.isIntersecting) continue;
-      obs.unobserve(en.target);
-      void loadThumb(en.target, en.target._moItem);
-    }
-  }, { root: scroller, rootMargin: '600px 0px', threshold: 0.01 }) : null;
-
-  async function loadThumb(card, item) {
-    try {
-      const cached = _moRecallThumb(item.type, item.id);
-      let display = cached ? (cached.sourcePath || cached.thumbnailPath) : null;
-      if (cached && (cached.originalPath || cached.sourcePath)) card._filePath = cached.originalPath || cached.sourcePath;
-      if (!display) {
-        const r = await resolveThumbnail(item.type, item.id, api);
-        if (r && (r.path || r.sourcePath)) {
-          _moRememberThumb(item.type, item.id, { thumbnailPath: r.path || null, sourcePath: r.sourcePath || null, originalPath: r.originalPath || null });
-          display = r.sourcePath || r.path;
-          card._filePath = r.originalPath || r.sourcePath || null;
-        }
-      }
-      if (disposed) return;
-      if (display) {
-        setThumbImgSrc(card._img, display, { onPlaceholderRemove: () => card.classList.remove('mo-home-card--loading') });
-      } else {
-        card.classList.remove('mo-home-card--loading');
-        card.classList.add('mo-home-card--missing');
-        card._img.style.display = 'none';
-        card.appendChild(moEl('div', 'mo-thumb-placeholder', { innerHTML: moIcon(item.type === 'video' ? 'film' : 'image', 28) }));
-      }
-    } catch {
-      card.classList.remove('mo-home-card--loading');
-    }
-  }
-
-  function openDetail(item) {
-    api.editors.openEditor({
-      typeId: 'media-organizer-grid',
-      title: item.title || `${item.type} #${item.id}`,
-      icon: item.type === 'video' ? 'file-media' : 'image',
-      instanceId: `detail:${item.type}:${item.id}`,
-    });
-  }
-  function viewItem(item) {
-    const idx = items.indexOf(item);
-    openLightbox(items, idx >= 0 ? idx : 0, moResolveItemPath);
-  }
-
-  function buildCard(item) {
-    const card = moEl('div', 'mo-home-card mo-home-card--loading');
-    card.style.aspectRatio = String(ratioOf(item));
-    card.dataset.key = `${item.type}:${item.id}`;
-    card.setAttribute('draggable', 'true');
-    const img = moEl('img');
-    img.alt = item.title || '';
-    img.draggable = false;
-    img.loading = 'lazy';
-    img.addEventListener('load', () => card.classList.remove('mo-home-card--loading'));
-    img.addEventListener('error', () => { card.classList.remove('mo-home-card--loading'); });
-    card.appendChild(img);
-    card._img = img;
-    card._moItem = item;
-    item._card = card;
-    if (item.type === 'video') {
-      card.appendChild(moEl('span', 'mo-home-badge', { textContent: moHomeDuration(item.duration) }));
-    } else if (item.isGif) {
-      card.appendChild(moEl('span', 'mo-home-badge', { textContent: 'GIF' }));
-    }
-    const title = item.title || '';
-    const who = item.photographer || '';
-    if (title || who) {
-      const cap = moEl('div', 'mo-home-cap');
-      if (title) cap.appendChild(moEl('div', 'mo-home-cap-title', { textContent: title }));
-      if (who) cap.appendChild(moEl('div', 'mo-home-cap-sub', { textContent: who }));
-      card.appendChild(cap);
-    }
-    // Click views, double-click edits. The click waits so a double-click does
-    // not also open the lightbox underneath the editor.
-    let clickTimer = null;
-    card.addEventListener('click', () => {
-      if (clickTimer) return;
-      clickTimer = setTimeout(() => { clickTimer = null; viewItem(item); }, 220);
-    });
-    card.addEventListener('dblclick', () => {
-      if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
-      openDetail(item);
-    });
-    card.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      showContextMenu(e.clientX, e.clientY, [
-        { label: 'View Full Size', handler: () => viewItem(item) },
-        { label: 'Edit Details', handler: () => openDetail(item) },
-        { label: 'Add To Chat', handler: () => { void moAttachItemsToChat([item]); } },
-        ...(item.type === 'photo' && !item.isGif ? [
-          { label: 'Tag With AI', handler: () => { void moTagWithAIFromUI([item], api); } },
-          { label: 'Retag With AI', handler: () => { void moTagWithAIFromUI([item], api, 'retag'); } },
-        ] : []),
-        ...(item.type === 'photo' && !item.isGif ? [{ label: 'Upscale…', handler: () => { void moUpscaleItems([item], api, null); } }] : []),
-        { separator: true },
-        { label: 'Open File Location', handler: async () => {
-          const fp = await moResolveItemPath(item);
-          if (fp && window.parallxElectron?.shell?.showItemInFolder) window.parallxElectron.shell.showItemInFolder(fp);
-        } },
-      ]);
-    });
-    // Drag out with the same payload the grid cards carry, so the chat
-    // composer and canvas pages accept a card from Home too.
-    card.addEventListener('dragstart', (e) => {
-      if (!e.dataTransfer) return;
-      e.dataTransfer.effectAllowed = 'copy';
-      e.dataTransfer.setData('application/x-mo-items', JSON.stringify([`${item.type}:${item.id}`]));
-      const fp = card._filePath;
-      if (fp) {
-        try { e.dataTransfer.setData('text/uri-list', 'file:///' + encodeURI(fp.replace(/\\/g, '/'))); } catch { /* ignore */ }
-        try { e.dataTransfer.setData('text/plain', fp); } catch { /* ignore */ }
-      }
-    });
-    if (thumbObserver) thumbObserver.observe(card);
-    else void loadThumb(card, item);
-    return card;
-  }
-
-  function rowToItem(r) {
-    return {
-      type: r.media_type,
-      id: r.id,
-      title: r.title,
-      rating: r.rating,
-      colorLabel: r.color_label || null,
-      createdAt: r.created_at,
-      takenAt: r.taken_at || null,
-      duration: r.duration || null,
-      photographer: r.photographer || null,
-      width: r.width || null,
-      height: r.height || null,
-      isGif: !!r.is_gif,
-      thumbnailPath: null,
-      thumbnailStatus: 'pending',
-    };
-  }
-
-  async function loadMore() {
-    if (loading || exhausted || disposed) return;
-    loading = true;
-    sentinel.classList.add('is-loading');
-    try {
-      if (!order) {
-        const ids = await db.all(buildHomeIdsQuery(kind));
-        if (disposed) return;
-        order = moHomeOrderedKeys(ids, seed);
-      }
-      const page = order.slice(offset, offset + PAGE);
-      const rows = page.length ? await moHomeDetails(page) : [];
-      if (disposed) return;
-      if (!rows || rows.length === 0) {
-        exhausted = true;
-        if (items.length === 0) {
-          empty.textContent = kind === 'all'
-            ? 'Your library is empty. Drop files here or scan a folder to begin.'
-            : 'Nothing of that kind in the library yet.';
-          empty.style.display = '';
-        }
-        return;
-      }
-      offset += page.length;
-      if (offset >= order.length) exhausted = true;
-      if (colCount === 0) buildColumns(desiredColumns());
-      for (const r of rows) {
-        const it = rowToItem(r);
-        items.push(it);
-        place(buildCard(it), it);
-      }
-    } catch (err) {
-      console.error('[MO-Home] load failed:', err);
-      exhausted = true;
-    } finally {
-      loading = false;
-      sentinel.classList.remove('is-loading');
-    }
-    // Tall panes: keep loading until the sentinel is below the fold.
-    if (!exhausted && scroller.scrollHeight <= scroller.clientHeight + 200) void loadMore();
-  }
-  function restart() {
-    items = [];
-    order = null;
-    offset = 0;
-    exhausted = false;
-    empty.style.display = 'none';
-    buildColumns(desiredColumns());
-    scroller.scrollTop = 0;
-    void loadMore();
-  }
-
-  const moreObserver = ('IntersectionObserver' in window)
-    ? new IntersectionObserver((entries) => { for (const en of entries) if (en.isIntersecting) void loadMore(); }, { root: scroller, rootMargin: '900px 0px' })
-    : null;
-  if (moreObserver) moreObserver.observe(sentinel);
-  const resizeObs = ('ResizeObserver' in window) ? new ResizeObserver(() => relayout()) : null;
-  if (resizeObs) resizeObs.observe(feed);
-  // Ctrl + wheel zooms the feed, as it does in image viewers.
-  scroller.addEventListener('wheel', (e) => {
-    if (!e.ctrlKey) return;
-    e.preventDefault();
-    setZoom(colWidth + (e.deltaY < 0 ? 20 : -20));
-  }, { passive: false });
-  moEnableDropImport(root, api);
-  // A scan or an import finished: same order, fresh contents.
-  const onRefresh = () => { if (!disposed) restart(); };
-  document.addEventListener('mo:refresh-grid', onRefresh);
-  restart();
-
-  return {
-    dispose() {
-      disposed = true;
-      dailyCard.dispose();
-      if (moreObserver) moreObserver.disconnect();
-      if (thumbObserver) thumbObserver.disconnect();
-      if (resizeObs) resizeObs.disconnect();
-      if (zoomSlider._persistTimer) { clearTimeout(zoomSlider._persistTimer); moSetSetting('home_zoom_width', String(colWidth)).catch(() => {}); }
-      document.removeEventListener('mo:refresh-grid', onRefresh);
-      container.innerHTML = '';
-    },
-    saveViewState() { return { scrollTop: scroller.scrollTop }; },
-    restoreViewState(state) {
-      const t = state && typeof state.scrollTop === 'number' ? state.scrollTop : 0;
-      if (t > 0) requestAnimationFrame(() => { if (!disposed) scroller.scrollTop = t; });
-    },
-  };
-}
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 27: DETAIL EDITOR — CORE LAYOUT
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -27058,288 +26928,6 @@ async function moAutoEmptyTrashIfStale() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 42: TIMELINE + MAP — M59 P6
-// ═══════════════════════════════════════════════════════════════════════════════
-
-// ── Timeline view ──
-// Modal full-screen view: all photos+videos grouped by year/month/day with
-// sticky date headers. Click a thumbnail to open the detail dialog (delegated
-// via the standard mo:request-open-detail event).
-async function moOpenTimeline(api) {
-  const photos = await db.all(
-    `SELECT 'photo' AS type, p.id, p.title, COALESCE(p.taken_at, p.created_at) AS dt
-       FROM mo_photos p
-      WHERE p.deleted_at IS NULL
-      ORDER BY dt DESC
-      LIMIT 5000`
-  );
-  const videos = await db.all(
-    `SELECT 'video' AS type, v.id, v.title, v.created_at AS dt
-       FROM mo_videos v
-      WHERE v.deleted_at IS NULL
-      ORDER BY dt DESC
-      LIMIT 5000`
-  );
-  const all = [...photos, ...videos].sort((a, b) => (b.dt || '').localeCompare(a.dt || ''));
-  if (all.length === 0) {
-    api.window.showInformationMessage('No items to show on timeline.');
-    return;
-  }
-
-  // Bucket by year-month-day
-  const buckets = new Map(); // key = YYYY-MM-DD
-  for (const it of all) {
-    const day = (it.dt || '').slice(0, 10) || 'Unknown';
-    if (!buckets.has(day)) buckets.set(day, []);
-    buckets.get(day).push(it);
-  }
-
-  const overlay = moEl('div', 'mo-modal-overlay');
-  const dialog = moEl('div', 'mo-modal mo-timeline-dialog');
-  overlay.appendChild(dialog);
-  const header = moEl('div', 'mo-modal-header');
-  header.appendChild(moEl('div', 'mo-modal-title', { textContent: `Timeline (${all.length} items)` }));
-  const closeBtn = moEl('button', 'mo-modal-close', { textContent: '×' });
-  closeBtn.addEventListener('click', () => overlay.remove());
-  header.appendChild(closeBtn);
-  dialog.appendChild(header);
-
-  const body = moEl('div', 'mo-timeline-body');
-  dialog.appendChild(body);
-
-  const monthFmt = (key) => {
-    if (key === 'Unknown') return 'Unknown date';
-    const [y, m, d] = key.split('-');
-    const date = new Date(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10));
-    return date.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'America/Chicago' });
-  };
-
-  for (const [day, items] of buckets) {
-    const sectHeader = moEl('div', 'mo-timeline-section-header');
-    sectHeader.textContent = monthFmt(day);
-    body.appendChild(sectHeader);
-
-    const grid = moEl('div', 'mo-timeline-grid');
-    for (const item of items) {
-      const tile = moEl('div', 'mo-timeline-tile');
-      tile.dataset.type = item.type; tile.dataset.id = String(item.id);
-      tile.title = item.title || `${item.type} #${item.id}`;
-      const ph = moEl('div', 'mo-timeline-tile-ph', { innerHTML: moIcon(item.type === 'video' ? 'device-camera-video' : 'image', 24) });
-      tile.appendChild(ph);
-      // Lazy thumbnail: defer until visible
-      tile.addEventListener('click', () => {
-        _api.editors.openEditor({
-          typeId: 'media-organizer-grid',
-          title: item.title || `${item.type} #${item.id}`,
-          icon: item.type === 'video' ? 'file-media' : 'image',
-          instanceId: `detail:${item.type}:${item.id}`,
-        });
-        overlay.remove();
-      });
-      grid.appendChild(tile);
-    }
-    body.appendChild(grid);
-  }
-
-  // Lazy-load thumbnails as tiles enter viewport
-  if ('IntersectionObserver' in window) {
-    const tilesObs = new IntersectionObserver(async (entries, obs) => {
-      for (const e of entries) {
-        if (!e.isIntersecting) continue;
-        const tile = e.target;
-        obs.unobserve(tile);
-        const type = tile.dataset.type;
-        const id = parseInt(tile.dataset.id, 10);
-        try {
-          const r = await resolveThumbnail(type, id, _api);
-          if (r && r.path) {
-            const url = await localFileToUrl(r.path);
-            if (url) {
-              tile.innerHTML = '';
-              const img = moEl('img');
-              img.src = url; img.loading = 'lazy';
-              tile.appendChild(img);
-            }
-          }
-        } catch { /* ignore */ }
-      }
-    }, { rootMargin: '300px 0px' });
-    body.querySelectorAll('.mo-timeline-tile').forEach(t => tilesObs.observe(t));
-  }
-
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
-  document.body.appendChild(overlay);
-}
-
-// ── Map view ──
-// Offline canvas-based world plot. Uses an equirectangular projection;
-// adequate for "where were these taken?" overview. Click a point to open
-// the detail dialog. Pan via drag, zoom via wheel.
-async function moOpenMap(api) {
-  const rows = await db.all(
-    `SELECT p.id, p.title, p.gps_latitude AS lat, p.gps_longitude AS lon
-       FROM mo_photos p
-      WHERE p.deleted_at IS NULL
-        AND p.gps_latitude IS NOT NULL
-        AND p.gps_longitude IS NOT NULL`
-  );
-  if (rows.length === 0) {
-    api.window.showInformationMessage('No photos with GPS coordinates found.');
-    return;
-  }
-
-  const overlay = moEl('div', 'mo-modal-overlay');
-  const dialog = moEl('div', 'mo-modal mo-map-dialog');
-  overlay.appendChild(dialog);
-  const header = moEl('div', 'mo-modal-header');
-  header.appendChild(moEl('div', 'mo-modal-title', { textContent: `Map (${rows.length} geotagged)` }));
-  const closeBtn = moEl('button', 'mo-modal-close', { textContent: '×' });
-  closeBtn.addEventListener('click', () => overlay.remove());
-  header.appendChild(closeBtn);
-  dialog.appendChild(header);
-
-  const canvas = moEl('canvas', 'mo-map-canvas');
-  canvas.width = 900; canvas.height = 540;
-  dialog.appendChild(canvas);
-
-  const ctx = canvas.getContext('2d');
-  // Camera state — pan offsets in screen px, zoom factor
-  let zoom = 1;
-  let panX = 0, panY = 0;
-  let dragging = false;
-  let dragStartX = 0, dragStartY = 0, panStartX = 0, panStartY = 0;
-
-  function project(lat, lon) {
-    // Equirectangular: lon → x ∈ [-180,180] → [0, w], lat → y ∈ [90,-90] → [0, h]
-    const baseW = canvas.width, baseH = canvas.height;
-    let x = ((lon + 180) / 360) * baseW;
-    let y = ((90 - lat) / 180) * baseH;
-    x = (x - baseW / 2) * zoom + baseW / 2 + panX;
-    y = (y - baseH / 2) * zoom + baseH / 2 + panY;
-    return { x, y };
-  }
-
-  function unproject(sx, sy) {
-    const baseW = canvas.width, baseH = canvas.height;
-    let x = (sx - baseW / 2 - panX) / zoom + baseW / 2;
-    let y = (sy - baseH / 2 - panY) / zoom + baseH / 2;
-    const lon = (x / baseW) * 360 - 180;
-    const lat = 90 - (y / baseH) * 180;
-    return { lat, lon };
-  }
-
-  // Draw world graticule + points
-  function draw() {
-    ctx.fillStyle = 'var(--px-bg)';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    // Graticule lines every 30°
-    ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
-    for (let lon = -180; lon <= 180; lon += 30) {
-      const a = project(-90, lon), b = project(90, lon);
-      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-    }
-    for (let lat = -60; lat <= 60; lat += 30) {
-      const a = project(lat, -180), b = project(lat, 180);
-      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-    }
-    // Equator stronger
-    ctx.strokeStyle = '#555';
-    const a = project(0, -180), b = project(0, 180);
-    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-
-    // Cluster points by approximate proximity at current zoom
-    const clusters = [];
-    const radius = 14;
-    for (const r of rows) {
-      const p = project(r.lat, r.lon);
-      let assigned = false;
-      for (const c of clusters) {
-        if (Math.hypot(c.x - p.x, c.y - p.y) < radius) {
-          c.x = (c.x * c.count + p.x) / (c.count + 1);
-          c.y = (c.y * c.count + p.y) / (c.count + 1);
-          c.count++;
-          c.items.push(r);
-          assigned = true; break;
-        }
-      }
-      if (!assigned) clusters.push({ x: p.x, y: p.y, count: 1, items: [r] });
-    }
-
-    // Draw clusters
-    for (const c of clusters) {
-      const r = c.count > 1 ? Math.min(28, 8 + Math.sqrt(c.count) * 2) : 6;
-      ctx.fillStyle = c.count > 1 ? 'rgba(147,51,234,0.85)' : 'rgba(245,197,24,0.95)';
-      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.arc(c.x, c.y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-      if (c.count > 1) {
-        ctx.fillStyle = '#fff'; ctx.font = 'bold 12px sans-serif';
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText(String(c.count), c.x, c.y);
-      }
-    }
-    canvas._clusters = clusters;
-  }
-
-  draw();
-
-  // Pan listeners are SESSION-SCOPED (attach on mousedown, detach on
-  // mouseup) — permanent window listeners here leaked per timeline open.
-  const onTlPanMove = (e) => {
-    if (!dragging) return;
-    panX = panStartX + (e.clientX - dragStartX);
-    panY = panStartY + (e.clientY - dragStartY);
-    draw();
-  };
-  const onTlPanUp = () => {
-    dragging = false;
-    window.removeEventListener('mousemove', onTlPanMove);
-    window.removeEventListener('mouseup', onTlPanUp);
-  };
-  canvas.addEventListener('mousedown', (e) => {
-    dragging = true;
-    dragStartX = e.clientX; dragStartY = e.clientY;
-    panStartX = panX; panStartY = panY;
-    window.addEventListener('mousemove', onTlPanMove);
-    window.addEventListener('mouseup', onTlPanUp);
-  });
-  canvas.addEventListener('wheel', (e) => {
-    e.preventDefault();
-    const factor = e.deltaY < 0 ? 1.2 : 1 / 1.2;
-    zoom = Math.max(1, Math.min(20, zoom * factor));
-    draw();
-  }, { passive: false });
-  canvas.addEventListener('click', (e) => {
-    const rect = canvas.getBoundingClientRect();
-    const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
-    const clusters = canvas._clusters || [];
-    for (const c of clusters) {
-      if (Math.hypot(c.x - sx, c.y - sy) < 16) {
-        if (c.count === 1) {
-          _api.editors.openEditor({
-            typeId: 'media-organizer-grid',
-            title: c.items[0].title || `photo #${c.items[0].id}`,
-            icon: 'image',
-            instanceId: `detail:photo:${c.items[0].id}`,
-          });
-          overlay.remove();
-        } else {
-          // Zoom in toward cluster
-          zoom = Math.min(20, zoom * 2);
-          const baseW = canvas.width, baseH = canvas.height;
-          panX -= (c.x - baseW / 2);
-          panY -= (c.y - baseH / 2);
-          draw();
-        }
-        return;
-      }
-    }
-  });
-
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
-  document.body.appendChild(overlay);
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 43: AI TAGGING (one tool, Tag Review)
 // ═══════════════════════════════════════════════════════════════════════════════
 //
@@ -28451,7 +28039,7 @@ async function moToolTagPhotos(args) {
   const more = scope === 'photos' ? 0 : Math.max(0, untaggedTotal - r.queued);
   const lines = [
     `Started: ${r.queued} photo${r.queued === 1 ? '' : 's'} queued for ${mode === 'retag' ? 'retagging' : 'tagging'} with ${r.model}. It runs in the background, one photo at a time.`,
-    'Suggestions appear in Media Organizer > Tag Review (Quick Filters in the sidebar), where the user approves or skips each photo. Nothing is applied until they approve.',
+    'Suggestions appear in Media Organizer > Tag Review (Library in the sidebar), where the user approves or skips each photo. Nothing is applied until they approve.',
   ];
   if (mode === 'retag') lines.push('Each photo\'s current tags are shown beside the new picks; Approve replaces them, Skip keeps them.');
   if (r.skipped.gif) lines.push(`${r.skipped.gif} GIF${r.skipped.gif === 1 ? ' was' : 's were'} left out (only photos are tagged).`);
@@ -30771,15 +30359,6 @@ export async function activate(api, context) {
     }
   } catch { /* fall back to default */ }
 
-  // Hydrate the Home feed zoom the same way.
-  try {
-    const hz = await moGetSetting('home_zoom_width', null);
-    const hzNum = hz != null ? parseInt(hz, 10) : NaN;
-    if (Number.isFinite(hzNum) && hzNum >= MO_ZOOM_MIN && hzNum <= MO_ZOOM_MAX) {
-      _sessionHomeState.colWidth = hzNum;
-    }
-  } catch { /* fall back to default */ }
-
   // Hydrate the grid grouping mode so it survives across sessions.
   try {
     const g = await moGetSetting('grid_group_by', null);
@@ -30930,9 +30509,6 @@ export async function activate(api, context) {
     api.commands.registerCommand('media-organizer.practiceSession', () => { if (moArtGate(api)) moOpenPracticeSetup(api); }),
     api.commands.registerCommand('media-organizer.dailyStudy', () => void moStartDailyStudy(api)),
     api.commands.registerCommand('media-organizer.paintingPlans', () => { if (moArtGate(api)) moOpenPlansList(api); }),
-    api.commands.registerCommand('media-organizer.openHome', () => {
-      api.editors.openEditor({ typeId: 'media-organizer-grid', title: 'Home', icon: 'home', instanceId: 'grid:home' });
-    }),
     api.commands.registerCommand('media-organizer.scan', async () => {
       const result = await window.parallxElectron.dialog.openFolder({
         title: 'Select folder to scan',
@@ -31009,9 +30585,6 @@ export async function activate(api, context) {
     api.editors.registerEditorProvider('media-organizer-grid', {
       createEditorPane(container, input) {
         const inputId = (input && (input.instanceId || input.id)) || '';
-        if (inputId === 'grid:home') {
-          return renderHomeFeed(container, api, input);
-        }
         if (inputId.startsWith('practice:')) {
           return renderPracticeTab(container, api, input);
         }
@@ -31066,8 +30639,8 @@ export async function activate(api, context) {
     api.commands.registerCommand('media-organizer.openGrid', () => {
       api.editors.openEditor({
         typeId: 'media-organizer-grid',
-        title: 'Media Library',
-        icon: 'image',
+        title: 'Library',
+        icon: 'library',
         instanceId: 'grid:all',
       });
     })
@@ -31220,14 +30793,6 @@ export async function activate(api, context) {
   );
   _commandDisposables.push(
     api.commands.registerCommand('media-organizer.emptyTrash', () => moEmptyTrash(api))
-  );
-
-  // M59 P6: timeline + map views
-  _commandDisposables.push(
-    api.commands.registerCommand('media-organizer.openTimeline', () => moOpenTimeline(api))
-  );
-  _commandDisposables.push(
-    api.commands.registerCommand('media-organizer.openMap', () => moOpenMap(api))
   );
 
   // M59 P7: reveal-in-MO from any file path
