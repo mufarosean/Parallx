@@ -87,7 +87,7 @@ describe('fromLegacyProfile', () => {
     expect(preset.isBuiltIn).toBe(true);
     expect(preset.config.persona.name).toBe('Parallx AI');
     expect(preset.config.model.chatModel).toBe(''); // was defaultModel
-    expect(preset.config.model.temperature).toBe(0.7);
+    expect(preset.config.model.temperature).toBe(-1);
   });
 
   it('fills new sections from defaults', () => {
@@ -380,7 +380,7 @@ describe('UnifiedAIConfigService', () => {
       await service.clearWorkspaceOverride();
 
       expect(service.getWorkspaceOverride()).toBeUndefined();
-      expect(service.getEffectiveConfig().model.temperature).toBe(0.7); // back to default
+      expect(service.getEffectiveConfig().model.temperature).toBe(-1); // back to default
     });
 
     it('clears a specific path override', async () => {
@@ -392,7 +392,7 @@ describe('UnifiedAIConfigService', () => {
       await service.clearWorkspaceOverride('model.temperature');
 
       const config = service.getEffectiveConfig();
-      expect(config.model.temperature).toBe(0.7); // reset to preset
+      expect(config.model.temperature).toBe(-1); // reset to preset
       expect(config.retrieval.ragTopK).toBe(20); // still overridden
     });
 
@@ -455,7 +455,7 @@ describe('UnifiedAIConfigService', () => {
       expect(service.getEffectiveConfig().model.temperature).toBe(0.1);
 
       await service.resetSection('model');
-      expect(service.getEffectiveConfig().model.temperature).toBe(0.7);
+      expect(service.getEffectiveConfig().model.temperature).toBe(-1);
     });
 
     it('resets all to defaults', async () => {
@@ -467,7 +467,7 @@ describe('UnifiedAIConfigService', () => {
 
       await service.resetAll();
       const config = service.getEffectiveConfig();
-      expect(config.model.temperature).toBe(0.7);
+      expect(config.model.temperature).toBe(-1);
       expect(config.retrieval.ragTopK).toBe(20);
     });
 

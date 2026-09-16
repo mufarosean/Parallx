@@ -496,7 +496,11 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
       ollamaOptions['num_ctx'] = max && max > 0 ? Math.min(this._lastNumCtx, max) : this._lastNumCtx;
     }
     if (options) {
-      if (options.temperature !== undefined) ollamaOptions['temperature'] = Math.max(0, Math.min(2, options.temperature));
+      // Negative temperature means "no opinion": omit the key so Ollama falls back to
+      // the model's own PARAMETER temperature, which model authors tune per model
+      // (Qwen3.8 wants 1.0 for thinking, 0.7 for instruct). Sending a harness default
+      // here silently overrode that for every model.
+      if (options.temperature !== undefined && options.temperature >= 0) ollamaOptions['temperature'] = Math.max(0, Math.min(2, options.temperature));
       if (options.topP !== undefined) ollamaOptions['top_p'] = Math.max(0, Math.min(1, options.topP));
       if (options.maxTokens !== undefined && options.maxTokens > 0) ollamaOptions['num_predict'] = options.maxTokens;
       if (options.seed !== undefined) ollamaOptions['seed'] = options.seed;

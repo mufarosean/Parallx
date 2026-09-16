@@ -25,7 +25,7 @@ function makeDefaultProfile(): AISettingsProfile {
     },
     model: {
       defaultModel: '', // auto-select
-      temperature: 0.7,
+      temperature: -1,            // model default
       maxTokens: 0, // model default
       contextWindow: 0, // model default
     },

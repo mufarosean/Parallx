@@ -606,7 +606,7 @@ async function buildOpenclawTurnContext(
     agentId,
     {
       model: runtimeInfo.model,
-      temperature: effectiveConfig?.model?.temperature ?? 0.7,
+      temperature: effectiveConfig?.model?.temperature ?? -1,
       maxTokens: effectiveConfig?.model?.maxTokens ?? 4096,
       maxIterations: maxToolIterations,
       autoRag: effectiveConfig?.retrieval?.autoRag ?? true,

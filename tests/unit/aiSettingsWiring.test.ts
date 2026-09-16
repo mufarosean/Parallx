@@ -287,7 +287,7 @@ describe('Chat Participant Unified Config Integration (M40 Phase 6)', () => {
       temperature: config.getEffectiveConfig().model.temperature,
       maxTokens: config.getEffectiveConfig().model.maxTokens || undefined,
     };
-    expect(options.temperature).toBe(0.7);
+    expect(options.temperature).toBe(-1);
     expect(options.maxTokens).toBeUndefined(); // 0 maps to undefined
   });
 

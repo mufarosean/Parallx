@@ -234,7 +234,7 @@ describe('OllamaProvider', () => {
   // model Ollama listed at its full 262K default, and requests with no size
   // made Ollama reload the chat's model at 262K, spilling past the graphics
   // card, then again at the chat's 160K.
-  describe('launch warm-up and context size', () => {
+  describe('launch warm-up and request options', () => {
     const tag = (name: string) => ({
       name, model: name, modified_at: '2026-09-11T00:00:00Z', size: 1, digest: name,
       details: { format: 'gguf', family: 'qwen3', families: ['qwen3'], parameter_size: '27B', quantization_level: 'Q4_K_M' },
@@ -290,6 +290,21 @@ describe('OllamaProvider', () => {
       expect(sent).toHaveBeenCalledTimes(1);
       expect(sent).toHaveBeenCalledWith({ modelId: 'qwen3.8:27b', numCtx: 163840 });
       expect(chats.map((c) => (c.options as { num_ctx?: number } | undefined)?.num_ctx)).toEqual([163840, 163840]);
+      p.dispose();
+    });
+
+    it('omits temperature when it is negative, so the model keeps its own tuned value', async () => {
+      // -1 is the settings default: no opinion. Ollama then falls back to the
+      // model's own PARAMETER temperature. A harness default sent here would
+      // override that for every model.
+      const { fetchMock, chats } = recordingFetch([]);
+      vi.stubGlobal('fetch', fetchMock);
+      const p = new OllamaProvider();
+      const ask = (temperature: number) => drain(p.sendChatRequest('qwen3.8:27b', [{ role: 'user', content: 'Hi' }], { numCtx: 8192, temperature }));
+      await ask(-1);
+      await ask(0);
+      await ask(1.4);
+      expect(chats.map((c) => (c.options as { temperature?: number }).temperature)).toEqual([undefined, 0, 1.4]);
       p.dispose();
     });
   });

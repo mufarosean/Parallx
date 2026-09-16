@@ -284,7 +284,7 @@ async function runWorkspacePromptTurn(
     'workspace',
     {
       model: runtimeInfo.model,
-      temperature: effectiveConfig?.model?.temperature ?? 0.7,
+      temperature: effectiveConfig?.model?.temperature ?? -1,
       maxTokens: effectiveConfig?.model?.maxTokens ?? 4096,
       maxIterations: OPENCLAW_MAX_READONLY_ITERATIONS,
       autoRag: effectiveConfig?.retrieval?.autoRag ?? true,

@@ -55,7 +55,7 @@ export interface IUnifiedModelConfig {
   readonly chatModel: string;
   /** @deprecated F11-R3: Dead field — runtime hardcodes nomic-embed-text. No UI surface. */
   readonly embeddingModel: string;
-  /** 0.0 = deterministic, 1.0 = creative */
+  /** -1 = use the model default (not sent); 0.0 = deterministic, 2.0 = most random */
   readonly temperature: number;
   /** Max tokens per response (0 = model default) */
   readonly maxTokens: number;
@@ -513,7 +513,7 @@ export const DEFAULT_UNIFIED_CONFIG: IUnifiedAIConfig = {
   model: {
     chatModel: '',               // auto-select
     embeddingModel: 'nomic-embed-text',
-    temperature: 0.7,
+    temperature: -1,             // model default
     maxTokens: 0,                // model default
     contextWindow: 0,            // model default
   },
