@@ -22,6 +22,14 @@ This program replaces all of them with one tool and a review list.
   No Match and Failed photos are marked and can be retried.
 - A run goes in the background, one photo at a time, and survives closing the
   tab. Stop finishes the photo in progress; the rest wait for Resume.
+- **Tagging Rules** (Tag Review, the Rules button): text you write once per
+  workspace, sent as its own section of every tagging request, chat tool and
+  menu alike. For a library whose tags are close to one another it is where
+  you say which one wins: "STUDY means a drawing done from this photo, not
+  the photo itself", "use CORGI only when the breed is unmistakable, otherwise
+  DOG", "never tag people by name". The rules cannot add a tag you do not
+  have; the schema and the validation still allow only your tags. Up to 4000
+  characters; saved as you type.
 
 ## The rules (enforced in code, not asked of the model)
 
@@ -90,6 +98,11 @@ Ollama reload the model).
   back to `queued` on the next start.
 - The runner is a module singleton: one photo at a time, `mo:ai-tag-changed`
   after each so the tab and the sidebar count update.
+- Tagging rules live in `mo_settings` under `ai_tag_rules` (per workspace,
+  like the detail-crops switch). The runner reads them for every photo, so an
+  edit applies from the next photo on; `moTagRulesText` trims and caps them
+  and `moTagPrompt` places them after the instructions and before the tag
+  list, headed "Rules for this library".
 - Pure logic (name normalisation, tag paths, ancestors, the schema, the prompt,
   reply parsing, pick resolution, crop rectangles) sits between
   `@mo-tag-pure-begin` and `@mo-tag-pure-end` and is extracted verbatim by

@@ -24,7 +24,7 @@ function loadRegion(): string {
 const REGION = loadRegion();
 const NAMES = ['MO_TAG_PATH_SEP', 'MO_TAG_OVERVIEW_EDGE', 'MO_TAG_CROP_EDGE', 'MO_TAG_CROP_MIN_EDGE', 'moNormalizeTagName',
   'moTagParentsOf', 'moTagAncestorIds', 'moExpandWithAncestors', 'moTagPaths', 'moTagEntries', 'moTagReplySchema',
-  'moTagPrompt', 'moParseTagReply', 'moResolveTagPicks', 'moFitEdge', 'moQuarterRects'];
+  'moTagPrompt', 'moTagRulesText', 'MO_TAG_RULES_MAX', 'moParseTagReply', 'moResolveTagPicks', 'moFitEdge', 'moQuarterRects'];
 // eslint-disable-next-line @typescript-eslint/no-implied-eval
 const P: Record<string, any> = new Function(REGION + `\nreturn { ${NAMES.join(', ')} };`)();
 
@@ -134,6 +134,25 @@ describe('what the model is given', () => {
     const crops = P.moTagPrompt({ entries, existing: [], crops: true });
     expect(crops).toContain('Images 2 to 5 are its four quarters');
     expect(crops).not.toContain('already has these tags');
+  });
+
+  it('puts the library rules in their own section, after the instructions and before the tags, and leaves no section when there are none', () => {
+    const entries = P.moTagEntries(tags, rels, new Set());
+    const rules = 'Use CORGI only when the breed is unmistakable; otherwise DOG.\nNever tag people by name.';
+    const withRules = P.moTagPrompt({ entries, existing: [], crops: false, rules });
+    const head = withRules.indexOf('Rules for this library');
+    expect(head).toBeGreaterThan(withRules.indexOf('If no tag fits'));
+    expect(head).toBeLessThan(withRules.indexOf('Tags (text after'));
+    expect(withRules).toContain(rules);
+    for (const none of [undefined, '', '   \n ']) {
+      expect(P.moTagPrompt({ entries, existing: [], crops: false, rules: none })).not.toContain('Rules for this library');
+    }
+  });
+
+  it('trims and caps the rules text and keeps its lines', () => {
+    expect(P.moTagRulesText('  a rule \r\n\r\n another  ')).toBe('a rule\n\nanother');
+    expect(P.moTagRulesText(null)).toBe('');
+    expect(P.moTagRulesText('x'.repeat(P.MO_TAG_RULES_MAX + 50)).length).toBe(P.MO_TAG_RULES_MAX);
   });
 });
 

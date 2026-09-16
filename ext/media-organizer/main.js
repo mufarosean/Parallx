@@ -8421,6 +8421,12 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
 .mo-tr-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid var(--vscode-panel-border, var(--px-border)); background: transparent; color: inherit; border-radius: var(--parallx-radius-md, 6px); padding: 4px 12px; font-size: 12px; cursor: pointer; white-space: nowrap; }
 .mo-tr-btn:hover:not(:disabled) { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
 .mo-tr-btn:disabled { opacity: 0.5; cursor: default; }
+.mo-tr-btn.has-rules { border-color: var(--vscode-focusBorder, var(--px-accent)); }
+.mo-tr-btn.is-on { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
+.mo-tr-rules { display: flex; flex-direction: column; gap: 4px; padding: 8px 14px; border-bottom: 1px solid var(--vscode-panel-border, var(--px-border)); }
+.mo-tr-rules-box { width: 100%; box-sizing: border-box; resize: vertical; min-height: 88px; font: inherit; font-size: 12px; line-height: 1.45; padding: 6px 8px; border: 1px solid var(--vscode-panel-border, var(--px-border)); border-radius: var(--parallx-radius-md, 6px); background: var(--vscode-input-background, var(--px-bg-inset)); color: inherit; outline: none; }
+.mo-tr-rules-box:focus { border-color: var(--vscode-focusBorder, var(--px-accent)); }
+.mo-tr-rules-status { font-size: 11px; min-height: 14px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
 .mo-tr-btn.primary { background: var(--vscode-button-background, var(--px-accent)); color: var(--vscode-button-foreground, var(--px-text)); border-color: transparent; }
 .mo-tr-btn.primary:hover:not(:disabled) { background: var(--vscode-button-hoverBackground, var(--vscode-button-background, var(--px-accent))); }
 .mo-tr-progress { flex-basis: 100%; height: 3px; border-radius: 2px; overflow: hidden; background: var(--vscode-input-background, var(--px-bg-inset)); }
@@ -27466,7 +27472,29 @@ function moTagReplySchema(paths) {
 }
 
 /** The user turn that goes with the image(s). */
-function moTagPrompt({ entries, existing, crops }) {
+/** Most characters of the user's tagging rules that reach the prompt. */
+const MO_TAG_RULES_MAX = 4000;
+/**
+ * The user's rules as sent: line endings unified, each line trimmed, blank
+ * runs kept to one, capped at MO_TAG_RULES_MAX. '' when there are none.
+ */
+function moTagRulesText(raw) {
+  const s = String(raw == null ? '' : raw)
+    .replace(/\r\n?/g, '\n')
+    .split('\n').map((l) => l.trim()).join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  return s.length > MO_TAG_RULES_MAX ? s.slice(0, MO_TAG_RULES_MAX) : s;
+}
+
+/**
+ * The user turn. `rules` is the library's own guidance (Tag Review, Rules):
+ * its own section between the instructions and the tag list, so the model
+ * reads how to choose before it sees what it may choose from. The rules can
+ * steer a choice; they cannot add a tag, because the schema and the
+ * validation still allow only the listed ones.
+ */
+function moTagPrompt({ entries, existing, crops, rules }) {
   const lines = [
     'Tag this photo using ONLY tags from the list below.',
     crops
@@ -27477,6 +27505,10 @@ function moTagPrompt({ entries, existing, crops }) {
   ];
   if (existing && existing.length) {
     lines.push(`The photo already has these tags, so do not pick them: ${existing.join(', ')}.`);
+  }
+  const ruleText = moTagRulesText(rules);
+  if (ruleText) {
+    lines.push('', 'Rules for this library (follow them when choosing between tags; they never add a tag that is not in the list):', ruleText);
   }
   lines.push('', 'Tags (text after " : " describes a tag):');
   for (const e of entries || []) lines.push(e.description ? `${e.path} : ${e.description}` : e.path);
@@ -27568,6 +27600,8 @@ const _moTagRun = { running: false, stop: false, photoId: null, done: 0, model: 
 
 /** The Detail Crops switch on Tag Review (mo_settings, per workspace). */
 const MO_TAG_CROPS_KEY = 'ai_tag_detail_crops';
+/** mo_settings key: the library's tagging rules (Tag Review, Rules), per workspace like the crops switch. */
+const MO_TAG_RULES_KEY = 'ai_tag_rules';
 
 /** File types the renderer can decode; anything else uses the library thumbnail. */
 const MO_TAG_DECODE_MIME = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.bmp': 'image/bmp', '.avif': 'image/avif' };
@@ -27788,6 +27822,8 @@ async function moTagOnePhoto(photoId, model) {
   const entries = moTagEntries(tree.tags, tree.rels, has);
   if (entries.length === 0) return { status: 'nomatch', tagIds: [], error: null };
   const crops = (await moGetSetting(MO_TAG_CROPS_KEY, '0')) === '1';
+  // Read per photo, so an edit in Tag Review applies from the next photo on.
+  const rules = await moGetSetting(MO_TAG_RULES_KEY, '');
   const images = await moTagImages(photoId, path, crops);
   if (!images) return { status: 'failed', tagIds: [], error: 'This file could not be read as an image.' };
   const existing = tree.tags.filter((t) => has.has(Number(t.id))).map((t) => t.name);
@@ -27796,7 +27832,7 @@ async function moTagOnePhoto(photoId, model) {
     { role: 'system', content: MO_TAG_SYSTEM },
     {
       role: 'user',
-      content: moTagPrompt({ entries, existing, crops: images.length > 1 }),
+      content: moTagPrompt({ entries, existing, crops: images.length > 1, rules }),
       images: images.map((im, i) => ({ kind: 'image', id: `mo-ai-tag-${photoId}-${i}`, name, mimeType: im.mimeType, data: im.data })),
     },
   ];
@@ -27967,11 +28003,15 @@ function renderTagReview(container, api) {
   moGetSetting(MO_TAG_CROPS_KEY, '0').then((v) => { cropsBox.checked = v === '1'; }).catch(() => {});
   cropsBox.addEventListener('change', () => { moSetSetting(MO_TAG_CROPS_KEY, cropsBox.checked ? '1' : '0').catch(() => {}); });
 
+  const rulesBtn = moEl('button', 'mo-tr-btn', {
+    type: 'button', textContent: 'Rules', 'aria-expanded': 'false',
+    title: 'Rules the tagger follows in this library, sent with every tagging request. Say which of two similar tags wins, when a parent is enough, what never gets tagged.',
+  });
   const resumeBtn = moEl('button', 'mo-tr-btn', { type: 'button', textContent: 'Resume', title: 'Tag the photos that are waiting' });
   const stopBtn = moEl('button', 'mo-tr-btn', { type: 'button', textContent: 'Stop', title: 'Finish the photo in progress, then stop. The rest wait for Resume.' });
   const approveAllBtn = moEl('button', 'mo-tr-btn primary', { type: 'button', textContent: 'Approve All', title: 'Approve every photo that has suggestions' });
   const bar = moEl('div', 'mo-tr-actions-bar');
-  bar.append(cropsLabel, resumeBtn, stopBtn, approveAllBtn);
+  bar.append(cropsLabel, rulesBtn, resumeBtn, stopBtn, approveAllBtn);
   head.appendChild(bar);
 
   const progress = moEl('div', 'mo-tr-progress');
@@ -27979,6 +28019,35 @@ function renderTagReview(container, api) {
   progress.appendChild(progressFill);
   head.appendChild(progress);
   page.appendChild(head);
+
+  // Tagging Rules: the user's text for this workspace, its own section of
+  // every request (moTagPrompt). Saved as typed; the runner reads it per photo.
+  const rulesWrap = moEl('div', 'mo-tr-rules');
+  rulesWrap.hidden = true;
+  const rulesBox = moEl('textarea', 'mo-tr-rules-box', {
+    'aria-label': 'Tagging Rules', rows: '5', maxlength: String(MO_TAG_RULES_MAX), spellcheck: 'true',
+    placeholder: 'One rule per line. For example: use CORGI only when the breed is unmistakable, otherwise DOG. Never tag people by name.',
+  });
+  const rulesStatus = moEl('div', 'mo-tr-rules-status');
+  rulesWrap.append(rulesBox, rulesStatus);
+  page.appendChild(rulesWrap);
+  let rulesTimer = null;
+  const markRules = (text) => { rulesBtn.classList.toggle('has-rules', !!text); rulesBtn.title = text ? 'Rules are set for this library and go with every tagging request. Open to edit them.' : rulesBtn.title; };
+  const saveRules = async () => {
+    rulesTimer = null;
+    const text = moTagRulesText(rulesBox.value);
+    try { await moSetSetting(MO_TAG_RULES_KEY, text); rulesStatus.textContent = text ? 'Saved. Applies from the next photo.' : 'Saved. No rules.'; markRules(text); }
+    catch { rulesStatus.textContent = 'Could not save.'; }
+  };
+  rulesBox.addEventListener('input', () => { rulesStatus.textContent = ''; if (rulesTimer) clearTimeout(rulesTimer); rulesTimer = setTimeout(() => { void saveRules(); }, 600); });
+  rulesBox.addEventListener('blur', () => { if (rulesTimer) { clearTimeout(rulesTimer); void saveRules(); } });
+  rulesBtn.addEventListener('click', () => {
+    rulesWrap.hidden = !rulesWrap.hidden;
+    rulesBtn.classList.toggle('is-on', !rulesWrap.hidden);
+    rulesBtn.setAttribute('aria-expanded', rulesWrap.hidden ? 'false' : 'true');
+    if (!rulesWrap.hidden) rulesBox.focus();
+  });
+  moGetSetting(MO_TAG_RULES_KEY, '').then((v) => { rulesBox.value = v || ''; markRules(v || ''); }).catch(() => {});
 
   const scroll = moEl('div', 'mo-tr-scroll');
   const list = moEl('div', 'mo-tr-list');
@@ -28335,7 +28404,8 @@ function moRegisterTagTool(api) {
         'Tag photos in the Media Organizer library with the user\'s existing tags. Use it when the user asks how many photos are untagged, ' +
         'or asks to tag photos. It works in the background: it looks at each photo itself with the chat model and puts suggested tags in ' +
         'the Tag Review list, where the user approves them. Nothing is applied without approval. Only existing tags are used and only ' +
-        'photos are tagged (not GIFs or videos). Do not try to view the images yourself. Use countOnly to answer "how many" without starting.',
+        'photos are tagged (not GIFs or videos); the library\'s own Tagging Rules (Tag Review) go with every request. Do not try to view ' +
+        'the images yourself. Use countOnly to answer "how many" without starting.',
       parameters: {
         type: 'object',
         properties: {
