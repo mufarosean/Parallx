@@ -5801,6 +5801,42 @@ kbd.mo-key {
   color: var(--vscode-button-foreground, #fff);
   border-color: var(--vscode-button-background, var(--vscode-button-background, #0e639c));
 }
+/* The view row: one height, one baseline, one gap inside a group and a wider one between. */
+.mo-toolbar { gap: 6px; padding: 6px 10px; min-height: 40px; box-sizing: border-box; }
+.mo-toolbar-btn { height: 26px; box-sizing: border-box; padding: 0 8px; }
+.mo-search-wrap { position: relative; display: flex; flex: 1 1 260px; min-width: 160px; max-width: 520px; }
+.mo-search-wrap .mo-toolbar-search { width: 100%; height: 26px; box-sizing: border-box; padding-right: 26px; }
+.mo-search-wrap .mo-search-help-btn { position: absolute; right: 1px; top: 1px; height: 24px; width: 24px; padding: 0; justify-content: center; background: transparent; border: none; opacity: 0.6; }
+.mo-search-wrap .mo-search-help-btn:hover { opacity: 1; background: transparent; }
+.mo-toolbar-spacer { flex: 1 1 0; min-width: 6px; }
+.mo-segment { display: inline-flex; height: 26px; box-sizing: border-box; border: 1px solid var(--vscode-panel-border, var(--px-border, #555)); border-radius: var(--parallx-radius-sm, 3px); overflow: hidden; background: var(--vscode-button-secondaryBackground, var(--vscode-input-background, #3a3a3a)); }
+.mo-segment-btn { border: none; background: transparent; color: var(--vscode-button-secondaryForeground, var(--vscode-foreground, #ccc)); padding: 0 10px; font-size: var(--parallx-fontSize-sm, 11px); font-family: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+.mo-segment-btn + .mo-segment-btn { border-left: 1px solid var(--vscode-panel-border, var(--px-border, #555)); }
+.mo-segment-btn:hover { background: var(--vscode-button-secondaryHoverBackground, #4a4a4a); }
+.mo-segment-btn.active { background: var(--vscode-button-background, #0e639c); color: var(--vscode-button-foreground, #fff); }
+.mo-segment-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); outline-offset: -1px; }
+.mo-menu-btn { gap: 6px; white-space: nowrap; }
+.mo-menu-btn-caret { display: inline-flex; opacity: 0.7; }
+.mo-view-pop { position: fixed; z-index: 10000; min-width: 240px; background: var(--vscode-menu-background, var(--px-bg-elevated)); border: 1px solid var(--vscode-menu-border, var(--px-border-strong)); border-radius: var(--parallx-radius-md, 6px); box-shadow: 0 4px 16px rgba(0,0,0,0.4); padding: 6px; display: flex; flex-direction: column; gap: 2px; font-size: var(--parallx-fontSize-sm, 11px); color: var(--vscode-menu-foreground, var(--vscode-foreground, #ccc)); }
+.mo-view-pop[hidden] { display: none; }
+.mo-view-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: var(--parallx-radius-sm, 3px); min-height: 28px; box-sizing: border-box; }
+.mo-view-row .mo-toolbar-label { min-width: 36px; }
+.mo-view-row .mo-zoom-slider { flex: 1; width: auto; }
+button.mo-view-row { background: transparent; border: none; color: inherit; font: inherit; font-size: var(--parallx-fontSize-sm, 11px); cursor: pointer; text-align: left; width: 100%; }
+button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
+.mo-view-toggle.is-on { color: var(--vscode-textLink-foreground, var(--px-accent)); }
+/* The selection row takes the view row's place. */
+.mo-grid-browser.is-selecting > .mo-toolbar { display: none; }
+.mo-selection-bar { gap: 6px; padding: 6px 10px; min-height: 40px; box-sizing: border-box; }
+.mo-selection-bar .mo-sel-btn { height: 26px; box-sizing: border-box; padding: 0 10px; font-size: var(--parallx-fontSize-sm, 11px); display: inline-flex; align-items: center; gap: 6px; border-radius: var(--parallx-radius-sm, 3px); }
+.mo-selection-bar .mo-sel-count { font-weight: 600; }
+.mo-selection-bar .mo-sel-more, .mo-selection-bar .mo-sel-delete { padding: 0 7px; }
+.mo-selection-bar .mo-sel-delete { border-color: transparent; }
+/* Menus: a mark column when any item can be checked; a disabled item is read, not clicked. */
+.mo-context-menu.has-checks .mo-context-menu-item { position: relative; padding-left: 30px; }
+.mo-context-menu-item.is-checked::before { content: '✓'; position: absolute; left: 11px; }
+.mo-context-menu-item.is-disabled { opacity: 0.5; cursor: default; }
+.mo-context-menu-item.is-disabled:hover { background: transparent; color: inherit; }
 
 /* ═══ List Mode ═══ */
 .mo-grid.mo-list-mode {
@@ -11245,19 +11281,24 @@ function renderGridBrowser(container, api, input) {
   chipBar.style.cssText = 'display:none;flex-wrap:wrap;gap:4px;padding:4px 8px;border-bottom:1px solid var(--vscode-panel-border,transparent);';
   root.appendChild(chipBar);
 
+  // The row answers one question per group, left to right: what am I
+  // looking at (search), which of it (type, filter), how it's shown (sort,
+  // layout, view). Everything used rarely is behind a menu.
+  const searchWrap = moEl('div', 'mo-search-wrap');
   const searchInput = moEl('input', 'mo-toolbar-search', {
     type: 'text',
-    placeholder: 'Search title, tags, folder, filename… (try: cat tag:beach rating:>=4)',
+    placeholder: 'Search title, tags, folder, filename…',
     title: 'Free text searches title, details, tags, folder, and filename.\nOperators: tag:NAME, -tag:NAME, rating:>=4 (or 3..5), folder:TERM, taken:2024 (or 2024-06), type:photo/video',
   });
-  toolbar.appendChild(searchInput);
+  searchWrap.appendChild(searchInput);
+  toolbar.appendChild(searchWrap);
 
   // #5 Search-operator help — a "?" button next to the search opens a popover
   // documenting tag:/rating:/folder:/taken:/type: with click-to-insert examples.
   const searchHelpBtn = moEl('button', 'mo-toolbar-btn mo-search-help-btn', { type: 'button', title: 'Search syntax' });
   searchHelpBtn.innerHTML = moIcon('circle-help', 12);
   searchHelpBtn.setAttribute('aria-label', 'Search syntax help');
-  toolbar.appendChild(searchHelpBtn);
+  searchWrap.appendChild(searchHelpBtn);
   let _searchHelpPopover = null;
   const _searchHelpOutside = (e) => {
     if (_searchHelpPopover && !_searchHelpPopover.contains(e.target) && !searchHelpBtn.contains(e.target)) dismissSearchHelp();
@@ -11314,11 +11355,13 @@ function renderGridBrowser(container, api, input) {
 
   // Media type is a filter of the view, in every scope (it used to be three
   // sidebar entries, and a row of chips the Home tab alone had).
-  const typeGroup = moEl('div', 'mo-toolbar-group mo-type-chips');
+  const typeGroup = moEl('div', 'mo-segment');
+  typeGroup.setAttribute('role', 'group');
+  typeGroup.setAttribute('aria-label', 'Media type');
   const typeChips = new Map();
   const TYPE_TITLES = { all: 'Everything in this view', photos: 'Photos only, no GIFs or videos', gifs: 'GIFs only', videos: 'Videos only' };
   for (const [k, label] of [['all', 'All'], ['photos', 'Photos'], ['gifs', 'GIFs'], ['videos', 'Videos']]) {
-    const b = moEl('button', 'mo-home-chip', { type: 'button', textContent: label, title: TYPE_TITLES[k] });
+    const b = moEl('button', 'mo-segment-btn', { type: 'button', textContent: label, title: TYPE_TITLES[k] });
     b.addEventListener('click', () => { if (state.mediaType === k) return; state.mediaType = k; syncTypeChips(); state.currentPage = 1; loadPage(); });
     typeGroup.appendChild(b);
     typeChips.set(k, b);
@@ -11326,58 +11369,59 @@ function renderGridBrowser(container, api, input) {
   function syncTypeChips() { for (const [k, el] of typeChips) el.classList.toggle('active', state.mediaType === k); }
   syncTypeChips();
   toolbar.appendChild(typeGroup);
+  toolbar.appendChild(moEl('span', 'mo-toolbar-spacer'));
 
-  // Sort controls
-  const sortGroup = moEl('div', 'mo-toolbar-group');
-  const sortDropdown = moDropdown({
-    items: [
-      { value: 'created_at', label: 'Date Added' },
-      { value: 'title', label: 'Title' },
-      { value: 'rating', label: 'Rating' },
-      { value: 'taken_at', label: 'Date Taken' },
-      { value: 'file_mod_time', label: 'File Modified' },
-      { value: 'shuffle', label: 'Shuffled' },
-    ],
-    selected: state.sortBy,
-    ariaLabel: 'Sort by',
-  });
-  sortGroup.appendChild(sortDropdown.el);
-
-  const sortDirBtn = moEl('button', 'mo-toolbar-btn', { innerHTML: moIcon('arrow-down', 12), title: 'Sort direction' });
-  sortDirBtn.setAttribute('aria-label', 'Sort direction');
-  sortGroup.appendChild(sortDirBtn);
-  // Shuffled is an order like any other, with a seed; this draws a new one.
-  const shuffleBtn = moEl('button', 'mo-toolbar-btn', { title: 'Shuffle into a new order' });
-  shuffleBtn.innerHTML = moIcon('shuffle', 12);
-  shuffleBtn.setAttribute('aria-label', 'Shuffle');
-  shuffleBtn.addEventListener('click', () => { state.shuffleSeed = Math.floor(Math.random() * 2147483647); state.currentPage = 1; loadPage(); });
-  sortGroup.appendChild(shuffleBtn);
+  // How it's sorted: one menu. The field, the direction, Group By Date, and
+  // Shuffle Again while the order is Shuffled.
+  const SORT_FIELDS = [
+    ['created_at', 'Date Added'], ['taken_at', 'Date Taken'], ['file_mod_time', 'File Modified'],
+    ['title', 'Title'], ['rating', 'Rating'], ['shuffle', 'Shuffled'],
+  ];
+  const sortBtn = moEl('button', 'mo-toolbar-btn mo-menu-btn', { type: 'button', title: 'Sort and group' });
+  sortBtn.setAttribute('aria-haspopup', 'menu');
+  const sortLabel = moEl('span', 'mo-menu-btn-label');
+  sortBtn.append(sortLabel, moEl('span', 'mo-menu-btn-caret', { innerHTML: moIcon('chevron-down', 10) }));
   function updateSortUi() {
-    const shuffled = state.sortBy === 'shuffle';
-    sortDirBtn.style.display = shuffled ? 'none' : '';
-    shuffleBtn.style.display = shuffled ? '' : 'none';
+    const f = SORT_FIELDS.find(([v]) => v === state.sortBy);
+    sortLabel.textContent = f ? f[1] : 'Date Added';
   }
   updateSortUi();
-  toolbar.appendChild(sortGroup);
-
-  // #1 Group control — None / Date. When grouping by date, the grid shows
-  // sticky day headers and the query orders by COALESCE(taken_at, created_at)
-  // so groups are contiguous regardless of the sort column.
-  const groupGroup = moEl('div', 'mo-toolbar-group');
-  groupGroup.appendChild(moEl('span', 'mo-toolbar-label', { textContent: 'Group' }));
-  const groupDropdown = moDropdown({
-    items: [
-      { value: 'none', label: 'None' },
-      { value: 'date', label: 'Date' },
-    ],
-    selected: state.groupBy,
-    ariaLabel: 'Group by',
+  function setSort(field) {
+    state.sortBy = field;
+    updateSortUi();
+    state.currentPage = 1;
+    loadPage();
+  }
+  function setSortDir(dir) {
+    state.sortDir = dir === 'ASC' ? 'ASC' : 'DESC';
+    state.currentPage = 1;
+    loadPage();
+  }
+  function setGroupBy(value) {
+    state.groupBy = value === 'date' ? 'date' : 'none';
+    _sessionGroupBy = state.groupBy;
+    moSetSetting('grid_group_by', state.groupBy).catch(() => {});
+    state.currentPage = 1;
+    loadPage();
+  }
+  sortBtn.addEventListener('click', () => {
+    const r = sortBtn.getBoundingClientRect();
+    const shuffled = state.sortBy === 'shuffle';
+    const feed = state.displayMode === 'feed';
+    showContextMenu(r.left, r.bottom + 4, [
+      ...SORT_FIELDS.map(([value, label]) => ({ label, checked: state.sortBy === value, handler: () => setSort(value) })),
+      { separator: true },
+      { label: 'Ascending', checked: !shuffled && state.sortDir === 'ASC', disabled: shuffled, handler: () => setSortDir('ASC') },
+      { label: 'Descending', checked: !shuffled && state.sortDir === 'DESC', disabled: shuffled, handler: () => setSortDir('DESC') },
+      { separator: true },
+      { label: 'Group By Date', checked: state.groupBy === 'date', disabled: feed, title: feed ? 'A feed has no day headers' : 'Day headers, in the order the sort gives', handler: () => setGroupBy(state.groupBy === 'date' ? 'none' : 'date') },
+      ...(shuffled ? [{ separator: true }, { label: 'Shuffle Again', handler: () => { state.shuffleSeed = Math.floor(Math.random() * 2147483647); state.currentPage = 1; loadPage(); } }] : []),
+    ]);
   });
-  groupGroup.appendChild(groupDropdown.el);
-  toolbar.appendChild(groupGroup);
+  toolbar.appendChild(sortBtn);
 
-  // Zoom slider
-  const zoomGroup = moEl('div', 'mo-toolbar-group');
+  // Zoom: a row of the View popover (and Ctrl+wheel), not of the toolbar.
+  const zoomGroup = moEl('div', 'mo-view-row');
   zoomGroup.appendChild(moEl('span', 'mo-toolbar-label', { textContent: 'Zoom' }));
   const zoomSlider = moEl('input', 'mo-zoom-slider', { type: 'range', min: String(MO_ZOOM_MIN), max: String(MO_ZOOM_MAX), step: '10', value: String(state.zoomWidth) });
   function updateSliderFill() {
@@ -11386,17 +11430,18 @@ function renderGridBrowser(container, api, input) {
   }
   updateSliderFill();
   zoomGroup.appendChild(zoomSlider);
-  toolbar.appendChild(zoomGroup);
 
-  // Layout (Feed / Grid / List): how the same view is shown.
-  const modeGroup = moEl('div', 'mo-toolbar-group');
-  const feedModeBtn = moEl('button', 'mo-toolbar-btn', { title: 'Feed view' });
+  // Layout (Feed / Grid / List): how the same view is shown, one segmented control.
+  const modeGroup = moEl('div', 'mo-segment');
+  modeGroup.setAttribute('role', 'group');
+  modeGroup.setAttribute('aria-label', 'Layout');
+  const feedModeBtn = moEl('button', 'mo-segment-btn', { type: 'button', title: 'Feed' });
   feedModeBtn.innerHTML = moIcon('layout-dashboard', 12);
   feedModeBtn.setAttribute('aria-label', 'Feed view');
-  const gridModeBtn = moEl('button', 'mo-toolbar-btn', { title: 'Grid view' });
+  const gridModeBtn = moEl('button', 'mo-segment-btn', { type: 'button', title: 'Grid' });
   gridModeBtn.innerHTML = moIcon('grid', 12);
   gridModeBtn.setAttribute('aria-label', 'Grid view');
-  const listModeBtn = moEl('button', 'mo-toolbar-btn', { title: 'List view' });
+  const listModeBtn = moEl('button', 'mo-segment-btn', { type: 'button', title: 'List' });
   listModeBtn.innerHTML = moIcon('list-unordered', 12);
   listModeBtn.setAttribute('aria-label', 'List view');
   modeGroup.append(feedModeBtn, gridModeBtn, listModeBtn);
@@ -11411,26 +11456,51 @@ function renderGridBrowser(container, api, input) {
   filterToggleBtn.appendChild(filterBadge);
   toolbar.appendChild(filterToggleBtn);
 
-  // Save Smart Album button (#15) — invokes the registered command which reads
-  // the current grid query state via custom event.
-  const saveSmartBtn = moEl('button', 'mo-toolbar-btn', { title: 'Save current view as Smart Album' });
-  saveSmartBtn.innerHTML = moIcon('bookmark', 12);
-  saveSmartBtn.setAttribute('aria-label', 'Save as Smart Album');
-  saveSmartBtn.addEventListener('click', () => {
-    api.commands.executeCommand('media-organizer.saveSmartAlbum').catch(() => {});
-  });
-  toolbar.appendChild(saveSmartBtn);
+  // The rest of how it's shown: a View popover with zoom, Show Tags On
+  // Cards, and Save As Smart Album. None of them earns a place on the row.
+  const viewBtn = moEl('button', 'mo-toolbar-btn', { type: 'button', title: 'View options' });
+  viewBtn.innerHTML = moIcon('sliders-horizontal', 12);
+  viewBtn.setAttribute('aria-label', 'View options');
+  viewBtn.setAttribute('aria-haspopup', 'dialog');
+  toolbar.appendChild(viewBtn);
+  const viewPop = moEl('div', 'mo-view-pop');
+  viewPop.hidden = true;
+  viewPop.appendChild(zoomGroup);
+  let _viewPopOpen = false;
+  const _viewPopOutside = (e) => { if (!viewPop.contains(e.target) && !viewBtn.contains(e.target)) closeViewPop(); };
+  const _viewPopKey = (e) => { if (e.key === 'Escape') closeViewPop(); };
+  function closeViewPop() {
+    if (!_viewPopOpen) return;
+    _viewPopOpen = false;
+    viewPop.hidden = true;
+    viewBtn.classList.remove('active');
+    document.removeEventListener('mousedown', _viewPopOutside, true);
+    document.removeEventListener('keydown', _viewPopKey, true);
+  }
+  function openViewPop() {
+    if (_viewPopOpen) return;
+    _viewPopOpen = true;
+    viewPop.hidden = false;
+    viewBtn.classList.add('active');
+    const r = viewBtn.getBoundingClientRect();
+    viewPop.style.top = (r.bottom + 4) + 'px';
+    viewPop.style.left = Math.max(8, Math.min(r.right - viewPop.offsetWidth, window.innerWidth - viewPop.offsetWidth - 8)) + 'px';
+    document.addEventListener('mousedown', _viewPopOutside, true);
+    document.addEventListener('keydown', _viewPopKey, true);
+  }
+  viewBtn.addEventListener('click', (e) => { e.stopPropagation(); if (_viewPopOpen) closeViewPop(); else openViewPop(); });
+  document.body.appendChild(viewPop);
 
   // Show-card-tags toggle (#16) — flips the workspace setting; affects all
   // grids globally via the existing onDidChangeConfiguration listener.
-  const showTagsBtn = moEl('button', 'mo-toolbar-btn', { title: 'Show tags on cards' });
+  const showTagsBtn = moEl('button', 'mo-view-row mo-view-toggle', { type: 'button' });
   function refreshShowTagsBtn() {
-    showTagsBtn.classList.toggle('active', _showCardTags);
-    showTagsBtn.innerHTML = moIcon(_showCardTags ? 'eye' : 'eye-closed', 12);
-    showTagsBtn.title = _showCardTags ? 'Hide tags on cards' : 'Show tags on cards';
+    showTagsBtn.classList.toggle('is-on', _showCardTags);
+    showTagsBtn.innerHTML = moIcon(_showCardTags ? 'square-check' : 'square', 12) + '<span>Show Tags On Cards</span>';
+    showTagsBtn.setAttribute('aria-pressed', String(!!_showCardTags));
   }
   refreshShowTagsBtn();
-  showTagsBtn.setAttribute('aria-label', 'Toggle tags on cards');
+  showTagsBtn.setAttribute('aria-label', 'Show tags on cards');
   showTagsBtn.addEventListener('click', async () => {
     try {
       const cfg = api.workspace.getConfiguration('mediaOrganizer');
@@ -11449,7 +11519,15 @@ function renderGridBrowser(container, api, input) {
       console.warn('[mo] showCardTags toggle failed', err);
     }
   });
-  toolbar.appendChild(showTagsBtn);
+  viewPop.appendChild(showTagsBtn);
+  // Save Smart Album (#15) — the registered command reads the grid's query state via custom event.
+  const saveSmartBtn = moEl('button', 'mo-view-row mo-view-action', { type: 'button', title: 'Save this search and its filters as a smart album' });
+  saveSmartBtn.innerHTML = moIcon('bookmark', 12) + '<span>Save As Smart Album</span>';
+  saveSmartBtn.addEventListener('click', () => {
+    closeViewPop();
+    api.commands.executeCommand('media-organizer.saveSmartAlbum').catch(() => {});
+  });
+  viewPop.appendChild(saveSmartBtn);
   // Re-read button state and re-render cards when the config changes
   // elsewhere. We refresh against the already-loaded state.items — no DB
   // hit, no scroll snap.
@@ -13162,28 +13240,6 @@ function renderGridBrowser(container, api, input) {
     searchTimer = setTimeout(() => { state.currentPage = 1; loadPage(); }, 500);
   });
 
-  sortDropdown.onChange = (value) => {
-    state.sortBy = value;
-    updateSortUi();
-    state.currentPage = 1;
-    loadPage();
-  };
-
-  groupDropdown.onChange = (value) => {
-    state.groupBy = (value === 'date') ? 'date' : 'none';
-    _sessionGroupBy = state.groupBy;
-    moSetSetting('grid_group_by', state.groupBy).catch(() => {});
-    state.currentPage = 1;
-    loadPage();
-  };
-
-  sortDirBtn.addEventListener('click', () => {
-    state.sortDir = state.sortDir === 'DESC' ? 'ASC' : 'DESC';
-    sortDirBtn.innerHTML = moIcon(state.sortDir === 'DESC' ? 'arrow-down' : 'arrow-up', 12);
-    state.currentPage = 1;
-    loadPage();
-  });
-
   zoomSlider.addEventListener('input', () => {
     state.zoomWidth = parseInt(zoomSlider.value, 10);
     _sessionZoomWidth = state.zoomWidth;
@@ -13206,8 +13262,7 @@ function renderGridBrowser(container, api, input) {
     gridModeBtn.classList.toggle('active', mode === 'grid');
     listModeBtn.classList.toggle('active', mode === 'list');
     zoomGroup.style.display = mode === 'list' ? 'none' : '';
-    // A feed has no day headers and no pages: it scrolls.
-    groupGroup.style.display = mode === 'feed' ? 'none' : '';
+    // A feed has no pages: it scrolls. (Group By Date is disabled in the sort menu there.)
     paginationBar.style.display = mode === 'feed' ? 'none' : '';
   }
   function setDisplayMode(mode) {
@@ -13239,15 +13294,6 @@ function renderGridBrowser(container, api, input) {
     state.currentPage = 1;
     loadPage();
   };
-
-  // Sync UI controls to restored state
-  if (cached) {
-    sortDirBtn.innerHTML = moIcon(state.sortDir === 'DESC' ? 'arrow-down' : 'arrow-up', 12);
-    if (state.displayMode === 'list') {
-      listModeBtn.classList.add('active');
-      gridModeBtn.classList.remove('active');
-    }
-  }
 
   // Initial load
   applyDisplayModeUi();
@@ -14088,6 +14134,8 @@ function renderGridBrowser(container, api, input) {
       // can't leave the loop running against a detached grid.
       stopAutoScroll();
       dismissSearchHelp();
+      closeViewPop();
+      viewPop.remove();
       clearTimeout(searchTimer);
       // Flush pending debounced writes so closing the pane immediately after
       // scrolling or moving the zoom slider doesn't lose the final value.
@@ -17017,6 +17065,8 @@ function dismissContextMenu() {
 function showContextMenu(x, y, actions) {
   dismissContextMenu();
   const menu = moEl('div', 'mo-context-menu');
+  // A menu with any checkable item lays every item out with room for the mark, so labels line up.
+  if (actions.some((a) => a && Object.prototype.hasOwnProperty.call(a, 'checked'))) menu.classList.add('has-checks');
   menu.style.left = `${x}px`;
   menu.style.top = `${y}px`;
 
@@ -17045,10 +17095,12 @@ function showContextMenu(x, y, actions) {
       sub.appendChild(subMenu);
       menu.appendChild(sub);
     } else {
-      const item = moEl('div', `mo-context-menu-item${action.danger ? ' mo-ctx-danger' : ''}`);
+      const item = moEl('div', `mo-context-menu-item${action.danger ? ' mo-ctx-danger' : ''}${action.checked ? ' is-checked' : ''}${action.disabled ? ' is-disabled' : ''}`);
       item.textContent = action.label;
+      if (action.title) item.title = action.title;
       item.addEventListener('click', (e) => {
         e.stopPropagation();
+        if (action.disabled) return;
         dismissContextMenu();
         action.handler();
       });
@@ -17150,50 +17202,55 @@ function buildSelectionToolbar(container, state, api, refreshFn, applySelectionF
   //                   ONLY selection state (Select All, Deselect All,
   //                   Invert). Falls back to refreshFn if not supplied.
   const _applySelection = (typeof applySelectionFn === 'function') ? applySelectionFn : refreshFn;
+  // What do I do with these. The count opens the selection menu; the verbs
+  // used most are buttons; the rest sit behind ⋯; the trash is at the far
+  // right, where every photo app keeps it. The bar takes the view row's
+  // place while anything is selected (container.is-selecting), so the chrome
+  // is always one row high.
   const bar = moEl('div', 'mo-selection-bar');
+  const itemsOf = () => [...state.selectedIds].map((k) => { const i = k.indexOf(':'); return { type: k.slice(0, i), id: parseInt(k.slice(i + 1), 10) }; });
+  const menuAt = (el, actions) => { const r = el.getBoundingClientRect(); showContextMenu(r.left, r.bottom + 4, actions); };
+  const selBtn = (label, title) => moEl('button', 'mo-sel-btn', { type: 'button', textContent: label, ...(title ? { title } : {}) });
+  const selMenuBtn = (label, title) => {
+    const b = moEl('button', 'mo-sel-btn mo-menu-btn', { type: 'button', ...(title ? { title } : {}) });
+    b.append(moEl('span', 'mo-menu-btn-label', { textContent: label }), moEl('span', 'mo-menu-btn-caret', { innerHTML: moIcon('chevron-down', 10) }));
+    b.setAttribute('aria-haspopup', 'menu');
+    return b;
+  };
 
-  const countEl = moEl('span', 'mo-sel-count');
-  bar.appendChild(countEl);
-
-  const selectAllBtn = moEl('button', null, { textContent: 'Select All' });
-  selectAllBtn.addEventListener('click', () => {
-    for (const item of state.items) {
-      state.selectedIds.add(`${item.type}:${item.id}`);
-    }
-    state.selecting = true;
-    updateBar();
-    _applySelection();
-  });
-  bar.appendChild(selectAllBtn);
-
-  const deselectBtn = moEl('button', null, { textContent: 'Deselect All' });
-  deselectBtn.addEventListener('click', () => {
-    state.selectedIds.clear();
-    state.selecting = false;
-    updateBar();
-    _applySelection();
-  });
-  bar.appendChild(deselectBtn);
-
-  const invertBtn = moEl('button', null, { textContent: 'Invert' });
-  invertBtn.addEventListener('click', () => {
-    const newSelection = new Set();
-    for (const item of state.items) {
-      const key = `${item.type}:${item.id}`;
-      if (!state.selectedIds.has(key)) newSelection.add(key);
-    }
-    state.selectedIds.clear();
-    for (const k of newSelection) state.selectedIds.add(k);
-    state.selecting = state.selectedIds.size > 0;
-    updateBar();
-    _applySelection();
-  });
-  bar.appendChild(invertBtn);
-
-  bar.appendChild(moEl('span', 'mo-sel-spacer'));
+  const countBtn = selMenuBtn('0 selected', 'Select all, none, or invert');
+  countBtn.classList.add('mo-sel-count');
+  const countEl = countBtn.querySelector('.mo-menu-btn-label');
+  countBtn.addEventListener('click', () => menuAt(countBtn, [
+    { label: 'Select All', handler: () => {
+      for (const item of state.items) state.selectedIds.add(`${item.type}:${item.id}`);
+      state.selecting = true;
+      updateBar();
+      _applySelection();
+    } },
+    { label: 'Deselect All', handler: () => {
+      state.selectedIds.clear();
+      state.selecting = false;
+      updateBar();
+      _applySelection();
+    } },
+    { label: 'Invert', handler: () => {
+      const newSelection = new Set();
+      for (const item of state.items) {
+        const key = `${item.type}:${item.id}`;
+        if (!state.selectedIds.has(key)) newSelection.add(key);
+      }
+      state.selectedIds.clear();
+      for (const k of newSelection) state.selectedIds.add(k);
+      state.selecting = state.selectedIds.size > 0;
+      updateBar();
+      _applySelection();
+    } },
+  ]));
+  bar.appendChild(countBtn);
 
   // Bulk Tag button
-  const bulkTagBtn = moEl('button', null, { textContent: 'Tag...' });
+  const bulkTagBtn = selBtn('Tag', 'Add or remove tags on the selected items');
   bulkTagBtn.addEventListener('click', () => {
     // No refreshFn — the dialog dispatches mo:tags-bulk-changed for a
     // surgical, scroll-preserving update.
@@ -17202,35 +17259,30 @@ function buildSelectionToolbar(container, state, api, refreshFn, applySelectionF
   bar.appendChild(bulkTagBtn);
 
   // AI tagging (Section 43): suggestions for the selected photos, reviewed in Tag Review.
-  const aiTagBtn = moEl('button', null, { textContent: 'Tag With AI', title: 'Suggest tags from your tag list for the selected photos. Nothing is applied until you approve it in Tag Review.' });
-  aiTagBtn.addEventListener('click', () => {
-    const items = [...state.selectedIds].map((k) => { const i = k.indexOf(':'); return { type: k.slice(0, i), id: parseInt(k.slice(i + 1), 10) }; });
-    void moTagWithAIFromUI(items, api);
-  });
+  // One verb, two modes: suggestions on top of what each photo has, or a fresh set that replaces it.
+  const aiTagBtn = selMenuBtn('Tag With AI', 'Suggest tags from your tag list for the selected photos. Nothing is applied until you approve it in Tag Review.');
+  aiTagBtn.addEventListener('click', () => menuAt(aiTagBtn, [
+    { label: 'Tag With AI', title: 'Suggestions on top of what each photo has', handler: () => { void moTagWithAIFromUI(itemsOf(), api); } },
+    { label: 'Retag With AI', title: 'A fresh set that replaces what each photo has, on Approve', handler: () => { void moTagWithAIFromUI(itemsOf(), api, 'retag'); } },
+  ]));
   bar.appendChild(aiTagBtn);
-  const aiRetagBtn = moEl('button', null, { textContent: 'Retag With AI', title: 'Suggest a fresh set of tags to replace what the selected photos have. Nothing changes until you approve it in Tag Review.' });
-  aiRetagBtn.addEventListener('click', () => {
-    const items = [...state.selectedIds].map((k) => { const i = k.indexOf(':'); return { type: k.slice(0, i), id: parseInt(k.slice(i + 1), 10) }; });
-    void moTagWithAIFromUI(items, api, 'retag');
-  });
-  bar.appendChild(aiRetagBtn);
 
   // Bulk Rating button
-  const bulkRatingBtn = moEl('button', null, { textContent: 'Rate...' });
+  const bulkRatingBtn = selBtn('Rate', 'Rate the selected items');
   bulkRatingBtn.addEventListener('click', () => {
     showBulkRatingDialog(state, api, () => { updateBar(); refreshFn(); });
   });
   bar.appendChild(bulkRatingBtn);
 
   // Add to Album button
-  const addToAlbumBtn = moEl('button', null, { textContent: 'Add to Album...' });
+  const addToAlbumBtn = selBtn('Add To Album', 'Add the selected items to an album');
   addToAlbumBtn.addEventListener('click', () => {
     showAddToAlbumDialog(state, api, () => { updateBar(); refreshFn(); });
   });
   bar.appendChild(addToAlbumBtn);
 
   // M59 P10 / F15 — Compare button (visible when 2-4 items are selected)
-  const chatBtn = moEl('button', null, { textContent: 'Add To Chat', title: `Attach the selected files to the chat composer (${MO_CHAT_ATTACH_MAX} at a time)` });
+  const chatBtn = selBtn('Add To Chat', `Attach the selected files to the chat composer (${MO_CHAT_ATTACH_MAX} at a time)`);
   chatBtn.addEventListener('click', () => {
     const items = [...state.selectedIds].map((k) => { const i = k.indexOf(':'); return { type: k.slice(0, i), id: parseInt(k.slice(i + 1), 10) }; });
     void moAttachItemsToChat(items);
@@ -17242,7 +17294,6 @@ function buildSelectionToolbar(container, state, api, refreshFn, applySelectionF
     const items = [...state.selectedIds].map((k) => { const i = k.indexOf(':'); return { type: k.slice(0, i), id: parseInt(k.slice(i + 1), 10) }; });
     void moUpscaleItems(items, api, () => { if (typeof refreshFn === 'function') refreshFn(); });
   });
-  bar.appendChild(upscaleBtn);
 
   const compareBtn = moEl('button', null, { textContent: 'Compare' });
   compareBtn.addEventListener('click', () => {
@@ -17267,17 +17318,30 @@ function buildSelectionToolbar(container, state, api, refreshFn, applySelectionF
       return null;
     });
   });
-  bar.appendChild(compareBtn);
 
   // F9: Export button
   const exportBtn = moEl('button', null, { textContent: 'Export...' });
   exportBtn.addEventListener('click', () => {
     exportSelectedItems(state, api);
   });
-  bar.appendChild(exportBtn);
+  const moreBtn = moEl('button', 'mo-sel-btn mo-sel-more', { type: 'button', title: 'More', 'aria-label': 'More actions' });
+  moreBtn.innerHTML = moIcon('ellipsis', 12);
+  moreBtn.setAttribute('aria-haspopup', 'menu');
+  moreBtn.addEventListener('click', () => {
+    const n = state.selectedIds.size;
+    menuAt(moreBtn, [
+      { label: 'Upscale…', title: upscaleBtn.title, handler: () => upscaleBtn.click() },
+      { label: 'Compare', disabled: n < 2 || n > 4, title: n < 2 || n > 4 ? 'Select 2 to 4 items to compare' : 'Compare the selected items side by side', handler: () => compareBtn.click() },
+      { label: 'Export…', handler: () => exportBtn.click() },
+    ]);
+  });
+  bar.appendChild(moreBtn);
 
-  // Delete button
-  const deleteBtn = moEl('button', 'mo-sel-delete', { textContent: 'Delete...' });
+  bar.appendChild(moEl('span', 'mo-sel-spacer'));
+
+  // Delete: the trash, at the far right.
+  const deleteBtn = moEl('button', 'mo-sel-btn mo-sel-delete', { type: 'button', title: 'Delete the selected items', 'aria-label': 'Delete' });
+  deleteBtn.innerHTML = moIcon('trash-2', 12);
   deleteBtn.addEventListener('click', () => {
     showBulkDeleteDialog(state, api, () => { updateBar(); refreshFn(); });
   });
@@ -17287,6 +17351,8 @@ function buildSelectionToolbar(container, state, api, refreshFn, applySelectionF
     const count = state.selectedIds.size;
     countEl.textContent = `${count} selected`;
     bar.style.display = count > 0 ? 'flex' : 'none';
+    // The view row yields to the selection row: one row of chrome at a time.
+    container.classList.toggle('is-selecting', count > 0);
     // Compare requires 2-4 items; disable outside that window so the button
     // never silently no-ops on click.
     compareBtn.disabled = count < 2 || count > 4;
