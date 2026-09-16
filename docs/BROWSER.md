@@ -139,6 +139,59 @@ and a switch.
    from sites and nothing more; it is a day's work on top of this if ever
    wanted, and it must be labelled for exactly that.
 
+## Future work (decided 2026-09-16, not started)
+
+Why the browser loses to a separate one today, in three parts that need
+three different fixes. Privacy is level with Brave and ahead of Chrome;
+nobody switches for that if they cannot log in.
+
+1. **The daily-driver floor is missing.** No password manager or autofill.
+   Spellcheck is off in every page view. A closed tab is gone; Ctrl+Shift+T
+   does nothing. 14 keyboard shortcuts where Chrome has about 60. No
+   DevTools. Picture-in-picture and media keys unverified. No translate.
+2. **The embedded view leaks through.** A page is a native view floated over
+   the workbench, and every compromise that forces is felt: the snapshot
+   when a menu opens, the sash strips, drags freezing every page, focus not
+   landing where the click was.
+3. **There is no reason to be here yet.** One door, Send Page To Chat.
+   Everything else Brave does the same or better, so a separate browser
+   beside Parallx is exactly as good as this.
+
+Parity never converts anyone; it only stops them leaving. The pull has to
+be what a standalone browser cannot do because it is not inside the
+workspace: pages that become memory (indexed, quotable with source, linked
+from a canvas page, brought back by the assistant with the user's own notes
+attached); the assistant beside the tab, not in another app (the tab
+handoff: a logged-in tab lent for one task, every step visible; ask about
+this page with workspace material as context; a table off a page into a
+worksheet; a passage into flashcards; a form filled from data already kept
+here); and the workbench as the browser chrome (page beside note in a
+split, a paragraph or image dragged into a canvas), which already exists and
+only needs the floor under it.
+
+5. **Pass 1, the floor.** In this order: passwords in `safeStorage` with
+   save-on-submit and fill-on-focus; spellcheck on; reopen closed tab and
+   full tab history; the missing shortcuts (Ctrl+Tab, Ctrl+1..9,
+   Ctrl+Shift+T, Ctrl+K, F12, Ctrl+J, Ctrl+S, Ctrl+P, Esc to stop); F12
+   DevTools; downloads from the keyboard; picture-in-picture and media keys
+   verified. A few days. Turns "cannot use this daily" into "could".
+6. **Pass 2, the feel.** Snapshot transitions made imperceptible; focus and
+   scroll continuity across overlays; startup warm so the first tab is
+   instant; the sash strips gone where possible. Measured with the hidden
+   probes, not opinions.
+7. **Pass 3, the pull.** Page memory; the tab handoff; clip to canvas and to
+   flashcards; ask-about-this-page with workspace context. The only pass
+   that makes this better than Brave rather than equal to it.
+
+Extensions, sync and profiles stay out by decision.
+
+**Open, the captcha loop.** Cloudflare challenges loop on several sites
+(click the box, the page reloads into the same box). Not reproduced: the
+ladder probe passes every rung on Cloudflare's own sign-in page, the old
+plain-Chrome user agent included. The stock-UA change stays (documented fix
+in two other Electron browsers) but is not claimed to have fixed it. Needs
+one public URL that loops, run through the probe.
+
 ## Verified so far
 
 - Cosmetic filtering end to end in a sandboxed page: tests/probes/browser-cosmetics-probe.cjs (hidden window, local page, real engine cache).
