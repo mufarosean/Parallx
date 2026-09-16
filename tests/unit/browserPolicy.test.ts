@@ -229,3 +229,55 @@ describe('redirects', () => {
     expect(policy.normalizeSite({ redirects: 'yes' }).redirects).toBe(false);
   });
 });
+describe('partitioned cookies', () => {
+  it('lets a third party set only a cookie it marks Partitioned and Secure', () => {
+    expect(policy.partitionedSetCookies([
+      'sid=abc; Path=/; Secure; SameSite=None; Partitioned',
+      'track=1; Path=/; Secure; SameSite=None',
+      'weak=1; Path=/; Partitioned',
+    ])).toEqual(['sid=abc; Path=/; Secure; SameSite=None; Partitioned']);
+    expect(policy.partitionedSetCookies('one=1; Secure; partitioned')).toEqual(['one=1; Secure; partitioned']);
+    expect(policy.partitionedSetCookies(undefined)).toEqual([]);
+    expect(policy.cookieNameOf(' __Host-sid=abc; Secure')).toBe('__Host-sid');
+    expect(policy.cookieNameOf('garbage')).toBe('');
+  });
+  it('sends out only the cookies the ledger names, and nothing with an empty ledger', () => {
+    const keep = new Set(['sid', '__Host-p']);
+    expect(policy.filterCookieHeader('login=me; sid=abc; __Host-p=1; other=2', keep)).toBe('sid=abc; __Host-p=1');
+    expect(policy.filterCookieHeader('login=me; other=2', keep)).toBe('');
+    expect(policy.filterCookieHeader('sid=abc', undefined)).toBe('');
+    expect(policy.filterCookieHeader('sid=abc', new Set())).toBe('');
+  });
+});
+
+describe('tracking links', () => {
+  it('takes a click-logging link straight to its destination', () => {
+    expect(policy.debounceTarget('https://www.google.com/url?sa=t&q=https%3A%2F%2Fexample.org%2Fa%3Fb%3D1&usg=x')).toBe('https://example.org/a?b=1');
+    expect(policy.debounceTarget('https://www.google.co.uk/url?url=https://example.org/')).toBe('https://example.org/');
+    expect(policy.debounceTarget('https://l.facebook.com/l.php?u=https%3A%2F%2Fexample.org%2F&h=AT0')).toBe('https://example.org/');
+    expect(policy.debounceTarget('https://out.reddit.com/t3_x?url=https%3A%2F%2Fexample.org%2F&token=y')).toBe('https://example.org/');
+    expect(policy.debounceTarget('https://duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.org%2F&rut=z')).toBe('https://example.org/');
+    expect(policy.debounceTarget('https://href.li/?https://example.org/x')).toBe('https://example.org/x');
+    expect(policy.debounceTarget('https://r.search.yahoo.com/_ylt=A;_ylu=B/RV=2/RE=1/RO=10/RU=https%3a%2f%2fexample.org%2f/RK=2/RS=abc')).toBe('https://example.org/');
+    const u = Buffer.from('https://example.org/bing').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    expect(policy.debounceTarget(`https://www.bing.com/ck/a?!&&p=abc&u=a1${u}&ntb=1`)).toBe('https://example.org/bing');
+  });
+  it('leaves everything that is not one, and never follows a non-web or self-pointing target', () => {
+    expect(policy.debounceTarget('https://www.google.com/search?q=https://example.org/')).toBeNull();
+    expect(policy.debounceTarget('https://example.org/url?q=https://other.org/')).toBeNull();
+    expect(policy.debounceTarget('https://www.google.com/url?q=javascript:alert(1)')).toBeNull();
+    expect(policy.debounceTarget('https://www.google.com/url?q=https://www.google.com/maps')).toBeNull();
+    expect(policy.debounceTarget('https://www.bing.com/ck/a?u=zz')).toBeNull();
+    expect(policy.debounceTarget('not a url')).toBeNull();
+  });
+  it('drops click identifiers on a cross-site navigation and leaves campaign labels alone', () => {
+    expect(policy.stripTrackingParams('https://shop.example/p?id=7&fbclid=IwAR0abc&utm_source=news&gclid=x', 'https://news.example/')).toBe('https://shop.example/p?id=7&utm_source=news');
+    expect(policy.stripTrackingParams('https://shop.example/p?FBCLID=x', undefined)).toBe('https://shop.example/p');
+    expect(policy.stripTrackingParams('https://shop.example/p?id=7', 'https://news.example/')).toBeNull();
+    expect(policy.stripTrackingParams('https://shop.example/p', 'https://news.example/')).toBeNull();
+    // The site's own links keep their parameters, whatever they are called.
+    expect(policy.stripTrackingParams('https://shop.example/p?gclid=x', 'https://www.shop.example/cart')).toBeNull();
+    expect(policy.stripTrackingParams('mailto:a@b.c?gclid=x', undefined)).toBeNull();
+    expect(policy.TRACKING_PARAMS.has('utm_source')).toBe(false);
+  });
+});

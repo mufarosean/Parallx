@@ -73,6 +73,8 @@ function setupBrowserBridge(ipcMain, opts) {
   const sites = readJson(sitesPath, {});           // siteKey -> { shields, cookies, https }
   const permissions = readJson(permissionsPath, {}); // `${siteKey}|${permission}` -> 'allow' | 'deny'
   const httpOnce = new Set();                      // http URLs the user chose to load once
+  const partitioned = new Map();                   // `${thirdPartySite}|${topSite}` -> Set of cookie names that third party set Partitioned under that top-level site
+  const PARTITIONED_MAX = 4000;
   const blocked = new Map();                       // webContentsId -> { count, hosts: Map }
   const pendingPermissions = new Map();            // requestId -> { callback, timer }
   const pendingAuth = new Map();                   // requestId -> { rec, tabId, key, callbacks, timer }: HTTP sign-ins
@@ -115,6 +117,17 @@ function setupBrowserBridge(ipcMain, opts) {
     return details.referrer || '';
   };
   const isOurs = (ses) => [...sessions.values()].includes(ses) || [...agentPrivateSessions.values()].includes(ses);
+  // The partitioned-cookie ledger (policy: partitionedSetCookies, filterCookieHeader).
+  const partitionKeyOf = (requestUrl, documentUrl) => `${policy.siteKey(requestUrl) || ''}|${policy.siteKey(documentUrl) || ''}`;
+  const rememberPartitioned = (key, setCookies) => {
+    let names = partitioned.get(key);
+    if (!names) {
+      if (partitioned.size >= PARTITIONED_MAX) partitioned.delete(partitioned.keys().next().value);
+      names = new Set();
+      partitioned.set(key, names);
+    }
+    for (const v of setCookies) { const n = policy.cookieNameOf(v); if (n) names.add(n); }
+  };
 
   // ── Sessions ──
   for (const [kind, partition] of Object.entries(PARTITIONS)) {
@@ -199,6 +212,14 @@ function setupBrowserBridge(ipcMain, opts) {
       // on DNS, so it knows private addresses by their form alone.
       if (kind === 'agent' && policy.privateAddressRefused(details.url, agentAllowLocal)) return callback({ cancel: true });
       if (details.resourceType === 'mainFrame') {
+        // A tracking link goes straight to where it was sending the user,
+        // without its click identifiers, before any connection (policy:
+        // debounceTarget, stripTrackingParams). Each is one redirect, and
+        // the new request comes back through here for the rest.
+        const debounced = policy.debounceTarget(details.url);
+        if (debounced && debounced !== details.url) return callback({ redirectURL: debounced });
+        const stripped = policy.stripTrackingParams(details.url, details.referrer);
+        if (stripped && stripped !== details.url) return callback({ redirectURL: stripped });
         const site = siteFor(details.url);
         if (site.https) {
           if (httpOnce.has(details.url)) {
@@ -218,16 +239,32 @@ function setupBrowserBridge(ipcMain, opts) {
       const headers = { ...details.requestHeaders };
       headers['Sec-GPC'] = '1';
       const docUrl = details.resourceType === 'mainFrame' ? details.url : documentUrlOf(details);
-      if (policy.cookieDecision(siteFor(docUrl), details.url, docUrl) === 'strip') {
-        for (const k of Object.keys(headers)) if (k.toLowerCase() === 'cookie') delete headers[k];
+      const site = siteFor(docUrl);
+      if (policy.cookieDecision(site, details.url, docUrl) === 'strip') {
+        // Of a third party's cookies, only the ones it set Partitioned under
+        // this top-level site go out; Block All sends none.
+        const keep = site.cookies === 'block-all' ? null : partitioned.get(partitionKeyOf(details.url, docUrl));
+        for (const k of Object.keys(headers)) {
+          if (k.toLowerCase() !== 'cookie') continue;
+          const kept = policy.filterCookieHeader(headers[k], keep);
+          if (kept) headers[k] = kept; else delete headers[k];
+        }
       }
       callback({ requestHeaders: headers });
     });
     ses.webRequest.onHeadersReceived({ urls: ['<all_urls>'] }, (details, callback) => {
       const headers = { ...(details.responseHeaders || {}) };
       const docUrl = details.resourceType === 'mainFrame' ? details.url : documentUrlOf(details);
-      if (policy.cookieDecision(siteFor(docUrl), details.url, docUrl) === 'strip') {
-        for (const k of Object.keys(headers)) if (k.toLowerCase() === 'set-cookie') delete headers[k];
+      const site = siteFor(docUrl);
+      if (policy.cookieDecision(site, details.url, docUrl) === 'strip') {
+        // A third party may set a cookie marked Partitioned (it stays with
+        // this top-level site); everything else it tries to set is dropped.
+        const key = site.cookies === 'block-all' ? null : partitionKeyOf(details.url, docUrl);
+        for (const k of Object.keys(headers)) {
+          if (k.toLowerCase() !== 'set-cookie') continue;
+          const kept = key ? policy.partitionedSetCookies(headers[k]) : [];
+          if (kept.length) { headers[k] = kept; rememberPartitioned(key, kept); } else delete headers[k];
+        }
       }
       if (blocker && lists.status === 'ready' && siteFor(docUrl).shields) {
         return blocker.onHeadersReceived({ ...details, responseHeaders: headers }, callback);
@@ -635,7 +672,9 @@ function setupBrowserBridge(ipcMain, opts) {
       rec.crashed = null;
       cancelAuthFor(rec);
     });
-    rec.dc.ensure().catch((err) => console.warn('[browser] debugger attach:', err && err.message));
+    // The devtools link is attached on first need (a destination with
+    // scriptlets, a page theme, the assistant driving the tab), never
+    // ahead of it: a plain page holds no link at all.
     wc.on('did-start-loading', () => emitView(rec, 'did-start-loading'));
     wc.on('did-stop-loading', () => emitView(rec, 'did-stop-loading', navState(wc)));
     // The pane paints the few pixels it leaves beside each resize sash in the

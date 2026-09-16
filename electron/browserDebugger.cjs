@@ -106,9 +106,10 @@ function createDebuggerController(wc) {
     if (next) { const r = await raw('Page.addScriptToEvaluateOnNewDocument', { source: next }); state.scriptId = r && r.identifier ? r.identifier : null; }
   }
 
-  /** prefers-color-scheme emulation for the page theme ([] for none). */
+  /** prefers-color-scheme emulation for the page theme ([] for none). Nothing to emulate on a page with no link attaches none. */
   async function setEmulatedMedia(features) {
     state.mediaFeatures = Array.isArray(features) && features.length ? features : null;
+    if (!state.mediaFeatures && !dbg.isAttached()) return;
     await send('Emulation.setEmulatedMedia', { features: state.mediaFeatures || [] });
   }
 

@@ -251,6 +251,117 @@ function normalizeSite(raw) {
   };
 }
 
+// ── Cookies in a third-party context ──
+// Chromium's third-party cookie blocking is not in Electron, so it is done
+// on the wire: Cookie stripped from third-party requests, Set-Cookie from
+// third-party responses. One exception, the one Chrome and Brave make: a
+// cookie the response marks Partitioned (CHIPS) belongs to this embedding
+// site alone and cannot follow the user anywhere else, so it may be set;
+// Chromium stores it under the top-level site. On the way out the wire
+// cannot tell a partitioned cookie from an unpartitioned one, so the bridge
+// remembers, per (third party, top-level site), the names it let in and
+// sends only those (filterCookieHeader).
+/** The Set-Cookie values that carry Partitioned (and Secure, which Chromium requires of them). */
+function partitionedSetCookies(values) {
+  const out = [];
+  for (const v of Array.isArray(values) ? values : [values]) {
+    if (typeof v !== 'string') continue;
+    if (/;\s*partitioned\s*(;|$)/i.test(v) && /;\s*secure\s*(;|$)/i.test(v)) out.push(v);
+  }
+  return out;
+}
+/** The name a Set-Cookie value sets, or ''. */
+function cookieNameOf(setCookie) {
+  const m = /^\s*([^=;\s]+)=/.exec(String(setCookie || ''));
+  return m ? m[1] : '';
+}
+/** A Cookie header reduced to the named cookies; '' when none remain. */
+function filterCookieHeader(header, keepNames) {
+  if (!keepNames || typeof keepNames.has !== 'function' || !keepNames.size) return '';
+  const kept = [];
+  for (const part of String(header || '').split(';')) {
+    const p = part.trim();
+    if (!p) continue;
+    const eq = p.indexOf('=');
+    if (keepNames.has(eq > 0 ? p.slice(0, eq) : p)) kept.push(p);
+  }
+  return kept.join('; ');
+}
+
+// ── Tracking links ──
+// Brave's debouncing and query filtering, in short form. A link that exists
+// to log the click before sending the user on (google.com/url?q=...,
+// l.facebook.com/l.php?u=...) is taken straight to where it was going, before
+// any connection to the logger. A link carrying a click identifier meant to
+// tie this visit to an ad or a mailing (fbclid, gclid, mc_eid...) loses it.
+// Campaign labels (utm_*) stay: they name a campaign, not a person, and
+// Brave and Firefox both leave them. Neither touches a same-site navigation.
+const DEBOUNCE_RULES = [
+  { host: /(^|\.)google\.[a-z.]+$/i, path: /^\/url$/, params: ['q', 'url'] },
+  { host: /^(l|lm)\.facebook\.com$|^l\.messenger\.com$/i, path: /^\/l\.php$/, params: ['u'] },
+  { host: /^l\.instagram\.com$/i, path: /^\/?$/, params: ['u'] },
+  { host: /(^|\.)youtube\.com$/i, path: /^\/redirect$/, params: ['q'] },
+  { host: /^out\.reddit\.com$/i, path: /.*/, params: ['url'] },
+  { host: /^duckduckgo\.com$/i, path: /^\/l\/?$/, params: ['uddg'] },
+  { host: /^steamcommunity\.com$/i, path: /^\/linkfilter\/?$/, params: ['url', 'u'] },
+  { host: /^t\.umblr\.com$/i, path: /^\/redirect$/, params: ['z'] },
+  { host: /^redirect\.viglink\.com$/i, path: /.*/, params: ['u'] },
+  { host: /^exit\.sc$/i, path: /.*/, params: ['url'] },
+  { host: /(^|\.)linkedin\.com$/i, path: /^\/safety\/go$/, params: ['url'] },
+  { host: /^slack-redir\.net$/i, path: /^\/link$/, params: ['url'] },
+  { host: /^l\.wl\.co$/i, path: /.*/, params: ['u'] },
+  { host: /^href\.li$/i, path: /^\/?$/, raw: true },
+  { host: /^r\.search\.yahoo\.com$/i, pathParam: /\/RU=([^/]+)\// },
+  { host: /(^|\.)bing\.com$/i, path: /^\/ck\/a$/, params: ['u'], base64: 'a1' },
+];
+/** Where a click-logging link was sending the user, or null when the URL is not one. */
+function debounceTarget(url) {
+  let u;
+  try { u = new URL(String(url)); } catch { return null; }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+  for (const r of DEBOUNCE_RULES) {
+    if (!r.host.test(u.hostname)) continue;
+    let target = null;
+    if (r.raw) target = u.search.slice(1);
+    else if (r.pathParam) {
+      const m = r.pathParam.exec(u.pathname);
+      if (m) { try { target = decodeURIComponent(m[1]); } catch { target = null; } }
+    } else if (r.path.test(u.pathname)) {
+      for (const p of r.params) { const v = u.searchParams.get(p); if (v) { target = v; break; } }
+      if (target && r.base64) {
+        if (!target.startsWith(r.base64)) return null;
+        try { target = Buffer.from(target.slice(r.base64.length).replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'); } catch { return null; }
+      }
+    }
+    if (!target) continue;
+    let t;
+    try { t = new URL(target); } catch { return null; }
+    if (t.protocol !== 'http:' && t.protocol !== 'https:') return null;
+    if (t.hostname === u.hostname) return null;
+    return t.toString();
+  }
+  return null;
+}
+const TRACKING_PARAMS = new Set([
+  'fbclid', 'gclid', 'gclsrc', 'dclid', 'gbraid', 'wbraid', 'msclkid', 'twclid', 'ttclid', 'yclid', 'igshid', 'igsh',
+  'mc_eid', 'mkt_tok', '_openstat', 'oly_anon_id', 'oly_enc_id', 'vero_conv', 'vero_id', 'wickedid', 'rb_clickid', 's_cid',
+  'ml_subscriber', 'ml_subscriber_hash', '_hsenc', '__hssc', '__hstc', '__hsfp', 'hsctatracking', '__s', 'srsltid',
+  'ss_email_id', 'bsft_uid', 'bsft_clkid', 'vgo_ee', 'guce_referrer', 'guce_referrer_sig', '_branch_match_id',
+]);
+/** The URL without its click identifiers, or null when there were none (or the navigation stays on the site). */
+function stripTrackingParams(url, referrer) {
+  let u;
+  try { u = new URL(String(url)); } catch { return null; }
+  if ((u.protocol !== 'http:' && u.protocol !== 'https:') || !u.search) return null;
+  const from = referrer ? siteKey(referrer) : null;
+  if (from && from === siteKey(url)) return null;
+  let changed = false;
+  for (const k of [...u.searchParams.keys()]) {
+    if (TRACKING_PARAMS.has(k.toLowerCase())) { u.searchParams.delete(k); changed = true; }
+  }
+  return changed ? u.toString() : null;
+}
+
 /** 'allow' the cookie header through or 'strip' it, for one request under one site's settings. */
 function cookieDecision(site, requestUrl, documentUrl) {
   const s = normalizeSite(site);
@@ -402,6 +513,12 @@ module.exports = {
   defaultSite,
   normalizeSite,
   cookieDecision,
+  partitionedSetCookies,
+  cookieNameOf,
+  filterCookieHeader,
+  debounceTarget,
+  stripTrackingParams,
+  TRACKING_PARAMS,
   sanitizeFilename,
   downloadTarget,
 };
