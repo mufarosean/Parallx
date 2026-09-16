@@ -64,13 +64,12 @@ describe('httpsUpgradeTarget', () => {
   });
 });
 
-describe('genericUserAgent', () => {
-  it('is a plain Chrome UA with no Electron and no minor version', () => {
-    const ua = policy.genericUserAgent('140.0.7339.41', 'win32');
-    expect(ua).toContain('Chrome/140.0.0.0');
-    expect(ua).toContain('Windows NT 10.0; Win64; x64');
-    expect(ua).not.toMatch(/Electron|Parallx/i);
-    expect(policy.genericUserAgent('140.0.1', 'darwin')).toContain('Macintosh');
+describe('user agent', () => {
+  it('is no longer the policy\'s to rewrite: the session sends Electron\'s own', () => {
+    // The plain-Chrome rewrite hid nothing and broke every Cloudflare
+    // challenge (a Chrome UA with no client hints reads as a spoof). The
+    // bridge sets app.userAgentFallback; nothing here may hand it another.
+    expect(policy.genericUserAgent).toBeUndefined();
   });
 });
 

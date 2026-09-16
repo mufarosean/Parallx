@@ -148,7 +148,15 @@ function setupBrowserBridge(ipcMain, opts) {
   }
 
   function configureSession(ses, kind) {
-    ses.setUserAgent(policy.genericUserAgent(process.versions.chrome, process.platform), 'en-US,en;q=0.9');
+    // Electron's own user agent, Electron and Parallx tokens included. It
+    // was rewritten to plain Chrome until 2026-09-16, which hid nothing (a
+    // page reads the engine a dozen other ways) and broke every Cloudflare
+    // challenge: a Chrome UA arriving with no client hints reads as a spoof,
+    // Turnstile fails with 600010 and the page reloads into the same
+    // challenge. Two other Electron browsers hit the identical loop and fixed
+    // it this way (stablyai/orca PR 18749, pingdotgg/t3code PR 7110). Only
+    // Accept-Language is fixed here.
+    ses.setUserAgent(app.userAgentFallback, 'en-US,en;q=0.9');
     // The assistant's profile is decided first: it asks nobody, and even what
     // the user's tabs get silently (fullscreen over the app, clipboard
     // writes) is refused there, since the model's clicks count as gestures.

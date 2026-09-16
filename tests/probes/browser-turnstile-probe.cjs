@@ -3,15 +3,18 @@
 // configurations, each one adding one thing the real bridge does
 // (electron/browserBridge.cjs), in its own in-memory partition:
 //
-//   plain     Electron as it comes: its own user agent, no header edits,
-//             no devtools link, no filter engine.
-//   ua        + the generic Chrome user agent (policy.genericUserAgent).
-//   headers   + the webRequest edits: Sec-GPC on every request, Cookie and
-//               Set-Cookie stripped from third-party requests.
-//   debugger  + the devtools link every page view holds (Page.enable, as
-//               browserDebugger.cjs attaches it for scriptlets and page theme).
-//   bridge    + the Ghostery engine from the app's own list cache, if present.
-//               This is the page as the Browser serves it.
+//   plain      Electron as it comes: its own user agent, no header edits,
+//              no devtools link, no filter engine.
+//   chrome-ua  The user agent the Browser sent until 2026-09-16: plain
+//              Chrome, no Electron or app token. Kept in the ladder as the
+//              control: a Chrome UA with no client hints reads as a spoof
+//              and Turnstile fails with 600010 (stablyai/orca PR 18749).
+//   headers    plain + the webRequest edits: Sec-GPC on every request,
+//              Cookie and Set-Cookie stripped from third-party requests.
+//   debugger   + the devtools link every page view holds (Page.enable, as
+//              browserDebugger.cjs attaches it for scriptlets and page theme).
+//   bridge     + the Ghostery engine from the app's own list cache, if
+//              present. This is the page as the Browser serves it now.
 //
 // For each rung the probe reports whether the challenge passed on its own,
 // passed after one click on the widget, kept reloading (the loop), or timed
@@ -22,8 +25,9 @@
 // never focused, and destroyed after each rung. --visible shows it instead,
 // for a challenge that wants a real click.
 //
-// Run: env -u ELECTRON_RUN_AS_NODE node_modules/.bin/electron tests/probes/browser-turnstile-probe.cjs <url> [--visible] [--only=plain,ua,...]
-// Exit 0 always: this is a diagnostic, its output is the result.
+// Run: env -u ELECTRON_RUN_AS_NODE node_modules/.bin/electron tests/probes/browser-turnstile-probe.cjs [url] [--visible] [--only=plain,chrome-ua,...]
+// The default URL is Cloudflare's own sign-in page, which carries a Turnstile
+// widget for everyone. Exit 0 always: this is a diagnostic, its output is the result.
 'use strict';
 const { app, BrowserWindow, session } = require('electron');
 const path = require('path');
@@ -33,7 +37,8 @@ const policy = require('../../electron/browserPolicy.cjs');
 let ElectronBlocker = null;
 try { ({ ElectronBlocker } = require('@ghostery/adblocker-electron')); } catch { ElectronBlocker = null; }
 
-const URL_ARG = process.argv.find((a) => /^https?:\/\//i.test(a));
+const DEFAULT_URL = 'https://dash.cloudflare.com/login';
+const URL_ARG = process.argv.find((a) => /^https?:\/\//i.test(a)) || DEFAULT_URL;
 const VISIBLE = process.argv.includes('--visible');
 const ONLY = (process.argv.find((a) => a.startsWith('--only=')) || '').slice(7).split(',').filter(Boolean);
 const WAIT_MS = 30_000;
@@ -42,14 +47,19 @@ const ENGINE = ['engine-full.bin', 'engine.bin']
   .map((f) => path.join(process.cwd(), 'data', 'chromium-cache', 'browser', f))
   .find((p) => fs.existsSync(p));
 
-if (!URL_ARG) { console.error('usage: electron tests/probes/browser-turnstile-probe.cjs <url that shows a Cloudflare challenge> [--visible] [--only=...]'); process.exit(2); }
+// The rewrite the Browser used to apply, verbatim, so the control rung sends exactly what failed.
+function chromeOnlyUserAgent(chromeVersion, platform) {
+  const major = String(chromeVersion || '').split('.')[0] || '120';
+  const os = platform === 'darwin' ? 'Macintosh; Intel Mac OS X 10_15_7' : (platform === 'linux' ? 'X11; Linux x86_64' : 'Windows NT 10.0; Win64; x64');
+  return `Mozilla/5.0 (${os}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.0.0 Safari/537.36`;
+}
 
 const RUNGS = [
   { name: 'plain', ua: false, headers: false, debugger: false, engine: false },
-  { name: 'ua', ua: true, headers: false, debugger: false, engine: false },
-  { name: 'headers', ua: true, headers: true, debugger: false, engine: false },
-  { name: 'debugger', ua: true, headers: true, debugger: true, engine: false },
-  { name: 'bridge', ua: true, headers: true, debugger: true, engine: true },
+  { name: 'chrome-ua', ua: true, headers: false, debugger: false, engine: false },
+  { name: 'headers', ua: false, headers: true, debugger: false, engine: false },
+  { name: 'debugger', ua: false, headers: true, debugger: true, engine: false },
+  { name: 'bridge', ua: false, headers: true, debugger: true, engine: true },
 ].filter((r) => !ONLY.length || ONLY.includes(r.name));
 
 const CHALLENGE_TITLE = /just a moment|attention required|verify you are human|checking your browser|security check/i;
@@ -100,7 +110,8 @@ const PAGE_FACTS = `(function(){
 
 async function runRung(rung) {
   const ses = session.fromPartition(`probe-turnstile-${rung.name}`);
-  if (rung.ua) ses.setUserAgent(policy.genericUserAgent(process.versions.chrome, process.platform), 'en-US,en;q=0.9');
+  // The bridge fixes Accept-Language on every rung; only the control rewrites the UA itself.
+  ses.setUserAgent(rung.ua ? chromeOnlyUserAgent(process.versions.chrome, process.platform) : app.userAgentFallback, 'en-US,en;q=0.9');
   if (rung.headers) installHeaders(ses);
   let blocker = null;
   if (rung.engine && ENGINE && ElectronBlocker) {
@@ -168,6 +179,7 @@ async function runRung(rung) {
 app.whenReady().then(async () => {
   console.log(`probe: ${URL_ARG}`);
   console.log(`chrome ${process.versions.chrome}, electron ${process.versions.electron}, engine cache ${ENGINE ? 'found' : 'missing'}, window ${VISIBLE ? 'visible' : 'hidden'}`);
+  console.log(`stock user agent: ${app.userAgentFallback}`);
   const results = [];
   for (const rung of RUNGS) {
     console.log(`\n== ${rung.name} ==`);
@@ -182,14 +194,17 @@ app.whenReady().then(async () => {
   }
   console.log('\n== summary ==');
   for (const r of results) console.log(`  ${r.rung.padEnd(9)} ${r.outcome}`);
-  const firstFail = results.find((r) => !/^passed/.test(r.outcome));
-  const lastPass = [...results].reverse().find((r) => /^passed/.test(r.outcome));
-  if (firstFail && lastPass && RUNGS.findIndex((x) => x.name === firstFail.rung) > RUNGS.findIndex((x) => x.name === lastPass.rung)) {
+  const control = results.find((r) => r.rung === 'chrome-ua');
+  const ladder = results.filter((r) => r.rung !== 'chrome-ua');
+  if (control) console.log(`  control (the old Chrome-only UA): ${control.outcome}${/^passed/.test(control.outcome) ? ' (the rewrite is not what this page objects to)' : ' (the rewrite alone fails this page)'}`);
+  const firstFail = ladder.find((r) => !/^passed/.test(r.outcome));
+  const lastPass = [...ladder].reverse().find((r) => /^passed/.test(r.outcome));
+  if (firstFail && lastPass && ladder.indexOf(firstFail) > ladder.indexOf(lastPass)) {
     console.log(`  first failing rung: ${firstFail.rung} (the thing it adds over ${lastPass.rung} is the suspect)`);
   } else if (firstFail && !lastPass) {
     console.log('  every rung failed, plain Electron included: the cause is not in the bridge configuration (hidden window, IP reputation, or the site wants a real click)');
   } else if (!firstFail) {
-    console.log('  every rung passed: the loop is not reproduced by this page under these configurations');
+    console.log('  every rung passed: the Browser as it is now clears this page');
   }
   app.exit(0);
 });

@@ -60,16 +60,6 @@ function httpsUpgradeTarget(url) {
   return u.toString();
 }
 
-/** A plain Chrome user agent for the platform: no Electron, no app name, no
- *  minor version (Chrome's own reduced UA shape). */
-function genericUserAgent(chromeVersion, platform) {
-  const major = String(chromeVersion || '').split('.')[0] || '120';
-  const os = platform === 'darwin'
-    ? 'Macintosh; Intel Mac OS X 10_15_7'
-    : (platform === 'linux' ? 'X11; Linux x86_64' : 'Windows NT 10.0; Win64; x64');
-  return `Mozilla/5.0 (${os}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.0.0 Safari/537.36`;
-}
-
 /** What the address bar does with typed text: a URL, or a search. */
 function parseOmnibox(text, engineKey) {
   const raw = String(text || '').trim();
@@ -402,7 +392,6 @@ module.exports = {
   isThirdParty,
   isLocalHost,
   httpsUpgradeTarget,
-  genericUserAgent,
   parseOmnibox,
   permissionPolicy,
   AGENT_DENIED_PERMISSIONS,
