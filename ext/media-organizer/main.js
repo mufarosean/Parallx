@@ -5832,6 +5832,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 .mo-selection-bar .mo-sel-count { font-weight: 600; }
 .mo-selection-bar .mo-sel-more, .mo-selection-bar .mo-sel-delete { padding: 0 7px; }
 .mo-selection-bar .mo-sel-delete { border-color: transparent; }
+.mo-pagination .mo-toolbar-count { margin-left: auto; }
 /* Menus: a mark column when any item can be checked; a disabled item is read, not clicked. */
 .mo-context-menu.has-checks .mo-context-menu-item { position: relative; padding-left: 30px; }
 .mo-context-menu-item.is-checked::before { content: '✓'; position: absolute; left: 11px; }
@@ -11442,7 +11443,7 @@ function renderGridBrowser(container, api, input) {
   gridModeBtn.innerHTML = moIcon('grid', 12);
   gridModeBtn.setAttribute('aria-label', 'Grid view');
   const listModeBtn = moEl('button', 'mo-segment-btn', { type: 'button', title: 'List' });
-  listModeBtn.innerHTML = moIcon('list-unordered', 12);
+  listModeBtn.innerHTML = moIcon('list', 12);
   listModeBtn.setAttribute('aria-label', 'List view');
   modeGroup.append(feedModeBtn, gridModeBtn, listModeBtn);
   toolbar.appendChild(modeGroup);
@@ -11630,8 +11631,8 @@ function renderGridBrowser(container, api, input) {
   }
 
   // Item count
+  // The item count rides the pagination bar (grid and list), not the view row; the feed shows none.
   const countLabel = moEl('span', 'mo-toolbar-count', { textContent: '' });
-  toolbar.appendChild(countLabel);
 
   // \u2500\u2500 Selection Toolbar (D8/F34) \u2500\u2500
   let selectionBar = null;
@@ -12036,7 +12037,7 @@ function renderGridBrowser(container, api, input) {
   });
   // Native tooltip explains the bare number labels (e.g. "20", "Auto").
   try { perPageDropdown.el.title = 'Items per page'; } catch { /* ignore */ }
-  paginationBar.append(pageFirst, pagePrev, pageInfo, pageNext, pageLast, perPageDropdown.el);
+  paginationBar.append(pageFirst, pagePrev, pageInfo, pageNext, pageLast, perPageDropdown.el, countLabel);
   root.appendChild(paginationBar);
 
   function updatePagination() {
