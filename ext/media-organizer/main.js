@@ -11097,6 +11097,13 @@ function renderBrowserSidebar(container, api) {
 // Allowlist for SQL ORDER BY columns — prevents injection via sort field
 const MO_SAFE_SORT_COLUMNS = { created_at: 'created_at', title: 'title', rating: 'rating', taken_at: 'taken_at', file_mod_time: 'file_mod_time', shuffle: 'shuffle' };
 
+// Per-row picture facts every media query carries, so the feed lays a tile out
+// at the picture's own proportions (the Home feed had these in its own query;
+// without them every photo fell back to 4:3 and every video to 16:9): the
+// primary file's width and height, whether it is a GIF, the photographer.
+const MO_PHOTO_EXTRA_COLS = `, p.photographer, (SELECT wi.width FROM mo_photos_files wpf JOIN mo_image_files wi ON wi.file_id = wpf.file_id WHERE wpf.photo_id = p.id AND wpf.is_primary = 1 LIMIT 1) AS width, (SELECT hi.height FROM mo_photos_files hpf JOIN mo_image_files hi ON hi.file_id = hpf.file_id WHERE hpf.photo_id = p.id AND hpf.is_primary = 1 LIMIT 1) AS height, CASE WHEN EXISTS (SELECT 1 FROM mo_photos_files gpf JOIN mo_files gf ON gf.id = gpf.file_id WHERE gpf.photo_id = p.id AND gpf.is_primary = 1 AND LOWER(gf.basename) LIKE '%.gif') THEN 1 ELSE 0 END AS is_gif`;
+const MO_VIDEO_EXTRA_COLS = `, NULL AS photographer, (SELECT wv.width FROM mo_videos_files wvf JOIN mo_video_files wv ON wv.file_id = wvf.file_id WHERE wvf.video_id = v.id AND wvf.is_primary = 1 LIMIT 1) AS width, (SELECT hv.height FROM mo_videos_files hvf JOIN mo_video_files hv ON hv.file_id = hvf.file_id WHERE hvf.video_id = v.id AND hvf.is_primary = 1 LIMIT 1) AS height, 0 AS is_gif`;
+
 // @mo-grid-pure-begin (pure grid-view logic, extracted verbatim by tests/unit/moGridView.test.ts)
 /**
  * A grid tab's instance id read into scope, media filter and layout. The
@@ -12128,10 +12135,10 @@ function renderGridBrowser(container, api, input) {
 
     const dataQuery = `
       SELECT * FROM (
-        SELECT 'photo' AS media_type, p.id, p.title, p.rating, p.color_label, p.created_at, p.taken_at, NULL AS duration, ${photoSizeExpr} AS file_size${photoModTime}
+        SELECT 'photo' AS media_type, p.id, p.title, p.rating, p.color_label, p.created_at, p.taken_at, NULL AS duration, ${photoSizeExpr} AS file_size${photoModTime}${MO_PHOTO_EXTRA_COLS}
         FROM mo_photos p${photoJoin}${pw}
         UNION ALL
-        SELECT 'video' AS media_type, v.id, v.title, v.rating, v.color_label, v.created_at, NULL AS taken_at, v.duration, ${videoSizeExpr} AS file_size${videoModTime}
+        SELECT 'video' AS media_type, v.id, v.title, v.rating, v.color_label, v.created_at, NULL AS taken_at, v.duration, ${videoSizeExpr} AS file_size${videoModTime}${MO_VIDEO_EXTRA_COLS}
         FROM mo_videos v${videoJoin}${vw}
       ) combined
       ORDER BY ${effectiveSort} ${safeDir}, COALESCE(title, '') COLLATE NOCASE ASC, id ASC
@@ -12228,7 +12235,7 @@ function renderGridBrowser(container, api, input) {
     const sizeJoinTable = type === 'photo' ? 'mo_photos_files' : 'mo_videos_files';
     const sizeFkCol = type === 'photo' ? 'photo_id' : 'video_id';
     const sizeExpr = `(SELECT mf.size FROM ${sizeJoinTable} sfx JOIN mo_files mf ON mf.id = sfx.file_id WHERE sfx.${sizeFkCol} = ${alias}.id AND sfx.is_primary = 1 LIMIT 1)`;
-    const dataQuery = `SELECT ${alias}.*, ${sizeExpr} AS file_size FROM ${table} ${alias}${join}${w} ORDER BY ${orderExpr} ${safeDir}, COALESCE(${alias}.title, '') COLLATE NOCASE ASC, ${alias}.id ASC LIMIT ? OFFSET ?`;
+    const dataQuery = `SELECT ${alias}.*, ${sizeExpr} AS file_size${type === 'photo' ? MO_PHOTO_EXTRA_COLS : MO_VIDEO_EXTRA_COLS} FROM ${table} ${alias}${join}${w} ORDER BY ${orderExpr} ${safeDir}, COALESCE(${alias}.title, '') COLLATE NOCASE ASC, ${alias}.id ASC LIMIT ? OFFSET ?`;
     const dataParams = [...params, limit, offset];
     const countQuery = `SELECT COUNT(*) AS count FROM ${table} ${alias}${join}${w}`;
     const countParams = [...params];
@@ -12264,6 +12271,15 @@ function renderGridBrowser(container, api, input) {
     if (row && row.file_size != null) {
       const n = Number(row.file_size);
       if (Number.isFinite(n) && n >= 0) item.size = n;
+    }
+    // The picture facts the feed lays tiles out by (MO_PHOTO_EXTRA_COLS / MO_VIDEO_EXTRA_COLS).
+    if (row) {
+      const w = Number(row.width);
+      const h = Number(row.height);
+      item.width = Number.isFinite(w) && w > 0 ? w : null;
+      item.height = Number.isFinite(h) && h > 0 ? h : null;
+      if (row.is_gif != null) item.isGif = !!Number(row.is_gif);
+      if (row.photographer != null && item.photographer == null) item.photographer = row.photographer;
     }
     // Hydrate from the resolved-thumb cache so re-entering the grid after
     // opening an item doesn't blank thumbnails that we already resolved
