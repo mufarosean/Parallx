@@ -402,6 +402,8 @@ contextBridge.exposeInMainWorld('parallxElectron', {
     refreshLists: () => ipcRenderer.invoke('browser:refreshLists'),
     /** Run the annoyance lists too (cookie banners, overlays) or ads and trackers only. Returns the list state. */
     setAnnoyances: (on) => ipcRenderer.invoke('browser:setAnnoyances', on !== false),
+    /** Hold a settled page's own cross-site redirect for the user (true) or let it through (false). Tab-unders are blocked either way. */
+    setHoldRedirects: (on) => ipcRenderer.invoke('browser:setHoldRedirects', on !== false),
     /** Claim http(s) links clicked anywhere in the app (true) or hand them back to the system browser (false). */
     setInAppLinks: (on) => ipcRenderer.invoke('browser:setInAppLinks', on !== false),
     blockedFor: (webContentsId) => ipcRenderer.invoke('browser:blockedFor', webContentsId),

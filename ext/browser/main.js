@@ -277,6 +277,11 @@ const CSS = `
 .br-pane { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--vscode-editor-background, var(--px-bg)); color: var(--vscode-foreground, var(--px-text)); outline: none; position: relative; overflow: hidden; box-sizing: border-box; }
 .br-private-chip { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; padding: 1px 7px; border-radius: var(--px-radius-sm, 4px); font-size: 10px; font-weight: 600; letter-spacing: 0.2px; background: var(--vscode-badge-background, var(--px-accent)); color: var(--vscode-badge-foreground, #fff); }
 .br-bookmarks-bar { display: flex; align-items: center; gap: 2px; padding: 3px 8px; border-bottom: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-sideBar-background, var(--px-bg)); overflow: hidden; flex: 0 0 auto; }
+.br-notice { display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-bottom: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-sideBar-background, var(--px-bg)); font-size: 12px; flex: 0 0 auto; }
+.br-notice-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.br-notice button { border: 1px solid var(--vscode-panel-border, var(--px-border)); background: transparent; color: inherit; border-radius: var(--parallx-radius-md, 6px); padding: 2px 10px; font-size: 12px; cursor: pointer; flex: 0 0 auto; white-space: nowrap; }
+.br-notice button:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
+.br-notice button.primary { background: var(--vscode-button-background, var(--px-accent)); color: var(--vscode-button-foreground, #fff); border-color: transparent; }
 .br-bm-chip { display: inline-flex; align-items: center; gap: 5px; max-width: 180px; padding: 2px 8px; border: none; border-radius: 4px; background: transparent; color: inherit; font: inherit; font-size: 11px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 0 auto; }
 .br-bm-chip:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
 .br-bm-hint { font-size: 11px; padding: 2px 4px; }
@@ -532,6 +537,10 @@ function createPagePane(container, input, opts = {}) {
   // Bookmarks bar: the starred pages as chips, one click away, toggled from the page menu.
   const bookmarksBar = el('div', 'br-bookmarks-bar');
   root.appendChild(bookmarksBar);
+  // A notice above the page, for a redirect the bridge held for the user's word.
+  const notice = el('div', 'br-notice');
+  notice.hidden = true;
+  root.appendChild(notice);
   async function refreshBookmarksBar() {
     if (!showBookmarksBar()) { bookmarksBar.hidden = true; return; }
     let rows = [];
@@ -638,6 +647,28 @@ function createPagePane(container, input, opts = {}) {
     content.appendChild(errorView);
     showOnly(errorView);
   }
+  /**
+   * The page tried to send this tab to another site with no act of the
+   * user's, and the bridge held it (policy.navigationDecision). The page
+   * stays; the bar says where it wanted to go and waits.
+   */
+  function showRedirectHeld(ev) {
+    const to = String(ev.url || '');
+    let fromHost = '', toHost = '';
+    try { fromHost = new URL(ev.from || pane.url).hostname; } catch { fromHost = ''; }
+    try { toHost = new URL(to).hostname; } catch { toHost = to; }
+    notice.innerHTML = '';
+    const text = el('span', 'br-notice-text', { text: `${fromHost || 'This page'} wants to send you to ${toHost}`, title: to });
+    const go = el('button', 'primary', { type: 'button', text: 'Continue', title: to });
+    go.addEventListener('click', () => { hideNotice(); loadInView(to); });
+    const stay = el('button', null, { type: 'button', text: 'Stay' });
+    stay.addEventListener('click', () => hideNotice());
+    const always = el('button', null, { type: 'button', text: 'Always Allow Here', title: `Let ${fromHost || 'this site'} send you to other sites on its own. The shield panel has the switch to undo it.` });
+    always.addEventListener('click', async () => { const b = bridge(); if (b) await b.setSite(pane.url, { redirects: true }); hideNotice(); loadInView(to); });
+    notice.append(text, go, stay, always);
+    notice.hidden = false;
+  }
+  function hideNotice() { if (notice.hidden) return; notice.hidden = true; notice.innerHTML = ''; }
   /** An assistant tab whose page is gone (a restart, or the Browser was off). */
   function showEnded() {
     if (errorView) errorView.remove();
@@ -878,7 +909,7 @@ function createPagePane(container, input, opts = {}) {
         pane.loading = false; progressFill.style.width = '100%';
         setTimeout(() => { progressFill.style.opacity = '0'; progressFill.style.width = '0'; }, 200);
         pane.canGoBack = !!ev.canGoBack; pane.canGoForward = !!ev.canGoForward; updateChrome(); settleLoad(true); break;
-      case 'did-navigate': onNavigated(ev.url, false, ev); break;
+      case 'did-navigate': hideNotice(); onNavigated(ev.url, false, ev); break;
       case 'did-navigate-in-page': onNavigated(ev.url, true, ev); break;
       case 'page-title-updated':
         pane.viewTitle = ev.title || pane.viewTitle;
@@ -896,6 +927,7 @@ function createPagePane(container, input, opts = {}) {
         break;
       }
       case 'crashed': showCrashed(ev.reason); break;
+      case 'redirect-held': showRedirectHeld(ev); break;
       case 'auth-request': showAuth(ev); break;
       case 'update-target-url': linkStatus(ev.url || ''); break;
       case 'found-in-page': { const r = ev.result; if (r) findCount.textContent = r.matches ? `${r.activeMatchOrdinal} of ${r.matches}` : 'No matches'; break; }
@@ -1006,6 +1038,7 @@ function createPagePane(container, input, opts = {}) {
     const apply = async (patch) => { if (!b) return; await b.setSite(pane.url, patch); reload(); refreshShieldPanel(); notifySidebar(); };
     shieldPanel.appendChild(rowSwitch('Block Trackers And Ads', s.shields, (v) => apply({ shields: v })));
     shieldPanel.appendChild(rowSwitch('Upgrade Connections To HTTPS', s.https, (v) => apply({ https: v })));
+    shieldPanel.appendChild(rowSwitch('Allow Redirects To Other Sites', s.redirects, (v) => apply({ redirects: v })));
     const cookieRow = el('div', 'br-panel-row');
     cookieRow.appendChild(el('span', null, { text: 'Cookies' }));
     const slot = el('div', 'br-dropdown-slot');
@@ -1371,6 +1404,12 @@ function pushAnnoyances() {
     .then((l) => { if (l && l.status) { _lists = l; notifySidebar(); for (const p of _panes.values()) p.onLists(); } })
     .catch(() => {});
 }
+/** Tell main whether a settled page's own cross-site redirect waits for the user. */
+function pushHoldRedirects() {
+  const b = bridge();
+  if (!b || !b.setHoldRedirects) return;
+  b.setHoldRedirects(cfg('holdRedirects', true) !== false).catch(() => {});
+}
 
 function listsLine() {
   if (_lists.status === 'ready') return `Filter lists updated ${_lists.updatedAt ? new Date(_lists.updatedAt).toLocaleDateString() : 'recently'}${_lists.count ? `, ${_lists.count.toLocaleString()} rules` : ''}.`;
@@ -1653,7 +1692,7 @@ function buildShieldsPage() {
     if (!r.recent || !r.recent.length) right.appendChild(el('div', 'br-empty', { text: 'Nothing in this session yet.' }));
     else {
       const t = table([{ label: 'Time' }, { label: 'On Page' }, { label: 'Blocked' }]);
-      for (const e of r.recent) { const tr = el('tr'); tr.appendChild(cell(new Date(e.t).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' }))); tr.appendChild(cell(e.page || '')); tr.appendChild(cell(e.popup ? e.host + ' (popup)' : e.host)); t.appendChild(tr); }
+      for (const e of r.recent) { const tr = el('tr'); tr.appendChild(cell(new Date(e.t).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' }))); tr.appendChild(cell(e.page || '')); tr.appendChild(cell(e.popup ? e.host + ' (popup)' : (e.redirect ? e.host + ' (redirect)' : e.host))); t.appendChild(tr); }
       right.appendChild(t);
     }
   };
@@ -1849,7 +1888,7 @@ function createSidebar(container) {
     const list = el('div', 'br-list');
     for (const [site, e] of bySite) {
       const bits = [];
-      if (e.settings) { if (!e.settings.shields) bits.push('shields down'); if (e.settings.cookies !== 'block-third-party') bits.push(e.settings.cookies === 'allow' ? 'all cookies' : 'no cookies'); if (!e.settings.https) bits.push('no HTTPS upgrade'); }
+      if (e.settings) { if (!e.settings.shields) bits.push('shields down'); if (e.settings.cookies !== 'block-third-party') bits.push(e.settings.cookies === 'allow' ? 'all cookies' : 'no cookies'); if (!e.settings.https) bits.push('no HTTPS upgrade'); if (e.settings.redirects) bits.push('redirects allowed'); }
       for (const p of e.perms) bits.push(`${p.permission}: ${p.decision}`);
       list.appendChild(item(site, bits.join(', ') || 'default', () => openTab(`https://${site}/`), 'shield', [{ icon: 'x', title: 'Reset Site', handler: async () => { await b.resetSite(`https://${site}/`); notifySidebar(); } }]));
     }
@@ -2006,6 +2045,7 @@ export async function activate(api, context) {
   context.subscriptions.push({ dispose: installThemeHook() });
   pushAnnoyances();
   pushInAppLinks();
+  pushHoldRedirects();
   // Page views outlive panes; a view whose editor is gone is destroyed here,
   // whether the pane was mounted when the tab closed or not.
   const reconcileViews = async () => {
@@ -2026,6 +2066,7 @@ export async function activate(api, context) {
       if (e.affectsConfiguration('browser.pageTheme')) for (const p of _panes.values()) applyPageTheme(p);
       if (e.affectsConfiguration('browser.blockAnnoyances')) pushAnnoyances();
       if (e.affectsConfiguration('browser.openLinksInApp')) pushInAppLinks();
+      if (e.affectsConfiguration('browser.holdRedirects')) pushHoldRedirects();
       if (e.affectsConfiguration('browser.showBookmarksBar')) { _bookmarksBarOverride = null; notifySidebar(); }
       if (e.affectsConfiguration('browser.homepage')) _homepageOverride = null;
     }));

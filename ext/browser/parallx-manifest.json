@@ -98,6 +98,11 @@
             "type": "boolean",
             "default": true,
             "description": "Also hide cookie consent banners, newsletter and social overlays and other annoyances (EasyList Cookie and the uBlock annoyance lists). Off: ads and trackers only, which is what Brave ships by default."
+          },
+          "browser.holdRedirects": {
+            "type": "boolean",
+            "default": true,
+            "description": "When a page you have been on sends you to another site on its own, wait for you to say Continue. Links you click and pages that redirect as soon as they load are not affected. A window a page opens on your click can never also send this tab elsewhere; that is blocked either way."
           }
         }
       }

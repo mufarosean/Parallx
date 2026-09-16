@@ -173,10 +173,60 @@ describe('popups', () => {
     expect(policy.popupDecision({ url: 'https://a.com/', gestureAgeMs: policy.POPUP_GESTURE_MS + 1, popupsSinceGesture: 0, listed: false })).toBe('block');
     expect(policy.popupDecision({ url: 'https://a.com/', gestureAgeMs: Infinity, popupsSinceGesture: 0, listed: false })).toBe('block');
   });
+  it('counts a press, not its release, and no key that is only Escape or a modifier', () => {
+    // Chromium grants activation on mousedown and keydown. mouseup and the
+    // char event that follows a keydown are the same act; counting them let a
+    // page open two windows on one click.
+    expect(policy.activationInput({ type: 'mouseDown', button: 'left' })).toBe(true);
+    expect(policy.activationInput({ type: 'mouseDown', button: 'middle' })).toBe(true);
+    expect(policy.activationInput({ type: 'mouseDown', button: 'right' })).toBe(false);
+    expect(policy.activationInput({ type: 'mouseUp', button: 'left' })).toBe(false);
+    expect(policy.activationInput({ type: 'keyDown', key: 'a' })).toBe(true);
+    expect(policy.activationInput({ type: 'rawKeyDown', key: 'Enter' })).toBe(true);
+    expect(policy.activationInput({ type: 'keyDown', key: 'Escape' })).toBe(false);
+    expect(policy.activationInput({ type: 'keyDown', key: 'Shift' })).toBe(false);
+    expect(policy.activationInput({ type: 'char', key: 'a' })).toBe(false);
+    expect(policy.activationInput({ type: 'keyUp', key: 'a' })).toBe(false);
+    expect(policy.activationInput({ type: 'mouseWheel' })).toBe(false);
+    expect(policy.activationInput({ type: 'mouseMove' })).toBe(false);
+    expect(policy.activationInput(undefined)).toBe(false);
+  });
   it('never opens a listed destination or a non-web scheme', () => {
     expect(policy.popupDecision({ url: 'https://ads.example/x', gestureAgeMs: 10, popupsSinceGesture: 0, listed: true })).toBe('block');
     expect(policy.popupDecision({ url: 'about:blank', gestureAgeMs: 10, popupsSinceGesture: 0, listed: false })).toBe('drop');
     expect(policy.popupDecision({ url: 'javascript:alert(1)', gestureAgeMs: 10, popupsSinceGesture: 0, listed: false })).toBe('drop');
     expect(policy.popupDecision({ url: undefined, gestureAgeMs: 10, popupsSinceGesture: 0, listed: false })).toBe('drop');
+  });
+});
+describe('redirects', () => {
+  const site = policy.defaultSite();
+  const from = 'https://news.example/story';
+  it('never questions a navigation that stays on the site, or one that is not web content', () => {
+    expect(policy.navigationDecision({ fromUrl: from, toUrl: 'https://cdn.news.example/next', activationAgeMs: Infinity, popupsSinceActivation: 0, documentAgeMs: 60_000, site })).toBe('allow');
+    expect(policy.navigationDecision({ fromUrl: 'about:blank', toUrl: 'https://other.example/', activationAgeMs: Infinity, popupsSinceActivation: 0, documentAgeMs: 60_000, site })).toBe('allow');
+    expect(policy.navigationDecision({ fromUrl: from, toUrl: 'mailto:a@b.c', activationAgeMs: Infinity, popupsSinceActivation: 0, documentAgeMs: 60_000, site })).toBe('allow');
+  });
+  it('lets a click leave the site, and blocks the tab-under that rides the same click', () => {
+    expect(policy.navigationDecision({ fromUrl: from, toUrl: 'https://other.example/', activationAgeMs: 120, popupsSinceActivation: 0, documentAgeMs: 60_000, site })).toBe('allow');
+    // The page opened a window on this click (allowed, one per activation),
+    // then set location: the popunder's other half.
+    expect(policy.navigationDecision({ fromUrl: from, toUrl: 'https://ads.example/land', activationAgeMs: 120, popupsSinceActivation: 1, documentAgeMs: 60_000, site })).toBe('tab-under');
+  });
+  it('lets a fresh document redirect on its own, and holds a settled one that does', () => {
+    // A sign-in hop, a link shortener, a consent page: they redirect at once.
+    expect(policy.navigationDecision({ fromUrl: from, toUrl: 'https://sso.example/login', activationAgeMs: Infinity, popupsSinceActivation: 0, documentAgeMs: 400, site })).toBe('allow');
+    expect(policy.navigationDecision({ fromUrl: from, toUrl: 'https://sso.example/login', activationAgeMs: Infinity, popupsSinceActivation: 0, documentAgeMs: policy.REDIRECT_GRACE_MS - 1, site })).toBe('allow');
+    // A page the user has been reading, sending them elsewhere with no act of theirs.
+    expect(policy.navigationDecision({ fromUrl: from, toUrl: 'https://ads.example/land', activationAgeMs: Infinity, popupsSinceActivation: 0, documentAgeMs: policy.REDIRECT_GRACE_MS, site })).toBe('hold');
+    // An old activation is no activation: a click five minutes ago does not cover this.
+    expect(policy.navigationDecision({ fromUrl: from, toUrl: 'https://ads.example/land', activationAgeMs: policy.ACTIVATION_MS + 1, popupsSinceActivation: 0, documentAgeMs: 60_000, site })).toBe('hold');
+    // Unknown document age reads as fresh: the doubt goes to the page.
+    expect(policy.navigationDecision({ fromUrl: from, toUrl: 'https://ads.example/land', activationAgeMs: Infinity, popupsSinceActivation: 0, documentAgeMs: undefined, site })).toBe('allow');
+  });
+  it('a site the user marked may redirect freely; the default may not', () => {
+    expect(policy.navigationDecision({ fromUrl: from, toUrl: 'https://other.example/', activationAgeMs: Infinity, popupsSinceActivation: 0, documentAgeMs: 60_000, site: { ...site, redirects: true } })).toBe('allow');
+    expect(policy.defaultSite().redirects).toBe(false);
+    expect(policy.normalizeSite({ redirects: true }).redirects).toBe(true);
+    expect(policy.normalizeSite({ redirects: 'yes' }).redirects).toBe(false);
   });
 });

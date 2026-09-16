@@ -244,10 +244,11 @@ function privateAddressRefused(url, allowed) {
   return !(allowed && typeof allowed.has === 'function' && allowed.has(h));
 }
 
-/** Per-site settings, the shield's three switches. */
+/** Per-site settings, the shield's switches. `redirects` true lets the site
+ *  send the tab to another site on its own (navigationDecision). */
 const COOKIE_MODES = ['block-third-party', 'block-all', 'allow'];
 function defaultSite() {
-  return { shields: true, cookies: 'block-third-party', https: true };
+  return { shields: true, cookies: 'block-third-party', https: true, redirects: false };
 }
 function normalizeSite(raw) {
   const d = defaultSite();
@@ -256,6 +257,7 @@ function normalizeSite(raw) {
     shields: typeof raw.shields === 'boolean' ? raw.shields : d.shields,
     cookies: COOKIE_MODES.includes(raw.cookies) ? raw.cookies : d.cookies,
     https: typeof raw.https === 'boolean' ? raw.https : d.https,
+    redirects: typeof raw.redirects === 'boolean' ? raw.redirects : d.redirects,
   };
 }
 
@@ -293,20 +295,71 @@ function downloadTarget(dir, filename, exists, sep) {
   return candidate;
 }
 
+// ── User activation ──
+// Chromium's popup blocker and its navigation throttles are not part of
+// Electron, so the notion they rest on is rebuilt here: transient user
+// activation. The page has it for a few seconds after the user pressed a
+// mouse button or a key in it, and window.open consumes it. Everything that
+// follows (popups, tab-unders, redirects) asks one question: did the user
+// just act in this page, and has that act already been spent?
+const ACTIVATION_MS = 5000;
+const POPUP_GESTURE_MS = ACTIVATION_MS;
+const NON_ACTIVATING_KEYS = new Set(['Escape', 'Esc', 'Shift', 'Control', 'Alt', 'AltGraph', 'Meta', 'CapsLock', 'NumLock', 'ScrollLock', 'Fn', 'FnLock', 'Hyper', 'Super', 'Symbol', 'SymbolLock']);
+/**
+ * Does this input event (webContents 'input-event') grant activation? The
+ * HTML rules: mousedown (not the context-menu button) and keydown (not
+ * Escape, not a lone modifier). mouseup and the char event that follows a
+ * keydown are the same act, not a second one: counting them doubled what a
+ * click could open.
+ */
+function activationInput(input) {
+  if (!input || typeof input !== 'object') return false;
+  const t = input.type;
+  if (t === 'mouseDown') return input.button !== 'right';
+  if (t === 'keyDown' || t === 'rawKeyDown') return !NON_ACTIVATING_KEYS.has(String(input.key || ''));
+  return false;
+}
+
 // ── Popups ──
-// Chromium's popup blocker is not part of Electron, so the rule lives here:
-// a page may open one new window per user gesture (a click or a key in that
-// page), only within a few seconds of it, and never to a destination the
-// filter lists would not let the page embed (the popunder ad networks).
-// 'drop' is for schemes a popup may never carry (javascript:, data:, blob:,
-// about:blank that the opener could only fill by scripting it).
-const POPUP_GESTURE_MS = 5000;
+// A page may open one new window per activation, only while the activation
+// lasts, and never to a destination the filter lists would not let the page
+// embed (the popunder ad networks). 'drop' is for schemes a popup may never
+// carry (javascript:, data:, blob:, about:blank that the opener could only
+// fill by scripting it).
 function popupDecision({ url, gestureAgeMs, popupsSinceGesture, listed }) {
   if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return 'drop';
   if (listed) return 'block';
   if (!Number.isFinite(gestureAgeMs) || gestureAgeMs < 0 || gestureAgeMs > POPUP_GESTURE_MS) return 'block';
   if ((popupsSinceGesture || 0) >= 1) return 'block';
   return 'allow';
+}
+
+// ── Redirects ──
+// A top-level navigation the page itself starts (a link, a script setting
+// location, a meta refresh; never the address bar, Back, or a server
+// redirect, which are not the page's doing) that leaves the site is judged
+// by what the user did:
+//   - the user just acted here and nothing has spent it: a click on a link.
+//     Allowed.
+//   - the user just acted here but the page already opened a window on it:
+//     the tab-under, the popunder's other half (the link opens in the new
+//     window and this tab slides to an ad). Blocked outright.
+//   - no activation, and the document is only moments old: a redirect page
+//     doing its job (sign-in, a link shortener, a consent hop). Allowed.
+//   - no activation on a document the user has been sitting on: nobody
+//     asked for this. Held for the user to say Continue.
+// Staying on the same site is never questioned, nor is a site the user has
+// marked (site.redirects), nor a page that is not web content to begin with.
+const REDIRECT_GRACE_MS = 3000;
+const isWebUrl = (u) => typeof u === 'string' && /^https?:\/\//i.test(u);
+function navigationDecision({ fromUrl, toUrl, activationAgeMs, popupsSinceActivation, documentAgeMs, site }) {
+  if (!isWebUrl(toUrl) || !isWebUrl(fromUrl)) return 'allow';
+  if (!isThirdParty(toUrl, fromUrl)) return 'allow';
+  if (site && site.redirects === true) return 'allow';
+  const active = Number.isFinite(activationAgeMs) && activationAgeMs >= 0 && activationAgeMs <= ACTIVATION_MS;
+  if (active) return (popupsSinceActivation || 0) >= 1 ? 'tab-under' : 'allow';
+  if (!Number.isFinite(documentAgeMs) || documentAgeMs < REDIRECT_GRACE_MS) return 'allow';
+  return 'hold';
 }
 
 /**
@@ -337,6 +390,10 @@ module.exports = {
   DEFAULT_ENGINE,
   POPUP_GESTURE_MS,
   popupDecision,
+  activationInput,
+  navigationDecision,
+  ACTIVATION_MS,
+  REDIRECT_GRACE_MS,
   isViewColor,
   inAppLinkDecision,
   PERMISSION_POLICY,

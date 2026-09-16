@@ -65,7 +65,7 @@ function setupBrowserBridge(ipcMain, opts) {
   // annoyance lists (cookie banners, newsletter and social overlays). The
   // set in use is remembered here so the engine is right from the first load.
   const ENGINE_FILES = { ads: 'engine.bin', full: 'engine-full.bin' };
-  const prefs = { annoyances: true, ...readJson(prefsPath, {}) };
+  const prefs = { annoyances: true, holdRedirects: true, ...readJson(prefsPath, {}) };
   const enginePathFor = () => path.join(dir, prefs.annoyances ? ENGINE_FILES.full : ENGINE_FILES.ads);
   try { fs.unlinkSync(path.join(dir, prefs.annoyances ? ENGINE_FILES.ads : ENGINE_FILES.full)); } catch { /* none */ }
 
@@ -282,7 +282,7 @@ function setupBrowserBridge(ipcMain, opts) {
     try { const g = webContents.fromId(Number(id)); isPrivate = !!g && !g.isDestroyed() && (g.session === sessions.get('private') || [...agentPrivateSessions.values()].includes(g.session)); } catch { isPrivate = false; }
     if (!isPrivate) {
       const page = req.sourceHostname || req.sourceDomain || '';
-      blockedLog.push({ t: Date.now(), page, host, popup: !!req.popup });
+      blockedLog.push({ t: Date.now(), page, host, popup: !!req.popup, redirect: !!req.redirect });
       if (blockedLog.length > 500) blockedLog.splice(0, blockedLog.length - 500);
       blockedStats.byHost[host] = (blockedStats.byHost[host] || 0) + 1;
     }
@@ -372,13 +372,13 @@ function setupBrowserBridge(ipcMain, opts) {
     if (!guest || guest.isDestroyed() || !isOurs(guest.session)) return;
     // A page's sound is the page's business: never start a browser tab muted.
     try { if (guest.isAudioMuted()) guest.setAudioMuted(false); } catch { /* ignore */ }
-    // Popups (policy.popupDecision): one new window per user gesture in this
-    // page, within seconds of it, never to a destination the lists name. A
+    // Transient user activation (policy.activationInput): a press grants it,
+    // the windows opened on it spend it. Popups (policy.popupDecision) get
+    // one window per activation, never to a destination the lists name; a
     // blocked one counts in the shield like any other blocked request.
-    const gesture = { at: 0, used: 0 };
+    const gesture = { at: 0, used: 0, committedAt: Date.now() };
     guest.on('input-event', (_e, input) => {
-      const t = input && input.type;
-      if (t === 'mouseDown' || t === 'mouseUp' || t === 'keyDown' || t === 'rawKeyDown' || t === 'char') { gesture.at = Date.now(); gesture.used = 0; }
+      if (policy.activationInput(input)) { gesture.at = Date.now(); gesture.used = 0; }
       // On an assistant page, input that is not the assistant's own is the user taking over.
       if (broker) broker.onInput(recByWc.get(guest.id), input);
     });
@@ -401,7 +401,32 @@ function setupBrowserBridge(ipcMain, opts) {
       else if (decision === 'block') countBlocked({ tabId: guest.id, url, hostname: hostnameOf(url), sourceHostname: hostnameOf(openerUrl), popup: true });
       return { action: 'deny' };
     });
-    guest.on('did-navigate', () => { blocked.set(guest.id, { count: 0, hosts: new Map() }); send('browser:blocked', blockedSummary(guest.id)); });
+    // Redirects (policy.navigationDecision): a navigation this page starts
+    // that leaves the site is a click, a tab-under, a fresh page's own
+    // redirect, or nobody's idea. The last is held and the pane asks; the
+    // tab-under is blocked outright. The assistant's pages are exempt: the
+    // broker consents to each of their navigations itself.
+    guest.on('will-navigate', (e, urlArg) => {
+      const rec = recByWc.get(guest.id);
+      if (rec && rec.kind === 'agent') return;
+      if (e && typeof e.isMainFrame === 'boolean' && !e.isMainFrame) return;
+      const toUrl = String((e && e.url) || urlArg || '');
+      let fromUrl = '';
+      try { fromUrl = guest.getURL(); } catch { fromUrl = ''; }
+      const decision = policy.navigationDecision({
+        fromUrl, toUrl,
+        activationAgeMs: gesture.at ? Date.now() - gesture.at : Infinity,
+        popupsSinceActivation: gesture.used,
+        documentAgeMs: Date.now() - gesture.committedAt,
+        site: siteFor(fromUrl),
+      });
+      if (decision === 'allow') return;
+      if (decision === 'hold' && !prefs.holdRedirects) return;
+      e.preventDefault();
+      countBlocked({ tabId: guest.id, url: toUrl, hostname: hostnameOf(toUrl), sourceHostname: hostnameOf(fromUrl), redirect: true });
+      if (decision === 'hold' && rec) emitView(rec, 'redirect-held', { from: fromUrl, url: toUrl });
+    });
+    guest.on('did-navigate', () => { gesture.committedAt = Date.now(); blocked.set(guest.id, { count: 0, hosts: new Map() }); send('browser:blocked', blockedSummary(guest.id)); });
     guest.on('destroyed', () => { blocked.delete(guest.id); });
   }
   function watchWindow(win) {
@@ -848,6 +873,12 @@ function setupBrowserBridge(ipcMain, opts) {
     try { fs.unlinkSync(path.join(dir, next ? ENGINE_FILES.ads : ENGINE_FILES.full)); } catch { /* none */ }
     await loadLists(false);
     return lists;
+  });
+  // A settled page's own cross-site redirect waits for the user (default) or goes through. Tab-unders are blocked either way.
+  ipcMain.handle('browser:setHoldRedirects', (_e, on) => {
+    prefs.holdRedirects = on !== false;
+    writeJson(prefsPath, prefs);
+    return prefs.holdRedirects;
   });
   ipcMain.handle('browser:blockedFor', (_e, webContentsId) => blockedSummary(webContentsId));
   ipcMain.handle('browser:listDownloads', () => [...downloads.values()].map((d) => ({ ...d })));
