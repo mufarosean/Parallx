@@ -34,6 +34,16 @@ const path = require('path');
 const fs = require('fs');
 const policy = require('../../electron/browserPolicy.cjs');
 
+// Nothing of the probe lands in the app's data: its own userData under the OS temp folder, in-memory partitions.
+app.setPath('userData', path.join(require('os').tmpdir(), 'parallx-turnstile-probe'));
+// Closing a rung's window must not end the run.
+app.on('window-all-closed', () => { /* the ladder decides when to quit */ });
+// Console output to a pipe is asynchronous and app.exit drops what has not
+// flushed, so the report is also written synchronously, here.
+const REPORT = path.join(app.getPath('userData'), 'report.txt');
+const lines = [];
+const say = (s) => { lines.push(s); console.log(s); };
+
 let ElectronBlocker = null;
 try { ({ ElectronBlocker } = require('@ghostery/adblocker-electron')); } catch { ElectronBlocker = null; }
 
@@ -126,14 +136,26 @@ async function runRung(rung) {
   let navigations = 0;
   const titles = [];
   wc.on('did-navigate', (_e, url) => { navigations++; titles.push(url); });
-  if (rung.debugger) {
-    try { wc.debugger.attach('1.3'); await wc.debugger.sendCommand('Page.enable'); } catch (err) { console.log(`  [${rung.name}] debugger attach failed: ${err && err.message}`); }
-  }
   if (VISIBLE) win.show(); else win.showInactive();
   const started = Date.now();
   wc.loadURL(URL_ARG).catch(() => { /* reported below */ });
+  let debuggerNote = '';
+  if (rung.debugger) {
+    // After loadURL, never before: a command sent to a window whose renderer
+    // has not started waits for one, and the renderer starts with the load.
+    // Time-boxed like the real controller (browserDebugger.cjs, 10 s).
+    try {
+      wc.debugger.attach('1.3');
+      await Promise.race([
+        wc.debugger.sendCommand('Page.enable'),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Page.enable did not answer within 10 s')), 10_000)),
+      ]);
+      debuggerNote = 'attached, Page enabled';
+    } catch (err) { debuggerNote = `attach failed: ${err && err.message}`; say(`  [${rung.name}] ${debuggerNote}`); }
+  }
 
   let outcome = 'timeout';
+  let via = '';
   let clicked = false;
   let facts = null;
   while (Date.now() - started < WAIT_MS) {
@@ -147,6 +169,7 @@ async function runRung(rung) {
     const challenged = CHALLENGE_TITLE.test(title) || (facts && facts.challengeVisible);
     if (clearance || (facts && facts.token) || (navigations >= 1 && !challenged && facts && !facts.error && Date.now() - started > 6000)) {
       outcome = clicked ? 'passed-after-click' : 'passed';
+      via = clearance ? 'cf_clearance issued' : (facts && facts.token ? 'widget token present' : 'page settled with no challenge shown');
       break;
     }
     if (navigations >= 4) { outcome = 'loop'; break; }
@@ -164,7 +187,7 @@ async function runRung(rung) {
   let cookieNames = [];
   try { cookieNames = (await ses.cookies.get({})).map((c) => c.name); } catch { cookieNames = []; }
   const result = {
-    rung: rung.name, outcome, navigations, clicked, seconds: Math.round((Date.now() - started) / 1000),
+    rung: rung.name, outcome, via, debuggerNote, navigations, clicked, seconds: Math.round((Date.now() - started) / 1000),
     title: facts && facts.title, finalUrl: facts && facts.url, visibility: facts && facts.visibility,
     brands: facts && facts.brands, chrome: facts && facts.chrome, webdriver: facts && facts.webdriver,
     cookies: cookieNames.slice(0, 12), text: facts && facts.bodyText,
@@ -177,34 +200,38 @@ async function runRung(rung) {
 }
 
 app.whenReady().then(async () => {
-  console.log(`probe: ${URL_ARG}`);
-  console.log(`chrome ${process.versions.chrome}, electron ${process.versions.electron}, engine cache ${ENGINE ? 'found' : 'missing'}, window ${VISIBLE ? 'visible' : 'hidden'}`);
-  console.log(`stock user agent: ${app.userAgentFallback}`);
+  say(`probe: ${URL_ARG}`);
+  say(`chrome ${process.versions.chrome}, electron ${process.versions.electron}, engine cache ${ENGINE ? 'found' : 'missing'}, window ${VISIBLE ? 'visible' : 'hidden'}`);
+  say(`stock user agent: ${app.userAgentFallback}`);
+  say(`report: ${REPORT}`);
   const results = [];
   for (const rung of RUNGS) {
-    console.log(`\n== ${rung.name} ==`);
-    const r = await runRung(rung);
+    say(`\n== ${rung.name} ==`);
+    let r;
+    try { r = await runRung(rung); } catch (err) { r = { rung: rung.name, outcome: `error: ${err && err.message ? err.message : err}`, seconds: 0, navigations: 0, cookies: [], engine: 'n/a' }; }
     results.push(r);
-    console.log(`  outcome: ${r.outcome} (${r.seconds}s, ${r.navigations} navigations${r.clicked ? ', one click' : ''})`);
-    console.log(`  title: ${r.title}`);
-    console.log(`  url: ${r.finalUrl}`);
-    console.log(`  page sees: brands=[${r.brands}] window.chrome=${r.chrome} webdriver=${r.webdriver} visibility=${r.visibility}`);
-    console.log(`  cookies: ${r.cookies.join(', ') || 'none'}; engine ${r.engine}`);
-    if (r.text) console.log(`  text: ${r.text}`);
+    say(`  outcome: ${r.outcome} (${r.seconds}s, ${r.navigations} navigations${r.clicked ? ', one click' : ''}${r.via ? ', ' + r.via : ''}${r.debuggerNote ? ', devtools ' + r.debuggerNote : ''})`);
+    say(`  title: ${r.title}`);
+    say(`  url: ${r.finalUrl}`);
+    say(`  page sees: brands=[${r.brands}] window.chrome=${r.chrome} webdriver=${r.webdriver} visibility=${r.visibility}`);
+    say(`  cookies: ${(r.cookies || []).join(', ') || 'none'}; engine ${r.engine}`);
+    if (r.text) say(`  text: ${r.text}`);
+    try { fs.writeFileSync(REPORT, lines.join('\n') + '\n'); } catch { /* the console still has it */ }
   }
-  console.log('\n== summary ==');
-  for (const r of results) console.log(`  ${r.rung.padEnd(9)} ${r.outcome}`);
+  say('\n== summary ==');
+  for (const r of results) say(`  ${r.rung.padEnd(9)} ${r.outcome}`);
   const control = results.find((r) => r.rung === 'chrome-ua');
   const ladder = results.filter((r) => r.rung !== 'chrome-ua');
-  if (control) console.log(`  control (the old Chrome-only UA): ${control.outcome}${/^passed/.test(control.outcome) ? ' (the rewrite is not what this page objects to)' : ' (the rewrite alone fails this page)'}`);
+  if (control) say(`  control (the old Chrome-only UA): ${control.outcome}${/^passed/.test(control.outcome) ? ' (the rewrite is not what this page objects to)' : ' (the rewrite alone fails this page)'}`);
   const firstFail = ladder.find((r) => !/^passed/.test(r.outcome));
   const lastPass = [...ladder].reverse().find((r) => /^passed/.test(r.outcome));
   if (firstFail && lastPass && ladder.indexOf(firstFail) > ladder.indexOf(lastPass)) {
-    console.log(`  first failing rung: ${firstFail.rung} (the thing it adds over ${lastPass.rung} is the suspect)`);
+    say(`  first failing rung: ${firstFail.rung} (the thing it adds over ${lastPass.rung} is the suspect)`);
   } else if (firstFail && !lastPass) {
-    console.log('  every rung failed, plain Electron included: the cause is not in the bridge configuration (hidden window, IP reputation, or the site wants a real click)');
+    say('  every rung failed, plain Electron included: the cause is not in the bridge configuration (hidden window, IP reputation, or the site wants a real click)');
   } else if (!firstFail) {
-    console.log('  every rung passed: the Browser as it is now clears this page');
+    say('  every rung passed: the Browser as it is now clears this page');
   }
-  app.exit(0);
+  try { fs.writeFileSync(REPORT, lines.join('\n') + '\n'); } catch { /* the console still has it */ }
+  setTimeout(() => app.quit(), 300);
 });
