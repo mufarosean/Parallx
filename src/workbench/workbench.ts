@@ -692,6 +692,35 @@ export class Workbench extends Layout {
   }
 
   /**
+   * Register the workspace root with the main-process file-path gate.
+   *
+   * The gate (electron/main.cjs `_isAllowedReadPath` / `_isAllowedWritePath`)
+   * answers EACCES for any fs:* IPC outside the registered root, and it lives
+   * in the main process — which SURVIVES the reload that a workspace switch
+   * performs. Until the new root is registered the gate is still enforcing the
+   * old workspace's, so every read in the new one is denied.
+   *
+   * This used to be registered inside the chat tool's activate(). Chat is
+   * twelfth in the built-in boot list and the explorer is first, so the
+   * explorer read its new root, was denied, and rendered an empty tree that
+   * only a manual refresh (by which time chat had activated) could fix. A
+   * cold start hid it: no root is registered yet, and the gate is open until
+   * one is. The boundary is workbench state, not a tool's.
+   */
+  private async _registerFsPathGateRoot(): Promise<void> {
+    const fsBridge = (globalThis as {
+      parallxElectron?: { fs?: { setWorkspaceRoot?(root: string | null): Promise<unknown> } };
+    }).parallxElectron?.fs;
+    if (typeof fsBridge?.setWorkspaceRoot !== 'function') return;
+    const root = this._workspace.folders[0]?.uri.fsPath ?? null;
+    try {
+      await fsBridge.setWorkspaceRoot(root);
+    } catch (err) {
+      console.warn('[Workbench] Failed to register workspace root with the file-path gate:', err);
+    }
+  }
+
+  /**
    * Start file watchers for all workspace folders.
    * When folders change (added/removed), update watchers accordingly.
    * File change events flow through IFileService.onDidFileChange.
@@ -1388,6 +1417,14 @@ export class Workbench extends Layout {
     if (this._restoredState?.folders) {
       this._workspace.restoreFolders(this._restoredState.folders);
     }
+
+    // The folders are settled, so the main process can be told which root
+    // this window is allowed to read and write. This happens HERE, in Phase
+    // 4, because Phase 5 activates tools and the first of them reads files.
+    await this._registerFsPathGateRoot();
+    this._workspaceListeners.add(this._workspace.onDidChangeFolders(() => {
+      void this._registerFsPathGateRoot();
+    }));
 
     // ── Reconcile durable workspace identity BEFORE Phase 5 ──
     // The durable identity file (.parallx/workspace-identity.json) in the

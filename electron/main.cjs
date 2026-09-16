@@ -1502,6 +1502,19 @@ ipcMain.handle('fs:registerExtraRoots', (_event, roots) => {
   return { ok: true, count: _fsExtraRoots.size };
 });
 
+// The path gate is workspace-scoped state like every other entry in the
+// teardown registry, and this process outlives the renderer reload that a
+// workspace switch performs. Left standing, the OLD workspace's root is what
+// the next workspace gets measured against: its own files answer EACCES while
+// the workspace the user just left stays readable. Dropping it restores the
+// documented "nothing registered yet -> unrestricted" state a cold start
+// begins in; the renderer re-registers in Phase 4, before any tool activates.
+// Extra roots go with it. An extension re-syncs its own when it activates.
+registerTeardown('fs-path-gate', 'workspace', () => {
+  _fsWorkspaceRoot = null;
+  _fsExtraRoots.clear();
+});
+
 // ── fs:readFile ──
 ipcMain.handle('fs:readFile', async (_event, filePath, encoding) => {
   if (!_isAllowedReadPath(filePath)) {

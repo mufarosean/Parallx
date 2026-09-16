@@ -98,6 +98,8 @@ interface TreeNode {
   children: TreeNode[];
   parent: TreeNode | null;
   element?: HTMLElement;
+  /** Set when the last read of this directory failed; shown on the row. */
+  error?: string;
 }
 
 // ─── State ───────────────────────────────────────────────────────────────────
@@ -532,6 +534,8 @@ function renderNodeFlat(container: HTMLElement | DocumentFragment, node: TreeNod
   if (node.type === FILE_TYPE_DIRECTORY && node.expanded) {
     if (node.loading && !node.loaded) {
       container.appendChild(createLoadingElement(depth + 1));
+    } else if (node.error) {
+      container.appendChild(createErrorElement(node, depth + 1));
     } else if (node.loaded && node.children.length === 0) {
       const emptyEl = $('div');
       emptyEl.className = 'tree-empty-dir';
@@ -553,6 +557,37 @@ function createLoadingElement(depth: number): HTMLElement {
   // Computed layout dimension
   el.style.paddingLeft = `${depth * INDENT_PX + 20}px`;
   el.textContent = '...';
+  return el;
+}
+
+/**
+ * The row a folder gets when its contents could not be read. "(empty)" and
+ * "could not read" are different answers and the tree now gives both. The
+ * underlying message (EACCES, ENOENT, a dead network path) sits on the
+ * tooltip, and Retry re-reads just that folder.
+ */
+function createErrorElement(node: TreeNode, depth: number): HTMLElement {
+  const el = $('div');
+  el.className = 'tree-node-error';
+  // Computed layout dimension
+  el.style.paddingLeft = `${depth * INDENT_PX + 20}px`;
+
+  const text = $('span');
+  text.className = 'tree-node-error-text';
+  text.textContent = 'Could not read this folder.';
+  if (node.error) text.title = node.error;
+  el.appendChild(text);
+
+  const retry = $('button');
+  retry.className = 'tree-node-error-retry';
+  retry.textContent = 'Retry';
+  retry.addEventListener('click', (e) => {
+    e.stopPropagation();
+    node.error = undefined;
+    void loadChildren(node);
+  });
+  el.appendChild(retry);
+
   return el;
 }
 
@@ -605,10 +640,15 @@ async function loadChildren(node: TreeNode): Promise<void> {
         parent: node,
       }));
     node.loaded = true;
+    node.error = undefined;
   } catch (err) {
     console.error('[Explorer] Failed to load directory:', node.uri, err);
+    // Stay retryable, and say so on the row. Recording a failed read as
+    // "loaded, no children" is what let a gated workspace look like an empty
+    // one until something forced a refresh.
     node.children = [];
-    node.loaded = true;
+    node.loaded = false;
+    node.error = err instanceof Error ? err.message : String(err);
   }
 
   node.loading = false;
@@ -648,10 +688,15 @@ async function loadChildrenDeep(
         };
       });
     node.loaded = true;
+    node.error = undefined;
   } catch (err) {
     console.error('[Explorer] Failed to load directory:', node.uri, err);
+    // Stay retryable, and say so on the row. Recording a failed read as
+    // "loaded, no children" is what let a gated workspace look like an empty
+    // one until something forced a refresh.
     node.children = [];
-    node.loaded = true;
+    node.loaded = false;
+    node.error = err instanceof Error ? err.message : String(err);
   }
 
   node.loading = false;
@@ -714,27 +759,26 @@ function uriToFsPath(uri: string): string {
 
 // ─── Filesystem Helpers ──────────────────────────────────────────────────────
 
+/**
+ * Read one directory over the fs bridge. THROWS on failure, so an empty array
+ * from here means the folder is genuinely empty. Swallowing the error and
+ * returning [] made those two indistinguishable, and the caller then cached
+ * the wrong one as a loaded, childless folder.
+ */
 async function readDirectory(uri: string): Promise<{ name: string; type: number }[]> {
   const electronFs = (globalThis as any).parallxElectron?.fs;
-  if (electronFs) {
-    try {
-      const result = await electronFs.readdir(uriToFsPath(uri));
-      // IPC returns { entries: [...], error: null } or { error: {...} }
-      if (result.error) {
-        console.error('[Explorer] readdir error:', result.error);
-        return [];
-      }
-      const entries: { name: string; type: string }[] = result.entries ?? result;
-      return entries.map(e => ({
-        name: e.name,
-        type: e.type === 'directory' ? FILE_TYPE_DIRECTORY : FILE_TYPE_FILE,
-      }));
-    } catch (err) {
-      console.error('[Explorer] readdir failed:', err);
-      return [];
-    }
+  if (!electronFs) throw new Error('File system bridge unavailable');
+  const result = await electronFs.readdir(uriToFsPath(uri));
+  // IPC returns { entries: [...], error: null } or { error: {...} }
+  if (result.error) {
+    const code = result.error.code ? `${result.error.code}: ` : '';
+    throw new Error(`${code}${result.error.message ?? 'Could not read the folder'}`);
   }
-  return [];
+  const entries: { name: string; type: string }[] = result.entries ?? result;
+  return entries.map(e => ({
+    name: e.name,
+    type: e.type === 'directory' ? FILE_TYPE_DIRECTORY : FILE_TYPE_FILE,
+  }));
 }
 
 function joinUri(base: string, name: string): string {
@@ -1432,8 +1476,10 @@ async function refreshExpandedNodes(nodes: TreeNode[], expandedSet: ReadonlySet<
         };
       });
       node.loaded = true;
+      node.error = undefined;
     } catch (err) {
       console.error('[Explorer] Failed to refresh directory:', node.uri, err);
+      node.error = err instanceof Error ? err.message : String(err);
     }
 
     // Recursively refresh children that are still expanded

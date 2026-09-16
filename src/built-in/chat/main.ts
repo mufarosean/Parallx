@@ -97,10 +97,7 @@ import {
   FLAG_PATTERN_MEMORY_ENABLED,
   isAutonomyTriggerAllowed,
 } from '../../services/autonomyFeatureFlags.js';
-import {
-  AutonomyEventLog,
-  type IAutonomyEventLogFs,
-} from '../../services/autonomyEventLog.js';
+import { AutonomyEventLog } from '../../services/autonomyEventLog.js';
 import {
   AutonomyPatternMemoryService,
   computeArgsShape,
@@ -487,20 +484,11 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     ]);
   }
 
-  // The preload bridge — still needed by chat's own machinery below (fs
-  // workspace root, cron persistence). The autonomy substrate that used to
-  // be constructed here over this bridge (event log, task rail, pattern
-  // memory, with their legacy-file migrations) now comes from CORE's
-  // autonomyBootstrap (Phase D step 5a) and is resolved just below.
-  const _bridge = (globalThis as { parallxElectron?: {
-    appPath?: string;
-    fs?: IAutonomyEventLogFs & {
-      readdir?: (path: string) => Promise<{ ok: boolean; entries?: Array<{ name: string }>; error?: string }>;
-      rename?: (oldPath: string, newPath: string) => Promise<{ ok: boolean; error?: string }>;
-    };
-  } }).parallxElectron;
-  const _fsBridge = _bridge?.fs;
-
+  // The autonomy substrate that used to be constructed here over the preload
+  // bridge (event log, task rail, pattern memory, with their legacy-file
+  // migrations) now comes from CORE's autonomyBootstrap (Phase D step 5a) and
+  // is resolved just below. The bridge itself is gone from this scope with the
+  // fs workspace-root registration that was its last caller.
   const autonomyEventLog = api.services.has(IAutonomyEventLog)
     ? api.services.get<AutonomyEventLog>(IAutonomyEventLog)
     : undefined;
@@ -527,20 +515,11 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     ? api.services.get<import('../../services/serviceTypes.js').IWorkspaceService>(IWorkspaceService)
     : undefined;
 
-  // M67 Phase 2.4 — register workspace root with main process for IPC write-path validation.
-  const _fsBridgeAny = _fsBridge as unknown as Record<string, unknown> | undefined;
-  if (_fsBridgeAny && typeof _fsBridgeAny['setWorkspaceRoot'] === 'function') {
-    const _setWsRoot = _fsBridgeAny['setWorkspaceRoot'] as (p: string | null) => unknown;
-    const _regWsRoot = (fsPath: string | undefined) => void _setWsRoot(fsPath ?? null);
-    _regWsRoot(workspaceService?.folders[0]?.uri.fsPath);
-    if (workspaceService) {
-      context.subscriptions.push(
-        workspaceService.onDidChangeWorkspace(
-          (ws) => _regWsRoot(ws?.folders[0]?.uri.fsPath),
-        ),
-      );
-    }
-  }
+  // M67 Phase 2.4's workspace-root registration used to live here. It now runs
+  // in Workbench._registerFsPathGateRoot during Phase 4, before any tool
+  // activates — registering it from a tool meant every tool that boots earlier
+  // than chat (the explorer first of all) read against the previous
+  // workspace's root after a switch.
 
   const editorService = api.services.has(IEditorService)
     ? api.services.get<import('../../services/serviceTypes.js').IEditorService>(IEditorService)
