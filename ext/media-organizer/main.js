@@ -5805,7 +5805,14 @@ kbd.mo-key {
 .mo-toolbar { gap: 6px; padding: 6px 10px; min-height: 40px; box-sizing: border-box; }
 .mo-toolbar-btn { height: 26px; box-sizing: border-box; padding: 0 8px; }
 .mo-search-wrap { position: relative; display: flex; flex: 1 1 260px; min-width: 160px; max-width: 520px; }
-.mo-search-wrap .mo-toolbar-search { width: 100%; height: 26px; box-sizing: border-box; padding-right: 26px; }
+.mo-search-wrap .mo-toolbar-search { width: 100%; height: 26px; box-sizing: border-box; padding: 0 26px; background: transparent; border-color: transparent; }
+.mo-search-wrap .mo-toolbar-search:hover { background: var(--vscode-input-background, var(--px-bg-inset)); }
+.mo-search-wrap .mo-toolbar-search:focus { background: var(--vscode-input-background, var(--px-bg-inset)); border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); }
+.mo-search-icon { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); display: inline-flex; opacity: 0.55; pointer-events: none; }
+/* Only a grouped control gets a box (the segments); a lone button is a ghost until hovered. */
+.mo-toolbar > .mo-toolbar-btn { background: transparent; border-color: transparent; }
+.mo-toolbar > .mo-toolbar-btn:hover { background: var(--vscode-button-secondaryHoverBackground, #4a4a4a); }
+.mo-toolbar > .mo-toolbar-btn.active { border-color: var(--vscode-button-background, #0e639c); }
 .mo-search-wrap .mo-search-help-btn { position: absolute; right: 1px; top: 1px; height: 24px; width: 24px; padding: 0; justify-content: center; background: transparent; border: none; opacity: 0.6; }
 .mo-search-wrap .mo-search-help-btn:hover { opacity: 1; background: transparent; }
 .mo-toolbar-spacer { flex: 1 1 0; min-width: 6px; }
@@ -5828,7 +5835,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 /* The selection row takes the view row's place. */
 .mo-grid-browser.is-selecting > .mo-toolbar { display: none; }
 .mo-selection-bar { gap: 6px; padding: 6px 10px; min-height: 40px; box-sizing: border-box; }
-.mo-selection-bar .mo-sel-btn { height: 26px; box-sizing: border-box; padding: 0 10px; font-size: var(--parallx-fontSize-sm, 11px); display: inline-flex; align-items: center; gap: 6px; border-radius: var(--parallx-radius-sm, 3px); }
+.mo-selection-bar .mo-sel-btn { height: 26px; box-sizing: border-box; padding: 0 10px; font-size: var(--parallx-fontSize-sm, 11px); display: inline-flex; align-items: center; gap: 6px; border-radius: var(--parallx-radius-sm, 3px); border-color: transparent; }
 .mo-selection-bar .mo-sel-count { font-weight: 600; }
 .mo-selection-bar .mo-sel-more, .mo-selection-bar .mo-sel-delete { padding: 0 7px; }
 .mo-selection-bar .mo-sel-delete { border-color: transparent; }
@@ -11291,6 +11298,7 @@ function renderGridBrowser(container, api, input) {
     placeholder: 'Search title, tags, folder, filename…',
     title: 'Free text searches title, details, tags, folder, and filename.\nOperators: tag:NAME, -tag:NAME, rating:>=4 (or 3..5), folder:TERM, taken:2024 (or 2024-06), type:photo/video',
   });
+  searchWrap.appendChild(moEl('span', 'mo-search-icon', { innerHTML: moIcon('search', 12) }));
   searchWrap.appendChild(searchInput);
   toolbar.appendChild(searchWrap);
 
