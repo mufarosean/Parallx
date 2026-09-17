@@ -547,6 +547,8 @@ export const WORKSHEET_MANIFEST: IToolManifest = {
         aiInvocable: false, aiDescription: 'Open Worksheets Settings: the campaign and the sheet appearance.' },
       { id: 'worksheet.dashboard', title: 'Worksheets: Open Dashboard',
         aiInvocable: true, aiDescription: 'Open the Problem Bank dashboard: attempted and score, progress by paper, the timeline, and what to work on next (due, struggling, weakest papers, quick wins).' },
+      { id: 'worksheet.quizzes', title: 'Worksheets: Open Quizzes',
+        aiInvocable: true, aiDescription: 'Open the Quizzes tab: every quiz, open and completed, to resume, rename, copy, reopen or delete.' },
     ],
     viewContainers: [
       { id: 'worksheet-container', title: 'Worksheets', icon: 'file-spreadsheet', location: 'sidebar' as const },

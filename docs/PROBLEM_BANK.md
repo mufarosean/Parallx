@@ -163,6 +163,11 @@ replaced. The rule now:
 - The overview head carries the name, Rename, Copy Quiz and Quiz Summary
   (or Reopen Quiz); the summary carries Complete Quiz / Back To Quiz (or
   Reopen Quiz), Copy Quiz, Quiz Overview, New Quiz, Dashboard, Home.
+- The QUIZZES TAB (sidebar Quizzes, Home tile and All Quizzes, command
+  worksheet.quizzes) lists every quiz, open first, with the ratings so far
+  and, on each row: Resume or Review, Rename, Copy Quiz, Reopen Quiz (when
+  completed) and Delete Quiz (confirmed; ratings stay on the problems).
+  Complete Quiz is deliberately not there: it lives on the summary.
 
 ## Build order
 

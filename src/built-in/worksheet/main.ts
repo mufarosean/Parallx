@@ -25,7 +25,7 @@ import {
   discardOpenAttempt, completeAttempt, saveAttemptReview, onWorksheetDataChanged,
   getSessionGrades, attachWorksheetDatabase, recordImportedRating, upsertProgressSnapshot,
   getCampaign, startCampaign, endCampaign, listCompletedAttempts,
-  getOpenQuizSession, saveQuizSession, finishQuizSession, renameQuizSession, reopenQuizSession,
+  getOpenQuizSession, saveQuizSession, finishQuizSession, renameQuizSession, reopenQuizSession, deleteQuizSession,
   getQuizSession, listQuizSessions, getSessionItemStates, getProblemNotes, setProblemNote, setItemStarred, getStarred,
   type WorksheetItem, type WorksheetItemSummary,
 } from './worksheetData.js';
@@ -631,6 +631,7 @@ function createSidebarView(container: HTMLElement) {
     };
     navItem('Home', 'home', 'Worksheets', 'Quiz, dashboard, bank, import, generate, scratch sheet');
     navItem('Dashboard', 'dashboard', 'Dashboard', 'Progress, pace, the campaign, what to work on next');
+    navItem('Quizzes', 'quizzes', 'Quizzes', 'Every quiz, open and completed: resume, rename, copy, reopen, delete');
     navItem('Settings', 'settings', 'Worksheets Settings', 'The campaign and the sheet appearance');
     root.appendChild(nav);
     if (items.length === 0) return;
@@ -687,6 +688,7 @@ function createLauncherPane(container: HTMLElement) {
     tile('Quiz Starred', starred.length ? `${starred.length} starred · every one of them, in order.` : 'Star problems from their sheet; they collect here.', 'bank', 'Problem Bank', false,
       () => { if (starred.length) startQuizWith(starred.map((it) => it.id), 0, 'Starred'); else void openWorksheet('bank', 'Problem Bank'); });
     tile('Dashboard', dashDesc, 'dashboard', 'Dashboard');
+    tile('Quizzes', 'Every quiz, open and completed, with its actions.', 'quizzes', 'Quizzes');
     tile('Problem Bank', problems.length ? `${problems.length} problems · ${rated} rated` : 'Empty until you import a workbook.', 'bank', 'Problem Bank');
     tile('Import Workbook', 'A ProblemTrack workbook, every sheet as it is.', 'excel-import', 'Import Workbook');
     tile('Generate Items', 'Practice items from a PDF or pasted material.', 'create', 'Generate Items');
@@ -723,7 +725,7 @@ function createLauncherPane(container: HTMLElement) {
     if (disposed || seq !== renderSeq) return;
     if (sessions.length > 0) {
       const box = el('div', 'ws-launch__list');
-      box.appendChild(el('div', 'ws-launch__listtitle', 'Quizzes'));
+      box.appendChild(el('div', 'ws-launch__listtitle', 'Recent Quizzes'));
       const bankById = new Map(items.map((i) => [i.id, i]));
       for (const q of sessions) {
         const grades = await getSessionGrades(q.itemIds, q.startedAt, q.id, q.finishedAt ?? null).catch(() => new Map<number, string>());
@@ -749,6 +751,12 @@ function createLauncherPane(container: HTMLElement) {
         row.addEventListener('click', () => void openPastQuiz(q.id));
         box.appendChild(row);
       }
+      const all = el('button', 'ws-launch__row') as HTMLButtonElement;
+      all.type = 'button';
+      all.appendChild(el('span', 'ws-launch__rowtext', 'All Quizzes'));
+      all.title = 'The Quizzes tab: every quiz with its actions.';
+      all.addEventListener('click', () => void openWorksheet('quizzes', 'Quizzes'));
+      box.appendChild(all);
       lists.appendChild(box);
     }
     root.appendChild(lists);
@@ -1267,6 +1275,121 @@ function startQuizWith(ids: number[], startAt = 0, name = ''): void {
     if (_api?.activity) _api.activity.note('started', `the quiz "${_practice?.name ?? name}" (${ids.length} ${ids.length === 1 ? 'problem' : 'problems'})`);
     await openWorksheet('practice-run', 'Quiz');
   })();
+}
+
+// ── Quizzes ───────────────────────────────────────────────────────────────
+// Every quiz, open ones first, with its lifecycle beside it (Mufaro,
+// 2026-09-17: "where do I see all my quizzes and do these operations?").
+// Complete Quiz stays on a quiz's summary, where the ratings are in view;
+// here a quiz is opened, renamed, copied, reopened or deleted.
+function createQuizzesPane(container: HTMLElement) {
+  const root = el('div', 'ws-pane ws-home');
+  container.appendChild(root);
+  let disposed = false;
+  let renderSeq = 0;
+  root.appendChild(titled('Quizzes', 'Every quiz you made, open ones first. A quiz stays open until you complete it from its summary; its ratings stay on the problems either way.'));
+  const controls = el('div', 'ws-create__controls');
+  const newBtn = el('button', 'ws-btn ws-btn--primary') as HTMLButtonElement;
+  newBtn.textContent = 'New Quiz';
+  newBtn.title = 'The quiz builder: papers, sources, kinds, a rating band, a length, a name.';
+  newBtn.addEventListener('click', () => void openWorksheet('practice', 'Quiz'));
+  controls.appendChild(newBtn);
+  root.appendChild(controls);
+  const listHost = el('div', 'ws-home__list');
+  root.appendChild(listHost);
+
+  const render = async () => {
+    const seq = ++renderSeq;
+    const [sessions, bank] = await Promise.all([listQuizSessions(500).catch(() => []), listItems().catch(() => [])]);
+    if (disposed || seq !== renderSeq) return;
+    listHost.replaceChildren();
+    if (sessions.length === 0) {
+      listHost.appendChild(el('div', 'ws-hint', 'No quizzes yet. New Quiz builds one; Home and the Dashboard start them from starred, due and drawn problems.'));
+      return;
+    }
+    const bankById = new Map(bank.map((i) => [i.id, i]));
+    for (const q of sessions) {
+      const grades = await getSessionGrades(q.itemIds, q.startedAt, q.id, q.finishedAt ?? null).catch(() => new Map<number, string>());
+      if (disposed || seq !== renderSeq) return;
+      const counts = { easy: 0, medium: 0, hard: 0 };
+      let unrated = 0;
+      for (const id of q.itemIds) {
+        const r = normalizeRating(grades.get(id) ?? bankById.get(id)?.attemptState ?? '');
+        if (r === 'easy' || r === 'medium' || r === 'hard') counts[r]++; else unrated++;
+      }
+      const started = new Date(q.startedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+      const row = el('div', 'ws-itemrow');
+      row.appendChild(el('span', `ws-bank__dot ${q.finishedAt ? 'rest' : 'open'}`));
+      const info = el('div', 'ws-itemrow__info');
+      const title = el('div', 'ws-itemrow__title');
+      const nameEl = el('span', '', q.name || started);
+      title.appendChild(nameEl);
+      const status = q.finishedAt ? `Completed ${when(q.finishedAt)}` : q.position >= q.itemIds.length ? 'Open · at the summary' : `Open · ${q.position + 1} of ${q.itemIds.length}`;
+      title.appendChild(el('span', `ws-chip ${q.finishedAt ? 'ws-chip--muted' : 'ws-chip--open'}`, status));
+      info.appendChild(title);
+      info.appendChild(el('div', 'ws-itemrow__meta', `${q.itemIds.length} ${q.itemIds.length === 1 ? 'problem' : 'problems'} · ${counts.easy} Easy · ${counts.medium} Medium · ${counts.hard} Hard · ${unrated} not rated · started ${started}`));
+      info.title = q.finishedAt ? 'Open this completed quiz to review it.' : 'Resume this quiz where it stands.';
+      info.addEventListener('click', () => void openPastQuiz(q.id));
+      row.appendChild(info);
+      const actions = el('div', 'ws-itemrow__actions');
+      const act = (label: string, hint: string, onClick: () => void, danger = false) => {
+        const b = el('button', danger ? 'ws-btn ws-btn--small ws-btn--danger' : 'ws-btn ws-btn--small') as HTMLButtonElement;
+        b.textContent = label;
+        b.title = hint;
+        b.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
+        actions.appendChild(b);
+      };
+      act(q.finishedAt ? 'Review' : 'Resume', q.finishedAt ? 'Open this completed quiz to review the work and the ratings.' : 'Continue this quiz where it stands.', () => void openPastQuiz(q.id));
+      act('Rename', 'Change the name this quiz is listed under.', () => {
+        const input = el('input', 'ws-input') as HTMLInputElement;
+        input.type = 'text';
+        input.maxLength = 80;
+        input.value = q.name;
+        input.placeholder = 'Quiz name';
+        let done = false;
+        const commit = () => {
+          if (done) return;
+          done = true;
+          const v = input.value.trim();
+          if (v && v !== q.name) void renameQuizSession(q.id, v).catch(() => {});
+          else input.replaceWith(nameEl);
+        };
+        input.addEventListener('click', (e) => e.stopPropagation());
+        input.addEventListener('keydown', (e) => {
+          e.stopPropagation();
+          if (e.key === 'Enter') input.blur();
+          if (e.key === 'Escape') { input.value = q.name; input.blur(); }
+        });
+        input.addEventListener('blur', commit);
+        nameEl.replaceWith(input);
+        input.focus();
+        input.select();
+      });
+      act('Copy Quiz', 'A new open quiz over the same problems in the same order. Ratings start fresh for the copy.', () => startQuizWith(q.itemIds, 0, `${q.name || 'Quiz'} Copy`));
+      if (q.finishedAt) act('Reopen Quiz', 'Makes this completed quiz open again, at its last problem.', () => void reopenQuizSession(q.id).catch(() => {}));
+      act('Delete Quiz', 'Removes the quiz. The ratings it produced stay on the problems.', () => {
+        void (async () => {
+          const ok = await _api?.window?.showConfirmModal?.({
+            message: `Delete the quiz "${q.name || started}"?`,
+            detail: 'The quiz and its position are removed. Ratings and work on the problems are kept. This cannot be undone.',
+            confirmLabel: 'Delete Quiz',
+            danger: true,
+          }) ?? false;
+          if (!ok || disposed) return;
+          await deleteQuizSession(q.id).catch(() => {});
+          if (_practice?.id === q.id) {
+            _practice = null;
+            for (const fn of _practiceListeners) { try { fn(); } catch { /* pane torn down */ } }
+          }
+        })();
+      }, true);
+      row.appendChild(actions);
+      listHost.appendChild(row);
+    }
+  };
+  const sub = onWorksheetDataChanged(() => void render());
+  void render();
+  return { dispose: () => { disposed = true; sub.dispose(); root.remove(); } };
 }
 
 function createPracticeConfigPane(container: HTMLElement) {
@@ -2789,6 +2912,7 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
         if (instanceId === 'excel-import') return createExcelImportPane(container);
         if (instanceId === 'practice') return createPracticeConfigPane(container);
         if (instanceId === 'practice-run') return createPracticeRunPane(container);
+        if (instanceId === 'quizzes') return createQuizzesPane(container);
         if (instanceId === 'dashboard') {
           return createDashboardPane(container, {
             openItem: (id, title) => void openWorksheet(`item:${id}`, title),
@@ -2833,6 +2957,9 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
   );
   context.subscriptions.push(
     api.commands.registerCommand('worksheet.dashboard', () => openWorksheet('dashboard', 'Dashboard')),
+  );
+  context.subscriptions.push(
+    api.commands.registerCommand('worksheet.quizzes', () => openWorksheet('quizzes', 'Quizzes')),
   );
   context.subscriptions.push(
     api.commands.registerCommand('worksheet.bank', () => openWorksheet('bank', 'Problem Bank')),

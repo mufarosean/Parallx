@@ -490,6 +490,11 @@ export async function reopenQuizSession(id: string): Promise<void> {
   await run('UPDATE ws_quiz_session SET finished_at = NULL, touched_at = ? WHERE id = ?', [Date.now(), id]);
   emitChange();
 }
+/** Delete Quiz: the quiz goes; the ratings it produced stay on the problems. */
+export async function deleteQuizSession(id: string): Promise<void> {
+  await run('DELETE FROM ws_quiz_session WHERE id = ?', [id]);
+  emitChange();
+}
 
 /** Every completed attempt, newest first, for the dashboard's timeline and score. */
 export async function listCompletedAttempts(): Promise<{ itemId: number; selfGrade: string; at: number; seconds: number; sessionId: string; imported: boolean }[]> {
