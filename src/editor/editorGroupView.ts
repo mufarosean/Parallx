@@ -767,15 +767,18 @@ export class EditorGroupView extends Disposable implements IGridView {
 
     const activeInput = this.model.activeEditor;
 
-    // HIDE the outgoing pane — never dispose it here. Panes are retained per
-    // input so returning to a tab is instant and stateful (M101 seamless
-    // tabs). View state is still captured: it is the durable fallback when
-    // the retention cap later evicts this pane.
+    // HIDE the outgoing pane. Panes are retained per input so returning to a
+    // tab is instant and stateful (M101 seamless tabs). View state is still
+    // captured: it is the durable fallback when the retention cap later
+    // evicts this pane. A pane that declines retention (retainOnHide false:
+    // it embeds an engine that must not live hidden) is torn down here
+    // instead, and its view state is what rebuilds it on return.
     if (this._activePane) {
-      const outgoingInput = this._activePane.input;
+      const outgoing = this._activePane;
+      const outgoingInput = outgoing.input;
       if (outgoingInput) {
         try {
-          const state = this._activePane.saveViewState();
+          const state = outgoing.saveViewState();
           if (state) {
             this._viewStateCache.set(outgoingInput.id, state);
           }
@@ -783,7 +786,15 @@ export class EditorGroupView extends Disposable implements IGridView {
           console.warn('[EditorGroupView] saveViewState() threw:', err);
         }
       }
-      this._activePane.element?.classList.add('hidden');
+      if (outgoing.retainOnHide) {
+        outgoing.element?.classList.add('hidden');
+      } else if (outgoingInput && this._retainedPanes.has(outgoingInput.id)) {
+        this._disposeRetainedPane(outgoingInput.id);
+      } else {
+        try { outgoing.clearInput(); } catch (err) { console.warn('[EditorGroupView] clearInput() threw on tab switch:', err); }
+        outgoing.dispose();
+        outgoing.element?.remove();
+      }
       this._activePane = undefined;
     }
 

@@ -18,7 +18,7 @@
 // that: no cell locking, a confirmed Reset, one sheet, no tabs.
 
 import type { IWorkbookData } from '@univerjs/core';
-import type { IWorksheetHost } from './univerHost.js';
+import type { IWorksheetHost, SheetViewState } from './univerHost.js';
 import { renderMarkdown } from '../../ui/renderMarkdown.js';
 import {
   listItems, getItem, createItem, deleteItem, getOpenAttempt, getLatestWork, saveAttemptCells,
@@ -132,6 +132,13 @@ let _api: ParallxApiLike | null = null;
 
 /** Scratch-sheet snapshots cached across pane rebuilds (in-memory only). */
 const _scratchCache = new Map<string, IWorkbookData>();
+/**
+ * The last working snapshot of each item pane, by instance id. A sheet pane
+ * is torn down on every tab switch (one live engine per window); the
+ * database write it makes on the way out may still be in flight when the
+ * tab comes back, so the remount reads this first.
+ */
+const _workingCache = new Map<string, IWorkbookData>();
 
 // ── Sheet appearance (worksheet.sheetAppearance) ────────────────────────────
 //
@@ -2045,6 +2052,13 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
   container.appendChild(root);
 
   let host: IWorksheetHost | null = null;
+  /** Where the user was when the tab was switched away; applied once the engine has painted. */
+  let pendingView: SheetViewState | null = null;
+  const applyPendingView = (): void => {
+    if (!pendingView || !host || disposed) return;
+    host.restoreViewState(pendingView);
+    pendingView = null;
+  };
   let disposed = false;
   let item: WorksheetItem | null = null;
   let itemStarred = false;
@@ -2076,6 +2090,7 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
     }
     const snap = captureWorking();
     if (!snap) return;
+    _workingCache.set(instanceId, snap);
     const json = JSON.stringify(snap);
     if (json === lastSavedCells) return;
     lastSavedCells = json;
@@ -2115,7 +2130,7 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
     });
     // Probe hook (tests/probes): the live host, reachable from the DOM.
     (sheetHost as unknown as { __wsHost?: unknown }).__wsHost = host;
-    void host.whenRendered().then(() => readyResolve());
+    void host.whenRendered().then(() => { readyResolve(); applyPendingView(); });
     // Unhiding the solution columns by hand is the same act as Reveal
     // Solution: the button follows the sheet, whichever way the columns moved.
     visibilitySub?.dispose();
@@ -2299,7 +2314,7 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
     renderItemHeader();
     const open = await getOpenAttempt(item.id);
     const prior = open ? null : await getLatestWork(item.id);
-    const snap = (open ?? prior) ? parseWorkbook((open ?? prior)!.cellsJson) : null;
+    const snap = _workingCache.get(instanceId) ?? ((open ?? prior) ? parseWorkbook((open ?? prior)!.cellsJson) : null);
     await mountSheet(snap ?? parseWorkbook(item.givensJson));
   };
 
@@ -2426,6 +2441,7 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
           lastSavedCells = '';
           problemSeconds = 0;
           timerEl.textContent = fmtSeconds(0);
+          _workingCache.delete(instanceId);
           await discardOpenAttempt(problem.id);
           await mountSheet(applyRatingCell(applySolutionVisibility(parseWorkbook(problem.sheetJson) as IWorkbookData, revealed), latestRating));
           lastSavedCells = await settledSnapshotJson();
@@ -2511,7 +2527,7 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
     };
     paintHeader();
     const carried = open ?? prior;
-    const base = carried ? (parseWorkbook(carried.cellsJson) as IWorkbookData | null) : null;
+    const base = _workingCache.get(instanceId) ?? (carried ? (parseWorkbook(carried.cellsJson) as IWorkbookData | null) : null);
     await mountSheet(applyRatingCell(applySolutionVisibility((base ?? parseWorkbook(problem.sheetJson)) as IWorkbookData, revealed), latestRating));
     // Baseline = what the sheet holds once the engine has settled after the
     // mount, so merely reopening a problem (rated or not) starts no new attempt.
@@ -2543,7 +2559,7 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
         renderItemHeader();
         const open = await getOpenAttempt(itemId);
         const prior = open ? null : await getLatestWork(itemId);
-        const snap = (open ?? prior) ? parseWorkbook((open ?? prior)!.cellsJson) : null;
+        const snap = _workingCache.get(instanceId) ?? ((open ?? prior) ? parseWorkbook((open ?? prior)!.cellsJson) : null);
         await mountSheet(snap ?? parseWorkbook(item.givensJson));
         // Baseline = what the sheet holds RIGHT AFTER mount. Autosave only
         // writes when the snapshot moves off this baseline — without it,
@@ -2580,14 +2596,24 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
   })();
 
   return {
+    // One live engine per window: the sheet is torn down when its tab is
+    // switched away and rebuilt on return. The engine keeps module-level
+    // state that every live instance in the window shares, and it is built
+    // for one instance per page; hidden instances are where the shared
+    // caches, the focus tracking and the render loops crossed (2026-09-17).
+    retainOnHide: false,
     saveViewState: () => {
       void persistWorking();
-      return { instanceId };
+      return { instanceId, view: host?.getViewState() ?? null };
     },
     ready,
-    restoreViewState: (_state: unknown) => {
-      // State rides SQLite (items) / the scratch cache (scratch), applied in
-      // the async init above. Nothing positional to restore yet.
+    restoreViewState: (state: unknown) => {
+      // Content rides SQLite and the working cache, applied in the async init
+      // above; the place on the sheet rides here.
+      const view = (state as { view?: SheetViewState | null } | null)?.view ?? null;
+      if (!view) return;
+      pendingView = view;
+      applyPendingView();
     },
     dispose: () => {
       readyResolve();

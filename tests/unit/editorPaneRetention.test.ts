@@ -197,6 +197,43 @@ describe('editor pane retention (seamless tab switching)', () => {
     group.dispose();
   });
 
+  it('a pane that declines retention is torn down on switch-away and rebuilt on return with its view state', async () => {
+    // A worksheet pane embeds an engine built for one live instance per
+    // window, so it answers retainOnHide: false and rides the view-state
+    // contract instead of staying alive hidden.
+    class TransientPane extends ProbePane {
+      override get retainOnHide(): boolean { return false; }
+    }
+    ProbePane.created = [];
+    const group = new EditorGroupView(undefined, () => new TransientPane());
+    document.body.appendChild(group.element);
+    const a = new PlaceholderEditorInput('A');
+    const b = new PlaceholderEditorInput('B');
+
+    await group.openEditor(a, { pinned: true });
+    await settle();
+    const first = ProbePane.created[0];
+    first.scrollTop = 42;
+
+    await group.openEditor(b, { pinned: true });
+    await settle();
+    // A was disposed on the way out, not hidden: one live pane in the group.
+    expect(first.disposed).toBe(true);
+    expect(ProbePane.created.filter((p) => !p.disposed)).toHaveLength(1);
+    expect(document.querySelectorAll('.probe-pane')).toHaveLength(1);
+
+    await group.openEditor(a, { pinned: true });
+    await settle();
+    // A came back as a NEW pane, with the view state saved on the way out.
+    const again = paneFor(a);
+    expect(again).toBeDefined();
+    expect(again).not.toBe(first);
+    expect(again!.restoredWith).toEqual({ scrollTop: 42 });
+    expect(ProbePane.created.filter((p) => !p.disposed)).toHaveLength(1);
+
+    group.dispose();
+  });
+
   it('re-activating the already-active tab neither rebuilds nor hides the pane', async () => {
     const group = makeGroup();
     const a = new PlaceholderEditorInput('A');

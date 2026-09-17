@@ -246,6 +246,19 @@ count, so the other chips can narrow it further).
    unit id (univerHost withUnitId; stored id put back on every snapshot,
    drawings' unitId rewritten both ways); a teardown that throws is
    journaled as 'engine fault' instead of swallowed.
+   2026-09-17 (afternoon, Mufaro: text typed into a cell shows in the
+   formula bar but not in the cell, Enter does nothing, a click on the
+   formula bar brings it back; and his rule: no edge cases, fix the system).
+   SYSTEM CHANGE: one live engine per window. The engine is built for one
+   instance per page (module-level caches, activeElement-derived focus
+   contexts, window-level listeners, a render loop each); retained hidden
+   tabs held up to seven of them. Sheet panes now answer retainOnHide:
+   false (IEditorPaneViewStateProvider, honoured by editorGroupView on
+   tab switch): torn down on switch-away (work persists to SQLite and a
+   working cache read first on return), rebuilt on return with the active
+   cell and scroll restored (host getViewState/restoreViewState). The
+   Engine.prototype.resize patch for hidden panes is gone with the hidden
+   panes.
 3k. DONE 2026-09-14 (late morning): dollar signs survive a reference drag.
    Reproduced in a hidden host probe (scratch drag-probe: probeStartEditing
    + webContents.insertText, then a mouse drag on the highlighted box's top

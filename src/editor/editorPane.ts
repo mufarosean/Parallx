@@ -37,6 +37,13 @@ export interface IEditorPane extends IDisposable {
   focus(): void;
   saveViewState(): EditorPaneViewState;
   restoreViewState(state: EditorPaneViewState): void;
+  /**
+   * Whether the pane stays alive, hidden, when its tab is not the active one
+   * (the default). A pane that embeds an engine which must not live hidden
+   * answers false: it is torn down on every tab switch, after saveViewState,
+   * and rebuilt on return with restoreViewState.
+   */
+  readonly retainOnHide: boolean;
 
   readonly onDidChangeViewState: Event<void>;
 }
@@ -73,6 +80,7 @@ export abstract class EditorPane extends Disposable implements IEditorPane {
   // ── Accessors ──
 
   get element(): HTMLElement | undefined { return this._element; }
+  get retainOnHide(): boolean { return true; }
   get input(): IEditorInput | undefined { return this._input; }
   get width(): number { return this._width; }
   get height(): number { return this._height; }
@@ -221,6 +229,12 @@ export interface IEditorPaneViewStateProvider {
   dispose(): void;
   saveViewState?(): unknown;
   restoreViewState?(state: unknown): void;
+  /**
+   * false: never keep this editor alive hidden. It is disposed on every tab
+   * switch (after saveViewState) and created again on return. For editors
+   * that embed an engine designed for one live instance per window.
+   */
+  retainOnHide?: boolean;
 }
 
 // ─── ToolEditorPane ──────────────────────────────────────────────────────────
@@ -237,6 +251,10 @@ class ToolEditorPane extends EditorPane {
 
   constructor() {
     super('tool-editor-pane');
+  }
+
+  override get retainOnHide(): boolean {
+    return this._providerHandle?.retainOnHide !== false;
   }
 
   protected override createPaneContent(container: HTMLElement): void {

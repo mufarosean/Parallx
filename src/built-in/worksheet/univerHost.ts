@@ -26,7 +26,7 @@ import { ReplaceTextRunsCommand } from '@univerjs/docs-ui';
 import { sequenceNodeType } from '@univerjs/engine-formula';
 import { IEditorBridgeService, MoveSelectionCommand, MoveSelectionEnterAndTabCommand, SetCellEditVisibleOperation, SheetScrollManagerService, SheetSkeletonManagerService } from '@univerjs/sheets-ui';
 import { SheetInterceptorService, INTERCEPTOR_POINT, SetSelectionsOperation, SetColHiddenMutation, SetColVisibleMutation } from '@univerjs/sheets';
-import { DeviceInputEventType, Engine, IRenderManagerService, type IRender } from '@univerjs/engine-render';
+import { DeviceInputEventType, IRenderManagerService, type IRender } from '@univerjs/engine-render';
 import * as XLSX from 'xlsx';
 import type { IWorkbookData, Univer } from '@univerjs/core';
 import type { FUniver } from '@univerjs/core/lib/facade';
@@ -72,6 +72,14 @@ export interface IWorksheetHostOptions {
    * teardown that threw), with a one-line summary and the detail.
    */
   readonly onEngineFault?: (summary: string, detail: string) => void;
+}
+
+/** The user's place on a sheet: active cell and the viewport's first visible row and column. */
+export interface SheetViewState {
+  row: number;
+  col: number;
+  scrollRow: number;
+  scrollCol: number;
 }
 
 /** Live hosts on the page (the quiz mounts and disposes one per problem). */
@@ -132,6 +140,10 @@ export interface IWorksheetHost {
   probeState(): Record<string, unknown>;
   /** Scroll the active sheet so the given cell is at the top-left (probes). */
   scrollToCell(row: number, col: number): boolean;
+  /** Where the user is: the active cell and the viewport's first visible row and column. */
+  getViewState(): SheetViewState | null;
+  /** Put the viewport and the active cell back where getViewState found them. */
+  restoreViewState(state: SheetViewState): void;
   /** Probe knob: switch the editor's follow-scroll off ('dom' is the shipped default). */
   setEditorFollowMode(mode: 'off' | 'dom'): void;
   /** Open the sheet's own right-click menu at a viewport point (probes; the app never needs it). */
@@ -159,19 +171,6 @@ export interface IWorksheetHost {
 // idle-time redraw (Mufaro, 2026-09-15: "navigating to a different tab and
 // back causes flashes"). With the resize skipped while hidden, the canvas
 // keeps its last picture, and a reveal at the same size repaints nothing.
-let _hiddenResizeGuarded = false;
-function guardHiddenResize(): void {
-  if (_hiddenResizeGuarded) return;
-  _hiddenResizeGuarded = true;
-  const proto = Engine.prototype as unknown as { resize(): void };
-  const original = proto.resize;
-  proto.resize = function (this: { _container?: HTMLElement }) {
-    const c = this._container;
-    if (c && c.isConnected && c.getClientRects().length === 0) return;
-    original.call(this);
-  };
-}
-
 interface SnapshotSheet {
   name?: string;
   cellData?: Record<string, Record<string, { v?: unknown; f?: string }>>;
@@ -287,7 +286,6 @@ function ensurePopupRoot(): void {
 
 export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost {
   ensurePopupRoot();
-  guardHiddenResize();
   const sheetsPresetConfig = {
     container: opts.container,
     // Workbook model (Mufaro): items carry parts on separate tabs, so the
@@ -898,6 +896,36 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
       return { error: String(err) };
     }
   };
+  const getViewState = (): SheetViewState | null => {
+    if (disposed) return null;
+    try {
+      const workbook = univerAPI.getActiveWorkbook();
+      const sheet = workbook?.getActiveSheet();
+      const cell = sheet?.getActiveCell();
+      const unitId = workbook?.getId();
+      const render = unitId ? univer.__getInjector().get(IRenderManagerService).getRenderById(unitId) : null;
+      const scroll = render?.with(SheetScrollManagerService).getCurrentScrollState();
+      return {
+        row: cell?.getRow() ?? 0,
+        col: cell?.getColumn() ?? 0,
+        scrollRow: scroll?.sheetViewStartRow ?? 0,
+        scrollCol: scroll?.sheetViewStartColumn ?? 0,
+      };
+    } catch {
+      return null;
+    }
+  };
+  const restoreViewState = (state: SheetViewState): void => {
+    if (disposed) return;
+    try {
+      const sheet = univerAPI.getActiveWorkbook()?.getActiveSheet();
+      if (!sheet) return;
+      sheet.scrollToCell(state.scrollRow, state.scrollCol);
+      sheet.getRange(state.row, state.col).activate();
+    } catch (err) {
+      console.warn('[Worksheet] restoreViewState failed:', err);
+    }
+  };
   const scrollToCell = (row: number, col: number): boolean => {
     if (disposed) return false;
     try {
@@ -936,6 +964,8 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
     getActiveCell,
     probeState,
     scrollToCell,
+    getViewState,
+    restoreViewState,
     setEditorFollowMode: (mode) => { follow.mode = mode; },
     openContextMenu,
     probeSetFormula,
